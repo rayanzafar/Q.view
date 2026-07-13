@@ -39,7 +39,7 @@ const PAGES = {
 webRouter.get('/app/:page', requireWeb, (req, res, next) => {
   const fn = PAGES[req.params.page];
   if (!fn) return res.redirect('/app/tasks');
-  try { res.send(fn(req.ctx.user)); } catch (e) { next(e); }
+  try { res.send(fn(req.ctx.user, { year: req.query.year })); } catch (e) { next(e); }
 });
 
 // Report preview (renders template HTML with the caller's redacted data)

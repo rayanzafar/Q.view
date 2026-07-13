@@ -6,8 +6,8 @@
   "description": "سند — Enterprise Operating System for Experts Vision Consulting (EVC). Modular monolith.",
   "engines": { "node": ">=22.5" },
   "scripts": {
-    "start": "node --experimental-sqlite src/server.js",
-    "dev": "node --experimental-sqlite --watch src/server.js",
+    "start": "node --experimental-sqlite --env-file-if-exists=.env src/server.js",
+    "dev": "node --experimental-sqlite --watch --env-file-if-exists=.env src/server.js",
     "migrate": "node --experimental-sqlite scripts/migrate.js",
     "seed": "node --experimental-sqlite scripts/seed.js",
     "migrate-legacy": "node --experimental-sqlite scripts/migrate-legacy.js",

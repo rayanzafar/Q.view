@@ -6,6 +6,9 @@ import { TEMPLATES } from '../mail/templates.js';
 import { sendMail } from '../mail/transport.js';
 import { resolveUser } from '../http/context.js';
 import { id, nowIso } from '../util/ids.js';
+import { config } from '../config.js';
+
+const FY = () => config.fiscalYear;
 
 // Build the data payload for a report as seen by a given user (redaction via metrics/scope).
 export function buildReport(reportKey, user, opts = {}) {
@@ -15,6 +18,7 @@ export function buildReport(reportKey, user, opts = {}) {
       period: opts.period || periodLabel(),
       totals: ov.totals, pipeline_halalas: ov.pipeline_halalas, oppCount: ov.sectors.reduce((a, s) => a + s.opp_count, 0),
       achievements: topAchievements(), challenges: topChallenges(), decisions: pendingDecisions(user), risks: topRisks(),
+      topDeals: topWonDeals(), topPipeline: topOpenOpps(),
     };
   }
   if (reportKey === 'sector_weekly_status') {
@@ -101,4 +105,19 @@ function topRisks() {
 }
 function sectorRisks(sectorId) {
   return all("SELECT title FROM risk WHERE sector_id=? AND status!='CLOSED' LIMIT 4", [sectorId]).map((r) => r.title);
+}
+// Consulting-standard: name the client + opportunity on each deal.
+function topWonDeals() {
+  return all(`SELECT o.title_ar, o.value_halalas, c.name_ar client FROM opportunity o
+    JOIN stage st ON st.id=o.stage_id LEFT JOIN client c ON c.id=o.client_id
+    WHERE st.is_won=1 AND o.exclude_from_sales=0 AND o.year=? AND o.deleted_at IS NULL
+    ORDER BY o.value_halalas DESC LIMIT 5`, [FY()]).map((d) => ({
+    title: d.title_ar, client: d.client || '—', value_halalas: d.value_halalas }));
+}
+function topOpenOpps() {
+  return all(`SELECT o.title_ar, o.value_halalas, o.win_pct, c.name_ar client FROM opportunity o
+    JOIN stage st ON st.id=o.stage_id LEFT JOIN client c ON c.id=o.client_id
+    WHERE st.is_won=0 AND st.is_lost=0 AND o.deleted_at IS NULL
+    ORDER BY o.value_halalas DESC LIMIT 5`).map((d) => ({
+    title: d.title_ar, client: d.client || '—', value_halalas: d.value_halalas, win_pct: d.win_pct }));
 }

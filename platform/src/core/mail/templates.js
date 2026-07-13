@@ -46,6 +46,16 @@ function list(items) {
 // Weekly Executive Brief
 export function weeklyExecBrief(data) {
   const t = data.totals;
+  const dealRows = (deals, showWin) => !deals || !deals.length ? `<div style="color:${MUTED};font-size:13px">لا يوجد</div>` :
+    `<table role="presentation" width="100%" cellspacing="0" style="font-size:13px">
+      <tr><th align="start" style="color:${MUTED};font-size:11px;padding:4px 6px">العميل</th>
+      <th align="start" style="color:${MUTED};font-size:11px;padding:4px 6px">الفرصة</th>
+      <th style="color:${MUTED};font-size:11px;padding:4px 6px">القيمة</th>${showWin ? `<th style="color:${MUTED};font-size:11px;padding:4px 6px">%</th>` : ''}</tr>
+      ${deals.map((d) => `<tr><td style="padding:5px 6px;border-top:1px solid ${LINE};font-weight:600">${d.client}</td>
+        <td style="padding:5px 6px;border-top:1px solid ${LINE}">${d.title}</td>
+        <td style="padding:5px 6px;border-top:1px solid ${LINE};text-align:center">${fmtSar(d.value_halalas)}</td>
+        ${showWin ? `<td style="padding:5px 6px;border-top:1px solid ${LINE};text-align:center">${Math.round(d.win_pct || 0)}%</td>` : ''}</tr>`).join('')}
+    </table>`;
   const body = [
     section('الملخص التنفيذي',
       `<table role="presentation" width="100%" cellspacing="8"><tr>
@@ -53,6 +63,8 @@ export function weeklyExecBrief(data) {
         ${kpiRow('المبيعات المحققة', fmtSar(t.sales), `المستهدف ${fmtSar(t.target_sales)}`)}
         ${kpiRow('خط الأنابيب', fmtSar(data.pipeline_halalas), `${data.oppCount || ''} فرصة`)}
       </tr></table>`),
+    section('أبرز الصفقات المكتسبة (السنة الحالية)', dealRows(data.topDeals, false)),
+    section('أكبر الفرص المفتوحة', dealRows(data.topPipeline, true)),
     section('أبرز الإنجازات', list(data.achievements)),
     section('التحديات', list(data.challenges)),
     section('القرارات المطلوبة', list(data.decisions)),

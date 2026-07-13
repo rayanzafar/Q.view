@@ -10,3 +10,6 @@ data/migration-reconciliation.json
 
 # Real data snapshot — sensitive (salaries/IPs); provided at runtime, never committed
 seed/*.snapshot.json
+
+# secrets — never commit
+.env

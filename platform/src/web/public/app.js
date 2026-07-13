@@ -68,8 +68,10 @@ window.Sanad = {
 Object.assign(window.Sanad, {
   _aiPending: null,
   aiToggle() {
-    const p = document.getElementById('ai-panel'); p.classList.toggle('hidden');
-    if (!p.classList.contains('hidden')) {
+    const p = document.getElementById('ai-panel');
+    const open = p.style.display === 'none' || !p.style.display;
+    p.style.display = open ? 'flex' : 'none';
+    if (open) {
       fetch('/api/ai/status', { credentials: 'include' }).then((r) => r.json()).then((s) => {
         document.getElementById('ai-mode').textContent = s.mode === 'local' ? 'محلي (بلا مفتاح)' : 'مزوّد: ' + s.mode;
       }).catch(() => {});

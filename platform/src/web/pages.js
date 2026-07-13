@@ -1,7 +1,15 @@
-import { layout, card, pill } from './layout.js';
+import { layout, card, pill, miniBars } from './layout.js';
 import { fmtSar } from '../core/util/ids.js';
 import { all, get } from '../core/db/index.js';
-import { companyOverview, sectorDashboard, projectKpis } from '../core/reports/metrics.js';
+import { companyOverview, sectorDashboard, projectKpis, multiYearTrend, winRate } from '../core/reports/metrics.js';
+import { config } from '../core/config.js';
+
+const sarShort = (halalas) => {
+  const v = (halalas || 0) / 100;
+  if (Math.abs(v) >= 1e6) return (v / 1e6).toFixed(1) + 'M';
+  if (Math.abs(v) >= 1e3) return Math.round(v / 1e3) + 'K';
+  return String(Math.round(v));
+};
 import { listOpportunities, pipelineSummary } from '../modules/crm/opportunities.js';
 import { listProjects } from '../modules/pmo/projects.js';
 import { myTasks } from '../modules/pmo/tasks.js';
@@ -33,73 +41,98 @@ export function loginPage(err) {
 </form></body></html>`;
 }
 
-export function ceoPage(user) {
-  const ov = companyOverview(user);
+export function ceoPage(user, opts = {}) {
+  const year = Number(opts.year) || config.fiscalYear;
+  const ov = companyOverview(user, { year });
   const t = ov.totals;
+  const wr = winRate(null, year);
+  const trend = multiYearTrend(null, 4);
   const heroKpi = (label, val, target, p, color) => `
-    <div class="text-white/70 text-[13px]">${label}</div>
-    <div class="text-3xl font-extrabold text-white mt-1">${fmtSar(val)}</div>
-    <div class="text-white/60 text-[12px]">من ${fmtSar(target)}</div>
-    ${bar(p, color)}<div class="text-white/80 text-xs mt-1">${pct(p)}</div>`;
+    <div style="color:rgba(255,255,255,.7);font-size:13px">${label}</div>
+    <div class="metric" style="color:#fff;margin-top:.25rem">${fmtSar(val)}</div>
+    <div style="color:rgba(255,255,255,.6);font-size:12px">من ${fmtSar(target)} · ${pct(p)}</div>
+    <div class="bar" style="margin-top:.5rem;background:rgba(255,255,255,.15)"><span style="width:${Math.min(100, p)}%;background:${color}"></span></div>`;
   const sectorCards = ov.sectors.map((s) => card(`
-    <div class="p-4">
-      <div class="flex items-center justify-between">
-        <div><div class="font-bold text-[15px]">${s.name_ar}</div><div class="text-[11px] text-muted">${s.name_en || ''}</div></div>
+    <div style="padding:1rem">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div style="display:flex;align-items:center;gap:.5rem">
+          <span style="width:10px;height:10px;border-radius:3px;background:${s.color || '#2563eb'}"></span>
+          <div><div style="font-weight:800;font-size:15px">${s.name_ar}</div><div style="font-size:11px;color:var(--muted)">${s.name_en || ''}</div></div>
+        </div>
         ${s.placeholder ? pill('بانتظار التفعيل', 'amber') : pill(`${s.opp_count} فرصة`, 'blue')}
       </div>
-      <div class="grid grid-cols-2 gap-3 mt-3">
-        <div><div class="text-[11px] text-muted">الإيراد ${pct(s.revenue_pct)}</div>
-          <div class="text-sm font-bold">${fmtSar(s.revenue_halalas)}</div>${bar(s.revenue_pct, '#059669')}</div>
-        <div><div class="text-[11px] text-muted">المبيعات ${pct(s.sales_pct)}</div>
-          <div class="text-sm font-bold">${fmtSar(s.sales_halalas)}</div>${bar(s.sales_pct, s.color || '#2563eb')}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;margin-top:.85rem">
+        <div><div style="font-size:11px;color:var(--muted)">الإيراد · ${pct(s.revenue_pct)}</div>
+          <div style="font-weight:800" class="tnum">${fmtSar(s.revenue_halalas)}</div>
+          <div class="bar" style="margin-top:.35rem"><span style="width:${Math.min(100, s.revenue_pct)}%;background:var(--green)"></span></div></div>
+        <div><div style="font-size:11px;color:var(--muted)">المبيعات · ${pct(s.sales_pct)}</div>
+          <div style="font-weight:800" class="tnum">${fmtSar(s.sales_halalas)}</div>
+          <div class="bar" style="margin-top:.35rem"><span style="width:${Math.min(100, s.sales_pct)}%;background:${s.color || 'var(--brand)'}"></span></div></div>
       </div>
-    </div>`, 'hover:shadow-md transition')).join('');
+      <div style="margin-top:.7rem;padding-top:.6rem;border-top:1px solid var(--line);font-size:11px;color:var(--muted);display:flex;justify-content:space-between">
+        <span>عقود ${year}: <b class="tnum" style="color:var(--ink2)">${fmtSar(s.contracts_halalas)}</b> (${s.contracts_count})</span>
+      </div>
+    </div>`, 'card-h')).join('');
+  const kpiTile = (label, val, sub) => card(`<div style="padding:.9rem 1rem"><div style="font-size:11px;color:var(--muted)">${label}</div><div class="metric" style="font-size:1.4rem">${val}</div>${sub ? `<div style="font-size:11px;color:var(--muted)">${sub}</div>` : ''}</div>`);
   const body = `
-    <div class="rounded-2xl p-6 mb-5 text-white" style="background:linear-gradient(135deg,#11295c,#1c2a63,#3a1660)">
-      <div class="text-white/60 text-xs mb-1">لوحة الرئيس التنفيذي · السنة المالية ${ov.fiscalYear}</div>
-      <div class="text-2xl font-extrabold mb-4">الأداء على مستوى الشركة</div>
-      <div class="grid grid-cols-2 gap-6">
+    <div style="border-radius:18px;padding:1.5rem;margin-bottom:1.25rem;color:#fff;background:linear-gradient(135deg,#0f2350,#182a5e,#3a1660)">
+      <div style="color:rgba(255,255,255,.6);font-size:12px;margin-bottom:.25rem">الأداء على مستوى الشركة · السنة المالية ${ov.fiscalYear}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-top:.5rem">
         <div>${heroKpi('إجمالي الإيرادات المحققة', t.revenue, t.target_revenue, t.target_revenue ? t.revenue / t.target_revenue * 100 : 0, '#34d399')}</div>
         <div>${heroKpi('إجمالي المبيعات المحققة', t.sales, t.target_sales, t.target_sales ? t.sales / t.target_sales * 100 : 0, '#c07bff')}</div>
       </div>
     </div>
-    <div class="text-sm font-bold mb-2">أداء القطاعات</div>
-    <div class="grid grid-cols-2 gap-4 mb-5">${sectorCards}</div>
-    ${card(`<div class="p-4 flex items-center justify-between">
-      <div><div class="text-[13px] text-muted">إجمالي خط الفرص على مستوى الشركة</div>
-        <div class="text-2xl font-extrabold">${fmtSar(ov.pipeline_halalas)}</div></div>
-      <div class="text-left"><div class="text-[11px] text-muted">مستهدف المبيعات</div>
-        <div class="text-sm font-bold">${fmtSar(t.target_sales)}</div></div></div>`)}`;
-  return layout({ user, active: 'ceo', title: 'لوحة الرئيس التنفيذي', body });
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-bottom:1.25rem">
+      ${kpiTile('خط الفرص المفتوح', fmtSar(ov.pipeline_halalas), 'الفرص غير المغلقة')}
+      ${kpiTile('معدل الفوز', pct(wr.rate), `فوز ${wr.won} · خسارة ${wr.lost}`)}
+      ${kpiTile('مستهدف الإيراد', fmtSar(t.target_revenue), `التحقيق ${pct(t.target_revenue ? t.revenue / t.target_revenue * 100 : 0)}`)}
+      ${kpiTile('مستهدف المبيعات', fmtSar(t.target_sales), `التحقيق ${pct(t.target_sales ? t.sales / t.target_sales * 100 : 0)}`)}
+    </div>
+    <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:1rem;margin-bottom:1.25rem">
+      <div><div style="font-weight:800;font-size:14px;margin-bottom:.5rem">أداء القطاعات · ${year}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">${sectorCards}</div></div>
+      ${card(`<div style="padding:1rem"><div style="font-weight:800;font-size:14px;margin-bottom:.25rem">الاتجاه متعدد السنوات</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:.5rem">العقود الموقّعة (مليون ر.س.)</div>
+        ${miniBars(trend, 'contracts_halalas', { fmt: sarShort })}
+        <div style="font-size:11px;color:var(--muted);margin:.75rem 0 .5rem">الإيراد المحقق (مليون ر.س.)</div>
+        ${miniBars(trend, 'revenue_halalas', { fmt: sarShort })}</div>`)}
+    </div>`;
+  return layout({ user, active: 'ceo', title: 'لوحة القيادة', subtitle: `نظرة تنفيذية · السنة المالية ${year}`, body, year });
 }
 
-export function sectorPage(user) {
+export function sectorPage(user, opts = {}) {
+  const year = Number(opts.year) || config.fiscalYear;
   const sectorId = user.sector_id || 'SOLUTIONS';
-  const sd = sectorDashboard(user, sectorId);
+  const sd = sectorDashboard(user, sectorId, { year });
   const pipe = pipelineSummary(user);
-  if (!sd) return layout({ user, active: 'sector', title: 'مركز القطاع', body: '<div class="text-muted">لا يوجد قطاع مرتبط</div>' });
-  const stat = (label, val) => card(`<div class="p-4"><div class="text-[11px] text-muted">${label}</div><div class="text-2xl font-extrabold mt-1">${val}</div></div>`);
-  const pipeRow = pipe.map((s) => `<div class="flex items-center gap-2 text-[13px] py-1">
-    <span class="w-2 h-2 rounded-full" style="background:${s.color}"></span>
-    <span class="flex-1">${s.name_ar}</span><span class="font-bold">${s.count}</span>
-    <span class="text-muted text-[11px]">${fmtSar(s.value_halalas)}</span></div>`).join('');
+  if (!sd) return layout({ user, active: 'sector', title: 'مركز القطاع', body: '<div style="color:var(--muted)">لا يوجد قطاع مرتبط</div>' });
+  const stat = (label, val, sub) => card(`<div style="padding:1rem"><div style="font-size:11px;color:var(--muted)">${label}</div><div class="metric" style="font-size:1.5rem">${val}</div>${sub ? `<div style="font-size:11px;color:var(--muted)">${sub}</div>` : ''}</div>`);
+  const maxPipe = Math.max(1, ...pipe.map((s) => s.value_halalas));
+  const pipeRow = pipe.map((s) => `<div style="padding:.35rem 0">
+    <div style="display:flex;align-items:center;gap:.5rem;font-size:13px">
+      <span style="width:9px;height:9px;border-radius:3px;background:${s.color}"></span>
+      <span style="flex:1">${s.name_ar}</span><span style="font-weight:800" class="tnum">${s.count}</span>
+      <span style="color:var(--muted);font-size:11px" class="tnum">${fmtSar(s.value_halalas)}</span></div>
+    <div class="bar" style="margin-top:.25rem"><span style="width:${Math.round(s.value_halalas / maxPipe * 100)}%;background:${s.color}"></span></div></div>`).join('');
   const body = `
-    <div class="grid grid-cols-4 gap-4 mb-5">
-      ${stat('إيراد القطاع', fmtSar(sd.revenue_halalas))}
-      ${stat('مشاريع قائمة', sd.projects.IN_PROGRESS || 0)}
-      ${stat('مخاطر مفتوحة', sd.openRisks)}
-      ${stat('مخرجات مسلّمة', sd.deliverables.DELIVERED || 0)}
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-bottom:1.25rem">
+      ${stat(`إيراد ${year}`, fmtSar(sd.revenue_halalas), `مبيعات ${fmtSar(sd.sales_halalas)}`)}
+      ${stat(`عقود ${year}`, fmtSar(sd.contracts_halalas), `${sd.contracts_count} عقد`)}
+      ${stat('مشاريع قائمة', sd.projects.IN_PROGRESS || 0, `مكتملة ${sd.projects.COMPLETED || 0}`)}
+      ${stat('مخاطر مفتوحة', sd.openRisks, `مخرجات مسلّمة ${sd.deliverables.DELIVERED || 0}`)}
     </div>
-    <div class="grid grid-cols-2 gap-4">
-      ${card(`<div class="p-4"><div class="font-bold text-sm mb-2">خط الفرص</div>${pipeRow}</div>`)}
-      ${card(`<div class="p-4"><div class="font-bold text-sm mb-2">حالة المشاريع (RAG)</div>
-        <div class="flex gap-3 mt-2">
-          ${pill('أخضر ' + (sd.rag.GREEN || 0), 'green')}
-          ${pill('أصفر ' + (sd.rag.AMBER || 0), 'amber')}
-          ${pill('أحمر ' + (sd.rag.RED || 0), 'red')}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.25rem">
+      ${card(`<div style="padding:1rem"><div style="font-weight:800;font-size:14px;margin-bottom:.5rem">خط الفرص حسب المرحلة</div>${pipeRow}</div>`)}
+      ${card(`<div style="padding:1rem"><div style="font-weight:800;font-size:14px;margin-bottom:.25rem">الاتجاه متعدد السنوات — عقود القطاع</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:.5rem">مليون ر.س.</div>
+        ${miniBars(sd.trend, 'contracts_halalas', { fmt: sarShort })}
+        <div style="margin-top:.75rem;display:flex;gap:.5rem">
+          ${pill('على المسار ' + (sd.rag.GREEN || 0), 'green')}
+          ${pill('في خطر ' + (sd.rag.AMBER || 0), 'amber')}
+          ${pill('حرج ' + (sd.rag.RED || 0), 'red')}
         </div></div>`)}
     </div>`;
-  return layout({ user, active: 'sector', title: `مركز القطاع — ${sd.sector.name_ar}`, body });
+  return layout({ user, active: 'sector', title: `مركز القطاع — ${sd.sector.name_ar}`, subtitle: `السنة المالية ${year}`, body, year });
 }
 
 export function opportunitiesPage(user) {
