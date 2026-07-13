@@ -105,3 +105,25 @@ test('Finance: progress claim from delivered deliverables + permission + collect
   fin.recordCollection(ctxF('finance'), { invoiceId: inv.id, amountSar: 3000 });
   assert.equal(db.get('SELECT status FROM invoice WHERE id=?', [inv.id]).status, 'PARTIALLY_PAID');
 });
+
+test('Finance regression: sector-scoped user runs byPM/byContract/summary without ambiguous-column SQL error', async () => {
+  const fin = await import('../src/modules/finance/finance.js');
+  // sector_lead: invoice/contract read at 'sector' scope → scope clause `sector_id = ?` spliced into
+  // JOINs where both tables expose sector_id. Must be qualified, else "ambiguous column name: sector_id".
+  const lead = { id: 'u_sector_lead', role_id: 'sector_lead', sector_id: 'S1', scope: 'sector', projectIds: new Set() };
+  assert.doesNotThrow(() => fin.financeByPM(lead), 'byPM must not raise ambiguous-column');
+  assert.doesNotThrow(() => fin.financeByContract(lead), 'byContract must not raise ambiguous-column');
+  assert.doesNotThrow(() => fin.financeSummary(lead), 'summary must not raise ambiguous-column');
+});
+
+test('Finance regression: summary billing figures respect the ?year param', async () => {
+  const fin = await import('../src/modules/finance/finance.js');
+  const admin = { id: 'u_admin', role_id: 'admin', sector_id: null, scope: 'company', projectIds: new Set() };
+  // The seeded progress-claim invoice was issued "now" (fiscal 2026 in this suite's clock context).
+  const thisYear = new Date().getUTCFullYear();
+  const cur = fin.financeSummary(admin, thisYear);
+  const past = fin.financeSummary(admin, thisYear - 5);
+  assert.ok(cur.invoiced_halalas >= 0, 'current-year invoiced computed');
+  assert.equal(past.invoiced_halalas, 0, 'a year with no invoices must report 0 invoiced, not leak current-year figures');
+  assert.equal(past.ar_halalas, 0, 'AR must also be year-scoped');
+});

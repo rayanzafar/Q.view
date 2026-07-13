@@ -1,4 +1,4 @@
-import { layout, card, pill, miniBars } from './layout.js';
+import { layout, card, pill, miniBars, tr } from './layout.js';
 import { fmtSar } from '../core/util/ids.js';
 import { all, get } from '../core/db/index.js';
 import { companyOverview, sectorDashboard, projectKpis, multiYearTrend, winRate,
@@ -195,8 +195,8 @@ export function projectsPage(user) {
   const ragColor = { GREEN: 'green', AMBER: 'amber', RED: 'red' };
   const list = rows.slice(0, 100).map((p) => `<tr class="border-b border-line hover:bg-slate-50" style="cursor:pointer" onclick="location.href='/app/project/${p.id}'">
     <td class="py-2.5 px-3 text-[13px]">${p.name_ar}</td>
-    <td class="px-3">${pill(p.status, p.status === 'COMPLETED' ? 'green' : 'blue')}</td>
-    <td class="px-3">${pill(p.rag, ragColor[p.rag] || 'slate')}</td>
+    <td class="px-3">${pill(tr(p.status), p.status === 'COMPLETED' ? 'green' : 'blue')}</td>
+    <td class="px-3">${pill(tr(p.rag), ragColor[p.rag] || 'slate')}</td>
     <td class="px-3 text-[13px] tabular-nums">${fmtSar(p.contract_value_halalas)}</td>
     <td class="px-3 text-[12px]">${canCost && !p._redacted_actual_spend_halalas ? fmtSar(p.actual_spend_halalas) : '<span class="text-slate-300">•••</span>'}</td>
     <td class="px-3 text-[12px] text-muted">${pct(p.progress_pct)}</td></tr>`).join('');
@@ -217,11 +217,11 @@ export function tasksPage(user) {
   const stColor = { TODO: 'slate', IN_PROGRESS: 'blue', BLOCKED: 'red', IN_REVIEW: 'amber', DONE: 'green' };
   const list = rows.map((t) => `<tr class="border-b border-line hover:bg-slate-50" data-task="${t.id}">
     <td class="py-2.5 px-3 text-[13px]">${t.title}</td>
-    <td class="px-3">${pill(t.priority, t.priority === 'P0' ? 'red' : t.priority === 'P1' ? 'amber' : 'slate')}</td>
-    <td class="px-3">${pill(t.status, stColor[t.status])}</td>
+    <td class="px-3">${pill(tr(t.priority), t.priority === 'P0' ? 'red' : t.priority === 'P1' ? 'amber' : 'slate')}</td>
+    <td class="px-3">${pill(tr(t.status), stColor[t.status])}</td>
     <td class="px-3 text-[12px] text-muted">${t.due_date || '—'}</td>
-    <td class="px-3"><select onchange="Sanad.setTaskStatus('${t.id}',this.value)" class="text-[12px] border border-line rounded px-1 py-0.5">
-      ${['TODO', 'IN_PROGRESS', 'BLOCKED', 'IN_REVIEW', 'DONE'].map((s) => `<option ${s === t.status ? 'selected' : ''}>${s}</option>`).join('')}
+    <td class="px-3"><select onchange="Sanad.setTaskStatus('${t.id}',this.value)" aria-label="تغيير حالة المهمة" class="text-[12px] border border-line rounded px-1 py-0.5">
+      ${['TODO', 'IN_PROGRESS', 'BLOCKED', 'IN_REVIEW', 'DONE'].map((s) => `<option value="${s}" ${s === t.status ? 'selected' : ''}>${tr(s)}</option>`).join('')}
     </select></td></tr>`).join('');
   const body = `
     ${card(`<div class="p-4 border-b border-line">
@@ -335,7 +335,7 @@ export function auditPage(user) {
   const list = rows.map((a) => `<tr class="border-b border-line">
     <td class="py-1.5 px-3 text-[11px] text-muted tabular-nums">${a.at.slice(0, 19).replace('T', ' ')}</td>
     <td class="px-3 text-[12px]">${a.username || a.user_id || '—'}</td>
-    <td class="px-3">${pill(a.action, 'slate')}</td>
+    <td class="px-3">${pill(tr(a.action), 'slate')}</td>
     <td class="px-3 text-[12px]">${a.resource || ''} ${a.resource_id ? '· ' + a.resource_id : ''}</td></tr>`).join('');
   const body = card(`<div class="p-4 border-b border-line font-bold text-sm">سجل التدقيق (آخر 200)</div>
     <table class="w-full"><thead><tr class="text-[11px] text-muted text-right">
@@ -366,7 +366,7 @@ export function reportsPage(user) {
     <td style="padding:.5rem .75rem;font-size:11px;color:var(--muted)">${s.next_run_at ? s.next_run_at.slice(0, 10) : '—'}</td></tr>`).join('');
   const outList = outbox.map((q) => `<tr style="border-bottom:1px solid var(--line)">
     <td style="padding:.5rem .75rem;font-size:12px">${q.subject || ''}</td>
-    <td style="padding:.5rem .75rem">${pill(q.status, q.status === 'SENT' ? 'green' : q.status === 'FAILED' ? 'red' : 'amber')}</td>
+    <td style="padding:.5rem .75rem">${pill(tr(q.status), q.status === 'SENT' ? 'green' : q.status === 'FAILED' ? 'red' : 'amber')}</td>
     <td style="padding:.5rem .75rem;font-size:11px;color:var(--muted)">${q.created_at.slice(0, 16).replace('T', ' ')}</td></tr>`).join('');
 
   const body = `
@@ -374,10 +374,10 @@ export function reportsPage(user) {
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.75rem;margin-bottom:1.25rem">${reportCards}</div>
     ${card(`<div style="padding:1rem"><div style="font-weight:800;font-size:14px;margin-bottom:.6rem">جدولة تقرير جديد</div>
       <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
-        <select id="sch-report" style="border:1px solid var(--line);border-radius:8px;padding:.4rem .6rem;font-size:13px">${defs.map((d) => `<option value="${d.id}">${d.name_ar}</option>`).join('')}</select>
-        <select id="sch-freq" style="border:1px solid var(--line);border-radius:8px;padding:.4rem .6rem;font-size:13px">${Object.entries(freqAr).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select>
-        <select id="sch-group" style="border:1px solid var(--line);border-radius:8px;padding:.4rem .6rem;font-size:13px"><option value="">— مجموعة مستلمين —</option>${groups.map((g) => `<option value="${g.id}">${g.name_ar}</option>`).join('')}</select>
-        <input id="sch-time" type="time" value="08:00" style="border:1px solid var(--line);border-radius:8px;padding:.35rem .5rem;font-size:13px">
+        <select id="sch-report" aria-label="التقرير" style="border:1px solid var(--line);border-radius:8px;padding:.4rem .6rem;font-size:13px">${defs.map((d) => `<option value="${d.id}">${d.name_ar}</option>`).join('')}</select>
+        <select id="sch-freq" aria-label="تكرار الإرسال" style="border:1px solid var(--line);border-radius:8px;padding:.4rem .6rem;font-size:13px">${Object.entries(freqAr).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select>
+        <select id="sch-group" aria-label="مجموعة المستلمين" style="border:1px solid var(--line);border-radius:8px;padding:.4rem .6rem;font-size:13px"><option value="">— مجموعة مستلمين —</option>${groups.map((g) => `<option value="${g.id}">${g.name_ar}</option>`).join('')}</select>
+        <input id="sch-time" type="time" value="08:00" aria-label="وقت الإرسال" style="border:1px solid var(--line);border-radius:8px;padding:.35rem .5rem;font-size:13px">
         <button onclick="Sanad.addSchedule()" class="text-white" style="border:none;cursor:pointer;font-size:13px;padding:.45rem 1rem;border-radius:8px;background:var(--brand-grad)">جدولة</button>
       </div>
       <div style="font-size:11px;color:var(--muted);margin-top:.5rem">الصلاحيات تُنفَّذ لكل مستلم وقت الإرسال — لا تُرسَل الأرقام الحساسة لمن لا يملك صلاحيتها.</div></div>`)}
@@ -496,14 +496,14 @@ export function contractDetailPage(user, contractId) {
   const invRows = d.invoices.map((i) => `<tr style="border-bottom:1px solid var(--line)">
     <td style="padding:.5rem .75rem;font-size:13px">${i.kind === 'progress_claim' ? 'مستخلص #' + (i.claim_no || '') : (i.code || i.id)}${i.period_label ? `<div style="font-size:11px;color:var(--muted)">${i.period_label}</div>` : ''}</td>
     <td style="padding:.5rem .75rem;font-size:13px;text-align:center" class="tnum">${fmtSar(i.amount_halalas)}</td>
-    <td style="padding:.5rem .75rem;text-align:center">${pill(i.status, i.status === 'PAID' ? 'green' : i.status === 'OVERDUE' ? 'red' : i.status === 'PARTIALLY_PAID' ? 'amber' : 'blue')}</td>
+    <td style="padding:.5rem .75rem;text-align:center">${pill(tr(i.status), i.status === 'PAID' ? 'green' : i.status === 'OVERDUE' ? 'red' : i.status === 'PARTIALLY_PAID' ? 'amber' : 'blue')}</td>
     <td style="padding:.5rem .75rem;font-size:13px;text-align:center;color:var(--amber)" class="tnum">${fmtSar(i.outstanding_halalas)}</td>
     <td style="padding:.5rem .75rem;text-align:center">${i.outstanding_halalas > 0 ? `<button onclick="Sanad.recordCollection('${i.id}', ${i.outstanding_halalas / 100})" style="border:1px solid var(--line);cursor:pointer;font-size:11px;padding:.25rem .5rem;border-radius:6px;background:#fff">تسجيل تحصيل</button>` : '✓'}</td></tr>`).join('');
   const eligible = d.deliverables.filter((dl) => ['DELIVERED', 'ACCEPTED'].includes(dl.status));
   const dlvRows = d.deliverables.map((dl) => `<tr style="border-bottom:1px solid var(--line)">
     <td style="padding:.4rem .75rem;font-size:13px">${dl.name_ar}</td>
     <td style="padding:.4rem .75rem;font-size:13px;text-align:center" class="tnum">${fmtSar(dl.amount_halalas)}</td>
-    <td style="padding:.4rem .75rem;text-align:center">${pill(dl.status, dl.status === 'PAID' || dl.status === 'INVOICED' ? 'green' : dl.status === 'DELIVERED' ? 'blue' : 'slate')}</td></tr>`).join('');
+    <td style="padding:.4rem .75rem;text-align:center">${pill(tr(dl.status), dl.status === 'PAID' || dl.status === 'INVOICED' ? 'green' : dl.status === 'DELIVERED' ? 'blue' : 'slate')}</td></tr>`).join('');
   const body = `
     <a href="/app/finance" style="font-size:12px;color:var(--muted)">← المالية</a>
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:.85rem;margin:.75rem 0 1.25rem">
@@ -541,13 +541,13 @@ export function projectDetailPage(user, projectId) {
   const ragColor = p.rag === 'RED' ? 'red' : p.rag === 'AMBER' ? 'amber' : 'green';
   const dlvRows = dlv.map((d) => `<tr style="border-bottom:1px solid var(--line)"><td style="padding:.4rem .75rem;font-size:13px">${d.name_ar}</td>
     <td style="padding:.4rem .75rem;font-size:13px;text-align:center" class="tnum">${fmtSar(d.amount_halalas)}</td>
-    <td style="padding:.4rem .75rem;text-align:center">${pill(d.status, ['PAID', 'INVOICED', 'ACCEPTED'].includes(d.status) ? 'green' : d.status === 'DELIVERED' ? 'blue' : 'slate')}</td></tr>`).join('');
+    <td style="padding:.4rem .75rem;text-align:center">${pill(tr(d.status), ['PAID', 'INVOICED', 'ACCEPTED'].includes(d.status) ? 'green' : d.status === 'DELIVERED' ? 'blue' : 'slate')}</td></tr>`).join('');
   const riskRows = risks.map((r) => `<tr style="border-bottom:1px solid var(--line)"><td style="padding:.4rem .75rem;font-size:13px">${r.title}</td>
     <td style="padding:.4rem .75rem;text-align:center">${pill(r.impact || '—', r.impact === 'high' ? 'red' : r.impact === 'medium' ? 'amber' : 'slate')}</td></tr>`).join('');
   const body = `
     <a href="/app/projects" style="font-size:12px;color:var(--muted)">← المشاريع</a>
     <div style="display:flex;align-items:center;gap:.75rem;margin:.6rem 0 1rem">
-      <h2 style="font-size:18px">${p.name_ar}</h2>${pill(p.status, p.status === 'COMPLETED' ? 'green' : 'blue')}${pill('RAG ' + p.rag, ragColor)}
+      <h2 style="font-size:18px">${p.name_ar}</h2>${pill(tr(p.status), p.status === 'COMPLETED' ? 'green' : 'blue')}${pill('RAG ' + tr(p.rag), ragColor)}
       <span style="font-size:12px;color:var(--muted)">${client?.name_ar || ''} · ${p.code || ''}</span>
     </div>
     <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:.75rem;margin-bottom:1.25rem">
@@ -578,7 +578,7 @@ export function portfolioPage(user) {
   const groups = Object.entries(bySector).map(([sid, ps]) => card(`<div class="p-4">
     <div class="font-bold text-sm mb-2">${sid} · ${ps.length} مشروع</div>
     ${ps.slice(0, 8).map((p) => `<div class="flex items-center gap-2 py-1 text-[13px]">
-      ${pill(p.rag, p.rag === 'RED' ? 'red' : p.rag === 'AMBER' ? 'amber' : 'green')}
+      ${pill(tr(p.rag), p.rag === 'RED' ? 'red' : p.rag === 'AMBER' ? 'amber' : 'green')}
       <span class="flex-1">${p.name_ar}</span><span class="text-muted text-[11px]">${pct(p.progress_pct)}</span></div>`).join('')}
   </div>`)).join('');
   return layout({ user, active: 'portfolio', title: 'محفظة المشاريع', body: `<div class="grid grid-cols-2 gap-4">${groups}</div>` });

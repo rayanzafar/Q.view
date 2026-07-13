@@ -12,5 +12,7 @@ export function nowIso() {
 // Money helpers: SAR <-> halalas (integer minor units).
 export const toHalalas = (sar) => Math.round(Number(sar || 0) * 100);
 export const toSar = (halalas) => Math.round(Number(halalas || 0)) / 100;
-export const fmtSar = (halalas, locale = 'ar-SA') =>
+// Western (Latin) digits with the Arabic ر.س. unit, so currency matches the Western numerals
+// used everywhere else (percentages, counts, years) — one numeral system across the product.
+export const fmtSar = (halalas, locale = 'ar-SA-u-nu-latn') =>
   new Intl.NumberFormat(locale, { style: 'currency', currency: 'SAR', maximumFractionDigits: 0 }).format(toSar(halalas));

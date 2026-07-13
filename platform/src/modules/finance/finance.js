@@ -10,35 +10,40 @@ import { forbidden, notFound, badRequest } from '../../core/http/errors.js';
 
 const FY = () => config.fiscalYear;
 
+// invoice.issue_date is a 'YYYY-MM-DD' string; the table has no year column, so derive the
+// fiscal year from the date. Reused wherever billing figures must respect the selected year.
+const YEAR_PRED = (alias = '') => `CAST(substr(${alias}issue_date,1,4) AS INTEGER) = ?`;
+
 // Outstanding (AR) per invoice = amount − retention − collected.
 function outstanding(inv) {
   const collected = get('SELECT COALESCE(SUM(amount_halalas),0) v FROM collection WHERE invoice_id = ?', [inv.id]).v;
   return Math.max(0, inv.amount_halalas - (inv.retention_halalas || 0) - collected);
 }
 
-// ── Bridge + AR + DSO (scope-filtered) ──
+// ── Bridge + AR + DSO (scope-filtered, year-filtered) ──
 export function financeSummary(user, year = FY()) {
-  const f = scopeFilter(user, 'invoice', 'read'); // invoice has sector_id
-  const invClause = f.clause, invP = f.params;
+  // Alias invoice as `i` everywhere so the scope clause is unambiguous even when joined (collection JOIN invoice).
+  const f = scopeFilter(user, 'invoice', 'read', { sectorCol: 'i.sector_id', ownerCol: 'i.owner_user_id' });
+  const c = f.clause, p = f.params;
   const bookings = get(`SELECT COALESCE(SUM(o.value_halalas),0) v FROM opportunity o JOIN stage st ON st.id=o.stage_id
      WHERE st.is_won=1 AND o.exclude_from_sales=0 AND o.year=? AND o.deleted_at IS NULL`, [year]).v;
   const revenue = get('SELECT COALESCE(SUM(amount_halalas),0) v FROM revenue_line WHERE year = ?', [year]).v;
-  const invoiced = get(`SELECT COALESCE(SUM(amount_halalas),0) v FROM invoice WHERE ${invClause} AND deleted_at IS NULL AND status != 'DRAFT'`, invP).v;
-  const collected = get(`SELECT COALESCE(SUM(c.amount_halalas),0) v FROM collection c JOIN invoice i ON i.id=c.invoice_id WHERE ${invClause}`, invP).v;
-  const invoices = all(`SELECT * FROM invoice WHERE ${invClause} AND deleted_at IS NULL AND status IN ('ISSUED','PARTIALLY_PAID','OVERDUE')`, invP);
-  const ar = invoices.reduce((a, i) => a + outstanding(i), 0);
+  const invoiced = get(`SELECT COALESCE(SUM(i.amount_halalas),0) v FROM invoice i WHERE ${c} AND i.deleted_at IS NULL AND i.status != 'DRAFT' AND ${YEAR_PRED('i.')}`, [...p, year]).v;
+  const collected = get(`SELECT COALESCE(SUM(col.amount_halalas),0) v FROM collection col JOIN invoice i ON i.id=col.invoice_id WHERE ${c} AND ${YEAR_PRED('i.')}`, [...p, year]).v;
+  const invoices = all(`SELECT i.* FROM invoice i WHERE ${c} AND i.deleted_at IS NULL AND i.status IN ('ISSUED','PARTIALLY_PAID','OVERDUE') AND ${YEAR_PRED('i.')}`, [...p, year]);
+  const ar = invoices.reduce((a, inv) => a + outstanding(inv), 0);
   return {
     year, bookings_halalas: bookings, revenue_halalas: revenue, invoiced_halalas: invoiced,
     collected_halalas: collected, ar_halalas: ar,
     collectionRate: invoiced ? Math.round((collected / invoiced) * 100) : 0,
-    dso: dso(user), aging: arAging(user),
+    dso: dso(user, year), aging: arAging(user, year),
   };
 }
 
-// AR aging buckets by days since issue_date on outstanding invoices.
-export function arAging(user) {
+// AR aging buckets by days since issue_date on outstanding invoices (single table → no alias needed).
+export function arAging(user, year = FY()) {
   const f = scopeFilter(user, 'invoice', 'read');
-  const rows = all(`SELECT * FROM invoice WHERE ${f.clause} AND deleted_at IS NULL AND status IN ('ISSUED','PARTIALLY_PAID','OVERDUE')`, f.params);
+  const rows = all(`SELECT * FROM invoice WHERE ${f.clause} AND deleted_at IS NULL AND status IN ('ISSUED','PARTIALLY_PAID','OVERDUE') AND ${YEAR_PRED()}`, [...f.params, year]);
   const buckets = { '0-30': 0, '31-60': 0, '61-90': 0, '90+': 0 };
   const now = Date.now();
   for (const inv of rows) {
@@ -52,28 +57,29 @@ export function arAging(user) {
   return buckets;
 }
 
-// DSO = (AR / revenue) * period days (simplified, YTD).
-export function dso(user) {
+// DSO = (AR / revenue) * period days (simplified, YTD) for the given year.
+export function dso(user, year = FY()) {
   const f = scopeFilter(user, 'invoice', 'read');
-  const ar = all(`SELECT * FROM invoice WHERE ${f.clause} AND deleted_at IS NULL AND status IN ('ISSUED','PARTIALLY_PAID','OVERDUE')`, f.params)
+  const ar = all(`SELECT * FROM invoice WHERE ${f.clause} AND deleted_at IS NULL AND status IN ('ISSUED','PARTIALLY_PAID','OVERDUE') AND ${YEAR_PRED()}`, [...f.params, year])
     .reduce((a, i) => a + outstanding(i), 0);
-  const rev = get('SELECT COALESCE(SUM(amount_halalas),0) v FROM revenue_line WHERE year = ?', [FY()]).v;
-  const month = new Date().getUTCMonth() + 1;
+  const rev = get('SELECT COALESCE(SUM(amount_halalas),0) v FROM revenue_line WHERE year = ?', [year]).v;
+  const month = year === FY() ? new Date().getUTCMonth() + 1 : 12; // prior years use a full-year period
   return rev ? Math.round((ar / rev) * (month * 30)) : 0;
 }
 
-// ── Per project manager ──
+// ── Per project manager (year-filtered) ──
 export function financeByPM(user, year = FY()) {
-  const f = scopeFilter(user, 'invoice', 'read');
-  // group invoices by project owner (PM)
+  // Qualify the scope column to the aliased invoice table so it is unambiguous against app_user.sector_id.
+  const f = scopeFilter(user, 'invoice', 'read', { sectorCol: 'i.sector_id', ownerCol: 'i.owner_user_id' });
+  // group invoices by project owner (PM), within the selected fiscal year
   const rows = all(`SELECT COALESCE(u.name_ar, u.username, 'غير محدد') pm, i.owner_user_id,
       COALESCE(SUM(CASE WHEN i.status!='DRAFT' THEN i.amount_halalas ELSE 0 END),0) invoiced,
       COUNT(*) n
     FROM invoice i LEFT JOIN app_user u ON u.id=i.owner_user_id
-    WHERE ${f.clause} AND i.deleted_at IS NULL GROUP BY i.owner_user_id ORDER BY invoiced DESC`, f.params);
+    WHERE ${f.clause} AND i.deleted_at IS NULL AND ${YEAR_PRED('i.')} GROUP BY i.owner_user_id ORDER BY invoiced DESC`, [...f.params, year]);
   return rows.map((r) => {
     const collected = get(`SELECT COALESCE(SUM(c.amount_halalas),0) v FROM collection c JOIN invoice i ON i.id=c.invoice_id
-       WHERE i.owner_user_id ${r.owner_user_id ? '= ?' : 'IS NULL'}`, r.owner_user_id ? [r.owner_user_id] : []).v;
+       WHERE i.owner_user_id ${r.owner_user_id ? '= ?' : 'IS NULL'} AND ${YEAR_PRED('i.')}`, r.owner_user_id ? [r.owner_user_id, year] : [year]).v;
     const contractVal = get(`SELECT COALESCE(SUM(contract_value_halalas),0) v FROM project WHERE owner_user_id ${r.owner_user_id ? '= ?' : 'IS NULL'} AND deleted_at IS NULL`, r.owner_user_id ? [r.owner_user_id] : []).v;
     return { pm: r.pm, invoices: r.n, contract_halalas: contractVal, invoiced_halalas: r.invoiced,
       collected_halalas: collected, outstanding_halalas: Math.max(0, r.invoiced - collected) };
@@ -82,17 +88,31 @@ export function financeByPM(user, year = FY()) {
 
 // ── Per contract ──
 export function financeByContract(user) {
-  const f = scopeFilter(user, 'contract', 'read');
+  // Qualify the scope column to the aliased contract table (project also exposes sector_id → ambiguous otherwise).
+  const f = scopeFilter(user, 'contract', 'read', { sectorCol: 'c.sector_id', ownerCol: 'c.owner_user_id' });
   const contracts = all(`SELECT c.*, cl.name_ar client_name, p.name_ar project_name, p.owner_user_id
      FROM contract c LEFT JOIN client cl ON cl.id=c.client_id LEFT JOIN project p ON p.id=c.project_id
      WHERE ${f.clause} AND c.deleted_at IS NULL ORDER BY c.value_halalas DESC LIMIT 200`, f.params);
-  return contracts.map((c) => {
+  const rows = contracts.map((c) => {
     const invoiced = get("SELECT COALESCE(SUM(amount_halalas),0) v FROM invoice WHERE contract_id=? AND status!='DRAFT' AND deleted_at IS NULL", [c.id]).v;
     const collected = get('SELECT COALESCE(SUM(col.amount_halalas),0) v FROM collection col JOIN invoice i ON i.id=col.invoice_id WHERE i.contract_id=?', [c.id]).v;
     return { ...c, invoiced_halalas: invoiced, collected_halalas: collected,
       billed_pct: c.value_halalas ? Math.round((invoiced / c.value_halalas) * 100) : 0,
       backlog_halalas: Math.max(0, c.value_halalas - invoiced), outstanding_halalas: Math.max(0, invoiced - collected) };
   });
+  // Reconciliation: invoices not tied to any contract must still appear, else the by-contract
+  // total silently understates financeSummary.invoiced. Surface them as one explicit bucket.
+  const fi = scopeFilter(user, 'invoice', 'read'); // unaliased, single-table invoice query
+  const un = get(`SELECT COALESCE(SUM(amount_halalas),0) inv, COUNT(*) n FROM invoice
+     WHERE ${fi.clause} AND contract_id IS NULL AND status!='DRAFT' AND deleted_at IS NULL`, fi.params);
+  if (un.inv > 0) {
+    const unCollected = get(`SELECT COALESCE(SUM(col.amount_halalas),0) v FROM collection col JOIN invoice i ON i.id=col.invoice_id
+       WHERE i.contract_id IS NULL`, []).v;
+    rows.push({ id: null, code: '—', client_name: '—', project_name: 'فواتير غير مرتبطة بعقد', unassigned: true,
+      value_halalas: 0, invoiced_halalas: un.inv, collected_halalas: unCollected,
+      billed_pct: null, backlog_halalas: 0, outstanding_halalas: Math.max(0, un.inv - unCollected) });
+  }
+  return rows;
 }
 
 export function contractDetail(user, contractId) {

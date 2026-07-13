@@ -124,14 +124,43 @@ export function layout({ user, active, title, subtitle, body, year, extraHead = 
 }
 
 export function card(inner, cls = '') { return `<div class="card ${cls}">${inner}</div>`; }
+
+// Arabic labels for DB enum values so no raw English leaks into the RTL UI. tr() falls back
+// to the original value for anything unmapped (e.g. already-Arabic names).
+export const LABELS = {
+  // project / generic status
+  IN_PROGRESS: 'قيد التنفيذ', COMPLETED: 'مكتمل', PLANNED: 'مُخطَّط', ON_HOLD: 'متوقّف مؤقتًا', CANCELLED: 'ملغى', NOT_STARTED: 'لم يبدأ',
+  // RAG
+  GREEN: 'أخضر', AMBER: 'أصفر', RED: 'أحمر',
+  // task status
+  TODO: 'قيد الانتظار', BLOCKED: 'مُعطَّل', IN_REVIEW: 'قيد المراجعة', DONE: 'منجز',
+  // priority
+  P0: 'حرجة', P1: 'عالية', P2: 'متوسطة', P3: 'منخفضة',
+  // deliverable status
+  DELIVERED: 'مُسلَّم', PENDING: 'قيد الإعداد', ACCEPTED: 'مقبول', INVOICED: 'مُفوتَر', PAID: 'مدفوع',
+  // invoice status
+  ISSUED: 'صادر', PARTIALLY_PAID: 'مدفوع جزئيًا', OVERDUE: 'متأخر', DRAFT: 'مسودة',
+  // contract status
+  ACTIVE: 'نشط', CLOSED: 'مغلق', SUSPENDED: 'موقوف',
+  // report/email queue + approvals
+  SENT: 'أُرسل', FAILED: 'فشل', QUEUED: 'في الطابور', PROCESSING: 'قيد المعالجة',
+  APPROVED: 'معتمد', REJECTED: 'مرفوض',
+  // audit actions
+  create: 'إنشاء', update: 'تعديل', delete: 'حذف', login: 'تسجيل دخول', logout: 'تسجيل خروج', approve: 'اعتماد', reject: 'رفض',
+};
+export const tr = (v) => (v == null ? v : (LABELS[v] || v));
+
 export function pill(text, color = 'slate') {
   const c = { green: '#dcfce7|#059669', red: '#fee2e2|#dc2626', amber: '#fef3c7|#b45309', blue: '#dbeafe|#2563eb', violet: '#ede9fe|#7c3aed', slate: '#f1f5f9|#475569' }[color] || '#f1f5f9|#475569';
   const [bg, fg] = c.split('|');
   return `<span class="pill" style="background:${bg};color:${fg}">${text}</span>`;
 }
-// Inline SVG mini bar chart for multi-year trends.
+// Inline SVG mini bar chart for multi-year trends. Each instance gets a unique gradient id
+// so multiple charts on one page never collide on a duplicate element id.
+let _miniBarsSeq = 0;
 export function miniBars(series, valueKey, opts = {}) {
   const w = opts.w || 260, h = opts.h || 90, pad = 22, n = series.length || 1;
+  const gid = 'mbGrad' + (++_miniBarsSeq);
   const max = Math.max(1, ...series.map((s) => s[valueKey] || 0));
   const bw = (w - pad) / n * 0.6, gap = (w - pad) / n;
   const bars = series.map((s, i) => {
@@ -139,10 +168,10 @@ export function miniBars(series, valueKey, opts = {}) {
     const bh = Math.round((val / max) * (h - 28));
     const x = pad + i * gap + (gap - bw) / 2;
     const y = h - 16 - bh;
-    return `<rect x="${x}" y="${y}" width="${bw}" height="${bh}" rx="3" fill="url(#g)"/>
+    return `<rect x="${x}" y="${y}" width="${bw}" height="${bh}" rx="3" fill="url(#${gid})"/>
       <text x="${x + bw / 2}" y="${h - 4}" font-size="9" fill="#94a3b8" text-anchor="middle">${s.year}</text>
       <text x="${x + bw / 2}" y="${y - 3}" font-size="8.5" fill="#475569" text-anchor="middle" font-weight="700">${opts.fmt ? opts.fmt(val) : Math.round(val)}</text>`;
   }).join('');
   return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" preserveAspectRatio="xMidYMid meet">
-    <defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2563eb"/><stop offset="1" stop-color="#7c3aed"/></linearGradient></defs>${bars}</svg>`;
+    <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2563eb"/><stop offset="1" stop-color="#7c3aed"/></linearGradient></defs>${bars}</svg>`;
 }

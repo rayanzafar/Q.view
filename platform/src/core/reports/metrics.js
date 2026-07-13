@@ -61,9 +61,14 @@ export function companyOverview(user, opts = {}) {
     canSeeCost: canSeeSensitive(user, 'cost'), canSeeMargin: canSeeSensitive(user, 'margin') };
 }
 
-// Multi-year trend for a sector (or whole company when sectorId is null): last N years.
-export function multiYearTrend(sectorId, nYears = 4) {
-  const years = availableYears().filter((y) => y <= FY()).slice(0, nYears).sort((a, b) => a - b);
+// Multi-year trend for a sector (or whole company when sectorId is null).
+// Build a CONTINUOUS year axis (min..FY) so years with no data render as zero bars rather than
+// being silently dropped and misrepresenting the time axis with uneven spacing.
+export function multiYearTrend(sectorId, nYears = 5) {
+  const withData = availableYears().filter((y) => y <= FY());
+  const minY = Math.max(withData.length ? Math.min(...withData) : FY() - nYears + 1, FY() - nYears - 1);
+  const years = [];
+  for (let y = minY; y <= FY(); y++) years.push(y);
   const secClause = sectorId ? 'AND sector_id = ?' : '';
   const secP = sectorId ? [sectorId] : [];
   return years.map((y) => {
@@ -137,8 +142,12 @@ export function quarterlyRevenue(sectorId, year) {
 }
 
 // Win rate per year (won / (won+lost) by count) — for the exec trend.
-export function winRateByYear(sectorId, nYears = 4) {
-  const years = availableYears().filter((y) => y <= FY()).slice(0, nYears).sort((a, b) => a - b);
+export function winRateByYear(sectorId, nYears = 5) {
+  // Continuous year axis (matches multiYearTrend) so a gap year shows its real value, not a skipped bar.
+  const withData = availableYears().filter((y) => y <= FY());
+  const minY = Math.max(withData.length ? Math.min(...withData) : FY() - nYears + 1, FY() - nYears - 1);
+  const years = [];
+  for (let y = minY; y <= FY(); y++) years.push(y);
   return years.map((y) => ({ year: y, ...winRate(sectorId, y) }));
 }
 
