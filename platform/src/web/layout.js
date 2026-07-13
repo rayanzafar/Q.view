@@ -250,3 +250,21 @@ export function miniBars(series, valueKey, opts = {}) {
   return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" preserveAspectRatio="xMidYMid meet">
     <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2563eb"/><stop offset="1" stop-color="#7c3aed"/></linearGradient></defs>${bars}</svg>`;
 }
+
+// Radial attainment gauge (SVG donut). pct may exceed 100 (over-target) — arc clamps, label shows true %.
+export function gauge(pct, opts = {}) {
+  const size = opts.size || 128, sw = opts.sw || 12, r = (size - sw) / 2, C = 2 * Math.PI * r;
+  const p = Math.max(0, Math.min(100, pct || 0));
+  const off = C * (1 - p / 100);
+  const col = opts.color || '#34d399', track = opts.track || 'rgba(255,255,255,.16)';
+  const cx = size / 2;
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+    <g transform="rotate(-90 ${cx} ${cx})">
+      <circle cx="${cx}" cy="${cx}" r="${r}" fill="none" stroke="${track}" stroke-width="${sw}"/>
+      <circle cx="${cx}" cy="${cx}" r="${r}" fill="none" stroke="${col}" stroke-width="${sw}" stroke-linecap="round"
+        stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}"/>
+    </g>
+    <text x="${cx}" y="${cx - 4}" text-anchor="middle" dominant-baseline="central" fill="${opts.centerColor || '#fff'}" font-size="${opts.centerSize || 26}" font-weight="800" font-family="'Segoe UI',sans-serif">${opts.center || (Math.round(pct || 0) + '%')}</text>
+    ${opts.sub ? `<text x="${cx}" y="${cx + 18}" text-anchor="middle" fill="${opts.subColor || 'rgba(255,255,255,.6)'}" font-size="10.5" font-weight="600">${opts.sub}</text>` : ''}
+  </svg>`;
+}

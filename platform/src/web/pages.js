@@ -1,4 +1,4 @@
-import { layout, card, pill, miniBars, tr } from './layout.js';
+import { layout, card, pill, miniBars, tr, gauge } from './layout.js';
 import { icon } from './icons.js';
 import { fmtSar } from '../core/util/ids.js';
 import { all, get } from '../core/db/index.js';
@@ -66,11 +66,18 @@ export function ceoPage(user, opts = {}) {
       <div style="flex:1"><b>تنبيه استراتيجي — نسبة الحجز إلى الفوترة ${b2b.ratio}×</b>
       <div style="font-size:12px;opacity:.9">الحجوزات الجديدة (${fmtSar(b2b.bookings_halalas)}) أقل من الإيراد المحقق (${fmtSar(b2b.revenue_halalas)}) لعام ${year} — الشركة تستهلك الأعمال المتعاقدة أسرع من تعويضها. يلزم تكثيف تطوير الأعمال.</div></div>
     </div>` : '';
-  const heroKpi = (label, val, target, p, color) => `
-    <div style="color:rgba(255,255,255,.7);font-size:13px">${label}</div>
-    <div class="metric" style="color:#fff;margin-top:.25rem">${fmtSar(val)}</div>
-    <div style="color:rgba(255,255,255,.6);font-size:12px">من ${fmtSar(target)} · ${pct(p)}</div>
-    <div class="bar" style="margin-top:.5rem;background:rgba(255,255,255,.15)"><span style="width:${Math.min(100, p)}%;background:${color}"></span></div>`;
+  const revPct = t.target_revenue ? t.revenue / t.target_revenue * 100 : 0;
+  const salesPct = t.target_sales ? t.sales / t.target_sales * 100 : 0;
+  const heroBlock = (label, val, target, p, color, extra) => `
+    <div style="display:flex;align-items:center;gap:1.15rem;flex:1;min-width:290px">
+      <div style="flex:0 0 auto">${gauge(p, { color, size: 118, sw: 11, center: pct(p), centerSize: 25, sub: 'من الهدف' })}</div>
+      <div style="min-width:0">
+        <div style="color:rgba(255,255,255,.72);font-size:12.5px;font-weight:600">${label}</div>
+        <div class="metric tnum" style="color:#fff;margin-top:.2rem;font-size:1.85rem">${fmtSar(val)}</div>
+        <div style="color:rgba(255,255,255,.55);font-size:11.5px" class="tnum">الهدف ${fmtSar(target)}</div>
+        <div style="margin-top:.45rem;display:flex;align-items:center;gap:.6rem;flex-wrap:wrap">${extra || ''}</div>
+      </div>
+    </div>`;
   const sectorCards = ov.sectors.map((s) => card(`
     <div style="padding:1rem">
       <div style="display:flex;align-items:center;justify-content:space-between">
@@ -96,13 +103,16 @@ export function ceoPage(user, opts = {}) {
   const kpiTile = (label, val, sub) => card(`<div style="padding:.9rem 1rem"><div style="font-size:11px;color:var(--muted)">${label}</div><div class="metric" style="font-size:1.4rem">${val}</div>${sub ? `<div style="font-size:11px;color:var(--muted)">${sub}</div>` : ''}</div>`);
   const body = `
     ${riskBanner}
-    <div style="border-radius:18px;padding:1.5rem;margin-bottom:1.25rem;color:#fff;background:linear-gradient(135deg,#0f2350,#182a5e,#3a1660)">
-      <div style="color:rgba(255,255,255,.6);font-size:12px;margin-bottom:.25rem">الأداء على مستوى الشركة · السنة المالية ${ov.fiscalYear}</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-top:.5rem">
-        <div>${heroKpi('إجمالي الإيرادات المحققة', t.revenue, t.target_revenue, t.target_revenue ? t.revenue / t.target_revenue * 100 : 0, '#34d399')}
-          <div style="margin-top:.35rem">${yoyBadge(revYoy)}</div></div>
-        <div>${heroKpi('إجمالي المبيعات المحققة (حجوزات)', t.sales, t.target_sales, t.target_sales ? t.sales / t.target_sales * 100 : 0, '#c07bff')}
-          <div style="margin-top:.35rem">${yoyBadge(bookYoy)} <span style="font-size:11px;color:rgba(255,255,255,.6)">· Book-to-Bill ${b2b.ratio != null ? b2b.ratio + '×' : '—'}</span></div></div>
+    <div style="border-radius:20px;padding:1.6rem 1.75rem;margin-bottom:1.25rem;color:#fff;background:linear-gradient(135deg,#0f2350,#182a5e 55%,#3a1660);box-shadow:0 18px 40px -18px rgba(58,22,96,.6);position:relative;overflow:hidden">
+      <div style="position:absolute;inset-inline-end:-40px;top:-40px;width:220px;height:220px;background:radial-gradient(circle,rgba(124,58,237,.35),transparent 70%);pointer-events:none"></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.1rem;position:relative">
+        <div style="color:rgba(255,255,255,.62);font-size:12px;font-weight:600">الأداء على مستوى الشركة · السنة المالية ${ov.fiscalYear}</div>
+        ${b2b.ratio != null ? `<span style="font-size:11.5px;font-weight:700;background:rgba(255,255,255,.12);padding:.3rem .7rem;border-radius:999px">Book-to-Bill ${b2b.ratio}×</span>` : ''}
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:1.5rem;align-items:center;position:relative">
+        ${heroBlock('إجمالي الإيرادات المحققة', t.revenue, t.target_revenue, revPct, '#34d399', yoyBadge(revYoy))}
+        <div style="width:1px;align-self:stretch;background:rgba(255,255,255,.12)"></div>
+        ${heroBlock('إجمالي المبيعات (حجوزات)', t.sales, t.target_sales, salesPct, '#c07bff', yoyBadge(bookYoy))}
       </div>
     </div>
     <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:.85rem;margin-bottom:1.25rem">
