@@ -1,0 +1,8 @@
+*{box-sizing:border-box}
+body{-webkit-font-smoothing:antialiased;line-height:1.55}
+::selection{background:rgba(124,58,237,.2)}
+.tabular-nums{font-variant-numeric:tabular-nums}
+table th{font-weight:600}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:99px;border:2px solid #f1f5f9}
+a{text-decoration:none}

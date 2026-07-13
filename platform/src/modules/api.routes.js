@@ -1,0 +1,54 @@
+// REST API aggregator. Thin handlers → services (which enforce authz + audit).
+import { Router } from 'express';
+import { requireAuth } from '../core/http/context.js';
+import * as opps from './crm/opportunities.js';
+import * as projects from './pmo/projects.js';
+import * as tasks from './pmo/tasks.js';
+import * as ts from './timesheets/timesheets.js';
+import * as wf from './workflow/engine.js';
+import * as notif from './notifications/notify.js';
+import * as metrics from '../core/reports/metrics.js';
+
+export const apiRouter = Router();
+apiRouter.use(requireAuth());
+const h = (fn) => (req, res, next) => { try { const r = fn(req, res); if (r !== undefined) res.json(r); } catch (e) { next(e); } };
+
+// ── Opportunities / CRM ──
+apiRouter.get('/opportunities', h((req) => opps.listOpportunities(req.ctx.user, req.query)));
+apiRouter.post('/opportunities', h((req) => opps.createOpportunity(req.ctx, req.body)));
+apiRouter.get('/opportunities/:id', h((req) => opps.getOpportunity(req.ctx.user, req.params.id)));
+apiRouter.patch('/opportunities/:id', h((req) => opps.updateOpportunity(req.ctx, req.params.id, req.body)));
+apiRouter.post('/opportunities/:id/stage', h((req) => opps.moveStage(req.ctx, req.params.id, req.body.stage, req.body.note)));
+apiRouter.get('/pipeline', h((req) => opps.pipelineSummary(req.ctx.user)));
+
+// ── Projects ──
+apiRouter.get('/projects', h((req) => projects.listProjects(req.ctx.user, req.query)));
+apiRouter.post('/projects', h((req) => projects.createProject(req.ctx, req.body)));
+apiRouter.get('/projects/:id', h((req) => projects.getProject(req.ctx.user, req.params.id)));
+apiRouter.patch('/projects/:id', h((req) => projects.updateProject(req.ctx, req.params.id, req.body)));
+apiRouter.get('/projects/:id/tasks', h((req) => tasks.projectTasks(req.ctx.user, req.params.id)));
+apiRouter.get('/projects/:id/kpis', h((req) => metrics.projectKpis(req.params.id)));
+
+// ── Tasks ──
+apiRouter.get('/tasks/mine', h((req) => tasks.myTasks(req.ctx.user, req.query)));
+apiRouter.post('/tasks/quick', h((req) => tasks.quickAddTask(req.ctx, req.body)));
+apiRouter.patch('/tasks/:id', h((req) => tasks.updateTask(req.ctx, req.params.id, req.body)));
+
+// ── Timesheets ──
+apiRouter.get('/timesheets/mine', h((req) => ts.myEntries(req.ctx.user, req.query)));
+apiRouter.post('/timesheets', h((req) => ts.addEntry(req.ctx, req.body)));
+apiRouter.post('/timesheets/submit', h((req) => ts.submitPeriod(req.ctx, req.body)));
+apiRouter.post('/timesheets/:id/approve', h((req) => ts.approvePeriod(req.ctx, req.params.id, req.body.approve !== false)));
+
+// ── Approvals ──
+apiRouter.get('/approvals/queue', h((req) => wf.myApprovalQueue(req.ctx.user)));
+apiRouter.post('/approvals', h((req) => wf.submitForApproval(req.ctx, req.body)));
+apiRouter.post('/approvals/:id/act', h((req) => wf.actOnApproval(req.ctx, req.params.id, req.body.action, req.body.comment)));
+
+// ── Notifications ──
+apiRouter.get('/notifications', h((req) => notif.myNotifications(req.ctx.user, req.query.unread === '1')));
+apiRouter.post('/notifications/:id/read', h((req) => { notif.markRead(req.ctx.user, req.params.id); return { ok: true }; }));
+
+// ── Metrics / dashboards ──
+apiRouter.get('/metrics/company', h((req) => metrics.companyOverview(req.ctx.user)));
+apiRouter.get('/metrics/sector/:id', h((req) => metrics.sectorDashboard(req.ctx.user, req.params.id)));

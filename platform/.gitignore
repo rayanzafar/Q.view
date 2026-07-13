@@ -1,0 +1,12 @@
+node_modules/
+data/*.db
+data/*.db-wal
+data/*.db-shm
+data/backups/
+data/outbox/
+data/migration-reconciliation.json
+*.log
+.DS_Store
+
+# Real data snapshot — sensitive (salaries/IPs); provided at runtime, never committed
+seed/*.snapshot.json

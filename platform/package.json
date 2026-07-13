@@ -1,0 +1,26 @@
+{
+  "name": "sanad-enterprise",
+  "version": "1.0.0-slice.1",
+  "private": true,
+  "type": "module",
+  "description": "سند — Enterprise Operating System for Experts Vision Consulting (EVC). Modular monolith.",
+  "engines": { "node": ">=22.5" },
+  "scripts": {
+    "start": "node --experimental-sqlite src/server.js",
+    "dev": "node --experimental-sqlite --watch src/server.js",
+    "migrate": "node --experimental-sqlite scripts/migrate.js",
+    "seed": "node --experimental-sqlite scripts/seed.js",
+    "migrate-legacy": "node --experimental-sqlite scripts/migrate-legacy.js",
+    "reset": "node --experimental-sqlite scripts/reset.js",
+    "test": "node --experimental-sqlite --test tests/**/*.test.js",
+    "backup": "node --experimental-sqlite scripts/backup.js"
+  },
+  "dependencies": {
+    "express": "^5.2.0",
+    "cookie-parser": "^1.4.7"
+  },
+  "sanad": {
+    "runtimeDeps": "none-external — built-in node:sqlite, node:crypto, node:http; email uses a pluggable transport (dev = file/preview, prod = SMTP adapter)",
+    "dbTargets": ["sqlite (dev)", "postgresql (prod via repository layer)"]
+  }
+}
