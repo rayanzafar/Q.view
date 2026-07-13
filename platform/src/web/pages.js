@@ -481,9 +481,17 @@ export function financePage(user, opts = {}) {
   return layout({ user, active: 'finance', title: 'المالية', subtitle: `عقود · فواتير · مستخلصات · تحصيل · السنة ${year}`, body, year });
 }
 
+function noticeCard(title, msg, backHref = '/', backLabel = 'العودة') {
+  return `<div style="max-width:440px;margin:64px auto;text-align:center;background:#fff;border:1px solid var(--line);border-radius:16px;padding:40px 32px;box-shadow:0 4px 24px rgba(15,23,42,.05)">
+    <div style="font-size:16px;font-weight:700;color:#0f172a">${title}</div>
+    <div style="font-size:13px;color:var(--muted);margin-top:8px;line-height:1.7">${msg}</div>
+    <a href="${backHref}" style="display:inline-block;margin-top:20px;background:linear-gradient(120deg,#2563eb,#9333ea);color:#fff;text-decoration:none;padding:9px 22px;border-radius:10px;font-size:13px;font-weight:600">${backLabel}</a>
+  </div>`;
+}
+
 export function contractDetailPage(user, contractId) {
   let d;
-  try { d = contractDetail(user, contractId); } catch (e) { return layout({ user, active: 'finance', title: 'العقد', body: `<div style="color:var(--red)">${e.message}</div>` }); }
+  try { d = contractDetail(user, contractId); } catch (e) { return layout({ user, active: 'finance', title: 'العقد', body: noticeCard('تعذّر عرض العقد', e.message, '/app/finance', 'العودة للمالية') }); }
   const c = d.contract;
   const invRows = d.invoices.map((i) => `<tr style="border-bottom:1px solid var(--line)">
     <td style="padding:.5rem .75rem;font-size:13px">${i.kind === 'progress_claim' ? 'مستخلص #' + (i.claim_no || '') : (i.code || i.id)}${i.period_label ? `<div style="font-size:11px;color:var(--muted)">${i.period_label}</div>` : ''}</td>
@@ -519,8 +527,8 @@ export function contractDetailPage(user, contractId) {
 
 export function projectDetailPage(user, projectId) {
   const p = get('SELECT * FROM project WHERE id = ? AND deleted_at IS NULL', [projectId]);
-  if (!p) return layout({ user, active: 'projects', title: 'المشروع', body: '<div style="color:var(--red)">المشروع غير موجود</div>' });
-  if (!can(user, 'read', 'project', p)) return layout({ user, active: 'projects', title: 'المشروع', body: '<div style="color:var(--red)">لا صلاحية</div>' });
+  if (!p) return layout({ user, active: 'projects', title: 'المشروع', body: noticeCard('المشروع غير موجود', 'ربما حُذف المشروع أو أن الرابط غير صحيح.', '/app/projects', 'العودة للمشاريع') });
+  if (!can(user, 'read', 'project', p)) return layout({ user, active: 'projects', title: 'المشروع', body: noticeCard('لا تملك صلاحية الوصول', 'هذا المشروع خارج نطاق صلاحياتك الحالية — تواصل مع مدير النظام إن كنت تحتاج الوصول.', '/app/projects', 'العودة للمشاريع') });
   const row = redact(user, 'project', p);
   const k = projectKpis(p.id);
   const canCost = canSeeSensitive(user, 'cost');

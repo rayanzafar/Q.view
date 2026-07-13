@@ -17,7 +17,9 @@ export function scopeFilter(user, resource, action = 'read', opts = {}) {
     case 'project': {
       const ids = [...(user.projectIds || [])];
       if (!ids.length) return { clause: '1=0', params: [] };
-      return { clause: `${opts.projectCol || 'project_id'} IN (${ids.map(() => '?').join(',')})`, params: ids };
+      // The project table itself keys on `id`; child tables (task/deliverable/…) key on `project_id`.
+      const col = opts.projectCol || (resource === 'project' ? 'id' : 'project_id');
+      return { clause: `${col} IN (${ids.map(() => '?').join(',')})`, params: ids };
     }
     case 'team':
     case 'own':

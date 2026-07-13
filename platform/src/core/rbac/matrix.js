@@ -105,7 +105,9 @@ export const ROLE_GRANTS = {
   ],
 
   consultant: [
-    ...read(['project', 'task', 'deliverable', 'opportunity'], 'project'),
+    ...read(['project', 'task', 'deliverable'], 'project'),
+    { resource: 'opportunity', action: 'read', scope: 'own' }, // opportunity has no project link
+
     { resource: 'task', action: 'create', scope: 'own' },
     { resource: 'task', action: 'update', scope: 'own' },
     { resource: 'timesheet', action: 'create', scope: 'own' },

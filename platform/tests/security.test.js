@@ -103,3 +103,23 @@ test('list redaction end-to-end: finance list carries cost, bd list does not', (
   const bdRows = projects.listProjects(U('bd_manager', 'S1'));
   assert.ok(bdRows.every((p) => p.actual_spend_halalas == null), 'bd must never receive cost values');
 });
+
+test('regression: project-scope user lists projects by id (not project_id) without SQL error', () => {
+  // project_manager has scope=project on the project resource. The project table keys on `id`,
+  // so the scope filter must use `id IN (...)`, never `project_id` (which does not exist here).
+  const pm = { id: 'u_pm', role_id: 'project_manager', sector_id: 'S1', scope: 'project',
+    projectIds: new Set(['P1']), teamIds: new Set() };
+  const rows = projects.listProjects(pm); // must NOT throw "no such column: project_id"
+  assert.deepEqual(rows.map((p) => p.id), ['P1'], 'PM sees exactly their own project');
+  // an empty project set yields no rows (never all projects)
+  const pmEmpty = { ...pm, projectIds: new Set() };
+  assert.equal(projects.listProjects(pmEmpty).length, 0);
+});
+
+test('regression: consultant lists opportunities at own-scope without SQL error', () => {
+  // opportunity has no project_id column; consultant reads it at own-scope, filtered by owner.
+  const consultant = { id: 'u_cons', role_id: 'consultant', sector_id: 'S1', scope: 'project',
+    projectIds: new Set(['P1']), teamIds: new Set() };
+  const rows = opps.listOpportunities(consultant); // must NOT throw
+  assert.ok(rows.every((o) => o.owner_user_id === 'u_cons'), 'consultant sees only owned opportunities');
+});
