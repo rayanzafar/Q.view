@@ -29,6 +29,9 @@ apiRouter.get('/projects', h((req) => projects.listProjects(req.ctx.user, req.qu
 apiRouter.post('/projects', h((req) => projects.createProject(req.ctx, req.body)));
 apiRouter.get('/projects/:id', h((req) => projects.getProject(req.ctx.user, req.params.id)));
 apiRouter.patch('/projects/:id', h((req) => projects.updateProject(req.ctx, req.params.id, req.body)));
+apiRouter.get('/projects/:id/staffing', h((req) => projects.projectStaffing(req.ctx.user, req.params.id)));
+apiRouter.post('/projects/:id/staff', h((req) => projects.assignEmployee(req.ctx, req.params.id, req.body)));
+apiRouter.delete('/projects/staff/:allocId', h((req) => projects.unassignEmployee(req.ctx, req.params.allocId)));
 apiRouter.get('/projects/:id/tasks', h((req) => tasks.projectTasks(req.ctx.user, req.params.id)));
 apiRouter.get('/projects/:id/kpis', h((req) => metrics.projectKpis(req.params.id)));
 

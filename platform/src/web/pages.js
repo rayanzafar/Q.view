@@ -272,27 +272,79 @@ export function opportunitiesPage(user) {
   return layout({ user, active: 'opportunities', title: 'الفرص والمبيعات', subtitle: 'خط الفرص · PMO', body });
 }
 
+const PRJ_STATUS = [
+  { id: 'NOT_STARTED', color: '#94a3b8' }, { id: 'IN_PROGRESS', color: '#2563eb' },
+  { id: 'ON_HOLD', color: '#d97706' }, { id: 'COMPLETED', color: '#059669' }, { id: 'CANCELLED', color: '#dc2626' },
+];
+const ragHex = { GREEN: '#059669', AMBER: '#d97706', RED: '#dc2626' };
+
 export function projectsPage(user) {
   const rows = listProjects(user);
   const canCost = canSeeSensitive(user, 'cost');
-  const ragColor = { GREEN: 'green', AMBER: 'amber', RED: 'red' };
-  const list = rows.slice(0, 100).map((p) => `<tr class="border-b border-line hover:bg-slate-50" style="cursor:pointer" onclick="location.href='/app/project/${p.id}'">
+  const canEdit = can(user, 'update', 'project');
+  const clients = Object.fromEntries(all('SELECT id,name_ar FROM client').map((c) => [c.id, c.name_ar]));
+  const sectors = Object.fromEntries(all('SELECT id,name_ar FROM sector').map((s) => [s.id, s.name_ar]));
+  const ragTone = { GREEN: 'green', AMBER: 'amber', RED: 'red' };
+
+  // build columns from the standard ladder + any extra statuses present
+  const present = [...new Set(rows.map((p) => p.status || 'IN_PROGRESS'))];
+  const cols = [...PRJ_STATUS.filter((c) => present.includes(c.id)),
+    ...present.filter((s) => !PRJ_STATUS.some((c) => c.id === s)).map((s) => ({ id: s, color: '#64748b' }))];
+  if (!cols.length) cols.push({ id: 'IN_PROGRESS', color: '#2563eb' });
+  const byStatus = {}; for (const c of cols) byStatus[c.id] = [];
+  for (const p of rows) (byStatus[p.status || 'IN_PROGRESS'] ||= []).push(p);
+
+  const prjCard = (p) => {
+    const cl = clients[p.client_id] || sectors[p.sector_id] || '';
+    const spend = canCost && !p._redacted_actual_spend_halalas ? p.actual_spend_halalas : null;
+    const dnd = canEdit ? 'draggable="true" ondragstart="Sanad.kStart(event)" ondragend="Sanad.kEnd(event)"' : '';
+    const hay = `${p.name_ar} ${cl}`.toLowerCase().replace(/"/g, '');
+    return `<div class="kcard" ${dnd} data-id="${p.id}" data-sector="${p.sector_id || ''}" data-hay="${hay}" style="--_c:${ragHex[p.rag] || '#cbd5e1'};cursor:pointer" onclick="Sanad.projOpen('${p.id}')">
+      <div class="kt">${p.name_ar}</div>
+      <div class="km">${cl ? `<span style="display:inline-flex;align-items:center;gap:.25rem">${icon('building')}${cl}</span>` : ''}
+        ${p.rag ? pill(tr(p.rag), ragTone[p.rag] || 'slate') : ''}</div>
+      <div class="km"><span class="kv tnum">${fmtSar(p.contract_value_halalas)}</span>
+        <span class="tnum" style="margin-inline-start:auto">${pct(p.progress_pct)}</span></div>
+      <div class="bar" style="margin-top:.5rem"><span style="width:${Math.min(100, p.progress_pct || 0)}%;background:${ragHex[p.rag] || '#2563eb'}"></span></div>
+    </div>`;
+  };
+  const columns = cols.map((c) => {
+    const items = byStatus[c.id] || [];
+    const val = items.reduce((a, p) => a + (p.contract_value_halalas || 0), 0);
+    const drop = canEdit ? 'ondragover="Sanad.kOver(event)" ondragleave="Sanad.kLeave(event)" ondrop="Sanad.kDrop(event)"' : '';
+    return `<div class="kcol" data-stage="${c.id}" ${drop}>
+      <div class="kcol-head"><span class="kcol-dot" style="background:${c.color}"></span>
+        <span class="t">${tr(c.id)}</span><span class="n" data-count>${items.length}</span>
+        <span class="v tnum" data-total>${sarShort(val)}</span></div>
+      <div class="kcol-body">${items.map(prjCard).join('') || '<div style="text-align:center;color:var(--faint);font-size:11px;padding:1rem 0">—</div>'}</div>
+    </div>`;
+  }).join('');
+
+  const tableRows = rows.slice(0, 200).map((p) => `<tr class="border-b border-line" style="cursor:pointer" onclick="Sanad.projOpen('${p.id}')">
     <td class="py-2.5 px-3 text-[13px]">${p.name_ar}</td>
     <td class="px-3">${pill(tr(p.status), p.status === 'COMPLETED' ? 'green' : 'blue')}</td>
-    <td class="px-3">${pill(tr(p.rag), ragColor[p.rag] || 'slate')}</td>
-    <td class="px-3 text-[13px] tabular-nums">${fmtSar(p.contract_value_halalas)}</td>
-    <td class="px-3 text-[12px]">${canCost && !p._redacted_actual_spend_halalas ? fmtSar(p.actual_spend_halalas) : '<span class="text-slate-300">•••</span>'}</td>
-    <td class="px-3 text-[12px] text-muted">${pct(p.progress_pct)}</td></tr>`).join('');
-  const body = `${card(`
-    <div class="p-4 flex items-center justify-between border-b border-line">
-      <div class="font-bold text-sm">المشاريع (${rows.length})</div>
+    <td class="px-3">${pill(tr(p.rag), ragTone[p.rag] || 'slate')}</td>
+    <td class="px-3 text-[13px] tnum">${fmtSar(p.contract_value_halalas)}</td>
+    <td class="px-3 text-[12px] tnum">${canCost && !p._redacted_actual_spend_halalas ? fmtSar(p.actual_spend_halalas) : '<span class="text-slate-300">•••</span>'}</td>
+    <td class="px-3 text-[12px] text-muted tnum">${pct(p.progress_pct)}</td></tr>`).join('');
+
+  const body = `
+    <div class="toolbar">
+      <div class="seg"><button class="on" data-view="kanban" onclick="Sanad.pmoView('prj','kanban')">${icon('kanban')} كانبان</button>
+        <button data-view="table" onclick="Sanad.pmoView('prj','table')">${icon('list')} جدول</button></div>
+      <div class="search">${icon('search')}<input class="input" id="prj-q" oninput="Sanad.prjFilter()" placeholder="ابحث في المشاريع…"></div>
+      <div class="spacer"></div>
       ${canCost ? pill('ترى التكلفة الفعلية', 'green') : pill('التكلفة محجوبة عنك', 'slate')}
+      ${canEdit ? `<button class="btn btn-primary" onclick="Sanad.projAdd()">${icon('plus')} مشروع جديد</button>` : ''}
     </div>
-    <table class="w-full"><thead><tr class="text-[11px] text-muted text-right">
-      <th class="py-2 px-3 font-medium">المشروع</th><th class="px-3 font-medium">الحالة</th><th class="px-3 font-medium">RAG</th>
-      <th class="px-3 font-medium">قيمة العقد</th><th class="px-3 font-medium">الصرف الفعلي</th><th class="px-3 font-medium">الإنجاز</th></tr></thead>
-      <tbody>${list || '<tr><td class="p-4 text-muted text-sm" colspan="6">لا مشاريع ضمن نطاقك</td></tr>'}</tbody></table>`)}`;
-  return layout({ user, active: 'projects', title: 'المشاريع', body });
+    <div id="prj-kanban" class="kanban" data-kind="prj">${columns}</div>
+    <div id="prj-table" class="card" style="display:none;overflow-x:auto">
+      <table class="w-full"><thead><tr class="text-[11px] text-muted text-right">
+        <th class="py-2 px-3 font-medium">المشروع</th><th class="px-3 font-medium">الحالة</th><th class="px-3 font-medium">RAG</th>
+        <th class="px-3 font-medium">قيمة العقد</th><th class="px-3 font-medium">الصرف الفعلي</th><th class="px-3 font-medium">الإنجاز</th></tr></thead>
+      <tbody>${tableRows || '<tr><td class="p-4 text-muted text-sm" colspan="6">لا مشاريع ضمن نطاقك</td></tr>'}</tbody></table></div>
+    <script>window.__SANAD=Object.assign(window.__SANAD||{},{sectors:${JSON.stringify(all('SELECT id,name_ar FROM sector WHERE active=1 ORDER BY name_ar'))},canEditPrj:${canEdit}});</script>`;
+  return layout({ user, active: 'projects', title: 'المشاريع', subtitle: 'PMO · لوحة الحالة', body });
 }
 
 export function tasksPage(user) {

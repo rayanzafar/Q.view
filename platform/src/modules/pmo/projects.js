@@ -58,3 +58,43 @@ export function updateProject(ctx, pid, data) {
   audit(ctx, { action: 'update', resource: 'project', resourceId: pid, sectorId: row.sector_id, detail: patch });
   return getProject(user, pid);
 }
+
+// ── Staffing (تسكين): assign/unassign employees to a project via the allocation model ──
+export function projectStaffing(user, projectId) {
+  const p = get('SELECT * FROM project WHERE id=? AND deleted_at IS NULL', [projectId]);
+  if (!p) throw notFound('المشروع غير موجود');
+  if (!can(user, 'read', 'project', p)) throw forbidden();
+  const assigned = all(`SELECT a.id, a.employee_id, a.person_name_ar, a.type, e.job_title
+     FROM allocation a LEFT JOIN employee e ON e.id=a.employee_id
+     WHERE a.project_id=? AND a.deleted_at IS NULL ORDER BY a.created_at`, [projectId]);
+  const assignedIds = new Set(assigned.map((a) => a.employee_id));
+  const available = all('SELECT id, name_ar, job_title FROM employee WHERE sector_id=? AND active=1 AND deleted_at IS NULL ORDER BY name_ar', [p.sector_id])
+    .filter((e) => !assignedIds.has(e.id));
+  return { project: { id: p.id, name_ar: p.name_ar, sector_id: p.sector_id }, assigned, available, canStaff: can(user, 'update', 'project', p) };
+}
+
+export function assignEmployee(ctx, projectId, { employeeId, type }) {
+  const user = ctx.user;
+  const p = get('SELECT * FROM project WHERE id=? AND deleted_at IS NULL', [projectId]);
+  if (!p) throw notFound('المشروع غير موجود');
+  if (!can(user, 'update', 'project', p)) throw forbidden('تسكين الموظفين يتطلب صلاحية إدارة المشروع');
+  const emp = get('SELECT * FROM employee WHERE id=? AND deleted_at IS NULL', [employeeId]);
+  if (!emp) throw badRequest('الموظف غير موجود');
+  if (get('SELECT id FROM allocation WHERE project_id=? AND employee_id=? AND deleted_at IS NULL', [projectId, employeeId])) throw badRequest('الموظف مُسكَّن على هذا المشروع مسبقًا');
+  const aid = id('alloc'); const now = nowIso();
+  insert('allocation', { id: aid, employee_id: employeeId, person_name_ar: emp.name_ar, project_id: projectId,
+    project_name: p.name_ar, sector_id: p.sector_id, type: type || 'member', year: new Date().getUTCFullYear(), source: 'manual', created_at: now });
+  audit(ctx, { action: 'create', resource: 'allocation', resourceId: aid, sectorId: p.sector_id, detail: { project: projectId, employee: employeeId } });
+  return projectStaffing(user, projectId);
+}
+
+export function unassignEmployee(ctx, allocationId) {
+  const user = ctx.user;
+  const a = get('SELECT * FROM allocation WHERE id=? AND deleted_at IS NULL', [allocationId]);
+  if (!a) throw notFound('التسكين غير موجود');
+  const p = get('SELECT * FROM project WHERE id=?', [a.project_id]);
+  if (!p || !can(user, 'update', 'project', p)) throw forbidden();
+  update('allocation', allocationId, { deleted_at: nowIso() });
+  audit(ctx, { action: 'delete', resource: 'allocation', resourceId: allocationId, sectorId: a.sector_id });
+  return projectStaffing(user, a.project_id);
+}

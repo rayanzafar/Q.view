@@ -149,6 +149,8 @@ Object.assign(window.Sanad, {
 // ── Drawer + Modal infrastructure + PMO Kanban (v2 redesign) ──
 Object.assign(window.Sanad, {
   esc(s) { return (s == null ? '' : String(s)).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); },
+  LBL: { IN_PROGRESS: 'قيد التنفيذ', COMPLETED: 'مكتمل', PLANNED: 'مُخطَّط', ON_HOLD: 'متوقّف مؤقتًا', CANCELLED: 'ملغى', NOT_STARTED: 'لم يبدأ', GREEN: 'أخضر', AMBER: 'أصفر', RED: 'أحمر', P0: 'حرجة', P1: 'عالية', P2: 'متوسطة', P3: 'منخفضة' },
+  lbl(v) { return this.LBL[v] || v || ''; },
   fmtSar(h) { try { return new Intl.NumberFormat('ar-SA-u-nu-latn', { style: 'currency', currency: 'SAR', maximumFractionDigits: 0 }).format((h || 0) / 100); } catch (e) { return Math.round((h || 0) / 100).toLocaleString() + ' ر.س.'; } },
   openDrawer(html) { const d = document.getElementById('drawer'); d.innerHTML = html; d.classList.add('on'); d.setAttribute('aria-hidden', 'false'); document.getElementById('scrim').classList.add('on'); },
   closeDrawer() { const d = document.getElementById('drawer'); d.classList.remove('on'); d.setAttribute('aria-hidden', 'true'); document.getElementById('scrim').classList.remove('on'); },
@@ -187,12 +189,17 @@ Object.assign(window.Sanad, {
     const card = this._drag; if (!card) return;
     const stage = col.dataset.stage; const id = card.dataset.id;
     if (stage === this._dragFrom) return;
+    const board = col.closest('.kanban'); const kind = (board && board.dataset.kind) || 'opp';
+    const ns = board ? board.id.replace('-kanban', '') : 'opp';
     const body = col.querySelector('.kcol-body');
     body.querySelectorAll(':scope > div:not(.kcard)').forEach((ph) => ph.remove()); // drop the "—" placeholder
     body.appendChild(card);
-    this._recount('opp');
-    try { await api('/opportunities/' + id + '/stage', 'POST', { stage }); toast('نُقلت الفرصة إلى ' + (col.querySelector('.t')?.textContent || '') + ' ✓'); }
-    catch (err) { toast(err.message, true); location.reload(); }
+    this._recount(ns);
+    try {
+      if (kind === 'prj') await api('/projects/' + id, 'PATCH', { status: stage });
+      else await api('/opportunities/' + id + '/stage', 'POST', { stage });
+      toast('نُقل إلى ' + (col.querySelector('.t')?.textContent || '') + ' ✓');
+    } catch (err) { toast(err.message, true); location.reload(); }
   },
   // detail drawer
   async oppOpen(id) {
@@ -260,7 +267,76 @@ Object.assign(window.Sanad, {
       toast('أُضيفت الفرصة ✓'); this.closeModal(); setTimeout(() => location.reload(), 500);
     } catch (e) { toast(e.message, true); }
   },
+  // ── Projects: filter + detail drawer with staffing + add ──
+  prjFilter() {
+    const q = (document.getElementById('prj-q').value || '').toLowerCase().trim();
+    document.querySelectorAll('#prj-kanban .kcard, #prj-table tbody tr').forEach((c) => {
+      const hay = c.dataset.hay || c.textContent.toLowerCase();
+      c.style.display = (!q || hay.includes(q)) ? '' : 'none';
+    });
+    this._recount('prj');
+  },
+  async projOpen(id) {
+    try {
+      const [p, staff] = await Promise.all([api('/projects/' + id), api('/projects/' + id + '/staffing')]);
+      const ragHex = { GREEN: '#059669', AMBER: '#d97706', RED: '#dc2626' };
+      const money = (h) => (h == null ? '—' : this.fmtSar(h));
+      const assigned = (staff.assigned || []).map((a) => `<div style="display:flex;align-items:center;gap:.5rem;padding:.45rem 0;border-bottom:1px dashed var(--line)">
+        <span class="kav" style="width:28px;height:28px;font-size:11px">${this.esc((a.person_name_ar || '?').trim().charAt(0))}</span>
+        <div style="flex:1"><div style="font-size:13px;font-weight:600">${this.esc(a.person_name_ar || '—')}</div>
+          <div style="font-size:11px;color:var(--muted)">${this.esc(a.job_title || a.type || 'عضو فريق')}</div></div>
+        ${staff.canStaff ? `<button class="btn btn-ghost btn-sm" onclick="Sanad.staffRemove('${id}','${a.id}')" title="إزالة التسكين">✕</button>` : ''}</div>`).join('')
+        || '<div style="color:var(--faint);font-size:12px;padding:.5rem 0">لا يوجد فريق مُسكَّن بعد</div>';
+      const addBox = staff.canStaff && (staff.available || []).length ? `
+        <div style="display:flex;gap:.5rem;margin-top:.7rem">
+          <select id="staff-emp" class="input" style="flex:1">${staff.available.map((e) => `<option value="${e.id}">${this.esc(e.name_ar)}${e.job_title ? ' · ' + this.esc(e.job_title) : ''}</option>`).join('')}</select>
+          <button class="btn btn-primary" onclick="Sanad.staffAssign('${id}')">تسكين</button></div>`
+        : (staff.canStaff ? '<div style="font-size:11px;color:var(--faint);margin-top:.5rem">لا يوجد موظفون متاحون في هذا القطاع</div>' : '');
+      this.openDrawer(`
+        <div class="drawer-head"><div style="flex:1">
+          <div style="font-size:11px;color:var(--muted);font-weight:700">مشروع · ${this.esc(p.code || p.id)}</div>
+          <h3 style="font-size:17px;margin-top:.25rem">${this.esc(p.name_ar)}</h3>
+          <div style="margin-top:.55rem;display:flex;gap:.4rem;flex-wrap:wrap">
+            <span class="pill" style="background:#dbeafe;color:#2563eb">${this.esc(this.lbl(p.status))}</span>
+            ${p.rag ? `<span class="pill" style="background:${ragHex[p.rag]}22;color:${ragHex[p.rag]}">${this.esc(this.lbl(p.rag))}</span>` : ''}</div>
+        </div><button class="btn btn-ghost" onclick="Sanad.closeDrawer()">✕</button></div>
+        <div class="drawer-body">
+          <div class="kv-row"><span class="k">الإنجاز</span><span class="v tnum">${Math.round(p.progress_pct || 0)}%</span></div>
+          <div class="bar" style="margin:.15rem 0 .85rem"><span style="width:${Math.min(100, p.progress_pct || 0)}%;background:${ragHex[p.rag] || '#2563eb'}"></span></div>
+          <div class="kv-row"><span class="k">قيمة العقد</span><span class="v tnum">${money(p.contract_value_halalas)}</span></div>
+          <div class="kv-row"><span class="k">الصرف الفعلي</span><span class="v tnum">${p._redacted_actual_spend_halalas ? '<span style="color:var(--faint)">محجوب</span>' : money(p.actual_spend_halalas)}</span></div>
+          <div style="margin-top:1.15rem"><div style="font-size:12px;font-weight:800;color:var(--muted);margin-bottom:.35rem;display:flex;align-items:center;gap:.4rem">${icon2('userplus')} الفريق المُسكَّن <span style="color:var(--faint);font-weight:600">(${(staff.assigned || []).length})</span></div>
+            ${assigned}${addBox}</div>
+        </div>
+        <div class="drawer-foot"><a class="btn btn-primary" href="/app/project/${id}">فتح التفاصيل الكاملة</a><button class="btn" onclick="Sanad.closeDrawer()">إغلاق</button></div>`);
+    } catch (e) { toast(e.message, true); }
+  },
+  async staffAssign(pid) { const sel = document.getElementById('staff-emp'); if (!sel || !sel.value) return; try { await api('/projects/' + pid + '/staff', 'POST', { employeeId: sel.value }); toast('تم التسكين ✓'); this.projOpen(pid); } catch (e) { toast(e.message, true); } },
+  async staffRemove(pid, aid) { try { await api('/projects/staff/' + aid, 'DELETE'); toast('أُزيل التسكين ✓'); this.projOpen(pid); } catch (e) { toast(e.message, true); } },
+  projAdd() {
+    const S = window.__SANAD || {}; const secs = S.sectors || [];
+    this.openModal(`
+      <div class="modal-head"><h3 style="font-size:16px">مشروع جديد</h3><button class="btn btn-ghost" onclick="Sanad.closeModal()">✕</button></div>
+      <div class="modal-body">
+        <div class="field"><label>اسم المشروع *</label><input class="input" id="np-name" placeholder="مثال: تطوير مكتب إدارة المشاريع"></div>
+        <div class="grid2">
+          <div class="field"><label>القطاع</label><select id="np-sector">${secs.map((s) => `<option value="${s.id}">${this.esc(s.name_ar)}</option>`).join('')}</select></div>
+          <div class="field"><label>قيمة العقد (ر.س.)</label><input class="input" id="np-val" type="number" value="0"></div>
+        </div>
+        <div class="field"><label>الحالة</label><select id="np-status"><option value="NOT_STARTED">لم يبدأ</option><option value="IN_PROGRESS" selected>قيد التنفيذ</option><option value="ON_HOLD">متوقّف مؤقتًا</option></select></div>
+      </div>
+      <div class="modal-foot"><button class="btn btn-primary" onclick="Sanad.projCreate()">إضافة المشروع</button><button class="btn" onclick="Sanad.closeModal()">إلغاء</button></div>`);
+    setTimeout(() => document.getElementById('np-name')?.focus(), 50);
+  },
+  async projCreate() {
+    const name = document.getElementById('np-name').value.trim(); if (!name) return toast('الاسم مطلوب', true);
+    try { await api('/projects', 'POST', { name_ar: name, sector_id: document.getElementById('np-sector').value, status: document.getElementById('np-status').value, contract_value_sar: Number(document.getElementById('np-val').value) || 0 });
+      toast('أُضيف المشروع ✓'); this.closeModal(); setTimeout(() => location.reload(), 500);
+    } catch (e) { toast(e.message, true); }
+  },
 });
+// tiny inline icon for client-rendered drawers (subset)
+function icon2(n) { const P = { userplus: '<circle cx="9" cy="8" r="3.5"/><path d="M3 20a6 6 0 0112 0"/><path d="M18 8v6M15 11h6"/>' }; return `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-2px">${P[n] || ''}</svg>`; }
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { window.Sanad.closeDrawer(); window.Sanad.closeModal(); } });
 
 // notification badge
