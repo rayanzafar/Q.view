@@ -3,7 +3,7 @@ import { Router } from 'express';
 import { login, logout } from '../core/auth/service.js';
 import { config } from '../core/config.js';
 import * as P from './pages.js';
-import { buildReport, renderReport, enqueueReport } from '../core/reports/engine.js';
+import { buildReport, renderReport, enqueueReport, createSchedule } from '../core/reports/engine.js';
 import { canSeeSensitive } from '../core/rbac/index.js';
 
 export const webRouter = Router();
@@ -54,7 +54,13 @@ webRouter.get('/app/reports/preview/:key', requireWeb, (req, res, next) => {
 // Test-send (enqueues to the preview outbox for the current user)
 webRouter.post('/app/reports/test-send/:key', requireWeb, (req, res, next) => {
   try {
-    const ids = enqueueReport(req.params.key, { recipientUserIds: [req.ctx.user.id] });
+    const ids = enqueueReport(req.params.key, { recipientUserIds: [req.ctx.user.id], sectorId: req.ctx.user.sector_id });
     res.json({ ok: true, queued: ids.length });
   } catch (e) { next(e); }
+});
+
+// Create a report schedule
+webRouter.post('/app/reports/schedule', requireWeb, (req, res, next) => {
+  try { res.json(createSchedule(req.ctx, req.body || {})); }
+  catch (e) { next(e); }
 });

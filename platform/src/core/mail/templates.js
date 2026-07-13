@@ -3,6 +3,7 @@
 import { fmtSar } from '../util/ids.js';
 
 const BRAND = '#2563eb', BRAND2 = '#9333ea', INK = '#0f172a', MUTED = '#64748b', LINE = '#e2e8f0';
+const GREEN = '#059669', RED = '#dc2626';
 
 function shell({ title, period, bodyRows, locale = 'ar' }) {
   const dir = locale === 'ar' ? 'rtl' : 'ltr';
@@ -93,4 +94,99 @@ export function sectorWeeklyStatus(data) {
   return { subject: `حالة القطاع الأسبوعية — ${data.sectorName}`, html: shell({ title: 'حالة القطاع الأسبوعية', period: `${data.sectorName} · ${data.period}`, bodyRows: body }) };
 }
 
-export const TEMPLATES = { weekly_exec_brief: weeklyExecBrief, sector_weekly_status: sectorWeeklyStatus };
+// Monthly Sector Performance — target vs actual, margin, RAG, YoY.
+export function monthlySectorPerformance(data) {
+  const row = (label, val, sub) => `<td style="padding:10px;border:1px solid ${LINE};border-radius:10px;background:#f8fafc" valign="top">
+    <div style="font-size:11px;color:${MUTED}">${label}</div><div style="font-size:18px;font-weight:700">${val}</div>
+    ${sub ? `<div style="font-size:11px;color:${MUTED}">${sub}</div>` : ''}</td>`;
+  const yoy = (v) => v == null ? '' : `<span style="color:${v >= 0 ? GREEN : RED};font-weight:700;font-size:12px"> ${v >= 0 ? '▲' : '▼'} ${Math.abs(v)}%</span>`;
+  const body = [
+    section(`الأداء الشهري — ${data.sectorName} · ${data.period}`,
+      `<table role="presentation" width="100%" cellspacing="8"><tr>
+        ${row('الإيراد', fmtSar(data.revenue_halalas), `الهدف ${fmtSar(data.target_revenue_halalas)}`)}
+        ${row('الحجوزات', fmtSar(data.sales_halalas), `الهدف ${fmtSar(data.target_sales_halalas)}`)}
+        ${row('الهامش الإجمالي', data.margin_pct != null ? data.margin_pct + '%' : '—', `الهدف ${data.target_margin_pct || 0}%`)}
+      </tr><tr>
+        ${row('النمو السنوي (إيراد)', (data.revenue_yoy != null ? data.revenue_yoy + '%' : '—'), 'مقابل السنة السابقة')}
+        ${row('Book-to-Bill', data.book_to_bill != null ? data.book_to_bill + '×' : '—', 'حجوزات/إيراد')}
+        ${row('مشاريع (أخضر/أصفر/أحمر)', `${data.rag.GREEN || 0}/${data.rag.AMBER || 0}/${data.rag.RED || 0}`, 'حالة المحفظة')}
+      </tr></table>`),
+    section('أبرز مشاريع القطاع', data.projects && data.projects.length ?
+      `<table width="100%" cellspacing="0" style="font-size:13px">${data.projects.map((p) => `<tr>
+        <td style="padding:6px;border-top:1px solid ${LINE}">${p.name_ar}</td>
+        <td style="padding:6px;border-top:1px solid ${LINE};text-align:center">${Math.round(p.progress_pct || 0)}%</td>
+        <td style="padding:6px;border-top:1px solid ${LINE};text-align:center"><span style="background:${p.rag === 'RED' ? '#fee2e2' : p.rag === 'AMBER' ? '#fef3c7' : '#dcfce7'};color:${p.rag === 'RED' ? RED : p.rag === 'AMBER' ? '#b45309' : GREEN};padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700">${p.rag}</span></td></tr>`).join('')}</table>` : list([])),
+  ].join('');
+  return { subject: `أداء القطاع الشهري — ${data.sectorName} · ${data.period}`,
+    html: shell({ title: 'أداء القطاع الشهري', period: `${data.sectorName} · ${data.period}`, bodyRows: body }) };
+}
+
+// Project Status Report (RAG) — scope/progress/time/cost/deliverables/risks.
+export function projectStatusReport(data) {
+  const p = data.project;
+  const ragColor = p.rag === 'RED' ? RED : p.rag === 'AMBER' ? '#b45309' : GREEN;
+  const kpi = (l, v) => `<td style="padding:10px;border:1px solid ${LINE};border-radius:10px;background:#f8fafc"><div style="font-size:11px;color:${MUTED}">${l}</div><div style="font-size:17px;font-weight:700">${v}</div></td>`;
+  const body = [
+    `<div style="display:inline-block;background:${ragColor};color:#fff;padding:4px 14px;border-radius:99px;font-weight:700;margin-bottom:10px">حالة RAG: ${p.rag}</div>`,
+    section('نظرة عامة', `<table width="100%" cellspacing="8"><tr>
+      ${kpi('الإنجاز', Math.round(p.progress_pct || 0) + '%')}
+      ${kpi('قبول المخرجات', data.kpis.deliverableAcceptanceRate + '%')}
+      ${kpi('مهام متأخرة', data.kpis.lateTasks)}
+      ${kpi('قيمة العقد', fmtSar(p.contract_value_halalas))}
+    </tr></table>`),
+    section('المخرجات القادمة/المتأخرة', list(data.deliverables)),
+    section('المخاطر والقضايا المفتوحة', list(data.risks)),
+  ].join('');
+  return { subject: `تقرير حالة المشروع — ${p.name_ar}`,
+    html: shell({ title: 'تقرير حالة المشروع', period: `${p.name_ar} · ${data.period}`, bodyRows: body }) };
+}
+
+// Workforce & Utilization — per-person billable utilization (aggregate; anti-surveillance).
+export function workforceUtilization(data) {
+  const rows = (data.people || []).map((u) => `<tr>
+    <td style="padding:6px;border-top:1px solid ${LINE}">${u.name_ar}</td>
+    <td style="padding:6px;border-top:1px solid ${LINE};text-align:center">${u.total || 0}h</td>
+    <td style="padding:6px;border-top:1px solid ${LINE};text-align:center">${u.billable || 0}h</td>
+    <td style="padding:6px;border-top:1px solid ${LINE};text-align:center"><b style="color:${u.utilization_pct >= 65 ? GREEN : u.utilization_pct >= 50 ? '#b45309' : RED}">${u.utilization_pct || 0}%</b></td></tr>`).join('');
+  const body = [
+    section(`القوى العاملة — ${data.sectorName} · ${data.period}`,
+      `<div style="font-size:13px;color:${MUTED}">متوسط الإشغال القابل للفوترة: <b style="color:${INK}">${data.avgUtil}%</b> · عدد الأعضاء: ${(data.people || []).length}</div>`),
+    section('الإشغال حسب العضو', data.people && data.people.length ?
+      `<table width="100%" cellspacing="0" style="font-size:13px">
+        <tr><th align="start" style="color:${MUTED};font-size:11px;padding:4px 6px">العضو</th><th style="color:${MUTED};font-size:11px">إجمالي</th><th style="color:${MUTED};font-size:11px">قابل للفوترة</th><th style="color:${MUTED};font-size:11px">الإشغال</th></tr>${rows}</table>`
+      : `<div style="color:${MUTED};font-size:13px">لا توجد ساعات مسجّلة للفترة — تُفعَّل عند اعتماد الإدخال التشغيلي للوقت.</div>`),
+    `<div style="font-size:11px;color:${MUTED};margin-top:8px">ملاحظة حوكمة: الإشغال مقياس سعة تشغيلية لا تقييم فردي؛ لا تُستخدم كترتيب علني.</div>`,
+  ].join('');
+  return { subject: `تقرير القوى العاملة — ${data.sectorName}`,
+    html: shell({ title: 'القوى العاملة والإشغال', period: `${data.sectorName} · ${data.period}`, bodyRows: body }) };
+}
+
+// Opportunity Pipeline — by stage, coverage, top open deals, win rate.
+export function opportunityPipeline(data) {
+  const stageRows = (data.pipeline || []).map((s) => `<tr>
+    <td style="padding:6px;border-top:1px solid ${LINE}"><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${s.color};margin-inline-end:6px"></span>${s.name_ar}</td>
+    <td style="padding:6px;border-top:1px solid ${LINE};text-align:center">${s.count}</td>
+    <td style="padding:6px;border-top:1px solid ${LINE};text-align:center">${fmtSar(s.value_halalas)}</td></tr>`).join('');
+  const dealRows = (data.topOpen || []).map((d) => `<tr>
+    <td style="padding:5px 6px;border-top:1px solid ${LINE};font-weight:600">${d.client}</td>
+    <td style="padding:5px 6px;border-top:1px solid ${LINE}">${d.title}</td>
+    <td style="padding:5px 6px;border-top:1px solid ${LINE};text-align:center">${fmtSar(d.value_halalas)}</td>
+    <td style="padding:5px 6px;border-top:1px solid ${LINE};text-align:center">${Math.round(d.win_pct || 0)}%</td></tr>`).join('');
+  const body = [
+    section(`خط الفرص — ${data.sectorName} · ${data.period}`,
+      `<div style="font-size:13px;color:${MUTED}">معدل الفوز: <b style="color:${INK}">${data.winRate}%</b> · تغطية خط الأنابيب: <b style="color:${INK}">${data.coverage != null ? data.coverage + '×' : '—'}</b> · مرجّح: <b style="color:${INK}">${fmtSar(data.weighted_halalas)}</b></div>`),
+    section('التوزيع حسب المرحلة', `<table width="100%" cellspacing="0" style="font-size:13px"><tr><th align="start" style="color:${MUTED};font-size:11px;padding:4px 6px">المرحلة</th><th style="color:${MUTED};font-size:11px">العدد</th><th style="color:${MUTED};font-size:11px">القيمة</th></tr>${stageRows}</table>`),
+    section('أكبر الفرص المفتوحة', data.topOpen && data.topOpen.length ? `<table width="100%" cellspacing="0" style="font-size:13px"><tr><th align="start" style="color:${MUTED};font-size:11px;padding:4px 6px">العميل</th><th align="start" style="color:${MUTED};font-size:11px">الفرصة</th><th style="color:${MUTED};font-size:11px">القيمة</th><th style="color:${MUTED};font-size:11px">%</th></tr>${dealRows}</table>` : list([])),
+  ].join('');
+  return { subject: `تقرير خط الفرص — ${data.sectorName}`,
+    html: shell({ title: 'تقرير خط الفرص', period: `${data.sectorName} · ${data.period}`, bodyRows: body }) };
+}
+
+export const TEMPLATES = {
+  weekly_exec_brief: weeklyExecBrief,
+  sector_weekly_status: sectorWeeklyStatus,
+  monthly_sector_performance: monthlySectorPerformance,
+  project_status_report: projectStatusReport,
+  workforce_utilization: workforceUtilization,
+  opportunity_pipeline: opportunityPipeline,
+};

@@ -118,6 +118,20 @@ Object.assign(window.Sanad, {
     try { await api('/org/departments', 'POST', { sector_id: sectorId, name_ar }); toast('أُضيفت الإدارة ✓'); location.reload(); }
     catch (e) { toast(e.message, true); }
   },
+  async addSchedule() {
+    const body = {
+      reportId: document.getElementById('sch-report').value,
+      frequency: document.getElementById('sch-freq').value,
+      recipientGroupId: document.getElementById('sch-group').value || null,
+      sendTime: document.getElementById('sch-time').value,
+    };
+    try {
+      const r = await fetch('/app/reports/schedule', { method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then((x) => x.json());
+      if (r.error) throw new Error(r.error.message);
+      toast('تمت الجدولة ✓'); location.reload();
+    } catch (e) { toast(e.message, true); }
+  },
 });
 
 // notification badge
