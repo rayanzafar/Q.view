@@ -54,6 +54,78 @@ a{text-decoration:none;color:inherit}
 .bar{height:6px;background:#eef1f7;border-radius:999px;overflow:hidden}
 .bar>span{display:block;height:100%;border-radius:999px}
 select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding:.3rem .6rem;font-size:12px;font-weight:700;color:var(--ink2)}
+
+/* ── component layer (v2 redesign) ── */
+.btn{display:inline-flex;align-items:center;gap:.4rem;border:1px solid var(--line);background:#fff;color:var(--ink2);
+  font-size:12.5px;font-weight:700;padding:.48rem .85rem;border-radius:10px;cursor:pointer;transition:all .15s;white-space:nowrap}
+.btn:hover{border-color:#c9d3e8;background:#fbfcfe}
+.btn svg{width:15px;height:15px}
+.btn-primary{background:var(--brand-grad);color:#fff;border:none;box-shadow:0 6px 16px -6px rgba(37,99,235,.6)}
+.btn-primary:hover{filter:brightness(1.06);background:var(--brand-grad)}
+.btn-ghost{border:none;background:transparent;color:var(--muted)}
+.btn-ghost:hover{background:#eef1f7;color:var(--ink2)}
+.btn-sm{padding:.32rem .6rem;font-size:11.5px;border-radius:8px}
+.toolbar{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin-bottom:1.1rem}
+.toolbar .spacer{margin-inline-start:auto}
+.input{border:1px solid var(--line);border-radius:10px;padding:.5rem .7rem;font-size:13px;color:var(--ink2);background:#fff;font-family:inherit}
+.input:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+.search{position:relative;display:flex;align-items:center}
+.search svg{position:absolute;inset-inline-start:.6rem;width:15px;height:15px;color:var(--faint);pointer-events:none}
+.search input{padding-inline-start:2rem;min-width:230px}
+.seg{display:inline-flex;background:#eef1f7;border-radius:10px;padding:3px;gap:2px}
+.seg button{border:none;background:none;cursor:pointer;font-size:12px;font-weight:700;color:var(--muted);padding:.35rem .7rem;border-radius:8px;display:flex;align-items:center;gap:.35rem}
+.seg button.on{background:#fff;color:var(--ink2);box-shadow:var(--sh-sm)}
+
+/* Kanban */
+.kanban{display:flex;gap:.9rem;overflow-x:auto;padding-bottom:.75rem;align-items:flex-start;scroll-snap-type:x proximity}
+.kcol{flex:0 0 300px;width:300px;background:#eef1f7;border-radius:14px;padding:.55rem;scroll-snap-align:start;max-height:calc(100vh - 240px);display:flex;flex-direction:column}
+.kcol-head{display:flex;align-items:center;gap:.5rem;padding:.35rem .5rem .55rem}
+.kcol-dot{width:9px;height:9px;border-radius:50%;flex:none}
+.kcol-head .t{font-weight:800;font-size:13px}
+.kcol-head .n{font-size:11px;color:var(--muted);font-weight:700}
+.kcol-head .v{margin-inline-start:auto;font-size:11px;font-weight:800;color:var(--ink2)}
+.kcol-body{display:flex;flex-direction:column;gap:.55rem;overflow-y:auto;padding:.15rem;min-height:60px}
+.kcol.drop{outline:2px dashed var(--brand);outline-offset:-3px;background:#e4ebfa}
+.kcard{background:#fff;border:1px solid var(--line);border-radius:12px;padding:.7rem .75rem;cursor:grab;box-shadow:var(--sh-sm);transition:box-shadow .15s,transform .1s;border-inline-start:3px solid var(--_c,#cbd5e1)}
+.kcard:hover{box-shadow:var(--sh);transform:translateY(-1px)}
+.kcard:active{cursor:grabbing}
+.kcard.drag{opacity:.5}
+.kcard .kt{font-weight:700;font-size:13px;color:var(--ink2);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.kcard .km{display:flex;align-items:center;gap:.4rem;margin-top:.5rem;font-size:11px;color:var(--muted);flex-wrap:wrap}
+.kcard .kv{font-weight:800;color:var(--ink2)}
+.kcard .kav{width:22px;height:22px;border-radius:50%;background:var(--brand-grad);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:800}
+
+/* Drawer (slide-over from inline-end / left in RTL) */
+.scrim{position:fixed;inset:0;background:rgba(15,23,42,.42);backdrop-filter:blur(2px);z-index:60;opacity:0;transition:opacity .22s;pointer-events:none}
+.scrim.on{opacity:1;pointer-events:auto}
+/* Anchored to the physical LEFT edge (opposite the RTL sidebar); hidden off-screen to the left. */
+.drawer{position:fixed;top:0;bottom:0;left:0;right:auto;width:520px;max-width:94vw;background:var(--surface);z-index:61;
+  box-shadow:0 0 60px rgba(15,23,42,.25);transform:translateX(-104%);transition:transform .26s cubic-bezier(.4,0,.2,1);
+  display:flex;flex-direction:column;will-change:transform}
+.drawer.on{transform:translateX(0)}
+.drawer-head{padding:1.1rem 1.25rem;border-bottom:1px solid var(--line);display:flex;align-items:flex-start;gap:.75rem}
+.drawer-body{flex:1;overflow-y:auto;padding:1.15rem 1.25rem}
+.drawer-foot{padding:.85rem 1.25rem;border-top:1px solid var(--line);display:flex;gap:.6rem;justify-content:flex-start;background:var(--bg)}
+.kv-row{display:flex;justify-content:space-between;gap:1rem;padding:.55rem 0;border-bottom:1px dashed var(--line);font-size:13px}
+.kv-row .k{color:var(--muted)}.kv-row .v{font-weight:700;color:var(--ink2);text-align:end}
+.editable{cursor:text;border-radius:6px;padding:.1rem .3rem;margin:-.1rem -.3rem;transition:background .12s}
+.editable:hover{background:#f1f5ff;box-shadow:inset 0 0 0 1px #dbe3f5}
+
+/* Modal */
+.modal{position:fixed;z-index:62;inset:0;display:none;align-items:center;justify-content:center;padding:1rem}
+.modal.on{display:flex}
+.modal-card{background:var(--surface);border-radius:18px;width:520px;max-width:100%;max-height:92vh;overflow-y:auto;box-shadow:0 30px 80px rgba(15,23,42,.35);animation:pop .2s ease}
+@keyframes pop{from{transform:scale(.96) translateY(8px);opacity:0}to{transform:none;opacity:1}}
+.modal-head{padding:1.1rem 1.35rem;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}
+.modal-body{padding:1.25rem 1.35rem;display:grid;gap:.85rem}
+.modal-foot{padding:.9rem 1.35rem;border-top:1px solid var(--line);display:flex;gap:.6rem;justify-content:flex-start}
+.field{display:grid;gap:.3rem}
+.field>label{font-size:11.5px;font-weight:700;color:var(--muted)}
+.field .input,.field select,.field textarea{width:100%;border:1px solid var(--line);border-radius:10px;padding:.55rem .7rem;font-size:13px;font-family:inherit;background:#fff}
+.field .input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:.85rem}
+@media(max-width:520px){.grid2{grid-template-columns:1fr}}
+@media prefers-reduced-motion{.drawer,.scrim,.modal-card{transition:none;animation:none}}
 `;
 
 export function layout({ user, active, title, subtitle, body, year, extraHead = '' }) {
@@ -119,6 +191,9 @@ export function layout({ user, active, title, subtitle, body, year, extraHead = 
     <button onclick="Sanad.aiSend()" style="color:#fff;border:none;cursor:pointer;padding:0 .9rem;border-radius:10px;background:var(--brand-grad)">↑</button>
   </div>
 </div>
+<div id="scrim" class="scrim" onclick="Sanad.closeDrawer()"></div>
+<aside id="drawer" class="drawer" aria-hidden="true"></aside>
+<div id="modal" class="modal" onclick="if(event.target===this)Sanad.closeModal()"></div>
 <script src="/static/app.js"></script>
 </body></html>`;
 }

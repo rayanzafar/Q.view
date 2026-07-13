@@ -19,6 +19,7 @@ const h = (fn) => (req, res, next) => { try { const r = fn(req, res); if (r !== 
 apiRouter.get('/opportunities', h((req) => opps.listOpportunities(req.ctx.user, req.query)));
 apiRouter.post('/opportunities', h((req) => opps.createOpportunity(req.ctx, req.body)));
 apiRouter.get('/opportunities/:id', h((req) => opps.getOpportunity(req.ctx.user, req.params.id)));
+apiRouter.get('/opportunities/:id/detail', h((req) => opps.opportunityDetail(req.ctx.user, req.params.id)));
 apiRouter.patch('/opportunities/:id', h((req) => opps.updateOpportunity(req.ctx, req.params.id, req.body)));
 apiRouter.post('/opportunities/:id/stage', h((req) => opps.moveStage(req.ctx, req.params.id, req.body.stage, req.body.note)));
 apiRouter.get('/pipeline', h((req) => opps.pipelineSummary(req.ctx.user)));

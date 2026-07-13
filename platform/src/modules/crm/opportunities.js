@@ -84,6 +84,19 @@ export function moveStage(ctx, oppId, toStage, note) {
   return getOpportunity(user, oppId);
 }
 
+// Rich detail for the opportunity drawer: names + stage history + the stage ladder.
+export function opportunityDetail(user, oppId) {
+  const opp = getOpportunity(user, oppId); // scope + redact + notFound/forbidden
+  const client = opp.client_id ? (get('SELECT name_ar FROM client WHERE id=?', [opp.client_id])?.name_ar || null) : null;
+  const ownerRow = opp.owner_user_id ? get('SELECT name_ar, username FROM app_user WHERE id=?', [opp.owner_user_id]) : null;
+  const history = all(`SELECT h.to_stage_id, h.from_stage_id, h.changed_at, h.note, u.name_ar owner_name, u.username
+     FROM opportunity_stage_history h LEFT JOIN app_user u ON u.id=h.changed_by
+     WHERE h.opportunity_id=? ORDER BY h.changed_at DESC LIMIT 25`, [oppId]);
+  const stages = all('SELECT id, name_ar, color FROM stage ORDER BY sort_order');
+  const canEdit = can(user, 'update', 'opportunity', opp);
+  return { opp, client, owner: ownerRow ? (ownerRow.name_ar || ownerRow.username) : null, history, stages, canEdit };
+}
+
 // Pipeline aggregation for dashboards (respects scope).
 export function pipelineSummary(user) {
   const f = scopeFilter(user, 'opportunity', 'read');

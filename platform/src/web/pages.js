@@ -1,4 +1,5 @@
 import { layout, card, pill, miniBars, tr } from './layout.js';
+import { icon } from './icons.js';
 import { fmtSar } from '../core/util/ids.js';
 import { all, get } from '../core/db/index.js';
 import { companyOverview, sectorDashboard, projectKpis, multiYearTrend, winRate,
@@ -166,27 +167,99 @@ export function sectorPage(user, opts = {}) {
   return layout({ user, active: 'sector', title: `مركز القطاع — ${sd.sector.name_ar}`, subtitle: `السنة المالية ${year}`, body, year });
 }
 
+// small stat chip used on PMO toolbars
+function statMini(label, value, sub, tone) {
+  const c = tone === 'good' ? 'var(--green)' : tone === 'brand' ? 'var(--brand2)' : 'var(--ink2)';
+  return `<div class="card" style="padding:.6rem .9rem;min-width:130px">
+    <div style="font-size:11px;color:var(--muted);font-weight:700">${label}</div>
+    <div class="tnum" style="font-size:1.15rem;font-weight:800;color:${c};letter-spacing:-.02em">${value}</div>
+    <div style="font-size:10.5px;color:var(--faint)">${sub || ''}</div></div>`;
+}
+
 export function opportunitiesPage(user) {
   const rows = listOpportunities(user);
-  const stages = Object.fromEntries(all('SELECT id,name_ar,color FROM stage').map((s) => [s.id, s]));
-  const list = rows.slice(0, 100).map((o) => {
-    const st = stages[o.stage_id] || {};
-    return `<tr class="border-b border-line hover:bg-slate-50">
-      <td class="py-2.5 px-3 text-[13px]">${o.title_ar}</td>
-      <td class="px-3">${pill(st.name_ar || o.stage_id, 'blue')}</td>
-      <td class="px-3 text-[13px] tabular-nums">${fmtSar(o.value_halalas)}</td>
-      <td class="px-3 text-[12px] text-muted">${pct(o.win_pct)}</td></tr>`;
+  const stages = all('SELECT id,name_ar,color,sort_order,is_won,is_lost FROM stage ORDER BY sort_order');
+  const clients = Object.fromEntries(all('SELECT id,name_ar FROM client').map((c) => [c.id, c.name_ar]));
+  const users = Object.fromEntries(all('SELECT id,name_ar,username FROM app_user').map((u) => [u.id, u.name_ar || u.username]));
+  const sectors = all('SELECT id,name_ar FROM sector WHERE active=1 ORDER BY name_ar');
+  const canCreate = can(user, 'create', 'opportunity');
+  const canEdit = can(user, 'update', 'opportunity');
+
+  const total = rows.reduce((a, o) => a + (o.value_halalas || 0), 0);
+  const weighted = rows.reduce((a, o) => a + (o.value_halalas || 0) * ((o.win_pct || 0) / 100), 0);
+  const stById = Object.fromEntries(stages.map((s) => [s.id, s]));
+  const won = rows.filter((o) => stById[o.stage_id]?.is_won).length;
+  const openN = rows.filter((o) => { const s = stById[o.stage_id]; return s && !s.is_won && !s.is_lost; }).length;
+
+  const byStage = {}; for (const s of stages) byStage[s.id] = [];
+  for (const o of rows) (byStage[o.stage_id] ||= []).push(o);
+
+  const opCard = (o) => {
+    const st = stById[o.stage_id] || {};
+    const cl = clients[o.client_id]; const ow = users[o.owner_user_id];
+    const prTone = o.priority === 'P0' ? 'red' : o.priority === 'P1' ? 'amber' : 'slate';
+    const hay = `${o.title_ar} ${cl || ''} ${ow || ''}`.toLowerCase();
+    const dnd = canEdit ? 'draggable="true" ondragstart="Sanad.kStart(event)" ondragend="Sanad.kEnd(event)"' : '';
+    return `<div class="kcard" ${dnd} data-id="${o.id}" data-sector="${o.sector_id || ''}" data-hay="${hay.replace(/"/g, '')}" style="--_c:${st.color || '#cbd5e1'}${canEdit ? '' : ';cursor:pointer'}"
+       onclick="Sanad.oppOpen('${o.id}')">
+      <div class="kt">${o.title_ar}</div>
+      <div class="km">${cl ? `<span style="display:inline-flex;align-items:center;gap:.25rem">${icon('building')}${cl}</span>` : '<span style="color:var(--faint)">—</span>'}
+        ${o.priority ? pill(tr(o.priority), prTone) : ''}</div>
+      <div class="km"><span class="kv tnum">${fmtSar(o.value_halalas)}</span>
+        <span class="tnum" style="margin-inline-start:auto">${pct(o.win_pct)}</span>
+        ${ow ? `<span class="kav" title="${ow}">${(ow || '?').trim().charAt(0)}</span>` : ''}</div>
+    </div>`;
+  };
+
+  const columns = stages.map((s) => {
+    const items = byStage[s.id] || [];
+    const colTotal = items.reduce((a, o) => a + (o.value_halalas || 0), 0);
+    const drop = canEdit ? 'ondragover="Sanad.kOver(event)" ondragleave="Sanad.kLeave(event)" ondrop="Sanad.kDrop(event)"' : '';
+    return `<div class="kcol" data-stage="${s.id}" ${drop}>
+      <div class="kcol-head"><span class="kcol-dot" style="background:${s.color}"></span>
+        <span class="t">${s.name_ar}</span><span class="n" data-count>${items.length}</span>
+        <span class="v tnum" data-total>${sarShort(colTotal)}</span></div>
+      <div class="kcol-body">${items.map(opCard).join('') || '<div style="text-align:center;color:var(--faint);font-size:11px;padding:1rem 0">—</div>'}</div>
+    </div>`;
   }).join('');
-  const body = `${card(`
-    <div class="p-4 flex items-center justify-between border-b border-line">
-      <div class="font-bold text-sm">الفرص (${rows.length})</div>
-      <button onclick="Sanad.quickOpp()" class="text-white text-[12px] px-3 py-1.5 rounded-lg" style="background:linear-gradient(120deg,#2563eb,#9333ea)">+ فرصة جديدة</button>
+
+  const tableRows = rows.slice(0, 200).map((o) => {
+    const st = stById[o.stage_id] || {};
+    return `<tr class="border-b border-line" style="cursor:pointer" onclick="Sanad.oppOpen('${o.id}')">
+      <td class="py-2.5 px-3 text-[13px]">${o.title_ar}</td>
+      <td class="px-3 text-[12px]">${clients[o.client_id] || '—'}</td>
+      <td class="px-3">${pill(st.name_ar || o.stage_id, 'blue')}</td>
+      <td class="px-3 text-[13px] tnum">${fmtSar(o.value_halalas)}</td>
+      <td class="px-3 text-[12px] text-muted tnum">${pct(o.win_pct)}</td></tr>`;
+  }).join('');
+
+  const body = `
+    <div class="toolbar">
+      <div class="seg"><button class="on" data-view="kanban" onclick="Sanad.pmoView('opp','kanban')">${icon('kanban')} كانبان</button>
+        <button data-view="table" onclick="Sanad.pmoView('opp','table')">${icon('list')} جدول</button></div>
+      <div class="search">${icon('search')}<input class="input" id="opp-q" oninput="Sanad.oppFilter()" placeholder="ابحث بالعنوان أو العميل…"></div>
+      <select class="input" id="opp-sector" onchange="Sanad.oppFilter()"><option value="">كل القطاعات</option>${sectors.map((s) => `<option value="${s.id}">${s.name_ar}</option>`).join('')}</select>
+      <div class="spacer"></div>
+      ${canCreate ? `<button class="btn btn-primary" onclick="Sanad.oppAdd()">${icon('plus')} فرصة جديدة</button>` : ''}
     </div>
-    <table class="w-full"><thead><tr class="text-[11px] text-muted text-right">
-      <th class="py-2 px-3 font-medium">العنوان</th><th class="px-3 font-medium">المرحلة</th>
-      <th class="px-3 font-medium">القيمة</th><th class="px-3 font-medium">الاحتمالية</th></tr></thead>
-      <tbody>${list || '<tr><td class="p-4 text-muted text-sm" colspan="4">لا توجد فرص ضمن نطاقك</td></tr>'}</tbody></table>`)}`;
-  return layout({ user, active: 'opportunities', title: 'الفرص', body });
+    <div style="display:flex;gap:.7rem;flex-wrap:wrap;margin-bottom:1.1rem">
+      ${statMini('إجمالي الخط', fmtSar(total), rows.length + ' فرصة')}
+      ${statMini('المرجّح', fmtSar(weighted), 'حسب الاحتمالية', 'brand')}
+      ${statMini('مفتوحة', openN, 'قيد التنفيذ')}
+      ${statMini('فائزة', won, 'مُغلقة رابحة', 'good')}
+    </div>
+    <div id="opp-kanban" class="kanban">${columns}</div>
+    <div id="opp-table" class="card" style="display:none;overflow-x:auto">
+      <table class="w-full"><thead><tr class="text-[11px] text-muted text-right">
+        <th class="py-2 px-3 font-medium">العنوان</th><th class="px-3 font-medium">العميل</th><th class="px-3 font-medium">المرحلة</th>
+        <th class="px-3 font-medium">القيمة</th><th class="px-3 font-medium">الاحتمالية</th></tr></thead>
+      <tbody>${tableRows || '<tr><td class="p-4 text-muted text-sm" colspan="5">لا توجد فرص ضمن نطاقك</td></tr>'}</tbody></table></div>
+    <script>window.__SANAD=Object.assign(window.__SANAD||{},{
+      stages:${JSON.stringify(stages.map((s) => ({ id: s.id, name_ar: s.name_ar, color: s.color })))},
+      sectors:${JSON.stringify(sectors)},
+      canCreateOpp:${canCreate}
+    });</script>`;
+  return layout({ user, active: 'opportunities', title: 'الفرص والمبيعات', subtitle: 'خط الفرص · PMO', body });
 }
 
 export function projectsPage(user) {
