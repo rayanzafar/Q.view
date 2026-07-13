@@ -7,6 +7,7 @@ import * as tasks from './pmo/tasks.js';
 import * as ts from './timesheets/timesheets.js';
 import * as wf from './workflow/engine.js';
 import * as notif from './notifications/notify.js';
+import * as org from './org/org.js';
 import * as metrics from '../core/reports/metrics.js';
 
 export const apiRouter = Router();
@@ -49,6 +50,15 @@ apiRouter.post('/approvals/:id/act', h((req) => wf.actOnApproval(req.ctx, req.pa
 apiRouter.get('/notifications', h((req) => notif.myNotifications(req.ctx.user, req.query.unread === '1')));
 apiRouter.post('/notifications/:id/read', h((req) => { notif.markRead(req.ctx.user, req.params.id); return { ok: true }; }));
 
+// ── Organization (flexible hierarchy, editable) ──
+apiRouter.get('/org/tree', h((req) => org.orgTree(req.ctx.user)));
+apiRouter.post('/org/sectors', h((req) => org.createSector(req.ctx, req.body)));
+apiRouter.patch('/org/sectors/:id', h((req) => org.updateSector(req.ctx, req.params.id, req.body)));
+apiRouter.post('/org/departments', h((req) => org.createDepartment(req.ctx, req.body)));
+apiRouter.post('/org/units', h((req) => org.createUnit(req.ctx, req.body)));
+apiRouter.post('/org/employees', h((req) => org.createEmployee(req.ctx, req.body)));
+apiRouter.patch('/org/employees/:id/move', h((req) => org.moveEmployee(req.ctx, req.params.id, req.body)));
+
 // ── Metrics / dashboards ──
-apiRouter.get('/metrics/company', h((req) => metrics.companyOverview(req.ctx.user)));
-apiRouter.get('/metrics/sector/:id', h((req) => metrics.sectorDashboard(req.ctx.user, req.params.id)));
+apiRouter.get('/metrics/company', h((req) => metrics.companyOverview(req.ctx.user, { year: req.query.year })));
+apiRouter.get('/metrics/sector/:id', h((req) => metrics.sectorDashboard(req.ctx.user, req.params.id, { year: req.query.year })));

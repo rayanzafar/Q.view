@@ -1,7 +1,8 @@
 import { layout, card, pill, miniBars } from './layout.js';
 import { fmtSar } from '../core/util/ids.js';
 import { all, get } from '../core/db/index.js';
-import { companyOverview, sectorDashboard, projectKpis, multiYearTrend, winRate } from '../core/reports/metrics.js';
+import { companyOverview, sectorDashboard, projectKpis, multiYearTrend, winRate,
+  winRateByYear, quarterlyRevenue, backlog, pipelineCoverage } from '../core/reports/metrics.js';
 import { config } from '../core/config.js';
 
 const sarShort = (halalas) => {
@@ -15,6 +16,7 @@ import { listProjects } from '../modules/pmo/projects.js';
 import { myTasks } from '../modules/pmo/tasks.js';
 import { myEntries } from '../modules/timesheets/timesheets.js';
 import { myApprovalQueue } from '../modules/workflow/engine.js';
+import { orgTree } from '../modules/org/org.js';
 import { canSeeSensitive } from '../core/rbac/index.js';
 
 const pct = (n) => `${Math.round(n || 0)}%`;
@@ -47,6 +49,10 @@ export function ceoPage(user, opts = {}) {
   const t = ov.totals;
   const wr = winRate(null, year);
   const trend = multiYearTrend(null, 4);
+  const wrYear = winRateByYear(null, 4);
+  const qRev = quarterlyRevenue(null, year);
+  const bk = backlog(null);
+  const cov = pipelineCoverage(null, year);
   const heroKpi = (label, val, target, p, color) => `
     <div style="color:rgba(255,255,255,.7);font-size:13px">${label}</div>
     <div class="metric" style="color:#fff;margin-top:.25rem">${fmtSar(val)}</div>
@@ -82,19 +88,28 @@ export function ceoPage(user, opts = {}) {
         <div>${heroKpi('إجمالي المبيعات المحققة', t.sales, t.target_sales, t.target_sales ? t.sales / t.target_sales * 100 : 0, '#c07bff')}</div>
       </div>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-bottom:1.25rem">
-      ${kpiTile('خط الفرص المفتوح', fmtSar(ov.pipeline_halalas), 'الفرص غير المغلقة')}
+    <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:.85rem;margin-bottom:1.25rem">
+      ${kpiTile('خط الفرص المفتوح', fmtSar(ov.pipeline_halalas), `مرجّح ${fmtSar(cov.weighted_halalas)}`)}
+      ${kpiTile('تغطية خط الأنابيب', cov.coverage != null ? cov.coverage + '×' : '—', 'المتبقي من الهدف')}
       ${kpiTile('معدل الفوز', pct(wr.rate), `فوز ${wr.won} · خسارة ${wr.lost}`)}
-      ${kpiTile('مستهدف الإيراد', fmtSar(t.target_revenue), `التحقيق ${pct(t.target_revenue ? t.revenue / t.target_revenue * 100 : 0)}`)}
-      ${kpiTile('مستهدف المبيعات', fmtSar(t.target_sales), `التحقيق ${pct(t.target_sales ? t.sales / t.target_sales * 100 : 0)}`)}
+      ${kpiTile('الأعمال المتعاقدة (Backlog)', fmtSar(bk.backlog_halalas), 'متعاقد لم يُحقَّق')}
+      ${kpiTile('تحقيق الإيراد', pct(t.target_revenue ? t.revenue / t.target_revenue * 100 : 0), `الهدف ${fmtSar(t.target_revenue)}`)}
+      ${kpiTile('تحقيق المبيعات', pct(t.target_sales ? t.sales / t.target_sales * 100 : 0), `الهدف ${fmtSar(t.target_sales)}`)}
     </div>
     <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:1rem;margin-bottom:1.25rem">
       <div><div style="font-weight:800;font-size:14px;margin-bottom:.5rem">أداء القطاعات · ${year}</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">${sectorCards}</div></div>
       ${card(`<div style="padding:1rem"><div style="font-weight:800;font-size:14px;margin-bottom:.25rem">الاتجاه متعدد السنوات</div>
-        <div style="font-size:11px;color:var(--muted);margin-bottom:.5rem">العقود الموقّعة (مليون ر.س.)</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:.4rem">العقود الموقّعة (مليون ر.س.)</div>
         ${miniBars(trend, 'contracts_halalas', { fmt: sarShort })}
-        <div style="font-size:11px;color:var(--muted);margin:.75rem 0 .5rem">الإيراد المحقق (مليون ر.س.)</div>
+        <div style="font-size:11px;color:var(--muted);margin:.6rem 0 .4rem">معدل الفوز حسب السنة</div>
+        ${miniBars(wrYear, 'rate', { fmt: (v) => Math.round(v) + '%' })}</div>`)}
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.25rem">
+      ${card(`<div style="padding:1rem"><div style="font-weight:800;font-size:14px;margin-bottom:.25rem">الإيراد المحقق حسب الربع · ${year}</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:.5rem">مليون ر.س.</div>
+        ${miniBars(qRev.map((q) => ({ year: q.quarter, revenue_halalas: q.revenue_halalas })), 'revenue_halalas', { fmt: sarShort })}</div>`)}
+      ${card(`<div style="padding:1rem"><div style="font-weight:800;font-size:14px;margin-bottom:.5rem">الإيراد المحقق متعدد السنوات (مليون ر.س.)</div>
         ${miniBars(trend, 'revenue_halalas', { fmt: sarShort })}</div>`)}
     </div>`;
   return layout({ user, active: 'ceo', title: 'لوحة القيادة', subtitle: `نظرة تنفيذية · السنة المالية ${year}`, body, year });
@@ -338,6 +353,41 @@ export function reportsPage(user) {
     </div>
     <div id="report-preview" class="mt-4"></div>`;
   return layout({ user, active: 'reports', title: 'التقارير والبريد', body });
+}
+
+export function orgPage(user) {
+  const tree = orgTree(user);
+  const sectorBlocks = tree.map((s) => card(`<div style="padding:1rem">
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <div style="display:flex;align-items:center;gap:.5rem">
+        <span style="width:11px;height:11px;border-radius:3px;background:${s.color || '#2563eb'}"></span>
+        <div style="font-weight:800">${s.name_ar}</div>
+        ${s.is_placeholder ? pill('قالب', 'amber') : pill(`${s.employees} موظف`, 'blue')}
+      </div>
+      <span style="font-size:11px;color:var(--muted)">${s.id}</span>
+    </div>
+    <div style="margin-top:.6rem;display:flex;flex-direction:column;gap:.35rem">
+      ${(s.departments || []).map((d) => `<div style="display:flex;align-items:center;gap:.5rem;font-size:13px;padding:.3rem .5rem;background:var(--bg);border-radius:8px">
+        <span style="color:var(--muted)">↳</span><span style="flex:1">${d.name_ar}</span>
+        <span style="font-size:11px;color:var(--muted)">${d.units.length} وحدة · ${d.employees} موظف</span></div>`).join('') || '<div style="font-size:12px;color:var(--faint)">لا إدارات — أضِف واحدة</div>'}
+    </div>
+    <div style="margin-top:.6rem;display:flex;gap:.4rem">
+      <input id="dep-${s.id}" placeholder="اسم إدارة جديدة…" style="flex:1;border:1px solid var(--line);border-radius:8px;padding:.35rem .6rem;font-size:12px">
+      <button onclick="Sanad.addDept('${s.id}')" style="color:#fff;border:none;cursor:pointer;padding:0 .8rem;border-radius:8px;font-size:12px;background:var(--brand-grad)">+ إدارة</button>
+    </div>
+  </div>`, 'card-h')).join('');
+  const body = `
+    ${card(`<div style="padding:1rem"><div style="font-weight:800;font-size:14px;margin-bottom:.5rem">إضافة قطاع جديد</div>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+        <input id="sec-id" placeholder="المعرّف (EN, مثل FINTECH)" style="border:1px solid var(--line);border-radius:8px;padding:.4rem .7rem;font-size:13px;width:200px">
+        <input id="sec-ar" placeholder="اسم القطاع (عربي)" style="border:1px solid var(--line);border-radius:8px;padding:.4rem .7rem;font-size:13px;flex:1">
+        <input id="sec-tgt" type="number" placeholder="مستهدف المبيعات (ر.س.)" style="border:1px solid var(--line);border-radius:8px;padding:.4rem .7rem;font-size:13px;width:200px">
+        <button onclick="Sanad.addSector()" style="color:#fff;border:none;cursor:pointer;padding:0 1rem;border-radius:8px;font-size:13px;background:var(--brand-grad)">+ قطاع</button>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:.5rem">الهيكل مرن بالكامل — تُضاف القطاعات/الإدارات من هنا دون تعديل الكود.</div></div>`)}
+    <div style="font-weight:800;font-size:14px;margin:1.25rem 0 .5rem">الهيكل التنظيمي</div>
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:1rem">${sectorBlocks}</div>`;
+  return layout({ user, active: 'org', title: 'الهيكل التنظيمي', subtitle: 'الشركة ← القطاع ← الإدارة ← الوحدة ← الفريق ← الموظف', body });
 }
 
 export function portfolioPage(user) {

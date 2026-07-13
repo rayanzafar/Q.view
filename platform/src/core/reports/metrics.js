@@ -125,6 +125,51 @@ export function sectorUtilization(sectorId, from, to) {
   return rows.map((r) => ({ ...r, utilization_pct: r.total ? Math.round((r.billable / r.total) * 100) : 0 }));
 }
 
+// ── Period model: quarter (1-4) maps to months; month filters revenue_line directly. ──
+export function quarterlyRevenue(sectorId, year) {
+  const rows = all(`SELECT month, COALESCE(SUM(amount_halalas),0) v FROM revenue_line
+     WHERE year = ? ${sectorId ? 'AND sector_id = ?' : ''} AND month IS NOT NULL GROUP BY month`,
+    [year, ...(sectorId ? [sectorId] : [])]);
+  const byMonth = Object.fromEntries(rows.map((r) => [r.month, r.v]));
+  const q = [0, 0, 0, 0];
+  for (let m = 1; m <= 12; m++) q[Math.floor((m - 1) / 3)] += byMonth[m] || 0;
+  return q.map((v, i) => ({ quarter: `Q${i + 1}`, year, revenue_halalas: v }));
+}
+
+// Win rate per year (won / (won+lost) by count) — for the exec trend.
+export function winRateByYear(sectorId, nYears = 4) {
+  const years = availableYears().filter((y) => y <= FY()).slice(0, nYears).sort((a, b) => a - b);
+  return years.map((y) => ({ year: y, ...winRate(sectorId, y) }));
+}
+
+// Backlog = signed contract value not yet recognized as revenue (a Tier-1 commercial metric).
+export function backlog(sectorId) {
+  const contracted = get(`SELECT COALESCE(SUM(value_halalas),0) v FROM contract
+     WHERE status IN ('ACTIVE','DRAFT') ${sectorId ? 'AND sector_id = ?' : ''} AND deleted_at IS NULL`,
+    sectorId ? [sectorId] : []).v;
+  const recognized = get(`SELECT COALESCE(SUM(amount_halalas),0) v FROM revenue_line
+     WHERE 1=1 ${sectorId ? 'AND sector_id = ?' : ''}`, sectorId ? [sectorId] : []).v;
+  return { contracted_halalas: contracted, recognized_halalas: recognized,
+    backlog_halalas: Math.max(0, contracted - recognized) };
+}
+
+// Pipeline coverage = open weighted pipeline ÷ remaining sales target (Tier-1 commercial ratio).
+export function pipelineCoverage(sectorId, year) {
+  const target = get(`SELECT COALESCE(SUM(target_sales_halalas),0) v FROM sector
+     WHERE active=1 AND deleted_at IS NULL ${sectorId ? 'AND id = ?' : ''}`, sectorId ? [sectorId] : []).v;
+  const soldRow = get(`SELECT COALESCE(SUM(o.value_halalas),0) v FROM opportunity o JOIN stage st ON st.id=o.stage_id
+     WHERE st.is_won=1 AND o.exclude_from_sales=0 AND o.year=? ${sectorId ? 'AND o.sector_id=?' : ''} AND o.deleted_at IS NULL`,
+    [year, ...(sectorId ? [sectorId] : [])]);
+  const openRow = get(`SELECT COALESCE(SUM(o.value_halalas),0) raw,
+       COALESCE(SUM(o.value_halalas * COALESCE(o.win_pct,0)/100.0),0) weighted
+     FROM opportunity o JOIN stage st ON st.id=o.stage_id
+     WHERE st.is_won=0 AND st.is_lost=0 ${sectorId ? 'AND o.sector_id=?' : ''} AND o.deleted_at IS NULL`,
+    sectorId ? [sectorId] : []);
+  const remaining = Math.max(0, target - soldRow.v);
+  return { open_halalas: openRow.raw, weighted_halalas: Math.round(openRow.weighted),
+    remaining_target_halalas: remaining, coverage: remaining ? +(openRow.raw / remaining).toFixed(1) : null };
+}
+
 // Win rate for a sector/year (won / (won+lost) by count).
 export function winRate(sectorId, year) {
   const r = get(`SELECT

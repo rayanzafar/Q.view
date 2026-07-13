@@ -105,6 +105,19 @@ Object.assign(window.Sanad, {
     try { const r = await api('/ai/apply', 'POST', { applyToken: this._aiPending }); this._aiPush('ai', r.reply); this._aiPending = null; }
     catch (e) { this._aiPush('ai', '⚠ ' + e.message); }
   },
+  async addSector() {
+    const id = document.getElementById('sec-id').value.trim();
+    const name_ar = document.getElementById('sec-ar').value.trim();
+    if (!id || !name_ar) return toast('المعرّف والاسم مطلوبان', true);
+    try { await api('/org/sectors', 'POST', { id: id.toUpperCase(), name_ar, target_sales_sar: Number(document.getElementById('sec-tgt').value) || 0 }); toast('أُضيف القطاع ✓'); location.reload(); }
+    catch (e) { toast(e.message, true); }
+  },
+  async addDept(sectorId) {
+    const el = document.getElementById('dep-' + sectorId); const name_ar = el.value.trim();
+    if (!name_ar) return toast('اسم الإدارة مطلوب', true);
+    try { await api('/org/departments', 'POST', { sector_id: sectorId, name_ar }); toast('أُضيفت الإدارة ✓'); location.reload(); }
+    catch (e) { toast(e.message, true); }
+  },
 });
 
 // notification badge
