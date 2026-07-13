@@ -12,5 +12,6 @@ for (const suf of ['', '-wal', '-shm']) rmSync(config.dbFile + suf, { force: tru
 const { migrate } = await import('./migrate.js'); migrate();
 const { seedRbac } = await import('./seed-rbac.js'); seedRbac();
 const { migrateLegacy } = await import('./migrate-legacy.js'); migrateLegacy();
+const { deriveFinance } = await import('./derive-finance.js'); deriveFinance();
 const { seed } = await import('./seed.js'); seed();
 console.log('✓ reset complete');

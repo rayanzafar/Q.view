@@ -17,7 +17,8 @@ import { myTasks } from '../modules/pmo/tasks.js';
 import { myEntries } from '../modules/timesheets/timesheets.js';
 import { myApprovalQueue } from '../modules/workflow/engine.js';
 import { orgTree } from '../modules/org/org.js';
-import { canSeeSensitive } from '../core/rbac/index.js';
+import { financeSummary, financeByPM, financeByContract, contractDetail } from '../modules/finance/finance.js';
+import { canSeeSensitive, redact, can } from '../core/rbac/index.js';
 
 const pct = (n) => `${Math.round(n || 0)}%`;
 const bar = (p, color = '#2563eb') => `<div class="h-1.5 bg-slate-100 rounded-full overflow-hidden mt-1">
@@ -192,7 +193,7 @@ export function projectsPage(user) {
   const rows = listProjects(user);
   const canCost = canSeeSensitive(user, 'cost');
   const ragColor = { GREEN: 'green', AMBER: 'amber', RED: 'red' };
-  const list = rows.slice(0, 100).map((p) => `<tr class="border-b border-line hover:bg-slate-50">
+  const list = rows.slice(0, 100).map((p) => `<tr class="border-b border-line hover:bg-slate-50" style="cursor:pointer" onclick="location.href='/app/project/${p.id}'">
     <td class="py-2.5 px-3 text-[13px]">${p.name_ar}</td>
     <td class="px-3">${pill(p.status, p.status === 'COMPLETED' ? 'green' : 'blue')}</td>
     <td class="px-3">${pill(p.rag, ragColor[p.rag] || 'slate')}</td>
@@ -423,6 +424,143 @@ export function orgPage(user) {
     <div style="font-weight:800;font-size:14px;margin:1.25rem 0 .5rem">الهيكل التنظيمي</div>
     <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:1rem">${sectorBlocks}</div>`;
   return layout({ user, active: 'org', title: 'الهيكل التنظيمي', subtitle: 'الشركة ← القطاع ← الإدارة ← الوحدة ← الفريق ← الموظف', body });
+}
+
+export function financePage(user, opts = {}) {
+  const year = Number(opts.year) || config.fiscalYear;
+  const s = financeSummary(user, year);
+  const byPM = financeByPM(user, year);
+  const byContract = financeByContract(user);
+  const tile = (l, v, sub, color) => card(`<div style="padding:.9rem 1rem"><div style="font-size:11px;color:var(--muted)">${l}</div>
+    <div class="metric" style="font-size:1.35rem;${color ? 'color:' + color : ''}">${v}</div>${sub ? `<div style="font-size:11px;color:var(--muted)">${sub}</div>` : ''}</div>`);
+  // bridge: bookings → revenue → invoiced → collected
+  const bridge = [['الحجوزات', s.bookings_halalas, '#2563eb'], ['الإيراد المحقق', s.revenue_halalas, '#7c3aed'],
+    ['المُفوتر', s.invoiced_halalas, '#0891b2'], ['المُحصَّل', s.collected_halalas, '#059669']];
+  const maxB = Math.max(1, ...bridge.map((b) => b[1]));
+  const bridgeHtml = bridge.map((b) => `<div style="flex:1;text-align:center">
+    <div style="font-size:11px;color:var(--muted)">${b[0]}</div>
+    <div style="font-weight:800;font-size:15px" class="tnum">${fmtSar(b[1])}</div>
+    <div class="bar" style="margin-top:.35rem"><span style="width:${Math.round(b[1] / maxB * 100)}%;background:${b[2]}"></span></div></div>`).join('<div style="color:var(--faint);align-self:center;padding:0 .3rem">←</div>');
+  const agingMax = Math.max(1, ...Object.values(s.aging));
+  const agingHtml = Object.entries(s.aging).map(([k, v]) => `<div style="display:flex;align-items:center;gap:.5rem;font-size:12px;padding:.2rem 0">
+    <span style="width:52px;color:var(--muted)">${k} يوم</span>
+    <div class="bar" style="flex:1"><span style="width:${Math.round(v / agingMax * 100)}%;background:${k === '90+' ? 'var(--red)' : k === '61-90' ? 'var(--amber)' : 'var(--brand)'}"></span></div>
+    <span class="tnum" style="width:90px;text-align:left">${fmtSar(v)}</span></div>`).join('');
+  const pmRows = byPM.filter((p) => p.invoiced_halalas > 0 || p.contract_halalas > 0).map((p) => `<tr style="border-bottom:1px solid var(--line)">
+    <td style="padding:.5rem .75rem;font-size:13px">${p.pm}</td>
+    <td style="padding:.5rem .75rem;font-size:13px;text-align:center" class="tnum">${fmtSar(p.contract_halalas)}</td>
+    <td style="padding:.5rem .75rem;font-size:13px;text-align:center" class="tnum">${fmtSar(p.invoiced_halalas)}</td>
+    <td style="padding:.5rem .75rem;font-size:13px;text-align:center" class="tnum">${fmtSar(p.collected_halalas)}</td>
+    <td style="padding:.5rem .75rem;font-size:13px;text-align:center" class="tnum" style="color:var(--amber)">${fmtSar(p.outstanding_halalas)}</td></tr>`).join('');
+  const cRows = byContract.slice(0, 30).map((c) => `<tr style="border-bottom:1px solid var(--line);cursor:pointer" onclick="location.href='/app/contract/${c.id}'">
+    <td style="padding:.5rem .75rem;font-size:13px">${c.project_name || c.code || c.id}<div style="font-size:11px;color:var(--muted)">${c.client_name || ''}</div></td>
+    <td style="padding:.5rem .75rem;font-size:13px;text-align:center" class="tnum">${fmtSar(c.value_halalas)}</td>
+    <td style="padding:.5rem .75rem;text-align:center"><div class="bar" style="width:70px;display:inline-block;vertical-align:middle"><span style="width:${c.billed_pct}%;background:var(--brand)"></span></div> <span style="font-size:11px">${c.billed_pct}%</span></td>
+    <td style="padding:.5rem .75rem;font-size:13px;text-align:center;color:var(--muted)" class="tnum">${fmtSar(c.backlog_halalas)}</td></tr>`).join('');
+  const body = `
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:.85rem;margin-bottom:1.25rem">
+      ${tile('الحجوزات', fmtSar(s.bookings_halalas))}
+      ${tile('المُفوتر', fmtSar(s.invoiced_halalas))}
+      ${tile('الذمم المدينة (AR)', fmtSar(s.ar_halalas), 'مستحق غير محصَّل', 'var(--amber)')}
+      ${tile('معدل التحصيل', s.collectionRate + '%')}
+      ${tile('DSO', s.dso + ' يوم', 'فترة التحصيل')}
+    </div>
+    <div style="display:grid;grid-template-columns:1.3fr 1fr;gap:1rem;margin-bottom:1.25rem">
+      ${card(`<div style="padding:1rem"><div style="font-weight:800;font-size:14px;margin-bottom:.75rem">الجسر المالي · ${year}</div>
+        <div style="display:flex;align-items:stretch">${bridgeHtml}</div></div>`)}
+      ${card(`<div style="padding:1rem"><div style="font-weight:800;font-size:14px;margin-bottom:.5rem">أعمار الذمم المدينة</div>${agingHtml}</div>`)}
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1.2fr;gap:1rem">
+      ${card(`<div style="padding:1rem;border-bottom:1px solid var(--line);font-weight:800;font-size:13px">المالية حسب مدير المشروع</div>
+        <table style="width:100%;border-collapse:collapse"><thead><tr style="font-size:11px;color:var(--muted);text-align:right"><th style="padding:.4rem .75rem">مدير المشروع</th><th style="padding:.4rem .75rem;text-align:center">العقود</th><th style="padding:.4rem .75rem;text-align:center">مُفوتر</th><th style="padding:.4rem .75rem;text-align:center">محصَّل</th><th style="padding:.4rem .75rem;text-align:center">متبقٍّ</th></tr></thead>
+        <tbody>${pmRows || '<tr><td style="padding:1rem;color:var(--muted);font-size:13px" colspan="5">لا بيانات</td></tr>'}</tbody></table>`)}
+      ${card(`<div style="padding:1rem;border-bottom:1px solid var(--line);font-weight:800;font-size:13px">العقود (اضغط للتفصيل والمستخلصات)</div>
+        <table style="width:100%;border-collapse:collapse"><thead><tr style="font-size:11px;color:var(--muted);text-align:right"><th style="padding:.4rem .75rem">العقد/المشروع</th><th style="padding:.4rem .75rem;text-align:center">القيمة</th><th style="padding:.4rem .75rem;text-align:center">نسبة الفوترة</th><th style="padding:.4rem .75rem;text-align:center">Backlog</th></tr></thead>
+        <tbody>${cRows || '<tr><td style="padding:1rem;color:var(--muted);font-size:13px" colspan="4">لا عقود</td></tr>'}</tbody></table>`)}
+    </div>`;
+  return layout({ user, active: 'finance', title: 'المالية', subtitle: `عقود · فواتير · مستخلصات · تحصيل · السنة ${year}`, body, year });
+}
+
+export function contractDetailPage(user, contractId) {
+  let d;
+  try { d = contractDetail(user, contractId); } catch (e) { return layout({ user, active: 'finance', title: 'العقد', body: `<div style="color:var(--red)">${e.message}</div>` }); }
+  const c = d.contract;
+  const invRows = d.invoices.map((i) => `<tr style="border-bottom:1px solid var(--line)">
+    <td style="padding:.5rem .75rem;font-size:13px">${i.kind === 'progress_claim' ? 'مستخلص #' + (i.claim_no || '') : (i.code || i.id)}${i.period_label ? `<div style="font-size:11px;color:var(--muted)">${i.period_label}</div>` : ''}</td>
+    <td style="padding:.5rem .75rem;font-size:13px;text-align:center" class="tnum">${fmtSar(i.amount_halalas)}</td>
+    <td style="padding:.5rem .75rem;text-align:center">${pill(i.status, i.status === 'PAID' ? 'green' : i.status === 'OVERDUE' ? 'red' : i.status === 'PARTIALLY_PAID' ? 'amber' : 'blue')}</td>
+    <td style="padding:.5rem .75rem;font-size:13px;text-align:center;color:var(--amber)" class="tnum">${fmtSar(i.outstanding_halalas)}</td>
+    <td style="padding:.5rem .75rem;text-align:center">${i.outstanding_halalas > 0 ? `<button onclick="Sanad.recordCollection('${i.id}', ${i.outstanding_halalas / 100})" style="border:1px solid var(--line);cursor:pointer;font-size:11px;padding:.25rem .5rem;border-radius:6px;background:#fff">تسجيل تحصيل</button>` : '✓'}</td></tr>`).join('');
+  const eligible = d.deliverables.filter((dl) => ['DELIVERED', 'ACCEPTED'].includes(dl.status));
+  const dlvRows = d.deliverables.map((dl) => `<tr style="border-bottom:1px solid var(--line)">
+    <td style="padding:.4rem .75rem;font-size:13px">${dl.name_ar}</td>
+    <td style="padding:.4rem .75rem;font-size:13px;text-align:center" class="tnum">${fmtSar(dl.amount_halalas)}</td>
+    <td style="padding:.4rem .75rem;text-align:center">${pill(dl.status, dl.status === 'PAID' || dl.status === 'INVOICED' ? 'green' : dl.status === 'DELIVERED' ? 'blue' : 'slate')}</td></tr>`).join('');
+  const body = `
+    <a href="/app/finance" style="font-size:12px;color:var(--muted)">← المالية</a>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:.85rem;margin:.75rem 0 1.25rem">
+      ${card(`<div style="padding:.9rem 1rem"><div style="font-size:11px;color:var(--muted)">قيمة العقد</div><div class="metric" style="font-size:1.3rem">${fmtSar(c.value_halalas)}</div></div>`)}
+      ${card(`<div style="padding:.9rem 1rem"><div style="font-size:11px;color:var(--muted)">نسبة الفوترة</div><div class="metric" style="font-size:1.3rem">${d.billed_pct}%</div></div>`)}
+      ${card(`<div style="padding:.9rem 1rem"><div style="font-size:11px;color:var(--muted)">Backlog متبقٍّ</div><div class="metric" style="font-size:1.3rem">${fmtSar(d.backlog_halalas)}</div></div>`)}
+      ${card(`<div style="padding:.9rem 1rem"><div style="font-size:11px;color:var(--muted)">العميل</div><div style="font-weight:700;font-size:15px;margin-top:.4rem">${d.client || '—'}</div></div>`)}
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+      ${card(`<div style="padding:1rem;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center">
+        <div style="font-weight:800;font-size:13px">المستخلصات والفواتير</div>
+        ${eligible.length ? `<button onclick="Sanad.progressClaim('${c.id}')" class="text-white" style="border:none;cursor:pointer;font-size:12px;padding:.35rem .8rem;border-radius:8px;background:var(--brand-grad)">+ مستخلص من ${eligible.length} مخرج مسلّم</button>` : '<span style="font-size:11px;color:var(--muted)">لا مخرجات مؤهلة</span>'}</div>
+        <table style="width:100%;border-collapse:collapse"><thead><tr style="font-size:11px;color:var(--muted);text-align:right"><th style="padding:.4rem .75rem">المستخلص/الفاتورة</th><th style="padding:.4rem .75rem;text-align:center">القيمة</th><th style="padding:.4rem .75rem;text-align:center">الحالة</th><th style="padding:.4rem .75rem;text-align:center">متبقٍّ</th><th style="padding:.4rem .75rem"></th></tr></thead>
+        <tbody>${invRows || '<tr><td style="padding:1rem;color:var(--muted);font-size:13px" colspan="5">لا مستخلصات بعد — أنشئ واحدًا من المخرجات المسلّمة</td></tr>'}</tbody></table>`)}
+      ${card(`<div style="padding:1rem;border-bottom:1px solid var(--line);font-weight:800;font-size:13px">مخرجات المشروع</div>
+        <table style="width:100%;border-collapse:collapse"><thead><tr style="font-size:11px;color:var(--muted);text-align:right"><th style="padding:.4rem .75rem">المخرج</th><th style="padding:.4rem .75rem;text-align:center">القيمة</th><th style="padding:.4rem .75rem;text-align:center">الحالة</th></tr></thead>
+        <tbody>${dlvRows || '<tr><td style="padding:1rem;color:var(--muted);font-size:13px" colspan="3">لا مخرجات</td></tr>'}</tbody></table>`)}
+    </div>`;
+  return layout({ user, active: 'finance', title: `العقد — ${c.code || c.id}`, subtitle: d.project?.name_ar || '', body });
+}
+
+export function projectDetailPage(user, projectId) {
+  const p = get('SELECT * FROM project WHERE id = ? AND deleted_at IS NULL', [projectId]);
+  if (!p) return layout({ user, active: 'projects', title: 'المشروع', body: '<div style="color:var(--red)">المشروع غير موجود</div>' });
+  if (!can(user, 'read', 'project', p)) return layout({ user, active: 'projects', title: 'المشروع', body: '<div style="color:var(--red)">لا صلاحية</div>' });
+  const row = redact(user, 'project', p);
+  const k = projectKpis(p.id);
+  const canCost = canSeeSensitive(user, 'cost');
+  const tasks = all("SELECT status, COUNT(*) n FROM task WHERE project_id=? AND deleted_at IS NULL GROUP BY status", [p.id]);
+  const tmap = Object.fromEntries(tasks.map((t) => [t.status, t.n]));
+  const dlv = all("SELECT name_ar, amount_halalas, status FROM deliverable WHERE project_id=? AND deleted_at IS NULL ORDER BY month LIMIT 20", [p.id]);
+  const risks = all("SELECT title, impact, status FROM risk WHERE project_id=? AND status!='CLOSED' LIMIT 10", [p.id]);
+  const client = get('SELECT name_ar FROM client WHERE id=?', [p.client_id]);
+  const stat = (l, v, c) => card(`<div style="padding:.85rem 1rem"><div style="font-size:11px;color:var(--muted)">${l}</div><div class="metric" style="font-size:1.25rem;${c ? 'color:' + c : ''}">${v}</div></div>`);
+  const ragColor = p.rag === 'RED' ? 'red' : p.rag === 'AMBER' ? 'amber' : 'green';
+  const dlvRows = dlv.map((d) => `<tr style="border-bottom:1px solid var(--line)"><td style="padding:.4rem .75rem;font-size:13px">${d.name_ar}</td>
+    <td style="padding:.4rem .75rem;font-size:13px;text-align:center" class="tnum">${fmtSar(d.amount_halalas)}</td>
+    <td style="padding:.4rem .75rem;text-align:center">${pill(d.status, ['PAID', 'INVOICED', 'ACCEPTED'].includes(d.status) ? 'green' : d.status === 'DELIVERED' ? 'blue' : 'slate')}</td></tr>`).join('');
+  const riskRows = risks.map((r) => `<tr style="border-bottom:1px solid var(--line)"><td style="padding:.4rem .75rem;font-size:13px">${r.title}</td>
+    <td style="padding:.4rem .75rem;text-align:center">${pill(r.impact || '—', r.impact === 'high' ? 'red' : r.impact === 'medium' ? 'amber' : 'slate')}</td></tr>`).join('');
+  const body = `
+    <a href="/app/projects" style="font-size:12px;color:var(--muted)">← المشاريع</a>
+    <div style="display:flex;align-items:center;gap:.75rem;margin:.6rem 0 1rem">
+      <h2 style="font-size:18px">${p.name_ar}</h2>${pill(p.status, p.status === 'COMPLETED' ? 'green' : 'blue')}${pill('RAG ' + p.rag, ragColor)}
+      <span style="font-size:12px;color:var(--muted)">${client?.name_ar || ''} · ${p.code || ''}</span>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:.75rem;margin-bottom:1.25rem">
+      ${stat('الإنجاز', Math.round(p.progress_pct || 0) + '%')}
+      ${stat('إنجاز المهام', k.taskCompletionRate + '%')}
+      ${stat('مهام متأخرة', k.lateTasks, k.lateTasks ? 'var(--red)' : '')}
+      ${stat('قبول المخرجات', k.deliverableAcceptanceRate + '%')}
+      ${stat('قيمة العقد', fmtSar(p.contract_value_halalas))}
+      ${stat('الصرف الفعلي', canCost && !row._redacted_actual_spend_halalas ? fmtSar(p.actual_spend_halalas) : '••• محجوب', canCost ? '' : 'var(--faint)')}
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+      ${card(`<div style="padding:1rem;border-bottom:1px solid var(--line);font-weight:800;font-size:13px">المخرجات (${dlv.length})</div>
+        <table style="width:100%;border-collapse:collapse"><tbody>${dlvRows || '<tr><td style="padding:1rem;color:var(--muted);font-size:13px">لا مخرجات</td></tr>'}</tbody></table>`)}
+      <div style="display:flex;flex-direction:column;gap:1rem">
+        ${card(`<div style="padding:1rem"><div style="font-weight:800;font-size:13px;margin-bottom:.5rem">توزيع المهام</div>
+          <div style="display:flex;gap:.5rem;flex-wrap:wrap">${['TODO', 'IN_PROGRESS', 'BLOCKED', 'IN_REVIEW', 'DONE'].map((s) => pill(`${s}: ${tmap[s] || 0}`, s === 'DONE' ? 'green' : s === 'BLOCKED' ? 'red' : 'slate')).join(' ')}</div></div>`)}
+        ${card(`<div style="padding:1rem;border-bottom:1px solid var(--line);font-weight:800;font-size:13px">المخاطر المفتوحة (${risks.length})</div>
+          <table style="width:100%;border-collapse:collapse"><tbody>${riskRows || '<tr><td style="padding:1rem;color:var(--muted);font-size:13px">لا مخاطر مفتوحة</td></tr>'}</tbody></table>`)}
+      </div>
+    </div>`;
+  return layout({ user, active: 'projects', title: p.name_ar, subtitle: 'تفاصيل المشروع', body });
 }
 
 export function portfolioPage(user) {

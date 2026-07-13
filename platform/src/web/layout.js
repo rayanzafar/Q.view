@@ -14,6 +14,7 @@ const NAV = [
   { key: 'tasks', ar: 'مهامي', ic: 'tasks', group: 'work', show: () => true },
   { key: 'timesheet', ar: 'سجل الوقت', ic: 'timesheet', group: 'work', show: () => true },
   { key: 'approvals', ar: 'الاعتمادات', ic: 'approvals', group: 'work', show: (u) => ['admin', 'sector_lead', 'finance', 'department_manager', 'line_manager', 'approver', 'ceo_office'].includes(u.role_id) },
+  { key: 'finance', ar: 'المالية والعقود', ic: 'money', group: 'manage', show: (u) => can(u, 'read', 'invoice') || can(u, 'read', 'contract') },
   { key: 'team', ar: 'الفريق', ic: 'team', group: 'manage', show: (u) => can(u, 'read', 'employee') },
   { key: 'reports', ar: 'التقارير والبريد', ic: 'reports', group: 'manage', show: (u) => can(u, 'read', 'report') },
   { key: 'org', ar: 'الهيكل التنظيمي', ic: 'sector', group: 'admin', show: (u) => u.role_id === 'admin' || can(u, 'create', 'sector') || can(u, 'create', 'employee') },

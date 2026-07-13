@@ -118,6 +118,18 @@ Object.assign(window.Sanad, {
     try { await api('/org/departments', 'POST', { sector_id: sectorId, name_ar }); toast('أُضيفت الإدارة ✓'); location.reload(); }
     catch (e) { toast(e.message, true); }
   },
+  async progressClaim(contractId) {
+    const period = prompt('فترة المستخلص (مثال: يونيو 2026)؟', '');
+    if (period === null) return;
+    try { const r = await api('/finance/progress-claim', 'POST', { contractId, periodLabel: period }); toast('صدر المستخلص ✓ بقيمة ' + Math.round((r.amount_halalas || 0) / 100).toLocaleString() + ' ر.س.'); location.reload(); }
+    catch (e) { toast(e.message, true); }
+  },
+  async recordCollection(invoiceId, maxSar) {
+    const amt = prompt('مبلغ التحصيل (ر.س.)؟', String(maxSar || ''));
+    if (amt === null) return;
+    try { await api('/finance/collections', 'POST', { invoiceId, amountSar: Number(amt) }); toast('سُجّل التحصيل ✓'); location.reload(); }
+    catch (e) { toast(e.message, true); }
+  },
   async addSchedule() {
     const body = {
       reportId: document.getElementById('sch-report').value,

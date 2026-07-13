@@ -8,6 +8,7 @@ import * as ts from './timesheets/timesheets.js';
 import * as wf from './workflow/engine.js';
 import * as notif from './notifications/notify.js';
 import * as org from './org/org.js';
+import * as finance from './finance/finance.js';
 import * as metrics from '../core/reports/metrics.js';
 
 export const apiRouter = Router();
@@ -58,6 +59,14 @@ apiRouter.post('/org/departments', h((req) => org.createDepartment(req.ctx, req.
 apiRouter.post('/org/units', h((req) => org.createUnit(req.ctx, req.body)));
 apiRouter.post('/org/employees', h((req) => org.createEmployee(req.ctx, req.body)));
 apiRouter.patch('/org/employees/:id/move', h((req) => org.moveEmployee(req.ctx, req.params.id, req.body)));
+
+// ── Finance (contracts / invoices / progress claims / collections) ──
+apiRouter.get('/finance/summary', h((req) => finance.financeSummary(req.ctx.user, Number(req.query.year) || undefined)));
+apiRouter.get('/finance/by-pm', h((req) => finance.financeByPM(req.ctx.user, Number(req.query.year) || undefined)));
+apiRouter.get('/finance/by-contract', h((req) => finance.financeByContract(req.ctx.user)));
+apiRouter.get('/finance/contracts/:id', h((req) => finance.contractDetail(req.ctx.user, req.params.id)));
+apiRouter.post('/finance/progress-claim', h((req) => finance.createProgressClaim(req.ctx, req.body)));
+apiRouter.post('/finance/collections', h((req) => finance.recordCollection(req.ctx, req.body)));
 
 // ── Metrics / dashboards ──
 apiRouter.get('/metrics/company', h((req) => metrics.companyOverview(req.ctx.user, { year: req.query.year })));

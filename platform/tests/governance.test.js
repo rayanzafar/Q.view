@@ -85,3 +85,23 @@ test('Workflow: submit → pending; approver acts → approved', () => {
   const done = wf.actOnApproval(ctx(U('sector_lead', 'S1', 'sector')), req.id, 'approve');
   assert.equal(done.status, 'APPROVED');
 });
+
+test('Finance: progress claim from delivered deliverables + permission + collection', async () => {
+  const fin = await import('../src/modules/finance/finance.js');
+  const now = ids.nowIso();
+  db.insert('project', { id: 'PF1', name_ar: 'مشروع مالي', sector_id: 'S1', owner_user_id: 'u_sector_lead', status: 'IN_PROGRESS', contract_value_halalas: 1000000, created_at: now });
+  db.insert('contract', { id: 'CF1', code: 'CF-1', project_id: 'PF1', sector_id: 'S1', value_halalas: 1000000, status: 'ACTIVE', created_at: now });
+  db.insert('deliverable', { id: 'DF1', project_id: 'PF1', name_ar: 'مخرج 1', amount_halalas: 400000, status: 'DELIVERED', sector_id: 'S1', created_at: now });
+  db.insert('deliverable', { id: 'DF2', project_id: 'PF1', name_ar: 'مخرج 2', amount_halalas: 300000, status: 'DELIVERED', sector_id: 'S1', created_at: now });
+  const ctxF = (role) => ({ user: { id: 'u_' + role, username: role, role_id: role, sector_id: 'S1', scope: role === 'finance' ? 'company' : 'own', projectIds: new Set(['PF1']) }, ip: '127.0.0.1' });
+  // bd_manager cannot issue a claim
+  assert.throws(() => fin.createProgressClaim(ctxF('bd_manager'), { contractId: 'CF1' }), /صلاحية|forbidden/);
+  // finance can — amount = sum of delivered
+  const inv = fin.createProgressClaim(ctxF('finance'), { contractId: 'CF1', periodLabel: 'يونيو' });
+  assert.equal(inv.amount_halalas, 700000);
+  assert.equal(inv.status, 'ISSUED');
+  assert.equal(db.get('SELECT status FROM deliverable WHERE id=?', ['DF1']).status, 'INVOICED');
+  // record a partial collection → PARTIALLY_PAID, then full → PAID
+  fin.recordCollection(ctxF('finance'), { invoiceId: inv.id, amountSar: 3000 });
+  assert.equal(db.get('SELECT status FROM invoice WHERE id=?', [inv.id]).status, 'PARTIALLY_PAID');
+});

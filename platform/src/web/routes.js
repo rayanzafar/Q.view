@@ -34,7 +34,15 @@ const PAGES = {
   ceo: P.ceoPage, portfolio: P.portfolioPage, sector: P.sectorPage, opportunities: P.opportunitiesPage,
   projects: P.projectsPage, tasks: P.tasksPage, timesheet: P.timesheetPage, approvals: P.approvalsPage,
   team: P.teamPage, users: P.usersPage, audit: P.auditPage, reports: P.reportsPage, org: P.orgPage,
+  finance: P.financePage,
 };
+
+webRouter.get('/app/contract/:id', requireWeb, (req, res, next) => {
+  try { res.send(P.contractDetailPage(req.ctx.user, req.params.id)); } catch (e) { next(e); }
+});
+webRouter.get('/app/project/:id', requireWeb, (req, res, next) => {
+  try { res.send(P.projectDetailPage(req.ctx.user, req.params.id)); } catch (e) { next(e); }
+});
 
 webRouter.get('/app/:page', requireWeb, (req, res, next) => {
   const fn = PAGES[req.params.page];
