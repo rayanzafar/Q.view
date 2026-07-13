@@ -2,7 +2,7 @@ import { layout, card, pill, miniBars } from './layout.js';
 import { fmtSar } from '../core/util/ids.js';
 import { all, get } from '../core/db/index.js';
 import { companyOverview, sectorDashboard, projectKpis, multiYearTrend, winRate,
-  winRateByYear, quarterlyRevenue, backlog, pipelineCoverage } from '../core/reports/metrics.js';
+  winRateByYear, quarterlyRevenue, backlog, pipelineCoverage, bookToBill, grossMargin } from '../core/reports/metrics.js';
 import { config } from '../core/config.js';
 
 const sarShort = (halalas) => {
@@ -53,6 +53,17 @@ export function ceoPage(user, opts = {}) {
   const qRev = quarterlyRevenue(null, year);
   const bk = backlog(null);
   const cov = pipelineCoverage(null, year);
+  const b2b = bookToBill(null, year);
+  const revYoy = trend.length >= 2 ? (() => { const cur = trend[trend.length - 1].revenue_halalas, prev = trend[trend.length - 2].revenue_halalas; return prev ? Math.round((cur - prev) / prev * 100) : null; })() : null;
+  const bookYoy = trend.length >= 2 ? (() => { const cur = trend[trend.length - 1].contracts_halalas, prev = trend[trend.length - 2].contracts_halalas; return prev ? Math.round((cur - prev) / prev * 100) : null; })() : null;
+  const yoyBadge = (v) => v == null ? '' : `<span style="font-size:11px;font-weight:700;color:${v >= 0 ? '#34d399' : '#fca5a5'}">${v >= 0 ? '▲' : '▼'} ${Math.abs(v)}% سنويًا</span>`;
+  // Book-to-Bill risk banner (Tier-1 insight): bookings vs revenue recognition.
+  const riskBanner = (b2b.ratio != null && b2b.ratio < 1) ? `
+    <div style="border-radius:12px;padding:.85rem 1.1rem;margin-bottom:1rem;background:linear-gradient(90deg,#7f1d1d,#b91c1c);color:#fff;display:flex;align-items:center;gap:.75rem">
+      <span style="font-size:20px">⚠</span>
+      <div style="flex:1"><b>تنبيه استراتيجي — نسبة الحجز إلى الفوترة ${b2b.ratio}×</b>
+      <div style="font-size:12px;opacity:.9">الحجوزات الجديدة (${fmtSar(b2b.bookings_halalas)}) أقل من الإيراد المحقق (${fmtSar(b2b.revenue_halalas)}) لعام ${year} — الشركة تستهلك الأعمال المتعاقدة أسرع من تعويضها. يلزم تكثيف تطوير الأعمال.</div></div>
+    </div>` : '';
   const heroKpi = (label, val, target, p, color) => `
     <div style="color:rgba(255,255,255,.7);font-size:13px">${label}</div>
     <div class="metric" style="color:#fff;margin-top:.25rem">${fmtSar(val)}</div>
@@ -77,15 +88,19 @@ export function ceoPage(user, opts = {}) {
       </div>
       <div style="margin-top:.7rem;padding-top:.6rem;border-top:1px solid var(--line);font-size:11px;color:var(--muted);display:flex;justify-content:space-between">
         <span>عقود ${year}: <b class="tnum" style="color:var(--ink2)">${fmtSar(s.contracts_halalas)}</b> (${s.contracts_count})</span>
+        ${ov.canSeeMargin ? (() => { const gm = grossMargin(s.id, year); return gm.margin_pct != null ? `<span>هامش: <b style="color:${gm.margin_pct >= 20 ? 'var(--green)' : gm.margin_pct >= 10 ? 'var(--amber)' : 'var(--red)'}">${gm.margin_pct}%</b></span>` : ''; })() : ''}
       </div>
     </div>`, 'card-h')).join('');
   const kpiTile = (label, val, sub) => card(`<div style="padding:.9rem 1rem"><div style="font-size:11px;color:var(--muted)">${label}</div><div class="metric" style="font-size:1.4rem">${val}</div>${sub ? `<div style="font-size:11px;color:var(--muted)">${sub}</div>` : ''}</div>`);
   const body = `
+    ${riskBanner}
     <div style="border-radius:18px;padding:1.5rem;margin-bottom:1.25rem;color:#fff;background:linear-gradient(135deg,#0f2350,#182a5e,#3a1660)">
       <div style="color:rgba(255,255,255,.6);font-size:12px;margin-bottom:.25rem">الأداء على مستوى الشركة · السنة المالية ${ov.fiscalYear}</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-top:.5rem">
-        <div>${heroKpi('إجمالي الإيرادات المحققة', t.revenue, t.target_revenue, t.target_revenue ? t.revenue / t.target_revenue * 100 : 0, '#34d399')}</div>
-        <div>${heroKpi('إجمالي المبيعات المحققة', t.sales, t.target_sales, t.target_sales ? t.sales / t.target_sales * 100 : 0, '#c07bff')}</div>
+        <div>${heroKpi('إجمالي الإيرادات المحققة', t.revenue, t.target_revenue, t.target_revenue ? t.revenue / t.target_revenue * 100 : 0, '#34d399')}
+          <div style="margin-top:.35rem">${yoyBadge(revYoy)}</div></div>
+        <div>${heroKpi('إجمالي المبيعات المحققة (حجوزات)', t.sales, t.target_sales, t.target_sales ? t.sales / t.target_sales * 100 : 0, '#c07bff')}
+          <div style="margin-top:.35rem">${yoyBadge(bookYoy)} <span style="font-size:11px;color:rgba(255,255,255,.6)">· Book-to-Bill ${b2b.ratio != null ? b2b.ratio + '×' : '—'}</span></div></div>
       </div>
     </div>
     <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:.85rem;margin-bottom:1.25rem">

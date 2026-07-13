@@ -170,6 +170,34 @@ export function pipelineCoverage(sectorId, year) {
     remaining_target_halalas: remaining, coverage: remaining ? +(openRow.raw / remaining).toFixed(1) : null };
 }
 
+// Book-to-Bill = new bookings (won value in year) ÷ revenue recognized in year.
+// < 1 sustained = burning backlog faster than replacing it (Tier-1 commercial risk).
+export function bookToBill(sectorId, year) {
+  const bookings = get(`SELECT COALESCE(SUM(o.value_halalas),0) v FROM opportunity o JOIN stage st ON st.id=o.stage_id
+     WHERE st.is_won=1 AND o.exclude_from_sales=0 AND o.year=? ${sectorId ? 'AND o.sector_id=?' : ''} AND o.deleted_at IS NULL`,
+    [year, ...(sectorId ? [sectorId] : [])]).v;
+  const revenue = get(`SELECT COALESCE(SUM(amount_halalas),0) v FROM revenue_line WHERE year=? ${sectorId ? 'AND sector_id=?' : ''}`,
+    [year, ...(sectorId ? [sectorId] : [])]).v;
+  return { bookings_halalas: bookings, revenue_halalas: revenue,
+    ratio: revenue ? +(bookings / revenue).toFixed(2) : null };
+}
+
+// Gross Margin % for a sector/year = (revenue − cost − approved expense) ÷ revenue. SENSITIVE.
+export function grossMargin(sectorId, year) {
+  const rev = get(`SELECT COALESCE(SUM(amount_halalas),0) v FROM revenue_line WHERE year=? ${sectorId ? 'AND sector_id=?' : ''}`, [year, ...(sectorId ? [sectorId] : [])]).v;
+  const cost = get(`SELECT COALESCE(SUM(amount_halalas),0) v FROM cost_line WHERE year=? ${sectorId ? 'AND sector_id=?' : ''}`, [year, ...(sectorId ? [sectorId] : [])]).v;
+  const exp = get(`SELECT COALESCE(SUM(amount_halalas),0) v FROM expense WHERE incurred_year=? AND status IN ('APPROVED','PAID') ${sectorId ? 'AND sector_id=?' : ''}`, [year, ...(sectorId ? [sectorId] : [])]).v;
+  const gp = rev - cost - exp;
+  return { revenue_halalas: rev, cost_halalas: cost + exp, gross_profit_halalas: gp, margin_pct: rev ? Math.round((gp / rev) * 100) : null };
+}
+
+// Year-over-year delta % for a numeric field between year and year-1 (uses a getter fn).
+export function yoy(getterForYear, year) {
+  const cur = getterForYear(year), prev = getterForYear(year - 1);
+  if (!prev) return { cur, prev, pct: null };
+  return { cur, prev, pct: Math.round(((cur - prev) / prev) * 100) };
+}
+
 // Win rate for a sector/year (won / (won+lost) by count).
 export function winRate(sectorId, year) {
   const r = get(`SELECT
