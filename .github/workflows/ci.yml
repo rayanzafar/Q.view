@@ -1,0 +1,30 @@
+name: CI — سند
+
+on:
+  push:
+    branches: ['**']
+    paths: ['platform/**']
+  pull_request:
+    paths: ['platform/**']
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: platform
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install
+        run: npm ci || npm install
+      - name: Migrate + seed RBAC (schema sanity)
+        run: |
+          node --experimental-sqlite scripts/migrate.js
+          node --experimental-sqlite scripts/seed-rbac.js
+      - name: Security + governance tests
+        run: |
+          node --experimental-sqlite --test tests/security.test.js
+          node --experimental-sqlite --test tests/governance.test.js

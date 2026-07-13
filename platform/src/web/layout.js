@@ -76,6 +76,21 @@ export function layout({ user, active, title, body, extraHead = '' }) {
     <main class="flex-1 overflow-y-auto p-6">${body}</main>
   </div>
 </div>
+<button onclick="Sanad.aiToggle()" title="مساعد سند الذكي" class="fixed bottom-5 left-5 z-40 w-13 h-13 rounded-full text-white shadow-2xl flex items-center justify-center text-xl hover:scale-105 transition"
+  style="width:52px;height:52px;background:linear-gradient(120deg,#2563eb,#9333ea)">✨</button>
+<div id="ai-panel" class="hidden fixed bottom-20 left-5 z-40 w-[380px] max-w-[calc(100vw-2rem)] bg-white rounded-2xl shadow-2xl border border-line flex flex-col overflow-hidden" style="height:min(560px,calc(100vh - 120px))">
+  <div class="px-4 py-3 text-white flex items-center justify-between" style="background:linear-gradient(120deg,#11295c,#3a1660)">
+    <div><div class="font-bold text-sm">✨ مساعد سند الذكي</div><div id="ai-mode" class="text-[10px] text-white/60">…</div></div>
+    <button onclick="Sanad.aiToggle()" class="text-white/70 hover:text-white">✕</button>
+  </div>
+  <div id="ai-box" class="flex-1 overflow-y-auto p-3 space-y-2 bg-slate-50 text-[13px]">
+    <div class="text-center text-muted text-xs leading-relaxed py-4">اسألني: «لخّص مشروع…» · «تقرير أسبوعي» · «المخاطر» · «جودة البيانات» · «أولوياتي» · «انقل الفرصة X إلى فائزة»</div>
+  </div>
+  <div class="p-2 border-t border-line flex gap-2">
+    <input id="ai-input" onkeydown="if(event.key==='Enter')Sanad.aiSend()" placeholder="اكتب…" class="flex-1 border border-line rounded-lg px-3 py-2 text-sm">
+    <button onclick="Sanad.aiSend()" class="text-white text-[12px] px-3 rounded-lg" style="background:linear-gradient(120deg,#2563eb,#9333ea)">↑</button>
+  </div>
+</div>
 <script src="/static/app.js"></script>
 </body></html>`;
 }

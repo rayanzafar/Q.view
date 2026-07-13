@@ -64,8 +64,67 @@ window.Sanad = {
   },
 };
 
+// ── AI assistant ──
+Object.assign(window.Sanad, {
+  _aiPending: null,
+  aiToggle() {
+    const p = document.getElementById('ai-panel'); p.classList.toggle('hidden');
+    if (!p.classList.contains('hidden')) {
+      fetch('/api/ai/status', { credentials: 'include' }).then((r) => r.json()).then((s) => {
+        document.getElementById('ai-mode').textContent = s.mode === 'local' ? 'محلي (بلا مفتاح)' : 'مزوّد: ' + s.mode;
+      }).catch(() => {});
+      document.getElementById('ai-input').focus();
+    }
+  },
+  _aiPush(role, html) {
+    const box = document.getElementById('ai-box');
+    const d = document.createElement('div');
+    d.className = role === 'user' ? 'text-left' : '';
+    d.innerHTML = `<div class="inline-block max-w-[85%] rounded-xl px-3 py-2 ${role === 'user' ? 'bg-blue-600 text-white' : 'bg-white border border-line'}" style="white-space:pre-wrap">${html}</div>`;
+    box.appendChild(d); box.scrollTop = box.scrollHeight;
+  },
+  async aiSend() {
+    const inp = document.getElementById('ai-input'); const msg = inp.value.trim(); if (!msg) return;
+    inp.value = ''; this._aiPush('user', msg);
+    try {
+      const r = await api('/ai/chat', 'POST', { message: msg });
+      this._aiPush('ai', r.reply || '…');
+      if (r.applyToken) {
+        this._aiPending = r.applyToken;
+        const box = document.getElementById('ai-box');
+        const d = document.createElement('div');
+        d.innerHTML = `<button onclick="Sanad.aiApply()" class="text-[12px] text-white px-3 py-1.5 rounded-lg" style="background:#059669">تأكيد التطبيق</button>`;
+        box.appendChild(d); box.scrollTop = box.scrollHeight;
+      }
+    } catch (e) { this._aiPush('ai', '⚠ ' + e.message); }
+  },
+  async aiApply() {
+    if (!this._aiPending) return;
+    try { const r = await api('/ai/apply', 'POST', { applyToken: this._aiPending }); this._aiPush('ai', r.reply); this._aiPending = null; }
+    catch (e) { this._aiPush('ai', '⚠ ' + e.message); }
+  },
+});
+
 // notification badge
 fetch('/api/notifications?unread=1', { credentials: 'include' }).then((r) => r.ok ? r.json() : []).then((n) => {
   const b = document.getElementById('notif-badge');
   if (b && n.length) { b.textContent = n.length + ' إشعار'; b.classList.remove('hidden'); }
 }).catch(() => {});
+
+// Inject CSRF token (from readable cookie) into state-changing web forms.
+// Defensive + deferred so it can never break the app's core methods above.
+function injectCsrf() {
+  try {
+    var m = document.cookie.match(/(?:^|; )sanad_csrf=([^;]+)/);
+    if (!m) return;
+    var forms = document.querySelectorAll('form[method="post"], form[method="POST"]');
+    for (var k = 0; k < forms.length; k++) {
+      if (forms[k].querySelector('input[name="_csrf"]')) continue;
+      var i = document.createElement('input');
+      i.type = 'hidden'; i.name = '_csrf'; i.value = decodeURIComponent(m[1]);
+      forms[k].appendChild(i);
+    }
+  } catch (e) { /* never fatal */ }
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', injectCsrf);
+else injectCsrf();
