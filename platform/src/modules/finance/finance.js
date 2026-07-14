@@ -120,6 +120,22 @@ export function financeByContract(user) {
   return rows;
 }
 
+// ── Per client ── contract value, invoiced, collected, outstanding (AR) grouped by client.
+export function financeByClient(user, year = FY()) {
+  const f = scopeFilter(user, 'contract', 'read', { sectorCol: 'c.sector_id', ownerCol: 'p.owner_user_id' });
+  const rows = all(`SELECT cl.id, cl.name_ar,
+      COUNT(DISTINCT c.id) contracts, COALESCE(SUM(c.value_halalas),0) value_halalas
+     FROM contract c JOIN client cl ON cl.id=c.client_id LEFT JOIN project p ON p.id=c.project_id
+     WHERE ${f.clause} AND c.deleted_at IS NULL GROUP BY cl.id ORDER BY value_halalas DESC LIMIT 40`, f.params);
+  return rows.map((r) => {
+    const invoiced = get(`SELECT COALESCE(SUM(i.amount_halalas),0) v FROM invoice i JOIN contract c2 ON c2.id=i.contract_id
+       WHERE c2.client_id=? AND i.status!='DRAFT' AND i.deleted_at IS NULL`, [r.id]).v;
+    const collected = get(`SELECT COALESCE(SUM(col.amount_halalas),0) v FROM collection col JOIN invoice i ON i.id=col.invoice_id
+       JOIN contract c2 ON c2.id=i.contract_id WHERE c2.client_id=?`, [r.id]).v;
+    return { ...r, invoiced_halalas: invoiced, collected_halalas: collected, outstanding_halalas: Math.max(0, invoiced - collected) };
+  }).filter((r) => r.value_halalas > 0 || r.invoiced_halalas > 0);
+}
+
 export function contractDetail(user, contractId) {
   const c = get('SELECT * FROM contract WHERE id = ? AND deleted_at IS NULL', [contractId]);
   if (!c) throw notFound('العقد غير موجود');

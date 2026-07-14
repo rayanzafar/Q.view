@@ -19,7 +19,7 @@ import { myTasks } from '../modules/pmo/tasks.js';
 import { myEntries } from '../modules/timesheets/timesheets.js';
 import { myApprovalQueue } from '../modules/workflow/engine.js';
 import { orgTree } from '../modules/org/org.js';
-import { financeSummary, financeByPM, financeByContract, contractDetail } from '../modules/finance/finance.js';
+import { financeSummary, financeByPM, financeByContract, financeByClient, contractDetail } from '../modules/finance/finance.js';
 import { canSeeSensitive, redact, can } from '../core/rbac/index.js';
 
 const pct = (n) => `${Math.round(n || 0)}%`;
@@ -224,7 +224,7 @@ export function sectorPage(user, opts = {}) {
 
 // small stat chip used on PMO toolbars
 function statMini(label, value, sub, tone) {
-  const c = tone === 'good' ? 'var(--green)' : tone === 'brand' ? 'var(--brand2)' : 'var(--ink2)';
+  const c = tone === 'good' ? 'var(--green)' : tone === 'bad' ? 'var(--red)' : tone === 'warn' ? 'var(--amber)' : tone === 'brand' ? 'var(--brand2)' : 'var(--ink2)';
   return `<div class="card" style="padding:.6rem .9rem;min-width:130px">
     <div style="font-size:11px;color:var(--muted);font-weight:700">${label}</div>
     <div class="tnum" style="font-size:1.15rem;font-weight:800;color:${c};letter-spacing:-.02em">${value}</div>
@@ -472,6 +472,19 @@ export function projectsPage(user) {
 export function tasksPage(user) {
   const rows = myTasks(user);
   const stColor = { TODO: 'slate', IN_PROGRESS: 'blue', BLOCKED: 'red', IN_REVIEW: 'amber', DONE: 'green' };
+  const today = new Date().toISOString().slice(0, 10);
+  const soon = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+  const openT = rows.filter((t) => t.status !== 'DONE');
+  const overdue = openT.filter((t) => t.due_date && t.due_date < today).length;
+  const dueSoon = openT.filter((t) => t.due_date && t.due_date >= today && t.due_date <= soon).length;
+  const blocked = rows.filter((t) => t.status === 'BLOCKED').length;
+  const inprog = rows.filter((t) => t.status === 'IN_PROGRESS').length;
+  const strip = `<div style="display:flex;gap:.7rem;flex-wrap:wrap;margin-bottom:1rem">
+    ${statMini('مفتوحة', openT.length, 'قيد العمل')}
+    ${statMini('قيد التنفيذ', inprog, 'جارية', 'brand')}
+    ${statMini('متأخرة', overdue, 'تجاوزت الاستحقاق', overdue ? 'bad' : '')}
+    ${statMini('تستحق هذا الأسبوع', dueSoon, 'خلال 7 أيام')}
+    ${statMini('معلّقة', blocked, 'محجوبة', blocked ? 'bad' : '')}</div>`;
   const list = rows.map((t) => `<tr class="border-b border-line hover:bg-slate-50" data-task="${t.id}">
     <td class="py-2.5 px-3 text-[13px]">${esc(t.title)}</td>
     <td class="px-3">${pill(tr(t.priority), t.priority === 'P0' ? 'red' : t.priority === 'P1' ? 'amber' : 'slate')}</td>
@@ -481,6 +494,7 @@ export function tasksPage(user) {
       ${['TODO', 'IN_PROGRESS', 'BLOCKED', 'IN_REVIEW', 'DONE'].map((s) => `<option value="${s}" ${s === t.status ? 'selected' : ''}>${tr(s)}</option>`).join('')}
     </select></td></tr>`).join('');
   const body = `
+    ${strip}
     ${card(`<div class="p-4 border-b border-line">
       <div class="font-bold text-sm mb-2">إضافة سريعة</div>
       <div class="flex gap-2">
@@ -542,7 +556,14 @@ export function approvalsPage(user) {
     <td class="px-3">
       <button onclick="Sanad.approve('${a.id}','approve')" class="text-[12px] text-green-700 font-bold">اعتماد</button>
       <button onclick="Sanad.approve('${a.id}','reject')" class="text-[12px] text-red-600 font-bold mr-2">رفض</button></td></tr>`).join('');
-  const body = card(`<div class="p-4 border-b border-line font-bold text-sm">طلبات بانتظار اعتمادك (${q.length})</div>
+  const totalAmt = q.reduce((a, x) => a + (x.amount_halalas || 0), 0);
+  const byRes = {}; for (const x of q) byRes[x.resource] = (byRes[x.resource] || 0) + 1;
+  const resBreak = Object.entries(byRes).map(([r, n]) => `${tr(r) || r}: ${n}`).join(' · ') || '—';
+  const strip = `<div style="display:flex;gap:.7rem;flex-wrap:wrap;margin-bottom:1rem">
+    ${statMini('بانتظار اعتمادك', q.length, 'طلب')}
+    ${statMini('إجمالي المبالغ', fmtSar(totalAmt), 'قيمة قيد الاعتماد', 'brand')}
+    ${statMini('حسب النوع', Object.keys(byRes).length, resBreak)}</div>`;
+  const body = strip + card(`<div class="p-4 border-b border-line font-bold text-sm">طلبات بانتظار اعتمادك (${q.length})</div>
     <table class="w-full"><thead><tr class="text-[11px] text-muted text-right">
       <th class="py-2 px-3 font-medium">المسار</th><th class="px-3 font-medium">المورد</th><th class="px-3 font-medium">المبلغ</th>
       <th class="px-3 font-medium">الحالة</th><th class="px-3 font-medium">إجراء</th></tr></thead>
@@ -555,19 +576,38 @@ export function teamPage(user) {
   const rows = all("SELECT * FROM employee WHERE deleted_at IS NULL " +
     (user.scope === 'company' ? '' : 'AND sector_id = ?') + ' ORDER BY name_ar LIMIT 200',
     user.scope === 'company' ? [] : [user.sector_id]);
+  const sectorNames = Object.fromEntries(all('SELECT id,name_ar FROM sector').map((s) => [s.id, s.name_ar]));
   const totalSalary = canSalary ? rows.reduce((a, r) => a + (r.salary_halalas || 0), 0) : null;
+  const activeN = rows.filter((e) => e.active !== 0).length;
+  const byType = {}; for (const e of rows) { const t = e.employment_type || 'غير محدد'; byType[t] = (byType[t] || 0) + 1; }
+  const bySec = {}; for (const e of rows) { const s = e.sector_id || '—'; bySec[s] = (bySec[s] || 0) + 1; }
+  const typeItems = Object.entries(byType).sort((a, b) => b[1] - a[1]).map(([t, n], i) => ({ label: esc(t), value: n, color: ['#2563eb', '#7c3aed', '#0891b2', '#059669', '#d97706'][i % 5] }));
+  const secItems = Object.entries(bySec).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([s, n], i) => ({ label: esc(sectorNames[s] || s), value: n, color: ['#7c3aed', '#2563eb', '#0891b2', '#059669', '#d97706'][i % 5] }));
+  const avgSalary = canSalary && rows.length ? Math.round(totalSalary / rows.length) : null;
   const list = rows.map((e) => `<tr class="border-b border-line">
-    <td class="py-2 px-3 text-[13px]">${esc(e.name_ar)}</td>
-    <td class="px-3 text-[12px] text-muted">${e.job_title || ''}</td>
-    <td class="px-3 text-[12px]">${e.employment_type || ''}</td>
+    <td class="py-2 px-3 text-[13px]">${esc(e.name_ar)}${e.active === 0 ? ' ' + pill('غير نشط', 'slate') : ''}</td>
+    <td class="px-3 text-[12px] text-muted">${esc(e.job_title || '')}</td>
+    <td class="px-3 text-[12px]">${esc(sectorNames[e.sector_id] || e.sector_id || '—')}</td>
+    <td class="px-3 text-[12px]">${esc(e.employment_type || '')}</td>
     <td class="px-3 text-[13px] tabular-nums">${canSalary ? fmtSar(e.salary_halalas) : '<span class="text-slate-300">••• محجوب</span>'}</td></tr>`).join('');
+  const kpi = (l, v, sub, tone) => card(`<div style="padding:.75rem .95rem"><div style="font-size:11px;color:var(--muted)">${l}</div><div class="metric tnum" style="font-size:1.3rem;${tone ? 'color:' + tone : ''}">${v}</div>${sub ? `<div style="font-size:10.5px;color:var(--faint)">${sub}</div>` : ''}</div>`);
   const body = `
-    ${canSalary ? card(`<div class="p-4 mb-4"><div class="text-[11px] text-muted">إجمالي فاتورة الرواتب الشهرية (${rows.length} عضو)</div>
-      <div class="text-2xl font-extrabold">${fmtSar(totalSalary)}</div></div>`) : `<div class="mb-4">${pill('الرواتب محجوبة عن دورك — تظهر لمدير النظام والموارد البشرية فقط', 'slate')}</div>`}
-    ${card(`<table class="w-full"><thead><tr class="text-[11px] text-muted text-right">
-      <th class="py-2 px-3 font-medium">الاسم</th><th class="px-3 font-medium">المسمى</th><th class="px-3 font-medium">النوع</th>
-      <th class="px-3 font-medium">الراتب</th></tr></thead><tbody>${list}</tbody></table>`)}`;
-  return layout({ user, active: 'team', title: 'الفريق', body });
+    <div style="display:grid;grid-template-columns:repeat(${canSalary ? 4 : 3}, 1fr);gap:.7rem;margin-bottom:.9rem">
+      ${kpi('إجمالي الأعضاء', rows.length, `${activeN} نشط`)}
+      ${kpi('عدد الأنواع', Object.keys(byType).length, 'أنواع التوظيف')}
+      ${kpi('القطاعات', Object.keys(bySec).length, 'موزّعون على')}
+      ${canSalary ? kpi('فاتورة الرواتب الشهرية', fmtSar(totalSalary), `متوسط ${fmtSar(avgSalary)}`, 'var(--brand2)') : ''}
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:.9rem;margin-bottom:.9rem">
+      ${card(`<div style="padding:.8rem 1rem;border-bottom:1px solid var(--line);font-weight:800;font-size:13px">التوزيع حسب نوع التوظيف</div><div style="padding:.7rem 1rem">${hbars(typeItems, { fmt: (v) => v + ' عضو' })}</div>`)}
+      ${card(`<div style="padding:.8rem 1rem;border-bottom:1px solid var(--line);font-weight:800;font-size:13px">التوزيع حسب القطاع</div><div style="padding:.7rem 1rem">${secItems.length ? hbars(secItems, { fmt: (v) => v + ' عضو' }) : '<div style="color:var(--faint);font-size:12px">قطاع واحد</div>'}</div>`)}
+    </div>
+    ${canSalary ? '' : `<div style="margin-bottom:.6rem">${pill('الرواتب محجوبة عن دورك — تظهر لمدير النظام والموارد البشرية فقط', 'slate')}</div>`}
+    ${card(`<div style="padding:.8rem 1rem;border-bottom:1px solid var(--line);font-weight:800;font-size:13px">أعضاء الفريق (${rows.length})</div>
+      <div style="max-height:520px;overflow-y:auto"><table class="w-full"><thead><tr class="text-[11px] text-muted text-right" style="position:sticky;top:0;background:var(--surface)">
+      <th class="py-2 px-3 font-medium">الاسم</th><th class="px-3 font-medium">المسمى</th><th class="px-3 font-medium">القطاع</th><th class="px-3 font-medium">النوع</th>
+      <th class="px-3 font-medium">الراتب</th></tr></thead><tbody>${list}</tbody></table></div>`)}`;
+  return layout({ user, active: 'team', title: 'الفريق', subtitle: 'الموارد البشرية · التوزيع والرواتب', body });
 }
 
 export function usersPage(user) {
@@ -579,25 +619,52 @@ export function usersPage(user) {
     <td class="px-3 text-[12px]">${u.sector_id || '—'}</td>
     <td class="px-3">${u.active ? pill('نشط', 'green') : pill('معطّل', 'red')}</td>
     <td class="px-3 text-[11px] text-muted">${u.last_login_at ? u.last_login_at.slice(0, 10) : 'لم يدخل'}</td></tr>`).join('');
-  const body = `${card(`<div class="p-4 border-b border-line font-bold text-sm">المستخدمون والصلاحيات (${rows.length})</div>
-    <table class="w-full"><thead><tr class="text-[11px] text-muted text-right">
-      <th class="py-2 px-3 font-medium">المستخدم</th><th class="px-3 font-medium">الدور</th><th class="px-3 font-medium">القطاع</th>
-      <th class="px-3 font-medium">الحالة</th><th class="px-3 font-medium">آخر دخول</th></tr></thead><tbody>${list}</tbody></table>`)}
+  const activeN = rows.filter((u) => u.active).length;
+  const neverIn = rows.filter((u) => !u.last_login_at).length;
+  const byRole = {}; for (const u of rows) { const r = u.role_name || u.role_id || '—'; byRole[r] = (byRole[r] || 0) + 1; }
+  const roleItems = Object.entries(byRole).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([r, n], i) => ({ label: esc(r), value: n, color: ['#2563eb', '#7c3aed', '#0891b2', '#059669', '#d97706', '#db2777'][i % 6] }));
+  const strip = `<div style="display:flex;gap:.7rem;flex-wrap:wrap;margin-bottom:.9rem">
+    ${statMini('إجمالي المستخدمين', rows.length, `${Object.keys(byRole).length} دور`)}
+    ${statMini('نشط', activeN, 'حسابات مفعّلة', 'good')}
+    ${statMini('معطّل', rows.length - activeN, 'حسابات موقوفة', rows.length - activeN ? 'bad' : '')}
+    ${statMini('لم يسجّل دخولًا', neverIn, 'حسابات خاملة', neverIn ? 'warn' : '')}</div>`;
+  const body = `${strip}
+    <div style="display:grid;grid-template-columns:2fr 1fr;gap:.9rem">
+      ${card(`<div class="p-4 border-b border-line font-bold text-sm">المستخدمون والصلاحيات (${rows.length})</div>
+      <div style="max-height:520px;overflow-y:auto"><table class="w-full"><thead><tr class="text-[11px] text-muted text-right" style="position:sticky;top:0;background:var(--surface)">
+        <th class="py-2 px-3 font-medium">المستخدم</th><th class="px-3 font-medium">الدور</th><th class="px-3 font-medium">القطاع</th>
+        <th class="px-3 font-medium">الحالة</th><th class="px-3 font-medium">آخر دخول</th></tr></thead><tbody>${list}</tbody></table></div>`)}
+      ${card(`<div class="p-4 border-b border-line font-bold text-sm">التوزيع حسب الدور</div><div style="padding:.7rem 1rem">${hbars(roleItems, { fmt: (v) => v + '' })}</div>`)}
+    </div>
     <div class="mt-3 text-[11px] text-muted">التفويض يُنفَّذ على الخادم. تعطيل حسابك أو خفض دورك بنفسك ممنوع خادميًا. الرواتب وعناوين IP محجوبة عن غير المصرّح لهم.</div>`;
   return layout({ user, active: 'users', title: 'المستخدمون والصلاحيات', body });
 }
 
 export function auditPage(user) {
   const rows = all('SELECT * FROM audit_log ORDER BY at DESC LIMIT 200');
+  const today = new Date().toISOString().slice(0, 10);
+  const todayN = rows.filter((a) => (a.at || '').slice(0, 10) === today).length;
+  const distinctUsers = new Set(rows.map((a) => a.username || a.user_id).filter(Boolean)).size;
+  const byAction = {}; for (const a of rows) { const k = a.action || '—'; byAction[k] = (byAction[k] || 0) + 1; }
+  const actItems = Object.entries(byAction).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, n], i) => ({ label: esc(tr(k) || k), value: n, color: ['#2563eb', '#7c3aed', '#059669', '#d97706', '#dc2626', '#0891b2'][i % 6] }));
+  const strip = `<div style="display:flex;gap:.7rem;flex-wrap:wrap;margin-bottom:.9rem">
+    ${statMini('أحداث (آخر 200)', rows.length, 'مسجّلة')}
+    ${statMini('اليوم', todayN, 'حدث اليوم', 'brand')}
+    ${statMini('مستخدمون نشطون', distinctUsers, 'في السجل')}
+    ${statMini('أنواع الإجراءات', Object.keys(byAction).length, 'مختلفة')}</div>`;
   const list = rows.map((a) => `<tr class="border-b border-line">
     <td class="py-1.5 px-3 text-[11px] text-muted tabular-nums">${a.at.slice(0, 19).replace('T', ' ')}</td>
-    <td class="px-3 text-[12px]">${a.username || a.user_id || '—'}</td>
-    <td class="px-3">${pill(tr(a.action), 'slate')}</td>
-    <td class="px-3 text-[12px]">${a.resource || ''} ${a.resource_id ? '· ' + a.resource_id : ''}</td></tr>`).join('');
-  const body = card(`<div class="p-4 border-b border-line font-bold text-sm">سجل التدقيق (آخر 200)</div>
-    <table class="w-full"><thead><tr class="text-[11px] text-muted text-right">
-      <th class="py-2 px-3 font-medium">الوقت</th><th class="px-3 font-medium">المستخدم</th><th class="px-3 font-medium">الإجراء</th>
-      <th class="px-3 font-medium">المورد</th></tr></thead><tbody>${list}</tbody></table>`);
+    <td class="px-3 text-[12px]">${esc(a.username || a.user_id || '—')}</td>
+    <td class="px-3">${pill(tr(a.action), a.action === 'delete' ? 'red' : a.action === 'create' ? 'green' : 'slate')}</td>
+    <td class="px-3 text-[12px]">${esc(a.resource || '')} ${a.resource_id ? '· ' + esc(a.resource_id) : ''}</td></tr>`).join('');
+  const body = `${strip}
+    <div style="display:grid;grid-template-columns:2fr 1fr;gap:.9rem">
+      ${card(`<div class="p-4 border-b border-line font-bold text-sm">سجل التدقيق (آخر 200)</div>
+      <div style="max-height:540px;overflow-y:auto"><table class="w-full"><thead><tr class="text-[11px] text-muted text-right" style="position:sticky;top:0;background:var(--surface)">
+        <th class="py-2 px-3 font-medium">الوقت</th><th class="px-3 font-medium">المستخدم</th><th class="px-3 font-medium">الإجراء</th>
+        <th class="px-3 font-medium">المورد</th></tr></thead><tbody>${list}</tbody></table></div>`)}
+      ${card(`<div class="p-4 border-b border-line font-bold text-sm">التوزيع حسب نوع الإجراء</div><div style="padding:.7rem 1rem">${hbars(actItems, { fmt: (v) => v + '' })}</div>`)}
+    </div>`;
   return layout({ user, active: 'audit', title: 'سجل التدقيق', body });
 }
 
@@ -687,6 +754,7 @@ export function financePage(user, opts = {}) {
   const year = Number(opts.year) || config.fiscalYear;
   const s = financeSummary(user, year);
   const byPM = financeByPM(user, year);
+  const byClient = financeByClient(user, year);
   const byContract = financeByContract(user);
   const tile = (l, v, sub, color) => card(`<div style="padding:.9rem 1rem"><div style="font-size:11px;color:var(--muted)">${l}</div>
     <div class="metric" style="font-size:1.35rem;${color ? 'color:' + color : ''}">${v}</div>${sub ? `<div style="font-size:11px;color:var(--muted)">${sub}</div>` : ''}</div>`);
@@ -703,12 +771,20 @@ export function financePage(user, opts = {}) {
     <span style="width:52px;color:var(--muted)">${k} يوم</span>
     <div class="bar" style="flex:1"><span style="width:${Math.round(v / agingMax * 100)}%;background:${k === '90+' ? 'var(--red)' : k === '61-90' ? 'var(--amber)' : 'var(--brand)'}"></span></div>
     <span class="tnum" style="width:90px;text-align:left">${fmtSar(v)}</span></div>`).join('');
-  const pmRows = byPM.filter((p) => p.invoiced_halalas > 0 || p.contract_halalas > 0).map((p) => `<tr style="border-bottom:1px solid var(--line)">
-    <td style="padding:.5rem .75rem;font-size:13px">${esc(p.pm)}</td>
-    <td style="padding:.5rem .75rem;font-size:13px;text-align:center" class="tnum">${fmtSar(p.contract_halalas)}</td>
-    <td style="padding:.5rem .75rem;font-size:13px;text-align:center" class="tnum">${fmtSar(p.invoiced_halalas)}</td>
-    <td style="padding:.5rem .75rem;font-size:13px;text-align:center" class="tnum">${fmtSar(p.collected_halalas)}</td>
-    <td style="padding:.5rem .75rem;font-size:13px;text-align:center" class="tnum" style="color:var(--amber)">${fmtSar(p.outstanding_halalas)}</td></tr>`).join('');
+  // Client concentration by contract value — the reliable, richly-populated finance signal (invoices in this
+  // dataset are largely not contract-linked, so aggregate AR lives in the KPIs/bridge, not per-client here).
+  const maxClientVal = Math.max(1, ...byClient.map((c) => c.value_halalas));
+  const clientRows = byClient.slice(0, 13).map((c, i) => `<tr style="border-bottom:1px solid var(--line)">
+    <td style="padding:.42rem .7rem;font-size:12.5px;color:var(--faint);width:20px" class="tnum">${i + 1}</td>
+    <td style="padding:.42rem .7rem;font-size:12.5px">${esc(c.name_ar)}</td>
+    <td style="padding:.42rem .7rem;text-align:center;font-size:11.5px;color:var(--muted)" class="tnum">${c.contracts}</td>
+    <td style="padding:.42rem .7rem;width:150px"><div style="display:flex;align-items:center;gap:.4rem"><div class="bar" style="flex:1"><span style="width:${Math.round(c.value_halalas / maxClientVal * 100)}%;background:var(--brand)"></span></div><span style="font-size:11.5px;white-space:nowrap" class="tnum">${sarShort(c.value_halalas)}</span></div></td></tr>`).join('');
+  // Portfolio-summary stats fill the right column with meaningful computed metrics (no sparse whitespace).
+  const liveContracts = byContract.filter((c) => !c.unassigned);
+  const totalCV = liveContracts.reduce((a, c) => a + (c.value_halalas || 0), 0);
+  const totalBacklog = liveContracts.reduce((a, c) => a + (c.backlog_halalas || 0), 0);
+  const avgCV = liveContracts.length ? Math.round(totalCV / liveContracts.length) : 0;
+  const sumStat = (l, v, tone) => `<div style="display:flex;justify-content:space-between;align-items:baseline;padding:.5rem 0;border-bottom:1px dashed var(--line)"><span style="font-size:12px;color:var(--muted)">${l}</span><span class="tnum" style="font-weight:800;font-size:14px;${tone ? 'color:' + tone : ''}">${v}</span></div>`;
   // Keep the top contracts by value AND always retain the 'unassigned' reconciliation bucket (it is
   // appended last by financeByContract, so a plain slice would drop it and understate the total).
   const cTop = byContract.filter((c) => !c.unassigned).slice(0, 30);
@@ -731,14 +807,23 @@ export function financePage(user, opts = {}) {
         <div style="display:flex;align-items:stretch">${bridgeHtml}</div></div>`)}
       ${card(`<div style="padding:1rem"><div style="font-weight:800;font-size:14px;margin-bottom:.5rem">أعمار الذمم المدينة</div>${agingHtml}</div>`)}
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1.2fr;gap:1rem">
-      ${card(`<div style="padding:1rem;border-bottom:1px solid var(--line);font-weight:800;font-size:13px">المالية حسب مدير المشروع</div>
-        <table style="width:100%;border-collapse:collapse"><thead><tr style="font-size:11px;color:var(--muted);text-align:right"><th style="padding:.4rem .75rem">مدير المشروع</th><th style="padding:.4rem .75rem;text-align:center">العقود</th><th style="padding:.4rem .75rem;text-align:center">مُفوتر</th><th style="padding:.4rem .75rem;text-align:center">محصَّل</th><th style="padding:.4rem .75rem;text-align:center">متبقٍّ</th></tr></thead>
-        <tbody>${pmRows || '<tr><td style="padding:1rem;color:var(--muted);font-size:13px" colspan="5">لا بيانات</td></tr>'}</tbody></table>`)}
-      ${card(`<div style="padding:1rem;border-bottom:1px solid var(--line);font-weight:800;font-size:13px">العقود (اضغط للتفصيل والمستخلصات)</div>
-        <table style="width:100%;border-collapse:collapse"><thead><tr style="font-size:11px;color:var(--muted);text-align:right"><th style="padding:.4rem .75rem">العقد/المشروع</th><th style="padding:.4rem .75rem;text-align:center">القيمة</th><th style="padding:.4rem .75rem;text-align:center">نسبة الفوترة</th><th style="padding:.4rem .75rem;text-align:center">Backlog</th></tr></thead>
-        <tbody>${cRows || '<tr><td style="padding:1rem;color:var(--muted);font-size:13px" colspan="4">لا عقود</td></tr>'}</tbody></table>`)}
-    </div>`;
+    <div style="display:grid;grid-template-columns:1.5fr 1fr;gap:1rem;margin-bottom:1.25rem">
+      ${card(`<div style="padding:.85rem 1rem;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center"><div style="font-weight:800;font-size:13px">تركّز العملاء حسب قيمة العقود</div><span style="font-size:10.5px;color:var(--muted)">${byClient.length} عميل</span></div>
+        <table style="width:100%;border-collapse:collapse"><thead><tr style="font-size:10.5px;color:var(--muted);text-align:right"><th style="padding:.4rem .7rem"></th><th style="padding:.4rem .7rem">العميل</th><th style="padding:.4rem .7rem;text-align:center">عقود</th><th style="padding:.4rem .7rem">قيمة العقود</th></tr></thead>
+        <tbody>${clientRows || '<tr><td style="padding:1rem;color:var(--muted);font-size:12.5px" colspan="4">لا عملاء بعقود</td></tr>'}</tbody></table>`)}
+      ${card(`<div style="padding:.85rem 1rem;border-bottom:1px solid var(--line);font-weight:800;font-size:13px">ملخص محفظة العقود</div>
+        <div style="padding:.4rem 1rem .7rem">
+          ${sumStat('إجمالي العقود', liveContracts.length + ' عقد')}
+          ${sumStat('إجمالي قيمة العقود', fmtSar(totalCV))}
+          ${sumStat('متوسط قيمة العقد', fmtSar(avgCV))}
+          ${sumStat('Backlog (غير مُفوتر)', fmtSar(totalBacklog), 'var(--brand2)')}
+          ${sumStat('المُحصَّل / المُفوتر', s.collectionRate + '%', s.collectionRate < 40 ? 'var(--red)' : 'var(--green)')}
+          <div style="display:flex;justify-content:space-between;align-items:baseline;padding:.5rem 0"><span style="font-size:12px;color:var(--muted)">مدير المشروع الأنشط</span><span style="font-size:12px;font-weight:700">${esc((byPM.filter((p) => p.invoiced_halalas > 0)[0] || {}).pm || '—')}</span></div>
+        </div>`)}
+    </div>
+    ${card(`<div style="padding:.85rem 1rem;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center"><div style="font-weight:800;font-size:13px">العقود · اضغط أي عقد للتفصيل والمستخلصات</div><span style="font-size:11px;color:var(--muted)">${cTop.length} عقد</span></div>
+      <div style="max-height:460px;overflow-y:auto"><table style="width:100%;border-collapse:collapse"><thead><tr style="font-size:10.5px;color:var(--muted);text-align:right;position:sticky;top:0;background:var(--surface)"><th style="padding:.4rem .75rem">العقد/المشروع</th><th style="padding:.4rem .75rem;text-align:center">القيمة</th><th style="padding:.4rem .75rem;text-align:center">نسبة الفوترة</th><th style="padding:.4rem .75rem;text-align:center">Backlog</th></tr></thead>
+      <tbody>${cRows || '<tr><td style="padding:1rem;color:var(--muted);font-size:12.5px" colspan="4">لا عقود</td></tr>'}</tbody></table></div>`)}`;
   return layout({ user, active: 'finance', title: 'المالية', subtitle: `عقود · فواتير · مستخلصات · تحصيل · السنة ${year}`, body, year });
 }
 
@@ -918,13 +1003,52 @@ export function projectDetailPage(user, projectId) {
 
 export function portfolioPage(user) {
   const rows = listProjects(user);
+  const sectorNames = Object.fromEntries(all('SELECT id,name_ar FROM sector').map((s) => [s.id, s.name_ar]));
+  const val = (p) => p.contract_value_halalas || p.budget_halalas || 0;
+  const isActive = (p) => p.status !== 'COMPLETED' && p.status !== 'CANCELLED';
+  const ragC = { GREEN: 0, AMBER: 0, RED: 0 };
+  for (const p of rows) if (isActive(p)) ragC[p.rag] = (ragC[p.rag] || 0) + 1;
+  const totalVal = rows.reduce((a, p) => a + val(p), 0);
+  const active = rows.filter(isActive);
+  const completed = rows.filter((p) => p.status === 'COMPLETED').length;
+  const avgProg = active.length ? Math.round(active.reduce((a, p) => a + (p.progress_pct || 0), 0) / active.length) : 0;
+  const ragTone = { GREEN: 'green', AMBER: 'amber', RED: 'red' };
+  const ragHexP = { GREEN: '#059669', AMBER: '#d97706', RED: '#dc2626' };
+
   const bySector = {};
   for (const p of rows) (bySector[p.sector_id] ||= []).push(p);
-  const groups = Object.entries(bySector).map(([sid, ps]) => card(`<div class="p-4">
-    <div class="font-bold text-sm mb-2">${sid} · ${ps.length} مشروع</div>
-    ${ps.slice(0, 8).map((p) => `<div class="flex items-center gap-2 py-1 text-[13px]">
-      ${pill(tr(p.rag), p.rag === 'RED' ? 'red' : p.rag === 'AMBER' ? 'amber' : 'green')}
-      <span class="flex-1">${esc(p.name_ar)}</span><span class="text-muted text-[11px]">${pct(p.progress_pct)}</span></div>`).join('')}
-  </div>`)).join('');
-  return layout({ user, active: 'portfolio', title: 'محفظة المشاريع', body: `<div class="grid grid-cols-2 gap-4">${groups}</div>` });
+  // richest sectors first
+  const sectorEntries = Object.entries(bySector).sort((a, b) => b[1].reduce((x, p) => x + val(p), 0) - a[1].reduce((x, p) => x + val(p), 0));
+
+  const groups = sectorEntries.map(([sid, ps]) => {
+    const sVal = ps.reduce((a, p) => a + val(p), 0);
+    const sActive = ps.filter(isActive);
+    const sAvg = sActive.length ? Math.round(sActive.reduce((a, p) => a + (p.progress_pct || 0), 0) / sActive.length) : 0;
+    const sRag = { GREEN: 0, AMBER: 0, RED: 0 }; for (const p of sActive) sRag[p.rag] = (sRag[p.rag] || 0) + 1;
+    const ragDots = ['GREEN', 'AMBER', 'RED'].filter((r) => sRag[r]).map((r) => `<span style="display:inline-flex;align-items:center;gap:.2rem;font-size:11px"><span style="width:8px;height:8px;border-radius:99px;background:${ragHexP[r]}"></span><span class="tnum">${sRag[r]}</span></span>`).join('<span style="color:var(--faint);margin:0 .15rem"></span>');
+    const top = ps.slice().sort((a, b) => val(b) - val(a)).slice(0, 7);
+    return card(`<div style="padding:.85rem 1rem;border-bottom:1px solid var(--line)">
+        <div style="display:flex;justify-content:space-between;align-items:center"><div style="font-weight:800;font-size:13.5px">${esc(sectorNames[sid] || sid || '—')}</div><span class="tnum" style="font-size:12.5px;font-weight:800">${fmtSar(sVal)}</span></div>
+        <div style="display:flex;align-items:center;gap:.8rem;margin-top:.35rem;font-size:11px;color:var(--muted)"><span>${ps.length} مشروع</span><span style="display:flex;gap:.5rem">${ragDots || '—'}</span><span style="margin-inline-start:auto">إنجاز ${sAvg}%</span></div>
+        <div class="bar" style="margin-top:.3rem"><span style="width:${sAvg}%;background:var(--brand-grad)"></span></div></div>
+      <div style="padding:.4rem .5rem">${top.map((p) => `<div style="display:flex;align-items:center;gap:.5rem;padding:.3rem .5rem;font-size:12px">
+        <span style="width:8px;height:8px;border-radius:99px;flex:none;background:${ragHexP[p.rag] || '#94a3b8'}"></span>
+        <a href="/app/project/${p.id}" style="flex:1;color:var(--ink2);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.name_ar)}</a>
+        <span class="tnum" style="color:var(--faint);font-size:10.5px;flex:none">${sarShort(val(p))}</span>
+        <span class="tnum" style="color:var(--muted);font-size:11px;width:34px;text-align:left;flex:none">${pct(p.progress_pct)}</span></div>`).join('')}
+        ${ps.length > 7 ? `<div style="padding:.3rem .5rem;font-size:11px;color:var(--faint)">+${ps.length - 7} مشروع آخر</div>` : ''}</div>`);
+  }).join('');
+
+  const kpi = (l, v, sub, tone) => card(`<div style="padding:.75rem .95rem"><div style="font-size:11px;color:var(--muted)">${l}</div><div class="metric tnum" style="font-size:1.35rem;${tone ? 'color:' + tone : ''}">${v}</div>${sub ? `<div style="font-size:10.5px;color:var(--faint)">${sub}</div>` : ''}</div>`);
+  const body = `
+    <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:.7rem;margin-bottom:1rem">
+      ${kpi('إجمالي المشاريع', rows.length, `${active.length} قائم · ${completed} مكتمل`)}
+      ${kpi('قيمة المحفظة', fmtSar(totalVal), 'قيمة العقود')}
+      ${kpi('سليمة (أخضر)', ragC.GREEN, 'ضمن المسار', 'var(--green)')}
+      ${kpi('تحذير (أصفر)', ragC.AMBER, 'تحتاج متابعة', 'var(--amber)')}
+      ${kpi('متعثرة (أحمر)', ragC.RED, 'تدخّل عاجل', ragC.RED ? 'var(--red)' : '')}
+      ${kpi('متوسط الإنجاز', avgProg + '%', 'للمشاريع القائمة')}
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:.9rem;align-items:start">${groups || '<div style="color:var(--muted);font-size:13px">لا مشاريع ضمن نطاقك</div>'}</div>`;
+  return layout({ user, active: 'portfolio', title: 'محفظة المشاريع', subtitle: 'نظرة تنفيذية على صحة المحفظة', body });
 }
