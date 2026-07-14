@@ -46,6 +46,12 @@ export function updateProject(ctx, pid, data) {
   const row = get('SELECT * FROM project WHERE id = ? AND deleted_at IS NULL', [pid]);
   if (!row) throw notFound('المشروع غير موجود');
   if (!can(user, 'update', 'project', row)) throw forbidden();
+  // Validate controlled enums so the Kanban PATCH (or any client) can't store arbitrary values.
+  const STATUSES = ['NOT_STARTED', 'PLANNED', 'IN_PROGRESS', 'ON_HOLD', 'COMPLETED', 'CANCELLED'];
+  const RAGS = ['GREEN', 'AMBER', 'RED'];
+  if ('status' in data && !STATUSES.includes(data.status)) throw badRequest('حالة المشروع غير صحيحة');
+  if ('rag' in data && !RAGS.includes(data.rag)) throw badRequest('قيمة RAG غير صحيحة');
+  if ('progress_pct' in data) { const n = Number(data.progress_pct); if (!Number.isFinite(n) || n < 0 || n > 100) throw badRequest('نسبة الإنجاز يجب أن تكون بين 0 و100'); }
   const patch = {};
   for (const k of ['name_ar', 'status', 'rag', 'progress_pct', 'start_date', 'end_date', 'pm_name']) {
     if (k in data) patch[k] = data[k];
@@ -80,6 +86,7 @@ export function assignEmployee(ctx, projectId, { employeeId, type }) {
   if (!can(user, 'update', 'project', p)) throw forbidden('تسكين الموظفين يتطلب صلاحية إدارة المشروع');
   const emp = get('SELECT * FROM employee WHERE id=? AND deleted_at IS NULL', [employeeId]);
   if (!emp) throw badRequest('الموظف غير موجود');
+  if (emp.sector_id && p.sector_id && emp.sector_id !== p.sector_id) throw badRequest('لا يمكن تسكين موظف من قطاع آخر على هذا المشروع');
   if (get('SELECT id FROM allocation WHERE project_id=? AND employee_id=? AND deleted_at IS NULL', [projectId, employeeId])) throw badRequest('الموظف مُسكَّن على هذا المشروع مسبقًا');
   const aid = id('alloc'); const now = nowIso();
   insert('allocation', { id: aid, employee_id: employeeId, person_name_ar: emp.name_ar, project_id: projectId,

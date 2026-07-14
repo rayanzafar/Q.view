@@ -9,9 +9,14 @@ import { forbidden, badRequest, notFound } from '../../core/http/errors.js';
 const requireAdminSectors = (user) => { if (!can(user, 'admin', 'sector') && user.role_id !== 'admin' && !can(user, 'create', 'sector')) throw forbidden('إدارة الهيكل تتطلب صلاحية إدارية'); };
 
 export function orgTree(user) {
+  // Gate: the org hierarchy (and its financial targets) must not be readable by any authenticated user.
+  if (user.role_id !== 'admin' && !can(user, 'read', 'employee') && !can(user, 'create', 'sector'))
+    throw forbidden('عرض الهيكل التنظيمي يتطلب صلاحية إدارية');
+  const seeTargets = user.scope === 'company'; // sector financial targets are company-level info
   const sectors = all('SELECT * FROM sector WHERE deleted_at IS NULL ORDER BY sort_order, name_ar');
   return sectors.map((s) => ({
     ...s,
+    ...(seeTargets ? {} : { target_sales_halalas: null, target_revenue_halalas: null, target_margin_pct: null }),
     departments: all('SELECT * FROM department WHERE sector_id = ? AND deleted_at IS NULL ORDER BY name_ar', [s.id]).map((d) => ({
       ...d,
       units: all('SELECT * FROM org_unit WHERE department_id = ? AND deleted_at IS NULL ORDER BY name_ar', [d.id]),

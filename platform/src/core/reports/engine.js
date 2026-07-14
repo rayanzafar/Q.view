@@ -37,8 +37,10 @@ export function buildReport(reportKey, user, opts = {}) {
       projects, risks: sectorRisks(opts.sectorId) };
   }
   if (reportKey === 'monthly_sector_performance') {
-    const sid = opts.sectorId || user.sector_id;
-    const sd = sectorDashboard(user, sid, { year: opts.year });
+    const sid = opts.sectorId || user.sector_id || (get('SELECT id FROM sector WHERE active=1 AND deleted_at IS NULL ORDER BY sort_order LIMIT 1') || {}).id;
+    const sd = sid ? sectorDashboard(user, sid, { year: opts.year }) : null;
+    if (!sd) return { sectorName: '—', period: `${monthName()} ${opts.year || FY()}`, revenue_halalas: 0, target_revenue_halalas: 0,
+      sales_halalas: 0, target_sales_halalas: 0, margin_pct: null, target_margin_pct: 0, revenue_yoy: null, book_to_bill: null, rag: 'GREEN', projects: [] };
     const gm = canSeeMargin(user) ? grossMargin(sid, opts.year || FY()) : { margin_pct: null };
     const b2b = bookToBill(sid, opts.year || FY());
     const trend = multiYearTrend(sid, 2);

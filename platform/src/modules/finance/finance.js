@@ -25,9 +25,13 @@ export function financeSummary(user, year = FY()) {
   // Alias invoice as `i` everywhere so the scope clause is unambiguous even when joined (collection JOIN invoice).
   const f = scopeFilter(user, 'invoice', 'read', { sectorCol: 'i.sector_id', ownerCol: 'i.owner_user_id' });
   const c = f.clause, p = f.params;
+  // Bookings and revenue must respect the caller's scope too, else a sector user sees company-wide
+  // bookings/revenue against their sector-only AR — an inconsistent (and over-broad) bridge.
+  const companyScope = c.trim() === '1=1';
+  const bkP = companyScope ? [year] : [year, user.sector_id];
   const bookings = get(`SELECT COALESCE(SUM(o.value_halalas),0) v FROM opportunity o JOIN stage st ON st.id=o.stage_id
-     WHERE st.is_won=1 AND o.exclude_from_sales=0 AND o.year=? AND o.deleted_at IS NULL`, [year]).v;
-  const revenue = get('SELECT COALESCE(SUM(amount_halalas),0) v FROM revenue_line WHERE year = ?', [year]).v;
+     WHERE st.is_won=1 AND o.exclude_from_sales=0 AND o.year=? AND o.deleted_at IS NULL${companyScope ? '' : ' AND o.sector_id = ?'}`, bkP).v;
+  const revenue = get(`SELECT COALESCE(SUM(amount_halalas),0) v FROM revenue_line WHERE year = ?${companyScope ? '' : ' AND sector_id = ?'}`, bkP).v;
   const invoiced = get(`SELECT COALESCE(SUM(i.amount_halalas),0) v FROM invoice i WHERE ${c} AND i.deleted_at IS NULL AND i.status != 'DRAFT' AND ${YEAR_PRED('i.')}`, [...p, year]).v;
   const collected = get(`SELECT COALESCE(SUM(col.amount_halalas),0) v FROM collection col JOIN invoice i ON i.id=col.invoice_id WHERE ${c} AND ${YEAR_PRED('i.')}`, [...p, year]).v;
   const invoices = all(`SELECT i.* FROM invoice i WHERE ${c} AND i.deleted_at IS NULL AND i.status IN ('ISSUED','PARTIALLY_PAID','OVERDUE') AND ${YEAR_PRED('i.')}`, [...p, year]);

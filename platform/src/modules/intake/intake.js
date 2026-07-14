@@ -63,12 +63,17 @@ export async function parseContract(user, { text }) {
 
 // Create project + contract + deliverables (+ find-or-create client) in one transaction.
 // Used by BOTH the manual form (no deliverables) and the from-contract flow.
+// Coerce client-supplied money to a valid, in-range SAR integer so we never write NaN/float/negatives
+// into the INTEGER-halalas columns. Out-of-range or non-numeric → 0 (fails safe).
+const safeSar = (v) => { const n = Math.round(Number(v)); return Number.isFinite(n) && n >= 0 && n <= 1e13 ? n : 0; };
+
 export function createFromIntake(ctx, data) {
   const user = ctx.user;
   const sectorId = data.sector_id || user.sector_id;
   if (!can(user, 'create', 'project', { sector_id: sectorId })) throw forbidden('خارج نطاق قطاعك');
-  const name = (data.name_ar || data.title_ar || '').trim();
+  const name = (data.name_ar || data.title_ar || '').trim().slice(0, 200);
   if (!name) throw badRequest('اسم المشروع مطلوب');
+  const valueSar = safeSar(data.value_sar);
   const now = nowIso();
   const result = tx(() => {
     let clientId = data.client_id || null;
@@ -82,19 +87,19 @@ export function createFromIntake(ctx, data) {
     insert('project', {
       id: pid, name_ar: name, sector_id: sectorId, client_id: clientId, owner_user_id: data.owner_user_id || user.id,
       status: data.status || 'NOT_STARTED', rag: 'GREEN', kind: 'external',
-      contract_value_halalas: toHalalas(data.value_sar), start_date: data.start_date || null, end_date: data.end_date || null,
+      contract_value_halalas: toHalalas(valueSar), start_date: cleanDate(data.start_date), end_date: cleanDate(data.end_date),
       created_at: now, created_by: user.id,
     });
     const cid = id('con');
     insert('contract', {
-      id: cid, code: data.contract_code || null, client_id: clientId, project_id: pid, sector_id: sectorId,
-      value_halalas: toHalalas(data.value_sar), start_date: data.start_date || null, end_date: data.end_date || null,
+      id: cid, code: (data.contract_code || '').toString().slice(0, 60) || null, client_id: clientId, project_id: pid, sector_id: sectorId,
+      value_halalas: toHalalas(valueSar), start_date: cleanDate(data.start_date), end_date: cleanDate(data.end_date),
       status: 'ACTIVE', created_at: now, created_by: user.id,
     });
     let n = 0;
     for (const d of (data.deliverables || [])) {
-      const nm = (d && d.name_ar || '').trim(); if (!nm) continue;
-      insert('deliverable', { id: id('dlv'), project_id: pid, name_ar: nm, amount_halalas: toHalalas(d.amount_sar),
+      const nm = (d && d.name_ar || '').toString().trim().slice(0, 200); if (!nm) continue;
+      insert('deliverable', { id: id('dlv'), project_id: pid, name_ar: nm, amount_halalas: toHalalas(safeSar(d.amount_sar)),
         month: d.month || null, status: 'PENDING', sector_id: sectorId, created_at: now });
       n++;
     }

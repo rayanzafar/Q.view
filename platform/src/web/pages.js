@@ -22,6 +22,9 @@ import { financeSummary, financeByPM, financeByContract, contractDetail } from '
 import { canSeeSensitive, redact, can } from '../core/rbac/index.js';
 
 const pct = (n) => `${Math.round(n || 0)}%`;
+// HTML-escape user-controlled strings before interpolating into SSR markup (defense against stored XSS
+// now that intake/manual entry accept free-text names, clients, notes).
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const bar = (p, color = '#2563eb') => `<div class="h-1.5 bg-slate-100 rounded-full overflow-hidden mt-1">
   <div style="width:${Math.min(100, Math.max(0, p))}%;background:${color}" class="h-full rounded-full"></div></div>`;
 
@@ -83,7 +86,7 @@ export function ceoPage(user, opts = {}) {
       <div style="display:flex;align-items:center;justify-content:space-between">
         <div style="display:flex;align-items:center;gap:.5rem">
           <span style="width:10px;height:10px;border-radius:3px;background:${s.color || '#2563eb'}"></span>
-          <div><div style="font-weight:800;font-size:15px">${s.name_ar}</div><div style="font-size:11px;color:var(--muted)">${s.name_en || ''}</div></div>
+          <div><div style="font-weight:800;font-size:15px">${esc(s.name_ar)}</div><div style="font-size:11px;color:var(--muted)">${esc(s.name_en || '')}</div></div>
         </div>
         ${s.placeholder ? pill('بانتظار التفعيل', 'amber') : pill(`${s.opp_count} فرصة`, 'blue')}
       </div>
@@ -210,10 +213,10 @@ export function opportunitiesPage(user) {
     const prTone = o.priority === 'P0' ? 'red' : o.priority === 'P1' ? 'amber' : 'slate';
     const hay = `${o.title_ar} ${cl || ''} ${ow || ''}`.toLowerCase();
     const dnd = canEdit ? 'draggable="true" ondragstart="Sanad.kStart(event)" ondragend="Sanad.kEnd(event)"' : '';
-    return `<div class="kcard" ${dnd} data-id="${o.id}" data-sector="${o.sector_id || ''}" data-hay="${hay.replace(/"/g, '')}" style="--_c:${st.color || '#cbd5e1'}${canEdit ? '' : ';cursor:pointer'}"
+    return `<div class="kcard" ${dnd} data-id="${o.id}" data-sector="${o.sector_id || ''}" data-hay="${esc(hay).replace(/"/g, '')}" style="--_c:${st.color || '#cbd5e1'}${canEdit ? '' : ';cursor:pointer'}"
        onclick="Sanad.oppOpen('${o.id}')">
-      <div class="kt">${o.title_ar}</div>
-      <div class="km">${cl ? `<span style="display:inline-flex;align-items:center;gap:.25rem">${icon('building')}${cl}</span>` : '<span style="color:var(--faint)">—</span>'}
+      <div class="kt">${esc(o.title_ar)}</div>
+      <div class="km">${cl ? `<span style="display:inline-flex;align-items:center;gap:.25rem">${icon('building')}${esc(cl)}</span>` : '<span style="color:var(--faint)">—</span>'}
         ${o.priority ? pill(tr(o.priority), prTone) : ''}</div>
       <div class="km"><span class="kv tnum">${fmtSar(o.value_halalas)}</span>
         <span class="tnum" style="margin-inline-start:auto">${pct(o.win_pct)}</span>
@@ -236,8 +239,8 @@ export function opportunitiesPage(user) {
   const tableRows = rows.slice(0, 200).map((o) => {
     const st = stById[o.stage_id] || {};
     return `<tr class="border-b border-line" style="cursor:pointer" onclick="Sanad.oppOpen('${o.id}')">
-      <td class="py-2.5 px-3 text-[13px]">${o.title_ar}</td>
-      <td class="px-3 text-[12px]">${clients[o.client_id] || '—'}</td>
+      <td class="py-2.5 px-3 text-[13px]">${esc(o.title_ar)}</td>
+      <td class="px-3 text-[12px]">${esc(clients[o.client_id] || '—')}</td>
       <td class="px-3">${pill(st.name_ar || o.stage_id, 'blue')}</td>
       <td class="px-3 text-[13px] tnum">${fmtSar(o.value_halalas)}</td>
       <td class="px-3 text-[12px] text-muted tnum">${pct(o.win_pct)}</td></tr>`;
@@ -299,9 +302,9 @@ export function projectsPage(user) {
     const spend = canCost && !p._redacted_actual_spend_halalas ? p.actual_spend_halalas : null;
     const dnd = canEdit ? 'draggable="true" ondragstart="Sanad.kStart(event)" ondragend="Sanad.kEnd(event)"' : '';
     const hay = `${p.name_ar} ${cl}`.toLowerCase().replace(/"/g, '');
-    return `<div class="kcard" ${dnd} data-id="${p.id}" data-sector="${p.sector_id || ''}" data-hay="${hay}" style="--_c:${ragHex[p.rag] || '#cbd5e1'};cursor:pointer" onclick="Sanad.projOpen('${p.id}')">
-      <div class="kt">${p.name_ar}</div>
-      <div class="km">${cl ? `<span style="display:inline-flex;align-items:center;gap:.25rem">${icon('building')}${cl}</span>` : ''}
+    return `<div class="kcard" ${dnd} data-id="${p.id}" data-sector="${p.sector_id || ''}" data-hay="${esc(hay)}" style="--_c:${ragHex[p.rag] || '#cbd5e1'};cursor:pointer" onclick="Sanad.projOpen('${p.id}')">
+      <div class="kt">${esc(p.name_ar)}</div>
+      <div class="km">${cl ? `<span style="display:inline-flex;align-items:center;gap:.25rem">${icon('building')}${esc(cl)}</span>` : ''}
         ${p.rag ? pill(tr(p.rag), ragTone[p.rag] || 'slate') : ''}</div>
       <div class="km"><span class="kv tnum">${fmtSar(p.contract_value_halalas)}</span>
         <span class="tnum" style="margin-inline-start:auto">${pct(p.progress_pct)}</span></div>
@@ -321,7 +324,7 @@ export function projectsPage(user) {
   }).join('');
 
   const tableRows = rows.slice(0, 200).map((p) => `<tr class="border-b border-line" style="cursor:pointer" onclick="Sanad.projOpen('${p.id}')">
-    <td class="py-2.5 px-3 text-[13px]">${p.name_ar}</td>
+    <td class="py-2.5 px-3 text-[13px]">${esc(p.name_ar)}</td>
     <td class="px-3">${pill(tr(p.status), p.status === 'COMPLETED' ? 'green' : 'blue')}</td>
     <td class="px-3">${pill(tr(p.rag), ragTone[p.rag] || 'slate')}</td>
     <td class="px-3 text-[13px] tnum">${fmtSar(p.contract_value_halalas)}</td>
@@ -435,7 +438,7 @@ export function teamPage(user) {
     user.scope === 'company' ? [] : [user.sector_id]);
   const totalSalary = canSalary ? rows.reduce((a, r) => a + (r.salary_halalas || 0), 0) : null;
   const list = rows.map((e) => `<tr class="border-b border-line">
-    <td class="py-2 px-3 text-[13px]">${e.name_ar}</td>
+    <td class="py-2 px-3 text-[13px]">${esc(e.name_ar)}</td>
     <td class="px-3 text-[12px] text-muted">${e.job_title || ''}</td>
     <td class="px-3 text-[12px]">${e.employment_type || ''}</td>
     <td class="px-3 text-[13px] tabular-nums">${canSalary ? fmtSar(e.salary_halalas) : '<span class="text-slate-300">••• محجوب</span>'}</td></tr>`).join('');
@@ -636,7 +639,7 @@ export function contractDetailPage(user, contractId) {
     <td style="padding:.5rem .75rem;text-align:center">${i.outstanding_halalas > 0 ? `<button onclick="Sanad.recordCollection('${i.id}', ${i.outstanding_halalas / 100})" style="border:1px solid var(--line);cursor:pointer;font-size:11px;padding:.25rem .5rem;border-radius:6px;background:#fff">تسجيل تحصيل</button>` : '✓'}</td></tr>`).join('');
   const eligible = d.deliverables.filter((dl) => ['DELIVERED', 'ACCEPTED'].includes(dl.status));
   const dlvRows = d.deliverables.map((dl) => `<tr style="border-bottom:1px solid var(--line)">
-    <td style="padding:.4rem .75rem;font-size:13px">${dl.name_ar}</td>
+    <td style="padding:.4rem .75rem;font-size:13px">${esc(dl.name_ar)}</td>
     <td style="padding:.4rem .75rem;font-size:13px;text-align:center" class="tnum">${fmtSar(dl.amount_halalas)}</td>
     <td style="padding:.4rem .75rem;text-align:center">${pill(tr(dl.status), dl.status === 'PAID' || dl.status === 'INVOICED' ? 'green' : dl.status === 'DELIVERED' ? 'blue' : 'slate')}</td></tr>`).join('');
   const body = `
@@ -674,7 +677,7 @@ export function projectDetailPage(user, projectId) {
   const client = get('SELECT name_ar FROM client WHERE id=?', [p.client_id]);
   const stat = (l, v, c) => card(`<div style="padding:.85rem 1rem"><div style="font-size:11px;color:var(--muted)">${l}</div><div class="metric" style="font-size:1.25rem;${c ? 'color:' + c : ''}">${v}</div></div>`);
   const ragColor = p.rag === 'RED' ? 'red' : p.rag === 'AMBER' ? 'amber' : 'green';
-  const dlvRows = dlv.map((d) => `<tr style="border-bottom:1px solid var(--line)"><td style="padding:.4rem .75rem;font-size:13px">${d.name_ar}</td>
+  const dlvRows = dlv.map((d) => `<tr style="border-bottom:1px solid var(--line)"><td style="padding:.4rem .75rem;font-size:13px">${esc(d.name_ar)}</td>
     <td style="padding:.4rem .75rem;font-size:13px;text-align:center" class="tnum">${fmtSar(d.amount_halalas)}</td>
     <td style="padding:.4rem .75rem;text-align:center">${pill(tr(d.status), ['PAID', 'INVOICED', 'ACCEPTED'].includes(d.status) ? 'green' : d.status === 'DELIVERED' ? 'blue' : 'slate')}</td></tr>`).join('');
   const riskRows = risks.map((r) => `<tr style="border-bottom:1px solid var(--line)"><td style="padding:.4rem .75rem;font-size:13px">${r.title}</td>
@@ -682,7 +685,7 @@ export function projectDetailPage(user, projectId) {
   const body = `
     <a href="/app/projects" style="font-size:12px;color:var(--muted)">← المشاريع</a>
     <div style="display:flex;align-items:center;gap:.75rem;margin:.6rem 0 1rem">
-      <h2 style="font-size:18px">${p.name_ar}</h2>${pill(tr(p.status), p.status === 'COMPLETED' ? 'green' : 'blue')}${pill('RAG ' + tr(p.rag), ragColor)}
+      <h2 style="font-size:18px">${esc(p.name_ar)}</h2>${pill(tr(p.status), p.status === 'COMPLETED' ? 'green' : 'blue')}${pill('RAG ' + tr(p.rag), ragColor)}
       <span style="font-size:12px;color:var(--muted)">${client?.name_ar || ''} · ${p.code || ''}</span>
     </div>
     <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:.75rem;margin-bottom:1.25rem">
@@ -714,7 +717,7 @@ export function portfolioPage(user) {
     <div class="font-bold text-sm mb-2">${sid} · ${ps.length} مشروع</div>
     ${ps.slice(0, 8).map((p) => `<div class="flex items-center gap-2 py-1 text-[13px]">
       ${pill(tr(p.rag), p.rag === 'RED' ? 'red' : p.rag === 'AMBER' ? 'amber' : 'green')}
-      <span class="flex-1">${p.name_ar}</span><span class="text-muted text-[11px]">${pct(p.progress_pct)}</span></div>`).join('')}
+      <span class="flex-1">${esc(p.name_ar)}</span><span class="text-muted text-[11px]">${pct(p.progress_pct)}</span></div>`).join('')}
   </div>`)).join('');
   return layout({ user, active: 'portfolio', title: 'محفظة المشاريع', body: `<div class="grid grid-cols-2 gap-4">${groups}</div>` });
 }
