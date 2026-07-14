@@ -255,6 +255,21 @@ export function miniBars(series, valueKey, opts = {}) {
     <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2563eb"/><stop offset="1" stop-color="#7c3aed"/></linearGradient></defs>${grid}${bars}</svg>`;
 }
 
+// Horizontal comparison bars (e.g. revenue achieved per sector). items: [{label,value,color,sub}].
+export function hbars(items, opts = {}) {
+  const max = Math.max(1, ...items.map((i) => i.value || 0));
+  return `<div style="display:flex;flex-direction:column;gap:.7rem">${items.map((i) => {
+    const w = Math.round(((i.value || 0) / max) * 100);
+    return `<div>
+      <div style="display:flex;justify-content:space-between;align-items:center;font-size:12.5px;margin-bottom:.28rem">
+        <span style="display:flex;align-items:center;gap:.45rem;min-width:0"><span style="width:9px;height:9px;border-radius:2px;background:${i.color || '#2563eb'};flex:none"></span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${i.label}</span></span>
+        <span class="tnum" style="font-weight:800;color:var(--ink2);flex:none;margin-inline-start:.6rem">${opts.fmt ? opts.fmt(i.value) : i.value}${i.sub ? `<span style="font-weight:600;color:var(--muted);font-size:11px"> · ${i.sub}</span>` : ''}</span>
+      </div>
+      <div style="height:10px;background:#eef1f7;border-radius:999px;overflow:hidden"><div style="width:${w}%;height:100%;background:${i.color || '#2563eb'};border-radius:999px;transition:width .5s"></div></div>
+    </div>`;
+  }).join('')}</div>`;
+}
+
 // Radial attainment gauge (SVG donut). pct may exceed 100 (over-target) — arc clamps, label shows true %.
 export function gauge(pct, opts = {}) {
   const size = opts.size || 128, sw = opts.sw || 12, r = (size - sw) / 2, C = 2 * Math.PI * r;

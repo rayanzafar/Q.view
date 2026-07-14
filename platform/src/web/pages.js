@@ -1,9 +1,9 @@
-import { layout, card, pill, miniBars, tr, gauge } from './layout.js';
+import { layout, card, pill, miniBars, tr, gauge, hbars } from './layout.js';
 import { icon } from './icons.js';
 import { fmtSar } from '../core/util/ids.js';
 import { all, get } from '../core/db/index.js';
 import { companyOverview, sectorDashboard, projectKpis, multiYearTrend, winRate,
-  winRateByYear, quarterlyRevenue, backlog, pipelineCoverage, bookToBill, grossMargin } from '../core/reports/metrics.js';
+  quarterlyRevenue, quarterlyBookings, backlog, pipelineCoverage, bookToBill, grossMargin } from '../core/reports/metrics.js';
 import { config } from '../core/config.js';
 
 const sarShort = (halalas) => {
@@ -54,8 +54,8 @@ export function ceoPage(user, opts = {}) {
   const t = ov.totals;
   const wr = winRate(null, year);
   const trend = multiYearTrend(null, 4);
-  const wrYear = winRateByYear(null, 4);
   const qRev = quarterlyRevenue(null, year);
+  const qBook = quarterlyBookings(null, year);
   const bk = backlog(null);
   const cov = pipelineCoverage(null, year);
   const b2b = bookToBill(null, year);
@@ -103,6 +103,8 @@ export function ceoPage(user, opts = {}) {
         ${ov.canSeeMargin ? (() => { const gm = grossMargin(s.id, year); return gm.margin_pct != null ? `<span>هامش: <b style="color:${gm.margin_pct >= 20 ? 'var(--green)' : gm.margin_pct >= 10 ? 'var(--amber)' : 'var(--red)'}">${gm.margin_pct}%</b></span>` : ''; })() : ''}
       </div>
     </div>`, 'card-h')).join('');
+  // sector achievement (revenue) comparison, sorted, colored by sector — the "how much each achieved" chart
+  const sectorAchv = [...ov.sectors].map((s) => ({ label: esc(s.name_ar), value: s.revenue_halalas || 0, color: s.color || '#2563eb', sub: pct(s.revenue_pct) })).sort((a, b) => b.value - a.value);
   // dense secondary metric inside the hero (fills what used to be dead banner space)
   const hm = (label, val, sub) => `<div style="flex:1;min-width:118px;max-width:220px;overflow:hidden"><div style="color:rgba(255,255,255,.58);font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${label}</div><div class="tnum" style="color:#fff;font-weight:800;font-size:1.02rem;margin-top:.12rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${val}</div>${sub ? `<div style="color:rgba(255,255,255,.42);font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" class="tnum">${sub}</div>` : ''}</div>`;
   const body = `
@@ -130,19 +132,18 @@ export function ceoPage(user, opts = {}) {
     <div style="display:grid;grid-template-columns:1.35fr 1fr;gap:.9rem;margin-bottom:.9rem">
       <div><div style="font-weight:800;font-size:13.5px;margin-bottom:.5rem">أداء القطاعات · ${year}</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">${sectorCards}</div></div>
-      ${card(`<div style="padding:.9rem 1rem"><div style="font-weight:800;font-size:13.5px">الاتجاه متعدد السنوات</div>
-        <div style="font-size:11px;color:var(--muted);margin:.1rem 0 .4rem">العقود الموقّعة (مليون ر.س.)</div>
-        ${miniBars(trend, 'contracts_halalas', { fmt: sarShort })}
-        <div style="font-size:11px;color:var(--muted);margin:.65rem 0 .25rem">معدل الفوز حسب السنة (%)</div>
-        ${miniBars(wrYear, 'rate', { fmt: (v) => Math.round(v) + '%', h: 120 })}</div>`)}
+      ${card(`<div style="padding:.9rem 1rem;height:100%;display:flex;flex-direction:column">
+        <div style="font-weight:800;font-size:13.5px">تحقيق القطاعات · الإيراد المحقق</div>
+        <div style="font-size:11px;color:var(--muted);margin:.1rem 0 .85rem">مقارنة القطاعات لعام ${year} (ر.س. · % من الهدف)</div>
+        ${hbars(sectorAchv, { fmt: fmtSar })}</div>`)}
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:.9rem">
       ${card(`<div style="padding:.9rem 1rem"><div style="font-weight:800;font-size:13.5px">الإيراد المحقق حسب الربع · ${year}</div>
         <div style="font-size:11px;color:var(--muted);margin:.1rem 0 .4rem">مليون ر.س.</div>
         ${miniBars(qRev.map((q) => ({ year: q.quarter, revenue_halalas: q.revenue_halalas })), 'revenue_halalas', { fmt: sarShort })}</div>`)}
-      ${card(`<div style="padding:.9rem 1rem"><div style="font-weight:800;font-size:13.5px">الإيراد المحقق متعدد السنوات</div>
+      ${card(`<div style="padding:.9rem 1rem"><div style="font-weight:800;font-size:13.5px">المبيعات (الحجوزات) حسب الربع · ${year}</div>
         <div style="font-size:11px;color:var(--muted);margin:.1rem 0 .4rem">مليون ر.س.</div>
-        ${miniBars(trend, 'revenue_halalas', { fmt: sarShort })}</div>`)}
+        ${miniBars(qBook.map((q) => ({ year: q.quarter, sales_halalas: q.sales_halalas })), 'sales_halalas', { fmt: sarShort })}</div>`)}
     </div>`;
   return layout({ user, active: 'ceo', title: 'لوحة القيادة', subtitle: `نظرة تنفيذية · السنة المالية ${year}`, body, year });
 }

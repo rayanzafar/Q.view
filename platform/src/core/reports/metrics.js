@@ -141,6 +141,18 @@ export function quarterlyRevenue(sectorId, year) {
   return q.map((v, i) => ({ quarter: `Q${i + 1}`, year, revenue_halalas: v }));
 }
 
+// Bookings (won-opportunity value) per quarter of the year, by the win date (stage_changed_at).
+export function quarterlyBookings(sectorId, year) {
+  const rows = all(`SELECT CAST(strftime('%m', o.stage_changed_at) AS INTEGER) m, COALESCE(SUM(o.value_halalas),0) v
+     FROM opportunity o JOIN stage st ON st.id=o.stage_id
+     WHERE st.is_won=1 AND o.exclude_from_sales=0 AND o.year=? AND o.deleted_at IS NULL AND o.stage_changed_at IS NOT NULL
+     ${sectorId ? 'AND o.sector_id = ?' : ''} GROUP BY m`, [year, ...(sectorId ? [sectorId] : [])]);
+  const byM = Object.fromEntries(rows.map((r) => [r.m, r.v]));
+  const q = [0, 0, 0, 0];
+  for (let m = 1; m <= 12; m++) q[Math.floor((m - 1) / 3)] += byM[m] || 0;
+  return q.map((v, i) => ({ quarter: `Q${i + 1}`, year, sales_halalas: v }));
+}
+
 // Win rate per year (won / (won+lost) by count) — for the exec trend.
 export function winRateByYear(sectorId, nYears = 5) {
   // Continuous year axis (matches multiYearTrend) so a gap year shows its real value, not a skipped bar.
