@@ -224,7 +224,7 @@ Object.assign(window.Sanad, {
           <div class="kv-row"><span class="k">المسؤول</span><span class="v">${this.esc(d.owner || '—')}</span></div>
           <div class="kv-row"><span class="k">القيمة المتوقعة</span><span class="v tnum ${ce ? 'editable' : ''}" ${ce ? `onclick="Sanad.oppEditVal('${o.id}',${(o.value_halalas || 0) / 100})"` : ''}>${this.fmtSar(o.value_halalas)}</span></div>
           <div class="kv-row"><span class="k">الاحتمالية</span><span class="v tnum">${Math.round(o.win_pct || 0)}%</span></div>
-          <div class="kv-row"><span class="k">الأولوية</span><span class="v">${this.esc(o.priority || '—')}</span></div>
+          <div class="kv-row"><span class="k">الأولوية</span><span class="v">${this.esc(this.lbl(o.priority) || '—')}</span></div>
           <div class="kv-row"><span class="k">السنة</span><span class="v tnum">${o.year || '—'}</span></div>
           <div style="margin-top:1.1rem"><div style="font-size:12px;font-weight:800;color:var(--muted);margin-bottom:.35rem">الإجراء التالي</div>
             <div ${ce ? `class="editable" contenteditable="true" data-ph="1" onblur="Sanad.oppSave('${o.id}','next_action',this)"` : ''} style="font-size:13px;min-height:1.4em">${this.esc(o.next_action || (ce ? '' : '—'))}</div></div>

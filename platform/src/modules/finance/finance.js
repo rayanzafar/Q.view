@@ -93,7 +93,8 @@ export function financeByPM(user, year = FY()) {
 // ── Per contract ──
 export function financeByContract(user) {
   // Qualify the scope column to the aliased contract table (project also exposes sector_id → ambiguous otherwise).
-  const f = scopeFilter(user, 'contract', 'read', { sectorCol: 'c.sector_id', ownerCol: 'c.owner_user_id' });
+  // Contracts have no owner column; if a role ever reads at 'own' scope, resolve ownership via the linked project.
+  const f = scopeFilter(user, 'contract', 'read', { sectorCol: 'c.sector_id', ownerCol: 'p.owner_user_id' });
   const contracts = all(`SELECT c.*, cl.name_ar client_name, p.name_ar project_name, p.owner_user_id
      FROM contract c LEFT JOIN client cl ON cl.id=c.client_id LEFT JOIN project p ON p.id=c.project_id
      WHERE ${f.clause} AND c.deleted_at IS NULL ORDER BY c.value_halalas DESC LIMIT 200`, f.params);
