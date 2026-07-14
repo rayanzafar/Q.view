@@ -174,7 +174,7 @@ export function layout({ user, active, title, subtitle, body, year, extraHead = 
         <form method="post" action="/auth/logout-web"><button title="خروج" style="color:var(--muted);background:none;border:none;cursor:pointer">${icon('logout')}</button></form>
       </div>
     </header>
-    <main style="flex:1;overflow-y:auto;padding:1.5rem">${body}</main>
+    <main style="flex:1;overflow-y:auto;padding:1.15rem 1.35rem">${body}</main>
   </div>
 </div>
 <button onclick="Sanad.aiToggle()" title="مساعد سند الذكي" style="position:fixed;bottom:22px;left:22px;z-index:40;width:54px;height:54px;border:none;cursor:pointer;border-radius:50%;color:#fff;box-shadow:0 10px 30px -6px rgba(124,58,237,.55);background:var(--brand-grad);display:flex;align-items:center;justify-content:center">${icon('ai')}</button>
@@ -230,25 +230,29 @@ export function pill(text, color = 'slate') {
   const [bg, fg] = c.split('|');
   return `<span class="pill" style="background:${bg};color:${fg}">${text}</span>`;
 }
-// Inline SVG mini bar chart for multi-year trends. Each instance gets a unique gradient id
-// so multiple charts on one page never collide on a duplicate element id.
+// Inline SVG bar chart. Fills its container width (height follows the viewBox aspect), with
+// gridlines, value labels and an emphasized latest bar. Unique gradient id per instance.
 let _miniBarsSeq = 0;
 export function miniBars(series, valueKey, opts = {}) {
-  const w = opts.w || 260, h = opts.h || 90, pad = 22, n = series.length || 1;
+  const n = series.length || 1;
+  const W = opts.w || 480, H = opts.h || 150, padT = 18, padB = 24, padX = 10;
   const gid = 'mbGrad' + (++_miniBarsSeq);
   const max = Math.max(1, ...series.map((s) => s[valueKey] || 0));
-  const bw = (w - pad) / n * 0.6, gap = (w - pad) / n;
+  const plotH = H - padT - padB, gap = (W - padX * 2) / n, bw = Math.min(46, gap * 0.56);
+  let grid = '';
+  for (let i = 0; i <= 3; i++) { const gy = padT + plotH * i / 3; grid += `<line x1="${padX}" x2="${W - padX}" y1="${gy.toFixed(1)}" y2="${gy.toFixed(1)}" stroke="#eef1f7" stroke-width="1"/>`; }
   const bars = series.map((s, i) => {
     const val = s[valueKey] || 0;
-    const bh = Math.round((val / max) * (h - 28));
-    const x = pad + i * gap + (gap - bw) / 2;
-    const y = h - 16 - bh;
-    return `<rect x="${x}" y="${y}" width="${bw}" height="${bh}" rx="3" fill="url(#${gid})"/>
-      <text x="${x + bw / 2}" y="${h - 4}" font-size="9" fill="#94a3b8" text-anchor="middle">${s.year}</text>
-      <text x="${x + bw / 2}" y="${y - 3}" font-size="8.5" fill="#475569" text-anchor="middle" font-weight="700">${opts.fmt ? opts.fmt(val) : Math.round(val)}</text>`;
+    const bh = Math.max(2, Math.round((val / max) * plotH));
+    const x = padX + i * gap + (gap - bw) / 2;
+    const y = padT + plotH - bh;
+    const last = i === n - 1;
+    return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${bh}" rx="4" fill="url(#${gid})" opacity="${last ? 1 : 0.8}"/>
+      <text x="${(x + bw / 2).toFixed(1)}" y="${H - 7}" font-size="11" fill="#94a3b8" text-anchor="middle">${s.year}</text>
+      <text x="${(x + bw / 2).toFixed(1)}" y="${(y - 5).toFixed(1)}" font-size="11" fill="${last ? '#7c3aed' : '#475569'}" text-anchor="middle" font-weight="800">${opts.fmt ? opts.fmt(val) : Math.round(val)}</text>`;
   }).join('');
-  return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" preserveAspectRatio="xMidYMid meet">
-    <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2563eb"/><stop offset="1" stop-color="#7c3aed"/></linearGradient></defs>${bars}</svg>`;
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block" preserveAspectRatio="xMidYMid meet">
+    <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2563eb"/><stop offset="1" stop-color="#7c3aed"/></linearGradient></defs>${grid}${bars}</svg>`;
 }
 
 // Radial attainment gauge (SVG donut). pct may exceed 100 (over-target) — arc clamps, label shows true %.
