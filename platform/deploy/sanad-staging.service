@@ -1,0 +1,30 @@
+# systemd unit for the سند staging app. Runs on port 4100 so it never collides
+# with the existing production platform. The old platform keeps running untouched.
+#
+# Install:
+#   sudo cp deploy/sanad-staging.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now sanad-staging
+#   systemctl status sanad-staging
+
+[Unit]
+Description=Sanad (سند) — EVC Enterprise OS (staging)
+After=network.target
+
+[Service]
+Type=simple
+# Adjust WorkingDirectory + User to wherever you cloned the repo.
+WorkingDirectory=/opt/sanad/platform
+Environment=NODE_ENV=production
+Environment=PORT=4100
+Environment=NODE_USE_ENV_PROXY=1
+# Secrets (OpenAI key, session secret, SMTP) live here — never in git.
+EnvironmentFile=-/opt/sanad/platform/.env
+ExecStart=/usr/bin/node --experimental-sqlite --env-file-if-exists=.env src/server.js
+Restart=on-failure
+RestartSec=3
+User=sanad
+Group=sanad
+
+[Install]
+WantedBy=multi-user.target
