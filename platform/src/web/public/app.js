@@ -315,28 +315,85 @@ Object.assign(window.Sanad, {
   async staffRemove(pid, aid) { try { await api('/projects/staff/' + aid, 'DELETE'); toast('أُزيل التسكين ✓'); this.projOpen(pid); } catch (e) { toast(e.message, true); } },
   projAdd() {
     const S = window.__SANAD || {}; const secs = S.sectors || [];
+    this._deliv = [];
     this.openModal(`
       <div class="modal-head"><h3 style="font-size:16px">مشروع جديد</h3><button class="btn btn-ghost" onclick="Sanad.closeModal()">✕</button></div>
+      <div style="padding:.35rem 1.35rem 0"><div class="seg" style="width:100%">
+        <button class="on" id="im-tab-manual" style="flex:1;justify-content:center" onclick="Sanad.intakeTab('manual')">${icon2('edit')} إدخال يدوي</button>
+        <button id="im-tab-contract" style="flex:1;justify-content:center" onclick="Sanad.intakeTab('contract')">${icon2('upload')} من عقد (تعبئة تلقائية)</button>
+      </div></div>
       <div class="modal-body">
+        <div id="im-contract" style="display:none;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:.85rem">
+          <div class="field"><label>الصق نص العقد، أو ارفع ملفًا نصيًا</label>
+            <textarea id="im-text" class="input" rows="5" placeholder="الصق نص العقد هنا ثم اضغط «استخرج البيانات» — يملأ الحقول تلقائيًا للمراجعة…"></textarea></div>
+          <div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;margin-top:.5rem">
+            <input type="file" id="im-file" accept=".txt,.md,.csv,text/plain" onchange="Sanad.intakeFile(event)" style="font-size:11.5px;max-width:190px">
+            <button class="btn btn-primary" id="im-extract" onclick="Sanad.intakeExtract()">${icon2('ai')} استخرج البيانات</button>
+            <span id="im-mode" style="font-size:11px;color:var(--muted)"></span>
+          </div>
+        </div>
         <div class="field"><label>اسم المشروع *</label><input class="input" id="np-name" placeholder="مثال: تطوير مكتب إدارة المشاريع"></div>
         <div class="grid2">
+          <div class="field"><label>العميل / الجهة</label><input class="input" id="np-client" placeholder="اسم العميل"></div>
           <div class="field"><label>القطاع</label><select id="np-sector">${secs.map((s) => `<option value="${s.id}">${this.esc(s.name_ar)}</option>`).join('')}</select></div>
-          <div class="field"><label>قيمة العقد (ر.س.)</label><input class="input" id="np-val" type="number" value="0"></div>
         </div>
-        <div class="field"><label>الحالة</label><select id="np-status"><option value="NOT_STARTED">لم يبدأ</option><option value="IN_PROGRESS" selected>قيد التنفيذ</option><option value="ON_HOLD">متوقّف مؤقتًا</option></select></div>
+        <div class="grid2">
+          <div class="field"><label>قيمة العقد (ر.س.)</label><input class="input" id="np-val" type="number" value="0"></div>
+          <div class="field"><label>الحالة</label><select id="np-status"><option value="NOT_STARTED">لم يبدأ</option><option value="IN_PROGRESS" selected>قيد التنفيذ</option><option value="ON_HOLD">متوقّف مؤقتًا</option></select></div>
+        </div>
+        <div class="grid2">
+          <div class="field"><label>تاريخ البدء</label><input class="input" id="np-start" type="date"></div>
+          <div class="field"><label>تاريخ الانتهاء</label><input class="input" id="np-end" type="date"></div>
+        </div>
+        <div id="im-deliv-wrap" style="display:none"><label style="font-size:11.5px;font-weight:700;color:var(--muted)">المخرجات المستخرجة (<span id="im-deliv-n">0</span>)</label>
+          <div id="im-deliv" style="max-height:150px;overflow-y:auto;border:1px solid var(--line);border-radius:10px;padding:.5rem;margin-top:.3rem;font-size:12px"></div></div>
       </div>
-      <div class="modal-foot"><button class="btn btn-primary" onclick="Sanad.projCreate()">إضافة المشروع</button><button class="btn" onclick="Sanad.closeModal()">إلغاء</button></div>`);
+      <div class="modal-foot"><button class="btn btn-primary" onclick="Sanad.projCreate()">إنشاء المشروع</button><button class="btn" onclick="Sanad.closeModal()">إلغاء</button></div>`);
     setTimeout(() => document.getElementById('np-name')?.focus(), 50);
   },
+  intakeTab(t) {
+    document.getElementById('im-contract').style.display = t === 'contract' ? '' : 'none';
+    document.getElementById('im-tab-manual').classList.toggle('on', t === 'manual');
+    document.getElementById('im-tab-contract').classList.toggle('on', t === 'contract');
+  },
+  intakeFile(e) { const f = e.target.files[0]; if (!f) return; const r = new FileReader(); r.onload = () => { document.getElementById('im-text').value = String(r.result || '').slice(0, 20000); }; r.readAsText(f); },
+  async intakeExtract() {
+    const text = (document.getElementById('im-text').value || '').trim(); if (text.length < 20) return toast('ألصق نص العقد أولًا (٢٠ حرفًا على الأقل)', true);
+    const btn = document.getElementById('im-extract'); btn.disabled = true; const orig = btn.innerHTML; btn.textContent = '… جارٍ الاستخراج';
+    try {
+      const d = await api('/intake/parse', 'POST', { text });
+      const set = (elid, v) => { if (v != null && v !== '') document.getElementById(elid).value = v; };
+      set('np-name', d.title_ar); set('np-client', d.client_name); set('np-val', d.value_sar); set('np-start', d.start_date); set('np-end', d.end_date);
+      this._deliv = d.deliverables || [];
+      const box = document.getElementById('im-deliv'); document.getElementById('im-deliv-n').textContent = this._deliv.length;
+      box.innerHTML = this._deliv.map((x) => `<div style="display:flex;justify-content:space-between;gap:.5rem;padding:.25rem 0;border-bottom:1px dashed var(--line)"><span>${this.esc(x.name_ar)}</span><span class="tnum" style="color:var(--muted)">${x.amount_sar ? this.fmtSar(x.amount_sar * 100) : '—'}</span></div>`).join('') || '<span style="color:var(--faint)">لا مخرجات مستخرجة</span>';
+      document.getElementById('im-deliv-wrap').style.display = this._deliv.length ? '' : 'none';
+      document.getElementById('im-mode').textContent = (d._mode === 'local' ? '⚙ استخراج محلي' : '✨ استخراج ذكي (' + d._mode + ')') + (d._note ? ' — راجِع الحقول' : '');
+      toast('تمت التعبئة — راجع الحقول قبل الإنشاء ✓');
+    } catch (e) { toast(e.message, true); }
+    finally { btn.disabled = false; btn.innerHTML = orig; }
+  },
   async projCreate() {
-    const name = document.getElementById('np-name').value.trim(); if (!name) return toast('الاسم مطلوب', true);
-    try { await api('/projects', 'POST', { name_ar: name, sector_id: document.getElementById('np-sector').value, status: document.getElementById('np-status').value, contract_value_sar: Number(document.getElementById('np-val').value) || 0 });
-      toast('أُضيف المشروع ✓'); this.closeModal(); setTimeout(() => location.reload(), 500);
+    const name = (document.getElementById('np-name').value || '').trim(); if (!name) return toast('اسم المشروع مطلوب', true);
+    const body = { name_ar: name, client_name: (document.getElementById('np-client').value || '').trim() || null,
+      sector_id: document.getElementById('np-sector').value, status: document.getElementById('np-status').value,
+      value_sar: Number(document.getElementById('np-val').value) || 0,
+      start_date: document.getElementById('np-start').value || null, end_date: document.getElementById('np-end').value || null,
+      deliverables: this._deliv || [] };
+    try {
+      const r = await api('/intake/create', 'POST', body);
+      toast('أُنشئ المشروع ✓' + (r.deliverables ? ' (' + r.deliverables + ' مخرج)' : ''));
+      this.closeModal(); setTimeout(() => location.reload(), 600);
     } catch (e) { toast(e.message, true); }
   },
 });
 // tiny inline icon for client-rendered drawers (subset)
-function icon2(n) { const P = { userplus: '<circle cx="9" cy="8" r="3.5"/><path d="M3 20a6 6 0 0112 0"/><path d="M18 8v6M15 11h6"/>' }; return `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-2px">${P[n] || ''}</svg>`; }
+function icon2(n) { const P = {
+  userplus: '<circle cx="9" cy="8" r="3.5"/><path d="M3 20a6 6 0 0112 0"/><path d="M18 8v6M15 11h6"/>',
+  edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/>',
+  upload: '<path d="M12 15V3m0 0L8 7m4-4l4 4"/><path d="M4 15v4a2 2 0 002 2h12a2 2 0 002-2v-4"/>',
+  ai: '<path d="M12 3l1.8 4.2L18 9l-4.2 1.8L12 15l-1.8-4.2L6 9l4.2-1.8z"/>',
+}; return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-2px">${P[n] || ''}</svg>`; }
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { window.Sanad.closeDrawer(); window.Sanad.closeModal(); } });
 
 // notification badge

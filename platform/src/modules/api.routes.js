@@ -10,10 +10,11 @@ import * as notif from './notifications/notify.js';
 import * as org from './org/org.js';
 import * as finance from './finance/finance.js';
 import * as metrics from '../core/reports/metrics.js';
+import * as intake from './intake/intake.js';
 
 export const apiRouter = Router();
 apiRouter.use(requireAuth());
-const h = (fn) => (req, res, next) => { try { const r = fn(req, res); if (r !== undefined) res.json(r); } catch (e) { next(e); } };
+const h = (fn) => async (req, res, next) => { try { const r = await fn(req, res); if (r !== undefined) res.json(r); } catch (e) { next(e); } };
 
 // ── Opportunities / CRM ──
 apiRouter.get('/opportunities', h((req) => opps.listOpportunities(req.ctx.user, req.query)));
@@ -29,6 +30,8 @@ apiRouter.get('/projects', h((req) => projects.listProjects(req.ctx.user, req.qu
 apiRouter.post('/projects', h((req) => projects.createProject(req.ctx, req.body)));
 apiRouter.get('/projects/:id', h((req) => projects.getProject(req.ctx.user, req.params.id)));
 apiRouter.patch('/projects/:id', h((req) => projects.updateProject(req.ctx, req.params.id, req.body)));
+apiRouter.post('/intake/parse', h(async (req) => intake.parseContract(req.ctx.user, req.body || {})));
+apiRouter.post('/intake/create', h((req) => intake.createFromIntake(req.ctx, req.body || {})));
 apiRouter.get('/projects/:id/staffing', h((req) => projects.projectStaffing(req.ctx.user, req.params.id)));
 apiRouter.post('/projects/:id/staff', h((req) => projects.assignEmployee(req.ctx, req.params.id, req.body)));
 apiRouter.delete('/projects/staff/:allocId', h((req) => projects.unassignEmployee(req.ctx, req.params.allocId)));
