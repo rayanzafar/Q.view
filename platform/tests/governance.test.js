@@ -127,3 +127,33 @@ test('Finance regression: summary billing figures respect the ?year param', asyn
   assert.equal(past.invoiced_halalas, 0, 'a year with no invoices must report 0 invoiced, not leak current-year figures');
   assert.equal(past.ar_halalas, 0, 'AR must also be year-scoped');
 });
+
+test('Intake: createFromIntake builds project+contract+deliverables+client, dedups client, enforces permission', async () => {
+  const intake = await import('../src/modules/intake/intake.js');
+  const ctxOf = (role, scope) => ({ user: { id: 'u_' + role, role_id: role, sector_id: 'S1', scope, projectIds: new Set() }, ip: '127.0.0.1' });
+  const r = intake.createFromIntake(ctxOf('admin', 'company'), { name_ar: 'مشروع من عقد', client_name: 'عميل تجريبي',
+    sector_id: 'S1', value_sar: 1000000, deliverables: [{ name_ar: 'مخرج أ', amount_sar: 600000 }, { name_ar: 'مخرج ب', amount_sar: 400000 }] });
+  assert.ok(r.project_id && r.contract_id && r.client_id, 'creates project+contract+client');
+  assert.equal(r.deliverables, 2);
+  assert.equal(db.get('SELECT contract_value_halalas v FROM project WHERE id=?', [r.project_id]).v, 100000000, 'SAR→halalas');
+  assert.equal(db.get('SELECT COUNT(*) n FROM deliverable WHERE project_id=?', [r.project_id]).n, 2);
+  assert.equal(db.get('SELECT COALESCE(SUM(amount_halalas),0) v FROM deliverable WHERE project_id=?', [r.project_id]).v, 100000000, 'deliverables reconcile to value');
+  // find-or-create: same client name must be reused, not duplicated
+  const r2 = intake.createFromIntake(ctxOf('admin', 'company'), { name_ar: 'مشروع ٢', client_name: 'عميل تجريبي', sector_id: 'S1', value_sar: 500000 });
+  assert.equal(r2.client_id, r.client_id, 'client de-duplicated by name');
+  // permission: an employee cannot create a project
+  assert.throws(() => intake.createFromIntake(ctxOf('employee', 'own'), { name_ar: 'x', sector_id: 'S1' }), /صلاحية|forbidden|نطاق/);
+});
+
+test('Staffing: assign/unassign with dedup guard and permission', async () => {
+  const projects = await import('../src/modules/pmo/projects.js');
+  const now = ids.nowIso();
+  db.insert('project', { id: 'PS1', name_ar: 'مشروع تسكين', sector_id: 'S1', owner_user_id: 'u_admin', status: 'IN_PROGRESS', created_at: now });
+  db.insert('employee', { id: 'E9', name_ar: 'موظف تسكين', sector_id: 'S1', status: 'active', active: 1, created_at: now });
+  const ctxAdm = { user: { id: 'u_admin', role_id: 'admin', sector_id: 'S1', scope: 'company', projectIds: new Set() }, ip: '127.0.0.1' };
+  const s = projects.assignEmployee(ctxAdm, 'PS1', { employeeId: 'E9' });
+  assert.equal(s.assigned.length, 1);
+  assert.throws(() => projects.assignEmployee(ctxAdm, 'PS1', { employeeId: 'E9' }), /مسبق|مُسكَّن/, 'dup assignment rejected');
+  const s2 = projects.unassignEmployee(ctxAdm, s.assigned[0].id);
+  assert.equal(s2.assigned.length, 0, 'unassign removes the allocation');
+});
