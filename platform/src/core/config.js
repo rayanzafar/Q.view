@@ -9,7 +9,9 @@ export const ROOT = resolve(__dirname, '../..');
 export const config = {
   env: process.env.NODE_ENV || 'development',
   port: Number(process.env.PORT || 4000),
-  host: process.env.HOST || '127.0.0.1',
+  // Bind localhost in dev (safe default); bind all interfaces in production so a PaaS
+  // (Railway/Render/Docker) can route external traffic to the container. HOST overrides either.
+  host: process.env.HOST || ((process.env.NODE_ENV === 'production') ? '0.0.0.0' : '127.0.0.1'),
   // Dev DB file; prod would set DATABASE_URL for Postgres (repository layer switches driver).
   dbFile: process.env.SANAD_DB || resolve(ROOT, 'data/sanad.db'),
   databaseUrl: process.env.DATABASE_URL || null,
