@@ -10,6 +10,7 @@ const NAV = [
   { key: 'portfolio', ar: 'محفظة المشاريع', ic: 'portfolio', group: 'company', show: (u) => u.scope === 'company' },
   { key: 'sector', ar: 'مركز القطاع', ic: 'sector', group: 'work', show: (u) => can(u, 'read', 'project') || can(u, 'read', 'opportunity') },
   { key: 'opportunities', ar: 'الفرص', ic: 'opportunity', group: 'work', show: (u) => can(u, 'read', 'opportunity') },
+  { key: 'my-opportunities', ar: 'فرصي', ic: 'flag', group: 'work', show: (u) => can(u, 'read', 'opportunity') },
   { key: 'projects', ar: 'المشاريع', ic: 'projects', group: 'work', show: (u) => can(u, 'read', 'project') },
   { key: 'tasks', ar: 'مهامي', ic: 'tasks', group: 'work', show: () => true },
   { key: 'timesheet', ar: 'سجل الوقت', ic: 'timesheet', group: 'work', show: () => true },
@@ -267,6 +268,15 @@ export function hbars(items, opts = {}) {
       </div>
       <div style="height:10px;background:#eef1f7;border-radius:999px;overflow:hidden"><div style="width:${w}%;height:100%;background:${i.color || '#2563eb'};border-radius:999px;transition:width .5s"></div></div>
     </div>`;
+  }).join('')}</div>`;
+}
+
+// 12-month utilization heat strip (allocation % per month). Over-allocation shows red.
+export function utilStrip(months) {
+  const AR = ['ي', 'ف', 'م', 'أ', 'م', 'ن', 'ل', 'غ', 'س', 'ك', 'ب', 'د'];
+  return `<div style="display:flex;gap:2px">${months.map((v, i) => {
+    const c = v === 0 ? '#eef1f7' : v > 105 ? '#dc2626' : v >= 80 ? '#059669' : v >= 40 ? '#f59e0b' : '#93c5fd';
+    return `<span title="${AR[i]}: ${v}%" style="flex:1;height:15px;border-radius:3px;background:${c}"></span>`;
   }).join('')}</div>`;
 }
 

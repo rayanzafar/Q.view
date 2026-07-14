@@ -141,6 +141,50 @@ export function quarterlyRevenue(sectorId, year) {
   return q.map((v, i) => ({ quarter: `Q${i + 1}`, year, revenue_halalas: v }));
 }
 
+// ── Sector command-center metrics ──
+// Monthly staffing + utilization from the allocation model (allocation.monthly_json = {month: fraction}).
+export function sectorStaffing(sectorId, year) {
+  const allocs = all(`SELECT a.employee_id, a.person_name_ar, a.project_name, a.monthly_json, e.job_title
+     FROM allocation a LEFT JOIN employee e ON e.id=a.employee_id
+     WHERE a.sector_id = ? AND a.year = ? AND a.deleted_at IS NULL`, [sectorId, year]);
+  const byEmp = {};
+  for (const a of allocs) {
+    const key = a.employee_id || a.person_name_ar || 'x';
+    if (!byEmp[key]) byEmp[key] = { name: a.person_name_ar || '—', job: a.job_title || '', projects: new Set(), months: {} };
+    if (a.project_name) byEmp[key].projects.add(a.project_name);
+    let mj = {}; try { mj = JSON.parse(a.monthly_json || '{}'); } catch { mj = {}; }
+    for (const [m, frac] of Object.entries(mj)) byEmp[key].months[m] = (byEmp[key].months[m] || 0) + Number(frac || 0);
+  }
+  const employees = Object.values(byEmp).map((e) => {
+    const months = Array.from({ length: 12 }, (_, i) => Math.round((e.months[i + 1] || 0) * 100));
+    const util = Math.round(months.reduce((a, b) => a + b, 0) / 12); // % of the year utilized
+    return { name: e.name, job: e.job, projects: e.projects.size, months, utilization: util };
+  }).sort((a, b) => b.utilization - a.utilization);
+  const teamUtil = employees.length ? Math.round(employees.reduce((a, e) => a + e.utilization, 0) / employees.length) : 0;
+  return { employees, teamUtil, headcount: employees.length };
+}
+
+// Clients active in a sector, with their pipeline and project counts.
+export function sectorClients(sectorId) {
+  return all(`SELECT c.id, c.name_ar,
+     (SELECT COUNT(*) FROM opportunity o WHERE o.client_id=c.id AND o.sector_id=? AND o.deleted_at IS NULL) opps,
+     (SELECT COALESCE(SUM(o.value_halalas),0) FROM opportunity o WHERE o.client_id=c.id AND o.sector_id=? AND o.deleted_at IS NULL) pipeline_halalas,
+     (SELECT COUNT(*) FROM project p WHERE p.client_id=c.id AND p.sector_id=? AND p.deleted_at IS NULL) projects
+     FROM client c WHERE c.deleted_at IS NULL
+     AND (EXISTS(SELECT 1 FROM opportunity o WHERE o.client_id=c.id AND o.sector_id=? AND o.deleted_at IS NULL)
+       OR EXISTS(SELECT 1 FROM project p WHERE p.client_id=c.id AND p.sector_id=? AND p.deleted_at IS NULL))
+     ORDER BY pipeline_halalas DESC LIMIT 12`, [sectorId, sectorId, sectorId, sectorId, sectorId]);
+}
+
+// Win/loss for a sector in a year.
+export function sectorWins(sectorId, year) {
+  const w = get(`SELECT COUNT(*) n, COALESCE(SUM(o.value_halalas),0) v FROM opportunity o JOIN stage st ON st.id=o.stage_id
+     WHERE o.sector_id=? AND o.year=? AND st.is_won=1 AND o.exclude_from_sales=0 AND o.deleted_at IS NULL`, [sectorId, year]);
+  const l = get(`SELECT COUNT(*) n FROM opportunity o JOIN stage st ON st.id=o.stage_id
+     WHERE o.sector_id=? AND o.year=? AND st.is_lost=1 AND o.deleted_at IS NULL`, [sectorId, year]);
+  return { won: w.n, wonValue_halalas: w.v, lost: l.n, winRate: (w.n + l.n) ? Math.round(w.n / (w.n + l.n) * 100) : 0 };
+}
+
 // Bookings (won-opportunity value) per quarter of the year, by the win date (stage_changed_at).
 export function quarterlyBookings(sectorId, year) {
   const rows = all(`SELECT CAST(strftime('%m', o.stage_changed_at) AS INTEGER) m, COALESCE(SUM(o.value_halalas),0) v

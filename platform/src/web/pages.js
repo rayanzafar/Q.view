@@ -1,9 +1,10 @@
-import { layout, card, pill, miniBars, tr, gauge, hbars } from './layout.js';
+import { layout, card, pill, miniBars, tr, gauge, hbars, utilStrip } from './layout.js';
 import { icon } from './icons.js';
 import { fmtSar } from '../core/util/ids.js';
 import { all, get } from '../core/db/index.js';
 import { companyOverview, sectorDashboard, projectKpis, multiYearTrend, winRate,
-  quarterlyRevenue, quarterlyBookings, backlog, pipelineCoverage, bookToBill, grossMargin } from '../core/reports/metrics.js';
+  quarterlyRevenue, quarterlyBookings, backlog, pipelineCoverage, bookToBill, grossMargin,
+  sectorStaffing, sectorClients, sectorWins } from '../core/reports/metrics.js';
 import { config } from '../core/config.js';
 
 const sarShort = (halalas) => {
@@ -122,7 +123,6 @@ export function ceoPage(user, opts = {}) {
       </div>
       <div style="display:flex;gap:1.1rem;flex-wrap:wrap;margin-top:.95rem;padding-top:.85rem;border-top:1px solid rgba(255,255,255,.1);position:relative">
         ${hm('خط الفرص المفتوح', fmtSar(ov.pipeline_halalas), 'مرجّح ' + fmtSar(cov.weighted_halalas))}
-        ${hm('تغطية خط الأنابيب', cov.coverage != null ? cov.coverage + '×' : '—', 'من الهدف المتبقي')}
         ${hm('معدل الفوز', pct(wr.rate), `فوز ${wr.won} · خسارة ${wr.lost}`)}
         ${hm('الأعمال المتعاقدة', fmtSar(bk.backlog_halalas), 'Backlog لم يُحقَّق')}
         ${hm('تحقيق الإيراد', pct(revPct), 'من ' + fmtSar(t.target_revenue))}
@@ -154,33 +154,72 @@ export function sectorPage(user, opts = {}) {
   const sd = sectorDashboard(user, sectorId, { year });
   const pipe = pipelineSummary(user);
   if (!sd) return layout({ user, active: 'sector', title: 'مركز القطاع', body: '<div style="color:var(--muted)">لا يوجد قطاع مرتبط</div>' });
-  const stat = (label, val, sub) => card(`<div style="padding:1rem"><div style="font-size:11px;color:var(--muted)">${label}</div><div class="metric" style="font-size:1.5rem">${val}</div>${sub ? `<div style="font-size:11px;color:var(--muted)">${sub}</div>` : ''}</div>`);
+  const staff = sectorStaffing(sectorId, year);
+  const clients = sectorClients(sectorId);
+  const wins = sectorWins(sectorId, year);
+  const tasks = all(`SELECT t.title, t.status, t.priority, t.due_date, COALESCE(u.name_ar,u.username,'—') assignee
+     FROM task t LEFT JOIN app_user u ON u.id=t.assignee_user_id
+     WHERE t.sector_id=? AND t.deleted_at IS NULL AND t.status != 'DONE' ORDER BY t.due_date LIMIT 12`, [sectorId]);
+  const stat = (label, val, sub, tone) => card(`<div style="padding:.85rem 1rem"><div style="font-size:11px;color:var(--muted)">${label}</div><div class="metric tnum" style="font-size:1.45rem;color:${tone || 'var(--ink2)'}">${val}</div>${sub ? `<div style="font-size:11px;color:var(--muted)">${sub}</div>` : ''}</div>`);
   const maxPipe = Math.max(1, ...pipe.map((s) => s.value_halalas));
-  const pipeRow = pipe.map((s) => `<div style="padding:.35rem 0">
-    <div style="display:flex;align-items:center;gap:.5rem;font-size:13px">
+  const pipeRow = pipe.filter((s) => s.count > 0).map((s) => `<div style="padding:.3rem 0">
+    <div style="display:flex;align-items:center;gap:.5rem;font-size:12.5px">
       <span style="width:9px;height:9px;border-radius:3px;background:${s.color}"></span>
       <span style="flex:1">${esc(s.name_ar)}</span><span style="font-weight:800" class="tnum">${s.count}</span>
       <span style="color:var(--muted);font-size:11px" class="tnum">${fmtSar(s.value_halalas)}</span></div>
-    <div class="bar" style="margin-top:.25rem"><span style="width:${Math.round(s.value_halalas / maxPipe * 100)}%;background:${s.color}"></span></div></div>`).join('');
+    <div class="bar" style="margin-top:.22rem"><span style="width:${Math.round(s.value_halalas / maxPipe * 100)}%;background:${s.color}"></span></div></div>`).join('') || '<div style="color:var(--faint);font-size:12px">لا فرص</div>';
+  const utilTone = (u) => u > 100 ? 'var(--red)' : u >= 70 ? 'var(--green)' : u >= 40 ? 'var(--amber)' : 'var(--muted)';
+  const staffRows = staff.employees.slice(0, 12).map((e) => `<tr style="border-bottom:1px solid var(--line)">
+    <td style="padding:.4rem .6rem;font-size:12.5px">${esc(e.name)}<div style="font-size:10.5px;color:var(--muted)">${esc(e.job || '')}</div></td>
+    <td style="padding:.4rem .6rem;text-align:center;font-size:12px" class="tnum">${e.projects}</td>
+    <td style="padding:.4rem .6rem;width:150px">${utilStrip(e.months)}</td>
+    <td style="padding:.4rem .6rem;text-align:center;font-weight:800;font-size:13px" class="tnum" style="color:${utilTone(e.utilization)}">${e.utilization}%</td></tr>`).join('') || '<tr><td colspan="4" style="padding:1rem;color:var(--muted);font-size:12px">لا تسكين مسجّل لهذا القطاع في ' + year + '</td></tr>';
+  const clientRows = clients.map((c) => `<tr style="border-bottom:1px solid var(--line)">
+    <td style="padding:.4rem .6rem;font-size:12.5px">${esc(c.name_ar)}</td>
+    <td style="padding:.4rem .6rem;text-align:center;font-size:12px" class="tnum">${c.opps}</td>
+    <td style="padding:.4rem .6rem;text-align:center;font-size:12px" class="tnum">${c.projects}</td>
+    <td style="padding:.4rem .6rem;text-align:left;font-size:12px;font-weight:700" class="tnum">${fmtSar(c.pipeline_halalas)}</td></tr>`).join('') || '<tr><td colspan="4" style="padding:1rem;color:var(--muted);font-size:12px">لا عملاء</td></tr>';
+  const taskRows = tasks.map((t) => `<tr style="border-bottom:1px solid var(--line)">
+    <td style="padding:.4rem .6rem;font-size:12.5px">${esc(t.title)}</td>
+    <td style="padding:.4rem .6rem;font-size:11px;color:var(--muted)">${esc(t.assignee)}</td>
+    <td style="padding:.4rem .6rem;text-align:center">${pill(tr(t.status), t.status === 'BLOCKED' ? 'red' : t.status === 'IN_PROGRESS' ? 'blue' : 'slate')}</td>
+    <td style="padding:.4rem .6rem;text-align:center;font-size:11px;color:var(--muted)" class="tnum">${t.due_date || '—'}</td></tr>`).join('') || '<tr><td colspan="4" style="padding:1rem;color:var(--muted);font-size:12px">لا مهام مفتوحة</td></tr>';
+  const th = (t) => `<th style="padding:.4rem .6rem;font-size:10.5px;color:var(--muted);font-weight:700;text-align:${t.a || 'right'}">${t.t}</th>`;
+  // Bonuses/incentives (المكافآت): no bonus/incentive table exists in the data snapshot, and individual
+  // salary is HR-gated by design. We show the REAL incentive-pool basis (won-deal value) — never fabricated
+  // per-person figures — and state transparently that individual distribution needs an HR/payroll source.
+  const avgWon = wins.won ? Math.round(wins.wonValue_halalas / wins.won) : 0;
+  const bonusesCard = card(`<div style="padding:.85rem 1rem;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center">
+      <div style="font-weight:800;font-size:13.5px">المكافآت والحوافز</div><span style="font-size:10px;color:var(--amber);font-weight:700">مصدر HR غير مربوط</span></div>
+    <div style="padding:.6rem 1rem">
+      <div style="display:flex;justify-content:space-between;padding:.3rem 0;border-bottom:1px dashed var(--line)"><span style="font-size:12px;color:var(--muted)">أساس الحوافز · قيمة الصفقات المكسوبة ${year}</span><span class="tnum" style="font-weight:800;font-size:13px;color:var(--green)">${fmtSar(wins.wonValue_halalas)}</span></div>
+      <div style="display:flex;justify-content:space-between;padding:.3rem 0;border-bottom:1px dashed var(--line)"><span style="font-size:12px;color:var(--muted)">صفقات مكسوبة</span><span class="tnum" style="font-weight:800;font-size:13px">${wins.won}</span></div>
+      <div style="display:flex;justify-content:space-between;padding:.3rem 0"><span style="font-size:12px;color:var(--muted)">متوسط قيمة الصفقة</span><span class="tnum" style="font-weight:800;font-size:13px">${fmtSar(avgWon)}</span></div>
+      <div style="margin-top:.5rem;font-size:10.5px;color:var(--faint);line-height:1.6;background:var(--bg,#f6f7fb);border-radius:8px;padding:.5rem .6rem">توزيع المكافآت الفردية يتطلب ربط مصدر بيانات الموارد البشرية/الرواتب أو تعريف قاعدة الحوافز. الأساس أعلاه محسوب من الصفقات الفعلية.</div>
+    </div>`);
   const body = `
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-bottom:1.25rem">
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:.85rem;margin-bottom:.9rem">
       ${stat(`إيراد ${year}`, fmtSar(sd.revenue_halalas), `مبيعات ${fmtSar(sd.sales_halalas)}`)}
       ${stat(`عقود ${year}`, fmtSar(sd.contracts_halalas), `${sd.contracts_count} عقد`)}
-      ${stat('مشاريع قائمة', sd.projects.IN_PROGRESS || 0, `مكتملة ${sd.projects.COMPLETED || 0}`)}
-      ${stat('مخاطر مفتوحة', sd.openRisks, `مخرجات مسلّمة ${sd.deliverables.DELIVERED || 0}`)}
+      ${stat('يوتيليزيشن الفريق', staff.teamUtil + '%', `${staff.headcount} موظفًا مُسكَّنًا`, utilTone(staff.teamUtil))}
+      ${stat('الفوز', wins.won + ' فرصة', `نسبة ${wins.winRate}% · خسارة ${wins.lost}`, 'var(--green)')}
+      ${stat('مشاريع قائمة', sd.projects.IN_PROGRESS || 0, `مخاطر مفتوحة ${sd.openRisks}`)}
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.25rem">
-      ${card(`<div style="padding:1rem"><div style="font-weight:800;font-size:14px;margin-bottom:.5rem">خط الفرص حسب المرحلة</div>${pipeRow}</div>`)}
-      ${card(`<div style="padding:1rem"><div style="font-weight:800;font-size:14px;margin-bottom:.25rem">الاتجاه متعدد السنوات — عقود القطاع</div>
-        <div style="font-size:11px;color:var(--muted);margin-bottom:.5rem">مليون ر.س.</div>
-        ${miniBars(sd.trend, 'contracts_halalas', { fmt: sarShort })}
-        <div style="margin-top:.75rem;display:flex;gap:.5rem">
-          ${pill('على المسار ' + (sd.rag.GREEN || 0), 'green')}
-          ${pill('في خطر ' + (sd.rag.AMBER || 0), 'amber')}
-          ${pill('حرج ' + (sd.rag.RED || 0), 'red')}
-        </div></div>`)}
+    <div style="display:grid;grid-template-columns:1.3fr 1fr;gap:.9rem;margin-bottom:.9rem">
+      ${card(`<div style="padding:.85rem 1rem;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line)"><div style="font-weight:800;font-size:13.5px">التسكين الشهري واليوتيليزيشن</div><span style="font-size:10.5px;color:var(--muted)">أخضر ≥80% · أصفر · أحمر تجاوز</span></div>
+        <table style="width:100%;border-collapse:collapse"><thead><tr>${th({ t: 'الموظف' })}${th({ t: 'مشاريع', a: 'center' })}${th({ t: 'ينا … ديس (شهريًا)', a: 'center' })}${th({ t: 'اليوتيليزيشن', a: 'center' })}</tr></thead><tbody>${staffRows}</tbody></table>`)}
+      <div style="display:flex;flex-direction:column;gap:.9rem">
+        ${card(`<div style="padding:.85rem 1rem;border-bottom:1px solid var(--line);font-weight:800;font-size:13.5px">خط الفرص حسب المرحلة</div><div style="padding:.6rem 1rem">${pipeRow}</div>`)}
+        ${bonusesCard}
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:.9rem">
+      ${card(`<div style="padding:.85rem 1rem;border-bottom:1px solid var(--line);font-weight:800;font-size:13.5px">العملاء وخط أنابيبهم</div>
+        <table style="width:100%;border-collapse:collapse"><thead><tr>${th({ t: 'العميل' })}${th({ t: 'فرص', a: 'center' })}${th({ t: 'مشاريع', a: 'center' })}${th({ t: 'الخط', a: 'left' })}</tr></thead><tbody>${clientRows}</tbody></table>`)}
+      ${card(`<div style="padding:.85rem 1rem;border-bottom:1px solid var(--line);font-weight:800;font-size:13.5px">المهام المُسكَّنة المفتوحة</div>
+        <table style="width:100%;border-collapse:collapse"><thead><tr>${th({ t: 'المهمة' })}${th({ t: 'المسؤول' })}${th({ t: 'الحالة', a: 'center' })}${th({ t: 'الاستحقاق', a: 'center' })}</tr></thead><tbody>${taskRows}</tbody></table>`)}
     </div>`;
-  return layout({ user, active: 'sector', title: `مركز القطاع — ${esc(sd.sector.name_ar)}`, subtitle: `السنة المالية ${year}`, body, year });
+  return layout({ user, active: 'sector', title: `مركز القطاع — ${esc(sd.sector.name_ar)}`, subtitle: `قيادة القطاع · السنة المالية ${year}`, body, year });
 }
 
 // small stat chip used on PMO toolbars
@@ -276,6 +315,83 @@ export function opportunitiesPage(user) {
       canCreateOpp:${canCreate}
     });</script>`;
   return layout({ user, active: 'opportunities', title: 'الفرص والمبيعات', subtitle: 'خط الفرص · PMO', body });
+}
+
+// Personal pipeline — an individual's OWN opportunities (owner = the signed-in user).
+export function myOpportunitiesPage(user, opts = {}) {
+  const year = Number(opts.year) || config.fiscalYear;
+  const scoped = listOpportunities(user);
+  const rows = scoped.filter((o) => o.owner_user_id === user.id);
+  const stages = all('SELECT id,name_ar,color,sort_order,is_won,is_lost FROM stage ORDER BY sort_order');
+  const stById = Object.fromEntries(stages.map((s) => [s.id, s]));
+  const clients = Object.fromEntries(all('SELECT id,name_ar FROM client').map((c) => [c.id, c.name_ar]));
+
+  const isOpen = (o) => { const s = stById[o.stage_id]; return s && !s.is_won && !s.is_lost; };
+  const open = rows.filter(isOpen);
+  const wonAll = rows.filter((o) => stById[o.stage_id]?.is_won);
+  const lostAll = rows.filter((o) => stById[o.stage_id]?.is_lost);
+  const wonYear = wonAll.filter((o) => o.year === year);
+  const total = open.reduce((a, o) => a + (o.value_halalas || 0), 0);
+  const weighted = open.reduce((a, o) => a + (o.value_halalas || 0) * ((o.win_pct || 0) / 100), 0);
+  const wonValue = wonYear.reduce((a, o) => a + (o.value_halalas || 0), 0);
+  const decided = wonAll.length + lostAll.length;
+  const winRatePct = decided ? Math.round(wonAll.length / decided * 100) : 0;
+
+  // pipeline by stage (open opps only) for the comparison chart
+  const openStages = stages.filter((s) => !s.is_won && !s.is_lost);
+  const stageItems = openStages.map((s) => {
+    const items = open.filter((o) => o.stage_id === s.id);
+    return { label: esc(s.name_ar), value: items.reduce((a, o) => a + (o.value_halalas || 0), 0), n: items.length, sub: items.length + ' فرصة', color: s.color };
+  }).filter((x) => x.n > 0);
+
+  // next actions — open opps with a next_action, soonest by win% desc (closest to closing first)
+  const actions = open.filter((o) => o.next_action).sort((a, b) => (b.win_pct || 0) - (a.win_pct || 0)).slice(0, 8);
+
+  const statMy = (l, v, sub, tone) => card(`<div style="padding:.75rem .95rem"><div style="font-size:11px;color:var(--muted)">${l}</div><div class="metric tnum" style="font-size:1.35rem;${tone ? 'color:' + tone : ''}">${v}</div>${sub ? `<div style="font-size:10.5px;color:var(--faint)">${sub}</div>` : ''}</div>`);
+
+  // ranked list of my open pipeline (highest value first), with stage + win% + client + next action
+  const oppRows = open.slice().sort((a, b) => (b.value_halalas || 0) - (a.value_halalas || 0)).slice(0, 60).map((o) => {
+    const st = stById[o.stage_id] || {};
+    const prTone = o.priority === 'P0' ? 'red' : o.priority === 'P1' ? 'amber' : 'slate';
+    return `<tr style="border-bottom:1px solid var(--line);cursor:pointer" onclick="Sanad.oppOpen('${o.id}')">
+      <td style="padding:.45rem .7rem;font-size:12.5px">${esc(o.title_ar)}${o.priority ? ' ' + pill(tr(o.priority), prTone) : ''}<div style="font-size:10.5px;color:var(--muted)">${esc(clients[o.client_id] || '—')}</div></td>
+      <td style="padding:.45rem .7rem;text-align:center"><span style="display:inline-flex;align-items:center;gap:.3rem;font-size:11.5px"><span style="width:8px;height:8px;border-radius:2px;background:${st.color || '#cbd5e1'}"></span>${esc(st.name_ar || o.stage_id)}</span></td>
+      <td style="padding:.45rem .7rem;text-align:left;font-weight:800;font-size:12.5px" class="tnum">${fmtSar(o.value_halalas)}</td>
+      <td style="padding:.45rem .7rem;text-align:center;font-size:12px;color:var(--muted)" class="tnum">${pct(o.win_pct)}</td>
+      <td style="padding:.45rem .7rem;font-size:11px;color:var(--muted)">${esc(o.next_action || '—')}</td></tr>`;
+  }).join('');
+
+  const actionRows = actions.map((o) => `<div style="display:flex;align-items:flex-start;gap:.5rem;padding:.45rem 0;border-bottom:1px dashed var(--line)">
+    <span style="width:7px;height:7px;border-radius:99px;margin-top:.35rem;flex:0 0 auto;background:${(stById[o.stage_id] || {}).color || '#cbd5e1'}"></span>
+    <div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:600;color:var(--ink2)">${esc(o.next_action)}</div>
+      <div style="font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(o.title_ar)} · ${esc(clients[o.client_id] || '')}</div></div>
+    <span class="tnum" style="font-size:11px;color:var(--muted);flex:0 0 auto">${pct(o.win_pct)}</span></div>`).join('') || '<div style="color:var(--faint);font-size:12px;padding:.5rem 0">لا إجراءات تالية مسجّلة</div>';
+
+  const empty = rows.length === 0;
+  const body = empty
+    ? noticeCard('لا فرص باسمك بعد', 'لا توجد فرص مملوكة لك حاليًا. عندما تُسند إليك فرصة كمالك ستظهر هنا مع خط أنابيبك الشخصي وإجراءاتك التالية ونسبة فوزك.', '/app/opportunities', 'تصفّح كل الفرص')
+    : `
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:.75rem;margin-bottom:.9rem">
+      ${statMy('خط أنابيبي', fmtSar(total), open.length + ' فرصة مفتوحة')}
+      ${statMy('المرجّح', fmtSar(weighted), 'حسب الاحتمالية', 'var(--brand2)')}
+      ${statMy('فزت ' + year, wonYear.length, fmtSar(wonValue), 'var(--green)')}
+      ${statMy('نسبة فوزي', winRatePct + '%', `${wonAll.length} فوز · ${lostAll.length} خسارة`, winRatePct >= 50 ? 'var(--green)' : 'var(--amber)')}
+      ${statMy('إجمالي فرصي', rows.length, 'كل الحالات')}
+    </div>
+    <div style="display:grid;grid-template-columns:1.5fr 1fr;gap:.9rem">
+      ${card(`<div style="padding:.8rem 1rem;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center">
+        <div style="font-weight:800;font-size:13.5px">خط أنابيبي — مرتّب حسب القيمة</div><span style="font-size:11px;color:var(--muted)">${open.length} فرصة</span></div>
+        <div style="max-height:520px;overflow-y:auto"><table style="width:100%;border-collapse:collapse"><thead><tr style="font-size:10.5px;color:var(--muted);text-align:right;position:sticky;top:0;background:var(--surface)">
+          <th style="padding:.4rem .7rem">الفرصة</th><th style="padding:.4rem .7rem;text-align:center">المرحلة</th><th style="padding:.4rem .7rem;text-align:left">القيمة</th><th style="padding:.4rem .7rem;text-align:center">الاحتمالية</th><th style="padding:.4rem .7rem">الإجراء التالي</th></tr></thead>
+          <tbody>${oppRows || '<tr><td colspan="5" style="padding:1rem;color:var(--muted);font-size:12.5px">لا فرص مفتوحة — كل فرصك مُغلقة</td></tr>'}</tbody></table></div>`)}
+      <div style="display:flex;flex-direction:column;gap:.9rem">
+        ${card(`<div style="padding:.8rem 1rem;border-bottom:1px solid var(--line);font-weight:800;font-size:13.5px">خطي حسب المرحلة</div>
+          <div style="padding:.7rem 1rem">${stageItems.length ? hbars(stageItems, { fmt: fmtSar }) : '<div style="color:var(--faint);font-size:12px">لا فرص مفتوحة</div>'}</div>`)}
+        ${card(`<div style="padding:.8rem 1rem;border-bottom:1px solid var(--line);font-weight:800;font-size:13.5px">إجراءاتي التالية</div>
+          <div style="padding:.4rem 1rem .7rem">${actionRows}</div>`)}
+      </div>
+    </div>`;
+  return layout({ user, active: 'my-opportunities', title: 'فرصي', subtitle: `خط الفرص الخاص بي · ${esc(user.name_ar || user.username || '')}`, body });
 }
 
 const PRJ_STATUS = [
@@ -677,41 +793,125 @@ export function projectDetailPage(user, projectId) {
   const row = redact(user, 'project', p);
   const k = projectKpis(p.id);
   const canCost = canSeeSensitive(user, 'cost');
+  const canEdit = can(user, 'update', 'project', p);
   const tasks = all("SELECT status, COUNT(*) n FROM task WHERE project_id=? AND deleted_at IS NULL GROUP BY status", [p.id]);
   const tmap = Object.fromEntries(tasks.map((t) => [t.status, t.n]));
-  const dlv = all("SELECT name_ar, amount_halalas, status FROM deliverable WHERE project_id=? AND deleted_at IS NULL ORDER BY month LIMIT 20", [p.id]);
+  const dlv = all("SELECT name_ar, amount_halalas, status, month FROM deliverable WHERE project_id=? AND deleted_at IS NULL ORDER BY month LIMIT 24", [p.id]);
   const risks = all("SELECT title, impact, status FROM risk WHERE project_id=? AND status!='CLOSED' LIMIT 10", [p.id]);
-  const client = get('SELECT name_ar FROM client WHERE id=?', [p.client_id]);
-  const stat = (l, v, c) => card(`<div style="padding:.85rem 1rem"><div style="font-size:11px;color:var(--muted)">${l}</div><div class="metric" style="font-size:1.25rem;${c ? 'color:' + c : ''}">${v}</div></div>`);
+  const client = get('SELECT id, name_ar FROM client WHERE id=?', [p.client_id]);
+  const owner = p.owner_user_id ? get('SELECT name_ar, username FROM app_user WHERE id=?', [p.owner_user_id]) : null;
+  const srcOpp = p.source_opp_id ? get('SELECT id, title_ar FROM opportunity WHERE id=? AND deleted_at IS NULL', [p.source_opp_id]) : null;
+  const contract = get("SELECT id, code, value_halalas, status FROM contract WHERE project_id=? AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1", [p.id]);
+  // Team assigned to this project (from the allocation model), with each member's month-coverage on THIS project.
+  const staff = all(`SELECT a.person_name_ar, a.type, a.monthly_json, e.job_title
+     FROM allocation a LEFT JOIN employee e ON e.id=a.employee_id
+     WHERE a.project_id=? AND a.deleted_at IS NULL ORDER BY (a.type='lead') DESC, a.person_name_ar`, [p.id]);
+
+  // ── Financials ──
+  const contractVal = p.contract_value_halalas || (contract && contract.value_halalas) || 0;
+  const headlineVal = contractVal || p.po_value_halalas || p.budget_halalas || 0;
+  const spend = p.actual_spend_halalas || 0;
+  const revenue = p.revenue_halalas || 0;
+  const showCost = canCost && !row._redacted_actual_spend_halalas;
+  const marginPct = p.margin_pct != null ? p.margin_pct : (revenue > 0 ? Math.round((revenue - spend) / revenue * 100) : null);
+  const burnPct = p.budget_halalas ? Math.round(spend / p.budget_halalas * 100) : null;
+
+  // ── Timeline / schedule health ──
+  const sd = p.start_date ? new Date(p.start_date) : null;
+  const ed = p.end_date ? new Date(p.end_date) : null;
+  const today = new Date();
+  let durTxt = '—', schedulePct = null, scheduleTone = 'var(--muted)', scheduleNote = '';
+  if (sd && ed && ed > sd) {
+    const totalD = Math.round((ed - sd) / 86400000);
+    const elapsed = Math.min(totalD, Math.max(0, Math.round((today - sd) / 86400000)));
+    const remain = Math.max(0, Math.round((ed - today) / 86400000));
+    schedulePct = Math.round(elapsed / totalD * 100);
+    durTxt = `${totalD} يوم · مضى ${elapsed} · متبقٍّ ${remain}`;
+    const prog = Math.round(p.progress_pct || 0);
+    const gap = prog - schedulePct;
+    scheduleTone = gap < -12 ? 'var(--red)' : gap < -4 ? 'var(--amber)' : 'var(--green)';
+    scheduleNote = gap < -12 ? 'متأخر عن الجدول' : gap < -4 ? 'قريب من الجدول' : (today > ed ? 'تجاوز تاريخ الانتهاء' : 'ضمن الجدول');
+    if (today > ed && prog < 100) { scheduleTone = 'var(--red)'; scheduleNote = 'تجاوز تاريخ الانتهاء'; }
+  }
+
+  const stat = (l, v, c, sub) => card(`<div style="padding:.7rem .9rem"><div style="font-size:10.5px;color:var(--muted)">${l}</div><div class="metric tnum" style="font-size:1.2rem;${c ? 'color:' + c : ''}">${v}</div>${sub ? `<div style="font-size:10px;color:var(--faint)">${sub}</div>` : ''}</div>`);
   const ragColor = p.rag === 'RED' ? 'red' : p.rag === 'AMBER' ? 'amber' : 'green';
-  const dlvRows = dlv.map((d) => `<tr style="border-bottom:1px solid var(--line)"><td style="padding:.4rem .75rem;font-size:13px">${esc(d.name_ar)}</td>
-    <td style="padding:.4rem .75rem;font-size:13px;text-align:center" class="tnum">${fmtSar(d.amount_halalas)}</td>
+  const MONTHS = ['ينا', 'فبر', 'مار', 'أبر', 'ماي', 'يون', 'يول', 'أغس', 'سبت', 'أكت', 'نوف', 'ديس'];
+  const dlvRows = dlv.map((d) => `<tr style="border-bottom:1px solid var(--line)"><td style="padding:.4rem .75rem;font-size:12.5px">${esc(d.name_ar)}${d.month ? `<span style="color:var(--faint);font-size:10px;margin-inline-start:.35rem">${MONTHS[(d.month - 1) % 12] || ''}</span>` : ''}</td>
+    <td style="padding:.4rem .75rem;font-size:12.5px;text-align:center" class="tnum">${fmtSar(d.amount_halalas)}</td>
     <td style="padding:.4rem .75rem;text-align:center">${pill(tr(d.status), ['PAID', 'INVOICED', 'ACCEPTED'].includes(d.status) ? 'green' : d.status === 'DELIVERED' ? 'blue' : 'slate')}</td></tr>`).join('');
-  const riskRows = risks.map((r) => `<tr style="border-bottom:1px solid var(--line)"><td style="padding:.4rem .75rem;font-size:13px">${esc(r.title)}</td>
-    <td style="padding:.4rem .75rem;text-align:center">${pill(r.impact || '—', r.impact === 'high' ? 'red' : r.impact === 'medium' ? 'amber' : 'slate')}</td></tr>`).join('');
+  const riskRows = risks.map((r) => `<tr style="border-bottom:1px solid var(--line)"><td style="padding:.4rem .75rem;font-size:12.5px">${esc(r.title)}</td>
+    <td style="padding:.4rem .75rem;text-align:center">${pill(tr(r.impact) || '—', r.impact === 'high' ? 'red' : r.impact === 'medium' ? 'amber' : 'slate')}</td></tr>`).join('');
+  // staffing rows: parse each member's monthly_json into a 12-cell coverage strip on this project
+  const staffRows = staff.map((s) => {
+    let mj = {}; try { mj = JSON.parse(s.monthly_json || '{}'); } catch { mj = {}; }
+    const months = Array.from({ length: 12 }, (_, i) => Math.round((Number(mj[i + 1]) || 0) * 100));
+    return `<tr style="border-bottom:1px solid var(--line)">
+      <td style="padding:.4rem .75rem;font-size:12.5px">${esc(s.person_name_ar || '—')}<div style="font-size:10px;color:var(--muted)">${esc(s.job_title || '')}</div></td>
+      <td style="padding:.4rem .75rem;text-align:center">${pill(s.type === 'lead' ? 'قائد' : 'عضو', s.type === 'lead' ? 'blue' : 'slate')}</td>
+      <td style="padding:.4rem .75rem;width:160px">${utilStrip(months)}</td></tr>`;
+  }).join('');
+
+  const financeCard = card(`<div style="padding:.85rem 1rem;border-bottom:1px solid var(--line);font-weight:800;font-size:13px">المالية</div>
+    <div style="padding:.5rem 1rem">
+      ${[['قيمة العقد', fmtSar(headlineVal), 'var(--ink2)'],
+    ['الإيراد المُثبت', fmtSar(revenue), 'var(--green)'],
+    ['الصرف الفعلي', showCost ? fmtSar(spend) : '••• محجوب', showCost ? 'var(--ink2)' : 'var(--faint)'],
+    ['الهامش', marginPct != null && showCost ? marginPct + '%' : (marginPct != null && !canCost ? '••• محجوب' : '—'), (marginPct != null && marginPct < 10) ? 'var(--red)' : 'var(--ink2)']]
+    .map(([l, v, c]) => `<div style="display:flex;justify-content:space-between;align-items:center;padding:.3rem 0;border-bottom:1px dashed var(--line)"><span style="font-size:12px;color:var(--muted)">${l}</span><span class="tnum" style="font-weight:800;font-size:13px;color:${c}">${v}</span></div>`).join('')}
+      ${showCost && burnPct != null ? `<div style="margin-top:.55rem"><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted)"><span>استهلاك الميزانية</span><span class="tnum">${burnPct}%</span></div>${bar(burnPct, burnPct > 90 ? '#dc2626' : burnPct > 70 ? '#d97706' : '#059669')}</div>` : ''}
+      ${contract ? `<a href="/app/contract/${contract.id}" style="display:block;margin-top:.6rem;font-size:12px;color:var(--brand2);text-decoration:none">↳ فتح العقد ${esc(contract.code || '')} · ${fmtSar(contract.value_halalas)}</a>` : ''}
+    </div>`);
+
+  const timelineCard = card(`<div style="padding:.85rem 1rem;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center">
+      <div style="font-weight:800;font-size:13px">الجدول الزمني</div>${schedulePct != null ? `<span style="font-size:11px;font-weight:700;color:${scheduleTone}">${scheduleNote}</span>` : ''}</div>
+    <div style="padding:.85rem 1rem">
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted)"><span>${p.start_date || '—'}</span><span>${p.end_date || '—'}</span></div>
+      <div style="position:relative;height:10px;background:var(--surface2, #f1f5f9);border-radius:6px;margin:.45rem 0;overflow:hidden">
+        <div style="position:absolute;inset-inline-start:0;top:0;height:100%;width:${Math.min(100, Math.round(p.progress_pct || 0))}%;background:linear-gradient(90deg,#2563eb,#7c3aed)"></div>
+        ${schedulePct != null ? `<div title="موضع اليوم على الجدول" style="position:absolute;top:-2px;height:14px;width:2px;background:#0f172a;inset-inline-start:${schedulePct}%"></div>` : ''}
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:var(--muted)">الإنجاز <b class="tnum" style="color:var(--ink2)">${Math.round(p.progress_pct || 0)}%</b></span><span style="color:var(--muted)">${schedulePct != null ? `الزمن المنقضي <b class="tnum">${schedulePct}%</b>` : ''}</span></div>
+      <div style="font-size:11px;color:var(--faint);margin-top:.4rem">${durTxt}</div>
+      <div style="display:flex;gap:1.2rem;margin-top:.65rem;padding-top:.55rem;border-top:1px solid var(--line);font-size:11.5px">
+        <div><span style="color:var(--muted)">مدير المشروع</span><div style="font-weight:700">${esc(p.pm_name || owner?.name_ar || owner?.username || '—')}</div></div>
+        ${srcOpp ? `<div><span style="color:var(--muted)">الفرصة المصدر</span><div><a href="/app/opportunities" style="color:var(--brand2);text-decoration:none;font-weight:700">${esc(srcOpp.title_ar).slice(0, 26)}</a></div></div>` : ''}
+      </div>
+    </div>`);
+
   const body = `
     <a href="/app/projects" style="font-size:12px;color:var(--muted)">← المشاريع</a>
-    <div style="display:flex;align-items:center;gap:.75rem;margin:.6rem 0 1rem">
-      <h2 style="font-size:18px">${esc(p.name_ar)}</h2>${pill(tr(p.status), p.status === 'COMPLETED' ? 'green' : 'blue')}${pill('RAG ' + tr(p.rag), ragColor)}
-      <span style="font-size:12px;color:var(--muted)">${esc(client?.name_ar || '')} · ${esc(p.code || '')}</span>
+    <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin:.6rem 0 1rem">
+      <h2 style="font-size:18px;margin:0">${esc(p.name_ar)}</h2>${pill(tr(p.status), p.status === 'COMPLETED' ? 'green' : p.status === 'ON_HOLD' ? 'amber' : 'blue')}${pill('RAG ' + tr(p.rag), ragColor)}
+      ${p.kind ? pill(p.kind === 'external' ? 'خارجي' : 'داخلي', 'slate') : ''}
+      <span style="font-size:12px;color:var(--muted)">${client ? esc(client.name_ar) : ''} · ${esc(p.code || '')}${p.financial_code ? ' · مالي ' + esc(p.financial_code) : ''}</span>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:.75rem;margin-bottom:1.25rem">
+    <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:.65rem;margin-bottom:1rem">
       ${stat('الإنجاز', Math.round(p.progress_pct || 0) + '%')}
-      ${stat('إنجاز المهام', k.taskCompletionRate + '%')}
+      ${stat('إنجاز المهام', k.taskCompletionRate + '%', '', `${tmap.DONE || 0}/${k.totalTasks}`)}
       ${stat('مهام متأخرة', k.lateTasks, k.lateTasks ? 'var(--red)' : '')}
-      ${stat('قبول المخرجات', k.deliverableAcceptanceRate + '%')}
-      ${stat('قيمة العقد', fmtSar(p.contract_value_halalas))}
-      ${stat('الصرف الفعلي', canCost && !row._redacted_actual_spend_halalas ? fmtSar(p.actual_spend_halalas) : '••• محجوب', canCost ? '' : 'var(--faint)')}
+      ${stat('قبول المخرجات', k.deliverableAcceptanceRate + '%', '', `${dlv.length} مخرج`)}
+      ${stat('الفريق المُسكَّن', staff.length, '', staff.length ? 'موظف' : 'لا تسكين')}
+      ${stat('المخاطر', risks.length, risks.length ? 'var(--amber)' : '', 'مفتوحة')}
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
-      ${card(`<div style="padding:1rem;border-bottom:1px solid var(--line);font-weight:800;font-size:13px">المخرجات (${dlv.length})</div>
-        <table style="width:100%;border-collapse:collapse"><tbody>${dlvRows || '<tr><td style="padding:1rem;color:var(--muted);font-size:13px">لا مخرجات</td></tr>'}</tbody></table>`)}
-      <div style="display:flex;flex-direction:column;gap:1rem">
-        ${card(`<div style="padding:1rem"><div style="font-weight:800;font-size:13px;margin-bottom:.5rem">توزيع المهام</div>
-          <div style="display:flex;gap:.5rem;flex-wrap:wrap">${['TODO', 'IN_PROGRESS', 'BLOCKED', 'IN_REVIEW', 'DONE'].map((s) => pill(`${tr(s)}: ${tmap[s] || 0}`, s === 'DONE' ? 'green' : s === 'BLOCKED' ? 'red' : 'slate')).join(' ')}</div></div>`)}
-        ${card(`<div style="padding:1rem;border-bottom:1px solid var(--line);font-weight:800;font-size:13px">المخاطر المفتوحة (${risks.length})</div>
-          <table style="width:100%;border-collapse:collapse"><tbody>${riskRows || '<tr><td style="padding:1rem;color:var(--muted);font-size:13px">لا مخاطر مفتوحة</td></tr>'}</tbody></table>`)}
-      </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:.9rem;margin-bottom:.9rem">
+      ${timelineCard}
+      ${financeCard}
+    </div>
+    <div style="display:grid;grid-template-columns:1.15fr 1fr;gap:.9rem;margin-bottom:.9rem">
+      ${card(`<div style="padding:.85rem 1rem;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center">
+        <div style="font-weight:800;font-size:13px">التسكين — فريق المشروع (${staff.length})</div>
+        ${canEdit ? `<button class="btn btn-sm" style="font-size:11px;padding:.25rem .6rem" onclick="Sanad.projOpen('${p.id}')">${icon('users')} إدارة التسكين</button>` : ''}</div>
+        <table style="width:100%;border-collapse:collapse"><thead><tr style="font-size:10.5px;color:var(--muted);text-align:right"><th style="padding:.35rem .75rem">الموظف</th><th style="padding:.35rem .75rem;text-align:center">الدور</th><th style="padding:.35rem .75rem;text-align:center">التغطية الشهرية</th></tr></thead>
+        <tbody>${staffRows || '<tr><td colspan="3" style="padding:1rem;color:var(--muted);font-size:12.5px">لا يوجد فريق مُسكَّن على هذا المشروع بعد' + (canEdit ? ' — استخدم «إدارة التسكين»' : '') + '</td></tr>'}</tbody></table>`)}
+      ${card(`<div style="padding:.85rem 1rem;border-bottom:1px solid var(--line);font-weight:800;font-size:13px">المخرجات (${dlv.length})</div>
+        <div style="max-height:260px;overflow-y:auto"><table style="width:100%;border-collapse:collapse"><tbody>${dlvRows || '<tr><td style="padding:1rem;color:var(--muted);font-size:12.5px">لا مخرجات</td></tr>'}</tbody></table></div>`)}
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:.9rem">
+      ${card(`<div style="padding:.85rem 1rem"><div style="font-weight:800;font-size:13px;margin-bottom:.5rem">توزيع المهام (${k.totalTasks})</div>
+        <div style="display:flex;gap:.4rem;flex-wrap:wrap">${['TODO', 'IN_PROGRESS', 'BLOCKED', 'IN_REVIEW', 'DONE'].map((s) => pill(`${tr(s)}: ${tmap[s] || 0}`, s === 'DONE' ? 'green' : s === 'BLOCKED' ? 'red' : 'slate')).join(' ')}</div></div>`)}
+      ${card(`<div style="padding:.85rem 1rem;border-bottom:1px solid var(--line);font-weight:800;font-size:13px">المخاطر المفتوحة (${risks.length})</div>
+        <table style="width:100%;border-collapse:collapse"><tbody>${riskRows || '<tr><td style="padding:1rem;color:var(--muted);font-size:12.5px">لا مخاطر مفتوحة</td></tr>'}</tbody></table>`)}
     </div>`;
   return layout({ user, active: 'projects', title: esc(p.name_ar), subtitle: 'تفاصيل المشروع', body });
 }

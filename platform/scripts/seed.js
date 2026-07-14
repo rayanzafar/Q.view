@@ -1,5 +1,5 @@
 // Seed system config (workflows, report/kpi definitions, a demo schedule) + demo accounts per role.
-import { run, get, insert } from '../src/core/db/index.js';
+import { run, get, insert, all } from '../src/core/db/index.js';
 import { hashPassword } from '../src/core/auth/password.js';
 import { id, nowIso } from '../src/core/util/ids.js';
 
@@ -88,6 +88,36 @@ export function seed() {
   const pm = get("SELECT id FROM app_user WHERE username='demo.pm'");
   const someProject = get("SELECT id FROM project WHERE sector_id='SOLUTIONS' AND deleted_at IS NULL LIMIT 1");
   if (pm && someProject) run('UPDATE project SET owner_user_id = ? WHERE id = ?', [pm.id, someProject.id]);
+
+  // Give the person-scoped personas a realistic personal book of opportunities so the "فرصي" (My
+  // Opportunities) page demonstrates a populated pipeline. Deterministic (ordered by id) and idempotent;
+  // each persona gets a mix of open/won/lost so their personal win-rate is meaningful.
+  const persona = (u) => get('SELECT id FROM app_user WHERE username = ?', [u])?.id;
+  const owners = { bd: persona('demo.bd'), sl: persona('demo.sectorlead'), cons: persona('demo.consultant'), pm: pm?.id };
+  if (owners.bd) {
+    const rows = all(`SELECT o.id, st.is_won, st.is_lost FROM opportunity o JOIN stage st ON st.id=o.stage_id
+       WHERE o.sector_id='SOLUTIONS' AND o.deleted_at IS NULL ORDER BY o.id`);
+    const open = rows.filter((r) => !r.is_won && !r.is_lost).map((r) => r.id);
+    const won = rows.filter((r) => r.is_won).map((r) => r.id);
+    const lost = rows.filter((r) => r.is_lost).map((r) => r.id);
+    const plan = [
+      { u: owners.bd, open: 16, won: 3, lost: 3 }, { u: owners.sl, open: 10, won: 2, lost: 2 },
+      { u: owners.cons, open: 6, won: 1, lost: 1 }, { u: owners.pm, open: 5, won: 1, lost: 1 },
+    ];
+    const actions = ['متابعة العرض الفني مع العميل', 'جدولة اجتماع إغلاق', 'إرسال التسعير المُحدَّث',
+      'تأكيد نطاق العمل', 'عرض تقديمي للجنة الشرائية', 'مراجعة المسودة القانونية للعقد'];
+    let oi = 0, wi = 0, li = 0, a = 0;
+    for (const p of plan) {
+      if (!p.u) { oi += p.open; wi += p.won; li += p.lost; continue; }
+      const slice = [...open.slice(oi, oi + p.open), ...won.slice(wi, wi + p.won), ...lost.slice(li, li + p.lost)];
+      for (const oid of slice) run('UPDATE opportunity SET owner_user_id = ? WHERE id = ?', [p.u, oid]);
+      for (let k = 0; k < Math.min(4, p.open); k++) {
+        const oid = open[oi + k];
+        if (oid) run("UPDATE opportunity SET next_action = ? WHERE id = ? AND (next_action IS NULL OR next_action='')", [actions[(a++) % actions.length], oid]);
+      }
+      oi += p.open; wi += p.won; li += p.lost;
+    }
+  }
 
   // a demo weekly schedule (exec brief → a recipient group with demo.ceo)
   if (!get("SELECT id FROM report_schedule LIMIT 1")) {

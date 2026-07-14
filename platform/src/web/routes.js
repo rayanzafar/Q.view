@@ -32,6 +32,7 @@ webRouter.get('/', (req, res) => res.redirect(req.ctx?.user ? '/app/ceo' : '/log
 
 const PAGES = {
   ceo: P.ceoPage, portfolio: P.portfolioPage, sector: P.sectorPage, opportunities: P.opportunitiesPage,
+  'my-opportunities': P.myOpportunitiesPage,
   projects: P.projectsPage, tasks: P.tasksPage, timesheet: P.timesheetPage, approvals: P.approvalsPage,
   team: P.teamPage, users: P.usersPage, audit: P.auditPage, reports: P.reportsPage, org: P.orgPage,
   finance: P.financePage,
