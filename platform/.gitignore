@@ -10,6 +10,9 @@ data/migration-reconciliation.json
 
 # Real data snapshot — sensitive (salaries/IPs); provided at runtime, never committed
 seed/*.snapshot.json
+# Sanitized staging dataset — business data (client names/contract values). Kept OUT of git
+# (repo visibility unverifiable); uploaded straight to the owner's private PaaS via .railwayignore.
+seed/*.demo.json
 
 # secrets — never commit
 .env

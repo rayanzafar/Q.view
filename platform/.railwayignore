@@ -1,0 +1,17 @@
+# railway up uses this INSTEAD of .gitignore, so it must list every exclusion explicitly.
+# Goal: upload the app code + the sanitized seed/*.demo.json (business structure, no salaries/IPs),
+# while excluding heavy build dirs, local databases, secrets, and the REAL sensitive snapshot.
+node_modules
+.git
+data/*.db
+data/*.db-wal
+data/*.db-shm
+data/backups
+data/outbox
+data/migration-reconciliation.json
+.env
+# real snapshot carries salaries/IPs — never upload it (the sanitized *.demo.json is used instead)
+seed/legacy-state.snapshot.json
+seed/legacy-users.snapshot.json
+*.log
+.DS_Store
