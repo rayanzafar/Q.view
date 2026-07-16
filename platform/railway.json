@@ -2,7 +2,7 @@
   "$schema": "https://railway.app/railway.schema.json",
   "build": { "builder": "DOCKERFILE", "dockerfilePath": "Dockerfile" },
   "deploy": {
-    "startCommand": "node --experimental-sqlite scripts/migrate.js && node --experimental-sqlite scripts/seed-rbac.js && node --experimental-sqlite scripts/seed.js && node --experimental-sqlite src/server.js",
+    "startCommand": "node --experimental-sqlite scripts/migrate.js && node --experimental-sqlite scripts/seed-rbac.js && node --experimental-sqlite scripts/seed-staging.js && node --experimental-sqlite src/server.js",
     "healthcheckPath": "/ready",
     "healthcheckTimeout": 30,
     "restartPolicyType": "ON_FAILURE",

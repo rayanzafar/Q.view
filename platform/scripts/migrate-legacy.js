@@ -1,13 +1,20 @@
 // Migrate the read-only legacy snapshot (single JSON doc) → relational schema.
 // Idempotent-ish: clears migrated tables first (dev only). Produces a reconciliation report.
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { ROOT } from '../src/core/config.js';
 import { run, get, insert, tx, exec } from '../src/core/db/index.js';
 import { id, nowIso, toHalalas } from '../src/core/util/ids.js';
 
-const SNAP = JSON.parse(readFileSync(resolve(ROOT, 'seed/legacy-state.snapshot.json'), 'utf8'));
-const USERS = JSON.parse(readFileSync(resolve(ROOT, 'seed/legacy-users.snapshot.json'), 'utf8')).users || [];
+// Prefer the real (sensitive, gitignored) snapshot when present; otherwise fall back to the
+// sanitized demo snapshot (salaries zeroed, login IPs stripped) so staging can seed real business
+// structure without exposing compensation/IP data.
+const pick = (base) => {
+  const real = resolve(ROOT, `seed/${base}.snapshot.json`);
+  return existsSync(real) ? real : resolve(ROOT, `seed/${base}.demo.json`);
+};
+const SNAP = JSON.parse(readFileSync(pick('legacy-state'), 'utf8'));
+const USERS = JSON.parse(readFileSync(pick('legacy-users'), 'utf8')).users || [];
 
 const roleMap = { admin: 'admin', sector_manager: 'sector_lead', sector_lead: 'sector_lead',
   bd_manager: 'bd_manager', consultant: 'consultant', viewer: 'viewer', USER: 'employee', user: 'employee' };
