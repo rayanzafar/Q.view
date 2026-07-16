@@ -50,7 +50,10 @@ export function assertProdSecrets() {
   if (config.env === 'production') {
     const missing = [];
     if (!process.env.SESSION_SECRET) missing.push('SESSION_SECRET');
-    if (!config.databaseUrl) missing.push('DATABASE_URL');
+    // DATABASE_URL (Postgres) is required only for a full production deploy. A staging environment
+    // runs on the built-in SQLite driver — set STAGING=1 to opt into SQLite-in-production and skip it.
+    const sqliteStaging = process.env.STAGING === '1' || process.env.STAGING === 'true';
+    if (!config.databaseUrl && !sqliteStaging) missing.push('DATABASE_URL');
     if (config.mailTransport === 'smtp' && !config.smtp.host) missing.push('SMTP_HOST');
     if (missing.length) throw new Error('Missing required production secrets: ' + missing.join(', '));
   }

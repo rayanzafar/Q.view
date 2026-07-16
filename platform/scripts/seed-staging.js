@@ -1,20 +1,41 @@
-// Idempotent staging bootstrap. On the FIRST boot (empty DB) it loads the legacy business data
-// (from the sanitized demo snapshot when the sensitive one is absent) plus the demo accounts.
-// On later redeploys it detects existing data and skips, so a persistent volume preserves state.
+// Idempotent, crash-proof staging bootstrap. Loads legacy business data (sanitized demo snapshot
+// when the sensitive one is absent) + demo accounts on the FIRST boot only. NEVER throws: if data
+// files are missing or a load fails, it logs and still seeds demo accounts so the server can start.
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { get } from '../src/core/db/index.js';
+import { ROOT } from '../src/core/config.js';
 
 function hasData() {
   try { return (get('SELECT COUNT(*) n FROM project WHERE deleted_at IS NULL')?.n || 0) > 0; }
   catch { return false; }
 }
+const dataFile =
+  existsSync(resolve(ROOT, 'seed/legacy-state.snapshot.json')) ? 'snapshot' :
+  existsSync(resolve(ROOT, 'seed/legacy-state.demo.json')) ? 'demo' : null;
+
+console.log(`▶ staging bootstrap — hasData=${hasData()} dataFile=${dataFile || 'NONE'}`);
 
 if (hasData()) {
   console.log('✓ staging: business data already present — skipping load (volume persisted)');
 } else {
-  console.log('▶ staging: empty DB — loading business data + demo accounts…');
-  const { migrateLegacy } = await import('./migrate-legacy.js');
-  const { seed } = await import('./seed.js');
-  migrateLegacy();
-  seed();
-  console.log('✓ staging: seeded (business data + demo accounts + persona pipelines)');
+  if (dataFile) {
+    try {
+      const { migrateLegacy } = await import('./migrate-legacy.js');
+      migrateLegacy();
+      console.log(`✓ staging: business data loaded from ${dataFile}`);
+    } catch (e) {
+      console.error('⚠ staging: legacy data load failed —', e.message);
+    }
+  } else {
+    console.log('⚠ staging: no data snapshot in image — seeding demo accounts only');
+  }
+  try {
+    const { seed } = await import('./seed.js');
+    seed();
+    console.log('✓ staging: demo accounts + persona pipelines seeded');
+  } catch (e) {
+    console.error('⚠ staging: demo seed failed —', e.message);
+  }
 }
+console.log('▶ staging bootstrap done — starting server');

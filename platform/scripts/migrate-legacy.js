@@ -8,19 +8,23 @@ import { id, nowIso, toHalalas } from '../src/core/util/ids.js';
 
 // Prefer the real (sensitive, gitignored) snapshot when present; otherwise fall back to the
 // sanitized demo snapshot (salaries zeroed, login IPs stripped) so staging can seed real business
-// structure without exposing compensation/IP data.
+// structure without exposing compensation/IP data. Resolved lazily inside migrateLegacy() so that
+// merely importing this module never throws when no data file is present.
 const pick = (base) => {
   const real = resolve(ROOT, `seed/${base}.snapshot.json`);
-  return existsSync(real) ? real : resolve(ROOT, `seed/${base}.demo.json`);
+  const demo = resolve(ROOT, `seed/${base}.demo.json`);
+  if (existsSync(real)) return real;
+  if (existsSync(demo)) return demo;
+  throw new Error(`no data file for ${base} (looked for ${base}.snapshot.json / ${base}.demo.json)`);
 };
-const SNAP = JSON.parse(readFileSync(pick('legacy-state'), 'utf8'));
-const USERS = JSON.parse(readFileSync(pick('legacy-users'), 'utf8')).users || [];
 
 const roleMap = { admin: 'admin', sector_manager: 'sector_lead', sector_lead: 'sector_lead',
   bd_manager: 'bd_manager', consultant: 'consultant', viewer: 'viewer', USER: 'employee', user: 'employee' };
 const scopeFor = (role) => role === 'admin' ? 'company' : (role === 'sector_lead' || role === 'ceo_office') ? 'sector' : 'own';
 
 export function migrateLegacy() {
+  const SNAP = JSON.parse(readFileSync(pick('legacy-state'), 'utf8'));
+  const USERS = JSON.parse(readFileSync(pick('legacy-users'), 'utf8')).users || [];
   const report = { source: {}, target: {}, financial: {}, notes: [] };
   const dataTables = ['sector', 'stage', 'client', 'supplier', 'service', 'service_package', 'opportunity',
     'opportunity_sector', 'project', 'deliverable', 'revenue_line', 'cost_line', 'allocation', 'employee',
