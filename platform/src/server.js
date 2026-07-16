@@ -44,11 +44,22 @@ export function createApp() {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const app = createApp();
-  startScheduler();
+  process.on('uncaughtException', (e) => { console.error('!! uncaughtException:', e?.stack || e); process.exit(1); });
+  process.on('unhandledRejection', (e) => { console.error('!! unhandledRejection:', e?.stack || e); });
+  let app;
+  try {
+    console.log('▶ boot: createApp…');
+    app = createApp();
+    console.log('▶ boot: startScheduler…');
+    startScheduler();
+  } catch (e) {
+    console.error('!! startup failed in createApp/startScheduler:', e?.stack || e);
+    throw e;
+  }
   const server = app.listen(config.port, config.host, () => {
     console.log(`✓ سند running at http://${config.host}:${config.port}  (env=${config.env})`);
   });
+  server.on('error', (e) => { console.error('!! server.listen error:', e?.stack || e); process.exit(1); });
   // Graceful shutdown: stop accepting, drain, close DB.
   const shutdown = (sig) => {
     console.log(`\n${sig} received — shutting down gracefully…`);

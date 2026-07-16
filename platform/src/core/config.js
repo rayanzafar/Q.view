@@ -9,9 +9,10 @@ export const ROOT = resolve(__dirname, '../..');
 export const config = {
   env: process.env.NODE_ENV || 'development',
   port: Number(process.env.PORT || 4000),
-  // Bind localhost in dev (safe default); bind all interfaces in production so a PaaS
-  // (Railway/Render/Docker) can route external traffic to the container. HOST overrides either.
-  host: process.env.HOST || ((process.env.NODE_ENV === 'production') ? '0.0.0.0' : '127.0.0.1'),
+  // Dev: localhost. Production: bind '::' (IPv6 dual-stack, also accepts IPv4) — Railway's internal
+  // networking/healthcheck reaches containers over IPv6, so an IPv4-only 0.0.0.0 bind is unreachable
+  // there. '::' covers both. HOST overrides either.
+  host: process.env.HOST || ((process.env.NODE_ENV === 'production') ? '::' : '127.0.0.1'),
   // Dev DB file; prod would set DATABASE_URL for Postgres (repository layer switches driver).
   dbFile: process.env.SANAD_DB || resolve(ROOT, 'data/sanad.db'),
   databaseUrl: process.env.DATABASE_URL || null,

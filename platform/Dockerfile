@@ -13,7 +13,7 @@ COPY . .
 RUN useradd -m -u 10001 sanad && mkdir -p /app/data && chown -R sanad:sanad /app
 USER sanad
 
-EXPOSE 4000
+EXPOSE 8080
 # entrypoint: schema → RBAC → staging bootstrap (business data + demo accounts on first boot,
 # idempotent thereafter) → server. --experimental-sqlite needed only for the SQLite driver.
 CMD ["sh", "-c", "node --experimental-sqlite scripts/migrate.js && node --experimental-sqlite scripts/seed-rbac.js && node --experimental-sqlite scripts/seed-staging.js && node --experimental-sqlite src/server.js"]
