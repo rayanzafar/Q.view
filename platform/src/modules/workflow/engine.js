@@ -7,38 +7,40 @@ import { notify } from '../notifications/notify.js';
 import { id, nowIso } from '../../core/util/ids.js';
 import { forbidden, notFound, badRequest } from '../../core/http/errors.js';
 
-export function submitForApproval(ctx, { workflowKey, resource, resourceId, amountHalalas = 0, sectorId }) {
-  const wf = get('SELECT * FROM workflow_definition WHERE key = ? AND active = 1', [workflowKey]);
+export async function submitForApproval(ctx, { workflowKey, resource, resourceId, amountHalalas = 0, sectorId }) {
+  const wf = await get('SELECT * FROM workflow_definition WHERE key = ? AND active = 1', [workflowKey]);
   if (!wf) throw badRequest('مسار اعتماد غير معرّف: ' + workflowKey);
   const rid = id('apr'); const now = nowIso();
-  insert('approval_request', {
+  await insert('approval_request', {
     id: rid, workflow_id: wf.id, resource, resource_id: resourceId, requested_by: ctx.user.id,
     amount_halalas: amountHalalas, sector_id: sectorId || ctx.user.sector_id, current_step: 1,
     status: 'PENDING', created_at: now,
   });
-  audit(ctx, { action: 'submit', resource: 'approval', resourceId: rid, sectorId, detail: { workflowKey, resource, resourceId } });
-  notifyStepApprovers(wf.id, rid, 1, sectorId || ctx.user.sector_id);
-  return get('SELECT * FROM approval_request WHERE id = ?', [rid]);
+  await audit(ctx, { action: 'submit', resource: 'approval', resourceId: rid, sectorId, detail: { workflowKey, resource, resourceId } });
+  await notifyStepApprovers(wf.id, rid, 1, sectorId || ctx.user.sector_id);
+  return await get('SELECT * FROM approval_request WHERE id = ?', [rid]);
 }
 
-function stepFor(workflowId, order) {
-  return get('SELECT * FROM approval_step WHERE workflow_id = ? AND step_order = ?', [workflowId, order]);
+async function stepFor(workflowId, order) {
+  return await get('SELECT * FROM approval_step WHERE workflow_id = ? AND step_order = ?', [workflowId, order]);
 }
-function notifyStepApprovers(workflowId, requestId, order, sectorId) {
-  const step = stepFor(workflowId, order);
+async function notifyStepApprovers(workflowId, requestId, order, sectorId) {
+  const step = await stepFor(workflowId, order);
   if (!step) return;
-  const approvers = all('SELECT id FROM app_user WHERE role_id = ? AND active = 1 AND (sector_id = ? OR ? IS NULL)',
+  // CAST(? AS TEXT) so Postgres can infer the bound param's type in the bare `IS NULL` check
+  // (SQLite infers it either way; the cast is a no-op there). Same value bound twice.
+  const approvers = await all('SELECT id FROM app_user WHERE role_id = ? AND active = 1 AND (sector_id = ? OR CAST(? AS TEXT) IS NULL)',
     [step.approver_role, sectorId, sectorId]);
   for (const a of approvers) notify(a.id, { kind: 'approval', title: 'طلب اعتماد بانتظارك',
     body: step.name_ar || 'خطوة اعتماد', ref_resource: 'approval_request', ref_id: requestId });
 }
 
-export function actOnApproval(ctx, requestId, action, comment) {
+export async function actOnApproval(ctx, requestId, action, comment) {
   const user = ctx.user;
-  const reqRow = get('SELECT * FROM approval_request WHERE id = ?', [requestId]);
+  const reqRow = await get('SELECT * FROM approval_request WHERE id = ?', [requestId]);
   if (!reqRow) throw notFound('طلب الاعتماد غير موجود');
   if (reqRow.status !== 'PENDING') throw badRequest('الطلب مُغلق');
-  const step = stepFor(reqRow.workflow_id, reqRow.current_step);
+  const step = await stepFor(reqRow.workflow_id, reqRow.current_step);
   if (!step) throw badRequest('خطوة غير معرّفة');
   // amount threshold: this step only applies at/above its min amount
   // authorization: correct role + scope + approve permission on the target resource
@@ -46,34 +48,34 @@ export function actOnApproval(ctx, requestId, action, comment) {
   if (user.role_id !== step.approver_role && user.role_id !== 'admin') throw forbidden('لست المعتمِد المطلوب لهذه الخطوة');
   if (!can(user, 'approve', reqRow.resource, target)) throw forbidden('صلاحية الاعتماد غير متاحة');
 
-  insert('approval_action', {
+  await insert('approval_action', {
     id: id('apa'), request_id: requestId, step_order: reqRow.current_step, actor_user_id: user.id,
     action, comment: comment || null, acted_at: nowIso(),
   });
 
   if (action === 'reject') {
-    update('approval_request', requestId, { status: 'REJECTED', closed_at: nowIso() });
+    await update('approval_request', requestId, { status: 'REJECTED', closed_at: nowIso() });
     notify(reqRow.requested_by, { kind: 'approval', title: 'رُفض طلب الاعتماد', body: comment || '',
       ref_resource: reqRow.resource, ref_id: reqRow.resource_id });
   } else if (action === 'approve') {
-    const next = stepFor(reqRow.workflow_id, reqRow.current_step + 1);
+    const next = await stepFor(reqRow.workflow_id, reqRow.current_step + 1);
     if (next) {
-      update('approval_request', requestId, { current_step: reqRow.current_step + 1 });
-      notifyStepApprovers(reqRow.workflow_id, requestId, reqRow.current_step + 1, reqRow.sector_id);
+      await update('approval_request', requestId, { current_step: reqRow.current_step + 1 });
+      await notifyStepApprovers(reqRow.workflow_id, requestId, reqRow.current_step + 1, reqRow.sector_id);
     } else {
-      update('approval_request', requestId, { status: 'APPROVED', closed_at: nowIso() });
+      await update('approval_request', requestId, { status: 'APPROVED', closed_at: nowIso() });
       notify(reqRow.requested_by, { kind: 'approval', title: 'اعتُمد طلبك', body: '',
         ref_resource: reqRow.resource, ref_id: reqRow.resource_id });
     }
   }
-  audit(ctx, { action: 'approve', resource: 'approval', resourceId: requestId,
+  await audit(ctx, { action: 'approve', resource: 'approval', resourceId: requestId,
     sectorId: reqRow.sector_id, detail: { action, step: reqRow.current_step } });
-  return get('SELECT * FROM approval_request WHERE id = ?', [requestId]);
+  return await get('SELECT * FROM approval_request WHERE id = ?', [requestId]);
 }
 
-export function myApprovalQueue(user) {
+export async function myApprovalQueue(user) {
   // requests pending at a step whose role matches the user's role and sector scope
-  return all(
+  return await all(
     `SELECT ar.*, wd.name_ar workflow_name FROM approval_request ar
      JOIN workflow_definition wd ON wd.id = ar.workflow_id
      JOIN approval_step st ON st.workflow_id = ar.workflow_id AND st.step_order = ar.current_step

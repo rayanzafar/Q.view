@@ -67,7 +67,7 @@ export async function parseContract(user, { text }) {
 // into the INTEGER-halalas columns. Out-of-range or non-numeric → 0 (fails safe).
 const safeSar = (v) => { const n = Math.round(Number(v)); return Number.isFinite(n) && n >= 0 && n <= 1e13 ? n : 0; };
 
-export function createFromIntake(ctx, data) {
+export async function createFromIntake(ctx, data) {
   const user = ctx.user;
   const sectorId = data.sector_id || user.sector_id;
   if (!can(user, 'create', 'project', { sector_id: sectorId })) throw forbidden('خارج نطاق قطاعك');
@@ -75,23 +75,23 @@ export function createFromIntake(ctx, data) {
   if (!name) throw badRequest('اسم المشروع مطلوب');
   const valueSar = safeSar(data.value_sar);
   const now = nowIso();
-  const result = tx(() => {
+  const result = await tx(async () => {
     let clientId = data.client_id || null;
     const clientName = (data.client_name || '').trim();
     if (!clientId && clientName) {
-      const existing = get('SELECT id FROM client WHERE name_ar = ? AND deleted_at IS NULL', [clientName]);
+      const existing = await get('SELECT id FROM client WHERE name_ar = ? AND deleted_at IS NULL', [clientName]);
       if (existing) clientId = existing.id;
-      else { clientId = id('cli'); insert('client', { id: clientId, name_ar: clientName, active: 1, created_at: now, created_by: user.id }); }
+      else { clientId = id('cli'); await insert('client', { id: clientId, name_ar: clientName, active: 1, created_at: now, created_by: user.id }); }
     }
     const pid = id('prj');
-    insert('project', {
+    await insert('project', {
       id: pid, name_ar: name, sector_id: sectorId, client_id: clientId, owner_user_id: data.owner_user_id || user.id,
       status: data.status || 'NOT_STARTED', rag: 'GREEN', kind: 'external',
       contract_value_halalas: toHalalas(valueSar), start_date: cleanDate(data.start_date), end_date: cleanDate(data.end_date),
       created_at: now, created_by: user.id,
     });
     const cid = id('con');
-    insert('contract', {
+    await insert('contract', {
       id: cid, code: (data.contract_code || '').toString().slice(0, 60) || null, client_id: clientId, project_id: pid, sector_id: sectorId,
       value_halalas: toHalalas(valueSar), start_date: cleanDate(data.start_date), end_date: cleanDate(data.end_date),
       status: 'ACTIVE', created_at: now, created_by: user.id,
@@ -99,13 +99,13 @@ export function createFromIntake(ctx, data) {
     let n = 0;
     for (const d of (data.deliverables || [])) {
       const nm = (d && d.name_ar || '').toString().trim().slice(0, 200); if (!nm) continue;
-      insert('deliverable', { id: id('dlv'), project_id: pid, name_ar: nm, amount_halalas: toHalalas(safeSar(d.amount_sar)),
+      await insert('deliverable', { id: id('dlv'), project_id: pid, name_ar: nm, amount_halalas: toHalalas(safeSar(d.amount_sar)),
         month: d.month || null, status: 'PENDING', sector_id: sectorId, created_at: now });
       n++;
     }
     return { project_id: pid, contract_id: cid, client_id: clientId, deliverables: n };
   });
-  audit(ctx, { action: 'create', resource: 'project', resourceId: result.project_id, sectorId,
+  await audit(ctx, { action: 'create', resource: 'project', resourceId: result.project_id, sectorId,
     detail: { via: data.deliverables?.length ? 'contract-intake' : 'manual', deliverables: result.deliverables, contract: result.contract_id } });
   return result;
 }

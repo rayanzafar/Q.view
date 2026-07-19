@@ -50,52 +50,53 @@ const DEMO_USERS = [
   { u: 'demo.viewer', role: 'viewer', scope: 'sector', name: 'مشاهد (تجريبي)', sector: 'SOLUTIONS' },
 ];
 
-export function seed() {
+export async function seed() {
   // workflows
   for (const w of WORKFLOWS) {
-    let wf = get('SELECT id FROM workflow_definition WHERE key = ?', [w.key]);
+    let wf = await get('SELECT id FROM workflow_definition WHERE key = ?', [w.key]);
     if (!wf) {
       const wid = id('wf');
-      insert('workflow_definition', { id: wid, key: w.key, name_ar: w.name, target_resource: w.resource, active: 1, created_at: nowIso() });
-      w.steps.forEach((s, i) => insert('approval_step', { id: id('ws'), workflow_id: wid, step_order: i + 1,
-        approver_role: s.role, approver_scope: 'sector', min_amount_halalas: s.min ? s.min * 100 : 0, name_ar: s.name }));
+      await insert('workflow_definition', { id: wid, key: w.key, name_ar: w.name, target_resource: w.resource, active: 1, created_at: nowIso() });
+      for (const [i, s] of w.steps.entries()) await insert('approval_step', { id: id('ws'), workflow_id: wid, step_order: i + 1,
+        approver_role: s.role, approver_scope: 'sector', min_amount_halalas: s.min ? s.min * 100 : 0, name_ar: s.name });
     }
   }
   // report definitions
   for (const r of REPORTS) {
-    if (!get('SELECT id FROM report_definition WHERE key = ?', [r.key]))
-      insert('report_definition', { id: id('rd'), key: r.key, name_ar: r.name, level: r.level, detail_level: 'summary',
+    if (!(await get('SELECT id FROM report_definition WHERE key = ?', [r.key])))
+      await insert('report_definition', { id: id('rd'), key: r.key, name_ar: r.name, level: r.level, detail_level: 'summary',
         locale: 'ar', template_key: r.key, active: 1, created_at: nowIso() });
   }
   // kpi definitions
   for (const k of KPIS) {
-    if (!get('SELECT id FROM kpi_definition WHERE key = ?', [k.key]))
-      insert('kpi_definition', { id: id('kpi'), key: k.key, name_ar: k.name_ar, name_en: null, level: k.level,
+    if (!(await get('SELECT id FROM kpi_definition WHERE key = ?', [k.key])))
+      await insert('kpi_definition', { id: id('kpi'), key: k.key, name_ar: k.name_ar, name_en: null, level: k.level,
         unit: k.unit, direction: k.dir, rag_amber: k.amber, rag_red: k.red, active: 1 });
   }
   // demo accounts
   const hash = hashPassword(DEMO_PW);
   for (const d of DEMO_USERS) {
-    let uid = get('SELECT id FROM app_user WHERE username = ?', [d.u])?.id;
+    let uid = (await get('SELECT id FROM app_user WHERE username = ?', [d.u]))?.id;
     if (!uid) uid = id('u');
-    run(`INSERT OR REPLACE INTO app_user (id, username, email, name_ar, role_id, sector_id, scope, password_hash, active, must_change_pw, created_at)
-         VALUES (?,?,?,?,?,?,?,?,1,0,?)`,
+    await run(`INSERT INTO app_user (id, username, email, name_ar, role_id, sector_id, scope, password_hash, active, must_change_pw, created_at)
+         VALUES (?,?,?,?,?,?,?,?,1,0,?)
+         ON CONFLICT (id) DO UPDATE SET username=EXCLUDED.username, email=EXCLUDED.email, name_ar=EXCLUDED.name_ar, role_id=EXCLUDED.role_id, sector_id=EXCLUDED.sector_id, scope=EXCLUDED.scope, password_hash=EXCLUDED.password_hash, active=EXCLUDED.active, must_change_pw=EXCLUDED.must_change_pw`,
       [uid, d.u, d.u + '@evc.com.sa', d.name, d.role, d.sector, d.scope, hash, nowIso()]);
   }
   // link sector lead + give demo.pm a project via membership (project scope)
-  const lead = get("SELECT id FROM app_user WHERE username='demo.sectorlead'");
-  if (lead) run('UPDATE sector SET lead_user_id = ? WHERE id = ?', [lead.id, 'SOLUTIONS']);
-  const pm = get("SELECT id FROM app_user WHERE username='demo.pm'");
-  const someProject = get("SELECT id FROM project WHERE sector_id='SOLUTIONS' AND deleted_at IS NULL LIMIT 1");
-  if (pm && someProject) run('UPDATE project SET owner_user_id = ? WHERE id = ?', [pm.id, someProject.id]);
+  const lead = await get("SELECT id FROM app_user WHERE username='demo.sectorlead'");
+  if (lead) await run('UPDATE sector SET lead_user_id = ? WHERE id = ?', [lead.id, 'SOLUTIONS']);
+  const pm = await get("SELECT id FROM app_user WHERE username='demo.pm'");
+  const someProject = await get("SELECT id FROM project WHERE sector_id='SOLUTIONS' AND deleted_at IS NULL LIMIT 1");
+  if (pm && someProject) await run('UPDATE project SET owner_user_id = ? WHERE id = ?', [pm.id, someProject.id]);
 
   // Give the person-scoped personas a realistic personal book of opportunities so the "فرصي" (My
   // Opportunities) page demonstrates a populated pipeline. Deterministic (ordered by id) and idempotent;
   // each persona gets a mix of open/won/lost so their personal win-rate is meaningful.
-  const persona = (u) => get('SELECT id FROM app_user WHERE username = ?', [u])?.id;
-  const owners = { bd: persona('demo.bd'), sl: persona('demo.sectorlead'), cons: persona('demo.consultant'), pm: pm?.id };
+  const persona = async (u) => (await get('SELECT id FROM app_user WHERE username = ?', [u]))?.id;
+  const owners = { bd: await persona('demo.bd'), sl: await persona('demo.sectorlead'), cons: await persona('demo.consultant'), pm: pm?.id };
   if (owners.bd) {
-    const rows = all(`SELECT o.id, st.is_won, st.is_lost FROM opportunity o JOIN stage st ON st.id=o.stage_id
+    const rows = await all(`SELECT o.id, st.is_won, st.is_lost FROM opportunity o JOIN stage st ON st.id=o.stage_id
        WHERE o.sector_id='SOLUTIONS' AND o.deleted_at IS NULL ORDER BY o.id`);
     const open = rows.filter((r) => !r.is_won && !r.is_lost).map((r) => r.id);
     const won = rows.filter((r) => r.is_won).map((r) => r.id);
@@ -110,26 +111,29 @@ export function seed() {
     for (const p of plan) {
       if (!p.u) { oi += p.open; wi += p.won; li += p.lost; continue; }
       const slice = [...open.slice(oi, oi + p.open), ...won.slice(wi, wi + p.won), ...lost.slice(li, li + p.lost)];
-      for (const oid of slice) run('UPDATE opportunity SET owner_user_id = ? WHERE id = ?', [p.u, oid]);
+      for (const oid of slice) await run('UPDATE opportunity SET owner_user_id = ? WHERE id = ?', [p.u, oid]);
       for (let k = 0; k < Math.min(4, p.open); k++) {
         const oid = open[oi + k];
-        if (oid) run("UPDATE opportunity SET next_action = ? WHERE id = ? AND (next_action IS NULL OR next_action='')", [actions[(a++) % actions.length], oid]);
+        if (oid) await run("UPDATE opportunity SET next_action = ? WHERE id = ? AND (next_action IS NULL OR next_action='')", [actions[(a++) % actions.length], oid]);
       }
       oi += p.open; wi += p.won; li += p.lost;
     }
   }
 
   // a demo weekly schedule (exec brief → a recipient group with demo.ceo)
-  if (!get("SELECT id FROM report_schedule LIMIT 1")) {
-    const gid = id('rg'); insert('recipient_group', { id: gid, name_ar: 'القيادة التنفيذية', created_at: nowIso() });
-    const ceo = get("SELECT id FROM app_user WHERE username='demo.ceo'");
-    if (ceo) insert('recipient', { id: id('rc'), group_id: gid, user_id: ceo.id, kind: 'to' });
-    const rd = get("SELECT id FROM report_definition WHERE key='weekly_exec_brief'");
-    insert('report_schedule', { id: id('rs'), report_id: rd.id, recipient_group_id: gid, frequency: 'weekly',
+  if (!(await get("SELECT id FROM report_schedule LIMIT 1"))) {
+    const gid = id('rg'); await insert('recipient_group', { id: gid, name_ar: 'القيادة التنفيذية', created_at: nowIso() });
+    const ceo = await get("SELECT id FROM app_user WHERE username='demo.ceo'");
+    if (ceo) await insert('recipient', { id: id('rc'), group_id: gid, user_id: ceo.id, kind: 'to' });
+    const rd = await get("SELECT id FROM report_definition WHERE key='weekly_exec_brief'");
+    await insert('report_schedule', { id: id('rs'), report_id: rd.id, recipient_group_id: gid, frequency: 'weekly',
       day_of_week: 0, send_time: '08:00', active: 1, created_at: nowIso() });
   }
   console.log('✓ seed complete — demo accounts (password: ' + DEMO_PW + '):');
   DEMO_USERS.forEach((d) => console.log(`   ${d.u}  →  ${d.role}`));
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) seed();
+if (import.meta.url === `file://${process.argv[1]}`) {
+  const { close } = await import('../src/core/db/index.js');
+  seed().then(() => close()).catch((e) => { console.error(e); process.exit(1); });
+}

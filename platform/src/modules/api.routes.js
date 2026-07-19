@@ -56,7 +56,7 @@ apiRouter.post('/approvals/:id/act', h((req) => wf.actOnApproval(req.ctx, req.pa
 
 // ── Notifications ──
 apiRouter.get('/notifications', h((req) => notif.myNotifications(req.ctx.user, req.query.unread === '1')));
-apiRouter.post('/notifications/:id/read', h((req) => { notif.markRead(req.ctx.user, req.params.id); return { ok: true }; }));
+apiRouter.post('/notifications/:id/read', h(async (req) => { await notif.markRead(req.ctx.user, req.params.id); return { ok: true }; }));
 
 // ── Organization (flexible hierarchy, editable) ──
 apiRouter.get('/org/tree', h((req) => org.orgTree(req.ctx.user)));

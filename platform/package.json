@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "description": "سند — Enterprise Operating System for Experts Vision Consulting (EVC). Modular monolith.",
-  "engines": { "node": ">=22.5" },
+  "engines": {
+    "node": ">=22.5"
+  },
   "scripts": {
     "start": "NODE_USE_ENV_PROXY=1 node --experimental-sqlite --env-file-if-exists=.env src/server.js",
     "dev": "NODE_USE_ENV_PROXY=1 node --experimental-sqlite --watch --env-file-if-exists=.env src/server.js",
@@ -16,11 +18,15 @@
     "backup": "node --experimental-sqlite scripts/backup.js"
   },
   "dependencies": {
+    "cookie-parser": "^1.4.7",
     "express": "^5.2.0",
-    "cookie-parser": "^1.4.7"
+    "pg": "^8.22.0"
   },
   "sanad": {
     "runtimeDeps": "none-external — built-in node:sqlite, node:crypto, node:http; email uses a pluggable transport (dev = file/preview, prod = SMTP adapter)",
-    "dbTargets": ["sqlite (dev)", "postgresql (prod via repository layer)"]
+    "dbTargets": [
+      "sqlite (dev)",
+      "postgresql (prod via repository layer)"
+    ]
   }
 }

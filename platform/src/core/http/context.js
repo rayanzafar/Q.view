@@ -5,17 +5,17 @@ import { unauthorized, forbidden } from './errors.js';
 import { can } from '../rbac/index.js';
 import { nowIso } from '../util/ids.js';
 
-export function resolveUser(sessionId) {
+export async function resolveUser(sessionId) {
   if (!sessionId) return null;
-  const s = get('SELECT * FROM session WHERE id = ? AND revoked_at IS NULL', [sessionId]);
+  const s = await get('SELECT * FROM session WHERE id = ? AND revoked_at IS NULL', [sessionId]);
   if (!s) return null;
   if (new Date(s.expires_at).getTime() < Date.now()) return null;
-  const u = get('SELECT * FROM app_user WHERE id = ? AND active = 1 AND deleted_at IS NULL', [s.user_id]);
+  const u = await get('SELECT * FROM app_user WHERE id = ? AND active = 1 AND deleted_at IS NULL', [s.user_id]);
   if (!u) return null;
   // project scope: projects the user owns or is a member of (via employee membership)
-  const projectIds = new Set(all('SELECT id FROM project WHERE owner_user_id = ?', [u.id]).map((r) => r.id));
+  const projectIds = new Set((await all('SELECT id FROM project WHERE owner_user_id = ?', [u.id])).map((r) => r.id));
   if (u.employee_id) {
-    for (const m of all(
+    for (const m of await all(
       "SELECT group_id FROM membership WHERE employee_id = ? AND group_kind = 'project' AND deleted_at IS NULL",
       [u.employee_id]
     )) projectIds.add(m.group_id);
@@ -37,10 +37,12 @@ export function resolveUser(sessionId) {
 
 // Express middleware factories
 export function attachContext() {
-  return (req, res, next) => {
-    const sid = req.cookies?.[config.sessionCookie];
-    req.ctx = { user: resolveUser(sid), ip: req.ip, sessionId: sid };
-    next();
+  return async (req, res, next) => {
+    try {
+      const sid = req.cookies?.[config.sessionCookie];
+      req.ctx = { user: await resolveUser(sid), ip: req.ip, sessionId: sid };
+      next();
+    } catch (e) { next(e); }
   };
 }
 

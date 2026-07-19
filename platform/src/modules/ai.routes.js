@@ -13,7 +13,7 @@ aiRouter.post('/chat', async (req, res, next) => {
 });
 
 // Apply a previously previewed change — permission re-checked inside applyChange.
-aiRouter.post('/apply', (req, res, next) => {
-  try { res.json(applyChange(req.ctx, req.body?.applyToken)); }
+aiRouter.post('/apply', async (req, res, next) => {
+  try { res.json(await applyChange(req.ctx, req.body?.applyToken)); }
   catch (e) { next(e); }
 });

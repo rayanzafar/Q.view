@@ -3,9 +3,11 @@ import { all } from '../db/index.js';
 import { SENSITIVE_FIELDS, SCOPE_RANK } from './matrix.js';
 
 // Grants are loaded from role_permission (DB) so admin edits take effect without redeploy.
+// The cache is loaded ONCE at startup via initRbac() so the hot-path decision functions
+// (can/redact/scopeReaches/…) stay SYNCHRONOUS even though the DB layer is async.
 let _cache = null;
-export function loadGrants() {
-  const rows = all('SELECT role_id, resource, action, scope FROM role_permission');
+export async function initRbac() {
+  const rows = await all('SELECT role_id, resource, action, scope FROM role_permission');
   const map = {};
   for (const g of rows) {
     (map[g.role_id] ||= []).push(g);
@@ -13,9 +15,11 @@ export function loadGrants() {
   _cache = map;
   return map;
 }
+export const loadGrants = initRbac;              // backward-compatible alias (now async)
 export function invalidateGrants() { _cache = null; }
+export async function reloadGrants() { return initRbac(); } // call after role edits
 function grantsFor(roleId) {
-  if (!_cache) loadGrants();
+  if (!_cache) throw new Error('RBAC grants not loaded — call initRbac() at startup before any authorization check');
   return _cache[roleId] || [];
 }
 

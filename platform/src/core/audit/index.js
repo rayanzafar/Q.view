@@ -2,8 +2,8 @@
 import { insert } from '../db/index.js';
 import { id, nowIso } from '../util/ids.js';
 
-export function audit(ctx, { action, resource, resourceId, sectorId, detail }) {
-  insert('audit_log', {
+export async function audit(ctx, { action, resource, resourceId, sectorId, detail }) {
+  await insert('audit_log', {
     id: id('aud'),
     at: nowIso(),
     user_id: ctx?.user?.id || null,

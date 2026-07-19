@@ -12,24 +12,28 @@ function setSessionCookie(res, sid) {
   });
 }
 
-authRouter.post('/login', (req, res, next) => {
-  const { username, password } = req.body || {};
-  if (!username || !password) return next(badRequest('اسم المستخدم وكلمة المرور مطلوبان'));
-  const r = login({ username, password, ip: req.ip, userAgent: req.get('user-agent') });
-  if (!r.ok) {
-    const msg = r.reason === 'locked' ? 'الحساب مقفل مؤقتًا بعد محاولات فاشلة'
-      : r.reason === 'inactive' ? 'الحساب معطّل' : 'بيانات الدخول غير صحيحة';
-    return res.status(401).json({ error: { code: 'auth_failed', message: msg } });
-  }
-  setSessionCookie(res, r.sessionId);
-  res.json({ ok: true, mustChangePassword: r.mustChangePassword,
-    user: { id: r.user.id, username: r.user.username, name_ar: r.user.name_ar, role_id: r.user.role_id } });
+authRouter.post('/login', async (req, res, next) => {
+  try {
+    const { username, password } = req.body || {};
+    if (!username || !password) return next(badRequest('اسم المستخدم وكلمة المرور مطلوبان'));
+    const r = await login({ username, password, ip: req.ip, userAgent: req.get('user-agent') });
+    if (!r.ok) {
+      const msg = r.reason === 'locked' ? 'الحساب مقفل مؤقتًا بعد محاولات فاشلة'
+        : r.reason === 'inactive' ? 'الحساب معطّل' : 'بيانات الدخول غير صحيحة';
+      return res.status(401).json({ error: { code: 'auth_failed', message: msg } });
+    }
+    setSessionCookie(res, r.sessionId);
+    res.json({ ok: true, mustChangePassword: r.mustChangePassword,
+      user: { id: r.user.id, username: r.user.username, name_ar: r.user.name_ar, role_id: r.user.role_id } });
+  } catch (e) { next(e); }
 });
 
-authRouter.post('/logout', (req, res) => {
-  logout(req.cookies?.[config.sessionCookie]);
-  res.clearCookie(config.sessionCookie, { path: '/' });
-  res.json({ ok: true });
+authRouter.post('/logout', async (req, res, next) => {
+  try {
+    await logout(req.cookies?.[config.sessionCookie]);
+    res.clearCookie(config.sessionCookie, { path: '/' });
+    res.json({ ok: true });
+  } catch (e) { next(e); }
 });
 
 authRouter.get('/me', (req, res, next) => {
@@ -39,10 +43,12 @@ authRouter.get('/me', (req, res, next) => {
     role_id: u.role_id, sector_id: u.sector_id, scope: u.scope } });
 });
 
-authRouter.post('/change-password', (req, res, next) => {
-  if (!req.ctx?.user) return next(unauthorized());
-  const { newPassword } = req.body || {};
-  if (!newPassword || String(newPassword).length < 8) return next(badRequest('كلمة المرور يجب أن تكون 8 أحرف على الأقل'));
-  changePassword(req.ctx.user.id, newPassword);
-  res.json({ ok: true });
+authRouter.post('/change-password', async (req, res, next) => {
+  try {
+    if (!req.ctx?.user) return next(unauthorized());
+    const { newPassword } = req.body || {};
+    if (!newPassword || String(newPassword).length < 8) return next(badRequest('كلمة المرور يجب أن تكون 8 أحرف على الأقل'));
+    await changePassword(req.ctx.user.id, newPassword);
+    res.json({ ok: true });
+  } catch (e) { next(e); }
 });

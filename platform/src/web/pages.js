@@ -49,17 +49,17 @@ export function loginPage(err) {
 </form></body></html>`;
 }
 
-export function ceoPage(user, opts = {}) {
+export async function ceoPage(user, opts = {}) {
   const year = Number(opts.year) || config.fiscalYear;
-  const ov = companyOverview(user, { year });
+  const ov = await companyOverview(user, { year });
   const t = ov.totals;
-  const wr = winRate(null, year);
-  const trend = multiYearTrend(null, 4);
-  const qRev = quarterlyRevenue(null, year);
-  const qBook = quarterlyBookings(null, year);
-  const bk = backlog(null);
-  const cov = pipelineCoverage(null, year);
-  const b2b = bookToBill(null, year);
+  const wr = await winRate(null, year);
+  const trend = await multiYearTrend(null, 4);
+  const qRev = await quarterlyRevenue(null, year);
+  const qBook = await quarterlyBookings(null, year);
+  const bk = await backlog(null);
+  const cov = await pipelineCoverage(null, year);
+  const b2b = await bookToBill(null, year);
   const revYoy = trend.length >= 2 ? (() => { const cur = trend[trend.length - 1].revenue_halalas, prev = trend[trend.length - 2].revenue_halalas; return prev ? Math.round((cur - prev) / prev * 100) : null; })() : null;
   const bookYoy = trend.length >= 2 ? (() => { const cur = trend[trend.length - 1].contracts_halalas, prev = trend[trend.length - 2].contracts_halalas; return prev ? Math.round((cur - prev) / prev * 100) : null; })() : null;
   const yoyBadge = (v) => v == null ? '' : `<span style="font-size:11px;font-weight:700;color:${v >= 0 ? '#34d399' : '#fca5a5'}">${v >= 0 ? '▲' : '▼'} ${Math.abs(v)}% سنويًا</span>`;
@@ -82,7 +82,7 @@ export function ceoPage(user, opts = {}) {
         <div style="margin-top:.45rem;display:flex;align-items:center;gap:.6rem;flex-wrap:wrap">${extra || ''}</div>
       </div>
     </div>`;
-  const sectorCards = ov.sectors.map((s) => card(`
+  const sectorCards = (await Promise.all(ov.sectors.map(async (s) => card(`
     <div style="padding:.8rem .9rem">
       <div style="display:flex;align-items:center;justify-content:space-between">
         <div style="display:flex;align-items:center;gap:.5rem">
@@ -101,9 +101,9 @@ export function ceoPage(user, opts = {}) {
       </div>
       <div style="margin-top:.7rem;padding-top:.6rem;border-top:1px solid var(--line);font-size:11px;color:var(--muted);display:flex;justify-content:space-between">
         <span>عقود ${year}: <b class="tnum" style="color:var(--ink2)">${fmtSar(s.contracts_halalas)}</b> (${s.contracts_count})</span>
-        ${ov.canSeeMargin ? (() => { const gm = grossMargin(s.id, year); return gm.margin_pct != null ? `<span>هامش: <b style="color:${gm.margin_pct >= 20 ? 'var(--green)' : gm.margin_pct >= 10 ? 'var(--amber)' : 'var(--red)'}">${gm.margin_pct}%</b></span>` : ''; })() : ''}
+        ${ov.canSeeMargin ? await (async () => { const gm = await grossMargin(s.id, year); return gm.margin_pct != null ? `<span>هامش: <b style="color:${gm.margin_pct >= 20 ? 'var(--green)' : gm.margin_pct >= 10 ? 'var(--amber)' : 'var(--red)'}">${gm.margin_pct}%</b></span>` : ''; })() : ''}
       </div>
-    </div>`, 'card-h')).join('');
+    </div>`, 'card-h')))).join('');
   // sector achievement (revenue) comparison, sorted, colored by sector — the "how much each achieved" chart
   const sectorAchv = [...ov.sectors].map((s) => ({ label: esc(s.name_ar), value: s.revenue_halalas || 0, color: s.color || '#2563eb', sub: pct(s.revenue_pct) })).sort((a, b) => b.value - a.value);
   // dense secondary metric inside the hero (fills what used to be dead banner space)
@@ -148,16 +148,16 @@ export function ceoPage(user, opts = {}) {
   return layout({ user, active: 'ceo', title: 'لوحة القيادة', subtitle: `نظرة تنفيذية · السنة المالية ${year}`, body, year });
 }
 
-export function sectorPage(user, opts = {}) {
+export async function sectorPage(user, opts = {}) {
   const year = Number(opts.year) || config.fiscalYear;
   const sectorId = user.sector_id || 'SOLUTIONS';
-  const sd = sectorDashboard(user, sectorId, { year });
-  const pipe = pipelineSummary(user);
+  const sd = await sectorDashboard(user, sectorId, { year });
+  const pipe = await pipelineSummary(user);
   if (!sd) return layout({ user, active: 'sector', title: 'مركز القطاع', body: '<div style="color:var(--muted)">لا يوجد قطاع مرتبط</div>' });
-  const staff = sectorStaffing(sectorId, year);
-  const clients = sectorClients(sectorId);
-  const wins = sectorWins(sectorId, year);
-  const tasks = all(`SELECT t.title, t.status, t.priority, t.due_date, COALESCE(u.name_ar,u.username,'—') assignee
+  const staff = await sectorStaffing(sectorId, year);
+  const clients = await sectorClients(sectorId);
+  const wins = await sectorWins(sectorId, year);
+  const tasks = await all(`SELECT t.title, t.status, t.priority, t.due_date, COALESCE(u.name_ar,u.username,'—') assignee
      FROM task t LEFT JOIN app_user u ON u.id=t.assignee_user_id
      WHERE t.sector_id=? AND t.deleted_at IS NULL AND t.status != 'DONE' ORDER BY t.due_date LIMIT 12`, [sectorId]);
   const stat = (label, val, sub, tone) => card(`<div style="padding:.85rem 1rem"><div style="font-size:11px;color:var(--muted)">${label}</div><div class="metric tnum" style="font-size:1.45rem;color:${tone || 'var(--ink2)'}">${val}</div>${sub ? `<div style="font-size:11px;color:var(--muted)">${sub}</div>` : ''}</div>`);
@@ -231,12 +231,12 @@ function statMini(label, value, sub, tone) {
     <div style="font-size:10.5px;color:var(--faint)">${sub || ''}</div></div>`;
 }
 
-export function opportunitiesPage(user) {
-  const rows = listOpportunities(user);
-  const stages = all('SELECT id,name_ar,color,sort_order,is_won,is_lost FROM stage ORDER BY sort_order');
-  const clients = Object.fromEntries(all('SELECT id,name_ar FROM client').map((c) => [c.id, c.name_ar]));
-  const users = Object.fromEntries(all('SELECT id,name_ar,username FROM app_user').map((u) => [u.id, u.name_ar || u.username]));
-  const sectors = all('SELECT id,name_ar FROM sector WHERE active=1 ORDER BY name_ar');
+export async function opportunitiesPage(user) {
+  const rows = await listOpportunities(user);
+  const stages = await all('SELECT id,name_ar,color,sort_order,is_won,is_lost FROM stage ORDER BY sort_order');
+  const clients = Object.fromEntries((await all('SELECT id,name_ar FROM client')).map((c) => [c.id, c.name_ar]));
+  const users = Object.fromEntries((await all('SELECT id,name_ar,username FROM app_user')).map((u) => [u.id, u.name_ar || u.username]));
+  const sectors = await all('SELECT id,name_ar FROM sector WHERE active=1 ORDER BY name_ar');
   const canCreate = can(user, 'create', 'opportunity');
   const canEdit = can(user, 'update', 'opportunity');
 
@@ -318,13 +318,13 @@ export function opportunitiesPage(user) {
 }
 
 // Personal pipeline — an individual's OWN opportunities (owner = the signed-in user).
-export function myOpportunitiesPage(user, opts = {}) {
+export async function myOpportunitiesPage(user, opts = {}) {
   const year = Number(opts.year) || config.fiscalYear;
-  const scoped = listOpportunities(user);
+  const scoped = await listOpportunities(user);
   const rows = scoped.filter((o) => o.owner_user_id === user.id);
-  const stages = all('SELECT id,name_ar,color,sort_order,is_won,is_lost FROM stage ORDER BY sort_order');
+  const stages = await all('SELECT id,name_ar,color,sort_order,is_won,is_lost FROM stage ORDER BY sort_order');
   const stById = Object.fromEntries(stages.map((s) => [s.id, s]));
-  const clients = Object.fromEntries(all('SELECT id,name_ar FROM client').map((c) => [c.id, c.name_ar]));
+  const clients = Object.fromEntries((await all('SELECT id,name_ar FROM client')).map((c) => [c.id, c.name_ar]));
 
   const isOpen = (o) => { const s = stById[o.stage_id]; return s && !s.is_won && !s.is_lost; };
   const open = rows.filter(isOpen);
@@ -400,12 +400,12 @@ const PRJ_STATUS = [
 ];
 const ragHex = { GREEN: '#059669', AMBER: '#d97706', RED: '#dc2626' };
 
-export function projectsPage(user) {
-  const rows = listProjects(user);
+export async function projectsPage(user) {
+  const rows = await listProjects(user);
   const canCost = canSeeSensitive(user, 'cost');
   const canEdit = can(user, 'update', 'project');
-  const clients = Object.fromEntries(all('SELECT id,name_ar FROM client').map((c) => [c.id, c.name_ar]));
-  const sectors = Object.fromEntries(all('SELECT id,name_ar FROM sector').map((s) => [s.id, s.name_ar]));
+  const clients = Object.fromEntries((await all('SELECT id,name_ar FROM client')).map((c) => [c.id, c.name_ar]));
+  const sectors = Object.fromEntries((await all('SELECT id,name_ar FROM sector')).map((s) => [s.id, s.name_ar]));
   const ragTone = { GREEN: 'green', AMBER: 'amber', RED: 'red' };
 
   // build columns from the standard ladder + any extra statuses present
@@ -465,12 +465,12 @@ export function projectsPage(user) {
         <th class="py-2 px-3 font-medium">المشروع</th><th class="px-3 font-medium">الحالة</th><th class="px-3 font-medium">RAG</th>
         <th class="px-3 font-medium">قيمة العقد</th><th class="px-3 font-medium">الصرف الفعلي</th><th class="px-3 font-medium">الإنجاز</th></tr></thead>
       <tbody>${tableRows || '<tr><td class="p-4 text-muted text-sm" colspan="6">لا مشاريع ضمن نطاقك</td></tr>'}</tbody></table></div>
-    <script>window.__SANAD=Object.assign(window.__SANAD||{},{sectors:${JSON.stringify(all('SELECT id,name_ar FROM sector WHERE active=1 ORDER BY name_ar'))},canEditPrj:${canEdit}});</script>`;
+    <script>window.__SANAD=Object.assign(window.__SANAD||{},{sectors:${JSON.stringify(await all('SELECT id,name_ar FROM sector WHERE active=1 ORDER BY name_ar'))},canEditPrj:${canEdit}});</script>`;
   return layout({ user, active: 'projects', title: 'المشاريع', subtitle: 'PMO · لوحة الحالة', body });
 }
 
-export function tasksPage(user) {
-  const rows = myTasks(user);
+export async function tasksPage(user) {
+  const rows = await myTasks(user);
   const stColor = { TODO: 'slate', IN_PROGRESS: 'blue', BLOCKED: 'red', IN_REVIEW: 'amber', DONE: 'green' };
   const today = new Date().toISOString().slice(0, 10);
   const soon = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
@@ -510,10 +510,10 @@ export function tasksPage(user) {
   return layout({ user, active: 'tasks', title: 'مهامي', body });
 }
 
-export function timesheetPage(user) {
+export async function timesheetPage(user) {
   const from = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
   const to = new Date().toISOString().slice(0, 10);
-  const rows = myEntries(user, { from, to });
+  const rows = await myEntries(user, { from, to });
   const total = rows.reduce((a, r) => a + r.hours, 0);
   const billable = rows.filter((r) => r.billable).reduce((a, r) => a + r.hours, 0);
   const list = rows.map((e) => `<tr class="border-b border-line">
@@ -546,8 +546,8 @@ export function timesheetPage(user) {
   return layout({ user, active: 'timesheet', title: 'سجل الوقت', body });
 }
 
-export function approvalsPage(user) {
-  const q = myApprovalQueue(user);
+export async function approvalsPage(user) {
+  const q = await myApprovalQueue(user);
   const list = q.map((a) => `<tr class="border-b border-line">
     <td class="py-2.5 px-3 text-[13px]">${a.workflow_name}</td>
     <td class="px-3 text-[12px] text-muted">${a.resource} · ${a.resource_id}</td>
@@ -571,12 +571,12 @@ export function approvalsPage(user) {
   return layout({ user, active: 'approvals', title: 'الاعتمادات', body });
 }
 
-export function teamPage(user) {
+export async function teamPage(user) {
   const canSalary = canSeeSensitive(user, 'salary');
-  const rows = all("SELECT * FROM employee WHERE deleted_at IS NULL " +
+  const rows = await all("SELECT * FROM employee WHERE deleted_at IS NULL " +
     (user.scope === 'company' ? '' : 'AND sector_id = ?') + ' ORDER BY name_ar LIMIT 200',
     user.scope === 'company' ? [] : [user.sector_id]);
-  const sectorNames = Object.fromEntries(all('SELECT id,name_ar FROM sector').map((s) => [s.id, s.name_ar]));
+  const sectorNames = Object.fromEntries((await all('SELECT id,name_ar FROM sector')).map((s) => [s.id, s.name_ar]));
   const totalSalary = canSalary ? rows.reduce((a, r) => a + (r.salary_halalas || 0), 0) : null;
   const activeN = rows.filter((e) => e.active !== 0).length;
   const byType = {}; for (const e of rows) { const t = e.employment_type || 'غير محدد'; byType[t] = (byType[t] || 0) + 1; }
@@ -610,8 +610,8 @@ export function teamPage(user) {
   return layout({ user, active: 'team', title: 'الفريق', subtitle: 'الموارد البشرية · التوزيع والرواتب', body });
 }
 
-export function usersPage(user) {
-  const rows = all(`SELECT u.*, r.name_ar role_name FROM app_user u LEFT JOIN role r ON r.id = u.role_id
+export async function usersPage(user) {
+  const rows = await all(`SELECT u.*, r.name_ar role_name FROM app_user u LEFT JOIN role r ON r.id = u.role_id
     WHERE u.deleted_at IS NULL ORDER BY u.role_id, u.name_ar LIMIT 300`);
   const list = rows.map((u) => `<tr class="border-b border-line">
     <td class="py-2 px-3 text-[13px]">${esc(u.name_ar || '')}<div class="text-[11px] text-muted">${esc(u.username || '— بلا دخول')}</div></td>
@@ -640,8 +640,8 @@ export function usersPage(user) {
   return layout({ user, active: 'users', title: 'المستخدمون والصلاحيات', body });
 }
 
-export function auditPage(user) {
-  const rows = all('SELECT * FROM audit_log ORDER BY at DESC LIMIT 200');
+export async function auditPage(user) {
+  const rows = await all('SELECT * FROM audit_log ORDER BY at DESC LIMIT 200');
   const today = new Date().toISOString().slice(0, 10);
   const todayN = rows.filter((a) => (a.at || '').slice(0, 10) === today).length;
   const distinctUsers = new Set(rows.map((a) => a.username || a.user_id).filter(Boolean)).size;
@@ -668,11 +668,11 @@ export function auditPage(user) {
   return layout({ user, active: 'audit', title: 'سجل التدقيق', body });
 }
 
-export function reportsPage(user) {
-  const defs = all('SELECT * FROM report_definition WHERE active = 1 ORDER BY id');
-  const groups = all('SELECT * FROM recipient_group ORDER BY name_ar');
-  const schedules = all('SELECT rs.*, rd.name_ar rname, rg.name_ar gname FROM report_schedule rs JOIN report_definition rd ON rd.id = rs.report_id LEFT JOIN recipient_group rg ON rg.id = rs.recipient_group_id ORDER BY rs.created_at DESC LIMIT 50');
-  const outbox = all('SELECT * FROM email_queue ORDER BY created_at DESC LIMIT 15');
+export async function reportsPage(user) {
+  const defs = await all('SELECT * FROM report_definition WHERE active = 1 ORDER BY id');
+  const groups = await all('SELECT * FROM recipient_group ORDER BY name_ar');
+  const schedules = await all('SELECT rs.*, rd.name_ar rname, rg.name_ar gname FROM report_schedule rs JOIN report_definition rd ON rd.id = rs.report_id LEFT JOIN recipient_group rg ON rg.id = rs.recipient_group_id ORDER BY rs.created_at DESC LIMIT 50');
+  const outbox = await all('SELECT * FROM email_queue ORDER BY created_at DESC LIMIT 15');
   const freqAr = { daily: 'يومي', weekly: 'أسبوعي', biweekly: 'كل أسبوعين', monthly: 'شهري', quarterly: 'ربع سنوي', yearly: 'سنوي' };
 
   const reportCards = defs.map((d) => card(`<div style="padding:.9rem 1rem">
@@ -715,8 +715,8 @@ export function reportsPage(user) {
   return layout({ user, active: 'reports', title: 'التقارير والبريد', subtitle: 'محرك تقارير تنفيذية + جدولة + بريد', body });
 }
 
-export function orgPage(user) {
-  const tree = orgTree(user);
+export async function orgPage(user) {
+  const tree = await orgTree(user);
   const sectorBlocks = tree.map((s) => card(`<div style="padding:1rem">
     <div style="display:flex;align-items:center;justify-content:space-between">
       <div style="display:flex;align-items:center;gap:.5rem">
@@ -750,12 +750,12 @@ export function orgPage(user) {
   return layout({ user, active: 'org', title: 'الهيكل التنظيمي', subtitle: 'الشركة ← القطاع ← الإدارة ← الوحدة ← الفريق ← الموظف', body });
 }
 
-export function financePage(user, opts = {}) {
+export async function financePage(user, opts = {}) {
   const year = Number(opts.year) || config.fiscalYear;
-  const s = financeSummary(user, year);
-  const byPM = financeByPM(user, year);
-  const byClient = financeByClient(user, year);
-  const byContract = financeByContract(user);
+  const s = await financeSummary(user, year);
+  const byPM = await financeByPM(user, year);
+  const byClient = await financeByClient(user, year);
+  const byContract = await financeByContract(user);
   const tile = (l, v, sub, color) => card(`<div style="padding:.9rem 1rem"><div style="font-size:11px;color:var(--muted)">${l}</div>
     <div class="metric" style="font-size:1.35rem;${color ? 'color:' + color : ''}">${v}</div>${sub ? `<div style="font-size:11px;color:var(--muted)">${sub}</div>` : ''}</div>`);
   // bridge: bookings → revenue → invoiced → collected
@@ -835,9 +835,9 @@ function noticeCard(title, msg, backHref = '/', backLabel = 'العودة') {
   </div>`;
 }
 
-export function contractDetailPage(user, contractId) {
+export async function contractDetailPage(user, contractId) {
   let d;
-  try { d = contractDetail(user, contractId); } catch (e) { return layout({ user, active: 'finance', title: 'العقد', body: noticeCard('تعذّر عرض العقد', e.message, '/app/finance', 'العودة للمالية') }); }
+  try { d = await contractDetail(user, contractId); } catch (e) { return layout({ user, active: 'finance', title: 'العقد', body: noticeCard('تعذّر عرض العقد', e.message, '/app/finance', 'العودة للمالية') }); }
   const c = d.contract;
   const invRows = d.invoices.map((i) => `<tr style="border-bottom:1px solid var(--line)">
     <td style="padding:.5rem .75rem;font-size:13px">${i.kind === 'progress_claim' ? 'مستخلص #' + (i.claim_no || '') : (i.code || i.id)}${i.period_label ? `<div style="font-size:11px;color:var(--muted)">${i.period_label}</div>` : ''}</td>
@@ -871,24 +871,24 @@ export function contractDetailPage(user, contractId) {
   return layout({ user, active: 'finance', title: `العقد — ${esc(c.code || c.id)}`, subtitle: esc(d.project?.name_ar || ''), body });
 }
 
-export function projectDetailPage(user, projectId) {
-  const p = get('SELECT * FROM project WHERE id = ? AND deleted_at IS NULL', [projectId]);
+export async function projectDetailPage(user, projectId) {
+  const p = await get('SELECT * FROM project WHERE id = ? AND deleted_at IS NULL', [projectId]);
   if (!p) return layout({ user, active: 'projects', title: 'المشروع', body: noticeCard('المشروع غير موجود', 'ربما حُذف المشروع أو أن الرابط غير صحيح.', '/app/projects', 'العودة للمشاريع') });
   if (!can(user, 'read', 'project', p)) return layout({ user, active: 'projects', title: 'المشروع', body: noticeCard('لا تملك صلاحية الوصول', 'هذا المشروع خارج نطاق صلاحياتك الحالية — تواصل مع مدير النظام إن كنت تحتاج الوصول.', '/app/projects', 'العودة للمشاريع') });
   const row = redact(user, 'project', p);
-  const k = projectKpis(p.id);
+  const k = await projectKpis(p.id);
   const canCost = canSeeSensitive(user, 'cost');
   const canEdit = can(user, 'update', 'project', p);
-  const tasks = all("SELECT status, COUNT(*) n FROM task WHERE project_id=? AND deleted_at IS NULL GROUP BY status", [p.id]);
+  const tasks = await all("SELECT status, COUNT(*) n FROM task WHERE project_id=? AND deleted_at IS NULL GROUP BY status", [p.id]);
   const tmap = Object.fromEntries(tasks.map((t) => [t.status, t.n]));
-  const dlv = all("SELECT name_ar, amount_halalas, status, month FROM deliverable WHERE project_id=? AND deleted_at IS NULL ORDER BY month LIMIT 24", [p.id]);
-  const risks = all("SELECT title, impact, status FROM risk WHERE project_id=? AND status!='CLOSED' LIMIT 10", [p.id]);
-  const client = get('SELECT id, name_ar FROM client WHERE id=?', [p.client_id]);
-  const owner = p.owner_user_id ? get('SELECT name_ar, username FROM app_user WHERE id=?', [p.owner_user_id]) : null;
-  const srcOpp = p.source_opp_id ? get('SELECT id, title_ar FROM opportunity WHERE id=? AND deleted_at IS NULL', [p.source_opp_id]) : null;
-  const contract = get("SELECT id, code, value_halalas, status FROM contract WHERE project_id=? AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1", [p.id]);
+  const dlv = await all("SELECT name_ar, amount_halalas, status, month FROM deliverable WHERE project_id=? AND deleted_at IS NULL ORDER BY month LIMIT 24", [p.id]);
+  const risks = await all("SELECT title, impact, status FROM risk WHERE project_id=? AND status!='CLOSED' LIMIT 10", [p.id]);
+  const client = await get('SELECT id, name_ar FROM client WHERE id=?', [p.client_id]);
+  const owner = p.owner_user_id ? await get('SELECT name_ar, username FROM app_user WHERE id=?', [p.owner_user_id]) : null;
+  const srcOpp = p.source_opp_id ? await get('SELECT id, title_ar FROM opportunity WHERE id=? AND deleted_at IS NULL', [p.source_opp_id]) : null;
+  const contract = await get("SELECT id, code, value_halalas, status FROM contract WHERE project_id=? AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1", [p.id]);
   // Team assigned to this project (from the allocation model), with each member's month-coverage on THIS project.
-  const staff = all(`SELECT a.person_name_ar, a.type, a.monthly_json, e.job_title
+  const staff = await all(`SELECT a.person_name_ar, a.type, a.monthly_json, e.job_title
      FROM allocation a LEFT JOIN employee e ON e.id=a.employee_id
      WHERE a.project_id=? AND a.deleted_at IS NULL ORDER BY (a.type='lead') DESC, a.person_name_ar`, [p.id]);
 
@@ -1001,9 +1001,9 @@ export function projectDetailPage(user, projectId) {
   return layout({ user, active: 'projects', title: esc(p.name_ar), subtitle: 'تفاصيل المشروع', body });
 }
 
-export function portfolioPage(user) {
-  const rows = listProjects(user);
-  const sectorNames = Object.fromEntries(all('SELECT id,name_ar FROM sector').map((s) => [s.id, s.name_ar]));
+export async function portfolioPage(user) {
+  const rows = await listProjects(user);
+  const sectorNames = Object.fromEntries((await all('SELECT id,name_ar FROM sector')).map((s) => [s.id, s.name_ar]));
   const val = (p) => p.contract_value_halalas || p.budget_halalas || 0;
   const isActive = (p) => p.status !== 'COMPLETED' && p.status !== 'CANCELLED';
   const ragC = { GREEN: 0, AMBER: 0, RED: 0 };

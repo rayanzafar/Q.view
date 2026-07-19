@@ -3,8 +3,8 @@ import express from 'express';
 import cookieParser from 'cookie-parser';
 import { resolve } from 'node:path';
 import { config, ROOT, assertProdSecrets } from './core/config.js';
-import { db, close } from './core/db/index.js';
-import { loadGrants } from './core/rbac/index.js';
+import { close, ping } from './core/db/index.js';
+import { initRbac } from './core/rbac/index.js';
 import { stopScheduler } from './core/jobs/scheduler.js';
 import { attachContext } from './core/http/context.js';
 import { csrf } from './core/http/csrf.js';
@@ -15,10 +15,9 @@ import { aiRouter } from './modules/ai.routes.js';
 import { webRouter } from './web/routes.js';
 import { startScheduler } from './core/jobs/scheduler.js';
 
-export function createApp() {
+export async function createApp() {
   assertProdSecrets();
-  db();          // open DB
-  loadGrants();  // load RBAC grants into cache
+  await initRbac();  // load RBAC grants into the (synchronous) decision cache
 
   const app = express();
   app.set('trust proxy', true);
@@ -30,8 +29,8 @@ export function createApp() {
 
   app.get('/health', (req, res) => res.json({ ok: true, ts: new Date().toISOString() }));
   // Readiness: verify DB is reachable (for load balancers / orchestrators).
-  app.get('/ready', (req, res) => {
-    try { db().prepare('SELECT 1').get(); res.json({ ready: true }); }
+  app.get('/ready', async (req, res) => {
+    try { await ping(); res.json({ ready: true }); }
     catch (e) { res.status(503).json({ ready: false, error: e.message }); }
   });
   app.use('/static', express.static(resolve(ROOT, 'src/web/public'), { maxAge: config.env === 'production' ? '1h' : 0 }));
@@ -49,12 +48,12 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   let app;
   try {
     console.log('▶ boot: createApp…');
-    app = createApp();
+    app = await createApp();
     console.log('▶ boot: startScheduler…');
     startScheduler();
   } catch (e) {
     console.error('!! startup failed in createApp/startScheduler:', e?.stack || e);
-    throw e;
+    process.exit(1);
   }
   const server = app.listen(config.port, config.host, () => {
     console.log(`✓ سند running at http://${config.host}:${config.port}  (env=${config.env})`);
@@ -64,7 +63,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const shutdown = (sig) => {
     console.log(`\n${sig} received — shutting down gracefully…`);
     stopScheduler();
-    server.close(() => { try { close(); } catch { /* ignore */ } process.exit(0); });
+    server.close(async () => { try { await close(); } catch { /* ignore */ } process.exit(0); });
     setTimeout(() => process.exit(1), 10000).unref();
   };
   process.on('SIGTERM', () => shutdown('SIGTERM'));
