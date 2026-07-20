@@ -6,8 +6,8 @@ import { config, ROOT } from '../config.js';
 
 export async function sendMail({ to, cc, subject, html }) {
   if (config.mailTransport === 'smtp') {
-    // Deploy-time: wire nodemailer with config.smtp here. Kept out of dev to avoid a network dep.
-    throw new Error('SMTP transport not configured in this environment (set MAIL_TRANSPORT=smtp + SMTP_* secrets).');
+    const { sendViaSmtp } = await import('./smtp.js');
+    return await sendViaSmtp({ to, cc, subject, html });
   }
   // preview transport
   const dir = resolve(ROOT, 'data/outbox');

@@ -51,7 +51,7 @@ export const NAV_ITEMS = [
   { key: 'team', ar: 'الفريق والطاقة', ic: 'team', group: 'manage' },
   { key: 'imports', ar: 'البيانات', ic: 'upload', group: 'manage', live: false },
   { key: 'reports', ar: 'التقارير والبريد', ic: 'reports', group: 'manage' },
-  { key: 'mail', ar: 'مركز البريد', ic: 'mail', group: 'admin', live: false },
+  { key: 'mail', ar: 'مركز البريد', ic: 'mail', group: 'admin' },
   { key: 'org', ar: 'الهيكل التنظيمي', ic: 'sector', group: 'admin' },
   { key: 'users', ar: 'المستخدمون والصلاحيات', ic: 'users', group: 'admin' },
   { key: 'audit', ar: 'سجل التدقيق', ic: 'audit', group: 'admin' },

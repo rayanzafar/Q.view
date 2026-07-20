@@ -40,8 +40,16 @@ const PAGES = {
   'my-opportunities': P.myOpportunitiesPage,
   projects: P.projectsPage, tasks: P.tasksPage, timesheet: P.timesheetPage, approvals: P.approvalsPage,
   team: P.teamPage, users: P.usersPage, audit: P.auditPage, reports: P.reportsPage, org: P.orgPage,
-  finance: P.financePage,
+  finance: P.financePage, mail: P.mailPage,
 };
+
+// معاينة رسالة من صندوق المعاينة — بنفس صلاحية صفحة مركز البريد
+webRouter.get('/app/mail/preview/:file', requireWeb, (req, res) => {
+  if (!pageAllowed(req.ctx.user, 'mail')) return deny(res);
+  const html = P.outboxFileHtml(req.params.file);
+  if (html == null) return res.status(404).send('الرسالة غير موجودة');
+  res.type('html').send(html);
+});
 
 // رفض موحّد: صفحة 403 عربية واضحة (نفس مسار أخطاء HTML في errors.js)
 function deny(res) {
