@@ -14,13 +14,21 @@
     "seed": "node --experimental-sqlite scripts/seed.js",
     "migrate-legacy": "node --experimental-sqlite scripts/migrate-legacy.js",
     "reset": "node --experimental-sqlite scripts/reset.js",
-    "test": "node --experimental-sqlite --test tests/**/*.test.js",
+    "test": "node --experimental-sqlite --test \"tests/**/*.test.js\"",
+    "sweep": "node --experimental-sqlite scripts/sweep.mjs",
+    "e2e": "node --experimental-sqlite scripts/e2e.mjs",
+    "evidence": "node --experimental-sqlite scripts/evidence.mjs",
+    "quality": "sh -c 'set -e; for f in $(find src scripts -name \"*.js\" -o -name \"*.mjs\"); do node --check \"$f\"; done; echo \"syntax: clean\"; node scripts/check-glossary.mjs; npm test; npm run e2e'",
     "backup": "node --experimental-sqlite scripts/backup.js"
   },
   "dependencies": {
     "cookie-parser": "^1.4.7",
     "express": "^5.2.0",
     "pg": "^8.22.0"
+  },
+  "devDependencies": {
+    "axe-core": "4.10.3",
+    "playwright": "1.54.2"
   },
   "sanad": {
     "runtimeDeps": "none-external — built-in node:sqlite, node:crypto, node:http; email uses a pluggable transport (dev = file/preview, prod = SMTP adapter)",

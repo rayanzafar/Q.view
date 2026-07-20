@@ -3,7 +3,7 @@ import { run, get, insert, all } from '../src/core/db/index.js';
 import { hashPassword } from '../src/core/auth/password.js';
 import { id, nowIso } from '../src/core/util/ids.js';
 
-const DEMO_PW = 'Sanad@2026';
+export const DEMO_PW = 'Sanad@2026'; // demo-account password — imported by the quality harness (sweep/e2e/tests)
 
 const WORKFLOWS = [
   { key: 'opportunity_go_nogo', name: 'قرار المشاركة (Go/No-Go)', resource: 'opportunity',
