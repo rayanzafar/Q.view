@@ -18,7 +18,7 @@ export default {
   type: 'revenues',
   labelAr: 'الإيراد المحقق',
   resource: 'revenue_line',
-  keySets: [['sector', 'year', 'month', 'label']],
+  keySets: [['id'], ['sector', 'year', 'month', 'label', 'amount']],
   columns: [
     { key: 'sector', labelAr: 'القطاع', required: true, parse: 'lookup', lookup: 'sector' },
     { key: 'year', labelAr: 'السنة', required: true, parse: 'int', min: 2000, max: 2100 },
@@ -26,6 +26,8 @@ export default {
     { key: 'amount', labelAr: 'المبلغ (ريال)', required: true, parse: 'money', aliases: ['الإيراد', 'القيمة'] },
     { key: 'label', labelAr: 'البيان', aliases: ['الوصف', 'التفاصيل'] },
     { key: 'project', labelAr: 'المشروع', parse: 'lookup', lookup: 'project', aliases: ['اسم المشروع'] },
+    // مفتاح حتمي للملفات المصدَّرة — يميّز الأسطر المشروعة المتطابقة القيم
+    { key: 'id', labelAr: 'معرف السطر', aliases: ['المعرف'] },
   ],
   exampleRow: {
     sector: 'اسم القطاع', year: new Date().getUTCFullYear(), month: 1, amount: 500000,
@@ -47,11 +49,17 @@ export default {
       WHERE ${where.join(' AND ')} ORDER BY r.year, r.month, s.name_ar`, params);
     return rows.map((r) => ({
       sector: r.sector_name, year: r.year, month: r.month, amount: toSar(r.amount_halalas),
-      label: r.label, project: r.proj_code || r.proj_name,
+      label: r.label, project: r.proj_code || r.proj_name, id: r.id,
     }));
   },
 
   async resolveRow(ctx, mapped) {
+    if (mapped.id) {
+      const byId = await get('SELECT * FROM revenue_line WHERE id = ?', [String(mapped.id).trim()]);
+      if (!byId) throw new Error('معرف السطر غير موجود — لا تعدّل عمود «معرف السطر» يدوياً');
+      const changes = Number(byId.amount_halalas || 0) === Number(mapped.amount || 0) ? [] : ['amount'];
+      return { action: changes.length ? 'update' : 'skip', existing: byId, changes };
+    }
     const existing = await get(`
       SELECT * FROM revenue_line
       WHERE sector_id = ? AND year = ? AND month = ?

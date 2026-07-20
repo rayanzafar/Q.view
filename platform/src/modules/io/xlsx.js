@@ -30,9 +30,12 @@ export function parseWorkbook(buffer, fileName = '') {
   if (!ws) return { headers: [], rows: [] };
   const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '', blankrows: false });
   if (!aoa.length) return { headers: [], rows: [] };
+  // إزالة فاصلة الحماية العليا التي أضافها guardCell عند التصدير (نفس سلوك Excel: الفاصلة
+  // البادئة قبل = + - @ علامة تنسيق لا محتوى) — يحفظ تطابق التصدير→الاستيراد حرفياً.
+  const unguard = (s) => (/^'[=+\-@]/.test(s) ? s.slice(1) : s);
   const headers = aoa[0].map((h) => String(h ?? '').trim());
   const rows = aoa.slice(1)
-    .map((r) => headers.map((_, i) => String(r[i] ?? '').trim()))
+    .map((r) => headers.map((_, i) => unguard(String(r[i] ?? '').trim())))
     .filter((r) => r.some((c) => c !== ''));
   return { headers, rows };
 }

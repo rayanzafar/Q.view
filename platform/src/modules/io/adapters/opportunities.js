@@ -27,6 +27,8 @@ export default {
     { key: 'year', labelAr: 'السنة', parse: 'int', min: 2000, max: 2100 },
     { key: 'next_action', labelAr: 'الخطوة التالية', aliases: ['الإجراء التالي'] },
     { key: 'notes', labelAr: 'ملاحظات', aliases: ['ملاحظة', 'تفاصيل'] },
+    // مفتاح مطابقة صريح للتحديث الآمن عندما تتكرر العناوين — يُصدَّر آلياً ولا يُطلب يدوياً
+    { key: 'id', labelAr: 'معرف السجل', aliases: ['المعرف'] },
   ],
   exampleRow: {
     code: 'OPP-2026-001', title_ar: 'دراسة تطوير تجربة الزائر', client: 'اسم العميل كما هو مسجّل',
@@ -55,21 +57,43 @@ export default {
       code: o.code, title_ar: o.title_ar, client: o.client_name, sector: o.sector_name,
       stage: o.stage_name, owner: o.owner_name || o.owner_username,
       value: toSar(o.value_halalas), win_pct: o.win_pct, year: o.year,
-      next_action: o.next_action, notes: o.notes,
+      next_action: o.next_action, notes: o.notes, id: o.id,
     }));
   },
 
   async resolveRow(ctx, mapped, opts = {}) {
     let existing = null;
+    // أولاً: معرف السجل الصريح (يضمن مطابقة حتمية للملفات المصدَّرة من المنصة)
+    if (mapped.id) {
+      existing = await get('SELECT * FROM opportunity WHERE id = ? AND deleted_at IS NULL', [String(mapped.id).trim()]);
+      if (!existing) throw new Error('معرف السجل غير موجود — لا تعدّل عمود «معرف السجل» يدوياً');
+    }
     const useCode = mapped.code && opts.keyField !== 'title_ar';
-    if (useCode) existing = await get('SELECT * FROM opportunity WHERE code = ? AND deleted_at IS NULL ORDER BY created_at LIMIT 1', [mapped.code]);
-    if (!existing && mapped.title_ar) existing = await get('SELECT * FROM opportunity WHERE title_ar = ? AND deleted_at IS NULL ORDER BY created_at LIMIT 1', [mapped.title_ar]);
+    if (!existing && useCode) existing = await get('SELECT * FROM opportunity WHERE code = ? AND deleted_at IS NULL ORDER BY created_at LIMIT 1', [mapped.code]);
+    // العناوين القديمة قد تحمل مسافات بادئة/لاحقة — المطابقة على النص المشذَّب لا الحرفي،
+    // وتكرار العنوان نفسه في القاعدة = غموض يُرفض بدل الكتابة فوق السجل الخطأ
+    if (!existing && mapped.title_ar) {
+      const matches = await all('SELECT * FROM opportunity WHERE trim(title_ar) = ? AND deleted_at IS NULL ORDER BY created_at LIMIT 3', [String(mapped.title_ar).trim()]);
+      if (matches.length > 1) throw new Error('يوجد أكثر من سجل بنفس العنوان — استخدم ملفاً مصدَّراً من المنصة (بعمود معرف السجل) أو أضف الكود للتمييز');
+      existing = matches[0] || null;
+    }
     if (!existing) return { action: 'create', existing: null, changes: [] };
+    const normText = (v) => String(v ?? '').replace(/\r\n/g, '\n').trim();
     const changes = [];
     for (const k of UPDATABLE) {
       if (mapped[k] == null) continue;
       const cur = existing[FIELD_OF[k]];
-      const same = (k === 'value' || k === 'win_pct') ? Number(cur || 0) === Number(mapped[k] || 0) : String(cur ?? '') === String(mapped[k] ?? '');
+      let same;
+      if (k === 'value' || k === 'win_pct') same = Number(cur || 0) === Number(mapped[k] || 0);
+      else if (k === 'client' && cur && mapped[k] && cur !== mapped[k]) {
+        // أسماء عملاء مكررة في البيانات القديمة: البحث بالاسم قد يعيد نسخة أخرى بنفس الاسم —
+        // تكافؤ الاسم المطبَّع = نفس العميل المقصود، لا تغيير فعلياً
+        const [a, b] = await Promise.all([
+          get('SELECT name_ar FROM client WHERE id = ?', [cur]),
+          get('SELECT name_ar FROM client WHERE id = ?', [mapped[k]]),
+        ]);
+        same = normText(a?.name_ar) === normText(b?.name_ar);
+      } else same = normText(cur) === normText(mapped[k]);
       if (!same) changes.push(k);
     }
     return { action: changes.length ? 'update' : 'skip', existing, changes };

@@ -51,9 +51,13 @@ test('csv: quotes and commas survive the round trip', () => {
 test('formula-injection guard: cells starting with = + - @ are neutralized on export', () => {
   for (const evil of ['=SUM(A1:A9)', '+HYPERLINK("x")', '-2+3+cmd', '@evil()']) {
     const out = buildExport({ columns: [{ key: 'v', labelAr: 'قيمة' }], rows: [{ v: evil }], format: 'csv' });
+    // البايتات الخام محمية بفاصلة عليا (لا تُنفَّذ في Excel) — نفحص البادئة فقط لأن اقتباس CSV
+    // يضاعف علامات الاقتباس داخل الخلية
+    const head = `'` + evil.slice(0, 5);
+    assert.ok(out.buffer.toString('utf8').includes(head), `يجب أن تُسبق «${evil}» بفاصلة عليا في الملف الخام`);
+    // … وقراءة المنصة تزيل فاصلتها الحارسة (سلوك Excel نفسه) فيبقى التصدير→الاستيراد متطابقاً
     const p = parseWorkbook(out.buffer, 'x.csv');
-    assert.ok(p.rows[0][0].startsWith("'"), `يجب أن تُسبق «${evil}» بفاصلة عليا`);
-    assert.equal(p.rows[0][0], `'${evil}`);
+    assert.equal(p.rows[0][0], evil, 'القيمة الأصلية تعود كما هي بعد إزالة فاصلة الحماية');
   }
 });
 

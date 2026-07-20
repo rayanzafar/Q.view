@@ -70,7 +70,7 @@ export default {
   type: 'clients',
   labelAr: 'العملاء',
   resource: 'client',
-  keySets: [['code'], ['name_ar']],
+  keySets: [['id'], ['code'], ['name_ar']],
   columns: [
     { key: 'code', labelAr: 'الكود', aliases: ['رمز العميل', 'code'] },
     { key: 'name_ar', labelAr: 'اسم العميل', required: true, aliases: ['الاسم', 'العميل'] },
@@ -82,6 +82,8 @@ export default {
     { key: 'contact_title', labelAr: 'منصب جهة الاتصال', aliases: ['المنصب'] },
     { key: 'contact_email', labelAr: 'البريد الإلكتروني', aliases: ['الايميل', 'البريد'] },
     { key: 'contact_phone', labelAr: 'الجوال', aliases: ['الهاتف', 'رقم الجوال'] },
+    // مفتاح حتمي للملفات المصدَّرة من المنصة — يميّز الأسماء المكررة
+    { key: 'id', labelAr: 'معرف السجل', aliases: ['المعرف'] },
   ],
   exampleRow: {
     code: 'CL-001', name_ar: 'وزارة النقل', name_en: 'Ministry of Transport', type: 'حكومي',
@@ -102,13 +104,18 @@ export default {
         code: c.code, name_ar: c.name_ar, name_en: c.name_en, type: c.type,
         sector_market: c.sector_market, active: c.active ? 'نشط' : 'غير نشط',
         contact_name: ct?.name, contact_title: ct?.title, contact_email: ct?.email, contact_phone: ct?.phone,
+        id: c.id,
       };
     });
   },
 
   async resolveRow(ctx, mapped, opts = {}) {
     let existing = null;
-    if (mapped.code && opts.keyField !== 'name_ar') {
+    if (mapped.id) {
+      existing = await get('SELECT * FROM client WHERE id = ? AND deleted_at IS NULL', [String(mapped.id).trim()]);
+      if (!existing) throw new Error('معرف السجل غير موجود — لا تعدّل عمود «معرف السجل» يدوياً');
+    }
+    if (!existing && mapped.code && opts.keyField !== 'name_ar') {
       existing = await get('SELECT * FROM client WHERE code = ? AND deleted_at IS NULL ORDER BY created_at LIMIT 1', [mapped.code]);
     }
     if (!existing && mapped.name_ar) {

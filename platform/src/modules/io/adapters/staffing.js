@@ -27,6 +27,9 @@ const toMj = (arr) => {
 function plannedMonths(mapped) {
   const monthly = Array.from({ length: 12 }, (_, i) => mapped[`m${i + 1}`]);
   if (monthly.some((v) => v != null)) return monthly.map((v) => (v == null ? 0 : v / 100));
+  // لا شهور ولا نسبة ولا مدى في الملف = «اتركه كما هو» — تكليف بلا تسكين شهري يبقى كذلك،
+  // ولا يُخترع له مخطط افتراضي يغيّر البيانات عند إعادة استيراد ملف مصدَّر
+  if (mapped.pct == null && mapped.from_month == null && mapped.to_month == null) return Array(12).fill(0);
   const pct = (mapped.pct == null ? 100 : mapped.pct) / 100;
   const f = Math.max(1, Math.min(12, mapped.from_month || 1));
   const t = Math.max(f, Math.min(12, mapped.to_month || 12));
@@ -95,7 +98,7 @@ export default {
         employee: a.emp_name || a.person_name_ar, project: a.proj_code || a.proj_name || a.project_name,
         year: a.year, type: a.type,
       };
-      months.forEach((v, i) => { out[`m${i + 1}`] = v > 0 ? Math.round(v * 100) : null; });
+      months.forEach((v, i) => { out[`m${i + 1}`] = v > 0 ? Math.round(v * 1000) / 10 : null; });
       return out;
     });
   },

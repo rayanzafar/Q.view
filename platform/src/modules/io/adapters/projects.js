@@ -78,7 +78,7 @@ export default {
       existing = await get('SELECT * FROM project WHERE code = ? AND deleted_at IS NULL ORDER BY created_at LIMIT 1', [mapped.code]);
     }
     if (!existing && mapped.name_ar) {
-      existing = await get('SELECT * FROM project WHERE name_ar = ? AND deleted_at IS NULL ORDER BY created_at LIMIT 1', [mapped.name_ar]);
+      existing = await get('SELECT * FROM project WHERE trim(name_ar) = ? AND deleted_at IS NULL ORDER BY created_at LIMIT 1', [String(mapped.name_ar).trim()]);
     }
     if (!existing) return { action: 'create', existing: null, changes: [] };
     const changes = [];
