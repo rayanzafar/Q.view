@@ -20,11 +20,40 @@ jobs:
           node-version: '22'
       - name: Install
         run: npm ci || npm install
-      - name: Migrate + seed RBAC (schema sanity)
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+      - name: Syntax check (src + scripts)
+        run: |
+          set -e
+          for f in $(find src scripts -name '*.js' -o -name '*.mjs'); do node --check "$f"; done
+      - name: Glossary check (no technical jargon in UI copy)
+        run: node scripts/check-glossary.mjs
+      - name: Migrate + seed RBAC + seeded demo (schema + fixture sanity)
         run: |
           node --experimental-sqlite scripts/migrate.js
           node --experimental-sqlite scripts/seed-rbac.js
-      - name: Security + governance tests
-        run: |
-          node --experimental-sqlite --test tests/security.test.js
-          node --experimental-sqlite --test tests/governance.test.js
+          node --experimental-sqlite scripts/seed.js
+          node --experimental-sqlite scripts/lib/seed-fixture.mjs
+      - name: Full test suite (unit / integration / security / permissions matrix)
+        run: node --experimental-sqlite --test "tests/**/*.test.js"
+
+  e2e:
+    runs-on: ubuntu-latest
+    needs: test
+    defaults:
+      run:
+        working-directory: platform
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install
+        run: npm ci || npm install
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: E2E (rtl / a11y / kanban / states)
+        continue-on-error: false
+        run: node --experimental-sqlite scripts/e2e.mjs

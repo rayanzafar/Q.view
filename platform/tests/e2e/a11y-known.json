@@ -1,0 +1,79 @@
+[
+  {
+    "page": "ceo",
+    "rule": "select-name",
+    "impact": "critical",
+    "found": "2026-07-20",
+    "note": "Year <select class=\"yr\"> in layout.js header has no accessible name. Fix (UI lane): add aria-label=\"السنة المالية\" in the yearSel template. One fix clears ceo/portfolio/sector."
+  },
+  {
+    "page": "portfolio",
+    "rule": "select-name",
+    "impact": "critical",
+    "found": "2026-07-20",
+    "note": "Same layout.js year selector as /app/ceo."
+  },
+  {
+    "page": "sector",
+    "rule": "select-name",
+    "impact": "critical",
+    "found": "2026-07-20",
+    "note": "Same layout.js year selector as /app/ceo."
+  },
+  {
+    "page": "sector",
+    "rule": "color-contrast",
+    "impact": "serious",
+    "found": "2026-07-20",
+    "note": "13px bold .tnum money value in var(--green) #059669 on white = 3.76:1 (needs 4.5:1). Fix: darker green for small text (e.g. #047857) or ≥18.66px bold."
+  },
+  {
+    "page": "opportunities",
+    "rule": "scrollable-region-focusable",
+    "impact": "serious",
+    "found": "2026-07-20",
+    "note": "#opp-kanban horizontal scroller has no keyboard access. Fix: tabindex=\"0\" + role=\"region\" + aria-label on the .kanban container."
+  },
+  {
+    "page": "tasks",
+    "rule": "label",
+    "impact": "critical",
+    "found": "2026-07-20",
+    "note": "#qa-due date input in the quick-add row (pmo.js) has no label. Fix: aria-label=\"تاريخ الاستحقاق\"."
+  },
+  {
+    "page": "tasks",
+    "rule": "select-name",
+    "impact": "critical",
+    "found": "2026-07-20",
+    "note": "#qa-priority select in the quick-add row has no accessible name. Fix: aria-label=\"الأولوية\"."
+  },
+  {
+    "page": "timesheet",
+    "rule": "label",
+    "impact": "critical",
+    "found": "2026-07-20",
+    "note": "#ts-date date input has no label. Fix: aria-label=\"تاريخ الإدخال\"."
+  },
+  {
+    "page": "timesheet",
+    "rule": "select-name",
+    "impact": "critical",
+    "found": "2026-07-20",
+    "note": "#ts-kind select has no accessible name (and exposes raw English option values project/opportunity/… — should use Arabic labels from the glossary). Fix: aria-label=\"نوع العمل\" + Arabic <option> labels."
+  },
+  {
+    "page": "team",
+    "rule": "color-contrast",
+    "impact": "serious",
+    "found": "2026-07-20",
+    "note": "10.5px var(--faint) #94a3b8 text on white/#f6f7fb = 2.56:1 and 2.39:1 (needs 4.5:1) — salary-average caption + legend line. Fix: use var(--muted) #64748b or larger text for captions."
+  },
+  {
+    "page": "users",
+    "rule": "scrollable-region-focusable",
+    "impact": "serious",
+    "found": "2026-07-20",
+    "note": "The max-height:520px overflow-y:auto user-table wrapper (govern.js) is not keyboard reachable. Fix: tabindex=\"0\" + role=\"region\" + aria-label=\"جدول المستخدمين\"."
+  }
+]
