@@ -43,7 +43,7 @@ export const NAV_ITEMS = [
   { key: 'opportunities', ar: 'الفرص', ic: 'opportunity', group: 'work' },
   { key: 'my-opportunities', ar: 'فرصي', ic: 'flag', group: 'work' },
   { key: 'projects', ar: 'المشاريع', ic: 'projects', group: 'work' },
-  { key: 'clients', ar: 'العملاء', ic: 'client', group: 'work', live: false },
+  { key: 'clients', ar: 'العملاء', ic: 'client', group: 'work' },
   { key: 'tasks', ar: 'مهامي', ic: 'tasks', group: 'work' },
   { key: 'timesheet', ar: 'سجل الوقت', ic: 'timesheet', group: 'work' },
   { key: 'approvals', ar: 'الاعتمادات', ic: 'approvals', group: 'work' },

@@ -40,7 +40,7 @@ const PAGES = {
   'my-opportunities': P.myOpportunitiesPage,
   projects: P.projectsPage, tasks: P.tasksPage, timesheet: P.timesheetPage, approvals: P.approvalsPage,
   team: P.teamPage, users: P.usersPage, audit: P.auditPage, reports: P.reportsPage, org: P.orgPage,
-  finance: P.financePage, mail: P.mailPage,
+  finance: P.financePage, mail: P.mailPage, clients: P.clientsPage,
 };
 
 // معاينة رسالة من صندوق المعاينة — بنفس صلاحية صفحة مركز البريد
@@ -66,12 +66,15 @@ webRouter.get('/app/project/:id', requireWeb, guardDetail('project'), async (req
 webRouter.get('/app/opportunity/:id', requireWeb, guardDetail('opportunity'), async (req, res, next) => {
   try { res.send(await P.opportunityDetailPage(req.ctx.user, req.params.id)); } catch (e) { next(e); }
 });
+webRouter.get('/app/client/:id', requireWeb, guardDetail('client'), async (req, res, next) => {
+  try { res.send(await P.clientDetailPage(req.ctx.user, req.params.id)); } catch (e) { next(e); }
+});
 
 webRouter.get('/app/:page', requireWeb, async (req, res, next) => {
   const fn = PAGES[req.params.page];
   if (!fn) return res.redirect('/app/tasks');
   if (!pageAllowed(req.ctx.user, req.params.page)) return deny(res);
-  try { res.send(await fn(req.ctx.user, { year: req.query.year, sector: req.query.sector })); } catch (e) { next(e); }
+  try { res.send(await fn(req.ctx.user, { ...req.query })); } catch (e) { next(e); }
 });
 
 // Report preview (renders template HTML with the caller's redacted data)
