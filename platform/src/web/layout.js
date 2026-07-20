@@ -129,7 +129,7 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
 @media prefers-reduced-motion{.drawer,.scrim,.modal-card{transition:none;animation:none}}
 `;
 
-export function layout({ user, active, title, subtitle, body, year, extraHead = '' }) {
+export async function layout({ user, active, title, subtitle, body, year, extraHead = '' }) {
   const items = navFor(user);
   const byGroup = {};
   for (const n of items) (byGroup[n.group] ||= []).push(n);
@@ -139,7 +139,7 @@ export function layout({ user, active, title, subtitle, body, year, extraHead = 
     <div class="grp">${GROUPS[g] || ''}</div>
     ${ns.map((n) => `<a href="/app/${n.key}${year ? '?year=' + year : ''}" class="nav-a ${active === n.key ? 'on' : ''}">${icon(n.ic)}<span>${n.ar}</span></a>`).join('')}`).join('');
 
-  const years = availableYears();
+  const years = await availableYears();
   const showYear = ['ceo', 'portfolio', 'sector'].includes(active);
   const yearSel = showYear ? `<select class="yr" onchange="location.search='?year='+this.value">
     ${years.map((y) => `<option value="${y}" ${String(y) === String(year || config.fiscalYear) ? 'selected' : ''}>سنة ${y}</option>`).join('')}

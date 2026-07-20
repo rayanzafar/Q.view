@@ -2,7 +2,7 @@
 // Idempotent-ish: clears migrated tables first (dev only). Produces a reconciliation report.
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { ROOT } from '../src/core/config.js';
+import { ROOT, config } from '../src/core/config.js';
 import { run, get, insert, tx, exec } from '../src/core/db/index.js';
 import { id, nowIso, toHalalas } from '../src/core/util/ids.js';
 
@@ -31,7 +31,13 @@ export async function migrateLegacy() {
     'department', 'position', 'app_user', 'login_history', 'budget', 'contract', 'invoice'];
 
   await tx(async () => {
-    for (const t of dataTables) await exec(`DELETE FROM ${t}`);
+    // Reset the migrated tables before reloading. On Postgres a plain DELETE fails when a prior
+    // seed already created rows that reference these tables (e.g. a report recipient → app_user);
+    // TRUNCATE … CASCADE clears the data tables AND everything referencing them in one FK-safe step.
+    // RBAC tables are parents (referenced BY app_user), so CASCADE never touches them. SQLite has no
+    // TRUNCATE, but with foreign_keys=ON a child-first DELETE of just these tables suffices there.
+    if (config.databaseUrl) await exec(`TRUNCATE ${dataTables.join(', ')} RESTART IDENTITY CASCADE`);
+    else for (const t of dataTables) await exec(`DELETE FROM ${t}`);
 
     // sectors
     for (const s of SNAP.sectors || []) {
