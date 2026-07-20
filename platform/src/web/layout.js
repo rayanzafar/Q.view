@@ -156,7 +156,7 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
 .cardclick:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
 `;
 
-export async function layout({ user, active, title, subtitle, body, year, extraHead = '' }) {
+export async function layout({ user, active, title, subtitle, body, year, extraHead = '', scripts }) {
   const items = navFor(user);
   const byGroup = {};
   for (const n of items) (byGroup[n.group] ||= []).push(n);
@@ -223,7 +223,7 @@ export async function layout({ user, active, title, subtitle, body, year, extraH
 <div id="scrim" class="scrim" onclick="Sanad.closeDrawer()"></div>
 <aside id="drawer" class="drawer" aria-hidden="true"></aside>
 <div id="modal" class="modal" onclick="if(event.target===this)Sanad.closeModal()"></div>
-<script src="/static/app.js"></script>
+<script src="/static/app.js"></script>${(scripts || []).map((s) => `<script src="${s}" defer></script>`).join('')}
 </body></html>`;
 }
 
