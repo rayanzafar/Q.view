@@ -172,7 +172,7 @@ export async function ceoPage(user, opts = {}) {
     <div class="bar" style="height:8px"><span style="width:${Math.min(100, wr.rate || 0)}%;background:var(--green)"></span></div>
     <div class="dd-sec">الصفقات المكسوبة الأعلى</div>
     <div>${ddRows(wonDeals.map((d) => `<div class="dd-row"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.title_ar)}<span style="color:var(--faint);font-size:10.5px"> · ${esc(d.client || '—')}</span></span><b class="tnum" style="flex:none">${fmtSar(d.value_halalas)}</b></div>`))}</div>`)}
-  ${ddWrap('backlog', 'الأعمال المتعاقدة (Backlog)', `${scopeLabel} · المتبقي للتحقيق`, `
+  ${ddWrap('backlog', 'الأعمال المتعاقدة', `${scopeLabel} · المتبقي للتحقيق`, `
     <div class="dd-kpi"><span class="v tnum">${fmtSar(bk.backlog_halalas)}</span><span style="font-size:12px;color:var(--muted)">قيمة متعاقدة لم تُحقَّق بعد</span></div>
     <div class="dd-sec">أكبر العقود</div>
     <div>${ddRows(topContracts.map((c) => `<div class="dd-row"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.client || c.code || 'عقد')}<span style="color:var(--faint);font-size:10.5px">${c.code ? ' · ' + esc(c.code) : ''}${!sec && c.sector ? ' · ' + esc(c.sector) : ''}</span></span><b class="tnum" style="flex:none">${fmtSar(c.value_halalas)}</b></div>`))}</div>`)}
@@ -186,7 +186,7 @@ export async function ceoPage(user, opts = {}) {
       <div style="position:absolute;inset-inline-end:-40px;top:-40px;width:200px;height:200px;background:radial-gradient(circle,rgba(124,58,237,.32),transparent 70%);pointer-events:none"></div>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.9rem;position:relative">
         <div style="color:rgba(255,255,255,.62);font-size:12px;font-weight:600">الأداء · ${esc(scopeLabel)} · السنة المالية ${ov.fiscalYear}</div>
-        ${b2b.ratio != null ? `<span style="font-size:11.5px;font-weight:700;background:rgba(255,255,255,.12);padding:.3rem .7rem;border-radius:999px">Book-to-Bill ${b2b.ratio}×</span>` : ''}
+        ${b2b.ratio != null ? `<span style="font-size:11.5px;font-weight:700;background:rgba(255,255,255,.12);padding:.3rem .7rem;border-radius:999px">التعاقد إلى الإيراد ×${b2b.ratio}</span>` : ''}
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:1.25rem;align-items:center;position:relative">
         ${heroBlock(sec ? 'إيرادات القطاع المحققة' : 'إجمالي الإيرادات المحققة', t.revenue, t.target_revenue, revPct, '#34d399', yoyBadge(revYoy), 'revenue')}
@@ -196,7 +196,7 @@ export async function ceoPage(user, opts = {}) {
       <div style="display:flex;gap:1.1rem;flex-wrap:wrap;margin-top:.95rem;padding-top:.85rem;border-top:1px solid rgba(255,255,255,.1);position:relative">
         ${hm('خط الفرص المفتوح', fmtSar(pipelineVal), 'مرجّح ' + fmtSar(cov.weighted_halalas), 'pipeline')}
         ${hm('معدل الفوز', pct(wr.rate), `فوز ${wr.won} · خسارة ${wr.lost}`, 'winrate')}
-        ${hm('الأعمال المتعاقدة', fmtSar(bk.backlog_halalas), 'Backlog لم يُحقَّق', 'backlog')}
+        ${hm('الأعمال المتعاقدة', fmtSar(bk.backlog_halalas), 'قيمة متعاقدة لم تتحول لإيراد بعد', 'backlog')}
         ${hm('تحقيق الإيراد', pct(revPct), 'من ' + fmtSar(t.target_revenue), 'revenue')}
         ${hm('تحقيق المبيعات', pct(salesPct), 'من ' + fmtSar(t.target_sales), 'sales')}
         ${avgMargin != null ? hm('متوسط هامش الربح', avgMargin + '%', 'حسب القطاعات', 'margin') : ''}
