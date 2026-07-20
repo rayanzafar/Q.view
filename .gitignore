@@ -1,0 +1,4 @@
+# session-local hook markers
+.claude/.edited
+.claude/.tested
+.claude/settings.local.json
