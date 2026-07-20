@@ -146,6 +146,9 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
 .dd-kpi{display:flex;align-items:baseline;gap:.6rem;flex-wrap:wrap}
 .dd-kpi .v{font-size:1.6rem;font-weight:800;letter-spacing:-.02em}
 .dd-sec{font-weight:800;font-size:12.5px;margin-top:.35rem;color:var(--ink2)}
+.cardclick{cursor:pointer}
+.cardclick:hover{box-shadow:var(--sh),0 0 0 2px rgba(37,99,235,.16);transform:translateY(-1px)}
+.cardclick:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
 `;
 
 export async function layout({ user, active, title, subtitle, body, year, extraHead = '' }) {

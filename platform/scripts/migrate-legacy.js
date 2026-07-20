@@ -39,12 +39,13 @@ export async function migrateLegacy() {
     if (config.databaseUrl) await exec(`TRUNCATE ${dataTables.join(', ')} RESTART IDENTITY CASCADE`);
     else for (const t of dataTables) await exec(`DELETE FROM ${t}`);
 
-    // sectors
+    // sectors — display order fixed by owner directive (Solutions → Consulting → Strategic → SAP)
+    const SECTOR_ORDER = { SOLUTIONS: 1, CONSULTING: 2, STRATEGIC: 3, SAP: 4 };
     for (const s of SNAP.sectors || []) {
       await insert('sector', { id: s.id, name_ar: s.nameAr, name_en: s.nameEn || null, color: s.color || null,
         lead_user_id: null, target_sales_halalas: toHalalas(s.targetSalesSar), target_revenue_halalas: toHalalas(s.targetRevenueSar),
         target_margin_pct: s.targetGrossMarginPct || 0, active: s.active ? 1 : 0, is_placeholder: s.placeholder ? 1 : 0,
-        sort_order: 0, created_at: nowIso() });
+        sort_order: SECTOR_ORDER[s.id] ?? 9, created_at: nowIso() });
     }
     // stages
     for (const st of SNAP.stages || []) {
