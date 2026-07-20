@@ -5,8 +5,10 @@ import { fmtSar } from '../../core/util/ids.js';
 import { all, get } from '../../core/db/index.js';
 import { projectKpis } from '../../core/reports/metrics.js';
 import { listProjects } from '../../modules/pmo/projects.js';
+import { projectGovernance } from '../../modules/pmo/governance.js';
 import { myTasks } from '../../modules/pmo/tasks.js';
 import { canSeeSensitive, redact, can } from '../../core/rbac/index.js';
+import { G } from '../i18n/glossary.js';
 import { sarShort, esc, bar, statMini, noticeCard } from './_shared.js';
 
 const PRJ_STATUS = [
@@ -177,6 +179,14 @@ export async function projectDetailPage(user, projectId) {
   const staff = await all(`SELECT a.person_name_ar, a.type, a.monthly_json, e.job_title
      FROM allocation a LEFT JOIN employee e ON e.id=a.employee_id
      WHERE a.project_id=? AND a.deleted_at IS NULL ORDER BY (a.type='lead') DESC, a.person_name_ar`, [p.id]);
+  // Governance registers (WP17): the five project registers + write flag under the same RBAC.
+  const gov = await projectGovernance(user, p.id);
+  const canGov = gov.canEdit;
+  const invSum = (await get(`SELECT COALESCE(SUM(amount_halalas),0) v FROM invoice
+     WHERE project_id=? AND deleted_at IS NULL AND status NOT IN ('DRAFT','CANCELLED')`, [p.id])).v;
+  const users = await all(`SELECT id, COALESCE(name_ar, username) AS "name" FROM app_user
+     WHERE active=1 AND deleted_at IS NULL ORDER BY name_ar, username LIMIT 200`);
+  const userName = Object.fromEntries(users.map((u) => [u.id, u.name]));
 
   // ── Financials ──
   const contractVal = p.contract_value_halalas || (contract && contract.value_halalas) || 0;
@@ -250,6 +260,123 @@ export async function projectDetailPage(user, projectId) {
       </div>
     </div>`);
 
+  // ── خطة مقابل فعلي: burn vs delivery — two bars + Arabic deviation narrative when |Δ|>10 ──
+  const progPct = Math.round(p.progress_pct || 0);
+  let burnV = null, burnBasis = '';
+  if (showCost && p.budget_halalas > 0) { burnV = Math.round(spend / p.budget_halalas * 100); burnBasis = 'الصرف الفعلي من الميزانية'; }
+  else if (headlineVal > 0) { burnV = Math.round(invSum / headlineVal * 100); burnBasis = 'المفوتر من قيمة العقد'; }
+  let devTone = 'var(--green)', devNote = 'الصرف والإنجاز متوازنان';
+  if (burnV != null) {
+    const dev = burnV - progPct;
+    if (dev > 10) { devTone = 'var(--red)'; devNote = `الصرف يسبق الإنجاز بـ ${dev} نقطة — راجع نطاق العمل`; }
+    else if (dev < -10) { devTone = 'var(--amber)'; devNote = `الإنجاز يسبق الصرف بـ ${-dev} نقطة — تحقق من الفوترة في موعدها`; }
+  }
+  const pvaCard = card(`<div style="padding:.85rem 1rem;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:.6rem">
+      <div style="font-weight:800;font-size:13px">${G.planVsActual}</div>
+      ${burnV != null ? `<span style="font-size:11px;font-weight:700;color:${devTone}">${devNote}</span>` : ''}</div>
+    <div style="padding:.85rem 1rem">
+      ${burnV == null ? `<div class="empty-state" style="padding:1rem"><div class="t">لا أساس مالي للقياس بعد</div><div class="s">سجِّل ميزانية أو قيمة عقد للمشروع كي يُقارن الصرف بالإنجاز.</div></div>` : `
+      <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted)"><span>${burnBasis}</span><b class="tnum" style="color:${burnV > 100 ? 'var(--red)' : 'var(--ink2)'}">${burnV}%</b></div>
+      ${bar(Math.min(100, burnV), burnV > progPct + 10 ? '#dc2626' : '#834798')}
+      <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);margin-top:.55rem"><span>${G.progress}</span><b class="tnum">${progPct}%</b></div>
+      ${bar(progPct, '#244A99')}
+      <div style="font-size:10.5px;color:var(--faint);margin-top:.55rem">${G.burnVsDelivery}: الشريط الأول ${burnBasis} والثاني نسبة الإنجاز — التباعد فوق 10 نقاط يستدعي قرارًا.</div>`}
+    </div>`);
+
+  // ── governance tab strip (WP17): server renders ALL panels; the page script only switches ──
+  const trg = (v) => ({ OPEN: 'مفتوح', MITIGATING: 'قيد المعالجة', CLOSED: 'مغلق', REQUESTED: 'قيد الطلب',
+    APPROVED: 'معتمد', REJECTED: 'مرفوض', PENDING: 'قادم', MET: 'محقق', MISSED: 'لم يُحقَّق',
+    low: 'منخفض', med: 'متوسط', medium: 'متوسط', high: 'مرتفع' }[v] || v || '—');
+  const lvlPill = (v) => v ? pill(trg(v), v === 'high' ? 'red' : (v === 'med' || v === 'medium') ? 'amber' : 'slate') : '<span style="color:var(--faint)">—</span>';
+  const stPill = (v, map) => pill(trg(v), map[v] || 'slate');
+  const dStr = today.toISOString().slice(0, 10);
+  const soonStr = new Date(today.getTime() + 30 * 86400000).toISOString().slice(0, 10);
+  const thG = (t, w) => `<th style="padding:.4rem .75rem;font-size:10.5px;color:var(--muted);font-weight:700;text-align:right;${w ? 'width:' + w : ''}">${t}</th>`;
+  const tdG = (c, extra = '') => `<td style="padding:.45rem .75rem;font-size:12.5px;${extra}">${c}</td>`;
+  const delBtn = (kind, id) => canGov ? `<button class="btn btn-ghost btn-sm" data-action="gov-del" data-kind="${kind}" data-id="${id}" title="${G.delete}" aria-label="${G.delete}">✕</button>` : '';
+  const emptyPanel = (msg, cta) => `<div class="empty-state">${icon('inbox')}<div class="t">${msg}</div>${canGov ? `<div class="s">${cta}</div>` : ''}</div>`;
+  const govField = (id, ph, type = 'text') => `<input class="input" id="${id}" type="${type}" placeholder="${ph}" style="font-size:12px;padding:.4rem .55rem">`;
+  const lvlSelect = (id, label) => `<select id="${id}" class="input" aria-label="${label}" style="font-size:12px;padding:.4rem .45rem"><option value="">${label}</option><option value="low">منخفض</option><option value="med">متوسط</option><option value="high">مرتفع</option></select>`;
+  const ownerSelect = (id) => `<select id="${id}" class="input" aria-label="المالك" style="font-size:12px;padding:.4rem .45rem;max-width:150px"><option value="">— المالك —</option>${users.map((u) => `<option value="${u.id}">${esc(u.name)}</option>`).join('')}</select>`;
+  const addBar = (kind, fields) => canGov ? `<div style="display:flex;gap:.45rem;flex-wrap:wrap;align-items:center;padding:.6rem .75rem;border-top:1px solid var(--line);background:var(--bg)">
+      ${fields}<button class="btn btn-primary btn-sm" data-action="gov-add" data-kind="${kind}">${G.add}</button></div>` : '';
+
+  const msRows = gov.milestones.map((m) => {
+    const overdueMs = m.status === 'PENDING' && m.due_date && m.due_date < dStr;
+    const upcoming = m.status === 'PENDING' && m.due_date && m.due_date >= dStr && m.due_date <= soonStr;
+    return `<tr style="border-bottom:1px solid var(--line);${overdueMs ? 'background:#fef2f2' : upcoming ? 'background:#fffbeb' : ''}">
+      ${tdG(esc(m.name_ar) + (upcoming ? ' ' + pill('قريب', 'amber') : '') + (overdueMs ? ' ' + pill('متأخر', 'red') : ''))}
+      ${tdG(`<span class="tnum">${m.due_date || '—'}</span>`, 'text-align:center')}
+      ${tdG(stPill(m.status, { PENDING: 'blue', MET: 'green', MISSED: 'red' }), 'text-align:center')}
+      ${canGov ? tdG(`<div style="display:flex;gap:.25rem;justify-content:center">${m.status !== 'MET' ? `<button class="btn btn-sm" data-action="gov-status" data-kind="milestone" data-id="${m.id}" data-status="MET">محقق</button>` : ''}
+        ${m.status !== 'MISSED' ? `<button class="btn btn-sm" data-action="gov-status" data-kind="milestone" data-id="${m.id}" data-status="MISSED">لم يُحقَّق</button>` : ''}${delBtn('milestone', m.id)}</div>`, 'text-align:center') : ''}
+    </tr>`;
+  }).join('');
+  const msPanel = `${gov.milestones.length ? `<table style="width:100%;border-collapse:collapse"><thead><tr>${thG('المعلم')}${thG('الاستحقاق', '110px')}${thG('الحالة', '90px')}${canGov ? thG('إجراء', '190px') : ''}</tr></thead><tbody>${msRows}</tbody></table>`
+    : emptyPanel('لا معالم مسجّلة بعد', 'أضِف أول معلم من الشريط أدناه — المعالم القادمة خلال 30 يومًا تُميَّز تلقائيًا.')}
+    ${addBar('milestone', `${govField('g-mls-name', 'اسم المعلم…')}${govField('g-mls-due', '', 'date')}`)}`;
+
+  const rkRows = gov.risks.map((r) => `<tr style="border-bottom:1px solid var(--line)">
+      ${tdG(esc(r.title) + (r.mitigation ? `<div style="font-size:10.5px;color:var(--muted)">التخفيف: ${esc(r.mitigation)}</div>` : ''))}
+      ${tdG(lvlPill(r.probability), 'text-align:center')}${tdG(lvlPill(r.impact), 'text-align:center')}
+      ${tdG(r.exposure ? pill(esc(r.exposure), r.exposure === 'مرتفع' ? 'red' : r.exposure === 'متوسط' ? 'amber' : 'slate') : '<span style="color:var(--faint)">—</span>', 'text-align:center')}
+      ${tdG(esc(userName[r.owner_user_id] || '—'), 'text-align:center;font-size:11.5px')}
+      ${tdG(canGov ? `<select class="input" data-action-change="gov-status-sel" data-kind="risk" data-id="${r.id}" aria-label="حالة الخطر" style="font-size:11.5px;padding:.25rem .4rem">
+          ${['OPEN', 'MITIGATING', 'CLOSED'].map((s) => `<option value="${s}" ${s === r.status ? 'selected' : ''}>${trg(s)}</option>`).join('')}</select>`
+    : stPill(r.status, { OPEN: 'amber', MITIGATING: 'blue', CLOSED: 'green' }), 'text-align:center')}
+      ${canGov ? tdG(delBtn('risk', r.id), 'text-align:center') : ''}
+    </tr>`).join('');
+  const rkPanel = `${gov.risks.length ? `<table style="width:100%;border-collapse:collapse"><thead><tr>${thG('الخطر')}${thG('الاحتمال', '80px')}${thG('الأثر', '80px')}${thG('التعرض', '80px')}${thG('المالك', '110px')}${thG('الحالة', '110px')}${canGov ? thG('', '46px') : ''}</tr></thead><tbody>${rkRows}</tbody></table>`
+    : emptyPanel('لا مخاطر مسجّلة بعد', 'سجِّل المخاطر مبكرًا مع احتمالها وأثرها — التعرض يُحسب تلقائيًا.')}
+    ${addBar('risk', `${govField('g-rsk-title', 'عنوان الخطر…')}${lvlSelect('g-rsk-prob', 'الاحتمال')}${lvlSelect('g-rsk-impact', 'الأثر')}${govField('g-rsk-mit', 'خطة التخفيف…')}${ownerSelect('g-rsk-owner')}`)}`;
+
+  const openIss = gov.issues.filter((i) => i.status !== 'CLOSED'), closedIss = gov.issues.filter((i) => i.status === 'CLOSED');
+  const issRow = (i) => `<tr style="border-bottom:1px solid var(--line);${i.status === 'CLOSED' ? 'opacity:.65' : ''}">
+      ${tdG(esc(i.title))}${tdG(lvlPill(i.severity), 'text-align:center')}
+      ${tdG(esc(userName[i.owner_user_id] || '—'), 'text-align:center;font-size:11.5px')}
+      ${tdG(stPill(i.status, { OPEN: 'red', CLOSED: 'green' }), 'text-align:center')}
+      ${tdG(`<span class="tnum" style="font-size:11px;color:var(--muted)">${(i.opened_at || '').slice(0, 10)}</span>`, 'text-align:center')}
+      ${canGov ? tdG(`<div style="display:flex;gap:.25rem;justify-content:center"><button class="btn btn-sm" data-action="gov-status" data-kind="issue" data-id="${i.id}" data-status="${i.status === 'CLOSED' ? 'OPEN' : 'CLOSED'}">${i.status === 'CLOSED' ? 'إعادة فتح' : 'إغلاق'}</button>${delBtn('issue', i.id)}</div>`, 'text-align:center') : ''}
+    </tr>`;
+  const issPanel = `${gov.issues.length ? `<div style="padding:.5rem .75rem;font-size:11px;color:var(--muted)">مفتوحة <b class="tnum">${openIss.length}</b> · مغلقة <b class="tnum">${closedIss.length}</b></div>
+    <table style="width:100%;border-collapse:collapse"><thead><tr>${thG('المعوق')}${thG('الشدة', '80px')}${thG('المالك', '110px')}${thG('الحالة', '80px')}${thG('فُتح في', '95px')}${canGov ? thG('إجراء', '130px') : ''}</tr></thead><tbody>${[...openIss, ...closedIss].map(issRow).join('')}</tbody></table>`
+    : emptyPanel('لا معوقات مسجّلة', 'سجِّل ما يعطّل التقدم فعليًا الآن ليُتابَع حتى الإغلاق.')}
+    ${addBar('issue', `${govField('g-iss-title', 'وصف المعوق…')}${lvlSelect('g-iss-sev', 'الشدة')}${ownerSelect('g-iss-owner')}`)}`;
+
+  const decRows = gov.decisions.map((d) => `<div class="dd-row" style="align-items:flex-start">
+      <span><b style="font-size:12.5px">${esc(d.title)}</b>${d.detail ? `<div style="font-size:11.5px;color:var(--muted)">${esc(d.detail)}</div>` : ''}
+        <div style="font-size:10.5px;color:var(--faint)">قرَّر: ${esc(d.decided_by || '—')} · <span class="tnum">${(d.decided_at || '').slice(0, 10) || '—'}</span></div></span>
+      <b>${delBtn('decision', d.id)}</b></div>`).join('');
+  const decPanel = `${gov.decisions.length ? `<div style="padding:.35rem .9rem">${decRows}</div>`
+    : emptyPanel('لا قرارات موثقة بعد', 'وثِّق قرارات اللجان والاجتماعات هنا لتبقى مرجعًا مُلزِمًا.')}
+    ${addBar('decision', `${govField('g-dec-title', 'نص القرار…')}${govField('g-dec-detail', 'التفاصيل (اختياري)…')}${govField('g-dec-by', 'مَن قرَّر…')}${govField('g-dec-at', '', 'date')}`)}`;
+
+  const chgRows = gov.changes.map((c) => `<tr style="border-bottom:1px solid var(--line)">
+      ${tdG(esc(c.title) + (c.impact ? `<div style="font-size:10.5px;color:var(--muted)">الأثر: ${esc(c.impact)}</div>` : ''))}
+      ${tdG(stPill(c.status, { REQUESTED: 'amber', APPROVED: 'green', REJECTED: 'slate' }), 'text-align:center')}
+      ${canGov ? tdG(`<div style="display:flex;gap:.25rem;justify-content:center">${c.status === 'REQUESTED' ? `<button class="btn btn-sm" data-action="gov-status" data-kind="change" data-id="${c.id}" data-status="APPROVED">اعتماد</button>
+        <button class="btn btn-sm" data-action="gov-status" data-kind="change" data-id="${c.id}" data-status="REJECTED">رفض</button>` : ''}${delBtn('change', c.id)}</div>`, 'text-align:center') : ''}
+    </tr>`).join('');
+  const chgPanel = `${gov.changes.length ? `<table style="width:100%;border-collapse:collapse"><thead><tr>${thG('طلب التغيير')}${thG('الحالة', '95px')}${canGov ? thG('إجراء', '170px') : ''}</tr></thead><tbody>${chgRows}</tbody></table>`
+    : emptyPanel('لا طلبات تغيير', 'أي توسّع في النطاق يبدأ هنا: سجِّل الطلب وأثره ثم قرار الاعتماد أو الرفض.')}
+    ${addBar('change', `${govField('g-chg-title', 'عنوان التغيير…')}${govField('g-chg-impact', 'أثره على النطاق/الوقت/الكلفة…')}`)}`;
+
+  const TABS = [
+    ['milestones', G.milestones, gov.milestones.length, msPanel],
+    ['risks', G.risks, gov.risks.length, rkPanel],
+    ['issues', G.issues, openIss.length, issPanel],
+    ['decisions', G.decisions, gov.decisions.length, decPanel],
+    ['changes', G.changes, gov.changes.filter((c) => c.status === 'REQUESTED').length, chgPanel],
+  ];
+  const govCard = card(`
+    <div style="padding:.6rem .9rem;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:.7rem;flex-wrap:wrap">
+      <span style="font-weight:800;font-size:13px">حوكمة المشروع</span>
+      <div class="seg" role="tablist" aria-label="سجلات الحوكمة">${TABS.map(([k, l, n], i) => `<button role="tab" aria-selected="${i === 0}" class="${i === 0 ? 'on' : ''}" data-action="gov-tab" data-tab="${k}">${l} <span class="tnum" style="font-weight:800;color:${n ? 'var(--brand2)' : 'var(--faint)'}">${n}</span></button>`).join('')}</div>
+      <div class="spacer"></div>
+      ${canGov ? pill('لديك صلاحية التحرير', 'green') : pill('عرض فقط', 'slate')}
+    </div>
+    ${TABS.map(([k, , , panel], i) => `<div class="gov-panel" data-panel="${k}" ${i === 0 ? '' : 'hidden'}><div class="tblwrap">${panel}</div></div>`).join('')}`);
+
   const body = `
     <a href="/app/projects" style="font-size:12px;color:var(--muted)">← المشاريع</a>
     <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin:.6rem 0 1rem">
@@ -269,6 +396,7 @@ export async function projectDetailPage(user, projectId) {
       ${timelineCard}
       ${financeCard}
     </div>
+    <div style="margin-bottom:.9rem">${pvaCard}</div>
     <div style="display:grid;grid-template-columns:1.15fr 1fr;gap:.9rem;margin-bottom:.9rem">
       ${card(`<div style="padding:.85rem 1rem;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center">
         <div style="font-weight:800;font-size:13px">التسكين — فريق المشروع (${staff.length})</div>
@@ -278,11 +406,14 @@ export async function projectDetailPage(user, projectId) {
       ${card(`<div style="padding:.85rem 1rem;border-bottom:1px solid var(--line);font-weight:800;font-size:13px">المخرجات (${dlv.length})</div>
         <div style="max-height:260px;overflow-y:auto"><table style="width:100%;border-collapse:collapse"><tbody>${dlvRows || '<tr><td style="padding:1rem;color:var(--muted);font-size:12.5px">لا مخرجات</td></tr>'}</tbody></table></div>`)}
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:.9rem">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:.9rem;margin-bottom:.9rem">
       ${card(`<div style="padding:.85rem 1rem"><div style="font-weight:800;font-size:13px;margin-bottom:.5rem">توزيع المهام (${k.totalTasks})</div>
         <div style="display:flex;gap:.4rem;flex-wrap:wrap">${['TODO', 'IN_PROGRESS', 'BLOCKED', 'IN_REVIEW', 'DONE'].map((s) => pill(`${tr(s)}: ${tmap[s] || 0}`, s === 'DONE' ? 'green' : s === 'BLOCKED' ? 'red' : 'slate')).join(' ')}</div></div>`)}
       ${card(`<div style="padding:.85rem 1rem;border-bottom:1px solid var(--line);font-weight:800;font-size:13px">المخاطر المفتوحة (${risks.length})</div>
         <table style="width:100%;border-collapse:collapse"><tbody>${riskRows || '<tr><td style="padding:1rem;color:var(--muted);font-size:12.5px">لا مخاطر مفتوحة</td></tr>'}</tbody></table>`)}
-    </div>`;
-  return layout({ user, active: 'projects', title: esc(p.name_ar), subtitle: 'تفاصيل المشروع', body });
+    </div>
+    ${govCard}
+    <script>window.__SANAD=Object.assign(window.__SANAD||{},{gov:{projectId:${JSON.stringify(p.id)},canEdit:${canGov}}});</script>`;
+  return layout({ user, active: 'projects', title: esc(p.name_ar), subtitle: 'تفاصيل المشروع', body,
+    scripts: ['/static/pages/project-governance.js'] });
 }

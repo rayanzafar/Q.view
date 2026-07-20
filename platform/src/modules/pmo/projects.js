@@ -107,17 +107,44 @@ export async function assignEmployee(ctx, projectId, { employeeId, type, pct, fr
 }
 
 // Edit an existing allocation's load (%/month-range). Same permission as staffing the project.
-export async function setAllocation(ctx, allocationId, { pct, fromMonth, toMonth, type }) {
+// A body carrying `month` is a SINGLE-CELL edit (heat-grid inline editing) → setAllocationCell.
+export async function setAllocation(ctx, allocationId, body = {}) {
+  if (body.month != null) return setAllocationCell(ctx, allocationId, body.month, body.pct);
+  const { pct, fromMonth, toMonth, type } = body;
   const user = ctx.user;
   const a = await get('SELECT * FROM allocation WHERE id=? AND deleted_at IS NULL', [allocationId]);
   if (!a) throw notFound('التسكين غير موجود');
   const p = await get('SELECT * FROM project WHERE id=?', [a.project_id]);
   if (!p || !can(user, 'update', 'project', p)) throw forbidden();
-  const patch = { monthly_json: JSON.stringify(monthlyPlan({ pct, fromMonth, toMonth })), updated_at: nowIso() };
+  // NOTE: allocation carries no updated_at column — patch only real columns.
+  const patch = { monthly_json: JSON.stringify(monthlyPlan({ pct, fromMonth, toMonth })) };
   if (type) patch.type = type;
   await update('allocation', allocationId, patch);
   await audit(ctx, { action: 'update', resource: 'allocation', resourceId: allocationId, sectorId: a.sector_id, detail: { pct: pct || 100 } });
   return await projectStaffing(user, a.project_id);
+}
+
+// Single-month edit of an allocation's monthly_json (heat-grid cell editing). `pct` arrives as a
+// PERCENTAGE (0–150) and is stored as a fraction clamped to 0–1.5; 0 clears the month.
+// Permission = same as setAllocation (manage the project's staffing). Audited.
+export async function setAllocationCell(ctx, allocationId, month, pct) {
+  const user = ctx.user;
+  const a = await get('SELECT * FROM allocation WHERE id=? AND deleted_at IS NULL', [allocationId]);
+  if (!a) throw notFound('التسكين غير موجود');
+  const p = await get('SELECT * FROM project WHERE id=?', [a.project_id]);
+  if (!p || !can(user, 'update', 'project', p)) throw forbidden('تعديل التسكين يتطلب صلاحية إدارة المشروع');
+  const m = Number(month);
+  if (!Number.isInteger(m) || m < 1 || m > 12) throw badRequest('الشهر يجب أن يكون بين 1 و12');
+  const n = Number(pct);
+  if (!Number.isFinite(n)) throw badRequest('أدخل نسبة تسكين صحيحة (0–150)');
+  const frac = Math.max(0, Math.min(150, n)) / 100; // clamp: fraction 0–1.5
+  let mj = {}; try { mj = JSON.parse(a.monthly_json || '{}'); } catch { mj = {}; }
+  if (frac > 0) mj[m] = frac; else delete mj[m];
+  await update('allocation', allocationId, { monthly_json: JSON.stringify(mj) });
+  await audit(ctx, { action: 'update', resource: 'allocation', resourceId: allocationId, sectorId: a.sector_id,
+    detail: { month: m, pct: Math.round(frac * 100) } });
+  return { id: allocationId, employee_id: a.employee_id, project_id: a.project_id, month: m,
+    pct: Math.round(frac * 100), months: mj };
 }
 
 export async function unassignEmployee(ctx, allocationId) {

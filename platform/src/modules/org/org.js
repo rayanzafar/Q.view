@@ -117,8 +117,11 @@ export async function updateEmployee(ctx, employeeId, data) {
   return await get('SELECT * FROM employee WHERE id = ?', [employeeId]);
 }
 
-// Staffing roster with PLANNED utilization from the allocation model (scoped). Company users may
-// pass a sector filter; sector-scoped users are locked to their own sector.
+// Staffing roster v3 — PLANNED utilization from the allocation model (scoped) PLUS opportunity
+// soft load (membership group_kind='opportunity' with allocation_pct on an OPEN opportunity,
+// counted against the CURRENT month only, labeled 'فرصة'). Company users may pass a sector
+// filter; sector-scoped users are locked to their own sector.
+// opts.month (1–12) overrides the "current month" for deterministic tests/renders.
 export async function staffingRoster(user, opts = {}) {
   if (user.role_id !== 'admin' && !can(user, 'read', 'employee')) throw forbidden('عرض الفريق يتطلب صلاحية');
   const year = Number(opts.year) || new Date().getUTCFullYear();
@@ -129,8 +132,20 @@ export async function staffingRoster(user, opts = {}) {
      WHERE a.deleted_at IS NULL AND a.year = ? AND a.employee_id IS NOT NULL ${sec ? 'AND a.sector_id = ?' : ''}`, sec ? [year, sec] : [year]);
   const byEmp = {};
   for (const a of allocs) (byEmp[a.employee_id] ||= []).push(a);
-  // "current month" only when viewing the live year; a past/future year has no meaningful "now".
-  const nowM = year === new Date().getUTCFullYear() ? (new Date().getUTCMonth() + 1) : 0;
+  // Opportunity soft load: open-opportunity team memberships with an allocation % — demand that
+  // hasn't converted to a project yet, so it weighs on "now" only (not the yearly plan).
+  const oppRows = await all(`SELECT m.id membership_id, m.employee_id, m.allocation_pct, m.role_in_group, o.id opp_id, o.title_ar
+     FROM membership m JOIN opportunity o ON o.id = m.group_id LEFT JOIN stage st ON st.id = o.stage_id
+     WHERE m.group_kind = 'opportunity' AND m.deleted_at IS NULL AND m.allocation_pct > 0
+       AND o.deleted_at IS NULL AND COALESCE(st.is_won, 0) = 0 AND COALESCE(st.is_lost, 0) = 0`);
+  const oppByEmp = {};
+  for (const r of oppRows) (oppByEmp[r.employee_id] ||= []).push(r);
+  // "current month": explicit override wins (determinism); otherwise the live month when viewing
+  // the live year — a past/future year has no meaningful "now".
+  const mOverride = Number(opts.month);
+  const nowM = Number.isInteger(mOverride) && mOverride >= 1 && mOverride <= 12
+    ? mOverride
+    : (year === new Date().getUTCFullYear() ? (new Date().getUTCMonth() + 1) : 0);
   const roster = emps.map((e) => {
     const mine = byEmp[e.id] || [];
     const monthLoad = Array(12).fill(0);
@@ -139,17 +154,35 @@ export async function staffingRoster(user, opts = {}) {
       for (const [m, f] of Object.entries(mj)) { const i = Number(m) - 1; if (i >= 0 && i < 12) monthLoad[i] += Number(f) || 0; }
       return { allocId: a.id, projectId: a.project_id, name: a.proj_name || a.project_name || '—', type: a.type || 'member', status: a.proj_status, months: mj };
     });
+    const opportunities = (oppByEmp[e.id] || []).map((r) => ({
+      membershipId: r.membership_id, opportunityId: r.opp_id, name: r.title_ar || '—',
+      pct: Math.round(Number(r.allocation_pct) || 0), role: r.role_in_group || 'member', label: 'فرصة',
+    }));
+    const oppLoadPct = opportunities.reduce((a, o) => a + o.pct, 0);
+    // prev-month util from PROJECT plan only (soft load applies to the current month by definition)
+    const prevMonthUtil = nowM >= 2 ? Math.round(monthLoad[nowM - 2] * 100) : 0;
+    if (nowM && oppLoadPct) monthLoad[nowM - 1] += oppLoadPct / 100; // soft load lands on "now"
     const months = monthLoad.map((f) => Math.round(f * 100));
     const annualUtil = Math.round(months.reduce((a, b) => a + b, 0) / 12); // % of annual capacity used
-    const currentUtil = nowM ? months[nowM - 1] : 0;                        // this month's load
+    const currentUtil = nowM ? months[nowM - 1] : 0;                        // this month's load (incl. soft)
+    const monthDelta = nowM ? currentUtil - prevMonthUtil : 0;              // vs last month's planned load
     const staffedMonths = months.filter((m) => m > 0).length;
     const intensity = staffedMonths ? Math.round(months.filter((m) => m > 0).reduce((a, b) => a + b, 0) / staffedMonths) : 0; // avg load WHEN staffed
     return { id: e.id, name_ar: e.name_ar, name_en: e.name_en, job_title: e.job_title, employment_type: e.employment_type,
       status: e.status, active: e.active, sector_id: e.sector_id, salary_halalas: e.salary_halalas,
-      months, annualUtil, currentUtil, staffedMonths, intensity, peak: Math.max(0, ...months),
-      overMonths: months.filter((m) => m > 100).length, projects, projectCount: projects.length };
+      months, annualUtil, currentUtil, prevMonthUtil, monthDelta, oppLoadPct, staffedMonths, intensity, peak: Math.max(0, ...months),
+      overMonths: months.filter((m) => m > 100).length, projects, projectCount: projects.length, opportunities };
   });
   // Order by who is busiest NOW, then by annual load, then name — so managers see live staffing first.
   roster.sort((a, b) => (b.currentUtil - a.currentUtil) || (b.annualUtil - a.annualUtil) || String(a.name_ar).localeCompare(String(b.name_ar), 'ar'));
-  return { year, sector: sec, currentMonth: nowM, roster };
+  // Decision-story summary: capacity vs assigned NOW + who needs a staffing decision.
+  const active = roster.filter((e) => e.active !== 0);
+  const summary = {
+    capacityFte: active.length,
+    assignedNowFte: Math.round(active.reduce((a, e) => a + e.currentUtil, 0)) / 100, // Σ current fractions
+    benchNow: active.filter((e) => e.currentUtil === 0).length,
+    overloadedNow: active.filter((e) => e.currentUtil > 110).length,
+    underusedNow: active.filter((e) => e.currentUtil > 0 && e.currentUtil < 40).length,
+  };
+  return { year, sector: sec, currentMonth: nowM, roster, summary };
 }
