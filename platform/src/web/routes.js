@@ -3,6 +3,7 @@ import { Router } from 'express';
 import { login, logout } from '../core/auth/service.js';
 import { config } from '../core/config.js';
 import * as P from './pages.js';
+import { pageAllowed, DETAIL_ACCESS } from './nav.js';
 import { buildReport, renderReport, enqueueReport, createSchedule } from '../core/reports/engine.js';
 import { canSeeSensitive } from '../core/rbac/index.js';
 
@@ -42,16 +43,23 @@ const PAGES = {
   finance: P.financePage,
 };
 
-webRouter.get('/app/contract/:id', requireWeb, async (req, res, next) => {
+// رفض موحّد: صفحة 403 عربية واضحة (نفس مسار أخطاء HTML في errors.js)
+function deny(res) {
+  return res.status(403).send(`<!doctype html><html dir="rtl" lang="ar"><meta charset="utf-8"><body style="font-family:'IBM Plex Sans Arabic','Segoe UI',sans-serif;background:#f6f7fb;display:grid;place-items:center;min-height:100vh;margin:0"><div style="background:#fff;border:1px solid #e6e9f0;border-radius:16px;padding:2rem 2.4rem;text-align:center;max-width:380px"><div style="font-size:15px;font-weight:800;color:#1e293b;margin-bottom:.4rem">هذه الصفحة خارج صلاحياتك</div><div style="font-size:12.5px;color:#64748b;line-height:1.9">دورك الحالي لا يشمل هذا القسم. إن كنت تحتاجه فاطلب تفعيله من مدير النظام.</div><a href="/app/tasks" style="display:inline-block;margin-top:1rem;background:#244A99;color:#fff;border-radius:10px;padding:.5rem 1.1rem;font-size:12.5px;font-weight:700;text-decoration:none">العودة إلى مهامي</a></div></body></html>`);
+}
+const guardDetail = (kind) => (req, res, next) => (DETAIL_ACCESS[kind]?.(req.ctx.user) ? next() : deny(res));
+
+webRouter.get('/app/contract/:id', requireWeb, guardDetail('contract'), async (req, res, next) => {
   try { res.send(await P.contractDetailPage(req.ctx.user, req.params.id)); } catch (e) { next(e); }
 });
-webRouter.get('/app/project/:id', requireWeb, async (req, res, next) => {
+webRouter.get('/app/project/:id', requireWeb, guardDetail('project'), async (req, res, next) => {
   try { res.send(await P.projectDetailPage(req.ctx.user, req.params.id)); } catch (e) { next(e); }
 });
 
 webRouter.get('/app/:page', requireWeb, async (req, res, next) => {
   const fn = PAGES[req.params.page];
   if (!fn) return res.redirect('/app/tasks');
+  if (!pageAllowed(req.ctx.user, req.params.page)) return deny(res);
   try { res.send(await fn(req.ctx.user, { year: req.query.year, sector: req.query.sector })); } catch (e) { next(e); }
 });
 

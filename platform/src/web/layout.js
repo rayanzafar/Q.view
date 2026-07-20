@@ -1,30 +1,14 @@
 // SSR layout + role-based navigation. World-class design system, SVG icons, year-aware header.
-import { can } from '../core/rbac/index.js';
 import { ROLE_LABELS } from '../core/rbac/matrix.js';
 import { icon } from './icons.js';
 import { availableYears } from '../core/reports/metrics.js';
 import { config } from '../core/config.js';
+import { NAV_ITEMS, pageAllowed } from './nav.js';
 
-const NAV = [
-  { key: 'ceo', ar: 'لوحة القيادة', ic: 'ceo', group: 'company', show: (u) => u.scope === 'company' },
-  { key: 'portfolio', ar: 'محفظة المشاريع', ic: 'portfolio', group: 'company', show: (u) => u.scope === 'company' },
-  { key: 'sector', ar: 'مركز القطاع', ic: 'sector', group: 'work', show: (u) => can(u, 'read', 'project') || can(u, 'read', 'opportunity') },
-  { key: 'opportunities', ar: 'الفرص', ic: 'opportunity', group: 'work', show: (u) => can(u, 'read', 'opportunity') },
-  { key: 'my-opportunities', ar: 'فرصي', ic: 'flag', group: 'work', show: (u) => can(u, 'read', 'opportunity') },
-  { key: 'projects', ar: 'المشاريع', ic: 'projects', group: 'work', show: (u) => can(u, 'read', 'project') },
-  { key: 'tasks', ar: 'مهامي', ic: 'tasks', group: 'work', show: () => true },
-  { key: 'timesheet', ar: 'سجل الوقت', ic: 'timesheet', group: 'work', show: () => true },
-  { key: 'approvals', ar: 'الاعتمادات', ic: 'approvals', group: 'work', show: (u) => ['admin', 'sector_lead', 'finance', 'department_manager', 'line_manager', 'approver', 'ceo_office'].includes(u.role_id) },
-  { key: 'finance', ar: 'المالية والعقود', ic: 'money', group: 'manage', show: (u) => can(u, 'read', 'invoice') || can(u, 'read', 'contract') },
-  { key: 'team', ar: 'الفريق', ic: 'team', group: 'manage', show: (u) => can(u, 'read', 'employee') },
-  { key: 'reports', ar: 'التقارير والبريد', ic: 'reports', group: 'manage', show: (u) => can(u, 'read', 'report') },
-  { key: 'org', ar: 'الهيكل التنظيمي', ic: 'sector', group: 'admin', show: (u) => u.role_id === 'admin' || can(u, 'create', 'sector') || can(u, 'create', 'employee') },
-  { key: 'users', ar: 'المستخدمون والصلاحيات', ic: 'users', group: 'admin', show: (u) => u.role_id === 'admin' },
-  { key: 'audit', ar: 'سجل التدقيق', ic: 'audit', group: 'admin', show: (u) => u.role_id === 'admin' },
-];
 const GROUPS = { company: 'قيادة الشركة', work: 'العمل اليومي', manage: 'الإدارة', admin: 'النظام' };
 
-export function navFor(user) { return NAV.filter((n) => { try { return n.show(user); } catch { return false; } }); }
+// الإظهار في القائمة = نفس دالة السماح بفتح الصفحة (nav.js) — لا انفصال ممكن بينهما.
+export function navFor(user) { return NAV_ITEMS.filter((n) => n.live !== false && pageAllowed(user, n.key)); }
 
 const STYLE = `
 /* هوية EVC الرسمية (من ملف الأصول): أزرق ملكي #244A99 + بنفسجي #834798، التدرج أزرق→بنفسجي.
