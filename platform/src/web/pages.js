@@ -100,6 +100,12 @@ export async function ceoPage(user, opts = {}) {
   const topContracts = await all(`SELECT c.code, c.value_halalas, cl.name_ar client, s.name_ar sector
      FROM contract c LEFT JOIN client cl ON cl.id=c.client_id LEFT JOIN sector s ON s.id=c.sector_id
      WHERE c.deleted_at IS NULL ${sec ? 'AND c.sector_id = ?' : ''} ORDER BY c.value_halalas DESC LIMIT 6`, sec ? [sec] : []);
+  // Bookings reconciliation: the annual figure (won in THIS fiscal year, vs the annual target) vs the
+  // cumulative book (all won deals ever — what the legacy platform showed as one headline number).
+  const bookAll = (await get(`SELECT COALESCE(SUM(o.value_halalas),0) v, COUNT(*) n FROM opportunity o JOIN stage st ON st.id=o.stage_id
+     WHERE st.is_won=1 AND o.exclude_from_sales=0 AND o.deleted_at IS NULL ${spO}`, sec ? [sec] : []));
+  const bookByYear = await all(`SELECT o.year, COALESCE(SUM(o.value_halalas),0) v, COUNT(*) n FROM opportunity o JOIN stage st ON st.id=o.stage_id
+     WHERE st.is_won=1 AND o.exclude_from_sales=0 AND o.deleted_at IS NULL ${spO} GROUP BY o.year ORDER BY o.year`, sec ? [sec] : []);
   const margins = ov.canSeeMargin
     ? await Promise.all(ov.sectors.map(async (s) => ({ id: s.id, name_ar: s.name_ar, color: s.color, margin: (await grossMargin(s.id, year)).margin_pct })))
     : [];
@@ -192,10 +198,21 @@ export async function ceoPage(user, opts = {}) {
   ${ddWrap('sales', `المبيعات (الحجوزات) · ${year}`, `${scopeLabel} · مقابل الهدف`, `
     <div class="dd-kpi"><span class="v tnum" style="color:var(--brand2)">${fmtSar(t.sales)}</span><span style="font-size:12px;color:var(--muted)">مبيعات ${scopeLabel}</span></div>
     ${attain(t.sales, t.target_sales, 'var(--brand2)')}
-    ${sec ? '' : `<div class="dd-sec">حسب القطاع</div>${secHbars('sales_halalas', 'sales_pct')}`}
+    <div style="display:flex;gap:.6rem;margin-top:.2rem">
+      <div style="flex:1;background:var(--bg,#f6f7fb);border-radius:10px;padding:.55rem .7rem">
+        <div style="font-size:10.5px;color:var(--muted)">مبيعات السنة (${year}) · مقابل الهدف</div>
+        <div class="tnum" style="font-weight:800;font-size:15px;color:var(--brand2)">${fmtSar(t.sales)}</div></div>
+      <div style="flex:1;background:var(--bg,#f6f7fb);border-radius:10px;padding:.55rem .7rem">
+        <div style="font-size:10.5px;color:var(--muted)">إجمالي الحجوزات التراكمية · ${bookAll.n} صفقة</div>
+        <div class="tnum" style="font-weight:800;font-size:15px">${fmtSar(bookAll.v)}</div></div>
+    </div>
+    <div style="font-size:10.5px;color:var(--faint);line-height:1.6">«مبيعات السنة» تحسب الصفقات المكسوبة في ${year} فقط (الأساس الصحيح مقابل الهدف السنوي)؛ «التراكمي» يجمع كل السنوات (كما كانت تعرضه المنصة السابقة كرقم واحد).</div>
+    ${bookByYear.length > 1 ? `<div class="dd-sec">الحجوزات حسب سنة الفوز</div>
+      <div>${ddRows(bookByYear.map((b) => `<div class="dd-row"><span>${b.year || 'بدون سنة'}<span style="color:var(--faint);font-size:10.5px"> · ${b.n} صفقة</span></span><b class="tnum" style="flex:none${String(b.year) === String(year) ? ';color:var(--brand2)' : ''}">${fmtSar(b.v)}</b></div>`))}</div>` : ''}
+    ${sec ? '' : `<div class="dd-sec">حسب القطاع (السنة)</div>${secHbars('sales_halalas', 'sales_pct')}`}
     <div class="dd-sec">حسب الربع (ر.س)</div>
     ${miniBars(qBook.map((q) => ({ year: q.quarter, v: q.sales_halalas })), 'v', { fmt: sarShort, h: 118 })}
-    <div class="dd-sec">أكبر الصفقات المكسوبة</div>
+    <div class="dd-sec">أكبر الصفقات المكسوبة (${year})</div>
     <div>${ddRows(wonDeals.map((d) => `<div class="dd-row"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.title_ar)}<span style="color:var(--faint);font-size:10.5px"> · ${esc(d.client || '—')}${!sec && d.sector ? ' · ' + esc(d.sector) : ''}</span></span><b class="tnum" style="flex:none">${fmtSar(d.value_halalas)}</b></div>`))}</div>`)}
   ${ddWrap('pipeline', 'خط الفرص المفتوح', `${scopeLabel} · حسب المرحلة`, `
     <div class="dd-kpi"><span class="v tnum" style="color:var(--blue)">${fmtSar(pipelineVal)}</span><span style="font-size:12px;color:var(--muted)">القيمة المرجّحة ${fmtSar(cov.weighted_halalas)} · تغطية ${cov.coverage != null ? cov.coverage + '×' : '—'}</span></div>
