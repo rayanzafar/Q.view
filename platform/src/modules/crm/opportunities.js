@@ -6,8 +6,37 @@ import { scopeFilter } from '../../core/rbac/scope.js';
 import { audit } from '../../core/audit/index.js';
 import { id, nowIso, toHalalas } from '../../core/util/ids.js';
 import { forbidden, notFound, badRequest } from '../../core/http/errors.js';
+import { getTeam } from './oppteam.js';
 
-export async function listOpportunities(user, filters = {}) {
+// Stage-rot thresholds (benchmarks §1 — Pipedrive rotting): an OPEN opportunity sitting in a stage
+// longer than its threshold (days) is flagged متوقفة. Stages absent from the map (won/lost/on-hold)
+// never rot. Exported so views and tests share one source of truth.
+export const ROT_THRESHOLDS = { LEAD: 14, QUALIFIED: 14, PROPOSAL: 21, NEGOTIATION: 30 };
+
+// Whole days spent in the current stage, measured from stage_changed_at (fallback: created_at)
+// to `today` (a bound YYYY-MM-DD string — never SQL date functions; portable + deterministic).
+export function stageAgeDays(row, today) {
+  const ref = String(row.stage_changed_at || row.created_at || '').slice(0, 10);
+  const t = Date.parse(String(today).slice(0, 10) + 'T00:00:00Z');
+  const r = Date.parse(ref + 'T00:00:00Z');
+  if (!Number.isFinite(t) || !Number.isFinite(r)) return null;
+  return Math.max(0, Math.floor((t - r) / 86400000));
+}
+
+// Attach the pipeline-discipline flags to a raw opportunity row (pure; today = 'YYYY-MM-DD').
+function withDiscipline(row, today) {
+  const age = stageAgeDays(row, today);
+  const th = ROT_THRESHOLDS[row.stage_id];
+  return {
+    ...row,
+    stage_age_days: age,
+    rot: !!(th && age != null && age > th),
+    no_next_action: !(row.next_action && String(row.next_action).trim()),
+  };
+}
+
+// opts.today ('YYYY-MM-DD') pins the stage-age clock for deterministic tests; defaults to now.
+export async function listOpportunities(user, filters = {}, opts = {}) {
   const f = scopeFilter(user, 'opportunity', 'read');
   const where = [f.clause];
   const params = [...f.params];
@@ -16,7 +45,8 @@ export async function listOpportunities(user, filters = {}) {
   if (filters.sector) { where.push('sector_id = ?'); params.push(filters.sector); }
   const rows = await all(
     `SELECT * FROM opportunity WHERE ${where.join(' AND ')} ORDER BY value_halalas DESC LIMIT 500`, params);
-  return redactList(user, 'opportunity', rows);
+  const today = String(opts.today || nowIso().slice(0, 10)).slice(0, 10);
+  return redactList(user, 'opportunity', rows).map((r) => withDiscipline(r, today));
 }
 
 export async function getOpportunity(user, oppId) {
@@ -84,17 +114,32 @@ export async function moveStage(ctx, oppId, toStage, note) {
   return await getOpportunity(user, oppId);
 }
 
-// Rich detail for the opportunity drawer: names + stage history + the stage ladder.
-export async function opportunityDetail(user, oppId) {
+// Rich detail for the opportunity page/drawer: names + stage history + the stage ladder
+// (with default win %), the opportunity team, the latest activities, and the discipline flags.
+export async function opportunityDetail(user, oppId, opts = {}) {
   const opp = await getOpportunity(user, oppId); // scope + redact + notFound/forbidden
   const client = opp.client_id ? ((await get('SELECT name_ar FROM client WHERE id=?', [opp.client_id]))?.name_ar || null) : null;
   const ownerRow = opp.owner_user_id ? await get('SELECT name_ar, username FROM app_user WHERE id=?', [opp.owner_user_id]) : null;
   const history = await all(`SELECT h.to_stage_id, h.from_stage_id, h.changed_at, h.note, u.name_ar owner_name, u.username
      FROM opportunity_stage_history h LEFT JOIN app_user u ON u.id=h.changed_by
      WHERE h.opportunity_id=? ORDER BY h.changed_at DESC LIMIT 25`, [oppId]);
-  const stages = await all('SELECT id, name_ar, color FROM stage ORDER BY sort_order');
+  const stages = await all('SELECT id, name_ar, color, default_win_pct, sort_order, is_won, is_lost FROM stage ORDER BY sort_order');
+  const team = await getTeam(user, oppId);
+  const activities = await all(
+    `SELECT a.id, a.kind, a.at, a.title, a.detail, a.source,
+            COALESCE(a.actor_name, u.name_ar, u.username) AS actor
+       FROM crm_activity a LEFT JOIN app_user u ON u.id = a.actor_user_id
+      WHERE a.opportunity_id = ? AND a.deleted_at IS NULL
+      ORDER BY a.at DESC LIMIT 20`, [oppId]);
   const canEdit = can(user, 'update', 'opportunity', opp);
-  return { opp, client, owner: ownerRow ? (ownerRow.name_ar || ownerRow.username) : null, history, stages, canEdit };
+  const today = String(opts.today || nowIso().slice(0, 10)).slice(0, 10);
+  const flags = withDiscipline(opp, today);
+  return {
+    opp, client, owner: ownerRow ? (ownerRow.name_ar || ownerRow.username) : null,
+    history, stages, team, activities, canEdit,
+    stage_age_days: flags.stage_age_days, rot: flags.rot, no_next_action: flags.no_next_action,
+    weighted_halalas: Math.round((opp.value_halalas || 0) * ((opp.win_pct || 0) / 100)),
+  };
 }
 
 // Pipeline aggregation for dashboards (respects scope).
