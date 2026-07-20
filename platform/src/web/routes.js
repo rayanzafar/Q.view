@@ -63,6 +63,9 @@ webRouter.get('/app/contract/:id', requireWeb, guardDetail('contract'), async (r
 webRouter.get('/app/project/:id', requireWeb, guardDetail('project'), async (req, res, next) => {
   try { res.send(await P.projectDetailPage(req.ctx.user, req.params.id)); } catch (e) { next(e); }
 });
+webRouter.get('/app/opportunity/:id', requireWeb, guardDetail('opportunity'), async (req, res, next) => {
+  try { res.send(await P.opportunityDetailPage(req.ctx.user, req.params.id)); } catch (e) { next(e); }
+});
 
 webRouter.get('/app/:page', requireWeb, async (req, res, next) => {
   const fn = PAGES[req.params.page];

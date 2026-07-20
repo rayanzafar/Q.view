@@ -11,9 +11,13 @@ import * as org from './org/org.js';
 import * as finance from './finance/finance.js';
 import * as metrics from '../core/reports/metrics.js';
 import * as intake from './intake/intake.js';
+import { oppteamRouter } from './crm/oppteam.routes.js';
+import { viewsRouter } from './views/views.routes.js';
 
 export const apiRouter = Router();
 apiRouter.use(requireAuth());
+apiRouter.use(oppteamRouter);
+apiRouter.use(viewsRouter);
 const h = (fn) => async (req, res, next) => { try { const r = await fn(req, res); if (r !== undefined) res.json(r); } catch (e) { next(e); } };
 
 // ── Opportunities / CRM ──

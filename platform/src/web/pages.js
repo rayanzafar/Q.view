@@ -8,4 +8,5 @@ export * from './views/people.js';
 export * from './views/finance.js';
 export * from './views/govern.js';
 export * from './views/mail.js';
+export * from './views/opportunity-detail.js';
 export * from './views/_shared.js';
