@@ -25,6 +25,9 @@ function walk(p) {
   if (/\.(js|mjs)$/.test(p)) files.push(p);
 }
 TARGETS.forEach((t) => walk(join(ROOT, t)));
+// ملف المعجم نفسه يحوي قائمة المحظورات كتعريف — ليس نص واجهة
+const scanFiles = files.filter((f) => !f.endsWith('glossary.js'));
+files.length = 0; files.push(...scanFiles);
 
 let bad = 0;
 for (const f of files) {

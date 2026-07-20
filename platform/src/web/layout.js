@@ -27,18 +27,24 @@ const GROUPS = { company: 'قيادة الشركة', work: 'العمل اليو�
 export function navFor(user) { return NAV.filter((n) => { try { return n.show(user); } catch { return false; } }); }
 
 const STYLE = `
+/* هوية EVC الرسمية (من ملف الأصول): أزرق ملكي #244A99 + بنفسجي #834798، التدرج أزرق→بنفسجي.
+   الأزرق = لون التفاعل الأساسي؛ البنفسجي = لمسة هوية مقتصدة؛ الأخضر/الكهرماني/الأحمر = حالة فقط. */
+@font-face{font-family:'IBM Plex Sans Arabic';src:url('/static/fonts/IBMPlexSansArabic-Light.woff2') format('woff2');font-weight:300;font-display:swap}
+@font-face{font-family:'IBM Plex Sans Arabic';src:url('/static/fonts/IBMPlexSansArabic-Regular.woff2') format('woff2');font-weight:400;font-display:swap}
+@font-face{font-family:'IBM Plex Sans Arabic';src:url('/static/fonts/IBMPlexSansArabic-Medium.woff2') format('woff2');font-weight:500 700;font-display:swap}
+@font-face{font-family:'IBM Plex Sans Arabic';src:url('/static/fonts/IBMPlexSansArabic-Bold.woff2') format('woff2');font-weight:800 900;font-display:swap}
 :root{
-  --brand:#2563eb; --brand2:#7c3aed; --brand-grad:linear-gradient(120deg,#2563eb,#7c3aed);
-  --side:linear-gradient(170deg,#0f2350 0%,#182a5e 45%,#3a1660 100%);
+  --brand:#244A99; --brand2:#834798; --brand-grad:linear-gradient(120deg,#244A99,#834798);
+  --side:linear-gradient(170deg,#182c56 0%,#1f3a75 45%,#56316b 100%);
   --ink:#0f172a; --ink2:#1e293b; --muted:#64748b; --faint:#94a3b8;
   --line:#e6e9f0; --bg:#f6f7fb; --surface:#fff;
-  --green:#059669; --amber:#d97706; --red:#dc2626; --blue:#2563eb;
+  --green:#059669; --amber:#d97706; --red:#dc2626; --blue:#244A99;
   --r:14px; --r-sm:10px; --sh-sm:0 1px 2px rgba(15,23,42,.05),0 1px 3px rgba(15,23,42,.05);
-  --sh:0 2px 8px rgba(15,23,42,.06),0 12px 28px rgba(37,99,235,.07);
+  --sh:0 2px 8px rgba(15,23,42,.06),0 12px 28px rgba(36,74,153,.08);
 }
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font-family:'Segoe UI',Tahoma,system-ui,-apple-system,sans-serif;line-height:1.55;-webkit-font-smoothing:antialiased;letter-spacing:-.003em}
-h1,h2,h3,h4{margin:0;color:var(--ink2);font-weight:700;letter-spacing:-.01em}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:'IBM Plex Sans Arabic','Segoe UI',Tahoma,system-ui,-apple-system,sans-serif;line-height:1.7;-webkit-font-smoothing:antialiased}
+h1,h2,h3,h4{margin:0;color:var(--ink2);font-weight:700}
 a{text-decoration:none;color:inherit}
 .tnum{font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1;unicode-bidi:isolate}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--sh-sm);transition:box-shadow .18s,transform .18s,border-color .18s}
@@ -49,7 +55,7 @@ a{text-decoration:none;color:inherit}
 .nav-a.on{background:rgba(255,255,255,.14);color:#fff;font-weight:700}
 .nav-a svg{opacity:.85;flex:0 0 auto}
 .grp{padding:.9rem .9rem .25rem;font-size:10px;font-weight:800;letter-spacing:.08em;color:rgba(255,255,255,.38)}
-::selection{background:rgba(124,58,237,.2)}
+::selection{background:rgba(36,74,153,.18)}
 ::-webkit-scrollbar{width:9px;height:9px}::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:99px;border:2px solid var(--bg)}
 .metric{font-size:1.9rem;font-weight:800;letter-spacing:-.02em;line-height:1.1}
 .bar{height:6px;background:#eef1f7;border-radius:999px;overflow:hidden}
@@ -61,15 +67,15 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
   font-size:12.5px;font-weight:700;padding:.48rem .85rem;border-radius:10px;cursor:pointer;transition:all .15s;white-space:nowrap}
 .btn:hover{border-color:#c9d3e8;background:#fbfcfe}
 .btn svg{width:15px;height:15px}
-.btn-primary{background:var(--brand-grad);color:#fff;border:none;box-shadow:0 6px 16px -6px rgba(37,99,235,.6)}
-.btn-primary:hover{filter:brightness(1.06);background:var(--brand-grad)}
+.btn-primary{background:var(--brand);color:#fff;border:none;box-shadow:0 6px 16px -6px rgba(36,74,153,.55)}
+.btn-primary:hover{background:#1d3d80}
 .btn-ghost{border:none;background:transparent;color:var(--muted)}
 .btn-ghost:hover{background:#eef1f7;color:var(--ink2)}
 .btn-sm{padding:.32rem .6rem;font-size:11.5px;border-radius:8px}
 .toolbar{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin-bottom:1.1rem}
 .toolbar .spacer{margin-inline-start:auto}
 .input{border:1px solid var(--line);border-radius:10px;padding:.5rem .7rem;font-size:13px;color:var(--ink2);background:#fff;font-family:inherit}
-.input:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+.input:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(36,74,153,.14)}
 .search{position:relative;display:flex;align-items:center}
 .search svg{position:absolute;inset-inline-start:.6rem;width:15px;height:15px;color:var(--faint);pointer-events:none}
 .search input{padding-inline-start:2rem;min-width:230px}
@@ -123,7 +129,7 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
 .field{display:grid;gap:.3rem}
 .field>label{font-size:11.5px;font-weight:700;color:var(--muted)}
 .field .input,.field select,.field textarea{width:100%;border:1px solid var(--line);border-radius:10px;padding:.55rem .7rem;font-size:13px;font-family:inherit;background:#fff}
-.field .input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+.field .input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(36,74,153,.14)}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:.85rem}
 @media(max-width:520px){.grid2{grid-template-columns:1fr}}
 @media prefers-reduced-motion{.drawer,.scrim,.modal-card{transition:none;animation:none}}
@@ -134,7 +140,7 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
 .chip{display:inline-flex;align-items:center;gap:.45rem;padding:.4rem .8rem;border-radius:999px;font-size:12.5px;font-weight:700;
   background:#fff;border:1px solid var(--line);color:var(--ink2);transition:all .15s;cursor:pointer}
 .chip:hover{border-color:#c9d3e8;box-shadow:var(--sh-sm);transform:translateY(-1px)}
-.chip.on{background:var(--brand-grad);border-color:transparent;color:#fff;box-shadow:0 6px 14px -6px rgba(37,99,235,.55)}
+.chip.on{background:var(--brand);border-color:transparent;color:#fff;box-shadow:0 6px 14px -6px rgba(36,74,153,.5)}
 .chip .dot{width:8px;height:8px;border-radius:50%;flex:none}
 .chip.on .dot{outline:2px solid rgba(255,255,255,.5)}
 .hclick{cursor:pointer;border-radius:12px;transition:background .15s,box-shadow .15s}
@@ -152,8 +158,53 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
 .dd-kpi .v{font-size:1.6rem;font-weight:800;letter-spacing:-.02em}
 .dd-sec{font-weight:800;font-size:12.5px;margin-top:.35rem;color:var(--ink2)}
 .cardclick{cursor:pointer}
-.cardclick:hover{box-shadow:var(--sh),0 0 0 2px rgba(37,99,235,.16);transform:translateY(-1px)}
+.cardclick:hover{box-shadow:var(--sh),0 0 0 2px rgba(36,74,153,.16);transform:translateY(-1px)}
 .cardclick:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+
+/* ── حالات التصميم (فارغ/تحميل/تنبيه) ── */
+.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.5rem;padding:2.2rem 1rem;text-align:center;color:var(--muted)}
+.empty-state svg{width:34px;height:34px;color:var(--faint)}
+.empty-state .t{font-weight:700;font-size:13.5px;color:var(--ink2)}
+.empty-state .s{font-size:12px;max-width:340px;line-height:1.8}
+.skeleton{position:relative;overflow:hidden;background:#eef1f7;border-radius:8px;min-height:14px}
+.skeleton::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.7),transparent);animation:shimmer 1.4s infinite}
+@keyframes shimmer{from{transform:translateX(100%)}to{transform:translateX(-100%)}}
+.alert{display:flex;gap:.6rem;align-items:flex-start;padding:.7rem .9rem;border-radius:12px;font-size:12.5px;border:1px solid}
+.alert.ok{background:#f0fdf4;border-color:#bbf7d0;color:#166534}
+.alert.warn{background:#fffbeb;border-color:#fde68a;color:#92400e}
+.alert.err{background:#fef2f2;border-color:#fecaca;color:#991b1b}
+.alert.info{background:#eff6ff;border-color:#bfdbfe;color:#1e40af}
+.tblwrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+
+/* شريط هدف/فعلي/متوقع (bullet graph): مسار هادئ + شريط فعلي + علامة مستهدف + مؤشر توقع */
+.bullet{position:relative;height:16px;background:#eef1f7;border-radius:6px;overflow:visible}
+.bullet .fill{position:absolute;inset-block:3px;inset-inline-start:0;background:var(--brand);border-radius:4px;max-width:100%}
+.bullet .tgt{position:absolute;top:-3px;bottom:-3px;width:2.5px;background:var(--ink2);border-radius:2px}
+.bullet .fc{position:absolute;top:1px;bottom:1px;width:0;border-inline-start:2.5px dashed var(--brand2)}
+
+/* بند "يحتاج انتباهك" — جملة + إجراء واحد */
+.attn{display:flex;align-items:center;gap:.7rem;padding:.65rem .8rem;border-radius:12px;border:1px solid var(--line);background:#fff;font-size:13px}
+.attn:hover{border-color:#d6def0;box-shadow:var(--sh-sm)}
+.attn .ic{flex:0 0 auto;width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center}
+.attn .tx{flex:1;min-width:0}
+.attn .tx .h{font-weight:700;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.attn .tx .s{font-size:11.5px;color:var(--muted)}
+.attn .go{flex:0 0 auto}
+
+/* تلميح معنى (شرح مصطلح/مرحلة) — CSS فقط */
+[data-tip]{position:relative;cursor:help}
+[data-tip]:hover::after,[data-tip]:focus-visible::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 8px);inset-inline-start:50%;transform:translateX(50%);
+  background:var(--ink);color:#fff;font-size:11.5px;font-weight:600;line-height:1.7;padding:.5rem .7rem;border-radius:9px;width:max-content;max-width:260px;white-space:normal;z-index:70;box-shadow:var(--sh);pointer-events:none;text-align:right}
+[data-tip]:hover::before,[data-tip]:focus-visible::before{content:'';position:absolute;bottom:calc(100% + 2px);inset-inline-start:50%;transform:translateX(50%);border:6px solid transparent;border-top-color:var(--ink);z-index:70;pointer-events:none}
+
+/* الموبايل: القائمة الجانبية تنزلق كطبقة */
+.side-toggle{display:none}
+@media(max-width:920px){
+  .side-toggle{display:inline-flex;background:none;border:none;color:var(--ink2);cursor:pointer;padding:.3rem}
+  aside.side{position:fixed;inset-block:0;inset-inline-start:0;z-index:65;transform:translateX(105%);transition:transform .25s}
+  body.side-open aside.side{transform:none;box-shadow:0 0 60px rgba(15,23,42,.4)}
+  .kcol{flex-basis:260px;width:260px}
+}
 `;
 
 export async function layout({ user, active, title, subtitle, body, year, extraHead = '', scripts }) {
@@ -176,23 +227,29 @@ export async function layout({ user, active, title, subtitle, body, year, extraH
   return `<!doctype html><html dir="rtl" lang="ar"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${title || 'سند'} · منصة سند EVC</title>
+<link rel="icon" type="image/svg+xml" href="/static/brand/favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="/static/brand/favicon-32.png">
+<link rel="apple-touch-icon" href="/static/brand/favicon-180.png">
 <script src="/static/tailwind.js"></script>
-<script>tailwind.config={theme:{extend:{colors:{brand:'#2563eb',brand2:'#7c3aed',ink:'#0f172a',ink2:'#1e293b',muted:'#64748b',faint:'#94a3b8',line:'#e6e9f0'}}}}</script>
+<script>tailwind.config={theme:{extend:{colors:{brand:'#244A99',brand2:'#834798',ink:'#0f172a',ink2:'#1e293b',muted:'#64748b',faint:'#94a3b8',line:'#e6e9f0'}}}}</script>
 <style>${STYLE}</style>
 <link rel="stylesheet" href="/static/styles.css">${extraHead}</head>
 <body>
 <div style="display:flex;min-height:100vh">
-  <aside style="width:250px;flex:0 0 250px;background:var(--side);display:flex;flex-direction:column;color:#fff">
-    <div style="padding:1.1rem 1.1rem;border-bottom:1px solid rgba(255,255,255,.08);display:flex;align-items:center;gap:.6rem">
-      <div style="width:34px;height:34px;border-radius:9px;background:var(--brand-grad);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px">EVC</div>
-      <div><div style="font-weight:800;font-size:15px">سند</div><div style="font-size:10px;color:rgba(255,255,255,.5)">نظام تشغيل الأعمال</div></div>
+  <aside class="side" style="width:250px;flex:0 0 250px;background:var(--side);display:flex;flex-direction:column;color:#fff">
+    <div style="padding:1.15rem 1.1rem 1rem;border-bottom:1px solid rgba(255,255,255,.08)">
+      <img src="/static/brand/logo-white.svg" alt="رؤية الخبراء الاستشارية EVC" style="width:170px;max-width:100%;display:block"/>
+      <div style="margin-top:.65rem;font-size:10.5px;color:rgba(255,255,255,.55);letter-spacing:.02em">سند · نظام تشغيل الأعمال</div>
     </div>
     <nav style="flex:1;overflow-y:auto;padding:.4rem 0">${nav}</nav>
     <div style="padding:.8rem 1.1rem;border-top:1px solid rgba(255,255,255,.08);font-size:11px;color:rgba(255,255,255,.55)">السنة المالية ${config.fiscalYear} · SAR</div>
   </aside>
   <div style="flex:1;display:flex;flex-direction:column;min-width:0">
     <header style="height:60px;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;flex:0 0 auto">
-      <div><div style="font-weight:800;font-size:16px">${title || ''}</div>${subtitle ? `<div style="font-size:12px;color:var(--muted)">${subtitle}</div>` : ''}</div>
+      <div style="display:flex;align-items:center;gap:.6rem">
+        <button class="side-toggle" aria-label="القائمة" onclick="document.body.classList.toggle('side-open')">${icon('menu') || '☰'}</button>
+        <div><div style="font-weight:800;font-size:16px">${title || ''}</div>${subtitle ? `<div style="font-size:12px;color:var(--muted)">${subtitle}</div>` : ''}</div>
+      </div>
       <div style="display:flex;align-items:center;gap:1rem">
         ${yearSel}
         <a href="/app/tasks" title="الإشعارات" style="position:relative;color:var(--muted)">${icon('bell')}<span id="notif-badge" style="display:none;position:absolute;top:-4px;left:-4px;background:var(--red);color:#fff;font-size:9px;border-radius:99px;padding:1px 4px;font-weight:700"></span></a>
@@ -208,7 +265,7 @@ export async function layout({ user, active, title, subtitle, body, year, extraH
 </div>
 <button onclick="Sanad.aiToggle()" title="مساعد سند الذكي" style="position:fixed;bottom:22px;left:22px;z-index:40;width:54px;height:54px;border:none;cursor:pointer;border-radius:50%;color:#fff;box-shadow:0 10px 30px -6px rgba(124,58,237,.55);background:var(--brand-grad);display:flex;align-items:center;justify-content:center">${icon('ai')}</button>
 <div id="ai-panel" class="card" style="display:none;position:fixed;bottom:88px;left:22px;z-index:40;width:390px;max-width:calc(100vw - 2rem);height:min(580px,calc(100vh - 130px));flex-direction:column;overflow:hidden;box-shadow:var(--sh)">
-  <div style="padding:.8rem 1rem;color:#fff;display:flex;align-items:center;justify-content:space-between;background:linear-gradient(120deg,#0f2350,#3a1660)">
+  <div style="padding:.8rem 1rem;color:#fff;display:flex;align-items:center;justify-content:space-between;background:var(--brand-grad)">
     <div style="display:flex;align-items:center;gap:.5rem">${icon('ai')}<div><div style="font-weight:800;font-size:13px">مساعد سند الذكي</div><div id="ai-mode" style="font-size:10px;color:rgba(255,255,255,.6)">…</div></div></div>
     <button onclick="Sanad.aiToggle()" style="color:rgba(255,255,255,.7);background:none;border:none;cursor:pointer;font-size:16px">✕</button>
   </div>
@@ -278,10 +335,10 @@ export function miniBars(series, valueKey, opts = {}) {
     const last = i === n - 1;
     return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${bh}" rx="4" fill="url(#${gid})" opacity="${last ? 1 : 0.8}"/>
       <text x="${(x + bw / 2).toFixed(1)}" y="${H - 7}" font-size="11" fill="#94a3b8" text-anchor="middle">${s.year}</text>
-      <text x="${(x + bw / 2).toFixed(1)}" y="${(y - 5).toFixed(1)}" font-size="11" fill="${last ? '#7c3aed' : '#475569'}" text-anchor="middle" font-weight="800">${opts.fmt ? opts.fmt(val) : Math.round(val)}</text>`;
+      <text x="${(x + bw / 2).toFixed(1)}" y="${(y - 5).toFixed(1)}" font-size="11" fill="${last ? '#834798' : '#475569'}" text-anchor="middle" font-weight="800">${opts.fmt ? opts.fmt(val) : Math.round(val)}</text>`;
   }).join('');
   return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block" preserveAspectRatio="xMidYMid meet">
-    <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2563eb"/><stop offset="1" stop-color="#7c3aed"/></linearGradient></defs>${grid}${bars}</svg>`;
+    <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#244A99"/><stop offset="1" stop-color="#834798"/></linearGradient></defs>${grid}${bars}</svg>`;
 }
 
 // Horizontal comparison bars (e.g. revenue achieved per sector). items: [{label,value,color,sub}].
@@ -324,7 +381,7 @@ export function gauge(pct, opts = {}) {
       <circle cx="${cx}" cy="${cx}" r="${r}" fill="none" stroke="${col}" stroke-width="${sw}" stroke-linecap="round"
         stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}"/>
     </g>
-    <text x="${cx}" y="${cx - 4}" text-anchor="middle" dominant-baseline="central" fill="${opts.centerColor || '#fff'}" font-size="${opts.centerSize || 26}" font-weight="800" font-family="'Segoe UI',sans-serif">${opts.center || (Math.round(pct || 0) + '%')}</text>
+    <text x="${cx}" y="${cx - 4}" text-anchor="middle" dominant-baseline="central" fill="${opts.centerColor || '#fff'}" font-size="${opts.centerSize || 26}" font-weight="800" font-family="'IBM Plex Sans Arabic','Segoe UI',sans-serif">${opts.center || (Math.round(pct || 0) + '%')}</text>
     ${opts.sub ? `<text x="${cx}" y="${cx + 18}" text-anchor="middle" fill="${opts.subColor || 'rgba(255,255,255,.6)'}" font-size="10.5" font-weight="600">${opts.sub}</text>` : ''}
   </svg>`;
 }

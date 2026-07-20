@@ -8,6 +8,7 @@ import { initRbac } from './core/rbac/index.js';
 import { stopScheduler } from './core/jobs/scheduler.js';
 import { attachContext } from './core/http/context.js';
 import { csrf } from './core/http/csrf.js';
+import { securityHeaders, loginLimiter, apiLimiter } from './core/http/security.js';
 import { errorHandler } from './core/http/errors.js';
 import { authRouter } from './modules/auth.routes.js';
 import { apiRouter } from './modules/api.routes.js';
@@ -21,11 +22,15 @@ export async function createApp() {
 
   const app = express();
   app.set('trust proxy', true);
+  app.use(securityHeaders());
   app.use(express.json({ limit: '1mb' }));
   app.use(express.urlencoded({ extended: false }));
   app.use(cookieParser());
   app.use(csrf());
   app.use(attachContext());
+  app.use('/auth/login', loginLimiter);
+  app.use('/auth/login-web', loginLimiter);
+  app.use('/api', apiLimiter);
 
   app.get('/health', (req, res) => res.json({ ok: true, ts: new Date().toISOString() }));
   // Readiness: verify DB is reachable (for load balancers / orchestrators).

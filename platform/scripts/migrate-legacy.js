@@ -26,9 +26,26 @@ export async function migrateLegacy() {
   const SNAP = JSON.parse(readFileSync(pick('legacy-state'), 'utf8'));
   const USERS = JSON.parse(readFileSync(pick('legacy-users'), 'utf8')).users || [];
   const report = { source: {}, target: {}, financial: {}, notes: [] };
-  const dataTables = ['sector', 'stage', 'client', 'supplier', 'service', 'service_package', 'opportunity',
-    'opportunity_sector', 'project', 'deliverable', 'revenue_line', 'cost_line', 'allocation', 'employee',
-    'department', 'position', 'app_user', 'login_history', 'budget', 'contract', 'invoice'];
+  // Child-first order (SQLite DELETE honors FKs; PG TRUNCATE … CASCADE doesn't care about order).
+  // Any table referencing the business set must appear BEFORE its parent. session cascades on app_user.
+  const dataTables = [
+    'email_log', 'email_queue', 'report_schedule', 'recipient',
+    'import_row', 'import_run', 'crm_activity', 'saved_view', 'document',
+    'notification', 'ai_activity_log',
+    'dependency', 'time_entry', 'timesheet_period', 'task',
+    'approval_action', 'approval_request',
+    'pricing_line', 'proposal',
+    'collection', 'invoice_line', 'contract_payment',
+    'expense', 'purchase_order',
+    'membership', 'team',
+    'workstream', 'milestone', 'risk', 'issue', 'decision', 'change_request', 'action_item', 'lesson_learned',
+    'allocation', 'revenue_line', 'cost_line', 'deliverable',
+    'invoice', 'contract',
+    'opportunity_sector', 'opportunity', 'project',
+    'service_package', 'service', 'supplier',
+    'employee', 'org_unit', 'department', 'position',
+    'login_history', 'app_user',
+    'client', 'budget', 'stage', 'sector'];
 
   await tx(async () => {
     // Reset the migrated tables before reloading. On Postgres a plain DELETE fails when a prior
