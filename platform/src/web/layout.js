@@ -40,7 +40,7 @@ const STYLE = `
 body{margin:0;background:var(--bg);color:var(--ink);font-family:'Segoe UI',Tahoma,system-ui,-apple-system,sans-serif;line-height:1.55;-webkit-font-smoothing:antialiased;letter-spacing:-.003em}
 h1,h2,h3,h4{margin:0;color:var(--ink2);font-weight:700;letter-spacing:-.01em}
 a{text-decoration:none;color:inherit}
-.tnum{font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
+.tnum{font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1;unicode-bidi:isolate}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--sh-sm);transition:box-shadow .18s,transform .18s,border-color .18s}
 .card-h:hover{box-shadow:var(--sh);transform:translateY(-1px);border-color:#d6def0}
 .pill{display:inline-flex;align-items:center;gap:.3rem;padding:.2rem .55rem;border-radius:999px;font-size:.7rem;font-weight:700;line-height:1;white-space:nowrap}
@@ -143,6 +143,11 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
 .dd-hint{font-size:10px;font-weight:700;color:rgba(255,255,255,.5);display:inline-flex;align-items:center;gap:.25rem}
 .dd-row{display:flex;justify-content:space-between;gap:.8rem;padding:.5rem 0;border-bottom:1px dashed var(--line);font-size:12.5px;align-items:center}
 .dd-row:last-child{border-bottom:none}
+/* Long label shrinks (ellipsis); the money value never shrinks/wraps and is bidi-isolated so its
+   leading digit is never clipped by the RTL flex + Intl RLM marks. */
+.dd-row>span:first-child{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dd-row>b{flex:0 0 auto;white-space:nowrap;direction:ltr;unicode-bidi:isolate}
+.modal-card{overflow-x:hidden}
 .dd-kpi{display:flex;align-items:baseline;gap:.6rem;flex-wrap:wrap}
 .dd-kpi .v{font-size:1.6rem;font-weight:800;letter-spacing:-.02em}
 .dd-sec{font-weight:800;font-size:12.5px;margin-top:.35rem;color:var(--ink2)}

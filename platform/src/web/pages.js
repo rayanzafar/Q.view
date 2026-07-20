@@ -305,9 +305,15 @@ export async function sectorPage(user, opts = {}) {
      WHERE c.sector_id = ? AND c.deleted_at IS NULL ORDER BY c.value_halalas DESC LIMIT 10`, [sectorId]);
   // Revenue by project (the owner's ask: WHICH projects produced the revenue, and each one's
   // realization % of its own contract value).
-  const revByProject = await all(`SELECT p.id, p.name_ar, p.contract_value_halalas cv, COALESCE(SUM(rl.amount_halalas),0) rev
+  // Canonical project value = contract ‖ budget ‖ PO (Solutions carries it in budget, not contract),
+  // so the realized-% has a denominator even when the source has no contract value.
+  const revByProject = await all(`SELECT p.id, p.name_ar,
+       COALESCE(NULLIF(p.contract_value_halalas,0), NULLIF(p.budget_halalas,0), NULLIF(p.po_value_halalas,0)) cv,
+       CASE WHEN COALESCE(p.contract_value_halalas,0)>0 THEN 'عقد' WHEN COALESCE(p.budget_halalas,0)>0 THEN 'ميزانية'
+            WHEN COALESCE(p.po_value_halalas,0)>0 THEN 'أمر شراء' ELSE NULL END cvbasis,
+       COALESCE(SUM(rl.amount_halalas),0) rev
      FROM revenue_line rl LEFT JOIN project p ON p.id = rl.project_id
-     WHERE rl.sector_id = ? AND rl.year = ? GROUP BY p.id, p.name_ar, p.contract_value_halalas
+     WHERE rl.sector_id = ? AND rl.year = ? GROUP BY p.id, p.name_ar, p.contract_value_halalas, p.budget_halalas, p.po_value_halalas
      ORDER BY rev DESC LIMIT 12`, [sectorId, year]);
   const secWon = await all(`SELECT o.title_ar, o.value_halalas, c.name_ar client FROM opportunity o
      JOIN stage st ON st.id = o.stage_id LEFT JOIN client c ON c.id = o.client_id
@@ -373,7 +379,7 @@ export async function sectorPage(user, opts = {}) {
           <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.id ? esc(r.name_ar) : 'إيراد غير مرتبط بمشروع'}</span>
           <b class="tnum" style="flex:none">${fmtSar(r.rev)}</b></div>
         <div style="display:flex;justify-content:space-between;gap:.7rem;font-size:10.5px;color:var(--muted)">
-          <span>${r.cv ? 'قيمة المشروع ' + fmtSar(r.cv) : 'بلا قيمة عقد مسجلة في المصدر'}</span>${pcv != null ? `<span class="tnum" style="font-weight:800">حقّق ${pcv}%</span>` : ''}</div>
+          <span>${r.cv ? 'قيمة المشروع (' + (r.cvbasis || '') + ') ' + fmtSar(r.cv) : 'بلا قيمة مسجلة'}</span>${pcv != null ? `<span class="tnum" style="font-weight:800">حقّق ${pcv}%</span>` : ''}</div>
         ${pcv != null ? `<div class="bar" style="margin-top:.25rem;height:5px"><span style="width:${Math.min(100, pcv)}%;background:var(--green)"></span></div>` : ''}
       </div>`; }))}</div>`)}
   ${ddWrap('seccontracts', 'سجل عقود القطاع', `${esc(sd.sector.name_ar)} · النشطة + الموقّعة حسب السنة`, `

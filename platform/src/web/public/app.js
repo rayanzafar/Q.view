@@ -43,12 +43,7 @@ window.Sanad = {
       toast('سُجّل الوقت ✓'); location.reload();
     } catch (e) { toast(e.message, true); }
   },
-  async quickOpp() {
-    const title = prompt('عنوان الفرصة الجديدة؟'); if (!title) return;
-    const val = prompt('القيمة المتوقعة (ريال)؟', '0');
-    try { await api('/opportunities', 'POST', { title_ar: title, value_sar: Number(val) || 0 }); toast('أُضيفت الفرصة ✓'); location.reload(); }
-    catch (e) { toast(e.message, true); }
-  },
+  quickOpp() { this.oppAdd(); }, // route the legacy quick-add to the proper modal (no browser prompts)
   async approve(id, action) {
     let comment = ''; if (action === 'reject') comment = prompt('سبب الرفض؟') || '';
     try { await api('/approvals/' + id + '/act', 'POST', { action, comment }); toast(action === 'approve' ? 'اعتُمد ✓' : 'رُفض'); location.reload(); }
@@ -289,7 +284,7 @@ Object.assign(window.Sanad, {
           <select id="dw-stage" class="input" style="width:100%;margin:.3rem 0 1rem" ${ce ? '' : 'disabled'} onchange="Sanad.oppStage('${o.id}',this.value)">${stageOpts}</select>
           <div class="kv-row"><span class="k">العميل</span><span class="v">${this.esc(d.client || '—')}</span></div>
           <div class="kv-row"><span class="k">المسؤول</span><span class="v">${this.esc(d.owner || '—')}</span></div>
-          <div class="kv-row"><span class="k">القيمة المتوقعة</span><span class="v tnum ${ce ? 'editable' : ''}" ${ce ? `onclick="Sanad.oppEditVal('${o.id}',${(o.value_halalas || 0) / 100})"` : ''}>${this.fmtSar(o.value_halalas)}</span></div>
+          <div class="kv-row"><span class="k">القيمة المتوقعة</span><span class="v tnum ${ce ? 'editable' : ''}" ${ce ? `title="انقر للتعديل" onclick="Sanad.oppEditVal('${o.id}',${(o.value_halalas || 0) / 100},this)"` : ''}>${this.fmtSar(o.value_halalas)}</span></div>
           <div class="kv-row"><span class="k">الاحتمالية</span><span class="v tnum">${Math.round(o.win_pct || 0)}%</span></div>
           <div class="kv-row"><span class="k">الأولوية</span><span class="v">${this.esc(this.lbl(o.priority) || '—')}</span></div>
           <div class="kv-row"><span class="k">السنة</span><span class="v tnum">${o.year || '—'}</span></div>
@@ -304,7 +299,22 @@ Object.assign(window.Sanad, {
   },
   oppStage(id, stage) { api('/opportunities/' + id + '/stage', 'POST', { stage }).then(() => { toast('نُقلت المرحلة ✓'); setTimeout(() => location.reload(), 500); }).catch((e) => toast(e.message, true)); },
   oppSave(id, field, el) { const v = el.textContent.trim(); api('/opportunities/' + id, 'PATCH', { [field]: v }).then(() => toast('حُفظ ✓')).catch((e) => toast(e.message, true)); },
-  oppEditVal(id, cur) { const v = prompt('القيمة المتوقعة (ر.س.)؟', cur); if (v === null) return; api('/opportunities/' + id, 'PATCH', { value_sar: Number(v) || 0 }).then(() => { toast('حُفظ ✓'); this.oppOpen(id); }).catch((e) => toast(e.message, true)); },
+  // Inline edit: turn the value cell into a number input right where it sits (no browser prompt).
+  oppEditVal(id, cur, el) {
+    if (!el || el._editing) return;
+    const inp = document.createElement('input');
+    inp.type = 'number'; inp.value = cur; inp.min = '0'; inp.setAttribute('aria-label', 'القيمة المتوقعة');
+    inp.style.cssText = 'width:160px;padding:.25rem .5rem;font-size:13px;border:1px solid var(--brand);border-radius:8px;font-family:inherit;direction:ltr;text-align:right;box-shadow:0 0 0 3px rgba(37,99,235,.12)';
+    el.replaceWith(inp); inp.focus(); inp.select();
+    let done = false;
+    const commit = async (save) => {
+      if (done) return; done = true;
+      if (save) { try { await api('/opportunities/' + id, 'PATCH', { value_sar: Number(inp.value) || 0 }); toast('حُفظ ✓'); } catch (e) { toast(e.message, true); } }
+      this.oppOpen(id); // refresh the drawer either way
+    };
+    inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); commit(true); } else if (e.key === 'Escape') { e.preventDefault(); commit(false); } });
+    inp.addEventListener('blur', () => commit(true));
+  },
   // add modal
   oppAdd() {
     const S = window.__SANAD || {}; const stages = S.stages || []; const secs = S.sectors || [];
