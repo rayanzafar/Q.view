@@ -52,7 +52,7 @@ webRouter.get('/app/project/:id', requireWeb, async (req, res, next) => {
 webRouter.get('/app/:page', requireWeb, async (req, res, next) => {
   const fn = PAGES[req.params.page];
   if (!fn) return res.redirect('/app/tasks');
-  try { res.send(await fn(req.ctx.user, { year: req.query.year })); } catch (e) { next(e); }
+  try { res.send(await fn(req.ctx.user, { year: req.query.year, sector: req.query.sector })); } catch (e) { next(e); }
 });
 
 // Report preview (renders template HTML with the caller's redacted data)

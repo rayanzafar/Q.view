@@ -155,6 +155,9 @@ Object.assign(window.Sanad, {
   openDrawer(html) { const d = document.getElementById('drawer'); d.innerHTML = html; d.classList.add('on'); d.setAttribute('aria-hidden', 'false'); document.getElementById('scrim').classList.add('on'); },
   closeDrawer() { const d = document.getElementById('drawer'); d.classList.remove('on'); d.setAttribute('aria-hidden', 'true'); document.getElementById('scrim').classList.remove('on'); },
   openModal(html) { const m = document.getElementById('modal'); m.innerHTML = '<div class="modal-card">' + html + '</div>'; m.classList.add('on'); },
+  // Drill-down popup: shows the pre-rendered <template id="dd-KEY"> embedded by the page (SSR data,
+  // same scope/redaction as the page itself — nothing is fetched client-side).
+  openDD(k) { const t = document.getElementById('dd-' + k); if (t) this.openModal(t.innerHTML); },
   closeModal() { const m = document.getElementById('modal'); m.classList.remove('on'); m.innerHTML = ''; },
 
   pmoView(ns, mode) {

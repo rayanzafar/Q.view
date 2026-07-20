@@ -127,6 +127,25 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:.85rem}
 @media(max-width:520px){.grid2{grid-template-columns:1fr}}
 @media prefers-reduced-motion{.drawer,.scrim,.modal-card{transition:none;animation:none}}
+
+/* ── Sector filter chips + clickable KPIs + drill-down rows ── */
+.chips{display:flex;gap:.45rem;flex-wrap:wrap;align-items:center;margin-bottom:1rem}
+.chips .lbl{font-size:11px;font-weight:800;color:var(--muted)}
+.chip{display:inline-flex;align-items:center;gap:.45rem;padding:.4rem .8rem;border-radius:999px;font-size:12.5px;font-weight:700;
+  background:#fff;border:1px solid var(--line);color:var(--ink2);transition:all .15s;cursor:pointer}
+.chip:hover{border-color:#c9d3e8;box-shadow:var(--sh-sm);transform:translateY(-1px)}
+.chip.on{background:var(--brand-grad);border-color:transparent;color:#fff;box-shadow:0 6px 14px -6px rgba(37,99,235,.55)}
+.chip .dot{width:8px;height:8px;border-radius:50%;flex:none}
+.chip.on .dot{outline:2px solid rgba(255,255,255,.5)}
+.hclick{cursor:pointer;border-radius:12px;transition:background .15s,box-shadow .15s}
+.hclick:hover{background:rgba(255,255,255,.07);box-shadow:inset 0 0 0 1px rgba(255,255,255,.18)}
+.hclick:focus-visible{outline:2px solid #fff;outline-offset:3px}
+.dd-hint{font-size:10px;font-weight:700;color:rgba(255,255,255,.5);display:inline-flex;align-items:center;gap:.25rem}
+.dd-row{display:flex;justify-content:space-between;gap:.8rem;padding:.5rem 0;border-bottom:1px dashed var(--line);font-size:12.5px;align-items:center}
+.dd-row:last-child{border-bottom:none}
+.dd-kpi{display:flex;align-items:baseline;gap:.6rem;flex-wrap:wrap}
+.dd-kpi .v{font-size:1.6rem;font-weight:800;letter-spacing:-.02em}
+.dd-sec{font-weight:800;font-size:12.5px;margin-top:.35rem;color:var(--ink2)}
 `;
 
 export async function layout({ user, active, title, subtitle, body, year, extraHead = '' }) {
@@ -141,7 +160,8 @@ export async function layout({ user, active, title, subtitle, body, year, extraH
 
   const years = await availableYears();
   const showYear = ['ceo', 'portfolio', 'sector'].includes(active);
-  const yearSel = showYear ? `<select class="yr" onchange="location.search='?year='+this.value">
+  // Preserve other query params (e.g. the owner's ?sector= filter) when switching year.
+  const yearSel = showYear ? `<select class="yr" onchange="const p=new URLSearchParams(location.search);p.set('year',this.value);location.search=p.toString()">
     ${years.map((y) => `<option value="${y}" ${String(y) === String(year || config.fiscalYear) ? 'selected' : ''}>سنة ${y}</option>`).join('')}
   </select>` : '';
 
