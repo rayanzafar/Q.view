@@ -336,8 +336,8 @@ export async function sectorPage(user, opts = {}) {
   const staffRows = staff.employees.slice(0, 12).map((e) => `<tr style="border-bottom:1px solid var(--line)">
     <td style="padding:.4rem .6rem;font-size:12.5px">${esc(e.name)}<div style="font-size:10.5px;color:var(--muted)">${esc(e.job || '')}</div></td>
     <td style="padding:.4rem .6rem;text-align:center;font-size:12px" class="tnum">${e.projects}</td>
-    <td style="padding:.4rem .6rem;width:150px">${utilStrip(e.months)}</td>
-    <td style="padding:.4rem .6rem;text-align:center;font-weight:800;font-size:13px" class="tnum" style="color:${utilTone(e.utilization)}">${e.utilization}%</td></tr>`).join('') || '<tr><td colspan="4" style="padding:1rem;color:var(--muted);font-size:12px">لا تسكين مسجّل لهذا القطاع في ' + year + '</td></tr>';
+    <td style="padding:.4rem .6rem;width:150px">${utilStrip(e.months, staff.currentMonth)}</td>
+    <td style="padding:.4rem .6rem;text-align:center" class="tnum"><span style="font-weight:800;font-size:13px;color:${utilTone(e.current)}">${e.current}%</span><div style="font-size:9.5px;color:var(--faint)">سنويًا ${e.utilization}%</div></td></tr>`).join('') || '<tr><td colspan="4" style="padding:1rem;color:var(--muted);font-size:12px">لا تسكين مسجّل لهذا القطاع في ' + year + '</td></tr>';
   const clientRows = clients.map((c) => `<tr style="border-bottom:1px solid var(--line)">
     <td style="padding:.4rem .6rem;font-size:12.5px">${esc(c.name_ar)}</td>
     <td style="padding:.4rem .6rem;text-align:center;font-size:12px" class="tnum">${c.opps}</td>
@@ -407,13 +407,13 @@ export async function sectorPage(user, opts = {}) {
         salesPctS != null ? `الهدف ${fmtSar(sd.target_sales_halalas)} · تحقّق ${salesPctS}%` : `${wins.won} صفقة مكسوبة`,
         { dd: 'secwins', tone: 'var(--brand2)', bar: salesPctS != null ? { p: salesPctS, color: 'var(--brand2)' } : null })}
       ${stat('العقود النشطة', fmtSar(activeC.v), `${activeC.n} عقد نشط · موقّع ${year}: ${sd.contracts_count} (${fmtSar(sd.contracts_halalas)})`, { dd: 'seccontracts' })}
-      ${stat('يوتيليزيشن الفريق', staff.teamUtil + '%', `${staff.headcount} موظفًا مُسكَّنًا`, { tone: utilTone(staff.teamUtil) })}
+      ${stat('إشغال الفريق الآن', (staff.teamCurrent ?? staff.teamUtil) + '%', `سنويًا ${staff.teamUtil}% · ${staff.headcount} موظف`, { tone: utilTone(staff.teamCurrent ?? staff.teamUtil) })}
       ${stat('الفوز', wins.won + ' فرصة', `نسبة ${wins.winRate}% · خسارة ${wins.lost}`, { dd: 'secwins', tone: 'var(--green)' })}
       ${stat('مشاريع قائمة', sd.projects.IN_PROGRESS || 0, `مخاطر مفتوحة ${sd.openRisks}`)}
     </div>
     <div style="display:grid;grid-template-columns:1.3fr 1fr;gap:.9rem;margin-bottom:.9rem">
       ${card(`<div style="padding:.85rem 1rem;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line)"><div style="font-weight:800;font-size:13.5px">التسكين الشهري واليوتيليزيشن</div><span style="font-size:10.5px;color:var(--muted)">أخضر ≥80% · أصفر · أحمر تجاوز</span></div>
-        <table style="width:100%;border-collapse:collapse"><thead><tr>${th({ t: 'الموظف' })}${th({ t: 'مشاريع', a: 'center' })}${th({ t: 'ينا … ديس (شهريًا)', a: 'center' })}${th({ t: 'اليوتيليزيشن', a: 'center' })}</tr></thead><tbody>${staffRows}</tbody></table>`)}
+        <table style="width:100%;border-collapse:collapse"><thead><tr>${th({ t: 'الموظف' })}${th({ t: 'مشاريع', a: 'center' })}${th({ t: 'يناير → ديسمبر', a: 'center' })}${th({ t: 'الإشغال (الآن·سنوي)', a: 'center' })}</tr></thead><tbody>${staffRows}</tbody></table>`)}
       <div style="display:flex;flex-direction:column;gap:.9rem">
         ${card(`<div style="padding:.85rem 1rem;border-bottom:1px solid var(--line);font-weight:800;font-size:13.5px">خط الفرص حسب المرحلة</div><div style="padding:.6rem 1rem">${pipeRow}</div>`)}
         ${bonusesCard}
@@ -816,28 +816,31 @@ export async function teamPage(user, opts = {}) {
   const canCreate = can(user, 'create', 'employee');
   const allSec = await all('SELECT id, name_ar, color FROM sector WHERE active = 1 AND deleted_at IS NULL ORDER BY sort_order');
   const sectorNames = Object.fromEntries(allSec.map((s) => [s.id, s.name_ar]));
-  const { year, sector, roster } = await staffingRoster(user, { sector: opts.sector });
+  const { year, sector, currentMonth, roster } = await staffingRoster(user, { sector: opts.sector });
+  const MONTHS = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+  const curName = currentMonth ? MONTHS[currentMonth - 1] : '';
   const projects = await all(`SELECT id, name_ar, sector_id FROM project WHERE deleted_at IS NULL AND status IN ('IN_PROGRESS','PLANNED')
      ${sector ? 'AND sector_id = ?' : ''} ORDER BY name_ar`, sector ? [sector] : []);
 
   const activeN = roster.filter((e) => e.active !== 0).length;
-  const avgUtil = roster.length ? Math.round(roster.reduce((a, e) => a + e.annualUtil, 0) / roster.length) : 0;
-  const overCount = roster.filter((e) => e.overMonths > 0).length;
-  const benchN = roster.filter((e) => e.active !== 0 && e.annualUtil === 0).length;
+  const avgCurrent = roster.length ? Math.round(roster.reduce((a, e) => a + e.currentUtil, 0) / roster.length) : 0;
+  const avgAnnual = roster.length ? Math.round(roster.reduce((a, e) => a + e.annualUtil, 0) / roster.length) : 0;
+  const overNow = roster.filter((e) => e.currentUtil > 100).length;
+  const benchNow = roster.filter((e) => e.active !== 0 && e.currentUtil === 0).length;
   const totalSalary = canSalary ? roster.reduce((a, e) => a + (e.salary_halalas || 0), 0) : null;
   const avgSalary = canSalary && roster.length ? Math.round(totalSalary / roster.length) : null;
   const uTone = (u) => u > 100 ? 'var(--red)' : u >= 70 ? 'var(--green)' : u >= 40 ? 'var(--amber)' : u > 0 ? 'var(--blue)' : 'var(--faint)';
 
   const byType = {}; for (const e of roster) { const t = e.employment_type || 'غير محدد'; byType[t] = (byType[t] || 0) + 1; }
   const typeItems = Object.entries(byType).sort((a, b) => b[1] - a[1]).map(([t, n], i) => ({ label: esc(t), value: n, color: ['#2563eb', '#7c3aed', '#0891b2', '#059669', '#d97706'][i % 5] }));
-  // utilization distribution buckets (bench / low / healthy / high / over)
+  // Distribution of THIS MONTH's load (the actionable "now" view).
   const buckets = [
     { label: 'على المقعد (0%)', test: (u) => u === 0, color: '#94a3b8' },
     { label: 'منخفض (<40%)', test: (u) => u > 0 && u < 40, color: '#2563eb' },
     { label: 'صحي (40–70%)', test: (u) => u >= 40 && u < 70, color: '#0891b2' },
     { label: 'عالٍ (70–100%)', test: (u) => u >= 70 && u <= 100, color: '#059669' },
     { label: 'فوق الطاقة (>100%)', test: (u) => u > 100, color: '#dc2626' },
-  ].map((b) => ({ label: b.label, value: roster.filter((e) => e.active !== 0 && b.test(e.annualUtil)).length, color: b.color }));
+  ].map((b) => ({ label: b.label, value: roster.filter((e) => e.active !== 0 && b.test(e.currentUtil)).length, color: b.color }));
 
   const rowsHtml = roster.map((e) => {
     const projTip = e.projects.map((p) => esc(p.name)).join('، ') || 'بلا تسكين';
@@ -845,14 +848,14 @@ export async function teamPage(user, opts = {}) {
     <td class="py-2 px-3 text-[13px]">${esc(e.name_ar)}${e.active === 0 ? ' ' + pill('غير نشط', 'slate') : ''}
       <div style="font-size:10.5px;color:var(--muted)">${esc(e.job_title || '—')}${sector ? '' : ' · ' + esc(sectorNames[e.sector_id] || '—')}</div></td>
     <td class="px-3 text-[12px]">${esc(e.employment_type || '—')}</td>
-    <td class="px-3" style="min-width:190px">
+    <td class="px-3" style="min-width:215px">
       <div style="display:flex;align-items:center;gap:.5rem">
-        <span class="tnum" style="font-weight:800;font-size:13px;color:${uTone(e.annualUtil)};min-width:38px">${e.annualUtil}%</span>
-        <div style="flex:1">${utilStrip(e.months)}</div>
+        <span class="tnum" style="font-weight:800;font-size:14px;color:${uTone(e.currentUtil)};min-width:40px" title="إشغال ${curName}">${e.currentUtil}%</span>
+        <div style="flex:1">${utilStrip(e.months, currentMonth)}</div>
       </div>
-      ${e.overMonths > 0 ? `<div style="font-size:10px;color:var(--red);font-weight:700">⚠ فوق الطاقة في ${e.overMonths} شهر (ذروة ${e.peak}%)</div>` : ''}</td>
+      <div style="font-size:10px;color:var(--muted);margin-top:.15rem">${curName ? curName + ' · ' : ''}سنويًا ${e.annualUtil}% · مُسكّن ${e.staffedMonths}/12${e.overMonths ? ` · <span style="color:var(--red);font-weight:700">تجاوز ${e.overMonths} شهر</span>` : ''}</div></td>
     <td class="px-3 text-[12px] tnum" title="${projTip}">${e.projectCount ? `<span class="pill" style="background:#dbeafe;color:#2563eb">${e.projectCount} مشروع</span>` : '<span style="color:var(--faint)">—</span>'}</td>
-    ${canSalary ? `<td class="px-3 text-[13px] tabular-nums">${fmtSar(e.salary_halalas)}</td>` : ''}
+    ${canSalary ? `<td class="px-3 text-[13px] tabular-nums">${e.salary_halalas ? fmtSar(e.salary_halalas) : '<span style="color:var(--faint)">—</span>'}</td>` : ''}
     ${canManage ? `<td class="px-3"><div style="display:flex;gap:.3rem">
       <button class="btn btn-sm btn-ghost" onclick="Sanad.empEdit('${e.id}')" title="تعديل">✎</button>
       <button class="btn btn-sm btn-ghost" onclick="Sanad.empAssign('${e.id}')" title="تسكين على مشروع">＋مشروع</button></div></td>` : ''}
@@ -875,26 +878,26 @@ export async function teamPage(user, opts = {}) {
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.7rem;margin-bottom:.9rem">
       ${kpi('إجمالي الأعضاء', roster.length, `${activeN} نشط`)}
-      ${kpi('متوسط الإشغال المخطط', avgUtil + '%', 'عبر السنة', uTone(avgUtil))}
-      ${kpi('فوق الطاقة', overCount, 'موظف > 100%', overCount ? 'var(--red)' : 'var(--green)')}
-      ${kpi('على المقعد', benchN, 'بلا تسكين', benchN ? 'var(--amber)' : 'var(--green)')}
-      ${canSalary ? kpi('فاتورة الرواتب', fmtSar(totalSalary), `متوسط ${fmtSar(avgSalary)}`, 'var(--brand2)') : ''}
+      ${kpi(`إشغال ${curName || year} (متوسط)`, avgCurrent + '%', `متوسط السنة ${avgAnnual}%`, uTone(avgCurrent))}
+      ${kpi('على المقعد الآن', benchNow, `بلا تسكين في ${curName || 'الفترة'}`, benchNow ? 'var(--amber)' : 'var(--green)')}
+      ${kpi('فوق الطاقة الآن', overNow, `> 100% في ${curName || 'الفترة'}`, overNow ? 'var(--red)' : 'var(--green)')}
+      ${canSalary ? kpi('فاتورة الرواتب', totalSalary ? fmtSar(totalSalary) : '—', totalSalary ? `متوسط ${fmtSar(avgSalary)}` : 'غير مسجّلة في بيانات العرض', 'var(--brand2)') : ''}
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:.9rem;margin-bottom:.9rem">
-      ${card(`<div style="padding:.8rem 1rem;border-bottom:1px solid var(--line);font-weight:800;font-size:13px">توزيع الإشغال المخطط</div><div style="padding:.7rem 1rem">${hbars(buckets, { fmt: (v) => v + ' موظف' })}</div>`)}
+      ${card(`<div style="padding:.8rem 1rem;border-bottom:1px solid var(--line);font-weight:800;font-size:13px">توزيع الإشغال — ${curName || year}</div><div style="padding:.7rem 1rem">${hbars(buckets, { fmt: (v) => v + ' موظف' })}</div>`)}
       ${card(`<div style="padding:.8rem 1rem;border-bottom:1px solid var(--line);font-weight:800;font-size:13px">حسب نوع التوظيف</div><div style="padding:.7rem 1rem">${hbars(typeItems, { fmt: (v) => v + ' عضو' })}</div>`)}
     </div>
-    <div style="font-size:10.5px;color:var(--faint);margin-bottom:.55rem">«الإشغال المخطط» = نسبة تسكين الموظف على المشاريع عبر أشهر السنة (مصدره نموذج التسكين، وليس ساعات فعلية — تُضاف عند ربط سجل الوقت). الشريط الشهري: أخضر ≥80% · أصفر · أزرق منخفض · أحمر تجاوز الطاقة.</div>
+    <div style="font-size:10.5px;color:var(--faint);margin-bottom:.55rem">الرقم الكبير = <b>إشغال ${curName || 'الشهر الحالي'}</b> (تسكين الموظف هذا الشهر)؛ «سنويًا» = متوسط تسكينه عبر أشهر ${year}. الشريط يعرض الاثني عشر شهرًا (يناير→ديسمبر) والشهر الحالي مُحاط بإطار — أخضر ≥80% · أصفر · أزرق منخفض · أحمر تجاوز الطاقة · رمادي بلا تسكين. المصدر نموذج التسكين (allocation) وليس ساعات فعلية. الترتيب حسب الأكثر إشغالًا الآن.</div>
     ${card(`<div style="padding:.8rem 1rem;border-bottom:1px solid var(--line);font-weight:800;font-size:13px">أعضاء الفريق والإشغال</div>
       <div style="overflow-x:auto"><table class="w-full" style="border-collapse:collapse"><thead><tr class="text-[11px] text-muted">
-      ${th('الموظف')}${th('النوع')}${th('الإشغال المخطط عبر السنة')}${th('المشاريع', 'center')}${canSalary ? th('الراتب') : ''}${canManage ? th('إجراءات', 'center') : ''}
+      ${th('الموظف')}${th('النوع')}${th(`الإشغال (${curName || 'الحالي'} · السنوي)`)}${th('المشاريع', 'center')}${canSalary ? th('الراتب') : ''}${canManage ? th('إجراءات', 'center') : ''}
       </tr></thead><tbody>${rowsHtml || `<tr><td colspan="6" style="padding:1.2rem;color:var(--muted);text-align:center">لا أعضاء ضمن نطاقك</td></tr>`}</tbody></table></div>`)}
     <script>window.__SANAD=Object.assign(window.__SANAD||{},{
       emps:${JSON.stringify(Object.fromEntries(roster.map((e) => [e.id, { name_ar: e.name_ar, job_title: e.job_title, employment_type: e.employment_type, status: e.status, active: e.active, sector_id: e.sector_id, salary_sar: canSalary ? Math.round((e.salary_halalas || 0) / 100) : null, projects: e.projects.map((p) => ({ allocId: p.allocId, name: p.name, projectId: p.projectId })) }])))},
       teamSectors:${JSON.stringify(allSec.map((s) => ({ id: s.id, name_ar: s.name_ar })))},
       teamProjects:${JSON.stringify(projects.map((p) => ({ id: p.id, name_ar: p.name_ar, sector_id: p.sector_id })))},
       canSalary:${canSalary}, canManage:${canManage}, teamSectorLocked:${JSON.stringify(sector)}});</script>`;
-  return layout({ user, active: 'team', title: 'الفريق والتسكين', subtitle: `الموارد البشرية · الإشغال المخطط · ${year}`, body });
+  return layout({ user, active: 'team', title: 'الفريق والتسكين', subtitle: `الموارد البشرية · الإشغال والتسكين · ${curName || ''} ${year}`, body });
 }
 
 export async function usersPage(user) {

@@ -156,13 +156,16 @@ export async function sectorStaffing(sectorId, year) {
     let mj = {}; try { mj = JSON.parse(a.monthly_json || '{}'); } catch { mj = {}; }
     for (const [m, frac] of Object.entries(mj)) byEmp[key].months[m] = (byEmp[key].months[m] || 0) + Number(frac || 0);
   }
+  const nowM = year === new Date().getUTCFullYear() ? (new Date().getUTCMonth() + 1) : 0;
   const employees = Object.values(byEmp).map((e) => {
     const months = Array.from({ length: 12 }, (_, i) => Math.round((e.months[i + 1] || 0) * 100));
-    const util = Math.round(months.reduce((a, b) => a + b, 0) / 12); // % of the year utilized
-    return { name: e.name, job: e.job, projects: e.projects.size, months, utilization: util };
-  }).sort((a, b) => b.utilization - a.utilization);
+    const util = Math.round(months.reduce((a, b) => a + b, 0) / 12); // annual: % of the year utilized
+    const current = nowM ? months[nowM - 1] : 0;                     // this month's load
+    return { name: e.name, job: e.job, projects: e.projects.size, months, utilization: util, current };
+  }).sort((a, b) => (b.current - a.current) || (b.utilization - a.utilization));
   const teamUtil = employees.length ? Math.round(employees.reduce((a, e) => a + e.utilization, 0) / employees.length) : 0;
-  return { employees, teamUtil, headcount: employees.length };
+  const teamCurrent = employees.length ? Math.round(employees.reduce((a, e) => a + e.current, 0) / employees.length) : 0;
+  return { employees, teamUtil, teamCurrent, currentMonth: nowM, headcount: employees.length };
 }
 
 // Clients active in a sector, with their pipeline and project counts.

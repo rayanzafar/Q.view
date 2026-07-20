@@ -294,12 +294,15 @@ export function hbars(items, opts = {}) {
   }).join('')}</div>`;
 }
 
-// 12-month utilization heat strip (allocation % per month). Over-allocation shows red.
-export function utilStrip(months) {
-  const AR = ['ي', 'ف', 'م', 'أ', 'م', 'ن', 'ل', 'غ', 'س', 'ك', 'ب', 'د'];
-  return `<div style="display:flex;gap:2px">${months.map((v, i) => {
+// 12-month utilization heat strip (allocation % per month). Over-allocation shows red; the current
+// month (1-based `now`) is outlined so "this month vs the rest of the year" reads at a glance.
+// Rendered LTR (Jan→Dec) even on the RTL page so the month order is unambiguous.
+export function utilStrip(months, now = 0) {
+  const AR = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+  return `<div style="display:flex;gap:2px;direction:ltr">${months.map((v, i) => {
     const c = v === 0 ? '#eef1f7' : v > 105 ? '#dc2626' : v >= 80 ? '#059669' : v >= 40 ? '#f59e0b' : '#93c5fd';
-    return `<span title="${AR[i]}: ${v}%" style="flex:1;height:15px;border-radius:3px;background:${c}"></span>`;
+    const cur = (i + 1) === now;
+    return `<span title="${AR[i]}: ${v}%" style="flex:1;height:15px;border-radius:3px;background:${c}${cur ? ';box-shadow:0 0 0 2px var(--ink2);position:relative;z-index:1' : ''}"></span>`;
   }).join('')}</div>`;
 }
 

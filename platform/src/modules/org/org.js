@@ -129,6 +129,8 @@ export async function staffingRoster(user, opts = {}) {
      WHERE a.deleted_at IS NULL AND a.year = ? AND a.employee_id IS NOT NULL ${sec ? 'AND a.sector_id = ?' : ''}`, sec ? [year, sec] : [year]);
   const byEmp = {};
   for (const a of allocs) (byEmp[a.employee_id] ||= []).push(a);
+  // "current month" only when viewing the live year; a past/future year has no meaningful "now".
+  const nowM = year === new Date().getUTCFullYear() ? (new Date().getUTCMonth() + 1) : 0;
   const roster = emps.map((e) => {
     const mine = byEmp[e.id] || [];
     const monthLoad = Array(12).fill(0);
@@ -138,11 +140,16 @@ export async function staffingRoster(user, opts = {}) {
       return { allocId: a.id, projectId: a.project_id, name: a.proj_name || a.project_name || '—', type: a.type || 'member', status: a.proj_status, months: mj };
     });
     const months = monthLoad.map((f) => Math.round(f * 100));
-    const annualUtil = Math.round(months.reduce((a, b) => a + b, 0) / 12);
-    const peak = Math.max(0, ...months);
+    const annualUtil = Math.round(months.reduce((a, b) => a + b, 0) / 12); // % of annual capacity used
+    const currentUtil = nowM ? months[nowM - 1] : 0;                        // this month's load
+    const staffedMonths = months.filter((m) => m > 0).length;
+    const intensity = staffedMonths ? Math.round(months.filter((m) => m > 0).reduce((a, b) => a + b, 0) / staffedMonths) : 0; // avg load WHEN staffed
     return { id: e.id, name_ar: e.name_ar, name_en: e.name_en, job_title: e.job_title, employment_type: e.employment_type,
       status: e.status, active: e.active, sector_id: e.sector_id, salary_halalas: e.salary_halalas,
-      months, annualUtil, peak, overMonths: months.filter((m) => m > 100).length, projects, projectCount: projects.length };
+      months, annualUtil, currentUtil, staffedMonths, intensity, peak: Math.max(0, ...months),
+      overMonths: months.filter((m) => m > 100).length, projects, projectCount: projects.length };
   });
-  return { year, sector: sec, roster };
+  // Order by who is busiest NOW, then by annual load, then name — so managers see live staffing first.
+  roster.sort((a, b) => (b.currentUtil - a.currentUtil) || (b.annualUtil - a.annualUtil) || String(a.name_ar).localeCompare(String(b.name_ar), 'ar'));
+  return { year, sector: sec, currentMonth: nowM, roster };
 }
