@@ -1,0 +1,4 @@
+---
+description: Run the full role×surface permissions matrix (16 roles × pages × key APIs) and report any cell deviating from the expected 200/302/403.
+---
+Run `node --experimental-sqlite --test tests/security/permissions-matrix.test.js` (it builds the matrix from `src/web/nav.js` PAGE_ACCESS + the API expectations table). If it doesn't exist yet, that IS the finding — build it per the qa-tester agent conventions first. Then, against a locally booted seeded server, spot-verify 5 sensitive cells by hand as real HTTP calls (demo.viewer→/app/finance, demo.bd→salary fields, demo.employee→/api/org/roster, demo.sectorlead→other-sector data, anonymous→/app/ceo). Any deviation: fix server-side (never by hiding UI), add the cell to the matrix, re-run. Report the matrix summary (cells checked / passed / fixed).

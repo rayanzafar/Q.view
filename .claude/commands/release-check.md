@@ -1,0 +1,4 @@
+---
+description: Pre-deploy release gate — quality green, backup taken when needed, then deploy to staging and verify live (sweep + evidence + changelog).
+---
+Execute the release protocol via the **release-manager** agent (or inline if the change is small): (1) `/quality` must be fully green first; (2) `scripts/pg-backup.sh` if this release contains any migration/backfill/bulk-data change — record dump filename; (3) `railway up` from platform/ (integration tree only); (4) await `/health` + `/ready`, scan `railway logs` for boot errors; (5) `node scripts/sweep.mjs https://staging.os.evcsol.com` — zero deviations; (6) `node scripts/evidence.mjs https://staging.os.evcsol.com` for affected pages/roles; (7) append `docs/CHANGELOG.md` + local git tag `wp/<n>-deployed`. Any live deviation → `railway rollback` first, diagnose second. Report: deployment id, gate results, evidence paths, changelog entry.
