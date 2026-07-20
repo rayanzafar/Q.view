@@ -20,9 +20,9 @@ const STYLE = `
 :root{
   --brand:#244A99; --brand2:#834798; --brand-grad:linear-gradient(120deg,#244A99,#834798);
   --side:linear-gradient(170deg,#182c56 0%,#1f3a75 45%,#56316b 100%);
-  --ink:#0f172a; --ink2:#1e293b; --muted:#64748b; --faint:#94a3b8;
+  --ink:#0f172a; --ink2:#1e293b; --muted:#5b6472; --faint:#79828f;
   --line:#e6e9f0; --bg:#f6f7fb; --surface:#fff;
-  --green:#059669; --amber:#d97706; --red:#dc2626; --blue:#244A99;
+  --green:#047857; --amber:#a16207; --red:#dc2626; --blue:#244A99;
   --r:14px; --r-sm:10px; --sh-sm:0 1px 2px rgba(15,23,42,.05),0 1px 3px rgba(15,23,42,.05);
   --sh:0 2px 8px rgba(15,23,42,.06),0 12px 28px rgba(36,74,153,.08);
 }
@@ -204,7 +204,7 @@ export async function layout({ user, active, title, subtitle, body, year, extraH
   const years = await availableYears();
   const showYear = ['ceo', 'portfolio', 'sector'].includes(active);
   // Preserve other query params (e.g. the owner's ?sector= filter) when switching year.
-  const yearSel = showYear ? `<select class="yr" onchange="const p=new URLSearchParams(location.search);p.set('year',this.value);location.search=p.toString()">
+  const yearSel = showYear ? `<select class="yr" aria-label="السنة المالية" onchange="const p=new URLSearchParams(location.search);p.set('year',this.value);location.search=p.toString()">
     ${years.map((y) => `<option value="${y}" ${String(y) === String(year || config.fiscalYear) ? 'selected' : ''}>سنة ${y}</option>`).join('')}
   </select>` : '';
 

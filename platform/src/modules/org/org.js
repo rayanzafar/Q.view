@@ -169,7 +169,9 @@ export async function staffingRoster(user, opts = {}) {
     const staffedMonths = months.filter((m) => m > 0).length;
     const intensity = staffedMonths ? Math.round(months.filter((m) => m > 0).reduce((a, b) => a + b, 0) / staffedMonths) : 0; // avg load WHEN staffed
     return { id: e.id, name_ar: e.name_ar, name_en: e.name_en, job_title: e.job_title, employment_type: e.employment_type,
-      status: e.status, active: e.active, sector_id: e.sector_id, salary_halalas: e.salary_halalas,
+      status: e.status, active: e.active, sector_id: e.sector_id,
+      // QH-1: الراتب حقل حساس — يُسلسَل فقط لمن يملك صلاحية قراءته (HR/admin)، في الواجهة والـAPI معاً
+      ...(can(user, 'read', 'salary') ? { salary_halalas: e.salary_halalas } : {}),
       months, annualUtil, currentUtil, prevMonthUtil, monthDelta, oppLoadPct, staffedMonths, intensity, peak: Math.max(0, ...months),
       overMonths: months.filter((m) => m > 100).length, projects, projectCount: projects.length, opportunities };
   });

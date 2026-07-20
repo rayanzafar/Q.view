@@ -40,7 +40,7 @@ const PAGES = {
   'my-opportunities': P.myOpportunitiesPage,
   projects: P.projectsPage, tasks: P.tasksPage, timesheet: P.timesheetPage, approvals: P.approvalsPage,
   team: P.teamPage, users: P.usersPage, audit: P.auditPage, reports: P.reportsPage, org: P.orgPage,
-  finance: P.financePage, mail: P.mailPage, clients: P.clientsPage,
+  finance: P.financePage, mail: P.mailPage, clients: P.clientsPage, imports: P.importsPage,
 };
 
 // معاينة رسالة من صندوق المعاينة — بنفس صلاحية صفحة مركز البريد

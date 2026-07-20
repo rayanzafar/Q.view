@@ -108,7 +108,7 @@ export async function projectsPage(user, opts = {}) {
       ${canEdit ? `<button class="btn btn-primary" onclick="Sanad.projAdd()">${icon('plus')} مشروع جديد</button>` : ''}
     </div>
     <div style="font-size:10.5px;color:var(--faint);margin:-.5rem 0 .6rem">⁎ نسبة إنجاز محسوبة من حالة المخرجات — المصدر القديم بلا نسبة مسجلة · شارة القيمة توضح أساسها (عقد / أمر شراء / ميزانية / إيراد محقق)</div>
-    <div id="prj-kanban" class="kanban" data-kind="prj">${columns}</div>
+    <div id="prj-kanban" class="kanban" data-kind="prj" tabindex="0" role="region" aria-label="لوحة المشاريع">${columns}</div>
     <div id="prj-table" class="card" style="display:none;overflow-x:auto">
       <table class="w-full"><thead><tr class="text-[11px] text-muted text-right">
         <th class="py-2 px-3 font-medium">المشروع</th><th class="px-3 font-medium">الحالة</th><th class="px-3 font-medium">RAG</th>
@@ -148,8 +148,8 @@ export async function tasksPage(user) {
       <div class="font-bold text-sm mb-2">إضافة سريعة</div>
       <div class="flex gap-2">
         <input id="qa-title" placeholder="عنوان المهمة…" class="flex-1 border border-line rounded-lg px-3 py-2 text-sm">
-        <select id="qa-priority" class="border border-line rounded-lg px-2 text-sm"><option>P2</option><option>P0</option><option>P1</option><option>P3</option></select>
-        <input id="qa-due" type="date" class="border border-line rounded-lg px-2 text-sm">
+        <select id="qa-priority" aria-label="الأولوية" class="border border-line rounded-lg px-2 text-sm"><option value="P2">متوسطة</option><option value="P0">حرجة</option><option value="P1">عالية</option><option value="P3">منخفضة</option></select>
+        <input id="qa-due" type="date" aria-label="تاريخ الاستحقاق" class="border border-line rounded-lg px-2 text-sm">
         <button onclick="Sanad.quickTask()" class="text-white text-[12px] px-4 rounded-lg" style="background:linear-gradient(120deg,#2563eb,#9333ea)">إضافة</button>
       </div></div>
       <table class="w-full"><thead><tr class="text-[11px] text-muted text-right">

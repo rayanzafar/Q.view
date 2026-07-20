@@ -1,6 +1,7 @@
 // REST API aggregator. Thin handlers → services (which enforce authz + audit).
 import { Router } from 'express';
 import { requireAuth } from '../core/http/context.js';
+import { forbidden } from '../core/http/errors.js';
 import * as opps from './crm/opportunities.js';
 import * as projects from './pmo/projects.js';
 import * as tasks from './pmo/tasks.js';
@@ -15,6 +16,7 @@ import { oppteamRouter } from './crm/oppteam.routes.js';
 import { viewsRouter } from './views/views.routes.js';
 import { clientsRouter } from './clients/clients.routes.js';
 import { governanceRouter } from './pmo/governance.routes.js';
+import { ioRouter } from './io/io.routes.js';
 
 export const apiRouter = Router();
 apiRouter.use(requireAuth());
@@ -22,6 +24,7 @@ apiRouter.use(oppteamRouter);
 apiRouter.use(viewsRouter);
 apiRouter.use(clientsRouter);
 apiRouter.use(governanceRouter);
+apiRouter.use(ioRouter);
 const h = (fn) => async (req, res, next) => { try { const r = await fn(req, res); if (r !== undefined) res.json(r); } catch (e) { next(e); } };
 
 // ── Opportunities / CRM ──
@@ -87,5 +90,13 @@ apiRouter.post('/finance/progress-claim', h((req) => finance.createProgressClaim
 apiRouter.post('/finance/collections', h((req) => finance.recordCollection(req.ctx, req.body)));
 
 // ── Metrics / dashboards ──
-apiRouter.get('/metrics/company', h((req) => metrics.companyOverview(req.ctx.user, { year: req.query.year })));
-apiRouter.get('/metrics/sector/:id', h((req) => metrics.sectorDashboard(req.ctx.user, req.params.id, { year: req.query.year })));
+// QH-2: مقاييس الشركة/القطاع أرقام قيادية — ليست لكل مستخدم مسجَّل
+apiRouter.get('/metrics/company', h((req) => {
+  if (req.ctx.user.scope !== 'company') throw forbidden('مقاييس الشركة متاحة للأدوار القيادية فقط');
+  return metrics.companyOverview(req.ctx.user, { year: req.query.year });
+}));
+apiRouter.get('/metrics/sector/:id', h((req) => {
+  const u = req.ctx.user;
+  if (u.scope !== 'company' && u.sector_id !== req.params.id) throw forbidden('مقاييس هذا القطاع خارج نطاقك');
+  return metrics.sectorDashboard(u, req.params.id, { year: req.query.year });
+}));

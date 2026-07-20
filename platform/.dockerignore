@@ -6,3 +6,4 @@ data/backups
 data/outbox
 .git
 *.log
+docs/evidence

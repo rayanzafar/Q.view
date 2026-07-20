@@ -30,10 +30,10 @@ export async function timesheetPage(user) {
     ${card(`<div class="p-4 border-b border-line">
       <div class="font-bold text-sm mb-2">تسجيل وقت</div>
       <div class="flex gap-2 flex-wrap">
-        <input id="ts-date" type="date" value="${to}" class="border border-line rounded-lg px-2 py-2 text-sm">
-        <input id="ts-hours" type="number" step="0.5" min="0" max="16" placeholder="ساعات" class="border border-line rounded-lg px-3 py-2 text-sm w-24">
-        <select id="ts-kind" class="border border-line rounded-lg px-2 text-sm">
-          ${['project', 'opportunity', 'proposal', 'product', 'internal', 'leave', 'training', 'bd'].map((k) => `<option>${k}</option>`).join('')}
+        <input id="ts-date" type="date" value="${to}" aria-label="التاريخ" class="border border-line rounded-lg px-2 py-2 text-sm">
+        <input id="ts-hours" type="number" step="0.5" min="0" max="16" placeholder="ساعات" aria-label="عدد الساعات" class="border border-line rounded-lg px-3 py-2 text-sm w-24">
+        <select id="ts-kind" aria-label="نوع العمل" class="border border-line rounded-lg px-2 text-sm">
+          ${[['project', 'مشروع'], ['opportunity', 'فرصة'], ['proposal', 'عرض'], ['product', 'منتج'], ['internal', 'داخلي'], ['leave', 'إجازة'], ['training', 'تدريب'], ['bd', 'تطوير أعمال']].map(([k, ar]) => `<option value="${k}">${ar}</option>`).join('')}
         </select>
         <input id="ts-note" placeholder="ملاحظة" class="flex-1 border border-line rounded-lg px-3 py-2 text-sm">
         <button onclick="Sanad.addTime()" class="text-white text-[12px] px-4 rounded-lg" style="background:linear-gradient(120deg,#2563eb,#9333ea)">تسجيل</button>
@@ -143,7 +143,7 @@ export async function teamPage(user, opts = {}) {
     return `<div class="hg-row" data-emp="${e.id}" data-name="${esc(String(e.name_ar || '').toLowerCase())} ${esc(String(e.job_title || '').toLowerCase())}">
       <div class="hg-meta"><b>${esc(e.name_ar)}</b>${e.active === 0 ? ' ' + pill('غير نشط', 'slate') : ''}
         <div class="sub">${esc(e.job_title || '—')}${sector ? '' : ' · ' + esc(sectorNames[e.sector_id] || '—')}</div></div>
-      ${canSalary ? `<div class="hg-sal tnum">${e.salary_halalas ? fmtSar(e.salary_halalas) : '<span style="color:var(--faint)">—</span>'}</div>` : ''}
+      ${canSalary ? `<div class="emp-sal tnum">${e.salary_halalas ? fmtSar(e.salary_halalas) : '<span style="color:var(--faint)">—</span>'}</div>` : ''}
       <div class="hg-now tnum" style="color:${uTone(e.currentUtil)}" title="إشغال ${esc(curName)}">${e.currentUtil}%</div>
       <div class="hg-delta">${deltaHtml(e.monthDelta)}</div>
       <div class="hg-months">${cells}</div>
@@ -176,7 +176,7 @@ export async function teamPage(user, opts = {}) {
     <div class="tblwrap"><div class="hg" id="hg" data-zoom="0" style="--cols:${gridCols}">
       <div class="hg-row hg-head">
         <div class="hg-meta">الموظف</div>
-        ${canSalary ? '<div class="hg-sal">الراتب</div>' : ''}
+        ${canSalary ? '<div class="emp-sal">الراتب</div>' : ''}
         <div class="hg-now" title="إشغال ${esc(curName)}">الآن</div>
         <div class="hg-delta" title="التغير عن ${esc(prevName)}">التغير</div>
         <div class="hg-months">${headMonths}</div>
@@ -196,7 +196,7 @@ export async function teamPage(user, opts = {}) {
     .hg-row.hg-head{position:sticky;top:0;background:var(--surface);z-index:2;font-size:10.5px;color:var(--muted);font-weight:700;padding-block:.45rem}
     .hg-meta b{font-size:13px}
     .hg-meta .sub{font-size:10.5px;color:var(--muted)}
-    .hg-sal{font-size:12px}
+    ${canSalary ? '.emp-sal{font-size:12px}' : ''}
     .hg-now{font-weight:800;font-size:13.5px}
     .hg-delta{font-size:11.5px}
     .hg-months{display:grid;grid-template-columns:repeat(12,1fr);gap:3px;direction:ltr}

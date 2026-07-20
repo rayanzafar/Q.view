@@ -15,3 +15,6 @@ seed/legacy-state.snapshot.json
 seed/legacy-users.snapshot.json
 *.log
 .DS_Store
+
+# release evidence packs are repo artifacts, not deploy payload
+docs/evidence

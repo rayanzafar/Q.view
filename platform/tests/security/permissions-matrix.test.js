@@ -142,22 +142,19 @@ test('sensitive: salary reaches hr, never reaches bd (API + roster page)', async
   // demo.bd has no employee read at all → the roster (API and page) is denied outright.
   assert.equal((await req('demo.bd', '/api/org/roster')).status, 403);
   assert.equal((await req('demo.bd', '/app/team')).status, 403);
-  // Team PAGE gates the salary KPI by canSeeSensitive: visible to hr, absent for sector_lead.
+  // Team PAGE (capacity workspace v3) gates the salary COLUMN by canSeeSensitive:
+  // present for hr, absent for sector_lead.
   const hrPage = await (await req('demo.hr', '/app/team')).text();
-  assert.match(hrPage, /فاتورة الرواتب/, 'hr team page shows the payroll KPI');
+  assert.match(hrPage, /emp-sal/, 'hr team page shows the salary column');
   const leadPage = await (await req('demo.sectorlead', '/app/team')).text();
-  assert.doesNotMatch(leadPage, /فاتورة الرواتب/, 'sector_lead team page must hide the payroll KPI');
+  assert.doesNotMatch(leadPage, /emp-sal/, 'sector_lead team page must hide the salary column');
   assert.doesNotMatch(leadPage, /"salary_sar":\s*[1-9]/, 'sector_lead team page must not embed salary values');
 
-  // KNOWN-GAP (finding QH-1, soft check — flips to a hard assertion once fixed):
-  // staffingRoster() serializes salary_halalas without redact(), so ceo_office/sector_lead —
-  // who may read employees but NOT salary — receive raw salaries via GET /api/org/roster,
-  // while the team PAGE correctly hides them. Do NOT weaken this to acceptance: it is a defect.
+  // QH-1 FIXED (regression guard): staffingRoster serializes salary_halalas only for salary readers —
+  // ceo_office/sector_lead read employees but NOT salary, so the roster API must never carry it.
   for (const u of ['demo.ceo', 'demo.sectorlead']) {
-    const leak = /"salary_halalas":\s*[1-9]/.test(await (await req(u, '/api/org/roster')).text());
-    console.log(leak
-      ? `    KNOWN-GAP QH-1 still present: ${u} receives raw salary_halalas from /api/org/roster`
-      : `    QH-1 FIXED for ${u} — tighten this check to assert.doesNotMatch now`);
+    assert.doesNotMatch(await (await req(u, '/api/org/roster')).text(), /"salary_halalas":\s*[1-9]/,
+      `${u} must not receive raw salary_halalas from /api/org/roster`);
   }
 });
 

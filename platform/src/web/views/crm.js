@@ -187,7 +187,7 @@ export async function opportunitiesPage(user, opts = {}) {
         <div class="t">لا توجد فرص ضمن نطاقك بعد</div>
         <div class="s">كل فرصة تحمل قيمة ومرحلة وخطوة تالية — أنشئ الأولى لتبدأ متابعة خط المبيعات.</div>
         ${canCreate ? `<button class="btn btn-primary" data-action="opp-add">${icon('plus')} فرصة جديدة</button>` : ''}</div></div>`
-    : `<div id="opp-kanban" class="kanban">${columns}</div>
+    : `<div id="opp-kanban" class="kanban" tabindex="0" role="region" aria-label="لوحة الفرص">${columns}</div>
       <div id="opp-table" class="card" style="display:none;overflow-x:auto">
         <table class="w-full"><thead><tr class="text-[11px] text-muted text-right">
           <th class="py-2 px-3 font-medium">العنوان</th><th class="px-3 font-medium">العميل</th><th class="px-3 font-medium">${G.stage}</th>

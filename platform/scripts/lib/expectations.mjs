@@ -11,18 +11,19 @@ import { DEMO_PW } from '../seed.js';
 
 export { DEMO_PW };
 
-// The 10 demo personas seeded by scripts/seed.js (username → canonical role).
+// The 10 demo personas seeded by scripts/seed.js (username → role + REAL scope/sector, so
+// PAGE_ACCESS predicates evaluate against the same shape the server resolves at login).
 export const ROLES = [
-  { username: 'demo.admin', role: 'admin' },
-  { username: 'demo.ceo', role: 'ceo_office' },
-  { username: 'demo.sectorlead', role: 'sector_lead' },
-  { username: 'demo.bd', role: 'bd_manager' },
-  { username: 'demo.pm', role: 'project_manager' },
-  { username: 'demo.finance', role: 'finance' },
-  { username: 'demo.hr', role: 'hr' },
-  { username: 'demo.consultant', role: 'consultant' },
-  { username: 'demo.employee', role: 'employee' },
-  { username: 'demo.viewer', role: 'viewer' },
+  { username: 'demo.admin', role: 'admin', scope: 'company', sector_id: null },
+  { username: 'demo.ceo', role: 'ceo_office', scope: 'company', sector_id: null },
+  { username: 'demo.sectorlead', role: 'sector_lead', scope: 'sector', sector_id: 'SOLUTIONS' },
+  { username: 'demo.bd', role: 'bd_manager', scope: 'own', sector_id: 'SOLUTIONS' },
+  { username: 'demo.pm', role: 'project_manager', scope: 'own', sector_id: 'SOLUTIONS' },
+  { username: 'demo.finance', role: 'finance', scope: 'company', sector_id: null },
+  { username: 'demo.hr', role: 'hr', scope: 'company', sector_id: null },
+  { username: 'demo.consultant', role: 'consultant', scope: 'own', sector_id: 'SOLUTIONS' },
+  { username: 'demo.employee', role: 'employee', scope: 'own', sector_id: 'SOLUTIONS' },
+  { username: 'demo.viewer', role: 'viewer', scope: 'sector', sector_id: 'SOLUTIONS' },
 ];
 
 // Current PAGES map in src/web/routes.js (hardcoded on purpose: the harness must notice when a
@@ -37,12 +38,12 @@ const ORG_READERS = new Set(['admin', 'ceo_office', 'sector_lead', 'hr']);
 // CURRENT behavior: every authenticated role gets 200 on every page EXCEPT team/org, whose page
 // functions call service guards (staffingRoster/orgTree) that throw 403. There is NO page-level
 // access map yet — that is the documented 'PENDING nav-guard' gap. Once src/web/nav.js exists and
-// exports PAGE_ACCESS, loadPageAccess() returns it and expectations flip to strict 200/302.
+// exports PAGE_ACCESS, loadPageAccess() returns it and expectations flip to strict 200/403.
 export function pageExpected(role, page, pageAccess = null) {
   if (pageAccess) {
     const allowed = pageAllowed(role, page, pageAccess);
     if (allowed === null) return { status: 200, soft: true }; // unknown shape — stay soft
-    return { status: allowed ? 200 : 302, soft: false };
+    return { status: allowed ? 200 : 403, soft: false };
   }
   if ((page === 'team' || page === 'org') && !ORG_READERS.has(role)) return { status: 403, soft: false };
   // 200-for-all-authed is asserted as CURRENT behavior; the authz distinction is PENDING nav-guard.
@@ -53,7 +54,10 @@ function pageAllowed(role, page, pageAccess) {
   const rule = pageAccess?.[page];
   if (rule === undefined) return null;
   if (Array.isArray(rule)) return rule.includes(role) || rule.includes('*');
-  if (typeof rule === 'function') { try { return !!rule({ role_id: role }); } catch { return null; } }
+  if (typeof rule === 'function') {
+    const p = ROLES.find((r) => r.role === role);
+    try { return !!rule({ role_id: role, scope: p?.scope || 'own', sector_id: p?.sector_id ?? null }); } catch { return null; }
+  }
   return null;
 }
 
@@ -77,10 +81,9 @@ export const API_PROBES = [
   { method: 'GET', path: '/api/finance/summary', expect: 200 },            // zeros when unscoped
   { method: 'GET', path: '/api/finance/by-pm', expect: 200 },
   { method: 'GET', path: '/api/finance/by-contract', expect: 200 },
-  // KNOWN-GAP (finding QH-2): metrics endpoints carry no permission check — company revenue/target
-  // aggregates are served to every authenticated role. Asserted as current behavior on purpose so
-  // the day it is fixed this table fails loudly and gets tightened to the intended 403s.
-  { method: 'GET', path: '/api/metrics/company', expect: 200 },
+  // QH-2 FIXED: metrics are leadership numbers — company scope only for /company; sector members
+  // (any role whose sector_id matches) plus company scope for /sector/:id.
+  { method: 'GET', path: '/api/metrics/company', expect: { default: 403, admin: 200, ceo_office: 200, finance: 200, hr: 200 } },
   { method: 'GET', path: '/api/metrics/sector/SOLUTIONS', expect: 200 },
   { method: 'GET', path: '/api/tasks/mine', expect: 200 },                 // own-scoped
   { method: 'GET', path: '/api/timesheets/mine', expect: 200 },            // own-scoped
