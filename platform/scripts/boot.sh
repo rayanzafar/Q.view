@@ -5,4 +5,6 @@
 node --experimental-sqlite scripts/migrate.js || true
 node --experimental-sqlite scripts/seed-rbac.js || true
 node --experimental-sqlite scripts/seed-staging.js || true
+# idempotent legacy-history backfill (INSERT … ON CONFLICT DO NOTHING) — safe on every boot
+node --experimental-sqlite scripts/backfill-legacy-activity.js || echo "backfill skipped"
 exec node --experimental-sqlite src/server.js
