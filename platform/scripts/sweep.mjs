@@ -98,6 +98,21 @@ async function loginWeb(username) {
 }
 
 // ── sweep ─────────────────────────────────────────────────────────────────────
+// PAGE_ACCESS predicates call can(), which needs the RBAC grant cache. The sweep is a standalone
+// process (may target a remote base), so hydrate the cache from a throwaway local DB — the grant
+// matrix is seeded identically in every environment.
+{
+  const { mkdtempSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  if (!process.env.SANAD_DB) process.env.SANAD_DB = join(mkdtempSync(join(tmpdir(), 'sweep-rbac-')), 'rbac.db');
+  const { migrate } = await import('./migrate.js');
+  const { seedRbac } = await import('./seed-rbac.js');
+  await migrate();
+  await seedRbac();
+  const { initRbac } = await import('../src/core/rbac/index.js');
+  await initRbac();
+}
 const pageAccess = await loadPageAccess();
 const report = { base, at: new Date().toISOString(), mode: pageAccess ? 'strict-nav-guard' : 'pending-nav-guard', requests: [], deviations: [], warnings: [] };
 const timings = [];

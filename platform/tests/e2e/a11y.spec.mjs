@@ -4,7 +4,7 @@
 // each pinned to {page, rule} so NEW violations of the same rule elsewhere still fail.
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { login, open, PAGES } from './_helpers.mjs';
+import { login, open, pagesFor } from './_helpers.mjs';
 
 export default async function a11ySpec({ browser, base, t, platformRoot }) {
   const axeSource = readFileSync(resolve(platformRoot, 'node_modules/axe-core/axe.min.js'), 'utf8');
@@ -16,7 +16,8 @@ export default async function a11ySpec({ browser, base, t, platformRoot }) {
   await login(page, base, 'demo.admin');
 
   let totalViolations = 0, knownHits = 0;
-  for (const p of PAGES) {
+  const pages = await pagesFor('demo.admin');
+  for (const p of pages) {
     await open(page, base, `/app/${p}`);
     await page.addScriptTag({ content: axeSource });
     const result = await page.evaluate(async () => {
@@ -31,6 +32,6 @@ export default async function a11ySpec({ browser, base, t, platformRoot }) {
       t.fail(`a11y /app/${p}`, `${v.impact} ${v.id} ×${v.nodes} (e.g. ${v.sample})`);
     }
   }
-  if (!totalViolations) t.pass(`a11y: ${PAGES.length} pages free of serious/critical violations (${knownHits} documented exception hits)`);
+  if (!totalViolations) t.pass(`a11y: ${pages.length} pages free of serious/critical violations (${knownHits} documented exception hits)`);
   await ctx.close();
 }

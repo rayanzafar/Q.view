@@ -1,7 +1,20 @@
 // Shared helpers for the Playwright specs run by scripts/e2e.mjs.
-import { DEMO_PW, PAGES } from '../../scripts/lib/expectations.mjs';
+import { DEMO_PW, PAGES, ROLES, pageExpected, loadPageAccess } from '../../scripts/lib/expectations.mjs';
 
 export { DEMO_PW, PAGES };
+
+// Pages the given DEMO USERNAME is expected to open (per the same PAGE_ACCESS the router enforces).
+// Specs visit only these; a denied page is covered by the permissions matrix, not by e2e.
+let _pa;
+export async function pagesFor(username) {
+  _pa ??= await loadPageAccess();
+  const role = ROLES.find((r) => r.username === username)?.role;
+  return PAGES.filter((p) => pageExpected(role, p, _pa).status === 200);
+}
+
+// Console-error filter: resource-load failures for API 401/403/404s are server-enforced authz
+// answering background fetches (e.g. the notification badge) — not client defects.
+export const realConsoleErrors = (arr) => arr.filter((t) => !/Failed to load resource/.test(t));
 
 // Form-login through the real /login page; resolves once the app shell is loaded.
 export async function login(page, base, username) {

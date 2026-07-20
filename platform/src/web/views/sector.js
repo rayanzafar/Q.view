@@ -224,15 +224,18 @@ export async function sectorPage(user, opts = {}) {
     </div>`);
 
   // ── (8) المقارنات والتقارير ──
-  const qMax = Math.max(1, ...qRev, ...qBook);
+  // quarterlyRevenue/Bookings تُرجعان كائنات {quarter, *_halalas} — نطبّعها لأرقام قبل أي حساب
+  const qRevN = (qRev || []).map((r) => (typeof r === 'number' ? r : r.revenue_halalas || 0));
+  const qBookN = (qBook || []).map((r) => (typeof r === 'number' ? r : r.sales_halalas || 0));
+  const qMax = Math.max(1, ...qRevN, ...qBookN);
   const qBars = [0, 1, 2, 3].map((i) => `
     <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px">
       <div style="display:flex;gap:3px;align-items:flex-end;height:56px">
-        <div title="${G.revenue}" style="width:14px;border-radius:3px 3px 0 0;background:var(--green);height:${Math.max(3, Math.round((qRev[i] / qMax) * 52))}px"></div>
-        <div title="${G.bookings}" style="width:14px;border-radius:3px 3px 0 0;background:var(--brand2);height:${Math.max(3, Math.round((qBook[i] / qMax) * 52))}px"></div>
+        <div title="${G.revenue}" style="width:14px;border-radius:3px 3px 0 0;background:var(--green);height:${Math.max(3, Math.round((qRevN[i] / qMax) * 52))}px"></div>
+        <div title="${G.bookings}" style="width:14px;border-radius:3px 3px 0 0;background:var(--brand2);height:${Math.max(3, Math.round((qBookN[i] / qMax) * 52))}px"></div>
       </div><span style="font-size:9.5px;color:var(--faint)">ر${i + 1}</span></div>`).join('');
   const nowQ = Math.floor(nowM / 3);
-  const qDelta = nowQ > 0 && qRev[nowQ - 1] ? Math.round(((qRev[nowQ] - qRev[nowQ - 1]) / qRev[nowQ - 1]) * 100) : null;
+  const qDelta = nowQ > 0 && qRevN[nowQ - 1] ? Math.round(((qRevN[nowQ] - qRevN[nowQ - 1]) / qRevN[nowQ - 1]) * 100) : null;
   const reportsCard = card(`
     <div style="padding:.9rem 1rem;border-bottom:1px solid var(--line);font-weight:800;font-size:14px">المقارنات والتقارير</div>
     <div style="padding:.7rem 1rem">

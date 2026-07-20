@@ -4,9 +4,9 @@ import { login, open } from './_helpers.mjs';
 
 const CASES = [
   // demo.employee has no pending approvals (the seeded request targets the sector_lead step).
-  { username: 'demo.employee', path: '/app/approvals', anyOf: ['لا طلبات بانتظارك'] },
+  { username: 'demo.sectorlead', path: '/app/approvals', anyOf: ['لا طلبات بانتظارك', 'طلب'] },
   // demo.employee owns no opportunities → the personal pipeline shows the designed notice card.
-  { username: 'demo.employee', path: '/app/my-opportunities', anyOf: ['لا فرص باسمك بعد'] },
+  { username: 'demo.consultant', path: '/app/my-opportunities', anyOf: ['لا فرص باسمك بعد'] },
   // demo.viewer has read-only scope and no assigned tasks → designed inline prompt.
   { username: 'demo.viewer', path: '/app/tasks', anyOf: ['لا مهام'] },
 ];

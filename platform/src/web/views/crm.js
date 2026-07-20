@@ -37,11 +37,11 @@ function ageChip(o) {
   if (n == null) return '';
   const th = ROT_THRESHOLDS[o.stage_id];
   const tone = th && n > th ? 'red' : th && n > th / 2 ? 'amber' : 'slate';
-  const c = { red: 'background:#fee2e2;color:#dc2626', amber: 'background:#fef3c7;color:#b45309', slate: 'background:#f1f5f9;color:#64748b' }[tone];
+  const c = { red: 'background:#fee2e2;color:#b91c1c', amber: 'background:#fef3c7;color:#92400e', slate: 'background:#f1f5f9;color:#475569' }[tone];
   const title = th && n > th ? STALLED_HINT : G.stageAge(n);
   return `<span class="pill tnum" style="${c}" title="${esc(title)}">${icon('clock')} منذ ${n} يوماً</span>`;
 }
-const naChip = () => `<span class="pill" style="background:#fee2e2;color:#dc2626" title="كل فرصة مفتوحة تحتاج خطوة تالية مؤرّخة — أضفها من صفحة الفرصة">● ${G.noNextAction}</span>`;
+const naChip = () => `<span class="pill" style="background:#fee2e2;color:#b91c1c" title="كل فرصة مفتوحة تحتاج خطوة تالية مؤرّخة — أضفها من صفحة الفرصة">● ${G.noNextAction}</span>`;
 
 export async function opportunitiesPage(user, opts = {}) {
   const sectorFilter = opts.sector || '';
