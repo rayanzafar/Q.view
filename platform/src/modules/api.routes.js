@@ -35,6 +35,7 @@ apiRouter.post('/intake/create', h((req) => intake.createFromIntake(req.ctx, req
 apiRouter.get('/projects/:id/staffing', h((req) => projects.projectStaffing(req.ctx.user, req.params.id)));
 apiRouter.post('/projects/:id/staff', h((req) => projects.assignEmployee(req.ctx, req.params.id, req.body)));
 apiRouter.delete('/projects/staff/:allocId', h((req) => projects.unassignEmployee(req.ctx, req.params.allocId)));
+apiRouter.patch('/projects/staff/:allocId', h((req) => projects.setAllocation(req.ctx, req.params.allocId, req.body)));
 apiRouter.get('/projects/:id/tasks', h((req) => tasks.projectTasks(req.ctx.user, req.params.id)));
 apiRouter.get('/projects/:id/kpis', h((req) => metrics.projectKpis(req.params.id)));
 
@@ -64,7 +65,9 @@ apiRouter.post('/org/sectors', h((req) => org.createSector(req.ctx, req.body)));
 apiRouter.patch('/org/sectors/:id', h((req) => org.updateSector(req.ctx, req.params.id, req.body)));
 apiRouter.post('/org/departments', h((req) => org.createDepartment(req.ctx, req.body)));
 apiRouter.post('/org/units', h((req) => org.createUnit(req.ctx, req.body)));
+apiRouter.get('/org/roster', h((req) => org.staffingRoster(req.ctx.user, { sector: req.query.sector, year: req.query.year })));
 apiRouter.post('/org/employees', h((req) => org.createEmployee(req.ctx, req.body)));
+apiRouter.patch('/org/employees/:id', h((req) => org.updateEmployee(req.ctx, req.params.id, req.body)));
 apiRouter.patch('/org/employees/:id/move', h((req) => org.moveEmployee(req.ctx, req.params.id, req.body)));
 
 // ── Finance (contracts / invoices / progress claims / collections) ──

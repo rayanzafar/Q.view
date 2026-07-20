@@ -79,7 +79,17 @@ export async function projectStaffing(user, projectId) {
   return { project: { id: p.id, name_ar: p.name_ar, sector_id: p.sector_id }, assigned, available, canStaff: can(user, 'update', 'project', p) };
 }
 
-export async function assignEmployee(ctx, projectId, { employeeId, type }) {
+// Build a {month: fraction} map from an allocation % and a month range (defaults: from the current
+// month through year-end at 100%). Fraction is 0–1.5 (150% caps deliberate over-allocation input).
+function monthlyPlan({ pct, fromMonth, toMonth }) {
+  const frac = Math.max(0, Math.min(150, Number(pct) || 100)) / 100;
+  const f = Math.max(1, Math.min(12, Number(fromMonth) || (new Date().getUTCMonth() + 1)));
+  const t = Math.max(f, Math.min(12, Number(toMonth) || 12));
+  const mj = {}; for (let m = f; m <= t; m++) mj[m] = frac;
+  return mj;
+}
+
+export async function assignEmployee(ctx, projectId, { employeeId, type, pct, fromMonth, toMonth }) {
   const user = ctx.user;
   const p = await get('SELECT * FROM project WHERE id=? AND deleted_at IS NULL', [projectId]);
   if (!p) throw notFound('المشروع غير موجود');
@@ -90,9 +100,24 @@ export async function assignEmployee(ctx, projectId, { employeeId, type }) {
   if (await get('SELECT id FROM allocation WHERE project_id=? AND employee_id=? AND deleted_at IS NULL', [projectId, employeeId])) throw badRequest('الموظف مُسكَّن على هذا المشروع مسبقًا');
   const aid = id('alloc'); const now = nowIso();
   await insert('allocation', { id: aid, employee_id: employeeId, person_name_ar: emp.name_ar, project_id: projectId,
-    project_name: p.name_ar, sector_id: p.sector_id, type: type || 'member', year: new Date().getUTCFullYear(), source: 'manual', created_at: now });
-  await audit(ctx, { action: 'create', resource: 'allocation', resourceId: aid, sectorId: p.sector_id, detail: { project: projectId, employee: employeeId } });
+    project_name: p.name_ar, sector_id: p.sector_id, type: type || 'member', year: new Date().getUTCFullYear(),
+    monthly_json: JSON.stringify(monthlyPlan({ pct, fromMonth, toMonth })), source: 'manual', created_at: now });
+  await audit(ctx, { action: 'create', resource: 'allocation', resourceId: aid, sectorId: p.sector_id, detail: { project: projectId, employee: employeeId, pct: pct || 100 } });
   return await projectStaffing(user, projectId);
+}
+
+// Edit an existing allocation's load (%/month-range). Same permission as staffing the project.
+export async function setAllocation(ctx, allocationId, { pct, fromMonth, toMonth, type }) {
+  const user = ctx.user;
+  const a = await get('SELECT * FROM allocation WHERE id=? AND deleted_at IS NULL', [allocationId]);
+  if (!a) throw notFound('التسكين غير موجود');
+  const p = await get('SELECT * FROM project WHERE id=?', [a.project_id]);
+  if (!p || !can(user, 'update', 'project', p)) throw forbidden();
+  const patch = { monthly_json: JSON.stringify(monthlyPlan({ pct, fromMonth, toMonth })), updated_at: nowIso() };
+  if (type) patch.type = type;
+  await update('allocation', allocationId, patch);
+  await audit(ctx, { action: 'update', resource: 'allocation', resourceId: allocationId, sectorId: a.sector_id, detail: { pct: pct || 100 } });
+  return await projectStaffing(user, a.project_id);
 }
 
 export async function unassignEmployee(ctx, allocationId) {

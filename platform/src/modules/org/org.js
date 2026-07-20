@@ -99,3 +99,50 @@ export async function moveEmployee(ctx, employeeId, data) {
   await audit(ctx, { action: 'update', resource: 'employee', resourceId: employeeId, sectorId: patch.sector_id || e.sector_id, detail: { moved: true } });
   return await get('SELECT * FROM employee WHERE id = ?', [employeeId]);
 }
+
+// General attribute edit (name / job / type / status / active + salary when the caller may read it).
+// A sector manager editing across sectors is blocked by the sector-scoped 'update employee' grant.
+export async function updateEmployee(ctx, employeeId, data) {
+  const e = await get('SELECT * FROM employee WHERE id = ? AND deleted_at IS NULL', [employeeId]);
+  if (!e) throw notFound('الموظف غير موجود');
+  if (!can(ctx.user, 'update', 'employee', e)) throw forbidden('تعديل الموظف يتطلب صلاحية إدارية على قطاعه');
+  const patch = { updated_at: nowIso() };
+  for (const k of ['name_ar', 'name_en', 'job_title', 'employment_type', 'status', 'sector_id', 'department_id', 'position_id']) if (k in data) patch[k] = data[k];
+  if ('active' in data) patch.active = data.active ? 1 : 0;
+  // moving to another sector requires update rights on the TARGET sector too
+  if (patch.sector_id && patch.sector_id !== e.sector_id && !can(ctx.user, 'update', 'employee', { sector_id: patch.sector_id })) throw forbidden('لا تملك صلاحية على القطاع الهدف');
+  if ('salary_sar' in data && can(ctx.user, 'read', 'salary')) patch.salary_halalas = toHalalas(data.salary_sar);
+  await update('employee', employeeId, patch);
+  await audit(ctx, { action: 'update', resource: 'employee', resourceId: employeeId, sectorId: patch.sector_id || e.sector_id, detail: Object.keys(patch) });
+  return await get('SELECT * FROM employee WHERE id = ?', [employeeId]);
+}
+
+// Staffing roster with PLANNED utilization from the allocation model (scoped). Company users may
+// pass a sector filter; sector-scoped users are locked to their own sector.
+export async function staffingRoster(user, opts = {}) {
+  if (user.role_id !== 'admin' && !can(user, 'read', 'employee')) throw forbidden('عرض الفريق يتطلب صلاحية');
+  const year = Number(opts.year) || new Date().getUTCFullYear();
+  const sec = user.scope === 'company' ? (opts.sector || null) : (user.sector_id || null);
+  const emps = await all(`SELECT * FROM employee WHERE deleted_at IS NULL ${sec ? 'AND sector_id = ?' : ''} ORDER BY name_ar`, sec ? [sec] : []);
+  const allocs = await all(`SELECT a.id, a.employee_id, a.project_id, a.project_name, a.type, a.monthly_json, p.name_ar proj_name, p.status proj_status
+     FROM allocation a LEFT JOIN project p ON p.id = a.project_id
+     WHERE a.deleted_at IS NULL AND a.year = ? AND a.employee_id IS NOT NULL ${sec ? 'AND a.sector_id = ?' : ''}`, sec ? [year, sec] : [year]);
+  const byEmp = {};
+  for (const a of allocs) (byEmp[a.employee_id] ||= []).push(a);
+  const roster = emps.map((e) => {
+    const mine = byEmp[e.id] || [];
+    const monthLoad = Array(12).fill(0);
+    const projects = mine.map((a) => {
+      let mj = {}; try { mj = JSON.parse(a.monthly_json || '{}'); } catch { mj = {}; }
+      for (const [m, f] of Object.entries(mj)) { const i = Number(m) - 1; if (i >= 0 && i < 12) monthLoad[i] += Number(f) || 0; }
+      return { allocId: a.id, projectId: a.project_id, name: a.proj_name || a.project_name || '—', type: a.type || 'member', status: a.proj_status, months: mj };
+    });
+    const months = monthLoad.map((f) => Math.round(f * 100));
+    const annualUtil = Math.round(months.reduce((a, b) => a + b, 0) / 12);
+    const peak = Math.max(0, ...months);
+    return { id: e.id, name_ar: e.name_ar, name_en: e.name_en, job_title: e.job_title, employment_type: e.employment_type,
+      status: e.status, active: e.active, sector_id: e.sector_id, salary_halalas: e.salary_halalas,
+      months, annualUtil, peak, overMonths: months.filter((m) => m > 100).length, projects, projectCount: projects.length };
+  });
+  return { year, sector: sec, roster };
+}

@@ -158,6 +158,70 @@ Object.assign(window.Sanad, {
   // Drill-down popup: shows the pre-rendered <template id="dd-KEY"> embedded by the page (SSR data,
   // same scope/redaction as the page itself — nothing is fetched client-side).
   openDD(k) { const t = document.getElementById('dd-' + k); if (t) this.openModal(t.innerHTML); },
+
+  // ── Team & staffing management (admin / sector manager) ──
+  empForm(id) {
+    const S = window.__SANAD || {}; const e = id ? (S.emps || {})[id] : null; const locked = S.teamSectorLocked;
+    const types = ['أساسي', 'متعاون', 'مؤقت', 'استشاري', 'متدرب'];
+    const secOpts = (S.teamSectors || []).map((s) => `<option value="${s.id}" ${e && e.sector_id === s.id ? 'selected' : ''}>${this.esc(s.name_ar)}</option>`).join('');
+    return `<div class="modal-head"><div style="font-weight:800;font-size:15px">${id ? 'تعديل موظف' : 'إضافة موظف'}</div><button class="btn btn-ghost btn-sm" onclick="Sanad.closeModal()">✕</button></div>
+      <div class="modal-body">
+        <div class="field"><label>الاسم</label><input class="input" id="emp-name" value="${e ? this.esc(e.name_ar || '') : ''}" placeholder="الاسم الكامل"></div>
+        <div class="grid2">
+          <div class="field"><label>المسمى الوظيفي</label><input class="input" id="emp-job" value="${e ? this.esc(e.job_title || '') : ''}"></div>
+          <div class="field"><label>نوع التوظيف</label><select id="emp-type">${types.map((t) => `<option ${e && e.employment_type === t ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+        </div>
+        <div class="grid2">
+          ${!locked ? `<div class="field"><label>القطاع</label><select id="emp-sector">${secOpts}</select></div>` : ''}
+          <div class="field"><label>الحالة</label><select id="emp-active"><option value="1" ${!e || e.active !== 0 ? 'selected' : ''}>نشط</option><option value="0" ${e && e.active === 0 ? 'selected' : ''}>غير نشط</option></select></div>
+        </div>
+        ${S.canSalary ? `<div class="field"><label>الراتب الشهري (ر.س.)</label><input class="input" id="emp-salary" type="number" min="0" value="${e ? (e.salary_sar || 0) : 0}"></div>` : ''}
+      </div>
+      <div class="modal-foot"><button class="btn" onclick="Sanad.closeModal()">إلغاء</button>
+        <button class="btn btn-primary" onclick="Sanad.empSave('${id || ''}')">${id ? 'حفظ التعديلات' : 'إضافة الموظف'}</button></div>`;
+  },
+  empAdd() { this.openModal(this.empForm(null)); },
+  empEdit(id) { this.openModal(this.empForm(id)); },
+  async empSave(id) {
+    const g = (n) => { const el = document.getElementById('emp-' + n); return el ? el.value : undefined; };
+    const body = { name_ar: g('name'), job_title: g('job'), employment_type: g('type') };
+    const act = g('active'); if (act !== undefined) body.active = Number(act);
+    const sec = g('sector'); if (sec !== undefined) body.sector_id = sec;
+    const sal = g('salary'); if (sal !== undefined) body.salary_sar = Number(sal) || 0;
+    if (!body.name_ar) return toast('اسم الموظف مطلوب', true);
+    try {
+      if (id) await api('/org/employees/' + id, 'PATCH', body);
+      else { if (!body.sector_id && (window.__SANAD || {}).teamSectorLocked) body.sector_id = window.__SANAD.teamSectorLocked; await api('/org/employees', 'POST', body); }
+      toast(id ? 'حُدّث الموظف ✓' : 'أُضيف الموظف ✓'); this.closeModal(); setTimeout(() => location.reload(), 500);
+    } catch (err) { toast(err.message, true); }
+  },
+  empAssign(id) {
+    const S = window.__SANAD || {}; const e = (S.emps || {})[id]; if (!e) return;
+    const projs = (S.teamProjects || []).filter((p) => !e.sector_id || p.sector_id === e.sector_id);
+    const M = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+    const cur = (new Date().getMonth() + 1);
+    const mopt = (sel) => M.map((m, i) => `<option value="${i + 1}" ${i + 1 === sel ? 'selected' : ''}>${m}</option>`).join('');
+    const already = (e.projects || []).map((p) => `<span class="pill" style="background:#eef1f7;color:#475569">${this.esc(p.name)}</span>`).join(' ');
+    this.openModal(`<div class="modal-head"><div style="font-weight:800;font-size:15px">تسكين ${this.esc(e.name_ar)} على مشروع</div><button class="btn btn-ghost btn-sm" onclick="Sanad.closeModal()">✕</button></div>
+      <div class="modal-body">
+        ${already ? `<div style="font-size:11px;color:var(--muted)">مُسكَّن حاليًا: ${already}</div>` : ''}
+        ${projs.length ? `<div class="field"><label>المشروع</label><select id="al-proj">${projs.map((p) => `<option value="${p.id}">${this.esc(p.name_ar)}</option>`).join('')}</select></div>
+          <div class="grid2"><div class="field"><label>نسبة التسكين %</label><input class="input" id="al-pct" type="number" value="100" min="0" max="150"></div>
+            <div class="field"><label>الدور</label><select id="al-type"><option value="member">عضو فريق</option><option value="lead">قائد</option><option value="advisor">مستشار</option></select></div></div>
+          <div class="grid2"><div class="field"><label>من شهر</label><select id="al-from">${mopt(cur)}</select></div>
+            <div class="field"><label>إلى شهر</label><select id="al-to">${mopt(12)}</select></div></div>`
+        : '<div style="color:var(--muted);font-size:13px">لا مشاريع قائمة في قطاع هذا الموظف للتسكين عليها الآن.</div>'}
+      </div>
+      <div class="modal-foot"><button class="btn" onclick="Sanad.closeModal()">إلغاء</button>
+        ${projs.length ? `<button class="btn btn-primary" onclick="Sanad.empAssignSave('${id}')">تسكين</button>` : ''}</div>`);
+  },
+  async empAssignSave(id) {
+    const pid = document.getElementById('al-proj') && document.getElementById('al-proj').value; if (!pid) return;
+    const body = { employeeId: id, pct: Number(document.getElementById('al-pct').value) || 100,
+      type: document.getElementById('al-type').value, fromMonth: Number(document.getElementById('al-from').value) || 1, toMonth: Number(document.getElementById('al-to').value) || 12 };
+    try { await api('/projects/' + pid + '/staff', 'POST', body); toast('تم التسكين ✓'); this.closeModal(); setTimeout(() => location.reload(), 500); }
+    catch (err) { toast(err.message, true); }
+  },
   closeModal() { const m = document.getElementById('modal'); m.classList.remove('on'); m.innerHTML = ''; },
 
   pmoView(ns, mode) {
