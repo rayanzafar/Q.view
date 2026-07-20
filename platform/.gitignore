@@ -16,3 +16,4 @@ seed/*.demo.json
 
 # secrets — never commit
 .env
+seed/*.backfill.json

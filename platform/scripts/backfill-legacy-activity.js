@@ -9,7 +9,7 @@ import { get, run, tx, close } from '../src/core/db/index.js';
 import { ROOT } from '../src/core/config.js';
 
 const DRY = process.argv.includes('--dry-run');
-const file = ['seed/legacy-state.snapshot.json', 'seed/legacy-state.demo.json']
+const file = ['seed/legacy-state.snapshot.json', 'seed/legacy-state.demo.json', 'seed/legacy-activity.backfill.json']
   .map((p) => resolve(ROOT, p)).find((p) => existsSync(p));
 if (!file) { console.error('!! لا يوجد ملف snapshot/demo'); process.exit(1); }
 const SNAP = JSON.parse(readFileSync(file, 'utf8'));
