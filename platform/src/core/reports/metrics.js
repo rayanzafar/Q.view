@@ -278,3 +278,49 @@ export async function winRate(sectorId, year) {
   const decided = (r.won || 0) + (r.lost || 0);
   return { won: r.won || 0, lost: r.lost || 0, rate: decided ? Math.round((r.won / decided) * 100) : 0 };
 }
+
+// ── Delivery-2 additions (sector center v3) ──
+
+// Monthly recognized revenue for a sector (or company when sectorId null) in a fiscal year.
+export async function monthlyRevenue(sectorId, year) {
+  const rows = await all(`SELECT month, COALESCE(SUM(amount_halalas),0) v FROM revenue_line
+      WHERE year = ? ${sectorId ? 'AND sector_id = ?' : ''} GROUP BY month ORDER BY month`,
+    sectorId ? [year, sectorId] : [year]);
+  const out = Array(12).fill(0);
+  for (const r of rows) { const i = Number(r.month) - 1; if (i >= 0 && i < 12) out[i] = r.v || 0; }
+  return out;
+}
+
+// End-of-year revenue forecast = recognized revenue + weighted OPEN pipeline for the same FY.
+// (المتوقع نهاية السنة = المحقق + المرجّح من الفرص المفتوحة لهذه السنة — معادلة معلنة في الواجهة.)
+export async function revenueForecast(sectorId, year) {
+  const actual = (await get(`SELECT COALESCE(SUM(amount_halalas),0) v FROM revenue_line
+      WHERE year = ? ${sectorId ? 'AND sector_id = ?' : ''}`, sectorId ? [year, sectorId] : [year]))?.v || 0;
+  const wp = (await get(`SELECT COALESCE(SUM(o.value_halalas * o.win_pct / 100.0),0) v
+      FROM opportunity o JOIN stage st ON st.id = o.stage_id
+      WHERE o.deleted_at IS NULL AND st.is_won = 0 AND st.is_lost = 0 AND o.year = ?
+      ${sectorId ? 'AND o.sector_id = ?' : ''}`, sectorId ? [year, sectorId] : [year]))?.v || 0;
+  const weightedOpen = Math.round(wp);
+  return { actual, weightedOpen, forecast: actual + weightedOpen };
+}
+
+// Open-pipeline age buckets by days-in-current-stage (needs a bound `today` for portability).
+export async function pipelineAging(sectorId, today) {
+  const rows = await all(`SELECT o.value_halalas, COALESCE(substr(o.stage_changed_at,1,10), substr(o.created_at,1,10)) d
+      FROM opportunity o JOIN stage st ON st.id = o.stage_id
+      WHERE o.deleted_at IS NULL AND st.is_won = 0 AND st.is_lost = 0 ${sectorId ? 'AND o.sector_id = ?' : ''}`,
+    sectorId ? [sectorId] : []);
+  const buckets = [
+    { key: '0-14', label: 'أقل من أسبوعين', max: 14, n: 0, v: 0 },
+    { key: '15-30', label: 'أسبوعان إلى شهر', max: 30, n: 0, v: 0 },
+    { key: '31-60', label: 'شهر إلى شهرين', max: 60, n: 0, v: 0 },
+    { key: '60+', label: 'أكثر من شهرين', max: Infinity, n: 0, v: 0 },
+  ];
+  const T = Date.parse(today);
+  for (const r of rows) {
+    const age = r.d ? Math.floor((T - Date.parse(r.d)) / 86400000) : 0;
+    const b = buckets.find((x) => age <= x.max);
+    if (b) { b.n++; b.v += r.value_halalas || 0; }
+  }
+  return buckets;
+}
