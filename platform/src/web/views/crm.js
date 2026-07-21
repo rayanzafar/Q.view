@@ -105,6 +105,17 @@ export async function opportunitiesPage(user, opts = {}) {
   const wonAll = rows.filter((o) => stById[o.stage_id]?.is_won);
   const lostAll = rows.filter((o) => stById[o.stage_id]?.is_lost);
   const stalled = open.filter((o) => o.rot);
+  // المشاريع الناتجة عن الفرص الفائزة (WON «تتحول إلى مشروع») — ربط عبر project.source_opp_id
+  const PRJ_LABEL = { IN_PROGRESS: ['قيد التنفيذ', 'blue'], ON_HOLD: ['متوقّف مؤقتًا', 'amber'], COMPLETED: ['مكتمل', 'green'], NOT_STARTED: ['لم يبدأ', 'slate'], CANCELLED: ['ملغى', 'slate'] };
+  const projByOpp = {};
+  const wonIds = wonAll.map((o) => o.id);
+  if (wonIds.length) {
+    for (const p of await all(`SELECT id, name_ar, status, source_opp_id FROM project WHERE source_opp_id IN (${wonIds.map(() => '?').join(',')}) AND deleted_at IS NULL`, wonIds))
+      projByOpp[p.source_opp_id] = p;
+  }
+  const wonProjectCount = Object.keys(projByOpp).length;
+  const prjCell = (o) => { const pr = projByOpp[o.id]; const L = pr ? (PRJ_LABEL[pr.status] || [pr.status, 'slate']) : null;
+    return `<td style="padding:.55rem .7rem;font-size:12px">${pr ? `<a href="/app/project/${pr.id}" style="font-weight:700;color:var(--brand)">${esc(pr.name_ar)}</a> ${pill(L[0], L[1])}` : '<span style="color:var(--faint)">— لم يُنشأ مشروع بعد</span>'}</td>`; };
   const total = open.reduce((a, o) => a + (o.value_halalas || 0), 0);
   const weighted = Math.round(open.reduce((a, o) => a + weightedOf(o), 0));
   const decided = wonAll.length + lostAll.length;
@@ -126,6 +137,7 @@ export async function opportunitiesPage(user, opts = {}) {
         <td style="padding:.55rem .7rem;min-width:200px"><a href="/app/opportunity/${o.id}" title="${esc(o.title_ar)}" style="font-size:12.5px;font-weight:700;color:var(--ink2)">${esc(o.title_ar)}</a></td>
         <td style="padding:.55rem .7rem;font-size:12px;color:var(--muted)">${esc(clients[o.client_id] || '—')}</td>
         <td class="tnum" style="padding:.55rem .7rem;text-align:left;font-weight:800;font-size:12.5px;white-space:nowrap">${fmtSar(o.value_halalas)}</td>
+        ${tblStageRow.is_won ? prjCell(o) : ''}
         <td style="padding:.55rem .7rem;text-align:center;white-space:nowrap"><span class="tnum" style="font-size:12px">${o.year || '—'}</span> ${o.exclude_from_sales ? pill('تاريخي', 'slate') : ''}</td>
         <td style="padding:.55rem .7rem;font-size:11.5px;color:var(--muted);max-width:260px">${esc(reasonBy[o.id] || '—')}</td>
       </tr>`).join('');
@@ -142,7 +154,7 @@ export async function opportunitiesPage(user, opts = {}) {
       ${list.length ? `<div class="tblwrap"><table style="width:100%;border-collapse:collapse;min-width:680px">
         <thead><tr style="font-size:10.5px;color:var(--muted);text-align:right">
           <th style="padding:.45rem .7rem;font-weight:700">العنوان</th><th style="padding:.45rem .7rem;font-weight:700">العميل</th>
-          <th style="padding:.45rem .7rem;font-weight:700;text-align:left">القيمة</th><th style="padding:.45rem .7rem;font-weight:700;text-align:center">السنة</th>
+          <th style="padding:.45rem .7rem;font-weight:700;text-align:left">القيمة</th>${tblStageRow.is_won ? '<th style="padding:.45rem .7rem;font-weight:700">المشروع الناتج</th>' : ''}<th style="padding:.45rem .7rem;font-weight:700;text-align:center">السنة</th>
           <th style="padding:.45rem .7rem;font-weight:700">السبب</th></tr></thead>
         <tbody>${listRows}</tbody></table></div>`
       : `<div class="empty-state">${icon('opportunity')}<div class="t">لا فرص في مرحلة «${esc(tblStageRow.name_ar)}» بعد</div>
@@ -214,7 +226,8 @@ export async function opportunitiesPage(user, opts = {}) {
         ${other.length || hist.length ? '<div style="border-top:1px dashed var(--line);margin:.3rem 0 .16rem"></div>' : ''}
         ${subLine(other.length, 'من سنوات أخرى', sum(other))}
         ${subLine(hist.length, 'تاريخي', sum(hist), 'فرص قديمة مستبعدة من مؤشرات المبيعات')}
-        <a class="btn btn-sm" href="${tblHref}" style="margin-top:.45rem;justify-content:center">${icon('list')} عرض الجدول</a>
+        ${isWon && wonProjectCount ? `<div style="font-size:10.5px;color:var(--green);font-weight:700;margin-top:.16rem" title="الفرص الفائزة التي تحوّلت إلى مشاريع قيد التنفيذ">▸ ${countAr(wonProjectCount, { one: 'مشروع واحد ناتج', two: 'مشروعان ناتجان', few: 'مشاريع ناتجة', many: 'مشروعاً ناتجاً' })}</div>` : ''}
+        <a class="btn btn-sm" href="${tblHref}" style="margin-top:.45rem;justify-content:center">${icon('list')} ${isWon ? 'الصفقات والمشاريع' : 'عرض الجدول'}</a>
       </div>
       <div class="kcol-body" style="min-height:30px;padding:.15rem" aria-hidden="true"></div>
     </div>`;
