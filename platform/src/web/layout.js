@@ -191,6 +191,7 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
   .rtbl tbody td::before{content:attr(data-label);font-size:10.5px;color:var(--muted);font-weight:700;white-space:nowrap;flex:none}
   .rtbl tbody td:first-child{display:block;background:var(--bg)}
   .rtbl tbody td:first-child::before{display:none}
+  .rtbl tbody td.rtbl-hm{display:none}   /* أعمدة ثانوية تُخفى على الجوال لإبقاء البطاقة مركّزة */
 }
 .now-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--gold);box-shadow:0 0 0 2px #fff,0 0 0 3.5px var(--gold);flex:none}
 

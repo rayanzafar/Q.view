@@ -264,19 +264,19 @@ export async function projectsPage(user, opts = {}) {
         <a href="/app/project/${p.id}" title="${esc(p.name_ar)}" style="font-size:12.5px;font-weight:700;color:var(--ink2);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.name_ar)}</a>
         <div style="font-size:10.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(cl) || '—'}</div>
         ${srcOppTitle ? `<a href="/app/opportunity/${esc(p.source_opp_id)}" title="نشأ من الفرصة: ${esc(srcOppTitle)}" style="display:inline-flex;align-items:center;gap:.22rem;margin-top:.2rem;font-size:9.5px;font-weight:800;color:var(--brand2);background:#f3eef7;border-radius:6px;padding:.08rem .34rem;line-height:1.5;white-space:nowrap">${oppGlyph}<span>من فرصة</span></a>` : ''}</div></td>
-      <td style="padding:.5rem .55rem;text-align:center">${pill(tr(p.status), p.status === 'COMPLETED' ? 'green' : p.status === 'ON_HOLD' ? 'amber' : p.status === 'CANCELLED' ? 'slate' : 'blue')}</td>
-      <td style="padding:.5rem .55rem;white-space:nowrap" data-v="${health.rank}"><span style="display:inline-flex;align-items:center;gap:.35rem;font-size:12px;font-weight:700;color:${health.color}"><span style="width:9px;height:9px;border-radius:50%;background:${health.color};flex:none"></span>${health.label}</span></td>
-      <td style="padding:.5rem .55rem" data-v="${prog.v}"><div style="display:flex;align-items:center;gap:.2rem">${twinBar(canCost ? (burn ? burn.v : null) : null, prog.v, twinTip)}${prog.derived ? '<span style="color:var(--faint);font-size:9.5px">⁎</span>' : ''}</div></td>
-      <td style="padding:.5rem .55rem;font-size:11.5px;color:var(--muted)" data-v="${lateDays != null ? 100000 + lateDays : (ageMonths ?? -1)}">${durHtml}</td>
-      <td style="padding:.5rem .55rem" data-v="${bv.v}">${bv.l
+      <td data-label="الحالة" style="padding:.5rem .55rem;text-align:center">${pill(tr(p.status), p.status === 'COMPLETED' ? 'green' : p.status === 'ON_HOLD' ? 'amber' : p.status === 'CANCELLED' ? 'slate' : 'blue')}</td>
+      <td data-label="الصحة" style="padding:.5rem .55rem;white-space:nowrap" data-v="${health.rank}"><span style="display:inline-flex;align-items:center;gap:.35rem;font-size:12px;font-weight:700;color:${health.color}"><span style="width:9px;height:9px;border-radius:50%;background:${health.color};flex:none"></span>${health.label}</span></td>
+      <td data-label="${G.spendPct}·${G.progressPct}" class="rtbl-hm" style="padding:.5rem .55rem" data-v="${prog.v}"><div style="display:flex;align-items:center;gap:.2rem">${twinBar(canCost ? (burn ? burn.v : null) : null, prog.v, twinTip)}${prog.derived ? '<span style="color:var(--faint);font-size:9.5px">⁎</span>' : ''}</div></td>
+      <td data-label="المدة" class="rtbl-hm" style="padding:.5rem .55rem;font-size:11.5px;color:var(--muted)" data-v="${lateDays != null ? 100000 + lateDays : (ageMonths ?? -1)}">${durHtml}</td>
+      <td data-label="القيمة" style="padding:.5rem .55rem" data-v="${bv.v}">${bv.l
         ? `<div class="tnum" style="font-size:12px;font-weight:800;white-space:nowrap">${fmtSar(bv.v)}</div><span style="font-size:9.5px;font-weight:700;color:var(--faint);background:#eef1f7;border-radius:6px;padding:.1rem .35rem;white-space:nowrap">${bv.l}</span>`
         : '<span style="color:var(--faint);font-size:11px;white-space:nowrap">بلا قيمة مسجلة</span>'}</td>
-      <td style="padding:.5rem .55rem" data-v="${rev}"><div class="tnum" style="font-size:12px;font-weight:700;white-space:nowrap;color:${rev ? 'var(--green)' : 'var(--faint)'}">${rev ? fmtSar(rev) : '—'}</div>${rev && bv.v ? `<div class="tnum" style="font-size:10px;color:var(--muted);white-space:nowrap" ${rev > bv.v ? 'data-tip="الإيراد المُثبت يتجاوز قيمة المشروع المسجلة — راجع القيمة أو بنود الإيراد"' : ''}>${Math.min(999, Math.round(rev / bv.v * 100))}% من القيمة${rev > bv.v ? ' ⚠' : ''}</div>` : ''}</td>
-      <td style="padding:.5rem .55rem;font-size:11.5px;color:var(--muted)">${d && d.n
+      <td data-label="الإيراد" style="padding:.5rem .55rem" data-v="${rev}"><div class="tnum" style="font-size:12px;font-weight:700;white-space:nowrap;color:${rev ? 'var(--green)' : 'var(--faint)'}">${rev ? fmtSar(rev) : '—'}</div>${rev && bv.v ? `<div class="tnum" style="font-size:10px;color:var(--muted);white-space:nowrap" ${rev > bv.v ? 'data-tip="الإيراد المُثبت يتجاوز قيمة المشروع المسجلة — راجع القيمة أو بنود الإيراد"' : ''}>${Math.min(999, Math.round(rev / bv.v * 100))}% من القيمة${rev > bv.v ? ' ⚠' : ''}</div>` : ''}</td>
+      <td data-label="${G.deliverables}" class="rtbl-hm" style="padding:.5rem .55rem;font-size:11.5px;color:var(--muted)">${d && d.n
         ? `<div style="white-space:nowrap"><span class="tnum" style="font-weight:700;color:var(--ink2)">${d.dn}</span> ${G.delivered}</div><div style="white-space:nowrap"><span class="tnum" style="font-weight:700;color:var(--ink2)">${d.inv}</span> ${G.invoicedShort}</div>`
         : '—'}</td>
-      <td style="padding:.5rem .55rem;font-size:11.5px;color:var(--muted)"><div title="${esc(pmName)}" style="width:92px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(pmName) || '—'}</div></td>
-      <td style="padding:.5rem .55rem;font-size:11.5px" data-v="${nm && nm.due_date ? esc(nm.due_date) : '9999-12-31'}">${nm
+      <td data-label="م. المشروع" style="padding:.5rem .55rem;font-size:11.5px;color:var(--muted)"><div title="${esc(pmName)}" style="width:92px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(pmName) || '—'}</div></td>
+      <td data-label="المعلم القادم" style="padding:.5rem .55rem;font-size:11.5px" data-v="${nm && nm.due_date ? esc(nm.due_date) : '9999-12-31'}">${nm
         ? `<div style="width:140px"><div title="${esc(nm.title)}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink2)">${esc(nm.title)}</div><div class="tnum" style="font-size:10.5px;color:${nmOverdue ? 'var(--red)' : 'var(--faint)'}">${nm.due_date || 'بلا تاريخ'}${nmOverdue ? ' · متأخر' : ''}</div></div>`
         : '<span style="color:var(--faint)">—</span>'}</td>
     </tr>`;
@@ -286,7 +286,7 @@ export async function projectsPage(user, opts = {}) {
   const isQuiet = (p) => { const d = derived[p.id]; return !bestVal(p).v && d.prog.v === 0 && !(revYearBy[p.id] || 0) && (!d.burn || d.burn.v === 0) && d.health.rank === 2; };
   const mainRows = sorted.filter((p) => !isQuiet(p));
   const quietRows = sorted.filter(isQuiet);
-  const tbl = (rws, id) => `<div class="tblwrap"><table ${id ? `id="${id}"` : ''} style="width:100%;border-collapse:collapse;min-width:1040px">
+  const tbl = (rws, id) => `<div class="tblwrap"><table class="rtbl" ${id ? `id="${id}"` : ''} style="width:100%;border-collapse:collapse;min-width:1040px">
     <thead><tr>
       ${th('المشروع')}${th('الحالة')}${th('الصحة', true)}${th(`${G.spendPct}·${G.progressPct}`, true)}${th('المدة', true)}
       ${th('قيمة المشروع', true)}${th('الإيراد المحقق', true)}${th(G.deliverables)}${th('مدير المشروع')}${th('المعلم القادم', true)}
