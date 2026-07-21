@@ -1,8 +1,10 @@
-// Capacity workspace (team page v3) — heat-grid cell editing, quarter zoom, search, expand rows.
-// Delegated events only; SSR provides all data via window.__SANAD (already role-redacted).
+// Span-board staffing (team page v2.1) — merged month spans, urgency sections, popover with a
+// month stepper, partial row repaint after saves. Delegated events only; SSR provides all data
+// via window.__SANAD (already role-redacted).
 (function () {
   'use strict';
   const S = () => window.__SANAD || {};
+  const M = () => S().monthNames || [];
   const api = async (path, method, body) => {
     const r = await fetch('/api' + path, { method: method || 'GET', credentials: 'include',
       headers: body ? { 'Content-Type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined });
@@ -18,9 +20,18 @@
   };
   const esc = (s) => (window.Sanad ? window.Sanad.esc(s) : String(s == null ? '' : s));
 
-  const cellBg = (v) => v === 0 ? '#eef1f7' : v > 105 ? '#dc2626' : v >= 80 ? '#059669' : v >= 40 ? '#f59e0b' : '#bfdbfe';
-  const cellFg = (v) => v === 0 ? '#94a3b8' : v > 105 || v >= 80 ? '#fff' : v >= 40 ? '#7c2d12' : '#1e40af';
-  const nowTone = (u) => u > 105 ? 'var(--red)' : u >= 80 ? 'var(--green)' : u >= 40 ? 'var(--amber)' : u > 0 ? 'var(--blue)' : 'var(--faint)';
+  // ── same span model as the SSR board (people.js spansOf/spanTone) ──
+  const spansOf = (months) => {
+    const out = [];
+    for (let i = 0; i < 12; i++) {
+      const v = Math.round(Number(months[i]) || 0);
+      const last = out[out.length - 1];
+      if (last && last.v === v) last.len++; else out.push({ m0: i, len: 1, v });
+    }
+    return out;
+  };
+  const toneOf = (v, sectorMember) => v > 110 ? 'over' : v >= 70 ? 'ok' : v > 0 ? 'low' : sectorMember ? 'park' : 'off';
+  const nowTone = (u) => u > 110 ? 'var(--red)' : u >= 70 ? 'var(--green)' : u > 0 ? 'var(--amber)' : 'var(--faint)';
 
   // ── popover state ──
   let pop = null, popCtx = null; // popCtx = { empId, month }
@@ -33,30 +44,49 @@
     if (m === S().currentMonth) for (const o of e.opps || []) v += Number(o.pct) || 0;
     return Math.round(v);
   }
-  function paintCell(empId, m) {
-    const v = cellTotal(empId, m);
-    const cell = document.querySelector('.hg-cell[data-emp="' + empId + '"][data-m="' + m + '"]');
-    if (!cell) return;
-    cell.dataset.v = v;
-    cell.style.background = cellBg(v);
-    cell.style.color = cellFg(v);
-    cell.innerHTML = (v > 0 ? v : '') + (v > 105 ? '<span class="w" aria-hidden="true">⚠</span>' : '');
-    if (m === S().currentMonth) {
-      const e = (S().emps || {})[empId]; if (e) e.currentUtil = v;
-      const row = document.querySelector('.hg-row[data-emp="' + empId + '"] .hg-now');
-      if (row) { row.textContent = v + '%'; row.style.color = nowTone(v); }
-    }
-    const totalEl = pop && pop.querySelector('[data-pop-total]');
-    if (totalEl) { totalEl.textContent = v + '%'; totalEl.style.color = v > 105 ? 'var(--red)' : 'var(--ink2)'; }
+  const monthsOf = (empId) => { const a = []; for (let m = 1; m <= 12; m++) a.push(cellTotal(empId, m)); return a; };
+
+  function trackHtml(empId) {
+    const e = (S().emps || {})[empId]; if (!e) return '';
+    return spansOf(e.months).map((s) => {
+      const tone = toneOf(s.v, !!e.sector_id);
+      const from = M()[s.m0] || '', to = M()[s.m0 + s.len - 1] || '';
+      const rng = s.len === 1 ? from : 'من ' + from + ' إلى ' + to;
+      const full = tone === 'park'
+        ? 'تسكين قطاعي — ' + rng + ': وقت ' + e.name_ar + ' محجوز لقطاعه افتراضياً حتى يُسكَّن على مشروع'
+        : e.name_ar + ' — ' + rng + ': ' + s.v + '%' + (s.v > 110 ? ' (تجاوز الطاقة)' : '');
+      const label = tone === 'park' ? (s.len >= 3 ? 'تسكين قطاعي' : '')
+        : s.v === 0 ? ''
+        : s.len >= 3 ? '<span class="tnum">' + s.v + '%</span> ' + (s.len === 12 ? 'كل السنة' : from + ' ← ' + to)
+        : '<span class="tnum">' + s.v + '%</span>';
+      return '<button type="button" class="hg-cell ' + tone + '" style="grid-column:span ' + s.len + '" data-emp="' + empId + '" data-m="' + (s.m0 + 1) + '" data-v="' + s.v + '" title="' + esc(full) + '" aria-label="' + esc(full) + '">' + label + '</button>';
+    }).join('');
   }
 
-  function openPop(cell) {
-    closePop();
-    const empId = cell.dataset.emp, m = Number(cell.dataset.m);
-    const st = S(); const e = (st.emps || {})[empId]; if (!e) return;
-    const mName = (st.monthNames || [])[m - 1] || ('شهر ' + m);
+  // إعادة رسم صف موظف واحد من الحالة (بلا إعادة تحميل): الامتدادات + «الآن» + «الذروة» + إجمالي النافذة
+  function repaint(empId) {
+    const e = (S().emps || {})[empId]; if (!e) return;
+    e.months = monthsOf(empId);
+    e.currentUtil = S().currentMonth ? e.months[S().currentMonth - 1] : 0;
+    const row = document.querySelector('.brd-row[data-emp="' + empId + '"]'); if (!row) return;
+    const track = row.querySelector('.mtrack'); if (track) track.innerHTML = trackHtml(empId);
+    const now = row.querySelector('[data-now]'); if (now) { now.textContent = e.currentUtil + '%'; now.style.color = nowTone(e.currentUtil); }
+    const peakV = Math.max(0, ...e.months);
+    const peak = row.querySelector('[data-peak]'); if (peak) { peak.textContent = peakV + '%'; peak.style.color = peakV > 110 ? 'var(--red)' : 'var(--ink2)'; }
+    if (pop && popCtx && popCtx.empId === empId) {
+      const t = cellTotal(empId, popCtx.month);
+      const totalEl = pop.querySelector('[data-pop-total]');
+      if (totalEl) { totalEl.textContent = t + '%'; totalEl.style.color = t > 110 ? 'var(--red)' : 'var(--ink2)'; }
+    }
+  }
+
+  // ── popover: rows for the chosen month + ‹ › stepper in the header ──
+  function renderPop() {
+    if (!pop || !popCtx) return;
+    const st = S(); const e = (st.emps || {})[popCtx.empId]; if (!e) return;
+    const m = popCtx.month;
+    const mName = M()[m - 1] || '';
     const canStaff = !!st.canStaff;
-    popCtx = { empId, month: m };
     const rows = (e.projects || []).map((p) => {
       const v = Number((p.months || {})[m]) || 0;
       return '<div style="display:flex;align-items:center;gap:.5rem;padding:.35rem 0;border-bottom:1px dashed var(--line)">' +
@@ -72,22 +102,34 @@
       '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px">' + esc(o.name) + ' <span class="pill" style="background:#ede9fe;color:var(--brand2)">فرصة</span></span>' +
       '<b class="tnum" style="font-size:12px">' + (Number(o.pct) || 0) + '%</b></div>').join('') : '';
     const empty = !(e.projects || []).length && !opps;
-    pop = document.createElement('div');
-    pop.className = 'hg-pop';
-    pop.setAttribute('role', 'dialog');
+    const total = cellTotal(popCtx.empId, m);
+    // الاتجاه كاتجاه اللوحة: يناير في أقصى اليمين — السهم لليمين يرجع شهراً، ولليسار يتقدم شهراً
     pop.setAttribute('aria-label', 'تعديل تسكين ' + e.name_ar + ' — ' + mName);
     pop.innerHTML =
-      '<div style="padding:.6rem .8rem;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:.5rem">' +
-      '<b style="font-size:13px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(e.name_ar) + ' — ' + esc(mName) + '</b>' +
+      '<div style="padding:.6rem .8rem;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:.4rem">' +
+      '<b style="font-size:13px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(e.name_ar) + ' — <span data-pop-month>' + esc(mName) + '</span></b>' +
+      '<button type="button" class="btn btn-ghost btn-sm tnum" data-pop-step="-1" title="الشهر السابق" aria-label="الشهر السابق"' + (m <= 1 ? ' disabled' : '') + '>›</button>' +
+      '<button type="button" class="btn btn-ghost btn-sm tnum" data-pop-step="1" title="الشهر التالي" aria-label="الشهر التالي"' + (m >= 12 ? ' disabled' : '') + '>‹</button>' +
       '<button type="button" class="btn btn-ghost btn-sm" data-pop-close aria-label="إغلاق">✕</button></div>' +
       '<div style="padding:.5rem .8rem">' +
       (empty
         ? '<div style="color:var(--muted);font-size:12.5px;padding:.4rem 0">لا تسكين لهذا الموظف في ' + esc(mName) + (canStaff ? ' — أضِف تسكينًا من الزر أدناه' : '') + '.</div>'
         : rows + opps +
-          '<div style="display:flex;justify-content:space-between;padding:.45rem 0 .15rem;font-size:12px;color:var(--muted)"><span>إجمالي الشهر</span><b class="tnum" data-pop-total style="color:' + (cellTotal(empId, m) > 105 ? 'var(--red)' : 'var(--ink2)') + '">' + cellTotal(empId, m) + '%</b></div>') +
-      (canStaff && st.canManage ? '<div style="padding:.35rem 0 .5rem"><button type="button" class="btn btn-sm" data-action="assign" data-emp="' + empId + '">＋ تسكين على مشروع</button></div>' : '') +
+          '<div style="display:flex;justify-content:space-between;padding:.45rem 0 .15rem;font-size:12px;color:var(--muted)"><span>إجمالي الشهر</span><b class="tnum" data-pop-total style="color:' + (total > 110 ? 'var(--red)' : 'var(--ink2)') + '">' + total + '%</b></div>') +
+      (canStaff && st.canManage ? '<div style="padding:.35rem 0 .5rem"><button type="button" class="btn btn-sm" data-action="assign" data-emp="' + popCtx.empId + '">＋ تسكين على مشروع</button></div>' : '') +
       (canStaff && !empty ? '<div style="font-size:10px;color:var(--faint);padding-bottom:.45rem">اكتب النسبة ثم اخرج من الحقل — يُحفظ فورًا. Esc للإغلاق.</div>' : '') +
       '</div>';
+  }
+
+  function openPop(cell) {
+    closePop();
+    const empId = cell.dataset.emp, m = Number(cell.dataset.m);
+    const e = (S().emps || {})[empId]; if (!e || !m) return;
+    popCtx = { empId, month: m };
+    pop = document.createElement('div');
+    pop.className = 'hg-pop';
+    pop.setAttribute('role', 'dialog');
+    renderPop();
     document.body.appendChild(pop);
     const r = cell.getBoundingClientRect();
     const W = pop.offsetWidth || 300, H = pop.offsetHeight || 150;
@@ -98,6 +140,16 @@
     pop.style.left = x + 'px'; pop.style.top = Math.max(window.scrollY + 8, y) + 'px';
     const first = pop.querySelector('input[data-pop-pct]');
     if (first) { first.focus(); first.select(); }
+  }
+
+  function stepPop(d) {
+    if (!pop || !popCtx) return;
+    const m = Math.min(12, Math.max(1, popCtx.month + d));
+    if (m === popCtx.month) return;
+    popCtx.month = m;
+    renderPop();
+    const b = pop.querySelector('[data-pop-step="' + d + '"]');
+    if (b && !b.disabled) b.focus();
   }
 
   async function saveCell(inp) {
@@ -111,18 +163,16 @@
     if (v > 150) v = 150;
     inp.value = v;
     if (v === prev) return;
-    // optimistic: paint first, revert on failure
+    // optimistic: repaint the row spans from state first, revert on failure
     p.months = p.months || {}; if (v > 0) p.months[m] = v; else delete p.months[m];
-    e.months && (e.months[m - 1] = cellTotal(empId, m));
-    paintCell(empId, m);
+    repaint(empId);
     inp.disabled = true;
     try {
       await api('/projects/staff/' + allocId, 'PATCH', { month: m, pct: v });
-      toast('حُفظ تسكين ' + ((S().monthNames || [])[m - 1] || '') + ' ✓');
+      toast('حُفظ تسكين ' + (M()[m - 1] || '') + ' ✓');
     } catch (err) {
       if (prev > 0) p.months[m] = prev; else delete p.months[m];
-      e.months && (e.months[m - 1] = cellTotal(empId, m));
-      paintCell(empId, m);
+      repaint(empId);
       inp.value = prev;
       toast(err.message, true);
     } finally { inp.disabled = false; }
@@ -140,17 +190,14 @@
     } catch (err) { toast(err.message, true); }
   }
 
-  function setZoom(q) {
-    const hg = document.getElementById('hg'); if (!hg) return;
-    hg.dataset.zoom = q;
-    const inQ = (m) => q === 0 || (m > (q - 1) * 3 && m <= q * 3);
-    hg.querySelectorAll('.hg-cell, .hg-mh').forEach((el) => { el.style.display = inQ(Number(el.dataset.m)) ? '' : 'none'; });
-    document.querySelectorAll('[data-action="zoom"]').forEach((b) => b.classList.toggle('on', Number(b.dataset.q) === q));
-  }
-
   function filterRows(q) {
     q = (q || '').trim().toLowerCase();
-    document.querySelectorAll('.hg-row[data-emp]').forEach((row) => {
+    // أثناء البحث تُفتح كل المجموعات المطوية كي تظهر النتائج، وتعود لوضعها عند المسح
+    document.querySelectorAll('details.bsec').forEach((d) => {
+      if (q) { if (!d.dataset.wasOpen) d.dataset.wasOpen = d.open ? '1' : '0'; d.open = true; }
+      else if (d.dataset.wasOpen) { d.open = d.dataset.wasOpen === '1'; delete d.dataset.wasOpen; }
+    });
+    document.querySelectorAll('.brd-row[data-emp]').forEach((row) => {
       const show = !q || (row.dataset.name || '').includes(q);
       row.style.display = show ? '' : 'none';
       const det = document.querySelector('.hg-detail[data-detail="' + row.dataset.emp + '"]');
@@ -163,6 +210,8 @@
     if (dd && window.Sanad) { window.Sanad.openDD(dd.dataset.dd); return; }
     const popClose = ev.target.closest('[data-pop-close]');
     if (popClose) { closePop(); return; }
+    const popStep = ev.target.closest('[data-pop-step]');
+    if (popStep) { stepPop(Number(popStep.dataset.popStep) || 0); return; }
     const popRemove = ev.target.closest('[data-pop-remove]');
     if (popRemove) { removeAlloc(popRemove); return; }
     const el = ev.target.closest('[data-action]');
@@ -170,7 +219,6 @@
       const a = el.dataset.action;
       if (a === 'assign' && window.Sanad) { closePop(); window.Sanad.empAssign(el.dataset.emp); return; }
       if (a === 'edit-emp' && window.Sanad) { window.Sanad.empEdit(el.dataset.emp); return; }
-      if (a === 'zoom') { setZoom(Number(el.dataset.q) || 0); return; }
       if (a === 'expand') {
         const det = document.querySelector('.hg-detail[data-detail="' + el.dataset.emp + '"]');
         if (det) { det.hidden = !det.hidden; el.setAttribute('aria-expanded', String(!det.hidden)); el.textContent = det.hidden ? '⌄' : '⌃'; }
