@@ -182,6 +182,15 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
   [style*="fr 1fr"]{grid-template-columns:1fr!important}
   [style*="grid-template-columns:repeat"]:not([style*="minmax"]){grid-template-columns:repeat(auto-fit,minmax(150px,1fr))!important}
   :root{--fs-num-lg:1.45rem;--fs-num-md:1.2rem}
+  /* جدول متجاوب (.rtbl): كل صف يصير بطاقة بعناوين الأعمدة بدل التمرير الأفقي الأعمى */
+  .rtbl{min-width:0!important}
+  .rtbl thead{display:none}
+  .rtbl tbody tr{display:block;border:1px solid var(--line);border-radius:12px;margin-bottom:.55rem;background:var(--surface);overflow:hidden}
+  .rtbl tbody td{display:flex;justify-content:space-between;align-items:center;gap:1rem;text-align:left!important;max-width:none!important;min-width:0!important;white-space:normal!important;padding:.5rem .7rem!important;border-bottom:1px solid var(--line)}
+  .rtbl tbody td:last-child{border-bottom:0}
+  .rtbl tbody td::before{content:attr(data-label);font-size:10.5px;color:var(--muted);font-weight:700;white-space:nowrap;flex:none}
+  .rtbl tbody td:first-child{display:block;background:var(--bg)}
+  .rtbl tbody td:first-child::before{display:none}
 }
 .now-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--gold);box-shadow:0 0 0 2px #fff,0 0 0 3.5px var(--gold);flex:none}
 

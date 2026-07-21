@@ -200,11 +200,11 @@ export async function clientsPage(user, opts = {}) {
       </div>
       ${r.code ? `<div style="font-size:10px;color:var(--faint);margin-top:.15rem"><bdi>${esc(r.code)}</bdi></div>` : ''}
       ${secChips(r)}</td>
-    <td style="padding:.6rem .55rem;text-align:center">${relCell(r)}</td>
-    <td style="padding:.6rem .55rem;text-align:left;white-space:nowrap">${oppsCell(r)}</td>
-    <td style="padding:.6rem .55rem;text-align:center">${wlCell(r)}</td>
-    <td style="padding:.6rem .55rem;text-align:center;font-size:13px" class="tnum">${r.active_projects || dash}</td>
-    <td style="padding:.6rem .55rem;text-align:left;white-space:nowrap">${moneyCell(r)}</td>
+    <td data-label="${G.relationship}" style="padding:.6rem .55rem;text-align:center">${relCell(r)}</td>
+    <td data-label="الفرص المفتوحة" style="padding:.6rem .55rem;text-align:left;white-space:nowrap">${oppsCell(r)}</td>
+    <td data-label="الفوز · الخسارة" style="padding:.6rem .55rem;text-align:center">${wlCell(r)}</td>
+    <td data-label="مشاريع نشطة" style="padding:.6rem .55rem;text-align:center;font-size:13px" class="tnum">${r.active_projects || dash}</td>
+    <td data-label="إيراد ${fy}" style="padding:.6rem .55rem;text-align:left;white-space:nowrap">${moneyCell(r)}</td>
   </tr>`).join('');
 
   const emptyState = `<div class="empty-state">${icon('client')}
@@ -213,7 +213,7 @@ export async function clientsPage(user, opts = {}) {
     ${canCreate && !query && !type ? `<button class="btn btn-primary" data-action="client-add">${icon('plus')} عميل جديد</button>` : ''}</div>`;
 
   const relTip = 'تُقاس حالة العلاقة بآخر تواصل مسجّل: عميل بلا تواصل حديث يتحوّل من نشطة إلى فاترة ثم خاملة، وأي فرصة مفتوحة تُبقيه نشطاً';
-  const table = card(`<div class="tblwrap"><table style="width:100%;border-collapse:collapse;min-width:860px">
+  const table = card(`<div class="tblwrap"><table class="rtbl" style="width:100%;border-collapse:collapse;min-width:860px">
     <thead><tr>${th(G.client)}${th(`<span data-tip="${esc(relTip)}">${G.relationship} ⓘ</span>`, 'center')}${th('الفرص المفتوحة', 'left')}${th('الفوز · الخسارة', 'center')}${th('مشاريع نشطة', 'center')}${th(`إيراد ${fy}`, 'left')}</tr></thead>
     <tbody>${rowsHtml}</tbody></table>${rows.length ? '' : emptyState}</div>`);
 
