@@ -90,10 +90,10 @@ export async function ceoPage(user, opts = {}) {
     const gm = ov.canSeeMargin ? marginBySector[s.id] : undefined;
     const active = sec === s.id;
     return card(`
-    <div style="padding:.8rem .9rem${active ? ';box-shadow:inset 0 0 0 2px ' + (s.color || '#2563eb') + ';border-radius:var(--r)' : ''}">
+    <div style="padding:.8rem .9rem${active ? ';box-shadow:inset 0 0 0 2px ' + (s.color || 'var(--brand)') + ';border-radius:var(--r)' : ''}">
       <div style="display:flex;align-items:center;justify-content:space-between">
         <div style="display:flex;align-items:center;gap:.5rem">
-          <span style="width:9px;height:9px;border-radius:3px;background:${s.color || '#2563eb'}"></span>
+          <span style="width:9px;height:9px;border-radius:3px;background:${s.color || 'var(--brand)'}"></span>
           <div><div style="font-weight:800;font-size:14px">${esc(s.name_ar)}</div><div style="font-size:10.5px;color:var(--muted)">${esc(s.name_en || '')}</div></div>
         </div>
         ${s.placeholder ? pill('بانتظار التفعيل', 'amber') : pill(`${s.opp_count} فرصة`, 'blue')}
@@ -119,19 +119,19 @@ export async function ceoPage(user, opts = {}) {
     </div>`, 'card-h');
   }).join('');
   // sector achievement (revenue) comparison, sorted, colored by sector — the "how much each achieved" chart
-  const sectorAchv = [...ov.sectors].map((s) => ({ label: esc(s.name_ar), value: s.revenue_halalas || 0, color: s.color || '#2563eb', sub: pct(s.revenue_pct) })).sort((a, b) => b.value - a.value);
+  const sectorAchv = [...ov.sectors].map((s) => ({ label: esc(s.name_ar), value: s.revenue_halalas || 0, color: s.color || 'var(--brand)', sub: pct(s.revenue_pct) })).sort((a, b) => b.value - a.value);
   // dense secondary metric inside the hero — clickable when a drill-down key is given
   const hm = (label, val, sub, dd) => `<div ${dd ? `class="hclick" role="button" tabindex="0" aria-label="${label} — التفاصيل" onclick="Sanad.openDD('${dd}')" onkeydown="if(event.key==='Enter'||event.key===' ')Sanad.openDD('${dd}')"` : ''} style="flex:1;min-width:118px;max-width:220px;overflow:hidden;padding:.3rem .45rem;margin:-.3rem -.45rem"><div style="color:rgba(255,255,255,.58);font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${label}${dd ? ' <span style="opacity:.55">⊕</span>' : ''}</div><div class="tnum" style="color:#fff;font-weight:800;font-size:1.02rem;margin-top:.12rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${val}</div>${sub ? `<div style="color:rgba(255,255,255,.42);font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" class="tnum">${sub}</div>` : ''}</div>`;
 
   // ── Sector filter chips (the owner's per-sector lens) ──
   const chips = `<div class="chips"><span class="lbl">عرض:</span>
     <a href="/app/ceo?year=${year}" class="chip ${sec ? '' : 'on'}">الشركة كاملة</a>
-    ${ov.sectors.map((s) => `<a href="/app/ceo?year=${year}&sector=${s.id}" class="chip ${sec === s.id ? 'on' : ''}"><span class="dot" style="background:${s.color || '#2563eb'}"></span>${esc(s.name_ar)}</a>`).join('')}
+    ${ov.sectors.map((s) => `<a href="/app/ceo?year=${year}&sector=${s.id}" class="chip ${sec === s.id ? 'on' : ''}"><span class="dot" style="background:${s.color || 'var(--brand)'}"></span>${esc(s.name_ar)}</a>`).join('')}
     ${sec ? `<a class="btn btn-sm" style="margin-inline-start:.3rem" href="/app/sector?year=${year}&sector=${sec}">فتح مركز القطاع ←</a>` : ''}
   </div>`;
 
   // ── Drill-down popup datasets → templates (shared ddWrap/attain/ddRows at module scope) ──
-  const secHbars = (key, pctKey) => hbars([...ov.sectors].map((s) => ({ label: esc(s.name_ar), value: s[key] || 0, color: s.color || '#2563eb', sub: pct(s[pctKey]) })).sort((a, b) => b.value - a.value), { fmt: fmtSar });
+  const secHbars = (key, pctKey) => hbars([...ov.sectors].map((s) => ({ label: esc(s.name_ar), value: s[key] || 0, color: s.color || 'var(--brand)', sub: pct(s[pctKey]) })).sort((a, b) => b.value - a.value), { fmt: fmtSar });
   const maxStage = Math.max(1, ...pipeStages.map((s) => s.v || 0));
   const ddTemplates = `
   ${ddWrap('revenue', `الإيرادات المحققة · ${year}`, `${scopeLabel} · مقابل الهدف`, `
@@ -178,7 +178,7 @@ export async function ceoPage(user, opts = {}) {
     <div>${ddRows(topContracts.map((c) => `<div class="dd-row"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.client || c.code || 'عقد')}<span style="color:var(--faint);font-size:10.5px">${c.code ? ' · ' + esc(c.code) : ''}${!sec && c.sector ? ' · ' + esc(c.sector) : ''}</span></span><b class="tnum" style="flex:none">${fmtSar(c.value_halalas)}</b></div>`))}</div>`)}
   ${ov.canSeeMargin ? ddWrap('margin', `هامش الربح الإجمالي · ${year}`, 'حسب القطاعات · بيانات حساسة (مالية/قيادة فقط)', `
     ${avgMargin != null ? `<div class="dd-kpi"><span class="v tnum" style="color:${avgMargin >= 20 ? 'var(--green)' : avgMargin >= 10 ? 'var(--amber)' : 'var(--red)'}">${avgMargin}%</span><span style="font-size:12px;color:var(--muted)">متوسط الهامش عبر القطاعات</span></div>` : ''}
-    <div>${ddRows(margins.map((m) => `<div class="dd-row"><span style="display:flex;align-items:center;gap:.45rem;min-width:0"><span style="width:9px;height:9px;border-radius:2px;background:${m.color || '#2563eb'};flex:none"></span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m.name_ar)}</span></span><b class="tnum" style="flex:none;color:${m.margin == null ? 'var(--faint)' : m.margin >= 20 ? 'var(--green)' : m.margin >= 10 ? 'var(--amber)' : 'var(--red)'}">${m.margin == null ? '—' : m.margin + '%'}</b></div>`))}</div>`) : ''}`;
+    <div>${ddRows(margins.map((m) => `<div class="dd-row"><span style="display:flex;align-items:center;gap:.45rem;min-width:0"><span style="width:9px;height:9px;border-radius:2px;background:${m.color || 'var(--brand)'};flex:none"></span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m.name_ar)}</span></span><b class="tnum" style="flex:none;color:${m.margin == null ? 'var(--faint)' : m.margin >= 20 ? 'var(--green)' : m.margin >= 10 ? 'var(--amber)' : 'var(--red)'}">${m.margin == null ? '—' : m.margin + '%'}</b></div>`))}</div>`) : ''}`;
   const body = `
     ${chips}
     ${riskBanner}

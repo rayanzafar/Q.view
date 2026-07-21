@@ -1,0 +1,43 @@
+// النموذج الزمني الواحد للمنصة كلها — كل شريط أشهر/أرباع في أي صفحة أو تقرير أو ملف
+// يستمد أسماءه واتجاهه من هنا حصراً. القاعدة (من مالك المنتج):
+//   • أسماء عربية كاملة حيث تتسع المساحة — الاختصارات العربية («ينا/فبر») محظورة نهائياً.
+//   • الضيّق جداً (رؤوس شبكات على الجوال) يسقط إلى Jan–Dec الإنجليزية، لا إلى اختصار عربي.
+//   • الاتجاه: الزمن يُقرأ كما يُقرأ النص — يناير في أقصى اليمين وديسمبر في أقصى اليسار
+//     (فئة .mtrack في layout.js: grid بـdirection:rtl). لا شريط زمني LTR بعد اليوم.
+//   • مؤشر «نحن هنا» موحّد: النقطة الذهبية nowDot() لا غير.
+export const MONTHS_AR = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+export const MONTHS_EN3 = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+export const QUARTERS_AR = ['الربع الأول', 'الربع الثاني', 'الربع الثالث', 'الربع الرابع'];
+// صيغة قصيرة للأرباع حيث لا يتسع الاسم الكامل (أزرار تبديل مثلاً)
+export const QUARTERS_SHORT = ['الأول', 'الثاني', 'الثالث', 'الرابع'];
+
+// i صفرية (0=يناير). density: 'full' افتراضياً، 'tight' للرؤوس الضيقة (إنجليزية).
+export const monthLabel = (i, density = 'full') => (density === 'tight' ? MONTHS_EN3[i] : MONTHS_AR[i]);
+
+// عنوان مزدوج يختار الـCSS منه حسب عرض الشاشة: كامل عربي على الواسع، Jan على الضيق.
+// (فئتا .m-full/.m-tight معرّفتان في layout.js)
+export const monthLabelDual = (i) =>
+  `<span class="m-full">${MONTHS_AR[i]}</span><span class="m-tight">${MONTHS_EN3[i]}</span>`;
+
+// q صفرية (0=الربع الأول)
+export const quarterLabel = (q) => QUARTERS_AR[q] || '';
+
+// فهرس الشهر الحالي (صفري) إن كانت السنة المعروضة هي الجارية، وإلا -1 (لا مؤشر «الآن» على سنة أخرى)
+export const currentMonthIndex = (year) => {
+  const d = new Date();
+  return Number(year) === d.getUTCFullYear() ? d.getUTCMonth() : -1;
+};
+
+// مؤشر «نحن هنا» الموحد — نقطة ذهبية بحلقة (فئة .now-dot في layout.js)
+export const nowDot = (title = 'الشهر الحالي') => `<span class="now-dot" title="${title}"></span>`;
+
+// «انقضى N% من السنة» — تُستخدم مع مقاييس الإيقاع وشرائط الأشهر
+export const yearElapsedPct = (today = new Date(), year = today.getUTCFullYear()) => {
+  const y = Number(year);
+  const start = Date.UTC(y, 0, 1);
+  const end = Date.UTC(y + 1, 0, 1);
+  const t = today.getTime();
+  if (t <= start) return 0;
+  if (t >= end) return 100;
+  return Math.round(((t - start) / (end - start)) * 100);
+};

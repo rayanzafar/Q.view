@@ -1,5 +1,7 @@
 // Shared module-scope helpers used across the SSR page files (moved verbatim from pages.js).
 import { fmtSar } from '../../core/util/ids.js';
+import { yearElapsedPct, targetToDate, paceDelta, requiredRunRate } from '../../core/reports/metrics.js';
+import { nowDot } from '../../core/i18n/time.js';
 
 export const sarShort = (halalas) => {
   const v = (halalas || 0) / 100;
@@ -12,7 +14,7 @@ export const pct = (n) => `${Math.round(n || 0)}%`;
 // HTML-escape user-controlled strings before interpolating into SSR markup (defense against stored XSS
 // now that intake/manual entry accept free-text names, clients, notes).
 export const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-export const bar = (p, color = '#2563eb') => `<div class="h-1.5 bg-slate-100 rounded-full overflow-hidden mt-1">
+export const bar = (p, color = 'var(--brand)') => `<div class="h-1.5 bg-slate-100 rounded-full overflow-hidden mt-1">
   <div style="width:${Math.min(100, Math.max(0, p))}%;background:${color}" class="h-full rounded-full"></div></div>`;
 
 // ── Shared drill-down modal helpers (CEO dashboard + sector command center) ──
@@ -36,10 +38,51 @@ export function statMini(label, value, sub, tone) {
     <div style="font-size:10.5px;color:var(--faint)">${sub || ''}</div></div>`;
 }
 
+// ── بطاقة «الإيقاع مقابل الخطة» (v2.1) — البديل الوحيد لمقارنة محقق/مستهدف/متوقع ──
+// المبدأ: مقياس الشريط = المستهدف السنوي فقط (100% = الهدف). المحقق تعبئة، وموضع اليوم
+// نقطة ذهبية عند «انقضى N% من السنة». المتوقع نهاية السنة سطر نصي بمعادلة معلنة — لا يُرسم
+// على الشريط أبداً كي لا يُصغّر المحقق بصرياً (عيب D3 الذي رصده المالك).
+export function paceCard({ label, actual = 0, target = 0, forecast = null, weightedOpen = null, today = new Date(), year, color = 'var(--brand)', dd = null }) {
+  const elapsed = yearElapsedPct(today, year);
+  const delta = paceDelta(actual, target, today, year);
+  const runRate = requiredRunRate(actual, target, today, year);
+  const attainPct = target ? Math.round((actual / target) * 100) : null;
+  const chip = delta == null ? ''
+    : delta >= 3 ? `<span class="pace-chip up">متقدم عن الخطة الزمنية بـ<b class="tnum">${delta}</b> نقطة</span>`
+    : delta <= -3 ? `<span class="pace-chip down">متأخر عن الخطة الزمنية بـ<b class="tnum">${Math.abs(delta)}</b> نقطة</span>`
+    : '<span class="pace-chip flat">على الخطة الزمنية</span>';
+  const overTgt = target && forecast && forecast > target * 1.05
+    ? `<span class="pace-chip up" data-tip="المتوقع نهاية السنة يتجاوز الهدف">قد يبلغ ×${(forecast / target).toFixed(1)} من الهدف</span>` : '';
+  const track = target ? `
+    <div class="pace-bar" role="img" aria-label="المحقق ${attainPct}% من الهدف، وانقضى ${elapsed}% من السنة">
+      <span class="fill" style="width:${Math.min(100, attainPct)}%;background:${color}"></span>
+      <span class="now" style="inset-inline-start:${Math.min(100, elapsed)}%" title="نحن هنا — انقضى ${elapsed}% من السنة">${nowDot('')}</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;font-size:var(--fs-micro);color:var(--muted);margin-top:.35rem">
+      <span>الهدف السنوي <b class="tnum">${fmtSar(target)}</b> · حقّقنا <b class="tnum">${attainPct}%</b></span>${chip}
+    </div>`
+    : '<div style="font-size:var(--fs-micro);color:var(--faint);margin-top:.2rem">لا هدف مسجّل لهذه السنة — يُسجَّل من إدارة الهيكل</div>';
+  const fcLine = forecast != null && target ? `
+    <div style="display:flex;justify-content:space-between;gap:.6rem;font-size:var(--fs-micro);color:var(--muted);margin-top:.45rem;padding-top:.45rem;border-top:1px dashed var(--line)">
+      <span data-tip="المعادلة: المحقق حتى الآن ${fmtSar(actual)} + المرجّح من الفرص المفتوحة ${fmtSar(weightedOpen || 0)}">المتوقع نهاية السنة <b class="tnum" style="color:var(--ink2)">${fmtSar(forecast)}</b> ⓘ</span>
+      ${runRate != null && runRate > 0 ? `<span>المطلوب شهرياً للمتبقي <b class="tnum" style="color:var(--ink2)">${fmtSar(runRate)}</b></span>` : runRate === 0 ? '<span style="color:var(--green);font-weight:700">بلغنا الهدف ✓</span>' : ''}
+    </div>` : runRate != null && target ? `
+    <div style="font-size:var(--fs-micro);color:var(--muted);margin-top:.45rem;padding-top:.45rem;border-top:1px dashed var(--line)">
+      ${runRate > 0 ? `المطلوب شهرياً للمتبقي <b class="tnum" style="color:var(--ink2)">${fmtSar(runRate)}</b>` : '<span style="color:var(--green);font-weight:700">بلغنا الهدف ✓</span>'}
+    </div>` : '';
+  return `<div ${dd ? `class="cardclick" role="button" tabindex="0" onclick="Sanad.openDD('${dd}')"` : ''} style="padding:.7rem .9rem;border:1px solid var(--line);border-radius:12px;background:#fff">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:.6rem;margin-bottom:.4rem">
+      <span style="font-size:var(--fs-body);font-weight:700">${label} ${dd ? '<span style="color:var(--faint)">⊕</span>' : ''}</span>
+      <span class="tnum" style="font-weight:800;font-size:var(--fs-num-sm);color:${color}">${fmtSar(actual)}</span>
+    </div>
+    ${track}${overTgt ? `<div style="margin-top:.3rem">${overTgt}</div>` : ''}${fcLine}
+  </div>`;
+}
+
 export function noticeCard(title, msg, backHref = '/', backLabel = 'العودة') {
   return `<div style="max-width:440px;margin:64px auto;text-align:center;background:#fff;border:1px solid var(--line);border-radius:16px;padding:40px 32px;box-shadow:0 4px 24px rgba(15,23,42,.05)">
     <div style="font-size:16px;font-weight:700;color:#0f172a">${title}</div>
     <div style="font-size:13px;color:var(--muted);margin-top:8px;line-height:1.7">${msg}</div>
-    <a href="${backHref}" style="display:inline-block;margin-top:20px;background:linear-gradient(120deg,#2563eb,#9333ea);color:#fff;text-decoration:none;padding:9px 22px;border-radius:10px;font-size:13px;font-weight:600">${backLabel}</a>
+    <a href="${backHref}" style="display:inline-block;margin-top:20px;background:linear-gradient(120deg,var(--brand),var(--brand2));color:#fff;text-decoration:none;padding:9px 22px;border-radius:10px;font-size:13px;font-weight:600">${backLabel}</a>
   </div>`;
 }

@@ -12,7 +12,7 @@ import { G } from '../i18n/glossary.js';
 import { sarShort, esc, bar, statMini, noticeCard } from './_shared.js';
 
 const PRJ_STATUS = [
-  { id: 'NOT_STARTED', color: '#94a3b8' }, { id: 'IN_PROGRESS', color: '#2563eb' },
+  { id: 'NOT_STARTED', color: '#94a3b8' }, { id: 'IN_PROGRESS', color: 'var(--brand)' },
   { id: 'ON_HOLD', color: '#d97706' }, { id: 'COMPLETED', color: '#059669' }, { id: 'CANCELLED', color: '#dc2626' },
 ];
 const ragHex = { GREEN: '#059669', AMBER: '#d97706', RED: '#dc2626' };
@@ -53,7 +53,7 @@ export async function projectsPage(user, opts = {}) {
   const present = [...new Set(rows.map((p) => p.status || 'IN_PROGRESS'))];
   const cols = [...PRJ_STATUS.filter((c) => present.includes(c.id)),
     ...present.filter((s) => !PRJ_STATUS.some((c) => c.id === s)).map((s) => ({ id: s, color: '#64748b' }))];
-  if (!cols.length) cols.push({ id: 'IN_PROGRESS', color: '#2563eb' });
+  if (!cols.length) cols.push({ id: 'IN_PROGRESS', color: 'var(--brand)' });
   const byStatus = {}; for (const c of cols) byStatus[c.id] = [];
   for (const p of rows) (byStatus[p.status || 'IN_PROGRESS'] ||= []).push(p);
 
@@ -70,7 +70,7 @@ export async function projectsPage(user, opts = {}) {
         ${bv.l ? `<span class="kv tnum">${fmtSar(bv.v)}</span><span style="font-size:9.5px;font-weight:700;color:var(--faint);background:#eef1f7;border-radius:6px;padding:.1rem .35rem">${bv.l}</span>`
                : '<span style="color:var(--faint);font-size:11px">بلا قيمة مسجلة</span>'}
         <span class="tnum" style="margin-inline-start:auto" ${e.derived ? 'title="محسوبة من حالة المخرجات (المصدر بلا نسبة إنجاز)"' : ''}>${e.v}%${e.derived ? '<span style="color:var(--faint);font-size:9.5px"> ⁎</span>' : ''}</span>`; })()}</div>
-      <div class="bar" style="margin-top:.5rem"><span style="width:${Math.min(100, effProg(p).v)}%;background:${ragHex[p.rag] || '#2563eb'}"></span></div>
+      <div class="bar" style="margin-top:.5rem"><span style="width:${Math.min(100, effProg(p).v)}%;background:${ragHex[p.rag] || 'var(--brand)'}"></span></div>
     </div>`;
   };
   const columns = cols.map((c) => {
@@ -95,7 +95,7 @@ export async function projectsPage(user, opts = {}) {
 
   const secChips = user.scope === 'company' ? `<div class="chips"><span class="lbl">القطاع:</span>
     <a href="/app/projects" class="chip ${secFilter ? '' : 'on'}">الكل</a>
-    ${allSec.map((s) => `<a href="/app/projects?sector=${s.id}" class="chip ${secFilter === s.id ? 'on' : ''}"><span class="dot" style="background:${s.color || '#2563eb'}"></span>${esc(s.name_ar)}</a>`).join('')}
+    ${allSec.map((s) => `<a href="/app/projects?sector=${s.id}" class="chip ${secFilter === s.id ? 'on' : ''}"><span class="dot" style="background:${s.color || 'var(--brand)'}"></span>${esc(s.name_ar)}</a>`).join('')}
   </div>` : '';
   const body = `
     ${secChips}
@@ -150,7 +150,7 @@ export async function tasksPage(user) {
         <input id="qa-title" placeholder="عنوان المهمة…" class="flex-1 border border-line rounded-lg px-3 py-2 text-sm">
         <select id="qa-priority" aria-label="الأولوية" class="border border-line rounded-lg px-2 text-sm"><option value="P2">متوسطة</option><option value="P0">حرجة</option><option value="P1">عالية</option><option value="P3">منخفضة</option></select>
         <input id="qa-due" type="date" aria-label="تاريخ الاستحقاق" class="border border-line rounded-lg px-2 text-sm">
-        <button onclick="Sanad.quickTask()" class="text-white text-[12px] px-4 rounded-lg" style="background:linear-gradient(120deg,#2563eb,#9333ea)">إضافة</button>
+        <button onclick="Sanad.quickTask()" class="text-white text-[12px] px-4 rounded-lg" style="background:linear-gradient(120deg,var(--brand),var(--brand2))">إضافة</button>
       </div></div>
       <table class="w-full"><thead><tr class="text-[11px] text-muted text-right">
         <th class="py-2 px-3 font-medium">المهمة</th><th class="px-3 font-medium">الأولوية</th><th class="px-3 font-medium">الحالة</th>
@@ -249,7 +249,7 @@ export async function projectDetailPage(user, projectId) {
     <div style="padding:.85rem 1rem">
       <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted)"><span>${p.start_date || '—'}</span><span>${p.end_date || '—'}</span></div>
       <div style="position:relative;height:10px;background:var(--surface2, #f1f5f9);border-radius:6px;margin:.45rem 0;overflow:hidden">
-        <div style="position:absolute;inset-inline-start:0;top:0;height:100%;width:${Math.min(100, Math.round(p.progress_pct || 0))}%;background:linear-gradient(90deg,#2563eb,#7c3aed)"></div>
+        <div style="position:absolute;inset-inline-start:0;top:0;height:100%;width:${Math.min(100, Math.round(p.progress_pct || 0))}%;background:linear-gradient(90deg,var(--brand),var(--brand2))"></div>
         ${schedulePct != null ? `<div title="موضع اليوم على الجدول" style="position:absolute;top:-2px;height:14px;width:2px;background:#0f172a;inset-inline-start:${schedulePct}%"></div>` : ''}
       </div>
       <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:var(--muted)">الإنجاز <b class="tnum" style="color:var(--ink2)">${Math.round(p.progress_pct || 0)}%</b></span><span style="color:var(--muted)">${schedulePct != null ? `الزمن المنقضي <b class="tnum">${schedulePct}%</b>` : ''}</span></div>

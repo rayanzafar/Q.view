@@ -14,7 +14,7 @@ export async function financePage(user, opts = {}) {
   const tile = (l, v, sub, color) => card(`<div style="padding:.9rem 1rem"><div style="font-size:11px;color:var(--muted)">${l}</div>
     <div class="metric" style="font-size:1.35rem;${color ? 'color:' + color : ''}">${v}</div>${sub ? `<div style="font-size:11px;color:var(--muted)">${sub}</div>` : ''}</div>`);
   // bridge: bookings → revenue → invoiced → collected
-  const bridge = [['الحجوزات', s.bookings_halalas, '#2563eb'], ['الإيراد المحقق', s.revenue_halalas, '#7c3aed'],
+  const bridge = [['الحجوزات', s.bookings_halalas, 'var(--brand)'], ['الإيراد المحقق', s.revenue_halalas, 'var(--brand2)'],
     ['المُفوتر', s.invoiced_halalas, '#0891b2'], ['المُحصَّل', s.collected_halalas, '#059669']];
   const maxB = Math.max(1, ...bridge.map((b) => b[1]));
   const bridgeHtml = bridge.map((b) => `<div style="flex:1;text-align:center">

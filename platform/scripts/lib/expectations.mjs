@@ -29,7 +29,7 @@ export const ROLES = [
 // Current PAGES map in src/web/routes.js (hardcoded on purpose: the harness must notice when a
 // page disappears or a new one is not covered).
 export const PAGES = ['ceo', 'portfolio', 'sector', 'opportunities', 'my-opportunities', 'projects',
-  'tasks', 'timesheet', 'approvals', 'team', 'users', 'audit', 'reports', 'org', 'finance'];
+  'clients', 'tasks', 'timesheet', 'approvals', 'team', 'imports', 'users', 'audit', 'reports', 'org', 'finance', 'mail'];
 
 // Roles whose service guards admit them to the people/org surfaces (read employee | create sector).
 const ORG_READERS = new Set(['admin', 'ceo_office', 'sector_lead', 'hr']);

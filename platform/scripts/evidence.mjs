@@ -27,7 +27,7 @@ const spaceArg = argv.includes('--out') ? argv[argv.indexOf('--out') + 1] : null
 const outDir = resolve(PLATFORM, eqArg || spaceArg || `docs/evidence/${new Date().toISOString().slice(0, 10)}`);
 mkdirSync(outDir, { recursive: true });
 
-const MOBILE_PAGES = ['ceo', 'sector', 'opportunities', 'team'];
+const MOBILE_PAGES = ['ceo', 'sector', 'opportunities', 'my-opportunities', 'projects', 'clients', 'team'];
 
 const { chromium } = await import('playwright');
 const exe = chromiumPath();

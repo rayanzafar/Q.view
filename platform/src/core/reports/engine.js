@@ -11,10 +11,10 @@ import { resolveUser } from '../http/context.js';
 import { audit } from '../audit/index.js';
 import { id, nowIso } from '../util/ids.js';
 import { config } from '../config.js';
+import { MONTHS_AR as MONTHS } from '../i18n/time.js';
 
 const FY = () => config.fiscalYear;
 const canSeeMargin = (u) => canSeeSensitive(u, 'margin');
-const MONTHS = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
 const monthName = () => MONTHS[new Date().getUTCMonth()];
 const todayIso = () => new Date().toISOString().slice(0, 10);
 const monthStart = () => { const d = new Date(); return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)).toISOString().slice(0, 10); };

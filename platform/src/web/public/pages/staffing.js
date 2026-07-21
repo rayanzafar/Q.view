@@ -69,7 +69,7 @@
     }).join('');
     const opps = m === st.currentMonth ? (e.opps || []).map((o) =>
       '<div style="display:flex;align-items:center;gap:.5rem;padding:.35rem 0;border-bottom:1px dashed var(--line);color:var(--muted)">' +
-      '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px">' + esc(o.name) + ' <span class="pill" style="background:#ede9fe;color:#7c3aed">فرصة</span></span>' +
+      '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px">' + esc(o.name) + ' <span class="pill" style="background:#ede9fe;color:var(--brand2)">فرصة</span></span>' +
       '<b class="tnum" style="font-size:12px">' + (Number(o.pct) || 0) + '%</b></div>').join('') : '';
     const empty = !(e.projects || []).length && !opps;
     pop = document.createElement('div');

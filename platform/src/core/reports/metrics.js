@@ -324,3 +324,33 @@ export async function pipelineAging(sectorId, today) {
   }
   return buckets;
 }
+
+// ── v2.1: رياضيات «الإيقاع مقابل الخطة» (Pace vs Plan) — دوال نقية بلا قاعدة بيانات ──
+// المبدأ الثابت: مقياس أي شريط = المستهدف السنوي فقط؛ المتوقع لا يحدد مقياس شريط أبداً.
+import { yearElapsedPct } from '../i18n/time.js';
+export { yearElapsedPct };
+
+// المستهدف «حتى اليوم» = المستهدف السنوي × نسبة السنة المنقضية
+export function targetToDate(targetHalalas, today = new Date(), year = today.getUTCFullYear()) {
+  return Math.round((targetHalalas || 0) * (yearElapsedPct(today, year) / 100));
+}
+
+// انحراف الإيقاع بالنقاط المئوية: (المحقق/المستهدف)% − (المنقضي من السنة)%
+// موجب = متقدم عن الخطة الزمنية، سالب = متأخر. null عند غياب المستهدف.
+export function paceDelta(actualHalalas, targetHalalas, today = new Date(), year = today.getUTCFullYear()) {
+  if (!targetHalalas) return null;
+  const attain = ((actualHalalas || 0) / targetHalalas) * 100;
+  return Math.round(attain - yearElapsedPct(today, year));
+}
+
+// «المطلوب شهرياً للمتبقي»: (المستهدف − المحقق) ÷ الأشهر المتبقية (يشمل الشهر الجاري).
+// null عند غياب المستهدف أو انتهاء السنة؛ 0 عند بلوغ الهدف.
+export function requiredRunRate(actualHalalas, targetHalalas, today = new Date(), year = today.getUTCFullYear()) {
+  if (!targetHalalas) return null;
+  const y = Number(year);
+  const nowY = today.getUTCFullYear();
+  const monthsLeft = nowY < y ? 12 : nowY > y ? 0 : 12 - today.getUTCMonth();
+  if (monthsLeft <= 0) return null;
+  const gap = Math.max(0, (targetHalalas || 0) - (actualHalalas || 0));
+  return Math.round(gap / monthsLeft);
+}

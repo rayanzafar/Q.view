@@ -9,8 +9,7 @@ import { audit } from '../../../core/audit/index.js';
 import { nowIso } from '../../../core/util/ids.js';
 import { forbidden, notFound } from '../../../core/http/errors.js';
 import { assignEmployee, setAllocation } from '../../pmo/projects.js';
-
-const MONTHS_AR = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+import { MONTHS_AR } from '../../../core/i18n/time.js';
 
 const monthsOf = (json) => {
   let mj = {}; try { mj = JSON.parse(json || '{}'); } catch { mj = {}; }

@@ -4,6 +4,7 @@ import { icon } from './icons.js';
 import { availableYears } from '../core/reports/metrics.js';
 import { config } from '../core/config.js';
 import { NAV_ITEMS, pageAllowed } from './nav.js';
+import { MONTHS_AR, MONTHS_EN3 } from '../core/i18n/time.js';
 
 const GROUPS = { company: 'قيادة الشركة', work: 'العمل اليومي', manage: 'الإدارة', admin: 'النظام' };
 
@@ -22,9 +23,13 @@ const STYLE = `
   --side:linear-gradient(170deg,#182c56 0%,#1f3a75 45%,#56316b 100%);
   --ink:#0f172a; --ink2:#1e293b; --muted:#5b6472; --faint:#79828f;
   --line:#e6e9f0; --bg:#f6f7fb; --surface:#fff;
-  --green:#047857; --amber:#a16207; --red:#dc2626; --blue:#244A99;
+  --green:#047857; --amber:#a16207; --red:#dc2626; --blue:#244A99; --gold:#C9A227;
   --r:14px; --r-sm:10px; --sh-sm:0 1px 2px rgba(15,23,42,.05),0 1px 3px rgba(15,23,42,.05);
   --sh:0 2px 8px rgba(15,23,42,.06),0 12px 28px rgba(36,74,153,.08);
+  /* مقياس الخط الموحد (v2.1): نصوص 6 + أرقام 3 — أي font-size جديد يستخدم هذه حصراً */
+  --fs-micro:10.5px; --fs-meta:11.5px; --fs-body:12.5px; --fs-ui:13px; --fs-title:14px; --fs-page:16px;
+  --fs-num-sm:15px; --fs-num-md:1.35rem; --fs-num-lg:1.9rem;
+  --pad-card-h:.85rem 1rem; --pad-card-b:.7rem 1rem; --pad-cell:.45rem .7rem; --gap:.9rem;
 }
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font-family:'IBM Plex Sans Arabic','Segoe UI',Tahoma,system-ui,-apple-system,sans-serif;line-height:1.7;-webkit-font-smoothing:antialiased}
@@ -160,11 +165,24 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
 .alert.info{background:#eff6ff;border-color:#bfdbfe;color:#1e40af}
 .tblwrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
 
-/* شريط هدف/فعلي/متوقع (bullet graph): مسار هادئ + شريط فعلي + علامة مستهدف + مؤشر توقع */
-.bullet{position:relative;height:16px;background:#eef1f7;border-radius:6px;overflow:visible}
-.bullet .fill{position:absolute;inset-block:3px;inset-inline-start:0;background:var(--brand);border-radius:4px;max-width:100%}
-.bullet .tgt{position:absolute;top:-3px;bottom:-3px;width:2.5px;background:var(--ink2);border-radius:2px}
-.bullet .fc{position:absolute;top:1px;bottom:1px;width:0;border-inline-start:2.5px dashed var(--brand2)}
+/* ── النموذج الزمني الموحد (v2.1) ──────────────────────────────────────────
+   .mtrack: مسار 12 شهراً يُقرأ كما يُقرأ النص — يناير في أقصى اليمين، ديسمبر في أقصى اليسار.
+   العناوين المزدوجة: .m-full عربية كاملة على الواسع، .m-tight إنجليزية Jan على الضيق
+   (قاعدة المالك: لا اختصارات عربية أبداً). مؤشر «نحن هنا» الوحيد = .now-dot الذهبية. */
+.mtrack{display:grid;grid-template-columns:repeat(12,1fr);direction:rtl;gap:3px;align-items:end}
+.m-tight{display:none;direction:ltr;unicode-bidi:isolate}
+@media (max-width:640px){.m-full{display:none}.m-tight{display:inline}}
+.now-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--gold);box-shadow:0 0 0 2px #fff,0 0 0 3.5px var(--gold);flex:none}
+
+/* شريط «الإيقاع مقابل الخطة»: مقياسه المستهدف فقط (100% = الهدف السنوي)؛ التعبئة = المحقق؛
+   النقطة الذهبية = أين يجب أن نكون اليوم (انقضى N% من السنة). المتوقع سطر نصي، لا شريط. */
+.pace-bar{position:relative;height:14px;background:#eef1f7;border-radius:7px}
+.pace-bar .fill{position:absolute;inset-block:2.5px;inset-inline-start:0;border-radius:5px;max-width:100%;background:var(--brand)}
+.pace-bar .now{position:absolute;top:50%;transform:translate(50%,-50%);z-index:1}
+.pace-chip{display:inline-flex;align-items:center;gap:.3rem;padding:.14rem .5rem;border-radius:999px;font-size:10.5px;font-weight:800;line-height:1.5}
+.pace-chip.up{background:#ecfdf5;color:var(--green)}
+.pace-chip.down{background:#fef2f2;color:var(--red)}
+.pace-chip.flat{background:#f1f5f9;color:var(--muted)}
 
 /* بند "يحتاج انتباهك" — جملة + إجراء واحد */
 .attn{display:flex;align-items:center;gap:.7rem;padding:.65rem .8rem;border-radius:12px;border:1px solid var(--line);background:#fff;font-size:13px}
@@ -215,7 +233,8 @@ export async function layout({ user, active, title, subtitle, body, year, extraH
 <link rel="icon" type="image/png" sizes="32x32" href="/static/brand/favicon-32.png">
 <link rel="apple-touch-icon" href="/static/brand/favicon-180.png">
 <script src="/static/tailwind.js"></script>
-<script>tailwind.config={theme:{extend:{colors:{brand:'#244A99',brand2:'#834798',ink:'#0f172a',ink2:'#1e293b',muted:'#64748b',faint:'#94a3b8',line:'#e6e9f0'}}}}</script>
+<script>tailwind.config={theme:{extend:{colors:{brand:'#244A99',brand2:'#834798',ink:'#0f172a',ink2:'#1e293b',muted:'#64748b',faint:'#94a3b8',line:'#e6e9f0'}}}}
+window.__SANAD_MONTHS=${JSON.stringify(MONTHS_AR)};window.__SANAD_MONTHS_EN=${JSON.stringify(MONTHS_EN3)};</script>
 <style>${STYLE}</style>
 <link rel="stylesheet" href="/static/styles.css">${extraHead}</head>
 <body>
@@ -341,14 +360,13 @@ export function hbars(items, opts = {}) {
 }
 
 // 12-month utilization heat strip (allocation % per month). Over-allocation shows red; the current
-// month (1-based `now`) is outlined so "this month vs the rest of the year" reads at a glance.
-// Rendered LTR (Jan→Dec) even on the RTL page so the month order is unambiguous.
+// month (1-based `now`) carries the unified gold "we are here" ring. RTL like all time tracks:
+// January at the far right, December at the far left (the platform's single time model).
 export function utilStrip(months, now = 0) {
-  const AR = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
-  return `<div style="display:flex;gap:2px;direction:ltr">${months.map((v, i) => {
+  return `<div class="mtrack" style="gap:2px">${months.map((v, i) => {
     const c = v === 0 ? '#eef1f7' : v > 105 ? '#dc2626' : v >= 80 ? '#059669' : v >= 40 ? '#f59e0b' : '#93c5fd';
     const cur = (i + 1) === now;
-    return `<span title="${AR[i]}: ${v}%" style="flex:1;height:15px;border-radius:3px;background:${c}${cur ? ';box-shadow:0 0 0 2px var(--ink2);position:relative;z-index:1' : ''}"></span>`;
+    return `<span title="${MONTHS_AR[i]}: ${v}%" style="height:15px;border-radius:3px;background:${c}${cur ? ';box-shadow:0 0 0 2px var(--gold);position:relative;z-index:1' : ''}"></span>`;
   }).join('')}</div>`;
 }
 

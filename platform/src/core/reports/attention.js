@@ -3,9 +3,10 @@
 import { all } from '../db/index.js';
 import { myApprovalQueue } from '../../modules/workflow/engine.js';
 import { fmtSar } from '../util/ids.js';
+import { ROT_THRESHOLDS } from '../../modules/crm/opportunities.js';
 
-// عتبات ركود المرحلة (أيام) — تُعاير لاحقاً مقابل معدلات الفوز الفعلية
-export const STAGE_ROT_DAYS = { default: 21, LEAD: 14, QUALIFIED: 14, PROPOSAL: 21, NEGOTIATION: 30 };
+// عتبات ركود المرحلة (أيام) — مصدر واحد مع لوحة الفرص (ROT_THRESHOLDS)؛ default لغير المعرّف
+const STAGE_ROT_DAYS = { default: 21, ...ROT_THRESHOLDS };
 
 export async function attentionFeed(user, sectorId, { year, today } = {}) {
   const t = today || new Date().toISOString().slice(0, 10);

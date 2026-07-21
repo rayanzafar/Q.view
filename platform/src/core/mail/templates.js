@@ -2,7 +2,8 @@
 // Sensitive figures are passed pre-redacted by the caller (report engine).
 import { fmtSar } from '../util/ids.js';
 
-const BRAND = '#2563eb', BRAND2 = '#9333ea', INK = '#0f172a', MUTED = '#64748b', LINE = '#e2e8f0';
+// ألوان هوية EVC الرسمية (نفس توكنات الواجهة #244A99/#834798) — البريد جزء من الهوية لا استثناء منها
+const BRAND = '#244A99', BRAND2 = '#834798', INK = '#0f172a', MUTED = '#64748b', LINE = '#e2e8f0';
 const GREEN = '#059669', RED = '#dc2626';
 
 function shell({ title, period, bodyRows, locale = 'ar' }) {

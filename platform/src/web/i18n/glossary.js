@@ -66,13 +66,16 @@ export const G = {
   // ── الفريق والطاقة ──
   team: 'الفريق',
   capacity: 'الطاقة الاستيعابية',
-  utilization: 'نسبة الإشغال',
-  overloaded: 'فوق الطاقة',
+  utilization: 'الإشغال',
+  overloaded: 'تجاوز الطاقة',
   underused: 'سعة متاحة',
   onBench: 'غير مُسكَّن حالياً',
   staffed: 'مُسكَّن',
   assignment: 'التكليف',
   availability: 'الجاهزية',
+  monthlyStaffing: 'التسكين الشهري',
+  sectorParking: 'تسكين قطاعي',
+  peak: 'الذروة',
 
   // ── العملاء ──
   clients: 'العملاء',
@@ -108,6 +111,24 @@ export const G = {
   willUpdate: 'سيُحدَّث',
   willSkip: 'سيُتجاهل',
   hasErrors: 'به أخطاء',
+
+  // ── معجم مركز القيادة (v2.1 — مصطلحات الفريق المعتادة من المنصة السابقة) ──
+  commandCenter: 'مركز القيادة',
+  pipelineLine: 'خط الفرص',
+  funnel: 'قمع الفرص',
+  hOnTrack: 'على المسار',
+  hAtRisk: 'في خطر',
+  hCritical: 'حرج',
+  spendPct: 'صرف٪',
+  progressPct: 'إنجاز٪',
+  delivered: 'مُسلّم',
+  invoicedShort: 'مفوتر',
+  lateClaim: 'المستخلص المتأخر',
+  topClient: 'العميل الأول',
+  clientConc: 'تركّز العميل',
+  whatChanged: 'ما تغيّر',
+  yearElapsed: (n) => `انقضى ${n}% من السنة`,
+  relOwner: 'مالك العلاقة',
 
   // ── عام ──
   overview: 'نظرة عامة',

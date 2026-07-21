@@ -193,7 +193,7 @@ Object.assign(window.Sanad, {
   empAssign(id) {
     const S = window.__SANAD || {}; const e = (S.emps || {})[id]; if (!e) return;
     const projs = (S.teamProjects || []).filter((p) => !e.sector_id || p.sector_id === e.sector_id);
-    const M = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+    const M = window.__SANAD_MONTHS || ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
     const cur = (new Date().getMonth() + 1);
     const mopt = (sel) => M.map((m, i) => `<option value="${i + 1}" ${i + 1 === sel ? 'selected' : ''}>${m}</option>`).join('');
     const already = (e.projects || []).map((p) => `<span class="pill" style="background:#eef1f7;color:#475569">${this.esc(p.name)}</span>`).join(' ');
@@ -374,12 +374,12 @@ Object.assign(window.Sanad, {
           <div style="font-size:11px;color:var(--muted);font-weight:700">مشروع · ${this.esc(p.code || p.id)}</div>
           <h3 style="font-size:17px;margin-top:.25rem">${this.esc(p.name_ar)}</h3>
           <div style="margin-top:.55rem;display:flex;gap:.4rem;flex-wrap:wrap">
-            <span class="pill" style="background:#dbeafe;color:#2563eb">${this.esc(this.lbl(p.status))}</span>
+            <span class="pill" style="background:#dbeafe;color:var(--brand)">${this.esc(this.lbl(p.status))}</span>
             ${p.rag ? `<span class="pill" style="background:${ragHex[p.rag]}22;color:${ragHex[p.rag]}">${this.esc(this.lbl(p.rag))}</span>` : ''}</div>
         </div><button class="btn btn-ghost" onclick="Sanad.closeDrawer()">✕</button></div>
         <div class="drawer-body">
           <div class="kv-row"><span class="k">الإنجاز</span><span class="v tnum">${Math.round(p.progress_pct || 0)}%</span></div>
-          <div class="bar" style="margin:.15rem 0 .85rem"><span style="width:${Math.min(100, p.progress_pct || 0)}%;background:${ragHex[p.rag] || '#2563eb'}"></span></div>
+          <div class="bar" style="margin:.15rem 0 .85rem"><span style="width:${Math.min(100, p.progress_pct || 0)}%;background:${ragHex[p.rag] || 'var(--brand)'}"></span></div>
           <div class="kv-row"><span class="k">قيمة العقد</span><span class="v tnum">${money(p.contract_value_halalas)}</span></div>
           <div class="kv-row"><span class="k">الصرف الفعلي</span><span class="v tnum">${p._redacted_actual_spend_halalas ? '<span style="color:var(--faint)">محجوب</span>' : money(p.actual_spend_halalas)}</span></div>
           <div style="margin-top:1.15rem"><div style="font-size:12px;font-weight:800;color:var(--muted);margin-bottom:.35rem;display:flex;align-items:center;gap:.4rem">${icon2('userplus')} الفريق المُسكَّن <span style="color:var(--faint);font-weight:600">(${(staff.assigned || []).length})</span></div>
