@@ -1,12 +1,19 @@
 #!/bin/sh
-# Production boot: schema + seeds, then server. Seed steps are idempotent and may return a non-zero
-# code on a re-run/partial no-op; that must NOT stop the boot, so each is guarded with `|| true`.
-# `exec` hands PID 1 to the server for correct signal handling (graceful shutdown).
+# Boot: schema + seeds, then server. Each seed step is idempotent and may return non-zero on a
+# re-run/no-op; that must NOT stop the boot, so each is guarded. `exec` hands PID 1 to the server
+# for correct signal handling (graceful shutdown).
+#
+# Environment switch (single boot path for staging AND production):
+#   SANAD_SEED_DEMO=0   → PRODUCTION: no demo data/accounts. An initial admin is created ONCE from
+#                         SANAD_ADMIN_USER / SANAD_ADMIN_PASS. Real data is imported later in-app.
+#   (unset / anything)  → STAGING/DEV: demo business data + demo personas (unchanged behavior).
 node --experimental-sqlite scripts/migrate.js || true
 node --experimental-sqlite scripts/seed-rbac.js || true
+# staging/dev only — self-guards and exits early when SANAD_SEED_DEMO=0
 node --experimental-sqlite scripts/seed-staging.js || true
-# idempotent legacy-history backfill (INSERT … ON CONFLICT DO NOTHING) — safe on every boot
+# production only — self-guards; no-op unless SANAD_ADMIN_USER/PASS are set and no admin exists yet
+node --experimental-sqlite scripts/seed-admin.js || true
+# idempotent legacy-history backfill (INSERT … ON CONFLICT DO NOTHING) — no-op without legacy data
 node --experimental-sqlite scripts/backfill-legacy-activity.js || echo "backfill skipped"
-# توحيد العملاء يُشغَّل مرة واحدة بعد النشر عبر `railway run` (لا في الإقلاع) كي لا يخاطر
-# بتعليق الإقلاع؛ idempotent وقابل للعكس بذاته.
+# توحيد العملاء يُشغَّل مرة واحدة بعد النشر عبر `railway run` (لا في الإقلاع) كي لا يخاطر بتعليقه.
 exec node --experimental-sqlite src/server.js

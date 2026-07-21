@@ -15,6 +15,11 @@ const dataFile =
   existsSync(resolve(ROOT, 'seed/legacy-state.demo.json')) ? 'demo' : null;
 
 async function main() {
+  // حارس الإنتاج: لا تُبذَر بيانات/حسابات العرض إطلاقاً حين SANAD_SEED_DEMO=0 (الإنتاج).
+  if (process.env.SANAD_SEED_DEMO === '0') {
+    console.log('▶ seed-staging: SANAD_SEED_DEMO=0 (إنتاج) — لا بذر بيانات عرض');
+    return;
+  }
   console.log(`▶ staging bootstrap — hasData=${await hasData()} dataFile=${dataFile || 'NONE'}`);
   if (await hasData()) {
     console.log('✓ staging: business data already present — skipping load (volume persisted)');

@@ -14,9 +14,10 @@ RUN useradd -m -u 10001 sanad && mkdir -p /app/data && chown -R sanad:sanad /app
 USER sanad
 
 EXPOSE 8080
-# entrypoint: schema → RBAC → staging bootstrap (business data + demo accounts on first boot,
-# idempotent thereafter) → server. --experimental-sqlite needed only for the SQLite driver.
-CMD ["sh", "-c", "node --experimental-sqlite scripts/migrate.js && node --experimental-sqlite scripts/seed-rbac.js && node --experimental-sqlite scripts/seed-staging.js && (node --experimental-sqlite scripts/backfill-legacy-activity.js || echo 'backfill skipped') && node --experimental-sqlite src/server.js"]
+# entrypoint: single boot path (scripts/boot.sh) — schema → RBAC → (demo seed for staging OR
+# bootstrap admin for production, switched by SANAD_SEED_DEMO) → server. Railway overrides this
+# with the same startCommand; keeping them identical avoids drift.
+CMD ["sh", "scripts/boot.sh"]
 
 HEALTHCHECK --interval=30s --timeout=4s --start-period=15s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||4000)+'/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
