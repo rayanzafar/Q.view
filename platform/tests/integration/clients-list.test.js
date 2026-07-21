@@ -210,13 +210,17 @@ test('sector scope: S1 lead sees the aggregates without leaking other sectors’
   assert.equal(ca.rel_owner, 'أحمد المالك');
 });
 
-test('/app/clients page renders the decision table with populated cells (no NaN/undefined leaks)', async () => {
+test('/app/clients page renders the 6-column decision table with populated cells (no NaN/undefined leaks)', async () => {
   const r = await fetch(base + '/app/clients', { headers: { cookie: 'sanad_sid=sess_admin' } });
   assert.equal(r.status, 200);
   const html = await r.text();
-  for (const needle of ['هيئة الاختبار الرقمية', 'أحمد المالك', 'قطاع الأعمال', 'مالك العلاقة',
-    'الفوز · الخسارة', 'قيمة العقود', 'المستحق', 'العميل الأول', 'نسبة الفوز التاريخية (كل السنوات)', 'نمو الإيراد',
-    '1 فوز بقيمة', '+1 تاريخي'])
+  // الأعمدة الجديدة: الهوية (تطوي النوع+القطاعات) · العلاقة+آخر تواصل · الفرص المفتوحة · الفوز·الخسارة · مشاريع نشطة · المال (إيراد+مستحق)
+  for (const needle of ['هيئة الاختبار الرقمية', 'قطاع الأعمال', 'حالة العلاقة',
+    'الفرص المفتوحة', 'الفوز · الخسارة', 'مشاريع نشطة', `إيراد ${FY}`, 'العميل الأول', 'نمو الإيراد',
+    `نسبة الفوز · ${FY}`, 'تاريخي', '1 فوز', '1 خسارة', '+1 تاريخي', 'متأخر السداد'])
     assert.ok(html.includes(needle), `page contains «${needle}»`);
+  // أعمدة أُسقطت لخلوّها/طُويت في 360، ومؤشر الفوز صار سنوياً موحّداً مع لوحة الفرص
+  for (const gone of ['مالك العلاقة', 'قيمة العقود', 'نسبة الفوز التاريخية'])
+    assert.ok(!html.includes(gone), `dropped/renamed «${gone}» no longer present`);
   assert.ok(!/NaN|undefined/.test(html), 'no NaN/undefined in the rendered page');
 });

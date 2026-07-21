@@ -8,7 +8,7 @@ import { config } from '../../core/config.js';
 import { can } from '../../core/rbac/index.js';
 import { G } from '../i18n/glossary.js';
 import { countAr } from '../../core/i18n/plural.js';
-import { listClients, clientOverview, CLIENT_TYPES } from '../../modules/clients/clients.js';
+import { listClients, clientOverview, salesWinRate, CLIENT_TYPES } from '../../modules/clients/clients.js';
 import { sarShort, esc, statMini, noticeCard, ddWrap, ddRows } from './_shared.js';
 
 const REL_TONE = { 'نشطة': 'green', 'فاترة': 'amber', 'خاملة': 'slate' };
@@ -109,10 +109,15 @@ export async function clientsPage(user, opts = {}) {
       <div style="font-size:10.5px;color:var(--faint)" class="tnum">${top1Share != null ? `حصته ${top1Share}% من إيراد ${fy}` : `إيراده ${fmtSar(top1.fy_revenue_halalas)}`}</div></div>`, 'card-h')
     : statMini(G.topClient, '—', `لا إيراد مسجلاً في ${fy}`);
 
-  // نسبة الفوز التاريخية (كل السنوات) على العملاء الظاهرين (الفوز التاريخي المستورد خارج الحسبة)
-  const sumWon = rows.reduce((a, r) => a + (r.won_count || 0), 0);
-  const sumLost = rows.reduce((a, r) => a + (r.lost_count || 0), 0);
-  const winRate = sumWon + sumLost ? Math.round((sumWon / (sumWon + sumLost)) * 100) : null;
+  // نسبة الفوز — موحّدة مع لوحة الفرص: النطاق والمعادلة نفسها (فوز÷(فوز+خسارة)).
+  // الرئيسي = السنة المالية (نفس عدّاد «مكسوبة سنة FY» في اللوحة)؛ التاريخي سطر ثانوي (= بطاقة اللوحة).
+  const wr = await salesWinRate(user, fy);
+  const winStat = statMini(`${G.winRate} · ${fy}`,
+    wr.fy_win_rate != null ? wr.fy_win_rate + '%' : '—',
+    wr.fy_win_rate != null
+      ? `${wr.fy_won} ${G.won} · ${wr.fy_lost} ${G.lost}${wr.hist_win_rate != null ? ` <span style="color:var(--faint)">· تاريخي ${wr.hist_win_rate}%</span>` : ''}`
+      : `لا فرص محسومة في ${fy}`,
+    wr.fy_win_rate == null ? '' : wr.fy_win_rate >= 50 ? 'good' : wr.fy_win_rate < 30 ? 'warn' : '');
 
   // نمو الإيراد: مجموع إيراد العملاء الظاهرين هذه السنة مقابل السنة الماضية
   const curRev = rows.reduce((a, r) => a + (r.fy_revenue_halalas || 0), 0);
@@ -128,9 +133,7 @@ export async function clientsPage(user, opts = {}) {
     ${statMini('عدد العملاء', rows.length, `${relCount['نشطة']} ${G.relActive} · ${relCount['فاترة']} ${G.relCooling} · ${relCount['خاملة']} ${G.relDormant}`)}
     ${concStat}
     ${topStat}
-    ${statMini('نسبة الفوز التاريخية (كل السنوات)', winRate != null ? winRate + '%' : '—',
-    winRate != null ? `${sumWon} ${G.won} · ${sumLost} ${G.lost}` : 'لا فرص محسومة بعد',
-    winRate == null ? '' : winRate >= 50 ? 'good' : winRate < 30 ? 'warn' : '')}
+    ${winStat}
     ${growthStat}</div>`;
 
   const chips = `<div class="chips"><span class="lbl">النوع:</span>
@@ -150,53 +153,58 @@ export async function clientsPage(user, opts = {}) {
     ${canCreate ? `<button class="btn btn-primary" data-action="client-add">${icon('plus')} عميل جديد</button>` : ''}
   </div>`;
 
-  // ── خلايا الجدول ──
+  // ── خلايا الجدول (٦ أعمدة قرار: الهوية ← العلاقة ← الفرص ← السجل ← التنفيذ ← المال) ──
   const dash = '<span style="color:var(--faint)">—</span>';
+  // القطاعات وسوماً صغيرة أسفل اسم العميل (طُوي عمود «القطاعات» المستقل داخل خانة الهوية)
   const secChips = (r) => {
     const secs = r.sectors || [];
-    if (!secs.length) return dash;
-    const shown = secs.slice(0, 2);
+    if (!secs.length) return '';
+    const shown = secs.slice(0, 3);
     const extra = secs.length - shown.length;
-    return `<div style="display:flex;gap:.25rem;flex-wrap:wrap;justify-content:center" title="${esc(secs.join(' · '))}">
-      ${shown.map((s) => `<span style="font-size:10px;font-weight:700;background:var(--bg);border:1px solid var(--line);border-radius:999px;padding:.12rem .45rem;white-space:nowrap;color:var(--muted)">${esc(s)}</span>`).join('')}
-      ${extra > 0 ? `<span class="tnum" style="font-size:10px;font-weight:800;color:var(--faint);align-self:center">+${extra}</span>` : ''}</div>`;
+    return `<div style="display:flex;gap:.25rem;flex-wrap:wrap;margin-top:.3rem" title="${esc(secs.join(' · '))}">
+      ${shown.map((s) => `<span style="font-size:9.5px;font-weight:700;background:var(--bg);border:1px solid var(--line);border-radius:999px;padding:.1rem .4rem;white-space:nowrap;color:var(--muted)">${esc(s)}</span>`).join('')}
+      ${extra > 0 ? `<span class="tnum" style="font-size:9.5px;font-weight:800;color:var(--faint);align-self:center">+${extra}</span>` : ''}</div>`;
   };
+  // العلاقة: الحالة + آخر تواصل (طُوي عمودان في واحد)
+  const relCell = (r) => `${pill(r.relationship, REL_TONE[r.relationship] || 'slate')}
+    <div class="tnum" style="font-size:10.5px;color:var(--muted);margin-top:.28rem;white-space:nowrap">${r.last_activity_at ? relDay(r.last_activity_at) : '<span style="color:var(--faint)">لا تواصل مسجّل</span>'}</div>`;
+  // خط الفرص المفتوح: القيمة الإجمالية (رئيسي) + العدد والمرجّح (ثانوي)
   const oppsCell = (r) => (r.open_opps
-    ? `<div style="font-size:12.5px;font-weight:700" class="tnum">${oppCountAr(r.open_opps)}</div>
-       <div style="font-size:10px;color:var(--muted);font-weight:400" class="tnum">إجمالي ${sarShort(r.open_pipeline_halalas)}</div>
-       <div style="font-size:10px;color:var(--brand2);font-weight:400" class="tnum">مرجّح ${sarShort(r.weighted_pipeline_halalas)}</div>`
+    ? `<div class="tnum" style="font-weight:800;font-size:12.5px;color:var(--ink2)">${sarShort(r.open_pipeline_halalas)}</div>
+       <div class="tnum" style="font-size:10px;color:var(--muted)">${oppCountAr(r.open_opps)} · مرجّح ${sarShort(r.weighted_pipeline_halalas)}</div>`
     : dash);
-  const winLossCell = (r) => {
-    const parts = [];
-    if (r.won_count) parts.push(`<div style="color:var(--green);font-weight:700;font-size:11.5px" class="tnum">${r.won_count} فوز بقيمة ${sarShort(r.won_value_halalas)}</div>`);
-    if (r.lost_count) parts.push(`<div style="color:var(--muted);font-size:11px" class="tnum">${r.lost_count} خسارة</div>`);
-    if (r.hist_won_count) parts.push(`<div style="color:var(--faint);font-size:10px" class="tnum">+${r.hist_won_count} تاريخي</div>`);
-    return parts.join('') || dash;
+  // الفوز · الخسارة: مضغوط — «N فوز» أخضر · «M خسارة» + المستورد التاريخي سطر خافت
+  const wlCell = (r) => {
+    const seg = [];
+    if (r.won_count) seg.push(`<span style="color:var(--green);font-weight:800" class="tnum">${r.won_count} فوز</span>`);
+    if (r.lost_count) seg.push(`<span style="color:var(--muted);font-weight:700" class="tnum">${r.lost_count} خسارة</span>`);
+    if (!seg.length && !r.hist_won_count) return dash;
+    const main = seg.length ? `<div style="font-size:11.5px">${seg.join('<span style="color:var(--faint)"> · </span>')}</div>` : '';
+    return `${main}${r.hist_won_count ? `<div class="tnum" style="color:var(--faint);font-size:10px">+${r.hist_won_count} تاريخي</div>` : ''}`;
   };
-  const arCell = (r) => (r.open_ar_halalas > 0
-    ? `<div class="tnum" style="font-weight:800;font-size:12.5px;color:${r.overdue_ar_halalas > 0 ? 'var(--red)' : 'var(--ink2)'}">${fmtSar(r.open_ar_halalas)}</div>
-       ${r.overdue_ar_halalas >= r.open_ar_halalas && r.overdue_ar_halalas > 0 ? `<div style="font-size:10px;color:var(--red)">${G.overdue} بالكامل</div>`
-    : r.overdue_ar_halalas > 0 ? `<div style="font-size:10px;color:var(--red)" class="tnum">منه ${G.overdue} ${sarShort(r.overdue_ar_halalas)}</div>` : ''}`
-    : dash);
-  const money = (v) => (v ? `<span class="tnum" style="font-weight:700;font-size:12.5px">${fmtSar(v)}</span>` : dash);
+  // المال: إيراد السنة (رئيسي) + المستحق سطر أحمر عند التأخر (طُوي عمود «المستحق» هنا — «قيمة العقود» أُسقط لخلوّه)
+  const moneyCell = (r) => {
+    const rev = r.fy_revenue_halalas > 0
+      ? `<div class="tnum" style="font-weight:800;font-size:12.5px;color:var(--ink2)">${fmtSar(r.fy_revenue_halalas)}</div>` : '';
+    let ar = '';
+    if (r.overdue_ar_halalas > 0) ar = `<div class="tnum" style="font-size:10.5px;font-weight:800;color:var(--red)">${G.overdue} ${sarShort(r.overdue_ar_halalas)}</div>`;
+    else if (r.open_ar_halalas > 0) ar = `<div class="tnum" style="font-size:10.5px;font-weight:700;color:var(--amber)">${G.outstanding} ${sarShort(r.open_ar_halalas)}</div>`;
+    return (rev + ar) || dash;
+  };
 
   const rowsHtml = rows.map((r) => `<tr style="border-bottom:1px solid var(--line);cursor:pointer" onclick="location.href='/app/client/${r.id}'">
-    <td style="padding:.55rem .5rem;min-width:140px">
+    <td style="padding:.6rem .55rem;min-width:200px;max-width:290px">
       <div style="display:flex;align-items:center;gap:.4rem;flex-wrap:wrap">
         <a href="/app/client/${r.id}" style="font-size:13px;font-weight:700;color:var(--ink2)">${esc(r.name_ar)}</a>
         ${r.type ? pill(esc(r.type), TYPE_TONE[r.type] || 'slate') : ''}
       </div>
-      ${r.code ? `<div style="font-size:10.5px;color:var(--faint)"><bdi>${esc(r.code)}</bdi></div>` : ''}</td>
-    <td style="padding:.55rem .5rem;text-align:center">${secChips(r)}</td>
-    <td style="padding:.55rem .5rem;text-align:center;font-size:12px;color:var(--ink2)">${r.rel_owner ? `<span style="display:inline-block;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle" title="${esc(r.rel_owner)}">${esc(r.rel_owner)}</span>` : dash}</td>
-    <td style="padding:.55rem .5rem;text-align:center">${pill(r.relationship, REL_TONE[r.relationship] || 'slate')}</td>
-    <td style="padding:.55rem .5rem;text-align:center;font-size:12px;color:var(--muted);white-space:nowrap" class="tnum">${r.last_activity_at ? relDay(r.last_activity_at) : '<span style="color:var(--faint)">لا تواصل مسجّل بعد</span>'}</td>
-    <td style="padding:.55rem .5rem;text-align:left;white-space:nowrap">${oppsCell(r)}</td>
-    <td style="padding:.55rem .5rem;text-align:right;white-space:nowrap">${winLossCell(r)}</td>
-    <td style="padding:.55rem .5rem;text-align:center;font-size:12.5px" class="tnum">${r.active_projects || dash}</td>
-    <td style="padding:.55rem .5rem;text-align:left;white-space:nowrap">${money(r.contracts_value_halalas)}</td>
-    <td style="padding:.55rem .5rem;text-align:left;white-space:nowrap">${money(r.fy_revenue_halalas)}</td>
-    <td style="padding:.55rem .5rem;text-align:left;white-space:nowrap">${arCell(r)}</td>
+      ${r.code ? `<div style="font-size:10px;color:var(--faint);margin-top:.15rem"><bdi>${esc(r.code)}</bdi></div>` : ''}
+      ${secChips(r)}</td>
+    <td style="padding:.6rem .55rem;text-align:center">${relCell(r)}</td>
+    <td style="padding:.6rem .55rem;text-align:left;white-space:nowrap">${oppsCell(r)}</td>
+    <td style="padding:.6rem .55rem;text-align:center">${wlCell(r)}</td>
+    <td style="padding:.6rem .55rem;text-align:center;font-size:13px" class="tnum">${r.active_projects || dash}</td>
+    <td style="padding:.6rem .55rem;text-align:left;white-space:nowrap">${moneyCell(r)}</td>
   </tr>`).join('');
 
   const emptyState = `<div class="empty-state">${icon('client')}
@@ -204,8 +212,9 @@ export async function clientsPage(user, opts = {}) {
     <div class="s">${query || type ? 'جرّب تعديل كلمة البحث أو إزالة تصفية النوع.' : 'ابدأ ببناء سجل عملائك — كل فرصة وعقد ومشروع سيرتبط بعميله تلقائياً.'}</div>
     ${canCreate && !query && !type ? `<button class="btn btn-primary" data-action="client-add">${icon('plus')} عميل جديد</button>` : ''}</div>`;
 
-  const table = card(`<div class="tblwrap"><table style="width:100%;border-collapse:collapse;min-width:1100px">
-    <thead><tr>${th(G.client)}${th('القطاعات', 'center')}${th(G.relOwner, 'center')}${th(`<span data-tip="تُقاس بآخر تواصل مسجّل — عميل بمشاريع نشطة بلا تواصل حديث يظهر خاملاً">${G.relationship} ⓘ</span>`, 'center')}${th(G.lastActivity, 'center')}${th(G.opportunities, 'left')}${th('الفوز · الخسارة')}${th('مشاريع نشطة', 'center')}${th('قيمة العقود', 'left')}${th(`إيراد ${fy}`, 'left')}${th(G.outstanding, 'left')}</tr></thead>
+  const relTip = 'تُقاس حالة العلاقة بآخر تواصل مسجّل: عميل بلا تواصل حديث يتحوّل من نشطة إلى فاترة ثم خاملة، وأي فرصة مفتوحة تُبقيه نشطاً';
+  const table = card(`<div class="tblwrap"><table style="width:100%;border-collapse:collapse;min-width:860px">
+    <thead><tr>${th(G.client)}${th(`<span data-tip="${esc(relTip)}">${G.relationship} ⓘ</span>`, 'center')}${th('الفرص المفتوحة', 'left')}${th('الفوز · الخسارة', 'center')}${th('مشاريع نشطة', 'center')}${th(`إيراد ${fy}`, 'left')}</tr></thead>
     <tbody>${rowsHtml}</tbody></table>${rows.length ? '' : emptyState}</div>`);
 
   const body = `${toolbar}${strip}${chips}${table}${ddTop5}`;

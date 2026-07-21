@@ -7,6 +7,7 @@
 // computed with EXISTS subqueries so the DB enforces the boundary, not the app.
 import { all, get, insert, update } from '../../core/db/index.js';
 import { can, effectiveScope } from '../../core/rbac/index.js';
+import { scopeFilter } from '../../core/rbac/scope.js';
 import { audit } from '../../core/audit/index.js';
 import { id, nowIso, fmtSar } from '../../core/util/ids.js';
 import { badRequest, forbidden, notFound } from '../../core/http/errors.js';
@@ -253,6 +254,33 @@ export async function listClients(user, filters = {}) {
     || b.open_pipeline_halalas - a.open_pipeline_halalas
     || String(a.name_ar || '').localeCompare(String(b.name_ar || ''), 'ar'));
   return rows;
+}
+
+// ── نسبة الفوز (توحيد المؤشر مع لوحة الفرص) ───────────────────────────────────
+// تُحسب على نفس نطاق المستخدم وبنفس معادلة اللوحة تماماً — فوز ÷ (فوز+خسارة) عبر
+// scopeFilter للفرص (لا حسب العملاء الظاهرين) — فيطابق الرقمُ ما تعرضه صفحة الفرص لنفس المستخدم:
+//   • hist_win_rate = كل السنوات (شامل المستورد التاريخي) = بطاقة «نسبة الفوز» في اللوحة بالضبط.
+//   • fy_win_rate  = فرص السنة المالية المحسومة (يستثني المستورد) = عدّاد «مكسوبة سنة FY» في عمود اللوحة.
+// استعلام تجميعي واحد خفيف (لا استعلام لكل صف). لا صلاحية = لا صفوف ⇒ قيم صفرية ونِسَب فارغة.
+export async function salesWinRate(user, fy = config.fiscalYear) {
+  const f = scopeFilter(user, 'opportunity', 'read');
+  const r = await get(`SELECT
+      COALESCE(SUM(CASE WHEN stage.is_won = 1 AND COALESCE(opportunity.exclude_from_sales,0) = 0 AND opportunity.year = ? THEN 1 ELSE 0 END),0) fy_won,
+      COALESCE(SUM(CASE WHEN stage.is_lost = 1 AND opportunity.year = ? THEN 1 ELSE 0 END),0) fy_lost,
+      COALESCE(SUM(CASE WHEN stage.is_won = 1 THEN 1 ELSE 0 END),0) hist_won,
+      COALESCE(SUM(CASE WHEN stage.is_lost = 1 THEN 1 ELSE 0 END),0) hist_lost
+    FROM opportunity JOIN stage ON stage.id = opportunity.stage_id
+    WHERE ${f.clause} AND opportunity.deleted_at IS NULL AND (stage.is_won = 1 OR stage.is_lost = 1)`,
+    [fy, fy, ...f.params]);
+  const fyDecided = (r?.fy_won || 0) + (r?.fy_lost || 0);
+  const histDecided = (r?.hist_won || 0) + (r?.hist_lost || 0);
+  return {
+    fy,
+    fy_won: r?.fy_won || 0, fy_lost: r?.fy_lost || 0,
+    fy_win_rate: fyDecided ? Math.round(((r.fy_won || 0) / fyDecided) * 100) : null,
+    hist_won: r?.hist_won || 0, hist_lost: r?.hist_lost || 0,
+    hist_win_rate: histDecided ? Math.round(((r.hist_won || 0) / histDecided) * 100) : null,
+  };
 }
 
 // ── 360 overview (contracts §6 — exact payload; extra keys are additive extensions) ──
