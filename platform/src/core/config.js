@@ -55,7 +55,11 @@ export function assertProdSecrets() {
     // runs on the built-in SQLite driver — set STAGING=1 to opt into SQLite-in-production and skip it.
     const sqliteStaging = process.env.STAGING === '1' || process.env.STAGING === 'true';
     if (!config.databaseUrl && !sqliteStaging) missing.push('DATABASE_URL');
-    if (config.mailTransport === 'smtp' && !config.smtp.host) missing.push('SMTP_HOST');
+    if (config.mailTransport === 'smtp') {
+      if (!config.smtp.host) missing.push('SMTP_HOST');
+      if (!config.smtp.user) missing.push('SMTP_USER');
+      if (!config.smtp.pass) missing.push('SMTP_PASS');
+    }
     if (missing.length) throw new Error('Missing required production secrets: ' + missing.join(', '));
   }
 }
