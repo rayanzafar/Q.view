@@ -94,6 +94,24 @@ export async function updateOpportunity(ctx, oppId, data) {
   return await getOpportunity(user, oppId);
 }
 
+// نقل الفرصة من قطاع إلى قطاع — يتطلب صلاحية تعديل الفرصة في قطاعها الحالي وصلاحية الإنشاء
+// في القطاع الهدف (إعادة إسناد فعلية). يُدقَّق ويُسجَّل في سجل المراحل بملاحظة النقل.
+export async function moveSector(ctx, oppId, toSectorId, note) {
+  const user = ctx.user;
+  const row = await get('SELECT * FROM opportunity WHERE id = ? AND deleted_at IS NULL', [oppId]);
+  if (!row) throw notFound('الفرصة غير موجودة');
+  if (!can(user, 'update', 'opportunity', row)) throw forbidden();
+  const target = await get('SELECT id, name_ar FROM sector WHERE id = ? AND active = 1 AND deleted_at IS NULL', [toSectorId]);
+  if (!target) throw badRequest('قطاع غير معروف');
+  if (String(row.sector_id) === String(toSectorId)) return await getOpportunity(user, oppId);
+  if (!can(user, 'create', 'opportunity', { sector_id: toSectorId })) throw forbidden('لا تملك صلاحية النقل إلى هذا القطاع');
+  const now = nowIso();
+  await update('opportunity', oppId, { sector_id: toSectorId, updated_at: now, updated_by: user.id });
+  await audit(ctx, { action: 'update', resource: 'opportunity', resourceId: oppId, sectorId: toSectorId,
+    detail: { moveSector: `${row.sector_id || '—'}→${toSectorId}`, note: note || null } });
+  return await getOpportunity(user, oppId);
+}
+
 export async function moveStage(ctx, oppId, toStage, note) {
   const user = ctx.user;
   const row = await get('SELECT * FROM opportunity WHERE id = ? AND deleted_at IS NULL', [oppId]);

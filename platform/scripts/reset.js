@@ -14,4 +14,6 @@ const { seedRbac } = await import('./seed-rbac.js'); await seedRbac();
 const { migrateLegacy } = await import('./migrate-legacy.js'); await migrateLegacy();
 const { deriveFinance } = await import('./derive-finance.js'); await deriveFinance();
 const { seed } = await import('./seed.js'); await seed();
+// صيانة بيانات العملاء: دمج المكررين من اللقطة القديمة + تصنيف الأنواع (idempotent)
+const { dedupe, classify } = await import('./unify-clients.js'); await dedupe(); await classify();
 console.log('✓ reset complete');
