@@ -224,12 +224,7 @@
     if (t.matches && t.matches('[data-action="open-opp"],[data-dd],[data-action="na-edit"]')) { e.preventDefault(); t.click(); }
   });
 
-  // ── إفلات على عمودَي الحسم الملخّصين (فائزة/خاسرة): لا بطاقات فيهما، فبعد نجاح النقل
-  //     (Sanad.kDrop يتولّى النداء) نعيد تحميل الصفحة لتحديث العدّ والقيمة في الملخص ──
-  document.addEventListener('drop', function (e) {
-    var col = e.target && e.target.closest ? e.target.closest('.kcol[data-summary]') : null;
-    if (col) setTimeout(function () { location.reload(); }, 1100);
-  });
+  // (الإفلات على عمودَي الحسم الملخّصين يتولاه Sanad.kDrop نفسه: يحفظ ثم يعيد التحميل فوراً)
 
   // ── نقل مرحلة سريع من قائمة «فرصي» ──
   document.addEventListener('change', function (e) {

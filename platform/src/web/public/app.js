@@ -253,14 +253,20 @@ Object.assign(window.Sanad, {
     if (stage === this._dragFrom) return;
     const board = col.closest('.kanban'); const kind = (board && board.dataset.kind) || 'opp';
     const ns = board ? board.id.replace('-kanban', '') : 'opp';
-    const body = col.querySelector('.kcol-body');
-    body.querySelectorAll(':scope > div:not(.kcard)').forEach((ph) => ph.remove()); // drop the "—" placeholder
-    body.appendChild(card);
-    this._recount(ns);
+    // أعمدة الملخص (فائزة/خاسرة المضغوطة) لا تعرض بطاقات — لا نُسقط البطاقة داخلها بصرياً،
+    // بل نحفظ النقل ثم نعيد التحميل ليظهر ضمن أرقام الملخص مباشرة
+    const summary = col.dataset.summary != null;
+    if (!summary) {
+      const body = col.querySelector('.kcol-body');
+      body.querySelectorAll(':scope > div:not(.kcard)').forEach((ph) => ph.remove()); // drop the "—" placeholder
+      body.appendChild(card);
+      this._recount(ns);
+    } else { card.style.opacity = '.35'; }
     try {
       if (kind === 'prj') await api('/projects/' + id, 'PATCH', { status: stage });
       else await api('/opportunities/' + id + '/stage', 'POST', { stage });
       toast('نُقل إلى ' + (col.querySelector('.t')?.textContent || '') + ' ✓');
+      if (summary) location.reload();
     } catch (err) { toast(err.message, true); location.reload(); }
   },
   // detail drawer

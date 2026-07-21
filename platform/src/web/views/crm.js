@@ -404,7 +404,7 @@ export async function myOpportunitiesPage(user, opts = {}) {
     <div style="display:flex;gap:.7rem;flex-wrap:wrap;margin-bottom:1rem">
       ${statMini('قيمتي المفتوحة', fmtSar(total), `${open.length} فرصة · ${G.weighted} ${fmtSar(weighted)}`, 'brand')}
       ${statMini('متوقفة', stalled.length, stalled.length ? 'تجاوزت مدة مرحلتها — ابدأ بها' : 'لا شيء متوقف', stalled.length ? 'warn' : 'good')}
-      ${statMini(G.noNextAction, naAll, naAll ? 'حدّد خطوة مؤرّخة لكل فرصة' : 'لكل فرصة خطوة واضحة', naAll ? 'bad' : 'good')}
+      ${statMini(G.noNextAction, naAll, naAll ? (naAll > noStepRows.length ? `منها ${naAll - noStepRows.length} ضمن المتوقفة — حدّد خطوة لكل فرصة` : 'حدّد خطوة مؤرّخة لكل فرصة') : 'لكل فرصة خطوة واضحة', naAll ? 'bad' : 'good')}
     </div>
     ${open.length === 0 ? `<div class="card"><div class="empty-state">${icon('check')}
         <div class="t">كل فرصك محسومة</div>
