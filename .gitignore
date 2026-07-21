@@ -2,3 +2,6 @@
 .claude/.edited
 .claude/.tested
 .claude/settings.local.json
+
+# جذور عمل وكلاء البناء المتوازيين — مساحات مؤقتة لا تُلتزم
+.claude/worktrees/
