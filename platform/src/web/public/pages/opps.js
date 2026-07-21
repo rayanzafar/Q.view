@@ -175,6 +175,77 @@
     } catch (err) { toast(err.message, true); }
   }
 
+  // ── قائمة إجراءات البطاقة (زرّ «⋯»): نقل إلى فائزة / مفقودة / قطاع آخر ──
+  // نافذة خفيفة تتفادى قصّ العمود ذي التمرير؛ كل الأزرار بتفويض data-action.
+  function actionBtn(action, data, tone, dot, label) {
+    return '<button class="btn" data-action="' + action + '" ' + data +
+      ' style="justify-content:flex-start;width:100%;' + (tone || '') + '">' +
+      (dot ? '<span style="width:9px;height:9px;border-radius:50%;background:' + dot + ';display:inline-block;flex:none"></span>' : '') +
+      label + '</button>';
+  }
+  function oppMenuModal(el) {
+    var s = S();
+    var id = el.dataset.id, title = el.dataset.title || '', sector = el.dataset.sector || '';
+    var others = (s.moveSectors || []).filter(function (x) { return x.id !== sector; });
+    var won = s.wonStage ? actionBtn('opp-won', 'data-id="' + esc(id) + '"', 'border-color:#bbf7d0;color:#166534;background:#f0fdf4', '#059669', 'نقل إلى فائزة') : '';
+    var lost = s.lostStage ? actionBtn('opp-lost', 'data-id="' + esc(id) + '"', 'border-color:#fecaca;color:#991b1b;background:#fef2f2', '#dc2626', 'نقل إلى مفقودة') : '';
+    var sec = others.length ? actionBtn('opp-move-sector', 'data-id="' + esc(id) + '" data-sector="' + esc(sector) + '"', '', '', '↔ نقل لقطاع آخر') : '';
+    window.Sanad.openModal(
+      '<div class="modal-head"><div style="min-width:0"><div style="font-size:11px;color:var(--muted);font-weight:700">إجراء سريع على الفرصة</div>' +
+      '<h3 style="font-size:15px;margin-top:.15rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:330px">' + esc(title) + '</h3></div>' +
+      '<button class="btn btn-ghost btn-sm" data-action="modal-close" aria-label="إغلاق">✕</button></div>' +
+      '<div class="modal-body" style="gap:.5rem">' + won + lost + sec + '</div>');
+  }
+  async function oppWon(id) {
+    var s = S(); if (!s.wonStage) return;
+    try {
+      await api('/opportunities/' + id + '/stage', 'POST', { stage: s.wonStage, note: 'نُقلت إلى فائزة من اللوحة' });
+      window.Sanad.closeModal(); toast('نُقلت إلى فائزة ✓'); setTimeout(function () { location.reload(); }, 450);
+    } catch (err) { toast(err.message, true); }
+  }
+  function oppLostModal(id) {
+    window.Sanad.openModal(
+      '<div class="modal-head"><h3 style="font-size:16px">نقل إلى مفقودة</h3>' +
+      '<button class="btn btn-ghost btn-sm" data-action="modal-close" aria-label="إغلاق">✕</button></div>' +
+      '<div class="modal-body"><div class="field"><label>سبب الفقدان (اختياري — يُحفظ في سجل المراحل)</label>' +
+      '<textarea id="lost-note" class="input" rows="3" placeholder="مثال: تُرسيت المنافسة لجهة أخرى بسعر أقل"></textarea></div>' +
+      '<div style="font-size:11.5px;color:var(--muted);line-height:1.7">توثيق السبب يساعد على تحسين العروض القادمة.</div></div>' +
+      '<div class="modal-foot"><button class="btn btn-primary" data-action="opp-lost-confirm" data-id="' + esc(id) + '">تأكيد الفقدان</button>' +
+      '<button class="btn" data-action="modal-close">إلغاء</button></div>');
+    setTimeout(function () { var n = document.getElementById('lost-note'); if (n) n.focus(); }, 60);
+  }
+  async function oppLostConfirm(id) {
+    var s = S(); if (!s.lostStage) return;
+    var note = (document.getElementById('lost-note') || { value: '' }).value.trim();
+    try {
+      await api('/opportunities/' + id + '/stage', 'POST', { stage: s.lostStage, note: note || null });
+      window.Sanad.closeModal(); toast('نُقلت إلى مفقودة ✓'); setTimeout(function () { location.reload(); }, 450);
+    } catch (err) { toast(err.message, true); }
+  }
+  function oppSectorModal(id, current) {
+    var others = (S().moveSectors || []).filter(function (x) { return x.id !== current; });
+    if (!others.length) { toast('لا يوجد قطاع آخر ضمن صلاحيتك', true); return; }
+    var opts = others.map(function (x) { return '<option value="' + esc(x.id) + '">' + esc(x.name_ar) + '</option>'; }).join('');
+    window.Sanad.openModal(
+      '<div class="modal-head"><h3 style="font-size:16px">نقل إلى قطاع آخر</h3>' +
+      '<button class="btn btn-ghost btn-sm" data-action="modal-close" aria-label="إغلاق">✕</button></div>' +
+      '<div class="modal-body"><div class="field"><label>القطاع الجديد</label><select id="mv-sector">' + opts + '</select></div>' +
+      '<div class="field"><label>سبب النقل (اختياري)</label><textarea id="mv-sec-note" class="input" rows="2" placeholder="مثال: الفرصة أنسب لخبرة القطاع الآخر"></textarea></div>' +
+      '<div style="font-size:11.5px;color:var(--muted);line-height:1.7">تنتقل الفرصة بكامل بياناتها إلى القطاع الجديد ويُوثَّق النقل.</div></div>' +
+      '<div class="modal-foot"><button class="btn btn-primary" data-action="opp-sector-confirm" data-id="' + esc(id) + '">نقل الفرصة</button>' +
+      '<button class="btn" data-action="modal-close">إلغاء</button></div>');
+  }
+  async function oppSectorConfirm(id) {
+    var sector = (document.getElementById('mv-sector') || { value: '' }).value;
+    var note = (document.getElementById('mv-sec-note') || { value: '' }).value.trim();
+    if (!sector) return;
+    try {
+      // النجاح = رمز 200 (الخادم قد يعيد تأكيداً مختصراً لا كائن الفرصة) → تنبيه + إعادة تحميل اللوحة
+      await api('/opportunities/' + id + '/sector', 'POST', { sector: sector, note: note || null });
+      window.Sanad.closeModal(); toast('نُقلت إلى القطاع الجديد ✓'); setTimeout(function () { location.reload(); }, 450);
+    } catch (err) { toast(err.message, true); }
+  }
+
   // ── تفويض النقر ──
   document.addEventListener('click', function (e) {
     var actEl = e.target.closest('[data-action]');
@@ -211,6 +282,12 @@
       if (act === 'team-add') { teamAdd(); return; }
       if (act === 'team-remove') { teamRemove(actEl.dataset.id); return; }
       if (act === 'act-add') { actAdd(); return; }
+      if (act === 'opp-menu') { oppMenuModal(actEl); return; }
+      if (act === 'opp-won') { oppWon(actEl.dataset.id); return; }
+      if (act === 'opp-lost') { oppLostModal(actEl.dataset.id); return; }
+      if (act === 'opp-lost-confirm') { oppLostConfirm(actEl.dataset.id); return; }
+      if (act === 'opp-move-sector') { oppSectorModal(actEl.dataset.id, actEl.dataset.sector || ''); return; }
+      if (act === 'opp-sector-confirm') { oppSectorConfirm(actEl.dataset.id); return; }
       return;
     }
     var dd = e.target.closest('[data-dd]');

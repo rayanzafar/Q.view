@@ -33,6 +33,21 @@ export function stageTip(s) {
 const STALLED_HINT = 'فرصة متوقفة — حرّكها أو حدّث خطوتها التالية';
 const weightedOf = (o) => (o.value_halalas || 0) * ((o.win_pct || 0) / 100);
 
+// ── نظام ألوان المراحل ──────────────────────────────────────────────────────
+// كل مرحلة بلونها الحقيقي من قاعدة البيانات (stage.color) ويُستعمل بوضوح: شريط علوي
+// للعمود + خلفية خفيفة لرأسه + حدّ جانبي للبطاقة. لوحة احتياطية تضمن التمايز لو غاب
+// اللون أو جاء بصيغة غير صالحة. الأخضر=فائزة والأحمر=خسارة دائماً (دلالة ثابتة لا تتبدّل).
+const STAGE_FALLBACK = { LEAD: '#64748b', QUALIFIED: '#2563eb', PROPOSAL: '#d97706', NEGOTIATION: '#C9A227', ON_HOLD: '#8b5cf6', WON: '#059669', LOST: '#dc2626' };
+const hex6 = (c) => (typeof c === 'string' && /^#[0-9a-fA-F]{6}$/.test(c) ? c : null);
+function stageColor(s) {
+  if (!s) return '#64748b';
+  if (s.is_won) return '#059669';
+  if (s.is_lost) return '#dc2626';
+  return hex6(s.color) || STAGE_FALLBACK[s.id] || '#64748b';
+}
+// خلفية خفيفة من لون المرحلة (شفافية بصيغة hex من رقمين: 1f≈12% · 24≈14%).
+const tint = (color, aa) => `${color}${aa || '1f'}`;
+
 // شارة عمر المرحلة: تتدرج (هادئ → كهرماني > نصف العتبة → أحمر > العتبة).
 // compact: نسخة البطاقة النحيفة — بلا أيقونة وبحشوة أصغر كي يتسع السطر الثاني كاملاً.
 function ageChip(o, compact = false) {
@@ -77,6 +92,12 @@ export async function opportunitiesPage(user, opts = {}) {
   const savedViews = await listViews(user, 'opportunities');
   const canCreate = can(user, 'create', 'opportunity');
   const canEdit = can(user, 'update', 'opportunity');
+  // مرحلتا الحسم (فائزة/خاسرة) — تُستدعيان من قائمة إجراءات البطاقة «نقل إلى فائزة/مفقودة».
+  const wonStage = stages.find((s) => s.is_won) || null;
+  const lostStage = stages.find((s) => s.is_lost) || null;
+  // النقل بين القطاعات = مناولة الفرصة لقطاع آخر؛ متاح لمن يملك صلاحية تعديل الفرصة (canEdit).
+  // الوجهات = كل القطاعات النشطة (يستبعد المتصفّح القطاعَ الحالي للبطاقة)، والخادم يدقّق نهائياً.
+  const moveTargets = sectors;
 
   const stById = Object.fromEntries(stages.map((s) => [s.id, s]));
   const isOpen = (o) => { const s = stById[o.stage_id]; return s && !s.is_won && !s.is_lost; };
@@ -146,9 +167,15 @@ export async function opportunitiesPage(user, opts = {}) {
     const hay = `${o.title_ar} ${cl || ''} ${ow || ''}`.toLowerCase();
     const dnd = canEdit ? 'draggable="true" ondragstart="Sanad.kStart(event)" ondragend="Sanad.kEnd(event)"' : '';
     const rot = openRow && o.rot;
-    const accent = rot ? 'var(--red)' : (st.color || '#cbd5e1');
+    // الحدّ الجانبي للبطاقة = لون المرحلة (أو الأحمر إن كانت متوقفة) — أوضح إشارة لونية على مستوى البطاقة.
+    const accent = rot ? 'var(--red)' : stageColor(st);
+    const showMenu = openRow && canEdit; // زرّ الإجراءات «⋯»: فائزة/مفقودة/نقل قطاع — للمحرّرين فقط
+    const menuBtn = showMenu
+      ? `<button data-action="opp-menu" data-id="${o.id}" data-title="${esc(o.title_ar)}" data-sector="${o.sector_id || ''}" class="kmenu-btn" aria-label="إجراءات الفرصة" title="نقل الفرصة (فائزة · مفقودة · قطاع آخر)" style="position:absolute;top:.26rem;inset-inline-end:.3rem;width:20px;height:20px;border:none;background:transparent;color:var(--faint);cursor:pointer;border-radius:6px;font-size:16px;line-height:1;padding:0;display:inline-flex;align-items:center;justify-content:center;z-index:2">⋯</button>`
+      : '';
     return `<div class="kcard" ${dnd} data-action="open-opp" data-id="${o.id}" data-sector="${o.sector_id || ''}" data-hay="${esc(hay).replace(/"/g, '')}" style="--_c:${accent};cursor:pointer;padding:.5rem .6rem;position:relative" role="link" tabindex="0" aria-label="فتح الفرصة ${esc(o.title_ar)}">
-      <div style="display:flex;align-items:baseline;gap:.3rem;min-width:0">
+      ${menuBtn}
+      <div style="display:flex;align-items:baseline;gap:.3rem;min-width:0;${showMenu ? 'padding-inline-end:18px' : ''}">
         <span title="${esc(o.title_ar)}" style="font-weight:700;font-size:12.5px;color:var(--ink2);flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(o.title_ar)}</span>
         ${cl ? `<span title="${esc(cl)}" style="flex:0 1 auto;max-width:45%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10.5px;color:var(--muted)">· ${esc(cl)}</span>` : ''}
       </div>
@@ -176,8 +203,9 @@ export async function opportunitiesPage(user, opts = {}) {
     const mainLbl = isWon ? `${G.won} سنة <span class="tnum">${fiscalYear}</span>` : `${G.lost} — كل السنوات`;
     const tblHref = `/app/opportunities?view=table&stage=${s.id}${sectorFilter ? '&sector=' + encodeURIComponent(sectorFilter) : ''}`;
     const subLine = (n, lbl, v, title) => n ? `<div class="tnum" style="font-size:10.5px;color:var(--muted)" ${title ? `title="${esc(title)}"` : ''}>+${n} ${lbl} · ${sarShort(v)}</div>` : '';
-    return `<div class="kcol" data-stage="${s.id}" data-summary="1" ${drop} style="flex:0 0 170px;width:170px">
-      <div class="kcol-head"><span class="kcol-dot" style="background:${s.color || '#cbd5e1'}"></span>
+    const c = stageColor(s); // فائزة=أخضر · خاسرة=أحمر (دلالة ثابتة)
+    return `<div class="kcol" data-stage="${s.id}" data-summary="1" ${drop} style="flex:0 0 170px;width:170px;box-shadow:inset 0 3px 0 0 ${c}">
+      <div class="kcol-head" style="background:${tint(c, '24')};border-radius:10px"><span class="kcol-dot" style="background:${c};width:10px;height:10px"></span>
         <span class="t" data-tip="${esc(stageTip(s))}" tabindex="0">${esc(s.name_ar)}</span></div>
       <div style="padding:.1rem .6rem .55rem;display:flex;flex-direction:column;gap:.14rem">
         <div class="tnum" style="font-size:1.5rem;font-weight:800;letter-spacing:-.02em;line-height:1.15;color:${tone}">${main.length}</div>
@@ -199,8 +227,10 @@ export async function opportunitiesPage(user, opts = {}) {
     const colTotal = items.reduce((a, o) => a + (o.value_halalas || 0), 0);
     const colWeighted = Math.round(items.reduce((a, o) => a + weightedOf(o), 0));
     const drop = canEdit ? 'ondragover="Sanad.kOver(event)" ondragleave="Sanad.kLeave(event)" ondrop="Sanad.kDrop(event)"' : '';
-    return `<div class="kcol" data-stage="${s.id}" ${drop}>
-      <div class="kcol-head"><span class="kcol-dot" style="background:${s.color || '#cbd5e1'}"></span>
+    const c = stageColor(s); // لون المرحلة: شريط علوي + رأس عمود مُظلَّل + حدّ البطاقات الجانبي
+    return `<div class="kcol" data-stage="${s.id}" ${drop} style="box-shadow:inset 0 3px 0 0 ${c}">
+      <div class="kcol-head" style="background:${tint(c, '24')};border-radius:10px">
+        <span class="kcol-dot" style="background:${c};width:10px;height:10px"></span>
         <span class="t" data-tip="${esc(stageTip(s))}" tabindex="0">${esc(s.name_ar)}</span>
         <button data-action="stage-info" data-stage="${s.id}" aria-label="شرح المرحلة" title="شرح المرحلة" style="width:16px;height:16px;border-radius:50%;border:1px solid var(--line);background:#fff;color:var(--muted);font-size:10px;font-weight:800;line-height:1;cursor:pointer;padding:0;flex:none;display:inline-flex;align-items:center;justify-content:center">؟</button>
         <span class="n" data-count>${items.length}</span>
@@ -313,13 +343,18 @@ export async function opportunitiesPage(user, opts = {}) {
     ${viewsBar}
     ${sectorChips}
     ${strip}
+    <style>.kmenu-btn{opacity:.45;transition:opacity .15s,background .15s,color .15s}.kcard:hover .kmenu-btn,.kmenu-btn:focus-visible{opacity:1}.kmenu-btn:hover{background:#eef1f7;color:var(--ink2)}</style>
     ${boardArea}
     ${dds}
     ${stageTpls}
     <script>window.__SANAD=Object.assign(window.__SANAD||{},{
       stages:${JSON.stringify(stages.map((s) => ({ id: s.id, name_ar: s.name_ar, color: s.color }))).replace(/</g, '\\u003c')},
       sectors:${JSON.stringify(sectors.map((s) => ({ id: s.id, name_ar: s.name_ar }))).replace(/</g, '\\u003c')},
+      moveSectors:${JSON.stringify(moveTargets.map((s) => ({ id: s.id, name_ar: s.name_ar }))).replace(/</g, '\\u003c')},
+      wonStage:${JSON.stringify(wonStage ? wonStage.id : null)},
+      lostStage:${JSON.stringify(lostStage ? lostStage.id : null)},
       canCreateOpp:${canCreate ? 'true' : 'false'},
+      canEditOpp:${canEdit ? 'true' : 'false'},
       viewsPage:'opportunities'
     });</script>`;
   return layout({
