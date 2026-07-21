@@ -51,28 +51,31 @@ const aicon = (kind) => {
 const th = (t, a) => `<th style="padding:.45rem .7rem;font-size:10.5px;color:var(--muted);font-weight:700;text-align:${a || 'right'};white-space:nowrap">${t}</th>`;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// صفحة العملاء — القائمة
+// صفحة العملاء — جدول قرار: هوية العميل ← صحة العلاقة ← الفرص ← المال والمستحقات
 // ─────────────────────────────────────────────────────────────────────────────
+// «N فرص» بصيغة عربية صحيحة
+const oppCountAr = (n) => (n === 1 ? 'فرصة واحدة' : n === 2 ? 'فرصتان' : n <= 10 ? `${n} فرص` : `${n} فرصة`);
+
 export async function clientsPage(user, opts = {}) {
   const query = (opts.query || '').toString().trim();
   const type = (opts.type || '').toString().trim();
-  const sort = ['revenue', 'pipeline'].includes(opts.sort) ? opts.sort : 'activity';
+  const sort = ['pipeline', 'activity'].includes(opts.sort) ? opts.sort : 'revenue';
   const fy = config.fiscalYear;
   const rows = await listClients(user, { query, type, sort });
   const canCreate = can(user, 'create', 'client');
 
-  // preserve current filters in every chip/link
+  // preserve current filters in every chip/link (الافتراضي: أكبر العلاقات أولاً = revenue)
   const qs = (patch = {}) => {
     const p = new URLSearchParams();
     const v = { query, type, sort, ...patch };
     if (v.query) p.set('query', v.query);
     if (v.type) p.set('type', v.type);
-    if (v.sort && v.sort !== 'activity') p.set('sort', v.sort);
+    if (v.sort && v.sort !== 'revenue') p.set('sort', v.sort);
     const s = p.toString();
     return '/app/clients' + (s ? '?' + s : '');
   };
 
-  // شريط الملخص: عدد العملاء + توزيع العلاقة + تركّز أعلى 5
+  // ── الشريط التحليلي: عدد العملاء · تركّز أعلى ٥ · العميل الأول · معدل الفوز · نمو الإيراد ──
   const relCount = { 'نشطة': 0, 'فاترة': 0, 'خاملة': 0 };
   for (const r of rows) relCount[r.relationship] = (relCount[r.relationship] || 0) + 1;
   const companyFy = (await get('SELECT COALESCE(SUM(amount_halalas),0) v FROM revenue_line WHERE year = ?', [fy]))?.v || 0;
@@ -95,19 +98,46 @@ export async function clientsPage(user, opts = {}) {
       </div>`;
   }))}</div>`);
 
+  // العميل الأول: صاحب أعلى إيراد هذه السنة + حصته من إيراد الشركة
+  const top1 = top5[0] || null;
+  const top1Share = top1 && companyFy > 0 ? Math.round((top1.fy_revenue_halalas / companyFy) * 100) : null;
+  const topStat = top1
+    ? card(`<div style="padding:.6rem .9rem;min-width:150px;max-width:230px">
+      <div style="font-size:11px;color:var(--muted);font-weight:700">${G.topClient}</div>
+      <div style="font-size:13.5px;font-weight:800;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:.15rem 0"><a href="/app/client/${top1.id}" style="color:inherit">${esc(top1.name_ar)}</a></div>
+      <div style="font-size:10.5px;color:var(--faint)" class="tnum">${top1Share != null ? `حصته ${top1Share}% من إيراد ${fy}` : `إيراده ${fmtSar(top1.fy_revenue_halalas)}`}</div></div>`, 'card-h')
+    : statMini(G.topClient, '—', `لا إيراد مسجلاً في ${fy}`);
+
+  // معدل الفوز الإجمالي على العملاء الظاهرين (الفوز التاريخي المستورد خارج الحسبة)
+  const sumWon = rows.reduce((a, r) => a + (r.won_count || 0), 0);
+  const sumLost = rows.reduce((a, r) => a + (r.lost_count || 0), 0);
+  const winRate = sumWon + sumLost ? Math.round((sumWon / (sumWon + sumLost)) * 100) : null;
+
+  // نمو الإيراد: مجموع إيراد العملاء الظاهرين هذه السنة مقابل السنة الماضية
+  const curRev = rows.reduce((a, r) => a + (r.fy_revenue_halalas || 0), 0);
+  const prevRev = rows.reduce((a, r) => a + (r.prev_fy_revenue_halalas || 0), 0);
+  const growth = prevRev > 0 ? Math.round(((curRev - prevRev) / prevRev) * 100) : null;
+  const growthChip = growth == null ? ''
+    : `<span class="pace-chip ${growth > 0 ? 'up' : growth < 0 ? 'down' : 'flat'}">${growth > 0 ? '▲' : growth < 0 ? '▼' : '•'} مقابل ${sarShort(prevRev)} في ${fy - 1}</span>`;
+  const growthStat = statMini('نمو الإيراد', growth == null ? '—' : `${growth > 0 ? '+' : ''}${growth}%`,
+    growth == null ? `لا إيراد مسجلاً في ${fy - 1}` : growthChip,
+    growth == null ? '' : growth > 0 ? 'good' : growth < 0 ? 'bad' : '');
+
   const strip = `<div style="display:flex;gap:.7rem;flex-wrap:wrap;margin-bottom:1rem">
-    ${statMini('عدد العملاء', rows.length, query || type ? 'ضمن التصفية الحالية' : 'ضمن نطاقك')}
-    ${statMini(G.relActive, relCount['نشطة'], 'تواصل حديث أو فرصة مفتوحة', 'good')}
-    ${statMini(G.relCooling, relCount['فاترة'], 'آخر تواصل ≤ 120 يوماً', relCount['فاترة'] ? 'warn' : '')}
-    ${statMini(G.relDormant, relCount['خاملة'], 'بلا تواصل طويلاً', '')}
-    ${concStat}</div>`;
+    ${statMini('عدد العملاء', rows.length, `${relCount['نشطة']} ${G.relActive} · ${relCount['فاترة']} ${G.relCooling} · ${relCount['خاملة']} ${G.relDormant}`)}
+    ${concStat}
+    ${topStat}
+    ${statMini('معدل الفوز الإجمالي', winRate != null ? winRate + '%' : '—',
+    winRate != null ? `${sumWon} ${G.won} · ${sumLost} ${G.lost}` : 'لا فرص محسومة بعد',
+    winRate == null ? '' : winRate >= 50 ? 'good' : winRate < 30 ? 'warn' : '')}
+    ${growthStat}</div>`;
 
   const chips = `<div class="chips"><span class="lbl">النوع:</span>
     <a href="${qs({ type: '' })}" class="chip ${type ? '' : 'on'}">${G.all}</a>
     ${CLIENT_TYPES.map((t) => `<a href="${qs({ type: t })}" class="chip ${type === t ? 'on' : ''}">${t}</a>`).join('')}
   </div>`;
 
-  const sortOpts = [['activity', G.lastActivity], ['revenue', 'إيراد السنة'], ['pipeline', G.pipeline]];
+  const sortOpts = [['revenue', `إيراد ${fy}`], ['pipeline', G.pipeline], ['activity', G.lastActivity]];
   const toolbar = `<div class="toolbar">
     <form method="get" action="/app/clients" id="cl-form" style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap">
       <div class="search">${icon('search')}<input class="input" id="cl-q" name="query" value="${esc(query)}" aria-label="${G.search} في العملاء" placeholder="ابحث بالاسم أو الكود…"></div>
@@ -119,15 +149,53 @@ export async function clientsPage(user, opts = {}) {
     ${canCreate ? `<button class="btn btn-primary" data-action="client-add">${icon('plus')} عميل جديد</button>` : ''}
   </div>`;
 
-  const rowsHtml = rows.map((r) => `<tr style="border-bottom:1px solid var(--line)">
-    <td style="padding:.55rem .7rem"><a href="/app/client/${r.id}" style="font-size:13px;font-weight:700;color:var(--ink2)">${esc(r.name_ar)}</a>
+  // ── خلايا الجدول ──
+  const dash = '<span style="color:var(--faint)">—</span>';
+  const secChips = (r) => {
+    const secs = r.sectors || [];
+    if (!secs.length) return dash;
+    const shown = secs.slice(0, 2);
+    const extra = secs.length - shown.length;
+    return `<div style="display:flex;gap:.25rem;flex-wrap:wrap;justify-content:center" title="${esc(secs.join(' · '))}">
+      ${shown.map((s) => `<span style="font-size:10px;font-weight:700;background:var(--bg);border:1px solid var(--line);border-radius:999px;padding:.12rem .45rem;white-space:nowrap;color:var(--muted)">${esc(s)}</span>`).join('')}
+      ${extra > 0 ? `<span class="tnum" style="font-size:10px;font-weight:800;color:var(--faint);align-self:center">+${extra}</span>` : ''}</div>`;
+  };
+  const oppsCell = (r) => (r.open_opps
+    ? `<div style="font-size:12.5px;font-weight:700" class="tnum">${oppCountAr(r.open_opps)}</div>
+       <div style="font-size:10px;color:var(--muted);font-weight:400" class="tnum">إجمالي ${sarShort(r.open_pipeline_halalas)}</div>
+       <div style="font-size:10px;color:var(--brand2);font-weight:400" class="tnum">مرجّح ${sarShort(r.weighted_pipeline_halalas)}</div>`
+    : dash);
+  const winLossCell = (r) => {
+    const parts = [];
+    if (r.won_count) parts.push(`<div style="color:var(--green);font-weight:700;font-size:11.5px" class="tnum">${r.won_count} فوز بقيمة ${sarShort(r.won_value_halalas)}</div>`);
+    if (r.lost_count) parts.push(`<div style="color:var(--muted);font-size:11px" class="tnum">${r.lost_count} خسارة</div>`);
+    if (r.hist_won_count) parts.push(`<div style="color:var(--faint);font-size:10px" class="tnum">+${r.hist_won_count} تاريخي</div>`);
+    return parts.join('') || dash;
+  };
+  const arCell = (r) => (r.open_ar_halalas > 0
+    ? `<div class="tnum" style="font-weight:800;font-size:12.5px;color:${r.overdue_ar_halalas > 0 ? 'var(--red)' : 'var(--ink2)'}">${fmtSar(r.open_ar_halalas)}</div>
+       ${r.overdue_ar_halalas >= r.open_ar_halalas && r.overdue_ar_halalas > 0 ? `<div style="font-size:10px;color:var(--red)">${G.overdue} بالكامل</div>`
+    : r.overdue_ar_halalas > 0 ? `<div style="font-size:10px;color:var(--red)" class="tnum">منه ${G.overdue} ${sarShort(r.overdue_ar_halalas)}</div>` : ''}`
+    : dash);
+  const money = (v) => (v ? `<span class="tnum" style="font-weight:700;font-size:12.5px">${fmtSar(v)}</span>` : dash);
+
+  const rowsHtml = rows.map((r) => `<tr style="border-bottom:1px solid var(--line);cursor:pointer" onclick="location.href='/app/client/${r.id}'">
+    <td style="padding:.55rem .5rem;min-width:140px">
+      <div style="display:flex;align-items:center;gap:.4rem;flex-wrap:wrap">
+        <a href="/app/client/${r.id}" style="font-size:13px;font-weight:700;color:var(--ink2)">${esc(r.name_ar)}</a>
+        ${r.type ? pill(esc(r.type), TYPE_TONE[r.type] || 'slate') : ''}
+      </div>
       ${r.code ? `<div style="font-size:10.5px;color:var(--faint)"><bdi>${esc(r.code)}</bdi></div>` : ''}</td>
-    <td style="padding:.55rem .7rem;text-align:center">${r.type ? pill(esc(r.type), TYPE_TONE[r.type] || 'slate') : '<span style="color:var(--faint)">—</span>'}</td>
-    <td style="padding:.55rem .7rem;text-align:center">${pill(r.relationship, REL_TONE[r.relationship] || 'slate')}</td>
-    <td style="padding:.55rem .7rem;text-align:center;font-size:12px;color:var(--muted)" class="tnum">${r.last_activity_at ? relDay(r.last_activity_at) : '<span style="color:var(--faint)">لا تواصل مسجل</span>'}</td>
-    <td style="padding:.55rem .7rem;text-align:left;font-size:12.5px;font-weight:700" class="tnum">${r.open_pipeline_halalas ? fmtSar(r.open_pipeline_halalas) : '<span style="color:var(--faint);font-weight:400">—</span>'}${r.open_opps ? `<div style="font-size:10px;color:var(--faint);font-weight:400">${r.open_opps} فرصة</div>` : ''}</td>
-    <td style="padding:.55rem .7rem;text-align:left;font-size:12.5px;font-weight:700" class="tnum">${r.fy_revenue_halalas ? fmtSar(r.fy_revenue_halalas) : '<span style="color:var(--faint);font-weight:400">—</span>'}</td>
-    <td style="padding:.55rem .7rem;text-align:center;font-size:12.5px" class="tnum">${r.active_projects || '<span style="color:var(--faint)">—</span>'}</td>
+    <td style="padding:.55rem .5rem;text-align:center">${secChips(r)}</td>
+    <td style="padding:.55rem .5rem;text-align:center;font-size:12px;color:var(--ink2)">${r.rel_owner ? `<span style="display:inline-block;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle" title="${esc(r.rel_owner)}">${esc(r.rel_owner)}</span>` : dash}</td>
+    <td style="padding:.55rem .5rem;text-align:center">${pill(r.relationship, REL_TONE[r.relationship] || 'slate')}</td>
+    <td style="padding:.55rem .5rem;text-align:center;font-size:12px;color:var(--muted);white-space:nowrap" class="tnum">${r.last_activity_at ? relDay(r.last_activity_at) : '<span style="color:var(--faint)">لا تواصل مسجل</span>'}</td>
+    <td style="padding:.55rem .5rem;text-align:left;white-space:nowrap">${oppsCell(r)}</td>
+    <td style="padding:.55rem .5rem;text-align:right;white-space:nowrap">${winLossCell(r)}</td>
+    <td style="padding:.55rem .5rem;text-align:center;font-size:12.5px" class="tnum">${r.active_projects || dash}</td>
+    <td style="padding:.55rem .5rem;text-align:left;white-space:nowrap">${money(r.contracts_value_halalas)}</td>
+    <td style="padding:.55rem .5rem;text-align:left;white-space:nowrap">${money(r.fy_revenue_halalas)}</td>
+    <td style="padding:.55rem .5rem;text-align:left;white-space:nowrap">${arCell(r)}</td>
   </tr>`).join('');
 
   const emptyState = `<div class="empty-state">${icon('client')}
@@ -135,8 +203,8 @@ export async function clientsPage(user, opts = {}) {
     <div class="s">${query || type ? 'جرّب تعديل كلمة البحث أو إزالة تصفية النوع.' : 'ابدأ ببناء سجل عملائك — كل فرصة وعقد ومشروع سيرتبط بعميله تلقائياً.'}</div>
     ${canCreate && !query && !type ? `<button class="btn btn-primary" data-action="client-add">${icon('plus')} عميل جديد</button>` : ''}</div>`;
 
-  const table = card(`<div class="tblwrap"><table style="width:100%;border-collapse:collapse;min-width:760px">
-    <thead><tr>${th(G.client)}${th('النوع', 'center')}${th(G.relationship, 'center')}${th(G.lastActivity, 'center')}${th(G.pipeline, 'left')}${th(`إيراد ${fy}`, 'left')}${th('مشاريع نشطة', 'center')}</tr></thead>
+  const table = card(`<div class="tblwrap"><table style="width:100%;border-collapse:collapse;min-width:1100px">
+    <thead><tr>${th(G.client)}${th('القطاعات', 'center')}${th(G.relOwner, 'center')}${th(G.relationship, 'center')}${th(G.lastActivity, 'center')}${th(G.opportunities, 'left')}${th('الفوز · الخسارة')}${th('مشاريع نشطة', 'center')}${th('قيمة العقود', 'left')}${th(`إيراد ${fy}`, 'left')}${th(G.outstanding, 'left')}</tr></thead>
     <tbody>${rowsHtml}</tbody></table>${rows.length ? '' : emptyState}</div>`);
 
   const body = `${toolbar}${strip}${chips}${table}${ddTop5}`;

@@ -103,8 +103,16 @@ async function lastTouchByClient() {
 }
 
 // ── list ─────────────────────────────────────────────────────────────────────
-// listClients(user, {query, type, sort, sector}) → client cols + open_pipeline_halalas,
-// fy_revenue_halalas, active_projects, open_opps, last_activity_at, relationship.
+// listClients(user, {query, type, sort, sector}) → client cols + the per-client decision
+// aggregates (contract fields kept; the rest are additive extensions):
+//   open_pipeline_halalas / weighted_pipeline_halalas / open_opps — الفرص المفتوحة وقيمتها والمرجّح
+//   won_count / won_value_halalas / hist_won_count / lost_count — سجل الفوز والخسارة (التاريخي على حدة)
+//   contracts_count / contracts_value_halalas — العقود
+//   open_ar_halalas / overdue_ar_halalas — المستحق (نفس منطق clientOverview حتى تتطابق الأرقام)
+//   fy_revenue_halalas / prev_fy_revenue_halalas / active_projects
+//   sectors[] (أسماء عربية) / rel_owner (+rel_owner_user_id) / last_activity_at / relationship
+// Batching model: every aggregate is ONE grouped query over the whole table keyed by client_id
+// (Map lookups afterwards) — never a query per client row.
 export async function listClients(user, filters = {}) {
   const sc = clientScopeClause(user, 'read');
   if (!sc) return [];
@@ -127,34 +135,123 @@ export async function listClients(user, filters = {}) {
   const fy = config.fiscalYear;
   const revRows = await all(`SELECT p.client_id cid, COALESCE(SUM(r.amount_halalas),0) v FROM revenue_line r
      JOIN project p ON p.id = r.project_id WHERE r.year = ? AND p.client_id IS NOT NULL AND p.deleted_at IS NULL GROUP BY p.client_id`, [fy]);
-  const pipeRows = await all(`SELECT o.client_id cid, COUNT(*) n, COALESCE(SUM(o.value_halalas),0) v FROM opportunity o
-     LEFT JOIN stage s ON s.id = o.stage_id
+  // إيراد السنة الماضية لكل عميل — يغذي مؤشر «نمو الإيراد» في الشريط التحليلي
+  const prevRevRows = await all(`SELECT p.client_id cid, COALESCE(SUM(r.amount_halalas),0) v FROM revenue_line r
+     JOIN project p ON p.id = r.project_id WHERE r.year = ? AND p.client_id IS NOT NULL AND p.deleted_at IS NULL GROUP BY p.client_id`, [fy - 1]);
+  // الفرص المفتوحة: العدد + الإجمالي + المرجّح (قيمة × احتمال الفوز) — نفس تعريف clientOverview
+  const pipeRows = await all(`SELECT o.client_id cid, COUNT(*) n, COALESCE(SUM(o.value_halalas),0) v,
+       COALESCE(SUM(o.value_halalas * COALESCE(o.win_pct,0) / 100.0),0) w
+     FROM opportunity o LEFT JOIN stage s ON s.id = o.stage_id
      WHERE o.deleted_at IS NULL AND o.client_id IS NOT NULL AND COALESCE(s.is_won,0) = 0 AND COALESCE(s.is_lost,0) = 0 GROUP BY o.client_id`);
   const prjRows = await all(`SELECT client_id cid, COUNT(*) n FROM project
      WHERE deleted_at IS NULL AND client_id IS NOT NULL AND status = 'IN_PROGRESS' GROUP BY client_id`);
+  // الفوز/الخسارة: الفوز المحتسب يستثني المستورد التاريخي (exclude_from_sales=1) ويعدّه على حدة
+  const wlRows = await all(`SELECT o.client_id cid,
+       SUM(CASE WHEN s.is_won = 1 AND COALESCE(o.exclude_from_sales,0) = 0 THEN 1 ELSE 0 END) won_n,
+       COALESCE(SUM(CASE WHEN s.is_won = 1 AND COALESCE(o.exclude_from_sales,0) = 0 THEN o.value_halalas ELSE 0 END),0) won_v,
+       SUM(CASE WHEN s.is_won = 1 AND COALESCE(o.exclude_from_sales,0) = 1 THEN 1 ELSE 0 END) hist_n,
+       SUM(CASE WHEN s.is_lost = 1 THEN 1 ELSE 0 END) lost_n
+     FROM opportunity o JOIN stage s ON s.id = o.stage_id
+     WHERE o.deleted_at IS NULL AND o.client_id IS NOT NULL AND (s.is_won = 1 OR s.is_lost = 1)
+     GROUP BY o.client_id`);
+  const conRows = await all(`SELECT client_id cid, COUNT(*) n, COALESCE(SUM(value_halalas),0) v FROM contract
+     WHERE deleted_at IS NULL AND client_id IS NOT NULL GROUP BY client_id`);
+  // المستحق: فاتورة بفاتورة بنفس قواعد clientOverview بالضبط (سقف التحصيل عند قيمة الفاتورة،
+  // لا سالب، عميل الفاتورة أو عميل مشروعها للفواتير القديمة) حتى يطابق الرقم صفحة العميل 360.
+  const today = nowIso().slice(0, 10);
+  const invRows = await all(`SELECT COALESCE(i.client_id, p.client_id) cid, i.id iid, i.amount_halalas amt,
+       i.status st, i.due_date dd, COALESCE(SUM(l.amount_halalas),0) col
+     FROM invoice i
+     LEFT JOIN project p ON p.id = i.project_id AND p.deleted_at IS NULL
+     LEFT JOIN collection l ON l.invoice_id = i.id
+     WHERE i.deleted_at IS NULL AND i.status NOT IN ('DRAFT','CANCELLED') AND COALESCE(i.client_id, p.client_id) IS NOT NULL
+     GROUP BY COALESCE(i.client_id, p.client_id), i.id, i.amount_halalas, i.status, i.due_date`);
+  const ar = new Map();
+  for (const r of invRows) {
+    const out = Math.max(0, (r.amt || 0) - Math.min(r.col || 0, r.amt || 0));
+    if (!out) continue;
+    const cur = ar.get(r.cid) || { out: 0, overdue: 0 };
+    cur.out += out;
+    if (r.st === 'OVERDUE' || (r.dd && String(r.dd).slice(0, 10) < today)) cur.overdue += out;
+    ar.set(r.cid, cur);
+  }
+  // القطاعات: اتحاد قطاعات الفرص والمشاريع والعقود لكل عميل (UNION يزيل التكرار)
+  const secRows = await all(`SELECT client_id cid, sector_id sid FROM opportunity WHERE deleted_at IS NULL AND client_id IS NOT NULL AND sector_id IS NOT NULL
+     UNION SELECT client_id cid, sector_id sid FROM project WHERE deleted_at IS NULL AND client_id IS NOT NULL AND sector_id IS NOT NULL
+     UNION SELECT client_id cid, sector_id sid FROM contract WHERE deleted_at IS NULL AND client_id IS NOT NULL AND sector_id IS NOT NULL`);
+  const secMeta = new Map((await all('SELECT id, name_ar, sort_order FROM sector WHERE deleted_at IS NULL'))
+    .map((s) => [s.id, s]));
+  const secBy = new Map();
+  for (const r of secRows) {
+    if (!secMeta.has(r.sid)) continue;
+    if (!secBy.has(r.cid)) secBy.set(r.cid, new Set());
+    secBy.get(r.cid).add(r.sid);
+  }
+  // مالك العلاقة: أكثر مستخدم تملّكاً للفرص المفتوحة على العميل — لا فرص مفتوحة = لا مالك
+  const ownRows = await all(`SELECT o.client_id cid, o.owner_user_id uid, u.name_ar oname, u.username ouser, COUNT(*) n
+     FROM opportunity o
+     LEFT JOIN stage s ON s.id = o.stage_id
+     JOIN app_user u ON u.id = o.owner_user_id AND u.deleted_at IS NULL
+     WHERE o.deleted_at IS NULL AND o.client_id IS NOT NULL AND o.owner_user_id IS NOT NULL
+       AND COALESCE(s.is_won,0) = 0 AND COALESCE(s.is_lost,0) = 0
+     GROUP BY o.client_id, o.owner_user_id, u.name_ar, u.username`);
+  const owner = new Map();
+  for (const r of ownRows) {
+    const cur = owner.get(r.cid); // الأعلى عدداً يفوز؛ التعادل يُحسم بترتيب المعرّف (حتمي عبر التشغيلات)
+    if (!cur || r.n > cur.n || (r.n === cur.n && String(r.uid) < String(cur.uid))) owner.set(r.cid, r);
+  }
+
   const rev = new Map(revRows.map((r) => [r.cid, r.v]));
+  const prevRev = new Map(prevRevRows.map((r) => [r.cid, r.v]));
   const pipe = new Map(pipeRows.map((r) => [r.cid, r]));
   const prj = new Map(prjRows.map((r) => [r.cid, r.n]));
+  const winloss = new Map(wlRows.map((r) => [r.cid, r]));
+  const contracts = new Map(conRows.map((r) => [r.cid, r]));
   const touch = await lastTouchByClient();
 
   const rows = clients.map((c) => {
     const p = pipe.get(c.id);
+    const wl = winloss.get(c.id);
+    const con = contracts.get(c.id);
+    const a = ar.get(c.id);
+    const own = owner.get(c.id);
+    const sectors = [...(secBy.get(c.id) || [])]
+      .map((sid) => secMeta.get(sid))
+      .sort((x, y) => (x.sort_order || 0) - (y.sort_order || 0) || String(x.name_ar).localeCompare(String(y.name_ar), 'ar'))
+      .map((s) => s.name_ar);
     const lastAt = touch.get(c.id) || null;
     return {
       ...c,
       open_pipeline_halalas: Math.round(p?.v || 0),
+      weighted_pipeline_halalas: Math.round(p?.w || 0),
       open_opps: p?.n || 0,
+      won_count: wl?.won_n || 0,
+      won_value_halalas: Math.round(wl?.won_v || 0),
+      hist_won_count: wl?.hist_n || 0,
+      lost_count: wl?.lost_n || 0,
+      contracts_count: con?.n || 0,
+      contracts_value_halalas: Math.round(con?.v || 0),
+      open_ar_halalas: Math.round(a?.out || 0),
+      overdue_ar_halalas: Math.round(a?.overdue || 0),
       fy_revenue_halalas: Math.round(rev.get(c.id) || 0),
+      prev_fy_revenue_halalas: Math.round(prevRev.get(c.id) || 0),
       active_projects: prj.get(c.id) || 0,
+      sectors,
+      rel_owner: own ? (own.oname || own.ouser || null) : null,
+      rel_owner_user_id: own?.uid || null,
       last_activity_at: lastAt,
       relationship: relationshipOf(lastAt, p?.n || 0),
     };
   });
-  const sort = filters.sort || 'activity';
-  if (sort === 'revenue') rows.sort((a, b) => b.fy_revenue_halalas - a.fy_revenue_halalas);
-  else if (sort === 'pipeline') rows.sort((a, b) => b.open_pipeline_halalas - a.open_pipeline_halalas);
-  else rows.sort((a, b) => String(b.last_activity_at || '').localeCompare(String(a.last_activity_at || ''))
+  // الافتراضي: أكبر العلاقات أولاً (إيراد السنة ثم قيمة الفرص المفتوحة) — القرار قبل التمرير
+  const sort = filters.sort || 'revenue';
+  if (sort === 'activity') rows.sort((a, b) => String(b.last_activity_at || '').localeCompare(String(a.last_activity_at || ''))
     || b.fy_revenue_halalas - a.fy_revenue_halalas);
+  else if (sort === 'pipeline') rows.sort((a, b) => b.open_pipeline_halalas - a.open_pipeline_halalas
+    || b.fy_revenue_halalas - a.fy_revenue_halalas);
+  else rows.sort((a, b) => b.fy_revenue_halalas - a.fy_revenue_halalas
+    || b.open_pipeline_halalas - a.open_pipeline_halalas
+    || String(a.name_ar || '').localeCompare(String(b.name_ar || ''), 'ar'));
   return rows;
 }
 
