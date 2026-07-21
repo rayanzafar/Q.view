@@ -1,12 +1,17 @@
 // تغذية "يحتاج انتباهك الآن" — قلب مركز القطاع: ≤7 بنود مرتبة حسب أثر القرار،
 // كل بند جملة عربية واحدة + إجراء سياقي واحد. مصادرها سجلات حقيقية فقط.
 import { all } from '../db/index.js';
+import { can } from '../rbac/index.js';
 import { myApprovalQueue } from '../../modules/workflow/engine.js';
 import { fmtSar } from '../util/ids.js';
 import { ROT_THRESHOLDS } from '../../modules/crm/opportunities.js';
 
 // عتبات ركود المرحلة (أيام) — مصدر واحد مع لوحة الفرص (ROT_THRESHOLDS)؛ default لغير المعرّف
 const STAGE_ROT_DAYS = { default: 21, ...ROT_THRESHOLDS };
+
+// أسماء موارد الاعتمادات بالعربية — لا يظهر اسم مورد تقني للمستخدم أبداً
+export const RESOURCE_AR = { opportunity: 'فرصة', proposal: 'عرض', expense: 'مصروف',
+  deliverable: 'مخرَج', timesheet: 'سجل وقت', invoice: 'فاتورة', project: 'مشروع', contract: 'عقد' };
 
 export async function attentionFeed(user, sectorId, { year, today } = {}) {
   const t = today || new Date().toISOString().slice(0, 10);
@@ -19,16 +24,16 @@ export async function attentionFeed(user, sectorId, { year, today } = {}) {
     const q = await myApprovalQueue(user);
     if (q.length) items.push({ rank: 1, tone: 'brand', icon: 'approvals', dd: null, href: '/app/approvals',
       title: q.length === 1 ? 'طلب اعتماد واحد بانتظار قرارك' : `${q.length} طلبات اعتماد بانتظار قرارك`,
-      sub: q.slice(0, 2).map((r) => r.resource === 'timesheet' ? 'سجل وقت' : r.resource).join(' · '),
+      sub: q.slice(0, 2).map((r) => RESOURCE_AR[r.resource] || 'طلب').join(' · '),
       action: 'راجِع واعتمد' });
   } catch { /* قائمة الاعتمادات ليست لكل الأدوار */ }
 
-  // 2) فواتير متأخرة السداد (نقد القطاع)
-  const od = await all(`SELECT i.id, i.code, i.amount_halalas, i.due_date, c.name_ar client
+  // 2) فواتير متأخرة السداد (نقد القطاع) — أرقام مالية: تظهر فقط لمن يقرأ الفواتير
+  const od = can(user, 'read', 'invoice') ? await all(`SELECT i.id, i.code, i.amount_halalas, i.due_date, c.name_ar client
       FROM invoice i LEFT JOIN client c ON c.id = i.client_id
       WHERE i.sector_id = ? AND i.deleted_at IS NULL
         AND (i.status = 'OVERDUE' OR (i.status IN ('ISSUED','PARTIALLY_PAID') AND i.due_date IS NOT NULL AND substr(i.due_date,1,10) < ?))
-      ORDER BY i.due_date LIMIT 12`, [sectorId, t]);
+      ORDER BY i.due_date LIMIT 12`, [sectorId, t]) : [];
   if (od.length) {
     const sum = od.reduce((a, b) => a + (b.amount_halalas || 0), 0);
     items.push({ rank: 2, tone: 'red', icon: 'money', href: '/app/finance',

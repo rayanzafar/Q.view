@@ -45,10 +45,16 @@ export async function financeSummary(user, year = FY()) {
   };
 }
 
-// AR aging buckets by days since issue_date on outstanding invoices (single table → no alias needed).
-export async function arAging(user, year = FY()) {
-  const f = scopeFilter(user, 'invoice', 'read');
-  const rows = await all(`SELECT * FROM invoice WHERE ${f.clause} AND deleted_at IS NULL AND status IN ('ISSUED','PARTIALLY_PAID','OVERDUE') AND ${YEAR_PRED()}`, [...f.params, year]);
+// AR aging buckets by days since issue_date on outstanding invoices.
+// Optional {sector}: focus on one sector (sector command center) — the invoice's own sector,
+// falling back to its project's sector (same COALESCE path used across finance views).
+// Existing callers (arAging(user, year)) are unchanged in signature and result.
+export async function arAging(user, year = FY(), { sector } = {}) {
+  const f = scopeFilter(user, 'invoice', 'read', { sectorCol: 'i.sector_id', ownerCol: 'i.owner_user_id' });
+  const rows = await all(`SELECT i.* FROM invoice i LEFT JOIN project p ON p.id = i.project_id
+     WHERE ${f.clause} AND i.deleted_at IS NULL AND i.status IN ('ISSUED','PARTIALLY_PAID','OVERDUE') AND ${YEAR_PRED('i.')}
+     ${sector ? 'AND COALESCE(i.sector_id, p.sector_id) = ?' : ''}`,
+    [...f.params, year, ...(sector ? [sector] : [])]);
   const buckets = { '0-30': 0, '31-60': 0, '61-90': 0, '90+': 0 };
   const now = Date.now();
   for (const inv of rows) {

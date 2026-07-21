@@ -13,6 +13,8 @@ execFileSync(process.execPath, ['--experimental-sqlite', join(ROOT, 'scripts/mig
 execFileSync(process.execPath, ['--experimental-sqlite', join(ROOT, 'scripts/seed-rbac.js')], { env: process.env, stdio: 'ignore' });
 
 const { insert, close } = await import('../../src/core/db/index.js');
+const { initRbac } = await import('../../src/core/rbac/index.js');
+await initRbac(); // attentionFeed يفحص can(user,'read','invoice') قبل بند الفواتير المتأخرة
 const { attentionFeed } = await import('../../src/core/reports/attention.js');
 const { revenueForecast, pipelineAging } = await import('../../src/core/reports/metrics.js');
 
@@ -43,6 +45,12 @@ test('attentionFeed: يرصد الفاتورة المتأخرة والفرصة �
   assert.ok(stall, 'بند الفرص المتوقفة موجود');
   assert.ok(stall.action, 'لكل بند إجراء');
   assert.ok(items.length <= 7, 'لا يتجاوز 7 بنود');
+});
+
+test('attentionFeed: بند الفواتير المتأخرة محجوب عن دور بلا قراءة فواتير (viewer)', async () => {
+  const viewer = { id: 'u2', role_id: 'viewer', sector_id: 'S1', scope: 'sector' };
+  const items = await attentionFeed(viewer, 'S1', { year: 2026, today: T });
+  assert.ok(!items.some((i) => i.title.includes('متأخرة')), 'رقم مالي تسرّب لمن لا يقرأ الفواتير');
 });
 
 test('revenueForecast = المحقق + المرجّح من الفرص المفتوحة', async () => {
