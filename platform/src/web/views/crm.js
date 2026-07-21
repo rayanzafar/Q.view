@@ -43,7 +43,8 @@ function ageChip(o, compact = false) {
   const title = th && n > th ? STALLED_HINT : G.stageAge(n);
   return `<span class="pill tnum" style="${c}${compact ? ';padding:.12rem .38rem' : ''}" title="${esc(title)}">${compact ? '' : icon('clock') + ' '}${n} يوماً</span>`;
 }
-const naChip = (compact = false) => `<span class="pill" style="background:#fee2e2;color:#b91c1c${compact ? ';padding:.12rem .38rem' : ''}" title="كل فرصة مفتوحة تحتاج خطوة تالية مؤرّخة — أضفها من صفحة الفرصة">${compact ? '' : '● '}${G.noNextAction}</span>`;
+// كهرماني لا أحمر: «بلا خطوة» تنبيه انضباط واسع الانتشار، والأحمر محجوز للمتوقفة فعلاً
+const naChip = (compact = false) => `<span class="pill" style="background:#fef3c7;color:#92400e${compact ? ';padding:.12rem .38rem' : ''}" title="كل فرصة مفتوحة تحتاج خطوة تالية مؤرّخة — أضفها من صفحة الفرصة">${compact ? '' : '● '}${G.noNextAction}</span>`;
 
 // نافذة «شرح المرحلة» — سبعة أسطر ثابتة من قاموس المراحل (stageInfo)، تُفتح من زر «؟» برأس العمود.
 function stageInfoTpl(s) {
