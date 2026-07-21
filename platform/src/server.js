@@ -21,6 +21,10 @@ export async function createApp() {
   await initRbac();  // load RBAC grants into the (synchronous) decision cache
 
   const app = express();
+  app.disable('x-powered-by');       // لا نكشف تقنية الخادم في الترويسات
+  // تحصين مؤجَّل: `true` يثق بكامل سلسلة X-Forwarded-For؛ يُفضَّل تثبيته لاحقاً على عدد قفزات
+  // الحافة الفعلي (Railway = قفزة واحدة، مؤكَّد من ترويسة x-railway-edge) كي لا يُنتحَل
+  // req.ip المُستخدَم في حدّ الدخول وفي عنوان سجل التدقيق. لا يُغيَّر قبل تأكيد عدد القفزات في كل بيئة.
   app.set('trust proxy', true);
   app.use(securityHeaders());
   app.use(express.json({ limit: '1mb' }));
