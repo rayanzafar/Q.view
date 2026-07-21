@@ -28,9 +28,9 @@ const WINS = [
 // أيقونة ولون كل نوع في «ما تغيّر»
 const CHG_IC = { stage: 'trend', invoice: 'money', collection: 'check', activity: 'mail', created: 'plus' };
 const CHG_TONE = {
-  stage: ['rgba(36,74,153,.1)', 'var(--brand)'], invoice: ['#dbeafe', '#2563eb'],
+  stage: ['rgba(36,74,153,.1)', 'var(--brand)'], invoice: ['#dbeafe', 'var(--brand)'],
   collection: ['#dcfce7', 'var(--green)'], activity: ['#f1f5f9', 'var(--muted)'],
-  created: ['#ede9fe', '#7c3aed'],
+  created: ['#ede9fe', 'var(--brand2)'],
 };
 
 const CSS = `<style>

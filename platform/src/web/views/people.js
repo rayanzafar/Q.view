@@ -37,7 +37,7 @@ export async function timesheetPage(user) {
           ${[['project', 'مشروع'], ['opportunity', 'فرصة'], ['proposal', 'عرض'], ['product', 'منتج'], ['internal', 'داخلي'], ['leave', 'إجازة'], ['training', 'تدريب'], ['bd', 'تطوير أعمال']].map(([k, ar]) => `<option value="${k}">${ar}</option>`).join('')}
         </select>
         <input id="ts-note" placeholder="ملاحظة" class="flex-1 border border-line rounded-lg px-3 py-2 text-sm">
-        <button onclick="Sanad.addTime()" class="text-white text-[12px] px-4 rounded-lg" style="background:linear-gradient(120deg,#2563eb,#9333ea)">تسجيل</button>
+        <button onclick="Sanad.addTime()" class="text-white text-[12px] px-4 rounded-lg" style="background:linear-gradient(120deg,var(--brand),var(--brand2))">تسجيل</button>
       </div></div>
       <table class="w-full"><thead><tr class="text-[11px] text-muted text-right">
         <th class="py-2 px-3 font-medium">التاريخ</th><th class="px-3 font-medium">النوع</th><th class="px-3 font-medium">ساعات</th>
@@ -239,7 +239,7 @@ export async function teamPage(user, opts = {}) {
 
   const secChips = user.scope === 'company' ? `<div class="chips"><span class="lbl">القطاع:</span>
     <a href="/app/team" class="chip ${sector ? '' : 'on'}">${G.all}</a>
-    ${allSec.map((s) => `<a href="/app/team?sector=${s.id}" class="chip ${sector === s.id ? 'on' : ''}"><span class="dot" style="background:${s.color || '#2563eb'}"></span>${esc(s.name_ar)}</a>`).join('')}
+    ${allSec.map((s) => `<a href="/app/team?sector=${s.id}" class="chip ${sector === s.id ? 'on' : ''}"><span class="dot" style="background:${s.color || 'var(--brand)'}"></span>${esc(s.name_ar)}</a>`).join('')}
   </div>` : '';
 
   const style = `<style>
@@ -322,7 +322,7 @@ export async function orgPage(user) {
   const sectorBlocks = tree.map((s) => card(`<div style="padding:1rem">
     <div style="display:flex;align-items:center;justify-content:space-between">
       <div style="display:flex;align-items:center;gap:.5rem">
-        <span style="width:11px;height:11px;border-radius:3px;background:${s.color || '#2563eb'}"></span>
+        <span style="width:11px;height:11px;border-radius:3px;background:${s.color || 'var(--brand)'}"></span>
         <div style="font-weight:800">${esc(s.name_ar)}</div>
         ${s.is_placeholder ? pill('قالب', 'amber') : pill(`${s.employees} موظف`, 'blue')}
       </div>

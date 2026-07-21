@@ -42,7 +42,7 @@ export async function usersPage(user) {
   const activeN = rows.filter((u) => u.active).length;
   const neverIn = rows.filter((u) => !u.last_login_at).length;
   const byRole = {}; for (const u of rows) { const r = u.role_name || u.role_id || '—'; byRole[r] = (byRole[r] || 0) + 1; }
-  const roleItems = Object.entries(byRole).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([r, n], i) => ({ label: esc(r), value: n, color: ['#2563eb', '#7c3aed', '#0891b2', '#059669', '#d97706', '#db2777'][i % 6] }));
+  const roleItems = Object.entries(byRole).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([r, n], i) => ({ label: esc(r), value: n, color: ['var(--brand)', 'var(--brand2)', '#0891b2', '#059669', '#d97706', '#db2777'][i % 6] }));
   const strip = `<div style="display:flex;gap:.7rem;flex-wrap:wrap;margin-bottom:.9rem">
     ${statMini('إجمالي المستخدمين', rows.length, `${Object.keys(byRole).length} دور`)}
     ${statMini('نشط', activeN, 'حسابات مفعّلة', 'good')}
@@ -66,7 +66,7 @@ export async function auditPage(user) {
   const todayN = rows.filter((a) => (a.at || '').slice(0, 10) === today).length;
   const distinctUsers = new Set(rows.map((a) => a.username || a.user_id).filter(Boolean)).size;
   const byAction = {}; for (const a of rows) { const k = a.action || '—'; byAction[k] = (byAction[k] || 0) + 1; }
-  const actItems = Object.entries(byAction).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, n], i) => ({ label: esc(tr(k) || k), value: n, color: ['#2563eb', '#7c3aed', '#059669', '#d97706', '#dc2626', '#0891b2'][i % 6] }));
+  const actItems = Object.entries(byAction).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, n], i) => ({ label: esc(tr(k) || k), value: n, color: ['var(--brand)', 'var(--brand2)', '#059669', '#d97706', '#dc2626', '#0891b2'][i % 6] }));
   const strip = `<div style="display:flex;gap:.7rem;flex-wrap:wrap;margin-bottom:.9rem">
     ${statMini('أحداث (آخر 200)', rows.length, 'مسجّلة')}
     ${statMini('اليوم', todayN, 'حدث اليوم', 'brand')}
