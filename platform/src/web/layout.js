@@ -174,6 +174,15 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
 .mtrack{display:grid;grid-template-columns:repeat(12,1fr);direction:rtl;gap:3px;align-items:end}
 .m-tight{display:none;direction:ltr;unicode-bidi:isolate}
 @media (max-width:640px){.m-full{display:none}.m-tight{display:inline}}
+/* تجاوب الجوال (v2.2): الشبكات الداخلية ثابتة الأعمدة كانت تفيض أفقياً على الشاشات الضيقة.
+   الأقسام الرئيسية+الجانبية (Nfr 1fr) تتراص لعمود واحد؛ شرائط البطاقات المتساوية repeat(N,1fr)
+   تتحوّل إلى auto-fit فتصبح عمودين حيث تتّسع؛ والأرقام الكبيرة تصغُر قليلاً. تُستثنى الرسوم
+   البيانية (var(--bcols)) وشرائط الأشهر (.mtrack، صنفية) والشبكات المرنة (minmax) — بلا مساس. */
+@media (max-width:640px){
+  [style*="fr 1fr"]{grid-template-columns:1fr!important}
+  [style*="grid-template-columns:repeat"]:not([style*="minmax"]){grid-template-columns:repeat(auto-fit,minmax(150px,1fr))!important}
+  :root{--fs-num-lg:1.45rem;--fs-num-md:1.2rem}
+}
 .now-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--gold);box-shadow:0 0 0 2px #fff,0 0 0 3.5px var(--gold);flex:none}
 
 /* شريط «الإيقاع مقابل الخطة»: مقياسه المستهدف فقط (100% = الهدف السنوي)؛ التعبئة = المحقق؛
