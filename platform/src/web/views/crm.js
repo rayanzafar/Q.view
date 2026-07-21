@@ -74,7 +74,7 @@ function stageInfoTpl(s) {
       ${row('المعنى', esc(i.meaning || '—'))}
       ${row('شرط الدخول', esc(i.entry || '—'))}
       ${row('شرط الخروج', esc(i.exit || '—'))}
-      ${row('الاحتمال الافتراضي', i.defaultWinPct == null ? '—' : `<b class="tnum">${i.defaultWinPct}%</b>`)}
+      ${row('الاحتمال الافتراضي للمرحلة', i.defaultWinPct == null ? '—' : `<b class="tnum">${i.defaultWinPct}%</b> <span style="font-weight:400;color:var(--muted);font-size:10.5px">(أساس المرحلة؛ لكل فرصة احتمالها الخاص)</span>`)}
       ${row('العمر المقبول', i.ageLimitDays == null ? '—' : `<b class="tnum">${i.ageLimitDays}</b> يوماً`)}
       ${row('متى تُعد متوقفة', esc(i.stalledWhen || '—'))}
       ${row('الإجراء المتوقع', esc(i.expectedNext || '—'))}
@@ -208,11 +208,13 @@ export async function opportunitiesPage(user, opts = {}) {
     const isWon = !!s.is_won;
     const hist = items.filter((o) => o.exclude_from_sales);
     const nonHist = items.filter((o) => !o.exclude_from_sales);
-    const main = isWon ? nonHist.filter((o) => o.year === fiscalYear) : nonHist;
-    const other = isWon ? nonHist.filter((o) => o.year !== fiscalYear) : [];
+    // نفس الأساس للعمودين (فائزة وخاسرة): العنوان = هذه السنة المالية، وسطر واحد «سابقة»
+    // يجمع سنواتٍ أخرى + الفرص التاريخية — بدل أرقام مبعثرة، وبتماثل يسهّل المقارنة.
+    const main = nonHist.filter((o) => o.year === fiscalYear);
+    const priorItems = [...nonHist.filter((o) => o.year !== fiscalYear), ...hist];
     const sum = (arr) => arr.reduce((a, o) => a + (o.value_halalas || 0), 0);
     const tone = isWon ? 'var(--green)' : 'var(--red)';
-    const mainLbl = isWon ? `${G.won} سنة <span class="tnum">${fiscalYear}</span>` : `${G.lost} — كل السنوات`;
+    const mainLbl = `${isWon ? G.won : G.lost} سنة <span class="tnum">${fiscalYear}</span>`;
     const tblHref = `/app/opportunities?view=table&stage=${s.id}${sectorFilter ? '&sector=' + encodeURIComponent(sectorFilter) : ''}`;
     const subLine = (n, lbl, v, title) => n ? `<div class="tnum" style="font-size:10.5px;color:var(--muted)" ${title ? `title="${esc(title)}"` : ''}>+${n} ${lbl} · ${sarShort(v)}</div>` : '';
     const c = stageColor(s); // فائزة=أخضر · خاسرة=أحمر (دلالة ثابتة)
@@ -223,9 +225,7 @@ export async function opportunitiesPage(user, opts = {}) {
         <div class="tnum" style="font-size:1.5rem;font-weight:800;letter-spacing:-.02em;line-height:1.15;color:${tone}">${main.length}</div>
         <div style="font-size:10.5px;color:var(--muted);font-weight:700">${mainLbl}</div>
         <div class="tnum" style="font-size:13px;font-weight:800;color:var(--ink2)">${sarShort(sum(main))}</div>
-        ${other.length || hist.length ? '<div style="border-top:1px dashed var(--line);margin:.3rem 0 .16rem"></div>' : ''}
-        ${subLine(other.length, 'من سنوات أخرى', sum(other))}
-        ${subLine(hist.length, 'تاريخي', sum(hist), 'فرص قديمة مستبعدة من مؤشرات المبيعات')}
+        ${priorItems.length ? `<div style="border-top:1px dashed var(--line);margin:.3rem 0 .16rem"></div><div class="tnum" style="font-size:10.5px;color:var(--muted)" title="سنوات سابقة — تشمل فرصاً تاريخية مستبعدة من مؤشرات مبيعات السنة">+${priorItems.length} سابقة · ${sarShort(sum(priorItems))}</div>` : ''}
         ${isWon && wonProjectCount ? `<div style="font-size:10.5px;color:var(--green);font-weight:700;margin-top:.16rem" title="الفرص الفائزة التي تحوّلت إلى مشاريع قيد التنفيذ">▸ ${countAr(wonProjectCount, { one: 'مشروع واحد ناتج', two: 'مشروعان ناتجان', few: 'مشاريع ناتجة', many: 'مشروعاً ناتجاً' })}</div>` : ''}
         <a class="btn btn-sm" href="${tblHref}" style="margin-top:.45rem;justify-content:center">${icon('list')} ${isWon ? 'الصفقات والمشاريع' : 'عرض الجدول'}</a>
       </div>
