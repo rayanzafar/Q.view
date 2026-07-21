@@ -47,6 +47,13 @@ test('listProjects year filter: duration overlap OR revenue lines in that year',
   assert.deepEqual(ids(await svc.listProjects(lead, { year: 'ليس رقمًا' })), ['P1', 'P2', 'P3', 'P4'], 'garbage year is ignored, not a crash');
 });
 
+test('listProjects status filter: exact match, composes with year, empty is safe', async () => {
+  assert.deepEqual(ids(await svc.listProjects(lead, { status: 'IN_PROGRESS' })), ['P1', 'P2', 'P3'], 'only in-progress (deleted P9 excluded)');
+  assert.deepEqual(ids(await svc.listProjects(lead, { status: 'COMPLETED' })), ['P4'], 'only completed');
+  assert.deepEqual(ids(await svc.listProjects(lead, { status: 'ON_HOLD' })), [], 'none on hold → empty result, not a crash');
+  assert.deepEqual(ids(await svc.listProjects(lead, { status: 'IN_PROGRESS', year: 2024 })), ['P1'], 'status + year compose (completed P4 excluded despite 2024 revenue)');
+});
+
 test('nextMilestones: earliest PENDING per project in ONE grouped call; MET/MISSED and deleted ignored', async () => {
   await db.insert('milestone', { id: 'm_met', project_id: 'P1', name_ar: 'معلم محقق مبكر', due_date: '2026-01-10', status: 'MET', created_at: now() });
   await db.insert('milestone', { id: 'm_near', project_id: 'P1', name_ar: 'التقرير النصفي', due_date: '2026-08-01', status: 'PENDING', created_at: now() });
