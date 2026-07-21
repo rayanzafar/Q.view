@@ -1,12 +1,13 @@
-// PMO pages: projects board, my tasks, project detail.
+// PMO pages: projects portfolio (comparison-first table + kanban toggle), my tasks, project detail.
 import { layout, card, pill, tr, utilStrip } from '../layout.js';
 import { icon } from '../icons.js';
 import { fmtSar } from '../../core/util/ids.js';
 import { all, get } from '../../core/db/index.js';
 import { projectKpis } from '../../core/reports/metrics.js';
-import { listProjects } from '../../modules/pmo/projects.js';
+import { listProjects, nextMilestones } from '../../modules/pmo/projects.js';
 import { projectGovernance } from '../../modules/pmo/governance.js';
 import { myTasks } from '../../modules/pmo/tasks.js';
+import { listViews } from '../../modules/views/views.js';
 import { canSeeSensitive, redact, can } from '../../core/rbac/index.js';
 import { G } from '../i18n/glossary.js';
 import { sarShort, esc, bar, statMini, noticeCard } from './_shared.js';
@@ -17,8 +18,44 @@ const PRJ_STATUS = [
 ];
 const ragHex = { GREEN: '#059669', AMBER: '#d97706', RED: '#dc2626' };
 
+// ── صحة المشروع (مشتقة للمقارنة، لا تُخزَّن): حرج إذا كان RAG أحمر أو سبق الصرفُ الإنجازَ
+// بأكثر من 15 نقطة؛ في خطر إذا كان RAG أصفر أو التباعد فوق 10 نقاط؛ وإلا على المسار.
+const HEALTH = [
+  { k: 'crit', label: G.hCritical, color: '#dc2626', rank: 0 },
+  { k: 'risk', label: G.hAtRisk, color: '#d97706', rank: 1 },
+  { k: 'ok', label: G.hOnTrack, color: '#059669', rank: 2 },
+];
+function healthOf(p, dev) {
+  if (p.rag === 'RED' || (dev != null && dev > 15)) return HEALTH[0];
+  if (p.rag === 'AMBER' || (dev != null && dev > 10)) return HEALTH[1];
+  return HEALTH[2];
+}
+
+// ── الشريط المزدوج (صرف٪ فوقه إنجاز٪) — مسار واحد ~110px: شبح الصرف بنفسجي شفاف تحت شريط
+// الإنجاز الصلب (أخضر إن غطّى الإنجازُ الصرفَ، كهرماني إن سبقه الصرف). من لا يرى التكلفة
+// يرى شريط الإنجاز وحده بلا شبح. الرقمان بجانبه «صرف٪·إنجاز٪».
+function twinBar(spendPct, progPct, tip) {
+  const p = Math.max(0, Math.min(100, Math.round(progPct || 0)));
+  const track = (inner) => `<div style="position:relative;width:100px;height:9px;background:#eef1f7;border-radius:5px;overflow:hidden;flex:none">${inner}</div>`;
+  const progSpan = (color) => `<span style="position:absolute;inset-inline-start:0;top:0;bottom:0;width:${p}%;background:${color};border-radius:5px"></span>`;
+  if (spendPct == null) {
+    return `<div style="display:flex;align-items:center;gap:.4rem" data-tip="${esc(tip || `${G.progressPct} فقط — التكلفة محجوبة عن دورك`)}">
+      ${track(progSpan('var(--green)'))}
+      <span class="tnum" style="font-size:11.5px;font-weight:700;color:var(--muted)">${p}%</span></div>`;
+  }
+  const s = Math.round(spendPct);
+  const ahead = s > p; // الصرف يسبق الإنجاز
+  return `<div style="display:flex;align-items:center;gap:.4rem" data-tip="${esc(tip || `${G.spendPct} مقابل ${G.progressPct}`)}">
+    ${track(`<span style="position:absolute;inset-inline-start:0;top:0;bottom:0;width:${Math.max(0, Math.min(100, s))}%;background:rgba(131,71,152,.35)"></span>${progSpan(ahead ? '#d97706' : 'var(--green)')}`)}
+    <span class="tnum" style="font-size:11px;font-weight:700;color:${ahead ? '#b45309' : 'var(--ink2)'}">${s}%·${p}%</span></div>`;
+}
+
 export async function projectsPage(user, opts = {}) {
-  let rows = await listProjects(user);
+  const nowY = new Date().getUTCFullYear();
+  const yearsAvail = []; for (let y = 2024; y <= nowY + 1; y++) yearsAvail.push(y);
+  const year = yearsAvail.includes(Number(opts.year)) ? Number(opts.year) : null;
+  const view = opts.view === 'kanban' ? 'kanban' : 'table';
+  let rows = await listProjects(user, year ? { year } : {});
   const canCost = canSeeSensitive(user, 'cost');
   const canEdit = can(user, 'update', 'project');
   const clients = Object.fromEntries((await all('SELECT id,name_ar FROM client')).map((c) => [c.id, c.name_ar]));
@@ -28,13 +65,17 @@ export async function projectsPage(user, opts = {}) {
   const allSec = await all('SELECT id, name_ar, color FROM sector WHERE active = 1 AND deleted_at IS NULL ORDER BY sort_order');
   const secFilter = user.scope === 'company' && opts.sector && allSec.some((s) => s.id === opts.sector) ? opts.sector : null;
   if (secFilter) rows = rows.filter((p) => p.sector_id === secFilter);
+  const savedViews = await listViews(user, 'projects');
+  const userName = Object.fromEntries((await all('SELECT id, name_ar, username FROM app_user')).map((u) => [u.id, u.name_ar || u.username]));
   // The legacy source has progress_pct=0 for 37/43 projects and no contract value for 20/43 —
   // present the truth USEFULLY: derive progress from deliverable states (amount-weighted) when the
   // stored figure is 0, and fall back through PO → budget → realized revenue for the money figure.
   const dlv = await all(`SELECT project_id, COUNT(*) n, COALESCE(SUM(amount_halalas),0) tot,
       SUM(CASE WHEN status IN ('DELIVERED','ACCEPTED','INVOICED','PAID') THEN 1 ELSE 0 END) dn,
+      SUM(CASE WHEN status IN ('INVOICED','PAID') THEN 1 ELSE 0 END) inv,
       COALESCE(SUM(CASE WHEN status IN ('DELIVERED','ACCEPTED','INVOICED','PAID') THEN amount_halalas ELSE 0 END),0) done
       FROM deliverable WHERE deleted_at IS NULL GROUP BY project_id`);
+  const dlvBy = Object.fromEntries(dlv.map((d) => [d.project_id, d]));
   const dprog = Object.fromEntries(dlv.map((d) => [d.project_id,
     d.tot > 0 ? Math.round((d.done / d.tot) * 100) : (d.n ? Math.round((d.dn / d.n) * 100) : null)]));
   const effProg = (p) => {
@@ -48,8 +89,168 @@ export async function projectsPage(user, opts = {}) {
     p.po_value_halalas ? { v: p.po_value_halalas, l: 'أمر شراء' } :
     p.budget_halalas ? { v: p.budget_halalas, l: 'ميزانية' } :
     p.revenue_halalas ? { v: p.revenue_halalas, l: 'إيراد محقق' } : { v: 0, l: null };
+  // المفوتر لكل مشروع (استعلام مجمّع واحد) — أساس بديل لقياس الصرف عند غياب الميزانية،
+  // بنفس سلّم صفحة تفاصيل المشروع: الصرف الفعلي من الميزانية ← المفوتر من قيمة العقد.
+  const invBy = Object.fromEntries((await all(`SELECT project_id, COALESCE(SUM(amount_halalas),0) v FROM invoice
+      WHERE project_id IS NOT NULL AND deleted_at IS NULL AND status NOT IN ('DRAFT','CANCELLED') GROUP BY project_id`))
+    .map((r) => [r.project_id, r.v]));
+  const burnOf = (p) => {
+    const showCost = canCost && !p._redacted_actual_spend_halalas;
+    if (showCost && p.budget_halalas > 0)
+      return { v: Math.round((p.actual_spend_halalas || 0) / p.budget_halalas * 100), basis: 'الصرف الفعلي من الميزانية' };
+    const headline = p.contract_value_halalas || p.po_value_halalas || p.budget_halalas || 0;
+    if (headline > 0) return { v: Math.round((invBy[p.id] || 0) / headline * 100), basis: 'المفوتر من قيمة المشروع' };
+    return null;
+  };
+  // إيراد السنة لكل مشروع (استعلام مجمّع واحد) — لبطاقة «الإيراد المحقق للسنة»
+  const revYear = year || nowY;
+  const revYearBy = Object.fromEntries((await all(`SELECT project_id, COALESCE(SUM(amount_halalas),0) v
+      FROM revenue_line WHERE year = ? AND project_id IS NOT NULL GROUP BY project_id`, [revYear]))
+    .map((r) => [r.project_id, r.v]));
+  const nmBy = Object.fromEntries((await nextMilestones(rows.map((p) => p.id))).map((m) => [m.project_id, m]));
 
-  // build columns from the standard ladder + any extra statuses present
+  // ── الاشتقاقات لكل صف: إنجاز، صرف، تباعد، صحة، تأخر ──
+  const today = new Date();
+  const todayStr = today.toISOString().slice(0, 10);
+  const derived = {};
+  for (const p of rows) {
+    const prog = effProg(p);
+    const burn = burnOf(p);
+    const dev = burn ? burn.v - prog.v : null;
+    const lateDays = p.end_date && p.end_date < todayStr && prog.v < 100 && !['COMPLETED', 'CANCELLED'].includes(p.status)
+      ? Math.max(1, Math.round((today - new Date(p.end_date)) / 86400000)) : null;
+    derived[p.id] = { prog, burn, dev, lateDays, health: healthOf(p, dev) };
+  }
+
+  // روابط تحافظ على بقية المرشحات (قطاع/سنة/عرض) عند تبديل أي منها
+  const qs = (over = {}) => {
+    const cur = { sector: secFilter, year, view: view === 'kanban' ? 'kanban' : null, ...over };
+    const sp = new URLSearchParams();
+    if (cur.sector) sp.set('sector', cur.sector);
+    if (cur.year) sp.set('year', String(cur.year));
+    if (cur.view) sp.set('view', cur.view);
+    const s = sp.toString();
+    return '/app/projects' + (s ? '?' + s : '');
+  };
+
+  // ── (1) شرائح القطاع + شرائح السنوات + البحث ──
+  const secChips = user.scope === 'company' ? `<div class="chips" style="margin-bottom:.5rem"><span class="lbl">القطاع:</span>
+    <a href="${qs({ sector: null })}" class="chip ${secFilter ? '' : 'on'}">الكل</a>
+    ${allSec.map((s) => `<a href="${qs({ sector: s.id })}" class="chip ${secFilter === s.id ? 'on' : ''}"><span class="dot" style="background:${s.color || 'var(--brand)'}"></span>${esc(s.name_ar)}</a>`).join('')}
+  </div>` : '';
+  const yearPills = `<div class="chips" style="margin-bottom:.6rem"><span class="lbl">السنة:</span>
+    <a href="${qs({ year: null })}" class="chip ${year ? '' : 'on'}">كل السنوات</a>
+    ${yearsAvail.map((y) => `<a href="${qs({ year: y })}" class="chip ${year === y ? 'on' : ''}"><span class="tnum">${y}</span></a>`).join('')}
+  </div>`;
+
+  // ── (2) «يحتاج انتباهك الآن» — فقط: أحمر / صرف يسبق الإنجاز بـ10+ نقاط / تجاوز الانتهاء ──
+  const attnItems = [];
+  for (const p of rows) {
+    const d = derived[p.id];
+    const parts = [];
+    if (p.rag === 'RED') parts.push('حالتها حمراء — تحتاج قرارًا');
+    if (d.lateDays != null) parts.push(`تجاوزت تاريخ الانتهاء بـ<span class="tnum">${d.lateDays}</span> يوماً والإنجاز <span class="tnum">${d.prog.v}%</span>`);
+    if (d.dev != null && d.dev > 10) parts.push(`الصرف يسبق الإنجاز بـ<span class="tnum">${d.dev}</span> نقطة`);
+    if (parts.length) attnItems.push({ p, d, reason: parts.slice(0, 2).join(' · '), rank: p.rag === 'RED' ? 0 : d.lateDays != null ? 1 : 2 });
+  }
+  attnItems.sort((a, b) => a.rank - b.rank || (Math.abs(b.d.dev ?? 0) - Math.abs(a.d.dev ?? 0)));
+  const attnStrip = `<div style="margin-bottom:1rem">
+    <div style="font-weight:800;font-size:13px;margin-bottom:.45rem;display:flex;align-items:center;gap:.4rem">${G.attention}
+      ${attnItems.length ? `<span class="tnum" style="color:var(--red);font-size:12px">${attnItems.length}</span>` : ''}</div>
+    ${attnItems.length ? `<div style="display:flex;gap:.6rem;flex-wrap:wrap">${attnItems.map(({ p, reason }) => `
+      <a class="card card-h" href="/app/project/${p.id}" style="flex:0 1 auto;min-width:200px;max-width:280px;padding:.55rem .75rem;border-inline-start:3px solid ${p.rag === 'RED' ? '#dc2626' : '#d97706'};display:block">
+        <div style="font-weight:700;font-size:12.5px;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.name_ar)}</div>
+        <div style="font-size:11px;color:${p.rag === 'RED' ? 'var(--red)' : '#b45309'};font-weight:700;margin-top:.15rem;line-height:1.7">${reason}</div>
+        <div style="font-size:10.5px;color:var(--faint);margin-top:.1rem">${esc(clients[p.client_id] || sectors[p.sector_id] || '')}</div>
+      </a>`).join('')}</div>`
+    : `<div style="display:flex;align-items:center;gap:.45rem;font-size:12.5px;color:var(--muted);border:1px solid var(--line);border-radius:12px;background:#fff;padding:.55rem .8rem"><span style="width:8px;height:8px;border-radius:50%;background:var(--green);flex:none"></span>لا مشاريع تحتاج تدخلاً الآن</div>`}
+  </div>`;
+
+  // ── (3) بطاقات الملخص التنفيذي ──
+  const isActive = (p) => !['COMPLETED', 'CANCELLED'].includes(p.status);
+  const activeN = rows.filter(isActive).length;
+  const totalVal = rows.reduce((a, p) => a + bestVal(p).v, 0);
+  const revSum = rows.reduce((a, p) => a + (revYearBy[p.id] || 0), 0);
+  const critN = rows.filter((p) => derived[p.id].health.rank === 0).length;
+  const summary = `<div style="display:flex;gap:.7rem;flex-wrap:wrap;margin-bottom:1rem">
+    ${statMini('نشطة', `<span class="tnum">${activeN}</span>`, `من أصل ${rows.length} في هذا العرض`)}
+    ${statMini('قيمة المحفظة', fmtSar(totalVal), 'بأفضل أساس مسجّل لكل مشروع', 'brand')}
+    ${statMini(`الإيراد المحقق <span class="tnum">${revYear}</span>`, fmtSar(revSum), 'من بنود الإيراد المسجّلة', revSum ? 'good' : '')}
+    ${statMini(G.hCritical, `<span class="tnum">${critN}</span>`, critN ? 'تتصدر الجدول أدناه' : 'لا مشاريع حرجة', critN ? 'bad' : 'good')}
+  </div>`;
+
+  // ── (4) تبديل العرض + العروض المحفوظة ──
+  const seg = `<div class="seg">
+    <button ${view === 'table' ? 'class="on"' : ''} data-action="go" data-href="${qs({ view: null })}">${icon('list')} جدول المحفظة</button>
+    <button ${view === 'kanban' ? 'class="on"' : ''} data-action="go" data-href="${qs({ view: 'kanban' })}">${icon('kanban')} كانبان</button>
+  </div>`;
+  const viewQs = (pj) => { try { return new URLSearchParams(JSON.parse(pj)).toString(); } catch { return String(pj || ''); } };
+  const viewsBar = `<div class="chips" style="margin-bottom:.6rem"><span class="lbl">${G.savedViews}</span>
+    <a class="chip ${!secFilter && !year && view === 'table' ? 'on' : ''}" href="/app/projects">${G.all}</a>
+    ${savedViews.map((v) => `<span class="chip" style="gap:.3rem;padding-inline-end:.4rem">
+      <a href="/app/projects?${esc(viewQs(v.params_json))}" title="تطبيق هذا العرض">${v.is_default ? '★ ' : ''}${esc(v.name_ar)}</a>
+      ${v.is_default ? '' : `<button data-action="view-default" data-id="${v.id}" title="تعيينه العرض الافتراضي" aria-label="تعيين ${esc(v.name_ar)} افتراضيًا" style="border:none;background:none;cursor:pointer;color:var(--faint);font-size:12px;padding:0">☆</button>`}
+      <button data-action="view-del" data-id="${v.id}" title="حذف هذا العرض" aria-label="حذف ${esc(v.name_ar)}" style="border:none;background:none;cursor:pointer;color:var(--faint);font-size:11px;padding:0">✕</button>
+    </span>`).join('')}
+    <button class="btn btn-sm" data-action="view-save">${icon('plus')} ${G.saveView}</button></div>`;
+
+  // ── (5) جدول المحفظة — المقارنة أولًا، الأسوأ أولًا ──
+  const sorted = rows.slice().sort((a, b) => {
+    const da = derived[a.id], db = derived[b.id];
+    return da.health.rank - db.health.rank || (Math.abs(db.dev ?? -1) - Math.abs(da.dev ?? -1));
+  });
+  const th = (label, sortable, extra = '') => `<th ${sortable ? 'data-sort role="button" tabindex="0" title="اضغط للترتيب"' : ''} style="padding:.5rem .55rem;font-size:10.5px;color:var(--muted);font-weight:700;text-align:right;white-space:nowrap;${sortable ? 'cursor:pointer;' : ''}${extra}">${label}${sortable ? ' <span style="color:var(--faint)">⇅</span>' : ''}</th>`;
+  const rowOf = (p) => {
+    const { prog, burn, dev, lateDays, health } = derived[p.id];
+    const bv = bestVal(p);
+    const rev = p.revenue_halalas || 0;
+    const d = dlvBy[p.id];
+    const nm = nmBy[p.id];
+    const pmName = p.pm_name || userName[p.owner_user_id] || '';
+    const cl = clients[p.client_id] || sectors[p.sector_id] || '';
+    const hay = esc(`${p.name_ar} ${cl} ${pmName} ${health.label}`.toLowerCase().replace(/"/g, ''));
+    const startY = p.start_date ? p.start_date.slice(0, 4) : null;
+    // عمر المشروع بالأشهر: من البداية حتى اليوم — والمكتمل/الملغى يتوقف عمره عند تاريخ انتهائه
+    const ageEnd = ['COMPLETED', 'CANCELLED'].includes(p.status) && p.end_date ? new Date(p.end_date) : today;
+    const ageMonths = p.start_date ? Math.max(0, Math.round((ageEnd - new Date(p.start_date)) / (30.44 * 86400000))) : null;
+    const notYet = p.start_date && p.start_date > todayStr;
+    const durHtml = lateDays != null
+      ? `${startY ? `<div class="tnum" style="color:var(--faint);font-size:10.5px">${startY}</div>` : ''}<div style="color:var(--red);font-weight:700;white-space:nowrap">متأخر <span class="tnum">${lateDays}</span> يوماً</div>`
+      : notYet ? `يبدأ <span class="tnum">${startY}</span>`
+      : startY ? `<div class="tnum" style="color:var(--faint);font-size:10.5px">${startY}</div><div style="white-space:nowrap">العمر <span class="tnum">${ageMonths}</span> شهراً</div>` : '—';
+    const twinTip = burn
+      ? `${G.spendPct} مقابل ${G.progressPct} — ${burn.basis}${dev != null && dev > 10 ? ` · الصرف يسبق الإنجاز بـ${dev} نقطة` : ''}`
+      : canCost ? `${G.progressPct} فقط — لا أساس مالي مسجّل لقياس الصرف` : null;
+    const nmOverdue = nm && nm.due_date && nm.due_date < todayStr;
+    return `<tr data-action="open-prj" data-id="${p.id}" data-hay="${hay}" style="border-bottom:1px solid var(--line);cursor:pointer">
+      <td style="padding:.5rem .55rem"><div style="width:168px">
+        <a href="/app/project/${p.id}" title="${esc(p.name_ar)}" style="font-size:12.5px;font-weight:700;color:var(--ink2);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.name_ar)}</a>
+        <div style="font-size:10.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(cl) || '—'}</div></div></td>
+      <td style="padding:.5rem .55rem;text-align:center">${pill(tr(p.status), p.status === 'COMPLETED' ? 'green' : p.status === 'ON_HOLD' ? 'amber' : p.status === 'CANCELLED' ? 'slate' : 'blue')}</td>
+      <td style="padding:.5rem .55rem;white-space:nowrap" data-v="${health.rank}"><span style="display:inline-flex;align-items:center;gap:.35rem;font-size:12px;font-weight:700;color:${health.color}"><span style="width:9px;height:9px;border-radius:50%;background:${health.color};flex:none"></span>${health.label}</span></td>
+      <td style="padding:.5rem .55rem" data-v="${prog.v}"><div style="display:flex;align-items:center;gap:.2rem">${twinBar(canCost ? (burn ? burn.v : null) : null, prog.v, twinTip)}${prog.derived ? '<span style="color:var(--faint);font-size:9.5px">⁎</span>' : ''}</div></td>
+      <td style="padding:.5rem .55rem;font-size:11.5px;color:var(--muted)" data-v="${lateDays != null ? 100000 + lateDays : (ageMonths ?? -1)}">${durHtml}</td>
+      <td style="padding:.5rem .55rem" data-v="${bv.v}">${bv.l
+        ? `<div class="tnum" style="font-size:12px;font-weight:800;white-space:nowrap">${fmtSar(bv.v)}</div><span style="font-size:9.5px;font-weight:700;color:var(--faint);background:#eef1f7;border-radius:6px;padding:.1rem .35rem;white-space:nowrap">${bv.l}</span>`
+        : '<span style="color:var(--faint);font-size:11px;white-space:nowrap">بلا قيمة مسجلة</span>'}</td>
+      <td style="padding:.5rem .55rem" data-v="${rev}"><div class="tnum" style="font-size:12px;font-weight:700;white-space:nowrap;color:${rev ? 'var(--green)' : 'var(--faint)'}">${rev ? fmtSar(rev) : '—'}</div>${rev && bv.v ? `<div class="tnum" style="font-size:10px;color:var(--muted);white-space:nowrap">${Math.min(999, Math.round(rev / bv.v * 100))}% من القيمة</div>` : ''}</td>
+      <td style="padding:.5rem .55rem;font-size:11.5px;color:var(--muted)">${d && d.n
+        ? `<div style="white-space:nowrap"><span class="tnum" style="font-weight:700;color:var(--ink2)">${d.dn}</span> ${G.delivered}</div><div style="white-space:nowrap"><span class="tnum" style="font-weight:700;color:var(--ink2)">${d.inv}</span> ${G.invoicedShort}</div>`
+        : '—'}</td>
+      <td style="padding:.5rem .55rem;font-size:11.5px;color:var(--muted)"><div title="${esc(pmName)}" style="width:92px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(pmName) || '—'}</div></td>
+      <td style="padding:.5rem .55rem;font-size:11.5px" data-v="${nm && nm.due_date ? esc(nm.due_date) : '9999-12-31'}">${nm
+        ? `<div style="width:140px"><div title="${esc(nm.title)}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink2)">${esc(nm.title)}</div><div class="tnum" style="font-size:10.5px;color:${nmOverdue ? 'var(--red)' : 'var(--faint)'}">${nm.due_date || 'بلا تاريخ'}${nmOverdue ? ' · متأخر' : ''}</div></div>`
+        : '<span style="color:var(--faint)">—</span>'}</td>
+    </tr>`;
+  };
+  const tableView = `<div class="card"><div class="tblwrap"><table id="prj-table" style="width:100%;border-collapse:collapse;min-width:1040px">
+    <thead><tr>
+      ${th('المشروع')}${th('الحالة')}${th('الصحة', true)}${th(`${G.spendPct}·${G.progressPct}`, true)}${th('المدة', true)}
+      ${th('قيمة المشروع', true)}${th('الإيراد المحقق', true)}${th(G.deliverables)}${th('م. المشروع')}${th(G.nextAction, true)}
+    </tr></thead>
+    <tbody id="prj-rows">${sorted.map(rowOf).join('')}</tbody></table></div></div>`;
+
+  // ── كانبان (تبديل ثانوي — كما كان تمامًا) ──
   const present = [...new Set(rows.map((p) => p.status || 'IN_PROGRESS'))];
   const cols = [...PRJ_STATUS.filter((c) => present.includes(c.id)),
     ...present.filter((s) => !PRJ_STATUS.some((c) => c.id === s)).map((s) => ({ id: s, color: '#64748b' }))];
@@ -59,7 +260,6 @@ export async function projectsPage(user, opts = {}) {
 
   const prjCard = (p) => {
     const cl = clients[p.client_id] || sectors[p.sector_id] || '';
-    const spend = canCost && !p._redacted_actual_spend_halalas ? p.actual_spend_halalas : null;
     const dnd = canEdit ? 'draggable="true" ondragstart="Sanad.kStart(event)" ondragend="Sanad.kEnd(event)"' : '';
     const hay = `${p.name_ar} ${cl}`.toLowerCase().replace(/"/g, '');
     return `<div class="kcard" ${dnd} data-id="${p.id}" data-sector="${p.sector_id || ''}" data-hay="${esc(hay)}" style="--_c:${ragHex[p.rag] || '#cbd5e1'};cursor:pointer" onclick="Sanad.projOpen('${p.id}')">
@@ -84,38 +284,36 @@ export async function projectsPage(user, opts = {}) {
       <div class="kcol-body">${items.map(prjCard).join('') || '<div style="text-align:center;color:var(--faint);font-size:11px;padding:1rem 0">—</div>'}</div>
     </div>`;
   }).join('');
+  const kanbanView = `<div id="prj-kanban" class="kanban" data-kind="prj" tabindex="0" role="region" aria-label="لوحة المشاريع">${columns}</div>`;
 
-  const tableRows = rows.slice(0, 200).map((p) => `<tr class="border-b border-line" style="cursor:pointer" onclick="Sanad.projOpen('${p.id}')">
-    <td class="py-2.5 px-3 text-[13px]">${esc(p.name_ar)}</td>
-    <td class="px-3">${pill(tr(p.status), p.status === 'COMPLETED' ? 'green' : 'blue')}</td>
-    <td class="px-3">${pill(tr(p.rag), ragTone[p.rag] || 'slate')}</td>
-    <td class="px-3 text-[13px] tnum">${(() => { const bv = bestVal(p); return bv.l ? `${fmtSar(bv.v)} <span class="text-[10px] text-faint">(${bv.l})</span>` : '—'; })()}</td>
-    <td class="px-3 text-[12px] tnum">${canCost && !p._redacted_actual_spend_halalas ? fmtSar(p.actual_spend_halalas) : '<span class="text-slate-300">•••</span>'}</td>
-    <td class="px-3 text-[12px] text-muted tnum">${(() => { const e = effProg(p); return `${e.v}%${e.derived ? ' ⁎' : ''}`; })()}</td></tr>`).join('');
+  // ── (6) حالات فارغة مصممة ──
+  const emptyView = `<div class="card"><div class="empty-state">${icon('projects')}
+    <div class="t">${year ? `لا مشاريع في سنة <span class="tnum">${year}</span> ضمن نطاقك` : 'لا مشاريع ضمن نطاقك بعد'}</div>
+    <div class="s">${year ? 'قد تكون مشاريعك في سنوات أخرى — بدّل السنة من الأعلى أو اعرض كل السنوات.'
+      : (canEdit ? 'أنشئ أول مشروع لتبدأ متابعة المحفظة ومقارنة مشاريعها.' : 'عندما يُسند إليك مشروع سيظهر هنا للمقارنة والمتابعة.')}</div>
+    ${year ? `<a class="btn" href="${qs({ year: null })}">عرض كل السنوات</a>`
+      : (canEdit ? `<button class="btn btn-primary" data-action="prj-add">${icon('plus')} مشروع جديد</button>` : '')}
+  </div></div>`;
 
-  const secChips = user.scope === 'company' ? `<div class="chips"><span class="lbl">القطاع:</span>
-    <a href="/app/projects" class="chip ${secFilter ? '' : 'on'}">الكل</a>
-    ${allSec.map((s) => `<a href="/app/projects?sector=${s.id}" class="chip ${secFilter === s.id ? 'on' : ''}"><span class="dot" style="background:${s.color || 'var(--brand)'}"></span>${esc(s.name_ar)}</a>`).join('')}
-  </div>` : '';
+  const content = !rows.length ? emptyView : (view === 'kanban' ? kanbanView : tableView);
   const body = `
     ${secChips}
-    <div class="toolbar">
-      <div class="seg"><button class="on" data-view="kanban" onclick="Sanad.pmoView('prj','kanban')">${icon('kanban')} كانبان</button>
-        <button data-view="table" onclick="Sanad.pmoView('prj','table')">${icon('list')} جدول</button></div>
-      <div class="search">${icon('search')}<input class="input" id="prj-q" aria-label="بحث في المشاريع" oninput="Sanad.prjFilter()" placeholder="ابحث في المشاريع…"></div>
+    ${yearPills}
+    <div class="toolbar" style="margin-bottom:.8rem">
+      <div class="search">${icon('search')}<input class="input" id="prj-q" aria-label="بحث في المشاريع" placeholder="ابحث في المشاريع…"></div>
       <div class="spacer"></div>
       ${canCost ? pill('ترى التكلفة الفعلية', 'green') : pill('التكلفة محجوبة عنك', 'slate')}
-      ${canEdit ? `<button class="btn btn-primary" onclick="Sanad.projAdd()">${icon('plus')} مشروع جديد</button>` : ''}
+      ${canEdit ? `<button class="btn btn-primary" data-action="prj-add">${icon('plus')} مشروع جديد</button>` : ''}
     </div>
-    <div style="font-size:10.5px;color:var(--faint);margin:-.5rem 0 .6rem">⁎ نسبة إنجاز محسوبة من حالة المخرجات — المصدر القديم بلا نسبة مسجلة · شارة القيمة توضح أساسها (عقد / أمر شراء / ميزانية / إيراد محقق)</div>
-    <div id="prj-kanban" class="kanban" data-kind="prj" tabindex="0" role="region" aria-label="لوحة المشاريع">${columns}</div>
-    <div id="prj-table" class="card" style="display:none;overflow-x:auto">
-      <table class="w-full"><thead><tr class="text-[11px] text-muted text-right">
-        <th class="py-2 px-3 font-medium">المشروع</th><th class="px-3 font-medium">الحالة</th><th class="px-3 font-medium">RAG</th>
-        <th class="px-3 font-medium">قيمة العقد</th><th class="px-3 font-medium">الصرف الفعلي</th><th class="px-3 font-medium">الإنجاز</th></tr></thead>
-      <tbody>${tableRows || '<tr><td class="p-4 text-muted text-sm" colspan="6">لا مشاريع ضمن نطاقك</td></tr>'}</tbody></table></div>
-    <script>window.__SANAD=Object.assign(window.__SANAD||{},{sectors:${JSON.stringify(await all('SELECT id,name_ar FROM sector WHERE active=1 ORDER BY name_ar'))},canEditPrj:${canEdit}});</script>`;
-  return layout({ user, active: 'projects', title: 'المشاريع', subtitle: 'PMO · لوحة الحالة', body });
+    ${rows.length ? attnStrip : ''}
+    ${rows.length ? summary : ''}
+    <div class="toolbar" style="margin-bottom:.5rem">${seg}</div>
+    ${viewsBar}
+    ${rows.length ? `<div style="font-size:10.5px;color:var(--faint);margin:0 0 .6rem">⁎ نسبة إنجاز محسوبة من حالة المخرجات — المصدر القديم بلا نسبة مسجلة · شارة القيمة توضح أساسها (عقد / أمر شراء / ميزانية / إيراد محقق)</div>` : ''}
+    ${content}
+    <script>window.__SANAD=Object.assign(window.__SANAD||{},{sectors:${JSON.stringify(await all('SELECT id,name_ar FROM sector WHERE active=1 ORDER BY name_ar')).replace(/</g, '\\u003c')},canEditPrj:${canEdit},viewsPage:'projects'});</script>`;
+  return layout({ user, active: 'projects', title: 'المشاريع', subtitle: `المحفظة · ${rows.length} مشروع${year ? ` · سنة ${year}` : ''}`,
+    body, year: year || undefined, scripts: ['/static/pages/projects.js'] });
 }
 
 export async function tasksPage(user) {

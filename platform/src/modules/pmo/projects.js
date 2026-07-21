@@ -12,8 +12,43 @@ export async function listProjects(user, filters = {}) {
   const params = [...f.params];
   if (filters.sector) { where.push('sector_id = ?'); params.push(filters.sector); }
   if (filters.status) { where.push('status = ?'); params.push(filters.status); }
+  // مرشّح السنة (اختياري): المشروع «يخص السنة» إذا تقاطعت مدته معها (بدأ فيها أو قبلها ولم
+  // ينتهِ قبلها) أو سُجّل له إيراد فيها. بدون سنة = السلوك السابق كاملًا.
+  // Portable on both drivers: year via substr(date,1,4) (no strftime/date()).
+  const y = Number(filters.year);
+  if (Number.isInteger(y) && y >= 2000 && y <= 2100) {
+    where.push(`((start_date IS NOT NULL AND substr(start_date,1,4) <= ? AND (end_date IS NULL OR substr(end_date,1,4) >= ?))
+      OR id IN (SELECT project_id FROM revenue_line WHERE year = ? AND project_id IS NOT NULL))`);
+    params.push(String(y), String(y), y);
+  }
   const rows = await all(`SELECT * FROM project WHERE ${where.join(' AND ')} ORDER BY updated_at DESC LIMIT 500`, params);
   return redactList(user, 'project', rows);
+}
+
+// «الخطوة التالية» للمحفظة: أقرب معلم قادم (PENDING) حسب تاريخ الاستحقاق لكل مشروع —
+// استعلام مجمّع واحد للمحفظة كلها، لا استعلام لكل صف. المعالم غير المؤرّخة تُعامل كأبعد
+// تاريخ ممكن فتظهر فقط عندما لا يوجد معلم قادم مؤرّخ. يعيد [{project_id, title, due_date}].
+export async function nextMilestones(projectIds = []) {
+  const ids = [...new Set(projectIds)].filter(Boolean);
+  if (!ids.length) return [];
+  const ph = ids.map(() => '?').join(',');
+  const rows = await all(
+    `SELECT m.project_id, m.name_ar AS title, m.due_date
+       FROM milestone m
+       JOIN (SELECT project_id, MIN(COALESCE(due_date, '9999-12-31')) AS nd
+               FROM milestone
+              WHERE status = 'PENDING' AND deleted_at IS NULL AND project_id IN (${ph})
+              GROUP BY project_id) nx
+         ON nx.project_id = m.project_id AND COALESCE(m.due_date, '9999-12-31') = nx.nd
+      WHERE m.status = 'PENDING' AND m.deleted_at IS NULL
+      ORDER BY m.project_id, m.created_at`, ids);
+  const out = []; const seen = new Set();
+  for (const r of rows) { // معلمان بنفس التاريخ لنفس المشروع: الأقدم إنشاءً يمثّل الخطوة
+    if (seen.has(r.project_id)) continue;
+    seen.add(r.project_id);
+    out.push({ project_id: r.project_id, title: r.title, due_date: r.due_date || null });
+  }
+  return out;
 }
 
 export async function getProject(user, pid) {
