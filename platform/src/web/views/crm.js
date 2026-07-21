@@ -75,7 +75,7 @@ function stageInfoTpl(s) {
       ${row('شرط الدخول', esc(i.entry || '—'))}
       ${row('شرط الخروج', esc(i.exit || '—'))}
       ${row('الاحتمال الافتراضي للمرحلة', i.defaultWinPct == null ? '—' : `<b class="tnum">${i.defaultWinPct}%</b> <span style="font-weight:400;color:var(--muted);font-size:10.5px">(أساس المرحلة؛ لكل فرصة احتمالها الخاص)</span>`)}
-      ${row('العمر المقبول', i.ageLimitDays == null ? '—' : `<b class="tnum">${i.ageLimitDays}</b> يوماً`)}
+      ${row('العمر المقبول', i.ageLimitDays == null ? '—' : `<b class="tnum">${i.ageLimitDays}</b> يوماً <span style="font-weight:400;color:var(--muted);font-size:10.5px">(المدة المعتادة في هذه المرحلة؛ تجاوزها دون تقدّم يعني ركوداً يستدعي متابعة)</span>`)}
       ${row('متى تُعد متوقفة', esc(i.stalledWhen || '—'))}
       ${row('الإجراء المتوقع', esc(i.expectedNext || '—'))}
     </div></template>`;
