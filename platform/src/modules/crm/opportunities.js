@@ -104,12 +104,14 @@ export async function moveSector(ctx, oppId, toSectorId, note) {
   const target = await get('SELECT id, name_ar FROM sector WHERE id = ? AND active = 1 AND deleted_at IS NULL', [toSectorId]);
   if (!target) throw badRequest('قطاع غير معروف');
   if (String(row.sector_id) === String(toSectorId)) return await getOpportunity(user, oppId);
-  if (!can(user, 'create', 'opportunity', { sector_id: toSectorId })) throw forbidden('لا تملك صلاحية النقل إلى هذا القطاع');
+  // صلاحية النقل = صلاحية تعديل الفرصة في قطاعها الحالي (فُحصت أعلاه): من يديرها يحق له إعادة
+  // إسنادها (تسليمها لقطاع آخر) — والفرصة تخرج من نطاقه بعد النقل. النطاق الشركي ينقل أي فرصة.
   const now = nowIso();
   await update('opportunity', oppId, { sector_id: toSectorId, updated_at: now, updated_by: user.id });
   await audit(ctx, { action: 'update', resource: 'opportunity', resourceId: oppId, sectorId: toSectorId,
     detail: { moveSector: `${row.sector_id || '—'}→${toSectorId}`, note: note || null } });
-  return await getOpportunity(user, oppId);
+  // لا نعيد القراءة عبر getOpportunity: قد تخرج الفرصة من نطاق الناقل بعد النقل فيُرفض قراءته إياها.
+  return { ok: true, id: oppId, sector_id: toSectorId, sector_name: target.name_ar, movedFrom: row.sector_id };
 }
 
 export async function moveStage(ctx, oppId, toStage, note) {
