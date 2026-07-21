@@ -7,6 +7,13 @@ import { companyOverview, multiYearTrend, winRate,
 import { config } from '../../core/config.js';
 import { listProjects } from '../../modules/pmo/projects.js';
 import { sarShort, pct, esc, ddWrap, attain, ddRows } from './_shared.js';
+import { quarterLabel, yearElapsedPct } from '../../core/i18n/time.js';
+import { paceDelta } from '../../core/reports/metrics.js';
+import { G } from '../i18n/glossary.js';
+
+// أرباع بالتسمية العربية للنموذج الزمني الموحد؛ «نحن هنا» على الربع الجاري عند عرض السنة الجارية
+const qSeries = (rows, key) => rows.map((q, i) => ({ year: quarterLabel(i), v: q[key] || 0 }));
+const qOpts = (year, extra = {}) => ({ rtl: true, now: Number(year) === new Date().getUTCFullYear() ? Math.floor(new Date().getUTCMonth() / 3) : null, fmt: sarShort, ...extra });
 
 export async function ceoPage(user, opts = {}) {
   const year = Number(opts.year) || config.fiscalYear;
@@ -71,15 +78,24 @@ export async function ceoPage(user, opts = {}) {
   const revPct = t.target_revenue ? t.revenue / t.target_revenue * 100 : 0;
   const salesPct = t.target_sales ? t.sales / t.target_sales * 100 : 0;
   // Hero KPI block — clickable: opens the matching drill-down popup (keyboard accessible).
+  // شارة الإيقاع (D3): مقارنة نسبة التحقق بنسبة السنة المنقضية — للسنة الجارية فقط
+  const heroPace = (actual, target) => {
+    if (Number(year) !== new Date().getUTCFullYear() || !target) return '';
+    const d = paceDelta(actual, target, new Date(), year);
+    if (d == null) return '';
+    const st = d >= 3 ? 'background:rgba(52,211,153,.16);color:#6ee7b7' : d <= -3 ? 'background:rgba(248,113,113,.16);color:#fca5a5' : 'background:rgba(255,255,255,.12);color:rgba(255,255,255,.75)';
+    const txt = d >= 3 ? `متقدم عن الخطة الزمنية بـ${d} ${d >= 3 && d <= 10 ? 'نقاط' : 'نقطة'}` : d <= -3 ? `متأخر عن الخطة الزمنية بـ${Math.abs(d)} ${Math.abs(d) >= 3 && Math.abs(d) <= 10 ? 'نقاط' : 'نقطة'}` : 'على الخطة الزمنية';
+    return `<span class="tnum" style="font-size:var(--fs-micro);font-weight:800;padding:.22rem .55rem;border-radius:999px;${st}">${txt}</span>`;
+  };
   const heroBlock = (label, val, target, p, color, extra, dd) => `
     <div class="hclick" role="button" tabindex="0" aria-label="${label} — انقر للتفاصيل"
       onclick="Sanad.openDD('${dd}')" onkeydown="if(event.key==='Enter'||event.key===' ')Sanad.openDD('${dd}')"
       style="display:flex;align-items:center;gap:1.15rem;flex:1;min-width:290px;padding:.5rem .65rem;margin:-.5rem -.65rem">
       <div style="flex:0 0 auto">${gauge(p, { color, size: 118, sw: 11, center: pct(p), centerSize: 25, sub: 'من الهدف' })}</div>
       <div style="min-width:0">
-        <div style="color:rgba(255,255,255,.72);font-size:12.5px;font-weight:600">${label}</div>
+        <div style="color:rgba(255,255,255,.72);font-size:var(--fs-body);font-weight:600">${label}</div>
         <div class="metric tnum" style="color:#fff;margin-top:.2rem;font-size:1.85rem">${fmtSar(val)}</div>
-        <div style="color:rgba(255,255,255,.55);font-size:11.5px" class="tnum">الهدف ${fmtSar(target)}</div>
+        <div style="color:rgba(255,255,255,.55);font-size:var(--fs-meta)" class="tnum">الهدف ${fmtSar(target)}</div>
         <div style="margin-top:.45rem;display:flex;align-items:center;gap:.6rem;flex-wrap:wrap">${extra || ''}<span class="dd-hint">⊕ التفاصيل</span></div>
       </div>
     </div>`;
@@ -94,7 +110,7 @@ export async function ceoPage(user, opts = {}) {
       <div style="display:flex;align-items:center;justify-content:space-between">
         <div style="display:flex;align-items:center;gap:.5rem">
           <span style="width:9px;height:9px;border-radius:3px;background:${s.color || 'var(--brand)'}"></span>
-          <div><div style="font-weight:800;font-size:14px">${esc(s.name_ar)}</div><div style="font-size:10.5px;color:var(--muted)">${esc(s.name_en || '')}</div></div>
+          <div><div style="font-weight:800;font-size:var(--fs-title)">${esc(s.name_ar)}</div><div style="font-size:var(--fs-micro);color:var(--muted)">${esc(s.name_en || '')}</div></div>
         </div>
         ${s.placeholder ? pill('بانتظار التفعيل', 'amber') : pill(`${s.opp_count} فرصة`, 'blue')}
       </div>
@@ -121,7 +137,7 @@ export async function ceoPage(user, opts = {}) {
   // sector achievement (revenue) comparison, sorted, colored by sector — the "how much each achieved" chart
   const sectorAchv = [...ov.sectors].map((s) => ({ label: esc(s.name_ar), value: s.revenue_halalas || 0, color: s.color || 'var(--brand)', sub: pct(s.revenue_pct) })).sort((a, b) => b.value - a.value);
   // dense secondary metric inside the hero — clickable when a drill-down key is given
-  const hm = (label, val, sub, dd) => `<div ${dd ? `class="hclick" role="button" tabindex="0" aria-label="${label} — التفاصيل" onclick="Sanad.openDD('${dd}')" onkeydown="if(event.key==='Enter'||event.key===' ')Sanad.openDD('${dd}')"` : ''} style="flex:1;min-width:118px;max-width:220px;overflow:hidden;padding:.3rem .45rem;margin:-.3rem -.45rem"><div style="color:rgba(255,255,255,.58);font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${label}${dd ? ' <span style="opacity:.55">⊕</span>' : ''}</div><div class="tnum" style="color:#fff;font-weight:800;font-size:1.02rem;margin-top:.12rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${val}</div>${sub ? `<div style="color:rgba(255,255,255,.42);font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" class="tnum">${sub}</div>` : ''}</div>`;
+  const hm = (label, val, sub, dd) => `<div ${dd ? `class="hclick" role="button" tabindex="0" aria-label="${label} — التفاصيل" onclick="Sanad.openDD('${dd}')" onkeydown="if(event.key==='Enter'||event.key===' ')Sanad.openDD('${dd}')"` : ''} style="flex:1;min-width:118px;max-width:220px;overflow:hidden;padding:.3rem .45rem;margin:-.3rem -.45rem"><div style="color:rgba(255,255,255,.58);font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${label}${dd ? ' <span style="opacity:.55">⊕</span>' : ''}</div><div class="tnum" style="color:#fff;font-weight:800;font-size:1.02rem;margin-top:.12rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${val}</div>${sub ? `<div style="color:rgba(255,255,255,.42);font-size:var(--fs-micro);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" class="tnum">${sub}</div>` : ''}</div>`;
 
   // ── Sector filter chips (the owner's per-sector lens) ──
   const chips = `<div class="chips"><span class="lbl">عرض:</span>
@@ -139,43 +155,43 @@ export async function ceoPage(user, opts = {}) {
     ${attain(t.revenue, t.target_revenue, 'var(--green)')}
     ${sec ? '' : `<div class="dd-sec">حسب القطاع</div>${secHbars('revenue_halalas', 'revenue_pct')}`}
     <div class="dd-sec">حسب الربع (ر.س)</div>
-    ${miniBars(qRev.map((q) => ({ year: q.quarter, v: q.revenue_halalas })), 'v', { fmt: sarShort, h: 118 })}
+    ${miniBars(qSeries(qRev, 'revenue_halalas'), 'v', qOpts(year, { h: 118 }))}
     <div class="dd-sec">أكبر بنود الإيراد</div>
-    <div>${ddRows(revLines.map((r) => `<div class="dd-row"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.project || r.label || 'بند إيراد')}<span style="color:var(--faint);font-size:10.5px">${r.month ? ' · شهر ' + r.month : ''}${!sec && r.sector ? ' · ' + esc(r.sector) : ''}</span></span><b class="tnum" style="flex:none">${fmtSar(r.amount_halalas)}</b></div>`))}</div>`)}
+    <div>${ddRows(revLines.map((r) => `<div class="dd-row"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.project || r.label || 'بند إيراد')}<span style="color:var(--faint);font-size:var(--fs-micro)">${r.month ? ' · شهر ' + r.month : ''}${!sec && r.sector ? ' · ' + esc(r.sector) : ''}</span></span><b class="tnum" style="flex:none">${fmtSar(r.amount_halalas)}</b></div>`))}</div>`)}
   ${ddWrap('sales', `المبيعات (الحجوزات) · ${year}`, `${scopeLabel} · مقابل الهدف`, `
     <div class="dd-kpi"><span class="v tnum" style="color:var(--brand2)">${fmtSar(t.sales)}</span><span style="font-size:12px;color:var(--muted)">مبيعات ${scopeLabel}</span></div>
     ${attain(t.sales, t.target_sales, 'var(--brand2)')}
     <div style="display:flex;gap:.6rem;margin-top:.2rem">
       <div style="flex:1;background:var(--bg,#f6f7fb);border-radius:10px;padding:.55rem .7rem">
-        <div style="font-size:10.5px;color:var(--muted)">مبيعات السنة (${year}) · مقابل الهدف</div>
+        <div style="font-size:var(--fs-micro);color:var(--muted)">مبيعات السنة (${year}) · مقابل الهدف</div>
         <div class="tnum" style="font-weight:800;font-size:15px;color:var(--brand2)">${fmtSar(t.sales)}</div></div>
       <div style="flex:1;background:var(--bg,#f6f7fb);border-radius:10px;padding:.55rem .7rem">
-        <div style="font-size:10.5px;color:var(--muted)">إجمالي الحجوزات التراكمية · ${bookAll.n} صفقة</div>
+        <div style="font-size:var(--fs-micro);color:var(--muted)">إجمالي الحجوزات التراكمية · ${bookAll.n} صفقة</div>
         <div class="tnum" style="font-weight:800;font-size:15px">${fmtSar(bookAll.v)}</div></div>
     </div>
-    <div style="font-size:10.5px;color:var(--faint);line-height:1.6">«مبيعات السنة» تحسب الصفقات المكسوبة في ${year} فقط (الأساس الصحيح مقابل الهدف السنوي)؛ «التراكمي» يجمع كل السنوات (كما كانت تعرضه المنصة السابقة كرقم واحد).</div>
+    <div style="font-size:var(--fs-micro);color:var(--faint);line-height:1.6">«مبيعات السنة» تحسب الصفقات المكسوبة في ${year} فقط (الأساس الصحيح مقابل الهدف السنوي)؛ «التراكمي» يجمع كل السنوات (كما كانت تعرضه المنصة السابقة كرقم واحد).</div>
     ${bookByYear.length > 1 ? `<div class="dd-sec">الحجوزات حسب سنة الفوز</div>
-      <div>${ddRows(bookByYear.map((b) => `<div class="dd-row"><span>${b.year || 'بدون سنة'}<span style="color:var(--faint);font-size:10.5px"> · ${b.n} صفقة</span></span><b class="tnum" style="flex:none${String(b.year) === String(year) ? ';color:var(--brand2)' : ''}">${fmtSar(b.v)}</b></div>`))}</div>` : ''}
+      <div>${ddRows(bookByYear.map((b) => `<div class="dd-row"><span>${b.year || 'بدون سنة'}<span style="color:var(--faint);font-size:var(--fs-micro)"> · ${b.n} صفقة</span></span><b class="tnum" style="flex:none${String(b.year) === String(year) ? ';color:var(--brand2)' : ''}">${fmtSar(b.v)}</b></div>`))}</div>` : ''}
     ${sec ? '' : `<div class="dd-sec">حسب القطاع (السنة)</div>${secHbars('sales_halalas', 'sales_pct')}`}
     <div class="dd-sec">حسب الربع (ر.س)</div>
-    ${miniBars(qBook.map((q) => ({ year: q.quarter, v: q.sales_halalas })), 'v', { fmt: sarShort, h: 118 })}
+    ${miniBars(qSeries(qBook, 'sales_halalas'), 'v', qOpts(year, { h: 118 }))}
     <div class="dd-sec">أكبر الصفقات المكسوبة (${year})</div>
-    <div>${ddRows(wonDeals.map((d) => `<div class="dd-row"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.title_ar)}<span style="color:var(--faint);font-size:10.5px"> · ${esc(d.client || '—')}${!sec && d.sector ? ' · ' + esc(d.sector) : ''}</span></span><b class="tnum" style="flex:none">${fmtSar(d.value_halalas)}</b></div>`))}</div>`)}
+    <div>${ddRows(wonDeals.map((d) => `<div class="dd-row"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.title_ar)}<span style="color:var(--faint);font-size:var(--fs-micro)"> · ${esc(d.client || '—')}${!sec && d.sector ? ' · ' + esc(d.sector) : ''}</span></span><b class="tnum" style="flex:none">${fmtSar(d.value_halalas)}</b></div>`))}</div>`)}
   ${ddWrap('pipeline', 'خط الفرص المفتوح', `${scopeLabel} · حسب المرحلة`, `
     <div class="dd-kpi"><span class="v tnum" style="color:var(--blue)">${fmtSar(pipelineVal)}</span><span style="font-size:12px;color:var(--muted)">القيمة المرجّحة ${fmtSar(cov.weighted_halalas)} · تغطية ${cov.coverage != null ? cov.coverage + '×' : '—'}</span></div>
     <div class="dd-sec">حسب المرحلة</div>
     <div>${ddRows(pipeStages.map((s) => `<div style="padding:.32rem 0">
-      <div style="display:flex;align-items:center;gap:.5rem;font-size:12.5px"><span style="width:9px;height:9px;border-radius:3px;background:${s.color || '#64748b'};flex:none"></span><span style="flex:1">${esc(s.name_ar)}</span><span class="tnum" style="font-weight:800">${s.n}</span><span class="tnum" style="color:var(--muted);font-size:11px">${fmtSar(s.v)}</span></div>
+      <div style="display:flex;align-items:center;gap:.5rem;font-size:var(--fs-body)"><span style="width:9px;height:9px;border-radius:3px;background:${s.color || '#64748b'};flex:none"></span><span style="flex:1">${esc(s.name_ar)}</span><span class="tnum" style="font-weight:800">${s.n}</span><span class="tnum" style="color:var(--muted);font-size:11px">${fmtSar(s.v)}</span></div>
       <div class="bar" style="margin-top:.22rem"><span style="width:${Math.round((s.v / maxStage) * 100)}%;background:${s.color || '#64748b'}"></span></div></div>`))}</div>`)}
   ${ddWrap('winrate', `معدل الفوز · ${year}`, scopeLabel, `
     <div class="dd-kpi"><span class="v tnum" style="color:var(--green)">${pct(wr.rate)}</span><span style="font-size:12px;color:var(--muted)">فوز ${wr.won} · خسارة ${wr.lost}</span></div>
     <div class="bar" style="height:8px"><span style="width:${Math.min(100, wr.rate || 0)}%;background:var(--green)"></span></div>
     <div class="dd-sec">الصفقات المكسوبة الأعلى</div>
-    <div>${ddRows(wonDeals.map((d) => `<div class="dd-row"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.title_ar)}<span style="color:var(--faint);font-size:10.5px"> · ${esc(d.client || '—')}</span></span><b class="tnum" style="flex:none">${fmtSar(d.value_halalas)}</b></div>`))}</div>`)}
+    <div>${ddRows(wonDeals.map((d) => `<div class="dd-row"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.title_ar)}<span style="color:var(--faint);font-size:var(--fs-micro)"> · ${esc(d.client || '—')}</span></span><b class="tnum" style="flex:none">${fmtSar(d.value_halalas)}</b></div>`))}</div>`)}
   ${ddWrap('backlog', 'الأعمال المتعاقدة', `${scopeLabel} · المتبقي للتحقيق`, `
     <div class="dd-kpi"><span class="v tnum">${fmtSar(bk.backlog_halalas)}</span><span style="font-size:12px;color:var(--muted)">قيمة متعاقدة لم تُحقَّق بعد</span></div>
     <div class="dd-sec">أكبر العقود</div>
-    <div>${ddRows(topContracts.map((c) => `<div class="dd-row"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.client || c.code || 'عقد')}<span style="color:var(--faint);font-size:10.5px">${c.code ? ' · ' + esc(c.code) : ''}${!sec && c.sector ? ' · ' + esc(c.sector) : ''}</span></span><b class="tnum" style="flex:none">${fmtSar(c.value_halalas)}</b></div>`))}</div>`)}
+    <div>${ddRows(topContracts.map((c) => `<div class="dd-row"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.client || c.code || 'عقد')}<span style="color:var(--faint);font-size:var(--fs-micro)">${c.code ? ' · ' + esc(c.code) : ''}${!sec && c.sector ? ' · ' + esc(c.sector) : ''}</span></span><b class="tnum" style="flex:none">${fmtSar(c.value_halalas)}</b></div>`))}</div>`)}
   ${ov.canSeeMargin ? ddWrap('margin', `هامش الربح الإجمالي · ${year}`, 'حسب القطاعات · بيانات حساسة (مالية/قيادة فقط)', `
     ${avgMargin != null ? `<div class="dd-kpi"><span class="v tnum" style="color:${avgMargin >= 20 ? 'var(--green)' : avgMargin >= 10 ? 'var(--amber)' : 'var(--red)'}">${avgMargin}%</span><span style="font-size:12px;color:var(--muted)">متوسط الهامش عبر القطاعات</span></div>` : ''}
     <div>${ddRows(margins.map((m) => `<div class="dd-row"><span style="display:flex;align-items:center;gap:.45rem;min-width:0"><span style="width:9px;height:9px;border-radius:2px;background:${m.color || 'var(--brand)'};flex:none"></span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m.name_ar)}</span></span><b class="tnum" style="flex:none;color:${m.margin == null ? 'var(--faint)' : m.margin >= 20 ? 'var(--green)' : m.margin >= 10 ? 'var(--amber)' : 'var(--red)'}">${m.margin == null ? '—' : m.margin + '%'}</b></div>`))}</div>`) : ''}`;
@@ -184,14 +200,17 @@ export async function ceoPage(user, opts = {}) {
     ${riskBanner}
     <div style="border-radius:18px;padding:1.25rem 1.5rem;margin-bottom:.9rem;color:#fff;background:linear-gradient(135deg,#0f2350,#182a5e 55%,#3a1660);box-shadow:0 16px 34px -18px rgba(58,22,96,.6);position:relative;overflow:hidden">
       <div style="position:absolute;inset-inline-end:-40px;top:-40px;width:200px;height:200px;background:radial-gradient(circle,rgba(124,58,237,.32),transparent 70%);pointer-events:none"></div>
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.9rem;position:relative">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.9rem;position:relative;gap:.6rem;flex-wrap:wrap">
         <div style="color:rgba(255,255,255,.62);font-size:12px;font-weight:600">الأداء · ${esc(scopeLabel)} · السنة المالية ${ov.fiscalYear}</div>
-        ${b2b.ratio != null ? `<span style="font-size:11.5px;font-weight:700;background:rgba(255,255,255,.12);padding:.3rem .7rem;border-radius:999px">التعاقد إلى الإيراد ×${b2b.ratio}</span>` : ''}
+        <div style="display:flex;gap:.45rem;align-items:center">
+          ${Number(year) === new Date().getUTCFullYear() ? `<span class="tnum" style="font-size:var(--fs-meta);font-weight:800;background:rgba(201,162,39,.2);color:#f2d47c;padding:.3rem .7rem;border-radius:999px;border:1px solid rgba(201,162,39,.35)">${G.yearElapsed(yearElapsedPct(new Date(), year))}</span>` : ''}
+          ${b2b.ratio != null ? `<span style="font-size:var(--fs-meta);font-weight:700;background:rgba(255,255,255,.12);padding:.3rem .7rem;border-radius:999px">التعاقد إلى الإيراد ×${b2b.ratio}</span>` : ''}
+        </div>
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:1.25rem;align-items:center;position:relative">
-        ${heroBlock(sec ? 'إيرادات القطاع المحققة' : 'إجمالي الإيرادات المحققة', t.revenue, t.target_revenue, revPct, '#34d399', yoyBadge(revYoy), 'revenue')}
+        ${heroBlock(sec ? 'إيرادات القطاع المحققة' : 'إجمالي الإيرادات المحققة', t.revenue, t.target_revenue, revPct, '#34d399', `${yoyBadge(revYoy)}${heroPace(t.revenue, t.target_revenue)}`, 'revenue')}
         <div style="width:1px;align-self:stretch;background:rgba(255,255,255,.12)"></div>
-        ${heroBlock(sec ? 'مبيعات القطاع (حجوزات)' : 'إجمالي المبيعات (حجوزات)', t.sales, t.target_sales, salesPct, '#c07bff', yoyBadge(bookYoy), 'sales')}
+        ${heroBlock(sec ? 'مبيعات القطاع (حجوزات)' : 'إجمالي المبيعات (حجوزات)', t.sales, t.target_sales, salesPct, '#c07bff', `${yoyBadge(bookYoy)}${heroPace(t.sales, t.target_sales)}`, 'sales')}
       </div>
       <div style="display:flex;gap:1.1rem;flex-wrap:wrap;margin-top:.95rem;padding-top:.85rem;border-top:1px solid rgba(255,255,255,.1);position:relative">
         ${hm('خط الفرص المفتوح', fmtSar(pipelineVal), 'مرجّح ' + fmtSar(cov.weighted_halalas), 'pipeline')}
@@ -213,10 +232,10 @@ export async function ceoPage(user, opts = {}) {
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:.9rem">
       ${card(`<div style="padding:.9rem 1rem"><div style="font-weight:800;font-size:13.5px">الإيراد المحقق حسب الربع · ${year}</div>
         <div style="font-size:11px;color:var(--muted);margin:.1rem 0 .4rem">مليون ر.س.</div>
-        ${miniBars(qRev.map((q) => ({ year: q.quarter, revenue_halalas: q.revenue_halalas })), 'revenue_halalas', { fmt: sarShort })}</div>`)}
+        ${miniBars(qSeries(qRev, 'revenue_halalas'), 'v', qOpts(year))}</div>`)}
       ${card(`<div style="padding:.9rem 1rem"><div style="font-weight:800;font-size:13.5px">المبيعات (الحجوزات) حسب الربع · ${year}</div>
         <div style="font-size:11px;color:var(--muted);margin:.1rem 0 .4rem">مليون ر.س.</div>
-        ${miniBars(qBook.map((q) => ({ year: q.quarter, sales_halalas: q.sales_halalas })), 'sales_halalas', { fmt: sarShort })}</div>`)}
+        ${miniBars(qSeries(qBook, 'sales_halalas'), 'v', qOpts(year))}</div>`)}
     </div>
     ${ddTemplates}`;
   return layout({ user, active: 'ceo', title: `لوحة القيادة${sec ? ' — ' + esc(secObj.name_ar) : ''}`,
@@ -250,18 +269,18 @@ export async function portfolioPage(user) {
     const ragDots = ['GREEN', 'AMBER', 'RED'].filter((r) => sRag[r]).map((r) => `<span style="display:inline-flex;align-items:center;gap:.2rem;font-size:11px"><span style="width:8px;height:8px;border-radius:99px;background:${ragHexP[r]}"></span><span class="tnum">${sRag[r]}</span></span>`).join('<span style="color:var(--faint);margin:0 .15rem"></span>');
     const top = ps.slice().sort((a, b) => val(b) - val(a)).slice(0, 7);
     return card(`<div style="padding:.85rem 1rem;border-bottom:1px solid var(--line)">
-        <div style="display:flex;justify-content:space-between;align-items:center"><div style="font-weight:800;font-size:13.5px">${esc(sectorNames[sid] || sid || '—')}</div><span class="tnum" style="font-size:12.5px;font-weight:800">${fmtSar(sVal)}</span></div>
+        <div style="display:flex;justify-content:space-between;align-items:center"><div style="font-weight:800;font-size:13.5px">${esc(sectorNames[sid] || sid || '—')}</div><span class="tnum" style="font-size:var(--fs-body);font-weight:800">${fmtSar(sVal)}</span></div>
         <div style="display:flex;align-items:center;gap:.8rem;margin-top:.35rem;font-size:11px;color:var(--muted)"><span>${ps.length} مشروع</span><span style="display:flex;gap:.5rem">${ragDots || '—'}</span><span style="margin-inline-start:auto">إنجاز ${sAvg}%</span></div>
         <div class="bar" style="margin-top:.3rem"><span style="width:${sAvg}%;background:var(--brand-grad)"></span></div></div>
       <div style="padding:.4rem .5rem">${top.map((p) => `<div style="display:flex;align-items:center;gap:.5rem;padding:.3rem .5rem;font-size:12px">
         <span style="width:8px;height:8px;border-radius:99px;flex:none;background:${ragHexP[p.rag] || '#94a3b8'}"></span>
         <a href="/app/project/${p.id}" style="flex:1;color:var(--ink2);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.name_ar)}</a>
-        <span class="tnum" style="color:var(--faint);font-size:10.5px;flex:none">${sarShort(val(p))}</span>
+        <span class="tnum" style="color:var(--faint);font-size:var(--fs-micro);flex:none">${sarShort(val(p))}</span>
         <span class="tnum" style="color:var(--muted);font-size:11px;width:34px;text-align:left;flex:none">${pct(p.progress_pct)}</span></div>`).join('')}
         ${ps.length > 7 ? `<div style="padding:.3rem .5rem;font-size:11px;color:var(--faint)">+${ps.length - 7} مشروع آخر</div>` : ''}</div>`);
   }).join('');
 
-  const kpi = (l, v, sub, tone) => card(`<div style="padding:.75rem .95rem"><div style="font-size:11px;color:var(--muted)">${l}</div><div class="metric tnum" style="font-size:1.35rem;${tone ? 'color:' + tone : ''}">${v}</div>${sub ? `<div style="font-size:10.5px;color:var(--faint)">${sub}</div>` : ''}</div>`);
+  const kpi = (l, v, sub, tone) => card(`<div style="padding:.75rem .95rem"><div style="font-size:11px;color:var(--muted)">${l}</div><div class="metric tnum" style="font-size:1.35rem;${tone ? 'color:' + tone : ''}">${v}</div>${sub ? `<div style="font-size:var(--fs-micro);color:var(--faint)">${sub}</div>` : ''}</div>`);
   const body = `
     <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:.7rem;margin-bottom:1rem">
       ${kpi('إجمالي المشاريع', rows.length, `${active.length} قائم · ${completed} مكتمل`)}
@@ -271,6 +290,6 @@ export async function portfolioPage(user) {
       ${kpi('متعثرة (أحمر)', ragC.RED, 'تدخّل عاجل', ragC.RED ? 'var(--red)' : '')}
       ${kpi('متوسط الإنجاز', avgProg + '%', 'للمشاريع القائمة')}
     </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:.9rem;align-items:start">${groups || '<div style="color:var(--muted);font-size:13px">لا مشاريع ضمن نطاقك</div>'}</div>`;
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:.9rem;align-items:start">${groups || '<div style="color:var(--muted);font-size:var(--fs-ui)">لا مشاريع ضمن نطاقك</div>'}</div>`;
   return layout({ user, active: 'portfolio', title: 'محفظة المشاريع', subtitle: 'نظرة تنفيذية على صحة المحفظة', body });
 }

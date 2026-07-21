@@ -39,7 +39,7 @@ a{text-decoration:none;color:inherit}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--sh-sm);transition:box-shadow .18s,transform .18s,border-color .18s}
 .card-h:hover{box-shadow:var(--sh);transform:translateY(-1px);border-color:#d6def0}
 .pill{display:inline-flex;align-items:center;gap:.3rem;padding:.2rem .55rem;border-radius:999px;font-size:.7rem;font-weight:700;line-height:1;white-space:nowrap}
-.nav-a{display:flex;align-items:center;gap:.6rem;padding:.55rem .9rem;font-size:13px;color:rgba(255,255,255,.72);border-radius:10px;margin:1px .5rem;transition:background .15s,color .15s}
+.nav-a{display:flex;align-items:center;gap:.6rem;padding:.55rem .9rem;font-size:var(--fs-ui);color:rgba(255,255,255,.72);border-radius:10px;margin:1px .5rem;transition:background .15s,color .15s}
 .nav-a:hover{background:rgba(255,255,255,.08);color:#fff}
 .nav-a.on{background:rgba(255,255,255,.14);color:#fff;font-weight:700}
 .nav-a svg{opacity:.85;flex:0 0 auto}
@@ -53,17 +53,17 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
 
 /* ── component layer (v2 redesign) ── */
 .btn{display:inline-flex;align-items:center;gap:.4rem;border:1px solid var(--line);background:#fff;color:var(--ink2);
-  font-size:12.5px;font-weight:700;padding:.48rem .85rem;border-radius:10px;cursor:pointer;transition:all .15s;white-space:nowrap}
+  font-size:var(--fs-body);font-weight:700;padding:.48rem .85rem;border-radius:10px;cursor:pointer;transition:all .15s;white-space:nowrap}
 .btn:hover{border-color:#c9d3e8;background:#fbfcfe}
 .btn svg{width:15px;height:15px}
 .btn-primary{background:var(--brand);color:#fff;border:none;box-shadow:0 6px 16px -6px rgba(36,74,153,.55)}
 .btn-primary:hover{background:#1d3d80}
 .btn-ghost{border:none;background:transparent;color:var(--muted)}
 .btn-ghost:hover{background:#eef1f7;color:var(--ink2)}
-.btn-sm{padding:.32rem .6rem;font-size:11.5px;border-radius:8px}
+.btn-sm{padding:.32rem .6rem;font-size:var(--fs-meta);border-radius:8px}
 .toolbar{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin-bottom:1.1rem}
 .toolbar .spacer{margin-inline-start:auto}
-.input{border:1px solid var(--line);border-radius:10px;padding:.5rem .7rem;font-size:13px;color:var(--ink2);background:#fff;font-family:inherit}
+.input{border:1px solid var(--line);border-radius:10px;padding:.5rem .7rem;font-size:var(--fs-ui);color:var(--ink2);background:#fff;font-family:inherit}
 .input:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(36,74,153,.14)}
 .search{position:relative;display:flex;align-items:center}
 .search svg{position:absolute;inset-inline-start:.6rem;width:15px;height:15px;color:var(--faint);pointer-events:none}
@@ -77,7 +77,7 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
 .kcol{flex:0 0 300px;width:300px;background:#eef1f7;border-radius:14px;padding:.55rem;scroll-snap-align:start;max-height:calc(100vh - 240px);display:flex;flex-direction:column}
 .kcol-head{display:flex;align-items:center;gap:.5rem;padding:.35rem .5rem .55rem}
 .kcol-dot{width:9px;height:9px;border-radius:50%;flex:none}
-.kcol-head .t{font-weight:800;font-size:13px}
+.kcol-head .t{font-weight:800;font-size:var(--fs-ui)}
 .kcol-head .n{font-size:11px;color:var(--muted);font-weight:700}
 .kcol-head .v{margin-inline-start:auto;font-size:11px;font-weight:800;color:var(--ink2)}
 .kcol-body{display:flex;flex-direction:column;gap:.55rem;overflow-y:auto;padding:.15rem;min-height:60px}
@@ -86,7 +86,7 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
 .kcard:hover{box-shadow:var(--sh);transform:translateY(-1px)}
 .kcard:active{cursor:grabbing}
 .kcard.drag{opacity:.5}
-.kcard .kt{font-weight:700;font-size:13px;color:var(--ink2);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.kcard .kt{font-weight:700;font-size:var(--fs-ui);color:var(--ink2);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .kcard .km{display:flex;align-items:center;gap:.4rem;margin-top:.5rem;font-size:11px;color:var(--muted);flex-wrap:wrap}
 .kcard .kv{font-weight:800;color:var(--ink2)}
 .kcard .kav{width:22px;height:22px;border-radius:50%;background:var(--brand-grad);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:800}
@@ -102,7 +102,7 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
 .drawer-head{padding:1.1rem 1.25rem;border-bottom:1px solid var(--line);display:flex;align-items:flex-start;gap:.75rem}
 .drawer-body{flex:1;overflow-y:auto;padding:1.15rem 1.25rem}
 .drawer-foot{padding:.85rem 1.25rem;border-top:1px solid var(--line);display:flex;gap:.6rem;justify-content:flex-start;background:var(--bg)}
-.kv-row{display:flex;justify-content:space-between;gap:1rem;padding:.55rem 0;border-bottom:1px dashed var(--line);font-size:13px}
+.kv-row{display:flex;justify-content:space-between;gap:1rem;padding:.55rem 0;border-bottom:1px dashed var(--line);font-size:var(--fs-ui)}
 .kv-row .k{color:var(--muted)}.kv-row .v{font-weight:700;color:var(--ink2);text-align:end}
 .editable{cursor:text;border-radius:6px;padding:.1rem .3rem;margin:-.1rem -.3rem;transition:background .12s}
 .editable:hover{background:#f1f5ff;box-shadow:inset 0 0 0 1px #dbe3f5}
@@ -116,8 +116,8 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
 .modal-body{padding:1.25rem 1.35rem;display:grid;gap:.85rem}
 .modal-foot{padding:.9rem 1.35rem;border-top:1px solid var(--line);display:flex;gap:.6rem;justify-content:flex-start}
 .field{display:grid;gap:.3rem}
-.field>label{font-size:11.5px;font-weight:700;color:var(--muted)}
-.field .input,.field select,.field textarea{width:100%;border:1px solid var(--line);border-radius:10px;padding:.55rem .7rem;font-size:13px;font-family:inherit;background:#fff}
+.field>label{font-size:var(--fs-meta);font-weight:700;color:var(--muted)}
+.field .input,.field select,.field textarea{width:100%;border:1px solid var(--line);border-radius:10px;padding:.55rem .7rem;font-size:var(--fs-ui);font-family:inherit;background:#fff}
 .field .input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(36,74,153,.14)}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:.85rem}
 @media(max-width:520px){.grid2{grid-template-columns:1fr}}
@@ -126,7 +126,7 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
 /* ── Sector filter chips + clickable KPIs + drill-down rows ── */
 .chips{display:flex;gap:.45rem;flex-wrap:wrap;align-items:center;margin-bottom:1rem}
 .chips .lbl{font-size:11px;font-weight:800;color:var(--muted)}
-.chip{display:inline-flex;align-items:center;gap:.45rem;padding:.4rem .8rem;border-radius:999px;font-size:12.5px;font-weight:700;
+.chip{display:inline-flex;align-items:center;gap:.45rem;padding:.4rem .8rem;border-radius:999px;font-size:var(--fs-body);font-weight:700;
   background:#fff;border:1px solid var(--line);color:var(--ink2);transition:all .15s;cursor:pointer}
 .chip:hover{border-color:#c9d3e8;box-shadow:var(--sh-sm);transform:translateY(-1px)}
 .chip.on{background:var(--brand);border-color:transparent;color:#fff;box-shadow:0 6px 14px -6px rgba(36,74,153,.5)}
@@ -136,7 +136,7 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
 .hclick:hover{background:rgba(255,255,255,.07);box-shadow:inset 0 0 0 1px rgba(255,255,255,.18)}
 .hclick:focus-visible{outline:2px solid #fff;outline-offset:3px}
 .dd-hint{font-size:10px;font-weight:700;color:rgba(255,255,255,.5);display:inline-flex;align-items:center;gap:.25rem}
-.dd-row{display:flex;justify-content:space-between;gap:.8rem;padding:.5rem 0;border-bottom:1px dashed var(--line);font-size:12.5px;align-items:center}
+.dd-row{display:flex;justify-content:space-between;gap:.8rem;padding:.5rem 0;border-bottom:1px dashed var(--line);font-size:var(--fs-body);align-items:center}
 .dd-row:last-child{border-bottom:none}
 /* Long label shrinks (ellipsis); the money value never shrinks/wraps and is bidi-isolated so its
    leading digit is never clipped by the RTL flex + Intl RLM marks. */
@@ -145,7 +145,7 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
 .modal-card{overflow-x:hidden}
 .dd-kpi{display:flex;align-items:baseline;gap:.6rem;flex-wrap:wrap}
 .dd-kpi .v{font-size:1.6rem;font-weight:800;letter-spacing:-.02em}
-.dd-sec{font-weight:800;font-size:12.5px;margin-top:.35rem;color:var(--ink2)}
+.dd-sec{font-weight:800;font-size:var(--fs-body);margin-top:.35rem;color:var(--ink2)}
 .cardclick{cursor:pointer}
 .cardclick:hover{box-shadow:var(--sh),0 0 0 2px rgba(36,74,153,.16);transform:translateY(-1px)}
 .cardclick:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
@@ -158,7 +158,7 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
 .skeleton{position:relative;overflow:hidden;background:#eef1f7;border-radius:8px;min-height:14px}
 .skeleton::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.7),transparent);animation:shimmer 1.4s infinite}
 @keyframes shimmer{from{transform:translateX(100%)}to{transform:translateX(-100%)}}
-.alert{display:flex;gap:.6rem;align-items:flex-start;padding:.7rem .9rem;border-radius:12px;font-size:12.5px;border:1px solid}
+.alert{display:flex;gap:.6rem;align-items:flex-start;padding:.7rem .9rem;border-radius:12px;font-size:var(--fs-body);border:1px solid}
 .alert.ok{background:#f0fdf4;border-color:#bbf7d0;color:#166534}
 .alert.warn{background:#fffbeb;border-color:#fde68a;color:#92400e}
 .alert.err{background:#fef2f2;border-color:#fecaca;color:#991b1b}
@@ -179,24 +179,24 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
 .pace-bar{position:relative;height:14px;background:#eef1f7;border-radius:7px}
 .pace-bar .fill{position:absolute;inset-block:2.5px;inset-inline-start:0;border-radius:5px;max-width:100%;background:var(--brand)}
 .pace-bar .now{position:absolute;top:50%;transform:translate(50%,-50%);z-index:1}
-.pace-chip{display:inline-flex;align-items:center;gap:.3rem;padding:.14rem .5rem;border-radius:999px;font-size:10.5px;font-weight:800;line-height:1.5}
+.pace-chip{display:inline-flex;align-items:center;gap:.3rem;padding:.14rem .5rem;border-radius:999px;font-size:var(--fs-micro);font-weight:800;line-height:1.5}
 .pace-chip.up{background:#ecfdf5;color:var(--green)}
 .pace-chip.down{background:#fef2f2;color:var(--red)}
 .pace-chip.flat{background:#f1f5f9;color:var(--muted)}
 
 /* بند "يحتاج انتباهك" — جملة + إجراء واحد */
-.attn{display:flex;align-items:center;gap:.7rem;padding:.65rem .8rem;border-radius:12px;border:1px solid var(--line);background:#fff;font-size:13px}
+.attn{display:flex;align-items:center;gap:.7rem;padding:.65rem .8rem;border-radius:12px;border:1px solid var(--line);background:#fff;font-size:var(--fs-ui)}
 .attn:hover{border-color:#d6def0;box-shadow:var(--sh-sm)}
 .attn .ic{flex:0 0 auto;width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center}
 .attn .tx{flex:1;min-width:0}
 .attn .tx .h{font-weight:700;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.attn .tx .s{font-size:11.5px;color:var(--muted)}
+.attn .tx .s{font-size:var(--fs-meta);color:var(--muted)}
 .attn .go{flex:0 0 auto}
 
 /* تلميح معنى (شرح مصطلح/مرحلة) — CSS فقط */
 [data-tip]{position:relative;cursor:help}
 [data-tip]:hover::after,[data-tip]:focus-visible::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 8px);inset-inline-start:50%;transform:translateX(50%);
-  background:var(--ink);color:#fff;font-size:11.5px;font-weight:600;line-height:1.7;padding:.5rem .7rem;border-radius:9px;width:max-content;max-width:260px;white-space:normal;z-index:70;box-shadow:var(--sh);pointer-events:none;text-align:right}
+  background:var(--ink);color:#fff;font-size:var(--fs-meta);font-weight:600;line-height:1.7;padding:.5rem .7rem;border-radius:9px;width:max-content;max-width:260px;white-space:normal;z-index:70;box-shadow:var(--sh);pointer-events:none;text-align:right}
 [data-tip]:hover::before,[data-tip]:focus-visible::before{content:'';position:absolute;bottom:calc(100% + 2px);inset-inline-start:50%;transform:translateX(50%);border:6px solid transparent;border-top-color:var(--ink);z-index:70;pointer-events:none}
 
 /* الموبايل: القائمة الجانبية تنزلق كطبقة */
@@ -242,7 +242,7 @@ window.__SANAD_MONTHS=${JSON.stringify(MONTHS_AR)};window.__SANAD_MONTHS_EN=${JS
   <aside class="side" style="width:250px;flex:0 0 250px;background:var(--side);display:flex;flex-direction:column;color:#fff">
     <div style="padding:1.15rem 1.1rem 1rem;border-bottom:1px solid rgba(255,255,255,.08)">
       <img src="/static/brand/logo-white.svg" alt="رؤية الخبراء الاستشارية EVC" style="width:170px;max-width:100%;display:block"/>
-      <div style="margin-top:.65rem;font-size:10.5px;color:rgba(255,255,255,.55);letter-spacing:.02em">سند · نظام تشغيل الأعمال</div>
+      <div style="margin-top:.65rem;font-size:var(--fs-micro);color:rgba(255,255,255,.55);letter-spacing:.02em">سند · نظام تشغيل الأعمال</div>
     </div>
     <nav style="flex:1;overflow-y:auto;padding:.4rem 0">${nav}</nav>
     <div style="padding:.8rem 1.1rem;border-top:1px solid rgba(255,255,255,.08);font-size:11px;color:rgba(255,255,255,.55)">السنة المالية ${config.fiscalYear} · SAR</div>
@@ -251,14 +251,14 @@ window.__SANAD_MONTHS=${JSON.stringify(MONTHS_AR)};window.__SANAD_MONTHS_EN=${JS
     <header style="height:60px;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;flex:0 0 auto">
       <div style="display:flex;align-items:center;gap:.6rem">
         <button class="side-toggle" aria-label="القائمة" onclick="document.body.classList.toggle('side-open')">${icon('menu') || '☰'}</button>
-        <div><div style="font-weight:800;font-size:16px">${title || ''}</div>${subtitle ? `<div style="font-size:12px;color:var(--muted)">${subtitle}</div>` : ''}</div>
+        <div><div style="font-weight:800;font-size:var(--fs-page)">${title || ''}</div>${subtitle ? `<div style="font-size:12px;color:var(--muted)">${subtitle}</div>` : ''}</div>
       </div>
       <div style="display:flex;align-items:center;gap:1rem">
         ${yearSel}
         <a href="/app/tasks" title="الإشعارات" style="position:relative;color:var(--muted)">${icon('bell')}<span id="notif-badge" style="display:none;position:absolute;top:-4px;left:-4px;background:var(--red);color:#fff;font-size:9px;border-radius:99px;padding:1px 4px;font-weight:700"></span></a>
         <div style="display:flex;align-items:center;gap:.55rem">
           <div style="width:34px;height:34px;border-radius:50%;background:var(--brand-grad);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800">${initial}</div>
-          <div style="text-align:right"><div style="font-size:13px;font-weight:700">${user.name_ar || user.username}</div><div style="font-size:11px;color:var(--muted)">${roleLabel}</div></div>
+          <div style="text-align:right"><div style="font-size:var(--fs-ui);font-weight:700">${user.name_ar || user.username}</div><div style="font-size:11px;color:var(--muted)">${roleLabel}</div></div>
         </div>
         <form method="post" action="/auth/logout-web"><button title="خروج" style="color:var(--muted);background:none;border:none;cursor:pointer">${icon('logout')}</button></form>
       </div>
@@ -269,14 +269,14 @@ window.__SANAD_MONTHS=${JSON.stringify(MONTHS_AR)};window.__SANAD_MONTHS_EN=${JS
 <button onclick="Sanad.aiToggle()" title="مساعد سند الذكي" style="position:fixed;bottom:22px;left:22px;z-index:40;width:54px;height:54px;border:none;cursor:pointer;border-radius:50%;color:#fff;box-shadow:0 10px 30px -6px rgba(124,58,237,.55);background:var(--brand-grad);display:flex;align-items:center;justify-content:center">${icon('ai')}</button>
 <div id="ai-panel" class="card" style="display:none;position:fixed;bottom:88px;left:22px;z-index:40;width:390px;max-width:calc(100vw - 2rem);height:min(580px,calc(100vh - 130px));flex-direction:column;overflow:hidden;box-shadow:var(--sh)">
   <div style="padding:.8rem 1rem;color:#fff;display:flex;align-items:center;justify-content:space-between;background:var(--brand-grad)">
-    <div style="display:flex;align-items:center;gap:.5rem">${icon('ai')}<div><div style="font-weight:800;font-size:13px">مساعد سند الذكي</div><div id="ai-mode" style="font-size:10px;color:rgba(255,255,255,.6)">…</div></div></div>
-    <button onclick="Sanad.aiToggle()" style="color:rgba(255,255,255,.7);background:none;border:none;cursor:pointer;font-size:16px">✕</button>
+    <div style="display:flex;align-items:center;gap:.5rem">${icon('ai')}<div><div style="font-weight:800;font-size:var(--fs-ui)">مساعد سند الذكي</div><div id="ai-mode" style="font-size:10px;color:rgba(255,255,255,.6)">…</div></div></div>
+    <button onclick="Sanad.aiToggle()" style="color:rgba(255,255,255,.7);background:none;border:none;cursor:pointer;font-size:var(--fs-page)">✕</button>
   </div>
-  <div id="ai-box" style="flex:1;overflow-y:auto;padding:.75rem;display:flex;flex-direction:column;gap:.5rem;background:var(--bg);font-size:13px">
+  <div id="ai-box" style="flex:1;overflow-y:auto;padding:.75rem;display:flex;flex-direction:column;gap:.5rem;background:var(--bg);font-size:var(--fs-ui)">
     <div style="text-align:center;color:var(--muted);font-size:12px;line-height:1.9;padding:1rem">جرّب: «لخّص مشروع…» · «تقرير أسبوعي» · «المخاطر» · «جودة البيانات» · «أولوياتي» · «انقل الفرصة X إلى فائزة»</div>
   </div>
   <div style="padding:.5rem;border-top:1px solid var(--line);display:flex;gap:.5rem">
-    <input id="ai-input" onkeydown="if(event.key==='Enter')Sanad.aiSend()" placeholder="اكتب…" style="flex:1;border:1px solid var(--line);border-radius:10px;padding:.5rem .75rem;font-size:13px">
+    <input id="ai-input" onkeydown="if(event.key==='Enter')Sanad.aiSend()" placeholder="اكتب…" style="flex:1;border:1px solid var(--line);border-radius:10px;padding:.5rem .75rem;font-size:var(--fs-ui)">
     <button onclick="Sanad.aiSend()" style="color:#fff;border:none;cursor:pointer;padding:0 .9rem;border-radius:10px;background:var(--brand-grad)">↑</button>
   </div>
 </div>
@@ -330,14 +330,20 @@ export function miniBars(series, valueKey, opts = {}) {
   const plotH = H - padT - padB, gap = (W - padX * 2) / n, bw = Math.min(46, gap * 0.56);
   let grid = '';
   for (let i = 0; i <= 3; i++) { const gy = padT + plotH * i / 3; grid += `<line x1="${padX}" x2="${W - padX}" y1="${gy.toFixed(1)}" y2="${gy.toFixed(1)}" stroke="#eef1f7" stroke-width="1"/>`; }
-  const bars = series.map((s, i) => {
+  // rtl: الزمن يُقرأ كما يُقرأ النص — أول الفترة في أقصى اليمين (النموذج الزمني الموحد).
+  // التمييز يبقى على آخر فترة زمنياً، وopts.now (فهرس بالسلسلة الأصلية) يرسم نقطة «نحن هنا» الذهبية.
+  const view = opts.rtl ? [...series].reverse() : series;
+  const bars = view.map((s, i) => {
+    const orig = opts.rtl ? n - 1 - i : i;
     const val = s[valueKey] || 0;
     const bh = Math.max(2, Math.round((val / max) * plotH));
     const x = padX + i * gap + (gap - bw) / 2;
     const y = padT + plotH - bh;
-    const last = i === n - 1;
+    const last = orig === n - 1;
+    const isNow = opts.now != null && orig === opts.now;
     return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${bh}" rx="4" fill="url(#${gid})" opacity="${last ? 1 : 0.8}"/>
-      <text x="${(x + bw / 2).toFixed(1)}" y="${H - 7}" font-size="11" fill="#94a3b8" text-anchor="middle">${s.year}</text>
+      ${isNow ? `<circle cx="${(x + bw / 2).toFixed(1)}" cy="${H - 20.5}" r="3" fill="#C9A227" stroke="#fff" stroke-width="1.2"><title>الفترة الحالية</title></circle>` : ''}
+      <text x="${(x + bw / 2).toFixed(1)}" y="${H - 7}" font-size="11" fill="${isNow ? '#a3821c' : '#94a3b8'}" font-weight="${isNow ? '800' : '400'}" text-anchor="middle">${s.year}</text>
       <text x="${(x + bw / 2).toFixed(1)}" y="${(y - 5).toFixed(1)}" font-size="11" fill="${last ? '#834798' : '#475569'}" text-anchor="middle" font-weight="800">${opts.fmt ? opts.fmt(val) : Math.round(val)}</text>`;
   }).join('');
   return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block" preserveAspectRatio="xMidYMid meet">
@@ -350,7 +356,7 @@ export function hbars(items, opts = {}) {
   return `<div style="display:flex;flex-direction:column;gap:.7rem">${items.map((i) => {
     const w = Math.round(((i.value || 0) / max) * 100);
     return `<div>
-      <div style="display:flex;justify-content:space-between;align-items:center;font-size:12.5px;margin-bottom:.28rem">
+      <div style="display:flex;justify-content:space-between;align-items:center;font-size:var(--fs-body);margin-bottom:.28rem">
         <span style="display:flex;align-items:center;gap:.45rem;min-width:0"><span style="width:9px;height:9px;border-radius:2px;background:${i.color || '#2563eb'};flex:none"></span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${i.label}</span></span>
         <span class="tnum" style="font-weight:800;color:var(--ink2);flex:none;margin-inline-start:.6rem">${opts.fmt ? opts.fmt(i.value) : i.value}${i.sub ? `<span style="font-weight:600;color:var(--muted);font-size:11px"> · ${i.sub}</span>` : ''}</span>
       </div>

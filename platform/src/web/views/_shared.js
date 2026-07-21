@@ -48,8 +48,8 @@ export function paceCard({ label, actual = 0, target = 0, forecast = null, weigh
   const runRate = requiredRunRate(actual, target, today, year);
   const attainPct = target ? Math.round((actual / target) * 100) : null;
   const chip = delta == null ? ''
-    : delta >= 3 ? `<span class="pace-chip up">متقدم عن الخطة الزمنية بـ<b class="tnum">${delta}</b> نقطة</span>`
-    : delta <= -3 ? `<span class="pace-chip down">متأخر عن الخطة الزمنية بـ<b class="tnum">${Math.abs(delta)}</b> نقطة</span>`
+    : delta >= 3 ? `<span class="pace-chip up">متقدم عن الخطة الزمنية بـ<b class="tnum">${delta}</b> ${delta >= 3 && delta <= 10 ? 'نقاط' : 'نقطة'}</span>`
+    : delta <= -3 ? `<span class="pace-chip down">متأخر عن الخطة الزمنية بـ<b class="tnum">${Math.abs(delta)}</b> ${Math.abs(delta) >= 3 && Math.abs(delta) <= 10 ? 'نقاط' : 'نقطة'}</span>`
     : '<span class="pace-chip flat">على الخطة الزمنية</span>';
   const overTgt = target && forecast && forecast > target * 1.05
     ? `<span class="pace-chip up" data-tip="المتوقع نهاية السنة يتجاوز الهدف">قد يبلغ ×${(forecast / target).toFixed(1)} من الهدف</span>` : '';

@@ -25,16 +25,16 @@ export async function mailPage(user, opts = {}) {
   const chan = card(`<div style="padding:.85rem 1rem;display:flex;align-items:center;gap:.7rem;flex-wrap:wrap">
     <div style="font-weight:800;font-size:13.5px">قناة الإرسال</div>
     ${smtpOn ? pill('بريد حقيقي مفعّل', 'green') : pill('وضع المعاينة — لا يُرسل بريد حقيقي', 'amber')}
-    <span style="font-size:11.5px;color:var(--muted)">${smtpOn
+    <span style="font-size:var(--fs-meta);color:var(--muted)">${smtpOn
       ? 'الرسائل تُرسل عبر خادم البريد المهيأ.'
       : 'كل رسالة تُحفظ هنا للمعاينة بدل إرسالها. تفعيل الإرسال الحقيقي يحتاج بيانات خادم البريد من مزوّد النطاق (يُطلب من المالك).'}</span>
   </div>`);
 
   const fileRows = files.map(({ f, t }) => {
     const name = f.replace(/^\d+_/, '').replace(/_/g, ' ').replace(/\.html$/, '');
-    return `<div style="display:flex;align-items:center;gap:.6rem;padding:.45rem 0;border-bottom:1px dashed var(--line);font-size:12.5px">
+    return `<div style="display:flex;align-items:center;gap:.6rem;padding:.45rem 0;border-bottom:1px dashed var(--line);font-size:var(--fs-body)">
       <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(name)}</span>
-      <span style="flex:none;font-size:10.5px;color:var(--faint)" class="tnum">${new Date(t).toISOString().slice(0, 16).replace('T', ' ')}</span>
+      <span style="flex:none;font-size:var(--fs-micro);color:var(--faint)" class="tnum">${new Date(t).toISOString().slice(0, 16).replace('T', ' ')}</span>
       <button class="btn btn-sm" data-action="preview-mail" data-file="${esc(f)}">معاينة</button>
     </div>`;
   }).join('') || `<div class="empty-state"><div class="t">لا رسائل بعد</div><div class="s">أرسل تقريراً تجريبياً من صفحة التقارير وستظهر رسالته هنا فوراً.</div></div>`;
@@ -46,16 +46,16 @@ export async function mailPage(user, opts = {}) {
       <td style="padding:.4rem .6rem;font-size:11px;color:var(--muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(to)}</td>
       <td style="padding:.4rem .6rem;text-align:center">${pill(tr(q.status), q.status === 'SENT' ? 'green' : q.status === 'FAILED' ? 'red' : 'blue')}</td>
       <td style="padding:.4rem .6rem;text-align:center;font-size:11px;color:var(--muted)" class="tnum">${String(q.created_at || '').slice(0, 16).replace('T', ' ')}</td>
-    </tr>${q.last_error ? `<tr><td colspan="4" style="padding:0 .6rem .4rem;font-size:10.5px;color:var(--red)">${esc(q.last_error)}</td></tr>` : ''}`;
+    </tr>${q.last_error ? `<tr><td colspan="4" style="padding:0 .6rem .4rem;font-size:var(--fs-micro);color:var(--red)">${esc(q.last_error)}</td></tr>` : ''}`;
   }).join('') || `<tr><td colspan="4"><div class="empty-state" style="padding:1rem"><div class="s">الطابور فارغ</div></div></td></tr>`;
 
-  const logRows = logs.map((l) => `<div style="display:flex;gap:.6rem;padding:.32rem 0;border-bottom:1px dashed var(--line);font-size:11.5px">
+  const logRows = logs.map((l) => `<div style="display:flex;gap:.6rem;padding:.32rem 0;border-bottom:1px dashed var(--line);font-size:var(--fs-meta)">
       <span style="flex:none;color:var(--muted)" class="tnum">${String(l.at || '').slice(5, 16).replace('T', ' ')}</span>
       <span style="flex:none">${pill(tr(l.event) || esc(l.event || ''), l.event === 'failed' ? 'red' : l.event === 'sent' ? 'green' : 'slate')}</span>
       <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink2)">${esc(l.subject || l.detail || '')}</span>
-    </div>`).join('') || `<div style="font-size:11.5px;color:var(--faint);padding:.4rem 0">لا أحداث بعد</div>`;
+    </div>`).join('') || `<div style="font-size:var(--fs-meta);color:var(--faint);padding:.4rem 0">لا أحداث بعد</div>`;
 
-  const th = (t, a) => `<th style="padding:.4rem .6rem;font-size:10.5px;color:var(--muted);font-weight:700;text-align:${a || 'right'}">${t}</th>`;
+  const th = (t, a) => `<th style="padding:.4rem .6rem;font-size:var(--fs-micro);color:var(--muted);font-weight:700;text-align:${a || 'right'}">${t}</th>`;
   const body = `
     ${chan}
     <div style="display:grid;grid-template-columns:1.2fr 1fr;gap:.9rem;margin-top:.9rem">

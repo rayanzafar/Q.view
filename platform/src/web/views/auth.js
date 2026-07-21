@@ -15,16 +15,16 @@ body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:c
 .motif{position:absolute;inset-inline-start:-90px;bottom:-90px;width:420px;opacity:.10;pointer-events:none;filter:brightness(4)}
 .card{position:relative;background:#fff;border-radius:20px;box-shadow:0 30px 80px rgba(10,18,40,.45);padding:2.2rem 2rem 2rem;width:100%;max-width:380px}
 .logo{width:210px;max-width:80%;display:block;margin:0 auto}
-.sub{text-align:center;font-size:13px;font-weight:700;color:#1e293b;margin-top:1.1rem}
-.sub2{text-align:center;font-size:11.5px;color:#94a3b8;margin-top:.15rem;margin-bottom:1.4rem}
-label{display:block;font-size:11.5px;font-weight:700;color:#64748b;margin-bottom:.3rem}
+.sub{text-align:center;font-size:var(--fs-ui);font-weight:700;color:#1e293b;margin-top:1.1rem}
+.sub2{text-align:center;font-size:var(--fs-meta);color:#94a3b8;margin-top:.15rem;margin-bottom:1.4rem}
+label{display:block;font-size:var(--fs-meta);font-weight:700;color:#64748b;margin-bottom:.3rem}
 input{width:100%;padding:.65rem .8rem;border:1px solid #e6e9f0;border-radius:11px;font-size:13.5px;font-family:inherit;margin-bottom:.9rem;color:#1e293b}
 input:focus{outline:none;border-color:#244A99;box-shadow:0 0 0 3px rgba(36,74,153,.14)}
 button{width:100%;padding:.7rem;border:none;border-radius:11px;color:#fff;font-size:13.5px;font-weight:700;font-family:inherit;cursor:pointer;
   background:#244A99;box-shadow:0 10px 24px -8px rgba(16,32,70,.55)}
 button:hover{background:#1d3d80}
 .err{font-size:12px;color:#991b1b;background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:.55rem .8rem;text-align:center;margin-bottom:1rem}
-.foot{margin-top:1.2rem;text-align:center;font-size:10.5px;color:#94a3b8}
+.foot{margin-top:1.2rem;text-align:center;font-size:var(--fs-micro);color:#94a3b8}
 </style></head>
 <body>
 <img class="motif" src="/static/brand/values.svg" alt="">

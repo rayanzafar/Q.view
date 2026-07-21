@@ -45,7 +45,7 @@ export async function opportunityDetailPage(user, oppId) {
         ${agePill}
         ${o.priority ? pill(tr(o.priority), o.priority === 'P0' ? 'red' : o.priority === 'P1' ? 'amber' : 'slate') : ''}
       </div>
-      <div style="margin-top:.7rem;display:flex;gap:1.1rem;flex-wrap:wrap;font-size:12.5px;color:var(--muted)">
+      <div style="margin-top:.7rem;display:flex;gap:1.1rem;flex-wrap:wrap;font-size:var(--fs-body);color:var(--muted)">
         <span style="display:inline-flex;align-items:center;gap:.3rem">${icon('building')}${o.client_id ? `<a href="/app/client/${o.client_id}" style="color:var(--brand);font-weight:700">${esc(d.client || 'العميل')}</a>` : 'بدون عميل'}</span>
         ${sectorName ? `<span style="display:inline-flex;align-items:center;gap:.3rem">${icon('sector')}${esc(sectorName)}</span>` : ''}
         <span style="display:inline-flex;align-items:center;gap:.3rem">${icon('flag')}المسؤول: <b style="color:var(--ink2)">${esc(d.owner || '—')}</b></span>
@@ -54,7 +54,7 @@ export async function opportunityDetailPage(user, oppId) {
     <div style="flex:0 0 auto;text-align:left">
       <div style="font-size:11px;color:var(--muted);font-weight:700">${G.raw}</div>
       <div class="metric tnum" style="font-size:1.5rem">${fmtSar(o.value_halalas)}</div>
-      <div style="font-size:11.5px;color:var(--brand2);font-weight:800" class="tnum">${G.weighted} ${fmtSar(d.weighted_halalas)} <span style="color:var(--faint);font-weight:600">(${pct(o.win_pct)})</span></div>
+      <div style="font-size:var(--fs-meta);color:var(--brand2);font-weight:800" class="tnum">${G.weighted} ${fmtSar(d.weighted_halalas)} <span style="color:var(--faint);font-weight:600">(${pct(o.win_pct)})</span></div>
     </div>
   </div>`);
 
@@ -62,8 +62,8 @@ export async function opportunityDetailPage(user, oppId) {
   const naValue = (o.next_action && String(o.next_action).trim())
     ? `<span ${d.canEdit ? `class="editable" data-action="na-edit" data-id="${o.id}" data-value="${esc(o.next_action)}" role="button" tabindex="0" title="انقر لتعديل الخطوة التالية"` : ''} style="font-size:13.5px;font-weight:700;color:var(--ink2)">${esc(o.next_action)}</span>`
     : (d.canEdit
-      ? `<span class="editable" data-action="na-edit" data-id="${o.id}" data-value="" role="button" tabindex="0" style="font-size:13px;color:var(--red);font-weight:700">● ${G.noNextAction} — انقر لإضافتها</span>`
-      : `<span style="font-size:13px;color:var(--muted)">${G.noNextAction}</span>`);
+      ? `<span class="editable" data-action="na-edit" data-id="${o.id}" data-value="" role="button" tabindex="0" style="font-size:var(--fs-ui);color:var(--red);font-weight:700">● ${G.noNextAction} — انقر لإضافتها</span>`
+      : `<span style="font-size:var(--fs-ui);color:var(--muted)">${G.noNextAction}</span>`);
   const actionBar = card(`<div style="padding:.85rem 1.15rem;display:flex;gap:1rem;align-items:center;flex-wrap:wrap">
     <div style="flex:1;min-width:240px">
       <div style="font-size:11px;font-weight:800;color:var(--muted);margin-bottom:.2rem">${G.nextAction}</div>
@@ -75,7 +75,7 @@ export async function opportunityDetailPage(user, oppId) {
   // ── فريق الفرصة ──
   const memberRow = (m) => `<div style="display:flex;align-items:center;gap:.6rem;padding:.5rem 0;border-bottom:1px dashed var(--line)">
     <span class="kav" style="width:30px;height:30px;font-size:11px;flex:0 0 auto">${esc((m.name_ar || '؟').trim().charAt(0))}</span>
-    <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m.name_ar)}</div>
+    <div style="flex:1;min-width:0"><div style="font-size:var(--fs-ui);font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m.name_ar)}</div>
       <div style="font-size:11px;color:var(--muted)">${esc(m.job_title || '—')}</div></div>
     ${pill(TEAM_ROLE_LABELS[m.role_in_group] || esc(m.role_in_group || 'عضو'), m.role_in_group === 'lead' ? 'blue' : m.role_in_group === 'sponsor' ? 'violet' : 'slate')}
     ${m.allocation_pct != null ? `<span class="tnum" style="font-size:11px;color:var(--muted);flex:0 0 auto">${Math.round(m.allocation_pct)}%</span>` : ''}
@@ -95,24 +95,24 @@ export async function opportunityDetailPage(user, oppId) {
     </div>`);
 
   // ── سجل المراحل ──
-  const histRow = (h) => `<div style="display:flex;gap:.6rem;padding:.5rem 0;border-bottom:1px dashed var(--line);font-size:12.5px;align-items:flex-start">
+  const histRow = (h) => `<div style="display:flex;gap:.6rem;padding:.5rem 0;border-bottom:1px dashed var(--line);font-size:var(--fs-body);align-items:flex-start">
     <span style="width:8px;height:8px;border-radius:50%;margin-top:.4rem;flex:0 0 auto;background:${(stById[h.to_stage_id] || {}).color || '#cbd5e1'}"></span>
     <div style="flex:1;min-width:0">
       <div>${esc(stName(h.from_stage_id))} ← <b>${esc(stName(h.to_stage_id))}</b></div>
-      ${h.note ? `<div style="font-size:11.5px;color:var(--muted);margin-top:.1rem">السبب: ${esc(h.note)}</div>` : ''}
-      <div style="font-size:10.5px;color:var(--faint);margin-top:.1rem">بواسطة ${esc(h.owner_name || h.username || '—')} · <span class="tnum">${esc((h.changed_at || '').slice(0, 10))}</span></div>
+      ${h.note ? `<div style="font-size:var(--fs-meta);color:var(--muted);margin-top:.1rem">السبب: ${esc(h.note)}</div>` : ''}
+      <div style="font-size:var(--fs-micro);color:var(--faint);margin-top:.1rem">بواسطة ${esc(h.owner_name || h.username || '—')} · <span class="tnum">${esc((h.changed_at || '').slice(0, 10))}</span></div>
     </div></div>`;
   const historyCard = card(`${secHead('سجل المراحل')}
     <div style="padding:.4rem 1rem .8rem">${d.history.map(histRow).join('')
       || emptySec('history', 'لا تحركات بعد', 'ستظهر هنا كل نقلة مرحلة: من أين إلى أين، بواسطة من، ولماذا.')}</div>`);
 
   // ── سجل التواصل ──
-  const actRow = (a) => `<div style="display:flex;gap:.6rem;padding:.5rem 0;border-bottom:1px dashed var(--line);font-size:12.5px;align-items:flex-start">
+  const actRow = (a) => `<div style="display:flex;gap:.6rem;padding:.5rem 0;border-bottom:1px dashed var(--line);font-size:var(--fs-body);align-items:flex-start">
     <span class="pill" style="background:#eef1f7;color:#475569;flex:0 0 auto">${ACT_KIND_LABELS[a.kind] || esc(a.kind || 'أخرى')}</span>
     <div style="flex:1;min-width:0">
       <div style="font-weight:700;color:var(--ink2)">${esc(a.title)}</div>
-      ${a.detail ? `<div style="font-size:11.5px;color:var(--muted);white-space:pre-wrap">${esc(a.detail)}</div>` : ''}
-      <div style="font-size:10.5px;color:var(--faint);margin-top:.1rem">${esc(a.actor || '—')} · <span class="tnum">${esc((a.at || '').slice(0, 10))}</span></div>
+      ${a.detail ? `<div style="font-size:var(--fs-meta);color:var(--muted);white-space:pre-wrap">${esc(a.detail)}</div>` : ''}
+      <div style="font-size:var(--fs-micro);color:var(--faint);margin-top:.1rem">${esc(a.actor || '—')} · <span class="tnum">${esc((a.at || '').slice(0, 10))}</span></div>
     </div></div>`;
   const addActForm = d.canEdit ? `<div style="display:flex;gap:.45rem;margin-top:.75rem;flex-wrap:wrap">
       <select id="act-kind" class="input" style="width:110px" aria-label="نوع التواصل">

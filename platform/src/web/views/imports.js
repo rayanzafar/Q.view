@@ -37,7 +37,7 @@ export async function importsPage(user, opts = {}) {
       <div style="display:flex;align-items:center;gap:.6rem">
         <div style="width:36px;height:36px;border-radius:10px;background:var(--brand-grad);color:#fff;display:flex;align-items:center;justify-content:center;flex:none">${icon(TYPE_ICON[t.type] || 'upload')}</div>
         <div style="min-width:0">
-          <div style="font-weight:800;font-size:14px">${esc(t.labelAr)}</div>
+          <div style="font-weight:800;font-size:var(--fs-title)">${esc(t.labelAr)}</div>
           <div style="font-size:11px;color:var(--muted)"><span class="tnum">${t.columns.length}</span> عمود${t.canImport ? '' : ' · قراءة فقط'}</div>
         </div>
       </div>
@@ -58,7 +58,7 @@ export async function importsPage(user, opts = {}) {
     .io-step.on{color:var(--brand)}.io-step.on .n{background:var(--brand);color:#fff}
     .io-step.done{color:var(--green)}.io-step.done .n{background:#dcfce7;color:var(--green)}
     .io-sep{width:26px;height:2px;background:var(--line);border-radius:2px}
-    .io-map-table td{padding:.45rem .6rem;border-bottom:1px dashed var(--line);font-size:12.5px;vertical-align:top}
+    .io-map-table td{padding:.45rem .6rem;border-bottom:1px dashed var(--line);font-size:var(--fs-body);vertical-align:top}
     .io-map-table th{padding:.45rem .6rem;font-size:11px;color:var(--muted);text-align:right}
     .io-drop{border:2px dashed var(--line);border-radius:14px;padding:2rem 1rem;text-align:center;color:var(--muted);cursor:pointer;transition:all .15s}
     .io-drop:hover,.io-drop.drag{border-color:var(--brand);background:#f4f7ff;color:var(--brand)}
@@ -80,11 +80,11 @@ export async function importsPage(user, opts = {}) {
   // ── (3) سجل العمليات ──
   const runRows = runs.map((r) => `
     <tr style="border-bottom:1px solid var(--line)">
-      <td style="padding:.6rem .75rem;font-size:13px;font-weight:700">${esc(r.typeLabel)}
-        ${r.fileName ? `<div style="font-size:10.5px;color:var(--faint);font-weight:400;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.fileName)}</div>` : ''}</td>
+      <td style="padding:.6rem .75rem;font-size:var(--fs-ui);font-weight:700">${esc(r.typeLabel)}
+        ${r.fileName ? `<div style="font-size:var(--fs-micro);color:var(--faint);font-weight:400;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.fileName)}</div>` : ''}</td>
       <td style="padding:.6rem .75rem;font-size:12px">${esc(MODE_AR[r.mode] || r.mode)}</td>
       <td style="padding:.6rem .75rem">${pill(esc(STATUS_AR[r.status] || r.status), STATUS_TONE[r.status] || 'slate')}
-        ${r.status === 'failed' && r.error ? `<div style="font-size:10.5px;color:var(--red);max-width:240px">${esc(r.error)}</div>` : ''}</td>
+        ${r.status === 'failed' && r.error ? `<div style="font-size:var(--fs-micro);color:var(--red);max-width:240px">${esc(r.error)}</div>` : ''}</td>
       <td style="padding:.6rem .75rem;font-size:12px">${countsLine(r.counts)}</td>
       <td style="padding:.6rem .75rem;font-size:12px;color:var(--muted)">${esc(r.by || '—')}</td>
       <td style="padding:.6rem .75rem;font-size:12px;color:var(--muted)" class="tnum">${fmtAt(r.appliedAt || r.createdAt)}</td>
@@ -116,7 +116,7 @@ export async function importsPage(user, opts = {}) {
     ${wizard}
     <div class="card" style="overflow:hidden">
       <div style="display:flex;align-items:center;justify-content:space-between;padding:.85rem 1.1rem;border-bottom:1px solid var(--line)">
-        <div style="font-weight:800;font-size:14px">${G.importLog}</div>
+        <div style="font-weight:800;font-size:var(--fs-title)">${G.importLog}</div>
         <div style="font-size:11px;color:var(--muted)">${G.undoImport} متاح خلال 7 أيام من التنفيذ</div>
       </div>
       ${runsTable}
