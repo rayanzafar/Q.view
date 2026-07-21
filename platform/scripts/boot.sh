@@ -7,7 +7,6 @@ node --experimental-sqlite scripts/seed-rbac.js || true
 node --experimental-sqlite scripts/seed-staging.js || true
 # idempotent legacy-history backfill (INSERT … ON CONFLICT DO NOTHING) — safe on every boot
 node --experimental-sqlite scripts/backfill-legacy-activity.js || echo "backfill skipped"
-# توحيد العملاء: دمج المكررين + تصنيف الأنواع. idempotent وقابل للعكس بذاته (حذف ناعم +
-# تدقيق كامل بالتعيينات، لا حذف صلب) فلا يحتاج نسخة قبله؛ محروس بـ|| كي لا يوقف الإقلاع أبداً.
-node --experimental-sqlite scripts/unify-clients.js || echo "unify-clients skipped"
+# توحيد العملاء يُشغَّل مرة واحدة بعد النشر عبر `railway run` (لا في الإقلاع) كي لا يخاطر
+# بتعليق الإقلاع؛ idempotent وقابل للعكس بذاته.
 exec node --experimental-sqlite src/server.js
