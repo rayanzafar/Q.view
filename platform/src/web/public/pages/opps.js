@@ -201,6 +201,11 @@
         return;
       }
       if (act === 'na-edit') { naEdit(actEl); return; }
+      if (act === 'stage-info') { // نافذة «شرح المرحلة» — قالب خامل مُصيّر من الخادم
+        var tpl = document.getElementById('stage-info-' + actEl.dataset.stage);
+        if (tpl && window.Sanad) window.Sanad.openModal(tpl.innerHTML);
+        return;
+      }
       if (act === 'stage-open') { stageMoveModal(); return; }
       if (act === 'stage-confirm') { stageConfirm(); return; }
       if (act === 'team-add') { teamAdd(); return; }
@@ -217,6 +222,13 @@
     if (e.key !== 'Enter') return;
     var t = e.target;
     if (t.matches && t.matches('[data-action="open-opp"],[data-dd],[data-action="na-edit"]')) { e.preventDefault(); t.click(); }
+  });
+
+  // ── إفلات على عمودَي الحسم الملخّصين (فائزة/خاسرة): لا بطاقات فيهما، فبعد نجاح النقل
+  //     (Sanad.kDrop يتولّى النداء) نعيد تحميل الصفحة لتحديث العدّ والقيمة في الملخص ──
+  document.addEventListener('drop', function (e) {
+    var col = e.target && e.target.closest ? e.target.closest('.kcol[data-summary]') : null;
+    if (col) setTimeout(function () { location.reload(); }, 1100);
   });
 
   // ── نقل مرحلة سريع من قائمة «فرصي» ──
