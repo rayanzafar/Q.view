@@ -75,7 +75,7 @@ export async function changesSince(user, sectorId, sinceIsoDate) {
     for (const r of rows) {
       items.push({
         kind: 'invoice', at: r.at,
-        title: r.code ? `فاتورة ${r.code} صادرة` : 'فاتورة صادرة',
+        title: r.code ? `صدرت فاتورة <bdi>${r.code}</bdi>` : 'صدرت فاتورة',
         sub: r.client || r.project || '',
         amount_halalas: r.amount_halalas || 0, href: '/app/finance',
       });
@@ -93,7 +93,7 @@ export async function changesSince(user, sectorId, sinceIsoDate) {
     for (const r of crows) {
       items.push({
         kind: 'collection', at: r.at, title: 'تحصيل دفعة',
-        sub: [r.client, r.code ? `فاتورة ${r.code}` : null].filter(Boolean).join(' · '),
+        sub: [r.client, r.code ? `فاتورة <bdi>${r.code}</bdi>` : null].filter(Boolean).join(' · '),
         amount_halalas: r.amount_halalas || 0, href: '/app/finance',
       });
     }
@@ -130,7 +130,7 @@ export async function changesSince(user, sectorId, sinceIsoDate) {
     const cond = `WHERE a.action = 'create' AND a.resource IN (${ph}) AND a.sector_id = ? AND a.at >= ?`;
     const params = [...readableRes, sectorId, since];
     counts.created = (await get(`SELECT COUNT(*) n ${base} ${cond}`, params))?.n || 0;
-    const rows = await all(`SELECT a.at, a.resource, a.resource_id, a.username ${base} ${cond}
+    const rows = await all(`SELECT a.at, a.resource, a.resource_id, COALESCE(u.name_ar, a.username) username ${base.replace('FROM audit_log a', 'FROM audit_log a LEFT JOIN app_user u ON u.username = a.username')} ${cond}
        ORDER BY a.at DESC LIMIT 40`, params);
     const byRes = {};
     for (const r of rows) (byRes[r.resource] ||= []).push(r.resource_id);

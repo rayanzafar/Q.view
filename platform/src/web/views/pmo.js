@@ -12,6 +12,7 @@ import { canSeeSensitive, redact, can } from '../../core/rbac/index.js';
 import { G } from '../i18n/glossary.js';
 import { sarShort, esc, bar, statMini, noticeCard } from './_shared.js';
 import { MONTHS_AR, currentMonthIndex } from '../../core/i18n/time.js';
+import { countAr, dayWord } from '../../core/i18n/plural.js';
 
 const PRJ_STATUS = [
   { id: 'NOT_STARTED', color: '#94a3b8' }, { id: 'IN_PROGRESS', color: 'var(--brand)' },
@@ -19,16 +20,18 @@ const PRJ_STATUS = [
 ];
 const ragHex = { GREEN: '#059669', AMBER: '#d97706', RED: '#dc2626' };
 
-// ── صحة المشروع (مشتقة للمقارنة، لا تُخزَّن): حرج إذا كان RAG أحمر أو سبق الصرفُ الإنجازَ
-// بأكثر من 15 نقطة؛ في خطر إذا كان RAG أصفر أو التباعد فوق 10 نقاط؛ وإلا على المسار.
+// ── صحة المشروع (مشتقة للمقارنة، لا تُخزَّن): تُدخل الجدولَ الزمني في الحكم كي لا يقرأ
+// المستخدم «على المسار» فوق مشروع متأخر — حرج: RAG أحمر أو الصرف يسبق الإنجاز بـ15+ نقطة
+// أو تجاوز الانتهاء بأكثر من 30 يوماً؛ في خطر: RAG أصفر أو تباعد 10+ أو أي تجاوز للانتهاء
+// أو متوقف مؤقتاً؛ وإلا على المسار.
 const HEALTH = [
   { k: 'crit', label: G.hCritical, color: '#dc2626', rank: 0 },
   { k: 'risk', label: G.hAtRisk, color: '#d97706', rank: 1 },
   { k: 'ok', label: G.hOnTrack, color: '#059669', rank: 2 },
 ];
-function healthOf(p, dev) {
-  if (p.rag === 'RED' || (dev != null && dev > 15)) return HEALTH[0];
-  if (p.rag === 'AMBER' || (dev != null && dev > 10)) return HEALTH[1];
+function healthOf(p, dev, lateDays) {
+  if (p.rag === 'RED' || (dev != null && dev > 15) || (lateDays != null && lateDays > 30)) return HEALTH[0];
+  if (p.rag === 'AMBER' || (dev != null && dev > 10) || lateDays != null || p.status === 'ON_HOLD') return HEALTH[1];
   return HEALTH[2];
 }
 
@@ -120,7 +123,7 @@ export async function projectsPage(user, opts = {}) {
     const dev = burn ? burn.v - prog.v : null;
     const lateDays = p.end_date && p.end_date < todayStr && prog.v < 100 && !['COMPLETED', 'CANCELLED'].includes(p.status)
       ? Math.max(1, Math.round((today - new Date(p.end_date)) / 86400000)) : null;
-    derived[p.id] = { prog, burn, dev, lateDays, health: healthOf(p, dev) };
+    derived[p.id] = { prog, burn, dev, lateDays, health: healthOf(p, dev, lateDays) };
   }
 
   // روابط تحافظ على بقية المرشحات (قطاع/سنة/عرض) عند تبديل أي منها
@@ -149,9 +152,9 @@ export async function projectsPage(user, opts = {}) {
   for (const p of rows) {
     const d = derived[p.id];
     const parts = [];
-    if (p.rag === 'RED') parts.push('حالتها حمراء — تحتاج قرارًا');
-    if (d.lateDays != null) parts.push(`تجاوزت تاريخ الانتهاء بـ<span class="tnum">${d.lateDays}</span> يوماً والإنجاز <span class="tnum">${d.prog.v}%</span>`);
-    if (d.dev != null && d.dev > 10) parts.push(`الصرف يسبق الإنجاز بـ<span class="tnum">${d.dev}</span> نقطة`);
+    if (p.rag === 'RED') parts.push('حالتها حمراء — تحتاج قراراً');
+    if (d.lateDays != null) parts.push(`تجاوزت تاريخ الانتهاء بـ${dayWord(d.lateDays)} والإنجاز <span class="tnum">${d.prog.v}%</span>`);
+    if (d.dev != null && d.dev > 10) parts.push(`الصرف يسبق الإنجاز بـ<span class="tnum">${d.dev}</span> ${d.dev >= 3 && d.dev <= 10 ? 'نقاط' : 'نقطة'}`);
     if (parts.length) attnItems.push({ p, d, reason: parts.slice(0, 2).join(' · '), rank: p.rag === 'RED' ? 0 : d.lateDays != null ? 1 : 2 });
   }
   attnItems.sort((a, b) => a.rank - b.rank || (Math.abs(b.d.dev ?? 0) - Math.abs(a.d.dev ?? 0)));
@@ -190,12 +193,12 @@ export async function projectsPage(user, opts = {}) {
     <a class="chip ${!secFilter && !year && view === 'table' ? 'on' : ''}" href="/app/projects">${G.all}</a>
     ${savedViews.map((v) => `<span class="chip" style="gap:.3rem;padding-inline-end:.4rem">
       <a href="/app/projects?${esc(viewQs(v.params_json))}" title="تطبيق هذا العرض">${v.is_default ? '★ ' : ''}${esc(v.name_ar)}</a>
-      ${v.is_default ? '' : `<button data-action="view-default" data-id="${v.id}" title="تعيينه العرض الافتراضي" aria-label="تعيين ${esc(v.name_ar)} افتراضيًا" style="border:none;background:none;cursor:pointer;color:var(--faint);font-size:12px;padding:0">☆</button>`}
+      ${v.is_default ? '' : `<button data-action="view-default" data-id="${v.id}" title="تعيينه العرض الافتراضي" aria-label="تعيين ${esc(v.name_ar)} افتراضياً" style="border:none;background:none;cursor:pointer;color:var(--faint);font-size:12px;padding:0">☆</button>`}
       <button data-action="view-del" data-id="${v.id}" title="حذف هذا العرض" aria-label="حذف ${esc(v.name_ar)}" style="border:none;background:none;cursor:pointer;color:var(--faint);font-size:11px;padding:0">✕</button>
     </span>`).join('')}
     <button class="btn btn-sm" data-action="view-save">${icon('plus')} ${G.saveView}</button></div>`;
 
-  // ── (5) جدول المحفظة — المقارنة أولًا، الأسوأ أولًا ──
+  // ── (5) جدول المحفظة — المقارنة أولاً، الأسوأ أولاً ──
   const sorted = rows.slice().sort((a, b) => {
     const da = derived[a.id], db = derived[b.id];
     return da.health.rank - db.health.rank || (Math.abs(db.dev ?? -1) - Math.abs(da.dev ?? -1));
@@ -216,11 +219,11 @@ export async function projectsPage(user, opts = {}) {
     const ageMonths = p.start_date ? Math.max(0, Math.round((ageEnd - new Date(p.start_date)) / (30.44 * 86400000))) : null;
     const notYet = p.start_date && p.start_date > todayStr;
     const durHtml = lateDays != null
-      ? `${startY ? `<div class="tnum" style="color:var(--faint);font-size:10.5px">${startY}</div>` : ''}<div style="color:var(--red);font-weight:700;white-space:nowrap">متأخر <span class="tnum">${lateDays}</span> يوماً</div>`
+      ? `${startY ? `<div class="tnum" style="color:var(--faint);font-size:10.5px">${startY}</div>` : ''}<div style="color:var(--red);font-weight:700;white-space:nowrap">متأخر <span class="tnum">${lateDays}</span> ${lateDays >= 3 && lateDays <= 10 ? 'أيام' : 'يوماً'}</div>`
       : notYet ? `يبدأ <span class="tnum">${startY}</span>`
-      : startY ? `<div class="tnum" style="color:var(--faint);font-size:10.5px">${startY}</div><div style="white-space:nowrap">العمر <span class="tnum">${ageMonths}</span> شهراً</div>` : '—';
+      : startY ? `<div class="tnum" style="color:var(--faint);font-size:10.5px">${startY}</div><div style="white-space:nowrap">العمر <span class="tnum">${ageMonths}</span> ${ageMonths >= 3 && ageMonths <= 10 ? 'أشهر' : ageMonths === 2 ? 'شهرين' : ageMonths === 1 ? 'شهر' : 'شهراً'}</div>` : '—';
     const twinTip = burn
-      ? `${G.spendPct} مقابل ${G.progressPct} — ${burn.basis}${dev != null && dev > 10 ? ` · الصرف يسبق الإنجاز بـ${dev} نقطة` : ''}`
+      ? `${G.spendPct} مقابل ${G.progressPct} — ${burn.basis}${dev != null && dev > 10 ? ` · الصرف يسبق الإنجاز بـ${dev} ${dev >= 3 && dev <= 10 ? 'نقاط' : 'نقطة'}` : ''}`
       : canCost ? `${G.progressPct} فقط — لا أساس مالي مسجّل لقياس الصرف` : null;
     const nmOverdue = nm && nm.due_date && nm.due_date < todayStr;
     return `<tr data-action="open-prj" data-id="${p.id}" data-hay="${hay}" style="border-bottom:1px solid var(--line);cursor:pointer">
@@ -234,7 +237,7 @@ export async function projectsPage(user, opts = {}) {
       <td style="padding:.5rem .55rem" data-v="${bv.v}">${bv.l
         ? `<div class="tnum" style="font-size:12px;font-weight:800;white-space:nowrap">${fmtSar(bv.v)}</div><span style="font-size:9.5px;font-weight:700;color:var(--faint);background:#eef1f7;border-radius:6px;padding:.1rem .35rem;white-space:nowrap">${bv.l}</span>`
         : '<span style="color:var(--faint);font-size:11px;white-space:nowrap">بلا قيمة مسجلة</span>'}</td>
-      <td style="padding:.5rem .55rem" data-v="${rev}"><div class="tnum" style="font-size:12px;font-weight:700;white-space:nowrap;color:${rev ? 'var(--green)' : 'var(--faint)'}">${rev ? fmtSar(rev) : '—'}</div>${rev && bv.v ? `<div class="tnum" style="font-size:10px;color:var(--muted);white-space:nowrap">${Math.min(999, Math.round(rev / bv.v * 100))}% من القيمة</div>` : ''}</td>
+      <td style="padding:.5rem .55rem" data-v="${rev}"><div class="tnum" style="font-size:12px;font-weight:700;white-space:nowrap;color:${rev ? 'var(--green)' : 'var(--faint)'}">${rev ? fmtSar(rev) : '—'}</div>${rev && bv.v ? `<div class="tnum" style="font-size:10px;color:var(--muted);white-space:nowrap" ${rev > bv.v ? 'data-tip="الإيراد المُثبت يتجاوز قيمة المشروع المسجلة — راجع القيمة أو بنود الإيراد"' : ''}>${Math.min(999, Math.round(rev / bv.v * 100))}% من القيمة${rev > bv.v ? ' ⚠' : ''}</div>` : ''}</td>
       <td style="padding:.5rem .55rem;font-size:11.5px;color:var(--muted)">${d && d.n
         ? `<div style="white-space:nowrap"><span class="tnum" style="font-weight:700;color:var(--ink2)">${d.dn}</span> ${G.delivered}</div><div style="white-space:nowrap"><span class="tnum" style="font-weight:700;color:var(--ink2)">${d.inv}</span> ${G.invoicedShort}</div>`
         : '—'}</td>
@@ -244,14 +247,21 @@ export async function projectsPage(user, opts = {}) {
         : '<span style="color:var(--faint)">—</span>'}</td>
     </tr>`;
   };
-  const tableView = `<div class="card"><div class="tblwrap"><table id="prj-table" style="width:100%;border-collapse:collapse;min-width:1040px">
+  // فصل الضوضاء: مشروع بلا قيمة ولا إنجاز ولا إيراد ولا صرف = سجل ناقص البيانات، لا يزاحم
+  // المقارنة الفعلية — يُطوى في قسم خاص كي يبقى الجدول الرئيسي كله إشارة
+  const isQuiet = (p) => { const d = derived[p.id]; return !bestVal(p).v && d.prog.v === 0 && !(revYearBy[p.id] || 0) && (!d.burn || d.burn.v === 0) && d.health.rank === 2; };
+  const mainRows = sorted.filter((p) => !isQuiet(p));
+  const quietRows = sorted.filter(isQuiet);
+  const tbl = (rws, id) => `<div class="tblwrap"><table ${id ? `id="${id}"` : ''} style="width:100%;border-collapse:collapse;min-width:1040px">
     <thead><tr>
       ${th('المشروع')}${th('الحالة')}${th('الصحة', true)}${th(`${G.spendPct}·${G.progressPct}`, true)}${th('المدة', true)}
-      ${th('قيمة المشروع', true)}${th('الإيراد المحقق', true)}${th(G.deliverables)}${th('م. المشروع')}${th(G.nextAction, true)}
+      ${th('قيمة المشروع', true)}${th('الإيراد المحقق', true)}${th(G.deliverables)}${th('مدير المشروع')}${th('المعلم القادم', true)}
     </tr></thead>
-    <tbody id="prj-rows">${sorted.map(rowOf).join('')}</tbody></table></div></div>`;
+    <tbody ${id ? 'id="prj-rows"' : ''}>${rws.map(rowOf).join('')}</tbody></table></div>`;
+  const tableView = `<div class="card">${tbl(mainRows.length ? mainRows : sorted, 'prj-table')}</div>
+    ${mainRows.length && quietRows.length ? `<details class="card" style="margin-top:.7rem"><summary style="padding:.6rem 1rem;cursor:pointer;font-size:var(--fs-body);font-weight:700;color:var(--muted)">مشاريع ناقصة البيانات (${quietRows.length}) — بلا قيمة أو إنجاز أو إيراد مسجّل<span style="font-weight:400;color:var(--faint)"> · أكمل بياناتها من صفحة كل مشروع لتدخل المقارنة</span></summary>${tbl(quietRows)}</details>` : ''}`;
 
-  // ── كانبان (تبديل ثانوي — كما كان تمامًا) ──
+  // ── كانبان (تبديل ثانوي — كما كان تماماً) ──
   const present = [...new Set(rows.map((p) => p.status || 'IN_PROGRESS'))];
   const cols = [...PRJ_STATUS.filter((c) => present.includes(c.id)),
     ...present.filter((s) => !PRJ_STATUS.some((c) => c.id === s)).map((s) => ({ id: s, color: '#64748b' }))];
@@ -310,7 +320,7 @@ export async function projectsPage(user, opts = {}) {
     ${rows.length ? summary : ''}
     <div class="toolbar" style="margin-bottom:.5rem">${seg}</div>
     ${viewsBar}
-    ${rows.length ? `<div style="font-size:10.5px;color:var(--faint);margin:0 0 .6rem">⁎ نسبة إنجاز محسوبة من حالة المخرجات — المصدر القديم بلا نسبة مسجلة · شارة القيمة توضح أساسها (عقد / أمر شراء / ميزانية / إيراد محقق)</div>` : ''}
+    ${rows.length ? `<div style="font-size:10.5px;color:var(--faint);margin:0 0 .6rem">⁎ نسبة إنجاز محسوبة من حالة المخرجات — المنصة السابقة بلا نسبة مسجلة · شارة القيمة توضح أساسها (عقد / أمر شراء / ميزانية / إيراد محقق)</div>` : ''}
     ${content}
     <script>window.__SANAD=Object.assign(window.__SANAD||{},{sectors:${JSON.stringify(await all('SELECT id,name_ar FROM sector WHERE active=1 ORDER BY name_ar')).replace(/</g, '\\u003c')},canEditPrj:${canEdit},viewsPage:'projects'});</script>`;
   return layout({ user, active: 'projects', title: 'المشاريع', subtitle: `المحفظة · ${rows.length} مشروع${year ? ` · سنة ${year}` : ''}`,
@@ -406,11 +416,11 @@ export async function projectDetailPage(user, projectId) {
     const elapsed = Math.min(totalD, Math.max(0, Math.round((today - sd) / 86400000)));
     const remain = Math.max(0, Math.round((ed - today) / 86400000));
     schedulePct = Math.round(elapsed / totalD * 100);
-    durTxt = `${totalD} يوم · مضى ${elapsed} · متبقٍّ ${remain}`;
+    durTxt = `${dayWord(totalD)} · مضى ${elapsed} · متبقٍّ ${remain}`;
     const prog = Math.round(p.progress_pct || 0);
     const gap = prog - schedulePct;
     scheduleTone = gap < -12 ? 'var(--red)' : gap < -4 ? 'var(--amber)' : 'var(--green)';
-    scheduleNote = gap < -12 ? 'متأخر عن الجدول' : gap < -4 ? 'قريب من الجدول' : (today > ed ? 'تجاوز تاريخ الانتهاء' : 'ضمن الجدول');
+    scheduleNote = gap < -12 ? 'متأخر عن الجدول' : gap < -4 ? 'متأخر قليلاً عن الجدول' : (today > ed ? 'تجاوز تاريخ الانتهاء' : 'ضمن الجدول');
     if (today > ed && prog < 100) { scheduleTone = 'var(--red)'; scheduleNote = 'تجاوز تاريخ الانتهاء'; }
   }
 
@@ -466,8 +476,8 @@ export async function projectDetailPage(user, projectId) {
   let devTone = 'var(--green)', devNote = 'الصرف والإنجاز متوازنان';
   if (burnV != null) {
     const dev = burnV - progPct;
-    if (dev > 10) { devTone = 'var(--red)'; devNote = `الصرف يسبق الإنجاز بـ ${dev} نقطة — راجع نطاق العمل`; }
-    else if (dev < -10) { devTone = 'var(--amber)'; devNote = `الإنجاز يسبق الصرف بـ ${-dev} نقطة — تحقق من الفوترة في موعدها`; }
+    if (dev > 10) { devTone = 'var(--red)'; devNote = `الصرف يسبق الإنجاز بـ${dev} ${dev >= 3 && dev <= 10 ? 'نقاط' : 'نقطة'} — راجع نطاق العمل`; }
+    else if (dev < -10) { devTone = 'var(--amber)'; devNote = `الإنجاز يسبق الصرف بـ${-dev} ${-dev >= 3 && -dev <= 10 ? 'نقاط' : 'نقطة'} — تحقق من الفوترة في موعدها`; }
   }
   const pvaCard = card(`<div style="padding:.85rem 1rem;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:.6rem">
       <div style="font-weight:800;font-size:13px">${G.planVsActual}</div>
@@ -478,7 +488,7 @@ export async function projectDetailPage(user, projectId) {
       ${bar(Math.min(100, burnV), burnV > progPct + 10 ? '#dc2626' : '#834798')}
       <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);margin-top:.55rem"><span>${G.progress}</span><b class="tnum">${progPct}%</b></div>
       ${bar(progPct, '#244A99')}
-      <div style="font-size:10.5px;color:var(--faint);margin-top:.55rem">${G.burnVsDelivery}: الشريط الأول ${burnBasis} والثاني نسبة الإنجاز — التباعد فوق 10 نقاط يستدعي قرارًا.</div>`}
+      <div style="font-size:10.5px;color:var(--faint);margin-top:.55rem">${G.burnVsDelivery}: الشريط الأول ${burnBasis} والثاني نسبة الإنجاز — التباعد فوق 10 نقاط يستدعي قراراً.</div>`}
     </div>`);
 
   // ── governance tab strip (WP17): server renders ALL panels; the page script only switches ──
@@ -511,7 +521,7 @@ export async function projectDetailPage(user, projectId) {
     </tr>`;
   }).join('');
   const msPanel = `${gov.milestones.length ? `<table style="width:100%;border-collapse:collapse"><thead><tr>${thG('المعلم')}${thG('الاستحقاق', '110px')}${thG('الحالة', '90px')}${canGov ? thG('إجراء', '190px') : ''}</tr></thead><tbody>${msRows}</tbody></table>`
-    : emptyPanel('لا معالم مسجّلة بعد', 'أضِف أول معلم من الشريط أدناه — المعالم القادمة خلال 30 يومًا تُميَّز تلقائيًا.')}
+    : emptyPanel('لا معالم مسجّلة بعد', 'أضِف أول معلم من الشريط أدناه — المعالم القادمة خلال 30 يوماً تُميَّز تلقائياً.')}
     ${addBar('milestone', `${govField('g-mls-name', 'اسم المعلم…')}${govField('g-mls-due', '', 'date')}`)}`;
 
   const rkRows = gov.risks.map((r) => `<tr style="border-bottom:1px solid var(--line)">
@@ -525,7 +535,7 @@ export async function projectDetailPage(user, projectId) {
       ${canGov ? tdG(delBtn('risk', r.id), 'text-align:center') : ''}
     </tr>`).join('');
   const rkPanel = `${gov.risks.length ? `<table style="width:100%;border-collapse:collapse"><thead><tr>${thG('الخطر')}${thG('الاحتمال', '80px')}${thG('الأثر', '80px')}${thG('التعرض', '80px')}${thG('المالك', '110px')}${thG('الحالة', '110px')}${canGov ? thG('', '46px') : ''}</tr></thead><tbody>${rkRows}</tbody></table>`
-    : emptyPanel('لا مخاطر مسجّلة بعد', 'سجِّل المخاطر مبكرًا مع احتمالها وأثرها — التعرض يُحسب تلقائيًا.')}
+    : emptyPanel('لا مخاطر مسجّلة بعد', 'سجِّل المخاطر مبكراً مع احتمالها وأثرها — التعرض يُحسب تلقائياً.')}
     ${addBar('risk', `${govField('g-rsk-title', 'عنوان الخطر…')}${lvlSelect('g-rsk-prob', 'الاحتمال')}${lvlSelect('g-rsk-impact', 'الأثر')}${govField('g-rsk-mit', 'خطة التخفيف…')}${ownerSelect('g-rsk-owner')}`)}`;
 
   const openIss = gov.issues.filter((i) => i.status !== 'CLOSED'), closedIss = gov.issues.filter((i) => i.status === 'CLOSED');
@@ -538,7 +548,7 @@ export async function projectDetailPage(user, projectId) {
     </tr>`;
   const issPanel = `${gov.issues.length ? `<div style="padding:.5rem .75rem;font-size:11px;color:var(--muted)">مفتوحة <b class="tnum">${openIss.length}</b> · مغلقة <b class="tnum">${closedIss.length}</b></div>
     <table style="width:100%;border-collapse:collapse"><thead><tr>${thG('المعوق')}${thG('الشدة', '80px')}${thG('المالك', '110px')}${thG('الحالة', '80px')}${thG('فُتح في', '95px')}${canGov ? thG('إجراء', '130px') : ''}</tr></thead><tbody>${[...openIss, ...closedIss].map(issRow).join('')}</tbody></table>`
-    : emptyPanel('لا معوقات مسجّلة', 'سجِّل ما يعطّل التقدم فعليًا الآن ليُتابَع حتى الإغلاق.')}
+    : emptyPanel('لا معوقات مسجّلة', 'سجِّل ما يعطّل التقدم فعلياً الآن ليُتابَع حتى الإغلاق.')}
     ${addBar('issue', `${govField('g-iss-title', 'وصف المعوق…')}${lvlSelect('g-iss-sev', 'الشدة')}${ownerSelect('g-iss-owner')}`)}`;
 
   const decRows = gov.decisions.map((d) => `<div class="dd-row" style="align-items:flex-start">
@@ -546,7 +556,7 @@ export async function projectDetailPage(user, projectId) {
         <div style="font-size:10.5px;color:var(--faint)">قرَّر: ${esc(d.decided_by || '—')} · <span class="tnum">${(d.decided_at || '').slice(0, 10) || '—'}</span></div></span>
       <b>${delBtn('decision', d.id)}</b></div>`).join('');
   const decPanel = `${gov.decisions.length ? `<div style="padding:.35rem .9rem">${decRows}</div>`
-    : emptyPanel('لا قرارات موثقة بعد', 'وثِّق قرارات اللجان والاجتماعات هنا لتبقى مرجعًا مُلزِمًا.')}
+    : emptyPanel('لا قرارات موثقة بعد', 'وثِّق قرارات اللجان والاجتماعات هنا لتبقى مرجعاً مُلزِماً.')}
     ${addBar('decision', `${govField('g-dec-title', 'نص القرار…')}${govField('g-dec-detail', 'التفاصيل (اختياري)…')}${govField('g-dec-by', 'مَن قرَّر…')}${govField('g-dec-at', '', 'date')}`)}`;
 
   const chgRows = gov.changes.map((c) => `<tr style="border-bottom:1px solid var(--line)">
@@ -578,7 +588,7 @@ export async function projectDetailPage(user, projectId) {
   const body = `
     <a href="/app/projects" style="font-size:12px;color:var(--muted)">← المشاريع</a>
     <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin:.6rem 0 1rem">
-      <h2 style="font-size:18px;margin:0">${esc(p.name_ar)}</h2>${pill(tr(p.status), p.status === 'COMPLETED' ? 'green' : p.status === 'ON_HOLD' ? 'amber' : 'blue')}${pill('RAG ' + tr(p.rag), ragColor)}
+      <h2 style="font-size:18px;margin:0">${esc(p.name_ar)}</h2>${pill(tr(p.status), p.status === 'COMPLETED' ? 'green' : p.status === 'ON_HOLD' ? 'amber' : 'blue')}${pill(tr(p.rag), ragColor)}
       ${p.kind ? pill(p.kind === 'external' ? 'خارجي' : 'داخلي', 'slate') : ''}
       <span style="font-size:12px;color:var(--muted)">${client ? esc(client.name_ar) : ''} · ${esc(p.code || '')}${p.financial_code ? ' · مالي ' + esc(p.financial_code) : ''}</span>
     </div>

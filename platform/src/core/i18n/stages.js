@@ -45,7 +45,7 @@ export const STAGE_DICT = {
     entry: 'اعتذار رسمي أو إلغاء موثّق',
     exit: '—',
     stalledWhen: '—',
-    expectedNext: 'توثيق سبب الخسارة للاستفادة القادمة',
+    expectedNext: 'توثيق سبب الخسارة للاستفادة منها مستقبلاً',
   },
   ON_HOLD: {
     meaning: 'متوقفة مؤقتاً بقرار من العميل أو منا',

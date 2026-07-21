@@ -14,7 +14,7 @@ export async function financePage(user, opts = {}) {
   const tile = (l, v, sub, color) => card(`<div style="padding:.9rem 1rem"><div style="font-size:11px;color:var(--muted)">${l}</div>
     <div class="metric" style="font-size:1.35rem;${color ? 'color:' + color : ''}">${v}</div>${sub ? `<div style="font-size:11px;color:var(--muted)">${sub}</div>` : ''}</div>`);
   // bridge: bookings → revenue → invoiced → collected
-  const bridge = [['الحجوزات', s.bookings_halalas, 'var(--brand)'], ['الإيراد المحقق', s.revenue_halalas, 'var(--brand2)'],
+  const bridge = [['التعاقدات', s.bookings_halalas, 'var(--brand)'], ['الإيراد المحقق', s.revenue_halalas, 'var(--brand2)'],
     ['المُفوتر', s.invoiced_halalas, '#0891b2'], ['المُحصَّل', s.collected_halalas, '#059669']];
   const maxB = Math.max(1, ...bridge.map((b) => b[1]));
   const bridgeHtml = bridge.map((b) => `<div style="flex:1;text-align:center">
@@ -51,7 +51,7 @@ export async function financePage(user, opts = {}) {
     <td style="padding:.5rem .75rem;font-size:var(--fs-ui);text-align:center;color:var(--muted)" class="tnum">${fmtSar(c.backlog_halalas)}</td></tr>`).join('');
   const body = `
     <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:.85rem;margin-bottom:1.25rem">
-      ${tile('الحجوزات', fmtSar(s.bookings_halalas))}
+      ${tile('التعاقدات', fmtSar(s.bookings_halalas))}
       ${tile('المُفوتر', fmtSar(s.invoiced_halalas))}
       ${tile('الذمم المدينة (AR)', fmtSar(s.ar_halalas), 'مستحق غير محصَّل', 'var(--amber)')}
       ${tile('معدل التحصيل', s.collectionRate + '%')}
@@ -110,7 +110,7 @@ export async function contractDetailPage(user, contractId) {
         <div style="font-weight:800;font-size:var(--fs-ui)">المستخلصات والفواتير</div>
         ${eligible.length ? `<button onclick="Sanad.progressClaim('${c.id}')" class="text-white" style="border:none;cursor:pointer;font-size:12px;padding:.35rem .8rem;border-radius:8px;background:var(--brand-grad)">+ مستخلص من ${eligible.length} مخرج مسلّم</button>` : '<span style="font-size:11px;color:var(--muted)">لا مخرجات مؤهلة</span>'}</div>
         <table style="width:100%;border-collapse:collapse"><thead><tr style="font-size:11px;color:var(--muted);text-align:right"><th style="padding:.4rem .75rem">المستخلص/الفاتورة</th><th style="padding:.4rem .75rem;text-align:center">القيمة</th><th style="padding:.4rem .75rem;text-align:center">الحالة</th><th style="padding:.4rem .75rem;text-align:center">متبقٍّ</th><th style="padding:.4rem .75rem"></th></tr></thead>
-        <tbody>${invRows || '<tr><td style="padding:1rem;color:var(--muted);font-size:var(--fs-ui)" colspan="5">لا مستخلصات بعد — أنشئ واحدًا من المخرجات المسلّمة</td></tr>'}</tbody></table>`)}
+        <tbody>${invRows || '<tr><td style="padding:1rem;color:var(--muted);font-size:var(--fs-ui)" colspan="5">لا مستخلصات بعد — أنشئ واحداً من المخرجات المسلّمة</td></tr>'}</tbody></table>`)}
       ${card(`<div style="padding:1rem;border-bottom:1px solid var(--line);font-weight:800;font-size:var(--fs-ui)">مخرجات المشروع</div>
         <table style="width:100%;border-collapse:collapse"><thead><tr style="font-size:11px;color:var(--muted);text-align:right"><th style="padding:.4rem .75rem">المخرج</th><th style="padding:.4rem .75rem;text-align:center">القيمة</th><th style="padding:.4rem .75rem;text-align:center">الحالة</th></tr></thead>
         <tbody>${dlvRows || '<tr><td style="padding:1rem;color:var(--muted);font-size:var(--fs-ui)" colspan="3">لا مخرجات</td></tr>'}</tbody></table>`)}

@@ -13,16 +13,17 @@ import { listViews } from '../../modules/views/views.js';
 import { can } from '../../core/rbac/index.js';
 import { sarShort, pct, esc, statMini, ddWrap, ddRows } from './_shared.js';
 import { G } from '../i18n/glossary.js';
+import { countAr, dayWord } from '../../core/i18n/plural.js';
 
 // معنى كل مرحلة + معيار الدخول إليها — يظهر كتلميح على رأس العمود (نمط Lightning Path).
 const STAGE_TIPS = {
-  LEAD: 'فرصة أولية: جهة أبدت اهتمامًا ولم يُتحقق بعد من الميزانية وصاحب القرار',
+  LEAD: 'فرصة أولية: جهة أبدت اهتماماً ولم يُتحقق بعد من الميزانية وصاحب القرار',
   QUALIFIED: 'مؤهلة: تم التحقق من الميزانية وصاحب القرار والحاجة الفعلية',
   PROPOSAL: 'قُدِّم العرض: العرض الفني والمالي لدى العميل وبانتظار رده',
   NEGOTIATION: 'تفاوض: نقاش نهائي على النطاق والسعر قبل الترسية',
   WON: 'مكسوبة: تمت الترسية ووُقِّع الاتفاق — تتحول إلى مشروع',
   LOST: 'مفقودة: حُسمت لصالح جهة أخرى أو أُلغيت — توثَّق أسبابها',
-  ON_HOLD: 'مؤجلة: متوقفة مؤقتًا بقرار من العميل أو منا — تُراجع دوريًا',
+  ON_HOLD: 'مؤجلة: متوقفة مؤقتاً بقرار من العميل أو منا — تُراجع دورياً',
 };
 export function stageTip(s) {
   const base = STAGE_TIPS[s.id] || `مرحلة «${s.name_ar}» ضمن مسار الفرصة`;
@@ -33,7 +34,7 @@ const STALLED_HINT = 'فرصة متوقفة — حرّكها أو حدّث خط�
 const weightedOf = (o) => (o.value_halalas || 0) * ((o.win_pct || 0) / 100);
 
 // شارة عمر المرحلة: تتدرج (هادئ → كهرماني > نصف العتبة → أحمر > العتبة).
-// compact: نسخة البطاقة النحيفة — بلا أيقونة وبحشوة أصغر كي يتسع السطر الثاني كاملًا.
+// compact: نسخة البطاقة النحيفة — بلا أيقونة وبحشوة أصغر كي يتسع السطر الثاني كاملاً.
 function ageChip(o, compact = false) {
   const n = o.stage_age_days;
   if (n == null) return '';
@@ -41,7 +42,7 @@ function ageChip(o, compact = false) {
   const tone = th && n > th ? 'red' : th && n > th / 2 ? 'amber' : 'slate';
   const c = { red: 'background:#fee2e2;color:#b91c1c', amber: 'background:#fef3c7;color:#92400e', slate: 'background:#f1f5f9;color:#475569' }[tone];
   const title = th && n > th ? STALLED_HINT : G.stageAge(n);
-  return `<span class="pill tnum" style="${c}${compact ? ';padding:.12rem .38rem' : ''}" title="${esc(title)}">${compact ? '' : icon('clock') + ' '}${n} يوماً</span>`;
+  return `<span class="pill tnum" style="${c}${compact ? ';padding:.12rem .38rem' : ''}" title="${esc(title)}">${compact ? '' : icon('clock') + ' '}${dayWord(n)}</span>`;
 }
 // كهرماني لا أحمر: «بلا خطوة» تنبيه انضباط واسع الانتشار، والأحمر محجوز للمتوقفة فعلاً
 const naChip = (compact = false) => `<span class="pill" style="background:#fef3c7;color:#92400e${compact ? ';padding:.12rem .38rem' : ''}" title="كل فرصة مفتوحة تحتاج خطوة تالية مؤرّخة — أضفها من صفحة الفرصة">${compact ? '' : '● '}${G.noNextAction}</span>`;
@@ -157,12 +158,12 @@ export async function opportunitiesPage(user, opts = {}) {
         ${openRow ? ageChip(o, true) : ''}
         ${openRow && o.no_next_action ? naChip(true) : ''}
       </div>
-      ${ow ? `<span class="kav" title="المسؤول: ${esc(ow)}" style="width:17px;height:17px;font-size:8.5px;position:absolute;inset-inline-end:.45rem;bottom:.45rem">${esc((ow || '؟').trim().charAt(0))}</span>` : ''}
+      ${ow ? `<span class="kav" title="مالك الفرصة: ${esc(ow)}" style="width:17px;height:17px;font-size:8.5px;position:absolute;inset-inline-end:.45rem;bottom:.45rem">${esc((ow || '؟').trim().charAt(0))}</span>` : ''}
     </div>`;
   };
 
   // ── عمودا الحسم (فائزة/خاسرة): ملخص ضيّق بلا بطاقات — عدّ وقيمة وسطر تاريخي ورابط جدول ──
-  // يبقيان هدف إفلات صالحًا للسحب (kcol + data-stage + kcol-body) كي لا ينكسر نقل البطاقات.
+  // يبقيان هدف إفلات صالحاً للسحب (kcol + data-stage + kcol-body) كي لا ينكسر نقل البطاقات.
   const summaryCol = (s, items) => {
     const drop = canEdit ? 'ondragover="Sanad.kOver(event)" ondragleave="Sanad.kLeave(event)" ondrop="Sanad.kDrop(event)"' : '';
     const isWon = !!s.is_won;
@@ -228,7 +229,7 @@ export async function opportunitiesPage(user, opts = {}) {
   };
   const viewChips = savedViews.map((v) => `<span class="chip" style="gap:.3rem;padding-inline-end:.4rem">
       <a href="/app/opportunities?${esc(viewQs(v.params_json))}" title="تطبيق هذا العرض">${v.is_default ? '★ ' : ''}${esc(v.name_ar)}</a>
-      ${v.is_default ? '' : `<button data-action="view-default" data-id="${v.id}" title="تعيينه العرض الافتراضي" aria-label="تعيين ${esc(v.name_ar)} افتراضيًا" style="border:none;background:none;cursor:pointer;color:var(--faint);font-size:12px;padding:0">☆</button>`}
+      ${v.is_default ? '' : `<button data-action="view-default" data-id="${v.id}" title="تعيينه العرض الافتراضي" aria-label="تعيين ${esc(v.name_ar)} افتراضياً" style="border:none;background:none;cursor:pointer;color:var(--faint);font-size:12px;padding:0">☆</button>`}
       <button data-action="view-del" data-id="${v.id}" title="حذف هذا العرض" aria-label="حذف ${esc(v.name_ar)}" style="border:none;background:none;cursor:pointer;color:var(--faint);font-size:11px;padding:0">✕</button>
     </span>`).join('');
   const viewsBar = `<div class="chips" style="margin-bottom:.9rem"><span class="lbl">${G.savedViews}</span>
@@ -236,17 +237,17 @@ export async function opportunitiesPage(user, opts = {}) {
     ${viewChips}
     <button class="btn btn-sm" data-action="view-save">${icon('plus')} ${G.saveView}</button></div>`;
 
-  // ── شريط التحليلات: 4 بطاقات قابلة للنقر تفتح تفصيلًا ──
+  // ── شريط التحليلات: 4 بطاقات قابلة للنقر تفتح تفصيلاً ──
   const tile = (key, label, value, sub, color) => `
     <div class="card cardclick" data-dd="${key}" role="button" tabindex="0" style="padding:.65rem .95rem;min-width:150px;flex:1">
       <div style="font-size:11px;color:var(--muted);font-weight:700;display:flex;align-items:center;gap:.3rem">${label}<span class="dd-hint" style="color:var(--faint)">⌄</span></div>
       <div class="tnum" style="font-size:1.3rem;font-weight:800;letter-spacing:-.02em;color:${color || 'var(--ink2)'}">${value}</div>
       <div style="font-size:10.5px;color:var(--faint)">${sub}</div></div>`;
   const strip = `<div style="display:flex;gap:.7rem;flex-wrap:wrap;margin-bottom:1rem">
-    ${tile('raw', G.raw, fmtSar(total), open.length + ' فرصة قيد المتابعة')}
+    ${tile('raw', G.raw, fmtSar(total), countAr(open.length, { one: 'فرصة واحدة قيد المتابعة', two: 'فرصتان قيد المتابعة', few: 'فرص قيد المتابعة', many: 'فرصة قيد المتابعة' }))}
     ${tile('weighted', G.weighted, fmtSar(weighted), 'القيمة × احتمال الفوز', 'var(--brand2)')}
-    ${tile('winrate', 'معدل الفوز', winRate + '%', `${wonAll.length} ${G.won} · ${lostAll.length} ${G.lost}`, winRate >= 50 ? 'var(--green)' : '')}
-    ${tile('stalled', 'فرص متوقفة', stalled.length, stalled.length ? 'تجاوزت مدة مرحلتها — تحتاج تحريكًا' : 'لا فرص متجاوزة لمدتها', stalled.length ? 'var(--amber)' : 'var(--green)')}
+    ${tile('winrate', 'نسبة الفوز — كل السنوات المعروضة', winRate + '%', `${wonAll.length} ${G.won} · ${lostAll.length} ${G.lost}`, winRate >= 50 ? 'var(--green)' : '')}
+    ${tile('stalled', 'فرص متوقفة', stalled.length, stalled.length ? 'تجاوزت مدة مرحلتها — تحتاج تحريكاً' : 'لا فرص متجاوزة لمدتها', stalled.length ? 'var(--amber)' : 'var(--green)')}
   </div>`;
 
   // drill-downs (server-rendered inert templates; same scope as the page)
@@ -261,14 +262,14 @@ export async function opportunitiesPage(user, opts = {}) {
     ddWrap('weighted', G.weighted, `الإجمالي المرجّح ${fmtSar(weighted)} — كل فرصة بقيمتها × احتمالها`,
       ddRows(topN(byVal.slice().sort((a, b) => weightedOf(b) - weightedOf(a)), 30)
         .map((o) => oppRowDD(o, `${fmtSar(Math.round(weightedOf(o)))} <span style="color:var(--faint);font-weight:600">(${pct(o.win_pct)})</span>`))) + more(byVal, 30)),
-    ddWrap('winrate', 'معدل الفوز', `${winRate}% من ${decided} فرصة محسومة`,
+    ddWrap('winrate', 'نسبة الفوز', `${winRate}% من ${decided} فرصة محسومة`,
       ddRows([
         ...topN(wonAll, 15).map((o) => oppRowDD(o, `${pill(G.won, 'green')} <span class="tnum">${fmtSar(o.value_halalas)}</span>`)),
         ...topN(lostAll, 15).map((o) => oppRowDD(o, `${pill(G.lost, 'red')} <span class="tnum">${fmtSar(o.value_halalas)}</span>`)),
       ])),
     ddWrap('stalled', 'فرص متوقفة', STALLED_HINT,
       ddRows(stalled.slice().sort((a, b) => (b.stage_age_days || 0) - (a.stage_age_days || 0))
-        .map((o) => oppRowDD(o, `${esc((stById[o.stage_id] || {}).name_ar || '')} · <span class="tnum">منذ ${o.stage_age_days} يوماً</span>`)))),
+        .map((o) => oppRowDD(o, `${esc((stById[o.stage_id] || {}).name_ar || '')} · <span class="tnum">منذ ${dayWord(o.stage_age_days)}</span>`)))),
   ].join('');
 
   // نوافذ شرح المراحل المفتوحة (قوالب خاملة تُفتح من «؟»)
@@ -343,9 +344,11 @@ export async function myOpportunitiesPage(user, opts = {}) {
 
   const isOpen = (o) => { const s = stById[o.stage_id]; return s && !s.is_won && !s.is_lost; };
   const open = rows.filter(isOpen);
+  const noAction = (o) => o.no_next_action || ['-', '—'].includes(String(o.next_action || '').trim());
   const stalled = open.filter((o) => o.rot);
-  const noStep = open.filter((o) => !o.rot && o.no_next_action);
-  const onTrack = open.filter((o) => !o.rot && !o.no_next_action);
+  const onHold = open.filter((o) => !o.rot && o.stage_id === 'ON_HOLD');
+  const noStep = open.filter((o) => !o.rot && o.stage_id !== 'ON_HOLD' && noAction(o));
+  const onTrack = open.filter((o) => !o.rot && o.stage_id !== 'ON_HOLD' && !noAction(o));
   const naAll = open.filter((o) => o.no_next_action).length;
   const total = open.reduce((a, o) => a + (o.value_halalas || 0), 0);
   const weighted = Math.round(open.reduce((a, o) => a + weightedOf(o), 0));
@@ -382,7 +385,7 @@ export async function myOpportunitiesPage(user, opts = {}) {
     </tr>`;
   };
 
-  // قسم = بطاقة بعدّاد، لا يُعرض إلا حين يحوي صفوفًا
+  // قسم = بطاقة بعدّاد، لا يُعرض إلا حين يحوي صفوفاً
   const section = (iconName, tones, title, sub, trs) => trs.length ? card(`
     <div style="padding:.7rem 1rem;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:.6rem">
       <span style="width:28px;height:28px;border-radius:9px;background:${tones.bg};color:${tones.fg};display:inline-flex;align-items:center;justify-content:center;flex:none">${icon(iconName)}</span>
@@ -394,29 +397,32 @@ export async function myOpportunitiesPage(user, opts = {}) {
   const stalledRows = stalled.slice().sort((a, b) => (b.stage_age_days || 0) - (a.stage_age_days || 0)).map((o) => rowHtml(o, '#fffbeb'));
   const noStepRows = noStep.slice().sort((a, b) => (b.value_halalas || 0) - (a.value_halalas || 0)).map((o) => rowHtml(o, ''));
   const onTrackRows = onTrack.slice().sort((a, b) => (b.value_halalas || 0) - (a.value_halalas || 0)).map((o) => rowHtml(o, ''));
+  const onHoldRows = onHold.slice().sort((a, b) => (b.value_halalas || 0) - (a.value_halalas || 0)).map((o) => rowHtml(o, ''));
 
   const empty = rows.length === 0;
   const body = empty
     ? `<div class="card"><div class="empty-state">${icon('flag')}
         <div class="t">لا فرص باسمك بعد</div>
-        <div class="s">عندما تُسند إليك فرصة كمالك ستظهر هنا كقائمة عمل: المتوقف أولًا، ولكل فرصة خطوتها التالية.</div>
+        <div class="s">عندما تُسند إليك فرصة كمالك ستظهر هنا كقائمة عمل: المتوقف أولاً، ولكل فرصة خطوتها التالية.</div>
         <a class="btn" href="/app/opportunities">تصفّح كل الفرص</a></div></div>`
     : `
     <div style="display:flex;gap:.7rem;flex-wrap:wrap;margin-bottom:1rem">
-      ${statMini('قيمتي المفتوحة', fmtSar(total), `${open.length} فرصة · ${G.weighted} ${fmtSar(weighted)}`, 'brand')}
+      ${statMini('قيمتي المفتوحة', fmtSar(total), `${countAr(open.length, { one: 'فرصة واحدة', two: 'فرصتان', few: 'فرص', many: 'فرصة' })} · ${G.weighted} ${fmtSar(weighted)}`, 'brand')}
       ${statMini('متوقفة', stalled.length, stalled.length ? 'تجاوزت مدة مرحلتها — ابدأ بها' : 'لا شيء متوقف', stalled.length ? 'warn' : 'good')}
       ${statMini(G.noNextAction, naAll, naAll ? (naAll > noStepRows.length ? `منها ${naAll - noStepRows.length} ضمن المتوقفة — حدّد خطوة لكل فرصة` : 'حدّد خطوة مؤرّخة لكل فرصة') : 'لكل فرصة خطوة واضحة', naAll ? 'bad' : 'good')}
     </div>
     ${open.length === 0 ? `<div class="card"><div class="empty-state">${icon('check')}
         <div class="t">كل فرصك محسومة</div>
-        <div class="s">لا فرص مفتوحة باسمك الآن — كل ما لديك إما ${G.won} أو ${G.lost}. اطلب فرصًا جديدة أو أنشئها من لوحة الفرص.</div>
+        <div class="s">لا فرص مفتوحة باسمك الآن — كل ما لديك إما ${G.won} أو ${G.lost}. اطلب فرصاً جديدة أو أنشئها من لوحة الفرص.</div>
         <a class="btn" href="/app/opportunities">لوحة الفرص</a></div></div>`
     : section('clock', { bg: '#fef3c7', fg: 'var(--amber)' }, 'متوقفة — حرّكها',
         'تجاوزت المدة المقبولة لمرحلتها. حرّك مرحلتها من صفحة الفرصة أو حدّث خطوتها التالية.', stalledRows)
       + section('flag', { bg: '#fee2e2', fg: 'var(--red)' }, G.noNextAction,
         'فرص تتحرك ضمن مدتها لكن دون خطوة قادمة — أضفها هنا مباشرة قبل أن تتوقف.', noStepRows)
-      + section('check', { bg: '#dcfce7', fg: 'var(--green)' }, 'البقية على المسار',
-        'ضمن مدتها المقبولة وبخطوة تالية واضحة — تابعها في وقتها.', onTrackRows)}`;
+      + section('check', { bg: '#dcfce7', fg: 'var(--green)' }, 'على المسار',
+        'ضمن مدتها المقبولة وبخطوة تالية واضحة — تابعها في وقتها.', onTrackRows)
+      + (onHoldRows.length ? section('clock', { bg: '#ede9fe', fg: 'var(--brand2)' }, 'معلّقة بقرار',
+        'مؤجلة بقرار من العميل أو منا — ليست «على المسار» ولا متوقفة إهمالاً؛ تُراجع دورياً.', onHoldRows) : '')}`;
   return layout({
     user, active: 'my-opportunities', title: 'فرصي',
     subtitle: `قائمة عملي حسب الأولوية · ${esc(user.name_ar || user.username || '')} · ${year}`, body,

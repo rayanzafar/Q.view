@@ -68,7 +68,7 @@ async function weeklyReportDraft(ctx) {
   const facts = [
     `الإيراد المحقق ${fmtSar(data.totals.revenue)} من ${fmtSar(data.totals.target_revenue)}`,
     `المبيعات ${fmtSar(data.totals.sales)} من ${fmtSar(data.totals.target_sales)}`,
-    `خط الأنابيب ${fmtSar(data.pipeline_halalas)}`,
+    `خط الفرص ${fmtSar(data.pipeline_halalas)}`,
     data.achievements.length ? `إنجازات: ${data.achievements.join('، ')}` : '',
     data.risks.length ? `مخاطر: ${data.risks.join('، ')}` : '',
   ].filter(Boolean);

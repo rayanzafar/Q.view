@@ -165,7 +165,11 @@ export async function sectorStaffing(sectorId, year) {
   }).sort((a, b) => (b.current - a.current) || (b.utilization - a.utilization));
   const teamUtil = employees.length ? Math.round(employees.reduce((a, e) => a + e.utilization, 0) / employees.length) : 0;
   const teamCurrent = employees.length ? Math.round(employees.reduce((a, e) => a + e.current, 0) / employees.length) : 0;
-  return { employees, teamUtil, teamCurrent, currentMonth: nowM, headcount: employees.length };
+  // العدد المعلن = موظفو القطاع النشطون (نفس أساس صفحة الفريق) — لا من لديهم تسكين فقط،
+  // كي لا يقرأ المالك ثلاثة أحجام مختلفة للفريق نفسه عبر الصفحات
+  const activeHeadcount = (await get(
+    'SELECT COUNT(*) n FROM employee WHERE sector_id = ? AND active = 1 AND deleted_at IS NULL', [sectorId]))?.n || 0;
+  return { employees, teamUtil, teamCurrent, currentMonth: nowM, headcount: Math.max(activeHeadcount, employees.length) };
 }
 
 // Clients active in a sector, with their pipeline and project counts.

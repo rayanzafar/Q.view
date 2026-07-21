@@ -64,7 +64,7 @@ export default {
     { key: 'type', labelAr: 'الدور', aliases: ['الدور في المشروع'] },
     { key: 'from_month', labelAr: 'من شهر', parse: 'int', min: 1, max: 12 },
     { key: 'to_month', labelAr: 'إلى شهر', parse: 'int', min: 1, max: 12 },
-    { key: 'pct', labelAr: 'نسبة الإشغال (%)', parse: 'pct', max: 150, aliases: ['النسبة', 'نسبة'] },
+    { key: 'pct', labelAr: 'الإشغال (%)', parse: 'pct', max: 150, aliases: ['النسبة', 'نسبة', 'نسبة الإشغال (%)'] },
     ...MONTHS_AR.map((m, i) => ({ key: `m${i + 1}`, labelAr: m, parse: 'pct', max: 150 })),
   ],
   exampleRow: {

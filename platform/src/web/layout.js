@@ -73,6 +73,8 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
 .seg button.on{background:#fff;color:var(--ink2);box-shadow:var(--sh-sm)}
 
 /* Kanban */
+/* الزر العائم شبه شفاف كي لا يحجب أرقام الجداول؛ يكتمل عند المرور أو التركيز */
+.ai-fab:hover,.ai-fab:focus-visible{opacity:1!important}
 .kanban{display:flex;gap:.9rem;overflow-x:auto;padding-bottom:.75rem;align-items:flex-start;scroll-snap-type:x proximity}
 .kcol{flex:0 0 300px;width:300px;background:#eef1f7;border-radius:14px;padding:.55rem;scroll-snap-align:start;max-height:calc(100vh - 240px);display:flex;flex-direction:column}
 .kcol-head{display:flex;align-items:center;gap:.5rem;padding:.35rem .5rem .55rem}
@@ -263,10 +265,10 @@ window.__SANAD_MONTHS=${JSON.stringify(MONTHS_AR)};window.__SANAD_MONTHS_EN=${JS
         <form method="post" action="/auth/logout-web"><button title="خروج" style="color:var(--muted);background:none;border:none;cursor:pointer">${icon('logout')}</button></form>
       </div>
     </header>
-    <main style="flex:1;overflow-y:auto;padding:1.15rem 1.35rem">${body}</main>
+    <main style="flex:1;overflow-y:auto;padding:1.15rem 1.35rem 5.5rem">${body}</main>
   </div>
 </div>
-<button onclick="Sanad.aiToggle()" title="مساعد سند الذكي" style="position:fixed;bottom:22px;left:22px;z-index:40;width:54px;height:54px;border:none;cursor:pointer;border-radius:50%;color:#fff;box-shadow:0 10px 30px -6px rgba(124,58,237,.55);background:var(--brand-grad);display:flex;align-items:center;justify-content:center">${icon('ai')}</button>
+<button onclick="Sanad.aiToggle()" title="مساعد سند الذكي" class="ai-fab" style="position:fixed;bottom:18px;left:18px;z-index:40;width:44px;height:44px;border:none;cursor:pointer;border-radius:50%;color:#fff;box-shadow:0 8px 22px -6px rgba(124,58,237,.5);background:var(--brand-grad);display:flex;align-items:center;justify-content:center;opacity:.55;transition:opacity .15s">${icon('ai')}</button>
 <div id="ai-panel" class="card" style="display:none;position:fixed;bottom:88px;left:22px;z-index:40;width:390px;max-width:calc(100vw - 2rem);height:min(580px,calc(100vh - 130px));flex-direction:column;overflow:hidden;box-shadow:var(--sh)">
   <div style="padding:.8rem 1rem;color:#fff;display:flex;align-items:center;justify-content:space-between;background:var(--brand-grad)">
     <div style="display:flex;align-items:center;gap:.5rem">${icon('ai')}<div><div style="font-weight:800;font-size:var(--fs-ui)">مساعد سند الذكي</div><div id="ai-mode" style="font-size:10px;color:rgba(255,255,255,.6)">…</div></div></div>

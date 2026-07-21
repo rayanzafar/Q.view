@@ -14,7 +14,8 @@ import { arAging } from '../../modules/finance/finance.js';
 import { can } from '../../core/rbac/index.js';
 import { config } from '../../core/config.js';
 import { G } from '../i18n/glossary.js';
-import { monthLabel, monthLabelDual, quarterLabel, nowDot, currentMonthIndex } from '../../core/i18n/time.js';
+import { monthLabel, monthLabelDual, quarterLabel, nowDot, currentMonthIndex, MONTHS_AR } from '../../core/i18n/time.js';
+import { countAr, dayWord } from '../../core/i18n/plural.js';
 import { esc, ddWrap, attain, ddRows, paceCard, sarShort } from './_shared.js';
 
 const TONE = { brand: 'var(--brand)', green: 'var(--green)', amber: 'var(--amber)', red: 'var(--red)' };
@@ -200,10 +201,14 @@ export async function sectorPage(user, opts = {}) {
   // ── (5) قمع الفرص: عرض كل مرحلة ∝ قيمتها + نسبة الانتقال بين المراحل (من الأعداد الحالية) ──
   const openTotal = pipe.reduce((a, b) => a + b.value_halalas, 0);
   const weightedTotal = Math.round(pipe.reduce((a, b) => a + b.weighted, 0));
-  const maxPipe = Math.max(1, ...pipe.map((s) => s.value_halalas));
-  const funnelRows = pipe.map((s, i) => {
+  // «معلّقة» قرار تأجيل لا مرحلة بيع — تخرج من مسار القمع وتُعرض جانباً كي لا يقرأ
+  // «93% تنتقل» نحو التعليق وكأنه تقدم
+  const funnelStages = pipe.filter((st) => st.id !== 'ON_HOLD');
+  const onHoldStage = pipe.find((st) => st.id === 'ON_HOLD');
+  const maxPipe = Math.max(1, ...funnelStages.map((s) => s.value_halalas));
+  const funnelRows = funnelStages.map((s, i) => {
     const w = Math.max(12, Math.round((s.value_halalas / maxPipe) * 100));
-    const next = pipe[i + 1];
+    const next = funnelStages[i + 1];
     const conv = next && s.count > 0 ? Math.round((next.count / s.count) * 100) : null;
     return `<div title="${esc(s.name_ar)}: ${s.count} فرصة بقيمة ${fmtSar(s.value_halalas)}">
       <div class="fnl-lbl">
@@ -229,10 +234,11 @@ export async function sectorPage(user, opts = {}) {
     <div style="padding:.6rem 1rem;display:grid;grid-template-columns:repeat(4,1fr);gap:.5rem;border-bottom:1px dashed var(--line)">
       <div><div style="font-size:10px;color:var(--muted)">${G.raw}</div><div class="tnum" style="font-weight:800;font-size:var(--fs-num-sm)">${fmtSar(openTotal)}</div></div>
       <div data-tip="مجموع (قيمة الفرصة × ${G.probability}) لكل الفرص المفتوحة"><div style="font-size:10px;color:var(--muted)">${G.weighted} ⓘ</div><div class="tnum" style="font-weight:800;font-size:var(--fs-num-sm);color:var(--brand)">${fmtSar(weightedTotal)}</div></div>
-      <div><div style="font-size:10px;color:var(--muted)">${G.winRate}</div><div class="tnum" style="font-weight:800;font-size:var(--fs-num-sm);color:var(--green)">${wins.winRate}%</div></div>
+      <div data-tip="المكسوبة ÷ المحسومة (فوز + خسارة) لسنة ${year} — التاريخي مستثنى"><div style="font-size:10px;color:var(--muted)">${G.winRate} ${year} ⓘ</div><div class="tnum" style="font-weight:800;font-size:var(--fs-num-sm);color:var(--green)">${wins.winRate}%</div></div>
       <div data-tip="${G.raw} من الفرص المفتوحة ÷ المتبقي من هدف المبيعات — أقل من ×1 يعني الحاجة لفرص جديدة"><div style="font-size:10px;color:var(--muted)">التغطية ⓘ</div><div class="tnum" style="font-weight:800;font-size:var(--fs-num-sm);color:${(cover?.coverage ?? 1) < 1 ? 'var(--amber)' : 'var(--ink2)'}">${cover?.coverage != null ? '×' + cover.coverage : '—'}</div></div>
     </div>
-    <div style="padding:.6rem 1rem .5rem">${funnelRows || `<div class="empty-state" style="padding:1rem"><div class="s">${G.emptyList}</div></div>`}</div>
+    <div style="padding:.6rem 1rem .5rem">${funnelRows || `<div class="empty-state" style="padding:1rem"><div class="s">${G.emptyList}</div></div>`}
+      ${onHoldStage && onHoldStage.count ? `<div style="font-size:var(--fs-micro);color:var(--muted);border-top:1px dashed var(--line);padding-top:.4rem;margin-top:.2rem">خارج القمع: <b class="tnum">${countAr(onHoldStage.count, { one: 'فرصة واحدة معلّقة', two: 'فرصتان معلّقتان', few: 'فرص معلّقة', many: 'فرصة معلّقة' })}</b> بقيمة <b class="tnum">${sarShort(onHoldStage.value_halalas)}</b> — بقرار تأجيل يُراجع دورياً</div>` : ''}</div>
     <div style="padding:.5rem 1rem .6rem;border-top:1px dashed var(--line)">
       <div style="font-size:var(--fs-micro);font-weight:700;color:var(--muted);margin-bottom:.2rem">عمر الفرص في مرحلتها الحالية</div>${agingRows}
     </div>`);
@@ -262,10 +268,10 @@ export async function sectorPage(user, opts = {}) {
         <span class="tnum" style="flex:none;font-weight:700;font-size:var(--fs-micro)">${fmtSar(buckets[k] || 0)}</span>
       </div>`).join('');
     const lateRows = odRows.slice(0, 3).map((r) => `<div class="cardclick" role="button" tabindex="0" onclick="Sanad.openDD('seccollect')" style="display:flex;justify-content:space-between;gap:.6rem;align-items:baseline;padding:.32rem 0;border-bottom:1px dashed var(--line);font-size:var(--fs-body)">
-        <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.client || r.project || 'فاتورة')}${r.code ? ` <span style="color:var(--faint);font-size:var(--fs-micro)">${esc(r.code)}</span>` : ''}</span>
+        <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.client || r.project || 'فاتورة')}${r.code ? ` <span style="color:var(--faint);font-size:var(--fs-micro)"><bdi>${esc(r.code)}</bdi></span>` : ''}</span>
         <span style="flex:none;display:flex;gap:.5rem;align-items:baseline">
           <b class="tnum">${fmtSar(r.out)}</b>
-          ${r.days != null ? `<span class="pill" style="background:#fee2e2;color:#991b1b">متأخر <b class="tnum">${r.days}</b> يوماً</span>` : ''}
+          ${r.days != null ? `<span class="pill" style="background:#fee2e2;color:#991b1b">متأخر <b class="tnum">${r.days}</b> ${r.days >= 3 && r.days <= 10 ? 'أيام' : 'يوماً'}</span>` : ''}
         </span>
       </div>`).join('');
     collectCard = card(`
@@ -274,25 +280,26 @@ export async function sectorPage(user, opts = {}) {
         <span class="aux"><a class="btn btn-sm" href="/app/finance?year=${year}">المالية والعقود</a></span></div>
       ${arTotal || odRows.length ? `
       <div class="cardclick" role="button" tabindex="0" onclick="Sanad.openDD('seccollect')" style="padding:.55rem 1rem;display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px dashed var(--line)">
-        <span style="font-size:var(--fs-micro);color:var(--muted)">${G.outstanding} على القطاع · ${year} <span style="color:var(--faint)">⊕</span></span>
+        <span style="font-size:var(--fs-micro);color:var(--muted)">${G.outstanding} للقطاع · ${year} <span style="color:var(--faint)">⊕</span></span>
         <b class="tnum" style="font-size:var(--fs-num-sm);color:${arTotal ? 'var(--amber)' : 'var(--ink2)'}">${fmtSar(arTotal)}</b></div>
       <div style="padding:.45rem 1rem .3rem">
         <div style="font-size:var(--fs-micro);font-weight:700;color:var(--muted);margin-bottom:.15rem">أعمار المستحقات منذ إصدار الفاتورة</div>${bucketRows}
       </div>
       <div style="padding:.35rem 1rem .6rem">
-        <div style="font-size:var(--fs-micro);font-weight:700;color:var(--muted)">${G.lateClaim}</div>
+        <div style="font-size:var(--fs-micro);font-weight:700;color:var(--muted)">${G.lateClaim}${odRows.length > 3 ? ` — الأكثر تأخراً (3 من ${odRows.length})` : ''}</div>
         ${lateRows || `<div style="font-size:var(--fs-meta);color:var(--faint);padding:.3rem 0">لا فواتير متأخرة السداد — التحصيل منضبط</div>`}
+        ${odRows.length > 3 ? `<button class="btn btn-ghost btn-sm" onclick="Sanad.openDD('seccollect')" style="margin-top:.2rem">+${odRows.length - 3} أخرى — الكل ⊕</button>` : ''}
       </div>`
-      : `<div class="empty-state" style="padding:1.2rem 1rem">${icon('money')}<div class="t">لا مستحقات قائمة على هذا القطاع · ${year}</div><div class="s">كل الفواتير الصادرة لهذه السنة حُصّلت، أو لم تصدر فواتير بعد</div></div>`}`);
+      : `<div class="empty-state" style="padding:1.2rem 1rem">${icon('money')}<div class="t">لا مستحقات قائمة لهذا القطاع · ${year}</div><div class="s">كل الفواتير الصادرة لهذه السنة حُصّلت، أو لم تصدر فواتير بعد</div></div>`}`);
     collectDD = ddWrap('seccollect', `${G.lateClaim} — ${esc(sd.sector.name_ar)}`, `فواتير قائمة تجاوزت تاريخ استحقاقها · حتى ${today}`, `
-      <div class="dd-kpi"><span class="v tnum" style="color:var(--amber)">${fmtSar(odRows.reduce((a, b) => a + b.out, 0))}</span><span style="font-size:12px;color:var(--muted)">${odRows.length ? `على ${odRows.length} ${odRows.length === 1 ? 'فاتورة' : 'فواتير'}` : 'لا فواتير متأخرة'}</span></div>
+      <div class="dd-kpi"><span class="v tnum" style="color:var(--amber)">${fmtSar(odRows.reduce((a, b) => a + b.out, 0))}</span><span style="font-size:12px;color:var(--muted)">${odRows.length ? `على ${countAr(odRows.length, { one: 'فاتورة واحدة', two: 'فاتورتين', few: 'فواتير', many: 'فاتورة' })}` : 'لا فواتير متأخرة'}</span></div>
       <div class="dd-sec">حسب تاريخ الاستحقاق</div>
       <div>${ddRows(odRows.map((r) => `<div style="padding:.4rem 0;border-bottom:1px dashed var(--line)">
         <div style="display:flex;justify-content:space-between;gap:.7rem;font-size:12.5px;align-items:baseline">
-          <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.client || r.project || 'فاتورة')}${r.code ? ` <span style="color:var(--faint);font-size:10.5px">${esc(r.code)}</span>` : ''}</span>
+          <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.client || r.project || 'فاتورة')}${r.code ? ` <span style="color:var(--faint);font-size:10.5px"><bdi>${esc(r.code)}</bdi></span>` : ''}</span>
           <b class="tnum" style="flex:none">${fmtSar(r.out)}</b></div>
         <div style="display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted)">
-          <span>يستحق ${r.due_date ? String(r.due_date).slice(0, 10) : '—'}</span>${r.days != null ? `<span class="tnum" style="color:var(--red);font-weight:800">متأخر ${r.days} يوماً</span>` : ''}</div>
+          <span>يستحق ${r.due_date ? String(r.due_date).slice(0, 10) : '—'}</span>${r.days != null ? `<span class="tnum" style="color:var(--red);font-weight:800">متأخر ${dayWord(r.days)}</span>` : ''}</div>
       </div>`))}</div>`);
   }
 
@@ -308,7 +315,7 @@ export async function sectorPage(user, opts = {}) {
         <span>${tr(r.status)}${pcv != null ? '' : ' · بلا قيمة مسجلة'}</span>${pcv != null ? `<span class="tnum">حقّق ${pcv}% من قيمته</span>` : ''}</div>
       ${pcv != null ? `<div class="bar" style="margin-top:.2rem;height:4px"><span style="width:${Math.min(100, pcv)}%;background:var(--green)"></span></div>` : ''}
     </a>`;
-  }).join('') || `<div class="empty-state" style="padding:1rem"><div class="s">لا مشاريع مولّدة للإيراد بعد هذه السنة</div></div>`;
+  }).join('') || `<div class="empty-state" style="padding:1rem"><div class="s">لا مشاريع مولّدة للإيراد هذه السنة حتى الآن</div></div>`;
   const ragPills = [['GREEN', G.hOnTrack, 'green'], ['AMBER', G.hAtRisk, 'amber'], ['RED', G.hCritical, 'red']]
     .filter(([k]) => sd.rag[k]).map(([k, l, c]) => pill(`${l} ${sd.rag[k]}`, c)).join('');
   const projectsCard = card(`
@@ -329,7 +336,7 @@ export async function sectorPage(user, opts = {}) {
       <span class="t">${G.capacity}</span>
       <span class="aux"><a class="btn btn-sm" href="/app/team?year=${year}${user.scope === 'company' ? '&sector=' + sectorId : ''}">مساحة التسكين</a></span></div>
     <div style="padding:var(--pad-card-b);display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem">
-      <div><div style="font-size:10px;color:var(--muted)">${G.utilization} الآن</div><div class="tnum" style="font-weight:800;font-size:var(--fs-num-sm);color:${(staff.teamCurrent ?? 0) > 100 ? 'var(--red)' : 'var(--ink2)'}">${staff.teamCurrent ?? staff.teamUtil}%</div><div style="font-size:9.5px;color:var(--faint)">سنويًا ${staff.teamUtil}% · ${staff.headcount} موظف</div></div>
+      <div><div style="font-size:10px;color:var(--muted)">${G.utilization} الآن</div><div class="tnum" style="font-weight:800;font-size:var(--fs-num-sm);color:${(staff.teamCurrent ?? 0) > 100 ? 'var(--red)' : 'var(--ink2)'}">${staff.teamCurrent ?? staff.teamUtil}%</div><div style="font-size:9.5px;color:var(--faint)">سنوياً ${staff.teamUtil}% · ${countAr(staff.headcount, { one: 'موظف واحد', two: 'موظفان', few: 'موظفين', many: 'موظفاً' })}</div></div>
       <div><div style="font-size:10px;color:var(--muted)">${G.overloaded}</div><div class="tnum" style="font-weight:800;font-size:var(--fs-num-sm);color:${over.length ? 'var(--red)' : 'var(--ink2)'}">${over.length}</div>${over.length ? `<div style="font-size:9.5px;color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(over.slice(0, 2).map((e) => e.name).join('، '))}</div>` : ''}</div>
       <div><div style="font-size:10px;color:var(--muted)">${G.onBench}</div><div class="tnum" style="font-weight:800;font-size:var(--fs-num-sm);color:${bench.length ? 'var(--amber)' : 'var(--ink2)'}">${bench.length}</div>${bench.length ? `<div style="font-size:9.5px;color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(bench.slice(0, 2).map((e) => e.name).join('، '))}</div>` : ''}</div>
     </div>`);
@@ -398,7 +405,7 @@ export async function sectorPage(user, opts = {}) {
     <div style="display:flex;justify-content:space-between;align-items:baseline">
       <span style="font-size:var(--fs-body);font-weight:700">العقود النشطة <span style="color:var(--faint)">⊕</span></span>
       <b class="tnum" style="font-size:var(--fs-num-sm)">${fmtSar(activeC.v)}</b></div>
-    <div style="font-size:var(--fs-micro);color:var(--muted);margin-top:.15rem">${activeC.n} عقد نشط · موقّع ${year}: ${sd.contracts_count} (${fmtSar(sd.contracts_halalas)})</div>
+    <div style="font-size:var(--fs-micro);color:var(--muted);margin-top:.15rem">${countAr(activeC.n, { one: 'عقد نشط واحد', two: 'عقدان نشطان', few: 'عقود نشطة', many: 'عقداً نشطاً' })} · موقّع ${year}: ${sd.contracts_count} (${fmtSar(sd.contracts_halalas)})</div>
   </div>`, 'card-h') : '';
 
   // ── drill-down templates ──
@@ -418,28 +425,28 @@ export async function sectorPage(user, opts = {}) {
         ${pcv != null ? `<div class="bar" style="margin-top:.25rem;height:5px"><span style="width:${Math.min(100, pcv)}%;background:var(--green)"></span></div>` : ''}
       </div>`; }))}</div>`)}
   ${canContracts ? ddWrap('seccontracts', 'سجل عقود القطاع', `${esc(sd.sector.name_ar)} · النشطة + الموقّعة حسب السنة`, `
-    <div class="dd-kpi"><span class="v tnum">${fmtSar(activeC.v)}</span><span style="font-size:12px;color:var(--muted)">${activeC.n} عقد نشط · موقّع ${year}: ${sd.contracts_count} (${fmtSar(sd.contracts_halalas)})</span></div>
+    <div class="dd-kpi"><span class="v tnum">${fmtSar(activeC.v)}</span><span style="font-size:12px;color:var(--muted)">${countAr(activeC.n, { one: 'عقد نشط واحد', two: 'عقدان نشطان', few: 'عقود نشطة', many: 'عقداً نشطاً' })} · موقّع ${year}: ${sd.contracts_count} (${fmtSar(sd.contracts_halalas)})</span></div>
     <div class="dd-sec">أكبر العقود</div>
     <div>${ddRows(secContracts.map((c) => { const ip = c.value_halalas ? Math.min(100, Math.round(((c.invoiced || 0) / c.value_halalas) * 100)) : 0; return `
       <div style="padding:.4rem 0;border-bottom:1px dashed var(--line)">
         <div style="display:flex;justify-content:space-between;gap:.7rem;font-size:12.5px;align-items:baseline">
-          <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><a href="/app/contract/${c.id}" style="color:var(--brand)">${esc(c.client || c.code || 'عقد')}</a>${c.code ? ` <span style="color:var(--faint);font-size:10.5px">${esc(c.code)}</span>` : ''}</span>
+          <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><a href="/app/contract/${c.id}" style="color:var(--brand)">${esc(c.client || c.code || 'عقد')}</a>${c.code ? ` <span style="color:var(--faint);font-size:10.5px"><bdi>${esc(c.code)}</bdi></span>` : ''}</span>
           <b class="tnum" style="flex:none">${fmtSar(c.value_halalas)}</b></div>
         <div style="display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted)"><span>${tr(c.status)}${c.start_date ? ' · ' + String(c.start_date).slice(0, 10) : ''}</span><span class="tnum">فُوتر ${ip}%</span></div>
         <div class="bar" style="margin-top:.25rem;height:5px"><span style="width:${ip}%;background:var(--blue)"></span></div>
       </div>`; }))}</div>`) : ''}
   ${ddWrap('secwins', `${G.sales} والفوز · ${year}`, `${esc(sd.sector.name_ar)} · مقابل هدف المبيعات`, `
-    <div class="dd-kpi"><span class="v tnum" style="color:var(--brand2)">${fmtSar(sd.sales_halalas)}</span><span style="font-size:12px;color:var(--muted)">${wins.won} صفقة مكسوبة · ${G.winRate} ${wins.winRate}%</span></div>
+    <div class="dd-kpi"><span class="v tnum" style="color:var(--brand2)">${fmtSar(sd.sales_halalas)}</span><span style="font-size:12px;color:var(--muted)">${countAr(wins.won, { one: 'صفقة واحدة مكسوبة', two: 'صفقتان مكسوبتان', few: 'صفقات مكسوبة', many: 'صفقة مكسوبة' })} · ${G.winRate} ${wins.winRate}%</span></div>
     ${attain(sd.sales_halalas, sd.target_sales_halalas, 'var(--brand2)')}
     <div class="dd-sec">الصفقات المكسوبة</div>
     <div>${ddRows(secWon.map((d) => `<div class="dd-row"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.title_ar)}<span style="color:var(--faint);font-size:10.5px"> · ${esc(d.client || '—')}</span></span><b class="tnum" style="flex:none">${fmtSar(d.value_halalas)}</b></div>`))}</div>`)}
-  ${ddWrap('att-late-dlv', 'مخرجات تحتاج متابعة', `${esc(sd.sector.name_ar)} · شهور سابقة لم تصل للفوترة`, `
-    <div>${ddRows(lateDlv.map((d) => `<div class="dd-row"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.project || '')} · ${esc(d.name_ar)} <span style="color:var(--faint);font-size:10.5px">شهر ${d.month}</span></span><b class="tnum" style="flex:none">${fmtSar(d.amount_halalas || 0)}</b></div>`))}</div>`)}
+  ${ddWrap('att-late-dlv', 'مخرجات تحتاج متابعة', `${esc(sd.sector.name_ar)} · أشهر سابقة لم تصل للفوترة`, `
+    <div>${ddRows(lateDlv.map((d) => `<div class="dd-row"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.project || '')} · ${esc(d.name_ar)} <span style="color:var(--faint);font-size:10.5px">${MONTHS_AR[(d.month - 1) % 12] || ''}</span></span><b class="tnum" style="flex:none">${fmtSar(d.amount_halalas || 0)}</b></div>`))}</div>`)}
   ${collectDD}`;
 
   const switcher = user.scope === 'company' ? `<div class="chips" style="margin-bottom:.6rem"><span class="lbl">القطاع:</span>
     ${allSectors.map((s) => `<a href="/app/sector?year=${year}&sector=${s.id}&win=${win}" class="chip ${s.id === sectorId ? 'on' : ''}"><span class="dot" style="background:${s.color || '#244A99'}"></span>${esc(s.name_ar)}</a>`).join('')}
-    <a class="btn btn-sm" style="margin-inline-start:.3rem" href="/app/ceo?year=${year}&sector=${sectorId}">لوحة القيادة لهذا القطاع</a>
+    <a class="btn btn-sm" style="margin-inline-start:.3rem" href="/app/ceo?year=${year}&sector=${sectorId}">لوحة القيادة</a>
   </div>` : '';
 
   const finCol = [collectCard, contractsCard].filter(Boolean).join('');
@@ -463,5 +470,5 @@ export async function sectorPage(user, opts = {}) {
       <div class="sec-col">${clientsCard}${reportsCard}</div>
     </div>
     ${DD}`;
-  return layout({ user, active: 'sector', title: `${G.commandCenter} — ${esc(sd.sector.name_ar)}`, subtitle: `ما تغيّر، ما يحتاجك، وأين نقف مقابل الخطة · ${year}`, body, year });
+  return layout({ user, active: 'sector', title: `مركز قيادة ${esc(sd.sector.name_ar)}`, subtitle: `ما تغيّر، ما يحتاجك، وأين نقف مقابل الخطة · ${year}`, body, year });
 }

@@ -7,7 +7,8 @@ import { companyOverview, multiYearTrend, winRate,
 import { config } from '../../core/config.js';
 import { listProjects } from '../../modules/pmo/projects.js';
 import { sarShort, pct, esc, ddWrap, attain, ddRows } from './_shared.js';
-import { quarterLabel, yearElapsedPct } from '../../core/i18n/time.js';
+import { quarterLabel, yearElapsedPct, MONTHS_AR } from '../../core/i18n/time.js';
+import { countAr } from '../../core/i18n/plural.js';
 import { paceDelta } from '../../core/reports/metrics.js';
 import { G } from '../i18n/glossary.js';
 
@@ -67,13 +68,13 @@ export async function ceoPage(user, opts = {}) {
   const avgMargin = marginVals.length ? Math.round(marginVals.reduce((a, m) => a + m.margin, 0) / marginVals.length) : null;
   const revYoy = trend.length >= 2 ? (() => { const cur = trend[trend.length - 1].revenue_halalas, prev = trend[trend.length - 2].revenue_halalas; return prev ? Math.round((cur - prev) / prev * 100) : null; })() : null;
   const bookYoy = trend.length >= 2 ? (() => { const cur = trend[trend.length - 1].contracts_halalas, prev = trend[trend.length - 2].contracts_halalas; return prev ? Math.round((cur - prev) / prev * 100) : null; })() : null;
-  const yoyBadge = (v) => v == null ? '' : `<span style="font-size:11px;font-weight:700;color:${v >= 0 ? '#34d399' : '#fca5a5'}">${v >= 0 ? '▲' : '▼'} ${Math.abs(v)}% سنويًا</span>`;
+  const yoyBadge = (v) => v == null ? '' : `<span style="font-size:11px;font-weight:700;color:${v >= 0 ? '#34d399' : '#fca5a5'}">${v >= 0 ? '▲' : '▼'} ${Math.abs(v)}% سنوياً</span>`;
   // Book-to-Bill risk banner (Tier-1 insight): bookings vs revenue recognition.
   const riskBanner = (b2b.ratio != null && b2b.ratio < 1) ? `
     <div style="border-radius:12px;padding:.85rem 1.1rem;margin-bottom:1rem;background:linear-gradient(90deg,#7f1d1d,#b91c1c);color:#fff;display:flex;align-items:center;gap:.75rem">
       <span style="font-size:20px">⚠</span>
-      <div style="flex:1"><b>تنبيه استراتيجي — نسبة الحجز إلى الفوترة ${b2b.ratio}×</b>
-      <div style="font-size:12px;opacity:.9">الحجوزات الجديدة (${fmtSar(b2b.bookings_halalas)}) أقل من الإيراد المحقق (${fmtSar(b2b.revenue_halalas)}) لعام ${year} — الشركة تستهلك الأعمال المتعاقدة أسرع من تعويضها. يلزم تكثيف تطوير الأعمال.</div></div>
+      <div style="flex:1"><b>تنبيه استراتيجي — التعاقد إلى الإيراد ×${b2b.ratio}</b>
+      <div style="font-size:12px;opacity:.9">التعاقدات الجديدة (${fmtSar(b2b.bookings_halalas)}) أقل من الإيراد المحقق (${fmtSar(b2b.revenue_halalas)}) لعام ${year} — الشركة تستهلك الأعمال المتعاقدة أسرع من تعويضها. يلزم تكثيف تطوير الأعمال.</div></div>
     </div>` : '';
   const revPct = t.target_revenue ? t.revenue / t.target_revenue * 100 : 0;
   const salesPct = t.target_sales ? t.sales / t.target_sales * 100 : 0;
@@ -154,11 +155,11 @@ export async function ceoPage(user, opts = {}) {
     <div class="dd-kpi"><span class="v tnum" style="color:var(--green)">${fmtSar(t.revenue)}</span><span style="font-size:12px;color:var(--muted)">إيراد ${scopeLabel}</span></div>
     ${attain(t.revenue, t.target_revenue, 'var(--green)')}
     ${sec ? '' : `<div class="dd-sec">حسب القطاع</div>${secHbars('revenue_halalas', 'revenue_pct')}`}
-    <div class="dd-sec">حسب الربع (ر.س)</div>
+    <div class="dd-sec">حسب الربع (ر.س.)</div>
     ${miniBars(qSeries(qRev, 'revenue_halalas'), 'v', qOpts(year, { h: 118 }))}
     <div class="dd-sec">أكبر بنود الإيراد</div>
-    <div>${ddRows(revLines.map((r) => `<div class="dd-row"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.project || r.label || 'بند إيراد')}<span style="color:var(--faint);font-size:var(--fs-micro)">${r.month ? ' · شهر ' + r.month : ''}${!sec && r.sector ? ' · ' + esc(r.sector) : ''}</span></span><b class="tnum" style="flex:none">${fmtSar(r.amount_halalas)}</b></div>`))}</div>`)}
-  ${ddWrap('sales', `المبيعات (الحجوزات) · ${year}`, `${scopeLabel} · مقابل الهدف`, `
+    <div>${ddRows(revLines.map((r) => `<div class="dd-row"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.project || r.label || 'بند إيراد')}<span style="color:var(--faint);font-size:var(--fs-micro)">${r.month ? ' · ' + (MONTHS_AR[(r.month - 1) % 12] || '') : ''}${!sec && r.sector ? ' · ' + esc(r.sector) : ''}</span></span><b class="tnum" style="flex:none">${fmtSar(r.amount_halalas)}</b></div>`))}</div>`)}
+  ${ddWrap('sales', `المبيعات (التعاقدات) · ${year}`, `${scopeLabel} · مقابل الهدف`, `
     <div class="dd-kpi"><span class="v tnum" style="color:var(--brand2)">${fmtSar(t.sales)}</span><span style="font-size:12px;color:var(--muted)">مبيعات ${scopeLabel}</span></div>
     ${attain(t.sales, t.target_sales, 'var(--brand2)')}
     <div style="display:flex;gap:.6rem;margin-top:.2rem">
@@ -166,14 +167,14 @@ export async function ceoPage(user, opts = {}) {
         <div style="font-size:var(--fs-micro);color:var(--muted)">مبيعات السنة (${year}) · مقابل الهدف</div>
         <div class="tnum" style="font-weight:800;font-size:15px;color:var(--brand2)">${fmtSar(t.sales)}</div></div>
       <div style="flex:1;background:var(--bg,#f6f7fb);border-radius:10px;padding:.55rem .7rem">
-        <div style="font-size:var(--fs-micro);color:var(--muted)">إجمالي الحجوزات التراكمية · ${bookAll.n} صفقة</div>
+        <div style="font-size:var(--fs-micro);color:var(--muted)">إجمالي التعاقدات التراكمية · ${countAr(bookAll.n, { one: 'صفقة واحدة', two: 'صفقتان', few: 'صفقات', many: 'صفقة' })}</div>
         <div class="tnum" style="font-weight:800;font-size:15px">${fmtSar(bookAll.v)}</div></div>
     </div>
     <div style="font-size:var(--fs-micro);color:var(--faint);line-height:1.6">«مبيعات السنة» تحسب الصفقات المكسوبة في ${year} فقط (الأساس الصحيح مقابل الهدف السنوي)؛ «التراكمي» يجمع كل السنوات (كما كانت تعرضه المنصة السابقة كرقم واحد).</div>
-    ${bookByYear.length > 1 ? `<div class="dd-sec">الحجوزات حسب سنة الفوز</div>
-      <div>${ddRows(bookByYear.map((b) => `<div class="dd-row"><span>${b.year || 'بدون سنة'}<span style="color:var(--faint);font-size:var(--fs-micro)"> · ${b.n} صفقة</span></span><b class="tnum" style="flex:none${String(b.year) === String(year) ? ';color:var(--brand2)' : ''}">${fmtSar(b.v)}</b></div>`))}</div>` : ''}
+    ${bookByYear.length > 1 ? `<div class="dd-sec">التعاقدات حسب سنة الفوز</div>
+      <div>${ddRows(bookByYear.map((b) => `<div class="dd-row"><span>${b.year || 'بدون سنة'}<span style="color:var(--faint);font-size:var(--fs-micro)"> · ${countAr(b.n, { one: 'صفقة واحدة', two: 'صفقتان', few: 'صفقات', many: 'صفقة' })}</span></span><b class="tnum" style="flex:none${String(b.year) === String(year) ? ';color:var(--brand2)' : ''}">${fmtSar(b.v)}</b></div>`))}</div>` : ''}
     ${sec ? '' : `<div class="dd-sec">حسب القطاع (السنة)</div>${secHbars('sales_halalas', 'sales_pct')}`}
-    <div class="dd-sec">حسب الربع (ر.س)</div>
+    <div class="dd-sec">حسب الربع (ر.س.)</div>
     ${miniBars(qSeries(qBook, 'sales_halalas'), 'v', qOpts(year, { h: 118 }))}
     <div class="dd-sec">أكبر الصفقات المكسوبة (${year})</div>
     <div>${ddRows(wonDeals.map((d) => `<div class="dd-row"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.title_ar)}<span style="color:var(--faint);font-size:var(--fs-micro)"> · ${esc(d.client || '—')}${!sec && d.sector ? ' · ' + esc(d.sector) : ''}</span></span><b class="tnum" style="flex:none">${fmtSar(d.value_halalas)}</b></div>`))}</div>`)}
@@ -183,7 +184,7 @@ export async function ceoPage(user, opts = {}) {
     <div>${ddRows(pipeStages.map((s) => `<div style="padding:.32rem 0">
       <div style="display:flex;align-items:center;gap:.5rem;font-size:var(--fs-body)"><span style="width:9px;height:9px;border-radius:3px;background:${s.color || '#64748b'};flex:none"></span><span style="flex:1">${esc(s.name_ar)}</span><span class="tnum" style="font-weight:800">${s.n}</span><span class="tnum" style="color:var(--muted);font-size:11px">${fmtSar(s.v)}</span></div>
       <div class="bar" style="margin-top:.22rem"><span style="width:${Math.round((s.v / maxStage) * 100)}%;background:${s.color || '#64748b'}"></span></div></div>`))}</div>`)}
-  ${ddWrap('winrate', `معدل الفوز · ${year}`, scopeLabel, `
+  ${ddWrap('winrate', `نسبة الفوز · ${year}`, scopeLabel, `
     <div class="dd-kpi"><span class="v tnum" style="color:var(--green)">${pct(wr.rate)}</span><span style="font-size:12px;color:var(--muted)">فوز ${wr.won} · خسارة ${wr.lost}</span></div>
     <div class="bar" style="height:8px"><span style="width:${Math.min(100, wr.rate || 0)}%;background:var(--green)"></span></div>
     <div class="dd-sec">الصفقات المكسوبة الأعلى</div>
@@ -210,11 +211,11 @@ export async function ceoPage(user, opts = {}) {
       <div style="display:flex;flex-wrap:wrap;gap:1.25rem;align-items:center;position:relative">
         ${heroBlock(sec ? 'إيرادات القطاع المحققة' : 'إجمالي الإيرادات المحققة', t.revenue, t.target_revenue, revPct, '#34d399', `${yoyBadge(revYoy)}${heroPace(t.revenue, t.target_revenue)}`, 'revenue')}
         <div style="width:1px;align-self:stretch;background:rgba(255,255,255,.12)"></div>
-        ${heroBlock(sec ? 'مبيعات القطاع (حجوزات)' : 'إجمالي المبيعات (حجوزات)', t.sales, t.target_sales, salesPct, '#c07bff', `${yoyBadge(bookYoy)}${heroPace(t.sales, t.target_sales)}`, 'sales')}
+        ${heroBlock(sec ? 'مبيعات القطاع (تعاقدات)' : 'إجمالي المبيعات (تعاقدات)', t.sales, t.target_sales, salesPct, '#c07bff', `${yoyBadge(bookYoy)}${heroPace(t.sales, t.target_sales)}`, 'sales')}
       </div>
       <div style="display:flex;gap:1.1rem;flex-wrap:wrap;margin-top:.95rem;padding-top:.85rem;border-top:1px solid rgba(255,255,255,.1);position:relative">
         ${hm('خط الفرص المفتوح', fmtSar(pipelineVal), 'مرجّح ' + fmtSar(cov.weighted_halalas), 'pipeline')}
-        ${hm('معدل الفوز', pct(wr.rate), `فوز ${wr.won} · خسارة ${wr.lost}`, 'winrate')}
+        ${hm('نسبة الفوز', pct(wr.rate), `فوز ${wr.won} · خسارة ${wr.lost}`, 'winrate')}
         ${hm('الأعمال المتعاقدة', fmtSar(bk.backlog_halalas), 'قيمة متعاقدة لم تتحول لإيراد بعد', 'backlog')}
         ${hm('تحقيق الإيراد', pct(revPct), 'من ' + fmtSar(t.target_revenue), 'revenue')}
         ${hm('تحقيق المبيعات', pct(salesPct), 'من ' + fmtSar(t.target_sales), 'sales')}
@@ -231,10 +232,10 @@ export async function ceoPage(user, opts = {}) {
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:.9rem">
       ${card(`<div style="padding:.9rem 1rem"><div style="font-weight:800;font-size:13.5px">الإيراد المحقق حسب الربع · ${year}</div>
-        <div style="font-size:11px;color:var(--muted);margin:.1rem 0 .4rem">مليون ر.س.</div>
+        <div style="font-size:11px;color:var(--muted);margin:.1rem 0 .4rem">القيم مختصرة: M مليون · K ألف</div>
         ${miniBars(qSeries(qRev, 'revenue_halalas'), 'v', qOpts(year))}</div>`)}
-      ${card(`<div style="padding:.9rem 1rem"><div style="font-weight:800;font-size:13.5px">المبيعات (الحجوزات) حسب الربع · ${year}</div>
-        <div style="font-size:11px;color:var(--muted);margin:.1rem 0 .4rem">مليون ر.س.</div>
+      ${card(`<div style="padding:.9rem 1rem"><div style="font-weight:800;font-size:13.5px">المبيعات (التعاقدات) حسب الربع · ${year}</div>
+        <div style="font-size:11px;color:var(--muted);margin:.1rem 0 .4rem">القيم مختصرة: M مليون · K ألف</div>
         ${miniBars(qSeries(qBook, 'sales_halalas'), 'v', qOpts(year))}</div>`)}
     </div>
     ${ddTemplates}`;
@@ -285,9 +286,9 @@ export async function portfolioPage(user) {
     <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:.7rem;margin-bottom:1rem">
       ${kpi('إجمالي المشاريع', rows.length, `${active.length} قائم · ${completed} مكتمل`)}
       ${kpi('قيمة المحفظة', fmtSar(totalVal), 'قيمة العقود')}
-      ${kpi('سليمة (أخضر)', ragC.GREEN, 'ضمن المسار', 'var(--green)')}
-      ${kpi('تحذير (أصفر)', ragC.AMBER, 'تحتاج متابعة', 'var(--amber)')}
-      ${kpi('متعثرة (أحمر)', ragC.RED, 'تدخّل عاجل', ragC.RED ? 'var(--red)' : '')}
+      ${kpi(G.hOnTrack + ' (أخضر)', ragC.GREEN, 'ضمن المسار', 'var(--green)')}
+      ${kpi(G.hAtRisk + ' (أصفر)', ragC.AMBER, 'تحتاج متابعة', 'var(--amber)')}
+      ${kpi(G.hCritical + ' (أحمر)', ragC.RED, 'تدخّل عاجل', ragC.RED ? 'var(--red)' : '')}
       ${kpi('متوسط الإنجاز', avgProg + '%', 'للمشاريع القائمة')}
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:.9rem;align-items:start">${groups || '<div style="color:var(--muted);font-size:var(--fs-ui)">لا مشاريع ضمن نطاقك</div>'}</div>`;

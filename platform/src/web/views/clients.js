@@ -7,6 +7,7 @@ import { get } from '../../core/db/index.js';
 import { config } from '../../core/config.js';
 import { can } from '../../core/rbac/index.js';
 import { G } from '../i18n/glossary.js';
+import { countAr } from '../../core/i18n/plural.js';
 import { listClients, clientOverview, CLIENT_TYPES } from '../../modules/clients/clients.js';
 import { sarShort, esc, statMini, noticeCard, ddWrap, ddRows } from './_shared.js';
 
@@ -108,7 +109,7 @@ export async function clientsPage(user, opts = {}) {
       <div style="font-size:10.5px;color:var(--faint)" class="tnum">${top1Share != null ? `حصته ${top1Share}% من إيراد ${fy}` : `إيراده ${fmtSar(top1.fy_revenue_halalas)}`}</div></div>`, 'card-h')
     : statMini(G.topClient, '—', `لا إيراد مسجلاً في ${fy}`);
 
-  // معدل الفوز الإجمالي على العملاء الظاهرين (الفوز التاريخي المستورد خارج الحسبة)
+  // نسبة الفوز التاريخية (كل السنوات) على العملاء الظاهرين (الفوز التاريخي المستورد خارج الحسبة)
   const sumWon = rows.reduce((a, r) => a + (r.won_count || 0), 0);
   const sumLost = rows.reduce((a, r) => a + (r.lost_count || 0), 0);
   const winRate = sumWon + sumLost ? Math.round((sumWon / (sumWon + sumLost)) * 100) : null;
@@ -127,7 +128,7 @@ export async function clientsPage(user, opts = {}) {
     ${statMini('عدد العملاء', rows.length, `${relCount['نشطة']} ${G.relActive} · ${relCount['فاترة']} ${G.relCooling} · ${relCount['خاملة']} ${G.relDormant}`)}
     ${concStat}
     ${topStat}
-    ${statMini('معدل الفوز الإجمالي', winRate != null ? winRate + '%' : '—',
+    ${statMini('نسبة الفوز التاريخية (كل السنوات)', winRate != null ? winRate + '%' : '—',
     winRate != null ? `${sumWon} ${G.won} · ${sumLost} ${G.lost}` : 'لا فرص محسومة بعد',
     winRate == null ? '' : winRate >= 50 ? 'good' : winRate < 30 ? 'warn' : '')}
     ${growthStat}</div>`;
@@ -189,7 +190,7 @@ export async function clientsPage(user, opts = {}) {
     <td style="padding:.55rem .5rem;text-align:center">${secChips(r)}</td>
     <td style="padding:.55rem .5rem;text-align:center;font-size:12px;color:var(--ink2)">${r.rel_owner ? `<span style="display:inline-block;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle" title="${esc(r.rel_owner)}">${esc(r.rel_owner)}</span>` : dash}</td>
     <td style="padding:.55rem .5rem;text-align:center">${pill(r.relationship, REL_TONE[r.relationship] || 'slate')}</td>
-    <td style="padding:.55rem .5rem;text-align:center;font-size:12px;color:var(--muted);white-space:nowrap" class="tnum">${r.last_activity_at ? relDay(r.last_activity_at) : '<span style="color:var(--faint)">لا تواصل مسجل</span>'}</td>
+    <td style="padding:.55rem .5rem;text-align:center;font-size:12px;color:var(--muted);white-space:nowrap" class="tnum">${r.last_activity_at ? relDay(r.last_activity_at) : '<span style="color:var(--faint)">لا تواصل مسجّل بعد</span>'}</td>
     <td style="padding:.55rem .5rem;text-align:left;white-space:nowrap">${oppsCell(r)}</td>
     <td style="padding:.55rem .5rem;text-align:right;white-space:nowrap">${winLossCell(r)}</td>
     <td style="padding:.55rem .5rem;text-align:center;font-size:12.5px" class="tnum">${r.active_projects || dash}</td>
@@ -204,11 +205,11 @@ export async function clientsPage(user, opts = {}) {
     ${canCreate && !query && !type ? `<button class="btn btn-primary" data-action="client-add">${icon('plus')} عميل جديد</button>` : ''}</div>`;
 
   const table = card(`<div class="tblwrap"><table style="width:100%;border-collapse:collapse;min-width:1100px">
-    <thead><tr>${th(G.client)}${th('القطاعات', 'center')}${th(G.relOwner, 'center')}${th(G.relationship, 'center')}${th(G.lastActivity, 'center')}${th(G.opportunities, 'left')}${th('الفوز · الخسارة')}${th('مشاريع نشطة', 'center')}${th('قيمة العقود', 'left')}${th(`إيراد ${fy}`, 'left')}${th(G.outstanding, 'left')}</tr></thead>
+    <thead><tr>${th(G.client)}${th('القطاعات', 'center')}${th(G.relOwner, 'center')}${th(`<span data-tip="تُقاس بآخر تواصل مسجّل — عميل بمشاريع نشطة بلا تواصل حديث يظهر خاملاً">${G.relationship} ⓘ</span>`, 'center')}${th(G.lastActivity, 'center')}${th(G.opportunities, 'left')}${th('الفوز · الخسارة')}${th('مشاريع نشطة', 'center')}${th('قيمة العقود', 'left')}${th(`إيراد ${fy}`, 'left')}${th(G.outstanding, 'left')}</tr></thead>
     <tbody>${rowsHtml}</tbody></table>${rows.length ? '' : emptyState}</div>`);
 
   const body = `${toolbar}${strip}${chips}${table}${ddTop5}`;
-  return layout({ user, active: 'clients', title: G.clients, subtitle: `سجل العلاقات · ${rows.length} عميل`, body, scripts: ['/static/pages/clients.js'] });
+  return layout({ user, active: 'clients', title: G.clients, subtitle: `سجل العلاقات · ${countAr(rows.length, { one: 'عميل واحد', two: 'عميلان', few: 'عملاء', many: 'عميلاً' })}`, body, scripts: ['/static/pages/clients.js'] });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -231,7 +232,7 @@ export async function clientDetailPage(user, clientId) {
       <h2 style="font-size:18px;margin:0">${esc(c.name_ar)}</h2>
       ${c.type ? pill(esc(c.type), TYPE_TONE[c.type] || 'slate') : ''}
       ${pill(`${G.relationship}: ${k.relationship}`, REL_TONE[k.relationship] || 'slate')}
-      <span style="font-size:12px;color:var(--muted)">${c.code ? `<bdi>${esc(c.code)}</bdi> · ` : ''}${G.lastActivity}: <span class="tnum">${k.last_activity_at ? relDay(k.last_activity_at) : 'لا تواصل مسجل'}</span></span>
+      <span style="font-size:12px;color:var(--muted)">${c.code ? `<bdi>${esc(c.code)}</bdi> · ` : ''}${G.lastActivity}: <span class="tnum">${k.last_activity_at ? relDay(k.last_activity_at) : 'لا تواصل مسجّل بعد'}</span></span>
     </div>`;
 
   // ── شريط المؤشرات (٥ بلاطات قابلة للنقر → تفصيل) ──
@@ -241,9 +242,9 @@ export async function clientDetailPage(user, clientId) {
     ${sub ? `<div style="font-size:10.5px;color:var(--faint)">${sub}</div>` : ''}</div>`, o.dd ? 'cardclick card-h' : '');
   const kpiBand = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:.7rem;margin-bottom:1rem">
     ${stat(`إيراد ${fy}`, fmtSar(k.fy_revenue_halalas), `الإجمالي التاريخي ${sarShort(k.lifetime_revenue_halalas)}`, { dd: 'rev', tone: 'var(--green)' })}
-    ${stat(G.pipeline, fmtSar(k.open_pipeline_halalas), `${d.opportunities.open.length} فرصة مفتوحة`, { dd: 'pipe' })}
+    ${stat(G.pipeline, fmtSar(k.open_pipeline_halalas), countAr(d.opportunities.open.length, { one: 'فرصة واحدة مفتوحة', two: 'فرصتان مفتوحتان', few: 'فرص مفتوحة', many: 'فرصة مفتوحة' }), { dd: 'pipe' })}
     ${stat(G.weighted, fmtSar(k.weighted_pipeline_halalas), 'حسب احتمال الفوز', { dd: 'wpipe', tone: 'var(--brand2)' })}
-    ${stat('مشاريع نشطة', k.active_projects, `من أصل ${d.projects.length} مشروع`, { dd: 'prj' })}
+    ${stat('مشاريع نشطة', k.active_projects, `من أصل ${countAr(d.projects.length, { one: 'مشروع واحد', two: 'مشروعين', few: 'مشاريع', many: 'مشروعاً' })}`, { dd: 'prj' })}
     ${stat(G.outstanding, fmtSar(k.open_ar_halalas), d.invoices_summary.overdue ? `منه ${G.overdue}: ${fmtSar(d.invoices_summary.overdue)}` : 'لا متأخرات', { dd: 'ar', tone: k.open_ar_halalas ? 'var(--amber)' : 'var(--ink2)' })}
   </div>`;
 
@@ -263,7 +264,7 @@ export async function clientDetailPage(user, clientId) {
         <div style="font-size:10.5px;color:var(--faint)" class="tnum">${a.actor ? esc(a.actor) + ' · ' : ''}${relDay(a.at) || ''}${a.source === 'derived' ? ' · من سجلات المنصة' : ''}</div>
       </div></div>`).join('');
   const timelineCard = card(`<div style="padding:.85rem 1rem;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center">
-      <div style="font-weight:800;font-size:13.5px">${G.activities}</div><span style="font-size:10.5px;color:var(--muted)">${d.activities.length} حدث</span></div>
+      <div style="font-weight:800;font-size:13.5px">${G.activities}</div><span style="font-size:10.5px;color:var(--muted)">${countAr(d.activities.length, { one: 'حدث واحد', two: 'حدثان', few: 'أحداث', many: 'حدثاً' })}</span></div>
     ${actForm}
     <div style="padding:.3rem 1rem .7rem;max-height:520px;overflow-y:auto">${feedItems || `<div class="empty-state">${icon('history')}<div class="t">لا تواصل مسجلاً بعد</div><div class="s">سجّل أول اتصال أو اجتماع من النموذج بالأعلى — يبني الخط الزمني ذاكرة العلاقة.</div></div>`}</div>`);
 

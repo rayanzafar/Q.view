@@ -9,6 +9,7 @@ import { canSeeSensitive, can } from '../../core/rbac/index.js';
 import { G } from '../i18n/glossary.js';
 import { esc, ddWrap, ddRows } from './_shared.js';
 import { MONTHS_AR, monthLabelDual, currentMonthIndex, nowDot } from '../../core/i18n/time.js';
+import { countAr } from '../../core/i18n/plural.js';
 
 export async function timesheetPage(user) {
   const from = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
@@ -26,7 +27,7 @@ export async function timesheetPage(user) {
     <div class="grid grid-cols-3 gap-4 mb-4">
       ${card(`<div class="p-4"><div class="text-[11px] text-muted">إجمالي ساعات الأسبوع</div><div class="text-2xl font-extrabold">${total}</div></div>`)}
       ${card(`<div class="p-4"><div class="text-[11px] text-muted">قابلة للفوترة</div><div class="text-2xl font-extrabold">${billable}</div></div>`)}
-      ${card(`<div class="p-4"><div class="text-[11px] text-muted">نسبة الإشغال</div><div class="text-2xl font-extrabold">${total ? Math.round(billable / total * 100) : 0}%</div></div>`)}
+      ${card(`<div class="p-4"><div class="text-[11px] text-muted">نسبة القابل للفوترة</div><div class="text-2xl font-extrabold">${total ? Math.round(billable / total * 100) : 0}%</div></div>`)}
     </div>
     ${card(`<div class="p-4 border-b border-line">
       <div class="font-bold text-sm mb-2">تسجيل وقت</div>
@@ -42,7 +43,7 @@ export async function timesheetPage(user) {
       <table class="w-full"><thead><tr class="text-[11px] text-muted text-right">
         <th class="py-2 px-3 font-medium">التاريخ</th><th class="px-3 font-medium">النوع</th><th class="px-3 font-medium">ساعات</th>
         <th class="px-3 font-medium">الفوترة</th><th class="px-3 font-medium">ملاحظة</th></tr></thead>
-        <tbody id="ts-rows">${list || '<tr><td class="p-4 text-muted text-sm" colspan="5">لا سجلات هذا الأسبوع</td></tr>'}</tbody></table>`)}`;
+        <tbody id="ts-rows">${list || '<tr><td class="p-4 text-muted text-sm" colspan="5">لا سجلات هذا الأسبوع — سجّل وقتك من النموذج بالأعلى</td></tr>'}</tbody></table>`)}`;
   return layout({ user, active: 'timesheet', title: 'سجل الوقت', body });
 }
 
@@ -137,7 +138,8 @@ export async function teamPage(user, opts = {}) {
   };
   const needsCard = card(`<div style="padding:.8rem 1rem;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:.5rem">
       <span style="font-weight:800;font-size:13px">يحتاج قرار تسكين</span>
-      <span class="pill" style="background:${needs.length ? '#fef3c7;color:#b45309' : '#dcfce7;color:#059669'}">${needs.length || 'صفر'}</span></div>
+      <span class="pill" style="background:${needs.length ? '#fef3c7;color:#b45309' : '#dcfce7;color:#059669'}">${needs.length || 'صفر'}</span>
+      <span style="margin-inline-start:auto;font-size:var(--fs-micro);color:var(--faint)">الأعلى أولوية: من تجاوز طاقته ثم من بلا تسكين — حتى 6 أسماء</span></div>
     <div style="padding:.7rem 1rem;display:flex;flex-direction:column;gap:.5rem">
       ${needs.map(needRow).join('') || `<div class="alert ok">✓ ${G.nothingNeedsYou} — الطاقة موزّعة ضمن الحدود هذا الشهر</div>`}
     </div>`);
@@ -207,7 +209,7 @@ export async function teamPage(user, opts = {}) {
       `✓ لا أحد يتجاوز طاقته هذه السنة — راقب «${G.underused}» لتوزيع العمل القادم`) +
     bsec('avail', G.underused, `${G.utilization} في ${esc(curName)} أقل من 70% — مرشحون للتسكين`, 'background:#fef3c7;color:#92400e', true, groups.avail,
       `الجميع مُسكَّن بنسبة 70% فأكثر في ${esc(curName)} — إن احتجت سعة راجع «مستقر»`) +
-    bsec('stable', 'مستقر', `${G.utilization} صحي ضمن الحدود (70–110%)`, 'background:#dcfce7;color:#059669', false, groups.stable, '') +
+    bsec('stable', 'مستقر أو غير نشط', `${G.utilization} صحي ضمن الحدود (70–110%) أو موظف غير نشط`, 'background:#dcfce7;color:#059669', false, groups.stable, '') +
     bsec('external', 'غير مُسكَّن (تعاون خارجي)', 'بلا قطاع وبلا أي تسكين هذه السنة', 'background:#f1f5f9;color:#475569', false, groups.external, '');
 
   // رأس الأشهر: عناوين مزدوجة (عربي كامل/Jan على الضيق) + النقطة الذهبية «نحن هنا» على الشهر الحالي
@@ -290,7 +292,7 @@ export async function teamPage(user, opts = {}) {
   const body = `
     ${style}${secChips}
     <div class="toolbar" style="margin-bottom:.8rem">
-      <div style="font-weight:800;font-size:14px">${sector ? esc(sectorNames[sector]) : 'كل القطاعات'} · ${roster.length} عضو</div>
+      <div style="font-weight:800;font-size:14px">${sector ? esc(sectorNames[sector]) : 'كل القطاعات'} · ${countAr(activeR.length, { one: 'عضو نشط واحد', two: 'عضوان نشطان', few: 'أعضاء نشطين', many: 'عضواً نشطاً' })}${roster.length > activeR.length ? ` <span style="color:var(--faint);font-weight:400">(+${roster.length - activeR.length} غير نشط)</span>` : ''}</div>
       <div class="spacer"></div>
       ${canManage ? pill('لديك صلاحية إدارة الفريق', 'green') : pill('عرض فقط', 'slate')}
       ${canCreate ? `<button class="btn btn-primary" onclick="Sanad.empAdd()">${icon('plus')} إضافة موظف</button>` : ''}

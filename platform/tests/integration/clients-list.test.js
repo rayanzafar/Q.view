@@ -215,7 +215,7 @@ test('/app/clients page renders the decision table with populated cells (no NaN/
   assert.equal(r.status, 200);
   const html = await r.text();
   for (const needle of ['هيئة الاختبار الرقمية', 'أحمد المالك', 'قطاع الأعمال', 'مالك العلاقة',
-    'الفوز · الخسارة', 'قيمة العقود', 'المستحق', 'العميل الأول', 'معدل الفوز الإجمالي', 'نمو الإيراد',
+    'الفوز · الخسارة', 'قيمة العقود', 'المستحق', 'العميل الأول', 'نسبة الفوز التاريخية (كل السنوات)', 'نمو الإيراد',
     '1 فوز بقيمة', '+1 تاريخي'])
     assert.ok(html.includes(needle), `page contains «${needle}»`);
   assert.ok(!/NaN|undefined/.test(html), 'no NaN/undefined in the rendered page');

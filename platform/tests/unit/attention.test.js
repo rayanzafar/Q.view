@@ -21,12 +21,12 @@ const { revenueForecast, pipelineAging } = await import('../../src/core/reports/
 const T = '2026-07-20';
 before(async () => {
   await insert('sector', { id: 'S1', name_ar: 'قطاع الاختبار', active: 1, sort_order: 1, created_at: T });
-  await insert('stage', { id: 'OPEN1', name_ar: 'مؤهلة', default_win_pct: 40, sort_order: 2, is_won: 0, is_lost: 0 });
+  await insert('stage', { id: 'QUALIFIED', name_ar: 'مؤهلة', default_win_pct: 40, sort_order: 2, is_won: 0, is_lost: 0 });
   await insert('stage', { id: 'WON', name_ar: 'فائزة', default_win_pct: 100, sort_order: 9, is_won: 1, is_lost: 0 });
   await insert('client', { id: 'C1', name_ar: 'عميل', created_at: T });
   // فرصة راكدة (60 يوماً في مرحلتها) بلا خطوة تالية + فرصة حديثة
-  await insert('opportunity', { id: 'O1', title_ar: 'فرصة راكدة', sector_id: 'S1', stage_id: 'OPEN1', win_pct: 50, value_halalas: 100000000, year: 2026, stage_changed_at: '2026-05-01T00:00:00Z', created_at: '2026-05-01T00:00:00Z' });
-  await insert('opportunity', { id: 'O2', title_ar: 'فرصة نشطة', sector_id: 'S1', stage_id: 'OPEN1', win_pct: 50, value_halalas: 50000000, year: 2026, next_action: 'اجتماع', stage_changed_at: '2026-07-15T00:00:00Z', created_at: '2026-07-15T00:00:00Z' });
+  await insert('opportunity', { id: 'O1', title_ar: 'فرصة راكدة', sector_id: 'S1', stage_id: 'QUALIFIED', win_pct: 50, value_halalas: 100000000, year: 2026, stage_changed_at: '2026-05-01T00:00:00Z', created_at: '2026-05-01T00:00:00Z' });
+  await insert('opportunity', { id: 'O2', title_ar: 'فرصة نشطة', sector_id: 'S1', stage_id: 'QUALIFIED', win_pct: 50, value_halalas: 50000000, year: 2026, next_action: 'اجتماع', stage_changed_at: '2026-07-15T00:00:00Z', created_at: '2026-07-15T00:00:00Z' });
   // فاتورة متأخرة
   await insert('invoice', { id: 'I1', sector_id: 'S1', client_id: 'C1', amount_halalas: 25000000, status: 'ISSUED', issue_date: '2026-05-01', due_date: '2026-06-01', created_at: T });
   // إيراد محقق 1000 ريال

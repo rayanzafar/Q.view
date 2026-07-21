@@ -47,7 +47,7 @@ export async function usersPage(user) {
     ${statMini('إجمالي المستخدمين', rows.length, `${Object.keys(byRole).length} دور`)}
     ${statMini('نشط', activeN, 'حسابات مفعّلة', 'good')}
     ${statMini('معطّل', rows.length - activeN, 'حسابات موقوفة', rows.length - activeN ? 'bad' : '')}
-    ${statMini('لم يسجّل دخولًا', neverIn, 'حسابات خاملة', neverIn ? 'warn' : '')}</div>`;
+    ${statMini('لم يسجّل دخولاً', neverIn, 'حسابات خاملة', neverIn ? 'warn' : '')}</div>`;
   const body = `${strip}
     <div style="display:grid;grid-template-columns:2fr 1fr;gap:.9rem">
       ${card(`<div class="p-4 border-b border-line font-bold text-sm">المستخدمون والصلاحيات (${rows.length})</div>
@@ -56,7 +56,7 @@ export async function usersPage(user) {
         <th class="px-3 font-medium">الحالة</th><th class="px-3 font-medium">آخر دخول</th></tr></thead><tbody>${list}</tbody></table></div>`)}
       ${card(`<div class="p-4 border-b border-line font-bold text-sm">التوزيع حسب الدور</div><div style="padding:.7rem 1rem">${hbars(roleItems, { fmt: (v) => v + '' })}</div>`)}
     </div>
-    <div class="mt-3 text-[11px] text-muted">التفويض يُنفَّذ على الخادم. تعطيل حسابك أو خفض دورك بنفسك ممنوع خادميًا. الرواتب وعناوين IP محجوبة عن غير المصرّح لهم.</div>`;
+    <div class="mt-3 text-[11px] text-muted">التفويض يُنفَّذ على الخادم. تعطيل حسابك أو خفض دورك بنفسك ممنوع خادمياً. الرواتب وعناوين IP محجوبة عن غير المصرّح لهم.</div>`;
   return layout({ user, active: 'users', title: 'المستخدمون والصلاحيات', body });
 }
 

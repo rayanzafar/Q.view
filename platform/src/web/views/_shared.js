@@ -51,8 +51,11 @@ export function paceCard({ label, actual = 0, target = 0, forecast = null, weigh
     : delta >= 3 ? `<span class="pace-chip up">متقدم عن الخطة الزمنية بـ<b class="tnum">${delta}</b> ${delta >= 3 && delta <= 10 ? 'نقاط' : 'نقطة'}</span>`
     : delta <= -3 ? `<span class="pace-chip down">متأخر عن الخطة الزمنية بـ<b class="tnum">${Math.abs(delta)}</b> ${Math.abs(delta) >= 3 && Math.abs(delta) <= 10 ? 'نقاط' : 'نقطة'}</span>`
     : '<span class="pace-chip flat">على الخطة الزمنية</span>';
-  const overTgt = target && forecast && forecast > target * 1.05
-    ? `<span class="pace-chip up" data-tip="المتوقع نهاية السنة يتجاوز الهدف">قد يبلغ ×${(forecast / target).toFixed(1)} من الهدف</span>` : '';
+  // فوق 3 أضعاف الهدف يصبح الرقم إنذار مراجعة لا بشرى — احتمالات الفرص أو الهدف يحتاج تدقيقاً
+  const fcRatio = target && forecast ? forecast / target : null;
+  const overTgt = fcRatio == null || fcRatio <= 1.05 ? ''
+    : fcRatio <= 3 ? `<span class="pace-chip up" data-tip="المتوقع نهاية السنة يتجاوز الهدف">قد يبلغ ${fcRatio.toFixed(1)} ضعف الهدف</span>`
+    : `<span class="pace-chip flat" data-tip="المتوقع = المحقق + المرجّح من الفرص المفتوحة — فجوة بهذا الحجم تعني عادة أهدافاً غير محدّثة أو احتمالات فوز مبالغاً فيها">المتوقع يفوق الهدف بأكثر من ٣ أضعاف — راجع الهدف أو احتمالات الفرص</span>`;
   const track = target ? `
     <div class="pace-bar" role="img" aria-label="المحقق ${attainPct}% من الهدف، وانقضى ${elapsed}% من السنة">
       <span class="fill" style="width:${Math.min(100, attainPct)}%;background:${color}"></span>

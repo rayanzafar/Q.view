@@ -5,9 +5,11 @@ import { can } from '../rbac/index.js';
 import { myApprovalQueue } from '../../modules/workflow/engine.js';
 import { fmtSar } from '../util/ids.js';
 import { ROT_THRESHOLDS } from '../../modules/crm/opportunities.js';
+import { countAr } from '../i18n/plural.js';
 
-// عتبات ركود المرحلة (أيام) — مصدر واحد مع لوحة الفرص (ROT_THRESHOLDS)؛ default لغير المعرّف
-const STAGE_ROT_DAYS = { default: 21, ...ROT_THRESHOLDS };
+// عتبات ركود المرحلة (أيام) — نفس مصدر لوحة الفرص حرفياً: المرحلة بلا عتبة لا تركد
+// (كي يتطابق عدد «المتوقفة» هنا مع عدّاد اللوحة تماماً — لا رقمين مختلفين لنفس المؤشر)
+const STAGE_ROT_DAYS = ROT_THRESHOLDS;
 
 // أسماء موارد الاعتمادات بالعربية — لا يظهر اسم مورد تقني للمستخدم أبداً
 export const RESOURCE_AR = { opportunity: 'فرصة', proposal: 'عرض', expense: 'مصروف',
@@ -23,7 +25,7 @@ export async function attentionFeed(user, sectorId, { year, today } = {}) {
   try {
     const q = await myApprovalQueue(user);
     if (q.length) items.push({ rank: 1, tone: 'brand', icon: 'approvals', dd: null, href: '/app/approvals',
-      title: q.length === 1 ? 'طلب اعتماد واحد بانتظار قرارك' : `${q.length} طلبات اعتماد بانتظار قرارك`,
+      title: `${countAr(q.length, { one: 'طلب اعتماد واحد', two: 'طلبا اعتماد', few: 'طلبات اعتماد', many: 'طلب اعتماد' })} بانتظار قرارك`,
       sub: q.slice(0, 2).map((r) => RESOURCE_AR[r.resource] || 'طلب').join(' · '),
       action: 'راجِع واعتمد' });
   } catch { /* قائمة الاعتمادات ليست لكل الأدوار */ }
@@ -37,7 +39,7 @@ export async function attentionFeed(user, sectorId, { year, today } = {}) {
   if (od.length) {
     const sum = od.reduce((a, b) => a + (b.amount_halalas || 0), 0);
     items.push({ rank: 2, tone: 'red', icon: 'money', href: '/app/finance',
-      title: `${fmtSar(sum)} مستحقة متأخرة على ${od.length === 1 ? 'فاتورة واحدة' : od.length + ' فواتير'}`,
+      title: `مستحقات متأخرة بقيمة ${fmtSar(sum)} على ${countAr(od.length, { one: 'فاتورة واحدة', two: 'فاتورتين', few: 'فواتير', many: 'فاتورة' })}`,
       sub: od.slice(0, 2).map((i) => i.client || i.code || '').filter(Boolean).join(' · '),
       action: 'تابع التحصيل' });
   }
@@ -51,13 +53,13 @@ export async function attentionFeed(user, sectorId, { year, today } = {}) {
   if (stalled.length) {
     const sv = stalled.reduce((a, b) => a + (b.value_halalas || 0), 0);
     items.push({ rank: 3, tone: 'amber', icon: 'opportunity', href: '/app/opportunities',
-      title: `${stalled.length === 1 ? 'فرصة واحدة متوقفة' : stalled.length + ' فرص متوقفة'} بقيمة ${fmtSar(sv)}`,
+      title: `${countAr(stalled.length, { one: 'فرصة واحدة متوقفة', two: 'فرصتان متوقفتان', few: 'فرص متوقفة', many: 'فرصة متوقفة' })} بقيمة ${fmtSar(sv)}`,
       sub: stalled.slice(0, 2).map((o) => o.title_ar).join(' · '),
       action: 'حرّك المراحل' });
   }
-  const noNext = open.filter((o) => !o.next_action);
+  const noNext = open.filter((o) => !o.next_action || String(o.next_action).trim() === '-' || String(o.next_action).trim() === '—');
   if (noNext.length >= 3) items.push({ rank: 4, tone: 'amber', icon: 'flag', href: '/app/opportunities',
-    title: `${noNext.length} فرص مفتوحة بلا خطوة تالية محددة`, sub: 'كل فرصة مفتوحة تحتاج خطوة تالية مؤرّخة', action: 'حدّد الخطوات' });
+    title: `${countAr(noNext.length, { one: 'فرصة مفتوحة', two: 'فرصتان مفتوحتان', few: 'فرص مفتوحة', many: 'فرصة مفتوحة' })} بلا خطوة تالية محددة`, sub: 'كل فرصة مفتوحة تحتاج خطوة تالية مؤرّخة', action: 'حدّد الخطوات' });
 
   // 4) مخرجات شهور سابقة لم تصل مرحلة الفوترة
   const late = await all(`SELECT d.name_ar, d.amount_halalas, d.month, p.name_ar project
@@ -68,7 +70,7 @@ export async function attentionFeed(user, sectorId, { year, today } = {}) {
   if (late.length) {
     const lv = late.reduce((a, b) => a + (b.amount_halalas || 0), 0);
     items.push({ rank: 5, tone: 'amber', icon: 'projects', dd: 'att-late-dlv',
-      title: `${late.length} ${late.length === 1 ? 'مخرَج' : 'مخرجات'} من شهور سابقة لم تُقبل أو تُفوتر (${fmtSar(lv)})`,
+      title: `${countAr(late.length, { one: 'مخرَج واحد', two: 'مخرَجان', few: 'مخرجات', many: 'مخرَجاً' })} من أشهر سابقة لم تُقبل أو تُفوتر (${fmtSar(lv)})`,
       sub: late.slice(0, 2).map((d) => d.project || d.name_ar).join(' · '),
       action: 'راجِع المخرجات', ddRowsData: late });
   }
@@ -84,7 +86,7 @@ export async function attentionFeed(user, sectorId, { year, today } = {}) {
   }
   const over = Object.values(loadNow).filter((x) => x.v > 1.1);
   if (over.length) items.push({ rank: 6, tone: 'red', icon: 'team', href: '/app/team',
-    title: `${over.length === 1 ? 'موظف واحد محمّل فوق طاقته' : over.length + ' موظفون فوق الطاقة'} هذا الشهر`,
+    title: `${countAr(over.length, { one: 'موظف واحد محمّل فوق طاقته', two: 'موظفان فوق الطاقة', few: 'موظفين فوق الطاقة', many: 'موظفاً فوق الطاقة' })} هذا الشهر`,
     sub: over.slice(0, 3).map((x) => `${x.name} ${Math.round(x.v * 100)}%`).join(' · '),
     action: 'أعد توزيع التسكين' });
 
@@ -93,7 +95,7 @@ export async function attentionFeed(user, sectorId, { year, today } = {}) {
       WHERE (r.sector_id = ? OR p.sector_id = ?) AND r.deleted_at IS NULL AND r.status != 'CLOSED' AND r.probability = 'high'
       LIMIT 6`, [sectorId, sectorId]);
   if (risks.length) items.push({ rank: 7, tone: 'red', icon: 'audit', href: '/app/projects',
-    title: `${risks.length === 1 ? 'خطر عالي الاحتمال مفتوح' : risks.length + ' مخاطر عالية الاحتمال مفتوحة'}`,
+    title: countAr(risks.length, { one: 'خطر مرتفع الاحتمال مفتوح', two: 'خطران مرتفعا الاحتمال مفتوحان', few: 'مخاطر مرتفعة الاحتمال مفتوحة', many: 'خطراً مرتفع الاحتمال مفتوحاً' }),
     sub: risks.slice(0, 2).map((r) => r.project || r.title).join(' · '), action: 'راجِع المخاطر' });
 
   return items.sort((a, b) => a.rank - b.rank).slice(0, 7);

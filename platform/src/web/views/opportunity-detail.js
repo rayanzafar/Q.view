@@ -1,6 +1,6 @@
 // صفحة الفرصة — قصة القرار الكاملة: من هي، أين تقف، ما الخطوة التالية، من يعمل عليها،
 // كيف تحركت بين المراحل، وما آخر تواصل معها. (contracts §1: /app/opportunity/:id)
-// أخطاء الصلاحية/عدم الوجود تصعد من الخدمة وتُعرض صفحة عربية عبر errors.js تلقائيًا.
+// أخطاء الصلاحية/عدم الوجود تصعد من الخدمة وتُعرض صفحة عربية عبر errors.js تلقائياً.
 import { layout, card, pill, tr } from '../layout.js';
 import { icon } from '../icons.js';
 import { fmtSar } from '../../core/util/ids.js';
@@ -122,7 +122,7 @@ export async function opportunityDetailPage(user, oppId) {
     </div>` : '';
   const activityCard = card(`${secHead(G.activities, `<span style="font-size:11px;color:var(--muted)">آخر ${d.activities.length}</span>`)}
     <div style="padding:.4rem 1rem .9rem">
-      ${d.activities.map(actRow).join('') || emptySec('inbox', 'لا تواصل مسجَّل بعد', 'سجِّل الاتصالات والاجتماعات هنا ليبقى تاريخ العلاقة كاملًا أمام الفريق.')}
+      ${d.activities.map(actRow).join('') || emptySec('inbox', 'لا تواصل مسجَّل بعد', 'سجِّل الاتصالات والاجتماعات هنا ليبقى تاريخ العلاقة كاملاً أمام الفريق.')}
       ${addActForm}
     </div>`);
 

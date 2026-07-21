@@ -63,7 +63,7 @@ export function weeklyExecBrief(data) {
       `<table role="presentation" width="100%" cellspacing="8"><tr>
         ${kpiRow('الإيراد المحقق', fmtSar(t.revenue), `المستهدف ${fmtSar(t.target_revenue)}`)}
         ${kpiRow('المبيعات المحققة', fmtSar(t.sales), `المستهدف ${fmtSar(t.target_sales)}`)}
-        ${kpiRow('خط الأنابيب', fmtSar(data.pipeline_halalas), `${data.oppCount || ''} فرصة`)}
+        ${kpiRow('خط الفرص', fmtSar(data.pipeline_halalas), `${data.oppCount || ''} فرصة`)}
       </tr></table>`),
     section('أبرز الصفقات المكتسبة (السنة الحالية)', dealRows(data.topDeals, false)),
     section('أكبر الفرص المفتوحة', dealRows(data.topPipeline, true)),
@@ -105,11 +105,11 @@ export function monthlySectorPerformance(data) {
     section(`الأداء الشهري — ${data.sectorName} · ${data.period}`,
       `<table role="presentation" width="100%" cellspacing="8"><tr>
         ${row('الإيراد', fmtSar(data.revenue_halalas), `الهدف ${fmtSar(data.target_revenue_halalas)}`)}
-        ${row('الحجوزات', fmtSar(data.sales_halalas), `الهدف ${fmtSar(data.target_sales_halalas)}`)}
+        ${row('التعاقدات', fmtSar(data.sales_halalas), `الهدف ${fmtSar(data.target_sales_halalas)}`)}
         ${row('الهامش الإجمالي', data.margin_pct != null ? data.margin_pct + '%' : '—', `الهدف ${data.target_margin_pct || 0}%`)}
       </tr><tr>
         ${row('النمو السنوي (إيراد)', (data.revenue_yoy != null ? data.revenue_yoy + '%' : '—'), 'مقابل السنة السابقة')}
-        ${row('Book-to-Bill', data.book_to_bill != null ? data.book_to_bill + '×' : '—', 'حجوزات/إيراد')}
+        ${row('التعاقد إلى الإيراد', data.book_to_bill != null ? data.book_to_bill + '×' : '—', 'حجوزات/إيراد')}
         ${row('مشاريع (أخضر/أصفر/أحمر)', `${data.rag.GREEN || 0}/${data.rag.AMBER || 0}/${data.rag.RED || 0}`, 'حالة المحفظة')}
       </tr></table>`),
     section('أبرز مشاريع القطاع', data.projects && data.projects.length ?
@@ -175,7 +175,7 @@ export function opportunityPipeline(data) {
     <td style="padding:5px 6px;border-top:1px solid ${LINE};text-align:center">${Math.round(d.win_pct || 0)}%</td></tr>`).join('');
   const body = [
     section(`خط الفرص — ${data.sectorName} · ${data.period}`,
-      `<div style="font-size:13px;color:${MUTED}">معدل الفوز: <b style="color:${INK}">${data.winRate}%</b> · تغطية خط الأنابيب: <b style="color:${INK}">${data.coverage != null ? data.coverage + '×' : '—'}</b> · مرجّح: <b style="color:${INK}">${fmtSar(data.weighted_halalas)}</b></div>`),
+      `<div style="font-size:13px;color:${MUTED}">نسبة الفوز: <b style="color:${INK}">${data.winRate}%</b> · تغطية خط الفرص: <b style="color:${INK}">${data.coverage != null ? data.coverage + '×' : '—'}</b> · مرجّح: <b style="color:${INK}">${fmtSar(data.weighted_halalas)}</b></div>`),
     section('التوزيع حسب المرحلة', `<table width="100%" cellspacing="0" style="font-size:13px"><tr><th align="start" style="color:${MUTED};font-size:11px;padding:4px 6px">المرحلة</th><th style="color:${MUTED};font-size:11px">العدد</th><th style="color:${MUTED};font-size:11px">القيمة</th></tr>${stageRows}</table>`),
     section('أكبر الفرص المفتوحة', data.topOpen && data.topOpen.length ? `<table width="100%" cellspacing="0" style="font-size:13px"><tr><th align="start" style="color:${MUTED};font-size:11px;padding:4px 6px">العميل</th><th align="start" style="color:${MUTED};font-size:11px">الفرصة</th><th style="color:${MUTED};font-size:11px">القيمة</th><th style="color:${MUTED};font-size:11px">%</th></tr>${dealRows}</table>` : list([])),
   ].join('');
