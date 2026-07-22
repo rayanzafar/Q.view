@@ -217,7 +217,13 @@ export async function clientsPage(user, opts = {}) {
     <thead><tr>${th(G.client)}${th(`<span data-tip="${esc(relTip)}">${G.relationship} ⓘ</span>`, 'center')}${th('الفرص المفتوحة', 'left')}${th('الفوز · الخسارة', 'center')}${th('مشاريع نشطة', 'center')}${th(`إيراد ${fy}`, 'left')}</tr></thead>
     <tbody>${rowsHtml}</tbody></table>${rows.length ? '' : emptyState}</div>`);
 
-  const body = `${toolbar}${strip}${chips}${table}${ddTop5}`;
+  // شرح ظاهر لحالة العلاقة وأساسها (يُحدَّد آلياً بآخر تواصل مسجّل + وجود فرصة مفتوحة)
+  const relLegend = `<div class="card" style="padding:.65rem .9rem;margin-bottom:1rem;display:flex;gap:.35rem 1.3rem;flex-wrap:wrap;align-items:center;font-size:11.5px;color:var(--muted)">
+    <span style="font-weight:800;color:var(--ink2)">حالة العلاقة تُحدَّد آلياً بآخر تواصل مسجّل:</span>
+    <span style="display:inline-flex;align-items:center;gap:.4rem">${pill('نشطة', 'green')} تواصل خلال 30 يوماً أو لديه فرصة مفتوحة</span>
+    <span style="display:inline-flex;align-items:center;gap:.4rem">${pill('فاترة', 'amber')} آخر تواصل بين 31 و120 يوماً</span>
+    <span style="display:inline-flex;align-items:center;gap:.4rem">${pill('خاملة', 'slate')} لا تواصل منذ أكثر من 120 يوماً وبلا فرص مفتوحة</span></div>`;
+  const body = `${toolbar}${strip}${chips}${relLegend}${table}${ddTop5}`;
   return layout({ user, active: 'clients', title: G.clients, subtitle: `سجل العلاقات · ${countAr(rows.length, { one: 'عميل واحد', two: 'عميلان', few: 'عملاء', many: 'عميلاً' })}`, body, scripts: ['/static/pages/clients.js'] });
 }
 
