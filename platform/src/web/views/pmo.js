@@ -370,45 +370,142 @@ export async function projectsPage(user, opts = {}) {
     body, year: year || undefined, scripts: ['/static/pages/projects.js'] });
 }
 
+// صفحة «مهامي» — طابور عمل شخصي مرتّب حسب الإلحاح (متأخرة → اليوم → الأسبوع → لاحقاً → مكتملة)
+// لا جدول مسطّح: كل قسم يظهر فقط إن كان فيه مهام، وكل مهمة صف نظيف بزر إنجاز فوري وسياق
+// المشروع/الفرصة وموعد نسبي («متأخرة ٣ أيام» / «اليوم» / «غداً»). التفاعل عبر tasks.js (تفويض).
 export async function tasksPage(user) {
   const rows = await myTasks(user);
-  const stColor = { TODO: 'slate', IN_PROGRESS: 'blue', BLOCKED: 'red', IN_REVIEW: 'amber', DONE: 'green' };
   const today = new Date().toISOString().slice(0, 10);
-  const soon = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+  const todayMs = new Date(today + 'T00:00:00Z').getTime();
+  const dnum = (d) => Math.round((new Date(String(d).slice(0, 10) + 'T00:00:00Z').getTime() - todayMs) / 86400000);
+
+  // سياق المهمة: اسم المشروع/الفرصة المرتبطة — بحث مجمّع واحد لكل نوع (لا استعلام لكل صف)
+  const prjIds = [...new Set(rows.map((t) => t.project_id).filter(Boolean))];
+  const oppIds = [...new Set(rows.map((t) => t.opportunity_id).filter(Boolean))];
+  const prjName = {}; const oppName = {};
+  if (prjIds.length) for (const p of await all(`SELECT id, name_ar FROM project WHERE id IN (${prjIds.map(() => '?').join(',')}) AND deleted_at IS NULL`, prjIds)) prjName[p.id] = p.name_ar;
+  if (oppIds.length) for (const o of await all(`SELECT id, title_ar FROM opportunity WHERE id IN (${oppIds.map(() => '?').join(',')}) AND deleted_at IS NULL`, oppIds)) oppName[o.id] = o.title_ar;
+
+  // تصنيف حسب الإلحاح
   const openT = rows.filter((t) => t.status !== 'DONE');
-  const overdue = openT.filter((t) => t.due_date && t.due_date < today).length;
-  const dueSoon = openT.filter((t) => t.due_date && t.due_date >= today && t.due_date <= soon).length;
-  const blocked = rows.filter((t) => t.status === 'BLOCKED').length;
-  const inprog = rows.filter((t) => t.status === 'IN_PROGRESS').length;
-  const strip = `<div style="display:flex;gap:.7rem;flex-wrap:wrap;margin-bottom:1rem">
-    ${statMini('مفتوحة', openT.length, 'قيد العمل')}
-    ${statMini('قيد التنفيذ', inprog, 'جارية', 'brand')}
-    ${statMini('متأخرة', overdue, 'تجاوزت الاستحقاق', overdue ? 'bad' : '')}
-    ${statMini('تستحق هذا الأسبوع', dueSoon, 'خلال 7 أيام')}
-    ${statMini('معلّقة', blocked, 'محجوبة', blocked ? 'bad' : '')}</div>`;
-  const list = rows.map((t) => `<tr class="border-b border-line hover:bg-slate-50" data-task="${t.id}">
-    <td class="py-2.5 px-3 text-[13px]">${esc(t.title)}</td>
-    <td class="px-3">${pill(tr(t.priority), t.priority === 'P0' ? 'red' : t.priority === 'P1' ? 'amber' : 'slate')}</td>
-    <td class="px-3">${pill(tr(t.status), stColor[t.status])}</td>
-    <td class="px-3 text-[12px] text-muted">${t.due_date || '—'}</td>
-    <td class="px-3"><select onchange="Sanad.setTaskStatus('${t.id}',this.value)" aria-label="تغيير حالة المهمة" class="text-[12px] border border-line rounded px-1 py-0.5">
-      ${['TODO', 'IN_PROGRESS', 'BLOCKED', 'IN_REVIEW', 'DONE'].map((s) => `<option value="${s}" ${s === t.status ? 'selected' : ''}>${tr(s)}</option>`).join('')}
-    </select></td></tr>`).join('');
-  const body = `
-    ${strip}
-    ${card(`<div class="p-4 border-b border-line">
-      <div class="font-bold text-sm mb-2">إضافة سريعة</div>
-      <div class="flex gap-2">
-        <input id="qa-title" placeholder="عنوان المهمة…" class="flex-1 border border-line rounded-lg px-3 py-2 text-sm">
-        <select id="qa-priority" aria-label="الأولوية" class="border border-line rounded-lg px-2 text-sm"><option value="P2">متوسطة</option><option value="P0">حرجة</option><option value="P1">عالية</option><option value="P3">منخفضة</option></select>
-        <input id="qa-due" type="date" aria-label="تاريخ الاستحقاق" class="border border-line rounded-lg px-2 text-sm">
-        <button onclick="Sanad.quickTask()" class="text-white text-[12px] px-4 rounded-lg" style="background:linear-gradient(120deg,var(--brand),var(--brand2))">إضافة</button>
-      </div></div>
-      <table class="w-full"><thead><tr class="text-[11px] text-muted text-right">
-        <th class="py-2 px-3 font-medium">المهمة</th><th class="px-3 font-medium">الأولوية</th><th class="px-3 font-medium">الحالة</th>
-        <th class="px-3 font-medium">الاستحقاق</th><th class="px-3 font-medium">تحديث</th></tr></thead>
-        <tbody id="task-rows">${list || '<tr><td class="p-4 text-muted text-sm" colspan="5">لا مهام — أضف واحدة بالأعلى</td></tr>'}</tbody></table>`)}`;
-  return layout({ user, active: 'tasks', title: 'مهامي', body });
+  const done = rows.filter((t) => t.status === 'DONE');
+  const overdue = openT.filter((t) => t.due_date && dnum(t.due_date) < 0);
+  const dueToday = openT.filter((t) => t.due_date && dnum(t.due_date) === 0);
+  const thisWeek = openT.filter((t) => t.due_date && dnum(t.due_date) >= 1 && dnum(t.due_date) <= 7);
+  const later = openT.filter((t) => !t.due_date || dnum(t.due_date) > 7);
+  const blocked = openT.filter((t) => t.status === 'BLOCKED').length;
+
+  const prRank = { P0: 0, P1: 1, P2: 2, P3: 3 };
+  const sortT = (arr) => arr.slice().sort((a, b) =>
+    (prRank[a.priority] ?? 9) - (prRank[b.priority] ?? 9)
+    || (a.due_date ? a.due_date.slice(0, 10) : '9999').localeCompare(b.due_date ? b.due_date.slice(0, 10) : '9999')
+    || String(a.title).localeCompare(String(b.title), 'ar'));
+
+  const strip = `<div class="statgrid" style="display:flex;gap:.7rem;flex-wrap:wrap;margin-bottom:1rem">
+    ${statMini('متأخرة', overdue.length, 'تجاوزت موعدها', overdue.length ? 'bad' : '')}
+    ${statMini('تستحق اليوم', dueToday.length, 'موعدها اليوم', dueToday.length ? 'warn' : '')}
+    ${statMini('هذا الأسبوع', thisWeek.length, 'خلال 7 أيام', 'brand')}
+    ${statMini('مفتوحة', openT.length, blocked ? `منها ${blocked} معلّقة` : 'قيد العمل')}
+    ${statMini('أُنجزت', done.length, 'مكتملة', done.length ? 'good' : '')}</div>`;
+
+  const quickAdd = `<div class="card" style="padding:.85rem 1rem;margin-bottom:1.15rem">
+    <div style="display:flex;gap:.55rem;align-items:center;flex-wrap:wrap">
+      <input id="qa-title" class="input" placeholder="أضِف مهمة جديدة…" aria-label="عنوان المهمة" style="flex:1;min-width:190px">
+      <select id="qa-priority" class="input" aria-label="الأولوية" style="width:auto"><option value="P2">أولوية متوسطة</option><option value="P0">حرجة</option><option value="P1">عالية</option><option value="P3">منخفضة</option></select>
+      <input id="qa-due" type="date" class="input" aria-label="تاريخ الاستحقاق" style="width:auto">
+      <button class="btn btn-primary" data-action="task-add">${icon('plus')} إضافة</button>
+    </div></div>`;
+
+  const dueLabel = (t) => {
+    if (!t.due_date) return { text: 'بلا موعد', color: 'var(--faint)', bold: false };
+    const n = dnum(t.due_date);
+    if (n < 0) return { text: `متأخرة ${dayWord(-n)}`, color: 'var(--red)', bold: true };
+    if (n === 0) return { text: 'تستحق اليوم', color: 'var(--amber)', bold: true };
+    if (n === 1) return { text: 'غداً', color: 'var(--amber)', bold: false };
+    if (n <= 7) return { text: `خلال ${dayWord(n)}`, color: 'var(--muted)', bold: false };
+    const d = new Date(String(t.due_date).slice(0, 10) + 'T00:00:00Z');
+    return { text: `<span class="tnum">${d.getUTCDate()}</span> ${MONTHS_AR[d.getUTCMonth()]}`, color: 'var(--muted)', bold: false };
+  };
+  const prPill = (p) => p === 'P0' ? pill('حرجة', 'red') : p === 'P1' ? pill('عالية', 'amber') : '';
+  const ctxOf = (t) => t.project_id && prjName[t.project_id]
+    ? `<a href="/app/project/${t.project_id}" class="tk-ctx">${icon('projects')} ${esc(prjName[t.project_id])}</a>`
+    : t.opportunity_id && oppName[t.opportunity_id]
+      ? `<a href="/app/opportunity/${t.opportunity_id}" class="tk-ctx">${icon('opportunity')} ${esc(oppName[t.opportunity_id])}</a>` : '';
+
+  const taskRow = (t) => {
+    const isDone = t.status === 'DONE';
+    const dl = dueLabel(t);
+    const ctx = ctxOf(t);
+    return `<div class="tk-row" data-task="${t.id}">
+      <button class="tk-check${isDone ? ' done' : ''}" ${isDone ? 'disabled' : `data-action="task-done" data-id="${t.id}"`} aria-label="${isDone ? 'مهمة منجزة' : 'وضع كمنجزة'}" title="${isDone ? 'منجزة' : 'وضع كمنجزة'}">${isDone ? '✓' : ''}</button>
+      <div class="tk-body">
+        <div class="tk-title"${isDone ? ' style="text-decoration:line-through;color:var(--faint);font-weight:500"' : ''}>${esc(t.title)}</div>
+        <div class="tk-meta">
+          ${!isDone ? `<span style="color:${dl.color}${dl.bold ? ';font-weight:700' : ''}">${dl.text}</span>` : ''}
+          ${ctx}
+          ${t.status === 'BLOCKED' && t.blocked_reason ? `<span style="color:var(--red)">⚠ ${esc(t.blocked_reason)}</span>` : ''}
+        </div>
+      </div>
+      <div class="tk-side">
+        ${!isDone ? prPill(t.priority) : ''}
+        <select class="tk-status" data-action="task-status" data-id="${t.id}" aria-label="تغيير حالة المهمة">
+          ${['TODO', 'IN_PROGRESS', 'BLOCKED', 'IN_REVIEW', 'DONE'].map((s) => `<option value="${s}"${s === t.status ? ' selected' : ''}>${tr(s)}</option>`).join('')}
+        </select>
+      </div></div>`;
+  };
+
+  const section = (title, items, accent) => items.length ? `<div class="tk-sec">
+    <div class="tk-sec-head"><span class="tk-dot" style="background:${accent}"></span><span class="tk-sec-title">${title}</span><span class="tk-sec-count tnum">${items.length}</span></div>
+    <div class="tk-list">${sortT(items).map(taskRow).join('')}</div></div>` : '';
+
+  const openSections = section('متأخرة', overdue, 'var(--red)')
+    + section('تستحق اليوم', dueToday, 'var(--amber)')
+    + section('هذا الأسبوع', thisWeek, 'var(--brand)')
+    + section('لاحقاً', later, '#94a3b8');
+
+  const doneSorted = done.slice().sort((a, b) => String(b.completed_at || b.updated_at || '').localeCompare(String(a.completed_at || a.updated_at || '')));
+  const DONE_CAP = 25;
+  const doneBlock = done.length ? `<details class="tk-done"${openT.length ? '' : ' open'}>
+    <summary class="tk-sec-head"><span class="tk-dot" style="background:var(--green)"></span><span class="tk-sec-title">مكتملة</span><span class="tk-sec-count tnum">${done.length}</span><span style="margin-inline-start:auto;font-size:11px;color:var(--faint)">إظهار / إخفاء</span></summary>
+    <div class="tk-list" style="margin-top:.3rem">${doneSorted.slice(0, DONE_CAP).map(taskRow).join('')}</div>
+    ${done.length > DONE_CAP ? `<div style="font-size:11px;color:var(--faint);padding:.5rem .2rem">و${countAr(done.length - DONE_CAP, { one: 'مهمة أخرى منجزة', two: 'مهمتان أخريان', few: 'مهام أخرى', many: 'مهمة أخرى' })}</div>` : ''}
+  </details>` : '';
+
+  const listArea = openT.length
+    ? openSections + doneBlock
+    : (done.length
+      ? `<div class="card" style="text-align:center;padding:1.8rem 1rem;margin-bottom:1rem"><div style="font-size:22px">🎉</div><div style="font-weight:800;color:var(--ink2);margin-top:.3rem">أنجزت كل مهامك</div><div style="font-size:12px;color:var(--muted);margin-top:.25rem">لا مهام مفتوحة الآن — أضِف واحدة من الأعلى متى شئت.</div></div>${doneBlock}`
+      : `<div class="card" style="text-align:center;padding:2.6rem 1rem"><div style="font-size:26px;color:var(--brand)">${icon('tasks')}</div><div style="font-weight:800;color:var(--ink2);margin-top:.5rem">لا مهام بعد</div><div style="font-size:12.5px;color:var(--muted);margin-top:.3rem;line-height:1.8">أضِف أول مهمة من الشريط أعلاه — ستظهر هنا مرتّبةً حسب الأقرب موعداً،<br>والأكثر إلحاحاً في الأعلى دائماً.</div></div>`);
+
+  const styles = `<style>
+    .tk-sec{margin-bottom:1.15rem}
+    .tk-sec-head{display:flex;align-items:center;gap:.5rem;margin:0 0 .4rem;padding:0 .15rem}
+    .tk-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+    .tk-sec-title{font-weight:800;font-size:12.5px;color:var(--ink2)}
+    .tk-sec-count{font-size:11px;color:var(--muted);background:#f1f5f9;border-radius:20px;padding:.05rem .5rem;font-weight:700;min-width:20px;text-align:center}
+    .tk-list{background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden}
+    .tk-row{display:flex;gap:.7rem;align-items:flex-start;padding:.7rem .85rem;border-bottom:1px solid var(--line);transition:background .12s}
+    .tk-row:last-child{border-bottom:none}
+    .tk-row:hover{background:#f8fafc}
+    .tk-check{flex-shrink:0;width:20px;height:20px;margin-top:1px;border:2px solid #cbd5e1;border-radius:50%;background:#fff;color:#fff;font-size:11px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;transition:all .12s}
+    .tk-check:hover:not(.done){border-color:var(--green);background:#f0fdf4}
+    .tk-check.done{border-color:var(--green);background:var(--green);cursor:default}
+    .tk-body{flex:1;min-width:0}
+    .tk-title{font-weight:600;font-size:13px;color:var(--ink2);line-height:1.5;word-break:break-word}
+    .tk-meta{display:flex;gap:.35rem .9rem;flex-wrap:wrap;align-items:center;margin-top:.2rem;font-size:11px;color:var(--muted)}
+    .tk-ctx{color:var(--muted);text-decoration:none;display:inline-flex;align-items:center;gap:.2rem;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .tk-ctx:hover{color:var(--brand)}
+    .tk-ctx svg{width:12px;height:12px;opacity:.7}
+    .tk-side{display:flex;gap:.45rem;align-items:center;flex-shrink:0}
+    .tk-status{font-size:11.5px;border:1px solid var(--line);border-radius:8px;padding:.22rem .4rem;background:#fff;color:var(--ink2);cursor:pointer}
+    .tk-done{margin-top:.2rem}
+    .tk-done>summary{cursor:pointer;list-style:none}
+    .tk-done>summary::-webkit-details-marker{display:none}
+    @media(max-width:640px){.tk-side{flex-direction:column;align-items:flex-end;gap:.3rem}.tk-ctx{max-width:150px}}
+  </style>`;
+
+  const body = `${styles}${strip}${quickAdd}${listArea}`;
+  return layout({ user, active: 'tasks', title: 'مهامي', subtitle: openT.length ? `${countAr(openT.length, { one: 'مهمة مفتوحة', two: 'مهمتان مفتوحتان', few: 'مهام مفتوحة', many: 'مهمة مفتوحة' })}${overdue.length ? ` · ${overdue.length} متأخرة` : ''}` : 'كل المهام منجزة', body, scripts: ['/static/pages/tasks.js'] });
 }
 
 export async function projectDetailPage(user, projectId) {
