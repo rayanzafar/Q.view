@@ -74,7 +74,12 @@ function stageInfoTpl(s) {
 export async function opportunitiesPage(user, opts = {}) {
   const sectorFilter = opts.sector || '';
   const fiscalYear = config.fiscalYear;
-  const rows = await listOpportunities(user, sectorFilter ? { sector: sectorFilter } : {});
+  const allRows = await listOpportunities(user, sectorFilter ? { sector: sectorFilter } : {});
+  // السنة عاملُ تصفيةٍ علويّ (بدل حشرها داخل أعمدة الحسم كما كان): الافتراضي السنة المالية
+  // الحالية، و«الكل» يعرض كل السنوات معاً (بما فيها فرص بلا سنة مسجّلة). قائمة السنوات من كل الفرص.
+  const years = [...new Set(allRows.map((o) => o.year).filter(Boolean))].sort((a, b) => b - a);
+  const yearFilter = opts.year === 'all' ? 'all' : (opts.year ? Number(opts.year) : fiscalYear);
+  const rows = yearFilter === 'all' ? allRows : allRows.filter((o) => o.year === yearFilter);
   const stages = await all('SELECT id,name_ar,color,default_win_pct,sort_order,is_won,is_lost FROM stage ORDER BY sort_order');
   const clients = Object.fromEntries((await all('SELECT id,name_ar FROM client')).map((c) => [c.id, c.name_ar]));
   const users = Object.fromEntries((await all('SELECT id,name_ar,username FROM app_user')).map((u) => [u.id, u.name_ar || u.username]));
@@ -192,46 +197,16 @@ export async function opportunitiesPage(user, opts = {}) {
     </div>`;
   };
 
-  // ── عمودا الحسم (فائزة/خاسرة): ملخص ضيّق بلا بطاقات — عدّ وقيمة وسطر تاريخي ورابط جدول ──
-  // يبقيان هدف إفلات صالحاً للسحب (kcol + data-stage + kcol-body) كي لا ينكسر نقل البطاقات.
-  const summaryCol = (s, items) => {
+  // ── عمود كانبان موحّد لكل المراحل (مفتوحة ومحسومة على نفس البنية — إزالةً للتفاوت الذي رصده
+  // المالك): رأس (نقطة اللون · الاسم · «؟» شرح · العدد · القيمة) ثم بطاقات. المحسومة تعرض مشروعها
+  // الناتج على البطاقة نفسها، والسنة صارت تصفيةً علوية فلا أرقام سنوات مبعثرة داخل الأعمدة.
+  const colEmpty = (s) => `<div class="empty-state" style="padding:.9rem .4rem;gap:.3rem">${icon('opportunity')}<div class="s">${s.is_won ? 'لا صفقات فائزة' : s.is_lost ? 'لا صفقات خاسرة' : 'لا فرص في هذه المرحلة'}${yearFilter === 'all' ? '' : ' لهذه السنة'}</div></div>`;
+  const renderColumn = (s, items) => {
+    const isDecided = !!(s.is_won || s.is_lost);
+    const c = stageColor(s); // لون المرحلة: شريط علوي + رأس مُظلَّل + حدّ البطاقات الجانبي
     const drop = canEdit ? 'ondragover="Sanad.kOver(event)" ondragleave="Sanad.kLeave(event)" ondrop="Sanad.kDrop(event)"' : '';
-    const isWon = !!s.is_won;
-    const hist = items.filter((o) => o.exclude_from_sales);
-    const nonHist = items.filter((o) => !o.exclude_from_sales);
-    // نفس الأساس للعمودين (فائزة وخاسرة): العنوان = هذه السنة المالية، وسطر واحد «سابقة»
-    // يجمع سنواتٍ أخرى + الفرص التاريخية — بدل أرقام مبعثرة، وبتماثل يسهّل المقارنة.
-    const main = nonHist.filter((o) => o.year === fiscalYear);
-    const priorItems = [...nonHist.filter((o) => o.year !== fiscalYear), ...hist];
-    const sum = (arr) => arr.reduce((a, o) => a + (o.value_halalas || 0), 0);
-    const tone = isWon ? 'var(--green)' : 'var(--red)';
-    const mainLbl = `${isWon ? G.won : G.lost} سنة <span class="tnum">${fiscalYear}</span>`;
-    const tblHref = `/app/opportunities?view=table&stage=${s.id}${sectorFilter ? '&sector=' + encodeURIComponent(sectorFilter) : ''}`;
-    const subLine = (n, lbl, v, title) => n ? `<div class="tnum" style="font-size:10.5px;color:var(--muted)" ${title ? `title="${esc(title)}"` : ''}>+${n} ${lbl} · ${sarShort(v)}</div>` : '';
-    const c = stageColor(s); // فائزة=أخضر · خاسرة=أحمر (دلالة ثابتة)
-    return `<div class="kcol" data-stage="${s.id}" data-summary="1" ${drop} style="flex:0 0 170px;width:170px;box-shadow:inset 0 3px 0 0 ${c}">
-      <div class="kcol-head" style="background:${tint(c, '24')};border-radius:10px"><span class="kcol-dot" style="background:${c};width:10px;height:10px"></span>
-        <span class="t" data-tip="${esc(stageTip(s))}" tabindex="0">${esc(s.name_ar)}</span></div>
-      <div style="padding:.1rem .6rem .55rem;display:flex;flex-direction:column;gap:.14rem">
-        <div class="tnum" style="font-size:1.5rem;font-weight:800;letter-spacing:-.02em;line-height:1.15;color:${tone}">${main.length}</div>
-        <div style="font-size:10.5px;color:var(--muted);font-weight:700">${mainLbl}</div>
-        <div class="tnum" style="font-size:13px;font-weight:800;color:var(--ink2)">${sarShort(sum(main))}</div>
-        ${priorItems.length ? `<div style="border-top:1px dashed var(--line);margin:.3rem 0 .16rem"></div><div class="tnum" style="font-size:10.5px;color:var(--muted)" title="سنوات سابقة — تشمل فرصاً تاريخية مستبعدة من مؤشرات مبيعات السنة">+${priorItems.length} سابقة · ${sarShort(sum(priorItems))}</div>` : ''}
-        ${isWon && wonProjectCount ? `<div style="font-size:10.5px;color:var(--green);font-weight:700;margin-top:.16rem" title="الفرص الفائزة التي تحوّلت إلى مشاريع قيد التنفيذ">▸ ${countAr(wonProjectCount, { one: 'مشروع واحد ناتج', two: 'مشروعان ناتجان', few: 'مشاريع ناتجة', many: 'مشروعاً ناتجاً' })}</div>` : ''}
-        <a class="btn btn-sm" href="${tblHref}" style="margin-top:.45rem;justify-content:center">${icon('list')} ${isWon ? 'الصفقات والمشاريع' : 'عرض الجدول'}</a>
-      </div>
-      <div class="kcol-body" style="padding:.15rem">${main.map(opCard).join('') || `<div style="padding:.6rem .3rem;font-size:11px;color:var(--faint);text-align:center">${isWon ? 'لا صفقات فائزة هذه السنة' : 'لا خسائر هذه السنة'}</div>`}</div>
-    </div>`;
-  };
-
-  // ── أعمدة كانبان: المفتوحة كاملة (اسم + تلميح + «؟» شرح + عدد + إجماليان) والمحسومة ملخص ──
-  const columns = stages.map((s) => {
-    const items = byStage[s.id] || [];
-    if (s.is_won || s.is_lost) return summaryCol(s, items);
     const colTotal = items.reduce((a, o) => a + (o.value_halalas || 0), 0);
     const colWeighted = Math.round(items.reduce((a, o) => a + weightedOf(o), 0));
-    const drop = canEdit ? 'ondragover="Sanad.kOver(event)" ondragleave="Sanad.kLeave(event)" ondrop="Sanad.kDrop(event)"' : '';
-    const c = stageColor(s); // لون المرحلة: شريط علوي + رأس عمود مُظلَّل + حدّ البطاقات الجانبي
     return `<div class="kcol" data-stage="${s.id}" ${drop} style="box-shadow:inset 0 3px 0 0 ${c}">
       <div class="kcol-head" style="background:${tint(c, '24')};border-radius:10px">
         <span class="kcol-dot" style="background:${c};width:10px;height:10px"></span>
@@ -239,22 +214,26 @@ export async function opportunitiesPage(user, opts = {}) {
         <button data-action="stage-info" data-stage="${s.id}" aria-label="شرح المرحلة" title="شرح المرحلة" style="width:16px;height:16px;border-radius:50%;border:1px solid var(--line);background:#fff;color:var(--muted);font-size:10px;font-weight:800;line-height:1;cursor:pointer;padding:0;flex:none;display:inline-flex;align-items:center;justify-content:center">؟</button>
         <span class="n" data-count>${items.length}</span>
         <span class="v tnum" data-total>${sarShort(colTotal)}</span></div>
-      <div style="padding:0 .55rem .5rem;font-size:10.5px;color:var(--muted)">${G.weighted}: <span class="tnum" style="font-weight:800" data-weighted>${sarShort(colWeighted)}</span></div>
-      <div class="kcol-body">${items.map(opCard).join('') || `<div class="empty-state" style="padding:.9rem .4rem;gap:.3rem">${icon('opportunity')}<div class="s">لا فرص في هذه المرحلة</div></div>`}</div>
+      ${isDecided ? '' : `<div style="padding:0 .55rem .5rem;font-size:10.5px;color:var(--muted)">${G.weighted}: <span class="tnum" style="font-weight:800" data-weighted>${sarShort(colWeighted)}</span></div>`}
+      <div class="kcol-body">${items.map(opCard).join('') || colEmpty(s)}</div>
     </div>`;
-  }).join('');
+  };
+  const columns = stages.map((s) => renderColumn(s, byStage[s.id] || [])).join('');
 
-  // ── شرائح القطاعات (تصفية من الخادم) — تحافظ على بقية معاملات الرابط ──
-  const chipHref = (sector) => {
+  // ── التصفية العلوية: القطاع + السنة (بدل حشر السنة داخل الأعمدة) — كل شريحة تحفظ الأخرى ──
+  const navHref = ({ sector = sectorFilter, year = yearFilter } = {}) => {
     const p = new URLSearchParams();
     if (sector) p.set('sector', sector);
-    if (opts.year) p.set('year', opts.year);
+    if (year !== fiscalYear) p.set('year', year === 'all' ? 'all' : String(year));
     const q = p.toString();
     return '/app/opportunities' + (q ? '?' + q : '');
   };
-  const sectorChips = `<div class="chips" style="margin-bottom:.6rem"><span class="lbl">${G.filter}</span>
-    <a class="chip ${!sectorFilter ? 'on' : ''}" href="${chipHref('')}">كل القطاعات</a>
-    ${sectors.map((s) => `<a class="chip ${sectorFilter === s.id ? 'on' : ''}" href="${chipHref(s.id)}"><span class="dot" style="background:var(--brand)"></span>${esc(s.name_ar)}</a>`).join('')}</div>`;
+  const sectorChips = `<div class="chips" style="margin-bottom:.55rem"><span class="lbl">${G.filter}</span>
+    <a class="chip ${!sectorFilter ? 'on' : ''}" href="${navHref({ sector: '' })}">كل القطاعات</a>
+    ${sectors.map((s) => `<a class="chip ${sectorFilter === s.id ? 'on' : ''}" href="${navHref({ sector: s.id })}"><span class="dot" style="background:var(--brand)"></span>${esc(s.name_ar)}</a>`).join('')}</div>`;
+  const yearChips = `<div class="chips" style="margin-bottom:.6rem"><span class="lbl">السنة</span>
+    <a class="chip ${yearFilter === 'all' ? 'on' : ''}" href="${navHref({ year: 'all' })}">${G.all}</a>
+    ${years.map((y) => `<a class="chip ${yearFilter === y ? 'on' : ''}" href="${navHref({ year: y })}"><span class="tnum">${y}</span></a>`).join('')}</div>`;
 
   // ── شريط العروض المحفوظة: الكل + عروض المستخدم + حفظ العرض ──
   const viewQs = (pj) => {
@@ -280,7 +259,7 @@ export async function opportunitiesPage(user, opts = {}) {
   const strip = `<div style="display:flex;gap:.7rem;flex-wrap:wrap;margin-bottom:1rem">
     ${tile('raw', G.raw, fmtSar(total), countAr(open.length, { one: 'فرصة واحدة قيد المتابعة', two: 'فرصتان قيد المتابعة', few: 'فرص قيد المتابعة', many: 'فرصة قيد المتابعة' }))}
     ${tile('weighted', G.weighted, fmtSar(weighted), 'القيمة × احتمال الفوز', 'var(--brand2)')}
-    ${tile('winrate', 'نسبة الفوز — كل السنوات المعروضة', winRate + '%', `${wonAll.length} ${G.won} · ${lostAll.length} ${G.lost}`, winRate >= 50 ? 'var(--green)' : '')}
+    ${tile('winrate', `نسبة الفوز · ${yearFilter === 'all' ? 'كل السنوات' : `<span class="tnum">${yearFilter}</span>`}`, winRate + '%', `${wonAll.length} ${G.won} · ${lostAll.length} ${G.lost}`, winRate >= 50 ? 'var(--green)' : '')}
     ${tile('stalled', 'فرص متوقفة', stalled.length, stalled.length ? 'تجاوزت مدة مرحلتها — تحتاج تحريكاً' : 'لا فرص متجاوزة لمدتها', stalled.length ? 'var(--amber)' : 'var(--green)')}
   </div>`;
 
@@ -307,7 +286,7 @@ export async function opportunitiesPage(user, opts = {}) {
   ].join('');
 
   // نوافذ شرح المراحل المفتوحة (قوالب خاملة تُفتح من «؟»)
-  const stageTpls = stages.filter((s) => !s.is_won && !s.is_lost).map(stageInfoTpl).join('');
+  const stageTpls = stages.map(stageInfoTpl).join('');
 
   // ── الجدول (تبديل العرض) ──
   const tableRows = rows.slice(0, 200).map((o) => {
@@ -346,6 +325,7 @@ export async function opportunitiesPage(user, opts = {}) {
     </div>
     ${viewsBar}
     ${sectorChips}
+    ${yearChips}
     ${strip}
     <style>.kmenu-btn{opacity:.45;transition:opacity .15s,background .15s,color .15s}.kcard:hover .kmenu-btn,.kmenu-btn:focus-visible{opacity:1}.kmenu-btn:hover{background:#eef1f7;color:var(--ink2)}</style>
     ${boardArea}
@@ -363,7 +343,7 @@ export async function opportunitiesPage(user, opts = {}) {
     });</script>`;
   return layout({
     user, active: 'opportunities', title: 'الفرص والمبيعات',
-    subtitle: `${rows.length} فرصة · ${G.weighted} ${fmtSar(weighted)}`, body,
+    subtitle: `${yearFilter === 'all' ? 'كل السنوات' : `سنة ${yearFilter}`} · ${rows.length} فرصة · ${G.weighted} ${fmtSar(weighted)}`, body,
     scripts: ['/static/pages/opps.js'],
   });
 }
