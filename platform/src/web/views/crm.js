@@ -187,9 +187,9 @@ export async function opportunitiesPage(user, opts = {}) {
       : '';
     return `<div class="kcard" ${dnd} data-action="open-opp" data-id="${o.id}" data-sector="${o.sector_id || ''}" data-hay="${esc(hay).replace(/"/g, '')}" style="--_c:${accent};cursor:pointer;padding:.5rem .6rem;position:relative" role="link" tabindex="0" aria-label="فتح الفرصة ${esc(o.title_ar)}">
       ${menuBtn}
-      <div style="display:flex;align-items:baseline;gap:.3rem;min-width:0;${showMenu ? 'padding-inline-end:18px' : ''}">
-        <span title="${esc(o.title_ar)}" style="font-weight:700;font-size:12.5px;color:var(--ink2);flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(o.title_ar)}</span>
-        ${cl ? `<span title="${esc(cl)}" style="flex:0 1 auto;max-width:45%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10.5px;color:var(--muted)">· ${esc(cl)}</span>` : ''}
+      <div style="${showMenu ? 'padding-inline-end:18px' : ''}">
+        <div style="font-weight:700;font-size:12.5px;color:var(--ink2);line-height:1.4;word-break:break-word">${esc(o.title_ar)}</div>
+        ${cl ? `<div style="font-size:10.5px;color:var(--muted);line-height:1.4;margin-top:.1rem;word-break:break-word">${esc(cl)}</div>` : ''}
       </div>
       <div style="display:flex;align-items:center;gap:.35rem;margin-top:.3rem;flex-wrap:wrap;font-size:11px;color:var(--muted);${ow ? 'padding-inline-end:20px' : ''}">
         <b class="tnum" style="font-size:12.5px;color:var(--ink2)">${sarShort(o.value_halalas)}</b>
