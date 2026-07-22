@@ -60,17 +60,21 @@ const oppCountAr = (n) => (n === 1 ? 'فرصة واحدة' : n === 2 ? 'فرصت
 export async function clientsPage(user, opts = {}) {
   const query = (opts.query || '').toString().trim();
   const type = (opts.type || '').toString().trim();
+  const rel = ['نشطة', 'فاترة', 'خاملة'].includes(opts.rel) ? opts.rel : '';
   const sort = ['pipeline', 'activity'].includes(opts.sort) ? opts.sort : 'revenue';
   const fy = config.fiscalYear;
   const rows = await listClients(user, { query, type, sort });
   const canCreate = can(user, 'create', 'client');
+  // تصفية حالة العلاقة (نشطة/فاترة/خاملة) عاملُ تركيز علويّ — الإحصاءات تبقى محسوبةً على كل العملاء
+  const shown = rel ? rows.filter((r) => r.relationship === rel) : rows;
 
   // preserve current filters in every chip/link (الافتراضي: أكبر العلاقات أولاً = revenue)
   const qs = (patch = {}) => {
     const p = new URLSearchParams();
-    const v = { query, type, sort, ...patch };
+    const v = { query, type, rel, sort, ...patch };
     if (v.query) p.set('query', v.query);
     if (v.type) p.set('type', v.type);
+    if (v.rel) p.set('rel', v.rel);
     if (v.sort && v.sort !== 'revenue') p.set('sort', v.sort);
     const s = p.toString();
     return '/app/clients' + (s ? '?' + s : '');
@@ -136,9 +140,13 @@ export async function clientsPage(user, opts = {}) {
     ${winStat}
     ${growthStat}</div>`;
 
-  const chips = `<div class="chips"><span class="lbl">النوع:</span>
+  const relChip = (val, label) => `<a href="${qs({ rel: val })}" class="chip ${rel === val ? 'on' : ''}">${label}${val && relCount[val] ? ` <span class="tnum" style="opacity:.65">${relCount[val]}</span>` : ''}</a>`;
+  const chips = `<div class="chips" style="margin-bottom:.55rem"><span class="lbl">النوع:</span>
     <a href="${qs({ type: '' })}" class="chip ${type ? '' : 'on'}">${G.all}</a>
     ${CLIENT_TYPES.map((t) => `<a href="${qs({ type: t })}" class="chip ${type === t ? 'on' : ''}">${t}</a>`).join('')}
+  </div>
+  <div class="chips"><span class="lbl">العلاقة:</span>
+    ${relChip('', G.all)}${relChip('نشطة', 'نشطة')}${relChip('فاترة', 'فاترة')}${relChip('خاملة', 'خاملة')}
   </div>`;
 
   const sortOpts = [['revenue', `إيراد ${fy}`], ['pipeline', G.pipeline], ['activity', G.lastActivity]];
@@ -146,6 +154,7 @@ export async function clientsPage(user, opts = {}) {
     <form method="get" action="/app/clients" id="cl-form" style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap">
       <div class="search">${icon('search')}<input class="input" id="cl-q" name="query" value="${esc(query)}" aria-label="${G.search} في العملاء" placeholder="ابحث بالاسم أو الكود…"></div>
       ${type ? `<input type="hidden" name="type" value="${esc(type)}">` : ''}
+      ${rel ? `<input type="hidden" name="rel" value="${esc(rel)}">` : ''}
       <label style="display:flex;align-items:center;gap:.35rem;font-size:12px;color:var(--muted)">ترتيب حسب
         <select class="input" id="cl-sort" name="sort" style="padding:.35rem .5rem">${sortOpts.map(([v, l]) => `<option value="${v}" ${sort === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
     </form>
@@ -165,9 +174,19 @@ export async function clientsPage(user, opts = {}) {
       ${shown.map((s) => `<span style="font-size:9.5px;font-weight:700;background:var(--bg);border:1px solid var(--line);border-radius:999px;padding:.1rem .4rem;white-space:nowrap;color:var(--muted)">${esc(s)}</span>`).join('')}
       ${extra > 0 ? `<span class="tnum" style="font-size:9.5px;font-weight:800;color:var(--faint);align-self:center">+${extra}</span>` : ''}</div>`;
   };
-  // العلاقة: الحالة + آخر تواصل (طُوي عمودان في واحد)
-  const relCell = (r) => `${pill(r.relationship, REL_TONE[r.relationship] || 'slate')}
-    <div class="tnum" style="font-size:10.5px;color:var(--muted);margin-top:.28rem;white-space:nowrap">${r.last_activity_at ? relDay(r.last_activity_at) : '<span style="color:var(--faint)">لا تواصل مسجّل</span>'}</div>`;
+  // العلاقة: الحالة + آخر تواصل (طُوي عمودان في واحد) + تنبيه «عميل مهم يبرد»
+  // (علاقة فاترة/خاملة لكن له إيراد أو خط فرص أو مستحق مفتوح — أولوية تواصل قبل أن نخسره).
+  const relCell = (r) => {
+    // تنبيه انتقائي «act now»: عميل ذو قيمة (إيراد/خط فرص/مستحق) وعلاقته فاترة أو خاملة وصمتٌ ٦٠ يوماً
+    // فأكثر. نستثني «نشطة» لأن الفرصة المفتوحة تُبقيه نشطاً ولو تأخّر آخر تواصل مسجّل.
+    const hasValue = (r.fy_revenue_halalas > 0) || (r.open_pipeline_halalas > 0) || (r.open_ar_halalas > 0);
+    const daysSilent = r.last_activity_at
+      ? Math.floor((Date.now() - new Date(String(r.last_activity_at).slice(0, 10) + 'T00:00:00Z').getTime()) / 86400000) : 999;
+    const atRisk = (r.relationship === 'فاترة' || r.relationship === 'خاملة') && hasValue && daysSilent >= 60;
+    return `${pill(r.relationship, REL_TONE[r.relationship] || 'slate')}
+    <div class="tnum" style="font-size:10.5px;color:var(--muted);margin-top:.28rem;white-space:nowrap">${r.last_activity_at ? relDay(r.last_activity_at) : '<span style="color:var(--faint)">لا تواصل مسجّل</span>'}</div>
+    ${atRisk ? '<div style="font-size:9.5px;color:var(--amber);font-weight:800;margin-top:.18rem;white-space:nowrap" title="عميل ذو قيمة وعلاقته تبرد — بادر بالتواصل">⚠ يحتاج تواصلاً</div>' : ''}`;
+  };
   // خط الفرص المفتوح: القيمة الإجمالية (رئيسي) + العدد والمرجّح (ثانوي)
   const oppsCell = (r) => (r.open_opps
     ? `<div class="tnum" style="font-weight:800;font-size:12.5px;color:var(--ink2)">${sarShort(r.open_pipeline_halalas)}</div>
@@ -192,7 +211,7 @@ export async function clientsPage(user, opts = {}) {
     return (rev + ar) || dash;
   };
 
-  const rowsHtml = rows.map((r) => `<tr style="border-bottom:1px solid var(--line);cursor:pointer" onclick="location.href='/app/client/${r.id}'">
+  const rowTpl = (r) => `<tr style="border-bottom:1px solid var(--line);cursor:pointer" onclick="location.href='/app/client/${r.id}'">
     <td style="padding:.6rem .55rem;min-width:200px;max-width:290px">
       <div style="display:flex;align-items:center;gap:.4rem;flex-wrap:wrap">
         <a href="/app/client/${r.id}" style="font-size:13px;font-weight:700;color:var(--ink2)">${esc(r.name_ar)}</a>
@@ -205,17 +224,30 @@ export async function clientsPage(user, opts = {}) {
     <td data-label="الفوز · الخسارة" style="padding:.6rem .55rem;text-align:center">${wlCell(r)}</td>
     <td data-label="مشاريع نشطة" style="padding:.6rem .55rem;text-align:center;font-size:13px" class="tnum">${r.active_projects || dash}</td>
     <td data-label="إيراد ${fy}" style="padding:.6rem .55rem;text-align:left;white-space:nowrap">${moneyCell(r)}</td>
-  </tr>`).join('');
+  </tr>`;
+  // تقسيم القائمة المعروضة: عملاء لهم تعامل فعلي (إيراد/فرص/مشاريع/حسم/مستحق) في الجدول الرئيسي،
+  // وجهاتٌ في السجل بلا حراك تُطوى في ذيل قابل للفتح — يحوّل الجدار الطويل إلى قائمة قرار مركّزة.
+  // عند تفعيل تصفية العلاقة نعرض كل المطابق في جدول واحد بلا طيّ.
+  const dealings = (r) => (r.fy_revenue_halalas > 0) || (r.open_opps > 0) || (r.active_projects > 0) || (r.won_count > 0) || (r.lost_count > 0) || (r.open_ar_halalas > 0);
+  const engaged = rel ? shown : shown.filter(dealings);
+  const idle = rel ? [] : shown.filter((r) => !dealings(r));
 
+  const filtering = query || type || rel;
   const emptyState = `<div class="empty-state">${icon('client')}
-    <div class="t">${query || type ? 'لا نتائج مطابقة' : 'لا عملاء بعد'}</div>
-    <div class="s">${query || type ? 'جرّب تعديل كلمة البحث أو إزالة تصفية النوع.' : 'ابدأ ببناء سجل عملائك — كل فرصة وعقد ومشروع سيرتبط بعميله تلقائياً.'}</div>
-    ${canCreate && !query && !type ? `<button class="btn btn-primary" data-action="client-add">${icon('plus')} عميل جديد</button>` : ''}</div>`;
+    <div class="t">${filtering ? 'لا نتائج مطابقة' : 'لا عملاء بعد'}</div>
+    <div class="s">${filtering ? 'جرّب تعديل كلمة البحث أو إزالة التصفية.' : 'ابدأ ببناء سجل عملائك — كل فرصة وعقد ومشروع سيرتبط بعميله تلقائياً.'}</div>
+    ${canCreate && !filtering ? `<button class="btn btn-primary" data-action="client-add">${icon('plus')} عميل جديد</button>` : ''}</div>`;
 
   const relTip = 'تُقاس حالة العلاقة بآخر تواصل مسجّل: عميل بلا تواصل حديث يتحوّل من نشطة إلى فاترة ثم خاملة، وأي فرصة مفتوحة تُبقيه نشطاً';
-  const table = card(`<div class="tblwrap"><table class="rtbl" style="width:100%;border-collapse:collapse;min-width:860px">
-    <thead><tr>${th(G.client)}${th(`<span data-tip="${esc(relTip)}">${G.relationship} ⓘ</span>`, 'center')}${th('الفرص المفتوحة', 'left')}${th('الفوز · الخسارة', 'center')}${th('مشاريع نشطة', 'center')}${th(`إيراد ${fy}`, 'left')}</tr></thead>
-    <tbody>${rowsHtml}</tbody></table>${rows.length ? '' : emptyState}</div>`);
+  const headRow = `<thead><tr>${th(G.client)}${th(`<span data-tip="${esc(relTip)}">${G.relationship} ⓘ</span>`, 'center')}${th('الفرص المفتوحة', 'left')}${th('الفوز · الخسارة', 'center')}${th('مشاريع نشطة', 'center')}${th(`إيراد ${fy}`, 'left')}</tr></thead>`;
+  const tableFor = (list, empty) => `<div class="tblwrap"><table class="rtbl" style="width:100%;border-collapse:collapse;min-width:860px">${headRow}<tbody>${list.map(rowTpl).join('')}</tbody></table>${list.length ? '' : empty}</div>`;
+  const table = card(tableFor(engaged, emptyState));
+  const idleBlock = idle.length ? `<details style="margin-top:.85rem">
+    <summary style="cursor:pointer;list-style:none;padding:.6rem .9rem;background:#fff;border:1px solid var(--line);border-radius:12px;font-size:12.5px;display:flex;align-items:center;gap:.5rem">
+      <span style="font-weight:800;color:var(--ink2)">جهات في السجل بلا تعامل بعد</span>
+      <span class="tnum" style="background:#f1f5f9;border-radius:20px;padding:.05rem .55rem;font-weight:700;color:var(--muted)">${idle.length}</span>
+      <span style="color:var(--faint);font-size:11px">بلا فرص أو مشاريع أو إيراد — إظهار / إخفاء</span></summary>
+    <div style="margin-top:.5rem">${card(tableFor(idle, ''))}</div></details>` : '';
 
   // شرح ظاهر لحالة العلاقة وأساسها (يُحدَّد آلياً بآخر تواصل مسجّل + وجود فرصة مفتوحة)
   const relLegend = `<div class="card" style="padding:.65rem .9rem;margin-bottom:1rem;display:flex;gap:.35rem 1.3rem;flex-wrap:wrap;align-items:center;font-size:11.5px;color:var(--muted)">
@@ -223,8 +255,8 @@ export async function clientsPage(user, opts = {}) {
     <span style="display:inline-flex;align-items:center;gap:.4rem">${pill('نشطة', 'green')} تواصل خلال 30 يوماً أو لديه فرصة مفتوحة</span>
     <span style="display:inline-flex;align-items:center;gap:.4rem">${pill('فاترة', 'amber')} آخر تواصل بين 31 و120 يوماً</span>
     <span style="display:inline-flex;align-items:center;gap:.4rem">${pill('خاملة', 'slate')} لا تواصل منذ أكثر من 120 يوماً وبلا فرص مفتوحة</span></div>`;
-  const body = `${toolbar}${strip}${chips}${relLegend}${table}${ddTop5}`;
-  return layout({ user, active: 'clients', title: G.clients, subtitle: `سجل العلاقات · ${countAr(rows.length, { one: 'عميل واحد', two: 'عميلان', few: 'عملاء', many: 'عميلاً' })}`, body, scripts: ['/static/pages/clients.js'] });
+  const body = `${toolbar}${strip}${chips}${relLegend}${table}${idleBlock}${ddTop5}`;
+  return layout({ user, active: 'clients', title: G.clients, subtitle: `سجل العلاقات · ${countAr(rows.length, { one: 'عميل واحد', two: 'عميلان', few: 'عملاء', many: 'عميلاً' })}${rel ? ` · عرض «${rel}»` : ''}`, body, scripts: ['/static/pages/clients.js'] });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
