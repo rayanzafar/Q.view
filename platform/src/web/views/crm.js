@@ -65,20 +65,10 @@ const naChip = (compact = false) => `<span class="pill" style="background:#fef3c
 // نافذة «شرح المرحلة» — سبعة أسطر ثابتة من قاموس المراحل (stageInfo)، تُفتح من زر «؟» برأس العمود.
 function stageInfoTpl(s) {
   const i = stageInfo(s);
-  const row = (k, v) => `<div class="kv-row"><span class="k" style="flex:0 0 auto">${k}</span><span class="v" style="font-weight:600;max-width:66%">${v}</span></div>`;
   return `<template id="stage-info-${s.id}">
-    <div class="modal-head"><div><div style="font-weight:800;font-size:15px">مرحلة «${esc(i.name_ar)}»</div>
-      <div style="font-size:11.5px;color:var(--muted)">ماذا تعني، وشروط دخولها وخروجها، ومتى تُعد الفرصة فيها متوقفة</div></div>
+    <div class="modal-head"><div style="font-weight:800;font-size:15px">مرحلة «${esc(i.name_ar)}»</div>
       <button class="btn btn-ghost btn-sm" data-action="modal-close" aria-label="إغلاق">✕</button></div>
-    <div class="modal-body" style="gap:0">
-      ${row('المعنى', esc(i.meaning || '—'))}
-      ${row('شرط الدخول', esc(i.entry || '—'))}
-      ${row('شرط الخروج', esc(i.exit || '—'))}
-      ${row('الاحتمال الافتراضي للمرحلة', i.defaultWinPct == null ? '—' : `<b class="tnum">${i.defaultWinPct}%</b> <span style="font-weight:400;color:var(--muted);font-size:10.5px">(أساس المرحلة؛ لكل فرصة احتمالها الخاص)</span>`)}
-      ${row('العمر المقبول', i.ageLimitDays == null ? '—' : `<b class="tnum">${i.ageLimitDays}</b> يوماً <span style="font-weight:400;color:var(--muted);font-size:10.5px">(المدة المعتادة في هذه المرحلة؛ تجاوزها دون تقدّم يعني ركوداً يستدعي متابعة)</span>`)}
-      ${row('متى تُعد متوقفة', esc(i.stalledWhen || '—'))}
-      ${row('الإجراء المتوقع', esc(i.expectedNext || '—'))}
-    </div></template>`;
+    <div class="modal-body" style="font-size:13.5px;line-height:1.95;color:var(--ink2)">${esc(i.meaning || '—')}</div></template>`;
 }
 
 export async function opportunitiesPage(user, opts = {}) {
@@ -197,6 +187,7 @@ export async function opportunitiesPage(user, opts = {}) {
         ${openRow ? ageChip(o, true) : ''}
         ${openRow && o.no_next_action ? naChip(true) : ''}
       </div>
+      ${st.is_won && projByOpp[o.id] ? `<div style="margin-top:.35rem;padding-top:.3rem;border-top:1px solid var(--line);font-size:10px;color:var(--muted);word-break:break-word">▸ المشروع: <a href="/app/project/${projByOpp[o.id].id}" style="color:var(--brand);font-weight:700">${esc(projByOpp[o.id].name_ar)}</a></div>` : ''}
       ${ow ? `<span class="kav" title="مالك الفرصة: ${esc(ow)}" style="width:17px;height:17px;font-size:8.5px;position:absolute;inset-inline-end:.45rem;bottom:.45rem">${esc((ow || '؟').trim().charAt(0))}</span>` : ''}
     </div>`;
   };
@@ -229,7 +220,7 @@ export async function opportunitiesPage(user, opts = {}) {
         ${isWon && wonProjectCount ? `<div style="font-size:10.5px;color:var(--green);font-weight:700;margin-top:.16rem" title="الفرص الفائزة التي تحوّلت إلى مشاريع قيد التنفيذ">▸ ${countAr(wonProjectCount, { one: 'مشروع واحد ناتج', two: 'مشروعان ناتجان', few: 'مشاريع ناتجة', many: 'مشروعاً ناتجاً' })}</div>` : ''}
         <a class="btn btn-sm" href="${tblHref}" style="margin-top:.45rem;justify-content:center">${icon('list')} ${isWon ? 'الصفقات والمشاريع' : 'عرض الجدول'}</a>
       </div>
-      <div class="kcol-body" style="min-height:30px;padding:.15rem" aria-hidden="true"></div>
+      <div class="kcol-body" style="padding:.15rem">${main.map(opCard).join('') || `<div style="padding:.6rem .3rem;font-size:11px;color:var(--faint);text-align:center">${isWon ? 'لا صفقات فائزة هذه السنة' : 'لا خسائر هذه السنة'}</div>`}</div>
     </div>`;
   };
 
