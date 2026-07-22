@@ -17,6 +17,7 @@ import { viewsRouter } from './views/views.routes.js';
 import { clientsRouter } from './clients/clients.routes.js';
 import { governanceRouter } from './pmo/governance.routes.js';
 import { ioRouter } from './io/io.routes.js';
+import { employeesRouter } from './org/employees.routes.js';
 
 export const apiRouter = Router();
 apiRouter.use(requireAuth());
@@ -25,6 +26,7 @@ apiRouter.use(viewsRouter);
 apiRouter.use(clientsRouter);
 apiRouter.use(governanceRouter);
 apiRouter.use(ioRouter);
+apiRouter.use(employeesRouter);
 const h = (fn) => async (req, res, next) => { try { const r = await fn(req, res); if (r !== undefined) res.json(r); } catch (e) { next(e); } };
 
 // ── Opportunities / CRM ──

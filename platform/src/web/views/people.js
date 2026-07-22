@@ -70,6 +70,7 @@ export async function teamPage(user, opts = {}) {
   const canSalary = canSeeSensitive(user, 'salary');
   const canManage = can(user, 'create', 'employee') || can(user, 'update', 'employee');
   const canCreate = can(user, 'create', 'employee');
+  const canDelete = can(user, 'delete', 'employee'); // offboarding — HR/admin only (matrix)
   const canStaff = can(user, 'update', 'project'); // span editing goes through project staffing rights
   const allSec = await all('SELECT id, name_ar, color FROM sector WHERE active = 1 AND deleted_at IS NULL ORDER BY sort_order');
   const sectorNames = Object.fromEntries(allSec.map((s) => [s.id, s.name_ar]));
@@ -187,10 +188,12 @@ export async function teamPage(user, opts = {}) {
       <div style="font-size:11px;font-weight:800;color:var(--muted);margin-bottom:.3rem">تسكين ${esc(e.name_ar)} — ${e.projectCount} مشروع${e.opportunities.length ? ` + ${e.opportunities.length} ${G.opportunity}` : ''}</div>
       ${detailProjects || `<div style="color:var(--faint);font-size:12px;padding:.2rem 0">لا مشاريع مُسكَّنة هذه السنة${e.sector_id ? ` — وقته كله «${G.sectorParking}»` : ''}</div>`}
       ${detailOpps}
+      <div class="dd-row"><span>تاريخ التعيين</span><b class="tnum">${e.hire_date ? esc(e.hire_date) : '—'}</b></div>
       ${canSalary ? `<div class="dd-row emp-sal"><span>الراتب الشهري</span><b class="tnum">${e.salary_halalas ? fmtSar(e.salary_halalas) : '—'}</b></div>` : ''}
-      ${canManage ? `<div style="display:flex;gap:.4rem;margin-top:.5rem">
+      ${canManage ? `<div style="display:flex;gap:.4rem;margin-top:.5rem;flex-wrap:wrap">
         <button class="btn btn-sm" data-action="assign" data-emp="${e.id}">${icon('userplus')} تسكين على مشروع</button>
-        <button class="btn btn-sm btn-ghost" data-action="edit-emp" data-emp="${e.id}">✎ تعديل الموظف</button></div>` : ''}
+        <button class="btn btn-sm btn-ghost" data-action="emp-edit" data-emp="${e.id}">✎ تعديل الموظف</button>
+        ${canDelete ? `<button class="btn btn-sm btn-ghost" data-action="emp-delete" data-emp="${e.id}" style="color:var(--red)">حذف الموظف</button>` : ''}</div>` : ''}
     </div>`;
   };
 
@@ -295,7 +298,7 @@ export async function teamPage(user, opts = {}) {
       <div style="font-weight:800;font-size:14px">${sector ? esc(sectorNames[sector]) : 'كل القطاعات'} · ${countAr(activeR.length, { one: 'عضو نشط واحد', two: 'عضوان نشطان', few: 'أعضاء نشطين', many: 'عضواً نشطاً' })}${roster.length > activeR.length ? ` <span style="color:var(--faint);font-weight:400">(+${roster.length - activeR.length} غير نشط)</span>` : ''}</div>
       <div class="spacer"></div>
       ${canManage ? pill('لديك صلاحية إدارة الفريق', 'green') : pill('عرض فقط', 'slate')}
-      ${canCreate ? `<button class="btn btn-primary" onclick="Sanad.empAdd()">${icon('plus')} إضافة موظف</button>` : ''}
+      ${canCreate ? `<button class="btn btn-primary" data-action="emp-add">${icon('plus')} إضافة موظف</button>` : ''}
     </div>
     ${band}
     <div style="margin-bottom:1rem">${needsCard}</div>
@@ -305,7 +308,8 @@ export async function teamPage(user, opts = {}) {
     <script>window.__SANAD=Object.assign(window.__SANAD||{},{
       emps:${JSON.stringify(Object.fromEntries(roster.map((e) => [e.id, {
         name_ar: e.name_ar, job_title: e.job_title, employment_type: e.employment_type, status: e.status,
-        active: e.active, sector_id: e.sector_id, salary_sar: canSalary ? Math.round((e.salary_halalas || 0) / 100) : null,
+        active: e.active, sector_id: e.sector_id, hire_date: e.hire_date || '',
+        salary_sar: canSalary ? Math.round((e.salary_halalas || 0) / 100) : null,
         months: e.months, currentUtil: e.currentUtil,
         projects: e.projects.map((p) => ({ allocId: p.allocId, name: p.name, projectId: p.projectId,
           months: Object.fromEntries(Object.entries(p.months).map(([m, f]) => [m, Math.round((Number(f) || 0) * 100)])) })),
@@ -313,10 +317,10 @@ export async function teamPage(user, opts = {}) {
       }]))).replace(/</g, '\\u003c')},
       teamSectors:${JSON.stringify(allSec.map((s) => ({ id: s.id, name_ar: s.name_ar }))).replace(/</g, '\\u003c')},
       teamProjects:${JSON.stringify(projects.map((p) => ({ id: p.id, name_ar: p.name_ar, sector_id: p.sector_id }))).replace(/</g, '\\u003c')},
-      canSalary:${canSalary}, canManage:${canManage}, canStaff:${canStaff}, currentMonth:${currentMonth},
+      canSalary:${canSalary}, canManage:${canManage}, canCreate:${canCreate}, canDelete:${canDelete}, canStaff:${canStaff}, currentMonth:${currentMonth},
       monthNames:${JSON.stringify(MONTHS_AR)}, teamSectorLocked:${JSON.stringify(sector)}});</script>`;
   return layout({ user, active: 'team', title: 'الفريق والتسكين', subtitle: `مساحة قرارات الطاقة والتسكين · ${curName} ${year}`, body,
-    scripts: ['/static/pages/staffing.js'] });
+    scripts: ['/static/pages/staffing.js', '/static/pages/team-manage.js'] });
 }
 
 export async function orgPage(user) {

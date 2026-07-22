@@ -101,6 +101,7 @@ export const ROLE_GRANTS = {
 
   hr: [
     ...crud(['employee', 'position', 'department', 'unit', 'team'], 'company'),
+    { resource: 'employee', action: 'delete', scope: 'company' }, // HR owns the staff roster: offboard/remove
     { resource: 'salary', action: 'read', scope: 'company' }, // HR sees individual salary
     ...read(['timesheet', 'report', 'kpi'], 'company'),
   ],

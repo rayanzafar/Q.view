@@ -8,6 +8,16 @@ import { forbidden, badRequest, notFound } from '../../core/http/errors.js';
 
 const requireAdminSectors = (user) => { if (!can(user, 'admin', 'sector') && user.role_id !== 'admin' && !can(user, 'create', 'sector')) throw forbidden('إدارة الهيكل تتطلب صلاحية إدارية'); };
 
+// تاريخ التعيين يُخزَّن نصاً بصيغة سنة-شهر-يوم (ISO) قابلاً للنقل بين المحرّكين. فارغ ⟵ غير معروف (null).
+// نتحقق من الصيغة ومن كونه تاريخاً حقيقياً كي لا نُدخل قيمة لا تُقرأ لاحقاً في التقارير.
+function normHireDate(v) {
+  if (v == null || String(v).trim() === '') return null;
+  const s = String(v).trim().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s) || Number.isNaN(Date.parse(s)))
+    throw badRequest('تاريخ التعيين غير صحيح — أدخله بصيغة سنة-شهر-يوم مثل 2024-03-01');
+  return s;
+}
+
 export async function orgTree(user) {
   // Gate: the org hierarchy (and its financial targets) must not be readable by any authenticated user.
   if (user.role_id !== 'admin' && !can(user, 'read', 'employee') && !can(user, 'create', 'sector'))
@@ -77,13 +87,13 @@ export async function createUnit(ctx, data) {
 
 // ── Employee create/update + MOVE (reassign sector/department) ──
 export async function createEmployee(ctx, data) {
-  if (!can(ctx.user, 'create', 'employee', { sector_id: data.sector_id })) throw forbidden();
+  if (!can(ctx.user, 'create', 'employee', { sector_id: data.sector_id })) throw forbidden('إضافة موظف تتطلب صلاحية إدارة الفريق على هذا القطاع');
   if (!data.name_ar) throw badRequest('اسم الموظف مطلوب');
   const eid = id('emp');
   await insert('employee', { id: eid, name_ar: data.name_ar, name_en: data.name_en || null, sector_id: data.sector_id || null,
     department_id: data.department_id || null, unit_id: data.unit_id || null, position_id: data.position_id || null,
-    job_title: data.job_title || null, salary_halalas: toHalalas(data.salary_sar), employment_type: data.employment_type || 'أساسي',
-    status: 'نشط', active: 1, created_at: nowIso(), created_by: ctx.user.id });
+    job_title: data.job_title || null, hire_date: normHireDate(data.hire_date), salary_halalas: toHalalas(data.salary_sar),
+    employment_type: data.employment_type || 'أساسي', status: 'نشط', active: 1, created_at: nowIso(), created_by: ctx.user.id });
   await audit(ctx, { action: 'create', resource: 'employee', resourceId: eid, sectorId: data.sector_id });
   return await get('SELECT * FROM employee WHERE id = ?', [eid]);
 }
@@ -108,6 +118,7 @@ export async function updateEmployee(ctx, employeeId, data) {
   if (!can(ctx.user, 'update', 'employee', e)) throw forbidden('تعديل الموظف يتطلب صلاحية إدارية على قطاعه');
   const patch = { updated_at: nowIso() };
   for (const k of ['name_ar', 'name_en', 'job_title', 'employment_type', 'status', 'sector_id', 'department_id', 'position_id']) if (k in data) patch[k] = data[k];
+  if ('hire_date' in data) patch.hire_date = normHireDate(data.hire_date);
   if ('active' in data) patch.active = data.active ? 1 : 0;
   // moving to another sector requires update rights on the TARGET sector too
   if (patch.sector_id && patch.sector_id !== e.sector_id && !can(ctx.user, 'update', 'employee', { sector_id: patch.sector_id })) throw forbidden('لا تملك صلاحية على القطاع الهدف');
@@ -115,6 +126,18 @@ export async function updateEmployee(ctx, employeeId, data) {
   await update('employee', employeeId, patch);
   await audit(ctx, { action: 'update', resource: 'employee', resourceId: employeeId, sectorId: patch.sector_id || e.sector_id, detail: Object.keys(patch) });
   return await get('SELECT * FROM employee WHERE id = ?', [employeeId]);
+}
+
+// Soft-delete (offboarding): mark the staff record removed without erasing history. Reversible by
+// clearing deleted_at. Rosters and the org tree already filter deleted_at IS NULL, so the person
+// drops off the team page immediately. Delete is HR/admin only (matrix), NOT sector managers.
+export async function softDeleteEmployee(ctx, employeeId) {
+  const e = await get('SELECT * FROM employee WHERE id = ? AND deleted_at IS NULL', [employeeId]);
+  if (!e) throw notFound('الموظف غير موجود أو محذوف سابقاً');
+  if (!can(ctx.user, 'delete', 'employee', e)) throw forbidden('حذف موظف يتطلب صلاحية الموارد البشرية');
+  await update('employee', employeeId, { deleted_at: nowIso(), active: 0, updated_at: nowIso() });
+  await audit(ctx, { action: 'delete', resource: 'employee', resourceId: employeeId, sectorId: e.sector_id, detail: { name_ar: e.name_ar } });
+  return { ok: true, id: employeeId };
 }
 
 // Staffing roster v3 — PLANNED utilization from the allocation model (scoped) PLUS opportunity
@@ -169,7 +192,7 @@ export async function staffingRoster(user, opts = {}) {
     const staffedMonths = months.filter((m) => m > 0).length;
     const intensity = staffedMonths ? Math.round(months.filter((m) => m > 0).reduce((a, b) => a + b, 0) / staffedMonths) : 0; // avg load WHEN staffed
     return { id: e.id, name_ar: e.name_ar, name_en: e.name_en, job_title: e.job_title, employment_type: e.employment_type,
-      status: e.status, active: e.active, sector_id: e.sector_id,
+      status: e.status, active: e.active, sector_id: e.sector_id, hire_date: e.hire_date,
       // QH-1: الراتب حقل حساس — يُسلسَل فقط لمن يملك صلاحية قراءته (HR/admin)، في الواجهة والـAPI معاً
       ...(can(user, 'read', 'salary') ? { salary_halalas: e.salary_halalas } : {}),
       months, annualUtil, currentUtil, prevMonthUtil, monthDelta, oppLoadPct, staffedMonths, intensity, peak: Math.max(0, ...months),
