@@ -289,16 +289,28 @@ export async function opportunitiesPage(user, opts = {}) {
   const stageTpls = stages.map(stageInfoTpl).join('');
 
   // ── الجدول (تبديل العرض) ──
+  // جدول تقريري كامل (كل الفرص، لا الفائزة/الخاسرة فقط) — كل عمود قابل للترتيب تصاعدياً/
+  // تنازلياً (نقرة على الرأس، بنفس نمط جدول المشاريع تماماً — opps.js يطبّق sortBy()) كي يُبنى
+  // منه تقرير: الأقدم/الأحدث إنشاءً، الأطول ركوداً في مرحلته (إشارة الخطر الملوّنة في الكانبان
+  // نفسها)، آخر تحديث. data-v على كل خلية يضمن ترتيباً رقمياً/تاريخياً صحيحاً بصرف النظر عن
+  // تنسيق العرض (فواصل الآلاف والعملة تكسر Number() الساذج).
+  const oth = (label, title) => `<th data-sort role="button" tabindex="0" title="${title ? esc(title) : 'اضغط للترتيب'}" class="px-3 font-medium" style="cursor:pointer;white-space:nowrap">${label} <span style="color:var(--faint)">⇅</span></th>`;
+  const dateCell = (iso) => iso ? `<span class="tnum" style="white-space:nowrap">${esc(String(iso).slice(0, 10))}</span>` : '<span style="color:var(--faint)">—</span>';
   const tableRows = rows.slice(0, 200).map((o) => {
     const st = stById[o.stage_id] || {};
+    const openRow = isOpen(o);
+    const age = o.stage_age_days;
+    const updated = o.updated_at || o.created_at;
     return `<tr class="border-b border-line" data-action="open-opp" data-id="${o.id}" data-hay="${esc(`${o.title_ar} ${clients[o.client_id] || ''}`.toLowerCase()).replace(/"/g, '')}" data-sector="${o.sector_id || ''}" style="cursor:pointer">
-      <td class="py-2.5 px-3 text-[13px]">${esc(o.title_ar)}</td>
-      <td class="px-3 text-[12px]">${esc(clients[o.client_id] || '—')}</td>
-      <td class="px-3">${pill(esc(st.name_ar || o.stage_id), 'blue')}</td>
-      <td class="px-3 text-[13px] tnum">${fmtSar(o.value_halalas)}</td>
-      <td class="px-3 text-[12px] text-muted tnum">${pct(o.win_pct)}</td>
-      <td class="px-3 text-[12px]">${isOpen(o) ? ageChip(o) : '<span class="text-faint">—</span>'}</td>
-      <td class="px-3 text-[11.5px] text-muted">${o.no_next_action ? (isOpen(o) ? naChip() : '—') : esc(o.next_action)}</td></tr>`;
+      <td data-label="العنوان" class="py-2.5 px-3 text-[13px]">${esc(o.title_ar)}</td>
+      <td data-label="العميل" class="px-3 text-[12px]" data-v="${esc(clients[o.client_id] || '')}">${esc(clients[o.client_id] || '—')}</td>
+      <td data-label="${G.stage}" class="px-3" data-v="${st.sort_order ?? 0}">${pill(esc(st.name_ar || o.stage_id), 'blue')}</td>
+      <td data-label="العمر في المرحلة" class="px-3 text-[12px]" data-v="${age ?? -1}">${openRow ? (ageChip(o) || '<span style="color:var(--faint)">—</span>') : '<span class="text-faint">—</span>'}</td>
+      <td data-label="القيمة" class="px-3 text-[13px] tnum" data-v="${o.value_halalas || 0}">${fmtSar(o.value_halalas)}</td>
+      <td data-label="${G.probability}" class="px-3 text-[12px] text-muted tnum" data-v="${o.win_pct || 0}">${pct(o.win_pct)}</td>
+      <td data-label="تاريخ الإنشاء" class="px-3 text-[12px]" data-v="${esc(o.created_at || '')}">${dateCell(o.created_at)}</td>
+      <td data-label="آخر تحديث" class="px-3 text-[12px]" data-v="${esc(updated || '')}">${dateCell(updated)}</td>
+      <td data-label="${G.nextAction}" class="px-3 text-[11.5px] text-muted">${o.no_next_action ? (openRow ? naChip() : '—') : esc(o.next_action)}</td></tr>`;
   }).join('');
 
   const emptyAll = rows.length === 0;
@@ -309,10 +321,9 @@ export async function opportunitiesPage(user, opts = {}) {
         ${canCreate ? `<button class="btn btn-primary" data-action="opp-add">${icon('plus')} فرصة جديدة</button>` : ''}</div></div>`
     : `<div id="opp-kanban" class="kanban" tabindex="0" role="region" aria-label="لوحة الفرص">${columns}</div>
       <div id="opp-table" class="card" style="display:none;overflow-x:auto">
-        <table class="w-full"><thead><tr class="text-[11px] text-muted text-right">
-          <th class="py-2 px-3 font-medium">العنوان</th><th class="px-3 font-medium">العميل</th><th class="px-3 font-medium">${G.stage}</th>
-          <th class="px-3 font-medium">القيمة</th><th class="px-3 font-medium">${G.probability}</th>
-          <th class="px-3 font-medium">العمر في المرحلة</th><th class="px-3 font-medium">${G.nextAction}</th></tr></thead>
+        <table class="rtbl w-full" style="min-width:980px"><thead><tr class="text-[11px] text-muted text-right">
+          ${oth('العنوان')}${oth('العميل')}${oth(G.stage)}${oth('العمر في المرحلة', 'اضغط للترتيب — الأخطر (الأطول ركوداً) أولاً')}
+          ${oth('القيمة')}${oth(G.probability)}${oth('تاريخ الإنشاء')}${oth('آخر تحديث')}${oth(G.nextAction)}</tr></thead>
         <tbody>${tableRows}</tbody></table></div>`;
 
   const body = `

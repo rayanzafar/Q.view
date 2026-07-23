@@ -246,8 +246,29 @@
     } catch (err) { toast(err.message, true); }
   }
 
+  // ── ترتيب أعمدة الجدول التقريري: نقرة على رأس عمود يحمل data-sort — رقمي/تاريخي إن أمكن
+  // (data-v على كل خلية) وإلا نصي محلي، مع عكس الاتجاه عند النقر المتكرر (نفس نمط جدول المشاريع). ──
+  function sortOppTable(thEl) {
+    var table = thEl.closest('table'); var tbody = table && table.querySelector('tbody'); if (!tbody) return;
+    var idx = thEl.cellIndex;
+    var dir = thEl.dataset.dir === 'asc' ? 'desc' : 'asc';
+    table.querySelectorAll('th[data-sort]').forEach(function (h) { delete h.dataset.dir; });
+    thEl.dataset.dir = dir;
+    var rows = [...tbody.querySelectorAll('tr')];
+    var val = function (tr) { var td = tr.children[idx]; return td ? (td.dataset.v != null ? td.dataset.v : td.textContent.trim()) : ''; };
+    var numeric = rows.every(function (r) { var v = val(r); return v === '' || !isNaN(Number(v)); });
+    rows.sort(function (a, b) {
+      var x = val(a), y = val(b);
+      var c = numeric ? (Number(x) || 0) - (Number(y) || 0) : String(x).localeCompare(String(y), 'ar');
+      return dir === 'asc' ? c : -c;
+    });
+    rows.forEach(function (r) { tbody.appendChild(r); });
+  }
+
   // ── تفويض النقر ──
   document.addEventListener('click', function (e) {
+    var sortTh = e.target.closest('#opp-table th[data-sort]');
+    if (sortTh) { sortOppTable(sortTh); return; }
     var actEl = e.target.closest('[data-action]');
     if (actEl) {
       var act = actEl.dataset.action;
@@ -294,11 +315,11 @@
     if (dd && window.Sanad) window.Sanad.openDD(dd.dataset.dd);
   });
 
-  // ── لوحة المفاتيح: البطاقات والبلاطات القابلة للنقر تعمل بـ Enter ──
+  // ── لوحة المفاتيح: البطاقات والبلاطات ورؤوس الترتيب تعمل بـ Enter ──
   document.addEventListener('keydown', function (e) {
     if (e.key !== 'Enter') return;
     var t = e.target;
-    if (t.matches && t.matches('[data-action="open-opp"],[data-dd],[data-action="na-edit"]')) { e.preventDefault(); t.click(); }
+    if (t.matches && t.matches('[data-action="open-opp"],[data-dd],[data-action="na-edit"],#opp-table th[data-sort]')) { e.preventDefault(); t.click(); }
   });
 
   // (الإفلات على عمودَي الحسم الملخّصين يتولاه Sanad.kDrop نفسه: يحفظ ثم يعيد التحميل فوراً)
