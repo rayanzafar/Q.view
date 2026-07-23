@@ -5,6 +5,7 @@
 //  4) AUDIT — every request and applied change logged to ai_activity_log.
 import { all, get, insert, update } from '../db/index.js';
 import { can } from '../rbac/index.js';
+import { scopeFilter } from '../rbac/scope.js';
 import { audit } from '../audit/index.js';
 import { complete, aiMode } from './provider.js';
 import { companyOverview, sectorDashboard, projectKpis } from '../reports/metrics.js';
@@ -20,7 +21,7 @@ export async function ask(ctx, message, opts = {}) {
   await logAsk(user, text, intent, 0, null);
 
   switch (intent) {
-    case 'summarize_project': return await summarizeProject(user, opts.projectId || extractProjectId(text));
+    case 'summarize_project': return await summarizeProject(user, opts.projectId || await resolveProjectRef(user, text));
     case 'weekly_report':     return await weeklyReportDraft(ctx);
     case 'detect_risks':      return await detectRisks(user);
     case 'data_quality':      return await dataQualityScan(user);
@@ -42,6 +43,11 @@ function classify(text, forced) {
   return 'smalltalk';
 }
 
+// تسمية بالمعنى لا بالكود التقني — نفس خرائط واجهة المشاريع (لا استيراد من web/ حفاظاً على
+// اتجاه الطبقات core→web، فهذه نسخة محلية صغيرة بنفس القيم).
+const STATUS_AR = { IN_PROGRESS: 'قيد التنفيذ', ON_HOLD: 'متوقّف مؤقتًا', COMPLETED: 'مكتمل', NOT_STARTED: 'لم يبدأ', CANCELLED: 'ملغى' };
+const RAG_AR = { GREEN: 'على المسار', AMBER: 'في خطر', RED: 'حرج' };
+
 // ── Read intents (never write) ──
 async function summarizeProject(user, projectId) {
   if (!projectId) return reply('حدّد المشروع (اسم أو معرّف) لألخّص حالته.');
@@ -52,7 +58,7 @@ async function summarizeProject(user, projectId) {
   const risks = await all("SELECT title FROM risk WHERE project_id = ? AND status != 'CLOSED' LIMIT 5", [p.id]);
   const showCost = can(user, 'read', 'cost');
   const facts = [
-    `الحالة: ${p.status} · RAG: ${p.rag} · الإنجاز: ${Math.round(p.progress_pct || 0)}%`,
+    `الحالة: ${STATUS_AR[p.status] || p.status} · الصحة: ${RAG_AR[p.rag] || p.rag} · الإنجاز: ${Math.round(p.progress_pct || 0)}%`,
     `المهام: ${k.taskCompletionRate}% مكتملة · متأخرة: ${k.lateTasks}`,
     `قبول المخرجات: ${k.deliverableAcceptanceRate}% (من ${k.totalDeliverables})`,
     showCost ? `الصرف الفعلي: ${fmtSar(p.actual_spend_halalas)} · قيمة العقد: ${fmtSar(p.contract_value_halalas)}` : `قيمة العقد: ${fmtSar(p.contract_value_halalas)} (التكلفة محجوبة عن دورك)`,
@@ -178,7 +184,22 @@ function smallTalk(user, text) {
   return reply('أنا مساعد سند. أستطيع: تلخيص مشروع · مسودة تقرير أسبوعي · كشف المخاطر · فحص جودة البيانات · اقتراح أولوياتك · تنفيذ تغييرات محدّدة بمعاينة وتأكيد. ماذا تريد؟');
 }
 function reply(text) { return { reply: text }; }
-function extractProjectId(text) { const m = text.match(/(p_\S+|PRJ-\S+|prj_\S+)/); return m?.[1] || null; }
+// يحلّ إشارة المشروع من نص المستخدم: أولاً معرّف داخلي صريح (p_.., PRJ-..) إن كُتب، وإلا يبحث
+// عن اسم/كود مشروع حقيقي ضمن ما يملك المستخدم صلاحية قراءته فقط — قبل هذا الإصلاح كان المساعد
+// يفهم فقط معرّفات داخلية لا يعرفها أي مستخدم عادي، فيرد «حدّد المشروع» حتى بعد ذكر اسمه بوضوح.
+async function resolveProjectRef(user, text) {
+  const idMatch = text.match(/(p_\S+|PRJ-\S+|prj_\S+)/);
+  if (idMatch) return idMatch[1];
+  const q = text.replace(/(لخّص|ملخّص|ملخص|حالة|مشروع|مشاريع|summarize|project|status)/gi, '').trim();
+  if (!q) return null;
+  const f = scopeFilter(user, 'project', 'read', { ownerCol: 'owner_user_id' });
+  const rows = await all(
+    `SELECT id FROM project WHERE ${f.clause} AND deleted_at IS NULL
+       AND (name_ar LIKE ? OR code = ? OR financial_code = ?)
+     ORDER BY (name_ar = ?) DESC, updated_at DESC LIMIT 1`,
+    [...f.params, `%${q}%`, q, q, q]);
+  return rows[0]?.id || null;
+}
 async function logAsk(user, prompt, intent, applied, preview) {
   await insert('ai_activity_log', { id: id('ai'), at: nowIso(), user_id: user.id,
     prompt: String(prompt).slice(0, 500), intent, applied, preview_json: preview ? JSON.stringify(preview) : null });
