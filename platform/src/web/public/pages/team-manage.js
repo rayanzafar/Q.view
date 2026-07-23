@@ -116,4 +116,21 @@
       if (btn) { ev.preventDefault(); save(btn.dataset.id || ''); }
     }
   });
+
+  // القفز إلى موظف واحد (وارد من لوحة الأوامر Ctrl/Cmd+K): يفتح تفاصيله ويمرّر إليه ويومض إشارةً.
+  (function jumpToHighlight() {
+    const empId = new URLSearchParams(location.search).get('highlight');
+    if (!empId) return;
+    const row = document.querySelector('.brd-row[data-emp="' + CSS.escape(empId) + '"]');
+    if (!row) return;
+    const section = row.closest('details');
+    if (section && !section.open) section.open = true; // القسم قد يكون مطوياً افتراضياً (مثل «مستقر»)
+    const expandBtn = row.querySelector('[data-action="expand"]');
+    if (expandBtn && expandBtn.getAttribute('aria-expanded') !== 'true') expandBtn.click();
+    setTimeout(() => {
+      row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      row.classList.add('hl-flash');
+      setTimeout(() => row.classList.remove('hl-flash'), 1700);
+    }, 60);
+  })();
 })();

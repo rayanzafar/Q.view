@@ -228,6 +228,35 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
   body.side-open aside.side{transform:none;box-shadow:0 0 60px rgba(15,23,42,.4)}
   .kcol{flex-basis:260px;width:260px}
 }
+
+/* ── لوحة الأوامر (Ctrl/Cmd+K) — بحث شامل عبر الفرص/المشاريع/العملاء/الفريق ──
+   معيار عالمي (Linear/Notion/GitHub/Figma): نافذة علوية بمحاذاة النص لا منتصف الشاشة، تفويض
+   لوحة مفاتيح كامل (↑↓ للتنقل، Enter للفتح، Esc للإغلاق)، وزر ظاهر بجانب الجرس — الاختصار
+   وحده غير كافٍ للاكتشاف (درس GitHub 2025: أزالوا لوحتهم لضعف الاستخدام حين اقتصرت على اختصار مخفي). */
+.hdr-search-btn{display:inline-flex;align-items:center;gap:.5rem;color:var(--muted);background:#f6f7fb;border:1px solid var(--line);border-radius:10px;padding:.4rem .65rem;cursor:pointer;font-family:inherit;font-size:11.5px}
+.hdr-search-btn:hover{border-color:#c9d3e8;color:var(--ink2)}
+.hdr-search-btn kbd{font-family:inherit;font-size:10px;font-weight:800;background:#fff;border:1px solid var(--line);border-radius:5px;padding:.05rem .35rem;color:var(--faint)}
+.cmdk-scrim{position:fixed;inset:0;background:rgba(15,23,42,.5);backdrop-filter:blur(2px);z-index:80;display:none;align-items:flex-start;justify-content:center;padding:12vh 1rem 1rem}
+.cmdk-scrim.on{display:flex}
+.cmdk-box{width:560px;max-width:100%;max-height:70vh;background:var(--surface);border-radius:16px;box-shadow:0 30px 80px rgba(15,23,42,.4);overflow:hidden;display:flex;flex-direction:column;animation:pop .16s ease}
+.cmdk-input-row{display:flex;align-items:center;gap:.6rem;padding:.9rem 1.1rem;border-bottom:1px solid var(--line)}
+.cmdk-input-row svg{flex:none;color:var(--faint);width:17px;height:17px}
+.cmdk-input-row input{flex:1;border:none;outline:none;font-family:inherit;font-size:14.5px;color:var(--ink2);background:transparent}
+.cmdk-input-row .esc-hint{flex:none;font-size:10px;font-weight:800;color:var(--faint);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:.15rem .4rem}
+.cmdk-list{flex:1;overflow-y:auto;padding:.4rem}
+.cmdk-empty{padding:2rem 1rem;text-align:center;color:var(--muted);font-size:12.5px;line-height:1.8}
+.cmdk-row{display:flex;align-items:center;gap:.7rem;padding:.6rem .7rem;border-radius:10px;cursor:pointer}
+.cmdk-row.active{background:var(--bg)}
+.cmdk-row .cat{flex:none;font-size:10px;font-weight:800;color:#fff;background:var(--brand);border-radius:6px;padding:.2rem .45rem;min-width:38px;text-align:center}
+.cmdk-row .cat.project{background:var(--brand2)}.cmdk-row .cat.client{background:var(--green)}.cmdk-row .cat.employee{background:var(--amber)}
+.cmdk-row .tx{flex:1;min-width:0}
+.cmdk-row .tx .t{font-size:13px;font-weight:700;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cmdk-row .tx .s{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media(max-width:640px){.cmdk-scrim{padding-top:4vh}.hdr-search-btn span,.hdr-search-btn kbd{display:none}}
+@media(max-width:520px){.hdr-search-btn{padding:.4rem}}
+/* وميض تأكيد الوصول — يُستخدم عند القفز إلى صف من لوحة الأوامر (مثال: موظف من نتيجة البحث) */
+@keyframes hl-flash{0%,100%{background:transparent}30%{background:rgba(36,74,153,.12)}}
+.hl-flash{animation:hl-flash 1.6s ease}
 `;
 
 export async function layout({ user, active, title, subtitle, body, year, extraHead = '', scripts }) {
@@ -276,6 +305,7 @@ window.__SANAD_MONTHS=${JSON.stringify(MONTHS_AR)};window.__SANAD_MONTHS_EN=${JS
       </div>
       <div style="display:flex;align-items:center;gap:1rem">
         ${yearSel}
+        <button type="button" class="hdr-search-btn" data-action="cmdk-open" aria-label="بحث شامل">${icon('search')}<span>ابحث في كل شيء…</span><kbd>Ctrl K</kbd></button>
         <a href="/app/tasks" title="الإشعارات" style="position:relative;color:var(--muted)">${icon('bell')}<span id="notif-badge" style="display:none;position:absolute;top:-4px;left:-4px;background:var(--red);color:#fff;font-size:9px;border-radius:99px;padding:1px 4px;font-weight:700"></span></a>
         <div style="display:flex;align-items:center;gap:.55rem">
           <div style="width:34px;height:34px;border-radius:50%;background:var(--brand-grad);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800">${initial}</div>
@@ -304,7 +334,16 @@ window.__SANAD_MONTHS=${JSON.stringify(MONTHS_AR)};window.__SANAD_MONTHS_EN=${JS
 <div id="scrim" class="scrim" onclick="Sanad.closeDrawer()"></div>
 <aside id="drawer" class="drawer" aria-hidden="true"></aside>
 <div id="modal" class="modal" onclick="if(event.target===this)Sanad.closeModal()"></div>
-<script src="/static/app.js"></script>${(scripts || []).map((s) => `<script src="${s}" defer></script>`).join('')}
+<div id="cmdk-scrim" class="cmdk-scrim" role="dialog" aria-modal="true" aria-label="البحث الشامل">
+  <div class="cmdk-box">
+    <div class="cmdk-input-row">${icon('search')}
+      <input id="cmdk-input" type="text" placeholder="ابحث عن فرصة أو مشروع أو عميل أو موظف…" autocomplete="off" aria-label="البحث الشامل">
+      <span class="esc-hint">Esc</span>
+    </div>
+    <div id="cmdk-list" class="cmdk-list"></div>
+  </div>
+</div>
+<script src="/static/app.js"></script><script src="/static/global-search.js" defer></script>${(scripts || []).map((s) => `<script src="${s}" defer></script>`).join('')}
 </body></html>`;
 }
 
