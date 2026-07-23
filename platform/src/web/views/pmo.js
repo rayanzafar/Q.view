@@ -29,6 +29,9 @@ const statusUi = (id) => STATUS_UI[id] || { id, color: '#64748b', tint: '#e9edf2
 // ترتيب شرائح المرشّح كما يقرأها المالك: العمل الجاري أولاً ثم المعلّق فالمكتمل فما لم يبدأ فالملغى.
 const STATUS_FILTER_ORDER = ['IN_PROGRESS', 'ON_HOLD', 'COMPLETED', 'NOT_STARTED', 'CANCELLED'];
 const ragHex = { GREEN: '#059669', AMBER: '#d97706', RED: '#dc2626' };
+// حالة الصحة بمعناها لا باسم لونها التقني — «أحمر» جرجون؛ «حرج» قرار. مصدر واحد يُستخدم في
+// الكانبان والجدول وصفحة التفاصيل معاً (كانت صفحة التفاصيل تعرض اسم اللون بدل المعنى).
+const RAG_LABEL = { GREEN: 'على المسار', AMBER: 'في خطر', RED: 'حرج' };
 // شارة الفرصة المصدر: أيقونة مصغّرة داخل الرابط (الأيقونة الافتراضية 18px أكبر من اللازم هنا).
 const oppGlyph = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>';
 
@@ -184,7 +187,7 @@ export async function projectsPage(user, opts = {}) {
   for (const p of rows) {
     const d = derived[p.id];
     const parts = [];
-    if (p.rag === 'RED') parts.push('حالتها حمراء — تحتاج قراراً');
+    if (p.rag === 'RED') parts.push(`حالتها ${RAG_LABEL.RED} — تحتاج قراراً`);
     if (d.lateDays != null) parts.push(`تجاوزت تاريخ الانتهاء بـ${dayWord(d.lateDays)} والإنجاز <span class="tnum">${d.prog.v}%</span>`);
     if (d.dev != null && d.dev > 10) parts.push(`الصرف يسبق الإنجاز بـ<span class="tnum">${d.dev}</span> ${d.dev >= 3 && d.dev <= 10 ? 'نقاط' : 'نقطة'}`);
     if (parts.length) attnItems.push({ p, d, reason: parts.slice(0, 2).join(' · '), rank: p.rag === 'RED' ? 0 : d.lateDays != null ? 1 : 2 });
@@ -312,7 +315,7 @@ export async function projectsPage(user, opts = {}) {
     return `<div class="kcard" ${dnd} data-id="${p.id}" data-sector="${p.sector_id || ''}" data-hay="${esc(hay)}" style="--_c:${ui.color};cursor:pointer" onclick="Sanad.projOpen('${p.id}')">
       <div class="kt">${esc(p.name_ar)}</div>
       <div class="km">${cl ? `<span style="display:inline-flex;align-items:center;gap:.25rem">${icon('building')}${esc(cl)}</span>` : ''}
-        ${p.rag ? pill(tr(p.rag), ragTone[p.rag] || 'slate') : ''}</div>
+        ${p.rag ? pill(RAG_LABEL[p.rag] || RAG_LABEL.GREEN, ragTone[p.rag] || 'slate') : ''}</div>
       <div class="km">${(() => { const bv = bestVal(p); const e = effProg(p); return `
         ${bv.l ? `<span class="kv tnum">${fmtSar(bv.v)}</span><span style="font-size:9.5px;font-weight:700;color:var(--faint);background:#eef1f7;border-radius:6px;padding:.1rem .35rem">${bv.l}</span>`
                : '<span style="color:var(--faint);font-size:11px">بلا قيمة مسجلة</span>'}
@@ -566,6 +569,16 @@ export async function projectDetailPage(user, projectId) {
 
   const stat = (l, v, c, sub) => card(`<div style="padding:.7rem .9rem"><div style="font-size:10.5px;color:var(--muted)">${l}</div><div class="metric tnum" style="font-size:1.2rem;${c ? 'color:' + c : ''}">${v}</div>${sub ? `<div style="font-size:10px;color:var(--faint)">${sub}</div>` : ''}</div>`);
   const ragColor = p.rag === 'RED' ? 'red' : p.rag === 'AMBER' ? 'amber' : 'green';
+  // حالة الصحة قابلة للتعديل المباشر ممن يملك تعديل المشروع (المفروض تقدر تغيّرها بنفسك، لا
+  // تنتظر حسابها فقط). ملاحظة نزاهة: قد تبقى «حرج/في خطر» رغم اختيارك «على المسار» إن كان
+  // الانحراف الفعلي (الصرف مقابل الإنجاز) أو التأخر الزمني يتجاوز الحدود — كي لا تُخفي مشكلة حقيقية.
+  const ragTip = 'يمكنك تغييرها يدوياً في أي وقت — قد تبقى «حرج» أو «في خطر» رغم اختيارك لون أهدأ إن كان الانحراف المالي أو الزمني الفعلي كبيراً، حتى لا تُخفى مشكلة حقيقية';
+  const ragBadge = canEdit
+    ? `<select data-action-change="prj-rag-sel" data-id="${p.id}" aria-label="حالة صحة المشروع" title="${esc(ragTip)}"
+        style="font-size:11.5px;font-weight:700;padding:.22rem .55rem;border-radius:999px;border:1px solid transparent;cursor:pointer;background:${ragColor === 'red' ? '#fee2e2' : ragColor === 'amber' ? '#fef3c7' : '#dcfce7'};color:${ragColor === 'red' ? '#b91c1c' : ragColor === 'amber' ? '#92400e' : '#059669'}">
+        ${['GREEN', 'AMBER', 'RED'].map((v) => `<option value="${v}" ${p.rag === v ? 'selected' : ''}>${RAG_LABEL[v]}</option>`).join('')}
+      </select>`
+    : `<span title="${esc(ragTip)}">${pill(RAG_LABEL[p.rag] || RAG_LABEL.GREEN, ragColor)}</span>`;
   const dlvRows = dlv.map((d) => `<tr style="border-bottom:1px solid var(--line)"><td style="padding:.4rem .75rem;font-size:12.5px">${esc(d.name_ar)}${d.month ? `<span style="color:var(--faint);font-size:10px;margin-inline-start:.35rem">${MONTHS_AR[(d.month - 1) % 12] || ''}</span>` : ''}</td>
     <td style="padding:.4rem .75rem;font-size:12.5px;text-align:center" class="tnum">${fmtSar(d.amount_halalas)}</td>
     <td style="padding:.4rem .75rem;text-align:center">${pill(tr(d.status), ['PAID', 'INVOICED', 'ACCEPTED'].includes(d.status) ? 'green' : d.status === 'DELIVERED' ? 'blue' : 'slate')}</td></tr>`).join('');
@@ -728,7 +741,7 @@ export async function projectDetailPage(user, projectId) {
   const body = `
     <a href="/app/projects" style="font-size:12px;color:var(--muted)">← المشاريع</a>
     <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin:.6rem 0 1rem">
-      <h2 style="font-size:18px;margin:0">${esc(p.name_ar)}</h2>${pill(tr(p.status), p.status === 'COMPLETED' ? 'green' : p.status === 'ON_HOLD' ? 'amber' : 'blue')}${pill(tr(p.rag), ragColor)}
+      <h2 style="font-size:18px;margin:0">${esc(p.name_ar)}</h2>${pill(tr(p.status), p.status === 'COMPLETED' ? 'green' : p.status === 'ON_HOLD' ? 'amber' : 'blue')}${ragBadge}
       ${p.kind ? pill(p.kind === 'external' ? 'خارجي' : 'داخلي', 'slate') : ''}
       <span style="font-size:12px;color:var(--muted)">${client ? esc(client.name_ar) : ''} · ${esc(p.code || '')}${p.financial_code ? ' · مالي ' + esc(p.financial_code) : ''}</span>
     </div>

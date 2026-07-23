@@ -57,6 +57,12 @@
     try { await api('/pmo/' + kind + '/' + id, 'DELETE'); toast('حُذف السجل ✓'); setTimeout(() => location.reload(), 450); }
     catch (e) { toast(e.message, true); }
   }
+  // تعديل حالة صحة المشروع يدوياً (على المسار/في خطر/حرج) — حقل project.rag موجود أصلاً بالخدمة،
+  // هذا فقط يعرضه ويجعله قابلاً للتغيير من صفحة التفاصيل.
+  async function prjRag(id, rag) {
+    try { await api('/projects/' + id, 'PATCH', { rag }); toast('حُدّثت حالة المشروع ✓'); setTimeout(() => location.reload(), 450); }
+    catch (e) { toast(e.message, true); }
+  }
 
   document.addEventListener('click', (ev) => {
     const el = ev.target.closest('[data-action]');
@@ -68,8 +74,10 @@
     if (a === 'gov-del') return void govDel(el.dataset.kind, el.dataset.id);
   });
   document.addEventListener('change', (ev) => {
-    const el = ev.target.closest('[data-action-change="gov-status-sel"]');
-    if (el) govStatus(el.dataset.kind, el.dataset.id, el.value);
+    const gs = ev.target.closest('[data-action-change="gov-status-sel"]');
+    if (gs) return void govStatus(gs.dataset.kind, gs.dataset.id, gs.value);
+    const rg = ev.target.closest('[data-action-change="prj-rag-sel"]');
+    if (rg) return void prjRag(rg.dataset.id, rg.value);
   });
   // Enter inside an add-bar field submits that bar
   document.addEventListener('keydown', (ev) => {
