@@ -117,16 +117,22 @@
     }
   });
 
-  // القفز إلى موظف واحد (وارد من لوحة الأوامر Ctrl/Cmd+K): يفتح تفاصيله ويمرّر إليه ويومض إشارةً.
+  // بحث حي في جدول الفريق — يُطابق الاسم أو المسمى الوظيفي (data-hay على كل صف)
+  function filterTeamRows() {
+    const q = document.getElementById('team-q'); if (!q) return;
+    const v = q.value.trim().toLowerCase();
+    document.querySelectorAll('#team-rows tbody tr[data-hay]').forEach((tr) => {
+      tr.style.display = (!v || tr.dataset.hay.indexOf(v) !== -1) ? '' : 'none';
+    });
+  }
+  document.addEventListener('input', (ev) => { if (ev.target && ev.target.id === 'team-q') filterTeamRows(); });
+
+  // القفز إلى موظف واحد (وارد من لوحة الأوامر Ctrl/Cmd+K أو من صفحة التسكين): يمرّر إلى صفه ويومض إشارةً.
   (function jumpToHighlight() {
     const empId = new URLSearchParams(location.search).get('highlight');
     if (!empId) return;
-    const row = document.querySelector('.brd-row[data-emp="' + CSS.escape(empId) + '"]');
+    const row = document.querySelector('#team-rows tr[data-emp="' + CSS.escape(empId) + '"]');
     if (!row) return;
-    const section = row.closest('details');
-    if (section && !section.open) section.open = true; // القسم قد يكون مطوياً افتراضياً (مثل «مستقر»)
-    const expandBtn = row.querySelector('[data-action="expand"]');
-    if (expandBtn && expandBtn.getAttribute('aria-expanded') !== 'true') expandBtn.click();
     setTimeout(() => {
       row.scrollIntoView({ behavior: 'smooth', block: 'center' });
       row.classList.add('hl-flash');

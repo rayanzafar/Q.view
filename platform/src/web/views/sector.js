@@ -334,7 +334,7 @@ export async function sectorPage(user, opts = {}) {
   const capCard = card(`
     <div class="card-head">
       <span class="t">${G.capacity}</span>
-      <span class="aux"><a class="btn btn-sm" href="/app/team?year=${year}${user.scope === 'company' ? '&sector=' + sectorId : ''}">مساحة التسكين</a></span></div>
+      <span class="aux"><a class="btn btn-sm" href="/app/staffing?year=${year}${user.scope === 'company' ? '&sector=' + sectorId : ''}">مساحة التسكين</a></span></div>
     <div style="padding:var(--pad-card-b);display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem">
       <div><div style="font-size:10px;color:var(--muted)">${G.utilization} الآن</div><div class="tnum" style="font-weight:800;font-size:var(--fs-num-sm);color:${(staff.teamCurrent ?? 0) > 100 ? 'var(--red)' : 'var(--ink2)'}">${staff.teamCurrent ?? staff.teamUtil}%</div><div style="font-size:9.5px;color:var(--faint)">سنوياً ${staff.teamUtil}% · ${countAr(staff.headcount, { one: 'موظف واحد', two: 'موظفان', few: 'موظفين', many: 'موظفاً' })}</div></div>
       <div><div style="font-size:10px;color:var(--muted)">${G.overloaded}</div><div class="tnum" style="font-weight:800;font-size:var(--fs-num-sm);color:${over.length ? 'var(--red)' : 'var(--ink2)'}">${over.length}</div>${over.length ? `<div style="font-size:9.5px;color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(over.slice(0, 2).map((e) => e.name).join('، '))}</div>` : ''}</div>

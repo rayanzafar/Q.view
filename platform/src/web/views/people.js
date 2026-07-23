@@ -66,11 +66,82 @@ export const spanTone = (v, sectorMember) => v > 110 ? 'over' : v >= 70 ? 'ok' :
 // Span board v2.1 — decision-story order: (1) summary band → (2) staffing decisions →
 // (3) span board grouped by urgency (merged month spans, sector-parking baseline) →
 // (4) expandable per-employee details (projects + opportunity soft loads).
+// ─────────────────────────────────────────────────────────────────────────────
+// «الفريق» — دليل الأشخاص البسيط: من هم، إضافة/تعديل/حذف. لا نِسَب ولا شبكات شهرية هنا —
+// تلك مساحة عمل مختلفة تماماً («التسكين» أدناه). فُصلت الصفحتان بناءً على ملاحظة مباشرة من
+// المالك: دمجهما في صفحة واحدة كان يُبهظ الواجهة بمفاهيم لا علاقة لها بإدارة سجل الموظفين.
+// ─────────────────────────────────────────────────────────────────────────────
 export async function teamPage(user, opts = {}) {
   const canSalary = canSeeSensitive(user, 'salary');
   const canManage = can(user, 'create', 'employee') || can(user, 'update', 'employee');
   const canCreate = can(user, 'create', 'employee');
   const canDelete = can(user, 'delete', 'employee'); // offboarding — HR/admin only (matrix)
+  const allSec = await all('SELECT id, name_ar, color FROM sector WHERE active = 1 AND deleted_at IS NULL ORDER BY sort_order');
+  const sectorNames = Object.fromEntries(allSec.map((s) => [s.id, s.name_ar]));
+  const sector = (opts.sector || '').toString().trim();
+  const { roster } = await staffingRoster(user, { sector });
+  // نشط أولاً ثم أبجدي — دليل أشخاص، لا ترتيب حسب الحمل (ذاك في صفحة التسكين)
+  const sorted = roster.slice().sort((a, b) => (b.active - a.active) || String(a.name_ar).localeCompare(String(b.name_ar), 'ar'));
+  const activeCount = roster.filter((e) => e.active !== 0).length;
+
+  const rowTpl = (e) => `<tr data-emp="${e.id}" data-hay="${esc(`${e.name_ar} ${e.job_title || ''}`.toLowerCase())}" style="border-bottom:1px solid var(--line)">
+    <td data-label="الاسم" style="padding:.6rem .7rem">
+      <div style="font-weight:700;font-size:13px;color:var(--ink2)">${esc(e.name_ar)}${e.active === 0 ? ' ' + pill('غير نشط', 'slate') : ''}</div>
+      ${e.job_title ? `<div style="font-size:11px;color:var(--muted)">${esc(e.job_title)}</div>` : ''}</td>
+    <td data-label="القطاع" style="padding:.6rem .7rem;font-size:12px;color:var(--muted)">${esc(sectorNames[e.sector_id] || '—')}</td>
+    <td data-label="نوع التوظيف" style="padding:.6rem .7rem;font-size:12px;color:var(--muted)">${esc(e.employment_type || '—')}</td>
+    <td data-label="تاريخ التعيين" style="padding:.6rem .7rem;font-size:12px" class="tnum">${e.hire_date ? esc(e.hire_date) : '<span style="color:var(--faint)">—</span>'}</td>
+    ${canSalary ? `<td data-label="الراتب الشهري" style="padding:.6rem .7rem;font-size:12px" class="tnum emp-sal">${e.salary_halalas ? fmtSar(e.salary_halalas) : '<span style="color:var(--faint)">—</span>'}</td>` : ''}
+    <td data-label="" style="padding:.6rem .7rem;text-align:left;white-space:nowrap">
+      ${canManage ? `<button class="btn btn-sm btn-ghost" data-action="emp-edit" data-emp="${e.id}">✎ تعديل</button>` : ''}
+      ${canDelete ? `<button class="btn btn-sm btn-ghost" data-action="emp-delete" data-emp="${e.id}" style="color:var(--red)">حذف</button>` : ''}
+    </td></tr>`;
+
+  const secChips = user.scope === 'company' ? `<div class="chips"><span class="lbl">القطاع:</span>
+    <a href="/app/team" class="chip ${sector ? '' : 'on'}">${G.all}</a>
+    ${allSec.map((s) => `<a href="/app/team?sector=${s.id}" class="chip ${sector === s.id ? 'on' : ''}"><span class="dot" style="background:${s.color || 'var(--brand)'}"></span>${esc(s.name_ar)}</a>`).join('')}
+  </div>` : '';
+
+  const table = card(`<div class="tblwrap"><table class="rtbl" id="team-rows" style="width:100%;border-collapse:collapse;min-width:720px">
+    <thead><tr style="font-size:10.5px;color:var(--muted);text-align:right">
+      <th style="padding:.5rem .7rem;font-weight:700">الاسم</th><th style="padding:.5rem .7rem;font-weight:700">القطاع</th>
+      <th style="padding:.5rem .7rem;font-weight:700">نوع التوظيف</th><th style="padding:.5rem .7rem;font-weight:700">تاريخ التعيين</th>
+      ${canSalary ? '<th style="padding:.5rem .7rem;font-weight:700">الراتب الشهري</th>' : ''}
+      <th style="padding:.5rem .7rem"></th></tr></thead>
+    <tbody>${sorted.map(rowTpl).join('')}</tbody></table>
+    ${sorted.length ? '' : `<div class="empty-state">${icon('team')}<div class="t">لا أعضاء ضمن نطاقك</div><div class="s">أضِف موظفين من زر «إضافة موظف» بالأعلى.</div></div>`}</div>`);
+
+  const body = `
+    ${secChips}
+    <div class="toolbar" style="margin-bottom:.8rem">
+      <div class="search">${icon('search')}<input class="input" id="team-q" aria-label="بحث بالاسم أو المسمى" placeholder="ابحث بالاسم أو المسمى…"></div>
+      <div class="spacer"></div>
+      ${canManage ? pill('لديك صلاحية إدارة الفريق', 'green') : pill('عرض فقط', 'slate')}
+      ${canCreate ? `<button class="btn btn-primary" data-action="emp-add">${icon('plus')} إضافة موظف</button>` : ''}
+    </div>
+    ${table}
+    <script>window.__SANAD=Object.assign(window.__SANAD||{},{
+      emps:${JSON.stringify(Object.fromEntries(roster.map((e) => [e.id, {
+        name_ar: e.name_ar, job_title: e.job_title, employment_type: e.employment_type,
+        active: e.active, sector_id: e.sector_id, hire_date: e.hire_date || '',
+        salary_sar: canSalary ? Math.round((e.salary_halalas || 0) / 100) : null,
+      }]))).replace(/</g, '\\u003c')},
+      teamSectors:${JSON.stringify(allSec.map((s) => ({ id: s.id, name_ar: s.name_ar }))).replace(/</g, '\\u003c')},
+      canSalary:${canSalary}, canManage:${canManage}, canCreate:${canCreate}, canDelete:${canDelete},
+      teamSectorLocked:${JSON.stringify(sector || (user.scope !== 'company' ? user.sector_id : null))}});</script>`;
+  return layout({
+    user, active: 'team', title: 'الفريق',
+    subtitle: `${countAr(activeCount, { one: 'عضو نشط واحد', two: 'عضوان نشطان', few: 'أعضاء نشطون', many: 'عضواً نشطاً' })}${roster.length > activeCount ? ` · +${roster.length - activeCount} غير نشط` : ''}`,
+    body, scripts: ['/static/pages/team-manage.js'],
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// «التسكين» — مساحة قرارات الطاقة: من محمَّل فوق طاقته، من متاح، ومسار الأشهر لكل عضو. لا إضافة
+// ولا حذف ولا تعديل بيانات موظف هنا (تلك في «الفريق») — فقط قرارات التسكين على المشاريع.
+// ─────────────────────────────────────────────────────────────────────────────
+export async function staffingPage(user, opts = {}) {
+  const canManage = can(user, 'create', 'employee') || can(user, 'update', 'employee'); // يحكم زر «تسكين على مشروع» — كما كان في الصفحة المدمجة سابقاً
   const canStaff = can(user, 'update', 'project'); // span editing goes through project staffing rights
   const allSec = await all('SELECT id, name_ar, color FROM sector WHERE active = 1 AND deleted_at IS NULL ORDER BY sort_order');
   const sectorNames = Object.fromEntries(allSec.map((s) => [s.id, s.name_ar]));
@@ -188,12 +259,10 @@ export async function teamPage(user, opts = {}) {
       <div style="font-size:11px;font-weight:800;color:var(--muted);margin-bottom:.3rem">تسكين ${esc(e.name_ar)} — ${e.projectCount} مشروع${e.opportunities.length ? ` + ${e.opportunities.length} ${G.opportunity}` : ''}</div>
       ${detailProjects || `<div style="color:var(--faint);font-size:12px;padding:.2rem 0">لا مشاريع مُسكَّنة هذه السنة${e.sector_id ? ` — وقته كله «${G.sectorParking}»` : ''}</div>`}
       ${detailOpps}
-      <div class="dd-row"><span>تاريخ التعيين</span><b class="tnum">${e.hire_date ? esc(e.hire_date) : '—'}</b></div>
-      ${canSalary ? `<div class="dd-row emp-sal"><span>الراتب الشهري</span><b class="tnum">${e.salary_halalas ? fmtSar(e.salary_halalas) : '—'}</b></div>` : ''}
+      <div class="dd-row"><span>تاريخ التعيين</span><b class="tnum">${e.hire_date ? esc(e.hire_date) : '—'}</b>
+        <a href="/app/team?highlight=${e.id}" style="font-size:10.5px;color:var(--brand);margin-inline-start:.5rem">تعديل بيانات الموظف ←</a></div>
       ${canManage ? `<div style="display:flex;gap:.4rem;margin-top:.5rem;flex-wrap:wrap">
-        <button class="btn btn-sm" data-action="assign" data-emp="${e.id}">${icon('userplus')} تسكين على مشروع</button>
-        <button class="btn btn-sm btn-ghost" data-action="emp-edit" data-emp="${e.id}">✎ تعديل الموظف</button>
-        ${canDelete ? `<button class="btn btn-sm btn-ghost" data-action="emp-delete" data-emp="${e.id}" style="color:var(--red)">حذف الموظف</button>` : ''}</div>` : ''}
+        <button class="btn btn-sm" data-action="assign" data-emp="${e.id}">${icon('userplus')} تسكين على مشروع</button></div>` : ''}
     </div>`;
   };
 
@@ -238,13 +307,13 @@ export async function teamPage(user, opts = {}) {
     </div>
     <div class="tblwrap"><div class="brd" id="brd">
       ${boardHead}
-      ${roster.length ? sections : `<div class="empty-state">${icon('team')}<div class="t">لا أعضاء ضمن نطاقك</div><div class="s">أضِف موظفين من زر «إضافة موظف» بالأعلى أو راجع صلاحياتك.</div></div>`}
+      ${roster.length ? sections : `<div class="empty-state">${icon('team')}<div class="t">لا أعضاء ضمن نطاقك</div><div class="s">أضِف موظفين من صفحة «الفريق» أو راجع صلاحياتك.</div></div>`}
     </div></div>
     <div class="bleg-wrap">${legend}</div>`);
 
   const secChips = user.scope === 'company' ? `<div class="chips"><span class="lbl">القطاع:</span>
-    <a href="/app/team" class="chip ${sector ? '' : 'on'}">${G.all}</a>
-    ${allSec.map((s) => `<a href="/app/team?sector=${s.id}" class="chip ${sector === s.id ? 'on' : ''}"><span class="dot" style="background:${s.color || 'var(--brand)'}"></span>${esc(s.name_ar)}</a>`).join('')}
+    <a href="/app/staffing" class="chip ${sector ? '' : 'on'}">${G.all}</a>
+    ${allSec.map((s) => `<a href="/app/staffing?sector=${s.id}" class="chip ${sector === s.id ? 'on' : ''}"><span class="dot" style="background:${s.color || 'var(--brand)'}"></span>${esc(s.name_ar)}</a>`).join('')}
   </div>` : '';
 
   const style = `<style>
@@ -297,8 +366,7 @@ export async function teamPage(user, opts = {}) {
     <div class="toolbar" style="margin-bottom:.8rem">
       <div style="font-weight:800;font-size:14px">${sector ? esc(sectorNames[sector]) : 'كل القطاعات'} · ${countAr(activeR.length, { one: 'عضو نشط واحد', two: 'عضوان نشطان', few: 'أعضاء نشطين', many: 'عضواً نشطاً' })}${roster.length > activeR.length ? ` <span style="color:var(--faint);font-weight:400">(+${roster.length - activeR.length} غير نشط)</span>` : ''}</div>
       <div class="spacer"></div>
-      ${canManage ? pill('لديك صلاحية إدارة الفريق', 'green') : pill('عرض فقط', 'slate')}
-      ${canCreate ? `<button class="btn btn-primary" data-action="emp-add">${icon('plus')} إضافة موظف</button>` : ''}
+      <a class="btn btn-sm" href="/app/team">${icon('team')} إدارة الفريق</a>
     </div>
     ${band}
     <div style="margin-bottom:1rem">${needsCard}</div>
@@ -307,20 +375,19 @@ export async function teamPage(user, opts = {}) {
     ${dds}
     <script>window.__SANAD=Object.assign(window.__SANAD||{},{
       emps:${JSON.stringify(Object.fromEntries(roster.map((e) => [e.id, {
-        name_ar: e.name_ar, job_title: e.job_title, employment_type: e.employment_type, status: e.status,
-        active: e.active, sector_id: e.sector_id, hire_date: e.hire_date || '',
-        salary_sar: canSalary ? Math.round((e.salary_halalas || 0) / 100) : null,
+        name_ar: e.name_ar, job_title: e.job_title, sector_id: e.sector_id,
         months: e.months, currentUtil: e.currentUtil,
         projects: e.projects.map((p) => ({ allocId: p.allocId, name: p.name, projectId: p.projectId,
           months: Object.fromEntries(Object.entries(p.months).map(([m, f]) => [m, Math.round((Number(f) || 0) * 100)])) })),
         opps: e.opportunities.map((o) => ({ name: o.name, pct: o.pct })),
       }]))).replace(/</g, '\\u003c')},
-      teamSectors:${JSON.stringify(allSec.map((s) => ({ id: s.id, name_ar: s.name_ar }))).replace(/</g, '\\u003c')},
       teamProjects:${JSON.stringify(projects.map((p) => ({ id: p.id, name_ar: p.name_ar, sector_id: p.sector_id }))).replace(/</g, '\\u003c')},
-      canSalary:${canSalary}, canManage:${canManage}, canCreate:${canCreate}, canDelete:${canDelete}, canStaff:${canStaff}, currentMonth:${currentMonth},
+      canManage:${canManage}, canStaff:${canStaff}, currentMonth:${currentMonth},
       monthNames:${JSON.stringify(MONTHS_AR)}, teamSectorLocked:${JSON.stringify(sector)}});</script>`;
-  return layout({ user, active: 'team', title: 'الفريق والتسكين', subtitle: `مساحة قرارات الطاقة والتسكين · ${curName} ${year}`, body,
-    scripts: ['/static/pages/staffing.js', '/static/pages/team-manage.js'] });
+  return layout({
+    user, active: 'staffing', title: 'التسكين', subtitle: `مساحة قرارات الطاقة · ${curName} ${year}`, body,
+    scripts: ['/static/pages/staffing.js'],
+  });
 }
 
 export async function orgPage(user) {

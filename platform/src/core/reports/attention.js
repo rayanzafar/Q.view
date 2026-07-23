@@ -85,7 +85,7 @@ export async function attentionFeed(user, sectorId, { year, today } = {}) {
     loadNow[a.employee_id] = { name: a.name_ar, v: (loadNow[a.employee_id]?.v || 0) + (Number(mj[m]) || 0) };
   }
   const over = Object.values(loadNow).filter((x) => x.v > 1.1);
-  if (over.length) items.push({ rank: 6, tone: 'red', icon: 'team', href: '/app/team',
+  if (over.length) items.push({ rank: 6, tone: 'red', icon: 'team', href: '/app/staffing',
     title: `${countAr(over.length, { one: 'موظف واحد محمّل فوق طاقته', two: 'موظفان فوق الطاقة', few: 'موظفين فوق الطاقة', many: 'موظفاً فوق الطاقة' })} هذا الشهر`,
     sub: over.slice(0, 3).map((x) => `${x.name} ${Math.round(x.v * 100)}%`).join(' · '),
     action: 'أعد توزيع التسكين' });
