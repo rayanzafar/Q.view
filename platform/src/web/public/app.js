@@ -397,7 +397,7 @@ Object.assign(window.Sanad, {
   async staffAssign(pid) { const sel = document.getElementById('staff-emp'); if (!sel || !sel.value) return; try { await api('/projects/' + pid + '/staff', 'POST', { employeeId: sel.value }); toast('تم التسكين ✓'); this.projOpen(pid); } catch (e) { toast(e.message, true); } },
   async staffRemove(pid, aid) { try { await api('/projects/staff/' + aid, 'DELETE'); toast('أُزيل التسكين ✓'); this.projOpen(pid); } catch (e) { toast(e.message, true); } },
   projAdd() {
-    const S = window.__SANAD || {}; const secs = S.sectors || [];
+    const S = window.__SANAD || {}; const secs = S.sectors || []; const locked = S.prjSectorLocked;
     this._deliv = [];
     this.openModal(`
       <div class="modal-head"><h3 style="font-size:16px">مشروع جديد</h3><button class="btn btn-ghost" onclick="Sanad.closeModal()">✕</button></div>
@@ -418,7 +418,9 @@ Object.assign(window.Sanad, {
         <div class="field"><label>اسم المشروع *</label><input class="input" id="np-name" placeholder="مثال: تطوير مكتب إدارة المشاريع"></div>
         <div class="grid2">
           <div class="field"><label>العميل / الجهة</label><input class="input" id="np-client" placeholder="اسم العميل"></div>
-          <div class="field"><label>القطاع</label><select id="np-sector">${secs.map((s) => `<option value="${s.id}">${this.esc(s.name_ar)}</option>`).join('')}</select></div>
+          <div class="field"><label>القطاع</label><select id="np-sector"${locked ? ' disabled' : ''}>${
+            (locked ? secs.filter((s) => s.id === locked) : secs).map((s) => `<option value="${s.id}">${this.esc(s.name_ar)}</option>`).join('')
+          }</select></div>
         </div>
         <div class="grid2">
           <div class="field"><label>قيمة العقد (ر.س.)</label><input class="input" id="np-val" type="number" value="0"></div>

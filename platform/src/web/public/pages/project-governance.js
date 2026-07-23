@@ -63,6 +63,19 @@
     try { await api('/projects/' + id, 'PATCH', { rag }); toast('حُدّثت حالة المشروع ✓'); setTimeout(() => location.reload(), 450); }
     catch (e) { toast(e.message, true); }
   }
+  // إضافة مهمة مربوطة بهذا المشروع مباشرة — كانت غير متاحة أصلاً من صفحة التفاصيل (لازم
+  // الذهاب لصفحة «مهامي» العامة ولا رابط بالمشروع)؛ نفس نقطة نهاية الإضافة السريعة العامة.
+  async function prjTaskAdd(projectId) {
+    const titleEl = document.getElementById('prj-task-title');
+    const title = (titleEl && titleEl.value || '').trim();
+    if (!title) { toast('عنوان المهمة مطلوب', true); if (titleEl) titleEl.focus(); return; }
+    const prEl = document.getElementById('prj-task-priority');
+    try {
+      await api('/tasks/quick', 'POST', { title, project_id: projectId, priority: prEl ? prEl.value : 'P2' });
+      toast('أُضيفت المهمة ✓');
+      setTimeout(() => location.reload(), 450);
+    } catch (e) { toast(e.message, true); }
+  }
 
   document.addEventListener('click', (ev) => {
     const el = ev.target.closest('[data-action]');
@@ -72,6 +85,7 @@
     if (a === 'gov-add') return void govAdd(el.dataset.kind);
     if (a === 'gov-status') return void govStatus(el.dataset.kind, el.dataset.id, el.dataset.status);
     if (a === 'gov-del') return void govDel(el.dataset.kind, el.dataset.id);
+    if (a === 'prj-task-add') return void prjTaskAdd(el.dataset.project);
   });
   document.addEventListener('change', (ev) => {
     const gs = ev.target.closest('[data-action-change="gov-status-sel"]');
@@ -81,6 +95,12 @@
   });
   // Enter inside an add-bar field submits that bar
   document.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter' && ev.target.id === 'prj-task-title') {
+      ev.preventDefault();
+      const btn = document.querySelector('[data-action="prj-task-add"]');
+      if (btn) prjTaskAdd(btn.dataset.project);
+      return;
+    }
     if (ev.key !== 'Enter' || !ev.target.id || ev.target.id.indexOf('g-') !== 0) return;
     const bar = ev.target.closest('div');
     const btn = bar && bar.querySelector('[data-action="gov-add"]');

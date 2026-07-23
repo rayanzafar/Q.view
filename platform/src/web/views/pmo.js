@@ -368,7 +368,7 @@ export async function projectsPage(user, opts = {}) {
     ${viewsBar}
     ${rows.length ? `<div style="font-size:10.5px;color:var(--faint);margin:0 0 .6rem">⁎ نسبة إنجاز محسوبة من حالة المخرجات — المنصة السابقة بلا نسبة مسجلة · شارة القيمة توضح أساسها (عقد / أمر شراء / ميزانية / إيراد محقق)</div>` : ''}
     ${content}
-    <script>window.__SANAD=Object.assign(window.__SANAD||{},{sectors:${JSON.stringify(await all('SELECT id,name_ar FROM sector WHERE active=1 ORDER BY name_ar')).replace(/</g, '\\u003c')},canEditPrj:${canEdit},viewsPage:'projects'});</script>`;
+    <script>window.__SANAD=Object.assign(window.__SANAD||{},{sectors:${JSON.stringify(await all('SELECT id,name_ar FROM sector WHERE active=1 ORDER BY name_ar')).replace(/</g, '\\u003c')},canEditPrj:${canEdit},viewsPage:'projects',prjSectorLocked:${JSON.stringify(user.scope === 'company' ? null : user.sector_id)}});</script>`;
   return layout({ user, active: 'projects', title: 'المشاريع', subtitle: `المحفظة · ${rows.length} مشروع${statusFilter ? ` · ${tr(statusFilter)}` : ''}${year ? ` · سنة ${year}` : ''}`,
     body, year: year || undefined, scripts: ['/static/pages/projects.js'] });
 }
@@ -774,7 +774,12 @@ export async function projectDetailPage(user, projectId) {
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:.9rem;margin-bottom:.9rem">
       ${card(`<div style="padding:.85rem 1rem"><div style="font-weight:800;font-size:13px;margin-bottom:.5rem">توزيع المهام (${k.totalTasks})</div>
-        <div style="display:flex;gap:.4rem;flex-wrap:wrap">${['TODO', 'IN_PROGRESS', 'BLOCKED', 'IN_REVIEW', 'DONE'].map((s) => pill(`${tr(s)}: ${tmap[s] || 0}`, s === 'DONE' ? 'green' : s === 'BLOCKED' ? 'red' : 'slate')).join(' ')}</div></div>`)}
+        <div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:.7rem">${['TODO', 'IN_PROGRESS', 'BLOCKED', 'IN_REVIEW', 'DONE'].map((s) => pill(`${tr(s)}: ${tmap[s] || 0}`, s === 'DONE' ? 'green' : s === 'BLOCKED' ? 'red' : 'slate')).join(' ')}</div>
+        <div style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;padding-top:.6rem;border-top:1px dashed var(--line)">
+          <input id="prj-task-title" class="input" placeholder="أضِف مهمة على هذا المشروع…" aria-label="عنوان المهمة" style="flex:1;min-width:150px;font-size:12.5px">
+          <select id="prj-task-priority" class="input" aria-label="الأولوية" style="width:auto;font-size:12.5px"><option value="P2">متوسطة</option><option value="P0">حرجة</option><option value="P1">عالية</option><option value="P3">منخفضة</option></select>
+          <button class="btn btn-sm btn-primary" data-action="prj-task-add" data-project="${p.id}">${icon('plus')} إضافة</button>
+        </div></div>`)}
       ${card(`<div style="padding:.85rem 1rem;border-bottom:1px solid var(--line);font-weight:800;font-size:13px">المخاطر المفتوحة (${risks.length})</div>
         <table style="width:100%;border-collapse:collapse"><tbody>${riskRows || '<tr><td style="padding:1rem;color:var(--muted);font-size:12.5px">لا مخاطر مفتوحة</td></tr>'}</tbody></table>`)}
     </div>
