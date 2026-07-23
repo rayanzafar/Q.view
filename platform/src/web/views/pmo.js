@@ -11,7 +11,7 @@ import { listViews } from '../../modules/views/views.js';
 import { canSeeSensitive, redact, can } from '../../core/rbac/index.js';
 import { G } from '../i18n/glossary.js';
 import { sarShort, esc, bar, statMini, noticeCard } from './_shared.js';
-import { MONTHS_AR, currentMonthIndex } from '../../core/i18n/time.js';
+import { MONTHS_AR, MONTHS_EN3, currentMonthIndex } from '../../core/i18n/time.js';
 import { countAr, dayWord } from '../../core/i18n/plural.js';
 
 // لون لكل حالة (هوية EVC الهادئة: خط لوني رفيع + خلفية بتشبّع ~12٪). الحالة تُلوِّن أعمدة
@@ -584,6 +584,10 @@ export async function projectDetailPage(user, projectId) {
     <td style="padding:.4rem .75rem;text-align:center">${pill(tr(d.status), ['PAID', 'INVOICED', 'ACCEPTED'].includes(d.status) ? 'green' : d.status === 'DELIVERED' ? 'blue' : 'slate')}</td></tr>`).join('');
   const riskRows = risks.map((r) => `<tr style="border-bottom:1px solid var(--line)"><td style="padding:.4rem .75rem;font-size:12.5px">${esc(r.title)}</td>
     <td style="padding:.4rem .75rem;text-align:center">${pill(tr(r.impact) || '—', r.impact === 'high' ? 'red' : r.impact === 'medium' ? 'amber' : 'slate')}</td></tr>`).join('');
+  // شريط تذكير بالأشهر فوق أعمدة التغطية — بلا هذا الشريط يظهر صف مربعات ملوّنة بلا معنى (لا يُعرف
+  // أيها يناير وأيها ديسمبر إلا بتمرير الفأرة فوق كل مربع)؛ عمود ضيّق فاختصارات إنجليزية Jan..Dec
+  // حسب قاعدة النموذج الزمني الموحّد (لا اختصارات عربية في الشبكات الضيقة أبداً).
+  const monthTicks = `<div class="mtrack" style="gap:2px;margin-top:.2rem">${MONTHS_EN3.map((m) => `<span style="font-size:7.5px;font-weight:400;color:var(--faint);text-align:center;line-height:1">${m}</span>`).join('')}</div>`;
   // staffing rows: parse each member's monthly_json into a 12-cell coverage strip on this project
   const staffRows = staff.map((s) => {
     let mj = {}; try { mj = JSON.parse(s.monthly_json || '{}'); } catch { mj = {}; }
@@ -762,7 +766,7 @@ export async function projectDetailPage(user, projectId) {
       ${card(`<div style="padding:.85rem 1rem;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center">
         <div style="font-weight:800;font-size:13px">التسكين — فريق المشروع (${staff.length})</div>
         ${canEdit ? `<button class="btn btn-sm" style="font-size:11px;padding:.25rem .6rem" onclick="Sanad.projOpen('${p.id}')">${icon('users')} إدارة التسكين</button>` : ''}</div>
-        <table style="width:100%;border-collapse:collapse"><thead><tr style="font-size:10.5px;color:var(--muted);text-align:right"><th style="padding:.35rem .75rem">الموظف</th><th style="padding:.35rem .75rem;text-align:center">الدور</th><th style="padding:.35rem .75rem;text-align:center">التغطية الشهرية</th></tr></thead>
+        <table style="width:100%;border-collapse:collapse"><thead><tr style="font-size:10.5px;color:var(--muted);text-align:right"><th style="padding:.35rem .75rem">الموظف</th><th style="padding:.35rem .75rem;text-align:center">الدور</th><th style="padding:.35rem .75rem .15rem;width:160px;text-align:center">التغطية الشهرية${monthTicks}</th></tr></thead>
         <tbody>${staffRows || '<tr><td colspan="3" style="padding:1rem;color:var(--muted);font-size:12.5px">لا يوجد فريق مُسكَّن على هذا المشروع بعد' + (canEdit ? ' — استخدم «إدارة التسكين»' : '') + '</td></tr>'}</tbody></table>`)}
       ${card(`<div style="padding:.85rem 1rem;border-bottom:1px solid var(--line);font-weight:800;font-size:13px">المخرجات (${dlv.length})</div>
         <div style="max-height:260px;overflow-y:auto"><table style="width:100%;border-collapse:collapse"><tbody>${dlvRows || '<tr><td style="padding:1rem;color:var(--muted);font-size:12.5px">لا مخرجات</td></tr>'}</tbody></table></div>`)}

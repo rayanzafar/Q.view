@@ -3,24 +3,31 @@
 // enforcing قرار إصدار لاحق بعد اكتمال الانتقال إلى data-action (انظر docs/SECURITY-REPORT.md).
 import { config } from '../config.js';
 
+// مسارا معاينة داخليان فقط يُضمَّنان فعلياً بـ<iframe> من نفس المنصة (معاينة التقرير في صفحة
+// التقارير، ومعاينة رسالة من صندوق المعاينة في مركز البريد) — كلاهما خلف تسجيل الدخول
+// (requireWeb) أصلاً. الحجب الافتراضي DENY يمنعهما تماماً حتى من نفس الأصل فتظهر المعاينة
+// فارغة بصمت؛ الإصلاح تضييق الاستثناء لهذين المسارين فقط (SAMEORIGIN)، لا رفع الحماية عالمياً.
+const FRAMEABLE_SAMEORIGIN = [/^\/app\/reports\/preview\//, /^\/app\/mail\/preview\//];
+
 export function securityHeaders() {
-  const csp = [
+  const csp = (allowSelfFrame) => [
     "default-src 'self'",
     "script-src 'self' 'unsafe-inline'",
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data:",
     "font-src 'self'",
     "connect-src 'self'",
-    "frame-ancestors 'none'",
+    allowSelfFrame ? "frame-ancestors 'self'" : "frame-ancestors 'none'",
     "base-uri 'self'",
     "form-action 'self'",
   ].join('; ');
   return (req, res, next) => {
-    res.setHeader('X-Frame-Options', 'DENY');
+    const frameableSameOrigin = FRAMEABLE_SAMEORIGIN.some((re) => re.test(req.path));
+    res.setHeader('X-Frame-Options', frameableSameOrigin ? 'SAMEORIGIN' : 'DENY');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'same-origin');
     res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-    res.setHeader('Content-Security-Policy-Report-Only', csp);
+    res.setHeader('Content-Security-Policy-Report-Only', csp(frameableSameOrigin));
     if (config.env === 'production') res.setHeader('Strict-Transport-Security', 'max-age=15552000; includeSubDomains');
     next();
   };
