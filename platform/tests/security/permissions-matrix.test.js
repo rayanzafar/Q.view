@@ -143,19 +143,22 @@ test('sensitive: salary reaches hr, never reaches bd (API + roster page)', async
   assert.equal((await req('demo.bd', '/api/org/roster')).status, 403);
   assert.equal((await req('demo.bd', '/app/team')).status, 403);
   // Team PAGE (capacity workspace v3) gates the salary COLUMN by canSeeSensitive:
-  // present for hr, absent for sector_lead.
+  // present for hr, and — per explicit owner decision (a sector lead manages their own team's
+  // compensation) — present for sector_lead too, scoped to their own sector's roster only.
   const hrPage = await (await req('demo.hr', '/app/team')).text();
   assert.match(hrPage, /emp-sal/, 'hr team page shows the salary column');
   const leadPage = await (await req('demo.sectorlead', '/app/team')).text();
-  assert.doesNotMatch(leadPage, /emp-sal/, 'sector_lead team page must hide the salary column');
-  assert.doesNotMatch(leadPage, /"salary_sar":\s*[1-9]/, 'sector_lead team page must not embed salary values');
+  assert.match(leadPage, /emp-sal/, 'sector_lead team page shows the salary column (owner-granted)');
+  assert.match(leadPage, /"salary_sar":\s*[1-9]/, 'sector_lead team page embeds real salary values for their own sector');
 
-  // QH-1 FIXED (regression guard): staffingRoster serializes salary_halalas only for salary readers —
-  // ceo_office/sector_lead read employees but NOT salary, so the roster API must never carry it.
-  for (const u of ['demo.ceo', 'demo.sectorlead']) {
-    assert.doesNotMatch(await (await req(u, '/api/org/roster')).text(), /"salary_halalas":\s*[1-9]/,
-      `${u} must not receive raw salary_halalas from /api/org/roster`);
-  }
+  // QH-1 (regression guard): staffingRoster serializes salary_halalas only for salary readers —
+  // ceo_office reads employees but NOT salary, so the roster API must never carry it for that role.
+  // sector_lead DOES hold the salary grant now, but scoped to their own sector by the roster query
+  // itself (staffingRoster forces sec = user.sector_id for non-company scope) — never company-wide.
+  assert.doesNotMatch(await (await req('demo.ceo', '/api/org/roster')).text(), /"salary_halalas":\s*[1-9]/,
+    'demo.ceo must not receive raw salary_halalas from /api/org/roster');
+  const leadRoster = await (await req('demo.sectorlead', '/api/org/roster')).text();
+  assert.match(leadRoster, /"salary_halalas":\s*[1-9]/, 'sector_lead now receives salary_halalas for their own sector roster');
 });
 
 test('sensitive: project cost/margin redacted for bd, visible to finance', async () => {

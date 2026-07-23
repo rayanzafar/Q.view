@@ -46,10 +46,11 @@ export const ROLE_GRANTS = {
     { resource: 'deliverable', action: 'approve', scope: 'sector' },
     { resource: 'timesheet', action: 'approve', scope: 'sector' },
     ...read(['employee', 'department', 'team', 'report', 'kpi'], 'sector'),
-    // Sector manager owns their people roster (add/edit member, assign to projects) — salary stays
-    // HR-gated (no 'salary' read grant here, so updateEmployee ignores salary edits for this role).
+    // Sector manager owns their people roster (add/edit member, assign to projects) including
+    // salary, per explicit owner decision — a sector lead manages their own team's compensation.
     { resource: 'employee', action: 'create', scope: 'sector' },
     { resource: 'employee', action: 'update', scope: 'sector' },
+    { resource: 'salary', action: 'read', scope: 'sector' },
     { resource: 'allocation', action: 'create', scope: 'sector' },
     { resource: 'allocation', action: 'update', scope: 'sector' },
     { resource: 'report', action: 'export', scope: 'sector' },

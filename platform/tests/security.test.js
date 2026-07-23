@@ -76,15 +76,19 @@ test('list scoping: employee sees zero opportunities (no permission)', async () 
   assert.equal((await opps.listOpportunities(U('employee', 'S1'))).length, 0);
 });
 
-test('redaction: salary hidden from sector_lead, visible to hr/admin', async () => {
+test('redaction: salary visible to sector_lead/hr/admin, hidden from bd', async () => {
+  // Owner decision: a sector lead manages their own team's compensation, so sector_lead now
+  // holds the salary grant too (scoped to their own sector by the roster query, not here).
   const emp = await db.get('SELECT * FROM employee WHERE id = ?', ['E1']);
   const lead = redact(U('sector_lead', 'S1', 'sector'), 'employee', emp);
-  assert.equal(lead.salary_halalas, null);
-  assert.equal(lead._redacted_salary_halalas, true);
+  assert.equal(lead.salary_halalas, 2400000);
   const hr = redact(U('hr', null, 'company'), 'employee', emp);
   assert.equal(hr.salary_halalas, 2400000);
   const admin = redact(U('admin', null, 'company'), 'employee', emp);
   assert.equal(admin.salary_halalas, 2400000);
+  const bd = redact(U('bd_manager', 'S1', 'sector'), 'employee', emp);
+  assert.equal(bd.salary_halalas, null, 'bd_manager still has no salary grant');
+  assert.equal(bd._redacted_salary_halalas, true);
 });
 
 test('redaction: project cost/margin hidden from bd, visible to finance', async () => {
