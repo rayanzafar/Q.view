@@ -415,7 +415,8 @@ export async function tasksPage(user) {
     <div style="display:flex;gap:.55rem;align-items:center;flex-wrap:wrap">
       <input id="qa-title" class="input" placeholder="أضِف مهمة جديدة…" aria-label="عنوان المهمة" style="flex:1;min-width:190px">
       <select id="qa-priority" class="input" aria-label="الأولوية" style="width:auto"><option value="P2">أولوية متوسطة</option><option value="P0">حرجة</option><option value="P1">عالية</option><option value="P3">منخفضة</option></select>
-      <input id="qa-due" type="date" class="input" aria-label="تاريخ الاستحقاق" style="width:auto">
+      <label style="display:flex;align-items:center;gap:.35rem;font-size:11.5px;color:var(--muted);white-space:nowrap">الموعد
+        <input id="qa-due" type="date" class="input" dir="ltr" style="width:auto"></label>
       <button class="btn btn-primary" data-action="task-add">${icon('plus')} إضافة</button>
     </div></div>`;
 
