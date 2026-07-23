@@ -224,20 +224,16 @@ export async function staffingPage(user, opts = {}) {
     const span = ks.length === 1 ? MONTHS_AR[ks[0] - 1] : `${MONTHS_AR[ks[0] - 1]} – ${MONTHS_AR[ks[ks.length - 1] - 1]}`;
     return `${span} · ${ks.length} شهر · ${pcts.length === 1 ? `<span class="tnum">${pcts[0]}%</span>` : `<span class="tnum">${Math.min(...pcts)}–${Math.max(...pcts)}%</span>`}`;
   };
-  // مسار 12 شهراً بامتدادات مدموجة: امتداد واحد لكل فترة متساوية النسبة (يناير في أقصى اليمين).
-  const trackOf = (e) => `<div class="btrack"><div class="mtrack">${spansOf(e.months).map((s) => {
-    const tone = spanTone(s.v, !!e.sector_id);
-    const from = MONTHS_AR[s.m0], to = MONTHS_AR[s.m0 + s.len - 1];
-    const rng = s.len === 1 ? from : `من ${from} إلى ${to}`;
+  // مسار 12 شهراً — خلية مستقلة بنسبتها الظاهرة لكل شهر (لا امتدادات مدموجة، بناءً على طلب
+  // مباشر: كانت النسبة تظهر فقط على الامتداد فيلزم ربطها ذهنياً بعمودي «الآن»/«الذروة»).
+  const trackOf = (e) => `<div class="btrack"><div class="mtrack">${MONTHS_AR.map((mn, i) => {
+    const v = Math.round(Number(e.months[i]) || 0);
+    const tone = spanTone(v, !!e.sector_id);
     const full = tone === 'park'
-      ? `${G.sectorParking} — ${rng}: وقت ${e.name_ar} محجوز لقطاعه افتراضياً حتى يُسكَّن على مشروع`
-      : `${e.name_ar} — ${rng}: ${s.v}%${s.v > 110 ? ` (${G.overloaded})` : ''}`;
-    const label = tone === 'park' ? (s.len >= 3 ? G.sectorParking : '')
-      : s.v === 0 ? ''
-      : s.len >= 3 ? `<span class="tnum">${s.v}%</span> ${s.len === 12 ? 'كل السنة' : `${from} ← ${to}`}`
-      : `<span class="tnum">${s.v}%</span>`;
-    return `<button type="button" class="hg-cell ${tone}" style="grid-column:span ${s.len}" data-emp="${e.id}" data-m="${s.m0 + 1}" data-v="${s.v}"
-      title="${esc(full)}" aria-label="${esc(full)}">${label}</button>`;
+      ? `${G.sectorParking} — ${mn}: وقت ${e.name_ar} محجوز لقطاعه افتراضياً حتى يُسكَّن على مشروع`
+      : `${e.name_ar} — ${mn}: ${v}%${v > 110 ? ` (${G.overloaded})` : ''}`;
+    return `<button type="button" class="hg-cell ${tone}" data-emp="${e.id}" data-m="${i + 1}" data-v="${v}"
+      title="${esc(full)}" aria-label="${esc(full)}"><span class="tnum">${v}%</span></button>`;
   }).join('')}</div></div>`;
   const boardRow = (e) => {
     const detailProjects = e.projects.map((p) => `<div class="dd-row">
@@ -336,7 +332,7 @@ export async function staffingPage(user, opts = {}) {
     .hg-cell.over{background:#dc2626;color:#fff}
     .hg-cell.ok{background:#a7f3d0;color:#065f46}
     .hg-cell.low{background:#fde68a;color:#78350f}
-    .hg-cell.park{background:rgba(131,71,152,.13);color:#6d3a80;height:13px;font-size:9px;border:1px dashed rgba(131,71,152,.4);border-radius:4px}
+    .hg-cell.park{background:rgba(131,71,152,.13);color:#6d3a80;border:1px dashed rgba(131,71,152,.4)}
     .hg-cell.off{background:transparent}
     .hg-cell.off:hover{background:#eef1f7;outline:1px dashed #c9d3e8}
     .bsec>summary{list-style:none;display:flex;align-items:center;gap:.55rem;padding:.55rem 1rem;cursor:pointer;background:#fafbfe;

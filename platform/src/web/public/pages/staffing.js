@@ -20,16 +20,7 @@
   };
   const esc = (s) => (window.Sanad ? window.Sanad.esc(s) : String(s == null ? '' : s));
 
-  // ── same span model as the SSR board (people.js spansOf/spanTone) ──
-  const spansOf = (months) => {
-    const out = [];
-    for (let i = 0; i < 12; i++) {
-      const v = Math.round(Number(months[i]) || 0);
-      const last = out[out.length - 1];
-      if (last && last.v === v) last.len++; else out.push({ m0: i, len: 1, v });
-    }
-    return out;
-  };
+  // ── same tone model as the SSR board (people.js spanTone) ──
   const toneOf = (v, sectorMember) => v > 110 ? 'over' : v >= 70 ? 'ok' : v > 0 ? 'low' : sectorMember ? 'park' : 'off';
   const nowTone = (u) => u > 110 ? 'var(--red)' : u >= 70 ? 'var(--green)' : u > 0 ? 'var(--amber)' : 'var(--faint)';
 
@@ -48,18 +39,14 @@
 
   function trackHtml(empId) {
     const e = (S().emps || {})[empId]; if (!e) return '';
-    return spansOf(e.months).map((s) => {
-      const tone = toneOf(s.v, !!e.sector_id);
-      const from = M()[s.m0] || '', to = M()[s.m0 + s.len - 1] || '';
-      const rng = s.len === 1 ? from : 'من ' + from + ' إلى ' + to;
+    return (e.months || []).map((raw, i) => {
+      const v = Math.round(Number(raw) || 0);
+      const mn = M()[i] || '';
+      const tone = toneOf(v, !!e.sector_id);
       const full = tone === 'park'
-        ? 'تسكين قطاعي — ' + rng + ': وقت ' + e.name_ar + ' محجوز لقطاعه افتراضياً حتى يُسكَّن على مشروع'
-        : e.name_ar + ' — ' + rng + ': ' + s.v + '%' + (s.v > 110 ? ' (تجاوز الطاقة)' : '');
-      const label = tone === 'park' ? (s.len >= 3 ? 'تسكين قطاعي' : '')
-        : s.v === 0 ? ''
-        : s.len >= 3 ? '<span class="tnum">' + s.v + '%</span> ' + (s.len === 12 ? 'كل السنة' : from + ' ← ' + to)
-        : '<span class="tnum">' + s.v + '%</span>';
-      return '<button type="button" class="hg-cell ' + tone + '" style="grid-column:span ' + s.len + '" data-emp="' + empId + '" data-m="' + (s.m0 + 1) + '" data-v="' + s.v + '" title="' + esc(full) + '" aria-label="' + esc(full) + '">' + label + '</button>';
+        ? 'تسكين قطاعي — ' + mn + ': وقت ' + e.name_ar + ' محجوز لقطاعه افتراضياً حتى يُسكَّن على مشروع'
+        : e.name_ar + ' — ' + mn + ': ' + v + '%' + (v > 110 ? ' (تجاوز الطاقة)' : '');
+      return '<button type="button" class="hg-cell ' + tone + '" data-emp="' + empId + '" data-m="' + (i + 1) + '" data-v="' + v + '" title="' + esc(full) + '" aria-label="' + esc(full) + '"><span class="tnum">' + v + '%</span></button>';
     }).join('');
   }
 
