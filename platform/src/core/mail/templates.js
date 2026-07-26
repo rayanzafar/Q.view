@@ -1,6 +1,8 @@
 // Executive email templates — Outlook/Gmail-safe HTML (tables + inline CSS, RTL).
 // Sensitive figures are passed pre-redacted by the caller (report engine).
 import { fmtSar } from '../util/ids.js';
+// معاني الحالة وعتبات الطاقة من المصدر الواحد — لا نسخة ثانية للأرقام ولا للألوان هنا.
+import { health, healthLabel, capacityColor, CAPACITY, HEALTH_ORDER, HEALTH } from '../i18n/thresholds.js';
 
 // ألوان هوية EVC الرسمية (نفس توكنات الواجهة #244A99/#834798) — البريد جزء من الهوية لا استثناء منها
 const BRAND = '#244A99', BRAND2 = '#834798', INK = '#0f172a', MUTED = '#64748b', LINE = '#e2e8f0';
@@ -49,6 +51,18 @@ function list(items) {
     items.map((i) => `<li>${esc(i)}</li>`).join('') + '</ul>';
 }
 
+// شارة حالة المشروع: التسمية بالمعنى («على المسار / في خطر / حرج») واللون كما هو —
+// لا تُطبع قيمة الحالة الخام في أي بريد. المصدر الواحد: core/i18n/thresholds.js.
+function healthPill(rag) {
+  const h = health(rag);
+  return `<span style="background:${h.bg};color:${h.fg};padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700">${esc(h.label)}</span>`;
+}
+// عدّاد المحفظة حسب الحالة: «على المسار 4 · في خطر 2 · حرج 1» بدل 4/2/1 بلا معنى.
+function healthCounts(counts) {
+  const c = counts && typeof counts === 'object' ? counts : {};
+  return HEALTH_ORDER.map((k) => `${esc(HEALTH[k].label)} <b style="color:${HEALTH[k].color}">${Number(c[k]) || 0}</b>`).join(' · ');
+}
+
 // Weekly Executive Brief
 export function weeklyExecBrief(data) {
   const t = data.totals;
@@ -83,10 +97,7 @@ export function weeklyExecBrief(data) {
 export function sectorWeeklyStatus(data) {
   const rows = (data.projects || []).map((p) =>
     `<tr><td style="padding:8px;border-bottom:1px solid ${LINE};font-size:13px">${esc(p.name_ar)}</td>
-      <td style="padding:8px;border-bottom:1px solid ${LINE};text-align:center">
-        <span style="background:${p.rag === 'RED' ? '#fee2e2' : p.rag === 'AMBER' ? '#fef3c7' : '#dcfce7'};
-        color:${p.rag === 'RED' ? '#dc2626' : p.rag === 'AMBER' ? '#d97706' : '#059669'};
-        padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700">${p.rag}</span></td>
+      <td style="padding:8px;border-bottom:1px solid ${LINE};text-align:center">${healthPill(p.rag)}</td>
       <td style="padding:8px;border-bottom:1px solid ${LINE};text-align:center;font-size:13px">${Math.round(p.progress_pct || 0)}%</td></tr>`).join('');
   const body = [
     section('حالة القطاع', `<div style="font-size:13px;color:${MUTED}">${esc(data.sectorName)} · ${data.period}</div>`),
@@ -114,13 +125,13 @@ export function monthlySectorPerformance(data) {
       </tr><tr>
         ${row('النمو السنوي (إيراد)', (data.revenue_yoy != null ? data.revenue_yoy + '%' : '—'), 'مقابل السنة السابقة')}
         ${row('التعاقد إلى الإيراد', data.book_to_bill != null ? data.book_to_bill + '×' : '—', 'حجوزات/إيراد')}
-        ${row('مشاريع (أخضر/أصفر/أحمر)', `${data.rag.GREEN || 0}/${data.rag.AMBER || 0}/${data.rag.RED || 0}`, 'حالة المحفظة')}
+        ${row('حالة المشاريع', `<span style="font-size:13px">${healthCounts(data.rag)}</span>`, 'توزيع المحفظة حسب الحالة')}
       </tr></table>`),
     section('أبرز مشاريع القطاع', data.projects && data.projects.length ?
       `<table width="100%" cellspacing="0" style="font-size:13px">${data.projects.map((p) => `<tr>
         <td style="padding:6px;border-top:1px solid ${LINE}">${esc(p.name_ar)}</td>
         <td style="padding:6px;border-top:1px solid ${LINE};text-align:center">${Math.round(p.progress_pct || 0)}%</td>
-        <td style="padding:6px;border-top:1px solid ${LINE};text-align:center"><span style="background:${p.rag === 'RED' ? '#fee2e2' : p.rag === 'AMBER' ? '#fef3c7' : '#dcfce7'};color:${p.rag === 'RED' ? RED : p.rag === 'AMBER' ? '#b45309' : GREEN};padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700">${p.rag}</span></td></tr>`).join('')}</table>` : list([])),
+        <td style="padding:6px;border-top:1px solid ${LINE};text-align:center">${healthPill(p.rag)}</td></tr>`).join('')}</table>` : list([])),
   ].join('');
   return { subject: `أداء القطاع الشهري — ${data.sectorName} · ${data.period}`,
     html: shell({ title: 'أداء القطاع الشهري', period: `${esc(data.sectorName)} · ${data.period}`, bodyRows: body }) };
@@ -129,10 +140,10 @@ export function monthlySectorPerformance(data) {
 // Project Status Report (RAG) — scope/progress/time/cost/deliverables/risks.
 export function projectStatusReport(data) {
   const p = data.project;
-  const ragColor = p.rag === 'RED' ? RED : p.rag === 'AMBER' ? '#b45309' : GREEN;
+  const h = health(p.rag);
   const kpi = (l, v) => `<td style="padding:10px;border:1px solid ${LINE};border-radius:10px;background:#f8fafc"><div style="font-size:11px;color:${MUTED}">${l}</div><div style="font-size:17px;font-weight:700">${v}</div></td>`;
   const body = [
-    `<div style="display:inline-block;background:${ragColor};color:#fff;padding:4px 14px;border-radius:99px;font-weight:700;margin-bottom:10px">حالة RAG: ${p.rag}</div>`,
+    `<div style="display:inline-block;background:${h.color};color:#fff;padding:4px 14px;border-radius:99px;font-weight:700;margin-bottom:10px">حالة المشروع: ${esc(h.label)}</div>`,
     section('نظرة عامة', `<table width="100%" cellspacing="8"><tr>
       ${kpi('الإنجاز', Math.round(p.progress_pct || 0) + '%')}
       ${kpi('قبول المخرجات', data.kpis.deliverableAcceptanceRate + '%')}
@@ -148,19 +159,22 @@ export function projectStatusReport(data) {
 
 // Workforce & Utilization — per-person billable utilization (aggregate; anti-surveillance).
 export function workforceUtilization(data) {
+  // ألوان الإشغال من عتبات الطاقة الموحّدة (110/70) — كانت هنا عتبة ثانية (65/50) تجعل نفس
+  // النسبة خضراء في البريد وصفراء في صفحة الفريق.
   const rows = (data.people || []).map((u) => `<tr>
     <td style="padding:6px;border-top:1px solid ${LINE}">${esc(u.name_ar)}</td>
-    <td style="padding:6px;border-top:1px solid ${LINE};text-align:center">${u.total || 0}h</td>
-    <td style="padding:6px;border-top:1px solid ${LINE};text-align:center">${u.billable || 0}h</td>
-    <td style="padding:6px;border-top:1px solid ${LINE};text-align:center"><b style="color:${u.utilization_pct >= 65 ? GREEN : u.utilization_pct >= 50 ? '#b45309' : RED}">${u.utilization_pct || 0}%</b></td></tr>`).join('');
+    <td style="padding:6px;border-top:1px solid ${LINE};text-align:center">${u.total || 0}</td>
+    <td style="padding:6px;border-top:1px solid ${LINE};text-align:center">${u.billable || 0}</td>
+    <td style="padding:6px;border-top:1px solid ${LINE};text-align:center"><b style="color:${capacityColor(u.utilization_pct)}">${u.utilization_pct || 0}%</b></td></tr>`).join('');
   const body = [
     section(`القوى العاملة — ${esc(data.sectorName)} · ${data.period}`,
       `<div style="font-size:13px;color:${MUTED}">متوسط الإشغال القابل للفوترة: <b style="color:${INK}">${data.avgUtil}%</b> · عدد الأعضاء: ${(data.people || []).length}</div>`),
     section('الإشغال حسب العضو', data.people && data.people.length ?
       `<table width="100%" cellspacing="0" style="font-size:13px">
-        <tr><th align="start" style="color:${MUTED};font-size:11px;padding:4px 6px">العضو</th><th style="color:${MUTED};font-size:11px">إجمالي</th><th style="color:${MUTED};font-size:11px">قابل للفوترة</th><th style="color:${MUTED};font-size:11px">الإشغال</th></tr>${rows}</table>`
+        <tr><th align="start" style="color:${MUTED};font-size:11px;padding:4px 6px">العضو</th><th style="color:${MUTED};font-size:11px">إجمالي الساعات</th><th style="color:${MUTED};font-size:11px">الساعات القابلة للفوترة</th><th style="color:${MUTED};font-size:11px">الإشغال</th></tr>${rows}</table>`
       : `<div style="color:${MUTED};font-size:13px">لا توجد ساعات مسجّلة للفترة — تُفعَّل عند اعتماد الإدخال التشغيلي للوقت.</div>`),
-    `<div style="font-size:11px;color:${MUTED};margin-top:8px">ملاحظة حوكمة: الإشغال مقياس سعة تشغيلية لا تقييم فردي؛ لا تُستخدم كترتيب علني.</div>`,
+    `<div style="font-size:11px;color:${MUTED};margin-top:8px">الإشغال أخضر من ${CAPACITY.healthy}% إلى ${CAPACITY.over}% · أصفر تحت ${CAPACITY.healthy}% · أحمر فوق ${CAPACITY.over}% — نفس العتبات المستخدمة في صفحة الفريق.</div>
+     <div style="font-size:11px;color:${MUTED};margin-top:4px">ملاحظة حوكمة: الإشغال مقياس سعة تشغيلية لا تقييم فردي؛ لا تُستخدم كترتيب علني.</div>`,
   ].join('');
   return { subject: `تقرير القوى العاملة — ${data.sectorName}`,
     html: shell({ title: 'القوى العاملة والإشغال', period: `${esc(data.sectorName)} · ${data.period}`, bodyRows: body }) };
