@@ -41,14 +41,6 @@ export const RAW_ENUM = new RegExp('\\b(' + [
 // كلمات مسموحة رغم لاتينيتها: أسماء منتجات وصيغ ملفات وبروتوكول الروابط.
 const ALLOW = /Excel|CSV|xlsx|EVC|Consulting|SST|IBM Plex|PDF|SAR|https/;
 
-// دين لغوي معروف يملكه فريق آخر (ملفات خارج هذه الحارة) — يُطبع كتحذير صريح في كل تشغيل
-// مع نص الإصلاح المطلوب، فلا يختفي ولا يُسكَت عنه. لا يُضاف إليه شيء جديد.
-export const KNOWN_DEBT = [
-  { file: 'src/modules/pmo/projects.js', term: 'RAG',
-    fix: '«قيمة RAG غير صحيحة» ⟵ «حالة المشروع غير صحيحة — اخترها من القائمة»' },
-];
-const isKnownDebt = (rel, term) => KNOWN_DEBT.some((d) => d.file === rel && d.term === term);
-
 // ── استخراج النصوص الثابتة ────────────────────────────────────────────────────
 // يعيد [{ text, idx }] لكل نص ثابت ('…' / "…" / `…` بلا تعابير ${…}).
 // الرموز التي يأتي بعدها تعبير نمطي لا قسمة (بداية تعبير)
@@ -170,11 +162,8 @@ export function run() {
   const uiFiles = collect(UI_TARGETS).filter((f) => !isDefinitionFile(f));
   const errFiles = collect(ERROR_TARGETS).filter((f) => !isDefinitionFile(f));
   const problems = [];
-  const warnings = [];
-  const add = (rel, line, term, where, sample) => {
-    const entry = { rel, line, term, where, sample: sample.replace(/\s+/g, ' ').trim().slice(0, 90) };
-    (isKnownDebt(rel, term) ? warnings : problems).push(entry);
-  };
+  const add = (rel, line, term, where, sample) =>
+    problems.push({ rel, line, term, where, sample: sample.replace(/\s+/g, ' ').trim().slice(0, 90) });
 
   // (1) نصوص الواجهة
   for (const f of uiFiles) {
@@ -202,14 +191,12 @@ export function run() {
     }
   }
 
-  for (const w of warnings) console.warn(`⚠ ${w.rel}:${w.line} — دين لغوي معروف "${w.term}" (${w.where}) يملكه فريق آخر: ${w.sample}`);
-  if (warnings.length) console.warn(`  الإصلاح المطلوب: ${KNOWN_DEBT.map((d) => `${d.file} → ${d.fix}`).join(' · ')}\n`);
   for (const p of problems) console.error(`✗ ${p.rel}:${p.line} — مصطلح محظور "${p.term}" داخل ${p.where}: ${p.sample}`);
   if (problems.length) {
     console.error(`\n${problems.length} مخالفة — النص الظاهر للمستخدم يجب أن يكون عربياً خالياً من المصطلحات التقنية والقيم الخام.`);
     return 1;
   }
-  console.log(`✓ فحص المعجم: ${uiFiles.length} ملف واجهة + رسائل الأخطاء في ${errFiles.length} ملفاً — لا مصطلحات محظورة${warnings.length ? ` (${warnings.length} دين لغوي معروف مذكور أعلاه)` : ''}.`);
+  console.log(`✓ فحص المعجم: ${uiFiles.length} ملف واجهة + رسائل الأخطاء في ${errFiles.length} ملفاً — لا مصطلحات محظورة ولا قيم خام.`);
   return 0;
 }
 
