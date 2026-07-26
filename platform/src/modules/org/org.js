@@ -1,6 +1,6 @@
 // Organization service — flexible hierarchy editable from the UI (NOT hard-coded):
 // Company → Sector → Department → Unit → Team → Position → Employee.
-import { all, get, insert, update } from '../../core/db/index.js';
+import { all, get, insert, update, tx } from '../../core/db/index.js';
 import { can } from '../../core/rbac/index.js';
 import { audit } from '../../core/audit/index.js';
 import { id, nowIso, toHalalas } from '../../core/util/ids.js';
@@ -116,6 +116,14 @@ export async function updateEmployee(ctx, employeeId, data) {
   const e = await get('SELECT * FROM employee WHERE id = ? AND deleted_at IS NULL', [employeeId]);
   if (!e) throw notFound('الموظف غير موجود');
   if (!can(ctx.user, 'update', 'employee', e)) throw forbidden('تعديل الموظف يتطلب صلاحية إدارية على قطاعه');
+  // ربط/فك ربط حساب الدخول يمر عبر خدمته المخصصة أدناه (تحققاتها وتدقيقها الخاص)، كي يبقى
+  // مسار كتابة الهوية واحداً مهما كان الباب الذي دخل منه الطلب.
+  let linkTouched = false;
+  if ('link_user_id' in data) {
+    if (data.link_user_id) await linkUserToEmployee(ctx, { employeeId, userId: data.link_user_id });
+    else await unlinkUserFromEmployee(ctx, { employeeId });
+    linkTouched = true;
+  }
   const patch = { updated_at: nowIso() };
   for (const k of ['name_ar', 'name_en', 'job_title', 'employment_type', 'status', 'sector_id', 'department_id', 'position_id']) if (k in data) patch[k] = data[k];
   if ('hire_date' in data) patch.hire_date = normHireDate(data.hire_date);
@@ -123,6 +131,8 @@ export async function updateEmployee(ctx, employeeId, data) {
   // moving to another sector requires update rights on the TARGET sector too
   if (patch.sector_id && patch.sector_id !== e.sector_id && !can(ctx.user, 'update', 'employee', { sector_id: patch.sector_id })) throw forbidden('لا تملك صلاحية على القطاع الهدف');
   if ('salary_sar' in data && can(ctx.user, 'read', 'salary')) patch.salary_halalas = toHalalas(data.salary_sar);
+  // طلب ربط فقط ⟵ لا نكتب تعديلاً فارغاً على الموظف ولا سطر تدقيق مكرراً
+  if (linkTouched && Object.keys(patch).length === 1) return await get('SELECT * FROM employee WHERE id = ?', [employeeId]);
   await update('employee', employeeId, patch);
   await audit(ctx, { action: 'update', resource: 'employee', resourceId: employeeId, sectorId: patch.sector_id || e.sector_id, detail: Object.keys(patch) });
   return await get('SELECT * FROM employee WHERE id = ?', [employeeId]);
@@ -138,6 +148,121 @@ export async function softDeleteEmployee(ctx, employeeId) {
   await update('employee', employeeId, { deleted_at: nowIso(), active: 0, updated_at: nowIso() });
   await audit(ctx, { action: 'delete', resource: 'employee', resourceId: employeeId, sectorId: e.sector_id, detail: { name_ar: e.name_ar } });
   return { ok: true, id: employeeId };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// الهوية: ربط سجل الموظف بحساب الدخول
+// العمود app_user.employee_id قائم منذ أول إصدار، لكن لم يكن في المنصة كلها مسار يكتبه — فبقي
+// فارغاً لكل الحسابات. الأثر مباشر وليس تجميلياً: عضوية المشاريع ومعرّف الإدارة يُستنتجان من هذا
+// الرابط، فمن لا رابط له لا تُحسب له عضوية مشروع ولا إدارة، وتظهر قوائم مدير المشروع فارغة،
+// ويبقى نطاقا «الإدارة» و«الفريق» في الصلاحيات معطّلين. الخدمتان التاليتان هما مسار الكتابة
+// الوحيد لهذا الرابط: تحقق كامل من الطرفين، منع الازدواج، وتدقيق على الطرفين معاً.
+// ─────────────────────────────────────────────────────────────────────────────
+const accountLabel = (u) => u.name_ar || u.username || 'حساب بلا اسم';
+// الصلاحية: من يملك تعديل هذا الموظف يملك ربطه بحسابه (نفس بوابة تعديل بيانات الموظف).
+function requireEmployeeUpdate(user, emp, verb) {
+  if (!can(user, 'update', 'employee', emp))
+    throw forbidden(`${verb} يتطلب صلاحية تعديل بيانات الموظف على قطاعه — راجع مدير النظام`);
+}
+async function employeeForLink(employeeId) {
+  if (!employeeId) throw badRequest('اختر الموظف المراد ربطه بحساب دخول');
+  const emp = await get('SELECT * FROM employee WHERE id = ? AND deleted_at IS NULL', [employeeId]);
+  if (!emp) throw notFound('الموظف غير موجود أو محذوف — حدّث الصفحة ثم أعد المحاولة');
+  return emp;
+}
+
+// يربط حساب دخول واحداً بموظف واحد. علاقة واحد-لواحد: لا حسابان لموظف، ولا موظفان لحساب.
+export async function linkUserToEmployee(ctx, data = {}) {
+  const employeeId = data.employeeId || data.employee_id || null;
+  const userId = data.userId || data.user_id || null;
+  const emp = await employeeForLink(employeeId);
+  requireEmployeeUpdate(ctx.user, emp, 'ربط الموظف بحساب دخول');
+  if (!userId) throw badRequest('اختر حساب الدخول الذي يخص هذا الموظف');
+  const acc = await get('SELECT * FROM app_user WHERE id = ? AND deleted_at IS NULL', [userId]);
+  if (!acc) throw notFound('حساب الدخول غير موجود أو محذوف — اختر حساباً آخر من القائمة');
+  // هل الموظف محجوز لحساب آخر؟
+  const taken = await get(
+    'SELECT id, username, name_ar FROM app_user WHERE employee_id = ? AND deleted_at IS NULL AND id <> ? LIMIT 1',
+    [employeeId, userId]);
+  if (taken) throw badRequest(`${emp.name_ar} مربوط بحساب ${accountLabel(taken)} — فُكّ الربط الحالي أولاً ثم أعد المحاولة`);
+  if (acc.employee_id === employeeId) throw badRequest(`${emp.name_ar} مربوط بهذا الحساب مسبقاً — لا حاجة لإعادة الربط`);
+  if (acc.employee_id) {
+    const other = await get('SELECT name_ar FROM employee WHERE id = ?', [acc.employee_id]);
+    throw badRequest(`حساب ${accountLabel(acc)} مربوط بالموظف ${other ? other.name_ar : 'موظف آخر'} — فُكّ ربطه أولاً ثم أعد المحاولة`);
+  }
+  const at = nowIso();
+  await tx(async () => {
+    await update('app_user', userId, { employee_id: employeeId, updated_at: at, updated_by: ctx.user.id });
+    // الطرف المقابل في سجل الموظف يبقى متسقاً مع الحساب (عمود قائم، لا يحتاج أي تعديل للبنية)
+    await update('employee', employeeId, { user_id: userId, updated_at: at });
+    await audit(ctx, { action: 'update', resource: 'employee', resourceId: employeeId, sectorId: emp.sector_id,
+      detail: { linked_user_id: userId, username: acc.username || null } });
+    await audit(ctx, { action: 'update', resource: 'app_user', resourceId: userId, sectorId: emp.sector_id,
+      detail: { linked_employee_id: employeeId, employee_name_ar: emp.name_ar } });
+  });
+  return { ok: true, employee_id: employeeId, employee_name_ar: emp.name_ar,
+    user_id: userId, username: acc.username || null, user_name_ar: acc.name_ar || null };
+}
+
+// يفك الربط. يقبل employeeId (الشائع من صفحة «الفريق») أو userId مباشرة.
+export async function unlinkUserFromEmployee(ctx, data = {}) {
+  let employeeId = data.employeeId || data.employee_id || null;
+  let userId = data.userId || data.user_id || null;
+  if (!employeeId && !userId) throw badRequest('حدّد الموظف أو الحساب المراد فك ربطه');
+  if (!employeeId) {
+    const acc0 = await get('SELECT employee_id FROM app_user WHERE id = ? AND deleted_at IS NULL', [userId]);
+    if (!acc0) throw notFound('حساب الدخول غير موجود أو محذوف');
+    if (!acc0.employee_id) throw badRequest('هذا الحساب غير مربوط بأي موظف — لا شيء لفكّه');
+    employeeId = acc0.employee_id;
+  }
+  const emp = await employeeForLink(employeeId);
+  requireEmployeeUpdate(ctx.user, emp, 'فك ربط الموظف بحساب الدخول');
+  const acc = await get(
+    `SELECT id, username, name_ar FROM app_user WHERE employee_id = ? AND deleted_at IS NULL ${userId ? 'AND id = ?' : ''} LIMIT 1`,
+    userId ? [employeeId, userId] : [employeeId]);
+  if (!acc) throw badRequest(`${emp.name_ar} غير مربوط بأي حساب دخول — لا شيء لفكّه`);
+  const at = nowIso();
+  await tx(async () => {
+    await update('app_user', acc.id, { employee_id: null, updated_at: at, updated_by: ctx.user.id });
+    await update('employee', employeeId, { user_id: null, updated_at: at });
+    await audit(ctx, { action: 'update', resource: 'employee', resourceId: employeeId, sectorId: emp.sector_id,
+      detail: { unlinked_user_id: acc.id, username: acc.username || null } });
+    await audit(ctx, { action: 'update', resource: 'app_user', resourceId: acc.id, sectorId: emp.sector_id,
+      detail: { unlinked_employee_id: employeeId, employee_name_ar: emp.name_ar } });
+  });
+  return { ok: true, employee_id: employeeId, employee_name_ar: emp.name_ar, user_id: acc.id };
+}
+
+// لوحة حالة الربط لصفحة «الفريق»: من مربوط بمن، كم موظفاً نشطاً بلا حساب، وقائمة الحسابات
+// غير المربوطة (تُعرض فقط لمن يملك الربط). نطاق الموظفين = نفس نطاق كشف الفريق تماماً.
+export async function identityLinks(user, opts = {}) {
+  if (user.role_id !== 'admin' && !can(user, 'read', 'employee')) throw forbidden('عرض ارتباط الحسابات يتطلب صلاحية عرض الفريق');
+  const sec = user.scope === 'company' ? (opts.sector || null) : (user.sector_id || null);
+  const rows = await all(`SELECT e.id employee_id, e.active, u.id user_id, u.username, u.name_ar user_name_ar, u.role_id
+     FROM employee e LEFT JOIN app_user u ON u.employee_id = e.id AND u.deleted_at IS NULL
+     WHERE e.deleted_at IS NULL ${sec ? 'AND e.sector_id = ?' : ''}
+     ORDER BY e.id, u.id`, sec ? [sec] : []);
+  const byEmployee = {};
+  let linked = 0, unlinked = 0;
+  for (const r of rows) {
+    if (r.employee_id in byEmployee) continue; // أول حساب فقط — الازدواج ممنوع أصلاً في الربط
+    byEmployee[r.employee_id] = r.user_id
+      ? { user_id: r.user_id, username: r.username || null, name_ar: r.user_name_ar || null, role_id: r.role_id || null }
+      : null;
+    if (r.user_id) linked++;
+    else if (r.active !== 0) unlinked++; // غير النشط لا يحتاج حساباً — لا يُحسب في التنبيه
+  }
+  // الحسابات المتاحة للربط: نطاق الشركة يرى الجميع، ونطاق القطاع يرى حسابات قطاعه فقط
+  // (دليل المستخدمين الكامل شاشة إدارية، لا يُفتح ضمناً من صفحة الفريق).
+  const canLink = can(user, 'update', 'employee');
+  let freeAccounts = [];
+  if (canLink) {
+    const base = `SELECT id, username, name_ar, role_id, sector_id FROM app_user
+       WHERE deleted_at IS NULL AND active = 1 AND employee_id IS NULL`;
+    if (user.scope === 'company') freeAccounts = await all(`${base} ORDER BY name_ar, username`);
+    else if (user.sector_id) freeAccounts = await all(`${base} AND sector_id = ? ORDER BY name_ar, username`, [user.sector_id]);
+  }
+  return { byEmployee, freeAccounts, linkedCount: linked, unlinkedCount: unlinked, canLink };
 }
 
 // Staffing roster v3 — PLANNED utilization from the allocation model (scoped) PLUS opportunity

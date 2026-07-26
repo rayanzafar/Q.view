@@ -88,6 +88,22 @@ export async function auditPage(user) {
   return layout({ user, active: 'audit', title: 'سجل التدقيق', body });
 }
 
+// أيام الأسبوع كما تُخزَّن في الجدولة (0 = الأحد) — تُعرض مع وقت الإرسال حتى يعرف المستخدم متى يصله التقرير.
+const DAYS_AR = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+function sendWhen(s) {
+  const time = /^\d{1,2}:\d{2}$/.test(String(s.send_time || '')) ? s.send_time : '08:00';
+  if (s.frequency === 'weekly' || s.frequency === 'biweekly') {
+    const d = Number(s.day_of_week);
+    return (Number.isInteger(d) && d >= 0 && d <= 6 ? DAYS_AR[d] + ' · ' : '') + time;
+  }
+  if (s.frequency === 'monthly' || s.frequency === 'quarterly' || s.frequency === 'yearly') {
+    const d = Number(s.day_of_month);
+    return (Number.isInteger(d) && d >= 1 && d <= 31 ? 'يوم ' + d + ' · ' : '') + time;
+  }
+  return time;
+}
+const whenText = (iso) => (iso ? `${iso.slice(0, 10)} · ${iso.slice(11, 16)}` : '—');
+
 export async function reportsPage(user) {
   const defs = await all('SELECT * FROM report_definition WHERE active = 1 ORDER BY id');
   const groups = await all('SELECT * FROM recipient_group ORDER BY name_ar');
@@ -103,11 +119,16 @@ export async function reportsPage(user) {
     </div></div>`, 'card-h')).join('');
 
   const schedList = schedules.map((s) => `<tr style="border-bottom:1px solid var(--line)">
-    <td style="padding:.5rem .75rem;font-size:var(--fs-ui)">${s.rname}</td>
-    <td style="padding:.5rem .75rem;font-size:12px">${freqAr[s.frequency] || s.frequency}</td>
-    <td style="padding:.5rem .75rem;font-size:12px;color:var(--muted)">${s.gname || '—'}</td>
+    <td style="padding:.5rem .75rem;font-size:var(--fs-ui)">${esc(s.rname || '')}</td>
+    <td style="padding:.5rem .75rem;font-size:12px">${esc(freqAr[s.frequency] || s.frequency || '')}
+      <div style="font-size:11px;color:var(--muted)" class="tnum">${esc(sendWhen(s))}</div></td>
+    <td style="padding:.5rem .75rem;font-size:12px;color:var(--muted)">${esc(s.gname || '—')}</td>
     <td style="padding:.5rem .75rem">${s.active ? pill('مفعّل', 'green') : pill('موقوف', 'slate')}</td>
-    <td style="padding:.5rem .75rem;font-size:11px;color:var(--muted)">${s.next_run_at ? s.next_run_at.slice(0, 10) : '—'}</td></tr>`).join('');
+    <td style="padding:.5rem .75rem;font-size:11px;color:var(--muted)" class="tnum">${esc(s.active ? whenText(s.next_run_at) : '—')}</td>
+    <td style="padding:.5rem .75rem">
+      <button type="button" data-schedule="${esc(s.id)}" data-turn="${s.active ? '0' : '1'}"
+        title="${s.active ? 'إيقاف الإرسال لهذه الجدولة' : 'إعادة تفعيل الإرسال لهذه الجدولة'}"
+        style="border:1px solid var(--line);cursor:pointer;font-size:11px;padding:.3rem .6rem;border-radius:8px;background:#fff;color:${s.active ? '#b91c1c' : '#047857'}">${s.active ? 'إيقاف' : 'تفعيل'}</button></td></tr>`).join('');
   const outList = outbox.map((q) => `<tr style="border-bottom:1px solid var(--line)">
     <td style="padding:.5rem .75rem;font-size:12px">${q.subject || ''}</td>
     <td style="padding:.5rem .75rem">${pill(tr(q.status), q.status === 'SENT' ? 'green' : q.status === 'FAILED' ? 'red' : 'amber')}</td>
@@ -127,10 +148,40 @@ export async function reportsPage(user) {
       <div style="font-size:11px;color:var(--muted);margin-top:.5rem">الصلاحيات تُنفَّذ لكل مستلم وقت الإرسال — لا تُرسَل الأرقام الحساسة لمن لا يملك صلاحيتها.</div></div>`)}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:1.25rem">
       ${card(`<div style="padding:1rem;border-bottom:1px solid var(--line);font-weight:800;font-size:var(--fs-ui)">التقارير المجدولة</div>
-        <table style="width:100%;border-collapse:collapse"><thead><tr style="font-size:11px;color:var(--muted);text-align:right"><th style="padding:.4rem .75rem">التقرير</th><th style="padding:.4rem .75rem">التكرار</th><th style="padding:.4rem .75rem">المستلمون</th><th style="padding:.4rem .75rem">الحالة</th><th style="padding:.4rem .75rem">التالي</th></tr></thead><tbody>${schedList || '<tr><td style="padding:1rem;color:var(--muted);font-size:var(--fs-ui)" colspan="5">لا جداول بعد</td></tr>'}</tbody></table>`)}
+        <div id="sched-list"><table style="width:100%;border-collapse:collapse"><thead><tr style="font-size:11px;color:var(--muted);text-align:right"><th style="padding:.4rem .75rem">التقرير</th><th style="padding:.4rem .75rem">التكرار</th><th style="padding:.4rem .75rem">المستلمون</th><th style="padding:.4rem .75rem">الحالة</th><th style="padding:.4rem .75rem">التالي</th><th style="padding:.4rem .75rem">إجراء</th></tr></thead><tbody>${schedList || '<tr><td style="padding:1rem;color:var(--muted);font-size:var(--fs-ui)" colspan="6">لا جداول بعد</td></tr>'}</tbody></table></div>
+        <div id="sched-msg" role="alert" style="display:none;margin:0 1rem .8rem;padding:.5rem .7rem;border-radius:8px;background:#fef2f2;color:#b91c1c;font-size:12px"></div>
+        <div style="padding:0 1rem 1rem;font-size:11px;color:var(--muted)">الإيقاف يمنع أي إرسال قادم لهذه الجدولة، والتفعيل يعيدها بموعدها القادم حسب وقت الإرسال المحدد.</div>`)}
       ${card(`<div style="padding:1rem;border-bottom:1px solid var(--line);font-weight:800;font-size:var(--fs-ui)">سجل الإرسال (Outbox)</div>
         <table style="width:100%;border-collapse:collapse"><thead><tr style="font-size:11px;color:var(--muted);text-align:right"><th style="padding:.4rem .75rem">الموضوع</th><th style="padding:.4rem .75rem">الحالة</th><th style="padding:.4rem .75rem">الوقت</th></tr></thead><tbody>${outList || '<tr><td style="padding:1rem;color:var(--muted);font-size:var(--fs-ui)" colspan="3">لا رسائل بعد</td></tr>'}</tbody></table>`)}
     </div>
-    <div id="report-preview" style="margin-top:1rem"></div>`;
+    <div id="report-preview" style="margin-top:1rem"></div>
+    <script>
+    (function () {
+      var box = document.getElementById('sched-list');
+      var msg = document.getElementById('sched-msg');
+      if (!box) return;
+      function fail(text) { if (msg) { msg.textContent = text; msg.style.display = 'block'; } }
+      box.addEventListener('click', function (ev) {
+        var btn = ev.target && ev.target.closest ? ev.target.closest('button[data-schedule]') : null;
+        if (!btn) return;
+        var turn = btn.getAttribute('data-turn') === '1' ? 1 : 0;
+        btn.disabled = true;
+        if (msg) { msg.style.display = 'none'; }
+        fetch('/app/reports/schedule/' + encodeURIComponent(btn.getAttribute('data-schedule')) + '/active', {
+          method: 'POST', credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: '{"active":' + turn + '}',
+        }).then(function (r) {
+          return r.json().catch(function () { return {}; }).then(function (j) {
+            if (!r.ok) throw new Error((j && j.error && j.error.message) || 'تعذّر تنفيذ الإجراء الآن. حدّث الصفحة وحاول مجدداً.');
+            location.reload();
+          });
+        }).catch(function (e) {
+          btn.disabled = false;
+          fail(e && e.message ? e.message : 'تعذّر تنفيذ الإجراء الآن. حدّث الصفحة وحاول مجدداً.');
+        });
+      });
+    })();
+    </script>`;
   return layout({ user, active: 'reports', title: 'التقارير والبريد', subtitle: 'محرك تقارير تنفيذية + جدولة + بريد', body });
 }

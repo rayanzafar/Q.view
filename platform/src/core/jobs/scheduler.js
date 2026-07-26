@@ -1,7 +1,6 @@
 // In-process scheduler for email queue + due report schedules (dev). Prod → external worker.
 import { all, run } from '../db/index.js';
-import { processQueue, enqueueReport } from '../reports/engine.js';
-import { nowIso } from '../util/ids.js';
+import { processQueue, enqueueReport, nextRunAt } from '../reports/engine.js';
 
 let timer = null;
 
@@ -20,9 +19,15 @@ async function tick() {
   try { await processQueue(30); } catch (e) { console.error('[scheduler] processQueue:', e.message); }
 }
 
+// الجدولات المستحقة الآن. الموقوفة (active = 0) لا تُرسِل شيئاً — وهذا ما يجعل زر الإيقاف فعّالاً.
+export async function dueSchedules(at = new Date()) {
+  const iso = at instanceof Date ? at.toISOString() : String(at);
+  return await all("SELECT rs.*, rd.key rkey FROM report_schedule rs JOIN report_definition rd ON rd.id = rs.report_id WHERE rs.active = 1 AND (rs.next_run_at IS NULL OR rs.next_run_at <= ?)", [iso]);
+}
+
 async function fireDueSchedules() {
   const now = new Date();
-  const due = await all("SELECT rs.*, rd.key rkey FROM report_schedule rs JOIN report_definition rd ON rd.id = rs.report_id WHERE rs.active = 1 AND (rs.next_run_at IS NULL OR rs.next_run_at <= ?)", [now.toISOString()]);
+  const due = await dueSchedules(now);
   for (const s of due) {
     // كل جدولة داخل حمايتها الخاصة: فشل واحدة لا يوقف البقية.
     try {
@@ -39,9 +44,9 @@ async function fireDueSchedules() {
   }
 }
 
-function nextRun(s, now) {
-  const d = new Date(now);
-  const add = { daily: 1, weekly: 7, biweekly: 14, monthly: 30, quarterly: 91, yearly: 365 }[s.frequency] || 7;
-  d.setUTCDate(d.getUTCDate() + add);
-  return d.toISOString();
+// الموعد القادم يحترم وقت الإرسال ويوم الأسبوع/الشهر المخزَّنة في صف الجدولة
+// (كانت تُضاف أيام ثابتة فقط: شهري = ٣٠ يوماً، فيزحف الموعد شهراً بعد شهر ويُهمَل وقت الإرسال).
+// الحساب كله في JS وبتوقيت UTC؛ راجع nextRunAt في محرك التقارير.
+export function nextRun(s, now = new Date()) {
+  return nextRunAt(s, now);
 }

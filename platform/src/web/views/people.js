@@ -4,8 +4,9 @@ import { icon } from '../icons.js';
 import { fmtSar } from '../../core/util/ids.js';
 import { all } from '../../core/db/index.js';
 import { myEntries } from '../../modules/timesheets/timesheets.js';
-import { orgTree, staffingRoster } from '../../modules/org/org.js';
+import { orgTree, staffingRoster, identityLinks } from '../../modules/org/org.js';
 import { canSeeSensitive, can } from '../../core/rbac/index.js';
+import { ROLE_LABELS } from '../../core/rbac/matrix.js';
 import { G } from '../i18n/glossary.js';
 import { esc, ddWrap, ddRows } from './_shared.js';
 import { MONTHS_AR, monthLabelDual, currentMonthIndex, nowDot } from '../../core/i18n/time.js';
@@ -80,9 +81,25 @@ export async function teamPage(user, opts = {}) {
   const sectorNames = Object.fromEntries(allSec.map((s) => [s.id, s.name_ar]));
   const sector = (opts.sector || '').toString().trim();
   const { roster } = await staffingRoster(user, { sector });
+  // حالة ربط كل موظف بحساب دخوله — العمود الفقري للصلاحيات: من لا حساب له لا تصله مهمة
+  // ولا إشعار ولا يظهر لمدير المشروع. القائمة القابلة للربط تُبنى في الخدمة حسب صلاحية القارئ.
+  const { byEmployee: links, freeAccounts, unlinkedCount, canLink } = await identityLinks(user, { sector });
   // نشط أولاً ثم أبجدي — دليل أشخاص، لا ترتيب حسب الحمل (ذاك في صفحة التسكين)
   const sorted = roster.slice().sort((a, b) => (b.active - a.active) || String(a.name_ar).localeCompare(String(b.name_ar), 'ar'));
   const activeCount = roster.filter((e) => e.active !== 0).length;
+
+  // خلية «حساب الدخول»: شارة الحالة + إجراء الربط/فك الربط من الصف نفسه لمن يملك الصلاحية
+  const acctCell = (e) => {
+    const l = links[e.id] || null;
+    const label = l ? esc(l.name_ar || l.username || 'حساب مربوط') : '';
+    const badge = l
+      ? `<span class="pill" style="background:#dcfce7;color:#059669" title="مربوط بحساب ${label}">✓ ${label}</span>`
+      : `<span class="pill" style="background:#fef3c7;color:#92400e" title="لا يملك حساب دخول — لن تصله المهام ولا الإشعارات">بلا حساب</span>`;
+    const btn = !canLink ? ''
+      : l ? `<button class="btn btn-sm btn-ghost" data-action="emp-unlink" data-emp="${e.id}" style="color:var(--muted)">فك الربط</button>`
+        : `<button class="btn btn-sm btn-ghost" data-action="emp-link" data-emp="${e.id}" style="color:var(--brand)">ربط بحساب</button>`;
+    return `<div style="display:flex;align-items:center;gap:.35rem;flex-wrap:wrap">${badge}${btn}</div>`;
+  };
 
   const rowTpl = (e) => `<tr data-emp="${e.id}" data-hay="${esc(`${e.name_ar} ${e.job_title || ''}`.toLowerCase())}" style="border-bottom:1px solid var(--line)">
     <td data-label="الاسم" style="padding:.6rem .7rem">
@@ -91,6 +108,7 @@ export async function teamPage(user, opts = {}) {
     <td data-label="القطاع" style="padding:.6rem .7rem;font-size:12px;color:var(--muted)">${esc(sectorNames[e.sector_id] || '—')}</td>
     <td data-label="نوع التوظيف" style="padding:.6rem .7rem;font-size:12px;color:var(--muted)">${esc(e.employment_type || '—')}</td>
     <td data-label="تاريخ التعيين" style="padding:.6rem .7rem;font-size:12px" class="tnum">${e.hire_date ? esc(e.hire_date) : '<span style="color:var(--faint)">—</span>'}</td>
+    <td data-label="حساب الدخول" style="padding:.6rem .7rem;font-size:12px">${acctCell(e)}</td>
     ${canSalary ? `<td data-label="الراتب الشهري" style="padding:.6rem .7rem;font-size:12px" class="tnum emp-sal">${e.salary_halalas ? fmtSar(e.salary_halalas) : '<span style="color:var(--faint)">—</span>'}</td>` : ''}
     <td data-label="" style="padding:.6rem .7rem;text-align:left;white-space:nowrap">
       ${canManage ? `<button class="btn btn-sm btn-ghost" data-action="emp-edit" data-emp="${e.id}">✎ تعديل</button>` : ''}
@@ -102,17 +120,29 @@ export async function teamPage(user, opts = {}) {
     ${allSec.map((s) => `<a href="/app/team?sector=${s.id}" class="chip ${sector === s.id ? 'on' : ''}"><span class="dot" style="background:${s.color || 'var(--brand)'}"></span>${esc(s.name_ar)}</a>`).join('')}
   </div>` : '';
 
-  const table = card(`<div class="tblwrap"><table class="rtbl" id="team-rows" style="width:100%;border-collapse:collapse;min-width:720px">
+  const table = card(`<div class="tblwrap"><table class="rtbl" id="team-rows" style="width:100%;border-collapse:collapse;min-width:820px">
     <thead><tr style="font-size:10.5px;color:var(--muted);text-align:right">
       <th style="padding:.5rem .7rem;font-weight:700">الاسم</th><th style="padding:.5rem .7rem;font-weight:700">القطاع</th>
       <th style="padding:.5rem .7rem;font-weight:700">نوع التوظيف</th><th style="padding:.5rem .7rem;font-weight:700">تاريخ التعيين</th>
+      <th style="padding:.5rem .7rem;font-weight:700">حساب الدخول</th>
       ${canSalary ? '<th style="padding:.5rem .7rem;font-weight:700">الراتب الشهري</th>' : ''}
       <th style="padding:.5rem .7rem"></th></tr></thead>
     <tbody>${sorted.map(rowTpl).join('')}</tbody></table>
     ${sorted.length ? '' : `<div class="empty-state">${icon('team')}<div class="t">لا أعضاء ضمن نطاقك</div><div class="s">أضِف موظفين من زر «إضافة موظف» بالأعلى.</div></div>`}</div>`);
 
+  // تنبيه جودة البيانات: فجوة الهوية. يظهر فقط لمن يملك الربط، ويقول ماذا حدث وما الخطوة.
+  const acctCount = (n) => countAr(n, { one: 'حساب واحد متاح للربط', two: 'حسابان متاحان للربط', few: 'حسابات متاحة للربط', many: 'حساباً متاحاً للربط' });
+  const gapNote = canLink && unlinkedCount ? `<div class="alert warn" style="margin-bottom:.8rem">
+      <span aria-hidden="true">⚠</span>
+      <span><b>${countAr(unlinkedCount, { one: 'موظف واحد بلا حساب مستخدم', two: 'موظفان بلا حساب مستخدم', few: 'موظفين بلا حساب مستخدم', many: 'موظفاً بلا حساب مستخدم' })}</b>
+        — لا تصلهم المهام ولا الإشعارات، ولا يظهرون في قوائم مديري المشاريع، وصلاحيات الإدارة والفريق تبقى معطّلة عنهم.
+        اربط كل واحد بحسابه من عمود «حساب الدخول».
+        ${freeAccounts.length ? `متاح الآن ${acctCount(freeAccounts.length)}.` : 'لا حسابات متاحة للربط حالياً — تُنشأ الحسابات من صفحة المستخدمين والصلاحيات.'}</span>
+    </div>` : '';
+
   const body = `
     ${secChips}
+    ${gapNote}
     <div class="toolbar" style="margin-bottom:.8rem">
       <div class="search">${icon('search')}<input class="input" id="team-q" aria-label="بحث بالاسم أو المسمى" placeholder="ابحث بالاسم أو المسمى…"></div>
       <div class="spacer"></div>
@@ -126,8 +156,13 @@ export async function teamPage(user, opts = {}) {
         active: e.active, sector_id: e.sector_id, hire_date: e.hire_date || '',
         salary_sar: canSalary ? Math.round((e.salary_halalas || 0) / 100) : null,
       }]))).replace(/</g, '\\u003c')},
+      empLinks:${JSON.stringify(Object.fromEntries(sorted.map((e) => [e.id, links[e.id]
+        ? { label: links[e.id].name_ar || links[e.id].username || 'حساب مربوط' } : null]))).replace(/</g, '\\u003c')},
+      freeAccounts:${JSON.stringify(freeAccounts.map((a) => ({ id: a.id,
+        label: a.name_ar || a.username || 'حساب بلا اسم',
+        role: (ROLE_LABELS[a.role_id] || {}).ar || '' }))).replace(/</g, '\\u003c')},
       teamSectors:${JSON.stringify(allSec.map((s) => ({ id: s.id, name_ar: s.name_ar }))).replace(/</g, '\\u003c')},
-      canSalary:${canSalary}, canManage:${canManage}, canCreate:${canCreate}, canDelete:${canDelete},
+      canSalary:${canSalary}, canManage:${canManage}, canCreate:${canCreate}, canDelete:${canDelete}, canLink:${canLink},
       teamSectorLocked:${JSON.stringify(sector || (user.scope !== 'company' ? user.sector_id : null))}});</script>`;
   return layout({
     user, active: 'team', title: 'الفريق',
