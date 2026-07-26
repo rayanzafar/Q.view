@@ -5,7 +5,7 @@ import { all } from '../../core/db/index.js';
 import { myApprovalQueue } from '../../modules/workflow/engine.js';
 import { canControlSchedules } from '../../core/reports/engine.js';
 import { ROLE_LABELS } from '../../core/rbac/matrix.js';
-import { resourceLabel, mailStatusLabel, auditActionLabel } from '../i18n/glossary.js';
+import { resourceLabel, mailStatusLabel, auditActionLabel, reportName } from '../i18n/glossary.js';
 import { esc, statMini } from './_shared.js';
 
 export async function approvalsPage(user) {
@@ -34,12 +34,16 @@ export async function approvalsPage(user) {
 }
 
 export async function usersPage(user) {
-  const rows = await all(`SELECT u.*, r.name_ar role_name FROM app_user u LEFT JOIN role r ON r.id = u.role_id
+  // اسم القطاع بالعربية بدل رمزه المخزَّن (كان يظهر SOLUTIONS/CONSULTING للمستخدم).
+  // القطاع المحذوف يبقى اسمه ظاهراً للسجلات التاريخية — لا فلترة deleted_at على وصلة التسمية.
+  const rows = await all(`SELECT u.*, r.name_ar role_name, s.name_ar sector_name FROM app_user u
+    LEFT JOIN role r ON r.id = u.role_id
+    LEFT JOIN sector s ON s.id = u.sector_id
     WHERE u.deleted_at IS NULL ORDER BY u.role_id, u.name_ar LIMIT 300`);
   const list = rows.map((u) => `<tr class="border-b border-line">
     <td class="py-2 px-3 text-[13px]">${esc(u.name_ar || '')}<div class="text-[11px] text-muted">${esc(u.username || '— بلا دخول')}</div></td>
     <td class="px-3">${pill(esc(u.role_name || (ROLE_LABELS[u.role_id] || {}).ar || 'دور غير معروف'), 'blue')}</td>
-    <td class="px-3 text-[12px]">${u.sector_id || '—'}</td>
+    <td class="px-3 text-[12px]">${esc(u.sector_name || (u.sector_id ? 'قطاع غير معروف' : '—'))}</td>
     <td class="px-3">${u.active ? pill('نشط', 'green') : pill('معطّل', 'red')}</td>
     <td class="px-3 text-[11px] text-muted">${u.last_login_at ? u.last_login_at.slice(0, 10) : 'لم يدخل'}</td></tr>`).join('');
   const activeN = rows.filter((u) => u.active).length;
@@ -110,21 +114,21 @@ const whenText = (iso) => (iso ? `${iso.slice(0, 10)} · ${iso.slice(11, 16)}` :
 export async function reportsPage(user) {
   const defs = await all('SELECT * FROM report_definition WHERE active = 1 ORDER BY id');
   const groups = await all('SELECT * FROM recipient_group ORDER BY name_ar');
-  const schedules = await all('SELECT rs.*, rd.name_ar rname, rg.name_ar gname FROM report_schedule rs JOIN report_definition rd ON rd.id = rs.report_id LEFT JOIN recipient_group rg ON rg.id = rs.recipient_group_id ORDER BY rs.created_at DESC LIMIT 50');
+  const schedules = await all('SELECT rs.*, rd.name_ar rname, rd.key rkey, rg.name_ar gname FROM report_schedule rs JOIN report_definition rd ON rd.id = rs.report_id LEFT JOIN recipient_group rg ON rg.id = rs.recipient_group_id ORDER BY rs.created_at DESC LIMIT 50');
   const outbox = await all('SELECT * FROM email_queue ORDER BY created_at DESC LIMIT 15');
   const freqAr = { daily: 'يومي', weekly: 'أسبوعي', biweekly: 'كل أسبوعين', monthly: 'شهري', quarterly: 'ربع سنوي', yearly: 'سنوي' };
   // من لا يملك التحكم في الجدولة لا يرى أزراراً لا تعمل معه — والقرار نفسه يُفحص في الخدمة على الخادم.
   const mayControl = canControlSchedules(user);
 
   const reportCards = defs.map((d) => card(`<div style="padding:.9rem 1rem">
-    <div style="font-weight:700;font-size:var(--fs-ui);margin-bottom:.5rem">${esc(d.name_ar)}</div>
+    <div style="font-weight:700;font-size:var(--fs-ui);margin-bottom:.5rem">${esc(reportName(d.key, d.name_ar))}</div>
     <div style="display:flex;gap:.4rem">
       <button onclick="Sanad.previewReport('${d.key}')" class="text-white" style="border:none;cursor:pointer;font-size:11px;padding:.35rem .6rem;border-radius:8px;background:var(--brand-grad)">معاينة</button>
       <button onclick="Sanad.testSend('${d.key}')" style="border:1px solid var(--line);cursor:pointer;font-size:11px;padding:.35rem .6rem;border-radius:8px;background:#fff">إرسال تجريبي</button>
     </div></div>`, 'card-h')).join('');
 
   const schedList = schedules.map((s) => `<tr style="border-bottom:1px solid var(--line)">
-    <td style="padding:.5rem .75rem;font-size:var(--fs-ui)">${esc(s.rname || '')}</td>
+    <td style="padding:.5rem .75rem;font-size:var(--fs-ui)">${esc(reportName(s.rkey, s.rname))}</td>
     <td style="padding:.5rem .75rem;font-size:12px">${esc(freqAr[s.frequency] || s.frequency || '')}
       <div style="font-size:11px;color:var(--muted)" class="tnum">${esc(sendWhen(s))}</div></td>
     <td style="padding:.5rem .75rem;font-size:12px;color:var(--muted)">${esc(s.gname || '—')}</td>
@@ -144,7 +148,7 @@ export async function reportsPage(user) {
     ${!mayControl ? card(`<div style="padding:1rem;font-size:var(--fs-ui);color:var(--muted)">جدولة التقارير تتطلب صلاحية إدارية. تستطيع هنا معاينة أي تقرير أو إرسال نسخة تجريبية إلى بريدك.</div>`)
     : card(`<div style="padding:1rem"><div style="font-weight:800;font-size:var(--fs-title);margin-bottom:.6rem">جدولة تقرير جديد</div>
       <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
-        <select id="sch-report" aria-label="التقرير" style="border:1px solid var(--line);border-radius:8px;padding:.4rem .6rem;font-size:var(--fs-ui)">${defs.map((d) => `<option value="${d.id}">${d.name_ar}</option>`).join('')}</select>
+        <select id="sch-report" aria-label="التقرير" style="border:1px solid var(--line);border-radius:8px;padding:.4rem .6rem;font-size:var(--fs-ui)">${defs.map((d) => `<option value="${esc(d.id)}">${esc(reportName(d.key, d.name_ar))}</option>`).join('')}</select>
         <select id="sch-freq" aria-label="تكرار الإرسال" style="border:1px solid var(--line);border-radius:8px;padding:.4rem .6rem;font-size:var(--fs-ui)">${Object.entries(freqAr).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select>
         <select id="sch-group" aria-label="مجموعة المستلمين" style="border:1px solid var(--line);border-radius:8px;padding:.4rem .6rem;font-size:var(--fs-ui)"><option value="">— مجموعة مستلمين —</option>${groups.map((g) => `<option value="${g.id}">${g.name_ar}</option>`).join('')}</select>
         <input id="sch-time" type="time" value="08:00" aria-label="وقت الإرسال" style="border:1px solid var(--line);border-radius:8px;padding:.35rem .5rem;font-size:var(--fs-ui)">

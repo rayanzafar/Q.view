@@ -200,6 +200,18 @@ export const RESOURCE_AR = {
 };
 export const resourceLabel = (r) => RESOURCE_AR[String(r || '').toLowerCase()] || 'سجل';
 
+// أسماء التقارير الستة — تُعرض من هنا لا من الاسم المخزَّن، لأن قواعد قائمة تحمل أسماءً قديمة
+// فيها اختصارات إنجليزية («تقرير حالة المشروع (RAG)») ولا توجد شاشة لإعادة تسميتها.
+export const REPORT_NAME_AR = {
+  weekly_exec_brief: 'الموجز التنفيذي الأسبوعي',
+  sector_weekly_status: 'حالة القطاع الأسبوعية',
+  monthly_sector_performance: 'أداء القطاع الشهري',
+  project_status_report: 'تقرير حالة المشروع',
+  workforce_utilization: 'تقرير القوى العاملة والإشغال',
+  opportunity_pipeline: 'تقرير خط الفرص',
+};
+export const reportName = (key, stored) => REPORT_NAME_AR[key] || stored || 'تقرير';
+
 // إجراءات سجل التدقيق — كل قيمة تُكتب فعلياً في السجل لها تسمية هنا (كانت تظهر لاتينية
 // لأي إجراء خارج جدول التسميات: read/export/submit/import.apply…).
 export const AUDIT_ACTION_AR = {

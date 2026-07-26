@@ -8,6 +8,40 @@ import { forbidden, badRequest, notFound } from '../../core/http/errors.js';
 
 const requireAdminSectors = (user) => { if (!can(user, 'admin', 'sector') && user.role_id !== 'admin' && !can(user, 'create', 'sector')) throw forbidden('إدارة الهيكل تتطلب صلاحية إدارية'); };
 
+// إنشاء/حذف قطاع قرار بنية شركة ⟵ إداري فقط. أما الإدارات والوحدات **داخل قطاع** فيملكها
+// مسؤول ذلك القطاع: يضيف ويعيد التسمية ويعطّل بنفسه بلا انتظار مدير النظام (قرار صريح من المالك).
+const canManageSectorOrg = (user, sectorId) =>
+  user.role_id === 'admin' || can(user, 'admin', 'sector') || can(user, 'create', 'sector')
+  || can(user, 'update', 'employee', { sector_id: sectorId });
+const requireSectorOrg = (user, sectorId) => {
+  if (!canManageSectorOrg(user, sectorId)) throw forbidden('تعديل هيكل هذا القطاع يتطلب صلاحية إدارته');
+};
+
+// ── منع تكرار الأسماء (قرار صريح من المالك: «ما ينفع يكون في أسماء مكررة») ──
+// المقارنة على اسم مطبَّع لا على النص الحرفي، وإلا مرّ «محمد  علي» و«محمّد علي» كاسمين مختلفين
+// بينما هما نفس الشخص: تُوحَّد المسافات، ويُحذف التطويل والتشكيل، وتُوحَّد صور الألف والياء والتاء.
+export function normName(s) {
+  return String(s == null ? '' : s)
+    .replace(/[ـً-ْٰ]/g, '')      // تطويل + تشكيل
+    .replace(/[آأإٱ]/g, 'ا') // آ أ إ ٱ ⟵ ا
+    .replace(/ى/g, 'ي')                      // ى ⟵ ي
+    .replace(/ة/g, 'ه')                      // ة ⟵ ه
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+// يرفع خطأً عربياً واضحاً عند وجود صف حيّ بنفس الاسم المطبَّع. excludeId يسمح بحفظ السجل نفسه.
+async function assertNameFree({ table, nameAr, scopeCol = null, scopeVal = null, excludeId = null, label }) {
+  const want = normName(nameAr);
+  if (!want) return;
+  const where = ['deleted_at IS NULL'];
+  const params = [];
+  if (scopeCol && scopeVal != null) { where.push(`${scopeCol} = ?`); params.push(scopeVal); }
+  const rows = await all(`SELECT id, name_ar FROM ${table} WHERE ${where.join(' AND ')}`, params);
+  const clash = rows.find((r) => r.id !== excludeId && normName(r.name_ar) === want);
+  if (clash) throw badRequest(`${label} «${String(nameAr).trim()}» مستخدم بالفعل — اختر اسماً مختلفاً أو عدّل السجل القائم`);
+}
+
 // تاريخ التعيين يُخزَّن نصاً بصيغة سنة-شهر-يوم (ISO) قابلاً للنقل بين المحرّكين. فارغ ⟵ غير معروف (null).
 // نتحقق من الصيغة ومن كونه تاريخاً حقيقياً كي لا نُدخل قيمة لا تُقرأ لاحقاً في التقارير.
 function normHireDate(v) {
@@ -64,9 +98,10 @@ export async function updateSector(ctx, sectorId, data) {
 
 // ── Department CRUD ──
 export async function createDepartment(ctx, data) {
-  requireAdminSectors(ctx.user);
   if (!data.sector_id || !data.name_ar) throw badRequest('القطاع والاسم مطلوبان');
+  requireSectorOrg(ctx.user, data.sector_id);
   if (!(await get('SELECT id FROM sector WHERE id = ?', [data.sector_id]))) throw badRequest('قطاع غير معروف');
+  await assertNameFree({ table: 'department', nameAr: data.name_ar, scopeCol: 'sector_id', scopeVal: data.sector_id, label: 'اسم الإدارة' });
   const did = id('dep');
   await insert('department', { id: did, sector_id: data.sector_id, name_ar: data.name_ar, name_en: data.name_en || null,
     manager_user_id: data.manager_user_id || null, active: 1, created_at: nowIso(), created_by: ctx.user.id });
@@ -74,10 +109,53 @@ export async function createDepartment(ctx, data) {
   return await get('SELECT * FROM department WHERE id = ?', [did]);
 }
 
+// تعديل إدارة: إعادة تسمية، تعيين مسؤول، أو **نقلها إلى قطاع آخر**. لم تكن هناك أي خدمة تعديل
+// أو حذف للإدارات إطلاقاً — إنشاء فقط بلا رجعة. النقل بين قطاعين يتطلب صلاحية على الطرفين معاً.
+export async function updateDepartment(ctx, depId, data = {}) {
+  const d = await get('SELECT * FROM department WHERE id = ? AND deleted_at IS NULL', [depId]);
+  if (!d) throw notFound('الإدارة غير موجودة');
+  requireSectorOrg(ctx.user, d.sector_id);
+  const patch = {};
+  if ('sector_id' in data && data.sector_id && data.sector_id !== d.sector_id) {
+    if (!(await get('SELECT id FROM sector WHERE id = ? AND deleted_at IS NULL', [data.sector_id]))) throw badRequest('قطاع غير معروف');
+    requireSectorOrg(ctx.user, data.sector_id); // النقل يحتاج صلاحية على القطاع المستقبِل أيضاً
+    patch.sector_id = data.sector_id;
+  }
+  if ('name_ar' in data && data.name_ar) {
+    await assertNameFree({ table: 'department', nameAr: data.name_ar, scopeCol: 'sector_id',
+      scopeVal: patch.sector_id || d.sector_id, excludeId: depId, label: 'اسم الإدارة' });
+    patch.name_ar = data.name_ar;
+  }
+  for (const k of ['name_en', 'manager_user_id']) if (k in data) patch[k] = data[k] || null;
+  if ('active' in data) patch.active = data.active ? 1 : 0;
+  if (!Object.keys(patch).length) return d;
+  patch.updated_at = nowIso();
+  await update('department', depId, patch);
+  await audit(ctx, { action: 'update', resource: 'department', resourceId: depId, sectorId: patch.sector_id || d.sector_id, detail: patch });
+  return await get('SELECT * FROM department WHERE id = ?', [depId]);
+}
+
+// حذف ناعم للإدارة — يُرفض ما دام أحد يتبعها، كي لا يختفي موظفون من الشجرة بصمت.
+export async function deleteDepartment(ctx, depId) {
+  const d = await get('SELECT * FROM department WHERE id = ? AND deleted_at IS NULL', [depId]);
+  if (!d) throw notFound('الإدارة غير موجودة');
+  requireSectorOrg(ctx.user, d.sector_id);
+  const emps = (await get('SELECT COUNT(*) n FROM employee WHERE department_id = ? AND deleted_at IS NULL', [depId])).n;
+  if (emps) throw badRequest(`لا يمكن حذف الإدارة وبها ${emps} موظفاً — انقلهم إلى إدارة أخرى أولاً`);
+  const units = (await get('SELECT COUNT(*) n FROM org_unit WHERE department_id = ? AND deleted_at IS NULL', [depId])).n;
+  if (units) throw badRequest(`لا يمكن حذف الإدارة وبها ${units} وحدة — احذف الوحدات أولاً`);
+  await update('department', depId, { deleted_at: nowIso() });
+  await audit(ctx, { action: 'delete', resource: 'department', resourceId: depId, sectorId: d.sector_id });
+  return { ok: true };
+}
+
 // ── Unit / Team / Position ──
 export async function createUnit(ctx, data) {
-  requireAdminSectors(ctx.user);
   if (!data.department_id || !data.name_ar) throw badRequest('الإدارة والاسم مطلوبان');
+  const dep = await get('SELECT * FROM department WHERE id = ? AND deleted_at IS NULL', [data.department_id]);
+  if (!dep) throw badRequest('إدارة غير معروفة');
+  requireSectorOrg(ctx.user, dep.sector_id);
+  await assertNameFree({ table: 'org_unit', nameAr: data.name_ar, scopeCol: 'department_id', scopeVal: data.department_id, label: 'اسم الوحدة' });
   const uid = id('unit');
   await insert('org_unit', { id: uid, department_id: data.department_id, name_ar: data.name_ar, name_en: data.name_en || null,
     manager_user_id: data.manager_user_id || null, active: 1, created_at: nowIso() });
@@ -89,6 +167,9 @@ export async function createUnit(ctx, data) {
 export async function createEmployee(ctx, data) {
   if (!can(ctx.user, 'create', 'employee', { sector_id: data.sector_id })) throw forbidden('إضافة موظف تتطلب صلاحية إدارة الفريق على هذا القطاع');
   if (!data.name_ar) throw badRequest('اسم الموظف مطلوب');
+  // اسم الموظف فريد على مستوى الشركة كلها لا القطاع: تكراره يجعل التسكين والمهام والتقارير
+  // تشير إلى شخص لا يُعرف أيّهما هو (قرار صريح من المالك).
+  await assertNameFree({ table: 'employee', nameAr: data.name_ar, label: 'اسم الموظف' });
   const eid = id('emp');
   await insert('employee', { id: eid, name_ar: data.name_ar, name_en: data.name_en || null, sector_id: data.sector_id || null,
     department_id: data.department_id || null, unit_id: data.unit_id || null, position_id: data.position_id || null,
@@ -123,6 +204,10 @@ export async function updateEmployee(ctx, employeeId, data) {
     if (data.link_user_id) await linkUserToEmployee(ctx, { employeeId, userId: data.link_user_id });
     else await unlinkUserFromEmployee(ctx, { employeeId });
     linkTouched = true;
+  }
+  // إعادة التسمية تخضع لقاعدة عدم التكرار نفسها — وإلا التُفّ عليها بإنشاء باسم مؤقت ثم تعديله.
+  if ('name_ar' in data && data.name_ar) {
+    await assertNameFree({ table: 'employee', nameAr: data.name_ar, excludeId: employeeId, label: 'اسم الموظف' });
   }
   const patch = { updated_at: nowIso() };
   for (const k of ['name_ar', 'name_en', 'job_title', 'employment_type', 'status', 'sector_id', 'department_id', 'position_id']) if (k in data) patch[k] = data[k];
