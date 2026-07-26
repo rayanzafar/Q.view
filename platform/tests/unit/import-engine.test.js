@@ -244,14 +244,17 @@ test('undo: rejected after the 7-day window expires', async () => {
 });
 
 // ── الحساسية والنطاق ──
-test('sensitive: salary column exists for hr/admin and sector_lead (owner-granted), hidden from bd', () => {
+test('sensitive: عمود الراتب في التصدير لمدير النظام فقط — محجوب عن كل دور آخر حتى تكامل Odoo', () => {
   const a = engine.ADAPTERS.employees;
-  const hrCols = engine.visibleColumns(U('hr', null, 'company'), a).map((c) => c.key);
-  const leadCols = engine.visibleColumns(U('sector_lead', 'S1', 'sector'), a).map((c) => c.key);
-  const bdCols = engine.visibleColumns(U('bd_manager', 'S1', 'sector'), a).map((c) => c.key);
-  assert.ok(hrCols.includes('salary'));
-  assert.ok(leadCols.includes('salary'), 'قائد القطاع يرى عمود الراتب الآن (قرار صريح من المالك)');
-  assert.ok(!bdCols.includes('salary'), 'مدير تطوير الأعمال لا يزال بلا صلاحية الراتب');
+  const adminCols = engine.visibleColumns(U('admin', null, 'company'), a).map((c) => c.key);
+  assert.ok(adminCols.includes('salary'), 'مدير النظام يصدّر عمود الراتب');
+  for (const [role, sector, scope] of [
+    ['hr', null, 'company'], ['sector_lead', 'S1', 'sector'],
+    ['finance', null, 'company'], ['bd_manager', 'S1', 'sector'], ['ceo_office', null, 'company'],
+  ]) {
+    const cols = engine.visibleColumns(U(role, sector, scope), a).map((c) => c.key);
+    assert.ok(!cols.includes('salary'), `${role} يجب ألا يصدّر عمود الراتب`);
+  }
 });
 
 test('row scope: sector_lead importing an employee into another sector gets a row error, not a silent skip', async () => {

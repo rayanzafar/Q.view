@@ -14,20 +14,28 @@ export function startScheduler() {
 export function stopScheduler() { if (timer) { clearInterval(timer); timer = null; } }
 
 async function tick() {
-  try {
-    await fireDueSchedules();
-    await processQueue(30);
-  } catch (e) { console.error('[scheduler]', e.message); }
+  // الطابور والجدولة معزولان: فشل أي منهما لا يمنع الآخر. كان الاثنان داخل حماية واحدة،
+  // فأي جدولة تفشل كانت توقف إرسال كل بريد المنصة بصمت.
+  try { await fireDueSchedules(); } catch (e) { console.error('[scheduler] fireDueSchedules:', e.message); }
+  try { await processQueue(30); } catch (e) { console.error('[scheduler] processQueue:', e.message); }
 }
 
 async function fireDueSchedules() {
   const now = new Date();
   const due = await all("SELECT rs.*, rd.key rkey FROM report_schedule rs JOIN report_definition rd ON rd.id = rs.report_id WHERE rs.active = 1 AND (rs.next_run_at IS NULL OR rs.next_run_at <= ?)", [now.toISOString()]);
   for (const s of due) {
-    const recips = (await all('SELECT user_id FROM recipient WHERE group_id = ? AND user_id IS NOT NULL', [s.recipient_group_id])).map((r) => r.user_id);
-    if (recips.length) await enqueueReport(s.rkey, { scheduleId: s.id, sectorId: s.sector_id, recipientUserIds: recips });
-    await run('UPDATE report_schedule SET last_run_at = ?, next_run_at = ? WHERE id = ?',
-      [now.toISOString(), nextRun(s, now), s.id]);
+    // كل جدولة داخل حمايتها الخاصة: فشل واحدة لا يوقف البقية.
+    try {
+      const recips = (await all('SELECT user_id FROM recipient WHERE group_id = ? AND user_id IS NOT NULL', [s.recipient_group_id])).map((r) => r.user_id);
+      if (recips.length) await enqueueReport(s.rkey, { scheduleId: s.id, sectorId: s.sector_id, recipientUserIds: recips });
+    } catch (e) {
+      console.error(`[scheduler] schedule ${s.id} (${s.rkey}) failed:`, e.message);
+    }
+    // الموعد يتقدّم دائماً — حتى عند الفشل. كان يبقى مستحقاً أبداً فيُعاد المحاولة كل دقيقة بلا نهاية.
+    try {
+      await run('UPDATE report_schedule SET last_run_at = ?, next_run_at = ? WHERE id = ?',
+        [now.toISOString(), nextRun(s, now), s.id]);
+    } catch (e) { console.error(`[scheduler] could not advance schedule ${s.id}:`, e.message); }
   }
 }
 

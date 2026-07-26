@@ -77,7 +77,7 @@ export async function buildReport(reportKey, user, opts = {}) {
     const wr = await winRate(sid, opts.year || FY());
     return { sectorName: (await get('SELECT name_ar FROM sector WHERE id=?', [sid]) || {}).name_ar || '', period: opts.period || periodLabel(),
       pipeline: pipe.map((s) => ({ ...s, color: stages[s.stage] || '#64748b' })),
-      topOpen: (await topOpenOpps()).filter((d) => true), winRate: wr.rate, coverage: cov.coverage, weighted_halalas: cov.weighted_halalas };
+      topOpen: await topOpenOpps(sid), winRate: wr.rate, coverage: cov.coverage, weighted_halalas: cov.weighted_halalas };
   }
   throw new Error('تقرير غير معروف: ' + reportKey);
 }
@@ -182,10 +182,15 @@ async function topWonDeals() {
     ORDER BY o.value_halalas DESC LIMIT 5`, [FY()])).map((d) => ({
     title: d.title_ar, client: d.client || '—', value_halalas: d.value_halalas }));
 }
-async function topOpenOpps() {
+// sectorId مطلوب لتقارير القطاع: بدونه كانت القائمة تُبنى من فرص كل القطاعات وتُرسَل بالبريد
+// إلى مستلم قطاع واحد (أسماء عملاء وقيم صفقات في بريد صادر لا يُسترجَع).
+async function topOpenOpps(sectorId = null) {
+  const where = ['st.is_won=0', 'st.is_lost=0', 'o.deleted_at IS NULL'];
+  const params = [];
+  if (sectorId) { where.push('o.sector_id = ?'); params.push(sectorId); }
   return (await all(`SELECT o.title_ar, o.value_halalas, o.win_pct, c.name_ar client FROM opportunity o
     JOIN stage st ON st.id=o.stage_id LEFT JOIN client c ON c.id=o.client_id
-    WHERE st.is_won=0 AND st.is_lost=0 AND o.deleted_at IS NULL
-    ORDER BY o.value_halalas DESC LIMIT 5`)).map((d) => ({
+    WHERE ${where.join(' AND ')}
+    ORDER BY o.value_halalas DESC LIMIT 5`, params)).map((d) => ({
     title: d.title_ar, client: d.client || '—', value_halalas: d.value_halalas, win_pct: d.win_pct }));
 }

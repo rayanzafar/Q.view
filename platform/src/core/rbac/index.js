@@ -31,6 +31,9 @@ function grantsFor(roleId) {
  * @param {string} resource
  * @param {object} [target] row with sector_id/department_id/project_id/owner_user_id/user_id
  */
+// قرار صريح من المالك: الراتب لا يراه إلا **مدير النظام** حتى يتم التكامل مع Odoo
+// ويصبح Odoo مصدر الحقيقة للتعويضات. التنفيذ بالحذف من المصفوفة: لا دور يملك منح
+// 'salary' بعد اليوم، ومنح مدير النظام الشامل (`*`/admin) وحده هو ما يفتحه له.
 export function can(user, action, resource, target = null) {
   if (!user || !user.role_id) return false;
   const grants = grantsFor(user.role_id);

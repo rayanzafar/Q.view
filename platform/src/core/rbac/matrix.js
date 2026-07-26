@@ -46,11 +46,11 @@ export const ROLE_GRANTS = {
     { resource: 'deliverable', action: 'approve', scope: 'sector' },
     { resource: 'timesheet', action: 'approve', scope: 'sector' },
     ...read(['employee', 'department', 'team', 'report', 'kpi'], 'sector'),
-    // Sector manager owns their people roster (add/edit member, assign to projects) including
-    // salary, per explicit owner decision — a sector lead manages their own team's compensation.
+    // Sector manager owns their people roster (add/edit member, assign to projects).
+    // Salary is NOT among their grants: sealed platform-wide until the Odoo integration lands
+    // (owner decision) — see SEALED_GATES in core/rbac/index.js.
     { resource: 'employee', action: 'create', scope: 'sector' },
     { resource: 'employee', action: 'update', scope: 'sector' },
-    { resource: 'salary', action: 'read', scope: 'sector' },
     { resource: 'allocation', action: 'create', scope: 'sector' },
     { resource: 'allocation', action: 'update', scope: 'sector' },
     { resource: 'report', action: 'export', scope: 'sector' },
@@ -103,7 +103,7 @@ export const ROLE_GRANTS = {
   hr: [
     ...crud(['employee', 'position', 'department', 'unit', 'team'], 'company'),
     { resource: 'employee', action: 'delete', scope: 'company' }, // HR owns the staff roster: offboard/remove
-    { resource: 'salary', action: 'read', scope: 'company' }, // HR sees individual salary
+    // NOTE: no salary grant — sealed platform-wide until the Odoo integration (owner decision).
     ...read(['timesheet', 'report', 'kpi'], 'company'),
   ],
 

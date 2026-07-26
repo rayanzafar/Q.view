@@ -6,6 +6,7 @@ import * as P from './pages.js';
 import { pageAllowed, DETAIL_ACCESS } from './nav.js';
 import { buildReport, renderReport, enqueueReport, createSchedule } from '../core/reports/engine.js';
 import { canSeeSensitive } from '../core/rbac/index.js';
+import { resolveUser } from '../core/http/context.js';
 
 export const webRouter = Router();
 
@@ -21,7 +22,7 @@ webRouter.post('/auth/login-web', async (req, res, next) => {
     const r = await login({ username: req.body.username, password: req.body.password, ip: req.ip, userAgent: req.get('user-agent') });
     if (!r.ok) return res.redirect('/login?e=1');
     res.cookie(config.sessionCookie, r.sessionId, { httpOnly: true, sameSite: 'lax', secure: config.env === 'production', maxAge: config.sessionTtlHours * 3600000, path: '/' });
-    res.redirect('/app/' + (r.user.scope === 'company' ? 'ceo' : 'tasks'));
+    res.redirect('/app/' + landingFor(await resolveUser(r.sessionId)));
   } catch (e) { next(e); }
 });
 
@@ -33,7 +34,18 @@ webRouter.post('/auth/logout-web', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-webRouter.get('/', (req, res) => res.redirect(req.ctx?.user ? '/app/ceo' : '/login'));
+// وجهة الدخول تُحسب من صلاحيات المستخدم لا ثابتة: كانت توجّه الجميع إلى لوحة القيادة
+// المحروسة بنطاق الشركة، فيرى كل مستشار وموظف ومدير مشروع وقائد قطاع «خارج صلاحياتك»
+// كأول شاشة في المنتج. الترتيب من الأشمل إلى الأخص، و«مهامي» مفتوحة للجميع فهي القاع الآمن.
+export function landingFor(user) {
+  if (!user) return 'tasks';
+  if (pageAllowed(user, 'ceo')) return 'ceo';                       // نطاق شركي → لوحة القيادة
+  // «مركز القطاع» صفحة إدارة: تُناسب من نطاقه قطاع فأوسع، لا المساهم الفردي الذي بيته «مهامي».
+  const managesScope = user.scope === 'sector' || user.scope === 'company';
+  if (managesScope && pageAllowed(user, 'sector')) return 'sector';
+  return 'tasks';                                                    // القاع الآمن — مفتوح للجميع
+}
+webRouter.get('/', (req, res) => res.redirect(req.ctx?.user ? '/app/' + landingFor(req.ctx.user) : '/login'));
 
 const PAGES = {
   ceo: P.ceoPage, portfolio: P.portfolioPage, sector: P.sectorPage, opportunities: P.opportunitiesPage,

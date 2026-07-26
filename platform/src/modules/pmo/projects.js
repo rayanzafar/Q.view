@@ -152,7 +152,18 @@ export async function setAllocation(ctx, allocationId, body = {}) {
   const p = await get('SELECT * FROM project WHERE id=?', [a.project_id]);
   if (!p || !can(user, 'update', 'project', p)) throw forbidden();
   // NOTE: allocation carries no updated_at column — patch only real columns.
-  const patch = { monthly_json: JSON.stringify(monthlyPlan({ pct, fromMonth, toMonth })) };
+  // الأشهر المحرَّرة يدوياً (تحرير الخلية الواحدة) تُحفظ: كان استبدال الخريطة كاملة يمحوها بصمت.
+  // القاعدة: النطاق الجديد يحدد الأشهر المشمولة، وأي شهر داخل النطاق له قيمة يدوية سابقة تختلف
+  // عن النسبة العامة يبقى كما هو؛ والأشهر خارج النطاق تُزال كما هو متوقع من تعديل النطاق.
+  let prev = {}; try { prev = JSON.parse(a.monthly_json || '{}'); } catch { prev = {}; }
+  const plan = monthlyPlan({ pct, fromMonth, toMonth });
+  const planFrac = Object.values(plan)[0];
+  const merged = {};
+  for (const m of Object.keys(plan)) {
+    const keptManual = prev[m] != null && Number(prev[m]) !== planFrac;
+    merged[m] = keptManual ? prev[m] : plan[m];
+  }
+  const patch = { monthly_json: JSON.stringify(merged) };
   if (type) patch.type = type;
   await update('allocation', allocationId, patch);
   await audit(ctx, { action: 'update', resource: 'allocation', resourceId: allocationId, sectorId: a.sector_id, detail: { pct: pct || 100 } });
