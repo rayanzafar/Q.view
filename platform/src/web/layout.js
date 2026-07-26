@@ -252,7 +252,7 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
 .cmdk-row .tx{flex:1;min-width:0}
 .cmdk-row .tx .t{font-size:13px;font-weight:700;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cmdk-row .tx .s{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-@media(max-width:640px){.cmdk-scrim{padding-top:4vh}.hdr-search-btn span,.hdr-search-btn kbd{display:none}}
+@media(max-width:640px){.cmdk-scrim{padding-top:4vh}.hdr-search-btn span,.hdr-search-btn kbd{display:none}.hdr-user-txt{display:none}}
 @media(max-width:520px){.hdr-search-btn{padding:.4rem}}
 /* وميض تأكيد الوصول — يُستخدم عند القفز إلى صف من لوحة الأوامر (مثال: موظف من نتيجة البحث) */
 @keyframes hl-flash{0%,100%{background:transparent}30%{background:rgba(36,74,153,.12)}}
@@ -307,9 +307,9 @@ window.__SANAD_MONTHS=${JSON.stringify(MONTHS_AR)};window.__SANAD_MONTHS_EN=${JS
         ${yearSel}
         <button type="button" class="hdr-search-btn" data-action="cmdk-open" aria-label="بحث شامل">${icon('search')}<span>ابحث في كل شيء…</span><kbd>Ctrl K</kbd></button>
         <a href="/app/tasks" title="الإشعارات" style="position:relative;color:var(--muted)">${icon('bell')}<span id="notif-badge" style="display:none;position:absolute;top:-4px;left:-4px;background:var(--red);color:#fff;font-size:9px;border-radius:99px;padding:1px 4px;font-weight:700"></span></a>
-        <div style="display:flex;align-items:center;gap:.55rem">
-          <div style="width:34px;height:34px;border-radius:50%;background:var(--brand-grad);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800">${initial}</div>
-          <div style="text-align:right"><div style="font-size:var(--fs-ui);font-weight:700">${user.name_ar || user.username}</div><div style="font-size:11px;color:var(--muted)">${roleLabel}</div></div>
+        <div class="hdr-user" style="display:flex;align-items:center;gap:.55rem">
+          <div style="width:34px;height:34px;border-radius:50%;background:var(--brand-grad);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;flex:0 0 auto">${initial}</div>
+          <div class="hdr-user-txt" style="text-align:right"><div style="font-size:var(--fs-ui);font-weight:700">${user.name_ar || user.username}</div><div style="font-size:11px;color:var(--muted)">${roleLabel}</div></div>
         </div>
         <form method="post" action="/auth/logout-web"><button title="خروج" style="color:var(--muted);background:none;border:none;cursor:pointer">${icon('logout')}</button></form>
       </div>
