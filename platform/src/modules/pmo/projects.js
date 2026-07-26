@@ -85,7 +85,7 @@ export async function updateProject(ctx, pid, data) {
   const STATUSES = ['NOT_STARTED', 'PLANNED', 'IN_PROGRESS', 'ON_HOLD', 'COMPLETED', 'CANCELLED'];
   const RAGS = ['GREEN', 'AMBER', 'RED'];
   if ('status' in data && !STATUSES.includes(data.status)) throw badRequest('حالة المشروع غير صحيحة');
-  if ('rag' in data && !RAGS.includes(data.rag)) throw badRequest('قيمة RAG غير صحيحة');
+  if ('rag' in data && !RAGS.includes(data.rag)) throw badRequest('حالة المشروع غير صحيحة — اخترها من القائمة');
   if ('progress_pct' in data) { const n = Number(data.progress_pct); if (!Number.isFinite(n) || n < 0 || n > 100) throw badRequest('نسبة الإنجاز يجب أن تكون بين 0 و100'); }
   const patch = {};
   for (const k of ['name_ar', 'status', 'rag', 'progress_pct', 'start_date', 'end_date', 'pm_name']) {

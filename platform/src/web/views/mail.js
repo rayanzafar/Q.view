@@ -1,10 +1,11 @@
-// مركز البريد — عرض صادرات المنصة (وضع sandbox يكتب إلى صندوق معاينة بدل الإرسال الحقيقي)،
+// مركز البريد — عرض صادرات المنصة (وضع المعاينة يكتب الرسالة إلى صندوق معاينة بدل إرسالها فعلياً)،
 // طابور الإرسال وسجلّه، وحالة قناة الإرسال. إتاحته لمدير النظام ومكتب الرئيس فقط (nav.js).
 import { readdirSync, statSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { layout, card, pill, tr } from '../layout.js';
+import { layout, card, pill } from '../layout.js';
 import { all } from '../../core/db/index.js';
 import { config, ROOT } from '../../core/config.js';
+import { mailEventLabel, mailStatusLabel } from '../i18n/glossary.js';
 import { esc } from './_shared.js';
 
 export async function mailPage(user, opts = {}) {
@@ -44,14 +45,14 @@ export async function mailPage(user, opts = {}) {
     return `<tr style="border-bottom:1px solid var(--line)">
       <td style="padding:.4rem .6rem;font-size:12px;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(q.subject || '')}</td>
       <td style="padding:.4rem .6rem;font-size:11px;color:var(--muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(to)}</td>
-      <td style="padding:.4rem .6rem;text-align:center">${pill(tr(q.status), q.status === 'SENT' ? 'green' : q.status === 'FAILED' ? 'red' : 'blue')}</td>
+      <td style="padding:.4rem .6rem;text-align:center">${pill(esc(mailStatusLabel(q.status)), q.status === 'SENT' ? 'green' : q.status === 'FAILED' ? 'red' : 'blue')}</td>
       <td style="padding:.4rem .6rem;text-align:center;font-size:11px;color:var(--muted)" class="tnum">${String(q.created_at || '').slice(0, 16).replace('T', ' ')}</td>
     </tr>${q.last_error ? `<tr><td colspan="4" style="padding:0 .6rem .4rem;font-size:var(--fs-micro);color:var(--red)">${esc(q.last_error)}</td></tr>` : ''}`;
   }).join('') || `<tr><td colspan="4"><div class="empty-state" style="padding:1rem"><div class="s">الطابور فارغ</div></div></td></tr>`;
 
   const logRows = logs.map((l) => `<div style="display:flex;gap:.6rem;padding:.32rem 0;border-bottom:1px dashed var(--line);font-size:var(--fs-meta)">
       <span style="flex:none;color:var(--muted)" class="tnum">${String(l.at || '').slice(5, 16).replace('T', ' ')}</span>
-      <span style="flex:none">${pill(tr(l.event) || esc(l.event || ''), l.event === 'failed' ? 'red' : l.event === 'sent' ? 'green' : 'slate')}</span>
+      <span style="flex:none">${pill(esc(mailEventLabel(l.event)), l.event === 'failed' ? 'red' : l.event === 'sent' ? 'green' : 'slate')}</span>
       <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink2)">${esc(l.subject || l.detail || '')}</span>
     </div>`).join('') || `<div style="font-size:var(--fs-meta);color:var(--faint);padding:.4rem 0">لا أحداث بعد</div>`;
 

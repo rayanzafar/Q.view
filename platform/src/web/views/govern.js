@@ -1,16 +1,18 @@
 // Governance pages: approvals queue, users & roles, audit log, reports & mail.
-import { layout, card, pill, tr, hbars } from '../layout.js';
+import { layout, card, pill, hbars } from '../layout.js';
 import { fmtSar } from '../../core/util/ids.js';
 import { all } from '../../core/db/index.js';
 import { myApprovalQueue } from '../../modules/workflow/engine.js';
 import { canControlSchedules } from '../../core/reports/engine.js';
+import { ROLE_LABELS } from '../../core/rbac/matrix.js';
+import { resourceLabel, mailStatusLabel, auditActionLabel } from '../i18n/glossary.js';
 import { esc, statMini } from './_shared.js';
 
 export async function approvalsPage(user) {
   const q = await myApprovalQueue(user);
   const list = q.map((a) => `<tr class="border-b border-line">
-    <td class="py-2.5 px-3 text-[13px]">${a.workflow_name}</td>
-    <td class="px-3 text-[12px] text-muted">${a.resource} · ${a.resource_id}</td>
+    <td class="py-2.5 px-3 text-[13px]">${esc(a.workflow_name || '')}</td>
+    <td class="px-3 text-[12px] text-muted">${esc(resourceLabel(a.resource))} · <span class="tnum">${esc(a.resource_id || '')}</span></td>
     <td class="px-3 text-[13px] tabular-nums">${fmtSar(a.amount_halalas)}</td>
     <td class="px-3">${pill('الخطوة ' + a.current_step, 'amber')}</td>
     <td class="px-3">
@@ -18,7 +20,7 @@ export async function approvalsPage(user) {
       <button onclick="Sanad.approve('${a.id}','reject')" class="text-[12px] text-red-600 font-bold mr-2">رفض</button></td></tr>`).join('');
   const totalAmt = q.reduce((a, x) => a + (x.amount_halalas || 0), 0);
   const byRes = {}; for (const x of q) byRes[x.resource] = (byRes[x.resource] || 0) + 1;
-  const resBreak = Object.entries(byRes).map(([r, n]) => `${tr(r) || r}: ${n}`).join(' · ') || '—';
+  const resBreak = Object.entries(byRes).map(([r, n]) => `${resourceLabel(r)}: ${n}`).join(' · ') || '—';
   const strip = `<div style="display:flex;gap:.7rem;flex-wrap:wrap;margin-bottom:1rem">
     ${statMini('بانتظار اعتمادك', q.length, 'طلب')}
     ${statMini('إجمالي المبالغ', fmtSar(totalAmt), 'قيمة قيد الاعتماد', 'brand')}
@@ -36,13 +38,13 @@ export async function usersPage(user) {
     WHERE u.deleted_at IS NULL ORDER BY u.role_id, u.name_ar LIMIT 300`);
   const list = rows.map((u) => `<tr class="border-b border-line">
     <td class="py-2 px-3 text-[13px]">${esc(u.name_ar || '')}<div class="text-[11px] text-muted">${esc(u.username || '— بلا دخول')}</div></td>
-    <td class="px-3">${pill(u.role_name || u.role_id, 'blue')}</td>
+    <td class="px-3">${pill(esc(u.role_name || (ROLE_LABELS[u.role_id] || {}).ar || 'دور غير معروف'), 'blue')}</td>
     <td class="px-3 text-[12px]">${u.sector_id || '—'}</td>
     <td class="px-3">${u.active ? pill('نشط', 'green') : pill('معطّل', 'red')}</td>
     <td class="px-3 text-[11px] text-muted">${u.last_login_at ? u.last_login_at.slice(0, 10) : 'لم يدخل'}</td></tr>`).join('');
   const activeN = rows.filter((u) => u.active).length;
   const neverIn = rows.filter((u) => !u.last_login_at).length;
-  const byRole = {}; for (const u of rows) { const r = u.role_name || u.role_id || '—'; byRole[r] = (byRole[r] || 0) + 1; }
+  const byRole = {}; for (const u of rows) { const r = u.role_name || (ROLE_LABELS[u.role_id] || {}).ar || 'دور غير معروف'; byRole[r] = (byRole[r] || 0) + 1; }
   const roleItems = Object.entries(byRole).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([r, n], i) => ({ label: esc(r), value: n, color: ['var(--brand)', 'var(--brand2)', '#0891b2', '#059669', '#d97706', '#db2777'][i % 6] }));
   const strip = `<div style="display:flex;gap:.7rem;flex-wrap:wrap;margin-bottom:.9rem">
     ${statMini('إجمالي المستخدمين', rows.length, `${Object.keys(byRole).length} دور`)}
@@ -67,7 +69,7 @@ export async function auditPage(user) {
   const todayN = rows.filter((a) => (a.at || '').slice(0, 10) === today).length;
   const distinctUsers = new Set(rows.map((a) => a.username || a.user_id).filter(Boolean)).size;
   const byAction = {}; for (const a of rows) { const k = a.action || '—'; byAction[k] = (byAction[k] || 0) + 1; }
-  const actItems = Object.entries(byAction).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, n], i) => ({ label: esc(tr(k) || k), value: n, color: ['var(--brand)', 'var(--brand2)', '#059669', '#d97706', '#dc2626', '#0891b2'][i % 6] }));
+  const actItems = Object.entries(byAction).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, n], i) => ({ label: esc(auditActionLabel(k)), value: n, color: ['var(--brand)', 'var(--brand2)', '#059669', '#d97706', '#dc2626', '#0891b2'][i % 6] }));
   const strip = `<div style="display:flex;gap:.7rem;flex-wrap:wrap;margin-bottom:.9rem">
     ${statMini('أحداث (آخر 200)', rows.length, 'مسجّلة')}
     ${statMini('اليوم', todayN, 'حدث اليوم', 'brand')}
@@ -76,8 +78,8 @@ export async function auditPage(user) {
   const list = rows.map((a) => `<tr class="border-b border-line">
     <td class="py-1.5 px-3 text-[11px] text-muted tabular-nums">${a.at.slice(0, 19).replace('T', ' ')}</td>
     <td class="px-3 text-[12px]">${esc(a.username || a.user_id || '—')}</td>
-    <td class="px-3">${pill(tr(a.action), a.action === 'delete' ? 'red' : a.action === 'create' ? 'green' : 'slate')}</td>
-    <td class="px-3 text-[12px]">${esc(a.resource || '')} ${a.resource_id ? '· ' + esc(a.resource_id) : ''}</td></tr>`).join('');
+    <td class="px-3">${pill(esc(auditActionLabel(a.action)), a.action === 'delete' ? 'red' : a.action === 'create' ? 'green' : 'slate')}</td>
+    <td class="px-3 text-[12px]">${esc(resourceLabel(a.resource))} ${a.resource_id ? '· <span class="tnum">' + esc(a.resource_id) + '</span>' : ''}</td></tr>`).join('');
   const body = `${strip}
     <div style="display:grid;grid-template-columns:2fr 1fr;gap:.9rem">
       ${card(`<div class="p-4 border-b border-line font-bold text-sm">سجل التدقيق (آخر 200)</div>
@@ -132,8 +134,8 @@ export async function reportsPage(user) {
         title="${s.active ? 'إيقاف الإرسال لهذه الجدولة' : 'إعادة تفعيل الإرسال لهذه الجدولة'}"
         style="border:1px solid var(--line);cursor:pointer;font-size:11px;padding:.3rem .6rem;border-radius:8px;background:#fff;color:${s.active ? '#b91c1c' : '#047857'}">${s.active ? 'إيقاف' : 'تفعيل'}</button>` : '<span style="font-size:11px;color:var(--muted)">—</span>'}</td></tr>`).join('');
   const outList = outbox.map((q) => `<tr style="border-bottom:1px solid var(--line)">
-    <td style="padding:.5rem .75rem;font-size:12px">${q.subject || ''}</td>
-    <td style="padding:.5rem .75rem">${pill(tr(q.status), q.status === 'SENT' ? 'green' : q.status === 'FAILED' ? 'red' : 'amber')}</td>
+    <td style="padding:.5rem .75rem;font-size:12px">${esc(q.subject || '')}</td>
+    <td style="padding:.5rem .75rem">${pill(esc(mailStatusLabel(q.status)), q.status === 'SENT' ? 'green' : q.status === 'FAILED' ? 'red' : 'amber')}</td>
     <td style="padding:.5rem .75rem;font-size:11px;color:var(--muted)">${q.created_at.slice(0, 16).replace('T', ' ')}</td></tr>`).join('');
 
   const body = `
@@ -154,7 +156,7 @@ export async function reportsPage(user) {
         <div id="sched-list"><table style="width:100%;border-collapse:collapse"><thead><tr style="font-size:11px;color:var(--muted);text-align:right"><th style="padding:.4rem .75rem">التقرير</th><th style="padding:.4rem .75rem">التكرار</th><th style="padding:.4rem .75rem">المستلمون</th><th style="padding:.4rem .75rem">الحالة</th><th style="padding:.4rem .75rem">التالي</th><th style="padding:.4rem .75rem">إجراء</th></tr></thead><tbody>${schedList || '<tr><td style="padding:1rem;color:var(--muted);font-size:var(--fs-ui)" colspan="6">لا جداول بعد</td></tr>'}</tbody></table></div>
         <div id="sched-msg" role="alert" style="display:none;margin:0 1rem .8rem;padding:.5rem .7rem;border-radius:8px;background:#fef2f2;color:#b91c1c;font-size:12px"></div>
         ${mayControl ? '<div style="padding:0 1rem 1rem;font-size:11px;color:var(--muted)">الإيقاف يمنع أي إرسال قادم لهذه الجدولة، والتفعيل يعيدها بموعدها القادم حسب وقت الإرسال المحدد.</div>' : ''}`)}
-      ${card(`<div style="padding:1rem;border-bottom:1px solid var(--line);font-weight:800;font-size:var(--fs-ui)">سجل الإرسال (Outbox)</div>
+      ${card(`<div style="padding:1rem;border-bottom:1px solid var(--line);font-weight:800;font-size:var(--fs-ui)">سجل الرسائل الصادرة</div>
         <table style="width:100%;border-collapse:collapse"><thead><tr style="font-size:11px;color:var(--muted);text-align:right"><th style="padding:.4rem .75rem">الموضوع</th><th style="padding:.4rem .75rem">الحالة</th><th style="padding:.4rem .75rem">الوقت</th></tr></thead><tbody>${outList || '<tr><td style="padding:1rem;color:var(--muted);font-size:var(--fs-ui)" colspan="3">لا رسائل بعد</td></tr>'}</tbody></table>`)}
     </div>
     <div id="report-preview" style="margin-top:1rem"></div>

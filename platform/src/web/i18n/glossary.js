@@ -1,5 +1,9 @@
 // المعجم الموحّد — المصدر الوحيد لكل مصطلح يظهر للمستخدم (صفحات، بريد، تقارير، تصدير، أخطاء).
 // القاعدة: عربية أعمال طبيعية، لا ترجمة حرفية، لا مصطلحات تقنية، أزرار ≤ 3 كلمات.
+// تسميات حالة المشروع وعتبات الطاقة تأتي من core/i18n/thresholds.js — المصدر الواحد الذي
+// يشترك فيه البريد والصفحات معاً (web يستورد من core، ولا عكس أبداً).
+import { HEALTH_LABELS, CAPACITY, CAPACITY_LEGEND } from '../../core/i18n/thresholds.js';
+
 export const G = {
   // ── الانتباه والقرار ──
   attention: 'يحتاج انتباهك الآن',
@@ -116,9 +120,14 @@ export const G = {
   commandCenter: 'مركز القيادة',
   pipelineLine: 'خط الفرص',
   funnel: 'قمع الفرص',
-  hOnTrack: 'على المسار',
-  hAtRisk: 'في خطر',
-  hCritical: 'حرج',
+  // حالة المشروع: نفس التسميات التي يستعملها البريد حرفياً (مصدرها core/i18n/thresholds.js)
+  hOnTrack: HEALTH_LABELS.GREEN,
+  hAtRisk: HEALTH_LABELS.AMBER,
+  hCritical: HEALTH_LABELS.RED,
+  // شرح عتبات الطاقة بجملة واحدة — تُعرض تحت أي مقياس إشغال
+  capacityLegend: CAPACITY_LEGEND,
+  overCapacityPct: CAPACITY.over,
+  healthyCapacityPct: CAPACITY.healthy,
   spendPct: 'صرف%',
   progressPct: 'إنجاز%',
   delivered: 'مُسلّم',
@@ -159,6 +168,63 @@ export const G = {
   vsLastYear: 'مقارنة بالسنة الماضية',
 };
 
+// ── تسميات القيم المخزَّنة (لا تُطبع قيمة خام للمستخدم أبداً) ──────────────────
+// نوع العمل في سجل الوقت — كان يُطبع كما هو مخزَّن (project/opportunity/internal…).
+export const WORK_KIND_AR = {
+  project: 'مشروع',
+  opportunity: 'فرصة',
+  proposal: 'إعداد عرض',
+  product: 'منتج',
+  internal: 'عمل داخلي',
+  leave: 'إجازة',
+  training: 'تدريب',
+  bd: 'تطوير أعمال',
+  admin: 'أعمال إدارية',
+};
+// القائمة بترتيب العرض في نموذج تسجيل الوقت (القيمة المخزَّنة، التسمية العربية)
+export const WORK_KIND_OPTIONS = ['project', 'opportunity', 'proposal', 'product', 'internal', 'leave', 'training', 'bd']
+  .map((k) => [k, WORK_KIND_AR[k]]);
+export const workKindLabel = (k) => WORK_KIND_AR[String(k || '').toLowerCase()] || 'غير محدَّد';
+
+// اسم السجل المرتبط بطلب اعتماد أو حدث تدقيق — بدل طباعة اسم الجدول الإنجليزي.
+export const RESOURCE_AR = {
+  activity: 'نشاط تواصل', allocation: 'تسكين', app_user: 'مستخدم', approval: 'اعتماد',
+  approval_request: 'طلب اعتماد', client: 'عميل', contact: 'جهة اتصال', contract: 'عقد',
+  cost: 'تكلفة', deliverable: 'مخرج', department: 'إدارة', document: 'مستند',
+  employee: 'موظف', expense: 'مصروف', import_run: 'عملية استيراد', invoice: 'فاتورة',
+  issue: 'معوّق', margin: 'هامش', milestone: 'معلم', notification: 'إشعار',
+  opp_team: 'فريق فرصة', opportunity: 'فرصة', project: 'مشروع', proposal: 'عرض',
+  report: 'تقرير', report_schedule: 'جدولة تقرير', revenue_line: 'بند إيراد', risk: 'خطر',
+  saved_view: 'عرض محفوظ', sector: 'قطاع', session: 'جلسة دخول', task: 'مهمة',
+  timesheet: 'سجل وقت', unit: 'وحدة',
+};
+export const resourceLabel = (r) => RESOURCE_AR[String(r || '').toLowerCase()] || 'سجل';
+
+// إجراءات سجل التدقيق — كل قيمة تُكتب فعلياً في السجل لها تسمية هنا (كانت تظهر لاتينية
+// لأي إجراء خارج جدول التسميات: read/export/submit/import.apply…).
+export const AUDIT_ACTION_AR = {
+  create: 'إنشاء', update: 'تعديل', delete: 'حذف', approve: 'اعتماد', reject: 'رفض',
+  submit: 'رفع للاعتماد', read: 'اطّلاع', export: 'تصدير', import: 'استيراد',
+  'import.upload': 'رفع ملف استيراد', 'import.apply': 'تنفيذ استيراد', 'import.undo': 'تراجع عن استيراد',
+  login: 'تسجيل دخول', logout: 'تسجيل خروج', error: 'عطل مسجَّل', skip: 'تم التجاوز',
+  next_action: 'تحديد الخطوة التالية', admin: 'إجراء إداري', send: 'إرسال', schedule: 'جدولة',
+};
+export const auditActionLabel = (a) => AUDIT_ACTION_AR[String(a || '').toLowerCase()] || 'إجراء آخر';
+
+// حالة الرسالة في طابور الإرسال — «جارٍ الإرسال» كانت تظهر بحروف لاتينية لأنها خارج جدول التسميات.
+export const MAIL_STATUS_AR = {
+  QUEUED: 'بانتظار الإرسال', SENDING: 'جارٍ الإرسال', PROCESSING: 'قيد المعالجة',
+  SENT: 'أُرسلت', FAILED: 'تعذّر الإرسال', CANCELLED: 'أُلغيت',
+};
+export const mailStatusLabel = (s) => MAIL_STATUS_AR[String(s || '').toUpperCase()] || 'حالة غير معروفة';
+
+// أحداث سجل البريد كما تُخزَّن (enqueued/sent/failed) — تُعرض بمعناها.
+export const MAIL_EVENT_AR = {
+  enqueued: 'بانتظار الإرسال', sending: 'جارٍ الإرسال', sent: 'أُرسلت',
+  failed: 'تعذّر الإرسال', retry: 'إعادة محاولة', skipped: 'تم تجاوزها', cancelled: 'أُلغيت',
+};
+export const mailEventLabel = (e) => MAIL_EVENT_AR[String(e || '').toLowerCase()] || 'حدث بريد';
+
 // مصطلحات محظورة في أي نص يظهر للمستخدم (تُفحص آلياً في scripts/check-glossary.mjs).
 // حرّاس الفحص يتجاهلون أسماء المنتجات المسموحة (Excel) والكود غير المعروض.
 export const BANNED_UI_TERMS = [
@@ -166,4 +232,8 @@ export const BANNED_UI_TERMS = [
   'JSON', 'SQL', 'Database', 'DB ', 'Backend', 'Frontend', 'Cache',
   'null', 'undefined', 'NaN', '[object', 'ID:', 'UUID', 'Timestamp',
   'سكيما', 'كيوري', 'انتيتي', 'باك اند', 'فرونت اند',
+  // مصطلحات البريد والتشغيل التي كانت تتسرّب إلى عناوين الأقسام والشارات
+  'Outbox', 'Inbox', 'Sandbox', 'SMTP', 'Endpoint', 'Payload', 'Token', 'Enum', 'Boolean',
+  // قيم مخزَّنة كانت تُطبع خاماً بدل معناها (حالة المشروع، حالة العنصر)
+  'RAG', 'RED', 'AMBER', 'GREEN', 'IN_PROGRESS', 'ON_HOLD', 'NOT_STARTED', 'TODO', 'DONE',
 ];

@@ -2,7 +2,7 @@
 // Sensitive figures are passed pre-redacted by the caller (report engine).
 import { fmtSar } from '../util/ids.js';
 // معاني الحالة وعتبات الطاقة من المصدر الواحد — لا نسخة ثانية للأرقام ولا للألوان هنا.
-import { health, healthLabel, capacityColor, CAPACITY, HEALTH_ORDER, HEALTH } from '../i18n/thresholds.js';
+import { health, capacityColor, CAPACITY, HEALTH_ORDER, HEALTH } from '../i18n/thresholds.js';
 
 // ألوان هوية EVC الرسمية (نفس توكنات الواجهة #244A99/#834798) — البريد جزء من الهوية لا استثناء منها
 const BRAND = '#244A99', BRAND2 = '#834798', INK = '#0f172a', MUTED = '#64748b', LINE = '#e2e8f0';

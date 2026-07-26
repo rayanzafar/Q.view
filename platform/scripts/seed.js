@@ -22,7 +22,7 @@ const REPORTS = [
   { key: 'weekly_exec_brief', name: 'الموجز التنفيذي الأسبوعي', level: 'company' },
   { key: 'sector_weekly_status', name: 'حالة القطاع الأسبوعية', level: 'sector' },
   { key: 'monthly_sector_performance', name: 'أداء القطاع الشهري', level: 'sector' },
-  { key: 'project_status_report', name: 'تقرير حالة المشروع (RAG)', level: 'project' },
+  { key: 'project_status_report', name: 'تقرير حالة المشروع', level: 'project' },
   { key: 'workforce_utilization', name: 'تقرير القوى العاملة والإشغال', level: 'sector' },
   { key: 'opportunity_pipeline', name: 'تقرير خط الفرص', level: 'sector' },
 ];
