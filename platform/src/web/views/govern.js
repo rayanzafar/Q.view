@@ -3,6 +3,7 @@ import { layout, card, pill, tr, hbars } from '../layout.js';
 import { fmtSar } from '../../core/util/ids.js';
 import { all } from '../../core/db/index.js';
 import { myApprovalQueue } from '../../modules/workflow/engine.js';
+import { canControlSchedules } from '../../core/reports/engine.js';
 import { esc, statMini } from './_shared.js';
 
 export async function approvalsPage(user) {
@@ -110,6 +111,8 @@ export async function reportsPage(user) {
   const schedules = await all('SELECT rs.*, rd.name_ar rname, rg.name_ar gname FROM report_schedule rs JOIN report_definition rd ON rd.id = rs.report_id LEFT JOIN recipient_group rg ON rg.id = rs.recipient_group_id ORDER BY rs.created_at DESC LIMIT 50');
   const outbox = await all('SELECT * FROM email_queue ORDER BY created_at DESC LIMIT 15');
   const freqAr = { daily: 'يومي', weekly: 'أسبوعي', biweekly: 'كل أسبوعين', monthly: 'شهري', quarterly: 'ربع سنوي', yearly: 'سنوي' };
+  // من لا يملك التحكم في الجدولة لا يرى أزراراً لا تعمل معه — والقرار نفسه يُفحص في الخدمة على الخادم.
+  const mayControl = canControlSchedules(user);
 
   const reportCards = defs.map((d) => card(`<div style="padding:.9rem 1rem">
     <div style="font-weight:700;font-size:var(--fs-ui);margin-bottom:.5rem">${esc(d.name_ar)}</div>
@@ -125,10 +128,9 @@ export async function reportsPage(user) {
     <td style="padding:.5rem .75rem;font-size:12px;color:var(--muted)">${esc(s.gname || '—')}</td>
     <td style="padding:.5rem .75rem">${s.active ? pill('مفعّل', 'green') : pill('موقوف', 'slate')}</td>
     <td style="padding:.5rem .75rem;font-size:11px;color:var(--muted)" class="tnum">${esc(s.active ? whenText(s.next_run_at) : '—')}</td>
-    <td style="padding:.5rem .75rem">
-      <button type="button" data-schedule="${esc(s.id)}" data-turn="${s.active ? '0' : '1'}"
+    <td style="padding:.5rem .75rem">${mayControl ? `<button type="button" data-schedule="${esc(s.id)}" data-turn="${s.active ? '0' : '1'}"
         title="${s.active ? 'إيقاف الإرسال لهذه الجدولة' : 'إعادة تفعيل الإرسال لهذه الجدولة'}"
-        style="border:1px solid var(--line);cursor:pointer;font-size:11px;padding:.3rem .6rem;border-radius:8px;background:#fff;color:${s.active ? '#b91c1c' : '#047857'}">${s.active ? 'إيقاف' : 'تفعيل'}</button></td></tr>`).join('');
+        style="border:1px solid var(--line);cursor:pointer;font-size:11px;padding:.3rem .6rem;border-radius:8px;background:#fff;color:${s.active ? '#b91c1c' : '#047857'}">${s.active ? 'إيقاف' : 'تفعيل'}</button>` : '<span style="font-size:11px;color:var(--muted)">—</span>'}</td></tr>`).join('');
   const outList = outbox.map((q) => `<tr style="border-bottom:1px solid var(--line)">
     <td style="padding:.5rem .75rem;font-size:12px">${q.subject || ''}</td>
     <td style="padding:.5rem .75rem">${pill(tr(q.status), q.status === 'SENT' ? 'green' : q.status === 'FAILED' ? 'red' : 'amber')}</td>
@@ -137,7 +139,8 @@ export async function reportsPage(user) {
   const body = `
     <div style="font-weight:800;font-size:var(--fs-title);margin-bottom:.5rem">التقارير المتاحة</div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.75rem;margin-bottom:1.25rem">${reportCards}</div>
-    ${card(`<div style="padding:1rem"><div style="font-weight:800;font-size:var(--fs-title);margin-bottom:.6rem">جدولة تقرير جديد</div>
+    ${!mayControl ? card(`<div style="padding:1rem;font-size:var(--fs-ui);color:var(--muted)">جدولة التقارير تتطلب صلاحية إدارية. تستطيع هنا معاينة أي تقرير أو إرسال نسخة تجريبية إلى بريدك.</div>`)
+    : card(`<div style="padding:1rem"><div style="font-weight:800;font-size:var(--fs-title);margin-bottom:.6rem">جدولة تقرير جديد</div>
       <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
         <select id="sch-report" aria-label="التقرير" style="border:1px solid var(--line);border-radius:8px;padding:.4rem .6rem;font-size:var(--fs-ui)">${defs.map((d) => `<option value="${d.id}">${d.name_ar}</option>`).join('')}</select>
         <select id="sch-freq" aria-label="تكرار الإرسال" style="border:1px solid var(--line);border-radius:8px;padding:.4rem .6rem;font-size:var(--fs-ui)">${Object.entries(freqAr).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select>
@@ -150,7 +153,7 @@ export async function reportsPage(user) {
       ${card(`<div style="padding:1rem;border-bottom:1px solid var(--line);font-weight:800;font-size:var(--fs-ui)">التقارير المجدولة</div>
         <div id="sched-list"><table style="width:100%;border-collapse:collapse"><thead><tr style="font-size:11px;color:var(--muted);text-align:right"><th style="padding:.4rem .75rem">التقرير</th><th style="padding:.4rem .75rem">التكرار</th><th style="padding:.4rem .75rem">المستلمون</th><th style="padding:.4rem .75rem">الحالة</th><th style="padding:.4rem .75rem">التالي</th><th style="padding:.4rem .75rem">إجراء</th></tr></thead><tbody>${schedList || '<tr><td style="padding:1rem;color:var(--muted);font-size:var(--fs-ui)" colspan="6">لا جداول بعد</td></tr>'}</tbody></table></div>
         <div id="sched-msg" role="alert" style="display:none;margin:0 1rem .8rem;padding:.5rem .7rem;border-radius:8px;background:#fef2f2;color:#b91c1c;font-size:12px"></div>
-        <div style="padding:0 1rem 1rem;font-size:11px;color:var(--muted)">الإيقاف يمنع أي إرسال قادم لهذه الجدولة، والتفعيل يعيدها بموعدها القادم حسب وقت الإرسال المحدد.</div>`)}
+        ${mayControl ? '<div style="padding:0 1rem 1rem;font-size:11px;color:var(--muted)">الإيقاف يمنع أي إرسال قادم لهذه الجدولة، والتفعيل يعيدها بموعدها القادم حسب وقت الإرسال المحدد.</div>' : ''}`)}
       ${card(`<div style="padding:1rem;border-bottom:1px solid var(--line);font-weight:800;font-size:var(--fs-ui)">سجل الإرسال (Outbox)</div>
         <table style="width:100%;border-collapse:collapse"><thead><tr style="font-size:11px;color:var(--muted);text-align:right"><th style="padding:.4rem .75rem">الموضوع</th><th style="padding:.4rem .75rem">الحالة</th><th style="padding:.4rem .75rem">الوقت</th></tr></thead><tbody>${outList || '<tr><td style="padding:1rem;color:var(--muted);font-size:var(--fs-ui)" colspan="3">لا رسائل بعد</td></tr>'}</tbody></table>`)}
     </div>

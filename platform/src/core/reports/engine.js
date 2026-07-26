@@ -182,9 +182,13 @@ export function nextRunAt(schedule = {}, now = new Date()) {
   return cand.toISOString();
 }
 
+// هل يملك المستخدم التحكم في الجدولة؟ (تستعملها الواجهة لإخفاء أزرار لا تعمل — القرار يبقى في الخدمة)
+export function canControlSchedules(user) {
+  return !!user && SCHEDULE_ROLES.includes(user.role_id);
+}
 // الصلاحية تُفحص داخل الخدمة لا في المسار: نفس أدوار الإنشاء تتحكم في الإيقاف والحذف.
 function assertCanSchedule(u) {
-  if (!u || !SCHEDULE_ROLES.includes(u.role_id)) throw forbidden('جدولة التقارير تتطلب صلاحية إدارية');
+  if (!canControlSchedules(u)) throw forbidden('جدولة التقارير تتطلب صلاحية إدارية');
 }
 // من نطاقه قطاع واحد لا يتحكم إلا في جدولة قطاعه.
 function assertScheduleScope(u, row) {
@@ -208,14 +212,17 @@ export async function createSchedule(ctx, { reportId, frequency, recipientGroupI
   if (!SCHEDULE_FREQUENCIES.includes(freq)) {
     throw badRequest('تكرار غير معروف — اختر: يومي أو أسبوعي أو كل أسبوعين أو شهري أو ربع سنوي أو سنوي.');
   }
-  const sid = id('rs'); const now = nowIso();
+  const sid = id('rs'); const now = nowIso(); const at = new Date();
   const row = {
     id: sid, report_id: reportId, recipient_group_id: recipientGroupId || null,
     sector_id: sectorId || (u.scope === 'company' ? null : u.sector_id), frequency: freq,
     day_of_week: intInRange(dayOfWeek, 0, 6), day_of_month: intInRange(dayOfMonth, 1, 31),
     send_time: normalizeSendTime(sendTime), active: 1, created_by: u.id, created_at: now,
   };
-  row.next_run_at = nextRunAt(row, new Date());
+  // بلا يوم محدد نثبّت يوم الإنشاء صراحةً في الصف، فيبقى الموعد على اليوم نفسه في كل دورة قادمة.
+  if (row.day_of_week === null && (freq === 'weekly' || freq === 'biweekly')) row.day_of_week = at.getUTCDay();
+  if (row.day_of_month === null && FREQ_MONTHS[freq]) row.day_of_month = at.getUTCDate();
+  row.next_run_at = nextRunAt(row, at);
   await tx(async () => {
     await insert('report_schedule', row);
     await audit(ctx, { action: 'create', resource: 'report_schedule', resourceId: sid, sectorId: row.sector_id,

@@ -156,6 +156,9 @@
     else if (a === 'emp-edit') { ev.preventDefault(); openForm(el.dataset.emp); }
     else if (a === 'emp-delete') { ev.preventDefault(); del(el.dataset.emp); }
     else if (a === 'emp-save') { ev.preventDefault(); save(el.dataset.id || ''); }
+    else if (a === 'emp-link') { ev.preventDefault(); openModal(linkHtml(el.dataset.emp)); }
+    else if (a === 'emp-link-save') { ev.preventDefault(); saveLink(el.dataset.id || ''); }
+    else if (a === 'emp-unlink') { ev.preventDefault(); unlink(el.dataset.emp); }
     else if (a === 'emp-close') { ev.preventDefault(); closeModal(); }
   });
   // Enter inside a form field saves; Escape closes the open modal.

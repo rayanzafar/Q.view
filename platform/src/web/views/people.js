@@ -131,13 +131,13 @@ export async function teamPage(user, opts = {}) {
     ${sorted.length ? '' : `<div class="empty-state">${icon('team')}<div class="t">لا أعضاء ضمن نطاقك</div><div class="s">أضِف موظفين من زر «إضافة موظف» بالأعلى.</div></div>`}</div>`);
 
   // تنبيه جودة البيانات: فجوة الهوية. يظهر فقط لمن يملك الربط، ويقول ماذا حدث وما الخطوة.
-  const acctCount = (n) => countAr(n, { one: 'حساب واحد متاح للربط', two: 'حسابان متاحان للربط', few: 'حسابات متاحة للربط', many: 'حساباً متاحاً للربط' });
+  const acctCount = (n) => countAr(n, { one: 'حساب واحد متاح', two: 'حسابان متاحان', few: 'حسابات متاحة', many: 'حساباً متاحاً' });
   const gapNote = canLink && unlinkedCount ? `<div class="alert warn" style="margin-bottom:.8rem">
       <span aria-hidden="true">⚠</span>
       <span><b>${countAr(unlinkedCount, { one: 'موظف واحد بلا حساب مستخدم', two: 'موظفان بلا حساب مستخدم', few: 'موظفين بلا حساب مستخدم', many: 'موظفاً بلا حساب مستخدم' })}</b>
         — لا تصلهم المهام ولا الإشعارات، ولا يظهرون في قوائم مديري المشاريع، وصلاحيات الإدارة والفريق تبقى معطّلة عنهم.
         اربط كل واحد بحسابه من عمود «حساب الدخول».
-        ${freeAccounts.length ? `متاح الآن ${acctCount(freeAccounts.length)}.` : 'لا حسابات متاحة للربط حالياً — تُنشأ الحسابات من صفحة المستخدمين والصلاحيات.'}</span>
+        ${freeAccounts.length ? `${acctCount(freeAccounts.length)} في انتظار الربط.` : 'لا حسابات متاحة للربط حالياً — تُنشأ الحسابات من صفحة المستخدمين والصلاحيات.'}</span>
     </div>` : '';
 
   const body = `

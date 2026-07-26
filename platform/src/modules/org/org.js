@@ -180,6 +180,12 @@ export async function linkUserToEmployee(ctx, data = {}) {
   if (!userId) throw badRequest('اختر حساب الدخول الذي يخص هذا الموظف');
   const acc = await get('SELECT * FROM app_user WHERE id = ? AND deleted_at IS NULL', [userId]);
   if (!acc) throw notFound('حساب الدخول غير موجود أو محذوف — اختر حساباً آخر من القائمة');
+  // الطرف الثاني (الحساب) يخضع لنطاق الرابِط أيضاً: قائد القطاع يربط حسابات قطاعه فقط، وإلا
+  // لأمكنه تغيير ما يراه شخص من قطاع آخر بربط حسابه بموظف عنده. نطاق الشركة (الموارد البشرية
+  // ومدير النظام) غير مقيَّد. هذا مطابق تماماً لما تعرضه القائمة في الواجهة.
+  const companyWide = ctx.user.scope === 'company' || ctx.user.role_id === 'admin';
+  if (!companyWide && (acc.sector_id || null) !== (ctx.user.sector_id || null))
+    throw forbidden(`حساب ${accountLabel(acc)} خارج نطاق قطاعك — اطلب من الموارد البشرية ربطه`);
   // هل الموظف محجوز لحساب آخر؟
   const taken = await get(
     'SELECT id, username, name_ar FROM app_user WHERE employee_id = ? AND deleted_at IS NULL AND id <> ? LIMIT 1',
