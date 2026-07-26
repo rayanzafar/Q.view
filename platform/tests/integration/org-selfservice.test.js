@@ -31,6 +31,8 @@ const lead = { id: 'u_lead', role_id: 'sector_lead', sector_id: 'SOLUTIONS', sco
 const otherLead = { id: 'u_other', role_id: 'sector_lead', sector_id: 'CONSULTING', scope: 'sector', projectIds: new Set(), teamIds: new Set() };
 const admin = { id: 'u_admin', role_id: 'admin', sector_id: null, scope: 'company', projectIds: new Set(), teamIds: new Set() };
 const bd = { id: 'u_bd', role_id: 'bd_manager', sector_id: 'SOLUTIONS', scope: 'sector', projectIds: new Set(), teamIds: new Set() };
+// من يعلو قادة القطاعات في التسلسل الهرمي — يدير هيكل أي قطاع
+const ceo = { id: 'u_ceo', role_id: 'ceo_office', sector_id: null, scope: 'company', projectIds: new Set(), teamIds: new Set() };
 
 before(async () => {
   await insert('sector', { id: 'SOLUTIONS', name_ar: 'قطاع الحلول', active: 1, sort_order: 1, created_at: T });
@@ -52,6 +54,16 @@ test('قائد القطاع يُمنع من العبث بهيكل قطاع غي�
     () => org.createDepartment(ctx(otherLead), { sector_id: 'SOLUTIONS', name_ar: 'إدارة دخيلة' }),
     (e) => e.code === 'forbidden', 'قائد قطاع آخر يُرفض'
   );
+});
+
+test('من يعلو قادة القطاعات (مكتب الرئيس التنفيذي) يدير هيكل أي قطاع — لا قطاعه فقط', async () => {
+  // كان محروماً تماماً قبل الإصلاح لأن الحارس استعار صلاحية «تعديل موظف» التي لا يملكها.
+  const a = await org.createDepartment(ctx(ceo), { sector_id: 'SOLUTIONS', name_ar: 'مكتب إدارة المشاريع' });
+  const b = await org.createDepartment(ctx(ceo), { sector_id: 'CONSULTING', name_ar: 'تطوير الأعمال' });
+  assert.equal(a.sector_id, 'SOLUTIONS');
+  assert.equal(b.sector_id, 'CONSULTING', 'يدير قطاعاً لا ينتمي إليه — هذا معنى «من يعلوه في التسلسل»');
+  const renamed = await org.updateDepartment(ctx(ceo), a.id, { name_ar: 'مكتب إدارة المشاريع (PMO)' });
+  assert.match(renamed.name_ar, /مكتب إدارة المشاريع/);
 });
 
 test('من لا يملك إدارة الفريق (تطوير الأعمال) يُمنع من تعديل الهيكل', async () => {

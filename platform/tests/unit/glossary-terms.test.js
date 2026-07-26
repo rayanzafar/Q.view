@@ -7,7 +7,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { G, workKindLabel, WORK_KIND_OPTIONS, resourceLabel, mailStatusLabel, mailEventLabel,
-  auditActionLabel, BANNED_UI_TERMS } from '../../src/web/i18n/glossary.js';
+  auditActionLabel, reportName, REPORT_NAME_AR, BANNED_UI_TERMS } from '../../src/web/i18n/glossary.js';
+import { TEMPLATES } from '../../src/core/mail/templates.js';
 import { HEALTH, HEALTH_LABELS, CAPACITY, capacityBand, capacityLabel, capacityColor, capacityVar,
   health, healthLabel } from '../../src/core/i18n/thresholds.js';
 import { staticStrings, visibleText, bannedTermIn } from '../../scripts/check-glossary.mjs';
@@ -75,6 +76,18 @@ test('عتبات الطاقة: حدود واضحة ولون واحد لكل نس
   assert.equal(capacityVar(130), 'var(--red)');
   assert.ok(G.capacityLegend.includes('110') && G.capacityLegend.includes('70'));
   assert.ok(!/[A-Za-z]/.test(G.capacityLegend));
+});
+
+test('أسماء التقارير تُعرض من المعجم فلا يظهر اسم قديم فيه اختصار إنجليزي', () => {
+  // اسم مخزَّن ملوّث في قاعدة قائمة: «تقرير حالة المشروع (RAG)» — العرض يتجاهله ويستعمل الاسم المعتمد
+  assert.equal(reportName('project_status_report', 'تقرير حالة المشروع (RAG)'), 'تقرير حالة المشروع');
+  assert.equal(reportName('weekly_exec_brief', null), 'الموجز التنفيذي الأسبوعي');
+  // تقرير جديد غير معروف: نعرض اسمه المخزَّن، وإن غاب فتسمية عربية محايدة
+  assert.equal(reportName('tomorrow_report', 'تقرير الغد'), 'تقرير الغد');
+  assert.equal(reportName('tomorrow_report', null), 'تقرير');
+  // كل قالب بريد متعاقد عليه له اسم عربي معروض
+  assert.deepEqual(Object.keys(REPORT_NAME_AR).sort(), Object.keys(TEMPLATES).sort());
+  for (const name of Object.values(REPORT_NAME_AR)) assert.ok(!/[A-Za-z]/.test(name));
 });
 
 test('قائمة المصطلحات المحظورة تغطي ما كان يتسرّب فعلاً', () => {

@@ -8,11 +8,13 @@ import { forbidden, badRequest, notFound } from '../../core/http/errors.js';
 
 const requireAdminSectors = (user) => { if (!can(user, 'admin', 'sector') && user.role_id !== 'admin' && !can(user, 'create', 'sector')) throw forbidden('إدارة الهيكل تتطلب صلاحية إدارية'); };
 
-// إنشاء/حذف قطاع قرار بنية شركة ⟵ إداري فقط. أما الإدارات والوحدات **داخل قطاع** فيملكها
-// مسؤول ذلك القطاع: يضيف ويعيد التسمية ويعطّل بنفسه بلا انتظار مدير النظام (قرار صريح من المالك).
+// إنشاء/حذف قطاع قرار بنية شركة ⟵ إداري فقط. أما الإدارات والوحدات **داخل قطاع** فملكية صريحة
+// عبر منح `department/admin`: بنطاق «قطاع» لقائد القطاع (قطاعه وحده)، وبنطاق «شركة» لمن يعلوه في
+// التسلسل الهرمي (مكتب الرئيس التنفيذي) فيدير هيكل أي قطاع — قرار صريح من المالك.
+// نُمذِج الملكية صراحةً بدل استعارة صلاحية «تعديل موظف» كبديل: البديل كان يمنح قائد القطاع
+// ويحرم مكتب الرئيس التنفيذي، وهو عكس التسلسل الهرمي تماماً.
 const canManageSectorOrg = (user, sectorId) =>
-  user.role_id === 'admin' || can(user, 'admin', 'sector') || can(user, 'create', 'sector')
-  || can(user, 'update', 'employee', { sector_id: sectorId });
+  user.role_id === 'admin' || can(user, 'admin', 'department', { sector_id: sectorId });
 const requireSectorOrg = (user, sectorId) => {
   if (!canManageSectorOrg(user, sectorId)) throw forbidden('تعديل هيكل هذا القطاع يتطلب صلاحية إدارته');
 };

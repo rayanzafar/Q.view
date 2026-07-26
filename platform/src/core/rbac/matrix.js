@@ -31,6 +31,9 @@ export const ROLE_GRANTS = {
   ceo_office: [
     ...read(['sector', 'department', 'employee', ...OPERATIONAL, 'contract', 'invoice', 'collection',
       'budget', 'revenue_line', 'report', 'kpi', 'audit'], 'company'),
+    // يعلو قادة القطاعات في التسلسل الهرمي ⟵ يدير هيكل أي قطاع (إدارات ووحدات) لا قطاعاً بعينه.
+    // إنشاء/حذف القطاع نفسه يبقى لمدير النظام — قرار بنية شركة.
+    { resource: 'department', action: 'admin', scope: 'company' },
     { resource: 'report', action: 'export', scope: 'company' },
     // exec sees company margins/cost/revenue (aggregate), not individual salary or IPs
     { resource: 'margin', action: 'read', scope: 'company' },
@@ -51,6 +54,9 @@ export const ROLE_GRANTS = {
     // (owner decision) — see SEALED_GATES in core/rbac/index.js.
     { resource: 'employee', action: 'create', scope: 'sector' },
     { resource: 'employee', action: 'update', scope: 'sector' },
+    // يملك هيكل قطاعه بالكامل: يضيف الإدارات ويعيد تسميتها ويعطّلها حسب حاجته التشغيلية
+    // (خدمية كالمدن الذكية، أو مكتب إدارة مشاريع، أو تطوير أعمال داخل القطاع…) بلا انتظار أحد.
+    { resource: 'department', action: 'admin', scope: 'sector' },
     { resource: 'allocation', action: 'create', scope: 'sector' },
     { resource: 'allocation', action: 'update', scope: 'sector' },
     { resource: 'report', action: 'export', scope: 'sector' },
