@@ -57,11 +57,17 @@ export function scopeReaches(user, scope, target) {
       return !target.sector_id || target.sector_id === user.sector_id || (user.scope === 'company');
     case 'department':
       return !target.department_id || target.department_id === user.department_id;
-    case 'project':
-      return !target.project_id || (user.projectIds && user.projectIds.has(target.project_id))
-        || (target.id && user.projectIds && user.projectIds.has(target.id));
+    case 'project': {
+      // A bare `project` row has no `project_id` column (only `id`) — fall back to it so the
+      // project resource itself is actually membership-checked instead of vacuously passing.
+      const pid = target.project_id ?? target.id;
+      return !pid || (user.projectIds && user.projectIds.has(pid));
+    }
     case 'team':
-      return !target.team_id || (user.teamIds && user.teamIds.has(target.team_id));
+      // No caller anywhere sets target.team_id (team membership was never wired into
+      // resolveUser()'s teamIds), so the old `!target.team_id ||` short-circuit made this scope
+      // vacuously true for every target — fail closed instead until team membership is real.
+      return !!(target.team_id && user.teamIds && user.teamIds.has(target.team_id));
     case 'own':
       return target.owner_user_id === user.id || target.user_id === user.id
         || target.assignee_user_id === user.id || target.requested_by === user.id

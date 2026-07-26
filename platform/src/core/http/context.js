@@ -20,12 +20,16 @@ export async function resolveUser(sessionId) {
       [u.employee_id]
     )) projectIds.add(m.group_id);
   }
+  // department_id lives on `employee`, not `app_user` (which has no such column) — resolve it via
+  // the employee link so department-scoped grants (e.g. department_manager) are checkable at all;
+  // previously always null here, which made scopeReaches()'s 'department' case vacuously true.
+  const emp = u.employee_id ? await get('SELECT department_id FROM employee WHERE id = ?', [u.employee_id]) : null;
   return {
     id: u.id,
     username: u.username,
     role_id: u.role_id,
     sector_id: u.sector_id,
-    department_id: u.department_id || null,
+    department_id: emp?.department_id || null,
     scope: u.scope,
     employee_id: u.employee_id,
     name_ar: u.name_ar,

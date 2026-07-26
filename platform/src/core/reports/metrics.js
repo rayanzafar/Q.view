@@ -6,6 +6,7 @@ import { all, get } from '../db/index.js';
 import { canSeeSensitive } from '../rbac/index.js';
 import { config } from '../config.js';
 import { nowIso } from '../util/ids.js';
+import { forbidden } from '../http/errors.js';
 
 const FY = () => config.fiscalYear;
 
@@ -36,6 +37,10 @@ async function sectorYearFigures(sectorId, year) {
 }
 
 export async function companyOverview(user, opts = {}) {
+  // Company-wide revenue/sales/pipeline/deals — the same guard /api/metrics/company enforces at
+  // its route. Checked here too so every caller (report engine, AI assistant) inherits it, not
+  // just the one route that remembered to ask.
+  if (!user || user.scope !== 'company') throw forbidden('هذا التقرير على مستوى الشركة كاملة، خارج نطاق صلاحيتك');
   const year = Number(opts.year) || FY();
   const sectors = await all('SELECT * FROM sector WHERE deleted_at IS NULL AND active = 1 ORDER BY sort_order');
   const perSector = await Promise.all(sectors.map(async (s) => {

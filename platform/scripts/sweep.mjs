@@ -170,7 +170,8 @@ for (const { username, role } of roles) {
     R.apisOk++;
     // KNOWN-GAP QH-1 (warning, not a failure — tracked): roster serializes salary_halalas without
     // redaction, so employee-readers WITHOUT the salary grant currently receive raw values.
-    if (probe.path === '/api/org/roster' && res.status === 200 && !['admin', 'hr'].includes(role) && /"salary_halalas":\s*[1-9]/.test(text)) {
+    // sector_lead deliberately holds the salary grant (scope: sector) since v2.9 — excluded here too.
+    if (probe.path === '/api/org/roster' && res.status === 200 && !['admin', 'hr', 'sector_lead'].includes(role) && /"salary_halalas":\s*[1-9]/.test(text)) {
       report.warnings.push({ role: username, path: probe.path, kind: 'known-gap', detail: 'QH-1: raw salary_halalas served to a role without the salary grant' });
     }
   }

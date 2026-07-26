@@ -5,6 +5,7 @@ import { availableYears } from '../core/reports/metrics.js';
 import { config } from '../core/config.js';
 import { NAV_ITEMS, pageAllowed } from './nav.js';
 import { MONTHS_AR, MONTHS_EN3 } from '../core/i18n/time.js';
+import { esc } from './views/_shared.js';
 
 const GROUPS = { company: 'قيادة الشركة', work: 'العمل اليومي', manage: 'الإدارة', admin: 'النظام' };
 
@@ -309,7 +310,7 @@ window.__SANAD_MONTHS=${JSON.stringify(MONTHS_AR)};window.__SANAD_MONTHS_EN=${JS
         <a href="/app/tasks" title="الإشعارات" style="position:relative;color:var(--muted)">${icon('bell')}<span id="notif-badge" style="display:none;position:absolute;top:-4px;left:-4px;background:var(--red);color:#fff;font-size:9px;border-radius:99px;padding:1px 4px;font-weight:700"></span></a>
         <div class="hdr-user" style="display:flex;align-items:center;gap:.55rem">
           <div style="width:34px;height:34px;border-radius:50%;background:var(--brand-grad);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;flex:0 0 auto">${initial}</div>
-          <div class="hdr-user-txt" style="text-align:right"><div style="font-size:var(--fs-ui);font-weight:700">${user.name_ar || user.username}</div><div style="font-size:11px;color:var(--muted)">${roleLabel}</div></div>
+          <div class="hdr-user-txt" style="text-align:right"><div style="font-size:var(--fs-ui);font-weight:700">${esc(user.name_ar || user.username)}</div><div style="font-size:11px;color:var(--muted)">${roleLabel}</div></div>
         </div>
         <form method="post" action="/auth/logout-web"><button title="خروج" style="color:var(--muted);background:none;border:none;cursor:pointer">${icon('logout')}</button></form>
       </div>

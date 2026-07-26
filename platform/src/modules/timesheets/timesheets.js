@@ -55,8 +55,13 @@ export async function approvePeriod(ctx, periodId, approve = true) {
   const user = ctx.user;
   const period = await get('SELECT * FROM timesheet_period WHERE id = ?', [periodId]);
   if (!period) throw notFound('الفترة غير موجودة');
-  const target = await get('SELECT sector_id FROM app_user WHERE id = ?', [period.user_id]) || {};
-  if (!can(user, 'approve', 'timesheet', { sector_id: target.sector_id, user_id: period.user_id })) throw forbidden();
+  // department_id lives on `employee`, not `app_user` — join it so department_manager's scope
+  // check is actually evaluated instead of vacuously passing (see core/rbac/index.js scopeReaches).
+  const target = await get(
+    'SELECT u.sector_id, e.department_id FROM app_user u LEFT JOIN employee e ON e.id = u.employee_id WHERE u.id = ?',
+    [period.user_id]
+  ) || {};
+  if (!can(user, 'approve', 'timesheet', { sector_id: target.sector_id, department_id: target.department_id, user_id: period.user_id })) throw forbidden();
   await update('timesheet_period', periodId, {
     status: approve ? 'APPROVED' : 'REJECTED', approved_by: user.id, approved_at: nowIso(),
   });
