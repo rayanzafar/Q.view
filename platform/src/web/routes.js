@@ -4,7 +4,7 @@ import { login, logout } from '../core/auth/service.js';
 import { config } from '../core/config.js';
 import * as P from './pages.js';
 import { pageAllowed, DETAIL_ACCESS } from './nav.js';
-import { buildReport, renderReport, enqueueReport, createSchedule } from '../core/reports/engine.js';
+import { buildReport, renderReport, enqueueReport, createSchedule, setScheduleActive, deleteSchedule } from '../core/reports/engine.js';
 import { canSeeSensitive } from '../core/rbac/index.js';
 import { resolveUser } from '../core/http/context.js';
 
@@ -109,5 +109,16 @@ webRouter.post('/app/reports/test-send/:key', requireWeb, async (req, res, next)
 // Create a report schedule
 webRouter.post('/app/reports/schedule', requireWeb, async (req, res, next) => {
   try { res.json(await createSchedule(req.ctx, req.body || {})); }
+  catch (e) { next(e); }
+});
+
+// إيقاف/تفعيل جدولة قائمة، وحذفها. كانت الجدولة بلا أي مخرج بعد إنشائها إلا التعديل
+// المباشر على قاعدة البيانات؛ الصلاحية والنطاق مفحوصان داخل الخدمة لا هنا.
+webRouter.post('/app/reports/schedule/:id/active', requireWeb, async (req, res, next) => {
+  try { res.json(await setScheduleActive(req.ctx, req.params.id, (req.body || {}).active)); }
+  catch (e) { next(e); }
+});
+webRouter.delete('/app/reports/schedule/:id', requireWeb, async (req, res, next) => {
+  try { res.json(await deleteSchedule(req.ctx, req.params.id)); }
   catch (e) { next(e); }
 });
