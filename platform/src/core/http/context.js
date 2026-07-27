@@ -12,13 +12,29 @@ export async function resolveUser(sessionId) {
   if (new Date(s.expires_at).getTime() < Date.now()) return null;
   const u = await get('SELECT * FROM app_user WHERE id = ? AND active = 1 AND deleted_at IS NULL', [s.user_id]);
   if (!u) return null;
-  // project scope: projects the user owns or is a member of (via employee membership)
+  // نطاق المشروع: ما يملكه المستخدم، أو عضويةٌ فيه، أو **تسكينٌ عليه**.
+  //
+  // التسكين هو الإضافة. قبلها كان النطاق يُبنى من الملكية والعضوية فقط — والعضوية لا يكتبها أي
+  // مسار في المنتج كله (المسار الوحيد الذي يكتب `membership` يكتب نوع «فرصة» لا «مشروع»). فكان
+  // الأثر الحيّ أن الموظف المسكَّن على مشروع منذ شهور لا يفتح صفحته ولا مهامه ولا مخرجاته: كل
+  // منح `scope:'project'` — وهو كامل صلاحيات المستشار والموظف — يسقط مغلقاً. وكان الالتفاف
+  // موضعياً في شاشة واحدة (`myProjectsInSector`) تجمع قائمة الصلاحيات مع قراءة تسكين مباشرة،
+  // فتعمل تلك الشاشة وحدها ويبقى الباقي مغلقاً. المصدر هنا واحد فتنفتح كل الأسطح معاً.
+  //
+  // بلا حدّ زمني عن قصد: من عمل على مشروع في سنة ماضية يبقى مؤهلاً لقراءته — التسكين المنتهي
+  // يسحب العمل لا الذاكرة. والحذف الناعم يُستبعَد من الطرفين (التسكين والمشروع) فلا يمنح صفٌّ
+  // ملغى وصولاً.
   const projectIds = new Set((await all('SELECT id FROM project WHERE owner_user_id = ?', [u.id])).map((r) => r.id));
   if (u.employee_id) {
-    for (const m of await all(
-      "SELECT group_id FROM membership WHERE employee_id = ? AND group_kind = 'project' AND deleted_at IS NULL",
-      [u.employee_id]
-    )) projectIds.add(m.group_id);
+    for (const r of await all(
+      `SELECT m.group_id AS pid FROM membership m
+         WHERE m.employee_id = ? AND m.group_kind = 'project' AND m.deleted_at IS NULL
+       UNION
+       SELECT a.project_id AS pid FROM allocation a
+         JOIN project p ON p.id = a.project_id AND p.deleted_at IS NULL
+         WHERE a.employee_id = ? AND a.project_id IS NOT NULL AND a.deleted_at IS NULL`,
+      [u.employee_id, u.employee_id]
+    )) projectIds.add(r.pid);
   }
   // department_id lives on `employee`, not `app_user` (which has no such column) — resolve it via
   // the employee link so department-scoped grants (e.g. department_manager) are checkable at all;
