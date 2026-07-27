@@ -575,7 +575,7 @@ async function mySectorPage(user, opts = {}) {
     ? `يقود القطاع ${esc(sec.lead_name)}`
     : 'لم يُسجَّل قائد لهذا القطاع بعد';
   const idCard = card(`<div class="my-id">
-    <span class="sdot" style="background:${sec.color || 'var(--brand)'}"></span>
+    <span class="sdot" style="background:${esc(sec.color) || 'var(--brand)'}"></span>
     <div style="flex:1;min-width:0"><div class="nm">${esc(sec.name_ar)}</div><div class="ld">${leadLine}</div></div>
     <span class="pill" style="background:#eef2fb;color:var(--brand)">قطاعك</span>
   </div>`);
@@ -654,7 +654,7 @@ async function mySectorPage(user, opts = {}) {
   // ── (4) فرصي — لمن يقرأ الفرص وحده (الاستشاري نعم، الموظف لا) ──
   const SHOW_O = 6;
   const oppRows = opps.slice(0, SHOW_O).map((o) => `<div class="mw-row">
-      <span class="pin" style="background:${o.stage_color || 'var(--brand2)'}"></span>
+      <span class="pin" style="background:${esc(o.stage_color) || 'var(--brand2)'}"></span>
       <div class="mw-main">
         <div class="mw-t"><a href="/app/opportunity/${o.id}">${esc(o.title_ar)}</a></div>
         <div class="mw-m">
@@ -685,13 +685,18 @@ async function mySectorPage(user, opts = {}) {
       ${sec.lead_name ? `وللسؤال عن عملك في القطاع تواصل مع ${esc(sec.lead_name)}.` : ''}</div>
     <a class="btn btn-primary" href="/app/tasks">أضِف مهمة</a></div>`);
 
+  // التوزيع يتبع ما لدى الشخص فعلاً: بطاقة واحدة تأخذ العرض كاملاً بدل عمود مليء وآخر فارغ
+  // (استشاري له فرص بلا مهام كان يرى نصف الشاشة بياضاً). الأولوية ثابتة: مهامي ثم مشاريعي ثم فرصي.
+  const cards = [tasksCard, projectsCard, oppsCard].filter(Boolean);
+  const grid = cards.length === 1
+    ? `<div class="my-grid" style="grid-template-columns:1fr;margin-top:var(--gap)"><div class="my-col">${cards[0]}</div></div>`
+    : `<div class="my-grid" style="margin-top:var(--gap)">
+      <div class="my-col">${cards[0]}</div>
+      <div class="my-col">${cards.slice(1).join('')}</div>
+    </div>`;
   const body = `${MY_CSS}
     ${idCard}
-    ${nothing ? `<div style="margin-top:var(--gap)">${emptyCard}</div>` : `
-    <div class="my-grid" style="margin-top:var(--gap)">
-      <div class="my-col">${tasksCard}</div>
-      <div class="my-col">${projectsCard}${oppsCard}</div>
-    </div>`}`;
+    ${nothing ? `<div style="margin-top:var(--gap)">${emptyCard}</div>` : grid}`;
 
   const bits = [
     tasks.length ? countAr(tasks.length, { one: 'مهمة مفتوحة', two: 'مهمتان مفتوحتان', few: 'مهام مفتوحة', many: 'مهمة مفتوحة' }) : '',
