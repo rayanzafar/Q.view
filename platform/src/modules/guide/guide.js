@@ -15,7 +15,7 @@
 //     التي تخصها؛ لا تنسخ هنا: الدليل يغطي كل الشاشات، والنسخة الكاملة تنحرف حتماً.)
 //     nav.js ورقة في الشجرة: لا يستورد إلا `core/rbac` ولا يحمل أي أثر جانبي — فلا دورة.
 //   • لا كتابة إطلاقاً في هذا الملف: قراءة صرفة ⟵ لا `audit()` ولا معاملة.
-import { PAGE_ACCESS } from '../../web/nav.js';
+import { PAGE_ACCESS } from '../../core/policy/pages.js';
 import { can, canSeeSensitive, effectiveScope } from '../../core/rbac/index.js';
 import { ROLE_LABELS, SCOPE_RANK } from '../../core/rbac/matrix.js';
 import { get } from '../../core/db/index.js';

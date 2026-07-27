@@ -28,8 +28,12 @@ export const ROLES = [
 
 // Current PAGES map in src/web/routes.js (hardcoded on purpose: the harness must notice when a
 // page disappears or a new one is not covered).
+// «دليلي» مفتوحة للجميع بحكم كونها صفحة مساعدة — ومحتواها هو المُفلتَر لا الصفحة. وجودها هنا
+// ليس تجميلاً: مصفوفة الصلاحيات والمسح الحيّ وفحوص الاتجاه كلها تشتق قائمتها من هنا، فصفحة
+// غائبة عن هذه القائمة لا يفحصها أحد — وقد شُحنت «دليلي» فعلاً وهي خارج كل بوابة جودة.
 export const PAGES = ['ceo', 'portfolio', 'sector', 'opportunities', 'my-opportunities', 'projects',
-  'clients', 'tasks', 'timesheet', 'approvals', 'team', 'imports', 'users', 'audit', 'reports', 'org', 'finance', 'mail'];
+  'clients', 'tasks', 'timesheet', 'approvals', 'team', 'imports', 'users', 'audit', 'reports', 'org', 'finance', 'mail',
+  'guide'];
 
 // Roles whose service guards admit them to the people/org surfaces (read employee | create sector).
 const ORG_READERS = new Set(['admin', 'ceo_office', 'sector_lead', 'hr']);

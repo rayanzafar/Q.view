@@ -21,6 +21,7 @@ import { employeesRouter } from './org/employees.routes.js';
 import { orgRouter } from './org/org.routes.js';
 import { attributionRouter } from './org/attribution.routes.js';
 import { backupRouter } from './backup.routes.js';
+import { guideRouter } from './guide/guide.routes.js';
 import { searchRouter } from './search/search.routes.js';
 
 export const apiRouter = Router();
@@ -34,6 +35,7 @@ apiRouter.use(employeesRouter);
 apiRouter.use(orgRouter);
 apiRouter.use(attributionRouter);
 apiRouter.use(backupRouter);
+apiRouter.use(guideRouter);
 apiRouter.use(searchRouter);
 const h = (fn) => async (req, res, next) => { try { const r = await fn(req, res); if (r !== undefined) res.json(r); } catch (e) { next(e); } };
 

@@ -298,7 +298,8 @@ export async function layout({ user, active, title, subtitle, body, year, extraH
 <script>tailwind.config={theme:{extend:{colors:{brand:'#244A99',brand2:'#834798',ink:'#0f172a',ink2:'#1e293b',muted:'#64748b',faint:'#94a3b8',line:'#e6e9f0'}}}}
 window.__SANAD_MONTHS=${JSON.stringify(MONTHS_AR)};window.__SANAD_MONTHS_EN=${JSON.stringify(MONTHS_EN3)};</script>
 <style>${STYLE}</style>
-<link rel="stylesheet" href="/static/styles.css">${extraHead}</head>
+<link rel="stylesheet" href="/static/styles.css">
+<noscript><style>.hdr-tour-btn{display:none}</style></noscript>${extraHead}</head>
 <body data-page="${esc(active || '')}">
 <div style="display:flex;min-height:100vh">
   <aside class="side" style="width:250px;flex:0 0 250px;background:var(--side);display:flex;flex-direction:column;color:#fff">
