@@ -6,13 +6,15 @@ import { all, get } from '../../core/db/index.js';
 import { projectKpis } from '../../core/reports/metrics.js';
 import { listProjects, nextMilestones, projectKind, projectRevenue } from '../../modules/pmo/projects.js';
 import { projectGovernance, DELIVERABLE_MANUAL_STATUSES, DELIVERABLE_SYSTEM_STATUSES } from '../../modules/pmo/governance.js';
+import { projectMoney } from '../../modules/finance/finance.js';
+import { EXPENSE_STATUS_AR, OPEN_STATUSES, SETTLED_STATUSES } from '../../modules/finance/expenses.js';
 import { myTasks, teamTasks } from '../../modules/pmo/tasks.js';
 import { listViews } from '../../modules/views/views.js';
 import { canSeeSensitive, redact, can, effectiveScope } from '../../core/rbac/index.js';
 import { DELIVERY_SECTOR_SQL } from '../../core/org/kind.js';
 import { G, projectKindLabel, projectKindTip } from '../i18n/glossary.js';
 import { sarShort, esc, bar, statMini, noticeCard } from './_shared.js';
-import { MONTHS_AR, MONTHS_EN3, currentMonthIndex } from '../../core/i18n/time.js';
+import { MONTHS_AR, MONTHS_EN3, currentMonthIndex, monthLabelDual } from '../../core/i18n/time.js';
 import { countAr, dayWord } from '../../core/i18n/plural.js';
 // ── مركز العمل اليومي (صفحة المهام) — الوارد الخاص بها وحدها، مفصولاً كي لا يختلط بوارد المحفظة ──
 import { completionTrend, addDays, teamTasksAccess } from '../../modules/pmo/tasks.js';
@@ -1123,7 +1125,420 @@ export async function tasksPage(user, opts = {}) {
   return layout({ user, active: 'tasks', title: who === 'team' ? G.teamWork : G.myWork, subtitle, body, scripts: ['/static/pages/tasks.js'] });
 }
 
-export async function projectDetailPage(user, projectId) {
+// ═══ حركة المال على المشروع ══════════════════════════════════════════════════════════════════
+// طلب المالك بلغته: «عشان يبين الكاش إن والكاش آوت والمصروفات والتسكين على المشروع ونسبتهم حسب
+// الشهر، والمصاريف إذا كانت فواتير أو الاشتراكات أو الموردين». كل رقم هنا يأتي جاهزاً من
+// `projectMoney` في وحدة المالية — الشاشة لا تجمع ضلعاً ولا تشتق كلفة ولا تقدّر ما لم يُسجَّل.
+//
+// القاعدة التي يقوم عليها كل سطر أدناه — **الغياب والتقييد والصفر ثلاث حالات لا تتشابه**:
+//   • غياب: لا تسجيل أصلاً (`recorded:false`) ⟵ «غير مُسجَّل» وجملة تقول ما الذي لم يُدخَل. لا «٠ ريال».
+//   • تقييد: مسجَّل ولا يراه الدور (`permitted:false` أو `amounts_visible:false`) ⟵ «مقيَّد» وسببه.
+//   • صفر: قياس حقيقي داخل شريط لا يُرسم أصلاً إلا حين يوجد تسجيل — شهرٌ بلا حركة في مشروع له حركة.
+const M_YEARS_MAX = 3;   // السنة المعروضة + سنتان أخريان بحركة؛ ما زاد يُذكر نصاً لا لوحاً
+const M_ROWS_MAX = 40;   // أحدث المصروفات المعروضة صفاً صفاً (التجميع حسب الوصف يغطي الباقي)
+
+const mNo = (txt) => `<span style="color:var(--faint);font-weight:700;font-size:var(--fs-meta)">${esc(txt || G.notRecorded)}</span>`;
+const mLock = (why) => `<span class="pill" style="background:#fef3c7;color:#92400e" title="${esc(why || G.restrictedAmounts)}">${G.restricted}</span>`;
+const mSar = (v, color) => `<span class="tnum" style="font-weight:800${color ? `;color:${color}` : ''}">${fmtSar(v)}</span>`;
+const mNum = (v, color) => `<span class="tnum" style="font-weight:800${color ? `;color:${color}` : ''}">${Math.round(Number(v) || 0)}</span>`;
+const mPct = (v) => `<span class="tnum" style="font-weight:800">${Math.round(Number(v) || 0)}%</span>`;
+// المبلغ: رقمٌ إن سُجِّل ورآه الدور، وإلا كلمة الغياب أو كلمة التقييد — ولا صفر مكان أيٍّ منهما.
+const mAmount = (v, { locked = false, why = '', absent = '', color = '' } = {}) =>
+  (v == null ? (locked ? mLock(why) : mNo(absent)) : mSar(v, color));
+const mRestricted = (reason) => `<div class="alert warn"><span style="font-weight:800;flex:0 0 auto">${G.restricted}</span><span>${esc(reason || G.restrictedAmounts)}</span></div>`;
+const mEmpty = (title, detail, action = '') => `<div class="empty-state" style="padding:1.15rem 1rem">${icon('inbox')}
+  <div class="t">${esc(title)}</div><div class="s">${esc(detail)}</div>${action}</div>`;
+const mHead = (title, sub) => `<div style="display:flex;align-items:baseline;gap:.5rem;flex-wrap:wrap;margin-bottom:.5rem">
+  <div style="font-weight:800;font-size:12.5px;color:var(--ink2)">${title}</div>
+  ${sub ? `<div style="font-size:10.5px;color:var(--muted);flex:1;min-width:0">${sub}</div>` : ''}</div>`;
+const mBlock = (inner) => `<div style="padding:.85rem 1rem;border-top:1px solid var(--line)">${inner}</div>`;
+// «YYYY-MM» ⟵ «يناير 2026». ما لا شهر له يُقال عنه ذلك، ولا يُنسب إلى شهر تخميناً.
+const mYm = (key) => {
+  const g = /^(\d{4})-(\d{2})$/.exec(String(key || ''));
+  return g ? `${MONTHS_AR[Number(g[2]) - 1] || ''} <span class="tnum">${esc(g[1])}</span>` : G.undatedRows;
+};
+const mMonthYear = (month, year) => (Number.isInteger(Number(month)) && Number(month) >= 1 && Number(month) <= 12
+  ? `${MONTHS_AR[Number(month) - 1]}${Number.isInteger(Number(year)) ? ` <span class="tnum">${esc(String(year))}</span>` : ''}`
+  : G.undatedRows);
+// حالة الفاتورة بمعناها؛ وما لا تسمية له لا تُطبع قيمته المخزَّنة أبداً.
+const mInvStatus = (s) => { const t = String(tr(s) ?? ''); return /^[A-Z_]+$/.test(t) || !t ? 'حالة أخرى' : t; };
+const mSep = '<span aria-hidden="true" style="align-self:center;flex:0 0 auto;font-size:10px;font-weight:800;color:var(--faint)">ثم</span>';
+
+// شريط 12 شهراً — يناير يميناً وديسمبر يساراً (النموذج الزمني الواحد للمنصة، فئة .mtrack).
+// «نحن هنا» يُعلَّم على اسم الشهر بالذهبي لا بحلقة حول العمود: حلقةٌ حول عمودٍ ارتفاعه صفر
+// تُقرأ خطاً ذهبياً طائراً لا مؤشراً — والسابقة المتبعة في المنصة (miniBars) تلوّن التسمية.
+const mBars = (cells, { color, max }) => `<div class="mtrack" style="height:34px;gap:2px">${cells.map((c) => {
+  const v = Number(c.value) || 0;
+  const h = v <= 0 ? 2 : Math.max(3, Math.round((v / Math.max(1, max)) * 32));
+  return `<span title="${esc(c.title)}" style="height:${h}px;border-radius:3px;background:${v > 0 ? color : '#eef1f7'}"></span>`;
+}).join('')}</div>`;
+const mMonthLabels = (now = -1) => `<div class="mtrack" style="gap:2px;margin-top:.3rem">${MONTHS_AR.map((_, i) =>
+  `<span style="font-size:9px;line-height:1.3;text-align:center;overflow:hidden;color:${i === now ? '#a3821c' : 'var(--faint)'};font-weight:${i === now ? '800' : '400'}">${monthLabelDual(i)}</span>`).join('')}</div>`;
+const mTrackRow = ({ title, sub, tone, body }) => `<div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;margin-bottom:.55rem">
+  <div style="flex:0 0 130px;min-width:120px">
+    <div style="display:flex;align-items:center;gap:.35rem;font-size:11.5px;font-weight:700;color:var(--ink2)">
+      <span style="width:9px;height:9px;border-radius:3px;background:${tone};flex:none"></span>${title}</div>
+    <div style="font-size:10.5px;color:var(--muted);line-height:1.6">${sub}</div>
+  </div>
+  <div style="flex:1 1 200px;min-width:0">${body}</div></div>`;
+const mStage = (n, label, value, note) => `<div style="flex:1 1 134px;min-width:120px;border:1px solid var(--line);border-radius:12px;padding:.5rem .6rem;background:#fff">
+  <div style="font-size:9.5px;font-weight:800;color:var(--faint)">${G.moneyStage} <span class="tnum">${n}</span> من <span class="tnum">5</span></div>
+  <div style="font-size:11px;font-weight:700;color:var(--muted);margin-top:.1rem">${label}</div>
+  <div style="font-size:var(--fs-num-sm);margin-top:.1rem">${value}</div>
+  <div style="font-size:10px;color:var(--faint);line-height:1.6">${note || ''}</div></div>`;
+// سنوات أخرى فيها حركة — تُقال بدل أن تُقرأ السنةُ المعروضة فراغاً.
+const mOther = (years) => (years && years.length
+  ? `<div style="font-size:10.5px;color:var(--amber);font-weight:700;margin-top:.25rem">${G.otherYearsMovement}: <span class="tnum">${years.map((y) => esc(String(y))).join('، ')}</span></div>` : '');
+
+// ── لوح سنة واحدة: الجسر · الحركة الشهرية · الخارج النقدي · التسكين · الكلفة · ما ينقص ──
+function mYearPanel(m, { active }) {
+  const now = currentMonthIndex(m.year);            // -1 على سنة ليست الجارية: لا مؤشر «نحن هنا»
+  const b = m.bridge;
+  const yr = `<span class="tnum">${esc(String(m.year))}</span>`;
+  const billLock = b.permitted === false;
+
+  // ① الجسر: خمس مراحل متتابعة لا تُجمع — الترتيب والفواصل والملاحظة تمنع قراءتها مجموعاً.
+  const revNote = b.revenue.permitted === false ? esc(b.revenue.reason_ar || '')
+    : b.revenue.in_year_halalas != null ? `منها في ${yr}: <span class="tnum">${fmtSar(b.revenue.in_year_halalas)}</span>` : '';
+  const invNote = [b.draft_invoiced_halalas != null ? `${G.draftInvoices}: <span class="tnum">${fmtSar(b.draft_invoiced_halalas)}</span>` : '',
+    b.retention_halalas != null ? `${G.retentionHeld}: <span class="tnum">${fmtSar(b.retention_halalas)}</span>` : ''].filter(Boolean).join(' · ');
+  const stages = [
+    mStage(1, G.contracted, mAmount(b.contract_halalas, { absent: G.notRecordedF }),
+      b.client_po_halalas != null ? `${G.clientPo}: <span class="tnum">${fmtSar(b.client_po_halalas)}</span>` : 'قيمة الاتفاق مع العميل'),
+    mStage(2, G.revenueRecognised,
+      b.revenue.permitted === false ? mLock(b.revenue.reason_ar) : mAmount(b.revenue.total_halalas), revNote),
+    mStage(3, G.invoiced, mAmount(b.invoiced_halalas, { locked: billLock, why: b.reason_ar, absent: 'لا فواتير صادرة' }),
+      invNote || 'ما صدرت به فاتورة للعميل'),
+    mStage(4, G.collected, mAmount(b.collected_halalas, { locked: billLock, why: b.reason_ar, absent: 'لم يُسجَّل تحصيل', color: 'var(--green)' }),
+      'نقدٌ دخل فعلاً — وهو وحده الداخل النقدي'),
+    mStage(5, G.outstanding, mAmount(b.outstanding_halalas, { locked: billLock, why: b.reason_ar, absent: 'لا مستحق محسوب', color: 'var(--amber)' }),
+      'المفوتر ناقص المحتجز ناقص المحصَّل'),
+  ].join(mSep);
+  const statusPills = (b.by_status || []).length
+    ? `<div style="display:flex;gap:.3rem;flex-wrap:wrap;margin-top:.5rem">${b.by_status.map((s) => `<span class="pill" style="background:#f1f5f9;color:#475569"
+        title="${esc(mInvStatus(s.status))}: ${esc(fmtSar(s.amount_halalas))}">${esc(mInvStatus(s.status))} <b class="tnum">${Math.round(Number(s.count) || 0)}</b></span>`).join('')}</div>` : '';
+  const bridgeBlock = mBlock(`${mHead(`${G.moneyBridge} — ${G.moneyStage}ٌ بعد أخرى`, 'خمس مراحل متتابعة، كلٌّ من جدولها')}
+    <div style="display:flex;gap:.35rem;flex-wrap:wrap;align-items:stretch">${stages}</div>
+    ${statusPills}
+    <div class="alert info" style="margin-top:.55rem;font-size:11px">${esc(b.note_ar)}</div>
+    ${billLock ? `<div style="margin-top:.5rem">${mRestricted(b.reason_ar)}</div>` : ''}`);
+
+  // ② الحركة الشهرية: المفوتر بجوار المحصَّل عمداً — الرقمان ليسا رقماً واحداً.
+  const invM = b.invoiced_monthly; const colM = m.cashIn.monthly;
+  const paid = m.cashOut.paid; const paidM = paid ? paid.monthly : null;
+  const amountsHidden = m.cashOut.permitted === true && m.cashOut.amounts_visible === false;
+  const amtsOf = (rows) => (rows || []).map((r) => Number(r.amount_halalas) || 0);
+  const max = Math.max(1, ...amtsOf(invM), ...amtsOf(colM), ...(amountsHidden ? [] : amtsOf(paidM)));
+  const cells = (rows, key) => rows.map((r, i) => {
+    const v = Number(r[key]) || 0;
+    const unit = key === 'count' ? `${Math.round(v)} حركة` : fmtSar(v);
+    return { value: v, title: `${MONTHS_AR[i]} ${m.year}: ${v > 0 ? unit : 'لا حركة مسجّلة'}` };
+  });
+  const invTotal = invM ? invM.reduce((a, r) => a + (Number(r.amount_halalas) || 0), 0) : null;
+  const rowInvoiced = mTrackRow({ title: G.invoiced, tone: '#834798',
+    sub: billLock ? '' : invM ? `في ${yr}: <span class="tnum">${fmtSar(invTotal)}</span>` : '',
+    body: billLock ? mLock(b.reason_ar) : invM ? mBars(cells(invM, 'amount_halalas'), { color: '#834798', max })
+      : mNo('لا فواتير صادرة على هذا المشروع') });
+  const rowCollected = mTrackRow({ title: `${G.collected} — ${G.cashIn}`, tone: 'var(--green)',
+    sub: m.cashIn.permitted === false ? '' : m.cashIn.in_year_halalas != null ? `في ${yr}: <span class="tnum">${fmtSar(m.cashIn.in_year_halalas)}</span>` : '',
+    // سنةٌ بلا تحصيل في مشروعٍ له تحصيل مسجَّل تُقرأ صفراً حقيقياً — فتُذكر سنواتُ الحركة معها
+    // كي لا يُقرأ اللوحُ فارغاً، ويُعرف أن الحركة في سنة أخرى لا أن التحصيل معدوم.
+    body: m.cashIn.permitted === false ? mLock(m.cashIn.reason_ar)
+      : `${colM ? mBars(cells(colM, 'amount_halalas'), { color: 'var(--green)', max })
+        : mNo('لم يُسجَّل أي تحصيل على فواتير هذا المشروع')}${mOther(m.cashIn.other_years)}` });
+  const outMax = amountsHidden && paidM ? Math.max(1, ...paidM.map((r) => Number(r.count) || 0)) : max;
+  const rowPaid = mTrackRow({ title: `${G.paidOut} — ${G.cashOut}`, tone: '#b45309',
+    sub: m.cashOut.permitted === false ? ''
+      : paid && paid.in_year_halalas != null ? `في ${yr}: <span class="tnum">${fmtSar(paid.in_year_halalas)}</span>`
+        : paid && amountsHidden ? `في ${yr}: <span class="tnum">${Math.round(paid.in_year_count || 0)}</span> حركة` : '',
+    body: m.cashOut.permitted === false ? mLock(m.cashOut.reason_ar)
+      : `${paidM ? mBars(cells(paidM, amountsHidden ? 'count' : 'amount_halalas'), { color: '#b45309', max: outMax })
+        : m.cashOut.recorded ? mNo('المسجَّل من المصروفات لم يُصرف بعد') : mNo('لا مصروفات مسجّلة على هذا المشروع')}${mOther(m.cashOut.other_years)}` });
+  const undated = [
+    m.cashIn.undated ? `تحصيلات ${G.undatedRows}: <span class="tnum">${Math.round(m.cashIn.undated.count)}</span> بمبلغ <span class="tnum">${fmtSar(m.cashIn.undated.amount_halalas)}</span>` : '',
+    paid && paid.undated ? `مصروفات مدفوعة ${G.undatedRows}: <span class="tnum">${Math.round(paid.undated.count)}</span>${paid.undated.amount_halalas != null ? ` بمبلغ <span class="tnum">${fmtSar(paid.undated.amount_halalas)}</span>` : ''}` : '',
+  ].filter(Boolean);
+  const movement = mBlock(`${mHead(`${G.monthlyMovement} في سنة ${m.year}`, 'المفوتر بجوار المحصَّل عمداً: ما صدرت به فاتورة شيء، وما دخل الحساب شيء آخر')}
+    ${rowInvoiced}${rowCollected}${rowPaid}${mMonthLabels(now)}
+    ${amountsHidden ? `<div style="font-size:10.5px;color:var(--amber);font-weight:700;margin-top:.4rem">${esc(m.cashOut.amounts_reason_ar || G.restrictedAmounts)} — أعمدة الخارج النقدي تمثل عدد الحركات لا مبالغها.</div>` : ''}
+    ${undated.length ? `<div style="font-size:10.5px;color:var(--muted);margin-top:.4rem">${undated.join(' · ')} — محسوبة في المجموع وخارج الشريط الشهري حتى يُسجَّل تاريخها.</div>` : ''}
+    <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-top:.55rem">
+      <button type="button" class="btn btn-sm" data-action="money-dd" data-dd="money-months-${esc(String(m.year))}">${icon('list')} ${G.monthDetails}</button>
+      <span style="font-size:10.5px;color:var(--faint)">${esc(m.cashIn.note_ar)}</span>
+    </div>`);
+
+  // نافذة تفصيل الأشهر: الأرقام الثلاثة صفاً لكل شهر (خادميّة بالكامل، بنفس صلاحية الصفحة).
+  const ddRowsHtml = MONTHS_AR.map((mn, i) => `<tr style="border-bottom:1px solid var(--line)">
+      <td style="padding:.4rem .6rem;font-size:12px">${mn}${i === now ? ` ${nowDot('الشهر الحالي')}` : ''}</td>
+      <td style="padding:.4rem .6rem;text-align:center;font-size:12px">${billLock ? mLock(b.reason_ar) : invM ? `<span class="tnum">${fmtSar(invM[i].amount_halalas)}</span>` : mNo()}</td>
+      <td style="padding:.4rem .6rem;text-align:center;font-size:12px">${m.cashIn.permitted === false ? mLock(m.cashIn.reason_ar) : colM ? `<span class="tnum">${fmtSar(colM[i].amount_halalas)}</span>` : mNo()}</td>
+      <td style="padding:.4rem .6rem;text-align:center;font-size:12px">${m.cashOut.permitted === false ? mLock(m.cashOut.reason_ar)
+    : paidM ? (paidM[i].amount_halalas != null ? `<span class="tnum">${fmtSar(paidM[i].amount_halalas)}</span>` : `<span class="tnum">${Math.round(paidM[i].count || 0)}</span> حركة`) : mNo()}</td>
+    </tr>`).join('');
+  const ddTpl = `<template id="dd-money-months-${esc(String(m.year))}">
+    <div class="modal-head"><div><div style="font-weight:800;font-size:15px">${G.monthlyMovement} — سنة ${esc(String(m.year))}</div>
+      <div style="font-size:11.5px;color:var(--muted)">${esc(m.project.name_ar)}</div></div>
+      <button type="button" class="btn btn-ghost btn-sm" data-action="money-close" aria-label="إغلاق">✕</button></div>
+    <div class="modal-body"><div class="tblwrap"><table style="width:100%;border-collapse:collapse">
+      <thead><tr style="font-size:10.5px;color:var(--muted);text-align:right">
+        <th style="padding:.35rem .6rem">الشهر</th><th style="padding:.35rem .6rem;text-align:center">${G.invoiced}</th>
+        <th style="padding:.35rem .6rem;text-align:center">${G.collected}</th><th style="padding:.35rem .6rem;text-align:center">${G.paidOut}</th></tr></thead>
+      <tbody>${ddRowsHtml}</tbody></table></div>
+      <div style="font-size:11px;color:var(--muted);margin-top:.6rem;line-height:1.9">${esc(b.note_ar)}</div></div></template>`;
+
+  // ③ الخارج النقدي: المدفوع وحده نقد، والباقي التزامات وطلبات بجانبه لا داخله.
+  const co = m.cashOut;
+  const coCell = (label, count, amount, color) => `<div style="flex:1 1 132px;min-width:120px;border:1px solid var(--line);border-radius:12px;padding:.5rem .6rem">
+    <div style="font-size:11px;color:var(--muted);font-weight:700">${label}</div>
+    <div style="font-size:var(--fs-num-sm)">${amount === undefined ? mNum(count, color)
+    : amount != null ? mSar(amount, color) : (co.amounts_visible === false ? mLock(co.amounts_reason_ar) : mNo())}</div>
+    <div style="font-size:10px;color:var(--faint)"><span class="tnum">${Math.round(Number(count) || 0)}</span> حركة مسجّلة</div></div>`;
+  const cashOutBlock = mBlock(co.permitted === false ? `${mHead(G.cashOut)}${mRestricted(co.reason_ar)}`
+    : `${mHead(G.cashOut, esc(co.note_ar))}
+      ${co.recorded ? `<div style="display:flex;gap:.4rem;flex-wrap:wrap">
+        ${coCell(G.paidOut, co.paid.count, co.paid.total_halalas, 'var(--ink2)')}
+        ${coCell(G.committedNotPaid, co.committed.count, co.committed.total_halalas, 'var(--amber)')}
+        ${coCell(G.requestedNotApproved, co.requested.count, co.requested.total_halalas, 'var(--muted)')}
+        ${coCell(G.rejectedExpenses, co.rejected.count, undefined, 'var(--faint)')}
+      </div>
+      <div style="font-size:10.5px;color:var(--faint);margin-top:.5rem">${esc(co.sources_ar)}</div>`
+    : mEmpty(G.notRecorded + ' — لا خارج نقدي على هذا المشروع', m.expenses.empty_ar,
+      `<a href="#money-expenses" style="font-size:12px;color:var(--brand2);font-weight:700">${G.addExpense} من سجل المصروفات ↓</a>`)}`);
+
+  // ④ التسكين بالنسب الشهرية — النسبة حصة الشخص من شهر عمل كامل على هذا المشروع.
+  const st = m.staffing;
+  const shareCell = (v, mn) => {
+    const pctv = Math.max(0, Math.round(Number(v) || 0));
+    const op = pctv <= 0 ? 0 : Math.max(0.16, Math.min(1, pctv / 100));
+    return `<span title="${esc(mn)}: ${pctv}%" style="height:14px;border-radius:3px;background:${pctv > 0 ? `rgba(36,74,153,${op.toFixed(2)})` : '#eef1f7'}"></span>`;
+  };
+  const shareStrip = (months) => `<div class="mtrack" style="gap:2px">${months.map((v, i) => shareCell(v, MONTHS_AR[i])).join('')}</div>`;
+  const staffRowsM = (st.people || []).map((e) => `<tr style="border-bottom:1px solid var(--line)">
+      <td data-label="الشخص" style="padding:.4rem .7rem;font-size:12.5px">${esc(e.name)}
+        <div style="font-size:10px;color:var(--muted)">${esc(e.job_title || 'المسمى غير مسجَّل')}</div></td>
+      <td data-label="${G.monthsStaffed}" style="padding:.4rem .7rem;text-align:center">${mNum(e.months_staffed)}</td>
+      <td data-label="${G.peak}" style="padding:.4rem .7rem;text-align:center">${mPct(e.peak_pct)}</td>
+      <td data-label="${G.averageShare}" style="padding:.4rem .7rem;text-align:center">${mPct(e.average_pct)}</td>
+      <td data-label="${G.yearShare}" class="rtbl-hm" style="padding:.4rem .7rem;text-align:center">${mPct(e.year_share_pct)}</td>
+      <td data-label="${G.allMonths}" style="padding:.4rem .7rem;min-width:150px">${shareStrip(e.monthly)}</td></tr>`).join('');
+  const staffingBlock = mBlock(`${mHead(`${G.staffingShare} في سنة ${m.year}`, esc(st.note_ar))}
+    ${st.recorded ? `<div class="tblwrap"><table class="rtbl" style="width:100%;border-collapse:collapse;min-width:520px">
+        <thead><tr style="font-size:10.5px;color:var(--muted);text-align:right">
+          <th style="padding:.35rem .7rem">الشخص</th><th style="padding:.35rem .7rem;text-align:center">${G.monthsStaffed}</th>
+          <th style="padding:.35rem .7rem;text-align:center">${G.peak}</th><th style="padding:.35rem .7rem;text-align:center">${G.averageShare}</th>
+          <th style="padding:.35rem .7rem;text-align:center">${G.yearShare}</th>
+          <th style="padding:.35rem .7rem;text-align:center">${G.allMonths}${mMonthLabels(now)}</th></tr></thead>
+        <tbody>${staffRowsM}</tbody></table></div>
+      <div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;margin-top:.55rem">
+        <div style="flex:0 0 130px;font-size:11.5px;font-weight:700;color:var(--ink2)">${G.monthlyTotalShare}</div>
+        <div style="flex:1 1 200px;min-width:0">${shareStrip((st.monthly_total_pct || []).map((v) => Math.min(100, v)))}
+          <div style="font-size:10px;color:var(--faint);margin-top:.2rem">${(st.monthly_total_pct || []).map((v, i) => (v > 0 ? `${MONTHS_AR[i]} <span class="tnum">${Math.round(v)}%</span>` : '')).filter(Boolean).join(' · ') || 'لا نِسَب مسجّلة في أشهر هذه السنة'}</div></div>
+      </div>
+      <div style="font-size:10.5px;color:var(--muted);margin-top:.35rem">${esc(st.total_note_ar)}</div>`
+    : mEmpty(st.empty_ar, st.other_years && st.other_years.length
+      ? `للمشروع تسكين مسجَّل في سنوات أخرى — بدّل سنة العرض أعلاه لرؤيته.`
+      : 'لم يُسكَّن أحد على هذا المشروع في أي سنة. التسكين يُسجَّل من شاشة التسكين.',
+    `<a href="/app/staffing" style="font-size:12px;color:var(--brand2);font-weight:700">فتح شاشة التسكين</a>`)}
+    ${mOther(st.other_years)}
+    <div class="alert warn" style="margin-top:.5rem;font-size:11px"><span style="font-weight:800;flex:0 0 auto">${G.staffingCostLine}</span><span>${esc(st.cost.reason_ar)}</span></div>
+    ${st.undated_count ? `<div style="font-size:10.5px;color:var(--muted);margin-top:.35rem">تسكين بلا سنة مسجَّلة: <span class="tnum">${Math.round(st.undated_count)}</span> — لا يظهر على أي شريط شهري حتى تُسجَّل سنته.</div>` : ''}`);
+
+  // ⑤ الكلفة المسجَّلة: اعترافٌ بكلفة لا حركة صرف — تبقى خارج الخارج النقدي عمداً.
+  const c = m.cost;
+  const costBlock = mBlock(c.permitted === false ? `${mHead(G.recordedCost)}${mRestricted(c.reason_ar)}`
+    : `${mHead(G.recordedCost, esc(c.note_ar))}
+      ${c.recorded ? `<div style="display:flex;gap:.4rem;flex-wrap:wrap;align-items:stretch">
+          <div style="flex:1 1 150px;min-width:130px;border:1px solid var(--line);border-radius:12px;padding:.5rem .6rem">
+            <div style="font-size:11px;color:var(--muted);font-weight:700">منذ بداية المشروع</div><div style="font-size:var(--fs-num-sm)">${mSar(c.total_halalas)}</div></div>
+          <div style="flex:1 1 150px;min-width:130px;border:1px solid var(--line);border-radius:12px;padding:.5rem .6rem">
+            <div style="font-size:11px;color:var(--muted);font-weight:700">في سنة ${esc(String(m.year))}</div><div style="font-size:var(--fs-num-sm)">${mSar(c.in_year_halalas)}</div></div>
+          ${c.project_actual_spend_halalas != null ? `<div style="flex:1 1 150px;min-width:130px;border:1px solid var(--line);border-radius:12px;padding:.5rem .6rem">
+            <div style="font-size:11px;color:var(--muted);font-weight:700">${G.actualSpendField}</div><div style="font-size:var(--fs-num-sm)">${mSar(c.project_actual_spend_halalas)}</div>
+            <div style="font-size:10px;color:var(--faint)">خانة مستقلة على صف المشروع — لا تُجمع إلى بنود الكلفة</div></div>` : ''}
+        </div>
+        ${(c.by_type || []).length ? `<div style="margin-top:.5rem;border:1px solid var(--line);border-radius:12px;padding:.15rem .7rem">
+          ${c.by_type.slice(0, 6).map((t) => `<div class="dd-row">
+            <span>${esc(t.type || 'بلا وصف مسجَّل')} · <span class="tnum">${Math.round(t.count)}</span> بند</span><b>${fmtSar(t.total_halalas)}</b></div>`).join('')}</div>` : ''}`
+    : mEmpty(c.empty_ar, 'بنود الكلفة تصل من الترحيل أو من المالية — غيابها لا يعني أن الكلفة صفر.')}`);
+
+  // ⑥ ما ينقص الصورة: يُقال صراحةً بدل أن يُقرأ صفراً
+  const gapsBlock = mBlock(`${mHead(G.whatIsMissing, 'ما لم يُسجَّل بعد — يُقال هنا كي لا يُقرأ صفراً في مكان آخر')}
+    ${(m.gaps || []).length ? `<div style="display:grid;gap:.4rem">${m.gaps.map((g) => `<div class="attn">
+        <span class="ic" style="background:#fffbeb;color:#b45309">${icon('flag')}</span>
+        <span class="tx"><span class="h">${esc(g.title_ar)}</span><span class="s">${esc(g.detail_ar)}</span></span></div>`).join('')}</div>`
+    : `<div class="alert ok">${G.pictureComplete}</div>`}`);
+
+  return `<div class="money-panel" data-money-year="${esc(String(m.year))}"${active ? '' : ' hidden'}>
+    ${bridgeBlock}${movement}${cashOutBlock}${staffingBlock}${costBlock}${gapsBlock}${ddTpl}</div>`;
+}
+
+// ── سجل المصروفات: قائمة وتجميع حسب الوصف وتسجيل وتعديل وحذف — كلٌّ خلف ما تسمح به الخدمة ──
+// السجل نفسه غير مسنَّن (يعرض كل ما سُجِّل بأي سنة)، فيُقال ذلك في عنوانه بدل أن يُظن سنوياً.
+function mExpensesBlock(m, { projectId, years, defaultYear }) {
+  const ex = m.expenses;
+  if (ex.permitted === false) return mBlock(`${mHead(G.expenseRegister)}${mRestricted(ex.reason_ar)}`);
+  const hidden = ex.amounts_visible === false;
+  const amt = (v) => (v == null ? (hidden ? mLock(m.cashOut.amounts_reason_ar) : mNo()) : mSar(v));
+  const canEdit = ex.can_add === true;      // منح الإنشاء والتعديل يسيران معاً في مصفوفة الصلاحيات
+  const canApprove = ex.can_approve === true;
+  const periodOpts = (sel) => years.flatMap((y) => MONTHS_AR.map((mn, i) => {
+    const v = `${y}-${String(i + 1).padStart(2, '0')}`;
+    return `<option value="${v}"${v === sel ? ' selected' : ''}>${mn} ${y}</option>`;
+  })).join('');
+  const nowM = new Date().getUTCMonth() + 1;
+  const defSel = `${years.includes(defaultYear) ? defaultYear : years[years.length - 1]}-${String(nowM).padStart(2, '0')}`;
+  const statusOpts = (list, sel) => list.map((s) => `<option value="${s}"${s === sel ? ' selected' : ''}>${EXPENSE_STATUS_AR[s]}</option>`).join('');
+
+  const typeRows = (ex.by_type || []).map((t) => `<tr style="border-bottom:1px solid var(--line)">
+      <td data-label="${G.expenseDesc}" style="padding:.4rem .7rem;font-size:12.5px">${esc(t.type || 'بلا وصف مسجَّل')}
+        <div style="font-size:10px;color:var(--muted)">${t.statuses.map((s) => esc(s.status_ar)).join(' · ')}</div></td>
+      <td data-label="عدد المصروفات" style="padding:.4rem .7rem;text-align:center">${mNum(t.count)}</td>
+      <td data-label="عدد الأشهر" style="padding:.4rem .7rem;text-align:center">${mNum(t.months)}</td>
+      <td data-label="من أول شهر إلى آخره" class="rtbl-hm" style="padding:.4rem .7rem;text-align:center;font-size:11.5px">${t.first_month ? `${mYm(t.first_month)}${t.last_month && t.last_month !== t.first_month ? ` ← ${mYm(t.last_month)}` : ''}` : G.undatedRows}</td>
+      <td data-label="المجموع" style="padding:.4rem .7rem;text-align:center">${amt(t.total_halalas)}</td></tr>`).join('');
+
+  const rows = (ex.rows || []).slice(0, M_ROWS_MAX);
+  const rowHtml = rows.map((r) => {
+    const settled = SETTLED_STATUSES.includes(String(r.status).toUpperCase());
+    const editable = canEdit && !settled;
+    const deletable = canEdit && !['APPROVED', 'PAID'].includes(String(r.status).toUpperCase());
+    const per = Number.isInteger(Number(r.month)) && Number.isInteger(Number(r.year))
+      ? `${r.year}-${String(r.month).padStart(2, '0')}` : '';
+    const view = `<tr data-exp-row="${esc(r.id)}" style="border-bottom:1px solid var(--line)">
+      <td data-label="${G.expenseDesc}" style="padding:.4rem .7rem;font-size:12.5px">${esc(r.type || 'بلا وصف مسجَّل')}
+        <div style="font-size:10px;color:var(--muted)">${G.expenseWho}: ${esc(r.requested_by_name || 'غير مسجَّل')}</div></td>
+      <td data-label="${G.expenseMonth}" style="padding:.4rem .7rem;text-align:center;font-size:11.5px">${mMonthYear(r.month, r.year)}</td>
+      <td data-label="${G.expenseAmount}" style="padding:.4rem .7rem;text-align:center">${r.amount_restricted ? mLock(m.cashOut.amounts_reason_ar) : amt(r.amount_halalas)}</td>
+      <td data-label="حالة المصروف" style="padding:.4rem .7rem;text-align:center">${canApprove
+      ? `<select class="input" style="font-size:11px;padding:.2rem .3rem;width:auto" aria-label="حالة المصروف"
+            data-action-change="exp-status" data-id="${esc(r.id)}">${statusOpts(Object.keys(EXPENSE_STATUS_AR), String(r.status).toUpperCase())}</select>`
+      : pill(esc(r.status_ar), r.status === 'PAID' ? 'green' : r.status === 'APPROVED' ? 'blue' : r.status === 'REJECTED' ? 'red' : 'slate')}</td>
+      <td data-label="إجراء" style="padding:.4rem .7rem;text-align:center;white-space:nowrap">
+        ${editable ? `<button type="button" class="btn btn-ghost btn-sm" data-action="exp-edit" data-id="${esc(r.id)}" title="${G.edit}" aria-label="${G.edit}">${icon('edit')}</button>` : ''}
+        ${deletable ? `<button type="button" class="btn btn-ghost btn-sm" data-action="exp-del" data-id="${esc(r.id)}" title="${G.delete}" aria-label="${G.delete}">✕</button>` : ''}
+        ${!editable && canEdit && settled ? `<span style="font-size:10px;color:var(--faint)">بعد الحسم لا تُعدَّل بياناته</span>` : ''}</td></tr>`;
+    const edit = editable ? `<tr data-exp-edit="${esc(r.id)}" hidden style="border-bottom:1px solid var(--line);background:#f8fafc">
+      <td colspan="5" style="padding:.5rem .7rem">
+        <div style="display:flex;gap:.4rem;flex-wrap:wrap;align-items:center">
+          <input class="input" data-f="type" value="${esc(r.type || '')}" aria-label="${G.expenseDesc}" style="flex:1;min-width:130px;font-size:12px">
+          <input class="input" data-f="amount" type="number" min="0" step="1" dir="ltr" value="${r.amount_halalas != null ? Math.round(r.amount_halalas) / 100 : ''}" aria-label="${G.expenseAmount}" style="width:110px;font-size:12px">
+          <select class="input" data-f="period" aria-label="${G.expenseMonth}" style="width:auto;max-width:150px;font-size:12px">${periodOpts(per)}</select>
+          <button type="button" class="btn btn-sm btn-primary" data-action="exp-save" data-id="${esc(r.id)}">${G.saveExpense}</button>
+          <button type="button" class="btn btn-sm" data-action="exp-cancel" data-id="${esc(r.id)}">${G.cancel}</button>
+        </div></td></tr>` : '';
+    return view + edit;
+  }).join('');
+
+  const addBar = ex.can_add ? `<div style="display:flex;gap:.4rem;flex-wrap:wrap;align-items:center;padding:.6rem .75rem;border-top:1px dashed var(--line);background:var(--bg)">
+      <input class="input" id="m-exp-type" list="m-exp-types" placeholder="${G.expenseDesc}…" aria-label="${G.expenseDesc}" style="flex:1;min-width:140px;font-size:12.5px">
+      <datalist id="m-exp-types">${(ex.type_suggestions || []).map((t) => `<option value="${esc(t)}"></option>`).join('')}</datalist>
+      <input class="input" id="m-exp-amount" type="number" min="0" step="1" dir="ltr" placeholder="${G.expenseAmount}" aria-label="${G.expenseAmount}" style="width:120px;font-size:12.5px">
+      <select class="input" id="m-exp-period" aria-label="${G.expenseMonth}" style="width:auto;max-width:160px;font-size:12px">${periodOpts(defSel)}</select>
+      <select class="input" id="m-exp-status" aria-label="حالة المصروف عند التسجيل" style="width:auto;font-size:12px">${statusOpts(OPEN_STATUSES, 'DRAFT')}</select>
+      <button type="button" class="btn btn-sm btn-primary" data-action="exp-add" data-project="${esc(projectId)}">${icon('plus')} ${G.addExpense}</button>
+    </div>` : '';
+
+  // العدد يُذكر حين يوجد تسجيل؛ ولا يُكتب «٠» فوق سجل فارغ — الفراغ له جملته لا رقمه.
+  return mBlock(`${mHead(`${G.expenseRegister}${ex.recorded ? ` (<span class="tnum">${Math.round(ex.count || 0)}</span>)` : ''}`,
+    `${esc(ex.note_ar)} — السجل يعرض كل ما سُجِّل في كل السنوات، والشريط الشهري أعلاه للسنة المعروضة وحدها`)}
+    <div id="money-expenses"></div>
+    ${hidden ? `<div style="margin-bottom:.5rem">${mRestricted(m.cashOut.amounts_reason_ar)}</div>` : ''}
+    ${ex.recorded ? `
+      <div style="font-size:11px;font-weight:800;color:var(--muted);margin:.2rem 0 .3rem">${G.expenseByType}</div>
+      <div class="tblwrap"><table class="rtbl" style="width:100%;border-collapse:collapse;min-width:480px">
+        <thead><tr style="font-size:10.5px;color:var(--muted);text-align:right">
+          <th style="padding:.35rem .7rem">${G.expenseDesc}</th><th style="padding:.35rem .7rem;text-align:center">عدد المصروفات</th>
+          <th style="padding:.35rem .7rem;text-align:center">عدد الأشهر</th><th style="padding:.35rem .7rem;text-align:center">من أول شهر إلى آخره</th>
+          <th style="padding:.35rem .7rem;text-align:center">المجموع</th></tr></thead><tbody>${typeRows}</tbody></table></div>
+      <div style="font-size:11px;font-weight:800;color:var(--muted);margin:.7rem 0 .3rem">أحدث المصروفات المسجّلة</div>
+      <div class="tblwrap" style="max-height:340px;overflow-y:auto"><table class="rtbl" style="width:100%;border-collapse:collapse;min-width:520px">
+        <thead><tr style="font-size:10.5px;color:var(--muted);text-align:right">
+          <th style="padding:.35rem .7rem">${G.expenseDesc}</th><th style="padding:.35rem .7rem;text-align:center">${G.expenseMonth}</th>
+          <th style="padding:.35rem .7rem;text-align:center">${G.expenseAmount}</th><th style="padding:.35rem .7rem;text-align:center">حالة المصروف</th>
+          <th style="padding:.35rem .7rem;text-align:center">إجراء</th></tr></thead><tbody>${rowHtml}</tbody></table></div>
+      ${ex.count > rows.length ? `<div style="font-size:10.5px;color:var(--faint);margin-top:.35rem">يُعرض أحدث <span class="tnum">${rows.length}</span> مصروفاً من <span class="tnum">${Math.round(ex.count)}</span> مسجَّلاً — والتجميع حسب الوصف أعلاه يشمل كل المسجَّل.</div>` : ''}
+      ${ex.undated_count ? `<div style="font-size:10.5px;color:var(--amber);font-weight:700;margin-top:.35rem">مصروفات ${G.undatedRows}: <span class="tnum">${Math.round(ex.undated_count)}</span> — لا تظهر على الشريط الشهري حتى يُسجَّل شهر صرفها.</div>` : ''}`
+    : mEmpty(G.notRecorded + ' — لا مصروفات على هذا المشروع', ex.empty_ar,
+      ex.can_add ? '<div class="s" style="color:var(--brand2);font-weight:700">سجّل أول مصروف من الشريط أدناه</div>' : '<div class="s">تسجيل المصروفات يتم من المالية أو قيادة القطاع.</div>')}
+    ${addBar}`);
+}
+
+// ── الموردون والاشتراكات والمتكرر: ما لا مسار لتسجيله يُقال صراحةً، ولا يُخترع له رقم ──
+function mGapCard(title, state, note, needs, workaround, extra = '') {
+  return `<div style="flex:1 1 260px;min-width:0;border:1px solid var(--line);border-radius:12px;padding:.65rem .75rem;background:#fff">
+    <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.35rem">
+      <span style="font-weight:800;font-size:12.5px">${title}</span>${pill(state, 'amber')}</div>
+    <div style="font-size:11px;color:var(--muted);line-height:1.9">${esc(note)}</div>
+    ${extra}
+    ${needs && needs.length ? `<div style="font-size:10.5px;font-weight:800;color:var(--ink2);margin-top:.5rem">${G.whatItNeeds}</div>
+      <ul style="margin:.2rem 0 0;padding-inline-start:1.1rem;list-style:disc;font-size:11px;color:var(--muted);line-height:1.9">
+        ${needs.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>` : ''}
+    ${workaround ? `<div class="alert info" style="margin-top:.5rem;font-size:11px"><span style="font-weight:800;flex:0 0 auto">${G.workaroundNow}</span><span>${esc(workaround)}</span></div>` : ''}</div>`;
+}
+
+function mSourcesBlock(m) {
+  const s = m.suppliers; const sub = m.subscriptions; const rec = m.recurring;
+  const supExtra = s.permitted === false ? `<div style="margin-top:.45rem">${mRestricted(s.reason_ar)}</div>`
+    : s.recorded ? `<div style="margin-top:.45rem">${(s.rows || []).slice(0, 6).map((r) => `<div class="dd-row">
+        <span>${esc(r.supplier_name || 'مورد غير مسمّى')}${r.code ? ` · ${esc(r.code)}` : ''}</span>
+        <b>${r.amount_halalas != null ? fmtSar(r.amount_halalas) : ''}</b></div>`).join('')}</div>`
+      : `<div style="font-size:11px;color:var(--faint);margin-top:.45rem">${esc(s.empty_ar)}</div>`;
+  const recBody = rec.permitted === false ? mRestricted('سجل المصروفات خارج صلاحيات دورك، ومنه يُقرأ ما تكرر.')
+    : rec.recorded ? `<div style="margin-top:.45rem">${rec.rows.map((t) => `<div class="dd-row">
+        <span>${esc(t.type || 'بلا وصف مسجَّل')} · <span class="tnum">${Math.round(t.months)}</span> أشهر · ${mYm(t.first_month)} ← ${mYm(t.last_month)}</span>
+        <b>${t.total_halalas != null ? fmtSar(t.total_halalas) : ''}</b></div>`).join('')}</div>`
+      : `<div style="font-size:11px;color:var(--faint);margin-top:.45rem">${esc(rec.empty_ar)}</div>`;
+  return mBlock(`${mHead('من أين يخرج المال: موردون · اشتراكات · متكرر', 'ما لا مسار لتسجيله في المنصة يُقال هنا صراحةً — وغيابه ليس صفراً')}
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:stretch">
+      ${mGapCard(G.suppliers, G.noWritePathYet, s.note_ar, s.needs_ar, s.workaround_ar, supExtra)}
+      ${mGapCard(G.subscriptions, G.notTrackedYet, sub.note_ar, sub.needs_ar, sub.workaround_ar)}
+      ${mGapCard(G.recurringExpenses, 'وصفٌ للمسجَّل', rec.note_ar, null, null, recBody)}
+    </div>`);
+}
+
+// ── القسم كاملاً: يُبنى على الخادم لكل سنة فيها حركة، والتبديل بينها في المتصفح بلا طلب جديد ──
+export async function projectMoneySection(user, project, opts = {}) {
+  let primary;
+  try {
+    primary = await projectMoney(user, project.id, { year: opts.year });
+  } catch (e) {
+    const why = e && e.status && e.status < 500 ? e.message : 'تعذّر تجهيز الأرقام الآن. حدّث الصفحة، وإن تكرر فأبلغ مدير النظام.';
+    return card(`<div style="padding:.85rem 1rem;border-bottom:1px solid var(--line);font-weight:800;font-size:13px">${G.moneyOnProject}</div>
+      ${mEmpty(G.moneyLoadFailed, why)}`, 'money-section');
+  }
+  const others = [...new Set([...(primary.cashIn.other_years || []), ...(primary.cashOut.other_years || []),
+    ...(primary.staffing.other_years || [])])].filter((y) => y !== primary.year).sort((a, b) => b - a);
+  const shown = others.slice(0, M_YEARS_MAX - 1);
+  const extra = [];
+  for (const y of shown) {
+    try { extra.push(await projectMoney(user, project.id, { year: y })); } catch { /* سنة تعذّرت قراءتها لا تُسقط القسم */ }
+  }
+  const panels = [primary, ...extra].sort((a, b) => b.year - a.year);
+  const chips = panels.length > 1
+    ? `<div class="chips" style="margin:0" role="group" aria-label="${G.showYear}"><span class="lbl">${G.showYear}</span>
+      ${panels.map((p) => `<button type="button" class="chip${p.year === primary.year ? ' on' : ''}" style="font-family:inherit"
+        data-action="money-year" data-year="${esc(String(p.year))}" aria-pressed="${p.year === primary.year}">سنة <span class="tnum">${esc(String(p.year))}</span></button>`).join('')}</div>`
+    : `<span class="pill" style="background:#f1f5f9;color:#475569">${G.showYear}: <span class="tnum">${esc(String(primary.year))}</span></span>`;
+  // سنوات المصروف في نموذج التسجيل: من بداية المشروع إلى نهايته، وتشمل السنة الجارية دائماً.
+  const cy = new Date().getUTCFullYear();
+  const sy = Number(String(project.start_date || '').slice(0, 4));
+  const ey = Number(String(project.end_date || '').slice(0, 4));
+  const from = Math.min(Number.isFinite(sy) && sy > 2000 ? sy : cy, cy, primary.year);
+  const to = Math.max(Number.isFinite(ey) && ey > 2000 ? ey : cy, cy, primary.year);
+  const years = []; for (let y = from; y <= to; y++) years.push(y);
+
+  return card(`<div style="padding:.85rem 1rem;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:.7rem;flex-wrap:wrap">
+      <span style="color:var(--brand);display:flex">${icon('money')}</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:800;font-size:13px">${G.moneyOnProject}</div>
+        <div style="font-size:10.5px;color:var(--muted)">${G.moneyOnProjectSub}</div>
+      </div>${chips}</div>
+    ${panels.map((p) => mYearPanel(p, { active: p.year === primary.year })).join('')}
+    ${mExpensesBlock(primary, { projectId: project.id, years, defaultYear: primary.year })}
+    ${mSourcesBlock(primary)}`, 'money-section');
+}
+
+export async function projectDetailPage(user, projectId, opts = {}) {
   const p = await get('SELECT * FROM project WHERE id = ? AND deleted_at IS NULL', [projectId]);
   if (!p) return layout({ user, active: 'projects', title: 'المشروع', body: noticeCard('المشروع غير موجود', 'ربما حُذف المشروع أو أن الرابط غير صحيح.', '/app/projects', 'العودة للمشاريع') });
   if (!can(user, 'read', 'project', p)) return layout({ user, active: 'projects', title: 'المشروع', body: noticeCard('لا تملك صلاحية الوصول', 'هذا المشروع خارج نطاق صلاحياتك الحالية — تواصل مع مدير النظام إن كنت تحتاج الوصول.', '/app/projects', 'العودة للمشاريع') });
@@ -1149,6 +1564,8 @@ export async function projectDetailPage(user, projectId) {
   const gov = await projectGovernance(user, p.id);
   const canGov = gov.canEdit;
   const dlv = gov.deliverables || [];
+  // حركة المال على المشروع — قسم كامل خلف بواباته، والسنة تأتي من الرابط إن مُرِّرت.
+  const moneyCard = await projectMoneySection(user, p, { year: opts.year });
   const invSum = (await get(`SELECT COALESCE(SUM(amount_halalas),0) v FROM invoice
      WHERE project_id=? AND deleted_at IS NULL AND status NOT IN ('DRAFT','CANCELLED')`, [p.id])).v;
   const users = await all(`SELECT id, COALESCE(name_ar, username) AS "name" FROM app_user
@@ -1423,6 +1840,7 @@ export async function projectDetailPage(user, projectId) {
       ${financeCard}
     </div>
     <div style="margin-bottom:.9rem">${pvaCard}</div>
+    <div id="money" style="margin-bottom:.9rem">${moneyCard}</div>
     <div style="display:grid;grid-template-columns:1.15fr 1fr;gap:.9rem;margin-bottom:.9rem">
       ${card(`<div style="padding:.85rem 1rem;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center">
         <div style="font-weight:800;font-size:13px">التسكين — فريق المشروع (${staff.length})</div>
@@ -1455,7 +1873,8 @@ export async function projectDetailPage(user, projectId) {
         <table style="width:100%;border-collapse:collapse"><tbody>${riskRows || '<tr><td style="padding:1rem;color:var(--muted);font-size:12.5px">لا مخاطر مفتوحة</td></tr>'}</tbody></table>`)}
     </div>
     ${govCard}
-    <script>window.__SANAD=Object.assign(window.__SANAD||{},{gov:{projectId:${JSON.stringify(p.id)},canEdit:${canGov}}});</script>`;
+    <script>window.__SANAD=Object.assign(window.__SANAD||{},{gov:{projectId:${JSON.stringify(p.id).replace(/</g, '\\u003c')},canEdit:${canGov}},
+      money:{projectId:${JSON.stringify(p.id).replace(/</g, '\\u003c')}}});</script>`;
   return layout({ user, active: 'projects', title: esc(p.name_ar), subtitle: 'تفاصيل المشروع', body,
-    scripts: ['/static/pages/project-governance.js'] });
+    scripts: ['/static/pages/project-governance.js', '/static/pages/project-money.js'] });
 }

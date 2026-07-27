@@ -343,6 +343,11 @@
   // لغة الشرط المدعومة: { field, equals|not_equals|in|not_in|filled|flag } وتركيبها
   // { all:[…] } / { any:[…] } / { not:… }. شرط لا نفهمه ⇒ الحقل يظهر ولا يُفرض، فلا نحبس
   // المستخدم خلف قاعدة لا نستطيع تقييمها.
+  //
+  // والشرط يأتي من الخادم وحده: القاعدة قاعدةُ الخدمة التي ستنفّذ التغيير — «مُعطَّل» بلا سبب
+  // مكتوب، والتراجع عن فوزٍ بلا سبب. نسخةٌ ثانية منها هنا تتعفّن يوم تتغيّر هناك، فتُخفي حقلاً
+  // صار مطلوباً أو تطلب حقلاً لم يعد كذلك. `flag` وحده يقرأ الصفّ المختار من القائمة (مثل
+  // «هذه الفرصة مكسوبة») لأن حاله لا يُستنتج من قيمة الحقل.
   function condValue(state, name) {
     var f = state.byName[name];
     return f ? String(f.get() == null ? '' : f.get()) : '';
@@ -381,20 +386,15 @@
     }
     return null;
   }
-  // شرط توافقي يُستعمل فقط حين لا تحمل مواصفة الحقل شرطاً: مصدره قاعدة الخدمة نفسها — المهمة
-  // المعطَّلة بلا سبب مكتوب تُرفض عند التنفيذ، فنطلب السبب قبل التأكيد لا بعده. يسقط تلقائياً
-  // في اللحظة التي يرسل فيها الخادم شرط الحقل صراحةً.
-  var COMPAT_WHEN = { blockedReason: { field: 'status', equals: 'BLOCKED' } };
   function serverWhen(field) { return field.show_when || field.visible_when || field.when || null; }
-  function compatWhen(field) { return (serverWhen(field) || field.required_when) ? null : (COMPAT_WHEN[field.name] || null); }
   function isVisible(field, state) {
-    var c = serverWhen(field) || compatWhen(field);
+    var c = serverWhen(field);
     if (!c) return true;
     var r = evalCond(c, state);
     return r === null ? true : r;                      // شرط لا نفهمه ⇒ نُظهر الحقل ولا نخفيه
   }
   function isRequired(field, state) {
-    var c = field.required_when || compatWhen(field);
+    var c = field.required_when;
     if (c) { var r = evalCond(c, state); if (r !== null) return r === true; }
     return field.required === true;
   }
@@ -593,11 +593,17 @@
     var t = typeof v === 'number' ? v : Date.parse(String(v));
     return isNaN(t) ? 0 : t;
   }
+  // الساعة والدقيقة فقط — ولو تعذّر التنسيق المحلي كتبناهما بأنفسنا: وقتٌ حقيقي دائماً، فلا
+  // تنزلق اللوحة إلى وعدٍ مبهم بـ«دقائق قليلة» بينما الخادم قال لها اللحظة بالضبط.
   function atTime(ms) {
     var d = new Date(ms);
     if (isNaN(d.getTime())) return '';
-    try { return d.toLocaleTimeString('ar-SA-u-nu-latn', { hour: '2-digit', minute: '2-digit' }); }
-    catch (e) { return ''; }
+    try {
+      var s = d.toLocaleTimeString('ar-SA-u-nu-latn', { hour: '2-digit', minute: '2-digit' });
+      if (s) return s;
+    } catch (e) { /* لا تنسيق محلي — نكمل بالحساب اليدوي */ }
+    var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+    return pad(d.getHours()) + ':' + pad(d.getMinutes());
   }
 
   function renderPreview(p, form, values) {
@@ -624,13 +630,15 @@
       confirm.disabled = true;
       note.textContent = 'تعذّر تجهيز هذا التغيير للتأكيد. أعد المحاولة من جديد.';
     } else {
+      // المهلة تُقال بلحظتها كما أرسلها الخادم: «حتى ٠٣:٢٠» يعرف صاحبها كم بقي له، و«لدقائق
+      // قليلة» لا تعني شيئاً — ومنها كان يُضغط زرّ التأكيد بعد فوات الأوان فيُردّ بلا سبب مفهوم.
       var until = expires ? atTime(expires) : '';
       if (until) {
         note.appendChild(document.createTextNode('صالحة للتأكيد حتى '));
         note.appendChild(el('span', 'tnum', until));
         note.appendChild(document.createTextNode('.'));
       } else {
-        note.textContent = 'صالحة للتأكيد لدقائق قليلة.';
+        note.textContent = 'راجع التغيير ثم أكّده الآن.';   // بلا لحظة انتهاء لا نَعِد بمهلة لا نعرفها
       }
     }
     card.appendChild(acts);
@@ -738,19 +746,14 @@
   }
 
   // ── إرسال سؤال / تشغيل مهمة جاهزة ───────────────────────────────────────────
-  // بأي مفتاح يُرسل الاختيار؟ بالترتيب: ما يذكره الخيار نفسه، ثم الحقل الذي يسمّيه الردّ،
-  // ثم مفتاح النيّة المعروفة. وإن لم يصل شيء من ذلك أرسلناه بمفتاحين معاً — يُقرأ حيث يُفهم
-  // ويُهمَل حيث لا يُفهم، ومع النصّ الأصلي كي يبقى تصنيف الطلب كما كان. يسقط هذا كله حين
-  // يذكر الردّ نيّته وحقله صراحةً.
-  var CHOICE_KEY = { summarize_project: 'projectId' };
+  // بأي مفتاح يُرسل الاختيار؟ بالمفتاح الذي سمّاه الردّ: كل ردّ يذكر نيّته، وردُّ الالتباس
+  // يذكر مع خياراته اسم حقلها. فيعود الاختيار بمفتاح واحد معلوم — مع النصّ الأصلي كي يبقى
+  // تصنيف الطلب كما كان. (كان يُرسل بمفتاحين «عسى أن يُقرأ أحدهما»، وبخريطة نوايا محفوظة هنا
+  // تتعفّن كلما تغيّر الخادم؛ والنتيجة أن اختيار المستخدم كان يضيع فيُجاب بجواب عام.)
   function optsForChoice(choice, intent, field) {
-    if (choice.raw && choice.raw.opts && typeof choice.raw.opts === 'object') return choice.raw.opts;
     var o = {};
     if (intent) o.intent = intent;
-    var key = field || (intent && CHOICE_KEY[intent]);
-    if (key) { o[key] = choice.id; return o; }
-    o.choice = choice.id;
-    o.projectId = choice.id;
+    if (field) o[field] = choice.id;
     return o;
   }
   // اختيارٌ ونموذجٌ معروض معاً: الاختيار يملأ حقل النموذج في مكانه — لا رحلة ثانية ولا تخمين.

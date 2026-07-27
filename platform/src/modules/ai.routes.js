@@ -3,11 +3,19 @@
 //
 // العقد مع الواجهة:
 //   GET  /api/ai/status         ⟵ { mode, modeLabel, configured, suggestions[] }
-//   POST /api/ai/chat           ⟵ { reply, choices?, form? }   ← **لا رمز تأكيد أبداً**
+//   POST /api/ai/chat           ⟵ { reply, intent, choices?, choice_field?, form? }  ← **لا رمز تأكيد أبداً**
 //   GET  /api/ai/options/:kind  ⟵ { kind, options[] }          ← كل معرّف يظهر للواجهة يصدر من هنا
-//   POST /api/ai/preview        ⟵ { reply, preview, applyToken }  ← المدخل الوحيد لأي تغيير
+//   POST /api/ai/preview        ⟵ { reply, preview, applyToken, previewId, expires_at }  ← المدخل الوحيد لأي تغيير
 //   POST /api/ai/apply          ⟵ { reply, applied, resource, resourceId }
 //   GET  /api/ai/activity       ⟵ { scope, rows[] }            ← بمنح قراءة التدقيق وحدها
+//
+// وثلاثة أشياء يقولها الخادم بنفسه فلا تخمّنها اللوحة:
+//   • `expires_at` — لحظة انتهاء المعاينة كما حُفظت، فتُعرض «صالحة للتأكيد حتى …» ويُعطَّل
+//     زرّ التأكيد عند انقضائها بدل إرسال تأكيدٍ يعرف الخادم سلفاً أنه مرفوض.
+//   • شروط الحقول في `form` (`when` للظهور و`required_when` للطلب) — قواعد الخدمة نفسها،
+//     تُطلب قبل التأكيد لا بعده. و`won` على صفوف قائمة الفرص لأن حال الصفّ لا يُستنتج باسمه.
+//   • `intent` في كل ردّ و`choice_field` مع خيارات الالتباس — فيعود اختيار المستخدم بمفتاحه
+//     المسمّى إلى نيّته نفسها، ولا يُعاد تصنيفه نصّاً فيضيع.
 import { Router } from 'express';
 import { requireAuth } from '../core/http/context.js';
 import { ask, aiStatus, optionsFor, proposePreview } from '../core/ai/assistant.js';

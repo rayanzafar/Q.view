@@ -74,7 +74,10 @@ export async function ask(ctx, message, opts = {}) {
     // الواجهة أصلاً. هذا هو الثابت الذي يجعل خطأ «فهمٍ» غير قادر على إنتاج كتابة.
     const { outcome = OUTCOME.OK, applyToken: _t, previewId: _p, preview: _v, ...answer } = out;
     await logAsk(user, { intent, outcome, prompt: text, sectorId: user.sector_id });
-    return answer;
+    // الردّ يسمّي نيّته. بلا ذلك كان اختيار المستخدم من قائمة الالتباس يعود نصّاً يُصنَّف من
+    // جديد — فيضيع الاختيار ويُجاب بجواب عام. النيّة رمز داخلي لا يُعرض لأحد، والواجهة تعيده
+    // كما وصلها مع الاختيار فيبقى الطلب هو الطلب.
+    return { intent, ...answer };
   } catch (e) {
     // القرار أولاً ثم السجل: المرفوض يُسجَّل بنيّته ونتيجته بلا نصّ طلبه.
     await logAsk(user, { intent, outcome: OUTCOME.DENIED, sectorId: user.sector_id });
@@ -134,8 +137,10 @@ async function summarizeProject(user, projectRef, text) {
         outcome: OUTCOME.EMPTY };
     }
     if (found.total > 1) {
+      // `choice_field` يقول بأي مفتاح يعود الاختيار — فتُرسله الواجهة باسمه لا بمفتاحين تخميناً.
       return { reply: `أكثر من مشروع يطابق «${found.query}» — اختر أيّها تقصد:`,
-        choices: found.matches.map((m) => ({ id: m.id, label_ar: m.label })), outcome: OUTCOME.EMPTY };
+        choices: found.matches.map((m) => ({ id: m.id, label_ar: m.label })),
+        choice_field: 'projectId', outcome: OUTCOME.EMPTY };
     }
     project = await get('SELECT * FROM project WHERE id = ? AND deleted_at IS NULL', [found.matches[0].id]);
     preface = `اخترتُ «${project.name_ar}» — المطابق الوحيد ضمن نطاقك. إن قصدت غيره فاذكر اسمه كاملاً.\n\n`;
@@ -259,15 +264,32 @@ function smallTalk(user) {
 }
 
 // ── النوايا الكاتبة في الدردشة: نموذجٌ يُملأ، لا تخمينٌ يُنفَّذ ────────────────
+// حقول كل نموذج بالاسم: ما يُقبل مملوءاً مسبقاً في الطلب. الطلب يحمل القيمة باسم حقلها
+// مباشرةً (هكذا يعود اختيار المستخدم من قائمة الالتباس) أو داخل `form` (إعادة فتح نموذج).
+// وما ليس حقلاً في هذا النموذج يُهمَل — والقيمة تُقبل نصاً أو رقماً فقط، وتُعاد التحقق منها
+// كلها وقت المعاينة على كل حال.
+const FORM_FIELDS = {
+  task_create: ['title', 'projectId', 'dueDate', 'priority'],
+  task_status: ['taskId', 'status', 'blockedReason'],
+  opp_stage: ['oppId', 'stage', 'note'],
+};
+function presetFor(type, opts) {
+  const src = opts.form && typeof opts.form === 'object' ? { ...opts.form } : {};
+  for (const key of FORM_FIELDS[type] || []) {
+    const v = opts[key];
+    if (typeof v === 'string' || typeof v === 'number') src[key] = String(v).slice(0, 200);
+  }
+  return src;
+}
+
 async function offerForm(user, intent, text, opts) {
   const spec = INTENT_BY_KEY[intent];
   if (!spec.allow(user)) throw forbidden(denialFor(intent));
   const type = WRITE_TYPE_OF[intent];
-  const given = opts.form && typeof opts.form === 'object' ? opts.form : {};
-  const { form, note, choices } = await buildForm(user, type, text, given);
+  const { form, note, choices, choiceField } = await buildForm(user, type, text, presetFor(type, opts));
   return {
     reply: `${note}\n\nاملأ الحقول ثم اضغط «معاينة» — أعرض عليك ما سيتغيّر بالضبط، ولا يُنفَّذ شيء قبل تأكيدك.`,
-    form, ...(choices?.length ? { choices } : {}),
+    form, ...(choices?.length ? { choices, choice_field: choiceField } : {}),
   };
 }
 
@@ -277,6 +299,25 @@ function denialFor(intent) {
   return 'تعديل الفرص خارج صلاحيتك — اطلب تفعيلها من مدير النظام.';
 }
 
+// ── شروط الحقول: الحقل يظهر ويُطلب في حالته وحدها ─────────────────────────────
+// لغة الشرط التي ترسمها الواجهة: { field, equals|not_equals|in|not_in|filled|flag } وتركيبها
+// { all:[…] } / { any:[…] } / { not:… }. `when` يحكم ظهور الحقل و`required_when` يحكم طلبه.
+//
+// ولماذا يرسلها الخادم أصلاً؟ لأن القاعدة قاعدة **الخدمة** لا قاعدة شاشة: «مُعطَّل» بلا سبب
+// مكتوب ترفضه `updateTask`، والتراجع عن الفوز بلا سبب ترفضه `moveStage` — والرفض يقع بعد أن
+// يكون المستخدم قد أكّد المعاينة. الشرط ينقل الطلب إلى ما قبل التأكيد: يُطلب السبب في النموذج
+// فلا يُردّ صاحبه بعد موافقته. ومصدر الشرط هنا هو مصدر القاعدة نفسه — لا نسخة ثانية في المتصفح
+// تتعفّن حين تتغيّر القاعدة.
+const WHEN_BLOCKED = { field: 'status', equals: 'BLOCKED' };
+// شرط سبب التراجع عن الفوز: فرصةٌ **حالها مكسوب** (راية على صفّها في القائمة، لا مطابقة اسم
+// مرحلة) ومرحلةٌ جديدة ليست مرحلة فوز — وهي حرفياً قاعدة `moveStage`. مراحل الفوز تُقرأ من
+// تعريف المراحل لا تُكتب رمزاً هنا: لو أضاف المشغّل مرحلة فوز ثانية بقي الشرط صادقاً.
+async function reversalReasonWhen() {
+  const won = (await all('SELECT id FROM stage WHERE is_won = 1 ORDER BY sort_order')).map((s) => s.id);
+  const notWon = won.length === 1 ? { field: 'stage', not_equals: won[0] } : { field: 'stage', not_in: won };
+  return { all: [{ field: 'oppId', flag: 'won' }, notWon] };
+}
+
 // مواصفة النموذج التي ترسمها الواجهة. القوائم تُجلب من «خيارات» الخادم، فلا يظهر في أي قائمة
 // سجلٌّ لا يملك صاحب الطلب لمسه — أي أن الهدف الخارج عن النطاق لا يُعرض أصلاً فضلاً عن اختياره.
 async function buildForm(user, type, text, given) {
@@ -284,7 +325,7 @@ async function buildForm(user, type, text, given) {
     const hint = await prefillFrom(user, 'project', text, given.projectId);
     return {
       note: hint.note || 'مهمة جديدة تُسنَد إليك، وقطاعها يُثبَّت على قطاعك.',
-      choices: hint.choices,
+      choices: hint.choices, choiceField: 'projectId',
       form: {
         type, title_ar: 'إنشاء مهمة', submit_ar: 'معاينة',
         fields: [
@@ -302,7 +343,7 @@ async function buildForm(user, type, text, given) {
     const hint = await prefillFrom(user, 'task', text, given.taskId);
     return {
       note: hint.note || 'اختر المهمة والحالة الجديدة.',
-      choices: hint.choices,
+      choices: hint.choices, choiceField: 'taskId',
       form: {
         type, title_ar: 'تحديث حالة مهمة', submit_ar: 'معاينة',
         fields: [
@@ -311,7 +352,8 @@ async function buildForm(user, type, text, given) {
           { name: 'status', label_ar: 'الحالة الجديدة', kind: 'select', required: true,
             options_kind: 'task_status', value: given.status || null },
           { name: 'blockedReason', label_ar: 'سبب التعطيل', kind: 'textarea', required: false,
-            value: given.blockedReason || null, help_ar: 'يُطلب عند اختيار «مُعطَّل»: اكتب السبب ومَن يرفعه.' },
+            when: WHEN_BLOCKED, required_when: WHEN_BLOCKED,
+            value: given.blockedReason || null, help_ar: 'اكتب السبب ومَن يستطيع رفعه.' },
         ],
       },
     };
@@ -320,7 +362,7 @@ async function buildForm(user, type, text, given) {
     const hint = await prefillFrom(user, 'opportunity', text, given.oppId);
     return {
       note: hint.note || 'اختر الفرصة والمرحلة التي تنتقل إليها.',
-      choices: hint.choices,
+      choices: hint.choices, choiceField: 'oppId',
       form: {
         type, title_ar: 'نقل فرصة إلى مرحلة', submit_ar: 'معاينة',
         fields: [
@@ -328,7 +370,10 @@ async function buildForm(user, type, text, given) {
             options_kind: 'opportunity', value: hint.value || null },
           { name: 'stage', label_ar: 'المرحلة', kind: 'select', required: true,
             options_kind: 'stage', value: given.stage || null },
+          // الملاحظة مفيدة في كل نقل (تُكتب في سجل المراحل)، فتبقى ظاهرة دائماً — ويُطلب
+          // ملؤها في حالة واحدة: التراجع عن فوز. أي شرط طلبٍ لا شرط ظهور.
           { name: 'note', label_ar: 'ملاحظة', kind: 'textarea', required: false, value: given.note || null,
+            required_when: await reversalReasonWhen(),
             help_ar: 'التراجع عن الفوز يستوجب سبباً مكتوباً.' },
         ],
       },
@@ -479,11 +524,14 @@ export async function optionsFor(user, kind) {
     // أعمدة النطاق مؤهَّلة صراحةً باسم الجدول (لا تعديل نصّي على الشرط بعد بنائه).
     const f = scopeFilter(user, 'opportunity', 'read',
       { sectorCol: 'o.sector_id', ownerCol: 'o.owner_user_id', projectCol: 'o.id' });
-    const rows = await all(`SELECT o.id, o.title_ar, s.name_ar AS stage_name FROM opportunity o
+    const rows = await all(`SELECT o.id, o.title_ar, s.name_ar AS stage_name, s.is_won FROM opportunity o
       LEFT JOIN stage s ON s.id = o.stage_id
       WHERE ${f.clause} AND o.deleted_at IS NULL
       ORDER BY o.title_ar LIMIT 100`, f.params);
-    return { kind, options: rows.map((r) => ({ id: r.id, label_ar: r.title_ar, sub_ar: r.stage_name || UNKNOWN_AR })) };
+    // `won` حالٌ يقوله الصفّ عن نفسه: الواجهة تطلب سبب التراجع عن الفوز بناءً عليه. بدونه
+    // كان الطريق الوحيد أمامها مطابقة اسم المرحلة العربي — وهي أسوأ من ألّا تفعل شيئاً.
+    return { kind, options: rows.map((r) => ({ id: r.id, label_ar: r.title_ar,
+      sub_ar: r.stage_name || UNKNOWN_AR, won: !!Number(r.is_won) })) };
   }
   if (kind === 'task') {
     const f = scopeFilter(user, 'task', 'update', { ownerCol: 'assignee_user_id' }); // المهمة لا تحمل عمود مالك — صاحبها هو المُسنَد إليه
@@ -515,10 +563,13 @@ export async function proposePreview(ctx, body = {}) {
   }
   const { token, expiresAt } = await savePreview(user, built.preview, { intent: built.intent, sectorId: built.sectorId });
   await logAsk(user, { intent: built.intent, outcome: OUTCOME.PREVIEW, sectorId: built.sectorId });
+  // `expires_at` هي اللحظة المحفوظة نفسها التي يفرضها المزلاج عند التأكيد — تُعاد كما هي لا
+  // تُحسب في المتصفح. بها تقول اللوحة «صالحة للتأكيد حتى ٠٣:٢٠»، وتُعطّل زرّ التأكيد عند
+  // انقضائها بدل أن تُرسل تأكيداً يعرف الخادم سلفاً أنه مرفوض.
   return {
     reply: `**معاينة تغيير — لن يُطبَّق إلا بتأكيدك:**\n${built.preview.summary}\n\n`
       + `صالحة ${PREVIEW_TTL_MINUTES} دقيقة، ولمرة واحدة.`,
-    preview: built.preview, applyToken: token, previewId: token, expiresAt,
+    preview: built.preview, applyToken: token, previewId: token, expires_at: expiresAt,
   };
 }
 
