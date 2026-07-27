@@ -15,6 +15,9 @@ export const PAGE_ACCESS = {
   clients: (u) => can(u, 'read', 'client') || u.scope === 'company',
   tasks: () => true,
   timesheet: () => true,
+  // «دليلي» صفحة شرح لكل من يدخل المنصة — لا شيء فيها يُحرس: محتواها نفسه مُرشَّح مسبقاً
+  // بنفس بوابة الصلاحيات التي تسمح أو تمنع كل شاشة، فلا يصل المستخدم إلا لشرح ما يراه فعلاً.
+  guide: () => true,
   approvals: (u) => ['admin', 'sector_lead', 'finance', 'department_manager', 'line_manager', 'approver', 'ceo_office'].includes(u.role_id),
   finance: (u) => can(u, 'read', 'invoice') || can(u, 'read', 'contract'),
   team: (u) => can(u, 'read', 'employee'),
@@ -48,6 +51,7 @@ export const NAV_ITEMS = [
   { key: 'tasks', ar: 'مهامي', ic: 'tasks', group: 'work' },
   { key: 'timesheet', ar: 'سجل الوقت', ic: 'timesheet', group: 'work' },
   { key: 'approvals', ar: 'الاعتمادات', ic: 'approvals', group: 'work' },
+  { key: 'guide', ar: 'دليلي', ic: 'list', group: 'work' },
   { key: 'finance', ar: 'المالية والعقود', ic: 'money', group: 'manage' },
   { key: 'team', ar: 'الفريق', ic: 'team', group: 'manage' },
   { key: 'staffing', ar: 'التسكين', ic: 'clock', group: 'manage' },

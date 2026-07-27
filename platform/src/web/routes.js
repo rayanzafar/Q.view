@@ -53,6 +53,7 @@ const PAGES = {
   projects: P.projectsPage, tasks: P.tasksPage, timesheet: P.timesheetPage, approvals: P.approvalsPage,
   team: P.teamPage, staffing: P.staffingPage, users: P.usersPage, audit: P.auditPage, reports: P.reportsPage, org: P.orgTreePage,
   finance: P.financePage, mail: P.mailPage, clients: P.clientsPage, imports: P.importsPage,
+  guide: P.guidePage,
 };
 
 // معاينة رسالة من صندوق المعاينة — بنفس صلاحية صفحة مركز البريد
