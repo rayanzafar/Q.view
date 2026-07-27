@@ -69,13 +69,30 @@ const safeSar = (v) => { const n = Math.round(Number(v)); return Number.isFinite
 
 export async function createFromIntake(ctx, data) {
   const user = ctx.user;
-  const sectorId = data.sector_id || user.sector_id;
+  // الفرصة المصدر (اختيارية): الفرصة الفائزة «تتحول إلى مشروع». الربط هنا **مرجع لا نسخة**:
+  // نكتب `source_opp_id` ونرث معرّف العميل نفسه — ولا ننقل قيمة الفرصة إلى قيمة العقد أبداً.
+  // قيمة الفرصة هي ما عُرِض، وقيمة العقد هي ما وُقِّع؛ نسخ الأولى فوق الثانية يخلق رقماً ثالثاً
+  // لا مصدر له ويُحتسب مرتين في المبيعات وفي المحفظة. لذلك القيمة تُدخَل من النموذج وحده.
+  const srcOppId = (data.source_opp_id || '').toString().trim() || null;
+  let srcOpp = null;
+  if (srcOppId) {
+    srcOpp = await get('SELECT id, title_ar, client_id, sector_id FROM opportunity WHERE id = ? AND deleted_at IS NULL', [srcOppId]);
+    if (!srcOpp) throw badRequest('الفرصة المصدر غير موجودة');
+    if (!can(user, 'read', 'opportunity', srcOpp)) throw forbidden('هذه الفرصة خارج نطاقك');
+  }
+  const sectorId = data.sector_id || srcOpp?.sector_id || user.sector_id;
   if (!can(user, 'create', 'project', { sector_id: sectorId })) throw forbidden('خارج نطاق قطاعك');
   const name = (data.name_ar || data.title_ar || '').trim().slice(0, 200);
   if (!name) throw badRequest('اسم المشروع مطلوب');
   const valueSar = safeSar(data.value_sar);
   const now = nowIso();
   const result = await tx(async () => {
+    // فحص التكرار داخل المعاملة لا خارجها: فرصة واحدة تُنتج مشروعاً واحداً، وفحصٌ خارج المعاملة
+    // يسمح لطلبين متزامنين بالمرور معاً فيصير للفرصة مشروعان — ومنه يبدأ ازدواج القيمة.
+    if (srcOppId) {
+      const linked = await get('SELECT id, name_ar FROM project WHERE source_opp_id = ? AND deleted_at IS NULL', [srcOppId]);
+      if (linked) throw badRequest(`لهذه الفرصة مشروع بالفعل: «${linked.name_ar}» — افتحه بدل إنشاء مشروع ثانٍ`);
+    }
     let clientId = data.client_id || null;
     const clientName = (data.client_name || '').trim();
     if (!clientId && clientName) {
@@ -83,10 +100,12 @@ export async function createFromIntake(ctx, data) {
       if (existing) clientId = existing.id;
       else { clientId = id('cli'); await insert('client', { id: clientId, name_ar: clientName, active: 1, created_at: now, created_by: user.id }); }
     }
+    // عميل الفرصة يُورَث بمعرّفه نفسه — لا يُنشأ عميل ثانٍ بالاسم نفسه فتنقسم أرقامه بين سجلّين.
+    if (!clientId && srcOpp?.client_id) clientId = srcOpp.client_id;
     const pid = id('prj');
     await insert('project', {
       id: pid, name_ar: name, sector_id: sectorId, client_id: clientId, owner_user_id: data.owner_user_id || user.id,
-      status: data.status || 'NOT_STARTED', rag: 'GREEN', kind: 'external',
+      status: data.status || 'NOT_STARTED', rag: 'GREEN', kind: 'external', source_opp_id: srcOppId,
       contract_value_halalas: toHalalas(valueSar), start_date: cleanDate(data.start_date), end_date: cleanDate(data.end_date),
       created_at: now, created_by: user.id,
     });
@@ -103,9 +122,10 @@ export async function createFromIntake(ctx, data) {
         month: d.month || null, status: 'PENDING', sector_id: sectorId, created_at: now });
       n++;
     }
-    return { project_id: pid, contract_id: cid, client_id: clientId, deliverables: n };
+    return { project_id: pid, contract_id: cid, client_id: clientId, deliverables: n, source_opp_id: srcOppId };
   });
   await audit(ctx, { action: 'create', resource: 'project', resourceId: result.project_id, sectorId,
-    detail: { via: data.deliverables?.length ? 'contract-intake' : 'manual', deliverables: result.deliverables, contract: result.contract_id } });
+    detail: { via: srcOppId ? 'from-opportunity' : (data.deliverables?.length ? 'contract-intake' : 'manual'),
+      deliverables: result.deliverables, contract: result.contract_id, source_opp_id: srcOppId } });
   return result;
 }

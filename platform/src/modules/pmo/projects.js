@@ -85,6 +85,69 @@ export async function nextMilestones(projectIds = []) {
   return out;
 }
 
+// ── تصنيف المشروع: «لمن يُنجَز هذا العمل؟» ────────────────────────────────────
+// الخانة المخزَّنة لنوع المشروع لا يُعوَّل عليها في البيانات المنقولة: الترحيل كتب «داخلي» على
+// 34 مشروعاً من 43، منها 31 **له عميل مسجَّل** و23 تحمل قيمة تعاقدية بعشرات الملايين، ولا مسار
+// في المنتج كله يعدّل هذه الخانة بعد الإنشاء (قائمة التعديل المسموح بها لا تشملها). فقراءتها
+// حرفياً تطبع «داخلي» فوق عقد عميل حقيقي — كذبة يقرأها المالك على الشاشة كل يوم.
+// لذلك يُشتقّ التصنيف من **قرائن الصف نفسه** لا من الخانة: القرينة أحدث وأصعب في الوهم — العميل
+// والقيمة التعاقدية وأمر الشراء والإيراد المحقق والفرصة المصدر كلها سجلات يكتبها المنتج اليوم،
+// والخانة سطر متروك منذ النقل. وتُقرأ الخانة حين تقول شيئاً **موجباً** فقط: «لعميل» و«منتج»
+// تصريحان من المصدر، أما «داخلي» فهي القيمة الافتراضية التي وقعت على كل ما لم يُصنَّف فلا تحمل
+// معلومة أصلاً. لا تُكتب هنا خانة ولا يُصحَّح صف: تصحيح البيانات قرار مالك، والشاشة تعرض الصدق.
+// الترتيب (الأعلى يفوز):
+//   ١) عميل مسجَّل نوعه «داخلي» (الشركة نفسها) ⇐ تشغيل داخلي. وهذه هي الكذبة المعاكسة التي
+//      تقع فيها قاعدة «له عميل ⇒ مشروع عميل» وحدها: أربعة مشاريع مربوطة بعميل اسمه «قطاع
+//      الحلول — داخلي (رؤية الخبراء)» — أي الشركة على نفسها — بلا عقد ولا إيراد ولا فرصة.
+//   ٢) عميل مسجَّل (حكومي/خاص/شبه حكومي) ⇐ مشروع عميل.
+//   ٣) مسجَّل «منتج» ⇐ منتج.
+//   ٤) بلا عميل لكن بقرينة تجارية (قيمة تعاقدية أو أمر شراء أو إيراد محقق أو فرصة مصدر أو
+//      تصريح «لعميل») ⇐ مشروع عميل ينقصه ربط العميل — لا عملٌ داخلي. بلا هذا البند يُقلب
+//      مشروع «إنشاء وتشغيل المنصة المكانية» (تصريحه «لعميل» وله إيراد محقق) إلى تشغيل داخلي.
+//   ٥) وإلا ⇐ تشغيل داخلي. ولا كيان اسمه «مشاريع داخلية»: التسمية في المعجم وحده.
+// `stale` تعني: المشتقّ يخالف المخزَّن. الشاشة تذكرها في تلميح الوسم بدل أن تُخفي التناقض، كي
+// يعرف المالك أن البيانات نفسها تحتاج تصحيحاً ولا يظن الاشتقاق تجميلاً دائماً.
+// دالة صرفة بلا استعلام: الشاشة تمرّر ما قرأته أصلاً (نوع العميل + الإيراد المحقق) فتتطابق كل
+// الشاشات على تصنيف واحد للمشروع الواحد.
+const INTERNAL_CLIENT_TYPE = 'داخلي'; // من CLIENT_TYPES في وحدة العملاء — العميل الذي هو الشركة
+export function projectKind(project = {}, evidence = {}) {
+  const p = project || {};
+  const clientType = evidence.clientType == null ? '' : String(evidence.clientType).trim();
+  const revenue = Number(evidence.revenueHalalas) || 0;
+  const stored = String(p.kind || '').trim().toLowerCase();
+  const storedKey = stored === 'external' ? 'client' : stored === 'product' ? 'product' : stored ? 'internal' : null;
+  const out = (key, basis) => ({ key, basis, stale: storedKey != null && storedKey !== key });
+  if (p.client_id && clientType === INTERNAL_CLIENT_TYPE) return out('internal', 'internal_client');
+  if (p.client_id) return out('client', 'client');
+  if (stored === 'product') return out('product', 'stated_product');
+  if (Number(p.contract_value_halalas) > 0) return out('client', 'contract');
+  if (Number(p.po_value_halalas) > 0) return out('client', 'purchase_order');
+  if (revenue > 0) return out('client', 'revenue');
+  if (p.source_opp_id) return out('client', 'opportunity');
+  if (stored === 'external') return out('client', 'stated_external');
+  return out('internal', 'none');
+}
+
+// الإيراد المحقق لكل مشروع — من **بنود الإيراد**، وهي المصدر الذي تُقرأ منه كل أرقام الإيراد في
+// المنصة (لوحة القطاع، صفحة العميل، التقارير). خانة الإيراد على صف المشروع تُقرأ في ثلاث شاشات
+// ولا يكتبها شيء في المنتج كله: رقم جامد من الترحيل لا يتحرّك مهما سُجِّل إيراد جديد — واستيراد
+// الإيراد يكتب بنود الإيراد لا الخانة. فالرقم المعروض منها يشيخ بصمت، وهذا ما يعالجه هذا المصدر.
+// استعلام مجمّع واحد للمحفظة كلها (لا استعلام لكل صف). `year` اختيارية: بلا سنة = كل ما سُجِّل
+// للمشروع، ومعها = المحقق في تلك السنة وحدها. الجدول بلا حذف ناعم، فلا مرشّح حذف له.
+export async function projectRevenue(projectIds = [], year = null) {
+  const ids = [...new Set(projectIds)].filter(Boolean);
+  if (!ids.length) return [];
+  const ph = ids.map(() => '?').join(',');
+  const params = [...ids];
+  const y = Number(year);
+  const yearClause = Number.isInteger(y) && y >= 2000 && y <= 2100 ? (params.push(y), ' AND year = ?') : '';
+  const rows = await all(
+    `SELECT project_id, COALESCE(SUM(amount_halalas),0) AS revenue_halalas
+       FROM revenue_line WHERE project_id IN (${ph})${yearClause}
+      GROUP BY project_id`, params);
+  return rows.map((r) => ({ project_id: r.project_id, revenue_halalas: Number(r.revenue_halalas) || 0 }));
+}
+
 export async function getProject(user, pid) {
   const row = await get('SELECT * FROM project WHERE id = ? AND deleted_at IS NULL', [pid]);
   if (!row) throw notFound('المشروع غير موجود');

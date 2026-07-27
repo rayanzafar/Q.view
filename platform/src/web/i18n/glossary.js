@@ -186,6 +186,40 @@ export const WORK_KIND_OPTIONS = ['project', 'opportunity', 'proposal', 'product
   .map((k) => [k, WORK_KIND_AR[k]]);
 export const workKindLabel = (k) => WORK_KIND_AR[String(k || '').toLowerCase()] || 'غير محدَّد';
 
+// ── تصنيف المشروع: لمن يُنجَز هذا العمل؟ ───────────────────────────────────────
+// القاعدة كلها في مكان واحد: `projectKind` في خدمة المشاريع تُقرّر المفتاح من قرائن الصف،
+// وهنا الكلمة العربية وحدها — تماماً كما يفعل «نوع العمل» و«اسم السجل» أعلاه (القاعدة في
+// الخدمة، والكلمة في المعجم، والطبقات لا تنعكس).
+// قرار المالك في التسمية: لا كيان اسمه «مشاريع داخلية». العمل غير المرتبط بعميل يُقال له
+// «تشغيل داخلي»، ومنتجات الشركة يُقال لها «منتج».
+export const PROJECT_KIND_AR = {
+  client: 'مشروع عميل',
+  product: 'منتج',
+  internal: 'تشغيل داخلي',
+};
+export const projectKindLabel = (k) => PROJECT_KIND_AR[String(k || '').toLowerCase()] || 'غير مصنَّف';
+
+// سبب التصنيف بالعربية — يُعرض في تلميح الوسم كي يعرف القارئ من أين جاءت الكلمة، فلا يظنها رأياً.
+export const PROJECT_KIND_BASIS_AR = {
+  client: 'له عميل مسجَّل',
+  internal_client: 'العميل المسجَّل هو الشركة نفسها',
+  contract: 'له قيمة تعاقدية مسجَّلة',
+  purchase_order: 'له أمر شراء مسجَّل',
+  revenue: 'سُجِّل له إيراد محقق',
+  opportunity: 'نشأ من فرصة بيع',
+  stated_product: 'مسجَّل ضمن منتجات الشركة',
+  stated_external: 'مسجَّل عملاً لعميل',
+  none: 'لا عميل ولا قيمة تعاقدية ولا إيراد مسجَّل له',
+};
+export const projectKindBasisLabel = (b) => PROJECT_KIND_BASIS_AR[String(b || '').toLowerCase()] || '';
+// تلميح الوسم: التصنيف وسببه؛ وحين يخالف السببُ التصنيفَ القديم المدوَّن على المشروع نقولها
+// صراحةً — إخفاء التناقض يجعل التصحيح مستحيلاً، وإظهاره سطراً واحداً يكفي.
+export const projectKindTip = ({ key, basis, stale } = {}) => {
+  const why = projectKindBasisLabel(basis);
+  const head = `التصنيف: ${projectKindLabel(key)}${why ? ` — ${why}` : ''}`;
+  return stale ? `${head}. التصنيف المدوَّن على المشروع منذ نقل المنصة يقول غير ذلك ولم يُصحَّح بعد.` : head;
+};
+
 // اسم السجل المرتبط بطلب اعتماد أو حدث تدقيق — بدل طباعة اسم الجدول الإنجليزي.
 export const RESOURCE_AR = {
   activity: 'نشاط تواصل', allocation: 'تسكين', app_user: 'مستخدم', approval: 'اعتماد',

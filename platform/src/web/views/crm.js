@@ -114,8 +114,16 @@ export async function opportunitiesPage(user, opts = {}) {
       projByOpp[p.source_opp_id] = p;
   }
   const wonProjectCount = Object.keys(projByOpp).length;
+  // الخلية كانت تعرض «— لم يُنشأ مشروع بعد» كنصٍّ ميت: لا مسار في المنتج كله يربط فرصةً فائزة
+  // بمشروعها، فكل فرصة تُربح داخل سند تبقى بهذا النص أبداً. صارت إجراءً: من يملك إنشاء المشاريع
+  // يُنشئ المشروع من الفرصة نفسها فيُكتب الرابط ويُورَث العميل — بلا نسخ قيمة ولا عميل ثانٍ.
+  const canMakeProject = can(user, 'create', 'project');
   const prjCell = (o) => { const pr = projByOpp[o.id]; const L = pr ? (PRJ_LABEL[pr.status] || [pr.status, 'slate']) : null;
-    return `<td style="padding:.55rem .7rem;font-size:12px">${pr ? `<a href="/app/project/${pr.id}" style="font-weight:700;color:var(--brand)">${esc(pr.name_ar)}</a> ${pill(L[0], L[1])}` : '<span style="color:var(--faint)">— لم يُنشأ مشروع بعد</span>'}</td>`; };
+    if (pr) return `<td style="padding:.55rem .7rem;font-size:12px"><a href="/app/project/${esc(pr.id)}" style="font-weight:700;color:var(--brand)">${esc(pr.name_ar)}</a> ${pill(L[0], L[1])}</td>`;
+    if (!canMakeProject) return '<td style="padding:.55rem .7rem;font-size:12px"><span style="color:var(--faint)">لم يُنشأ مشروع بعد</span></td>';
+    return `<td style="padding:.55rem .7rem;font-size:12px"><button class="btn btn-ghost" style="font-size:11.5px;padding:.25rem .6rem"
+      data-action="opp-make-project" data-opp="${esc(o.id)}" data-name="${esc(o.title_ar || '')}" data-sector="${esc(o.sector_id || '')}"
+      >أنشئ المشروع</button></td>`; };
   const total = open.reduce((a, o) => a + (o.value_halalas || 0), 0);
   const weighted = Math.round(open.reduce((a, o) => a + weightedOf(o), 0));
   const decided = wonAll.length + lostAll.length;

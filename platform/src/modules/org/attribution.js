@@ -181,15 +181,31 @@ export async function bulkSetWorkDepartment(ctx, args = {}) {
 
 // ═══════════════════════════════ القراءة ═══════════════════════════════
 
+// دلو أرقام إدارة واحدة. حقول الفرص على ثلاث طبقات مقصودة:
+//   • opportunities / opportunity_value_halalas / opportunity_weighted_halalas ⟵ الإجمالي كما هو
+//     (كل فرص السنة مهما كانت حالتها). يبقى كما كان لأن شاشة «العمل غير المُسنَد» تقيس به حجم
+//     المعلَّق، وحجم المعلَّق فعلاً يشمل المحسوم.
+//   • open / won / lost ⟵ الأرقام القابلة للمقارنة. «المكسوبة» هنا بنفس تعريف مبيعات القطاع
+//     حرفياً (مرحلة فائزة + غير مستبعدة من المبيعات + سنة الفرصة = السنة المطلوبة)، فرقم الإدارة
+//     يُجمع مع أخواته فيطابق «مبيعات القطاع» بلا فرق.
+//   • other ⟵ البقية كي تُصالح الطبقتان: مكسوبة مستبعدة بعلم، أو مكسوبة بلا سنة، أو بلا مرحلة.
+//     الثابت المحفوظ: open + won + lost + other = الإجمالي، عدداً وقيمةً.
 const emptyBucket = () => ({
   employees: 0, projects: 0, project_value_halalas: 0,
-  opportunities: 0, opportunity_value_halalas: 0, opportunity_weighted_halalas: 0, allocations: 0,
+  opportunities: 0, opportunity_value_halalas: 0, opportunity_weighted_halalas: 0,
+  opportunities_open: 0, opportunity_open_value_halalas: 0, opportunity_open_weighted_halalas: 0,
+  opportunities_won: 0, opportunity_won_value_halalas: 0,
+  opportunities_lost: 0, opportunity_lost_value_halalas: 0,
+  opportunities_other: 0, opportunity_other_value_halalas: 0,
+  allocations: 0,
 });
 
 /**
  * توزيع عمل القطاع على إداراته + دلو «غير مُسند» منفصل.
  * استعلام مُجمَّع واحد لكل مقياس (لا حلقة لكل إدارة)، والدمج في الذاكرة.
  * لا يكشف أي حقل حسّاس (لا راتب ولا تكلفة ولا هامش) — قيم عقود وفرص إجمالية فقط، لذا لا حجب حقول.
+ * قيم الفرص تعود مفصولة بحالة الحسم (مفتوحة/مكسوبة/خاسرة/أخرى) إلى جانب الإجمالي — انظر emptyBucket:
+ * «المكسوبة» وحدها هي القابلة للمقارنة بمبيعات القطاع، وهي بنفس تعريفها حرفياً.
  * @param {object} user
  * @param {{sectorId:string, year?:number|string}} opts
  */
@@ -221,12 +237,30 @@ export async function departmentRollup(user, opts = {}) {
         AND (end_date   IS NULL OR substr(end_date,   1, 4) >= CAST(? AS TEXT))
       GROUP BY department_id`, [sector.id, yearText, yearText]);
   // الفرص: سنة الفرصة، ومجهول السنة يظهر دائماً (نفس المبدأ). المرجّح = القيمة × احتمال الفوز.
+  //
+  // الحسم يُفصَل هنا ولا يُجمَع: قيمة واحدة تخلط المكسوبة بالخاسرة بالمفتوحة لا تُقارَن بأي رقم آخر
+  // في المنصّة، ومديرٌ يضعها بجانب «مبيعات القطاع» يقرأ فرقاً ليس فرقاً. لذلك:
+  //   المفتوحة = لا فائزة ولا خاسرة (خط الأنابيب، ومنه المرجّح وحده يعني شيئاً).
+  //   المكسوبة = نفس شرط المبيعات في تقارير الشركة حرفاً بحرف: مرحلة فائزة + exclude_from_sales = 0
+  //              + سنة الفرصة = السنة المطلوبة (والسنة المجهولة لا تدخل المبيعات هناك، فلا تدخل هنا).
+  //   الخاسرة = مرحلة خاسرة (وغير فائزة، فمرحلة موسومة بالاثنين — خطأ بيانات — تُحسب مكسوبة مرة واحدة
+  //             فقط كي تبقى الدلاء غير متداخلة).
+  // LEFT JOIN لا INNER: فرصة بلا مرحلة معروفة يجب أن تبقى في الإجمالي والعدد، لا أن تختفي بصمت.
   const oppRows = await all(
-    `SELECT department_id, COUNT(*) AS n, COALESCE(SUM(value_halalas), 0) AS v,
-            COALESCE(SUM(value_halalas * COALESCE(win_pct, 0) / 100.0), 0) AS w
-       FROM opportunity
-      WHERE sector_id = ? AND deleted_at IS NULL AND (year = ? OR year IS NULL)
-      GROUP BY department_id`, [sector.id, year]);
+    `SELECT o.department_id, COUNT(*) AS n, COALESCE(SUM(o.value_halalas), 0) AS v,
+            COALESCE(SUM(o.value_halalas * COALESCE(o.win_pct, 0) / 100.0), 0) AS w,
+            COALESCE(SUM(CASE WHEN st.is_won = 0 AND st.is_lost = 0 THEN 1 ELSE 0 END), 0) AS open_n,
+            COALESCE(SUM(CASE WHEN st.is_won = 0 AND st.is_lost = 0 THEN o.value_halalas ELSE 0 END), 0) AS open_v,
+            COALESCE(SUM(CASE WHEN st.is_won = 0 AND st.is_lost = 0
+                              THEN o.value_halalas * COALESCE(o.win_pct, 0) / 100.0 ELSE 0 END), 0) AS open_w,
+            COALESCE(SUM(CASE WHEN st.is_won = 1 AND o.exclude_from_sales = 0 AND o.year = ? THEN 1 ELSE 0 END), 0) AS won_n,
+            COALESCE(SUM(CASE WHEN st.is_won = 1 AND o.exclude_from_sales = 0 AND o.year = ?
+                              THEN o.value_halalas ELSE 0 END), 0) AS won_v,
+            COALESCE(SUM(CASE WHEN st.is_lost = 1 AND st.is_won = 0 THEN 1 ELSE 0 END), 0) AS lost_n,
+            COALESCE(SUM(CASE WHEN st.is_lost = 1 AND st.is_won = 0 THEN o.value_halalas ELSE 0 END), 0) AS lost_v
+       FROM opportunity o LEFT JOIN stage st ON st.id = o.stage_id
+      WHERE o.sector_id = ? AND o.deleted_at IS NULL AND (o.year = ? OR o.year IS NULL)
+      GROUP BY o.department_id`, [year, year, sector.id, year]);
   const allocRows = await all(
     `SELECT department_id, COUNT(*) AS n FROM allocation
       WHERE sector_id = ? AND deleted_at IS NULL AND (year = ? OR year IS NULL)
@@ -248,6 +282,16 @@ export async function departmentRollup(user, opts = {}) {
     b.opportunities += num(r.n);
     b.opportunity_value_halalas += num(r.v);
     b.opportunity_weighted_halalas += Math.round(num(r.w));
+    b.opportunities_open += num(r.open_n);
+    b.opportunity_open_value_halalas += num(r.open_v);
+    b.opportunity_open_weighted_halalas += Math.round(num(r.open_w));
+    b.opportunities_won += num(r.won_n);
+    b.opportunity_won_value_halalas += num(r.won_v);
+    b.opportunities_lost += num(r.lost_n);
+    b.opportunity_lost_value_halalas += num(r.lost_v);
+    // «أخرى» بقيّةً لا باستعلام: الطرح يضمن المصالحة مهما كانت البيانات (الدلاء الثلاثة غير متداخلة).
+    b.opportunities_other += num(r.n) - num(r.open_n) - num(r.won_n) - num(r.lost_n);
+    b.opportunity_other_value_halalas += num(r.v) - num(r.open_v) - num(r.won_v) - num(r.lost_v);
   }
   for (const r of allocRows) bucketFor(r.department_id).allocations += num(r.n);
 

@@ -13,6 +13,12 @@ import { id, nowIso, fmtSar } from '../../core/util/ids.js';
 import { badRequest, forbidden, notFound } from '../../core/http/errors.js';
 import { config } from '../../core/config.js';
 import { DELIVERY_SECTOR_SQL } from '../../core/org/kind.js';
+// قاعدة نسبة الفاتورة إلى عميل — معرّفة مرة واحدة في وحدة المالية (صاحبة الفاتورة) ومستوردة هنا،
+// حتى لا تختلف إجابة «لمن هذه الفاتورة؟» بين قائمة العملاء وصفحة العميل وشاشة المالية.
+import { INVOICE_CLIENT_COL, INVOICE_CLIENT_JOIN } from '../finance/finance.js';
+
+const INV_CID = INVOICE_CLIENT_COL();   // COALESCE(i.client_id, p.client_id)
+const INV_JOIN = INVOICE_CLIENT_JOIN(); // LEFT JOIN project p … AND p.deleted_at IS NULL
 
 export const CLIENT_TYPES = ['حكومي', 'خاص', 'شبه حكومي', 'داخلي'];
 export const ACTIVITY_KINDS = ['call', 'meeting', 'email', 'note', 'visit', 'proposal', 'update', 'other'];
@@ -91,14 +97,14 @@ async function lastTouchByClient() {
   feed(await all(`SELECT client_id cid, MAX(COALESCE(signed_at, start_date)) at FROM contract
      WHERE deleted_at IS NULL AND client_id IS NOT NULL GROUP BY client_id`));
   // legacy invoices carry project_id only — resolve the client through the project when unset
-  feed(await all(`SELECT COALESCE(i.client_id, p.client_id) cid, MAX(i.issue_date) at
-     FROM invoice i LEFT JOIN project p ON p.id = i.project_id
+  feed(await all(`SELECT ${INV_CID} cid, MAX(i.issue_date) at
+     FROM invoice i ${INV_JOIN}
      WHERE i.deleted_at IS NULL AND i.issue_date IS NOT NULL AND i.status NOT IN ('DRAFT','CANCELLED')
-       AND COALESCE(i.client_id, p.client_id) IS NOT NULL GROUP BY COALESCE(i.client_id, p.client_id)`));
-  feed(await all(`SELECT COALESCE(i.client_id, p.client_id) cid, MAX(l.collected_at) at
-     FROM collection l JOIN invoice i ON i.id = l.invoice_id LEFT JOIN project p ON p.id = i.project_id
+       AND ${INV_CID} IS NOT NULL GROUP BY ${INV_CID}`));
+  feed(await all(`SELECT ${INV_CID} cid, MAX(l.collected_at) at
+     FROM collection l JOIN invoice i ON i.id = l.invoice_id ${INV_JOIN}
      WHERE i.deleted_at IS NULL AND l.collected_at IS NOT NULL
-       AND COALESCE(i.client_id, p.client_id) IS NOT NULL GROUP BY COALESCE(i.client_id, p.client_id)`));
+       AND ${INV_CID} IS NOT NULL GROUP BY ${INV_CID}`));
   feed(await all(`SELECT client_id cid, MAX(start_date) at FROM project
      WHERE deleted_at IS NULL AND client_id IS NOT NULL AND start_date IS NOT NULL GROUP BY client_id`));
   return out;
@@ -161,13 +167,13 @@ export async function listClients(user, filters = {}) {
   // المستحق: فاتورة بفاتورة بنفس قواعد clientOverview بالضبط (سقف التحصيل عند قيمة الفاتورة،
   // لا سالب، عميل الفاتورة أو عميل مشروعها للفواتير القديمة) حتى يطابق الرقم صفحة العميل 360.
   const today = nowIso().slice(0, 10);
-  const invRows = await all(`SELECT COALESCE(i.client_id, p.client_id) cid, i.id iid, i.amount_halalas amt,
+  const invRows = await all(`SELECT ${INV_CID} cid, i.id iid, i.amount_halalas amt,
        i.status st, i.due_date dd, COALESCE(SUM(l.amount_halalas),0) col
      FROM invoice i
-     LEFT JOIN project p ON p.id = i.project_id AND p.deleted_at IS NULL
+     ${INV_JOIN}
      LEFT JOIN collection l ON l.invoice_id = i.id
-     WHERE i.deleted_at IS NULL AND i.status NOT IN ('DRAFT','CANCELLED') AND COALESCE(i.client_id, p.client_id) IS NOT NULL
-     GROUP BY COALESCE(i.client_id, p.client_id), i.id, i.amount_halalas, i.status, i.due_date`);
+     WHERE i.deleted_at IS NULL AND i.status NOT IN ('DRAFT','CANCELLED') AND ${INV_CID} IS NOT NULL
+     GROUP BY ${INV_CID}, i.id, i.amount_halalas, i.status, i.due_date`);
   const ar = new Map();
   for (const r of invRows) {
     const out = Math.max(0, (r.amt || 0) - Math.min(r.col || 0, r.amt || 0));
@@ -322,9 +328,9 @@ export async function clientOverview(user, clientId) {
   // Legacy invoices are linked by project only — count those attached via the client's projects too.
   const invoices = await all(`SELECT i.id, i.code, i.amount_halalas, i.status, i.issue_date, i.due_date,
        (SELECT COALESCE(SUM(l.amount_halalas),0) FROM collection l WHERE l.invoice_id = i.id) collected_halalas
-     FROM invoice i WHERE i.deleted_at IS NULL AND i.status NOT IN ('DRAFT','CANCELLED')
-       AND (i.client_id = ? OR (i.client_id IS NULL AND i.project_id IN (SELECT id FROM project WHERE client_id = ? AND deleted_at IS NULL)))
-     ORDER BY i.issue_date DESC`, [clientId, clientId]);
+     FROM invoice i ${INV_JOIN}
+     WHERE i.deleted_at IS NULL AND i.status NOT IN ('DRAFT','CANCELLED') AND ${INV_CID} = ?
+     ORDER BY i.issue_date DESC`, [clientId]);
   let invoiced = 0, collected = 0, outstanding = 0, overdue = 0;
   for (const i of invoices) {
     const col = Math.min(i.collected_halalas || 0, i.amount_halalas || 0);
@@ -373,10 +379,10 @@ export async function clientOverview(user, clientId) {
     if (i.issue_date) derived.push({ kind: 'invoice_issued', at: i.issue_date, source: 'derived',
       title: `إصدار فاتورة${i.code ? ' ' + i.code : ''}`, detail: `بقيمة ${fmtSar(i.amount_halalas)}` });
   }
-  for (const l of await all(`SELECT l.amount_halalas, l.collected_at FROM collection l JOIN invoice i ON i.id = l.invoice_id
-       WHERE i.deleted_at IS NULL AND l.collected_at IS NOT NULL
-         AND (i.client_id = ? OR (i.client_id IS NULL AND i.project_id IN (SELECT id FROM project WHERE client_id = ? AND deleted_at IS NULL)))
-       ORDER BY l.collected_at DESC LIMIT 50`, [clientId, clientId])) {
+  for (const l of await all(`SELECT l.amount_halalas, l.collected_at FROM collection l
+       JOIN invoice i ON i.id = l.invoice_id ${INV_JOIN}
+       WHERE i.deleted_at IS NULL AND l.collected_at IS NOT NULL AND ${INV_CID} = ?
+       ORDER BY l.collected_at DESC LIMIT 50`, [clientId])) {
     derived.push({ kind: 'collection', at: l.collected_at, source: 'derived', title: 'تحصيل دفعة', detail: `بقيمة ${fmtSar(l.amount_halalas)}` });
   }
   for (const p of projects) {

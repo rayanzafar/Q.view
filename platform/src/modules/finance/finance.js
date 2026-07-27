@@ -14,10 +14,36 @@ const FY = () => config.fiscalYear;
 // fiscal year from the date. Reused wherever billing figures must respect the selected year.
 const YEAR_PRED = (alias = '') => `CAST(substr(${alias}issue_date,1,4) AS INTEGER) = ?`;
 
+// ── نسبة الفاتورة إلى عميل — القاعدة الواحدة في المنصة ───────────────────────────────────────
+// الأسبقية: عميل الفاتورة نفسها إن وُجد، وإلا عميل مشروعها. لا مسار ثالث.
+//   • `invoice.client_id` هو ما كُتب على الفاتورة صراحةً لحظة إصدارها — بما فيها فواتير
+//     المستخلصات التي يكتب فيها `createProgressClaim` عميلَ العقد أدناه. فهو أدقّ ما لدينا.
+//   • الفواتير المُرحَّلة من النظام القديم تصل بلا عميل وبمشروع فقط، فمشروعها هو المسار
+//     الاحتياطي الوحيد. ومشروعٌ محذوف لا ينسب فاتورته إلى أحد (شرط الحذف داخل الوصل نفسه).
+//   • عميل **العقد** ليس مساراً ثالثاً: العقد يكتب عميله في الفاتورة أصلاً، فالمرور عبره يعيد
+//     المصدر نفسه ويُسقط في الطريق كل فاتورة بلا عقد. كان هذا سبب اختلاف نسبة الفاتورة الواحدة
+//     بين شاشة المالية وقائمة العملاء وصفحة العميل — ثلاث إجابات لسؤال واحد. صار المسار واحداً.
+// تُستعمل الصيغتان معاً دائماً: JOIN يجلب مشروع الفاتورة، وCOL يعطي معرّف العميل المنسوب.
+export const INVOICE_CLIENT_JOIN = (inv = 'i', prj = 'p') =>
+  `LEFT JOIN project ${prj} ON ${prj}.id = ${inv}.project_id AND ${prj}.deleted_at IS NULL`;
+export const INVOICE_CLIENT_COL = (inv = 'i', prj = 'p') => `COALESCE(${inv}.client_id, ${prj}.client_id)`;
+
 // Outstanding (AR) per invoice = amount − retention − collected.
 async function outstanding(inv) {
   const collected = (await get('SELECT COALESCE(SUM(amount_halalas),0) v FROM collection WHERE invoice_id = ?', [inv.id])).v;
   return Math.max(0, inv.amount_halalas - (inv.retention_halalas || 0) - collected);
+}
+
+// ── الإيراد المحقق داخل نطاق القارئ ──────────────────────────────────────────────────────────
+// جدول الإيراد لا يحمل مالكاً، فالتضييق الوحيد الممكن عليه هو القطاع: من يقرأ الفواتير على مستوى
+// الشركة يرى الإيراد كله، ومن دونه يرى إيراد قطاعه، ومن لا يقرأ الفواتير أصلاً لا يرى رقماً.
+// تعريف واحد لأن هذا الرقم هو ضلع الجسر المالي **ومقام** معادلة «فترة التحصيل» معاً: افتراقهما هو
+// ما كان يقسم مستحقّ قطاعٍ واحد على إيراد الشركة كاملة فتخرج فترة تحصيل أقصر من الحقيقة بأضعاف.
+async function scopedRevenue(user, year) {
+  const c = scopeFilter(user, 'invoice', 'read').clause.trim();
+  const clause = c === '1=1' ? '1=1' : c === '1=0' ? '1=0' : 'sector_id = ?';
+  const params = clause === 'sector_id = ?' ? [year, user.sector_id ?? null] : [year];
+  return (await get(`SELECT COALESCE(SUM(amount_halalas),0) v FROM revenue_line WHERE year = ? AND ${clause}`, params)).v;
 }
 
 // ── Bridge + AR + DSO (scope-filtered, year-filtered) ──
@@ -31,7 +57,7 @@ export async function financeSummary(user, year = FY()) {
   const bkP = companyScope ? [year] : [year, user.sector_id];
   const bookings = (await get(`SELECT COALESCE(SUM(o.value_halalas),0) v FROM opportunity o JOIN stage st ON st.id=o.stage_id
      WHERE st.is_won=1 AND o.exclude_from_sales=0 AND o.year=? AND o.deleted_at IS NULL${companyScope ? '' : ' AND o.sector_id = ?'}`, bkP)).v;
-  const revenue = (await get(`SELECT COALESCE(SUM(amount_halalas),0) v FROM revenue_line WHERE year = ?${companyScope ? '' : ' AND sector_id = ?'}`, bkP)).v;
+  const revenue = await scopedRevenue(user, year); // نفس المصدر الذي يستعمله dso — لا نسختان
   const invoiced = (await get(`SELECT COALESCE(SUM(i.amount_halalas),0) v FROM invoice i WHERE ${c} AND i.deleted_at IS NULL AND i.status != 'DRAFT' AND ${YEAR_PRED('i.')}`, [...p, year])).v;
   const collected = (await get(`SELECT COALESCE(SUM(col.amount_halalas),0) v FROM collection col JOIN invoice i ON i.id=col.invoice_id WHERE ${c} AND ${YEAR_PRED('i.')}`, [...p, year])).v;
   const invoices = await all(`SELECT i.* FROM invoice i WHERE ${c} AND i.deleted_at IS NULL AND i.status IN ('ISSUED','PARTIALLY_PAID','OVERDUE') AND ${YEAR_PRED('i.')}`, [...p, year]);
@@ -74,12 +100,18 @@ export async function dso(user, year = FY()) {
   const rows = await all(`SELECT * FROM invoice WHERE ${f.clause} AND deleted_at IS NULL AND status IN ('ISSUED','PARTIALLY_PAID','OVERDUE') AND ${YEAR_PRED()}`, [...f.params, year]);
   let ar = 0;
   for (const i of rows) ar += await outstanding(i);
-  const rev = (await get('SELECT COALESCE(SUM(amount_halalas),0) v FROM revenue_line WHERE year = ?', [year])).v;
+  // البسط والمقام من النطاق نفسه: مستحقُّ ما يراه القارئ ÷ إيرادُ ما يراه القارئ. كان المقام
+  // إيراد الشركة كاملاً بينما البسط مستحقّ القطاع وحده — قسمة طرفين من عالمين مختلفين.
+  const rev = await scopedRevenue(user, year);
   const month = year === FY() ? new Date().getUTCMonth() + 1 : 12; // prior years use a full-year period
   return rev ? Math.round((ar / rev) * (month * 30)) : 0;
 }
 
-// ── Per project manager (year-filtered) ──
+// ── Per project manager ──
+// كل أعمدة الصف على أساس واحد: نطاق القارئ ∩ السنة المختارة. قبل ذلك كان الصف يروي قصتين —
+// «مفوتر» و«محصَّل» للسنة المختارة بجوار «قيمة عقود» مدى الحياة — فتخرج نسبة فوترة بلا معنى؛
+// وكان الفرعان (المحصَّل وقيمة العقود) يُستعلمان بمعرّف المدير وحده بلا شرط النطاق، فيقرأ
+// مستخدمُ قطاعٍ أرقام فواتير ومشاريع قطاعات لا يملك رؤيتها.
 export async function financeByPM(user, year = FY()) {
   // Qualify the scope column to the aliased invoice table so it is unambiguous against app_user.sector_id.
   const f = scopeFilter(user, 'invoice', 'read', { sectorCol: 'i.sector_id', ownerCol: 'i.owner_user_id' });
@@ -89,13 +121,25 @@ export async function financeByPM(user, year = FY()) {
       COUNT(*) n
     FROM invoice i LEFT JOIN app_user u ON u.id=i.owner_user_id
     WHERE ${f.clause} AND i.deleted_at IS NULL AND ${YEAR_PRED('i.')} GROUP BY i.owner_user_id, u.name_ar, u.username ORDER BY invoiced DESC`, [...f.params, year]);
-  return Promise.all(rows.map(async (r) => {
-    const collected = (await get(`SELECT COALESCE(SUM(c.amount_halalas),0) v FROM collection c JOIN invoice i ON i.id=c.invoice_id
-       WHERE i.owner_user_id ${r.owner_user_id ? '= ?' : 'IS NULL'} AND ${YEAR_PRED('i.')}`, r.owner_user_id ? [r.owner_user_id, year] : [year])).v;
-    const contractVal = (await get(`SELECT COALESCE(SUM(contract_value_halalas),0) v FROM project WHERE owner_user_id ${r.owner_user_id ? '= ?' : 'IS NULL'} AND deleted_at IS NULL`, r.owner_user_id ? [r.owner_user_id] : [])).v;
-    return { pm: r.pm, invoices: r.n, contract_halalas: contractVal, invoiced_halalas: r.invoiced,
-      collected_halalas: collected, outstanding_halalas: Math.max(0, r.invoiced - collected) };
-  }));
+  // المحصَّل: على فواتير الصف نفسها — النطاق نفسه والسنة نفسها واستبعاد المحذوف نفسه. تحصيلٌ على
+  // فاتورة محذوفة أو خارج النطاق كان يرفع «المحصَّل» فوق «المفوتر» في السطر ذاته.
+  const collectedBy = new Map((await all(`SELECT i.owner_user_id uid, COALESCE(SUM(col.amount_halalas),0) v
+     FROM collection col JOIN invoice i ON i.id = col.invoice_id
+     WHERE ${f.clause} AND i.deleted_at IS NULL AND ${YEAR_PRED('i.')}
+     GROUP BY i.owner_user_id`, [...f.params, year])).map((r) => [r.uid, r.v]));
+  // قيمة العقود: عقود المشاريع التي فُوتر عليها فعلاً في هذه السنة وداخل هذا النطاق — لا كل
+  // مشاريع المدير منذ نشأة الشركة. المشروع لا يحمل عمود سنة، فالسنة تصل إليه من فواتيرها.
+  const contractBy = new Map((await all(`SELECT d.uid uid, COALESCE(SUM(p.contract_value_halalas),0) v
+     FROM (SELECT DISTINCT i.owner_user_id uid, i.project_id pid FROM invoice i
+           WHERE ${f.clause} AND i.deleted_at IS NULL AND i.project_id IS NOT NULL AND ${YEAR_PRED('i.')}) d
+     JOIN project p ON p.id = d.pid AND p.deleted_at IS NULL
+     GROUP BY d.uid`, [...f.params, year])).map((r) => [r.uid, r.v]));
+  return rows.map((r) => {
+    const collected = collectedBy.get(r.owner_user_id) || 0;
+    return { pm: r.pm, invoices: r.n, contract_halalas: contractBy.get(r.owner_user_id) || 0,
+      invoiced_halalas: r.invoiced, collected_halalas: collected,
+      outstanding_halalas: Math.max(0, r.invoiced - collected) };
+  });
 }
 
 // ── Per contract ──
@@ -129,20 +173,34 @@ export async function financeByContract(user) {
 }
 
 // ── Per client ── contract value, invoiced, collected, outstanding (AR) grouped by client.
+// كل الأرقام هنا **تراكمية منذ البداية** لا سنوية (قيمة العقد رصيدٌ لا تدفّق، ولا يحمل العقد سنة)،
+// فالأساس واحد على الصف كله. الوسيط `year` باقٍ لتوافق المستدعين ولا يُستعمل عمداً — تسنينُ عمودٍ
+// واحد دون البقية هو بالضبط الخلط الذي عولج في financeByPM أعلاه.
 export async function financeByClient(user, year = FY()) {
   const f = scopeFilter(user, 'contract', 'read', { sectorCol: 'c.sector_id', ownerCol: 'p.owner_user_id' });
   const rows = await all(`SELECT cl.id, cl.name_ar,
       COUNT(DISTINCT c.id) contracts, COALESCE(SUM(c.value_halalas),0) value_halalas
      FROM contract c JOIN client cl ON cl.id=c.client_id LEFT JOIN project p ON p.id=c.project_id
-     WHERE ${f.clause} AND c.deleted_at IS NULL GROUP BY cl.id ORDER BY value_halalas DESC LIMIT 40`, f.params);
-  const mapped = await Promise.all(rows.map(async (r) => {
-    const invoiced = (await get(`SELECT COALESCE(SUM(i.amount_halalas),0) v FROM invoice i JOIN contract c2 ON c2.id=i.contract_id
-       WHERE c2.client_id=? AND i.status!='DRAFT' AND i.deleted_at IS NULL`, [r.id])).v;
-    const collected = (await get(`SELECT COALESCE(SUM(col.amount_halalas),0) v FROM collection col JOIN invoice i ON i.id=col.invoice_id
-       JOIN contract c2 ON c2.id=i.contract_id WHERE c2.client_id=?`, [r.id])).v;
+     WHERE ${f.clause} AND c.deleted_at IS NULL GROUP BY cl.id, cl.name_ar ORDER BY value_halalas DESC LIMIT 40`, f.params);
+  // المفوتر والمحصَّل يُنسبان بقاعدة نسبة الفاتورة الواحدة (عميل الفاتورة ثم عميل مشروعها)، لا عبر
+  // عميل العقد: المرور بالعقد كان يُسقط كل فاتورة بلا عقد وينسب فاتورةً إلى عميلٍ غير المكتوب عليها.
+  // وداخل نطاق القارئ على الفواتير — وإلا قرأ مستخدمُ قطاعٍ فواتيرَ قطاعات أخرى لعميله.
+  const fi = scopeFilter(user, 'invoice', 'read', { sectorCol: 'i.sector_id', ownerCol: 'i.owner_user_id' });
+  const CID = INVOICE_CLIENT_COL('i', 'ip');
+  const JOIN = INVOICE_CLIENT_JOIN('i', 'ip');
+  const sumBy = async (sql, params) => new Map((await all(sql, params)).map((r) => [r.cid, r.v]));
+  const invoicedBy = await sumBy(`SELECT ${CID} cid, COALESCE(SUM(i.amount_halalas),0) v FROM invoice i ${JOIN}
+     WHERE ${fi.clause} AND i.deleted_at IS NULL AND i.status != 'DRAFT' AND ${CID} IS NOT NULL
+     GROUP BY ${CID}`, fi.params);
+  const collectedBy = await sumBy(`SELECT ${CID} cid, COALESCE(SUM(col.amount_halalas),0) v
+     FROM collection col JOIN invoice i ON i.id = col.invoice_id ${JOIN}
+     WHERE ${fi.clause} AND i.deleted_at IS NULL AND ${CID} IS NOT NULL
+     GROUP BY ${CID}`, fi.params);
+  return rows.map((r) => {
+    const invoiced = invoicedBy.get(r.id) || 0;
+    const collected = collectedBy.get(r.id) || 0;
     return { ...r, invoiced_halalas: invoiced, collected_halalas: collected, outstanding_halalas: Math.max(0, invoiced - collected) };
-  }));
-  return mapped.filter((r) => r.value_halalas > 0 || r.invoiced_halalas > 0);
+  }).filter((r) => r.value_halalas > 0 || r.invoiced_halalas > 0);
 }
 
 export async function contractDetail(user, contractId) {

@@ -164,7 +164,10 @@ export default {
     const b = row.before;
     if (!b) return;
     await guardedAllocation(ctx, row.resource_id);
-    await update('allocation', row.resource_id, { monthly_json: b.monthly_json, type: b.type, year: b.year, updated_at: nowIso() });
+    // جدول التسكين بلا عمود updated_at (001_init.sql + 007) — تُرقَّع الأعمدة الحقيقية فقط،
+    // وإلا بنى مساعد update جملة SET على عمود غير موجود ففشل التراجع على السائقَين معاً.
+    // زمن التراجع محفوظ في سطر التدقيق أدناه.
+    await update('allocation', row.resource_id, { monthly_json: b.monthly_json, type: b.type, year: b.year });
     await audit(ctx, { action: 'update', resource: 'allocation', resourceId: row.resource_id, sectorId: b.sector_id, detail: { undoImport: true } });
   },
 };

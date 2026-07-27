@@ -37,6 +37,13 @@ const KPIS = [
   { key: 'ar_aging', name_ar: 'أعمار الذمم', level: 'company', unit: 'يوم', dir: 'lower_better', amber: 60, red: 90 },
 ];
 
+// حساب تجريبي لكل دور في src/core/rbac/matrix.js — بلا استثناء. الأدوار السبعة الأخيرة كانت بلا
+// حساب، فلم يفتح لها أحد صفحةً قط: لا المسح الحيّ (sweep) ولا مصفوفة الصلاحيات تمرّ على دور
+// بلا حساب، فبقيت صفحاتها ونطاقها وحجب حقولها الحسّاسة خارج كل بوابة جودة.
+//
+// `scope` = أوسع نطاق بيانات يراه الشخص، وهو مشتقّ من **منح الدور نفسه** في المصفوفة لا من ذوق:
+//   company ⟵ كل منح الدور بنطاق «شركة»   |  sector ⟵ منحه بنطاق «قطاع»
+//   department / team ⟵ منحه بنطاق الإدارة / الفريق  |  own ⟵ منحه على ما يملكه هو فقط
 const DEMO_USERS = [
   { u: 'demo.admin', role: 'admin', scope: 'company', name: 'مسؤول النظام (تجريبي)', sector: null },
   { u: 'demo.ceo', role: 'ceo_office', scope: 'company', name: 'مكتب الرئيس التنفيذي (تجريبي)', sector: null },
@@ -48,6 +55,30 @@ const DEMO_USERS = [
   { u: 'demo.consultant', role: 'consultant', scope: 'own', name: 'استشاري (تجريبي)', sector: 'SOLUTIONS' },
   { u: 'demo.employee', role: 'employee', scope: 'own', name: 'موظف (تجريبي)', sector: 'SOLUTIONS' },
   { u: 'demo.viewer', role: 'viewer', scope: 'sector', name: 'مشاهد (تجريبي)', sector: 'SOLUTIONS' },
+
+  // ── الأدوار السبعة التي كانت بلا حساب تجريبي ──
+  // مدير إدارة: كل منحه بنطاق «إدارة» (قراءة الموظفين والمشاريع والمهام والوقت والمخرجات،
+  // تعديل المهام، اعتماد الوقت والمصروف) — والإدارة تعيش داخل قطاع واحد، فالقطاع لازم.
+  { u: 'demo.deptmgr', role: 'department_manager', scope: 'department', name: 'مدير إدارة (تجريبي)', sector: 'SOLUTIONS' },
+  // مدير مباشر: منحه الأربعة كلها بنطاق «فريق» (قراءة الموظفين والمهام والوقت + اعتماد الوقت).
+  { u: 'demo.linemgr', role: 'line_manager', scope: 'team', name: 'مدير مباشر (تجريبي)', sector: 'SOLUTIONS' },
+  // رئيس تطوير الأعمال: وحدة مساندة على مستوى الشركة — كل منحه بنطاق «شركة» ولا يتبع قطاعاً
+  // بعينه (نص التعليق في matrix.js: يعمل على فرص القطاعات الأربعة كلها).
+  { u: 'demo.bdhead', role: 'bd_head', scope: 'company', name: 'رئيس تطوير الأعمال (تجريبي)', sector: null },
+  // العمليات: منحه التشغيلية (مشاريع ومهام وتسكين ومعالم ومخرجات + تقارير) كلها بنطاق «قطاع».
+  { u: 'demo.ops', role: 'operations', scope: 'sector', name: 'العمليات (تجريبي)', sector: 'SOLUTIONS' },
+  // المشتريات: الموردون وأوامر الشراء وقراءة المشاريع والمصروفات — كلها بنطاق «شركة»، فهي
+  // وظيفة مساندة لا تتبع قطاعاً. (اتساع البيانات ≠ قيادة — انظر ملاحظة الفحص في expectations.mjs.)
+  { u: 'demo.procurement', role: 'procurement', scope: 'company', name: 'المشتريات (تجريبي)', sector: null },
+  // المعتمِد: ثلاثة منح اعتماد فقط (فرصة/مصروف/مخرج) بنطاق «قطاع» — بلا أي منح قراءة.
+  { u: 'demo.approver', role: 'approver', scope: 'sector', name: 'معتمِد (تجريبي)', sector: 'SOLUTIONS' },
+  // المستخدم الخارجي يُعامَل مُعاملةً مختلفة عن الستة أعلاه، وهو ليس موظفاً في الشركة:
+  //   • نطاقه «خاصتي» — منحاه الوحيدان (قراءة مشروعه وفاتورته) بنطاق «خاصتي».
+  //   • **بلا قطاع**: انتماؤه إلى قطاع يجعله عضواً في بيانات القطاع لحظة إضافة أي منح قطاعي
+  //     له، ويُظهره في شاشات «القطاع» كأنه من الفريق. عميلٌ لا زميل.
+  //   • بريده على نطاق العميل لا نطاق الشركة — حساب بوابة خارجية لا حساب موظف.
+  { u: 'demo.external', role: 'external', scope: 'own', name: 'مستخدم خارجي (تجريبي)', sector: null,
+    email: 'demo.external@client.example' },
 ];
 
 export async function seed() {
@@ -81,7 +112,7 @@ export async function seed() {
     await run(`INSERT INTO app_user (id, username, email, name_ar, role_id, sector_id, scope, password_hash, active, must_change_pw, created_at)
          VALUES (?,?,?,?,?,?,?,?,1,0,?)
          ON CONFLICT (id) DO UPDATE SET username=EXCLUDED.username, email=EXCLUDED.email, name_ar=EXCLUDED.name_ar, role_id=EXCLUDED.role_id, sector_id=EXCLUDED.sector_id, scope=EXCLUDED.scope, password_hash=EXCLUDED.password_hash, active=EXCLUDED.active, must_change_pw=EXCLUDED.must_change_pw`,
-      [uid, d.u, d.u + '@evc.com.sa', d.name, d.role, d.sector, d.scope, hash, nowIso()]);
+      [uid, d.u, d.email || d.u + '@evc.com.sa', d.name, d.role, d.sector, d.scope, hash, nowIso()]);
   }
   // link sector lead + give demo.pm a project via membership (project scope)
   const lead = await get("SELECT id FROM app_user WHERE username='demo.sectorlead'");

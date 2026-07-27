@@ -4,13 +4,13 @@ import { icon } from '../icons.js';
 import { fmtSar } from '../../core/util/ids.js';
 import { all, get } from '../../core/db/index.js';
 import { projectKpis } from '../../core/reports/metrics.js';
-import { listProjects, nextMilestones } from '../../modules/pmo/projects.js';
+import { listProjects, nextMilestones, projectKind, projectRevenue } from '../../modules/pmo/projects.js';
 import { projectGovernance } from '../../modules/pmo/governance.js';
 import { myTasks, teamTasks } from '../../modules/pmo/tasks.js';
 import { listViews } from '../../modules/views/views.js';
 import { canSeeSensitive, redact, can, effectiveScope } from '../../core/rbac/index.js';
 import { DELIVERY_SECTOR_SQL } from '../../core/org/kind.js';
-import { G } from '../i18n/glossary.js';
+import { G, projectKindLabel, projectKindTip } from '../i18n/glossary.js';
 import { sarShort, esc, bar, statMini, noticeCard } from './_shared.js';
 import { MONTHS_AR, MONTHS_EN3, currentMonthIndex } from '../../core/i18n/time.js';
 import { countAr, dayWord } from '../../core/i18n/plural.js';
@@ -116,11 +116,19 @@ export async function projectsPage(user, opts = {}) {
     const dv = p.status === 'COMPLETED' ? 100 : dprog[p.id];
     return dv != null ? { v: dv, derived: true } : { v: 0, derived: false };
   };
+  // الإيراد المحقق لكل مشروع — من بنود الإيراد باستعلامين مجمّعين لا استعلام لكل صف: كل ما
+  // سُجِّل للمشروع (عمود «الإيراد المحقق» وأساس القيمة الأخير)، وإيراد السنة المعروضة وحدها
+  // (بطاقة الملخص). خانة الإيراد على صف المشروع لا يكتبها شيء في المنتج — رقم جامد من الترحيل
+  // لا يتحرّك مهما سُجِّل إيراد جديد — فلا تُقرأ هنا بعد اليوم.
+  const revYear = year || nowY;
+  const prjIds = rows.map((p) => p.id);
+  const revAllBy = Object.fromEntries((await projectRevenue(prjIds)).map((r) => [r.project_id, r.revenue_halalas]));
+  const revYearBy = Object.fromEntries((await projectRevenue(prjIds, revYear)).map((r) => [r.project_id, r.revenue_halalas]));
   const bestVal = (p) =>
     p.contract_value_halalas ? { v: p.contract_value_halalas, l: 'عقد' } :
     p.po_value_halalas ? { v: p.po_value_halalas, l: 'أمر شراء' } :
     p.budget_halalas ? { v: p.budget_halalas, l: 'ميزانية' } :
-    p.revenue_halalas ? { v: p.revenue_halalas, l: 'إيراد محقق' } : { v: 0, l: null };
+    revAllBy[p.id] ? { v: revAllBy[p.id], l: 'إيراد محقق' } : { v: 0, l: null };
   // المفوتر لكل مشروع (استعلام مجمّع واحد) — أساس بديل لقياس الصرف عند غياب الميزانية،
   // بنفس سلّم صفحة تفاصيل المشروع: الصرف الفعلي من الميزانية ← المفوتر من قيمة العقد.
   const invBy = Object.fromEntries((await all(`SELECT project_id, COALESCE(SUM(amount_halalas),0) v FROM invoice
@@ -134,11 +142,6 @@ export async function projectsPage(user, opts = {}) {
     if (headline > 0) return { v: Math.round((invBy[p.id] || 0) / headline * 100), basis: 'المفوتر من قيمة المشروع' };
     return null;
   };
-  // إيراد السنة لكل مشروع (استعلام مجمّع واحد) — لبطاقة «الإيراد المحقق للسنة»
-  const revYear = year || nowY;
-  const revYearBy = Object.fromEntries((await all(`SELECT project_id, COALESCE(SUM(amount_halalas),0) v
-      FROM revenue_line WHERE year = ? AND project_id IS NOT NULL GROUP BY project_id`, [revYear]))
-    .map((r) => [r.project_id, r.v]));
   const nmBy = Object.fromEntries((await nextMilestones(rows.map((p) => p.id))).map((m) => [m.project_id, m]));
   // الفرصة المصدر: العمود project.source_opp_id مفتاح حقيقي في المخطط (يُملأ من الترحيل). استعلام
   // مجمّع واحد لعناوين الفرص التي انبثقت منها مشاريع هذا العرض — نُظهر الرابط فقط حين توجد الفرصة.
@@ -248,7 +251,7 @@ export async function projectsPage(user, opts = {}) {
   const rowOf = (p) => {
     const { prog, burn, dev, lateDays, health } = derived[p.id];
     const bv = bestVal(p);
-    const rev = p.revenue_halalas || 0;
+    const rev = revAllBy[p.id] || 0;
     const d = dlvBy[p.id];
     const nm = nmBy[p.id];
     const pmName = p.pm_name || userName[p.owner_user_id] || '';
@@ -584,7 +587,8 @@ export async function projectDetailPage(user, projectId) {
   const tmap = Object.fromEntries(tasks.map((t) => [t.status, t.n]));
   const dlv = await all("SELECT name_ar, amount_halalas, status, month FROM deliverable WHERE project_id=? AND deleted_at IS NULL ORDER BY month LIMIT 24", [p.id]);
   const risks = await all("SELECT title, impact, status FROM risk WHERE project_id=? AND status!='CLOSED' LIMIT 10", [p.id]);
-  const client = await get('SELECT id, name_ar FROM client WHERE id=?', [p.client_id]);
+  // نوع العميل يُقرأ مع اسمه لأن التصنيف يفرّق بين عميل حقيقي والعميل الذي هو الشركة نفسها.
+  const client = await get('SELECT id, name_ar, type FROM client WHERE id=?', [p.client_id]);
   const owner = p.owner_user_id ? await get('SELECT name_ar, username FROM app_user WHERE id=?', [p.owner_user_id]) : null;
   const srcOpp = p.source_opp_id ? await get('SELECT id, title_ar FROM opportunity WHERE id=? AND deleted_at IS NULL', [p.source_opp_id]) : null;
   const contract = await get("SELECT id, code, value_halalas, status FROM contract WHERE project_id=? AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1", [p.id]);
@@ -605,10 +609,16 @@ export async function projectDetailPage(user, projectId) {
   const contractVal = p.contract_value_halalas || (contract && contract.value_halalas) || 0;
   const headlineVal = contractVal || p.po_value_halalas || p.budget_halalas || 0;
   const spend = p.actual_spend_halalas || 0;
-  const revenue = p.revenue_halalas || 0;
+  // الإيراد المُثبت من بنود الإيراد — نفس مصدر كل أرقام الإيراد في المنصة، لا الخانة الجامدة
+  // على صف المشروع التي لا يكتبها شيء في المنتج (فتبقى على رقم الترحيل مهما سُجِّل إيراد جديد).
+  const revenue = (await projectRevenue([p.id]))[0]?.revenue_halalas || 0;
   const showCost = canCost && !row._redacted_actual_spend_halalas;
   const marginPct = p.margin_pct != null ? p.margin_pct : (revenue > 0 ? Math.round((revenue - spend) / revenue * 100) : null);
   const burnPct = p.budget_halalas ? Math.round(spend / p.budget_halalas * 100) : null;
+  // تصنيف المشروع مشتقّ من قرائن صفّه (عميل ونوعه · قيمة تعاقدية · أمر شراء · إيراد محقق ·
+  // فرصة مصدر) لا من الخانة المخزَّنة التي بقيت «داخلي» على 31 مشروع عميل منذ نقل المنصة.
+  // القاعدة كلها في خدمة المشاريع، والكلمة في المعجم، والتلميح يقول السبب ويكشف التناقض.
+  const kindTag = projectKind(p, { clientType: client?.type, revenueHalalas: revenue });
 
   // ── Timeline / schedule health ──
   const sd = p.start_date ? new Date(p.start_date) : null;
@@ -807,7 +817,7 @@ export async function projectDetailPage(user, projectId) {
     <a href="/app/projects" style="font-size:12px;color:var(--muted)">← المشاريع</a>
     <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin:.6rem 0 1rem">
       <h2 style="font-size:18px;margin:0">${esc(p.name_ar)}</h2>${pill(tr(p.status), p.status === 'COMPLETED' ? 'green' : p.status === 'ON_HOLD' ? 'amber' : 'blue')}${ragBadge}
-      ${p.kind ? pill(p.kind === 'external' ? 'خارجي' : 'داخلي', 'slate') : ''}
+      <span title="${esc(projectKindTip(kindTag))}">${pill(esc(projectKindLabel(kindTag.key)), 'slate')}</span>
       <span style="font-size:12px;color:var(--muted)">${client ? esc(client.name_ar) : ''} · ${esc(p.code || '')}${p.financial_code ? ' · مالي ' + esc(p.financial_code) : ''}</span>
     </div>
     <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:.65rem;margin-bottom:1rem">
