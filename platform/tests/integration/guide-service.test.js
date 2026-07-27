@@ -102,13 +102,78 @@ test('العقد: شكل الدليل كما اتفقت عليه الحارتا�
   }
 });
 
-test('التغطية: كل شاشة في الكتالوج لها بوابة حقيقية، والشاشات المطلوبة كلها مغطاة', () => {
+// ── التغطية: حارس بنيوي لا قائمة مكتوبة بيد ──────────────────────────────────
+// كان الحارس هنا قائمة ثمانية عشر مفتاحاً مكتوبة داخل الاختبار: تثبّت ما هو قائم، ولا ترى
+// شاشةً جديدة أبداً — فأي سطح يُضاف إلى المنتج يبقى بلا دليل ولا شيء يقول ذلك. الحارس الآن
+// يشتقّ التوقّع من **سياسة فتح الصفحات نفسها**: كل شاشة إما موصوفة، وإما مستثناة بسبب مكتوب.
+test('التغطية: كل شاشة في المنتج موصوفة في الدليل أو مستثناة بسبب معلن — والعكس', () => {
   for (const k of content.PAGE_KEYS) {
     assert.ok(typeof PAGE_ACCESS[k] === 'function', `الشاشة ${k} في الدليل بلا بوابة في المنتج`);
   }
-  const required = ['tasks', 'timesheet', 'sector', 'opportunities', 'my-opportunities', 'projects', 'clients',
-    'finance', 'team', 'staffing', 'approvals', 'reports', 'org', 'imports', 'ceo', 'portfolio', 'users', 'audit'];
-  for (const k of required) assert.ok(content.PAGE_KEYS.includes(k), `الشاشة المطلوبة ${k} غير مغطاة في الدليل`);
+  const productKeys = Object.keys(PAGE_ACCESS);
+  const exempt = content.CATALOGUE_EXEMPT;
+  for (const k of productKeys) {
+    if (content.PAGE_KEYS.includes(k)) continue;
+    assert.ok(Object.hasOwn(exempt, k),
+      `شاشة «${k}» في المنتج ولا وصف لها في الدليل ولا استثناء معلن — أضِف محتواها أو أعلن سبب استثنائها`);
+    assert.ok(typeof exempt[k] === 'string' && exempt[k].length > 40,
+      `استثناء «${k}» بلا سبب مكتوب مفهوم`);
+  }
+  // لا استثناء متروك بعد زوال سببه: كل مفتاح مستثنى ما زال شاشةً في المنتج وليس موصوفاً أيضاً.
+  for (const k of Object.keys(exempt)) {
+    assert.ok(productKeys.includes(k), `استثناء «${k}» لشاشة لم تعد موجودة في المنتج — احذفه`);
+    assert.ok(!content.PAGE_KEYS.includes(k), `الشاشة «${k}» موصوفة ومستثناة معاً — قرار واحد لا اثنان`);
+  }
+});
+
+test('التغطية: كل شاشة موصوفة لها جولة، أو استثناء معلن — ولا جولة لشاشة لا وجود لها', () => {
+  const tourKeys = Object.keys(content.TOURS);
+  const exempt = content.TOUR_EXEMPT;
+  for (const k of content.PAGE_KEYS) {
+    if (tourKeys.includes(k)) continue;
+    assert.ok(Object.hasOwn(exempt, k),
+      `الشاشة «${k}» موصوفة في الدليل وبلا جولة — أضِف جولتها أو أعلن سبب استثنائها`);
+    assert.ok(typeof exempt[k] === 'string' && exempt[k].length > 40, `استثناء جولة «${k}» بلا سبب مكتوب مفهوم`);
+  }
+  for (const k of Object.keys(exempt)) {
+    assert.ok(content.PAGE_KEYS.includes(k), `استثناء جولة «${k}» لشاشة غير موصوفة أصلاً — احذفه`);
+    assert.ok(!tourKeys.includes(k), `الشاشة «${k}» لها جولة واستثناء معاً — قرار واحد لا اثنان`);
+  }
+  // جولة لمفتاح ليس شاشةً في المنتج = جولة لا تُفتح أبداً (tourFor يمرّ من البوابة نفسها).
+  for (const k of tourKeys) {
+    assert.ok(typeof PAGE_ACCESS[k] === 'function', `جولة «${k}» لشاشة لا بوابة لها في المنتج`);
+    assert.ok((content.TOURS[k].steps || []).length >= 2, `جولة «${k}» أقصر من أن تفيد`);
+  }
+});
+
+test('التغطية: كل قدرة يشترطها نص موجودة فعلاً في القدرات التي تحسبها الخدمة', () => {
+  const declared = new Set(content.CAPABILITY_KEYS);
+  const computed = Object.keys(guide.capsOf(U('admin')));
+  assert.deepEqual([...declared].sort(), computed.slice().sort(),
+    'قائمة القدرات المعلنة في الكتالوج تخالف ما تحسبه الخدمة — إحداهما تعِد بشرط لا يُقيَّم');
+
+  // كل `cap`/`not` مذكور في أي عبارة أو خطوة جولة يجب أن يكون قدرة معلنة: شرطٌ باسم غير معروف
+  // يجعل العبارة تختفي عند الجميع بصمت (caps[undefined] ⟵ لا شيء) وهو أسوأ من ظهورها للجميع.
+  const conds = [];
+  const walk = (node) => {
+    if (Array.isArray(node)) return node.forEach(walk);
+    if (node && typeof node === 'object') {
+      if (typeof node.cap === 'string') conds.push(node.cap);
+      if (typeof node.not === 'string') conds.push(node.not);
+      Object.values(node).forEach(walk);
+    }
+  };
+  walk(content.PAGES); walk(content.TOURS); walk(content.TERMS);
+  assert.ok(conds.length > 5, 'الشروط لا تُقرأ أصلاً — الفحص نفسه معطَّل');
+  for (const c of conds) assert.ok(declared.has(c), `شرط «${c}» ليس قدرة معلنة، فالعبارة المشروطة به لن تظهر لأحد`);
+});
+
+test('التغطية: كل مصطلح تشير إليه شاشة له تعريف مكتوب', () => {
+  for (const k of content.PAGE_KEYS) {
+    for (const t of content.PAGES[k].terms || []) {
+      assert.ok(content.TERMS[t], `الشاشة ${k} تشير إلى مصطلح «${t}» بلا تعريف`);
+    }
+  }
 });
 
 // ── الخاصية الأمنية الأولى: لا شاشة خارج الصلاحية ─────────────────────────────
@@ -191,6 +256,47 @@ test('أمان: من نطاقه قطاع لا يَعِده دليله برؤية
     assert.ok(g.limits_ar.some((s) => s.includes('قطاعك')), `${role}: حدوده يجب أن تشرح أن نطاقه قطاعه`);
   }
   assert.ok(checked >= 2, 'يجب أن يشمل الفحص أكثر من دور واحد بنطاق قطاع');
+});
+
+// ── نطاق «الإدارة»: وصفٌ يطابق ما يفعله المنتج، لا ما نتمنّاه ولا ما دونه ─────
+// كان مدير الإدارة والمدير المباشر يسقطان في «نطاقه الضيق» فيقرأ كلٌّ منهما أن ما يراه «محصور
+// في عملك ومشاريعك» — وهو وصفٌ لدور آخر: نطاقهما أشخاص إدارتهما. والوصف الصحيح مقيَّد من
+// الجهتين: يذكر ما ضاق فعلاً (الأشخاص والمهام)، ولا يَعِد بتضييق القوائم إلى الإدارة لأنه
+// **غير مفعَّل** حتى تُنسَب الأعمال إلى إدارات (src/core/rbac/scope.js).
+test('نطاق الإدارة: لا يُقال لصاحبه إن ما يراه عمله وحده، ولا يُوعَد بتضييق لم يُفعَّل', async () => {
+  let checked = 0;
+  for (const role of ROLES()) {
+    const caps = guide.capsOf(U(role));
+    if (!caps.departmentSight) continue;
+    checked++;
+    assert.equal(caps.narrowSight, false, `${role}: نطاقه إدارته لا عمله وحده`);
+    assert.equal(caps.sectorSight, false, `${role}: ونطاقه ليس القطاع`);
+    const g = await guide.guideFor(U(role));
+    const limits = g.limits_ar.join(' ');
+    assert.ok(limits.includes('إدارتك'), `${role}: حدوده يجب أن تسمّي إدارته`);
+    assert.ok(!limits.includes('محصور في عملك ومشاريعك'), `${role}: وُصف نطاقه بأضيق مما هو`);
+    assert.ok(/قطاعك/.test(limits),
+      `${role}: يجب أن يُقال صراحةً إن قوائم المشاريع والفرص تصله بنطاق قطاعه اليوم`);
+    assert.ok(!/(المشاريع|الفرص)[^.]{0,60}إدارتك وحدها/.test(limits),
+      `${role}: الدليل يَعِد بتضييق القوائم إلى الإدارة وهو غير مفعَّل`);
+  }
+  assert.equal(checked, 2, 'الدوران المعنيان اثنان: مدير إدارة ومدير مباشر');
+});
+
+test('نطاق الإدارة: «التقارير» شاشة يفتحها صاحبها فعلاً، وهي في رحلته لا في ذيلها', async () => {
+  for (const role of ['department_manager', 'line_manager']) {
+    const u = U(role);
+    assert.equal(PAGE_ACCESS.reports(u), true, `${role}: يفتح التقارير فعلاً`);
+    assert.ok(content.ROLE_JOURNEY[role].includes('reports'), `${role}: التقارير جزء من رحلته المعلنة`);
+    const keys = (await guide.guideFor(u)).pages.map((p) => p.key);
+    assert.ok(keys.includes('reports'), `${role}: التقارير غائبة عن دليله`);
+    assert.ok(keys.indexOf('reports') < keys.indexOf('tasks'), `${role}: تقارير إدارته قبل مهامه الشخصية`);
+    // ولا يُشرح له ما لا يملكه: التصدير والجدولة خارج منحه.
+    assert.equal(guide.capsOf(u).exportReports, false, `${role}: لا تصدير ولا جدولة`);
+    const reports = (await guide.guideFor(u)).pages.find((p) => p.key === 'reports');
+    const text = [...reports.first_steps_ar, ...reports.weekly_ar].join(' ');
+    assert.ok(!text.includes('جدولة'), `${role}: شُرحت له جدولة لا يملكها`);
+  }
 });
 
 test('أمان: نطاق القطاع يُقرأ من اتساع المنح لا من وجودها — مدير تطوير الأعمال مثالاً', () => {

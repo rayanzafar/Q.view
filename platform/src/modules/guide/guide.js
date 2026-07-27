@@ -20,6 +20,10 @@ import { can, canSeeSensitive, effectiveScope } from '../../core/rbac/index.js';
 import { ROLE_LABELS, SCOPE_RANK } from '../../core/rbac/matrix.js';
 import { get } from '../../core/db/index.js';
 import { forbidden } from '../../core/http/errors.js';
+// بوابة «مهام فريقي» تُستورَد من مالكها لا تُعاد كتابتها: شرطها مركّب (قراءة على محور تنظيمي،
+// أو تعديل يتجاوز «خاصتي») ونسخةٌ منه هنا كانت ستنحرف عند أول تعديل — وهو الخطر نفسه الذي
+// وُجد هذا الملف لمنعه في الصفحات.
+import { teamTasksAccess } from '../pmo/tasks.js';
 import * as C from '../../core/guide/content.js';
 
 // الموارد التي يُقاس بها «اتساع البصر». النطاق يُقرأ بـeffectiveScope لا بـcan():
@@ -44,7 +48,14 @@ export function capsOf(user) {
   return {
     companySight: sight === 'company',
     sectorSight: sight === 'sector',
-    narrowSight: sight !== 'company' && sight !== 'sector',
+    // نطاق «الإدارة» كان يسقط في `narrowSight` فيقرأ مدير الإدارة أن ما يراه «محصور في عملك
+    // ومشاريعك» — وهو خطأ في الوصف لا في الصلاحية: نطاقه أشخاص إدارته لا عمله هو.
+    departmentSight: sight === 'department',
+    narrowSight: !['company', 'sector', 'department'].includes(sight),
+    teamTasks: teamTasksAccess(user).canRead,
+    // الدمج يتطلب التعديل **والحذف** معاً — نفس شرط بطاقة «جهات يُحتمل أنها جهة واحدة» في
+    // شاشة العملاء حرفياً، لأن أثر الدمج يفوق أثر التعديل وحده.
+    mergeClients: can(user, 'update', 'client') && can(user, 'delete', 'client'),
     approve: APPROVABLE.some((r) => can(user, 'approve', r)),
     exportReports: can(user, 'export', 'report'),
     editOrg: can(user, 'create', 'sector') || can(user, 'admin', 'department')
