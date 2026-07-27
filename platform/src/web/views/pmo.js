@@ -6,9 +6,9 @@ import { all, get } from '../../core/db/index.js';
 import { projectKpis } from '../../core/reports/metrics.js';
 import { listProjects, nextMilestones } from '../../modules/pmo/projects.js';
 import { projectGovernance } from '../../modules/pmo/governance.js';
-import { myTasks } from '../../modules/pmo/tasks.js';
+import { myTasks, teamTasks } from '../../modules/pmo/tasks.js';
 import { listViews } from '../../modules/views/views.js';
-import { canSeeSensitive, redact, can } from '../../core/rbac/index.js';
+import { canSeeSensitive, redact, can, effectiveScope } from '../../core/rbac/index.js';
 import { G } from '../i18n/glossary.js';
 import { sarShort, esc, bar, statMini, noticeCard } from './_shared.js';
 import { MONTHS_AR, MONTHS_EN3, currentMonthIndex } from '../../core/i18n/time.js';
@@ -508,7 +508,59 @@ export async function tasksPage(user) {
     @media(max-width:640px){.tk-side{flex-direction:column;align-items:flex-end;gap:.3rem}.tk-ctx{max-width:150px}}
   </style>`;
 
-  const body = `${styles}${strip}${quickAdd}${listArea}`;
+  // ── «مهام فريقي»: أول رؤية للمدير لمن يعمل على ماذا. تظهر فقط لمن يتجاوز نطاقه نفسه،
+  // والخدمة هي المانع الحقيقي (تفحص النطاق وتبني التصفية داخل الاستعلام).
+  let teamBlock = '';
+  const teamScope = effectiveScope(user, 'update', 'task');
+  if (teamScope && teamScope !== 'own') {
+    const board = await teamTasks(user);
+    const person = (b) => {
+      const flags = [
+        b.overdue ? `<span style="color:var(--red);font-weight:700">${countAr(b.overdue, { one: 'مهمة متأخرة', two: 'مهمتان متأخرتان', few: 'مهام متأخرة', many: 'مهمة متأخرة' })}</span>` : '',
+        b.blocked ? `<span style="color:var(--amber)">${countAr(b.blocked, { one: 'مهمة معلّقة', two: 'مهمتان معلّقتان', few: 'مهام معلّقة', many: 'مهمة معلّقة' })}</span>` : '',
+      ].filter(Boolean).join(' · ');
+      const top = b.tasks.slice(0, 4).map((t) => {
+        const dl = dueLabel(t);
+        return `<div class="tm-task">
+          <span class="tm-t">${esc(t.title)}</span>
+          <span class="tm-d" style="color:${dl.color}${dl.bold ? ';font-weight:700' : ''}">${dl.text}</span>
+        </div>`;
+      }).join('');
+      const more = b.tasks.length > 4
+        ? `<div class="tm-more">و${countAr(b.tasks.length - 4, { one: 'مهمة أخرى', two: 'مهمتان أخريان', few: 'مهام أخرى', many: 'مهمة أخرى' })}</div>` : '';
+      return `<div class="tm-card${b.overdue ? ' tm-hot' : ''}">
+        <div class="tm-head">
+          <span class="tm-name">${esc(b.name)}</span>
+          <span class="tm-count tnum">${b.tasks.length}</span>
+        </div>
+        ${flags ? `<div class="tm-flags">${flags}</div>` : ''}
+        ${top}${more}
+      </div>`;
+    };
+    teamBlock = board.length ? `<details class="tk-done" style="margin:1.4rem 0 .6rem">
+      <summary class="tk-sec-head"><span class="tk-dot" style="background:var(--brand2)"></span>
+        <span class="tk-sec-title">مهام فريقي</span>
+        <span class="tk-sec-count tnum">${board.reduce((a, b) => a + b.tasks.length, 0)}</span>
+        <span style="margin-inline-start:auto;font-size:11px;color:var(--faint)">إظهار / إخفاء</span></summary>
+      <div class="tm-grid">${board.map(person).join('')}</div>
+    </details>` : '';
+  }
+
+  const teamStyles = teamBlock ? `<style>
+    .tm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:.7rem;margin-top:.5rem}
+    .tm-card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:.7rem .8rem}
+    .tm-card.tm-hot{border-color:#fecaca}
+    .tm-head{display:flex;align-items:center;justify-content:space-between;gap:.5rem}
+    .tm-name{font-weight:800;font-size:12.5px;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .tm-count{font-size:11px;color:var(--muted);background:#f1f5f9;border-radius:20px;padding:.05rem .5rem;font-weight:700;flex:none}
+    .tm-flags{font-size:11px;margin-top:.25rem;display:flex;gap:.5rem;flex-wrap:wrap}
+    .tm-task{display:flex;justify-content:space-between;gap:.5rem;font-size:11.5px;padding:.28rem 0;border-top:1px solid var(--line);margin-top:.3rem}
+    .tm-t{color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .tm-d{flex:none;font-size:10.5px}
+    .tm-more{font-size:10.5px;color:var(--faint);padding-top:.35rem}
+  </style>` : '';
+
+  const body = `${styles}${teamStyles}${strip}${quickAdd}${listArea}${teamBlock}`;
   return layout({ user, active: 'tasks', title: 'مهامي', subtitle: openT.length ? `${countAr(openT.length, { one: 'مهمة مفتوحة', two: 'مهمتان مفتوحتان', few: 'مهام مفتوحة', many: 'مهمة مفتوحة' })}${overdue.length ? ` · ${overdue.length} متأخرة` : ''}` : 'كل المهام منجزة', body, scripts: ['/static/pages/tasks.js'] });
 }
 
