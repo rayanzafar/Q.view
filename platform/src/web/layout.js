@@ -114,13 +114,21 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
 .editable:hover{background:#f1f5ff;box-shadow:inset 0 0 0 1px #dbe3f5}
 
 /* Modal */
+/* النافذة المنبثقة تسع الشاشة دائماً مهما طال محتواها — لا تتمدّد خارجها ولا يُقتطع أسفلها.
+   كانت البطاقة كلها هي ما يُمرَّر (overflow على .modal-card)، فتهرب الترويسة مع التمرير ويفقد
+   القارئ عنوان ما يقرؤه وزر الإغلاق معاً. الآن البطاقة عمود: الترويسة والذيل ثابتان، والجسم
+   وحده يُمرَّر. و100dvh لا 100vh لأن شريط المتصفح في الجوال يقتطع من vh فيخرج أسفل النافذة. */
 .modal{position:fixed;z-index:62;inset:0;display:none;align-items:center;justify-content:center;padding:1rem}
 .modal.on{display:flex}
-.modal-card{background:var(--surface);border-radius:18px;width:520px;max-width:100%;max-height:92vh;overflow-y:auto;box-shadow:0 30px 80px rgba(15,23,42,.35);animation:pop .2s ease}
+.modal-card{background:var(--surface);border-radius:18px;width:520px;max-width:100%;
+  max-height:calc(100dvh - 2rem);display:flex;flex-direction:column;overflow:hidden;
+  box-shadow:0 30px 80px rgba(15,23,42,.35);animation:pop .2s ease}
+@supports not (height:100dvh){.modal-card{max-height:calc(100vh - 2rem)}}
 @keyframes pop{from{transform:scale(.96) translateY(8px);opacity:0}to{transform:none;opacity:1}}
-.modal-head{padding:1.1rem 1.35rem;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}
-.modal-body{padding:1.25rem 1.35rem;display:grid;gap:.85rem}
-.modal-foot{padding:.9rem 1.35rem;border-top:1px solid var(--line);display:flex;gap:.6rem;justify-content:flex-start}
+.modal-head{flex:0 0 auto;padding:1.1rem 1.35rem;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}
+.modal-body{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;
+  padding:1.25rem 1.35rem;display:grid;gap:.85rem;align-content:start}
+.modal-foot{flex:0 0 auto;padding:.9rem 1.35rem;border-top:1px solid var(--line);display:flex;gap:.6rem;justify-content:flex-start}
 .field{display:grid;gap:.3rem}
 .field>label{font-size:var(--fs-meta);font-weight:700;color:var(--muted)}
 .field .input,.field select,.field textarea{width:100%;border:1px solid var(--line);border-radius:10px;padding:.55rem .7rem;font-size:var(--fs-ui);font-family:inherit;background:#fff}
@@ -148,7 +156,8 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
    leading digit is never clipped by the RTL flex + Intl RLM marks. */
 .dd-row>span:first-child{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dd-row>b{flex:0 0 auto;white-space:nowrap;direction:ltr;unicode-bidi:isolate}
-.modal-card{overflow-x:hidden}
+/* الجسم هو ما يُمرَّر، فمنع التمرير الأفقي مكانه هو لا البطاقة (البطاقة مخفية التجاوز أصلاً). */
+.modal-body{overflow-x:hidden}
 .dd-kpi{display:flex;align-items:baseline;gap:.6rem;flex-wrap:wrap}
 .dd-kpi .v{font-size:1.6rem;font-weight:800;letter-spacing:-.02em}
 .dd-sec{font-weight:800;font-size:var(--fs-body);margin-top:.35rem;color:var(--ink2)}
