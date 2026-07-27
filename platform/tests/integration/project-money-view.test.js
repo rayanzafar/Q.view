@@ -234,6 +234,17 @@ test('مشروع حركته في السنة الماضية: تظهر سنتان 
   assert.ok(cur.includes(`>${YR - 1}<`), 'وتُسمّى تلك السنة داخل اللوح نفسه');
 });
 
+// ── ⑥ وصف المصروف نصٌّ يكتبه مستخدم: يُهرَّب قبل أن يُحقن في الصفحة ────────────────────────
+test('وصف المصروف المكتوب بيد المستخدم يُهرَّب في كل موضع يظهر فيه', async () => {
+  await db.insert('expense', { id: 'EX', project_id: 'P1', sector_id: 'S1',
+    type: '<img src=x onerror=alert(1)>سفر', amount_halalas: 1_000, incurred_month: 5,
+    incurred_year: YR, requested_by: 'u_fin', status: 'DRAFT', created_at: T });
+  const m = moneyOf(await projectDetailPage(finance, 'P1'));
+  assert.ok(!m.includes('<img src=x'), 'لا وسم منفَّذ في الجدول ولا في حقل التعديل');
+  assert.ok(m.includes('&lt;img src=x'), 'الوصف يظهر نصاً مهرَّباً كما كُتب');
+  await db.run('DELETE FROM expense WHERE id = ?', ['EX']);
+});
+
 test('سنة العرض تصل من الرابط حين تُمرَّر', async () => {
   const m = moneyOf(await projectDetailPage(finance, 'P3', { year: YR - 1 }));
   assert.ok(m.includes(`الحركة الشهرية في سنة ${YR - 1}`), 'اللوح المعروض هو سنة الطلب');

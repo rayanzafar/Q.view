@@ -1148,9 +1148,11 @@ const mAmount = (v, { locked = false, why = '', absent = '', color = '' } = {}) 
 const mRestricted = (reason) => `<div class="alert warn"><span style="font-weight:800;flex:0 0 auto">${G.restricted}</span><span>${esc(reason || G.restrictedAmounts)}</span></div>`;
 const mEmpty = (title, detail, action = '') => `<div class="empty-state" style="padding:1.15rem 1rem">${icon('inbox')}
   <div class="t">${esc(title)}</div><div class="s">${esc(detail)}</div>${action}</div>`;
+// عنوان قسم فرعي + شرحه. الشرح يأخذ سطره كاملاً على الشاشات الضيقة (أساس مرن 200px مع
+// السماح بالالتفاف) بدل أن يُعصر في عمود بعرض كلمة فيخرج نصّه من صندوقه.
 const mHead = (title, sub) => `<div style="display:flex;align-items:baseline;gap:.5rem;flex-wrap:wrap;margin-bottom:.5rem">
   <div style="font-weight:800;font-size:12.5px;color:var(--ink2)">${title}</div>
-  ${sub ? `<div style="font-size:10.5px;color:var(--muted);flex:1;min-width:0">${sub}</div>` : ''}</div>`;
+  ${sub ? `<div style="font-size:10.5px;color:var(--muted);flex:1 1 200px;min-width:0">${sub}</div>` : ''}</div>`;
 const mBlock = (inner) => `<div style="padding:.85rem 1rem;border-top:1px solid var(--line)">${inner}</div>`;
 // «YYYY-MM» ⟵ «يناير 2026». ما لا شهر له يُقال عنه ذلك، ولا يُنسب إلى شهر تخميناً.
 const mYm = (key) => {
@@ -1217,7 +1219,10 @@ function mYearPanel(m, { active }) {
   const statusPills = (b.by_status || []).length
     ? `<div style="display:flex;gap:.3rem;flex-wrap:wrap;margin-top:.5rem">${b.by_status.map((s) => `<span class="pill" style="background:#f1f5f9;color:#475569"
         title="${esc(mInvStatus(s.status))}: ${esc(fmtSar(s.amount_halalas))}">${esc(mInvStatus(s.status))} <b class="tnum">${Math.round(Number(s.count) || 0)}</b></span>`).join('')}</div>` : '';
-  const bridgeBlock = mBlock(`${mHead(`${G.moneyBridge} — ${G.moneyStage}ٌ بعد أخرى`, 'خمس مراحل متتابعة، كلٌّ من جدولها')}
+  // أرقام الجسر تراكمية منذ بداية المشروع (الفوترة والتحصيل لا يحملان سنةً في هذا الضلع)، ويُقال
+  // ذلك صراحةً كي لا تُقرأ داخل لوح السنة على أنها أرقام تلك السنة وحدها.
+  const bridgeBlock = mBlock(`${mHead(`${G.moneyBridge} — ${G.moneyStage}ٌ بعد أخرى`,
+    'خمس مراحل متتابعة، كلٌّ من جدولها — وأرقامها منذ بداية المشروع لا لسنة العرض')}
     <div style="display:flex;gap:.35rem;flex-wrap:wrap;align-items:stretch">${stages}</div>
     ${statusPills}
     <div class="alert info" style="margin-top:.55rem;font-size:11px">${esc(b.note_ar)}</div>
@@ -1227,32 +1232,42 @@ function mYearPanel(m, { active }) {
   const invM = b.invoiced_monthly; const colM = m.cashIn.monthly;
   const paid = m.cashOut.paid; const paidM = paid ? paid.monthly : null;
   const amountsHidden = m.cashOut.permitted === true && m.cashOut.amounts_visible === false;
-  const amtsOf = (rows) => (rows || []).map((r) => Number(r.amount_halalas) || 0);
-  const max = Math.max(1, ...amtsOf(invM), ...amtsOf(colM), ...(amountsHidden ? [] : amtsOf(paidM)));
+  // مقياس كل صف من أعلى شهرٍ فيه، ويُكتب الرقم بجانبه. مقياسٌ واحد للصفوف الثلاثة يجعل
+  // مصروفاً بالآلاف خطاً لا يُرى بجوار فوترةٍ بالملايين، فتضيع «نسبتهم حسب الشهر» — وهي السؤال.
+  // والمقارنة بين الصفوف تبقى ممكنة بالأرقام: مجموع السنة بجانب العنوان، وكل شهر في تفصيل الأشهر.
   const cells = (rows, key) => rows.map((r, i) => {
     const v = Number(r[key]) || 0;
     const unit = key === 'count' ? `${Math.round(v)} حركة` : fmtSar(v);
     return { value: v, title: `${MONTHS_AR[i]} ${m.year}: ${v > 0 ? unit : 'لا حركة مسجّلة'}` };
   });
+  const peakOf = (list) => Math.max(0, ...list.map((c) => c.value));
+  const peakNote = (list, key) => {
+    const p = peakOf(list);
+    return p > 0 ? `<div style="font-size:10px;color:var(--faint)">أعلى شهر: <span class="tnum">${key === 'count' ? `${Math.round(p)}` : fmtSar(p)}</span>${key === 'count' ? ' حركة' : ''}</div>` : '';
+  };
+  const invCells = invM ? cells(invM, 'amount_halalas') : [];
+  const colCells = colM ? cells(colM, 'amount_halalas') : [];
+  const paidKey = amountsHidden ? 'count' : 'amount_halalas';
+  const paidCells = paidM ? cells(paidM, paidKey) : [];
   const invTotal = invM ? invM.reduce((a, r) => a + (Number(r.amount_halalas) || 0), 0) : null;
   const rowInvoiced = mTrackRow({ title: G.invoiced, tone: '#834798',
-    sub: billLock ? '' : invM ? `في ${yr}: <span class="tnum">${fmtSar(invTotal)}</span>` : '',
-    body: billLock ? mLock(b.reason_ar) : invM ? mBars(cells(invM, 'amount_halalas'), { color: '#834798', max })
+    sub: billLock ? '' : invM ? `في ${yr}: <span class="tnum">${fmtSar(invTotal)}</span>${peakNote(invCells)}` : '',
+    body: billLock ? mLock(b.reason_ar) : invM ? mBars(invCells, { color: '#834798', max: peakOf(invCells) })
       : mNo('لا فواتير صادرة على هذا المشروع') });
   const rowCollected = mTrackRow({ title: `${G.collected} — ${G.cashIn}`, tone: 'var(--green)',
-    sub: m.cashIn.permitted === false ? '' : m.cashIn.in_year_halalas != null ? `في ${yr}: <span class="tnum">${fmtSar(m.cashIn.in_year_halalas)}</span>` : '',
+    sub: m.cashIn.permitted === false ? '' : m.cashIn.in_year_halalas != null
+      ? `في ${yr}: <span class="tnum">${fmtSar(m.cashIn.in_year_halalas)}</span>${peakNote(colCells)}` : '',
     // سنةٌ بلا تحصيل في مشروعٍ له تحصيل مسجَّل تُقرأ صفراً حقيقياً — فتُذكر سنواتُ الحركة معها
     // كي لا يُقرأ اللوحُ فارغاً، ويُعرف أن الحركة في سنة أخرى لا أن التحصيل معدوم.
     body: m.cashIn.permitted === false ? mLock(m.cashIn.reason_ar)
-      : `${colM ? mBars(cells(colM, 'amount_halalas'), { color: 'var(--green)', max })
+      : `${colM ? mBars(colCells, { color: 'var(--green)', max: peakOf(colCells) })
         : mNo('لم يُسجَّل أي تحصيل على فواتير هذا المشروع')}${mOther(m.cashIn.other_years)}` });
-  const outMax = amountsHidden && paidM ? Math.max(1, ...paidM.map((r) => Number(r.count) || 0)) : max;
   const rowPaid = mTrackRow({ title: `${G.paidOut} — ${G.cashOut}`, tone: '#b45309',
     sub: m.cashOut.permitted === false ? ''
-      : paid && paid.in_year_halalas != null ? `في ${yr}: <span class="tnum">${fmtSar(paid.in_year_halalas)}</span>`
-        : paid && amountsHidden ? `في ${yr}: <span class="tnum">${Math.round(paid.in_year_count || 0)}</span> حركة` : '',
+      : paid && paid.in_year_halalas != null ? `في ${yr}: <span class="tnum">${fmtSar(paid.in_year_halalas)}</span>${peakNote(paidCells)}`
+        : paid && amountsHidden ? `في ${yr}: <span class="tnum">${Math.round(paid.in_year_count || 0)}</span> حركة${peakNote(paidCells, 'count')}` : '',
     body: m.cashOut.permitted === false ? mLock(m.cashOut.reason_ar)
-      : `${paidM ? mBars(cells(paidM, amountsHidden ? 'count' : 'amount_halalas'), { color: '#b45309', max: outMax })
+      : `${paidM ? mBars(paidCells, { color: '#b45309', max: peakOf(paidCells) })
         : m.cashOut.recorded ? mNo('المسجَّل من المصروفات لم يُصرف بعد') : mNo('لا مصروفات مسجّلة على هذا المشروع')}${mOther(m.cashOut.other_years)}` });
   const undated = [
     m.cashIn.undated ? `تحصيلات ${G.undatedRows}: <span class="tnum">${Math.round(m.cashIn.undated.count)}</span> بمبلغ <span class="tnum">${fmtSar(m.cashIn.undated.amount_halalas)}</span>` : '',
@@ -1262,12 +1277,19 @@ function mYearPanel(m, { active }) {
     ${rowInvoiced}${rowCollected}${rowPaid}${mMonthLabels(now)}
     ${amountsHidden ? `<div style="font-size:10.5px;color:var(--amber);font-weight:700;margin-top:.4rem">${esc(m.cashOut.amounts_reason_ar || G.restrictedAmounts)} — أعمدة الخارج النقدي تمثل عدد الحركات لا مبالغها.</div>` : ''}
     ${undated.length ? `<div style="font-size:10.5px;color:var(--muted);margin-top:.4rem">${undated.join(' · ')} — محسوبة في المجموع وخارج الشريط الشهري حتى يُسجَّل تاريخها.</div>` : ''}
+    <div style="font-size:10.5px;color:var(--faint);margin-top:.4rem">كل صف بمقياس أعلى شهرٍ فيه، فتُقرأ نسبة كل شهر داخل صفّه — والمقارنة بين الصفوف بالأرقام لا بارتفاع الأعمدة.</div>
     <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-top:.55rem">
       <button type="button" class="btn btn-sm" data-action="money-dd" data-dd="money-months-${esc(String(m.year))}">${icon('list')} ${G.monthDetails}</button>
       <span style="font-size:10.5px;color:var(--faint)">${esc(m.cashIn.note_ar)}</span>
     </div>`);
 
   // نافذة تفصيل الأشهر: الأرقام الثلاثة صفاً لكل شهر (خادميّة بالكامل، بنفس صلاحية الصفحة).
+  // ما لا تسجيل له يُقال مرة واحدة أسفل الجدول بدل أن يتكرر «غير مُسجَّل» اثنتي عشرة مرة.
+  const ddMissing = [
+    !billLock && !invM ? 'المفوتر: لا فواتير صادرة مسجّلة على هذا المشروع' : '',
+    m.cashIn.permitted !== false && !colM ? 'المحصَّل: لا تحصيل مسجَّل على فواتير هذا المشروع' : '',
+    m.cashOut.permitted !== false && !paidM ? 'المدفوع: لا مصروف مدفوع مسجَّل على هذا المشروع' : '',
+  ].filter(Boolean);
   const ddRowsHtml = MONTHS_AR.map((mn, i) => `<tr style="border-bottom:1px solid var(--line)">
       <td style="padding:.4rem .6rem;font-size:12px">${mn}${i === now ? ` ${nowDot('الشهر الحالي')}` : ''}</td>
       <td style="padding:.4rem .6rem;text-align:center;font-size:12px">${billLock ? mLock(b.reason_ar) : invM ? `<span class="tnum">${fmtSar(invM[i].amount_halalas)}</span>` : mNo()}</td>
@@ -1284,22 +1306,29 @@ function mYearPanel(m, { active }) {
         <th style="padding:.35rem .6rem">الشهر</th><th style="padding:.35rem .6rem;text-align:center">${G.invoiced}</th>
         <th style="padding:.35rem .6rem;text-align:center">${G.collected}</th><th style="padding:.35rem .6rem;text-align:center">${G.paidOut}</th></tr></thead>
       <tbody>${ddRowsHtml}</tbody></table></div>
+      ${ddMissing.length ? `<div style="font-size:11px;color:var(--amber);font-weight:700;margin-top:.6rem;line-height:1.9">${ddMissing.join(' · ')}</div>` : ''}
       <div style="font-size:11px;color:var(--muted);margin-top:.6rem;line-height:1.9">${esc(b.note_ar)}</div></div></template>`;
 
   // ③ الخارج النقدي: المدفوع وحده نقد، والباقي التزامات وطلبات بجانبه لا داخله.
   const co = m.cashOut;
-  const coCell = (label, count, amount, color) => `<div style="flex:1 1 132px;min-width:120px;border:1px solid var(--line);border-radius:12px;padding:.5rem .6rem">
-    <div style="font-size:11px;color:var(--muted);font-weight:700">${label}</div>
-    <div style="font-size:var(--fs-num-sm)">${amount === undefined ? mNum(count, color)
-    : amount != null ? mSar(amount, color) : (co.amounts_visible === false ? mLock(co.amounts_reason_ar) : mNo())}</div>
-    <div style="font-size:10px;color:var(--faint)"><span class="tnum">${Math.round(Number(count) || 0)}</span> حركة مسجّلة</div></div>`;
+  // خانةٌ فارغةٌ داخل سجلٍ قائم ليست «غير مُسجَّل»: لا شيء في هذه الحالة اليوم، وهذه حقيقة لا غياب.
+  const coCell = (label, count, amount, color, sub) => {
+    const n = Math.round(Number(count) || 0);
+    const value = amount === undefined ? mNum(n, color)
+      : n === 0 ? mNo('لا شيء في هذه الحالة')
+        : amount != null ? mSar(amount, color) : (co.amounts_visible === false ? mLock(co.amounts_reason_ar) : mNo());
+    return `<div style="flex:1 1 132px;min-width:120px;border:1px solid var(--line);border-radius:12px;padding:.5rem .6rem">
+      <div style="font-size:11px;color:var(--muted);font-weight:700">${label}</div>
+      <div style="font-size:var(--fs-num-sm)">${value}</div>
+      <div style="font-size:10px;color:var(--faint)">${sub || (n ? `<span class="tnum">${n}</span> مصروفاً في هذه الحالة` : '')}</div></div>`;
+  };
   const cashOutBlock = mBlock(co.permitted === false ? `${mHead(G.cashOut)}${mRestricted(co.reason_ar)}`
-    : `${mHead(G.cashOut, esc(co.note_ar))}
+    : `${mHead(G.cashOut, `${esc(co.note_ar)} الأرقام هنا منذ بداية المشروع؛ وشريط السنة أعلاه لسنة العرض.`)}
       ${co.recorded ? `<div style="display:flex;gap:.4rem;flex-wrap:wrap">
-        ${coCell(G.paidOut, co.paid.count, co.paid.total_halalas, 'var(--ink2)')}
-        ${coCell(G.committedNotPaid, co.committed.count, co.committed.total_halalas, 'var(--amber)')}
-        ${coCell(G.requestedNotApproved, co.requested.count, co.requested.total_halalas, 'var(--muted)')}
-        ${coCell(G.rejectedExpenses, co.rejected.count, undefined, 'var(--faint)')}
+        ${coCell(G.paidOut, co.paid.count, co.paid.total_halalas, 'var(--ink2)', 'نقدٌ خرج فعلاً — منذ بداية المشروع')}
+        ${coCell(G.committedNotPaid, co.committed.count, co.committed.total_halalas, 'var(--amber)', 'التزام لم يخرج بعد')}
+        ${coCell(G.requestedNotApproved, co.requested.count, co.requested.total_halalas, 'var(--muted)', 'بانتظار الاعتماد')}
+        ${coCell(G.rejectedExpenses, co.rejected.count, undefined, 'var(--faint)', 'مصروفات مرفوضة — خارج الحساب')}
       </div>
       <div style="font-size:10.5px;color:var(--faint);margin-top:.5rem">${esc(co.sources_ar)}</div>`
     : mEmpty(G.notRecorded + ' — لا خارج نقدي على هذا المشروع', m.expenses.empty_ar,
@@ -1312,7 +1341,9 @@ function mYearPanel(m, { active }) {
     const op = pctv <= 0 ? 0 : Math.max(0.16, Math.min(1, pctv / 100));
     return `<span title="${esc(mn)}: ${pctv}%" style="height:14px;border-radius:3px;background:${pctv > 0 ? `rgba(36,74,153,${op.toFixed(2)})` : '#eef1f7'}"></span>`;
   };
-  const shareStrip = (months) => `<div class="mtrack" style="gap:2px">${months.map((v, i) => shareCell(v, MONTHS_AR[i])).join('')}</div>`;
+  // min-width لازم: في بطاقة الجوال (.rtbl) تصير الخلية صفَّ flex، وشبكةٌ خلاياها فارغة
+  // تنكمش إلى صفر فيختفي الشريط كله. المقاس الأدنى يبقيه ظاهراً في الجدول والبطاقة معاً.
+  const shareStrip = (months) => `<div class="mtrack" style="gap:2px;min-width:140px;flex:1 1 auto">${months.map((v, i) => shareCell(v, MONTHS_AR[i])).join('')}</div>`;
   const staffRowsM = (st.people || []).map((e) => `<tr style="border-bottom:1px solid var(--line)">
       <td data-label="الشخص" style="padding:.4rem .7rem;font-size:12.5px">${esc(e.name)}
         <div style="font-size:10px;color:var(--muted)">${esc(e.job_title || 'المسمى غير مسجَّل')}</div></td>
@@ -1407,16 +1438,17 @@ function mExpensesBlock(m, { projectId, years, defaultYear }) {
     const view = `<tr data-exp-row="${esc(r.id)}" style="border-bottom:1px solid var(--line)">
       <td data-label="${G.expenseDesc}" style="padding:.4rem .7rem;font-size:12.5px">${esc(r.type || 'بلا وصف مسجَّل')}
         <div style="font-size:10px;color:var(--muted)">${G.expenseWho}: ${esc(r.requested_by_name || 'غير مسجَّل')}</div></td>
-      <td data-label="${G.expenseMonth}" style="padding:.4rem .7rem;text-align:center;font-size:11.5px">${mMonthYear(r.month, r.year)}</td>
+      <td data-label="${G.expenseMonth}" style="padding:.4rem .7rem;text-align:center;font-size:11.5px"><span>${mMonthYear(r.month, r.year)}</span></td>
       <td data-label="${G.expenseAmount}" style="padding:.4rem .7rem;text-align:center">${r.amount_restricted ? mLock(m.cashOut.amounts_reason_ar) : amt(r.amount_halalas)}</td>
       <td data-label="حالة المصروف" style="padding:.4rem .7rem;text-align:center">${canApprove
       ? `<select class="input" style="font-size:11px;padding:.2rem .3rem;width:auto" aria-label="حالة المصروف"
             data-action-change="exp-status" data-id="${esc(r.id)}">${statusOpts(Object.keys(EXPENSE_STATUS_AR), String(r.status).toUpperCase())}</select>`
       : pill(esc(r.status_ar), r.status === 'PAID' ? 'green' : r.status === 'APPROVED' ? 'blue' : r.status === 'REJECTED' ? 'red' : 'slate')}</td>
       <td data-label="إجراء" style="padding:.4rem .7rem;text-align:center;white-space:nowrap">
+        <span style="display:inline-flex;gap:.25rem;align-items:center">
         ${editable ? `<button type="button" class="btn btn-ghost btn-sm" data-action="exp-edit" data-id="${esc(r.id)}" title="${G.edit}" aria-label="${G.edit}">${icon('edit')}</button>` : ''}
         ${deletable ? `<button type="button" class="btn btn-ghost btn-sm" data-action="exp-del" data-id="${esc(r.id)}" title="${G.delete}" aria-label="${G.delete}">✕</button>` : ''}
-        ${!editable && canEdit && settled ? `<span style="font-size:10px;color:var(--faint)">بعد الحسم لا تُعدَّل بياناته</span>` : ''}</td></tr>`;
+        ${!editable && canEdit && settled ? `<span style="font-size:10px;color:var(--faint)">بعد الحسم لا تُعدَّل بياناته</span>` : ''}</span></td></tr>`;
     const edit = editable ? `<tr data-exp-edit="${esc(r.id)}" hidden style="border-bottom:1px solid var(--line);background:#f8fafc">
       <td colspan="5" style="padding:.5rem .7rem">
         <div style="display:flex;gap:.4rem;flex-wrap:wrap;align-items:center">
@@ -1529,7 +1561,7 @@ export async function projectMoneySection(user, project, opts = {}) {
 
   return card(`<div style="padding:.85rem 1rem;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:.7rem;flex-wrap:wrap">
       <span style="color:var(--brand);display:flex">${icon('money')}</span>
-      <div style="flex:1;min-width:0">
+      <div style="flex:1 1 220px;min-width:0">
         <div style="font-weight:800;font-size:13px">${G.moneyOnProject}</div>
         <div style="font-size:10.5px;color:var(--muted)">${G.moneyOnProjectSub}</div>
       </div>${chips}</div>

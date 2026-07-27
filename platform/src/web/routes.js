@@ -73,8 +73,12 @@ const guardDetail = (kind) => (req, res, next) => (DETAIL_ACCESS[kind]?.(req.ctx
 webRouter.get('/app/contract/:id', requireWeb, guardDetail('contract'), async (req, res, next) => {
   try { res.send(await P.contractDetailPage(req.ctx.user, req.params.id)); } catch (e) { next(e); }
 });
+// الاستعلام يُمرَّر كما تفعل صفحات القوائم (`/app/:page` أدناه) — فسنة «حركة المال» تصير
+// قابلة للمشاركة برابط. وبدونه كانت الصفحة تُبنى بلا استعلام أصلاً، فالمبدِّل يعمل داخل
+// الصفحة والرابط لا يحمل شيئاً — وهو نمطُ «مبنيٌّ وغير موصول» نفسه الذي أوقع موجّه المال
+// من قبل: الشيء موجود ومختبَر ولا يبلغه المستخدم.
 webRouter.get('/app/project/:id', requireWeb, guardDetail('project'), async (req, res, next) => {
-  try { res.send(await P.projectDetailPage(req.ctx.user, req.params.id)); } catch (e) { next(e); }
+  try { res.send(await P.projectDetailPage(req.ctx.user, req.params.id, { ...req.query })); } catch (e) { next(e); }
 });
 webRouter.get('/app/opportunity/:id', requireWeb, guardDetail('opportunity'), async (req, res, next) => {
   try { res.send(await P.opportunityDetailPage(req.ctx.user, req.params.id)); } catch (e) { next(e); }

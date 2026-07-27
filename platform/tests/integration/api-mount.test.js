@@ -94,6 +94,20 @@ test('صورة المال تُعيد الأقسام التي تقرؤها الش
   assert.equal(r.body.cashIn.total_halalas, null, 'وبلا رقم — لا صفر يُقرأ قياساً');
 });
 
+test('صفحة المشروع تمرّر الاستعلام — سنة «حركة المال» تصل من الرابط لا من داخل الصفحة وحدها', async () => {
+  // نفس صنف عطل «مبنيٌّ وغير موصول» أعلاه، وفي طبقة أخرى: المبدِّل مبنيٌّ ويعمل داخل الصفحة،
+  // لكن الموجّه كان يستدعي `projectDetailPage(user, id)` بلا استعلام — فالرابط لا يحمل السنة،
+  // ولا يُشارَك، ولا يُفتح على سنةٍ بعينها. والفحص يقارن **صفحتين** لا صفحةً واحدة: لو أُهمل
+  // الاستعلام لخرجتا متطابقتين حرفياً، وهو ما يجعل هذا الفحص قادراً على السقوط.
+  const now = new Date().getUTCFullYear();
+  const a = await req(`/app/project/P_MOUNT?year=${now}`);
+  const b = await req(`/app/project/P_MOUNT?year=${now - 1}`);
+  assert.equal(a.status, 200);
+  assert.equal(b.status, 200);
+  assert.notEqual(a.text, b.text,
+    'الصفحتان متطابقتان رغم اختلاف السنة — الاستعلام لا يبلغ الصفحة');
+});
+
 test('مسار غير موجود يبقى غير موجود — الحارس يميّز التركيب من القبول العام', async () => {
   const r = await req('/api/projects/P_MOUNT/this-route-does-not-exist');
   assert.equal(r.status, 404,
