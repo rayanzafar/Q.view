@@ -52,6 +52,7 @@ before(async () => {
     });
     assert.equal(r.status, 200, `تسجيل دخول ${username}`);
     cookies[username] = r.headers.getSetCookie().find((c) => c.startsWith('sanad_sid=')).split(';')[0];
+    await r.text();   // يُستهلك الجسم هنا أيضاً — سبعة عشر مقبساً معلّقاً تكفي وحدها لإسقاط التفكيك
   }
 });
 
@@ -62,12 +63,21 @@ after(async () => {
   wipe();
 });
 
-const req = (username, path, { method = 'GET', body } = {}) => fetch(base + path, {
-  method, redirect: 'manual',
-  headers: { cookie: cookies[username], 'content-type': 'application/json', connection: 'close' },
-  body: body === undefined ? undefined : JSON.stringify(body),
-});
-const json = async (username, path, opts) => JSON.parse(await (await req(username, path, opts)).text());
+// كل استجابة تُستهلك هنا مرة واحدة، ويعود النص جاهزاً — لا كائن استجابة مفتوح يخرج من الدالة.
+// السبب ليس أناقة: جسم لم يُقرأ يُبقي محلّل undici معلّقاً على مقبس حيّ، فتتراكم عشرات المقابس
+// عبر ١٧ شخصاً × صفحات؛ وعند إغلاق الخادم في `after` يُهدَم محلّل معلّق فيرمي استثناءً غير
+// ملتقَط (assert(!this.paused)) يُسقط الاختبار كله. ظهر في الفحص الآلي دون المحلي لأن الأمر
+// توقيتي بحت. الاستهلاك داخل الدالة يجعل التسريب **مستحيلاً بنيوياً** لا معتمداً على انتباه
+// كل موضع نداء — وكان أربعة عشر موضعاً يقرأ الحالة ويترك الجسم.
+const req = async (username, path, { method = 'GET', body } = {}) => {
+  const r = await fetch(base + path, {
+    method, redirect: 'manual',
+    headers: { cookie: cookies[username], 'content-type': 'application/json', connection: 'close' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  return { status: r.status, headers: r.headers, text: await r.text() };
+};
+const json = async (username, path, opts) => JSON.parse((await req(username, path, opts)).text);
 const userOf = (role) => EXP.ROLES.find((r) => r.role === role).username;
 
 // أوسع نطاق تصل إليه منح الدور فعلاً (أعلى رتبة بين منحه كلها).
@@ -111,7 +121,7 @@ test('provisioning: no demo account is granted a broader scope than its role act
 test('sensitive: salary stays sealed to admin across ALL 17 personas (roster + team page)', async () => {
   for (const { username, role } of EXP.ROLES) {
     const roster = await req(username, '/api/org/roster');
-    const body = await roster.text();
+    const body = roster.text;
     if (role === 'admin') {
       assert.equal(roster.status, 200);
       assert.match(body, /"salary_halalas":\s*[1-9]/, 'مدير النظام يستقبل الراتب');
@@ -121,7 +131,7 @@ test('sensitive: salary stays sealed to admin across ALL 17 personas (roster + t
     for (const page of ['/app/team', '/app/staffing']) {
       const p = await req(username, page);
       if (p.status !== 200 || role === 'admin') continue;
-      const html = await p.text();
+      const html = p.text;
       assert.doesNotMatch(html, /emp-sal/, `${username} يجب ألا يرى عمود الراتب في ${page}`);
       assert.doesNotMatch(html, /"salary_(halalas|sar)":\s*[1-9]/, `${username} يجب ألا تُضخّ له قيم رواتب في ${page}`);
     }
@@ -137,7 +147,7 @@ test('people surfaces: only employee-readers reach the roster/tree; the rest are
     for (const path of ['/api/org/roster', '/api/org/tree']) {
       const r = await req(u, path);
       assert.equal(r.status, 403, `${role} ${path}`);
-      assert.equal(JSON.parse(await r.text()).error?.code, 'forbidden');
+      assert.equal(JSON.parse(r.text).error?.code, 'forbidden');
     }
     for (const page of ['/app/team', '/app/staffing']) {
       assert.equal((await req(u, page)).status, 403, `${role} ${page}`);
@@ -192,7 +202,7 @@ test('bd_head: company-wide operations by design, but READ-ONLY on money', async
   const col = await req(u, '/api/finance/collections', { method: 'POST', body: { invoiceId: 'FX-INV-2', amountSar: 1000 } });
   assert.equal(col.status, 403, 'تسجيل تحصيل خارج صلاحيته');
   // ولا راتب بأي شكل — الختم لا يُفتح لدور جديد مهما اتسعت مسؤوليته.
-  assert.doesNotMatch(await (await req(u, '/api/org/roster')).text(), /"salary_halalas"/);
+  assert.doesNotMatch((await req(u, '/api/org/roster')).text, /"salary_halalas"/);
 });
 
 test('operations: sector-scoped writer reaches validation on create, 403 on out-of-grant resources', async () => {
@@ -200,7 +210,7 @@ test('operations: sector-scoped writer reaches validation on create, 403 on out-
   // مشروع: يملك الإنشاء بنطاق قطاعه ⟵ يصل إلى التحقّق (اسم المشروع مطلوب)
   const prj = await req(u, '/api/projects', { method: 'POST', body: {} });
   assert.equal(prj.status, 400);
-  assert.match(JSON.parse(await prj.text()).error.message, /اسم المشروع/);
+  assert.match(JSON.parse(prj.text).error.message, /اسم المشروع/);
   // فرصة وموظف: بلا منح إنشاء ⟵ رفض قبل التحقّق
   assert.equal((await req(u, '/api/opportunities', { method: 'POST', body: {} })).status, 403);
   assert.equal((await req(u, '/api/org/employees', { method: 'POST', body: {} })).status, 403);

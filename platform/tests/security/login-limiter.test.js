@@ -33,11 +33,16 @@ after(async () => {
 });
 
 // اسم غير موجود عمداً: يقيس الحدّ بلا أن يقفل حساباً تجريبياً (قفل الحساب حاجز مستقل).
-const attempt = (ip) => fetch(base + '/auth/login', {
-  method: 'POST',
-  headers: { 'content-type': 'application/json', connection: 'close', 'x-forwarded-for': ip },
-  body: JSON.stringify({ username: 'la.yujad', password: 'كلمة-خاطئة' }),
-});
+// الجسم يُستهلك دائماً: أحد عشر جسماً غير مقروء تُبقي محلّلات undici معلّقة على مقابس حيّة،
+// فتُهدَم عند إغلاق الخادم وترمي استثناءً غير ملتقَط يُسقط الملف كله — عيب توقيتي لا يظهر محلياً.
+const attempt = async (ip) => {
+  const r = await fetch(base + '/auth/login', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', connection: 'close', 'x-forwarded-for': ip },
+    body: JSON.stringify({ username: 'la.yujad', password: 'كلمة-خاطئة' }),
+  });
+  return { status: r.status, headers: r.headers, text: await r.text() };
+};
 
 test('login limiter: the 11th attempt from one address is 429 with Retry-After', async () => {
   const ip = '203.0.113.7';
@@ -47,7 +52,7 @@ test('login limiter: the 11th attempt from one address is 429 with Retry-After',
   const blocked = await attempt(ip);
   assert.equal(blocked.status, 429, 'المحاولة الحادية عشرة محجوبة');
   assert.ok(Number(blocked.headers.get('retry-after')) > 0, 'الرد يحمل مهلة إعادة المحاولة');
-  assert.match(JSON.parse(await blocked.text()).error, /محاولات كثيرة/);
+  assert.match(JSON.parse(blocked.text).error, /محاولات كثيرة/);
 });
 
 test('login limiter: buckets are per-address — a different address is unaffected', async () => {
