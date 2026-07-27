@@ -208,13 +208,32 @@ export async function quickAddTask(ctx, data) {
   return await get('SELECT * FROM task WHERE id = ?', [tid]);
 }
 
+// ── من يفتح «مهام فريقي»، ومن يكتب فيها ─────────────────────────────────────
+// كانت الشاشة كلها مشروطة بمنح **التعديل**: `effectiveScope(user,'update','task')`. والنتيجة
+// أن «المدير المباشر» — وكل منحه قراءةٌ بنطاق إدارته (`read task @department`) وليس له منح
+// تعديل واحد — يُرَدّ ٤٠٣ على الشاشة الوحيدة التي وُجد الدور من أجلها. الشاشة شاشة قراءة،
+// فالبوابة الصحيحة بوابة قراءة.
+// الفصل لا الاستبدال: **الرؤية** من منح القراءة على محور تنظيمي (شركة/إدارة/قطاع)، و**الكتابة**
+// (إعادة الإسناد، التغيير الجماعي، تغيير الحالة) تبقى على منح التعديل كما هي حرفياً.
+// وحتى لا يفقد أحدٌ وصولاً قائماً: من كان منح تعديله يتجاوز «خاصتي» يبقى مؤهِّلاً كما كان —
+// فمدير المشروع (منحه كلها بنطاق «مشروع») يدخل بنفس المحور الذي كان يدخل به، والاستشاري
+// (تعديله «خاصتي» وقراءته «مشروع») يبقى ممنوعاً كما كان بالضبط. لا توسعة حرف واحد.
+const ORG_SCOPES = new Set(['department', 'sector', 'company']);
+export function teamTasksAccess(user) {
+  const readScope = effectiveScope(user, 'read', 'task');
+  const writeScope = effectiveScope(user, 'update', 'task');
+  const canWrite = !!writeScope && writeScope !== 'own';
+  const scope = ORG_SCOPES.has(readScope) ? readScope : (canWrite ? writeScope : null);
+  return { scope, canRead: !!scope, canWrite };
+}
+
 // «مهام فريقي» — أول رؤية للمدير لمن يعمل على ماذا. لم تكن موجودة إطلاقاً: كل مستخدم يرى
 // مهامه وحده. النطاق يُبنى من الاستعلام نفسه (لا تصفية بعد القراءة) فلا يُقرأ ما لا يُسمح به.
 export async function teamTasks(user, filters = {}) {
   // ملاحظة دقيقة: can(...) بلا هدف يعيد «صحيح» لمجرد وجود المنح مهما كان نطاقه — فالموظف
   // العادي (نطاق «خاصتي») كان يمرّ. السؤال هنا نطاقي لا وجودي: هل يتجاوز نطاقه نفسه؟
-  const scope = effectiveScope(user, 'update', 'task');
-  if (!scope || scope === 'own') throw forbidden('عرض مهام الفريق يتطلب صلاحية إدارية على فريق أو قطاع');
+  const { scope } = teamTasksAccess(user);
+  if (!scope) throw forbidden('عرض مهام الفريق يتطلب صلاحية قراءة مهام إدارة أو قطاع — اطلب تفعيلها من مدير النظام');
   const where = ['t.deleted_at IS NULL'];
   const params = [];
   // الافتراضي كما كان: المنجَز خارج لوحة المدير. ومن يطلبه صراحةً (عرض اللوح بعمود «منجز»)

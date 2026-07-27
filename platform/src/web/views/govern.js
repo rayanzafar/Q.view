@@ -178,11 +178,8 @@ async function periodReportBlock(user, opts = {}) {
   const choices = periodChoices(kind, new Date(), 8);
   const anchor = choices.some((c) => c.anchor === opts.anchor) ? opts.anchor : choices[0].anchor;
 
-  // الجهة الافتراضية: أوسع ما يملكه القارئ — الشركة، فأول قطاع، فهو نفسه.
-  const fallback = options.company ? 'company:'
-    : options.sectors.length ? `sector:${options.sectors[0].id}`
-      : `person:${user.id}`;
-  const scope = typeof opts.scope === 'string' && opts.scope.includes(':') ? opts.scope : fallback;
+  // الجهة الافتراضية تأتي محسوبة من نفس شروط الفتح (لا اجتهاد ثانٍ هنا).
+  const scope = typeof opts.scope === 'string' && opts.scope.includes(':') ? opts.scope : options.defaultScope;
   const [lens, rawTarget] = scope.split(':');
   const targetId = rawTarget || null;
 
@@ -350,5 +347,7 @@ export async function reportsPage(user, opts = {}) {
       });
     })();
     </script>`;
-  return layout({ user, active: 'reports', title: 'التقارير والبريد', subtitle: 'محرك تقارير تنفيذية + جدولة + بريد', body });
+  return layout({ user, active: 'reports', title: 'التقارير والبريد',
+    subtitle: 'تقرير أسبوعي أو شهري أو ربعي يظهر فوراً · مع جدولة الإرسال الدوري',
+    body, scripts: ['/static/pages/reports-period.js'] });
 }

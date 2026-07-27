@@ -7,8 +7,9 @@ import * as gov from './governance.js';
 export const governanceRouter = Router();
 const h = (fn) => async (req, res, next) => { try { const r = await fn(req); if (r !== undefined) res.json(r); } catch (e) { next(e); } };
 
-// plural route segment → kind key in the service
-const PLURALS = { risks: 'risk', issues: 'issue', decisions: 'decision', changes: 'change', milestones: 'milestone' };
+// plural route segment → kind key, taken FROM the service registry (one source, not a copy that
+// silently goes stale the moment a new register is added).
+const PLURALS = gov.GOVERNANCE_PLURALS;
 
 // Composite payload (all five registers + canEdit) for page hydration.
 governanceRouter.get('/projects/:id/governance', h((req) => gov.projectGovernance(req.ctx.user, req.params.id)));

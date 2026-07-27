@@ -64,8 +64,15 @@ export const ROLE_GRANTS = {
     { resource: 'cost', action: 'read', scope: 'sector' },
   ],
 
+  // منح التقارير هنا يعالج **عكس** العطل الموصوف تحت «المدير المباشر»: هذان الدوران كانا
+  // مفتوحَين صفّياً ومغلقَين صفحياً. فمحرك التقارير الدوري يقيس **اتساع** المنح لا وجودها
+  // (`widthAtLeast` في `core/reports/periods.js`)، ومصادره الثلاثة تشمل «الموظفين» — فكلا
+  // المديرَين يجتاز حارس عدسة «الإدارة» وعدسة «الشخص» لأهل إدارته أصلاً، ثم يُرَدّ ٤٠٣ على باب
+  // الصفحة نفسها (`PAGE_ACCESS.reports`) فلا يبلغ ما يحق له. أي أن ثمرة الإسناد الإداري كانت
+  // محسوبة ولا يفتحها من بُنيت له. والنطاق «إدارة» لا أوسع: `widthAtLeast(…, 'sector')` يبقى
+  // كاذباً، فتقرير القطاع وتقرير الشركة مردودان كما كانا — والتصدير لم يُمنح.
   department_manager: [
-    ...read(['employee', 'project', 'task', 'timesheet', 'deliverable'], 'department'),
+    ...read(['employee', 'project', 'task', 'timesheet', 'deliverable', 'report'], 'department'),
     { resource: 'task', action: 'update', scope: 'department' },
     { resource: 'timesheet', action: 'approve', scope: 'department' },
     { resource: 'expense', action: 'approve', scope: 'department' },
@@ -82,7 +89,7 @@ export const ROLE_GRANTS = {
   // المنح قابلاً للتحقق. والتبعية الإدارية الحقيقية (من يرفع لمن، عمود `line_manager_id`) تبقى
   // بُعداً للعرض لا محور صلاحيات — قرار مقصود: محور رابع يمسّ كل استعلام في منصة قيد الاستخدام.
   line_manager: [
-    ...read(['employee', 'task', 'timesheet'], 'department'),
+    ...read(['employee', 'task', 'timesheet', 'report'], 'department'),
     { resource: 'timesheet', action: 'approve', scope: 'department' },
   ],
 

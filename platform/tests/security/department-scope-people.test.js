@@ -286,3 +286,27 @@ test('إعادة تشغيل التثبيت لا تُنشئ إدارة ثانية
   const acc = await db.get("SELECT employee_id FROM app_user WHERE username = 'demo.deptmgr'");
   assert.equal(acc.employee_id, U['demo.deptmgr'].employee_id);
 });
+
+// تصدير الموظفين كان يقف عند القطاع بينما الشاشات تضيّق إلى الإدارة — والملف أخطر من الشاشة:
+// يخرج من المنصة ولا يُسترجَع. مُثبَت بالتنفيذ في حزمة السيناريوهات قبل الإصلاح.
+test('تصدير الموظفين يتبع نطاق الإدارة كالشاشة — لا يُنزَّل القطاع كله في ملف', async () => {
+  const adapter = (await import('../../src/modules/io/adapters/employees.js')).default;
+  const rows = await adapter.fetchRows(U['demo.deptmgr'], {});
+  const names = rows.map((r) => r.name_ar);
+  const mine = DEPT_A.staff.map((x) => x.name_ar);
+  const others = DEPT_B.staff.map((x) => x.name_ar);
+  assert.ok(names.length, 'يرى إدارته');
+  assert.ok(names.every((n) => mine.includes(n)),
+    `الملف يحمل إدارته وحدها — تسرّب: ${names.filter((n) => !mine.includes(n)).join('، ')}`);
+  assert.ok(!names.some((n) => others.includes(n)), 'ولا اسم من إدارة أخرى في القطاع نفسه');
+  assert.ok(rows.every((r) => !('salary' in r)), 'وبلا عمود راتب');
+});
+
+test('تصدير الموظفين للنطاق القطاعي يبقى كما كان — الإصلاح تضييق لا كسر', async () => {
+  const adapter = (await import('../../src/modules/io/adapters/employees.js')).default;
+  const names = (await adapter.fetchRows(U['demo.sectorlead'], {})).map((r) => r.name_ar);
+  const mine = DEPT_A.staff.map((x) => x.name_ar);
+  const others = DEPT_B.staff.map((x) => x.name_ar);
+  assert.ok(mine.every((n) => names.includes(n)) && others.every((n) => names.includes(n)),
+    'قائد القطاع يصدّر إداراته كلها');
+});

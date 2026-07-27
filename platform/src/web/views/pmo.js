@@ -5,7 +5,7 @@ import { fmtSar } from '../../core/util/ids.js';
 import { all, get } from '../../core/db/index.js';
 import { projectKpis } from '../../core/reports/metrics.js';
 import { listProjects, nextMilestones, projectKind, projectRevenue } from '../../modules/pmo/projects.js';
-import { projectGovernance } from '../../modules/pmo/governance.js';
+import { projectGovernance, DELIVERABLE_MANUAL_STATUSES, DELIVERABLE_SYSTEM_STATUSES } from '../../modules/pmo/governance.js';
 import { myTasks, teamTasks } from '../../modules/pmo/tasks.js';
 import { listViews } from '../../modules/views/views.js';
 import { canSeeSensitive, redact, can, effectiveScope } from '../../core/rbac/index.js';
@@ -14,6 +14,11 @@ import { G, projectKindLabel, projectKindTip } from '../i18n/glossary.js';
 import { sarShort, esc, bar, statMini, noticeCard } from './_shared.js';
 import { MONTHS_AR, MONTHS_EN3, currentMonthIndex } from '../../core/i18n/time.js';
 import { countAr, dayWord } from '../../core/i18n/plural.js';
+// ── مركز العمل اليومي (صفحة المهام) — الوارد الخاص بها وحدها، مفصولاً كي لا يختلط بوارد المحفظة ──
+import { completionTrend, addDays, teamTasksAccess } from '../../modules/pmo/tasks.js';
+import { listOpportunities } from '../../modules/crm/opportunities.js';
+import { nowDot } from '../../core/i18n/time.js';
+import { WEEKDAYS_AR, weekdayLabel, workKindLabel, deliverableStatusLabel, DELIVERABLE_NEXT } from '../i18n/glossary.js';
 
 // لون لكل حالة (هوية EVC الهادئة: خط لوني رفيع + خلفية بتشبّع ~12٪). الحالة تُلوِّن أعمدة
 // الكانبان وحدّ البطاقة الأيسر؛ الصحة (RAG) تبقى في الوسم وشريط الإنجاز. الملغى رماديّ
@@ -384,195 +389,738 @@ export async function projectsPage(user, opts = {}) {
     body, year: year || undefined, scripts: ['/static/pages/projects.js'] });
 }
 
-// صفحة «مهامي» — طابور عمل شخصي مرتّب حسب الإلحاح (متأخرة → اليوم → الأسبوع → لاحقاً → مكتملة)
-// لا جدول مسطّح: كل قسم يظهر فقط إن كان فيه مهام، وكل مهمة صف نظيف بزر إنجاز فوري وسياق
-// المشروع/الفرصة وموعد نسبي («متأخرة ٣ أيام» / «اليوم» / «غداً»). التفاعل عبر tasks.js (تفويض).
-export async function tasksPage(user) {
-  const rows = await myTasks(user);
+// ── مركز العمل اليومي («مهامي») ───────────────────────────────────────────────
+// أُعيد بناء الشاشة كاملة بعد حكم المالك على سابقتها: قائمة مسطّحة بلا مرشّح واحد، ولا لوح،
+// ولا تقويم، و«مهام فريقي» مطويّة في أسفل الصفحة. المرجع الكامل لما بُني ولماذا في
+// docs/benchmarks.md (جولة 2026-07-27) — وهذه خلاصته التنفيذية:
+//   • **اليوم منتهٍ**: العرض الافتراضي نافذة اليوم (متأخر + مستحق اليوم + ما بدأتَه أو تعطّل)،
+//     وما بعدها عدّادات مضغوطة قابلة للنقر لا قائمة لا نهائية تُلقى على العين (تدرّج الهدف).
+//   • **التقدّم مرئي بأرقام حقيقية**: «أنجزت N من M اليوم» من `completed_at` المسجَّل، وأثر
+//     سبعة أيام من العدّ الفعلي. لا نقاط ولا سلاسل ولا أوسمة — قرار صريح مُوثَّق.
+//   • **العائق كيان أول**: يُكتب ويُوجَّه ويُعدّ، لا صف أحمر يُتجاوز بالتمرير (مبدأ التقدّم:
+//     رفعُ العوائق يسبق كل مكافأة).
+//   • **ثلاث عدسات على بيانات واحدة**: قائمة · لوح · تقويم — حالة العرض في الرابط، والمرشّح
+//     نفسه يعمل في العدسات الثلاث.
+//   • **«مهام فريقي» عدسة أولى** بسؤال «من يحتاج مساعدة» لا «من الأفضل»، ونطاقها يُشتقّ من
+//     `effectiveScope(user,'update','task')` بلا توسعة حرف واحد.
+const TASK_STATUSES = ['TODO', 'IN_PROGRESS', 'BLOCKED', 'IN_REVIEW', 'DONE'];
+const TASK_STATUS_COLOR = { TODO: '#64748b', IN_PROGRESS: '#244A99', BLOCKED: '#dc2626', IN_REVIEW: '#834798', DONE: '#047857' };
+// الأولوية إشارة صغيرة لا لافتة: اللون يرافقه دائماً اسمها (قاعدة «ليس لوناً فقط»).
+const TASK_PRIORITY = { P0: { ar: 'حرجة', tone: 'red' }, P1: { ar: 'عالية', tone: 'amber' }, P2: { ar: 'متوسطة', tone: 'slate' }, P3: { ar: 'منخفضة', tone: 'slate' } };
+const TASK_WINDOWS = ['today', 'week', 'overdue', 'nodate', 'all'];
+
+export async function tasksPage(user, opts = {}) {
   const today = new Date().toISOString().slice(0, 10);
-  const todayMs = new Date(today + 'T00:00:00Z').getTime();
-  const dnum = (d) => Math.round((new Date(String(d).slice(0, 10) + 'T00:00:00Z').getTime() - todayMs) / 86400000);
+  const todayMs = Date.parse(today + 'T00:00:00Z');
+  const dnum = (d) => Math.round((Date.parse(String(d).slice(0, 10) + 'T00:00:00Z') - todayMs) / 86400000);
 
-  // سياق المهمة: اسم المشروع/الفرصة المرتبطة — بحث مجمّع واحد لكل نوع (لا استعلام لكل صف)
-  const prjIds = [...new Set(rows.map((t) => t.project_id).filter(Boolean))];
-  const oppIds = [...new Set(rows.map((t) => t.opportunity_id).filter(Boolean))];
-  const prjName = {}; const oppName = {};
-  if (prjIds.length) for (const p of await all(`SELECT id, name_ar FROM project WHERE id IN (${prjIds.map(() => '?').join(',')}) AND deleted_at IS NULL`, prjIds)) prjName[p.id] = p.name_ar;
-  if (oppIds.length) for (const o of await all(`SELECT id, title_ar FROM opportunity WHERE id IN (${oppIds.map(() => '?').join(',')}) AND deleted_at IS NULL`, oppIds)) oppName[o.id] = o.title_ar;
+  // ── العدسة والعرض والمرشّحات: كلها في الرابط، فالحالة قابلة للمشاركة والرجوع ──
+  // الرؤية من منح القراءة، والإسناد من منح التعديل — مصدرٌ واحد للفصل في الخدمة نفسها،
+  // فمن يقرأ عمل فريقه ولا يعدّله يرى اللوحة للاطّلاع بدل باب مغلق.
+  const access = teamTasksAccess(user);
+  const teamScope = access.scope;
+  const canTeam = access.canRead;
+  const canAssign = access.canWrite;
+  const who = canTeam && opts.who === 'team' ? 'team' : 'me';
+  // عدسة الفريق بلا صلاحية تعديل = عرض للاطّلاع: تُنزع أدوات الكتابة كلها بدل أن تُعرض ثم تُرفض.
+  const readOnly = who === 'team' && !canAssign;
+  const view = ['board', 'calendar'].includes(opts.view) ? opts.view : 'list';
+  const winParam = TASK_WINDOWS.includes(opts.win) ? opts.win : null;
+  const win = winParam || (view === 'list' ? 'today' : 'all');
+  const fStatus = TASK_STATUSES.includes(opts.status) ? opts.status : null;
+  const fPriority = TASK_PRIORITY[opts.priority] ? opts.priority : null;
+  const fKind = ['project', 'opportunity', 'internal'].includes(opts.kind) ? opts.kind : null;
+  const fFlag = ['nostep', 'blocked', 'noparent'].includes(opts.flag) ? opts.flag : null;
+  const fq = String(opts.q || '').trim().slice(0, 80);
+  const fAssignee = who === 'team' && opts.assignee ? String(opts.assignee).slice(0, 64) : null;
 
-  // تصنيف حسب الإلحاح
-  const openT = rows.filter((t) => t.status !== 'DONE');
-  const done = rows.filter((t) => t.status === 'DONE');
+  // شهر التقويم (?m=YYYY-MM) — يُحسب في JS ويُربَط كنص، لا دوال تواريخ في الاستعلام
+  const mParam = /^\d{4}-(0[1-9]|1[0-2])$/.test(String(opts.m || '')) ? String(opts.m) : today.slice(0, 7);
+  const calY = Number(mParam.slice(0, 4)); const calM = Number(mParam.slice(5, 7)) - 1;
+  const monthStart = `${mParam}-01`;
+  const monthDays = new Date(Date.UTC(calY, calM + 1, 0)).getUTCDate();
+  const monthEnd = `${mParam}-${String(monthDays).padStart(2, '0')}`;
+  const shiftMonth = (n) => { const d = new Date(Date.UTC(calY, calM + n, 1)); return d.toISOString().slice(0, 7); };
+
+  // ── قراءة واحدة تخدم العدسات الثلاث: كل المفتوح + المنجَز القريب، والنافذة تُطبَّق للعرض ──
+  const baseFilters = {
+    status: fStatus, priority: fPriority, kind: fKind, flag: fFlag, q: fq || null,
+    todayDate: today, doneSince: view === 'calendar' ? monthStart : addDays(today, -14), limit: 500,
+  };
+  let flat = []; let board = [];
+  if (who === 'team') {
+    board = await teamTasks(user, { ...baseFilters, assignee: fAssignee, includeDone: true });
+    flat = board.flatMap((b) => b.tasks);
+  } else {
+    flat = await myTasks(user, baseFilters);
+  }
+  flat = flat.filter((t) => t.status !== 'CANCELLED');
+
+  // ── التصنيف حسب الإلحاح (مجموعات لا تتقاطع: كل مهمة في نطاق واحد) ──
+  const isDone = (t) => t.status === 'DONE';
+  const openT = flat.filter((t) => !isDone(t));
+  const doneRows = flat.filter(isDone);
   const overdue = openT.filter((t) => t.due_date && dnum(t.due_date) < 0);
   const dueToday = openT.filter((t) => t.due_date && dnum(t.due_date) === 0);
-  const thisWeek = openT.filter((t) => t.due_date && dnum(t.due_date) >= 1 && dnum(t.due_date) <= 7);
-  const later = openT.filter((t) => !t.due_date || dnum(t.due_date) > 7);
-  const blocked = openT.filter((t) => t.status === 'BLOCKED').length;
+  const started = openT.filter((t) => (!t.due_date || dnum(t.due_date) > 0) && ['IN_PROGRESS', 'BLOCKED'].includes(t.status));
+  const todayBand = [...overdue, ...dueToday, ...started];
+  const todayIds = new Set(todayBand.map((t) => t.id));
+  const weekBand = openT.filter((t) => !todayIds.has(t.id) && t.due_date && dnum(t.due_date) >= 1 && dnum(t.due_date) <= 7);
+  const laterBand = openT.filter((t) => !todayIds.has(t.id) && t.due_date && dnum(t.due_date) > 7);
+  const nodateBand = openT.filter((t) => !todayIds.has(t.id) && !t.due_date);
+  const blockedCount = openT.filter((t) => t.status === 'BLOCKED' || t.blocked_reason).length;
+  const noStepCount = openT.filter((t) => !String(t.next_step || '').trim()).length;
+  const doneTodayList = doneRows.filter((t) => String(t.completed_at || '').slice(0, 10) === today);
 
-  const prRank = { P0: 0, P1: 1, P2: 2, P3: 3 };
-  const sortT = (arr) => arr.slice().sort((a, b) =>
-    (prRank[a.priority] ?? 9) - (prRank[b.priority] ?? 9)
-    || (a.due_date ? a.due_date.slice(0, 10) : '9999').localeCompare(b.due_date ? b.due_date.slice(0, 10) : '9999')
-    || String(a.title).localeCompare(String(b.title), 'ar'));
+  // ── نافذة العرض ──
+  const weekIds = new Set(weekBand.map((t) => t.id));
+  const overdueIds = new Set(overdue.map((t) => t.id));
+  const inWindow = (t) => {
+    if (win === 'all') return true;
+    if (win === 'today') return todayIds.has(t.id) || (isDone(t) && String(t.completed_at || '').slice(0, 10) === today);
+    if (win === 'week') return todayIds.has(t.id) || weekIds.has(t.id);
+    if (win === 'overdue') return overdueIds.has(t.id);
+    if (win === 'nodate') return !t.due_date;
+    return true;
+  };
+  const visible = flat.filter(inWindow);
+  const visIds = new Set(visible.map((t) => t.id));
 
-  const strip = `<div class="statgrid" style="display:flex;gap:.7rem;flex-wrap:wrap;margin-bottom:1rem">
-    ${statMini('متأخرة', overdue.length, 'تجاوزت موعدها', overdue.length ? 'bad' : '')}
-    ${statMini('تستحق اليوم', dueToday.length, 'موعدها اليوم', dueToday.length ? 'warn' : '')}
-    ${statMini('هذا الأسبوع', thisWeek.length, 'خلال 7 أيام', 'brand')}
-    ${statMini('مفتوحة', openT.length, blocked ? `منها ${blocked} معلّقة` : 'قيد العمل')}
-    ${statMini('أُنجزت', done.length, 'مكتملة', done.length ? 'good' : '')}</div>`;
+  // ── قوائم الاختيار (نطاق صحيح من الخدمات نفسها، لا استعلام مواز) ──
+  const prjOptions = (await listProjects(user)).slice(0, 200);
+  const canReadOpp = can(user, 'read', 'opportunity');
+  const allOpps = canReadOpp ? await listOpportunities(user, {}, { today }) : [];
+  const oppOptions = allOpps.slice(0, 200);
+  let people = [];
+  if (canAssign) {
+    if (teamScope === 'company') {
+      people = await all('SELECT id, COALESCE(name_ar, username) AS "name" FROM app_user WHERE active=1 AND deleted_at IS NULL ORDER BY name_ar, username LIMIT 300');
+    } else if (teamScope === 'department' && user.department_id) {
+      people = await all(`SELECT u.id, COALESCE(u.name_ar, u.username) AS "name" FROM app_user u
+        JOIN employee e ON e.id = u.employee_id AND e.deleted_at IS NULL
+        WHERE u.active=1 AND u.deleted_at IS NULL AND e.department_id = ? ORDER BY u.name_ar, u.username LIMIT 300`, [user.department_id]);
+    } else if (user.sector_id) {
+      people = await all('SELECT id, COALESCE(name_ar, username) AS "name" FROM app_user WHERE active=1 AND deleted_at IS NULL AND sector_id = ? ORDER BY name_ar, username LIMIT 300', [user.sector_id]);
+    }
+  }
+  const depts = await all(`SELECT id, name_ar FROM department WHERE active=1 AND deleted_at IS NULL
+    ${user.scope === 'company' ? '' : 'AND sector_id = ?'} ORDER BY name_ar LIMIT 200`, user.scope === 'company' ? [] : [user.sector_id || '']);
 
-  const quickAdd = `<div class="card" style="padding:.85rem 1rem;margin-bottom:1.15rem">
-    <div style="display:flex;gap:.55rem;align-items:center;flex-wrap:wrap">
-      <input id="qa-title" class="input" placeholder="أضِف مهمة جديدة…" aria-label="عنوان المهمة" style="flex:1;min-width:190px">
-      <select id="qa-priority" class="input" aria-label="الأولوية" style="width:auto"><option value="P2">أولوية متوسطة</option><option value="P0">حرجة</option><option value="P1">عالية</option><option value="P3">منخفضة</option></select>
-      <label style="display:flex;align-items:center;gap:.35rem;font-size:11.5px;color:var(--muted);white-space:nowrap">الموعد
-        <input id="qa-due" type="date" class="input" dir="ltr" style="width:auto"></label>
-      <button class="btn btn-primary" data-action="task-add">${icon('plus')} إضافة</button>
-    </div></div>`;
+  // ── الروابط: كل شريحة تحافظ على بقية المعاملات ──
+  const qp = (over = {}) => {
+    const cur = {
+      who: who === 'team' ? 'team' : null, view: view !== 'list' ? view : null, win: winParam,
+      status: fStatus, priority: fPriority, kind: fKind, flag: fFlag, q: fq || null,
+      assignee: fAssignee, m: mParam !== today.slice(0, 7) ? mParam : null, ...over,
+    };
+    const p = new URLSearchParams();
+    for (const [k, v] of Object.entries(cur)) if (v != null && v !== '') p.set(k, String(v));
+    const s = p.toString();
+    return '/app/tasks' + (s ? `?${s}` : '');
+  };
+  const hasFilter = !!(fStatus || fPriority || fKind || fFlag || fq || fAssignee || winParam);
 
+  // ── لبنات العرض ──
   const dueLabel = (t) => {
-    if (!t.due_date) return { text: 'بلا موعد', color: 'var(--faint)', bold: false };
+    if (!t.due_date) return { text: G.noDueDate, color: 'var(--muted)', bold: false };
     const n = dnum(t.due_date);
     if (n < 0) return { text: `متأخرة ${dayWord(-n)}`, color: 'var(--red)', bold: true };
-    if (n === 0) return { text: 'تستحق اليوم', color: 'var(--amber)', bold: true };
-    if (n === 1) return { text: 'غداً', color: 'var(--amber)', bold: false };
+    if (n === 0) return { text: 'تستحق اليوم', color: '#a16207', bold: true };
+    if (n === 1) return { text: 'غداً', color: '#a16207', bold: false };
     if (n <= 7) return { text: `خلال ${dayWord(n)}`, color: 'var(--muted)', bold: false };
     const d = new Date(String(t.due_date).slice(0, 10) + 'T00:00:00Z');
     return { text: `<span class="tnum">${d.getUTCDate()}</span> ${MONTHS_AR[d.getUTCMonth()]}`, color: 'var(--muted)', bold: false };
   };
-  const prPill = (p) => p === 'P0' ? pill('حرجة', 'red') : p === 'P1' ? pill('عالية', 'amber') : '';
-  const ctxOf = (t) => t.project_id && prjName[t.project_id]
-    ? `<a href="/app/project/${t.project_id}" class="tk-ctx">${icon('projects')} ${esc(prjName[t.project_id])}</a>`
-    : t.opportunity_id && oppName[t.opportunity_id]
-      ? `<a href="/app/opportunity/${t.opportunity_id}" class="tk-ctx">${icon('opportunity')} ${esc(oppName[t.opportunity_id])}</a>` : '';
+  const parentOf = (t) => {
+    if (t.project_id && t.project_name) return { href: `/app/project/${encodeURIComponent(t.project_id)}`, ic: 'projects', label: esc(t.project_name), kind: 'مشروع' };
+    if (t.opportunity_id && t.opportunity_name) return { href: `/app/opportunity/${encodeURIComponent(t.opportunity_id)}`, ic: 'opportunity', label: esc(t.opportunity_name), kind: G.opportunity };
+    if (t.project_id || t.opportunity_id) return { href: null, ic: 'projects', label: 'جهة خارج نطاقك', kind: '' };
+    return null;
+  };
+  const parentChip = (t) => {
+    const p = parentOf(t);
+    if (!p) return `<span class="tk-parent tk-parent-none">${icon('clock')} ${workKindLabel(t.work_kind) === 'مشروع' ? G.noParentLink : workKindLabel(t.work_kind)}</span>`;
+    return p.href
+      ? `<a class="tk-parent" href="${p.href}" title="${p.kind}: ${p.label}">${icon(p.ic)} ${p.label}</a>`
+      : `<span class="tk-parent tk-parent-none">${icon(p.ic)} ${p.label}</span>`;
+  };
+  // بيانات الصف تُحمَل على الحاوية نفسها فيقرأها المحرِّر واللوح والتقويم من مصدر واحد.
+  const dataAttrs = (t) => `data-task="${esc(t.id)}" data-title="${esc(t.title)}" data-status="${esc(t.status || 'TODO')}"
+    data-priority="${esc(t.priority || 'P2')}" data-due="${esc(String(t.due_date || '').slice(0, 10))}"
+    data-progress="${Math.max(0, Math.min(100, Math.round(Number(t.progress_pct) || 0)))}"
+    data-next="${esc(t.next_step || '')}" data-blocked="${esc(t.blocked_reason || '')}"
+    data-project="${esc(t.project_id || '')}" data-opp="${esc(t.opportunity_id || '')}"
+    data-assignee="${esc(t.assignee_user_id || '')}" data-dept="${esc(t.department_id || '')}"
+    data-desc="${esc(t.description || '')}"`;
+  const progChip = (t) => {
+    const p = Math.max(0, Math.min(100, Math.round(Number(t.progress_pct) || 0)));
+    if (p <= 0) return readOnly ? `<span style="color:var(--muted)">${G.noProgressYet}</span>`
+      : `<button type="button" class="tk-link" data-action="task-open" data-focus="progress">${G.noProgressYet}</button>`;
+    return `<span class="tk-prog" title="${G.taskProgress}"><span class="tk-progbar"><span style="width:${p}%"></span></span><span class="tnum">${p}%</span></span>`;
+  };
+  const stepChip = (t) => (String(t.next_step || '').trim()
+    ? `<span class="tk-step" title="${G.nextStep}">${icon('flag')} ${esc(t.next_step)}</span>`
+    : (readOnly ? `<span style="color:var(--muted)">${G.noNextAction}</span>`
+      : `<button type="button" class="tk-link" data-action="task-open" data-focus="next">${G.setNextStep}</button>`));
+  const blockBand = (t) => {
+    if (t.status !== 'BLOCKED' && !t.blocked_reason) return '';
+    const why = String(t.blocked_reason || '').trim();
+    return `<div class="tk-block">${icon('risk')}<span>${why ? esc(why) : 'مُعطَّلة بلا سبب مكتوب — اكتبه ليصل إلى من يرفعه'}</span>
+      ${readOnly ? '' : `<button type="button" class="tk-link" data-action="task-open" data-focus="blocked">${why ? 'تحديث العائق' : G.setBlocker}</button>`}</div>`;
+  };
 
   const taskRow = (t) => {
-    const isDone = t.status === 'DONE';
+    const done = isDone(t);
     const dl = dueLabel(t);
-    const ctx = ctxOf(t);
-    return `<div class="tk-row" data-task="${t.id}">
-      <button class="tk-check${isDone ? ' done' : ''}" ${isDone ? 'disabled' : `data-action="task-done" data-id="${t.id}"`} aria-label="${isDone ? 'مهمة منجزة' : 'وضع كمنجزة'}" title="${isDone ? 'منجزة' : 'وضع كمنجزة'}">${isDone ? '✓' : ''}</button>
+    const pr = TASK_PRIORITY[t.priority] || TASK_PRIORITY.P2;
+    return `<div class="tk-row${done ? ' is-done' : ''}" ${dataAttrs(t)}>
+      ${readOnly ? '' : `<input type="checkbox" class="tk-sel" value="${esc(t.id)}" aria-label="تحديد المهمة للتغيير الجماعي">`}
+      <button type="button" class="tk-check${done ? ' done' : ''}" ${done || readOnly ? 'disabled' : 'data-action="task-done"'}
+        aria-label="${done ? 'مهمة منجزة' : 'وضع كمنجزة'}" title="${done ? 'منجزة' : readOnly ? 'عرض للاطّلاع' : 'وضع كمنجزة'}">${done ? '✓' : ''}</button>
       <div class="tk-body">
-        <div class="tk-title"${isDone ? ' style="text-decoration:line-through;color:var(--faint);font-weight:500"' : ''}>${esc(t.title)}</div>
+        <div class="tk-title">${esc(t.title)}</div>
         <div class="tk-meta">
-          ${!isDone ? `<span style="color:${dl.color}${dl.bold ? ';font-weight:700' : ''}">${dl.text}</span>` : ''}
-          ${ctx}
-          ${t.status === 'BLOCKED' && t.blocked_reason ? `<span style="color:var(--red)">⚠ ${esc(t.blocked_reason)}</span>` : ''}
+          ${done ? `<span style="color:var(--green);font-weight:700">أُنجزت${t.completed_at ? ` <span class="tnum">${esc(String(t.completed_at).slice(0, 10))}</span>` : ''}</span>`
+            : `<span style="color:${dl.color}${dl.bold ? ';font-weight:700' : ''}">${dl.text}</span>`}
+          ${parentChip(t)}
+          ${who === 'team' ? `<span class="tk-who">${icon('team')} ${esc(t.assignee_name || t.assignee_username || G.unassigned)}</span>` : ''}
+          ${t.department_name ? `<span class="tk-who">${esc(t.department_name)}</span>` : ''}
         </div>
+        ${done ? '' : `<div class="tk-meta tk-meta2">${progChip(t)}${stepChip(t)}</div>`}
+        ${done ? '' : blockBand(t)}
       </div>
       <div class="tk-side">
-        ${!isDone ? prPill(t.priority) : ''}
-        <select class="tk-status" data-action="task-status" data-id="${t.id}" aria-label="تغيير حالة المهمة">
-          ${['TODO', 'IN_PROGRESS', 'BLOCKED', 'IN_REVIEW', 'DONE'].map((s) => `<option value="${s}"${s === t.status ? ' selected' : ''}>${tr(s)}</option>`).join('')}
+        ${done ? '' : `<span class="pill" style="background:${pr.tone === 'red' ? '#fee2e2' : pr.tone === 'amber' ? '#fef3c7' : '#f1f5f9'};color:${pr.tone === 'red' ? '#b91c1c' : pr.tone === 'amber' ? '#92400e' : '#475569'}">${pr.ar}</span>`}
+        ${readOnly ? `<span class="pill" style="background:#f1f5f9;color:#475569">${tr(t.status)}</span>`
+          : `<select class="tk-status" data-action="task-status" aria-label="حالة المهمة">
+          ${TASK_STATUSES.map((s) => `<option value="${s}"${s === t.status ? ' selected' : ''}>${tr(s)}</option>`).join('')}
         </select>
+        <button type="button" class="btn btn-ghost btn-sm" data-action="task-open">${G.details}</button>`}
       </div></div>`;
   };
 
-  const section = (title, items, accent) => items.length ? `<div class="tk-sec">
-    <div class="tk-sec-head"><span class="tk-dot" style="background:${accent}"></span><span class="tk-sec-title">${title}</span><span class="tk-sec-count tnum">${items.length}</span></div>
-    <div class="tk-list">${sortT(items).map(taskRow).join('')}</div></div>` : '';
+  const section = (title, items, accent, hint) => (items.length ? `<section class="tk-sec">
+    <div class="tk-sec-head"><span class="tk-dot" style="background:${accent}"></span><span class="tk-sec-title">${title}</span>
+      <span class="tk-sec-count tnum">${items.length}</span>
+      ${hint ? `<span class="tk-sec-hint">${hint}</span>` : ''}</div>
+    <div class="tk-list">${items.map(taskRow).join('')}</div></section>` : '');
 
-  const openSections = section('متأخرة', overdue, 'var(--red)')
-    + section('تستحق اليوم', dueToday, 'var(--amber)')
-    + section('هذا الأسبوع', thisWeek, 'var(--brand)')
-    + section('لاحقاً', later, '#94a3b8');
+  // ── ١) رأس اليوم: تقدّم حقيقي + أثر سبعة أيام (عدسة «مهامي» وحدها) ──
+  const trend = who === 'me' ? await completionTrend(user, { days: 7, today }) : [];
+  const weekDone = trend.reduce((a, d) => a + d.done, 0);
+  const plate = todayBand.length + doneTodayList.length;
+  const donePct = plate ? Math.round((doneTodayList.length / plate) * 100) : 0;
+  const trendMax = Math.max(1, ...trend.map((d) => d.done));
+  const dObj = new Date(today + 'T00:00:00Z');
+  const dateLine = `${weekdayLabel(dObj.getUTCDay())} <span class="tnum">${dObj.getUTCDate()}</span> ${MONTHS_AR[dObj.getUTCMonth()]} <span class="tnum">${dObj.getUTCFullYear()}</span>`;
+  const trendStrip = trend.length ? `<div class="wc-trend" role="img" aria-label="ما أُنجز في كل يوم من آخر سبعة أيام">
+    ${trend.map((d) => {
+      const dd = new Date(d.day + 'T00:00:00Z');
+      const isToday = d.day === today;
+      const h = d.done ? Math.max(6, Math.round((d.done / trendMax) * 34)) : 3;
+      return `<div class="wc-tcell${isToday ? ' on' : ''}" title="${weekdayLabel(dd.getUTCDay())} ${dd.getUTCDate()} ${MONTHS_AR[dd.getUTCMonth()]} — أنجزت ${d.done}">
+        <span class="wc-tbar" style="height:${h}px;background:${d.done ? 'var(--brand)' : '#dfe4ee'}"></span>
+        <span class="wc-tnum tnum">${dd.getUTCDate()}</span>
+        ${isToday ? nowDot('اليوم') : ''}</div>`;
+    }).join('')}</div>` : '';
+  const dayCard = who === 'me' ? `<section class="card wc-day">
+    <div class="wc-day-l">
+      <div class="wc-day-h">${G.dayPlan}</div>
+      <div class="wc-day-date">${dateLine}</div>
+      ${plate ? `
+        <div class="wc-bar" role="img" aria-label="أنجزت ${doneTodayList.length} من ${plate} على طاولة اليوم"><span style="width:${donePct}%"></span></div>
+        <div class="wc-day-num"><b class="tnum">${doneTodayList.length}</b> من <b class="tnum">${plate}</b> ${todayBand.length === 0 ? '· يومك مُغلق ✓' : `· بقيت <b class="tnum">${todayBand.length}</b>`}</div>`
+        : `<div class="wc-day-empty">${G.nothingScheduled} — ${weekBand.length ? `لديك <b class="tnum">${weekBand.length}</b> خلال الأسبوع` : 'ابدأ بإضافة مهمة من الشريط أدناه'}
+            <a class="tk-link" href="${qp({ win: weekBand.length ? 'week' : 'all', view: null })}">${weekBand.length ? G.winWeek : G.winAll}</a></div>`}
+    </div>
+    <div class="wc-day-r">
+      <div class="wc-day-h">${G.doneThisWeek}</div>
+      <div class="wc-day-week"><b class="tnum">${weekDone}</b> ${countAr(weekDone, { one: 'مهمة', two: 'مهمتان', few: 'مهام', many: 'مهمة', zero: 'مهمة' })}</div>
+      ${trendStrip}
+      ${weekDone === 0 ? '<div class="wc-day-note">لا إنجاز مسجَّل في آخر سبعة أيام — أول مهمة تُنجزها تظهر هنا.</div>' : ''}
+    </div>
+  </section>` : '';
 
-  const doneSorted = done.slice().sort((a, b) => String(b.completed_at || b.updated_at || '').localeCompare(String(a.completed_at || a.updated_at || '')));
-  const DONE_CAP = 25;
-  const doneBlock = done.length ? `<details class="tk-done"${openT.length ? '' : ' open'}>
-    <summary class="tk-sec-head"><span class="tk-dot" style="background:var(--green)"></span><span class="tk-sec-title">مكتملة</span><span class="tk-sec-count tnum">${done.length}</span><span style="margin-inline-start:auto;font-size:11px;color:var(--faint)">إظهار / إخفاء</span></summary>
-    <div class="tk-list" style="margin-top:.3rem">${doneSorted.slice(0, DONE_CAP).map(taskRow).join('')}</div>
-    ${done.length > DONE_CAP ? `<div style="font-size:11px;color:var(--faint);padding:.5rem .2rem">و${countAr(done.length - DONE_CAP, { one: 'مهمة أخرى منجزة', two: 'مهمتان أخريان', few: 'مهام أخرى', many: 'مهمة أخرى' })}</div>` : ''}
-  </details>` : '';
+  // ── ٢) عدّادات التركيز: كل واحدة مرشّح لا زينة ──
+  const statLink = (label, n, sub, tone, href) => `<a class="wc-stat${n ? ` t-${tone}` : ''}" href="${href}">
+    <span class="wc-stat-l">${label}</span><span class="wc-stat-n tnum">${n}</span><span class="wc-stat-s">${sub}</span></a>`;
+  const stats = `<div class="wc-stats">
+    ${statLink(G.winOverdue, overdue.length, overdue.length ? 'ابدأ بها أو امنحها موعداً' : 'لا شيء متأخر', 'bad', qp({ win: 'overdue', view: 'list', flag: null }))}
+    ${statLink('تستحق اليوم', dueToday.length, dueToday.length ? 'موعدها اليوم' : 'لا شيء يستحق اليوم', 'warn', qp({ win: 'today', view: 'list', flag: null }))}
+    ${statLink('مُعطَّلة', blockedCount, blockedCount ? 'تحتاج من يرفع العائق' : G.noBlocker, 'bad', qp({ win: 'all', flag: 'blocked', view: 'list' }))}
+    ${statLink(G.noNextAction, noStepCount, noStepCount ? 'حدّد خطوة واضحة لكل مهمة' : 'لكل مهمة خطوتها', 'warn', qp({ win: 'all', flag: 'nostep', view: 'list' }))}
+  </div>`;
 
-  const listArea = openT.length
-    ? openSections + doneBlock
-    : (done.length
-      ? `<div class="card" style="text-align:center;padding:1.8rem 1rem;margin-bottom:1rem"><div style="font-size:22px">🎉</div><div style="font-weight:800;color:var(--ink2);margin-top:.3rem">أنجزت كل مهامك</div><div style="font-size:12px;color:var(--muted);margin-top:.25rem">لا مهام مفتوحة الآن — أضِف واحدة من الأعلى متى شئت.</div></div>${doneBlock}`
-      : `<div class="card" style="text-align:center;padding:2.6rem 1rem"><div style="font-size:26px;color:var(--brand)">${icon('tasks')}</div><div style="font-weight:800;color:var(--ink2);margin-top:.5rem">لا مهام بعد</div><div style="font-size:12.5px;color:var(--muted);margin-top:.3rem;line-height:1.8">أضِف أول مهمة من الشريط أعلاه — ستظهر هنا مرتّبةً حسب الأقرب موعداً،<br>والأكثر إلحاحاً في الأعلى دائماً.</div></div>`);
+  // ── ٣) العدسة + العرض + المرشّحات ──
+  const lens = `<nav class="wc-lens" aria-label="عدسة العرض">
+    <a class="wc-tab${who === 'me' ? ' on' : ''}" href="${qp({ who: null, assignee: null })}"${who === 'me' ? ' aria-current="page"' : ''}>${icon('tasks')} ${G.myWork}${who === 'me' ? ` <span class="tnum">${openT.length}</span>` : ''}</a>
+    ${canTeam ? `<a class="wc-tab${who === 'team' ? ' on' : ''}" href="${qp({ who: 'team' })}"${who === 'team' ? ' aria-current="page"' : ''}>${icon('team')} ${G.teamWork}${who === 'team' ? ` <span class="tnum">${openT.length}</span>` : ''}</a>` : ''}
+  </nav>`;
+  const viewSeg = `<div class="wc-seg" role="group" aria-label="طريقة العرض">
+    <a class="${view === 'list' ? 'on' : ''}" href="${qp({ view: null })}">${icon('list')} ${G.viewList}</a>
+    <a class="${view === 'board' ? 'on' : ''}" href="${qp({ view: 'board' })}">${icon('kanban')} ${G.viewBoard}</a>
+    <a class="${view === 'calendar' ? 'on' : ''}" href="${qp({ view: 'calendar' })}">${icon('clock')} ${G.viewCalendar}</a>
+  </div>`;
+  const chip = (label, on, href, n) => `<a class="chip${on ? ' on' : ''}" href="${href}">${label}${n != null ? ` <span class="tnum">${n}</span>` : ''}</a>`;
+  const winChips = `<div class="chips">
+    <span class="lbl">${G.window}</span>
+    ${chip(G.winToday, win === 'today', qp({ win: 'today' }), todayBand.length)}
+    ${chip(G.winWeek, win === 'week', qp({ win: 'week' }), todayBand.length + weekBand.length)}
+    ${chip(G.winOverdue, win === 'overdue', qp({ win: 'overdue' }), overdue.length)}
+    ${chip(G.noDueDate, win === 'nodate', qp({ win: 'nodate' }), nodateBand.length)}
+    ${chip(G.winAll, win === 'all', qp({ win: 'all' }), openT.length)}
+  </div>`;
+  const moreChips = `<div class="chips">
+    <span class="lbl">${G.filter}</span>
+    ${TASK_STATUSES.map((s) => chip(tr(s), fStatus === s, qp({ status: fStatus === s ? null : s }))).join('')}
+    ${Object.entries(TASK_PRIORITY).slice(0, 2).map(([k, v]) => chip(v.ar, fPriority === k, qp({ priority: fPriority === k ? null : k }))).join('')}
+    ${chip('على مشروع', fKind === 'project', qp({ kind: fKind === 'project' ? null : 'project' }))}
+    ${chip('على فرصة', fKind === 'opportunity', qp({ kind: fKind === 'opportunity' ? null : 'opportunity' }))}
+    ${chip(G.internalWork, fKind === 'internal', qp({ kind: fKind === 'internal' ? null : 'internal' }))}
+    ${hasFilter ? `<a class="chip" href="/app/tasks${who === 'team' ? '?who=team' : ''}">مسح المرشحات</a>` : ''}
+  </div>`;
+  const hidden = (k, v) => (v ? `<input type="hidden" name="${k}" value="${esc(v)}">` : '');
+  const searchForm = `<form method="get" action="/app/tasks" class="wc-search">
+    ${hidden('who', who === 'team' ? 'team' : '')}${hidden('view', view !== 'list' ? view : '')}${hidden('win', winParam || '')}
+    ${hidden('status', fStatus)}${hidden('priority', fPriority)}${hidden('kind', fKind)}${hidden('flag', fFlag)}${hidden('assignee', fAssignee)}
+    <div class="search">${icon('search')}<input class="input" type="search" name="q" value="${esc(fq)}" placeholder="ابحث في عناوين المهام…" aria-label="بحث في عناوين المهام"></div>
+    <button class="btn btn-sm" type="submit">${G.search}</button>
+  </form>`;
 
-  const styles = `<style>
-    .tk-sec{margin-bottom:1.15rem}
-    .tk-sec-head{display:flex;align-items:center;gap:.5rem;margin:0 0 .4rem;padding:0 .15rem}
-    .tk-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
-    .tk-sec-title{font-weight:800;font-size:12.5px;color:var(--ink2)}
-    .tk-sec-count{font-size:11px;color:var(--muted);background:#f1f5f9;border-radius:20px;padding:.05rem .5rem;font-weight:700;min-width:20px;text-align:center}
-    .tk-list{background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden}
-    .tk-row{display:flex;gap:.7rem;align-items:flex-start;padding:.7rem .85rem;border-bottom:1px solid var(--line);transition:background .12s}
-    .tk-row:last-child{border-bottom:none}
-    .tk-row:hover{background:#f8fafc}
-    .tk-check{flex-shrink:0;width:20px;height:20px;margin-top:1px;border:2px solid #cbd5e1;border-radius:50%;background:#fff;color:#fff;font-size:11px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;transition:all .12s}
-    .tk-check:hover:not(.done){border-color:var(--green);background:#f0fdf4}
-    .tk-check.done{border-color:var(--green);background:var(--green);cursor:default}
-    .tk-body{flex:1;min-width:0}
-    .tk-title{font-weight:600;font-size:13px;color:var(--ink2);line-height:1.5;word-break:break-word}
-    .tk-meta{display:flex;gap:.35rem .9rem;flex-wrap:wrap;align-items:center;margin-top:.2rem;font-size:11px;color:var(--muted)}
-    .tk-ctx{color:var(--muted);text-decoration:none;display:inline-flex;align-items:center;gap:.2rem;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .tk-ctx:hover{color:var(--brand)}
-    .tk-ctx svg{width:12px;height:12px;opacity:.7}
-    .tk-side{display:flex;gap:.45rem;align-items:center;flex-shrink:0}
-    .tk-status{font-size:11.5px;border:1px solid var(--line);border-radius:8px;padding:.22rem .4rem;background:#fff;color:var(--ink2);cursor:pointer}
-    .tk-done{margin-top:.2rem}
-    .tk-done>summary{cursor:pointer;list-style:none}
-    .tk-done>summary::-webkit-details-marker{display:none}
-    @media(max-width:640px){.tk-side{flex-direction:column;align-items:flex-end;gap:.3rem}.tk-ctx{max-width:150px}}
-  </style>`;
+  // ── ٤) الإضافة السريعة: عنوان + جهة + مسؤول + موعد + أولوية في بطاقة واحدة ──
+  const parentSelect = (idAttr, label) => `<select id="${idAttr}" class="input" aria-label="${label}">
+    <option value="">${G.internalWork}</option>
+    ${prjOptions.length ? `<optgroup label="${G.projects}">${prjOptions.map((p) => `<option value="p:${esc(p.id)}">${esc(p.name_ar)}</option>`).join('')}</optgroup>` : ''}
+    ${oppOptions.length ? `<optgroup label="${G.opportunities}">${oppOptions.map((o) => `<option value="o:${esc(o.id)}">${esc(o.title_ar)}</option>`).join('')}</optgroup>` : ''}
+  </select>`;
+  const quickAdd = `<section class="card wc-add">
+    <div class="wc-add-row">
+      <input id="qa-title" class="input" placeholder="ما الذي ستنجزه؟ اكتبه هنا…" aria-label="عنوان المهمة">
+      <button class="btn btn-primary" data-action="task-add">${icon('plus')} ${G.add}</button>
+    </div>
+    <div class="wc-add-row2">
+      ${parentSelect('qa-parent', G.parentLink)}
+      ${canAssign && people.length ? `<select id="qa-assignee" class="input" aria-label="${G.assignee}">
+        <option value="">${G.assignee}: أنا</option>
+        ${people.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select>` : ''}
+      <input id="qa-due" type="date" class="input" dir="ltr" aria-label="تاريخ الاستحقاق" title="تاريخ الاستحقاق">
+      <select id="qa-priority" class="input" aria-label="${G.priority}">
+        <option value="P2">${TASK_PRIORITY.P2.ar}</option><option value="P0">${TASK_PRIORITY.P0.ar}</option>
+        <option value="P1">${TASK_PRIORITY.P1.ar}</option><option value="P3">${TASK_PRIORITY.P3.ar}</option>
+      </select>
+      <input id="qa-next" class="input wc-add-next" placeholder="${G.nextStep} (اختياري)" aria-label="${G.nextStep}">
+    </div>
+  </section>`;
 
-  // ── «مهام فريقي»: أول رؤية للمدير لمن يعمل على ماذا. تظهر فقط لمن يتجاوز نطاقه نفسه،
-  // والخدمة هي المانع الحقيقي (تفحص النطاق وتبني التصفية داخل الاستعلام).
-  let teamBlock = '';
-  const teamScope = effectiveScope(user, 'update', 'task');
-  if (teamScope && teamScope !== 'own') {
-    const board = await teamTasks(user);
-    const person = (b) => {
-      const flags = [
-        b.overdue ? `<span style="color:var(--red);font-weight:700">${countAr(b.overdue, { one: 'مهمة متأخرة', two: 'مهمتان متأخرتان', few: 'مهام متأخرة', many: 'مهمة متأخرة' })}</span>` : '',
-        b.blocked ? `<span style="color:var(--amber)">${countAr(b.blocked, { one: 'مهمة معلّقة', two: 'مهمتان معلّقتان', few: 'مهام معلّقة', many: 'مهمة معلّقة' })}</span>` : '',
-      ].filter(Boolean).join(' · ');
-      const top = b.tasks.slice(0, 4).map((t) => {
-        const dl = dueLabel(t);
-        return `<div class="tm-task">
-          <span class="tm-t">${esc(t.title)}</span>
-          <span class="tm-d" style="color:${dl.color}${dl.bold ? ';font-weight:700' : ''}">${dl.text}</span>
-        </div>`;
-      }).join('');
-      const more = b.tasks.length > 4
-        ? `<div class="tm-more">و${countAr(b.tasks.length - 4, { one: 'مهمة أخرى', two: 'مهمتان أخريان', few: 'مهام أخرى', many: 'مهمة أخرى' })}</div>` : '';
-      return `<div class="tm-card${b.overdue ? ' tm-hot' : ''}">
-        <div class="tm-head">
-          <span class="tm-name">${esc(b.name)}</span>
-          <span class="tm-count tnum">${b.tasks.length}</span>
-        </div>
-        ${flags ? `<div class="tm-flags">${flags}</div>` : ''}
-        ${top}${more}
-      </div>`;
-    };
-    teamBlock = board.length ? `<details class="tk-done" style="margin:1.4rem 0 .6rem">
-      <summary class="tk-sec-head"><span class="tk-dot" style="background:var(--brand2)"></span>
-        <span class="tk-sec-title">مهام فريقي</span>
-        <span class="tk-sec-count tnum">${board.reduce((a, b) => a + b.tasks.length, 0)}</span>
-        <span style="margin-inline-start:auto;font-size:11px;color:var(--faint)">إظهار / إخفاء</span></summary>
-      <div class="tm-grid">${board.map(person).join('')}</div>
-    </details>` : '';
+  // ── ٥) عرض القائمة ──
+  const vis = (arr) => arr.filter((t) => visIds.has(t.id));
+  const doneVisible = doneRows.filter((t) => visIds.has(t.id))
+    .sort((a, b) => String(b.completed_at || '').localeCompare(String(a.completed_at || ''))).slice(0, 25);
+  const emptyList = () => {
+    if (openT.length === 0 && doneRows.length === 0) {
+      return `<div class="card"><div class="empty-state">${icon('tasks')}
+        <div class="t">لا مهام ${who === 'team' ? 'على فريقك الآن' : 'باسمك بعد'}</div>
+        <div class="s">${who === 'team' ? 'لا مهمة مفتوحة على أحد ضمن نطاقك. حين يُسنَد عمل لأحدهم سيظهر هنا مرتّباً بالأكثر تأخراً.' : 'اكتب أول مهمة في الشريط أعلاه — ستظهر هنا مرتّبةً بالأقرب موعداً، والأكثر إلحاحاً في الأعلى.'}</div>
+        ${who === 'team' ? `<a class="btn" href="${qp({ who: null })}">${G.myWork}</a>` : ''}</div></div>`;
+    }
+    if (win === 'today' && todayBand.length === 0) {
+      return `<div class="card"><div class="empty-state">${icon('check')}
+        <div class="t">${G.dayClear}</div>
+        <div class="s">${doneTodayList.length ? `أنجزت اليوم ${countAr(doneTodayList.length, { one: 'مهمة واحدة', two: 'مهمتين', few: 'مهام', many: 'مهمة' })}. ` : ''}لا شيء متأخر ولا مستحق اليوم${weekBand.length ? ` — و${countAr(weekBand.length, { one: 'مهمة واحدة', two: 'مهمتان', few: 'مهام', many: 'مهمة' })} خلال الأسبوع.` : '.'}</div>
+        <a class="btn" href="${qp({ win: weekBand.length ? 'week' : 'all' })}">${weekBand.length ? G.winWeek : G.winAll}</a></div></div>`;
+    }
+    return `<div class="card"><div class="empty-state">${icon('search')}
+      <div class="t">لا مهمة تطابق هذه المرشحات</div>
+      <div class="s">جرّب توسيع النافذة الزمنية أو مسح المرشحات لترى بقية عملك.</div>
+      <a class="btn" href="/app/tasks${who === 'team' ? '?who=team' : ''}">مسح المرشحات</a></div>`;
+  };
+  const listBody = (vis(todayBand).length + vis(weekBand).length + vis(laterBand).length + vis(nodateBand).length + doneVisible.length) === 0
+    ? emptyList()
+    : section(`${G.winToday} — طاولتك الآن`, vis(todayBand), 'var(--brand)', 'المتأخر والمستحق اليوم وما بدأتَه فعلاً')
+      + section(G.winWeek, vis(weekBand), '#a16207', '')
+      + section(G.winLater, vis(laterBand), '#64748b', '')
+      + section(G.noDueDate, vis(nodateBand), '#64748b', 'امنحها موعداً أو أغلقها — القائمة الميتة تخفي المهم')
+      + (doneVisible.length ? `<details class="tk-fold"${vis(todayBand).length ? '' : ' open'}>
+          <summary class="tk-sec-head"><span class="tk-dot" style="background:var(--green)"></span>
+            <span class="tk-sec-title">أنجزتها مؤخراً</span>
+            <span class="tk-sec-count tnum">${doneVisible.length}</span>
+            <span class="tk-sec-hint">إظهار / إخفاء</span></summary>
+          <div class="tk-list" style="margin-top:.35rem">${doneVisible.map(taskRow).join('')}</div></details>` : '');
+  // شريط «ما بعد اليوم»: المتراكم مُعترَف به لا مُلقى — عدّادات مضغوطة لا قائمة مسرودة
+  const beyond = (win === 'today' && (weekBand.length || laterBand.length || nodateBand.length))
+    ? `<div class="wc-beyond">بعد اليوم:
+        ${weekBand.length ? `<a href="${qp({ win: 'week' })}">${G.winWeek} <b class="tnum">${weekBand.length}</b></a>` : ''}
+        ${laterBand.length ? `<a href="${qp({ win: 'all' })}">${G.winLater} <b class="tnum">${laterBand.length}</b></a>` : ''}
+        ${nodateBand.length ? `<a href="${qp({ win: 'nodate' })}">${G.noDueDate} <b class="tnum">${nodateBand.length}</b></a>` : ''}
+      </div>` : '';
+
+  // ── ٦) عرض اللوح ──
+  const boardCard = (t) => {
+    const dl = dueLabel(t);
+    const pr = TASK_PRIORITY[t.priority] || TASK_PRIORITY.P2;
+    const p = Math.max(0, Math.min(100, Math.round(Number(t.progress_pct) || 0)));
+    return `<article class="kcard tk-card" draggable="${readOnly ? 'false' : 'true'}" ${dataAttrs(t)} style="--_c:${TASK_STATUS_COLOR[t.status] || '#cbd5e1'}${readOnly ? ';cursor:default' : ''}">
+      ${readOnly ? `<div class="tk-card-t">${esc(t.title)}</div>` : `<button type="button" class="tk-card-t" data-action="task-open">${esc(t.title)}</button>`}
+      <div class="km">
+        <span style="color:${dl.color}${dl.bold ? ';font-weight:700' : ''}">${dl.text}</span>
+        <span class="pill" style="background:${pr.tone === 'red' ? '#fee2e2' : pr.tone === 'amber' ? '#fef3c7' : '#f1f5f9'};color:${pr.tone === 'red' ? '#b91c1c' : pr.tone === 'amber' ? '#92400e' : '#475569'}">${pr.ar}</span>
+      </div>
+      <div class="km">${parentChip(t)}${who === 'team' ? `<span class="tk-who">${esc(t.assignee_name || t.assignee_username || G.unassigned)}</span>` : ''}</div>
+      ${p > 0 ? `<div class="tk-progbar" style="margin-top:.4rem"><span style="width:${p}%"></span></div>` : ''}
+      ${t.blocked_reason ? `<div class="tk-card-block">${esc(t.blocked_reason)}</div>` : ''}
+    </article>`;
+  };
+  const boardView = `<div class="kanban" id="tk-board" tabindex="0" role="region" aria-label="لوح المهام حسب الحالة — اسحب البطاقة إلى عمود آخر لتغيير حالتها">
+    ${TASK_STATUSES.map((s) => {
+      const items = visible.filter((t) => (t.status || 'TODO') === s);
+      return `<div class="kcol" data-status="${s}">
+        <div class="kcol-head"><span class="kcol-dot" style="background:${TASK_STATUS_COLOR[s]}"></span>
+          <span class="t">${tr(s)}</span><span class="n tnum">${items.length}</span></div>
+        <div class="kcol-body">${items.length ? items.map(boardCard).join('')
+          : '<div class="tk-kempty">لا مهام في هذه الحالة</div>'}</div></div>`;
+    }).join('')}</div>
+    <div class="wc-hint">${readOnly ? 'عرض للاطّلاع: تعديل مهام فريقك يتطلب صلاحية إدارية على المهام.' : 'اسحب أي بطاقة إلى عمود آخر لتغيير حالتها — أو افتح تفاصيلها بالنقر على عنوانها.'}</div>`;
+
+  // ── ٧) عرض التقويم — أول تقويم في المنصة، بالنموذج الزمني الموحد ──
+  const monthTasks = flat.filter((t) => t.due_date && String(t.due_date).slice(0, 10) >= monthStart && String(t.due_date).slice(0, 10) <= monthEnd);
+  const byDay = {};
+  for (const t of monthTasks) (byDay[String(t.due_date).slice(0, 10)] ||= []).push(t);
+  const doneByDay = {};
+  for (const t of doneRows) { const d = String(t.completed_at || '').slice(0, 10); if (d >= monthStart && d <= monthEnd) doneByDay[d] = (doneByDay[d] || 0) + 1; }
+  const firstDow = new Date(monthStart + 'T00:00:00Z').getUTCDay();
+  const cells = [];
+  for (let i = 0; i < firstDow; i++) cells.push('<div class="cal-cell cal-blank" aria-hidden="true"></div>');
+  for (let d = 1; d <= monthDays; d++) {
+    const iso = `${mParam}-${String(d).padStart(2, '0')}`;
+    const items = (byDay[iso] || []).filter((t) => !isDone(t));
+    const doneN = doneByDay[iso] || 0;
+    const isToday = iso === today;
+    const late = iso < today;
+    const chips = items.slice(0, 2).map((t) => {
+      const c = t.status === 'BLOCKED' ? '#dc2626' : late ? '#dc2626' : TASK_STATUS_COLOR[t.status] || '#64748b';
+      return readOnly
+        ? `<span class="cal-chip" style="--_c:${c};cursor:default" title="${esc(t.title)}">${esc(t.title)}</span>`
+        : `<button type="button" class="cal-chip" data-action="task-open" ${dataAttrs(t)} style="--_c:${c}" title="${esc(t.title)}">${esc(t.title)}</button>`;
+    }).join('');
+    const dots = items.slice(0, 4).map((t) => `<span class="cal-dot" style="background:${t.status === 'BLOCKED' || late ? '#dc2626' : TASK_STATUS_COLOR[t.status] || '#64748b'}"></span>`).join('');
+    cells.push(`<div class="cal-cell${isToday ? ' on' : ''}">
+      <div class="cal-d"><span class="tnum">${d}</span>${isToday ? nowDot('اليوم') : ''}</div>
+      <div class="cal-items">${chips}${items.length > 2 ? `<span class="cal-more">و<span class="tnum">${items.length - 2}</span> غيرها</span>` : ''}</div>
+      <div class="cal-dots" aria-hidden="true">${dots}</div>
+      ${doneN ? `<div class="cal-done">✓ <span class="tnum">${doneN}</span></div>` : ''}</div>`);
+  }
+  while (cells.length % 7) cells.push('<div class="cal-cell cal-blank" aria-hidden="true"></div>');
+  const calNoDate = nodateBand.slice(0, 12);
+  const calendarView = `<section class="card cal">
+    <div class="cal-head">
+      <a class="btn btn-sm" href="${qp({ m: shiftMonth(-1) })}" aria-label="الشهر السابق: ${MONTHS_AR[(calM + 11) % 12]}">${MONTHS_AR[(calM + 11) % 12]}</a>
+      <div class="cal-title">${MONTHS_AR[calM]} <span class="tnum">${calY}</span></div>
+      <a class="btn btn-sm" href="${qp({ m: shiftMonth(1) })}" aria-label="الشهر التالي: ${MONTHS_AR[(calM + 1) % 12]}">${MONTHS_AR[(calM + 1) % 12]}</a>
+    </div>
+    <div class="cal-grid cal-dow">${WEEKDAYS_AR.map((w) => `<div>${w}</div>`).join('')}</div>
+    <div class="cal-grid cal-days">${cells.join('')}</div>
+    ${monthTasks.length === 0 ? `<div class="empty-state" style="padding:1.4rem 1rem">
+      <div class="t">لا مهمة لها موعد في هذا الشهر</div>
+      <div class="s">المهام بلا موعد لا تظهر على الشبكة — امنحها موعداً لتدخل تقويمك.</div></div>` : ''}
+    <div class="cal-legend">
+      <span><span class="cal-dot" style="background:#dc2626"></span> متأخرة أو مُعطَّلة</span>
+      <span><span class="cal-dot" style="background:#244A99"></span> قيد التنفيذ</span>
+      <span><span class="cal-dot" style="background:#64748b"></span> بانتظار البدء</span>
+      <span>✓ ما أُنجز في ذلك اليوم</span>
+    </div>
+  </section>
+  ${calNoDate.length ? `<section class="card wc-tray">
+    <div class="wc-tray-h">${G.noDueDate} <span class="tnum">${nodateBand.length}</span></div>
+    <div class="wc-tray-s">لا تظهر على الشبكة لأنها بلا تاريخ — افتح المهمة وامنحها موعداً فتدخل تقويمك.</div>
+    <div class="tk-list">${calNoDate.map(taskRow).join('')}</div></section>` : ''}`;
+
+  // ── ٨) لوحة الفريق: «من يحتاج مساعدة» لا «من الأفضل» ──
+  const teamBoard = who === 'team' ? (board.length ? `<section class="wc-team">
+    <div class="tk-sec-head"><span class="tk-dot" style="background:var(--brand2)"></span>
+      <span class="tk-sec-title">من يحتاج مساعدة</span>
+      <span class="tk-sec-hint">الترتيب بالمتأخر ثم بحجم العمل — لا مقارنة بين الأشخاص</span></div>
+    <div class="wc-team-grid">${board.map((b) => `<a class="wc-person${b.overdue ? ' hot' : ''}" href="${qp({ assignee: b.userId || null })}">
+      <div class="wc-person-h"><span class="wc-person-n">${esc(b.name)}</span><span class="tk-sec-count tnum">${b.tasks.filter((t) => t.status !== 'DONE').length}</span></div>
+      <div class="wc-person-f">
+        ${b.overdue ? `<span style="color:var(--red);font-weight:700">${countAr(b.overdue, { one: 'مهمة متأخرة', two: 'مهمتان متأخرتان', few: 'مهام متأخرة', many: 'مهمة متأخرة' })}</span>` : ''}
+        ${b.blocked ? `<span style="color:#a16207">${countAr(b.blocked, { one: 'مهمة مُعطَّلة', two: 'مهمتان مُعطَّلتان', few: 'مهام مُعطَّلة', many: 'مهمة مُعطَّلة' })}</span>` : ''}
+        ${b.noStep ? `<span style="color:var(--muted)">${countAr(b.noStep, { one: 'بلا خطوة تالية', two: 'بلا خطوة تالية', few: 'بلا خطوة تالية', many: 'بلا خطوة تالية' })}</span>` : ''}
+        ${!b.overdue && !b.blocked && !b.noStep ? '<span style="color:var(--green);font-weight:700">لا شيء عالق</span>' : ''}
+      </div></a>`).join('')}</div></section>`
+    : `<div class="card"><div class="empty-state">${icon('team')}
+        <div class="t">لا مهام مفتوحة على فريقك</div>
+        <div class="s">ضمن نطاقك لا توجد مهمة مفتوحة على أحد الآن. أسنِد عملاً من شريط الإضافة أعلاه ليظهر هنا.</div></div></div>`) : '';
+
+  // ── ٩) «الفرص اللي عليّ» — من خدمة الفرص نفسها، لا استعلام مواز ──
+  const myOpps = who === 'me' && canReadOpp ? allOpps.filter((o) => o.owner_user_id === user.id) : [];
+  let oppsBlock = '';
+  if (who === 'me' && canReadOpp) {
+    const stages = await all('SELECT id, name_ar, color, is_won, is_lost FROM stage ORDER BY sort_order');
+    const stById = Object.fromEntries(stages.map((s) => [s.id, s]));
+    const openOpps = myOpps.filter((o) => { const s = stById[o.stage_id]; return s && !s.is_won && !s.is_lost; });
+    const clientName = Object.fromEntries((await all('SELECT id, name_ar FROM client')).map((c) => [c.id, c.name_ar]));
+    const shown = openOpps.slice().sort((a, b) => (Number(b.rot) - Number(a.rot)) || ((b.value_halalas || 0) - (a.value_halalas || 0))).slice(0, 5);
+    oppsBlock = `<section class="card wc-opps">
+      <div class="wc-opps-h">
+        <div><div class="wc-opps-t">${G.myOpenOpportunities}</div>
+          <div class="wc-opps-s">${openOpps.length ? 'الفرص المفتوحة المسجَّلة باسمك — المتوقفة أولاً' : 'لا فرصة مفتوحة مسجَّلة باسمك الآن'}</div></div>
+        <a class="btn btn-sm" href="/app/my-opportunities">كل فرصي</a>
+      </div>
+      ${shown.length ? `<div class="wc-opps-list">${shown.map((o) => `<a class="wc-opp" href="/app/opportunity/${encodeURIComponent(o.id)}">
+        <span class="wc-opp-t">${esc(o.title_ar)}<span class="wc-opp-c">${esc(clientName[o.client_id] || 'بدون عميل')}</span></span>
+        <span class="wc-opp-m">
+          <span class="pill" style="background:${esc(stById[o.stage_id]?.color || '#cbd5e1')}22;color:var(--ink2)">${esc(stById[o.stage_id]?.name_ar || '')}</span>
+          ${o.rot ? '<span style="color:#a16207;font-weight:700">متوقفة</span>' : ''}
+          ${o.no_next_action ? `<span style="color:var(--red);font-weight:700">${G.noNextAction}</span>` : ''}
+        </span>
+        <span class="wc-opp-v tnum">${fmtSar(o.value_halalas)}</span></a>`).join('')}</div>`
+      : `<div class="empty-state" style="padding:1.3rem 1rem">
+          <div class="t">لا فرص باسمك بعد</div>
+          <div class="s">حين تُسنَد إليك فرصة كمالك ستظهر هنا بجانب مهامك، ومعها خطوتها التالية.</div>
+          <a class="btn" href="/app/opportunities">${G.opportunities}</a></div>`}
+    </section>`;
   }
 
-  const teamStyles = teamBlock ? `<style>
-    .tm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:.7rem;margin-top:.5rem}
-    .tm-card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:.7rem .8rem}
-    .tm-card.tm-hot{border-color:#fecaca}
-    .tm-head{display:flex;align-items:center;justify-content:space-between;gap:.5rem}
-    .tm-name{font-weight:800;font-size:12.5px;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .tm-count{font-size:11px;color:var(--muted);background:#f1f5f9;border-radius:20px;padding:.05rem .5rem;font-weight:700;flex:none}
-    .tm-flags{font-size:11px;margin-top:.25rem;display:flex;gap:.5rem;flex-wrap:wrap}
-    .tm-task{display:flex;justify-content:space-between;gap:.5rem;font-size:11.5px;padding:.28rem 0;border-top:1px solid var(--line);margin-top:.3rem}
-    .tm-t{color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .tm-d{flex:none;font-size:10.5px}
-    .tm-more{font-size:10.5px;color:var(--faint);padding-top:.35rem}
-  </style>` : '';
+  // ── ١٠) شريط التغيير الجماعي + محرِّر المهمة (قالب واحد يُستنسخ) ──
+  const bulkBar = readOnly ? '' : `<div class="wc-bulk" id="tk-bulk" hidden>
+    <span class="wc-bulk-n"><b class="tnum" id="tk-bulk-n">0</b> ${G.bulkSelected}</span>
+    <select id="bk-status" class="input" aria-label="تغيير الحالة">
+      <option value="">${G.taskStatus}…</option>
+      ${TASK_STATUSES.filter((s) => s !== 'BLOCKED').map((s) => `<option value="${s}">${tr(s)}</option>`).join('')}
+    </select>
+    <select id="bk-priority" class="input" aria-label="تغيير الأولوية">
+      <option value="">${G.priority}…</option>
+      ${Object.entries(TASK_PRIORITY).map(([k, v]) => `<option value="${k}">${v.ar}</option>`).join('')}
+    </select>
+    <input id="bk-due" type="date" class="input" dir="ltr" aria-label="تغيير تاريخ الاستحقاق" title="تغيير تاريخ الاستحقاق">
+    ${canAssign && people.length ? `<select id="bk-assignee" class="input" aria-label="تغيير المسؤول">
+      <option value="">${G.assignee}…</option>${people.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select>` : ''}
+    <button class="btn btn-primary btn-sm" data-action="task-bulk">${G.bulkApply}</button>
+    <button class="btn btn-sm" data-action="task-bulk-clear">${G.bulkClear}</button>
+    <span class="wc-bulk-note">التعطيل يحتاج سبباً مكتوباً — غيّره من تفاصيل المهمة</span>
+  </div>`;
+  const editorTpl = readOnly ? '' : `<template id="tk-editor">
+    <div class="drawer-head">
+      <div style="flex:1;min-width:0"><div style="font-size:11px;color:var(--muted);font-weight:700">${G.task}</div>
+        <h3 style="font-size:16px;margin-top:.2rem" data-f="heading"></h3></div>
+      <button type="button" class="btn btn-ghost btn-sm" data-action="task-close" aria-label="إغلاق">✕</button>
+    </div>
+    <div class="drawer-body">
+      <div class="field"><label for="tf-title">عنوان المهمة</label><input id="tf-title" class="input" data-f="title"></div>
+      <div class="grid2">
+        <div class="field"><label for="tf-status">${G.taskStatus}</label>
+          <select id="tf-status" data-f="status">${TASK_STATUSES.map((s) => `<option value="${s}">${tr(s)}</option>`).join('')}</select></div>
+        <div class="field"><label for="tf-priority">${G.priority}</label>
+          <select id="tf-priority" data-f="priority">${Object.entries(TASK_PRIORITY).map(([k, v]) => `<option value="${k}">${v.ar}</option>`).join('')}</select></div>
+      </div>
+      <div class="grid2">
+        <div class="field"><label for="tf-due">${G.dueDate}</label><input id="tf-due" type="date" dir="ltr" data-f="due"></div>
+        <div class="field"><label for="tf-progress">${G.taskProgress} <b class="tnum" data-f="progress-out">0%</b></label>
+          <input id="tf-progress" type="range" min="0" max="100" step="5" data-f="progress"></div>
+      </div>
+      <div class="field"><label for="tf-next">${G.nextStep}</label>
+        <input id="tf-next" class="input" data-f="next" placeholder="ما الفعل التالي المحدَّد الذي يحرّك هذه المهمة؟"></div>
+      <div class="field"><label for="tf-blocked">${G.blocker}</label>
+        <input id="tf-blocked" class="input" data-f="blocked" placeholder="ما الذي يوقفها ومَن يستطيع رفعه؟">
+        <div class="wc-fieldnote">اختيار «مُعطَّلة» يتطلب سبباً مكتوباً — بلا سبب لا تصل إلى أحد.</div></div>
+      <div class="field"><label for="tf-parent">${G.parentLink}</label>${parentSelect('tf-parent', G.parentLink).replace('id="tf-parent" class="input"', 'id="tf-parent" class="input" data-f="parent"')}</div>
+      ${canAssign && people.length ? `<div class="field"><label for="tf-assignee">${G.assignee}</label>
+        <select id="tf-assignee" data-f="assignee"><option value="">${G.unassigned}</option>${people.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select></div>` : ''}
+      ${depts.length ? `<div class="field"><label for="tf-dept">الإدارة المسؤولة</label>
+        <select id="tf-dept" data-f="dept"><option value="">غير محدَّدة</option>${depts.map((d) => `<option value="${esc(d.id)}">${esc(d.name_ar)}</option>`).join('')}</select></div>` : ''}
+      <div class="wc-fieldnote" data-f="error" hidden></div>
+    </div>
+    <div class="drawer-foot">
+      <button type="button" class="btn btn-primary" data-action="task-save">${G.save}</button>
+      <button type="button" class="btn" data-action="task-close">${G.cancel}</button>
+    </div>
+  </template>`;
 
-  const body = `${styles}${teamStyles}${strip}${quickAdd}${listArea}${teamBlock}`;
-  return layout({ user, active: 'tasks', title: 'مهامي', subtitle: openT.length ? `${countAr(openT.length, { one: 'مهمة مفتوحة', two: 'مهمتان مفتوحتان', few: 'مهام مفتوحة', many: 'مهمة مفتوحة' })}${overdue.length ? ` · ${overdue.length} متأخرة` : ''}` : 'كل المهام منجزة', body, scripts: ['/static/pages/tasks.js'] });
+  const styles = `<style>
+    .wc-day{display:flex;gap:1.2rem;flex-wrap:wrap;padding:.9rem 1.05rem;margin-bottom:.9rem;align-items:stretch}
+    .wc-day-l{flex:1 1 260px;min-width:0}
+    .wc-day-r{flex:0 1 260px;min-width:0;border-inline-start:1px solid var(--line);padding-inline-start:1.1rem}
+    .wc-day-h{font-size:11px;font-weight:800;color:var(--muted);letter-spacing:.02em}
+    .wc-day-date{font-size:15px;font-weight:800;color:var(--ink2);margin:.15rem 0 .55rem}
+    .wc-bar{height:9px;background:#eef1f7;border-radius:999px;overflow:hidden;max-width:340px}
+    .wc-bar>span{display:block;height:100%;border-radius:999px;background:var(--brand);transition:width .4s}
+    .wc-day-num{font-size:12.5px;color:var(--muted);margin-top:.35rem}
+    .wc-day-num b{color:var(--ink2);font-size:14px}
+    .wc-day-empty{font-size:12.5px;color:var(--muted);line-height:1.9}
+    .wc-day-week{font-size:13px;color:var(--muted);margin:.15rem 0 .4rem}
+    .wc-day-week b{font-size:1.35rem;color:var(--ink2);font-weight:800}
+    .wc-day-note{font-size:11px;color:var(--muted);margin-top:.35rem;line-height:1.7}
+    .wc-trend{display:grid;grid-template-columns:repeat(7,1fr);direction:rtl;gap:4px;align-items:end;height:56px}
+    .wc-tcell{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:2px;position:relative}
+    .wc-tbar{display:block;width:100%;max-width:22px;border-radius:3px}
+    .wc-tnum{font-size:9.5px;color:var(--muted)}
+    .wc-tcell.on .wc-tnum{color:var(--ink2);font-weight:800}
+    .wc-tcell .now-dot{position:absolute;top:-2px}
+    .wc-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:.6rem;margin-bottom:.9rem}
+    .wc-stat{display:block;background:#fff;border:1px solid var(--line);border-radius:12px;padding:.55rem .8rem;transition:border-color .15s,box-shadow .15s}
+    .wc-stat:hover{border-color:#c9d3e8;box-shadow:var(--sh-sm)}
+    .wc-stat-l{display:block;font-size:11px;font-weight:700;color:var(--muted)}
+    .wc-stat-n{display:block;font-size:1.3rem;font-weight:800;color:var(--ink2);line-height:1.25}
+    .wc-stat-s{display:block;font-size:10.5px;color:var(--muted)}
+    .wc-stat.t-bad .wc-stat-n{color:var(--red)}
+    .wc-stat.t-warn .wc-stat-n{color:#a16207}
+    .wc-lens{display:flex;gap:.4rem;border-bottom:1px solid var(--line);margin-bottom:.75rem;flex-wrap:wrap}
+    .wc-tab{display:inline-flex;align-items:center;gap:.4rem;padding:.5rem .85rem;font-size:13px;font-weight:700;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+    .wc-tab:hover{color:var(--ink2)}
+    .wc-tab.on{color:var(--brand);border-bottom-color:var(--brand)}
+    .wc-tab svg{width:15px;height:15px}
+    .wc-seg{display:inline-flex;background:#eef1f7;border-radius:10px;padding:3px;gap:2px}
+    .wc-seg a{display:inline-flex;align-items:center;gap:.35rem;font-size:12px;font-weight:700;color:var(--muted);padding:.35rem .7rem;border-radius:8px}
+    .wc-seg a.on{background:#fff;color:var(--ink2);box-shadow:var(--sh-sm)}
+    .wc-seg svg{width:14px;height:14px}
+    .wc-bartop{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin-bottom:.7rem}
+    .wc-search{display:flex;gap:.4rem;align-items:center;margin-inline-start:auto}
+    .wc-search .search input{min-width:180px}
+    .wc-add{padding:.75rem .9rem;margin-bottom:1rem;display:flex;flex-direction:column;gap:.5rem}
+    .wc-add-row{display:flex;gap:.5rem;align-items:center}
+    .wc-add-row #qa-title{flex:1;min-width:0}
+    .wc-add-row2{display:flex;gap:.45rem;flex-wrap:wrap;align-items:center}
+    .wc-add-row2 .input{font-size:12px;padding:.4rem .55rem;max-width:100%}
+    .wc-add-row2 select{max-width:190px;min-width:0}
+    .wc-add-next{flex:1;min-width:150px}
+    .tk-sec{margin-bottom:1.05rem}
+    .tk-sec-head{display:flex;align-items:center;gap:.5rem;margin:0 0 .4rem;padding:0 .15rem;flex-wrap:wrap}
+    .tk-dot{width:8px;height:8px;border-radius:50%;flex:none}
+    .tk-sec-title{font-weight:800;font-size:12.5px;color:var(--ink2)}
+    .tk-sec-count{font-size:11px;color:var(--muted);background:#f1f5f9;border-radius:20px;padding:.05rem .5rem;font-weight:700;min-width:20px;text-align:center}
+    .tk-sec-hint{font-size:10.5px;color:var(--muted);margin-inline-start:auto}
+    .tk-list{background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden}
+    .tk-row{display:flex;gap:.6rem;align-items:flex-start;padding:.65rem .8rem;border-bottom:1px solid var(--line);transition:background .12s;flex-wrap:wrap}
+    .tk-row:last-child{border-bottom:none}
+    .tk-row:hover{background:#f8fafc}
+    .tk-row.sel{background:#eef4ff}
+    .tk-sel{flex:none;margin-top:3px;width:15px;height:15px;accent-color:var(--brand);cursor:pointer;opacity:.45}
+    .tk-row:hover .tk-sel,.tk-sel:checked,.tk-sel:focus-visible{opacity:1}
+    .tk-check{flex:none;width:20px;height:20px;margin-top:1px;border:2px solid #a8b3c4;border-radius:50%;background:#fff;color:#fff;font-size:11px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;transition:all .12s}
+    .tk-check:hover:not(.done){border-color:var(--green);background:#f0fdf4}
+    .tk-check.done{border-color:var(--green);background:var(--green);cursor:default}
+    .tk-body{flex:1 1 240px;min-width:0}
+    .tk-title{font-weight:600;font-size:13px;color:var(--ink2);line-height:1.55;word-break:break-word}
+    .tk-row.is-done .tk-title{text-decoration:line-through;color:var(--muted);font-weight:500}
+    .tk-meta{display:flex;gap:.3rem .8rem;flex-wrap:wrap;align-items:center;margin-top:.2rem;font-size:11px;color:var(--muted)}
+    .tk-meta2{margin-top:.3rem}
+    .tk-parent{color:var(--muted);display:inline-flex;align-items:center;gap:.25rem;max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    a.tk-parent:hover{color:var(--brand)}
+    .tk-parent svg{width:12px;height:12px;opacity:.75;flex:none}
+    .tk-parent-none{color:var(--muted);font-style:normal}
+    .tk-who{display:inline-flex;align-items:center;gap:.25rem;color:var(--muted)}
+    .tk-who svg{width:12px;height:12px;opacity:.75}
+    .tk-prog{display:inline-flex;align-items:center;gap:.35rem;color:var(--muted);font-weight:700}
+    .tk-progbar{display:block;width:70px;height:6px;background:#eef1f7;border-radius:999px;overflow:hidden;flex:none}
+    .tk-progbar>span{display:block;height:100%;background:var(--brand);border-radius:999px}
+    .tk-step{display:inline-flex;align-items:center;gap:.25rem;color:var(--muted);max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .tk-step svg{width:11px;height:11px;opacity:.8;flex:none}
+    .tk-link{background:none;border:none;padding:0;font:inherit;font-size:11px;color:var(--muted);cursor:pointer;
+      text-decoration:underline;text-decoration-style:dotted;text-underline-offset:3px}
+    .tk-link:hover,.tk-link:focus-visible{color:var(--brand);text-decoration-style:solid}
+    .tk-block{display:flex;align-items:center;gap:.4rem;margin-top:.35rem;padding:.3rem .5rem;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;font-size:11px;color:#991b1b}
+    .tk-block svg{width:13px;height:13px;flex:none}
+    .tk-block span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .tk-block .tk-link{color:#991b1b}
+    .tk-side{display:flex;gap:.4rem;align-items:center;flex:none;margin-inline-start:auto}
+    .tk-status{font-size:11.5px;border:1px solid var(--line);border-radius:8px;padding:.22rem .4rem;background:#fff;color:var(--ink2);cursor:pointer;font-family:inherit}
+    .tk-fold>summary{cursor:pointer;list-style:none}
+    .tk-fold>summary::-webkit-details-marker{display:none}
+    .wc-beyond{display:flex;gap:.8rem;flex-wrap:wrap;font-size:11.5px;color:var(--muted);padding:.5rem .2rem 1rem}
+    .wc-beyond a{color:var(--brand);font-weight:700}
+    .wc-hint{font-size:11px;color:var(--muted);margin-top:.5rem}
+    .tk-kempty{font-size:11.5px;color:var(--muted);text-align:center;padding:1rem .5rem}
+    .tk-card-t{background:none;border:none;padding:0;font:inherit;text-align:start;font-weight:700;font-size:12.5px;color:var(--ink2);line-height:1.45;cursor:pointer;display:block;width:100%}
+    .tk-card-t:hover{color:var(--brand)}
+    .tk-card-block{margin-top:.4rem;font-size:10.5px;color:#991b1b;background:#fef2f2;border-radius:6px;padding:.2rem .4rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .cal{padding:.8rem .9rem;margin-bottom:.9rem}
+    .cal-head{display:flex;align-items:center;justify-content:space-between;gap:.6rem;margin-bottom:.7rem;flex-wrap:wrap}
+    .cal-title{font-weight:800;font-size:15px;color:var(--ink2)}
+    .cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));direction:rtl;gap:4px}
+    .cal-dow>div{font-size:10.5px;font-weight:800;color:var(--muted);text-align:center;padding:.2rem 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .cal-cell{min-height:76px;border:1px solid var(--line);border-radius:9px;padding:.28rem .3rem;background:#fff;display:flex;flex-direction:column;gap:2px;min-width:0}
+    .cal-cell.cal-blank{background:#fafbfd;border-style:dashed}
+    .cal-cell.on{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold)}
+    .cal-d{display:flex;align-items:center;justify-content:space-between;gap:2px;font-size:11px;font-weight:700;color:var(--ink2)}
+    .cal-items{display:flex;flex-direction:column;gap:2px;min-width:0}
+    .cal-chip{display:block;width:100%;text-align:start;font:inherit;font-size:10.5px;line-height:1.45;color:var(--ink2);background:#f4f6fb;border:none;border-inline-start:2.5px solid var(--_c,#64748b);border-radius:4px;padding:.1rem .25rem;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .cal-chip:hover{background:#e8edf8}
+    .cal-more{font-size:9px;color:var(--muted)}
+    .cal-dots{display:none;gap:2px;flex-wrap:wrap}
+    .cal-dot{display:inline-block;width:6px;height:6px;border-radius:50%;flex:none}
+    .cal-done{font-size:9.5px;color:var(--green);font-weight:700;margin-top:auto}
+    .cal-legend{display:flex;gap:.8rem;flex-wrap:wrap;font-size:10.5px;color:var(--muted);margin-top:.6rem;align-items:center}
+    .cal-legend span{display:inline-flex;align-items:center;gap:.25rem}
+    .wc-tray{padding:.8rem .9rem;margin-bottom:.9rem}
+    .wc-tray-h{font-weight:800;font-size:12.5px;color:var(--ink2)}
+    .wc-tray-s{font-size:11px;color:var(--muted);margin:.15rem 0 .5rem}
+    .wc-team{margin-bottom:1rem}
+    .wc-team-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:.6rem;margin-top:.45rem}
+    .wc-person{display:block;background:#fff;border:1px solid var(--line);border-radius:12px;padding:.6rem .75rem;transition:border-color .15s,box-shadow .15s}
+    .wc-person:hover{border-color:#c9d3e8;box-shadow:var(--sh-sm)}
+    .wc-person.hot{border-color:#fecaca}
+    .wc-person-h{display:flex;align-items:center;justify-content:space-between;gap:.5rem}
+    .wc-person-n{font-weight:800;font-size:12.5px;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .wc-person-f{display:flex;gap:.5rem;flex-wrap:wrap;font-size:10.5px;margin-top:.25rem}
+    .wc-opps{padding:.8rem .9rem;margin-bottom:.9rem}
+    .wc-opps-h{display:flex;align-items:flex-start;justify-content:space-between;gap:.6rem;flex-wrap:wrap}
+    .wc-opps-t{font-weight:800;font-size:13px;color:var(--ink2)}
+    .wc-opps-s{font-size:11px;color:var(--muted)}
+    .wc-opps-list{margin-top:.5rem;border-top:1px solid var(--line)}
+    .wc-opp{display:flex;align-items:center;gap:.6rem;padding:.45rem 0;border-bottom:1px dashed var(--line);flex-wrap:wrap}
+    .wc-opp:last-child{border-bottom:none}
+    .wc-opp-t{flex:1 1 190px;min-width:0;font-size:12.5px;font-weight:700;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .wc-opp-c{display:block;font-size:10.5px;font-weight:400;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .wc-opp-m{display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;font-size:10.5px}
+    .wc-opp-v{flex:none;font-size:12px;font-weight:800;color:var(--ink2);margin-inline-start:auto}
+    .wc-bulk{position:fixed;bottom:14px;left:76px;right:14px;z-index:45;display:flex;align-items:center;gap:.45rem;flex-wrap:wrap;
+      background:var(--ink);color:#fff;border-radius:14px;padding:.55rem .8rem;box-shadow:0 14px 40px rgba(15,23,42,.35)}
+    .wc-bulk[hidden]{display:none}
+    .wc-bulk-n{font-size:12px;font-weight:700}
+    .wc-bulk .input{font-size:11.5px;padding:.3rem .5rem;background:#fff;color:var(--ink2);border:none;max-width:150px;min-width:0}
+    .wc-bulk-note{font-size:10px;color:rgba(255,255,255,.6);margin-inline-start:auto}
+    .wc-fieldnote{font-size:10.5px;color:var(--muted);line-height:1.7}
+    .wc-fieldnote[hidden]{display:none}
+    .wc-fieldnote.err{color:#991b1b;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:.4rem .55rem}
+    @media(max-width:900px){
+      .wc-stats{grid-template-columns:repeat(2,1fr)}
+      .wc-day-r{border-inline-start:none;border-top:1px solid var(--line);padding-inline-start:0;padding-top:.7rem;flex-basis:100%}
+    }
+    @media(max-width:640px){
+      .tk-side{margin-inline-start:0;flex-basis:100%;justify-content:flex-end}
+      .tk-parent,.tk-step{max-width:150px}
+      .wc-search{margin-inline-start:0;flex-basis:100%}
+      .wc-search .search input{min-width:0;width:100%}
+      .wc-search .search{flex:1}
+      .cal-cell{min-height:52px}
+      .cal-items,.cal-more{display:none}
+      .cal-dots{display:flex}
+      .cal-legend{font-size:9.5px}
+      .wc-bulk{left:12px;right:12px;bottom:72px}
+      .wc-bulk-note{display:none}
+      .wc-add-row2 select,.wc-add-row2 .input{max-width:none;flex:1 1 130px}
+    }
+  </style>`;
+
+  const content = view === 'board' ? boardView : view === 'calendar' ? calendarView : (listBody + beyond);
+  const body = `${styles}${dayCard}${stats}${lens}
+    <div class="wc-bartop">${viewSeg}${searchForm}</div>
+    ${winChips}${moreChips}
+    ${quickAdd}
+    ${readOnly ? `<div class="alert info" style="margin-bottom:.8rem">${icon('team')}<span>عرض للاطّلاع على عمل فريقك. تعديل مهام غيرك يتطلب صلاحية إدارية على المهام — اطلبها من مدير النظام.</span></div>` : ''}
+    ${who === 'team' ? teamBoard : ''}
+    ${fAssignee ? `<div class="wc-beyond">تعرض مهام شخص واحد — <a href="${qp({ assignee: null })}">أعِد كل الفريق</a></div>` : ''}
+    ${content}
+    ${oppsBlock}
+    ${bulkBar}${editorTpl}`;
+
+  const subtitle = who === 'team'
+    ? `${G.teamWork} · ${countAr(openT.length, { one: 'مهمة مفتوحة', two: 'مهمتان مفتوحتان', few: 'مهام مفتوحة', many: 'مهمة مفتوحة' })}${overdue.length ? ` · ${overdue.length} متأخرة` : ''}`
+    : (todayBand.length
+      ? `${countAr(todayBand.length, { one: 'مهمة على طاولتك اليوم', two: 'مهمتان على طاولتك اليوم', few: 'مهام على طاولتك اليوم', many: 'مهمة على طاولتك اليوم' })}${overdue.length ? ` · ${overdue.length} متأخرة` : ''}`
+      : (openT.length ? `لا شيء مستحق اليوم · ${countAr(openT.length, { one: 'مهمة مفتوحة', two: 'مهمتان مفتوحتان', few: 'مهام مفتوحة', many: 'مهمة مفتوحة' })}` : 'لا مهام مفتوحة'));
+
+  return layout({ user, active: 'tasks', title: who === 'team' ? G.teamWork : G.myWork, subtitle, body, scripts: ['/static/pages/tasks.js'] });
 }
 
 export async function projectDetailPage(user, projectId) {
@@ -585,7 +1133,6 @@ export async function projectDetailPage(user, projectId) {
   const canEdit = can(user, 'update', 'project', p);
   const tasks = await all("SELECT status, COUNT(*) n FROM task WHERE project_id=? AND deleted_at IS NULL GROUP BY status", [p.id]);
   const tmap = Object.fromEntries(tasks.map((t) => [t.status, t.n]));
-  const dlv = await all("SELECT name_ar, amount_halalas, status, month FROM deliverable WHERE project_id=? AND deleted_at IS NULL ORDER BY month LIMIT 24", [p.id]);
   const risks = await all("SELECT title, impact, status FROM risk WHERE project_id=? AND status!='CLOSED' LIMIT 10", [p.id]);
   // نوع العميل يُقرأ مع اسمه لأن التصنيف يفرّق بين عميل حقيقي والعميل الذي هو الشركة نفسها.
   const client = await get('SELECT id, name_ar, type FROM client WHERE id=?', [p.client_id]);
@@ -596,9 +1143,12 @@ export async function projectDetailPage(user, projectId) {
   const staff = await all(`SELECT a.person_name_ar, a.type, a.monthly_json, e.job_title
      FROM allocation a LEFT JOIN employee e ON e.id=a.employee_id
      WHERE a.project_id=? AND a.deleted_at IS NULL ORDER BY (a.type='lead') DESC, a.person_name_ar`, [p.id]);
-  // Governance registers (WP17): the five project registers + write flag under the same RBAC.
+  // Governance registers (WP17): the project registers + write flag under the same RBAC.
+  // المخرجات صارت أحدها — تُقرأ من الحمولة نفسها لا باستعلام موازٍ، فالكتابة والقراءة على
+  // مصدر واحد وتحت الحارس نفسه.
   const gov = await projectGovernance(user, p.id);
   const canGov = gov.canEdit;
+  const dlv = gov.deliverables || [];
   const invSum = (await get(`SELECT COALESCE(SUM(amount_halalas),0) v FROM invoice
      WHERE project_id=? AND deleted_at IS NULL AND status NOT IN ('DRAFT','CANCELLED')`, [p.id])).v;
   const users = await all(`SELECT id, COALESCE(name_ar, username) AS "name" FROM app_user
@@ -650,9 +1200,49 @@ export async function projectDetailPage(user, projectId) {
         ${['GREEN', 'AMBER', 'RED'].map((v) => `<option value="${v}" ${p.rag === v ? 'selected' : ''}>${RAG_LABEL[v]}</option>`).join('')}
       </select>`
     : `<span title="${esc(ragTip)}">${pill(RAG_LABEL[p.rag] || RAG_LABEL.GREEN, ragColor)}</span>`;
-  const dlvRows = dlv.map((d) => `<tr style="border-bottom:1px solid var(--line)"><td style="padding:.4rem .75rem;font-size:12.5px">${esc(d.name_ar)}${d.month ? `<span style="color:var(--faint);font-size:10px;margin-inline-start:.35rem">${MONTHS_AR[(d.month - 1) % 12] || ''}</span>` : ''}</td>
-    <td style="padding:.4rem .75rem;font-size:12.5px;text-align:center" class="tnum">${fmtSar(d.amount_halalas)}</td>
-    <td style="padding:.4rem .75rem;text-align:center">${pill(tr(d.status), ['PAID', 'INVOICED', 'ACCEPTED'].includes(d.status) ? 'green' : d.status === 'DELIVERED' ? 'blue' : 'slate')}</td></tr>`).join('');
+  // ── المخرجات: صفٌّ قابل للعمل، لا سطر قراءة ────────────────────────────────────
+  // القيمة غير المسجَّلة تُكتب «غير محدَّدة» لا صفراً — الصفر يُقرأ اتفاقاً على لا شيء بينما
+  // الحقيقة أنه لم يُتفق بعد، والفرق بينهما هو الفرق بين مطالبةٍ صحيحة وأخرى ناقصة.
+  const dlvTone = (s) => (['PAID', 'INVOICED'].includes(s) ? 'violet' : s === 'ACCEPTED' ? 'green' : s === 'DELIVERED' ? 'blue' : s === 'REJECTED' ? 'red' : 'slate');
+  const dlvRows = dlv.map((d) => {
+    const sys = DELIVERABLE_SYSTEM_STATUSES.includes(d.status);
+    const next = DELIVERABLE_NEXT[d.status];
+    const monthTxt = d.month ? `${MONTHS_AR[(d.month - 1) % 12] || ''}${d.year ? ` <span class="tnum">${d.year}</span>` : ''}` : G.monthUnset;
+    return `<tr style="border-bottom:1px solid var(--line)">
+      <td style="padding:.45rem .7rem;font-size:12.5px">${esc(d.name_ar)}
+        <div style="font-size:10px;color:var(--muted)">${monthTxt}${d.delivered_at ? ` · سُلِّم <span class="tnum">${esc(String(d.delivered_at).slice(0, 10))}</span>` : ''}${d.accepted_at ? ` · قُبل <span class="tnum">${esc(String(d.accepted_at).slice(0, 10))}</span>` : ''}</div></td>
+      <td style="padding:.45rem .7rem;font-size:12px;text-align:center;white-space:nowrap" class="${d.amount_halalas == null ? '' : 'tnum'}">${d.amount_halalas == null ? `<span style="color:var(--muted)">${G.amountUnset}</span>` : fmtSar(d.amount_halalas)}</td>
+      <td style="padding:.45rem .7rem;text-align:center;white-space:nowrap">${pill(deliverableStatusLabel(d.status), dlvTone(d.status))}</td>
+      <td style="padding:.45rem .7rem;text-align:center;white-space:nowrap">${!canGov ? ''
+        : sys ? `<span style="font-size:10.5px;color:var(--muted)" title="حالة «${deliverableStatusLabel(d.status)}» تنتج عن مسار الفوترة والتحصيل — تُعالَج من صفحة المالية">${G.financeOwned}</span>`
+          : `<div style="display:inline-flex;gap:.3rem;align-items:center">
+              ${next ? `<button class="btn btn-sm" data-action="gov-status" data-kind="deliverable" data-id="${esc(d.id)}" data-status="${next.to}">${next.ar}</button>` : ''}
+              <select class="input" style="font-size:11px;padding:.2rem .35rem;width:auto" aria-label="حالة المخرج"
+                data-action-change="gov-status-sel" data-kind="deliverable" data-id="${esc(d.id)}">
+                ${DELIVERABLE_MANUAL_STATUSES.map((s) => `<option value="${s}"${s === d.status ? ' selected' : ''}>${deliverableStatusLabel(s)}</option>`).join('')}
+              </select>
+              <button class="btn btn-ghost btn-sm" data-action="gov-del" data-kind="deliverable" data-id="${esc(d.id)}" aria-label="حذف المخرج" title="حذف المخرج">✕</button>
+            </div>`}</td></tr>`;
+  }).join('');
+  // شريط إضافة مخرج — شهر الاستحقاق قائمة واحدة (شهر وسنة معاً) فلا يُخزَّن شهرٌ بلا سنته.
+  const dlvYears = (() => {
+    const ys = new Set();
+    const sy = Number(String(p.start_date || '').slice(0, 4)); const ey = Number(String(p.end_date || '').slice(0, 4));
+    const cy = new Date().getUTCFullYear();
+    const from = Number.isFinite(sy) && sy > 2000 ? sy : cy;
+    const to = Number.isFinite(ey) && ey > 2000 ? ey : cy + 1;
+    for (let y = Math.min(from, cy); y <= Math.max(to, cy); y++) ys.add(y);
+    return [...ys].sort();
+  })();
+  const dlvAddBar = canGov ? `<div style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;padding:.55rem .9rem;border-top:1px dashed var(--line)">
+    <input id="g-dlv-name" class="input" placeholder="${G.deliverableName}…" aria-label="${G.deliverableName}" style="flex:1;min-width:140px;font-size:12.5px">
+    <select id="g-dlv-period" class="input" aria-label="${G.deliverableMonth}" style="width:auto;font-size:12px;max-width:150px">
+      <option value="">${G.monthUnset}</option>
+      ${dlvYears.flatMap((y) => MONTHS_AR.map((mn, i) => `<option value="${y}-${String(i + 1).padStart(2, '0')}">${mn} ${y}</option>`)).join('')}
+    </select>
+    <input id="g-dlv-amount" class="input" type="number" min="0" step="1" dir="ltr" placeholder="${G.deliverableAmount}" aria-label="${G.deliverableAmount} بالريال" style="width:110px;font-size:12.5px">
+    <button class="btn btn-sm btn-primary" data-action="gov-add" data-kind="deliverable">${icon('plus')} ${G.add}</button>
+  </div>` : '';
   const riskRows = risks.map((r) => `<tr style="border-bottom:1px solid var(--line)"><td style="padding:.4rem .75rem;font-size:12.5px">${esc(r.title)}</td>
     <td style="padding:.4rem .75rem;text-align:center">${pill(tr(r.impact) || '—', r.impact === 'high' ? 'red' : r.impact === 'medium' ? 'amber' : 'slate')}</td></tr>`).join('');
   // شريط تذكير بالأشهر فوق أعمدة التغطية — بلا هذا الشريط يظهر صف مربعات ملوّنة بلا معنى (لا يُعرف
@@ -839,17 +1429,28 @@ export async function projectDetailPage(user, projectId) {
         ${canEdit ? `<button class="btn btn-sm" style="font-size:11px;padding:.25rem .6rem" onclick="Sanad.projOpen('${p.id}')">${icon('users')} إدارة التسكين</button>` : ''}</div>
         <table style="width:100%;border-collapse:collapse"><thead><tr style="font-size:10.5px;color:var(--muted);text-align:right"><th style="padding:.35rem .75rem">الموظف</th><th style="padding:.35rem .75rem;text-align:center">الدور</th><th style="padding:.35rem .75rem .15rem;width:160px;text-align:center">التغطية الشهرية${monthTicks}</th></tr></thead>
         <tbody>${staffRows || '<tr><td colspan="3" style="padding:1rem;color:var(--muted);font-size:12.5px">لا يوجد فريق مُسكَّن على هذا المشروع بعد' + (canEdit ? ' — استخدم «إدارة التسكين»' : '') + '</td></tr>'}</tbody></table>`)}
-      ${card(`<div style="padding:.85rem 1rem;border-bottom:1px solid var(--line);font-weight:800;font-size:13px">المخرجات (${dlv.length})</div>
-        <div style="max-height:260px;overflow-y:auto"><table style="width:100%;border-collapse:collapse"><tbody>${dlvRows || '<tr><td style="padding:1rem;color:var(--muted);font-size:12.5px">لا مخرجات</td></tr>'}</tbody></table></div>`)}
+      ${card(`<div style="padding:.85rem 1rem;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:.5rem;flex-wrap:wrap">
+        <div style="font-weight:800;font-size:13px">${G.deliverables} (<span class="tnum">${dlv.length}</span>)</div>
+        <div style="font-size:10.5px;color:var(--muted)">${canGov ? 'سلّم أو اقبل بنقرة — والمفوتر يُضبط من المالية' : 'للقراءة فقط بدورك الحالي'}</div></div>
+        <div class="tblwrap" style="max-height:260px;overflow-y:auto"><table style="width:100%;border-collapse:collapse;min-width:${canGov ? 460 : 300}px"><tbody>${dlvRows
+          || `<tr><td colspan="4"><div class="empty-state" style="padding:1.4rem 1rem">
+              <div class="t">لا مخرجات مسجَّلة على هذا المشروع</div>
+              <div class="s">${canGov ? 'المخرَج هو ما يُسلَّم للعميل ويُبنى عليه المستخلص — أضِف أول مخرَج من الشريط أدناه.' : 'لم يُسجَّل أي مخرَج بعد. مدير المشروع هو من يضيفها.'}</div></div></td></tr>`}</tbody></table></div>
+        ${dlvAddBar}`)}
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:.9rem;margin-bottom:.9rem">
       ${card(`<div style="padding:.85rem 1rem"><div style="font-weight:800;font-size:13px;margin-bottom:.5rem">توزيع المهام (${k.totalTasks})</div>
         <div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:.7rem">${['TODO', 'IN_PROGRESS', 'BLOCKED', 'IN_REVIEW', 'DONE'].map((s) => pill(`${tr(s)}: ${tmap[s] || 0}`, s === 'DONE' ? 'green' : s === 'BLOCKED' ? 'red' : 'slate')).join(' ')}</div>
         <div style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;padding-top:.6rem;border-top:1px dashed var(--line)">
           <input id="prj-task-title" class="input" placeholder="أضِف مهمة على هذا المشروع…" aria-label="عنوان المهمة" style="flex:1;min-width:150px;font-size:12.5px">
-          <select id="prj-task-priority" class="input" aria-label="الأولوية" style="width:auto;font-size:12.5px"><option value="P2">متوسطة</option><option value="P0">حرجة</option><option value="P1">عالية</option><option value="P3">منخفضة</option></select>
-          <button class="btn btn-sm btn-primary" data-action="prj-task-add" data-project="${p.id}">${icon('plus')} إضافة</button>
-        </div></div>`)}
+          <select id="prj-task-priority" class="input" aria-label="${G.priority}" style="width:auto;font-size:12.5px"><option value="P2">متوسطة</option><option value="P0">حرجة</option><option value="P1">عالية</option><option value="P3">منخفضة</option></select>
+          <input id="prj-task-due" type="date" dir="ltr" class="input" aria-label="تاريخ الاستحقاق" title="تاريخ الاستحقاق" style="width:auto;font-size:12.5px">
+          ${users.length ? `<select id="prj-task-assignee" class="input" aria-label="${G.assignee}" style="width:auto;max-width:150px;font-size:12.5px">
+            <option value="">${G.assignee}: أنا</option>
+            ${users.map((u) => `<option value="${esc(u.id)}">${esc(u.name)}</option>`).join('')}</select>` : ''}
+          <button class="btn btn-sm btn-primary" data-action="prj-task-add" data-project="${p.id}">${icon('plus')} ${G.add}</button>
+        </div>
+        <div style="font-size:10.5px;color:var(--muted);margin-top:.4rem">تُسجَّل المهمة على هذا المشروع مباشرة وتظهر في «${G.myWork}» لدى مَن أُسنِدت إليه.</div></div>`)}
       ${card(`<div style="padding:.85rem 1rem;border-bottom:1px solid var(--line);font-weight:800;font-size:13px">المخاطر المفتوحة (${risks.length})</div>
         <table style="width:100%;border-collapse:collapse"><tbody>${riskRows || '<tr><td style="padding:1rem;color:var(--muted);font-size:12.5px">لا مخاطر مفتوحة</td></tr>'}</tbody></table>`)}
     </div>

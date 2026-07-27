@@ -30,8 +30,10 @@ import { all, get, insert, tx } from '../db/index.js';
 import { audit } from '../audit/index.js';
 import { badRequest, forbidden, notFound } from '../http/errors.js';
 import { can, effectiveScope, canSeeSensitive } from '../rbac/index.js';
+import { SCOPE_RANK } from '../rbac/matrix.js';
 import { seesCompanyPerformance } from '../policy/pages.js';
 import { MONTHS_AR, QUARTERS_AR } from '../i18n/time.js';
+import { countAr } from '../i18n/plural.js';
 import { CAPACITY, capacityLabel, health, HEALTH_ORDER, HEALTH } from '../i18n/thresholds.js';
 import { id, nowIso, fmtSar } from '../util/ids.js';
 import {
@@ -47,7 +49,6 @@ const DAY = 86400000;
 export const WEEK_START_DOW = 0;
 export const PERIOD_KINDS = ['week', 'month', 'quarter'];
 export const PERIOD_LABELS_AR = { week: 'أسبوعي', month: 'شهري', quarter: 'ربع سنوي' };
-export const PERIOD_NOUN_AR = { week: 'الأسبوع', month: 'الشهر', quarter: 'الربع' };
 
 const utcDay = (y, m, d) => new Date(Date.UTC(y, m, d));
 const isoDay = (d) => d.toISOString().slice(0, 10);
@@ -152,6 +153,44 @@ export const LENS_LABELS_AR = {
   person: 'شخص', opportunity: 'فرصة', project: 'مشروع',
 };
 
+// **اتساع** المنح لا مجرد وجودها. `can(u,'read','report',{sector_id})` تعود صحيحاً لمن منحُه
+// بنطاق «مشروع» لأن صفّ القطاع لا يحمل معرّف مشروع، فيمرّ الفحص فارغاً. تقرير القطاع يحتاج
+// منحاً يبلغ القطاع فعلاً — ومصادره الثلاثة المقبولة: التقارير أو المشاريع أو الأشخاص.
+const WIDTH_RESOURCES = ['report', 'project', 'employee'];
+function widthAtLeast(user, minScope) {
+  const need = SCOPE_RANK[minScope] || 0;
+  return WIDTH_RESOURCES.some((r) => {
+    const s = effectiveScope(user, 'read', r);
+    return !!s && (SCOPE_RANK[s] || 0) >= need;
+  });
+}
+
+// شروط الفتح كدوال نقية (بلا قاعدة بيانات): يستعملها الحارس عند البناء **وقائمةُ الاختيار**
+// في الشاشة. المصدر واحد كي لا تعرض القائمة جهةً يردّها النظام عند فتحها — وهو أسوأ من إخفائها.
+export function sectorReadable(user, row) {
+  if (!user || !row) return false;
+  if (user.scope !== 'company' && user.sector_id !== row.id) return false;
+  return widthAtLeast(user, 'sector');
+}
+export function departmentReadable(user, row) {
+  if (!user || !row) return false;
+  if (user.scope !== 'company' && user.sector_id !== row.sector_id) return false;
+  const narrow = effectiveScope(user, 'read', 'employee') === 'department'
+    || effectiveScope(user, 'read', 'report') === 'department';
+  if (narrow && user.department_id !== row.id) return false;
+  return widthAtLeast(user, 'department');
+}
+export function personReadable(user, row) {
+  if (!user || !row) return false;
+  if (row.id === user.id) return true;                      // تقريرك عن نفسك متاح دائماً
+  // شرط الاتساع أولاً وقبل `can`: صفّ الشخص لا يحمل معرّف مشروع، فمنحٌ بنطاق «مشروع» يجتاز
+  // `scopeReaches` فارغاً — وبه كان مدير المشروع يفتح تقرير أي شخص في قطاعه (ساعاته ومهامه
+  // وحمله). تقرير شخص آخر يبدأ من نطاق الإدارة فأوسع.
+  if (!widthAtLeast(user, 'department')) return false;
+  const t = { sector_id: row.sector_id, department_id: row.department_id, user_id: row.id };
+  return can(user, 'read', 'employee', t) || can(user, 'read', 'report', t);
+}
+
 // حارس كل عدسة داخل الخدمة لا في المسار: التقرير لا يُظهر ما لا يحق لقارئه رؤيته.
 async function resolveScope(user, lens, targetId) {
   const l = String(lens || '').trim().toLowerCase();
@@ -175,8 +214,8 @@ async function resolveScope(user, lens, targetId) {
     if (user.scope !== 'company' && user.sector_id !== row.id) {
       throw forbidden('هذا القطاع خارج نطاقك — اعرض تقرير قطاعك.');
     }
-    if (!can(user, 'read', 'report', { sector_id: row.id })) {
-      throw forbidden('عرض تقارير هذا القطاع خارج صلاحيتك — راجع مدير النظام.');
+    if (!sectorReadable(user, row)) {
+      throw forbidden('تقرير القطاع كاملاً يحتاج صلاحية تبلغ القطاع. اعرض تقرير مشروعك أو تقريرك الشخصي.');
     }
     return { lens: l, id: row.id, name_ar: row.name_ar, kind_ar: 'قطاع', sectorId: row.id };
   }
@@ -195,8 +234,8 @@ async function resolveScope(user, lens, targetId) {
     if (narrow && user.department_id !== row.id) {
       throw forbidden('هذه الإدارة خارج نطاقك — تقريرك يغطي إدارتك أنت.');
     }
-    if (!can(user, 'read', 'report', { sector_id: row.sector_id, department_id: row.id })) {
-      throw forbidden('عرض تقارير الإدارات خارج صلاحيتك — راجع مدير النظام.');
+    if (!departmentReadable(user, row)) {
+      throw forbidden('تقرير الإدارة يحتاج صلاحية تبلغ الإدارة. اعرض تقرير مشروعك أو تقريرك الشخصي.');
     }
     return { lens: l, id: row.id, name_ar: row.name_ar, kind_ar: 'إدارة',
       sectorId: row.sector_id, departmentId: row.id, parent_ar: row.sector_name || '' };
@@ -209,12 +248,9 @@ async function resolveScope(user, lens, targetId) {
        LEFT JOIN sector s ON s.id = u.sector_id
        WHERE u.id = ? AND u.deleted_at IS NULL`, [targetId]);
     if (!row) throw notFound('الشخص المطلوب غير موجود — اختره من القائمة.');
-    if (row.id !== user.id) {
-      // تقرير عن شخص آخر = اطّلاع على فريق: يُفحص على صفّه هو (قطاعه وإدارته)، لا على وجود المنح.
-      const target = { sector_id: row.sector_id, department_id: row.department_id, user_id: row.id };
-      if (!can(user, 'read', 'employee', target) && !can(user, 'read', 'report', target)) {
-        throw forbidden('تقرير شخص آخر يحتاج صلاحية الاطلاع على فريقه. تقريرك عن نفسك متاح لك دائماً.');
-      }
+    // تقرير عن شخص آخر = اطّلاع على فريق: يُفحص على صفّه هو (قطاعه وإدارته)، لا على وجود المنح.
+    if (!personReadable(user, row)) {
+      throw forbidden('تقرير شخص آخر يحتاج صلاحية الاطلاع على فريقه. تقريرك عن نفسك متاح لك دائماً.');
     }
     return { lens: l, id: row.id, name_ar: row.name_ar || row.emp_name || row.username || 'مستخدم',
       kind_ar: 'شخص', sectorId: row.sector_id || null, departmentId: row.department_id || null,
@@ -351,7 +387,14 @@ const absentSection = (key, title_ar, absence_ar, hint_ar = '', basis_ar = '') =
   ({ key, title_ar, basis_ar, state: 'absent', absence_ar, hint_ar, figures: [], rows: [] });
 
 const pctText = (v) => `${Math.round(v)}%`;
-const hoursText = (v) => `${Math.round(N(v) * 10) / 10} ساعة`;
+// اتفاق العدد والمعدود من مصدر المنصة الواحد. الصفر يبقى رقماً ظاهراً («0 ساعة») لا «لا ساعات»:
+// الصفر هنا قياسٌ فعلي (ساعات مسجّلة غير قابلة للفوترة)، وصياغة النفي تجعله يُقرأ غياباً.
+const hoursText = (v) => {
+  const h = Math.round(N(v) * 10) / 10;
+  if (h === 0) return '0 ساعة';
+  if (!Number.isInteger(h)) return `${h} ساعة`;
+  return countAr(h, { one: 'ساعة واحدة', two: 'ساعتان', few: 'ساعات', many: 'ساعة' });
+};
 
 // نصوص الغياب لكل عدسة — الفراغ يُسمّى بلغة صاحبه لا برسالة عامة.
 const NO_TASKS_AR = {
@@ -463,6 +506,13 @@ async function contributionsSection(user, sc, period) {
       if (!N(rev?.n)) {
         figures.push(missing('إيراد معترف به في الفترة', 'لا بنود إيراد مسجّلة لأشهر هذه الفترة'));
       } else { anyBase = true; figures.push(figure('إيراد معترف به في الفترة', fmtSar(N(rev.v)))); }
+      // بند إيراد بلا شهر مسجَّل موجودٌ فعلاً في البيانات المنقولة، ولا يقع في أي فترة. إسقاطه
+      // صامتاً يجعل مجموع فترات السنة أقلّ من إيراد السنة بلا تفسير — فيُقال العدد صراحةً.
+      const orphan = await get(`SELECT COUNT(*) n FROM revenue_line
+        WHERE year = ? AND month IS NULL ${scopeSql}`, [period.year, ...sp]);
+      if (N(orphan?.n)) {
+        notes.push(`${N(orphan.n)} من بنود إيراد هذه السنة بلا شهر مسجَّل، فلا تقع في أي فترة ولم تُحتسب هنا.`);
+      }
     }
   }
 
@@ -858,9 +908,18 @@ async function conflictsSection(user, sc, period) {
 }
 
 // ── القرارات المطلوبة: طلبات اعتماد معلّقة، كلٌّ بهويّة سجلّه الحقيقية ──
-const APPROVAL_NAME_COL = { opportunity: 'title_ar', contract: 'code', invoice: 'code', expense: 'title', proposal: 'title_ar' };
+// عمودان هنا كانا يسمّيان ما لا وجود له: `expense.title` و`proposal.title_ar` — والجدولان لا
+// يملكان عمود عنوان أصلاً. الاستعلام كان يرفع خطأ فيبتلعه `catch` أدناه، فيقرأ المالك «مصروف»
+// و«عرض» بلا هوية ولا يعرف أن ثمة عطلاً. الوصف الحقيقي في الجدولين هو `type` و`kind`، وهما
+// المستعملان الآن — واختبار `report-approval-names` يفحص كل زوج (جدول، عمود) على المخطط نفسه
+// كي يسقط الخطأ المطبعي القادم في الاختبار لا صامتاً على شاشة المالك.
+const APPROVAL_NAME_COL = { opportunity: 'title_ar', contract: 'code', invoice: 'code', expense: 'type', proposal: 'kind' };
+// موارد بلا جدول أسماء إطلاقاً (`timesheet` سجلّه `time_entry` ولا اسم له): تُعلن صراحةً كي
+// يبقى `catch` شبكةَ أمان لا مساراً معتاداً — فمن يبتلع الأخطاء بلا تمييز يبتلع الأعطال معها.
+const APPROVAL_NO_NAME = new Set(['timesheet']);
 const APPROVAL_RES_AR = { opportunity: 'فرصة', proposal: 'عرض', expense: 'مصروف', deliverable: 'مخرَج',
   timesheet: 'سجل وقت', invoice: 'فاتورة', project: 'مشروع', contract: 'عقد' };
+export const _approvalNameCols = () => ({ cols: { ...APPROVAL_NAME_COL }, noName: new Set(APPROVAL_NO_NAME), fallback: 'name_ar' });
 
 // أسماء السجلات المطلوب اعتمادها — دفعة واحدة لكل نوع، وبلا اختلاق عند الغياب.
 export async function approvalTargetNames(rows) {
@@ -869,6 +928,7 @@ export async function approvalTargetNames(rows) {
   const names = {};
   for (const [res, set] of Object.entries(byRes)) {
     if (!/^[a-z_]+$/.test(res)) continue;            // اسم الجدول من قائمة مغلقة لا من مدخلات
+    if (APPROVAL_NO_NAME.has(res)) { names[res] = {}; continue; }   // معلَن لا مُكتشَف بالخطأ
     const col = APPROVAL_NAME_COL[res] || 'name_ar';
     const ids = [...set];
     const ph = ids.map(() => '?').join(',');
@@ -998,7 +1058,8 @@ export async function buildPeriodReport(user, opts = {}) {
     period,
     lens: sc.lens,
     lens_ar: LENS_LABELS_AR[sc.lens],
-    target: { id: sc.id, name_ar: sc.name_ar, kind_ar: sc.kind_ar, parent_ar: sc.parent_ar || '', job_ar: sc.job_ar || '' },
+    target: { id: sc.id, name_ar: sc.name_ar, kind_ar: sc.kind_ar, sector_id: sc.sectorId || null,
+      parent_ar: sc.parent_ar || '', job_ar: sc.job_ar || '' },
     title_ar: `تقرير ${PERIOD_LABELS_AR[period.kind]} — ${sc.name_ar}`,
     context,
     sections,
@@ -1010,31 +1071,33 @@ export async function buildPeriodReport(user, opts = {}) {
 }
 
 // خيارات العدسات المتاحة لهذا القارئ — تُبنى منها قوائم الاختيار في الشاشة.
+// كل صف يمرّ بشرط الفتح نفسه الذي يطبّقه الحارس: ما لا يُفتح لا يُعرض في القائمة أصلاً.
 export async function lensOptions(user, opts = {}) {
   const limit = Number(opts.limit) || 200;
   const companyWide = user.scope === 'company';
   const secParams = companyWide ? [] : [user.sector_id || ''];
   const secFilter = companyWide ? '' : 'AND s.id = ?';
-  const sectors = can(user, 'read', 'report') || can(user, 'read', 'project')
-    ? await all(`SELECT s.id, s.name_ar FROM sector s
-        WHERE s.deleted_at IS NULL AND s.active = 1 ${secFilter} ORDER BY s.sort_order, s.name_ar`, secParams)
-    : [];
-  const narrowDept = effectiveScope(user, 'read', 'employee') === 'department'
-    || effectiveScope(user, 'read', 'report') === 'department';
+  const sectors = (await all(`SELECT s.id, s.name_ar FROM sector s
+      WHERE s.deleted_at IS NULL AND s.active = 1 ${secFilter} ORDER BY s.sort_order, s.name_ar`, secParams))
+    .filter((s) => sectorReadable(user, s));
+
   const deptWhere = ['d.deleted_at IS NULL', 'd.active = 1'];
   const deptParams = [];
   if (!companyWide) { deptWhere.push('d.sector_id = ?'); deptParams.push(user.sector_id || ''); }
-  if (narrowDept) { deptWhere.push('d.id = ?'); deptParams.push(user.department_id || ''); }
-  const departments = await all(`SELECT d.id, d.name_ar, s.name_ar sector_name FROM department d
+  const departments = (await all(`SELECT d.id, d.name_ar, d.sector_id, s.name_ar sector_name FROM department d
      LEFT JOIN sector s ON s.id = d.sector_id
-     WHERE ${deptWhere.join(' AND ')} ORDER BY s.name_ar, d.name_ar LIMIT ?`, [...deptParams, limit]);
+     WHERE ${deptWhere.join(' AND ')} ORDER BY s.name_ar, d.name_ar LIMIT ?`, [...deptParams, limit]))
+    .filter((d) => departmentReadable(user, d));
 
   const peopleWhere = ['u.deleted_at IS NULL', 'u.active = 1'];
   const peopleParams = [];
   if (!companyWide) { peopleWhere.push('(u.sector_id = ? OR u.id = ?)'); peopleParams.push(user.sector_id || '', user.id); }
-  const people = await all(`SELECT u.id, COALESCE(u.name_ar, u.username) name_ar, s.name_ar sector_name
+  const people = (await all(`SELECT u.id, COALESCE(u.name_ar, u.username) name_ar, u.sector_id,
+       e.department_id, s.name_ar sector_name
      FROM app_user u LEFT JOIN sector s ON s.id = u.sector_id
-     WHERE ${peopleWhere.join(' AND ')} ORDER BY u.name_ar LIMIT ?`, [...peopleParams, limit]);
+     LEFT JOIN employee e ON e.id = u.employee_id
+     WHERE ${peopleWhere.join(' AND ')} ORDER BY u.name_ar LIMIT ?`, [...peopleParams, limit]))
+    .filter((p) => personReadable(user, p));
 
   const projWhere = ['p.deleted_at IS NULL'];
   const projParams = [];
@@ -1051,10 +1114,17 @@ export async function lensOptions(user, opts = {}) {
      FROM opportunity o WHERE ${oppWhereSql.join(' AND ')} ORDER BY o.value_halalas DESC LIMIT ?`,
   [...oppParams, limit])).filter((o) => can(user, 'read', 'opportunity', o));
 
+  // الجهة الافتراضية = أوسع ما **يفتحه** القارئ فعلاً، لا أوسع ما تعرضه القائمة: مدير مشروع
+  // كان يهبط على تقرير قطاع يردّه النظام، فأول ما يراه في الشاشة رسالة منع لم يطلبها.
+  const company = seesCompanyPerformance(user);
+  const defaultScope = company ? 'company:'
+    : sectors.length ? `sector:${sectors[0].id}`
+      : departments.length ? `department:${departments[0].id}`
+        : projects.length ? `project:${projects[0].id}`
+          : `person:${user.id}`;
   return {
-    company: seesCompanyPerformance(user),
-    sectors, departments, people, projects, opportunities,
-    defaultLens: seesCompanyPerformance(user) ? 'company' : sectors.length ? 'sector' : 'person',
+    company, sectors, departments, people, projects, opportunities,
+    defaultScope, defaultLens: defaultScope.split(':')[0],
   };
 }
 
@@ -1090,7 +1160,7 @@ export async function savePeriodSnapshot(ctx, opts = {}) {
     });
     await audit(ctx, {
       action: 'create', resource: 'report', resourceId: sid,
-      sectorId: opts.lens === 'sector' ? opts.targetId : (user?.sector_id || null),
+      sectorId: report.target.sector_id || (user?.sector_id || null),
       detail: { kind: 'period_snapshot', lens: report.lens, target: report.target.id,
         period: report.period.kind, from: report.period.from, label: report.period.label_ar },
     });

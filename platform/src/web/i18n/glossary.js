@@ -186,6 +186,16 @@ export const G = {
   markDone: 'إنجاز',
   quickAdd: 'إضافة سريعة',
 
+  // ── المخرجات داخل المشروع ──
+  deliverable: 'مخرَج',
+  addDeliverable: 'إضافة مخرج',
+  deliverableName: 'اسم المخرج',
+  deliverableMonth: 'شهر الاستحقاق',
+  deliverableAmount: 'القيمة',
+  amountUnset: 'غير محدَّدة',
+  monthUnset: 'بلا شهر',
+  financeOwned: 'تُضبط من المسار المالي',
+
   // ── عام ──
   overview: 'نظرة عامة',
   details: 'التفاصيل',
@@ -213,6 +223,21 @@ export const G = {
   vsLastMonth: 'مقارنة بالشهر الماضي',
   vsLastQuarter: 'مقارنة بالربع الماضي',
   vsLastYear: 'مقارنة بالسنة الماضية',
+};
+
+// ── حالات المخرج ومسارها ───────────────────────────────────────────────────────
+// التسمية تقول من يملك الحالة: «قيد الإعداد/مُسلَّم/مقبول/مرفوض» قرارات الفريق، و«صدر به
+// مستخلص/محصَّل» نتيجة مسار مالي لا خيار يدوي — فاللفظ نفسه يمنع الالتباس قبل أن يمنعه الحارس.
+export const DELIVERABLE_STATUS_AR = {
+  PENDING: 'قيد الإعداد', DELIVERED: 'مُسلَّم', ACCEPTED: 'مقبول',
+  REJECTED: 'مرفوض', INVOICED: 'صدر به مستخلص', PAID: 'محصَّل',
+};
+export const deliverableStatusLabel = (s) => DELIVERABLE_STATUS_AR[String(s || '').toUpperCase()] || 'حالة غير محدَّدة';
+// الخطوة التالية بنقرة واحدة — من الحالة الراهنة إلى الفعل الطبيعي بعدها (زر واحد ≤ 3 كلمات).
+export const DELIVERABLE_NEXT = {
+  PENDING: { to: 'DELIVERED', ar: 'تسليم' },
+  DELIVERED: { to: 'ACCEPTED', ar: 'قبول العميل' },
+  REJECTED: { to: 'DELIVERED', ar: 'إعادة تسليم' },
 };
 
 // ── أيام الأسبوع بالعربية الكاملة ──────────────────────────────────────────────

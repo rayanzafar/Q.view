@@ -11,9 +11,14 @@ import { sendMail } from '../mail/transport.js';
 import { resolveUser } from '../http/context.js';
 import { audit } from '../audit/index.js';
 import { badRequest, forbidden, notFound } from '../http/errors.js';
-import { id, nowIso } from '../util/ids.js';
+import { id, nowIso, fmtSar } from '../util/ids.js';
 import { config } from '../config.js';
 import { MONTHS_AR as MONTHS } from '../i18n/time.js';
+import { approvalTargetNames } from './periods.js';
+
+// أسماء موارد الاعتماد بالعربية — لا يظهر اسم جدول لاتيني في بريد المالك.
+const APPROVAL_RESOURCE_AR = { opportunity: 'فرصة', proposal: 'عرض', expense: 'مصروف',
+  deliverable: 'مخرَج', timesheet: 'سجل وقت', invoice: 'فاتورة', project: 'مشروع', contract: 'عقد' };
 
 const FY = () => config.fiscalYear;
 const canSeeMargin = (u) => canSeeSensitive(u, 'margin');
@@ -312,8 +317,25 @@ async function topAchievements() {
 async function topChallenges() {
   return (await all("SELECT name_ar FROM project WHERE rag='RED' AND deleted_at IS NULL LIMIT 3")).map((p) => 'مشروع حرج: ' + p.name_ar);
 }
+// «القرارات المطلوبة» في الموجز التنفيذي كانت `.map(() => 'طلب اعتماد بانتظار القرار')`: تقرأ
+// معرّف السجل ثم ترميه، فيصل المالك ثلاثة أسطر متطابقة حرفياً لا تقول أي فرصة ولا أي مصروف ولا
+// كم بلغ. سطر لا يُميّز موضوعه لا يُتّخذ عليه قرار. الآن يحمل كل سطر هوية سجله الحقيقية —
+// النوع بالعربية، واسم السجل من جدوله، والمبلغ إن وُجد — وبلا اختلاق اسم عند غيابه.
+// والنطاق يُحترم: من نافذته قطاع لا تصله قرارات قطاع آخر في بريده.
 async function pendingDecisions(user) {
-  return (await all("SELECT resource_id FROM approval_request WHERE status='PENDING' LIMIT 3")).map(() => 'طلب اعتماد بانتظار القرار');
+  const where = ["ar.status = 'PENDING'"]; const params = [];
+  if (user && user.scope !== 'company') { where.push('ar.sector_id = ?'); params.push(user.sector_id || ''); }
+  const rows = await all(`SELECT ar.resource, ar.resource_id, ar.amount_halalas, wd.name_ar workflow
+     FROM approval_request ar LEFT JOIN workflow_definition wd ON wd.id = ar.workflow_id
+     WHERE ${where.join(' AND ')} ORDER BY ar.created_at LIMIT 3`, params);
+  const names = await approvalTargetNames(rows);
+  return rows.map((r) => {
+    const kind = APPROVAL_RESOURCE_AR[r.resource] || 'طلب';
+    const nm = names[r.resource]?.[r.resource_id];
+    const amount = r.amount_halalas ? ` — ${fmtSar(r.amount_halalas)}` : '';
+    return nm ? `${kind}: ${nm}${amount} — بانتظار القرار`
+      : `${kind}${amount} — بانتظار القرار${r.workflow ? ` (${r.workflow})` : ''}`;
+  });
 }
 async function topRisks() {
   return (await all("SELECT title FROM risk WHERE status!='CLOSED' ORDER BY CASE impact WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END LIMIT 4")).map((r) => r.title);

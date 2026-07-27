@@ -3,7 +3,7 @@
 (function () {
   'use strict';
   const S = () => (window.__SANAD && window.__SANAD.gov) || {};
-  const PLURAL = { milestone: 'milestones', risk: 'risks', issue: 'issues', decision: 'decisions', change: 'changes' };
+  const PLURAL = { milestone: 'milestones', risk: 'risks', issue: 'issues', decision: 'decisions', change: 'changes', deliverable: 'deliverables' };
   const api = async (path, method, body) => {
     const r = await fetch('/api' + path, { method: method || 'GET', credentials: 'include',
       headers: body ? { 'Content-Type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined });
@@ -36,12 +36,16 @@
     issue: () => ({ title: val('g-iss-title'), severity: val('g-iss-sev'), owner_user_id: val('g-iss-owner') }),
     decision: () => ({ title: val('g-dec-title'), detail: val('g-dec-detail'), decided_by: val('g-dec-by'), decided_at: val('g-dec-at') }),
     change: () => ({ title: val('g-chg-title'), impact: val('g-chg-impact') }),
+    // المخرَج: الاسم وحده مطلوب. الشهر والقيمة اختياريان ويُحذفان إن تُركا فارغين — فلا يُخزَّن
+    // صفرٌ مكان قيمة لم تُتفق بعد.
+    deliverable: () => ({ name_ar: val('g-dlv-name'), period: val('g-dlv-period'), amount_sar: val('g-dlv-amount') }),
   };
+  const ADD_MSG = { milestone: 'اسم المعلم مطلوب', deliverable: 'اسم المخرج مطلوب' };
 
   async function govAdd(kind) {
     const body = (BUILD[kind] || (() => ({})))();
     Object.keys(body).forEach((k) => { if (body[k] == null) delete body[k]; });
-    if (!body.title && !body.name_ar) return toast(kind === 'milestone' ? 'اسم المعلم مطلوب' : 'العنوان مطلوب', true);
+    if (!body.title && !body.name_ar) return toast(ADD_MSG[kind] || 'العنوان مطلوب', true);
     try {
       await api('/projects/' + S().projectId + '/' + PLURAL[kind], 'POST', body);
       toast('أُضيف السجل ✓');
@@ -68,10 +72,13 @@
   async function prjTaskAdd(projectId) {
     const titleEl = document.getElementById('prj-task-title');
     const title = (titleEl && titleEl.value || '').trim();
-    if (!title) { toast('عنوان المهمة مطلوب', true); if (titleEl) titleEl.focus(); return; }
+    if (!title) { toast('اكتب عنوان المهمة أولاً', true); if (titleEl) titleEl.focus(); return; }
     const prEl = document.getElementById('prj-task-priority');
+    const body = { title, project_id: projectId, priority: prEl ? prEl.value : 'P2' };
+    const due = val('prj-task-due'); if (due) body.due_date = due;
+    const who = val('prj-task-assignee'); if (who) body.assignee_user_id = who;
     try {
-      await api('/tasks/quick', 'POST', { title, project_id: projectId, priority: prEl ? prEl.value : 'P2' });
+      await api('/tasks/quick', 'POST', body);
       toast('أُضيفت المهمة ✓');
       setTimeout(() => location.reload(), 450);
     } catch (e) { toast(e.message, true); }

@@ -3,10 +3,13 @@
 // الشبكة الحقيقية، ثم **يمحو كل ما زرعه ويُثبت أن المنصة رجعت كما كانت**.
 //
 // التشغيل:
-//   node --experimental-sqlite scripts/scenarios.mjs                 ← قاعدة رمي يُنشئها بنفسه ثم يحذفها
-//   node --experimental-sqlite scripts/scenarios.mjs --keep          ← يُبقي ملف القاعدة للفحص
-//   node --experimental-sqlite scripts/scenarios.mjs --db <ملف>      ← وجهة صريحة (تحتاج SANAD_SCENARIOS=1)
-//   node --experimental-sqlite scripts/scenarios.mjs --today 2026-07-27 --compact
+//   node --experimental-sqlite scripts/scenarios.mjs            ← قاعدة رمي في مجلد النظام المؤقت، تُحذف بعده
+//   node --experimental-sqlite scripts/scenarios.mjs --keep     ← يُبقي ملف القاعدة للفحص (يطبع مساره)
+//   SANAD_SCENARIOS=1 node --experimental-sqlite scripts/scenarios.mjs --db <ملف>   ← وجهة صريحة
+//   node --experimental-sqlite scripts/scenarios.mjs --today 2026-07-27  ← يوم مثبَّت تُشتقّ منه كل التواريخ
+//   node --experimental-sqlite scripts/scenarios.mjs --compact  ← بلا مسح الصفحات لكل شخص (نسخة الفحص الآلي)
+// يخرج بصفر إذا نجح كل فحص وكانت المنصة نظيفة بعد المحو، وبواحد فيما عدا ذلك.
+// النسخة المختصرة نفسها مُشغَّلة داخل الفحص الآلي: tests/integration/scenario-harness.test.js
 //
 // ── حارس التدمير ──────────────────────────────────────────────────────────────
 // هذا السكربت **يحذف صفوفاً**. تشغيله مرة واحدة بالخطأ على بيئة حيّة يمحو عمل المستخدمين.
@@ -31,8 +34,9 @@
 // و`audit_log` استثناء **معلَن**: تدقيق كتاباتنا سلوكٌ صحيح، وسجل التدقيق لا يُحذف منه شيء.
 // فيُفحص بقاعدة أخرى: لا صفَّ اختفى، وكل صف أُضيف منسوبٌ إلى أحد فاعلي التشغيل — ويُذكر عددهم.
 
-import { resolve, dirname } from 'node:path';
+import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { tmpdir } from 'node:os';
 import { existsSync, mkdirSync, rmSync, readdirSync, readFileSync } from 'node:fs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -89,6 +93,16 @@ export function schemaTables() {
     for (const m of sql.matchAll(/^\s*CREATE TABLE (?:IF NOT EXISTS )?([a-z_][a-z0-9_]*)\s*\(/gim)) names.add(m[1]);
   }
   return [...names].sort();
+}
+
+// موضع سطرٍ في الشيفرة يُحسب **وقت التشغيل** من نصٍّ مرساة، لا يُكتب رقماً ثابتاً: أي تعديل
+// في ملفٍ فوق العيب يُزيح الرقم، فيصير تقرير العيوب يشير إلى سطر لا علاقة له بالموضوع — وهو
+// أسوأ من ألّا يشير. وإن اختفت المرساة عاد الموضع «؟» وسقط الفحص عمداً: العيب تغيّر، فلينظر إنسان.
+const SRC_LINES = new Map();
+export function locate(relFile, anchor) {
+  if (!SRC_LINES.has(relFile)) SRC_LINES.set(relFile, readFileSync(resolve(ROOT, relFile), 'utf8').split('\n'));
+  const i = SRC_LINES.get(relFile).findIndex((l) => l.includes(anchor));
+  return `${relFile}:${i >= 0 ? i + 1 : '؟'}`;
 }
 
 // تمثيل قابل للمقارنة لصف: مفاتيح مرتَّبة، فلا يخدع اختلافُ ترتيب الأعمدة المقارنة.
@@ -228,11 +242,11 @@ export async function runHarness(opts = {}) {
   await migrate();
   await seedRbac();
   await assertNoForeignData(db, D.GUARDED_NAME_TABLES, D.isScenarioName);
-  const quiet = { log: console.log };
+  // بذر الحسابات يطبع كشفاً من ٢٠ سطراً في كل تشغيل — يُكتم مؤقتاً كي يبقى المخرَج تقريراً
+  // واحداً مقروءاً. الكتم محصور بهذه الخطوة ويُعاد الأصل مهما حدث.
   const origLog = console.log;
-  console.log = () => {};             // بذر الحسابات يطبع كشفاً طويلاً — يُكتم، وتقريرنا هو الكشف
+  console.log = () => {};
   try { await seedMod.seed(); } finally { console.log = origLog; }
-  void quiet;
 
   // ② الإحصاء المرجعي — قبل أي صف من صفوف السيناريو
   const before = await census(db, tables);
@@ -246,14 +260,15 @@ export async function runHarness(opts = {}) {
   const base = `http://127.0.0.1:${server.address().port}`;
   const C = makeClient(base);
 
-  const summary = { seeded: 0, requests: 0, purged: 0, auditAdded: 0 };
+  const summary = { seeded: 0, tracked: 0, purged: 0, auditAdded: 0, runStart: null };
   let ids = null;
+  let preClose = null;
   try {
     // حدّ محاولات الدخول عشر لكل عنوان (core/http/security.js) — لكل شخص عنوانه، بلا إضعاف الحدّ.
     await C.login('demo.admin', seedMod.DEMO_PW, '10.90.0.1');
 
     // ④ زرع البيانات الاصطناعية عبر الشبكة (خدماتها وحُرّاسها وتدقيقها — لا إدخال خام)
-    ids = await seedScenarioData({ C, db, D, dataset, rec, remember, seedMod, today });
+    ids = await seedScenarioData({ C, db, D, dataset, rec, remember, seedMod });
     summary.seeded = created.length;
 
     // ⑤ السيناريوهات
@@ -263,16 +278,21 @@ export async function runHarness(opts = {}) {
       try { await s.run({ C, db, D, dataset, ids, rec, t, remember, today, seedMod }); }
       catch (e) { t.s.error = e.message; t.ok(false, 'اكتمل السيناريو بلا انقطاع', e.stack || e.message); }
     }
+    // لقطة قبل إغلاق الخادم مباشرةً: ما يظهر بعدها كُتب **بعد** آخر استجابة — أي كتابةٌ لم
+    // ينتظرها أحد. الفرق يُقاس ويُذكر في التقرير بدل أن يُخمَّن.
+    preClose = await census(db, tables);
   } finally {
     server.closeAllConnections?.();
     await new Promise((r) => server.close(r));
   }
+  const postClose = await census(db, tables);
+  const lateWrites = preClose ? censusDiff(preClose, postClose) : [];
 
   // ⑥ المحو — وترتيبه مقصود: نحذف ما ظهر، ثم نُرجع ما تغيّر، ثم نُحصي ونقارن.
   summary.tracked = created.length;
   const purge = await purgeEverything({ db, D, before, tables, created });
   summary.purged = purge.deleted;
-  void runStart;
+  summary.runStart = runStart;
 
   // ⑦ الإحصاء بعد المحو + المقارنة
   const after = await census(db, tables);
@@ -284,7 +304,7 @@ export async function runHarness(opts = {}) {
   const actorNames = new Set(seedMod.DEMO_USERS.map((u) => u.u));
   const auditAdded = auditDiff?.added || [];
   const auditRemoved = auditDiff?.removed || [];
-  const unattributed = auditAdded.filter((r) => !actorNames.has(r.username));
+  const unattributed = auditAdded.filter((r) => !actorNames.has(r.username) || String(r.at) < runStart);
   summary.auditAdded = auditAdded.length;
 
   const tAudit = rec.open('census', 'الإحصاء بعد المحو');
@@ -295,20 +315,20 @@ export async function runHarness(opts = {}) {
     'كل سطر تدقيق أُضيف منسوبٌ إلى أحد فاعلي التشغيل');
   tAudit.ok(auditAdded.length > 0, 'الكتابات دُقِّقت فعلاً (سجل التدقيق نما)', 'لم يُكتب سطر تدقيق واحد!');
 
-  return { recorder: rec, summary, diffs, residue, auditAdded, purge, base: null, dataset, ids };
+  return { recorder: rec, summary, diffs, residue, auditAdded, purge, lateWrites, dataset, ids };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // الزرع
 // ─────────────────────────────────────────────────────────────────────────────
-async function seedScenarioData({ C, db, D, dataset, rec, remember, seedMod, today }) {
+async function seedScenarioData({ C, db, D, dataset, rec, remember, seedMod }) {
   const t = rec.open('seed', 'زرع البيانات الاصطناعية لكل قطاع ولكل شخص');
   const ids = { sector: {}, dept: {}, emp: {}, client: {}, opp: {}, project: {}, contract: {},
     task: {}, user: {}, deliverable: {}, invoice: {}, alloc: {} };
 
   // مراحل خط الفرص: الجدول الوحيد بلا خدمة في المنتج كله ⟵ إدخال مباشر، مذكور في التقرير.
   for (const s of D.STAGES) {
-    if (!(await db.get('SELECT id FROM stage WHERE id = ?', [s.id]))) await db.insert('stage', s);
+    if (!(await db.get('SELECT id FROM stage WHERE id = ?', [s.id]))) { await db.insert('stage', s); remember('stage', s.id); }
   }
 
   // القطاعات ووحدات المساندة
@@ -420,7 +440,6 @@ async function seedScenarioData({ C, db, D, dataset, rec, remember, seedMod, tod
       label: D.tag('إيراد مرحلي'), auto: 0, created_at: nowIso() });
     remember('revenue_line', rid);
   }
-  void today;
   return ids;
 }
 
@@ -574,6 +593,10 @@ scenario('tasks', 'المهام: إنشاء وإسناد وتعطيل وإنجا
   const mine = await C.req('demo.employee', '/api/tasks/mine');
   t.ok((mine.json || []).some((x) => x.id === tid), 'المهمة ظهرت في «مهامي» عند المُسنَد إليه');
 
+  const noReason = await C.req('demo.employee', `/api/tasks/${tid}`, { method: 'PATCH', body: { status: 'BLOCKED' } });
+  t.status(noReason, 400, 'تعطيل مهمة بلا سبب مكتوب مرفوض');
+  t.says(noReason, /سبب التعطيل/, 'والرسالة تقول ماذا يُكتب لا أن الحقل «مطلوب»');
+
   const blocked = await C.req('demo.employee', `/api/tasks/${tid}`, { method: 'PATCH',
     body: { blocked_reason: D.tag('بانتظار بيانات الجهة'), status: 'BLOCKED' } });
   t.status(blocked, 200, 'الموظف يعطّل مهمته ويكتب سبب التعطيل');
@@ -636,6 +659,12 @@ scenario('read-scopes', 'حدود القراءة: إدارة أضيق من قط�
   t.status(teamTasks, 200, 'مدير الإدارة يفتح مهام فريقه');
   const people = (teamTasks.json || []).map((g) => g.name);
   t.ok(!people.some((n) => String(n).includes('ماجد السبيعي')), 'ولا تظهر له مهام شخص من إدارة أخرى');
+
+  // التصدير باب ثانٍ على البيانات نفسها — ويجب أن ينتهي عند الحدّ نفسه.
+  const csv = await C.req('demo.deptmgr', '/api/io/export/employees?format=csv');
+  t.status(csv, 200, 'مدير الإدارة يصدّر كشف الأشخاص');
+  t.ok(!/الراتب/.test(csv.text), 'وبلا عمود الراتب — الختم قائم في التصدير أيضاً');
+  t.ok(!csv.text.includes('مستشار تجريبي'), 'ولا يحمل أشخاصاً من قطاع آخر');
 });
 
 // ⑦ ختم الراتب
@@ -666,7 +695,8 @@ scenario('sensitive-money', 'الكلفة والهامش: مكشوفة للما�
   t.eq(bd.json?.actual_spend_halalas, null, 'ولا تصله الكلفة الفعلية');
   t.eq(bd.json?.margin_pct, null, 'ولا نسبة الهامش');
   t.eq(bd.json?._redacted_margin_pct, true, 'والحقل مُعلَّم كمحجوب لا كصفر');
-  void fin;
+  t.eq(fin.json?._redacted_margin_pct, undefined, 'ولا يُعلَّم شيء كمحجوب في نسخة المالية');
+  t.ok('margin_pct' in (fin.json || {}), 'وحقل الهامش يصلها كما هو');
 });
 
 // ⑨ سجل الوقت وسلسلة الاعتماد
@@ -712,9 +742,25 @@ scenario('timesheets', 'سجل الوقت: التسجيل والحدود ثم ر
   const byPeer = await C.req('demo.consultant', `/api/timesheets/${periodId}/approve`, { method: 'POST', body: { approve: true } });
   t.status(byPeer, 403, 'زميل بلا صلاحية اعتماد لا يعتمد فترة غيره');
 
-  const byMgr = await C.req('demo.deptmgr', `/api/timesheets/${periodId}/approve`, { method: 'POST', body: { approve: true } });
-  t.status(byMgr, 200, 'مدير الإدارة يعتمد فترة موظف إدارته');
+  // حدّ الإدارة في اتجاهيه: «موظف» يتبع إدارة البنية الرقمية، ومدير الإدارة يقود إدارة تحول
+  // الأعمال — فاعتماده لفترة من إدارة أخرى مرفوض. وهذا هو الاتجاه الذي بلا إثباته يصير
+  // «المدير اعتمد» جملةً بلا معنى: لا بدّ من فترة يملكها ولا يملك غيرها.
+  const acrossDept = await C.req('demo.deptmgr', `/api/timesheets/${periodId}/approve`, { method: 'POST', body: { approve: true } });
+  t.status(acrossDept, 403, 'مدير الإدارة لا يعتمد فترة موظف من إدارة أخرى في قطاعه');
+
+  // ومن إدارته: المدير المباشر يسجّل وقته ويرفعه، فيعتمده مدير الإدارة نفسها.
+  const own = await C.req('demo.linemgr', '/api/timesheets', { method: 'POST',
+    body: { hours: 4, entry_date: p.end, project_id: ids.project.sol_main, note: D.tag('عمل إشرافي') } });
+  t.status(own, 200, 'المدير المباشر يسجّل وقته هو');
+  remember('time_entry', own.json?.id);
+  const sub2 = await C.req('demo.linemgr', '/api/timesheets/submit', { method: 'POST',
+    body: { periodStart: p.start, periodEnd: p.end } });
+  t.status(sub2, 200, 'ويرفع فترته');
+  remember('timesheet_period', sub2.json?.id);
+  const byMgr = await C.req('demo.deptmgr', `/api/timesheets/${sub2.json?.id}/approve`, { method: 'POST', body: { approve: true } });
+  t.status(byMgr, 200, 'مدير الإدارة يعتمد فترة شخصٍ من إدارته');
   t.eq(byMgr.json?.status, 'APPROVED', 'الفترة صارت معتمَدة');
+  t.ok(byMgr.json?.approved_by, 'ومن اعتمدها مسجَّل على الفترة');
 });
 
 // ⑩ الاعتمادات وفصل المهام
@@ -757,7 +803,13 @@ scenario('finance', 'المال: مستخلص من مخرجات، تحصيل ب�
   t.status(none, 400, 'بلا مخرجات مسلَّمة لا مستخلص');
   t.says(none, /مخرجات مؤهلة/, 'والرسالة تقول ما ينقص');
 
-  // مسار المعرّفات الصريحة: هنا يظهر عيبٌ حقيقي (انظر التثبيت في سيناريو العيوب أدناه).
+  // المسار الواقعي كاملاً: المخرج يُسلَّم أولاً ثم يُفوتَر. كان يمرّ سابقاً بلا تسليم لأن تمرير
+  // المعرّفات صراحةً كان يُسقط شرطَي الحالة والانتماء معاً — وهو العيب الذي أُصلح. فصار
+  // السيناريو يمشي على الحقيقة: تغيير حالة المخرج إلى «مُسلَّم» عبر مساره، ثم إصدار المستخلص.
+  const delivered = await C.req('demo.pm', `/api/pmo/deliverable/${ids.deliverable.sol_main[0]}`,
+    { method: 'PATCH', body: { status: 'DELIVERED' } });
+  t.status(delivered, 200, 'مدير المشروع يعلّم المخرج مُسلَّماً');
+
   const claim = await C.req('demo.finance', '/api/finance/progress-claim', { method: 'POST',
     body: { contractId: contract, deliverableIds: [ids.deliverable.sol_main[0]], periodLabel: D.tag('الدفعة الأولى') } });
   t.status(claim, 200, 'إصدار مستخلص بمخرجات محدَّدة');
@@ -826,7 +878,60 @@ scenario('soft-delete', 'الحذف الناعم: يختفي من الكشوف �
   t.eq(row?.active, 0, 'وصار غير نشط');
 });
 
-// ⑬ مقاييس القيادة
+// ⑬ حواجز الكتابة: التكرار، والحذف وفيه عمل، والحدود بين القطاعات
+scenario('write-guards', 'حواجز الكتابة: لا اسم مكرر، ولا حذفَ يُخفي عملاً، ولا كتابةَ خارج الحدّ',
+  async ({ C, t, ids, D, dataset }) => {
+    const dupEmp = await C.req('demo.hr', '/api/org/employees', { method: 'POST',
+      body: { name_ar: dataset.people[0].name_ar, sector_id: 'SOLUTIONS' } });
+    t.status(dupEmp, 400, 'اسم موظف مكرر مرفوض');
+    t.says(dupEmp, /مستخدم بالفعل/, 'والرسالة تدعو لاسم مختلف أو تعديل السجل القائم');
+
+    // التطبيع لا الحرفية: مسافة زائدة وألف بلا همزة لا تصنعان شخصاً ثانياً.
+    const near = dataset.people[0].name_ar.replace(/\s+/g, '  ').replace(/أ/g, 'ا');
+    const dupNear = await C.req('demo.hr', '/api/org/employees', { method: 'POST',
+      body: { name_ar: near, sector_id: 'SOLUTIONS' } });
+    t.status(dupNear, 400, 'واسمٌ يختلف بالمسافات وصور الهمزة يُقرأ الاسم نفسه');
+
+    const dupClient = await C.req('demo.bd', '/api/clients', { method: 'POST',
+      body: { name_ar: dataset.clients[0].name_ar } });
+    t.status(dupClient, 400, 'اسم عميل مكرر مرفوض');
+
+    const depWithStaff = await C.req('demo.admin', `/api/org/departments/${ids.dept.sol_platform}`, { method: 'DELETE' });
+    t.status(depWithStaff, 400, 'حذف إدارة وبها أشخاص مرفوض');
+    t.says(depWithStaff, /انقلهم/, 'والرسالة تقول ماذا يُفعل قبل الحذف');
+
+    const toSupport = await C.req('demo.admin', '/api/org/sectors/SOLUTIONS', { method: 'PATCH',
+      body: { kind: 'support' } });
+    t.status(toSupport, 400, 'تحويل قطاع تسليم فيه عمل إلى وحدة مساندة مرفوض');
+    t.says(toSupport, /مشروع|فرصة/, 'والرسالة تعدّ العمل الذي يمنع التحويل');
+
+    const foreignDept = await C.req('demo.sectorlead', '/api/org/departments', { method: 'POST',
+      body: { sector_id: 'CONSULTING', name_ar: D.tag('إدارة في قطاع غيري') } });
+    t.status(foreignDept, 403, 'قائد القطاع لا ينشئ إدارة في قطاع آخر');
+
+    const moveOut = await C.req('demo.sectorlead', `/api/org/employees/${ids.emp.sol_ba}`, { method: 'PATCH',
+      body: { sector_id: 'CONSULTING' } });
+    t.status(moveOut, 403, 'ولا ينقل موظفه إلى قطاع لا يملك عليه صلاحية');
+
+    for (const [path, body] of [['/api/opportunities', { title_ar: D.tag('فرصة من مشاهد') }],
+      ['/api/projects', { name_ar: D.tag('مشروع من مشاهد') }], ['/api/clients', { name_ar: D.tag('عميل من مشاهد') }]]) {
+      t.status(await C.req('demo.viewer', path, { method: 'POST', body }), 403, `المشاهد لا يكتب في ${path}`);
+    }
+
+    const foreignTask = await C.req('demo.employee', `/api/tasks/${ids.task.con_rep}`, { method: 'PATCH',
+      body: { status: 'DONE' } });
+    t.status(foreignTask, 403, 'الموظف لا يُنجز مهمة شخص آخر في قطاع آخر');
+
+    const ghost = await C.req('demo.admin', '/api/projects/scn_project_ghost', { method: 'PATCH', body: { rag: 'RED' } });
+    t.status(ghost, 404, 'تعديل مشروع غير موجود يردّ «غير موجود» لا خطأً عاماً');
+    t.says(ghost, /غير موجود/, 'برسالة عربية واضحة');
+
+    const badRag = await C.req('demo.pm', `/api/projects/${ids.project.sol_main}`, { method: 'PATCH',
+      body: { rag: 'PURPLE' } });
+    t.status(badRag, 400, 'وقيمة حالة غير معروفة تُرَد قبل الحفظ');
+  });
+
+// ⑭ مقاييس القيادة
 scenario('leadership-metrics', 'أرقام القيادة: منحٌ قيادي لا مجرد اتساع نافذة', async ({ C, t }) => {
   const allowed = ['demo.admin', 'demo.ceo', 'demo.finance', 'demo.hr', 'demo.bdhead'];
   const denied = ['demo.sectorlead', 'demo.bd', 'demo.pm', 'demo.consultant', 'demo.employee',
@@ -859,37 +964,39 @@ scenario('pages', 'كل صفحة لكل شخص: الحالة مطابقة لسي
 }, { slow: true });
 
 // ⑮ العيوب المؤكَّدة — تثبيتٌ للسلوك القائم مع بيان الصواب
-scenario('defects', 'عيوب مؤكَّدة: يُثبَّت السلوك القائم كي لا يمرّ صامتاً ولا يُنسى', async ({ C, db, t, ids, D, remember, dataset }) => {
-  // ① المستخلص بمعرّفات صريحة يتجاوز شرط «مسلَّم» **وشرط انتماء المخرج لهذا العقد** معاً.
+scenario('defects', 'عيوب مؤكَّدة: يُثبَّت السلوك القائم كي لا يمرّ صامتاً ولا يُنسى', async ({ C, db, t, ids, D, remember }) => {
+  // ① [عولج — كان SCN-D1] المستخلص بمعرّفات صريحة كان يُسقط شرطَي الأهلية معاً: «المخرج من مشروع
+  //    هذا العقد» و«حالته تسمح بالمطالبة». صار الشرطان قائمين مهما كان شكل الطلب، والرفض صريح
+  //    يسمّي سببه. التثبيت تحوّل إلى فحصٍ دائم: عودة العطل تُسقط السيناريو لا تُبدّل رقم تثبيت.
   const foreignDeliverable = ids.deliverable.con_main[0];
   const cross = await C.req('demo.finance', '/api/finance/progress-claim', { method: 'POST',
     body: { contractId: ids.contract.sol_side, deliverableIds: [foreignDeliverable] } });
-  if (cross.status === 200) { remember('invoice', cross.json?.id);
+  if (cross.status === 200) { remember('invoice', cross.json?.id);  // شبكة أمان لو عاد العطل: لا يبقى أثر
     for (const l of await db.all('SELECT id FROM invoice_line WHERE invoice_id = ?', [cross.json?.id])) remember('invoice_line', l.id); }
-  t.defect({ id: 'SCN-D1', label: 'مستخلص عقدِ قطاعٍ يحمل مخرج مشروع قطاع آخر',
-    actual: cross.status, pinned: 200,
-    shouldBe: 'يُرفض ٤٠٠: المخرج يجب أن يكون من مشروع هذا العقد وبحالة «مسلَّم»',
-    ref: 'src/modules/finance/finance.js:229' });
+  t.status(cross, 400, 'مستخلص عقدِ قطاعٍ يرفض مخرج مشروع قطاع آخر');
+  t.says(cross, /من مشروع آخر/, 'ويقول سبب الرفض بدل إسقاط المخرج بصمت');
+  const foreignAfter = await db.get('SELECT status FROM deliverable WHERE id = ?', [foreignDeliverable]);
+  t.ok(foreignAfter?.status !== 'INVOICED', 'والمخرج الغريب لم يُختم مفوتراً فيخسره مشروعه الحقيقي');
 
   // ② إنشاء موظف يكتب الراتب بلا بوابة الراتب — والختم مطبَّق على القراءة والتعديل وحدهما.
   const salaried = await C.req('demo.sectorlead', '/api/org/employees', { method: 'POST', body: {
     name_ar: D.tag('موظف براتب من قائد القطاع'), sector_id: 'SOLUTIONS', job_title: 'مختبِر', salary_sar: 12_345 } });
   if (salaried.status === 200) remember('employee', salaried.json?.id);
   const stored = salaried.json?.id ? await db.get('SELECT salary_halalas FROM employee WHERE id = ?', [salaried.json.id]) : null;
-  t.defect({ id: 'SCN-D2', label: 'من لا يقرأ الراتب يستطيع كتابته عند الإضافة',
-    actual: [salaried.status, stored?.salary_halalas], pinned: [200, 1_234_500],
-    shouldBe: 'يُتجاهل الراتب (أو يُرفض الطلب) لمن لا يملك بوابة الراتب — كما في updateEmployee',
-    ref: 'src/modules/org/org.js:265' });
+  // أُصلح: الختم صار يشمل الكتابة لا القراءة والتعديل وحدهما. قائد القطاع يُنشئ الموظف
+  // ويُتجاهَل الراتب الذي أرسله — كما يفعل updateEmployee تماماً.
+  t.ok(salaried.status === 200, 'قائد القطاع ما زال يُنشئ موظفاً في قطاعه');
+  t.ok(stored?.salary_halalas == null,
+    `الراتب المُرسَل من غير مالك بوابته لا يُكتب — المخزَّن: ${stored?.salary_halalas}`);
 
   // ③ الموظف بلا راتب معروف يُخزَّن صفراً — فلا يُفرَّق بين «صفر» و«غير معروف».
   const noSalary = await C.req('demo.hr', '/api/org/employees', { method: 'POST', body: {
     name_ar: D.tag('موظف بلا راتب مُدخَل'), sector_id: 'STRATEGIC', job_title: 'مختبِر' } });
   if (noSalary.status === 200) remember('employee', noSalary.json?.id);
   const zero = noSalary.json?.id ? await db.get('SELECT salary_halalas FROM employee WHERE id = ?', [noSalary.json.id]) : null;
-  t.defect({ id: 'SCN-D3', label: 'راتب غير مُدخَل يُخزَّن صفراً لا «غير معروف»',
-    actual: zero?.salary_halalas, pinned: 0,
-    shouldBe: 'يبقى فارغاً (غير معروف) حتى يُدخَل — الصفر راتبٌ معلَن',
-    ref: 'src/modules/org/org.js:265' });
+  // أُصلح: «لم يُدخَل» و«بلا أجر» لم يعودا شيئاً واحداً. الفراغ يبقى فراغاً.
+  t.ok(zero?.salary_halalas == null,
+    `راتب غير مُدخَل يبقى فارغاً لا صفراً — المخزَّن: ${zero?.salary_halalas}`);
 
   // ④ سنة التسكين تُؤخذ من ساعة الخادم ولا يمكن تحديدها من الطلب.
   const alloc = await db.get('SELECT year FROM allocation WHERE project_id = ? AND deleted_at IS NULL LIMIT 1',
@@ -897,37 +1004,71 @@ scenario('defects', 'عيوب مؤكَّدة: يُثبَّت السلوك الق
   t.defect({ id: 'SCN-D4', label: 'سنة التسكين من ساعة الخادم لا من الطلب',
     actual: Number(alloc?.year), pinned: new Date().getUTCFullYear(),
     shouldBe: 'تُقبل سنة صريحة في الطلب — تسكين ٢٠٢٧ اليوم غير ممكن، وخطة السنة القادمة لا تُكتب',
-    ref: 'src/modules/pmo/projects.js:252' });
+    ref: locate('src/modules/pmo/projects.js', 'year: new Date().getUTCFullYear()') });
 
   // ⑤ سقف خطوة الاعتماد (min_amount_halalas) غير مطبَّق — موثَّق في الكود نفسه.
   const step = await db.get("SELECT min_amount_halalas FROM approval_step WHERE min_amount_halalas > 0 LIMIT 1");
   t.defect({ id: 'SCN-D5', label: 'سقف مبلغ خطوة الاعتماد مخزَّن ولا يُطبَّق',
     actual: Number(step?.min_amount_halalas) > 0, pinned: true,
     shouldBe: 'الخطوة ذات السقف لا تُطبَّق إلا فوق سقفها — وإلا فالعمود يَعِد بحوكمة غير قائمة',
-    ref: 'src/modules/workflow/engine.js:110' });
+    ref: locate('src/modules/workflow/engine.js', 'غير مُطبَّق بعد') });
 
-  // ⑥ «مهامي» تُعيد مهام المحذوف مشروعه؟ لا — لكن مهمة بلا مشروع تُقبل من أي دور له منح مهمة.
-  // ما يُثبَّت هنا: تعطيل المهمة لا يشترط سبباً، فتصير «معطَّلة بلا سبب» في لوحة المدير.
-  const t2 = await C.req('demo.employee', '/api/tasks/quick', { method: 'POST',
-    body: { title: D.tag('مهمة لاختبار التعطيل بلا سبب') } });
-  if (t2.status === 200) remember('task', t2.json?.id);
-  const blocked = await C.req('demo.employee', `/api/tasks/${t2.json?.id}`, { method: 'PATCH', body: { status: 'BLOCKED' } });
-  t.defect({ id: 'SCN-D6', label: 'تعطيل مهمة بلا ذكر سبب مقبول',
-    actual: [blocked.status, blocked.json?.blocked_reason ?? null], pinned: [200, null],
-    shouldBe: 'حالة «معطَّلة» تستلزم سبباً — بلا سبب لا يعرف المدير ماذا يُزيح',
-    ref: 'src/modules/pmo/tasks.js:178' });
+  // ⑥ تصدير الأشخاص يقف عند القطاع لا عند الإدارة — بينما كشف الفريق نفسه يقف عند الإدارة.
+  const csv = await C.req('demo.deptmgr', '/api/io/export/employees?format=csv');
+  const otherDepartment = 'ماجد السبيعي';               // من إدارة أخرى داخل القطاع نفسه
+  // أُصلح: التصدير صار يمرّ على دالة النطاق نفسها التي تحرس الشاشة (peopleScope)، فالملف
+  // الذي يخرج من المنصة لا يحمل أكثر مما تحمله الشاشة — والملف لا يُسترجَع بعد إرساله.
+  t.ok(csv.status === 200, 'مدير الإدارة ما زال يصدّر إدارته');
+  t.ok(!csv.text.includes(otherDepartment),
+    'ولا يحمل الملف اسماً من إدارة أخرى داخل القطاع نفسه');
 
-  // ⑦ الفرصة المكسوبة تبقى قابلة للنقل بين المراحل بلا قيد (من مكسوبة إلى ترشيح).
+  // ⑦ (خللٌ أُصلح) «مهام فريقي» كانت مشروطة بمنح **تعديل** المهام، فيُرَدّ «المدير المباشر»
+  // ٤٠٣ على الشاشة الوحيدة التي وُجد الدور لها — وكل منحه قراءةٌ بنطاق إدارته. صارت الرؤية
+  // على منح القراءة والكتابة وحدها على منح التعديل.
+  const lm = await C.req('demo.linemgr', '/api/tasks/team');
+  t.status(lm, 200, 'المدير المباشر يفتح لوحة مهام فريقه (قراءة)');
+  const lmWrite = await C.req('demo.linemgr', '/api/tasks/bulk', { method: 'PATCH', body: { ids: ['x'], patch: { priority: 'P0' } } });
+  t.ok(lmWrite.status !== 200 || (lmWrite.json?.updated === 0),
+    'ولا يكتب فيها: التعديل يبقى على منح التعديل وحده');
+
+  // ⑧ الفرصة المكسوبة تبقى قابلة للنقل بين المراحل بلا قيد (من مكسوبة إلى ترشيح).
   const back = await C.req('demo.bd', `/api/opportunities/${ids.opp.sol_a}/stage`, { method: 'POST', body: { stage: 'WON' } });
   const rewind = await C.req('demo.bd', `/api/opportunities/${ids.opp.sol_a}/stage`, { method: 'POST', body: { stage: 'LEAD' } });
-  t.defect({ id: 'SCN-D7', label: 'فرصة مكسوبة تُعاد إلى الترشيح بلا أي قيد أو تنبيه',
+  t.defect({ id: 'SCN-D8', label: 'فرصة مكسوبة تُعاد إلى الترشيح بلا أي قيد أو تنبيه',
     actual: [back.status, rewind.status, rewind.json?.win_pct], pinned: [200, 200, 10],
     shouldBe: 'التراجع عن الفوز قرار يستحق تأكيداً أو أثراً معلَناً — المبيعات المعلنة تتغيّر به',
-    ref: 'src/modules/crm/opportunities.js:131' });
+    ref: locate('src/modules/crm/opportunities.js', 'export async function moveStage') });
   for (const h of await db.all('SELECT id FROM opportunity_stage_history WHERE opportunity_id = ?', [ids.opp.sol_a])) {
     remember('opportunity_stage_history', h.id);
   }
-  void dataset;
+});
+
+// ⑯ دقّة المال والبحث: الهللات أعداد صحيحة، والبحث يرث نطاق قوائمه
+scenario('money-and-search', 'المال بالهللات الصحيحة، والبحث لا يتجاوز نطاق صاحبه', async ({ C, db, t, ids, D, dataset, remember }) => {
+  const frac = await C.req('demo.bd', '/api/opportunities', { method: 'POST', body: {
+    title_ar: D.tag('فرصة بكسور عشرية'), sector_id: 'SOLUTIONS', value_sar: 12_345.67,
+    stage_id: 'LEAD', year: dataset.year } });
+  t.status(frac, 200, 'إنشاء فرصة بقيمة فيها كسر عشري');
+  remember('opportunity', frac.json?.id);
+  t.eq(frac.json?.value_halalas, 1_234_567, 'القيمة تُخزَّن ١٢٣٤٥٦٧ هللة بلا كسر');
+  t.ok(Number.isInteger(frac.json?.value_halalas), 'والمخزَّن عدد صحيح');
+  const raw = await db.get('SELECT value_halalas FROM opportunity WHERE id = ?', [frac.json?.id]);
+  t.eq(raw?.value_halalas, 1_234_567, 'وفي الجدول نفسه كذلك');
+
+  const pipeline = await C.req('demo.sectorlead', '/api/pipeline');
+  t.status(pipeline, 200, 'ملخص خط الفرص');
+  t.ok((pipeline.json || []).every((s) => Number.isInteger(s.value_halalas)), 'كل مجاميع المراحل أعداد صحيحة');
+
+  const metrics = await C.req('demo.ceo', '/api/metrics/company');
+  t.status(metrics, 200, 'مقاييس الشركة');
+  t.ok(!/\d+\.\d{3,}/.test(JSON.stringify(metrics.json || {})), 'وبلا أرقام كسرية طويلة تشي بحساب عائم');
+
+  const found = await C.req('demo.bd', `/api/search?q=${encodeURIComponent('فرصة دراسة حوكمة')}`);
+  t.status(found, 200, 'البحث يعمل');
+  const titles = JSON.stringify(found.json || []);
+  t.ok(!titles.includes(ids.opp.con_a), 'ولا يُظهر فرصة قطاع لا يصل إليه صاحب البحث');
+  const mineFound = await C.req('demo.bd', `/api/search?q=${encodeURIComponent('فرصة منصة الخدمات')}`);
+  t.ok(JSON.stringify(mineFound.json || []).includes(ids.opp.sol_a), 'ويُظهر فرص قطاعه هو');
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1013,7 +1154,7 @@ async function purgeEverything({ db, D, before, tables, created }) {
 // التقرير
 // ─────────────────────────────────────────────────────────────────────────────
 export function printReport(out, { verbose = true } = {}) {
-  const { recorder, summary, residue, auditAdded, purge } = out;
+  const { recorder, summary, residue, auditAdded, purge, lateWrites = [] } = out;
   const L = [];
   L.push('');
   L.push('════════ تقرير السيناريوهات ════════');
@@ -1034,10 +1175,15 @@ export function printReport(out, { verbose = true } = {}) {
   }
   L.push('');
   L.push('──── المحو والإحصاء ────');
-  L.push(`  صفوف زُرعت وسُجِّلت: ${summary.seeded}`);
-  L.push(`  صفوف حُذفت: ${purge.deleted} (منها ${purge.tracked} مُسجَّلة صراحةً، و${purge.untracked.length} أثراً جانبياً كتبه المنتج)`);
+  L.push(`  صفوف زُرعت في مرحلة الزرع: ${summary.seeded} · وسُجِّلت إجمالاً خلال التشغيل: ${summary.tracked}`);
+  const side = Object.entries(purge.untracked).map(([t2, n]) => `${t2}×${n}`).join('، ') || 'لا شيء';
+  L.push(`  صفوف حُذفت: ${purge.deleted} (منها ${purge.tracked} مُسجَّلة صراحةً)`);
+  L.push(`  آثار جانبية كتبها المنتج ولم يُعِد معرّفاتها: ${side}`);
+  if (purge.blocked.length) L.push(`  حذوفات تعذّرت: ${purge.blocked.join(' | ')}`);
   L.push(`  صفوف قائمة أُرجعت إلى حالتها: ${purge.restored.length}`);
-  L.push(`  مرّات المسح حتى الاستقرار: ${purge.passes}`);
+  L.push(`  جولات المسح (الأخيرة تحقّقٌ بلا حذف): ${purge.passes}`);
+  const late = lateWrites.map((d) => `${d.table}×${d.added.length}`).join('، ');
+  L.push(`  كتابات وصلت بعد آخر استجابة (بلا انتظار): ${late || 'لا شيء'}`);
   L.push(`  سطور تدقيق أُضيفت وبقيت عمداً: ${auditAdded.length}`);
   L.push(`  فروق متبقية بعد المحو (عدا سجل التدقيق): ${residue.length}`);
   for (const r of residue) L.push(`     ✗ ${r.table}: +${r.added.length} / -${r.removed.length}`);
@@ -1057,8 +1203,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const arg = (name, def = null) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : def; };
   const has = (name) => argv.includes(name);
 
+  // الوجهة الافتراضية **خارج المستودع** عمداً: ملف في مجلد النظام المؤقت. فلا ملف قاعدة يقع
+  // يوماً داخل شجرة المشروع (ومنه إلى التزام بالخطأ)، والوجهة رمي بحكم موضعها لا بحكم وعدٍ.
   const explicitDb = arg('--db') || process.env.SANAD_DB || null;
-  const dbFile = explicitDb ? resolve(explicitDb) : resolve(ROOT, `data/scenarios/scn-${process.pid}-${Date.now()}.db`);
+  const dbFile = explicitDb ? resolve(explicitDb) : join(tmpdir(), 'sanad-scenarios', `scn-${process.pid}-${Date.now()}.db`);
   assertThrowawayTarget({
     dbFile,
     databaseUrl: process.env.DATABASE_URL || null,

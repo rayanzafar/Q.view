@@ -260,9 +260,18 @@ export async function createEmployee(ctx, data) {
   // تشير إلى شخص لا يُعرف أيّهما هو (قرار صريح من المالك).
   await assertNameFree({ table: 'employee', nameAr: data.name_ar, label: 'اسم الموظف' });
   const eid = id('emp');
+  // ختم الراتب كان بلا جانب كتابة عند الإنشاء. التعديل والنقل كلاهما يشترط صلاحية قراءة الراتب،
+  // أمّا الإنشاء فكان يكتب ما يُرسَل بلا فحص — فيستطيع من لا يملك رؤية الراتب أن **يحدّده**، ثم
+  // لا يقدر على قراءة ما كتب. ثبت عملياً: قائد قطاع بلا صلاحية الراتب أنشأ موظفاً براتب فحُفِظ.
+  // ومن يكتب رقماً لا يراه أحد غيره يفتح باباً للتلاعب بلا أثر مرئي. البوابة هنا هي بوابة التعديل نفسها.
+  const maySetSalary = can(ctx.user, 'read', 'salary');
+  // وغياب الراتب ليس صفراً: التحويل كان يجعل «لم يُدخَل» و«بلا أجر» شيئاً واحداً إلى الأبد، فلا
+  // يُعرف أنقصٌ في البيانات هو أم واقع. الفراغ يبقى فراغاً حتى يُدخِله من يملك ذلك.
+  const salaryHalalas = maySetSalary && data.salary_sar != null && String(data.salary_sar).trim() !== ''
+    ? toHalalas(data.salary_sar) : null;
   await insert('employee', { id: eid, name_ar: data.name_ar, name_en: data.name_en || null, sector_id: data.sector_id || null,
     department_id: data.department_id || null, unit_id: data.unit_id || null, position_id: data.position_id || null,
-    job_title: data.job_title || null, hire_date: normHireDate(data.hire_date), salary_halalas: toHalalas(data.salary_sar),
+    job_title: data.job_title || null, hire_date: normHireDate(data.hire_date), salary_halalas: salaryHalalas,
     employment_type: data.employment_type || 'أساسي', status: 'نشط', active: 1, created_at: nowIso(), created_by: ctx.user.id });
   await audit(ctx, { action: 'create', resource: 'employee', resourceId: eid, sectorId: data.sector_id });
   return await get('SELECT * FROM employee WHERE id = ?', [eid]);
@@ -448,7 +457,10 @@ export async function unlinkUserFromEmployee(ctx, data = {}) {
 //   • «إدارة»: يُضاف شرط الإدارة **فوق** شرط القطاع، فالتضييق يزيد ولا ينقص أبداً.
 // وفشل آمن لا مفتوح: من نطاقه «إدارة» وحسابه غير مربوط بسجل موظف فإدارته مجهولة — والمجهول
 // يعني كشفاً فارغاً بحالته المصمَّمة، لا اتساعاً صامتاً إلى القطاع كله.
-function peopleScope(user, requestedSector = null) {
+// نطاق قراءة الأشخاص — مصدر واحد تستهلكه كل سطوح الناس: كشف الفريق، وحالة ربط الحسابات،
+// **وتصدير الموظفين**. تصديره ليس تجميلاً: أي سطح يعيد اشتقاق النطاق بنفسه ينحرف عن البقية،
+// وقد انحرف التصدير فعلاً فوقف عند القطاع بينما الشاشات تضيّق إلى الإدارة.
+export function peopleScope(user, requestedSector = null) {
   const sector = user.scope === 'company' ? (requestedSector || null) : (user.sector_id || null);
   const byDepartment = effectiveScope(user, 'read', 'employee') === 'department';
   const department = byDepartment ? (user.department_id || null) : null;
