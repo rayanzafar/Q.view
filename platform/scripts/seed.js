@@ -2,6 +2,9 @@
 import { run, get, insert, all } from '../src/core/db/index.js';
 import { hashPassword } from '../src/core/auth/password.js';
 import { id, nowIso } from '../src/core/util/ids.js';
+import { initRbac } from '../src/core/rbac/index.js';
+import { normName, createDepartment, createEmployee, updateEmployee, linkUserToEmployee, unlinkUserFromEmployee }
+  from '../src/modules/org/org.js';
 
 export const DEMO_PW = 'Sanad@2026'; // demo-account password — imported by the quality harness (sweep/e2e/tests)
 
@@ -80,6 +83,88 @@ export const DEMO_USERS = [
   { u: 'demo.external', role: 'external', scope: 'own', name: 'مستخدم خارجي (تجريبي)', sector: null,
     email: 'demo.external@client.example' },
 ];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// إدارتان بموظفَيهما — الشرط الذي بدونه لا يمكن **إثبات** أثر نطاق «الإدارة» أصلاً
+// حسابا «مدير إدارة» و«مدير مباشر» كانا بلا سجل موظف، ومعرّف الإدارة يُستنتج من هذا الربط
+// (src/core/http/context.js) — فكانت إدارتهما فارغة دائماً، وكل سلوك يعتمد عليها معطَّلاً عملياً
+// ومستحيلاً على أي فحص أن يراه.
+// وإدارة واحدة لا تكفي دليلاً: «المدير رأى إدارته» ليس إثباتاً ما لم توجد إدارة ثانية بأشخاص
+// معروفين بأسمائهم ويثبت **غيابهم**. لذلك إدارتان بموظفين متمايزين، وحسابٌ حيّ في كل منهما.
+export const DEMO_ORG_SECTOR = 'SOLUTIONS';
+export const DEMO_DEPARTMENTS = [
+  { name_ar: 'إدارة تحول الأعمال', manager: 'demo.deptmgr', staff: [
+    { name_ar: 'ريم الدوسري (تجريبي)', job_title: 'مديرة إدارة', account: 'demo.deptmgr' },
+    { name_ar: 'بدر العنزي (تجريبي)', job_title: 'مدير مباشر', account: 'demo.linemgr' },
+    { name_ar: 'هناء المطيري (تجريبي)', job_title: 'محللة أعمال', account: null },
+  ] },
+  { name_ar: 'إدارة البنية الرقمية', manager: null, staff: [
+    // حسابٌ حيّ في الإدارة الثانية: بدونه لا مهمة مُسنَدة خارج إدارة المدير، فلا شيء يُثبت
+    // استبعاده. مهام العرض مُسنَدة أصلاً إلى هذا الحساب في scripts/lib/seed-fixture.mjs.
+    { name_ar: 'ماجد السبيعي (تجريبي)', job_title: 'مهندس حلول', account: 'demo.employee' },
+    { name_ar: 'لمياء الغامدي (تجريبي)', job_title: 'مسؤولة تشغيل', account: null },
+  ] },
+];
+const DEMO_HIRE_DATE = '2025-09-01'; // ثابت — كي لا يتغيّر الكشف من تشغيل إلى آخر
+
+// تُستدعى في نهاية seed()، ومُصدَّرة وحدها لأن ترتيب البذر يختلف بين البيئتين: في التشغيل الحيّ
+// تُحمَّل بيانات الأعمال (ومعها القطاعات) **قبل** الحسابات، أما في حزم الفحص فالحسابات أولاً ثم
+// البيانات — فتُستدعى الخطوة بعد اكتمال الطرفين. تخطٍّ صامت وآمن حين لا يوجد القطاع بعد.
+export async function seedDemoOrg() {
+  const sector = await get('SELECT id FROM sector WHERE id = ? AND deleted_at IS NULL', [DEMO_ORG_SECTOR]);
+  const actor = await get('SELECT id, username FROM app_user WHERE username = ?', ['demo.admin']);
+  if (!sector || !actor) return { seeded: false, departments: [], linked: 0 };
+  // خدمات الهيكل تفحص الصلاحية، والفحص يقرأ منح الأدوار المخزَّنة — تُحمَّل هنا صراحةً كي تعمل
+  // الخطوة سواء نُودي عليها من الإقلاع أو من سطر الأوامر.
+  await initRbac();
+  const ctx = { user: { id: actor.id, username: actor.username, role_id: 'admin', scope: 'company',
+    sector_id: null, department_id: null, projectIds: new Set(), teamIds: new Set() }, ip: '127.0.0.1' };
+
+  const accountOf = async (username) => (username
+    ? await get('SELECT id, employee_id FROM app_user WHERE username = ? AND deleted_at IS NULL', [username])
+    : null);
+  // الربط يمر بخدمته وحدها (تحققاتها وتدقيقها على الطرفين)، ولا يُعاد إن كان قائماً — إعادته
+  // ترفع خطأً وتُضاعف سطور التدقيق بلا تغيير حقيقي.
+  const linkAccount = async (username, employeeId) => {
+    const acc = await accountOf(username);
+    if (!acc || acc.employee_id === employeeId) return false;
+    if (acc.employee_id) await unlinkUserFromEmployee(ctx, { userId: acc.id });
+    const taken = await get('SELECT id FROM app_user WHERE employee_id = ? AND deleted_at IS NULL', [employeeId]);
+    if (taken) await unlinkUserFromEmployee(ctx, { userId: taken.id });
+    await linkUserToEmployee(ctx, { employeeId, userId: acc.id });
+    return true;
+  };
+
+  const out = { seeded: true, departments: [], linked: 0 };
+  for (const d of DEMO_DEPARTMENTS) {
+    // البحث بالاسم المطبَّع هو قاعدة عدم التكرار نفسها التي تطبّقها الخدمة — فلا تصطدم إعادة
+    // التشغيل بخطأ «الاسم مستخدم بالفعل» ولا تُنشئ إدارة ثانية بالاسم نفسه.
+    const wanted = normName(d.name_ar);
+    const rows = await all('SELECT id, name_ar FROM department WHERE sector_id = ? AND deleted_at IS NULL', [DEMO_ORG_SECTOR]);
+    let dep = rows.find((r) => normName(r.name_ar) === wanted) || null;
+    if (!dep) {
+      const manager = await accountOf(d.manager);
+      dep = await createDepartment(ctx, { sector_id: DEMO_ORG_SECTOR, name_ar: d.name_ar,
+        manager_user_id: manager ? manager.id : null });
+    }
+    const staffIds = [];
+    for (const s of d.staff) {
+      const want = normName(s.name_ar);
+      const people = await all('SELECT id, name_ar, department_id FROM employee WHERE deleted_at IS NULL');
+      let emp = people.find((p) => normName(p.name_ar) === want) || null;
+      if (!emp) {
+        emp = await createEmployee(ctx, { name_ar: s.name_ar, sector_id: DEMO_ORG_SECTOR,
+          department_id: dep.id, job_title: s.job_title, hire_date: DEMO_HIRE_DATE });
+      } else if (emp.department_id !== dep.id) {
+        emp = await updateEmployee(ctx, emp.id, { department_id: dep.id, sector_id: DEMO_ORG_SECTOR });
+      }
+      staffIds.push(emp.id);
+      if (await linkAccount(s.account, emp.id)) out.linked++;
+    }
+    out.departments.push({ id: dep.id, name_ar: dep.name_ar, staff: staffIds });
+  }
+  return out;
+}
 
 export async function seed() {
   // workflows
@@ -160,8 +245,13 @@ export async function seed() {
     await insert('report_schedule', { id: id('rs'), report_id: rd.id, recipient_group_id: gid, frequency: 'weekly',
       day_of_week: 0, send_time: '08:00', active: 1, created_at: nowIso() });
   }
+  // إدارتان بموظفيهما + ربط حسابات العرض بسجلاتهم (تخطٍّ صامت إن لم يوجد القطاع بعد)
+  const org = await seedDemoOrg();
   console.log('✓ seed complete — demo accounts (password: ' + DEMO_PW + '):');
   DEMO_USERS.forEach((d) => console.log(`   ${d.u}  →  ${d.role}`));
+  console.log(org.seeded
+    ? `   إدارات العرض: ${org.departments.map((d) => d.name_ar).join('، ')} — حسابات مربوطة: ${org.linked}`
+    : '   إدارات العرض: لم تُبذر بعد (القطاع غير موجود) — تُستدعى seedDemoOrg بعد تحميل بيانات الأعمال');
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

@@ -1,7 +1,7 @@
 // Organization service — flexible hierarchy editable from the UI (NOT hard-coded):
 // Company → Sector → Department → Unit → Team → Position → Employee.
 import { all, get, insert, update, tx } from '../../core/db/index.js';
-import { can } from '../../core/rbac/index.js';
+import { can, effectiveScope } from '../../core/rbac/index.js';
 import { audit } from '../../core/audit/index.js';
 import { id, nowIso, toHalalas } from '../../core/util/ids.js';
 import { forbidden, badRequest, notFound } from '../../core/http/errors.js';
@@ -434,15 +434,41 @@ export async function unlinkUserFromEmployee(ctx, data = {}) {
   return { ok: true, employee_id: employeeId, employee_name_ar: emp.name_ar, user_id: acc.id };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// نطاق الأشخاص — الحدّ الذي ينتهي عنده كشف الفريق لكل قارئ
+// كانت كل شاشة أشخاص ترشّح بالقطاع وحده، وعمود `employee.department_id` لا يُستعمل مرشِّحاً في
+// أي مكان. الأثر المباشر: «مدير الإدارة» كل منحه بنطاق «إدارة» (core/rbac/matrix.js) ومع ذلك
+// يفتح «الفريق» أو «التسكين» فيرى موظفي القطاع كلهم بإداراته الأخرى.
+// السؤال هنا **نطاقي لا وجودي**: can(...) بلا هدف يعيد «صحيح» لمجرد وجود المنح مهما كان نطاقه،
+// فنقرأ أوسع نطاق يملكه القارئ فعلاً (effectiveScope) ونترجمه إلى شرط داخل الاستعلام نفسه —
+// لا تصفية بعد القراءة.
+// ثلاث قواعد لا رابع لها:
+//   • «شركة»: كما كان — يختار قطاعاً أو يرى الجميع.
+//   • «قطاع» وما دونه: كما كان — محبوس في قطاعه.
+//   • «إدارة»: يُضاف شرط الإدارة **فوق** شرط القطاع، فالتضييق يزيد ولا ينقص أبداً.
+// وفشل آمن لا مفتوح: من نطاقه «إدارة» وحسابه غير مربوط بسجل موظف فإدارته مجهولة — والمجهول
+// يعني كشفاً فارغاً بحالته المصمَّمة، لا اتساعاً صامتاً إلى القطاع كله.
+function peopleScope(user, requestedSector = null) {
+  const sector = user.scope === 'company' ? (requestedSector || null) : (user.sector_id || null);
+  const byDepartment = effectiveScope(user, 'read', 'employee') === 'department';
+  const department = byDepartment ? (user.department_id || null) : null;
+  return { sector, department, blind: byDepartment && !department };
+}
+
 // لوحة حالة الربط لصفحة «الفريق»: من مربوط بمن، كم موظفاً نشطاً بلا حساب، وقائمة الحسابات
-// غير المربوطة (تُعرض فقط لمن يملك الربط). نطاق الموظفين = نفس نطاق كشف الفريق تماماً.
+// غير المربوطة (تُعرض فقط لمن يملك الربط). نطاق الموظفين = نفس نطاق كشف الفريق تماماً —
+// من المصدر نفسه (peopleScope)، وإلا افترق جدول الأشخاص عن عمود «حساب الدخول» في الصفحة ذاتها.
 export async function identityLinks(user, opts = {}) {
   if (user.role_id !== 'admin' && !can(user, 'read', 'employee')) throw forbidden('عرض ارتباط الحسابات يتطلب صلاحية عرض الفريق');
-  const sec = user.scope === 'company' ? (opts.sector || null) : (user.sector_id || null);
-  const rows = await all(`SELECT e.id employee_id, e.active, u.id user_id, u.username, u.name_ar user_name_ar, u.role_id
+  const { sector: sec, department: dep, blind } = peopleScope(user, opts.sector);
+  const where = ['e.deleted_at IS NULL'];
+  const params = [];
+  if (sec) { where.push('e.sector_id = ?'); params.push(sec); }
+  if (dep) { where.push('e.department_id = ?'); params.push(dep); }
+  const rows = blind ? [] : await all(`SELECT e.id employee_id, e.active, u.id user_id, u.username, u.name_ar user_name_ar, u.role_id
      FROM employee e LEFT JOIN app_user u ON u.employee_id = e.id AND u.deleted_at IS NULL
-     WHERE e.deleted_at IS NULL ${sec ? 'AND e.sector_id = ?' : ''}
-     ORDER BY e.id, u.id`, sec ? [sec] : []);
+     WHERE ${where.join(' AND ')}
+     ORDER BY e.id, u.id`, params);
   const byEmployee = {};
   let linked = 0, unlinked = 0;
   for (const r of rows) {
@@ -471,19 +497,27 @@ export async function identityLinks(user, opts = {}) {
 // counted against the CURRENT month only, labeled 'فرصة'). Company users may pass a sector
 // filter; sector-scoped users are locked to their own sector.
 // opts.month (1–12) overrides the "current month" for deterministic tests/renders.
+// نطاق الأشخاص كله من peopleScope أعلاه: القطاع كما كان، والإدارة شرطٌ إضافي لمن نطاقه «إدارة».
 export async function staffingRoster(user, opts = {}) {
   if (user.role_id !== 'admin' && !can(user, 'read', 'employee')) throw forbidden('عرض الفريق يتطلب صلاحية');
   const year = Number(opts.year) || new Date().getUTCFullYear();
-  const sec = user.scope === 'company' ? (opts.sector || null) : (user.sector_id || null);
-  const emps = await all(`SELECT * FROM employee WHERE deleted_at IS NULL ${sec ? 'AND sector_id = ?' : ''} ORDER BY name_ar`, sec ? [sec] : []);
-  const allocs = await all(`SELECT a.id, a.employee_id, a.project_id, a.project_name, a.type, a.monthly_json, p.name_ar proj_name, p.status proj_status
+  const { sector: sec, department: dep, blind } = peopleScope(user, opts.sector);
+  const empWhere = ['deleted_at IS NULL'];
+  const empParams = [];
+  if (sec) { empWhere.push('sector_id = ?'); empParams.push(sec); }
+  if (dep) { empWhere.push('department_id = ?'); empParams.push(dep); }
+  const emps = blind ? []
+    : await all(`SELECT * FROM employee WHERE ${empWhere.join(' AND ')} ORDER BY name_ar`, empParams);
+  // التسكينات تُقرأ بمفتاح الموظف ثم تُوزَّع على الكشف؛ فمن خرج من الكشف لا يُقرأ له سطر أصلاً.
+  const allocs = blind ? []
+    : await all(`SELECT a.id, a.employee_id, a.project_id, a.project_name, a.type, a.monthly_json, p.name_ar proj_name, p.status proj_status
      FROM allocation a LEFT JOIN project p ON p.id = a.project_id
      WHERE a.deleted_at IS NULL AND a.year = ? AND a.employee_id IS NOT NULL ${sec ? 'AND a.sector_id = ?' : ''}`, sec ? [year, sec] : [year]);
   const byEmp = {};
   for (const a of allocs) (byEmp[a.employee_id] ||= []).push(a);
   // Opportunity soft load: open-opportunity team memberships with an allocation % — demand that
   // hasn't converted to a project yet, so it weighs on "now" only (not the yearly plan).
-  const oppRows = await all(`SELECT m.id membership_id, m.employee_id, m.allocation_pct, m.role_in_group, o.id opp_id, o.title_ar
+  const oppRows = blind ? [] : await all(`SELECT m.id membership_id, m.employee_id, m.allocation_pct, m.role_in_group, o.id opp_id, o.title_ar
      FROM membership m JOIN opportunity o ON o.id = m.group_id LEFT JOIN stage st ON st.id = o.stage_id
      WHERE m.group_kind = 'opportunity' AND m.deleted_at IS NULL AND m.allocation_pct > 0
        AND o.deleted_at IS NULL AND COALESCE(st.is_won, 0) = 0 AND COALESCE(st.is_lost, 0) = 0`);

@@ -2,6 +2,7 @@
 import { Router } from 'express';
 import { requireAuth } from '../core/http/context.js';
 import { forbidden } from '../core/http/errors.js';
+import { seesCompanyPerformance } from '../core/policy/pages.js';
 import * as opps from './crm/opportunities.js';
 import * as projects from './pmo/projects.js';
 import * as tasks from './pmo/tasks.js';
@@ -108,8 +109,16 @@ apiRouter.post('/finance/collections', h((req) => finance.recordCollection(req.c
 
 // ── Metrics / dashboards ──
 // QH-2: مقاييس الشركة/القطاع أرقام قيادية — ليست لكل مستخدم مسجَّل
+// وسؤال «من هو قياديّ؟» يُسأل من مصدر واحد يشترك فيه هذا المسار وشاشة لوحة القيادة ومحفظة
+// المشاريع والقائمة الجانبية والدليل والبحث: `seesCompanyPerformance` في سياسة الصفحات.
+// كان السؤال هنا نسخةً محلية تقرأ عمود اتساع نافذة البيانات (`scope`) وتترجمه رتبةً قيادية،
+// فكانت المشتريات — نافذتها شركية بحكم أن الموردين وأوامر الشراء عبر الشركة كلها — تستقبل
+// إيراد كل قطاع ومبيعاته ومستهدفاته بلا منح تقرير أو مؤشر واحد. الشرط الآن من المنح،
+// وموضعه واحد: لا يمكن أن تفتح الشاشة ويُغلق مصدر أرقامها، ولا العكس.
 apiRouter.get('/metrics/company', h((req) => {
-  if (req.ctx.user.scope !== 'company') throw forbidden('مقاييس الشركة متاحة للأدوار القيادية فقط');
+  if (!seesCompanyPerformance(req.ctx.user)) {
+    throw forbidden('أرقام أداء الشركة الكاملة تحتاج صلاحية قراءة تقارير الشركة ومؤشراتها، وهي ليست ضمن دورك. اطلب من مدير النظام إضافتها إن كان عملك يحتاجها.');
+  }
   return metrics.companyOverview(req.ctx.user, { year: req.query.year });
 }));
 apiRouter.get('/metrics/sector/:id', h((req) => {

@@ -84,8 +84,25 @@ export async function teamTasks(user, filters = {}) {
   if (!scope || scope === 'own') throw forbidden('عرض مهام الفريق يتطلب صلاحية إدارية على فريق أو قطاع');
   const where = ['t.deleted_at IS NULL', "t.status != 'DONE'"];
   const params = [];
-  // نطاق شركي ⟵ الجميع؛ غير ذلك ⟵ قطاع المستخدم حصراً (من قطاع المهمة أو قطاع المُسنَد إليه).
-  if (user.scope !== 'company') {
+  // ── محور «فريقي» يُشتقّ من نطاق المنح نفسه، لا من عمود النطاق على الحساب ──
+  // كان الاشتقاق بالقطاع دائماً: `(t.sector_id = ? OR u.sector_id = ?)` — فمدير الإدارة، وكل
+  // منحه بنطاق «إدارة»، يرى مهام القطاع كله لا مهام إدارته. والمصدران (منح الدور وعمود النطاق)
+  // كانا مختلطين: الشركة من العمود والباقي من القطاع — وهو عين التناقض الذي أنتج التسريب.
+  //   • «شركة»  ⟵ بلا ترشيح (كما كان لكل من نطاق منحه شركي).
+  //   • «إدارة» ⟵ أهل إدارته وحدهم.
+  //   • ما دون ذلك (قطاع/مشروع/فريق) ⟵ القطاع كما كان حرفياً.
+  // بنية الوصل: المهمة تُمسك بحساب المُسنَد إليه، والإدارة تسكن **سجل الموظف** لا الحساب —
+  // فالجسر هو app_user.employee_id ⟵ employee.department_id. وصلة واحدة داخل الاستعلام،
+  // لا استعلام لكل صف.
+  // قرار موثَّق (فشل آمن): حسابٌ غير مربوط بسجل موظف ⟵ إدارته **مجهولة**، والمجهول يُستبعد
+  // ولا يُدرج؛ الوصلة الخارجية تُنتج فراغاً فيُسقطه شرط المساواة. وكذلك المهمة بلا مُسنَد إليه:
+  // لا شخص لها فلا إدارة. إدراج المجهول كان سيُعيد التسريب من الباب نفسه الذي أُغلق.
+  if (scope === 'department') {
+    // إدارة القارئ نفسها مجهولة (حسابه غير مربوط بموظف) ⟵ لوحة فارغة لا لوحة قطاع.
+    if (!user.department_id) return [];
+    where.push('emp.department_id = ?');
+    params.push(user.department_id);
+  } else if (scope !== 'company') {
     where.push('(t.sector_id = ? OR u.sector_id = ?)');
     params.push(user.sector_id, user.sector_id);
   }
@@ -95,6 +112,7 @@ export async function teamTasks(user, filters = {}) {
   const rows = await all(`SELECT t.*, u.name_ar assignee_name, u.username assignee_username, p.name_ar project_name
      FROM task t
      LEFT JOIN app_user u ON u.id = t.assignee_user_id
+     LEFT JOIN employee emp ON emp.id = u.employee_id AND emp.deleted_at IS NULL
      LEFT JOIN project p ON p.id = t.project_id
      WHERE ${where.join(' AND ')}
      ORDER BY CASE t.priority WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 ELSE 3 END,

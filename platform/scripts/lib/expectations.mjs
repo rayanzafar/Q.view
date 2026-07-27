@@ -109,10 +109,12 @@ export const API_PROBES = [
   // QH-2 FIXED: metrics are leadership numbers — company scope only for /company; sector members
   // (any role whose sector_id matches) plus company scope for /sector/:id.
   // bd_head holds report/kpi/margin/cost at company scope (matrix.js) → the leadership numbers are his.
-  // procurement is 200 ONLY because the guard reads app_user.scope (data breadth) instead of a
-  // leadership grant — a company-breadth support function with no report/kpi grant gets the whole
-  // executive dashboard. Recorded as the rule produces it; reported as defect QD-2 (api.routes.js:112).
-  { method: 'GET', path: '/api/metrics/company', expect: { default: 403, admin: 200, ceo_office: 200, finance: 200, hr: 200, bd_head: 200, procurement: 200 } },
+  // QD-2 أُغلق: كان «المشتريات» يستقبل ٢٠٠ لأن الحارس يقرأ اتساع نافذة البيانات (`app_user.scope`)
+  // بدل منحٍ قيادي — ومنحه شركية بحقّ (موردون وأوامر شراء عبر الشركة) فيُترجَم الاتساع رتبةً
+  // قيادية بلا قرار من أحد، فيفتح إيراد كل قطاع ومبيعاته ومستهدفاته وهو بلا منح تقرير أو مؤشر.
+  // الحارس صار `seesCompanyPerformance` (core/policy/pages.js): منحٌ قيادي **مع** نافذة شركية،
+  // ومصدره واحد يشترك فيه هذا المسار وشاشتا القيادة والمحفظة والقائمة الجانبية والدليل والبحث.
+  { method: 'GET', path: '/api/metrics/company', expect: { default: 403, admin: 200, ceo_office: 200, finance: 200, hr: 200, bd_head: 200 } },
   // sector metrics: company scope OR membership of that sector. demo.external has neither.
   { method: 'GET', path: '/api/metrics/sector/SOLUTIONS', expect: { default: 200, external: 403 } },
   { method: 'GET', path: '/api/tasks/mine', expect: 200 },                 // own-scoped
