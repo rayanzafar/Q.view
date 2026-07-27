@@ -78,7 +78,17 @@ function pageAllowed(role, page, pageAccess) {
   if (Array.isArray(rule)) return rule.includes(role) || rule.includes('*');
   if (typeof rule === 'function') {
     const p = ROLES.find((r) => r.role === role);
-    try { return !!rule({ role_id: role, scope: p?.scope || 'own', sector_id: p?.sector_id ?? null }); } catch { return null; }
+    // شرطٌ يرمي استثناءً لا يعني «افتراض السماح». كان الالتقاط الصامت هنا يعيد null، و«المجهول»
+    // يُترجَم أعلاه إلى «٢٠٠ ليّنة» — أي أن أي خلل في تقييم شرط الصلاحية يُقرأ **سماحاً**. وهذا
+    // ما حدث فعلاً: شرط لوحة القيادة صار يسأل محرّك الصلاحيات، والمحرّك يرمي ما لم تُحمَّل المنح،
+    // فابتلع الالتقاط الرمية وأعلن ٢٠٠ لقائد قطاع تردّه المنصة ٤٠٣ — فسقط الفحص الحيّ على عطلٍ
+    // في الأداة لا في المنتج. الأداة التي تفشل مفتوحةً أسوأ من غياب الأداة: تُخفي الحقيقة وتُطمئن.
+    try {
+      return !!rule({ role_id: role, scope: p?.scope || 'own', sector_id: p?.sector_id ?? null });
+    } catch (e) {
+      throw new Error(`تعذّر تقييم شرط فتح صفحة «${page}» للدور «${role}»: ${e.message}\n`
+        + 'الأداة لا تفترض السماح عند العجز — حمِّل منح الصلاحيات قبل اشتقاق التوقعات.');
+    }
   }
   return null;
 }
@@ -87,7 +97,13 @@ function pageAllowed(role, page, pageAccess) {
 export async function loadPageAccess() {
   try {
     const nav = await import(new URL('../../src/web/nav.js', import.meta.url));
-    return nav.PAGE_ACCESS || null;
+    if (!nav.PAGE_ACCESS) return null;
+    // شروط فتح الصفحات صارت تسأل محرّك الصلاحيات (منحٌ قيادي لا اتساع نافذة)، والمحرّك يقرأ
+    // المنح من قاعدة البيانات مرة واحدة عند الإقلاع. ومن يشتقّ التوقعات هنا لا يُقلع التطبيق —
+    // فيلزم تحميل المنح صراحةً، وإلا رمى أول شرط ولم تُشتقّ توقعة صحيحة واحدة.
+    const { initRbac } = await import(new URL('../../src/core/rbac/index.js', import.meta.url));
+    await initRbac();
+    return nav.PAGE_ACCESS;
   } catch { return null; }
 }
 
