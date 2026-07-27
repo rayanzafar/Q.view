@@ -257,8 +257,11 @@ function unassignedCard(sector, rollup, err, editable) {
   // طريق الإصلاح يُعرض لمن يملك هيكل هذا القطاع؛ الأرقام تُعرض للجميع لأنها تشخيص لا تعديل.
   const canFix = !!editable;
   const rows = [
+    // العدد والقيمة يبقيان إجمالَي كل ما لم يُسنَد (كومة العمل المعلّقة تضمّ المحسوم فعلاً، وهذا
+    // صحيح هنا). أمّا **المرجّحة** فلا معنى لها إلا على المفتوح: ضرب فرصة فائزة أو خاسرة في
+    // احتمال فوزها يُنتج رقماً لا يقابله شيء في الواقع. الحقل المفتوح صار متاحاً بعد فصل الدلاء.
     uaRow('opportunity', sum('opportunities'), Number(u.opportunities) || 0, {
-      value: u.opportunity_value_halalas, weighted: u.opportunity_weighted_halalas,
+      value: u.opportunity_value_halalas, weighted: u.opportunity_open_weighted_halalas,
       href: fixHref(sector.id, 'opportunity'), canFix }),
     uaRow('project', sum('projects'), Number(u.projects) || 0, {
       value: u.project_value_halalas, href: fixHref(sector.id, 'project'), canFix }),

@@ -42,10 +42,16 @@ before(async () => {
   await new Promise((r) => server.on('listening', r));
   base = `http://127.0.0.1:${server.address().port}`;
 
-  // Login every persona ONCE (the login limiter allows a burst of exactly 10 per IP).
-  for (const { username } of EXP.ROLES) {
+  // Login every persona ONCE. The anti-brute-force limiter allows a burst of exactly 10 per IP
+  // (core/http/security.js: capacity 10, refill 1 token / 6s) and the matrix now drives 17 personas,
+  // so each login comes from its own forwarded address — the app runs with `trust proxy`, exactly as
+  // it does behind Railway's edge. This does not relax any assertion: it models 17 people on 17
+  // machines instead of one machine hammering the login endpoint. The limiter itself is covered
+  // directly by tests/security/login-limiter.test.js, so nothing is lost by separating the IPs here.
+  for (const [i, { username }] of EXP.ROLES.entries()) {
     const r = await fetch(base + '/auth/login', {
-      method: 'POST', headers: { 'content-type': 'application/json', connection: 'close' },
+      method: 'POST',
+      headers: { 'content-type': 'application/json', connection: 'close', 'x-forwarded-for': `10.20.30.${i + 1}` },
       body: JSON.stringify({ username, password: EXP.DEMO_PW }),
     });
     assert.equal(r.status, 200, `login ${username} must succeed (got ${r.status})`);
