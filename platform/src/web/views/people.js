@@ -84,7 +84,9 @@ export async function teamPage(user, opts = {}) {
   //     من نافذة الإضافة فيستحيل تسكين أحد فيها أصلاً، ويعرض موظفيها القائمين بقطاع فارغ «—».
   //   • deliverySec (قطاعات التسليم وحدها) ⟵ شرائح التصفية أعلى الصفحة، وهي محوّل قطاع يقرأه
   //     المستخدم قائمةً بالقطاعات: أربعة لا خامس لها.
-  const allSec = await all('SELECT id, name_ar, color FROM sector WHERE active = 1 AND deleted_at IS NULL ORDER BY sort_order');
+  // `kind` مذكور في القراءة عمداً: isDelivery يقرأ الخانة الفارغة «قطاع تسليم» (وهو الصحيح لصف
+  // أقدم من الترحيلة)، فعمودٌ غير مقروء أصلاً يجعل **كل** وحدة تمرّ — بلا خطأ يُنبّه أحداً.
+  const allSec = await all('SELECT id, name_ar, color, kind FROM sector WHERE active = 1 AND deleted_at IS NULL ORDER BY sort_order');
   const deliverySec = allSec.filter(isDelivery);
   const sectorNames = Object.fromEntries(allSec.map((s) => [s.id, s.name_ar]));
   const sector = (opts.sector || '').toString().trim();
@@ -188,8 +190,8 @@ export async function staffingPage(user, opts = {}) {
   const canStaff = can(user, 'update', 'project'); // span editing goes through project staffing rights
   // نفس الفصل الذي في صفحة «الفريق»: الأسماء من الوحدات كلها (موظف الخدمات المشتركة يُسمّى
   // باسم وحدته لا «خارج القطاعات»)، والشرائح من قطاعات التسليم وحدها.
-  const allSec = await all('SELECT id, name_ar, color FROM sector WHERE active = 1 AND deleted_at IS NULL ORDER BY sort_order');
-  const deliverySec = allSec.filter(isDelivery);
+  const allSec = await all('SELECT id, name_ar, color, kind FROM sector WHERE active = 1 AND deleted_at IS NULL ORDER BY sort_order');
+  const deliverySec = allSec.filter(isDelivery); // ‹kind› مقروء أعلاه — بدونه يمرّ كل شيء (انظر صفحة الفريق)
   const sectorNames = Object.fromEntries(allSec.map((s) => [s.id, s.name_ar]));
   const { year, sector, currentMonth, roster, summary } = await staffingRoster(user, { sector: opts.sector });
   const nowIdx = currentMonthIndex(year); // 0-based; -1 when viewing another year (no «now» marker)
