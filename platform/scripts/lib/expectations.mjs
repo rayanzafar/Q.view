@@ -155,6 +155,42 @@ export const API_PROBES = [
   { method: 'POST', path: '/api/tasks/quick', body: {}, expect: 400 },     // every role may create own tasks
   { method: 'POST', path: '/api/timesheets', body: {}, expect: 400 },      // every role logs own time
   { method: 'POST', path: '/api/approvals', body: {}, expect: 400 },       // unknown workflow key → validation
+  // ── المساعد ────────────────────────────────────────────────────────────────
+  // الحالة مفتوحة لكل مسجَّل: تقول «المحرّك محلي» وتعيد بطاقات الاقتراح **مُرشَّحة بمنح الدور**
+  // (فلا تُعرض بطاقة لعملٍ يردّه الخادم). لا كتابة فيها ولا رقم عمل، فهي آمنة على أي بيئة.
+  { method: 'GET', path: '/api/ai/status', expect: 200 },
+  // سجل نشاط المساعد جزء من سجل التدقيق: بوابته `can(read audit)` — وهي منح مدير النظام
+  // (شامل) ومكتب الرئيس التنفيذي (audit @company) وحدهما في مصفوفة المنح.
+  { method: 'GET', path: '/api/ai/activity', expect: { default: 403, admin: 200, ceo_office: 200 } },
+  // قوائم النموذج: مصدر كل معرّف تعرضه الواجهة. مشروطة بمنح القراءة على الملف نفسه، فمن لا
+  // يقرأ الفرص لا تُعرض له فرصة يختارها — الهدف خارج النطاق لا يُعرض فضلاً عن أن يُكتب عليه.
+  // قراءة المشروع ممنوحة لكل دور تقريباً (ولو بنطاق «مشروعي» أو «خاصتي»)؛ والثلاثة المستثناة
+  // بلا منح مشروع إطلاقاً في matrix.js: الموارد البشرية، والمدير المباشر، والمعتمِد.
+  { method: 'GET', path: '/api/ai/options/project',
+    expect: { default: 200, hr: 403, line_manager: 403, approver: 403 } },
+  // والفرص أضيق: من لا يملك **قراءة** الفرصة يُردّ — ومنه المعتمِد الذي يملك «اعتماد» بلا قراءة.
+  { method: 'GET', path: '/api/ai/options/opportunity',
+    expect: { default: 403, admin: 200, ceo_office: 200, sector_lead: 200, bd_manager: 200,
+      bd_head: 200, finance: 200, viewer: 200, consultant: 200 } },
+  // معاينة بحمولة فارغة: النوع يُرَدّ قبل أي فحص صلاحية وقبل أي كتابة — فلا صفَّ سجلٍ يُكتب،
+  // والمسبار آمن على بيئة حيّة. (الدردشة تكتب سطر سجل، فمسبارها في مسار المسح وحده وبعلَم صريح.)
+  { method: 'POST', path: '/api/ai/preview', body: {}, expect: 400 },
+];
+
+// ── مسابر الدردشة: تكتب سطراً في سجل نشاط المساعد ⟵ **مطفأة افتراضياً على قاعدة بعيدة** ──
+// تُشغَّل محلياً بلا شرط، وعلى قاعدة بعيدة بعلَم صريح (--ai-chat) مع طباعة سبب الإطفاء.
+// `deny` يعني أن الردّ المتوقَّع رفضٌ ٤٠٣ لهذه الأدوار (بوابة أرقام الشركة).
+export const AI_CHAT_PROBES = [
+  { message: 'ما أولوياتي اليوم', expect: 200 },                      // مهام صاحب الطلب — لكل دور
+  { message: 'ما المخاطر البارزة', expect: { default: 200, hr: 403, line_manager: 403, approver: 403 } },
+  { message: 'افحص جودة البيانات', expect: 200 },                     // يردّ ولو بـ«لا شيء ضمن صلاحيتك»
+  // نية كتابة من نص حر: تعيد **نموذجاً** لمن يملك منح الإنشاء، وتُرَدّ ٤٠٣ لمن لا يملكه.
+  { message: 'أنشئ مهمة متابعة العقد',
+    expect: { default: 403, admin: 200, sector_lead: 200, project_manager: 200, consultant: 200,
+      employee: 200, bd_head: 200, operations: 200 } },
+  // نفس بوابة /api/metrics/company حرفياً — وهذا هو أصل العطل الذي أُغلق.
+  { message: 'اكتب الموجز التنفيذي الأسبوعي',
+    expect: { default: 403, admin: 200, ceo_office: 200, finance: 200, hr: 200, bd_head: 200 } },
 ];
 
 function rosterExpect() {

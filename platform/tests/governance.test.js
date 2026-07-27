@@ -35,30 +35,38 @@ after(async () => { await db.close(); for (const s of ['', '-wal', '-shm']) rmSy
 const U = (role, sector, scope = 'own') => ({ id: 'u_' + role, username: role, role_id: role, sector_id: sector, scope, projectIds: new Set(), teamIds: new Set() });
 const ctx = (u) => ({ user: u, ip: '127.0.0.1' });
 
-test('AI: propose_change returns a PREVIEW and does NOT write', async () => {
-  const r = await ai.ask(ctx(U('sector_lead', 'S1', 'sector')), 'انقل', { intent: 'propose_change', change: { type: 'opp_stage', oppId: 'O1', stage: 'WON' } });
-  assert.ok(r.applyToken, 'must return an apply token');
-  assert.equal((await db.get('SELECT stage_id FROM opportunity WHERE id = ?', ['O1'])).stage_id, 'LEAD', 'no write before apply');
+// المسار تغيّر بقرار تصميم معلَن: الدردشة **لا تُصدر رمز تأكيد إطلاقاً** (فلا يمكن لخطأ في
+// «فهم» جملة أن يكتب شيئاً)، والكتابة تبدأ من معاينة بحمولة مبنيّة {type, fields}، والتطبيق
+// انتقل إلى طبقة الوحدات (modules/ai/apply.js) كي يمرّ بخدمة `moveStage` بكل قواعدها بدل أن
+// يكتب في الجدول مباشرةً. الفحوص أدناه تحرس العقد الجديد؛ وتفصيلُه في tests/security/ai-*.
+test('AI: a chat turn NEVER returns an apply token and never writes', async () => {
+  const r = await ai.ask(ctx(U('sector_lead', 'S1', 'sector')), 'انقل الفرصة إلى فائزة');
+  assert.ok(!('applyToken' in r), 'chat must not hand out a write token');
+  assert.ok(r.form, 'it hands back a form to fill instead of guessing');
+  assert.equal((await db.get('SELECT stage_id FROM opportunity WHERE id = ?', ['O1'])).stage_id, 'LEAD', 'no write from chat');
 });
 
-test('AI: viewer without update permission is DENIED at propose time', async () => {
+test('AI: viewer without update permission is DENIED at preview time', async () => {
   await assert.rejects(
-    () => ai.ask(ctx(U('viewer', 'S1', 'sector')), 'x', { intent: 'propose_change', change: { type: 'opp_stage', oppId: 'O1', stage: 'WON' } }),
+    () => ai.proposePreview(ctx(U('viewer', 'S1', 'sector')), { type: 'opp_stage', fields: { oppId: 'O1', stage: 'WON' } }),
     /صلاحية|forbidden|تعديل/);
 });
 
 test('AI: apply with another user\'s token is rejected', async () => {
-  const r = await ai.ask(ctx(U('sector_lead', 'S1', 'sector')), 'انقل', { intent: 'propose_change', change: { type: 'opp_stage', oppId: 'O1', stage: 'WON' } });
-  await assert.rejects(async () => ai.applyChange(ctx(U('viewer', 'S1', 'sector')), r.applyToken), /غير صالحة/);
+  const { applyChange } = await import('../src/modules/ai/apply.js');
+  const r = await ai.proposePreview(ctx(U('sector_lead', 'S1', 'sector')), { type: 'opp_stage', fields: { oppId: 'O1', stage: 'WON' } });
+  await assert.rejects(async () => applyChange(ctx(U('viewer', 'S1', 'sector')), r.applyToken), /لا أجد هذه المعاينة/);
   assert.equal((await db.get('SELECT stage_id FROM opportunity WHERE id = ?', ['O1'])).stage_id, 'LEAD');
 });
 
-test('AI: owner applies own token → writes + audits', async () => {
+test('AI: owner applies own token → writes through the service + audits', async () => {
+  const { applyChange } = await import('../src/modules/ai/apply.js');
   const owner = U('sector_lead', 'S1', 'sector');
-  const r = await ai.ask(ctx(owner), 'انقل', { intent: 'propose_change', change: { type: 'opp_stage', oppId: 'O1', stage: 'WON' } });
-  const res = await ai.applyChange(ctx(owner), r.applyToken);
+  const r = await ai.proposePreview(ctx(owner), { type: 'opp_stage', fields: { oppId: 'O1', stage: 'WON' } });
+  const res = await applyChange(ctx(owner), r.applyToken);
   assert.match(res.reply, /تم تطبيق/);
   assert.equal((await db.get('SELECT stage_id FROM opportunity WHERE id = ?', ['O1'])).stage_id, 'WON');
+  assert.ok(await db.get("SELECT id FROM opportunity_stage_history WHERE opportunity_id='O1'"), 'stage history written by moveStage');
   assert.ok(await db.get("SELECT id FROM audit_log WHERE resource='opportunity' AND action='update'"), 'must be audited');
 });
 

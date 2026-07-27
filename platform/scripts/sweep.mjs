@@ -17,7 +17,7 @@
 // Optional: --budget <ms> fails the sweep when overall P95 exceeds the budget.
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { ROLES, PAGES, DEMO_PW, API_PROBES, pageExpected, expectedStatus, loadPageAccess } from './lib/expectations.mjs';
+import { ROLES, PAGES, DEMO_PW, API_PROBES, AI_CHAT_PROBES, pageExpected, expectedStatus, loadPageAccess } from './lib/expectations.mjs';
 import { BANNED_UI_TERMS } from '../src/web/i18n/glossary.js';
 
 // ── args ──────────────────────────────────────────────────────────────────────
@@ -36,6 +36,13 @@ const jsonOut = opt('json');
 const budget = Number(opt('budget')) || null;
 const roles = ROLES.filter((r) => !roleFilter || roleFilter.includes(r.username));
 if (!roles.length) { console.error('no roles matched --roles filter'); process.exit(2); }
+
+// ── المساعد: قراءةٌ دائماً، ومحادثةٌ بإذن ──────────────────────────────────────
+// «الحالة» قراءة صرفة فتُفحص في كل بيئة. أما «المحادثة» فتكتب سطراً في سجل نشاط المساعد —
+// وهي كتابة حقيقية في قاعدة حيّة. لذلك تُشغَّل تلقائياً على قاعدة محلية وحدها، وعلى قاعدة
+// بعيدة لا تعمل إلا بعلَم صريح، ويُطبع سبب إطفائها كي لا يبدو المسح أشمل مما هو.
+const LOCAL_BASE = /^https?:\/\/(127\.0\.0\.1|localhost|0\.0\.0\.0|\[::1\])(:|\/|$)/i.test(base);
+const aiChat = argv.includes('--ai-chat') || (LOCAL_BASE && !argv.includes('--no-ai-chat'));
 
 // ── scanners ──────────────────────────────────────────────────────────────────
 // Visible text of an HTML document: drop script/style bodies (client code + JSON payloads are not
@@ -123,9 +130,12 @@ const timings = [];
 const perRole = {};
 
 console.log(`سند sweep → ${base}  (${roles.length} roles, ${PAGES.length} pages, ${API_PROBES.length} API probes; page-authz: ${report.mode})`);
+console.log(aiChat
+  ? `المساعد: مسبار المحادثة يعمل (${AI_CHAT_PROBES.length} طلبات لكل دور).`
+  : 'المساعد: مسبار المحادثة مطفأ — كل محادثة تكتب سطراً في سجل نشاط المساعد، والقاعدة هنا ليست محلية. شغّله بـ‎--ai-chat إن أردته.');
 
 for (const { username, role } of roles) {
-  const R = (perRole[username] = { pagesOk: 0, pagesN: 0, apisOk: 0, apisN: 0, leaks: 0, jargon: 0, ms: [] });
+  const R = (perRole[username] = { pagesOk: 0, pagesN: 0, apisOk: 0, apisN: 0, aiOk: 0, aiN: 0, leaks: 0, jargon: 0, ms: [] });
   let jar;
   try { jar = await loginWeb(username); } catch (e) {
     report.deviations.push({ role: username, path: '/auth/login-web', kind: 'login', detail: e.message });
@@ -179,14 +189,73 @@ for (const { username, role } of roles) {
       report.warnings.push({ role: username, path: probe.path, kind: 'known-gap', detail: 'QH-1: raw salary_halalas served to a role without the salary grant' });
     }
   }
+
+  // ── AI lane: the assistant has no page, so its copy is scanned where it actually lives —
+  // in the JSON reply the panel renders verbatim. Same leak + jargon scanners as the pages.
+  {
+    const { res, ms, text } = await hit('/api/ai/status', { jar });
+    R.aiN++; R.ms.push(ms); timings.push(ms);
+    report.requests.push({ role: username, path: 'GET /api/ai/status', status: res.status, want: 200, ms: Math.round(ms) });
+    if (res.status !== 200) {
+      report.deviations.push({ role: username, path: '/api/ai/status', kind: 'status', detail: `expected 200, got ${res.status}` });
+    } else {
+      R.aiOk++;
+      let st = null; try { st = JSON.parse(text); } catch { /* checked below */ }
+      // القرار المعلن: المحرّك محلي. مزوّد خارجي على بيئة منشورة انحرافٌ لا تحسين.
+      if (st?.mode !== 'local') {
+        report.deviations.push({ role: username, path: '/api/ai/status', kind: 'ai-engine',
+          detail: `assistant engine is "${st?.mode}" — the owner decision is a local engine (no data leaves the platform)` });
+      }
+      scanAiText(username, '/api/ai/status', [st?.note, ...(st?.suggestions || []).map((s) => s.label_ar)].join(' · '), R);
+    }
+  }
+  if (aiChat) {
+    for (const probe of AI_CHAT_PROBES) {
+      const want = expectedStatus(probe.expect, role);
+      const { res, ms, text } = await hit('/api/ai/chat', {
+        jar, method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ message: probe.message }),
+      });
+      R.aiN++; R.ms.push(ms); timings.push(ms);
+      const path = `POST /api/ai/chat «${probe.message}»`;
+      report.requests.push({ role: username, path, status: res.status, want, ms: Math.round(ms) });
+      if (res.status !== want) {
+        report.deviations.push({ role: username, path, kind: 'status', detail: `expected ${want}, got ${res.status}` });
+        continue;
+      }
+      R.aiOk++;
+      let j = null; try { j = JSON.parse(text); } catch { /* checked below */ }
+      // ثابت السلامة: لا رمز تأكيد من الدردشة إطلاقاً — الكتابة تبدأ من المعاينة وحدها.
+      if (j && ('applyToken' in j || 'previewId' in j)) {
+        report.deviations.push({ role: username, path, kind: 'ai-write',
+          detail: 'chat handed back an apply token — a write must originate from POST /api/ai/preview only' });
+      }
+      const formLabels = (j?.form?.fields || []).map((f) => `${f.label_ar} ${f.help_ar || ''}`).join(' ');
+      scanAiText(username, path, [j?.reply, formLabels, (j?.choices || []).map((c) => c.label_ar).join(' ')].join(' '), R);
+    }
+  }
+}
+
+// نصّ المساعد ليس HTML — يُفحص كما هو بنفس ماسحَي القيم المكسورة والمصطلحات التقنية.
+function scanAiText(username, path, txt, R) {
+  if (!txt || !txt.trim()) return;
+  for (const m of txt.match(LEAK_RX) || []) {
+    R.leaks++;
+    report.deviations.push({ role: username, path, kind: 'leak', detail: `"${m}" في ردّ المساعد — «${ctx40(txt, m.replace(/[[\]]/g, '\\$&'))}»` });
+  }
+  for (const j of JARGON) {
+    const found = j.test(txt);
+    if (found) { R.jargon++; report.deviations.push({ role: username, path, kind: 'jargon', detail: `"${found}" في ردّ المساعد — «${ctx40(txt, j.term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))}»` }); }
+  }
 }
 
 // ── output ────────────────────────────────────────────────────────────────────
 const p = (arr, q) => { if (!arr.length) return 0; const s = [...arr].sort((a, b) => a - b); return Math.round(s[Math.min(s.length - 1, Math.floor(q * s.length))]); };
 const pad = (s, n) => String(s).padEnd(n);
-console.log('\n' + pad('role', 18) + pad('pages', 9) + pad('apis', 9) + pad('leaks', 7) + pad('jargon', 8) + 'p95(ms)');
+console.log('\n' + pad('role', 18) + pad('pages', 9) + pad('apis', 9) + pad('ai', 8) + pad('leaks', 7) + pad('jargon', 8) + 'p95(ms)');
 for (const [u, R] of Object.entries(perRole)) {
-  console.log(pad(u, 18) + pad(`${R.pagesOk}/${R.pagesN}`, 9) + pad(`${R.apisOk}/${R.apisN}`, 9) + pad(R.leaks, 7) + pad(R.jargon, 8) + p(R.ms, 0.95));
+  console.log(pad(u, 18) + pad(`${R.pagesOk}/${R.pagesN}`, 9) + pad(`${R.apisOk}/${R.apisN}`, 9)
+    + pad(`${R.aiOk}/${R.aiN}`, 8) + pad(R.leaks, 7) + pad(R.jargon, 8) + p(R.ms, 0.95));
 }
 report.summary = {
   requests: report.requests.length, deviations: report.deviations.length, warnings: report.warnings.length,

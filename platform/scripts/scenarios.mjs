@@ -1097,6 +1097,332 @@ scenario('money-and-search', 'المال بالهللات الصحيحة، وا�
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// المساعد الذكي — أدوات مشتركة بين لِحاقَيه (الحوكمة السريع، والمصفوفة البطيئة)
+// ─────────────────────────────────────────────────────────────────────────────
+// سؤال المالك حرفياً: «هل إجاباته دقيقة؟». وهو سؤال قابل للإجابة **لأن المحرّك محلي حتمي**:
+// نقارن الأرقام المذكورة في الردّ باستعلام مباشر على القاعدة تحت **نفس مرشّح النطاق**. مع
+// محرّك لغوي خارجي لا يمكن هذا الفحص أصلاً — الإجابة تتغيّر من مرة إلى أخرى.
+const AI_INTENTS = [
+  { key: 'summarize_project', ar: 'ملخّص مشروع', msg: (d) => `لخّص حالة ${d.projects.find((p) => p.key === 'sol_main').name_ar}` },
+  { key: 'weekly_report', ar: 'الموجز الأسبوعي', msg: () => 'اكتب الموجز التنفيذي الأسبوعي' },
+  { key: 'detect_risks', ar: 'كشف المخاطر', msg: () => 'ما المخاطر البارزة' },
+  { key: 'data_quality', ar: 'جودة البيانات', msg: () => 'افحص جودة البيانات' },
+  { key: 'suggest_priorities', ar: 'الأولويات', msg: () => 'ما أولوياتي اليوم' },
+  { key: 'create_task', ar: 'إنشاء مهمة', msg: () => 'أنشئ مهمة متابعة العرض' },
+  { key: 'update_task_status', ar: 'تحديث حالة مهمة', msg: () => 'حدّث حالة مهمة المراجعة' },
+];
+
+// شكل الحساب كما تراه بوابات الصلاحيات (نفس حيلة سيناريو «كل صفحة لكل شخص»).
+const shapeOf = (u) => ({ role_id: u.role, scope: u.scope, sector_id: u.sector ?? null,
+  projectIds: new Set(), teamIds: new Set() });
+
+// هل يُتوقَّع أن يجيب المساعد هذا الدور عن هذه النية — مشتقّاً من المنح نفسها لا من قائمة مكتوبة.
+function aiAllows(rbac, policy, u, intentKey) {
+  const s = shapeOf(u);
+  switch (intentKey) {
+    case 'weekly_report': return policy.seesCompanyPerformance(s);
+    case 'summarize_project':
+    case 'detect_risks': return !!rbac.effectiveScope(s, 'read', 'project');
+    case 'create_task': return rbac.can(s, 'create', 'task');
+    case 'update_task_status': return rbac.can(s, 'update', 'task');
+    default: return true;
+  }
+}
+
+// قيم يجب ألا تظهر في أي ردّ لأي دور: الرواتب المخزَّنة بكل صيغها + كلمة الراتب نفسها.
+async function forbiddenMoney(db, fmtSar, toSar) {
+  const rows = await db.all('SELECT salary_halalas FROM employee WHERE salary_halalas IS NOT NULL AND salary_halalas > 0');
+  const out = new Set();
+  for (const r of rows) {
+    out.add(String(r.salary_halalas));
+    out.add(String(toSar(r.salary_halalas)));
+    out.add(fmtSar(r.salary_halalas));
+    out.add(new Intl.NumberFormat('en-US').format(toSar(r.salary_halalas)));
+  }
+  return [...out];
+}
+
+const RAW_ENUM_IN_REPLY = /\b(RED|AMBER|GREEN|IN_PROGRESS|NOT_STARTED|ON_HOLD|TODO|BLOCKED|DONE|CANCELLED|QUALIFIED|NEGOTIATION|PROPOSAL|P0|P1|P2|P3)\b/;
+
+// **النص الذي يقرأه المستخدم** من ردّ المساعد: الردّ + تسميات النموذج والخيارات. قيم الحقول
+// (مثل رمز الأهمية) ليست نصاً معروضاً بل قيمة تُرسَل للخادم وتُعرَض للمستخدم بتسميتها العربية
+// من «الخيارات» — نفس تمييز فاحص المعجم بين النص وقيم value/data-.
+const aiVisibleText = (json) => {
+  if (!json) return '';
+  const parts = [json.reply || ''];
+  const f = json.form;
+  if (f) {
+    parts.push(f.title_ar || '', f.submit_ar || '', f.hint_ar || '');
+    for (const fld of f.fields || []) parts.push(fld.label_ar || '', fld.help_ar || '');
+  }
+  for (const c of json.choices || []) parts.push(c.label_ar || '');
+  return parts.join(' · ');
+};
+
+// مطابقة رقم **ككلٍّ** لا كجزء من رقم أكبر: «20,000» موجودة داخل «1,020,000» فتُنتج إنذاراً
+// كاذباً — وشركة استشارية أرقامُها تتصادف مع مبالغ الرواتب بحكم المقادير.
+const containsNumber = (text, num) =>
+  new RegExp(`(?<![\\d.,])${String(num).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\d.,])`).test(text);
+
+// فحصٌ يُطبَّق على **كل** ردّ من **كل** دور: ختم الراتب، وبلا قيم خام، وبلا رمز تأكيد.
+function aiSealCheck(t, who, label, res, { salaries, foreignNames }) {
+  const body = res.status === 200 ? aiVisibleText(res.json) : (res.json?.error?.message || '');
+  for (const s of salaries) {
+    if (containsNumber(body, s)) { t.ok(false, `${who} · ${label}: رقم راتب في الردّ`, s); return; }
+  }
+  t.ok(!/راتب/.test(body), `${who} · ${label}: لا ذكر للراتب في الردّ`);
+  t.ok(!RAW_ENUM_IN_REPLY.test(body), `${who} · ${label}: بلا قيمة مخزَّنة خام في نصٍّ عربي`,
+    (body.match(RAW_ENUM_IN_REPLY) || [])[0]);
+  t.ok(!/undefined|NaN|\[object/.test(body), `${who} · ${label}: بلا قيم مكسورة`);
+  if (res.status === 200) t.ok(!('applyToken' in (res.json || {})), `${who} · ${label}: الدردشة بلا رمز تأكيد`);
+  for (const [name, reachable] of foreignNames) {
+    if (!reachable) t.ok(!body.includes(name), `${who} · ${label}: لا يتسرّب اسم «${name}» من خارج نطاقه`);
+  }
+}
+
+// ⑰ حوكمة المساعد (سريع — يبقى في الفحص الآلي)
+scenario('ai-governance', 'المساعد: محرّك محلي، ولا كتابة بلا معاينة وتأكيد', async ({ C, db, D, t, ids, dataset, remember }) => {
+  const rbac = await import('../src/core/rbac/index.js');
+  const { fmtSar, toSar } = await import('../src/core/util/ids.js');
+
+  // ① أول فحص وأهمّه: المحرّك محلي. مفتاح مزوّد في البيئة يُسقط اللِحاق صراحةً ولا يمرّ صامتاً.
+  t.ok(!process.env.ANTHROPIC_API_KEY && !process.env.OPENAI_API_KEY,
+    'لا مفتاح مزوّد خارجي في بيئة التشغيل — قرار المالك أن يبقى المحرّك داخل المنصة');
+  t.ok(process.env.AI_ENGINE !== 'provider', 'ولا إعلان نية لتشغيل مزوّد خارجي');
+  const st = await C.req('demo.admin', '/api/ai/status');
+  t.status(st, 200, 'حالة المساعد تُقرأ');
+  t.eq(st.json?.mode, 'local', 'المحرّك محلي — لا تغادر بيانات الشركة المنصة');
+  t.eq(st.json?.modeLabel, 'محلي', 'ويُقال ذلك للمستخدم بالعربية');
+  t.eq(st.json?.configured, false, 'ولا مزوّد خارجي مفعَّل');
+  t.ok(!/API|KEY|OPENAI|ANTHROPIC/i.test(st.json?.note || ''), 'ونصّ الحالة لا يسمّي إعداداً تقنياً');
+
+  // بطاقات الاقتراح مُرشَّحة بمنح كل دور: لا تُعرض بطاقة لعملٍ يردّه الخادم.
+  const procSt = await C.req('demo.procurement', '/api/ai/status');
+  t.ok(!(procSt.json?.suggestions || []).some((s) => s.intent === 'weekly_report'),
+    'المشتريات لا تُعرض له بطاقة أرقام الشركة');
+  t.ok((procSt.json?.suggestions || []).every((s) => /[؀-ۿ]/.test(s.label_ar)), 'كل بطاقة بعنوان عربي');
+
+  // ② ثابت السلامة: الدردشة لا تُصدر رمز تأكيد ولا تكتب شيئاً — لكل دور ولكل نصّ.
+  const tasksBefore = Number((await db.get('SELECT COUNT(*) n FROM task')).n);
+  const oppsBefore = Number((await db.get('SELECT COUNT(*) n FROM opportunity')).n);
+  for (const u of ['demo.admin', 'demo.sectorlead', 'demo.employee', 'demo.external']) {
+    for (const msg of ['أنشئ مهمة عاجلة الآن', 'انقل الفرصة إلى فائزة', 'غيّر كل شيء']) {
+      const r = await C.req(u, '/api/ai/chat', { method: 'POST', body: { message: msg } });
+      t.ok([200, 403].includes(r.status), `${u} ← «${msg}» ردٌّ مفهوم`, `الحالة ${r.status}`);
+      if (r.status === 200) t.ok(!('applyToken' in r.json) && !('preview' in r.json),
+        `${u}: الدردشة لا تُصدر رمز تأكيد مهما كان النص`);
+    }
+  }
+  t.eq(Number((await db.get('SELECT COUNT(*) n FROM task')).n), tasksBefore, 'ولا مهمة واحدة أُنشئت من دردشة');
+  t.eq(Number((await db.get('SELECT COUNT(*) n FROM opportunity')).n), oppsBefore, 'ولا فرصة تحرّكت');
+
+  // ③ الخيارات: كل معرّف تعرضه الواجهة صادر من الخادم ومُرشَّح بالنطاق.
+  const opts = await C.req('demo.sectorlead', '/api/ai/options/project');
+  t.status(opts, 200, 'قائمة المشاريع للنموذج');
+  const conName = dataset.projects.find((p) => p.key === 'con_main').name_ar;
+  t.ok(!(opts.json?.options || []).some((o) => o.label_ar === conName),
+    'ولا تُعرض عليه مشاريع قطاع آخر ليختارها أصلاً');
+  t.status(await C.req('demo.employee', '/api/ai/options/opportunity'), 403, 'من لا يقرأ الفرص لا تُعرض له قائمتها');
+
+  // ④ معاينة ثم تأكيد — دورة كاملة على فرصة من صنع هذا السيناريو
+  const opp = await C.req('demo.bd', '/api/opportunities', { method: 'POST', body: {
+    title_ar: D.tag('فرصة يحرّكها المساعد'), sector_id: 'SOLUTIONS', client_id: ids.client.gov,
+    stage_id: 'LEAD', value_sar: 300_000, year: dataset.year } });
+  t.status(opp, 200, 'فرصة للاختبار');
+  const oid = opp.json?.id; remember('opportunity', oid);
+
+  t.status(await C.req('demo.employee', '/api/ai/preview', { method: 'POST',
+    body: { type: 'opp_stage', fields: { oppId: oid, stage: 'WON' } } }), 403, 'من لا يملك التعديل لا يعاين');
+  const badStage = await C.req('demo.bd', '/api/ai/preview', { method: 'POST',
+    body: { type: 'opp_stage', fields: { oppId: oid, stage: 'MEGA_WIN' } } });
+  t.status(badStage, 400, 'مرحلة مجهولة تُرَدّ وقت المعاينة');
+  t.says(badStage, /مرحلة غير معروفة/, 'والرسالة تدعو للاختيار من القائمة');
+
+  const prev = await C.req('demo.bd', '/api/ai/preview', { method: 'POST',
+    body: { type: 'opp_stage', fields: { oppId: oid, stage: 'QUALIFIED' } } });
+  t.status(prev, 200, 'صاحب الفرصة يعاين نقلها');
+  remember('ai_activity_log', prev.json?.applyToken);
+  t.ok(!RAW_ENUM_IN_REPLY.test(prev.json?.reply || ''), 'ونصّ المعاينة بأسماء المراحل لا برموزها');
+  t.eq((await db.get('SELECT stage_id FROM opportunity WHERE id = ?', [oid]))?.stage_id, 'LEAD',
+    'ولا شيء يتغيّر قبل التأكيد');
+
+  const stolen = await C.req('demo.sectorlead', '/api/ai/apply', { method: 'POST', body: { applyToken: prev.json?.applyToken } });
+  t.status(stolen, 400, 'معاينة غيرك لا تُطبَّق ولو عرفت رمزها');
+  t.says(stolen, /لا أجد هذه المعاينة/, 'ولا يُقال له إنها معاينة شخص آخر');
+
+  const applied = await C.req('demo.bd', '/api/ai/apply', { method: 'POST', body: { applyToken: prev.json?.applyToken } });
+  t.status(applied, 200, 'صاحبها يؤكّدها فتُنفَّذ');
+  t.eq((await db.get('SELECT stage_id FROM opportunity WHERE id = ?', [oid]))?.stage_id, 'QUALIFIED', 'والمرحلة تغيّرت فعلاً');
+  const hist = await db.get('SELECT id, to_stage_id FROM opportunity_stage_history WHERE opportunity_id = ? ORDER BY changed_at DESC LIMIT 1', [oid]);
+  t.eq(hist?.to_stage_id, 'QUALIFIED', 'وسجل المراحل كتبته الخدمة نفسها — لا مسار موازٍ');
+  remember('opportunity_stage_history', hist?.id);
+  const logRow = await db.get('SELECT applied, approved_by, applied_at FROM ai_activity_log WHERE id = ?', [prev.json?.applyToken]);
+  t.ok(Number(logRow?.applied) === 1 && logRow?.approved_by && logRow?.applied_at,
+    'ومن أكّد التغيير ومتى مكتوبان في السجل');
+
+  const twice = await C.req('demo.bd', '/api/ai/apply', { method: 'POST', body: { applyToken: prev.json?.applyToken } });
+  t.status(twice, 400, 'المزلاج: لا تُطبَّق المعاينة مرتين');
+  t.says(twice, /طُبِّقت من قبل/, 'والرسالة تقول ذلك صراحةً');
+
+  // ⑤ المعاينة المنتهية: الموافقة مرتبطة بلحظتها لا مفتوحة إلى الأبد
+  const stale = await C.req('demo.bd', '/api/ai/preview', { method: 'POST',
+    body: { type: 'opp_stage', fields: { oppId: oid, stage: 'PROPOSAL' } } });
+  remember('ai_activity_log', stale.json?.applyToken);
+  await db.run('UPDATE ai_activity_log SET expires_at = ? WHERE id = ?', ['2020-01-01T00:00:00.000Z', stale.json?.applyToken]);
+  const expired = await C.req('demo.bd', '/api/ai/apply', { method: 'POST', body: { applyToken: stale.json?.applyToken } });
+  t.status(expired, 400, 'معاينة انتهت مهلتها لا تُطبَّق');
+  t.says(expired, /انتهت صلاحية المعاينة/, 'والرسالة تقول ماذا يفعل');
+
+  // ⑥ قواعد النقل تُورَث من الخدمة حرفياً — وهذا هو حارس التسريب الذي كان قائماً
+  const won = await C.req('demo.bd', `/api/opportunities/${oid}/stage`, { method: 'POST',
+    body: { stage: 'WON', note: D.tag('فوز') } });
+  t.status(won, 200, 'الفرصة تُكسب');
+  const bareBack = await C.req('demo.bd', '/api/ai/preview', { method: 'POST',
+    body: { type: 'opp_stage', fields: { oppId: oid, stage: 'LEAD' } } });
+  remember('ai_activity_log', bareBack.json?.applyToken);
+  const bareApply = await C.req('demo.bd', '/api/ai/apply', { method: 'POST', body: { applyToken: bareBack.json?.applyToken } });
+  t.status(bareApply, 400, 'التراجع عن الفوز عبر المساعد بلا سبب مكتوب مردود');
+  t.says(bareApply, /اكتب سبب التراجع/, 'برسالة الخدمة نفسها لا برسالة عامة');
+  t.eq((await db.get('SELECT stage_id FROM opportunity WHERE id = ?', [oid]))?.stage_id, 'WON', 'ولم تتغيّر الفرصة');
+
+  const prj = await C.req('demo.sectorlead', '/api/intake/create', { method: 'POST', body: {
+    name_ar: D.tag('مشروع من فرصة المساعد'), source_opp_id: oid, value_sar: 250_000,
+    start_date: '2026-09-01', end_date: '2027-02-28', contract_code: 'SCN-C-AI' } });
+  t.status(prj, 200, 'الفوز يُنتج مشروعاً');
+  remember('project', prj.json?.project_id); remember('contract', prj.json?.contract_id);
+  const withReason = await C.req('demo.bd', '/api/ai/preview', { method: 'POST',
+    body: { type: 'opp_stage', fields: { oppId: oid, stage: 'LEAD', note: D.tag('سبب مكتوب') } } });
+  remember('ai_activity_log', withReason.json?.applyToken);
+  const blocked = await C.req('demo.bd', '/api/ai/apply', { method: 'POST', body: { applyToken: withReason.json?.applyToken } });
+  t.status(blocked, 400, 'وحتى بسببٍ مكتوب: لا تراجع عن فوزٍ نشأ عنه مشروع');
+  t.says(blocked, /نشأ عنها مشروع/, 'والرسالة تدلّ على المشروع');
+
+  // ⑦ الكتابة الموسَّعة: مهمة تُنشأ وتُغيَّر حالتها عبر خدمة المهام بقواعدها
+  const tp = await C.req('demo.employee', '/api/ai/preview', { method: 'POST',
+    body: { type: 'task_create', fields: { title: D.tag('مهمة من المساعد'), priority: 'P1' } } });
+  t.status(tp, 200, 'الموظف يعاين إنشاء مهمة لنفسه');
+  remember('ai_activity_log', tp.json?.applyToken);
+  const tApplied = await C.req('demo.employee', '/api/ai/apply', { method: 'POST', body: { applyToken: tp.json?.applyToken } });
+  t.status(tApplied, 200, 'ويؤكّدها فتُنشأ');
+  const newTask = tApplied.json?.resourceId; remember('task', newTask);
+  const taskRow = await db.get('SELECT assignee_user_id, sector_id FROM task WHERE id = ?', [newTask]);
+  t.eq(taskRow?.sector_id, 'SOLUTIONS', 'وقطاعها مثبَّت على قطاع صاحبها');
+  t.eq(taskRow?.assignee_user_id, ids.user['demo.employee'], 'وهي مُسنَدة إليه هو لا إلى غيره');
+  const aiAudit = await db.get("SELECT detail_json FROM audit_log WHERE resource_id = ? AND detail_json LIKE '%\"via\":\"ai\"%'", [newTask]);
+  t.ok(!!aiAudit, 'وسطر تدقيق يقول إن مصدر التغيير المساعد');
+
+  const blockNoReason = await C.req('demo.employee', '/api/ai/preview', { method: 'POST',
+    body: { type: 'task_status', fields: { taskId: newTask, status: 'BLOCKED' } } });
+  remember('ai_activity_log', blockNoReason.json?.applyToken);
+  const blockApply = await C.req('demo.employee', '/api/ai/apply', { method: 'POST', body: { applyToken: blockNoReason.json?.applyToken } });
+  t.status(blockApply, 400, 'تعطيل مهمة عبر المساعد بلا سبب مكتوب مردود');
+  t.says(blockApply, /سبب التعطيل/, 'برسالة خدمة المهام نفسها');
+
+  // ⑧ السجل: بوابته بوابة التدقيق
+  t.status(await C.req('demo.admin', '/api/ai/activity'), 200, 'مدير النظام يقرأ سجل نشاط المساعد');
+  t.status(await C.req('demo.sectorlead', '/api/ai/activity'), 403, 'وقائد القطاع بلا منح تدقيق لا يقرؤه');
+
+  // ⑨ إثبات نطاق واحد + كنس الراتب على كل الأدوار (النسخة المختصرة من المصفوفة)
+  const salaries = await forbiddenMoney(db, fmtSar, toSar);
+  t.ok(salaries.length > 0, 'يوجد راتب مخزَّن فعلاً ليُختبر حجبه');
+  await C.req('demo.admin', `/api/projects/${ids.project.con_main}`, { method: 'PATCH', body: { rag: 'RED' } });
+  await C.req('demo.admin', `/api/projects/${ids.project.sol_main}`, { method: 'PATCH', body: { rag: 'RED' } });
+  const solName = dataset.projects.find((p) => p.key === 'sol_main').name_ar;
+
+  const risks = await C.req('demo.sectorlead', '/api/ai/chat', { method: 'POST', body: { message: 'ما المخاطر البارزة' } });
+  t.status(risks, 200, 'قائد قطاع الحلول يسأل عن المخاطر');
+  t.ok(risks.json?.reply.includes(solName), 'فيرى مشروع قطاعه الحرج');
+  t.ok(!risks.json?.reply.includes(conName), 'ولا يرى مشروع قطاع الاستشارات الحرج');
+
+  for (const u of (await import('./seed.js')).DEMO_USERS) {
+    const sum = await C.req(u.u, '/api/ai/chat', { method: 'POST', body: { message: `لخّص حالة ${solName}` } });
+    aiSealCheck(t, u.u, 'ملخّص مشروع', sum, { salaries, foreignNames: [] });
+    if (sum.status !== 200 || !sum.json.reply.includes(solName)) continue;
+    const hasCost = rbac.can(shapeOf(u), 'read', 'cost');
+    if (hasCost) t.ok(/الصرف الفعلي/.test(sum.json.reply), `${u.u} يملك بوابة الكلفة فيرى الصرف`);
+    else {
+      t.ok(/التكلفة محجوبة عن دورك/.test(sum.json.reply), `${u.u}: الكلفة محجوبة بنصٍّ صريح`);
+      t.ok(!/الصرف الفعلي/.test(sum.json.reply), `${u.u}: ولا رقم صرف في ردّه`);
+    }
+  }
+});
+
+// ⑱ مصفوفة المساعد: سبع نوايا × سبعة عشر دوراً (بطيء)
+scenario('ai-matrix', 'المساعد: سبع نوايا × سبعة عشر دوراً — نطاقاً ودقةً', async ({ C, db, D, t, ids, dataset, remember, seedMod }) => {
+  const rbac = await import('../src/core/rbac/index.js');
+  const policy = await import('../src/core/policy/pages.js');
+  const { fmtSar, toSar } = await import('../src/core/util/ids.js');
+  const salaries = await forbiddenMoney(db, fmtSar, toSar);
+  const conName = dataset.projects.find((p) => p.key === 'con_main').name_ar;
+  const solName = dataset.projects.find((p) => p.key === 'sol_main').name_ar;
+
+  // عميل بلا تصنيف: نُنشئه كي يكون لفحص جودة البيانات رقمٌ حقيقي يُقارَن، لا فراغ يُصدَّق.
+  const c = await C.req('demo.admin', '/api/clients', { method: 'POST', body: { name_ar: D.tag('جهة بلا تصنيف نوع') } });
+  t.status(c, 200, 'جهة بلا تصنيف نوع لفحص الجودة');
+  remember('client', c.json?.id);
+
+  // ① المصفوفة: لكل دور ولكل نية — الحالة مطابقة للمنح، والختم قائم، ولا تسريب عبر القطاعات
+  for (const u of seedMod.DEMO_USERS) {
+    const reachesCons = rbac.can(shapeOf(u), 'read', 'project', { sector_id: 'CONSULTING', id: ids.project.con_main });
+    for (const intent of AI_INTENTS) {
+      const r = await C.req(u.u, '/api/ai/chat', { method: 'POST', body: { message: intent.msg(dataset) } });
+      const allowed = aiAllows(rbac, policy, u, intent.key);
+      t.status(r, allowed ? 200 : 403, `${u.u} ← ${intent.ar}`);
+      if (!allowed) t.says(r, /صلاحيتك|نطاقك|مدير النظام/, `${u.u} ← ${intent.ar}: الرفض يقول ماذا يفعل`);
+      aiSealCheck(t, u.u, intent.ar, r, { salaries, foreignNames: [[conName, reachesCons]] });
+    }
+  }
+
+  // ② الدقة: الرقم المذكور في الردّ = الرقم في القاعدة تحت نفس مرشّح النطاق
+  // (أ) المخاطر: أسماء المشاريع الحرجة وعدد المهام المتأخرة لكل مشروع
+  const risks = await C.req('demo.sectorlead', '/api/ai/chat', { method: 'POST', body: { message: 'ما المخاطر البارزة' } });
+  const redRows = await db.all("SELECT name_ar FROM project WHERE rag = 'RED' AND deleted_at IS NULL AND sector_id = 'SOLUTIONS'");
+  for (const row of redRows) t.ok(risks.json?.reply.includes(row.name_ar), `المخاطر تذكر «${row.name_ar}» كما في القاعدة`);
+  const lateRows = await db.all(
+    `SELECT p.name_ar, COUNT(*) n FROM task t JOIN project p ON p.id = t.project_id
+      WHERE t.status != 'DONE' AND t.due_date IS NOT NULL AND substr(t.due_date,1,10) < ?
+        AND t.deleted_at IS NULL AND p.deleted_at IS NULL AND p.sector_id = 'SOLUTIONS'
+      GROUP BY p.id, p.name_ar ORDER BY n DESC`, [dataset.today]);
+  for (const row of lateRows.slice(0, 5)) {
+    t.ok(risks.json?.reply.includes(`${row.name_ar}: ${row.n} مهمة متأخرة`),
+      `عدد المهام المتأخرة في «${row.name_ar}» مطابق للقاعدة (${row.n})`);
+  }
+
+  // (ب) جودة البيانات: العدد المذكور = عدد الصفوف الناقصة فعلاً
+  const dq = await C.req('demo.admin', '/api/ai/chat', { method: 'POST', body: { message: 'افحص جودة البيانات' } });
+  const noType = Number((await db.get("SELECT COUNT(*) n FROM client WHERE (type IS NULL OR type = '') AND deleted_at IS NULL")).n);
+  t.ok(dq.json?.reply.includes(`${noType} عميل بلا تصنيف نوع`), `عدد الجهات بلا تصنيف مطابق للقاعدة (${noType})`);
+
+  // (ج) الأولويات: عناوين مهام صاحب الطلب هو، بترتيب الإلحاح نفسه
+  const prio = await C.req('demo.employee', '/api/ai/chat', { method: 'POST', body: { message: 'ما أولوياتي اليوم' } });
+  const myTasks = await db.all(
+    `SELECT t.title FROM task t JOIN app_user u ON u.id = t.assignee_user_id
+      WHERE u.username = 'demo.employee' AND t.status NOT IN ('DONE','CANCELLED') AND t.deleted_at IS NULL
+      ORDER BY CASE t.priority WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 ELSE 3 END,
+               (t.due_date IS NULL), t.due_date, t.title LIMIT 6`);
+  for (const row of myTasks) t.ok(prio.json?.reply.includes(row.title), `الأولويات تذكر «${row.title}» كما في القاعدة`);
+  const foreign = await db.get("SELECT title FROM task WHERE id = ?", [ids.task.con_rep]);
+  t.ok(!prio.json?.reply.includes(foreign?.title), 'ولا تذكر مهمة شخص آخر');
+
+  // (د) الموجز الأسبوعي: الرقم نفسه الذي تعرضه شاشة القيادة — سطحان ورقم واحد
+  const brief = await C.req('demo.ceo', '/api/ai/chat', { method: 'POST', body: { message: 'اكتب الموجز التنفيذي الأسبوعي' } });
+  const metrics = await C.req('demo.ceo', '/api/metrics/company');
+  t.status(metrics, 200, 'مقاييس الشركة تُقرأ للمقارنة');
+  t.ok(brief.json?.reply.includes(fmtSar(metrics.json?.totals?.revenue)),
+    `الإيراد في الموجز = الإيراد في شاشة القيادة (${fmtSar(metrics.json?.totals?.revenue)})`);
+  t.ok(brief.json?.reply.includes(fmtSar(metrics.json?.pipeline_halalas)), 'وخط الفرص كذلك');
+
+  // (هـ) ملخّص المشروع: الإنجاز وعدد المهام المتأخرة من القاعدة نفسها
+  const sum = await C.req('demo.pm', '/api/ai/chat', { method: 'POST', body: { message: `لخّص حالة ${solName}` } });
+  const prow = await db.get('SELECT progress_pct FROM project WHERE id = ?', [ids.project.sol_main]);
+  t.ok(sum.json?.reply.includes(`الإنجاز: ${Math.round(prow?.progress_pct || 0)}%`), 'نسبة الإنجاز مطابقة للقاعدة');
+  const late = Number((await db.get(
+    `SELECT COUNT(*) n FROM task WHERE project_id = ? AND status != 'DONE' AND due_date IS NOT NULL
+      AND substr(due_date,1,10) < ? AND deleted_at IS NULL`, [ids.project.sol_main, new Date().toISOString().slice(0, 10)])).n);
+  t.ok(sum.json?.reply.includes(`متأخرة: ${late}`), `عدد المهام المتأخرة في الملخّص مطابق للقاعدة (${late})`);
+}, { slow: true });
+
+// ─────────────────────────────────────────────────────────────────────────────
 // المحو
 // ─────────────────────────────────────────────────────────────────────────────
 // ثلاث مراحل بترتيب مقصود:

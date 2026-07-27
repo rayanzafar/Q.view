@@ -76,9 +76,84 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
 .seg button{border:none;background:none;cursor:pointer;font-size:12px;font-weight:700;color:var(--muted);padding:.35rem .7rem;border-radius:8px;display:flex;align-items:center;gap:.35rem}
 .seg button.on{background:#fff;color:var(--ink2);box-shadow:var(--sh-sm)}
 
+/* ── مساعد سند: الزر العائم واللوحة ───────────────────────────────────────────
+   الزر شبه شفاف كي لا يحجب أرقام الجداول، ويكتمل عند المرور أو التركيز أو الفتح.
+   اللوحة حوار جانبي: ترويسة ثابتة، سجل محادثة هو وحده ما يُمرَّر، صف مهام جاهزة،
+   ثم سطر الكتابة. كل ما يُعرض داخلها يُبنى نصاً في المتصفح (public/pages/ai.js) —
+   لا يُركَّب وسمٌ واحد من محتوى قادم من الخادم. */
+.ai-fab{position:fixed;bottom:18px;left:18px;z-index:40;width:44px;height:44px;border:none;cursor:pointer;border-radius:50%;color:#fff;
+  box-shadow:0 8px 22px -6px rgba(36,74,153,.5);background:var(--brand-grad);display:flex;align-items:center;justify-content:center;opacity:.55;transition:opacity .15s}
+.ai-fab:hover,.ai-fab:focus-visible,.ai-fab[aria-expanded="true"]{opacity:1}
+.ai-panel{position:fixed;bottom:88px;left:22px;z-index:41;width:390px;max-width:calc(100vw - 2rem);
+  height:min(580px,calc(100vh - 130px));height:min(580px,calc(100dvh - 130px));
+  display:flex;flex-direction:column;overflow:hidden;background:var(--surface);border:1px solid var(--line);
+  border-radius:var(--r);box-shadow:0 24px 60px rgba(15,23,42,.22)}
+.ai-panel[hidden]{display:none}
+.ai-head{flex:0 0 auto;display:flex;align-items:center;gap:.5rem;padding:.6rem .75rem;color:#fff;background:var(--brand-grad)}
+.ai-head .t{font-weight:800;font-size:var(--fs-ui);line-height:1.4}
+.ai-eng{display:inline-flex;align-items:center;gap:.25rem;margin-top:.1rem;padding:.05rem .45rem;border-radius:999px;
+  background:rgba(255,255,255,.18);font-size:var(--fs-micro);font-weight:700;line-height:1.6}
+.ai-x{flex:0 0 auto;border:none;background:none;cursor:pointer;color:rgba(255,255,255,.8);font-family:inherit;font-size:var(--fs-body);
+  line-height:1;padding:.3rem .4rem;border-radius:8px}
+.ai-x:hover{background:rgba(255,255,255,.16);color:#fff}
+.ai-x:focus-visible{outline:2px solid #fff;outline-offset:1px}
+.ai-log{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;background:var(--bg);
+  padding:.7rem;display:flex;flex-direction:column;gap:.5rem}
+.ai-log:focus-visible{outline:2px solid var(--brand);outline-offset:-2px}
+.ai-msg{display:flex}
+.ai-msg.me{justify-content:flex-end}
+.ai-b{max-width:88%;min-width:0;border-radius:12px;padding:.45rem .65rem;font-size:var(--fs-body);line-height:1.85;
+  word-break:break-word;overflow-wrap:anywhere}
+.ai-msg.me .ai-b{background:var(--brand);color:#fff;border-end-start-radius:4px}
+.ai-msg.ai .ai-b{background:#fff;border:1px solid var(--line);color:var(--ink2);border-end-end-radius:4px}
+.ai-b p{margin:0 0 .35rem}.ai-b p:last-child{margin-bottom:0}
+/* الإطار العام يُلغي علامات القوائم عالمياً — تُعاد هنا كي تُقرأ نقاطُ الردّ نقاطاً */
+.ai-b ul{list-style:disc}
+.ai-b ol{list-style:decimal}
+.ai-b ul,.ai-b ol{margin:.2rem 0;padding-inline-start:1.15rem}
+.ai-b li{margin:.1rem 0;padding-inline-start:.1rem}
+.ai-b li::marker{color:var(--faint)}
+.ai-b strong{font-weight:800}
+.ai-sk{display:grid;gap:.3rem;width:9rem}
+.ai-sk>span{height:9px}
+.ai-card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:.65rem .7rem;display:grid;gap:.5rem;font-size:var(--fs-body)}
+.ai-card .hd{font-weight:800;color:var(--ink2)}
+.ai-f{display:grid;gap:.2rem}
+.ai-f>label{font-size:var(--fs-micro);font-weight:800;color:var(--muted)}
+.ai-f input,.ai-f select,.ai-f textarea{width:100%;border:1px solid var(--line);border-radius:9px;padding:.4rem .55rem;
+  font-family:inherit;font-size:var(--fs-body);color:var(--ink2);background:#fff}
+.ai-f input:focus,.ai-f select:focus,.ai-f textarea:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(36,74,153,.14)}
+.ai-f .why{font-size:var(--fs-micro);color:var(--red);font-weight:700}
+.ai-acts{display:flex;gap:.4rem;flex-wrap:wrap;align-items:center}
+.ai-note{font-size:var(--fs-micro);color:var(--muted);line-height:1.8}
+.ai-prev{border:1px solid #fde68a;background:#fffbeb;border-radius:12px;padding:.65rem .7rem;display:grid;gap:.5rem;
+  font-size:var(--fs-body);color:#92400e;line-height:1.85}
+.ai-prev .hd{font-weight:800}
+.ai-chips{flex:0 0 auto;display:flex;flex-wrap:wrap;gap:.3rem;padding:.5rem .7rem;border-top:1px solid var(--line);
+  background:var(--surface);max-height:6.4rem;overflow-y:auto}
+.ai-chips[hidden]{display:none}
+.ai-chip{display:inline-flex;align-items:center;gap:.3rem;border:1px solid var(--line);background:#fff;color:var(--ink2);
+  font-family:inherit;font-size:var(--fs-meta);font-weight:700;padding:.28rem .6rem;border-radius:999px;cursor:pointer;
+  text-align:start;transition:border-color .15s,box-shadow .15s}
+.ai-chip:hover{border-color:#c9d3e8;box-shadow:var(--sh-sm)}
+.ai-chip:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.ai-chip[disabled]{opacity:.5;cursor:default;box-shadow:none}
+.ai-chip .wd{width:6px;height:6px;border-radius:50%;background:var(--amber);flex:0 0 auto}
+.ai-chip.sel{background:var(--brand);border-color:transparent;color:#fff}
+.ai-picks{display:flex;flex-wrap:wrap;gap:.3rem}
+.ai-foot{flex:0 0 auto;display:flex;gap:.4rem;align-items:center;padding:.5rem;border-top:1px solid var(--line);background:var(--surface)}
+.ai-in{flex:1 1 auto;min-width:0;border:1px solid var(--line);border-radius:10px;padding:.45rem .7rem;
+  font-family:inherit;font-size:var(--fs-ui);color:var(--ink2);background:#fff}
+.ai-in:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(36,74,153,.14)}
+.ai-send{flex:0 0 auto;border:none;cursor:pointer;color:#fff;background:var(--brand-grad);border-radius:10px;
+  padding:.45rem .8rem;font-family:inherit;font-weight:800;font-size:var(--fs-body)}
+.ai-send:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.ai-send[disabled],.ai-in[disabled]{opacity:.55;cursor:default}
+@media(max-width:440px){.ai-panel{left:10px;right:10px;width:auto;max-width:none;bottom:76px;
+  height:min(560px,calc(100vh - 104px));height:min(560px,calc(100dvh - 104px))}}
+@media (prefers-reduced-motion: reduce){.ai-fab{transition:none}}
+
 /* Kanban */
-/* الزر العائم شبه شفاف كي لا يحجب أرقام الجداول؛ يكتمل عند المرور أو التركيز */
-.ai-fab:hover,.ai-fab:focus-visible{opacity:1!important}
 .kanban{display:flex;gap:.9rem;overflow-x:auto;padding-bottom:.75rem;align-items:flex-start;scroll-snap-type:x proximity}
 .kcol{flex:0 0 300px;width:300px;background:#eef1f7;border-radius:14px;padding:.55rem;scroll-snap-align:start;max-height:calc(100vh - 240px);display:flex;flex-direction:column}
 .kcol-head{display:flex;align-items:center;gap:.5rem;padding:.35rem .5rem .55rem}
@@ -341,18 +416,23 @@ window.__SANAD_MONTHS=${JSON.stringify(MONTHS_AR)};window.__SANAD_MONTHS_EN=${JS
     <main style="flex:1;overflow-y:auto;padding:1.15rem 1.35rem 5.5rem">${body}</main>
   </div>
 </div>
-<button onclick="Sanad.aiToggle()" title="مساعد سند الذكي" class="ai-fab" style="position:fixed;bottom:18px;left:18px;z-index:40;width:44px;height:44px;border:none;cursor:pointer;border-radius:50%;color:#fff;box-shadow:0 8px 22px -6px rgba(124,58,237,.5);background:var(--brand-grad);display:flex;align-items:center;justify-content:center;opacity:.55;transition:opacity .15s">${icon('ai')}</button>
-<div id="ai-panel" class="card" style="display:none;position:fixed;bottom:88px;left:22px;z-index:40;width:390px;max-width:calc(100vw - 2rem);height:min(580px,calc(100vh - 130px));flex-direction:column;overflow:hidden;box-shadow:var(--sh)">
-  <div style="padding:.8rem 1rem;color:#fff;display:flex;align-items:center;justify-content:space-between;background:var(--brand-grad)">
-    <div style="display:flex;align-items:center;gap:.5rem">${icon('ai')}<div><div style="font-weight:800;font-size:var(--fs-ui)">مساعد سند الذكي</div><div id="ai-mode" style="font-size:10px;color:rgba(255,255,255,.6)">…</div></div></div>
-    <button onclick="Sanad.aiToggle()" style="color:rgba(255,255,255,.7);background:none;border:none;cursor:pointer;font-size:var(--fs-page)">✕</button>
+<button type="button" id="ai-fab" class="ai-fab" data-action="ai-toggle" aria-expanded="false" aria-controls="ai-panel"
+  aria-label="مساعد سند" title="مساعد سند">${icon('ai')}</button>
+<div id="ai-panel" class="ai-panel" role="dialog" aria-labelledby="ai-title" data-who="${esc(user.username || '')}" hidden>
+  <div class="ai-head">
+    ${icon('ai')}
+    <div style="flex:1;min-width:0">
+      <div class="t" id="ai-title">مساعد سند</div>
+      <div class="ai-eng" id="ai-engine" hidden></div>
+    </div>
+    <button type="button" class="ai-x" data-action="ai-clear" aria-label="مسح المحادثة" title="مسح المحادثة">مسح</button>
+    <button type="button" class="ai-x" data-action="ai-close" aria-label="إغلاق المساعد" title="إغلاق">✕</button>
   </div>
-  <div id="ai-box" style="flex:1;overflow-y:auto;padding:.75rem;display:flex;flex-direction:column;gap:.5rem;background:var(--bg);font-size:var(--fs-ui)">
-    <div style="text-align:center;color:var(--muted);font-size:12px;line-height:1.9;padding:1rem">جرّب: «لخّص مشروع…» · «تقرير أسبوعي» · «المخاطر» · «جودة البيانات» · «أولوياتي» · «انقل الفرصة X إلى فائزة»</div>
-  </div>
-  <div style="padding:.5rem;border-top:1px solid var(--line);display:flex;gap:.5rem">
-    <input id="ai-input" onkeydown="if(event.key==='Enter')Sanad.aiSend()" placeholder="اكتب…" style="flex:1;border:1px solid var(--line);border-radius:10px;padding:.5rem .75rem;font-size:var(--fs-ui)">
-    <button onclick="Sanad.aiSend()" style="color:#fff;border:none;cursor:pointer;padding:0 .9rem;border-radius:10px;background:var(--brand-grad)">↑</button>
+  <div class="ai-log" id="ai-log" role="log" aria-live="polite" aria-label="سجل المحادثة" tabindex="0"></div>
+  <div class="ai-chips" id="ai-chips" aria-label="مهام جاهزة" role="group" hidden></div>
+  <div class="ai-foot">
+    <input class="ai-in" id="ai-input" type="text" autocomplete="off" placeholder="اكتب سؤالك…" aria-label="اكتب سؤالك للمساعد">
+    <button type="button" class="ai-send" id="ai-send" data-action="ai-send" aria-label="إرسال" title="إرسال">↑</button>
   </div>
 </div>
 <div id="scrim" class="scrim" onclick="Sanad.closeDrawer()"></div>
@@ -367,7 +447,7 @@ window.__SANAD_MONTHS=${JSON.stringify(MONTHS_AR)};window.__SANAD_MONTHS_EN=${JS
     <div id="cmdk-list" class="cmdk-list"></div>
   </div>
 </div>
-<script src="/static/app.js"></script><script src="/static/global-search.js" defer></script><script src="/static/pages/guide-tour.js" defer></script>${(scripts || []).map((s) => `<script src="${s}" defer></script>`).join('')}
+<script src="/static/app.js"></script><script src="/static/global-search.js" defer></script><script src="/static/pages/guide-tour.js" defer></script><script src="/static/pages/ai.js" defer></script>${(scripts || []).map((s) => `<script src="${s}" defer></script>`).join('')}
 </body></html>`;
 }
 

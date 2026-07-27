@@ -14,8 +14,12 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
 const ROOT = new URL('..', import.meta.url).pathname;
+// `src/core/ai` نصُّ واجهة بحكم الأمر الواقع: ردّ المساعد يُعرض للمستخدم حرفياً كما تُعرض
+// الصفحة. وكان مُدرَجاً في أهداف **رسائل الأخطاء** وحدها، فبقي نصّ الردود بلا فحص — وتسرّبت
+// منه فعلاً قيمة حالة خام داخل جملة عربية، ورمز أولوية، ومعرّف مرحلة داخلي. الطبقة لا تُقرَّر
+// بمجلدها بل بمن يقرأ مخرجاتها.
 const UI_TARGETS = ['src/web/views', 'src/web/i18n', 'src/core/i18n', 'src/core/mail/templates.js',
-  'src/web/layout.js', 'src/web/nav.js', 'src/web/public/pages'];
+  'src/web/layout.js', 'src/web/nav.js', 'src/web/public/pages', 'src/core/ai'];
 const ERROR_TARGETS = ['src/modules', 'src/core', 'src/web'];
 
 // مصطلحات تقنية ممنوعة في أي نص يقرأه مستخدم أعمال.
