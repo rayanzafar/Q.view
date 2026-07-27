@@ -434,6 +434,17 @@ async function contributionsSection(user, sc, period) {
     figures.push(missing('مخرجات مُسلَّمة في الفترة', 'المخرَج يُسجَّل على المشروع ولا يحمل مالكاً فرداً'));
   }
 
+  // مساهمة الشخص الأولى عمله المنجز لا صفقاته: نفس مرشِّح المهام ونفس نافذة الفترة، بلا حساب ثانٍ.
+  if (sc.lens === 'person') {
+    const tw = taskWhere(sc);
+    const t = await get(`SELECT COUNT(*) total,
+        SUM(CASE WHEN t.completed_at IS NOT NULL AND substr(t.completed_at,1,10) BETWEEN ? AND ? THEN 1 ELSE 0 END) done_period
+      FROM task t LEFT JOIN project p ON p.id = t.project_id
+      WHERE t.deleted_at IS NULL AND ${tw.where}`, [period.from, period.to, ...tw.params]);
+    if (N(t?.total)) { anyBase = true; figures.unshift(figure('مهام أنجزها في الفترة', String(N(t.done_period)), { tone: N(t.done_period) ? 'good' : '' })); }
+    else figures.unshift(missing('مهام أنجزها في الفترة', NO_TASKS_AR.person));
+  }
+
   // الإيراد المعترف به مسجَّل بالشهر لا باليوم — فلا يُقسَّم على أسبوع، ولا يُقدَّر.
   if (['company', 'sector', 'department', 'project'].includes(sc.lens)) {
     if (period.kind === 'week') {

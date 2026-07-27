@@ -232,8 +232,11 @@ export const PURGE_ORDER = [
   'deliverable', 'milestone', 'risk', 'issue', 'decision', 'change_request', 'action_item', 'lesson_learned',
   'crm_activity', 'document', 'saved_view', 'import_row', 'import_run',
   'membership', 'allocation',
+  // المشروع قبل الفرصة: `project.source_opp_id` يشير إلى الفرصة، فحذف الفرصة أولاً يصطدم
+  // بالمفتاح الخارجي. وبرنامج/محفظة المشروع بعده للسبب نفسه معكوساً.
+  'workstream', 'project',
   'opportunity_stage_history', 'opportunity_sector', 'pricing_line', 'proposal', 'opportunity',
-  'workstream', 'project', 'program', 'portfolio',
+  'program', 'portfolio',
   'contact', 'client',
   'employee', 'position', 'team', 'org_unit', 'department', 'sector',
   'session', 'login_history',

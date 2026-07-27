@@ -4,6 +4,10 @@ import { fmtSar } from '../../core/util/ids.js';
 import { all } from '../../core/db/index.js';
 import { myApprovalQueue } from '../../modules/workflow/engine.js';
 import { canControlSchedules } from '../../core/reports/engine.js';
+import {
+  buildPeriodReport, comparePreviousSnapshot, listPeriodSnapshots, lensOptions,
+  periodChoices, PERIOD_KINDS, PERIOD_LABELS_AR,
+} from '../../core/reports/periods.js';
 import { ROLE_LABELS } from '../../core/rbac/matrix.js';
 import { resourceLabel, mailStatusLabel, auditActionLabel, reportName } from '../i18n/glossary.js';
 import { esc, statMini } from './_shared.js';
@@ -111,7 +115,158 @@ function sendWhen(s) {
 }
 const whenText = (iso) => (iso ? `${iso.slice(0, 10)} · ${iso.slice(11, 16)}` : '—');
 
-export async function reportsPage(user) {
+// ══════════════════ تقرير الفترة: اختر فترة وجهة، فيظهر التقرير فوراً ══════════════════
+// قرار العرض المحوري: **الغياب لا يُرسم رقماً**. كل قيمة لا أساس لها تُعرض نصاً في إطار متقطّع
+// ورمادي، وكل قيمة مقيسة تُعرض رقماً بلون واضح — كي لا يقرأ المالك «0» فيظنه قياساً وهو فراغ.
+const TONE_VAR = { good: 'var(--green)', warn: 'var(--amber)', bad: 'var(--red)', '': 'var(--ink2)' };
+
+function figureChip(f) {
+  if (f.display == null) {
+    return `<div style="min-width:150px;flex:1 1 150px;padding:.5rem .7rem;border:1px dashed var(--line);border-radius:10px;background:#fbfcfe">
+      <div style="font-size:var(--fs-micro);color:var(--muted);font-weight:700">${esc(f.label_ar)}</div>
+      <div style="font-size:var(--fs-meta);color:var(--faint);line-height:1.7;margin-top:.15rem">${esc(f.absence_ar || 'لا قياس متاح')}</div></div>`;
+  }
+  return `<div style="min-width:150px;flex:1 1 150px;padding:.5rem .7rem;border:1px solid var(--line);border-radius:10px;background:#fff">
+    <div style="font-size:var(--fs-micro);color:var(--muted);font-weight:700">${esc(f.label_ar)}</div>
+    <div class="tnum" style="font-size:var(--fs-num-sm);font-weight:800;color:${TONE_VAR[f.tone || ''] || TONE_VAR['']}">${esc(f.display)}</div></div>`;
+}
+
+function sectionCard(s) {
+  if (s.state === 'absent') {
+    return card(`<div class="empty-state" style="padding:1.3rem 1rem">
+      <div class="t">${esc(s.title_ar)} — ${esc(s.absence_ar)}</div>
+      ${s.hint_ar ? `<div class="s">${esc(s.hint_ar)}</div>` : ''}</div>`);
+  }
+  const rows = (s.rows || []).length ? `<div style="margin-top:.7rem;border-top:1px dashed var(--line);padding-top:.5rem">
+    <div style="font-size:var(--fs-micro);color:var(--muted);font-weight:700;margin-bottom:.35rem">${esc(s.rows_title_ar || '')}</div>
+    ${s.rows.map((r) => `<div style="display:flex;gap:.6rem;justify-content:space-between;align-items:baseline;padding:.28rem 0;font-size:var(--fs-body)">
+      <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><b>${esc(r.title)}</b>${r.sub ? ` <span style="color:var(--muted)">· ${esc(r.sub)}</span>` : ''}</span>
+      <span style="flex:none;color:${TONE_VAR[r.tone || ''] || TONE_VAR['']};font-size:var(--fs-meta);font-weight:700">${esc(r.meta || '')}</span></div>`).join('')}
+  </div>` : '';
+  return card(`<div style="padding:.8rem 1rem">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:.6rem;margin-bottom:.5rem">
+      <span style="font-weight:800;font-size:var(--fs-title)">${esc(s.title_ar)}</span>
+      ${s.basis_ar ? `<span style="font-size:var(--fs-micro);color:var(--faint);text-align:end">${esc(s.basis_ar)}</span>` : ''}
+    </div>
+    <div style="display:flex;gap:.45rem;flex-wrap:wrap">${s.figures.map(figureChip).join('')}</div>
+    ${rows}
+    ${s.note_ar ? `<div style="font-size:var(--fs-micro);color:var(--muted);margin-top:.55rem">${esc(s.note_ar)}</div>` : ''}
+  </div>`);
+}
+
+// «الجهة» قائمة واحدة تجمع العدسات الست: قرار واحد بدل قائمتين متتاليتين.
+function scopeSelect(options, selected) {
+  const grp = (label, items, lens) => (items.length
+    ? `<optgroup label="${esc(label)}">${items.map((i) => {
+      const v = `${lens}:${i.id}`;
+      return `<option value="${esc(v)}"${v === selected ? ' selected' : ''}>${esc(i.name_ar || '')}${i.sector_name ? ` — ${esc(i.sector_name)}` : ''}</option>`;
+    }).join('')}</optgroup>`
+    : '');
+  return `<select id="rp-scope" name="scope" class="input" aria-label="جهة التقرير" style="min-width:230px">
+    ${options.company ? `<option value="company:"${selected === 'company:' ? ' selected' : ''}>الشركة كاملة</option>` : ''}
+    ${grp('القطاعات', options.sectors, 'sector')}
+    ${grp('الإدارات', options.departments, 'department')}
+    ${grp('الأشخاص', options.people, 'person')}
+    ${grp('المشاريع', options.projects, 'project')}
+    ${grp('الفرص', options.opportunities, 'opportunity')}
+  </select>`;
+}
+
+async function periodReportBlock(user, opts = {}) {
+  const options = await lensOptions(user);
+  const kind = PERIOD_KINDS.includes(String(opts.period)) ? String(opts.period) : 'week';
+  const choices = periodChoices(kind, new Date(), 8);
+  const anchor = choices.some((c) => c.anchor === opts.anchor) ? opts.anchor : choices[0].anchor;
+
+  // الجهة الافتراضية: أوسع ما يملكه القارئ — الشركة، فأول قطاع، فهو نفسه.
+  const fallback = options.company ? 'company:'
+    : options.sectors.length ? `sector:${options.sectors[0].id}`
+      : `person:${user.id}`;
+  const scope = typeof opts.scope === 'string' && opts.scope.includes(':') ? opts.scope : fallback;
+  const [lens, rawTarget] = scope.split(':');
+  const targetId = rawTarget || null;
+
+  const toolbar = `<form id="rp-form" method="get" action="/app/reports" class="toolbar" style="margin-bottom:.8rem;gap:.5rem">
+    ${scopeSelect(options, scope)}
+    <select id="rp-kind" name="period" class="input" aria-label="نوع الفترة">
+      ${PERIOD_KINDS.map((k) => `<option value="${k}"${k === kind ? ' selected' : ''}>${esc(PERIOD_LABELS_AR[k])}</option>`).join('')}
+    </select>
+    <select id="rp-anchor" name="anchor" class="input" aria-label="الفترة" style="min-width:200px">
+      ${choices.map((c) => `<option value="${esc(c.anchor)}"${c.anchor === anchor ? ' selected' : ''}>${esc(c.label_ar)}${c.current ? ' — الحالية' : ''}</option>`).join('')}
+    </select>
+    <button type="submit" class="btn btn-primary">اعرض التقرير</button>
+  </form>`;
+
+  let report;
+  try {
+    report = await buildPeriodReport(user, { period: kind, anchor, lens, targetId });
+  } catch (e) {
+    return toolbar + card(`<div class="empty-state" style="padding:1.6rem 1rem">
+      <div class="t">تعذّر عرض هذا التقرير</div>
+      <div class="s">${esc(e.message || 'اختر جهة أخرى من القائمة.')}</div></div>`);
+  }
+
+  const [snapshots, cmp] = await Promise.all([
+    listPeriodSnapshots(user, { lens, targetId }).catch(() => []),
+    comparePreviousSnapshot(user, report).catch(() => ({ available: false, message_ar: '' })),
+  ]);
+
+  const q = `period=${encodeURIComponent(kind)}&anchor=${encodeURIComponent(anchor)}&lens=${encodeURIComponent(lens)}&targetId=${encodeURIComponent(targetId || '')}`;
+  const stateChip = report.period.future ? pill('لم تبدأ بعد', 'slate')
+    : report.period.partial ? pill('فترة جارية — حتى تاريخه', 'amber') : pill('فترة مكتملة', 'green');
+
+  const head = card(`<div style="padding:.9rem 1.1rem">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:.8rem;flex-wrap:wrap">
+      <div>
+        <div style="font-weight:800;font-size:var(--fs-page)">${esc(report.title_ar)}</div>
+        <div style="font-size:var(--fs-body);color:var(--muted);margin-top:.15rem">${esc(report.period.label_ar)} · ${esc(report.target.kind_ar)}${report.target.parent_ar ? ` · ${esc(report.target.parent_ar)}` : ''}</div>
+        <div style="margin-top:.4rem">${stateChip}</div>
+      </div>
+      <div style="display:flex;gap:.45rem;flex-wrap:wrap">
+        <a class="btn btn-sm" target="_blank" rel="noopener" href="/api/reports/period/print?${q}">طباعة</a>
+        <form method="post" action="/api/reports/period/issue" target="_blank" style="display:inline">
+          <input type="hidden" name="period" value="${esc(kind)}"><input type="hidden" name="anchor" value="${esc(anchor)}">
+          <input type="hidden" name="lens" value="${esc(lens)}"><input type="hidden" name="targetId" value="${esc(targetId || '')}">
+          <button type="submit" class="btn btn-sm btn-primary">إصدار وحفظ نسخة</button>
+        </form>
+      </div>
+    </div>
+    ${report.context.length ? `<div style="display:flex;gap:.45rem;flex-wrap:wrap;margin-top:.7rem;padding-top:.6rem;border-top:1px dashed var(--line)">
+      <div style="width:100%;font-size:var(--fs-micro);color:var(--faint);font-weight:700;margin-bottom:.2rem">سياق منذ بداية السنة — خارج حدود الفترة</div>
+      ${report.context.map((c) => `<div style="min-width:140px;padding:.4rem .6rem;border:1px solid var(--line);border-radius:10px">
+        <div style="font-size:var(--fs-micro);color:var(--muted)">${esc(c.label_ar)}</div>
+        <div class="tnum" style="font-size:var(--fs-ui);font-weight:800;color:var(--ink2)">${esc(c.display)}</div></div>`).join('')}
+    </div>` : ''}
+  </div>`);
+
+  const compare = card(`<div style="padding:.8rem 1rem">
+    <div style="font-weight:800;font-size:var(--fs-title);margin-bottom:.4rem">مقارنة بالفترة السابقة</div>
+    ${cmp.available
+    ? (cmp.deltas || []).length
+      ? cmp.deltas.map((d) => `<div style="display:flex;justify-content:space-between;gap:.6rem;font-size:var(--fs-body);padding:.22rem 0">
+          <span style="color:var(--muted)">${esc(d.section_ar)} · ${esc(d.label_ar)}</span>
+          <span class="tnum" style="font-weight:700">${esc(d.before)} ← ${esc(d.after)}</span></div>`).join('')
+      : `<div style="font-size:var(--fs-body);color:var(--muted)">لا فرق بين ${esc(cmp.period_label)} وهذه الفترة في الأرقام المحفوظة.</div>`
+    : `<div style="font-size:var(--fs-body);color:var(--muted)">${esc(cmp.message_ar || 'لا نسخة محفوظة للفترة السابقة.')}</div>`}
+  </div>`);
+
+  const saved = card(`<div style="padding:.8rem 1rem">
+    <div style="font-weight:800;font-size:var(--fs-title);margin-bottom:.4rem">النسخ المحفوظة لهذه الجهة</div>
+    ${snapshots.length
+    ? snapshots.slice(0, 8).map((s) => `<div style="display:flex;justify-content:space-between;gap:.6rem;font-size:var(--fs-body);padding:.22rem 0">
+        <a target="_blank" rel="noopener" href="/api/reports/period/snapshot/${esc(s.id)}" style="color:var(--brand);font-weight:700">${esc(s.period_label || '')}</a>
+        <span style="color:var(--muted);font-size:var(--fs-meta)" class="tnum">${esc(String(s.created_at || '').slice(0, 10))}${s.created_by_name ? ` · ${esc(s.created_by_name)}` : ''}</span></div>`).join('')
+    : '<div style="font-size:var(--fs-body);color:var(--muted)">لا نسخ محفوظة بعد — «إصدار وحفظ نسخة» يحفظ صورة الفترة كما هي اليوم لتُقارن لاحقاً.</div>'}
+  </div>`);
+
+  return `${toolbar}${head}
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:.7rem;margin-top:.7rem">
+      ${report.sections.map(sectionCard).join('')}
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:.7rem;margin-top:.7rem">${compare}${saved}</div>`;
+}
+
+export async function reportsPage(user, opts = {}) {
   const defs = await all('SELECT * FROM report_definition WHERE active = 1 ORDER BY id');
   const groups = await all('SELECT * FROM recipient_group ORDER BY name_ar');
   const schedules = await all('SELECT rs.*, rd.name_ar rname, rd.key rkey, rg.name_ar gname FROM report_schedule rs JOIN report_definition rd ON rd.id = rs.report_id LEFT JOIN recipient_group rg ON rg.id = rs.recipient_group_id ORDER BY rs.created_at DESC LIMIT 50');
@@ -143,6 +298,9 @@ export async function reportsPage(user) {
     <td style="padding:.5rem .75rem;font-size:11px;color:var(--muted)">${q.created_at.slice(0, 16).replace('T', ' ')}</td></tr>`).join('');
 
   const body = `
+    <div style="font-weight:800;font-size:var(--fs-page);margin-bottom:.5rem">تقرير الفترة</div>
+    ${await periodReportBlock(user, opts)}
+    <div style="height:1px;background:var(--line);margin:1.6rem 0 1.1rem"></div>
     <div style="font-weight:800;font-size:var(--fs-title);margin-bottom:.5rem">التقارير المتاحة</div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.75rem;margin-bottom:1.25rem">${reportCards}</div>
     ${!mayControl ? card(`<div style="padding:1rem;font-size:var(--fs-ui);color:var(--muted)">جدولة التقارير تتطلب صلاحية إدارية. تستطيع هنا معاينة أي تقرير أو إرسال نسخة تجريبية إلى بريدك.</div>`)
