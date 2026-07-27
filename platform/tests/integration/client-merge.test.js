@@ -177,6 +177,37 @@ test('فكّ ما ليس مدموجاً خطأ واضح لا عملية صامت
   await assert.rejects(() => C.unmergeClient(ctx(admin), ids.amanaRiyadh), /غير مدموجة/);
 });
 
+// ── الجهة واحدة، والعمل موزَّع على قطاعاتنا ─────────────────────────────────
+// قرار المالك: لا تُقسَم الجهة إلى عميلين لأن قطاعين يخدمانها — تبقى عميلاً واحداً باسمها
+// ويظهر التوزيع داخل صفحتها. هذا الفحص يقيس الحالة بعد الدمج بالضبط: وزارة واحدة، عليها
+// فرصة من قطاع الحلول ومشروع وعقد من قطاع الاستشارات، فيجب أن تُقرأ **جهةً واحدة بقطاعين**.
+test('صفحة الجهة تعرض عملنا معها موزَّعاً على قطاعاتنا — بعد الدمج قطاعان تحت اسم واحد', async () => {
+  const ov = await C.clientOverview(admin, ids.moe);
+  assert.ok(Array.isArray(ov.by_sector), 'التوزيع جزء من حمولة الصفحة');
+  const names = ov.by_sector.map((s) => s.name_ar).sort();
+  assert.deepEqual(names, ['قطاع الاستشارات', 'قطاع الحلول'],
+    'القطاعان اللذان كانا عميلين منفصلين صارا سطرين تحت جهة واحدة');
+
+  const con = ov.by_sector.find((s) => s.sector_id === 'CON');
+  assert.equal(con.projects, 1, 'مشروع الاستشارات');
+  assert.equal(con.project_names[0].name_ar, 'مشروع الاستشارات', 'ويُسمّى — «أيش شغّال معهم»');
+
+  const sol = ov.by_sector.find((s) => s.sector_id === 'SOL');
+  assert.equal(sol.open_opps, 1, 'فرصة الحلول المفتوحة');
+  assert.equal(sol.open_value_halalas, 100000000, 'بقيمتها');
+  assert.equal(sol.projects, 0, 'ولا مشروع للحلول — الصفر هنا قياس لا غياب');
+});
+
+test('القطاع يُقرأ من صف العمل لا من صف الجهة — والعمل بلا قطاع يُسمّى ولا يُخفى', async () => {
+  await db.insert('project', { id: 'p_nosec', name_ar: 'مشروع بلا قطاع', client_id: ids.amanaRiyadh,
+    status: 'ACTIVE', created_at: T });
+  const ov = await C.clientOverview(admin, ids.amanaRiyadh);
+  const orphan = ov.by_sector.find((s) => s.sector_id === null);
+  assert.ok(orphan, 'الفراغ حالة حقيقية في البيانات — تُسمّى ولا تُلحق بقطاع بالتخمين');
+  assert.equal(orphan.name_ar, 'بلا قطاع مسجَّل');
+  assert.equal(orphan.projects, 1);
+});
+
 // ── حارس القائمة ────────────────────────────────────────────────────────────
 test('قائمة الجداول الحاملة للجهة مطابقة للمخطط — لا واحد منسيّ', async () => {
   const declared = new Set(C.CLIENT_OWNED_TABLES);

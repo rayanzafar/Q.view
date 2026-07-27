@@ -398,9 +398,60 @@ export async function clientOverview(user, clientId) {
   const weighted = Math.round(open.reduce((a, o) => a + (o.value_halalas || 0) * ((o.win_pct || 0) / 100), 0));
   const activeProjects = projects.filter((p) => p.status === 'IN_PROGRESS').length;
 
+  // ── الجهة واحدة، والعمل عليها موزَّع على قطاعاتنا ──────────────────────────
+  // قرار المالك: الجهة لا تُقسَم إلى عميلين لأن قطاعين يخدمانها — تبقى عميلاً واحداً
+  // **ويظهر التقسيم هنا**، داخل صفحتها. فرقٌ جوهري: الأول يكسر هوية العميل ويقسم تركّزه
+  // وأعمار ديونه نصفين، والثاني يجيب سؤال «مَن منّا يشتغل معهم وعلى ماذا» بلا كسر شيء.
+  //
+  // القطاع يُقرأ من صف العمل نفسه (`sector_id` على الفرصة والمشروع)، لا من صف العميل:
+  // العميل لا يملك قطاعاً — القطاع صفةُ العمل لا صفةُ الجهة.
+  const sectorNames = new Map((await all(
+    'SELECT id, name_ar FROM sector WHERE deleted_at IS NULL')).map((s) => [s.id, s.name_ar]));
+  const bySectorMap = new Map();
+  const bucket = (sid) => {
+    const key = sid || '';
+    if (!bySectorMap.has(key)) {
+      bySectorMap.set(key, {
+        sector_id: sid || null,
+        // «بلا قطاع» حالة حقيقية في البيانات وتُسمّى، لا تُخفى ولا تُلحق بقطاع بالتخمين.
+        name_ar: sid ? (sectorNames.get(sid) || 'قطاع غير معروف') : 'بلا قطاع مسجَّل',
+        open_opps: 0, open_value_halalas: 0, weighted_halalas: 0,
+        won_opps: 0, lost_opps: 0,
+        projects: 0, active_projects: 0, project_value_halalas: 0,
+        project_names: [],
+      });
+    }
+    return bySectorMap.get(key);
+  };
+  for (const o of opps) {
+    const b = bucket(o.sector_id);
+    if (o.is_won) b.won_opps++;
+    else if (o.is_lost) b.lost_opps++;
+    else {
+      b.open_opps++;
+      b.open_value_halalas += o.value_halalas || 0;
+      b.weighted_halalas += Math.round((o.value_halalas || 0) * ((o.win_pct || 0) / 100));
+    }
+  }
+  for (const p of projects) {
+    const b = bucket(p.sector_id);
+    b.projects++;
+    if (p.status === 'IN_PROGRESS') b.active_projects++;
+    b.project_value_halalas += p.value_halalas || 0;
+    // أسماء المشاريع الجارية أولاً — «أيش شغّال معهم» سؤال عن الحاضر لا عن الأرشيف.
+    b.project_names.push({ id: p.id, name_ar: p.name_ar, status: p.status, rag: p.rag,
+      progress_pct: p.progress_pct, active: p.status === 'IN_PROGRESS' });
+  }
+  const by_sector = [...bySectorMap.values()]
+    .map((b) => ({ ...b, project_names: b.project_names.sort((x, y) => (y.active ? 1 : 0) - (x.active ? 1 : 0)) }))
+    .sort((a, b) => (b.active_projects - a.active_projects)
+      || (b.project_value_halalas - a.project_value_halalas)
+      || (b.open_value_halalas - a.open_value_halalas));
+
   return {
     client,
     contacts,
+    by_sector,
     kpis: {
       fy_revenue_halalas: fyRevenue,
       lifetime_revenue_halalas: lifetime,

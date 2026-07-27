@@ -469,9 +469,40 @@ export async function clientDetailPage(user, clientId) {
     return `<div class="dd-row"><span>${i.code ? `فاتورة <bdi>${esc(i.code)}</bdi>` : 'فاتورة'}<span style="color:var(--faint);font-size:10.5px"> · ${(i.issue_date || '').toString().slice(0, 10) || 'بلا تاريخ'} · ${tr(i.status)}</span></span><b class="tnum">${fmtSar(out)}</b></div>`;
   }))}</div>`)}`;
 
+  // ── «مَن منّا يشتغل معهم وعلى ماذا» — العمل موزَّعاً على قطاعاتنا ─────────────
+  // قرار المالك: الجهة تبقى **عميلاً واحداً** باسمها الصحيح مهما تعدّدت قطاعاتنا العاملة
+  // معها، ويظهر التقسيم هنا لا في سجل العملاء. تقسيمه إلى عميلين يكسر هويّته ويشطر تركّزه
+  // وأعمار ديونه؛ وعرضه هنا يجيب السؤال نفسه بلا كسر شيء.
+  const secRow = (s) => {
+    const projs = s.project_names.slice(0, 6);
+    const more = s.project_names.length - projs.length;
+    const chip = (p) => `<a href="/app/project/${esc(p.id)}" class="pill" style="text-decoration:none;font-size:11px;${p.active ? '' : 'opacity:.62'}">
+        ${esc(p.name_ar)}${p.active && p.progress_pct != null ? ` <span class="tnum" style="color:var(--faint)">${p.progress_pct}%</span>` : ''}</a>`;
+    const facts = [
+      s.active_projects ? `<b class="tnum">${s.active_projects}</b> مشروع جارٍ` : null,
+      s.projects > s.active_projects ? `<span class="tnum">${s.projects - s.active_projects}</span> منتهٍ` : null,
+      s.open_opps ? `<b class="tnum">${s.open_opps}</b> فرصة مفتوحة · ${fmtSar(s.open_value_halalas)}` : null,
+      s.won_opps ? `<span class="tnum">${s.won_opps}</span> فوز` : null,
+    ].filter(Boolean);
+    return `<div style="padding:.65rem 0;border-bottom:1px dashed var(--line)">
+      <div style="display:flex;gap:.6rem;align-items:baseline;flex-wrap:wrap">
+        <b style="font-size:13px;color:var(--ink2)">${esc(s.name_ar)}</b>
+        <span style="font-size:11.5px;color:var(--muted)">${facts.join(' · ') || 'لا عمل مسجَّل بعد'}</span>
+      </div>
+      ${projs.length ? `<div style="display:flex;gap:.3rem;flex-wrap:wrap;margin-top:.4rem">${projs.map(chip).join('')}${more > 0 ? `<span style="font-size:11px;color:var(--faint);align-self:center">و${more} غيرها</span>` : ''}</div>` : ''}
+    </div>`;
+  };
+  const sectorsCard = card(`<div style="padding:.75rem .9rem .2rem">
+    <div style="font-weight:800;font-size:13px;color:var(--ink2)">قطاعاتنا العاملة مع هذه الجهة</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:.3rem">الجهة عميل واحد باسمها؛ وهذا توزيع عملنا معها على قطاعاتنا.</div>
+    ${(d.by_sector || []).length
+    ? (d.by_sector || []).map(secRow).join('')
+    : '<div style="font-size:12px;color:var(--muted);padding:.5rem 0">لا مشاريع ولا فرص مسجَّلة على هذه الجهة بعد.</div>'}
+  </div>`);
+
   const body = `${header}${kpiBand}
     <div style="display:grid;grid-template-columns:1.5fr 1fr;gap:.9rem;align-items:start">
-      <div style="display:flex;flex-direction:column;gap:.9rem;min-width:0">${timelineCard}${oppsCard}${workCard}</div>
+      <div style="display:flex;flex-direction:column;gap:.9rem;min-width:0">${sectorsCard}${timelineCard}${oppsCard}${workCard}</div>
       <div style="display:flex;flex-direction:column;gap:.9rem;min-width:0">${contactsCard}${revCard}${docsCard}${valueCard}</div>
     </div>
     ${dd}
