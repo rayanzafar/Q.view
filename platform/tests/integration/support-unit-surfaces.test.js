@@ -292,3 +292,40 @@ test('النقل بين قطاعَي تسليم يبقى عاملاً ومدقَ
   assert.equal(rows[0].sector_id, 'SOLUTIONS');
   assert.match(JSON.parse(rows[0].detail_json).moveSector, /CONSULTING→SOLUTIONS/);
 });
+
+// ═══════ (٨) الباب الآخر: إنشاء فرصة على وحدة مساندة مرفوض كذلك ═══════
+// إغلاق باب النقل وحده يترك المال يتسرّب من باب الإنشاء — وهو أخطر لأنه يُفتح **ضمناً**:
+// القطاع الافتراضي عند الإنشاء هو قطاع المنشئ، فعضو وحدة مساندة يُنشئ فرصةً فتُولَد خارج كل
+// مقارنة بلا أن يطلب ذلك أحد ولا أن يظهر خطأ.
+
+test('إنشاء فرصة على وحدة مساندة مرفوض — صراحةً وضمناً', async () => {
+  const before = (await all('SELECT id FROM opportunity')).length;
+  // صراحةً: القطاع مذكور في الطلب
+  await assert.rejects(
+    () => opps.createOpportunity(CTX(admin), { title_ar: 'فرصة مسرَّبة', sector_id: 'SHARED' }),
+    (e) => {
+      assert.equal(e.status, 400);
+      assert.match(e.message, /وحدة مساندة/);
+      return true;
+    });
+  // ضمناً: القطاع غير مذكور، فيُشتقّ من قطاع المنشئ نفسه — وهو وحدة مساندة
+  const shMember = U('u_sh_member', 'admin', 'SHARED', 'company');
+  await assert.rejects(
+    () => opps.createOpportunity(CTX(shMember), { title_ar: 'فرصة مسرَّبة ضمناً' }),
+    (e) => e.status === 400 && /وحدة مساندة/.test(e.message));
+  assert.equal((await all('SELECT id FROM opportunity')).length, before, 'لا صف يُكتب في الحالتين');
+});
+
+test('إنشاء فرصة على قطاع تسليم يبقى عاملاً — لم يُغلق الباب على الاستعمال الصحيح', async () => {
+  const r = await opps.createOpportunity(CTX(admin), { title_ar: 'فرصة سليمة', sector_id: 'SOLUTIONS' });
+  assert.equal(r.sector_id, 'SOLUTIONS');
+  assert.equal((await get('SELECT sector_id FROM opportunity WHERE id = ?', [r.id])).sector_id, 'SOLUTIONS');
+});
+
+test('قطاع مجهول أو غائب عند الإنشاء يُرفض بدل أن يُكتب صفٌّ بلا قطاع', async () => {
+  await assert.rejects(() => opps.createOpportunity(CTX(admin), { title_ar: 'س', sector_id: 'GHOST' }),
+    (e) => e.status === 400 && /حدّد القطاع/.test(e.message));
+  const noSector = U('u_nosec', 'admin', null, 'company');
+  await assert.rejects(() => opps.createOpportunity(CTX(noSector), { title_ar: 'س' }),
+    (e) => e.status === 400 && /حدّد القطاع/.test(e.message));
+});

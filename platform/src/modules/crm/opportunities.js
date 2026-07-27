@@ -63,6 +63,14 @@ export async function createOpportunity(ctx, data) {
   const sectorId = data.sector_id || user.sector_id;
   if (!can(user, 'create', 'opportunity', { sector_id: sectorId })) throw forbidden('خارج نطاق قطاعك');
   if (!data.title_ar) throw badRequest('عنوان الفرصة مطلوب');
+  // نفس حارس النقل، على باب الإنشاء: الفرصة تُنسب إلى قطاع تسليم لا إلى وحدة مساندة. الباب هنا
+  // أخطر من باب النقل لأنه يُفتح ضمناً — القطاع الافتراضي هو قطاع المنشئ، فعضو «الخدمات المشتركة»
+  // أو رئيس تطوير الأعمال يُنشئ فرصةً فتُولَد خارج كل مقارنة بلا أن يطلب ذلك أحد ولا أن يظهر خطأ.
+  // إغلاق باب النقل وحده يترك المال يتسرّب من الباب الآخر.
+  const sec = sectorId ? await get('SELECT id, name_ar, kind FROM sector WHERE id = ? AND deleted_at IS NULL', [sectorId]) : null;
+  if (!sec) throw badRequest('حدّد القطاع المسؤول عن الفرصة');
+  if (isSupportUnit(sec))
+    throw badRequest(`«${sec.name_ar}» وحدة مساندة على مستوى الشركة وليست قطاع تسليم — الفرصة تُنسب إلى قطاع تسليم. اختر قطاعاً من القائمة.`);
   const oid = id('opp');
   const now = nowIso();
   await insert('opportunity', {
