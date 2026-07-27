@@ -44,15 +44,20 @@ async function assertNameFree({ table, nameAr, scopeCol = null, scopeVal = null,
   if (clash) throw badRequest(`${label} «${String(nameAr).trim()}» مستخدم بالفعل — اختر اسماً مختلفاً أو عدّل السجل القائم`);
 }
 
-// تاريخ التعيين يُخزَّن نصاً بصيغة سنة-شهر-يوم (ISO) قابلاً للنقل بين المحرّكين. فارغ ⟵ غير معروف (null).
-// نتحقق من الصيغة ومن كونه تاريخاً حقيقياً كي لا نُدخل قيمة لا تُقرأ لاحقاً في التقارير.
-function normHireDate(v) {
+// تواريخ الخدمة تُخزَّن نصاً بصيغة سنة-شهر-يوم (ISO) قابلاً للنقل بين المحرّكين والمقارنة نصياً.
+// فارغ ⟵ غير معروف (null). نتحقق من الصيغة ومن كونه تاريخاً حقيقياً كي لا نُدخل قيمة لا تُقرأ
+// لاحقاً في التقارير. مُحقِّق واحد لطرفَي الخدمة (تعيين/انتهاء) — لا نسخة ثانية تفترق قواعدها.
+function normServiceDate(v, label, sample) {
   if (v == null || String(v).trim() === '') return null;
   const s = String(v).trim().slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s) || Number.isNaN(Date.parse(s)))
-    throw badRequest('تاريخ التعيين غير صحيح — أدخله بصيغة سنة-شهر-يوم مثل 2024-03-01');
+    throw badRequest(`${label} غير صحيح — أدخله بصيغة سنة-شهر-يوم مثل ${sample}`);
   return s;
 }
+const normHireDate = (v) => normServiceDate(v, 'تاريخ التعيين', '2024-03-01');
+// تاريخ انتهاء الخدمة (المغادرة): فارغ ⟵ ما زال على رأس العمل، لا «تاريخ مجهول».
+const normEndDate = (v) => normServiceDate(v, 'تاريخ انتهاء الخدمة', '2026-06-30');
+const todayIso = () => nowIso().slice(0, 10);
 
 export async function orgTree(user) {
   // Gate: the org hierarchy (and its financial targets) must not be readable by any authenticated user.
@@ -209,7 +214,8 @@ export async function moveEmployee(ctx, employeeId, data) {
   return await get('SELECT * FROM employee WHERE id = ?', [employeeId]);
 }
 
-// General attribute edit (name / job / type / status / active + salary when the caller may read it).
+// General attribute edit (name / job / type / status / active / service dates + salary when the
+// caller may read it). Same gate for every field — no widened permission for the departure date.
 // A sector manager editing across sectors is blocked by the sector-scoped 'update employee' grant.
 export async function updateEmployee(ctx, employeeId, data) {
   const e = await get('SELECT * FROM employee WHERE id = ? AND deleted_at IS NULL', [employeeId]);
@@ -230,7 +236,27 @@ export async function updateEmployee(ctx, employeeId, data) {
   const patch = { updated_at: nowIso() };
   for (const k of ['name_ar', 'name_en', 'job_title', 'employment_type', 'status', 'sector_id', 'department_id', 'position_id']) if (k in data) patch[k] = data[k];
   if ('hire_date' in data) patch.hire_date = normHireDate(data.hire_date);
+  if ('end_date' in data) patch.end_date = normEndDate(data.end_date);
+  // اتساق طرفَي الخدمة: لا تسبق المغادرة التعيين. المقارنة على القيمتين **الفعليتين بعد الحفظ**
+  // لا على المُرسل وحده، وإلا مرّ تعديل تاريخ التعيين وحده فوق مغادرة مسجَّلة سلفاً فبقي السجل
+  // متناقضاً. المقارنة نصية وهي صحيحة تماماً لصيغة سنة-شهر-يوم (ISO).
+  if ('hire_date' in patch || 'end_date' in patch) {
+    const hire = 'hire_date' in patch ? patch.hire_date : e.hire_date;
+    const end = 'end_date' in patch ? patch.end_date : e.end_date;
+    if (hire && end && end < hire)
+      throw badRequest(`تاريخ انتهاء الخدمة ${end} أسبق من تاريخ التعيين ${hire} — صحّح أحد التاريخين ثم احفظ`);
+  }
   if ('active' in data) patch.active = data.active ? 1 : 0;
+  // ── قرار: تاريخ مغادرة **ماضٍ** يُنزل «نشط» إلى صفر ضمن العملية نفسها ──
+  // البديل (ترك «نشط» كما هو وانتظار خطوة ثانية من المسؤول) يُنتج حالة يراها الجميع ولا يصدّقها
+  // أحد: شخص تاريخ مغادرته أمس وما زال محسوباً في طاقة الفريق وفي كشف الإشغال — وهي بالضبط
+  // الكذبة التي جاء هذا الحقل ليغلقها. والاشتقاق هنا متوقَّع لا خفي، بأربعة قيود:
+  //   (١) الاختيار الصريح يفوز دائماً: إن ذكر الطلب «نشط» صراحةً احترمناه كما هو بلا تدخّل.
+  //   (٢) لا ينطبق على تاريخ مستقبلي: من مغادرته الشهر القادم ما زال على رأس العمل اليوم.
+  //   (٣) مسح تاريخ المغادرة لا يُعيد التنشيط تلقائياً: إعادة موظف للعمل قرار بشري صريح،
+  //       والتنشيط الصامت أخطر من التعطيل الصامت.
+  //   (٤) العمود يظهر في سطر التدقيق ضمن الأعمدة المعدَّلة، فيرى المراجع أن «نشط» تغيّر هنا.
+  else if (patch.end_date && patch.end_date <= todayIso() && e.active !== 0) patch.active = 0;
   // moving to another sector requires update rights on the TARGET sector too
   if (patch.sector_id && patch.sector_id !== e.sector_id && !can(ctx.user, 'update', 'employee', { sector_id: patch.sector_id })) throw forbidden('لا تملك صلاحية على القطاع الهدف');
   if ('salary_sar' in data && can(ctx.user, 'read', 'salary')) patch.salary_halalas = toHalalas(data.salary_sar);
@@ -426,7 +452,8 @@ export async function staffingRoster(user, opts = {}) {
     const staffedMonths = months.filter((m) => m > 0).length;
     const intensity = staffedMonths ? Math.round(months.filter((m) => m > 0).reduce((a, b) => a + b, 0) / staffedMonths) : 0; // avg load WHEN staffed
     return { id: e.id, name_ar: e.name_ar, name_en: e.name_en, job_title: e.job_title, employment_type: e.employment_type,
-      status: e.status, active: e.active, sector_id: e.sector_id, hire_date: e.hire_date,
+      // طرفا الخدمة معاً: بلا تاريخ المغادرة يبقى «غير نشط» في الكشف بلا إجابة على «متى غادر»
+      status: e.status, active: e.active, sector_id: e.sector_id, hire_date: e.hire_date, end_date: e.end_date,
       // QH-1: الراتب حقل حساس — يُسلسَل فقط لمن يملك صلاحية قراءته (HR/admin)، في الواجهة والـAPI معاً
       ...(can(user, 'read', 'salary') ? { salary_halalas: e.salary_halalas } : {}),
       months, annualUtil, currentUtil, prevMonthUtil, monthDelta, oppLoadPct, staffedMonths, intensity, peak: Math.max(0, ...months),

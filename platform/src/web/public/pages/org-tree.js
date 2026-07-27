@@ -1,5 +1,6 @@
-// صفحة الهيكل التنظيمي — إدارة ذاتية للإدارات والوحدات داخل الشجرة.
+// صفحة الهيكل التنظيمي — إدارة ذاتية للإدارات والوحدات داخل الشجرة + الإسناد الجماعي للعمل.
 // كل إجراء يمر عبر الخدمة التي تفحص الصلاحية وتُدقّق؛ إخفاء الأزرار تجميل لا حماية.
+// القوائم كلها مبنية على الخادم — هذا الملف يضيف التحديد والإسناد فوقها، ولا يبني صفاً واحداً.
 (function () {
   'use strict';
   function toast(msg, bad) {
@@ -16,12 +17,15 @@
       body: body ? JSON.stringify(body) : undefined,
     });
     var j = await r.json().catch(function () { return {}; });
-    if (!r.ok) throw new Error((j.error && j.error.message) || ('تعذّر تنفيذ الطلب (' + r.status + ')'));
+    if (!r.ok) throw new Error((j.error && j.error.message) || 'تعذّر تنفيذ الطلب — أعد المحاولة');
     return j;
   }
   var reload = function () { setTimeout(function () { location.reload(); }, 400); };
   var val = function (id) { var el = document.getElementById(id); return el ? el.value.trim() : ''; };
+  var $ = function (sel, root) { return (root || document).querySelector(sel); };
+  var $$ = function (sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); };
 
+  // ── الشجرة: إدارات ووحدات ──
   async function depAdd(sectorId) {
     var name = val('d-' + sectorId);
     if (!name) { toast('اكتب اسم الإدارة أولاً', true); return; }
@@ -47,12 +51,120 @@
     try { await api('/org/departments/' + id, 'PATCH', { sector_id: sectorId }); toast('نُقلت الإدارة ✓'); reload(); }
     catch (e) { if (sel) sel.value = ''; toast(e.message, true); }
   }
+  // تعيين مسؤول الإدارة (أو رفعه) — القائمة نفسها هي السطر الذي كان يقول «بلا مسؤول معيَّن».
+  async function depManager(sel) {
+    var prev = sel.dataset.prev || '';
+    var next = sel.value;
+    if (next === prev) return;
+    var name = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : '';
+    try {
+      await api('/org/departments/' + sel.dataset.id, 'PATCH', { manager_user_id: next });
+      sel.dataset.prev = next;
+      toast(next ? 'مسؤول الإدارة: ' + name + ' ✓' : 'رُفع مسؤول الإدارة ✓');
+      reload();
+    } catch (e) { sel.value = prev; toast(e.message, true); }
+  }
+
   async function depDel(id, name) {
     if (!window.confirm('حذف الإدارة «' + name + '»؟ لن يتم الحذف إن كان بها موظفون أو وحدات.')) return;
     try { await api('/org/departments/' + id, 'DELETE'); toast('حُذفت الإدارة ✓'); reload(); }
     catch (e) { toast(e.message, true); }
   }
 
+  // ── شاشة الإسناد: تحديد متعدد ثم إسناد دفعة واحدة إلى إدارة واحدة ──
+  var boxes = function () { return $$('.asg-cb:not([disabled])'); };
+  var picked = function () { return boxes().filter(function (b) { return b.checked; }); };
+
+  function syncBar() {
+    var n = picked().length;
+    var out = $('#asg-n');
+    if (out) out.textContent = String(n);
+    var btn = $('[data-action="asg-apply"]');
+    if (btn) btn.disabled = n === 0;
+    // شريط الإجراء يطفو ما دام هناك تحديد، كي لا يختفي فوق قائمة طويلة
+    var bar = $('.asg-bar'), wrap = $('.asg-barwrap');
+    if (bar && wrap) {
+      if (n > 0 && !bar.classList.contains('float')) {
+        wrap.style.minHeight = bar.offsetHeight + 'px';
+        bar.classList.add('float');
+      } else if (n === 0 && bar.classList.contains('float')) {
+        bar.classList.remove('float');
+        wrap.style.minHeight = '';
+      }
+    }
+    var all = $('#asg-all');
+    var live = boxes();
+    if (all) {
+      all.checked = live.length > 0 && n === live.length;
+      all.indeterminate = n > 0 && n < live.length;
+    }
+  }
+
+  function rowState(id, text, kind) {
+    var tr = $('tr[data-row="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]');
+    if (!tr) return false;   // صف اختفى من الصفحة ⟵ السبب يُرفع إلى الملخص بدل أن يضيع
+    var cell = $('.asg-state', tr);
+    if (cell) { cell.textContent = text; cell.className = 'asg-state ' + kind; }
+    tr.classList.remove('done', 'bad');
+    tr.classList.add(kind === 'ok' ? 'done' : 'bad');
+    if (kind === 'ok') {
+      var cb = $('.asg-cb', tr);
+      if (cb) { cb.checked = false; cb.disabled = true; }
+    }
+    return true;
+  }
+
+  // ملخص النتيجة أعلى الجدول: ما نجح لا يضيع حين يفشل غيره — والسبب العربي يبقى بجانب صفه.
+  function showResult(html, tone) {
+    var box = $('#asg-result');
+    if (!box) return;
+    box.innerHTML = '<div class="alert ' + tone + '" style="margin-bottom:.8rem">'
+      + '<div>' + html + '</div></div>';
+    box.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+  var textNode = function (s) { var d = document.createElement('span'); d.textContent = s == null ? '' : String(s); return d.outerHTML; };
+
+  async function assignApply(btn) {
+    var sel = $('#asg-dep');
+    var depId = sel ? sel.value : '';
+    if (!depId) { toast('اختر الإدارة المسؤولة أولاً', true); if (sel) sel.focus(); return; }
+    var chosen = picked();
+    if (!chosen.length) { toast('حدّد سجلاً واحداً على الأقل', true); return; }
+    var ids = chosen.map(function (b) { return b.dataset.id; });
+    var depName = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : '';
+    var label = btn.textContent;
+    btn.disabled = true; btn.textContent = 'جارٍ الإسناد…';
+    try {
+      var r = await api('/org/attribution/bulk', 'PATCH', { kind: btn.dataset.kind, ids: ids, department_id: depId });
+      var failed = r.failed || [];
+      var failedIds = {};
+      failed.forEach(function (f) { failedIds[f.id] = f.reason || 'تعذّر الإسناد'; });
+      var lost = [];
+      ids.forEach(function (id) {
+        if (failedIds[id]) { if (!rowState(id, failedIds[id], 'err')) lost.push(failedIds[id]); }
+        else rowState(id, 'أُسند إلى ' + depName + ' ✓', 'ok');
+      });
+      var done = ids.length - failed.length;
+      if (!failed.length) {
+        showResult('أُسند <b class="tnum">' + done + '</b> إلى ' + textNode(depName) + ' — تُحدَّث القائمة الآن.', 'ok');
+        toast('تم الإسناد ✓');
+        reload();
+        return;
+      }
+      showResult('أُسند <b class="tnum">' + done + '</b> إلى ' + textNode(depName)
+        + ' · تعذّر إسناد <b class="tnum">' + failed.length + '</b> — السبب مكتوب بجانب كل صف.'
+        + (lost.length ? '<div style="margin-top:.3rem">' + lost.map(textNode).join('<br>') + '</div>' : '')
+        + ' <button class="btn btn-sm" data-action="asg-refresh">تحديث القائمة</button>', done ? 'warn' : 'err');
+      toast('تعذّر إسناد بعض السجلات', true);
+    } catch (e) {
+      showResult(textNode(e.message), 'err');
+      toast(e.message, true);
+    } finally {
+      btn.textContent = label; syncBar();
+    }
+  }
+
+  // ── التفويض ──
   document.addEventListener('click', function (e) {
     var el = e.target.closest('[data-action]');
     if (!el) return;
@@ -61,10 +173,20 @@
     if (a === 'unit-add') { e.preventDefault(); return void unitAdd(el.dataset.dep); }
     if (a === 'dep-rename') { e.preventDefault(); return void depRename(el.dataset.id, el.dataset.name); }
     if (a === 'dep-del') { e.preventDefault(); return void depDel(el.dataset.id, el.dataset.name); }
+    if (a === 'asg-apply') { e.preventDefault(); return void assignApply(el); }
+    if (a === 'asg-refresh') { e.preventDefault(); location.reload(); return; }
   });
   document.addEventListener('change', function (e) {
     var sel = e.target.closest('[data-action-change="dep-move"]');
     if (sel) return void depMove(sel.dataset.id, sel.value, sel);
+    var mgr = e.target.closest('[data-action-change="dep-manager"]');
+    if (mgr) return void depManager(mgr);
+    if (e.target.id === 'asg-all') {
+      var on = e.target.checked;
+      boxes().forEach(function (b) { b.checked = on; });
+      return void syncBar();
+    }
+    if (e.target.classList && e.target.classList.contains('asg-cb')) return void syncBar();
   });
   // Enter داخل حقل الإضافة ينفّذ الإضافة — الحقول داخل <summary> فنمنع الطيّ.
   document.addEventListener('keydown', function (e) {
@@ -72,4 +194,5 @@
     if (e.target.id.indexOf('d-') === 0) { e.preventDefault(); depAdd(e.target.id.slice(2)); }
     else if (e.target.id.indexOf('u-') === 0) { e.preventDefault(); unitAdd(e.target.id.slice(2)); }
   });
+  if (document.querySelector('.asg-tbl')) syncBar();
 })();
