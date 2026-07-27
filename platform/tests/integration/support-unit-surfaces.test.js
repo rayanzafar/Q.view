@@ -37,12 +37,13 @@ const { all, get, insert, close } = await import('../../src/core/db/index.js');
 const U = (id, role, sector, scope) => ({ id, username: id, name_ar: 'مستخدم ' + id, role_id: role,
   sector_id: sector, scope, projectIds: new Set(), teamIds: new Set() });
 const admin = U('u_admin', 'admin', null, 'company');
+const sharedLead = U('u_shared', 'sector_lead', 'SHARED', 'sector'); // شخص وحدته وحدة مساندة
 const CTX = (user) => ({ user, ip: '127.0.0.1' });
 
 // أهداف بالهللات — رقم مميز لكل وحدة كي يظهر أثر أي مجموع خاطئ في الرقم نفسه لا في الاتجاه فقط
 const TGT = { SOLUTIONS: 30_000_000, CONSULTING: 20_000_000, SHARED: 7_777_777 };
 
-let metrics, engine, org, opps, clients, pagesPeople, pagesPmo, pagesCrm;
+let metrics, engine, org, opps, clients, pagesPeople, pagesPmo, pagesCrm, pagesSector;
 
 before(async () => {
   await migrate();
@@ -57,6 +58,7 @@ before(async () => {
   pagesPeople = await import('../../src/web/views/people.js');
   pagesPmo = await import('../../src/web/views/pmo.js');
   pagesCrm = await import('../../src/web/views/crm.js');
+  pagesSector = await import('../../src/web/views/sector.js');
 
   // ── الوحدات: قطاعا تسليم + وحدة مساندة ترتيبها **الأول** (لتُختار تلقائياً لولا الترشيح) ──
   await insert('sector', { id: 'SHARED', name_ar: 'الخدمات المشتركة', kind: 'support', active: 1,
@@ -67,14 +69,19 @@ before(async () => {
     sort_order: 3, target_sales_halalas: TGT.CONSULTING, target_revenue_halalas: 10_000_000, created_at: T });
   await insert('department', { id: 'D_SMART', sector_id: 'SOLUTIONS', name_ar: 'إدارة المدن الذكية', active: 1, created_at: T });
 
-  await insert('app_user', { id: admin.id, username: admin.username, name_ar: admin.name_ar,
-    role_id: admin.role_id, sector_id: null, scope: 'company', active: 1, created_at: T });
+  for (const u of [admin, sharedLead]) {
+    await insert('app_user', { id: u.id, username: u.username, name_ar: u.name_ar,
+      role_id: u.role_id, sector_id: u.sector_id, scope: u.scope, active: 1, created_at: T });
+  }
   await insert('stage', { id: 'LEAD', name_ar: 'مبدئية', default_win_pct: 10, sort_order: 1, is_won: 0, is_lost: 0 });
   await insert('stage', { id: 'WON', name_ar: 'فائزة', default_win_pct: 100, sort_order: 9, is_won: 1, is_lost: 0 });
 
   await insert('client', { id: 'C1', name_ar: 'أمانة المنطقة', type: 'حكومي', created_at: T });
   await insert('project', { id: 'P_SOL', name_ar: 'منظومة رصد الحافلات', sector_id: 'SOLUTIONS',
     client_id: 'C1', status: 'IN_PROGRESS', contract_value_halalas: 12_000_000, created_at: T });
+  // مشروع مسجَّل على وحدة المساندة بلا عميل: الحالة التي يظهر فيها اسم الوحدة سطراً تعريفياً
+  await insert('project', { id: 'P_SH', name_ar: 'تطوير الأنظمة الداخلية', sector_id: 'SHARED',
+    status: 'IN_PROGRESS', created_at: T });
 
   // فرصة مكسوبة في الحلول + فرصة مفتوحة في الاستشارات (لخط الفرص والتغطية)
   await insert('opportunity', { id: 'O_WON', title_ar: 'صفقة الحلول', sector_id: 'SOLUTIONS', client_id: 'C1',
@@ -183,6 +190,10 @@ test('صفحة المشاريع: لا شريحة ولا خيار «قطاع» ل
   assert.match(html, /\/app\/projects\?sector=SOLUTIONS/);
   assert.equal(html.includes('/app/projects?sector=SHARED'), false, 'لا شريحة تصفية');
   assert.equal(sanadBlob(html).includes('SHARED'), false, 'ولا خيار في نافذة «مشروع جديد»');
+  // ولا يختفي عمل قائم: مشروع مسجَّل على الوحدة يبقى في المحفظة، وسطره يحمل اسم وحدته لا فراغاً
+  assert.match(html, /تطوير الأنظمة الداخلية/, 'الترشيح على القوائم لا على العمل نفسه');
+  assert.match(html, /تطوير الأنظمة الداخلية[\s\S]{0,400}الخدمات المشتركة/,
+    'جدول الأسماء غير مرشَّح عمداً: ترشيحه يمحو الاسم ولا يمنع ظهور السطر');
 });
 
 test('صفحة الفرص: لا شريحة ولا خيار ولا وجهة نقل إلى وحدة مساندة', async () => {
@@ -191,6 +202,24 @@ test('صفحة الفرص: لا شريحة ولا خيار ولا وجهة نق�
   assert.match(html, /\/app\/opportunities\?sector=SOLUTIONS/);
   assert.equal(html.includes('/app/opportunities?sector=SHARED'), false);
   assert.equal(sanadBlob(html).includes('"SHARED"'), false, 'قائمة القطاعات المُسلَّمة للمتصفّح بلا وحدة مساندة');
+  // وفي الوقت نفسه لا تختفي فرصة قائمة من اللوحة: الترشيح على قائمة القطاعات لا على الفرص
+  assert.match(html, /فرصة على وحدة مساندة/, 'ما كان ظاهراً يبقى ظاهراً — لا اختفاء صامت');
+});
+
+test('مركز القيادة: محوّل القطاع بلا وحدة مساندة', async () => {
+  const html = await pagesSector.sectorPage(admin, { year: YEAR });
+  clean(html, 'مركز القيادة');
+  assert.match(html, /sector=SOLUTIONS/, 'قطاعات التسليم في المحوّل');
+  assert.equal(html.includes('sector=SHARED'), false, 'ولا وحدة مساندة فيه');
+});
+
+test('صفحة من وحدته وحدة مساندة تُفتح ولا تقول له «لا يوجد قطاع مرتبط بحسابك»', async () => {
+  // هذا هو الوجه الآخر لقرار metrics.js: الرفض كان سيُفرغ الصفحة الرئيسية لشخص لم يخطئ.
+  const html = await pagesSector.sectorPage(sharedLead, { year: YEAR });
+  clean(html, 'مركز قيادة وحدة مساندة');
+  assert.equal(html.includes('لا يوجد قطاع مرتبط بحسابك'), false);
+  assert.match(html, /الخدمات المشتركة/, 'الصفحة باسم وحدته');
+  assert.match(html, /لا هدف مسجّل لهذه السنة/, 'وبلا نسبة إنجاز موهومة أمام هدف لا وجود له');
 });
 
 test('شارات قطاعات العميل: قطاعات التسليم وحدها', async () => {
