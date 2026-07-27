@@ -964,7 +964,10 @@ scenario('pages', 'كل صفحة لكل شخص: الحالة مطابقة لسي
 }, { slow: true });
 
 // ⑮ العيوب المؤكَّدة — تثبيتٌ للسلوك القائم مع بيان الصواب
-scenario('defects', 'عيوب مؤكَّدة: يُثبَّت السلوك القائم كي لا يمرّ صامتاً ولا يُنسى', async ({ C, db, t, ids, D, remember }) => {
+// كان اسمها «عيوب مؤكَّدة» حين كانت تُثبِّت سلوكاً خاطئاً كي لا يمرّ صامتاً. عولجت كلها قبل
+// التفعيل لكل الموظفين، فصارت تحرس **الصواب** بدل أن توثّق الخطأ — والاسم يتبع المعنى.
+scenario('defects', 'حراسة ما عولج: كل عيب مثبَّت سابقاً صار فحصاً دائماً على الصواب', async ({ C, db, t, ids, D, remember }) => {
+  const W = await import('../src/modules/workflow/engine.js');
   // ① [عولج — كان SCN-D1] المستخلص بمعرّفات صريحة كان يُسقط شرطَي الأهلية معاً: «المخرج من مشروع
   //    هذا العقد» و«حالته تسمح بالمطالبة». صار الشرطان قائمين مهما كان شكل الطلب، والرفض صريح
   //    يسمّي سببه. التثبيت تحوّل إلى فحصٍ دائم: عودة العطل تُسقط السيناريو لا تُبدّل رقم تثبيت.
@@ -998,20 +1001,35 @@ scenario('defects', 'عيوب مؤكَّدة: يُثبَّت السلوك الق
   t.ok(zero?.salary_halalas == null,
     `راتب غير مُدخَل يبقى فارغاً لا صفراً — المخزَّن: ${zero?.salary_halalas}`);
 
-  // ④ سنة التسكين تُؤخذ من ساعة الخادم ولا يمكن تحديدها من الطلب.
+  // ④ [عولج — كان SCN-D4] سنة التسكين كانت من ساعة الخادم دائماً، فخطة السنة القادمة تُكتب
+  // على العام الجاري صامتةً. صارت تُقبل من الطلب ضمن مدى معقول، والتكرار يُقاس داخل السنة.
   const alloc = await db.get('SELECT year FROM allocation WHERE project_id = ? AND deleted_at IS NULL LIMIT 1',
     [ids.project.sol_main]);
-  t.defect({ id: 'SCN-D4', label: 'سنة التسكين من ساعة الخادم لا من الطلب',
-    actual: Number(alloc?.year), pinned: new Date().getUTCFullYear(),
-    shouldBe: 'تُقبل سنة صريحة في الطلب — تسكين ٢٠٢٧ اليوم غير ممكن، وخطة السنة القادمة لا تُكتب',
-    ref: locate('src/modules/pmo/projects.js', 'year: new Date().getUTCFullYear()') });
+  t.ok(Number(alloc?.year) > 2000, `سنة التسكين مكتوبة: ${alloc?.year}`);
+  const nextYear = new Date().getUTCFullYear() + 1;
+  const planned = await C.req('demo.pm', `/api/projects/${ids.project.sol_main}/staff`, { method: 'POST',
+    body: { employeeId: ids.emp.sol_ba, pct: 40, fromMonth: 1, toMonth: 6, year: nextYear } });
+  t.status(planned, 200, 'مدير المشروع يخطّط تسكين السنة القادمة');
+  const nextRow = await db.get('SELECT id, year FROM allocation WHERE project_id = ? AND employee_id = ? AND year = ? AND deleted_at IS NULL',
+    [ids.project.sol_main, ids.emp.sol_ba, nextYear]);
+  t.ok(!!nextRow, `تسكين ${nextYear} مكتوب بسنته لا بسنة الخادم`);
+  if (nextRow) remember('allocation', nextRow.id);
+  const badYear = await C.req('demo.pm', `/api/projects/${ids.project.sol_main}/staff`, { method: 'POST',
+    body: { employeeId: ids.emp.sol_ba, pct: 10, year: new Date().getUTCFullYear() + 9 } });
+  t.status(badYear, 400, 'وسنة خارج المدى تُرَدّ بدل أن تُكتب');
 
-  // ⑤ سقف خطوة الاعتماد (min_amount_halalas) غير مطبَّق — موثَّق في الكود نفسه.
-  const step = await db.get("SELECT min_amount_halalas FROM approval_step WHERE min_amount_halalas > 0 LIMIT 1");
-  t.defect({ id: 'SCN-D5', label: 'سقف مبلغ خطوة الاعتماد مخزَّن ولا يُطبَّق',
-    actual: Number(step?.min_amount_halalas) > 0, pinned: true,
-    shouldBe: 'الخطوة ذات السقف لا تُطبَّق إلا فوق سقفها — وإلا فالعمود يَعِد بحوكمة غير قائمة',
-    ref: locate('src/modules/workflow/engine.js', 'غير مُطبَّق بعد') });
+  // ⑤ [عولج — كان SCN-D5] سقف الخطوة كان مخزَّناً ولا يُطبَّق، فكل مبلغ يمرّ بكل خطوة —
+  // حوكمة تُبطئ الصغير ولا تُميّز الكبير. صار السقف يُطبَّق: تُتخطّى الخطوة دون سقفها.
+  const step = await db.get("SELECT workflow_id, step_order, min_amount_halalas FROM approval_step WHERE min_amount_halalas > 0 ORDER BY step_order LIMIT 1");
+  if (step) {
+    const cap = Number(step.min_amount_halalas);
+    const below = await W.nextApplicableStep(step.workflow_id, step.step_order, Math.max(0, cap - 1));
+    const above = await W.nextApplicableStep(step.workflow_id, step.step_order, cap);
+    t.ok(below?.step_order !== step.step_order, 'مبلغ دون السقف لا يقف عند الخطوة ذات السقف');
+    t.ok(above?.step_order === step.step_order, 'ومبلغ يبلغ السقف يقف عندها');
+  } else {
+    t.ok(true, 'لا خطوة بسقف في هذه البيانات — لا شيء يُقاس');
+  }
 
   // ⑥ تصدير الأشخاص يقف عند القطاع لا عند الإدارة — بينما كشف الفريق نفسه يقف عند الإدارة.
   const csv = await C.req('demo.deptmgr', '/api/io/export/employees?format=csv');
@@ -1031,13 +1049,20 @@ scenario('defects', 'عيوب مؤكَّدة: يُثبَّت السلوك الق
   t.ok(lmWrite.status !== 200 || (lmWrite.json?.updated === 0),
     'ولا يكتب فيها: التعديل يبقى على منح التعديل وحده');
 
-  // ⑧ الفرصة المكسوبة تبقى قابلة للنقل بين المراحل بلا قيد (من مكسوبة إلى ترشيح).
+  // ⑧ [عولج — كان SCN-D8] الفرصة المكسوبة كانت تعود إلى الترشيح بضغطة واحدة **والمبيعات
+  // المعلنة تتغيّر بها** بلا سبب ولا أثر. صار التراجع يستوجب سبباً مكتوباً ويُسجَّل بقيمته.
   const back = await C.req('demo.bd', `/api/opportunities/${ids.opp.sol_a}/stage`, { method: 'POST', body: { stage: 'WON' } });
-  const rewind = await C.req('demo.bd', `/api/opportunities/${ids.opp.sol_a}/stage`, { method: 'POST', body: { stage: 'LEAD' } });
-  t.defect({ id: 'SCN-D8', label: 'فرصة مكسوبة تُعاد إلى الترشيح بلا أي قيد أو تنبيه',
-    actual: [back.status, rewind.status, rewind.json?.win_pct], pinned: [200, 200, 10],
-    shouldBe: 'التراجع عن الفوز قرار يستحق تأكيداً أو أثراً معلَناً — المبيعات المعلنة تتغيّر به',
-    ref: locate('src/modules/crm/opportunities.js', 'export async function moveStage') });
+  t.status(back, 200, 'التقدّم إلى الفوز مفتوح كما كان');
+  const bare = await C.req('demo.bd', `/api/opportunities/${ids.opp.sol_a}/stage`, { method: 'POST', body: { stage: 'LEAD' } });
+  t.status(bare, 400, 'والتراجع بلا سبب مكتوب مردود');
+  const withReason = await C.req('demo.bd', `/api/opportunities/${ids.opp.sol_a}/stage`,
+    { method: 'POST', body: { stage: 'LEAD', note: 'العميل ألغى الترسية' } });
+  t.status(withReason, 200, 'وبسببٍ مكتوب يمرّ');
+  const revAudit = await db.get(
+    "SELECT detail_json FROM audit_log WHERE resource = 'opportunity' AND resource_id = ? AND action = 'update' ORDER BY at DESC LIMIT 1",
+    [ids.opp.sol_a]);
+  t.ok(revAudit && JSON.parse(revAudit.detail_json).won_reversal === true,
+    'ويُسجَّل التراجع حدثاً مميَّزاً لا تغيير مرحلة عادياً');
   for (const h of await db.all('SELECT id FROM opportunity_stage_history WHERE opportunity_id = ?', [ids.opp.sol_a])) {
     remember('opportunity_stage_history', h.id);
   }

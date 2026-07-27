@@ -67,18 +67,44 @@ export async function submitForApproval(ctx, { workflowKey, resource, resourceId
   const sectorId = row.sector_id || user.sector_id || null;
   const amountHalalas = Number(row.amount_halalas) || 0;
   const rid = id('apr'); const now = nowIso();
+  // أول خطوة **منطبقة** لا أول خطوة مطلقاً: طلبٌ دون كل السقوف لا يعلَّق على خطوة لا تخصّه.
+  const first = await nextApplicableStep(wf.id, 1, amountHalalas);
+  const noStepApplies = !first;
   await insert('approval_request', {
     id: rid, workflow_id: wf.id, resource: kind, resource_id: resourceId, requested_by: user.id,
-    amount_halalas: amountHalalas, sector_id: sectorId, current_step: 1,
-    status: 'PENDING', created_at: now,
+    amount_halalas: amountHalalas, sector_id: sectorId, current_step: first ? first.step_order : 1,
+    // مسارٌ لا تنطبق أيٌّ من خطواته على هذا المبلغ لا يبقى معلَّقاً إلى الأبد بانتظار معتمِد
+    // لا يخصّه — يُغلَق معتمَداً في حينه، ويقول التدقيق لماذا.
+    status: noStepApplies ? 'APPROVED' : 'PENDING',
+    closed_at: noStepApplies ? now : null, created_at: now,
   });
-  await audit(ctx, { action: 'submit', resource: 'approval', resourceId: rid, sectorId, detail: { workflowKey, resource: kind, resourceId } });
-  await notifyStepApprovers(wf.id, rid, 1, sectorId);
+  await audit(ctx, { action: 'submit', resource: 'approval', resourceId: rid, sectorId,
+    detail: { workflowKey, resource: kind, resourceId, amount_halalas: amountHalalas,
+      first_step: first ? first.step_order : null,
+      auto_approved: noStepApplies || undefined,
+      reason_ar: noStepApplies ? 'المبلغ دون سقف كل خطوات هذا المسار' : undefined } });
+  if (first) await notifyStepApprovers(wf.id, rid, first.step_order, sectorId);
   return await get('SELECT * FROM approval_request WHERE id = ?', [rid]);
 }
 
 async function stepFor(workflowId, order) {
   return await get('SELECT * FROM approval_step WHERE workflow_id = ? AND step_order = ?', [workflowId, order]);
+}
+
+// سقف الخطوة (`min_amount_halalas`) كان مخزَّناً ولا يُطبَّق: كل خطوة تسري مهما صغُر المبلغ.
+// وأثره ليس تجميلياً — عمودٌ يَعِد بحوكمة غير قائمة: من يضبط «توقيع الرئيس التنفيذي فوق
+// مليون» يظنّ أن ما دون المليون يمرّ بخطوة واحدة، والواقع أن كل مصروف بمئة ريال ينتظر
+// توقيعه. فالنتيجة عكس المقصود تماماً: حوكمة تُبطئ الصغير ولا تُميّز الكبير.
+//
+// الدلالة المطبَّقة: الخطوة تسري إذا كان مبلغ الطلب **يبلغ سقفها فأكثر**، والخطوة بلا سقف
+// (أو بصفر) تسري دائماً. والبحث يتخطّى غير المنطبقة بدل أن يقف عندها.
+export async function nextApplicableStep(workflowId, fromOrder, amountHalalas) {
+  const amount = Number(amountHalalas) || 0;
+  const steps = await all(
+    'SELECT * FROM approval_step WHERE workflow_id = ? AND step_order >= ? ORDER BY step_order',
+    [workflowId, fromOrder]);
+  for (const s of steps) if (amount >= (Number(s.min_amount_halalas) || 0)) return s;
+  return null;
 }
 async function notifyStepApprovers(workflowId, requestId, order, sectorId) {
   const step = await stepFor(workflowId, order);
@@ -107,7 +133,6 @@ export async function actOnApproval(ctx, requestId, action, comment) {
   // authorization: correct role + scope + approve permission on the target resource.
   // `sector_id` هنا مشتقٌّ من الصف المرفوع لا من جسم الطلب (submitForApproval) — وإلا اختار
   // الرافعُ القطاعَ الذي يُفحص عليه نطاق المعتمِد.
-  // ملاحظة: سقف الخطوة (`min_amount_halalas`) غير مُطبَّق بعد — كل خطوة تُطبَّق مهما كان المبلغ.
   const target = { sector_id: reqRow.sector_id };
   if (user.role_id !== step.approver_role && user.role_id !== 'admin') throw forbidden('لست المعتمِد المطلوب لهذه الخطوة');
   if (!can(user, 'approve', reqRow.resource, target)) throw forbidden('صلاحية الاعتماد غير متاحة');
@@ -122,10 +147,12 @@ export async function actOnApproval(ctx, requestId, action, comment) {
     notify(reqRow.requested_by, { kind: 'approval', title: 'رُفض طلب الاعتماد', body: comment || '',
       ref_resource: reqRow.resource, ref_id: reqRow.resource_id });
   } else if (action === 'approve') {
-    const next = await stepFor(reqRow.workflow_id, reqRow.current_step + 1);
+    // الخطوة التالية **المنطبقة**: تُتخطّى كل خطوة سقفُها فوق مبلغ هذا الطلب بدل أن يقف
+    // عندها الطلب بانتظار معتمِد لا يعنيه المبلغ.
+    const next = await nextApplicableStep(reqRow.workflow_id, reqRow.current_step + 1, reqRow.amount_halalas);
     if (next) {
-      await update('approval_request', requestId, { current_step: reqRow.current_step + 1 });
-      await notifyStepApprovers(reqRow.workflow_id, requestId, reqRow.current_step + 1, reqRow.sector_id);
+      await update('approval_request', requestId, { current_step: next.step_order });
+      await notifyStepApprovers(reqRow.workflow_id, requestId, next.step_order, reqRow.sector_id);
     } else {
       await update('approval_request', requestId, { status: 'APPROVED', closed_at: nowIso() });
       notify(reqRow.requested_by, { kind: 'approval', title: 'اعتُمد طلبك', body: '',

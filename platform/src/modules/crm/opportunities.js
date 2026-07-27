@@ -135,6 +135,23 @@ export async function moveStage(ctx, oppId, toStage, note) {
   if (!can(user, 'update', 'opportunity', row)) throw forbidden();
   const stage = await get('SELECT * FROM stage WHERE id = ?', [toStage]);
   if (!stage) throw badRequest('مرحلة غير معروفة');
+
+  // التراجع عن الفوز: كانت الفرصة المكسوبة تُعاد إلى الترشيح بضغطة واحدة بلا قيد ولا أثر —
+  // **والمبيعات المعلنة تتغيّر بها**. رقمٌ قرأه المالك أمس يصير غيره اليوم ولا شيء يقول لماذا.
+  // فهو ليس تصحيح بيانات بل قرار عمل، ويُعامَل كذلك: سببٌ مكتوب، وأثرٌ معلَن في التدقيق.
+  const fromStage = row.stage_id ? await get('SELECT id, is_won FROM stage WHERE id = ?', [row.stage_id]) : null;
+  const reversal = !!(fromStage?.is_won) && !stage.is_won;
+  if (reversal) {
+    // وإن كان الفوز قد أنتج مشروعاً فالتراجع يناقض عملاً قائماً — يُرَدّ ويُدَلّ على المشروع.
+    const prj = await get('SELECT id, name_ar FROM project WHERE source_opp_id = ? AND deleted_at IS NULL', [oppId]);
+    if (prj) {
+      throw badRequest(`لا يمكن التراجع عن فوز هذه الفرصة: نشأ عنها مشروع «${prj.name_ar}». عالِج المشروع أولاً ثم أعد المحاولة.`);
+    }
+    if (!note || !String(note).trim()) {
+      throw badRequest('التراجع عن الفوز يغيّر المبيعات المعلنة — اكتب سبب التراجع قبل الحفظ.');
+    }
+  }
+
   const now = nowIso();
   await update('opportunity', oppId, {
     stage_id: toStage, win_pct: stage.default_win_pct, stage_changed_at: now, updated_at: now, updated_by: user.id,
@@ -144,7 +161,8 @@ export async function moveStage(ctx, oppId, toStage, note) {
     changed_by: user.id, changed_at: now, note: note || null,
   });
   await audit(ctx, { action: 'update', resource: 'opportunity', resourceId: oppId, sectorId: row.sector_id,
-    detail: { stage: `${row.stage_id}→${toStage}` } });
+    detail: { stage: `${row.stage_id}→${toStage}`,
+      ...(reversal ? { won_reversal: true, value_halalas: row.value_halalas || 0, reason_ar: String(note).trim() } : {}) } });
   return await getOpportunity(user, oppId);
 }
 

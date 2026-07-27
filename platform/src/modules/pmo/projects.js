@@ -231,7 +231,24 @@ function monthlyPlan({ pct, fromMonth, toMonth }) {
   return mj;
 }
 
-export async function assignEmployee(ctx, projectId, { employeeId, type, pct, fromMonth, toMonth }) {
+// سنة التسكين: كانت تُؤخذ من ساعة الخادم دائماً، فيستحيل تسكين خطة السنة القادمة — يفتح
+// المدير في نوفمبر خطة العام المقبل فتُكتب على العام الجاري صامتةً، ويقرأ الجميع أرقاماً
+// في السنة الخطأ. والسنة تُقبل الآن من الطلب ضمن نافذة معقولة: سنة سابقة (تصحيح متأخر)
+// وثلاث قادمة (تخطيط). وما وراء ذلك خطأ إدخال لا نيّة — والكتابة عليه إفسادٌ صامت.
+export const ALLOC_YEAR_BACK = 1;
+export const ALLOC_YEAR_AHEAD = 3;
+export function resolveAllocationYear(raw, now = new Date()) {
+  const current = now.getUTCFullYear();
+  if (raw == null || raw === '') return current;
+  const y = Number(String(raw).trim());
+  if (!Number.isInteger(y)) throw badRequest('سنة التسكين يجب أن تكون سنة صحيحة مثل ' + current);
+  if (y < current - ALLOC_YEAR_BACK || y > current + ALLOC_YEAR_AHEAD) {
+    throw badRequest(`سنة التسكين خارج المدى المسموح — اختر بين ${current - ALLOC_YEAR_BACK} و${current + ALLOC_YEAR_AHEAD}`);
+  }
+  return y;
+}
+
+export async function assignEmployee(ctx, projectId, { employeeId, type, pct, fromMonth, toMonth, year }) {
   const user = ctx.user;
   const p = await get('SELECT * FROM project WHERE id=? AND deleted_at IS NULL', [projectId]);
   if (!p) throw notFound('المشروع غير موجود');
@@ -246,12 +263,16 @@ export async function assignEmployee(ctx, projectId, { employeeId, type, pct, fr
     const home = await get('SELECT id, name_ar, kind FROM sector WHERE id = ?', [emp.sector_id]);
     if (isDelivery(home)) throw badRequest('لا يمكن تسكين موظف من قطاع آخر على هذا المشروع');
   }
-  if (await get('SELECT id FROM allocation WHERE project_id=? AND employee_id=? AND deleted_at IS NULL', [projectId, employeeId])) throw badRequest('الموظف مُسكَّن على هذا المشروع مسبقًا');
+  const allocYear = resolveAllocationYear(year);
+  // التكرار يُقاس **داخل السنة**: نفس الشخص على نفس المشروع في ٢٠٢٦ و٢٠٢٧ تسكينان صحيحان
+  // لا تكرار، وبلا هذا الشرط يستحيل تخطيط السنة القادمة على مشروع قائم.
+  if (await get('SELECT id FROM allocation WHERE project_id=? AND employee_id=? AND year=? AND deleted_at IS NULL',
+    [projectId, employeeId, allocYear])) throw badRequest(`الموظف مُسكَّن على هذا المشروع في سنة ${allocYear} مسبقًا`);
   const aid = id('alloc'); const now = nowIso();
   await insert('allocation', { id: aid, employee_id: employeeId, person_name_ar: emp.name_ar, project_id: projectId,
-    project_name: p.name_ar, sector_id: p.sector_id, type: type || 'member', year: new Date().getUTCFullYear(),
+    project_name: p.name_ar, sector_id: p.sector_id, type: type || 'member', year: allocYear,
     monthly_json: JSON.stringify(monthlyPlan({ pct, fromMonth, toMonth })), source: 'manual', created_at: now });
-  await audit(ctx, { action: 'create', resource: 'allocation', resourceId: aid, sectorId: p.sector_id, detail: { project: projectId, employee: employeeId, pct: pct || 100 } });
+  await audit(ctx, { action: 'create', resource: 'allocation', resourceId: aid, sectorId: p.sector_id, detail: { project: projectId, employee: employeeId, pct: pct || 100, year: allocYear } });
   return await projectStaffing(user, projectId);
 }
 
