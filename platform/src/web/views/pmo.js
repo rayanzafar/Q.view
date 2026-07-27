@@ -9,6 +9,7 @@ import { projectGovernance } from '../../modules/pmo/governance.js';
 import { myTasks, teamTasks } from '../../modules/pmo/tasks.js';
 import { listViews } from '../../modules/views/views.js';
 import { canSeeSensitive, redact, can, effectiveScope } from '../../core/rbac/index.js';
+import { DELIVERY_SECTOR_SQL } from '../../core/org/kind.js';
 import { G } from '../i18n/glossary.js';
 import { sarShort, esc, bar, statMini, noticeCard } from './_shared.js';
 import { MONTHS_AR, MONTHS_EN3, currentMonthIndex } from '../../core/i18n/time.js';
@@ -78,10 +79,15 @@ export async function projectsPage(user, opts = {}) {
   const canCost = canSeeSensitive(user, 'cost');
   const canEdit = can(user, 'update', 'project');
   const clients = Object.fromEntries((await all('SELECT id,name_ar FROM client')).map((c) => [c.id, c.name_ar]));
+  // جدول أسماء لا قائمة اختيار: يُستعمل لتسمية قطاع المشروع حين لا عميل له. يشمل كل الوحدات
+  // عمداً (حتى المحذوفة وغير النشطة، كما كان) — لأن مشروعاً مسجَّلاً على وحدة مساندة يبقى ظاهراً
+  // في الجدول، وترشيح هذا الجدول لا يمنع ظهوره بل يمحو اسمه فقط فيقرأ المسؤول سطراً بلا نسبة.
   const sectors = Object.fromEntries((await all('SELECT id,name_ar FROM sector')).map((s) => [s.id, s.name_ar]));
   const ragTone = { GREEN: 'green', AMBER: 'amber', RED: 'red' };
   // Owner lens: filter the board by sector (?sector=). Company-scope only; others already scoped.
-  const allSec = await all('SELECT id, name_ar, color FROM sector WHERE active = 1 AND deleted_at IS NULL ORDER BY sort_order');
+  // شرائح القطاع = قطاعات التسليم وحدها (هي «محوّل قطاع» بكل معنى الكلمة).
+  const allSec = await all(`SELECT id, name_ar, color FROM sector
+     WHERE active = 1 AND deleted_at IS NULL AND ${DELIVERY_SECTOR_SQL} ORDER BY sort_order`);
   const secFilter = user.scope === 'company' && opts.sector && allSec.some((s) => s.id === opts.sector) ? opts.sector : null;
   if (secFilter) rows = rows.filter((p) => p.sector_id === secFilter);
   // ── مرشّح الحالة (?status=): العدّ يُحسب قبل التصفية كي تُظهر كل شريحة عددَها ضمن نطاق
@@ -352,6 +358,8 @@ export async function projectsPage(user, opts = {}) {
   </div></div>`;
 
   const content = !rows.length ? emptyView : (view === 'kanban' ? kanbanView : tableView);
+  // قائمة القطاعات المُسلَّمة للمتصفّح تملأ خانة «القطاع» في نافذة «مشروع جديد» — قطاعات تسليم
+  // وحدها: المشروع عمل يُنسب إلى قطاع له هدف وإيراد، لا إلى وحدة مساندة تُعير أشخاصها للمشاريع.
   const body = `
     ${secChips}
     ${yearPills}
@@ -368,7 +376,7 @@ export async function projectsPage(user, opts = {}) {
     ${viewsBar}
     ${rows.length ? `<div style="font-size:10.5px;color:var(--faint);margin:0 0 .6rem">⁎ نسبة إنجاز محسوبة من حالة المخرجات — المنصة السابقة بلا نسبة مسجلة · شارة القيمة توضح أساسها (عقد / أمر شراء / ميزانية / إيراد محقق)</div>` : ''}
     ${content}
-    <script>window.__SANAD=Object.assign(window.__SANAD||{},{sectors:${JSON.stringify(await all('SELECT id,name_ar FROM sector WHERE active=1 ORDER BY name_ar')).replace(/</g, '\\u003c')},canEditPrj:${canEdit},viewsPage:'projects',prjSectorLocked:${JSON.stringify(user.scope === 'company' ? null : user.sector_id)}});</script>`;
+    <script>window.__SANAD=Object.assign(window.__SANAD||{},{sectors:${JSON.stringify(await all(`SELECT id,name_ar FROM sector WHERE active=1 AND ${DELIVERY_SECTOR_SQL} ORDER BY name_ar`)).replace(/</g, '\\u003c')},canEditPrj:${canEdit},viewsPage:'projects',prjSectorLocked:${JSON.stringify(user.scope === 'company' ? null : user.sector_id)}});</script>`;
   return layout({ user, active: 'projects', title: 'المشاريع', subtitle: `المحفظة · ${rows.length} مشروع${statusFilter ? ` · ${tr(statusFilter)}` : ''}${year ? ` · سنة ${year}` : ''}`,
     body, year: year || undefined, scripts: ['/static/pages/projects.js'] });
 }

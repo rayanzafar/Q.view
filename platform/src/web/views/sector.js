@@ -13,6 +13,7 @@ import { changesSince, sinceForWindow } from '../../core/reports/changes.js';
 import { arAging } from '../../modules/finance/finance.js';
 import { can } from '../../core/rbac/index.js';
 import { config } from '../../core/config.js';
+import { DELIVERY_SECTOR_SQL } from '../../core/org/kind.js';
 import { G } from '../i18n/glossary.js';
 import { monthLabel, monthLabelDual, quarterLabel, nowDot, currentMonthIndex, MONTHS_AR } from '../../core/i18n/time.js';
 import { countAr, dayWord } from '../../core/i18n/plural.js';
@@ -67,7 +68,11 @@ export async function sectorPage(user, opts = {}) {
   const today = now.toISOString().slice(0, 10);
   const win = WINS.some((w) => w[0] === opts.win) ? opts.win : 'week';
   const winEcho = WINS.find((w) => w[0] === win)[2];
-  const allSectors = await all('SELECT id, name_ar, color FROM sector WHERE active = 1 AND deleted_at IS NULL ORDER BY sort_order');
+  // محوّل القطاع: قطاعات التسليم وحدها — الأربعة لا خامس لها. وحدة المساندة لا مركز قيادة
+  // تجاري لها (بلا هدف ولا خط فرص)، ووضعها في المحوّل يجعلها قطاعاً في عين كل من يستعمله.
+  // ملاحظة: القائمة تحكم أيضاً ما يُقبل من ?sector= — فطلب وحدة مساندة يعود إلى قطاع المستخدم.
+  const allSectors = await all(`SELECT id, name_ar, color FROM sector
+     WHERE active = 1 AND deleted_at IS NULL AND ${DELIVERY_SECTOR_SQL} ORDER BY sort_order`);
   const requested = opts.sector && allSectors.some((s) => s.id === opts.sector) ? opts.sector : null;
   const sectorId = user.scope === 'company'
     ? (requested || user.sector_id || allSectors[0]?.id || 'SOLUTIONS')

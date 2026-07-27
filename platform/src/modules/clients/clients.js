@@ -12,6 +12,7 @@ import { audit } from '../../core/audit/index.js';
 import { id, nowIso, fmtSar } from '../../core/util/ids.js';
 import { badRequest, forbidden, notFound } from '../../core/http/errors.js';
 import { config } from '../../core/config.js';
+import { DELIVERY_SECTOR_SQL } from '../../core/org/kind.js';
 
 export const CLIENT_TYPES = ['حكومي', 'خاص', 'شبه حكومي', 'داخلي'];
 export const ACTIVITY_KINDS = ['call', 'meeting', 'email', 'note', 'visit', 'proposal', 'update', 'other'];
@@ -180,7 +181,12 @@ export async function listClients(user, filters = {}) {
   const secRows = await all(`SELECT client_id cid, sector_id sid FROM opportunity WHERE deleted_at IS NULL AND client_id IS NOT NULL AND sector_id IS NOT NULL
      UNION SELECT client_id cid, sector_id sid FROM project WHERE deleted_at IS NULL AND client_id IS NOT NULL AND sector_id IS NOT NULL
      UNION SELECT client_id cid, sector_id sid FROM contract WHERE deleted_at IS NULL AND client_id IS NOT NULL AND sector_id IS NOT NULL`);
-  const secMeta = new Map((await all('SELECT id, name_ar, sort_order FROM sector WHERE deleted_at IS NULL'))
+  // شارات «القطاعات» على صف العميل = قطاعات تسليم فقط. وحدة المساندة ليست قطاعاً يتعامل معه
+  // العميل، وظهورها في الشارات يقرأها المسؤول قطاعاً خامساً. الصف المنسوب إلى وحدة مساندة
+  // يسقط من الشارات وحدها — لا من أرقام العميل (خط الفرص والعقود والمستحق تُحسب من صفوفها
+  // كاملة أعلاه)، والسطر التالي يُسقط أصلاً كل معرّف قطاع لا نعرفه.
+  const secMeta = new Map((await all(
+    `SELECT id, name_ar, sort_order FROM sector WHERE deleted_at IS NULL AND ${DELIVERY_SECTOR_SQL}`))
     .map((s) => [s.id, s]));
   const secBy = new Map();
   for (const r of secRows) {

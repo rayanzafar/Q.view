@@ -11,6 +11,7 @@ import { listOpportunities, ROT_THRESHOLDS } from '../../modules/crm/opportuniti
 import { stageInfo } from '../../core/i18n/stages.js';
 import { listViews } from '../../modules/views/views.js';
 import { can } from '../../core/rbac/index.js';
+import { DELIVERY_SECTOR_SQL } from '../../core/org/kind.js';
 import { sarShort, pct, esc, statMini, ddWrap, ddRows } from './_shared.js';
 import { G } from '../i18n/glossary.js';
 import { countAr, dayWord } from '../../core/i18n/plural.js';
@@ -83,7 +84,11 @@ export async function opportunitiesPage(user, opts = {}) {
   const stages = await all('SELECT id,name_ar,color,default_win_pct,sort_order,is_won,is_lost FROM stage ORDER BY sort_order');
   const clients = Object.fromEntries((await all('SELECT id,name_ar FROM client')).map((c) => [c.id, c.name_ar]));
   const users = Object.fromEntries((await all('SELECT id,name_ar,username FROM app_user')).map((u) => [u.id, u.name_ar || u.username]));
-  const sectors = await all('SELECT id,name_ar FROM sector WHERE active=1 ORDER BY name_ar');
+  // قطاعات التسليم وحدها: هذه القائمة تخدم ثلاثة أشياء كلها «قطاع» بالمعنى التجاري — شرائح
+  // تصفية خط الفرص، وخانة القطاع في نافذة «فرصة جديدة»، ووجهات نقل الفرصة بين القطاعات.
+  // الفرصة إيراد قادم، ووحدة المساندة بلا خط فرص ولا هدف مبيعات، فنقل فرصة إليها يُخرجها من
+  // مقارنة القطاعات ومن مستهدف الشركة بلا أي رسالة تفسّر الاختفاء (والخدمة ترفضه أيضاً).
+  const sectors = await all(`SELECT id,name_ar FROM sector WHERE active=1 AND ${DELIVERY_SECTOR_SQL} ORDER BY name_ar`);
   const savedViews = await listViews(user, 'opportunities');
   const canCreate = can(user, 'create', 'opportunity');
   const canEdit = can(user, 'update', 'opportunity');

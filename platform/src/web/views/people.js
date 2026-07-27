@@ -7,6 +7,7 @@ import { myEntries } from '../../modules/timesheets/timesheets.js';
 import { orgTree, staffingRoster, identityLinks } from '../../modules/org/org.js';
 import { canSeeSensitive, can } from '../../core/rbac/index.js';
 import { ROLE_LABELS } from '../../core/rbac/matrix.js';
+import { isDelivery } from '../../core/org/kind.js';
 import { G } from '../i18n/glossary.js';
 import { esc, ddWrap, ddRows } from './_shared.js';
 import { MONTHS_AR, monthLabelDual, currentMonthIndex, nowDot } from '../../core/i18n/time.js';
@@ -77,7 +78,14 @@ export async function teamPage(user, opts = {}) {
   const canManage = can(user, 'create', 'employee') || can(user, 'update', 'employee');
   const canCreate = can(user, 'create', 'employee');
   const canDelete = can(user, 'delete', 'employee'); // offboarding — HR/admin only (matrix)
+  // وحدتان من القائمة نفسها، لأن للصفحة استعمالين لا استعمالاً واحداً:
+  //   • allSec (كل الوحدات: قطاعات تسليم + وحدات مساندة) ⟵ تسمية قطاع كل موظف في الجدول،
+  //     وخانة «القطاع» في نافذة إضافة/تعديل موظف. ترشيح النوع هنا كان سيُخفي «الخدمات المشتركة»
+  //     من نافذة الإضافة فيستحيل تسكين أحد فيها أصلاً، ويعرض موظفيها القائمين بقطاع فارغ «—».
+  //   • deliverySec (قطاعات التسليم وحدها) ⟵ شرائح التصفية أعلى الصفحة، وهي محوّل قطاع يقرأه
+  //     المستخدم قائمةً بالقطاعات: أربعة لا خامس لها.
   const allSec = await all('SELECT id, name_ar, color FROM sector WHERE active = 1 AND deleted_at IS NULL ORDER BY sort_order');
+  const deliverySec = allSec.filter(isDelivery);
   const sectorNames = Object.fromEntries(allSec.map((s) => [s.id, s.name_ar]));
   const sector = (opts.sector || '').toString().trim();
   const { roster } = await staffingRoster(user, { sector });
@@ -117,7 +125,7 @@ export async function teamPage(user, opts = {}) {
 
   const secChips = user.scope === 'company' ? `<div class="chips"><span class="lbl">القطاع:</span>
     <a href="/app/team" class="chip ${sector ? '' : 'on'}">${G.all}</a>
-    ${allSec.map((s) => `<a href="/app/team?sector=${s.id}" class="chip ${sector === s.id ? 'on' : ''}"><span class="dot" style="background:${s.color || 'var(--brand)'}"></span>${esc(s.name_ar)}</a>`).join('')}
+    ${deliverySec.map((s) => `<a href="/app/team?sector=${s.id}" class="chip ${sector === s.id ? 'on' : ''}"><span class="dot" style="background:${s.color || 'var(--brand)'}"></span>${esc(s.name_ar)}</a>`).join('')}
   </div>` : '';
 
   const table = card(`<div class="tblwrap"><table class="rtbl" id="team-rows" style="width:100%;border-collapse:collapse;min-width:820px">
@@ -178,7 +186,10 @@ export async function teamPage(user, opts = {}) {
 export async function staffingPage(user, opts = {}) {
   const canManage = can(user, 'create', 'employee') || can(user, 'update', 'employee'); // يحكم زر «تسكين على مشروع» — كما كان في الصفحة المدمجة سابقاً
   const canStaff = can(user, 'update', 'project'); // span editing goes through project staffing rights
+  // نفس الفصل الذي في صفحة «الفريق»: الأسماء من الوحدات كلها (موظف الخدمات المشتركة يُسمّى
+  // باسم وحدته لا «خارج القطاعات»)، والشرائح من قطاعات التسليم وحدها.
   const allSec = await all('SELECT id, name_ar, color FROM sector WHERE active = 1 AND deleted_at IS NULL ORDER BY sort_order');
+  const deliverySec = allSec.filter(isDelivery);
   const sectorNames = Object.fromEntries(allSec.map((s) => [s.id, s.name_ar]));
   const { year, sector, currentMonth, roster, summary } = await staffingRoster(user, { sector: opts.sector });
   const nowIdx = currentMonthIndex(year); // 0-based; -1 when viewing another year (no «now» marker)
@@ -344,7 +355,7 @@ export async function staffingPage(user, opts = {}) {
 
   const secChips = user.scope === 'company' ? `<div class="chips"><span class="lbl">القطاع:</span>
     <a href="/app/staffing" class="chip ${sector ? '' : 'on'}">${G.all}</a>
-    ${allSec.map((s) => `<a href="/app/staffing?sector=${s.id}" class="chip ${sector === s.id ? 'on' : ''}"><span class="dot" style="background:${s.color || 'var(--brand)'}"></span>${esc(s.name_ar)}</a>`).join('')}
+    ${deliverySec.map((s) => `<a href="/app/staffing?sector=${s.id}" class="chip ${sector === s.id ? 'on' : ''}"><span class="dot" style="background:${s.color || 'var(--brand)'}"></span>${esc(s.name_ar)}</a>`).join('')}
   </div>` : '';
 
   const style = `<style>

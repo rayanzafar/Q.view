@@ -5,6 +5,8 @@ import { can } from '../../core/rbac/index.js';
 import { audit } from '../../core/audit/index.js';
 import { id, nowIso, toHalalas } from '../../core/util/ids.js';
 import { forbidden, badRequest, notFound } from '../../core/http/errors.js';
+import { DELIVERY_KIND, SUPPORT_KIND, SECTOR_KINDS, isDelivery, isSupportUnit, DELIVERY_SECTOR_SQL }
+  from '../../core/org/kind.js';
 
 const requireAdminSectors = (user) => { if (!can(user, 'admin', 'sector') && user.role_id !== 'admin' && !can(user, 'create', 'sector')) throw forbidden('إدارة الهيكل تتطلب صلاحية إدارية'); };
 
@@ -61,24 +63,11 @@ const todayIso = () => nowIso().slice(0, 10);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // نوع الوحدة التنظيمية: قطاع تسليم أم وحدة مساندة (الترحيلة 009)
-// جدول الوحدات يحمل نوعين لا نوعاً واحداً:
-//   • delivery ⟵ **قطاع تسليم**. قرار المالك حاسم: أربعة لا خامس لها (الحلول، الاستشارات،
-//     المشاريع الاستراتيجية، SAP). له أهداف مبيعات وإيراد، وهو وحده ما يظهر في مقارنات
-//     القطاعات ومحوّل القطاع وتقسيم خط الفرص وأي شاشة تقول «قطاع».
-//   • support  ⟵ **وحدة مساندة** على مستوى الشركة (تطوير الأعمال · الخدمات المشتركة · المالية):
-//     تحمل أشخاصاً وكلفة لا أهدافاً، وموظفوها مورد مشترك يُسكَّن على مشاريع أي قطاع وفرصه.
-// التمييز مُعرَّف هنا مرة واحدة ويُستورد حيثما احتيج — لا نص 'delivery' مكرراً في كل ملف: نسخة
-// واحدة منسية تكفي لظهور «قطاع» خامس أمام المالك، وهو بالضبط ما جاءت هذه الموجة لمنعه.
+// التعريف كاملاً — بما فيه سبب سكناه في النواة — في src/core/org/kind.js: أول قارئ للتمييز هو
+// مقارنة القطاعات في core/reports، والنواة لا تستورد من الوحدات. يُعاد تصديره هنا كما هو حتى
+// يبقى `import { isDelivery } from '.../modules/org/org.js'` عاملاً بلا تغيير في أي ملف قائم.
 // ─────────────────────────────────────────────────────────────────────────────
-export const DELIVERY_KIND = 'delivery';
-export const SUPPORT_KIND = 'support';
-export const SECTOR_KINDS = [DELIVERY_KIND, SUPPORT_KIND];
-// الفراغ ⟵ قطاع تسليم: هو ما كتبته الترحيلة 009 في كل صف قائم، وهو التفسير الوحيد المتّسق مع
-// صفٍّ أُنشئ قبلها أو من مسار لا يذكر النوع — فلا يسقط أي قطاع من المقارنات بسبب خانة فارغة.
-export const isDelivery = (s) => (s == null ? false : s.kind == null || s.kind === '' || s.kind === DELIVERY_KIND);
-export const isSupportUnit = (s) => !isDelivery(s);
-// الشرط نفسه بصيغة استعلام لمن يرشّح داخل قاعدة البيانات (المقارنات والتقارير) لا في الذاكرة.
-export const DELIVERY_SECTOR_SQL = "(kind IS NULL OR kind = 'delivery')";
+export { DELIVERY_KIND, SUPPORT_KIND, SECTOR_KINDS, isDelivery, isSupportUnit, DELIVERY_SECTOR_SQL };
 
 // يقبل الفراغ (⟵ قطاع تسليم) ويرفض أي قيمة أخرى برسالة تقول الخيارين المتاحين بلا مصطلحات.
 export function normSectorKind(v) {
@@ -105,6 +94,9 @@ export async function orgTree(user) {
   if (user.role_id !== 'admin' && !can(user, 'read', 'employee') && !can(user, 'create', 'sector'))
     throw forbidden('عرض الهيكل التنظيمي يتطلب صلاحية إدارية');
   const seeTargets = user.scope === 'company'; // sector financial targets are company-level info
+  // شجرة الهيكل تعرض **كل** الوحدات: قطاعات التسليم ووحدات المساندة معاً — بلا ترشيح نوع عمداً.
+  // هي الشاشة التي تُدار منها وحدة المساندة أصلاً، وترشيحها هنا يُخفي موظفيها عن المنصة كلها.
+  // (الترشيح مكانه شاشات «القطاع»: المقارنات والمحوّلات والأهداف — لا هنا.)
   const sectors = await all('SELECT * FROM sector WHERE deleted_at IS NULL ORDER BY sort_order, name_ar');
   return await Promise.all(sectors.map(async (s) => ({
     ...s,

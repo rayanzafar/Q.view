@@ -6,6 +6,7 @@ import { scopeFilter } from '../../core/rbac/scope.js';
 import { audit } from '../../core/audit/index.js';
 import { id, nowIso, toHalalas } from '../../core/util/ids.js';
 import { forbidden, notFound, badRequest } from '../../core/http/errors.js';
+import { isSupportUnit } from '../../core/org/kind.js';
 import { getTeam } from './oppteam.js';
 
 // Stage-rot thresholds (benchmarks §1 — Pipedrive rotting): an OPEN opportunity sitting in a stage
@@ -101,8 +102,13 @@ export async function moveSector(ctx, oppId, toSectorId, note) {
   const row = await get('SELECT * FROM opportunity WHERE id = ? AND deleted_at IS NULL', [oppId]);
   if (!row) throw notFound('الفرصة غير موجودة');
   if (!can(user, 'update', 'opportunity', row)) throw forbidden();
-  const target = await get('SELECT id, name_ar FROM sector WHERE id = ? AND active = 1 AND deleted_at IS NULL', [toSectorId]);
+  const target = await get('SELECT id, name_ar, kind FROM sector WHERE id = ? AND active = 1 AND deleted_at IS NULL', [toSectorId]);
   if (!target) throw badRequest('قطاع غير معروف');
+  // الوجهة قطاع تسليم لا وحدة مساندة. الواجهة لا تعرض وحدات المساندة في قائمة النقل، والقرار
+  // يُحسم هنا أيضاً لا في الشاشة وحدها: الفرصة المنقولة إلى وحدة مساندة تخرج فوراً من مقارنة
+  // القطاعات ومن مستهدف المبيعات ومن تغطية خط الفرص — تختفي من شاشات المالك بلا رسالة تقول لماذا.
+  if (isSupportUnit(target))
+    throw badRequest(`«${target.name_ar}» وحدة مساندة على مستوى الشركة وليست قطاع تسليم — الفرص تُنقل بين قطاعات التسليم فقط. اختر قطاعاً من القائمة.`);
   if (String(row.sector_id) === String(toSectorId)) return await getOpportunity(user, oppId);
   // صلاحية النقل = صلاحية تعديل الفرصة في قطاعها الحالي (فُحصت أعلاه): من يديرها يحق له إعادة
   // إسنادها (تسليمها لقطاع آخر) — والفرصة تخرج من نطاقه بعد النقل. النطاق الشركي ينقل أي فرصة.

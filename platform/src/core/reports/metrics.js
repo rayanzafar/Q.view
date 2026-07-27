@@ -7,6 +7,7 @@ import { canSeeSensitive } from '../rbac/index.js';
 import { config } from '../config.js';
 import { nowIso } from '../util/ids.js';
 import { forbidden } from '../http/errors.js';
+import { DELIVERY_SECTOR_SQL, isSupportUnit } from '../org/kind.js';
 
 const FY = () => config.fiscalYear;
 
@@ -42,7 +43,11 @@ export async function companyOverview(user, opts = {}) {
   // just the one route that remembered to ask.
   if (!user || user.scope !== 'company') throw forbidden('هذا التقرير على مستوى الشركة كاملة، خارج نطاق صلاحيتك');
   const year = Number(opts.year) || FY();
-  const sectors = await all('SELECT * FROM sector WHERE deleted_at IS NULL AND active = 1 ORDER BY sort_order');
+  // قطاعات التسليم وحدها. هذه هي مقارنة القطاعات التي يقرأها المالك، ووحدة المساندة (الخدمات
+  // المشتركة، تطوير الأعمال، المالية) ليست قطاعاً: لا هدف لها ولا إيراد، فظهورها هنا يعني صفاً
+  // خامساً بأصفار يُفسد المقارنة ويُنقص متوسطاتها — وهو ما وُعد المالك بألا يحدث.
+  const sectors = await all(`SELECT * FROM sector WHERE deleted_at IS NULL AND active = 1
+      AND ${DELIVERY_SECTOR_SQL} ORDER BY sort_order`);
   const perSector = await Promise.all(sectors.map(async (s) => {
     const f = await sectorYearFigures(s.id, year);
     const oppCount = (await get('SELECT COUNT(*) n FROM opportunity WHERE sector_id = ? AND deleted_at IS NULL', [s.id])).n;
@@ -87,21 +92,34 @@ export async function multiYearTrend(sectorId, nYears = 5) {
   }));
 }
 
+// ── قرار: لوحة وحدة المساندة تعمل ولا تُرفض، لكنها لا تدّعي هدفاً ──
+// الطلب هنا صريح بمعرّف واحد (لا قائمة)، ومَن يطلبه فعلاً هو موظف الوحدة نفسه: صفحة مركز
+// القيادة تسقط إلى قطاع حساب المستخدم، وقطاع من يعمل في «الخدمات المشتركة» هو الوحدة نفسها.
+// الرفض كان يعني صفحة رئيسية فارغة (أو رسالة «لا يوجد قطاع مرتبط بحسابك» وهي كذبة: قطاعه
+// موجود) لشخص لم يرتكب خطأً — فالرفض أشد إرباكاً من القبول. لذلك:
+//   • الأرقام **الفعلية** تُعرض كما هي: لو سُجّل إيراد على الوحدة فإخفاؤه كذبة ثانية.
+//   • أما **المستهدفات** فتُعاد فارغة لوحدة المساندة: هي لا تُقاس بمبيعات ولا إيراد، وأي رقم
+//     مسجَّل عليها سهواً كان سينتج نسبة إنجاز موهومة على شريط في الشاشة. الفراغ يعرض الحالة
+//     المصمَّمة سلفاً («لا هدف مسجّل لهذه السنة») بدل نسبة لا معنى لها.
+//   • ويرافق الصف نوعه (kind/is_support) كي تسمّيها الشاشة «وحدة مساندة» لا «قطاعاً».
 export async function sectorDashboard(user, sectorId, opts = {}) {
   const year = Number(opts.year) || FY();
   const s = await get('SELECT * FROM sector WHERE id = ?', [sectorId]);
   if (!s) return null;
+  const support = isSupportUnit(s);
+  const targetRevenue = support ? null : s.target_revenue_halalas;
+  const targetSales = support ? null : s.target_sales_halalas;
   const f = await sectorYearFigures(sectorId, year);
   const projects = await all("SELECT status, COUNT(*) n FROM project WHERE sector_id = ? AND deleted_at IS NULL GROUP BY status", [sectorId]);
   const rag = await all("SELECT rag, COUNT(*) n FROM project WHERE sector_id = ? AND deleted_at IS NULL AND status='IN_PROGRESS' GROUP BY rag", [sectorId]);
   const deliverables = await all("SELECT status, COUNT(*) n FROM deliverable WHERE sector_id = ? AND deleted_at IS NULL GROUP BY status", [sectorId]);
   const openRisks = (await get("SELECT COUNT(*) n FROM risk WHERE sector_id = ? AND status != 'CLOSED'", [sectorId])).n;
   return {
-    sector: { id: s.id, name_ar: s.name_ar }, year,
+    sector: { id: s.id, name_ar: s.name_ar, kind: s.kind || null, is_support: support }, year,
     projects: Object.fromEntries(projects.map((r) => [r.status, r.n])),
     rag: Object.fromEntries(rag.map((r) => [r.rag, r.n])),
-    revenue_halalas: f.revenue_halalas, target_revenue_halalas: s.target_revenue_halalas,
-    sales_halalas: f.sales_halalas, target_sales_halalas: s.target_sales_halalas,
+    revenue_halalas: f.revenue_halalas, target_revenue_halalas: targetRevenue,
+    sales_halalas: f.sales_halalas, target_sales_halalas: targetSales,
     contracts_halalas: f.contracts_halalas, contracts_count: f.contracts_count,
     deliverables: Object.fromEntries(deliverables.map((r) => [r.status, r.n])),
     openRisks, trend: await multiYearTrend(sectorId, 4),
@@ -233,8 +251,12 @@ export async function backlog(sectorId) {
 
 // Pipeline coverage = open weighted pipeline ÷ remaining sales target (Tier-1 commercial ratio).
 export async function pipelineCoverage(sectorId, year) {
+  // مستهدف المبيعات مجموع قطاعات التسليم وحدها: وحدة المساندة لا تُقاس بالمبيعات أصلاً، فأي
+  // رقم مسجَّل عليها سهواً كان سيتضخّم به مستهدف الشركة كله وتنخفض به «تغطية خط الفرص».
+  // الشرط مطبَّق في الحالتين (الشركة كلها وقطاع بعينه) كي لا يفترق حكم الرقمين على الوحدة نفسها.
   const target = (await get(`SELECT COALESCE(SUM(target_sales_halalas),0) v FROM sector
-     WHERE active=1 AND deleted_at IS NULL ${sectorId ? 'AND id = ?' : ''}`, sectorId ? [sectorId] : [])).v;
+     WHERE active=1 AND deleted_at IS NULL AND ${DELIVERY_SECTOR_SQL} ${sectorId ? 'AND id = ?' : ''}`,
+    sectorId ? [sectorId] : [])).v;
   const soldRow = await get(`SELECT COALESCE(SUM(o.value_halalas),0) v FROM opportunity o JOIN stage st ON st.id=o.stage_id
      WHERE st.is_won=1 AND o.exclude_from_sales=0 AND o.year=? ${sectorId ? 'AND o.sector_id=?' : ''} AND o.deleted_at IS NULL`,
     [year, ...(sectorId ? [sectorId] : [])]);

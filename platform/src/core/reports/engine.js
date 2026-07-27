@@ -5,6 +5,7 @@ import { companyOverview, sectorDashboard, grossMargin, bookToBill, multiYearTre
   projectKpis, sectorUtilization, pipelineCoverage, winRate } from './metrics.js';
 import { pipelineSummary } from '../../modules/crm/opportunities.js';
 import { redact, canSeeSensitive } from '../rbac/index.js';
+import { DELIVERY_SECTOR_SQL } from '../org/kind.js';
 import { TEMPLATES } from '../mail/templates.js';
 import { sendMail } from '../mail/transport.js';
 import { resolveUser } from '../http/context.js';
@@ -38,7 +39,12 @@ export async function buildReport(reportKey, user, opts = {}) {
       projects, risks: await sectorRisks(opts.sectorId) };
   }
   if (reportKey === 'monthly_sector_performance') {
-    const sid = opts.sectorId || user.sector_id || (await get('SELECT id FROM sector WHERE active=1 AND deleted_at IS NULL ORDER BY sort_order LIMIT 1') || {}).id;
+    // الاختيار التلقائي حين لا يذكر الطلب قطاعاً ولا يحمله حساب المستلم: أول **قطاع تسليم**.
+    // بلا الشرط قد يقع الاختيار على وحدة مساندة (ترتيبها في الجدول لا يمنع ذلك) فيصل المالك
+    // «تقرير أداء قطاع» شهري عن وحدة بلا مبيعات ولا هدف — تقرير لا يقول شيئاً ويُفقد الثقة بالبقية.
+    const sid = opts.sectorId || user.sector_id || (await get(
+      `SELECT id FROM sector WHERE active=1 AND deleted_at IS NULL AND ${DELIVERY_SECTOR_SQL}
+        ORDER BY sort_order LIMIT 1`) || {}).id;
     const sd = sid ? await sectorDashboard(user, sid, { year: opts.year }) : null;
     if (!sd) return { sectorName: '—', period: `${monthName()} ${opts.year || FY()}`, revenue_halalas: 0, target_revenue_halalas: 0,
       sales_halalas: 0, target_sales_halalas: 0, margin_pct: null, target_margin_pct: 0, revenue_yoy: null, book_to_bill: null, rag: 'GREEN', projects: [] };
