@@ -5,6 +5,7 @@ import { scopeFilter } from '../../core/rbac/scope.js';
 import { audit } from '../../core/audit/index.js';
 import { id, nowIso, toHalalas } from '../../core/util/ids.js';
 import { forbidden, notFound, badRequest } from '../../core/http/errors.js';
+import { isDelivery, SUPPORT_KIND } from '../org/org.js';
 
 export async function listProjects(user, filters = {}) {
   const f = scopeFilter(user, 'project', 'read', { ownerCol: 'owner_user_id' });
@@ -109,7 +110,15 @@ export async function projectStaffing(user, projectId) {
      FROM allocation a LEFT JOIN employee e ON e.id=a.employee_id
      WHERE a.project_id=? AND a.deleted_at IS NULL ORDER BY a.created_at`, [projectId]);
   const assignedIds = new Set(assigned.map((a) => a.employee_id));
-  const available = (await all('SELECT id, name_ar, job_title FROM employee WHERE sector_id=? AND active=1 AND deleted_at IS NULL ORDER BY name_ar', [p.sector_id]))
+  // المتاحون للتسكين = موظفو قطاع المشروع + **موظفو وحدات المساندة** (الخدمات المشتركة، تطوير
+  // الأعمال، المالية). وحدة المساندة ليست قطاع تسليم، وأشخاصها مورد مشترك للشركة كلها يُستعان
+  // بهم على مشاريع أي قطاع — وهذا هو سبب وجودها أصلاً. بلا هذا السطر يبقى الثلاثة في «الخدمات
+  // المشتركة» غير قابلين للاختيار على أي مشروع، فتُسجَّل تسكيناتهم الحقيقية خارج المنصة.
+  const available = (await all(
+    `SELECT e.id, e.name_ar, e.job_title FROM employee e
+       LEFT JOIN sector s ON s.id = e.sector_id AND s.deleted_at IS NULL
+      WHERE e.active = 1 AND e.deleted_at IS NULL AND (e.sector_id = ? OR s.kind = ?)
+      ORDER BY e.name_ar`, [p.sector_id, SUPPORT_KIND]))
     .filter((e) => !assignedIds.has(e.id));
   return { project: { id: p.id, name_ar: p.name_ar, sector_id: p.sector_id }, assigned, available, canStaff: can(user, 'update', 'project', p) };
 }
@@ -131,7 +140,14 @@ export async function assignEmployee(ctx, projectId, { employeeId, type, pct, fr
   if (!can(user, 'update', 'project', p)) throw forbidden('تسكين الموظفين يتطلب صلاحية إدارة المشروع');
   const emp = await get('SELECT * FROM employee WHERE id=? AND deleted_at IS NULL', [employeeId]);
   if (!emp) throw badRequest('الموظف غير موجود');
-  if (emp.sector_id && p.sector_id && emp.sector_id !== p.sector_id) throw badRequest('لا يمكن تسكين موظف من قطاع آخر على هذا المشروع');
+  // الحاجز بين القطاعات يبقى قائماً بين **قطاعات التسليم** وحدها: موظف الحلول لا يُسكَّن على
+  // مشروع الاستشارات بلا نقله. أما موظف **وحدة مساندة** (خدمات مشتركة، تطوير أعمال، مالية) فهو
+  // مورد مشترك على مستوى الشركة بحكم تعريف وحدته، ويُسكَّن على مشروع أي قطاع بلا نقل ولا استثناء
+  // يدوي — وهذا هو الغرض المعلن من وحدات المساندة.
+  if (emp.sector_id && p.sector_id && emp.sector_id !== p.sector_id) {
+    const home = await get('SELECT id, name_ar, kind FROM sector WHERE id = ?', [emp.sector_id]);
+    if (isDelivery(home)) throw badRequest('لا يمكن تسكين موظف من قطاع آخر على هذا المشروع');
+  }
   if (await get('SELECT id FROM allocation WHERE project_id=? AND employee_id=? AND deleted_at IS NULL', [projectId, employeeId])) throw badRequest('الموظف مُسكَّن على هذا المشروع مسبقًا');
   const aid = id('alloc'); const now = nowIso();
   await insert('allocation', { id: aid, employee_id: employeeId, person_name_ar: emp.name_ar, project_id: projectId,

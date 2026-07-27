@@ -35,6 +35,23 @@ const leadLine = (name) => name
   : '<span class="ot-lead ot-none">بلا مسؤول معيَّن</span>';
 
 const countChip = (n, word) => `<span class="ot-count tnum">${Number(n) || 0}</span> <span class="ot-word">${word}</span>`;
+// تمييز العدد في العربية ليس مفرداً وجمعاً فقط: من ٣ إلى ١٠ جمعُ قِلّة مجرور («٣ موظفين»)،
+// ومن ١١ فأكثر مفردٌ منصوب («١١ موظفاً»). الشرط الثنائي البسيط كان يكتب «٣ موظفاً» — خطأ
+// نحوي ظاهر لكل مستخدم في أول سطر من الشجرة. القاعدة على آخر خانتين لا على العدد كاملاً،
+// فـ«١٠٣ موظفاً» صحيحة و«١٠٥ موظفين» صحيحة كذلك.
+// نفس قاعدة `countPhrase` المستورَدة أعلاه وبنفس الصيغ — الفرق أن تلك تبني العبارة كاملة،
+// وهذه تعيد الاسم مجرّداً لأن رقاقة الشجرة تُنسّق الرقم في خانة مستقلة (.ot-count). أي تعديل
+// على القاعدة يجب أن يطال الاثنتين معاً.
+const noun = (n, { one, two, few, many }) => {
+  const v = Number(n) || 0;
+  if (v === 1) return one;
+  if (v === 2) return two;
+  const r = v % 100;
+  return r >= 3 && r <= 10 ? few : many;
+};
+const EMP = { one: 'موظف', two: 'موظفان', few: 'موظفين', many: 'موظفاً' };
+const DEP = { one: 'إدارة', two: 'إدارتان', few: 'إدارات', many: 'إدارة' };
+const SEC = { one: 'قطاع', two: 'قطاعان', few: 'قطاعات', many: 'قطاعاً' };
 const n0 = (v) => `<span class="tnum">${Number(v) || 0}</span>`;
 const money = (halalas) => `<span class="tnum ua-money">${fmtSar(halalas)}</span>`;
 
@@ -85,7 +102,7 @@ function healthChecks(checks) {
     const cnt = Number(c.count) || 0;
     const link = CHECK_LINK[c.id];
     const head = (mark) => `
-      <span class="oh-sev oh-${c.severity}">${esc(c.severity_ar || '')}</span>
+      <span class="oh-sev oh-${esc(c.severity || 'low')}">${esc(c.severity_ar || '')}</span>
       <span class="oh-ct">${esc(c.title_ar || '')}</span>
       ${mark}
       <span class="oh-cd">${esc(c.detail_ar || '')}</span>`;
@@ -237,7 +254,8 @@ function unassignedCard(sector, rollup, err, editable) {
         </div>
       </div></div>`;
   }
-  const canFix = true;
+  // طريق الإصلاح يُعرض لمن يملك هيكل هذا القطاع؛ الأرقام تُعرض للجميع لأنها تشخيص لا تعديل.
+  const canFix = !!editable;
   const rows = [
     uaRow('opportunity', sum('opportunities'), Number(u.opportunities) || 0, {
       value: u.opportunity_value_halalas, weighted: u.opportunity_weighted_halalas,
@@ -357,7 +375,7 @@ export async function orgTreePage(user, opts = {}) {
       <details class="ot-det" open>
         <summary class="ot-node ot-dept">
           <div class="ot-main"><span class="ot-kind">إدارة</span><span class="ot-name">${esc(d.name_ar)}</span></div>
-          <div class="ot-meta">${editable ? managerPicker(d) : leadLine(names.get(d.manager_user_id))} · ${depWork(d) || countChip(d.employees, d.employees === 1 ? 'موظف' : 'موظفاً')}${actions}</div>
+          <div class="ot-meta">${editable ? managerPicker(d) : leadLine(names.get(d.manager_user_id))} · ${depWork(d) || countChip(d.employees, noun(d.employees, EMP))}${actions}</div>
         </summary>
         ${inner}
       </details>
@@ -383,7 +401,7 @@ export async function orgTreePage(user, opts = {}) {
             <span class="ot-kind">قطاع</span><span class="ot-name">${esc(s.name_ar)}</span>
             ${s.is_placeholder ? pill('قالب', 'amber') : ''}
           </div>
-          <div class="ot-meta">${leadLine(names.get(s.lead_user_id))} · ${countChip(s.employees, s.employees === 1 ? 'موظف' : 'موظفاً')} · ${countChip(deps.length, deps.length === 1 ? 'إدارة' : 'إدارات')}</div>
+          <div class="ot-meta">${leadLine(names.get(s.lead_user_id))} · ${countChip(s.employees, noun(s.employees, EMP))} · ${countChip(deps.length, noun(deps.length, DEP))}</div>
         </summary>
         ${inner}
       </details>
@@ -410,7 +428,7 @@ export async function orgTreePage(user, opts = {}) {
         ${card(`<div style="padding:1rem">
           <div class="ot-root">
             <span>رؤية الخبراء الاستشارية</span>
-            <span style="font-weight:400;font-size:11.5px;opacity:.85">${countChip(totalEmployees, totalEmployees === 1 ? 'موظف' : 'موظفاً')} · ${countChip(tree.length, tree.length === 1 ? 'قطاع' : 'قطاعات')}</span>
+            <span style="font-weight:400;font-size:11.5px;opacity:.85">${countChip(totalEmployees, noun(totalEmployees, EMP))} · ${countChip(tree.length, noun(tree.length, SEC))}</span>
           </div>
           <ul class="ot-ul">${tree.map(sectorNode).join('') || '<div class="ot-empty">لا قطاعات بعد</div>'}</ul>
         </div>`)}
@@ -518,12 +536,18 @@ async function assignPage(user, { sectorId, kind, year, limit }) {
     : `<span class="asg-nodep">لا إدارات في ${esc(sectorName)} — أنشئ إدارة أولاً</span>
        <a class="btn btn-sm" href="/app/org#tree">أضف إدارة</a>`;
 
-  const bar = list.count ? `<div class="asg-barwrap"><div class="asg-bar">
+  // من لا يملك هيكل هذا القطاع يقرأ الكشف ولا يُعرض له إجراء سيُرفض — بجملة تقول لمن يعود القرار.
+  const mayFix = mayEdit(user, sectorId);
+  const bar = !list.count ? ''
+    : !mayFix ? `<div class="asg-barwrap"><div class="asg-bar">
+      <span class="asg-nodep">الإسناد يتطلب صلاحية إدارة هيكل ${esc(sectorName)} — اطلبه من مسؤول القطاع</span>
+    </div></div>`
+      : `<div class="asg-barwrap"><div class="asg-bar">
     <label class="asg-all"><input type="checkbox" id="asg-all" aria-label="تحديد الكل"> تحديد الكل</label>
     <span class="asg-cnt">المحدد <b class="tnum" id="asg-n">0</b> من <span class="tnum">${list.count}</span></span>
     <span class="asg-sp"></span>
     ${picker}
-  </div></div>` : '';
+  </div></div>`;
 
   const body = `
     <style>${PAGE_CSS}</style>

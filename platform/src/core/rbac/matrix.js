@@ -90,6 +90,28 @@ export const ROLE_GRANTS = {
     ...read(['project', 'report', 'kpi'], 'sector'),
   ],
 
+  // رئيس تطوير الأعمال — وحدة مساندة على مستوى **الشركة** لا داخل قطاع واحد: يعمل على فرص
+  // القطاعات الأربعة كلها ويسكّن عليها فِرقاً، فنطاقه «شركة» في كل منح. قرار المالك حرفياً:
+  // «كل شيء إلا الرواتب». ترجمة القرار إلى منح صريحة لا إلى منح شامل:
+  //   • العمل التشغيلي (الفرص والعملاء والمشاريع والمهام والتسكين…): قراءة وإنشاء وتعديل.
+  //     بلا **حذف**: إزالة عمل قائم قرار لا رجعة فيه يبقى لصاحب القطاع ولمدير النظام.
+  //     وبلا **اعتماد**: الاعتماد فعل حوكمة يخص من يملك القرار في القطاع، لا من يقود المسار.
+  //   • المال (العقود والفواتير والتحصيل والموازنات والإيراد): قراءة فقط — يحتاج الرقم ليقود
+  //     تطوير الأعمال، ولا يحتاج أن يكتبه.
+  //   • هامش الربح والكلفة على مستوى الشركة: مكشوفان له صراحةً كما لمكتب الرئيس التنفيذي.
+  //   • **لا منح راتب بأي شكل**: الراتب مختوم لمدير النظام وحده بقرار مالك سابق حتى يتم التكامل
+  //     مع Odoo. الختم لا يُفتح لدور جديد مهما اتسعت مسؤوليته — والاختبار يحرس ذلك.
+  //   • لا إدارة نظام: لا إنشاء قطاع ولا حذفه ولا أي منح شامل — بنية الشركة قرار مدير النظام.
+  bd_head: [
+    ...crud(OPERATIONAL, 'company'),                       // قراءة + إنشاء + تعديل (لا حذف)
+    ...crud(['pricing_line'], 'company'),                  // تسعير العروض جزء أصيل من عمله
+    ...read(['sector', 'department', 'employee'], 'company'), // مورد الشركة كاملاً أمامه للتسكين
+    ...read(['contract', 'invoice', 'collection', 'budget', 'revenue_line', 'report', 'kpi'], 'company'),
+    { resource: 'report', action: 'export', scope: 'company' },
+    { resource: 'margin', action: 'read', scope: 'company' },
+    { resource: 'cost', action: 'read', scope: 'company' },
+  ],
+
   finance: [
     ...crud(['invoice', 'collection', 'expense', 'cost_line', 'revenue_line', 'budget', 'contract',
       'contract_payment', 'purchase_order'], 'company'),
@@ -163,6 +185,7 @@ export const ROLE_LABELS = {
   line_manager: { ar: 'مدير مباشر', en: 'Line Manager' },
   project_manager: { ar: 'مدير مشروع', en: 'Project Manager' },
   bd_manager: { ar: 'مدير تطوير الأعمال', en: 'BD Manager' },
+  bd_head: { ar: 'رئيس تطوير الأعمال', en: 'Head of Business Development' },
   finance: { ar: 'المالية', en: 'Finance' },
   procurement: { ar: 'المشتريات', en: 'Procurement' },
   hr: { ar: 'الموارد البشرية', en: 'HR' },

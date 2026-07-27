@@ -59,6 +59,47 @@ const normHireDate = (v) => normServiceDate(v, 'تاريخ التعيين', '202
 const normEndDate = (v) => normServiceDate(v, 'تاريخ انتهاء الخدمة', '2026-06-30');
 const todayIso = () => nowIso().slice(0, 10);
 
+// ─────────────────────────────────────────────────────────────────────────────
+// نوع الوحدة التنظيمية: قطاع تسليم أم وحدة مساندة (الترحيلة 009)
+// جدول الوحدات يحمل نوعين لا نوعاً واحداً:
+//   • delivery ⟵ **قطاع تسليم**. قرار المالك حاسم: أربعة لا خامس لها (الحلول، الاستشارات،
+//     المشاريع الاستراتيجية، SAP). له أهداف مبيعات وإيراد، وهو وحده ما يظهر في مقارنات
+//     القطاعات ومحوّل القطاع وتقسيم خط الفرص وأي شاشة تقول «قطاع».
+//   • support  ⟵ **وحدة مساندة** على مستوى الشركة (تطوير الأعمال · الخدمات المشتركة · المالية):
+//     تحمل أشخاصاً وكلفة لا أهدافاً، وموظفوها مورد مشترك يُسكَّن على مشاريع أي قطاع وفرصه.
+// التمييز مُعرَّف هنا مرة واحدة ويُستورد حيثما احتيج — لا نص 'delivery' مكرراً في كل ملف: نسخة
+// واحدة منسية تكفي لظهور «قطاع» خامس أمام المالك، وهو بالضبط ما جاءت هذه الموجة لمنعه.
+// ─────────────────────────────────────────────────────────────────────────────
+export const DELIVERY_KIND = 'delivery';
+export const SUPPORT_KIND = 'support';
+export const SECTOR_KINDS = [DELIVERY_KIND, SUPPORT_KIND];
+// الفراغ ⟵ قطاع تسليم: هو ما كتبته الترحيلة 009 في كل صف قائم، وهو التفسير الوحيد المتّسق مع
+// صفٍّ أُنشئ قبلها أو من مسار لا يذكر النوع — فلا يسقط أي قطاع من المقارنات بسبب خانة فارغة.
+export const isDelivery = (s) => (s == null ? false : s.kind == null || s.kind === '' || s.kind === DELIVERY_KIND);
+export const isSupportUnit = (s) => !isDelivery(s);
+// الشرط نفسه بصيغة استعلام لمن يرشّح داخل قاعدة البيانات (المقارنات والتقارير) لا في الذاكرة.
+export const DELIVERY_SECTOR_SQL = "(kind IS NULL OR kind = 'delivery')";
+
+// يقبل الفراغ (⟵ قطاع تسليم) ويرفض أي قيمة أخرى برسالة تقول الخيارين المتاحين بلا مصطلحات.
+export function normSectorKind(v) {
+  if (v == null || String(v).trim() === '') return DELIVERY_KIND;
+  const k = String(v).trim().toLowerCase();
+  if (!SECTOR_KINDS.includes(k))
+    throw badRequest('نوع الوحدة غير معروف — اختر «قطاع تسليم» لأحد قطاعات التسليم الأربعة، أو «وحدة مساندة» لوحدة على مستوى الشركة');
+  return k;
+}
+
+// قائمة قطاعات التسليم وحدها — المصدر الواحد لكل شاشة تقول «قطاع»: مقارنة القطاعات، محوّل
+// القطاع، تقسيم خط الفرص، أهداف المبيعات. وحدات المساندة لا تظهر فيها إطلاقاً.
+// تُعيد الوصف التنظيمي فقط بلا أي هدف مالي، فلا تحتاج بوابة صلاحية: الأسماء والألوان معلومة
+// عامة داخل المنصة، أما الأهداف فتُقرأ من orgTree ببوابتها القائمة.
+export async function listDeliverySectors(opts = {}) {
+  return await all(
+    `SELECT id, name_ar, name_en, color, sort_order, active, kind FROM sector
+      WHERE deleted_at IS NULL AND ${DELIVERY_SECTOR_SQL} ${opts.activeOnly ? 'AND active = 1' : ''}
+      ORDER BY sort_order, name_ar`);
+}
+
 export async function orgTree(user) {
   // Gate: the org hierarchy (and its financial targets) must not be readable by any authenticated user.
   if (user.role_id !== 'admin' && !can(user, 'read', 'employee') && !can(user, 'create', 'sector'))
@@ -82,11 +123,13 @@ export async function createSector(ctx, data) {
   requireAdminSectors(ctx.user);
   if (!data.id || !data.name_ar) throw badRequest('المعرّف والاسم مطلوبان');
   if (await get('SELECT id FROM sector WHERE id = ?', [data.id])) throw badRequest('المعرّف مستخدم');
+  // النوع يُذكر صراحةً أو يُفهم قطاع تسليم — والفارق يظهر مباشرة في كل مقارنة، فيُسجَّل في التدقيق.
+  const kind = normSectorKind(data.kind);
   await insert('sector', { id: data.id, name_ar: data.name_ar, name_en: data.name_en || null, color: data.color || '#2563eb',
-    target_sales_halalas: toHalalas(data.target_sales_sar), target_revenue_halalas: toHalalas(data.target_revenue_sar),
+    kind, target_sales_halalas: toHalalas(data.target_sales_sar), target_revenue_halalas: toHalalas(data.target_revenue_sar),
     target_margin_pct: data.target_margin_pct || 0, active: 1, is_placeholder: data.placeholder ? 1 : 0,
     sort_order: data.sort_order || 99, created_at: nowIso(), created_by: ctx.user.id });
-  await audit(ctx, { action: 'create', resource: 'sector', resourceId: data.id });
+  await audit(ctx, { action: 'create', resource: 'sector', resourceId: data.id, sectorId: data.id, detail: { kind } });
   return await get('SELECT * FROM sector WHERE id = ?', [data.id]);
 }
 export async function updateSector(ctx, sectorId, data) {
@@ -97,9 +140,28 @@ export async function updateSector(ctx, sectorId, data) {
   for (const k of ['name_ar', 'name_en', 'color', 'active', 'is_placeholder', 'sort_order', 'lead_user_id']) if (k in data) patch[k] = data[k];
   for (const [k, col] of [['target_sales_sar', 'target_sales_halalas'], ['target_revenue_sar', 'target_revenue_halalas']]) if (k in data) patch[col] = toHalalas(data[k]);
   if ('target_margin_pct' in data) patch.target_margin_pct = data.target_margin_pct;
+  if ('kind' in data) {
+    const kind = normSectorKind(data.kind);
+    // تحويل قطاع تسليم إلى وحدة مساندة يُخرجه من كل مقارنة مبيعات ومن محوّل القطاع في اللحظة
+    // نفسها، فيختفي عمله من شاشات المالك بلا رسالة تفسّر الاختفاء. مسموح ما دام القطاع فارغاً
+    // (تصحيح إنشاء خاطئ)، وممنوع ما دام يحمل عملاً — والرسالة تقول ماذا يُنقل أولاً.
+    if (kind === SUPPORT_KIND && isDelivery(s)) {
+      const load = await get(
+        `SELECT (SELECT COUNT(*) FROM project     WHERE sector_id = ? AND deleted_at IS NULL) AS projects,
+                (SELECT COUNT(*) FROM opportunity WHERE sector_id = ? AND deleted_at IS NULL) AS opportunities`,
+        [sectorId, sectorId]);
+      const carried = [
+        Number(load.projects) ? `${load.projects} مشروعاً` : null,
+        Number(load.opportunities) ? `${load.opportunities} فرصة` : null,
+      ].filter(Boolean);
+      if (carried.length)
+        throw badRequest(`لا يمكن تحويل «${s.name_ar}» إلى وحدة مساندة وفيه ${carried.join(' و')} — وحدة المساندة لا تدخل في مقارنات القطاعات، فانقل هذه الأعمال إلى قطاع تسليم آخر أولاً`);
+    }
+    patch.kind = kind;
+  }
   patch.updated_at = nowIso(); patch.updated_by = ctx.user.id;
   await update('sector', sectorId, patch);
-  await audit(ctx, { action: 'update', resource: 'sector', resourceId: sectorId, detail: patch });
+  await audit(ctx, { action: 'update', resource: 'sector', resourceId: sectorId, sectorId, detail: patch });
   return await get('SELECT * FROM sector WHERE id = ?', [sectorId]);
 }
 

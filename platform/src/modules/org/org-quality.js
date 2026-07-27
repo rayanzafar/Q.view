@@ -8,11 +8,18 @@
 //   ٢ إدارات باسم غير عربي داخل واجهة عربية بالكامل + اقتراح اسم عربي لكل واحدة.
 //   ٣ إدارة تحمل اسم قطاعها نفسه («الحلول» داخل «قطاع الحلول») — التباس تسمية.
 //   ٤ إدارات بصفر موظفين — مهجورة أو ناقصة التعبئة.
-//   ٥ قطاعات بلا أي إدارة — الطبقة الوسطى غير ممثَّلة.
+//   ٥ قطاعات **تسليم** بلا أي إدارة — الطبقة الوسطى غير ممثَّلة.
 //   ٦ أعمال بلا إدارة (مشاريع وفرص وتسكين) — يعمل تلقائياً متى وُجدت خانة الإدارة على الجدول،
 //     ويُعلَن «فحص مؤجَّل» بأمان قبلها (نفحص وجود الخانة قبل الاستعلام عنها، فلا ينكسر شيء اليوم).
 //   ٧ إدارات بلا مسؤول معيَّن — لا أحد يستلم ما يخصها.
 //   ٨ فرص بلا قطاع إطلاقاً — خارج مبيعات القطاعات كلها (يُقاس على مستوى الشركة).
+//
+// وحدات المساندة (تطوير الأعمال · الخدمات المشتركة · المالية) ليست قطاعات تسليم: شكلها الصحيح
+// **مسطّح** — أشخاص يتبعونها مباشرة بلا إدارات فرعية، بلا أهداف ولا حصة في مقارنات القطاعات.
+// لذلك يُستثنى منها البندان المبنيان على «كل قطاع تحته إدارات، وكل موظف داخل إدارة» (١ و٥ متى
+// كانت الوحدة مسطّحة)، وتُصحَّح كلمة «قطاع» في أي نص يصفها. بلا هذا الاستثناء تُنتج الوحدة
+// ملاحظتين دائمتين لا سبيل إلى إغلاقهما أبداً، فتهبط الدرجة بلا خطأ حقيقي ويتعلّم المالك تجاهل
+// التقرير كله — وتقرير يُتجاهَل أسوأ من غياب التقرير.
 //
 // للتقرير عرضان على **نفس القراءات ونفس الأرقام** (إسقاطان لا مصدران للحقيقة):
 //   • findings/pending — نتيجة لكل فجوة ولكل قطاع، بتفاصيلها واقتراحها.
@@ -23,7 +30,7 @@ import { can, effectiveScope } from '../../core/rbac/index.js';
 import { badRequest, forbidden } from '../../core/http/errors.js';
 import { nowIso } from '../../core/util/ids.js';
 import { config } from '../../core/config.js';
-import { normName } from './org.js';
+import { normName, isDelivery } from './org.js';
 
 // ── الشدّة ──
 export const WARN = 'تحذير';   // فجوة تُفسد تجميعاً أو تخالف قاعدة معلنة
@@ -189,7 +196,7 @@ export async function orgHealth(user, opts = {}) {
   const secParams = sector ? [sector] : [];
 
   const sectors = await all(
-    `SELECT id, name_ar FROM sector WHERE deleted_at IS NULL ${sector ? 'AND id = ?' : ''} ORDER BY sort_order, name_ar`,
+    `SELECT id, name_ar, kind FROM sector WHERE deleted_at IS NULL ${sector ? 'AND id = ?' : ''} ORDER BY sort_order, name_ar`,
     secParams);
   if (sector && !sectors.length) {
     throw wide
@@ -198,11 +205,20 @@ export async function orgHealth(user, opts = {}) {
   }
   const sectorName = new Map(sectors.map((s) => [s.id, s.name_ar]));
   const nameOfSector = (sid) => sectorName.get(sid) || 'بلا قطاع';
+  // قطاعات التسليم وحدها هي «القطاعات» في كل رقم ونص يقرأه المالك؛ ما عداها وحدات مساندة تُعدّ
+  // على حدة ولا تُخلط بها. تعريف التمييز واحد في org.js — لا نسخة ثانية منه هنا.
+  const deliverySectors = sectors.filter(isDelivery);
+  const supportIds = new Set(sectors.filter((s) => !isDelivery(s)).map((s) => s.id));
+  const isSupport = (sid) => supportIds.has(sid);
+  // الكلمة الصحيحة في نص عربي: «القطاع» لقطاع تسليم، و«وحدة المساندة» لما سواه.
+  const unitNoun = (sid) => (isSupport(sid) ? 'وحدة المساندة' : 'القطاع');
 
   const departments = await all(
     `SELECT id, sector_id, name_ar, name_en, active, manager_user_id FROM department
       WHERE deleted_at IS NULL ${sector ? 'AND sector_id = ?' : ''} ORDER BY sector_id, name_ar`,
     secParams);
+  // من له إدارات فرعية أصلاً — يستعمله البند ٥، ويستعمله البند ١ ليعرف الوحدة المسطّحة.
+  const depsBySector = new Set(departments.map((d) => d.sector_id));
 
   // عدد الموظفين لكل إدارة — التجميع على إدارة الموظف، والنطاق على قطاع الإدارة نفسها
   // (لا على قطاع الموظف)، وإلا اختفى من العدّ موظفٌ قطاعه مخالف لقطاع إدارته.
@@ -236,8 +252,12 @@ export async function orgHealth(user, opts = {}) {
     orphansBySector.get(k).push(e);
   }
   for (const [sid, list] of orphansBySector) {
+    // وحدة مساندة **مسطّحة** (بلا أي إدارة فرعية): اتّباع موظفيها لها مباشرةً هو شكلها الصحيح،
+    // لا فجوة فيه. لو بقي البند يتحقق عليها لظلّ مفتوحاً إلى الأبد: لا إدارة تُنقل إليها أصلاً.
+    // أما وحدة مساندة أنشأت إدارات فعلاً فالسؤال مشروع فيها كما في أي قطاع — بكلماتها الصحيحة.
+    if (sid && isSupport(sid) && !depsBySector.has(sid)) continue;
     const sName = sid ? nameOfSector(sid) : 'بلا قطاع';
-    const total = sectorEmployees.get(sid || null) || 0; // إجمالي القطاع — لتُقرأ النسبة لا الرقم وحده
+    const total = sectorEmployees.get(sid || null) || 0; // الإجمالي — لتُقرأ النسبة لا الرقم وحده
     findings.push(finding({
       type: 'employees_without_department',
       severity: WARN,
@@ -247,7 +267,7 @@ export async function orgHealth(user, opts = {}) {
       count: list.length,
       message: `${countPhrase(list.length, 'employee')} في «${sName}» بلا إدارة${total > list.length ? ` من أصل ${countPhrase(total, 'employee')}` : ''}`
         + ' — لا يظهرون تحت أي فرع في الشجرة ولا يدخلون في أي تجميع على مستوى الإدارة',
-      suggestion: 'افتح شجرة الهيكل وانقل كل واحد منهم إلى إدارته الصحيحة — بعدها يصير مجموع الإدارات مساوياً لإجمالي القطاع',
+      suggestion: `افتح شجرة الهيكل وانقل كل واحد منهم إلى إدارته الصحيحة — بعدها يصير مجموع الإدارات مساوياً لإجمالي ${unitNoun(sid)}`,
       items: list.slice(0, ITEM_CAP).map((e) => ({ id: e.id, name_ar: e.name_ar, sector_id: e.sector_id || null, sector_name_ar: sName })),
       items_capped: list.length > ITEM_CAP,
     }));
@@ -289,12 +309,15 @@ export async function orgHealth(user, opts = {}) {
       employees: depEmployees.get(d.id) || 0,
     }));
     const s = items[0];
+    // «قطاعها» كلمة خاطئة عن إدارة تتبع وحدة مساندة — تُستبدل بصيغة تصحّ على الحالتين متى دخلت
+    // وحدة مساندة في النتيجة، ويبقى النص كما هو حرفياً في الحالة الشائعة (قطاعات التسليم وحدها).
+    const twinNoun = twins.some((d) => isSupport(d.sector_id)) ? 'اسم الوحدة التي تتبعها' : 'اسم قطاعها';
     findings.push(finding({
       type: 'department_name_same_as_sector',
       severity: NOTE,
-      title: 'إدارة تحمل اسم قطاعها',
+      title: `إدارة تحمل ${twinNoun}`,
       count: twins.length,
-      message: `${countPhrase(twins.length, 'department')} تحمل اسم قطاعها نفسه (${s ? `«${s.name_ar}» داخل «${s.sector_name_ar}»` : ''})`
+      message: `${countPhrase(twins.length, 'department')} تحمل ${twinNoun} نفسه (${s ? `«${s.name_ar}» داخل «${s.sector_name_ar}»` : ''})`
         + ' — الاسمان يظهران متطابقين في كل تقرير فلا يميّز القارئ بينهما',
       suggestion: 'راجع من فيها فعلاً ثم أعد تسميتها بما تُسلّمه (مثل «إدارة تسليم الحلول») — القرار قرارك، ولا تُعاد التسمية تلقائياً',
       items,
@@ -321,9 +344,10 @@ export async function orgHealth(user, opts = {}) {
     }));
   }
 
-  // ── ٥ قطاعات بلا أي إدارة ──
-  const depsBySector = new Set(departments.map((d) => d.sector_id));
-  const flat = sectors.filter((s) => !depsBySector.has(s.id));
+  // ── ٥ قطاعات تسليم بلا أي إدارة ──
+  // وحدات المساندة خارج هذا البند تماماً: «الخدمات المشتركة» بثلاثة أشخاص يتبعونها مباشرة وحدة
+  // مكتملة الشكل لا ناقصة، فمطالبتها بإدارة فرعية اختراع طبقة لا وجود لها في الواقع.
+  const flat = deliverySectors.filter((s) => !depsBySector.has(s.id));
   if (flat.length) {
     const items = flat.slice(0, ITEM_CAP).map((s) => ({
       id: s.id, name_ar: s.name_ar, sector_id: s.id, sector_name_ar: s.name_ar,
@@ -457,7 +481,10 @@ export async function orgHealth(user, opts = {}) {
 
   const employeesTotal = [...sectorEmployees.values()].reduce((a, b) => a + b, 0);
   const totals = {
-    sectors: sectors.length,
+    // «القطاعات» رقم أعمال لا رقم صفوف: قطاعات التسليم وحدها. وحدات المساندة رقم مستقل بجانبه،
+    // كي لا يقرأ المالك خمسة قطاعات حيث القطاعات أربعة.
+    sectors: deliverySectors.length,
+    support_units: sectors.length - deliverySectors.length,
     departments: departments.length,
     employees: employeesTotal,
     employees_without_department: orphans.length,
@@ -656,7 +683,8 @@ function scoreView({ report, sector, strayOpportunities, strayAllocations }) {
       low: bySeverity('low'),
       affected: firing.reduce((a, c) => a + c.count, 0),
       skipped: checks.filter((c) => c.skipped).length,
-      sectors: report.totals.sectors,
+      sectors: report.totals.sectors,           // قطاعات التسليم وحدها
+      support_units: report.totals.support_units, // وحدات المساندة معدودة على حدة لا ضمنها
       departments: report.totals.departments,
       employees: report.totals.employees,
     },
