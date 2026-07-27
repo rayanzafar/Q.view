@@ -95,16 +95,19 @@ function pageAllowed(role, page, pageAccess) {
 
 // Detect the future nav-guard. Returns PAGE_ACCESS or null (absent today).
 export async function loadPageAccess() {
-  try {
-    const nav = await import(new URL('../../src/web/nav.js', import.meta.url));
-    if (!nav.PAGE_ACCESS) return null;
-    // شروط فتح الصفحات صارت تسأل محرّك الصلاحيات (منحٌ قيادي لا اتساع نافذة)، والمحرّك يقرأ
-    // المنح من قاعدة البيانات مرة واحدة عند الإقلاع. ومن يشتقّ التوقعات هنا لا يُقلع التطبيق —
-    // فيلزم تحميل المنح صراحةً، وإلا رمى أول شرط ولم تُشتقّ توقعة صحيحة واحدة.
-    const { initRbac } = await import(new URL('../../src/core/rbac/index.js', import.meta.url));
-    await initRbac();
-    return nav.PAGE_ACCESS;
-  } catch { return null; }
+  const nav = await import(new URL('../../src/web/nav.js', import.meta.url));
+  if (!nav.PAGE_ACCESS) return null;
+  // شروط فتح الصفحات صارت تسأل محرّك الصلاحيات، ومن يشتقّ التوقعات هنا لا يُقلع التطبيق — فتلزم
+  // تعبئة المنح صراحةً. وتُقرأ **من الكود** لا من قاعدة البيانات: الربط بقاعدة يجعل الاشتقاق
+  // رهينةَ ما يصادف وجوده على القرص، وهو ما حدث بالضبط — نجح على جهاز فيه قاعدة قديمة وفشل على
+  // معالج الفحص النظيف، فعاد اشتقاقٌ فارغ يُقرأ سماحاً وسقط الفحص الحيّ على عطلٍ في الأداة.
+  // ومنح الأدوار النظامية مصدرها الكود أصلاً (الخادم يبذرها من هذه المصفوفة عند كل إقلاع).
+  const { primeGrantsFromCode } = await import(new URL('../../src/core/rbac/index.js', import.meta.url));
+  const { ROLE_GRANTS } = await import(new URL('../../src/core/rbac/matrix.js', import.meta.url));
+  primeGrantsFromCode(ROLE_GRANTS);
+  return nav.PAGE_ACCESS;
+  // بلا التقاط صامت: عجزُ الأداة عن قراءة سياسة الصفحات ليس «لا سياسة» بل خللٌ يجب أن يُسمع.
+  // الالتقاط القديم كان يعيد null فتنقلب التوقعات إلى «٢٠٠ لكل مسجَّل» — أي فحصٌ يمرّ بلا أن يفحص.
 }
 
 // ── API probes (staging-safe: no fixture ids) ──────────────────────────────────

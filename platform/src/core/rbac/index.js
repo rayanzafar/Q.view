@@ -16,6 +16,19 @@ export async function initRbac() {
   return map;
 }
 export const loadGrants = initRbac;              // backward-compatible alias (now async)
+// تحميل المنح من الكود مباشرةً بلا قاعدة بيانات — لأدوات الفحص وحدها.
+// أدوات الفحص تشتقّ توقعاتها من شروط فتح الصفحات، وهذه الشروط صارت تسأل هذا المحرّك. وربطُ
+// الاشتقاق بقاعدة بيانات يجعله رهينةَ ما يصادف وجوده على القرص: نجح على جهاز فيه قاعدة قديمة،
+// وفشل على معالج الفحص النظيف — فعاد اشتقاقٌ فارغ يُقرأ سماحاً. المنح للأدوار النظامية مصدرها
+// الكود أصلاً (سكربت البذر يكتبها والخادم يبذرها عند كل إقلاع)، فالقراءة منها هنا ليست التفافاً
+// بل رجوعٌ إلى المصدر نفسه. لا تُستخدَم في مسار التشغيل: `initRbac` عند الإقلاع يستبدلها.
+export function primeGrantsFromCode(roleGrants) {
+  const map = {};
+  for (const [roleId, grants] of Object.entries(roleGrants || {}))
+    map[roleId] = (grants || []).map((g) => ({ role_id: roleId, ...g }));
+  _cache = map;
+  return map;
+}
 export function invalidateGrants() { _cache = null; }
 export async function reloadGrants() { return initRbac(); } // call after role edits
 function grantsFor(roleId) {

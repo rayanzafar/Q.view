@@ -126,6 +126,24 @@ test('كشف الفريق لمدير الإدارة: إدارته وحدها —
   assert.deepEqual(ids.slice().sort(), rows.map((x) => x.id).sort(), 'الكشف = أهل الإدارة بالضبط، لا أكثر ولا أقل');
 });
 
+// القاعدة مربوطة بالنطاق لا بدور بعينه: أي دور تُمنح قراءته للموظفين بنطاق «إدارة» يرث الحدّ
+// نفسه في اللحظة نفسها بلا سطر جديد هنا (وهذا ما حدث فعلاً حين انتقل «المدير المباشر» من نطاق
+// «فريق» غير القابل للاجتياز إلى نطاق «إدارة»). الشرط أدناه ليس تليّناً: «مدير إدارة» يُثبت
+// القاعدة غير فارغة في كل الأحوال، والحلقة تلتقط كل من ينضمّ إلى النطاق نفسه لاحقاً.
+test('كل من نطاق قراءته «إدارة» يرث الحدّ نفسه — القاعدة على النطاق لا على اسم الدور', async () => {
+  const { effectiveScope } = await import('../../src/core/rbac/index.js');
+  let proven = 0;
+  for (const who of ['demo.deptmgr', 'demo.linemgr']) {
+    if (effectiveScope(U[who], 'read', 'employee') !== 'department') continue;
+    const names = rosterNames(await org.staffingRoster(U[who], {}));
+    assert.ok(names.includes(nameOf(DEPT_A, 2)), `${who}: يرى إدارته`);
+    assert.equal(names.includes(nameOf(DEPT_B, 0)), false, `${who}: ولا يرى الإدارة الأخرى`);
+    assert.equal(names.includes('سارة الحربي'), false, `${who}: ولا موظفي القطاع بلا إدارة`);
+    proven++;
+  }
+  assert.ok(proven >= 1, 'دور واحد على الأقل بنطاق «إدارة» — وإلا فالقاعدة بلا شاهد');
+});
+
 test('لوحة ارتباط الحسابات تتبع نطاق الكشف نفسه — لا جدول أشخاص بحدّ وعمود حسابات بحدّ آخر', async () => {
   const links = await org.identityLinks(U['demo.deptmgr'], {});
   const shown = Object.keys(links.byEmployee);
