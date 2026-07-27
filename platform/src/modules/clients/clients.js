@@ -13,6 +13,7 @@ import { id, nowIso, fmtSar } from '../../core/util/ids.js';
 import { badRequest, forbidden, notFound } from '../../core/http/errors.js';
 import { config } from '../../core/config.js';
 import { DELIVERY_SECTOR_SQL } from '../../core/org/kind.js';
+import { matchEntity, entityCount } from '../../core/org/entity-registry.js';
 // قاعدة نسبة الفاتورة إلى عميل — معرّفة مرة واحدة في وحدة المالية (صاحبة الفاتورة) ومستوردة هنا،
 // حتى لا تختلف إجابة «لمن هذه الفاتورة؟» بين قائمة العملاء وصفحة العميل وشاشة المالية.
 import { INVOICE_CLIENT_COL, INVOICE_CLIENT_JOIN } from '../finance/finance.js';
@@ -543,6 +544,41 @@ export function similarityOf(a, b) {
   if (contained) return { kind: 'contained', overlap, shared: inter };
   if (overlap >= 0.6 && inter >= 2) return { kind: 'overlap', overlap, shared: inter };
   return null;
+}
+
+// ── مطابقة الأسماء على المرجع الرسمي ────────────────────────────────────────
+// المرجع يمسك ما تعجز عنه مقارنة النصوص: لا رابط لغوي بين «هدف» و«صندوق تنمية الموارد
+// البشرية»، ولا بين «سدايا» واسمها الرسمي — والمرجع يعرف أنهما واحد. فجهتان تتّفقان على
+// **نفس السجل الرسمي** تكرارٌ قاطع مهما اختلف نصّاهما، وهو أقوى دليل من تشابه الكلمات.
+export async function clientNameReview(user) {
+  const where = ['c.deleted_at IS NULL', 'c.merged_into_client_id IS NULL'];
+  const params = [];
+  const sc = clientScopeClause(user, 'read');
+  if (!sc) throw forbidden();
+  if (sc.clause !== '1=1') { where.push(sc.clause); params.push(...sc.params); }
+  const rows = await all(`SELECT c.id, c.name_ar, c.code FROM client c
+    WHERE ${where.join(' AND ')} ORDER BY c.name_ar`, params);
+
+  const rename = []; const review = []; const unknown = [];
+  const byEntity = new Map();
+  for (const c of rows) {
+    const m = matchEntity(c.name_ar);
+    if (!m) { unknown.push(c); continue; }
+    if (m.confidence === 'مؤكَّد') {
+      const k = m.entity.id;
+      (byEntity.get(k) || byEntity.set(k, []).get(k)).push({ client: c, match: m });
+      // المطابق حرفاً بحرف لا يُقترح عليه شيء — هو الصواب أصلاً.
+      if (!m.exact) rename.push({ client: c, official_name: m.official_name, abbr: m.abbr, reason_ar: m.reason_ar });
+    } else {
+      review.push({ client: c, official_name: m.official_name, abbr: m.abbr, reason_ar: m.reason_ar });
+    }
+  }
+  // تكرار قاطع: صفّان مختلفان يشيران بيقين إلى جهة رسمية واحدة.
+  const collisions = [...byEntity.values()].filter((g) => g.length > 1)
+    .map((g) => ({ official_name: g[0].match.official_name, abbr: g[0].match.abbr,
+      members: g.map((x) => ({ id: x.client.id, name_ar: x.client.name_ar, reason_ar: x.match.reason_ar })) }));
+
+  return { total: rows.length, registry_size: entityCount(), collisions, rename, review, unknown };
 }
 
 // الجهات المشتبه بتكرارها — تُستدعى من فحص صحة البيانات ومن شاشة العملاء.

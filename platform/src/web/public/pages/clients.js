@@ -88,6 +88,18 @@
       .catch(function (e) { btn.disabled = false; toast(e.message, true); });
   }
 
+  // ── اعتماد الاسم الرسمي ──
+  // فعلٌ واحد بلا نافذة: الاسم المقترح معروض في السطر نفسه، والتأكيد يسبق التنفيذ لأن
+  // تغيير اسم جهة يظهر في كل تقرير وعقد وفاتورة تُقرأ لاحقاً.
+  function renameOfficial(el) {
+    var id = el.getAttribute('data-id'); var to = el.getAttribute('data-to');
+    if (!window.confirm('اعتماد الاسم الرسمي «' + to + '»؟ سيظهر في كل الشاشات والتقارير.')) return;
+    el.disabled = true;
+    api('/clients/' + id, 'PATCH', { name_ar: to })
+      .then(function () { toast('اعتُمد الاسم الرسمي ✓'); setTimeout(function () { location.reload(); }, 450); })
+      .catch(function (e) { el.disabled = false; toast(e.message, true); });
+  }
+
   // ── تسجيل نشاط على العميل ──
   function saveActivity(btn) {
     var title = val('act-title');
@@ -135,6 +147,7 @@
       case 'client-add': openAddClient(); break;
       case 'client-save': saveClient(el); break;
       case 'client-merge': openMerge(el); break;
+      case 'client-rename': renameOfficial(el); break;
       case 'client-merge-save': saveMerge(el); break;
       case 'act-save': saveActivity(el); break;
       case 'contact-add': addContact(el); break;

@@ -8,7 +8,7 @@ import { config } from '../../core/config.js';
 import { can } from '../../core/rbac/index.js';
 import { G } from '../i18n/glossary.js';
 import { countAr } from '../../core/i18n/plural.js';
-import { listClients, clientOverview, salesWinRate, CLIENT_TYPES, likelyDuplicateClients } from '../../modules/clients/clients.js';
+import { listClients, clientOverview, salesWinRate, CLIENT_TYPES, likelyDuplicateClients, clientNameReview } from '../../modules/clients/clients.js';
 import { sarShort, esc, statMini, noticeCard, ddWrap, ddRows } from './_shared.js';
 
 const REL_TONE = { 'نشطة': 'green', 'فاترة': 'amber', 'خاملة': 'slate' };
@@ -282,7 +282,36 @@ export async function clientsPage(user, opts = {}) {
         و«تشابه عالٍ» ليس دليلاً — فروع إقليمية مختلفة تتشابه أسماؤها.
       </div>${dupPairs.map(dupRow).join('')}`)}</div></details>` : '';
 
-  const body = `${toolbar}${strip}${chips}${dupBlock}${relLegend}${table}${idleBlock}${ddTop5}`;
+  // ── الأسماء مقابل المرجع الرسمي ────────────────────────────────────────────
+  // المرجع يمسك ما تعجز عنه مقارنة النصوص: «هدف» و«صندوق تنمية الموارد البشرية» لا رابط
+  // لغوي بينهما، والمرجع يعرف أنهما واحد. واليقين هنا يحتاج برهاناً: ما دون المطابقة
+  // النصّية الكاملة يُعرَض للمراجعة ولا يُنفَّذ — لأن جولة تشابهٍ متساهلة على هذه البيانات
+  // نفسها رشّحت «الأمن العام» لتصير «الهيئة الوطنية للأمن السيبراني»، وعليها ٢٧٠ مليوناً.
+  const nameReview = mayMerge ? await clientNameReview(user) : null;
+  const nrRow = (r, certain) => `<div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;padding:.45rem 0;border-bottom:1px dashed var(--line)">
+      <span style="font-size:12.5px;color:var(--muted)">${esc(r.client.name_ar)}</span>
+      <span style="color:var(--faint)">⟵</span>
+      <b style="font-size:12.5px;color:var(--ink2)">${esc(r.official_name)}</b>
+      ${r.abbr ? `<span class="tnum" style="font-size:10.5px;color:var(--faint)">${esc(r.abbr)}</span>` : ''}
+      <span style="font-size:10.5px;color:var(--faint)">${esc(r.reason_ar)}</span>
+      ${certain ? `<button class="btn btn-sm" style="margin-inline-start:auto" data-action="client-rename"
+        data-id="${esc(r.client.id)}" data-to="${esc(r.official_name)}">اعتمد الاسم الرسمي</button>` : ''}
+    </div>`;
+  const nameBlock = nameReview && (nameReview.rename.length || nameReview.review.length)
+    ? `<details style="margin-bottom:1rem">
+    <summary style="cursor:pointer;list-style:none;padding:.6rem .9rem;background:#fff;border:1px solid var(--line);border-radius:12px;font-size:12.5px;display:flex;align-items:center;gap:.5rem">
+      <span style="font-weight:800;color:var(--ink2)">أسماء تخالف المرجع الرسمي</span>
+      <span class="tnum" style="background:#f1f5f9;border-radius:20px;padding:.05rem .55rem;font-weight:700;color:var(--muted)">${nameReview.rename.length + nameReview.review.length}</span>
+      <span style="color:var(--faint);font-size:11px">من ${nameReview.registry_size} جهة في المرجع — إظهار / إخفاء</span></summary>
+    <div style="margin-top:.5rem">${card(`
+      ${nameReview.rename.length ? `<div style="font-size:11.5px;font-weight:800;color:var(--ink2);margin-bottom:.2rem">مؤكَّد — الاسم نفسه بصيغة أخرى</div>
+        ${nameReview.rename.map((r) => nrRow(r, true)).join('')}` : ''}
+      ${nameReview.review.length ? `<div style="font-size:11.5px;font-weight:800;color:var(--ink2);margin:.7rem 0 .2rem">للمراجعة — لا يُعتمَد بلا قرارك</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:.3rem">تشابهٌ لا يكفي دليلاً: قد تكون جهةً أخرى أو فرعاً مستقلاً.</div>
+        ${nameReview.review.map((r) => nrRow(r, false)).join('')}` : ''}`)}</div></details>`
+    : '';
+
+  const body = `${toolbar}${strip}${chips}${dupBlock}${nameBlock}${relLegend}${table}${idleBlock}${ddTop5}`;
   return layout({ user, active: 'clients', title: G.clients, subtitle: `سجل العلاقات · ${countAr(rows.length, { one: 'عميل واحد', two: 'عميلان', few: 'عملاء', many: 'عميلاً' })}${rel ? ` · عرض «${rel}»` : ''}`, body, scripts: ['/static/pages/clients.js'] });
 }
 
