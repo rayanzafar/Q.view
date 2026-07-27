@@ -15,6 +15,28 @@ export async function myTasks(user, filters = {}) {
     CASE priority WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 ELSE 3 END, due_date`, params);
 }
 
+// «مهامي في هذا القطاع» — مهام الشخص نفسه داخل قطاع بعينه، الأقرب موعداً أولاً ثم الأعلى أولوية.
+// لا حارس نطاق هنا وليس سهواً: الشرط `assignee_user_id = ?` هو الحارس — لا تعود إلا المهام
+// المُسنَدة إلى صاحب الطلب، وهي مهامه أينما كانت (صفحة «مهامي» مفتوحة لكل من يدخل المنصة).
+// المهمة تخص القطاع إذا حملت القطاع نفسه أو كانت على مشروع من مشاريعه.
+export async function mySectorTasks(user, sectorId, opts = {}) {
+  if (!user?.id || !sectorId) return [];
+  const where = ['t.deleted_at IS NULL', 't.assignee_user_id = ?', '(t.sector_id = ? OR p.sector_id = ?)'];
+  const params = [user.id, sectorId, sectorId];
+  if (!opts.includeDone) where.push("t.status NOT IN ('DONE', 'CANCELLED')");
+  const limit = Math.max(1, Math.min(200, Number(opts.limit) || 50));
+  return await all(
+    `SELECT t.id, t.title, t.status, t.priority, t.due_date, t.blocked_reason,
+            t.project_id, t.opportunity_id, p.name_ar AS project_name
+       FROM task t
+       LEFT JOIN project p ON p.id = t.project_id AND p.deleted_at IS NULL
+      WHERE ${where.join(' AND ')}
+      ORDER BY COALESCE(substr(t.due_date, 1, 10), '9999-12-31'),
+               CASE t.priority WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 ELSE 3 END,
+               t.created_at
+      LIMIT ${limit}`, params);
+}
+
 export async function projectTasks(user, projectId) {
   const p = await get('SELECT * FROM project WHERE id = ? AND deleted_at IS NULL', [projectId]);
   if (!p) throw notFound('المشروع غير موجود');

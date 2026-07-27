@@ -176,6 +176,27 @@ export async function opportunityDetail(user, oppId, opts = {}) {
   };
 }
 
+// «فرصي في هذا القطاع» — الفرص المفتوحة التي يصل إليها الشخص داخل قطاع بعينه، جاهزة للعرض
+// بأسماء مرحلتها وعميلها. تُبنى على listOpportunities كي يبقى النطاق مصدراً واحداً لا نسخة
+// ثانية منه: صاحب نطاق «خاصتي» لا تعود له إلا فرصه هو. ومن لا يملك قراءة الفرص أصلاً لا يعود
+// له شيء — الاستشاري يملكها والموظف لا، فالسؤال يُسأل ولا يُفترض.
+export async function myOpportunitiesInSector(user, sectorId, opts = {}) {
+  if (!sectorId || !can(user, 'read', 'opportunity')) return [];
+  const rows = await listOpportunities(user, { sector: sectorId }, opts);
+  if (!rows.length) return [];
+  const stages = Object.fromEntries((await all('SELECT id, name_ar, color, is_won, is_lost FROM stage'))
+    .map((s) => [s.id, s]));
+  const clients = Object.fromEntries((await all('SELECT id, name_ar FROM client WHERE deleted_at IS NULL'))
+    .map((c) => [c.id, c.name_ar]));
+  const open = rows.filter((o) => { const st = stages[o.stage_id]; return !st || (!st.is_won && !st.is_lost); });
+  return open.map((o) => ({
+    id: o.id, title_ar: o.title_ar, value_halalas: o.value_halalas || 0,
+    next_action: o.next_action || null, no_next_action: !!o.no_next_action,
+    stage_name: stages[o.stage_id]?.name_ar || null, stage_color: stages[o.stage_id]?.color || null,
+    client_name: clients[o.client_id] || null,
+  }));
+}
+
 // Pipeline aggregation for dashboards (respects scope).
 export async function pipelineSummary(user) {
   const f = scopeFilter(user, 'opportunity', 'read');

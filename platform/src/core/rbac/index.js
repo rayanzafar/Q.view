@@ -99,7 +99,12 @@ export function effectiveScope(user, action, resource) {
   if (grants.some((g) => g.resource === '*' && g.action === 'admin')) return 'company';
   const matches = grants.filter((g) => g.resource === resource && (g.action === action || g.action === 'admin'));
   if (!matches.length) return null;
-  return matches.reduce((best, g) => (SCOPE_RANK[g.scope] > SCOPE_RANK[best || 'own'] ? g.scope : best), null);
+  // البذرة رتبةُ صفر لا رتبةُ «خاصتي». كانت المقارنة تبدأ من `SCOPE_RANK[best || 'own']`، فمن
+  // منحُه الوحيد بنطاق «خاصتي» لا يتجاوز رتبتَه أبداً فتعود الدالة null — أي «بلا صلاحية» —
+  // بينما هو يملك المنح فعلاً. الأثر الحيّ: scopeFilter يترجم null إلى «1=0» (لا صفوف إطلاقاً)،
+  // فالاستشاري يملك فرصه ولا يرى منها واحدة في «فرصي»، والمستخدم الخارجي لا يرى مشاريعه.
+  // حالة 'own' داخل scopeFilter (تصفية بالمالك) كانت كوداً ميتاً يشهد على النية الصحيحة.
+  return matches.reduce((best, g) => ((SCOPE_RANK[g.scope] || 0) > (SCOPE_RANK[best] || 0) ? g.scope : best), null);
 }
 
 // Field-level redaction: remove sensitive fields the user isn't allowed to read.

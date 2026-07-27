@@ -11,7 +11,12 @@ import { sectorDashboard, sectorStaffing, sectorClients, sectorWins, quarterlyRe
 import { attentionFeed, RESOURCE_AR } from '../../core/reports/attention.js';
 import { changesSince, sinceForWindow } from '../../core/reports/changes.js';
 import { arAging } from '../../modules/finance/finance.js';
-import { can } from '../../core/rbac/index.js';
+import { mySectorTasks } from '../../modules/pmo/tasks.js';
+import { myProjectsInSector, nextMilestones } from '../../modules/pmo/projects.js';
+import { myOpportunitiesInSector } from '../../modules/crm/opportunities.js';
+import { sectorIdentity } from '../../modules/org/org.js';
+import { can, effectiveScope } from '../../core/rbac/index.js';
+import { SCOPE_RANK } from '../../core/rbac/matrix.js';
 import { config } from '../../core/config.js';
 import { DELIVERY_SECTOR_SQL } from '../../core/org/kind.js';
 import { G } from '../i18n/glossary.js';
@@ -35,14 +40,18 @@ const CHG_TONE = {
   created: ['#ede9fe', 'var(--brand2)'],
 };
 
+// ترويسة البطاقة — قاعدة واحدة يشترك فيها فرعا الصفحة (مركز القيادة و«قطاعي») فلا تتباعد
+// البطاقتان شكلاً لمجرد أن قارئهما مختلف.
+const CARD_HEAD_CSS = `.card-head{padding:var(--pad-card-h);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
+.card-head .t{font-weight:800;font-size:var(--fs-title)}
+.card-head .aux{margin-inline-start:auto;display:flex;gap:.35rem;align-items:center}`;
+
 const CSS = `<style>
 .sec-grid{display:grid;gap:var(--gap);margin-bottom:var(--gap);grid-template-columns:1.35fr 1fr}
 .sec-grid.even{grid-template-columns:1fr 1fr}
 @media(max-width:980px){.sec-grid,.sec-grid.even{grid-template-columns:1fr}}
 .sec-col{display:flex;flex-direction:column;gap:var(--gap);min-width:0}
-.card-head{padding:var(--pad-card-h);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
-.card-head .t{font-weight:800;font-size:var(--fs-title)}
-.card-head .aux{margin-inline-start:auto;display:flex;gap:.35rem;align-items:center}
+${CARD_HEAD_CSS}
 .chg{display:flex;align-items:center;gap:.6rem;padding:.4rem .55rem;border-radius:10px;border:1px solid transparent;border-inline-start:3px solid transparent}
 .chg:hover{background:#fbfcfe;border-color:var(--line)}
 .chg .ic{width:26px;height:26px;border-radius:8px;flex:none;display:flex;align-items:center;justify-content:center}
@@ -62,7 +71,30 @@ const CSS = `<style>
 .fnl-conv{text-align:center;font-size:10px;color:var(--faint);line-height:1.6;padding:.1rem 0}
 </style>`;
 
+// ── من يرى أي وجه من الصفحة؟ ─────────────────────────────────────────────────
+// مركز القيادة مبني من سبعة موارد: المشاريع والفرص والعملاء والعقود والفواتير وبنود الإيراد
+// والموظفين. من يقرأ أياً منها على مستوى **القطاع فأوسع** يقود القطاع أو يخدمه على مستواه،
+// فالشاشة شاشته كما هي. ومن نطاقه أضيق — مشاريعه التي يعمل عليها، أو ما يخصّه وحده — لا شأن
+// له بمستهدفات القطاع ولا بخط فرصه: يرى قطاعه من موقعه هو («قطاعي»).
+//
+// القرار **مشتق من الصلاحيات لا من قائمة أدوار**: دور جديد لا يحتاج تعديل هذا الملف، وتضييق
+// نطاق دور قائم يغيّر شاشته في اللحظة نفسها. وملاحظة دقيقة تفسد الفحص إن غابت: can(user,
+// 'read', X) بلا صف هدف يعيد «صحيح» لمجرد وجود المنح مهما ضاق نطاقه — فهو يجيب «هل يقرأ؟»
+// لا «إلى أين يصل؟». السؤال هنا نطاقي، وeffectiveScope وحده يجيبه.
+const COMMAND_RESOURCES = ['project', 'opportunity', 'client', 'contract', 'invoice', 'revenue_line', 'employee'];
+const scopeRank = (s) => SCOPE_RANK[s] || 0;
+
+export function sectorViewMode(user) {
+  let widest = null;
+  for (const r of COMMAND_RESOURCES) {
+    const s = user ? effectiveScope(user, 'read', r) : null;
+    if (scopeRank(s) > scopeRank(widest)) widest = s;
+  }
+  return { scope: widest, mode: scopeRank(widest) >= SCOPE_RANK.sector ? 'command' : 'personal' };
+}
+
 export async function sectorPage(user, opts = {}) {
+  if (sectorViewMode(user).mode === 'personal') return await mySectorPage(user, opts);
   const year = Number(opts.year) || config.fiscalYear;
   const now = new Date();
   const today = now.toISOString().slice(0, 10);
@@ -480,4 +512,193 @@ export async function sectorPage(user, opts = {}) {
     </div>
     ${DD}`;
   return layout({ user, active: 'sector', title: `مركز قيادة ${esc(sd.sector.name_ar)}`, subtitle: `ما تغيّر، ما يحتاجك، وأين نقف مقابل الخطة · ${year}`, body, year });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// «قطاعي» — وجه الصفحة لمن يعمل **داخل** القطاع لا لمن يقوده
+// ═══════════════════════════════════════════════════════════════════════════════
+// ثلاثة أسئلة لا رابع لها: ما المطلوب مني؟ على أي مشاريع أنا؟ وأين أقف ومن يقودني؟
+// وما لا يظهر هنا مقصود بحذفه: لا مستهدفات ولا نسب تحقق ولا خط فرص القطاع ولا تحصيل ولا
+// أعمار مستحقات ولا تركّز عملاء ولا طاقة القطاع ولا كلفة ولا هامش — أرقام قرارٍ لا يملكه
+// من يقرأ هذه الشاشة، وعرضها عليه إشغال بما لا يستطيع تغييره.
+const MY_CSS = `<style>
+${CARD_HEAD_CSS}
+.my-grid{display:grid;gap:var(--gap);grid-template-columns:1.1fr .9fr}
+@media(max-width:980px){.my-grid{grid-template-columns:1fr}}
+.my-col{display:flex;flex-direction:column;gap:var(--gap);min-width:0}
+.my-id{display:flex;align-items:center;gap:.7rem;padding:.75rem 1rem;flex-wrap:wrap}
+.my-id .sdot{width:11px;height:11px;border-radius:50%;flex:none}
+.my-id .nm{font-weight:800;font-size:var(--fs-title);color:var(--ink2)}
+.my-id .ld{font-size:var(--fs-micro);color:var(--muted)}
+.mw-list{padding:.35rem 1rem .6rem;display:flex;flex-direction:column}
+.mw-row{display:flex;gap:.6rem;align-items:flex-start;padding:.5rem 0;border-bottom:1px dashed var(--line)}
+.mw-row:last-child{border-bottom:none}
+.mw-row .pin{width:7px;height:7px;border-radius:50%;flex:none;margin-top:.42rem}
+.mw-main{flex:1;min-width:0}
+.mw-t{font-size:var(--fs-body);font-weight:700;color:var(--ink2);line-height:1.5;overflow-wrap:anywhere}
+.mw-m{display:flex;gap:.1rem .7rem;flex-wrap:wrap;align-items:center;font-size:var(--fs-micro);color:var(--muted);margin-top:.1rem}
+.mw-m a{color:var(--brand)}
+.mw-side{flex:none;display:flex;align-items:center;gap:.35rem;text-align:end}
+.mw-more{font-size:var(--fs-micro);color:var(--faint);padding-top:.45rem}
+</style>`;
+
+const RAG_TONE = { GREEN: 'var(--green)', AMBER: 'var(--amber)', RED: 'var(--red)' };
+
+async function mySectorPage(user, opts = {}) {
+  const year = Number(opts.year) || config.fiscalYear;
+  const sectorId = user?.sector_id || null;
+  const sec = sectorId ? await sectorIdentity(sectorId) : null;
+  // الحساب غير مربوط بقطاع: حالة مصمَّمة بخطوة تالية حقيقية، لا لوحة فارغة ولا قطاع بديل.
+  if (!sec) {
+    return layout({ user, active: 'sector', title: 'قطاعي', subtitle: 'أين تقف وما المطلوب منك',
+      body: `<div class="card"><div class="empty-state">${icon('sector')}
+        <div class="t">لا يوجد قطاع مرتبط بحسابك</div>
+        <div class="s">اطلب من مدير النظام ربط حسابك بقطاعك، وستظهر هنا مهامك ومشاريعك فيه.</div>
+        <a class="btn btn-primary" href="/app/tasks">العودة إلى مهامي</a></div></div>`, year });
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+  const todayMs = Date.parse(today + 'T00:00:00Z');
+  const canProjects = can(user, 'read', 'project');
+  const canOpps = can(user, 'read', 'opportunity');
+
+  const [tasks, mine, opps] = await Promise.all([
+    mySectorTasks(user, sectorId, { limit: 50 }),
+    myProjectsInSector(user, sectorId),
+    myOpportunitiesInSector(user, sectorId),
+  ]);
+  const shownP = mine.slice(0, 8);
+  const ms = Object.fromEntries((await nextMilestones(shownP.map((p) => p.id))).map((m) => [m.project_id, m]));
+
+  // ── (1) هوية القطاع: أين أقف ومن يقودني ──
+  const leadLine = sec.lead_name
+    ? `يقود القطاع ${esc(sec.lead_name)}`
+    : 'لم يُسجَّل قائد لهذا القطاع بعد';
+  const idCard = card(`<div class="my-id">
+    <span class="sdot" style="background:${sec.color || 'var(--brand)'}"></span>
+    <div style="flex:1;min-width:0"><div class="nm">${esc(sec.name_ar)}</div><div class="ld">${leadLine}</div></div>
+    <span class="pill" style="background:#eef2fb;color:var(--brand)">قطاعك</span>
+  </div>`);
+
+  // ── (2) مهامي في هذا القطاع — الأقرب موعداً أولاً ──
+  const dnum = (d) => Math.round((Date.parse(String(d).slice(0, 10) + 'T00:00:00Z') - todayMs) / 86400000);
+  const dayMonth = (d) => {
+    const t = new Date(String(d).slice(0, 10) + 'T00:00:00Z');
+    return Number.isNaN(t.getTime()) ? '' : `<span class="tnum">${t.getUTCDate()}</span> ${MONTHS_AR[t.getUTCMonth()]}`;
+  };
+  const dueOf = (due) => {
+    if (!due) return { text: 'بلا موعد', color: 'var(--faint)', pin: 'var(--line)' };
+    const n = dnum(due);
+    if (!Number.isFinite(n)) return { text: 'بلا موعد', color: 'var(--faint)', pin: 'var(--line)' };
+    if (n < 0) return { text: `متأخرة ${dayWord(-n)}`, color: 'var(--red)', pin: 'var(--red)', bold: true };
+    if (n === 0) return { text: 'تستحق اليوم', color: 'var(--amber)', pin: 'var(--amber)', bold: true };
+    if (n === 1) return { text: 'غداً', color: 'var(--amber)', pin: 'var(--amber)' };
+    if (n <= 7) return { text: `خلال ${dayWord(n)}`, color: 'var(--muted)', pin: 'var(--brand)' };
+    return { text: dayMonth(due), color: 'var(--muted)', pin: '#cbd5e1' };
+  };
+  const SHOW_T = 8;
+  const taskRows = tasks.slice(0, SHOW_T).map((t) => {
+    const d = dueOf(t.due_date);
+    const ctx = t.project_name
+      ? (canProjects ? `<a href="/app/project/${t.project_id}">${esc(t.project_name)}</a>` : esc(t.project_name))
+      : '';
+    return `<div class="mw-row">
+      <span class="pin" style="background:${d.pin}"></span>
+      <div class="mw-main">
+        <div class="mw-t">${esc(t.title)}</div>
+        <div class="mw-m">
+          <span style="color:${d.color}${d.bold ? ';font-weight:700' : ''}">${d.text}</span>
+          ${ctx}
+          ${t.status === 'BLOCKED' && t.blocked_reason ? `<span style="color:var(--red)">معلّقة: ${esc(t.blocked_reason)}</span>` : ''}
+        </div>
+      </div>
+      <div class="mw-side">${t.priority === 'P0' ? pill('حرجة', 'red') : t.priority === 'P1' ? pill('عالية', 'amber') : ''}</div>
+    </div>`;
+  }).join('');
+  const overdueN = tasks.filter((t) => t.due_date && dnum(t.due_date) < 0).length;
+  const tasksCard = tasks.length ? card(`
+    <div class="card-head">
+      <span class="t">مهامي في هذا القطاع</span>
+      <span class="pill" style="background:#eef2fb;color:var(--brand)"><b class="tnum">${tasks.length}</b></span>
+      ${overdueN ? pill(`متأخرة <b class="tnum">${overdueN}</b>`, 'red') : ''}
+      <span class="aux"><a class="btn btn-sm" href="/app/tasks">كل مهامي</a></span>
+    </div>
+    <div class="mw-list">${taskRows}
+      ${tasks.length > SHOW_T ? `<div class="mw-more">و${countAr(tasks.length - SHOW_T, { one: 'مهمة أخرى', two: 'مهمتان أخريان', few: 'مهام أخرى', many: 'مهمة أخرى' })} — تظهر كلها في «مهامي»</div>` : ''}
+    </div>`) : '';
+
+  // ── (3) مشاريعي: ما أنا مُسكَّن عليه فعلاً، لا كل مشاريع القطاع ──
+  const projRows = shownP.map((p) => {
+    const prog = Math.max(0, Math.min(100, Math.round(p.progress_pct || 0)));
+    const nx = ms[p.id];
+    return `<div class="mw-row">
+      <span class="pin" style="background:${RAG_TONE[p.rag] || '#cbd5e1'}"></span>
+      <div class="mw-main">
+        <div class="mw-t"><a href="/app/project/${p.id}">${esc(p.name_ar)}</a></div>
+        <div class="mw-m"><span>${esc(tr(p.status) || '')}</span>${nx ? `<span>${G.nextAction}: ${esc(nx.title)}${nx.due_date ? ` · ${dayMonth(nx.due_date)}` : ''}</span>` : ''}</div>
+        <div class="bar" style="margin-top:.3rem;height:5px"><span style="width:${prog}%;background:var(--brand)"></span></div>
+      </div>
+      <div class="mw-side"><span class="tnum" style="font-weight:800;font-size:var(--fs-body)">${prog}%</span></div>
+    </div>`;
+  }).join('');
+  const projectsCard = mine.length ? card(`
+    <div class="card-head">
+      <span class="t">مشاريعي في هذا القطاع</span>
+      <span class="pill" style="background:#eef2fb;color:var(--brand)"><b class="tnum">${mine.length}</b></span>
+      <span class="aux"><a class="btn btn-sm" href="/app/projects">كل مشاريعي</a></span>
+    </div>
+    <div class="mw-list">${projRows}
+      ${mine.length > shownP.length ? `<div class="mw-more">و${countAr(mine.length - shownP.length, { one: 'مشروع آخر', two: 'مشروعان آخران', few: 'مشاريع أخرى', many: 'مشروعاً آخر' })}</div>` : ''}
+    </div>`) : '';
+
+  // ── (4) فرصي — لمن يقرأ الفرص وحده (الاستشاري نعم، الموظف لا) ──
+  const SHOW_O = 6;
+  const oppRows = opps.slice(0, SHOW_O).map((o) => `<div class="mw-row">
+      <span class="pin" style="background:${o.stage_color || 'var(--brand2)'}"></span>
+      <div class="mw-main">
+        <div class="mw-t"><a href="/app/opportunity/${o.id}">${esc(o.title_ar)}</a></div>
+        <div class="mw-m">
+          ${o.stage_name ? `<span>${esc(o.stage_name)}</span>` : ''}
+          ${o.client_name ? `<span>${esc(o.client_name)}</span>` : ''}
+          <span style="${o.no_next_action ? 'color:var(--amber);font-weight:700' : ''}">${o.no_next_action ? G.noNextAction : esc(o.next_action)}</span>
+        </div>
+      </div>
+      <div class="mw-side">${o.value_halalas
+      ? `<span class="tnum" style="font-weight:800;font-size:var(--fs-body)">${fmtSar(o.value_halalas)}</span>`
+      : '<span style="font-size:var(--fs-micro);color:var(--faint)">لم تُسعَّر بعد</span>'}</div>
+    </div>`).join('');
+  const oppsCard = opps.length ? card(`
+    <div class="card-head">
+      <span class="t">${G.myOpportunities} في هذا القطاع</span>
+      <span class="pill" style="background:#f3e8ff;color:var(--brand2)"><b class="tnum">${opps.length}</b></span>
+      <span class="aux"><a class="btn btn-sm" href="/app/my-opportunities">${G.myOpportunities}</a></span>
+    </div>
+    <div class="mw-list">${oppRows}
+      ${opps.length > SHOW_O ? `<div class="mw-more">و${countAr(opps.length - SHOW_O, { one: 'فرصة أخرى', two: 'فرصتان أخريان', few: 'فرص أخرى', many: 'فرصة أخرى' })}</div>` : ''}
+    </div>`) : '';
+
+  // ── الحالة المصمَّمة: لا عمل بعد ⟵ ماذا أفعل الآن، ومن أسأل ──
+  const nothing = !tasksCard && !projectsCard && !oppsCard;
+  const emptyCard = card(`<div class="empty-state">${icon('tasks')}
+    <div class="t">لا عمل مسجَّل لك في ${esc(sec.name_ar)} بعد</div>
+    <div class="s">حين تُسنَد إليك مهمة أو تُسكَّن على مشروع${canOpps ? ' أو تُسنَد إليك فرصة' : ''} ستظهر هنا.
+      ${sec.lead_name ? `وللسؤال عن عملك في القطاع تواصل مع ${esc(sec.lead_name)}.` : ''}</div>
+    <a class="btn btn-primary" href="/app/tasks">أضِف مهمة</a></div>`);
+
+  const body = `${MY_CSS}
+    ${idCard}
+    ${nothing ? `<div style="margin-top:var(--gap)">${emptyCard}</div>` : `
+    <div class="my-grid" style="margin-top:var(--gap)">
+      <div class="my-col">${tasksCard}</div>
+      <div class="my-col">${projectsCard}${oppsCard}</div>
+    </div>`}`;
+
+  const bits = [
+    tasks.length ? countAr(tasks.length, { one: 'مهمة مفتوحة', two: 'مهمتان مفتوحتان', few: 'مهام مفتوحة', many: 'مهمة مفتوحة' }) : '',
+    mine.length ? countAr(mine.length, { one: 'مشروع واحد', two: 'مشروعان', few: 'مشاريع', many: 'مشروعاً' }) : '',
+    opps.length ? countAr(opps.length, { one: 'فرصة واحدة', two: 'فرصتان', few: 'فرص', many: 'فرصة' }) : '',
+  ].filter(Boolean);
+  return layout({ user, active: 'sector', title: 'قطاعي',
+    subtitle: `${esc(sec.name_ar)} · ${bits.length ? bits.join(' · ') : 'ما يخصّك أنت في هذا القطاع'}`,
+    body, year });
 }

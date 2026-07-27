@@ -89,6 +89,18 @@ export async function listDeliverySectors(opts = {}) {
       ORDER BY sort_order, name_ar`);
 }
 
+// بطاقة تعريف القطاع لمن **يعمل داخله** لا لمن يقوده: اسمه ومن يقوده — لا أهداف ولا أرقام
+// ولا موظفين. المساهم الفردي يحتاج أن يعرف أين يقف وإلى من يعود، وهذا كل ما يحتاجه.
+// عمداً بلا حارس صلاحية: لا شيء هنا يتجاوز ما يعرفه أي زميل في القطاع نفسه.
+export async function sectorIdentity(sectorId) {
+  if (!sectorId) return null;
+  return await get(
+    `SELECT s.id, s.name_ar, s.color, s.kind, u.name_ar AS lead_name
+       FROM sector s
+       LEFT JOIN app_user u ON u.id = s.lead_user_id AND u.active = 1 AND u.deleted_at IS NULL
+      WHERE s.id = ? AND s.deleted_at IS NULL`, [sectorId]) || null;
+}
+
 export async function orgTree(user) {
   // Gate: the org hierarchy (and its financial targets) must not be readable by any authenticated user.
   if (user.role_id !== 'admin' && !can(user, 'read', 'employee') && !can(user, 'create', 'sector'))

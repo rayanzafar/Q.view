@@ -26,6 +26,39 @@ export async function listProjects(user, filters = {}) {
   return redactList(user, 'project', rows);
 }
 
+// «مشاريعي» — المشاريع التي يعمل عليها الشخص **نفسه** داخل قطاع بعينه (شاشة «قطاعي»).
+// مصدران لا واحد، وهذا وصفٌ لما يسجّله المنتج فعلاً لا تساهلاً في الصلاحية:
+//   • ما يصل إليه نطاقه (listProjects) — ملكيته للمشروع أو عضويته فيه؛
+//   • وما **سُكِّن** عليه فعلاً (جدول التسكين) — وهو ما تكتبه شاشة التسكين حين يضع قائد القطاع
+//     شخصاً على مشروع. محرّك الصلاحيات لا يقرأ التسكين اليوم: نطاق «مشروع» مبني على العضوية
+//     والملكية وحدهما، ولا مسار في المنتج كله يكتب عضوية مشروع. فالاكتفاء بالنطاق يجعل شاشة
+//     «قطاعي» فارغة أمام من يعمل على مشروع منذ شهور — عُطل لا حماية.
+// حدّ الأمان محفوظ من طرفين: لا يُقرأ التسكين إلا لمن يملك منح قراءة المشاريع أصلاً، ولا يعود
+// من الصف إلا ما هو تشغيلي (الاسم والحالة والإنجاز) — بلا عقد ولا ميزانية ولا كلفة ولا هامش.
+const MY_PROJECT_STATUS_ORDER = ['IN_PROGRESS', 'PLANNED', 'NOT_STARTED', 'ON_HOLD', 'COMPLETED'];
+export async function myProjectsInSector(user, sectorId) {
+  if (!user || !sectorId || !can(user, 'read', 'project')) return [];
+  const byId = new Map();
+  const keep = (p) => {
+    if (p && p.id && !byId.has(p.id)) {
+      byId.set(p.id, { id: p.id, name_ar: p.name_ar, status: p.status, rag: p.rag, progress_pct: p.progress_pct || 0 });
+    }
+  };
+  for (const p of await listProjects(user, { sector: sectorId })) keep(p);
+  const employeeId = user.employee_id || user.employeeId || null;
+  if (employeeId) {
+    for (const p of await all(
+      `SELECT p.id, p.name_ar, p.status, p.rag, p.progress_pct
+         FROM allocation a JOIN project p ON p.id = a.project_id
+        WHERE a.employee_id = ? AND a.deleted_at IS NULL AND p.deleted_at IS NULL AND p.sector_id = ?`,
+      [employeeId, sectorId])) keep(p);
+  }
+  const rank = (s) => { const i = MY_PROJECT_STATUS_ORDER.indexOf(s); return i < 0 ? MY_PROJECT_STATUS_ORDER.length : i; };
+  return [...byId.values()]
+    .filter((p) => p.status !== 'CANCELLED')
+    .sort((a, b) => rank(a.status) - rank(b.status) || String(a.name_ar).localeCompare(String(b.name_ar), 'ar'));
+}
+
 // «الخطوة التالية» للمحفظة: أقرب معلم قادم (PENDING) حسب تاريخ الاستحقاق لكل مشروع —
 // استعلام مجمّع واحد للمحفظة كلها، لا استعلام لكل صف. المعالم غير المؤرّخة تُعامل كأبعد
 // تاريخ ممكن فتظهر فقط عندما لا يوجد معلم قادم مؤرّخ. يعيد [{project_id, title, due_date}].
