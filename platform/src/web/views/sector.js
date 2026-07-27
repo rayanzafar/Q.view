@@ -74,11 +74,15 @@ export async function sectorPage(user, opts = {}) {
   const allSectors = await all(`SELECT id, name_ar, color FROM sector
      WHERE active = 1 AND deleted_at IS NULL AND ${DELIVERY_SECTOR_SQL} ORDER BY sort_order`);
   const requested = opts.sector && allSectors.some((s) => s.id === opts.sector) ? opts.sector : null;
+  // لا قطاع افتراضي مكتوب في الكود. كان السطران يسقطان إلى «SOLUTIONS» نصاً، فمستخدمٌ بلا قطاع
+  // — عضو وحدة مساندة، أو حساب لم يُربط بقطاع بعد — يفتح الصفحة فيرى **مركز قيادة قطاع الحلول
+  // كاملاً**: إيراده وخطّ فرصه ومستهدفاته ومشاريعه. والحارس على مسار الواجهة البرمجية لا يمرّ به
+  // هذا المسار أصلاً. والفراغ هنا ليس خطأً يحتاج قيمة بديلة — هو حالة مصمَّمة أسفل مباشرة.
   const sectorId = user.scope === 'company'
-    ? (requested || user.sector_id || allSectors[0]?.id || 'SOLUTIONS')
-    : (user.sector_id || 'SOLUTIONS');
+    ? (requested || user.sector_id || allSectors[0]?.id || null)
+    : (user.sector_id || null);
 
-  const sd = await sectorDashboard(user, sectorId, { year });
+  const sd = sectorId ? await sectorDashboard(user, sectorId, { year }) : null;
   if (!sd) return layout({ user, active: 'sector', title: G.commandCenter, body: `<div class="empty-state"><div class="t">لا يوجد قطاع مرتبط بحسابك</div><div class="s">اطلب من مدير النظام ربطك بقطاع لعرض مركز قيادته.</div></div>` });
 
   const canInvoices = can(user, 'read', 'invoice');

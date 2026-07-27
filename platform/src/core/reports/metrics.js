@@ -104,6 +104,10 @@ export async function multiYearTrend(sectorId, nYears = 5) {
 //   • ويرافق الصف نوعه (kind/is_support) كي تسمّيها الشاشة «وحدة مساندة» لا «قطاعاً».
 export async function sectorDashboard(user, sectorId, opts = {}) {
   const year = Number(opts.year) || FY();
+  // الحارس هنا لا على المسار وحده. كانت الدالة تستقبل المستخدم ولا تفحصه إطلاقاً، وتتكل على فحص
+  // مسار الواجهة البرمجية — بينما الصفحة تستدعيها مباشرةً ولا تمرّ بذلك الفحص. أي أن بوابة واحدة
+  // كانت تحرس بابين، وأحدهما لا يمرّ بها. من نطاقه قطاع يرى قطاعه وحده مهما كان المطلوب.
+  if (user && user.scope !== 'company' && user.sector_id !== sectorId) throw forbidden('هذا القطاع خارج نطاقك');
   const s = await get('SELECT * FROM sector WHERE id = ?', [sectorId]);
   if (!s) return null;
   const support = isSupportUnit(s);
