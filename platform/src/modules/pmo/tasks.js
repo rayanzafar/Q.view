@@ -60,18 +60,30 @@ export async function quickAddTask(ctx, data) {
   const user = ctx.user;
   if (!data.title || !String(data.title).trim()) throw badRequest('عنوان المهمة مطلوب');
   const assignee = data.assignee_user_id || user.id;
+  // بوابة الإنشاء: كانت غائبة تماماً. `assertMayAssign` يحرس **الإسناد لغيرك** فقط، ويعود
+  // مبكّراً حين يُسنِد المرء لنفسه — فبقي الباب مفتوحاً لكل حساب مسجَّل، ومنه حساب العميل
+  // الخارجي: أنشأ مهمة فعلياً في قطاع لا علاقة له به لأن القطاع يُؤخذ من الطلب بلا تحقق.
+  // الفحص هنا يحمل **القطاع الهدف** لا وجوده وحده، وإلا مرّ فارغاً كما يمرّ الفحص بلا هدف.
+  // من منحُه بنطاق «خاصتي» لا يختار القطاع أصلاً. الفحص وحده لا يكفي هنا: «خاصتي» تمرّ على
+  // «المهمة لي» بصرف النظر عن القطاع المكتوب في الطلب — فيستطيع موظف أن يزرع مهمةً في لوحة
+  // قطاع آخر بلا أن يكسر أي قاعدة. القطاع يُثبَّت على قطاع صاحبه بدل رفض الطلب: المنع هنا
+  // يعطّل مساراً مشروعاً، والتثبيت يُبقيه يعمل ويسدّ الزرع معاً.
+  const ownOnly = effectiveScope(user, 'create', 'task') === 'own';
+  const sectorId = (ownOnly ? user.sector_id : (data.sector_id || user.sector_id)) || null;
+  if (!can(user, 'create', 'task', { sector_id: sectorId, assignee_user_id: assignee }))
+    throw forbidden('إنشاء المهام خارج نطاقك — اختر قطاعاً ضمن صلاحيتك أو اطلب التفعيل من مدير النظام');
   await assertMayAssign(user, assignee); // الفحص يحمل قطاع المُسنَد إليه لا معرّفه وحده
   const tid = id('tsk'); const now = nowIso();
   await insert('task', {
     id: tid, title: String(data.title).trim(), description: data.description || null,
     work_kind: data.work_kind || 'project', project_id: data.project_id || null,
-    opportunity_id: data.opportunity_id || null, sector_id: data.sector_id || user.sector_id,
+    opportunity_id: data.opportunity_id || null, sector_id: sectorId,
     assignee_user_id: assignee, priority: data.priority || 'P2', status: 'TODO',
     start_date: data.start_date || null, due_date: data.due_date || null,
     estimate_hours: data.estimate_hours ?? null, recurring: data.recurring || null,
     created_at: now, created_by: user.id,
   });
-  await audit(ctx, { action: 'create', resource: 'task', resourceId: tid, sectorId: data.sector_id || user.sector_id });
+  await audit(ctx, { action: 'create', resource: 'task', resourceId: tid, sectorId });
   return await get('SELECT * FROM task WHERE id = ?', [tid]);
 }
 

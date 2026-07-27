@@ -8,7 +8,7 @@ import { orgTree, staffingRoster, identityLinks } from '../../modules/org/org.js
 import { canSeeSensitive, can } from '../../core/rbac/index.js';
 import { ROLE_LABELS } from '../../core/rbac/matrix.js';
 import { isDelivery } from '../../core/org/kind.js';
-import { G } from '../i18n/glossary.js';
+import { G, workKindLabel } from '../i18n/glossary.js';
 import { esc, ddWrap, ddRows } from './_shared.js';
 import { MONTHS_AR, monthLabelDual, currentMonthIndex, nowDot } from '../../core/i18n/time.js';
 import { countAr } from '../../core/i18n/plural.js';
@@ -19,12 +19,16 @@ export async function timesheetPage(user) {
   const rows = await myEntries(user, { from, to });
   const total = rows.reduce((a, r) => a + r.hours, 0);
   const billable = rows.filter((r) => r.billable).reduce((a, r) => a + r.hours, 0);
+  // ثلاثة حقول يكتبها المستخدم كانت تُحقَن في الصفحة بلا تهريب — الاستثناء الوحيد في هذه الصفحة.
+  // اليوم ذاتيّ الضرر لأن كلاً يرى سجلّه وحده، لكنه يصير مخزَّناً على غيره لحظة ما ترى أول شاشة
+  // إدارية سجلات الفريق — وهي بالضبط الشاشة المطلوبة في الموجة القادمة. يُغلَق قبلها لا بعدها.
+  // ونوع العمل يمرّ على المعجم: كان يُطبَع كما هو مخزَّناً بالإنجليزية أمام المستخدم.
   const list = rows.map((e) => `<tr class="border-b border-line">
-    <td class="py-2 px-3 text-[13px]">${e.entry_date}</td>
-    <td class="px-3 text-[13px]">${e.work_kind}</td>
-    <td class="px-3 text-[13px] tabular-nums">${e.hours}</td>
+    <td class="py-2 px-3 text-[13px]">${esc(e.entry_date)}</td>
+    <td class="px-3 text-[13px]">${esc(workKindLabel(e.work_kind))}</td>
+    <td class="px-3 text-[13px] tabular-nums">${esc(e.hours)}</td>
     <td class="px-3">${e.billable ? pill('قابلة للفوترة', 'green') : pill('غير قابلة', 'slate')}</td>
-    <td class="px-3 text-[12px] text-muted">${e.note || ''}</td></tr>`).join('');
+    <td class="px-3 text-[12px] text-muted">${esc(e.note || '')}</td></tr>`).join('');
   const body = `
     <div class="grid grid-cols-3 gap-4 mb-4">
       ${card(`<div class="p-4"><div class="text-[11px] text-muted">إجمالي ساعات الأسبوع</div><div class="text-2xl font-extrabold">${total}</div></div>`)}

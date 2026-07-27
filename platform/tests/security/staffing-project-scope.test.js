@@ -92,9 +92,13 @@ test('منح «المدير المباشر» لم يعد بنطاق الفريق
   const g = ROLE_GRANTS.line_manager;
   assert.ok(g.length, 'للدور منح');
   assert.equal(g.filter((x) => x.scope === 'team').length, 0, 'لا منح بنطاق الفريق — نطاق غير قابل للاجتياز');
-  assert.ok(g.every((x) => x.scope === 'department'), 'كل منحه بنطاق الإدارة');
-  assert.ok(g.some((x) => x.resource === 'timesheet' && x.action === 'approve'),
-    'واعتماد كشوف الدوام باقٍ — هو سبب وجود الدور');
+  // منحُه **الإداري** كله بنطاق الإدارة. ولا يُشترط أن يكون كل منح كذلك: المدير المباشر شخصٌ
+  // أيضاً، فله منح «خاصتي» على وقته هو — وهي إضافة لاحقة مقصودة لا انحراف عن هذا القرار.
+  const managerial = g.filter((x) => x.scope !== 'own');
+  assert.ok(managerial.length, 'له منح إدارية');
+  assert.ok(managerial.every((x) => x.scope === 'department'), 'وكلها بنطاق الإدارة');
+  assert.ok(g.some((x) => x.resource === 'timesheet' && x.action === 'approve' && x.scope === 'department'),
+    'واعتماد كشوف الدوام باقٍ بنطاق قابل للتحقق — هو سبب وجود الدور');
 });
 
 test('نطاق «الفريق» يبقى مغلقاً حيث بقي — لا يُفتح فراغاً', async () => {
