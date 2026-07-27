@@ -616,7 +616,7 @@ export async function projectDetailPage(user, projectId) {
   const marginPct = p.margin_pct != null ? p.margin_pct : (revenue > 0 ? Math.round((revenue - spend) / revenue * 100) : null);
   const burnPct = p.budget_halalas ? Math.round(spend / p.budget_halalas * 100) : null;
   // تصنيف المشروع مشتقّ من قرائن صفّه (عميل ونوعه · قيمة تعاقدية · أمر شراء · إيراد محقق ·
-  // فرصة مصدر) لا من الخانة المخزَّنة التي بقيت «داخلي» على 31 مشروع عميل منذ نقل المنصة.
+  // فرصة مصدر) لا من الخانة المخزَّنة التي بقيت «داخلي» على 27 مشروع عميل منذ نقل المنصة.
   // القاعدة كلها في خدمة المشاريع، والكلمة في المعجم، والتلميح يقول السبب ويكشف التناقض.
   const kindTag = projectKind(p, { clientType: client?.type, revenueHalalas: revenue });
 

@@ -44,7 +44,7 @@ const KPIS = [
 // `scope` = أوسع نطاق بيانات يراه الشخص، وهو مشتقّ من **منح الدور نفسه** في المصفوفة لا من ذوق:
 //   company ⟵ كل منح الدور بنطاق «شركة»   |  sector ⟵ منحه بنطاق «قطاع»
 //   department / team ⟵ منحه بنطاق الإدارة / الفريق  |  own ⟵ منحه على ما يملكه هو فقط
-const DEMO_USERS = [
+export const DEMO_USERS = [
   { u: 'demo.admin', role: 'admin', scope: 'company', name: 'مسؤول النظام (تجريبي)', sector: null },
   { u: 'demo.ceo', role: 'ceo_office', scope: 'company', name: 'مكتب الرئيس التنفيذي (تجريبي)', sector: null },
   { u: 'demo.sectorlead', role: 'sector_lead', scope: 'sector', name: 'قائد قطاع الحلول (تجريبي)', sector: 'SOLUTIONS' },
