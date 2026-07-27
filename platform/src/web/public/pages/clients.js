@@ -51,6 +51,43 @@
       .catch(function (e) { btn.disabled = false; toast(e.message, true); });
   }
 
+  // ── دمج جهتين في واحدة ──
+  // القرار الوحيد الذي يُطلب من المستخدم هو **أي الاسمين يبقى**، لأنه القرار الوحيد الذي
+  // لا يُشتَقّ: أطول الاسمين ليس أصحّهما بالضرورة. وما عداه (نقل العمل، إخفاء المدموجة،
+  // التدقيق) تفعله الخدمة. والتحذير صريح لأن الفعل يمسّ مالاً منسوباً.
+  function openMerge(el) {
+    var a = el.getAttribute('data-a'); var an = el.getAttribute('data-a-name');
+    var b = el.getAttribute('data-b'); var bn = el.getAttribute('data-b-name');
+    var opt = function (id, name) {
+      return '<label style="display:flex;gap:.5rem;align-items:flex-start;padding:.55rem .7rem;border:1px solid var(--line);border-radius:10px;cursor:pointer;margin-bottom:.4rem">' +
+        '<input type="radio" name="mg-keep" value="' + id + '" style="margin-top:.2rem">' +
+        '<span><b style="font-size:13px">' + name + '</b>' +
+        '<span style="display:block;font-size:11px;color:var(--muted)">يبقى هذا الاسم وينتقل إليه عمل الجهة الأخرى</span></span></label>';
+    };
+    S.openModal(
+      '<div class="modal-head"><div style="font-weight:800;font-size:15px">دمج جهتين</div>' +
+      '<button class="btn btn-ghost btn-sm" data-action="modal-close" aria-label="إغلاق">✕</button></div>' +
+      '<div class="modal-body">' +
+      '<div style="font-size:12px;color:var(--muted);margin-bottom:.7rem">اختر الاسم الذي يبقى. سينتقل إليه كل المشاريع والفرص والعقود والفواتير وجهات الاتصال وسجل التواصل.</div>' +
+      opt(a, an) + opt(b, bn) +
+      '<div style="font-size:11.5px;color:var(--muted);background:#fffbeb;border:1px solid var(--amber);border-radius:10px;padding:.55rem .7rem;margin-top:.5rem">' +
+      'إن لم تكونا جهة واحدة فأغلق هذه النافذة — الفروع الإقليمية تتشابه أسماؤها ولا تُدمج. الجهة المدموجة تبقى محفوظة ويمكن استرجاعها.' +
+      '</div></div>' +
+      '<div class="modal-foot"><button class="btn btn-primary" data-action="client-merge-save" data-a="' + a + '" data-b="' + b + '">دمج الجهتين</button>' +
+      '<button class="btn" data-action="modal-close">إلغاء</button></div>');
+  }
+  function saveMerge(btn) {
+    var picked = document.querySelector('input[name="mg-keep"]:checked');
+    if (!picked) return toast('اختر الاسم الذي يبقى أولاً', true);
+    var keepId = picked.value;
+    var a = btn.getAttribute('data-a'); var b = btn.getAttribute('data-b');
+    var mergeId = keepId === a ? b : a;
+    btn.disabled = true;
+    api('/clients/merge', 'POST', { keepId: keepId, mergeIds: [mergeId] })
+      .then(function () { toast('دُمجت الجهتان ✓'); S.closeModal(); setTimeout(function () { location.reload(); }, 500); })
+      .catch(function (e) { btn.disabled = false; toast(e.message, true); });
+  }
+
   // ── تسجيل نشاط على العميل ──
   function saveActivity(btn) {
     var title = val('act-title');
@@ -97,6 +134,8 @@
     switch (el.dataset.action) {
       case 'client-add': openAddClient(); break;
       case 'client-save': saveClient(el); break;
+      case 'client-merge': openMerge(el); break;
+      case 'client-merge-save': saveMerge(el); break;
       case 'act-save': saveActivity(el); break;
       case 'contact-add': addContact(el); break;
       case 'contact-del': delContact(el); break;

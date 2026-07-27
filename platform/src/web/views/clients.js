@@ -8,7 +8,7 @@ import { config } from '../../core/config.js';
 import { can } from '../../core/rbac/index.js';
 import { G } from '../i18n/glossary.js';
 import { countAr } from '../../core/i18n/plural.js';
-import { listClients, clientOverview, salesWinRate, CLIENT_TYPES } from '../../modules/clients/clients.js';
+import { listClients, clientOverview, salesWinRate, CLIENT_TYPES, likelyDuplicateClients } from '../../modules/clients/clients.js';
 import { sarShort, esc, statMini, noticeCard, ddWrap, ddRows } from './_shared.js';
 
 const REL_TONE = { 'نشطة': 'green', 'فاترة': 'amber', 'خاملة': 'slate' };
@@ -255,7 +255,34 @@ export async function clientsPage(user, opts = {}) {
     <span style="display:inline-flex;align-items:center;gap:.4rem">${pill('نشطة', 'green')} تواصل خلال 30 يوماً أو لديه فرصة مفتوحة</span>
     <span style="display:inline-flex;align-items:center;gap:.4rem">${pill('فاترة', 'amber')} آخر تواصل بين 31 و120 يوماً</span>
     <span style="display:inline-flex;align-items:center;gap:.4rem">${pill('خاملة', 'slate')} لا تواصل منذ أكثر من 120 يوماً وبلا فرص مفتوحة</span></div>`;
-  const body = `${toolbar}${strip}${chips}${relLegend}${table}${idleBlock}${ddTop5}`;
+  // ── جهات يُحتمل أنها واحدة ──────────────────────────────────────────────────
+  // الجهة الواحدة كانت تُسجَّل مرتين وينقسم عملها بين الصفَّين تبعاً لقطاع EVC المنفِّذ، فتُقرأ
+  // جهتان متوسطتان مكان جهة كبيرة. وحارس الاسم يمسك المطابق حرفياً لا «س» و«س - الديوان العام».
+  // يُعرَض هنا لا في فحص الهيكل: مكان القرار هو الشاشة التي يُتَّخذ فيها، والدمج فعلٌ على جهة.
+  const mayMerge = can(user, 'update', 'client') && can(user, 'delete', 'client');
+  const dupPairs = mayMerge ? await likelyDuplicateClients(user) : [];
+  const dupRow = (p) => `<div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;padding:.5rem 0;border-bottom:1px dashed var(--line)">
+      <span style="font-weight:700;color:var(--ink2);font-size:12.5px">${esc(p.a.name_ar)}</span>
+      <span style="color:var(--faint)">↔</span>
+      <span style="font-weight:700;color:var(--ink2);font-size:12.5px">${esc(p.b.name_ar)}</span>
+      ${p.kind === 'contained'
+    ? pill('اسم يحتوي الآخر', 'amber')
+    : pill('تشابه عالٍ — راجِعها', 'slate')}
+      <button class="btn btn-sm" style="margin-inline-start:auto" data-action="client-merge"
+        data-a="${esc(p.a.id)}" data-a-name="${esc(p.a.name_ar)}"
+        data-b="${esc(p.b.id)}" data-b-name="${esc(p.b.name_ar)}">مراجعة ودمج</button>
+    </div>`;
+  const dupBlock = dupPairs.length ? `<details style="margin-bottom:1rem" open>
+    <summary style="cursor:pointer;list-style:none;padding:.6rem .9rem;background:#fff;border:1px solid var(--amber);border-radius:12px;font-size:12.5px;display:flex;align-items:center;gap:.5rem">
+      <span style="font-weight:800;color:var(--ink2)">جهات يُحتمل أنها جهة واحدة</span>
+      <span class="tnum" style="background:#fef3c7;border-radius:20px;padding:.05rem .55rem;font-weight:700;color:var(--ink2)">${dupPairs.length}</span>
+      <span style="color:var(--faint);font-size:11px">تسجيل الجهة مرتين يقسم إيرادها وفرصها نصفين — إظهار / إخفاء</span></summary>
+    <div style="margin-top:.5rem">${card(`<div style="font-size:11.5px;color:var(--muted);margin-bottom:.4rem">
+        الدمج ينقل المشاريع والفرص والعقود والفواتير للجهة الباقية، ويُبقي المدموجة محفوظة قابلة للاسترجاع.
+        و«تشابه عالٍ» ليس دليلاً — فروع إقليمية مختلفة تتشابه أسماؤها.
+      </div>${dupPairs.map(dupRow).join('')}`)}</div></details>` : '';
+
+  const body = `${toolbar}${strip}${chips}${dupBlock}${relLegend}${table}${idleBlock}${ddTop5}`;
   return layout({ user, active: 'clients', title: G.clients, subtitle: `سجل العلاقات · ${countAr(rows.length, { one: 'عميل واحد', two: 'عميلان', few: 'عملاء', many: 'عميلاً' })}${rel ? ` · عرض «${rel}»` : ''}`, body, scripts: ['/static/pages/clients.js'] });
 }
 

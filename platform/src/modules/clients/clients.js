@@ -5,7 +5,7 @@
 // Scoping model: `client` rows carry no sector_id. A client is visible to a sector-scoped user
 // when the client has ANY footprint (opportunity / project / contract) in that user's sector —
 // computed with EXISTS subqueries so the DB enforces the boundary, not the app.
-import { all, get, insert, update } from '../../core/db/index.js';
+import { all, get, insert, update, run, tx } from '../../core/db/index.js';
 import { can, effectiveScope } from '../../core/rbac/index.js';
 import { scopeFilter } from '../../core/rbac/scope.js';
 import { audit } from '../../core/audit/index.js';
@@ -460,6 +460,143 @@ export async function createClient(ctx, data = {}) {
   });
   await audit(ctx, { action: 'create', resource: 'client', resourceId: cid, detail: { name_ar: name, type: data.type || null } });
   return await get('SELECT * FROM client WHERE id = ?', [cid]);
+}
+
+// ── هوية الجهة: التكرار الذي لا يُمسَك بالمطابقة الحرفية ─────────────────────
+// `findDuplicate` أعلاه يمسك الاسم **المطابق** بعد التطبيع، ولا يمسك ما وقع فعلاً: الجهة
+// الواحدة مسجَّلة مرتين باسمين متقاربين، وانقسامها يتبع قطاع EVC المنفِّذ — «وزارة الاقتصاد
+// والتخطيط» على قطاع الحلول و«… - الديوان العام» على قطاع الاستشارات، وهما وزارة واحدة.
+// وأثره ليس تجميلياً: تركّز العميل وأعمار ديونه وخط فرصه وعمر علاقته تُقسَم نصفين، فيقرأ
+// المالك جهتين متوسطتين مكان جهة كبيرة واحدة، ويُقيَّم كل قطاع كأنه يخدم عميلاً مستقلاً.
+//
+// كلمات لا تميّز جهةً عن أخرى: تُحذف لبناء **بصمة** الاسم فقط، ولا تُحذف من العرض أبداً.
+const ENTITY_STOPWORDS = new Set(['ال', 'و', 'في', 'من', 'على', 'الوطني', 'الوطنيه', 'السعودي',
+  'السعوديه', 'العربيه', 'المملكه', 'العامه', 'العام', 'الديوان', 'بمنطقه', 'منطقه']);
+export function entityTokens(name) {
+  return normalizeName(name).split(' ').filter((w) => w && !ENTITY_STOPWORDS.has(w));
+}
+
+// درجتان لا واحدة، لأن الفرق بينهما هو الفرق بين قرارٍ آليّ وقرارٍ بشري:
+//   • `contained` — كلمات أحد الاسمين مجموعةٌ جزئية من الآخر («وزارة س» ⊂ «وزارة س - الديوان
+//     العام»). لاحقةٌ أُضيفت لتمييز جهة عن نفسها، وهي الحالة الغالبة في بياناتنا.
+//   • `overlap` — تقاطع عالٍ بلا احتواء. **ليس دليلاً**: «أمانة منطقة الرياض» و«أمانة منطقة
+//     الجوف» يتقاطعان بقوة وهما جهتان مختلفتان قطعاً. يُعرَض للمراجعة ولا يُدمَج تلقائياً.
+export function similarityOf(a, b) {
+  const ta = entityTokens(a); const tb = entityTokens(b);
+  if (!ta.length || !tb.length) return null;
+  const sa = new Set(ta); const sb = new Set(tb);
+  const inter = [...sa].filter((w) => sb.has(w)).length;
+  if (!inter) return null;
+  const contained = inter === Math.min(sa.size, sb.size);
+  const overlap = inter / Math.max(sa.size, sb.size);
+  if (contained) return { kind: 'contained', overlap, shared: inter };
+  if (overlap >= 0.6 && inter >= 2) return { kind: 'overlap', overlap, shared: inter };
+  return null;
+}
+
+// الجهات المشتبه بتكرارها — تُستدعى من فحص صحة البيانات ومن شاشة العملاء.
+// تقرأ الجهات غير المحذوفة وغير المدموجة فقط: الجهة المدموجة سبق أن حُسم أمرها.
+// النطاق يُطبَّق بنفس شرط قائمة العملاء: من لا يرى جهةً لا يُخبَر بوجودها في قائمة تكرار.
+export async function likelyDuplicateClients(user = null) {
+  const where = ['c.deleted_at IS NULL', 'c.merged_into_client_id IS NULL'];
+  const params = [];
+  if (user) {
+    const sc = clientScopeClause(user, 'read');
+    if (!sc) throw forbidden();
+    if (sc.clause !== '1=1') { where.push(sc.clause); params.push(...sc.params); }
+  }
+  const rows = await all(`SELECT c.id, c.code, c.name_ar, c.name_en FROM client c
+    WHERE ${where.join(' AND ')} ORDER BY c.name_ar`, params);
+  const pairs = [];
+  for (let i = 0; i < rows.length; i++) {
+    for (let j = i + 1; j < rows.length; j++) {
+      const sim = similarityOf(rows[i].name_ar, rows[j].name_ar);
+      if (sim) pairs.push({ ...sim, a: rows[i], b: rows[j] });
+    }
+  }
+  // الاحتواء أولاً: هو الأقرب إلى تكرار حقيقي، والأعلى تقاطعاً داخل كل درجة.
+  pairs.sort((x, y) => (x.kind === y.kind ? y.overlap - x.overlap : (x.kind === 'contained' ? -1 : 1)));
+  return pairs;
+}
+
+// الجداول التي تحمل الجهة. كل واحد منها يُنقَل عند الدمج — وإغفال واحد يعني عملاً يتيماً
+// يشير إلى صفٍّ محذوف، فالقائمة مشتقّة من المخطط لا من الذاكرة، ويحرسها اختبار.
+export const CLIENT_OWNED_TABLES = ['contact', 'opportunity', 'project', 'contract', 'invoice', 'crm_activity', 'document'];
+
+// دمج جهتين فأكثر في واحدة. عملية واحدة ذرّية: إمّا انتقل كل شيء أو لم ينتقل شيء.
+export async function mergeClients(ctx, { keepId, mergeIds = [], keepName = null } = {}) {
+  const user = ctx.user;
+  // الدمج يفوق التعديل أثراً — يُخفي جهةً ويعيد نسبة مالها — فيلزمه منح الحذف أيضاً.
+  if (!can(user, 'update', 'client') || !can(user, 'delete', 'client')) {
+    throw forbidden('دمج الجهات يحتاج صلاحية تعديل الجهات وحذفها.');
+  }
+  const ids = [...new Set((Array.isArray(mergeIds) ? mergeIds : [mergeIds]).filter(Boolean))];
+  if (!keepId) throw badRequest('حدّد الجهة التي تبقى.');
+  if (!ids.length) throw badRequest('حدّد جهةً واحدة على الأقل لدمجها.');
+  if (ids.includes(keepId)) throw badRequest('لا يمكن دمج الجهة في نفسها — الجهة الباقية غير الجهة المدموجة.');
+
+  const keep = await get('SELECT * FROM client WHERE id = ? AND deleted_at IS NULL', [keepId]);
+  if (!keep) throw notFound('الجهة الباقية غير موجودة.');
+  const losers = [];
+  for (const cid of ids) {
+    const row = await get('SELECT * FROM client WHERE id = ? AND deleted_at IS NULL', [cid]);
+    if (!row) throw notFound(`الجهة المطلوب دمجها غير موجودة: ${cid}`);
+    if (row.merged_into_client_id) throw badRequest(`«${row.name_ar}» مدموجة أصلاً — لا تُدمَج مرتين.`);
+    losers.push(row);
+  }
+  // النطاق يُفحص على الطرفين: من لا يرى جهةً لا ينقل عملها ولا يخفيها.
+  await getVisibleClient(user, keepId, 'update');
+  for (const l of losers) await getVisibleClient(user, l.id, 'update');
+
+  const moved = {};
+  const at = nowIso();
+  await tx(async () => {
+    const ph = losers.map(() => '?').join(',');
+    const lids = losers.map((l) => l.id);
+    for (const table of CLIENT_OWNED_TABLES) {
+      const before = await all(`SELECT id FROM ${table} WHERE client_id IN (${ph})`, lids);
+      if (!before.length) continue;
+      await run(`UPDATE ${table} SET client_id = ? WHERE client_id IN (${ph})`, [keepId, ...lids]);
+      moved[table] = before.length;
+    }
+    // الاسم الباقي قرار المالك لا اشتقاق: قد يكون أطول الاسمين أو أقصرهما أو غيرهما.
+    if (keepName && keepName.trim() && keepName.trim() !== keep.name_ar) {
+      await update('client', keepId, { name_ar: keepName.trim(), updated_at: at });
+    }
+    for (const l of losers) {
+      await update('client', l.id, {
+        merged_into_client_id: keepId, active: 0, deleted_at: at, updated_at: at,
+      });
+    }
+  });
+
+  for (const l of losers) {
+    await audit(ctx, { action: 'delete', resource: 'client', resourceId: l.id,
+      detail: { merged_into: keepId, merged_into_name: keepName || keep.name_ar, name_ar: l.name_ar, moved } });
+  }
+  await audit(ctx, { action: 'update', resource: 'client', resourceId: keepId,
+    detail: { merged_from: losers.map((l) => ({ id: l.id, name_ar: l.name_ar })), moved, renamed_to: keepName || null } });
+
+  return {
+    keep: await get('SELECT * FROM client WHERE id = ?', [keepId]),
+    merged: losers.map((l) => ({ id: l.id, name_ar: l.name_ar })),
+    moved,
+  };
+}
+
+// فكّ الدمج — الدمج قرار كبير، ومن يملك اتخاذه يملك التراجع عنه. لا يعيد نسبة العمل
+// تلقائياً (فقد اختلط بعمل الجهة الباقية ولا سبيل لتمييزه)، بل يعيد الجهة ظاهرةً فارغة
+// ويقول ذلك صراحةً — فالوعد الكاذب بالاسترجاع أسوأ من الإقرار بحدوده.
+export async function unmergeClient(ctx, clientId) {
+  const user = ctx.user;
+  if (!can(user, 'update', 'client') || !can(user, 'delete', 'client')) throw forbidden();
+  const row = await get('SELECT * FROM client WHERE id = ?', [clientId]);
+  if (!row) throw notFound('الجهة غير موجودة.');
+  if (!row.merged_into_client_id) throw badRequest('هذه الجهة غير مدموجة — لا شيء يُفَكّ.');
+  await update('client', clientId, { merged_into_client_id: null, active: 1, deleted_at: null, updated_at: nowIso() });
+  await audit(ctx, { action: 'update', resource: 'client', resourceId: clientId,
+    detail: { unmerged_from: row.merged_into_client_id, note: 'أُعيدت الجهة ظاهرة؛ العمل المنقول يبقى على الجهة الباقية' } });
+  return await get('SELECT * FROM client WHERE id = ?', [clientId]);
 }
 
 export async function updateClient(ctx, clientId, data = {}) {
