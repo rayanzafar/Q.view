@@ -78,6 +78,11 @@ before(async () => {
   projects = await import('../../src/modules/pmo/projects.js');
   opps = await import('../../src/modules/crm/opportunities.js');
 
+  // حسابات دخول حقيقية للمتصرّفين — الفرصة تُنسب إلى مالكها، والتدقيق يُنسب إلى صاحبه
+  for (const u of [admin, bdHead, solLead]) {
+    await insert('app_user', { id: u.id, username: u.username, name_ar: u.username, role_id: u.role_id,
+      sector_id: u.sector_id, scope: u.scope, active: 1, created_at: T });
+  }
   await insert('stage', { id: 'LEAD', name_ar: 'مبدئية', default_win_pct: 10, sort_order: 1, is_won: 0, is_lost: 0 });
   // مشروعان حقيقيان في الحلول + فرصة في كل قطاع (لقراءة الدور الجديد عبر القطاعات)
   await insert('project', { id: 'P_BUS', name_ar: 'منظومة رصد دخول الحافلات', sector_id: 'SOLUTIONS',
@@ -316,7 +321,11 @@ test('قائمة المتاحين للتسكين تعرض موظفي وحدات 
   const ids = st.available.map((e) => e.id);
   assert.ok(ids.includes('E_SH2'), 'بلا هذا لا يستطيع المسؤول اختيار الشخص أصلاً');
   assert.ok(ids.includes('E_CONS'), 'موظفو القطاع كما كانوا');
-  assert.equal(ids.includes('E_SH1'), false, 'المسكَّن سلفاً على مشروع آخر يبقى معروضاً هنا فقط إن لم يُسكَّن على هذا المشروع');
+  assert.equal(ids.includes('E_SH1'), true, 'المعار على مشروع آخر يبقى متاحاً هنا — الطاقة لا الحصرية');
+  // أما على المشروع الذي هو مسكَّن عليه فعلاً فلا يتكرر في قائمة المتاحين
+  const busy = await projects.projectStaffing(admin, 'P_BUS');
+  assert.equal(busy.available.map((e) => e.id).includes('E_SH1'), false);
+  assert.equal(busy.available.map((e) => e.id).includes('E_CONS'), false, 'موظف قطاع تسليم آخر لا يُعرض');
 });
 
 test('الشخص نفسه يُسكَّن على مشروعَي قطاعين مختلفين معاً — مورد مشترك حقيقي', async () => {
