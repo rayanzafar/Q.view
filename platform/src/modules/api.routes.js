@@ -60,6 +60,8 @@ apiRouter.get('/projects/:id/kpis', h((req) => metrics.projectKpis(req.params.id
 // ── Tasks ──
 apiRouter.get('/tasks/mine', h((req) => tasks.myTasks(req.ctx.user, req.query)));
 apiRouter.post('/tasks/quick', h((req) => tasks.quickAddTask(req.ctx, req.body)));
+apiRouter.get('/tasks/team', h((req) => tasks.teamTasks(req.ctx.user, { ...req.query })));
+apiRouter.patch('/tasks/bulk', h((req) => tasks.bulkUpdateTasks(req.ctx, (req.body || {}).ids, (req.body || {}).patch || {})));
 apiRouter.patch('/tasks/:id', h((req) => tasks.updateTask(req.ctx, req.params.id, req.body)));
 
 // ── Timesheets ──
