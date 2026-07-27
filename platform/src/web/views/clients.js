@@ -294,8 +294,13 @@ export async function clientsPage(user, opts = {}) {
       <b style="font-size:12.5px;color:var(--ink2)">${esc(r.official_name)}</b>
       ${r.abbr ? `<span class="tnum" style="font-size:10.5px;color:var(--faint)">${esc(r.abbr)}</span>` : ''}
       <span style="font-size:10.5px;color:var(--faint)">${esc(r.reason_ar)}</span>
-      ${certain ? `<button class="btn btn-sm" style="margin-inline-start:auto" data-action="client-rename"
-        data-id="${esc(r.client.id)}" data-to="${esc(r.official_name)}">اعتمد الاسم الرسمي</button>` : ''}
+      <span style="margin-inline-start:auto;display:inline-flex;gap:.35rem">
+        ${certain ? `<button class="btn btn-sm" data-action="client-rename"
+          data-id="${esc(r.client.id)}" data-to="${esc(r.official_name)}">اعتمد الاسم الرسمي</button>` : ''}
+        <button class="btn btn-sm btn-ghost" data-action="client-name-keep"
+          data-id="${esc(r.client.id)}" data-name="${esc(r.client.name_ar)}"
+          title="الاسم الحالي صحيح — لا تقترح تغييره مرة أخرى">الاسم صحيح</button>
+      </span>
     </div>`;
   const nameBlock = nameReview && (nameReview.rename.length || nameReview.review.length)
     ? `<details style="margin-bottom:1rem">

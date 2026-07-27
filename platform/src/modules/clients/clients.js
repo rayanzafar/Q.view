@@ -551,7 +551,10 @@ export function similarityOf(a, b) {
 // البشرية»، ولا بين «سدايا» واسمها الرسمي — والمرجع يعرف أنهما واحد. فجهتان تتّفقان على
 // **نفس السجل الرسمي** تكرارٌ قاطع مهما اختلف نصّاهما، وهو أقوى دليل من تشابه الكلمات.
 export async function clientNameReview(user) {
-  const where = ['c.deleted_at IS NULL', 'c.merged_into_client_id IS NULL'];
+  // الاسم المُعتمَد يخرج من المراجعة كلياً: بلا هذا الشرط تعود المنصة إلى **نفس الاقتراح
+  // المرفوض** كلما فُتحت الشاشة — و«أرامكو السعودية» تُقترَح «شركة الزيت العربية السعودية»
+  // أبداً. واقتراحٌ مرفوض يتكرّر ليس ضجيجاً فحسب: من يراه عشر مرات يضغطه في الحادية عشرة.
+  const where = ['c.deleted_at IS NULL', 'c.merged_into_client_id IS NULL', 'c.name_confirmed_at IS NULL'];
   const params = [];
   const sc = clientScopeClause(user, 'read');
   if (!sc) throw forbidden();
@@ -579,6 +582,21 @@ export async function clientNameReview(user) {
       members: g.map((x) => ({ id: x.client.id, name_ar: x.client.name_ar, reason_ar: x.match.reason_ar })) }));
 
   return { total: rows.length, registry_size: entityCount(), collisions, rename, review, unknown };
+}
+
+// اعتماد اسم الجهة كما هو: قرارٌ بشري يُسكِت الاقتراح ولا يُغيّر شيئاً في البيانات.
+// ويبقى قابلاً للرفع، فالمسمّى قد يتغيّر فعلاً ولا يصحّ أن يُقفَل الباب إلى الأبد.
+export async function confirmClientName(ctx, clientId, { confirmed = true } = {}) {
+  const user = ctx.user;
+  if (!can(user, 'update', 'client')) throw forbidden();
+  const row = await getVisibleClient(user, clientId, 'update');
+  const at = confirmed ? nowIso() : null;
+  await update('client', clientId, {
+    name_confirmed_at: at, name_confirmed_by: confirmed ? user.id : null, updated_at: nowIso(),
+  });
+  await audit(ctx, { action: 'update', resource: 'client', resourceId: clientId,
+    detail: { name_confirmed: confirmed, name_ar: row.name_ar } });
+  return await get('SELECT * FROM client WHERE id = ?', [clientId]);
 }
 
 // الجهات المشتبه بتكرارها — تُستدعى من فحص صحة البيانات ومن شاشة العملاء.

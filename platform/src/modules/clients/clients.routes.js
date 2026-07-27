@@ -16,6 +16,7 @@ clientsRouter.patch('/clients/:id', h((req) => clients.updateClient(req.ctx, req
 // القراءة مفتوحة لمن يقرأ الجهات؛ والدمج داخل الخدمة يشترط تعديلاً وحذفاً معاً.
 clientsRouter.get('/clients/duplicates', h(async (req) => ({ pairs: await clients.likelyDuplicateClients(req.ctx.user) })));
 clientsRouter.get('/clients/name-review', h((req) => clients.clientNameReview(req.ctx.user)));
+clientsRouter.post('/clients/:id/confirm-name', h((req) => clients.confirmClientName(req.ctx, req.params.id, req.body || {})));
 clientsRouter.post('/clients/merge', h((req) => clients.mergeClients(req.ctx, req.body || {})));
 clientsRouter.post('/clients/:id/unmerge', h((req) => clients.unmergeClient(req.ctx, req.params.id)));
 

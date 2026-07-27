@@ -230,3 +230,44 @@ test('قائمة الجداول الحاملة للجهة مطابقة للمخ�
   assert.deepEqual(forgotten, [],
     `جدول يحمل الجهة وغير معلَن في CLIENT_OWNED_TABLES — سيبقى عمله يتيماً بعد الدمج:\n${forgotten.join('، ')}`);
 });
+
+// ── اعتماد الاسم: القرار البشري يُسكِت الاقتراح ولا يعود ────────────────────
+// بلا هذا الختم تعود المنصة إلى **نفس الاقتراح المرفوض** كلما فُتحت الشاشة. وقد رفض المالك
+// ثلاثة: «أرامكو السعودية» (والرسمي «شركة الزيت العربية السعودية» يجعلها أقلّ تعرّفاً)،
+// و«الخطوط السعودية» (شركة الطيران ليست الكيان القابض — وقد نُفِّذ هذا الاقتراح خطأً حياً
+// قبل تصحيحه)، و«وزارة الشؤون الإسلامية» (جهة أخرى في حكمه). واقتراحٌ مرفوض يتكرّر ليس
+// ضجيجاً فحسب: من يراه عشر مرات يضغطه في الحادية عشرة.
+test('اسم مُعتمَد يخرج من المراجعة — ويعود إليها إن رُفع الاعتماد', async () => {
+  const before = await C.clientNameReview(admin);
+  const target = before.rename[0] || before.review[0];
+  if (!target) { assert.ok(true, 'لا اقتراحات في هذه البيانات — لا شيء يُختبَر'); return; }
+
+  await C.confirmClientName(ctx(admin), target.client.id, { confirmed: true });
+  const after = await C.clientNameReview(admin);
+  const still = [...after.rename, ...after.review].some((r) => r.client.id === target.client.id);
+  assert.equal(still, false, 'الاسم المُعتمَد لا يُقترح عليه شيء بعد اليوم');
+
+  const row = await db.get('SELECT name_confirmed_at, name_confirmed_by FROM client WHERE id = ?', [target.client.id]);
+  assert.ok(row.name_confirmed_at, 'الختم مؤرَّخ');
+  assert.equal(row.name_confirmed_by, admin.id, 'ويحمل من حسمه — القرار له صاحب');
+
+  const aud = await db.get(
+    "SELECT detail_json FROM audit_log WHERE resource='client' AND resource_id=? ORDER BY at DESC LIMIT 1",
+    [target.client.id]);
+  assert.equal(JSON.parse(aud.detail_json).name_confirmed, true, 'ومُدقَّق');
+
+  await C.confirmClientName(ctx(admin), target.client.id, { confirmed: false });
+  const reopened = await C.clientNameReview(admin);
+  assert.equal([...reopened.rename, ...reopened.review].some((r) => r.client.id === target.client.id), true,
+    'ورفع الاعتماد يعيده — فالمسمّى قد يتغيّر فعلاً ولا يصحّ إقفال الباب أبداً');
+});
+
+test('اعتماد الاسم يحتاج صلاحية تعديل الجهات — ولا يمسّ البيانات', async () => {
+  const c = await db.get('SELECT id, name_ar FROM client WHERE deleted_at IS NULL LIMIT 1');
+  // «مدير تطوير الأعمال» يملك تعديل الجهات فعلاً فيمرّ — والمانع الحقيقي دورٌ بلا هذا المنح.
+  const consultant = U('u_cons', 'consultant', 'SOL', 'project');
+  await assert.rejects(() => C.confirmClientName(ctx(consultant), c.id, { confirmed: true }), /صلاحي|forbidden/);
+  const after = await db.get('SELECT name_ar, name_confirmed_at FROM client WHERE id = ?', [c.id]);
+  assert.equal(after.name_ar, c.name_ar, 'الاعتماد قرارٌ عن الاسم لا تغييرٌ له');
+  assert.equal(after.name_confirmed_at, null, 'ولم يُختَم');
+});

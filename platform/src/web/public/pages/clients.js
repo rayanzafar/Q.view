@@ -100,6 +100,16 @@
       .catch(function (e) { el.disabled = false; toast(e.message, true); });
   }
 
+  // ── «الاسم صحيح»: يُسكِت الاقتراح ولا يمسّ البيانات ──
+  // بلا هذا الزرّ يعود نفس الاقتراح المرفوض كلما فُتحت الشاشة، ومن يراه مراراً يضغطه سهواً.
+  function keepName(el) {
+    var id = el.getAttribute('data-id');
+    el.disabled = true;
+    api('/clients/' + id + '/confirm-name', 'POST', { confirmed: true })
+      .then(function () { toast('اعتُمد الاسم الحالي ✓'); setTimeout(function () { location.reload(); }, 400); })
+      .catch(function (e) { el.disabled = false; toast(e.message, true); });
+  }
+
   // ── تسجيل نشاط على العميل ──
   function saveActivity(btn) {
     var title = val('act-title');
@@ -148,6 +158,7 @@
       case 'client-save': saveClient(el); break;
       case 'client-merge': openMerge(el); break;
       case 'client-rename': renameOfficial(el); break;
+      case 'client-name-keep': keepName(el); break;
       case 'client-merge-save': saveMerge(el); break;
       case 'act-save': saveActivity(el); break;
       case 'contact-add': addContact(el); break;
