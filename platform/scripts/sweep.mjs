@@ -86,6 +86,10 @@ async function hit(path, { method = 'GET', jar = {}, headers = {}, body } = {}) 
 
 async function loginWeb(username) {
   const seed = await hit('/login'); // issues the CSRF cookie pair like a real browser visit
+  // بيئة لا وصول: الوكيل يردّ 403 على كل طلب قبل أن يصل الخادم أصلاً. بلا هذا التمييز يظهر الفشل
+  // عشر مرات كأنه عطل في تسجيل الدخول، فيُطارَد عيبٌ في المنتج لا وجود له. الرسالة تقول الحل.
+  if (seed.res.status === 403 && /not in allowlist|egress/i.test(seed.text || ''))
+    throw new Error(`الوكيل حجب ${base} — أعد التشغيل بـ NODE_USE_ENV_PROXY=1 (وNODE_EXTRA_CA_CERTS للشهادة). ليست مشكلة في المنصة.`);
   const jar = jarFrom(seed.res);
   const form = new URLSearchParams({ username, password: DEMO_PW, _csrf: jar.sanad_csrf || '' });
   const { res } = await hit('/auth/login-web', {
