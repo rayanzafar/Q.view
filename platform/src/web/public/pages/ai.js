@@ -587,8 +587,10 @@
     });
   }
 
+  // لحظة انتهاء المعاينة بالاسم الموثَّق وحده — في أعلى الردّ أو داخل المعاينة. كانت تُقرأ
+  // بأربعة أسماء «عسى أن يصل أحدها»، والاسم الواحد يجعل غيابها عطلاً ظاهراً لا صمتاً.
   function expiryOf(p) {
-    var v = p && (p.expires_at || p.expiresAt || (p.preview && (p.preview.expires_at || p.preview.expiresAt)));
+    var v = p && (p.expires_at || (p.preview && p.preview.expires_at));
     if (v == null || v === '') return 0;
     var t = typeof v === 'number' ? v : Date.parse(String(v));
     return isNaN(t) ? 0 : t;

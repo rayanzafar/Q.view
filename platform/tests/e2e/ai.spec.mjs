@@ -424,4 +424,253 @@ export default async function aiSpec({ browser, base, t }) {
     }
     await ctx.close();
   }
+
+  // ── 10) مهلة المعاينة: وقتٌ حقيقي من الخادم، ثم انتهاؤها فعلاً أمام المستخدم ─
+  // المعاينة موافقةٌ مرتبطة بلحظتها. الخادم يرسل لحظة انتهائها، واللوحة تقولها بالساعة
+  // والدقيقة ثم تُعطّل زرّ التأكيد عند انقضائها — بدل أن يضغط المستخدم زرّاً يعرف الخادم
+  // سلفاً أنه سيردّه. الجزء الأول بلا أي اعتراض (العقد الحيّ)، والثاني يُقصّر المهلة وحدها
+  // ليقع الانتهاء داخل الفحص.
+  {
+    const ctx = await browser.newContext({ viewport: WIDE });
+    const page = await ctx.newPage();
+    const { pageErrors } = collectErrors(page);
+    await login(page, base, 'demo.admin');
+    await open(page, base, '/app/tasks');
+    await openPanel(page);
+    await page.waitForSelector('#ai-chips .ai-chip[data-intent="create_task"]', { timeout: 8000 });
+
+    const openCreateForm = async (title) => {
+      await page.click('#ai-chips .ai-chip[data-intent="create_task"]');
+      await page.waitForSelector('#ai-log .ai-card input[type=text]', { timeout: 8000 });
+      await page.locator('#ai-log .ai-card input[type=text]').last().fill(title);
+      await page.locator('#ai-log [data-action="ai-form-submit"]').last().click();
+      await page.waitForSelector('#ai-log .ai-prev', { timeout: 8000 });
+    };
+
+    await openCreateForm('مهمة فحص مهلة التأكيد');
+    const live = await page.evaluate(() => {
+      const c = document.querySelector('#ai-log .ai-prev');
+      return { note: (c.querySelector('.ai-note')?.textContent || '').trim(),
+        disabled: c.querySelector('[data-action="ai-confirm"]').disabled };
+    });
+    if (/^صالحة للتأكيد حتى \d{1,2}:\d{2}/.test(live.note) && !live.disabled) {
+      t.pass(`live: the preview states its exact deadline — «${live.note}»`);
+    } else {
+      t.fail('live preview deadline', `note=«${live.note}» confirmDisabled=${live.disabled}`);
+    }
+
+    // إلغاء المعاينة الأولى ثم إعادة الجولة بمهلة مُقصَّرة — الردّ ردّ الخادم نفسه، لا يتغيّر
+    // منه إلا لحظة الانتهاء.
+    await page.locator('#ai-log .ai-prev [data-action="ai-form-cancel"]').last().click();
+    await page.route('**/api/ai/preview', async (route) => {
+      const res = await route.fetch();
+      const body = await res.json();
+      body.expires_at = new Date(Date.now() + 1500).toISOString();
+      await route.fulfill({ response: res, json: body });
+    });
+    await openCreateForm('مهمة تنتهي مهلتها');
+
+    const expired = await page.waitForFunction(() => {
+      const c = document.querySelector('#ai-log .ai-prev');
+      if (!c) return null;
+      const btn = c.querySelector('[data-action="ai-confirm"]');
+      if (!btn.disabled) return null;
+      return { note: (c.querySelector('.ai-note')?.textContent || '').trim(),
+        again: !!c.querySelector('[data-action="ai-form-again"]') };
+    }, null, { timeout: 8000 }).then((h) => h.jsonValue()).catch(() => null);
+
+    if (expired && /انتهت مهلة التأكيد/.test(expired.note) && expired.again) {
+      t.pass('the deadline actually fires: confirm goes disabled, the note says the wait expired, and a retry appears');
+    } else {
+      t.fail('preview expiry path', JSON.stringify(expired));
+    }
+
+    await page.unroute('**/api/ai/preview');
+    await page.locator('#ai-log [data-action="ai-form-again"]').last().click();
+    await page.waitForSelector('#ai-log .ai-card input[type=text]', { timeout: 8000 });
+    const again = await page.locator('#ai-log .ai-card input[type=text]').last().inputValue();
+    if (again === 'مهمة تنتهي مهلتها') t.pass('retry reopens the same form already filled — nothing typed twice');
+    else t.fail('retry after expiry', `title=«${again}»`);
+    if (pageErrors.length) t.fail('preview deadline page errors', pageErrors.slice(0, 2).join(' | '));
+    await ctx.close();
+  }
+
+  // ── 11) شرط الحقل يأتي من الخادم: «سبب التعطيل» يظهر ويُطلب في حالته وحدها ──
+  // بلا جدول توافقي في المتصفح: ما يظهر ويُطلب هنا مصدره مواصفة النموذج التي أرسلها الخادم.
+  // والقيمة العملية أن الرفض يقع **قبل** التأكيد لا بعده — خدمة المهام ترفض «مُعطَّل» بلا سبب.
+  {
+    const ctx = await browser.newContext({ viewport: WIDE });
+    const page = await ctx.newPage();
+    const previews = [];
+    page.on('request', (r) => { if (r.url().includes('/api/ai/preview')) previews.push(r.url()); });
+    await login(page, base, 'demo.admin');
+    await open(page, base, '/app/tasks');
+    await openPanel(page);
+    await page.waitForSelector('#ai-chips .ai-chip[data-intent="update_task_status"]', { timeout: 8000 });
+    await page.click('#ai-chips .ai-chip[data-intent="update_task_status"]');
+    await page.waitForSelector('#ai-log .ai-card select', { timeout: 8000 });
+
+    const rowsNow = () => page.evaluate(() => {
+      const cards = [...document.querySelectorAll('#ai-log .ai-card')].filter((c) => c._form);
+      const st = cards[cards.length - 1]._form;
+      return st.rows.map((r) => ({ name: r.def.name, hidden: !!r.row.hidden, required: !!r.ctl.required, star: !r.star.hidden }));
+    });
+    const reasonRow = (rows) => rows.find((r) => r.name === 'blockedReason');
+
+    const start = await rowsNow();
+    const selects = await page.$$('#ai-log .ai-card select');
+    await selects[0].selectOption({ index: 1 });
+    await selects[1].selectOption('BLOCKED');
+    await page.waitForTimeout(120);
+    const blocked = await rowsNow();
+    await selects[1].selectOption('DONE');
+    await page.waitForTimeout(120);
+    const done = await rowsNow();
+
+    if (reasonRow(start)?.hidden && !reasonRow(blocked)?.hidden && reasonRow(done)?.hidden) {
+      t.pass('server-sent condition: the blocking-reason field is hidden until the blocked case and hides again after it');
+    } else {
+      t.fail('conditional visibility (live spec)', JSON.stringify({ start: reasonRow(start), blocked: reasonRow(blocked), done: reasonRow(done) }));
+    }
+    if (reasonRow(blocked)?.required && reasonRow(blocked)?.star && !reasonRow(done)?.required) {
+      t.pass('and it is required exactly in that case — the service rule asked before the confirmation, not after it');
+    } else {
+      t.fail('conditional requirement (live spec)', JSON.stringify({ blocked: reasonRow(blocked), done: reasonRow(done) }));
+    }
+
+    await selects[1].selectOption('BLOCKED');
+    await page.waitForTimeout(120);
+    await page.locator('#ai-log [data-action="ai-form-submit"]').last().click();
+    await page.waitForTimeout(250);
+    // رسالة الحقل عقدةٌ مستقلة تحت الحقل (النجمة داخل عنوانه تحمل الصنف نفسه).
+    const why = await page.evaluate(() => {
+      const w = [...document.querySelectorAll('#ai-log .ai-f > div.why')].filter((n) => !n.hidden && n.textContent.trim());
+      return w.map((n) => n.textContent.trim());
+    });
+    if (why.length === 1 && !previews.length) {
+      t.pass('blocking without a reason never reaches the preview — the panel asks first instead of letting the service reject a confirmed change');
+    } else {
+      t.fail('pre-confirmation guard', `messages=${JSON.stringify(why)} previewCalls=${previews.length}`);
+    }
+    await ctx.close();
+  }
+
+  // ── 12) الحال الذي لا يُستنتج: فرصة مكسوبة ⟵ سبب التراجع مطلوب قبل المعاينة ─
+  // «هل هذه الفرصة مكسوبة؟» سؤالٌ لا تملك اللوحة جوابه إلا إذا قاله صفّ القائمة نفسه. الخادم
+  // يقوله راية على الصفّ، والشرط المركّب يقرؤها مع المرحلة الجديدة — وهي قاعدة الخدمة حرفياً.
+  {
+    const ctx = await browser.newContext({ viewport: WIDE });
+    const page = await ctx.newPage();
+    const previews = [];
+    page.on('request', (r) => { if (r.url().includes('/api/ai/preview')) previews.push(r.url()); });
+    await login(page, base, 'demo.bd');
+    await open(page, base, '/app/opportunities');
+    await openPanel(page);
+    await page.waitForSelector('#ai-chips .ai-chip[data-intent="move_opportunity_stage"]', { timeout: 8000 });
+    await page.click('#ai-chips .ai-chip[data-intent="move_opportunity_stage"]');
+    await page.waitForSelector('#ai-log .ai-card select', { timeout: 8000 });
+
+    const noteRow = () => page.evaluate(() => {
+      const cards = [...document.querySelectorAll('#ai-log .ai-card')].filter((c) => c._form);
+      const st = cards[cards.length - 1]._form;
+      const r = st.rows.find((x) => x.def.name === 'note');
+      return { hidden: !!r.row.hidden, required: !!r.ctl.required, star: !r.star.hidden };
+    });
+    const flagged = await page.evaluate(async () => {
+      const j = await fetch('/api/ai/options/opportunity', { credentials: 'include' }).then((r) => r.json());
+      const won = j.options.filter((o) => o.won === true).map((o) => o.id);
+      return { won, total: j.options.length };
+    });
+
+    const selects = await page.$$('#ai-log .ai-card select');
+    await selects[0].selectOption('FX-OPP-5');   // مكسوبة
+    await selects[1].selectOption('LEAD');
+    await page.waitForTimeout(120);
+    const reversing = await noteRow();
+    await selects[0].selectOption('FX-OPP-1');   // مفتوحة
+    await page.waitForTimeout(120);
+    const forward = await noteRow();
+
+    if (flagged.won.includes('FX-OPP-5') && !flagged.won.includes('FX-OPP-1')) {
+      t.pass(`the opportunity list carries the won flag per row (${flagged.won.length} of ${flagged.total} won)`);
+    } else {
+      t.fail('won flag on options', JSON.stringify(flagged));
+    }
+    if (reversing.required && reversing.star && !forward.required && !reversing.hidden && !forward.hidden) {
+      t.pass('reversing a won opportunity makes the written reason required before the preview; a normal move leaves the note optional');
+    } else {
+      t.fail('reversal-reason condition', JSON.stringify({ reversing, forward }));
+    }
+
+    await selects[0].selectOption('FX-OPP-5');
+    await page.waitForTimeout(120);
+    await page.locator('#ai-log [data-action="ai-form-submit"]').last().click();
+    await page.waitForTimeout(250);
+    const asked = await page.evaluate(() =>
+      [...document.querySelectorAll('#ai-log .ai-f > div.why')].filter((n) => !n.hidden && n.textContent.trim()).length);
+    if (asked === 1 && !previews.length) {
+      t.pass('a won-reversal without a reason is stopped in the form — the service message is never met after a confirmation');
+    } else {
+      t.fail('reversal pre-confirmation guard', `messages=${asked} previewCalls=${previews.length}`);
+    }
+    await ctx.close();
+  }
+
+  // ── 13) الالتباس: الاختيار يصل إلى السجل المقصود بعينه ─────────────────────
+  // كان اختيار المستخدم يضيع: يُرسل نصّ الخيار فيُعاد تصنيفه، فيُجاب بجواب عام لا صلة له
+  // بالسجل الذي اختاره. الآن الردّ يسمّي نيّته وحقل اختياره، فيعود الاختيار بمفتاحه.
+  {
+    const ctx = await browser.newContext({ viewport: WIDE });
+    const page = await ctx.newPage();
+    const { pageErrors } = collectErrors(page);
+    await login(page, base, 'demo.admin');
+
+    const list = await page.request.get(`${base}/api/projects`).then((r) => r.json()).catch(() => []);
+    const sectorId = (Array.isArray(list) && list.find((p) => p.sector_id)?.sector_id) || 'SOLUTIONS';
+    const names = ['مشروع التحول السحابي أ', 'مشروع التحول السحابي ب'];
+    const made = [];
+    for (const name_ar of names) {
+      const r = await page.request.post(`${base}/api/projects`, { data: { name_ar, sector_id: sectorId } });
+      made.push(r.ok() ? await r.json() : null);
+    }
+    if (made.some((p) => !p?.id)) {
+      t.fail('fixture: two look-alike projects', made.map((p) => p?.id || 'none').join(','));
+    } else {
+      const sent = [];
+      page.on('request', (r) => {
+        if (r.url().includes('/api/ai/chat') && r.method() === 'POST') {
+          try { sent.push(r.postDataJSON()); } catch { sent.push(null); }
+        }
+      });
+      await open(page, base, '/app/ceo');
+      await openPanel(page);
+      await sendText(page, 'لخّص حالة مشروع التحول السحابي');
+      await page.waitForSelector('#ai-log .ai-picks .ai-chip', { timeout: 8000 });
+      const picks = await page.evaluate(() =>
+        [...document.querySelectorAll('#ai-log .ai-picks .ai-chip')].map((b) => b.textContent.trim()));
+      if (picks.length === 2 && picks.includes(names[1])) t.pass('an ambiguous name asks which record is meant instead of choosing silently');
+      else t.fail('disambiguation choices', JSON.stringify(picks));
+
+      await page.locator('#ai-log .ai-picks .ai-chip', { hasText: names[1] }).last().click();
+      await settled(page);
+      await page.waitForTimeout(200);
+      const pick = sent[sent.length - 1];
+      const answer = await logText(page);
+      // سؤالٌ ثانٍ عن الالتباس نفسه = ضياع الاختيار: بطاقة الخيارات تبقى واحدة، والجواب جواب
+      // ملخّص (فيه أرقام المشروع) لا جوابٌ عام ولا قائمةٌ تُسأل من جديد.
+      const asked = await page.evaluate(() => document.querySelectorAll('#ai-log .ai-picks').length);
+      const okKey = pick && pick.opts && pick.opts.intent === 'summarize_project'
+        && pick.opts.projectId === made[1].id
+        && !('choice' in pick.opts);
+      if (okKey) t.pass('the pick travels back under the one field the reply named (no double-keyed guess)');
+      else t.fail('choice payload', JSON.stringify(pick));
+      if (answer.includes(names[1]) && /الإنجاز/.test(answer) && asked === 1 && !answer.includes('ما أستطيعه لك الآن')) {
+        t.pass('and the answer summarises the chosen record — not a second disambiguation nor the generic blurb');
+      } else {
+        t.fail('answer after pick', `choiceCards=${asked} tail=${answer.slice(-160)}`);
+      }
+      if (pageErrors.length) t.fail('disambiguation page errors', pageErrors.slice(0, 2).join(' | '));
+    }
+    await ctx.close();
+  }
 }

@@ -75,5 +75,18 @@
 ## 7) مفاتيح المعجم الأساسية (glossary.js — `G.*`)
 attention "يحتاج انتباهك الآن" · needsDecision "بانتظار قرارك" · offTrack "خارج المسار" · onTrack "على المسار" · nextAction "الخطوة التالية" · noNextAction "بلا خطوة تالية" · stageAge "منذ {n} يوماً في هذه المرحلة" · weighted "القيمة المرجّحة" · raw "القيمة الإجمالية" · forecast "المتوقع نهاية السنة" · target "المستهدف" · actual "المحقق" · capacity "الطاقة الاستيعابية" · overloaded "فوق الطاقة" · underused "سعة متاحة" · onBench "غير مُسكَّن حالياً" · importAdd "إضافة الجديد فقط" · importUpsert "إضافة وتحديث" · importReplace "استبدال كامل" · undo "تراجع عن العملية" · dryPreview "معاينة قبل التنفيذ" · rowError "الصف {n}: {problem}" — والقائمة المحظورة: API, Schema, Entity, Adapter, Queue, Worker, Transaction, JSON, DB, null, undefined, NaN, "ID:".
 
-## 8) قواعد التكامل (تذكير ملزم)
+## 8) عقد مساعد سند (`/api/ai/*`) — ما يقوله الخادم بنفسه
+توسيعٌ للعقد لا تعارض معه: الردود القديمة كما هي، والمفاتيح التالية تُضاف كي لا تخمّن اللوحة ما يعرفه الخادم.
+
+- `POST /api/ai/chat` → `{ reply, intent, choices?, choice_field?, form? }` — **ولا رمز تأكيد أبداً**.
+  - `intent` في كل ردّ (رمز داخلي لا يُعرض لمستخدم). `choice_field` يُرسَل **مع `choices` فقط** ويسمّي الحقل الذي يعود به الاختيار.
+  - الاختيار يعود هكذا: `{ message: <النصّ الأصلي>, opts: { intent, [choice_field]: id } }`. ومفاتيح حقول النماذج تُقبل في `opts` مباشرةً أو داخل `opts.form`؛ نصّ أو رقم فقط، وما ليس حقلاً في النموذج يُهمَل.
+- `POST /api/ai/preview` → `{ reply, preview, applyToken, previewId, expires_at }`؛ `expires_at` لحظة زمنية كاملة كما حُفظت (مهلة المعاينة ١٥ دقيقة) — الاسم الوحيد المعتمد، والواجهة تعرض «صالحة للتأكيد حتى …» وتُعطّل زرّ التأكيد عند انقضائها.
+- مواصفة `form.fields[]`: `{ name, label_ar, kind, required?, value?, help_ar?, options_kind?, when?, required_when? }`.
+  - لغة الشرط: `{ field, equals | not_equals | in | not_in | filled | flag }` وتركيبها `{ all:[…] } | { any:[…] } | { not:… }`. `when` يحكم الظهور، `required_when` يحكم الطلب، وشرطٌ لا تفهمه الواجهة ⇒ الحقل يظهر ولا يُفرض.
+  - `flag` يقرأ راية على **صفّ الخيار** المختار من القائمة (لا على قيمة الحقل).
+  - الشروط المعتمدة اليوم: `blockedReason` ⟵ `{field:'status', equals:'BLOCKED'}` ظهوراً وطلباً؛ و`note` في نقل الفرصة ⟵ `required_when: { all:[ {field:'oppId', flag:'won'}, {field:'stage', not_equals:<مرحلة الفوز>} ] }` (مراحل الفوز تُقرأ من تعريف المراحل؛ عند تعدّدها `not_in`). مصدر كل شرط قاعدةُ الخدمة التي ستنفّذ التغيير — لا نسخة ثانية في المتصفح.
+- `GET /api/ai/options/opportunity` → صفوفه `{ id, label_ar, sub_ar, won: true|false }`؛ `won` حالٌ يقوله الصفّ عن نفسه (لا يُستنتج من اسم المرحلة).
+
+## 9) قواعد التكامل (تذكير ملزم)
 فروع الحارات لا تعدّل أبداً: `pages.js`، `layout.js`، `routes.js`، `nav.js`، `public/app.js`، `api.routes.js`. أسطر الربط (تصدير barrel، PAGES+PAGE_ACCESS، NAV، تركيب Router، scripts) تطبّقها جلسة التكامل حصراً عند الدمج.
