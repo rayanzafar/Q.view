@@ -146,6 +146,22 @@ export async function deleteDepartment(ctx, depId) {
   if (emps) throw badRequest(`لا يمكن حذف الإدارة وبها ${emps} موظفاً — انقلهم إلى إدارة أخرى أولاً`);
   const units = (await get('SELECT COUNT(*) n FROM org_unit WHERE department_id = ? AND deleted_at IS NULL', [depId])).n;
   if (units) throw badRequest(`لا يمكن حذف الإدارة وبها ${units} وحدة — احذف الوحدات أولاً`);
+  // العمل المنسوب إلى الإدارة يمنع حذفها أيضاً. بلا هذا الفحص يبقى المشروع أو الفرصة حاملاً
+  // إدارةً محذوفة: فلا يظهر في تجميع أي إدارة، ولا يعود إلى صندوق «بلا إدارة» (لأن حقله ليس
+  // فارغاً) — فيختفي من الشاشتين معاً بصمت. الحذف الناعم للإدارة لا يُنظّف أثرها من العمل.
+  const work = await get(
+    `SELECT (SELECT COUNT(*) FROM project     WHERE department_id = ? AND deleted_at IS NULL) AS projects,
+            (SELECT COUNT(*) FROM opportunity WHERE department_id = ? AND deleted_at IS NULL) AS opportunities,
+            (SELECT COUNT(*) FROM allocation  WHERE department_id = ? AND deleted_at IS NULL) AS allocations`,
+    [depId, depId, depId],
+  );
+  const attached = [
+    Number(work.projects) ? `${work.projects} مشروعاً` : null,
+    Number(work.opportunities) ? `${work.opportunities} فرصة` : null,
+    Number(work.allocations) ? `${work.allocations} سطر تسكين` : null,
+  ].filter(Boolean);
+  if (attached.length)
+    throw badRequest(`لا يمكن حذف الإدارة ومنسوب إليها ${attached.join(' و')} — انقل هذه الأعمال إلى إدارة أخرى أو ألغِ نسبتها أولاً`);
   await update('department', depId, { deleted_at: nowIso() });
   await audit(ctx, { action: 'delete', resource: 'department', resourceId: depId, sectorId: d.sector_id });
   return { ok: true };

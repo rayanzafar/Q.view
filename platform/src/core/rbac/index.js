@@ -58,8 +58,20 @@ export function scopeReaches(user, scope, target) {
       return true;
     case 'sector':
       return !target.sector_id || target.sector_id === user.sector_id || (user.scope === 'company');
-    case 'department':
-      return !target.department_id || target.department_id === user.department_id;
+    case 'department': {
+      // إدارة واحدة تعيش داخل قطاع واحد بالضبط. الشرط القديم كان `!target.department_id || …`
+      // فيمرّ **فارغاً** على كل هدف لا يحمل عمود الإدارة — وأكثر الصفوف كذلك (المهمة والفرصة
+      // وصف القطاع لا تحمل إدارة). النتيجة أن مدير إدارة في الاستشارات كان يجتاز فحصاً على
+      // هدف يخصّ الحلول لمجرد أن الهدف لا يذكر إدارة.
+      if (target.department_id) return target.department_id === user.department_id;
+      // بلا إدارة على الهدف لا نستطيع إثبات الانتماء، لكن نستطيع إثبات **النفي**: هدف يذكر
+      // قطاعاً غير قطاع المستخدم هو قطعاً خارج إدارته. هذا يغلق التسريب العابر للقطاعات.
+      if (target.sector_id && user.sector_id && target.sector_id !== user.sector_id) return false;
+      // يبقى ما لا يُحسم: هدف بلا إدارة داخل القطاع نفسه. لا يُغلق هنا لأن الإغلاق الكامل يحرم
+      // مدير الإدارة من صفوف مشروعة لا تحمل عمود إدارة أصلاً (المهام). الحسم الصحيح أن يحمل
+      // كل صف إدارته — وهو ما بدأته الموجة 007 على المشروع والفرصة والتسكين.
+      return true;
+    }
     case 'project': {
       // A bare `project` row has no `project_id` column (only `id`) — fall back to it so the
       // project resource itself is actually membership-checked instead of vacuously passing.

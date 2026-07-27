@@ -19,6 +19,7 @@ import { governanceRouter } from './pmo/governance.routes.js';
 import { ioRouter } from './io/io.routes.js';
 import { employeesRouter } from './org/employees.routes.js';
 import { orgRouter } from './org/org.routes.js';
+import { attributionRouter } from './org/attribution.routes.js';
 import { backupRouter } from './backup.routes.js';
 import { searchRouter } from './search/search.routes.js';
 
@@ -31,6 +32,7 @@ apiRouter.use(governanceRouter);
 apiRouter.use(ioRouter);
 apiRouter.use(employeesRouter);
 apiRouter.use(orgRouter);
+apiRouter.use(attributionRouter);
 apiRouter.use(backupRouter);
 apiRouter.use(searchRouter);
 const h = (fn) => async (req, res, next) => { try { const r = await fn(req, res); if (r !== undefined) res.json(r); } catch (e) { next(e); } };

@@ -3,6 +3,7 @@
 // يُركَّب داخل apiRouter بسطر واحد من جلسة التكامل، بعد requireAuth().
 import { Router } from 'express';
 import * as org from './org.js';
+import * as orgQuality from './org-quality.js';
 
 export const orgRouter = Router();
 const h = (fn) => async (req, res, next) => { try { const r = await fn(req, res); if (r !== undefined) res.json(r); } catch (e) { next(e); } };
@@ -11,6 +12,18 @@ const linkBody = (req) => ({ employeeId: req.params.id, userId: (req.body || {})
 
 // ── حالة الربط (لصفحة «الفريق») ──
 orgRouter.get('/org/identity-links', h((req) => org.identityLinks(req.ctx.user, { sector: req.query.sector })));
+
+// ── فحص جودة الهيكل (تشخيص فقط، بلا أي تعديل) — نفس صلاحية عرض الهيكل ونطاقها ──
+// الخدمة تعيد شكلين للبيانات نفسها: `checks/score/summary` (العرض المعتمد) و`findings/pending`
+// (التفصيل الداخلي الذي تُشتَقّ منه الأولى). لا يمكن أن يختلفا — أحدهما مبني من الآخر في النداء
+// نفسه — لكن نشرهما معاً يجعل المستهلك يختار عشوائياً فيثبّت العقد على الشكل الخطأ. نثبّت هنا
+// عقداً واحداً على الحدود: `checks` هو ما تراه الواجهة، والتفصيل يبقى للخدمة واختباراتها.
+const HEALTH_PUBLIC = ['generated_at', 'sectorId', 'company_wide', 'score', 'summary', 'checks', 'totals'];
+orgRouter.get('/org/health', h(async (req) => {
+  const sector = req.query.sectorId || req.query.sector;
+  const r = await orgQuality.orgHealth(req.ctx.user, { sector, sectorId: sector });
+  return Object.fromEntries(HEALTH_PUBLIC.filter((k) => k in r).map((k) => [k, r[k]]));
+}));
 
 // ── ربط / فك ربط موظف بحساب دخول ──
 orgRouter.post('/employees/:id/link', h((req) => org.linkUserToEmployee(req.ctx, linkBody(req))));
