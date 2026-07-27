@@ -34,7 +34,7 @@ export function securityHeaders() {
 }
 
 // دلو رموز بسيط في الذاكرة لكل (مفتاح) — يكفي لعملية واحدة؛ العنقدة الأفقية عائق خارجي موثق.
-function bucketLimiter({ capacity, refillPerSec, keyFn }) {
+function bucketLimiter({ capacity, refillPerSec, keyFn, redirectTo = null }) {
   const buckets = new Map();
   setInterval(() => { // تنظيف دوري كي لا تنمو الخريطة بلا حد
     const now = Date.now();
@@ -49,6 +49,11 @@ function bucketLimiter({ capacity, refillPerSec, keyFn }) {
     b.last = now;
     if (b.tokens < 1) {
       res.setHeader('Retry-After', Math.ceil(1 / refillPerSec));
+      // نموذجُ الدخول صفحةٌ لا واجهة برمجية: من يرسله متصفّحٌ ينتظر صفحة. وردُّ الحمولة الخام
+      // كان يعرض للموظف نصاً تقنياً بين أقواس معقوفة مكان صفحة الدخول — والتفعيل لكل الموظفين
+      // يجعل تعثّر كلمة المرور في أول يوم أمراً متوقَّعاً لا نادراً. فيُعاد إلى صفحته برسالته.
+      const dest = typeof redirectTo === 'function' ? redirectTo(req) : redirectTo;
+      if (dest) return res.redirect(dest);
       return res.status(429).json({ error: 'محاولات كثيرة خلال وقت قصير — انتظر قليلاً ثم أعد المحاولة' });
     }
     b.tokens -= 1;
@@ -57,6 +62,10 @@ function bucketLimiter({ capacity, refillPerSec, keyFn }) {
 }
 
 // تسجيل الدخول: 10 محاولات ثم قطرة كل 6 ثوانٍ لكل IP (فوق قفل الحساب الموجود أصلاً)
-export const loginLimiter = bucketLimiter({ capacity: 10, refillPerSec: 1 / 6, keyFn: (req) => `L:${req.ip}` });
+// دلوٌ **واحد** يخدم المسارين معاً: لو أُنشئ لكلٍّ دلوُه لصار المسموح عشرين محاولة لا عشراً،
+// ولانفتح الباب بالتبديل بينهما. والفرق في الردّ لا في العدّ: المتصفّح يُعاد إلى صفحة الدخول
+// برسالتها، والواجهة البرمجية تأخذ ٤٢٩.
+export const loginLimiter = bucketLimiter({ capacity: 10, refillPerSec: 1 / 6, keyFn: (req) => `L:${req.ip}`,
+  redirectTo: (req) => (req.baseUrl === '/auth/login-web' ? '/login?e=2' : null) });
 // واجهات JSON: سقف مريح يمنع الإغراق فقط (300 طلب ثم 20/ثانية لكل مستخدم/IP)
 export const apiLimiter = bucketLimiter({ capacity: 300, refillPerSec: 20, keyFn: (req) => `A:${req.ctx?.user?.id || req.ip}` });

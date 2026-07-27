@@ -67,7 +67,11 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
 .btn-sm{padding:.32rem .6rem;font-size:var(--fs-meta);border-radius:8px}
 .toolbar{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin-bottom:1.1rem}
 .toolbar .spacer{margin-inline-start:auto}
-.input{border:1px solid var(--line);border-radius:10px;padding:.5rem .7rem;font-size:var(--fs-ui);color:var(--ink2);background:#fff;font-family:inherit}
+/* min-width:0 لازمة لا تجميلية: حقل الإدخال عنصرٌ له عرض ذاتي مُفضَّل، وحين يقع في شبكة
+   أو صفّ مرن يصير حدُّه الأدنى التلقائي ذلك العرض — فيُمدِّد العمود الذي يسكنه بدل أن ينكمش
+   فيه. وهكذا خرج نموذج جهات الاتصال في صفحة العميل ١١٤ بكسل خارج بطاقته على شاشة عريضة:
+   عمودٌ عرضه ٤١٩ حُسِب ٥٧١. الإصلاح هنا لا في الصفحة، لأن العلّة في الحقل أينما وقع. */
+.input{border:1px solid var(--line);border-radius:10px;padding:.5rem .7rem;font-size:var(--fs-ui);color:var(--ink2);background:#fff;font-family:inherit;min-width:0}
 .input:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(36,74,153,.14)}
 .search{position:relative;display:flex;align-items:center}
 .search svg{position:absolute;inset-inline-start:.6rem;width:15px;height:15px;color:var(--faint);pointer-events:none}
@@ -267,9 +271,17 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
    تتحوّل إلى auto-fit فتصبح عمودين حيث تتّسع؛ والأرقام الكبيرة تصغُر قليلاً. تُستثنى الرسوم
    البيانية (var(--bcols)) وشرائط الأشهر (.mtrack، صنفية) والشبكات المرنة (minmax) — بلا مساس. */
 @media (max-width:640px){
-  [style*="fr 1fr"]{grid-template-columns:1fr!important}
+  /* minmax(0,…) لا 1fr وحدها: «1fr» تعني minmax(auto,1fr)، وحدُّها الأدنى التلقائي هو
+     أصغر عرض يقبله المحتوى — فعمودٌ فيه جدولٌ عريض يتمدّد إلى عرض الجدول ولو طُويت الشبكة
+     إلى عمود واحد. وهكذا بقيت صفحة المشروع تدفع ١٣٧ بكسل خارج شاشة الجوال رغم الطيّ. */
+  [style*="fr 1fr"]{grid-template-columns:minmax(0,1fr)!important}
   [style*="grid-template-columns:repeat"]:not([style*="minmax"]){grid-template-columns:repeat(auto-fit,minmax(150px,1fr))!important}
   :root{--fs-num-lg:1.45rem;--fs-num-md:1.2rem}
+  /* شريط التبويب (.seg) عنصرٌ مرن سطري، فعرضه عرضُ محتواه — وخمسة تبويبات لا تسع ٣٩٠ بكسل،
+     فكان يدفع صفحة المشروع خارج الشاشة. يُمرَّر داخل عرضه بدل أن يُمرِّر الصفحة كلها: التبويب
+     أداةُ تنقّل، وسحبُها أهون من سحب الصفحة تحتها. */
+  .seg{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .seg button{flex:0 0 auto}
   /* جدول متجاوب (.rtbl): كل صف يصير بطاقة بعناوين الأعمدة بدل التمرير الأفقي الأعمى */
   .rtbl{min-width:0!important}
   .rtbl thead{display:none}

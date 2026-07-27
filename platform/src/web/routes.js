@@ -15,7 +15,10 @@ function requireWeb(req, res, next) {
   next();
 }
 
-webRouter.get('/login', (req, res) => res.send(P.loginPage(req.query.e ? 'بيانات الدخول غير صحيحة' : '')));
+// e=1 بيانات خاطئة · e=2 تجاوز عدد المحاولات — رسالتان مختلفتان لأن العلاج مختلف: الأولى
+// تُراجَع فيها الكلمة، والثانية تُنتظَر. وخلطهما يجعل الموظف يعيد المحاولة فيطيل حظره.
+const LOGIN_ERRORS = { 1: 'بيانات الدخول غير صحيحة', 2: 'محاولات كثيرة خلال وقت قصير — انتظر دقيقة ثم أعد المحاولة' };
+webRouter.get('/login', (req, res) => res.send(P.loginPage(LOGIN_ERRORS[req.query.e] || '')));
 
 webRouter.post('/auth/login-web', async (req, res, next) => {
   try {
