@@ -60,7 +60,9 @@ export async function usersPage(user) {
     const pending = !u.active && !u.last_login_at;
     return `<tr class="border-b border-line" data-uid="${esc(u.id)}">
     <td class="py-2 px-3 text-[13px]">${esc(u.name_ar || '')}
-      <div class="text-[11px] text-muted" dir="ltr" style="text-align:right">${esc(u.email || u.username || '— بلا بريد')}</div></td>
+      ${u.email
+        ? `<div class="text-[11px] text-muted" dir="ltr" style="text-align:right">${esc(u.email)}</div>`
+        : '<div class="text-[11px]" style="color:var(--red);font-weight:700">بلا بريد — لا يستطيع الدخول</div>'}</td>
     <td class="px-3">${pill(esc(roleAr(u)), 'blue')}</td>
     <td class="px-3 text-[12px]">${esc(u.sector_name || (u.sector_id ? 'قطاع غير معروف' : '—'))}</td>
     <td class="px-3">${pending ? pill('دعوة معلّقة', 'amber') : u.active ? pill('نشط', 'green') : pill('معطّل', 'red')}</td>
@@ -79,12 +81,16 @@ export async function usersPage(user) {
   const activeN = rows.filter((u) => u.active).length;
   const neverIn = rows.filter((u) => !u.last_login_at).length;
   const pendingN = rows.filter((u) => !u.active && !u.last_login_at).length;
+  // البريد صار هوية الدخول، فحسابٌ بلا بريد ليس «ناقص بيانات» بل **عاجزٌ عن الدخول**.
+  // يُعدّ صراحةً كي لا يُكتشف ذلك يوم يقف الموظف أمام شاشة لا تقبله.
+  const noEmailN = rows.filter((u) => !u.email).length;
   const byRole = {}; for (const u of rows) { const r = roleAr(u); byRole[r] = (byRole[r] || 0) + 1; }
   const roleItems = Object.entries(byRole).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([r, n], i) => ({ label: esc(r), value: n, color: ['var(--brand)', 'var(--brand2)', '#0891b2', '#059669', '#d97706', '#db2777'][i % 6] }));
   const strip = `<div style="display:flex;gap:.7rem;flex-wrap:wrap;margin-bottom:.9rem">
     ${statMini('إجمالي المستخدمين', rows.length, `${Object.keys(byRole).length} دور`)}
     ${statMini('نشط', activeN, 'حسابات مفعّلة', 'good')}
     ${statMini('دعوة معلّقة', pendingN, 'أُنشئت ولم تُفعَّل', pendingN ? 'warn' : '')}
+    ${statMini('بلا بريد', noEmailN, 'لا تستطيع الدخول', noEmailN ? 'bad' : '')}
     ${statMini('لم يسجّل دخولاً', neverIn, 'حسابات خاملة', neverIn ? 'warn' : '')}</div>`;
 
   const body = `${strip}

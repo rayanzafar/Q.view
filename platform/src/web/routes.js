@@ -32,10 +32,19 @@ const LOGIN_ERRORS = {
 // في سجل المتصفح وفي ترويسة المُحيل — وبريد الموظف ليس شيئاً يُنثر في السجلات.
 const PENDING_EMAIL_COOKIE = 'sanad_otp_to';
 const pendingCookieOpts = { httpOnly: true, sameSite: 'lax', secure: config.env === 'production', maxAge: 15 * 60000, path: '/' };
-// كلمة المرور **مفتوحة افتراضياً** وتُغلق بـSANAD_AUTH_PASSWORD=0 — لا العكس. والسبب ترتيبٌ
-// لا تردّد: قناة البريد لم تُرسل رسالةً واحدة بعد (لا أسرار خادم بريد أصلاً)، فإغلاق كلمة المرور
-// اليوم يقفل المنصة على أهلها بباب لا يُفتح. تُغلق يوم يثبت وصول أول رمز حقيقي، لا قبله.
-const passwordLoginEnabled = () => process.env.SANAD_AUTH_PASSWORD !== '0';
+// النموذج المطلوب: لا كلمة مرور إطلاقاً — رمزٌ مؤقّت على البريد في كل مرة. لكن تنفيذه بمفتاح
+// يُضبط يدوياً يفتح باب خطأ واحد قاتل: أن يُطفأ الدخول بكلمة المرور قبل أن تعمل قناة البريد،
+// فتُقفل المنصة على أهلها بباب لا يُفتح.
+//
+// فالقرار يتبع الواقع لا الإعداد: كلمة المرور تُغلق **تلقائياً** متى كانت قناة البريد حقيقية،
+// وتبقى مفتوحة ما دامت القناة في وضع المعاينة (أي لا رمز يصل أحداً). ويبقى المفتاح الصريح
+// `SANAD_AUTH_PASSWORD=1|0` لمن أراد تجاوز ذلك في الاتجاهين.
+const passwordLoginEnabled = () => {
+  const forced = process.env.SANAD_AUTH_PASSWORD;
+  if (forced === '1') return true;
+  if (forced === '0') return false;
+  return config.mailTransport !== 'smtp';     // قناةٌ حقيقية ⇒ الرمز وحده
+};
 
 webRouter.get('/login', (req, res) => {
   if (req.query.reset) { res.clearCookie(PENDING_EMAIL_COOKIE, { path: '/' }); return res.redirect('/login'); }
