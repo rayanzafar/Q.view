@@ -26,7 +26,9 @@ export const NAV_ITEMS = [
   { key: 'projects', ar: 'المشاريع', ic: 'projects', group: 'work' },
   { key: 'clients', ar: 'العملاء', ic: 'client', group: 'work' },
   { key: 'tasks', ar: 'مهامي', ic: 'tasks', group: 'work' },
-  { key: 'timesheet', ar: 'سجل الوقت', ic: 'timesheet', group: 'work' },
+  // «سجل الوقت» أُزيل من المنصة بطلب المالك. الصفحة والخدمة باقيتان في الكود لأن بيانات
+  // الوقت تُقرأ في حسابات أخرى (الطاقة والإشغال)، لكنها لم تعد سطحاً يراه أحد — والإخفاء
+  // من القائمة وحده لا يكفي، فالبوابة في policy/pages.js مغلقة كذلك.
   { key: 'approvals', ar: 'الاعتمادات', ic: 'approvals', group: 'work' },
   { key: 'guide', ar: 'دليلي', ic: 'list', group: 'work' },
   { key: 'finance', ar: 'المالية والعقود', ic: 'money', group: 'manage' },

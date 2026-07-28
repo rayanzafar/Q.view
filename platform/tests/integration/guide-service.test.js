@@ -200,7 +200,8 @@ test('أمان: دليل الاستشاري لا يذكر شاشة إدارية 
   for (const k of ['org', 'users', 'audit', 'ceo', 'portfolio', 'finance', 'team', 'staffing', 'approvals', 'mail', 'clients']) {
     assert.ok(!keys.includes(k), `دليل الاستشاري يجب ألا يذكر ${k}`);
   }
-  assert.ok(keys.includes('tasks') && keys.includes('timesheet'));
+  assert.ok(keys.includes('tasks'), 'دليل الاستشاري يبدأ من مهامه');
+  assert.ok(!keys.includes('timesheet'), 'سجل الوقت أُزيل من المنصة فلا يُذكر في أي دليل');
 });
 
 // ── الخاصية الأمنية الثانية: الراتب مختوم لمدير النظام وحده ───────────────────
@@ -385,7 +386,7 @@ test('دور أنشأه مدير النظام لاحقاً يجد اسمه ال�
 test('الترتيب: الشاشات تأتي بترتيب رحلة صاحبها لا بترتيب القائمة الجانبية', async () => {
   const navRank = Object.fromEntries(NAV_ITEMS.map((n, i) => [n.key, i]));
   const cons = (await guide.guideFor(U('consultant'))).pages.map((p) => p.key);
-  assert.deepEqual(cons.slice(0, 3), ['tasks', 'timesheet', 'projects'], 'المنفّذ يبدأ من مهامه ووقته');
+  assert.deepEqual(cons.slice(0, 2), ['tasks', 'projects'], 'المنفّذ يبدأ من مهامه ثم مشاريعه');
   assert.ok(navRank[cons[0]] > navRank[cons[cons.length - 1]] || cons[0] !== 'sector',
     'ترتيب الدليل يجب ألا يكون نسخة من ترتيب القائمة');
 

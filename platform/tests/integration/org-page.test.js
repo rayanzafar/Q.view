@@ -86,7 +86,10 @@ test('بطاقة صحة الهيكل: درجة واحدة كبيرة + عنوا�
 
 test('لوحة «غير مُسنَد»: التباين ظاهر بالنسبة والمال بصيغته لا بالهللات', async () => {
   const html = await orgTreePage(admin, { year: YEAR });
-  const card = html.slice(html.indexOf('id="unassigned"'), html.indexOf('id="tree"'));
+  // القطع بنهاية القسم نفسه لا ببداية القسم التالي: ربطُ الاختبار بترتيب الأقسام يجعل أي
+  // إعادة ترتيب في الصفحة تُسقطه كأن الميزة تعطّلت، وهي لم تُمسّ.
+  const from = html.indexOf('id="unassigned"');
+  const card = html.slice(from, html.indexOf('</section>', from));
   assert.match(card, /لا شيء منها داخل الإدارات/, 'التباين مكتوب لا مستنتج: لا فرصة واحدة داخل إدارة');
   assert.match(card, /class="tnum ua-open">105</, 'عدد الفرص المعلّقة كما هو');
   assert.match(card, /ر\.س\./, 'المال بصيغة العملة');
@@ -105,7 +108,14 @@ test('أرقام الإدارة في الشجرة: فرص · مشاريع · ف�
 });
 
 test('تعيين مسؤول الإدارة متاح من العقدة نفسها لمن يملك الهيكل — ومقروء لغيره', async () => {
-  const html = await orgTreePage(admin, {});
+  // القراءة صارت الوضع الافتراضي وأدوات التحرير خلف زرّ (edit=1). فالوضع الافتراضي يُفحص
+  // بخلوّه من الأدوات، ووضع التحرير بوجودها — والصلاحية تُفحص في الاثنين.
+  const plain = await orgTreePage(admin, {});
+  assert.ok(!/data-action-change="dep-manager"/.test(plain), 'وضع القراءة يخلو من أدوات التحرير');
+  assert.match(plain, /بلا مسؤول معيَّن/, 'ويبقى الاسم مقروءاً');
+  assert.match(plain, /تعديل الهيكل/, 'وفيه مدخلٌ ظاهر إلى وضع التعديل');
+
+  const html = await orgTreePage(admin, { edit: '1' });
   assert.match(html, /data-action-change="dep-manager"/, 'أداة تعيين المسؤول موجودة');
   assert.match(html, /<option value="" selected>بلا مسؤول معيَّن<\/option>/, 'الحالة الفارغة تبقى بنصّها وتصير قابلة للتغيير');
   assert.match(html, /aria-label="مسؤول الإدارة"/, 'للأداة تسمية يقرأها قارئ الشاشة');

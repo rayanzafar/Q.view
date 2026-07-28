@@ -17,7 +17,12 @@ import { esc } from './_shared.js';
 
 // نفس شرط الخدمة حرفياً (canManageSectorOrg): من يملك هيكل هذا القطاع يرى أدواته، وغيره يرى
 // الشجرة للقراءة فقط. الإخفاء تجميل — الخدمة هي التي تمنع فعلاً.
+// الصلاحية شيء، و**وضع التحرير** شيء آخر. كانت الصفحة تفتح كل أدوات التعديل لمن يملكها دائماً:
+// قائمة مسؤول وزر تسمية وقائمة نقل وزر حذف على كل صف، وحقلا «إضافة إدارة/وحدة» مفتوحان تحت
+// كل عقدة — فصار نصف الشاشة مربعات إدخال فارغة، وضاعت الشجرة التي جاء المستخدم ليقرأها.
+// القراءة هي الوضع الافتراضي الآن، والتحرير يُطلَب بزرٍّ واحد (?edit=1).
 const mayEdit = (user, sectorId) => user.role_id === 'admin' || can(user, 'admin', 'department', { sector_id: sectorId });
+const editModeOn = (opts) => String(opts?.edit || '') === '1';
 
 // أسماء المسؤولين تُجلب باستعلام مجمّع واحد (لا استعلام لكل عقدة) — نفس نمط بقية الصفحات.
 async function managerNames(ids) {
@@ -297,7 +302,9 @@ export async function orgTreePage(user, opts = {}) {
 
   // مرشّحو مسؤول الإدارة: حسابات نشطة فقط، ويُقرأون مرة واحدة لكل الشجرة (لا استعلام لكل عقدة).
   // القائمة تُعرض لمن يملك تعديل هيكل القطاع وحده — والخدمة هي التي تمنع فعلاً.
-  const anyEditable = tree.some((s) => mayEdit(user, s.id));
+  const canEditAny = tree.some((s) => mayEdit(user, s.id));
+  const edit = canEditAny && editModeOn(opts);
+  const anyEditable = edit;
   const candidates = anyEditable
     ? await all(`SELECT id, name_ar, username, sector_id FROM app_user
         WHERE deleted_at IS NULL AND active = 1 ORDER BY name_ar, username`)
@@ -388,7 +395,7 @@ export async function orgTreePage(user, opts = {}) {
   const sectorList = tree.map((s) => ({ id: s.id, name_ar: s.name_ar }));
   const sectorNode = (s) => {
     const deps = s.departments || [];
-    const editable = mayEdit(user, s.id);
+    const editable = mayEdit(user, s.id) && edit;
     const depAdd = editable ? `<li class="ot-li"><div class="ot-add">
       <input class="ot-in" id="d-${s.id}" placeholder="اسم إدارة جديدة…" aria-label="اسم إدارة جديدة">
       <button class="ot-btn" data-action="dep-add" data-sector="${esc(s.id)}">إضافة إدارة</button>
@@ -413,10 +420,35 @@ export async function orgTreePage(user, opts = {}) {
 
   const uaCards = tree.map((s) => unassignedCard(s, rollups.get(s.id), rollupErrs.get(s.id), mayEdit(user, s.id))).join('');
 
+  // ترتيب الصفحة يتبع سبب فتحها: الهيكل أولاً، ثم ما ينقصه. كان التشخيص يحتل أول شاشتين
+  // كاملتين (درجة + ثماني ملاحظات + ثلاث بطاقات) والشجرة — اسم الصفحة — في القاع.
+  const qp = (o) => {
+    const p = new URLSearchParams();
+    if (o.edit) p.set('edit', '1');
+    if (year !== new Date().getUTCFullYear()) p.set('year', String(year));
+    const q = p.toString();
+    return `/app/org${q ? `?${q}` : ''}`;
+  };
+  const editBar = canEditAny ? `<a class="ot-editbtn${edit ? ' on' : ''}" href="${qp({ edit: !edit })}">
+      ${edit ? 'إنهاء التعديل' : 'تعديل الهيكل'}</a>` : '';
+
   const body = `
     <style>${PAGE_CSS}</style>
     <div class="ot-wrap">
-      ${healthCard(health, healthErr)}
+      <section id="tree">
+        <div class="sec-h">
+          <h2 class="sec-t">الشجرة</h2>
+          <span class="sec-s">${edit ? 'وضع التعديل — أضِف وأعِد التسمية وانقل' : 'انقر أي فرع لطيّه'}</span>
+          <span style="flex:1"></span>${editBar}
+        </div>
+        ${card(`<div style="padding:1rem">
+          <div class="ot-root">
+            <span>رؤية الخبراء الاستشارية</span>
+            <span style="font-weight:400;font-size:11.5px;opacity:.85">${countChip(totalEmployees, noun(totalEmployees, EMP))} · ${countChip(tree.length, noun(tree.length, SEC))}</span>
+          </div>
+          <ul class="ot-ul">${tree.map(sectorNode).join('') || '<div class="ot-empty">لا قطاعات بعد</div>'}</ul>
+        </div>`)}
+      </section>
 
       <section id="unassigned" class="ua-sec">
         <div class="sec-h">
@@ -426,16 +458,10 @@ export async function orgTreePage(user, opts = {}) {
         <div class="ua-grid">${uaCards || '<div class="ot-empty">لا قطاعات بعد</div>'}</div>
       </section>
 
-      <section id="tree">
-        <div class="sec-h"><h2 class="sec-t">الشجرة</h2><span class="sec-s">انقر أي فرع لطيّه</span></div>
-        ${card(`<div style="padding:1rem">
-          <div class="ot-root">
-            <span>رؤية الخبراء الاستشارية</span>
-            <span style="font-weight:400;font-size:11.5px;opacity:.85">${countChip(totalEmployees, noun(totalEmployees, EMP))} · ${countChip(tree.length, noun(tree.length, SEC))}</span>
-          </div>
-          <ul class="ot-ul">${tree.map(sectorNode).join('') || '<div class="ot-empty">لا قطاعات بعد</div>'}</ul>
-        </div>`)}
-      </section>
+      <details class="ot-diag">
+        <summary>فحص جودة الهيكل — الملاحظات ودرجة الاكتمال</summary>
+        ${healthCard(health, healthErr)}
+      </details>
     </div>`;
 
   return layout({
@@ -696,6 +722,20 @@ details.oh-chk>summary:focus-visible{outline:2px solid var(--brand);outline-offs
 .asg-cb{width:15px;height:15px;flex:none;accent-color:var(--brand);cursor:pointer}
 
 /* ── الشجرة ── */
+/* الصف كان يمتد على ١٤٤٠ بكسل: الاسم يميناً والبيانات أقصى اليسار، فيبقى نحو ٤٠٪ فراغاً
+   في المنتصف والعين تقفز فوقه. حدٌّ للعرض يجعل الصف يُقرأ كسطر واحد لا كشريط ممدود. */
+#tree .card>div{max-width:980px}
+/* زر وضع التعديل — القراءة هي الأصل، والتعديل يُطلَب */
+.ot-editbtn{font-size:12px;font-weight:700;text-decoration:none;padding:.34rem .8rem;border-radius:9px;
+  border:1px solid var(--line);background:var(--surface);color:var(--brand);white-space:nowrap}
+.ot-editbtn:hover{background:#f5f8ff;border-color:#c3d0ea}
+.ot-editbtn.on{background:var(--brand);border-color:var(--brand);color:#fff}
+/* فحص الجودة يُطوى: كان يحتل أول شاشة كاملة قبل أن يرى المستخدم فرعاً واحداً */
+.ot-diag{margin-top:1.1rem;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+.ot-diag>summary{cursor:pointer;list-style:none;padding:.7rem 1rem;font-size:12.5px;font-weight:700;color:var(--ink2)}
+.ot-diag>summary::-webkit-details-marker{display:none}
+.ot-diag>summary::after{content:"▾";float:left;color:var(--muted);font-size:11px}
+.ot-diag[open]>summary{border-bottom:1px solid var(--line)}
 .ot-ul{list-style:none;margin:0;padding:0 1.4rem 0 0;position:relative}
 /* العمود الفقري للشجرة على يمين الفرع — اتجاه القراءة العربي */
 .ot-ul::before{content:"";position:absolute;top:0;bottom:.9rem;right:.55rem;width:1px;background:var(--line)}
@@ -719,11 +759,24 @@ details.oh-chk>summary:focus-visible{outline:2px solid var(--brand);outline-offs
 .ot-lead.ot-none{color:var(--faint);font-weight:400}
 .ot-count{font-weight:800;color:var(--ink2)}
 .ot-word{color:var(--muted)}
+/* رقاقات العدد مصمَّمة لخلفية فاتحة، وشريط الجذر تدرّجٌ داكن — فكان الرقم واسمه يذوبان فيه
+   ولا يُقرآن. اللون يُورَّث داخل الشريط بدل أن يُفرَض من صنف عام. */
+.ot-root .ot-count{color:#fff}
+.ot-root .ot-word{color:rgba(255,255,255,.85)}
 .ot-w{background:var(--bg);border-radius:6px;padding:.1rem .45rem;white-space:nowrap}
 .ot-idle{color:#92400e;background:#fef3c7;border-radius:6px;padding:.1rem .45rem;font-weight:700;white-space:nowrap}
 .ot-idle:hover{background:#fde68a}
-.ot-sector{border-inline-start:3px solid var(--brand)}
-.ot-dept{border-inline-start:3px solid var(--brand2)}
+/* القطاع والإدارة كانا صفّين متطابقين في الوزن والخلفية، والفرق خيطٌ على الحافة وحده —
+   فتبدو الإدارة شقيقةً لقطاعها لا ابنةً له. الآن القطاع حاوية لها وزنها، والإدارة أخفّ
+   وأصغر بداخلها: التدرّج يُقرأ قبل أن تُقرأ الكلمات.
+   ملاحظة: هذه الأنماط تُضمَّن في صفحة الإسناد أيضاً، فلا يُذكر فيها اسم إدارة أو قطاع بعينه —
+   الاسم في تعليقٍ هنا يظهر في صفحةٍ يجب ألّا تحمل أسماء من خارج قطاعها (يمسكه اختبار الإسناد). */
+.ot-sector{border-inline-start:3px solid var(--brand);background:linear-gradient(90deg,#f7f9fd,var(--surface) 55%);
+  padding:.62rem .8rem}
+.ot-sector .ot-name{font-size:14.5px}
+.ot-dept{border-inline-start:3px solid var(--brand2);background:var(--surface);padding:.42rem .7rem}
+.ot-dept .ot-name{font-size:12.5px;font-weight:700}
+.ot-dept .ot-kind{opacity:.75}
 .ot-unit{background:var(--bg)}
 .ot-empty{font-size:11.5px;color:var(--faint);padding:.35rem 1.4rem .2rem 0}
 .ot-acts{display:flex;gap:.3rem;align-items:center;flex-wrap:wrap;margin-inline-start:.3rem}

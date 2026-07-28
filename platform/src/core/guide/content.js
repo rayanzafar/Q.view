@@ -506,7 +506,7 @@ export const TOUR_EXEMPT = {};
 
 // ── ترتيب الرحلة: كما يمرّ بها الإنسان في يومه، لا كما ترتّبها القائمة ─────────
 export const JOURNEY_ORDER = [
-  'tasks', 'timesheet', 'my-opportunities', 'opportunities', 'clients', 'projects',
+  'tasks', 'my-opportunities', 'opportunities', 'clients', 'projects',
   'sector', 'approvals', 'staffing', 'team', 'finance', 'portfolio', 'ceo',
   'reports', 'imports', 'org', 'mail', 'users', 'audit',
 ];
@@ -519,19 +519,19 @@ export const ROLE_JOURNEY = {
   // مدير الإدارة والمدير المباشر يفتحان «التقارير» فعلاً بمنح تقارير بنطاق إدارتهما (بلا تصدير
   // ولا جدولة) — فتقرير الفترة بعدسة «إدارة» جزء من رحلتهما لا إضافة تجميلية.
   department_manager: ['team', 'approvals', 'projects', 'staffing', 'reports', 'tasks'],
-  line_manager: ['team', 'approvals', 'reports', 'tasks', 'timesheet'],
-  project_manager: ['projects', 'tasks', 'staffing', 'timesheet', 'approvals'],
+  line_manager: ['team', 'approvals', 'reports', 'tasks'],
+  project_manager: ['projects', 'tasks', 'staffing', 'approvals'],
   bd_manager: ['my-opportunities', 'opportunities', 'clients', 'projects', 'tasks'],
   bd_head: ['opportunities', 'my-opportunities', 'clients', 'sector', 'projects', 'staffing'],
   finance: ['finance', 'approvals', 'reports', 'projects', 'clients'],
-  procurement: ['tasks', 'projects', 'timesheet'],
+  procurement: ['tasks', 'projects'],
   hr: ['team', 'org', 'staffing', 'tasks'],
   operations: ['projects', 'staffing', 'sector', 'tasks'],
-  consultant: ['tasks', 'timesheet', 'projects'],
-  employee: ['tasks', 'timesheet', 'projects'],
-  approver: ['approvals', 'tasks', 'timesheet'],
+  consultant: ['tasks', 'projects'],
+  employee: ['tasks', 'projects'],
+  approver: ['approvals', 'tasks'],
   viewer: ['sector', 'opportunities', 'projects', 'clients', 'tasks'],
-  external: ['tasks', 'timesheet', 'projects'],
+  external: ['tasks', 'projects'],
 };
 
 // ── التعريف بالدور: سطر أو سطران يضعان القارئ في موقعه من العمل ───────────────
