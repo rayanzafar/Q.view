@@ -61,7 +61,13 @@ export const PAGE_ACCESS = {
   imports: (u) => u.role_id === 'admin' || ['client', 'employee', 'opportunity', 'project', 'allocation', 'revenue_line'].some((r) => can(u, 'read', r) || can(u, 'create', r) || can(u, 'update', r)),
   reports: (u) => can(u, 'read', 'report'),
   mail: (u) => ['admin', 'ceo_office'].includes(u.role_id),
-  org: (u) => u.role_id === 'admin' || can(u, 'create', 'sector') || can(u, 'create', 'employee'),
+  // بوابة الصفحة كانت تسأل عن **إنشاء** موظف بينما الشاشة قراءةٌ في أصلها، والخدمة تحتها
+  // (orgTree) تفتح على «قراءة موظف». فكان مدير الإدارة ومدير مكتب الرئيس التنفيذي يُردّان عن
+  // شجرةٍ بياناتُها مسموحة لهما أصلاً — بوابةٌ أضيق من كل خدمةٍ خلفها. المواءمة لا تكشف شيئاً
+  // جديداً: أهداف القطاع المالية تُحجب ما لم يكن النطاق شركياً (orgTree)، والتوزيع والفحص لكل
+  // منهما بوابته القطاعية، والتعديل خلف mayEdit وحده. الداخلون بها أربعة يملكون «قراءة موظف»:
+  // مكتب الرئيس التنفيذي · مدير الإدارة · المدير المباشر · رئيس تطوير الأعمال.
+  org: (u) => u.role_id === 'admin' || can(u, 'create', 'sector') || can(u, 'read', 'employee'),
   users: (u) => u.role_id === 'admin',
   audit: (u) => u.role_id === 'admin',
 };

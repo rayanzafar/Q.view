@@ -851,8 +851,10 @@ export async function tasksPage(user, opts = {}) {
       t.noStep ? `<span class="wp-chip mute">${countAr(t.noStep, { one: 'بلا خطوة تالية', two: 'بلا خطوة تالية', few: 'بلا خطوة تالية', many: 'بلا خطوة تالية' })}</span>` : '',
     ].filter(Boolean).join('');
     const initial = esc(String(p.name || '؟').trim().charAt(0));
+    // القصّ بالحروف كان يبتر الاسم في منتصف كلمته بلا علامة («مشروع المدن الذكية (مص») فيُقرأ
+    // عطلاً لا اختصاراً. القصّ الآن بالعرض مع نقاط الحذف، والاسم كاملاً في التلميح.
     const projLine = p.projects.length
-      ? `<div class="wp-line"><span class="wp-k">المشاريع</span><span class="wp-v">${p.projects.slice(0, 3).map((x) => `<a class="wp-tag" href="/app/project/${encodeURIComponent(x.id)}">${esc(String(x.name).slice(0, 22))}</a>`).join('')}${p.projects.length > 3 ? `<span class="wp-more tnum">+${p.projects.length - 3}</span>` : ''}</span></div>`
+      ? `<div class="wp-line"><span class="wp-k">المشاريع</span><span class="wp-v">${p.projects.slice(0, 3).map((x) => `<a class="wp-tag" href="/app/project/${encodeURIComponent(x.id)}" title="${esc(x.name)}">${esc(x.name)}</a>`).join('')}${p.projects.length > 3 ? `<span class="wp-more tnum">+${p.projects.length - 3}</span>` : ''}</span></div>`
       : '';
     const oppLine = p.opportunities.open
       ? `<div class="wp-line"><span class="wp-k">الفرص</span><span class="wp-v"><span class="tnum wp-num">${p.opportunities.open}</span>
@@ -863,23 +865,31 @@ export async function tasksPage(user, opts = {}) {
         <span class="wp-av" aria-hidden="true">${initial}</span>
         <span class="wp-id"><a class="wp-n" href="${qp({ assignee: p.userId })}">${esc(p.name)}</a>
           ${p.jobTitle ? `<span class="wp-job">${esc(p.jobTitle)}</span>` : ''}</span>
-        <a class="wp-count tnum" href="${qp({ assignee: p.userId })}" title="المهام المفتوحة">${t.open}</a>
+        <a class="wp-count tnum${t.open ? '' : ' zero'}" href="${qp({ assignee: p.userId })}" title="المهام المفتوحة">${t.open}</a>
       </div>
       ${chips ? `<div class="wp-chips">${chips}</div>` : ''}
       ${projLine}${oppLine}
-      ${p.idle ? '<div class="wp-idle">لا مهام ولا فرص ولا تسكين — لا عمل مسجَّل باسمه</div>' : ''}
-      ${!p.linked ? '<div class="wp-idle">حسابه غير مربوط بسجل موظف — لا تظهر إدارته ولا تسكينه</div>' : ''}
+      ${p.idle ? '<div class="wp-idle">بلا عمل مسجَّل</div>' : ''}
     </div>`;
   };
-  const depBlock = (d) => `<section class="wd">
+  // سبب وقوع الشخص خارج الإدارات يُقال **مرة واحدة** في ترويسة المجموعة لا على كل بطاقة: كان
+  // السطر نفسه يتكرّر على خمس عشرة بطاقة فيصير هو نصّ الشاشة، ويُقرأ عطلاً متكرراً لا حالةً واحدة.
+  const depBlock = (d) => {
+    const unlinked = d.people.filter((p) => !p.linked).length;
+    const why = !d.id && unlinked
+      ? `<div class="wd-why">${countAr(unlinked, { one: 'حساب', two: 'حسابان', few: 'حسابات', many: 'حساباً' })} غير مربوط بسجل موظف — لا تُعرف إدارته ولا تسكينه. الربط من شاشة المستخدمين والصلاحيات.</div>`
+      : '';
+    return `<section class="wd">
     <div class="wd-h">
       <span class="wd-n">${esc(d.name)}</span>
       <span class="wd-m">${countAr(d.people.length, { one: 'شخص', two: 'شخصان', few: 'أشخاص', many: 'شخصاً' })}
         · <span class="tnum">${d.tasks}</span> مهمة مفتوحة${d.opps ? ` · <span class="tnum">${d.opps}</span> فرصة` : ''}</span>
       ${d.attention ? `<span class="wd-flag tnum">${d.attention} تحتاج نظرك</span>` : '<span class="wd-ok">لا شيء عالق</span>'}
     </div>
+    ${why}
     <div class="wd-grid">${d.people.map(personCard).join('')}</div>
   </section>`;
+  };
 
   const teamBoard = who === 'team' ? (wl && wl.departments.length ? `
     <div class="tk-sec-head"><span class="tk-dot" style="background:var(--brand2)"></span>
@@ -1103,9 +1113,14 @@ export async function tasksPage(user, opts = {}) {
     .wd-h{display:flex;align-items:baseline;gap:.6rem;flex-wrap:wrap;padding:0 .15rem .45rem}
     .wd-n{font-weight:800;font-size:13.5px;color:var(--ink2)}
     .wd-m{font-size:var(--fs-micro);color:var(--muted)}
-    .wd-flag{margin-inline-start:auto;font-size:var(--fs-micro);font-weight:800;color:var(--red);
+    /* الشارة تلي بيانات الإدارة ولا تُنفى إلى الحافة المقابلة: الهامش التلقائي كان يقذفها إلى
+       أقصى يسار صفٍّ بعرض الشاشة، فتُقرأ معلَّقةً بلا صاحب — و«لا شيء عالق» عن إدارةٍ اسمُها على
+       بُعد ألف بكسل ليست جملةً بل لغز. */
+    .wd-flag{font-size:var(--fs-micro);font-weight:800;color:var(--red);
       background:#fef2f2;border:1px solid #fecaca;border-radius:999px;padding:.1rem .5rem}
-    .wd-ok{margin-inline-start:auto;font-size:var(--fs-micro);font-weight:700;color:var(--green)}
+    .wd-ok{font-size:var(--fs-micro);font-weight:700;color:var(--green)}
+    .wd-why{font-size:var(--fs-micro);color:var(--muted);background:var(--bg);border:1px solid var(--line);
+      border-radius:9px;padding:.35rem .6rem;margin:0 .15rem .5rem}
     .wd-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(268px,1fr));gap:.6rem}
     .wp{background:#fff;border:1px solid var(--line);border-radius:14px;padding:.7rem .8rem;
       display:flex;flex-direction:column;gap:.42rem;transition:border-color .15s,box-shadow .15s}
@@ -1123,6 +1138,8 @@ export async function tasksPage(user, opts = {}) {
     .wp-count{flex:none;min-width:26px;text-align:center;font-weight:800;font-size:13px;color:var(--ink2);
       background:var(--bg);border-radius:8px;padding:.15rem .35rem;text-decoration:none}
     .wp-count:hover{background:#eef2fb;color:var(--brand)}
+    /* صفرٌ بوزن الأرقام الحقيقية يجعل أثقل شيء على بطاقةٍ خالية هو خلوّها — يخفت ولا يختفي. */
+    .wp-count.zero{color:var(--faint);background:transparent;font-weight:700}
     .wp-chips{display:flex;flex-wrap:wrap;gap:.28rem}
     .wp-chip{font-size:var(--fs-micro);font-weight:700;border-radius:7px;padding:.08rem .4rem}
     .wp-chip.bad{color:#b91c1c;background:#fef2f2}
@@ -1131,8 +1148,11 @@ export async function tasksPage(user, opts = {}) {
     .wp-line{display:flex;align-items:baseline;gap:.4rem;font-size:var(--fs-micro)}
     .wp-k{flex:none;color:var(--faint);min-width:42px}
     .wp-v{display:flex;flex-wrap:wrap;gap:.25rem;align-items:baseline;min-width:0}
+    /* min-width:0 لازمة: عنصر المرونة لا ينكمش دون مقاس محتواه افتراضياً، فتفيض نقاطُ الحذف
+       بلا أن تعمل — وهو ما جعل اسم المشروع الطويل يمتدّ خارج البطاقة بدل أن يُقصّ. */
     .wp-tag{font-size:var(--fs-micro);color:var(--ink2);background:var(--bg);border-radius:6px;
-      padding:.06rem .38rem;text-decoration:none;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      padding:.06rem .38rem;text-decoration:none;min-width:0;max-width:100%;
+      overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     .wp-tag:hover{background:#eef2fb;color:var(--brand)}
     .wp-more{color:var(--faint)}
     .wp-num{font-weight:800;color:var(--ink2)}

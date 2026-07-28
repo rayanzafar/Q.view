@@ -300,6 +300,37 @@ export async function orgTreePage(user, opts = {}) {
   const names = await managerNames(mgrIds);
   const totalEmployees = (await get('SELECT COUNT(*) n FROM employee WHERE deleted_at IS NULL')).n;
 
+  // أهل كل إدارة بأسمائهم — الهيكل التنظيمي أشخاصٌ قبل أن يكون صناديق. كانت العقدة تقول
+  // «١٢ فريق» ولا تقول من هم، فيُقرأ الهيكل كجدول أعداد لا كخريطة ناس. استعلام واحد لكل
+  // الشجرة (لا استعلام لكل عقدة)، ويُجمَّع في الذاكرة.
+  const staff = await all(`SELECT id, name_ar, job_title, department_id
+      FROM employee WHERE deleted_at IS NULL AND active = 1 AND department_id IS NOT NULL
+      ORDER BY name_ar LIMIT 1200`);
+  const byDep = new Map();
+  for (const e of staff) {
+    if (!byDep.has(e.department_id)) byDep.set(e.department_id, []);
+    byDep.get(e.department_id).push(e);
+  }
+  // سقفٌ للحماية من إدارةٍ مرضية بمئتَي اسم، لا سقفُ عرض: أكبر إدارة في EVC نحو اثني عشر،
+  // فالسقف عند أربعة وعشرين يعني أن الحالة الواقعية تُعرض كاملةً — والقصّ استثناءٌ لا قاعدة.
+  const PEOPLE_SHOWN = 24;
+  // كتلة الأشخاص هي مضمون الإدارة لا حاشيتها: تُعرَض داخل لوح خفيف بعنوانٍ صغير، فتُقرأ
+  // كـ«أهل هذه الإدارة» بدل سطرٍ سائبٍ من الرقاقات معلَّقٍ تحت الصف. و«+N» رقاقةٌ كالبقية
+  // لا نصٌّ باهت في آخر السطر — هي مدخلٌ إلى البقية، وقد كانت تُقرأ كأثرِ قصٍّ.
+  const peopleRow = (depId) => {
+    const list = byDep.get(depId) || [];
+    if (!list.length) return '';
+    const shown = list.slice(0, PEOPLE_SHOWN);
+    const rest = list.length - shown.length;
+    return `<div class="ot-people">
+      <span class="ot-plabel">${countChip(list.length, noun(list.length, EMP))}</span>
+      <span class="ot-plist">${shown.map((e) => {
+        const t = e.job_title ? `${e.name_ar} — ${e.job_title}` : e.name_ar;
+        return `<span class="ot-p" title="${esc(t)}"><span class="ot-pav" aria-hidden="true">${esc(String(e.name_ar || '؟').trim().charAt(0))}</span><span class="ot-pn">${esc(e.name_ar)}</span></span>`;
+      }).join('')}${rest > 0 ? `<span class="ot-pmore">و<span class="tnum">${rest}</span> غيرهم</span>` : ''}</span>
+    </div>`;
+  };
+
   // مرشّحو مسؤول الإدارة: حسابات نشطة فقط، ويُقرأون مرة واحدة لكل الشجرة (لا استعلام لكل عقدة).
   // القائمة تُعرض لمن يملك تعديل هيكل القطاع وحده — والخدمة هي التي تمنع فعلاً.
   const canEditAny = tree.some((s) => mayEdit(user, s.id));
@@ -333,15 +364,17 @@ export async function orgTreePage(user, opts = {}) {
   </li>`;
 
   // أرقام الإدارة داخل العقدة: فرص · مشاريع · فريق — الشجرة تتوقف عن كونها زينة وتصبح لوحة عمل.
-  const depWork = (d) => {
+  // والأصفار لا تُطبع: صفٌّ يقول «فرص ٠ · مشاريع ٠» على خمس إدارات يملأ الشاشة بلا شيء يُقال،
+  // ويدفن العدد الوحيد الذي يهمّ (الفريق). وكذلك نداء «أسنِد إليها» — نداءُ عملٍ لا خبر، فمكانه
+  // وضع التعديل وحده؛ في القراءة كان أعلى صوتٍ على الشاشة وأصفره، فوق اسم الإدارة نفسه.
+  const depWork = (d, editable) => {
     const st = depStats.get(d.id);
     if (!st) return '';
     const o = Number(st.opportunities) || 0, p = Number(st.projects) || 0, e = Number(st.employees) || 0;
-    const chips = `<span class="ot-w"><span class="ot-word">فرص</span> <span class="ot-count tnum">${o}</span></span>
-      <span class="ot-w"><span class="ot-word">مشاريع</span> <span class="ot-count tnum">${p}</span></span>
-      <span class="ot-w"><span class="ot-word">فريق</span> <span class="ot-count tnum">${e}</span></span>`;
-    const idle = (o + p) === 0
-      ? `<a class="ot-idle" href="${fixHref(d.sector_id, 'opportunity')}">بلا عمل مُسنَد — أسنِد إليها</a>` : '';
+    const w = (word, n) => `<span class="ot-w"><span class="ot-word">${word}</span> <span class="ot-count tnum">${n}</span></span>`;
+    const chips = `${o ? w('فرص', o) : ''}${p ? w('مشاريع', p) : ''}${w('فريق', e)}`;
+    const idle = editable && (o + p) === 0
+      ? `<a class="ot-idle" href="${fixHref(d.sector_id, 'opportunity')}">أسنِد عملاً</a>` : '';
     return `${chips}${idle}`;
   };
 
@@ -370,9 +403,13 @@ export async function orgTreePage(user, opts = {}) {
       <input class="ot-in" id="u-${d.id}" placeholder="اسم وحدة جديدة…" aria-label="اسم وحدة جديدة">
       <button class="ot-btn" data-action="unit-add" data-dep="${d.id}">إضافة وحدة</button>
     </div></li>` : '';
-    const inner = (units.length || editable)
+    // الناس أولاً ثم الوحدات: الإدارة تُعرَف بأهلها. و«لا وحدات» لم تعد تُقال حين يكون فيها
+    // أشخاص — قولُها عن إدارةٍ فيها اثنا عشر موظفاً يجعلها تبدو خاويةً وهي عامرة.
+    const people = peopleRow(d.id);
+    const unitsInner = (units.length || editable)
       ? `<ul class="ot-ul">${units.map(unitNode).join('')}${unitAdd}</ul>`
-      : '<div class="ot-empty">لا وحدات داخل هذه الإدارة</div>';
+      : (people ? '' : '<div class="ot-empty">لا وحدات ولا أشخاص في هذه الإدارة</div>');
+    const inner = `${people}${unitsInner}`;
     const actions = editable ? `<div class="ot-acts">
       <button class="ot-act" data-action="dep-rename" data-id="${d.id}" data-name="${esc(d.name_ar)}">إعادة تسمية</button>
       <select class="ot-act ot-sel" data-action-change="dep-move" data-id="${d.id}" aria-label="نقل الإدارة إلى قطاع آخر">
@@ -385,13 +422,18 @@ export async function orgTreePage(user, opts = {}) {
       <details class="ot-det" open>
         <summary class="ot-node ot-dept">
           <div class="ot-main"><span class="ot-kind">إدارة</span><span class="ot-name">${esc(d.name_ar)}</span></div>
-          <div class="ot-meta">${editable ? managerPicker(d) : leadLine(names.get(d.manager_user_id))} · ${depWork(d) || countChip(d.employees, noun(d.employees, EMP))}${actions}</div>
+          <div class="ot-meta">${editable ? managerPicker(d) : leadLine(names.get(d.manager_user_id))} · ${depWork(d, editable) || countChip(d.employees, noun(d.employees, EMP))}${actions}</div>
         </summary>
         ${inner}
       </details>
     </li>`;
   };
 
+  // ترتيب العرض: ما فيه هيكل أولاً، ثم القطاع الفارغ، ثم القالب غير المفعَّل. ترتيب القاعدة
+  // (sort_order) يخدم التقارير لا القراءة، فقد يصدّر قطاعاً فارغاً أو قالباً فوق القطاع العامر —
+  // فيفتح المستخدم «الهيكل التنظيمي» ليجد صفّين يقولان «لا إدارات» قبل أن يرى شجرةً واحدة.
+  const rank = (s) => (s.is_placeholder ? 2 : (s.departments || []).length ? 0 : 1);
+  const shown = tree.slice().sort((a, b) => rank(a) - rank(b));
   const sectorList = tree.map((s) => ({ id: s.id, name_ar: s.name_ar }));
   const sectorNode = (s) => {
     const deps = s.departments || [];
@@ -418,7 +460,10 @@ export async function orgTreePage(user, opts = {}) {
     </li>`;
   };
 
-  const uaCards = tree.map((s) => unassignedCard(s, rollups.get(s.id), rollupErrs.get(s.id), mayEdit(user, s.id))).join('');
+  const uaCards = shown.map((s) => unassignedCard(s, rollups.get(s.id), rollupErrs.get(s.id), mayEdit(user, s.id))).join('');
+  // عدد ما ينتظر إسناداً — يُذكر في عنوان القسم المطويّ كي لا يختفي بطيّه.
+  const uaPending = [...rollups.values()].reduce((a, r) => a + (Number(r.unassigned.opportunities) || 0)
+    + (Number(r.unassigned.projects) || 0) + (Number(r.unassigned.allocations) || 0), 0);
 
   // ترتيب الصفحة يتبع سبب فتحها: الهيكل أولاً، ثم ما ينقصه. كان التشخيص يحتل أول شاشتين
   // كاملتين (درجة + ثماني ملاحظات + ثلاث بطاقات) والشجرة — اسم الصفحة — في القاع.
@@ -446,17 +491,15 @@ export async function orgTreePage(user, opts = {}) {
             <span>رؤية الخبراء الاستشارية</span>
             <span style="font-weight:400;font-size:11.5px;opacity:.85">${countChip(totalEmployees, noun(totalEmployees, EMP))} · ${countChip(tree.length, noun(tree.length, SEC))}</span>
           </div>
-          <ul class="ot-ul">${tree.map(sectorNode).join('') || '<div class="ot-empty">لا قطاعات بعد</div>'}</ul>
+          <ul class="ot-ul">${shown.map(sectorNode).join('') || '<div class="ot-empty">لا قطاعات بعد</div>'}</ul>
         </div>`)}
       </section>
 
-      <section id="unassigned" class="ua-sec">
-        <div class="sec-h">
-          <h2 class="sec-t">العمل غير المُسنَد إلى إدارة</h2>
-          <span class="sec-s">سنة <span class="tnum">${year}</span> · ما لا تظهره أرقام أي إدارة</span>
-        </div>
-        <div class="ua-grid">${uaCards || '<div class="ot-empty">لا قطاعات بعد</div>'}</div>
-      </section>
+      <details class="ot-diag" id="unassigned">
+        <summary>العمل غير المُسنَد إلى إدارة
+          <span class="ot-diagn">${uaPending ? `<span class="tnum">${uaPending}</span> بانتظار الإسناد` : 'لا شيء معلَّق'}</span></summary>
+        <div class="ua-grid" style="padding:.9rem 1rem 1rem">${uaCards || '<div class="ot-empty">لا قطاعات بعد</div>'}</div>
+      </details>
 
       <details class="ot-diag">
         <summary>فحص جودة الهيكل — الملاحظات ودرجة الاكتمال</summary>
@@ -723,8 +766,9 @@ details.oh-chk>summary:focus-visible{outline:2px solid var(--brand);outline-offs
 
 /* ── الشجرة ── */
 /* الصف كان يمتد على ١٤٤٠ بكسل: الاسم يميناً والبيانات أقصى اليسار، فيبقى نحو ٤٠٪ فراغاً
-   في المنتصف والعين تقفز فوقه. حدٌّ للعرض يجعل الصف يُقرأ كسطر واحد لا كشريط ممدود. */
-#tree .card>div{max-width:980px}
+   في المنتصف والعين تقفز فوقه. حدٌّ للعرض يجعل الصف يُقرأ كسطر واحد لا كشريط ممدود —
+   **متوسَّطاً** في بطاقته: الحدّ الملتصق بحافة يترك فراغاً أعورَ على الحافة الأخرى يُقرأ عطلاً. */
+#tree .card>div{max-width:1080px;margin-inline:auto}
 /* زر وضع التعديل — القراءة هي الأصل، والتعديل يُطلَب */
 .ot-editbtn{font-size:12px;font-weight:700;text-decoration:none;padding:.34rem .8rem;border-radius:9px;
   border:1px solid var(--line);background:var(--surface);color:var(--brand);white-space:nowrap}
@@ -736,6 +780,8 @@ details.oh-chk>summary:focus-visible{outline:2px solid var(--brand);outline-offs
 .ot-diag>summary::-webkit-details-marker{display:none}
 .ot-diag>summary::after{content:"▾";float:left;color:var(--muted);font-size:11px}
 .ot-diag[open]>summary{border-bottom:1px solid var(--line)}
+.ot-diagn{font-weight:400;color:var(--muted);margin-inline-start:.5rem}
+.ot-diagn .tnum{font-weight:800;color:var(--ink2)}
 .ot-ul{list-style:none;margin:0;padding:0 1.4rem 0 0;position:relative}
 /* العمود الفقري للشجرة على يمين الفرع — اتجاه القراءة العربي */
 .ot-ul::before{content:"";position:absolute;top:0;bottom:.9rem;right:.55rem;width:1px;background:var(--line)}
@@ -745,8 +791,16 @@ details.oh-chk>summary:focus-visible{outline:2px solid var(--brand);outline-offs
 .ot-det>summary::-webkit-details-marker{display:none}
 .ot-det>summary::before{content:"▾";position:absolute;right:-1.05rem;top:.75rem;font-size:10px;color:var(--muted);transition:transform .15s}
 .ot-det:not([open])>summary::before{transform:rotate(90deg)}
-.ot-node{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem 1rem;justify-content:space-between;
+/* البيانات تتبع الاسم ولا تُنفى إلى الحافة المقابلة: التوزيع «بين الطرفين» كان يترك فجوةً
+   بعرض نصف الصف بين «إدارة الابتكار» وعدد فريقها، فتقفز العين فوق فراغٍ لتصل إلى رقم. الشجرة
+   تُقرأ سطراً سطراً لا عموداً عمودياً، فالمكان الصحيح للرقم هو جوار اسمه. وأدوات التعديل وحدها
+   تُنفى إلى الطرف الآخر (ot-acts) لأنها إجراء لا خبر. */
+.ot-node{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem .8rem;
   background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:.5rem .75rem;position:relative}
+/* الإدارة والوحدة تُحيطان مضمونهما بدل أن تمتدّا ألف بكسل فارغ: صندوقٌ عرضه ألفٌ ومحتواه ثلاثمئة
+   يُقرأ جدولاً ناقص الأعمدة. والقطاع يبقى ممتداً لأنه شريطُ حاوية لا صفَّ بيانات — فيبقى التدرّج
+   مرئياً: شريطٌ عريض تحته صناديق تتبع مقاسها. */
+.ot-dept,.ot-unit{width:fit-content;max-width:100%}
 .ot-node:hover{border-color:#c9d3e8}
 .ot-det>summary:focus-visible{outline:2px solid var(--brand);outline-offset:2px;border-radius:10px}
 .ot-main{display:flex;align-items:center;gap:.5rem;min-width:0}
@@ -759,6 +813,23 @@ details.oh-chk>summary:focus-visible{outline:2px solid var(--brand);outline-offs
 .ot-lead.ot-none{color:var(--faint);font-weight:400}
 .ot-count{font-weight:800;color:var(--ink2)}
 .ot-word{color:var(--muted)}
+/* أهل الإدارة: رقاقات هادئة بالحرف الأول والاسم. الغاية أن يُقرأ الهيكل كخريطة ناس لا
+   كجدول أعداد — والمسمّى الوظيفي في التلميح كي لا يزدحم السطر. */
+.ot-people{display:flex;align-items:flex-start;gap:.55rem;margin:.35rem 1.4rem .15rem 0;
+  width:fit-content;max-width:100%;
+  padding:.5rem .6rem;background:linear-gradient(180deg,#fbfcfe,var(--surface));
+  border:1px solid var(--line);border-radius:10px}
+.ot-plabel{flex:0 0 auto;font-size:var(--fs-micro);color:var(--muted);padding-top:.22rem;
+  border-inline-end:1px solid var(--line);padding-inline-end:.55rem;white-space:nowrap}
+.ot-plist{flex:1 1 auto;min-width:0;display:flex;flex-wrap:wrap;gap:.3rem}
+.ot-p{display:inline-flex;align-items:center;gap:.32rem;background:var(--surface);
+  border:1px solid var(--line);border-radius:999px;padding:.12rem .5rem .12rem .18rem;max-width:100%}
+.ot-p:hover{border-color:#c9d3e8}
+.ot-pav{width:19px;height:19px;flex:none;border-radius:50%;display:grid;place-items:center;
+  font-size:10px;font-weight:800;color:#fff;background:var(--brand-grad)}
+.ot-pn{font-size:var(--fs-micro);color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ot-pmore{display:inline-flex;align-items:center;font-size:var(--fs-micro);color:var(--muted);
+  background:var(--bg);border:1px dashed var(--line);border-radius:999px;padding:.12rem .55rem}
 /* رقاقات العدد مصمَّمة لخلفية فاتحة، وشريط الجذر تدرّجٌ داكن — فكان الرقم واسمه يذوبان فيه
    ولا يُقرآن. اللون يُورَّث داخل الشريط بدل أن يُفرَض من صنف عام. */
 .ot-root .ot-count{color:#fff}
@@ -779,7 +850,7 @@ details.oh-chk>summary:focus-visible{outline:2px solid var(--brand);outline-offs
 .ot-dept .ot-kind{opacity:.75}
 .ot-unit{background:var(--bg)}
 .ot-empty{font-size:11.5px;color:var(--faint);padding:.35rem 1.4rem .2rem 0}
-.ot-acts{display:flex;gap:.3rem;align-items:center;flex-wrap:wrap;margin-inline-start:.3rem}
+.ot-acts{display:flex;gap:.3rem;align-items:center;flex-wrap:wrap;margin-inline-start:auto}
 .ot-act{font-size:10.5px;font-family:inherit;color:var(--muted);background:var(--bg);
   border:1px solid var(--line);border-radius:6px;padding:.15rem .45rem;cursor:pointer}
 .ot-act:hover{border-color:#c9d3e8;color:var(--ink2)}

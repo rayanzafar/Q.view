@@ -88,8 +88,12 @@ test('لوحة «غير مُسنَد»: التباين ظاهر بالنسبة �
   const html = await orgTreePage(admin, { year: YEAR });
   // القطع بنهاية القسم نفسه لا ببداية القسم التالي: ربطُ الاختبار بترتيب الأقسام يجعل أي
   // إعادة ترتيب في الصفحة تُسقطه كأن الميزة تعطّلت، وهي لم تُمسّ.
+  // القسم صار مطويّاً (details) بعد ملاحظة المالك أن التشخيص كان يزاحم الهيكل نفسه — والعدد
+  // يبقى مكتوباً في عنوان الطيّة فلا يختفي بطيّها. القطع عند نهاية الطيّة لا عند نهاية قسم.
   const from = html.indexOf('id="unassigned"');
-  const card = html.slice(from, html.indexOf('</section>', from));
+  const card = html.slice(from, html.indexOf('</details>', from));
+  assert.match(html.slice(from, html.indexOf('</summary>', from)), /بانتظار الإسناد/,
+    'العدد المعلَّق مقروء قبل الفتح');
   assert.match(card, /لا شيء منها داخل الإدارات/, 'التباين مكتوب لا مستنتج: لا فرصة واحدة داخل إدارة');
   assert.match(card, /class="tnum ua-open">105</, 'عدد الفرص المعلّقة كما هو');
   assert.match(card, /ر\.س\./, 'المال بصيغة العملة');
@@ -97,14 +101,35 @@ test('لوحة «غير مُسنَد»: التباين ظاهر بالنسبة �
   assert.match(card, /شاشة الإسناد/, 'من اللوحة طريق مباشر إلى الإصلاح');
 });
 
-test('أرقام الإدارة في الشجرة: فرص · مشاريع · فريق لكل إدارة', async () => {
+test('أرقام الإدارة في الشجرة: العدد الحيّ يُقال والصفر يُطوى، والنداء في وضع التعديل وحده', async () => {
+  // تحوّل مقصود عن السلوك الأول («الصفر يُقال صراحةً») بعد ملاحظة المالك أن الشاشة مزدحمة
+  // وغير واضحة: صفٌّ يقول «فرص ٠ · مشاريع ٠» على كل إدارة يدفن العدد الوحيد الذي يهمّ (الفريق)،
+  // ونداءُ «أسنِد» بالأصفر فوق كل إدارة كان أعلى صوتٍ في شاشةٍ غايتها القراءة. فالصفر يُطوى،
+  // وعدد الفريق يبقى دائماً — والنداء إجراءٌ فمكانه وضع التعديل.
   const html = await orgTreePage(admin, { year: YEAR });
   const tree = html.slice(html.indexOf('id="tree"'));
   const at = tree.indexOf('إدارة المدن الذكية');
-  const node = tree.slice(at, tree.indexOf('ot-acts', at));   // عقدة واحدة: من اسمها حتى أزرار إجراءاتها
-  assert.match(node, /فرص<\/span> <span class="ot-count tnum">0</, 'الإدارة بلا فرص تقول صفراً صراحةً');
-  assert.match(node, /فريق<\/span> <span class="ot-count tnum">1</, 'عدد الفريق داخل العقدة');
-  assert.match(node, /بلا عمل مُسنَد/, 'إدارة بلا عمل تحمل نداءً للإسناد');
+  const node = tree.slice(at, tree.indexOf('</summary>', at));
+  assert.ok(!/فرص<\/span> <span class="ot-count tnum">0</.test(node), 'الصفر لا يُطبع في وضع القراءة');
+  assert.match(node, /فريق<\/span> <span class="ot-count tnum">1</, 'عدد الفريق داخل العقدة دائماً');
+  assert.ok(!node.includes('أسنِد عملاً'), 'وضع القراءة بلا نداء إجراء');
+
+  const ed = await orgTreePage(admin, { year: YEAR, edit: '1' });
+  const eTree = ed.slice(ed.indexOf('id="tree"'));
+  const eAt = eTree.indexOf('إدارة المدن الذكية');
+  assert.match(eTree.slice(eAt, eTree.indexOf('</summary>', eAt)), /أسنِد عملاً/,
+    'وضع التعديل يحمل نداء الإسناد لإدارةٍ بلا عمل');
+});
+
+test('أهل الإدارة يظهرون بأسمائهم داخل العقدة — الهيكل ناسٌ لا صناديق', async () => {
+  const html = await orgTreePage(admin, { year: YEAR });
+  // القطع عند بداية القسم التالي: فحص الجودة أسفل الصفحة يسرد الموظفين بلا إدارة بأسمائهم عن
+  // قصد، فقراءة الصفحة كاملةً تجعل نفي «غير المسنَد من الشجرة» يفشل على سلوكٍ صحيح.
+  const tree = html.slice(html.indexOf('id="tree"'), html.indexOf('id="unassigned"'));
+  assert.match(tree, /class="ot-people"/, 'لكل إدارة عامرة لوحُ أشخاصها');
+  assert.match(tree, /class="ot-pn">سارة الحربي</, 'الاسم مكتوب لا معدود');
+  assert.ok(!tree.includes('>خالد العتيبي<'), 'ومن لا إدارة له لا يُنسب إلى إدارة');
+  assert.match(tree, /class="ot-plabel"/, 'وللوح عنوانٌ يقول كم هم');
 });
 
 test('تعيين مسؤول الإدارة متاح من العقدة نفسها لمن يملك الهيكل — ومقروء لغيره', async () => {
