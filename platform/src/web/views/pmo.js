@@ -8,7 +8,7 @@ import { listProjects, nextMilestones, projectKind, projectRevenue } from '../..
 import { projectGovernance, DELIVERABLE_MANUAL_STATUSES, DELIVERABLE_SYSTEM_STATUSES } from '../../modules/pmo/governance.js';
 import { projectMoney } from '../../modules/finance/finance.js';
 import { EXPENSE_STATUS_AR, OPEN_STATUSES, SETTLED_STATUSES } from '../../modules/finance/expenses.js';
-import { myTasks, teamTasks } from '../../modules/pmo/tasks.js';
+import { myTasks, teamTasks, personDossier } from '../../modules/pmo/tasks.js';
 import { listViews } from '../../modules/views/views.js';
 import { canSeeSensitive, redact, can, effectiveScope } from '../../core/rbac/index.js';
 import { DELIVERY_SECTOR_SQL } from '../../core/org/kind.js';
@@ -672,15 +672,21 @@ export async function tasksPage(user, opts = {}) {
     ${chip(G.noDueDate, win === 'nodate', qp({ win: 'nodate' }), nodateBand.length)}
     ${chip(G.winAll, win === 'all', qp({ win: 'all' }), openT.length)}
   </div>`;
-  const moreChips = `<div class="chips">
-    <span class="lbl">${G.filter}</span>
-    ${TASK_STATUSES.map((s) => chip(tr(s), fStatus === s, qp({ status: fStatus === s ? null : s }))).join('')}
-    ${Object.entries(TASK_PRIORITY).slice(0, 2).map(([k, v]) => chip(v.ar, fPriority === k, qp({ priority: fPriority === k ? null : k }))).join('')}
-    ${chip('على مشروع', fKind === 'project', qp({ kind: fKind === 'project' ? null : 'project' }))}
-    ${chip('على فرصة', fKind === 'opportunity', qp({ kind: fKind === 'opportunity' ? null : 'opportunity' }))}
-    ${chip(G.internalWork, fKind === 'internal', qp({ kind: fKind === 'internal' ? null : 'internal' }))}
-    ${hasFilter ? `<a class="chip" href="/app/tasks${who === 'team' ? '?who=team' : ''}">مسح المرشحات</a>` : ''}
-  </div>`;
+  // المرشّحات الأحد عشر كانت شريطاً مفتوحاً دائماً فوق كل شاشة — ستّة أشرطة تسبق أول مهمة.
+  // تُطوى الآن خلف زرٍّ يحمل عدد المفعَّل منها، وتُفتح تلقائياً متى كان أحدها مفعَّلاً فلا
+  // تختفي حالةٌ سارية عن عين صاحبها. (بلسان المالك: «احسه مره زحمه».)
+  const activeFilters = [fStatus, fPriority, fKind].filter(Boolean).length;
+  const moreChips = `<details class="wc-filters"${activeFilters ? ' open' : ''}>
+    <summary>${icon('filter')} ${G.filter}${activeFilters ? ` <span class="wc-fn tnum">${activeFilters}</span>` : ''}</summary>
+    <div class="chips">
+      ${TASK_STATUSES.map((s) => chip(tr(s), fStatus === s, qp({ status: fStatus === s ? null : s }))).join('')}
+      ${Object.entries(TASK_PRIORITY).slice(0, 2).map(([k, v]) => chip(v.ar, fPriority === k, qp({ priority: fPriority === k ? null : k }))).join('')}
+      ${chip('على مشروع', fKind === 'project', qp({ kind: fKind === 'project' ? null : 'project' }))}
+      ${chip('على فرصة', fKind === 'opportunity', qp({ kind: fKind === 'opportunity' ? null : 'opportunity' }))}
+      ${chip(G.internalWork, fKind === 'internal', qp({ kind: fKind === 'internal' ? null : 'internal' }))}
+      ${hasFilter ? `<a class="chip" href="/app/tasks${who === 'team' ? '?who=team' : ''}">مسح المرشحات</a>` : ''}
+    </div>
+  </details>`;
   const hidden = (k, v) => (v ? `<input type="hidden" name="${k}" value="${esc(v)}">` : '');
   const searchForm = `<form method="get" action="/app/tasks" class="wc-search">
     ${hidden('who', who === 'team' ? 'team' : '')}${hidden('view', view !== 'list' ? view : '')}${hidden('win', winParam || '')}
@@ -695,10 +701,14 @@ export async function tasksPage(user, opts = {}) {
     ${prjOptions.length ? `<optgroup label="${G.projects}">${prjOptions.map((p) => `<option value="p:${esc(p.id)}">${esc(p.name_ar)}</option>`).join('')}</optgroup>` : ''}
     ${oppOptions.length ? `<optgroup label="${G.opportunities}">${oppOptions.map((o) => `<option value="o:${esc(o.id)}">${esc(o.title_ar)}</option>`).join('')}</optgroup>` : ''}
   </select>`;
-  const quickAdd = `<section class="card wc-add">
+  // الإضافة كانت بطاقةً مفتوحةً دائماً بخمسة حقول فوق كل قائمة — حتى حين لا يريد أحدٌ إضافة
+  // شيئاً. صارت زرّاً يفتحها، والحقول كما هي بمعرّفاتها فلا يتغيّر شيء تحت جافاسكربت الصفحة.
+  // (بلسان المالك: «طريقه اضافه المهام … احسه سيءه».)
+  const quickAdd = readOnly ? '' : `<details class="card wc-add">
+    <summary class="wc-add-sum">${icon('plus')} مهمة جديدة</summary>
     <div class="wc-add-row">
       <input id="qa-title" class="input" placeholder="ما الذي ستنجزه؟ اكتبه هنا…" aria-label="عنوان المهمة">
-      <button class="btn btn-primary" data-action="task-add">${icon('plus')} ${G.add}</button>
+      <button class="btn btn-primary" data-action="task-add">${G.add}</button>
     </div>
     <div class="wc-add-row2">
       ${parentSelect('qa-parent', G.parentLink)}
@@ -712,7 +722,7 @@ export async function tasksPage(user, opts = {}) {
       </select>
       <input id="qa-next" class="input wc-add-next" placeholder="${G.nextStep} (اختياري)" aria-label="${G.nextStep}">
     </div>
-  </section>`;
+  </details>`;
 
   // ── ٥) عرض القائمة ──
   const vis = (arr) => arr.filter((t) => visIds.has(t.id));
@@ -863,9 +873,9 @@ export async function tasksPage(user, opts = {}) {
     return `<div class="wp${p.attention ? ' hot' : ''}${p.idle ? ' idle' : ''}">
       <div class="wp-h">
         <span class="wp-av" aria-hidden="true">${initial}</span>
-        <span class="wp-id"><a class="wp-n" href="${qp({ assignee: p.userId })}">${esc(p.name)}</a>
+        <span class="wp-id"><a class="wp-n" href="/app/person/${encodeURIComponent(p.userId)}">${esc(p.name)}</a>
           ${p.jobTitle ? `<span class="wp-job">${esc(p.jobTitle)}</span>` : ''}</span>
-        <a class="wp-count tnum${t.open ? '' : ' zero'}" href="${qp({ assignee: p.userId })}" title="المهام المفتوحة">${t.open}</a>
+        <a class="wp-count tnum${t.open ? '' : ' zero'}" href="${qp({ assignee: p.userId })}" title="عرض مهامه في هذه اللوحة">${t.open}</a>
       </div>
       ${chips ? `<div class="wp-chips">${chips}</div>` : ''}
       ${projLine}${oppLine}
@@ -1025,7 +1035,29 @@ export async function tasksPage(user, opts = {}) {
     .wc-bartop{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin-bottom:.7rem}
     .wc-search{display:flex;gap:.4rem;align-items:center;margin-inline-start:auto}
     .wc-search .search input{min-width:180px}
-    .wc-add{padding:.75rem .9rem;margin-bottom:1rem;display:flex;flex-direction:column;gap:.5rem}
+    /* الإضافة خلف زرّ: مغلقة لا تشغل إلا سطراً، ومفتوحة هي البطاقة نفسها بحقولها كما كانت. */
+    .wc-add{padding:0;margin-bottom:1rem}
+    .wc-add[open]{padding:.75rem .9rem;display:flex;flex-direction:column;gap:.5rem}
+    .wc-add-sum{cursor:pointer;list-style:none;padding:.6rem .9rem;font-size:12.5px;font-weight:800;
+      color:var(--brand);display:flex;align-items:center;gap:.4rem}
+    .wc-add-sum::-webkit-details-marker{display:none}
+    .wc-add-sum:hover{background:#f7f9fd}
+    .wc-add[open] .wc-add-sum{padding:0 0 .1rem;color:var(--ink2)}
+    .wc-add-sum:focus-visible{outline:2px solid var(--brand);outline-offset:-2px;border-radius:12px}
+    /* المرشّحات خلف زرّ يحمل عدد المفعَّل — سطرٌ واحد بدل شريطٍ من إحدى عشرة رقاقة. */
+    /* النافذة الزمنية والمرشّحات على سطرٍ واحد: كانا شريطين متتاليين بعنوانين. */
+    .wc-barfilters{display:flex;align-items:flex-start;gap:.6rem;flex-wrap:wrap;margin-bottom:.7rem}
+    .wc-barfilters>.chips{margin:0;flex:1 1 auto}
+    .wc-filters{margin-bottom:0}
+    .wc-filters>summary{cursor:pointer;list-style:none;display:inline-flex;align-items:center;gap:.4rem;
+      font-size:12px;font-weight:700;color:var(--muted);background:var(--surface);
+      border:1px solid var(--line);border-radius:9px;padding:.32rem .7rem}
+    .wc-filters>summary::-webkit-details-marker{display:none}
+    .wc-filters>summary:hover{border-color:#c9d3e8;color:var(--ink2)}
+    .wc-filters>summary:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+    .wc-filters[open]>summary{color:var(--ink2);border-color:#c9d3e8}
+    .wc-filters .chips{margin-top:.5rem}
+    .wc-fn{background:var(--brand);color:#fff;border-radius:999px;padding:0 .38rem;font-weight:800;font-size:10.5px}
     .wc-add-row{display:flex;gap:.5rem;align-items:center}
     .wc-add-row #qa-title{flex:1;min-width:0}
     .wc-add-row2{display:flex;gap:.45rem;flex-wrap:wrap;align-items:center}
@@ -1209,7 +1241,7 @@ export async function tasksPage(user, opts = {}) {
   const content = view === 'board' ? boardView : view === 'calendar' ? calendarView : (listBody + beyond);
   const body = `${styles}${dayCard}${stats}${lens}
     <div class="wc-bartop">${viewSeg}${searchForm}</div>
-    ${winChips}${moreChips}
+    <div class="wc-barfilters">${winChips}${moreChips}</div>
     ${quickAdd}
     ${readOnly ? `<div class="alert info" style="margin-bottom:.8rem">${icon('team')}<span>عرض للاطّلاع على عمل فريقك. تعديل مهام غيرك يتطلب صلاحية إدارية على المهام — اطلبها من مدير النظام.</span></div>` : ''}
     ${who === 'team' ? teamBoard : ''}
@@ -2014,4 +2046,169 @@ export async function projectDetailPage(user, projectId, opts = {}) {
       money:{projectId:${JSON.stringify(p.id).replace(/</g, '\\u003c')}}});</script>`;
   return layout({ user, active: 'projects', title: esc(p.name_ar), subtitle: 'تفاصيل المشروع', body,
     scripts: ['/static/pages/project-governance.js', '/static/pages/project-money.js'] });
+}
+
+// ═══ صفحة الشخص ══════════════════════════════════════════════════════════════════════════════
+// «ما اقدر اشوف او اضغط على الموظف يطلعلي تفاصيله وصفحته» — بلسان المالك. الأسماء في لوحة
+// الفريق كانت روابط إلى مُرشِّح، فينقر المدير الاسم فتعود لوحة المهام نفسها مرشَّحةً بشخص —
+// لا صفحةً تجيب «ما حال هذا الشخص»: مهامه بمواعيدها، وفرصه **بأسمائها**، ومشاريعه، وما يعلق.
+//
+// الصفحة قراءةٌ خالصة: لا تكتب شيئاً، وكل تحرير يعود من حيث يُحرَّر (المهمة من لوحة المهام،
+// والفرصة من صفحتها). فلا سطح كتابةٍ ثالث يتباعد عن قواعده.
+export async function personPage(user, personId) {
+  const d = await personDossier(user, personId);
+  const p = d.person;
+  const initial = esc(String(p.name || '؟').trim().charAt(0));
+  const dnum = (day) => Math.round((Date.parse(String(day).slice(0, 10) + 'T00:00:00Z')
+    - Date.parse(d.today + 'T00:00:00Z')) / 86400000);
+  const canReadOpp = can(user, 'read', 'opportunity');
+
+  const due = (t) => {
+    if (!t.due_date) return `<span class="pp-due none">${G.noDueDate}</span>`;
+    const n = dnum(t.due_date);
+    if (n < 0) return `<span class="pp-due late">متأخرة ${countAr(-n, { one: 'يوماً', two: 'يومين', few: 'أيام', many: 'يوماً' })}</span>`;
+    if (n === 0) return '<span class="pp-due now">اليوم</span>';
+    return `<span class="pp-due">خلال ${countAr(n, { one: 'يوم', two: 'يومين', few: 'أيام', many: 'يوماً' })}</span>`;
+  };
+  const parentOf = (t) => (t.project_id
+    ? `<a class="pp-tag" href="/app/project/${encodeURIComponent(t.project_id)}">${esc(t.project_name || 'مشروع')}</a>`
+    : t.opportunity_id
+      ? `<a class="pp-tag" href="/app/opportunity/${encodeURIComponent(t.opportunity_id)}">${esc(t.opportunity_name || 'فرصة')}</a>`
+      : `<span class="pp-tag mute">${G.internalWork}</span>`);
+
+  const openTasks = d.tasks.filter((t) => t.status !== 'DONE');
+  const doneTasks = d.tasks.filter((t) => t.status === 'DONE').slice(0, 10);
+  const taskRow = (t) => `<div class="pp-row${t.status === 'BLOCKED' || t.blocked_reason ? ' blocked' : ''}">
+    <div class="pp-row-h">
+      <span class="pp-t">${esc(t.title || 'مهمة بلا عنوان')}</span>
+      <span class="pill">${esc(tr(t.status))}</span>
+      ${due(t)}
+    </div>
+    <div class="pp-row-m">
+      ${parentOf(t)}
+      ${String(t.next_step || '').trim()
+    ? `<span class="pp-step">${G.nextStep}: ${esc(t.next_step)}</span>`
+    : '<span class="pp-step warn">بلا خطوة تالية</span>'}
+      ${String(t.blocked_reason || '').trim() ? `<span class="pp-step bad">${G.blocker}: ${esc(t.blocked_reason)}</span>` : ''}
+    </div>
+  </div>`;
+
+  const openOpps = d.opportunities.filter((o) => !o.is_won && !o.is_lost);
+  const oppRow = (o) => `<a class="pp-row pp-link" href="/app/opportunity/${encodeURIComponent(o.id)}">
+    <div class="pp-row-h">
+      <span class="pp-t">${esc(o.title_ar)}</span>
+      ${o.stage_name ? `<span class="pill">${esc(o.stage_name)}</span>` : ''}
+      ${canReadOpp ? `<span class="pp-money tnum">${fmtSar(o.value_halalas)}</span>` : ''}
+    </div>
+    <div class="pp-row-m">
+      <span class="pp-tag mute">${esc(o.client_name || 'بدون جهة')}</span>
+      ${String(o.next_action || '').trim()
+    ? `<span class="pp-step">${G.nextStep}: ${esc(o.next_action)}</span>`
+    : '<span class="pp-step warn">بلا خطوة تالية</span>'}
+    </div>
+  </a>`;
+
+  const sec = (title, hint, inner, empty) => `<section class="pp-sec">
+    <div class="pp-sec-h"><h2 class="pp-sec-t">${title}</h2><span class="pp-sec-s">${hint}</span></div>
+    ${inner || `<div class="card"><div class="empty-state" style="padding:1.2rem 1rem"><div class="s">${empty}</div></div></div>`}
+  </section>`;
+
+  const stat = (n, label, tone) => `<div class="pp-stat${tone ? ' ' + tone : ''}">
+    <div class="pp-stat-n tnum">${n}</div><div class="pp-stat-l">${label}</div></div>`;
+
+  const body = `<style>
+    /* مقاس قراءة لا عرض شاشة: بلا حدٍّ يمتد الصفّ على ١٤٤٠ بكسل فيقع العنوان في أقصى اليمين
+       وموعده في أقصى اليسار وبينهما فراغٌ تقفز العين فوقه — نفس عطل صفوف الشجرة. */
+    .pp-wrap{max-width:1020px;margin-inline:auto}
+    .pp-head{display:flex;align-items:center;gap:.9rem;flex-wrap:wrap;padding:1rem 1.1rem;margin-bottom:1rem}
+    .pp-av{width:54px;height:54px;flex:none;border-radius:16px;display:grid;place-items:center;
+      font-size:22px;font-weight:800;color:#fff;background:var(--brand-grad)}
+    .pp-id{flex:1 1 220px;min-width:0}
+    .pp-n{font-size:1.15rem;font-weight:800;color:var(--ink2)}
+    .pp-meta{font-size:var(--fs-meta);color:var(--muted);margin-top:.2rem;display:flex;gap:.5rem;flex-wrap:wrap}
+    .pp-meta .sep{color:var(--faint)}
+    .pp-warn{font-size:var(--fs-micro);color:#92400e;background:#fef3c7;border-radius:8px;padding:.2rem .55rem}
+    .pp-stats{display:flex;gap:.5rem;flex-wrap:wrap}
+    .pp-stat{min-width:78px;text-align:center;background:var(--bg);border:1px solid var(--line);
+      border-radius:12px;padding:.45rem .6rem}
+    .pp-stat-n{font-size:1.25rem;font-weight:800;color:var(--ink2);line-height:1.2}
+    .pp-stat-l{font-size:var(--fs-micro);color:var(--muted)}
+    .pp-stat.bad{background:#fef2f2;border-color:#fecaca}.pp-stat.bad .pp-stat-n{color:var(--red)}
+    .pp-stat.warn{background:#fefce8;border-color:#fde68a}.pp-stat.warn .pp-stat-n{color:#a16207}
+    .pp-sec{margin-bottom:1.1rem}
+    .pp-sec-h{display:flex;align-items:baseline;gap:.6rem;flex-wrap:wrap;margin:0 .1rem .5rem}
+    .pp-sec-t{font-size:var(--fs-title);font-weight:800;color:var(--ink2)}
+    .pp-sec-s{font-size:var(--fs-meta);color:var(--muted)}
+    .pp-list{display:flex;flex-direction:column;gap:.4rem}
+    .pp-row{display:flex;flex-direction:column;gap:.3rem;background:#fff;border:1px solid var(--line);
+      border-radius:12px;padding:.6rem .8rem;text-decoration:none}
+    .pp-row.blocked{border-color:#fecaca;background:linear-gradient(180deg,#fffafa,#fff 45%)}
+    a.pp-link:hover{border-color:#c9d3e8;box-shadow:0 6px 18px -12px rgba(16,32,70,.4)}
+    .pp-row-h{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
+    /* العنوان لا يتمدّد ليدفع حالته وموعده إلى الطرف المقابل — يبقيان جواره. (flex:0 1) */
+    .pp-t{font-weight:700;font-size:var(--fs-body);color:var(--ink2);flex:0 1 auto;min-width:0;max-width:100%;
+      overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .pp-money{font-weight:800;color:var(--ink2);font-size:var(--fs-body);white-space:nowrap;margin-inline-start:auto}
+    .pp-due{font-size:var(--fs-micro);color:var(--muted);white-space:nowrap}
+    .pp-due.late{color:var(--red);font-weight:800}
+    .pp-due.now{color:#a16207;font-weight:800}
+    .pp-due.none{color:var(--faint)}
+    .pp-row-m{display:flex;align-items:center;gap:.45rem;flex-wrap:wrap;font-size:var(--fs-micro);color:var(--muted)}
+    .pp-tag{background:var(--bg);border-radius:6px;padding:.06rem .4rem;color:var(--ink2);text-decoration:none;
+      max-width:100%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .pp-tag.mute{color:var(--muted)}
+    a.pp-tag:hover{background:#eef2fb;color:var(--brand)}
+    .pp-step{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .pp-step.warn{color:#a16207}
+    .pp-step.bad{color:var(--red)}
+    @media(max-width:640px){.pp-av{width:44px;height:44px;font-size:18px}}
+  </style>
+  <div class="pp-wrap">
+  ${card(`<div class="pp-head">
+    <span class="pp-av" aria-hidden="true">${initial}</span>
+    <span class="pp-id">
+      <div class="pp-n">${esc(p.name)}</div>
+      <div class="pp-meta">
+        ${p.jobTitle ? `<span>${esc(p.jobTitle)}</span><span class="sep">·</span>` : ''}
+        <span>${esc(p.departmentName || 'بلا إدارة')}</span>
+        ${p.sectorName ? `<span class="sep">·</span><span>${esc(p.sectorName)}</span>` : ''}
+        ${!p.active ? '<span class="pp-warn">حسابه معطَّل — لا يستطيع الدخول</span>' : ''}
+        ${!p.linked ? '<span class="pp-warn">غير مربوط بسجل موظف — لا تظهر إدارته ولا تسكينه</span>' : ''}
+      </div>
+    </span>
+    <span class="pp-stats">
+      ${stat(d.stats.open, 'مهمة مفتوحة')}
+      ${stat(d.stats.overdue, 'متأخرة', d.stats.overdue ? 'bad' : '')}
+      ${stat(d.stats.blocked, 'مُعطَّلة', d.stats.blocked ? 'warn' : '')}
+      ${stat(d.stats.openOpportunities, 'فرصة مفتوحة')}
+      ${stat(d.stats.projects, 'مشروع')}
+    </span>
+  </div>`)}
+
+  ${sec('المهام المفتوحة', openTasks.length ? 'الأكثر إلحاحاً أولاً' : '',
+    openTasks.length ? `<div class="pp-list">${openTasks.map(taskRow).join('')}</div>` : '',
+    d.self ? 'لا مهمة مفتوحة باسمك الآن.' : 'لا مهمة مفتوحة باسمه الآن.')}
+
+  ${canReadOpp ? sec('الفرص', openOpps.length ? 'المفتوحة أولاً، والأكبر قيمةً في الأعلى' : '',
+    openOpps.length ? `<div class="pp-list">${openOpps.map(oppRow).join('')}</div>` : '',
+    'لا فرصة مفتوحة مسجَّلة باسمه.') : ''}
+
+  ${sec(`المشاريع — سنة ${d.year}`, d.projects.length ? 'التسكين المسجَّل لهذه السنة' : '',
+    d.projects.length ? `<div class="pp-list">${d.projects.map((x) => `<a class="pp-row pp-link" href="/app/project/${encodeURIComponent(x.id)}">
+      <div class="pp-row-h"><span class="pp-t">${esc(x.name_ar)}</span>
+        <span class="pill">${esc(tr(x.status || ''))}</span></div>
+      <div class="pp-row-m"><span class="pp-tag mute">${esc(x.type === 'lead' ? 'قائد' : x.type === 'advisor' ? 'مستشار' : 'عضو الفريق')}</span></div>
+    </a>`).join('')}</div>` : '',
+    p.linked ? 'لا تسكين مسجَّل له على أي مشروع هذه السنة.'
+      : 'التسكين يُقرأ من سجل الموظف، وحسابه غير مربوط بسجل — الربط من شاشة المستخدمين والصلاحيات.')}
+
+  ${doneTasks.length ? sec('أُنجز مؤخراً', `آخر ${countAr(doneTasks.length, { one: 'مهمة', two: 'مهمتين', few: 'مهام', many: 'مهمة' })}`,
+    `<div class="pp-list">${doneTasks.map(taskRow).join('')}</div>`, '') : ''}
+  </div>`;
+
+  return layout({
+    user, active: 'tasks', title: p.name,
+    subtitle: `${p.jobTitle ? esc(p.jobTitle) + ' · ' : ''}${esc(p.departmentName || 'بلا إدارة')} — مهامه وفرصه ومشاريعه`,
+    body,
+  });
 }

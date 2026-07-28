@@ -20,6 +20,7 @@ const P = {
   risk: '<path d="M12 3l9 16H3z"/><path d="M12 9v4M12 16v.5"/>',
   check: '<circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/>',
   search: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/>',
+  filter: '<path d="M3 5h18l-7 8v5l-4 2v-7z"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
   kanban: '<rect x="3" y="3" width="5" height="14" rx="1"/><rect x="10" y="3" width="5" height="10" rx="1"/><rect x="17" y="3" width="4" height="17" rx="1"/>',
   list: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',

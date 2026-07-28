@@ -63,6 +63,18 @@
     try {
       await api('/tasks/quick', 'POST', body);
       toast('أُضيفت المهمة ✓');
+      // المهمة تُضاف ثم **تختفي**: النافذة الافتراضية «اليوم»، ومهمةٌ بلا موعد ليست فيها —
+      // فيرى المستخدم رسالة نجاح وقائمةً لم تتغيّر، وهو أسوأ ما تفعله شاشة إضافة. تُنقَل
+      // النافذة إلى ما يسع المهمة الجديدة: موعدُها إن كان اليوم أو قبله فـ«اليوم» تكفي،
+      // وإلا «الكل» — فيراها حيث وضعها.
+      var due = body.due_date;
+      var today = new Date().toISOString().slice(0, 10);
+      if (!due || due > today) {
+        var u = new URL(location.href);
+        u.searchParams.set('win', 'all');
+        setTimeout(function () { location.assign(u.toString()); }, 320);
+        return;
+      }
       reload();
     } catch (e) { if (btn) btn.disabled = false; toast(e.message, true); }
   }

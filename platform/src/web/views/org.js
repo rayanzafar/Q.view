@@ -303,9 +303,13 @@ export async function orgTreePage(user, opts = {}) {
   // أهل كل إدارة بأسمائهم — الهيكل التنظيمي أشخاصٌ قبل أن يكون صناديق. كانت العقدة تقول
   // «١٢ فريق» ولا تقول من هم، فيُقرأ الهيكل كجدول أعداد لا كخريطة ناس. استعلام واحد لكل
   // الشجرة (لا استعلام لكل عقدة)، ويُجمَّع في الذاكرة.
-  const staff = await all(`SELECT id, name_ar, job_title, department_id
-      FROM employee WHERE deleted_at IS NULL AND active = 1 AND department_id IS NOT NULL
-      ORDER BY name_ar LIMIT 1200`);
+  // حساب الدخول يُقرأ مع الموظف كي تصير الرقاقة مدخلاً إلى ملفه لا مجرّد اسم: «ما اقدر اضغط
+  // على الموظف يطلعلي تفاصيله» — والوصلة من الحساب إلى الموظف لا العكس (app_user.employee_id).
+  const staff = await all(`SELECT e.id, e.name_ar, e.job_title, e.department_id, u.id user_id
+      FROM employee e
+      LEFT JOIN app_user u ON u.employee_id = e.id AND u.deleted_at IS NULL AND u.active = 1
+      WHERE e.deleted_at IS NULL AND e.active = 1 AND e.department_id IS NOT NULL
+      ORDER BY e.name_ar LIMIT 1200`);
   const byDep = new Map();
   for (const e of staff) {
     if (!byDep.has(e.department_id)) byDep.set(e.department_id, []);
@@ -326,7 +330,11 @@ export async function orgTreePage(user, opts = {}) {
       <span class="ot-plabel">${countChip(list.length, noun(list.length, EMP))}</span>
       <span class="ot-plist">${shown.map((e) => {
         const t = e.job_title ? `${e.name_ar} — ${e.job_title}` : e.name_ar;
-        return `<span class="ot-p" title="${esc(t)}"><span class="ot-pav" aria-hidden="true">${esc(String(e.name_ar || '؟').trim().charAt(0))}</span><span class="ot-pn">${esc(e.name_ar)}</span></span>`;
+        // بلا حساب دخول لا صفحة له — رقاقةٌ لا تُنقر خيرٌ من رابطٍ يفتح رفضاً.
+        const inner = `<span class="ot-pav" aria-hidden="true">${esc(String(e.name_ar || '؟').trim().charAt(0))}</span><span class="ot-pn">${esc(e.name_ar)}</span>`;
+        return e.user_id
+          ? `<a class="ot-p" href="/app/person/${encodeURIComponent(e.user_id)}" title="${esc(t)}">${inner}</a>`
+          : `<span class="ot-p" title="${esc(`${t} — بلا حساب دخول`)}">${inner}</span>`;
       }).join('')}${rest > 0 ? `<span class="ot-pmore">و<span class="tnum">${rest}</span> غيرهم</span>` : ''}</span>
     </div>`;
   };

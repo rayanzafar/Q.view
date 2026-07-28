@@ -157,6 +157,12 @@ webRouter.get('/app/opportunity/:id', requireWeb, guardDetail('opportunity'), as
 webRouter.get('/app/client/:id', requireWeb, guardDetail('client'), async (req, res, next) => {
   try { res.send(await P.clientDetailPage(req.ctx.user, req.params.id)); } catch (e) { next(e); }
 });
+// صفحة الشخص: بلا guardDetail عمداً — بوابتها ليست «هل يرى هذا النوع من التفاصيل» بل «هل هذا
+// الشخص داخل نطاقك»، وهو سؤالٌ لا يُجاب إلا بعد قراءة صفّه. فالخدمة (personDossier) هي البوابة
+// وحدها، وترمي رفضاً عربياً واضحاً — ويُفتح ملفُ صاحب الحساب نفسه دائماً بلا أي منح إداري.
+webRouter.get('/app/person/:id', requireWeb, async (req, res, next) => {
+  try { res.send(await P.personPage(req.ctx.user, req.params.id)); } catch (e) { next(e); }
+});
 
 webRouter.get('/app/:page', requireWeb, async (req, res, next) => {
   const fn = PAGES[req.params.page];

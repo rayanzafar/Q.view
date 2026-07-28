@@ -484,3 +484,94 @@ export async function teamWorkload(user, filters = {}) {
   }
   return { departments, scope, year };
 }
+
+// ═══ ملف الشخص ═══════════════════════════════════════════════════════════════════════════════
+// «ما اقدر اشوف او اضغط على الموظف يطلعلي تفاصيله وصفحته» — بلسان المالك. كانت لوحة الفريق
+// تعرض الأسماء وتربطها بمُرشِّحٍ يعيد لوحة المهام مرشَّحة، لا بصفحةٍ للشخص. فسؤال المدير
+// «ما الذي يعمل عليه فلان» يُجاب برقمٍ لا بصورة، والاسم يبدو قابلاً للنقر ولا يفتح شيئاً.
+//
+// البوابة نفسها بوابة لوحة الفريق حرفياً (teamTasksAccess) — لا بوابة موازية تتباعد عنها —
+// **زائداً** أن كل أحد يفتح ملفه هو. ولا يُقرأ من هو خارج النطاق: الرفض قبل أي استعلام بيانات.
+export async function personDossier(reader, personUserId) {
+  const uid = String(personUserId || '').trim();
+  if (!uid) throw notFound('لا يوجد شخص بهذا الرابط');
+  const self = uid === reader.id;
+  const { scope, canWrite } = teamTasksAccess(reader);
+  if (!self && !scope) throw forbidden('عرض ملف شخصٍ آخر يتطلب صلاحية قراءة مهام إدارة أو قطاع — اطلب تفعيلها من مدير النظام');
+
+  const p = await get(`SELECT u.id, u.username, u.name_ar, u.role_id, u.sector_id, u.active, u.last_login_at,
+       emp.id employee_id, emp.job_title, emp.department_id, emp.sector_id emp_sector_id,
+       d.name_ar department_name, s.name_ar sector_name
+     FROM app_user u
+     LEFT JOIN employee emp ON emp.id = u.employee_id AND emp.deleted_at IS NULL
+     LEFT JOIN department d ON d.id = emp.department_id AND d.deleted_at IS NULL
+     LEFT JOIN sector s ON s.id = COALESCE(emp.sector_id, u.sector_id) AND s.deleted_at IS NULL
+     WHERE u.id = ? AND u.deleted_at IS NULL`, [uid]);
+  if (!p) throw notFound('لا يوجد شخص بهذا الرابط — قد يكون حسابه حُذف');
+
+  // النطاق يُطبَّق على **الشخص** قبل قراءة عمله: من هو خارج إدارتي أو قطاعي لا يُفتح ملفه.
+  // وقارئٌ بنطاق «إدارة» وإدارتُه مجهولة (حسابه غير مربوط بموظف) لا يرى أحداً — فشلٌ آمن.
+  if (!self) {
+    if (scope === 'department') {
+      if (!reader.department_id || p.department_id !== reader.department_id) {
+        throw forbidden('هذا الشخص خارج إدارتك — لا يُفتح ملفه من حسابك');
+      }
+    } else if (scope !== 'company' && p.sector_id !== reader.sector_id) {
+      throw forbidden('هذا الشخص خارج قطاعك — لا يُفتح ملفه من حسابك');
+    }
+  }
+
+  const today = nowIso().slice(0, 10);
+  const year = new Date().getUTCFullYear();
+  const tasks = await all(`SELECT t.id, t.title, t.status, t.priority, t.due_date, t.next_step,
+       t.blocked_reason, t.progress_pct, t.completed_at,
+       p2.id project_id, p2.name_ar project_name, o.id opportunity_id, o.title_ar opportunity_name,
+       d.name_ar department_name
+     FROM task t
+     LEFT JOIN project p2 ON p2.id = t.project_id AND p2.deleted_at IS NULL
+     LEFT JOIN opportunity o ON o.id = t.opportunity_id AND o.deleted_at IS NULL
+     LEFT JOIN department d ON d.id = t.department_id AND d.deleted_at IS NULL
+     WHERE t.deleted_at IS NULL AND t.assignee_user_id = ? AND t.status <> 'CANCELLED'
+     ORDER BY ${prioritySql('t')}, t.due_date
+     LIMIT 200`, [uid]);
+
+  // الفرص بأسمائها لا بعددها: «٣ فرص» لا تقول للمدير أيّها متوقفة ولا أيّها الأكبر.
+  const opportunities = await all(`SELECT o.id, o.title_ar, o.value_halalas, o.next_action,
+       st.name_ar stage_name, st.is_won, st.is_lost, c.name_ar client_name
+     FROM opportunity o
+     LEFT JOIN stage st ON st.id = o.stage_id
+     LEFT JOIN client c ON c.id = o.client_id AND c.deleted_at IS NULL
+     WHERE o.deleted_at IS NULL AND o.owner_user_id = ?
+     ORDER BY COALESCE(st.is_won,0) + COALESCE(st.is_lost,0), o.value_halalas DESC
+     LIMIT 60`, [uid]);
+
+  const projects = p.employee_id ? await all(`SELECT p3.id, p3.name_ar, p3.status, a.type, a.year
+     FROM allocation a
+     JOIN project p3 ON p3.id = a.project_id AND p3.deleted_at IS NULL
+     WHERE a.deleted_at IS NULL AND a.employee_id = ? AND a.year = ?
+     GROUP BY p3.id, p3.name_ar, p3.status, a.type, a.year
+     ORDER BY p3.name_ar
+     LIMIT 60`, [p.employee_id, year]) : [];
+
+  const open = tasks.filter((t) => t.status !== 'DONE');
+  const stats = {
+    open: open.length,
+    overdue: open.filter((t) => t.due_date && String(t.due_date).slice(0, 10) < today).length,
+    blocked: open.filter((t) => t.status === 'BLOCKED' || String(t.blocked_reason || '').trim()).length,
+    noStep: open.filter((t) => !String(t.next_step || '').trim()).length,
+    done: tasks.length - open.length,
+    openOpportunities: opportunities.filter((o) => !o.is_won && !o.is_lost).length,
+    projects: projects.length,
+  };
+  return {
+    self,
+    canWrite: !!canWrite || self,
+    person: {
+      userId: p.id, name: p.name_ar || p.username || 'حساب بلا اسم', username: p.username,
+      jobTitle: p.job_title || null, roleId: p.role_id, active: Number(p.active) === 1,
+      linked: !!p.employee_id, departmentName: p.department_name || null,
+      sectorName: p.sector_name || null, lastLoginAt: p.last_login_at || null,
+    },
+    tasks, opportunities, projects, stats, today, year,
+  };
+}
