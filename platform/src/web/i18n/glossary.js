@@ -365,7 +365,7 @@ export const RESOURCE_AR = {
   approval_request: 'طلب اعتماد', client: 'عميل', contact: 'جهة اتصال', contract: 'عقد',
   cost: 'تكلفة', deliverable: 'مخرج', department: 'إدارة', document: 'مستند',
   employee: 'موظف', expense: 'مصروف', import_run: 'عملية استيراد', invoice: 'فاتورة',
-  issue: 'معوّق', margin: 'هامش', milestone: 'معلم', notification: 'إشعار',
+  issue: 'معوّق', login_code: 'رمز دخول', margin: 'هامش', milestone: 'معلم', notification: 'إشعار',
   opp_team: 'فريق فرصة', opportunity: 'فرصة', project: 'مشروع', proposal: 'عرض',
   report: 'تقرير', report_schedule: 'جدولة تقرير', revenue_line: 'بند إيراد', risk: 'خطر',
   saved_view: 'عرض محفوظ', sector: 'قطاع', session: 'جلسة دخول', task: 'مهمة',

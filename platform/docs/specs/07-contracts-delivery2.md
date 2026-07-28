@@ -18,6 +18,15 @@
 
 ## 2) واجهات API الجديدة (Router مستقل لكل وحدة؛ سطر تركيب واحد في api.routes.js)
 
+**الدخول بالرمز — `src/web/routes.js` (نماذج صفحات، لا واجهة JSON):**
+- `POST /auth/otp/request-web` {email} → تحويلة إلى `/login` **دائماً**، سواء كان للبريد حساب أم لا.
+  الردّ الموحَّد جزءٌ من العقد لا تفصيلُ تنفيذ: أي تمييز هنا يكشف من يعمل في EVC لمن يسأل.
+- `POST /auth/otp/verify-web` {code} — البريد من كعكة `sanad_otp_to` لا من الحمولة. النجاح ⇒ جلسة
+  وتحويلة إلى `landingFor`، والفشل ⇒ `/login?e=<3|4|5|6>` (منتهٍ · غير صحيح · استُنفدت · موقوف).
+- `POST /auth/login-web` — يبقى، ومحكومٌ بـ`SANAD_AUTH_PASSWORD` (مفتوح افتراضياً، يُغلق بـ`0`).
+- الرمز: ٦ أرقام · ١٠ دقائق · استعمال واحد · ٥ محاولات · مُجزَّأ بـscrypt · استهلاك ذرّي.
+- كلا النموذجين محروس بالرمز المزدوج (CSRF)؛ الاستثناء الوحيد الباقي هو `/auth/login-web`.
+
 **العملاء — `src/modules/clients/clients.routes.js`:**
 - `GET /api/clients?query&type&sector&sort` → قائمة بنطاق المستخدم + `last_activity_at`, `open_pipeline_halalas`, `fy_revenue_halalas`
 - `POST /api/clients` {name_ar, name_en?, type, code?} → عميل

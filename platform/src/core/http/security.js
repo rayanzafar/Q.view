@@ -69,3 +69,11 @@ export const loginLimiter = bucketLimiter({ capacity: 10, refillPerSec: 1 / 6, k
   redirectTo: (req) => (req.baseUrl === '/auth/login-web' ? '/login?e=2' : null) });
 // واجهات JSON: سقف مريح يمنع الإغراق فقط (300 طلب ثم 20/ثانية لكل مستخدم/IP)
 export const apiLimiter = bucketLimiter({ capacity: 300, refillPerSec: 20, keyFn: (req) => `A:${req.ctx?.user?.id || req.ip}` });
+
+// طلب رمز الدخول — دلوان لا دلوٌ واحد، لأن لكلٍّ منهما إساءةً مختلفة:
+//  · بالعنوان: يمنع من يطلب رموزاً لمئة بريد من مكان واحد كي يستكشف من له حساب.
+//  · بالبريد: يمنع إغراق صندوق موظفٍ بعينه من عناوين متفرقة — وهو أذى لا يحتاج اختراقاً.
+// خمسةٌ ثم قطرة كل دقيقة: يكفي لمن أخطأ وأعاد، ولا يكفي لمن يُغرق.
+const otpKeyEmail = (req) => `O:${String(req.body?.email || req.cookies?.sanad_otp_to || '').trim().toLowerCase() || req.ip}`;
+export const otpEmailLimiter = bucketLimiter({ capacity: 5, refillPerSec: 1 / 60, keyFn: otpKeyEmail, redirectTo: '/login?e=2' });
+export const otpIpLimiter = bucketLimiter({ capacity: 15, refillPerSec: 1 / 20, keyFn: (req) => `OI:${req.ip}`, redirectTo: '/login?e=2' });

@@ -1,6 +1,7 @@
 // In-process scheduler for email queue + due report schedules (dev). Prod → external worker.
 import { all, run } from '../db/index.js';
 import { processQueue, enqueueReport, nextRunAt } from '../reports/engine.js';
+import { purgeExpiredCodes } from '../auth/otp.js';
 
 let timer = null;
 
@@ -17,7 +18,15 @@ async function tick() {
   // فأي جدولة تفشل كانت توقف إرسال كل بريد المنصة بصمت.
   try { await fireDueSchedules(); } catch (e) { console.error('[scheduler] fireDueSchedules:', e.message); }
   try { await processQueue(30); } catch (e) { console.error('[scheduler] processQueue:', e.message); }
+  // رموز الدخول المنتهية تُكنَس كل ساعة لا كل دقيقة: الجدول ينمو بصفٍّ لكل طلب دخول في
+  // الشركة كلها، وكلٌّ منها أثرٌ لا حاجة إليه بعد انتهائه. والكنس رخيص، لكنه لا يستحق دقيقة.
+  const hour = 3600000;
+  if (Date.now() - lastPurge > hour) {
+    lastPurge = Date.now();
+    try { await purgeExpiredCodes(24); } catch (e) { console.error('[scheduler] purgeExpiredCodes:', e.message); }
+  }
 }
+let lastPurge = 0;
 
 // الجدولات المستحقة الآن. الموقوفة (active = 0) لا تُرسِل شيئاً — وهذا ما يجعل زر الإيقاف فعّالاً.
 export async function dueSchedules(at = new Date()) {

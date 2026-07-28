@@ -1,6 +1,7 @@
 // SSR page routes + web-form auth handlers + report preview.
 import { Router } from 'express';
 import { login, logout } from '../core/auth/service.js';
+import { requestCode, verifyCode, normalizeEmail, REASON as OTP_REASON } from '../core/auth/otp.js';
 import { config } from '../core/config.js';
 import * as P from './pages.js';
 import { pageAllowed, DETAIL_ACCESS } from './nav.js';
@@ -17,11 +18,69 @@ function requireWeb(req, res, next) {
 
 // e=1 بيانات خاطئة · e=2 تجاوز عدد المحاولات — رسالتان مختلفتان لأن العلاج مختلف: الأولى
 // تُراجَع فيها الكلمة، والثانية تُنتظَر. وخلطهما يجعل الموظف يعيد المحاولة فيطيل حظره.
-const LOGIN_ERRORS = { 1: 'بيانات الدخول غير صحيحة', 2: 'محاولات كثيرة خلال وقت قصير — انتظر دقيقة ثم أعد المحاولة' };
-webRouter.get('/login', (req, res) => res.send(P.loginPage(LOGIN_ERRORS[req.query.e] || '')));
+// و٣ إلى ٥ للرمز: منتهٍ (يُطلب جديد) · غير صحيح (يُعاد الإدخال) · استُنفدت المحاولات (يُطلب جديد).
+const LOGIN_ERRORS = {
+  1: 'بيانات الدخول غير صحيحة',
+  2: 'محاولات كثيرة خلال وقت قصير — انتظر دقيقة ثم أعد المحاولة',
+  3: 'انتهت صلاحية الرمز — اطلب رمزاً جديداً',
+  4: 'الرمز غير صحيح — تحقّق من الأرقام الستة وأعد الإدخال',
+  5: 'استُنفدت محاولات هذا الرمز — اطلب رمزاً جديداً',
+  6: 'هذا الحساب موقوف — راجع مدير النظام',
+};
 
+// البريد المعلَّق بين الخطوتين يعيش في كعكة قصيرة العمر لا في المسار: وضعُه في العنوان يُبقيه
+// في سجل المتصفح وفي ترويسة المُحيل — وبريد الموظف ليس شيئاً يُنثر في السجلات.
+const PENDING_EMAIL_COOKIE = 'sanad_otp_to';
+const pendingCookieOpts = { httpOnly: true, sameSite: 'lax', secure: config.env === 'production', maxAge: 15 * 60000, path: '/' };
+// كلمة المرور **مفتوحة افتراضياً** وتُغلق بـSANAD_AUTH_PASSWORD=0 — لا العكس. والسبب ترتيبٌ
+// لا تردّد: قناة البريد لم تُرسل رسالةً واحدة بعد (لا أسرار خادم بريد أصلاً)، فإغلاق كلمة المرور
+// اليوم يقفل المنصة على أهلها بباب لا يُفتح. تُغلق يوم يثبت وصول أول رمز حقيقي، لا قبله.
+const passwordLoginEnabled = () => process.env.SANAD_AUTH_PASSWORD !== '0';
+
+webRouter.get('/login', (req, res) => {
+  if (req.query.reset) { res.clearCookie(PENDING_EMAIL_COOKIE, { path: '/' }); return res.redirect('/login'); }
+  const pending = req.cookies?.[PENDING_EMAIL_COOKIE] || '';
+  res.send(P.loginPage({
+    err: LOGIN_ERRORS[req.query.e] || '',
+    step: pending ? 'code' : 'email',
+    email: pending,
+    passwordEnabled: passwordLoginEnabled(),
+    csrf: req.csrfToken,
+  }));
+});
+
+// طلب الرمز — الردّ واحدٌ دائماً: ننتقل إلى خطوة الرمز سواء كان للبريد حسابٌ أم لا. أي فرقٍ
+// هنا (رسالة، أو تحويلة، أو حتى تأخّر ملحوظ) يحوّل الشاشة إلى أداةٍ تكشف من يعمل في EVC.
+webRouter.post('/auth/otp/request-web', async (req, res, next) => {
+  try {
+    const email = normalizeEmail(req.body.email || req.cookies?.[PENDING_EMAIL_COOKIE] || '');
+    if (!email || !email.includes('@')) return res.redirect('/login');
+    await requestCode({ email, ip: req.ip });
+    res.cookie(PENDING_EMAIL_COOKIE, email, pendingCookieOpts);
+    res.redirect('/login');
+  } catch (e) { next(e); }
+});
+
+webRouter.post('/auth/otp/verify-web', async (req, res, next) => {
+  try {
+    const email = normalizeEmail(req.cookies?.[PENDING_EMAIL_COOKIE] || '');
+    if (!email) return res.redirect('/login');
+    const r = await verifyCode({ email, code: req.body.code, ip: req.ip, userAgent: req.get('user-agent') });
+    if (!r.ok) {
+      const code = { [OTP_REASON.EXPIRED]: 3, [OTP_REASON.INVALID]: 4, [OTP_REASON.ATTEMPTS]: 5, [OTP_REASON.INACTIVE]: 6 }[r.reason] || 4;
+      return res.redirect('/login?e=' + code);
+    }
+    res.clearCookie(PENDING_EMAIL_COOKIE, { path: '/' });
+    res.cookie(config.sessionCookie, r.sessionId, { httpOnly: true, sameSite: 'lax', secure: config.env === 'production', maxAge: config.sessionTtlHours * 3600000, path: '/' });
+    res.redirect('/app/' + landingFor(await resolveUser(r.sessionId)));
+  } catch (e) { next(e); }
+});
+
+// الدخول بكلمة المرور — يبقى خلف مفتاح حتى يثبت الرمز حياً في الاستعمال. إطفاءُ المسار
+// الوحيد للدخول قبل إثبات بديله هو كيف تُقفَل منصةٌ على أهلها.
 webRouter.post('/auth/login-web', async (req, res, next) => {
   try {
+    if (!passwordLoginEnabled()) return res.redirect('/login');
     const r = await login({ username: req.body.username, password: req.body.password, ip: req.ip, userAgent: req.get('user-agent') });
     if (!r.ok) return res.redirect('/login?e=1');
     res.cookie(config.sessionCookie, r.sessionId, { httpOnly: true, sameSite: 'lax', secure: config.env === 'production', maxAge: config.sessionTtlHours * 3600000, path: '/' });
