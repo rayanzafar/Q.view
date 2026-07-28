@@ -17,7 +17,7 @@ import { sarShort, esc, bar, statMini, noticeCard } from './_shared.js';
 import { MONTHS_AR, MONTHS_EN3, currentMonthIndex, monthLabelDual } from '../../core/i18n/time.js';
 import { countAr, dayWord } from '../../core/i18n/plural.js';
 // ── مركز العمل اليومي (صفحة المهام) — الوارد الخاص بها وحدها، مفصولاً كي لا يختلط بوارد المحفظة ──
-import { completionTrend, addDays, teamTasksAccess } from '../../modules/pmo/tasks.js';
+import { completionTrend, addDays, teamTasksAccess, teamWorkload } from '../../modules/pmo/tasks.js';
 import { listOpportunities } from '../../modules/crm/opportunities.js';
 import { nowDot } from '../../core/i18n/time.js';
 import { WEEKDAYS_AR, weekdayLabel, workKindLabel, deliverableStatusLabel, DELIVERABLE_NEXT } from '../i18n/glossary.js';
@@ -837,21 +837,58 @@ export async function tasksPage(user, opts = {}) {
     <div class="tk-list">${calNoDate.map(taskRow).join('')}</div></section>` : ''}`;
 
   // ── ٨) لوحة الفريق: «من يحتاج مساعدة» لا «من الأفضل» ──
-  const teamBoard = who === 'team' ? (board.length ? `<section class="wc-team">
+  // ── لوحة الفريق: الناس مرتَّبون بإداراتهم، وكل شخص بصورته الكاملة ──
+  // كانت البطاقة تعرض المهام وحدها، فيبدو من لا مهمة عليه فارغاً وهو يقود ثلاث فرص ومسكَّن
+  // على مشروعين. والتجميع بالإدارة لأن المدير يدير إدارةً — وسؤاله اليومي «ما حال هذه
+  // الإدارة» لا «من أكثر الناس تأخّراً في الشركة كلها».
+  // سنة التسكين تُشتقّ من اليوم نفسه — الصفحة لا تحمل مُرشِّح سنة، فلا مصدر آخر لها.
+  const wl = who === 'team' ? await teamWorkload(user, { year: Number(today.slice(0, 4)), todayDate: today }) : null;
+  const personCard = (p) => {
+    const t = p.tasks;
+    const chips = [
+      t.overdue ? `<span class="wp-chip bad">${countAr(t.overdue, { one: 'مهمة متأخرة', two: 'مهمتان متأخرتان', few: 'مهام متأخرة', many: 'مهمة متأخرة' })}</span>` : '',
+      t.blocked ? `<span class="wp-chip warn">${countAr(t.blocked, { one: 'مهمة مُعطَّلة', two: 'مهمتان مُعطَّلتان', few: 'مهام مُعطَّلة', many: 'مهمة مُعطَّلة' })}</span>` : '',
+      t.noStep ? `<span class="wp-chip mute">${countAr(t.noStep, { one: 'بلا خطوة تالية', two: 'بلا خطوة تالية', few: 'بلا خطوة تالية', many: 'بلا خطوة تالية' })}</span>` : '',
+    ].filter(Boolean).join('');
+    const initial = esc(String(p.name || '؟').trim().charAt(0));
+    const projLine = p.projects.length
+      ? `<div class="wp-line"><span class="wp-k">المشاريع</span><span class="wp-v">${p.projects.slice(0, 3).map((x) => `<a class="wp-tag" href="/app/project/${encodeURIComponent(x.id)}">${esc(String(x.name).slice(0, 22))}</a>`).join('')}${p.projects.length > 3 ? `<span class="wp-more tnum">+${p.projects.length - 3}</span>` : ''}</span></div>`
+      : '';
+    const oppLine = p.opportunities.open
+      ? `<div class="wp-line"><span class="wp-k">الفرص</span><span class="wp-v"><span class="tnum wp-num">${p.opportunities.open}</span>
+          ${canReadOpp ? `<span class="wp-money tnum">${fmtSar(p.opportunities.valueHalalas)}</span>` : ''}</span></div>`
+      : '';
+    return `<div class="wp${p.attention ? ' hot' : ''}${p.idle ? ' idle' : ''}">
+      <div class="wp-h">
+        <span class="wp-av" aria-hidden="true">${initial}</span>
+        <span class="wp-id"><a class="wp-n" href="${qp({ assignee: p.userId })}">${esc(p.name)}</a>
+          ${p.jobTitle ? `<span class="wp-job">${esc(p.jobTitle)}</span>` : ''}</span>
+        <a class="wp-count tnum" href="${qp({ assignee: p.userId })}" title="المهام المفتوحة">${t.open}</a>
+      </div>
+      ${chips ? `<div class="wp-chips">${chips}</div>` : ''}
+      ${projLine}${oppLine}
+      ${p.idle ? '<div class="wp-idle">لا مهام ولا فرص ولا تسكين — لا عمل مسجَّل باسمه</div>' : ''}
+      ${!p.linked ? '<div class="wp-idle">حسابه غير مربوط بسجل موظف — لا تظهر إدارته ولا تسكينه</div>' : ''}
+    </div>`;
+  };
+  const depBlock = (d) => `<section class="wd">
+    <div class="wd-h">
+      <span class="wd-n">${esc(d.name)}</span>
+      <span class="wd-m">${countAr(d.people.length, { one: 'شخص', two: 'شخصان', few: 'أشخاص', many: 'شخصاً' })}
+        · <span class="tnum">${d.tasks}</span> مهمة مفتوحة${d.opps ? ` · <span class="tnum">${d.opps}</span> فرصة` : ''}</span>
+      ${d.attention ? `<span class="wd-flag tnum">${d.attention} تحتاج نظرك</span>` : '<span class="wd-ok">لا شيء عالق</span>'}
+    </div>
+    <div class="wd-grid">${d.people.map(personCard).join('')}</div>
+  </section>`;
+
+  const teamBoard = who === 'team' ? (wl && wl.departments.length ? `
     <div class="tk-sec-head"><span class="tk-dot" style="background:var(--brand2)"></span>
-      <span class="tk-sec-title">من يحتاج مساعدة</span>
-      <span class="tk-sec-hint">الترتيب بالمتأخر ثم بحجم العمل — لا مقارنة بين الأشخاص</span></div>
-    <div class="wc-team-grid">${board.map((b) => `<a class="wc-person${b.overdue ? ' hot' : ''}" href="${qp({ assignee: b.userId || null })}">
-      <div class="wc-person-h"><span class="wc-person-n">${esc(b.name)}</span><span class="tk-sec-count tnum">${b.tasks.filter((t) => t.status !== 'DONE').length}</span></div>
-      <div class="wc-person-f">
-        ${b.overdue ? `<span style="color:var(--red);font-weight:700">${countAr(b.overdue, { one: 'مهمة متأخرة', two: 'مهمتان متأخرتان', few: 'مهام متأخرة', many: 'مهمة متأخرة' })}</span>` : ''}
-        ${b.blocked ? `<span style="color:#a16207">${countAr(b.blocked, { one: 'مهمة مُعطَّلة', two: 'مهمتان مُعطَّلتان', few: 'مهام مُعطَّلة', many: 'مهمة مُعطَّلة' })}</span>` : ''}
-        ${b.noStep ? `<span style="color:var(--muted)">${countAr(b.noStep, { one: 'بلا خطوة تالية', two: 'بلا خطوة تالية', few: 'بلا خطوة تالية', many: 'بلا خطوة تالية' })}</span>` : ''}
-        ${!b.overdue && !b.blocked && !b.noStep ? '<span style="color:var(--green);font-weight:700">لا شيء عالق</span>' : ''}
-      </div></a>`).join('')}</div></section>`
+      <span class="tk-sec-title">الفريق حسب الإدارة</span>
+      <span class="tk-sec-hint">الأكثر احتياجاً للنظر أولاً — لا مقارنة بين الأشخاص</span></div>
+    ${wl.departments.map(depBlock).join('')}`
     : `<div class="card"><div class="empty-state">${icon('team')}
-        <div class="t">لا مهام مفتوحة على فريقك</div>
-        <div class="s">ضمن نطاقك لا توجد مهمة مفتوحة على أحد الآن. أسنِد عملاً من شريط الإضافة أعلاه ليظهر هنا.</div></div></div>`) : '';
+        <div class="t">لا أحد ضمن نطاقك بعد</div>
+        <div class="s">لا حسابات نشطة في نطاقك الآن. تُضاف الحسابات وتُربط بالموظفين من شاشة المستخدمين والصلاحيات.</div></div></div>`) : '';
 
   // ── ٩) «الفرص اللي عليّ» — من خدمة الفرص نفسها، لا استعلام مواز ──
   const myOpps = who === 'me' && canReadOpp ? allOpps.filter((o) => o.owner_user_id === user.id) : [];
@@ -1057,6 +1094,51 @@ export async function tasksPage(user, opts = {}) {
     .wc-tray-h{font-weight:800;font-size:12.5px;color:var(--ink2)}
     .wc-tray-s{font-size:11px;color:var(--muted);margin:.15rem 0 .5rem}
     .wc-team{margin-bottom:1rem}
+    /* ── بطاقات الأشخاص المجمَّعة تنظيمياً ──
+       العنوان التنظيمي خفيف يفصل ولا يزاحم، والبطاقة تحمل الصورة الكاملة للشخص: مهامه
+       ومشاريعه وفرصه. الهدوء مقصود — لا لون إلا حيث يوجد ما يستدعي النظر.
+       تنبيه: هذه الأنماط تُشحَن داخل كل نسخة من الصفحة بما فيها نسخة الموظف، فلا يُكتب هنا
+       نصٌّ يطابق عنواناً محجوباً عنه — الاختبار يتحقّق من الحجب بمطابقة نصّية. */
+    .wd{margin-top:1rem}
+    .wd-h{display:flex;align-items:baseline;gap:.6rem;flex-wrap:wrap;padding:0 .15rem .45rem}
+    .wd-n{font-weight:800;font-size:13.5px;color:var(--ink2)}
+    .wd-m{font-size:var(--fs-micro);color:var(--muted)}
+    .wd-flag{margin-inline-start:auto;font-size:var(--fs-micro);font-weight:800;color:var(--red);
+      background:#fef2f2;border:1px solid #fecaca;border-radius:999px;padding:.1rem .5rem}
+    .wd-ok{margin-inline-start:auto;font-size:var(--fs-micro);font-weight:700;color:var(--green)}
+    .wd-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(268px,1fr));gap:.6rem}
+    .wp{background:#fff;border:1px solid var(--line);border-radius:14px;padding:.7rem .8rem;
+      display:flex;flex-direction:column;gap:.42rem;transition:border-color .15s,box-shadow .15s}
+    .wp:hover{border-color:#c9d3e8;box-shadow:0 6px 18px -12px rgba(16,32,70,.4)}
+    .wp.hot{border-color:#fecaca;background:linear-gradient(180deg,#fffafa,#fff 42%)}
+    .wp.idle{background:linear-gradient(180deg,#fcfcfd,#fff 42%)}
+    .wp-h{display:flex;align-items:center;gap:.5rem}
+    .wp-av{width:30px;height:30px;flex:none;border-radius:9px;display:grid;place-items:center;
+      font-weight:800;font-size:13px;color:#fff;background:var(--brand-grad)}
+    .wp-id{display:flex;flex-direction:column;min-width:0;flex:1}
+    .wp-n{font-weight:800;font-size:12.5px;color:var(--ink2);text-decoration:none;
+      overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .wp-n:hover{color:var(--brand)}
+    .wp-job{font-size:var(--fs-micro);color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .wp-count{flex:none;min-width:26px;text-align:center;font-weight:800;font-size:13px;color:var(--ink2);
+      background:var(--bg);border-radius:8px;padding:.15rem .35rem;text-decoration:none}
+    .wp-count:hover{background:#eef2fb;color:var(--brand)}
+    .wp-chips{display:flex;flex-wrap:wrap;gap:.28rem}
+    .wp-chip{font-size:var(--fs-micro);font-weight:700;border-radius:7px;padding:.08rem .4rem}
+    .wp-chip.bad{color:#b91c1c;background:#fef2f2}
+    .wp-chip.warn{color:#a16207;background:#fefce8}
+    .wp-chip.mute{color:var(--muted);background:var(--bg);font-weight:400}
+    .wp-line{display:flex;align-items:baseline;gap:.4rem;font-size:var(--fs-micro)}
+    .wp-k{flex:none;color:var(--faint);min-width:42px}
+    .wp-v{display:flex;flex-wrap:wrap;gap:.25rem;align-items:baseline;min-width:0}
+    .wp-tag{font-size:var(--fs-micro);color:var(--ink2);background:var(--bg);border-radius:6px;
+      padding:.06rem .38rem;text-decoration:none;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .wp-tag:hover{background:#eef2fb;color:var(--brand)}
+    .wp-more{color:var(--faint)}
+    .wp-num{font-weight:800;color:var(--ink2)}
+    .wp-money{color:var(--muted)}
+    .wp-idle{font-size:var(--fs-micro);color:var(--faint);line-height:1.7}
+    @media(max-width:640px){.wd-grid{grid-template-columns:1fr}}
     .wc-team-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:.6rem;margin-top:.45rem}
     .wc-person{display:block;background:#fff;border:1px solid var(--line);border-radius:12px;padding:.6rem .75rem;transition:border-color .15s,box-shadow .15s}
     .wc-person:hover{border-color:#c9d3e8;box-shadow:var(--sh-sm)}

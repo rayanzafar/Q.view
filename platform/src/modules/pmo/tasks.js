@@ -352,3 +352,135 @@ export async function updateTask(ctx, taskId, data) {
   await audit(ctx, { action: 'update', resource: 'task', resourceId: taskId, detail: { status: patch.status } });
   return await get('SELECT * FROM task WHERE id = ?', [taskId]);
 }
+
+// ───────────────────── حِمل الفريق: من يعمل على ماذا، مرتَّباً بإدارته ─────────────────────
+//
+// «مهام فريقي» كانت تجيب نصف السؤال: كم مهمة على كل شخص. والنصف الآخر — **ما المشاريع
+// والفرص التي يعمل عليها** — لم يكن في الشاشة إطلاقاً (كتلة الفرص محجوزة لعدسة «مهامي»
+// وحدها)، فيرى المدير موظفاً بلا مهام ويحسبه فارغاً وهو يقود ثلاث فرص.
+//
+// والتجميع بالإدارة لا بالقائمة المسطّحة: المدير يدير إدارةً، وأول سؤال في اجتماعه اليومي
+// «ما حال هذه الإدارة» لا «من أكثر الناس تأخّراً في الشركة».
+//
+// النطاق يُبنى داخل الاستعلام (لا تصفية بعد القراءة) بنفس قاعدة teamTasks حرفياً — مصدر
+// واحد للقرار فلا تتباعد الشاشتان.
+export async function teamWorkload(user, filters = {}) {
+  const { scope } = teamTasksAccess(user);
+  if (!scope) throw forbidden('عرض عمل الفريق يتطلب صلاحية قراءة مهام إدارة أو قطاع — اطلب تفعيلها من مدير النظام');
+  const year = Number(filters.year) || new Date().getUTCFullYear();
+  const today = String(filters.todayDate || nowIso().slice(0, 10)).slice(0, 10);
+
+  // الأشخاص أولاً: الحسابات النشطة داخل النطاق، ومعها إدارتها من سجل الموظف (الجسر
+  // app_user.employee_id ⟵ employee.department_id — الإدارة تسكن الموظف لا الحساب).
+  const pWhere = ['u.deleted_at IS NULL', 'u.active = 1'];
+  const pParams = [];
+  if (scope === 'department') {
+    if (!user.department_id) return { departments: [], scope };
+    pWhere.push('emp.department_id = ?');
+    pParams.push(user.department_id);
+  } else if (scope !== 'company') {
+    pWhere.push('u.sector_id = ?');
+    pParams.push(user.sector_id);
+  }
+  const people = await all(`SELECT u.id, u.name_ar, u.username, u.role_id, u.sector_id,
+       emp.id employee_id, emp.job_title, emp.department_id, d.name_ar department_name
+     FROM app_user u
+     LEFT JOIN employee emp ON emp.id = u.employee_id AND emp.deleted_at IS NULL
+     LEFT JOIN department d ON d.id = emp.department_id AND d.deleted_at IS NULL
+     WHERE ${pWhere.join(' AND ')}
+     ORDER BY d.name_ar, u.name_ar
+     LIMIT 400`, pParams);
+  if (!people.length) return { departments: [], scope };
+
+  const userIds = people.map((p) => p.id);
+  const empIds = people.map((p) => p.employee_id).filter(Boolean);
+  const marks = (n) => new Array(n).fill('?').join(',');
+
+  // مهام مفتوحة لكل شخص — عدٌّ في القاعدة لا تحميلُ صفوف ثم عدّها في الذاكرة.
+  const taskRows = await all(`SELECT t.assignee_user_id uid,
+       COUNT(*) total,
+       SUM(CASE WHEN t.due_date IS NOT NULL AND substr(t.due_date,1,10) < ? THEN 1 ELSE 0 END) overdue,
+       SUM(CASE WHEN t.status = 'BLOCKED' OR (t.blocked_reason IS NOT NULL AND t.blocked_reason <> '') THEN 1 ELSE 0 END) blocked,
+       SUM(CASE WHEN t.next_step IS NULL OR t.next_step = '' THEN 1 ELSE 0 END) no_step
+     FROM task t
+     WHERE t.deleted_at IS NULL AND t.status NOT IN ('DONE','CANCELLED')
+       AND t.assignee_user_id IN (${marks(userIds.length)})
+     GROUP BY t.assignee_user_id`, [today, ...userIds]);
+
+  // الفرص المفتوحة التي يملكها كل شخص — المرحلة تحدّد «مفتوحة» (لا فوز ولا خسارة).
+  const oppRows = await all(`SELECT o.owner_user_id uid, COUNT(*) total,
+       SUM(COALESCE(o.value_halalas,0)) value_halalas
+     FROM opportunity o
+     LEFT JOIN stage s ON s.id = o.stage_id
+     WHERE o.deleted_at IS NULL AND COALESCE(s.is_won,0) = 0 AND COALESCE(s.is_lost,0) = 0
+       AND o.owner_user_id IN (${marks(userIds.length)})
+     GROUP BY o.owner_user_id`, userIds);
+
+  // المشاريع المسكَّن عليها هذا العام — بالاسم لا بالعدد وحده: المدير يريد أن يعرف أين هو.
+  const projRows = empIds.length ? await all(`SELECT a.employee_id eid, p.id project_id, p.name_ar project_name
+     FROM allocation a
+     JOIN project p ON p.id = a.project_id AND p.deleted_at IS NULL
+     WHERE a.deleted_at IS NULL AND a.year = ? AND a.employee_id IN (${marks(empIds.length)})
+     GROUP BY a.employee_id, p.id, p.name_ar
+     ORDER BY p.name_ar`, [year, ...empIds]) : [];
+
+  const byUidT = new Map(taskRows.map((r) => [r.uid, r]));
+  const byUidO = new Map(oppRows.map((r) => [r.uid, r]));
+  const byEidP = new Map();
+  for (const r of projRows) {
+    if (!byEidP.has(r.eid)) byEidP.set(r.eid, []);
+    byEidP.get(r.eid).push({ id: r.project_id, name: r.project_name });
+  }
+
+  const NO_DEP = '—';
+  const groups = new Map();
+  for (const p of people) {
+    const t = byUidT.get(p.id) || {};
+    const o = byUidO.get(p.id) || {};
+    const projects = byEidP.get(p.employee_id) || [];
+    const person = {
+      userId: p.id,
+      name: p.name_ar || p.username,
+      jobTitle: p.job_title || null,
+      roleId: p.role_id,
+      linked: !!p.employee_id,      // حسابٌ غير مربوط بموظف لا تُعرف إدارته ولا تسكينه
+      tasks: {
+        open: Number(t.total || 0), overdue: Number(t.overdue || 0),
+        blocked: Number(t.blocked || 0), noStep: Number(t.no_step || 0),
+      },
+      opportunities: { open: Number(o.total || 0), valueHalalas: Number(o.value_halalas || 0) },
+      projects,
+    };
+    // «فارغ» ليس صفر مهام: قد يقود فرصاً أو يكون مسكَّناً على مشاريع. الخلوّ الحقيقي أن
+    // لا شيء من الثلاثة — وهذا ما يستحق نظر المدير، لا عدد المهام وحده.
+    person.idle = !person.tasks.open && !person.opportunities.open && !projects.length;
+    person.attention = person.tasks.overdue + person.tasks.blocked;
+
+    const key = p.department_id || NO_DEP;
+    if (!groups.has(key)) {
+      groups.set(key, {
+        id: p.department_id || null,
+        name: p.department_name || (p.department_id ? 'إدارة غير معروفة' : 'بلا إدارة'),
+        people: [], attention: 0, tasks: 0, opps: 0, idle: 0,
+      });
+    }
+    const g = groups.get(key);
+    g.people.push(person);
+    g.attention += person.attention;
+    g.tasks += person.tasks.open;
+    g.opps += person.opportunities.open;
+    if (person.idle) g.idle++;
+  }
+
+  // الأكثر احتياجاً للنظر أولاً — داخل الإدارة وبين الإدارات. و«بلا إدارة» في القاع دائماً
+  // لأنها ليست إدارةً بل نقصٌ في الإسناد.
+  const departments = [...groups.values()].sort((a, b) => {
+    if (!a.id !== !b.id) return a.id ? -1 : 1;
+    return (b.attention - a.attention) || (b.tasks - a.tasks) || String(a.name).localeCompare(String(b.name), 'ar');
+  });
+  for (const d of departments) {
+    d.people.sort((a, b) => (b.attention - a.attention) || (b.tasks.open - a.tasks.open)
+      || String(a.name).localeCompare(String(b.name), 'ar'));
+  }
+  return { departments, scope, year };
+}
