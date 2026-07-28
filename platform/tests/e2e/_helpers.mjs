@@ -29,11 +29,17 @@ export const realConsoleErrors = (arr) => arr.filter((t) => !/Failed to load res
 const RETRY_WAIT_MS = 6500;                     // نافذة تجديد رمز واحد + هامش
 export async function login(page, base, username, attempt = 0) {
   await page.goto(base + '/login', { waitUntil: 'domcontentloaded' });
+  // صفحة الدخول صارت خطوتين: البريد ثم الرمز، وكلمة المرور بديلٌ **مطويّ** داخل <details>.
+  // الحقل موجود في الصفحة لكنه غير مرئي، وplaywright ينتظر الظهور فينتهي وقته — وهو ما أسقط
+  // الخمسة جميعاً. نفتح الطيّة أولاً، ونخصّص زر الإرسال بنموذجه لأن الزر الأول في الصفحة صار
+  // زرَّ طلب الرمز لا زرَّ كلمة المرور.
+  const disclosure = page.locator('.alt2 summary');
+  if (await disclosure.count()) await disclosure.click();
   await page.fill('[name=username]', username);
   await page.fill('[name=password]', DEMO_PW);
   const [nav] = await Promise.all([
     page.waitForURL('**/app/**', { timeout: 15000 }).then(() => true, () => false),
-    page.click('button[type=submit]'),
+    page.click('form[action="/auth/login-web"] button[type=submit]'),
   ]);
   if (nav) return;
   const throttled = await page.evaluate(() => /محاولات كثيرة/.test(document.body.innerText || ''))

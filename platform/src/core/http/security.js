@@ -77,3 +77,13 @@ export const apiLimiter = bucketLimiter({ capacity: 300, refillPerSec: 20, keyFn
 const otpKeyEmail = (req) => `O:${String(req.body?.email || req.cookies?.sanad_otp_to || '').trim().toLowerCase() || req.ip}`;
 export const otpEmailLimiter = bucketLimiter({ capacity: 5, refillPerSec: 1 / 60, keyFn: otpKeyEmail, redirectTo: '/login?e=2' });
 export const otpIpLimiter = bucketLimiter({ capacity: 15, refillPerSec: 1 / 20, keyFn: (req) => `OI:${req.ip}`, redirectTo: '/login?e=2' });
+
+// التحقق من الرمز: دلوٌ خاص به لا `loginLimiter`. سببان:
+//  · تحويلة loginLimiter مشروطة بأن يكون المسار /auth/login-web؛ فعلى أي مسار آخر تُرجع null
+//    فيسقط الطلب إلى ٤٢٩ بحمولة خام — وهو بالضبط العيب الذي يحذّر منه تعليق ذلك الدلو: متصفّحٌ
+//    ينتظر صفحةً فيرى نصاً تقنياً بين أقواس معقوفة.
+//  · وخلطُ دلوَي كلمة المرور والرمز يجعل محاولات إحداهما تستنفد الأخرى، فيُمنع من يدخل بالرمز
+//    بسبب محاولات كلمة مرورٍ لا يستعملها أصلاً.
+// والحدّ هنا طبقةٌ ثانية فوق سقف المحاولات الخمس المحفور في الرمز نفسه (ذاك يحرق الرمز، وهذا
+// يبطّئ من يجرّب رموزاً متتالية) — فيسعُه أن يكون أوسع دون أن يُضعِف الحماية.
+export const otpVerifyLimiter = bucketLimiter({ capacity: 20, refillPerSec: 1 / 3, keyFn: (req) => `OV:${req.ip}`, redirectTo: '/login?e=2' });

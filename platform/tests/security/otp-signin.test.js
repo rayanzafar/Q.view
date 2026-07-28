@@ -148,6 +148,27 @@ test('رمز الدعوة يفعّل الحساب الموقوف — وهو ال
   assert.equal(u.last_login_method, 'otp');
 });
 
+// نموذجُ الدخول صفحةٌ لا واجهةَ برمجية: من يرسله متصفّحٌ ينتظر صفحة. وربطُ التحقق بدلو كلمة
+// المرور كان يُسقطه إلى ٤٢٩ بحمولة خام لأن تحويلة ذاك الدلو مشروطة بمساره — فيرى الموظف نصاً
+// تقنياً بين أقواس معقوفة مكان صفحة الدخول، وهو نفس العيب المُصلَح سابقاً في مسار كلمة المرور.
+test('تجاوز حدّ التحقق يُعيد إلى صفحة الدخول لا إلى حمولة خام', async () => {
+  const { otpVerifyLimiter } = await import('../../src/core/http/security.js');
+  const seen = { redirect: null, json: null, status: null };
+  const res = {
+    setHeader() {}, redirect(to) { seen.redirect = to; },
+    status(c) { seen.status = c; return this; }, json(b) { seen.json = b; },
+  };
+  // نستنزف الدلو ثم نطلب مرة أخرى
+  let passed = 0;
+  for (let i = 0; i < 40; i++) {
+    await new Promise((done) => otpVerifyLimiter({ ip: '9.9.9.9', body: {}, cookies: {} }, res, () => { passed++; done(); }) || done());
+    if (seen.redirect || seen.json) break;
+  }
+  assert.ok(passed > 0, 'الدلو منع الطلب الأول — الحدّ أضيق مما ينبغي');
+  assert.equal(seen.json, null, 'رُدَّت حمولة خام على نموذج صفحة');
+  assert.equal(seen.redirect, '/login?e=2', 'لم يُعَد المتصفّح إلى صفحة الدخول');
+});
+
 test('تنظيف الرموز المنتهية يمسح القديم ويُبقي الحيّ', async () => {
   await db.insert('login_code', {
     id: ids.id('lc'), user_id: USER, code_hash: hashPassword('999999'), purpose: 'signin',

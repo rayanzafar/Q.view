@@ -9,7 +9,7 @@ import { seedRbac } from '../scripts/seed-rbac.js';
 import { stopScheduler } from './core/jobs/scheduler.js';
 import { attachContext } from './core/http/context.js';
 import { csrf } from './core/http/csrf.js';
-import { securityHeaders, loginLimiter, apiLimiter, otpEmailLimiter, otpIpLimiter } from './core/http/security.js';
+import { securityHeaders, loginLimiter, apiLimiter, otpEmailLimiter, otpIpLimiter, otpVerifyLimiter } from './core/http/security.js';
 import { errorHandler } from './core/http/errors.js';
 import { authRouter } from './modules/auth.routes.js';
 import { apiRouter } from './modules/api.routes.js';
@@ -41,10 +41,10 @@ export async function createApp() {
   app.use(attachContext());
   app.use('/auth/login', loginLimiter);
   app.use('/auth/login-web', loginLimiter);
-  // طلب الرمز: حدٌّ بالبريد وآخر بالعنوان معاً. والتحقق يمرّ على حدّ الدخول العام نفسه فوق
-  // سقف المحاولات الخمس المحفور في الرمز ذاته — طبقتان لأن الأولى في الذاكرة وتذهب بإعادة التشغيل.
+  // طلب الرمز: حدٌّ بالبريد وآخر بالعنوان معاً. والتحقق بدلوٍ خاص به لا بدلو كلمة المرور —
+  // تحويلة ذاك مشروطة بمساره، فتسقط هنا إلى حمولة خام في وجه متصفّح ينتظر صفحة.
   app.use('/auth/otp/request-web', otpEmailLimiter, otpIpLimiter);
-  app.use('/auth/otp/verify-web', loginLimiter);
+  app.use('/auth/otp/verify-web', otpVerifyLimiter);
   app.use('/api', apiLimiter);
 
   app.get('/health', (req, res) => res.json({ ok: true, ts: new Date().toISOString() }));
