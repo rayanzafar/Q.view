@@ -37,38 +37,77 @@ export async function approvalsPage(user) {
   return layout({ user, active: 'approvals', title: 'الاعتمادات', body });
 }
 
+// شاشة إدارة الهوية. كانت جدول قراءةٍ بلا زرّ واحد بينما يقول دليل التشغيل «أنشئ الحسابات من
+// شاشة إدارة المستخدمين» — فكان على من يريد إضافة موظف أن يفتح سكربتاً ويشغّله على الخادم.
 export async function usersPage(user) {
   // اسم القطاع بالعربية بدل رمزه المخزَّن (كان يظهر SOLUTIONS/CONSULTING للمستخدم).
   // القطاع المحذوف يبقى اسمه ظاهراً للسجلات التاريخية — لا فلترة deleted_at على وصلة التسمية.
-  const rows = await all(`SELECT u.*, r.name_ar role_name, s.name_ar sector_name FROM app_user u
+  const rows = await all(`SELECT u.*, r.name_ar role_name, s.name_ar sector_name, e.name_ar employee_name
+    FROM app_user u
     LEFT JOIN role r ON r.id = u.role_id
     LEFT JOIN sector s ON s.id = u.sector_id
-    WHERE u.deleted_at IS NULL ORDER BY u.role_id, u.name_ar LIMIT 300`);
-  const list = rows.map((u) => `<tr class="border-b border-line">
-    <td class="py-2 px-3 text-[13px]">${esc(u.name_ar || '')}<div class="text-[11px] text-muted">${esc(u.username || '— بلا دخول')}</div></td>
-    <td class="px-3">${pill(esc(u.role_name || (ROLE_LABELS[u.role_id] || {}).ar || 'دور غير معروف'), 'blue')}</td>
+    LEFT JOIN employee e ON e.id = u.employee_id
+    WHERE u.deleted_at IS NULL
+    ORDER BY CASE WHEN u.active = 0 AND u.last_login_at IS NULL THEN 0 WHEN u.active = 1 THEN 1 ELSE 2 END,
+             u.role_id, u.name_ar LIMIT 300`);
+  const sectors = await all('SELECT id, name_ar FROM sector WHERE deleted_at IS NULL ORDER BY name_ar');
+
+  // الدعوة المعلّقة تتصدّر الترتيب: هي أهم صفٍّ في الشاشة — شخصٌ يُفترض أنه يعمل على المنصة
+  // وهو خارجها، ولا شيء آخر ينبّه إليه. وترتيبُها في القاع بين ثلاثمئة صف يخفيها تماماً.
+  const roleAr = (u) => u.role_name || (ROLE_LABELS[u.role_id] || {}).ar || 'دور غير معروف';
+  const list = rows.map((u) => {
+    const isSelf = u.id === user.id;
+    const pending = !u.active && !u.last_login_at;
+    return `<tr class="border-b border-line" data-uid="${esc(u.id)}">
+    <td class="py-2 px-3 text-[13px]">${esc(u.name_ar || '')}
+      <div class="text-[11px] text-muted" dir="ltr" style="text-align:right">${esc(u.email || u.username || '— بلا بريد')}</div></td>
+    <td class="px-3">${pill(esc(roleAr(u)), 'blue')}</td>
     <td class="px-3 text-[12px]">${esc(u.sector_name || (u.sector_id ? 'قطاع غير معروف' : '—'))}</td>
-    <td class="px-3">${u.active ? pill('نشط', 'green') : pill('معطّل', 'red')}</td>
-    <td class="px-3 text-[11px] text-muted">${u.last_login_at ? u.last_login_at.slice(0, 10) : 'لم يدخل'}</td></tr>`).join('');
+    <td class="px-3">${pending ? pill('دعوة معلّقة', 'amber') : u.active ? pill('نشط', 'green') : pill('معطّل', 'red')}</td>
+    <td class="px-3 text-[11px] text-muted tnum" style="white-space:nowrap">${u.last_login_at ? u.last_login_at.slice(0, 10) : 'لم يدخل بعد'}</td>
+    <td class="px-3" style="white-space:nowrap">
+      <button class="btn btn-sm" data-action="idn-edit" data-id="${esc(u.id)}">تعديل</button>
+      <button class="btn btn-sm" data-action="idn-logins" data-id="${esc(u.id)}" title="سجل دخول هذا الحساب">السجل</button>
+      ${u.email ? `<button class="btn btn-sm" data-action="idn-resend" data-id="${esc(u.id)}" title="${pending ? 'إعادة إرسال رمز التفعيل' : 'إرسال رمز دخول جديد'}">${pending ? 'إعادة الدعوة' : 'إرسال رمز'}</button>` : ''}
+      ${isSelf
+        ? '<span class="text-[11px] text-muted" style="padding:0 .4rem">حسابك</span>'
+        : `<button class="btn btn-sm" data-action="idn-toggle" data-id="${esc(u.id)}" data-to="${u.active ? '0' : '1'}"
+             style="color:${u.active ? '#b91c1c' : '#047857'}">${u.active ? 'تعطيل' : 'تفعيل'}</button>`}
+    </td></tr>`;
+  }).join('');
+
   const activeN = rows.filter((u) => u.active).length;
   const neverIn = rows.filter((u) => !u.last_login_at).length;
-  const byRole = {}; for (const u of rows) { const r = u.role_name || (ROLE_LABELS[u.role_id] || {}).ar || 'دور غير معروف'; byRole[r] = (byRole[r] || 0) + 1; }
+  const pendingN = rows.filter((u) => !u.active && !u.last_login_at).length;
+  const byRole = {}; for (const u of rows) { const r = roleAr(u); byRole[r] = (byRole[r] || 0) + 1; }
   const roleItems = Object.entries(byRole).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([r, n], i) => ({ label: esc(r), value: n, color: ['var(--brand)', 'var(--brand2)', '#0891b2', '#059669', '#d97706', '#db2777'][i % 6] }));
   const strip = `<div style="display:flex;gap:.7rem;flex-wrap:wrap;margin-bottom:.9rem">
     ${statMini('إجمالي المستخدمين', rows.length, `${Object.keys(byRole).length} دور`)}
     ${statMini('نشط', activeN, 'حسابات مفعّلة', 'good')}
-    ${statMini('معطّل', rows.length - activeN, 'حسابات موقوفة', rows.length - activeN ? 'bad' : '')}
+    ${statMini('دعوة معلّقة', pendingN, 'أُنشئت ولم تُفعَّل', pendingN ? 'warn' : '')}
     ${statMini('لم يسجّل دخولاً', neverIn, 'حسابات خاملة', neverIn ? 'warn' : '')}</div>`;
+
   const body = `${strip}
     <div style="display:grid;grid-template-columns:2fr 1fr;gap:.9rem">
-      ${card(`<div class="p-4 border-b border-line font-bold text-sm">المستخدمون والصلاحيات (${rows.length})</div>
-      <div style="max-height:520px;overflow-y:auto"><table class="w-full"><thead><tr class="text-[11px] text-muted text-right" style="position:sticky;top:0;background:var(--surface)">
+      ${card(`<div class="p-4 border-b border-line" style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap">
+        <div class="font-bold text-sm" style="flex:1">حسابات الدخول (${rows.length})</div>
+        <input class="input" id="idn-q" placeholder="ابحث بالاسم أو البريد" style="max-width:220px;font-size:12px">
+        <button class="btn btn-primary btn-sm" data-action="idn-invite">دعوة موظف</button>
+      </div>
+      <div style="max-height:520px;overflow-x:auto;overflow-y:auto"><table class="w-full"><thead><tr class="text-[11px] text-muted text-right" style="position:sticky;top:0;background:var(--surface)">
         <th class="py-2 px-3 font-medium">المستخدم</th><th class="px-3 font-medium">الدور</th><th class="px-3 font-medium">القطاع</th>
-        <th class="px-3 font-medium">الحالة</th><th class="px-3 font-medium">آخر دخول</th></tr></thead><tbody>${list}</tbody></table></div>`)}
+        <th class="px-3 font-medium">الحالة</th><th class="px-3 font-medium">آخر دخول</th><th class="px-3 font-medium">الإجراءات</th></tr></thead>
+        <tbody id="idn-rows">${list}</tbody></table></div>`)}
       ${card(`<div class="p-4 border-b border-line font-bold text-sm">التوزيع حسب الدور</div><div style="padding:.7rem 1rem">${hbars(roleItems, { fmt: (v) => v + '' })}</div>`)}
     </div>
-    <div class="mt-3 text-[11px] text-muted">التفويض يُنفَّذ على الخادم. تعطيل حسابك أو خفض دورك بنفسك ممنوع خادمياً. الرواتب وعناوين IP محجوبة عن غير المصرّح لهم.</div>`;
-  return layout({ user, active: 'users', title: 'المستخدمون والصلاحيات', body });
+    <div class="mt-3 text-[11px] text-muted">التفويض يُنفَّذ على الخادم. تعطيل حسابك أو خفض دورك بنفسك ممنوع خادمياً، ولا يبقى النظام بلا مدير نظام نشط. والتعطيل يُنهي جلسات صاحبه فوراً.</div>
+    <script>window.__SANAD=Object.assign(window.__SANAD||{},{
+      idnRoles:${JSON.stringify(Object.entries(ROLE_LABELS).map(([id, l]) => ({ id, ar: l.ar }))).replace(/</g, '\\u003c')},
+      idnSectors:${JSON.stringify(sectors.map((s) => ({ id: s.id, ar: s.name_ar }))).replace(/</g, '\\u003c')},
+      idnUsers:${JSON.stringify(Object.fromEntries(rows.map((u) => [u.id, {
+        id: u.id, name_ar: u.name_ar, email: u.email, role_id: u.role_id, sector_id: u.sector_id, scope: u.scope, active: !!u.active,
+      }]))).replace(/</g, '\\u003c')}});</script>`;
+  return layout({ user, active: 'users', title: 'المستخدمون والصلاحيات', body, scripts: ['/static/pages/identity.js'] });
 }
 
 export async function auditPage(user) {

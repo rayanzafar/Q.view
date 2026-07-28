@@ -26,6 +26,7 @@ import { guideRouter } from './guide/guide.routes.js';
 import { searchRouter } from './search/search.routes.js';
 import { reportsRouter } from './reports.routes.js';
 import { moneyRouter } from './finance/money.routes.js';
+import { identityRouter } from './identity/identity.routes.js';
 
 export const apiRouter = Router();
 apiRouter.use(requireAuth());
@@ -42,6 +43,7 @@ apiRouter.use(guideRouter);
 apiRouter.use(searchRouter);
 apiRouter.use(reportsRouter);
 apiRouter.use(moneyRouter);
+apiRouter.use(identityRouter);
 const h = (fn) => async (req, res, next) => { try { const r = await fn(req, res); if (r !== undefined) res.json(r); } catch (e) { next(e); } };
 
 // ── Opportunities / CRM ──

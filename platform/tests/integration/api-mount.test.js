@@ -72,6 +72,7 @@ const MOUNTED = [
   ['GET', '/api/projects/P_MOUNT/governance', 'حوكمة المشروع'],
   ['GET', '/api/clients', 'العملاء'],
   ['GET', '/api/org/health', 'صحة الهيكل'],
+  ['GET', '/api/identity/users', 'حسابات الدخول'],
 ];
 
 for (const [method, path, label] of MOUNTED) {
