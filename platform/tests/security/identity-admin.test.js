@@ -112,6 +112,17 @@ test('آخر مدير نظام نشط لا يُعطَّل ولا يُخفَّض 
   assert.ok(other && other2);
 });
 
+// بريدان مختلفان بنفس الجزء قبل @ يعطيان اسم المستخدم نفسه، وعمودُه فريد — فيرتطم القيد
+// ويظهر خطأ قاعدة بيانات خام مكان رسالة عربية. الرقم اللاحق يحسمه بلا أن يرى المشرف شيئاً.
+test('بريدان يشتركان في الجزء قبل @ لا يُسقطان الدعوة بخطأ خام', async () => {
+  const a = await identity.inviteUser(ctxOf(adminUser), { email: 'sameer@evc.sa', name_ar: 'سمير الأول', role_id: 'employee' });
+  const b = await identity.inviteUser(ctxOf(adminUser), { email: 'sameer@partner.example', name_ar: 'سمير الثاني', role_id: 'employee' });
+  const ua = await db.get('SELECT username FROM app_user WHERE id = ?', [a.id]);
+  const ub = await db.get('SELECT username FROM app_user WHERE id = ?', [b.id]);
+  assert.equal(ua.username, 'sameer');
+  assert.notEqual(ub.username, ua.username, 'اسمان متطابقان — القيد الفريد كان سيرتطم');
+});
+
 test('الدور والنطاق من قائمة معلومة — لا قيمة حرّة تُكتب في الحساب', async () => {
   await assert.rejects(() => identity.inviteUser(ctxOf(adminUser), {
     email: 'bad.role@evc.sa', name_ar: 'س', role_id: 'superuser',

@@ -81,6 +81,19 @@ export async function userLoginHistory(user, userId, { limit = 25 } = {}) {
   return rows.map((r) => ({ ...r, ip: maySeeIp ? r.ip : null }));
 }
 
+// اسم المستخدم يُشتقّ من البريد وعمودُه فريد. `ahmed@evc.sa` و`ahmed@شركة-أخرى` يعطيان
+// «ahmed» نفسه، فيرتطم القيد ويظهر للمشرف خطأُ قاعدة بيانات خام مكان رسالة عربية. الرقم
+// اللاحق يحسم التصادم بصمت — والاسم هنا معرّفٌ داخلي لا شيء يعرضه للموظف.
+async function freeUsername(email) {
+  const base = (email.split('@')[0] || 'user').slice(0, 55) || 'user';
+  for (let i = 0; i < 50; i++) {
+    const candidate = i === 0 ? base : `${base}${i + 1}`;
+    const taken = await get('SELECT id FROM app_user WHERE lower(username) = lower(?) LIMIT 1', [candidate]);
+    if (!taken) return candidate;
+  }
+  throw badRequest('تعذّر اشتقاق اسم مستخدم من هذا البريد — جرّب بريداً آخر');
+}
+
 // ─────────────────────────────── دعوة ───────────────────────────────
 
 // تُنشئ حساباً معطّلاً بلا كلمة مرور، وترسل رمز تفعيل. أول دخول بالرمز يفعّله — فلا تمرّ
@@ -110,10 +123,11 @@ export async function inviteUser(ctx, data = {}) {
   }
 
   const uid = id('usr');
+  const username = await freeUsername(email);
   await tx(async () => {
     await insert('app_user', {
       id: uid,
-      username: email.split('@')[0].slice(0, 60),
+      username,
       email,
       name_ar: nameAr,
       role_id: roleId,
