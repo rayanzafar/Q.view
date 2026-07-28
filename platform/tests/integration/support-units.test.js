@@ -357,7 +357,13 @@ test('رئيس تطوير الأعمال ينشئ فرصة ويعدّلها في
   assert.equal(updated.title_ar, 'فرصة النقل — الهيئة الملكية');
   const a2 = await auditRows('opportunity', created.id);
   assert.equal(a2.length, 2);
-  assert.equal(a2[1].action, 'update');
+  // الترتيب هنا `at, id`: و`at` بدقّة الملّي ثانية و`id` عشوائي. فحين يقع الإنشاء والتعديل
+  // في الملّي ثانية نفسها — وهو ما يحدث على آلة سريعة — يصير ترتيب الصفّين قرعة، فيسقط
+  // الاختبار بلا عيب في المنتج. الخاصية المقصودة ليست موضع الصف بل **أن الحدثين سُجِّلا
+  // كلاهما بفاعلهما**، وهذا ما يُفحص الآن.
+  const actions = a2.map((r) => r.action).sort();
+  assert.deepEqual(actions, ['create', 'update'], 'الإنشاء والتعديل كلاهما مُدقَّق');
+  for (const r of a2) assert.equal(r.role_id, 'bd_head', 'كل سطر يحمل فاعله');
 });
 
 test('رئيس تطوير الأعمال لا يرى راتباً بأي طريق — الختم لا يُفتح لدور جديد', async () => {
