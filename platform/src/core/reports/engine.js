@@ -7,7 +7,7 @@ import { pipelineSummary } from '../../modules/crm/opportunities.js';
 import { redact, canSeeSensitive } from '../rbac/index.js';
 import { DELIVERY_SECTOR_SQL } from '../org/kind.js';
 import { TEMPLATES } from '../mail/templates.js';
-import { sendMail } from '../mail/transport.js';
+import { sendMail, DELIVERY } from '../mail/transport.js';
 import { resolveUser } from '../http/context.js';
 import { audit } from '../audit/index.js';
 import { badRequest, forbidden, notFound } from '../http/errors.js';
@@ -279,22 +279,28 @@ export async function deleteSchedule(ctx, scheduleId) {
 // Process the queue (called by the scheduler job or manually). Retries with backoff cap.
 export async function processQueue(limit = 20) {
   const rows = await all("SELECT * FROM email_queue WHERE status IN ('QUEUED','FAILED') AND attempts < 4 ORDER BY created_at LIMIT ?", [limit]);
-  let sent = 0, failed = 0;
+  let sent = 0, failed = 0, skipped = 0;
   for (const q of rows) {
     await run("UPDATE email_queue SET status='SENDING', attempts = attempts + 1 WHERE id = ?", [q.id]);
     try {
       const to = JSON.parse(q.to_json || '[]');
-      await sendMail({ to, cc: JSON.parse(q.cc_json || '[]'), subject: q.subject, html: q.html });
-      await run("UPDATE email_queue SET status='SENT', sent_at=? WHERE id=?", [nowIso(), q.id]);
-      await insert('email_log', { id: id('el'), queue_id: q.id, event: 'sent', detail: null, at: nowIso() });
-      sent++;
+      const res = await sendMail({ to, cc: JSON.parse(q.cc_json || '[]'), subject: q.subject, html: q.html });
+      // الحالة تصف ما جرى فعلاً: غادرت، أم عُوينت على القرص، أم حجبها حارس المستقبِلين.
+      const status = res.delivery === DELIVERY.SENT ? 'SENT'
+        : res.delivery === DELIVERY.BLOCKED ? 'BLOCKED' : 'PREVIEWED';
+      const detail = res.delivery === DELIVERY.BLOCKED
+        ? `${res.reason} — ${(res.blocked || []).length} مستقبِلاً`
+        : (res.blocked || []).length ? `حُجب ${res.blocked.length} مستقبِلاً خارج قائمة السماح` : null;
+      await run('UPDATE email_queue SET status=?, sent_at=? WHERE id=?', [status, nowIso(), q.id]);
+      await insert('email_log', { id: id('el'), queue_id: q.id, event: status.toLowerCase(), detail, at: nowIso() });
+      if (status === 'SENT') sent++; else skipped++;
     } catch (e) {
       await run("UPDATE email_queue SET status='FAILED', last_error=? WHERE id=?", [String(e.message).slice(0, 300), q.id]);
       await insert('email_log', { id: id('el'), queue_id: q.id, event: 'failed', detail: String(e.message).slice(0, 300), at: nowIso() });
       failed++;
     }
   }
-  return { sent, failed, processed: rows.length };
+  return { sent, failed, skipped, processed: rows.length };
 }
 
 // helpers

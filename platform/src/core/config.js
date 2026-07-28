@@ -27,6 +27,11 @@ export const config = {
   lockMinutes: 15,
   // Mail transport: 'preview' (dev, writes .html to data/outbox) | 'smtp' (prod)
   mailTransport: process.env.MAIL_TRANSPORT || 'preview',
+  // حارس المستقبِلين: قائمة عناوين مفصولة بفاصلة يُسمح بالإرسال إليها وحدها. فارغةٌ ⇒ يُمنع كل شيء.
+  // ولا يُرفع الحارس إلا بإعلانٍ صريح — كي لا تُرسَل رسائل تجربة إلى موظفين حقيقيين بالخطأ.
+  mailAllowlist: String(process.env.SANAD_MAIL_ALLOWLIST || '')
+    .split(',').map((a) => a.trim().toLowerCase()).filter(Boolean),
+  mailUnrestricted: process.env.SANAD_MAIL_UNRESTRICTED === '1',
   smtp: {
     host: process.env.SMTP_HOST || null,
     port: Number(process.env.SMTP_PORT || 587),
@@ -59,6 +64,11 @@ export function assertProdSecrets() {
       if (!config.smtp.host) missing.push('SMTP_HOST');
       if (!config.smtp.user) missing.push('SMTP_USER');
       if (!config.smtp.pass) missing.push('SMTP_PASS');
+      // نطاق الإرسال قرارٌ يُعلَن، لا حالةٌ تُورَث: إمّا قائمة سماح وإمّا إطلاقٌ صريح.
+      // بلا أحدهما يتوقف الإقلاع بدل أن يعمل صامتاً وهو يحجب كل رسالة.
+      if (!config.mailUnrestricted && !config.mailAllowlist.length) {
+        missing.push('SANAD_MAIL_ALLOWLIST (أو SANAD_MAIL_UNRESTRICTED=1 للإطلاق الكامل)');
+      }
     }
     if (missing.length) throw new Error('Missing required production secrets: ' + missing.join(', '));
   }

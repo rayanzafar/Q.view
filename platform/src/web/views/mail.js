@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 import { layout, card, pill } from '../layout.js';
 import { all } from '../../core/db/index.js';
 import { config, ROOT } from '../../core/config.js';
-import { mailEventLabel, mailStatusLabel } from '../i18n/glossary.js';
+import { mailEventLabel, mailStatusLabel, mailStatusTone } from '../i18n/glossary.js';
 import { esc } from './_shared.js';
 
 export async function mailPage(user, opts = {}) {
@@ -23,12 +23,23 @@ export async function mailPage(user, opts = {}) {
       LEFT JOIN email_queue q ON q.id = l.queue_id ORDER BY l.at DESC LIMIT 30`);
   const smtpOn = config.mailTransport === 'smtp';
 
+  // «مفعّل» وحدها لا تكفي — المُشغّل يحتاج أن يعرف إلى مَن يصل البريد فعلاً. قائمةُ سماحٍ
+  // مضبوطة تعني أن رسائل الآخرين تُحجب بصمت، وإخفاء ذلك يجعل الشاشة تَعِد بما لا يحدث.
+  const allow = config.mailAllowlist;
+  const openToAll = config.mailUnrestricted;
+  const scopeText = openToAll
+    ? 'الإرسال مفتوح لكل العناوين — هذه إعدادات التشغيل الحقيقي.'
+    : allow.length
+      ? `الإرسال مقصورٌ على ${allow.length} عنواناً مسموحاً به؛ ما عداها يُحجب ويُسجَّل «حُجبت».`
+      : 'لا يوجد عنوان مسموح به بعد — كل رسالة ستُحجب. أضِف عناوين التجربة أولاً.';
+  const scopeTone = openToAll ? 'green' : allow.length ? 'blue' : 'red';
   const chan = card(`<div style="padding:.85rem 1rem;display:flex;align-items:center;gap:.7rem;flex-wrap:wrap">
     <div style="font-weight:800;font-size:13.5px">قناة الإرسال</div>
     ${smtpOn ? pill('بريد حقيقي مفعّل', 'green') : pill('وضع المعاينة — لا يُرسل بريد حقيقي', 'amber')}
+    ${smtpOn ? pill(openToAll ? 'مفتوح لكل العناوين' : allow.length ? `مقصور على ${allow.length} عنواناً` : 'لا عنوان مسموحاً', scopeTone) : ''}
     <span style="font-size:var(--fs-meta);color:var(--muted)">${smtpOn
-      ? 'الرسائل تُرسل عبر خادم البريد المهيأ.'
-      : 'كل رسالة تُحفظ هنا للمعاينة بدل إرسالها. تفعيل الإرسال الحقيقي يحتاج بيانات خادم البريد من مزوّد النطاق (يُطلب من المالك).'}</span>
+      ? esc(scopeText)
+      : 'كل رسالة تُحفظ هنا للمعاينة بدل إرسالها، وتُسجَّل «عُوينت ولم تُرسل» لا «أُرسلت». تفعيل الإرسال الحقيقي يحتاج بيانات خادم البريد من مزوّد النطاق (يُطلب من المالك).'}</span>
   </div>`);
 
   const fileRows = files.map(({ f, t }) => {
@@ -45,14 +56,14 @@ export async function mailPage(user, opts = {}) {
     return `<tr style="border-bottom:1px solid var(--line)">
       <td style="padding:.4rem .6rem;font-size:12px;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(q.subject || '')}</td>
       <td style="padding:.4rem .6rem;font-size:11px;color:var(--muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(to)}</td>
-      <td style="padding:.4rem .6rem;text-align:center">${pill(esc(mailStatusLabel(q.status)), q.status === 'SENT' ? 'green' : q.status === 'FAILED' ? 'red' : 'blue')}</td>
+      <td style="padding:.4rem .6rem;text-align:center">${pill(esc(mailStatusLabel(q.status)), mailStatusTone(q.status))}</td>
       <td style="padding:.4rem .6rem;text-align:center;font-size:11px;color:var(--muted)" class="tnum">${String(q.created_at || '').slice(0, 16).replace('T', ' ')}</td>
     </tr>${q.last_error ? `<tr><td colspan="4" style="padding:0 .6rem .4rem;font-size:var(--fs-micro);color:var(--red)">${esc(q.last_error)}</td></tr>` : ''}`;
   }).join('') || `<tr><td colspan="4"><div class="empty-state" style="padding:1rem"><div class="s">الطابور فارغ</div></div></td></tr>`;
 
   const logRows = logs.map((l) => `<div style="display:flex;gap:.6rem;padding:.32rem 0;border-bottom:1px dashed var(--line);font-size:var(--fs-meta)">
       <span style="flex:none;color:var(--muted)" class="tnum">${String(l.at || '').slice(5, 16).replace('T', ' ')}</span>
-      <span style="flex:none">${pill(esc(mailEventLabel(l.event)), l.event === 'failed' ? 'red' : l.event === 'sent' ? 'green' : 'slate')}</span>
+      <span style="flex:none">${pill(esc(mailEventLabel(l.event)), mailStatusTone(l.event))}</span>
       <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink2)">${esc(l.subject || l.detail || '')}</span>
     </div>`).join('') || `<div style="font-size:var(--fs-meta);color:var(--faint);padding:.4rem 0">لا أحداث بعد</div>`;
 

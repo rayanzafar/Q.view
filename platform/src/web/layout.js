@@ -484,6 +484,7 @@ export const LABELS = {
   ACTIVE: 'نشط', CLOSED: 'مغلق', SUSPENDED: 'موقوف',
   // report/email queue + approvals
   SENT: 'أُرسل', FAILED: 'فشل', QUEUED: 'في الطابور', PROCESSING: 'قيد المعالجة',
+  PREVIEWED: 'عُوينت ولم تُرسل', BLOCKED: 'حُجبت — عنوان غير مسموح',
   APPROVED: 'معتمد', REJECTED: 'مرفوض',
   // audit actions
   create: 'إنشاء', update: 'تعديل', delete: 'حذف', login: 'تسجيل دخول', logout: 'تسجيل خروج', approve: 'اعتماد', reject: 'رفض',

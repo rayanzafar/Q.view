@@ -400,13 +400,25 @@ export const auditActionLabel = (a) => AUDIT_ACTION_AR[String(a || '').toLowerCa
 export const MAIL_STATUS_AR = {
   QUEUED: 'بانتظار الإرسال', SENDING: 'جارٍ الإرسال', PROCESSING: 'قيد المعالجة',
   SENT: 'أُرسلت', FAILED: 'تعذّر الإرسال', CANCELLED: 'أُلغيت',
+  // «عُوينت» و«حُجبت» تفصلان ما لم يكن مفصولاً: رسالةٌ كُتبت للمعاينة، وأخرى منعها حارس
+  // العناوين — وكلتاهما كانت تُعرض «أُرسلت» فيبدو الطابور ناجحاً وما غادرت رسالة.
+  PREVIEWED: 'عُوينت ولم تُرسل', BLOCKED: 'حُجبت — عنوان غير مسموح',
 };
 export const mailStatusLabel = (s) => MAIL_STATUS_AR[String(s || '').toUpperCase()] || 'حالة غير معروفة';
+
+// لون الحالة في مكان واحد — كانت كل شاشة تختار لونها فتختلف الشاشتان على الرسالة نفسها.
+// الأخضر للمغادرة الفعلية وحدها؛ فلا يُقرأ «عُوينت» نجاحاً.
+export const MAIL_STATUS_TONE = {
+  SENT: 'green', FAILED: 'red', BLOCKED: 'amber', PREVIEWED: 'slate',
+  QUEUED: 'blue', SENDING: 'blue', PROCESSING: 'blue', CANCELLED: 'slate',
+};
+export const mailStatusTone = (s) => MAIL_STATUS_TONE[String(s || '').toUpperCase()] || 'slate';
 
 // أحداث سجل البريد كما تُخزَّن (enqueued/sent/failed) — تُعرض بمعناها.
 export const MAIL_EVENT_AR = {
   enqueued: 'بانتظار الإرسال', sending: 'جارٍ الإرسال', sent: 'أُرسلت',
   failed: 'تعذّر الإرسال', retry: 'إعادة محاولة', skipped: 'تم تجاوزها', cancelled: 'أُلغيت',
+  previewed: 'عُوينت ولم تُرسل', blocked: 'حُجبت — عنوان غير مسموح',
 };
 export const mailEventLabel = (e) => MAIL_EVENT_AR[String(e || '').toLowerCase()] || 'حدث بريد';
 

@@ -9,7 +9,7 @@ import {
   periodChoices, PERIOD_KINDS, PERIOD_LABELS_AR,
 } from '../../core/reports/periods.js';
 import { ROLE_LABELS } from '../../core/rbac/matrix.js';
-import { resourceLabel, mailStatusLabel, auditActionLabel, reportName } from '../i18n/glossary.js';
+import { resourceLabel, mailStatusLabel, mailStatusTone, auditActionLabel, reportName } from '../i18n/glossary.js';
 import { esc, statMini } from './_shared.js';
 
 export async function approvalsPage(user) {
@@ -291,7 +291,7 @@ export async function reportsPage(user, opts = {}) {
         style="border:1px solid var(--line);cursor:pointer;font-size:11px;padding:.3rem .6rem;border-radius:8px;background:#fff;color:${s.active ? '#b91c1c' : '#047857'}">${s.active ? 'إيقاف' : 'تفعيل'}</button>` : '<span style="font-size:11px;color:var(--muted)">—</span>'}</td></tr>`).join('');
   const outList = outbox.map((q) => `<tr style="border-bottom:1px solid var(--line)">
     <td style="padding:.5rem .75rem;font-size:12px">${esc(q.subject || '')}</td>
-    <td style="padding:.5rem .75rem">${pill(esc(mailStatusLabel(q.status)), q.status === 'SENT' ? 'green' : q.status === 'FAILED' ? 'red' : 'amber')}</td>
+    <td style="padding:.5rem .75rem">${pill(esc(mailStatusLabel(q.status)), mailStatusTone(q.status))}</td>
     <td style="padding:.5rem .75rem;font-size:11px;color:var(--muted)">${q.created_at.slice(0, 16).replace('T', ' ')}</td></tr>`).join('');
 
   const body = `
