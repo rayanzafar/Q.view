@@ -657,6 +657,8 @@ export async function tasksPage(user, opts = {}) {
   const lens = `<nav class="wc-lens" aria-label="عدسة العرض">
     <a class="wc-tab${who === 'me' ? ' on' : ''}" href="${qp({ who: null, assignee: null })}"${who === 'me' ? ' aria-current="page"' : ''}>${icon('tasks')} ${G.myWork}${who === 'me' ? ` <span class="tnum">${openT.length}</span>` : ''}</a>
     ${canTeam ? `<a class="wc-tab${who === 'team' ? ' on' : ''}" href="${qp({ who: 'team' })}"${who === 'team' ? ' aria-current="page"' : ''}>${icon('team')} ${G.teamWork}${who === 'team' ? ` <span class="tnum">${openT.length}</span>` : ''}</a>` : ''}
+    <span class="wc-lens-sp"></span>
+    <a class="wc-tab wc-tab-me" href="/app/person/${encodeURIComponent(user.id)}">${icon('users')} صفحتي</a>
   </nav>`;
   const viewSeg = `<div class="wc-seg" role="group" aria-label="طريقة العرض">
     <a class="${view === 'list' ? 'on' : ''}" href="${qp({ view: null })}">${icon('list')} ${G.viewList}</a>
@@ -866,9 +868,15 @@ export async function tasksPage(user, opts = {}) {
     const projLine = p.projects.length
       ? `<div class="wp-line"><span class="wp-k">المشاريع</span><span class="wp-v">${p.projects.slice(0, 3).map((x) => `<a class="wp-tag" href="/app/project/${encodeURIComponent(x.id)}" title="${esc(x.name)}">${esc(x.name)}</a>`).join('')}${p.projects.length > 3 ? `<span class="wp-more tnum">+${p.projects.length - 3}</span>` : ''}</span></div>`
       : '';
+    // «مو المبالغ اللي شغال عليها من فرص انما اسماء الفرص» — بلسان المالك. البطاقة كانت تقول
+    // «٢» و«٣٬٧٥٠٬٠٠٠ ر.س.» ولا تقول **على ماذا** يعمل: حجمٌ بلا مضمون، والمدير يسأل المضمون.
+    // فصارت الأسماء هي السطر، والقيمة الإجمالية أثراً صغيراً في آخره لمن يملك قراءة الفرص.
     const oppLine = p.opportunities.open
-      ? `<div class="wp-line"><span class="wp-k">الفرص</span><span class="wp-v"><span class="tnum wp-num">${p.opportunities.open}</span>
-          ${canReadOpp ? `<span class="wp-money tnum">${fmtSar(p.opportunities.valueHalalas)}</span>` : ''}</span></div>`
+      ? `<div class="wp-line"><span class="wp-k">الفرص</span><span class="wp-v">${
+        (p.opportunities.list || []).slice(0, 3).map((x) => `<a class="wp-tag" href="/app/opportunity/${encodeURIComponent(x.id)}" title="${esc(x.name)}">${esc(x.name)}</a>`).join('')
+      }${p.opportunities.open > 3 ? `<span class="wp-more tnum">+${p.opportunities.open - 3}</span>` : ''}${
+        canReadOpp && p.opportunities.valueHalalas ? `<span class="wp-money tnum">${fmtSar(p.opportunities.valueHalalas)}</span>` : ''
+      }</span></div>`
       : '';
     return `<div class="wp${p.attention ? ' hot' : ''}${p.idle ? ' idle' : ''}">
       <div class="wp-h">
@@ -1024,6 +1032,11 @@ export async function tasksPage(user, opts = {}) {
     .wc-stat.t-bad .wc-stat-n{color:var(--red)}
     .wc-stat.t-warn .wc-stat-n{color:#a16207}
     .wc-lens{display:flex;gap:.4rem;border-bottom:1px solid var(--line);margin-bottom:.75rem;flex-wrap:wrap}
+    /* «صفحتي» في الطرف المقابل: مدخلٌ واحد بلا شريطٍ جديد — الشاشة مزدحمة أصلاً بشهادة المالك.
+       وهي لكل مستخدم مهما كان دوره: ملفُ المرء لا يحتاج منحاً إدارياً. */
+    .wc-lens-sp{flex:1 1 auto}
+    .wc-tab-me{color:var(--brand);font-weight:800}
+    .wc-tab-me:hover{color:var(--brand2)}
     .wc-tab{display:inline-flex;align-items:center;gap:.4rem;padding:.5rem .85rem;font-size:13px;font-weight:700;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
     .wc-tab:hover{color:var(--ink2)}
     .wc-tab.on{color:var(--brand);border-bottom-color:var(--brand)}
@@ -1188,7 +1201,8 @@ export async function tasksPage(user, opts = {}) {
     .wp-tag:hover{background:#eef2fb;color:var(--brand)}
     .wp-more{color:var(--faint)}
     .wp-num{font-weight:800;color:var(--ink2)}
-    .wp-money{color:var(--muted)}
+    /* القيمة أثرٌ لا عنوان: تبقى مقروءةً لمن يحتاجها ولا تسبق اسم الفرصة إلى العين. */
+    .wp-money{color:var(--faint);font-size:var(--fs-micro);white-space:nowrap}
     .wp-idle{font-size:var(--fs-micro);color:var(--faint);line-height:1.7}
     @media(max-width:640px){.wd-grid{grid-template-columns:1fr}}
     .wc-team-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:.6rem;margin-top:.45rem}
@@ -1208,7 +1222,8 @@ export async function tasksPage(user, opts = {}) {
     .wc-opp-t{flex:1 1 190px;min-width:0;font-size:12.5px;font-weight:700;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     .wc-opp-c{display:block;font-size:10.5px;font-weight:400;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     .wc-opp-m{display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;font-size:10.5px}
-    .wc-opp-v{flex:none;font-size:12px;font-weight:800;color:var(--ink2);margin-inline-start:auto}
+    /* القيمة تلي الاسم ولا تنافسه: نفس القاعدة المطبَّقة على بطاقة الشخص وصفحته. */
+    .wc-opp-v{flex:none;font-size:11px;color:var(--faint);margin-inline-start:auto}
     .wc-bulk{position:fixed;bottom:14px;left:76px;right:14px;z-index:45;display:flex;align-items:center;gap:.45rem;flex-wrap:wrap;
       background:var(--ink);color:#fff;border-radius:14px;padding:.55rem .8rem;box-shadow:0 14px 40px rgba(15,23,42,.35)}
     .wc-bulk[hidden]{display:none}
@@ -2094,17 +2109,19 @@ export async function personPage(user, personId) {
   </div>`;
 
   const openOpps = d.opportunities.filter((o) => !o.is_won && !o.is_lost);
+  // الاسم هو العنوان، والقيمة سطرٌ ثانٍ باهت. طلب المالك صريح: ما يهمّ **على ماذا** يعمل الشخص
+  // لا كم يبلغ ما يعمل عليه — والرقم الضخم بجانب الاسم يسرق النظر إليه أولاً بحكم وزنه.
   const oppRow = (o) => `<a class="pp-row pp-link" href="/app/opportunity/${encodeURIComponent(o.id)}">
     <div class="pp-row-h">
       <span class="pp-t">${esc(o.title_ar)}</span>
       ${o.stage_name ? `<span class="pill">${esc(o.stage_name)}</span>` : ''}
-      ${canReadOpp ? `<span class="pp-money tnum">${fmtSar(o.value_halalas)}</span>` : ''}
     </div>
     <div class="pp-row-m">
       <span class="pp-tag mute">${esc(o.client_name || 'بدون جهة')}</span>
       ${String(o.next_action || '').trim()
     ? `<span class="pp-step">${G.nextStep}: ${esc(o.next_action)}</span>`
     : '<span class="pp-step warn">بلا خطوة تالية</span>'}
+      ${canReadOpp ? `<span class="pp-money tnum">${fmtSar(o.value_halalas)}</span>` : ''}
     </div>
   </a>`;
 
@@ -2148,7 +2165,7 @@ export async function personPage(user, personId) {
     /* العنوان لا يتمدّد ليدفع حالته وموعده إلى الطرف المقابل — يبقيان جواره. (flex:0 1) */
     .pp-t{font-weight:700;font-size:var(--fs-body);color:var(--ink2);flex:0 1 auto;min-width:0;max-width:100%;
       overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .pp-money{font-weight:800;color:var(--ink2);font-size:var(--fs-body);white-space:nowrap;margin-inline-start:auto}
+    .pp-money{color:var(--faint);white-space:nowrap;margin-inline-start:auto;flex:none}
     .pp-due{font-size:var(--fs-micro);color:var(--muted);white-space:nowrap}
     .pp-due.late{color:var(--red);font-weight:800}
     .pp-due.now{color:#a16207;font-weight:800}

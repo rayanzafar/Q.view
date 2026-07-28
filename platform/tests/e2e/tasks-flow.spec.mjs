@@ -25,8 +25,19 @@ export default async function tasksFlowSpec({ browser, base, t }) {
     await login(page, base, 'demo.sectorlead');
     await open(page, base, '/app/tasks?who=team');
 
+    // بطاقة الشخص تقول **على ماذا** يعمل لا كم يبلغ: أسماء الفرص قابلةً للفتح، والقيمة أثرٌ
+    // تابع لا عنوان. («مو المبالغ اللي شغال عليها من فرص انما اسماء الفرص» — بلسان المالك.)
+    const cardOpps = await page.evaluate(() => {
+      const links = [...document.querySelectorAll('.wp a.wp-tag[href^="/app/opportunity/"]')];
+      return { named: links.length, sample: (links[0]?.textContent || '').trim().slice(0, 40) };
+    });
+    check('بطاقة الشخص على اللوحة تعرض أسماء فرصه لا عددها وحده', cardOpps.named > 0,
+      JSON.stringify(cardOpps));
+
     // تُجمَع الروابط **قبل** مغادرة اللوحة: بعد فتح صفحة شخصٍ لا يبقى على الصفحة رابطُ شخصٍ آخر.
     const links = (await page.locator('a.wp-n').evaluateAll((els) => els.map((e) => e.getAttribute('href')))).slice(0, 8);
+    const mine = await page.locator('.wc-tab-me').getAttribute('href').catch(() => null);
+    check('لكل مستخدم مدخلٌ إلى صفحته من شاشة المهام', !!mine && /^\/app\/person\//.test(mine), `href=${mine}`);
     const href = links[0] || null;
     check('اسم الشخص على لوحة الفريق يربط إلى صفحته لا إلى مُرشِّح',
       !!href && /^\/app\/person\//.test(href), `href=${href}`);

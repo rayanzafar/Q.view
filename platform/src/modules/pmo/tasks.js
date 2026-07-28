@@ -416,6 +416,22 @@ export async function teamWorkload(user, filters = {}) {
        AND o.owner_user_id IN (${marks(userIds.length)})
      GROUP BY o.owner_user_id`, userIds);
 
+  // وأسماؤها — بطلب المالك حرفياً: «مو المبالغ اللي شغال عليها من فرص انما اسماء الفرص».
+  // «فرصتان بمليون ونصف» تقول حجماً ولا تقول **على ماذا** يعمل الرجل، والمدير يسأل الثاني.
+  // الترتيب بالقيمة تنازلياً كي تُقصَّ الأصغر لا الأهمّ حين يتجاوز العدد ما تسعه البطاقة.
+  const oppNameRows = await all(`SELECT o.owner_user_id uid, o.id, o.title_ar
+     FROM opportunity o
+     LEFT JOIN stage s ON s.id = o.stage_id
+     WHERE o.deleted_at IS NULL AND COALESCE(s.is_won,0) = 0 AND COALESCE(s.is_lost,0) = 0
+       AND o.owner_user_id IN (${marks(userIds.length)})
+     ORDER BY o.value_halalas DESC, o.title_ar
+     LIMIT 400`, userIds);
+  const byUidON = new Map();
+  for (const r of oppNameRows) {
+    if (!byUidON.has(r.uid)) byUidON.set(r.uid, []);
+    byUidON.get(r.uid).push({ id: r.id, name: r.title_ar });
+  }
+
   // المشاريع المسكَّن عليها هذا العام — بالاسم لا بالعدد وحده: المدير يريد أن يعرف أين هو.
   const projRows = empIds.length ? await all(`SELECT a.employee_id eid, p.id project_id, p.name_ar project_name
      FROM allocation a
@@ -448,7 +464,10 @@ export async function teamWorkload(user, filters = {}) {
         open: Number(t.total || 0), overdue: Number(t.overdue || 0),
         blocked: Number(t.blocked || 0), noStep: Number(t.no_step || 0),
       },
-      opportunities: { open: Number(o.total || 0), valueHalalas: Number(o.value_halalas || 0) },
+      opportunities: {
+        open: Number(o.total || 0), valueHalalas: Number(o.value_halalas || 0),
+        list: byUidON.get(p.id) || [],
+      },
       projects,
     };
     // «فارغ» ليس صفر مهام: قد يقود فرصاً أو يكون مسكَّناً على مشاريع. الخلوّ الحقيقي أن
