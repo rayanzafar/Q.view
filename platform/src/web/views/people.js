@@ -151,7 +151,8 @@ export async function teamPage(user, opts = {}) {
       <span><b>${countAr(unlinkedCount, { one: 'موظف واحد بلا حساب مستخدم', two: 'موظفان بلا حساب مستخدم', few: 'موظفين بلا حساب مستخدم', many: 'موظفاً بلا حساب مستخدم' })}</b>
         — لا تصلهم المهام ولا الإشعارات، ولا يظهرون في قوائم مديري المشاريع، وصلاحيات الإدارة والفريق تبقى معطّلة عنهم.
         اربط كل واحد بحسابه من عمود «حساب الدخول».
-        ${freeAccounts.length ? `${acctCount(freeAccounts.length)} في انتظار الربط.` : 'لا حسابات متاحة للربط حالياً — تُنشأ الحسابات من صفحة المستخدمين والصلاحيات.'}</span>
+        ${freeAccounts.length ? `${acctCount(freeAccounts.length)} في انتظار الربط.`
+          : 'لا حسابات متاحة للربط حالياً — <a href="/app/users" style="color:inherit;font-weight:700">ادعُ الموظف من شاشة المستخدمين والصلاحيات</a> ويصله رمز التفعيل على بريده.'}</span>
     </div>` : '';
 
   const body = `

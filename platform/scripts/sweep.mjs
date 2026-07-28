@@ -91,7 +91,13 @@ async function hit(path, { method = 'GET', jar = {}, headers = {}, body } = {}) 
   }
 }
 
-async function loginWeb(username) {
+// حدّ الدخول دلوٌ سعته عشرة لكل عنوان يقطر واحداً كل ست ثوانٍ — والمسح يسجّل دخول سبعة عشر
+// دوراً من العنوان نفسه بلا توقّف. فكانت الأدوار السبعة الأخيرة تُردّ بـ«محاولات كثيرة» **ولا
+// تُمسَح إطلاقاً**، بينما يقول السجل إن المسح غطّى سبعة عشر دوراً. عيبٌ في أداة الفحص لا في
+// المنتج، لكنه يترك سبع بوابات صلاحيات بلا فحص. العلاج انتظارٌ يحترم الحدّ — لا رفعُ الحدّ،
+// فالحدّ حاجزٌ حقيقي أمام التخمين المتسلسل ولا يُضعَّف كي يمرّ فحصنا.
+const RATE_LIMITED = /\/login\?e=2/;
+async function loginWeb(username, attempt = 0) {
   const seed = await hit('/login'); // issues the CSRF cookie pair like a real browser visit
   // بيئة لا وصول: الوكيل يردّ 403 على كل طلب قبل أن يصل الخادم أصلاً. بلا هذا التمييز يظهر الفشل
   // عشر مرات كأنه عطل في تسجيل الدخول، فيُطارَد عيبٌ في المنتج لا وجود له. الرسالة تقول الحل.
@@ -104,7 +110,14 @@ async function loginWeb(username) {
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
   });
   jarFrom(res, jar);
-  if (res.status !== 302 || !jar.sanad_sid) throw new Error(`login-web failed for ${username}: status ${res.status} → ${res.headers.get('location') || 'no redirect'}`);
+  const to = res.headers.get('location') || '';
+  // ردَّ الحدُّ لا الخادم: ننتظر قطرةً من الدلو ثم نعيد. ست محاولات تكفي للأدوار السبعة الباقية.
+  if (RATE_LIMITED.test(to) && attempt < 6) {
+    process.stdout.write(`  … ${username}: بلغ حدّ المحاولات، انتظار 7ث ثم إعادة (${attempt + 1}/6)\n`);
+    await new Promise((r) => setTimeout(r, 7000));
+    return loginWeb(username, attempt + 1);
+  }
+  if (res.status !== 302 || !jar.sanad_sid) throw new Error(`login-web failed for ${username}: status ${res.status} → ${to || 'no redirect'}`);
   return jar;
 }
 
