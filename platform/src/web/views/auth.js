@@ -70,7 +70,7 @@ function emailStep({ err, notice, passwordEnabled, csrf }) {
   <div class="hint">يصلك رمزٌ من ستة أرقام على بريدك. لا كلمة مرور تُحفظ ولا تُنسى.</div>
   ${passwordEnabled ? `
   <details class="alt2">
-    <summary>الدخول بكلمة المرور</summary>
+    <summary>لم يصلك الرمز؟ ادخل باسم المستخدم وكلمة المرور</summary>
     <form method="post" action="/auth/login-web" style="margin-top:.8rem">
       <label>اسم المستخدم</label>
       <input name="username" autocomplete="username">
@@ -117,8 +117,15 @@ button.ghost:hover{background:#f5f8ff}
 button:disabled{background:#eef1f6;color:#94a3b8;cursor:default;box-shadow:none}
 .alt{margin-top:.9rem;text-align:center;font-size:var(--fs-micro)}
 .alt a{color:#64748b}
+/* البديل زرٌّ لا حاشية. كان رمادياً صغيراً بلا إطار فبدا تعليقاً — والمالك نفسه لم يتبيّن أنه
+   يُضغط، وهو المسار الوحيد للدخول ما دامت قناة البريد معطّلة. يُنسَّق كزرٍّ ثانوي صريح. */
 .alt2{margin-top:1.1rem;border-top:1px solid #eef1f6;padding-top:.9rem}
-.alt2 summary{cursor:pointer;font-size:var(--fs-micro);color:#64748b;text-align:center;list-style:none}
+.alt2 summary{cursor:pointer;list-style:none;display:block;width:100%;padding:.6rem;
+  border:1px solid #dbe2ef;border-radius:11px;background:#fff;color:#244A99;
+  font-size:13px;font-weight:700;text-align:center;user-select:none}
+.alt2 summary::-webkit-details-marker{display:none}
+.alt2 summary:hover{background:#f5f8ff;border-color:#c3d0ea}
+.alt2[open] summary{margin-bottom:.2rem;background:#f5f8ff}
 </style></head>
 <body>
 <img class="motif" src="/static/brand/values.svg" alt="">
