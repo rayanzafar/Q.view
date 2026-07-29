@@ -147,3 +147,23 @@ test('سجل الدخول يُقرأ من الجدول المهجور — وكا
   assert.ok(rows.length >= 1);
   assert.equal(rows[0].ip, '10.0.0.9');
 });
+
+// ── «دعوة معلَّقة» ليست «معطَّل» ──
+// ظهر على البيانات الحقيقية فور تعطيل حسابٍ مكرَّر بطلب المالك: الشاشة عرضته «دعوة معلَّقة»
+// ومعه زرّ «إعادة الدعوة» — أي أنها تعرض على المسؤول أن يُعيد دعوة من عطّله للتوّ، وتعدّه في
+// عدّاد الدعوات المنتظِرة. والسبب استنتاجٌ خاطئ: «غير نشط ولم يدخل قط» تصدق على الحالتين معاً.
+// الفرق مسجَّل لا مُستنتَج: الدعوة تُصدِر رمزاً بغرض «دعوة».
+test('الحساب المعطَّل لا يُقرأ دعوةً معلَّقة، والمدعوّ يُقرأ كذلك', async () => {
+  const now = ids.nowIso();
+  // (أ) حسابٌ عُطِّل ولم يدخل قط — ولم يُدعَ إطلاقاً
+  await mkUser('u_disabled_never', { email: 'dn.idn@evc.sa', active: 0, name: 'معطَّل لم يدخل' });
+  // (ب) حسابٌ مدعوّ فعلاً — صدر له رمز بغرض «دعوة»
+  await mkUser('u_invited_probe', { email: 'iv.idn@evc.sa', active: 0, name: 'مدعوّ' });
+  await db.insert('login_code', { id: 'lc_inv_probe', user_id: 'u_invited_probe', code_hash: 'x',
+    purpose: 'invite', expires_at: now, attempts: 0, created_at: now });
+
+  const rows = await identity.listUsers(adminUser);
+  const byId = Object.fromEntries(rows.map((r) => [r.id, r]));
+  assert.equal(byId.u_disabled_never.was_invited, false, 'حسابٌ لم يُدعَ قط عُدّ مدعوّاً — فيُعرض عليه «إعادة الدعوة»');
+  assert.equal(byId.u_invited_probe.was_invited, true, 'حسابٌ مدعوّ لم يُعدّ مدعوّاً');
+});

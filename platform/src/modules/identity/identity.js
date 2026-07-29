@@ -57,6 +57,16 @@ export async function listUsers(user, { query = '', role = '', status = '' } = {
       LEFT JOIN sector s ON s.id = u.sector_id
       LEFT JOIN employee e ON e.id = u.employee_id
       WHERE u.deleted_at IS NULL ORDER BY u.active DESC, u.name_ar LIMIT 500`);
+  // ── «دعوة معلَّقة» ليست «معطَّل» ──
+  // كانت الشاشة تستنتج الدعوة المعلَّقة من «غير نشط ولم يدخل قط» — وهو استنتاج **خاطئ** لحالةٍ
+  // شائعة: حسابٌ عُطِّل عمداً ولم يكن صاحبه قد دخل قط يُقرأ «دعوة معلَّقة»، فيُعرَض بجانبه زرّ
+  // «إعادة الدعوة» — أي أن الشاشة تعرض على المسؤول أن يُعيد دعوة من عطّله للتوّ. وقع ذلك فعلاً
+  // على حسابٍ مكرَّر عُطِّل بطلب المالك.
+  // والفرق مسجَّل لا مُستنتَج: الدعوة تُصدِر رمزاً بغرض «دعوة» (otp.js). فمن صدر له رمز دعوة
+  // فهو مدعوّ، ومن لا فهو معطَّل. حقيقةٌ في القاعدة بدل تخمينٍ من غياب تسجيل دخول.
+  const invited = new Set((await all(
+    "SELECT DISTINCT user_id FROM login_code WHERE purpose = 'invite'")).map((r) => r.user_id));
+  for (const r of rows) r.was_invited = invited.has(r.id);
   const q = String(query || '').trim().toLowerCase();
   return rows.filter((u2) => {
     if (role && u2.role_id !== role) return false;
