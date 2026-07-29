@@ -207,6 +207,12 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
 .modal-head{flex:0 0 auto;padding:1.1rem 1.35rem;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}
 .modal-body{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;
   padding:1.25rem 1.35rem;display:grid;gap:.85rem;align-content:start}
+/* عنصر الشبكة لا ينكمش دون مقاسه الطبيعي (min-width:auto ضمنيّ) — فمحتوى عريض (رسمٌ متجهي
+   له نسبة أبعاد، أو صفٌّ طويل) يوسّع العمود خارج حدود البطاقة. وحين يتّسع العمود يكبر ارتفاع
+   الرسم معه بنسبته، فيطفح على ما بعده: قياسٌ على بيانات حيّة أظهر رسماً بعرض ٦٤١ بكسل داخل
+   نافذة عرضها ٥٢٠، يركب على العنوان التالي بمقدار ١٣٨ بكسل. سطرٌ واحد يمنع الحالتين معاً. */
+.modal-body>*{min-width:0;max-width:100%}
+.modal-body svg{max-width:100%;height:auto}
 .modal-foot{flex:0 0 auto;padding:.9rem 1.35rem;border-top:1px solid var(--line);display:flex;gap:.6rem;justify-content:flex-start}
 .field{display:grid;gap:.3rem}
 .field>label{font-size:var(--fs-meta);font-weight:700;color:var(--muted)}
@@ -529,8 +535,12 @@ export function miniBars(series, valueKey, opts = {}) {
       <text x="${(x + bw / 2).toFixed(1)}" y="${H - 7}" font-size="11" fill="${isNow ? '#a3821c' : '#94a3b8'}" font-weight="${isNow ? '800' : '400'}" text-anchor="middle">${s.year}</text>
       <text x="${(x + bw / 2).toFixed(1)}" y="${(y - 5).toFixed(1)}" font-size="11" fill="${last ? '#834798' : '#475569'}" text-anchor="middle" font-weight="800">${opts.fmt ? opts.fmt(val) : Math.round(val)}</text>`;
   }).join('');
-  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block" preserveAspectRatio="xMidYMid meet">
-    <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#244A99"/><stop offset="1" stop-color="#834798"/></linearGradient></defs>${grid}${bars}</svg>`;
+  // الرسم داخل وعاء كتلي لا عارياً: عنصرٌ متجهٌ بنسبة أبعاد موضوعٌ مباشرةً في شبكة (أو مرونة)
+  // يفرض مقاسه الطبيعي على العمود فيتمدّد خارج حاويته ويطفح على ما بعده. الوعاء يقطع هذا
+  // الطريق عند المنبع، فيصحّ الرسم في كل موضع يُستدعى منه لا في النافذة وحدها.
+  return `<div style="width:100%;min-width:0;overflow:hidden">
+    <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block" preserveAspectRatio="xMidYMid meet">
+    <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#244A99"/><stop offset="1" stop-color="#834798"/></linearGradient></defs>${grid}${bars}</svg></div>`;
 }
 
 // Horizontal comparison bars (e.g. revenue achieved per sector). items: [{label,value,color,sub}].
