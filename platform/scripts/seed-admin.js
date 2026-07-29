@@ -31,9 +31,19 @@ export async function seedAdmin() {
   const existing = await get(
     'SELECT id FROM app_user WHERE lower(trim(email)) = ? AND deleted_at IS NULL', [email]);
   if (existing) { console.log(`seed-admin: «${email}» موجود — تخطٍّ`); return { created: false, reason: 'exists' }; }
-  // يوجد أي مدير نشط أصلاً؟ لا تُنشئ ثانياً تلقائياً (الحماية من التكرار على قاعدة مأهولة)
+  // يوجد أي مدير نشط أصلاً؟ لا تُنشئ ثانياً **تلقائياً** (الحماية من التكرار على قاعدة مأهولة).
+  //
+  // ولهذا الحارس ثغرةٌ عملية: حين تُطلب إدارةُ النظام في **حسابٍ مخصَّص** لا في حساب موظف —
+  // وهو الصواب، فإدارة النظام وظيفةٌ لا شخص — يتعذّر إنشاؤه على قاعدةٍ عاملة. فالحارس يمنعه
+  // لوجود مديرٍ قائم، وحارسُ «آخر مدير نشط» يمنع تنحية القائم قبل وجود بديل. قفلٌ مطبق.
+  //
+  // فيُفتح بابٌ **مُعلَن لا ضمني**: SANAD_ADMIN_FORCE=1 يتجاوز هذا الشرط وحده. ولا يمسّ
+  // الحارس الأهم فوقه — البريد الموجود لا يُكرَّر أبداً مهما كان المفتاح — فيبقى التكرار
+  // مستحيلاً وتبقى العملية آمنة على إعادة التشغيل.
+  const forced = process.env.SANAD_ADMIN_FORCE === '1' || process.env.SANAD_ADMIN_FORCE === 'true';
   const anyAdmin = await get("SELECT id FROM app_user WHERE role_id = 'admin' AND active = 1 AND deleted_at IS NULL");
-  if (anyAdmin) { console.log('seed-admin: يوجد مدير نشط أصلاً — تخطٍّ'); return { created: false, reason: 'admin-present' }; }
+  if (anyAdmin && !forced) { console.log('seed-admin: يوجد مدير نشط أصلاً — تخطٍّ'); return { created: false, reason: 'admin-present' }; }
+  if (anyAdmin && forced) console.log('seed-admin: يوجد مدير نشط، وأُعلن التجاوز صراحةً — يُنشأ حساب إدارة النظام المخصَّص.');
 
   const uid = id('usr');
   const now = nowIso();
