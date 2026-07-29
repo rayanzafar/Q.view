@@ -72,7 +72,15 @@ const anyText = (node) => {
 // ── العقد ─────────────────────────────────────────────────────────────────────
 test('العقد: شكل الدليل كما اتفقت عليه الحارتان بالضبط', async () => {
   const g = await guide.guideFor(U('sector_lead'));
-  assert.deepEqual(Object.keys(g).sort(), ['glossary', 'intro_ar', 'limits_ar', 'pages', 'role'].sort());
+  // «scenarios» أُضيف بطلب المالك (دليلٌ يُمشى في قصةٍ لا يُقرأ ككتالوج شاشات). ويُذكر هنا
+  // صراحةً لا يُتساهَل معه: العقد يُوسَّع بقرار مكتوب، وأي مفتاح يظهر بلا قصد يبقى يُسقط الفحص.
+  assert.deepEqual(Object.keys(g).sort(), ['glossary', 'intro_ar', 'limits_ar', 'pages', 'role', 'scenarios'].sort());
+  // وشكل السيناريو نفسه جزءٌ من العقد: بلا «متى» و«الأثر» يصير تعليمةً لا قصة.
+  assert.ok(Array.isArray(g.scenarios), 'السيناريوهات قائمة دائماً — وقد تكون فارغة لدورٍ بلا سيناريو');
+  for (const sc of g.scenarios) {
+    assert.deepEqual(Object.keys(sc).sort(), ['outcome_ar', 'steps_ar', 'title_ar', 'when_ar'].sort());
+    assert.ok(Array.isArray(sc.steps_ar) && sc.steps_ar.length >= 3, `السيناريو «${sc.title_ar}» خطواته أقل من ثلاث`);
+  }
   assert.deepEqual(Object.keys(g.role).sort(), ['id', 'name_ar']);
   assert.equal(g.role.id, 'sector_lead');
   assert.equal(g.role.name_ar, ROLE_LABELS.sector_lead.ar);

@@ -174,12 +174,39 @@ function limitsSection(limits) {
   </section>`;
 }
 
+// ── سيناريوهات العمل ─────────────────────────────────────────────────────────
+// تُعرض **قبل** كتالوج الشاشات عمداً: القارئ يتعلّم بالمشي في قصة لا بتصفّح قائمة شاشات.
+// وكل سيناريو ثلاثة أجزاء — متى يقع، وماذا تفعل، وما الأثر — لأن دليلاً بلا أثرٍ معلن لا
+// يعرف قارئه متى نجح. ولا يُعرض القسم أصلاً لدورٍ بلا سيناريوهات: عنوانٌ فوق فراغ أسوأ من غيابه.
+function scenariosSection(list) {
+  const items = Array.isArray(list) ? list.filter(Boolean) : [];
+  if (!items.length) return '';
+  return `<section class="gd-sec">
+    <div class="gd-sec-h">
+      <h2 class="gd-sec-t">سيناريوهات عملك</h2>
+      <span class="gd-sec-s">امشِ فيها على المنصة نفسها — كلٌّ منها ينتهي بأثرٍ تراه</span>
+    </div>
+    <div class="gd-scn-list">${items.map((s, i) => `<article class="gd-scn">
+      <div class="gd-scn-h">
+        <span class="gd-scn-n tnum">${i + 1}</span>
+        <div style="min-width:0">
+          <h3 class="gd-scn-t">${esc(s.title_ar || '')}</h3>
+          ${s.when_ar ? `<div class="gd-scn-w">${esc(s.when_ar)}</div>` : ''}
+        </div>
+      </div>
+      <ol class="gd-scn-steps">${(s.steps_ar || []).map((t) => `<li>${esc(t)}</li>`).join('')}</ol>
+      ${s.outcome_ar ? `<div class="gd-scn-out"><span class="gd-scn-out-l">الأثر</span> ${esc(s.outcome_ar)}</div>` : ''}
+    </article>`).join('')}</div>
+  </section>`;
+}
+
 // ── الصفحة ───────────────────────────────────────────────────────────────────
 // جسم الدليل مبني من الحمولة وحدها (بلا قاعدة بيانات ولا وقت) — لذا يُختبر مباشرة.
 export function guideManual(g) {
   const pages = Array.isArray(g && g.pages) ? g.pages.filter(Boolean) : [];
   return `<div class="gd-wrap">
     ${heroCard(g || {})}
+    ${scenariosSection(g && g.scenarios)}
     ${screensSection(pages)}
     ${glossarySection(g && g.glossary)}
     ${limitsSection(g && g.limits_ar)}
@@ -213,6 +240,18 @@ const PAGE_CSS = `
 .gd-sec-h{display:flex;align-items:baseline;gap:.6rem;flex-wrap:wrap;margin:0 .1rem .6rem}
 .gd-sec-t{font-size:var(--fs-title);font-weight:800;color:var(--ink2)}
 .gd-sec-s{font-size:var(--fs-meta);color:var(--muted)}
+.gd-scn-list{display:flex;flex-direction:column;gap:.7rem}
+.gd-scn{background:#fff;border:1px solid var(--line);border-radius:14px;padding:.85rem 1rem}
+.gd-scn-h{display:flex;align-items:flex-start;gap:.6rem}
+.gd-scn-n{flex:none;width:24px;height:24px;border-radius:8px;display:grid;place-items:center;
+  font-weight:800;font-size:12px;color:#fff;background:var(--brand-grad)}
+.gd-scn-t{font-size:13.5px;font-weight:800;color:var(--ink2)}
+.gd-scn-w{font-size:var(--fs-micro);color:var(--muted);margin-top:.1rem}
+.gd-scn-steps{margin:.6rem 0 0;padding-inline-start:1.5rem;display:flex;flex-direction:column;gap:.35rem}
+.gd-scn-steps li{font-size:var(--fs-body);color:var(--ink2);line-height:1.9}
+.gd-scn-out{margin-top:.6rem;padding-top:.5rem;border-top:1px dashed var(--line);
+  font-size:var(--fs-meta);color:var(--muted);line-height:1.8}
+.gd-scn-out-l{font-weight:800;color:var(--green)}
 
 /* بطاقة الهوية */
 .gd-hero{display:flex;gap:1.2rem;align-items:stretch;padding:1.05rem 1.15rem;border-inline-start:3px solid var(--brand)}

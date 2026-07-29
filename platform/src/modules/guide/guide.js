@@ -114,6 +114,8 @@ export async function guideFor(user) {
     pages: ordered.map((k) => C.guidePage(k, caps)).filter(Boolean),
     glossary: C.termsForPages(ordered, caps),
     limits_ar: C.guideLimits(caps),
+    // سيناريوهات دوره — تُمشى في المنتج على صفوفٍ مسمّاة، لا تُقرأ كتعليمات عامة.
+    scenarios: C.scenariosFor(user.role_id),
   };
 }
 

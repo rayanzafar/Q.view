@@ -291,3 +291,44 @@ test('الفحص نفسه يمسك المحدِّد الميت: محدِّد م�
   assert.equal(anchorPresent(html, '.wc-stats'), true, 'والمحدِّد الحالي موجوداً');
   assert.equal(anchorPresent(html, '#لا-وجود-له'), null, 'وشكل محدِّد غير مفحوص يُرفض لا يمرّ');
 });
+
+// ── سيناريوهات العمل ──
+// «سوي دليل الاستخدام بالسيناريوهات عشان يكون كأنه البيانات معبّأة وليس صفحات فاضية لكل فئة
+// من اليوزر». والفرق جوهري: «افتح الفرص وأضِف فرصة» تُقرأ ولا تُتعلَّم — يفتح الموظف شاشةً
+// فارغة فلا يعرف كيف تبدو حين تمتلئ. أما المشي على صفٍّ مسمّى فينتهي بأثرٍ يراه بعينه.
+test('لكل فئة أساسية سيناريو عمل مكتمل الأجزاء الثلاثة', async () => {
+  const C = await import('../../src/core/guide/content.js');
+  // الفئات التي ستستعمل المنصة في التجربة — لا كل الأدوار السبعة عشر
+  const CORE = ['sector_lead', 'department_manager', 'project_manager', 'bd_manager',
+    'consultant', 'employee', 'finance', 'hr', 'approver', 'admin'];
+  for (const role of CORE) {
+    const list = C.scenariosFor(role);
+    assert.ok(list.length >= 1, `الدور «${role}» بلا سيناريو`);
+    for (const s of list) {
+      assert.ok(s.title_ar && s.title_ar.length > 6, `«${role}»: سيناريو بلا عنوان`);
+      assert.ok(s.when_ar, `«${role}/${s.title_ar}»: بلا «متى» — السيناريو بلا مناسبة تعليمة لا قصة`);
+      assert.ok(Array.isArray(s.steps_ar) && s.steps_ar.length >= 3, `«${role}/${s.title_ar}»: خطواته أقل من ثلاث`);
+      assert.ok(s.outcome_ar, `«${role}/${s.title_ar}»: بلا أثر معلن — القارئ لا يعرف متى نجح`);
+      for (const st of s.steps_ar) assert.ok(String(st).length > 15, `«${role}»: خطوة مبتورة «${st}»`);
+    }
+  }
+});
+
+test('السيناريوهات تصل إلى الصفحة وتُعرض قبل كتالوج الشاشات', async () => {
+  const { guideFor } = await import('../../src/modules/guide/guide.js');
+  const u = await resolveUser({ id: 'x', username: 'demo.consultant', role_id: 'consultant', scope: 'own', sector_id: 'SOLUTIONS' })
+    .catch(() => ({ id: 'x', username: 'demo.consultant', role_id: 'consultant', scope: 'own', sector_id: 'SOLUTIONS', projectIds: new Set(), teamIds: new Set() }));
+  const g = await guideFor(u);
+  assert.ok(Array.isArray(g.scenarios) && g.scenarios.length, 'الحمولة بلا سيناريوهات');
+  const html = guideManual(g);
+  assert.ok(html.includes('سيناريوهات عملك'), 'قسم السيناريوهات غائب عن الصفحة');
+  const iScn = html.indexOf('سيناريوهات عملك');
+  const iScreens = html.indexOf('شاشاتك');
+  assert.ok(iScn > 0 && (iScreens < 0 || iScn < iScreens), 'السيناريوهات يجب أن تسبق كتالوج الشاشات');
+  assert.ok(html.includes('الأثر'), 'أثر السيناريو غير معروض');
+});
+
+test('دورٌ بلا سيناريوهات لا يُعرض له عنوانٌ فوق فراغ', async () => {
+  const html = guideManual({ role: { id: 'viewer', name_ar: 'مشاهدة فقط' }, intro_ar: 'اطّلاع', pages: [], glossary: [], limits_ar: [], scenarios: [] });
+  assert.equal(html.includes('سيناريوهات عملك'), false);
+});
