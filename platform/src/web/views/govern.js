@@ -60,8 +60,13 @@ export async function usersPage(user) {
     // مدعوّ = صدر له رمز دعوة ولم يفعّله بعد. ومعطَّل = أُغلق حسابه عمداً. كانا يُقرآن واحداً
     // («غير نشط ولم يدخل قط») فيُعرض على المسؤول «إعادة الدعوة» لمن عطّله للتوّ.
     // ينتظر التفعيل = غير نشط ولم يدخل قط **ولم يُعطَّل عمداً**. والتعطيل يُعرَف بختمه
-    // المسجَّل لحظة وقوعه لا باشتقاقٍ من غياب أثرٍ آخر.
-    const pending = !u.active && !u.last_login_at && !u.was_deactivated;
+    // المسجَّل لحظة وقوعه (deactivated_at) لا باشتقاقٍ من غياب أثرٍ آخر.
+    //
+    // ويُقرأ العمود هنا مباشرةً لا العلمُ المشتقّ في الخدمة: هذه الصفحة تقرأ صفوفها بنفسها
+    // (SELECT u.*) ولا تمرّ بـlistUsers، فالعلم المشتقّ هناك لا يبلغها. وقعتُ في ذلك: أصلحتُ
+    // الخدمة ونشرتُ، وبقيت الشاشة تعرض المعطَّل «دعوة معلَّقة» — لأن فحصي غطّى الخدمة ولم
+    // يُصيِّر الصفحة. المصدر واحد (العمود نفسه) وإن اختلف طريق الوصول إليه.
+    const pending = !u.active && !u.last_login_at && !u.deactivated_at;
     return `<tr class="border-b border-line" data-uid="${esc(u.id)}">
     <td class="py-2 px-3 text-[13px]">${esc(u.name_ar || '')}
       ${u.email
@@ -84,7 +89,7 @@ export async function usersPage(user) {
 
   const activeN = rows.filter((u) => u.active).length;
   const neverIn = rows.filter((u) => !u.last_login_at).length;
-  const pendingN = rows.filter((u) => !u.active && !u.last_login_at && !u.was_deactivated).length;
+  const pendingN = rows.filter((u) => !u.active && !u.last_login_at && !u.deactivated_at).length;
   // البريد صار هوية الدخول، فحسابٌ بلا بريد ليس «ناقص بيانات» بل **عاجزٌ عن الدخول**.
   // يُعدّ صراحةً كي لا يُكتشف ذلك يوم يقف الموظف أمام شاشة لا تقبله.
   const noEmailN = rows.filter((u) => !u.email).length;

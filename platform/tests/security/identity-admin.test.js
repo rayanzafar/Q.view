@@ -184,3 +184,27 @@ test('المعطَّل لا يُقرأ منتظِراً للتفعيل، ومن 
   assert.equal(byId.u_awaiting.was_deactivated, false,
     'حسابٌ ينتظر التفعيل قُرئ معطَّلاً — وهي الحالة التي أسقطت الإصلاح الأول');
 });
+
+// وفحصٌ على **الصفحة** لا على الخدمة وحدها.
+// الفحص السابق غطّى listUsers ومرّ، ثم بقيت الشاشة تعرض المعطَّل «دعوة معلَّقة» بعد النشر:
+// صفحة المستخدمين تقرأ صفوفها بنفسها (SELECT u.*) ولا تمرّ بالخدمة، فالعلم المشتقّ هناك لا
+// يبلغها. فحصُ الخدمة وحدها يشهد لطبقةٍ ويترك التي يراها المستخدم بلا شاهد.
+test('صفحة المستخدمين تُميّز المعطَّل عمّن ينتظر التفعيل — على الوسم المُصيَّر', async () => {
+  const { usersPage } = await import('../../src/web/views/govern.js');
+  await mkUser('u_pg_disabled', { email: 'pgd.idn@evc.sa', name: 'مُعطَّل للفحص' });
+  await identity.setUserActive(ctxOf(adminUser), 'u_pg_disabled', false);
+  await mkUser('u_pg_waiting', { email: 'pgw.idn@evc.sa', active: 0, name: 'منتظِر للفحص' });
+
+  const html = await usersPage(adminUser);
+  const rowOf = (name) => {
+    const i = html.indexOf(name);
+    assert.ok(i > 0, `الصف «${name}» غير موجود على الصفحة`);
+    return html.slice(i, i + 900);
+  };
+  const disabled = rowOf('مُعطَّل للفحص');
+  assert.ok(disabled.includes('معطّل'), 'المعطَّل لم يُعرض معطَّلاً');
+  assert.equal(disabled.includes('دعوة معلّقة'), false,
+    'المعطَّل عُرض «دعوة معلّقة» — ومعها زرّ إعادة الدعوة لمن عُطّل للتوّ');
+  const waiting = rowOf('منتظِر للفحص');
+  assert.ok(waiting.includes('دعوة معلّقة'), 'من ينتظر التفعيل لم يُعرض كذلك');
+});
