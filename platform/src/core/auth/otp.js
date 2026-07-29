@@ -74,20 +74,41 @@ export async function requestCode({ email, ip, purpose = PURPOSE.SIGNIN, inviter
   const mail = purpose === PURPOSE.INVITE
     ? inviteCodeMail({ code, minutes: OTP_TTL_MINUTES, inviterName })
     : signInCodeMail({ code, minutes: OTP_TTL_MINUTES });
-  let delivered = false, failure = null;
+  // السبب يُكتب عربياً منذ لحظة نشأته لا عند عرضه: كان يُخزَّن `previewed`/`blocked` كما هي،
+  // وكانت لا تُقرأ من أي شاشة فلم يظهر العيب. ولحظةَ عُرض الأثر ظهر المصطلح الإنجليزي في وجه
+  // المستخدم. والمكان الصحيح للترجمة هنا — حيث يُعرف المعنى — لا في كل شاشةٍ تعرضه لاحقاً.
+  let delivered = false, failure = null, event = 'failed';
   try {
     const res = await sendMail({ to: [u.email], subject: mail.subject, html: mail.html });
     delivered = res.delivery === DELIVERY.SENT;
-    if (res.delivery === DELIVERY.BLOCKED) failure = 'blocked';
-    else if (res.delivery === DELIVERY.PREVIEWED) failure = 'previewed';
+    event = res.delivery;
+    if (res.delivery === DELIVERY.BLOCKED) failure = res.reason || 'العنوان خارج قائمة العناوين المسموح بها في هذه البيئة';
+    else if (res.delivery === DELIVERY.PREVIEWED) failure = 'قناة المعاينة مشغّلة — حُفظت الرسالة ولم تغادر الخادم';
   } catch (e) {
     failure = String(e.message).slice(0, 200);
   }
 
-  // الأثر يسجّل أن رمزاً طُلب — لا الرمز نفسه، ولا حتى جزءاً منه.
+  // ── أثرُ الرسالة يُكتب حيث يبحث عنه المُشغّل ──
+  // رمز الدخول يُرسَل فوراً لا عبر الطابور (الطابور يُستنزف كل ٦٠ ثانية ورمزٌ يصل بعد دقيقة
+  // رمزٌ ميّت). وثمنُ ذلك أنه كان **لا يترك أثراً في مركز البريد إطلاقاً**: الشاشة تعرض رسائل
+  // التقارير وحدها، فيسأل المُشغّل «لماذا لم يصل الرمز؟» ولا شيء أمامه يجيب — لا صفّ ولا سبب.
+  // فيُكتب هنا صفٌّ بلا معرّف طابور: الحالة (أُرسلت/حُجبت/فشلت) والعنوان والسبب كما جاء من
+  // المزوّد حرفياً. **ولا يُكتب الرمز ولا جزءٌ منه** — الأثر يقول ماذا جرى للرسالة لا ما فيها.
+  try {
+    await insert('email_log', {
+      id: id('el'),
+      queue_id: null,
+      event,   // sent | previewed | blocked | failed — نفس مفردات الطابور فتُترجَم بنفس المعجم
+      detail: `${purpose === PURPOSE.INVITE ? 'رمز تفعيل' : 'رمز دخول'} إلى ${u.email}${delivered ? '' : ` — ${failure || 'سبب غير معروف'}`}`,
+      at: nowIso(),
+    });
+  } catch { /* الأثر لا يُسقط الدخول: فشلُ تسجيلِ سطرٍ أهونُ من منع موظفٍ من حسابه */ }
+
+  // الأثر يسجّل أن رمزاً طُلب — لا الرمز نفسه، ولا حتى جزءاً منه. ونوعُه بالعربية لا برمزه
+  // المخزَّن: هذا النصّ يُعرض في سجلّ التدقيق كما هو، فرمزٌ إنجليزي فيه مصطلحٌ في وجه القارئ.
   await audit({ user: u, ip }, {
     action: 'login', resource: 'login_code', resourceId: u.id,
-    detail: `طُلب رمز دخول (${purpose})${delivered ? '' : ` — لم يُسلَّم: ${failure || 'سبب غير معروف'}`}`,
+    detail: `طُلب ${purpose === PURPOSE.INVITE ? 'رمز تفعيل حساب' : 'رمز دخول'}${delivered ? ' وأُرسل إلى بريده' : ` — لم يُسلَّم: ${failure || 'سبب غير معروف'}`}`,
   });
   return { ok: true, delivered };
 }

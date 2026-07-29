@@ -61,6 +61,15 @@ export async function mailPage(user, opts = {}) {
       ? esc(scopeText)
       : 'كل رسالة تُحفظ هنا للمعاينة بدل إرسالها، وتُسجَّل «عُوينت ولم تُرسل» لا «أُرسلت». تفعيل الإرسال الحقيقي يحتاج بيانات خادم البريد من مزوّد النطاق (يُطلب من المالك).'}</span>
     ${smtpOn && fromNote ? `<div style="flex:1 0 100%;font-size:var(--fs-meta);color:var(--${sandbox ? 'amber' : 'red'});line-height:1.8">${esc(fromNote)}</div>` : ''}
+    ${/* ── وإلى أي عناوين بالضبط؟ ──
+          كان يُقال العدد وحده («مقصور على ٢ عنواناً») لا العناوين. وحرفٌ واحد ناقص في أحدها
+          يجعل كل رسالة تُحجب بينما الشاشة كلها خضراء: القناة «مفعّلة»، والعدد «٢»، ولا شيء
+          يصل. تُكتب العناوين كما هي ليُقرأ الخطأ بالعين قبل أن يُبحث عنه أياماً. */''}
+    ${smtpOn && !openToAll && allow.length ? `<div style="flex:1 0 100%;display:flex;gap:.4rem;flex-wrap:wrap;align-items:center;font-size:var(--fs-meta);color:var(--muted)">
+      <span>العناوين المسموح بها:</span>
+      ${allow.map((a) => `<code dir="ltr" style="background:var(--surface2,#f1f5f9);border:1px solid var(--line);border-radius:6px;padding:.1rem .4rem;font-size:11.5px">${esc(a)}</code>`).join('')}
+      <span>· وما عداها يُحجب ويُسجَّل «حُجبت» في السجل أسفل الصفحة.</span>
+    </div>` : ''}
   </div>`);
 
   const fileRows = files.map(({ f, t }) => {

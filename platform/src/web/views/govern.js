@@ -185,17 +185,38 @@ export async function auditPage(user) {
     ${statMini('اليوم', todayN, 'حدث اليوم', 'brand')}
     ${statMini('مستخدمون نشطون', distinctUsers, 'في السجل')}
     ${statMini('أنواع الإجراءات', Object.keys(byAction).length, 'مختلفة')}</div>`;
+  // ── والتفصيل يُعرض ──
+  // كل كتابة في المنتج تكتب وصفاً عربياً مقصوداً يقول **ماذا** جرى: «طُلب رمز دخول — لم
+  // يُسلَّم: …» · «تعطيل حساب فلان وإنهاء جلساته» · «نقل ثلاثة موظفين إلى قطاع…». وكانت
+  // الشاشة تعرض الوقت والفاعل والفعل والمورد وتُسقط الوصف — أي أن السجلّ المقصود للإجابة عن
+  // «ماذا حدث؟» يجيب «حدثَ شيءٌ ما لشيءٍ ما». وقعتُ في هذا فعلاً: بحثتُ عن سبب عدم وصول رمز
+  // دخول، والسبب مكتوبٌ حرفياً في هذا الحقل، ولا سبيل إلى رؤيته من المنتج.
+  //
+  // والوصف مخزَّنٌ مُرمَّزاً (نصٌّ بين علامتَي اقتباس عادةً، وقد يكون كائناً في نداءٍ قديم)،
+  // فيُفكّ هنا إلى عربيةٍ مقروءة — ولا يُطبع خاماً بحال: قوسٌ أو رمزٌ تقني على الشاشة عيبٌ
+  // بذاته، وهو ما يمنعه فحص المعجم.
+  const readDetail = (raw) => {
+    if (raw == null || raw === '') return '';
+    let v = raw;
+    try { v = JSON.parse(raw); } catch { return String(raw); }
+    if (v == null) return '';
+    if (typeof v === 'string' || typeof v === 'number') return String(v);
+    if (Array.isArray(v)) return v.map((x) => (typeof x === 'object' ? Object.values(x).join(' · ') : String(x))).join('، ');
+    if (typeof v === 'object') return Object.entries(v).map(([k, x]) => `${k}: ${typeof x === 'object' ? Object.values(x || {}).join(' ') : x}`).join(' · ');
+    return String(v);
+  };
   const list = rows.map((a) => `<tr class="border-b border-line">
-    <td class="py-1.5 px-3 text-[11px] text-muted tabular-nums">${a.at.slice(0, 19).replace('T', ' ')}</td>
-    <td class="px-3 text-[12px]">${esc(a.username || a.user_id || '—')}</td>
-    <td class="px-3">${pill(esc(auditActionLabel(a.action)), a.action === 'delete' ? 'red' : a.action === 'create' ? 'green' : 'slate')}</td>
-    <td class="px-3 text-[12px]">${esc(resourceLabel(a.resource))} ${a.resource_id ? '· <span class="tnum">' + esc(a.resource_id) + '</span>' : ''}</td></tr>`).join('');
+    <td class="py-1.5 px-3 text-[11px] text-muted tabular-nums" style="white-space:nowrap;vertical-align:top">${a.at.slice(0, 19).replace('T', ' ')}</td>
+    <td class="px-3 text-[12px]" style="vertical-align:top">${esc(a.username || a.user_id || '—')}</td>
+    <td class="px-3" style="vertical-align:top">${pill(esc(auditActionLabel(a.action)), a.action === 'delete' ? 'red' : a.action === 'create' ? 'green' : 'slate')}</td>
+    <td class="px-3 text-[12px]" style="vertical-align:top">${esc(resourceLabel(a.resource))} ${a.resource_id ? '· <span class="tnum">' + esc(a.resource_id) + '</span>' : ''}</td>
+    <td class="px-3 text-[12px]" style="vertical-align:top;max-width:420px;line-height:1.7;color:var(--ink2)">${esc(readDetail(a.detail_json) || '—')}</td></tr>`).join('');
   const body = `${strip}
     <div style="display:grid;grid-template-columns:2fr 1fr;gap:.9rem">
       ${card(`<div class="p-4 border-b border-line font-bold text-sm">سجل التدقيق (آخر 200)</div>
-      <div style="max-height:540px;overflow-y:auto"><table class="w-full"><thead><tr class="text-[11px] text-muted text-right" style="position:sticky;top:0;background:var(--surface)">
+      <div style="max-height:540px;overflow-y:auto;overflow-x:auto"><table class="w-full"><thead><tr class="text-[11px] text-muted text-right" style="position:sticky;top:0;background:var(--surface)">
         <th class="py-2 px-3 font-medium">الوقت</th><th class="px-3 font-medium">المستخدم</th><th class="px-3 font-medium">الإجراء</th>
-        <th class="px-3 font-medium">المورد</th></tr></thead><tbody>${list}</tbody></table></div>`)}
+        <th class="px-3 font-medium">المورد</th><th class="px-3 font-medium">ماذا جرى</th></tr></thead><tbody>${list}</tbody></table></div>`)}
       ${card(`<div class="p-4 border-b border-line font-bold text-sm">التوزيع حسب نوع الإجراء</div><div style="padding:.7rem 1rem">${hbars(actItems, { fmt: (v) => v + '' })}</div>`)}
     </div>`;
   return layout({ user, active: 'audit', title: 'سجل التدقيق', body });
