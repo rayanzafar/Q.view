@@ -169,9 +169,11 @@ export const API_PROBES = [
   { method: 'GET', path: '/api/ai/options/project',
     expect: { default: 200, hr: 403, line_manager: 403, approver: 403 } },
   // والفرص أضيق: من لا يملك **قراءة** الفرصة يُردّ — ومنه المعتمِد الذي يملك «اعتماد» بلا قراءة.
+  // `department_manager` أُضيف بقرار المالك: «مدراء الإدارات لهم صلاحية يشوفوا كل الفرص» —
+  // وكان بلا منح قراءةٍ على الفرصة إطلاقاً، فتغيب الخانة كلها عن شاشته لا تظهر فارغة.
   { method: 'GET', path: '/api/ai/options/opportunity',
     expect: { default: 403, admin: 200, ceo_office: 200, sector_lead: 200, bd_manager: 200,
-      bd_head: 200, finance: 200, viewer: 200, consultant: 200 } },
+      bd_head: 200, finance: 200, viewer: 200, consultant: 200, department_manager: 200 } },
   // معاينة بحمولة فارغة: النوع يُرَدّ قبل أي فحص صلاحية وقبل أي كتابة — فلا صفَّ سجلٍ يُكتب،
   // والمسبار آمن على بيئة حيّة. (الدردشة تكتب سطر سجل، فمسبارها في مسار المسح وحده وبعلَم صريح.)
   { method: 'POST', path: '/api/ai/preview', body: {}, expect: 400 },

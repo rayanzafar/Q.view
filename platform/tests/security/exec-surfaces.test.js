@@ -30,7 +30,9 @@ process.env.SANAD_DB = TEST_DB;
 //   project_manager → بنطاق «مشروع». والبقية بلا منح تقرير أو مؤشر إطلاقاً.
 const LEADERSHIP = ['admin', 'ceo_office', 'finance', 'hr', 'bd_head'];
 // شاشة العملاء تفتح أيضاً لمن يملك منح قراءة «العميل» مهما ضاق نطاقه (قائمته تُرشَّح بنطاقه).
-const CLIENT_READERS = ['admin', 'ceo_office', 'sector_lead', 'bd_manager', 'bd_head', 'finance', 'viewer'];
+// `department_manager` أُضيف بقرارٍ من المالك: مدير الإدارة يقرأ الفرص، والفرصةُ بلا عميلها
+// نصفُ معلومة — فمنحُ «العميل» يلزمها. ولا يفتح له أسطح القيادة: لا تقرير ولا مؤشر في منحه.
+const CLIENT_READERS = ['admin', 'ceo_office', 'sector_lead', 'bd_manager', 'bd_head', 'finance', 'viewer', 'department_manager'];
 
 const expectExec = (role) => LEADERSHIP.includes(role);
 const expectClients = (role) => CLIENT_READERS.includes(role) || LEADERSHIP.includes(role);
