@@ -375,7 +375,7 @@ export async function teamWorkload(user, filters = {}) {
   const pWhere = ['u.deleted_at IS NULL', 'u.active = 1'];
   const pParams = [];
   if (scope === 'department') {
-    if (!user.department_id) return { departments: [], scope };
+    if (!user.department_id) return { departments: [], scope, year, orphans: { unassigned: 0, inactive: 0, overdue: 0, total: 0, people: [] } };
     pWhere.push('emp.department_id = ?');
     pParams.push(user.department_id);
   } else if (scope !== 'company') {
@@ -390,7 +390,7 @@ export async function teamWorkload(user, filters = {}) {
      WHERE ${pWhere.join(' AND ')}
      ORDER BY d.name_ar, u.name_ar
      LIMIT 400`, pParams);
-  if (!people.length) return { departments: [], scope };
+  if (!people.length) return { departments: [], scope, year, orphans: { unassigned: 0, inactive: 0, overdue: 0, total: 0, people: [] } };
 
   const userIds = people.map((p) => p.id);
   const empIds = people.map((p) => p.employee_id).filter(Boolean);
@@ -491,6 +491,42 @@ export async function teamWorkload(user, filters = {}) {
     if (person.idle) g.idle++;
   }
 
+  // ── عملٌ بلا صاحب ──
+  // اللوحة تُبنى من **الأشخاص**، فما لا شخص له لا يظهر فيها إطلاقاً. وهذه حالتان تقعان فعلاً:
+  //   • مهمةٌ بلا مُسنَد إليه — أُنشئت ولم تُسنَد قط.
+  //   • مهمةٌ على حسابٍ **معطَّل** — الموظف غادر ولم يغادر عمله معه.
+  // كلتاهما كانت تختفي من اللوحة بينما تظهر في القائمة تحتها في الشاشة نفسها: قِيس على بيانات
+  // مصنوعة فظهرت اللوحة «شخصٌ واحد عليه مهمة» والقائمة ثلاث مهام، اثنتان منها متأخرتان بأعلى
+  // أولوية. وهذا أسوأ اتجاه للخطأ: **أشدّ العمل إلحاحاً هو أقلّه ظهوراً**، ومديرٌ يقيّم فريقه
+  // على لوحةٍ تُخفي العمل المهمَل يقيّم على نصف الصورة.
+  //
+  // ولا تُعرَض كأشخاص وهميين: هي حالةُ إسنادٍ ناقصة يعالجها المدير بإعادة إسناد، لا شخصٌ يُقيَّم.
+  // ونطاقها من عمود المهمة نفسها (قطاعها/إدارتها) لأن المهمة بلا صاحبٍ لا وصلة لها بشخص.
+  const oWhere = ["t.deleted_at IS NULL", "t.status NOT IN ('DONE','CANCELLED')",
+    '(t.assignee_user_id IS NULL OR au.id IS NULL OR au.active = 0 OR au.deleted_at IS NOT NULL)'];
+  const oParams = [];
+  if (scope === 'department') { oWhere.push('t.department_id = ?'); oParams.push(user.department_id); }
+  else if (scope !== 'company') { oWhere.push('t.sector_id = ?'); oParams.push(user.sector_id); }
+  const orphanRows = await all(`SELECT t.id, t.assignee_user_id uid, t.due_date, t.status,
+       au.name_ar owner_name, au.username owner_username, au.active owner_active
+     FROM task t
+     LEFT JOIN app_user au ON au.id = t.assignee_user_id
+     WHERE ${oWhere.join(' AND ')}
+     LIMIT 300`, oParams);
+  const orphans = { unassigned: 0, inactive: 0, overdue: 0, total: orphanRows.length, people: [] };
+  const inactiveBy = new Map();
+  for (const r of orphanRows) {
+    if (!r.uid) orphans.unassigned++;
+    else {
+      orphans.inactive++;
+      const nm = r.owner_name || r.owner_username || 'حساب محذوف';
+      inactiveBy.set(nm, (inactiveBy.get(nm) || 0) + 1);
+    }
+    if (r.due_date && String(r.due_date).slice(0, 10) < today) orphans.overdue++;
+  }
+  orphans.people = [...inactiveBy.entries()].map(([name, n]) => ({ name, open: n }))
+    .sort((a, b) => b.open - a.open);
+
   // الأكثر احتياجاً للنظر أولاً — داخل الإدارة وبين الإدارات. و«بلا إدارة» في القاع دائماً
   // لأنها ليست إدارةً بل نقصٌ في الإسناد.
   const departments = [...groups.values()].sort((a, b) => {
@@ -501,7 +537,7 @@ export async function teamWorkload(user, filters = {}) {
     d.people.sort((a, b) => (b.attention - a.attention) || (b.tasks.open - a.tasks.open)
       || String(a.name).localeCompare(String(b.name), 'ar'));
   }
-  return { departments, scope, year };
+  return { departments, scope, year, orphans };
 }
 
 // ═══ ملف الشخص ═══════════════════════════════════════════════════════════════════════════════

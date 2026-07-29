@@ -909,11 +909,31 @@ export async function tasksPage(user, opts = {}) {
   </section>`;
   };
 
-  const teamBoard = who === 'team' ? (wl && wl.departments.length ? `
+  // ── عملٌ بلا صاحب ──
+  // اللوحة مبنيّة على الأشخاص، فما لا شخص له كان يغيب عنها كلياً بينما يظهر في القائمة تحته
+  // في الشاشة نفسها. وهذا أسوأ اتجاه للخطأ: العمل المهمَل — بلا مُسنَد إليه، أو على من غادر —
+  // هو أشدّ ما يحتاج نظر المدير وأقلّ ما يظهر له. يُصدَّر الآن **فوق** الإدارات لا تحتها.
+  const orph = wl && wl.orphans ? wl.orphans : null;
+  const orphanStrip = orph && orph.total ? `<div class="wd-orphan">
+    <div class="wd-orphan-h">
+      <span class="wd-orphan-t">عملٌ بلا صاحب</span>
+      <span class="wd-orphan-n tnum">${orph.total}</span>
+      ${orph.overdue ? `<span class="wd-flag tnum">${orph.overdue} متأخرة</span>` : ''}
+    </div>
+    <div class="wd-orphan-b">
+      ${orph.unassigned ? `<span class="wd-orphan-i">${countAr(orph.unassigned, { one: 'مهمة', two: 'مهمتان', few: 'مهام', many: 'مهمة' })} بلا مسؤول —
+        <a href="${qp({ who: 'team', view: null, win: 'all' })}">أسنِدها من القائمة أدناه</a></span>` : ''}
+      ${orph.inactive ? `<span class="wd-orphan-i">${countAr(orph.inactive, { one: 'مهمة', two: 'مهمتان', few: 'مهام', many: 'مهمة' })}
+        على ${orph.people.length === 1 ? 'حسابٍ معطَّل' : 'حسابات معطَّلة'}${orph.people.length ? ` (${orph.people.slice(0, 3).map((x) => esc(x.name)).join('، ')}${orph.people.length > 3 ? ' وغيرهم' : ''})` : ''}
+        — أعِد إسنادها فصاحبها لم يعد يدخل</span>` : ''}
+    </div>
+  </div>` : '';
+
+  const teamBoard = who === 'team' ? (wl && (wl.departments.length || (orph && orph.total)) ? `
     <div class="tk-sec-head"><span class="tk-dot" style="background:var(--brand2)"></span>
       <span class="tk-sec-title">الفريق حسب الإدارة</span>
       <span class="tk-sec-hint">الأكثر احتياجاً للنظر أولاً — لا مقارنة بين الأشخاص</span></div>
-    ${wl.departments.map(depBlock).join('')}`
+    ${orphanStrip}${wl.departments.map(depBlock).join('')}`
     : `<div class="card"><div class="empty-state">${icon('team')}
         <div class="t">لا أحد ضمن نطاقك بعد</div>
         <div class="s">لا حسابات نشطة في نطاقك الآن. تُضاف الحسابات وتُربط بالموظفين من شاشة المستخدمين والصلاحيات.</div></div></div>`) : '';
@@ -1166,6 +1186,15 @@ export async function tasksPage(user, opts = {}) {
     .wd-ok{font-size:var(--fs-micro);font-weight:700;color:var(--green)}
     .wd-why{font-size:var(--fs-micro);color:var(--muted);background:var(--bg);border:1px solid var(--line);
       border-radius:9px;padding:.35rem .6rem;margin:0 .15rem .5rem}
+    /* شريط «عملٌ بلا صاحب» فوق الإدارات: نبرةٌ تنبيهية لا خطأ — حالةُ إسنادٍ ناقصة تُعالَج. */
+    .wd-orphan{background:linear-gradient(180deg,#fffbeb,#fff 60%);border:1px solid #fde68a;
+      border-radius:14px;padding:.6rem .85rem;margin-bottom:.7rem}
+    .wd-orphan-h{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
+    .wd-orphan-t{font-weight:800;font-size:13px;color:#92400e}
+    .wd-orphan-n{font-weight:800;font-size:13px;color:#92400e;background:#fef3c7;border-radius:999px;padding:.02rem .5rem}
+    .wd-orphan-b{display:flex;flex-direction:column;gap:.2rem;margin-top:.3rem}
+    .wd-orphan-i{font-size:var(--fs-micro);color:var(--muted);line-height:1.8}
+    .wd-orphan-i a{color:var(--brand);font-weight:700}
     .wd-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(268px,1fr));gap:.6rem}
     .wp{background:#fff;border:1px solid var(--line);border-radius:14px;padding:.7rem .8rem;
       display:flex;flex-direction:column;gap:.42rem;transition:border-color .15s,box-shadow .15s}
