@@ -7,6 +7,7 @@
 // التي تُغلقه، و«شاشة الإسناد» تُسند دفعة كاملة إلى إدارة واحدة في إجراء واحد.
 import { all, get } from '../../core/db/index.js';
 import { orgTree } from '../../modules/org/org.js';
+import { forbidden } from '../../core/http/errors.js';
 import { orgHealth, countPhrase } from '../../modules/org/org-quality.js';
 import { departmentRollup, unassignedWork } from '../../modules/org/attribution.js';
 import { layout, card, pill, tr } from '../layout.js';
@@ -287,6 +288,7 @@ function unassignedCard(sector, rollup, err, editable) {
 export async function orgTreePage(user, opts = {}) {
   const year = Number(opts.year) || new Date().getUTCFullYear();
   if (opts.fix) return assignPage(user, { sectorId: String(opts.fix), kind: opts.kind, year, limit: opts.limit });
+  if (opts.move) return movePage(user, { from: String(opts.move), q: opts.q });
 
   const tree = await orgTree(user);
   const mgrIds = [];
@@ -419,6 +421,7 @@ export async function orgTreePage(user, opts = {}) {
       : (people ? '' : '<div class="ot-empty">لا وحدات ولا أشخاص في هذه الإدارة</div>');
     const inner = `${people}${unitsInner}`;
     const actions = editable ? `<div class="ot-acts">
+      <a class="ot-act" href="/app/org?move=dep:${encodeURIComponent(d.id)}">نقل موظفين</a>
       <button class="ot-act" data-action="dep-rename" data-id="${d.id}" data-name="${esc(d.name_ar)}">إعادة تسمية</button>
       <select class="ot-act ot-sel" data-action-change="dep-move" data-id="${d.id}" aria-label="نقل الإدارة إلى قطاع آخر">
         <option value="">نقل إلى…</option>
@@ -482,7 +485,12 @@ export async function orgTreePage(user, opts = {}) {
     const q = p.toString();
     return `/app/org${q ? `?${q}` : ''}`;
   };
-  const editBar = canEditAny ? `<a class="ot-editbtn${edit ? ' on' : ''}" href="${qp({ edit: !edit })}">
+  // «نقل الموظفين» مدخلٌ من الشجرة نفسها لا شاشةٌ مخبوءة: أول قطاع يملكه القارئ هو مصدرها
+  // الافتراضي، ويبدّله من داخل الشاشة. ويظهر في وضع التعديل وحده — النقل تعديلٌ لا قراءة.
+  const firstEditable = tree.find((s) => mayEdit(user, s.id));
+  const moveBtn = edit && firstEditable
+    ? `<a class="ot-editbtn" href="/app/org?move=sector:${encodeURIComponent(firstEditable.id)}">نقل موظفين</a>` : '';
+  const editBar = canEditAny ? `${moveBtn}<a class="ot-editbtn${edit ? ' on' : ''}" href="${qp({ edit: !edit })}">
       ${edit ? 'إنهاء التعديل' : 'تعديل الهيكل'}</a>` : '';
 
   const body = `
@@ -657,8 +665,142 @@ async function assignPage(user, { sectorId, kind, year, limit }) {
   });
 }
 
+// ═══════════════════════ شاشة نقل الموظفين ═══════════════════════
+// «لازم سهل نقل الموظفين من الادارات او الى قطاعات اخرى» — بلسان المالك. وكان النقل ممكناً
+// لكن من نافذة تعديل كل موظف على حدة: إعادةُ هيكلة إدارةٍ من اثني عشر شخصاً اثنتا عشرة نافذة.
+//
+// الشاشة تُفتح على مصدرٍ واحد (إدارة · قطاع · «بلا إدارة») فتُقرأ كعملية واحدة مفهومة، وتُغلق
+// بخيارٍ واحد: إلى أين. والقائمة تُبنى على الخادم كاملةً فتُقرأ بلا جافاسكربت، والتحديد
+// والتنفيذ طبقة فوقها — نفس بنية شاشة الإسناد لا بنيةٌ ثانية تتباعد عنها.
+//
+// و«بلا إدارة» مصدرٌ حقيقي لا حالة فراغ: هو أكثر ما يُنقَل منه فعلاً (من يُستورَد بلا إسناد).
+async function movePage(user, { from, q }) {
+  const term = String(q || '').trim().slice(0, 60);
+  const sectors = await orgTree(user);
+  const canMoveAnywhere = sectors.some((s) => mayEdit(user, s.id));
+  if (!canMoveAnywhere) throw forbidden('نقل الموظفين يتطلب صلاحية إدارة الهيكل');
+
+  const depIndex = new Map();
+  for (const s of sectors) for (const d of s.departments || []) depIndex.set(d.id, { ...d, sectorName: s.name_ar });
+
+  // المصدر: «قطاع:المعرّف» أو «إدارة:المعرّف» أو «بلا-إدارة:معرّف-القطاع»
+  const [kind, key] = from.includes(':') ? [from.slice(0, from.indexOf(':')), from.slice(from.indexOf(':') + 1)] : ['dep', from];
+  let where = 'e.deleted_at IS NULL AND e.active = 1';
+  const params = [];
+  let sourceLabel = '';
+  let sourceSector = null;
+  if (kind === 'sector') {
+    where += ' AND e.sector_id = ?'; params.push(key);
+    sourceSector = key;
+    sourceLabel = `قطاع ${(sectors.find((s) => s.id === key) || {}).name_ar || 'غير معروف'}`;
+  } else if (kind === 'none') {
+    where += ' AND e.sector_id = ? AND e.department_id IS NULL'; params.push(key);
+    sourceSector = key;
+    sourceLabel = `غير المسنَدين في قطاع ${(sectors.find((s) => s.id === key) || {}).name_ar || 'غير معروف'}`;
+  } else {
+    where += ' AND e.department_id = ?'; params.push(key);
+    const d = depIndex.get(key);
+    sourceSector = d ? d.sector_id : null;
+    sourceLabel = d ? `إدارة ${d.name_ar}` : 'إدارة غير معروفة';
+  }
+  if (term) { where += ' AND e.name_ar LIKE ?'; params.push(`%${term}%`); }
+  // من لا يملك القطاع المصدر لا تُفتح له قائمته أصلاً — الرفض قبل قراءة الأسماء لا بعدها.
+  if (sourceSector && !mayEdit(user, sourceSector)) throw forbidden('هذا القطاع خارج صلاحيتك');
+
+  const people = await all(`SELECT e.id, e.name_ar, e.job_title, e.sector_id, e.department_id,
+       d.name_ar department_name, u.id user_id
+     FROM employee e
+     LEFT JOIN department d ON d.id = e.department_id AND d.deleted_at IS NULL
+     LEFT JOIN app_user u ON u.employee_id = e.id AND u.deleted_at IS NULL AND u.active = 1
+     WHERE ${where}
+     ORDER BY e.name_ar
+     LIMIT 200`, params);
+
+  // الوجهات: كل إدارة في قطاعٍ يملكه القارئ، **و**«بلا إدارة» في كل قطاع كذلك — فالنقل إلى
+  // قطاعٍ لا إدارات فيه ممكن. ولا يُعرض ما سيرفضه الخادم: قطاعٌ خارج الصلاحية لا يظهر أصلاً.
+  const editable = sectors.filter((s) => mayEdit(user, s.id));
+  const options = editable.map((s) => {
+    const deps = (s.departments || []).map((d) => `<option value="${esc(s.id)}|${esc(d.id)}">${esc(d.name_ar)}</option>`).join('');
+    return `<optgroup label="${esc(s.name_ar)}">
+      <option value="${esc(s.id)}|">— بلا إدارة (القطاع مباشرةً) —</option>${deps}</optgroup>`;
+  }).join('');
+
+  const row = (p) => `<tr data-row="${esc(p.id)}">
+    <td style="padding:.5rem .6rem;border-bottom:1px solid var(--line)">
+      <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer">
+        <input type="checkbox" class="mv-cb" data-id="${esc(p.id)}" aria-label="${esc(p.name_ar)}">
+        <span style="font-weight:700;color:var(--ink2)">${esc(p.name_ar)}</span>
+      </label></td>
+    <td style="padding:.5rem .6rem;border-bottom:1px solid var(--line);font-size:12px;color:var(--muted)">
+      ${p.job_title ? esc(p.job_title) : '<span style="color:var(--faint)">بلا مسمّى</span>'}</td>
+    <td style="padding:.5rem .6rem;border-bottom:1px solid var(--line);font-size:12px;color:var(--muted)">
+      ${p.department_name ? esc(p.department_name) : '<span style="color:var(--faint)">بلا إدارة</span>'}</td>
+    <td style="padding:.5rem .6rem;border-bottom:1px solid var(--line);font-size:11.5px">
+      ${p.user_id ? '<span style="color:var(--green)">له حساب دخول</span>' : '<span style="color:var(--faint)">بلا حساب دخول</span>'}</td>
+    <td style="padding:.5rem .6rem;border-bottom:1px solid var(--line);font-size:12px"><span class="mv-state">—</span></td>
+  </tr>`;
+
+  const th = (t) => `<th style="padding:.5rem .6rem;text-align:right;font-size:11px;color:var(--muted);font-weight:800;border-bottom:1px solid var(--line);white-space:nowrap">${t}</th>`;
+  const sourceOptions = editable.map((s) => {
+    const deps = (s.departments || []).map((d) => `<option value="dep:${esc(d.id)}"${from === `dep:${d.id}` ? ' selected' : ''}>${esc(d.name_ar)}</option>`).join('');
+    return `<optgroup label="${esc(s.name_ar)}">
+      <option value="sector:${esc(s.id)}"${from === `sector:${s.id}` ? ' selected' : ''}>كل القطاع</option>
+      <option value="none:${esc(s.id)}"${from === `none:${s.id}` ? ' selected' : ''}>غير المسنَدين فيه</option>${deps}</optgroup>`;
+  }).join('');
+
+  const body = `
+    <style>${PAGE_CSS}</style>
+    <div class="ot-wrap">
+      <div class="toolbar">
+        <a class="btn btn-sm" href="/app/org">رجوع للهيكل</a>
+        <form method="get" action="/app/org" class="mv-src">
+          <label class="mv-lbl" for="mv-from">انقل من</label>
+          <select id="mv-from" name="move" class="input" onchange="this.form.submit()">${sourceOptions}</select>
+          <input type="search" name="q" class="input mv-q" value="${esc(term)}" placeholder="ابحث بالاسم…" aria-label="ابحث بالاسم">
+          <button class="btn btn-sm" type="submit">بحث</button>
+        </form>
+        <span class="spacer"></span>
+        <span class="asg-sum">${esc(sourceLabel)} · ${countTnum(people.length, 'employee')}</span>
+      </div>
+
+      <div id="mv-result"></div>
+      ${people.length ? `${card(`<div class="asg-barwrap"><div class="asg-bar">
+        <label class="asg-all"><input type="checkbox" id="mv-all" aria-label="تحديد الكل"> تحديد الكل</label>
+        <span class="asg-cnt">المحدد <b class="tnum" id="mv-n">0</b> من <span class="tnum">${people.length}</span></span>
+        <span class="asg-sp"></span>
+        <label class="mv-lbl" for="mv-to">إلى</label>
+        <select id="mv-to" class="input asg-dep" aria-label="الوجهة">
+          <option value="">اختر الوجهة…</option>${options}
+        </select>
+        <button class="btn btn-primary btn-sm" data-action="mv-apply" disabled>نقل المحدد</button>
+      </div></div>
+      <div class="tblwrap"><table class="rtbl" style="width:100%;border-collapse:collapse;min-width:720px">
+        <thead><tr>${th('الموظف')}${th('المسمّى')}${th('الإدارة الحالية')}${th('حساب الدخول')}${th('النتيجة')}</tr></thead>
+        <tbody>${people.map(row).join('')}</tbody>
+      </table></div>`)}`
+    : `<div class="card"><div class="empty-state">${icon('team')}
+        <div class="t">لا موظفين في ${esc(sourceLabel)}${term ? ' بهذا البحث' : ''}</div>
+        <div class="s">اختر مصدراً آخر من القائمة أعلاه، أو امسح البحث.</div></div></div>`}
+      <div class="asg-hint">النقل يغيّر القطاع والإدارة معاً — ومن يُنقَل إلى قطاعٍ آخر يتبعه كشفُه وطاقته وتسكينه. لا يظهر في الوجهات إلا ما تملك صلاحيته.</div>
+    </div>`;
+
+  return layout({
+    user, active: 'org', title: 'نقل الموظفين',
+    subtitle: 'اختر من أين، وحدّد من تنقل، ثم اختر إلى أين — دفعةً واحدة',
+    body, scripts: ['/static/pages/org-tree.js'],
+  });
+}
+
 // ═══════════════════════ التنسيق ═══════════════════════
 const PAGE_CSS = `
+.mv-src{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;margin:0}
+.mv-lbl{font-size:11.5px;font-weight:800;color:var(--muted);white-space:nowrap}
+.mv-src .input{font-size:12px;padding:.35rem .5rem;max-width:230px}
+.mv-q{max-width:170px}
+.mv-state{color:var(--faint)}
+.mv-state.ok{color:var(--green);font-weight:700}
+.mv-state.err{color:var(--red);font-weight:700}
+
 .ot-wrap{font-size:13px}
 .sec-h{display:flex;align-items:baseline;gap:.6rem;flex-wrap:wrap;margin:1.3rem .1rem .55rem}
 .sec-t{font-size:var(--fs-title);font-weight:800;color:var(--ink2)}

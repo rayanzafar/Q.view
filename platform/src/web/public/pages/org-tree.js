@@ -164,6 +164,59 @@
     }
   }
 
+
+  // ── نقل الموظفين ──
+  // «لازم سهل نقل الموظفين من الادارات او الى قطاعات اخرى». الشريط والتحديد والنتائج بنفس
+  // بنية الإسناد أعلاه — سطحُ إجراءٍ واحد يتعلّمه المستخدم مرة، لا سطحان متشابهان يفترقان.
+  var mvBoxes = function () { return $$('.mv-cb:not(:disabled)'); };
+  var mvPicked = function () { return mvBoxes().filter(function (b) { return b.checked; }); };
+  function mvSync() {
+    var n = mvPicked().length;
+    var out = $('#mv-n'); if (out) out.textContent = n;
+    var btn = $('[data-action="mv-apply"]'); if (btn) btn.disabled = n === 0;
+    var all = $('#mv-all'), live = mvBoxes();
+    if (all) { all.checked = live.length > 0 && n === live.length; all.indeterminate = n > 0 && n < live.length; }
+  }
+  function mvRowState(id, text, kind) {
+    var tr = $('tr[data-row="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]');
+    if (!tr) return false;
+    var cell = $('.mv-state', tr);
+    if (cell) { cell.textContent = text; cell.className = 'mv-state ' + kind; }
+    if (kind === 'ok') { var cb = $('.mv-cb', tr); if (cb) { cb.checked = false; cb.disabled = true; } }
+    return true;
+  }
+  async function moveApply(btn) {
+    var sel = $('#mv-to');
+    var raw = sel ? sel.value : '';
+    if (!raw) { toast('اختر الوجهة أولاً', true); if (sel) sel.focus(); return; }
+    var chosen = mvPicked();
+    if (!chosen.length) { toast('حدّد موظفاً واحداً على الأقل', true); return; }
+    var ids = chosen.map(function (b) { return b.dataset.id; });
+    // القيمة «معرّف-القطاع|معرّف-الإدارة»، والإدارة قد تكون فارغة عمداً (نقل إلى القطاع مباشرةً)
+    var cut = raw.indexOf('|');
+    var sectorId = cut < 0 ? raw : raw.slice(0, cut);
+    var depId = cut < 0 ? '' : raw.slice(cut + 1);
+    var toName = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : '';
+    var label = btn.textContent;
+    btn.disabled = true; btn.textContent = 'جارٍ النقل…';
+    try {
+      await api('/org/employees/move', 'POST', { employeeIds: ids, sector_id: sectorId, department_id: depId || null });
+      ids.forEach(function (id) { mvRowState(id, 'نُقل ✓', 'ok'); });
+      var box = $('#mv-result');
+      if (box) {
+        box.innerHTML = '<div class="alert ok" style="margin-bottom:.8rem"><div>نُقل <b class="tnum">'
+          + ids.length + '</b> إلى ' + textNode(toName) + ' — تُحدَّث القائمة الآن.</div></div>';
+      }
+      toast('تم النقل ✓');
+      reload();
+    } catch (e) {
+      var box2 = $('#mv-result');
+      if (box2) box2.innerHTML = '<div class="alert err" style="margin-bottom:.8rem"><div>' + textNode(e.message) + '</div></div>';
+      toast(e.message, true);
+      btn.textContent = label; mvSync();
+    }
+  }
+
   // ── التفويض ──
   document.addEventListener('click', function (e) {
     var el = e.target.closest('[data-action]');
@@ -175,6 +228,7 @@
     if (a === 'dep-del') { e.preventDefault(); return void depDel(el.dataset.id, el.dataset.name); }
     if (a === 'asg-apply') { e.preventDefault(); return void assignApply(el); }
     if (a === 'asg-refresh') { e.preventDefault(); location.reload(); return; }
+    if (a === 'mv-apply') { e.preventDefault(); return void moveApply(el); }
   });
   document.addEventListener('change', function (e) {
     var sel = e.target.closest('[data-action-change="dep-move"]');
@@ -195,4 +249,11 @@
     else if (e.target.id.indexOf('u-') === 0) { e.preventDefault(); unitAdd(e.target.id.slice(2)); }
   });
   if (document.querySelector('.asg-tbl')) syncBar();
+  if (document.querySelector('.mv-cb')) {
+    mvSync();
+    document.addEventListener('change', function (e) {
+      if (e.target.id === 'mv-all') { mvBoxes().forEach(function (b) { b.checked = e.target.checked; }); return void mvSync(); }
+      if (e.target.classList && e.target.classList.contains('mv-cb')) mvSync();
+    });
+  }
 })();

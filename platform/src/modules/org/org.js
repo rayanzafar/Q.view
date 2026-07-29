@@ -277,16 +277,65 @@ export async function createEmployee(ctx, data) {
   return await get('SELECT * FROM employee WHERE id = ?', [eid]);
 }
 export async function moveEmployee(ctx, employeeId, data) {
-  const e = await get('SELECT * FROM employee WHERE id = ?', [employeeId]);
+  const e = await get('SELECT * FROM employee WHERE id = ? AND deleted_at IS NULL', [employeeId]);
   if (!e) throw notFound('الموظف غير موجود');
-  if (!can(ctx.user, 'update', 'employee', e)) throw forbidden();
+  if (!can(ctx.user, 'update', 'employee', e)) throw forbidden('نقل الموظف يتطلب صلاحية إدارية على قطاعه');
   const patch = { updated_at: nowIso() };
   for (const k of ['sector_id', 'department_id', 'unit_id', 'position_id', 'job_title', 'line_manager_id']) if (k in data) patch[k] = data[k];
+
+  // ── بوابة القطاع الهدف ──
+  // كان الفحص على قطاع الموظف **الحالي** وحده: من يملك «تعديل موظف» بنطاق قطاعه يستطيع أن
+  // يدفع أحد أهله إلى أي قطاع آخر — فيظهر في كشف ذلك القطاع وطاقته وتسكينه بلا أن يملك أحدٌ
+  // هناك قراراً في ذلك. (الاتجاه المعاكس كان مغلقاً أصلاً، فكانت ثغرةَ دفعٍ باتجاه واحد.)
+  // الشرط نفسه المطبَّق في updateEmployee — مصدرٌ واحد للقاعدة لا بابان يفترقان.
+  if (patch.sector_id && patch.sector_id !== e.sector_id
+    && !can(ctx.user, 'update', 'employee', { sector_id: patch.sector_id })) {
+    throw forbidden('لا تملك صلاحية على القطاع الهدف');
+  }
+  await assertDepartmentInSector(patch, e);
   // salary edits require salary-read gate (HR/admin) — reuse sensitive gate
   if ('salary_sar' in data && can(ctx.user, 'read', 'salary')) patch.salary_halalas = toHalalas(data.salary_sar);
   await update('employee', employeeId, patch);
   await audit(ctx, { action: 'update', resource: 'employee', resourceId: employeeId, sectorId: patch.sector_id || e.sector_id, detail: { moved: true } });
   return await get('SELECT * FROM employee WHERE id = ?', [employeeId]);
+}
+
+// الإدارة تسكن قطاعاً بعينه، فموظفٌ قطاعه «أ» وإدارته تحت «ب» سجلٌّ يناقض نفسه: تعدّه شجرة
+// الهيكل في «ب» ويعدّه كشف القطاع في «أ»، فيُقرأ الرقمان مختلفين ولا أحد يعرف أيّهما الصحيح.
+// يُفحص الطرفان **بعد الدمج** لا المُرسل وحده — تغييرُ القطاع وحده فوق إدارةٍ قديمة يُنتج
+// التناقض نفسه بلا أن يذكر الطلب إدارةً إطلاقاً.
+async function assertDepartmentInSector(patch, current) {
+  const depId = 'department_id' in patch ? patch.department_id : current.department_id;
+  const secId = 'sector_id' in patch ? patch.sector_id : current.sector_id;
+  if (!depId) return;
+  const dep = await get('SELECT id, sector_id, name_ar FROM department WHERE id = ? AND deleted_at IS NULL', [depId]);
+  if (!dep) throw badRequest('الإدارة المختارة غير موجودة');
+  if (secId && dep.sector_id !== secId) {
+    throw badRequest(`إدارة «${dep.name_ar}» ليست تحت القطاع المختار — اختر إدارةً من القطاع نفسه أو انقله بلا إدارة`);
+  }
+}
+
+// ── نقل مجموعة في خطوة واحدة ──
+// «لازم سهل نقل الموظفين من الإدارات او الى قطاعات اخرى» — بلسان المالك. ونقلُ واحدٍ في كل مرة
+// من نافذة تعديله ليس «سهلاً» حين تُعاد هيكلة إدارة بأكملها: اثنا عشر فتحاً وإغلاقاً.
+//
+// لا مسار مختصر: كل موظف يمرّ بـmoveEmployee نفسه بفحصه وسطر تدقيقه — الدفعة توفّر النقرات
+// لا التحققات. وتُلفّ في معاملة واحدة: نقلٌ نصفُه نجح ونصفُه سقط يترك الإدارة مشطورة بلا أن
+// يعرف أحد أين وقف.
+export async function moveEmployees(ctx, data = {}) {
+  const ids = [...new Set((Array.isArray(data.employeeIds) ? data.employeeIds : []).map(String).filter(Boolean))];
+  if (!ids.length) throw badRequest('اختر موظفاً واحداً على الأقل لنقله');
+  if (ids.length > 200) throw badRequest('الدفعة الواحدة حتى ٢٠٠ موظف — قسّمها على دفعات');
+  const target = {};
+  if ('sector_id' in data) target.sector_id = data.sector_id || null;
+  // «بلا إدارة» خيارٌ مقصود لا قيمة غائبة: من يُنقل إلى قطاع بلا إدارات يجب أن يمكن وضعه فيه.
+  if ('department_id' in data) target.department_id = data.department_id || null;
+  if (!Object.keys(target).length) throw badRequest('حدّد القطاع أو الإدارة التي تنقلهم إليها');
+  const moved = [];
+  await tx(async () => {
+    for (const id of ids) moved.push(await moveEmployee(ctx, id, target));
+  });
+  return { moved: moved.length, employees: moved };
 }
 
 // General attribute edit (name / job / type / status / active / service dates + salary when the

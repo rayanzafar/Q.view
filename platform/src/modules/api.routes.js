@@ -104,6 +104,8 @@ apiRouter.get('/org/roster', h((req) => org.staffingRoster(req.ctx.user, { secto
 apiRouter.post('/org/employees', h((req) => org.createEmployee(req.ctx, req.body)));
 apiRouter.patch('/org/employees/:id', h((req) => org.updateEmployee(req.ctx, req.params.id, req.body)));
 apiRouter.patch('/org/employees/:id/move', h((req) => org.moveEmployee(req.ctx, req.params.id, req.body)));
+// نقل دفعة واحدة — كل موظف فيها يمرّ بفحص النقل نفسه، والدفعة كلها في معاملة واحدة.
+apiRouter.post('/org/employees/move', h((req) => org.moveEmployees(req.ctx, req.body)));
 
 // ── Finance (contracts / invoices / progress claims / collections) ──
 apiRouter.get('/finance/summary', h((req) => finance.financeSummary(req.ctx.user, Number(req.query.year) || undefined)));
