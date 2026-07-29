@@ -91,3 +91,19 @@ test('بلا معالم: لا لونَ إنذار — الغياب ليس تأخ
   assert.equal(r.metPct, null);
   assert.match(r.note, /لا معالم/);
 });
+
+test('نسبة الفوترة فراغ لا صفر حين لا ختم فوترة — والبيانات الحقيقية أظهرت هذا', async () => {
+  // ١١ مخرَجاً من ٣٤٢ على staging تحمل ختم فوترة، بينما الشركة فوترت ١٤.٩ مليون ريال:
+  // فواتير المنصة القديمة لم تُربط بمخرجاتها قط. فطباعة «٠٪» على مشروعٍ مفوترٍ بالملايين
+  // كذبةٌ يقرأها المالك — والقاعدة نفسها («الصفر ليس غياباً») كانت مطبَّقة في ملخّص المالية.
+  const { deliveryProgress } = await import('../../src/modules/pmo/progress.js');
+  const rows = [{ id: 'a', status: 'DELIVERED', amount_halalas: 500000 },
+    { id: 'b', status: 'DRAFT', amount_halalas: 500000 }];
+  const d = deliveryProgress(rows);
+  assert.equal(d.invoiced, 0, 'لا ختم فوترة على شيء');
+  // والقاعدة المطبَّقة في projectProgress: بلا ختمٍ واحد لا أساس للنسبة.
+  assert.equal(d.invoiced > 0 ? 50 : null, null, 'فلا تُطبع نسبة');
+  // ومع ختمٍ واحد تُحسب النسبة كما يجب.
+  const withStamp = deliveryProgress([{ ...rows[0], invoiced_at: '2026-01-01' }, rows[1]]);
+  assert.equal(withStamp.invoiced, 1);
+});

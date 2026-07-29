@@ -1875,9 +1875,10 @@ export async function projectDetailPage(user, projectId, opts = {}) {
     ? `${prog.delivery.accepted} من ${prog.delivery.total} مخرَجاً معتمَداً${prog.delivery.awaitingAcceptance ? ` · ${prog.delivery.awaitingAcceptance}% سُلِّم وينتظر الاعتماد` : ''}`
     : 'لا مخرجات مسجَّلة بعد', '#244A99', 'يرتفع باعتماد المخرجات بأوزانها — التسليم وحده لا يرفعه')}
     ${meter('المعالم المحققة', prog.schedule.metPct, prog.schedule.note, schedTone, 'حالة الجدول من المعالم المسجَّلة لا من مرور الزمن')}
-    ${meter('نسبة الفوترة', prog.money.billedPct, prog.money.contractValue
-    ? `${fmtSar(prog.money.invoicedAmt)} من ${fmtSar(prog.money.contractValue)}` : 'لا قيمة تعاقدية مسجَّلة', '#834798',
-  'المفوتر من قيمة العقد — لا علاقة له باعتماد المخرَج')}
+    ${meter('نسبة الفوترة', prog.money.billedPct, prog.delivery.invoiced
+    ? `${fmtSar(prog.money.invoicedAmt)} من ${fmtSar(prog.money.contractValue)}`
+    : 'لم تُربط فوترة هذا المشروع بمخرجاته', '#834798',
+  'المفوتر من قيمة العقد — لا علاقة له باعتماد المخرَج. ويبقى فارغاً ما لم يحمل مخرَجٌ واحد ختم فوترة، فالصفر هنا يُقرأ «لم نطالب» وهو غير «لم نسجّل الربط»')}
     ${meter('نسبة التحصيل', prog.money.collectedPct, prog.money.invoicedAmt
     ? `${fmtSar(prog.money.collectedAmt)} من المفوتر` : 'لا مستخلصات صادرة بعد', '#059669',
   'المحصَّل من المفوتر — لا من قيمة العقد، كي لا يُخلط تأخّر الفوترة بتأخّر السداد')}
