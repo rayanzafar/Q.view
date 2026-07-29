@@ -9,6 +9,9 @@ import {
   periodChoices, PERIOD_KINDS, PERIOD_LABELS_AR,
 } from '../../core/reports/periods.js';
 import { ROLE_LABELS } from '../../core/rbac/matrix.js';
+// مفتاح الشخص الواحد يُستورَد من خدمة الهوية لا يُعاد كتابته هنا: نسختان من قاعدة التطبيع
+// تنحرفان بمرور الوقت، فتحذّر الشاشة من تكرارٍ يسمح به الخادم، أو تسكت عن تكرارٍ يمنعه.
+import { personKey } from '../../modules/identity/identity.js';
 import { resourceLabel, mailStatusLabel, mailStatusTone, auditActionLabel, reportName } from '../i18n/glossary.js';
 import { esc, statMini } from './_shared.js';
 
@@ -84,6 +87,11 @@ export async function usersPage(user) {
         ? '<span class="text-[11px] text-muted" style="padding:0 .4rem">حسابك</span>'
         : `<button class="btn btn-sm" data-action="idn-toggle" data-id="${esc(u.id)}" data-to="${u.active ? '0' : '1'}"
              style="color:${u.active ? '#b91c1c' : '#047857'}">${u.active ? 'تعطيل' : 'تفعيل'}</button>`}
+      ${/* الدعوة المعلَّقة كان لها زرّ واحد: «تفعيل». أي أن دعوةً أُنشئت بعنوانٍ خاطئ لا سبيل
+            لإغلاقها من الشاشة إطلاقاً — تبقى في العدّاد وفي قائمة من يُدعَون عند الإطلاق.
+            والخيار الثاني هنا هو الطريق إلى الحالة الثالثة: أُغلقت عمداً. */''}
+      ${pending && !isSelf ? `<button class="btn btn-sm" data-action="idn-toggle" data-id="${esc(u.id)}" data-to="0"
+             style="color:#b91c1c" title="لن تصله دعوة بعد اليوم — يبقى الحساب مغلقاً حتى تُعيد تفعيله">إغلاق الدعوة</button>` : ''}
     </td></tr>`;
   }).join('');
 
@@ -95,6 +103,42 @@ export async function usersPage(user) {
   const noEmailN = rows.filter((u) => !u.email).length;
   const byRole = {}; for (const u of rows) { const r = roleAr(u); byRole[r] = (byRole[r] || 0) + 1; }
   const roleItems = Object.entries(byRole).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([r, n], i) => ({ label: esc(r), value: n, color: ['var(--brand)', 'var(--brand2)', '#0891b2', '#059669', '#d97706', '#db2777'][i % 6] }));
+  // ── شخصٌ واحد بحسابين ──
+  // خمسة موظفين صار لكلٍّ منهم حسابان لأن العنوانين اختلفا حرفاً (hussein/hussien، sayed/sayid)
+  // ففحصُ «البريد مستعمل» مرّ سليماً. ولم يكن في الشاشة ما يُظهر ذلك: ثلاثمئة صف مرتَّبة بالدور،
+  // والنسختان متباعدتان فيها. فتُرسَل الدعوة إلى عنوان بينما صاحبها يدخل من غيره — ولا أحد يعلم.
+  // تُجمَع هنا بالاسم العربي، وهو الثابت بين النسختين. والتشابه اشتباهٌ يُعرَض لا حكمٌ يُنفَّذ:
+  // زميلان باسمٍ واحد أمرٌ واقع، وحسابان لشخصٍ واحد بعنوانين قد يكونان مقصودين (كحساب المالك).
+  const twins = new Map();
+  for (const u of rows) {
+    const k = personKey(u.name_ar);
+    if (!k) continue;
+    if (!twins.has(k)) twins.set(k, []);
+    twins.get(k).push(u);
+  }
+  const dupGroups = [...twins.values()].filter((g) => g.length > 1);
+  const stateOf = (u) => (!u.active && !u.last_login_at && !u.deactivated_at) ? ['دعوة معلّقة', 'amber']
+    : u.active ? ['نشط', 'green'] : ['مغلق', 'red'];
+  const dupBand = !dupGroups.length ? '' : card(`
+    <div class="p-4 border-b border-line" style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap">
+      <div class="font-bold text-sm" style="flex:1">أشخاص لهم أكثر من حساب (${dupGroups.length})</div>
+      <span class="text-[11px] text-muted">أبقِ الحساب الذي يدخل صاحبه ببريده فعلاً، وأغلق الآخر — وإلا ذهبت الدعوة إلى عنوان وهو يدخل من سواه.</span>
+    </div>
+    <div style="padding:.5rem 1rem .8rem;display:flex;flex-direction:column;gap:.55rem">
+      ${dupGroups.map((g) => `<div style="display:flex;gap:.7rem;align-items:flex-start;flex-wrap:wrap;padding:.4rem 0;border-bottom:1px dashed var(--line)">
+        <div style="flex:none;min-width:120px;font-size:12.5px;font-weight:700">${esc(g[0].name_ar || '')}</div>
+        <div style="flex:1;min-width:200px;display:flex;flex-direction:column;gap:.3rem">
+          ${g.map((u) => {
+    const [label, tone] = stateOf(u);
+    return `<div style="display:flex;gap:.5rem;align-items:center;font-size:12px">
+              <span dir="ltr" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right">${esc(u.email || 'بلا بريد')}</span>
+              ${pill(label, tone)}
+              <span class="text-[11px] text-muted tnum" style="flex:none">${u.last_login_at ? 'دخل ' + u.last_login_at.slice(0, 10) : 'لم يدخل قط'}</span>
+            </div>`;
+  }).join('')}
+        </div></div>`).join('')}
+    </div>`);
+
   const strip = `<div style="display:flex;gap:.7rem;flex-wrap:wrap;margin-bottom:.9rem">
     ${statMini('إجمالي المستخدمين', rows.length, `${Object.keys(byRole).length} دور`)}
     ${statMini('نشط', activeN, 'حسابات مفعّلة', 'good')}
@@ -103,6 +147,7 @@ export async function usersPage(user) {
     ${statMini('لم يسجّل دخولاً', neverIn, 'حسابات خاملة', neverIn ? 'warn' : '')}</div>`;
 
   const body = `${strip}
+    ${dupBand ? `<div style="margin-bottom:.9rem">${dupBand}</div>` : ''}
     <div style="display:grid;grid-template-columns:2fr 1fr;gap:.9rem">
       ${card(`<div class="p-4 border-b border-line" style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap">
         <div class="font-bold text-sm" style="flex:1">حسابات الدخول (${rows.length})</div>
@@ -121,6 +166,9 @@ export async function usersPage(user) {
       idnSectors:${JSON.stringify(sectors.map((s) => ({ id: s.id, ar: s.name_ar }))).replace(/</g, '\\u003c')},
       idnUsers:${JSON.stringify(Object.fromEntries(rows.map((u) => [u.id, {
         id: u.id, name_ar: u.name_ar, email: u.email, role_id: u.role_id, sector_id: u.sector_id, scope: u.scope, active: !!u.active,
+        // حالة «دعوة معلّقة» تُحسَب على الخادم وتُمرَّر جاهزة: تعريفها واحد للصفّ وللتحذير الذي
+        // يظهر قبل الإغلاق. حسابُها مرتين — هنا وفي الشاشة — يجعلهما ينحرفان بأول تعديل.
+        pending: !u.active && !u.last_login_at && !u.deactivated_at,
       }]))).replace(/</g, '\\u003c')}});</script>`;
   return layout({ user, active: 'users', title: 'المستخدمون والصلاحيات', body, scripts: ['/static/pages/identity.js'] });
 }

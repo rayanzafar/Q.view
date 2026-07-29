@@ -58,6 +58,28 @@
       + '<button class="btn btn-primary" data-action="idn-save" data-id="' + (id || '') + '">' + (id ? 'حفظ التعديلات' : 'إرسال الدعوة') + '</button></div>';
   }
 
+  // الدعوة تُرسَل بنداء مباشر لا عبر المساعد العام: المساعد يحمل نصّ الخطأ وحده، وهنا يلزم
+  // **تفصيله** — الخادم يقول إن هذا اشتباهُ تكرارٍ يُؤكَّد، لا رفضاً نهائياً. وبلا هذا التمييز
+  // تظهر رسالة رفضٍ بلا مخرج، فيغيّر المشرف الاسم قليلاً ليمرّ الفحص — وهو أسوأ من التكرار.
+  async function invite(body) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const res = await fetch('/api/identity/users', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (res.ok) return j;
+      const err = j.error || {};
+      const dup = err.details && err.details.confirmable === 'duplicate_person';
+      if (!dup || attempt === 1) throw new Error(err.message || 'تعذّرت الدعوة');
+      if (!confirm(err.message + '\n\nهل تريد المتابعة وإنشاء حساب ثانٍ بهذا الاسم؟')) {
+        throw new Error('أُلغيت الدعوة — الحساب القائم لم يُمَسّ');
+      }
+      body = Object.assign({}, body, { confirm_duplicate: true });
+    }
+  }
+
   async function save(id) {
     const body = {
       name_ar: val('idnf-name'),
@@ -71,7 +93,7 @@
         await api('/identity/users/' + encodeURIComponent(id), 'PATCH', body);
         toast('حُفظت التعديلات');
       } else {
-        const r = await api('/identity/users', 'POST', body);
+        const r = await invite(body);
         // الصدق في التنبيه: «أُرسلت الدعوة» بينما قناة البريد في وضع المعاينة كذبٌ صريح،
         // والمشرف سينتظر موظفاً لن يصله شيء. تُقال حالة التسليم كما هي.
         toast(r.delivered
@@ -86,10 +108,20 @@
   async function toggleActive(id, to) {
     const u = (S().idnUsers || {})[id] || {};
     const on = to === '1';
-    if (!on && !confirm('تعطيل حساب ' + (u.name_ar || '') + '؟ سيخرج فوراً من كل أجهزته، ولن يستطيع الدخول حتى تُعيد تفعيله.')) return;
+    // إغلاق دعوةٍ لم تُستعمل ليس تعطيلَ موظف: لا جلسة تُقطع ولا وصولٌ يُسحب. وتحذيرُ «سيخرج
+    // فوراً من كل أجهزته» في وجه حسابٍ لم يدخل قط تحذيرٌ كاذب — يوقف المشرف عن فعلٍ سليم.
+    const invite = !!u.pending;
+    if (!on) {
+      const q = invite
+        ? ('إغلاق دعوة ' + (u.name_ar || '') + '؟ لن تصله دعوة بعد اليوم، ويُلغى رمزه إن كان معلّقاً. يمكنك إعادة فتحها متى شئت.')
+        : ('تعطيل حساب ' + (u.name_ar || '') + '؟ سيخرج فوراً من كل أجهزته، ولن يستطيع الدخول حتى تُعيد تفعيله.');
+      if (!confirm(q)) return;
+    }
     try {
       const r = await api('/identity/users/' + encodeURIComponent(id) + '/active', 'POST', { active: on });
-      toast(on ? 'فُعِّل الحساب' : ('عُطِّل الحساب وأُنهيت ' + (r.sessionsRevoked || 0) + ' جلسة'));
+      toast(on ? 'فُعِّل الحساب'
+        : r.closedInvite ? 'أُغلقت الدعوة — لن تُرسَل إلى هذا العنوان بعد اليوم'
+          : ('عُطِّل الحساب وأُنهيت ' + (r.sessionsRevoked || 0) + ' جلسة'));
       setTimeout(() => location.reload(), 700);
     } catch (e) { toast(e.message, true); }
   }

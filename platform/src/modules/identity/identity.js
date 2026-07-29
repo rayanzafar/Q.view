@@ -28,6 +28,24 @@ function requireIdentityAdmin(user, what) {
 const VALID_ROLES = new Set(Object.keys(ROLE_LABELS));
 const VALID_SCOPES = new Set(['own', 'team', 'department', 'sector', 'company']);
 
+// ── مفتاح الشخص الواحد ──
+// البريد وحده لا يكشف التكرار: نفس الشخص يُدعى مرةً بـhussein ومرةً بـhussien، فيمرّ فحصُ
+// «البريد مستعمل» ويُولد له حسابان. وقع هذا خمس مرات على بيانات حقيقية. والاسم العربي هو
+// الثابت الوحيد بين النسختين، فيُطبَّع: تُحذف الألقاب (م. د. أ. المهندس الدكتور الأستاذ)،
+// وتُوحَّد صور الألف والتاء المربوطة والياء، وتُسقَط الحركات والمسافات الزائدة.
+//
+// وهذا مفتاح **اشتباه** لا مفتاح هوية: تشابُهُ الأسماء واردٌ بين شخصين مختلفين حقاً — فيُنبَّه
+// الداعي ويُطلب تأكيده، ولا يُمنع. المنعُ هنا كان سيحجب موظفاً حقيقياً اسمُه كاسم زميله.
+export function personKey(nameAr) {
+  return String(nameAr || '')
+    .replace(/[ً-ْٰ]/gu, '')                    // الحركات
+    .replace(/^(?:م|د|أ|ا)\s*\.\s*/u, '')                      // م. د. أ.
+    .replace(/^(?:المهندس(?:ة)?|الدكتور(?:ة)?|الأستاذ(?:ة)?|الاستاذ(?:ة)?)\s+/u, '')
+    .replace(/[إأآٱ]/gu, 'ا').replace(/ة/gu, 'ه').replace(/ى/gu, 'ي').replace(/ؤ/gu, 'و').replace(/ئ/gu, 'ي')
+    .replace(/\s+/gu, ' ')
+    .trim();
+}
+
 async function loadUser(userId) {
   const u = await get('SELECT * FROM app_user WHERE id = ? AND deleted_at IS NULL', [userId]);
   if (!u) throw notFound('هذا الحساب غير موجود أو محذوف');
@@ -130,6 +148,32 @@ export async function inviteUser(ctx, data = {}) {
   const clash = await get('SELECT id, name_ar, active FROM app_user WHERE lower(trim(email)) = ? AND deleted_at IS NULL', [email]);
   if (clash) throw badRequest(`هذا البريد مرتبط بحساب ${clash.name_ar || ''} — عدّل الحساب القائم بدل إنشاء حساب ثانٍ`);
 
+  // ── وفحصُ البريد وحده لا يكفي ──
+  // خمسة موظفين صار لكلٍّ منهم حسابان، لأن العنوانين اختلفا حرفاً واحداً (hussein/hussien،
+  // sayed/sayid) فمرّ الفحص أعلاه سليماً. والنتيجة أخطر من مجرّد صفٍّ زائد: عند الإطلاق تُرسَل
+  // دعوةٌ إلى عنوانٍ قد لا يوجد على خادم الشركة، بينما لصاحبها حسابٌ آخر يعمل — فلا هو دخل
+  // ولا أحد يعلم لماذا. فيُنبَّه الداعي بالاسم لا بالبريد، وهو الثابت بين النسختين.
+  //
+  // ولأن التشابه ليس يقيناً — زميلان باسمٍ واحد أمرٌ واقع — يُسأل الداعي ولا يُمنع:
+  // `confirm_duplicate` يمرّره بعد أن يرى العنوانَين معاً ويقرّر.
+  if (!data.confirm_duplicate && !data.confirmDuplicate) {
+    const key = personKey(nameAr);
+    if (key) {
+      const rows = await all('SELECT id, name_ar, email, active FROM app_user WHERE deleted_at IS NULL AND name_ar IS NOT NULL');
+      const twin = rows.find((r) => personKey(r.name_ar) === key);
+      if (twin) {
+        throw badRequest(
+          `يوجد حساب بالاسم نفسه «${twin.name_ar}» على البريد ${twin.email || 'بلا بريد'}. `
+          + 'إن كان الشخص نفسه فعدّل حسابه القائم بدل إنشاء ثانٍ — فحسابان لشخص واحد يعني دعوةً '
+          + 'تذهب إلى عنوان وهو يدخل من غيره. وإن كانا شخصين مختلفين فأكّد المتابعة.',
+          // الشاشة تحتاج أن تعرف أن هذا اشتباهٌ يُؤكَّد لا منعٌ نهائي — وإلا عرضت رسالة رفضٍ
+          // بلا مخرج، فيلجأ المشرف إلى تغيير الاسم ليمرّ الفحص، وهو أسوأ من التكرار نفسه.
+          { confirmable: 'duplicate_person', twin_id: twin.id, twin_email: twin.email || null },
+        );
+      }
+    }
+  }
+
   if (employeeId) {
     const taken = await get('SELECT name_ar FROM app_user WHERE employee_id = ? AND deleted_at IS NULL LIMIT 1', [employeeId]);
     if (taken) throw badRequest(`هذا الموظف مربوط بحساب ${taken.name_ar || ''} — فُكّ الربط أولاً`);
@@ -188,8 +232,22 @@ export async function setUserActive(ctx, userId, active) {
 
   if (!want && u.id === actor.id) throw badRequest('لا يمكنك تعطيل حسابك أنت — اطلب من مدير نظام آخر فعل ذلك');
   if (!want) await assertNotLastAdmin(u, { deactivating: true });
-  if (Number(u.active) === want) return { ok: true, unchanged: true };
 
+  // ── إغلاق دعوةٍ لم تُستعمل بعد ──
+  // «غير نشط» حالتان لا واحدة: دعوةٌ تنتظر صاحبها، وحسابٌ أُغلق عمداً. وكان الشرط هنا
+  // `active === want ⇒ لا تغيير`، فيمنع الانتقال بينهما: الدعوةُ المعلَّقة غيرُ نشطة أصلاً،
+  // فطلبُ إغلاقها يُردّ «لا تغيير» ولا يُكتب لها ختم. أي أن الحالة الثالثة **لا يمكن بلوغها
+  // من داخل المنتج إطلاقاً** — ودعوةٌ أُنشئت بعنوانٍ خاطئ تبقى إلى الأبد تنتظر إرسالاً.
+  // وهذا ما وقع فعلاً: خمس دعوات بعناوين لا وجود لها، لا سبيل لإغلاقها إلا بفتح القاعدة يدوياً.
+  //
+  // فالتغيير يُقاس بالحالة المقصودة لا بالعمود وحده: إغلاق حسابٍ بلا ختمٍ سابق فعلٌ حقيقي.
+  const alreadyClosed = !want && !Number(u.active) && u.deactivated_at;
+  const alreadyOpen = want && Number(u.active) === 1;
+  if (alreadyClosed || alreadyOpen) return { ok: true, unchanged: true };
+
+  // ودعوةٌ تُغلَق قبل أن تُستعمل ليست «تعطيل موظف»: لا جلسة تُقطع ولا وصولٌ يُسحب. والأثر
+  // يقول أيّ الفعلين وقع — وإلا قرأ من يراجع السجلّ لاحقاً منعَ موظفٍ حيث لا موظف.
+  const closingUnusedInvite = !want && !Number(u.active);
   let revoked = 0;
   await tx(async () => {
     // ختم التعطيل يُكتب ويُمحى مع الفعل نفسه: به تُميَّز «أُغلق عمداً» عن «لم يُفعَّل بعد»،
@@ -206,10 +264,14 @@ export async function setUserActive(ctx, userId, active) {
     }
     await audit(ctx, {
       action: 'update', resource: 'app_user', resourceId: u.id, sectorId: u.sector_id,
-      detail: want ? `تفعيل حساب ${u.name_ar || u.username}` : `تعطيل حساب ${u.name_ar || u.username} وإنهاء جلساته`,
+      detail: want
+        ? `تفعيل حساب ${u.name_ar || u.username}`
+        : closingUnusedInvite
+          ? `إغلاق دعوة ${u.name_ar || u.username} قبل استعمالها (${u.email || 'بلا بريد'}) — لن تصلها دعوة بعد اليوم`
+          : `تعطيل حساب ${u.name_ar || u.username} وإنهاء جلساته`,
     });
   });
-  return { ok: true, active: !!want, sessionsRevoked: revoked };
+  return { ok: true, active: !!want, sessionsRevoked: revoked, closedInvite: closingUnusedInvite };
 }
 
 // ─────────────────────────── تعديل الحساب ───────────────────────────
