@@ -240,9 +240,17 @@ export async function orgHealth(user, opts = {}) {
   const pending = [];
 
   // ── ١ موظفون خارج أي إدارة (نتيجة لكل قطاع: العدد والقطاع معاً) ──
+  //
+  // **داخل قطاعٍ معلوم وحدهم.** كان الشرط «بلا إدارة» مطلقاً، فيبتلع معه من لا قطاع له أصلاً —
+  // ومنهم من هو خارج الهيكل بقرار: موردٌ يعمل على مشاريع بلا انتماء إداري. فيُعدّ فجوةً عاجلة
+  // ما هو حالةٌ مقصودة، ويقول البند حرفياً «داخل القطاعات» عمّن لا قطاع له. بندٌ يناقض نصّه
+  // لا يُقرأ مرتين: يُغلق مرةً بلا فعل ثم يُهمَل إلى الأبد.
+  //
+  // ومن لا قطاع له يُعرض في بندٍ مستقل أدناه بلغته الصحيحة ودرجته الصحيحة.
   const orphans = await all(
     `SELECT id, name_ar, sector_id FROM employee
-      WHERE deleted_at IS NULL AND (department_id IS NULL OR department_id = '') ${secWhere}
+      WHERE deleted_at IS NULL AND (department_id IS NULL OR department_id = '')
+        AND sector_id IS NOT NULL AND sector_id <> '' ${secWhere}
       ORDER BY name_ar`,
     secParams);
   const orphansBySector = new Map();
@@ -270,6 +278,36 @@ export async function orgHealth(user, opts = {}) {
       suggestion: `افتح شجرة الهيكل وانقل كل واحد منهم إلى إدارته الصحيحة — بعدها يصير مجموع الإدارات مساوياً لإجمالي ${unitNoun(sid)}`,
       items: list.slice(0, ITEM_CAP).map((e) => ({ id: e.id, name_ar: e.name_ar, sector_id: e.sector_id || null, sector_name_ar: sName })),
       items_capped: list.length > ITEM_CAP,
+    }));
+  }
+
+  // ── ١ب موارد على المشاريع خارج الهيكل ──
+  // من لا قطاع له ليس بالضرورة نقصاً: مقاولٌ أو مورد يعمل على مشاريع بلا انتماء إداري، يُحتسب
+  // في التسكين والطاقة ولا يُعدّ من فريق قطاع. يُعرض ليُعرَف — بدرجة ملاحظةٍ لا تحذير، فالإصلاح
+  // ليس مطلوباً منه دائماً. وبلا هذا البند يختفي هؤلاء من شاشة الهيكل تماماً فلا يعرف أحد بوجودهم.
+  const outsiders = await all(
+    `SELECT e.id, e.name_ar,
+            (SELECT COUNT(*) FROM allocation a WHERE a.employee_id = e.id AND a.deleted_at IS NULL) AS allocations
+       FROM employee e
+      WHERE e.deleted_at IS NULL AND (e.sector_id IS NULL OR e.sector_id = '')
+      ORDER BY e.name_ar`);
+  // يُعرض لمن يرى الشركة كلها: بندٌ بلا قطاع لا يخصّ قائد قطاعٍ بعينه، وإظهاره له يعني
+  // كشف أسماء لا تقع في نطاقه.
+  if (outsiders.length && wide) {
+    const staffed = outsiders.filter((e) => Number(e.allocations) > 0).length;
+    findings.push(finding({
+      type: 'employees_outside_structure',
+      severity: NOTE,
+      title: 'موارد على المشاريع خارج الهيكل',
+      sector_id: null,
+      sector_name_ar: 'خارج القطاعات',
+      count: outsiders.length,
+      message: `${countPhrase(outsiders.length, 'employee')} خارج القطاعات`
+        + (staffed ? ` — ${countPhrase(staffed, 'employee')} منهم مسكَّن على مشاريع قائمة` : ' — بلا تسكين قائم')
+        + '. يُحتسبون في التسكين والطاقة ولا يظهرون في شجرة القطاعات ولا في تقارير الإدارات.',
+      suggestion: 'إن كان أحدهم موظفاً في قطاع فأسنِده إليه من شجرة الهيكل. وإن كان مورداً على مشاريع فموضعه هذا صحيح ولا إجراء عليه.',
+      items: outsiders.slice(0, ITEM_CAP).map((e) => ({ id: e.id, name_ar: e.name_ar, sector_id: null, sector_name_ar: 'خارج القطاعات' })),
+      items_capped: outsiders.length > ITEM_CAP,
     }));
   }
 
