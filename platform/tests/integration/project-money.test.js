@@ -297,15 +297,17 @@ test('مشروع خارج نطاق القارئ يُرَدّ في القراءة
   await assert.rejects(() => projectMoney(finance, 'P404'), /غير موجود/);
 });
 
-test('مدير المشروع يرى النسب ولا يرى المال؛ ولا يسجّل مصروفاً', async () => {
+// قرار مالك نقض القاعدة السابقة: «مدير المشروع ومن فوقه يقدر يعدلها ويشوف» — فمالية مشروعه
+// صارت له، ولا فريق مالية في الشركة يفعلها عنه. وما بقي محجوباً عنه لم يُفتح: الكلفة والمصروفات
+// (بوابة حساسة) والتحصيل (شأن الإدارة المالية لا إدارة المشروع).
+test('مدير المشروع يرى مالية مشروعه — ولا كلفةَ ولا تسجيلَ مصروف', async () => {
   const m = await projectMoney(pm, 'P1');
   assert.equal(m.staffing.recorded, true, 'النسب الشهرية حق تشغيلي لمن يقرأ المشروع');
   assert.equal(m.staffing.people[0].monthly[1], 100);
-  assert.equal(m.cashIn.permitted, false);
-  assert.equal(m.cashIn.total_halalas, null);
-  assert.equal(m.expenses.permitted, false);
+  assert.equal(m.cashIn.permitted, true, 'يرى فوترة مشروعه — وهو من يُصدر مستخلصها');
+  assert.equal(m.expenses.permitted, false, 'والمصروفات تبقى خلف بوابتها');
   assert.equal(m.expenses.can_add, false);
-  assert.equal(m.cost.permitted, false);
-  assert.ok(m.cashIn.reason_ar && m.expenses.reason_ar, 'يُقال سبب الحجب لا أن يظهر فراغ');
+  assert.equal(m.cost.permitted, false, 'والكلفة حقل حساس لم يُفتح');
+  assert.ok(m.expenses.reason_ar, 'ويُقال سبب الحجب لا أن يظهر فراغ');
   await assert.rejects(() => expenses.createExpense(ctx(pm), 'P1', { type: 'س', amount_sar: 10, month: 1, year: YR }), /صلاحية/);
 });

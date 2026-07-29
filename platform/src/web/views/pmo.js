@@ -1776,6 +1776,19 @@ export async function projectDetailPage(user, projectId, opts = {}) {
   const k = await projectKpis(p.id);
   const canCost = canSeeSensitive(user, 'cost');
   const canEdit = can(user, 'update', 'project', p);
+  // ── من يرى مالَ المشروع ──────────────────────────────────────────────────────
+  // قرار مالك صريح: «مو أي موظف مسكَّن على المشروع يمديه يشوف هذي الأشياء أصلاً». وكان القسم
+  // يُعرض لكل من يقرأ المشروع — والاستشاري والموظف يقرآن مشاريعهم بحكم تسكينهم، فيرى كلٌّ منهما
+  // قيمة العقد والمفوتر والمستحق. أي أن نطاق **قراءة المشروع** كان يفتح نطاق **قراءة المال**،
+  // وهما منحان مختلفان في المصفوفة عن قصد.
+  // فالبوابة الآن منحُ المال نفسه على هذا الصف بعينه: عقدٌ أو فاتورة. ومدير المشروع يملكه بنطاق
+  // مشروعه، ومن فوقه بنطاق أوسع، والموظف المُسكَّن لا يملكه فلا يرى القسم ولا نسبة الفوترة.
+  const canMoney = can(user, 'read', 'contract', p) || can(user, 'read', 'invoice', p);
+  // وحدُّ **القسم** أوسع من حدّ **مالِ العميل**: القسم يحوي كذلك سجل المصروفات والمشتريات، وهي
+  // شغلُ دور المشتريات فعلاً. فحجبُ القسم كله على من لا يقرأ العقد أخرجَ المشتريات من عملها —
+  // توسّعٌ في الحجب لم يُطلب. فمالُ العميل خلف `canMoney`، والقسم يُعرض لمن يملك أيّ جزء منه،
+  // وكل جزءٍ داخله محروسٌ بمنحه ويقول سبب حجبه (وهو ما تفعله حمولة `projectMoney` أصلاً).
+  const canMoneyBoard = canMoney || can(user, 'read', 'expense', p) || can(user, 'read', 'purchase_order', p);
   const today = new Date();
   const todayStr = today.toISOString().slice(0, 10);
 
@@ -1875,13 +1888,13 @@ export async function projectDetailPage(user, projectId, opts = {}) {
     ? `${prog.delivery.accepted} من ${prog.delivery.total} مخرَجاً معتمَداً${prog.delivery.awaitingAcceptance ? ` · ${prog.delivery.awaitingAcceptance}% سُلِّم وينتظر الاعتماد` : ''}`
     : 'لا مخرجات مسجَّلة بعد', '#244A99', 'يرتفع باعتماد المخرجات بأوزانها — التسليم وحده لا يرفعه')}
     ${meter('المعالم المحققة', prog.schedule.metPct, prog.schedule.note, schedTone, 'حالة الجدول من المعالم المسجَّلة لا من مرور الزمن')}
-    ${meter('نسبة الفوترة', prog.money.billedPct, prog.delivery.invoiced
+    ${/* نسبة الفوترة لمن يملك مالَ المشروع وحده. ولا نسبةَ تحصيل هنا إطلاقاً: التحصيل شأن
+         الإدارة المالية لا شأن إدارة المشروع (قرار مالك) — وقياسُه في صفحة المشروع يُحمّل مديرَه
+         تأخّرَ سدادٍ لا يملك منه شيئاً. والمستحق يُعرض رقماً داخل القسم لمن يراه، بلا نسبة. */''}
+    ${canMoney ? meter('نسبة الفوترة', prog.money.billedPct, prog.delivery.invoiced
     ? `${fmtSar(prog.money.invoicedAmt)} من ${fmtSar(prog.money.contractValue)}`
     : 'لم تُربط فوترة هذا المشروع بمخرجاته', '#834798',
-  'المفوتر من قيمة العقد — لا علاقة له باعتماد المخرَج. ويبقى فارغاً ما لم يحمل مخرَجٌ واحد ختم فوترة، فالصفر هنا يُقرأ «لم نطالب» وهو غير «لم نسجّل الربط»')}
-    ${meter('نسبة التحصيل', prog.money.collectedPct, prog.money.invoicedAmt
-    ? `${fmtSar(prog.money.collectedAmt)} من المفوتر` : 'لا مستخلصات صادرة بعد', '#059669',
-  'المحصَّل من المفوتر — لا من قيمة العقد، كي لا يُخلط تأخّر الفوترة بتأخّر السداد')}
+  'المفوتر من قيمة العقد — لا علاقة له باعتماد المخرَج. ويبقى فارغاً ما لم يحمل مخرَجٌ واحد ختم فوترة، فالصفر هنا يُقرأ «لم نطالب» وهو غير «لم نسجّل الربط»') : ''}
   </div>`;
 
   // ── أهم الإجراءات المطلوبة ───────────────────────────────────────────────────
@@ -1896,7 +1909,9 @@ export async function projectDetailPage(user, projectId, opts = {}) {
       awaiting.slice(0, 2).map((d) => d.name_ar).join(' · '), '#sec-deliverables', 'افتح المخرجات']);
   }
   const billable = dlv.filter((d) => ['DELIVERED', 'ACCEPTED'].includes(d.status) && !d.invoiced_at && d.amount_halalas > 0);
-  if (billable.length) {
+  // بمبلغه — فلا يُعرض إلا لمن يملك مال المشروع. وإلا صار سطرُ «إجراء مطلوب» بابَ تسريبٍ خلفياً
+  // بعد أن أُغلق البابُ الأمامي.
+  if (billable.length && canMoney) {
     acts.push(['blue', 'finance', `${countAr(billable.length, { one: 'مخرَج واحد', two: 'مخرَجان', few: 'مخرجات', many: 'مخرَجاً' })} جاهز للمستخلص (${fmtSar(prog.money.uninvoicedReady)})`,
       'سُلِّم ولم يصدر به مستخلص بعد', contract ? `/app/contract/${contract.id}` : '#sec-money', 'أصدِر المستخلص']);
   }
@@ -1928,7 +1943,10 @@ export async function projectDetailPage(user, projectId, opts = {}) {
       ${fact('العميل', client ? `<a href="/app/client/${esc(client.id)}" style="color:var(--brand2);text-decoration:none">${esc(client.name_ar)}</a>` : `<span style="color:var(--faint)">${G.notRecorded}</span>`)}
       ${fact('مدير المشروع', esc(p.pm_name || owner?.name_ar || owner?.username || '—'))}
       ${fact('حالة المشروع', tr(p.status))}
-      ${fact('قيمة العقد', headlineVal ? `<span class="tnum">${fmtSar(headlineVal)}</span>` : `<span style="color:var(--faint)">${G.notRecorded}</span>`)}
+      ${/* قيمة العقد رقمُ مالٍ ولو كانت في «نظرة عامة»: حجبُ القسم وحده يترك الرقم في الرأس،
+           وهو أظهرُ موضعٍ في الصفحة. وأظهره التصييرُ لكل دور لا المصفوفة — فالمصفوفة تعرف من
+           يملك المنح، والصفحة وحدها تعرف أين طُبع الرقم. */''}
+      ${canMoney ? fact('قيمة العقد', headlineVal ? `<span class="tnum">${fmtSar(headlineVal)}</span>` : `<span style="color:var(--faint)">${G.notRecorded}</span>`) : ''}
       ${fact('المدة', durTxt === '—' ? `<span style="color:var(--faint)">${G.notRecorded}</span>` : `<span style="font-size:11.5px">${durTxt}</span>`)}
       ${signYear ? fact('سنة التوقيع', `<span class="tnum">${esc(signYear)}</span>`,
     '<div style="font-size:10px;color:var(--faint)">خبرٌ عن العقد — لا يُصنَّف بها المشروع</div>') : ''}
@@ -2020,8 +2038,12 @@ export async function projectDetailPage(user, projectId, opts = {}) {
     return `<tr style="border-bottom:1px solid var(--line)">
       <td style="padding:.45rem .75rem;font-size:12.5px">${esc(d.name_ar)}
         <div style="font-size:10px;color:var(--muted)">${due}${d.owner_user_id && userName[d.owner_user_id] ? ` · ${esc(userName[d.owner_user_id])}` : ''}${stamp ? ` · آخر تغيير: ${stamp}` : ''}</div></td>
-      <td style="padding:.45rem .75rem;text-align:center;white-space:nowrap;font-size:12px" class="${d.amount_halalas == null ? '' : 'tnum'}">${d.amount_halalas == null ? `<span style="color:var(--muted);font-size:11px">${G.amountUnset}</span>` : fmtSar(d.amount_halalas)}
-        ${w != null ? `<div style="font-size:10px;color:var(--faint)">وزن <span class="tnum">${Math.round(w)}%</span></div>` : ''}</td>
+      ${/* قيمة المخرَج رقمُ مالٍ لا وصفُ عمل: اسمه وحالته وموعده ومسؤوله عملُ الفريق، وسِعرُه
+           أمرٌ تجاري. فتُحجب عمّن لا يملك مال المشروع — ويبقى **الوزن** ظاهراً لأنه نسبةُ تقدّمٍ
+           لا مبلغ، ومن دونه لا يُفهم الإنجاز. */''}
+      ${canMoney ? `<td style="padding:.45rem .75rem;text-align:center;white-space:nowrap;font-size:12px" class="${d.amount_halalas == null ? '' : 'tnum'}">${d.amount_halalas == null ? `<span style="color:var(--muted);font-size:11px">${G.amountUnset}</span>` : fmtSar(d.amount_halalas)}
+        ${w != null ? `<div style="font-size:10px;color:var(--faint)">وزن <span class="tnum">${Math.round(w)}%</span></div>` : ''}</td>`
+    : `<td style="padding:.45rem .75rem;text-align:center;white-space:nowrap;font-size:12px">${w != null ? `<span style="color:var(--faint);font-size:10.5px">وزن <span class="tnum">${Math.round(w)}%</span></span>` : '<span style="color:var(--faint)">—</span>'}</td>`}
       <td style="padding:.45rem .75rem;text-align:center;white-space:nowrap">${pill(deliverableStatusLabel(d.status), dlvTone(d.status))}</td>
       <td style="padding:.45rem .75rem;text-align:center;white-space:nowrap">${d.collected_at ? pill(G_DLV_MONEY.collected, 'green')
     : d.invoiced_at ? pill(G_DLV_MONEY.invoiced, 'violet') : '<span style="color:var(--faint);font-size:11px">—</span>'}</td>
@@ -2067,7 +2089,7 @@ export async function projectDetailPage(user, projectId, opts = {}) {
     </div>
     <div class="tblwrap">${dlv.length ? `<table style="width:100%;border-collapse:collapse;min-width:${canGov ? 620 : 420}px">
       <thead><tr style="font-size:10.5px;color:var(--muted);text-align:right">
-        <th style="padding:.35rem .75rem">المخرَج</th><th style="padding:.35rem .75rem;text-align:center">القيمة</th>
+        <th style="padding:.35rem .75rem">المخرَج</th><th style="padding:.35rem .75rem;text-align:center">${canMoney ? 'القيمة' : 'الوزن'}</th>
         <th style="padding:.35rem .75rem;text-align:center">حالة العمل</th><th style="padding:.35rem .75rem;text-align:center">المالية</th>
         ${canGov ? '<th style="padding:.35rem .75rem;text-align:center">إجراء</th>' : ''}</tr></thead>
       <tbody>${dlvRows}</tbody></table>`
@@ -2158,11 +2180,10 @@ export async function projectDetailPage(user, projectId, opts = {}) {
     ? { v: fmtSar(v), c: color }
     : { v: G.notRecorded, c: 'var(--faint)' });
   const moneyBody = `
-    <div style="padding:.6rem 1rem">
+    ${canMoney ? `<div style="padding:.6rem 1rem">
       ${[['قيمة العقد', amt(headlineVal, 'var(--ink2)')],
     ['المفوتر', amt(prog.money.invoicedAmt, 'var(--brand2)')],
-    ['المحصَّل', amt(prog.money.collectedAmt, 'var(--green)')],
-    ['المتبقي على العميل', amt(Math.max(0, prog.money.invoicedAmt - prog.money.collectedAmt), 'var(--amber)')],
+    ['المستحق على العميل', amt(Math.max(0, prog.money.invoicedAmt - prog.money.collectedAmt), 'var(--amber)')],
     ['الإيراد المُثبت', amt(revenue, 'var(--green)')],
     ['الصرف الفعلي', showCost ? amt(spend, 'var(--ink2)') : { v: '••• محجوب', c: 'var(--faint)' }],
     ['الهامش', marginPct != null && showCost ? { v: marginPct + '%', c: marginPct < 10 ? 'var(--red)' : 'var(--ink2)' }
@@ -2172,7 +2193,7 @@ export async function projectDetailPage(user, projectId, opts = {}) {
       ${showCost && burnPct != null ? `<div style="margin-top:.55rem"><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted)"><span>استهلاك الميزانية</span><span class="tnum">${burnPct}%</span></div>${bar(burnPct, burnPct > 90 ? '#dc2626' : burnPct > 70 ? '#d97706' : '#059669')}</div>` : ''}
       ${prog.money.uninvoicedReady > 0 ? `<div class="pact blue" style="margin-top:.6rem"><span style="flex:1">مخرجات سُلِّمت ولم يصدر بها مستخلص: <b class="tnum">${fmtSar(prog.money.uninvoicedReady)}</b></span>${contract ? `<a href="/app/contract/${contract.id}">أصدِر المستخلص</a>` : ''}</div>` : ''}
       ${contract ? `<a href="/app/contract/${contract.id}" style="display:block;margin-top:.6rem;font-size:12px;color:var(--brand2);text-decoration:none">↳ فتح العقد ${esc(contract.code || '')} · ${fmtSar(contract.value_halalas)}</a>` : ''}
-    </div>
+    </div>` : ''}
     ${/* لوحُ المال الشهري الكامل خلف طيّة ثانية: هو أطول جزء في الصفحة كلها (شهور وموردون
          وحالات فارغة مشروحة)، وفتحُه مع القسم يبتلع كل ما بعده فيعود التمرير الأعمى الذي
          بُنيت الطيّات لإلغائه. الأرقام السبعة أعلاه تجيب السؤال اليومي، وهذا للتحليل. */''}
@@ -2291,7 +2312,7 @@ export async function projectDetailPage(user, projectId, opts = {}) {
     <div id="sec-deliverables">${sec('deliverables', G.deliverables, { sub: prog.delivery.total ? `${prog.delivery.accepted} معتمَد من ${prog.delivery.total}` : '', badge: cnt(dlv.length), body: dlvBody })}</div>
     <div id="sec-team">${sec('team', 'الفريق والتسكين', { sub: teamLoad?.overloaded ? `${teamLoad.overloaded} فوق طاقته` : '', badge: cnt(team.length, teamLoad?.overloaded ? 'red' : 'blue'), body: teamBody })}</div>
     <div id="sec-tasks">${sec('tasks', 'المهام', { sub: k.lateTasks ? `${k.lateTasks} متأخرة` : '', badge: cnt(k.totalTasks, k.lateTasks ? 'red' : 'blue'), body: tasksBody })}</div>
-    <div id="sec-money">${sec('money', 'العقد والمالية', { sub: prog.money.billedPct != null ? `فوترة ${prog.money.billedPct}%` : '', body: moneyBody })}</div>
+    ${canMoneyBoard ? `<div id="sec-money">${sec('money', canMoney ? 'العقد والمالية' : 'المصروفات والمشتريات', { sub: canMoney && prog.money.billedPct != null ? `فوترة ${prog.money.billedPct}%` : '', body: moneyBody })}</div>` : ''}
     <div id="sec-files">${sec('files', 'الملفات والتحديثات', { badge: cnt((docsPayload.documents || []).length), body: filesBody })}</div>
     <div id="sec-registers">${sec('registers', 'سجلات إضافية', { sub: 'مخاطر · معوقات · قرارات · طلبات تغيير — اختيارية بالكامل', badge: cnt(regCount, 'amber'), body: registersBody })}</div>
     <script>window.__SANAD=Object.assign(window.__SANAD||{},{gov:{projectId:${JSON.stringify(p.id).replace(/</g, '\\u003c')},canEdit:${canGov}},

@@ -208,7 +208,11 @@ export const FIXTURE_PROBES = [
   { method: 'GET', path: '/api/opportunities/FX-OPP-CONS', expect: { default: 403, admin: 200, ceo_office: 200, finance: 200, bd_head: 200 } },
   // Contract detail: company invoice/contract readers + the owning sector's lead only.
   // bd_head reads contract @company; external reads INVOICE @own but no contract grant → 403.
-  { method: 'GET', path: '/api/finance/contracts/FX-CON-1', expect: { default: 403, admin: 200, ceo_office: 200, sector_lead: 200, finance: 200, bd_head: 200 } },
+  // مدير المشروع ٢٠٠ **لأن `FX-CON-1` عقدُ `FX-PRJ-1` وهو مشروعٌ يملكه** (انظر seed-fixture):
+  // قرار مالك صريح أنه يدير مالية مشروعه ويُصدر مستخلصه، ولا فريق مالية يفعلها عنه. والمنح
+  // بنطاق **مشروع**، والحارس صفّي (`can(read, contract, c)` والعقد يحمل `project_id`) — فعقدُ
+  // مشروعٍ لا يديره يُردّ ٤٠٣، ويحرس ذلك tests/security/project-money-visibility.test.js.
+  { method: 'GET', path: '/api/finance/contracts/FX-CON-1', expect: { default: 403, admin: 200, ceo_office: 200, sector_lead: 200, finance: 200, bd_head: 200, project_manager: 200 } },
   // Row-level write probe on a real invoice: authorized roles fall through to amount validation.
   // bd_head is READ-ONLY on money (matrix.js: «المال … قراءة فقط») → must stay 403 here.
   { method: 'POST', path: '/api/finance/collections', body: { invoiceId: 'FX-INV-2' }, expect: { default: 403, admin: 400, sector_lead: 400, finance: 400 } },

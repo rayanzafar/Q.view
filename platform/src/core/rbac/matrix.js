@@ -34,6 +34,12 @@ export const ROLE_GRANTS = {
     // يعلو قادة القطاعات في التسلسل الهرمي ⟵ يدير هيكل أي قطاع (إدارات ووحدات) لا قطاعاً بعينه.
     // إنشاء/حذف القطاع نفسه يبقى لمدير النظام — قرار بنية شركة.
     { resource: 'department', action: 'admin', scope: 'company' },
+    // ويعدّل المشروع ومخرجاته: «مدير المشروع **ومن فوقه** يقدر يعدلها ويشوف» — ومكتب الرئيس
+    // التنفيذي فوقه. وكان يقرأ كل شيء ولا يعدّل مشروعاً واحداً، فيرى الخلل ولا يملك تصحيحه.
+    // **تعديلٌ لا إنشاء ولا حذف**: القرار المنقول «يعدّلها ويشوف» حرفياً، وإنشاءُ المشروع يبدأ من
+    // الفرصة عند تطوير الأعمال وقائد القطاع، وحذفُه لا رجعة فيه فيبقى لصاحب القطاع ومدير النظام.
+    ...crud(['project', 'milestone', 'deliverable', 'project_phase'], 'company', ['read', 'update']),
+    { resource: 'deliverable', action: 'approve', scope: 'company' },
     { resource: 'report', action: 'export', scope: 'company' },
     // exec sees company margins/cost/revenue (aggregate), not individual salary or IPs
     { resource: 'margin', action: 'read', scope: 'company' },
@@ -93,12 +99,21 @@ export const ROLE_GRANTS = {
     { resource: 'timesheet', action: 'approve', scope: 'department' },
   ],
 
+  // مدير المشروع يملك **مالية مشروعه** — قرار مالك صريح: «مدير المشروع ومن فوقه يقدر يعدلها
+  // ويشوف». وكان لا يقرأ عقد مشروعه ولا فاتورةً واحدة عليه، فيدير تسليماً لا يعرف قيمته ولا ما
+  // طُولب به. وأشدُّ منه أثراً أنه **لا يستطيع إصدار مستخلص** على مخرَجٍ سلّمه — ولا فريق مالية
+  // في الشركة يفعلها عنه، فيبقى المخرَج مُسلَّماً بلا مطالبة إلى أن يتذكّره أحد.
+  // والنطاق **مشروع** لا شركة: يرى مال مشاريعه وحدها، ولا تفتح له شاشة مالية الشركة (بوابتها
+  // تشترط نطاقاً أوسع — انظر core/policy/pages.js). والتحصيل ليس له: شأن الإدارة المالية.
   project_manager: [
     ...crud(['project', 'task', 'milestone', 'deliverable', 'risk', 'issue', 'allocation'], 'project',
       ['read', 'create', 'update']),
     { resource: 'deliverable', action: 'approve', scope: 'project' },
     { resource: 'task', action: 'approve', scope: 'project' },
     ...read(['budget', 'report', 'kpi'], 'project'),
+    ...read(['contract', 'revenue_line', 'contract_payment'], 'project'),
+    { resource: 'invoice', action: 'read', scope: 'project' },
+    { resource: 'invoice', action: 'create', scope: 'project' }, // المستخلص على مخرَجٍ سلّمه
   ],
 
   bd_manager: [

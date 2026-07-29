@@ -55,7 +55,12 @@ export const PAGE_ACCESS = {
   // بنفس بوابة الصلاحيات التي تسمح أو تمنع كل شاشة، فلا يصل المستخدم إلا لشرح ما يراه فعلاً.
   guide: () => true,
   approvals: (u) => ['admin', 'sector_lead', 'finance', 'department_manager', 'line_manager', 'approver', 'ceo_office'].includes(u.role_id),
-  finance: (u) => can(u, 'read', 'invoice') || can(u, 'read', 'contract'),
+  // شاشةُ مالية **الشركة**: أرقامٌ مجمَّعة عبر القطاعات والعملاء كلهم. فبوابتها نطاقٌ واسع لا
+  // مجرّد وجود منح — ومدير المشروع صار يقرأ عقد مشاريعه وفواتيرها بنطاق «مشروع» (قرار مالك: هو
+  // من يدير مالية مشروعه ولا فريق مالية يفعلها عنه). ولو بقيت البوابة «أي منح» لانفتحت له
+  // محفظةُ الشركة كاملةً بسبب منحٍ على مشروعه وحده — توسّعٌ لم يُطلب ولا يُقصد.
+  finance: (u) => ['sector', 'company'].includes(effectiveScope(u, 'read', 'invoice'))
+    || ['sector', 'company'].includes(effectiveScope(u, 'read', 'contract')),
   team: (u) => can(u, 'read', 'employee'),
   staffing: (u) => can(u, 'read', 'employee'),
   imports: (u) => u.role_id === 'admin' || ['client', 'employee', 'opportunity', 'project', 'allocation', 'revenue_line'].some((r) => can(u, 'read', r) || can(u, 'create', r) || can(u, 'update', r)),
