@@ -33,13 +33,34 @@ export async function mailPage(user, opts = {}) {
       ? `الإرسال مقصورٌ على ${allow.length} عنواناً مسموحاً به؛ ما عداها يُحجب ويُسجَّل «حُجبت».`
       : 'لا يوجد عنوان مسموح به بعد — كل رسالة ستُحجب. أضِف عناوين التجربة أولاً.';
   const scopeTone = openToAll ? 'green' : allow.length ? 'blue' : 'red';
+
+  // ── ومِن أي عنوان يخرج البريد؟ ──
+  // كانت الشاشة تقول «مفعّل» و«إلى مَن» ولا تقول **مِن مَن** — وهو نصف الحقيقة الغائب. وعنوان
+  // المُرسِل هو ما يقرّر إن كانت الرسالة تصل أصلاً: نطاقٌ غير موثَّق لدى المزوّد يعني رفضاً
+  // أو حجزاً في البريد المزعج، ونطاقُ تجربة يعني وصولاً لصاحب الحساب وحده مهما طالت قائمة
+  // السماح. وكِلا الحالتين تبدو من هنا «مفعّلة وتعمل»، فيُطلَق الشيء وهو معطَّل عملياً.
+  const from = String(config.smtp.from || '').trim();
+  const fromAddr = (from.match(/<([^>]+)>/)?.[1] || from).trim();
+  const fromDomain = fromAddr.includes('@') ? fromAddr.split('@').pop().toLowerCase() : '';
+  // نطاقات التجربة التي يمنحها مزوّدو الإرسال: تعمل فوراً لكنها **لا تصل إلا صاحب الحساب**.
+  const SANDBOX_DOMAINS = ['resend.dev', 'example.com', 'localhost'];
+  const sandbox = SANDBOX_DOMAINS.some((d) => fromDomain === d || fromDomain.endsWith('.' + d));
+  const fromTone = !fromAddr ? 'red' : sandbox ? 'amber' : 'blue';
+  const fromNote = !fromAddr
+    ? 'لم يُضبط عنوان المُرسِل — لن تخرج أي رسالة حتى يُضبط بعنوانٍ على نطاقٍ موثَّق لدى مزوّد الإرسال.'
+    : sandbox
+      ? 'هذا نطاق تجربة من مزوّد الإرسال: الرسائل لا تصل إلا صاحب حساب المزوّد نفسه، مهما أُضيف إلى قائمة السماح. وثِّق نطاق الشركة لدى المزوّد ثم اضبط المُرسِل عليه.'
+      : '';
+
   const chan = card(`<div style="padding:.85rem 1rem;display:flex;align-items:center;gap:.7rem;flex-wrap:wrap">
     <div style="font-weight:800;font-size:13.5px">قناة الإرسال</div>
     ${smtpOn ? pill('بريد حقيقي مفعّل', 'green') : pill('وضع المعاينة — لا يُرسل بريد حقيقي', 'amber')}
     ${smtpOn ? pill(openToAll ? 'مفتوح لكل العناوين' : allow.length ? `مقصور على ${allow.length} عنواناً` : 'لا عنوان مسموحاً', scopeTone) : ''}
+    ${smtpOn ? pill(fromAddr ? `تُرسَل من ${esc(fromAddr)}` : 'بلا عنوان مُرسِل', fromTone) : ''}
     <span style="font-size:var(--fs-meta);color:var(--muted)">${smtpOn
       ? esc(scopeText)
       : 'كل رسالة تُحفظ هنا للمعاينة بدل إرسالها، وتُسجَّل «عُوينت ولم تُرسل» لا «أُرسلت». تفعيل الإرسال الحقيقي يحتاج بيانات خادم البريد من مزوّد النطاق (يُطلب من المالك).'}</span>
+    ${smtpOn && fromNote ? `<div style="flex:1 0 100%;font-size:var(--fs-meta);color:var(--${sandbox ? 'amber' : 'red'});line-height:1.8">${esc(fromNote)}</div>` : ''}
   </div>`);
 
   const fileRows = files.map(({ f, t }) => {
