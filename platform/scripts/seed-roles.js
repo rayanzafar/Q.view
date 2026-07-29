@@ -172,6 +172,21 @@ async function planOrg(willExist = new Set()) {
  */
 export async function seedRoles(opts = {}) {
   const { apply = false, accountsOnly = false, log = console.log } = opts;
+
+  // ── حسابات العرض تُطفأ بمفتاحها كبقية بذور العرض ──
+  // كان هذا السكربت يُشغَّل في كل إقلاع بلا نظرٍ إلى SANAD_SEED_DEMO، وكتابته `ON CONFLICT …
+  // DO UPDATE SET … active = EXCLUDED.active` تُعيد **تفعيل** ما أُغلق عمداً. فأُغلقت حسابات
+  // العرض قبل الإطلاق، ثم أعادها أوّلُ نشرٍ تالٍ إلى الحياة — والأسوأ أن ذلك يحدث بصمت: لا
+  // أحد يعيد فتحها، ولا أحد يعلم أنها فُتحت. وشاشةٌ فيها «مستخدم خارجي (تجريبي)» نشطٌ يوم
+  // الإطلاق ليست عيباً في العرض بل باب دخولٍ لم يُغلَق.
+  //
+  // فالمفتاح واحد لكل بذور العرض: SANAD_SEED_DEMO=0 يعني لا حسابات عرض — إنشاءً ولا إحياءً.
+  const demoOff = process.env.SANAD_SEED_DEMO === '0' || process.env.SANAD_SEED_DEMO === 'false';
+  if (demoOff) {
+    log('seed-roles: بذور العرض مُطفأة (SANAD_SEED_DEMO=0) — لا حسابات عرض تُنشأ ولا تُعاد تفعيلاً.');
+    return { applied: false, skipped: 'demo-off' };
+  }
+
   const targets = MISSING_ROLE_ACCOUNTS.map((u) => {
     const d = DEMO_USERS.find((x) => x.u === u);
     if (!d) throw blocked(`«${u}» غير معرَّف في قائمة حسابات العرض بـ scripts/seed.js — لا تُخترع تعريفاته هنا.`);
