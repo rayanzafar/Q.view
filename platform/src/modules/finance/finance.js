@@ -265,8 +265,9 @@ export async function createProgressClaim(ctx, { contractId, deliverableIds = []
     const billed = await billedAmong(rows);
     const missing = ids.filter((i) => !found.has(i)).length;
     const foreign = rows.length - mine.length;
-    // «سبق تفويتره» يسبق «لم يُسلَّم»: المخرَج المفوتر حالته صارت «مفوتر» بحكم الفوترة نفسها،
-    // فلو قُرئت حالته أولاً لقيل لصاحب الطلب إنه لم يُسلَّم بعد — وهو عكس ما جرى تماماً.
+    // «سبق تفويتره» يسبق «لم يُسلَّم» — والمصدر سطورُ الفاتورة لا حالة المخرَج. الفوترة لم تعد
+    // تكتب شيئاً على الحالة (ترحيلة ٠١٧)، فالحالة تقول ما فعله الفريق وسطرُ الفاتورة يقول ما
+    // طُولب به، وكلٌّ يُقرأ من مصدره.
     const already = mine.filter((d) => billed.has(d.id));
     const notReady = mine.filter((d) => !billed.has(d.id) && !CLAIMABLE_STATUSES.includes(String(d.status)));
     const ready = mine.filter((d) => !billed.has(d.id) && CLAIMABLE_STATUSES.includes(String(d.status)));
@@ -290,7 +291,9 @@ export async function createProgressClaim(ctx, { contractId, deliverableIds = []
   // cumulative claim number on this contract
   const claimCount = (await get('SELECT COUNT(*) n FROM invoice WHERE contract_id=? AND kind=\'progress_claim\'', [contractId])).n;
   const invId = id('inv'); const now = nowIso();
-  const totalDelivered = (await get("SELECT COALESCE(SUM(amount_halalas),0) v FROM deliverable WHERE project_id=? AND status IN ('DELIVERED','ACCEPTED','INVOICED','PAID') AND deleted_at IS NULL", [c.project_id])).v;
+  // المُسلَّم تراكمياً: الحالة وحدها تكفي الآن. كانت القائمة تضمّ «مُفوتر» و«مدفوع» لأن الفوترة
+  // كانت تمحو حالة التسليم فيلزم استرجاعها منها — وقد زال السبب بزوال المحو.
+  const totalDelivered = (await get("SELECT COALESCE(SUM(amount_halalas),0) v FROM deliverable WHERE project_id=? AND status IN ('DELIVERED','ACCEPTED') AND deleted_at IS NULL", [c.project_id])).v;
   await insert('invoice', {
     id: invId, code: `${c.code || 'INV'}-C${claimCount + 1}`, contract_id: contractId, project_id: c.project_id,
     client_id: c.client_id, sector_id: c.sector_id, amount_halalas: amount, issue_date: now.slice(0, 10),
@@ -301,7 +304,10 @@ export async function createProgressClaim(ctx, { contractId, deliverableIds = []
   });
   for (const d of toClaim) {
     await insert('invoice_line', { id: id('il'), invoice_id: invId, deliverable_id: d.id, label: d.name_ar, amount_halalas: d.amount_halalas || 0 });
-    await update('deliverable', d.id, { status: 'INVOICED', updated_at: now });
+    // ختمُ الفوترة **بجانب** الحالة لا فوقها. كان هذا السطر يكتب `status = 'INVOICED'` فيمحو
+    // «تم الاعتماد»، فيصير المخرَج الذي اعتمده العميل مخرَجاً لا يُعرف أقُبل أم لا — والفوترة
+    // تُقرأ إنجازاً. صرفُ المستخلص واقعةٌ مالية لا شهادةَ إنجاز، فلا تلمس عمل الفريق.
+    await update('deliverable', d.id, { invoiced_at: now, updated_at: now });
   }
   await audit(ctx, { action: 'create', resource: 'invoice', resourceId: invId, sectorId: c.sector_id,
     detail: { kind: 'progress_claim', claim_no: claimCount + 1, deliverables: toClaim.length, amount } });
@@ -320,8 +326,18 @@ export async function recordCollection(ctx, { invoiceId, amountSar, collectedAt,
   await insert('collection', { id: id('col'), invoice_id: invoiceId, amount_halalas: amt,
     collected_at: collectedAt || nowIso().slice(0, 10), method: method || 'تحويل', created_at: nowIso() });
   const newOut = out - amt;
-  await update('invoice', invoiceId, { status: newOut <= 0 ? 'PAID' : 'PARTIALLY_PAID' });
-  await audit(ctx, { action: 'update', resource: 'invoice', resourceId: invoiceId, sectorId: inv.sector_id, detail: { collected: amt } });
+  const settled = newOut <= 0;
+  await update('invoice', invoiceId, { status: settled ? 'PAID' : 'PARTIALLY_PAID' });
+  // ختمُ التحصيل ينزل على مخرجات الفاتورة **حين تُسدَّد كاملة** لا مع أول دفعة: نسبة التحصيل
+  // تُقاس بالمخرَج، ومخرَجٌ سُدِّد ثلثه ليس محصَّلاً. وهو ختم ثالث مستقل — لا يقول شيئاً عن
+  // التسليم ولا عن الاعتماد، ولا يمسّ حالة المخرَج.
+  if (settled) {
+    await run(`UPDATE deliverable SET collected_at = ?, updated_at = ?
+       WHERE collected_at IS NULL AND deleted_at IS NULL
+         AND id IN (SELECT deliverable_id FROM invoice_line WHERE invoice_id = ? AND deliverable_id IS NOT NULL)`,
+    [nowIso(), nowIso(), invoiceId]);
+  }
+  await audit(ctx, { action: 'update', resource: 'invoice', resourceId: invoiceId, sectorId: inv.sector_id, detail: { collected: amt, settled } });
   return await get('SELECT * FROM invoice WHERE id=?', [invoiceId]);
 }
 

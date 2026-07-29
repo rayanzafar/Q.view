@@ -265,6 +265,38 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
 .alert.info{background:#eff6ff;border-color:#bfdbfe;color:#1e40af}
 .tblwrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
 
+/* ── الكشف التدريجي (.psec) ─────────────────────────────────────────────────
+   قسمٌ يُفتح ويُطوى، مبنيّ على <details>/<summary> لا على جافاسكربت: يعمل قبل تحميل أي نص
+   برمجي، ويُفتح بالمسافة والإدخال من لوحة المفاتيح بحكم العنصر نفسه، ويُطبع مفتوحاً. وأي
+   بديل مصنوع بأزرار يلزمه إعادة بناء هذا كله يدوياً ويسقط منه شيء دائماً.
+   المؤشّر مكتوب بـinline-start فينقلب مع الاتجاه بلا قاعدة ثانية للعربية. */
+.psec{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--sh-sm);margin-bottom:.75rem;overflow:hidden}
+.psec>summary{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;padding:.8rem 1rem;cursor:pointer;
+  list-style:none;user-select:none;transition:background .15s}
+.psec>summary::-webkit-details-marker{display:none}
+.psec>summary:hover{background:#fafbfe}
+.psec>summary:focus-visible{outline:2px solid var(--brand);outline-offset:-2px}
+.psec>summary .psec-t{font-weight:800;font-size:13.5px;color:var(--ink2)}
+.psec>summary .psec-s{font-size:11.5px;color:var(--muted);font-weight:600}
+.psec>summary .psec-x{margin-inline-start:auto;display:flex;align-items:center;gap:.4rem}
+.psec>summary .psec-c{flex:0 0 auto;width:16px;height:16px;color:var(--faint);transition:transform .18s}
+.psec[open]>summary .psec-c{transform:rotate(-90deg)}
+.psec[open]>summary{border-bottom:1px solid var(--line)}
+.psec-b{padding:.15rem 0}
+/* شريط الإجراءات المطلوبة: صفٌّ واحد لكل ما يستحق قراراً الآن، ملوَّن بحدّته لا بزخرفته */
+.pact{display:flex;align-items:center;gap:.55rem;padding:.5rem .8rem;border-radius:10px;font-size:12.5px;
+  border:1px solid;line-height:1.6}
+.pact.red{background:#fef2f2;border-color:#fecaca;color:#991b1b}
+.pact.amber{background:#fffbeb;border-color:#fde68a;color:#92400e}
+.pact.blue{background:#eff6ff;border-color:#bfdbfe;color:#1e40af}
+.pact a{color:inherit;font-weight:800;text-decoration:underline}
+/* مقياس صغير: نسبة تُقرأ برقمها وشريطها معاً — لا شريط بلا رقم ولا رقم بلا سياق */
+.pmeter{display:flex;flex-direction:column;gap:.28rem}
+.pmeter .l{display:flex;justify-content:space-between;align-items:baseline;font-size:11.5px;color:var(--muted)}
+.pmeter .l b{font-size:13px;color:var(--ink2)}
+.pmeter .t{height:8px;border-radius:999px;background:#eef1f7;overflow:hidden}
+.pmeter .t i{display:block;height:100%;border-radius:999px}
+
 /* ── النموذج الزمني الموحد (v2.1) ──────────────────────────────────────────
    .mtrack: مسار 12 شهراً يُقرأ كما يُقرأ النص — يناير في أقصى اليمين، ديسمبر في أقصى اليسار.
    العناوين المزدوجة: .m-full عربية كاملة على الواسع، .m-tight إنجليزية Jan على الضيق
@@ -482,8 +514,12 @@ export const LABELS = {
   TODO: 'قيد الانتظار', BLOCKED: 'مُعطَّل', IN_REVIEW: 'قيد المراجعة', DONE: 'منجز',
   // priority
   P0: 'حرجة', P1: 'عالية', P2: 'متوسطة', P3: 'منخفضة',
-  // deliverable status
-  DELIVERED: 'مُسلَّم', PENDING: 'قيد الإعداد', ACCEPTED: 'مقبول', INVOICED: 'مُفوتَر', PAID: 'مدفوع',
+  // deliverable status — الحالات نفسها في المعجم (deliverableStatusLabel) وهو ما تستعمله
+  // الشاشات فعلاً. أُبقيت هنا الأربع المشتركة فقط، وحُذفت INVOICED وPENDING: الأولى لم تعد
+  // حالةَ مخرَج أصلاً (صارت ختماً زمنياً — ترحيلة ٠١٧)، والثانية كانت تعني «قيد الإعداد» على
+  // المخرَج و«قادم» على المعلم و«معلَّق» على طلب الاعتماد — وهذا الجدول **مسطَّح**، فمفتاح
+  // واحد بثلاثة معانٍ يطبع أحدها في موضع الآخرَين. من احتاجها فليقرأها من معجم نوعه.
+  DELIVERED: 'تم التسليم', ACCEPTED: 'تم الاعتماد', PAID: 'مدفوع',
   // invoice status
   ISSUED: 'صادر', PARTIALLY_PAID: 'مدفوع جزئيًا', OVERDUE: 'متأخر', DRAFT: 'مسودة',
   // contract status

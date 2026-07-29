@@ -6,6 +6,7 @@ import { audit } from '../../core/audit/index.js';
 import { id, nowIso, toHalalas } from '../../core/util/ids.js';
 import { forbidden, notFound, badRequest } from '../../core/http/errors.js';
 import { isDelivery, SUPPORT_KIND } from '../org/org.js';
+import { staffingCandidates, projectTeamLoad } from './capacity.js';
 
 export async function listProjects(user, filters = {}) {
   const f = scopeFilter(user, 'project', 'read', { ownerCol: 'owner_user_id' });
@@ -200,7 +201,7 @@ export async function updateProject(ctx, pid, data) {
 }
 
 // ── Staffing (تسكين): assign/unassign employees to a project via the allocation model ──
-export async function projectStaffing(user, projectId) {
+export async function projectStaffing(user, projectId, opts = {}) {
   const p = await get('SELECT * FROM project WHERE id=? AND deleted_at IS NULL', [projectId]);
   if (!p) throw notFound('المشروع غير موجود');
   if (!can(user, 'read', 'project', p)) throw forbidden();
@@ -218,7 +219,20 @@ export async function projectStaffing(user, projectId) {
       WHERE e.active = 1 AND e.deleted_at IS NULL AND (e.sector_id = ? OR s.kind = ?)
       ORDER BY e.name_ar`, [p.sector_id, SUPPORT_KIND]))
     .filter((e) => !assignedIds.has(e.id));
-  return { project: { id: p.id, name_ar: p.name_ar, sector_id: p.sector_id }, assigned, available, canStaff: can(user, 'update', 'project', p) };
+  // الضغطُ الحالي يُرفَق بالقائمتين: اختيارُ عضوٍ بلا رؤية حِمله قرارٌ بمعصوب العينين — ومنه
+  // يقع التسكين فوق المئة صامتاً. والفشل هنا لا يُسقط الشاشة: التسكين يجب أن يعمل ولو تعذّرت
+  // قراءة الضغط (لمن لا يملك قراءة الموظفين مثلاً)، فتعود القائمة بلا أرقام لا بخطأ.
+  let load = null;
+  try {
+    const [cand, team] = await Promise.all([
+      staffingCandidates(user, projectId, opts),
+      projectTeamLoad(user, projectId, opts),
+    ]);
+    load = { candidates: cand.candidates, team: team.team, month: cand.month, monthLabel: cand.monthLabel,
+      year: cand.year, overloaded: team.overloaded, fteNow: team.fteNow };
+  } catch { load = null; }
+  return { project: { id: p.id, name_ar: p.name_ar, sector_id: p.sector_id }, assigned, available, load,
+    canStaff: can(user, 'update', 'project', p) };
 }
 
 // Build a {month: fraction} map from an allocation % and a month range (defaults: from the current
@@ -337,4 +351,100 @@ export async function unassignEmployee(ctx, allocationId) {
   await update('allocation', allocationId, { deleted_at: nowIso() });
   await audit(ctx, { action: 'delete', resource: 'allocation', resourceId: allocationId, sectorId: a.sector_id });
   return await projectStaffing(user, a.project_id);
+}
+
+// ── ملفات المشروع وتحديثاته ───────────────────────────────────────────────────
+// جدول المستندات يحمل `project_id` منذ الموجة الثانية ولا يكتبه شيء في المنتج كله: كل مسار
+// المستندات مبنيّ على العميل وحده. فوثيقةُ نطاق العمل ومحضرُ التسليم لا موضع لهما في المنصة،
+// ويُتداولان خارجها. وهذان المساران يفتحان الخانة القائمة بلا جدول جديد ولا رفع ملفات:
+// **بيانات وصفية ورابط** كما في مستندات العميل تماماً — الملف يبقى حيث هو، والمنصة تدلّ عليه.
+const DOC_KINDS = ['contract', 'proposal', 'report', 'letter', 'other'];
+
+export async function projectDocuments(user, projectId) {
+  const p = await get('SELECT * FROM project WHERE id = ? AND deleted_at IS NULL', [projectId]);
+  if (!p) throw notFound('المشروع غير موجود');
+  if (!can(user, 'read', 'project', { ...p, project_id: p.id })) throw forbidden('هذا المشروع خارج نطاق صلاحياتك');
+  const documents = await all(`SELECT id, name, kind, url, note, uploaded_by, created_at
+     FROM document WHERE project_id = ? AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 100`, [projectId]);
+  return { projectId, documents, canEdit: can(user, 'update', 'project', { ...p, project_id: p.id }) };
+}
+
+export async function addProjectDocument(ctx, projectId, data = {}) {
+  const user = ctx.user;
+  const p = await get('SELECT * FROM project WHERE id = ? AND deleted_at IS NULL', [projectId]);
+  if (!p) throw notFound('المشروع غير موجود');
+  if (!can(user, 'update', 'project', { ...p, project_id: p.id })) throw forbidden('إضافة مستند تتطلب صلاحية إدارة المشروع');
+  const name = (data.name || '').toString().trim();
+  if (!name) throw badRequest('اسم المستند مطلوب');
+  const url = (data.url || '').toString().trim() || null;
+  // نفس شرط مستندات العميل: الرابط الآمن وحده. الروابط بأنماط أخرى (javascript: مثلاً) تُعرض
+  // في صفحة يفتحها كل الفريق، فالشرط حمايةٌ لا تشدّد.
+  if (url && !/^https?:\/\//i.test(url)) throw badRequest('رابط المستند يجب أن يبدأ بـ https://');
+  const kind = DOC_KINDS.includes(data.kind) ? data.kind : 'other';
+  const did = id('doc');
+  await insert('document', {
+    id: did, project_id: projectId, client_id: p.client_id || null, name, kind, url,
+    note: (data.note || '').toString().trim() || null,
+    uploaded_by: user.name_ar || user.username || null, created_at: nowIso(),
+  });
+  await audit(ctx, { action: 'create', resource: 'document', resourceId: did, sectorId: p.sector_id,
+    detail: { project_id: projectId, name, kind } });
+  return await get('SELECT * FROM document WHERE id = ?', [did]);
+}
+
+export async function deleteProjectDocument(ctx, docId) {
+  const user = ctx.user;
+  const d = await get('SELECT * FROM document WHERE id = ? AND deleted_at IS NULL', [docId]);
+  if (!d || !d.project_id) throw notFound('المستند غير موجود');
+  const p = await get('SELECT * FROM project WHERE id = ? AND deleted_at IS NULL', [d.project_id]);
+  if (!p) throw notFound('المشروع غير موجود');
+  if (!can(user, 'update', 'project', { ...p, project_id: p.id })) throw forbidden('حذف مستند يتطلب صلاحية إدارة المشروع');
+  await update('document', docId, { deleted_at: nowIso() });
+  await audit(ctx, { action: 'delete', resource: 'document', resourceId: docId, sectorId: p.sector_id });
+  return { ok: true };
+}
+
+// «آخر التحديثات» — سجلُّ التدقيق نفسه مقروءاً بلغة الناس، لا سجلٌّ ثانٍ يُكتب بجانبه.
+// كل كتابة في المنصة تمرّ على `audit(ctx, …)` بوصفٍ عربي مقصود، فالمادة موجودة كاملة ولا
+// يعوزها إلا أن تُقرأ. وسجلٌّ ثانٍ يُكتب يدوياً كان سيتباعد عن الأول من أول مسارٍ يُنسى.
+// حدُّ ما يُعرض: أحداث هذا المشروع وسجلاته وحدها — والوصف نصٌّ عربي كتبته الخدمة، وما ليس
+// كذلك (وصفٌ مُرمَّز أو غائب) يُترك فارغاً ولا يُطبع خاماً في وجه القارئ.
+const UPDATE_ACTION_AR = { create: 'أُضيف', update: 'حُدِّث', delete: 'حُذف', login: 'دخول' };
+const UPDATE_RESOURCE_AR = {
+  project: 'المشروع', deliverable: 'مخرَج', milestone: 'معلم', project_phase: 'مرحلة',
+  task: 'مهمة', allocation: 'تسكين', invoice: 'مستخلص', document: 'مستند',
+  risk: 'خطر', issue: 'معوق', decision: 'قرار', change_request: 'طلب تغيير', contract: 'عقد',
+};
+export async function projectUpdates(user, projectId, limit = 20) {
+  const p = await get('SELECT * FROM project WHERE id = ? AND deleted_at IS NULL', [projectId]);
+  if (!p) throw notFound('المشروع غير موجود');
+  if (!can(user, 'read', 'project', { ...p, project_id: p.id })) throw forbidden('هذا المشروع خارج نطاق صلاحياتك');
+  const n = Math.max(1, Math.min(100, Number(limit) || 20));
+  const rows = await all(
+    `SELECT a.id, a.at, a.action, a.resource, a.detail_json, COALESCE(u.name_ar, a.username) actor
+       FROM audit_log a LEFT JOIN app_user u ON u.id = a.user_id
+      WHERE a.resource_id = ?
+         OR a.resource_id IN (SELECT id FROM deliverable    WHERE project_id = ?)
+         OR a.resource_id IN (SELECT id FROM milestone      WHERE project_id = ?)
+         OR a.resource_id IN (SELECT id FROM project_phase  WHERE project_id = ?)
+         OR a.resource_id IN (SELECT id FROM task           WHERE project_id = ?)
+         OR a.resource_id IN (SELECT id FROM allocation     WHERE project_id = ?)
+         OR a.resource_id IN (SELECT id FROM document       WHERE project_id = ?)
+      ORDER BY a.at DESC LIMIT ?`,
+    [projectId, projectId, projectId, projectId, projectId, projectId, projectId, n]);
+  return rows.map((r) => ({
+    id: r.id, at: r.at, actor: r.actor || null,
+    action: UPDATE_ACTION_AR[r.action] || '',
+    resource: UPDATE_RESOURCE_AR[r.resource] || '',
+    detail: readableDetail(r.detail_json),
+  }));
+}
+
+// الوصف مخزَّن مُرمَّزاً دائماً (`JSON.stringify` في كاتب التدقيق)، فالنصّ العربي يصل بين
+// علامتَي اقتباس والبنيةُ تصل قوساً. يُعرض النصّ وحده: البنية قائمةُ أعمدة كُتبت للمطوّر لا
+// جملةٌ لقارئ، وطبعُها خاماً يضع قوساً ومصطلحاً إنجليزياً في وجه المستخدم.
+function readableDetail(raw) {
+  if (raw == null || raw === '') return '';
+  let v; try { v = JSON.parse(raw); } catch { return ''; }
+  return typeof v === 'string' && /[؀-ۿ]/.test(v) ? v.trim() : '';
 }

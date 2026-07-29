@@ -45,7 +45,7 @@ after(async () => { await close(); rmSync(dir, { recursive: true, force: true })
 test('المخرج يُضاف من صفحة المشروع — وكان مستحيلاً بعد إنشاء المشروع', async () => {
   const d = await gov.createItem(ctx(lead), 'DP1', 'deliverable', { name_ar: 'تقرير المرحلة الأولى', period: '2026-06', amount_sar: 45000 });
   assert.equal(d.name_ar, 'تقرير المرحلة الأولى');
-  assert.equal(d.status, 'PENDING');
+  assert.equal(d.status, 'DRAFT', 'المخرَج يولد مسودةً — أول خطوة في دورة العمل البشرية');
   assert.equal(d.amount_halalas, 4_500_000, 'المال هللات صحيحة لا كسور عشرية');
   assert.equal(d.month, 6);
   assert.equal(d.year, 2026, 'الشهر لا يُخزَّن بلا سنته — وإلا سقط من تنبيه الأشهر السابقة');
@@ -85,28 +85,48 @@ test('التسليم ثم القبول ينقلان الحالة ويكتبان 
   assert.equal(acc.delivered_at, del.delivered_at, 'تاريخ التسليم الأصلي لا يُعاد كتابته');
   assert.ok(acc.accepted_at, 'تاريخ القبول يُكتب');
 
-  const back = await gov.updateItem(ctx(lead), 'deliverable', d.id, { status: 'PENDING' });
-  assert.equal(back.delivered_at, null, 'العودة لقيد الإعداد تمحو تاريخين لم يعودا صحيحين');
+  const back = await gov.updateItem(ctx(lead), 'deliverable', d.id, { status: 'DRAFT' });
+  assert.equal(back.delivered_at, null, 'العودة إلى المسودة تمحو تاريخين لم يعودا صحيحين');
   assert.equal(back.accepted_at, null);
+
+  const wip = await gov.updateItem(ctx(lead), 'deliverable', d.id, { status: 'IN_PROGRESS' });
+  assert.equal(wip.status, 'IN_PROGRESS', '«جارٍ العمل» خطوة قائمة بذاتها بين المسودة والتسليم');
+  assert.equal(wip.delivered_at, null);
 
   const rej = await gov.updateItem(ctx(lead), 'deliverable', d.id, { status: 'REJECTED' });
   assert.equal(rej.status, 'REJECTED');
 });
 
-test('«مُفوتر» و«مدفوع» لا تُضبطان بيد الإنسان — المسار المالي يملكهما', async () => {
-  const d = await gov.createItem(ctx(lead), 'DP1', 'deliverable', { name_ar: 'مخرج مالي' });
-  await assert.rejects(() => gov.updateItem(ctx(lead), 'deliverable', d.id, { status: 'INVOICED' }), /تُضبطان تلقائياً/);
-  await assert.rejects(() => gov.updateItem(ctx(lead), 'deliverable', d.id, { status: 'PAID' }), /تُضبطان تلقائياً/);
-  await assert.rejects(() => gov.createItem(ctx(lead), 'DP1', 'deliverable', { name_ar: 'مخرج يولد مفوتراً', status: 'PAID' }), /تُضبطان تلقائياً/);
-  assert.equal((await get('SELECT status FROM deliverable WHERE id = ?', [d.id])).status, 'PENDING', 'لم تتغير الحالة فعلياً');
+test('كل تغيير حالة يُختم باسم من غيّره ووقته — وهذا كل «مسار الاعتماد» المطلوب', async () => {
+  const d = await gov.createItem(ctx(lead), 'DP1', 'deliverable', { name_ar: 'مخرج مختوم' });
+  assert.equal(d.status_by, lead.id, 'الإنشاء نفسه ختمٌ أول');
+  const acc = await gov.updateItem(ctx(lead), 'deliverable', d.id, { status: 'ACCEPTED' });
+  assert.equal(acc.status_by, lead.id, 'الاعتماد قرارُ شخص لا حدثٌ بلا صاحب');
+  assert.ok(acc.status_at, 'ومعه وقته');
 });
 
-test('المخرج الذي صدر به مستخلص لا تُغيَّر حالته ولا يُحذف من شاشة المشروع', async () => {
+test('الفوترة والتحصيل ختمان مستقلان لا يمسّان حالة العمل — ولا يُضبطان بيد الإنسان', async () => {
+  const d = await gov.createItem(ctx(lead), 'DP1', 'deliverable', { name_ar: 'مخرج مالي' });
+  // لا يُقبلان من مسار المشروع: لا حالةً (لم تعودا حالتين) ولا حقلاً مباشراً.
+  await assert.rejects(() => gov.updateItem(ctx(lead), 'deliverable', d.id, { status: 'INVOICED' }), /الحالة غير صحيحة/);
+  await assert.rejects(() => gov.updateItem(ctx(lead), 'deliverable', d.id, { invoiced_at: '2026-01-01' }), /من صفحة المالية/);
+  await assert.rejects(() => gov.updateItem(ctx(lead), 'deliverable', d.id, { collected_at: '2026-01-01' }), /من صفحة المالية/);
+  assert.equal((await get('SELECT status FROM deliverable WHERE id = ?', [d.id])).status, 'DRAFT', 'لم تتغير الحالة فعلياً');
+});
+
+test('المخرج المفوتر تبقى حالته حالته — الفوترة لا تُقرأ إنجازاً ولا اعتماداً', async () => {
   const d = await gov.createItem(ctx(lead), 'DP1', 'deliverable', { name_ar: 'مخرج مفوتر', amount_sar: 1000 });
-  await update('deliverable', d.id, { status: 'INVOICED' }); // كما يفعل مسار المستخلص فعلياً
-  await assert.rejects(() => gov.updateItem(ctx(lead), 'deliverable', d.id, { status: 'PENDING' }), /صفحة المالية/);
+  await gov.updateItem(ctx(lead), 'deliverable', d.id, { status: 'ACCEPTED' });
+  await update('deliverable', d.id, { invoiced_at: TS }); // كما يفعل مسار المستخلص فعلياً
+  const after = await get('SELECT * FROM deliverable WHERE id = ?', [d.id]);
+  assert.equal(after.status, 'ACCEPTED', 'الختم المالي لا يدوس اعتماد العميل — وهو العيب الذي عولج');
+  assert.ok(after.invoiced_at, 'والختم مسجَّل بجانبه');
+  // والحالة تبقى بيد الفريق بعد الفوترة: قد يُعاد التسليم، وهو واقعٌ لا شذوذ.
+  const re = await gov.updateItem(ctx(lead), 'deliverable', d.id, { status: 'DELIVERED' });
+  assert.equal(re.status, 'DELIVERED');
+  assert.ok(re.invoiced_at, 'وختم الفوترة باقٍ — لا تُفكّ فاتورة صادرة من شاشة مشروع');
+  // لكن الحذف ممنوع: يترك سطر فاتورة يشير إلى لا شيء.
   await assert.rejects(() => gov.deleteItem(ctx(lead), 'deliverable', d.id), /ألغِ الفاتورة أولاً/);
-  // لكن تصحيح الاسم يبقى ممكناً — المنع على الحالة لا على السجل كله
   const renamed = await gov.updateItem(ctx(lead), 'deliverable', d.id, { name_ar: 'مخرج مفوتر (اسم مصحَّح)' });
   assert.equal(renamed.name_ar, 'مخرج مفوتر (اسم مصحَّح)');
 });

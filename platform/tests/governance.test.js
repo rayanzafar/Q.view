@@ -108,10 +108,23 @@ test('Finance: progress claim from delivered deliverables + permission + collect
   const inv = await fin.createProgressClaim(ctxF('finance'), { contractId: 'CF1', periodLabel: 'يونيو' });
   assert.equal(inv.amount_halalas, 700000);
   assert.equal(inv.status, 'ISSUED');
-  assert.equal((await db.get('SELECT status FROM deliverable WHERE id=?', ['DF1'])).status, 'INVOICED');
+  // الفوترة تختم الصف ولا تمسّ حالة العمل: كانت تكتب 'INVOICED' فوقها فيُمحى أثرُ التسليم
+  // والاعتماد، وتُقرأ الفاتورة إنجازاً في كل نسبة تُحسب من هذه الخانة.
+  const df1 = await db.get('SELECT status, invoiced_at, collected_at FROM deliverable WHERE id=?', ['DF1']);
+  assert.equal(df1.status, 'DELIVERED', 'حالة العمل كما تركها الفريق');
+  assert.ok(df1.invoiced_at, 'وختم الفوترة مسجَّل بجانبها');
+  assert.equal(df1.collected_at, null, 'ولا تحصيل بعد');
   // record a partial collection → PARTIALLY_PAID, then full → PAID
   await fin.recordCollection(ctxF('finance'), { invoiceId: inv.id, amountSar: 3000 });
   assert.equal((await db.get('SELECT status FROM invoice WHERE id=?', [inv.id])).status, 'PARTIALLY_PAID');
+  assert.equal((await db.get('SELECT collected_at FROM deliverable WHERE id=?', ['DF1'])).collected_at, null,
+    'دفعة جزئية ليست تحصيلاً للمخرَج — نسبة التحصيل تُقاس بالمخرَج المسدَّد كاملاً');
+  // ثم السداد الكامل: الفاتورة PAID، وختم التحصيل ينزل على مخرجاتها.
+  await fin.recordCollection(ctxF('finance'), { invoiceId: inv.id, amountSar: 4000 });
+  assert.equal((await db.get('SELECT status FROM invoice WHERE id=?', [inv.id])).status, 'PAID');
+  const settled = await db.get('SELECT status, collected_at FROM deliverable WHERE id=?', ['DF1']);
+  assert.ok(settled.collected_at, 'وقد حُصِّل');
+  assert.equal(settled.status, 'DELIVERED', 'والتحصيل أيضاً لا يُقرأ اعتماداً');
 });
 
 test('Finance regression: sector-scoped user runs byPM/byContract/summary without ambiguous-column SQL error', async () => {

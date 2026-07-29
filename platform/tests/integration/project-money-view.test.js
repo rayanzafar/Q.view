@@ -41,10 +41,12 @@ const pm = U({ id: 'u_pm', username: 'pm1', name_ar: 'مدير المشروع', 
   sector_id: 'S1', scope: 'project', projectIds: new Set(['P1', 'P2', 'P3']) });
 
 // قسم المال وحده من الصفحة — كي لا يخلط الفحصُ أرقامَ بقية البطاقات بأرقامه.
+// الحدّان مأخوذان من **مُعرِّفَي القسمين** لا من عنوانٍ مكتوب داخلهما: العناوين نصٌّ عربي
+// يتغيّر بالمراجعة اللغوية، فربطُ الفحص بها يجعله يسقط عند تحرير كلمة. و`data-sec` عقدُ بنية.
 function moneyOf(html) {
-  const start = html.indexOf('<div id="money"');
-  assert.ok(start > 0, 'قسم حركة المال موجود في الصفحة');
-  const end = html.indexOf('التسكين — فريق المشروع', start);
+  const start = html.indexOf('data-sec="money"');
+  assert.ok(start > 0, 'قسم العقد والمالية موجود في الصفحة');
+  const end = html.indexOf('data-sec="files"', start);
   return html.slice(start, end > start ? end : html.length);
 }
 const clean = (html) => html.replace(/<template[\s\S]*?<\/template>/g, ' ');

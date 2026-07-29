@@ -68,7 +68,7 @@ export async function attentionFeed(user, sectorId, { year, today } = {}) {
   const late = await all(`SELECT d.name_ar, d.amount_halalas, d.month, p.name_ar project
       FROM deliverable d LEFT JOIN project p ON p.id = d.project_id
       WHERE d.sector_id = ? AND d.deleted_at IS NULL AND d.year = ?
-        AND d.month < ? AND d.status IN ('PENDING','DELIVERED')
+        AND d.month < ? AND d.invoiced_at IS NULL AND d.status IN ('DRAFT','IN_PROGRESS','DELIVERED','REJECTED')
       ORDER BY d.month LIMIT 12`, [sectorId, y, m]);
   if (late.length) {
     const lv = late.reduce((a, b) => a + (b.amount_halalas || 0), 0);

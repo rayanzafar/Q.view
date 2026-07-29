@@ -70,7 +70,7 @@ export async function buildReport(reportKey, user, opts = {}) {
     if (!p) p = await get(`SELECT * FROM project WHERE deleted_at IS NULL ${user.scope === 'company' ? '' : 'AND sector_id = ?'} ORDER BY contract_value_halalas DESC LIMIT 1`, user.scope === 'company' ? [] : [user.sector_id]);
     if (!p) throw new Error('لا يوجد مشروع متاح');
     return { period: periodLabel(), project: redact(user, 'project', p), kpis: await projectKpis(p.id),
-      deliverables: (await all("SELECT name_ar FROM deliverable WHERE project_id=? AND status IN ('PENDING','DELIVERED') AND deleted_at IS NULL LIMIT 6", [p.id])).map((d) => d.name_ar),
+      deliverables: (await all("SELECT name_ar FROM deliverable WHERE project_id=? AND status IN ('DRAFT','IN_PROGRESS','DELIVERED','REJECTED') AND deleted_at IS NULL LIMIT 6", [p.id])).map((d) => d.name_ar),
       risks: (await all("SELECT title FROM risk WHERE project_id=? AND status!='CLOSED' LIMIT 6", [p.id])).map((r) => r.title) };
   }
   if (reportKey === 'workforce_utilization') {

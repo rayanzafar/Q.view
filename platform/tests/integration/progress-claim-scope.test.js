@@ -104,7 +104,11 @@ test('المسار السليم يعمل كما كان: مخرَج مشروع ا
   assert.equal(inv.project_id, 'P_SOL');
   assert.equal(inv.sector_id, 'SOL');
   assert.equal(inv.client_id, 'CL_SOL', 'الفاتورة منسوبة إلى عميل العقد ومشروعه');
-  assert.equal(await statusOf('D_SOL_OK'), 'INVOICED');
+  // الفوترة تختم الصف ولا تكتب فوق حالة العمل (ترحيلة ٠١٧): كانت تكتب 'INVOICED' فتمحو
+  // «تم التسليم» و«تم الاعتماد» معاً، فتُقرأ الفاتورة إنجازاً في كل نسبة تُشتقّ من الخانة.
+  assert.equal(await statusOf('D_SOL_OK'), 'DELIVERED', 'حالة العمل كما تركها الفريق');
+  assert.ok((await db.get('SELECT invoiced_at FROM deliverable WHERE id = ?', ['D_SOL_OK'])).invoiced_at,
+    'وختم الفوترة مسجَّل بجانبها — وهو ما يمنع تفويترها مرتين');
   const aud = await db.get('SELECT * FROM audit_log WHERE resource = ? AND resource_id = ?', ['invoice', inv.id]);
   assert.equal(aud.action, 'create');
   assert.equal(aud.sector_id, 'SOL');

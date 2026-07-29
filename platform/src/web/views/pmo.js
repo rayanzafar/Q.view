@@ -4,8 +4,11 @@ import { icon } from '../icons.js';
 import { fmtSar } from '../../core/util/ids.js';
 import { all, get } from '../../core/db/index.js';
 import { projectKpis } from '../../core/reports/metrics.js';
-import { listProjects, nextMilestones, projectKind, projectRevenue } from '../../modules/pmo/projects.js';
-import { projectGovernance, DELIVERABLE_MANUAL_STATUSES, DELIVERABLE_SYSTEM_STATUSES } from '../../modules/pmo/governance.js';
+import { listProjects, nextMilestones, projectKind, projectRevenue,
+  projectDocuments, projectUpdates } from '../../modules/pmo/projects.js';
+import { projectProgress } from '../../modules/pmo/progress.js';
+import { projectTeamLoad, staffingCandidates } from '../../modules/pmo/capacity.js';
+import { projectGovernance, DELIVERABLE_MANUAL_STATUSES } from '../../modules/pmo/governance.js';
 import { projectMoney } from '../../modules/finance/finance.js';
 import { EXPENSE_STATUS_AR, OPEN_STATUSES, SETTLED_STATUSES } from '../../modules/finance/expenses.js';
 import { myTasks, teamTasks, personDossier } from '../../modules/pmo/tasks.js';
@@ -20,7 +23,8 @@ import { countAr, dayWord } from '../../core/i18n/plural.js';
 import { completionTrend, addDays, teamTasksAccess, teamWorkload } from '../../modules/pmo/tasks.js';
 import { listOpportunities } from '../../modules/crm/opportunities.js';
 import { nowDot } from '../../core/i18n/time.js';
-import { WEEKDAYS_AR, weekdayLabel, workKindLabel, deliverableStatusLabel, DELIVERABLE_NEXT } from '../i18n/glossary.js';
+import { WEEKDAYS_AR, weekdayLabel, workKindLabel, deliverableStatusLabel, DELIVERABLE_NEXT,
+  DELIVERABLE_MONEY_AR as G_DLV_MONEY } from '../i18n/glossary.js';
 
 // لون لكل حالة (هوية EVC الهادئة: خط لوني رفيع + خلفية بتشبّع ~12٪). الحالة تُلوِّن أعمدة
 // الكانبان وحدّ البطاقة الأيسر؛ الصحة (RAG) تبقى في الوسم وشريط الإنجاز. الملغى رماديّ
@@ -109,10 +113,12 @@ export async function projectsPage(user, opts = {}) {
   // The legacy source has progress_pct=0 for 37/43 projects and no contract value for 20/43 —
   // present the truth USEFULLY: derive progress from deliverable states (amount-weighted) when the
   // stored figure is 0, and fall back through PO → budget → realized revenue for the money figure.
+  // المُنجَز يُقرأ من الحالة، والمفوتر من ختمه — مصدران مستقلان بعد ترحيلة ٠١٧. وكان كلاهما
+  // يُقرأ من خانة واحدة، فيُحتسب المخرَج المفوتر منجَزاً بحكم فوترته وحدها.
   const dlv = await all(`SELECT project_id, COUNT(*) n, COALESCE(SUM(amount_halalas),0) tot,
-      SUM(CASE WHEN status IN ('DELIVERED','ACCEPTED','INVOICED','PAID') THEN 1 ELSE 0 END) dn,
-      SUM(CASE WHEN status IN ('INVOICED','PAID') THEN 1 ELSE 0 END) inv,
-      COALESCE(SUM(CASE WHEN status IN ('DELIVERED','ACCEPTED','INVOICED','PAID') THEN amount_halalas ELSE 0 END),0) done
+      SUM(CASE WHEN status IN ('DELIVERED','ACCEPTED') THEN 1 ELSE 0 END) dn,
+      SUM(CASE WHEN invoiced_at IS NOT NULL THEN 1 ELSE 0 END) inv,
+      COALESCE(SUM(CASE WHEN status IN ('DELIVERED','ACCEPTED') THEN amount_halalas ELSE 0 END),0) done
       FROM deliverable WHERE deleted_at IS NULL GROUP BY project_id`);
   const dlvBy = Object.fromEntries(dlv.map((d) => [d.project_id, d]));
   const dprog = Object.fromEntries(dlv.map((d) => [d.project_id,
@@ -1748,6 +1754,20 @@ export async function projectMoneySection(user, project, opts = {}) {
     ${mSourcesBlock(primary)}`, 'money-section');
 }
 
+// ═══ صفحة المشروع ═══════════════════════════════════════════════════════════════════════════
+// سبعة أقسام لا أكثر، ستة منها مطوية عند الفتح.
+//
+// كانت الصفحة تفتح على ثمانية عشر بطاقة دفعةً واحدة — مخاطر ومعوقات وقرارات وطلبات تغيير
+// وخطة مقابل فعلي ولوحُ مالٍ كامل — فيقرؤها موظف الأعمال بالتمرير بحثاً عمّا يخصّه. والمُشغّل
+// اليومي يحتاج ستة أسئلة: ما حال المشروع · أين المراحل · ما المخرجات · من الفريق · ما المهام ·
+// أين المال. فتُعرض إجابتها في رأسٍ دائم، وما وراءها يُفتح عند طلبه.
+//
+// وسجلات الحوكمة **لم تُحذف**: من سجّل مخاطره لا يفقدها، لكنها نزلت إلى قسمٍ واحد مطويّ في
+// الآخر لأنها ليست عمل اليوم. الحذف كان سيكلّف بيانات، والإبقاء في الواجهة كان سيكلّف انتباهاً.
+//
+// «أهم الإجراءات المطلوبة» ليست تنبيهات عامة: كل سطر فيها حالةٌ قابلة للتصرّف الآن يقرؤها
+// المنتج من بياناته (معلم فات · مخرَج سُلِّم ولم يُعتمد · مخرَج معتمد بلا مستخلص · شخص فوق
+// طاقته · مهام متأخرة)، ومعها الرابط الذي يعالجها.
 export async function projectDetailPage(user, projectId, opts = {}) {
   const p = await get('SELECT * FROM project WHERE id = ? AND deleted_at IS NULL', [projectId]);
   if (!p) return layout({ user, active: 'projects', title: 'المشروع', body: noticeCard('المشروع غير موجود', 'ربما حُذف المشروع أو أن الرابط غير صحيح.', '/app/projects', 'العودة للمشاريع') });
@@ -1756,51 +1776,50 @@ export async function projectDetailPage(user, projectId, opts = {}) {
   const k = await projectKpis(p.id);
   const canCost = canSeeSensitive(user, 'cost');
   const canEdit = can(user, 'update', 'project', p);
+  const today = new Date();
+  const todayStr = today.toISOString().slice(0, 10);
+
   const tasks = await all("SELECT status, COUNT(*) n FROM task WHERE project_id=? AND deleted_at IS NULL GROUP BY status", [p.id]);
   const tmap = Object.fromEntries(tasks.map((t) => [t.status, t.n]));
-  const risks = await all("SELECT title, impact, status FROM risk WHERE project_id=? AND status!='CLOSED' LIMIT 10", [p.id]);
-  // نوع العميل يُقرأ مع اسمه لأن التصنيف يفرّق بين عميل حقيقي والعميل الذي هو الشركة نفسها.
   const client = await get('SELECT id, name_ar, type FROM client WHERE id=?', [p.client_id]);
   const owner = p.owner_user_id ? await get('SELECT name_ar, username FROM app_user WHERE id=?', [p.owner_user_id]) : null;
   const srcOpp = p.source_opp_id ? await get('SELECT id, title_ar FROM opportunity WHERE id=? AND deleted_at IS NULL', [p.source_opp_id]) : null;
-  const contract = await get("SELECT id, code, value_halalas, status FROM contract WHERE project_id=? AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1", [p.id]);
-  // Team assigned to this project (from the allocation model), with each member's month-coverage on THIS project.
-  const staff = await all(`SELECT a.person_name_ar, a.type, a.monthly_json, e.job_title
-     FROM allocation a LEFT JOIN employee e ON e.id=a.employee_id
-     WHERE a.project_id=? AND a.deleted_at IS NULL ORDER BY (a.type='lead') DESC, a.person_name_ar`, [p.id]);
-  // Governance registers (WP17): the project registers + write flag under the same RBAC.
-  // المخرجات صارت أحدها — تُقرأ من الحمولة نفسها لا باستعلام موازٍ، فالكتابة والقراءة على
-  // مصدر واحد وتحت الحارس نفسه.
+  const contract = await get("SELECT id, code, value_halalas, status, start_date, end_date FROM contract WHERE project_id=? AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1", [p.id]);
   const gov = await projectGovernance(user, p.id);
   const canGov = gov.canEdit;
   const dlv = gov.deliverables || [];
-  // حركة المال على المشروع — قسم كامل خلف بواباته، والسنة تأتي من الرابط إن مُرِّرت.
+  const phases = gov.phases || [];
   const moneyCard = await projectMoneySection(user, p, { year: opts.year });
   const invSum = (await get(`SELECT COALESCE(SUM(amount_halalas),0) v FROM invoice
      WHERE project_id=? AND deleted_at IS NULL AND status NOT IN ('DRAFT','CANCELLED')`, [p.id])).v;
   const users = await all(`SELECT id, COALESCE(name_ar, username) AS "name" FROM app_user
      WHERE active=1 AND deleted_at IS NULL ORDER BY name_ar, username LIMIT 200`);
   const userName = Object.fromEntries(users.map((u) => [u.id, u.name]));
+  // النسب الأربع من مصدرها الواحد — لا تُعاد حسبتها هنا ولا في أي شاشة أخرى.
+  const prog = await projectProgress(p.id, { today: todayStr });
+  const teamLoad = await projectTeamLoad(user, p.id, { year: Number(opts.year) || undefined }).catch(() => null);
+  const docsPayload = await projectDocuments(user, p.id).catch(() => ({ documents: [], canEdit: false }));
+  const updates = await projectUpdates(user, p.id, 12).catch(() => []);
+  const projectTaskRows = await all(
+    `SELECT t.id, t.title, t.status, t.priority, t.due_date, t.deliverable_id,
+            COALESCE(u.name_ar, u.username) assignee
+       FROM task t LEFT JOIN app_user u ON u.id = t.assignee_user_id
+      WHERE t.project_id = ? AND t.deleted_at IS NULL
+      ORDER BY (t.status = 'DONE'), (t.due_date IS NULL), t.due_date LIMIT 60`, [p.id]);
 
   // ── Financials ──
   const contractVal = p.contract_value_halalas || (contract && contract.value_halalas) || 0;
   const headlineVal = contractVal || p.po_value_halalas || p.budget_halalas || 0;
   const spend = p.actual_spend_halalas || 0;
-  // الإيراد المُثبت من بنود الإيراد — نفس مصدر كل أرقام الإيراد في المنصة، لا الخانة الجامدة
-  // على صف المشروع التي لا يكتبها شيء في المنتج (فتبقى على رقم الترحيل مهما سُجِّل إيراد جديد).
   const revenue = (await projectRevenue([p.id]))[0]?.revenue_halalas || 0;
   const showCost = canCost && !row._redacted_actual_spend_halalas;
   const marginPct = p.margin_pct != null ? p.margin_pct : (revenue > 0 ? Math.round((revenue - spend) / revenue * 100) : null);
   const burnPct = p.budget_halalas ? Math.round(spend / p.budget_halalas * 100) : null;
-  // تصنيف المشروع مشتقّ من قرائن صفّه (عميل ونوعه · قيمة تعاقدية · أمر شراء · إيراد محقق ·
-  // فرصة مصدر) لا من الخانة المخزَّنة التي بقيت «داخلي» على 27 مشروع عميل منذ نقل المنصة.
-  // القاعدة كلها في خدمة المشاريع، والكلمة في المعجم، والتلميح يقول السبب ويكشف التناقض.
   const kindTag = projectKind(p, { clientType: client?.type, revenueHalalas: revenue });
 
-  // ── Timeline / schedule health ──
+  // ── Timeline ──
   const sd = p.start_date ? new Date(p.start_date) : null;
   const ed = p.end_date ? new Date(p.end_date) : null;
-  const today = new Date();
   let durTxt = '—', schedulePct = null, scheduleTone = 'var(--muted)', scheduleNote = '';
   if (sd && ed && ed > sd) {
     const totalD = Math.round((ed - sd) / 86400000);
@@ -1808,18 +1827,17 @@ export async function projectDetailPage(user, projectId, opts = {}) {
     const remain = Math.max(0, Math.round((ed - today) / 86400000));
     schedulePct = Math.round(elapsed / totalD * 100);
     durTxt = `${dayWord(totalD)} · مضى ${elapsed} · متبقٍّ ${remain}`;
-    const prog = Math.round(p.progress_pct || 0);
-    const gap = prog - schedulePct;
+    const gap = prog.executivePct - schedulePct;
     scheduleTone = gap < -12 ? 'var(--red)' : gap < -4 ? 'var(--amber)' : 'var(--green)';
     scheduleNote = gap < -12 ? 'متأخر عن الجدول' : gap < -4 ? 'متأخر قليلاً عن الجدول' : (today > ed ? 'تجاوز تاريخ الانتهاء' : 'ضمن الجدول');
-    if (today > ed && prog < 100) { scheduleTone = 'var(--red)'; scheduleNote = 'تجاوز تاريخ الانتهاء'; }
+    if (today > ed && prog.executivePct < 100) { scheduleTone = 'var(--red)'; scheduleNote = 'تجاوز تاريخ الانتهاء'; }
   }
+  // سنة التوقيع معلومة مستقلة لا تُصنِّف المشروع: عقدٌ وُقِّع في سنة وتنفيذُه يمتد إلى ما
+  // بعدها، وتصنيفُه بسنة توقيعه وحدها يُخرج مشروعاً نشطاً من قائمة سنته الجارية. التصنيف
+  // بتقاطع المدة مع السنة (في خدمة المشاريع)، والتوقيع يُذكر خبراً لا مرشِّحاً.
+  const signYear = String(contract?.start_date || p.start_date || '').slice(0, 4);
 
-  const stat = (l, v, c, sub) => card(`<div style="padding:.7rem .9rem"><div style="font-size:10.5px;color:var(--muted)">${l}</div><div class="metric tnum" style="font-size:1.2rem;${c ? 'color:' + c : ''}">${v}</div>${sub ? `<div style="font-size:10px;color:var(--faint)">${sub}</div>` : ''}</div>`);
   const ragColor = p.rag === 'RED' ? 'red' : p.rag === 'AMBER' ? 'amber' : 'green';
-  // حالة الصحة قابلة للتعديل المباشر ممن يملك تعديل المشروع (المفروض تقدر تغيّرها بنفسك، لا
-  // تنتظر حسابها فقط). ملاحظة نزاهة: قد تبقى «حرج/في خطر» رغم اختيارك «على المسار» إن كان
-  // الانحراف الفعلي (الصرف مقابل الإنجاز) أو التأخر الزمني يتجاوز الحدود — كي لا تُخفي مشكلة حقيقية.
   const ragTip = 'يمكنك تغييرها يدوياً في أي وقت — قد تبقى «حرج» أو «في خطر» رغم اختيارك لون أهدأ إن كان الانحراف المالي أو الزمني الفعلي كبيراً، حتى لا تُخفى مشكلة حقيقية';
   const ragBadge = canEdit
     ? `<select data-action-change="prj-rag-sel" data-id="${p.id}" aria-label="حالة صحة المشروع" title="${esc(ragTip)}"
@@ -1827,35 +1845,201 @@ export async function projectDetailPage(user, projectId, opts = {}) {
         ${['GREEN', 'AMBER', 'RED'].map((v) => `<option value="${v}" ${p.rag === v ? 'selected' : ''}>${RAG_LABEL[v]}</option>`).join('')}
       </select>`
     : `<span title="${esc(ragTip)}">${pill(RAG_LABEL[p.rag] || RAG_LABEL.GREEN, ragColor)}</span>`;
-  // ── المخرجات: صفٌّ قابل للعمل، لا سطر قراءة ────────────────────────────────────
-  // القيمة غير المسجَّلة تُكتب «غير محدَّدة» لا صفراً — الصفر يُقرأ اتفاقاً على لا شيء بينما
-  // الحقيقة أنه لم يُتفق بعد، والفرق بينهما هو الفرق بين مطالبةٍ صحيحة وأخرى ناقصة.
-  const dlvTone = (s) => (['PAID', 'INVOICED'].includes(s) ? 'violet' : s === 'ACCEPTED' ? 'green' : s === 'DELIVERED' ? 'blue' : s === 'REJECTED' ? 'red' : 'slate');
-  const dlvRows = dlv.map((d) => {
-    const sys = DELIVERABLE_SYSTEM_STATUSES.includes(d.status);
-    const next = DELIVERABLE_NEXT[d.status];
-    const monthTxt = d.month ? `${MONTHS_AR[(d.month - 1) % 12] || ''}${d.year ? ` <span class="tnum">${d.year}</span>` : ''}` : G.monthUnset;
+
+  // ── قسمٌ قابل للطيّ ──────────────────────────────────────────────────────────
+  const sec = (key, title, { sub = '', badge = '', open = false, body: inner = '' }) => `
+    <details class="psec" data-sec="${key}"${open ? ' open' : ''}>
+      <summary>
+        <svg class="psec-c" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+        <span class="psec-t">${title}</span>${sub ? `<span class="psec-s">${sub}</span>` : ''}
+        <span class="psec-x">${badge}</span>
+      </summary>
+      <div class="psec-b">${inner}</div>
+    </details>`;
+  const cnt = (n, tone) => `<span class="pill ${n ? (tone || 'blue') : 'slate'}" style="${n ? '' : 'opacity:.6'}"><span class="tnum">${n}</span></span>`;
+
+  // ── الرأس الدائم: النسب الأربع ───────────────────────────────────────────────
+  // أربعة أرقام مستقلة المصدر، كلٌّ منها يجيب سؤالاً مختلفاً — وكانت ثلاثة منها تُقرأ من خانة
+  // واحدة على المخرَج فتتحرّك معاً وتكذب معاً.
+  const meter = (label, value, sub, color, tip) => `
+    <div class="card" style="padding:.7rem .85rem"${tip ? ` title="${esc(tip)}"` : ''}>
+      <div class="pmeter">
+        <div class="l"><span>${label}</span><b class="tnum">${value == null ? '—' : value + '%'}</b></div>
+        <div class="t"><i style="width:${Math.max(0, Math.min(100, Number(value) || 0))}%;background:${color}"></i></div>
+        <div style="font-size:10.5px;color:var(--faint)">${sub}</div>
+      </div>
+    </div>`;
+  const schedTone = { red: '#dc2626', amber: '#d97706', green: '#059669', slate: '#94a3b8' }[prog.schedule.tone];
+  const headMeters = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.65rem;margin-bottom:.85rem">
+    ${meter('الإنجاز التنفيذي', prog.executivePct, prog.delivery.total
+    ? `${prog.delivery.accepted} من ${prog.delivery.total} مخرَجاً معتمَداً${prog.delivery.awaitingAcceptance ? ` · ${prog.delivery.awaitingAcceptance}% سُلِّم وينتظر الاعتماد` : ''}`
+    : 'لا مخرجات مسجَّلة بعد', '#244A99', 'يرتفع باعتماد المخرجات بأوزانها — التسليم وحده لا يرفعه')}
+    ${meter('المعالم المحققة', prog.schedule.metPct, prog.schedule.note, schedTone, 'حالة الجدول من المعالم المسجَّلة لا من مرور الزمن')}
+    ${meter('نسبة الفوترة', prog.money.billedPct, prog.money.contractValue
+    ? `${fmtSar(prog.money.invoicedAmt)} من ${fmtSar(prog.money.contractValue)}` : 'لا قيمة تعاقدية مسجَّلة', '#834798',
+  'المفوتر من قيمة العقد — لا علاقة له باعتماد المخرَج')}
+    ${meter('نسبة التحصيل', prog.money.collectedPct, prog.money.invoicedAmt
+    ? `${fmtSar(prog.money.collectedAmt)} من المفوتر` : 'لا مستخلصات صادرة بعد', '#059669',
+  'المحصَّل من المفوتر — لا من قيمة العقد، كي لا يُخلط تأخّر الفوترة بتأخّر السداد')}
+  </div>`;
+
+  // ── أهم الإجراءات المطلوبة ───────────────────────────────────────────────────
+  const acts = [];
+  if (prog.schedule.overdue.length) {
+    acts.push(['red', 'flag', `${countAr(prog.schedule.overdue.length, { one: 'معلم واحد', two: 'معلمان', few: 'معالم', many: 'معلماً' })} فات استحقاقه ولم يُحقَّق`,
+      prog.schedule.overdue.slice(0, 2).map((m) => m.name_ar).join(' · '), '#sec-phases', 'افتح المعالم']);
+  }
+  const awaiting = dlv.filter((d) => d.status === 'DELIVERED');
+  if (awaiting.length) {
+    acts.push(['amber', 'projects', `${countAr(awaiting.length, { one: 'مخرَج واحد', two: 'مخرَجان', few: 'مخرجات', many: 'مخرَجاً' })} سُلِّم وينتظر الاعتماد`,
+      awaiting.slice(0, 2).map((d) => d.name_ar).join(' · '), '#sec-deliverables', 'افتح المخرجات']);
+  }
+  const billable = dlv.filter((d) => ['DELIVERED', 'ACCEPTED'].includes(d.status) && !d.invoiced_at && d.amount_halalas > 0);
+  if (billable.length) {
+    acts.push(['blue', 'finance', `${countAr(billable.length, { one: 'مخرَج واحد', two: 'مخرَجان', few: 'مخرجات', many: 'مخرَجاً' })} جاهز للمستخلص (${fmtSar(prog.money.uninvoicedReady)})`,
+      'سُلِّم ولم يصدر به مستخلص بعد', contract ? `/app/contract/${contract.id}` : '#sec-money', 'أصدِر المستخلص']);
+  }
+  const over = (teamLoad?.team || []).filter((t) => t.over);
+  if (over.length) {
+    acts.push(['red', 'users', `${countAr(over.length, { one: 'عضو واحد', two: 'عضوان', few: 'أعضاء', many: 'عضواً' })} فوق طاقته هذا الشهر`,
+      // «٦٠٪» وحدها لا تقول إن ثمة تجاوزاً لمن طاقته خمسون — فيُقال مقدارُ التجاوز نفسه.
+      over.slice(0, 2).map((t) => `${t.name} تجاوز بـ${t.overBy}%`).join(' · '), '#sec-team', 'راجِع التسكين']);
+  }
+  if (k.lateTasks) {
+    acts.push(['amber', 'tasks', `${countAr(k.lateTasks, { one: 'مهمة واحدة متأخرة', two: 'مهمتان متأخرتان', few: 'مهام متأخرة', many: 'مهمة متأخرة' })}`,
+      'فات موعدها ولم تُنجَز', '#sec-tasks', 'افتح المهام']);
+  }
+  const actsBlock = acts.length ? `<div style="display:grid;gap:.4rem;margin-bottom:.85rem">
+    ${acts.map(([tone, ic, title, sub, href, cta]) => `<div class="pact ${tone}">
+      <span style="flex:0 0 auto;display:flex">${icon(ic)}</span>
+      <span style="flex:1 1 auto"><b>${title}</b>${sub ? ` — ${esc(sub)}` : ''}</span>
+      <a href="${href}" style="flex:0 0 auto">${cta}</a></div>`).join('')}
+  </div>` : `<div class="pact blue" style="margin-bottom:.85rem">
+      <span style="flex:0 0 auto;display:flex">${icon('check')}</span>
+      <span>لا شيء يستدعي قراراً الآن — المعالم في مواعيدها والمخرجات والمهام بلا تأخّر.</span></div>`;
+
+  // ── ١) نظرة عامة ─────────────────────────────────────────────────────────────
+  const fact = (label, value, extra = '') => `<div style="min-width:130px">
+    <div style="font-size:10.5px;color:var(--muted)">${label}</div>
+    <div style="font-weight:700;font-size:12.5px;color:var(--ink2)">${value}</div>${extra}</div>`;
+  const overviewBody = `<div style="padding:.85rem 1rem">
+    <div style="display:flex;gap:1.4rem;flex-wrap:wrap;margin-bottom:.9rem">
+      ${fact('العميل', client ? `<a href="/app/client/${esc(client.id)}" style="color:var(--brand2);text-decoration:none">${esc(client.name_ar)}</a>` : `<span style="color:var(--faint)">${G.notRecorded}</span>`)}
+      ${fact('مدير المشروع', esc(p.pm_name || owner?.name_ar || owner?.username || '—'))}
+      ${fact('حالة المشروع', tr(p.status))}
+      ${fact('قيمة العقد', headlineVal ? `<span class="tnum">${fmtSar(headlineVal)}</span>` : `<span style="color:var(--faint)">${G.notRecorded}</span>`)}
+      ${fact('المدة', durTxt === '—' ? `<span style="color:var(--faint)">${G.notRecorded}</span>` : `<span style="font-size:11.5px">${durTxt}</span>`)}
+      ${signYear ? fact('سنة التوقيع', `<span class="tnum">${esc(signYear)}</span>`,
+    '<div style="font-size:10px;color:var(--faint)">خبرٌ عن العقد — لا يُصنَّف بها المشروع</div>') : ''}
+      ${srcOpp ? fact('الفرصة المصدر', `<a href="/app/opportunity/${esc(srcOpp.id)}" style="color:var(--brand2);text-decoration:none">${esc(String(srcOpp.title_ar).slice(0, 28))}</a>`) : ''}
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted)"><span class="tnum">${esc(p.start_date || '—')}</span><span class="tnum">${esc(p.end_date || '—')}</span></div>
+    <div style="position:relative;height:10px;background:#eef1f7;border-radius:6px;margin:.4rem 0;overflow:hidden">
+      <div style="position:absolute;inset-inline-start:0;top:0;height:100%;width:${Math.min(100, prog.executivePct)}%;background:linear-gradient(90deg,var(--brand),var(--brand2))"></div>
+      ${schedulePct != null ? `<div title="موضع اليوم على الجدول" style="position:absolute;top:-2px;height:14px;width:2px;background:#0f172a;inset-inline-start:${schedulePct}%"></div>` : ''}
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:11px">
+      <span style="color:var(--muted)">الإنجاز <b class="tnum" style="color:var(--ink2)">${prog.executivePct}%</b></span>
+      ${schedulePct != null ? `<span style="color:${scheduleTone};font-weight:700">${scheduleNote}</span>` : ''}
+      ${schedulePct != null ? `<span style="color:var(--muted)">الزمن المنقضي <b class="tnum">${schedulePct}%</b></span>` : ''}
+    </div>
+  </div>`;
+
+  // ── ٢) المراحل والمعالم ──────────────────────────────────────────────────────
+  const PHASE_TONE = { DONE: 'green', IN_PROGRESS: 'blue', NOT_STARTED: 'slate' };
+  const PHASE_AR = { DONE: 'مكتملة', IN_PROGRESS: 'جارية', NOT_STARTED: 'لم تبدأ' };
+  const msByPhase = (id) => gov.milestones.filter((m) => m.phase_id === id);
+  const dlvByPhase = (id) => dlv.filter((d) => d.phase_id === id);
+  const phaseRows = phases.map((ph) => {
+    const pd = dlvByPhase(ph.id);
+    const done = pd.filter((d) => d.status === 'ACCEPTED').length;
+    const pm = msByPhase(ph.id);
+    const pctDone = pd.length ? Math.round((done / pd.length) * 100) : null;
     return `<tr style="border-bottom:1px solid var(--line)">
-      <td style="padding:.45rem .7rem;font-size:12.5px">${esc(d.name_ar)}
-        <div style="font-size:10px;color:var(--muted)">${monthTxt}${d.delivered_at ? ` · سُلِّم <span class="tnum">${esc(String(d.delivered_at).slice(0, 10))}</span>` : ''}${d.accepted_at ? ` · قُبل <span class="tnum">${esc(String(d.accepted_at).slice(0, 10))}</span>` : ''}</div></td>
-      <td style="padding:.45rem .7rem;font-size:12px;text-align:center;white-space:nowrap" class="${d.amount_halalas == null ? '' : 'tnum'}">${d.amount_halalas == null ? `<span style="color:var(--muted)">${G.amountUnset}</span>` : fmtSar(d.amount_halalas)}</td>
-      <td style="padding:.45rem .7rem;text-align:center;white-space:nowrap">${pill(deliverableStatusLabel(d.status), dlvTone(d.status))}</td>
-      <td style="padding:.45rem .7rem;text-align:center;white-space:nowrap">${!canGov ? ''
-        : sys ? `<span style="font-size:10.5px;color:var(--muted)" title="حالة «${deliverableStatusLabel(d.status)}» تنتج عن مسار الفوترة والتحصيل — تُعالَج من صفحة المالية">${G.financeOwned}</span>`
-          : `<div style="display:inline-flex;gap:.3rem;align-items:center">
-              ${next ? `<button class="btn btn-sm" data-action="gov-status" data-kind="deliverable" data-id="${esc(d.id)}" data-status="${next.to}">${next.ar}</button>` : ''}
-              <select class="input" style="font-size:11px;padding:.2rem .35rem;width:auto" aria-label="حالة المخرج"
-                data-action-change="gov-status-sel" data-kind="deliverable" data-id="${esc(d.id)}">
-                ${DELIVERABLE_MANUAL_STATUSES.map((s) => `<option value="${s}"${s === d.status ? ' selected' : ''}>${deliverableStatusLabel(s)}</option>`).join('')}
-              </select>
-              <button class="btn btn-ghost btn-sm" data-action="gov-del" data-kind="deliverable" data-id="${esc(d.id)}" aria-label="حذف المخرج" title="حذف المخرج">✕</button>
-            </div>`}</td></tr>`;
+      <td style="padding:.5rem .75rem;font-size:12.5px"><b>${esc(ph.name_ar)}</b>
+        <div style="font-size:10px;color:var(--muted)">${ph.start_date || ph.end_date ? `<span class="tnum">${esc(ph.start_date || '—')} ← ${esc(ph.end_date || '—')}</span>` : 'بلا تواريخ'} · ${pd.length} مخرَجاً · ${pm.length} معلماً</div></td>
+      <td style="padding:.5rem .75rem;text-align:center">${pill(PHASE_AR[ph.status] || PHASE_AR.NOT_STARTED, PHASE_TONE[ph.status] || 'slate')}</td>
+      <td style="padding:.5rem .75rem;width:130px">${pctDone == null ? '<span style="color:var(--faint);font-size:11px">لا مخرجات</span>' : `<div class="pmeter"><div class="l"><span>معتمَد</span><b class="tnum">${pctDone}%</b></div><div class="t"><i style="width:${pctDone}%;background:#244A99"></i></div></div>`}</td>
+      ${canGov ? `<td style="padding:.5rem .75rem;text-align:center;white-space:nowrap">
+        <select class="input" style="font-size:11px;padding:.2rem .35rem;width:auto" aria-label="حالة المرحلة"
+          data-action-change="gov-status-sel" data-kind="phase" data-id="${esc(ph.id)}">
+          ${['NOT_STARTED', 'IN_PROGRESS', 'DONE'].map((s) => `<option value="${s}"${s === ph.status ? ' selected' : ''}>${PHASE_AR[s]}</option>`).join('')}
+        </select>
+        <button class="btn btn-ghost btn-sm" data-action="gov-del" data-kind="phase" data-id="${esc(ph.id)}" aria-label="حذف المرحلة" title="حذف المرحلة">✕</button></td>` : ''}
+    </tr>`;
   }).join('');
-  // شريط إضافة مخرج — شهر الاستحقاق قائمة واحدة (شهر وسنة معاً) فلا يُخزَّن شهرٌ بلا سنته.
+  const phaseAdd = canGov ? `<div style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;padding:.55rem .9rem;border-top:1px dashed var(--line)">
+    <input id="g-phs-name" class="input" placeholder="اسم المرحلة…" aria-label="اسم المرحلة" style="flex:1;min-width:150px;font-size:12.5px">
+    <input id="g-phs-start" class="input" type="date" dir="ltr" aria-label="بداية المرحلة" title="بداية المرحلة" style="width:auto;font-size:12px">
+    <input id="g-phs-end" class="input" type="date" dir="ltr" aria-label="نهاية المرحلة" title="نهاية المرحلة" style="width:auto;font-size:12px">
+    <button class="btn btn-sm btn-primary" data-action="gov-add" data-kind="phase">${icon('plus')} ${G.add}</button>
+  </div>` : '';
+  const msRows = gov.milestones.map((m) => {
+    const late = m.status === 'PENDING' && m.due_date && m.due_date < todayStr;
+    const soon = prog.schedule.upcoming.some((u) => u.id === m.id);
+    const ph = phases.find((x) => x.id === m.phase_id);
+    return `<tr style="border-bottom:1px solid var(--line);${late ? 'background:#fef2f2' : soon ? 'background:#fffbeb' : ''}">
+      <td style="padding:.45rem .75rem;font-size:12.5px">${esc(m.name_ar)}${soon ? ' ' + pill('قريب', 'amber') : ''}${late ? ' ' + pill('متأخر', 'red') : ''}
+        ${ph ? `<div style="font-size:10px;color:var(--muted)">${esc(ph.name_ar)}</div>` : ''}</td>
+      <td style="padding:.45rem .75rem;text-align:center"><span class="tnum">${esc(m.due_date || '—')}</span></td>
+      <td style="padding:.45rem .75rem;text-align:center">${pill({ PENDING: 'قادم', MET: 'محقق', MISSED: 'لم يُحقَّق' }[m.status] || 'قادم', m.status === 'MET' ? 'green' : m.status === 'MISSED' ? 'red' : 'blue')}</td>
+      ${canGov ? `<td style="padding:.45rem .75rem;text-align:center;white-space:nowrap">
+        ${m.status !== 'MET' ? `<button class="btn btn-sm" data-action="gov-status" data-kind="milestone" data-id="${esc(m.id)}" data-status="MET">محقق</button>` : ''}
+        ${m.status !== 'MISSED' ? `<button class="btn btn-sm" data-action="gov-status" data-kind="milestone" data-id="${esc(m.id)}" data-status="MISSED">لم يُحقَّق</button>` : ''}
+        <button class="btn btn-ghost btn-sm" data-action="gov-del" data-kind="milestone" data-id="${esc(m.id)}" aria-label="حذف المعلم" title="حذف المعلم">✕</button></td>` : ''}
+    </tr>`;
+  }).join('');
+  const msAdd = canGov ? `<div style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;padding:.55rem .9rem;border-top:1px dashed var(--line)">
+    <input id="g-mls-name" class="input" placeholder="اسم المعلم…" aria-label="اسم المعلم" style="flex:1;min-width:150px;font-size:12.5px">
+    <input id="g-mls-due" class="input" type="date" dir="ltr" aria-label="تاريخ الاستحقاق" title="تاريخ الاستحقاق" style="width:auto;font-size:12px">
+    ${phases.length ? `<select id="g-mls-phase" class="input" aria-label="المرحلة" style="width:auto;max-width:160px;font-size:12px">
+      <option value="">بلا مرحلة</option>${phases.map((x) => `<option value="${esc(x.id)}">${esc(x.name_ar)}</option>`).join('')}</select>` : ''}
+    <button class="btn btn-sm btn-primary" data-action="gov-add" data-kind="milestone">${icon('plus')} ${G.add}</button>
+  </div>` : '';
+  const phasesBody = `
+    <div style="padding:.6rem .9rem .2rem;font-weight:800;font-size:12px;color:var(--muted)">المراحل</div>
+    <div class="tblwrap">${phases.length ? `<table style="width:100%;border-collapse:collapse"><tbody>${phaseRows}</tbody></table>`
+    : `<div class="empty-state" style="padding:1.2rem 1rem"><div class="t">لا مراحل مسجَّلة</div><div class="s">${canGov ? 'المرحلة تجمع مخرجاتها ومعالمها تحت تواريخ واحدة — أضِف أولها من الشريط أدناه.' : 'لم تُسجَّل مراحل بعد.'}</div></div>`}</div>
+    ${phaseAdd}
+    <div style="padding:.6rem .9rem .2rem;border-top:1px solid var(--line);font-weight:800;font-size:12px;color:var(--muted)">المعالم الرئيسية</div>
+    <div class="tblwrap">${gov.milestones.length ? `<table style="width:100%;border-collapse:collapse"><tbody>${msRows}</tbody></table>`
+    : `<div class="empty-state" style="padding:1.2rem 1rem"><div class="t">لا معالم مسجَّلة</div><div class="s">${canGov ? 'المعلم تاريخٌ مُلزم يُقاس به الجدول — والمعالم القادمة خلال ٣٠ يوماً تُميَّز تلقائياً.' : 'لم تُسجَّل معالم بعد.'}</div></div>`}</div>
+    ${msAdd}`;
+
+  // ── ٣) المخرجات ──────────────────────────────────────────────────────────────
+  const dlvTone = (s) => (s === 'ACCEPTED' ? 'green' : s === 'DELIVERED' ? 'blue' : s === 'IN_PROGRESS' ? 'amber' : s === 'REJECTED' ? 'red' : 'slate');
+  const dlvRows = dlv.map((d) => {
+    const next = DELIVERABLE_NEXT[d.status];
+    const due = d.due_date ? `<span class="tnum">${esc(String(d.due_date).slice(0, 10))}</span>`
+      : d.month ? `${MONTHS_AR[(d.month - 1) % 12] || ''}${d.year ? ` <span class="tnum">${d.year}</span>` : ''}` : G.monthUnset;
+    const w = prog.delivery.weights.get(d.id);
+    const stamp = d.status_at
+      ? `${d.status_by && userName[d.status_by] ? esc(userName[d.status_by]) + ' · ' : ''}<span class="tnum">${esc(String(d.status_at).slice(0, 10))}</span>`
+      : '';
+    return `<tr style="border-bottom:1px solid var(--line)">
+      <td style="padding:.45rem .75rem;font-size:12.5px">${esc(d.name_ar)}
+        <div style="font-size:10px;color:var(--muted)">${due}${d.owner_user_id && userName[d.owner_user_id] ? ` · ${esc(userName[d.owner_user_id])}` : ''}${stamp ? ` · آخر تغيير: ${stamp}` : ''}</div></td>
+      <td style="padding:.45rem .75rem;text-align:center;white-space:nowrap;font-size:12px" class="${d.amount_halalas == null ? '' : 'tnum'}">${d.amount_halalas == null ? `<span style="color:var(--muted);font-size:11px">${G.amountUnset}</span>` : fmtSar(d.amount_halalas)}
+        ${w != null ? `<div style="font-size:10px;color:var(--faint)">وزن <span class="tnum">${Math.round(w)}%</span></div>` : ''}</td>
+      <td style="padding:.45rem .75rem;text-align:center;white-space:nowrap">${pill(deliverableStatusLabel(d.status), dlvTone(d.status))}</td>
+      <td style="padding:.45rem .75rem;text-align:center;white-space:nowrap">${d.collected_at ? pill(G_DLV_MONEY.collected, 'green')
+    : d.invoiced_at ? pill(G_DLV_MONEY.invoiced, 'violet') : '<span style="color:var(--faint);font-size:11px">—</span>'}</td>
+      ${canGov ? `<td style="padding:.45rem .75rem;text-align:center;white-space:nowrap">
+        <div style="display:inline-flex;gap:.3rem;align-items:center">
+          ${next ? `<button class="btn btn-sm" data-action="gov-status" data-kind="deliverable" data-id="${esc(d.id)}" data-status="${next.to}">${next.ar}</button>` : ''}
+          <select class="input" style="font-size:11px;padding:.2rem .35rem;width:auto" aria-label="حالة المخرج"
+            data-action-change="gov-status-sel" data-kind="deliverable" data-id="${esc(d.id)}">
+            ${DELIVERABLE_MANUAL_STATUSES.map((s) => `<option value="${s}"${s === d.status ? ' selected' : ''}>${deliverableStatusLabel(s)}</option>`).join('')}
+          </select>
+          ${d.invoiced_at ? `<span style="font-size:10.5px;color:var(--muted)" title="صدر بهذا المخرَج مستخلص — حالته تبقى بيدك، لكن حذفه يترك سطر فاتورة يشير إلى لا شيء">${G.financeOwned}</span>`
+    : `<button class="btn btn-ghost btn-sm" data-action="gov-del" data-kind="deliverable" data-id="${esc(d.id)}" aria-label="حذف المخرج" title="حذف المخرج">✕</button>`}
+        </div></td>` : ''}
+    </tr>`;
+  }).join('');
   const dlvYears = (() => {
     const ys = new Set();
     const sy = Number(String(p.start_date || '').slice(0, 4)); const ey = Number(String(p.end_date || '').slice(0, 4));
-    const cy = new Date().getUTCFullYear();
+    const cy = today.getUTCFullYear();
     const from = Number.isFinite(sy) && sy > 2000 ? sy : cy;
     const to = Number.isFinite(ey) && ey > 2000 ? ey : cy + 1;
     for (let y = Math.min(from, cy); y <= Math.max(to, cy); y++) ys.add(y);
@@ -1868,167 +2052,229 @@ export async function projectDetailPage(user, projectId, opts = {}) {
       ${dlvYears.flatMap((y) => MONTHS_AR.map((mn, i) => `<option value="${y}-${String(i + 1).padStart(2, '0')}">${mn} ${y}</option>`)).join('')}
     </select>
     <input id="g-dlv-amount" class="input" type="number" min="0" step="1" dir="ltr" placeholder="${G.deliverableAmount}" aria-label="${G.deliverableAmount} بالريال" style="width:110px;font-size:12.5px">
+    ${phases.length ? `<select id="g-dlv-phase" class="input" aria-label="المرحلة" style="width:auto;max-width:150px;font-size:12px">
+      <option value="">بلا مرحلة</option>${phases.map((x) => `<option value="${esc(x.id)}">${esc(x.name_ar)}</option>`).join('')}</select>` : ''}
+    <select id="g-dlv-owner" class="input" aria-label="المسؤول" style="width:auto;max-width:150px;font-size:12px">
+      <option value="">بلا مسؤول</option>${users.map((u) => `<option value="${esc(u.id)}">${esc(u.name)}</option>`).join('')}</select>
     <button class="btn btn-sm btn-primary" data-action="gov-add" data-kind="deliverable">${icon('plus')} ${G.add}</button>
   </div>` : '';
-  const riskRows = risks.map((r) => `<tr style="border-bottom:1px solid var(--line)"><td style="padding:.4rem .75rem;font-size:12.5px">${esc(r.title)}</td>
-    <td style="padding:.4rem .75rem;text-align:center">${pill(tr(r.impact) || '—', r.impact === 'high' ? 'red' : r.impact === 'medium' ? 'amber' : 'slate')}</td></tr>`).join('');
-  // شريط تذكير بالأشهر فوق أعمدة التغطية — بلا هذا الشريط يظهر صف مربعات ملوّنة بلا معنى (لا يُعرف
-  // أيها يناير وأيها ديسمبر إلا بتمرير الفأرة فوق كل مربع)؛ عمود ضيّق فاختصارات إنجليزية Jan..Dec
-  // حسب قاعدة النموذج الزمني الموحّد (لا اختصارات عربية في الشبكات الضيقة أبداً).
+  const dlvBody = `
+    <div style="padding:.5rem .9rem;font-size:11px;color:var(--muted);line-height:1.8">
+      ${canGov ? 'حالة العمل بيد الفريق · الفوترة والتحصيل يُسجَّلان من المالية ولا يمسّان حالة العمل.'
+    : 'للقراءة فقط بدورك الحالي — مدير المشروع هو من يحرّك حالات المخرجات.'}
+      ${prog.delivery.total ? `<b class="tnum">${prog.delivery.accepted}</b> معتمَد · <b class="tnum">${prog.delivery.delivered}</b> مُسلَّم · <b class="tnum">${prog.delivery.invoiced}</b> مفوتر · <b class="tnum">${prog.delivery.collected}</b> محصَّل` : ''}
+    </div>
+    <div class="tblwrap">${dlv.length ? `<table style="width:100%;border-collapse:collapse;min-width:${canGov ? 620 : 420}px">
+      <thead><tr style="font-size:10.5px;color:var(--muted);text-align:right">
+        <th style="padding:.35rem .75rem">المخرَج</th><th style="padding:.35rem .75rem;text-align:center">القيمة</th>
+        <th style="padding:.35rem .75rem;text-align:center">حالة العمل</th><th style="padding:.35rem .75rem;text-align:center">المالية</th>
+        ${canGov ? '<th style="padding:.35rem .75rem;text-align:center">إجراء</th>' : ''}</tr></thead>
+      <tbody>${dlvRows}</tbody></table>`
+    : `<div class="empty-state" style="padding:1.4rem 1rem"><div class="t">لا مخرجات مسجَّلة على هذا المشروع</div>
+        <div class="s">${canGov ? 'المخرَج هو ما يُسلَّم للعميل ويُبنى عليه المستخلص — أضِف أول مخرَج من الشريط أدناه.' : 'لم يُسجَّل أي مخرَج بعد. مدير المشروع هو من يضيفها.'}</div></div>`}</div>
+    ${dlvAddBar}`;
+
+  // ── ٤) الفريق والتسكين ───────────────────────────────────────────────────────
   const monthTicks = `<div class="mtrack" style="gap:2px;margin-top:.2rem">${MONTHS_EN3.map((m) => `<span style="font-size:7.5px;font-weight:400;color:var(--faint);text-align:center;line-height:1">${m}</span>`).join('')}</div>`;
-  // staffing rows: parse each member's monthly_json into a 12-cell coverage strip on this project
-  const staffRows = staff.map((s) => {
-    let mj = {}; try { mj = JSON.parse(s.monthly_json || '{}'); } catch { mj = {}; }
-    const months = Array.from({ length: 12 }, (_, i) => Math.round((Number(mj[i + 1]) || 0) * 100));
-    return `<tr style="border-bottom:1px solid var(--line)">
-      <td style="padding:.4rem .75rem;font-size:12.5px">${esc(s.person_name_ar || '—')}<div style="font-size:10px;color:var(--muted)">${esc(s.job_title || '')}</div></td>
-      <td data-label="الدور" style="padding:.4rem .75rem;text-align:center">${pill(s.type === 'lead' ? 'قائد' : 'عضو', s.type === 'lead' ? 'blue' : 'slate')}</td>
-      <td data-label="التغطية الشهرية" style="padding:.4rem .75rem;width:160px">${utilStrip(months, currentMonthIndex(p.year || new Date().getUTCFullYear()) + 1)}</td></tr>`;
-  }).join('');
+  const team = teamLoad?.team || [];
+  const teamRows = team.map((t) => `<tr style="border-bottom:1px solid var(--line);${t.over ? 'background:#fef2f2' : ''}">
+    <td style="padding:.45rem .75rem;font-size:12.5px">${esc(t.name)}
+      <div style="font-size:10px;color:var(--muted)">${esc(t.job_title || '')}</div></td>
+    <td data-label="الدور" style="padding:.45rem .75rem;text-align:center">${pill(t.role, t.isLead ? 'blue' : 'slate')}</td>
+    <td data-label="فترة التسكين" style="padding:.45rem .75rem;text-align:center;font-size:11.5px">${esc(t.period.label)}</td>
+    <td data-label="على هذا المشروع" style="padding:.45rem .75rem;text-align:center"><b class="tnum">${t.onThisPct}%</b></td>
+    <td data-label="مجموع تسكينه" style="padding:.45rem .75rem;text-align:center">
+      <b class="tnum" style="color:${t.over ? 'var(--red)' : 'var(--ink2)'}">${t.totalPct}%</b>
+      <div style="font-size:10px;color:var(--faint)">من طاقة <span class="tnum">${t.capacityPct}%</span></div>
+      ${t.over ? `<div style="font-size:10px;color:var(--red);font-weight:800">تجاوز بـ<span class="tnum">${t.overBy}%</span></div>` : ''}</td>
+    <td data-label="مهامه" style="padding:.45rem .75rem;text-align:center;font-size:11.5px">
+      <span class="tnum">${t.openTasks}</span> مفتوحة${t.lateTasks ? ` · <b class="tnum" style="color:var(--red)">${t.lateTasks}</b> متأخرة` : ''}</td>
+    <td data-label="التغطية الشهرية" style="padding:.45rem .75rem;width:160px">${utilStrip(t.months, currentMonthIndex(teamLoad?.year || today.getUTCFullYear()) + 1)}</td>
+  </tr>`).join('');
+  // «من المتاح» يُعرض عند التسكين لا في قائمة دائمة: القرار لحظي، والقائمة الدائمة زحام.
+  const cands = (await staffingCandidates(user, p.id, { year: Number(opts.year) || undefined }).catch(() => null));
+  const freeList = cands ? cands.candidates.filter((c) => !c.over).slice(0, 6) : [];
+  const teamBody = `
+    <div style="padding:.5rem .9rem;font-size:11px;color:var(--muted)">
+      ${team.length ? `المُسكَّن هذا الشهر <b class="tnum">${teamLoad.fteNow}</b> شخصاً بدوام كامل${teamLoad.overloaded ? ` · <b style="color:var(--red)">${teamLoad.overloaded}</b> فوق طاقته` : ''} · شهر ${esc(teamLoad.monthLabel)}` : 'لا تسكين بعد'}
+      ${canEdit ? `<button class="btn btn-sm" style="float:inline-end;font-size:11px;padding:.25rem .6rem" onclick="Sanad.projOpen('${p.id}')">${icon('users')} إدارة التسكين</button>` : ''}
+    </div>
+    <div class="tblwrap">${team.length ? `<table class="rtbl" style="width:100%;border-collapse:collapse;min-width:640px">
+      <thead><tr style="font-size:10.5px;color:var(--muted);text-align:right">
+        <th style="padding:.35rem .75rem">الموظف</th><th style="padding:.35rem .75rem;text-align:center">الدور</th>
+        <th style="padding:.35rem .75rem;text-align:center">فترة التسكين</th><th style="padding:.35rem .75rem;text-align:center">على هذا المشروع</th>
+        <th style="padding:.35rem .75rem;text-align:center">مجموع تسكينه</th><th style="padding:.35rem .75rem;text-align:center">مهامه</th>
+        <th style="padding:.35rem .75rem .15rem;width:160px;text-align:center">التغطية الشهرية${monthTicks}</th></tr></thead>
+      <tbody>${teamRows}</tbody></table>`
+    : `<div class="empty-state" style="padding:1.4rem 1rem"><div class="t">لا فريق مُسكَّن على هذا المشروع</div>
+        <div class="s">${canEdit ? 'التسكين يقول من يعمل عليه وبأي نسبة وفي أي أشهر — ابدأ من «إدارة التسكين».' : 'لم يُسكَّن أحد بعد.'}</div></div>`}</div>
+    ${freeList.length ? `<div style="padding:.6rem .9rem;border-top:1px dashed var(--line)">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:.35rem">الأقل تحميلاً الآن — إن احتجت عضواً إضافياً</div>
+      <div style="display:flex;gap:.4rem;flex-wrap:wrap">${freeList.map((c) => `<span class="pill slate" title="${esc(c.job_title || '')} · مهام مفتوحة ${c.openTasks}${c.lateTasks ? ` · متأخرة ${c.lateTasks}` : ''}">${esc(c.name_ar)} <span class="tnum">${c.assignedPct}%</span></span>`).join('')}</div>
+    </div>` : ''}`;
 
-  const financeCard = card(`<div style="padding:.85rem 1rem;border-bottom:1px solid var(--line);font-weight:800;font-size:13px">المالية</div>
-    <div style="padding:.5rem 1rem">
-      ${[['قيمة العقد', fmtSar(headlineVal), 'var(--ink2)'],
-    ['الإيراد المُثبت', fmtSar(revenue), 'var(--green)'],
-    ['الصرف الفعلي', showCost ? fmtSar(spend) : '••• محجوب', showCost ? 'var(--ink2)' : 'var(--faint)'],
-    ['الهامش', marginPct != null && showCost ? marginPct + '%' : (marginPct != null && !canCost ? '••• محجوب' : '—'), (marginPct != null && marginPct < 10) ? 'var(--red)' : 'var(--ink2)']]
-    .map(([l, v, c]) => `<div style="display:flex;justify-content:space-between;align-items:center;padding:.3rem 0;border-bottom:1px dashed var(--line)"><span style="font-size:12px;color:var(--muted)">${l}</span><span class="tnum" style="font-weight:800;font-size:13px;color:${c}">${v}</span></div>`).join('')}
-      ${showCost && burnPct != null ? `<div style="margin-top:.55rem"><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted)"><span>استهلاك الميزانية</span><span class="tnum">${burnPct}%</span></div>${bar(burnPct, burnPct > 90 ? '#dc2626' : burnPct > 70 ? '#d97706' : '#059669')}</div>` : ''}
-      ${contract ? `<a href="/app/contract/${contract.id}" style="display:block;margin-top:.6rem;font-size:12px;color:var(--brand2);text-decoration:none">↳ فتح العقد ${esc(contract.code || '')} · ${fmtSar(contract.value_halalas)}</a>` : ''}
-    </div>`);
-
-  const timelineCard = card(`<div style="padding:.85rem 1rem;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center">
-      <div style="font-weight:800;font-size:13px">الجدول الزمني</div>${schedulePct != null ? `<span style="font-size:11px;font-weight:700;color:${scheduleTone}">${scheduleNote}</span>` : ''}</div>
-    <div style="padding:.85rem 1rem">
-      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted)"><span>${p.start_date || '—'}</span><span>${p.end_date || '—'}</span></div>
-      <div style="position:relative;height:10px;background:var(--surface2, #f1f5f9);border-radius:6px;margin:.45rem 0;overflow:hidden">
-        <div style="position:absolute;inset-inline-start:0;top:0;height:100%;width:${Math.min(100, Math.round(p.progress_pct || 0))}%;background:linear-gradient(90deg,var(--brand),var(--brand2))"></div>
-        ${schedulePct != null ? `<div title="موضع اليوم على الجدول" style="position:absolute;top:-2px;height:14px;width:2px;background:#0f172a;inset-inline-start:${schedulePct}%"></div>` : ''}
-      </div>
-      <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:var(--muted)">الإنجاز <b class="tnum" style="color:var(--ink2)">${Math.round(p.progress_pct || 0)}%</b></span><span style="color:var(--muted)">${schedulePct != null ? `الزمن المنقضي <b class="tnum">${schedulePct}%</b>` : ''}</span></div>
-      <div style="font-size:11px;color:var(--faint);margin-top:.4rem">${durTxt}</div>
-      <div style="display:flex;gap:1.2rem;margin-top:.65rem;padding-top:.55rem;border-top:1px solid var(--line);font-size:11.5px">
-        <div><span style="color:var(--muted)">مدير المشروع</span><div style="font-weight:700">${esc(p.pm_name || owner?.name_ar || owner?.username || '—')}</div></div>
-        ${srcOpp ? `<div><span style="color:var(--muted)">الفرصة المصدر</span><div><a href="/app/opportunity/${esc(srcOpp.id)}" style="color:var(--brand2);text-decoration:none;font-weight:700">${esc(srcOpp.title_ar).slice(0, 26)}</a></div></div>` : ''}
-      </div>
-    </div>`);
-
-  // ── خطة مقابل فعلي: burn vs delivery — two bars + Arabic deviation narrative when |Δ|>10 ──
-  const progPct = Math.round(p.progress_pct || 0);
-  let burnV = null, burnBasis = '';
-  if (showCost && p.budget_halalas > 0) { burnV = Math.round(spend / p.budget_halalas * 100); burnBasis = 'الصرف الفعلي من الميزانية'; }
-  else if (headlineVal > 0) { burnV = Math.round(invSum / headlineVal * 100); burnBasis = 'المفوتر من قيمة العقد'; }
-  let devTone = 'var(--green)', devNote = 'الصرف والإنجاز متوازنان';
-  if (burnV != null) {
-    const dev = burnV - progPct;
-    if (dev > 10) { devTone = 'var(--red)'; devNote = `الصرف يسبق الإنجاز بـ${dev} ${dev >= 3 && dev <= 10 ? 'نقاط' : 'نقطة'} — راجع نطاق العمل`; }
-    else if (dev < -10) { devTone = 'var(--amber)'; devNote = `الإنجاز يسبق الصرف بـ${-dev} ${-dev >= 3 && -dev <= 10 ? 'نقاط' : 'نقطة'} — تحقق من الفوترة في موعدها`; }
-  }
-  const pvaCard = card(`<div style="padding:.85rem 1rem;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:.6rem">
-      <div style="font-weight:800;font-size:13px">${G.planVsActual}</div>
-      ${burnV != null ? `<span style="font-size:11px;font-weight:700;color:${devTone}">${devNote}</span>` : ''}</div>
-    <div style="padding:.85rem 1rem">
-      ${burnV == null ? `<div class="empty-state" style="padding:1rem"><div class="t">لا أساس مالي للقياس بعد</div><div class="s">سجِّل ميزانية أو قيمة عقد للمشروع كي يُقارن الصرف بالإنجاز.</div></div>` : `
-      <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted)"><span>${burnBasis}</span><b class="tnum" style="color:${burnV > 100 ? 'var(--red)' : 'var(--ink2)'}">${burnV}%</b></div>
-      ${bar(Math.min(100, burnV), burnV > progPct + 10 ? '#dc2626' : '#834798')}
-      <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);margin-top:.55rem"><span>${G.progress}</span><b class="tnum">${progPct}%</b></div>
-      ${bar(progPct, '#244A99')}
-      <div style="font-size:10.5px;color:var(--faint);margin-top:.55rem">${G.burnVsDelivery}: الشريط الأول ${burnBasis} والثاني نسبة الإنجاز — التباعد فوق 10 نقاط يستدعي قراراً.</div>`}
-    </div>`);
-
-  // ── governance tab strip (WP17): server renders ALL panels; the page script only switches ──
-  const trg = (v) => ({ OPEN: 'مفتوح', MITIGATING: 'قيد المعالجة', CLOSED: 'مغلق', REQUESTED: 'قيد الطلب',
-    APPROVED: 'معتمد', REJECTED: 'مرفوض', PENDING: 'قادم', MET: 'محقق', MISSED: 'لم يُحقَّق',
-    low: 'منخفض', med: 'متوسط', medium: 'متوسط', high: 'مرتفع' }[v] || v || '—');
-  const lvlPill = (v) => v ? pill(trg(v), v === 'high' ? 'red' : (v === 'med' || v === 'medium') ? 'amber' : 'slate') : '<span style="color:var(--faint)">—</span>';
-  const stPill = (v, map) => pill(trg(v), map[v] || 'slate');
-  const dStr = today.toISOString().slice(0, 10);
-  const soonStr = new Date(today.getTime() + 30 * 86400000).toISOString().slice(0, 10);
-  const thG = (t, w) => `<th style="padding:.4rem .75rem;font-size:10.5px;color:var(--muted);font-weight:700;text-align:right;${w ? 'width:' + w : ''}">${t}</th>`;
-  const tdG = (c, extra = '') => `<td style="padding:.45rem .75rem;font-size:12.5px;${extra}">${c}</td>`;
-  const delBtn = (kind, id) => canGov ? `<button class="btn btn-ghost btn-sm" data-action="gov-del" data-kind="${kind}" data-id="${id}" title="${G.delete}" aria-label="${G.delete}">✕</button>` : '';
-  const emptyPanel = (msg, cta) => `<div class="empty-state">${icon('inbox')}<div class="t">${msg}</div>${canGov ? `<div class="s">${cta}</div>` : ''}</div>`;
-  const govField = (id, ph, type = 'text') => `<input class="input" id="${id}" type="${type}" placeholder="${ph}" style="font-size:12px;padding:.4rem .55rem">`;
-  const lvlSelect = (id, label) => `<select id="${id}" class="input" aria-label="${label}" style="font-size:12px;padding:.4rem .45rem"><option value="">${label}</option><option value="low">منخفض</option><option value="med">متوسط</option><option value="high">مرتفع</option></select>`;
-  const ownerSelect = (id) => `<select id="${id}" class="input" aria-label="المالك" style="font-size:12px;padding:.4rem .45rem;max-width:150px"><option value="">— المالك —</option>${users.map((u) => `<option value="${u.id}">${esc(u.name)}</option>`).join('')}</select>`;
-  const addBar = (kind, fields) => canGov ? `<div style="display:flex;gap:.45rem;flex-wrap:wrap;align-items:center;padding:.6rem .75rem;border-top:1px solid var(--line);background:var(--bg)">
-      ${fields}<button class="btn btn-primary btn-sm" data-action="gov-add" data-kind="${kind}">${G.add}</button></div>` : '';
-
-  const msRows = gov.milestones.map((m) => {
-    const overdueMs = m.status === 'PENDING' && m.due_date && m.due_date < dStr;
-    const upcoming = m.status === 'PENDING' && m.due_date && m.due_date >= dStr && m.due_date <= soonStr;
-    return `<tr style="border-bottom:1px solid var(--line);${overdueMs ? 'background:#fef2f2' : upcoming ? 'background:#fffbeb' : ''}">
-      ${tdG(esc(m.name_ar) + (upcoming ? ' ' + pill('قريب', 'amber') : '') + (overdueMs ? ' ' + pill('متأخر', 'red') : ''))}
-      ${tdG(`<span class="tnum">${m.due_date || '—'}</span>`, 'text-align:center')}
-      ${tdG(stPill(m.status, { PENDING: 'blue', MET: 'green', MISSED: 'red' }), 'text-align:center')}
-      ${canGov ? tdG(`<div style="display:flex;gap:.25rem;justify-content:center">${m.status !== 'MET' ? `<button class="btn btn-sm" data-action="gov-status" data-kind="milestone" data-id="${m.id}" data-status="MET">محقق</button>` : ''}
-        ${m.status !== 'MISSED' ? `<button class="btn btn-sm" data-action="gov-status" data-kind="milestone" data-id="${m.id}" data-status="MISSED">لم يُحقَّق</button>` : ''}${delBtn('milestone', m.id)}</div>`, 'text-align:center') : ''}
+  // ── ٥) المهام ────────────────────────────────────────────────────────────────
+  const dlvName = Object.fromEntries(dlv.map((d) => [d.id, d.name_ar]));
+  const taskRows = projectTaskRows.map((t) => {
+    const late = t.status !== 'DONE' && t.due_date && String(t.due_date).slice(0, 10) < todayStr;
+    return `<tr style="border-bottom:1px solid var(--line);${t.status === 'DONE' ? 'opacity:.6' : late ? 'background:#fef2f2' : ''}">
+      <td style="padding:.45rem .75rem;font-size:12.5px">${esc(t.title)}
+        ${t.deliverable_id && dlvName[t.deliverable_id] ? `<div style="font-size:10px;color:var(--muted)">${esc(dlvName[t.deliverable_id])}</div>` : ''}</td>
+      <td style="padding:.45rem .75rem;text-align:center;font-size:11.5px">${esc(t.assignee || '—')}</td>
+      <td style="padding:.45rem .75rem;text-align:center"><span class="tnum">${esc(String(t.due_date || '—').slice(0, 10))}</span>${late ? ' ' + pill('متأخرة', 'red') : ''}</td>
+      <td style="padding:.45rem .75rem;text-align:center">${pill(tr(t.priority), t.priority === 'P0' ? 'red' : t.priority === 'P1' ? 'amber' : 'slate')}</td>
+      <td style="padding:.45rem .75rem;text-align:center">${pill(tr(t.status), t.status === 'DONE' ? 'green' : t.status === 'BLOCKED' ? 'red' : 'slate')}</td>
     </tr>`;
   }).join('');
-  const msPanel = `${gov.milestones.length ? `<table style="width:100%;border-collapse:collapse"><thead><tr>${thG('المعلم')}${thG('الاستحقاق', '110px')}${thG('الحالة', '90px')}${canGov ? thG('إجراء', '190px') : ''}</tr></thead><tbody>${msRows}</tbody></table>`
-    : emptyPanel('لا معالم مسجّلة بعد', 'أضِف أول معلم من الشريط أدناه — المعالم القادمة خلال 30 يوماً تُميَّز تلقائياً.')}
-    ${addBar('milestone', `${govField('g-mls-name', 'اسم المعلم…')}${govField('g-mls-due', '', 'date')}`)}`;
+  const tasksBody = `
+    <div style="padding:.5rem .9rem;display:flex;gap:.4rem;flex-wrap:wrap">
+      ${['TODO', 'IN_PROGRESS', 'BLOCKED', 'IN_REVIEW', 'DONE'].map((s) => pill(`${tr(s)}: ${tmap[s] || 0}`, s === 'DONE' ? 'green' : s === 'BLOCKED' ? 'red' : 'slate')).join(' ')}
+      ${k.lateTasks ? pill(`متأخرة: ${k.lateTasks}`, 'red') : ''}
+    </div>
+    <div class="tblwrap" style="max-height:340px;overflow-y:auto">${projectTaskRows.length ? `<table style="width:100%;border-collapse:collapse;min-width:520px">
+      <thead><tr style="font-size:10.5px;color:var(--muted);text-align:right;position:sticky;top:0;background:var(--surface)">
+        <th style="padding:.35rem .75rem">المهمة</th><th style="padding:.35rem .75rem;text-align:center">المسؤول</th>
+        <th style="padding:.35rem .75rem;text-align:center">الموعد</th><th style="padding:.35rem .75rem;text-align:center">الأولوية</th>
+        <th style="padding:.35rem .75rem;text-align:center">الحالة</th></tr></thead><tbody>${taskRows}</tbody></table>`
+    : `<div class="empty-state" style="padding:1.4rem 1rem"><div class="t">لا مهام على هذا المشروع</div>
+        <div class="s">أضِف أول مهمة من الشريط أدناه — وتظهر في «${G.myWork}» لدى من أُسنِدت إليه.</div></div>`}</div>
+    <div style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;padding:.6rem .9rem;border-top:1px dashed var(--line)">
+      <input id="prj-task-title" class="input" placeholder="أضِف مهمة على هذا المشروع…" aria-label="عنوان المهمة" style="flex:1;min-width:150px;font-size:12.5px">
+      <select id="prj-task-priority" class="input" aria-label="${G.priority}" style="width:auto;font-size:12.5px"><option value="P2">متوسطة</option><option value="P0">حرجة</option><option value="P1">عالية</option><option value="P3">منخفضة</option></select>
+      <input id="prj-task-due" type="date" dir="ltr" class="input" aria-label="تاريخ الاستحقاق" title="تاريخ الاستحقاق" style="width:auto;font-size:12.5px">
+      ${dlv.length ? `<select id="prj-task-dlv" class="input" aria-label="المخرَج المرتبط" style="width:auto;max-width:160px;font-size:12.5px">
+        <option value="">بلا مخرَج</option>${dlv.map((d) => `<option value="${esc(d.id)}">${esc(d.name_ar)}</option>`).join('')}</select>` : ''}
+      ${users.length ? `<select id="prj-task-assignee" class="input" aria-label="${G.assignee}" style="width:auto;max-width:150px;font-size:12.5px">
+        <option value="">${G.assignee}: أنا</option>${users.map((u) => `<option value="${esc(u.id)}">${esc(u.name)}</option>`).join('')}</select>` : ''}
+      <button class="btn btn-sm btn-primary" data-action="prj-task-add" data-project="${p.id}">${icon('plus')} ${G.add}</button>
+    </div>`;
 
-  const rkRows = gov.risks.map((r) => `<tr style="border-bottom:1px solid var(--line)">
+  // ── ٦) العقد والمالية ────────────────────────────────────────────────────────
+  // الصفر ليس غياباً: «٠ ر.س.» تُقرأ اتفاقاً على لا شيء، والحقيقة أن شيئاً لم يُسجَّل بعد.
+  // والفرق بينهما هو الفرق بين مشروعٍ بلا مطالبات ومشروعٍ لم يُدخل أحدٌ أرقامه — والأول قرار
+  // والثاني عُطل. فالمبلغ غير المسجَّل يُكتب بلفظه، ولا يُطبع رقمٌ لم يقله أحد.
+  const amt = (v, color) => (Number(v) > 0
+    ? { v: fmtSar(v), c: color }
+    : { v: G.notRecorded, c: 'var(--faint)' });
+  const moneyBody = `
+    <div style="padding:.6rem 1rem">
+      ${[['قيمة العقد', amt(headlineVal, 'var(--ink2)')],
+    ['المفوتر', amt(prog.money.invoicedAmt, 'var(--brand2)')],
+    ['المحصَّل', amt(prog.money.collectedAmt, 'var(--green)')],
+    ['المتبقي على العميل', amt(Math.max(0, prog.money.invoicedAmt - prog.money.collectedAmt), 'var(--amber)')],
+    ['الإيراد المُثبت', amt(revenue, 'var(--green)')],
+    ['الصرف الفعلي', showCost ? amt(spend, 'var(--ink2)') : { v: '••• محجوب', c: 'var(--faint)' }],
+    ['الهامش', marginPct != null && showCost ? { v: marginPct + '%', c: marginPct < 10 ? 'var(--red)' : 'var(--ink2)' }
+      : (marginPct != null && !canCost ? { v: '••• محجوب', c: 'var(--faint)' } : { v: G.notRecorded, c: 'var(--faint)' })]]
+    .map(([l, o]) => [l, o.v, o.c])
+    .map(([l, v, c]) => `<div style="display:flex;justify-content:space-between;align-items:center;padding:.3rem 0;border-bottom:1px dashed var(--line)"><span style="font-size:12px;color:var(--muted)">${l}</span><span class="tnum" style="font-weight:800;font-size:13px;color:${c}">${v}</span></div>`).join('')}
+      ${showCost && burnPct != null ? `<div style="margin-top:.55rem"><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted)"><span>استهلاك الميزانية</span><span class="tnum">${burnPct}%</span></div>${bar(burnPct, burnPct > 90 ? '#dc2626' : burnPct > 70 ? '#d97706' : '#059669')}</div>` : ''}
+      ${prog.money.uninvoicedReady > 0 ? `<div class="pact blue" style="margin-top:.6rem"><span style="flex:1">مخرجات سُلِّمت ولم يصدر بها مستخلص: <b class="tnum">${fmtSar(prog.money.uninvoicedReady)}</b></span>${contract ? `<a href="/app/contract/${contract.id}">أصدِر المستخلص</a>` : ''}</div>` : ''}
+      ${contract ? `<a href="/app/contract/${contract.id}" style="display:block;margin-top:.6rem;font-size:12px;color:var(--brand2);text-decoration:none">↳ فتح العقد ${esc(contract.code || '')} · ${fmtSar(contract.value_halalas)}</a>` : ''}
+    </div>
+    ${/* لوحُ المال الشهري الكامل خلف طيّة ثانية: هو أطول جزء في الصفحة كلها (شهور وموردون
+         وحالات فارغة مشروحة)، وفتحُه مع القسم يبتلع كل ما بعده فيعود التمرير الأعمى الذي
+         بُنيت الطيّات لإلغائه. الأرقام السبعة أعلاه تجيب السؤال اليومي، وهذا للتحليل. */''}
+    <details class="psec" data-sec="money-board" style="margin:.5rem .8rem .7rem;box-shadow:none">
+      <summary>
+        <svg class="psec-c" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+        <span class="psec-t">حركة المال شهراً بشهر</span>
+        <span class="psec-s">الداخل والخارج والمصروفات والتسكين</span>
+      </summary>
+      <div class="psec-b" id="money">${moneyCard}</div>
+    </details>`;
+
+  // ── ٧) الملفات والتحديثات ────────────────────────────────────────────────────
+  const DOC_AR = { contract: 'عقد', proposal: 'عرض', report: 'تقرير', letter: 'خطاب', other: 'أخرى' };
+  const canDoc = docsPayload.canEdit;
+  const docRows = (docsPayload.documents || []).map((d) => `<div class="dd-row" style="align-items:center">
+    <span>${d.url ? `<a href="${esc(d.url)}" target="_blank" rel="noopener noreferrer" style="color:var(--brand2);text-decoration:none;font-weight:700">${esc(d.name)}</a>` : `<b>${esc(d.name)}</b>`}
+      <span class="pill slate" style="margin-inline-start:.35rem">${DOC_AR[d.kind] || DOC_AR.other}</span>
+      <div style="font-size:10.5px;color:var(--muted)">${esc(d.uploaded_by || '—')} · <span class="tnum">${esc(String(d.created_at || '').slice(0, 10))}</span>${d.note ? ` · ${esc(d.note)}` : ''}</div></span>
+    <b>${canDoc ? `<button class="btn btn-ghost btn-sm" data-action="doc-del" data-id="${esc(d.id)}" aria-label="حذف المستند" title="حذف المستند">✕</button>` : ''}</b></div>`).join('');
+  const updateRows = updates.map((u) => `<div style="display:flex;gap:.6rem;padding:.35rem 0;border-bottom:1px dashed var(--line);font-size:12px;align-items:baseline">
+    <span class="tnum" style="flex:0 0 auto;font-size:10.5px;color:var(--faint);min-width:96px">${esc(String(u.at || '').slice(0, 16).replace('T', ' '))}</span>
+    <span style="flex:1 1 auto;color:var(--ink2)">${esc([u.action, u.resource].filter(Boolean).join(' '))}${u.detail ? ` — ${esc(u.detail)}` : ''}</span>
+    <span style="flex:0 0 auto;font-size:10.5px;color:var(--muted)">${esc(u.actor || '')}</span></div>`).join('');
+  const filesBody = `
+    <div style="padding:.6rem .9rem .2rem;font-weight:800;font-size:12px;color:var(--muted)">الوثائق الرئيسية</div>
+    ${docRows ? `<div style="padding:.15rem .9rem">${docRows}</div>`
+    : `<div class="empty-state" style="padding:1.2rem 1rem"><div class="t">لا وثائق مرتبطة بهذا المشروع</div>
+        <div class="s">${canDoc ? 'سجّل اسم الوثيقة ورابطها — الملف يبقى في مكانه والمنصة تدلّ عليه.' : 'لم تُسجَّل وثائق بعد.'}</div></div>`}
+    ${canDoc ? `<div style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;padding:.55rem .9rem;border-top:1px dashed var(--line)">
+      <input id="g-doc-name" class="input" placeholder="اسم الوثيقة…" aria-label="اسم الوثيقة" style="flex:1;min-width:140px;font-size:12.5px">
+      <select id="g-doc-kind" class="input" aria-label="نوع الوثيقة" style="width:auto;font-size:12px">
+        ${Object.entries(DOC_AR).map(([kk, v]) => `<option value="${kk}"${kk === 'other' ? ' selected' : ''}>${v}</option>`).join('')}</select>
+      <input id="g-doc-url" class="input" type="url" dir="ltr" placeholder="https://…" aria-label="رابط الوثيقة" style="flex:1;min-width:150px;font-size:12.5px">
+      <button class="btn btn-sm btn-primary" data-action="doc-add">${icon('plus')} ${G.add}</button>
+    </div>` : ''}
+    <div style="padding:.6rem .9rem .2rem;border-top:1px solid var(--line);font-weight:800;font-size:12px;color:var(--muted)">آخر التحديثات</div>
+    ${updateRows ? `<div style="padding:.15rem .9rem .7rem">${updateRows}</div>`
+    : `<div class="empty-state" style="padding:1.2rem 1rem"><div class="t">لا تحديثات بعد</div><div class="s">كل تغيير على المشروع ومخرجاته ومهامه يظهر هنا بوقته وصاحبه.</div></div>`}`;
+
+  // ── ٨) سجلات إضافية (المخاطر · المعوقات · القرارات · طلبات التغيير) ──────────
+  // مطويّة وفي الآخر: من سجّلها لا يفقدها، ومن لا يستعملها لا تزاحمه. ولا شيء هنا شرطٌ
+  // لعمل المنصة — كلها اختيارية بالكامل.
+  const trg = (v) => ({ OPEN: 'مفتوح', MITIGATING: 'قيد المعالجة', CLOSED: 'مغلق', REQUESTED: 'قيد الطلب',
+    APPROVED: 'معتمد', REJECTED: 'مرفوض', low: 'منخفض', med: 'متوسط', medium: 'متوسط', high: 'مرتفع' }[v] || v || '—');
+  const lvlPill = (v) => (v ? pill(trg(v), v === 'high' ? 'red' : (v === 'med' || v === 'medium') ? 'amber' : 'slate') : '<span style="color:var(--faint)">—</span>');
+  const delBtn = (kind, rid) => (canGov ? `<button class="btn btn-ghost btn-sm" data-action="gov-del" data-kind="${kind}" data-id="${rid}" title="${G.delete}" aria-label="${G.delete}">✕</button>` : '');
+  const govField = (fid, ph, type = 'text') => `<input class="input" id="${fid}" type="${type}" placeholder="${ph}" style="font-size:12px;padding:.4rem .55rem">`;
+  const lvlSelect = (fid, label) => `<select id="${fid}" class="input" aria-label="${label}" style="font-size:12px;padding:.4rem .45rem"><option value="">${label}</option><option value="low">منخفض</option><option value="med">متوسط</option><option value="high">مرتفع</option></select>`;
+  const ownerSelect = (fid) => `<select id="${fid}" class="input" aria-label="المالك" style="font-size:12px;padding:.4rem .45rem;max-width:150px"><option value="">— المالك —</option>${users.map((u) => `<option value="${u.id}">${esc(u.name)}</option>`).join('')}</select>`;
+  const addBar = (kind, fields) => (canGov ? `<div style="display:flex;gap:.45rem;flex-wrap:wrap;align-items:center;padding:.6rem .75rem;border-top:1px solid var(--line);background:var(--bg)">
+      ${fields}<button class="btn btn-primary btn-sm" data-action="gov-add" data-kind="${kind}">${G.add}</button></div>` : '');
+  const thG = (t, w) => `<th style="padding:.4rem .75rem;font-size:10.5px;color:var(--muted);font-weight:700;text-align:right;${w ? 'width:' + w : ''}">${t}</th>`;
+  const tdG = (c, extra = '') => `<td style="padding:.45rem .75rem;font-size:12.5px;${extra}">${c}</td>`;
+  const emptyPanel = (msg, cta) => `<div class="empty-state">${icon('inbox')}<div class="t">${msg}</div>${canGov ? `<div class="s">${cta}</div>` : ''}</div>`;
+  const openIss = gov.issues.filter((i) => i.status !== 'CLOSED');
+  const rkPanel = `${gov.risks.length ? `<table style="width:100%;border-collapse:collapse"><thead><tr>${thG('الخطر')}${thG('الاحتمال', '80px')}${thG('الأثر', '80px')}${thG('التعرض', '80px')}${thG('المالك', '110px')}${thG('الحالة', '110px')}${canGov ? thG('', '46px') : ''}</tr></thead><tbody>${gov.risks.map((r) => `<tr style="border-bottom:1px solid var(--line)">
       ${tdG(esc(r.title) + (r.mitigation ? `<div style="font-size:10.5px;color:var(--muted)">التخفيف: ${esc(r.mitigation)}</div>` : ''))}
       ${tdG(lvlPill(r.probability), 'text-align:center')}${tdG(lvlPill(r.impact), 'text-align:center')}
       ${tdG(r.exposure ? pill(esc(r.exposure), r.exposure === 'مرتفع' ? 'red' : r.exposure === 'متوسط' ? 'amber' : 'slate') : '<span style="color:var(--faint)">—</span>', 'text-align:center')}
       ${tdG(esc(userName[r.owner_user_id] || '—'), 'text-align:center;font-size:11.5px')}
       ${tdG(canGov ? `<select class="input" data-action-change="gov-status-sel" data-kind="risk" data-id="${r.id}" aria-label="حالة الخطر" style="font-size:11.5px;padding:.25rem .4rem">
           ${['OPEN', 'MITIGATING', 'CLOSED'].map((s) => `<option value="${s}" ${s === r.status ? 'selected' : ''}>${trg(s)}</option>`).join('')}</select>`
-    : stPill(r.status, { OPEN: 'amber', MITIGATING: 'blue', CLOSED: 'green' }), 'text-align:center')}
-      ${canGov ? tdG(delBtn('risk', r.id), 'text-align:center') : ''}
-    </tr>`).join('');
-  const rkPanel = `${gov.risks.length ? `<table style="width:100%;border-collapse:collapse"><thead><tr>${thG('الخطر')}${thG('الاحتمال', '80px')}${thG('الأثر', '80px')}${thG('التعرض', '80px')}${thG('المالك', '110px')}${thG('الحالة', '110px')}${canGov ? thG('', '46px') : ''}</tr></thead><tbody>${rkRows}</tbody></table>`
+    : pill(trg(r.status), r.status === 'OPEN' ? 'amber' : r.status === 'MITIGATING' ? 'blue' : 'green'), 'text-align:center')}
+      ${canGov ? tdG(delBtn('risk', r.id), 'text-align:center') : ''}</tr>`).join('')}</tbody></table>`
     : emptyPanel('لا مخاطر مسجّلة بعد', 'سجِّل المخاطر مبكراً مع احتمالها وأثرها — التعرض يُحسب تلقائياً.')}
     ${addBar('risk', `${govField('g-rsk-title', 'عنوان الخطر…')}${lvlSelect('g-rsk-prob', 'الاحتمال')}${lvlSelect('g-rsk-impact', 'الأثر')}${govField('g-rsk-mit', 'خطة التخفيف…')}${ownerSelect('g-rsk-owner')}`)}`;
-
-  const openIss = gov.issues.filter((i) => i.status !== 'CLOSED'), closedIss = gov.issues.filter((i) => i.status === 'CLOSED');
-  const issRow = (i) => `<tr style="border-bottom:1px solid var(--line);${i.status === 'CLOSED' ? 'opacity:.65' : ''}">
+  const issPanel = `${gov.issues.length ? `<table style="width:100%;border-collapse:collapse"><thead><tr>${thG('المعوق')}${thG('الشدة', '80px')}${thG('المالك', '110px')}${thG('الحالة', '80px')}${canGov ? thG('إجراء', '130px') : ''}</tr></thead><tbody>${gov.issues.map((i) => `<tr style="border-bottom:1px solid var(--line);${i.status === 'CLOSED' ? 'opacity:.65' : ''}">
       ${tdG(esc(i.title))}${tdG(lvlPill(i.severity), 'text-align:center')}
       ${tdG(esc(userName[i.owner_user_id] || '—'), 'text-align:center;font-size:11.5px')}
-      ${tdG(stPill(i.status, { OPEN: 'red', CLOSED: 'green' }), 'text-align:center')}
-      ${tdG(`<span class="tnum" style="font-size:11px;color:var(--muted)">${(i.opened_at || '').slice(0, 10)}</span>`, 'text-align:center')}
-      ${canGov ? tdG(`<div style="display:flex;gap:.25rem;justify-content:center"><button class="btn btn-sm" data-action="gov-status" data-kind="issue" data-id="${i.id}" data-status="${i.status === 'CLOSED' ? 'OPEN' : 'CLOSED'}">${i.status === 'CLOSED' ? 'إعادة فتح' : 'إغلاق'}</button>${delBtn('issue', i.id)}</div>`, 'text-align:center') : ''}
-    </tr>`;
-  const issPanel = `${gov.issues.length ? `<div style="padding:.5rem .75rem;font-size:11px;color:var(--muted)">مفتوحة <b class="tnum">${openIss.length}</b> · مغلقة <b class="tnum">${closedIss.length}</b></div>
-    <table style="width:100%;border-collapse:collapse"><thead><tr>${thG('المعوق')}${thG('الشدة', '80px')}${thG('المالك', '110px')}${thG('الحالة', '80px')}${thG('فُتح في', '95px')}${canGov ? thG('إجراء', '130px') : ''}</tr></thead><tbody>${[...openIss, ...closedIss].map(issRow).join('')}</tbody></table>`
+      ${tdG(pill(trg(i.status), i.status === 'CLOSED' ? 'green' : 'red'), 'text-align:center')}
+      ${canGov ? tdG(`<button class="btn btn-sm" data-action="gov-status" data-kind="issue" data-id="${i.id}" data-status="${i.status === 'CLOSED' ? 'OPEN' : 'CLOSED'}">${i.status === 'CLOSED' ? 'إعادة فتح' : 'إغلاق'}</button>${delBtn('issue', i.id)}`, 'text-align:center') : ''}</tr>`).join('')}</tbody></table>`
     : emptyPanel('لا معوقات مسجّلة', 'سجِّل ما يعطّل التقدم فعلياً الآن ليُتابَع حتى الإغلاق.')}
     ${addBar('issue', `${govField('g-iss-title', 'وصف المعوق…')}${lvlSelect('g-iss-sev', 'الشدة')}${ownerSelect('g-iss-owner')}`)}`;
-
-  const decRows = gov.decisions.map((d) => `<div class="dd-row" style="align-items:flex-start">
+  const decPanel = `${gov.decisions.length ? `<div style="padding:.35rem .9rem">${gov.decisions.map((d) => `<div class="dd-row" style="align-items:flex-start">
       <span><b style="font-size:12.5px">${esc(d.title)}</b>${d.detail ? `<div style="font-size:11.5px;color:var(--muted)">${esc(d.detail)}</div>` : ''}
-        <div style="font-size:10.5px;color:var(--faint)">قرَّر: ${esc(d.decided_by || '—')} · <span class="tnum">${(d.decided_at || '').slice(0, 10) || '—'}</span></div></span>
-      <b>${delBtn('decision', d.id)}</b></div>`).join('');
-  const decPanel = `${gov.decisions.length ? `<div style="padding:.35rem .9rem">${decRows}</div>`
+        <div style="font-size:10.5px;color:var(--faint)">قرَّر: ${esc(d.decided_by || '—')} · <span class="tnum">${esc(String(d.decided_at || '').slice(0, 10) || '—')}</span></div></span>
+      <b>${delBtn('decision', d.id)}</b></div>`).join('')}</div>`
     : emptyPanel('لا قرارات موثقة بعد', 'وثِّق قرارات اللجان والاجتماعات هنا لتبقى مرجعاً مُلزِماً.')}
     ${addBar('decision', `${govField('g-dec-title', 'نص القرار…')}${govField('g-dec-detail', 'التفاصيل (اختياري)…')}${govField('g-dec-by', 'مَن قرَّر…')}${govField('g-dec-at', '', 'date')}`)}`;
-
-  const chgRows = gov.changes.map((c) => `<tr style="border-bottom:1px solid var(--line)">
+  const chgPanel = `${gov.changes.length ? `<table style="width:100%;border-collapse:collapse"><thead><tr>${thG('طلب التغيير')}${thG('الحالة', '95px')}${canGov ? thG('إجراء', '170px') : ''}</tr></thead><tbody>${gov.changes.map((c) => `<tr style="border-bottom:1px solid var(--line)">
       ${tdG(esc(c.title) + (c.impact ? `<div style="font-size:10.5px;color:var(--muted)">الأثر: ${esc(c.impact)}</div>` : ''))}
-      ${tdG(stPill(c.status, { REQUESTED: 'amber', APPROVED: 'green', REJECTED: 'slate' }), 'text-align:center')}
-      ${canGov ? tdG(`<div style="display:flex;gap:.25rem;justify-content:center">${c.status === 'REQUESTED' ? `<button class="btn btn-sm" data-action="gov-status" data-kind="change" data-id="${c.id}" data-status="APPROVED">اعتماد</button>
-        <button class="btn btn-sm" data-action="gov-status" data-kind="change" data-id="${c.id}" data-status="REJECTED">رفض</button>` : ''}${delBtn('change', c.id)}</div>`, 'text-align:center') : ''}
-    </tr>`).join('');
-  const chgPanel = `${gov.changes.length ? `<table style="width:100%;border-collapse:collapse"><thead><tr>${thG('طلب التغيير')}${thG('الحالة', '95px')}${canGov ? thG('إجراء', '170px') : ''}</tr></thead><tbody>${chgRows}</tbody></table>`
+      ${tdG(pill(trg(c.status), c.status === 'REQUESTED' ? 'amber' : c.status === 'APPROVED' ? 'green' : 'slate'), 'text-align:center')}
+      ${canGov ? tdG(`${c.status === 'REQUESTED' ? `<button class="btn btn-sm" data-action="gov-status" data-kind="change" data-id="${c.id}" data-status="APPROVED">اعتماد</button>
+        <button class="btn btn-sm" data-action="gov-status" data-kind="change" data-id="${c.id}" data-status="REJECTED">رفض</button>` : ''}${delBtn('change', c.id)}`, 'text-align:center') : ''}</tr>`).join('')}</tbody></table>`
     : emptyPanel('لا طلبات تغيير', 'أي توسّع في النطاق يبدأ هنا: سجِّل الطلب وأثره ثم قرار الاعتماد أو الرفض.')}
     ${addBar('change', `${govField('g-chg-title', 'عنوان التغيير…')}${govField('g-chg-impact', 'أثره على النطاق/الوقت/الكلفة…')}`)}`;
-
-  const TABS = [
-    ['milestones', G.milestones, gov.milestones.length, msPanel],
-    ['risks', G.risks, gov.risks.length, rkPanel],
+  const REG_TABS = [
+    ['risks', G.risks, gov.risks.filter((r) => r.status !== 'CLOSED').length, rkPanel],
     ['issues', G.issues, openIss.length, issPanel],
     ['decisions', G.decisions, gov.decisions.length, decPanel],
     ['changes', G.changes, gov.changes.filter((c) => c.status === 'REQUESTED').length, chgPanel],
   ];
-  const govCard = card(`
-    <div style="padding:.6rem .9rem;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:.7rem;flex-wrap:wrap">
-      <span style="font-weight:800;font-size:13px">حوكمة المشروع</span>
-      <div class="seg" role="tablist" aria-label="سجلات الحوكمة">${TABS.map(([k, l, n], i) => `<button role="tab" aria-selected="${i === 0}" class="${i === 0 ? 'on' : ''}" data-action="gov-tab" data-tab="${k}">${l} <span class="tnum" style="font-weight:800;color:${n ? 'var(--brand2)' : 'var(--faint)'}">${n}</span></button>`).join('')}</div>
+  const registersBody = `
+    <div style="padding:.6rem .9rem;display:flex;align-items:center;gap:.7rem;flex-wrap:wrap;border-bottom:1px solid var(--line)">
+      <div class="seg" role="tablist" aria-label="سجلات إضافية">${REG_TABS.map(([kk, l, n], i) => `<button role="tab" aria-selected="${i === 0}" class="${i === 0 ? 'on' : ''}" data-action="gov-tab" data-tab="${kk}">${l} <span class="tnum" style="font-weight:800;color:${n ? 'var(--brand2)' : 'var(--faint)'}">${n}</span></button>`).join('')}</div>
       <div class="spacer"></div>
       ${canGov ? pill('لديك صلاحية التحرير', 'green') : pill('عرض فقط', 'slate')}
     </div>
-    ${TABS.map(([k, , , panel], i) => `<div class="gov-panel" data-panel="${k}" ${i === 0 ? '' : 'hidden'}><div class="tblwrap">${panel}</div></div>`).join('')}`);
+    ${REG_TABS.map(([kk, , , panel], i) => `<div class="gov-panel" data-panel="${kk}" ${i === 0 ? '' : 'hidden'}><div class="tblwrap">${panel}</div></div>`).join('')}`;
+
+  const regCount = gov.risks.filter((r) => r.status !== 'CLOSED').length + openIss.length
+    + gov.decisions.length + gov.changes.filter((c) => c.status === 'REQUESTED').length;
 
   const body = `
     <a href="/app/projects" style="font-size:12px;color:var(--muted)">← المشاريع</a>
@@ -2037,55 +2283,16 @@ export async function projectDetailPage(user, projectId, opts = {}) {
       <span title="${esc(projectKindTip(kindTag))}">${pill(esc(projectKindLabel(kindTag.key)), 'slate')}</span>
       <span style="font-size:12px;color:var(--muted)">${client ? esc(client.name_ar) : ''} · ${esc(p.code || '')}${p.financial_code ? ' · مالي ' + esc(p.financial_code) : ''}</span>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:.65rem;margin-bottom:1rem">
-      ${stat('الإنجاز', Math.round(p.progress_pct || 0) + '%')}
-      ${stat('إنجاز المهام', k.taskCompletionRate + '%', '', `${tmap.DONE || 0}/${k.totalTasks}`)}
-      ${stat('مهام متأخرة', k.lateTasks, k.lateTasks ? 'var(--red)' : '')}
-      ${stat('قبول المخرجات', k.deliverableAcceptanceRate + '%', '', `${dlv.length} مخرج`)}
-      ${stat('الفريق المُسكَّن', staff.length, '', staff.length ? 'موظف' : 'لا تسكين')}
-      ${stat('المخاطر', risks.length, risks.length ? 'var(--amber)' : '', 'مفتوحة')}
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:.9rem;margin-bottom:.9rem">
-      ${timelineCard}
-      ${financeCard}
-    </div>
-    <div style="margin-bottom:.9rem">${pvaCard}</div>
-    <div id="money" style="margin-bottom:.9rem">${moneyCard}</div>
-    <div style="display:grid;grid-template-columns:1.15fr 1fr;gap:.9rem;margin-bottom:.9rem">
-      ${card(`<div style="padding:.85rem 1rem;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center">
-        <div style="font-weight:800;font-size:13px">التسكين — فريق المشروع (${staff.length})</div>
-        ${canEdit ? `<button class="btn btn-sm" style="font-size:11px;padding:.25rem .6rem" onclick="Sanad.projOpen('${p.id}')">${icon('users')} إدارة التسكين</button>` : ''}</div>
-        ${/* .rtbl: شريط التغطية اثنا عشر شهراً، فأدنى عرضٍ يقبله الجدول ٥٠٤ بكسل — أوسع من
-             شاشة الجوال. وبلا هذا الصنف كان الجدول يدفع الصفحة كلها ٩٤ بكسل خارج الشاشة،
-             فيقرأ المستخدم بالسحب الأفقي. الصنف يحوّل كل صفّ إلى بطاقة كما في بقية الجداول. */''}
-        <table class="rtbl" style="width:100%;border-collapse:collapse"><thead><tr style="font-size:10.5px;color:var(--muted);text-align:right"><th style="padding:.35rem .75rem">الموظف</th><th style="padding:.35rem .75rem;text-align:center">الدور</th><th style="padding:.35rem .75rem .15rem;width:160px;text-align:center">التغطية الشهرية${monthTicks}</th></tr></thead>
-        <tbody>${staffRows || '<tr><td colspan="3" style="padding:1rem;color:var(--muted);font-size:12.5px">لا يوجد فريق مُسكَّن على هذا المشروع بعد' + (canEdit ? ' — استخدم «إدارة التسكين»' : '') + '</td></tr>'}</tbody></table>`)}
-      ${card(`<div style="padding:.85rem 1rem;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:.5rem;flex-wrap:wrap">
-        <div style="font-weight:800;font-size:13px">${G.deliverables} (<span class="tnum">${dlv.length}</span>)</div>
-        <div style="font-size:10.5px;color:var(--muted)">${canGov ? 'سلّم أو اقبل بنقرة — والمفوتر يُضبط من المالية' : 'للقراءة فقط بدورك الحالي'}</div></div>
-        <div class="tblwrap" style="max-height:260px;overflow-y:auto"><table style="width:100%;border-collapse:collapse;min-width:${canGov ? 460 : 300}px"><tbody>${dlvRows
-          || `<tr><td colspan="4"><div class="empty-state" style="padding:1.4rem 1rem">
-              <div class="t">لا مخرجات مسجَّلة على هذا المشروع</div>
-              <div class="s">${canGov ? 'المخرَج هو ما يُسلَّم للعميل ويُبنى عليه المستخلص — أضِف أول مخرَج من الشريط أدناه.' : 'لم يُسجَّل أي مخرَج بعد. مدير المشروع هو من يضيفها.'}</div></div></td></tr>`}</tbody></table></div>
-        ${dlvAddBar}`)}
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:.9rem;margin-bottom:.9rem">
-      ${card(`<div style="padding:.85rem 1rem"><div style="font-weight:800;font-size:13px;margin-bottom:.5rem">توزيع المهام (${k.totalTasks})</div>
-        <div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:.7rem">${['TODO', 'IN_PROGRESS', 'BLOCKED', 'IN_REVIEW', 'DONE'].map((s) => pill(`${tr(s)}: ${tmap[s] || 0}`, s === 'DONE' ? 'green' : s === 'BLOCKED' ? 'red' : 'slate')).join(' ')}</div>
-        <div style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;padding-top:.6rem;border-top:1px dashed var(--line)">
-          <input id="prj-task-title" class="input" placeholder="أضِف مهمة على هذا المشروع…" aria-label="عنوان المهمة" style="flex:1;min-width:150px;font-size:12.5px">
-          <select id="prj-task-priority" class="input" aria-label="${G.priority}" style="width:auto;font-size:12.5px"><option value="P2">متوسطة</option><option value="P0">حرجة</option><option value="P1">عالية</option><option value="P3">منخفضة</option></select>
-          <input id="prj-task-due" type="date" dir="ltr" class="input" aria-label="تاريخ الاستحقاق" title="تاريخ الاستحقاق" style="width:auto;font-size:12.5px">
-          ${users.length ? `<select id="prj-task-assignee" class="input" aria-label="${G.assignee}" style="width:auto;max-width:150px;font-size:12.5px">
-            <option value="">${G.assignee}: أنا</option>
-            ${users.map((u) => `<option value="${esc(u.id)}">${esc(u.name)}</option>`).join('')}</select>` : ''}
-          <button class="btn btn-sm btn-primary" data-action="prj-task-add" data-project="${p.id}">${icon('plus')} ${G.add}</button>
-        </div>
-        <div style="font-size:10.5px;color:var(--muted);margin-top:.4rem">تُسجَّل المهمة على هذا المشروع مباشرة وتظهر في «${G.myWork}» لدى مَن أُسنِدت إليه.</div></div>`)}
-      ${card(`<div style="padding:.85rem 1rem;border-bottom:1px solid var(--line);font-weight:800;font-size:13px">المخاطر المفتوحة (${risks.length})</div>
-        <table style="width:100%;border-collapse:collapse"><tbody>${riskRows || '<tr><td style="padding:1rem;color:var(--muted);font-size:12.5px">لا مخاطر مفتوحة</td></tr>'}</tbody></table>`)}
-    </div>
-    ${govCard}
+    ${headMeters}
+    ${actsBlock}
+    <div id="sec-overview">${sec('overview', 'نظرة عامة', { open: true, body: overviewBody })}</div>
+    <div id="sec-phases">${sec('phases', 'المراحل والمعالم', { sub: prog.schedule.note, badge: cnt(phases.length + gov.milestones.length, prog.schedule.tone === 'red' ? 'red' : 'blue'), body: phasesBody })}</div>
+    <div id="sec-deliverables">${sec('deliverables', G.deliverables, { sub: prog.delivery.total ? `${prog.delivery.accepted} معتمَد من ${prog.delivery.total}` : '', badge: cnt(dlv.length), body: dlvBody })}</div>
+    <div id="sec-team">${sec('team', 'الفريق والتسكين', { sub: teamLoad?.overloaded ? `${teamLoad.overloaded} فوق طاقته` : '', badge: cnt(team.length, teamLoad?.overloaded ? 'red' : 'blue'), body: teamBody })}</div>
+    <div id="sec-tasks">${sec('tasks', 'المهام', { sub: k.lateTasks ? `${k.lateTasks} متأخرة` : '', badge: cnt(k.totalTasks, k.lateTasks ? 'red' : 'blue'), body: tasksBody })}</div>
+    <div id="sec-money">${sec('money', 'العقد والمالية', { sub: prog.money.billedPct != null ? `فوترة ${prog.money.billedPct}%` : '', body: moneyBody })}</div>
+    <div id="sec-files">${sec('files', 'الملفات والتحديثات', { badge: cnt((docsPayload.documents || []).length), body: filesBody })}</div>
+    <div id="sec-registers">${sec('registers', 'سجلات إضافية', { sub: 'مخاطر · معوقات · قرارات · طلبات تغيير — اختيارية بالكامل', badge: cnt(regCount, 'amber'), body: registersBody })}</div>
     <script>window.__SANAD=Object.assign(window.__SANAD||{},{gov:{projectId:${JSON.stringify(p.id).replace(/</g, '\\u003c')},canEdit:${canGov}},
       money:{projectId:${JSON.stringify(p.id).replace(/</g, '\\u003c')}}});</script>`;
   return layout({ user, active: 'projects', title: esc(p.name_ar), subtitle: 'تفاصيل المشروع', body,

@@ -191,11 +191,23 @@ export async function quickAddTask(ctx, data) {
   await assertMayAssign(user, assignee); // الفحص يحمل قطاع المُسنَد إليه لا معرّفه وحده
   await assertMayLink(user, data);       // والرابط الأبوي يشير إلى ما يصل إليه فعلاً
   const parent = normalizeParent({}, data);
+  const projectId = parent.project_id ?? (data.project_id || null);
+  // ربط المهمة بمخرَجها — «هذه المهمة جزء من تسليم هذا المخرَج». العمود قائم في البنية منذ
+  // البداية ولم يكتبه مسار واحد، فالمهام تُنسب إلى المشروع كله ولا يُعرف أيُّ تسليمٍ تخدم.
+  // والشرط أن يكون المخرَج من المشروع نفسه: مهمةٌ تشير إلى مخرَج مشروعٍ آخر تُفسد كل تجميع
+  // لاحق بصمت، ولا يظهر العطل إلا في تقرير.
+  const deliverableId = (data.deliverable_id || '').toString().trim() || null;
+  if (deliverableId) {
+    const d = await get('SELECT project_id FROM deliverable WHERE id = ? AND deleted_at IS NULL', [deliverableId]);
+    if (!d) throw badRequest('المخرَج المرتبط غير موجود');
+    if (!projectId || d.project_id !== projectId) throw badRequest('المخرَج المرتبط من مشروع آخر — اختر مخرَجاً من هذا المشروع');
+  }
   const tid = id('tsk'); const now = nowIso();
   await insert('task', {
     id: tid, title: String(data.title).trim(), description: data.description || null,
     work_kind: parent.work_kind || data.work_kind || 'project',
-    project_id: parent.project_id ?? (data.project_id || null),
+    project_id: projectId,
+    deliverable_id: deliverableId,
     opportunity_id: parent.opportunity_id ?? (data.opportunity_id || null),
     sector_id: sectorId, department_id: data.department_id || null,
     assignee_user_id: assignee, priority: data.priority || 'P2', status: 'TODO',

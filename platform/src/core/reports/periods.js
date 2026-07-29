@@ -681,7 +681,7 @@ async function blockersSection(user, sc, period) {
     lateDlv = await all(`SELECT d.name_ar, d.year, d.month, p.name_ar project
       FROM deliverable d LEFT JOIN project p ON p.id = d.project_id
       WHERE d.deleted_at IS NULL AND ${dw.where}
-        AND COALESCE(d.status,'PENDING') IN ('PENDING','DELIVERED')
+        AND COALESCE(d.status,'DRAFT') IN ('DRAFT','IN_PROGRESS','DELIVERED','REJECTED')
         AND d.year IS NOT NULL AND d.month IS NOT NULL
         AND (d.year < ? OR (d.year = ? AND d.month < ?))
       ORDER BY d.year, d.month LIMIT 6`, [...dw.params, endY, endY, endM]);

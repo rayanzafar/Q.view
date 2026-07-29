@@ -136,9 +136,12 @@ export async function projectKpis(projectId) {
   const totalTasks = Object.values(t).reduce((a, b) => a + b, 0);
   const done = t.DONE || 0;
   const late = (await get("SELECT COUNT(*) n FROM task WHERE project_id = ? AND status != 'DONE' AND due_date IS NOT NULL AND substr(due_date,1,10) < ? AND deleted_at IS NULL", [projectId, nowIso().slice(0, 10)])).n;
+  // «معتمَد» صار حالةً واحدة صريحة. كانت تُجمع من ثلاث (مقبول + مفوتر + مدفوع) لأن الفوترة
+  // تمحو القبول فيلزم استرجاعه منها — فكان **إصدارُ المستخلص وحده يرفع نسبة الاعتماد** ولو لم
+  // يعتمد العميل شيئاً. زال المحو (ترحيلة ٠١٧) فزالت الحاجة، وزالت معها الكذبة.
   const dlv = await all("SELECT status, COUNT(*) n FROM deliverable WHERE project_id = ? AND deleted_at IS NULL GROUP BY status", [projectId]);
   const dlvMap = Object.fromEntries(dlv.map((r) => [r.status, r.n]));
-  const accepted = (dlvMap.ACCEPTED || 0) + (dlvMap.INVOICED || 0) + (dlvMap.PAID || 0);
+  const accepted = dlvMap.ACCEPTED || 0;
   const totalDlv = Object.values(dlvMap).reduce((a, b) => a + b, 0);
   return {
     taskCompletionRate: totalTasks ? Math.round((done / totalTasks) * 100) : 0,

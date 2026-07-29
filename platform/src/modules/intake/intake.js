@@ -119,7 +119,7 @@ export async function createFromIntake(ctx, data) {
     for (const d of (data.deliverables || [])) {
       const nm = (d && d.name_ar || '').toString().trim().slice(0, 200); if (!nm) continue;
       await insert('deliverable', { id: id('dlv'), project_id: pid, name_ar: nm, amount_halalas: toHalalas(safeSar(d.amount_sar)),
-        month: d.month || null, status: 'PENDING', sector_id: sectorId, created_at: now });
+        month: d.month || null, status: 'DRAFT', sector_id: sectorId, created_at: now });
       n++;
     }
     return { project_id: pid, contract_id: cid, client_id: clientId, deliverables: n, source_opp_id: srcOppId };

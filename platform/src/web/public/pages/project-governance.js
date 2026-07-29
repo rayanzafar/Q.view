@@ -3,7 +3,7 @@
 (function () {
   'use strict';
   const S = () => (window.__SANAD && window.__SANAD.gov) || {};
-  const PLURAL = { milestone: 'milestones', risk: 'risks', issue: 'issues', decision: 'decisions', change: 'changes', deliverable: 'deliverables' };
+  const PLURAL = { milestone: 'milestones', risk: 'risks', issue: 'issues', decision: 'decisions', change: 'changes', deliverable: 'deliverables', phase: 'phases' };
   const api = async (path, method, body) => {
     const r = await fetch('/api' + path, { method: method || 'GET', credentials: 'include',
       headers: body ? { 'Content-Type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined });
@@ -31,16 +31,18 @@
 
   // payload builders per kind — empty optional fields are dropped
   const BUILD = {
-    milestone: () => ({ name_ar: val('g-mls-name'), due_date: val('g-mls-due') }),
+    milestone: () => ({ name_ar: val('g-mls-name'), due_date: val('g-mls-due'), phase_id: val('g-mls-phase') }),
+    phase: () => ({ name_ar: val('g-phs-name'), start_date: val('g-phs-start'), end_date: val('g-phs-end') }),
     risk: () => ({ title: val('g-rsk-title'), probability: val('g-rsk-prob'), impact: val('g-rsk-impact'), mitigation: val('g-rsk-mit'), owner_user_id: val('g-rsk-owner') }),
     issue: () => ({ title: val('g-iss-title'), severity: val('g-iss-sev'), owner_user_id: val('g-iss-owner') }),
     decision: () => ({ title: val('g-dec-title'), detail: val('g-dec-detail'), decided_by: val('g-dec-by'), decided_at: val('g-dec-at') }),
     change: () => ({ title: val('g-chg-title'), impact: val('g-chg-impact') }),
     // المخرَج: الاسم وحده مطلوب. الشهر والقيمة اختياريان ويُحذفان إن تُركا فارغين — فلا يُخزَّن
     // صفرٌ مكان قيمة لم تُتفق بعد.
-    deliverable: () => ({ name_ar: val('g-dlv-name'), period: val('g-dlv-period'), amount_sar: val('g-dlv-amount') }),
+    deliverable: () => ({ name_ar: val('g-dlv-name'), period: val('g-dlv-period'), amount_sar: val('g-dlv-amount'),
+      phase_id: val('g-dlv-phase'), owner_user_id: val('g-dlv-owner') }),
   };
-  const ADD_MSG = { milestone: 'اسم المعلم مطلوب', deliverable: 'اسم المخرج مطلوب' };
+  const ADD_MSG = { milestone: 'اسم المعلم مطلوب', deliverable: 'اسم المخرج مطلوب', phase: 'اسم المرحلة مطلوب' };
 
   async function govAdd(kind) {
     const body = (BUILD[kind] || (() => ({})))();
@@ -77,6 +79,7 @@
     const body = { title, project_id: projectId, priority: prEl ? prEl.value : 'P2' };
     const due = val('prj-task-due'); if (due) body.due_date = due;
     const who = val('prj-task-assignee'); if (who) body.assignee_user_id = who;
+    const dl = val('prj-task-dlv'); if (dl) body.deliverable_id = dl;
     try {
       await api('/tasks/quick', 'POST', body);
       toast('أُضيفت المهمة ✓');
@@ -84,7 +87,37 @@
     } catch (e) { toast(e.message, true); }
   }
 
+  // ── وثائق المشروع: بيانات وصفية ورابط، لا رفع ملفات ──
+  async function docAdd() {
+    const name = val('g-doc-name');
+    if (!name) return toast('اسم الوثيقة مطلوب', true);
+    const body = { name, kind: val('g-doc-kind') || 'other' };
+    const url = val('g-doc-url'); if (url) body.url = url;
+    try {
+      await api('/projects/' + S().projectId + '/documents', 'POST', body);
+      toast('أُضيفت الوثيقة ✓');
+      setTimeout(() => location.reload(), 450);
+    } catch (e) { toast(e.message, true); }
+  }
+  async function docDel(id) {
+    if (!window.confirm('حذف هذه الوثيقة من قائمة المشروع؟')) return;
+    try { await api('/projects/documents/' + id, 'DELETE'); toast('حُذفت الوثيقة ✓'); setTimeout(() => location.reload(), 450); }
+    catch (e) { toast(e.message, true); }
+  }
+
+  // رابط «افتح المخرجات» يفتح القسم فعلاً لا يقف عند حافته: قفزةٌ إلى قسمٍ مطويّ تترك
+  // المستخدم أمام عنوانٍ مغلق ولا يفهم أنه وصل — فيُفتح القسم ثم يُمرَّر إليه.
+  function openSection(hash) {
+    const host = document.querySelector(hash);
+    const d = host && host.querySelector('details.psec');
+    if (!d) return false;
+    d.open = true;
+    host.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return true;
+  }
   document.addEventListener('click', (ev) => {
+    const link = ev.target.closest('a[href^="#sec-"]');
+    if (link) { if (openSection(link.getAttribute('href'))) ev.preventDefault(); return; }
     const el = ev.target.closest('[data-action]');
     if (!el) return;
     const a = el.dataset.action;
@@ -93,6 +126,8 @@
     if (a === 'gov-status') return void govStatus(el.dataset.kind, el.dataset.id, el.dataset.status);
     if (a === 'gov-del') return void govDel(el.dataset.kind, el.dataset.id);
     if (a === 'prj-task-add') return void prjTaskAdd(el.dataset.project);
+    if (a === 'doc-add') return void docAdd();
+    if (a === 'doc-del') return void docDel(el.dataset.id);
   });
   document.addEventListener('change', (ev) => {
     const gs = ev.target.closest('[data-action-change="gov-status-sel"]');
@@ -116,4 +151,27 @@
   // restore the active tab from the hash (survives the post-mutation reload)
   const m = (location.hash || '').match(/^#gov-(\w+)/);
   if (m && document.querySelector('.gov-panel[data-panel="' + m[1] + '"]')) showTab(m[1]);
+
+  // ── الأقسام المفتوحة تبقى مفتوحة ──
+  // كل كتابة تعيد تحميل الصفحة، فبلا هذا ينطبق القسم الذي كان المستخدم يعمل فيه بعد كل إضافة
+  // ويلزمه فتحه من جديد في كل مرة — وهو ما يجعل إضافة خمسة مخرجات خمس نقرات زائدة.
+  // التخزين المحلي قد يكون ممنوعاً (تصفح خاص/سياسة)، فكل مساس به داخل حارس: فقدان التذكّر
+  // إزعاجٌ صغير، وسقوط النص البرمجي كله يوقف كل أزرار الصفحة.
+  const KEY = 'sanad.psec.open';
+  const readOpen = () => { try { return new Set(JSON.parse(localStorage.getItem(KEY) || '[]')); } catch (e) { return new Set(); } };
+  const secs = document.querySelectorAll('details.psec[data-sec]');
+  if (secs.length) {
+    const saved = readOpen();
+    // أول زيارة (لا تفضيل محفوظ): تبقى «نظرة عامة» وحدها مفتوحة كما صيّرها الخادم.
+    if (localStorage.getItem(KEY) != null) {
+      secs.forEach((d) => { d.open = saved.has(d.dataset.sec); });
+    }
+    secs.forEach((d) => d.addEventListener('toggle', () => {
+      try {
+        const now = [];
+        secs.forEach((x) => { if (x.open) now.push(x.dataset.sec); });
+        localStorage.setItem(KEY, JSON.stringify(now));
+      } catch (e) { /* التذكّر رفاهية — لا يُسقط الصفحة */ }
+    }));
+  }
 })();

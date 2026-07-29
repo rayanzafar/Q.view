@@ -4,6 +4,7 @@ import { fmtSar } from '../../core/util/ids.js';
 import { config } from '../../core/config.js';
 import { financeSummary, financeByPM, financeByContract, financeByClient, contractDetail } from '../../modules/finance/finance.js';
 import { sarShort, esc, noticeCard } from './_shared.js';
+import { deliverableStatusLabel, DELIVERABLE_MONEY_AR as G_DLV_MONEY } from '../i18n/glossary.js';
 
 export async function financePage(user, opts = {}) {
   const year = Number(opts.year) || config.fiscalYear;
@@ -92,11 +93,16 @@ export async function contractDetailPage(user, contractId) {
     <td style="padding:.5rem .75rem;text-align:center">${pill(tr(i.status), i.status === 'PAID' ? 'green' : i.status === 'OVERDUE' ? 'red' : i.status === 'PARTIALLY_PAID' ? 'amber' : 'blue')}</td>
     <td style="padding:.5rem .75rem;font-size:var(--fs-ui);text-align:center;color:var(--amber)" class="tnum">${fmtSar(i.outstanding_halalas)}</td>
     <td style="padding:.5rem .75rem;text-align:center">${i.outstanding_halalas > 0 ? `<button onclick="Sanad.recordCollection('${i.id}', ${i.outstanding_halalas / 100})" style="border:1px solid var(--line);cursor:pointer;font-size:11px;padding:.25rem .5rem;border-radius:6px;background:#fff">تسجيل تحصيل</button>` : '✓'}</td></tr>`).join('');
-  const eligible = d.deliverables.filter((dl) => ['DELIVERED', 'ACCEPTED'].includes(dl.status));
+  // المؤهَّل للمستخلص = مُسلَّم أو معتمَد **ولم يُفوتر بعد**. الفوترة صارت ختماً مستقلاً لا
+  // حالةً تحلّ محلّ التسليم (ترحيلة ٠١٧)، فبلا شرط الختم يعود المخرَج المفوتر مؤهَّلاً ثانيةً.
+  const eligible = d.deliverables.filter((dl) => ['DELIVERED', 'ACCEPTED'].includes(dl.status) && !dl.invoiced_at);
+  const dlvMoney = (dl) => (dl.collected_at ? pill(G_DLV_MONEY.collected, 'green')
+    : dl.invoiced_at ? pill(G_DLV_MONEY.invoiced, 'violet') : '<span style="color:var(--faint)">—</span>');
   const dlvRows = d.deliverables.map((dl) => `<tr style="border-bottom:1px solid var(--line)">
     <td style="padding:.4rem .75rem;font-size:var(--fs-ui)">${esc(dl.name_ar)}</td>
     <td style="padding:.4rem .75rem;font-size:var(--fs-ui);text-align:center" class="tnum">${fmtSar(dl.amount_halalas)}</td>
-    <td style="padding:.4rem .75rem;text-align:center">${pill(tr(dl.status), dl.status === 'PAID' || dl.status === 'INVOICED' ? 'green' : dl.status === 'DELIVERED' ? 'blue' : 'slate')}</td></tr>`).join('');
+    <td style="padding:.4rem .75rem;text-align:center">${pill(deliverableStatusLabel(dl.status), dl.status === 'ACCEPTED' ? 'green' : dl.status === 'DELIVERED' ? 'blue' : dl.status === 'REJECTED' ? 'red' : 'slate')}</td>
+    <td style="padding:.4rem .75rem;text-align:center">${dlvMoney(dl)}</td></tr>`).join('');
   const body = `
     <a href="/app/finance" style="font-size:12px;color:var(--muted)">← المالية</a>
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:.85rem;margin:.75rem 0 1.25rem">
@@ -112,8 +118,8 @@ export async function contractDetailPage(user, contractId) {
         <table style="width:100%;border-collapse:collapse"><thead><tr style="font-size:11px;color:var(--muted);text-align:right"><th style="padding:.4rem .75rem">المستخلص/الفاتورة</th><th style="padding:.4rem .75rem;text-align:center">القيمة</th><th style="padding:.4rem .75rem;text-align:center">الحالة</th><th style="padding:.4rem .75rem;text-align:center">متبقٍّ</th><th style="padding:.4rem .75rem"></th></tr></thead>
         <tbody>${invRows || '<tr><td style="padding:1rem;color:var(--muted);font-size:var(--fs-ui)" colspan="5">لا مستخلصات بعد — أنشئ واحداً من المخرجات المسلّمة</td></tr>'}</tbody></table>`)}
       ${card(`<div style="padding:1rem;border-bottom:1px solid var(--line);font-weight:800;font-size:var(--fs-ui)">مخرجات المشروع</div>
-        <table style="width:100%;border-collapse:collapse"><thead><tr style="font-size:11px;color:var(--muted);text-align:right"><th style="padding:.4rem .75rem">المخرج</th><th style="padding:.4rem .75rem;text-align:center">القيمة</th><th style="padding:.4rem .75rem;text-align:center">الحالة</th></tr></thead>
-        <tbody>${dlvRows || '<tr><td style="padding:1rem;color:var(--muted);font-size:var(--fs-ui)" colspan="3">لا مخرجات</td></tr>'}</tbody></table>`)}
+        <table style="width:100%;border-collapse:collapse"><thead><tr style="font-size:11px;color:var(--muted);text-align:right"><th style="padding:.4rem .75rem">المخرج</th><th style="padding:.4rem .75rem;text-align:center">القيمة</th><th style="padding:.4rem .75rem;text-align:center">حالة العمل</th><th style="padding:.4rem .75rem;text-align:center">المالية</th></tr></thead>
+        <tbody>${dlvRows || '<tr><td style="padding:1rem;color:var(--muted);font-size:var(--fs-ui)" colspan="4">لا مخرجات</td></tr>'}</tbody></table>`)}
     </div>`;
   return layout({ user, active: 'finance', title: `العقد — ${esc(c.code || c.id)}`, subtitle: esc(d.project?.name_ar || ''), body });
 }

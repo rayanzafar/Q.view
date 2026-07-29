@@ -27,16 +27,21 @@ function exposureOf(probability, impact) {
 // (finance: المؤهَّل للفوترة = مُسلَّم أو مقبول)، وتغذية «يحتاج انتباهك» تُنبِّه على مخرجات
 // شهور سابقة عالقة. أي أن المنصة كانت تطالب بعمل لا يملك أحد أداةً لإنجازه.
 //
-// **حدّ الملكية بين الإنسان والنظام** (قرار صريح، لا تساهل):
-//   • بيد الإنسان: قيد الإعداد · مُسلَّم · مقبول · مرفوض — قرارات تسليم وقبول يعرفها الفريق.
-//   • بيد النظام وحده: مُفوتر (يُضبط عند إصدار المستخلص) ومدفوع (يتبع التحصيل). ضبطُهما يدوياً
-//     يفصل الرقم عن الفاتورة فتصبح المطالبة المالية بلا سند.
-//   • والمخرَج الذي بلغ إحداهما لا تُغيَّر حالته ولا يُحذف يدوياً — وإلا أمكن «فكّ» فاتورة صادرة
-//     من شاشة مشروع.
-const DLV_SYSTEM_STATUSES = ['INVOICED', 'PAID'];
-const DLV_MANUAL_STATUSES = ['PENDING', 'DELIVERED', 'ACCEPTED', 'REJECTED'];
-export const DELIVERABLE_MANUAL_STATUSES = DLV_MANUAL_STATUSES;
-export const DELIVERABLE_SYSTEM_STATUSES = DLV_SYSTEM_STATUSES;
+// **أربع حقائق مستقلة، لا خانة واحدة** (تصحيح نمذجة، ترحيلة ٠١٧):
+// كانت الخانة الواحدة تحمل دورة العمل البشرية **و**نتيجة المسار المالي معاً، فيكتب إصدارُ
+// المستخلص `INVOICED` فوق `ACCEPTED` ويُمحى أثرُ اعتماد العميل — والتحصيل يمحوها ثانية. وثلاث
+// نسب تُقرأ من هذه الخانة (الإنجاز التنفيذي · الفوترة · التحصيل) وهي لا تحمل إلا آخرَ ما حدث.
+// القاعدة المصحِّحة: **صرفُ المستخلص أو تحصيله لا يعني أن المخرَج أُنجز أو اعتُمد.**
+//   • الحالة: مسودة ← جارٍ العمل ← تم التسليم ← تم الاعتماد (ومُعاد للتعديل) — بيد الإنسان
+//     وحده، ومعها ختمُ من غيّرها ومتى. لا معايير قبول ولا مسار موافقات: يكفي أن يقولها المخوَّل.
+//   • تمت الفوترة · تم التحصيل: ختمان زمنيان على الصف نفسه، تكتبهما وحدة المالية وحدها عند
+//     إصدار المستخلص وتحصيله. ضبطُهما يدوياً يفصل الرقم عن الفاتورة فتصبح المطالبة بلا سند.
+//   • المخرَج المفوتر **تتغيّر حالته** بحرية (قد يُعاد تسليمه بعد الفوترة، وهذا واقع لا شذوذ)
+//     لكنه **لا يُحذف** — حذفه يترك سطر فاتورة صادرة يشير إلى لا شيء.
+const DLV_STATUSES = ['DRAFT', 'IN_PROGRESS', 'DELIVERED', 'ACCEPTED', 'REJECTED'];
+export const DELIVERABLE_STATUSES = DLV_STATUSES;
+// أُبقيت باسمها القديم لأن الشاشات تستوردها: كل الحالات صارت بيد الإنسان، فالقائمة واحدة.
+export const DELIVERABLE_MANUAL_STATUSES = DLV_STATUSES;
 
 // شهر الاستحقاق يصل كنص «YYYY-MM» من قائمة واحدة، فلا يُخمَّن شهرٌ بلا سنة ولا سنةٌ بلا شهر.
 function periodParts(period) {
@@ -50,6 +55,15 @@ function deliverableAmount(d) {
   const raw = d.amount_sar;
   if (raw == null || String(raw).trim() === '') return null;
   return toHalalas(Number(raw));
+}
+
+// وزنُ المخرَج في الإنجاز التنفيذي. الفراغ مقصود ويعني «اشتقّه»: الوزن المخزَّن رقمٌ جامد
+// يشيخ كلما أُضيف مخرَج أو تغيّرت قيمة، والاشتقاق عند القراءة (من القيمة المالية، وإلا
+// بالتساوي) يبقى صادقاً بلا صيانة. فلا يُكتب إلا حين يقرّره صاحب المشروع صراحةً.
+function deliverableWeight(d) {
+  const raw = d.weight;
+  if (raw == null || String(raw).trim() === '') return null;
+  return Number(raw);
 }
 
 // One config per governed table: id prefix, allowed enums, field mapping for create/patch.
@@ -123,7 +137,7 @@ const KINDS = {
   },
   deliverable: {
     table: 'deliverable', prefix: 'dlv',
-    statuses: [...DLV_MANUAL_STATUSES, ...DLV_SYSTEM_STATUSES],
+    statuses: DLV_STATUSES,
     titleCol: 'name_ar',
     titleError: 'اسم المخرج مطلوب',
     withSector: true,
@@ -133,49 +147,86 @@ const KINDS = {
         if (!Number.isFinite(n) || n < 0) throw badRequest('قيمة المخرج تُكتب رقماً بالريال — أو تُترك فارغة إن لم تُتفق بعد');
         if (n > 1e10) throw badRequest('قيمة المخرج أكبر من المعقول — راجع الرقم قبل الحفظ');
       }
+      if ('weight' in d && d.weight != null && String(d.weight).trim() !== '') {
+        const w = Number(d.weight);
+        if (!Number.isFinite(w) || w < 0 || w > 100) throw badRequest('وزن المخرج نسبة بين ٠ و١٠٠ — أو يُترك فارغاً فيُشتقّ من قيمته');
+      }
       if ('period' in d && d.period != null && String(d.period).trim() !== '' && !/^\d{4}-(0[1-9]|1[0-2])$/.test(String(d.period)))
         throw badRequest('اختر شهر الاستحقاق من القائمة');
-      if ('status' in d && d.status && DLV_SYSTEM_STATUSES.includes(d.status))
-        throw badRequest('«مُفوتر» و«مدفوع» تُضبطان تلقائياً عند إصدار المستخلص وتحصيله — اختر: قيد الإعداد أو مُسلَّم أو مقبول أو مرفوض');
-    },
-    guardWrite(d, row) {
-      if ('status' in d && row && DLV_SYSTEM_STATUSES.includes(row.status))
-        throw badRequest(row.status === 'PAID'
-          ? 'هذا المخرج محصَّل — تغيير حالته من هنا يفصل الرقم عن الفاتورة. عالِج الأمر من صفحة المالية'
-          : 'صدر بهذا المخرج مستخلص — تغيير حالته من هنا يفصل الرقم عن الفاتورة. عالِج الأمر من صفحة المالية');
+      // الفوترة والتحصيل ختمان تكتبهما المالية عند إصدار المستخلص وتحصيله. قبولهما من هنا
+      // يفصل الرقم عن الفاتورة فتصبح نسبة الفوترة رقماً بلا مستند خلفه.
+      for (const k of ['invoiced_at', 'collected_at']) {
+        if (k in d) throw badRequest('الفوترة والتحصيل يُسجَّلان من صفحة المالية عند إصدار المستخلص وتحصيله');
+      }
     },
     guardDelete(row) {
-      if (DLV_SYSTEM_STATUSES.includes(row.status))
+      if (row.invoiced_at || row.collected_at)
         throw badRequest('لا يُحذف مخرَج صدر به مستخلص أو تحصيل — ألغِ الفاتورة أولاً من صفحة المالية');
     },
-    createRow(d) {
+    createRow(d, ctx) {
       const per = periodParts(d.period);
-      const st = d.status || 'PENDING';
+      const st = d.status || 'DRAFT';
       const now = nowIso();
       return {
         name_ar: d.name_ar || d.title, amount_halalas: deliverableAmount(d),
         month: per.month, year: per.year, status: st, notes: d.notes || null,
+        phase_id: d.phase_id || null, owner_user_id: d.owner_user_id || null,
+        due_date: d.due_date || null, weight: deliverableWeight(d),
         delivered_at: st === 'DELIVERED' || st === 'ACCEPTED' ? now : null,
         accepted_at: st === 'ACCEPTED' ? now : null,
+        status_by: ctx?.user?.id || null, status_at: now,
       };
     },
-    patchRow(d, row) {
+    patchRow(d, row, ctx) {
       const patch = {};
       if ('name_ar' in d || 'title' in d) patch.name_ar = d.name_ar || d.title || null;
       if ('notes' in d) patch.notes = d.notes || null;
       if ('amount_sar' in d) patch.amount_halalas = deliverableAmount(d);
+      if ('weight' in d) patch.weight = deliverableWeight(d);
+      if ('phase_id' in d) patch.phase_id = d.phase_id || null;
+      if ('owner_user_id' in d) patch.owner_user_id = d.owner_user_id || null;
+      if ('due_date' in d) patch.due_date = d.due_date || null;
       if ('period' in d) { const per = periodParts(d.period); patch.month = per.month; patch.year = per.year; }
       if ('status' in d) {
-        // تواريخ التسليم والقبول موجودة في البنية منذ اليوم الأول ولم يكتبها شيء قط — تُكتب هنا
-        // لحظة الانتقال، لأنها ما سيحتاجه أي تقرير أو خلاف لاحق («متى سُلِّم؟ ومتى قُبل؟»).
+        // تواريخ التسليم والقبول تُكتب لحظة الانتقال، لأنها ما سيحتاجه أي تقرير أو خلاف لاحق
+        // («متى سُلِّم ومتى اعتُمد»). ومعها **من غيّرها**: الاعتماد قرارُ شخص لا حدثٌ بلا صاحب،
+        // وهذا هو كل ما طُلب من «مسار الاعتماد» — اسمٌ وتاريخ، لا معايير قبول ولا موافقات.
         const now = nowIso();
         patch.status = d.status;
         if (d.status === 'DELIVERED') { patch.delivered_at = row.delivered_at || now; patch.accepted_at = null; }
         else if (d.status === 'ACCEPTED') { patch.delivered_at = row.delivered_at || now; patch.accepted_at = row.accepted_at || now; }
         else if (d.status === 'REJECTED') { patch.accepted_at = null; }
-        else if (d.status === 'PENDING') { patch.delivered_at = null; patch.accepted_at = null; }
+        else { patch.delivered_at = null; patch.accepted_at = null; } // DRAFT | IN_PROGRESS
+        patch.status_by = ctx?.user?.id || null;
+        patch.status_at = now;
         patch.updated_at = now;
       }
+      return patch;
+    },
+  },
+  // ── المرحلة: كيانٌ خفيف له تواريخه، تُجمع تحته المخرجات والمعالم ─────────────────
+  phase: {
+    table: 'project_phase', prefix: 'phs',
+    statuses: ['NOT_STARTED', 'IN_PROGRESS', 'DONE'],
+    titleCol: 'name_ar',
+    titleError: 'اسم المرحلة مطلوب',
+    validate(d) {
+      if (d.start_date && d.end_date && String(d.end_date) < String(d.start_date))
+        throw badRequest('تاريخ نهاية المرحلة قبل بدايتها — راجع التاريخين');
+    },
+    createRow(d) {
+      return { name_ar: d.name_ar || d.title, order_no: Number(d.order_no) || 0,
+        start_date: d.start_date || null, end_date: d.end_date || null, status: d.status || 'NOT_STARTED' };
+    },
+    patchRow(d) {
+      const patch = {};
+      if ('name_ar' in d || 'title' in d) patch.name_ar = d.name_ar || d.title || null;
+      for (const k of ['start_date', 'end_date']) if (k in d) patch[k] = d[k] || null;
+      if ('order_no' in d) patch.order_no = Number(d.order_no) || 0;
+      if ('status' in d) patch.status = d.status;
+      // ختم التعديل يُضاف **بعد** أن يثبت أن ثمة تعديلاً: إضافته دائماً تجعل الحمولة الفارغة
+      // تبدو تغييراً، فيمرّ طلبٌ لا يحمل حقلاً واحداً بدل أن يُردّ برسالة «لا تغييرات».
+      if (Object.keys(patch).length) patch.updated_at = nowIso();
       return patch;
     },
   },
@@ -185,11 +236,16 @@ const KINDS = {
     titleCol: 'name_ar',
     titleError: 'اسم المعلم مطلوب',
     validate() {},
-    createRow(d) { return { name_ar: d.name_ar || d.title, due_date: d.due_date || null, status: d.status || 'PENDING' }; },
+    createRow(d) {
+      return { name_ar: d.name_ar || d.title, due_date: d.due_date || null, status: d.status || 'PENDING',
+        phase_id: d.phase_id || null, owner_user_id: d.owner_user_id || null };
+    },
     patchRow(d) {
       const patch = {};
       if ('name_ar' in d || 'title' in d) patch.name_ar = d.name_ar || d.title || null;
       if ('due_date' in d) patch.due_date = d.due_date || null;
+      if ('phase_id' in d) patch.phase_id = d.phase_id || null;
+      if ('owner_user_id' in d) patch.owner_user_id = d.owner_user_id || null;
       if ('status' in d) patch.status = d.status;
       return patch;
     },
@@ -227,13 +283,14 @@ const ORDER = {
   change: 'ORDER BY created_at DESC',
   milestone: 'ORDER BY (due_date IS NULL), due_date, created_at',
   deliverable: 'ORDER BY (year IS NULL), year, (month IS NULL), month, created_at',
+  phase: 'ORDER BY order_no, (start_date IS NULL), start_date, created_at',
 };
 
 // خريطة المسار العام ⟵ نوع السجل. تُصدَّر كي يشتقّ منها المُوجِّه مساراته بدل نسخة ثانية
 // تُنسى عند إضافة نوع جديد (وهو ما حدث فعلاً: النوع يُضاف هنا فلا يصله مسار).
 export const GOVERNANCE_PLURALS = {
   risks: 'risk', issues: 'issue', decisions: 'decision', changes: 'change',
-  milestones: 'milestone', deliverables: 'deliverable',
+  milestones: 'milestone', deliverables: 'deliverable', phases: 'phase',
 };
 
 // العنوان يُقرأ من العمود الذي يخصّ كل نوع (title أو name_ar) — لا شرط على اسم النوع.
@@ -249,10 +306,10 @@ export async function listItems(user, projectId, kind) {
 // Composite payload for the project page: the governance registers + write flag in one call.
 export async function projectGovernance(user, projectId) {
   const p = await readableProject(user, projectId);
-  const kinds = ['risk', 'issue', 'decision', 'change', 'milestone', 'deliverable'];
-  const [risks, issues, decisions, changes, milestones, deliverables] = await Promise.all(
+  const kinds = ['risk', 'issue', 'decision', 'change', 'milestone', 'deliverable', 'phase'];
+  const [risks, issues, decisions, changes, milestones, deliverables, phases] = await Promise.all(
     kinds.map((k) => all(`SELECT * FROM ${KINDS[k].table} WHERE project_id = ? AND deleted_at IS NULL ${ORDER[k]}`, [projectId])));
-  return { projectId: p.id, canEdit: can(user, 'update', 'project', asTarget(p)), risks, issues, decisions, changes, milestones, deliverables };
+  return { projectId: p.id, canEdit: can(user, 'update', 'project', asTarget(p)), risks, issues, decisions, changes, milestones, deliverables, phases };
 }
 
 export async function createItem(ctx, projectId, kind, data = {}) {
@@ -265,7 +322,7 @@ export async function createItem(ctx, projectId, kind, data = {}) {
   if (cfg.statuses && 'status' in data && data.status && !cfg.statuses.includes(data.status)) throw badRequest('الحالة غير صحيحة');
   await checkOwner(data);
   const rid = id(cfg.prefix);
-  const row = cfg.createRow({ ...data, title, name_ar: cfg.titleCol === 'name_ar' ? title : undefined });
+  const row = cfg.createRow({ ...data, title, name_ar: cfg.titleCol === 'name_ar' ? title : undefined }, ctx);
   await insert(cfg.table, { id: rid, project_id: p.id, ...(kind === 'risk' || cfg.withSector ? { sector_id: p.sector_id } : {}), ...row, created_at: nowIso() });
   await audit(ctx, { action: 'create', resource: cfg.table, resourceId: rid, sectorId: p.sector_id, detail: { title } });
   return await get(`SELECT * FROM ${cfg.table} WHERE id = ?`, [rid]);
@@ -284,14 +341,13 @@ async function writableItem(user, kind, itemId) {
 export async function updateItem(ctx, kind, itemId, data = {}) {
   const { cfg, row, p } = await writableItem(ctx.user, kind, itemId);
   cfg.validate(data);
-  if (cfg.guardWrite) cfg.guardWrite(data, row); // حدود ما يملكه الإنسان مقابل ما يملكه النظام
   if ('status' in data) {
     if (!cfg.statuses) throw badRequest('هذا السجل بلا حالة قابلة للتغيير');
     if (!cfg.statuses.includes(data.status)) throw badRequest('الحالة غير صحيحة');
   }
   if (hasTitle(cfg, data) && !titleOf(cfg, data)) throw badRequest(cfg.titleError || 'العنوان مطلوب');
   await checkOwner(data);
-  const patch = cfg.patchRow(data, row);
+  const patch = cfg.patchRow(data, row, ctx);
   if (!Object.keys(patch).length) throw badRequest('لا تغييرات لتطبيقها');
   await update(cfg.table, itemId, patch);
   await audit(ctx, { action: 'update', resource: cfg.table, resourceId: itemId, sectorId: p.sector_id, detail: Object.keys(patch) });

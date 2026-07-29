@@ -6,6 +6,8 @@ import { seesCompanyPerformance } from '../core/policy/pages.js';
 import * as opps from './crm/opportunities.js';
 import * as projects from './pmo/projects.js';
 import * as tasks from './pmo/tasks.js';
+import * as capacity from './pmo/capacity.js';
+import * as progress from './pmo/progress.js';
 import * as ts from './timesheets/timesheets.js';
 import * as wf from './workflow/engine.js';
 import * as notif from './notifications/notify.js';
@@ -63,7 +65,19 @@ apiRouter.get('/projects/:id', h((req) => projects.getProject(req.ctx.user, req.
 apiRouter.patch('/projects/:id', h((req) => projects.updateProject(req.ctx, req.params.id, req.body)));
 apiRouter.post('/intake/parse', h(async (req) => intake.parseContract(req.ctx.user, req.body || {})));
 apiRouter.post('/intake/create', h((req) => intake.createFromIntake(req.ctx, req.body || {})));
-apiRouter.get('/projects/:id/staffing', h((req) => projects.projectStaffing(req.ctx.user, req.params.id)));
+apiRouter.get('/projects/:id/staffing', h((req) => projects.projectStaffing(req.ctx.user, req.params.id, req.query)));
+// الطاقة والضغط: «من المتاح» و«ما حال فريق المشروع» — مصدر واحد للشاشتين معاً.
+apiRouter.get('/projects/:id/candidates', h((req) => capacity.staffingCandidates(req.ctx.user, req.params.id, req.query)));
+apiRouter.get('/projects/:id/team-load', h((req) => capacity.projectTeamLoad(req.ctx.user, req.params.id, req.query)));
+// النسب الأربع من مصدرها الواحد — لا تُعاد حسبتها في أي شاشة.
+apiRouter.get('/projects/:id/progress', h(async (req) => {
+  await projects.getProject(req.ctx.user, req.params.id); // الحارس قبل الحساب
+  return progress.projectProgress(req.params.id);
+}));
+apiRouter.get('/projects/:id/documents', h((req) => projects.projectDocuments(req.ctx.user, req.params.id)));
+apiRouter.post('/projects/:id/documents', h((req) => projects.addProjectDocument(req.ctx, req.params.id, req.body || {})));
+apiRouter.delete('/projects/documents/:docId', h((req) => projects.deleteProjectDocument(req.ctx, req.params.docId)));
+apiRouter.get('/projects/:id/updates', h((req) => projects.projectUpdates(req.ctx.user, req.params.id, req.query.limit)));
 apiRouter.post('/projects/:id/staff', h((req) => projects.assignEmployee(req.ctx, req.params.id, req.body)));
 apiRouter.delete('/projects/staff/:allocId', h((req) => projects.unassignEmployee(req.ctx, req.params.allocId)));
 apiRouter.patch('/projects/staff/:allocId', h((req) => projects.setAllocation(req.ctx, req.params.allocId, req.body)));
