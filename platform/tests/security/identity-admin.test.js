@@ -148,22 +148,39 @@ test('سجل الدخول يُقرأ من الجدول المهجور — وكا
   assert.equal(rows[0].ip, '10.0.0.9');
 });
 
-// ── «دعوة معلَّقة» ليست «معطَّل» ──
+// ── «ينتظر التفعيل» ليست «معطَّل» ──
 // ظهر على البيانات الحقيقية فور تعطيل حسابٍ مكرَّر بطلب المالك: الشاشة عرضته «دعوة معلَّقة»
-// ومعه زرّ «إعادة الدعوة» — أي أنها تعرض على المسؤول أن يُعيد دعوة من عطّله للتوّ، وتعدّه في
-// عدّاد الدعوات المنتظِرة. والسبب استنتاجٌ خاطئ: «غير نشط ولم يدخل قط» تصدق على الحالتين معاً.
-// الفرق مسجَّل لا مُستنتَج: الدعوة تُصدِر رمزاً بغرض «دعوة».
-test('الحساب المعطَّل لا يُقرأ دعوةً معلَّقة، والمدعوّ يُقرأ كذلك', async () => {
-  const now = ids.nowIso();
-  // (أ) حسابٌ عُطِّل ولم يدخل قط — ولم يُدعَ إطلاقاً
-  await mkUser('u_disabled_never', { email: 'dn.idn@evc.sa', active: 0, name: 'معطَّل لم يدخل' });
-  // (ب) حسابٌ مدعوّ فعلاً — صدر له رمز بغرض «دعوة»
-  await mkUser('u_invited_probe', { email: 'iv.idn@evc.sa', active: 0, name: 'مدعوّ' });
-  await db.insert('login_code', { id: 'lc_inv_probe', user_id: 'u_invited_probe', code_hash: 'x',
-    purpose: 'invite', expires_at: now, attempts: 0, created_at: now });
+// ومعه زرّ «إعادة الدعوة» — أي تعرض على المسؤول أن يُعيد دعوة من عطّله للتوّ. والشرط القديم
+// («غير نشط ولم يدخل قط») يصدق على حالتين متعاكستين فيقرأهما واحدة.
+//
+// وأول إصلاحٍ جرّبتُه اشتقّ الفرق من وجود رمز دعوة صادر، فسقط على البيانات الحقيقية: حسابات
+// التجربة أُنشئت بلا رموز (قناة البريد لم تكن مشغَّلة)، فقُرئت كلها «معطَّلة» وهي تنتظر
+// التفعيل. الاستنتاج من الغياب لا يصحّ — فصار الفعل يُسجَّل بختمه (ترحيلة ٠١٦).
+test('التعطيل يُختَم، والتفعيل يمحو ختمه', async () => {
+  const target = await mkUser('u_stamp_probe', { email: 'st.idn@evc.sa', name: 'حساب للفحص' });
+  assert.equal(target.deactivated_at, null, 'حسابٌ جديد بلا ختم تعطيل');
+
+  await identity.setUserActive(ctxOf(adminUser), 'u_stamp_probe', false);
+  const off = await db.get('SELECT active, deactivated_at FROM app_user WHERE id = ?', ['u_stamp_probe']);
+  assert.equal(Number(off.active), 0);
+  assert.ok(off.deactivated_at, 'التعطيل بلا ختم يعيد الالتباس نفسه');
+
+  await identity.setUserActive(ctxOf(adminUser), 'u_stamp_probe', true);
+  const on = await db.get('SELECT active, deactivated_at FROM app_user WHERE id = ?', ['u_stamp_probe']);
+  assert.equal(Number(on.active), 1);
+  assert.equal(on.deactivated_at, null, 'إعادة التفعيل تمحو الختم — وإلا بقي يُقرأ معطَّلاً');
+});
+
+test('المعطَّل لا يُقرأ منتظِراً للتفعيل، ومن لم يُفعَّل بعد يُقرأ كذلك', async () => {
+  // (أ) حسابٌ عُطِّل عمداً ولم يدخل قط
+  await mkUser('u_disabled_never', { email: 'dn.idn@evc.sa', name: 'معطَّل لم يدخل' });
+  await identity.setUserActive(ctxOf(adminUser), 'u_disabled_never', false);
+  // (ب) حسابٌ أُنشئ معطَّلاً وينتظر التفعيل — بلا ختم ولا رمز دعوة (حالة حسابات التجربة)
+  await mkUser('u_awaiting', { email: 'aw.idn@evc.sa', active: 0, name: 'ينتظر التفعيل' });
 
   const rows = await identity.listUsers(adminUser);
   const byId = Object.fromEntries(rows.map((r) => [r.id, r]));
-  assert.equal(byId.u_disabled_never.was_invited, false, 'حسابٌ لم يُدعَ قط عُدّ مدعوّاً — فيُعرض عليه «إعادة الدعوة»');
-  assert.equal(byId.u_invited_probe.was_invited, true, 'حسابٌ مدعوّ لم يُعدّ مدعوّاً');
+  assert.equal(byId.u_disabled_never.was_deactivated, true, 'المعطَّل عمداً لم يُميَّز');
+  assert.equal(byId.u_awaiting.was_deactivated, false,
+    'حسابٌ ينتظر التفعيل قُرئ معطَّلاً — وهي الحالة التي أسقطت الإصلاح الأول');
 });

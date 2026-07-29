@@ -57,16 +57,19 @@ export async function listUsers(user, { query = '', role = '', status = '' } = {
       LEFT JOIN sector s ON s.id = u.sector_id
       LEFT JOIN employee e ON e.id = u.employee_id
       WHERE u.deleted_at IS NULL ORDER BY u.active DESC, u.name_ar LIMIT 500`);
-  // ── «دعوة معلَّقة» ليست «معطَّل» ──
-  // كانت الشاشة تستنتج الدعوة المعلَّقة من «غير نشط ولم يدخل قط» — وهو استنتاج **خاطئ** لحالةٍ
-  // شائعة: حسابٌ عُطِّل عمداً ولم يكن صاحبه قد دخل قط يُقرأ «دعوة معلَّقة»، فيُعرَض بجانبه زرّ
-  // «إعادة الدعوة» — أي أن الشاشة تعرض على المسؤول أن يُعيد دعوة من عطّله للتوّ. وقع ذلك فعلاً
-  // على حسابٍ مكرَّر عُطِّل بطلب المالك.
-  // والفرق مسجَّل لا مُستنتَج: الدعوة تُصدِر رمزاً بغرض «دعوة» (otp.js). فمن صدر له رمز دعوة
-  // فهو مدعوّ، ومن لا فهو معطَّل. حقيقةٌ في القاعدة بدل تخمينٍ من غياب تسجيل دخول.
-  const invited = new Set((await all(
-    "SELECT DISTINCT user_id FROM login_code WHERE purpose = 'invite'")).map((r) => r.user_id));
-  for (const r of rows) r.was_invited = invited.has(r.id);
+  // ── «ينتظر التفعيل» ليست «معطَّل» ──
+  // كانت الشاشة تقرأ الحالتين من شرطٍ واحد («غير نشط ولم يدخل قط») وهما متعاكستان: الأولى
+  // حسابٌ ينتظر صاحبه ليفعّله، والثانية حسابٌ أُغلق عليه. فيُعرَض على المعطَّل زرّ «إعادة
+  // الدعوة» — أي أن يُعيد المسؤول دعوة من عطّله للتوّ — ويُعدّ في عدّاد الدعوات المنتظِرة.
+  //
+  // وأول محاولةٍ لحلّها اشتقّت الفرق من أثرٍ قائم (رمز دعوة صادر في login_code) فسقطت على
+  // البيانات الحقيقية: حسابات التجربة أُنشئت بلا رموز دعوة (قناة البريد لم تكن مشغَّلة بعد)،
+  // فقُرئت كلها «معطَّلة» وهي تنتظر التفعيل. والدرس أن **الاستنتاج من الغياب لا يصحّ**:
+  // غيابُ الأثر يعني «لا نعرف» لا «لم يحدث».
+  //
+  // فالفعل نفسه يُسجَّل الآن: ختمٌ لحظة التعطيل (ترحيلة ٠١٦). من له ختمٌ أُغلق عليه عمداً،
+  // ومن لا ختم له ولم يدخل قط فهو ينتظر التفعيل.
+  for (const r of rows) r.was_deactivated = !!r.deactivated_at;
   const q = String(query || '').trim().toLowerCase();
   return rows.filter((u2) => {
     if (role && u2.role_id !== role) return false;
@@ -189,8 +192,10 @@ export async function setUserActive(ctx, userId, active) {
 
   let revoked = 0;
   await tx(async () => {
-    await run('UPDATE app_user SET active = ?, updated_at = ?, updated_by = ? WHERE id = ?',
-      [want, nowIso(), actor.id, u.id]);
+    // ختم التعطيل يُكتب ويُمحى مع الفعل نفسه: به تُميَّز «أُغلق عمداً» عن «لم يُفعَّل بعد»،
+    // وهما حالتان كانتا تُقرآن واحدةً فيُعرض على المعطَّل زرّ «إعادة الدعوة».
+    await run('UPDATE app_user SET active = ?, deactivated_at = ?, updated_at = ?, updated_by = ? WHERE id = ?',
+      [want, want ? null : nowIso(), nowIso(), actor.id, u.id]);
     if (!want) {
       // الجلسات القائمة تُبطل فوراً. بلا هذا يبقى الحساب المعطَّل داخلاً حتى تنتهي جلسته
       // من تلقائها — أي إلى اثنتي عشرة ساعة بعد قرار المنع.
