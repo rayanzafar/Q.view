@@ -707,11 +707,14 @@ async function movePage(user, { from, q }) {
   // من لا يملك القطاع المصدر لا تُفتح له قائمته أصلاً — الرفض قبل قراءة الأسماء لا بعدها.
   if (sourceSector && !mayEdit(user, sourceSector)) throw forbidden('هذا القطاع خارج صلاحيتك');
 
+  // حالة الحساب ثلاثية لا ثنائية: نشِط · دعوةٌ لم تُقبل بعد · لا حساب أصلاً. وقصرُ الوصلة على
+  // النشِط وحده كان يجعل صاحب الدعوة المعلَّقة يُعرَض «بلا حساب دخول» — وهي معلومة **خاطئة**
+  // يبني عليها المسؤول قراراً (فيدعوه مرةً ثانية أو يظنّه غير مُهيَّأ). تُقرأ الحالة كما هي.
   const people = await all(`SELECT e.id, e.name_ar, e.job_title, e.sector_id, e.department_id,
-       d.name_ar department_name, u.id user_id
+       d.name_ar department_name, u.id user_id, u.active user_active
      FROM employee e
      LEFT JOIN department d ON d.id = e.department_id AND d.deleted_at IS NULL
-     LEFT JOIN app_user u ON u.employee_id = e.id AND u.deleted_at IS NULL AND u.active = 1
+     LEFT JOIN app_user u ON u.employee_id = e.id AND u.deleted_at IS NULL
      WHERE ${where}
      ORDER BY e.name_ar
      LIMIT 200`, params);
@@ -736,7 +739,9 @@ async function movePage(user, { from, q }) {
     <td style="padding:.5rem .6rem;border-bottom:1px solid var(--line);font-size:12px;color:var(--muted)">
       ${p.department_name ? esc(p.department_name) : '<span style="color:var(--faint)">بلا إدارة</span>'}</td>
     <td style="padding:.5rem .6rem;border-bottom:1px solid var(--line);font-size:11.5px">
-      ${p.user_id ? '<span style="color:var(--green)">له حساب دخول</span>' : '<span style="color:var(--faint)">بلا حساب دخول</span>'}</td>
+      ${!p.user_id ? '<span style="color:var(--faint)">بلا حساب دخول</span>'
+    : Number(p.user_active) === 1 ? '<span style="color:var(--green)">له حساب دخول</span>'
+      : '<span style="color:#a16207">دعوة لم تُقبل بعد</span>'}</td>
     <td style="padding:.5rem .6rem;border-bottom:1px solid var(--line);font-size:12px"><span class="mv-state">—</span></td>
   </tr>`;
 
