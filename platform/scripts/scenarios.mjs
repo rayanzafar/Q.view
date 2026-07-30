@@ -496,7 +496,7 @@ scenario('sector-isolation', 'عزل القطاعات: لا أحد يقرأ أو
     const r = await C.req(u, `/api/opportunities/${consOpp}`);
     t.status(r, 403, `${u} لا يقرأ فرصة قطاع الاستشارات`);
   }
-  for (const u of ['demo.admin', 'demo.ceo', 'demo.finance', 'demo.bdhead']) {
+  for (const u of ['demo.admin', 'demo.ceo', 'demo.bdhead']) {
     const r = await C.req(u, `/api/opportunities/${consOpp}`);
     t.status(r, 200, `${u} يقرأ فرص القطاعات كلها بحكم نطاقه`);
   }
@@ -687,15 +687,15 @@ scenario('salary-seal', 'ختم الراتب: لا يراه إلا مدير ال
 });
 
 // ⑧ حجب الكلفة والهامش
-scenario('sensitive-money', 'الكلفة والهامش: مكشوفة للمالية، محجوبة عن تطوير الأعمال', async ({ C, t, ids }) => {
-  const fin = await C.req('demo.finance', `/api/projects/${ids.project.sol_main}`);
-  t.status(fin, 200, 'المالية تقرأ المشروع');
+scenario('sensitive-money', 'الكلفة والهامش: مكشوفة لمكتب الرئيس التنفيذي، محجوبة عن تطوير الأعمال', async ({ C, t, ids }) => {
+  const fin = await C.req('demo.ceo', `/api/projects/${ids.project.sol_main}`);
+  t.status(fin, 200, 'مكتب الرئيس التنفيذي يقرأ المشروع');
   const bd = await C.req('demo.bd', `/api/projects/${ids.project.sol_main}`);
   t.status(bd, 200, 'تطوير الأعمال يقرأ المشروع');
   t.eq(bd.json?.actual_spend_halalas, null, 'ولا تصله الكلفة الفعلية');
   t.eq(bd.json?.margin_pct, null, 'ولا نسبة الهامش');
   t.eq(bd.json?._redacted_margin_pct, true, 'والحقل مُعلَّم كمحجوب لا كصفر');
-  t.eq(fin.json?._redacted_margin_pct, undefined, 'ولا يُعلَّم شيء كمحجوب في نسخة المالية');
+  t.eq(fin.json?._redacted_margin_pct, undefined, 'ولا يُعلَّم شيء كمحجوب في نسخته');
   t.ok('margin_pct' in (fin.json || {}), 'وحقل الهامش يصلها كما هو');
 });
 
@@ -798,7 +798,7 @@ scenario('approvals', 'مسار الاعتماد: من يرفع لا يعتمد�
 // ⑪ المال: المستخلص والتحصيل والذمم
 scenario('finance', 'المال: مستخلص من مخرجات، تحصيل بحدوده، وأرقام بالهللات', async ({ C, db, t, ids, D, remember }) => {
   const contract = ids.contract.sol_main;
-  const none = await C.req('demo.finance', '/api/finance/progress-claim', { method: 'POST',
+  const none = await C.req('demo.ceo', '/api/finance/progress-claim', { method: 'POST',
     body: { contractId: contract, periodLabel: D.tag('الدفعة الأولى') } });
   t.status(none, 400, 'بلا مخرجات مسلَّمة لا مستخلص');
   t.says(none, /مخرجات مؤهلة/, 'والرسالة تقول ما ينقص');
@@ -810,7 +810,7 @@ scenario('finance', 'المال: مستخلص من مخرجات، تحصيل ب�
     { method: 'PATCH', body: { status: 'DELIVERED' } });
   t.status(delivered, 200, 'مدير المشروع يعلّم المخرج مُسلَّماً');
 
-  const claim = await C.req('demo.finance', '/api/finance/progress-claim', { method: 'POST',
+  const claim = await C.req('demo.ceo', '/api/finance/progress-claim', { method: 'POST',
     body: { contractId: contract, deliverableIds: [ids.deliverable.sol_main[0]], periodLabel: D.tag('الدفعة الأولى') } });
   t.status(claim, 200, 'إصدار مستخلص بمخرجات محدَّدة');
   const invId = claim.json?.id; remember('invoice', invId);
@@ -824,23 +824,23 @@ scenario('finance', 'المال: مستخلص من مخرجات، تحصيل ب�
     body: { invoiceId: invId, amountSar: 1000 } });
   t.status(bd, 403, 'رئيس تطوير الأعمال يقرأ المال ولا يكتبه');
 
-  const tooMuch = await C.req('demo.finance', '/api/finance/collections', { method: 'POST',
+  const tooMuch = await C.req('demo.ceo', '/api/finance/collections', { method: 'POST',
     body: { invoiceId: invId, amountSar: 900_000 } });
   t.status(tooMuch, 400, 'تحصيل يتجاوز المتبقي مرفوض');
 
-  const part = await C.req('demo.finance', '/api/finance/collections', { method: 'POST',
+  const part = await C.req('demo.ceo', '/api/finance/collections', { method: 'POST',
     body: { invoiceId: invId, amountSar: 100_000, collectedAt: '2026-07-01', method: 'تحويل' } });
   t.status(part, 200, 'تحصيل جزئي');
   t.eq(part.json?.status, 'PARTIALLY_PAID', 'الفاتورة صارت محصَّلة جزئياً');
   for (const c of await db.all('SELECT id FROM collection WHERE invoice_id = ?', [invId])) remember('collection', c.id);
 
-  const rest = await C.req('demo.finance', '/api/finance/collections', { method: 'POST',
+  const rest = await C.req('demo.ceo', '/api/finance/collections', { method: 'POST',
     body: { invoiceId: invId, amountSar: 150_000, collectedAt: '2026-07-05' } });
   t.status(rest, 200, 'تحصيل الباقي');
   t.eq(rest.json?.status, 'PAID', 'الفاتورة صارت مسدَّدة');
   for (const c of await db.all('SELECT id FROM collection WHERE invoice_id = ?', [invId])) remember('collection', c.id);
 
-  const sum = await C.req('demo.finance', '/api/finance/summary?year=2026');
+  const sum = await C.req('demo.ceo', '/api/finance/summary?year=2026');
   t.status(sum, 200, 'الملخص المالي على مستوى الشركة');
   for (const k of ['bookings_halalas', 'revenue_halalas', 'invoiced_halalas', 'collected_halalas', 'ar_halalas']) {
     t.ok(Number.isInteger(sum.json?.[k]), `${k} عدد صحيح بالهللات`);
@@ -851,10 +851,10 @@ scenario('finance', 'المال: مستخلص من مخرجات، تحصيل ب�
   t.status(secSum, 200, 'وقائد القطاع يرى ملخص قطاعه');
   t.ok(secSum.json.invoiced_halalas <= sum.json.invoiced_halalas, 'ورقم القطاع لا يتجاوز رقم الشركة');
 
-  const byContract = await C.req('demo.finance', '/api/finance/by-contract');
+  const byContract = await C.req('demo.ceo', '/api/finance/by-contract');
   t.ok((byContract.json || []).some((c) => c.id === contract), 'العقد يظهر في كشف العقود');
 
-  const c360 = await C.req('demo.finance', `/api/clients/${ids.client.gov}/360`);
+  const c360 = await C.req('demo.ceo', `/api/clients/${ids.client.gov}/360`);
   t.status(c360, 200, 'صفحة العميل المالية تفتح');
   t.ok(!/undefined|NaN/.test(c360.text), 'وبلا قيم مكسورة');
 });
@@ -933,7 +933,7 @@ scenario('write-guards', 'حواجز الكتابة: لا اسم مكرر، ول
 
 // ⑭ مقاييس القيادة
 scenario('leadership-metrics', 'أرقام القيادة: منحٌ قيادي لا مجرد اتساع نافذة', async ({ C, t }) => {
-  const allowed = ['demo.admin', 'demo.ceo', 'demo.finance', 'demo.hr', 'demo.bdhead'];
+  const allowed = ['demo.admin', 'demo.ceo', 'demo.hr', 'demo.bdhead'];
   const denied = ['demo.sectorlead', 'demo.bd', 'demo.pm', 'demo.consultant', 'demo.employee',
     'demo.viewer', 'demo.deptmgr', 'demo.linemgr', 'demo.ops', 'demo.procurement', 'demo.approver', 'demo.external'];
   for (const u of allowed) t.status(await C.req(u, '/api/metrics/company'), 200, `${u} يقرأ أداء الشركة`);
@@ -972,7 +972,7 @@ scenario('defects', 'حراسة ما عولج: كل عيب مثبَّت سابق
   //    هذا العقد» و«حالته تسمح بالمطالبة». صار الشرطان قائمين مهما كان شكل الطلب، والرفض صريح
   //    يسمّي سببه. التثبيت تحوّل إلى فحصٍ دائم: عودة العطل تُسقط السيناريو لا تُبدّل رقم تثبيت.
   const foreignDeliverable = ids.deliverable.con_main[0];
-  const cross = await C.req('demo.finance', '/api/finance/progress-claim', { method: 'POST',
+  const cross = await C.req('demo.ceo', '/api/finance/progress-claim', { method: 'POST',
     body: { contractId: ids.contract.sol_side, deliverableIds: [foreignDeliverable] } });
   if (cross.status === 200) { remember('invoice', cross.json?.id);  // شبكة أمان لو عاد العطل: لا يبقى أثر
     for (const l of await db.all('SELECT id FROM invoice_line WHERE invoice_id = ?', [cross.json?.id])) remember('invoice_line', l.id); }

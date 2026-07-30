@@ -241,8 +241,8 @@ test('أمان: التكلفة والهامش لا يظهران في معجم م
     if (!caps.seeCost) assert.ok(!terms.includes('التكلفة'), `${role}: «التكلفة» في معجمه بلا صلاحية قراءتها`);
     if (!caps.seeMargin) assert.ok(!terms.includes('الهامش'), `${role}: «الهامش» في معجمه بلا صلاحية قراءته`);
   }
-  const fin = await guide.guideFor(U('finance'));
-  assert.ok(fin.glossary.some((t) => t.term_ar === 'الهامش'), 'المالية تقرأ الهامش فيجب أن يُشرح لها');
+  const fin = await guide.guideFor(U('ceo_office'));
+  assert.ok(fin.glossary.some((t) => t.term_ar === 'الهامش'), 'مكتب الرئيس التنفيذي يقرأ الهامش فيجب أن يُشرح له');
 });
 
 // ── الخاصية الأمنية الثالثة: نطاق القطاع لا يُوعَد برؤية الشركة ───────────────
@@ -398,9 +398,11 @@ test('الترتيب: الشاشات تأتي بترتيب رحلة صاحبها
   assert.ok(navRank[cons[0]] > navRank[cons[cons.length - 1]] || cons[0] !== 'sector',
     'ترتيب الدليل يجب ألا يكون نسخة من ترتيب القائمة');
 
-  const fin = (await guide.guideFor(U('finance'))).pages.map((p) => p.key);
-  assert.equal(fin[0], 'finance', 'المالية تبدأ من شاشتها لا من أول عنصر في القائمة');
-  assert.ok(fin.includes('ceo') && fin.indexOf('ceo') > 0, 'لوحة القيادة متاحة لها لكنها ليست بداية رحلتها');
+  // مكتب الرئيس التنفيذي: رحلته تبدأ من لوحة القيادة، و«المالية والعقود» في آخرها — وقد ورث
+  // مالية الشركة بعد إلغاء دور «المالية»، فشاشتها في دليله لا في صدره.
+  const fin = (await guide.guideFor(U('ceo_office'))).pages.map((p) => p.key);
+  assert.equal(fin[0], 'ceo', 'يبدأ من شاشة قراره لا من أول عنصر في القائمة');
+  assert.ok(fin.includes('finance') && fin.indexOf('finance') > 0, 'ومالية الشركة في دليله بعد أن ورثها');
 
   const lead = (await guide.guideFor(U('sector_lead'))).pages.map((p) => p.key);
   assert.equal(lead[0], 'sector', 'قائد القطاع يبدأ من مركز قيادته');

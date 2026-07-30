@@ -40,6 +40,23 @@ export const ROLE_GRANTS = {
     // الفرصة عند تطوير الأعمال وقائد القطاع، وحذفُه لا رجعة فيه فيبقى لصاحب القطاع ومدير النظام.
     ...crud(['project', 'milestone', 'deliverable', 'project_phase'], 'company', ['read', 'update']),
     { resource: 'deliverable', action: 'approve', scope: 'company' },
+    // ── ما ورثه عن «المالية» بعد إلغاء الدور ────────────────────────────────────
+    // قرار مالك: «الإدارة المالية ما لها علاقة من المنصة، احذفهم» — ولا فريق مالية في الشركة
+    // أصلاً. وحذف الدور وحده يترك ثقباً لا يملأه أحد: تسجيل التحصيل واعتماد المصروف وإصدار
+    // الفاتورة على مستوى الشركة كانت كلها منحاً لهذا الدور وحده (وللمصفوفة الشاملة عند مدير
+    // النظام). ومدير النظام وظيفة تقنية لا وظيفة عمل، فلا يصحّ أن يبقى المال معلَّقاً عليه.
+    // فالسلطة تصعد إلى أعلى ما بقي: مكتب الرئيس التنفيذي. وهي كتابةٌ على أرقامٍ يقرؤها أصلاً
+    // منذ اليوم الأول — لا نافذة بيانات جديدة، بل قدرةٌ على تصحيح ما يراه.
+    ...crud(['contract', 'invoice', 'collection', 'revenue_line', 'expense', 'contract_payment'],
+      'company', ['create', 'update']),
+    { resource: 'invoice', action: 'approve', scope: 'company' },
+    { resource: 'expense', action: 'approve', scope: 'company' },
+    { resource: 'expense', action: 'read', scope: 'company' },
+    { resource: 'contract_payment', action: 'read', scope: 'company' },
+    // وأوامر الشراء **قراءةً** فقط: كتابتها عند «المشتريات» ولم تتغيّر — والدور المُلغى كان
+    // يقرؤها لأن الصرف على الشركة لا يُقرأ ناقصاً. فبلا هذا السطر يُقرأ سجل المشتريات «مقيَّداً»
+    // على شاشة مال المشروع لمن يملك المال كلّه.
+    { resource: 'purchase_order', action: 'read', scope: 'company' },
     { resource: 'report', action: 'export', scope: 'company' },
     // exec sees company margins/cost/revenue (aggregate), not individual salary or IPs
     { resource: 'margin', action: 'read', scope: 'company' },
@@ -49,6 +66,10 @@ export const ROLE_GRANTS = {
   sector_lead: [
     ...crud(OPERATIONAL, 'sector', ['read', 'create', 'update', 'delete']),
     ...crud(['budget', 'revenue_line', 'contract', 'invoice', 'expense'], 'sector'),
+    // والتحصيل معها: كان منح «التحصيل» حصراً على دور المالية المُلغى، فبلا هذا السطر لا يستطيع
+    // أحد — سوى مدير النظام — أن يسجّل ريالاً وصل. وقائد القطاع يفوتر عقود قطاعه أصلاً، فتسجيل
+    // ما حُصِّل منها امتدادٌ لعمله لا سلطة جديدة. (ويبقى بعيداً عن مدير المشروع بقرار مالك سابق.)
+    ...crud(['collection'], 'sector'),
     { resource: 'opportunity', action: 'approve', scope: 'sector' },
     { resource: 'proposal', action: 'approve', scope: 'sector' },
     { resource: 'expense', action: 'approve', scope: 'sector' },
@@ -144,16 +165,23 @@ export const ROLE_GRANTS = {
     { resource: 'cost', action: 'read', scope: 'company' },
   ],
 
-  finance: [
-    ...crud(['invoice', 'collection', 'expense', 'cost_line', 'revenue_line', 'budget', 'contract',
-      'contract_payment', 'purchase_order'], 'company'),
-    { resource: 'expense', action: 'approve', scope: 'company' },
-    { resource: 'invoice', action: 'approve', scope: 'company' },
-    ...read(['project', 'client', 'opportunity', 'report', 'kpi'], 'company'),
-    { resource: 'report', action: 'export', scope: 'company' },
-    { resource: 'margin', action: 'read', scope: 'company' },
-    { resource: 'cost', action: 'read', scope: 'company' },
-  ],
+  // ── «المالية» دورٌ مُلغى — لا يُعاد ────────────────────────────────────────────
+  // كان هنا دورٌ بنطاق **شركة** على المال كلّه: الفواتير والتحصيل والمصروفات وسطور الكلفة
+  // والإيراد والموازنات والعقود ودفعاتها وأوامر الشراء، مع اعتماد المصروف واعتماد الفاتورة،
+  // وقراءةِ الهامش والكلفة عبر الشركة. وقرار المالك أنه لا وجود لهذه الإدارة في الشركة:
+  // «مافي الآن فريق في المالية فأي أحد عنده أكسس على الموضوع»، ثم «الإدارة المالية ما لها
+  // علاقة من المنصة، احذفهم» — ثم حدّده: **الإدارة المالية على مستوى الشركة تُحذف، وإدارة
+  // مالية المشروع تبقى** لمدير المشروع ومن فوقه، ولا يراها موظفٌ مسكَّن على المشروع.
+  //
+  // فأين ذهبت سلطته: مالية **المشروع** إلى مدير المشروع (قراءة عقده وفواتيره وإصدار مستخلصه)،
+  // ومالية **القطاع** إلى قائد القطاع (وقد نقصه التحصيل فأُضيف)، ومالية **الشركة** إلى مكتب
+  // الرئيس التنفيذي. وأوامر الشراء عند «المشتريات» أصلاً. ولم يُنقل منه شيء إلى مدير المشروع
+  // من التحصيل — قرار مالك صريح: «التحصيل تبع المالية، ما له علاقة بإدارة المشروع».
+  //
+  // ولا تُضِف `finance` هنا مرّة أخرى: الترحيلة ٠١٨ حذفت الدور من قاعدة البيانات ونقلت من كان
+  // يحمله وخطوات الاعتماد التي كانت تشير إليه. وإعادةُ المفتاح إلى هذه الخريطة تُنشئ الدور من
+  // جديد عند أول بذرة (`seed-rbac.js` تُدرج كل مفتاح غائب) — أي أن العطل يعود بلا أن يقرّره أحد.
+  // والاختبار `tests/security/finance-role-retired.test.js` يحرس ذلك.
 
   procurement: [
     ...crud(['supplier', 'purchase_order'], 'company'),
@@ -239,7 +267,6 @@ export const ROLE_LABELS = {
   project_manager: { ar: 'مدير مشروع', en: 'Project Manager' },
   bd_manager: { ar: 'مدير تطوير الأعمال', en: 'BD Manager' },
   bd_head: { ar: 'رئيس تطوير الأعمال', en: 'Head of Business Development' },
-  finance: { ar: 'المالية', en: 'Finance' },
   procurement: { ar: 'المشتريات', en: 'Procurement' },
   hr: { ar: 'الموارد البشرية', en: 'HR' },
   operations: { ar: 'العمليات', en: 'Operations' },

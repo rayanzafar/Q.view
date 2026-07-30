@@ -74,7 +74,7 @@ test('الخطوة ذات السقف لا تسري إلا فوق سقفها — 
   await db.insert('approval_step', { id: 'ST1', workflow_id: 'WF1', step_order: 1,
     name_ar: 'مدير الإدارة', approver_role: 'department_manager', min_amount_halalas: 0 });
   await db.insert('approval_step', { id: 'ST2', workflow_id: 'WF1', step_order: 2,
-    name_ar: 'المالية فوق ١٠٬٠٠٠ ريال', approver_role: 'finance', min_amount_halalas: 1000000 });
+    name_ar: 'المالية فوق ١٠٬٠٠٠ ريال', approver_role: 'ceo_office', min_amount_halalas: 1000000 });
 
   const small = await W.nextApplicableStep('WF1', 2, 500000);       // ٥٬٠٠٠ ريال
   assert.equal(small, null, 'مبلغ دون السقف لا يبلغ خطوة المالية — كان يقف عندها دائماً');
@@ -88,7 +88,7 @@ test('الطلب يبدأ عند أول خطوة منطبقة — ويُغلق �
   await db.insert('workflow_definition', { id: 'WF2', key: 'big', name_ar: 'اعتماد الكبير',
     target_resource: 'expense', active: 1, created_at: T });
   await db.insert('approval_step', { id: 'ST3', workflow_id: 'WF2', step_order: 1,
-    name_ar: 'فوق مليون', approver_role: 'finance', min_amount_halalas: 100000000 });
+    name_ar: 'فوق مليون', approver_role: 'ceo_office', min_amount_halalas: 100000000 });
   const none = await W.nextApplicableStep('WF2', 1, 50000);
   assert.equal(none, null, 'مسارٌ كل خطواته فوق المبلغ ⟵ لا خطوة منطبقة، فلا تعليق بلا نهاية');
 });

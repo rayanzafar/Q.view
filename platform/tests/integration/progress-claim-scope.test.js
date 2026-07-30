@@ -26,7 +26,7 @@ const { createProgressClaim } = await import('../../src/modules/finance/finance.
 
 const T = '2026-01-05T08:00:00.000Z';
 const ctx = (u) => ({ user: u, ip: '127.0.0.1' });
-const finance = { id: 'u_fin', username: 'fin1', role_id: 'finance', sector_id: null, scope: 'company',
+const finance = { id: 'u_fin', username: 'fin1', role_id: 'ceo_office', sector_id: null, scope: 'company',
   projectIds: new Set(), teamIds: new Set() };
 
 const statusOf = async (id) => (await db.get('SELECT status FROM deliverable WHERE id = ?', [id])).status;

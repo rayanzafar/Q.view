@@ -84,7 +84,7 @@ test('redaction: salary visible to admin ONLY — sealed from every other role u
   assert.equal(admin.salary_halalas, 2400000, 'مدير النظام يرى الراتب');
 
   for (const [role, sector, scope] of [
-    ['sector_lead', 'S1', 'sector'], ['hr', null, 'company'], ['finance', null, 'company'],
+    ['sector_lead', 'S1', 'sector'], ['hr', null, 'company'], ['ceo_office', null, 'company'],
     ['ceo_office', null, 'company'], ['bd_manager', 'S1', 'sector'], ['project_manager', 'S1', 'own'],
   ]) {
     const r = redact(U(role, sector, scope), 'employee', emp);
@@ -93,19 +93,19 @@ test('redaction: salary visible to admin ONLY — sealed from every other role u
   }
 });
 
-test('redaction: project cost/margin hidden from bd, visible to finance', async () => {
+test('redaction: project cost/margin hidden from bd, visible to the CEO office', async () => {
   const proj = await db.get('SELECT * FROM project WHERE id = ?', ['P1']);
   const bd = redact(U('bd_manager', 'S1'), 'project', proj);
   assert.equal(bd.actual_spend_halalas, null);
   assert.equal(bd.margin_pct, null);
-  const fin = redact(U('finance', null, 'company'), 'project', proj);
+  const fin = redact(U('ceo_office', null, 'company'), 'project', proj);
   assert.equal(fin.actual_spend_halalas, 500000);
   assert.equal(fin.margin_pct, 22);
 });
 
-test('list redaction end-to-end: finance list carries cost, bd list does not', async () => {
-  const finRows = await projects.listProjects(U('finance', null, 'company'));
-  assert.ok(finRows.some((p) => p.actual_spend_halalas != null), 'finance should see cost');
+test('list redaction end-to-end: the CEO office list carries cost, bd list does not', async () => {
+  const finRows = await projects.listProjects(U('ceo_office', null, 'company'));
+  assert.ok(finRows.some((p) => p.actual_spend_halalas != null), 'the CEO office should see cost');
   const bdRows = await projects.listProjects(U('bd_manager', 'S1'));
   assert.ok(bdRows.every((p) => p.actual_spend_halalas == null), 'bd must never receive cost values');
 });

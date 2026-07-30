@@ -25,12 +25,12 @@ process.env.SANAD_DB = TEST_DB;
 
 // ── الجدول المقصود: قرارٌ لكل دور، مشتقّ من منحه في src/core/rbac/matrix.js ──────
 // «قيادي» = يقرأ التقارير أو المؤشرات **على مستوى الشركة**:
-//   admin (منح شامل) · ceo_office · finance · hr · bd_head → report/kpi بنطاق «شركة».
+//   admin (منح شامل) · ceo_office · hr · bd_head → report/kpi بنطاق «شركة». (ودور «المالية» مُلغى.)
 //   sector_lead · bd_manager · operations · viewer → بنطاق «قطاع» فقط.
 //   project_manager → بنطاق «مشروع». والبقية بلا منح تقرير أو مؤشر إطلاقاً.
-const LEADERSHIP = ['admin', 'ceo_office', 'finance', 'hr', 'bd_head'];
+const LEADERSHIP = ['admin', 'ceo_office', 'hr', 'bd_head'];
 // شاشة العملاء تفتح أيضاً لمن يملك منح قراءة «العميل» مهما ضاق نطاقه (قائمته تُرشَّح بنطاقه).
-const CLIENT_READERS = ['admin', 'ceo_office', 'sector_lead', 'bd_manager', 'bd_head', 'finance', 'viewer'];
+const CLIENT_READERS = ['admin', 'ceo_office', 'sector_lead', 'bd_manager', 'bd_head', 'viewer'];
 
 const expectExec = (role) => LEADERSHIP.includes(role);
 const expectClients = (role) => CLIENT_READERS.includes(role) || LEADERSHIP.includes(role);
@@ -98,10 +98,13 @@ const shapeOf = (role) => {
     department_id: null, projectIds: new Set(), teamIds: new Set() };
 };
 
-// ── الجدول: قرار كل دور من السبعة عشر ─────────────────────────────────────────
-test('الجدول يغطي الأدوار السبعة عشر كلها — لا دور بلا قرار معلن', () => {
+// ── الجدول: قرار كل دور من الستة عشر ──────────────────────────────────────────
+// كانت سبعة عشر، وأُلغي دور «المالية» بقرار مالك (الترحيلة ٠١٨). والعدد مكتوب صريحاً عن قصد:
+// إضافةُ دورٍ أو حذفُه قرارُ صلاحيات لا تفصيلَ تنفيذ، فيسقط الفحص حتى يُقرَّ العدد الجديد بيدٍ.
+test('الجدول يغطي الأدوار الستة عشر كلها — لا دور بلا قرار معلن', () => {
   const roles = Object.keys(ROLE_GRANTS);
-  assert.equal(roles.length, 17, 'عدد الأدوار في المصفوفة');
+  assert.equal(roles.length, 16, 'عدد الأدوار في المصفوفة');
+  assert.equal(roles.includes('finance'), false, 'ودور «المالية» مُلغى — إعادتُه تُعيده إلى القاعدة');
   for (const r of roles) assert.ok(EXP.ROLES.some((x) => x.role === r), `${r} بلا حساب تجريبي فلا يُفحص`);
   for (const r of [...LEADERSHIP, ...CLIENT_READERS]) assert.ok(roles.includes(r), `${r} ليس دوراً في المصفوفة`);
 });
@@ -125,7 +128,7 @@ test('المعيار منحٌ لا عمود اتساع: أربع حالات تف
   assert.equal(seesCompanyPerformance(U('sector_lead', 'company')), false);
   assert.equal(seesCompanyPerformance(U('viewer', 'company')), false);
   // ٣) منح قيادي ونافذة أضيق: الشاشة نفسها ترفض من نافذته أضيق من الشركة، فلا تُوعَد بها.
-  assert.equal(seesCompanyPerformance(U('finance', 'sector')), false);
+  assert.equal(seesCompanyPerformance(U('ceo_office', 'sector')), false);
   // ٤) الاجتماع الصحيح: منح شركي + نافذة شركية.
   for (const role of LEADERSHIP) assert.equal(seesCompanyPerformance(U(role, 'company')), true, role);
   assert.equal(seesCompanyPerformance(null), false);
@@ -187,9 +190,9 @@ test('القائمة الجانبية تتبع البوابة نفسها — ل�
     assert.doesNotMatch(proc.text, new RegExp(`href="/app/${key}[?"]`), `رابط ${key} يجب ألا يظهر للمشتريات`);
   }
   // البوابة ليست خاوية: من يملكها يرى روابطها في القائمة نفسها.
-  const fin = await req(userOf('finance'), '/app/tasks');
+  const fin = await req(userOf('ceo_office'), '/app/tasks');
   for (const key of ['ceo', 'portfolio', 'clients']) {
-    assert.match(fin.text, new RegExp(`href="/app/${key}[?"]`), `رابط ${key} يجب أن يظهر للمالية`);
+    assert.match(fin.text, new RegExp(`href="/app/${key}[?"]`), `رابط ${key} يجب أن يظهر لمكتب الرئيس التنفيذي`);
   }
 });
 
@@ -198,8 +201,8 @@ test('الدليل والبحث يتبعان البوابة نفسها — لا 
   const keys = guide.pages.map((p) => p.key);
   for (const k of ['ceo', 'portfolio', 'clients']) assert.ok(!keys.includes(k), `دليل المشتريات يجب ألا يذكر ${k}`);
   assert.ok(keys.length > 0, 'ودليله ليس خاوياً');
-  const finGuide = await json(userOf('finance'), '/api/guide');
-  assert.ok(finGuide.pages.some((p) => p.key === 'ceo'), 'دليل المالية يذكر لوحة القيادة');
+  const finGuide = await json(userOf('ceo_office'), '/api/guide');
+  assert.ok(finGuide.pages.some((p) => p.key === 'ceo'), 'دليل مكتب الرئيس التنفيذي يذكر لوحة القيادة');
 
   const q = encodeURIComponent('أمانة');
   const procHits = (await json(userOf('procurement'), `/api/search?q=${q}`)).results;

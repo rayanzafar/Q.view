@@ -164,7 +164,7 @@ test('الصفحة كاملة عبر الخدمة: دليل مطوّر الأع�
 
 test('الصفحة مفتوحة لكل من يدخل المنصة، ولها مدخل في القائمة', () => {
   assert.equal(typeof PAGE_ACCESS.guide, 'function', 'للصفحة قاعدة وصول معلنة');
-  for (const role of ['admin', 'ceo_office', 'sector_lead', 'bd_manager', 'project_manager', 'finance', 'hr', 'consultant', 'employee', 'viewer']) {
+  for (const role of ['admin', 'ceo_office', 'sector_lead', 'bd_manager', 'project_manager', 'hr', 'consultant', 'employee', 'viewer']) {
     assert.ok(pageAllowed(U('u', role, 'SOLUTIONS', 'own'), 'guide'), `${role} يفتح دليله`);
   }
   const item = NAV_ITEMS.find((n) => n.key === 'guide');
@@ -300,7 +300,7 @@ test('لكل فئة أساسية سيناريو عمل مكتمل الأجزاء
   const C = await import('../../src/core/guide/content.js');
   // الفئات التي ستستعمل المنصة في التجربة — لا كل الأدوار السبعة عشر
   const CORE = ['sector_lead', 'department_manager', 'project_manager', 'bd_manager',
-    'consultant', 'employee', 'finance', 'hr', 'approver', 'admin'];
+    'consultant', 'employee', 'hr', 'approver', 'admin'];
   for (const role of CORE) {
     const list = C.scenariosFor(role);
     assert.ok(list.length >= 1, `الدور «${role}» بلا سيناريو`);

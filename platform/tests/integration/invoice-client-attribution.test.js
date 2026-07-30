@@ -29,7 +29,7 @@ const { listClients, clientOverview } = await import('../../src/modules/clients/
 const T = '2026-01-10T08:00:00.000Z';
 const day = (daysAgo) => new Date(Date.now() - daysAgo * 86400000).toISOString().slice(0, 10);
 
-const FIN = { id: 'u_fin', username: 'demo.finance', role_id: 'finance', sector_id: null, scope: 'company', projectIds: new Set() };
+const FIN = { id: 'u_fin', username: 'demo.ceo', role_id: 'ceo_office', sector_id: null, scope: 'company', projectIds: new Set() };
 const CTX = { user: FIN, ip: '127.0.0.1' };
 
 before(async () => {

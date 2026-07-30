@@ -174,13 +174,13 @@ test('sensitive: salary reaches ADMIN ONLY — sealed from every other role over
   }
 });
 
-test('sensitive: project cost/margin redacted for bd, visible to finance', async () => {
+test('sensitive: project cost/margin redacted for bd, visible to the CEO office', async () => {
   const bd = JSON.parse((await req('demo.bd', '/api/projects')).text);
   assert.ok(bd.length > 0, 'bd sees sector projects');
   assert.ok(bd.every((p) => p.actual_spend_halalas == null && p.margin_pct == null),
     'bd must never receive cost/margin values');
-  const fin = JSON.parse((await req('demo.finance', '/api/projects')).text);
-  assert.ok(fin.some((p) => p.actual_spend_halalas > 0), 'finance sees cost values');
+  const fin = JSON.parse((await req('demo.ceo', '/api/projects')).text);
+  assert.ok(fin.some((p) => p.actual_spend_halalas > 0), 'the CEO office sees cost values');
 });
 
 // ── row-level guards (IDOR) ───────────────────────────────────────────────────

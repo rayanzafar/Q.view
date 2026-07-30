@@ -33,7 +33,7 @@ const YR = config.fiscalYear;
 const T = `${YR}-01-05T08:00:00.000Z`;
 const ctx = (u) => ({ user: u, ip: '127.0.0.1' });
 const U = (o) => ({ projectIds: new Set(), teamIds: new Set(), scope: 'own', sector_id: null, ...o });
-const finance = U({ id: 'u_fin', username: 'fin1', role_id: 'finance', scope: 'company' });
+const finance = U({ id: 'u_fin', username: 'fin1', role_id: 'ceo_office', scope: 'company' });
 const lead1 = U({ id: 'u_l1', username: 'lead1', role_id: 'sector_lead', sector_id: 'S1', scope: 'sector' });
 const lead2 = U({ id: 'u_l2', username: 'lead2', role_id: 'sector_lead', sector_id: 'S2', scope: 'sector' });
 const pm = U({ id: 'u_pm', username: 'pm1', role_id: 'project_manager', sector_id: 'S1', scope: 'project', projectIds: new Set(['P1', 'P3']) });
@@ -46,7 +46,7 @@ before(async () => {
   await db.insert('sector', { id: 'S2', name_ar: 'قطاع ب', active: 1, created_at: T });
   await db.insert('app_user', { id: 'u_pm', username: 'pm1', name_ar: 'مدير المشروع', role_id: 'project_manager',
     sector_id: 'S1', scope: 'project', active: 1, created_at: T });
-  await db.insert('app_user', { id: 'u_fin', username: 'fin1', name_ar: 'المالية', role_id: 'finance',
+  await db.insert('app_user', { id: 'u_fin', username: 'fin1', name_ar: 'المالية', role_id: 'ceo_office',
     scope: 'company', active: 1, created_at: T });
   await db.insert('employee', { id: 'EMP1', name_ar: 'سارة', job_title: 'مستشار أول', sector_id: 'S1',
     active: 1, salary_halalas: 2_400_000, created_at: T });

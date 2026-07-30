@@ -121,7 +121,7 @@ test('قيمة غير معروفة تُقال «غير محدّدة» لا تُ�
 
 // ── الحجب والصدق ──────────────────────────────────────────────────────────────
 test('الكلفة: مكشوفة لمن يملك بوابتها، ومحجوبة بنصٍّ صريح عن غيره', async () => {
-  const fin = await ask(ctx(U('finance', 'company', null, 'u3')), 'لخّص حالة مشروع منصة البيانات السعودية');
+  const fin = await ask(ctx(U('ceo_office', 'company', null, 'u3')), 'لخّص حالة مشروع منصة البيانات السعودية');
   assert.match(fin.reply, /الصرف الفعلي/);
   const pm = U('project_manager', 'own', 'S1', 'u4');
   pm.projectIds = new Set(['p_test1']);

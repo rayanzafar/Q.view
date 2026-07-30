@@ -69,8 +69,9 @@ before(async () => {
     await db.insert('opportunity', { id: 'op_' + i, title_ar: 'فرصة حقيقية ' + i, client_id: 'cl_1',
       sector_id: 'SOLUTIONS', stage_id: i > 4 ? 'st_won' : 'st_open', owner_user_id: 'u_real_lead',
       next_action: 'إجراء حقيقي ' + i, created_at: at });
-  // الحسابات العشرة القائمة على البيئة الحيّة اليوم — والسبعة غائبة، كما هي الحال هناك.
-  for (const u of ['demo.admin', 'demo.ceo', 'demo.sectorlead', 'demo.bd', 'demo.pm', 'demo.finance',
+  // الحسابات التسعة القائمة على البيئة الحيّة اليوم — والسبعة غائبة، كما هي الحال هناك.
+  // (وكانت عشرة: `demo.finance` مُختَّم بعد إلغاء دور «المالية» — الترحيلة ٠١٨.)
+  for (const u of ['demo.admin', 'demo.ceo', 'demo.sectorlead', 'demo.bd', 'demo.pm',
     'demo.hr', 'demo.consultant', 'demo.employee', 'demo.viewer']) {
     const d = DEMO_USERS.find((x) => x.u === u);
     await db.insert('app_user', { id: 'u_' + u.replace('.', '_'), username: d.u, email: d.email || d.u + '@evc.com.sa',
@@ -197,7 +198,7 @@ test('مدير الإدارة والمدير المباشر لهما سجل مو
   assert.equal(deps.length, 2, 'الموظفون كلهم في إدارة واحدة');
 });
 
-test('كل دور في المصفوفة صار له حساب حيّ — التغطية ١٧ من ١٧', async () => {
+test('كل دور في المصفوفة صار له حساب حيّ — التغطية ١٦ من ١٦ (أُلغي دور «المالية»)', async () => {
   const have = new Set((await db.all(
     'SELECT DISTINCT role_id FROM app_user WHERE active = 1 AND deleted_at IS NULL')).map((r) => r.role_id));
   const missing = Object.keys(ROLE_GRANTS).filter((r) => !have.has(r));

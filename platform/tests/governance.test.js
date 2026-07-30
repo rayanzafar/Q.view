@@ -101,11 +101,11 @@ test('Finance: progress claim from delivered deliverables + permission + collect
   await db.insert('contract', { id: 'CF1', code: 'CF-1', project_id: 'PF1', sector_id: 'S1', value_halalas: 1000000, status: 'ACTIVE', created_at: now });
   await db.insert('deliverable', { id: 'DF1', project_id: 'PF1', name_ar: 'مخرج 1', amount_halalas: 400000, status: 'DELIVERED', sector_id: 'S1', created_at: now });
   await db.insert('deliverable', { id: 'DF2', project_id: 'PF1', name_ar: 'مخرج 2', amount_halalas: 300000, status: 'DELIVERED', sector_id: 'S1', created_at: now });
-  const ctxF = (role) => ({ user: { id: 'u_' + role, username: role, role_id: role, sector_id: 'S1', scope: role === 'finance' ? 'company' : 'own', projectIds: new Set(['PF1']) }, ip: '127.0.0.1' });
+  const ctxF = (role) => ({ user: { id: 'u_' + role, username: role, role_id: role, sector_id: 'S1', scope: role === 'ceo_office' ? 'company' : 'own', projectIds: new Set(['PF1']) }, ip: '127.0.0.1' });
   // bd_manager cannot issue a claim
   await assert.rejects(async () => fin.createProgressClaim(ctxF('bd_manager'), { contractId: 'CF1' }), /صلاحية|forbidden/);
   // finance can — amount = sum of delivered
-  const inv = await fin.createProgressClaim(ctxF('finance'), { contractId: 'CF1', periodLabel: 'يونيو' });
+  const inv = await fin.createProgressClaim(ctxF('ceo_office'), { contractId: 'CF1', periodLabel: 'يونيو' });
   assert.equal(inv.amount_halalas, 700000);
   assert.equal(inv.status, 'ISSUED');
   // الفوترة تختم الصف ولا تمسّ حالة العمل: كانت تكتب 'INVOICED' فوقها فيُمحى أثرُ التسليم
@@ -115,12 +115,12 @@ test('Finance: progress claim from delivered deliverables + permission + collect
   assert.ok(df1.invoiced_at, 'وختم الفوترة مسجَّل بجانبها');
   assert.equal(df1.collected_at, null, 'ولا تحصيل بعد');
   // record a partial collection → PARTIALLY_PAID, then full → PAID
-  await fin.recordCollection(ctxF('finance'), { invoiceId: inv.id, amountSar: 3000 });
+  await fin.recordCollection(ctxF('ceo_office'), { invoiceId: inv.id, amountSar: 3000 });
   assert.equal((await db.get('SELECT status FROM invoice WHERE id=?', [inv.id])).status, 'PARTIALLY_PAID');
   assert.equal((await db.get('SELECT collected_at FROM deliverable WHERE id=?', ['DF1'])).collected_at, null,
     'دفعة جزئية ليست تحصيلاً للمخرَج — نسبة التحصيل تُقاس بالمخرَج المسدَّد كاملاً');
   // ثم السداد الكامل: الفاتورة PAID، وختم التحصيل ينزل على مخرجاتها.
-  await fin.recordCollection(ctxF('finance'), { invoiceId: inv.id, amountSar: 4000 });
+  await fin.recordCollection(ctxF('ceo_office'), { invoiceId: inv.id, amountSar: 4000 });
   assert.equal((await db.get('SELECT status FROM invoice WHERE id=?', [inv.id])).status, 'PAID');
   const settled = await db.get('SELECT status, collected_at FROM deliverable WHERE id=?', ['DF1']);
   assert.ok(settled.collected_at, 'وقد حُصِّل');

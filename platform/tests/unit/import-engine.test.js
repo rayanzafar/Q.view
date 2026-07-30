@@ -250,7 +250,7 @@ test('sensitive: عمود الراتب في التصدير لمدير النظا
   assert.ok(adminCols.includes('salary'), 'مدير النظام يصدّر عمود الراتب');
   for (const [role, sector, scope] of [
     ['hr', null, 'company'], ['sector_lead', 'S1', 'sector'],
-    ['finance', null, 'company'], ['bd_manager', 'S1', 'sector'], ['ceo_office', null, 'company'],
+    ['ceo_office', null, 'company'], ['bd_manager', 'S1', 'sector'], ['ceo_office', null, 'company'],
   ]) {
     const cols = engine.visibleColumns(U(role, sector, scope), a).map((c) => c.key);
     assert.ok(!cols.includes('salary'), `${role} يجب ألا يصدّر عمود الراتب`);

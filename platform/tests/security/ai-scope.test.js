@@ -37,7 +37,7 @@ const CONS_RED = 'مشروع الاستشارات الحرج';
 // شخصية لكل دور، بنطاق واقعي (نفس أشكال scripts/seed.js) — سبعة عشر دوراً بلا استثناء.
 const PERSONAS = {
   admin: ['company', null], ceo_office: ['company', null], sector_lead: ['sector', 'SOL'],
-  bd_manager: ['own', 'SOL'], project_manager: ['own', 'SOL'], finance: ['company', null],
+  bd_manager: ['own', 'SOL'], project_manager: ['own', 'SOL'],
   hr: ['company', null], consultant: ['own', 'SOL'], employee: ['own', 'SOL'], viewer: ['sector', 'SOL'],
   department_manager: ['department', 'SOL'], line_manager: ['team', 'SOL'], bd_head: ['company', null],
   operations: ['sector', 'SOL'], procurement: ['company', null], approver: ['sector', 'SOL'],

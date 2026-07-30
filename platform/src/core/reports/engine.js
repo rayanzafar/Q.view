@@ -128,7 +128,7 @@ const FREQ_DAYS = { daily: 1, weekly: 7, biweekly: 14 };
 const FREQ_MONTHS = { monthly: 1, quarterly: 3, yearly: 12 };
 export const SCHEDULE_FREQUENCIES = ['daily', 'weekly', 'biweekly', 'monthly', 'quarterly', 'yearly', 'custom'];
 // الأدوار التي تملك التحكم في الجدولة (إنشاء/إيقاف/تفعيل/حذف) — نفس القائمة لكل العمليات.
-const SCHEDULE_ROLES = ['admin', 'sector_lead', 'finance', 'ceo_office'];
+const SCHEDULE_ROLES = ['admin', 'sector_lead', 'ceo_office'];
 const DEFAULT_SEND_TIME = '08:00';
 
 function intInRange(v, lo, hi) {
@@ -214,7 +214,7 @@ async function loadSchedule(scheduleId) {
   return row;
 }
 
-// Create a report schedule (admin/sector_lead/finance/ceo_office). Computes next_run_at.
+// Create a report schedule (admin/sector_lead/ceo_office). Computes next_run_at.
 export async function createSchedule(ctx, { reportId, frequency, recipientGroupId, sendTime, sectorId, dayOfWeek, dayOfMonth } = {}) {
   const u = ctx?.user;
   assertCanSchedule(u);

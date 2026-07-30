@@ -22,7 +22,7 @@ const { PAGE_ACCESS } = await import('../../src/web/nav.js');
 // نطاق كل دور كما يبذره scripts/seed.js — الشرط يُقيَّم على شكل الحساب لا على الدور وحده.
 const SCOPE = {
   admin: 'company', ceo_office: 'company', sector_lead: 'sector', bd_manager: 'own',
-  project_manager: 'own', finance: 'company', hr: 'company', consultant: 'own',
+  project_manager: 'own', hr: 'company', consultant: 'own',
   employee: 'own', viewer: 'sector', department_manager: 'department', line_manager: 'team',
   bd_head: 'company', operations: 'sector', procurement: 'company', approver: 'sector',
   external: 'own',
@@ -53,7 +53,7 @@ test('بوابة الهيكل لا تضيق عن خدمتها: كل من يقر�
 });
 
 test('من لا يملك قراءة الموظفين يبقى خارج الشاشة — المواءمة لم تفتح باباً جديداً', () => {
-  for (const role of ['bd_manager', 'project_manager', 'finance', 'consultant', 'employee',
+  for (const role of ['bd_manager', 'project_manager', 'consultant', 'employee',
     'viewer', 'operations', 'procurement', 'approver', 'external']) {
     assert.equal(PAGE_ACCESS.org(shape(role)), false, `الدور «${role}» يجب أن يبقى خارج الهيكل`);
   }
