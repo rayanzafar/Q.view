@@ -68,7 +68,7 @@ async function preflight(targets) {
   //    فاشلاً وتبدو النتيجة نجاحاً. قرار إحياء حساب مُعطَّل قرار بشري لا قرار سكربت.
   const usernames = targets.map((d) => d.u);
   const existing = await all(
-    `SELECT id, username, email, name_ar, role_id, sector_id, scope, active, deleted_at
+    `SELECT id, username, email, name_ar, role_id, sector_id, scope, active, deactivated_at, deleted_at
        FROM app_user WHERE username IN (${usernames.map(() => '?').join(',')})`, usernames);
   const deleted = existing.filter((r) => r.deleted_at);
   if (deleted.length)
@@ -239,10 +239,24 @@ export async function seedRoles(opts = {}) {
   const at = nowIso();
   const actor = await get('SELECT id, username FROM app_user WHERE username = ? AND deleted_at IS NULL', ['demo.admin']);
   const ctx = { user: { id: actor?.id || null, username: 'seed-roles', role_id: 'admin' }, ip: '127.0.0.1' };
-  const created = [], updated = [];
+  const created = [], updated = [], skippedClosed = [];
   await tx(async () => {
     for (const d of targets) {
       const cur = existing.find((r) => r.username === d.u) || null;
+
+      // ── ما أُغلق بقرارٍ لا تُعيده بذرة ──
+      // الحارس البيئي (SANAD_SEED_DEMO=0) صحيحٌ ولا يكفي: تبيّن على الخادم الحيّ أنه **لا
+      // يبلغ هذه العملية** — عملت البذرة والمفتاح مضبوط، فعادت سبعة حسابات عرض نشطةً بعد
+      // إغلاقها. ومصدرُ الخلل في الإعداد لا في المنطق، لكن الاعتماد على إعدادٍ قد لا يصل
+      // ليس حراسة. فالقرار يُقرأ من **البيانات نفسها**: من له ختمُ إغلاقٍ (deactivated_at)
+      // أُغلق عمداً بيد إنسان، ولا بذرةَ تنقض قراره — مهما كانت البيئة ومهما تكرّر الإقلاع.
+      //
+      // وهذا هو الحدّ الصحيح على أي حال: البذرة تُهيّئ ما لا وجود له، ولا تنقض ما قُرِّر.
+      if (cur && cur.deactivated_at) {
+        skippedClosed.push(d.u);
+        continue;
+      }
+
       const uid = cur?.id || id('u');
       await run(
         `INSERT INTO app_user (id, username, email, name_ar, role_id, sector_id, scope, password_hash, active, must_change_pw, created_at)

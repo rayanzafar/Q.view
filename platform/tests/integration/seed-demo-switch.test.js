@@ -63,3 +63,26 @@ test('والأهم: حساب عرضٍ أُغلق عمداً لا يُعاد تف
   assert.equal(Number(after.active), 0, 'أُعيد تفعيل حسابٍ أُغلق عمداً — بابُ دخولٍ يُفتح بلا قرار');
   assert.ok(after.deactivated_at, 'مُحي ختم الإغلاق');
 });
+
+// ── الحدّ الذي لا يعتمد على البيئة ──
+// الحارس البيئي صحيحٌ ولا يكفي: تبيّن على الخادم الحيّ أنه **لا يبلغ العملية** — عملت البذرة
+// والمفتاح مضبوط، فعادت سبعة حسابات نشطةً بعد إغلاقها، ثلاث مرات. فالقرار يُقرأ من البيانات:
+// ختمُ الإغلاق يمنع الإحياء مهما كانت البيئة. اختبارٌ **بلا المفتاح إطلاقاً** يثبّت ذلك.
+test('وحتى بلا المفتاح: ختمُ الإغلاق وحده يمنع الإحياء', async () => {
+  delete process.env.SANAD_SEED_DEMO;
+  await seedRoles({ apply: true, log: quiet });
+  const rows = await db.all("SELECT id FROM app_user WHERE username LIKE 'demo.%'");
+  assert.ok(rows.length >= 2, 'حسابات عرض غير كافية للفحص');
+  const closed = rows[0].id, open = rows[1].id;
+  const stamp = new Date().toISOString();
+  await db.run('UPDATE app_user SET active = 0, deactivated_at = ? WHERE id = ?', [stamp, closed]);
+  await db.run('UPDATE app_user SET active = 0, deactivated_at = NULL WHERE id = ?', [open]);
+
+  await seedRoles({ apply: true, log: quiet });   // بلا أي مفتاح بيئة
+
+  const a = await db.get('SELECT active, deactivated_at FROM app_user WHERE id = ?', [closed]);
+  assert.equal(Number(a.active), 0, 'أُحيي حسابٌ يحمل ختم إغلاق — والبذرة لا تنقض قرار إنسان');
+  assert.equal(a.deactivated_at, stamp, 'مُسّ ختم الإغلاق');
+  const b = await db.get('SELECT active FROM app_user WHERE id = ?', [open]);
+  assert.equal(Number(b.active), 1, 'حسابٌ بلا ختم لم يُهيَّأ — البذرة عطّلت نفسها بالكامل');
+});
