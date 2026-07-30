@@ -21,6 +21,7 @@ import { clientsRouter } from './clients/clients.routes.js';
 import { governanceRouter } from './pmo/governance.routes.js';
 import { ioRouter } from './io/io.routes.js';
 import { employeesRouter } from './org/employees.routes.js';
+import * as remove from '../core/lifecycle/remove.js';
 import { orgRouter } from './org/org.routes.js';
 import { attributionRouter } from './org/attribution.routes.js';
 import { backupRouter } from './backup.routes.js';
@@ -79,6 +80,14 @@ apiRouter.post('/projects/:id/documents', h((req) => projects.addProjectDocument
 apiRouter.delete('/projects/documents/:docId', h((req) => projects.deleteProjectDocument(req.ctx, req.params.docId)));
 apiRouter.get('/projects/:id/updates', h((req) => projects.projectUpdates(req.ctx.user, req.params.id, req.query.limit)));
 apiRouter.post('/projects/:id/staff', h((req) => projects.assignEmployee(req.ctx, req.params.id, req.body)));
+// ── الحذف المحروس: المشروع والفرصة ──
+// لم يكن في المنتج حذفٌ لأيٍّ منهما، فبياناتٌ مستوردة لا سبيل إلى تنظيفها إلا بفتح القاعدة
+// يدوياً — خارج التدقيق وخارج الصلاحيات. والحراسة في مكانٍ واحد (core/lifecycle/remove.js):
+// المال يمنع الحذف دائماً، والتابع يُحذف مع أصله، والرفض يُشرح بعدده واسمه.
+apiRouter.get('/projects/:id/removal-check', h((req) => remove.removalBlockers('project', req.params.id).then((b) => ({ blockers: b, removable: !b.length }))));
+apiRouter.delete('/projects/:id', h((req) => remove.removeRecord(req.ctx, 'project', req.params.id, { reason: (req.body || {}).reason })));
+apiRouter.get('/opportunities/:id/removal-check', h((req) => remove.removalBlockers('opportunity', req.params.id).then((b) => ({ blockers: b, removable: !b.length }))));
+apiRouter.delete('/opportunities/:id', h((req) => remove.removeRecord(req.ctx, 'opportunity', req.params.id, { reason: (req.body || {}).reason })));
 apiRouter.delete('/projects/staff/:allocId', h((req) => projects.unassignEmployee(req.ctx, req.params.allocId)));
 apiRouter.patch('/projects/staff/:allocId', h((req) => projects.setAllocation(req.ctx, req.params.allocId, req.body)));
 apiRouter.get('/projects/:id/tasks', h((req) => tasks.projectTasks(req.ctx.user, req.params.id)));
