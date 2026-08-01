@@ -99,16 +99,33 @@ export async function projectProgress(projectId, { today = nowIso().slice(0, 10)
   const invoicedAmt = dlv.filter((d) => d.invoiced_at).reduce((a, d) => a + N(d.amount_halalas), 0);
   const collectedAmt = dlv.filter((d) => d.collected_at).reduce((a, d) => a + N(d.amount_halalas), 0);
 
-  // الإنجاز المعروض: المسجَّل يدوياً يفوز إن كُتب (قرار إنسان لا يُلغى باشتقاق)، وإلا فالمشتقّ
-  // من المخرجات المعتمَدة. والمشروع المكتمل مئةٌ مهما قيل — حالته أصرحُ من أي حساب.
+  // ── الإنجاز المعروض: **المخرجات تحكم متى وُجدت** ──────────────────────────────
+  //
+  // كانت القاعدة «المسجَّل يدوياً يفوز إن كُتب»، ونيّتها سليمة — قرار إنسان لا يُلغى باشتقاق.
+  // لكنها انكسرت على البيانات الحقيقية بأسوأ صورة ممكنة: مشروعٌ حمل `progress_pct = 58`
+  // **من استيراد المنصة القديمة** — لا إنسانَ كتبه في سند — فاعتمد مديرُه المخرجات الاثني عشر
+  // كلَّها (أوزانها ١٠٠٪) وبقيت الشاشة تقول **٥٨٪**. والبطاقة نفسها تناقض نفسها في سطرين:
+  // «الإنجاز التنفيذي ٥٨٪» فوق «١٢ من ١٢ مخرَجاً معتمَداً».
+  //
+  // وأخطر ما فيه أنه **لا سبيل إلى تصحيحه من الواجهة**: لا حقل لنسبة الإنجاز في صفحة المشروع،
+  // فالرقم المستورد يبقى أبداً، والعمل الحقيقي لا يحرّكه شيء. أي أن المنصة تُعاقِب من يستعملها.
+  //
+  // فالقاعدة انقلبت إلى ما يطابق نموذج المنتج: **متى وُجدت مخرجات فهي مقياس الإنجاز** — هي ما
+  // يحرّكه الفريق وما يُبنى عليه المستخلص. والمسجَّل يبقى مصدراً لمشروعٍ **بلا مخرجات** يُقاس
+  // تقدّمه بتقدير مديره. والمكتمل مئةٌ مهما قيل — حالته أصرحُ من أي حساب.
   const stored = N(project?.progress_pct);
   const derived = delivery.acceptedPct;
-  const executive = project?.status === 'COMPLETED' ? 100 : (stored > 0 ? stored : (derived ?? 0));
+  const executive = project?.status === 'COMPLETED' ? 100
+    : (derived != null ? derived : stored);
 
   return {
     projectId,
     executivePct: executive,
-    executiveSource: project?.status === 'COMPLETED' ? 'status' : (stored > 0 ? 'stored' : (derived != null ? 'deliverables' : 'none')),
+    executiveSource: project?.status === 'COMPLETED' ? 'status'
+      : (derived != null ? 'deliverables' : (stored > 0 ? 'stored' : 'none')),
+    // الرقم المسجَّل يُعاد كما هو بجانب المشتقّ: حين يختلفان اختلافاً بيّناً على مشروعٍ له
+    // مخرجات، فذلك خبرٌ عن بياناتٍ مستوردة لم تُحدَّث — لا يُخفى بل يُقال لمن يقرأ.
+    storedPct: stored > 0 ? stored : null,
     delivery,
     schedule,
     money: {

@@ -6,7 +6,7 @@ import { all, get } from '../../core/db/index.js';
 import { projectKpis } from '../../core/reports/metrics.js';
 import { listProjects, nextMilestones, projectKind, projectRevenue,
   projectDocuments, projectUpdates } from '../../modules/pmo/projects.js';
-import { projectProgress } from '../../modules/pmo/progress.js';
+import { projectProgress, portfolioProgress } from '../../modules/pmo/progress.js';
 import { projectTeamLoad, staffingCandidates } from '../../modules/pmo/capacity.js';
 import { projectGovernance, DELIVERABLE_MANUAL_STATUSES } from '../../modules/pmo/governance.js';
 import { projectMoney } from '../../modules/finance/finance.js';
@@ -122,13 +122,22 @@ export async function projectsPage(user, opts = {}) {
       COALESCE(SUM(CASE WHEN status IN ('DELIVERED','ACCEPTED') THEN amount_halalas ELSE 0 END),0) done
       FROM deliverable WHERE deleted_at IS NULL GROUP BY project_id`);
   const dlvBy = Object.fromEntries(dlv.map((d) => [d.project_id, d]));
-  const dprog = Object.fromEntries(dlv.map((d) => [d.project_id,
-    d.tot > 0 ? Math.round((d.done / d.tot) * 100) : (d.n ? Math.round((d.dn / d.n) * 100) : null)]));
+  // ── النسبة من مصدرها الواحد لا من استعلامٍ ثانٍ ────────────────────────────────
+  // كانت اللوحة تشتقّ نسبتها هنا بنفسها: مجموع مبالغ المخرجات **المسلَّمة أو المعتمَدة** على
+  // مجموع مبالغها. وصفحةُ المشروع تشتقّها من `projectProgress`: **المعتمَدة وحدها** بأوزانها
+  // المكتوبة إن كُتبت. فرقمان مختلفان لمشروعٍ واحد على شاشتين — وهو بالضبط الخلافُ الذي بُني
+  // ملف `progress.js` لإنهائه، ولم تعتمده اللوحة قط. الآن كلاهما من الدالة نفسها.
+  const portfolio = await portfolioProgress(rows.map((p) => p.id));
+  const dprog = Object.fromEntries([...portfolio].map(([pid, v]) => [pid, v.delivery.acceptedPct]));
+  // نفس ترتيب الأولوية في `projectProgress` حرفاً بحرف: **المخرجات تحكم متى وُجدت**، والرقم
+  // المسجَّل مصدرٌ لمشروعٍ بلا مخرجات وحده. وكان الترتيب مقلوباً هنا وهناك معاً، فمشروعٌ اعتُمدت
+  // مخرجاته كلها بقي يُقرأ بنسبته المستوردة من المنصة القديمة — في اللوحة وفي صفحته سواء.
+  // وقاعدتان في موضعين تفترقان مع أول تعديل، فالقاعدة واحدة والموضعان يتبعانها.
   const effProg = (p) => {
-    const own = Number(p.progress_pct) || 0;
-    if (own > 0) return { v: own, derived: false };
-    const dv = p.status === 'COMPLETED' ? 100 : dprog[p.id];
-    return dv != null ? { v: dv, derived: true } : { v: 0, derived: false };
+    if (p.status === 'COMPLETED') return { v: 100, derived: false };
+    const dv = dprog[p.id];
+    if (dv != null) return { v: dv, derived: true };
+    return { v: Number(p.progress_pct) || 0, derived: false };
   };
   // الإيراد المحقق لكل مشروع — من بنود الإيراد باستعلامين مجمّعين لا استعلام لكل صف: كل ما
   // سُجِّل للمشروع (عمود «الإيراد المحقق» وأساس القيمة الأخير)، وإيراد السنة المعروضة وحدها
