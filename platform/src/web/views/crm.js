@@ -7,7 +7,7 @@ import { icon } from '../icons.js';
 import { fmtSar } from '../../core/util/ids.js';
 import { all } from '../../core/db/index.js';
 import { config } from '../../core/config.js';
-import { listOpportunities, ROT_THRESHOLDS } from '../../modules/crm/opportunities.js';
+import { listOpportunities, ROT_THRESHOLDS, NO_DEPARTMENT } from '../../modules/crm/opportunities.js';
 import { stageInfo } from '../../core/i18n/stages.js';
 import { listViews } from '../../modules/views/views.js';
 import { can } from '../../core/rbac/index.js';
@@ -74,8 +74,16 @@ function stageInfoTpl(s) {
 
 export async function opportunitiesPage(user, opts = {}) {
   const sectorFilter = opts.sector || '';
+  // مُرشِّح الإدارة يعمل داخل قطاعٍ محدَّد وحده: الإدارات تتكرّر أسماؤها بين القطاعات، وشريحةٌ
+  // بلا قطاعها تقول «الابتكار» ولا تقول ابتكارَ أي قطاع. فإن رُفع القطاع سقط معه.
+  const deptFilter = sectorFilter ? String(opts.dept || '') : '';
   const fiscalYear = config.fiscalYear;
-  const allRows = await listOpportunities(user, sectorFilter ? { sector: sectorFilter } : {});
+  // قراءتان مقصودتان: الأولى بالقطاع وحده — منها تُحسب أعداد شرائح الإدارات فتبقى ثابتة أياً
+  // كانت الإدارة المختارة (عدّادٌ يتغيّر مع الاختيار لا يُقارَن به شيء). والثانية هي المعروضة.
+  const allSectorRows = sectorFilter ? await listOpportunities(user, { sector: sectorFilter }) : [];
+  const allRows = deptFilter
+    ? await listOpportunities(user, { sector: sectorFilter, department: deptFilter })
+    : (sectorFilter ? allSectorRows : await listOpportunities(user, {}));
   // السنة عاملُ تصفيةٍ علويّ (بدل حشرها داخل أعمدة الحسم كما كان): الافتراضي السنة المالية
   // الحالية، و«الكل» يعرض كل السنوات معاً (بما فيها فرص بلا سنة مسجّلة). قائمة السنوات من كل الفرص.
   const years = [...new Set(allRows.map((o) => o.year).filter(Boolean))].sort((a, b) => b - a);
@@ -89,6 +97,10 @@ export async function opportunitiesPage(user, opts = {}) {
   // الفرصة إيراد قادم، ووحدة المساندة بلا خط فرص ولا هدف مبيعات، فنقل فرصة إليها يُخرجها من
   // مقارنة القطاعات ومن مستهدف الشركة بلا أي رسالة تفسّر الاختفاء (والخدمة ترفضه أيضاً).
   const sectors = await all(`SELECT id,name_ar FROM sector WHERE active=1 AND ${DELIVERY_SECTOR_SQL} ORDER BY name_ar`);
+  // إدارات القطاع المختار — تُقرأ فقط حين يُختار قطاع، فالشريحة لا تُبنى بلا سياقها.
+  const departments = sectorFilter
+    ? await all('SELECT id,name_ar FROM department WHERE sector_id=? AND active=1 AND deleted_at IS NULL ORDER BY name_ar', [sectorFilter])
+    : [];
   const savedViews = await listViews(user, 'opportunities');
   const canCreate = can(user, 'create', 'opportunity');
   const canEdit = can(user, 'update', 'opportunity');
@@ -234,9 +246,12 @@ export async function opportunitiesPage(user, opts = {}) {
   const columns = stages.map((s) => renderColumn(s, byStage[s.id] || [])).join('');
 
   // ── التصفية العلوية: القطاع + السنة (بدل حشر السنة داخل الأعمدة) — كل شريحة تحفظ الأخرى ──
-  const navHref = ({ sector = sectorFilter, year = yearFilter } = {}) => {
+  // تبديل القطاع يُسقط الإدارة معه — إدارةُ قطاعٍ لا تعني شيئاً تحت قطاعٍ آخر، وبقاؤها في
+  // العنوان يُنتج شاشةً فارغة بلا سبب ظاهر.
+  const navHref = ({ sector = sectorFilter, year = yearFilter, dept = deptFilter } = {}) => {
     const p = new URLSearchParams();
     if (sector) p.set('sector', sector);
+    if (sector && sector === sectorFilter && dept) p.set('dept', dept);
     if (year !== fiscalYear) p.set('year', year === 'all' ? 'all' : String(year));
     const q = p.toString();
     return '/app/opportunities' + (q ? '?' + q : '');
@@ -244,6 +259,18 @@ export async function opportunitiesPage(user, opts = {}) {
   const sectorChips = `<div class="chips" style="margin-bottom:.55rem"><span class="lbl">${G.filter}</span>
     <a class="chip ${!sectorFilter ? 'on' : ''}" href="${navHref({ sector: '' })}">كل القطاعات</a>
     ${sectors.map((s) => `<a class="chip ${sectorFilter === s.id ? 'on' : ''}" href="${navHref({ sector: s.id })}"><span class="dot" style="background:var(--brand)"></span>${esc(s.name_ar)}</a>`).join('')}</div>`;
+  // ── شريحة الإدارات ──
+  // «ممكن أفلتر بالإدارات اللي تحت قطاع الحلول… عشان نهاية السنة نعرف كل إدارة كم دخّلت.»
+  // والعدد بجانب كل إدارة ليس زينة: هو ما يجعل الشريحة أداةَ فرزٍ لا مجرّد مُرشِّح — تُقرأ منها
+  // الحصص قبل الضغط. و«بلا إدارة» شريحةٌ صريحة لأن غير المُسنَد هو ما يحتاج العمل، وإخفاؤه
+  // يجعل مجموع الإدارات أقلّ من مجموع القطاع بلا تفسير.
+  const deptCount = new Map();
+  for (const o of allSectorRows) deptCount.set(o.department_id || NO_DEPARTMENT, (deptCount.get(o.department_id || NO_DEPARTMENT) || 0) + 1);
+  const deptChip = (key, label, n, on) => `<a class="chip ${on ? 'on' : ''}" href="${navHref({ dept: key })}">${esc(label)}${n ? ` <span class="tnum" style="color:var(--faint);font-weight:700">${n}</span>` : ''}</a>`;
+  const deptChips = sectorFilter && (departments.length || deptCount.get(NO_DEPARTMENT)) ? `<div class="chips" style="margin-bottom:.55rem"><span class="lbl">الإدارة</span>
+    ${deptChip('', 'كل الإدارات', allSectorRows.length, !deptFilter)}
+    ${departments.map((d) => deptChip(d.id, d.name_ar, deptCount.get(d.id) || 0, deptFilter === d.id)).join('')}
+    ${deptCount.get(NO_DEPARTMENT) ? deptChip(NO_DEPARTMENT, 'بلا إدارة', deptCount.get(NO_DEPARTMENT), deptFilter === NO_DEPARTMENT) : ''}</div>` : '';
   const yearChips = `<div class="chips" style="margin-bottom:.6rem"><span class="lbl">السنة</span>
     <a class="chip ${yearFilter === 'all' ? 'on' : ''}" href="${navHref({ year: 'all' })}">${G.all}</a>
     ${years.map((y) => `<a class="chip ${yearFilter === y ? 'on' : ''}" href="${navHref({ year: y })}"><span class="tnum">${y}</span></a>`).join('')}</div>`;
@@ -349,6 +376,7 @@ export async function opportunitiesPage(user, opts = {}) {
     </div>
     ${viewsBar}
     ${sectorChips}
+    ${deptChips}
     ${yearChips}
     ${strip}
     <style>.kmenu-btn{opacity:.45;transition:opacity .15s,background .15s,color .15s}.kcard:hover .kmenu-btn,.kmenu-btn:focus-visible{opacity:1}.kmenu-btn:hover{background:#eef1f7;color:var(--ink2)}</style>

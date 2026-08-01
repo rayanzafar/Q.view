@@ -64,13 +64,33 @@ test('ولا يتجاوز قطاعه إطلاقاً', () => {
   }
 });
 
-test('والتصرّف يبقى في إدارته وحدها — يرى القطاع ولا يكتب فيه', () => {
+// الحدّ تبدّل بقرار مالك صريح، ولم يُضعَّف — بل انتقل من «يقرأ ولا يكتب» إلى «يكتب في إدارته
+// وحدها». نصُّ القرار: «المسؤولية على الأشخاص في التعديل والتسكين بدءاً من مدير المشروع واللي
+// فوقه، كلهم يشوفوا أو يعدّلوا — مثل مدير إدارة أو مدير قطاع»، و«لازم في طريقة أقدر أضيف الفرص
+// والحالة تبعها… حسب الإدارة».
+//
+// والذي يحرسه الفحص الآن هو ما لم يتبدّل، وهو الأهم: **الإدارةُ سقفٌ لا القطاع**. مدير إدارةٍ
+// يكتب في إدارته ويُرَدّ عن إدارةٍ أخرى في قطاعه نفسه — وهذا بالضبط ما ينزلق مع أول توسيع.
+// و**الحذف يبقى ممنوعاً**: لا رجعة فيه، فيبقى لقائد القطاع ومدير النظام.
+test('والتصرّف يبقى في إدارته وحدها — يكتب فيها ويُرَدّ عن سواها', () => {
   assert.equal(can(DM, 'update', 'task', myDept), true, 'لا يعدّل مهام إدارته');
   assert.equal(can(DM, 'update', 'task', inSector), false, 'عدّل مهمة إدارةٍ أخرى في قطاعه');
   assert.equal(can(DM, 'approve', 'timesheet', myDept), true, 'لا يعتمد كشوف إدارته');
   assert.equal(can(DM, 'approve', 'timesheet', inSector), false, 'اعتمد كشف إدارةٍ أخرى');
-  for (const a of ['create', 'update', 'delete']) {
-    assert.equal(can(DM, a, 'opportunity', myDept), false, `يملك «${a}» على الفرص — القراءة وحدها منحه`);
+
+  // ما صار له: الفرصة والمشروع والمخرَج والتسكين — في إدارته
+  for (const [a, res] of [['create', 'opportunity'], ['update', 'opportunity'],
+    ['update', 'project'], ['update', 'deliverable'], ['approve', 'deliverable'],
+    ['create', 'allocation'], ['update', 'allocation']]) {
+    assert.equal(can(DM, a, res, myDept), true, `لا يملك «${a}» على «${res}» في إدارته — والقرار منحه إياه`);
+  }
+  // وما لا يزال ممنوعاً: الكتابة خارج إدارته، وحذف الفرصة والمشروع مطلقاً
+  for (const [a, res] of [['create', 'opportunity'], ['update', 'opportunity'],
+    ['update', 'project'], ['update', 'deliverable'], ['create', 'allocation']]) {
+    assert.equal(can(DM, a, res, inSector), false, `كتب «${a}» على «${res}» في إدارةٍ أخرى من قطاعه`);
+  }
+  for (const res of ['opportunity', 'project']) {
+    assert.equal(can(DM, 'delete', res, myDept), false, `يملك حذف «${res}» — والحذف لا رجعة فيه فيبقى لقائد القطاع`);
   }
 });
 

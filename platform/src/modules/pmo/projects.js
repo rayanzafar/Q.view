@@ -188,6 +188,40 @@ export async function updateProject(ctx, pid, data) {
   if ('rag' in data && !RAGS.includes(data.rag)) throw badRequest('حالة المشروع غير صحيحة — اخترها من القائمة');
   if ('progress_pct' in data) { const n = Number(data.progress_pct); if (!Number.isFinite(n) || n < 0 || n > 100) throw badRequest('نسبة الإنجاز يجب أن تكون بين 0 و100'); }
   const patch = {};
+  // ── مدير المشروع ──
+  // «المسؤولية على الأشخاص في التعديل والتسكين بدءاً من مدير المشروع» — ولم يكن في المنتج
+  // **طريقٌ واحد** لتعيين مدير مشروع بعد إنشائه: العمود يُكتب مرة عند الإنشاء ثم لا يمسّه أحد.
+  // والأثر أعمق من حقلٍ ناقص: نطاق «مشروع» في محرّك الصلاحيات يُبنى من `owner_user_id` نفسه
+  // (core/http/context.js) — فمديرُ مشروعٍ لم يُسجَّل مالكاً لا يملك مشروعه أصلاً، ومنحُه
+  // الكامل على مشاريعه يبقى بلا مشروعٍ واحد يسري عليه. أي أن الدور كان معطَّلاً عملياً.
+  if ('owner_user_id' in data) {
+    const uid = data.owner_user_id || null;
+    if (uid) {
+      const u = await get('SELECT id, active, deleted_at FROM app_user WHERE id = ?', [uid]);
+      if (!u || u.deleted_at || !Number(u.active)) throw badRequest('الحساب المختار لإدارة المشروع غير موجود أو موقوف');
+    }
+    patch.owner_user_id = uid;
+  }
+  // ── إدارة المشروع ──
+  // «عشان نهاية السنة نعرف كل إدارة كم دخّلت» — والنسبة إلى إدارةٍ خارج قطاع المشروع تكسر
+  // الجمع من الطرفين: تُحسب في إدارةٍ لا تعمل فيه، وتغيب عن قطاعها.
+  if ('department_id' in data) {
+    const did = data.department_id || null;
+    if (did) {
+      const d = await get('SELECT id, sector_id FROM department WHERE id = ? AND deleted_at IS NULL', [did]);
+      if (!d) throw badRequest('الإدارة المختارة غير موجودة');
+      const sid = 'sector_id' in data ? data.sector_id : row.sector_id;
+      if (sid && d.sector_id !== sid) throw badRequest('الإدارة المختارة تتبع قطاعاً آخر — اختر إدارة من قطاع المشروع نفسه');
+    }
+    patch.department_id = did;
+  }
+  if ('client_id' in data) {
+    const cid = data.client_id || null;
+    if (cid && !await get('SELECT id FROM client WHERE id = ? AND deleted_at IS NULL', [cid])) {
+      throw badRequest('الجهة المختارة غير موجودة');
+    }
+    patch.client_id = cid;
+  }
   for (const k of ['name_ar', 'status', 'rag', 'progress_pct', 'start_date', 'end_date', 'pm_name']) {
     if (k in data) patch[k] = data[k];
   }

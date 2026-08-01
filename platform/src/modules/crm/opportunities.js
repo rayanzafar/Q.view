@@ -14,6 +14,10 @@ import { getTeam } from './oppteam.js';
 // never rot. Exported so views and tests share one source of truth.
 export const ROT_THRESHOLDS = { LEAD: 14, QUALIFIED: 14, PROPOSAL: 21, NEGOTIATION: 30 };
 
+// قيمة مُرشِّح «فرص بلا إدارة». كلمةٌ محجوزة لا معرّف إدارة — ولا إدارة تحمل هذا المعرّف لأن
+// كل المعرّفات تُولَّد ببادئة. تُصدَّر كي تستعملها الشاشة والخدمة والاختبار من مصدرٍ واحد.
+export const NO_DEPARTMENT = 'none';
+
 // Whole days spent in the current stage, measured from stage_changed_at (fallback: created_at)
 // to `today` (a bound YYYY-MM-DD string — never SQL date functions; portable + deterministic).
 export function stageAgeDays(row, today) {
@@ -44,6 +48,15 @@ export async function listOpportunities(user, filters = {}, opts = {}) {
   where.push('deleted_at IS NULL');
   if (filters.stage) { where.push('stage_id = ?'); params.push(filters.stage); }
   if (filters.sector) { where.push('sector_id = ?'); params.push(filters.sector); }
+  // ── الإدارة ──
+  // «ممكن أفلتر بالإدارات اللي تحت قطاع الحلول أو أفلتر بقطاع الحلول… عشان نهاية السنة نعرف
+  // كل إدارة كم دخّلت» — والعمود موجود على الفرصة منذ موجة الإسناد الإداري، ولم يكن يقرؤه أحد.
+  //
+  // و«بلا إدارة» قيمةٌ مقصودة لا غياب مُرشِّح: الفرص غير المُسنَدة هي بالضبط ما يجب أن يُرى
+  // ليُسنَد. ولو كان الترشيح بالإدارة وحده لبقيت تلك الفرص خارج كل عدسة — فلا تُنسب لأحد ولا
+  // يعرف أحد بوجودها، وتظهر آخر السنة فرقاً بين مجموع الإدارات ومجموع القطاع.
+  if (filters.department === NO_DEPARTMENT) where.push('department_id IS NULL');
+  else if (filters.department) { where.push('department_id = ?'); params.push(filters.department); }
   const rows = await all(
     `SELECT * FROM opportunity WHERE ${where.join(' AND ')} ORDER BY value_halalas DESC LIMIT 500`, params);
   const today = String(opts.today || nowIso().slice(0, 10)).slice(0, 10);

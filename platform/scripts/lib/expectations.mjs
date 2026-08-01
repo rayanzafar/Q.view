@@ -144,7 +144,10 @@ export const API_PROBES = [
   // POST probes with an EMPTY body separate authorization from validation: a role WITH the create
   // grant reaches validation (400 عنوان/اسم مطلوب); a role WITHOUT is rejected first (403).
   // bd_head: create opportunity/project @company (OPERATIONAL crud) → reaches validation.
-  { method: 'POST', path: '/api/opportunities', body: {}, expect: { default: 403, admin: 400, sector_lead: 400, bd_manager: 400, bd_head: 400 } },
+  // ٤٠٠ لا ٤٠٣ لمن يملك المنح: الحمولة فارغة فيردّها التحقّق («عنوان الفرصة مطلوب») بعد اجتياز
+  // البوابة — فالرمز هنا يفصل «مسموح له وحمولته ناقصة» عن «ممنوع». ومدير الإدارة انتقل إلى
+  // الأولى بقرار المالك: «لازم في طريقة أقدر أضيف الفرص والحالة تبعها… حسب الإدارة».
+  { method: 'POST', path: '/api/opportunities', body: {}, expect: { default: 403, admin: 400, sector_lead: 400, department_manager: 400, bd_manager: 400, bd_head: 400 } },
   // employee create exists only for admin / sector_lead (@sector) / hr (@company) — none of the
   // seven new roles holds it (bd_head reads the roster, it does not write it).
   { method: 'POST', path: '/api/org/employees', body: {}, expect: { default: 403, admin: 400, sector_lead: 400, hr: 400 } },
@@ -188,9 +191,11 @@ export const AI_CHAT_PROBES = [
   { message: 'ما المخاطر البارزة', expect: { default: 200, hr: 403, line_manager: 403, approver: 403 } },
   { message: 'افحص جودة البيانات', expect: 200 },                     // يردّ ولو بـ«لا شيء ضمن صلاحيتك»
   // نية كتابة من نص حر: تعيد **نموذجاً** لمن يملك منح الإنشاء، وتُرَدّ ٤٠٣ لمن لا يملكه.
+  // مدير الإدارة انضمّ إلى مالكي منح الإنشاء بقرار المالك («التعديل والتسكين بدءاً من مدير
+  // المشروع واللي فوقه»)، فصار المساعد يعيد له نموذجاً بدل رفضٍ — والنية نفسها والبوابة نفسها.
   { message: 'أنشئ مهمة متابعة العقد',
-    expect: { default: 403, admin: 200, sector_lead: 200, project_manager: 200, consultant: 200,
-      employee: 200, bd_head: 200, operations: 200 } },
+    expect: { default: 403, admin: 200, sector_lead: 200, department_manager: 200, project_manager: 200,
+      consultant: 200, employee: 200, bd_head: 200, operations: 200 } },
   // نفس بوابة /api/metrics/company حرفياً — وهذا هو أصل العطل الذي أُغلق.
   { message: 'اكتب الموجز التنفيذي الأسبوعي',
     expect: { default: 403, admin: 200, ceo_office: 200, hr: 200, bd_head: 200 } },

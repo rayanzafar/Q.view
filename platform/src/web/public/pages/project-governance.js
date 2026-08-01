@@ -65,6 +65,19 @@
   }
   // تعديل حالة صحة المشروع يدوياً (على المسار/في خطر/حرج) — حقل project.rag موجود أصلاً بالخدمة،
   // هذا فقط يعرضه ويجعله قابلاً للتغيير من صفحة التفاصيل.
+  // هوية المشروع: مديره وإدارته وجهته — ثلاثة حقول لم يكن لها مسار تحرير في المنتج إطلاقاً.
+  // تُرسَل الثلاثة معاً كي يكون التصحيح قراراً واحداً، والقيمة الفارغة تعني «انزع» لا «تجاهل».
+  async function prjIdentity(id) {
+    const pick = (el) => { const n = document.getElementById(el); return n ? (n.value || null) : undefined; };
+    const body = { owner_user_id: pick('prj-owner'), department_id: pick('prj-dept'), client_id: pick('prj-client') };
+    Object.keys(body).forEach((k) => { if (body[k] === undefined) delete body[k]; });
+    try {
+      await api('/projects/' + encodeURIComponent(id), 'PATCH', body);
+      toast('حُفظت هوية المشروع');
+      setTimeout(() => location.reload(), 500);
+    } catch (e) { toast(e.message, true); }
+  }
+
   async function prjRag(id, rag) {
     try { await api('/projects/' + id, 'PATCH', { rag }); toast('حُدّثت حالة المشروع ✓'); setTimeout(() => location.reload(), 450); }
     catch (e) { toast(e.message, true); }
@@ -126,6 +139,7 @@
     if (a === 'gov-status') return void govStatus(el.dataset.kind, el.dataset.id, el.dataset.status);
     if (a === 'gov-del') return void govDel(el.dataset.kind, el.dataset.id);
     if (a === 'prj-task-add') return void prjTaskAdd(el.dataset.project);
+    if (a === 'prj-identity-save') return void prjIdentity(el.dataset.id);
     if (a === 'doc-add') return void docAdd();
     if (a === 'doc-del') return void docDel(el.dataset.id);
   });

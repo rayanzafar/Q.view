@@ -24,8 +24,8 @@ import { countAr, dayWord } from '../../core/i18n/plural.js';
 import { completionTrend, addDays, teamTasksAccess, teamWorkload } from '../../modules/pmo/tasks.js';
 import { listOpportunities } from '../../modules/crm/opportunities.js';
 import { nowDot } from '../../core/i18n/time.js';
-import { WEEKDAYS_AR, weekdayLabel, workKindLabel, deliverableStatusLabel, DELIVERABLE_NEXT,
-  DELIVERABLE_MONEY_AR as G_DLV_MONEY } from '../i18n/glossary.js';
+import { WEEKDAYS_AR, weekdayLabel, workKindLabel, deliverableStatusLabel,
+  DELIVERABLE_NEXT } from '../i18n/glossary.js';
 
 // لون لكل حالة (هوية EVC الهادئة: خط لوني رفيع + خلفية بتشبّع ~12٪). الحالة تُلوِّن أعمدة
 // الكانبان وحدّ البطاقة الأيسر؛ الصحة (RAG) تبقى في الوسم وشريط الإنجاز. الملغى رماديّ
@@ -1944,6 +1944,39 @@ export async function projectDetailPage(user, projectId, opts = {}) {
   const fact = (label, value, extra = '') => `<div style="min-width:130px">
     <div style="font-size:10.5px;color:var(--muted)">${label}</div>
     <div style="font-weight:700;font-size:12.5px;color:var(--ink2)">${value}</div>${extra}</div>`;
+  // ── هوية المشروع: مديره وإدارته وجهته ──────────────────────────────────────
+  // ثلاثة حقول كانت تُكتب مرة عند الإنشاء ثم **لا يمسّها شيء في المنتج كله**، فأي تصحيح لها
+  // يعني فتح القاعدة يدوياً — وهو ما طلب المالك إنهاءه: «كل شي متعلق بالمشروع يقدر يتحكم فيه
+  // من الواجهة عشان نستعمل المنصة بلا تدخّل من خلف الشاشة».
+  //
+  // وأثقلها «مدير المشروع»: نطاق «مشروع» في محرّك الصلاحيات يُشتقّ من هذا العمود نفسه، فمشروعٌ
+  // بلا مالكٍ مسجَّل لا مديرَ له في نظر النظام مهما كان الواقع — ومنحُ مدير المشروع الكامل
+  // يبقى معلَّقاً بلا مشروعٍ واحد. وتعيينه من هنا هو ما يُفعِّل الدور فعلاً.
+  const projDept = p.department_id
+    ? await get('SELECT id, name_ar FROM department WHERE id = ? AND deleted_at IS NULL', [p.department_id]) : null;
+  const deptOptions = p.sector_id
+    ? await all('SELECT id, name_ar FROM department WHERE sector_id = ? AND active = 1 AND deleted_at IS NULL ORDER BY name_ar', [p.sector_id])
+    : [];
+  const clientOptions = canEdit
+    ? await all('SELECT id, name_ar FROM client WHERE deleted_at IS NULL ORDER BY name_ar LIMIT 300') : [];
+  const identityBar = canEdit ? `<div style="display:flex;gap:.45rem;align-items:center;flex-wrap:wrap;padding:.6rem 0 .2rem;margin-bottom:.6rem;border-top:1px dashed var(--line)">
+    <span style="font-size:10.5px;font-weight:800;color:var(--muted)">تعديل هوية المشروع</span>
+    <select id="prj-owner" class="input" aria-label="مدير المشروع" style="width:auto;max-width:180px;font-size:12px">
+      <option value="">بلا مدير مسجَّل</option>
+      ${users.map((u) => `<option value="${esc(u.id)}"${p.owner_user_id === u.id ? ' selected' : ''}>${esc(u.name)}</option>`).join('')}
+    </select>
+    <select id="prj-dept" class="input" aria-label="الإدارة المسؤولة" style="width:auto;max-width:180px;font-size:12px">
+      <option value="">بلا إدارة</option>
+      ${deptOptions.map((d) => `<option value="${esc(d.id)}"${p.department_id === d.id ? ' selected' : ''}>${esc(d.name_ar)}</option>`).join('')}
+    </select>
+    <select id="prj-client" class="input" aria-label="الجهة" style="width:auto;max-width:200px;font-size:12px">
+      <option value="">بلا جهة</option>
+      ${clientOptions.map((c) => `<option value="${esc(c.id)}"${p.client_id === c.id ? ' selected' : ''}>${esc(c.name_ar)}</option>`).join('')}
+    </select>
+    <button class="btn btn-sm btn-primary" data-action="prj-identity-save" data-id="${esc(p.id)}">حفظ</button>
+    <span style="font-size:10px;color:var(--faint)">الإدارة تُحدِّد لمن تُحسب إيرادات هذا المشروع آخر السنة</span>
+  </div>` : '';
+
   const overviewBody = `<div style="padding:.85rem 1rem">
     <div style="display:flex;gap:1.4rem;flex-wrap:wrap;margin-bottom:.9rem">
       ${fact('العميل', client ? `<a href="/app/client/${esc(client.id)}" style="color:var(--brand2);text-decoration:none">${esc(client.name_ar)}</a>` : `<span style="color:var(--faint)">${G.notRecorded}</span>`)}
@@ -1957,7 +1990,9 @@ export async function projectDetailPage(user, projectId, opts = {}) {
       ${signYear ? fact('سنة التوقيع', `<span class="tnum">${esc(signYear)}</span>`,
     '<div style="font-size:10px;color:var(--faint)">خبرٌ عن العقد — لا يُصنَّف بها المشروع</div>') : ''}
       ${srcOpp ? fact('الفرصة المصدر', `<a href="/app/opportunity/${esc(srcOpp.id)}" style="color:var(--brand2);text-decoration:none">${esc(String(srcOpp.title_ar).slice(0, 28))}</a>`) : ''}
+      ${fact('الإدارة', projDept ? esc(projDept.name_ar) : `<span style="color:var(--faint)">غير مُسنَد</span>`)}
     </div>
+    ${identityBar}
     <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted)"><span class="tnum">${esc(p.start_date || '—')}</span><span class="tnum">${esc(p.end_date || '—')}</span></div>
     <div style="position:relative;height:10px;background:#eef1f7;border-radius:6px;margin:.4rem 0;overflow:hidden">
       <div style="position:absolute;inset-inline-start:0;top:0;height:100%;width:${Math.min(100, prog.executivePct)}%;background:linear-gradient(90deg,var(--brand),var(--brand2))"></div>
@@ -2051,8 +2086,6 @@ export async function projectDetailPage(user, projectId, opts = {}) {
         ${w != null ? `<div style="font-size:10px;color:var(--faint)">وزن <span class="tnum">${Math.round(w)}%</span></div>` : ''}</td>`
     : `<td style="padding:.45rem .75rem;text-align:center;white-space:nowrap;font-size:12px">${w != null ? `<span style="color:var(--faint);font-size:10.5px">وزن <span class="tnum">${Math.round(w)}%</span></span>` : '<span style="color:var(--faint)">—</span>'}</td>`}
       <td style="padding:.45rem .75rem;text-align:center;white-space:nowrap">${pill(deliverableStatusLabel(d.status), dlvTone(d.status))}</td>
-      <td style="padding:.45rem .75rem;text-align:center;white-space:nowrap">${d.collected_at ? pill(G_DLV_MONEY.collected, 'green')
-    : d.invoiced_at ? pill(G_DLV_MONEY.invoiced, 'violet') : '<span style="color:var(--faint);font-size:11px">—</span>'}</td>
       ${canGov ? `<td style="padding:.45rem .75rem;text-align:center;white-space:nowrap">
         <div style="display:inline-flex;gap:.3rem;align-items:center">
           ${next ? `<button class="btn btn-sm" data-action="gov-status" data-kind="deliverable" data-id="${esc(d.id)}" data-status="${next.to}">${next.ar}</button>` : ''}
@@ -2095,8 +2128,13 @@ export async function projectDetailPage(user, projectId, opts = {}) {
     </div>
     <div class="tblwrap">${dlv.length ? `<table style="width:100%;border-collapse:collapse;min-width:${canGov ? 620 : 420}px">
       <thead><tr style="font-size:10.5px;color:var(--muted);text-align:right">
+        ${/* عمود «المالية» أُزيل بقرار المالك: «موضوع الفواتير خلاص ألغِه». وحالة المخرَج الظاهرة
+             في صفّه صارت **حالةَ عمله وحدها** — لا حالتان متجاورتان تتنازعان على معنى «أين وصل
+             هذا المخرَج». والفوترة والتحصيل لم يُحذفا من المنتج: مجموعهما في سطر الخلاصة أعلى
+             الجدول، والتنبيه «صدر بهذا المخرَج مستخلص» يبقى في خانة الإجراء حيث يلزم فعلاً —
+             قبل الحذف. */''}
         <th style="padding:.35rem .75rem">المخرَج</th><th style="padding:.35rem .75rem;text-align:center">${canMoney ? 'القيمة' : 'الوزن'}</th>
-        <th style="padding:.35rem .75rem;text-align:center">حالة العمل</th><th style="padding:.35rem .75rem;text-align:center">المالية</th>
+        <th style="padding:.35rem .75rem;text-align:center">حالة المخرَج</th>
         ${canGov ? '<th style="padding:.35rem .75rem;text-align:center">إجراء</th>' : ''}</tr></thead>
       <tbody>${dlvRows}</tbody></table>`
     : `<div class="empty-state" style="padding:1.4rem 1rem"><div class="t">لا مخرجات مسجَّلة على هذا المشروع</div>

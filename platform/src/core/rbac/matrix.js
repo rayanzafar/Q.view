@@ -125,10 +125,36 @@ export const ROLE_GRANTS = {
   // وقراءةُ الناس وملفاتهم ومهامّهم تبقى بنطاق «إدارة» حرفاً بحرف — ولا راتب بأي شكل (مختوم
   // لمدير النظام وحده حتى تكامل Odoo)، ولا لوحة قيادة شركة (`seesCompanyPerformance` تشترط
   // اتساعاً شركياً). والفحوص تحرس الحدّين معاً.
+  // «المسؤولية على الأشخاص في التعديل والتسكين بدءاً من مدير المشروع واللي فوقه، كلهم يشوفوا
+  // أو يعدّلوا — مثل مدير إدارة أو مدير قطاع» — بلسان المالك.
+  //
+  // وكان مدير الإدارة **بلا منحِ كتابةٍ واحد** على المشروع ولا على الفرصة: يقرأ كل شيء ولا يحرّك
+  // شيئاً. والأثر لم يكن نظرياً — شاشة المشروع تحسب `can(update, project)` فتُعلن «للقراءة فقط
+  // بدورك الحالي»، فمديرُ إدارةٍ يقود المشروع كلَّه لا يستطيع أن يعلن تسليم مخرَجٍ سلّمه فريقه،
+  // ولا أن يسكّن أحداً عليه، ولا أن يفتح فرصةً لإدارته. فيُدار العمل خارج المنصة أو من خلف الشاشة.
+  //
+  // النطاق **الإدارة** لا القطاع: يكتب على ما يحمل معرّف إحدى إداراته (المشروع والفرصة والتسكين
+  // والمهمة تحمله كلها منذ الموجة 007/010)، ولا يمسّ إدارةً أخرى ولو في قطاعه.
+  //
+  // والحدود مقصودة: **لا حذف ولا إنشاء مشروع** — الحذف لا رجعة فيه فيبقى لقائد القطاع ومدير
+  // النظام، وإنشاء المشروع يبدأ من فرصةٍ مكسوبة. وهو نفس ما رُسم لمكتب الرئيس التنفيذي أعلاه.
   department_manager: [
-    ...read(['opportunity', 'client', 'contact', 'proposal', 'service'], 'department'),
-    ...read(['employee', 'project', 'task', 'timesheet', 'deliverable'], 'department'),
-    { resource: 'task', action: 'update', scope: 'department' },
+    ...read(['client', 'contact', 'proposal', 'service'], 'department'),
+    ...read(['employee', 'timesheet'], 'department'),
+    // ── التسليم: يقرأ ويعدّل ما تحت يده ──
+    ...crud(['project', 'milestone', 'deliverable', 'project_phase', 'risk', 'issue'], 'department',
+      ['read', 'update']),
+    { resource: 'deliverable', action: 'approve', scope: 'department' },
+    // المخرَج يُضاف ويُشطب مع تغيّر النطاق — وهما وجها إدارة التسليم نفسها لا سلطة إضافية.
+    ...crud(['milestone', 'deliverable', 'project_phase'], 'department', ['create', 'delete']),
+    // ── التسكين: «التعديل والتسكين» معاً في جملة المالك ──
+    ...crud(['allocation'], 'department', ['read', 'create', 'update', 'delete']),
+    // ── الفرص: فرصةُ إدارته تُفتح وتتحرّك مراحلها بيده ──
+    // «لازم في طريقة أقدر أضيف الفرص والحالة تبعها» — والقراءة وحدها كانت تجعل الإدارة تُنسب
+    // إليها الفرص في التقارير آخر السنة ولا تملك إدخال واحدة منها.
+    ...crud(['opportunity'], 'department', ['read', 'create', 'update']),
+    ...crud(['task'], 'department', ['read', 'create', 'update']),
+    { resource: 'task', action: 'approve', scope: 'department' },
     { resource: 'timesheet', action: 'approve', scope: 'department' },
     { resource: 'expense', action: 'approve', scope: 'department' },
     ...read(['report', 'kpi'], 'sector'),
