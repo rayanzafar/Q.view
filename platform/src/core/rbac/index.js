@@ -1,6 +1,7 @@
 // RBAC decision engine — the ONLY place authorization is decided. Server-side, always.
 import { all } from '../db/index.js';
 import { SENSITIVE_FIELDS, SCOPE_RANK } from './matrix.js';
+import { inDepartmentScope } from './departments.js';
 
 // Grants are loaded from role_permission (DB) so admin edits take effect without redeploy.
 // The cache is loaded ONCE at startup via initRbac() so the hot-path decision functions
@@ -76,7 +77,11 @@ export function scopeReaches(user, scope, target) {
       // فيمرّ **فارغاً** على كل هدف لا يحمل عمود الإدارة — وأكثر الصفوف كذلك (المهمة والفرصة
       // وصف القطاع لا تحمل إدارة). النتيجة أن مدير إدارة في الاستشارات كان يجتاز فحصاً على
       // هدف يخصّ الحلول لمجرد أن الهدف لا يذكر إدارة.
-      if (target.department_id) return target.department_id === user.department_id;
+      //
+      // والمقارنة صارت **عضويةً في مجموعة إداراته** لا مساواةً بإدارة انتمائه: من يقود إدارتين
+      // كان يُرَدّ عن صفوف الإدارة الثانية وهو مديرها المكتوب اسمه عليها — يوقّع اعتماد كشف
+      // دوامٍ لموظفٍ يقوده، فيُرَدّ. المجموعة تُبنى عند الجلسة (rbac/departments.js).
+      if (target.department_id) return inDepartmentScope(user, target.department_id);
       // بلا إدارة على الهدف لا نستطيع إثبات الانتماء، لكن نستطيع إثبات **النفي**: هدف يذكر
       // قطاعاً غير قطاع المستخدم هو قطعاً خارج إدارته. هذا يغلق التسريب العابر للقطاعات.
       if (target.sector_id && user.sector_id && target.sector_id !== user.sector_id) return false;

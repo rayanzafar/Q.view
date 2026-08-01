@@ -14,6 +14,7 @@ import { EXPENSE_STATUS_AR, OPEN_STATUSES, SETTLED_STATUSES } from '../../module
 import { myTasks, teamTasks, personDossier } from '../../modules/pmo/tasks.js';
 import { listViews } from '../../modules/views/views.js';
 import { canSeeSensitive, redact, can, effectiveScope } from '../../core/rbac/index.js';
+import { departmentScope, departmentInSql } from '../../core/rbac/departments.js';
 import { DELIVERY_SECTOR_SQL } from '../../core/org/kind.js';
 import { G, projectKindLabel, projectKindTip } from '../i18n/glossary.js';
 import { sarShort, esc, bar, statMini, noticeCard } from './_shared.js';
@@ -503,10 +504,15 @@ export async function tasksPage(user, opts = {}) {
   if (canAssign) {
     if (teamScope === 'company') {
       people = await all('SELECT id, COALESCE(name_ar, username) AS "name" FROM app_user WHERE active=1 AND deleted_at IS NULL ORDER BY name_ar, username LIMIT 300');
-    } else if (teamScope === 'department' && user.department_id) {
+    } else if (teamScope === 'department') {
+      // قائمة من يجوز إسناد المهمة إليهم = أهل **كل إدارة يقودها**، لا إدارة انتمائه وحدها:
+      // كان مديرُ إدارتين لا يجد اسم موظفٍ يقوده في القائمة فلا يستطيع إسناد مهمة له.
+      // وكان الشرط `&& user.department_id` يُسقط من لا إدارة له إلى **قائمة القطاع كلها**
+      // (فرع `else` أدناه) — وعدٌ بإسنادٍ يردّه الخادم عند الحفظ. الفراغ الآن فراغ.
+      const inDeps = departmentInSql('e.department_id', departmentScope(user));
       people = await all(`SELECT u.id, COALESCE(u.name_ar, u.username) AS "name" FROM app_user u
         JOIN employee e ON e.id = u.employee_id AND e.deleted_at IS NULL
-        WHERE u.active=1 AND u.deleted_at IS NULL AND e.department_id = ? ORDER BY u.name_ar, u.username LIMIT 300`, [user.department_id]);
+        WHERE u.active=1 AND u.deleted_at IS NULL AND ${inDeps.clause} ORDER BY u.name_ar, u.username LIMIT 300`, inDeps.params);
     } else if (user.sector_id) {
       people = await all('SELECT id, COALESCE(name_ar, username) AS "name" FROM app_user WHERE active=1 AND deleted_at IS NULL AND sector_id = ? ORDER BY name_ar, username LIMIT 300', [user.sector_id]);
     }

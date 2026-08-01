@@ -65,9 +65,7 @@ for (const [label, mgr] of [['مدير الإدارة', deptMgr], ['المدير
     assert.equal(P.departmentReadable(mgr, FOREIGN), false, 'إدارة خارج قطاعه');
   });
 
-  test(`${label} لا يبلغ عدسة القطاع ولا عدسة الشركة`, () => {
-    assert.equal(P.sectorReadable(mgr, SECTOR_ROW), false,
-      'تقرير القطاع يجمع الإدارات كلها — منح «إدارة» لا يبلغه');
+  test(`${label} لا يبلغ عدسة الشركة`, () => {
     // عدسة الشركة تُفحص بنفس مقياس الاتساع: منحٌ بنطاق «شركة» من أحد مصادر العرض الثلاثة.
     assert.notEqual(effectiveScope(mgr, 'read', 'report'), 'company');
     assert.notEqual(effectiveScope(mgr, 'read', 'employee'), 'company');
@@ -86,9 +84,24 @@ for (const [label, mgr] of [['مدير الإدارة', deptMgr], ['المدير
   });
 }
 
-test('اتساع المنح لم يتغيّر لبقية الأدوار — المنح الجديد نطاقه «إدارة» بالضبط', () => {
-  assert.equal(effectiveScope(deptMgr, 'read', 'report'), 'department');
+// ── عدسة القطاع: مفتوحة لمدير الإدارة وحده، بقرار مالك صريح ─────────────────────
+// «لازم مدير الإدارة يشوف مركز القطاع من ناحية ربح وكم الإيراد وكم من التارقيت». فمنحه للتقارير
+// والمؤشرات صار قطاعياً، وعدسة القطاع تُفتح له. و«المدير المباشر» لم يتغيّر حرفاً: منحه بنطاق
+// إدارته، وعدسة القطاع مردودة عنه كما كانت — وهذا ما يفصله الفحصان أدناه.
+test('مدير الإدارة يبلغ عدسة القطاع — أرقام قطاعه من شأنه بقرار المالك', () => {
+  assert.equal(P.sectorReadable(deptMgr, SECTOR_ROW), true);
+  assert.equal(effectiveScope(deptMgr, 'read', 'report'), 'sector');
+  // والاتساع في الأرقام لا في الأشخاص: قراءة الموظفين بقيت عند إدارته حرفاً بحرف.
+  assert.equal(effectiveScope(deptMgr, 'read', 'employee'), 'department');
+});
+
+test('المدير المباشر لا يبلغ عدسة القطاع — المنح الجديد لم يتسرّب إليه', () => {
+  assert.equal(P.sectorReadable(lineMgr, SECTOR_ROW), false,
+    'تقرير القطاع يجمع الإدارات كلها — منح «إدارة» لا يبلغه');
   assert.equal(effectiveScope(lineMgr, 'read', 'report'), 'department');
+});
+
+test('اتساع المنح لم يتغيّر لبقية الأدوار', () => {
   // الاستشاري والمشاهد لا يُمنحان شيئاً بالعرض — تأكيد أن الإضافة لم تتسرّب في حلقة عامة.
   const consultant = U('u_c', 'consultant', 'SOLUTIONS', 'own');
   assert.equal(PAGE_ACCESS.reports(consultant), false, 'الاستشاري كما كان — بلا تقارير');
