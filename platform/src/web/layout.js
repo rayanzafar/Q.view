@@ -7,7 +7,7 @@ import { NAV_ITEMS, pageAllowed } from './nav.js';
 import { MONTHS_AR, MONTHS_EN3 } from '../core/i18n/time.js';
 import { esc } from './views/_shared.js';
 
-const GROUPS = { company: 'قيادة الشركة', work: 'العمل اليومي', manage: 'الإدارة', admin: 'النظام' };
+const GROUPS = { me: 'البداية', company: 'قيادة الشركة', work: 'العمل اليومي', manage: 'الإدارة', admin: 'النظام' };
 
 // رمز الجولة الإرشادية (بوصلة) — بنفس مقاس ورسم بقية الرموز (18px، سماكة 1.75).
 const TOUR_ICON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2.1 5-5 2.1 2.1-5z"/></svg>';

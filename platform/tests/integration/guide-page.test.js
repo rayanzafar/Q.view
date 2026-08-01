@@ -206,6 +206,7 @@ test('زر «جولة إرشادية» وسكربتها في هيكل كل صف�
 // القائمة)، والتحليل الكامل للوسوم يعني اعتماداً جديداً لأجل فحص واحد. وأي شكل محدِّد خارج
 // الأشكال الخمسة يُسقط الاختبار صراحةً بدل أن يمرّ بلا فحص.
 const PAGE_FN = {
+  home: P.homePage,
   ceo: P.ceoPage, portfolio: P.portfolioPage, sector: P.sectorPage, opportunities: P.opportunitiesPage,
   'my-opportunities': P.myOpportunitiesPage, projects: P.projectsPage, tasks: P.tasksPage,
   timesheet: P.timesheetPage, approvals: P.approvalsPage, team: P.teamPage, staffing: P.staffingPage,

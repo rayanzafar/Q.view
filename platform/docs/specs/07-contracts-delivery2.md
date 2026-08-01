@@ -6,6 +6,7 @@
 
 | المسار | الدالة | الملف | الوصول |
 |---|---|---|---|
+| `/app/home?m=YYYY-MM&d=YYYY-MM-DD` | `homePage` | `views/home.js` | الجميع — كل استعلاماتها مقيَّدة بمعرّف صاحبها |
 | `/app/clients` | `clientsPage` | `views/clients.js` | من يملك `read client` |
 | `/app/client/:id` | `clientDetailPage` | `views/clients.js` | نفسه + نطاق |
 | `/app/opportunity/:id` | `opportunityDetailPage` | `views/opportunity-detail.js` | من يملك `read opportunity` + نطاق |
@@ -15,6 +16,8 @@
 | `/app/team` | `teamPage` (v3) | `views/people.js` | كما هو اليوم |
 
 `src/web/nav.js` (جديد): يصدّر `PAGE_ACCESS = { pageKey: (user) => boolean }` — يستهلكه `layout.js` (إظهار القائمة) و`routes.js` (403 عربية عند الرفض). مفاتيح الصفحات تُطابق `PAGES` في routes.js.
+
+**وجهة الدخول** `landingFor(user)` = `home` للجميع. وهي بلا بوابة صلاحيات لأن خدمتها (`modules/home/home.js`) لا تقرأ صفّاً واحداً خارج `user.id` أو الموظف المرتبط به؛ فأي توسعة لهذه الصفحة تُلزم بالقيد نفسه، وإلا لزمتها بوابة. وحالتها (شهر التقويم واليوم المفتوح) في العنوان لا في المتصفح.
 
 ## 2) واجهات API الجديدة (Router مستقل لكل وحدة؛ سطر تركيب واحد في api.routes.js)
 

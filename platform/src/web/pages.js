@@ -1,5 +1,6 @@
 // Barrel: pages live in ./views/* — add new pages there and re-export here.
 export * from './views/auth.js';
+export * from './views/home.js';
 export * from './views/exec.js';
 export * from './views/sector.js';
 export * from './views/crm.js';

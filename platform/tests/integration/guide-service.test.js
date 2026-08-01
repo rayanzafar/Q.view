@@ -393,17 +393,19 @@ test('دور أنشأه مدير النظام لاحقاً يجد اسمه ال�
 // ── ترتيب الرحلة لا ترتيب القائمة ────────────────────────────────────────────
 test('الترتيب: الشاشات تأتي بترتيب رحلة صاحبها لا بترتيب القائمة الجانبية', async () => {
   const navRank = Object.fromEntries(NAV_ITEMS.map((n, i) => [n.key, i]));
+  // «صفحتي» تتصدّر رحلة كل دور لأنها وجهة الدخول للجميع — ثم تبدأ رحلة الدور نفسها بعدها
+  // بلا تغيير: المنفّذ من مهامه ثم مشاريعه، والمالية من شاشتها، وقائد القطاع من مركز قيادته.
   const cons = (await guide.guideFor(U('consultant'))).pages.map((p) => p.key);
-  assert.deepEqual(cons.slice(0, 2), ['tasks', 'projects'], 'المنفّذ يبدأ من مهامه ثم مشاريعه');
+  assert.deepEqual(cons.slice(0, 3), ['home', 'tasks', 'projects'], 'المنفّذ يبدأ من صفحته ثم مهامه ثم مشاريعه');
   assert.ok(navRank[cons[0]] > navRank[cons[cons.length - 1]] || cons[0] !== 'sector',
     'ترتيب الدليل يجب ألا يكون نسخة من ترتيب القائمة');
 
   const fin = (await guide.guideFor(U('finance'))).pages.map((p) => p.key);
-  assert.equal(fin[0], 'finance', 'المالية تبدأ من شاشتها لا من أول عنصر في القائمة');
-  assert.ok(fin.includes('ceo') && fin.indexOf('ceo') > 0, 'لوحة القيادة متاحة لها لكنها ليست بداية رحلتها');
+  assert.equal(fin[1], 'finance', 'المالية تبدأ من شاشتها لا من أول عنصر في القائمة');
+  assert.ok(fin.includes('ceo') && fin.indexOf('ceo') > 1, 'لوحة القيادة متاحة لها لكنها ليست بداية رحلتها');
 
   const lead = (await guide.guideFor(U('sector_lead'))).pages.map((p) => p.key);
-  assert.equal(lead[0], 'sector', 'قائد القطاع يبدأ من مركز قيادته');
+  assert.equal(lead[1], 'sector', 'قائد القطاع يبدأ من مركز قيادته');
   assert.ok(lead.indexOf('approvals') < lead.indexOf('tasks'), 'قراره قبل مهامه الشخصية');
 });
 

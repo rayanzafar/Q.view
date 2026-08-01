@@ -1,5 +1,7 @@
 // Inline SVG line icons (24px, stroke-based) — no external requests. Consistent 1.75 stroke.
 const P = {
+  // «صفحتي»: شروقٌ لا منزل — الصفحة بدايةُ يومٍ لا مسكن، وشكلها يميّزها عن كل أيقونة أخرى.
+  home: '<path d="M3 18h18"/><path d="M7.5 18a4.5 4.5 0 019 0"/><path d="M12 4.5v2.5M5.4 7.4l1.8 1.8M18.6 7.4l-1.8 1.8M2.5 13.5h2M19.5 13.5h2"/>',
   ceo: '<path d="M3 3v18h18"/><path d="M7 14l3-3 3 2 5-6"/>',
   portfolio: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
   sector: '<path d="M3 9l9-6 9 6"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/>',
