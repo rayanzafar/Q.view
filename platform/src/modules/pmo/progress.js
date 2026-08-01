@@ -150,6 +150,33 @@ export async function projectProgress(projectId, { today = nowIso().slice(0, 10)
   };
 }
 
+/**
+ * نسبة الإنجاز المعروضة لمجموعة مشاريع — **بالقاعدة نفسها في كل شاشة**.
+ *
+ * وُجدت لأن ستّ شاشات كانت تطبع `project.progress_pct` خاماً: صفحة العميل، ولوحة القيادة
+ * (ثلاثة مواضع)، ومركز القطاع، وتقريرا الفترة والبريد. فمشروعٌ اعتُمدت مخرجاته الاثنا عشر كلها
+ * يُقرأ **مئةً** في صفحته و**٥٨٪** في صفحة عميله — والرقمان على شاشتين تُقرآن في اجتماع واحد.
+ *
+ * وليست المشكلة أن إحداهما خطأ فحسب، بل أن **لا أحد يعرف أيّهما يصدّق** — وهذا أسوأ من رقمٍ
+ * خاطئ معلوم. فالحساب هنا لا في الشاشات، والشاشة تعرض ما يصلها.
+ *
+ * @param {Array<{id:string,status?:string,progress_pct?:number}>} projects صفوف المشاريع كما قُرئت
+ * @returns {Promise<Map<string,{pct:number,source:'status'|'deliverables'|'stored'}>>}
+ */
+export async function effectiveProgress(projects = [], { today = nowIso().slice(0, 10) } = {}) {
+  const rows = (projects || []).filter((p) => p && p.id);
+  const out = new Map();
+  if (!rows.length) return out;
+  const port = await portfolioProgress(rows.map((p) => p.id), { today });
+  for (const p of rows) {
+    const derived = port.get(p.id)?.delivery?.acceptedPct ?? null;
+    out.set(p.id, p.status === 'COMPLETED' ? { pct: 100, source: 'status' }
+      : derived != null ? { pct: derived, source: 'deliverables' }
+        : { pct: Math.max(0, Math.min(100, Math.round(N(p.progress_pct)))), source: 'stored' });
+  }
+  return out;
+}
+
 // نفس الحساب للمحفظة كلها — استعلامان اثنان لكل المشاريع، لا اثنان لكل مشروع.
 export async function portfolioProgress(projectIds = [], { today = nowIso().slice(0, 10) } = {}) {
   const ids = [...new Set(projectIds)].filter(Boolean);

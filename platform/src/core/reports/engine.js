@@ -1,6 +1,7 @@
 // Report engine: builds report data (scope + redaction aware), renders via template,
 // enqueues to email_queue. Permissions are evaluated at BUILD and SEND time per recipient.
 import { all, get, insert, run, tx } from '../db/index.js';
+import { effectiveProgress } from '../../modules/pmo/progress.js';
 import { companyOverview, sectorDashboard, grossMargin, bookToBill, multiYearTrend,
   projectKpis, sectorUtilization, pipelineCoverage, winRate } from './metrics.js';
 import { pipelineSummary } from '../../modules/crm/opportunities.js';
@@ -27,6 +28,13 @@ const todayIso = () => new Date().toISOString().slice(0, 10);
 const monthStart = () => { const d = new Date(); return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)).toISOString().slice(0, 10); };
 
 // Build the data payload for a report as seen by a given user (redaction via metrics/scope).
+// نسبة الإنجاز المعروضة على صفوف مشاريع — من المصدر الواحد، ومكانها هنا كي لا تتكرّر السطران.
+async function withEffectiveProgress(rows) {
+  const pm = await effectiveProgress(rows);
+  for (const r of rows) r.progress_effective_pct = pm.get(r.id)?.pct ?? 0;
+  return rows;
+}
+
 export async function buildReport(reportKey, user, opts = {}) {
   if (reportKey === 'weekly_exec_brief') {
     const ov = await companyOverview(user);
@@ -39,7 +47,11 @@ export async function buildReport(reportKey, user, opts = {}) {
   }
   if (reportKey === 'sector_weekly_status') {
     const sd = await sectorDashboard(user, opts.sectorId);
-    const projects = await all("SELECT name_ar, rag, progress_pct FROM project WHERE sector_id = ? AND deleted_at IS NULL AND status='IN_PROGRESS' ORDER BY rag DESC LIMIT 15", [opts.sectorId]);
+    // نسبة الإنجاز من مصدرها الواحد: التقرير يُرسَل بالبريد ويُقرأ سجلّاً، فلا يحمل رقماً
+    // مستورداً لا يتحرّك مهما اعتُمدت مخرجات (انظر modules/pmo/progress.js).
+    const projects = await all("SELECT id, name_ar, rag, status, progress_pct FROM project WHERE sector_id = ? AND deleted_at IS NULL AND status='IN_PROGRESS' ORDER BY rag DESC LIMIT 15", [opts.sectorId]);
+    const pm1 = await effectiveProgress(projects);
+    for (const p of projects) p.progress_effective_pct = pm1.get(p.id)?.pct ?? 0;
     return { sectorName: sd?.sector?.name_ar || '', period: opts.period || periodLabel(),
       projects, risks: await sectorRisks(opts.sectorId) };
   }
@@ -63,7 +75,8 @@ export async function buildReport(reportKey, user, opts = {}) {
       sales_halalas: sd.sales_halalas, target_sales_halalas: sd.target_sales_halalas,
       margin_pct: gm.margin_pct, target_margin_pct: sec.target_margin_pct || 0,
       revenue_yoy: revYoy, book_to_bill: b2b.ratio, rag: sd.rag,
-      projects: await all("SELECT name_ar, rag, progress_pct FROM project WHERE sector_id=? AND deleted_at IS NULL AND status='IN_PROGRESS' ORDER BY rag DESC, contract_value_halalas DESC LIMIT 10", [sid]) };
+      projects: await withEffectiveProgress(
+        await all("SELECT id, name_ar, rag, status, progress_pct FROM project WHERE sector_id=? AND deleted_at IS NULL AND status='IN_PROGRESS' ORDER BY rag DESC, contract_value_halalas DESC LIMIT 10", [sid])) };
   }
   if (reportKey === 'project_status_report') {
     let p = opts.projectId ? await get('SELECT * FROM project WHERE id = ? AND deleted_at IS NULL', [opts.projectId]) : null;

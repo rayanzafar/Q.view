@@ -396,7 +396,7 @@ export async function clientDetailPage(user, clientId) {
     <td style="padding:.45rem .7rem;font-size:12.5px"><a href="/app/project/${p.id}" style="font-weight:700;color:var(--ink2)">${esc(p.name_ar)}</a></td>
     <td style="padding:.45rem .7rem;text-align:center">${pill(tr(p.status), p.status === 'COMPLETED' ? 'green' : p.status === 'ON_HOLD' ? 'amber' : p.status === 'IN_PROGRESS' ? 'blue' : 'slate')}</td>
     <td style="padding:.45rem .7rem;text-align:left;font-size:12.5px" class="tnum">${p.value_halalas ? fmtSar(p.value_halalas) : '—'}</td>
-    <td style="padding:.45rem .7rem;text-align:center;font-size:12px;color:var(--muted)" class="tnum">${Math.round(p.progress_pct || 0)}%</td></tr>`).join('');
+    <td style="padding:.45rem .7rem;text-align:center;font-size:12px;color:var(--muted)" class="tnum">${Math.round(p.progress_effective_pct || 0)}%</td></tr>`).join('');
   const conRows = d.contracts.slice(0, 20).map((t) => `<tr style="border-bottom:1px solid var(--line);cursor:pointer" onclick="location.href='/app/contract/${t.id}'">
     <td style="padding:.45rem .7rem;font-size:12.5px"><a href="/app/contract/${t.id}" style="font-weight:700;color:var(--ink2)">${t.code ? `<bdi>${esc(t.code)}</bdi>` : 'عقد'}</a>${t.project_name_ar ? `<div style="font-size:10.5px;color:var(--muted)">${esc(t.project_name_ar)}</div>` : ''}</td>
     <td style="padding:.45rem .7rem;text-align:left;font-size:12.5px;font-weight:700" class="tnum">${fmtSar(t.value_halalas)}</td>
@@ -496,7 +496,7 @@ export async function clientDetailPage(user, clientId) {
     <div>${ddRows(d.opportunities.open.map((o) => `<div class="dd-row"><span>${esc(o.title_ar)}<span style="color:var(--faint);font-size:10.5px"> · ${Math.round(o.win_pct || 0)}% من ${fmtSar(o.value_halalas)}</span></span><b class="tnum">${fmtSar(Math.round((o.value_halalas || 0) * ((o.win_pct || 0) / 100)))}</b></div>`))}</div>`)}
   ${ddWrap('prj', 'المشاريع النشطة', esc(c.name_ar), `
     <div class="dd-kpi"><span class="v tnum">${k.active_projects}</span><span style="font-size:12px;color:var(--muted)">قيد التنفيذ الآن</span></div>
-    <div>${ddRows(d.projects.filter((p) => p.status === 'IN_PROGRESS').map((p) => `<div class="dd-row"><span>${esc(p.name_ar)}<span style="color:var(--faint);font-size:10.5px"> · إنجاز ${Math.round(p.progress_pct || 0)}%</span></span><b class="tnum">${p.value_halalas ? fmtSar(p.value_halalas) : '—'}</b></div>`))}</div>`)}
+    <div>${ddRows(d.projects.filter((p) => p.status === 'IN_PROGRESS').map((p) => `<div class="dd-row"><span>${esc(p.name_ar)}<span style="color:var(--faint);font-size:10.5px"> · إنجاز ${Math.round(p.progress_effective_pct || 0)}%</span></span><b class="tnum">${p.value_halalas ? fmtSar(p.value_halalas) : '—'}</b></div>`))}</div>`)}
   ${ddWrap('ar', G.outstanding, `${esc(c.name_ar)} · فواتير غير محصلة`, `
     <div class="dd-kpi"><span class="v tnum" style="color:var(--amber)">${fmtSar(k.open_ar_halalas)}</span><span style="font-size:12px;color:var(--muted)">${G.overdue}: ${fmtSar(s.overdue)}</span></div>
     <div>${ddRows(d.invoices.filter((i) => (i.amount_halalas || 0) - Math.min(i.collected_halalas || 0, i.amount_halalas || 0) > 0).map((i) => {
@@ -512,7 +512,7 @@ export async function clientDetailPage(user, clientId) {
     const projs = s.project_names.slice(0, 6);
     const more = s.project_names.length - projs.length;
     const chip = (p) => `<a href="/app/project/${esc(p.id)}" class="pill" style="text-decoration:none;font-size:11px;${p.active ? '' : 'opacity:.62'}">
-        ${esc(p.name_ar)}${p.active && p.progress_pct != null ? ` <span class="tnum" style="color:var(--faint)">${p.progress_pct}%</span>` : ''}</a>`;
+        ${esc(p.name_ar)}${p.active && p.progress_effective_pct != null ? ` <span class="tnum" style="color:var(--faint)">${p.progress_effective_pct}%</span>` : ''}</a>`;
     const facts = [
       s.active_projects ? `<b class="tnum">${s.active_projects}</b> مشروع جارٍ` : null,
       s.projects > s.active_projects ? `<span class="tnum">${s.projects - s.active_projects}</span> منتهٍ` : null,

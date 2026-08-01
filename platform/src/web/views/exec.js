@@ -7,6 +7,7 @@ import { companyOverview, multiYearTrend, winRate,
   quarterlyRevenue, quarterlyBookings, backlog, pipelineCoverage, bookToBill, grossMargin } from '../../core/reports/metrics.js';
 import { config } from '../../core/config.js';
 import { listProjects } from '../../modules/pmo/projects.js';
+import { effectiveProgress } from '../../modules/pmo/progress.js';
 import { sarShort, pct, esc, ddWrap, attain, ddRows } from './_shared.js';
 import { quarterLabel, yearElapsedPct, MONTHS_AR } from '../../core/i18n/time.js';
 import { countAr } from '../../core/i18n/plural.js';
@@ -246,6 +247,11 @@ export async function ceoPage(user, opts = {}) {
 
 export async function portfolioPage(user) {
   const rows = await listProjects(user);
+  // نسبة الإنجاز من مصدرها الواحد: كانت اللوحة تجمع `progress_pct` المخزَّن — فمعدَّلُ إنجاز
+  // الشركة كلّه يُبنى على أرقامٍ مستوردة لا تتحرّك مهما اعتُمدت مخرجات، وهو رقمٌ يُقرأ في
+  // مجلس الإدارة. (انظر modules/pmo/progress.js — القاعدة واحدة لكل الشاشات.)
+  const progMap = await effectiveProgress(rows);
+  for (const p of rows) p.progress_effective_pct = progMap.get(p.id)?.pct ?? 0;
   const sectorNames = Object.fromEntries((await all('SELECT id,name_ar FROM sector')).map((s) => [s.id, s.name_ar]));
   const val = (p) => p.contract_value_halalas || p.budget_halalas || 0;
   const isActive = (p) => p.status !== 'COMPLETED' && p.status !== 'CANCELLED';
@@ -254,7 +260,7 @@ export async function portfolioPage(user) {
   const totalVal = rows.reduce((a, p) => a + val(p), 0);
   const active = rows.filter(isActive);
   const completed = rows.filter((p) => p.status === 'COMPLETED').length;
-  const avgProg = active.length ? Math.round(active.reduce((a, p) => a + (p.progress_pct || 0), 0) / active.length) : 0;
+  const avgProg = active.length ? Math.round(active.reduce((a, p) => a + (p.progress_effective_pct || 0), 0) / active.length) : 0;
   const ragTone = { GREEN: 'green', AMBER: 'amber', RED: 'red' };
   const ragHexP = { GREEN: '#059669', AMBER: '#d97706', RED: '#dc2626' };
 
@@ -266,7 +272,7 @@ export async function portfolioPage(user) {
   const groups = sectorEntries.map(([sid, ps]) => {
     const sVal = ps.reduce((a, p) => a + val(p), 0);
     const sActive = ps.filter(isActive);
-    const sAvg = sActive.length ? Math.round(sActive.reduce((a, p) => a + (p.progress_pct || 0), 0) / sActive.length) : 0;
+    const sAvg = sActive.length ? Math.round(sActive.reduce((a, p) => a + (p.progress_effective_pct || 0), 0) / sActive.length) : 0;
     const sRag = { GREEN: 0, AMBER: 0, RED: 0 }; for (const p of sActive) sRag[p.rag] = (sRag[p.rag] || 0) + 1;
     const ragDots = ['GREEN', 'AMBER', 'RED'].filter((r) => sRag[r]).map((r) => `<span style="display:inline-flex;align-items:center;gap:.2rem;font-size:11px"><span style="width:8px;height:8px;border-radius:99px;background:${ragHexP[r]}"></span><span class="tnum">${sRag[r]}</span></span>`).join('<span style="color:var(--faint);margin:0 .15rem"></span>');
     const top = ps.slice().sort((a, b) => val(b) - val(a)).slice(0, 7);
@@ -278,7 +284,7 @@ export async function portfolioPage(user) {
         <span style="width:8px;height:8px;border-radius:99px;flex:none;background:${ragHexP[p.rag] || '#94a3b8'}"></span>
         <a href="/app/project/${p.id}" style="flex:1;color:var(--ink2);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.name_ar)}</a>
         <span class="tnum" style="color:var(--faint);font-size:var(--fs-micro);flex:none">${sarShort(val(p))}</span>
-        <span class="tnum" style="color:var(--muted);font-size:11px;width:34px;text-align:left;flex:none">${pct(p.progress_pct)}</span></div>`).join('')}
+        <span class="tnum" style="color:var(--muted);font-size:11px;width:34px;text-align:left;flex:none">${pct(p.progress_effective_pct)}</span></div>`).join('')}
         ${ps.length > 7 ? `<div style="padding:.3rem .5rem;font-size:11px;color:var(--faint)">+${ps.length - 7} مشروع آخر</div>` : ''}</div>`);
   }).join('');
 

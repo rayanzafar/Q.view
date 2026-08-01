@@ -7,6 +7,7 @@
 // computed with EXISTS subqueries so the DB enforces the boundary, not the app.
 import { all, get, insert, update, run, tx } from '../../core/db/index.js';
 import { netSql } from '../finance/vat.js';
+import { effectiveProgress } from '../pmo/progress.js';
 import { can, effectiveScope } from '../../core/rbac/index.js';
 import { scopeFilter } from '../../core/rbac/scope.js';
 import { audit } from '../../core/audit/index.js';
@@ -320,6 +321,10 @@ export async function clientOverview(user, clientId) {
   const projects = await all(`SELECT id, code, name_ar, status, rag, progress_pct, start_date, end_date, sector_id,
        COALESCE(NULLIF(contract_value_halalas,0), NULLIF(budget_halalas,0), NULLIF(po_value_halalas,0), NULLIF(revenue_halalas,0), 0) value_halalas
      FROM project WHERE client_id = ? AND deleted_at IS NULL ORDER BY (status = 'IN_PROGRESS') DESC, start_date DESC`, [clientId]);
+  // نسبة الإنجاز من مصدرها الواحد لا من العمود المخزَّن: كانت الشاشة تطبع `progress_pct` خاماً،
+  // فمشروعٌ اعتُمدت مخرجاته كلها يُقرأ مئةً في صفحته و٥٨٪ هنا — رقمان في اجتماع واحد.
+  const progMap = await effectiveProgress(projects);
+  for (const p of projects) p.progress_effective_pct = progMap.get(p.id)?.pct ?? 0;
 
   const contracts = await all(`SELECT t.id, t.code, t.value_halalas, t.status, t.signed_at, t.start_date, t.end_date,
        t.project_id, p.name_ar project_name_ar
@@ -442,7 +447,7 @@ export async function clientOverview(user, clientId) {
     b.project_value_halalas += p.value_halalas || 0;
     // أسماء المشاريع الجارية أولاً — «أيش شغّال معهم» سؤال عن الحاضر لا عن الأرشيف.
     b.project_names.push({ id: p.id, name_ar: p.name_ar, status: p.status, rag: p.rag,
-      progress_pct: p.progress_pct, active: p.status === 'IN_PROGRESS' });
+      progress_effective_pct: p.progress_effective_pct, active: p.status === 'IN_PROGRESS' });
   }
   const by_sector = [...bySectorMap.values()]
     .map((b) => ({ ...b, project_names: b.project_names.sort((x, y) => (y.active ? 1 : 0) - (x.active ? 1 : 0)) }))

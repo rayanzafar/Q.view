@@ -98,7 +98,7 @@ export function sectorWeeklyStatus(data) {
   const rows = (data.projects || []).map((p) =>
     `<tr><td style="padding:8px;border-bottom:1px solid ${LINE};font-size:13px">${esc(p.name_ar)}</td>
       <td style="padding:8px;border-bottom:1px solid ${LINE};text-align:center">${healthPill(p.rag)}</td>
-      <td style="padding:8px;border-bottom:1px solid ${LINE};text-align:center;font-size:13px">${Math.round(p.progress_pct || 0)}%</td></tr>`).join('');
+      <td style="padding:8px;border-bottom:1px solid ${LINE};text-align:center;font-size:13px">${Math.round(p.progress_effective_pct || 0)}%</td></tr>`).join('');
   const body = [
     section('حالة القطاع', `<div style="font-size:13px;color:${MUTED}">${esc(data.sectorName)} · ${data.period}</div>`),
     section('المشاريع', `<table role="presentation" width="100%" cellspacing="0">
@@ -130,7 +130,7 @@ export function monthlySectorPerformance(data) {
     section('أبرز مشاريع القطاع', data.projects && data.projects.length ?
       `<table width="100%" cellspacing="0" style="font-size:13px">${data.projects.map((p) => `<tr>
         <td style="padding:6px;border-top:1px solid ${LINE}">${esc(p.name_ar)}</td>
-        <td style="padding:6px;border-top:1px solid ${LINE};text-align:center">${Math.round(p.progress_pct || 0)}%</td>
+        <td style="padding:6px;border-top:1px solid ${LINE};text-align:center">${Math.round(p.progress_effective_pct || 0)}%</td>
         <td style="padding:6px;border-top:1px solid ${LINE};text-align:center">${healthPill(p.rag)}</td></tr>`).join('')}</table>` : list([])),
   ].join('');
   return { subject: `أداء القطاع الشهري — ${data.sectorName} · ${data.period}`,
@@ -145,7 +145,7 @@ export function projectStatusReport(data) {
   const body = [
     `<div style="display:inline-block;background:${h.color};color:#fff;padding:4px 14px;border-radius:99px;font-weight:700;margin-bottom:10px">حالة المشروع: ${esc(h.label)}</div>`,
     section('نظرة عامة', `<table width="100%" cellspacing="8"><tr>
-      ${kpi('الإنجاز', Math.round(p.progress_pct || 0) + '%')}
+      ${kpi('الإنجاز', Math.round(p.progress_effective_pct || 0) + '%')}
       ${kpi('قبول المخرجات', data.kpis.deliverableAcceptanceRate + '%')}
       ${kpi('مهام متأخرة', data.kpis.lateTasks)}
       ${kpi('قيمة العقد', fmtSar(p.contract_value_halalas))}

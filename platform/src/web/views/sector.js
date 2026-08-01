@@ -14,6 +14,7 @@ import { changesSince, sinceForWindow } from '../../core/reports/changes.js';
 import { arAging } from '../../modules/finance/finance.js';
 import { mySectorTasks } from '../../modules/pmo/tasks.js';
 import { myProjectsInSector, nextMilestones } from '../../modules/pmo/projects.js';
+import { effectiveProgress } from '../../modules/pmo/progress.js';
 import { myOpportunitiesInSector } from '../../modules/crm/opportunities.js';
 import { sectorIdentity } from '../../modules/org/org.js';
 import { can, effectiveScope } from '../../core/rbac/index.js';
@@ -575,6 +576,8 @@ async function mySectorPage(user, opts = {}) {
     myOpportunitiesInSector(user, sectorId),
   ]);
   const shownP = mine.slice(0, 8);
+  // نسبة الإنجاز من مصدرها الواحد — لا من العمود المخزَّن (انظر modules/pmo/progress.js).
+  const progMapS = await effectiveProgress(shownP);
   const ms = Object.fromEntries((await nextMilestones(shownP.map((p) => p.id))).map((m) => [m.project_id, m]));
 
   // ── (1) هوية القطاع: أين أقف ومن يقودني ──
@@ -636,7 +639,7 @@ async function mySectorPage(user, opts = {}) {
 
   // ── (3) مشاريعي: ما أنا مُسكَّن عليه فعلاً، لا كل مشاريع القطاع ──
   const projRows = shownP.map((p) => {
-    const prog = Math.max(0, Math.min(100, Math.round(p.progress_pct || 0)));
+    const prog = progMapS.get(p.id)?.pct ?? Math.max(0, Math.min(100, Math.round(p.progress_pct || 0)));
     const nx = ms[p.id];
     return `<div class="mw-row">
       <span class="pin" style="background:${RAG_TONE[p.rag] || '#cbd5e1'}"></span>

@@ -27,6 +27,7 @@
 // قابلية النقل (SQLite + Postgres): لا `strftime` ولا `date('now')` — كل تاريخ يُحسب في JS
 // ويُربَط معاملاً، ومقارنات التواريخ عبر `substr(col,1,10)`، والمنطقيات أعداد 0/1.
 import { all, get, insert, tx } from '../db/index.js';
+import { effectiveProgress } from '../../modules/pmo/progress.js';
 import { audit } from '../audit/index.js';
 import { badRequest, forbidden, notFound } from '../http/errors.js';
 import { can, effectiveScope, canSeeSensitive } from '../rbac/index.js';
@@ -263,7 +264,7 @@ async function resolveScope(user, lens, targetId) {
 
   if (l === 'project') {
     const row = await get(`SELECT p.id, p.name_ar, p.sector_id, p.department_id, p.owner_user_id,
-         p.status, p.rag, p.progress_pct, p.start_date, p.end_date, s.name_ar sector_name, c.name_ar client_name
+         p.status, p.rag, p.start_date, p.end_date, s.name_ar sector_name, c.name_ar client_name
        FROM project p LEFT JOIN sector s ON s.id = p.sector_id LEFT JOIN client c ON c.id = p.client_id
        WHERE p.id = ? AND p.deleted_at IS NULL`, [targetId]);
     if (!row) throw notFound('المشروع المطلوب غير موجود — اختره من القائمة.');
@@ -611,6 +612,12 @@ async function progressSection(user, sc, period) {
   const projects = await all(`SELECT p.id, p.name_ar, COALESCE(p.status,'IN_PROGRESS') status,
       p.rag, COALESCE(p.progress_pct,0) progress_pct
     FROM project p WHERE p.deleted_at IS NULL AND ${pw.where} ORDER BY p.name_ar LIMIT 400`, pw.params);
+  // نسبة الإنجاز من مصدرها الواحد لا من العمود المخزَّن — وتقريرُ الفترة أخطرُ موضعٍ لهذا:
+  // يُرسَل بالبريد ويُقرأ في مراجعةٍ إدارية، فرقمٌ مستورد لا يتحرّك يصير سجلّاً مكتوباً.
+  {
+    const pm = await effectiveProgress(projects);
+    for (const p of projects) p.progress_effective_pct = pm.get(p.id)?.pct ?? 0;
+  }
   if (!projects.length) {
     return absentSection('progress', 'التقدم',
       sc.lens === 'department' ? 'لا مشاريع منسوبة إلى هذه الإدارة بعد' : 'لا مشاريع ضمن هذا النطاق بعد',
@@ -618,10 +625,10 @@ async function progressSection(user, sc, period) {
   }
 
   const active = projects.filter((p) => p.status === 'IN_PROGRESS');
-  const withProgress = projects.filter((p) => N(p.progress_pct) > 0);
+  const withProgress = projects.filter((p) => N(p.progress_effective_pct) > 0);
   const noProgress = projects.length - withProgress.length;
   const avg = withProgress.length
-    ? Math.round(withProgress.reduce((a, p) => a + N(p.progress_pct), 0) / withProgress.length) : null;
+    ? Math.round(withProgress.reduce((a, p) => a + N(p.progress_effective_pct), 0) / withProgress.length) : null;
   const counts = {};
   for (const p of active) { const k = health(p.rag).key; counts[k] = (counts[k] || 0) + 1; }
 
@@ -648,9 +655,9 @@ async function progressSection(user, sc, period) {
     key: 'progress', title_ar: 'التقدم', basis_ar: 'نِسب الإنجاز المسجَّلة على المشاريع', state: 'data',
     figures,
     rows: active.slice()
-      .sort((a, b) => N(a.progress_pct) - N(b.progress_pct)).slice(0, 8)
+      .sort((a, b) => N(a.progress_effective_pct) - N(b.progress_effective_pct)).slice(0, 8)
       .map((p) => ({ title: p.name_ar, sub: health(p.rag).label,
-        meta: N(p.progress_pct) > 0 ? pctText(p.progress_pct) : 'بلا نسبة إنجاز مسجّلة',
+        meta: N(p.progress_effective_pct) > 0 ? pctText(p.progress_effective_pct) : 'بلا نسبة إنجاز مسجّلة',
         tone: health(p.rag).key === 'RED' ? 'bad' : health(p.rag).key === 'AMBER' ? 'warn' : '' })),
     rows_title_ar: 'أبطأ المشاريع تقدماً',
     note_ar: noProgress ? `${noProgress} من المشاريع هنا بلا نسبة إنجاز مسجّلة — لم تدخل في المتوسط.` : '',
