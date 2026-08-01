@@ -1,6 +1,7 @@
 // Clients pages: العملاء (portfolio list) + client 360 detail — decision-story order:
 // who is the client → how healthy is the relationship → what money moves → what to do next.
 import { layout, card, pill, tr, hbars } from '../layout.js';
+import { netSql } from '../../modules/finance/vat.js';
 import { icon } from '../icons.js';
 import { fmtSar } from '../../core/util/ids.js';
 import { get } from '../../core/db/index.js';
@@ -83,7 +84,7 @@ export async function clientsPage(user, opts = {}) {
   // ── الشريط التحليلي: عدد العملاء · تركّز أعلى ٥ · العميل الأول · معدل الفوز · نمو الإيراد ──
   const relCount = { 'نشطة': 0, 'فاترة': 0, 'خاملة': 0 };
   for (const r of rows) relCount[r.relationship] = (relCount[r.relationship] || 0) + 1;
-  const companyFy = (await get('SELECT COALESCE(SUM(amount_halalas),0) v FROM revenue_line WHERE year = ?', [fy]))?.v || 0;
+  const companyFy = (await get(`SELECT COALESCE(SUM(${netSql('amount_halalas', 'net_amount_halalas')}),0) v FROM revenue_line WHERE year = ?`, [fy]))?.v || 0;
   const top5 = rows.slice().sort((a, b) => b.fy_revenue_halalas - a.fy_revenue_halalas).filter((r) => r.fy_revenue_halalas > 0).slice(0, 5);
   const top5Rev = top5.reduce((a, r) => a + r.fy_revenue_halalas, 0);
   const top5Pct = companyFy > 0 && top5.length ? Math.round((top5Rev / companyFy) * 100) : null;

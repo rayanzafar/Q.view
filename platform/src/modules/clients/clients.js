@@ -6,6 +6,7 @@
 // when the client has ANY footprint (opportunity / project / contract) in that user's sector —
 // computed with EXISTS subqueries so the DB enforces the boundary, not the app.
 import { all, get, insert, update, run, tx } from '../../core/db/index.js';
+import { netSql } from '../finance/vat.js';
 import { can, effectiveScope } from '../../core/rbac/index.js';
 import { scopeFilter } from '../../core/rbac/scope.js';
 import { audit } from '../../core/audit/index.js';
@@ -142,10 +143,10 @@ export async function listClients(user, filters = {}) {
   if (!clients.length) return [];
 
   const fy = config.fiscalYear;
-  const revRows = await all(`SELECT p.client_id cid, COALESCE(SUM(r.amount_halalas),0) v FROM revenue_line r
+  const revRows = await all(`SELECT p.client_id cid, COALESCE(SUM(${netSql('r.amount_halalas', 'r.net_amount_halalas')}),0) v FROM revenue_line r
      JOIN project p ON p.id = r.project_id WHERE r.year = ? AND p.client_id IS NOT NULL AND p.deleted_at IS NULL GROUP BY p.client_id`, [fy]);
   // إيراد السنة الماضية لكل عميل — يغذي مؤشر «نمو الإيراد» في الشريط التحليلي
-  const prevRevRows = await all(`SELECT p.client_id cid, COALESCE(SUM(r.amount_halalas),0) v FROM revenue_line r
+  const prevRevRows = await all(`SELECT p.client_id cid, COALESCE(SUM(${netSql('r.amount_halalas', 'r.net_amount_halalas')}),0) v FROM revenue_line r
      JOIN project p ON p.id = r.project_id WHERE r.year = ? AND p.client_id IS NOT NULL AND p.deleted_at IS NULL GROUP BY p.client_id`, [fy - 1]);
   // الفرص المفتوحة: العدد + الإجمالي + المرجّح (قيمة × احتمال الفوز) — نفس تعريف clientOverview
   const pipeRows = await all(`SELECT o.client_id cid, COUNT(*) n, COALESCE(SUM(o.value_halalas),0) v,
@@ -343,7 +344,7 @@ export async function clientOverview(user, clientId) {
   }
 
   // revenue: FY + lifetime + YoY + per-project FY breakdown (drill-down)
-  const yoy = await all(`SELECT r.year, COALESCE(SUM(r.amount_halalas),0) revenue_halalas FROM revenue_line r
+  const yoy = await all(`SELECT r.year, COALESCE(SUM(${netSql('r.amount_halalas', 'r.net_amount_halalas')}),0) revenue_halalas FROM revenue_line r
      JOIN project p ON p.id = r.project_id WHERE p.client_id = ? AND p.deleted_at IS NULL AND r.year IS NOT NULL
      GROUP BY r.year ORDER BY r.year`, [clientId]);
   const fyRevenue = Math.round(yoy.find((y) => y.year === fy)?.revenue_halalas || 0);
@@ -351,7 +352,7 @@ export async function clientOverview(user, clientId) {
   const fyRevenueByProject = await all(`SELECT p.id, p.name_ar, COALESCE(SUM(r.amount_halalas),0) revenue_halalas
      FROM revenue_line r JOIN project p ON p.id = r.project_id
      WHERE p.client_id = ? AND p.deleted_at IS NULL AND r.year = ? GROUP BY p.id, p.name_ar ORDER BY revenue_halalas DESC`, [clientId, fy]);
-  const companyFy = (await get('SELECT COALESCE(SUM(amount_halalas),0) v FROM revenue_line WHERE year = ?', [fy]))?.v || 0;
+  const companyFy = (await get(`SELECT COALESCE(SUM(${netSql('amount_halalas', 'net_amount_halalas')}),0) v FROM revenue_line WHERE year = ?`, [fy]))?.v || 0;
   const concentration_pct = companyFy > 0 ? Math.round((fyRevenue / companyFy) * 1000) / 10 : 0;
 
   const documents = await all(`SELECT id, name, kind, url, note, size_bytes, uploaded_by, created_at

@@ -4,6 +4,7 @@
 // → (6) التحصيل والمستخلص المتأخر → (7) صحة المشاريع → (8) الطاقة → (9) العملاء
 // → (10) القرارات والاعتمادات → (11) المقارنات والتقارير. كل رقم يفتح تفصيلاً؛ لا أرقام بلا مصدر.
 import { layout, card, pill, tr } from '../layout.js';
+import { netSql } from '../../modules/finance/vat.js';
 import { icon } from '../icons.js';
 import { fmtSar } from '../../core/util/ids.js';
 import { all, get } from '../../core/db/index.js';
@@ -153,7 +154,7 @@ export async function sectorPage(user, opts = {}) {
        COALESCE(NULLIF(p.contract_value_halalas,0), NULLIF(p.budget_halalas,0), NULLIF(p.po_value_halalas,0)) cv,
        CASE WHEN COALESCE(p.contract_value_halalas,0)>0 THEN 'عقد' WHEN COALESCE(p.budget_halalas,0)>0 THEN 'ميزانية'
             WHEN COALESCE(p.po_value_halalas,0)>0 THEN 'أمر شراء' ELSE NULL END cvbasis,
-       COALESCE(SUM(rl.amount_halalas),0) rev
+       COALESCE(SUM(${netSql('rl.amount_halalas', 'rl.net_amount_halalas')}),0) rev
      FROM revenue_line rl LEFT JOIN project p ON p.id = rl.project_id
      WHERE rl.sector_id = ? AND rl.year = ? GROUP BY p.id, p.name_ar, p.status, p.rag, p.progress_pct, p.contract_value_halalas, p.budget_halalas, p.po_value_halalas
      ORDER BY rev DESC LIMIT 12`, [sectorId, year]);
