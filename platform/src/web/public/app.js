@@ -59,47 +59,9 @@ window.Sanad = {
   },
 };
 
-// ── AI assistant ──
+// مساعد سند انتقل بكامله إلى public/pages/ai.js — كان يركّب ردّ الخادم كوسوم (innerHTML)
+// فيصير اسمُ مشروعٍ خبيثٌ تنفيذاً في متصفح كل من يسأل عنه. الواجهة الجديدة تبني نصاً لا وسوماً.
 Object.assign(window.Sanad, {
-  _aiPending: null,
-  aiToggle() {
-    const p = document.getElementById('ai-panel');
-    const open = p.style.display === 'none' || !p.style.display;
-    p.style.display = open ? 'flex' : 'none';
-    if (open) {
-      fetch('/api/ai/status', { credentials: 'include' }).then((r) => r.json()).then((s) => {
-        document.getElementById('ai-mode').textContent = s.mode === 'local' ? 'محلي (بلا مفتاح)' : 'مزوّد: ' + s.mode;
-      }).catch(() => {});
-      document.getElementById('ai-input').focus();
-    }
-  },
-  _aiPush(role, html) {
-    const box = document.getElementById('ai-box');
-    const d = document.createElement('div');
-    d.className = role === 'user' ? 'text-left' : '';
-    d.innerHTML = `<div class="inline-block max-w-[85%] rounded-xl px-3 py-2 ${role === 'user' ? 'bg-blue-600 text-white' : 'bg-white border border-line'}" style="white-space:pre-wrap">${html}</div>`;
-    box.appendChild(d); box.scrollTop = box.scrollHeight;
-  },
-  async aiSend() {
-    const inp = document.getElementById('ai-input'); const msg = inp.value.trim(); if (!msg) return;
-    inp.value = ''; this._aiPush('user', msg);
-    try {
-      const r = await api('/ai/chat', 'POST', { message: msg });
-      this._aiPush('ai', r.reply || '…');
-      if (r.applyToken) {
-        this._aiPending = r.applyToken;
-        const box = document.getElementById('ai-box');
-        const d = document.createElement('div');
-        d.innerHTML = `<button onclick="Sanad.aiApply()" class="text-[12px] text-white px-3 py-1.5 rounded-lg" style="background:#059669">تأكيد التطبيق</button>`;
-        box.appendChild(d); box.scrollTop = box.scrollHeight;
-      }
-    } catch (e) { this._aiPush('ai', '⚠ ' + e.message); }
-  },
-  async aiApply() {
-    if (!this._aiPending) return;
-    try { const r = await api('/ai/apply', 'POST', { applyToken: this._aiPending }); this._aiPush('ai', r.reply); this._aiPending = null; }
-    catch (e) { this._aiPush('ai', '⚠ ' + e.message); }
-  },
   async addSector() {
     const id = document.getElementById('sec-id').value.trim();
     const name_ar = document.getElementById('sec-ar').value.trim();

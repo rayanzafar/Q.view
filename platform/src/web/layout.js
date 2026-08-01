@@ -5,8 +5,12 @@ import { availableYears } from '../core/reports/metrics.js';
 import { config } from '../core/config.js';
 import { NAV_ITEMS, pageAllowed } from './nav.js';
 import { MONTHS_AR, MONTHS_EN3 } from '../core/i18n/time.js';
+import { esc } from './views/_shared.js';
 
-const GROUPS = { company: 'قيادة الشركة', work: 'العمل اليومي', manage: 'الإدارة', admin: 'النظام' };
+const GROUPS = { me: 'البداية', company: 'قيادة الشركة', work: 'العمل اليومي', manage: 'الإدارة', admin: 'النظام' };
+
+// رمز الجولة الإرشادية (بوصلة) — بنفس مقاس ورسم بقية الرموز (18px، سماكة 1.75).
+const TOUR_ICON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2.1 5-5 2.1 2.1-5z"/></svg>';
 
 // الإظهار في القائمة = نفس دالة السماح بفتح الصفحة (nav.js) — لا انفصال ممكن بينهما.
 export function navFor(user) { return NAV_ITEMS.filter((n) => n.live !== false && pageAllowed(user, n.key)); }
@@ -63,7 +67,11 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
 .btn-sm{padding:.32rem .6rem;font-size:var(--fs-meta);border-radius:8px}
 .toolbar{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin-bottom:1.1rem}
 .toolbar .spacer{margin-inline-start:auto}
-.input{border:1px solid var(--line);border-radius:10px;padding:.5rem .7rem;font-size:var(--fs-ui);color:var(--ink2);background:#fff;font-family:inherit}
+/* min-width:0 لازمة لا تجميلية: حقل الإدخال عنصرٌ له عرض ذاتي مُفضَّل، وحين يقع في شبكة
+   أو صفّ مرن يصير حدُّه الأدنى التلقائي ذلك العرض — فيُمدِّد العمود الذي يسكنه بدل أن ينكمش
+   فيه. وهكذا خرج نموذج جهات الاتصال في صفحة العميل ١١٤ بكسل خارج بطاقته على شاشة عريضة:
+   عمودٌ عرضه ٤١٩ حُسِب ٥٧١. الإصلاح هنا لا في الصفحة، لأن العلّة في الحقل أينما وقع. */
+.input{border:1px solid var(--line);border-radius:10px;padding:.5rem .7rem;font-size:var(--fs-ui);color:var(--ink2);background:#fff;font-family:inherit;min-width:0}
 .input:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(36,74,153,.14)}
 .search{position:relative;display:flex;align-items:center}
 .search svg{position:absolute;inset-inline-start:.6rem;width:15px;height:15px;color:var(--faint);pointer-events:none}
@@ -72,9 +80,84 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
 .seg button{border:none;background:none;cursor:pointer;font-size:12px;font-weight:700;color:var(--muted);padding:.35rem .7rem;border-radius:8px;display:flex;align-items:center;gap:.35rem}
 .seg button.on{background:#fff;color:var(--ink2);box-shadow:var(--sh-sm)}
 
+/* ── مساعد سند: الزر العائم واللوحة ───────────────────────────────────────────
+   الزر شبه شفاف كي لا يحجب أرقام الجداول، ويكتمل عند المرور أو التركيز أو الفتح.
+   اللوحة حوار جانبي: ترويسة ثابتة، سجل محادثة هو وحده ما يُمرَّر، صف مهام جاهزة،
+   ثم سطر الكتابة. كل ما يُعرض داخلها يُبنى نصاً في المتصفح (public/pages/ai.js) —
+   لا يُركَّب وسمٌ واحد من محتوى قادم من الخادم. */
+.ai-fab{position:fixed;bottom:18px;left:18px;z-index:40;width:44px;height:44px;border:none;cursor:pointer;border-radius:50%;color:#fff;
+  box-shadow:0 8px 22px -6px rgba(36,74,153,.5);background:var(--brand-grad);display:flex;align-items:center;justify-content:center;opacity:.55;transition:opacity .15s}
+.ai-fab:hover,.ai-fab:focus-visible,.ai-fab[aria-expanded="true"]{opacity:1}
+.ai-panel{position:fixed;bottom:88px;left:22px;z-index:41;width:390px;max-width:calc(100vw - 2rem);
+  height:min(580px,calc(100vh - 130px));height:min(580px,calc(100dvh - 130px));
+  display:flex;flex-direction:column;overflow:hidden;background:var(--surface);border:1px solid var(--line);
+  border-radius:var(--r);box-shadow:0 24px 60px rgba(15,23,42,.22)}
+.ai-panel[hidden]{display:none}
+.ai-head{flex:0 0 auto;display:flex;align-items:center;gap:.5rem;padding:.6rem .75rem;color:#fff;background:var(--brand-grad)}
+.ai-head .t{font-weight:800;font-size:var(--fs-ui);line-height:1.4}
+.ai-eng{display:inline-flex;align-items:center;gap:.25rem;margin-top:.1rem;padding:.05rem .45rem;border-radius:999px;
+  background:rgba(255,255,255,.18);font-size:var(--fs-micro);font-weight:700;line-height:1.6}
+.ai-x{flex:0 0 auto;border:none;background:none;cursor:pointer;color:rgba(255,255,255,.8);font-family:inherit;font-size:var(--fs-body);
+  line-height:1;padding:.3rem .4rem;border-radius:8px}
+.ai-x:hover{background:rgba(255,255,255,.16);color:#fff}
+.ai-x:focus-visible{outline:2px solid #fff;outline-offset:1px}
+.ai-log{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;background:var(--bg);
+  padding:.7rem;display:flex;flex-direction:column;gap:.5rem}
+.ai-log:focus-visible{outline:2px solid var(--brand);outline-offset:-2px}
+.ai-msg{display:flex}
+.ai-msg.me{justify-content:flex-end}
+.ai-b{max-width:88%;min-width:0;border-radius:12px;padding:.45rem .65rem;font-size:var(--fs-body);line-height:1.85;
+  word-break:break-word;overflow-wrap:anywhere}
+.ai-msg.me .ai-b{background:var(--brand);color:#fff;border-end-start-radius:4px}
+.ai-msg.ai .ai-b{background:#fff;border:1px solid var(--line);color:var(--ink2);border-end-end-radius:4px}
+.ai-b p{margin:0 0 .35rem}.ai-b p:last-child{margin-bottom:0}
+/* الإطار العام يُلغي علامات القوائم عالمياً — تُعاد هنا كي تُقرأ نقاطُ الردّ نقاطاً */
+.ai-b ul{list-style:disc}
+.ai-b ol{list-style:decimal}
+.ai-b ul,.ai-b ol{margin:.2rem 0;padding-inline-start:1.15rem}
+.ai-b li{margin:.1rem 0;padding-inline-start:.1rem}
+.ai-b li::marker{color:var(--faint)}
+.ai-b strong{font-weight:800}
+.ai-sk{display:grid;gap:.3rem;width:9rem}
+.ai-sk>span{height:9px}
+.ai-card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:.65rem .7rem;display:grid;gap:.5rem;font-size:var(--fs-body)}
+.ai-card .hd{font-weight:800;color:var(--ink2)}
+.ai-f{display:grid;gap:.2rem}
+.ai-f>label{font-size:var(--fs-micro);font-weight:800;color:var(--muted)}
+.ai-f input,.ai-f select,.ai-f textarea{width:100%;border:1px solid var(--line);border-radius:9px;padding:.4rem .55rem;
+  font-family:inherit;font-size:var(--fs-body);color:var(--ink2);background:#fff}
+.ai-f input:focus,.ai-f select:focus,.ai-f textarea:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(36,74,153,.14)}
+.ai-f .why{font-size:var(--fs-micro);color:var(--red);font-weight:700}
+.ai-acts{display:flex;gap:.4rem;flex-wrap:wrap;align-items:center}
+.ai-note{font-size:var(--fs-micro);color:var(--muted);line-height:1.8}
+.ai-prev{border:1px solid #fde68a;background:#fffbeb;border-radius:12px;padding:.65rem .7rem;display:grid;gap:.5rem;
+  font-size:var(--fs-body);color:#92400e;line-height:1.85}
+.ai-prev .hd{font-weight:800}
+.ai-chips{flex:0 0 auto;display:flex;flex-wrap:wrap;gap:.3rem;padding:.5rem .7rem;border-top:1px solid var(--line);
+  background:var(--surface);max-height:6.4rem;overflow-y:auto}
+.ai-chips[hidden]{display:none}
+.ai-chip{display:inline-flex;align-items:center;gap:.3rem;border:1px solid var(--line);background:#fff;color:var(--ink2);
+  font-family:inherit;font-size:var(--fs-meta);font-weight:700;padding:.28rem .6rem;border-radius:999px;cursor:pointer;
+  text-align:start;transition:border-color .15s,box-shadow .15s}
+.ai-chip:hover{border-color:#c9d3e8;box-shadow:var(--sh-sm)}
+.ai-chip:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.ai-chip[disabled]{opacity:.5;cursor:default;box-shadow:none}
+.ai-chip .wd{width:6px;height:6px;border-radius:50%;background:var(--amber);flex:0 0 auto}
+.ai-chip.sel{background:var(--brand);border-color:transparent;color:#fff}
+.ai-picks{display:flex;flex-wrap:wrap;gap:.3rem}
+.ai-foot{flex:0 0 auto;display:flex;gap:.4rem;align-items:center;padding:.5rem;border-top:1px solid var(--line);background:var(--surface)}
+.ai-in{flex:1 1 auto;min-width:0;border:1px solid var(--line);border-radius:10px;padding:.45rem .7rem;
+  font-family:inherit;font-size:var(--fs-ui);color:var(--ink2);background:#fff}
+.ai-in:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(36,74,153,.14)}
+.ai-send{flex:0 0 auto;border:none;cursor:pointer;color:#fff;background:var(--brand-grad);border-radius:10px;
+  padding:.45rem .8rem;font-family:inherit;font-weight:800;font-size:var(--fs-body)}
+.ai-send:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.ai-send[disabled],.ai-in[disabled]{opacity:.55;cursor:default}
+@media(max-width:440px){.ai-panel{left:10px;right:10px;width:auto;max-width:none;bottom:76px;
+  height:min(560px,calc(100vh - 104px));height:min(560px,calc(100dvh - 104px))}}
+@media (prefers-reduced-motion: reduce){.ai-fab{transition:none}}
+
 /* Kanban */
-/* الزر العائم شبه شفاف كي لا يحجب أرقام الجداول؛ يكتمل عند المرور أو التركيز */
-.ai-fab:hover,.ai-fab:focus-visible{opacity:1!important}
 .kanban{display:flex;gap:.9rem;overflow-x:auto;padding-bottom:.75rem;align-items:flex-start;scroll-snap-type:x proximity}
 .kcol{flex:0 0 300px;width:300px;background:#eef1f7;border-radius:14px;padding:.55rem;scroll-snap-align:start;max-height:calc(100vh - 240px);display:flex;flex-direction:column}
 .kcol-head{display:flex;align-items:center;gap:.5rem;padding:.35rem .5rem .55rem}
@@ -110,13 +193,27 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
 .editable:hover{background:#f1f5ff;box-shadow:inset 0 0 0 1px #dbe3f5}
 
 /* Modal */
+/* النافذة المنبثقة تسع الشاشة دائماً مهما طال محتواها — لا تتمدّد خارجها ولا يُقتطع أسفلها.
+   كانت البطاقة كلها هي ما يُمرَّر (overflow على .modal-card)، فتهرب الترويسة مع التمرير ويفقد
+   القارئ عنوان ما يقرؤه وزر الإغلاق معاً. الآن البطاقة عمود: الترويسة والذيل ثابتان، والجسم
+   وحده يُمرَّر. و100dvh لا 100vh لأن شريط المتصفح في الجوال يقتطع من vh فيخرج أسفل النافذة. */
 .modal{position:fixed;z-index:62;inset:0;display:none;align-items:center;justify-content:center;padding:1rem}
 .modal.on{display:flex}
-.modal-card{background:var(--surface);border-radius:18px;width:520px;max-width:100%;max-height:92vh;overflow-y:auto;box-shadow:0 30px 80px rgba(15,23,42,.35);animation:pop .2s ease}
+.modal-card{background:var(--surface);border-radius:18px;width:520px;max-width:100%;
+  max-height:calc(100dvh - 2rem);display:flex;flex-direction:column;overflow:hidden;
+  box-shadow:0 30px 80px rgba(15,23,42,.35);animation:pop .2s ease}
+@supports not (height:100dvh){.modal-card{max-height:calc(100vh - 2rem)}}
 @keyframes pop{from{transform:scale(.96) translateY(8px);opacity:0}to{transform:none;opacity:1}}
-.modal-head{padding:1.1rem 1.35rem;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}
-.modal-body{padding:1.25rem 1.35rem;display:grid;gap:.85rem}
-.modal-foot{padding:.9rem 1.35rem;border-top:1px solid var(--line);display:flex;gap:.6rem;justify-content:flex-start}
+.modal-head{flex:0 0 auto;padding:1.1rem 1.35rem;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}
+.modal-body{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;
+  padding:1.25rem 1.35rem;display:grid;gap:.85rem;align-content:start}
+/* عنصر الشبكة لا ينكمش دون مقاسه الطبيعي (min-width:auto ضمنيّ) — فمحتوى عريض (رسمٌ متجهي
+   له نسبة أبعاد، أو صفٌّ طويل) يوسّع العمود خارج حدود البطاقة. وحين يتّسع العمود يكبر ارتفاع
+   الرسم معه بنسبته، فيطفح على ما بعده: قياسٌ على بيانات حيّة أظهر رسماً بعرض ٦٤١ بكسل داخل
+   نافذة عرضها ٥٢٠، يركب على العنوان التالي بمقدار ١٣٨ بكسل. سطرٌ واحد يمنع الحالتين معاً. */
+.modal-body>*{min-width:0;max-width:100%}
+.modal-body svg{max-width:100%;height:auto}
+.modal-foot{flex:0 0 auto;padding:.9rem 1.35rem;border-top:1px solid var(--line);display:flex;gap:.6rem;justify-content:flex-start}
 .field{display:grid;gap:.3rem}
 .field>label{font-size:var(--fs-meta);font-weight:700;color:var(--muted)}
 .field .input,.field select,.field textarea{width:100%;border:1px solid var(--line);border-radius:10px;padding:.55rem .7rem;font-size:var(--fs-ui);font-family:inherit;background:#fff}
@@ -144,7 +241,8 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
    leading digit is never clipped by the RTL flex + Intl RLM marks. */
 .dd-row>span:first-child{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dd-row>b{flex:0 0 auto;white-space:nowrap;direction:ltr;unicode-bidi:isolate}
-.modal-card{overflow-x:hidden}
+/* الجسم هو ما يُمرَّر، فمنع التمرير الأفقي مكانه هو لا البطاقة (البطاقة مخفية التجاوز أصلاً). */
+.modal-body{overflow-x:hidden}
 .dd-kpi{display:flex;align-items:baseline;gap:.6rem;flex-wrap:wrap}
 .dd-kpi .v{font-size:1.6rem;font-weight:800;letter-spacing:-.02em}
 .dd-sec{font-weight:800;font-size:var(--fs-body);margin-top:.35rem;color:var(--ink2)}
@@ -167,6 +265,38 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
 .alert.info{background:#eff6ff;border-color:#bfdbfe;color:#1e40af}
 .tblwrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
 
+/* ── الكشف التدريجي (.psec) ─────────────────────────────────────────────────
+   قسمٌ يُفتح ويُطوى، مبنيّ على <details>/<summary> لا على جافاسكربت: يعمل قبل تحميل أي نص
+   برمجي، ويُفتح بالمسافة والإدخال من لوحة المفاتيح بحكم العنصر نفسه، ويُطبع مفتوحاً. وأي
+   بديل مصنوع بأزرار يلزمه إعادة بناء هذا كله يدوياً ويسقط منه شيء دائماً.
+   المؤشّر مكتوب بـinline-start فينقلب مع الاتجاه بلا قاعدة ثانية للعربية. */
+.psec{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--sh-sm);margin-bottom:.75rem;overflow:hidden}
+.psec>summary{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;padding:.8rem 1rem;cursor:pointer;
+  list-style:none;user-select:none;transition:background .15s}
+.psec>summary::-webkit-details-marker{display:none}
+.psec>summary:hover{background:#fafbfe}
+.psec>summary:focus-visible{outline:2px solid var(--brand);outline-offset:-2px}
+.psec>summary .psec-t{font-weight:800;font-size:13.5px;color:var(--ink2)}
+.psec>summary .psec-s{font-size:11.5px;color:var(--muted);font-weight:600}
+.psec>summary .psec-x{margin-inline-start:auto;display:flex;align-items:center;gap:.4rem}
+.psec>summary .psec-c{flex:0 0 auto;width:16px;height:16px;color:var(--faint);transition:transform .18s}
+.psec[open]>summary .psec-c{transform:rotate(-90deg)}
+.psec[open]>summary{border-bottom:1px solid var(--line)}
+.psec-b{padding:.15rem 0}
+/* شريط الإجراءات المطلوبة: صفٌّ واحد لكل ما يستحق قراراً الآن، ملوَّن بحدّته لا بزخرفته */
+.pact{display:flex;align-items:center;gap:.55rem;padding:.5rem .8rem;border-radius:10px;font-size:12.5px;
+  border:1px solid;line-height:1.6}
+.pact.red{background:#fef2f2;border-color:#fecaca;color:#991b1b}
+.pact.amber{background:#fffbeb;border-color:#fde68a;color:#92400e}
+.pact.blue{background:#eff6ff;border-color:#bfdbfe;color:#1e40af}
+.pact a{color:inherit;font-weight:800;text-decoration:underline}
+/* مقياس صغير: نسبة تُقرأ برقمها وشريطها معاً — لا شريط بلا رقم ولا رقم بلا سياق */
+.pmeter{display:flex;flex-direction:column;gap:.28rem}
+.pmeter .l{display:flex;justify-content:space-between;align-items:baseline;font-size:11.5px;color:var(--muted)}
+.pmeter .l b{font-size:13px;color:var(--ink2)}
+.pmeter .t{height:8px;border-radius:999px;background:#eef1f7;overflow:hidden}
+.pmeter .t i{display:block;height:100%;border-radius:999px}
+
 /* ── النموذج الزمني الموحد (v2.1) ──────────────────────────────────────────
    .mtrack: مسار 12 شهراً يُقرأ كما يُقرأ النص — يناير في أقصى اليمين، ديسمبر في أقصى اليسار.
    العناوين المزدوجة: .m-full عربية كاملة على الواسع، .m-tight إنجليزية Jan على الضيق
@@ -179,9 +309,17 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
    تتحوّل إلى auto-fit فتصبح عمودين حيث تتّسع؛ والأرقام الكبيرة تصغُر قليلاً. تُستثنى الرسوم
    البيانية (var(--bcols)) وشرائط الأشهر (.mtrack، صنفية) والشبكات المرنة (minmax) — بلا مساس. */
 @media (max-width:640px){
-  [style*="fr 1fr"]{grid-template-columns:1fr!important}
+  /* minmax(0,…) لا 1fr وحدها: «1fr» تعني minmax(auto,1fr)، وحدُّها الأدنى التلقائي هو
+     أصغر عرض يقبله المحتوى — فعمودٌ فيه جدولٌ عريض يتمدّد إلى عرض الجدول ولو طُويت الشبكة
+     إلى عمود واحد. وهكذا بقيت صفحة المشروع تدفع ١٣٧ بكسل خارج شاشة الجوال رغم الطيّ. */
+  [style*="fr 1fr"]{grid-template-columns:minmax(0,1fr)!important}
   [style*="grid-template-columns:repeat"]:not([style*="minmax"]){grid-template-columns:repeat(auto-fit,minmax(150px,1fr))!important}
   :root{--fs-num-lg:1.45rem;--fs-num-md:1.2rem}
+  /* شريط التبويب (.seg) عنصرٌ مرن سطري، فعرضه عرضُ محتواه — وخمسة تبويبات لا تسع ٣٩٠ بكسل،
+     فكان يدفع صفحة المشروع خارج الشاشة. يُمرَّر داخل عرضه بدل أن يُمرِّر الصفحة كلها: التبويب
+     أداةُ تنقّل، وسحبُها أهون من سحب الصفحة تحتها. */
+  .seg{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .seg button{flex:0 0 auto}
   /* جدول متجاوب (.rtbl): كل صف يصير بطاقة بعناوين الأعمدة بدل التمرير الأفقي الأعمى */
   .rtbl{min-width:0!important}
   .rtbl thead{display:none}
@@ -252,8 +390,16 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
 .cmdk-row .tx{flex:1;min-width:0}
 .cmdk-row .tx .t{font-size:13px;font-weight:700;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cmdk-row .tx .s{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-@media(max-width:640px){.cmdk-scrim{padding-top:4vh}.hdr-search-btn span,.hdr-search-btn kbd{display:none}}
+@media(max-width:640px){.cmdk-scrim{padding-top:4vh}.hdr-search-btn span,.hdr-search-btn kbd{display:none}.hdr-user-txt{display:none}}
 @media(max-width:520px){.hdr-search-btn{padding:.4rem}}
+/* زر الجولة الإرشادية — ضيف هادئ في الترويسة: يشرح الشاشة الحالية على الشاشة نفسها، ولا
+   ينافس أزرار الصفحة (بلا خلفية ولا إطار حتى المرور عليه). على الجوال يبقى الرمز وحده. */
+.hdr-tour-btn{display:inline-flex;align-items:center;gap:.4rem;color:var(--muted);background:none;border:none;
+  border-radius:10px;padding:.35rem .5rem;cursor:pointer;font-family:inherit;font-size:11.5px;font-weight:700}
+.hdr-tour-btn:hover{background:#eef1f7;color:var(--ink2)}
+.hdr-tour-btn:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.hdr-right{gap:1rem}
+@media(max-width:640px){.hdr-tour-btn span{display:none}.hdr-tour-btn{padding:.35rem}.hdr-right{gap:.55rem}}
 /* وميض تأكيد الوصول — يُستخدم عند القفز إلى صف من لوحة الأوامر (مثال: موظف من نتيجة البحث) */
 @keyframes hl-flash{0%,100%{background:transparent}30%{background:rgba(36,74,153,.12)}}
 .hl-flash{animation:hl-flash 1.6s ease}
@@ -286,8 +432,9 @@ export async function layout({ user, active, title, subtitle, body, year, extraH
 <script>tailwind.config={theme:{extend:{colors:{brand:'#244A99',brand2:'#834798',ink:'#0f172a',ink2:'#1e293b',muted:'#64748b',faint:'#94a3b8',line:'#e6e9f0'}}}}
 window.__SANAD_MONTHS=${JSON.stringify(MONTHS_AR)};window.__SANAD_MONTHS_EN=${JSON.stringify(MONTHS_EN3)};</script>
 <style>${STYLE}</style>
-<link rel="stylesheet" href="/static/styles.css">${extraHead}</head>
-<body>
+<link rel="stylesheet" href="/static/styles.css">
+<noscript><style>.hdr-tour-btn{display:none}</style></noscript>${extraHead}</head>
+<body data-page="${esc(active || '')}">
 <div style="display:flex;min-height:100vh">
   <aside class="side" style="width:250px;flex:0 0 250px;background:var(--side);display:flex;flex-direction:column;color:#fff">
     <div style="padding:1.15rem 1.1rem 1rem;border-bottom:1px solid rgba(255,255,255,.08)">
@@ -303,13 +450,15 @@ window.__SANAD_MONTHS=${JSON.stringify(MONTHS_AR)};window.__SANAD_MONTHS_EN=${JS
         <button class="side-toggle" aria-label="القائمة" onclick="document.body.classList.toggle('side-open')">${icon('menu') || '☰'}</button>
         <div><div style="font-weight:800;font-size:var(--fs-page)">${title || ''}</div>${subtitle ? `<div style="font-size:12px;color:var(--muted)">${subtitle}</div>` : ''}</div>
       </div>
-      <div style="display:flex;align-items:center;gap:1rem">
+      <div class="hdr-right" style="display:flex;align-items:center">
         ${yearSel}
         <button type="button" class="hdr-search-btn" data-action="cmdk-open" aria-label="بحث شامل">${icon('search')}<span>ابحث في كل شيء…</span><kbd>Ctrl K</kbd></button>
+        <button type="button" class="hdr-tour-btn" data-action="tour-start" data-page="${esc(active || '')}"
+          aria-label="جولة إرشادية على هذه الشاشة" title="جولة إرشادية على هذه الشاشة">${TOUR_ICON}<span>جولة إرشادية</span></button>
         <a href="/app/tasks" title="الإشعارات" style="position:relative;color:var(--muted)">${icon('bell')}<span id="notif-badge" style="display:none;position:absolute;top:-4px;left:-4px;background:var(--red);color:#fff;font-size:9px;border-radius:99px;padding:1px 4px;font-weight:700"></span></a>
-        <div style="display:flex;align-items:center;gap:.55rem">
-          <div style="width:34px;height:34px;border-radius:50%;background:var(--brand-grad);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800">${initial}</div>
-          <div style="text-align:right"><div style="font-size:var(--fs-ui);font-weight:700">${user.name_ar || user.username}</div><div style="font-size:11px;color:var(--muted)">${roleLabel}</div></div>
+        <div class="hdr-user" style="display:flex;align-items:center;gap:.55rem">
+          <div style="width:34px;height:34px;border-radius:50%;background:var(--brand-grad);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;flex:0 0 auto">${initial}</div>
+          <div class="hdr-user-txt" style="text-align:right"><div style="font-size:var(--fs-ui);font-weight:700">${esc(user.name_ar || user.username)}</div><div style="font-size:11px;color:var(--muted)">${roleLabel}</div></div>
         </div>
         <form method="post" action="/auth/logout-web"><button title="خروج" style="color:var(--muted);background:none;border:none;cursor:pointer">${icon('logout')}</button></form>
       </div>
@@ -317,18 +466,23 @@ window.__SANAD_MONTHS=${JSON.stringify(MONTHS_AR)};window.__SANAD_MONTHS_EN=${JS
     <main style="flex:1;overflow-y:auto;padding:1.15rem 1.35rem 5.5rem">${body}</main>
   </div>
 </div>
-<button onclick="Sanad.aiToggle()" title="مساعد سند الذكي" class="ai-fab" style="position:fixed;bottom:18px;left:18px;z-index:40;width:44px;height:44px;border:none;cursor:pointer;border-radius:50%;color:#fff;box-shadow:0 8px 22px -6px rgba(124,58,237,.5);background:var(--brand-grad);display:flex;align-items:center;justify-content:center;opacity:.55;transition:opacity .15s">${icon('ai')}</button>
-<div id="ai-panel" class="card" style="display:none;position:fixed;bottom:88px;left:22px;z-index:40;width:390px;max-width:calc(100vw - 2rem);height:min(580px,calc(100vh - 130px));flex-direction:column;overflow:hidden;box-shadow:var(--sh)">
-  <div style="padding:.8rem 1rem;color:#fff;display:flex;align-items:center;justify-content:space-between;background:var(--brand-grad)">
-    <div style="display:flex;align-items:center;gap:.5rem">${icon('ai')}<div><div style="font-weight:800;font-size:var(--fs-ui)">مساعد سند الذكي</div><div id="ai-mode" style="font-size:10px;color:rgba(255,255,255,.6)">…</div></div></div>
-    <button onclick="Sanad.aiToggle()" style="color:rgba(255,255,255,.7);background:none;border:none;cursor:pointer;font-size:var(--fs-page)">✕</button>
+<button type="button" id="ai-fab" class="ai-fab" data-action="ai-toggle" aria-expanded="false" aria-controls="ai-panel"
+  aria-label="مساعد سند" title="مساعد سند">${icon('ai')}</button>
+<div id="ai-panel" class="ai-panel" role="dialog" aria-labelledby="ai-title" data-who="${esc(user.username || '')}" hidden>
+  <div class="ai-head">
+    ${icon('ai')}
+    <div style="flex:1;min-width:0">
+      <div class="t" id="ai-title">مساعد سند</div>
+      <div class="ai-eng" id="ai-engine" hidden></div>
+    </div>
+    <button type="button" class="ai-x" data-action="ai-clear" aria-label="مسح المحادثة" title="مسح المحادثة">مسح</button>
+    <button type="button" class="ai-x" data-action="ai-close" aria-label="إغلاق المساعد" title="إغلاق">✕</button>
   </div>
-  <div id="ai-box" style="flex:1;overflow-y:auto;padding:.75rem;display:flex;flex-direction:column;gap:.5rem;background:var(--bg);font-size:var(--fs-ui)">
-    <div style="text-align:center;color:var(--muted);font-size:12px;line-height:1.9;padding:1rem">جرّب: «لخّص مشروع…» · «تقرير أسبوعي» · «المخاطر» · «جودة البيانات» · «أولوياتي» · «انقل الفرصة X إلى فائزة»</div>
-  </div>
-  <div style="padding:.5rem;border-top:1px solid var(--line);display:flex;gap:.5rem">
-    <input id="ai-input" onkeydown="if(event.key==='Enter')Sanad.aiSend()" placeholder="اكتب…" style="flex:1;border:1px solid var(--line);border-radius:10px;padding:.5rem .75rem;font-size:var(--fs-ui)">
-    <button onclick="Sanad.aiSend()" style="color:#fff;border:none;cursor:pointer;padding:0 .9rem;border-radius:10px;background:var(--brand-grad)">↑</button>
+  <div class="ai-log" id="ai-log" role="log" aria-live="polite" aria-label="سجل المحادثة" tabindex="0"></div>
+  <div class="ai-chips" id="ai-chips" aria-label="مهام جاهزة" role="group" hidden></div>
+  <div class="ai-foot">
+    <input class="ai-in" id="ai-input" type="text" autocomplete="off" placeholder="اكتب سؤالك…" aria-label="اكتب سؤالك للمساعد">
+    <button type="button" class="ai-send" id="ai-send" data-action="ai-send" aria-label="إرسال" title="إرسال">↑</button>
   </div>
 </div>
 <div id="scrim" class="scrim" onclick="Sanad.closeDrawer()"></div>
@@ -343,7 +497,7 @@ window.__SANAD_MONTHS=${JSON.stringify(MONTHS_AR)};window.__SANAD_MONTHS_EN=${JS
     <div id="cmdk-list" class="cmdk-list"></div>
   </div>
 </div>
-<script src="/static/app.js"></script><script src="/static/global-search.js" defer></script>${(scripts || []).map((s) => `<script src="${s}" defer></script>`).join('')}
+<script src="/static/app.js"></script><script src="/static/global-search.js" defer></script><script src="/static/pages/guide-tour.js" defer></script><script src="/static/pages/ai.js" defer></script>${(scripts || []).map((s) => `<script src="${s}" defer></script>`).join('')}
 </body></html>`;
 }
 
@@ -360,14 +514,25 @@ export const LABELS = {
   TODO: 'قيد الانتظار', BLOCKED: 'مُعطَّل', IN_REVIEW: 'قيد المراجعة', DONE: 'منجز',
   // priority
   P0: 'حرجة', P1: 'عالية', P2: 'متوسطة', P3: 'منخفضة',
-  // deliverable status
-  DELIVERED: 'مُسلَّم', PENDING: 'قيد الإعداد', ACCEPTED: 'مقبول', INVOICED: 'مُفوتَر', PAID: 'مدفوع',
+  // deliverable status — الحالات نفسها في المعجم (deliverableStatusLabel) وهو ما تستعمله
+  // الشاشات فعلاً. أُبقيت هنا الأربع المشتركة فقط، وحُذفت INVOICED وPENDING: الأولى لم تعد
+  // حالةَ مخرَج أصلاً (صارت ختماً زمنياً — ترحيلة ٠١٧)، والثانية كانت تعني «قيد الإعداد» على
+  // المخرَج و«قادم» على المعلم و«معلَّق» على طلب الاعتماد — وهذا الجدول **مسطَّح**، فمفتاح
+  // واحد بثلاثة معانٍ يطبع أحدها في موضع الآخرَين. من احتاجها فليقرأها من معجم نوعه.
+  DELIVERED: 'تم التسليم', ACCEPTED: 'تم الاعتماد', PAID: 'مدفوع',
   // invoice status
   ISSUED: 'صادر', PARTIALLY_PAID: 'مدفوع جزئيًا', OVERDUE: 'متأخر', DRAFT: 'مسودة',
   // contract status
   ACTIVE: 'نشط', CLOSED: 'مغلق', SUSPENDED: 'موقوف',
   // report/email queue + approvals
   SENT: 'أُرسل', FAILED: 'فشل', QUEUED: 'في الطابور', PROCESSING: 'قيد المعالجة',
+  // ملاحظتان لمن يضيف هنا لاحقاً:
+  //   • هذا الجدول **مسطَّح**: مفتاحٌ مكرَّر يفوز فيه الأخير صامتاً. وكانت حالتا البريد
+  //     (PREVIEWED/BLOCKED) مكتوبتين هنا فتغلب BLOCKED الخاصة بالبريد على BLOCKED الخاصة
+  //     بالمهمة أعلاه — فكل مهمة معطَّلة تُعرَض «حُجبت — عنوان غير مسموح»، وهي جملةٌ عن
+  //     رسالة بريد منعها حارس العناوين لا عن مهمةٍ متوقفة. حُذفتا من هنا.
+  //   • حالات البريد لها جدولها الخاص (mailStatusLabel في i18n/glossary.js) وهو ما تستعمله
+  //     شاشتا مركز البريد والمستخدمين فعلاً — فلا شيء فقد تسميته بالحذف.
   APPROVED: 'معتمد', REJECTED: 'مرفوض',
   // audit actions
   create: 'إنشاء', update: 'تعديل', delete: 'حذف', login: 'تسجيل دخول', logout: 'تسجيل خروج', approve: 'اعتماد', reject: 'رفض',
@@ -406,8 +571,12 @@ export function miniBars(series, valueKey, opts = {}) {
       <text x="${(x + bw / 2).toFixed(1)}" y="${H - 7}" font-size="11" fill="${isNow ? '#a3821c' : '#94a3b8'}" font-weight="${isNow ? '800' : '400'}" text-anchor="middle">${s.year}</text>
       <text x="${(x + bw / 2).toFixed(1)}" y="${(y - 5).toFixed(1)}" font-size="11" fill="${last ? '#834798' : '#475569'}" text-anchor="middle" font-weight="800">${opts.fmt ? opts.fmt(val) : Math.round(val)}</text>`;
   }).join('');
-  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block" preserveAspectRatio="xMidYMid meet">
-    <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#244A99"/><stop offset="1" stop-color="#834798"/></linearGradient></defs>${grid}${bars}</svg>`;
+  // الرسم داخل وعاء كتلي لا عارياً: عنصرٌ متجهٌ بنسبة أبعاد موضوعٌ مباشرةً في شبكة (أو مرونة)
+  // يفرض مقاسه الطبيعي على العمود فيتمدّد خارج حاويته ويطفح على ما بعده. الوعاء يقطع هذا
+  // الطريق عند المنبع، فيصحّ الرسم في كل موضع يُستدعى منه لا في النافذة وحدها.
+  return `<div style="width:100%;min-width:0;overflow:hidden">
+    <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block" preserveAspectRatio="xMidYMid meet">
+    <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#244A99"/><stop offset="1" stop-color="#834798"/></linearGradient></defs>${grid}${bars}</svg></div>`;
 }
 
 // Horizontal comparison bars (e.g. revenue achieved per sector). items: [{label,value,color,sub}].

@@ -2,9 +2,12 @@
 import { Router } from 'express';
 import { requireAuth } from '../core/http/context.js';
 import { forbidden } from '../core/http/errors.js';
+import { seesCompanyPerformance } from '../core/policy/pages.js';
 import * as opps from './crm/opportunities.js';
 import * as projects from './pmo/projects.js';
 import * as tasks from './pmo/tasks.js';
+import * as capacity from './pmo/capacity.js';
+import * as progress from './pmo/progress.js';
 import * as ts from './timesheets/timesheets.js';
 import * as wf from './workflow/engine.js';
 import * as notif from './notifications/notify.js';
@@ -18,7 +21,15 @@ import { clientsRouter } from './clients/clients.routes.js';
 import { governanceRouter } from './pmo/governance.routes.js';
 import { ioRouter } from './io/io.routes.js';
 import { employeesRouter } from './org/employees.routes.js';
+import * as remove from '../core/lifecycle/remove.js';
+import { orgRouter } from './org/org.routes.js';
+import { attributionRouter } from './org/attribution.routes.js';
+import { backupRouter } from './backup.routes.js';
+import { guideRouter } from './guide/guide.routes.js';
 import { searchRouter } from './search/search.routes.js';
+import { reportsRouter } from './reports.routes.js';
+import { moneyRouter } from './finance/money.routes.js';
+import { identityRouter } from './identity/identity.routes.js';
 
 export const apiRouter = Router();
 apiRouter.use(requireAuth());
@@ -28,7 +39,14 @@ apiRouter.use(clientsRouter);
 apiRouter.use(governanceRouter);
 apiRouter.use(ioRouter);
 apiRouter.use(employeesRouter);
+apiRouter.use(orgRouter);
+apiRouter.use(attributionRouter);
+apiRouter.use(backupRouter);
+apiRouter.use(guideRouter);
 apiRouter.use(searchRouter);
+apiRouter.use(reportsRouter);
+apiRouter.use(moneyRouter);
+apiRouter.use(identityRouter);
 const h = (fn) => async (req, res, next) => { try { const r = await fn(req, res); if (r !== undefined) res.json(r); } catch (e) { next(e); } };
 
 // ── Opportunities / CRM ──
@@ -48,8 +66,28 @@ apiRouter.get('/projects/:id', h((req) => projects.getProject(req.ctx.user, req.
 apiRouter.patch('/projects/:id', h((req) => projects.updateProject(req.ctx, req.params.id, req.body)));
 apiRouter.post('/intake/parse', h(async (req) => intake.parseContract(req.ctx.user, req.body || {})));
 apiRouter.post('/intake/create', h((req) => intake.createFromIntake(req.ctx, req.body || {})));
-apiRouter.get('/projects/:id/staffing', h((req) => projects.projectStaffing(req.ctx.user, req.params.id)));
+apiRouter.get('/projects/:id/staffing', h((req) => projects.projectStaffing(req.ctx.user, req.params.id, req.query)));
+// الطاقة والضغط: «من المتاح» و«ما حال فريق المشروع» — مصدر واحد للشاشتين معاً.
+apiRouter.get('/projects/:id/candidates', h((req) => capacity.staffingCandidates(req.ctx.user, req.params.id, req.query)));
+apiRouter.get('/projects/:id/team-load', h((req) => capacity.projectTeamLoad(req.ctx.user, req.params.id, req.query)));
+// النسب الأربع من مصدرها الواحد — لا تُعاد حسبتها في أي شاشة.
+apiRouter.get('/projects/:id/progress', h(async (req) => {
+  await projects.getProject(req.ctx.user, req.params.id); // الحارس قبل الحساب
+  return progress.projectProgress(req.params.id);
+}));
+apiRouter.get('/projects/:id/documents', h((req) => projects.projectDocuments(req.ctx.user, req.params.id)));
+apiRouter.post('/projects/:id/documents', h((req) => projects.addProjectDocument(req.ctx, req.params.id, req.body || {})));
+apiRouter.delete('/projects/documents/:docId', h((req) => projects.deleteProjectDocument(req.ctx, req.params.docId)));
+apiRouter.get('/projects/:id/updates', h((req) => projects.projectUpdates(req.ctx.user, req.params.id, req.query.limit)));
 apiRouter.post('/projects/:id/staff', h((req) => projects.assignEmployee(req.ctx, req.params.id, req.body)));
+// ── الحذف المحروس: المشروع والفرصة ──
+// لم يكن في المنتج حذفٌ لأيٍّ منهما، فبياناتٌ مستوردة لا سبيل إلى تنظيفها إلا بفتح القاعدة
+// يدوياً — خارج التدقيق وخارج الصلاحيات. والحراسة في مكانٍ واحد (core/lifecycle/remove.js):
+// المال يمنع الحذف دائماً، والتابع يُحذف مع أصله، والرفض يُشرح بعدده واسمه.
+apiRouter.get('/projects/:id/removal-check', h((req) => remove.removalBlockers('project', req.params.id).then((b) => ({ blockers: b, removable: !b.length }))));
+apiRouter.delete('/projects/:id', h((req) => remove.removeRecord(req.ctx, 'project', req.params.id, { reason: (req.body || {}).reason })));
+apiRouter.get('/opportunities/:id/removal-check', h((req) => remove.removalBlockers('opportunity', req.params.id).then((b) => ({ blockers: b, removable: !b.length }))));
+apiRouter.delete('/opportunities/:id', h((req) => remove.removeRecord(req.ctx, 'opportunity', req.params.id, { reason: (req.body || {}).reason })));
 apiRouter.delete('/projects/staff/:allocId', h((req) => projects.unassignEmployee(req.ctx, req.params.allocId)));
 apiRouter.patch('/projects/staff/:allocId', h((req) => projects.setAllocation(req.ctx, req.params.allocId, req.body)));
 apiRouter.get('/projects/:id/tasks', h((req) => tasks.projectTasks(req.ctx.user, req.params.id)));
@@ -58,6 +96,8 @@ apiRouter.get('/projects/:id/kpis', h((req) => metrics.projectKpis(req.params.id
 // ── Tasks ──
 apiRouter.get('/tasks/mine', h((req) => tasks.myTasks(req.ctx.user, req.query)));
 apiRouter.post('/tasks/quick', h((req) => tasks.quickAddTask(req.ctx, req.body)));
+apiRouter.get('/tasks/team', h((req) => tasks.teamTasks(req.ctx.user, { ...req.query })));
+apiRouter.patch('/tasks/bulk', h((req) => tasks.bulkUpdateTasks(req.ctx, (req.body || {}).ids, (req.body || {}).patch || {})));
 apiRouter.patch('/tasks/:id', h((req) => tasks.updateTask(req.ctx, req.params.id, req.body)));
 
 // ── Timesheets ──
@@ -80,11 +120,15 @@ apiRouter.get('/org/tree', h((req) => org.orgTree(req.ctx.user)));
 apiRouter.post('/org/sectors', h((req) => org.createSector(req.ctx, req.body)));
 apiRouter.patch('/org/sectors/:id', h((req) => org.updateSector(req.ctx, req.params.id, req.body)));
 apiRouter.post('/org/departments', h((req) => org.createDepartment(req.ctx, req.body)));
+apiRouter.patch('/org/departments/:id', h((req) => org.updateDepartment(req.ctx, req.params.id, req.body)));
+apiRouter.delete('/org/departments/:id', h((req) => org.deleteDepartment(req.ctx, req.params.id)));
 apiRouter.post('/org/units', h((req) => org.createUnit(req.ctx, req.body)));
 apiRouter.get('/org/roster', h((req) => org.staffingRoster(req.ctx.user, { sector: req.query.sector, year: req.query.year })));
 apiRouter.post('/org/employees', h((req) => org.createEmployee(req.ctx, req.body)));
 apiRouter.patch('/org/employees/:id', h((req) => org.updateEmployee(req.ctx, req.params.id, req.body)));
 apiRouter.patch('/org/employees/:id/move', h((req) => org.moveEmployee(req.ctx, req.params.id, req.body)));
+// نقل دفعة واحدة — كل موظف فيها يمرّ بفحص النقل نفسه، والدفعة كلها في معاملة واحدة.
+apiRouter.post('/org/employees/move', h((req) => org.moveEmployees(req.ctx, req.body)));
 
 // ── Finance (contracts / invoices / progress claims / collections) ──
 apiRouter.get('/finance/summary', h((req) => finance.financeSummary(req.ctx.user, Number(req.query.year) || undefined)));
@@ -96,8 +140,16 @@ apiRouter.post('/finance/collections', h((req) => finance.recordCollection(req.c
 
 // ── Metrics / dashboards ──
 // QH-2: مقاييس الشركة/القطاع أرقام قيادية — ليست لكل مستخدم مسجَّل
+// وسؤال «من هو قياديّ؟» يُسأل من مصدر واحد يشترك فيه هذا المسار وشاشة لوحة القيادة ومحفظة
+// المشاريع والقائمة الجانبية والدليل والبحث: `seesCompanyPerformance` في سياسة الصفحات.
+// كان السؤال هنا نسخةً محلية تقرأ عمود اتساع نافذة البيانات (`scope`) وتترجمه رتبةً قيادية،
+// فكانت المشتريات — نافذتها شركية بحكم أن الموردين وأوامر الشراء عبر الشركة كلها — تستقبل
+// إيراد كل قطاع ومبيعاته ومستهدفاته بلا منح تقرير أو مؤشر واحد. الشرط الآن من المنح،
+// وموضعه واحد: لا يمكن أن تفتح الشاشة ويُغلق مصدر أرقامها، ولا العكس.
 apiRouter.get('/metrics/company', h((req) => {
-  if (req.ctx.user.scope !== 'company') throw forbidden('مقاييس الشركة متاحة للأدوار القيادية فقط');
+  if (!seesCompanyPerformance(req.ctx.user)) {
+    throw forbidden('أرقام أداء الشركة الكاملة تحتاج صلاحية قراءة تقارير الشركة ومؤشراتها، وهي ليست ضمن دورك. اطلب من مدير النظام إضافتها إن كان عملك يحتاجها.');
+  }
   return metrics.companyOverview(req.ctx.user, { year: req.query.year });
 }));
 apiRouter.get('/metrics/sector/:id', h((req) => {

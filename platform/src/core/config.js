@@ -27,12 +27,23 @@ export const config = {
   lockMinutes: 15,
   // Mail transport: 'preview' (dev, writes .html to data/outbox) | 'smtp' (prod)
   mailTransport: process.env.MAIL_TRANSPORT || 'preview',
+  // حارس المستقبِلين: قائمة عناوين مفصولة بفاصلة يُسمح بالإرسال إليها وحدها. فارغةٌ ⇒ يُمنع كل شيء.
+  // ولا يُرفع الحارس إلا بإعلانٍ صريح — كي لا تُرسَل رسائل تجربة إلى موظفين حقيقيين بالخطأ.
+  mailAllowlist: String(process.env.SANAD_MAIL_ALLOWLIST || '')
+    .split(',').map((a) => a.trim().toLowerCase()).filter(Boolean),
+  mailUnrestricted: process.env.SANAD_MAIL_UNRESTRICTED === '1',
   smtp: {
     host: process.env.SMTP_HOST || null,
     port: Number(process.env.SMTP_PORT || 587),
     user: process.env.SMTP_USER || null,
     pass: process.env.SMTP_PASS || null,
-    from: process.env.MAIL_FROM || 'Sanad Platform <no-reply@evc.com.sa>',
+    // ── لا مُرسِل افتراضي ──
+    // كان الافتراضي `no-reply@evc.com.sa`. وevc.com.sa **نطاقٌ حيّ مملوك لجهةٍ أخرى** (مسجَّل
+    // على Namecheap وبريده على Google Workspace)، وليس نطاق الشركة (evc.sa). فأي رسالة تخرج
+    // به ترتطم بـSPF/DMARC أو — وهو الأسوأ — تصل صندوقاً لا نملكه ومعها رمز دخول.
+    // وخطورة الافتراضي هنا ليست في قيمته بل في **وجوده**: قيمةٌ صامتة تجعل قناة إرسالٍ خاطئة
+    // تعمل بلا أن يُخطئ أحد ظاهرياً. فلا افتراض — والإقلاع يتوقف إن نُسي (assertProdSecrets).
+    from: process.env.MAIL_FROM || null,
   },
   platformUrl: process.env.PLATFORM_URL || 'http://127.0.0.1:4000',
   // AI: provider-agnostic; disabled unless a key is present. Governed (preview/audit/scope).
@@ -59,6 +70,13 @@ export function assertProdSecrets() {
       if (!config.smtp.host) missing.push('SMTP_HOST');
       if (!config.smtp.user) missing.push('SMTP_USER');
       if (!config.smtp.pass) missing.push('SMTP_PASS');
+      // المُرسِل يُعلَن ولا يُورَث: بلا MAIL_FROM لا قناةَ إرسال. (شُرح أعلاه.)
+      if (!config.smtp.from) missing.push('MAIL_FROM');
+      // نطاق الإرسال قرارٌ يُعلَن، لا حالةٌ تُورَث: إمّا قائمة سماح وإمّا إطلاقٌ صريح.
+      // بلا أحدهما يتوقف الإقلاع بدل أن يعمل صامتاً وهو يحجب كل رسالة.
+      if (!config.mailUnrestricted && !config.mailAllowlist.length) {
+        missing.push('SANAD_MAIL_ALLOWLIST (أو SANAD_MAIL_UNRESTRICTED=1 للإطلاق الكامل)');
+      }
     }
     if (missing.length) throw new Error('Missing required production secrets: ' + missing.join(', '));
   }

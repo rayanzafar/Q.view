@@ -6,6 +6,7 @@ import { scopeFilter } from '../../core/rbac/scope.js';
 import { audit } from '../../core/audit/index.js';
 import { id, nowIso, toHalalas } from '../../core/util/ids.js';
 import { forbidden, notFound, badRequest } from '../../core/http/errors.js';
+import { isSupportUnit } from '../../core/org/kind.js';
 import { getTeam } from './oppteam.js';
 
 // Stage-rot thresholds (benchmarks §1 — Pipedrive rotting): an OPEN opportunity sitting in a stage
@@ -62,6 +63,14 @@ export async function createOpportunity(ctx, data) {
   const sectorId = data.sector_id || user.sector_id;
   if (!can(user, 'create', 'opportunity', { sector_id: sectorId })) throw forbidden('خارج نطاق قطاعك');
   if (!data.title_ar) throw badRequest('عنوان الفرصة مطلوب');
+  // نفس حارس النقل، على باب الإنشاء: الفرصة تُنسب إلى قطاع تسليم لا إلى وحدة مساندة. الباب هنا
+  // أخطر من باب النقل لأنه يُفتح ضمناً — القطاع الافتراضي هو قطاع المنشئ، فعضو «الخدمات المشتركة»
+  // أو رئيس تطوير الأعمال يُنشئ فرصةً فتُولَد خارج كل مقارنة بلا أن يطلب ذلك أحد ولا أن يظهر خطأ.
+  // إغلاق باب النقل وحده يترك المال يتسرّب من الباب الآخر.
+  const sec = sectorId ? await get('SELECT id, name_ar, kind FROM sector WHERE id = ? AND deleted_at IS NULL', [sectorId]) : null;
+  if (!sec) throw badRequest('حدّد القطاع المسؤول عن الفرصة');
+  if (isSupportUnit(sec))
+    throw badRequest(`«${sec.name_ar}» وحدة مساندة على مستوى الشركة وليست قطاع تسليم — الفرصة تُنسب إلى قطاع تسليم. اختر قطاعاً من القائمة.`);
   const oid = id('opp');
   const now = nowIso();
   await insert('opportunity', {
@@ -101,8 +110,13 @@ export async function moveSector(ctx, oppId, toSectorId, note) {
   const row = await get('SELECT * FROM opportunity WHERE id = ? AND deleted_at IS NULL', [oppId]);
   if (!row) throw notFound('الفرصة غير موجودة');
   if (!can(user, 'update', 'opportunity', row)) throw forbidden();
-  const target = await get('SELECT id, name_ar FROM sector WHERE id = ? AND active = 1 AND deleted_at IS NULL', [toSectorId]);
+  const target = await get('SELECT id, name_ar, kind FROM sector WHERE id = ? AND active = 1 AND deleted_at IS NULL', [toSectorId]);
   if (!target) throw badRequest('قطاع غير معروف');
+  // الوجهة قطاع تسليم لا وحدة مساندة. الواجهة لا تعرض وحدات المساندة في قائمة النقل، والقرار
+  // يُحسم هنا أيضاً لا في الشاشة وحدها: الفرصة المنقولة إلى وحدة مساندة تخرج فوراً من مقارنة
+  // القطاعات ومن مستهدف المبيعات ومن تغطية خط الفرص — تختفي من شاشات المالك بلا رسالة تقول لماذا.
+  if (isSupportUnit(target))
+    throw badRequest(`«${target.name_ar}» وحدة مساندة على مستوى الشركة وليست قطاع تسليم — الفرص تُنقل بين قطاعات التسليم فقط. اختر قطاعاً من القائمة.`);
   if (String(row.sector_id) === String(toSectorId)) return await getOpportunity(user, oppId);
   // صلاحية النقل = صلاحية تعديل الفرصة في قطاعها الحالي (فُحصت أعلاه): من يديرها يحق له إعادة
   // إسنادها (تسليمها لقطاع آخر) — والفرصة تخرج من نطاقه بعد النقل. النطاق الشركي ينقل أي فرصة.
@@ -121,6 +135,23 @@ export async function moveStage(ctx, oppId, toStage, note) {
   if (!can(user, 'update', 'opportunity', row)) throw forbidden();
   const stage = await get('SELECT * FROM stage WHERE id = ?', [toStage]);
   if (!stage) throw badRequest('مرحلة غير معروفة');
+
+  // التراجع عن الفوز: كانت الفرصة المكسوبة تُعاد إلى الترشيح بضغطة واحدة بلا قيد ولا أثر —
+  // **والمبيعات المعلنة تتغيّر بها**. رقمٌ قرأه المالك أمس يصير غيره اليوم ولا شيء يقول لماذا.
+  // فهو ليس تصحيح بيانات بل قرار عمل، ويُعامَل كذلك: سببٌ مكتوب، وأثرٌ معلَن في التدقيق.
+  const fromStage = row.stage_id ? await get('SELECT id, is_won FROM stage WHERE id = ?', [row.stage_id]) : null;
+  const reversal = !!(fromStage?.is_won) && !stage.is_won;
+  if (reversal) {
+    // وإن كان الفوز قد أنتج مشروعاً فالتراجع يناقض عملاً قائماً — يُرَدّ ويُدَلّ على المشروع.
+    const prj = await get('SELECT id, name_ar FROM project WHERE source_opp_id = ? AND deleted_at IS NULL', [oppId]);
+    if (prj) {
+      throw badRequest(`لا يمكن التراجع عن فوز هذه الفرصة: نشأ عنها مشروع «${prj.name_ar}». عالِج المشروع أولاً ثم أعد المحاولة.`);
+    }
+    if (!note || !String(note).trim()) {
+      throw badRequest('التراجع عن الفوز يغيّر المبيعات المعلنة — اكتب سبب التراجع قبل الحفظ.');
+    }
+  }
+
   const now = nowIso();
   await update('opportunity', oppId, {
     stage_id: toStage, win_pct: stage.default_win_pct, stage_changed_at: now, updated_at: now, updated_by: user.id,
@@ -130,7 +161,8 @@ export async function moveStage(ctx, oppId, toStage, note) {
     changed_by: user.id, changed_at: now, note: note || null,
   });
   await audit(ctx, { action: 'update', resource: 'opportunity', resourceId: oppId, sectorId: row.sector_id,
-    detail: { stage: `${row.stage_id}→${toStage}` } });
+    detail: { stage: `${row.stage_id}→${toStage}`,
+      ...(reversal ? { won_reversal: true, value_halalas: row.value_halalas || 0, reason_ar: String(note).trim() } : {}) } });
   return await getOpportunity(user, oppId);
 }
 
@@ -160,6 +192,27 @@ export async function opportunityDetail(user, oppId, opts = {}) {
     stage_age_days: flags.stage_age_days, rot: flags.rot, no_next_action: flags.no_next_action,
     weighted_halalas: Math.round((opp.value_halalas || 0) * ((opp.win_pct || 0) / 100)),
   };
+}
+
+// «فرصي في هذا القطاع» — الفرص المفتوحة التي يصل إليها الشخص داخل قطاع بعينه، جاهزة للعرض
+// بأسماء مرحلتها وعميلها. تُبنى على listOpportunities كي يبقى النطاق مصدراً واحداً لا نسخة
+// ثانية منه: صاحب نطاق «خاصتي» لا تعود له إلا فرصه هو. ومن لا يملك قراءة الفرص أصلاً لا يعود
+// له شيء — الاستشاري يملكها والموظف لا، فالسؤال يُسأل ولا يُفترض.
+export async function myOpportunitiesInSector(user, sectorId, opts = {}) {
+  if (!sectorId || !can(user, 'read', 'opportunity')) return [];
+  const rows = await listOpportunities(user, { sector: sectorId }, opts);
+  if (!rows.length) return [];
+  const stages = Object.fromEntries((await all('SELECT id, name_ar, color, is_won, is_lost FROM stage'))
+    .map((s) => [s.id, s]));
+  const clients = Object.fromEntries((await all('SELECT id, name_ar FROM client WHERE deleted_at IS NULL'))
+    .map((c) => [c.id, c.name_ar]));
+  const open = rows.filter((o) => { const st = stages[o.stage_id]; return !st || (!st.is_won && !st.is_lost); });
+  return open.map((o) => ({
+    id: o.id, title_ar: o.title_ar, value_halalas: o.value_halalas || 0,
+    next_action: o.next_action || null, no_next_action: !!o.no_next_action,
+    stage_name: stages[o.stage_id]?.name_ar || null, stage_color: stages[o.stage_id]?.color || null,
+    client_name: clients[o.client_id] || null,
+  }));
 }
 
 // Pipeline aggregation for dashboards (respects scope).

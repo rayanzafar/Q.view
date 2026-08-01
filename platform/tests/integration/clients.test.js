@@ -216,8 +216,14 @@ test('clientOverview: every §6 key exists with the right arithmetic', async () 
 
   assert.equal(o.kpis.open_pipeline_halalas, 100000);
   assert.equal(o.kpis.weighted_pipeline_halalas, 60000, 'Σ value×win_pct/100');
-  assert.equal(o.kpis.fy_revenue_halalas, 750000);
-  assert.equal(o.kpis.lifetime_revenue_halalas, 1000000);
+  // الإيراد صار **صافياً من الضريبة** (الترحيلة ٠١٩، قرار مالك: «افصل الضريبة عن المبلغ»).
+  // وسطرا الإيراد هنا مُدرَجان بلا عمود صافٍ، فيُشتقّ عند القراءة: ٧٥٠٬٠٠٠ ÷ ١٫١٥ = ٦٥٢٬١٧٣
+  // و٢٥٠٬٠٠٠ ÷ ١٫١٥ = ٢١٧٬٣٩١. الرقم لم يُضعَّف بل تبدّل معناه: صار إيراد الشركة لا مطالبتها.
+  assert.equal(o.kpis.fy_revenue_halalas, 652173);
+  // ومجموع العمر ٨٦٩٬٥٦٤ = ٦٥٢٬١٧٣ + ٢١٧٬٣٩١ — **مجموع اقتطاعَي السطرين لا اقتطاع مجموعهما**
+  // (١٬٠٠٠٬٠٠٠ ÷ ١٫١٥ = ٨٦٩٬٥٦٥). والفارق هللةٌ واحدة، وهو الصحيح: الاقتطاع يقع على كل صفٍّ
+  // على حدة فيبقى «صافٍ + ضريبة = إجمالي» مغلقاً لكل سطرٍ ولكل مجموع.
+  assert.equal(o.kpis.lifetime_revenue_halalas, 869564);
   assert.equal(o.kpis.active_projects, 1);
   assert.equal(o.invoices_summary.invoiced, 350000);
   assert.equal(o.invoices_summary.collected, 150000);

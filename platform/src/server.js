@@ -5,10 +5,11 @@ import { resolve } from 'node:path';
 import { config, ROOT, assertProdSecrets } from './core/config.js';
 import { close, ping } from './core/db/index.js';
 import { initRbac } from './core/rbac/index.js';
+import { seedRbac } from '../scripts/seed-rbac.js';
 import { stopScheduler } from './core/jobs/scheduler.js';
 import { attachContext } from './core/http/context.js';
 import { csrf } from './core/http/csrf.js';
-import { securityHeaders, loginLimiter, apiLimiter } from './core/http/security.js';
+import { securityHeaders, loginLimiter, apiLimiter, otpEmailLimiter, otpIpLimiter, otpVerifyLimiter } from './core/http/security.js';
 import { errorHandler } from './core/http/errors.js';
 import { authRouter } from './modules/auth.routes.js';
 import { apiRouter } from './modules/api.routes.js';
@@ -18,6 +19,12 @@ import { startScheduler } from './core/jobs/scheduler.js';
 
 export async function createApp() {
   assertProdSecrets();
+  // مزامنة منح الأدوار النظامية مع المصفوفة عند كل إقلاع، **قبل** تحميلها في ذاكرة القرار.
+  // بدونها كان أي تغيير في مصفوفة الصلاحيات لا يسري على بيئة حيّة إلا بتشغيل سكربت البذر يدوياً،
+  // فيبقى انحراف صامت بين ما يقرأه المطوّر وما تنفّذه المنصة — والميزة تُنشَر ولا تعمل بلا رسالة خطأ.
+  // آمنة بحكم تصميم البذر نفسه: يعيد ضبط الأدوار النظامية على المصفوفة، وتخصيص المدير يعيش على
+  // أدوار مخصصة لا نظامية. وتتم قبل استقبال أي طلب فلا يرى أحد حالة وسيطة.
+  await seedRbac();
   await initRbac();  // load RBAC grants into the (synchronous) decision cache
 
   const app = express();
@@ -34,6 +41,10 @@ export async function createApp() {
   app.use(attachContext());
   app.use('/auth/login', loginLimiter);
   app.use('/auth/login-web', loginLimiter);
+  // طلب الرمز: حدٌّ بالبريد وآخر بالعنوان معاً. والتحقق بدلوٍ خاص به لا بدلو كلمة المرور —
+  // تحويلة ذاك مشروطة بمساره، فتسقط هنا إلى حمولة خام في وجه متصفّح ينتظر صفحة.
+  app.use('/auth/otp/request-web', otpEmailLimiter, otpIpLimiter);
+  app.use('/auth/otp/verify-web', otpVerifyLimiter);
   app.use('/api', apiLimiter);
 
   app.get('/health', (req, res) => res.json({ ok: true, ts: new Date().toISOString() }));

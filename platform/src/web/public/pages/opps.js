@@ -246,6 +246,47 @@
     } catch (err) { toast(err.message, true); }
   }
 
+  // ── إنشاء المشروع من فرصة فائزة ──
+  // الربط مرجع لا نسخة: نرسل معرّف الفرصة فيرث المشروع عميلها ويُكتب الرابط، وقيمة العقد تُدخَل
+  // هنا لأنها رقم آخر (ما وُقِّع) غير قيمة الفرصة (ما عُرِض) — نسخها يخلق رقماً يُحتسب مرتين.
+  function oppProjectModal(oppId, name, sector) {
+    window.Sanad.openModal(
+      '<div class="modal-head"><div style="min-width:0"><div style="font-size:11px;color:var(--muted);font-weight:700">إنشاء مشروع من فرصة فائزة</div>' +
+      '<h3 style="font-size:15px;margin-top:.15rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:330px">' + esc(name) + '</h3></div>' +
+      '<button class="btn btn-ghost btn-sm" data-action="modal-close" aria-label="إغلاق">✕</button></div>' +
+      '<div class="modal-body">' +
+      '<div class="field"><label>اسم المشروع *</label><input class="input" id="op-name" value="' + esc(name) + '"></div>' +
+      '<div class="field"><label>قيمة العقد الموقَّع (ر.س.)</label><input class="input" id="op-val" type="number" min="0" value="0">' +
+      '<div style="font-size:11px;color:var(--muted);margin-top:.3rem;line-height:1.7">قيمة العقد غير قيمة الفرصة: الأولى ما وُقِّع والثانية ما عُرِض. تُدخَل هنا حتى لا يتكرر الرقم في المبيعات وفي المحفظة معاً.</div></div>' +
+      '<div class="grid2">' +
+      '<div class="field"><label>تاريخ البدء</label><input class="input" id="op-start" type="date"></div>' +
+      '<div class="field"><label>تاريخ الانتهاء</label><input class="input" id="op-end" type="date"></div>' +
+      '</div>' +
+      '<div style="font-size:11.5px;color:var(--muted);line-height:1.7">يرث المشروع عميل الفرصة وقطاعها، ويُربط بها فتظهر في «المشروع الناتج».</div>' +
+      '</div>' +
+      '<div class="modal-foot"><button class="btn btn-primary" data-action="opp-project-confirm" data-id="' + esc(oppId) + '" data-sector="' + esc(sector || '') + '">أنشئ المشروع</button>' +
+      '<button class="btn" data-action="modal-close">إلغاء</button></div>');
+    setTimeout(function () { var n = document.getElementById('op-name'); if (n) n.focus(); }, 60);
+  }
+  async function oppProjectConfirm(btn) {
+    var name = (document.getElementById('op-name') || { value: '' }).value.trim();
+    if (!name) return toast('اسم المشروع مطلوب', true);
+    var body = {
+      name_ar: name, source_opp_id: btn.dataset.id,
+      value_sar: Number((document.getElementById('op-val') || { value: 0 }).value) || 0,
+      start_date: (document.getElementById('op-start') || { value: '' }).value || null,
+      end_date: (document.getElementById('op-end') || { value: '' }).value || null,
+      status: 'IN_PROGRESS',
+    };
+    if (btn.dataset.sector) body.sector_id = btn.dataset.sector;
+    btn.disabled = true;
+    try {
+      var r = await api('/intake/create', 'POST', body);
+      window.Sanad.closeModal(); toast('أُنشئ المشروع ورُبط بالفرصة ✓');
+      setTimeout(function () { location.href = '/app/project/' + r.project_id; }, 500);
+    } catch (err) { btn.disabled = false; toast(err.message, true); }
+  }
+
   // ── ترتيب أعمدة الجدول التقريري: نقرة على رأس عمود يحمل data-sort — رقمي/تاريخي إن أمكن
   // (data-v على كل خلية) وإلا نصي محلي، مع عكس الاتجاه عند النقر المتكرر (نفس نمط جدول المشاريع). ──
   function sortOppTable(thEl) {
@@ -292,6 +333,8 @@
           .catch(function (err) { toast(err.message, true); });
         return;
       }
+      if (act === 'opp-make-project') { oppProjectModal(actEl.dataset.opp, actEl.dataset.name, actEl.dataset.sector); return; }
+      if (act === 'opp-project-confirm') { oppProjectConfirm(actEl); return; }
       if (act === 'na-edit') { naEdit(actEl); return; }
       if (act === 'stage-info') { // نافذة «شرح المرحلة» — قالب خامل مُصيّر من الخادم
         var tpl = document.getElementById('stage-info-' + actEl.dataset.stage);

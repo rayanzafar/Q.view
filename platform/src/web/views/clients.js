@@ -1,6 +1,7 @@
 // Clients pages: العملاء (portfolio list) + client 360 detail — decision-story order:
 // who is the client → how healthy is the relationship → what money moves → what to do next.
 import { layout, card, pill, tr, hbars } from '../layout.js';
+import { netSql } from '../../modules/finance/vat.js';
 import { icon } from '../icons.js';
 import { fmtSar } from '../../core/util/ids.js';
 import { get } from '../../core/db/index.js';
@@ -8,7 +9,7 @@ import { config } from '../../core/config.js';
 import { can } from '../../core/rbac/index.js';
 import { G } from '../i18n/glossary.js';
 import { countAr } from '../../core/i18n/plural.js';
-import { listClients, clientOverview, salesWinRate, CLIENT_TYPES } from '../../modules/clients/clients.js';
+import { listClients, clientOverview, salesWinRate, CLIENT_TYPES, likelyDuplicateClients, clientNameReview } from '../../modules/clients/clients.js';
 import { sarShort, esc, statMini, noticeCard, ddWrap, ddRows } from './_shared.js';
 
 const REL_TONE = { 'نشطة': 'green', 'فاترة': 'amber', 'خاملة': 'slate' };
@@ -83,7 +84,7 @@ export async function clientsPage(user, opts = {}) {
   // ── الشريط التحليلي: عدد العملاء · تركّز أعلى ٥ · العميل الأول · معدل الفوز · نمو الإيراد ──
   const relCount = { 'نشطة': 0, 'فاترة': 0, 'خاملة': 0 };
   for (const r of rows) relCount[r.relationship] = (relCount[r.relationship] || 0) + 1;
-  const companyFy = (await get('SELECT COALESCE(SUM(amount_halalas),0) v FROM revenue_line WHERE year = ?', [fy]))?.v || 0;
+  const companyFy = (await get(`SELECT COALESCE(SUM(${netSql('amount_halalas', 'net_amount_halalas')}),0) v FROM revenue_line WHERE year = ?`, [fy]))?.v || 0;
   const top5 = rows.slice().sort((a, b) => b.fy_revenue_halalas - a.fy_revenue_halalas).filter((r) => r.fy_revenue_halalas > 0).slice(0, 5);
   const top5Rev = top5.reduce((a, r) => a + r.fy_revenue_halalas, 0);
   const top5Pct = companyFy > 0 && top5.length ? Math.round((top5Rev / companyFy) * 100) : null;
@@ -255,7 +256,68 @@ export async function clientsPage(user, opts = {}) {
     <span style="display:inline-flex;align-items:center;gap:.4rem">${pill('نشطة', 'green')} تواصل خلال 30 يوماً أو لديه فرصة مفتوحة</span>
     <span style="display:inline-flex;align-items:center;gap:.4rem">${pill('فاترة', 'amber')} آخر تواصل بين 31 و120 يوماً</span>
     <span style="display:inline-flex;align-items:center;gap:.4rem">${pill('خاملة', 'slate')} لا تواصل منذ أكثر من 120 يوماً وبلا فرص مفتوحة</span></div>`;
-  const body = `${toolbar}${strip}${chips}${relLegend}${table}${idleBlock}${ddTop5}`;
+  // ── جهات يُحتمل أنها واحدة ──────────────────────────────────────────────────
+  // الجهة الواحدة كانت تُسجَّل مرتين وينقسم عملها بين الصفَّين تبعاً لقطاع EVC المنفِّذ، فتُقرأ
+  // جهتان متوسطتان مكان جهة كبيرة. وحارس الاسم يمسك المطابق حرفياً لا «س» و«س - الديوان العام».
+  // يُعرَض هنا لا في فحص الهيكل: مكان القرار هو الشاشة التي يُتَّخذ فيها، والدمج فعلٌ على جهة.
+  const mayMerge = can(user, 'update', 'client') && can(user, 'delete', 'client');
+  const dupPairs = mayMerge ? await likelyDuplicateClients(user) : [];
+  const dupRow = (p) => `<div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;padding:.5rem 0;border-bottom:1px dashed var(--line)">
+      <span style="font-weight:700;color:var(--ink2);font-size:12.5px">${esc(p.a.name_ar)}</span>
+      <span style="color:var(--faint)">↔</span>
+      <span style="font-weight:700;color:var(--ink2);font-size:12.5px">${esc(p.b.name_ar)}</span>
+      ${p.kind === 'contained'
+    ? pill('اسم يحتوي الآخر', 'amber')
+    : pill('تشابه عالٍ — راجِعها', 'slate')}
+      <button class="btn btn-sm" style="margin-inline-start:auto" data-action="client-merge"
+        data-a="${esc(p.a.id)}" data-a-name="${esc(p.a.name_ar)}"
+        data-b="${esc(p.b.id)}" data-b-name="${esc(p.b.name_ar)}">مراجعة ودمج</button>
+    </div>`;
+  const dupBlock = dupPairs.length ? `<details style="margin-bottom:1rem" open>
+    <summary style="cursor:pointer;list-style:none;padding:.6rem .9rem;background:#fff;border:1px solid var(--amber);border-radius:12px;font-size:12.5px;display:flex;align-items:center;gap:.5rem">
+      <span style="font-weight:800;color:var(--ink2)">جهات يُحتمل أنها جهة واحدة</span>
+      <span class="tnum" style="background:#fef3c7;border-radius:20px;padding:.05rem .55rem;font-weight:700;color:var(--ink2)">${dupPairs.length}</span>
+      <span style="color:var(--faint);font-size:11px">تسجيل الجهة مرتين يقسم إيرادها وفرصها نصفين — إظهار / إخفاء</span></summary>
+    <div style="margin-top:.5rem">${card(`<div style="font-size:11.5px;color:var(--muted);margin-bottom:.4rem">
+        الدمج ينقل المشاريع والفرص والعقود والفواتير للجهة الباقية، ويُبقي المدموجة محفوظة قابلة للاسترجاع.
+        و«تشابه عالٍ» ليس دليلاً — فروع إقليمية مختلفة تتشابه أسماؤها.
+      </div>${dupPairs.map(dupRow).join('')}`)}</div></details>` : '';
+
+  // ── الأسماء مقابل المرجع الرسمي ────────────────────────────────────────────
+  // المرجع يمسك ما تعجز عنه مقارنة النصوص: «هدف» و«صندوق تنمية الموارد البشرية» لا رابط
+  // لغوي بينهما، والمرجع يعرف أنهما واحد. واليقين هنا يحتاج برهاناً: ما دون المطابقة
+  // النصّية الكاملة يُعرَض للمراجعة ولا يُنفَّذ — لأن جولة تشابهٍ متساهلة على هذه البيانات
+  // نفسها رشّحت «الأمن العام» لتصير «الهيئة الوطنية للأمن السيبراني»، وعليها ٢٧٠ مليوناً.
+  const nameReview = mayMerge ? await clientNameReview(user) : null;
+  const nrRow = (r, certain) => `<div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;padding:.45rem 0;border-bottom:1px dashed var(--line)">
+      <span style="font-size:12.5px;color:var(--muted)">${esc(r.client.name_ar)}</span>
+      <span style="color:var(--faint)">⟵</span>
+      <b style="font-size:12.5px;color:var(--ink2)">${esc(r.official_name)}</b>
+      ${r.abbr ? `<span class="tnum" style="font-size:10.5px;color:var(--faint)">${esc(r.abbr)}</span>` : ''}
+      <span style="font-size:10.5px;color:var(--faint)">${esc(r.reason_ar)}</span>
+      <span style="margin-inline-start:auto;display:inline-flex;gap:.35rem">
+        ${certain ? `<button class="btn btn-sm" data-action="client-rename"
+          data-id="${esc(r.client.id)}" data-to="${esc(r.official_name)}">اعتمد الاسم الرسمي</button>` : ''}
+        <button class="btn btn-sm btn-ghost" data-action="client-name-keep"
+          data-id="${esc(r.client.id)}" data-name="${esc(r.client.name_ar)}"
+          title="الاسم الحالي صحيح — لا تقترح تغييره مرة أخرى">الاسم صحيح</button>
+      </span>
+    </div>`;
+  const nameBlock = nameReview && (nameReview.rename.length || nameReview.review.length)
+    ? `<details style="margin-bottom:1rem">
+    <summary style="cursor:pointer;list-style:none;padding:.6rem .9rem;background:#fff;border:1px solid var(--line);border-radius:12px;font-size:12.5px;display:flex;align-items:center;gap:.5rem">
+      <span style="font-weight:800;color:var(--ink2)">أسماء تخالف المرجع الرسمي</span>
+      <span class="tnum" style="background:#f1f5f9;border-radius:20px;padding:.05rem .55rem;font-weight:700;color:var(--muted)">${nameReview.rename.length + nameReview.review.length}</span>
+      <span style="color:var(--faint);font-size:11px">من ${nameReview.registry_size} جهة في المرجع — إظهار / إخفاء</span></summary>
+    <div style="margin-top:.5rem">${card(`
+      ${nameReview.rename.length ? `<div style="font-size:11.5px;font-weight:800;color:var(--ink2);margin-bottom:.2rem">مؤكَّد — الاسم نفسه بصيغة أخرى</div>
+        ${nameReview.rename.map((r) => nrRow(r, true)).join('')}` : ''}
+      ${nameReview.review.length ? `<div style="font-size:11.5px;font-weight:800;color:var(--ink2);margin:.7rem 0 .2rem">للمراجعة — لا يُعتمَد بلا قرارك</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:.3rem">تشابهٌ لا يكفي دليلاً: قد تكون جهةً أخرى أو فرعاً مستقلاً.</div>
+        ${nameReview.review.map((r) => nrRow(r, false)).join('')}` : ''}`)}</div></details>`
+    : '';
+
+  const body = `${toolbar}${strip}${chips}${dupBlock}${nameBlock}${relLegend}${table}${idleBlock}${ddTop5}`;
   return layout({ user, active: 'clients', title: G.clients, subtitle: `سجل العلاقات · ${countAr(rows.length, { one: 'عميل واحد', two: 'عميلان', few: 'عملاء', many: 'عميلاً' })}${rel ? ` · عرض «${rel}»` : ''}`, body, scripts: ['/static/pages/clients.js'] });
 }
 
@@ -442,9 +504,40 @@ export async function clientDetailPage(user, clientId) {
     return `<div class="dd-row"><span>${i.code ? `فاتورة <bdi>${esc(i.code)}</bdi>` : 'فاتورة'}<span style="color:var(--faint);font-size:10.5px"> · ${(i.issue_date || '').toString().slice(0, 10) || 'بلا تاريخ'} · ${tr(i.status)}</span></span><b class="tnum">${fmtSar(out)}</b></div>`;
   }))}</div>`)}`;
 
+  // ── «مَن منّا يشتغل معهم وعلى ماذا» — العمل موزَّعاً على قطاعاتنا ─────────────
+  // قرار المالك: الجهة تبقى **عميلاً واحداً** باسمها الصحيح مهما تعدّدت قطاعاتنا العاملة
+  // معها، ويظهر التقسيم هنا لا في سجل العملاء. تقسيمه إلى عميلين يكسر هويّته ويشطر تركّزه
+  // وأعمار ديونه؛ وعرضه هنا يجيب السؤال نفسه بلا كسر شيء.
+  const secRow = (s) => {
+    const projs = s.project_names.slice(0, 6);
+    const more = s.project_names.length - projs.length;
+    const chip = (p) => `<a href="/app/project/${esc(p.id)}" class="pill" style="text-decoration:none;font-size:11px;${p.active ? '' : 'opacity:.62'}">
+        ${esc(p.name_ar)}${p.active && p.progress_pct != null ? ` <span class="tnum" style="color:var(--faint)">${p.progress_pct}%</span>` : ''}</a>`;
+    const facts = [
+      s.active_projects ? `<b class="tnum">${s.active_projects}</b> مشروع جارٍ` : null,
+      s.projects > s.active_projects ? `<span class="tnum">${s.projects - s.active_projects}</span> منتهٍ` : null,
+      s.open_opps ? `<b class="tnum">${s.open_opps}</b> فرصة مفتوحة · ${fmtSar(s.open_value_halalas)}` : null,
+      s.won_opps ? `<span class="tnum">${s.won_opps}</span> فوز` : null,
+    ].filter(Boolean);
+    return `<div style="padding:.65rem 0;border-bottom:1px dashed var(--line)">
+      <div style="display:flex;gap:.6rem;align-items:baseline;flex-wrap:wrap">
+        <b style="font-size:13px;color:var(--ink2)">${esc(s.name_ar)}</b>
+        <span style="font-size:11.5px;color:var(--muted)">${facts.join(' · ') || 'لا عمل مسجَّل بعد'}</span>
+      </div>
+      ${projs.length ? `<div style="display:flex;gap:.3rem;flex-wrap:wrap;margin-top:.4rem">${projs.map(chip).join('')}${more > 0 ? `<span style="font-size:11px;color:var(--faint);align-self:center">و${more} غيرها</span>` : ''}</div>` : ''}
+    </div>`;
+  };
+  const sectorsCard = card(`<div style="padding:.75rem .9rem .2rem">
+    <div style="font-weight:800;font-size:13px;color:var(--ink2)">قطاعاتنا العاملة مع هذه الجهة</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:.3rem">الجهة عميل واحد باسمها؛ وهذا توزيع عملنا معها على قطاعاتنا.</div>
+    ${(d.by_sector || []).length
+    ? (d.by_sector || []).map(secRow).join('')
+    : '<div style="font-size:12px;color:var(--muted);padding:.5rem 0">لا مشاريع ولا فرص مسجَّلة على هذه الجهة بعد.</div>'}
+  </div>`);
+
   const body = `${header}${kpiBand}
     <div style="display:grid;grid-template-columns:1.5fr 1fr;gap:.9rem;align-items:start">
-      <div style="display:flex;flex-direction:column;gap:.9rem;min-width:0">${timelineCard}${oppsCard}${workCard}</div>
+      <div style="display:flex;flex-direction:column;gap:.9rem;min-width:0">${sectorsCard}${timelineCard}${oppsCard}${workCard}</div>
       <div style="display:flex;flex-direction:column;gap:.9rem;min-width:0">${contactsCard}${revCard}${docsCard}${valueCard}</div>
     </div>
     ${dd}

@@ -1,6 +1,7 @@
 // RBAC decision engine — the ONLY place authorization is decided. Server-side, always.
 import { all } from '../db/index.js';
 import { SENSITIVE_FIELDS, SCOPE_RANK } from './matrix.js';
+import { inDepartmentScope } from './departments.js';
 
 // Grants are loaded from role_permission (DB) so admin edits take effect without redeploy.
 // The cache is loaded ONCE at startup via initRbac() so the hot-path decision functions
@@ -16,6 +17,19 @@ export async function initRbac() {
   return map;
 }
 export const loadGrants = initRbac;              // backward-compatible alias (now async)
+// تحميل المنح من الكود مباشرةً بلا قاعدة بيانات — لأدوات الفحص وحدها.
+// أدوات الفحص تشتقّ توقعاتها من شروط فتح الصفحات، وهذه الشروط صارت تسأل هذا المحرّك. وربطُ
+// الاشتقاق بقاعدة بيانات يجعله رهينةَ ما يصادف وجوده على القرص: نجح على جهاز فيه قاعدة قديمة،
+// وفشل على معالج الفحص النظيف — فعاد اشتقاقٌ فارغ يُقرأ سماحاً. المنح للأدوار النظامية مصدرها
+// الكود أصلاً (سكربت البذر يكتبها والخادم يبذرها عند كل إقلاع)، فالقراءة منها هنا ليست التفافاً
+// بل رجوعٌ إلى المصدر نفسه. لا تُستخدَم في مسار التشغيل: `initRbac` عند الإقلاع يستبدلها.
+export function primeGrantsFromCode(roleGrants) {
+  const map = {};
+  for (const [roleId, grants] of Object.entries(roleGrants || {}))
+    map[roleId] = (grants || []).map((g) => ({ role_id: roleId, ...g }));
+  _cache = map;
+  return map;
+}
 export function invalidateGrants() { _cache = null; }
 export async function reloadGrants() { return initRbac(); } // call after role edits
 function grantsFor(roleId) {
@@ -31,6 +45,9 @@ function grantsFor(roleId) {
  * @param {string} resource
  * @param {object} [target] row with sector_id/department_id/project_id/owner_user_id/user_id
  */
+// قرار صريح من المالك: الراتب لا يراه إلا **مدير النظام** حتى يتم التكامل مع Odoo
+// ويصبح Odoo مصدر الحقيقة للتعويضات. التنفيذ بالحذف من المصفوفة: لا دور يملك منح
+// 'salary' بعد اليوم، ومنح مدير النظام الشامل (`*`/admin) وحده هو ما يفتحه له.
 export function can(user, action, resource, target = null) {
   if (!user || !user.role_id) return false;
   const grants = grantsFor(user.role_id);
@@ -55,13 +72,35 @@ export function scopeReaches(user, scope, target) {
       return true;
     case 'sector':
       return !target.sector_id || target.sector_id === user.sector_id || (user.scope === 'company');
-    case 'department':
-      return !target.department_id || target.department_id === user.department_id;
-    case 'project':
-      return !target.project_id || (user.projectIds && user.projectIds.has(target.project_id))
-        || (target.id && user.projectIds && user.projectIds.has(target.id));
+    case 'department': {
+      // إدارة واحدة تعيش داخل قطاع واحد بالضبط. الشرط القديم كان `!target.department_id || …`
+      // فيمرّ **فارغاً** على كل هدف لا يحمل عمود الإدارة — وأكثر الصفوف كذلك (المهمة والفرصة
+      // وصف القطاع لا تحمل إدارة). النتيجة أن مدير إدارة في الاستشارات كان يجتاز فحصاً على
+      // هدف يخصّ الحلول لمجرد أن الهدف لا يذكر إدارة.
+      //
+      // والمقارنة صارت **عضويةً في مجموعة إداراته** لا مساواةً بإدارة انتمائه: من يقود إدارتين
+      // كان يُرَدّ عن صفوف الإدارة الثانية وهو مديرها المكتوب اسمه عليها — يوقّع اعتماد كشف
+      // دوامٍ لموظفٍ يقوده، فيُرَدّ. المجموعة تُبنى عند الجلسة (rbac/departments.js).
+      if (target.department_id) return inDepartmentScope(user, target.department_id);
+      // بلا إدارة على الهدف لا نستطيع إثبات الانتماء، لكن نستطيع إثبات **النفي**: هدف يذكر
+      // قطاعاً غير قطاع المستخدم هو قطعاً خارج إدارته. هذا يغلق التسريب العابر للقطاعات.
+      if (target.sector_id && user.sector_id && target.sector_id !== user.sector_id) return false;
+      // يبقى ما لا يُحسم: هدف بلا إدارة داخل القطاع نفسه. لا يُغلق هنا لأن الإغلاق الكامل يحرم
+      // مدير الإدارة من صفوف مشروعة لا تحمل عمود إدارة أصلاً (المهام). الحسم الصحيح أن يحمل
+      // كل صف إدارته — وهو ما بدأته الموجة 007 على المشروع والفرصة والتسكين.
+      return true;
+    }
+    case 'project': {
+      // A bare `project` row has no `project_id` column (only `id`) — fall back to it so the
+      // project resource itself is actually membership-checked instead of vacuously passing.
+      const pid = target.project_id ?? target.id;
+      return !pid || (user.projectIds && user.projectIds.has(pid));
+    }
     case 'team':
-      return !target.team_id || (user.teamIds && user.teamIds.has(target.team_id));
+      // No caller anywhere sets target.team_id (team membership was never wired into
+      // resolveUser()'s teamIds), so the old `!target.team_id ||` short-circuit made this scope
+      // vacuously true for every target — fail closed instead until team membership is real.
+      return !!(target.team_id && user.teamIds && user.teamIds.has(target.team_id));
     case 'own':
       return target.owner_user_id === user.id || target.user_id === user.id
         || target.assignee_user_id === user.id || target.requested_by === user.id
@@ -78,7 +117,12 @@ export function effectiveScope(user, action, resource) {
   if (grants.some((g) => g.resource === '*' && g.action === 'admin')) return 'company';
   const matches = grants.filter((g) => g.resource === resource && (g.action === action || g.action === 'admin'));
   if (!matches.length) return null;
-  return matches.reduce((best, g) => (SCOPE_RANK[g.scope] > SCOPE_RANK[best || 'own'] ? g.scope : best), null);
+  // البذرة رتبةُ صفر لا رتبةُ «خاصتي». كانت المقارنة تبدأ من `SCOPE_RANK[best || 'own']`، فمن
+  // منحُه الوحيد بنطاق «خاصتي» لا يتجاوز رتبتَه أبداً فتعود الدالة null — أي «بلا صلاحية» —
+  // بينما هو يملك المنح فعلاً. الأثر الحيّ: scopeFilter يترجم null إلى «1=0» (لا صفوف إطلاقاً)،
+  // فالاستشاري يملك فرصه ولا يرى منها واحدة في «فرصي»، والمستخدم الخارجي لا يرى مشاريعه.
+  // حالة 'own' داخل scopeFilter (تصفية بالمالك) كانت كوداً ميتاً يشهد على النية الصحيحة.
+  return matches.reduce((best, g) => ((SCOPE_RANK[g.scope] || 0) > (SCOPE_RANK[best] || 0) ? g.scope : best), null);
 }
 
 // Field-level redaction: remove sensitive fields the user isn't allowed to read.

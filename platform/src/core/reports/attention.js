@@ -31,9 +31,12 @@ export async function attentionFeed(user, sectorId, { year, today } = {}) {
   } catch { /* قائمة الاعتمادات ليست لكل الأدوار */ }
 
   // 2) فواتير متأخرة السداد (نقد القطاع) — أرقام مالية: تظهر فقط لمن يقرأ الفواتير
+  // قطاع الفاتورة = قطاعها إن حُدِّد، وإلا قطاع مشروعها. فواتير قديمة كثيرة لا تحمل القطاع مباشرة،
+  // فالمقارنة على العمود وحده كانت تُسقطها من هنا بينما تظهر في تحصيل القطاع وفي «ما تغيّر» —
+  // وهذا هو أسوأ ما يمكن أن يحدث للتنبيه الذي وُجد ليمنع الفوات. نفس تعبير الشاشتين حرفياً.
   const od = can(user, 'read', 'invoice') ? await all(`SELECT i.id, i.code, i.amount_halalas, i.due_date, c.name_ar client
-      FROM invoice i LEFT JOIN client c ON c.id = i.client_id
-      WHERE i.sector_id = ? AND i.deleted_at IS NULL
+      FROM invoice i LEFT JOIN project p ON p.id = i.project_id LEFT JOIN client c ON c.id = i.client_id
+      WHERE COALESCE(i.sector_id, p.sector_id) = ? AND i.deleted_at IS NULL
         AND (i.status = 'OVERDUE' OR (i.status IN ('ISSUED','PARTIALLY_PAID') AND i.due_date IS NOT NULL AND substr(i.due_date,1,10) < ?))
       ORDER BY i.due_date LIMIT 12`, [sectorId, t]) : [];
   if (od.length) {
@@ -65,7 +68,7 @@ export async function attentionFeed(user, sectorId, { year, today } = {}) {
   const late = await all(`SELECT d.name_ar, d.amount_halalas, d.month, p.name_ar project
       FROM deliverable d LEFT JOIN project p ON p.id = d.project_id
       WHERE d.sector_id = ? AND d.deleted_at IS NULL AND d.year = ?
-        AND d.month < ? AND d.status IN ('PENDING','DELIVERED')
+        AND d.month < ? AND d.invoiced_at IS NULL AND d.status IN ('DRAFT','IN_PROGRESS','DELIVERED','REJECTED')
       ORDER BY d.month LIMIT 12`, [sectorId, y, m]);
   if (late.length) {
     const lv = late.reduce((a, b) => a + (b.amount_halalas || 0), 0);

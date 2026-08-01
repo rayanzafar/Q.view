@@ -154,8 +154,11 @@ test('list aggregates: every new field carries the exact hand-computed number', 
   assert.equal(ca.open_ar_halalas, 280000, 'I1 200k + I2 80k; PAID/DRAFT/over-collected = 0');
   assert.equal(ca.overdue_ar_halalas, 200000, 'only I1 is past due');
   // الإيراد والنمو والمشاريع
-  assert.equal(ca.fy_revenue_halalas, 750000);
-  assert.equal(ca.prev_fy_revenue_halalas, 250000);
+  // الإيراد صار **صافياً من الضريبة** (الترحيلة ٠١٩، قرار مالك: «افصل الضريبة عن المبلغ»).
+  // وسطرا الإيراد هنا مُدرَجان بلا عمود صافٍ، فيُشتقّ عند القراءة: ٧٥٠٬٠٠٠ ÷ ١٫١٥ = ٦٥٢٬١٧٣
+  // و٢٥٠٬٠٠٠ ÷ ١٫١٥ = ٢١٧٬٣٩١. الرقم لم يُضعَّف بل تبدّل معناه: صار إيراد الشركة لا مطالبتها.
+  assert.equal(ca.fy_revenue_halalas, 652173);
+  assert.equal(ca.prev_fy_revenue_halalas, 217391);
   assert.equal(ca.active_projects, 1);
   // القطاعات (اتحاد فرص+مشاريع+عقود، أسماء عربية بترتيب القطاعات)
   assert.deepEqual(ca.sectors, ['قطاع الأعمال', 'قطاع التقنية', 'قطاع التطوير']);

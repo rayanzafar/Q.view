@@ -1,46 +1,332 @@
 // PMO — Tasks service with Quick Add. Employees manage own tasks; managers see team/project scope.
 import { all, get, insert, update } from '../../core/db/index.js';
-import { can } from '../../core/rbac/index.js';
+import { can, effectiveScope } from '../../core/rbac/index.js';
+import { departmentScope, departmentInSql, inDepartmentScope } from '../../core/rbac/departments.js';
 import { audit } from '../../core/audit/index.js';
 import { id, nowIso } from '../../core/util/ids.js';
 import { forbidden, notFound, badRequest } from '../../core/http/errors.js';
 
+// ترتيب الإلحاح المشترك بين كل استعلامات المهام — مصدر واحد فلا يختلف ترتيب القائمة عن اللوح.
+const PRIORITY_ORDER = "CASE %s.priority WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 ELSE 3 END";
+const prioritySql = (pfx) => PRIORITY_ORDER.replace('%s', pfx.replace(/\.$/, '') || 't');
+
+// حساب تاريخ بـJS ثم ربطه كنص — لا دوال تواريخ في SQL (القاعدة المحمولة بين المحرّكين).
+export function addDays(isoDay, n) {
+  const t = Date.parse(String(isoDay).slice(0, 10) + 'T00:00:00Z');
+  if (!Number.isFinite(t)) return String(isoDay).slice(0, 10);
+  return new Date(t + n * 86400000).toISOString().slice(0, 10);
+}
+
+// ── مرشّحات مشتركة بين «مهامي» و«مهام فريقي» ────────────────────────────────
+// عدسة واحدة على نفس البيانات: أي مرشّح يظهر في القائمة يعمل حرفياً في اللوح والتقويم،
+// ولا يُبنى مرشّح خاص بعرض دون غيره. `today` تاريخ مربوط (YYYY-MM-DD) لا دالة قاعدة بيانات،
+// كي يكون الاختبار حاسماً ولا يتغيّر الجواب بتغيّر ساعة الخادم.
+//
+// معنى «نافذة اليوم» صراحةً: كل ما استُحق اليوم أو قبله، **زائد** ما بدأتَه فعلاً أو ما تعطّل —
+// لأن المهمة التي فتحتها اليوم هي على طاولتك اليوم مهما كان موعدها المكتوب. هذا هو «اليوم
+// المنتهي» الذي يمكن إغلاقه، لا القائمة اللانهائية.
+function applyTaskFilters(where, params, f, today, pfx = 't.') {
+  const p = pfx;
+  if (f.status) { where.push(`${p}status = ?`); params.push(f.status); }
+  if (f.priority) { where.push(`${p}priority = ?`); params.push(f.priority); }
+  if (f.assignee) { where.push(`${p}assignee_user_id = ?`); params.push(f.assignee); }
+  if (f.project) { where.push(`${p}project_id = ?`); params.push(f.project); }
+  if (f.opportunity) { where.push(`${p}opportunity_id = ?`); params.push(f.opportunity); }
+  if (f.q) { where.push(`LOWER(${p}title) LIKE ?`); params.push('%' + String(f.q).toLowerCase().trim() + '%'); }
+  if (f.kind === 'project') where.push(`${p}project_id IS NOT NULL`);
+  else if (f.kind === 'opportunity') where.push(`${p}opportunity_id IS NOT NULL`);
+  else if (f.kind === 'internal') where.push(`${p}project_id IS NULL AND ${p}opportunity_id IS NULL`);
+  if (f.flag === 'nostep') where.push(`(${p}next_step IS NULL OR ${p}next_step = '')`);
+  else if (f.flag === 'blocked') where.push(`${p}status = 'BLOCKED'`);
+  else if (f.flag === 'noparent') where.push(`${p}project_id IS NULL AND ${p}opportunity_id IS NULL`);
+  // النافذة الزمنية
+  const w = f.window;
+  if (w === 'overdue') { where.push(`${p}due_date IS NOT NULL AND substr(${p}due_date,1,10) < ?`); params.push(today); }
+  else if (w === 'today' || f.today) {
+    where.push(`((${p}due_date IS NOT NULL AND substr(${p}due_date,1,10) <= ?) OR ${p}status IN ('IN_PROGRESS','BLOCKED'))`);
+    params.push(today);
+  } else if (w === 'week') { where.push(`${p}due_date IS NOT NULL AND substr(${p}due_date,1,10) <= ?`); params.push(addDays(today, 7)); }
+  else if (w === 'nodate') where.push(`${p}due_date IS NULL`);
+  // مدى تواريخ صريح (شبكة التقويم تطلب شهراً بعينه) — المهام بلا موعد تُطلب بنافذة nodate
+  // في استدعاء منفصل، لأن «بلا موعد» ليست تاريخاً خارج المدى بل غياب تاريخ أصلاً.
+  if (f.from) { where.push(`${p}due_date IS NOT NULL AND substr(${p}due_date,1,10) >= ?`); params.push(String(f.from).slice(0, 10)); }
+  if (f.to) { where.push(`${p}due_date IS NOT NULL AND substr(${p}due_date,1,10) <= ?`); params.push(String(f.to).slice(0, 10)); }
+  // المنجَز القديم لا يُعاد سرده إلى الأبد — يُقصر على نافذة قريبة حين تُطلب
+  if (f.doneSince) { where.push(`(${p}status != 'DONE' OR (${p}completed_at IS NOT NULL AND substr(${p}completed_at,1,10) >= ?))`); params.push(String(f.doneSince).slice(0, 10)); }
+  if (f.openOnly) where.push(`${p}status NOT IN ('DONE','CANCELLED')`);
+}
+
+const clampLimit = (n, def = 500) => Math.max(1, Math.min(500, Number(n) || def));
+
 // "My tasks" — always own; managers can pass a projectId they can access.
+// يعود بسياق المهمة معها (اسم المشروع/الفرصة/الإدارة) باستعلام واحد لا باستعلام لكل صف —
+// الصفحة كانت تجمع الأسماء بنفسها بعد القراءة، فتكرّرت المعرفة في مكانين.
 export async function myTasks(user, filters = {}) {
-  const where = ['deleted_at IS NULL', 'assignee_user_id = ?'];
+  const today = String(filters.todayDate || nowIso().slice(0, 10)).slice(0, 10);
+  const where = ['t.deleted_at IS NULL', 't.assignee_user_id = ?'];
   const params = [user.id];
-  if (filters.status) { where.push('status = ?'); params.push(filters.status); }
-  if (filters.today) { where.push('(due_date IS NULL OR substr(due_date,1,10) <= ?)'); params.push(nowIso().slice(0, 10)); }
-  return await all(`SELECT * FROM task WHERE ${where.join(' AND ')} ORDER BY
-    CASE priority WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 ELSE 3 END, due_date`, params);
+  applyTaskFilters(where, params, filters, today);
+  return await all(`SELECT t.*, p.name_ar AS project_name, o.title_ar AS opportunity_name,
+      d.name_ar AS department_name, u.name_ar AS assignee_name, u.username AS assignee_username
+    FROM task t
+    LEFT JOIN project p ON p.id = t.project_id AND p.deleted_at IS NULL
+    LEFT JOIN opportunity o ON o.id = t.opportunity_id AND o.deleted_at IS NULL
+    LEFT JOIN department d ON d.id = t.department_id AND d.deleted_at IS NULL
+    LEFT JOIN app_user u ON u.id = t.assignee_user_id
+    WHERE ${where.join(' AND ')}
+    ORDER BY ${prioritySql('t')}, t.due_date
+    LIMIT ${clampLimit(filters.limit)}`, params);
+}
+
+// «مهامي في هذا القطاع» — مهام الشخص نفسه داخل قطاع بعينه، الأقرب موعداً أولاً ثم الأعلى أولوية.
+// لا حارس نطاق هنا وليس سهواً: الشرط `assignee_user_id = ?` هو الحارس — لا تعود إلا المهام
+// المُسنَدة إلى صاحب الطلب، وهي مهامه أينما كانت (صفحة «مهامي» مفتوحة لكل من يدخل المنصة).
+// المهمة تخص القطاع إذا حملت القطاع نفسه أو كانت على مشروع من مشاريعه.
+export async function mySectorTasks(user, sectorId, opts = {}) {
+  if (!user?.id || !sectorId) return [];
+  const where = ['t.deleted_at IS NULL', 't.assignee_user_id = ?', '(t.sector_id = ? OR p.sector_id = ?)'];
+  const params = [user.id, sectorId, sectorId];
+  if (!opts.includeDone) where.push("t.status NOT IN ('DONE', 'CANCELLED')");
+  const limit = Math.max(1, Math.min(200, Number(opts.limit) || 50));
+  return await all(
+    `SELECT t.id, t.title, t.status, t.priority, t.due_date, t.blocked_reason,
+            t.project_id, t.opportunity_id, p.name_ar AS project_name
+       FROM task t
+       LEFT JOIN project p ON p.id = t.project_id AND p.deleted_at IS NULL
+      WHERE ${where.join(' AND ')}
+      ORDER BY COALESCE(substr(t.due_date, 1, 10), '9999-12-31'),
+               CASE t.priority WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 ELSE 3 END,
+               t.created_at
+      LIMIT ${limit}`, params);
+}
+
+// «أثر الأيام» — عدد ما أُنجز فعلاً كل يوم خلال آخر N يوماً، من `completed_at` المسجَّل وحده.
+// لا سلاسل ولا نقاط ولا أوسمة (قرار موثّق في docs/benchmarks.md): رقم حقيقي أو فراغ معلن.
+export async function completionTrend(user, opts = {}) {
+  const days = Math.max(1, Math.min(31, Number(opts.days) || 7));
+  const today = String(opts.today || nowIso().slice(0, 10)).slice(0, 10);
+  const start = addDays(today, -(days - 1));
+  const rows = await all(
+    `SELECT substr(completed_at,1,10) AS day, COUNT(*) AS n FROM task
+      WHERE deleted_at IS NULL AND assignee_user_id = ? AND status = 'DONE'
+        AND completed_at IS NOT NULL
+        AND substr(completed_at,1,10) >= ? AND substr(completed_at,1,10) <= ?
+      GROUP BY substr(completed_at,1,10)`, [user.id, start, today]);
+  const byDay = Object.fromEntries(rows.map((r) => [r.day, Number(r.n) || 0]));
+  return Array.from({ length: days }, (_, i) => {
+    const day = addDays(start, i);
+    return { day, done: byDay[day] || 0 };
+  });
 }
 
 export async function projectTasks(user, projectId) {
-  const p = await get('SELECT * FROM project WHERE id = ?', [projectId]);
+  const p = await get('SELECT * FROM project WHERE id = ? AND deleted_at IS NULL', [projectId]);
   if (!p) throw notFound('المشروع غير موجود');
   if (!can(user, 'read', 'project', p)) throw forbidden();
   return await all('SELECT * FROM task WHERE project_id = ? AND deleted_at IS NULL ORDER BY status, due_date', [projectId]);
 }
+
+// إسناد مهمة لشخص آخر: الفحص يحتاج **قطاع المُسنَد إليه** لا معرّفه وحده. تمرير هدف بلا قطاع
+// كان يجعل فحص النطاق القطاعي يمرّ فراغاً، فيستطيع أي دور بنطاق قطاع أن يدفع مهمة إلى قائمة
+// أي مستخدم في الشركة كلها. نحلّ قطاعه من حسابه ونمرّره صراحةً.
+async function assertMayAssign(user, assigneeId) {
+  if (!assigneeId || assigneeId === user.id) return;
+  const target = await get('SELECT id, sector_id FROM app_user WHERE id = ? AND deleted_at IS NULL AND active = 1', [assigneeId]);
+  if (!target) throw badRequest('المستخدم المُسنَد إليه غير موجود');
+  if (!can(user, 'update', 'task', { sector_id: target.sector_id, assignee_user_id: assigneeId, user_id: assigneeId }))
+    throw forbidden('إسناد مهمة لشخص آخر يتطلب صلاحية إدارية على قطاعه');
+}
+
+// ربط المهمة بجهتها (مشروع / فرصة / إدارة): الرابط يجب أن يشير إلى شيء **يصل إليه صاحب الطلب**.
+// بلا هذا الفحص يستطيع أي شخص أن يعلّق مهمته على مشروع أو فرصة خارج نطاقه، فتظهر في صفحة ذلك
+// المشروع وفي عدّاداته — تلويثُ نطاقٍ لا يملكه. الفحص يحمل صف الوجهة كاملاً لا معرّفه وحده،
+// وإلا مرّ فارغاً كما يمرّ أي فحص بلا هدف.
+async function assertMayLink(user, data) {
+  if (data.project_id) {
+    const p = await get('SELECT id, sector_id, department_id, owner_user_id FROM project WHERE id = ? AND deleted_at IS NULL', [data.project_id]);
+    if (!p) throw badRequest('المشروع المختار غير موجود — اختر مشروعاً من القائمة');
+    if (!can(user, 'read', 'project', p)) throw forbidden('هذا المشروع خارج نطاقك — اربط المهمة بمشروع من قائمتك');
+  }
+  if (data.opportunity_id) {
+    const o = await get('SELECT id, sector_id, department_id, owner_user_id FROM opportunity WHERE id = ? AND deleted_at IS NULL', [data.opportunity_id]);
+    if (!o) throw badRequest('الفرصة المختارة غير موجودة — اخترها من القائمة');
+    if (!can(user, 'read', 'opportunity', o)) throw forbidden('هذه الفرصة خارج نطاقك — اربط المهمة بفرصة من قائمتك');
+  }
+  if (data.department_id) {
+    const d = await get('SELECT id, sector_id FROM department WHERE id = ? AND deleted_at IS NULL', [data.department_id]);
+    if (!d) throw badRequest('الإدارة المختارة غير موجودة — اخترها من القائمة');
+  }
+}
+
+// المهمة تُنسب إلى جهة واحدة: مشروع أو فرصة أو عمل داخلي. اختيار جهة يمسح الأخرى صراحةً
+// بدل تركِ رابطين متناقضين يظهران في مكانين ويُحسبان مرتين.
+function normalizeParent(patch, data) {
+  if ('project_id' in data && data.project_id) { patch.project_id = data.project_id; patch.opportunity_id = null; patch.work_kind = 'project'; }
+  else if ('opportunity_id' in data && data.opportunity_id) { patch.opportunity_id = data.opportunity_id; patch.project_id = null; patch.work_kind = 'opportunity'; }
+  else if (('project_id' in data && !data.project_id) || ('opportunity_id' in data && !data.opportunity_id)) {
+    patch.project_id = null; patch.opportunity_id = null; patch.work_kind = data.work_kind || 'internal';
+  }
+  if ('work_kind' in data && data.work_kind && !patch.work_kind) patch.work_kind = data.work_kind;
+  return patch;
+}
+
+const blankToNull = (v) => (v == null || String(v).trim() === '' ? null : String(v).trim());
 
 // Quick Add — minimal fields, instant. Defaults assignee to self.
 export async function quickAddTask(ctx, data) {
   const user = ctx.user;
   if (!data.title || !String(data.title).trim()) throw badRequest('عنوان المهمة مطلوب');
   const assignee = data.assignee_user_id || user.id;
-  // creating a task for someone else requires manage rights on the target project/sector
-  if (assignee !== user.id && !can(user, 'update', 'task', { assignee_user_id: assignee })) throw forbidden();
+  // بوابة الإنشاء: كانت غائبة تماماً. `assertMayAssign` يحرس **الإسناد لغيرك** فقط، ويعود
+  // مبكّراً حين يُسنِد المرء لنفسه — فبقي الباب مفتوحاً لكل حساب مسجَّل، ومنه حساب العميل
+  // الخارجي: أنشأ مهمة فعلياً في قطاع لا علاقة له به لأن القطاع يُؤخذ من الطلب بلا تحقق.
+  // الفحص هنا يحمل **القطاع الهدف** لا وجوده وحده، وإلا مرّ فارغاً كما يمرّ الفحص بلا هدف.
+  // من منحُه بنطاق «خاصتي» لا يختار القطاع أصلاً. الفحص وحده لا يكفي هنا: «خاصتي» تمرّ على
+  // «المهمة لي» بصرف النظر عن القطاع المكتوب في الطلب — فيستطيع موظف أن يزرع مهمةً في لوحة
+  // قطاع آخر بلا أن يكسر أي قاعدة. القطاع يُثبَّت على قطاع صاحبه بدل رفض الطلب: المنع هنا
+  // يعطّل مساراً مشروعاً، والتثبيت يُبقيه يعمل ويسدّ الزرع معاً.
+  const ownOnly = effectiveScope(user, 'create', 'task') === 'own';
+  const sectorId = (ownOnly ? user.sector_id : (data.sector_id || user.sector_id)) || null;
+  if (!can(user, 'create', 'task', { sector_id: sectorId, assignee_user_id: assignee }))
+    throw forbidden('إنشاء المهام خارج نطاقك — اختر قطاعاً ضمن صلاحيتك أو اطلب التفعيل من مدير النظام');
+  await assertMayAssign(user, assignee); // الفحص يحمل قطاع المُسنَد إليه لا معرّفه وحده
+  await assertMayLink(user, data);       // والرابط الأبوي يشير إلى ما يصل إليه فعلاً
+  const parent = normalizeParent({}, data);
+  const projectId = parent.project_id ?? (data.project_id || null);
+  // ربط المهمة بمخرَجها — «هذه المهمة جزء من تسليم هذا المخرَج». العمود قائم في البنية منذ
+  // البداية ولم يكتبه مسار واحد، فالمهام تُنسب إلى المشروع كله ولا يُعرف أيُّ تسليمٍ تخدم.
+  // والشرط أن يكون المخرَج من المشروع نفسه: مهمةٌ تشير إلى مخرَج مشروعٍ آخر تُفسد كل تجميع
+  // لاحق بصمت، ولا يظهر العطل إلا في تقرير.
+  const deliverableId = (data.deliverable_id || '').toString().trim() || null;
+  if (deliverableId) {
+    const d = await get('SELECT project_id FROM deliverable WHERE id = ? AND deleted_at IS NULL', [deliverableId]);
+    if (!d) throw badRequest('المخرَج المرتبط غير موجود');
+    if (!projectId || d.project_id !== projectId) throw badRequest('المخرَج المرتبط من مشروع آخر — اختر مخرَجاً من هذا المشروع');
+  }
   const tid = id('tsk'); const now = nowIso();
   await insert('task', {
     id: tid, title: String(data.title).trim(), description: data.description || null,
-    work_kind: data.work_kind || 'project', project_id: data.project_id || null,
-    opportunity_id: data.opportunity_id || null, sector_id: data.sector_id || user.sector_id,
+    work_kind: parent.work_kind || data.work_kind || 'project',
+    project_id: projectId,
+    deliverable_id: deliverableId,
+    opportunity_id: parent.opportunity_id ?? (data.opportunity_id || null),
+    sector_id: sectorId, department_id: data.department_id || null,
     assignee_user_id: assignee, priority: data.priority || 'P2', status: 'TODO',
     start_date: data.start_date || null, due_date: data.due_date || null,
     estimate_hours: data.estimate_hours ?? null, recurring: data.recurring || null,
+    next_step: blankToNull(data.next_step),
     created_at: now, created_by: user.id,
   });
-  await audit(ctx, { action: 'create', resource: 'task', resourceId: tid, sectorId: data.sector_id || user.sector_id });
+  await audit(ctx, { action: 'create', resource: 'task', resourceId: tid, sectorId });
   return await get('SELECT * FROM task WHERE id = ?', [tid]);
+}
+
+// ── من يفتح «مهام فريقي»، ومن يكتب فيها ─────────────────────────────────────
+// كانت الشاشة كلها مشروطة بمنح **التعديل**: `effectiveScope(user,'update','task')`. والنتيجة
+// أن «المدير المباشر» — وكل منحه قراءةٌ بنطاق إدارته (`read task @department`) وليس له منح
+// تعديل واحد — يُرَدّ ٤٠٣ على الشاشة الوحيدة التي وُجد الدور من أجلها. الشاشة شاشة قراءة،
+// فالبوابة الصحيحة بوابة قراءة.
+// الفصل لا الاستبدال: **الرؤية** من منح القراءة على محور تنظيمي (شركة/إدارة/قطاع)، و**الكتابة**
+// (إعادة الإسناد، التغيير الجماعي، تغيير الحالة) تبقى على منح التعديل كما هي حرفياً.
+// وحتى لا يفقد أحدٌ وصولاً قائماً: من كان منح تعديله يتجاوز «خاصتي» يبقى مؤهِّلاً كما كان —
+// فمدير المشروع (منحه كلها بنطاق «مشروع») يدخل بنفس المحور الذي كان يدخل به، والاستشاري
+// (تعديله «خاصتي» وقراءته «مشروع») يبقى ممنوعاً كما كان بالضبط. لا توسعة حرف واحد.
+const ORG_SCOPES = new Set(['department', 'sector', 'company']);
+export function teamTasksAccess(user) {
+  const readScope = effectiveScope(user, 'read', 'task');
+  const writeScope = effectiveScope(user, 'update', 'task');
+  const canWrite = !!writeScope && writeScope !== 'own';
+  const scope = ORG_SCOPES.has(readScope) ? readScope : (canWrite ? writeScope : null);
+  return { scope, canRead: !!scope, canWrite };
+}
+
+// «مهام فريقي» — أول رؤية للمدير لمن يعمل على ماذا. لم تكن موجودة إطلاقاً: كل مستخدم يرى
+// مهامه وحده. النطاق يُبنى من الاستعلام نفسه (لا تصفية بعد القراءة) فلا يُقرأ ما لا يُسمح به.
+export async function teamTasks(user, filters = {}) {
+  // ملاحظة دقيقة: can(...) بلا هدف يعيد «صحيح» لمجرد وجود المنح مهما كان نطاقه — فالموظف
+  // العادي (نطاق «خاصتي») كان يمرّ. السؤال هنا نطاقي لا وجودي: هل يتجاوز نطاقه نفسه؟
+  const { scope } = teamTasksAccess(user);
+  if (!scope) throw forbidden('عرض مهام الفريق يتطلب صلاحية قراءة مهام إدارة أو قطاع — اطلب تفعيلها من مدير النظام');
+  const where = ['t.deleted_at IS NULL'];
+  const params = [];
+  // الافتراضي كما كان: المنجَز خارج لوحة المدير. ومن يطلبه صراحةً (عرض اللوح بعمود «منجز»)
+  // يمرّر includeDone — العدسة واحدة والبيانات واحدة.
+  if (!filters.includeDone) where.push("t.status != 'DONE'");
+  // ── محور «فريقي» يُشتقّ من نطاق المنح نفسه، لا من عمود النطاق على الحساب ──
+  // كان الاشتقاق بالقطاع دائماً: `(t.sector_id = ? OR u.sector_id = ?)` — فمدير الإدارة، وكل
+  // منحه بنطاق «إدارة»، يرى مهام القطاع كله لا مهام إدارته. والمصدران (منح الدور وعمود النطاق)
+  // كانا مختلطين: الشركة من العمود والباقي من القطاع — وهو عين التناقض الذي أنتج التسريب.
+  //   • «شركة»  ⟵ بلا ترشيح (كما كان لكل من نطاق منحه شركي).
+  //   • «إدارة» ⟵ أهل إدارته وحدهم.
+  //   • ما دون ذلك (قطاع/مشروع/فريق) ⟵ القطاع كما كان حرفياً.
+  // بنية الوصل: المهمة تُمسك بحساب المُسنَد إليه، والإدارة تسكن **سجل الموظف** لا الحساب —
+  // فالجسر هو app_user.employee_id ⟵ employee.department_id. وصلة واحدة داخل الاستعلام،
+  // لا استعلام لكل صف.
+  // قرار موثَّق (فشل آمن): حسابٌ غير مربوط بسجل موظف ⟵ إدارته **مجهولة**، والمجهول يُستبعد
+  // ولا يُدرج؛ الوصلة الخارجية تُنتج فراغاً فيُسقطه شرط المساواة. وكذلك المهمة بلا مُسنَد إليه:
+  // لا شخص لها فلا إدارة. إدراج المجهول كان سيُعيد التسريب من الباب نفسه الذي أُغلق.
+  // «أهل إدارته» = أهل **كل إدارة يقودها**، لا إدارة انتمائه وحدها. مديرٌ يقود إدارتين كان
+  // يفتح هذه اللوحة فيرى نصف فريقه: أهل الإدارة التي يجلس فيها حاضرون، وأهل الإدارة الأخرى
+  // — وهو مديرهم — غائبون كأنهم ليسوا في المنصة، فلا يرى تأخّرهم ولا ما يعطّلهم.
+  if (scope === 'department') {
+    // لا انتماء ولا قيادة ⟵ لوحة فارغة لا لوحة قطاع (فشل آمن).
+    const deps = departmentScope(user);
+    if (!deps.length) return [];
+    const inDeps = departmentInSql('emp.department_id', deps);
+    where.push(inDeps.clause);
+    params.push(...inDeps.params);
+  } else if (scope !== 'company') {
+    where.push('(t.sector_id = ? OR u.sector_id = ?)');
+    params.push(user.sector_id, user.sector_id);
+  }
+  const today = String(filters.todayDate || nowIso().slice(0, 10)).slice(0, 10);
+  if (filters.overdue) { where.push('t.due_date IS NOT NULL AND substr(t.due_date,1,10) < ?'); params.push(today); }
+  applyTaskFilters(where, params, filters, today);
+  const rows = await all(`SELECT t.*, u.name_ar assignee_name, u.username assignee_username,
+       p.name_ar project_name, o.title_ar opportunity_name, d.name_ar department_name
+     FROM task t
+     LEFT JOIN app_user u ON u.id = t.assignee_user_id
+     LEFT JOIN employee emp ON emp.id = u.employee_id AND emp.deleted_at IS NULL
+     LEFT JOIN project p ON p.id = t.project_id AND p.deleted_at IS NULL
+     LEFT JOIN opportunity o ON o.id = t.opportunity_id AND o.deleted_at IS NULL
+     LEFT JOIN department d ON d.id = t.department_id AND d.deleted_at IS NULL
+     WHERE ${where.join(' AND ')}
+     ORDER BY ${prioritySql('t')}, t.due_date
+     LIMIT ${clampLimit(filters.limit)}`, params);
+  // تجميع حسب الشخص: هذا سؤال المدير الحقيقي «من يعمل على ماذا» لا قائمة مسطّحة.
+  const byPerson = new Map();
+  for (const r of rows) {
+    const key = r.assignee_user_id || '—';
+    if (!byPerson.has(key)) {
+      byPerson.set(key, { userId: r.assignee_user_id, name: r.assignee_name || r.assignee_username || 'غير مُسنَدة', tasks: [], overdue: 0, blocked: 0, noStep: 0, done: 0 });
+    }
+    const b = byPerson.get(key);
+    b.tasks.push(r);
+    if (r.status === 'DONE') b.done++;
+    else if (r.due_date && String(r.due_date).slice(0, 10) < today) b.overdue++;
+    if (r.blocked_reason || r.status === 'BLOCKED') b.blocked++;
+    if (r.status !== 'DONE' && !String(r.next_step || '').trim()) b.noStep++;
+  }
+  // الأكثر تأخراً أولاً — المدير يحتاج المشكلة في الأعلى لا الترتيب الأبجدي.
+  return [...byPerson.values()].sort((a, b) => (b.overdue - a.overdue) || (b.tasks.length - a.tasks.length));
+}
+
+// تحديث جماعي — تنظيف عشرين مهمة متأخرة في ثوانٍ بدل عشرين إعادة تحميل للصفحة.
+// كل مهمة تمر بفحص updateTask نفسه؛ لا مسار مختصر يتجاوز الصلاحية.
+export async function bulkUpdateTasks(ctx, taskIds, data) {
+  const ids = [...new Set((Array.isArray(taskIds) ? taskIds : []).filter(Boolean))];
+  if (!ids.length) throw badRequest('اختر مهمة واحدة على الأقل');
+  if (ids.length > 100) throw badRequest('حدّد 100 مهمة كحد أقصى في المرة الواحدة');
+  const allowed = {};
+  for (const k of ['status', 'priority', 'due_date', 'assignee_user_id', 'project_id', 'opportunity_id', 'next_step', 'department_id'])
+    if (k in data) allowed[k] = data[k];
+  if (!Object.keys(allowed).length) throw badRequest('حدّد ما تريد تغييره');
+  const done = []; const failed = [];
+  for (const tid of ids) {
+    try { await updateTask(ctx, tid, allowed); done.push(tid); }
+    catch (e) { failed.push({ id: tid, reason: e.message }); }
+  }
+  return { updated: done.length, failed };
 }
 
 export async function updateTask(ctx, taskId, data) {
@@ -50,14 +336,327 @@ export async function updateTask(ctx, taskId, data) {
   // own task, or manager with scope
   const isOwn = row.assignee_user_id === user.id || row.created_by === user.id;
   if (!isOwn && !can(user, 'update', 'task', row)) throw forbidden();
+  // إعادة الإسناد بوابة منفصلة: ملكية المهمة تخوّل تعديل محتواها لا دفعها إلى قائمة شخص آخر.
+  // كانت assignee_user_id تُعدَّل بلا أي فحص على الوجهة، فيستطيع أي موظف إغراق قائمة أي مستخدم.
+  if ('assignee_user_id' in data && data.assignee_user_id !== row.assignee_user_id) {
+    await assertMayAssign(user, data.assignee_user_id);
+  }
+  // وإعادة الربط بوابة ثالثة: كانت القائمة المسموحة تُسقط كل رابط أبوي بصمت، فالمهمة تُخلق
+  // مرة واحدة ولا تُصحَّح أبداً — تُنشأ على المشروع الخطأ فتبقى عليه إلى الأبد.
+  await assertMayLink(user, data);
   const patch = {};
   for (const k of ['title', 'description', 'status', 'priority', 'progress_pct', 'due_date',
-    'start_date', 'estimate_hours', 'blocked_reason', 'assignee_user_id']) {
+    'start_date', 'estimate_hours', 'blocked_reason', 'assignee_user_id', 'next_step', 'department_id']) {
     if (k in data) patch[k] = data[k];
   }
+  if ('next_step' in patch) patch.next_step = blankToNull(patch.next_step);
+  if ('blocked_reason' in patch) patch.blocked_reason = blankToNull(patch.blocked_reason);
+  if ('progress_pct' in patch) patch.progress_pct = Math.max(0, Math.min(100, Math.round(Number(patch.progress_pct) || 0)));
+  normalizeParent(patch, data);
+  // العائق يُكتب ويُوجَّه: «معطَّل» بلا سبب مكتوب هي بالضبط الحالة التي لا يصلها أحد ولا يرفعها
+  // أحد. الرسالة تقول ماذا يُكتب لا أن الحقل مطلوب.
+  const nextStatus = 'status' in patch ? patch.status : row.status;
+  if (nextStatus === 'BLOCKED') {
+    const reason = 'blocked_reason' in patch ? patch.blocked_reason : row.blocked_reason;
+    if (!reason) throw badRequest('اكتب سبب التعطيل ومَن يستطيع رفعه — المهمة المعطَّلة بلا سبب لا تصل إلى أحد');
+  } else if (row.status === 'BLOCKED' && nextStatus !== 'BLOCKED' && !('blocked_reason' in patch)) {
+    patch.blocked_reason = null; // زال التعطيل فيزول سببه، ولا يبقى نصّاً قديماً يُقرأ خطأً
+  }
   if (data.status === 'DONE' && row.status !== 'DONE') { patch.completed_at = nowIso(); patch.progress_pct = 100; }
+  // إعادة فتح مهمة منجَزة تمحو ختم الإنجاز — وإلا بقيت تُحسب في «أنجزت اليوم» وهي مفتوحة.
+  if ('status' in patch && patch.status !== 'DONE' && row.status === 'DONE') patch.completed_at = null;
   patch.updated_at = nowIso(); patch.updated_by = user.id;
   await update('task', taskId, patch);
   await audit(ctx, { action: 'update', resource: 'task', resourceId: taskId, detail: { status: patch.status } });
   return await get('SELECT * FROM task WHERE id = ?', [taskId]);
+}
+
+// ───────────────────── حِمل الفريق: من يعمل على ماذا، مرتَّباً بإدارته ─────────────────────
+//
+// «مهام فريقي» كانت تجيب نصف السؤال: كم مهمة على كل شخص. والنصف الآخر — **ما المشاريع
+// والفرص التي يعمل عليها** — لم يكن في الشاشة إطلاقاً (كتلة الفرص محجوزة لعدسة «مهامي»
+// وحدها)، فيرى المدير موظفاً بلا مهام ويحسبه فارغاً وهو يقود ثلاث فرص.
+//
+// والتجميع بالإدارة لا بالقائمة المسطّحة: المدير يدير إدارةً، وأول سؤال في اجتماعه اليومي
+// «ما حال هذه الإدارة» لا «من أكثر الناس تأخّراً في الشركة».
+//
+// النطاق يُبنى داخل الاستعلام (لا تصفية بعد القراءة) بنفس قاعدة teamTasks حرفياً — مصدر
+// واحد للقرار فلا تتباعد الشاشتان.
+export async function teamWorkload(user, filters = {}) {
+  const { scope } = teamTasksAccess(user);
+  if (!scope) throw forbidden('عرض عمل الفريق يتطلب صلاحية قراءة مهام إدارة أو قطاع — اطلب تفعيلها من مدير النظام');
+  const year = Number(filters.year) || new Date().getUTCFullYear();
+  const today = String(filters.todayDate || nowIso().slice(0, 10)).slice(0, 10);
+
+  // الأشخاص أولاً: الحسابات النشطة داخل النطاق، ومعها إدارتها من سجل الموظف (الجسر
+  // app_user.employee_id ⟵ employee.department_id — الإدارة تسكن الموظف لا الحساب).
+  const pWhere = ['u.deleted_at IS NULL', 'u.active = 1'];
+  const pParams = [];
+  // مجموعة إداراته لا إدارته: التجميع أدناه يفرز الناس إلى إداراتهم، فمن يقود اثنتين يقرأ
+  // لوحتين متجاورتين في شاشة واحدة — وهو ما يقوله مسمّاه الوظيفي أصلاً. وكان يقرأ واحدة.
+  if (scope === 'department') {
+    const deps = departmentScope(user);
+    if (!deps.length) return { departments: [], scope, year, orphans: { unassigned: 0, inactive: 0, overdue: 0, total: 0, people: [] } };
+    const inDeps = departmentInSql('emp.department_id', deps);
+    pWhere.push(inDeps.clause);
+    pParams.push(...inDeps.params);
+  } else if (scope !== 'company') {
+    pWhere.push('u.sector_id = ?');
+    pParams.push(user.sector_id);
+  }
+  const people = await all(`SELECT u.id, u.name_ar, u.username, u.role_id, u.sector_id,
+       emp.id employee_id, emp.job_title, emp.department_id, d.name_ar department_name
+     FROM app_user u
+     LEFT JOIN employee emp ON emp.id = u.employee_id AND emp.deleted_at IS NULL
+     LEFT JOIN department d ON d.id = emp.department_id AND d.deleted_at IS NULL
+     WHERE ${pWhere.join(' AND ')}
+     ORDER BY d.name_ar, u.name_ar
+     LIMIT 400`, pParams);
+  if (!people.length) return { departments: [], scope, year, orphans: { unassigned: 0, inactive: 0, overdue: 0, total: 0, people: [] } };
+
+  const userIds = people.map((p) => p.id);
+  const empIds = people.map((p) => p.employee_id).filter(Boolean);
+  const marks = (n) => new Array(n).fill('?').join(',');
+
+  // مهام مفتوحة لكل شخص — عدٌّ في القاعدة لا تحميلُ صفوف ثم عدّها في الذاكرة.
+  const taskRows = await all(`SELECT t.assignee_user_id uid,
+       COUNT(*) total,
+       SUM(CASE WHEN t.due_date IS NOT NULL AND substr(t.due_date,1,10) < ? THEN 1 ELSE 0 END) overdue,
+       SUM(CASE WHEN t.status = 'BLOCKED' OR (t.blocked_reason IS NOT NULL AND t.blocked_reason <> '') THEN 1 ELSE 0 END) blocked,
+       SUM(CASE WHEN t.next_step IS NULL OR t.next_step = '' THEN 1 ELSE 0 END) no_step
+     FROM task t
+     WHERE t.deleted_at IS NULL AND t.status NOT IN ('DONE','CANCELLED')
+       AND t.assignee_user_id IN (${marks(userIds.length)})
+     GROUP BY t.assignee_user_id`, [today, ...userIds]);
+
+  // الفرص المفتوحة التي يملكها كل شخص — المرحلة تحدّد «مفتوحة» (لا فوز ولا خسارة).
+  const oppRows = await all(`SELECT o.owner_user_id uid, COUNT(*) total,
+       SUM(COALESCE(o.value_halalas,0)) value_halalas
+     FROM opportunity o
+     LEFT JOIN stage s ON s.id = o.stage_id
+     WHERE o.deleted_at IS NULL AND COALESCE(s.is_won,0) = 0 AND COALESCE(s.is_lost,0) = 0
+       AND o.owner_user_id IN (${marks(userIds.length)})
+     GROUP BY o.owner_user_id`, userIds);
+
+  // وأسماؤها — بطلب المالك حرفياً: «مو المبالغ اللي شغال عليها من فرص انما اسماء الفرص».
+  // «فرصتان بمليون ونصف» تقول حجماً ولا تقول **على ماذا** يعمل الرجل، والمدير يسأل الثاني.
+  // الترتيب بالقيمة تنازلياً كي تُقصَّ الأصغر لا الأهمّ حين يتجاوز العدد ما تسعه البطاقة.
+  const oppNameRows = await all(`SELECT o.owner_user_id uid, o.id, o.title_ar
+     FROM opportunity o
+     LEFT JOIN stage s ON s.id = o.stage_id
+     WHERE o.deleted_at IS NULL AND COALESCE(s.is_won,0) = 0 AND COALESCE(s.is_lost,0) = 0
+       AND o.owner_user_id IN (${marks(userIds.length)})
+     ORDER BY o.value_halalas DESC, o.title_ar
+     LIMIT 400`, userIds);
+  const byUidON = new Map();
+  for (const r of oppNameRows) {
+    if (!byUidON.has(r.uid)) byUidON.set(r.uid, []);
+    byUidON.get(r.uid).push({ id: r.id, name: r.title_ar });
+  }
+
+  // المشاريع المسكَّن عليها هذا العام — بالاسم لا بالعدد وحده: المدير يريد أن يعرف أين هو.
+  const projRows = empIds.length ? await all(`SELECT a.employee_id eid, p.id project_id, p.name_ar project_name
+     FROM allocation a
+     JOIN project p ON p.id = a.project_id AND p.deleted_at IS NULL
+     WHERE a.deleted_at IS NULL AND a.year = ? AND a.employee_id IN (${marks(empIds.length)})
+     GROUP BY a.employee_id, p.id, p.name_ar
+     ORDER BY p.name_ar`, [year, ...empIds]) : [];
+
+  const byUidT = new Map(taskRows.map((r) => [r.uid, r]));
+  const byUidO = new Map(oppRows.map((r) => [r.uid, r]));
+  const byEidP = new Map();
+  for (const r of projRows) {
+    if (!byEidP.has(r.eid)) byEidP.set(r.eid, []);
+    byEidP.get(r.eid).push({ id: r.project_id, name: r.project_name });
+  }
+
+  const NO_DEP = '—';
+  const groups = new Map();
+  for (const p of people) {
+    const t = byUidT.get(p.id) || {};
+    const o = byUidO.get(p.id) || {};
+    const projects = byEidP.get(p.employee_id) || [];
+    const person = {
+      userId: p.id,
+      name: p.name_ar || p.username,
+      jobTitle: p.job_title || null,
+      roleId: p.role_id,
+      linked: !!p.employee_id,      // حسابٌ غير مربوط بموظف لا تُعرف إدارته ولا تسكينه
+      tasks: {
+        open: Number(t.total || 0), overdue: Number(t.overdue || 0),
+        blocked: Number(t.blocked || 0), noStep: Number(t.no_step || 0),
+      },
+      opportunities: {
+        open: Number(o.total || 0), valueHalalas: Number(o.value_halalas || 0),
+        list: byUidON.get(p.id) || [],
+      },
+      projects,
+    };
+    // «فارغ» ليس صفر مهام: قد يقود فرصاً أو يكون مسكَّناً على مشاريع. الخلوّ الحقيقي أن
+    // لا شيء من الثلاثة — وهذا ما يستحق نظر المدير، لا عدد المهام وحده.
+    person.idle = !person.tasks.open && !person.opportunities.open && !projects.length;
+    person.attention = person.tasks.overdue + person.tasks.blocked;
+
+    const key = p.department_id || NO_DEP;
+    if (!groups.has(key)) {
+      groups.set(key, {
+        id: p.department_id || null,
+        name: p.department_name || (p.department_id ? 'إدارة غير معروفة' : 'بلا إدارة'),
+        people: [], attention: 0, tasks: 0, opps: 0, idle: 0,
+      });
+    }
+    const g = groups.get(key);
+    g.people.push(person);
+    g.attention += person.attention;
+    g.tasks += person.tasks.open;
+    g.opps += person.opportunities.open;
+    if (person.idle) g.idle++;
+  }
+
+  // ── عملٌ بلا صاحب ──
+  // اللوحة تُبنى من **الأشخاص**، فما لا شخص له لا يظهر فيها إطلاقاً. وهذه حالتان تقعان فعلاً:
+  //   • مهمةٌ بلا مُسنَد إليه — أُنشئت ولم تُسنَد قط.
+  //   • مهمةٌ على حسابٍ **معطَّل** — الموظف غادر ولم يغادر عمله معه.
+  // كلتاهما كانت تختفي من اللوحة بينما تظهر في القائمة تحتها في الشاشة نفسها: قِيس على بيانات
+  // مصنوعة فظهرت اللوحة «شخصٌ واحد عليه مهمة» والقائمة ثلاث مهام، اثنتان منها متأخرتان بأعلى
+  // أولوية. وهذا أسوأ اتجاه للخطأ: **أشدّ العمل إلحاحاً هو أقلّه ظهوراً**، ومديرٌ يقيّم فريقه
+  // على لوحةٍ تُخفي العمل المهمَل يقيّم على نصف الصورة.
+  //
+  // ولا تُعرَض كأشخاص وهميين: هي حالةُ إسنادٍ ناقصة يعالجها المدير بإعادة إسناد، لا شخصٌ يُقيَّم.
+  // ونطاقها من عمود المهمة نفسها (قطاعها/إدارتها) لأن المهمة بلا صاحبٍ لا وصلة لها بشخص.
+  const oWhere = ["t.deleted_at IS NULL", "t.status NOT IN ('DONE','CANCELLED')",
+    '(t.assignee_user_id IS NULL OR au.id IS NULL OR au.active = 0 OR au.deleted_at IS NOT NULL)'];
+  const oParams = [];
+  // والعمل المهمَل يتبع المجموعة نفسها: لو قُصّ على إدارة الانتماء وحدها لبقيت مهام الإدارة
+  // الثانية بلا صاحبٍ **وبلا من يراها** — وهي أشدّ ما يحتاج نظر مديرها.
+  if (scope === 'department') {
+    const inDeps = departmentInSql('t.department_id', departmentScope(user));
+    oWhere.push(inDeps.clause);
+    oParams.push(...inDeps.params);
+  } else if (scope !== 'company') { oWhere.push('t.sector_id = ?'); oParams.push(user.sector_id); }
+  const orphanRows = await all(`SELECT t.id, t.assignee_user_id uid, t.due_date, t.status,
+       au.name_ar owner_name, au.username owner_username, au.active owner_active
+     FROM task t
+     LEFT JOIN app_user au ON au.id = t.assignee_user_id
+     WHERE ${oWhere.join(' AND ')}
+     LIMIT 300`, oParams);
+  const orphans = { unassigned: 0, inactive: 0, overdue: 0, total: orphanRows.length, people: [] };
+  const inactiveBy = new Map();
+  for (const r of orphanRows) {
+    if (!r.uid) orphans.unassigned++;
+    else {
+      orphans.inactive++;
+      const nm = r.owner_name || r.owner_username || 'حساب محذوف';
+      inactiveBy.set(nm, (inactiveBy.get(nm) || 0) + 1);
+    }
+    if (r.due_date && String(r.due_date).slice(0, 10) < today) orphans.overdue++;
+  }
+  orphans.people = [...inactiveBy.entries()].map(([name, n]) => ({ name, open: n }))
+    .sort((a, b) => b.open - a.open);
+
+  // الأكثر احتياجاً للنظر أولاً — داخل الإدارة وبين الإدارات. و«بلا إدارة» في القاع دائماً
+  // لأنها ليست إدارةً بل نقصٌ في الإسناد.
+  const departments = [...groups.values()].sort((a, b) => {
+    if (!a.id !== !b.id) return a.id ? -1 : 1;
+    return (b.attention - a.attention) || (b.tasks - a.tasks) || String(a.name).localeCompare(String(b.name), 'ar');
+  });
+  for (const d of departments) {
+    d.people.sort((a, b) => (b.attention - a.attention) || (b.tasks.open - a.tasks.open)
+      || String(a.name).localeCompare(String(b.name), 'ar'));
+  }
+  return { departments, scope, year, orphans };
+}
+
+// ═══ ملف الشخص ═══════════════════════════════════════════════════════════════════════════════
+// «ما اقدر اشوف او اضغط على الموظف يطلعلي تفاصيله وصفحته» — بلسان المالك. كانت لوحة الفريق
+// تعرض الأسماء وتربطها بمُرشِّحٍ يعيد لوحة المهام مرشَّحة، لا بصفحةٍ للشخص. فسؤال المدير
+// «ما الذي يعمل عليه فلان» يُجاب برقمٍ لا بصورة، والاسم يبدو قابلاً للنقر ولا يفتح شيئاً.
+//
+// البوابة نفسها بوابة لوحة الفريق حرفياً (teamTasksAccess) — لا بوابة موازية تتباعد عنها —
+// **زائداً** أن كل أحد يفتح ملفه هو. ولا يُقرأ من هو خارج النطاق: الرفض قبل أي استعلام بيانات.
+export async function personDossier(reader, personUserId) {
+  const uid = String(personUserId || '').trim();
+  if (!uid) throw notFound('لا يوجد شخص بهذا الرابط');
+  const self = uid === reader.id;
+  const { scope, canWrite } = teamTasksAccess(reader);
+  if (!self && !scope) throw forbidden('عرض ملف شخصٍ آخر يتطلب صلاحية قراءة مهام إدارة أو قطاع — اطلب تفعيلها من مدير النظام');
+
+  const p = await get(`SELECT u.id, u.username, u.name_ar, u.role_id, u.sector_id, u.active, u.last_login_at,
+       emp.id employee_id, emp.job_title, emp.department_id, emp.sector_id emp_sector_id,
+       d.name_ar department_name, s.name_ar sector_name
+     FROM app_user u
+     LEFT JOIN employee emp ON emp.id = u.employee_id AND emp.deleted_at IS NULL
+     LEFT JOIN department d ON d.id = emp.department_id AND d.deleted_at IS NULL
+     LEFT JOIN sector s ON s.id = COALESCE(emp.sector_id, u.sector_id) AND s.deleted_at IS NULL
+     WHERE u.id = ? AND u.deleted_at IS NULL`, [uid]);
+  if (!p) throw notFound('لا يوجد شخص بهذا الرابط — قد يكون حسابه حُذف');
+
+  // النطاق يُطبَّق على **الشخص** قبل قراءة عمله: من هو خارج إداراتي أو قطاعي لا يُفتح ملفه.
+  // و«إداراتي» جمعٌ لا مفرد: كانت المقارنة مساواةً بإدارة الانتماء، فمديرٌ يقود إدارتين يضغط
+  // على اسم موظفٍ يقوده في الإدارة الأخرى فيُقال له «هذا الشخص خارج إدارتك» — رسالةٌ صحيحة
+  // الصياغة كاذبة المعنى، وهي الشكوى التي رفعها المالك بعينها.
+  // وقارئٌ بنطاق «إدارة» بلا انتماءٍ ولا قيادة لا يرى أحداً — فشلٌ آمن.
+  if (!self) {
+    if (scope === 'department') {
+      if (!inDepartmentScope(reader, p.department_id)) {
+        throw forbidden('هذا الشخص خارج إدارتك — لا يُفتح ملفه من حسابك');
+      }
+    } else if (scope !== 'company' && p.sector_id !== reader.sector_id) {
+      throw forbidden('هذا الشخص خارج قطاعك — لا يُفتح ملفه من حسابك');
+    }
+  }
+
+  const today = nowIso().slice(0, 10);
+  const year = new Date().getUTCFullYear();
+  const tasks = await all(`SELECT t.id, t.title, t.status, t.priority, t.due_date, t.next_step,
+       t.blocked_reason, t.progress_pct, t.completed_at,
+       p2.id project_id, p2.name_ar project_name, o.id opportunity_id, o.title_ar opportunity_name,
+       d.name_ar department_name
+     FROM task t
+     LEFT JOIN project p2 ON p2.id = t.project_id AND p2.deleted_at IS NULL
+     LEFT JOIN opportunity o ON o.id = t.opportunity_id AND o.deleted_at IS NULL
+     LEFT JOIN department d ON d.id = t.department_id AND d.deleted_at IS NULL
+     WHERE t.deleted_at IS NULL AND t.assignee_user_id = ? AND t.status <> 'CANCELLED'
+     ORDER BY ${prioritySql('t')}, t.due_date
+     LIMIT 200`, [uid]);
+
+  // الفرص بأسمائها لا بعددها: «٣ فرص» لا تقول للمدير أيّها متوقفة ولا أيّها الأكبر.
+  const opportunities = await all(`SELECT o.id, o.title_ar, o.value_halalas, o.next_action,
+       st.name_ar stage_name, st.is_won, st.is_lost, c.name_ar client_name
+     FROM opportunity o
+     LEFT JOIN stage st ON st.id = o.stage_id
+     LEFT JOIN client c ON c.id = o.client_id AND c.deleted_at IS NULL
+     WHERE o.deleted_at IS NULL AND o.owner_user_id = ?
+     ORDER BY COALESCE(st.is_won,0) + COALESCE(st.is_lost,0), o.value_halalas DESC
+     LIMIT 60`, [uid]);
+
+  const projects = p.employee_id ? await all(`SELECT p3.id, p3.name_ar, p3.status, a.type, a.year
+     FROM allocation a
+     JOIN project p3 ON p3.id = a.project_id AND p3.deleted_at IS NULL
+     WHERE a.deleted_at IS NULL AND a.employee_id = ? AND a.year = ?
+     GROUP BY p3.id, p3.name_ar, p3.status, a.type, a.year
+     ORDER BY p3.name_ar
+     LIMIT 60`, [p.employee_id, year]) : [];
+
+  const open = tasks.filter((t) => t.status !== 'DONE');
+  const stats = {
+    open: open.length,
+    overdue: open.filter((t) => t.due_date && String(t.due_date).slice(0, 10) < today).length,
+    blocked: open.filter((t) => t.status === 'BLOCKED' || String(t.blocked_reason || '').trim()).length,
+    noStep: open.filter((t) => !String(t.next_step || '').trim()).length,
+    done: tasks.length - open.length,
+    openOpportunities: opportunities.filter((o) => !o.is_won && !o.is_lost).length,
+    projects: projects.length,
+  };
+  return {
+    self,
+    canWrite: !!canWrite || self,
+    person: {
+      userId: p.id, name: p.name_ar || p.username || 'حساب بلا اسم', username: p.username,
+      jobTitle: p.job_title || null, roleId: p.role_id, active: Number(p.active) === 1,
+      linked: !!p.employee_id, departmentName: p.department_name || null,
+      sectorName: p.sector_name || null, lastLoginAt: p.last_login_at || null,
+    },
+    tasks, opportunities, projects, stats, today, year,
+  };
 }

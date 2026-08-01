@@ -138,13 +138,31 @@ export async function opportunityDetailPage(user, oppId) {
       ${o.notes ? kv('ملاحظات', `<span style="white-space:pre-wrap;font-weight:500">${esc(o.notes)}</span>`) : ''}
     </div>`);
 
+  // ── المشروع الناتج ──
+  // صفحة الفرصة لم تكن تذكر مشروعها إطلاقاً، رغم أن الرابط (`project.source_opp_id`) موجود في
+  // المخطط ومعروض في جدول الفرص. فمن يفتح فرصة فائزة لا يعرف أوصلت إلى مشروع أم لا — وهو أول
+  // سؤال يُسأل عن فرصة رُبحت. البطاقة تظهر للمحسومة فوزاً فقط: مفتوحةٌ لا مشروع لها بعدُ بطبيعتها.
+  const wonPrj = st.is_won
+    ? await get('SELECT id, name_ar, status FROM project WHERE source_opp_id = ? AND deleted_at IS NULL', [o.id])
+    : null;
+  const PRJ_STATUS = { IN_PROGRESS: ['قيد التنفيذ', 'blue'], ON_HOLD: ['متوقّف مؤقتاً', 'amber'], COMPLETED: ['مكتمل', 'green'], NOT_STARTED: ['لم يبدأ', 'slate'], CANCELLED: ['ملغى', 'slate'] };
+  const projectCard = !st.is_won ? '' : card(`${secHead('المشروع الناتج')}
+    <div style="padding:.8rem 1rem">${wonPrj
+    ? (() => { const L = PRJ_STATUS[wonPrj.status] || [wonPrj.status, 'slate'];
+      return `<a href="/app/project/${esc(wonPrj.id)}" style="font-weight:800;color:var(--brand);font-size:13.5px">${esc(wonPrj.name_ar)}</a>
+        <div style="margin-top:.4rem">${pill(L[0], L[1])}</div>`; })()
+    : (d.canEdit
+      ? `<div style="font-size:12.5px;color:var(--muted);line-height:1.8;margin-bottom:.6rem">فرصة فائزة بلا مشروع بعد. أنشئه من هنا فيرث عميلها ويُربط بها.</div>
+         <button class="btn btn-primary" data-action="opp-make-project" data-opp="${esc(o.id)}" data-name="${esc(o.title_ar || '')}" data-sector="${esc(o.sector_id || '')}">أنشئ المشروع</button>`
+      : emptySec('projects', 'لم يُنشأ مشروع بعد', 'إنشاء المشاريع يتطلب صلاحية إدارة أو تشغيل'))}</div>`);
+
   const body = `
     <div style="display:flex;flex-direction:column;gap:.9rem">
       ${header}
       ${actionBar}
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:.9rem;align-items:start">
         <div style="display:flex;flex-direction:column;gap:.9rem;min-width:0">${activityCard}${historyCard}</div>
-        <div style="display:flex;flex-direction:column;gap:.9rem;min-width:0">${teamCard}${detailsCard}</div>
+        <div style="display:flex;flex-direction:column;gap:.9rem;min-width:0">${projectCard}${teamCard}${detailsCard}</div>
       </div>
     </div>
     <script>window.__SANAD=Object.assign(window.__SANAD||{},{

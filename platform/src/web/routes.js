@@ -1,11 +1,13 @@
 // SSR page routes + web-form auth handlers + report preview.
 import { Router } from 'express';
 import { login, logout } from '../core/auth/service.js';
+import { requestCode, verifyCode, normalizeEmail, REASON as OTP_REASON } from '../core/auth/otp.js';
 import { config } from '../core/config.js';
 import * as P from './pages.js';
 import { pageAllowed, DETAIL_ACCESS } from './nav.js';
-import { buildReport, renderReport, enqueueReport, createSchedule } from '../core/reports/engine.js';
+import { buildReport, renderReport, enqueueReport, createSchedule, setScheduleActive, deleteSchedule } from '../core/reports/engine.js';
 import { canSeeSensitive } from '../core/rbac/index.js';
+import { resolveUser } from '../core/http/context.js';
 
 export const webRouter = Router();
 
@@ -14,14 +16,84 @@ function requireWeb(req, res, next) {
   next();
 }
 
-webRouter.get('/login', (req, res) => res.send(P.loginPage(req.query.e ? 'بيانات الدخول غير صحيحة' : '')));
+// e=1 بيانات خاطئة · e=2 تجاوز عدد المحاولات — رسالتان مختلفتان لأن العلاج مختلف: الأولى
+// تُراجَع فيها الكلمة، والثانية تُنتظَر. وخلطهما يجعل الموظف يعيد المحاولة فيطيل حظره.
+// و٣ إلى ٥ للرمز: منتهٍ (يُطلب جديد) · غير صحيح (يُعاد الإدخال) · استُنفدت المحاولات (يُطلب جديد).
+const LOGIN_ERRORS = {
+  1: 'بيانات الدخول غير صحيحة',
+  2: 'محاولات كثيرة خلال وقت قصير — انتظر دقيقة ثم أعد المحاولة',
+  3: 'انتهت صلاحية الرمز — اطلب رمزاً جديداً',
+  4: 'الرمز غير صحيح — تحقّق من الأرقام الستة وأعد الإدخال',
+  5: 'استُنفدت محاولات هذا الرمز — اطلب رمزاً جديداً',
+  6: 'هذا الحساب موقوف — راجع مدير النظام',
+};
 
+// البريد المعلَّق بين الخطوتين يعيش في كعكة قصيرة العمر لا في المسار: وضعُه في العنوان يُبقيه
+// في سجل المتصفح وفي ترويسة المُحيل — وبريد الموظف ليس شيئاً يُنثر في السجلات.
+const PENDING_EMAIL_COOKIE = 'sanad_otp_to';
+const pendingCookieOpts = { httpOnly: true, sameSite: 'lax', secure: config.env === 'production', maxAge: 15 * 60000, path: '/' };
+// النموذج المطلوب: لا كلمة مرور إطلاقاً — رمزٌ مؤقّت على البريد في كل مرة. لكن تنفيذه بمفتاح
+// يُضبط يدوياً يفتح باب خطأ واحد قاتل: أن يُطفأ الدخول بكلمة المرور قبل أن تعمل قناة البريد،
+// فتُقفل المنصة على أهلها بباب لا يُفتح.
+//
+// فالقرار يتبع الواقع لا الإعداد: كلمة المرور تُغلق **تلقائياً** متى كانت قناة البريد حقيقية،
+// وتبقى مفتوحة ما دامت القناة في وضع المعاينة (أي لا رمز يصل أحداً). ويبقى المفتاح الصريح
+// `SANAD_AUTH_PASSWORD=1|0` لمن أراد تجاوز ذلك في الاتجاهين.
+const passwordLoginEnabled = () => {
+  const forced = process.env.SANAD_AUTH_PASSWORD;
+  if (forced === '1') return true;
+  if (forced === '0') return false;
+  return config.mailTransport !== 'smtp';     // قناةٌ حقيقية ⇒ الرمز وحده
+};
+
+webRouter.get('/login', (req, res) => {
+  if (req.query.reset) { res.clearCookie(PENDING_EMAIL_COOKIE, { path: '/' }); return res.redirect('/login'); }
+  const pending = req.cookies?.[PENDING_EMAIL_COOKIE] || '';
+  res.send(P.loginPage({
+    err: LOGIN_ERRORS[req.query.e] || '',
+    step: pending ? 'code' : 'email',
+    email: pending,
+    passwordEnabled: passwordLoginEnabled(),
+    csrf: req.csrfToken,
+  }));
+});
+
+// طلب الرمز — الردّ واحدٌ دائماً: ننتقل إلى خطوة الرمز سواء كان للبريد حسابٌ أم لا. أي فرقٍ
+// هنا (رسالة، أو تحويلة، أو حتى تأخّر ملحوظ) يحوّل الشاشة إلى أداةٍ تكشف من يعمل في EVC.
+webRouter.post('/auth/otp/request-web', async (req, res, next) => {
+  try {
+    const email = normalizeEmail(req.body.email || req.cookies?.[PENDING_EMAIL_COOKIE] || '');
+    if (!email || !email.includes('@')) return res.redirect('/login');
+    await requestCode({ email, ip: req.ip });
+    res.cookie(PENDING_EMAIL_COOKIE, email, pendingCookieOpts);
+    res.redirect('/login');
+  } catch (e) { next(e); }
+});
+
+webRouter.post('/auth/otp/verify-web', async (req, res, next) => {
+  try {
+    const email = normalizeEmail(req.cookies?.[PENDING_EMAIL_COOKIE] || '');
+    if (!email) return res.redirect('/login');
+    const r = await verifyCode({ email, code: req.body.code, ip: req.ip, userAgent: req.get('user-agent') });
+    if (!r.ok) {
+      const code = { [OTP_REASON.EXPIRED]: 3, [OTP_REASON.INVALID]: 4, [OTP_REASON.ATTEMPTS]: 5, [OTP_REASON.INACTIVE]: 6 }[r.reason] || 4;
+      return res.redirect('/login?e=' + code);
+    }
+    res.clearCookie(PENDING_EMAIL_COOKIE, { path: '/' });
+    res.cookie(config.sessionCookie, r.sessionId, { httpOnly: true, sameSite: 'lax', secure: config.env === 'production', maxAge: config.sessionTtlHours * 3600000, path: '/' });
+    res.redirect('/app/' + landingFor(await resolveUser(r.sessionId)));
+  } catch (e) { next(e); }
+});
+
+// الدخول بكلمة المرور — يبقى خلف مفتاح حتى يثبت الرمز حياً في الاستعمال. إطفاءُ المسار
+// الوحيد للدخول قبل إثبات بديله هو كيف تُقفَل منصةٌ على أهلها.
 webRouter.post('/auth/login-web', async (req, res, next) => {
   try {
+    if (!passwordLoginEnabled()) return res.redirect('/login');
     const r = await login({ username: req.body.username, password: req.body.password, ip: req.ip, userAgent: req.get('user-agent') });
     if (!r.ok) return res.redirect('/login?e=1');
     res.cookie(config.sessionCookie, r.sessionId, { httpOnly: true, sameSite: 'lax', secure: config.env === 'production', maxAge: config.sessionTtlHours * 3600000, path: '/' });
-    res.redirect('/app/' + (r.user.scope === 'company' ? 'ceo' : 'tasks'));
+    res.redirect('/app/' + landingFor(await resolveUser(r.sessionId)));
   } catch (e) { next(e); }
 });
 
@@ -33,14 +105,34 @@ webRouter.post('/auth/logout-web', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-webRouter.get('/', (req, res) => res.redirect(req.ctx?.user ? '/app/ceo' : '/login'));
+// وجهة الدخول: **صفحتي** للجميع.
+//
+// كانت تُحسب من الصلاحيات — لوحة القيادة لمن نطاقه شركي، فمركز القطاع، فـ«مهامي» قاعاً آمناً.
+// وكان ذلك صحيحاً حين لم تكن هناك شاشة تخصّ الشخص: أفضل ما يُهبَط عليه شاشةٌ يملك بياناتها.
+// أما الآن فـ«صفحتي» تُجيب سؤال الصباح لكل من يدخل («ماذا عليّ اليوم؟»)، وهي مفتوحة للجميع
+// لأن كل ما فيها مقيَّد بصاحبها. والقيادة تبلغ لوحتها من القائمة الجانبية بنقرة — بينما
+// المساهم الفردي كان يبلغ شاشته الشخصية بلا طريق أصلاً.
+//
+// والتحوّط باقٍ: إن أُغلقت «صفحتي» يوماً بقرار سياسة، تعود الوجهة إلى ما كانت عليه بالضبط.
+export function landingFor(user) {
+  if (!user) return 'tasks';
+  if (pageAllowed(user, 'home')) return 'home';
+  if (pageAllowed(user, 'ceo')) return 'ceo';                       // نطاق شركي → لوحة القيادة
+  // «مركز القطاع» صفحة إدارة: تُناسب من نطاقه قطاع فأوسع، لا المساهم الفردي الذي بيته «مهامي».
+  const managesScope = user.scope === 'sector' || user.scope === 'company';
+  if (managesScope && pageAllowed(user, 'sector')) return 'sector';
+  return 'tasks';                                                    // القاع الآمن — مفتوح للجميع
+}
+webRouter.get('/', (req, res) => res.redirect(req.ctx?.user ? '/app/' + landingFor(req.ctx.user) : '/login'));
 
 const PAGES = {
+  home: P.homePage,
   ceo: P.ceoPage, portfolio: P.portfolioPage, sector: P.sectorPage, opportunities: P.opportunitiesPage,
   'my-opportunities': P.myOpportunitiesPage,
   projects: P.projectsPage, tasks: P.tasksPage, timesheet: P.timesheetPage, approvals: P.approvalsPage,
-  team: P.teamPage, staffing: P.staffingPage, users: P.usersPage, audit: P.auditPage, reports: P.reportsPage, org: P.orgPage,
+  team: P.teamPage, staffing: P.staffingPage, users: P.usersPage, audit: P.auditPage, reports: P.reportsPage, org: P.orgTreePage,
   finance: P.financePage, mail: P.mailPage, clients: P.clientsPage, imports: P.importsPage,
+  guide: P.guidePage,
 };
 
 // معاينة رسالة من صندوق المعاينة — بنفس صلاحية صفحة مركز البريد
@@ -60,14 +152,24 @@ const guardDetail = (kind) => (req, res, next) => (DETAIL_ACCESS[kind]?.(req.ctx
 webRouter.get('/app/contract/:id', requireWeb, guardDetail('contract'), async (req, res, next) => {
   try { res.send(await P.contractDetailPage(req.ctx.user, req.params.id)); } catch (e) { next(e); }
 });
+// الاستعلام يُمرَّر كما تفعل صفحات القوائم (`/app/:page` أدناه) — فسنة «حركة المال» تصير
+// قابلة للمشاركة برابط. وبدونه كانت الصفحة تُبنى بلا استعلام أصلاً، فالمبدِّل يعمل داخل
+// الصفحة والرابط لا يحمل شيئاً — وهو نمطُ «مبنيٌّ وغير موصول» نفسه الذي أوقع موجّه المال
+// من قبل: الشيء موجود ومختبَر ولا يبلغه المستخدم.
 webRouter.get('/app/project/:id', requireWeb, guardDetail('project'), async (req, res, next) => {
-  try { res.send(await P.projectDetailPage(req.ctx.user, req.params.id)); } catch (e) { next(e); }
+  try { res.send(await P.projectDetailPage(req.ctx.user, req.params.id, { ...req.query })); } catch (e) { next(e); }
 });
 webRouter.get('/app/opportunity/:id', requireWeb, guardDetail('opportunity'), async (req, res, next) => {
   try { res.send(await P.opportunityDetailPage(req.ctx.user, req.params.id)); } catch (e) { next(e); }
 });
 webRouter.get('/app/client/:id', requireWeb, guardDetail('client'), async (req, res, next) => {
   try { res.send(await P.clientDetailPage(req.ctx.user, req.params.id)); } catch (e) { next(e); }
+});
+// صفحة الشخص: بلا guardDetail عمداً — بوابتها ليست «هل يرى هذا النوع من التفاصيل» بل «هل هذا
+// الشخص داخل نطاقك»، وهو سؤالٌ لا يُجاب إلا بعد قراءة صفّه. فالخدمة (personDossier) هي البوابة
+// وحدها، وترمي رفضاً عربياً واضحاً — ويُفتح ملفُ صاحب الحساب نفسه دائماً بلا أي منح إداري.
+webRouter.get('/app/person/:id', requireWeb, async (req, res, next) => {
+  try { res.send(await P.personPage(req.ctx.user, req.params.id)); } catch (e) { next(e); }
 });
 
 webRouter.get('/app/:page', requireWeb, async (req, res, next) => {
@@ -97,5 +199,16 @@ webRouter.post('/app/reports/test-send/:key', requireWeb, async (req, res, next)
 // Create a report schedule
 webRouter.post('/app/reports/schedule', requireWeb, async (req, res, next) => {
   try { res.json(await createSchedule(req.ctx, req.body || {})); }
+  catch (e) { next(e); }
+});
+
+// إيقاف/تفعيل جدولة قائمة، وحذفها. كانت الجدولة بلا أي مخرج بعد إنشائها إلا التعديل
+// المباشر على قاعدة البيانات؛ الصلاحية والنطاق مفحوصان داخل الخدمة لا هنا.
+webRouter.post('/app/reports/schedule/:id/active', requireWeb, async (req, res, next) => {
+  try { res.json(await setScheduleActive(req.ctx, req.params.id, (req.body || {}).active)); }
+  catch (e) { next(e); }
+});
+webRouter.delete('/app/reports/schedule/:id', requireWeb, async (req, res, next) => {
+  try { res.json(await deleteSchedule(req.ctx, req.params.id)); }
   catch (e) { next(e); }
 });

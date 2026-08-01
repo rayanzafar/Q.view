@@ -42,16 +42,23 @@ before(async () => {
   await new Promise((r) => server.on('listening', r));
   base = `http://127.0.0.1:${server.address().port}`;
 
-  // Login every persona ONCE (the login limiter allows a burst of exactly 10 per IP).
-  for (const { username } of EXP.ROLES) {
+  // Login every persona ONCE. The anti-brute-force limiter allows a burst of exactly 10 per IP
+  // (core/http/security.js: capacity 10, refill 1 token / 6s) and the matrix now drives 17 personas,
+  // so each login comes from its own forwarded address — the app runs with `trust proxy`, exactly as
+  // it does behind Railway's edge. This does not relax any assertion: it models 17 people on 17
+  // machines instead of one machine hammering the login endpoint. The limiter itself is covered
+  // directly by tests/security/login-limiter.test.js, so nothing is lost by separating the IPs here.
+  for (const [i, { username }] of EXP.ROLES.entries()) {
     const r = await fetch(base + '/auth/login', {
-      method: 'POST', headers: { 'content-type': 'application/json', connection: 'close' },
+      method: 'POST',
+      headers: { 'content-type': 'application/json', connection: 'close', 'x-forwarded-for': `10.20.30.${i + 1}` },
       body: JSON.stringify({ username, password: EXP.DEMO_PW }),
     });
     assert.equal(r.status, 200, `login ${username} must succeed (got ${r.status})`);
     const sid = r.headers.getSetCookie().find((c) => c.startsWith('sanad_sid='));
     assert.ok(sid, `login ${username} must set the session cookie`);
     cookies[username] = sid.split(';')[0];
+    await r.text();   // يُستهلك الجسم — سبعة عشر مقبساً معلّقاً تكفي وحدها لإسقاط التفكيك
   }
 });
 
@@ -62,20 +69,28 @@ after(async () => {
   wipe();
 });
 
-const req = (username, path, { method = 'GET', body } = {}) =>
-  fetch(base + path, {
+// الجسم يُستهلك داخل الدالة دائماً. جسم غير مقروء يُبقي محلّل undici معلّقاً على مقبس حيّ،
+// وعند إغلاق الخادم في `after` يُهدَم محلّل معلّق فيرمي استثناءً غير ملتقَط يُسقط الملف كله.
+// هذه أضخم مصفوفة شبكية في المستودع (١٧ دوراً × الصفحات والمسارات)، فهي الأكثر تعرّضاً — وقد
+// سقط ملفٌ شقيق بهذا العيب نفسه في الفحص الآلي دون المحلي لأن الأمر توقيتي بحت.
+const req = async (username, path, { method = 'GET', body } = {}) => {
+  const r = await fetch(base + path, {
     method, redirect: 'manual',
     headers: { cookie: cookies[username], 'content-type': 'application/json', connection: 'close' },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
+  return { status: r.status, headers: r.headers, text: await r.text() };
+};
 
 // ── anonymous baseline ────────────────────────────────────────────────────────
 test('anonymous: pages redirect to /login, APIs return 401', async () => {
   const pg = await fetch(base + '/app/ceo', { redirect: 'manual' });
   assert.equal(pg.status, 302);
   assert.equal(pg.headers.get('location'), '/login');
+  await pg.text();
   const api = await fetch(base + '/api/opportunities');
   assert.equal(api.status, 401);
+  await api.text();
 });
 
 // ── page matrix: every role × every page in the PAGES map ─────────────────────
@@ -87,7 +102,7 @@ test('page matrix: exact status per role for all 15 pages', async () => {
     for (const page of EXP.PAGES) {
       const want = EXP.pageExpected(role, page, pageAccess);
       const r = await req(username, `/app/${page}`);
-      const bodyText = await r.text();
+      const bodyText = r.text;
       assert.equal(r.status, want.status,
         `${role} GET /app/${page} → expected ${want.status}, got ${r.status}`);
       if (r.status === 200) {
@@ -109,7 +124,7 @@ test('API matrix: exact status per role for every probe', async () => {
       assert.equal(r.status, want,
         `${role} ${probe.method} ${probe.path} → expected ${want}, got ${r.status}`);
       // API error envelopes must be JSON (never an HTML page) and 403s must carry the typed code.
-      const text = await r.text();
+      const text = r.text;
       if (probe.path.startsWith('/api')) {
         const parsed = JSON.parse(text);
         if (r.status === 403) assert.equal(parsed.error?.code, 'forbidden', `${role} ${probe.path} 403 envelope`);
@@ -120,7 +135,7 @@ test('API matrix: exact status per role for every probe', async () => {
 
 // ── list scoping through the wire (not just the service layer) ────────────────
 test('scoping: opportunity lists respect sector/own scope per role', async () => {
-  const rows = async (u) => JSON.parse(await (await req(u, '/api/opportunities')).text());
+  const rows = async (u) => JSON.parse((await req(u, '/api/opportunities')).text);
   const admin = await rows('demo.admin');
   assert.ok(admin.some((o) => o.id === 'FX-OPP-CONS'), 'company scope sees the CONSULTING opportunity');
   for (const u of ['demo.bd', 'demo.viewer', 'demo.sectorlead']) {
@@ -134,40 +149,38 @@ test('scoping: opportunity lists respect sector/own scope per role', async () =>
 });
 
 // ── sensitive fields over the wire ────────────────────────────────────────────
-test('sensitive: salary reaches hr, never reaches bd (API + roster page)', async () => {
-  // demo.hr holds the salary grant → roster carries real values.
-  const hr = await req('demo.hr', '/api/org/roster');
-  assert.equal(hr.status, 200);
-  assert.match(await hr.text(), /"salary_halalas":\s*[1-9]/, 'hr roster must include salary values');
+test('sensitive: salary reaches ADMIN ONLY — sealed from every other role over real HTTP', async () => {
+  // قرار المالك: الراتب لا يراه إلا مدير النظام حتى يتم التكامل مع Odoo.
+  // هذا الاختبار يمرّ عبر الشبكة فعلاً، فيغطي الخدمة والصفحة والتصدير معاً.
+  const adminRoster = await req('demo.admin', '/api/org/roster');
+  assert.equal(adminRoster.status, 200);
+  assert.match(adminRoster.text, /"salary_halalas":\s*[1-9]/, 'مدير النظام يستقبل الراتب');
+  assert.match((await req('demo.admin', '/app/team')).text, /emp-sal/, 'صفحة الفريق تعرض عمود الراتب لمدير النظام');
+
   // demo.bd has no employee read at all → the roster (API and page) is denied outright.
   assert.equal((await req('demo.bd', '/api/org/roster')).status, 403);
   assert.equal((await req('demo.bd', '/app/team')).status, 403);
-  // Team PAGE (capacity workspace v3) gates the salary COLUMN by canSeeSensitive:
-  // present for hr, and — per explicit owner decision (a sector lead manages their own team's
-  // compensation) — present for sector_lead too, scoped to their own sector's roster only.
-  const hrPage = await (await req('demo.hr', '/app/team')).text();
-  assert.match(hrPage, /emp-sal/, 'hr team page shows the salary column');
-  const leadPage = await (await req('demo.sectorlead', '/app/team')).text();
-  assert.match(leadPage, /emp-sal/, 'sector_lead team page shows the salary column (owner-granted)');
-  assert.match(leadPage, /"salary_sar":\s*[1-9]/, 'sector_lead team page embeds real salary values for their own sector');
 
-  // QH-1 (regression guard): staffingRoster serializes salary_halalas only for salary readers —
-  // ceo_office reads employees but NOT salary, so the roster API must never carry it for that role.
-  // sector_lead DOES hold the salary grant now, but scoped to their own sector by the roster query
-  // itself (staffingRoster forces sec = user.sector_id for non-company scope) — never company-wide.
-  assert.doesNotMatch(await (await req('demo.ceo', '/api/org/roster')).text(), /"salary_halalas":\s*[1-9]/,
-    'demo.ceo must not receive raw salary_halalas from /api/org/roster');
-  const leadRoster = await (await req('demo.sectorlead', '/api/org/roster')).text();
-  assert.match(leadRoster, /"salary_halalas":\s*[1-9]/, 'sector_lead now receives salary_halalas for their own sector roster');
+  // كل دور آخر يقرأ الموظفين: يصل للقائمة لكن بلا أي قيمة راتب — لا في البيانات ولا في الصفحة.
+  for (const who of ['demo.hr', 'demo.sectorlead', 'demo.ceo']) {
+    const roster = (await req(who, '/api/org/roster')).text;
+    assert.doesNotMatch(roster, /"salary_halalas":\s*[1-9]/, `${who} يجب ألا يستقبل الراتب`);
+    const page = await req(who, '/app/team');
+    if (page.status === 200) {
+      const html = page.text;
+      assert.doesNotMatch(html, /emp-sal/, `${who} يجب ألا يرى عمود الراتب`);
+      assert.doesNotMatch(html, /"salary_sar":\s*[1-9]/, `${who} يجب ألا تُضخّ له قيم رواتب في الصفحة`);
+    }
+  }
 });
 
-test('sensitive: project cost/margin redacted for bd, visible to finance', async () => {
-  const bd = JSON.parse(await (await req('demo.bd', '/api/projects')).text());
+test('sensitive: project cost/margin redacted for bd, visible to the CEO office', async () => {
+  const bd = JSON.parse((await req('demo.bd', '/api/projects')).text);
   assert.ok(bd.length > 0, 'bd sees sector projects');
   assert.ok(bd.every((p) => p.actual_spend_halalas == null && p.margin_pct == null),
     'bd must never receive cost/margin values');
-  const fin = JSON.parse(await (await req('demo.finance', '/api/projects')).text());
-  assert.ok(fin.some((p) => p.actual_spend_halalas > 0), 'finance sees cost values');
+  const fin = JSON.parse((await req('demo.ceo', '/api/projects')).text);
+  assert.ok(fin.some((p) => p.actual_spend_halalas > 0), 'the CEO office sees cost values');
 });
 
 // ── row-level guards (IDOR) ───────────────────────────────────────────────────
@@ -176,5 +189,5 @@ test('IDOR: out-of-sector single-row reads are 403, not silently redacted', asyn
   assert.equal(lead.status, 403, 'sector_lead must not read another sector’s opportunity');
   const admin = await req('demo.admin', '/api/opportunities/FX-OPP-CONS');
   assert.equal(admin.status, 200);
-  assert.equal(JSON.parse(await admin.text()).id, 'FX-OPP-CONS');
+  assert.equal(JSON.parse(admin.text).id, 'FX-OPP-CONS');
 });

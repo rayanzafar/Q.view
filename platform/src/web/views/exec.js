@@ -1,5 +1,6 @@
 // Executive pages: CEO command dashboard + portfolio health.
 import { layout, card, pill, miniBars, gauge, hbars } from '../layout.js';
+import { netSql } from '../../modules/finance/vat.js';
 import { fmtSar } from '../../core/util/ids.js';
 import { all, get } from '../../core/db/index.js';
 import { companyOverview, multiYearTrend, winRate,
@@ -41,7 +42,7 @@ export async function ceoPage(user, opts = {}) {
     : ov.pipeline_halalas;
   // ── Drill-down datasets (KPI popups). Same filter as the page; embedded as inert <template>s. ──
   const spO = sec ? 'AND o.sector_id = ?' : '';
-  const revLines = await all(`SELECT rl.amount_halalas, rl.month, rl.label, p.name_ar project, s.name_ar sector
+  const revLines = await all(`SELECT ${netSql('rl.amount_halalas', 'rl.net_amount_halalas')} amount_halalas, rl.month, rl.label, p.name_ar project, s.name_ar sector
      FROM revenue_line rl LEFT JOIN project p ON p.id=rl.project_id LEFT JOIN sector s ON s.id=rl.sector_id
      WHERE rl.year=? ${sec ? 'AND rl.sector_id = ?' : ''} ORDER BY rl.amount_halalas DESC LIMIT 8`, sec ? [year, sec] : [year]);
   const wonDeals = await all(`SELECT o.title_ar, o.value_halalas, c.name_ar client, s.name_ar sector

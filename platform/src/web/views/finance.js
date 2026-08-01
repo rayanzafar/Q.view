@@ -4,6 +4,16 @@ import { fmtSar } from '../../core/util/ids.js';
 import { config } from '../../core/config.js';
 import { financeSummary, financeByPM, financeByContract, financeByClient, contractDetail } from '../../modules/finance/finance.js';
 import { sarShort, esc, noticeCard } from './_shared.js';
+import { deliverableStatusLabel, DELIVERABLE_MONEY_AR as G_DLV_MONEY, G } from '../i18n/glossary.js';
+
+// ── عرض المبلغ بوجهيه: إفصاحٌ تدريجي لا ازدحام ──────────────────────────────────────────────
+// الرقم الكبير يبقى واحداً كما كان، ويُكتب تحته سطرٌ صغير يقول الوجه الآخر. فمن يمرّ مروراً يقرأ
+// رقماً واحداً كما اعتاد، ومن يسأل «كم بدون الضريبة» يجد الجواب في مكانه بلا نقرة ولا شاشة ثانية.
+// وقاعدة «الصفر ليس غياباً» مطبَّقة: ما لم يُسجَّل يُكتب «غير مُسجَّل» ولا يُطبع صفرٌ بالريال.
+const vatLine = (net, vat) => (net == null
+  ? `<div style="font-size:11px;color:var(--faint)">${G.vatNotRecorded}</div>`
+  : `<div style="font-size:11px;color:var(--muted)">${G.withoutVat} <span class="tnum">${fmtSar(net)}</span>${
+    vat ? ` · ${G.vatOfWhich} <span class="tnum">${fmtSar(vat)}</span>` : ''}</div>`);
 
 export async function financePage(user, opts = {}) {
   const year = Number(opts.year) || config.fiscalYear;
@@ -14,12 +24,19 @@ export async function financePage(user, opts = {}) {
   const tile = (l, v, sub, color) => card(`<div style="padding:.9rem 1rem"><div style="font-size:11px;color:var(--muted)">${l}</div>
     <div class="metric" style="font-size:1.35rem;${color ? 'color:' + color : ''}">${v}</div>${sub ? `<div style="font-size:11px;color:var(--muted)">${sub}</div>` : ''}</div>`);
   // bridge: bookings → revenue → invoiced → collected
-  const bridge = [['التعاقدات', s.bookings_halalas, 'var(--brand)'], ['الإيراد المحقق', s.revenue_halalas, 'var(--brand2)'],
-    ['المُفوتر', s.invoiced_halalas, '#0891b2'], ['المُحصَّل', s.collected_halalas, '#059669']];
+  // ولكل ضلعٍ أساسه المعلَن تحته: التعاقدات تقديرُ ما قبل التعاقد فلا وجه ثانياً لها، والإيراد
+  // بدون الضريبة لأنه ما يخصّ الشركة، والمفوتر والمحصَّل مع الضريبة لأنهما ما يُطالَب به ويُدفع.
+  const bridge = [
+    ['التعاقدات', s.bookings_halalas, 'var(--brand)', null],
+    ['الإيراد المحقق', s.revenue_halalas, 'var(--brand2)', G.withoutVat],
+    ['المُفوتر', s.invoiced_halalas, '#0891b2', G.withVat],
+    ['المُحصَّل', s.collected_halalas, '#059669', G.withVat],
+  ];
   const maxB = Math.max(1, ...bridge.map((b) => b[1]));
   const bridgeHtml = bridge.map((b) => `<div style="flex:1;text-align:center">
     <div style="font-size:11px;color:var(--muted)">${b[0]}</div>
     <div style="font-weight:800;font-size:15px" class="tnum">${fmtSar(b[1])}</div>
+    ${b[3] ? `<div style="font-size:10px;color:var(--faint)">${b[3]}</div>` : ''}
     <div class="bar" style="margin-top:.35rem"><span style="width:${Math.round(b[1] / maxB * 100)}%;background:${b[2]}"></span></div></div>`).join('<div style="color:var(--faint);align-self:center;padding:0 .3rem">←</div>');
   const agingMax = Math.max(1, ...Object.values(s.aging));
   const agingHtml = Object.entries(s.aging).map(([k, v]) => `<div style="display:flex;align-items:center;gap:.5rem;font-size:12px;padding:.2rem 0">
@@ -37,9 +54,10 @@ export async function financePage(user, opts = {}) {
   // Portfolio-summary stats fill the right column with meaningful computed metrics (no sparse whitespace).
   const liveContracts = byContract.filter((c) => !c.unassigned);
   const totalCV = liveContracts.reduce((a, c) => a + (c.value_halalas || 0), 0);
+  const totalCVNet = liveContracts.reduce((a, c) => a + (c.net_value_halalas || 0), 0);
   const totalBacklog = liveContracts.reduce((a, c) => a + (c.backlog_halalas || 0), 0);
   const avgCV = liveContracts.length ? Math.round(totalCV / liveContracts.length) : 0;
-  const sumStat = (l, v, tone) => `<div style="display:flex;justify-content:space-between;align-items:baseline;padding:.5rem 0;border-bottom:1px dashed var(--line)"><span style="font-size:12px;color:var(--muted)">${l}</span><span class="tnum" style="font-weight:800;font-size:var(--fs-title);${tone ? 'color:' + tone : ''}">${v}</span></div>`;
+  const sumStat = (l, v, tone, sub) => `<div style="padding:.5rem 0;border-bottom:1px dashed var(--line)"><div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font-size:12px;color:var(--muted)">${l}</span><span class="tnum" style="font-weight:800;font-size:var(--fs-title);${tone ? 'color:' + tone : ''}">${v}</span></div>${sub || ''}</div>`;
   // Keep the top contracts by value AND always retain the 'unassigned' reconciliation bucket (it is
   // appended last by financeByContract, so a plain slice would drop it and understate the total).
   const cTop = byContract.filter((c) => !c.unassigned).slice(0, 30);
@@ -50,13 +68,20 @@ export async function financePage(user, opts = {}) {
     <td style="padding:.5rem .75rem;text-align:center">${c.billed_pct == null ? '<span style="font-size:11px;color:var(--muted)">—</span>' : `<div class="bar" style="width:70px;display:inline-block;vertical-align:middle"><span style="width:${Math.min(100, c.billed_pct)}%;background:var(--brand)"></span></div> <span style="font-size:11px">${c.billed_pct}%</span>`}</td>
     <td style="padding:.5rem .75rem;font-size:var(--fs-ui);text-align:center;color:var(--muted)" class="tnum">${fmtSar(c.backlog_halalas)}</td></tr>`).join('');
   const body = `
-    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:.85rem;margin-bottom:1.25rem">
+    <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:.85rem;margin-bottom:.6rem">
       ${tile('التعاقدات', fmtSar(s.bookings_halalas))}
-      ${tile('المُفوتر', fmtSar(s.invoiced_halalas))}
-      ${tile('الذمم المدينة (AR)', fmtSar(s.ar_halalas), 'مستحق غير محصَّل', 'var(--amber)')}
-      ${tile('معدل التحصيل', s.collectionRate + '%')}
+      ${tile(G.netRevenue, fmtSar(s.revenue_halalas), `مع الضريبة ${fmtSar(s.revenue_gross_halalas)}`, 'var(--brand2)')}
+      ${tile('المُفوتر', fmtSar(s.invoiced_halalas), `${G.withVat} · ${G.withoutVat} ${fmtSar(s.invoiced_net_halalas)}`)}
+      ${tile('الذمم المدينة (AR)', fmtSar(s.ar_halalas), 'مستحق غير محصَّل · مع الضريبة', 'var(--amber)')}
+      ${tile('معدل التحصيل', s.collectionRate + '%', `المُحصَّل ÷ المُفوتر · ${G.withVat}`)}
       ${tile('DSO', s.dso + ' يوم', 'فترة التحصيل')}
     </div>
+    ${card(`<div style="padding:.6rem 1rem;font-size:12px;color:var(--muted);display:flex;gap:.6rem;align-items:baseline;flex-wrap:wrap">
+      <span style="font-weight:700;color:var(--text)">${G.vat}</span>
+      <span>${G.vatExplain}</span>
+      <span style="margin-inline-start:auto">${G.vatOfWhich} في المُفوتر <span class="tnum" style="font-weight:700">${fmtSar(s.invoiced_vat_halalas)}</span></span>
+    </div>`)}
+    <div style="height:1.25rem"></div>
     <div style="display:grid;grid-template-columns:1.3fr 1fr;gap:1rem;margin-bottom:1.25rem">
       ${card(`<div style="padding:1rem"><div style="font-weight:800;font-size:var(--fs-title);margin-bottom:.75rem">الجسر المالي · ${year}</div>
         <div style="display:flex;align-items:stretch">${bridgeHtml}</div></div>`)}
@@ -64,12 +89,13 @@ export async function financePage(user, opts = {}) {
     </div>
     <div style="display:grid;grid-template-columns:1.5fr 1fr;gap:1rem;margin-bottom:1.25rem">
       ${card(`<div style="padding:.85rem 1rem;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center"><div style="font-weight:800;font-size:var(--fs-ui)">تركّز العملاء حسب قيمة العقود</div><span style="font-size:var(--fs-micro);color:var(--muted)">${byClient.length} عميل</span></div>
-        <table style="width:100%;border-collapse:collapse"><thead><tr style="font-size:var(--fs-micro);color:var(--muted);text-align:right"><th style="padding:.4rem .7rem"></th><th style="padding:.4rem .7rem">العميل</th><th style="padding:.4rem .7rem;text-align:center">عقود</th><th style="padding:.4rem .7rem">قيمة العقود</th></tr></thead>
+        <table style="width:100%;border-collapse:collapse"><thead><tr style="font-size:var(--fs-micro);color:var(--muted);text-align:right"><th style="padding:.4rem .7rem"></th><th style="padding:.4rem .7rem">العميل</th><th style="padding:.4rem .7rem;text-align:center">عقود</th><th style="padding:.4rem .7rem">قيمة العقود ${G.withVat}</th></tr></thead>
         <tbody>${clientRows || '<tr><td style="padding:1rem;color:var(--muted);font-size:var(--fs-body)" colspan="4">لا عملاء بعقود</td></tr>'}</tbody></table>`)}
       ${card(`<div style="padding:.85rem 1rem;border-bottom:1px solid var(--line);font-weight:800;font-size:var(--fs-ui)">ملخص محفظة العقود</div>
         <div style="padding:.4rem 1rem .7rem">
           ${sumStat('إجمالي العقود', liveContracts.length + ' عقد')}
-          ${sumStat('إجمالي قيمة العقود', fmtSar(totalCV))}
+          ${sumStat('إجمالي قيمة العقود', fmtSar(totalCV), null,
+    `<div style="text-align:end">${vatLine(totalCVNet, totalCV - totalCVNet)}</div>`)}
           ${sumStat('متوسط قيمة العقد', fmtSar(avgCV))}
           ${sumStat('Backlog (غير مُفوتر)', fmtSar(totalBacklog), 'var(--brand2)')}
           ${sumStat('المُحصَّل / المُفوتر', s.collectionRate + '%', s.collectionRate < 40 ? 'var(--red)' : 'var(--green)')}
@@ -77,7 +103,7 @@ export async function financePage(user, opts = {}) {
         </div>`)}
     </div>
     ${card(`<div style="padding:.85rem 1rem;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center"><div style="font-weight:800;font-size:var(--fs-ui)">العقود · اضغط أي عقد للتفصيل والمستخلصات</div><span style="font-size:11px;color:var(--muted)">${cTop.length} عقد</span></div>
-      <div style="max-height:460px;overflow-y:auto"><table style="width:100%;border-collapse:collapse"><thead><tr style="font-size:var(--fs-micro);color:var(--muted);text-align:right;position:sticky;top:0;background:var(--surface)"><th style="padding:.4rem .75rem">العقد/المشروع</th><th style="padding:.4rem .75rem;text-align:center">القيمة</th><th style="padding:.4rem .75rem;text-align:center">نسبة الفوترة</th><th style="padding:.4rem .75rem;text-align:center">Backlog</th></tr></thead>
+      <div style="max-height:460px;overflow-y:auto"><table style="width:100%;border-collapse:collapse"><thead><tr style="font-size:var(--fs-micro);color:var(--muted);text-align:right;position:sticky;top:0;background:var(--surface)"><th style="padding:.4rem .75rem">العقد/المشروع</th><th style="padding:.4rem .75rem;text-align:center">القيمة ${G.withVat}</th><th style="padding:.4rem .75rem;text-align:center">نسبة الفوترة</th><th style="padding:.4rem .75rem;text-align:center">Backlog ${G.withVat}</th></tr></thead>
       <tbody>${cRows || '<tr><td style="padding:1rem;color:var(--muted);font-size:var(--fs-body)" colspan="4">لا عقود</td></tr>'}</tbody></table></div>`)}`;
   return layout({ user, active: 'finance', title: 'المالية', subtitle: `عقود · فواتير · مستخلصات · تحصيل · السنة ${year}`, body, year });
 }
@@ -88,21 +114,26 @@ export async function contractDetailPage(user, contractId) {
   const c = d.contract;
   const invRows = d.invoices.map((i) => `<tr style="border-bottom:1px solid var(--line)">
     <td style="padding:.5rem .75rem;font-size:var(--fs-ui)">${i.kind === 'progress_claim' ? 'مستخلص #' + (i.claim_no || '') : (i.code || i.id)}${i.period_label ? `<div style="font-size:11px;color:var(--muted)">${i.period_label}</div>` : ''}</td>
-    <td style="padding:.5rem .75rem;font-size:var(--fs-ui);text-align:center" class="tnum">${fmtSar(i.amount_halalas)}</td>
+    <td style="padding:.5rem .75rem;font-size:var(--fs-ui);text-align:center" class="tnum">${fmtSar(i.amount_halalas)}${vatLine(i.net_amount_halalas, i.vat_halalas)}</td>
     <td style="padding:.5rem .75rem;text-align:center">${pill(tr(i.status), i.status === 'PAID' ? 'green' : i.status === 'OVERDUE' ? 'red' : i.status === 'PARTIALLY_PAID' ? 'amber' : 'blue')}</td>
     <td style="padding:.5rem .75rem;font-size:var(--fs-ui);text-align:center;color:var(--amber)" class="tnum">${fmtSar(i.outstanding_halalas)}</td>
     <td style="padding:.5rem .75rem;text-align:center">${i.outstanding_halalas > 0 ? `<button onclick="Sanad.recordCollection('${i.id}', ${i.outstanding_halalas / 100})" style="border:1px solid var(--line);cursor:pointer;font-size:11px;padding:.25rem .5rem;border-radius:6px;background:#fff">تسجيل تحصيل</button>` : '✓'}</td></tr>`).join('');
-  const eligible = d.deliverables.filter((dl) => ['DELIVERED', 'ACCEPTED'].includes(dl.status));
+  // المؤهَّل للمستخلص = مُسلَّم أو معتمَد **ولم يُفوتر بعد**. الفوترة صارت ختماً مستقلاً لا
+  // حالةً تحلّ محلّ التسليم (ترحيلة ٠١٧)، فبلا شرط الختم يعود المخرَج المفوتر مؤهَّلاً ثانيةً.
+  const eligible = d.deliverables.filter((dl) => ['DELIVERED', 'ACCEPTED'].includes(dl.status) && !dl.invoiced_at);
+  const dlvMoney = (dl) => (dl.collected_at ? pill(G_DLV_MONEY.collected, 'green')
+    : dl.invoiced_at ? pill(G_DLV_MONEY.invoiced, 'violet') : '<span style="color:var(--faint)">—</span>');
   const dlvRows = d.deliverables.map((dl) => `<tr style="border-bottom:1px solid var(--line)">
     <td style="padding:.4rem .75rem;font-size:var(--fs-ui)">${esc(dl.name_ar)}</td>
     <td style="padding:.4rem .75rem;font-size:var(--fs-ui);text-align:center" class="tnum">${fmtSar(dl.amount_halalas)}</td>
-    <td style="padding:.4rem .75rem;text-align:center">${pill(tr(dl.status), dl.status === 'PAID' || dl.status === 'INVOICED' ? 'green' : dl.status === 'DELIVERED' ? 'blue' : 'slate')}</td></tr>`).join('');
+    <td style="padding:.4rem .75rem;text-align:center">${pill(deliverableStatusLabel(dl.status), dl.status === 'ACCEPTED' ? 'green' : dl.status === 'DELIVERED' ? 'blue' : dl.status === 'REJECTED' ? 'red' : 'slate')}</td>
+    <td style="padding:.4rem .75rem;text-align:center">${dlvMoney(dl)}</td></tr>`).join('');
   const body = `
     <a href="/app/finance" style="font-size:12px;color:var(--muted)">← المالية</a>
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:.85rem;margin:.75rem 0 1.25rem">
-      ${card(`<div style="padding:.9rem 1rem"><div style="font-size:11px;color:var(--muted)">قيمة العقد</div><div class="metric" style="font-size:1.3rem">${fmtSar(c.value_halalas)}</div></div>`)}
-      ${card(`<div style="padding:.9rem 1rem"><div style="font-size:11px;color:var(--muted)">نسبة الفوترة</div><div class="metric" style="font-size:1.3rem">${d.billed_pct}%</div></div>`)}
-      ${card(`<div style="padding:.9rem 1rem"><div style="font-size:11px;color:var(--muted)">Backlog متبقٍّ</div><div class="metric" style="font-size:1.3rem">${fmtSar(d.backlog_halalas)}</div></div>`)}
+      ${card(`<div style="padding:.9rem 1rem"><div style="font-size:11px;color:var(--muted)">قيمة العقد</div><div class="metric" style="font-size:1.3rem">${fmtSar(c.value_halalas)}</div>${vatLine(d.contract_net_value_halalas, d.contract_vat_halalas)}</div>`)}
+      ${card(`<div style="padding:.9rem 1rem"><div style="font-size:11px;color:var(--muted)">نسبة الفوترة</div><div class="metric" style="font-size:1.3rem">${d.billed_pct}%</div><div style="font-size:11px;color:var(--muted)">المُفوتر ${fmtSar(d.invoiced_halalas)} · ${G.withVat}</div></div>`)}
+      ${card(`<div style="padding:.9rem 1rem"><div style="font-size:11px;color:var(--muted)">Backlog متبقٍّ</div><div class="metric" style="font-size:1.3rem">${fmtSar(d.backlog_halalas)}</div>${vatLine(d.backlog_net_halalas, d.backlog_halalas - d.backlog_net_halalas)}</div>`)}
       ${card(`<div style="padding:.9rem 1rem"><div style="font-size:11px;color:var(--muted)">العميل</div><div style="font-weight:700;font-size:15px;margin-top:.4rem">${esc(d.client || '—')}</div></div>`)}
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
@@ -112,8 +143,8 @@ export async function contractDetailPage(user, contractId) {
         <table style="width:100%;border-collapse:collapse"><thead><tr style="font-size:11px;color:var(--muted);text-align:right"><th style="padding:.4rem .75rem">المستخلص/الفاتورة</th><th style="padding:.4rem .75rem;text-align:center">القيمة</th><th style="padding:.4rem .75rem;text-align:center">الحالة</th><th style="padding:.4rem .75rem;text-align:center">متبقٍّ</th><th style="padding:.4rem .75rem"></th></tr></thead>
         <tbody>${invRows || '<tr><td style="padding:1rem;color:var(--muted);font-size:var(--fs-ui)" colspan="5">لا مستخلصات بعد — أنشئ واحداً من المخرجات المسلّمة</td></tr>'}</tbody></table>`)}
       ${card(`<div style="padding:1rem;border-bottom:1px solid var(--line);font-weight:800;font-size:var(--fs-ui)">مخرجات المشروع</div>
-        <table style="width:100%;border-collapse:collapse"><thead><tr style="font-size:11px;color:var(--muted);text-align:right"><th style="padding:.4rem .75rem">المخرج</th><th style="padding:.4rem .75rem;text-align:center">القيمة</th><th style="padding:.4rem .75rem;text-align:center">الحالة</th></tr></thead>
-        <tbody>${dlvRows || '<tr><td style="padding:1rem;color:var(--muted);font-size:var(--fs-ui)" colspan="3">لا مخرجات</td></tr>'}</tbody></table>`)}
+        <table style="width:100%;border-collapse:collapse"><thead><tr style="font-size:11px;color:var(--muted);text-align:right"><th style="padding:.4rem .75rem">المخرج</th><th style="padding:.4rem .75rem;text-align:center">القيمة</th><th style="padding:.4rem .75rem;text-align:center">حالة العمل</th><th style="padding:.4rem .75rem;text-align:center">المالية</th></tr></thead>
+        <tbody>${dlvRows || '<tr><td style="padding:1rem;color:var(--muted);font-size:var(--fs-ui)" colspan="4">لا مخرجات</td></tr>'}</tbody></table>`)}
     </div>`;
   return layout({ user, active: 'finance', title: `العقد — ${esc(c.code || c.id)}`, subtitle: esc(d.project?.name_ar || ''), body });
 }

@@ -11,6 +11,7 @@ import { listOpportunities, ROT_THRESHOLDS } from '../../modules/crm/opportuniti
 import { stageInfo } from '../../core/i18n/stages.js';
 import { listViews } from '../../modules/views/views.js';
 import { can } from '../../core/rbac/index.js';
+import { DELIVERY_SECTOR_SQL } from '../../core/org/kind.js';
 import { sarShort, pct, esc, statMini, ddWrap, ddRows } from './_shared.js';
 import { G } from '../i18n/glossary.js';
 import { countAr, dayWord } from '../../core/i18n/plural.js';
@@ -83,7 +84,11 @@ export async function opportunitiesPage(user, opts = {}) {
   const stages = await all('SELECT id,name_ar,color,default_win_pct,sort_order,is_won,is_lost FROM stage ORDER BY sort_order');
   const clients = Object.fromEntries((await all('SELECT id,name_ar FROM client')).map((c) => [c.id, c.name_ar]));
   const users = Object.fromEntries((await all('SELECT id,name_ar,username FROM app_user')).map((u) => [u.id, u.name_ar || u.username]));
-  const sectors = await all('SELECT id,name_ar FROM sector WHERE active=1 ORDER BY name_ar');
+  // قطاعات التسليم وحدها: هذه القائمة تخدم ثلاثة أشياء كلها «قطاع» بالمعنى التجاري — شرائح
+  // تصفية خط الفرص، وخانة القطاع في نافذة «فرصة جديدة»، ووجهات نقل الفرصة بين القطاعات.
+  // الفرصة إيراد قادم، ووحدة المساندة بلا خط فرص ولا هدف مبيعات، فنقل فرصة إليها يُخرجها من
+  // مقارنة القطاعات ومن مستهدف الشركة بلا أي رسالة تفسّر الاختفاء (والخدمة ترفضه أيضاً).
+  const sectors = await all(`SELECT id,name_ar FROM sector WHERE active=1 AND ${DELIVERY_SECTOR_SQL} ORDER BY name_ar`);
   const savedViews = await listViews(user, 'opportunities');
   const canCreate = can(user, 'create', 'opportunity');
   const canEdit = can(user, 'update', 'opportunity');
@@ -109,8 +114,16 @@ export async function opportunitiesPage(user, opts = {}) {
       projByOpp[p.source_opp_id] = p;
   }
   const wonProjectCount = Object.keys(projByOpp).length;
+  // الخلية كانت تعرض «— لم يُنشأ مشروع بعد» كنصٍّ ميت: لا مسار في المنتج كله يربط فرصةً فائزة
+  // بمشروعها، فكل فرصة تُربح داخل سند تبقى بهذا النص أبداً. صارت إجراءً: من يملك إنشاء المشاريع
+  // يُنشئ المشروع من الفرصة نفسها فيُكتب الرابط ويُورَث العميل — بلا نسخ قيمة ولا عميل ثانٍ.
+  const canMakeProject = can(user, 'create', 'project');
   const prjCell = (o) => { const pr = projByOpp[o.id]; const L = pr ? (PRJ_LABEL[pr.status] || [pr.status, 'slate']) : null;
-    return `<td style="padding:.55rem .7rem;font-size:12px">${pr ? `<a href="/app/project/${pr.id}" style="font-weight:700;color:var(--brand)">${esc(pr.name_ar)}</a> ${pill(L[0], L[1])}` : '<span style="color:var(--faint)">— لم يُنشأ مشروع بعد</span>'}</td>`; };
+    if (pr) return `<td style="padding:.55rem .7rem;font-size:12px"><a href="/app/project/${esc(pr.id)}" style="font-weight:700;color:var(--brand)">${esc(pr.name_ar)}</a> ${pill(L[0], L[1])}</td>`;
+    if (!canMakeProject) return '<td style="padding:.55rem .7rem;font-size:12px"><span style="color:var(--faint)">لم يُنشأ مشروع بعد</span></td>';
+    return `<td style="padding:.55rem .7rem;font-size:12px"><button class="btn btn-ghost" style="font-size:11.5px;padding:.25rem .6rem"
+      data-action="opp-make-project" data-opp="${esc(o.id)}" data-name="${esc(o.title_ar || '')}" data-sector="${esc(o.sector_id || '')}"
+      >أنشئ المشروع</button></td>`; };
   const total = open.reduce((a, o) => a + (o.value_halalas || 0), 0);
   const weighted = Math.round(open.reduce((a, o) => a + weightedOf(o), 0));
   const decided = wonAll.length + lostAll.length;
