@@ -3,8 +3,9 @@
 // أخطاء الصلاحية/عدم الوجود تصعد من الخدمة وتُعرض صفحة عربية عبر errors.js تلقائياً.
 import { layout, card, pill, tr } from '../layout.js';
 import { icon } from '../icons.js';
-import { fmtSar } from '../../core/util/ids.js';
-import { get } from '../../core/db/index.js';
+import { fmtSar, toSar } from '../../core/util/ids.js';
+import { get, all } from '../../core/db/index.js';
+import { DELIVERY_SECTOR_SQL } from '../../core/org/kind.js';
 import { opportunityDetail, ROT_THRESHOLDS } from '../../modules/crm/opportunities.js';
 import { TEAM_ROLE_LABELS } from '../../modules/crm/oppteam.js';
 import { esc, pct } from './_shared.js';
@@ -47,7 +48,7 @@ export async function opportunityDetailPage(user, oppId) {
       </div>
       <div style="margin-top:.7rem;display:flex;gap:1.1rem;flex-wrap:wrap;font-size:var(--fs-body);color:var(--muted)">
         <span style="display:inline-flex;align-items:center;gap:.3rem">${icon('building')}${o.client_id ? `<a href="/app/client/${o.client_id}" style="color:var(--brand);font-weight:700">${esc(d.client || 'العميل')}</a>` : 'بدون عميل'}</span>
-        ${sectorName ? `<span style="display:inline-flex;align-items:center;gap:.3rem">${icon('sector')}${esc(sectorName)}</span>` : ''}
+        ${sectorName ? `<span style="display:inline-flex;align-items:center;gap:.3rem">${icon('sector')}${esc(sectorName)}${d.department ? ` <span style="color:var(--faint)">›</span> ${esc(d.department)}` : ''}</span>` : ''}
         <span style="display:inline-flex;align-items:center;gap:.3rem">${icon('flag')}المسؤول: <b style="color:var(--ink2)">${esc(d.owner || '—')}</b></span>
       </div>
     </div>
@@ -71,6 +72,56 @@ export async function opportunityDetailPage(user, oppId) {
     </div>
     ${d.canEdit ? `<button class="btn btn-primary" data-action="stage-open">${icon('trend')} نقل المرحلة</button>` : ''}
   </div>`);
+
+  // ── التحكم بالفرصة ─────────────────────────────────────────────────────────
+  // «في فرص مسكّنة على إدارة الابتكار وأبغى أنقلها على الذكاء… لازم في الواجهة شي يساعدني لما
+  // أضغط على الفرصة عشان أتحكّم بكل عملياتها: نقل قطاع، نقل إدارة، أو تغيير المبلغ».
+  //
+  // وما كان في هذه الصفحة قبلَها إلا حقلان: الخطوة التالية، والمرحلة. أما القيمة والقطاع
+  // والإدارة والمسؤول والجهة والسنة فتُكتب مرةً عند الإنشاء ثم لا يمسّها شيء في المنتج كله —
+  // فتصحيح رقمٍ واحد يعني فتح القاعدة من خلف الشاشة. **والإدارة أثقلها**: صار الترشيح بها
+  // قائماً على شاشة الفرص، فيصل المالك إلى فرصةٍ عبر إدارتها ثم لا يجد فيها باباً يغيّرها.
+  //
+  // والإدارات كلها تُقرأ لا إدارات القطاع الحالي وحدها: نقل القطاع يُبدّل قائمة الإدارات في
+  // نفس اللحظة، ولو قُرئت إدارات القطاع القديم وحدها لصار على المالك أن يحفظ القطاع ويعيد
+  // فتح الصفحة ثم يحفظ الإدارة — خطوتان لقرار واحد. والخادم يدقّق النسبة على أي حال.
+  const sectorOptions = d.canEdit
+    ? await all(`SELECT id, name_ar FROM sector WHERE active = 1 AND deleted_at IS NULL AND ${DELIVERY_SECTOR_SQL} ORDER BY name_ar`) : [];
+  const deptOptions = d.canEdit
+    ? await all('SELECT id, name_ar, sector_id FROM department WHERE active = 1 AND deleted_at IS NULL ORDER BY name_ar') : [];
+  const clientOptions = d.canEdit
+    ? await all('SELECT id, name_ar FROM client WHERE deleted_at IS NULL ORDER BY name_ar LIMIT 300') : [];
+  const userOptions = d.canEdit
+    ? await all(`SELECT id, COALESCE(name_ar, username) AS "name" FROM app_user
+       WHERE active = 1 AND deleted_at IS NULL ORDER BY name_ar, username LIMIT 200`) : [];
+  const fld = (label, control, hint = '') => `<div style="min-width:0">
+    <label style="display:block;font-size:10.5px;font-weight:800;color:var(--muted);margin-bottom:.2rem">${label}</label>
+    ${control}${hint ? `<div style="font-size:10px;color:var(--faint);margin-top:.15rem">${hint}</div>` : ''}</div>`;
+  const opt = (v, label, sel, extra = '') => `<option value="${esc(v)}"${sel ? ' selected' : ''}${extra}>${esc(label)}</option>`;
+  const controlCard = !d.canEdit ? '' : card(`${secHead('التحكم بالفرصة', '<span style="font-size:11px;color:var(--muted)">كل شيء يُعدَّل من هنا</span>')}
+    <div style="padding:.85rem 1rem 1rem">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.7rem .6rem">
+        ${fld('اسم الفرصة', `<input id="oc-title" class="input" style="width:100%;font-size:12.5px" value="${esc(o.title_ar || '')}" maxlength="200">`)}
+        ${fld('الجهة', `<select id="oc-client" class="input" style="width:100%;font-size:12.5px">
+          ${opt('', 'بلا جهة', !o.client_id)}${clientOptions.map((c) => opt(c.id, c.name_ar, o.client_id === c.id)).join('')}</select>`)}
+        ${fld('القطاع', `<select id="oc-sector" class="input" style="width:100%;font-size:12.5px">
+          ${sectorOptions.map((s) => opt(s.id, s.name_ar, o.sector_id === s.id)).join('')}</select>`)}
+        ${fld('الإدارة', `<select id="oc-dept" class="input" style="width:100%;font-size:12.5px">
+          ${opt('', 'بلا إدارة', !o.department_id)}${deptOptions.map((x) => opt(x.id, x.name_ar, o.department_id === x.id, ` data-sector="${esc(x.sector_id || '')}"`)).join('')}</select>`,
+    'تتغيّر مع القطاع')}
+        ${fld('المسؤول', `<select id="oc-owner" class="input" style="width:100%;font-size:12.5px">
+          ${opt('', 'بلا مسؤول', !o.owner_user_id)}${userOptions.map((u) => opt(u.id, u.name, o.owner_user_id === u.id)).join('')}</select>`)}
+        ${fld('القيمة بالريال', `<input id="oc-value" class="input tnum" type="number" min="0" step="1000" style="width:100%;font-size:12.5px" value="${toSar(o.value_halalas)}">`)}
+        ${fld('احتمال الفوز ٪', `<input id="oc-win" class="input tnum" type="number" min="0" max="100" style="width:100%;font-size:12.5px" value="${o.win_pct == null ? '' : Number(o.win_pct)}">`)}
+        ${fld('السنة', `<input id="oc-year" class="input tnum" type="number" min="2000" max="2100" style="width:100%;font-size:12.5px" value="${o.year || ''}">`)}
+        ${fld('الأولوية', `<select id="oc-priority" class="input" style="width:100%;font-size:12.5px">
+          ${opt('', 'بلا أولوية', !o.priority)}${['P0', 'P1', 'P2', 'P3'].map((p) => opt(p, tr(p), o.priority === p)).join('')}</select>`)}
+      </div>
+      <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-top:.85rem;padding-top:.7rem;border-top:1px dashed var(--line)">
+        <button class="btn btn-primary btn-sm" data-action="opp-control-save" data-id="${esc(o.id)}">حفظ التعديلات</button>
+        <span style="font-size:11px;color:var(--muted)">نقل القطاع يرفع الإدارة القديمة — اختر إدارة القطاع الجديد ثم احفظ.</span>
+      </div>
+    </div>`);
 
   // ── فريق الفرصة ──
   const memberRow = (m) => `<div style="display:flex;align-items:center;gap:.6rem;padding:.5rem 0;border-bottom:1px dashed var(--line)">
@@ -160,6 +211,7 @@ export async function opportunityDetailPage(user, oppId) {
     <div style="display:flex;flex-direction:column;gap:.9rem">
       ${header}
       ${actionBar}
+      ${controlCard}
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:.9rem;align-items:start">
         <div style="display:flex;flex-direction:column;gap:.9rem;min-width:0">${activityCard}${historyCard}</div>
         <div style="display:flex;flex-direction:column;gap:.9rem;min-width:0">${projectCard}${teamCard}${detailsCard}</div>
@@ -168,6 +220,7 @@ export async function opportunityDetailPage(user, oppId) {
     <script>window.__SANAD=Object.assign(window.__SANAD||{},{
       oppId:${JSON.stringify(o.id)},
       currentStage:${JSON.stringify(o.stage_id)},
+      oppSector:${JSON.stringify(o.sector_id || '')},
       stages:${JSON.stringify(d.stages.map((s) => ({ id: s.id, name_ar: s.name_ar, color: s.color }))).replace(/</g, '\\u003c')},
       canEditOpp:${d.canEdit ? 'true' : 'false'}
     });</script>`;

@@ -35,6 +35,9 @@
   document.addEventListener('input', function (e) {
     if (e.target && e.target.id === 'opp-q') filterCards();
   });
+  document.addEventListener('change', function (e) {
+    if (e.target && e.target.id === 'oc-sector') syncDeptOptions();
+  });
 
   // ── قائمة الموظفين لنموذج إضافة عضو الفريق (صفحة تفاصيل الفرصة) ──
   async function loadRoster() {
@@ -55,6 +58,7 @@
     var el = document.getElementById('opp-q');
     if (q && el) { el.value = q; filterCards(); }
     loadRoster();
+    syncDeptOptions();
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
@@ -162,6 +166,46 @@
       await api('/opportunities/team/' + mid, 'DELETE');
       toast('أُزيل العضو ✓'); setTimeout(function () { location.reload(); }, 450);
     } catch (err) { toast(err.message, true); }
+  }
+
+  // ── التحكم بالفرصة: القطاع والإدارة والمسؤول والجهة والقيمة والسنة في حفظةٍ واحدة ──
+  // حفظةٌ واحدة لا حفظةٌ لكل حقل: نقل القطاع واختيار إدارته الجديدة قرارٌ واحد، وتقسيمه على
+  // نداءين يترك الفرصة بين النداءين في قطاعٍ جديد بإدارةٍ من القطاع القديم — وهو بالضبط
+  // التناقض الذي يحرسه الخادم. والحقل الذي لم يتغيّر لا يُرسَل أصلاً.
+  function ctlVal(id) { var n = document.getElementById(id); return n ? n.value : null; }
+  async function oppControlSave(id) {
+    var body = {
+      title_ar: (ctlVal('oc-title') || '').trim(),
+      client_id: ctlVal('oc-client') || null,
+      sector_id: ctlVal('oc-sector') || null,
+      department_id: ctlVal('oc-dept') || null,
+      owner_user_id: ctlVal('oc-owner') || null,
+      priority: ctlVal('oc-priority') || null,
+    };
+    if (!body.title_ar) { toast('اسم الفرصة لا يكون فارغاً', true); return; }
+    var v = ctlVal('oc-value'); if (v !== null && v !== '') body.value_sar = Number(v);
+    var w = ctlVal('oc-win'); if (w !== null && w !== '') body.win_pct = Number(w);
+    var y = ctlVal('oc-year'); if (y !== null && y !== '') body.year = Number(y);
+    try {
+      await api('/opportunities/' + encodeURIComponent(id), 'PATCH', body);
+      toast('حُفظت التعديلات ✓'); setTimeout(function () { location.reload(); }, 500);
+    } catch (err) { toast(err.message, true); }
+  }
+  // قائمة الإدارات تتبع القطاع المختار في نفس اللحظة — فلا تُعرض على المالك إدارةٌ يرفضها
+  // الخادم بعد الحفظ. وإدارةُ القطاع القديم تُرفَع من الاختيار حين يتغيّر القطاع تحتها.
+  function syncDeptOptions() {
+    var sec = document.getElementById('oc-sector');
+    var dep = document.getElementById('oc-dept');
+    if (!sec || !dep) return;
+    var chosen = sec.value;
+    var keep = true;
+    Array.prototype.forEach.call(dep.options, function (o) {
+      if (!o.value) return;
+      var fits = !o.dataset.sector || o.dataset.sector === chosen;
+      o.hidden = !fits; o.disabled = !fits;
+      if (o.selected && !fits) keep = false;
+    });
+    if (!keep) dep.value = '';
   }
 
   // ── تسجيل تواصل ──
@@ -352,6 +396,7 @@
       if (act === 'opp-lost-confirm') { oppLostConfirm(actEl.dataset.id); return; }
       if (act === 'opp-move-sector') { oppSectorModal(actEl.dataset.id, actEl.dataset.sector || ''); return; }
       if (act === 'opp-sector-confirm') { oppSectorConfirm(actEl.dataset.id); return; }
+      if (act === 'opp-control-save') { oppControlSave(actEl.dataset.id); return; }
       return;
     }
     var dd = e.target.closest('[data-dd]');

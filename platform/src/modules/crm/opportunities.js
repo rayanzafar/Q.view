@@ -84,11 +84,14 @@ export async function createOpportunity(ctx, data) {
   if (!sec) throw badRequest('حدّد القطاع المسؤول عن الفرصة');
   if (isSupportUnit(sec))
     throw badRequest(`«${sec.name_ar}» وحدة مساندة على مستوى الشركة وليست قطاع تسليم — الفرصة تُنسب إلى قطاع تسليم. اختر قطاعاً من القائمة.`);
+  // الإدارة على باب الإنشاء: بدونها تُولَد كل فرصةٍ جديدة «بلا إدارة» ثم تُصنَّف لاحقاً — ونيّة
+  // التصنيف تُنسى، فيظهر آخر السنة فرقٌ بين مجموع الإدارات ومجموع القطاع لا سبب له إلا النسيان.
+  const departmentId = await resolveDepartment(data.department_id || null, sectorId);
   const oid = id('opp');
   const now = nowIso();
   await insert('opportunity', {
     id: oid, code: data.code || null, title_ar: data.title_ar,
-    client_id: data.client_id || null, sector_id: sectorId,
+    client_id: data.client_id || null, sector_id: sectorId, department_id: departmentId,
     owner_user_id: data.owner_user_id || user.id, stage_id: data.stage_id || 'LEAD',
     win_pct: data.win_pct ?? null, value_halalas: toHalalas(data.value_sar),
     priority: data.priority || null, year: data.year || new Date().getUTCFullYear(),
@@ -98,6 +101,30 @@ export async function createOpportunity(ctx, data) {
   });
   await audit(ctx, { action: 'create', resource: 'opportunity', resourceId: oid, sectorId });
   return await getOpportunity(user, oid);
+}
+
+// حارس القطاع الهدف — بابان يؤدّيان إليه (زرّ «نقل لقطاع آخر» على القائمة، وشريط التحكم على
+// صفحة الفرصة)، ونسخةٌ واحدة من الحكم. ولو تُرك لكل بابٍ نسخته لانفتح أحدهما يوماً على وحدة
+// مساندة بلا أن يسقط فحص — والفرصة هناك تخرج من مقارنة القطاعات ومن المستهدف بلا رسالة.
+async function assertDeliverySector(sectorId) {
+  const target = await get('SELECT id, name_ar, kind FROM sector WHERE id = ? AND active = 1 AND deleted_at IS NULL', [sectorId]);
+  if (!target) throw badRequest('قطاع غير معروف');
+  if (isSupportUnit(target)) {
+    throw badRequest(`«${target.name_ar}» وحدة مساندة على مستوى الشركة وليست قطاع تسليم — الفرص تُنقل بين قطاعات التسليم فقط. اختر قطاعاً من القائمة.`);
+  }
+  return target;
+}
+
+// إدارةٌ تتبع قطاعاً غير قطاع الفرصة تكسر الجمع من طرفيه: تُحسب في إدارةٍ لا تعمل عليها،
+// وتغيب عن إدارات قطاعها. فالنسبة تُدقَّق مقابل القطاع **بعد** التعديل لا قبله.
+async function resolveDepartment(deptId, sectorId) {
+  if (!deptId) return null;
+  const d = await get('SELECT id, name_ar, sector_id FROM department WHERE id = ? AND deleted_at IS NULL', [deptId]);
+  if (!d) throw badRequest('الإدارة المختارة غير موجودة');
+  if (sectorId && d.sector_id && String(d.sector_id) !== String(sectorId)) {
+    throw badRequest('الإدارة المختارة تتبع قطاعاً آخر — اختر إدارة من قطاع الفرصة نفسه');
+  }
+  return d.id;
 }
 
 export async function updateOpportunity(ctx, oppId, data) {
@@ -110,9 +137,44 @@ export async function updateOpportunity(ctx, oppId, data) {
     if (k in data) patch[k] = data[k];
   }
   if ('value_sar' in data) patch.value_halalas = toHalalas(data.value_sar);
+  if ('year' in data) {
+    const y = Number(data.year);
+    if (!Number.isInteger(y) || y < 2000 || y > 2100) throw badRequest('السنة غير صحيحة — اكتب سنةً بأربعة أرقام');
+    patch.year = y;
+  }
+  // ── هوية الفرصة: قطاعها وإدارتها ومسؤولها — تُدار من صفحتها ──────────────────
+  // «في فرص مسكّنة على إدارة الابتكار وأبغى أنقلها على الذكاء… لازم في الواجهة شي يساعدني لما
+  // أضغط على الفرصة عشان أتحكّم بكل عملياتها». وكانت هذه الثلاثة تُكتب مرةً عند الإنشاء ثم لا
+  // يمسّها شيء: الإدارة **لم يكن لها بابٌ واحد في المنتج كله** رغم أن العمود موجود والترشيح
+  // بها صار قائماً — أي أن الفرصة تُصنَّف بإدارة ثم لا تُصحَّح إلا بفتح القاعدة يدوياً.
+  if ('owner_user_id' in data) {
+    const uid = data.owner_user_id || null;
+    if (uid) {
+      const u = await get('SELECT id, active, deleted_at FROM app_user WHERE id = ?', [uid]);
+      if (!u || u.deleted_at || !Number(u.active)) throw badRequest('الحساب المختار لإدارة الفرصة غير موجود أو موقوف');
+    }
+    patch.owner_user_id = uid;
+  }
+  if ('sector_id' in data && data.sector_id && String(data.sector_id) !== String(row.sector_id)) {
+    patch.sector_id = (await assertDeliverySector(data.sector_id)).id;
+  }
+  const effSector = patch.sector_id || row.sector_id;
+  if ('department_id' in data) {
+    patch.department_id = await resolveDepartment(data.department_id || null, effSector);
+  } else if (patch.sector_id && row.department_id) {
+    // نُقل القطاع وبقيت الإدارة القديمة تحته: لو تُركت لصارت الفرصة محسوبةً في إدارةٍ من قطاعٍ
+    // لم تعد فيه — وذلك فرقٌ صامت آخر السنة بين مجموع الإدارات ومجموع القطاع. تُرفَع النسبة،
+    // ويُكتب رفعها في الأثر كي يُعاد الإسناد بوعي لا بالمصادفة.
+    patch.department_id = null;
+  }
   patch.updated_at = nowIso(); patch.updated_by = user.id;
   await update('opportunity', oppId, patch);
-  await audit(ctx, { action: 'update', resource: 'opportunity', resourceId: oppId, sectorId: row.sector_id, detail: patch });
+  await audit(ctx, { action: 'update', resource: 'opportunity', resourceId: oppId, sectorId: patch.sector_id || row.sector_id, detail: patch });
+  // النقل بين القطاعات قد يُخرج الفرصة من نطاق ناقلها (وهو سلوك مقصود ومكتوب في `moveSector`)،
+  // فقراءتُها بعده تُردّ بـ«ممنوع» ويبدو الحفظ الناجح فاشلاً. نُعيد تأكيداً مختصراً بدل ذلك.
+  if (patch.sector_id && !can(user, 'read', 'opportunity', { ...row, ...patch })) {
+    return { ok: true, id: oppId, sector_id: patch.sector_id, movedFrom: row.sector_id };
+  }
   return await getOpportunity(user, oppId);
 }
 
@@ -123,20 +185,21 @@ export async function moveSector(ctx, oppId, toSectorId, note) {
   const row = await get('SELECT * FROM opportunity WHERE id = ? AND deleted_at IS NULL', [oppId]);
   if (!row) throw notFound('الفرصة غير موجودة');
   if (!can(user, 'update', 'opportunity', row)) throw forbidden();
-  const target = await get('SELECT id, name_ar, kind FROM sector WHERE id = ? AND active = 1 AND deleted_at IS NULL', [toSectorId]);
-  if (!target) throw badRequest('قطاع غير معروف');
   // الوجهة قطاع تسليم لا وحدة مساندة. الواجهة لا تعرض وحدات المساندة في قائمة النقل، والقرار
   // يُحسم هنا أيضاً لا في الشاشة وحدها: الفرصة المنقولة إلى وحدة مساندة تخرج فوراً من مقارنة
   // القطاعات ومن مستهدف المبيعات ومن تغطية خط الفرص — تختفي من شاشات المالك بلا رسالة تقول لماذا.
-  if (isSupportUnit(target))
-    throw badRequest(`«${target.name_ar}» وحدة مساندة على مستوى الشركة وليست قطاع تسليم — الفرص تُنقل بين قطاعات التسليم فقط. اختر قطاعاً من القائمة.`);
+  const target = await assertDeliverySector(toSectorId);
   if (String(row.sector_id) === String(toSectorId)) return await getOpportunity(user, oppId);
   // صلاحية النقل = صلاحية تعديل الفرصة في قطاعها الحالي (فُحصت أعلاه): من يديرها يحق له إعادة
   // إسنادها (تسليمها لقطاع آخر) — والفرصة تخرج من نطاقه بعد النقل. النطاق الشركي ينقل أي فرصة.
   const now = nowIso();
-  await update('opportunity', oppId, { sector_id: toSectorId, updated_at: now, updated_by: user.id });
+  // والإدارة تُرفَع مع النقل: إدارةُ القطاع القديم لا تتبع القطاع الجديد، وبقاؤها يجعل الفرصة
+  // محسوبةً في إدارةٍ ليست من قطاعها — فرقٌ صامت آخر السنة بين مجموع الإدارات ومجموع القطاع.
+  const deptCleared = row.department_id ? { department_id: null } : {};
+  await update('opportunity', oppId, { sector_id: toSectorId, ...deptCleared, updated_at: now, updated_by: user.id });
   await audit(ctx, { action: 'update', resource: 'opportunity', resourceId: oppId, sectorId: toSectorId,
-    detail: { moveSector: `${row.sector_id || '—'}→${toSectorId}`, note: note || null } });
+    detail: { moveSector: `${row.sector_id || '—'}→${toSectorId}`, note: note || null,
+      ...(row.department_id ? { department_cleared: row.department_id } : {}) } });
   // لا نعيد القراءة عبر getOpportunity: قد تخرج الفرصة من نطاق الناقل بعد النقل فيُرفض قراءته إياها.
   return { ok: true, id: oppId, sector_id: toSectorId, sector_name: target.name_ar, movedFrom: row.sector_id };
 }
@@ -185,6 +248,10 @@ export async function opportunityDetail(user, oppId, opts = {}) {
   const opp = await getOpportunity(user, oppId); // scope + redact + notFound/forbidden
   const client = opp.client_id ? ((await get('SELECT name_ar FROM client WHERE id=?', [opp.client_id]))?.name_ar || null) : null;
   const ownerRow = opp.owner_user_id ? await get('SELECT name_ar, username FROM app_user WHERE id=?', [opp.owner_user_id]) : null;
+  // الإدارة المسؤولة — كانت تُخزَّن ويُرشَّح بها ولا تُعرَض على صفحة الفرصة إطلاقاً: يفلتر
+  // المالك بإدارة فيرى الفرصة، ثم يفتحها فلا يجد فيها ذكراً للإدارة التي أوصلته إليها.
+  const department = opp.department_id
+    ? ((await get('SELECT name_ar FROM department WHERE id=?', [opp.department_id]))?.name_ar || null) : null;
   const history = await all(`SELECT h.to_stage_id, h.from_stage_id, h.changed_at, h.note, u.name_ar owner_name, u.username
      FROM opportunity_stage_history h LEFT JOIN app_user u ON u.id=h.changed_by
      WHERE h.opportunity_id=? ORDER BY h.changed_at DESC LIMIT 25`, [oppId]);
@@ -200,7 +267,7 @@ export async function opportunityDetail(user, oppId, opts = {}) {
   const today = String(opts.today || nowIso().slice(0, 10)).slice(0, 10);
   const flags = withDiscipline(opp, today);
   return {
-    opp, client, owner: ownerRow ? (ownerRow.name_ar || ownerRow.username) : null,
+    opp, client, department, owner: ownerRow ? (ownerRow.name_ar || ownerRow.username) : null,
     history, stages, team, activities, canEdit,
     stage_age_days: flags.stage_age_days, rot: flags.rot, no_next_action: flags.no_next_action,
     weighted_halalas: Math.round((opp.value_halalas || 0) * ((opp.win_pct || 0) / 100)),
