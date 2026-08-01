@@ -445,8 +445,16 @@ export async function linkUserToEmployee(ctx, data = {}) {
     'SELECT id, username, name_ar FROM app_user WHERE employee_id = ? AND deleted_at IS NULL AND id <> ? LIMIT 1',
     [employeeId, userId]);
   if (taken) throw badRequest(`${emp.name_ar} مربوط بحساب ${accountLabel(taken)} — فُكّ الربط الحالي أولاً ثم أعد المحاولة`);
-  if (acc.employee_id === employeeId) throw badRequest(`${emp.name_ar} مربوط بهذا الحساب مسبقاً — لا حاجة لإعادة الربط`);
-  if (acc.employee_id) {
+  // الربط عمودان لا عمود: `app_user.employee_id` و`employee.user_id`. فإن كتب أحدهما وسقط
+  // الآخر صار «ربطاً نصفياً» — والحساب يقول إنه مربوط بينما سجلّ الموظف لا يعرفه، فيظهر الموظف
+  // بلا ملفٍّ ولا تسكين وإن كان الحساب يشير إليه. وردُّ «مربوط مسبقاً» هنا كان يمنع الإصلاح
+  // بالضبط حين يكون الإصلاح مطلوباً: يخبر المشغّل أن الربط سليم والنصف الآخر غائب. فلا يُردّ
+  // إلا إن **اتفق العمودان**؛ وإلا يمضي إلى المعاملة أدناه فتكتبهما معاً وتُغلق النصف الناقص.
+  if (acc.employee_id === employeeId && emp.user_id === userId)
+    throw badRequest(`${emp.name_ar} مربوط بهذا الحساب مسبقاً — لا حاجة لإعادة الربط`);
+  // وحين يشير الحساب إلى **موظف آخر** يبقى الردّ كما هو. أما إشارته إلى موظفنا هذا مع نصفٍ
+  // ناقص فتمرّ إلى المعاملة أدناه: هي الإكمال نفسه، تكتب العمودين معاً.
+  if (acc.employee_id && acc.employee_id !== employeeId) {
     const other = await get('SELECT name_ar FROM employee WHERE id = ?', [acc.employee_id]);
     throw badRequest(`حساب ${accountLabel(acc)} مربوط بالموظف ${other ? other.name_ar : 'موظف آخر'} — فُكّ ربطه أولاً ثم أعد المحاولة`);
   }

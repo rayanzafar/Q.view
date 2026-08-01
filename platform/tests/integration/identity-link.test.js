@@ -141,6 +141,26 @@ test('الربط المكرر مرفوض: حساب آخر لنفس الموظف�
   assert.equal((await auditRows('app_user', a1)).length, 1, 'سطر واحد فقط من الربط الناجح');
 });
 
+// العطل الذي رآه المالك: «لما يضغط على إسحاق أو يعقوب ما يبين ملفهم وهم مسكنين على أيش». والسبب
+// ربطٌ نصفيّ — الحساب يشير إلى الموظف وسجلّ الموظف لا يشير إلى الحساب. وكان المسار يردّ على محاولة
+// الإصلاح بـ«مربوط مسبقاً»: يخبر المشغّل أن الأمر سليم بينما نصفه ساقط، فلا سبيل إلى الإصلاح من
+// الواجهة إطلاقاً. الردّ الآن مشروط باتفاق العمودين، والنصف الناقص يُكمَل.
+test('الربط النصفيّ يُصلَح لا يُردّ — والردّ يبقى حين يتفق العمودان', async () => {
+  const e = await mkEmp('S1', 'إسحاق');
+  const a = await mkAcct('S1', 'إسحاق');
+  // نصفٌ مكتوب ونصفٌ ساقط: الحساب يعرف الموظف، والموظف لا يعرف الحساب.
+  await db.update('app_user', a, { employee_id: e });
+  assert.equal((await empRow(e)).user_id, null, 'التهيئة نفسها يجب أن تكون نصفية');
+
+  const r = await org.linkUserToEmployee(ctx(HR()), { employeeId: e, userId: a });
+  assert.equal(r.ok, true);
+  assert.equal((await empRow(e)).user_id, a, 'النصف الناقص لم يُكتب — والملف يبقى مجهولاً');
+  assert.equal((await userRow(a)).employee_id, e);
+
+  // وبعد اكتمال الطرفين يعود الردّ: لا ربط مكرر لزوجٍ متفق.
+  await assert.rejects(() => org.linkUserToEmployee(ctx(HR()), { employeeId: e, userId: a }), /مسبقاً/);
+});
+
 test('من لا يملك صلاحية تعديل الموظف يُرفض بـ403 ولا يكتب شيئاً', async () => {
   const e = await mkEmp('S1');
   const a = await mkAcct('S1');
