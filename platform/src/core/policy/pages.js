@@ -37,6 +37,10 @@ export function seesCompanyPerformance(user) {
 
 // من يفتح الصفحة؟ (مفاتيح PAGES في routes.js)
 export const PAGE_ACCESS = {
+  // «صفحتي» مفتوحة لكل من يدخل، ولا بوابة عليها لأن **لا شيء فيها يخصّ غير صاحبها**: كل
+  // استعلام خلفها مقيَّد بمعرّفه هو (مهامه، فرصه التي يملكها، مشاريع تسكينه ومخرجاتها).
+  // وضعُ منحٍ هنا يكون شرطاً على قراءة بياناته نفسه — أي منع الموظف من رؤية عمله هو.
+  home: () => true,
   ceo: (u) => seesCompanyPerformance(u),
   portfolio: (u) => seesCompanyPerformance(u),
   sector: (u) => can(u, 'read', 'project') || can(u, 'read', 'opportunity'),

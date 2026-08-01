@@ -43,7 +43,9 @@ export const ROLES = [
 // غائبة عن هذه القائمة لا يفحصها أحد — وقد شُحنت «دليلي» فعلاً وهي خارج كل بوابة جودة.
 // «التسكين» كانت غائبة عن هذه القائمة رغم وجودها في خريطة PAGES وفي القائمة الجانبية — نفس العطل
 // الذي أصاب «دليلي»: صفحة مشحونة خارج كل بوابة جودة. حارسها هو حارس «الفريق» نفسه.
-export const PAGES = ['ceo', 'portfolio', 'sector', 'opportunities', 'my-opportunities', 'projects',
+// «صفحتي» مفتوحة للجميع كـ«دليلي» — بلا بوابة لأن كل بياناتها مقيَّدة بصاحب الحساب. ووجودها
+// هنا هو ما يُخضِعها للمسح الحيّ ولفحص التسرّب: صفحة الهبوط لكل مستخدم أولى الصفحات بالفحص.
+export const PAGES = ['home', 'ceo', 'portfolio', 'sector', 'opportunities', 'my-opportunities', 'projects',
   'clients', 'tasks', 'timesheet', 'approvals', 'team', 'staffing', 'imports', 'users', 'audit', 'reports', 'org', 'finance', 'mail',
   'guide'];
 

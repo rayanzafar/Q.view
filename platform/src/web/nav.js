@@ -18,6 +18,9 @@ export const DETAIL_ACCESS = {
 
 // عناصر القائمة الجانبية (المفاتيح تطابق PAGE_ACCESS — الإظهار من نفس الدالة)
 export const NAV_ITEMS = [
+  // «صفحتي» أول عنصر ومجموعتُها وحدها: هي وجهة الدخول لكل من يفتح المنصة، والعودة إليها
+  // يجب أن تكون النقرة الأوضح في القائمة لا سطراً مدفوناً بين شاشات الشركة.
+  { key: 'home', ar: 'صفحتي', ic: 'home', group: 'me' },
   { key: 'ceo', ar: 'لوحة القيادة', ic: 'ceo', group: 'company' },
   { key: 'portfolio', ar: 'محفظة المشاريع', ic: 'portfolio', group: 'company' },
   { key: 'sector', ar: 'مركز القطاع', ic: 'sector', group: 'work' },

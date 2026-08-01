@@ -393,19 +393,22 @@ test('دور أنشأه مدير النظام لاحقاً يجد اسمه ال�
 // ── ترتيب الرحلة لا ترتيب القائمة ────────────────────────────────────────────
 test('الترتيب: الشاشات تأتي بترتيب رحلة صاحبها لا بترتيب القائمة الجانبية', async () => {
   const navRank = Object.fromEntries(NAV_ITEMS.map((n, i) => [n.key, i]));
+  // «صفحتي» تتصدّر رحلة كل دور لأنها وجهة الدخول للجميع — ثم تبدأ رحلة الدور نفسها بعدها
+  // بلا تغيير: المنفّذ من مهامه ثم مشاريعه، والمالية من شاشتها، وقائد القطاع من مركز قيادته.
   const cons = (await guide.guideFor(U('consultant'))).pages.map((p) => p.key);
-  assert.deepEqual(cons.slice(0, 2), ['tasks', 'projects'], 'المنفّذ يبدأ من مهامه ثم مشاريعه');
+  assert.deepEqual(cons.slice(0, 3), ['home', 'tasks', 'projects'], 'المنفّذ يبدأ من صفحته ثم مهامه ثم مشاريعه');
   assert.ok(navRank[cons[0]] > navRank[cons[cons.length - 1]] || cons[0] !== 'sector',
     'ترتيب الدليل يجب ألا يكون نسخة من ترتيب القائمة');
 
-  // مكتب الرئيس التنفيذي: رحلته تبدأ من لوحة القيادة، و«المالية والعقود» في آخرها — وقد ورث
-  // مالية الشركة بعد إلغاء دور «المالية»، فشاشتها في دليله لا في صدره.
+  // مكتب الرئيس التنفيذي: بعد «صفحتي» تبدأ رحلته من لوحة القيادة، و«المالية والعقود» بعدها —
+  // وقد ورث مالية الشركة بعد إلغاء دور «المالية»، فشاشتها في دليله لا في صدره. والفهرس واحدٌ
+  // لا صفر منذ صارت «صفحتي» وجهة الدخول للجميع (كما في قائد القطاع أدناه).
   const fin = (await guide.guideFor(U('ceo_office'))).pages.map((p) => p.key);
-  assert.equal(fin[0], 'ceo', 'يبدأ من شاشة قراره لا من أول عنصر في القائمة');
-  assert.ok(fin.includes('finance') && fin.indexOf('finance') > 0, 'ومالية الشركة في دليله بعد أن ورثها');
+  assert.equal(fin[1], 'ceo', 'يبدأ من شاشة قراره لا من أول عنصر في القائمة');
+  assert.ok(fin.includes('finance') && fin.indexOf('finance') > 1, 'ومالية الشركة في دليله بعد أن ورثها');
 
   const lead = (await guide.guideFor(U('sector_lead'))).pages.map((p) => p.key);
-  assert.equal(lead[0], 'sector', 'قائد القطاع يبدأ من مركز قيادته');
+  assert.equal(lead[1], 'sector', 'قائد القطاع يبدأ من مركز قيادته');
   assert.ok(lead.indexOf('approvals') < lead.indexOf('tasks'), 'قراره قبل مهامه الشخصية');
 });
 

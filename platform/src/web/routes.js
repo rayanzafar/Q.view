@@ -105,11 +105,18 @@ webRouter.post('/auth/logout-web', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// وجهة الدخول تُحسب من صلاحيات المستخدم لا ثابتة: كانت توجّه الجميع إلى لوحة القيادة
-// المحروسة بنطاق الشركة، فيرى كل مستشار وموظف ومدير مشروع وقائد قطاع «خارج صلاحياتك»
-// كأول شاشة في المنتج. الترتيب من الأشمل إلى الأخص، و«مهامي» مفتوحة للجميع فهي القاع الآمن.
+// وجهة الدخول: **صفحتي** للجميع.
+//
+// كانت تُحسب من الصلاحيات — لوحة القيادة لمن نطاقه شركي، فمركز القطاع، فـ«مهامي» قاعاً آمناً.
+// وكان ذلك صحيحاً حين لم تكن هناك شاشة تخصّ الشخص: أفضل ما يُهبَط عليه شاشةٌ يملك بياناتها.
+// أما الآن فـ«صفحتي» تُجيب سؤال الصباح لكل من يدخل («ماذا عليّ اليوم؟»)، وهي مفتوحة للجميع
+// لأن كل ما فيها مقيَّد بصاحبها. والقيادة تبلغ لوحتها من القائمة الجانبية بنقرة — بينما
+// المساهم الفردي كان يبلغ شاشته الشخصية بلا طريق أصلاً.
+//
+// والتحوّط باقٍ: إن أُغلقت «صفحتي» يوماً بقرار سياسة، تعود الوجهة إلى ما كانت عليه بالضبط.
 export function landingFor(user) {
   if (!user) return 'tasks';
+  if (pageAllowed(user, 'home')) return 'home';
   if (pageAllowed(user, 'ceo')) return 'ceo';                       // نطاق شركي → لوحة القيادة
   // «مركز القطاع» صفحة إدارة: تُناسب من نطاقه قطاع فأوسع، لا المساهم الفردي الذي بيته «مهامي».
   const managesScope = user.scope === 'sector' || user.scope === 'company';
@@ -119,6 +126,7 @@ export function landingFor(user) {
 webRouter.get('/', (req, res) => res.redirect(req.ctx?.user ? '/app/' + landingFor(req.ctx.user) : '/login'));
 
 const PAGES = {
+  home: P.homePage,
   ceo: P.ceoPage, portfolio: P.portfolioPage, sector: P.sectorPage, opportunities: P.opportunitiesPage,
   'my-opportunities': P.myOpportunitiesPage,
   projects: P.projectsPage, tasks: P.tasksPage, timesheet: P.timesheetPage, approvals: P.approvalsPage,
