@@ -11,6 +11,15 @@ import { DELIVERY_SECTOR_SQL, isSupportUnit } from '../org/kind.js';
 
 const FY = () => config.fiscalYear;
 
+// ── الإيراد هنا **صافٍ** بعد فصل الضريبة (ترحيلة ٠١٩) ───────────────────────────────────────
+// كل مقياسٍ في هذا الملف يقارن الإيراد بمستهدفٍ أو بكلفة، وكلاهما صافٍ أصلاً: المستهدفات يضعها
+// المالك صافيةً (ولذلك بقيت `sector.target_*` و`budget.target_*` خارج نطاق الفصل)، وبنود الكلفة
+// اعترافٌ بكلفةٍ صافية بطبيعتها لأن الضريبة المدخلة مستردّة. فقراءة الإيراد إجمالياً كانت تضخّم
+// نسبة التحقّق خمسة عشر بالمئة وتضخّم الهامش معها — رقمان يُبنى عليهما قرار.
+// والصيغة هي القاعدة الواحدة: المخزَّن إن سُجِّل وإلا اشتقاقٌ قياسي، كي لا يسقط صفٌّ كتبه مسارٌ
+// لا يعرف بالضريبة. نسختها الأصلية في `src/modules/finance/vat.js`، ويحرس التطابق فحصُ الوحدة.
+const NET_REVENUE = 'COALESCE(SUM(COALESCE(net_amount_halalas, CAST(COALESCE(amount_halalas, 0) AS BIGINT) * 100 / 115)), 0)';
+
 // Distinct years present in the data (for year pickers), newest first.
 export async function availableYears() {
   const rows = await all(`SELECT DISTINCT y FROM (
@@ -25,16 +34,21 @@ export async function availableYears() {
 
 // ── per-sector figures for a single year ──
 async function sectorYearFigures(sectorId, year) {
-  const revenue = (await get('SELECT COALESCE(SUM(amount_halalas),0) v FROM revenue_line WHERE sector_id = ? AND year = ?', [sectorId, year])).v;
+  const revenue = (await get(`SELECT ${NET_REVENUE} v FROM revenue_line WHERE sector_id = ? AND year = ?`, [sectorId, year])).v;
   // Sales = value of WON opportunities booked in that year (excluding flagged-out)
   const sales = (await get(`SELECT COALESCE(SUM(o.value_halalas),0) v FROM opportunity o
       JOIN stage st ON st.id = o.stage_id
       WHERE o.sector_id = ? AND o.year = ? AND st.is_won = 1 AND o.exclude_from_sales = 0 AND o.deleted_at IS NULL`,
     [sectorId, year])).v;
-  const contractsSigned = await get(`SELECT COALESCE(SUM(value_halalas),0) v, COUNT(*) n FROM contract
+  // قيمة العقود الموقّعة **إجمالية**: هي ما وقّعه العميل ويُطالَب به. وصافيها بجانبها لأنها
+  // تُعرض في الشاشة نفسها التي فيها الإيراد الصافي، فلولاه قُرئ الفارق بينهما تناقضاً.
+  const contractsSigned = await get(`SELECT COALESCE(SUM(value_halalas),0) v, COUNT(*) n,
+      COALESCE(SUM(COALESCE(net_value_halalas, CAST(COALESCE(value_halalas, 0) AS BIGINT) * 100 / 115)), 0) net
+      FROM contract
       WHERE sector_id = ? AND CAST(substr(start_date,1,4) AS INTEGER) = ? AND deleted_at IS NULL`, [sectorId, year]);
   return { revenue_halalas: revenue, sales_halalas: sales,
-    contracts_halalas: contractsSigned.v, contracts_count: contractsSigned.n };
+    contracts_halalas: contractsSigned.v, contracts_net_halalas: contractsSigned.net,
+    contracts_count: contractsSigned.n };
 }
 
 export async function companyOverview(user, opts = {}) {
@@ -55,7 +69,8 @@ export async function companyOverview(user, opts = {}) {
       id: s.id, name_ar: s.name_ar, name_en: s.name_en, color: s.color, placeholder: !!s.is_placeholder,
       revenue_halalas: f.revenue_halalas, target_revenue_halalas: s.target_revenue_halalas,
       sales_halalas: f.sales_halalas, target_sales_halalas: s.target_sales_halalas,
-      contracts_halalas: f.contracts_halalas, contracts_count: f.contracts_count,
+      contracts_halalas: f.contracts_halalas, contracts_net_halalas: f.contracts_net_halalas,
+      contracts_count: f.contracts_count,
       revenue_pct: s.target_revenue_halalas ? Math.round((f.revenue_halalas / s.target_revenue_halalas) * 100) : 0,
       sales_pct: s.target_sales_halalas ? Math.round((f.sales_halalas / s.target_sales_halalas) * 100) : 0,
       opp_count: oppCount,
@@ -83,7 +98,7 @@ export async function multiYearTrend(sectorId, nYears = 5) {
   const secClause = sectorId ? 'AND sector_id = ?' : '';
   const secP = sectorId ? [sectorId] : [];
   return Promise.all(years.map(async (y) => {
-    const revenue = (await get(`SELECT COALESCE(SUM(amount_halalas),0) v FROM revenue_line WHERE year = ? ${secClause}`, [y, ...secP])).v;
+    const revenue = (await get(`SELECT ${NET_REVENUE} v FROM revenue_line WHERE year = ? ${secClause}`, [y, ...secP])).v;
     const sales = (await get(`SELECT COALESCE(SUM(o.value_halalas),0) v FROM opportunity o JOIN stage st ON st.id=o.stage_id
         WHERE o.year = ? AND st.is_won=1 AND o.exclude_from_sales=0 AND o.deleted_at IS NULL ${sectorId ? 'AND o.sector_id = ?' : ''}`, [y, ...secP])).v;
     const contracts = (await get(`SELECT COALESCE(SUM(value_halalas),0) v FROM contract
@@ -124,7 +139,8 @@ export async function sectorDashboard(user, sectorId, opts = {}) {
     rag: Object.fromEntries(rag.map((r) => [r.rag, r.n])),
     revenue_halalas: f.revenue_halalas, target_revenue_halalas: targetRevenue,
     sales_halalas: f.sales_halalas, target_sales_halalas: targetSales,
-    contracts_halalas: f.contracts_halalas, contracts_count: f.contracts_count,
+    contracts_halalas: f.contracts_halalas, contracts_net_halalas: f.contracts_net_halalas,
+    contracts_count: f.contracts_count,
     deliverables: Object.fromEntries(deliverables.map((r) => [r.status, r.n])),
     openRisks, trend: await multiYearTrend(sectorId, 4),
   };
@@ -163,7 +179,7 @@ export async function sectorUtilization(sectorId, from, to) {
 
 // ── Period model: quarter (1-4) maps to months; month filters revenue_line directly. ──
 export async function quarterlyRevenue(sectorId, year) {
-  const rows = await all(`SELECT month, COALESCE(SUM(amount_halalas),0) v FROM revenue_line
+  const rows = await all(`SELECT month, ${NET_REVENUE} v FROM revenue_line
      WHERE year = ? ${sectorId ? 'AND sector_id = ?' : ''} AND month IS NOT NULL GROUP BY month`,
     [year, ...(sectorId ? [sectorId] : [])]);
   const byMonth = Object.fromEntries(rows.map((r) => [r.month, r.v]));
@@ -246,14 +262,20 @@ export async function winRateByYear(sectorId, nYears = 5) {
 }
 
 // Backlog = signed contract value not yet recognized as revenue (a Tier-1 commercial metric).
+// طرفا الطرح **صافيان معاً**: المطروح منه صافي قيمة العقود والمطروح صافي الإيراد المعترف به.
+// طرحُ صافٍ من إجمالي كان يترك في «المتبقي» ضريبةَ العقود كلها ويعرضها عملاً لم يُنجَز بعد —
+// وهو رقمٌ يُقرأ التزاماً تعاقدياً ويُبنى عليه توظيف. والإجمالي مذكور بجانبه لمن يريد قيمة
+// العقود كما وُقّعت مع العميل.
 export async function backlog(sectorId) {
-  const contracted = (await get(`SELECT COALESCE(SUM(value_halalas),0) v FROM contract
+  const c = await get(`SELECT COALESCE(SUM(value_halalas),0) gross,
+       COALESCE(SUM(COALESCE(net_value_halalas, CAST(COALESCE(value_halalas, 0) AS BIGINT) * 100 / 115)), 0) net
+     FROM contract
      WHERE status IN ('ACTIVE','DRAFT') ${sectorId ? 'AND sector_id = ?' : ''} AND deleted_at IS NULL`,
-    sectorId ? [sectorId] : [])).v;
-  const recognized = (await get(`SELECT COALESCE(SUM(amount_halalas),0) v FROM revenue_line
+  sectorId ? [sectorId] : []);
+  const recognized = (await get(`SELECT ${NET_REVENUE} v FROM revenue_line
      WHERE 1=1 ${sectorId ? 'AND sector_id = ?' : ''}`, sectorId ? [sectorId] : [])).v;
-  return { contracted_halalas: contracted, recognized_halalas: recognized,
-    backlog_halalas: Math.max(0, contracted - recognized) };
+  return { contracted_halalas: c.net, contracted_gross_halalas: c.gross, recognized_halalas: recognized,
+    backlog_halalas: Math.max(0, c.net - recognized) };
 }
 
 // Pipeline coverage = open weighted pipeline ÷ remaining sales target (Tier-1 commercial ratio).
@@ -279,21 +301,31 @@ export async function pipelineCoverage(sectorId, year) {
 
 // Book-to-Bill = new bookings (won value in year) ÷ revenue recognized in year.
 // < 1 sustained = burning backlog faster than replacing it (Tier-1 commercial risk).
+// المقام صافٍ، والبسط قيمة فرصٍ مكسوبة — وهي تقديرُ ما قبل التعاقد وبقيت خارج فصل الضريبة عمداً
+// (لا فاتورة صدرت بها ولا مستند ضريبي). فالنسبة تقريبية بطبيعتها كما كانت، ولم يزدها الفصل ولم
+// ينقصها: هي مؤشر اتجاه لا رقم محاسبي، ويصير دقيقاً حين تُقاس التعاقدات من جدول العقود.
 export async function bookToBill(sectorId, year) {
   const bookings = (await get(`SELECT COALESCE(SUM(o.value_halalas),0) v FROM opportunity o JOIN stage st ON st.id=o.stage_id
      WHERE st.is_won=1 AND o.exclude_from_sales=0 AND o.year=? ${sectorId ? 'AND o.sector_id=?' : ''} AND o.deleted_at IS NULL`,
     [year, ...(sectorId ? [sectorId] : [])])).v;
-  const revenue = (await get(`SELECT COALESCE(SUM(amount_halalas),0) v FROM revenue_line WHERE year=? ${sectorId ? 'AND sector_id=?' : ''}`,
+  const revenue = (await get(`SELECT ${NET_REVENUE} v FROM revenue_line WHERE year=? ${sectorId ? 'AND sector_id=?' : ''}`,
     [year, ...(sectorId ? [sectorId] : [])])).v;
   return { bookings_halalas: bookings, revenue_halalas: revenue,
     ratio: revenue ? +(bookings / revenue).toFixed(2) : null };
 }
 
 // Gross Margin % for a sector/year = (revenue − cost − approved expense) ÷ revenue. SENSITIVE.
+// المعادلة صافيةٌ في أطرافها الثلاثة الآن، وكان طرفها الأول وحده إجمالياً فيخرج هامشٌ أعلى من
+// حقيقته: خمسة عشر بالمئة من الإيراد كانت تُحسب ربحاً وهي أمانةٌ تُورَّد للدولة.
+//   • الإيراد: صافٍ بالقاعدة الواحدة.
+//   • بند الكلفة: كما هو — اعترافٌ بكلفةٍ صافية بطبيعته (الضريبة المدخلة مستردّة فلا تدخله)،
+//     وأول أنواعه «رواتب» ولا ضريبة على راتب. فصلُه كان يخترع ضريبةً مستردّة وينقص الكلفة.
+//   • المصروف: صافيه **المسجَّل** إن سُجِّل، وإلا فإجماليه. أي أن ما لم تُسجَّل ضريبته يُحمَّل
+//     كاملاً على الكلفة — وهو التحفّظ الصحيح: لا يُفترض استردادٌ لم يُثبته أحد.
 export async function grossMargin(sectorId, year) {
-  const rev = (await get(`SELECT COALESCE(SUM(amount_halalas),0) v FROM revenue_line WHERE year=? ${sectorId ? 'AND sector_id=?' : ''}`, [year, ...(sectorId ? [sectorId] : [])])).v;
+  const rev = (await get(`SELECT ${NET_REVENUE} v FROM revenue_line WHERE year=? ${sectorId ? 'AND sector_id=?' : ''}`, [year, ...(sectorId ? [sectorId] : [])])).v;
   const cost = (await get(`SELECT COALESCE(SUM(amount_halalas),0) v FROM cost_line WHERE year=? ${sectorId ? 'AND sector_id=?' : ''}`, [year, ...(sectorId ? [sectorId] : [])])).v;
-  const exp = (await get(`SELECT COALESCE(SUM(amount_halalas),0) v FROM expense WHERE incurred_year=? AND status IN ('APPROVED','PAID') ${sectorId ? 'AND sector_id=?' : ''}`, [year, ...(sectorId ? [sectorId] : [])])).v;
+  const exp = (await get(`SELECT COALESCE(SUM(COALESCE(net_amount_halalas, amount_halalas)),0) v FROM expense WHERE incurred_year=? AND status IN ('APPROVED','PAID') ${sectorId ? 'AND sector_id=?' : ''}`, [year, ...(sectorId ? [sectorId] : [])])).v;
   const gp = rev - cost - exp;
   return { revenue_halalas: rev, cost_halalas: cost + exp, gross_profit_halalas: gp, margin_pct: rev ? Math.round((gp / rev) * 100) : null };
 }
@@ -321,7 +353,7 @@ export async function winRate(sectorId, year) {
 
 // Monthly recognized revenue for a sector (or company when sectorId null) in a fiscal year.
 export async function monthlyRevenue(sectorId, year) {
-  const rows = await all(`SELECT month, COALESCE(SUM(amount_halalas),0) v FROM revenue_line
+  const rows = await all(`SELECT month, ${NET_REVENUE} v FROM revenue_line
       WHERE year = ? ${sectorId ? 'AND sector_id = ?' : ''} GROUP BY month ORDER BY month`,
     sectorId ? [year, sectorId] : [year]);
   const out = Array(12).fill(0);
@@ -332,7 +364,7 @@ export async function monthlyRevenue(sectorId, year) {
 // End-of-year revenue forecast = recognized revenue + weighted OPEN pipeline for the same FY.
 // (المتوقع نهاية السنة = المحقق + المرجّح من الفرص المفتوحة لهذه السنة — معادلة معلنة في الواجهة.)
 export async function revenueForecast(sectorId, year) {
-  const actual = (await get(`SELECT COALESCE(SUM(amount_halalas),0) v FROM revenue_line
+  const actual = (await get(`SELECT ${NET_REVENUE} v FROM revenue_line
       WHERE year = ? ${sectorId ? 'AND sector_id = ?' : ''}`, sectorId ? [year, sectorId] : [year]))?.v || 0;
   const wp = (await get(`SELECT COALESCE(SUM(o.value_halalas * o.win_pct / 100.0),0) v
       FROM opportunity o JOIN stage st ON st.id = o.stage_id

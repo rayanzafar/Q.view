@@ -119,7 +119,9 @@ test('مقارنة القطاعات لا تعرض وحدة المساندة صف
   // المجاميع: هدف المبيعات = هدفا التسليم فقط، والإيراد لا يشمل سطر إيراد وحدة المساندة
   assert.equal(ov.totals.target_sales, TGT.SOLUTIONS + TGT.CONSULTING);
   assert.equal(ov.totals.target_revenue, 40_000_000 + 10_000_000);
-  assert.equal(ov.totals.revenue, 6_000_000, 'إيراد الحلول وحده — سطر وحدة المساندة خارج المقارنة');
+  // الإيراد صافٍ بعد فصل الضريبة (ترحيلة ٠١٩): ٦٬٠٠٠٬٠٠٠ هللة إجمالاً ⟵ ٥٬٢١٧٬٣٩١ صافياً.
+  // والمستهدفات لم تُمَسّ: يضعها المالك صافيةً أصلاً، فالمقارنة صارت بين طرفين من أساسٍ واحد.
+  assert.equal(ov.totals.revenue, 5_217_391, 'إيراد الحلول وحده بلا الضريبة — سطر وحدة المساندة خارج المقارنة');
   assert.equal(ov.totals.sales, 9_000_000);
 });
 
@@ -257,7 +259,7 @@ test('لوحة وحدة المساندة لا تُرفض — لكنها بلا �
   assert.equal(sd.sector.kind, 'support');
   assert.equal(sd.target_sales_halalas, null, 'لا هدف مبيعات ⟵ لا نسبة إنجاز على الشريط');
   assert.equal(sd.target_revenue_halalas, null);
-  assert.equal(sd.revenue_halalas, 1_500_000, 'أما المحقق الفعلي فيبقى كما هو — إخفاؤه كذبة ثانية');
+  assert.equal(sd.revenue_halalas, 1_304_347, 'أما المحقق الفعلي فيبقى ظاهراً — إخفاؤه كذبة ثانية — وصافياً بعد فصل الضريبة');
 });
 
 test('لوحة قطاع التسليم لم تتغيّر: مستهدفاتها كما هي ومعلَّمة أنها ليست وحدة مساندة', async () => {
@@ -265,7 +267,7 @@ test('لوحة قطاع التسليم لم تتغيّر: مستهدفاتها �
   assert.equal(sd.sector.is_support, false);
   assert.equal(sd.target_sales_halalas, TGT.SOLUTIONS);
   assert.equal(sd.target_revenue_halalas, 40_000_000);
-  assert.equal(sd.revenue_halalas, 6_000_000);
+  assert.equal(sd.revenue_halalas, 5_217_391, 'صافياً بعد فصل الضريبة، بإزاء مستهدفٍ صافٍ لم يُمَسّ');
 });
 
 // ═════════════════ (٧) الخدمة ترفض نقل فرصة إلى وحدة مساندة ═════════════════

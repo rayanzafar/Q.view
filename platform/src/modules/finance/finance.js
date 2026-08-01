@@ -16,8 +16,23 @@ import {
   readableProject, canReadExpenses, canAddExpense, canApproveExpense,
   expenseRowsFor, presentExpenses, EXPENSE_STATUS_AR,
 } from './expenses.js';
+import { splitGross, netSum, vatSum, netSql } from './vat.js';
 
 const FY = () => config.fiscalYear;
+
+// ── أيّ رقمٍ صافٍ وأيّ رقمٍ إجمالي — القاعدة الواحدة التي تحكم هذا الملف كله ─────────────────
+// قرار المالك: «الإيراد يُحسب صافياً، والمطالبة والمستحق والتحصيل إجمالاً» — لأن العميل يدفع
+// الإجمالي والشركة تعترف بالصافي. فالتقسيم ليس ذوقاً بل يتبع السؤال الذي يجيب عنه الرقم:
+//   • **صافٍ**: الإيراد المحقق. وهو الرقم الذي يُقارن بالمستهدف (والمستهدفات صافية أصلاً)،
+//     ويدخل معادلة الهامش مقابل كلفةٍ صافية بطبيعتها. هذا الرقم وحده يُسمّى «إيراداً».
+//   • **إجمالي**: المفوتر (مطالبةٌ على العميل)، والمحصَّل (نقدٌ دخل الحساب فعلاً)، والمستحق
+//     (ما زال العميل مديناً به)، وقيمة العقد (ما وقّعه العميل)، وأعمار الذمم. حجبُ الضريبة عن
+//     هذه يجعل المستحق أقلّ مما يُطالَب به فعلاً — أي رقماً لا يطابق كشف الحساب مع العميل.
+//   • ولا يُستبدل رقمٌ برقم: كل مبلغٍ يحمل ضريبةً يخرج من هنا بثلاثة حقول — `x_halalas`
+//     (الإجمالي، على معناه السابق حرفياً فلا يتغيّر تحت قارئٍ لم يُخطَر) و`x_net_halalas`
+//     و`x_vat_halalas`. الشاشة تختار أيّها تُبرز، ولا تحسب شيئاً بنفسها.
+// والاستثناء الوحيد: `revenue_halalas` صار صافياً. وهو تغيير معنى مقصود ومطلوب حرفياً — الرقم
+// الذي اسمه «الإيراد» يجب أن يكون الإيراد. ويرافقه `revenue_gross_halalas` لمن يحتاج الإجمالي.
 
 // invoice.issue_date is a 'YYYY-MM-DD' string; the table has no year column, so derive the
 // fiscal year from the date. Reused wherever billing figures must respect the selected year.
@@ -38,6 +53,8 @@ export const INVOICE_CLIENT_JOIN = (inv = 'i', prj = 'p') =>
 export const INVOICE_CLIENT_COL = (inv = 'i', prj = 'p') => `COALESCE(${inv}.client_id, ${prj}.client_id)`;
 
 // Outstanding (AR) per invoice = amount − retention − collected.
+// **إجمالي بثلاثة أطرافه**: ما يبقى على العميل هو ما طولب به شاملاً الضريبة ناقصَ ما دفعه شاملاً
+// الضريبة. لو حُسب صافياً لخرج رقمٌ لا يطابق كشف الحساب مع العميل ولا ما يُطالَب به قانوناً.
 async function outstanding(inv) {
   const collected = (await get('SELECT COALESCE(SUM(amount_halalas),0) v FROM collection WHERE invoice_id = ?', [inv.id])).v;
   return Math.max(0, inv.amount_halalas - (inv.retention_halalas || 0) - collected);
@@ -48,11 +65,18 @@ async function outstanding(inv) {
 // الشركة يرى الإيراد كله، ومن دونه يرى إيراد قطاعه، ومن لا يقرأ الفواتير أصلاً لا يرى رقماً.
 // تعريف واحد لأن هذا الرقم هو ضلع الجسر المالي **ومقام** معادلة «فترة التحصيل» معاً: افتراقهما هو
 // ما كان يقسم مستحقّ قطاعٍ واحد على إيراد الشركة كاملة فتخرج فترة تحصيل أقصر من الحقيقة بأضعاف.
+// ويعود بالوجوه الثلاثة معاً: الصافي هو «الإيراد» الذي يُعرض ويُقارن بالمستهدف، والإجمالي هو
+// مقام «فترة التحصيل» أدناه — فالبسط (المستحق) إجمالي، وقسمةُ إجماليٍّ على صافٍ تطيل الفترة
+// خمسة عشر بالمئة بلا سبب. طرفا الكسر من عالمٍ واحد، كما وُحِّد نطاقهما من قبل.
 async function scopedRevenue(user, year) {
   const c = scopeFilter(user, 'invoice', 'read').clause.trim();
   const clause = c === '1=1' ? '1=1' : c === '1=0' ? '1=0' : 'sector_id = ?';
   const params = clause === 'sector_id = ?' ? [year, user.sector_id ?? null] : [year];
-  return (await get(`SELECT COALESCE(SUM(amount_halalas),0) v FROM revenue_line WHERE year = ? AND ${clause}`, params)).v;
+  const r = await get(`SELECT ${netSum('amount_halalas', 'net_amount_halalas')} net,
+       ${vatSum('amount_halalas', 'net_amount_halalas')} vat,
+       COALESCE(SUM(amount_halalas),0) gross
+     FROM revenue_line WHERE year = ? AND ${clause}`, params);
+  return { net: r.net, vat: r.vat, gross: r.gross };
 }
 
 // ── Bridge + AR + DSO (scope-filtered, year-filtered) ──
@@ -67,15 +91,27 @@ export async function financeSummary(user, year = FY()) {
   const bookings = (await get(`SELECT COALESCE(SUM(o.value_halalas),0) v FROM opportunity o JOIN stage st ON st.id=o.stage_id
      WHERE st.is_won=1 AND o.exclude_from_sales=0 AND o.year=? AND o.deleted_at IS NULL${companyScope ? '' : ' AND o.sector_id = ?'}`, bkP)).v;
   const revenue = await scopedRevenue(user, year); // نفس المصدر الذي يستعمله dso — لا نسختان
-  const invoiced = (await get(`SELECT COALESCE(SUM(i.amount_halalas),0) v FROM invoice i WHERE ${c} AND i.deleted_at IS NULL AND i.status != 'DRAFT' AND ${YEAR_PRED('i.')}`, [...p, year])).v;
-  const collected = (await get(`SELECT COALESCE(SUM(col.amount_halalas),0) v FROM collection col JOIN invoice i ON i.id=col.invoice_id WHERE ${c} AND ${YEAR_PRED('i.')}`, [...p, year])).v;
+  // المفوتر: **إجمالي** (مطالبة على العميل) ومعه صافيه وضريبته. نسبة التحصيل تُقاس بين إجماليَّين
+  // (محصَّل ÷ مفوتر) لأن الاثنين حركةُ مالٍ مع العميل، لا اعترافٌ بإيراد.
+  const inv = await get(`SELECT COALESCE(SUM(i.amount_halalas),0) gross,
+       ${netSum('i.amount_halalas', 'i.net_amount_halalas')} net,
+       ${vatSum('i.amount_halalas', 'i.net_amount_halalas')} vat
+     FROM invoice i WHERE ${c} AND i.deleted_at IS NULL AND i.status != 'DRAFT' AND ${YEAR_PRED('i.')}`, [...p, year]);
+  const col = await get(`SELECT COALESCE(SUM(col.amount_halalas),0) gross,
+       ${netSum('col.amount_halalas', 'col.net_amount_halalas')} net,
+       ${vatSum('col.amount_halalas', 'col.net_amount_halalas')} vat
+     FROM collection col JOIN invoice i ON i.id=col.invoice_id WHERE ${c} AND ${YEAR_PRED('i.')}`, [...p, year]);
   const invoices = await all(`SELECT i.* FROM invoice i WHERE ${c} AND i.deleted_at IS NULL AND i.status IN ('ISSUED','PARTIALLY_PAID','OVERDUE') AND ${YEAR_PRED('i.')}`, [...p, year]);
   let ar = 0;
-  for (const inv of invoices) ar += await outstanding(inv);
+  for (const inv2 of invoices) ar += await outstanding(inv2);
   return {
-    year, bookings_halalas: bookings, revenue_halalas: revenue, invoiced_halalas: invoiced,
-    collected_halalas: collected, ar_halalas: ar,
-    collectionRate: invoiced ? Math.round((collected / invoiced) * 100) : 0,
+    year, bookings_halalas: bookings,
+    // الإيراد صافٍ — وهذا هو الحقل الوحيد الذي تغيّر معناه في هذه الترحيلة، عمداً وبقرار مكتوب.
+    revenue_halalas: revenue.net, revenue_gross_halalas: revenue.gross, revenue_vat_halalas: revenue.vat,
+    invoiced_halalas: inv.gross, invoiced_net_halalas: inv.net, invoiced_vat_halalas: inv.vat,
+    collected_halalas: col.gross, collected_net_halalas: col.net, collected_vat_halalas: col.vat,
+    ar_halalas: ar,
+    collectionRate: inv.gross ? Math.round((col.gross / inv.gross) * 100) : 0,
     dso: await dso(user, year), aging: await arAging(user, year),
   };
 }
@@ -111,7 +147,10 @@ export async function dso(user, year = FY()) {
   for (const i of rows) ar += await outstanding(i);
   // البسط والمقام من النطاق نفسه: مستحقُّ ما يراه القارئ ÷ إيرادُ ما يراه القارئ. كان المقام
   // إيراد الشركة كاملاً بينما البسط مستحقّ القطاع وحده — قسمة طرفين من عالمين مختلفين.
-  const rev = await scopedRevenue(user, year);
+  // وبعد فصل الضريبة يُشترط توحيدٌ ثانٍ: البسط (المستحق) إجمالي لأن العميل مدينٌ بالإجمالي،
+  // فالمقام إجمالي كذلك. قسمةُ مستحقٍّ إجمالي على إيرادٍ صافٍ كانت تطيل فترة التحصيل خمسة عشر
+  // بالمئة وهماً — والرقم يُقرأ إنذاراً تشغيلياً فيُتّخذ عليه قرار.
+  const rev = (await scopedRevenue(user, year)).gross;
   const month = year === FY() ? new Date().getUTCMonth() + 1 : 12; // prior years use a full-year period
   return rev ? Math.round((ar / rev) * (month * 30)) : 0;
 }
@@ -125,8 +164,12 @@ export async function financeByPM(user, year = FY()) {
   // Qualify the scope column to the aliased invoice table so it is unambiguous against app_user.sector_id.
   const f = scopeFilter(user, 'invoice', 'read', { sectorCol: 'i.sector_id', ownerCol: 'i.owner_user_id' });
   // group invoices by project owner (PM), within the selected fiscal year
+  // كل أرقام هذا الصف **إجمالية**: مدير المشروع يقرأ ما طولب به عميله وما دفعه وما بقي عليه.
+  // ويُضاف صافي المفوتر بجانبه لا مكانه — من يريد نصيب مديره من الإيراد المعترف به يقرأ الصافي،
+  // ومن يتابع المطالبة والتحصيل يقرأ الإجمالي، ولا يُخلط الاثنان في خانةٍ واحدة.
   const rows = await all(`SELECT COALESCE(u.name_ar, u.username, 'غير محدد') pm, i.owner_user_id,
       COALESCE(SUM(CASE WHEN i.status!='DRAFT' THEN i.amount_halalas ELSE 0 END),0) invoiced,
+      COALESCE(SUM(CASE WHEN i.status!='DRAFT' THEN ${netSql('i.amount_halalas', 'i.net_amount_halalas')} ELSE 0 END),0) invoiced_net,
       COUNT(*) n
     FROM invoice i LEFT JOIN app_user u ON u.id=i.owner_user_id
     WHERE ${f.clause} AND i.deleted_at IS NULL AND ${YEAR_PRED('i.')} GROUP BY i.owner_user_id, u.name_ar, u.username ORDER BY invoiced DESC`, [...f.params, year]);
@@ -146,7 +189,9 @@ export async function financeByPM(user, year = FY()) {
   return rows.map((r) => {
     const collected = collectedBy.get(r.owner_user_id) || 0;
     return { pm: r.pm, invoices: r.n, contract_halalas: contractBy.get(r.owner_user_id) || 0,
-      invoiced_halalas: r.invoiced, collected_halalas: collected,
+      invoiced_halalas: r.invoiced, invoiced_net_halalas: r.invoiced_net,
+      invoiced_vat_halalas: r.invoiced - r.invoiced_net,
+      collected_halalas: collected,
       outstanding_halalas: Math.max(0, r.invoiced - collected) };
   });
 }
@@ -159,24 +204,38 @@ export async function financeByContract(user) {
   const contracts = await all(`SELECT c.*, cl.name_ar client_name, p.name_ar project_name, p.owner_user_id
      FROM contract c LEFT JOIN client cl ON cl.id=c.client_id LEFT JOIN project p ON p.id=c.project_id
      WHERE ${f.clause} AND c.deleted_at IS NULL ORDER BY c.value_halalas DESC LIMIT 200`, f.params);
+  // العقد: قيمته وما فُوتر منه وما تبقّى — ثلاثتها **إجمالية**، فنسبة الفوترة والمتبقي يقارنان
+  // طرفين من عالمٍ واحد. ويُعرض صافي القيمة وصافي المفوتر بجانبهما لمن يسأل عن الإيراد لا عن
+  // المطالبة: قيمة عقدٍ بعشرة ملايين تعني إيراداً معترفاً به قدره ٨٬٦٩٥٬٦٥٢ لا عشرة.
   const rows = await Promise.all(contracts.map(async (c) => {
-    const invoiced = (await get("SELECT COALESCE(SUM(amount_halalas),0) v FROM invoice WHERE contract_id=? AND status!='DRAFT' AND deleted_at IS NULL", [c.id])).v;
+    const i = await get(`SELECT COALESCE(SUM(amount_halalas),0) gross,
+         ${netSum('amount_halalas', 'net_amount_halalas')} net
+       FROM invoice WHERE contract_id=? AND status!='DRAFT' AND deleted_at IS NULL`, [c.id]);
+    const invoiced = i.gross;
     const collected = (await get('SELECT COALESCE(SUM(col.amount_halalas),0) v FROM collection col JOIN invoice i ON i.id=col.invoice_id WHERE i.contract_id=?', [c.id])).v;
-    return { ...c, invoiced_halalas: invoiced, collected_halalas: collected,
+    const value = c.value_halalas || 0;
+    const valueNet = c.net_value_halalas ?? splitGross(value).net_halalas;
+    return { ...c, invoiced_halalas: invoiced, invoiced_net_halalas: i.net, collected_halalas: collected,
+      net_value_halalas: valueNet, vat_halalas: value - valueNet,
       billed_pct: c.value_halalas ? Math.round((invoiced / c.value_halalas) * 100) : 0,
-      backlog_halalas: Math.max(0, c.value_halalas - invoiced), outstanding_halalas: Math.max(0, invoiced - collected) };
+      backlog_halalas: Math.max(0, c.value_halalas - invoiced),
+      backlog_net_halalas: Math.max(0, valueNet - i.net),
+      outstanding_halalas: Math.max(0, invoiced - collected) };
   }));
   // Reconciliation: invoices not tied to any contract must still appear, else the by-contract
   // total silently understates financeSummary.invoiced. Surface them as one explicit bucket.
   const fi = scopeFilter(user, 'invoice', 'read'); // unaliased, single-table invoice query
-  const un = await get(`SELECT COALESCE(SUM(amount_halalas),0) inv, COUNT(*) n FROM invoice
+  const un = await get(`SELECT COALESCE(SUM(amount_halalas),0) inv,
+       ${netSum('amount_halalas', 'net_amount_halalas')} "invNet", COUNT(*) n FROM invoice
      WHERE ${fi.clause} AND contract_id IS NULL AND status!='DRAFT' AND deleted_at IS NULL`, fi.params);
   if (un.inv > 0) {
     const unCollected = (await get(`SELECT COALESCE(SUM(col.amount_halalas),0) v FROM collection col JOIN invoice i ON i.id=col.invoice_id
        WHERE i.contract_id IS NULL`, [])).v;
     rows.push({ id: null, code: '—', client_name: '—', project_name: 'فواتير غير مرتبطة بعقد', unassigned: true,
-      value_halalas: 0, invoiced_halalas: un.inv, collected_halalas: unCollected,
-      billed_pct: null, backlog_halalas: 0, outstanding_halalas: Math.max(0, un.inv - unCollected) });
+      value_halalas: 0, net_value_halalas: 0, vat_halalas: 0,
+      invoiced_halalas: un.inv, invoiced_net_halalas: un.invNet, collected_halalas: unCollected,
+      billed_pct: null, backlog_halalas: 0, backlog_net_halalas: 0,
+      outstanding_halalas: Math.max(0, un.inv - unCollected) });
   }
   return rows;
 }
@@ -188,7 +247,8 @@ export async function financeByContract(user) {
 export async function financeByClient(user, year = FY()) {
   const f = scopeFilter(user, 'contract', 'read', { sectorCol: 'c.sector_id', ownerCol: 'p.owner_user_id' });
   const rows = await all(`SELECT cl.id, cl.name_ar,
-      COUNT(DISTINCT c.id) contracts, COALESCE(SUM(c.value_halalas),0) value_halalas
+      COUNT(DISTINCT c.id) contracts, COALESCE(SUM(c.value_halalas),0) value_halalas,
+      ${netSum('c.value_halalas', 'c.net_value_halalas')} net_value_halalas
      FROM contract c JOIN client cl ON cl.id=c.client_id LEFT JOIN project p ON p.id=c.project_id
      WHERE ${f.clause} AND c.deleted_at IS NULL GROUP BY cl.id, cl.name_ar ORDER BY value_halalas DESC LIMIT 40`, f.params);
   // المفوتر والمحصَّل يُنسبان بقاعدة نسبة الفاتورة الواحدة (عميل الفاتورة ثم عميل مشروعها)، لا عبر
@@ -197,18 +257,27 @@ export async function financeByClient(user, year = FY()) {
   const fi = scopeFilter(user, 'invoice', 'read', { sectorCol: 'i.sector_id', ownerCol: 'i.owner_user_id' });
   const CID = INVOICE_CLIENT_COL('i', 'ip');
   const JOIN = INVOICE_CLIENT_JOIN('i', 'ip');
-  const sumBy = async (sql, params) => new Map((await all(sql, params)).map((r) => [r.cid, r.v]));
-  const invoicedBy = await sumBy(`SELECT ${CID} cid, COALESCE(SUM(i.amount_halalas),0) v FROM invoice i ${JOIN}
+  const sumBy = async (sql, params) => new Map((await all(sql, params)).map((r) => [r.cid, r]));
+  // إجمالي وصافٍ في استعلامٍ واحد لكل مصدر — لا استعلام ثانٍ للصافي، فالرقمان من نفس مجموعة
+  // الصفوف بالضرورة ولا يمكن أن يفترقا لو تغيّر شرطٌ في أحدهما دون الآخر.
+  const invoicedBy = await sumBy(`SELECT ${CID} cid, COALESCE(SUM(i.amount_halalas),0) v,
+       ${netSum('i.amount_halalas', 'i.net_amount_halalas')} net FROM invoice i ${JOIN}
      WHERE ${fi.clause} AND i.deleted_at IS NULL AND i.status != 'DRAFT' AND ${CID} IS NOT NULL
      GROUP BY ${CID}`, fi.params);
-  const collectedBy = await sumBy(`SELECT ${CID} cid, COALESCE(SUM(col.amount_halalas),0) v
+  const collectedBy = await sumBy(`SELECT ${CID} cid, COALESCE(SUM(col.amount_halalas),0) v,
+       ${netSum('col.amount_halalas', 'col.net_amount_halalas')} net
      FROM collection col JOIN invoice i ON i.id = col.invoice_id ${JOIN}
      WHERE ${fi.clause} AND i.deleted_at IS NULL AND ${CID} IS NOT NULL
      GROUP BY ${CID}`, fi.params);
   return rows.map((r) => {
-    const invoiced = invoicedBy.get(r.id) || 0;
-    const collected = collectedBy.get(r.id) || 0;
-    return { ...r, invoiced_halalas: invoiced, collected_halalas: collected, outstanding_halalas: Math.max(0, invoiced - collected) };
+    const inv = invoicedBy.get(r.id);
+    const col = collectedBy.get(r.id);
+    const invoiced = inv?.v || 0;
+    const collected = col?.v || 0;
+    return { ...r, vat_halalas: (r.value_halalas || 0) - (r.net_value_halalas || 0),
+      invoiced_halalas: invoiced, invoiced_net_halalas: inv?.net || 0,
+      collected_halalas: collected, collected_net_halalas: col?.net || 0,
+      outstanding_halalas: Math.max(0, invoiced - collected) };
   }).filter((r) => r.value_halalas > 0 || r.invoiced_halalas > 0);
 }
 
@@ -219,12 +288,27 @@ export async function contractDetail(user, contractId) {
   const client = await get('SELECT name_ar FROM client WHERE id=?', [c.client_id]);
   const project = await get('SELECT id, name_ar, owner_user_id, progress_pct FROM project WHERE id=?', [c.project_id]);
   const invoices = await Promise.all((await all("SELECT * FROM invoice WHERE contract_id=? AND deleted_at IS NULL ORDER BY issue_date, claim_no", [contractId]))
-    .map(async (i) => ({ ...i, outstanding_halalas: await outstanding(i) })));
+    .map(async (i) => {
+      const net = i.net_amount_halalas ?? splitGross(i.amount_halalas || 0).net_halalas;
+      return { ...i, net_amount_halalas: net, vat_halalas: (i.amount_halalas || 0) - net,
+        outstanding_halalas: await outstanding(i) };
+    }));
   const deliverables = project ? await all("SELECT * FROM deliverable WHERE project_id=? AND deleted_at IS NULL ORDER BY month", [project.id]) : [];
-  const invoiced = invoices.filter((i) => i.status !== 'DRAFT').reduce((a, i) => a + i.amount_halalas, 0);
+  const issued = invoices.filter((i) => i.status !== 'DRAFT');
+  const invoiced = issued.reduce((a, i) => a + i.amount_halalas, 0);
+  // صافي المفوتر من المخزَّن إن سُجِّل، وإلا بالقاعدة القياسية — نفس صيغة COALESCE في SQL، مكتوبةً
+  // هنا في الشيفرة لأن الصفوف مقروءة أصلاً ولا داعي لاستعلامٍ ثانٍ عليها.
+  const netOfRow = (r, gross, netCol) => (r[netCol] ?? splitGross(gross).net_halalas);
+  const invoicedNet = issued.reduce((a, i) => a + netOfRow(i, i.amount_halalas, 'net_amount_halalas'), 0);
+  const valueNet = c.net_value_halalas ?? splitGross(c.value_halalas || 0).net_halalas;
   return { contract: c, client: client?.name_ar, project, invoices, deliverables,
-    invoiced_halalas: invoiced, billed_pct: c.value_halalas ? Math.round((invoiced / c.value_halalas) * 100) : 0,
-    backlog_halalas: Math.max(0, c.value_halalas - invoiced) };
+    // قيمة العقد ونسبة الفوترة والمتبقي: إجمالية (مطالبة). والصافي بجانبها لسؤال الإيراد.
+    invoiced_halalas: invoiced, invoiced_net_halalas: invoicedNet,
+    invoiced_vat_halalas: invoiced - invoicedNet,
+    contract_net_value_halalas: valueNet, contract_vat_halalas: (c.value_halalas || 0) - valueNet,
+    billed_pct: c.value_halalas ? Math.round((invoiced / c.value_halalas) * 100) : 0,
+    backlog_halalas: Math.max(0, c.value_halalas - invoiced),
+    backlog_net_halalas: Math.max(0, valueNet - invoicedNet) };
 }
 
 // ── Progress claim (مستخلص) — generate an invoice from delivered deliverables on a contract ──
@@ -287,7 +371,12 @@ export async function createProgressClaim(ctx, { contractId, deliverableIds = []
     toClaim = rows.filter((d) => !billed.has(d.id)); // الاختيار التلقائي يتخطى المفوتر بلا إزعاج
   }
   if (!toClaim.length) throw badRequest('لا توجد مخرجات مؤهلة للمستخلص (مسلّمة وغير مفوترة)');
+  // مبلغ المستخلص **إجمالي** كمبالغ المخرجات التي بُني منها (سعر المخرَج مع العميل يشمل الضريبة،
+  // وهو ما يصير رقم الفاتورة). والفصل يُحسب على مجموع الفاتورة لا على كل مخرَج على حدة: جمعُ
+  // صوافي المخرجات قد ينقص عن صافي المجموع بهللاتٍ بعدد المخرجات، فتخرج فاتورةٌ صافيها زائد
+  // ضريبتها لا يساوي مبلغها. الفصل مرة واحدة على الرقم المعروض في المستند.
   const amount = toClaim.reduce((a, d) => a + (d.amount_halalas || 0), 0);
+  const amountSplit = splitGross(amount);
   // cumulative claim number on this contract
   const claimCount = (await get('SELECT COUNT(*) n FROM invoice WHERE contract_id=? AND kind=\'progress_claim\'', [contractId])).n;
   const invId = id('inv'); const now = nowIso();
@@ -296,7 +385,9 @@ export async function createProgressClaim(ctx, { contractId, deliverableIds = []
   const totalDelivered = (await get("SELECT COALESCE(SUM(amount_halalas),0) v FROM deliverable WHERE project_id=? AND status IN ('DELIVERED','ACCEPTED') AND deleted_at IS NULL", [c.project_id])).v;
   await insert('invoice', {
     id: invId, code: `${c.code || 'INV'}-C${claimCount + 1}`, contract_id: contractId, project_id: c.project_id,
-    client_id: c.client_id, sector_id: c.sector_id, amount_halalas: amount, issue_date: now.slice(0, 10),
+    client_id: c.client_id, sector_id: c.sector_id, amount_halalas: amount,
+    net_amount_halalas: amountSplit.net_halalas, vat_halalas: amountSplit.vat_halalas,
+    issue_date: now.slice(0, 10),
     due_date: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10), status: 'ISSUED',
     kind: 'progress_claim', claim_no: String(claimCount + 1), period_label: periodLabel || null,
     progress_pct: c.value_halalas ? Math.round((totalDelivered / c.value_halalas) * 100) : null,
@@ -323,7 +414,12 @@ export async function recordCollection(ctx, { invoiceId, amountSar, collectedAt,
   if (!(amt > 0)) throw badRequest('مبلغ غير صالح');
   const out = await outstanding(inv);
   if (amt > out + 1) throw badRequest(`المبلغ يتجاوز المتبقي (${(out / 100).toLocaleString()} ر.س.)`);
+  // المبلغ المُدخَل **إجمالي**: العميل يحوّل ما هو مكتوب على الفاتورة شاملاً الضريبة، ومقارنتُه
+  // بالمتبقي أعلاه تجري بين إجماليَّين. ويُفصَل عند التسجيل كي تُطابق التحصيلاتُ الفواتيرَ على
+  // الأساسين معاً — فيُعرف كم من النقد الداخل إيرادٌ للشركة وكم منه ضريبةٌ تُورَّد للدولة.
+  const split = splitGross(amt);
   await insert('collection', { id: id('col'), invoice_id: invoiceId, amount_halalas: amt,
+    net_amount_halalas: split.net_halalas, vat_halalas: split.vat_halalas,
     collected_at: collectedAt || nowIso().slice(0, 10), method: method || 'تحويل', created_at: nowIso() });
   const newOut = out - amt;
   const settled = newOut <= 0;
@@ -395,32 +491,52 @@ export async function projectMoney(user, projectId, opts = {}) {
   const noRight = (what) => `${what} خارج صلاحيات دورك. اطلب من مدير النظام إضافتها إن كان عملك يحتاجها.`;
 
   // ── الجسر المالي على المشروع: مراحل متتابعة لا تُجمع ──
-  const invoiced = invStatuses ? sumOf(invStatuses.filter((r) => r.status !== 'DRAFT')) : 0;
-  const retention = invStatuses ? invStatuses.filter((r) => r.status !== 'DRAFT')
-    .reduce((a, r) => a + r.retention_halalas, 0) : 0;
+  const issuedInv = invStatuses ? invStatuses.filter((r) => r.status !== 'DRAFT') : [];
+  const invoiced = sumOf(issuedInv);
+  const invoicedNet = issuedInv.reduce((a, r) => a + (r.net_halalas || 0), 0);
+  const retention = issuedInv.reduce((a, r) => a + r.retention_halalas, 0);
   const draftInvoiced = invStatuses ? sumOf(invStatuses.filter((r) => r.status === 'DRAFT')) : 0;
   const anyInvoice = !!invStatuses && invStatuses.length > 0;
   const collectedAll = collections ? collections.total_halalas : 0;
+  // قيمة التعاقد على صف المشروع خانة لقطة مخزَّنة (لا عمود صافٍ لها بقرار ٠١٩: الأعمدة المشتقّة
+  // لا تُجمَّد مرتين)، فصافيها يُشتقّ هنا وقت القراءة بالقاعدة الواحدة.
+  const contractGross = p.contract_value_halalas > 0 ? p.contract_value_halalas : null;
   const bridge = {
     permitted: seesBilling,
     reason_ar: seesBilling ? null : noRight('أرقام الفوترة والتحصيل'),
     // قيمة التعاقد وأمر شراء العميل من صف المشروع؛ الصفر فيهما يعني «غير مسجَّل» لا «بلا قيمة».
-    contract_halalas: p.contract_value_halalas > 0 ? p.contract_value_halalas : null,
+    contract_halalas: contractGross,
+    contract_net_halalas: contractGross == null ? null : splitGross(contractGross).net_halalas,
+    contract_vat_halalas: contractGross == null ? null : splitGross(contractGross).vat_halalas,
     client_po_halalas: p.po_value_halalas > 0 ? p.po_value_halalas : null,
+    // الإيراد المحقق **صافياً** — هو الضلع الوحيد في هذا الجسر الذي يعني «مالُ الشركة»، وبقيةُ
+    // الأضلاع مطالبةٌ ونقدٌ متحرّك مع العميل فتبقى إجمالية. ويرافقه إجماليه كي يظهر الفارق
+    // مفسَّراً بدل أن يُقرأ تناقضاً بين ضلعين متجاورين.
     revenue: seesRevenue
-      ? { permitted: true, recorded: !!revenue?.any, total_halalas: revenue?.any ? revenue.total_halalas : null,
-        in_year_halalas: revenue?.any ? yearTrack(revenue, year).total_halalas : null }
-      : { permitted: false, reason_ar: noRight('الإيراد المحقق'), recorded: null, total_halalas: null, in_year_halalas: null },
+      ? { permitted: true, recorded: !!revenue?.any,
+        total_halalas: revenue?.any ? revenue.net_total_halalas : null,
+        gross_total_halalas: revenue?.any ? revenue.total_halalas : null,
+        vat_total_halalas: revenue?.any ? revenue.vat_total_halalas : null,
+        in_year_halalas: revenue?.any ? yearTrack(revenue, year).net_total_halalas : null }
+      : { permitted: false, reason_ar: noRight('الإيراد المحقق'), recorded: null, total_halalas: null,
+        gross_total_halalas: null, vat_total_halalas: null, in_year_halalas: null },
     invoiced_halalas: seesBilling && anyInvoice ? invoiced : null,
+    invoiced_net_halalas: seesBilling && anyInvoice ? invoicedNet : null,
+    invoiced_vat_halalas: seesBilling && anyInvoice ? invoiced - invoicedNet : null,
     draft_invoiced_halalas: seesBilling && draftInvoiced > 0 ? draftInvoiced : null,
     retention_halalas: seesBilling && retention > 0 ? retention : null,
     collected_halalas: seesBilling && collections?.any ? collectedAll : null,
+    collected_net_halalas: seesBilling && collections?.any ? collections.net_total_halalas : null,
+    collected_vat_halalas: seesBilling && collections?.any ? collections.vat_total_halalas : null,
+    // المستحق إجمالي: هو ما يبقى على العميل، والعميل مدينٌ بالضريبة كما هو مدينٌ بالأصل.
     outstanding_halalas: seesBilling && anyInvoice ? Math.max(0, invoiced - retention - collectedAll) : null,
     by_status: seesBilling ? (invStatuses || []).map((r) => ({ status: r.status, count: r.count,
-      amount_halalas: r.amount_halalas })) : [],
+      amount_halalas: r.amount_halalas, net_amount_halalas: r.net_halalas,
+      vat_halalas: r.amount_halalas - r.net_halalas })) : [],
     // المفوتر شهرياً بجوار المحصَّل شهرياً — أوضح موضع يظهر فيه أن الرقمين ليسا رقماً واحداً.
     invoiced_monthly: seesBilling && invMonthly?.any ? yearTrack(invMonthly, year).months : null,
     note_ar: 'أضلاع متتابعة لا تُجمع: قيمة التعاقد ثم الإيراد المحقق ثم المفوتر ثم المحصَّل. المحصَّل وحده نقدٌ دخل فعلاً.',
+    vat_note_ar: 'الإيراد المحقق بلا ضريبة القيمة المضافة — وهو ما يخصّ الشركة. أما قيمة التعاقد والمفوتر والمحصَّل والمستحق فمع الضريبة، لأنها ما يُطالَب به العميل ويدفعه، والضريبة تُورَّد للدولة.',
   };
 
   // ── ① الداخل النقدي: التحصيلات وحدها ──
@@ -430,17 +546,25 @@ export async function projectMoney(user, projectId, opts = {}) {
     reason_ar: seesBilling ? null : noRight('حركة التحصيل على المشروع'),
     recorded: seesBilling ? collections.any : null,
     count: seesBilling ? collections.count : null,
+    // الداخل النقدي **إجمالي**: ما دخل الحساب فعلاً بما فيه الضريبة. ويُذكر صافيه بجانبه لأن
+    // جزءاً منه أمانةٌ تُورَّد للدولة ولا يُنفق — وهذا فرقٌ يخصّ السيولة لا المحاسبة وحدها.
     total_halalas: seesBilling && collections.any ? collections.total_halalas : null,
+    net_total_halalas: seesBilling && collections.any ? collections.net_total_halalas : null,
+    vat_total_halalas: seesBilling && collections.any ? collections.vat_total_halalas : null,
     in_year_halalas: seesBilling && collections.any ? cashInTrack.total_halalas : null,
+    in_year_net_halalas: seesBilling && collections.any ? cashInTrack.net_total_halalas : null,
     in_year_count: seesBilling && collections.any ? cashInTrack.count : null,
     monthly: seesBilling && collections.any ? cashInTrack.months : null,
     undated: seesBilling && collections.undated.count > 0 ? collections.undated : null,
     other_years: seesBilling ? collections.years.filter((y) => y !== year) : [],
     rows: seesBilling ? (collectionList || []).map((c) => ({
       id: c.id, date: c.collected_at || null, amount_halalas: c.amount_halalas,
+      net_amount_halalas: c.net_amount_halalas ?? null,
+      vat_halalas: c.net_amount_halalas == null ? null : c.amount_halalas - c.net_amount_halalas,
       method: c.method || null, invoice_id: c.invoice_id, invoice_code: c.invoice_code || null,
     })) : [],
     note_ar: 'الداخل النقدي = ما حُصِّل فعلاً على فواتير المشروع. ليس المفوتر ولا الإيراد المحقق.',
+    vat_note_ar: 'المبلغ مع ضريبة القيمة المضافة كما دفعه العميل. الصافي هو ما يخصّ الشركة منه.',
   };
 
   // ── ② الخارج النقدي: المصروف المدفوع وحده، والملتزَم به بجانبه ──
@@ -452,6 +576,25 @@ export async function projectMoney(user, projectId, opts = {}) {
   const requested = byStatus(['DRAFT', 'SUBMITTED']);
   const rejected = byStatus(['REJECTED']);
   const paidTrack = yearTrack(paid, year);
+  // ── ضريبة المصروف: مقروءةٌ من المسجَّل وحده، ولا تُفترض ──────────────────────────────────
+  // الخارج النقدي إجمالي دائماً: ما خرج من الحساب خرج بالضريبة. أما **كلفة** المشروع فهي الصافي
+  // متى كانت ضريبة المورّد مستردّة — وهذا لا يُعرف إلا ممّن سجّل المصروف، فلا يُشتقّ هنا بخمسة
+  // عشر بالمئة (تبرير الترحيلة ٠١٩: الجدول يخلط مستردّات الموظفين والرسوم المعفاة بالخاضع).
+  // فما لم يُسجَّل يخرج فارغاً ليُقال «غير مُسجَّل»، لا صفراً ولا رقماً مفترضاً.
+  const vatOfExpenses = (rows) => {
+    const netRows = rows.reduce((a, r) => a + (r.net_rows || 0), 0);
+    const allRows = rows.reduce((a, r) => a + (r.count || 0), 0);
+    if (!netRows) return { recorded: false, partial: false, rows_with_vat: 0, rows_total: allRows,
+      net_halalas: null, vat_halalas: null };
+    const gross = rows.reduce((a, r) => a + (r.amount_halalas || 0), 0);
+    const net = rows.reduce((a, r) => a + (r.net_recorded_halalas || 0), 0);
+    // الضريبة لا تُذكر إلا حين تكون مسجَّلة على **كل** الصفوف: طرحُ صافي بعضها من إجمالي كلها
+    // يخرج برقمٍ يبدو ضريبةً وليس ضريبة. والتسجيل الجزئي يُقال جزئياً ولا يُكمَّل بافتراض.
+    const complete = netRows === allRows;
+    return { recorded: true, partial: !complete, rows_with_vat: netRows, rows_total: allRows,
+      net_halalas: complete ? net : null, vat_halalas: complete ? gross - net : null };
+  };
+  const paidVat = vatOfExpenses(exp.filter((r) => r.status === 'PAID'));
   const cashOut = {
     permitted: seesExpense,
     reason_ar: seesExpense ? null : noRight('مصروفات المشروع'),
@@ -467,6 +610,9 @@ export async function projectMoney(user, projectId, opts = {}) {
     requested: seesExpense ? { count: requested.count, total_halalas: gated(seesCost, requested.any ? requested.total_halalas : null) } : null,
     rejected: seesExpense ? { count: rejected.count } : null,
     other_years: seesExpense ? paid.years.filter((y) => y !== year) : [],
+    // الضريبة على المدفوع: مسجَّلة أو غير مسجَّلة، ولا ثالث. الغياب هنا ليس صفراً.
+    vat: seesExpense && seesCost ? paidVat : null,
+    vat_note_ar: 'المبلغ المدفوع مع الضريبة كما خرج من الحساب. ضريبة المورّد تُسترد فلا تُحسب كلفة على المشروع — وتُعرض هنا حين تُسجَّل مع المصروف، وما لم يُسجَّل يُقال غير مُسجَّل.',
     note_ar: 'الخارج النقدي = المصروف المدفوع فعلاً. المعتمد غير المدفوع التزام لم يخرج بعد، والمطلوب لم يُعتمد أصلاً.',
     sources_ar: 'المصدر الوحيد المسجَّل للخارج النقدي اليوم هو مصروفات المشروع. الرواتب والمشتريات لا تُصرف من هذه الشاشة.',
   };
@@ -586,10 +732,16 @@ export async function projectMoney(user, projectId, opts = {}) {
     count: seesPurchases ? (poRows || []).length : null,
     rows: seesPurchases ? (poRows || []).map((r) => ({
       id: r.id, code: r.code || null, supplier_name: r.supplier_name || null,
-      amount_halalas: gated(poVisible, r.amount_halalas), status: r.status || null,
+      // ما دُفع للمورّد إجمالي، وكلفتُه الحقيقية صافيه: ضريبة المورّد مدخلٌ قابل للاسترداد
+      // فليست كلفةً على المشروع. الرقمان معاً كي لا يُقرأ أحدهما مكان الآخر.
+      amount_halalas: gated(poVisible, r.amount_halalas),
+      net_amount_halalas: gated(poVisible, r.net_amount_halalas),
+      vat_halalas: gated(poVisible, (r.amount_halalas || 0) - (r.net_amount_halalas || 0)),
+      status: r.status || null,
       created_at: r.created_at || null,
     })) : [],
     total_halalas: gated(poVisible, (poRows || []).reduce((a, r) => a + (r.amount_halalas || 0), 0) || null),
+    net_total_halalas: gated(poVisible, (poRows || []).reduce((a, r) => a + (r.net_amount_halalas || 0), 0) || null),
     empty_ar: 'لا مشتريات موردين مسجّلة على هذا المشروع.',
     note_ar: 'لا يوجد في المنصة اليوم مسار لتسجيل مشتريات المشروع من الموردين، فما لا يظهر هنا قد يكون مصروفاً فعلاً وسُجِّل خارج المنصة. غيابه ليس صفراً.',
     needs_ar: ['ربط المشترى بالمورد وبالمشروع', 'المبلغ وتاريخ الاستحقاق وتاريخ الصرف',

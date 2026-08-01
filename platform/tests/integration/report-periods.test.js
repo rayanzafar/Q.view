@@ -174,7 +174,8 @@ test('الإيراد المعترف به لا يُقسَّم على أسبوع �
   assert.ok(/شهرياً/.test(wf.absence_ar));
   const m = await P.buildPeriodReport(admin, { period: 'month', anchor: '2026-07-15', today: TODAY,
     lens: 'sector', targetId: 'SOLUTIONS' });
-  assert.ok(fig(section(m, 'contributions'), 'إيراد معترف به في الفترة').display.includes('250,000'));
+  // الإيراد المعترف به صافٍ بعد فصل الضريبة (ترحيلة ٠١٩): ٢٥٠٬٠٠٠ ر.س. إجمالاً ⟵ ٢١٧٬٣٩١ صافياً.
+  assert.ok(fig(section(m, 'contributions'), 'إيراد معترف به في الفترة').display.includes('217,391'));
 });
 
 test('بند إيراد بلا شهر مسجَّل يُقال صراحةً بدل أن يُسقَط صامتاً', async () => {
@@ -184,7 +185,7 @@ test('بند إيراد بلا شهر مسجَّل يُقال صراحةً بد�
     lens: 'sector', targetId: 'SOLUTIONS' });
   const c = section(r, 'contributions');
   assert.ok(/بلا شهر مسجَّل/.test(c.note_ar), 'مجموع الفترات لا يقلّ عن إيراد السنة بلا تفسير');
-  assert.ok(fig(c, 'إيراد معترف به في الفترة').display.includes('250,000'), 'ولا يُضاف البند المجهول إلى الفترة');
+  assert.ok(fig(c, 'إيراد معترف به في الفترة').display.includes('217,391'), 'ولا يُضاف البند المجهول إلى الفترة');
 });
 
 // ── (٢) الحُرّاس: لا تقرير يتجاوز صلاحية قارئه ────────────────────────────────

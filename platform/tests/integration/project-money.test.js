@@ -127,7 +127,14 @@ test('الداخل النقدي = التحصيلات وحدها: لا المفو
   assert.equal(m.bridge.collected_halalas, 205_000);
   assert.equal(m.bridge.outstanding_halalas, 95_000, 'المتبقي = المفوتر − المحتجز − المحصَّل');
   assert.equal(m.bridge.draft_invoiced_halalas, 200_000, 'المسودة تُذكر منفصلة لا داخل المفوتر');
-  assert.equal(m.bridge.revenue.total_halalas, 250_000, 'الإيراد المحقق ضلعٌ ثالث لا يساوي أياً منهما');
+  // الإيراد ضلعٌ ثالث لا يساوي أياً منهما — وصار **صافياً** بعد فصل الضريبة (ترحيلة ٠١٩):
+  // ٢٥٠٬٠٠٠ هللة إجمالاً ⟵ ٢١٧٬٣٩١ صافياً و٣٢٬٦٠٩ ضريبةً تُورَّد للدولة ولا تخصّ الشركة.
+  // والإجمالي مذكور بجانبه لا مكانه، كي يُقرأ الفارق مفسَّراً لا تناقضاً بين ضلعين متجاورين.
+  assert.equal(m.bridge.revenue.total_halalas, 217_391, 'الإيراد المحقق بلا الضريبة');
+  assert.equal(m.bridge.revenue.gross_total_halalas, 250_000, 'وإجماليه كما هو مسجَّل');
+  assert.equal(m.bridge.revenue.total_halalas + m.bridge.revenue.vat_total_halalas, 250_000, 'الجمع مغلق');
+  // والمفوتر والمحصَّل والمستحق بقيت إجمالية أعلاه: العميل يدفع الإجمالي ويُطالَب به.
+  assert.equal(m.bridge.invoiced_net_halalas + m.bridge.invoiced_vat_halalas, m.bridge.invoiced_halalas);
 });
 
 test('صفوف التحصيل تحمل تاريخها وفاتورتها، وما بلا تاريخ يبقى ظاهراً', async () => {

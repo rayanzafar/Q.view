@@ -253,7 +253,8 @@ test('وتصله أرقام الربح والإيراد والمستهدف فع�
   assert.equal(canSeeSensitive(U.u_rayan, 'margin'), true, 'الربح — قرار مالك صريح');
   assert.equal(canSeeSensitive(U.u_rayan, 'cost'), true, 'والكلفة');
   const sd = await sectorDashboard(U.u_rayan, 'S1', { year: YEAR });
-  assert.equal(sd.revenue_halalas, 640000000, 'الإيراد المحقق برقمه');
+  // الإيراد صافٍ بعد فصل الضريبة (ترحيلة ٠١٩): ٦٤٠٬٠٠٠٬٠٠٠ هللة إجمالاً ⟵ ٥٥٦٬٥٢١٬٧٣٩ صافياً.
+  assert.equal(sd.revenue_halalas, 556521739, 'الإيراد المحقق برقمه، بلا ضريبة القيمة المضافة');
   assert.equal(sd.target_revenue_halalas, 900000000, 'والمستهدف');
   assert.equal(sd.target_sales_halalas, 1200000000, 'ومستهدف المبيعات');
   const html = await sectorPage(U.u_rayan, { year: YEAR });

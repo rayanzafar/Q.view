@@ -504,8 +504,12 @@ async function contributionsSection(user, sc, period) {
             : 'AND project_id IN (SELECT id FROM project WHERE department_id = ? AND deleted_at IS NULL)';
       const sp = sc.lens === 'company' ? []
         : [sc.lens === 'sector' ? sc.sectorId : sc.lens === 'project' ? sc.projectId : sc.departmentId];
-      const rev = await get(`SELECT COUNT(*) n, COALESCE(SUM(amount_halalas),0) v FROM revenue_line
-        WHERE (${parts}) ${scopeSql}`, [...mp, ...sp]);
+      // «إيراد معترف به» **صافٍ** بعد فصل الضريبة (ترحيلة ٠١٩): الضريبة تُحصَّل للدولة ولا
+      // تخصّ الشركة، والرقم هنا يُقرأ إلى جانب إيراد اللوحات وتقارير القطاع فلا يجوز أن يفترق
+      // عنها بخمسة عشر بالمئة. والصيغة هي القاعدة الواحدة: المخزَّن إن سُجِّل وإلا اشتقاقٌ قياسي.
+      const rev = await get(`SELECT COUNT(*) n,
+        COALESCE(SUM(COALESCE(net_amount_halalas, CAST(COALESCE(amount_halalas, 0) AS BIGINT) * 100 / 115)), 0) v
+        FROM revenue_line WHERE (${parts}) ${scopeSql}`, [...mp, ...sp]);
       if (!N(rev?.n)) {
         figures.push(missing('إيراد معترف به في الفترة', 'لا بنود إيراد مسجّلة لأشهر هذه الفترة'));
       } else { anyBase = true; figures.push(figure('إيراد معترف به في الفترة', fmtSar(N(rev.v)))); }
