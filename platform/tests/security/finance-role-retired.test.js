@@ -73,7 +73,10 @@ test('مالية الشركة صعدت إلى مكتب الرئيس التنفي
     ['approve', 'expense'], ['read', 'expense'], ['create', 'revenue_line']]) {
     assert.equal(can(ceo, action, res, PRJ), true, `${action} ${res}`);
   }
-  assert.equal(PAGE_ACCESS.finance(ceo), true, 'ويفتح شاشة مالية الشركة');
+  // الشاشة نفسها أُلغيت لاحقاً بقرار المالك («موضوع الفواتير والمالية خلاص ألغِه») — والمنح
+  // أعلاه باقية عمداً: البيانات لم تُمحَ، والإخفاء قرارُ واجهة يُعاد بسطر. فيُثبَّت الأمران
+  // معاً كي لا يُظَنّ أن إلغاء الشاشة ألغى السلطة، ولا أن بقاء السلطة يعيد الشاشة.
+  assert.equal(PAGE_ACCESS.finance(ceo), false, 'شاشة المالية مُزالة — ولا تُفتح لأحد');
   assert.equal(PAGE_ACCESS.approvals(ceo), true, 'وشاشة الاعتمادات — إليها تُوجَّه خطوة المالية الآن');
 });
 

@@ -2234,9 +2234,10 @@ export async function projectDetailPage(user, projectId, opts = {}) {
     : { v: G.notRecorded, c: 'var(--faint)' });
   const moneyBody = `
     ${canMoney ? `<div style="padding:.6rem 1rem">
-      ${[['قيمة العقد', amt(headlineVal, 'var(--ink2)')],
-    ['المفوتر', amt(prog.money.invoicedAmt, 'var(--brand2)')],
-    ['المستحق على العميل', amt(Math.max(0, prog.money.invoicedAmt - prog.money.collectedAmt), 'var(--amber)')],
+      ${/* المفوتر والمستحق على العميل أُزيلا بقرار المالك: «موضوع الفواتير والمالية خلاص ألغِه».
+           والإيراد بقي لأنه صار يتبع **التسليم** لا الفاتورة — فهو رقمُ عملٍ لا رقمُ مطالبة،
+           ويرتفع بمجرد اعتماد المخرَج بلا أن تمرّ به المالية. */''}
+      ${[['قيمة المشروع', amt(headlineVal, 'var(--ink2)')],
     ['الإيراد المُثبت', amt(revenue, 'var(--green)')],
     ['الصرف الفعلي', showCost ? amt(spend, 'var(--ink2)') : { v: '••• محجوب', c: 'var(--faint)' }],
     ['الهامش', marginPct != null && showCost ? { v: marginPct + '%', c: marginPct < 10 ? 'var(--red)' : 'var(--ink2)' }
@@ -2244,8 +2245,8 @@ export async function projectDetailPage(user, projectId, opts = {}) {
     .map(([l, o]) => [l, o.v, o.c])
     .map(([l, v, c]) => `<div style="display:flex;justify-content:space-between;align-items:center;padding:.3rem 0;border-bottom:1px dashed var(--line)"><span style="font-size:12px;color:var(--muted)">${l}</span><span class="tnum" style="font-weight:800;font-size:13px;color:${c}">${v}</span></div>`).join('')}
       ${showCost && burnPct != null ? `<div style="margin-top:.55rem"><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted)"><span>استهلاك الميزانية</span><span class="tnum">${burnPct}%</span></div>${bar(burnPct, burnPct > 90 ? '#dc2626' : burnPct > 70 ? '#d97706' : '#059669')}</div>` : ''}
-      ${prog.money.uninvoicedReady > 0 ? `<div class="pact blue" style="margin-top:.6rem"><span style="flex:1">مخرجات سُلِّمت ولم يصدر بها مستخلص: <b class="tnum">${fmtSar(prog.money.uninvoicedReady)}</b></span>${contract ? `<a href="/app/contract/${contract.id}">أصدِر المستخلص</a>` : ''}</div>` : ''}
-      ${contract ? `<a href="/app/contract/${contract.id}" style="display:block;margin-top:.6rem;font-size:12px;color:var(--brand2);text-decoration:none">↳ فتح العقد ${esc(contract.code || '')} · ${fmtSar(contract.value_halalas)}</a>` : ''}
+      ${/* دعوةُ «أصدِر المستخلص» ورابطُ شاشة العقد أُزيلا مع إلغاء المالية: زرٌّ يقود إلى شاشةٍ
+           مُغلقة أسوأ من غياب الزر. وقيمة العقد نفسها تبقى معروضة أعلاه — هي قيمة المشروع. */''}
     </div>` : ''}
     ${/* لوحُ المال الشهري الكامل خلف طيّة ثانية: هو أطول جزء في الصفحة كلها (شهور وموردون
          وحالات فارغة مشروحة)، وفتحُه مع القسم يبتلع كل ما بعده فيعود التمرير الأعمى الذي
@@ -2365,7 +2366,7 @@ export async function projectDetailPage(user, projectId, opts = {}) {
     <div id="sec-deliverables">${sec('deliverables', G.deliverables, { sub: prog.delivery.total ? `${prog.delivery.accepted} معتمَد من ${prog.delivery.total}` : '', badge: cnt(dlv.length), body: dlvBody })}</div>
     <div id="sec-team">${sec('team', 'الفريق والتسكين', { sub: teamLoad?.overloaded ? `${teamLoad.overloaded} فوق طاقته` : '', badge: cnt(team.length, teamLoad?.overloaded ? 'red' : 'blue'), body: teamBody })}</div>
     <div id="sec-tasks">${sec('tasks', 'المهام', { sub: k.lateTasks ? `${k.lateTasks} متأخرة` : '', badge: cnt(k.totalTasks, k.lateTasks ? 'red' : 'blue'), body: tasksBody })}</div>
-    ${canMoneyBoard ? `<div id="sec-money">${sec('money', canMoney ? 'العقد والمالية' : 'المصروفات والمشتريات', { sub: canMoney && prog.money.billedPct != null ? `فوترة ${prog.money.billedPct}%` : '', body: moneyBody })}</div>` : ''}
+    ${canMoneyBoard ? `<div id="sec-money">${sec('money', canMoney ? 'قيمة المشروع وإيراده' : 'المصروفات والمشتريات', { sub: '', body: moneyBody })}</div>` : ''}
     <div id="sec-files">${sec('files', 'الملفات والتحديثات', { badge: cnt((docsPayload.documents || []).length), body: filesBody })}</div>
     <div id="sec-registers">${sec('registers', 'سجلات إضافية', { sub: 'مخاطر · معوقات · قرارات · طلبات تغيير — اختيارية بالكامل', badge: cnt(regCount, 'amber'), body: registersBody })}</div>
     <script>window.__SANAD=Object.assign(window.__SANAD||{},{gov:{projectId:${JSON.stringify(p.id).replace(/</g, '\\u003c')},canEdit:${canGov}},

@@ -45,7 +45,7 @@ const pm = U({ id: 'u_pm', username: 'pm1', name_ar: 'مدير المشروع', 
 // يتغيّر بالمراجعة اللغوية، فربطُ الفحص بها يجعله يسقط عند تحرير كلمة. و`data-sec` عقدُ بنية.
 function moneyOf(html) {
   const start = html.indexOf('data-sec="money"');
-  assert.ok(start > 0, 'قسم العقد والمالية موجود في الصفحة');
+  assert.ok(start > 0, 'قسم مال المشروع موجود في الصفحة');
   const end = html.indexOf('data-sec="files"', start);
   return html.slice(start, end > start ? end : html.length);
 }
@@ -180,7 +180,7 @@ test('دور بلا بوابة الكلفة: يرى العدد ويقرأ «مق
 test('مدير المشروع يرى نِسَب التسكين وفوترة مشروعه — ولا يسجّل مصروفاً', async () => {
   const m = moneyOf(await projectDetailPage(pm, 'P1'));
   assert.ok(m.includes('سارة العتيبي'), 'النِّسَب حق تشغيلي');
-  assert.ok(m.includes('قيمة العقد'), 'ومالية مشروعه صارت له — قرار مالك نقض الحجب السابق');
+  assert.ok(m.includes('قيمة المشروع'), 'ومالية مشروعه صارت له — قرار مالك نقض الحجب السابق');
   assert.ok(m.includes('خارج صلاحيات دورك'), 'وما بقي محجوباً (المصروفات) يُقال سببه لا يُسكت عنه');
   assert.ok(!m.includes('data-action="exp-add"'), 'ولا شريط تسجيل مصروف لمن لا يملك التسجيل');
 });

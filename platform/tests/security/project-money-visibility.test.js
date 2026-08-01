@@ -64,13 +64,12 @@ test('التحصيل ليس لمدير المشروع — شأن الإدارة 
   assert.equal(can(AS.project_manager, 'create', 'collection', PRJ), false);
 });
 
-test('منحُ مدير المشروع بنطاق مشروعه لا يفتح له محفظة الشركة', () => {
-  assert.equal(PAGE_ACCESS.finance(AS.project_manager), false,
-    'شاشة مالية الشركة تجمع القطاعات والعملاء كلهم — لا تُفتح بمنحٍ على مشروع واحد');
-  assert.equal(PAGE_ACCESS.finance(AS.sector_lead), true, 'وقائد القطاع يفتحها بنطاقه');
-  assert.equal(PAGE_ACCESS.finance(AS.admin), true);
-  for (const r of ['consultant', 'employee']) {
-    assert.equal(PAGE_ACCESS.finance(AS[r]), false, r);
+// شاشة مالية الشركة أُزيلت بقرار المالك — لا تُفتح لأحد، ولا تُفتح بالعنوان المباشر.
+// وكان الفحص يثبّت من يفتحها ومن يُردّ؛ صار يثبّت أنها مُغلقة على الجميع بلا استثناء —
+// فأي عودة لها تسقط هنا بدل أن تمرّ صامتة.
+test('شاشة مالية الشركة مُزالة — لا تُفتح لأي دور', () => {
+  for (const r of ['project_manager', 'sector_lead', 'admin', 'ceo_office', 'consultant', 'employee']) {
+    assert.equal(PAGE_ACCESS.finance(AS[r] || { role_id: r, scope: 'company' }), false, r);
   }
 });
 
@@ -115,7 +114,7 @@ test('الصفحة المُصيَّرة: صفر رقم مال للموظف وا�
   await db.insert('deliverable', { id: 'MD1', project_id: 'MP1', name_ar: 'مخرَج بقيمة', amount_halalas: 2_000_000,
     status: 'DELIVERED', delivered_at: now, invoiced_at: now, sector_id: 'MS', created_at: now });
 
-  const MONEY = ['العقد والمالية', 'قيمة العقد', 'المستحق', 'نسبة الفوترة', 'حركة المال',
+  const MONEY = ['قيمة المشروع وإيراده', 'قيمة المشروع', 'المستحق', 'نسبة الفوترة', 'حركة المال',
     'جاهز للمستخلص', 'المفوتر', 'الهامش', 'الإيراد المُثبت', 'الصرف الفعلي', 'ر.س.'];
   const render = async (role) => {
     const u = await db.get('SELECT * FROM app_user WHERE id = ?', ['mu_' + role]);
@@ -134,7 +133,8 @@ test('الصفحة المُصيَّرة: صفر رقم مال للموظف وا�
     for (const bad of ['undefined', 'NaN', '[object']) assert.ok(!html.includes(bad), `${role}: ${bad}`);
   }
   const pm = await render('project_manager');
-  for (const need of ['العقد والمالية', 'قيمة العقد', 'المستحق على العميل', 'نسبة الفوترة']) {
+  // «المفوتر» و«المستحق على العميل» أُزيلا مع إلغاء المالية — الباقي قيمة المشروع وإيراده.
+  for (const need of ['قيمة المشروع وإيراده', 'قيمة المشروع', 'الإيراد المُثبت']) {
     assert.ok(pm.includes(need), `مدير المشروع يرى «${need}»`);
   }
 });
