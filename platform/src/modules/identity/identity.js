@@ -14,6 +14,7 @@ import { audit } from '../../core/audit/index.js';
 import { badRequest, forbidden, notFound } from '../../core/http/errors.js';
 import { id, nowIso } from '../../core/util/ids.js';
 import { requestCode, PURPOSE, normalizeEmail } from '../../core/auth/otp.js';
+import { removeRecord, removalBlockers } from '../../core/lifecycle/remove.js';
 import { ROLE_LABELS } from '../../core/rbac/matrix.js';
 
 // صلاحية إدارة الهوية = صلاحية مدير النظام. تُفحص في الخدمة لا في الصفحة وحدها: الصفحة
@@ -322,6 +323,48 @@ export async function updateUser(ctx, userId, data = {}) {
     });
   });
   return { ok: true, changed: notes };
+}
+
+// ─────────────────────────── حذف الحساب ───────────────────────────
+//
+// كان في الخدمة دعوةٌ وتعطيلٌ وتعديل — ولا حذف إطلاقاً. فحسابٌ أُنشئ بالخطأ يبقى إلى الأبد:
+// يظهر في كل قائمة، ويحجز بريده على أي حسابٍ جديد بنفس العنوان، ولا سبيل إلى إزالته إلا بفتح
+// القاعدة يدوياً — بابٌ خارج التدقيق وخارج الصلاحيات. وعلى البيانات الحيّة ستة أشخاص لكلٍّ
+// منهم حسابان بفارق حرفٍ في البريد.
+//
+// والحراسة ليست هنا: هي في `core/lifecycle/remove.js` حيث حُرِس حذفُ المشروع والفرصة — مسارٌ
+// ثانٍ للحذف يعني قاعدتين للأمان تنحرفان بأول تعديل. وهذه الخدمة تضيف طبقة الصلاحية بلغتها
+// (مدير النظام وحده) وتُعطي رسالة «غير موجود» الصحيحة، ثم تُسلّم إلى الحارس الواحد.
+//
+// والحذف هنا **غير التعطيل**، وهو فرقٌ يجب أن يظهر للمستخدم قبل أن يضغط:
+//   · التعطيل يُغلق الباب مؤقتاً — الحساب باقٍ باسمه وعمله، ويُفتح متى شئت.
+//   · الحذف يُزيل الحساب من القوائم ويُفرج عن بريده لحسابٍ جديد — والأثر التاريخي يبقى:
+//     سطور التدقيق وسجل الدخول وساعات العمل المسجَّلة لا تُمَسّ.
+
+// من يملك الحذف: مدير النظام وحده. وهو قرارٌ مقصود لا تقصير — الحساب مفتاح الوصول إلى كل
+// شيء في المنصة، ومن يملك حذفه يملك إخراج أي شخصٍ منها. ومنحُه لمدير قطاع يعني أن يمحو
+// حساباتٍ يقرأ بها غيرُه بيانات قطاعات أخرى. والحاجة الثانية (إخراج شخصٍ فوراً) مخدومة
+// بالتعطيل، وهو متاحٌ بنفس الصلاحية دون أن يُزيل شيئاً.
+export async function userRemovalCheck(ctx, userId) {
+  requireIdentityAdmin(ctx.user, 'فحص حذف الحساب');
+  const u = await loadUser(userId);
+  const blockers = await removalBlockers('user', u.id, ctx);
+  return {
+    id: u.id,
+    name: u.name_ar || u.username,
+    email: u.email || null,
+    blockers,
+    removable: !blockers.length,
+    // العاقبة تُعرض قبل الضغط لا بعده — كما في فحص حذف المشروع.
+    consequence: 'يختفي الحساب من كل القوائم، وتُقطع جلساته، ويصير بريده متاحاً لحساب جديد. '
+      + 'وسجل التدقيق وسجل دخوله يبقيان كما هما.',
+  };
+}
+
+export async function removeUser(ctx, userId, opts = {}) {
+  requireIdentityAdmin(ctx.user, 'حذف الحسابات');
+  const u = await loadUser(userId);
+  return removeRecord(ctx, 'user', u.id, { reason: opts.reason });
 }
 
 // إنهاء كل جلسات حسابٍ بلا تعطيله — لجهازٍ ضائع أو شكٍّ في تسريب.

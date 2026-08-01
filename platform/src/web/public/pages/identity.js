@@ -126,6 +126,49 @@
     } catch (e) { toast(e.message, true); }
   }
 
+  // ── الحذف غير التعطيل، والعاقبة تُعرض قبل الضغط ──
+  // زرّان متجاوران يفعلان شيئين مختلفين اختلافاً تاماً: التعطيل يُغلق الباب مؤقتاً، والحذف
+  // يُزيل الحساب ويُفرج عن بريده. فلا يكفي سؤال «هل أنت متأكد»: تُقرأ الموانع من الخادم أولاً
+  // (كما يفعل فحص حذف المشروع) ويُعرض ما سيحدث — فمن يضغط يعرف ماذا يفعل قبل أن يفعله.
+  async function removeAccount(id) {
+    const u = (S().idnUsers || {})[id] || {};
+    const name = esc(u.name_ar || '');
+    let chk;
+    try { chk = await api('/identity/users/' + encodeURIComponent(id) + '/removal-check'); } catch (e) { toast(e.message, true); return; }
+    const compare = '<div style="font-size:12px;line-height:1.9;color:var(--ink2);background:#f8fafc;'
+      + 'border:1px solid var(--line);border-radius:10px;padding:.6rem .8rem;margin-bottom:.7rem">'
+      + '<div><b>التعطيل</b> يُغلق الباب مؤقتاً: الحساب وعمله باقيان، وتستطيع إعادة فتحه متى شئت.</div>'
+      + '<div><b>الحذف</b> يُزيل الحساب من كل القوائم، ويقطع جلساته، ويُفرج عن بريده لحساب جديد.</div>'
+      + '<div>وسجل التدقيق وسجل الدخول يبقيان كما هما — الأثر التاريخي لا يُمحى.</div></div>';
+    const blockers = (chk.blockers || []);
+    const body = blockers.length
+      ? compare + '<div style="font-size:12.5px;line-height:1.9;color:#b91c1c">'
+        + '<b>لا يمكن حذف هذا الحساب الآن:</b><ul style="margin:.35rem 0 0;padding-inline-start:1.1rem">'
+        + blockers.map((b) => '<li>' + esc(b) + '</li>').join('') + '</ul>'
+        + '<div style="color:var(--ink2);margin-top:.5rem">انقل عمله إلى زميل ثم أعد المحاولة. '
+        + 'وإن كان المطلوب منعه من الدخول الآن فعطّل الحساب.</div></div>'
+      : compare + '<div class="field"><label>سبب الحذف (يُسجَّل في سجل التدقيق)</label>'
+        + '<input class="input" id="idnf-reason" placeholder="مثال: حساب مكرر لنفس الشخص"></div>';
+    openModal('<div class="modal-head"><div style="font-weight:800;font-size:15px">حذف حساب ' + name + '</div>'
+      + '<button class="btn btn-ghost btn-sm" data-action="idn-close" aria-label="إغلاق">✕</button></div>'
+      + '<div class="modal-body">' + body + '</div>'
+      + '<div class="modal-foot"><button class="btn" data-action="idn-close">إلغاء</button>'
+      + (blockers.length
+        ? '<button class="btn" data-action="idn-toggle" data-id="' + esc(id) + '" data-to="0" style="color:#b91c1c">تعطيل الحساب</button>'
+        : '<button class="btn btn-primary" data-action="idn-remove-go" data-id="' + esc(id) + '" style="background:#b91c1c">احذف الحساب</button>')
+      + '</div>');
+  }
+
+  async function removeGo(id) {
+    const reason = val('idnf-reason');
+    try {
+      await api('/identity/users/' + encodeURIComponent(id), 'DELETE', { reason: reason });
+      toast('حُذف الحساب — وصار بريده متاحاً لحساب جديد');
+      closeModal();
+      setTimeout(() => location.reload(), 700);
+    } catch (e) { toast(e.message, true); }
+  }
+
   async function resend(id) {
     try {
       const r = await api('/identity/users/' + encodeURIComponent(id) + '/resend', 'POST', {});
@@ -186,5 +229,7 @@
     else if (a === 'idn-resend') { ev.preventDefault(); resend(id); }
     else if (a === 'idn-logins') { ev.preventDefault(); showLogins(id); }
     else if (a === 'idn-revoke') { ev.preventDefault(); revoke(id); }
+    else if (a === 'idn-remove') { ev.preventDefault(); removeAccount(id); }
+    else if (a === 'idn-remove-go') { ev.preventDefault(); removeGo(id); }
   });
 })();

@@ -16,3 +16,8 @@ identityRouter.patch('/identity/users/:id', h((req) => identity.updateUser(req.c
 identityRouter.post('/identity/users/:id/resend', h((req) => identity.resendInvite(req.ctx, req.params.id)));
 identityRouter.post('/identity/users/:id/active', h((req) => identity.setUserActive(req.ctx, req.params.id, !!(req.body || {}).active)));
 identityRouter.post('/identity/users/:id/revoke-sessions', h((req) => identity.revokeSessions(req.ctx, req.params.id)));
+
+// الحذف ومعه فحصُ موانعه قبله — على نمط `/removal-check` للمشروع: تُعرض العاقبة قبل الضغط،
+// لا تُقال بعد الرفض. والسبب النصّي يُمرَّر ليُسجَّل في سطر التدقيق.
+identityRouter.get('/identity/users/:id/removal-check', h((req) => identity.userRemovalCheck(req.ctx, req.params.id)));
+identityRouter.delete('/identity/users/:id', h((req) => identity.removeUser(req.ctx, req.params.id, { reason: (req.body || {}).reason })));

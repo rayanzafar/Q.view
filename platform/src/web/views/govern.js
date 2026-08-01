@@ -92,6 +92,11 @@ export async function usersPage(user) {
             والخيار الثاني هنا هو الطريق إلى الحالة الثالثة: أُغلقت عمداً. */''}
       ${pending && !isSelf ? `<button class="btn btn-sm" data-action="idn-toggle" data-id="${esc(u.id)}" data-to="0"
              style="color:#b91c1c" title="لن تصله دعوة بعد اليوم — يبقى الحساب مغلقاً حتى تُعيد تفعيله">إغلاق الدعوة</button>` : ''}
+      ${/* الحذف بجوار التعطيل — والفرق بينهما مكتوبٌ في وصف الزرّ ومعروضٌ كاملاً قبل الضغط:
+            التعطيل يُغلق الباب مؤقتاً والحساب باقٍ، والحذف يُزيل الحساب ويُفرج عن بريده.
+            وحسابك أنت لا يُحذف ولا يُعطَّل من هنا — الحارس على الخادم، والزرّ لا يُعرض أصلاً. */''}
+      ${isSelf ? '' : `<button class="btn btn-sm" data-action="idn-remove" data-id="${esc(u.id)}"
+             style="color:#b91c1c" title="يُزيل الحساب من القوائم ويُفرج عن بريده لحساب جديد — والتعطيل يكفي لمنع الدخول مؤقتاً">حذف الحساب</button>`}
     </td></tr>`;
   }).join('');
 
@@ -160,7 +165,8 @@ export async function usersPage(user) {
         <tbody id="idn-rows">${list}</tbody></table></div>`)}
       ${card(`<div class="p-4 border-b border-line font-bold text-sm">التوزيع حسب الدور</div><div style="padding:.7rem 1rem">${hbars(roleItems, { fmt: (v) => v + '' })}</div>`)}
     </div>
-    <div class="mt-3 text-[11px] text-muted">التفويض يُنفَّذ على الخادم. تعطيل حسابك أو خفض دورك بنفسك ممنوع خادمياً، ولا يبقى النظام بلا مدير نظام نشط. والتعطيل يُنهي جلسات صاحبه فوراً.</div>
+    <div class="mt-3 text-[11px] text-muted">التفويض يُنفَّذ على الخادم. تعطيل حسابك أو حذفه أو خفض دورك بنفسك ممنوع خادمياً، ولا يبقى النظام بلا مدير نظام نشط. والتعطيل يُنهي جلسات صاحبه فوراً.</div>
+    <div class="mt-1 text-[11px] text-muted">التعطيل يُغلق الباب مؤقتاً: الحساب وعمله باقيان وتستطيع إعادة فتحه متى شئت. أما الحذف فيُزيل الحساب من كل القوائم ويُفرج عن بريده لحساب جديد — وسجل التدقيق وسجل الدخول يبقيان كما هما. وحسابٌ عليه عمل قائم لا يُحذف حتى يُنقل عمله.</div>
     <script>window.__SANAD=Object.assign(window.__SANAD||{},{
       idnRoles:${JSON.stringify(Object.entries(ROLE_LABELS).map(([id, l]) => ({ id, ar: l.ar }))).replace(/</g, '\\u003c')},
       idnSectors:${JSON.stringify(sectors.map((s) => ({ id: s.id, ar: s.name_ar }))).replace(/</g, '\\u003c')},
