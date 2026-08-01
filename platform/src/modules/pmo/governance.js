@@ -1,8 +1,9 @@
 // PMO governance depth — risks / issues / decisions / change requests / milestones per project.
 // Read = whoever may read the project; write = whoever may UPDATE the project (the project's PM
 // via project-scope grants, sector update rights, operations, admin). Every write audited.
-import { all, get, insert, update } from '../../core/db/index.js';
+import { all, get, insert, update, tx } from '../../core/db/index.js';
 import { can } from '../../core/rbac/index.js';
+import { syncDeliverableRevenue } from '../finance/recognition.js';
 import { audit } from '../../core/audit/index.js';
 import { id, nowIso, toHalalas } from '../../core/util/ids.js';
 import { forbidden, notFound, badRequest } from '../../core/http/errors.js';
@@ -163,6 +164,11 @@ const KINDS = {
       if (row.invoiced_at || row.collected_at)
         throw badRequest('لا يُحذف مخرَج صدر به مستخلص أو تحصيل — ألغِ الفاتورة أولاً من صفحة المالية');
     },
+    // الإيراد يتبع التسليم لا الفاتورة (قرار المالك — انظر finance/recognition.js). كل كتابة على
+    // المخرَج تُوائم سطر إيراده في المعاملة نفسها: إنشاءً عند التسليم، وتحديثاً عند تغيّر المبلغ أو
+    // الشهر، ومحواً عند الرجوع بالحالة أو الحذف. وموضعُها هنا لا في المسار كي لا يوجد طريقٌ إلى
+    // تغيير حالة مخرَجٍ يتخطّى الاعتراف.
+    afterWrite: (ctx, row, project) => syncDeliverableRevenue(ctx, row, project),
     createRow(d, ctx) {
       const per = periodParts(d.period);
       const st = d.status || 'DRAFT';
@@ -323,8 +329,11 @@ export async function createItem(ctx, projectId, kind, data = {}) {
   await checkOwner(data);
   const rid = id(cfg.prefix);
   const row = cfg.createRow({ ...data, title, name_ar: cfg.titleCol === 'name_ar' ? title : undefined }, ctx);
-  await insert(cfg.table, { id: rid, project_id: p.id, ...(kind === 'risk' || cfg.withSector ? { sector_id: p.sector_id } : {}), ...row, created_at: nowIso() });
-  await audit(ctx, { action: 'create', resource: cfg.table, resourceId: rid, sectorId: p.sector_id, detail: { title } });
+  await tx(async () => {
+    await insert(cfg.table, { id: rid, project_id: p.id, ...(kind === 'risk' || cfg.withSector ? { sector_id: p.sector_id } : {}), ...row, created_at: nowIso() });
+    await audit(ctx, { action: 'create', resource: cfg.table, resourceId: rid, sectorId: p.sector_id, detail: { title } });
+    if (cfg.afterWrite) await cfg.afterWrite(ctx, await get(`SELECT * FROM ${cfg.table} WHERE id = ?`, [rid]), p);
+  });
   return await get(`SELECT * FROM ${cfg.table} WHERE id = ?`, [rid]);
 }
 
@@ -349,15 +358,23 @@ export async function updateItem(ctx, kind, itemId, data = {}) {
   await checkOwner(data);
   const patch = cfg.patchRow(data, row, ctx);
   if (!Object.keys(patch).length) throw badRequest('لا تغييرات لتطبيقها');
-  await update(cfg.table, itemId, patch);
-  await audit(ctx, { action: 'update', resource: cfg.table, resourceId: itemId, sectorId: p.sector_id, detail: Object.keys(patch) });
+  await tx(async () => {
+    await update(cfg.table, itemId, patch);
+    await audit(ctx, { action: 'update', resource: cfg.table, resourceId: itemId, sectorId: p.sector_id, detail: Object.keys(patch) });
+    if (cfg.afterWrite) await cfg.afterWrite(ctx, await get(`SELECT * FROM ${cfg.table} WHERE id = ?`, [itemId]), p);
+  });
   return await get(`SELECT * FROM ${cfg.table} WHERE id = ?`, [itemId]);
 }
 
 export async function deleteItem(ctx, kind, itemId) {
   const { cfg, row, p } = await writableItem(ctx.user, kind, itemId);
   if (cfg.guardDelete) cfg.guardDelete(row);
-  await update(cfg.table, itemId, { deleted_at: nowIso() });
-  await audit(ctx, { action: 'delete', resource: cfg.table, resourceId: itemId, sectorId: p.sector_id });
+  const at = nowIso();
+  await tx(async () => {
+    await update(cfg.table, itemId, { deleted_at: at });
+    await audit(ctx, { action: 'delete', resource: cfg.table, resourceId: itemId, sectorId: p.sector_id });
+    // المخرَج المحذوف لا إيراد له: يُمحى سطره في المعاملة نفسها، وإلا بقي إيرادُ عملٍ لم يعد قائماً.
+    if (cfg.afterWrite) await cfg.afterWrite(ctx, { ...row, deleted_at: at }, p);
+  });
   return { ok: true };
 }
