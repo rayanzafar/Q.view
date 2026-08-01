@@ -2154,7 +2154,9 @@ export async function projectDetailPage(user, projectId, opts = {}) {
   const monthTicks = `<div class="mtrack" style="gap:2px;margin-top:.2rem">${MONTHS_EN3.map((m) => `<span style="font-size:7.5px;font-weight:400;color:var(--faint);text-align:center;line-height:1">${m}</span>`).join('')}</div>`;
   const team = teamLoad?.team || [];
   const teamRows = team.map((t) => `<tr style="border-bottom:1px solid var(--line);${t.over ? 'background:#fef2f2' : ''}">
-    <td style="padding:.45rem .75rem;font-size:12.5px">${esc(t.name)}
+    <td style="padding:.45rem .75rem;font-size:12.5px">${t.userId
+    ? `<a href="/app/person/${encodeURIComponent(t.userId)}" style="color:var(--ink2);text-decoration:none">${esc(t.name)}</a>`
+    : esc(t.name)}
       <div style="font-size:10px;color:var(--muted)">${esc(t.job_title || '')}</div></td>
     <td data-label="الدور" style="padding:.45rem .75rem;text-align:center">${pill(t.role, t.isLead ? 'blue' : 'slate')}</td>
     <td data-label="فترة التسكين" style="padding:.45rem .75rem;text-align:center;font-size:11.5px">${esc(t.period.label)}</td>

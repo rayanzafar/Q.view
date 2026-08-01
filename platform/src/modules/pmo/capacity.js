@@ -164,6 +164,10 @@ export async function projectTeamLoad(user, projectId, opts = {}) {
     const totalPct = (others ? others.assignedPct : 0) + onThis;
     return {
       allocId: r.alloc_id, employeeId: r.id || null,
+      // حساب الشخص المرتبط — به وحده تُفتح صفحته (`personDossier` يقرأ معرّف الحساب لا الموظف).
+      // وبدونه كان اسمُ المُسكَّن نصّاً جامداً على جدول الفريق: يرى المديرُ مَن على مشروعه ولا
+      // يستطيع الوصول إلى ما عنده — وهو انقطاعٌ في السلسلة التي يُفترض أن تكون موصولة.
+      userId: r.user_id || null,
       name: r.name_ar || r.person_name_ar || '—', job_title: r.job_title || '',
       role: r.type === 'lead' ? 'قائد' : 'عضو', isLead: r.type === 'lead',
       period, onThisPct: onThis, otherPct: others ? others.assignedPct : 0,
