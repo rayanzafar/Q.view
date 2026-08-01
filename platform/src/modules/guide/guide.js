@@ -29,7 +29,11 @@ import * as C from '../../core/guide/content.js';
 // الموارد التي يُقاس بها «اتساع البصر». النطاق يُقرأ بـeffectiveScope لا بـcan():
 // can(user, 'read', 'project') بلا صف هدف تعود true لمجرد وجود أي منح مطابق مهما ضاق نطاقه،
 // فلو بُني عليها سؤال النطاق لظهر لمستشارٍ نطاقه مشروعه دليلٌ يَعِده برؤية الشركة كلها.
-const SIGHT_RESOURCES = ['project', 'opportunity', 'client', 'employee', 'report', 'task'];
+// و«التقارير» ليست من موارد البصر: هي **أرقام مجمَّعة** لا صفوف يتصفّحها المستخدم. مدير الإدارة
+// مُنح قراءة تقارير قطاعه ومؤشراته بقرار المالك (ليرى ربح القطاع وإيراده ومستهدفه)، وقراءته
+// للأشخاص والعمل بقيت عند إداراته. فلو قِيس بصره بالتقارير لقرأ في دليله «نطاقك قطاعك» —
+// وعدٌ بأشخاصٍ ومهامٍ لن يجدها، وهو أسوأ من وصفٍ أضيق: يبحث عمّا وُعِد به فيظنّ المنتج معطَّلاً.
+const SIGHT_RESOURCES = ['project', 'opportunity', 'client', 'employee', 'task'];
 const APPROVABLE = ['opportunity', 'proposal', 'expense', 'deliverable', 'timesheet', 'invoice', 'task'];
 const IO_RESOURCES = ['client', 'employee', 'opportunity', 'project', 'allocation', 'revenue_line'];
 

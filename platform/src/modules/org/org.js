@@ -2,6 +2,7 @@
 // Company → Sector → Department → Unit → Team → Position → Employee.
 import { all, get, insert, update, tx } from '../../core/db/index.js';
 import { can, effectiveScope } from '../../core/rbac/index.js';
+import { departmentScope, departmentInSql } from '../../core/rbac/departments.js';
 import { audit } from '../../core/audit/index.js';
 import { id, nowIso, toHalalas } from '../../core/util/ids.js';
 import { forbidden, badRequest, notFound } from '../../core/http/errors.js';
@@ -509,11 +510,20 @@ export async function unlinkUserFromEmployee(ctx, data = {}) {
 // نطاق قراءة الأشخاص — مصدر واحد تستهلكه كل سطوح الناس: كشف الفريق، وحالة ربط الحسابات،
 // **وتصدير الموظفين**. تصديره ليس تجميلاً: أي سطح يعيد اشتقاق النطاق بنفسه ينحرف عن البقية،
 // وقد انحرف التصدير فعلاً فوقف عند القطاع بينما الشاشات تضيّق إلى الإدارة.
+// تحديث: «إدارته» صارت **مجموعة إداراته** — انتماؤه ومعه كل إدارة يقودها. العمود المفرد
+// `employee.department_id` لا يسع مديراً يقود إدارتين، وهو حالٌ قائم في الشركة اليوم لا فرضٌ
+// نظري. فكان يفتح «الفريق» فيرى نصف من يقود، ويطلب كشفاً باسم من غاب فلا يجده في المنصة أصلاً.
+// وحدّ الفراغ كما هو: لا انتماء ولا قيادة ⟵ `blind` ⟵ كشف فارغ، لا القطاع كله.
 export function peopleScope(user, requestedSector = null) {
   const sector = user.scope === 'company' ? (requestedSector || null) : (user.sector_id || null);
   const byDepartment = effectiveScope(user, 'read', 'employee') === 'department';
-  const department = byDepartment ? (user.department_id || null) : null;
-  return { sector, department, blind: byDepartment && !department };
+  const departments = byDepartment ? departmentScope(user) : [];
+  return {
+    sector, departments,
+    // مفرد باقٍ للتوافق مع من يقرأ «إدارته» عرضاً لا ترشيحاً — والترشيح يقرأ `departments`.
+    department: departments.length === 1 ? departments[0] : null,
+    blind: byDepartment && !departments.length,
+  };
 }
 
 // لوحة حالة الربط لصفحة «الفريق»: من مربوط بمن، كم موظفاً نشطاً بلا حساب، وقائمة الحسابات
@@ -521,11 +531,15 @@ export function peopleScope(user, requestedSector = null) {
 // من المصدر نفسه (peopleScope)، وإلا افترق جدول الأشخاص عن عمود «حساب الدخول» في الصفحة ذاتها.
 export async function identityLinks(user, opts = {}) {
   if (user.role_id !== 'admin' && !can(user, 'read', 'employee')) throw forbidden('عرض ارتباط الحسابات يتطلب صلاحية عرض الفريق');
-  const { sector: sec, department: dep, blind } = peopleScope(user, opts.sector);
+  const { sector: sec, departments: deps, blind } = peopleScope(user, opts.sector);
   const where = ['e.deleted_at IS NULL'];
   const params = [];
   if (sec) { where.push('e.sector_id = ?'); params.push(sec); }
-  if (dep) { where.push('e.department_id = ?'); params.push(dep); }
+  if (deps.length) {
+    const inDeps = departmentInSql('e.department_id', deps);
+    where.push(inDeps.clause);
+    params.push(...inDeps.params);
+  }
   const rows = blind ? [] : await all(`SELECT e.id employee_id, e.active, u.id user_id, u.username, u.name_ar user_name_ar, u.role_id
      FROM employee e LEFT JOIN app_user u ON u.employee_id = e.id AND u.deleted_at IS NULL
      WHERE ${where.join(' AND ')}
@@ -562,11 +576,15 @@ export async function identityLinks(user, opts = {}) {
 export async function staffingRoster(user, opts = {}) {
   if (user.role_id !== 'admin' && !can(user, 'read', 'employee')) throw forbidden('عرض الفريق يتطلب صلاحية');
   const year = Number(opts.year) || new Date().getUTCFullYear();
-  const { sector: sec, department: dep, blind } = peopleScope(user, opts.sector);
+  const { sector: sec, departments: deps, blind } = peopleScope(user, opts.sector);
   const empWhere = ['deleted_at IS NULL'];
   const empParams = [];
   if (sec) { empWhere.push('sector_id = ?'); empParams.push(sec); }
-  if (dep) { empWhere.push('department_id = ?'); empParams.push(dep); }
+  if (deps.length) {
+    const inDeps = departmentInSql('department_id', deps);
+    empWhere.push(inDeps.clause);
+    empParams.push(...inDeps.params);
+  }
   const emps = blind ? []
     : await all(`SELECT * FROM employee WHERE ${empWhere.join(' AND ')} ORDER BY name_ar`, empParams);
   // التسكينات تُقرأ بمفتاح الموظف ثم تُوزَّع على الكشف؛ فمن خرج من الكشف لا يُقرأ له سطر أصلاً.

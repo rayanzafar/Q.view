@@ -30,6 +30,7 @@ import { all, get, insert, tx } from '../db/index.js';
 import { audit } from '../audit/index.js';
 import { badRequest, forbidden, notFound } from '../http/errors.js';
 import { can, effectiveScope, canSeeSensitive } from '../rbac/index.js';
+import { inDepartmentScope } from '../rbac/departments.js';
 import { SCOPE_RANK } from '../rbac/matrix.js';
 import { seesCompanyPerformance } from '../policy/pages.js';
 import { MONTHS_AR, QUARTERS_AR } from '../i18n/time.js';
@@ -177,7 +178,9 @@ export function departmentReadable(user, row) {
   if (user.scope !== 'company' && user.sector_id !== row.sector_id) return false;
   const narrow = effectiveScope(user, 'read', 'employee') === 'department'
     || effectiveScope(user, 'read', 'report') === 'department';
-  if (narrow && user.department_id !== row.id) return false;
+  // «إدارته» جمعٌ: من يقود إدارتين يقرأ تقرير كلٍّ منهما. وكانت المقارنة مساواةً بإدارة
+  // انتمائه، فيختار الثانية من القائمة فيُرَدّ — تقريرُ إدارةٍ يقودها ولا يقرؤه.
+  if (narrow && !inDepartmentScope(user, row.id)) return false;
   return widthAtLeast(user, 'department');
 }
 export function personReadable(user, row) {
@@ -228,10 +231,10 @@ async function resolveScope(user, lens, targetId) {
     if (user.scope !== 'company' && user.sector_id !== row.sector_id) {
       throw forbidden('هذه الإدارة تتبع قطاعاً آخر — اعرض إدارات قطاعك.');
     }
-    // من نطاق منحه «إدارة» يرى إدارته وحدها — لا كل إدارات قطاعه.
+    // من نطاق منحه «إدارة» يرى إداراته — ما ينتمي إليه وما يقوده — لا كل إدارات قطاعه.
     const narrow = effectiveScope(user, 'read', 'employee') === 'department'
       || effectiveScope(user, 'read', 'report') === 'department';
-    if (narrow && user.department_id !== row.id) {
+    if (narrow && !inDepartmentScope(user, row.id)) {
       throw forbidden('هذه الإدارة خارج نطاقك — تقريرك يغطي إدارتك أنت.');
     }
     if (!departmentReadable(user, row)) {

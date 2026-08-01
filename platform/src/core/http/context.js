@@ -3,6 +3,7 @@ import { get, all } from '../db/index.js';
 import { config } from '../config.js';
 import { unauthorized, forbidden } from './errors.js';
 import { can } from '../rbac/index.js';
+import { readerDepartmentIds } from '../rbac/departments.js';
 import { nowIso } from '../util/ids.js';
 
 export async function resolveUser(sessionId) {
@@ -40,12 +41,19 @@ export async function resolveUser(sessionId) {
   // the employee link so department-scoped grants (e.g. department_manager) are checkable at all;
   // previously always null here, which made scopeReaches()'s 'department' case vacuously true.
   const emp = u.employee_id ? await get('SELECT department_id FROM employee WHERE id = ?', [u.employee_id]) : null;
+  // ── إداراته: انتماؤه **ومع** ما يقوده ────────────────────────────────────────
+  // `department_id` يبقى كما هو (انتماؤه وحده) لأن شاشاتٍ تعرضه وتُسنِد به. أما **الصلاحية**
+  // فتُقرأ من المجموعة: من يقود إدارتين — واسم مسمّاه يقول ذلك صراحةً — كان يفتح لوحة فريقه
+  // فلا يجد أهل إدارته الثانية، ويفتح ملف أحدهم فيُرَدّ «خارج إدارتك» وهو مديره. القيادة
+  // مكتوبة في `department.manager_user_id` منذ أول إصدار ولم تكن تُقرأ في أي فحص نطاق.
+  const departmentIds = await readerDepartmentIds(u.id, emp?.department_id || null);
   return {
     id: u.id,
     username: u.username,
     role_id: u.role_id,
     sector_id: u.sector_id,
     department_id: emp?.department_id || null,
+    departmentIds,
     scope: u.scope,
     employee_id: u.employee_id,
     name_ar: u.name_ar,

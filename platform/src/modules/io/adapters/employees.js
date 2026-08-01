@@ -6,6 +6,7 @@ import { canSeeSensitive } from '../../../core/rbac/index.js';
 import { audit } from '../../../core/audit/index.js';
 import { nowIso, toSar } from '../../../core/util/ids.js';
 import { createEmployee, updateEmployee, peopleScope } from '../../org/org.js';
+import { departmentInSql } from '../../../core/rbac/departments.js';
 import { normalizeText } from '../parse.js';
 
 export default {
@@ -32,12 +33,18 @@ export default {
     // التصدير كان يقف عند القطاع بينما شاشتا الفريق والتسكين تضيّقان إلى الإدارة لمن نطاقه إدارة —
     // فيرى مدير الإدارة على الشاشة إدارته وحدها، ثم **ينزّل ملفاً فيه القطاع كله**. الملف أخطر من
     // الشاشة: يخرج من المنصة ويُعاد إرساله ولا يُسترجَع. نفس دالة النطاق التي تحرس الشاشة تحرسه.
-    const { sector: sec, department: dep, blind } = peopleScope(user, filters.sector);
-    if (blind) return [];   // نطاق إدارة بلا إدارة محسومة ⟵ لا صفوف، لا القطاع كله
+    // ونطاقه **مجموعة إداراته** لا إدارة انتمائه: من يقود إدارتين كان ملفه المصدَّر ينقص
+    // نصف من يقود — والنقص هنا يُقرأ حقيقةً كاملة («هذا فريقي») فيُبنى عليه قرار.
+    const { sector: sec, departments: deps, blind } = peopleScope(user, filters.sector);
+    if (blind) return [];   // نطاق إدارة بلا انتماء ولا قيادة ⟵ لا صفوف، لا القطاع كله
     const where = ['e.deleted_at IS NULL'];
     const params = [];
     if (sec) { where.push('e.sector_id = ?'); params.push(sec); }
-    if (dep) { where.push('e.department_id = ?'); params.push(dep); }
+    if (deps.length) {
+      const inDeps = departmentInSql('e.department_id', deps);
+      where.push(inDeps.clause);
+      params.push(...inDeps.params);
+    }
     const rows = await all(`
       SELECT e.*, s.name_ar sector_name FROM employee e
       LEFT JOIN sector s ON s.id = e.sector_id

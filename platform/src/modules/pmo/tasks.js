@@ -1,6 +1,7 @@
 // PMO — Tasks service with Quick Add. Employees manage own tasks; managers see team/project scope.
 import { all, get, insert, update } from '../../core/db/index.js';
 import { can, effectiveScope } from '../../core/rbac/index.js';
+import { departmentScope, departmentInSql, inDepartmentScope } from '../../core/rbac/departments.js';
 import { audit } from '../../core/audit/index.js';
 import { id, nowIso } from '../../core/util/ids.js';
 import { forbidden, notFound, badRequest } from '../../core/http/errors.js';
@@ -252,11 +253,16 @@ export async function teamTasks(user, filters = {}) {
   // قرار موثَّق (فشل آمن): حسابٌ غير مربوط بسجل موظف ⟵ إدارته **مجهولة**، والمجهول يُستبعد
   // ولا يُدرج؛ الوصلة الخارجية تُنتج فراغاً فيُسقطه شرط المساواة. وكذلك المهمة بلا مُسنَد إليه:
   // لا شخص لها فلا إدارة. إدراج المجهول كان سيُعيد التسريب من الباب نفسه الذي أُغلق.
+  // «أهل إدارته» = أهل **كل إدارة يقودها**، لا إدارة انتمائه وحدها. مديرٌ يقود إدارتين كان
+  // يفتح هذه اللوحة فيرى نصف فريقه: أهل الإدارة التي يجلس فيها حاضرون، وأهل الإدارة الأخرى
+  // — وهو مديرهم — غائبون كأنهم ليسوا في المنصة، فلا يرى تأخّرهم ولا ما يعطّلهم.
   if (scope === 'department') {
-    // إدارة القارئ نفسها مجهولة (حسابه غير مربوط بموظف) ⟵ لوحة فارغة لا لوحة قطاع.
-    if (!user.department_id) return [];
-    where.push('emp.department_id = ?');
-    params.push(user.department_id);
+    // لا انتماء ولا قيادة ⟵ لوحة فارغة لا لوحة قطاع (فشل آمن).
+    const deps = departmentScope(user);
+    if (!deps.length) return [];
+    const inDeps = departmentInSql('emp.department_id', deps);
+    where.push(inDeps.clause);
+    params.push(...inDeps.params);
   } else if (scope !== 'company') {
     where.push('(t.sector_id = ? OR u.sector_id = ?)');
     params.push(user.sector_id, user.sector_id);
@@ -374,10 +380,14 @@ export async function teamWorkload(user, filters = {}) {
   // app_user.employee_id ⟵ employee.department_id — الإدارة تسكن الموظف لا الحساب).
   const pWhere = ['u.deleted_at IS NULL', 'u.active = 1'];
   const pParams = [];
+  // مجموعة إداراته لا إدارته: التجميع أدناه يفرز الناس إلى إداراتهم، فمن يقود اثنتين يقرأ
+  // لوحتين متجاورتين في شاشة واحدة — وهو ما يقوله مسمّاه الوظيفي أصلاً. وكان يقرأ واحدة.
   if (scope === 'department') {
-    if (!user.department_id) return { departments: [], scope, year, orphans: { unassigned: 0, inactive: 0, overdue: 0, total: 0, people: [] } };
-    pWhere.push('emp.department_id = ?');
-    pParams.push(user.department_id);
+    const deps = departmentScope(user);
+    if (!deps.length) return { departments: [], scope, year, orphans: { unassigned: 0, inactive: 0, overdue: 0, total: 0, people: [] } };
+    const inDeps = departmentInSql('emp.department_id', deps);
+    pWhere.push(inDeps.clause);
+    pParams.push(...inDeps.params);
   } else if (scope !== 'company') {
     pWhere.push('u.sector_id = ?');
     pParams.push(user.sector_id);
@@ -505,8 +515,13 @@ export async function teamWorkload(user, filters = {}) {
   const oWhere = ["t.deleted_at IS NULL", "t.status NOT IN ('DONE','CANCELLED')",
     '(t.assignee_user_id IS NULL OR au.id IS NULL OR au.active = 0 OR au.deleted_at IS NOT NULL)'];
   const oParams = [];
-  if (scope === 'department') { oWhere.push('t.department_id = ?'); oParams.push(user.department_id); }
-  else if (scope !== 'company') { oWhere.push('t.sector_id = ?'); oParams.push(user.sector_id); }
+  // والعمل المهمَل يتبع المجموعة نفسها: لو قُصّ على إدارة الانتماء وحدها لبقيت مهام الإدارة
+  // الثانية بلا صاحبٍ **وبلا من يراها** — وهي أشدّ ما يحتاج نظر مديرها.
+  if (scope === 'department') {
+    const inDeps = departmentInSql('t.department_id', departmentScope(user));
+    oWhere.push(inDeps.clause);
+    oParams.push(...inDeps.params);
+  } else if (scope !== 'company') { oWhere.push('t.sector_id = ?'); oParams.push(user.sector_id); }
   const orphanRows = await all(`SELECT t.id, t.assignee_user_id uid, t.due_date, t.status,
        au.name_ar owner_name, au.username owner_username, au.active owner_active
      FROM task t
@@ -564,11 +579,14 @@ export async function personDossier(reader, personUserId) {
      WHERE u.id = ? AND u.deleted_at IS NULL`, [uid]);
   if (!p) throw notFound('لا يوجد شخص بهذا الرابط — قد يكون حسابه حُذف');
 
-  // النطاق يُطبَّق على **الشخص** قبل قراءة عمله: من هو خارج إدارتي أو قطاعي لا يُفتح ملفه.
-  // وقارئٌ بنطاق «إدارة» وإدارتُه مجهولة (حسابه غير مربوط بموظف) لا يرى أحداً — فشلٌ آمن.
+  // النطاق يُطبَّق على **الشخص** قبل قراءة عمله: من هو خارج إداراتي أو قطاعي لا يُفتح ملفه.
+  // و«إداراتي» جمعٌ لا مفرد: كانت المقارنة مساواةً بإدارة الانتماء، فمديرٌ يقود إدارتين يضغط
+  // على اسم موظفٍ يقوده في الإدارة الأخرى فيُقال له «هذا الشخص خارج إدارتك» — رسالةٌ صحيحة
+  // الصياغة كاذبة المعنى، وهي الشكوى التي رفعها المالك بعينها.
+  // وقارئٌ بنطاق «إدارة» بلا انتماءٍ ولا قيادة لا يرى أحداً — فشلٌ آمن.
   if (!self) {
     if (scope === 'department') {
-      if (!reader.department_id || p.department_id !== reader.department_id) {
+      if (!inDepartmentScope(reader, p.department_id)) {
         throw forbidden('هذا الشخص خارج إدارتك — لا يُفتح ملفه من حسابك');
       }
     } else if (scope !== 'company' && p.sector_id !== reader.sector_id) {
