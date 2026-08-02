@@ -9,7 +9,11 @@ import { DELIVERY_SECTOR_SQL } from '../../core/org/kind.js';
 import { opportunityDetail, ROT_THRESHOLDS } from '../../modules/crm/opportunities.js';
 import { TEAM_ROLE_LABELS } from '../../modules/crm/oppteam.js';
 import { esc, pct } from './_shared.js';
-import { G } from '../i18n/glossary.js';
+import {
+  G, ENGAGEMENT_TYPE_AR, ENGAGEMENT_TYPE_TIP, engagementTypeLabel,
+  SOLICITATION_TYPE_AR, SOLICITATION_TYPE_TIP, solicitationTypeLabel,
+} from '../i18n/glossary.js';
+import { splitGross, VAT_RATE_PCT } from '../../modules/finance/vat.js';
 import { stageTip } from './crm.js';
 
 const ACT_KIND_LABELS = {
@@ -45,6 +49,10 @@ export async function opportunityDetailPage(user, oppId) {
         <span class="pill" data-tip="${esc(stageTip(st.id ? st : { name_ar: o.stage_id }))}" tabindex="0" style="background:${st.color || '#cbd5e1'}22;color:var(--ink2);cursor:help"><span style="width:8px;height:8px;border-radius:50%;background:${st.color || '#cbd5e1'}"></span>${esc(st.name_ar || o.stage_id)}</span>
         ${agePill}
         ${o.priority ? pill(tr(o.priority), o.priority === 'P0' ? 'red' : o.priority === 'P1' ? 'amber' : 'slate') : ''}
+        ${o.engagement_type === 'FRAMEWORK'
+    ? `<span class="pill" style="background:#f3e8ff;color:#6b21a8" title="${esc(ENGAGEMENT_TYPE_TIP.FRAMEWORK)}">${esc(ENGAGEMENT_TYPE_AR.FRAMEWORK)}</span>` : ''}
+        ${o.solicitation_type
+    ? `<span class="pill" style="background:#eef1f7;color:#475569" title="${esc(SOLICITATION_TYPE_TIP[o.solicitation_type] || '')}">${esc(SOLICITATION_TYPE_AR[o.solicitation_type])}</span>` : ''}
       </div>
       <div style="margin-top:.7rem;display:flex;gap:1.1rem;flex-wrap:wrap;font-size:var(--fs-body);color:var(--muted)">
         <span style="display:inline-flex;align-items:center;gap:.3rem">${icon('building')}${o.client_id ? `<a href="/app/client/${o.client_id}" style="color:var(--brand);font-weight:700">${esc(d.client || 'العميل')}</a>` : 'بدون عميل'}</span>
@@ -94,6 +102,25 @@ export async function opportunityDetailPage(user, oppId) {
   const userOptions = d.canEdit
     ? await all(`SELECT id, COALESCE(name_ar, username) AS "name" FROM app_user
        WHERE active = 1 AND deleted_at IS NULL ORDER BY name_ar, username LIMIT 200`) : [];
+  // ── المبلغ بضريبة وبدون ──────────────────────────────────────────────────────
+  // «وكم المبلغ بضريبة وبدون ضريبة» — والقاعدة موجودة في المنصة ومكتوبة في موضعٍ واحد
+  // (`modules/finance/vat.js`): المبلغ المسجَّل على أي مستندٍ تجاري **إجمالي** — أي ما تدفعه
+  // الجهة فعلاً — والصافي يُشتقّ منه، وهو وحده ما يُقارَن بالمستهدفات لأنها صافيةٌ أصلاً.
+  //
+  // فلا عمودَ ضريبةٍ جديد على الفرصة ولا خيارَ «شامل/غير شامل»: الفرصةُ نفسُها تصير عقداً ثم
+  // فاتورةً ثم تحصيلاً، ولو اختلف تفسير رقمها هنا عن تفسيره هناك لاختلف الرقم على نفسه في
+  // رحلته. المعروض اشتقاقٌ من القاعدة الواحدة، والشاشة تقول صراحةً أيُّ رقمٍ أيّ.
+  const money = splitGross(o.value_halalas || 0);
+  const vatNote = `<div style="display:flex;gap:1.1rem;flex-wrap:wrap;align-items:baseline;margin-top:.8rem;padding:.6rem .75rem;background:var(--bg2,#f8fafc);border-radius:8px">
+    <div><div style="font-size:10px;color:var(--muted);font-weight:800">المبلغ شاملاً الضريبة</div>
+      <b class="tnum" style="font-size:13.5px">${fmtSar(money.gross_halalas)}</b></div>
+    <div><div style="font-size:10px;color:var(--muted);font-weight:800">بدون ضريبة</div>
+      <b class="tnum" style="font-size:13.5px;color:var(--brand)">${fmtSar(money.net_halalas)}</b></div>
+    <div><div style="font-size:10px;color:var(--muted);font-weight:800">الضريبة (${VAT_RATE_PCT}٪)</div>
+      <span class="tnum" style="font-size:12.5px;color:var(--muted)">${fmtSar(money.vat_halalas)}</span></div>
+    <div style="font-size:10.5px;color:var(--faint);flex:1;min-width:160px;line-height:1.6">
+      المبلغ المُدخَل شاملٌ الضريبة — وهو ما تدفعه الجهة. و«بدون ضريبة» هو ما يُحتسب إيراداً للشركة ويُقارن بالمستهدف.</div>
+  </div>`;
   const fld = (label, control, hint = '') => `<div style="min-width:0">
     <label style="display:block;font-size:10.5px;font-weight:800;color:var(--muted);margin-bottom:.2rem">${label}</label>
     ${control}${hint ? `<div style="font-size:10px;color:var(--faint);margin-top:.15rem">${hint}</div>` : ''}</div>`;
@@ -116,7 +143,16 @@ export async function opportunityDetailPage(user, oppId) {
         ${fld('السنة', `<input id="oc-year" class="input tnum" type="number" min="2000" max="2100" style="width:100%;font-size:12.5px" value="${o.year || ''}">`)}
         ${fld('الأولوية', `<select id="oc-priority" class="input" style="width:100%;font-size:12.5px">
           ${opt('', 'بلا أولوية', !o.priority)}${['P0', 'P1', 'P2', 'P3'].map((p) => opt(p, tr(p), o.priority === p)).join('')}</select>`)}
+        ${fld('نوع الارتباط', `<select id="oc-engagement" class="input" style="width:100%;font-size:12.5px"
+          title="${esc(Object.values(ENGAGEMENT_TYPE_TIP).join(' · '))}">
+          ${opt('', 'لم يُحدَّد', !o.engagement_type)}${Object.entries(ENGAGEMENT_TYPE_AR).map(([v, l]) => opt(v, l, o.engagement_type === v)).join('')}</select>`,
+    o.engagement_type === 'FRAMEWORK' ? 'قيمتها سقف لا التزام' : '')}
+        ${fld('نوع الطرح', `<select id="oc-solicitation" class="input" style="width:100%;font-size:12.5px"
+          title="${esc(Object.values(SOLICITATION_TYPE_TIP).join(' · '))}">
+          ${opt('', 'لم يُحدَّد', !o.solicitation_type)}${Object.entries(SOLICITATION_TYPE_AR).map(([v, l]) => opt(v, l, o.solicitation_type === v)).join('')}</select>`,
+    o.solicitation_type ? esc(SOLICITATION_TYPE_TIP[o.solicitation_type] || '') : '')}
       </div>
+      ${vatNote}
       <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-top:.85rem;padding-top:.7rem;border-top:1px dashed var(--line)">
         <button class="btn btn-primary btn-sm" data-action="opp-control-save" data-id="${esc(o.id)}">حفظ التعديلات</button>
         <span style="font-size:11px;color:var(--muted)">نقل القطاع يرفع الإدارة القديمة — اختر إدارة القطاع الجديد ثم احفظ.</span>
@@ -182,6 +218,9 @@ export async function opportunityDetailPage(user, oppId) {
   const detailsCard = card(`${secHead(G.details)}
     <div style="padding:.3rem 1rem .8rem">
       ${kv('الرمز', `<span class="tnum">${esc(o.code || '—')}</span>`)}
+      ${kv('نوع الارتباط', `<span title="${esc(ENGAGEMENT_TYPE_TIP[o.engagement_type] || '')}">${esc(engagementTypeLabel(o.engagement_type))}</span>`)}
+      ${kv('نوع الطرح', `<span title="${esc(SOLICITATION_TYPE_TIP[o.solicitation_type] || '')}">${esc(solicitationTypeLabel(o.solicitation_type))}</span>`)}
+      ${kv('بدون ضريبة', `<span class="tnum">${fmtSar(money.net_halalas)}</span>`)}
       ${kv('المصدر', esc(SOURCE_LABELS[o.source] || o.source || '—'))}
       ${kv('الأولوية', o.priority ? esc(tr(o.priority)) : '—')}
       ${kv('السنة', `<span class="tnum">${o.year || '—'}</span>`)}

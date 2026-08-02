@@ -97,6 +97,7 @@ export async function createOpportunity(ctx, data) {
     priority: data.priority || null, year: data.year || new Date().getUTCFullYear(),
     source: data.source || 'manual', next_action: data.next_action || null, notes: data.notes || null,
     exclude_from_sales: data.exclude_from_sales ? 1 : 0, stage_changed_at: now,
+    ...commercialPatch(data, {}),
     created_at: now, created_by: user.id,
   });
   await audit(ctx, { action: 'create', resource: 'opportunity', resourceId: oid, sectorId });
@@ -113,6 +114,26 @@ async function assertDeliverySector(sectorId) {
     throw badRequest(`«${target.name_ar}» وحدة مساندة على مستوى الشركة وليست قطاع تسليم — الفرص تُنقل بين قطاعات التسليم فقط. اختر قطاعاً من القائمة.`);
   }
   return target;
+}
+
+// ── الصفة التجارية للفرصة ────────────────────────────────────────────────────
+// «يا إنه تحطها اتفاقية إطارية، وبرضو يكون في مساحة تكون RFI أو RFP» — والقيم تُحرَس هنا لا
+// في الشاشة وحدها: كل قيمةٍ منها تُرشَّح ويُجمَع عليها لاحقاً، وقيمةٌ لا تعرفها القوائم تصنع
+// شريحةً يتيمةً في كل تقرير. والفراغ مقبولٌ صراحةً — «لم يُحدَّد بعد» جوابٌ صادق.
+export const ENGAGEMENT_TYPES = ['PROJECT', 'FRAMEWORK'];
+export const SOLICITATION_TYPES = ['RFI', 'RFP', 'RFQ', 'DIRECT_AWARD', 'TENDER'];
+function commercialPatch(data, patch) {
+  if ('engagement_type' in data) {
+    const v = data.engagement_type || null;
+    if (v && !ENGAGEMENT_TYPES.includes(v)) throw badRequest('نوع الارتباط غير معروف — اختر من القائمة');
+    patch.engagement_type = v;
+  }
+  if ('solicitation_type' in data) {
+    const v = data.solicitation_type || null;
+    if (v && !SOLICITATION_TYPES.includes(v)) throw badRequest('نوع الطرح غير معروف — اختر من القائمة');
+    patch.solicitation_type = v;
+  }
+  return patch;
 }
 
 // إدارةٌ تتبع قطاعاً غير قطاع الفرصة تكسر الجمع من طرفيه: تُحسب في إدارةٍ لا تعمل عليها،
@@ -137,6 +158,7 @@ export async function updateOpportunity(ctx, oppId, data) {
     if (k in data) patch[k] = data[k];
   }
   if ('value_sar' in data) patch.value_halalas = toHalalas(data.value_sar);
+  commercialPatch(data, patch);
   if ('year' in data) {
     const y = Number(data.year);
     if (!Number.isInteger(y) || y < 2000 || y > 2100) throw badRequest('السنة غير صحيحة — اكتب سنةً بأربعة أرقام');

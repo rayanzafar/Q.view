@@ -181,6 +181,8 @@
       department_id: ctlVal('oc-dept') || null,
       owner_user_id: ctlVal('oc-owner') || null,
       priority: ctlVal('oc-priority') || null,
+      engagement_type: ctlVal('oc-engagement') || null,
+      solicitation_type: ctlVal('oc-solicitation') || null,
     };
     if (!body.title_ar) { toast('اسم الفرصة لا يكون فارغاً', true); return; }
     var v = ctlVal('oc-value'); if (v !== null && v !== '') body.value_sar = Number(v);
