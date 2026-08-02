@@ -6,6 +6,7 @@ import { config } from '../core/config.js';
 import { NAV_ITEMS, pageAllowed } from './nav.js';
 import { MONTHS_AR, MONTHS_EN3 } from '../core/i18n/time.js';
 import { esc } from './views/_shared.js';
+import { asset } from './assets.js';
 
 const GROUPS = { me: 'البداية', company: 'قيادة الشركة', work: 'العمل اليومي', manage: 'الإدارة', admin: 'النظام' };
 
@@ -428,11 +429,11 @@ export async function layout({ user, active, title, subtitle, body, year, extraH
 <link rel="icon" type="image/svg+xml" href="/static/brand/favicon.svg">
 <link rel="icon" type="image/png" sizes="32x32" href="/static/brand/favicon-32.png">
 <link rel="apple-touch-icon" href="/static/brand/favicon-180.png">
-<script src="/static/tailwind.js"></script>
+<script src="${asset('/static/tailwind.js')}"></script>
 <script>tailwind.config={theme:{extend:{colors:{brand:'#244A99',brand2:'#834798',ink:'#0f172a',ink2:'#1e293b',muted:'#64748b',faint:'#94a3b8',line:'#e6e9f0'}}}}
 window.__SANAD_MONTHS=${JSON.stringify(MONTHS_AR)};window.__SANAD_MONTHS_EN=${JSON.stringify(MONTHS_EN3)};</script>
 <style>${STYLE}</style>
-<link rel="stylesheet" href="/static/styles.css">
+<link rel="stylesheet" href="${asset('/static/styles.css')}">
 <noscript><style>.hdr-tour-btn{display:none}</style></noscript>${extraHead}</head>
 <body data-page="${esc(active || '')}">
 <div style="display:flex;min-height:100vh">
@@ -497,7 +498,7 @@ window.__SANAD_MONTHS=${JSON.stringify(MONTHS_AR)};window.__SANAD_MONTHS_EN=${JS
     <div id="cmdk-list" class="cmdk-list"></div>
   </div>
 </div>
-<script src="/static/app.js"></script><script src="/static/global-search.js" defer></script><script src="/static/pages/guide-tour.js" defer></script><script src="/static/pages/ai.js" defer></script>${(scripts || []).map((s) => `<script src="${s}" defer></script>`).join('')}
+<script src="${asset('/static/app.js')}"></script><script src="${asset('/static/global-search.js')}" defer></script><script src="${asset('/static/pages/guide-tour.js')}" defer></script><script src="${asset('/static/pages/ai.js')}" defer></script>${(scripts || []).map((s) => `<script src="${asset(s)}" defer></script>`).join('')}
 </body></html>`;
 }
 

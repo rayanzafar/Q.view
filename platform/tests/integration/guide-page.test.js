@@ -179,7 +179,10 @@ test('زر «جولة إرشادية» وسكربتها في هيكل كل صف�
   assert.match(html, /data-action="tour-start" data-page="guide"/, 'الزر يحمل مفتاح الشاشة الحالية');
   assert.match(html, /<body data-page="guide">/, 'ومفتاح الشاشة على الصفحة نفسها');
   assert.match(html, /aria-label="جولة إرشادية على هذه الشاشة"/, 'للزر تسمية يقرأها قارئ الشاشة');
-  assert.match(html, /src="\/static\/pages\/guide-tour\.js"/, 'سكربت الجولة محمَّل');
+  // العنوان يحمل بصمة نسخته (`?v=…`) منذ أن صار المتصفّح يبقى على شيفرةٍ قديمة ساعةً بعد كل
+  // نشر — انظر `tests/security/static-assets-are-versioned.test.js`. المُثبَت هنا لم يتغيّر:
+  // سكربت الجولة محمَّل؛ والبصمة جزءٌ من العنوان لا بديلٌ عنه.
+  assert.match(html, /src="\/static\/pages\/guide-tour\.js(\?v=[a-z0-9]+)?"/, 'سكربت الجولة محمَّل');
   assert.ok(!/onclick="[^"]*tour/i.test(html), 'لا تفاعل مكتوب داخل الوسم');
   assert.match(html, /<a href="\/app\/guide[^"]*" class="nav-a on"/, 'الصفحة معلّمة في القائمة');
 });
