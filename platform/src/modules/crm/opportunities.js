@@ -170,10 +170,22 @@ export async function updateOpportunity(ctx, oppId, data) {
   patch.updated_at = nowIso(); patch.updated_by = user.id;
   await update('opportunity', oppId, patch);
   await audit(ctx, { action: 'update', resource: 'opportunity', resourceId: oppId, sectorId: patch.sector_id || row.sector_id, detail: patch });
-  // النقل بين القطاعات قد يُخرج الفرصة من نطاق ناقلها (وهو سلوك مقصود ومكتوب في `moveSector`)،
-  // فقراءتُها بعده تُردّ بـ«ممنوع» ويبدو الحفظ الناجح فاشلاً. نُعيد تأكيداً مختصراً بدل ذلك.
-  if (patch.sector_id && !can(user, 'read', 'opportunity', { ...row, ...patch })) {
-    return { ok: true, id: oppId, sector_id: patch.sector_id, movedFrom: row.sector_id };
+  // ── الفرصة قد تخرج من نطاق ناقلها بالنقل نفسه ────────────────────────────────
+  // «أنا كمدير إدارة مو عارف أنقل الفرصة من إدارة إلى إدارة» — وقد كان النقل **ينجح ويُكتب**
+  // ثم تُقرأ الفرصة قراءةً أخيرة لإرجاعها، فتُردّ القراءة لأنها صارت في إدارةٍ ليست له، فتظهر
+  // للمالك رسالة «صلاحيتك لا تسمح بهذا الإجراء» على عملٍ تمّ فعلاً. وهو أسوأ من المنع الصريح:
+  // يُعيد المحاولة فيُخبَر بالمنع مرة أخرى، ويظنّ الباب مغلقاً وهو مفتوح.
+  //
+  // والخروج مقصود لا عرَضي: من يدير الفرصة يحقّ له إعادة إسنادها، وبعد الإسناد تصير لغيره —
+  // وهو ما قرّرته المنصة أصلاً في نقل القطاع. كان الحارس هنا يغطّي القطاع وحده، والإدارة
+  // والمسؤول يخرجان من النطاق بنفس الطريقة تماماً. فالفحص صار على الصفّ **بعد** التعديل أياً
+  // كان الحقل الذي حرّكه، ويُعاد تأكيدٌ مختصر بدل قراءةٍ محظورة.
+  const after = { ...row, ...patch };
+  if (!can(user, 'read', 'opportunity', after)) {
+    return {
+      ok: true, id: oppId, movedOutOfReach: true,
+      sector_id: after.sector_id || null, department_id: after.department_id || null,
+    };
   }
   return await getOpportunity(user, oppId);
 }

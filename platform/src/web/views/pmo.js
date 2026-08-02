@@ -1874,6 +1874,28 @@ export async function projectDetailPage(user, projectId, opts = {}) {
       </select>`
     : `<span title="${esc(ragTip)}">${pill(RAG_LABEL[p.rag] || RAG_LABEL.GREEN, ragColor)}</span>`;
 
+  // ── حالة المشروع: قائمة تُغيَّر لا شارةٌ تُقرأ ────────────────────────────────
+  // «لازم في المشاريع تخلّي المشاريع المنتهية والقائمة والمعلّقة والملغاة تكون موجودة، وأقدر
+  // أحطّ إنّ هذا المشروع تمّ الانتهاء منه ويصير يبيّن إنه أُغلق».
+  //
+  // الحالات الخمس موجودة في المنصة منذ أولها — أعمدة اللوحة مبنيّة عليها والخدمة تقبلها
+  // وتدقّقها — ولم يكن في الواجهة **موضعٌ واحد يكتبها**. فالمشروع يُولَد «قيد التنفيذ» ويبقى
+  // كذلك إلى الأبد مهما انتهى، وشارةُ الحالة في الترويسة نصٌّ يُقرأ لا قرارٌ يُتَّخذ.
+  //
+  // وحالة المشروع **ليست نسبة إنجازه**: قد تُعتمَد المخرجات كلها ويبقى المشروع قائماً (دعمٌ
+  // متّفق عليه، أو مخرَجٌ إضافي قادم) — «حتى لو صرفنا كل المخرجات بس هو قائم برضو ممكن».
+  // لذلك لا يُغلق المشروع تلقائياً باكتمال مخرجاته أبداً؛ الإغلاق قرارُ مديره وحده، ومن هنا.
+  const STATUS_ORDER = ['NOT_STARTED', 'IN_PROGRESS', 'ON_HOLD', 'COMPLETED', 'CANCELLED'];
+  const stUi = statusUi(p.status);
+  const statusTip = 'حالة المشروع قرارُك أنت ولا تتغيّر وحدها: اكتمال المخرجات كلها لا يُغلق المشروع — '
+    + 'قد تكتمل ويبقى قائماً. اختر «مكتمل» حين ينتهي فعلاً.';
+  const statusBadge = canEdit
+    ? `<select data-action-change="prj-status-sel" data-id="${p.id}" data-prev="${esc(p.status || '')}" aria-label="حالة المشروع" title="${esc(statusTip)}"
+        style="font-size:11.5px;font-weight:700;padding:.22rem .55rem;border-radius:999px;border:1px solid transparent;cursor:pointer;background:${stUi.tint};color:${stUi.ink}">
+        ${STATUS_ORDER.map((v) => `<option value="${v}"${p.status === v ? ' selected' : ''}>${esc(tr(v))}</option>`).join('')}
+      </select>`
+    : `<span title="${esc(statusTip)}">${pill(tr(p.status), p.status === 'COMPLETED' ? 'green' : p.status === 'ON_HOLD' ? 'amber' : 'blue')}</span>`;
+
   // ── قسمٌ قابل للطيّ ──────────────────────────────────────────────────────────
   const sec = (key, title, { sub = '', badge = '', open = false, body: inner = '' }) => `
     <details class="psec" data-sec="${key}"${open ? ' open' : ''}>
@@ -2357,7 +2379,7 @@ export async function projectDetailPage(user, projectId, opts = {}) {
   const body = `
     <a href="/app/projects" style="font-size:12px;color:var(--muted)">← المشاريع</a>
     <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin:.6rem 0 1rem">
-      <h2 style="font-size:18px;margin:0">${esc(p.name_ar)}</h2>${pill(tr(p.status), p.status === 'COMPLETED' ? 'green' : p.status === 'ON_HOLD' ? 'amber' : 'blue')}${ragBadge}
+      <h2 style="font-size:18px;margin:0">${esc(p.name_ar)}</h2>${statusBadge}${ragBadge}
       <span title="${esc(projectKindTip(kindTag))}">${pill(esc(projectKindLabel(kindTag.key)), 'slate')}</span>
       <span style="font-size:12px;color:var(--muted)">${client ? esc(client.name_ar) : ''} · ${esc(p.code || '')}${p.financial_code ? ' · مالي ' + esc(p.financial_code) : ''}</span>
     </div>

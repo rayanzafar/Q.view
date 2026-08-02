@@ -187,7 +187,15 @@
     var w = ctlVal('oc-win'); if (w !== null && w !== '') body.win_pct = Number(w);
     var y = ctlVal('oc-year'); if (y !== null && y !== '') body.year = Number(y);
     try {
-      await api('/opportunities/' + encodeURIComponent(id), 'PATCH', body);
+      var r = await api('/opportunities/' + encodeURIComponent(id), 'PATCH', body);
+      // نقلُها إلى إدارةٍ أو قطاعٍ خارج نطاق الناقل يُخرجها من متناوله — وهو مقصود. لكن إعادة
+      // تحميل صفحتها حينئذٍ تفتح شاشة «ممنوع» على عملٍ نجح، فيظنّ أن النقل فشل. نعيده إلى
+      // القائمة برسالةٍ تقول ما جرى بالضبط.
+      if (r && r.movedOutOfReach) {
+        toast('نُقلت الفرصة ✓ — وصارت خارج نطاقك فلم تعد تظهر لك');
+        setTimeout(function () { location.href = '/app/opportunities'; }, 900);
+        return;
+      }
       toast('حُفظت التعديلات ✓'); setTimeout(function () { location.reload(); }, 500);
     } catch (err) { toast(err.message, true); }
   }

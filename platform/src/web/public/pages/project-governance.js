@@ -82,6 +82,22 @@
     try { await api('/projects/' + id, 'PATCH', { rag }); toast('حُدّثت حالة المشروع ✓'); setTimeout(() => location.reload(), 450); }
     catch (e) { toast(e.message, true); }
   }
+  // حالة المشروع (قائم · معلّق · مكتمل · ملغى) — تُغيَّر من ترويسة المشروع. إغلاقٌ وإلغاء
+  // قراران يُقرآن في المحفظة ولوحة القيادة، فيُستأذن فيهما قبل الحفظ لا بعده.
+  const STATUS_AR = { NOT_STARTED: 'لم يبدأ', IN_PROGRESS: 'قيد التنفيذ', ON_HOLD: 'متوقّف مؤقتًا', COMPLETED: 'مكتمل', CANCELLED: 'ملغى' };
+  async function prjStatus(id, status, el) {
+    const prev = el ? el.dataset.prev : '';
+    if ((status === 'COMPLETED' || status === 'CANCELLED')
+      && !window.confirm(`سيصير المشروع «${STATUS_AR[status]}» ويظهر كذلك في المحفظة ولوحة القيادة. تأكيد؟`)) {
+      if (el && prev) el.value = prev;
+      return;
+    }
+    try {
+      await api('/projects/' + id, 'PATCH', { status });
+      toast(`صار المشروع «${STATUS_AR[status] || status}» ✓`);
+      setTimeout(() => location.reload(), 450);
+    } catch (e) { toast(e.message, true); if (el && prev) el.value = prev; }
+  }
   // إضافة مهمة مربوطة بهذا المشروع مباشرة — كانت غير متاحة أصلاً من صفحة التفاصيل (لازم
   // الذهاب لصفحة «مهامي» العامة ولا رابط بالمشروع)؛ نفس نقطة نهاية الإضافة السريعة العامة.
   async function prjTaskAdd(projectId) {
@@ -148,6 +164,8 @@
     if (gs) return void govStatus(gs.dataset.kind, gs.dataset.id, gs.value);
     const rg = ev.target.closest('[data-action-change="prj-rag-sel"]');
     if (rg) return void prjRag(rg.dataset.id, rg.value);
+    const ss = ev.target.closest('[data-action-change="prj-status-sel"]');
+    if (ss) return void prjStatus(ss.dataset.id, ss.value, ss);
   });
   // Enter inside an add-bar field submits that bar
   document.addEventListener('keydown', (ev) => {
