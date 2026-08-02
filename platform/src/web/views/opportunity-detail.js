@@ -12,6 +12,7 @@ import { esc, pct } from './_shared.js';
 import {
   G, ENGAGEMENT_TYPE_AR, ENGAGEMENT_TYPE_TIP, engagementTypeLabel,
   SOLICITATION_TYPE_AR, SOLICITATION_TYPE_TIP, solicitationTypeLabel,
+  OPP_DOC_KIND_AR, oppDocKindLabel,
 } from '../i18n/glossary.js';
 import { splitGross, VAT_RATE_PCT } from '../../modules/finance/vat.js';
 import { stageTip } from './crm.js';
@@ -121,7 +122,10 @@ export async function opportunityDetailPage(user, oppId) {
     <div style="font-size:10.5px;color:var(--faint);flex:1;min-width:160px;line-height:1.6">
       المبلغ المُدخَل شاملٌ الضريبة — وهو ما تدفعه الجهة. و«بدون ضريبة» هو ما يُحتسب إيراداً للشركة ويُقارن بالمستهدف.</div>
   </div>`;
-  const fld = (label, control, hint = '') => `<div style="min-width:0">
+  // خانة المبلغ تأخذ عمودين: رقمُ ثمانيةِ خانات مع قائمةِ الضريبة بجانبه لا يسعان عموداً
+  // واحداً، فيُقَصّ الرقم بصرياً — رأى المالك «437590» ومبلغُه ثمانون مليوناً. ورقمٌ لا يُقرأ
+  // رقمٌ لا يُوثَق به، ويُغري بإعادة كتابته فوق الصحيح.
+  const fld = (label, control, hint = '', span = 1) => `<div style="min-width:0${span > 1 ? `;grid-column:span ${span}` : ''}">
     <label style="display:block;font-size:10.5px;font-weight:800;color:var(--muted);margin-bottom:.2rem">${label}</label>
     ${control}${hint ? `<div style="font-size:10px;color:var(--faint);margin-top:.15rem">${hint}</div>` : ''}</div>`;
   const opt = (v, label, sel, extra = '') => `<option value="${esc(v)}"${sel ? ' selected' : ''}${extra}>${esc(label)}</option>`;
@@ -138,13 +142,13 @@ export async function opportunityDetailPage(user, oppId) {
     'تتغيّر مع القطاع')}
         ${fld('المسؤول', `<select id="oc-owner" class="input" style="width:100%;font-size:12.5px">
           ${opt('', 'بلا مسؤول', !o.owner_user_id)}${userOptions.map((u) => opt(u.id, u.name, o.owner_user_id === u.id)).join('')}</select>`)}
-        ${fld('المبلغ بالريال', `<div style="display:flex;gap:.3rem">
-          <input id="oc-value" class="input tnum" type="number" min="0" step="1000" style="flex:1;min-width:0;font-size:12.5px" value="${toSar(o.value_halalas)}">
-          <select id="oc-vat" class="input" style="width:auto;font-size:11.5px" aria-label="هل المبلغ المكتوب شامل الضريبة"
+        ${fld('المبلغ بالريال', `<div style="display:flex;gap:.3rem;flex-wrap:wrap">
+          <input id="oc-value" class="input tnum" type="number" min="0" step="1000" style="flex:1 1 130px;min-width:130px;font-size:12.5px" value="${toSar(o.value_halalas)}">
+          <select id="oc-vat" class="input" style="flex:0 0 auto;width:auto;font-size:11.5px" aria-label="هل المبلغ المكتوب شامل الضريبة"
             title="اكتب الرقم كما اقتبسته الجهة — والمنصة تحسب الوجه الآخر. المحفوظ دائماً هو الشامل.">
             <option value="1" selected>شامل الضريبة</option>
             <option value="0">بدون ضريبة</option>
-          </select></div>`, '<span id="oc-value-hint"></span>')}
+          </select></div>`, '<span id="oc-value-hint"></span>', 2)}
         ${fld('احتمال الفوز ٪', `<input id="oc-win" class="input tnum" type="number" min="0" max="100" style="width:100%;font-size:12.5px" value="${o.win_pct == null ? '' : Number(o.win_pct)}">`)}
         ${fld('السنة', `<input id="oc-year" class="input tnum" type="number" min="2000" max="2100" style="width:100%;font-size:12.5px" value="${o.year || ''}">`)}
         ${fld('الأولوية', `<select id="oc-priority" class="input" style="width:100%;font-size:12.5px">
@@ -207,16 +211,64 @@ export async function opportunityDetailPage(user, oppId) {
       ${a.detail ? `<div style="font-size:var(--fs-meta);color:var(--muted);white-space:pre-wrap">${esc(a.detail)}</div>` : ''}
       <div style="font-size:var(--fs-micro);color:var(--faint);margin-top:.1rem">${esc(a.actor || '—')} · <span class="tnum">${esc((a.at || '').slice(0, 10))}</span></div>
     </div></div>`;
-  const addActForm = d.canEdit ? `<div style="display:flex;gap:.45rem;margin-top:.75rem;flex-wrap:wrap">
-      <select id="act-kind" class="input" style="width:110px" aria-label="نوع التواصل">
-        ${['call', 'meeting', 'email', 'note'].map((k) => `<option value="${k}">${ACT_KIND_LABELS[k]}</option>`).join('')}</select>
-      <input id="act-title" class="input" style="flex:1;min-width:170px" placeholder="ماذا حدث؟ مثال: اتصال متابعة بعد تسليم العرض" aria-label="عنوان النشاط">
-      <button class="btn" data-action="act-add">${icon('plus')} تسجيل</button>
+  // «لازم يكون في مكان أحدّث فيه الفرص وأكتب ملاحظات… عشان تُدوَّن مع الفرصة» — والنموذج كان
+  // سطراً واحداً بلا متّسع، بينما الجدول يحمل عمود `detail` منذ أول يوم ولا شيء يكتب فيه.
+  // فمن أراد تدوين خلاصة اجتماعٍ أو ملاحظةٍ على العرض حشرها في العنوان أو تركها خارج المنصة.
+  const addActForm = d.canEdit ? `<div style="margin-top:.75rem">
+      <div style="display:flex;gap:.45rem;flex-wrap:wrap">
+        <select id="act-kind" class="input" style="width:110px" aria-label="نوع التحديث">
+          ${['call', 'meeting', 'email', 'note', 'update'].map((k) => `<option value="${k}">${ACT_KIND_LABELS[k]}</option>`).join('')}</select>
+        <input id="act-title" class="input" style="flex:1;min-width:170px" placeholder="ماذا حدث؟ مثال: اتصال متابعة بعد تسليم العرض" aria-label="عنوان التحديث">
+      </div>
+      <textarea id="act-detail" class="input" rows="2" style="width:100%;margin-top:.4rem;font-size:12.5px"
+        placeholder="ملاحظات (اختياري) — خلاصة الاجتماع، ملاحظات الجهة على العرض، ما اتُّفق عليه…" aria-label="ملاحظات التحديث"></textarea>
+      <div style="display:flex;justify-content:flex-end;margin-top:.4rem">
+        <button class="btn" data-action="act-add">${icon('plus')} تسجيل التحديث</button>
+      </div>
     </div>` : '';
   const activityCard = card(`${secHead(G.activities, `<span style="font-size:11px;color:var(--muted)">آخر ${d.activities.length}</span>`)}
     <div style="padding:.4rem 1rem .9rem">
       ${d.activities.map(actRow).join('') || emptySec('inbox', 'لا تواصل مسجَّل بعد', 'سجِّل الاتصالات والاجتماعات هنا ليبقى تاريخ العلاقة كاملاً أمام الفريق.')}
       ${addActForm}
+    </div>`);
+
+  // ── مستندات الفرصة وروابطها ─────────────────────────────────────────────────
+  // «حط مكان أرفع فيه لنك الفرصة أو الملفات المتعلقة، وأيضاً مكان التكنكل بروبوزل، وأيضاً حط
+  // لنك الفايننشال بروبوزل». وجدول المستندات يحمل عمود الفرصة منذ الترحيلة ٠٠٥ ولم يُوصَل قط.
+  //
+  // **روابط لا نسخ**: المنصة تحفظ عنوان المستند لا محتواه (لا مخزن ملفات فيها). والشاشة تقول
+  // ذلك صراحةً — فمن ظنّ أنه رفع نسخةً هنا سيبحث عنها يوم يحتاجها ولا يجدها.
+  const docs = await all(`SELECT id, name, kind, url, note, uploaded_by, created_at
+     FROM document WHERE opportunity_id = ? AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 100`, [o.id]);
+  const docRow = (x) => `<div style="display:flex;align-items:center;gap:.5rem;padding:.45rem 0;border-bottom:1px dashed var(--line)">
+    <span class="pill" style="background:#eef1f7;color:#475569;flex:0 0 auto">${esc(oppDocKindLabel(x.kind))}</span>
+    <div style="flex:1;min-width:0">
+      <a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer"
+        style="font-size:var(--fs-ui);font-weight:700;color:var(--brand);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(x.name)}</a>
+      ${x.note ? `<div style="font-size:11px;color:var(--muted)">${esc(x.note)}</div>` : ''}
+      <div style="font-size:var(--fs-micro);color:var(--faint)">${esc(x.uploaded_by || '—')} · <span class="tnum">${esc((x.created_at || '').slice(0, 10))}</span></div>
+    </div>
+    ${d.canEdit ? `<button class="btn btn-ghost btn-sm" data-action="opp-doc-del" data-id="${esc(x.id)}" title="إزالة" aria-label="إزالة ${esc(x.name)}">✕</button>` : ''}
+  </div>`;
+  const addDocForm = d.canEdit ? `<div style="margin-top:.7rem">
+      <div style="display:flex;gap:.45rem;flex-wrap:wrap">
+        <select id="doc-kind" class="input" style="width:130px" aria-label="نوع المستند">
+          ${Object.entries(OPP_DOC_KIND_AR).map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join('')}</select>
+        <input id="doc-name" class="input" style="flex:1;min-width:150px" placeholder="اسم المستند — مثال: العرض الفني v2" aria-label="اسم المستند">
+      </div>
+      <input id="doc-url" class="input" style="width:100%;margin-top:.4rem;font-size:12.5px" dir="ltr"
+        placeholder="https://…  رابط الملف على درايف أو شيربوينت أو بوابة اعتماد" aria-label="رابط المستند">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:.5rem;margin-top:.4rem;flex-wrap:wrap">
+        <span style="font-size:10.5px;color:var(--faint)">المنصة تحفظ الرابط لا نسخةً من الملف — أبقِ الملف في مكانه واربطه هنا.</span>
+        <button class="btn" data-action="opp-doc-add" data-id="${esc(o.id)}">${icon('plus')} إضافة</button>
+      </div>
+    </div>` : '';
+  const docsCard = card(`${secHead('المستندات والروابط', `<span style="font-size:11px;color:var(--muted)">${docs.length}</span>`)}
+    <div style="padding:.4rem 1rem .9rem">
+      ${docs.map(docRow).join('') || emptySec('upload', 'لا مستندات بعد',
+    d.canEdit ? 'اربط هنا إعلان المنافسة وكراسة الشروط والعرض الفني والعرض المالي — فيجدها الفريق في مكان واحد.'
+      : 'لم تُربط مستندات بهذه الفرصة بعد.')}
+      ${addDocForm}
     </div>`);
 
   // ── تفاصيل ──
@@ -252,14 +304,18 @@ export async function opportunityDetailPage(user, oppId) {
          <button class="btn btn-primary" data-action="opp-make-project" data-opp="${esc(o.id)}" data-name="${esc(o.title_ar || '')}" data-sector="${esc(o.sector_id || '')}">أنشئ المشروع</button>`
       : emptySec('projects', 'لم يُنشأ مشروع بعد', 'إنشاء المشاريع يتطلب صلاحية إدارة أو تشغيل'))}</div>`);
 
+  // «لازم مكان يخلّيني أرجع للصفحة بعد ما أدخل على الفرصة وتفاصيلها» — وصفحةُ المشروع فيها
+  // رابط رجوعٍ منذ بنائها، وصفحةُ الفرصة بلا واحد: يدخل المستخدم من قائمة الفرص ثم لا يجد
+  // طريقاً إليها إلا زرّ المتصفّح — وهو يُفقد الترشيح والسنة والقطاع الذي وصل بها.
   const body = `
-    <div style="display:flex;flex-direction:column;gap:.9rem">
+    <a href="/app/opportunities" style="font-size:12px;color:var(--muted)">← ${G.opportunities || 'الفرص'}</a>
+    <div style="display:flex;flex-direction:column;gap:.9rem;margin-top:.6rem">
       ${header}
       ${actionBar}
       ${controlCard}
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:.9rem;align-items:start">
         <div style="display:flex;flex-direction:column;gap:.9rem;min-width:0">${activityCard}${historyCard}</div>
-        <div style="display:flex;flex-direction:column;gap:.9rem;min-width:0">${projectCard}${teamCard}${detailsCard}</div>
+        <div style="display:flex;flex-direction:column;gap:.9rem;min-width:0">${projectCard}${docsCard}${teamCard}${detailsCard}</div>
       </div>
     </div>
     <script>window.__SANAD=Object.assign(window.__SANAD||{},{

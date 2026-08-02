@@ -243,14 +243,38 @@
     if (!keep) dep.value = '';
   }
 
-  // ── تسجيل تواصل ──
+  // ── تسجيل تحديث على الفرصة ──
+  // الملاحظات تُرسَل في `detail` — العمود موجود في الجدول منذ أول يوم ولم يكن للنموذج متّسعٌ
+  // يكتبه، فمن أراد تدوين خلاصة اجتماع حشرها في العنوان أو تركها خارج المنصة.
   async function actAdd() {
     var kind = (document.getElementById('act-kind') || { value: 'note' }).value;
     var title = (document.getElementById('act-title') || { value: '' }).value.trim();
+    var detail = (document.getElementById('act-detail') || { value: '' }).value.trim();
     if (!title) return toast('اكتب ما حدث أولًا', true);
     try {
-      await api('/activities', 'POST', { kind: kind, title: title, opportunity_id: S().oppId });
-      toast('سُجّل التواصل ✓'); setTimeout(function () { location.reload(); }, 450);
+      await api('/activities', 'POST', { kind: kind, title: title, detail: detail || null, opportunity_id: S().oppId });
+      toast('سُجّل التحديث ✓'); setTimeout(function () { location.reload(); }, 450);
+    } catch (err) { toast(err.message, true); }
+  }
+
+  // ── مستندات الفرصة وروابطها ──
+  async function oppDocAdd(oppId) {
+    var name = (document.getElementById('doc-name') || { value: '' }).value.trim();
+    var url = (document.getElementById('doc-url') || { value: '' }).value.trim();
+    var kind = (document.getElementById('doc-kind') || { value: 'other' }).value;
+    if (!name) return toast('اكتب اسم المستند أولًا', true);
+    if (!url) return toast('ضع رابط المستند — المنصة تحفظ رابطه لا نسخةً منه', true);
+    try {
+      await api('/opportunities/' + encodeURIComponent(oppId) + '/documents', 'POST',
+        { name: name, url: url, kind: kind });
+      toast('أُضيف المستند ✓'); setTimeout(function () { location.reload(); }, 450);
+    } catch (err) { toast(err.message, true); }
+  }
+  async function oppDocDel(docId) {
+    if (!window.confirm('إزالة هذا المستند من الفرصة؟')) return;
+    try {
+      await api('/opportunities/documents/' + encodeURIComponent(docId), 'DELETE');
+      toast('أُزيل المستند ✓'); setTimeout(function () { location.reload(); }, 450);
     } catch (err) { toast(err.message, true); }
   }
 
@@ -432,6 +456,8 @@
       if (act === 'opp-move-sector') { oppSectorModal(actEl.dataset.id, actEl.dataset.sector || ''); return; }
       if (act === 'opp-sector-confirm') { oppSectorConfirm(actEl.dataset.id); return; }
       if (act === 'opp-control-save') { oppControlSave(actEl.dataset.id); return; }
+      if (act === 'opp-doc-add') { oppDocAdd(actEl.dataset.id); return; }
+      if (act === 'opp-doc-del') { oppDocDel(actEl.dataset.id); return; }
       return;
     }
     var dd = e.target.closest('[data-dd]');
