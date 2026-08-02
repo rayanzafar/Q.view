@@ -138,7 +138,13 @@ export async function opportunityDetailPage(user, oppId) {
     'تتغيّر مع القطاع')}
         ${fld('المسؤول', `<select id="oc-owner" class="input" style="width:100%;font-size:12.5px">
           ${opt('', 'بلا مسؤول', !o.owner_user_id)}${userOptions.map((u) => opt(u.id, u.name, o.owner_user_id === u.id)).join('')}</select>`)}
-        ${fld('القيمة بالريال', `<input id="oc-value" class="input tnum" type="number" min="0" step="1000" style="width:100%;font-size:12.5px" value="${toSar(o.value_halalas)}">`)}
+        ${fld('المبلغ بالريال', `<div style="display:flex;gap:.3rem">
+          <input id="oc-value" class="input tnum" type="number" min="0" step="1000" style="flex:1;min-width:0;font-size:12.5px" value="${toSar(o.value_halalas)}">
+          <select id="oc-vat" class="input" style="width:auto;font-size:11.5px" aria-label="هل المبلغ المكتوب شامل الضريبة"
+            title="اكتب الرقم كما اقتبسته الجهة — والمنصة تحسب الوجه الآخر. المحفوظ دائماً هو الشامل.">
+            <option value="1" selected>شامل الضريبة</option>
+            <option value="0">بدون ضريبة</option>
+          </select></div>`, '<span id="oc-value-hint"></span>')}
         ${fld('احتمال الفوز ٪', `<input id="oc-win" class="input tnum" type="number" min="0" max="100" style="width:100%;font-size:12.5px" value="${o.win_pct == null ? '' : Number(o.win_pct)}">`)}
         ${fld('السنة', `<input id="oc-year" class="input tnum" type="number" min="2000" max="2100" style="width:100%;font-size:12.5px" value="${o.year || ''}">`)}
         ${fld('الأولوية', `<select id="oc-priority" class="input" style="width:100%;font-size:12.5px">

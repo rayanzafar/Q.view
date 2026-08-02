@@ -35,8 +35,26 @@
   document.addEventListener('input', function (e) {
     if (e.target && e.target.id === 'opp-q') filterCards();
   });
+  // معاينةٌ فورية للوجه الآخر من المبلغ — كي يرى المُدخِل ما سيُحفَظ قبل أن يحفظ، لا بعده.
+  // الحساب هنا للعرض وحده؛ الرقم المُلزِم يحسبه الخادم بالقاعدة نفسها.
+  function vatPreview() {
+    var hint = document.getElementById('oc-value-hint');
+    var val = document.getElementById('oc-value');
+    var sel = document.getElementById('oc-vat');
+    if (!hint || !val || !sel) return;
+    var n = Number(val.value);
+    if (!isFinite(n) || n <= 0) { hint.textContent = ''; return; }
+    var fmt = function (x) { return Math.round(x).toLocaleString('en-US') + ' ر.س'; };
+    hint.textContent = sel.value === '0'
+      ? 'يُحفَظ شاملاً الضريبة: ' + fmt(n * 1.15)
+      : 'بدون ضريبة: ' + fmt(n * 100 / 115);
+  }
   document.addEventListener('change', function (e) {
     if (e.target && e.target.id === 'oc-sector') syncDeptOptions();
+    if (e.target && (e.target.id === 'oc-vat' || e.target.id === 'oc-value')) vatPreview();
+  });
+  document.addEventListener('input', function (e) {
+    if (e.target && e.target.id === 'oc-value') vatPreview();
   });
 
   // ── قائمة الموظفين لنموذج إضافة عضو الفريق (صفحة تفاصيل الفرصة) ──
@@ -59,6 +77,7 @@
     if (q && el) { el.value = q; filterCards(); }
     loadRoster();
     syncDeptOptions();
+    vatPreview();
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
@@ -185,7 +204,13 @@
       solicitation_type: ctlVal('oc-solicitation') || null,
     };
     if (!body.title_ar) { toast('اسم الفرصة لا يكون فارغاً', true); return; }
-    var v = ctlVal('oc-value'); if (v !== null && v !== '') body.value_sar = Number(v);
+    // المبلغ يُكتب كما اقتبسته الجهة — شاملاً الضريبة أو بدونها — والخادم يحوّله قبل الحفظ.
+    // الحساب هناك لا هنا: المخزَّن يبقى إجمالياً بقاعدةٍ واحدة، فلا يصير للمبلغ تفسيران.
+    var v = ctlVal('oc-value');
+    if (v !== null && v !== '') {
+      body.value_sar = Number(v);
+      body.value_vat_included = ctlVal('oc-vat') !== '0';
+    }
     var w = ctlVal('oc-win'); if (w !== null && w !== '') body.win_pct = Number(w);
     var y = ctlVal('oc-year'); if (y !== null && y !== '') body.year = Number(y);
     try {

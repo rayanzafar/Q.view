@@ -7,6 +7,7 @@ import { audit } from '../../core/audit/index.js';
 import { id, nowIso, toHalalas } from '../../core/util/ids.js';
 import { forbidden, notFound, badRequest } from '../../core/http/errors.js';
 import { isSupportUnit } from '../../core/org/kind.js';
+import { grossOfNet } from '../finance/vat.js';
 import { getTeam } from './oppteam.js';
 
 // Stage-rot thresholds (benchmarks §1 — Pipedrive rotting): an OPEN opportunity sitting in a stage
@@ -93,7 +94,7 @@ export async function createOpportunity(ctx, data) {
     id: oid, code: data.code || null, title_ar: data.title_ar,
     client_id: data.client_id || null, sector_id: sectorId, department_id: departmentId,
     owner_user_id: data.owner_user_id || user.id, stage_id: data.stage_id || 'LEAD',
-    win_pct: data.win_pct ?? null, value_halalas: toHalalas(data.value_sar),
+    win_pct: data.win_pct ?? null, value_halalas: valueHalalasFrom(data),
     priority: data.priority || null, year: data.year || new Date().getUTCFullYear(),
     source: data.source || 'manual', next_action: data.next_action || null, notes: data.notes || null,
     exclude_from_sales: data.exclude_from_sales ? 1 : 0, stage_changed_at: now,
@@ -114,6 +115,20 @@ async function assertDeliverySector(sectorId) {
     throw badRequest(`«${target.name_ar}» وحدة مساندة على مستوى الشركة وليست قطاع تسليم — الفرص تُنقل بين قطاعات التسليم فقط. اختر قطاعاً من القائمة.`);
   }
   return target;
+}
+
+// ── المبلغ: يُكتب شاملاً الضريبة أو بدونها، ويُخزَّن إجمالياً دائماً ─────────────
+// «وينضاف مبلغها مع الضريبة أو بدون». والجهة تقتبس أحياناً صافياً وأحياناً إجمالياً، فإجبارُ
+// المُدخِل على ضرب الرقم في ١٫١٥ بنفسه يُنتج أخطاءً صامتة في مبلغٍ يُحاسَب عليه.
+//
+// والتحويل يقع **هنا قبل الحفظ**، لا في الشاشة: المخزَّن يبقى إجمالياً كما تقول قاعدة المنصة
+// الواحدة، فلا يصير للمبلغ تفسيران حسب الباب الذي دخل منه. والراية إدخالٌ لا تُخزَّن — العمود
+// نفسه هو الجواب، والصافي يُشتقّ منه في كل شاشة.
+function valueHalalasFrom(data) {
+  const written = toHalalas(data.value_sar);
+  const inclusive = data.value_vat_included;
+  const isNet = inclusive === false || inclusive === 'false' || inclusive === 0 || inclusive === '0';
+  return isNet ? grossOfNet(written) : written;
 }
 
 // ── الصفة التجارية للفرصة ────────────────────────────────────────────────────
@@ -157,7 +172,7 @@ export async function updateOpportunity(ctx, oppId, data) {
   for (const k of ['title_ar', 'client_id', 'priority', 'next_action', 'notes', 'win_pct']) {
     if (k in data) patch[k] = data[k];
   }
-  if ('value_sar' in data) patch.value_halalas = toHalalas(data.value_sar);
+  if ('value_sar' in data) patch.value_halalas = valueHalalasFrom(data);
   commercialPatch(data, patch);
   if ('year' in data) {
     const y = Number(data.year);

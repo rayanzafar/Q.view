@@ -104,3 +104,40 @@ test('وفرصةٌ بلا صفةٍ تقول «لم يُحدَّد» ولا تخ�
   const html = await P.opportunityDetailPage(ADMIN, o.id);
   assert.ok(html.includes('لم يُحدَّد'), 'تُعرض قيمةٌ مخترَعة بدل الإقرار بأنها غير محدَّدة');
 });
+
+// ── المبلغ يُكتب بأي وجهٍ، ويُخزَّن بوجهٍ واحد ────────────────────────────────
+// «وينضاف مبلغها مع الضريبة أو بدون» — بلسان المالك. والجهة تقتبس أحياناً صافياً وأحياناً
+// إجمالياً، فإجبارُ المُدخِل على ضرب الرقم في ١٫١٥ بنفسه يُنتج أخطاءً صامتة في مبلغٍ يُحاسَب
+// عليه. والمخزَّن يبقى إجمالياً دائماً — فلا يصير للمبلغ تفسيران حسب الباب الذي دخل منه.
+test('المبلغ يُكتب بدون ضريبة فيُحفَظ شاملاً لها', async () => {
+  const o = await mk({ value_sar: 1000, value_vat_included: false });
+  const row = await db.get('SELECT value_halalas FROM opportunity WHERE id=?', [o.id]);
+  assert.equal(row.value_halalas, 115000, 'ألفُ ريالٍ صافيةً يجب أن تُحفَظ ١١٥٠ إجمالياً');
+  assert.equal(vat.netOfGross(row.value_halalas), 100000, 'والعودة تُرجع الصافي كما كُتب');
+});
+
+test('ويُكتب شاملاً لها فيُحفَظ كما هو — وهو السلوك الافتراضي', async () => {
+  const a = await mk({ value_sar: 1150, value_vat_included: true });
+  const b = await mk({ value_sar: 1150 }); // بلا راية إطلاقاً
+  for (const o of [a, b]) {
+    const row = await db.get('SELECT value_halalas FROM opportunity WHERE id=?', [o.id]);
+    assert.equal(row.value_halalas, 115000, 'المبلغ الشامل تغيّر عند الحفظ');
+  }
+});
+
+test('والتعديل يقبل الوجهين كذلك — لا باب الإنشاء وحده', async () => {
+  const o = await mk({ value_sar: 1150 });
+  await opps.updateOpportunity(CTX, o.id, { value_sar: 2000, value_vat_included: false });
+  assert.equal((await db.get('SELECT value_halalas FROM opportunity WHERE id=?', [o.id])).value_halalas, 230000);
+  await opps.updateOpportunity(CTX, o.id, { value_sar: 2300, value_vat_included: true });
+  assert.equal((await db.get('SELECT value_halalas FROM opportunity WHERE id=?', [o.id])).value_halalas, 230000,
+    'الوجهان يؤدّيان إلى نفس المخزَّن — وإلا صار للمبلغ تفسيران');
+});
+
+test('وخانة الاختيار على الشاشة، والمحفوظ يبقى الشامل', async () => {
+  const o = await mk({ value_sar: 1150 });
+  const html = await P.opportunityDetailPage(ADMIN, o.id);
+  assert.ok(html.includes('oc-vat'), 'لا خانة اختيارٍ لوجه المبلغ');
+  assert.ok(html.includes('شامل الضريبة') && html.includes('بدون ضريبة'), 'الخياران غير معروضين');
+  assert.ok(html.includes('المحفوظ دائماً هو الشامل'), 'الشاشة لا تقول أيُّ رقمٍ يُحفَظ');
+});
