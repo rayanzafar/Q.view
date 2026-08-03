@@ -251,7 +251,11 @@ test('التشخيص لا يكتب شيئاً: لا سطر تدقيق ولا ص�
 
 // ── الصلاحية والنطاق ─────────────────────────────────────────────────────────
 test('البوابة: من لا يملك عرض الهيكل يُرفض برسالة عربية تقول ماذا يفعل', async () => {
-  for (const u of [U('employee', 'SOLUTIONS', 'own'), U('bd_manager', 'SOLUTIONS', 'sector'),
+  // «مدير تطوير الأعمال» كان في هذه القائمة، وخرج منها **بتغيّر منحه لا بتليين الحارس**: نال
+  // «قراءة موظف @قطاع» بقرارٍ صريح (كان يسكّن الناس على فرصه ولا يرى كشفهم — انظر matrix.js)،
+  // والحارس `mayReadOrg` هو نفسه حرفاً: من يقرأ الموظف يقرأ فحص الهيكل. وحدُّ ما دخل إليه
+  // مُثبَتٌ في الفحص المضاف أدناه: قطاعه وحده، وطلبُ غيره لا يُنفَّذ.
+  for (const u of [U('employee', 'SOLUTIONS', 'own'),
     U('viewer', 'SOLUTIONS', 'sector'), U('consultant', 'SOLUTIONS', 'own')]) {
     await assert.rejects(() => orgHealth(u), (e) => {
       assert.equal(e.code, 'forbidden', `${u.role_id} كان يجب أن يُرفض`);
@@ -278,6 +282,20 @@ test('النطاق: قائد قطاع يرى قطاعه وحده — ولا يص
   const wide = await orgHealth(admin, { sectorId: 'CONSULTING' });
   assert.equal(wide.sectorId, 'CONSULTING');
   assert.equal(wide.summary.departments, 1);
+});
+
+// حارس التوسعة: «مدير تطوير الأعمال» دخل هذه الشاشة حديثاً بمنح «قراءة موظف @قطاع». والتوسعة
+// تُقاس بحدّها لا بفتحها — فالفحص هنا يثبت أن ما دخل إليه **قطاعه وحده**، وأن طلبه قطاعاً آخر
+// صراحةً لا يُنفَّذ. ولو صار منحه شركياً يوماً بلا قرار لسقط هذا السطر أولاً.
+test('وتوسعة «مدير تطوير الأعمال» محبوسة في قطاعه — لا تفتح قطاعاً ثانياً', async () => {
+  const bd = U('bd_manager', 'CONSULTING', 'sector');
+  const own = await orgHealth(bd);
+  assert.equal(own.sectorId, 'CONSULTING', 'قطاع حسابه لا الشركة كلها');
+  assert.equal(own.summary.departments, 1, 'إدارات قطاعه وحده');
+  const asked = await orgHealth(bd, { sectorId: 'SOLUTIONS' });
+  assert.equal(asked.sectorId, 'CONSULTING', 'طلب قطاع غيره صراحةً لا يُنفَّذ');
+  const names = asked.checks.flatMap((c) => c.items.map((i) => `${i.name} ${i.hint_ar}`)).join(' ');
+  assert.ok(!names.includes('Ai&Data') && !names.includes('قطاع الحلول'), 'لا اسم من قطاع آخر');
 });
 
 test('نطاق «الإدارة» لا يفتح قطاعاً كاملاً: صاحبه محبوس في قطاعه رغم أن فحص الصف يمرّ عليه', async () => {
