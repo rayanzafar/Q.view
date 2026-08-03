@@ -5,6 +5,7 @@ import { fmtSar } from '../../core/util/ids.js';
 import { all } from '../../core/db/index.js';
 import { myEntries } from '../../modules/timesheets/timesheets.js';
 import { orgTree, staffingRoster, identityLinks } from '../../modules/org/org.js';
+import { teamTasksAccess } from '../../modules/pmo/tasks.js';
 import { canSeeSensitive, can } from '../../core/rbac/index.js';
 import { ROLE_LABELS } from '../../core/rbac/matrix.js';
 import { isDelivery } from '../../core/org/kind.js';
@@ -115,9 +116,32 @@ export async function teamPage(user, opts = {}) {
     return `<div style="display:flex;align-items:center;gap:.35rem;flex-wrap:wrap">${badge}${btn}</div>`;
   };
 
+  // ── الاسم يُنقر فيفتح ملف صاحبه ─────────────────────────────────────────────
+  // «كل مدير يقدر يشوف موظفينه، ولو ضغط على كل موظف يطلع شغال على شي» — بلسان المالك. وصفحة
+  // الشخص موجودة منذ الموجة الماضية، ويصلها المدير من لوحة الفريق في «مهامي» ومن شجرة الهيكل —
+  // **ولا يصلها من الشاشة المسمّاة «الفريق»**، وهي أول ما يفتحه من يسأل «من عندي». فالاسم فيها
+  // نصٌّ جامد بجانب صفٍّ كامل من أزرار الإدارة: يُقرأ عطلاً لا قراراً.
+  //
+  // والرابط مشروطٌ بشرطين، وكلاهما يمنع «باباً مفتوحاً على غرفة مغلقة»:
+  //   • حسابُ دخولٍ مربوط — صفحة الشخص تُفتح بمعرّف **الحساب** لا الموظف، ومن لا حساب له لا
+  //     صفحة له أصلاً (وعمود «حساب الدخول» في الصف نفسه يقول ذلك ويعرض زرّ الربط).
+  //   • أن يكون القارئ ممن يفتح ملفات الناس (`teamTasksAccess`) — نفس بوابة الخدمة حرفاً بحرف،
+  //     لا شرطٌ موازٍ يتباعد عنها. فالموارد البشرية مثلاً تُدير الكشف ولا تقرأ مهام أحد، فلا
+  //     يُعرض لها رابطٌ يُردّ.
+  // ونطاق الكشف نفسه هو نطاق الملف (`peopleScope` ⟵ `departmentScope`)، فما يظهر في الجدول
+  // يُفتح فعلاً — لا اسمَ يُنقر فيُقال لصاحبه «هذا الشخص خارج إدارتك».
+  const canOpenPerson = teamTasksAccess(user).canRead;
+  const nameCell = (e) => {
+    const uid = links[e.id]?.user_id || null;
+    const inner = `${esc(e.name_ar)}${e.active === 0 ? ' ' + pill('غير نشط', 'slate') : ''}`;
+    return canOpenPerson && uid
+      ? `<a href="/app/person/${encodeURIComponent(uid)}" style="font-weight:700;font-size:13px;color:var(--brand2);text-decoration:none" title="افتح ملف ${esc(e.name_ar)} — مهامه ومشاريعه وفرصه">${inner}</a>`
+      : `<div style="font-weight:700;font-size:13px;color:var(--ink2)">${inner}</div>`;
+  };
+
   const rowTpl = (e) => `<tr data-emp="${e.id}" data-hay="${esc(`${e.name_ar} ${e.job_title || ''}`.toLowerCase())}" style="border-bottom:1px solid var(--line)">
     <td data-label="الاسم" style="padding:.6rem .7rem">
-      <div style="font-weight:700;font-size:13px;color:var(--ink2)">${esc(e.name_ar)}${e.active === 0 ? ' ' + pill('غير نشط', 'slate') : ''}</div>
+      ${nameCell(e)}
       ${e.job_title ? `<div style="font-size:11px;color:var(--muted)">${esc(e.job_title)}</div>` : ''}</td>
     <td data-label="القطاع" style="padding:.6rem .7rem;font-size:12px;color:var(--muted)">${esc(sectorNames[e.sector_id] || '—')}</td>
     <td data-label="نوع التوظيف" style="padding:.6rem .7rem;font-size:12px;color:var(--muted)">${esc(e.employment_type || '—')}</td>
@@ -193,6 +217,7 @@ export async function teamPage(user, opts = {}) {
 export async function staffingPage(user, opts = {}) {
   const canManage = can(user, 'create', 'employee') || can(user, 'update', 'employee'); // يحكم زر «تسكين على مشروع» — كما كان في الصفحة المدمجة سابقاً
   const canStaff = can(user, 'update', 'project'); // span editing goes through project staffing rights
+  const canOpenPerson = teamTasksAccess(user).canRead; // نفس بوابة صفحة الشخص — لا شرط موازٍ
   // نفس الفصل الذي في صفحة «الفريق»: الأسماء من الوحدات كلها (موظف الخدمات المشتركة يُسمّى
   // باسم وحدته لا «خارج القطاعات»)، والشرائح من قطاعات التسليم وحدها.
   const allSec = await all('SELECT id, name_ar, color, kind FROM sector WHERE active = 1 AND deleted_at IS NULL ORDER BY sort_order');
@@ -296,8 +321,15 @@ export async function staffingPage(user, opts = {}) {
     const detailOpps = e.opportunities.map((o) => `<div class="dd-row">
         <span>${esc(o.name)} ${pill(o.label, 'violet')}</span>
         <b style="font-weight:600;color:var(--muted);font-size:11.5px">${curName} · <span class="tnum">${o.pct}%</span> (حمل مبدئي)</b></div>`).join('');
+    // نفس رابط صفحة «الفريق» وبنفس الشرطين — واللوحة هنا أولى به: المدير يقرأ فيها «فلان ١٣٠٪»
+    // فأول سؤاله «على ماذا؟»، وجوابه في ملف الشخص لا في نسبةٍ أخرى.
+    // والربط من عمود `employee.user_id` — والعمودان (هو و`app_user.employee_id`) يُكتبان معاً
+    // في معاملة واحدة عند الربط، فلا أحدهما أحدث من الآخر.
+    const name = canOpenPerson && e.user_id
+      ? `<a href="/app/person/${encodeURIComponent(e.user_id)}" style="color:var(--brand2);font-weight:800;text-decoration:none" title="افتح ملف ${esc(e.name_ar)}">${esc(e.name_ar)}</a>`
+      : `<b>${esc(e.name_ar)}</b>`;
     return `<div class="brd-row" data-emp="${e.id}" data-name="${esc(String(e.name_ar || '').toLowerCase())} ${esc(String(e.job_title || '').toLowerCase())}">
-      <div class="brd-meta"><b>${esc(e.name_ar)}</b>${e.active === 0 ? ' ' + pill('غير نشط', 'slate') : ''}
+      <div class="brd-meta">${name}${e.active === 0 ? ' ' + pill('غير نشط', 'slate') : ''}
         <div class="sub">${esc(e.job_title || '—')}${sector ? '' : ' · ' + esc(sectorNames[e.sector_id] || 'خارج القطاعات')}</div></div>
       <div class="brd-peak tnum" data-peak title="${G.peak} — أعلى شهر هذه السنة" style="color:${e.peak > 110 ? 'var(--red)' : 'var(--ink2)'}">${e.peak}%</div>
       <div class="brd-now tnum" data-now title="${G.utilization} ${esc(curName)}" style="color:${uTone(e.currentUtil)}">${e.currentUtil}%</div>

@@ -160,6 +160,14 @@ export async function opportunityDetailPage(user, oppId, opts = {}) {
           title="${esc(Object.values(SOLICITATION_TYPE_TIP).join(' · '))}">
           ${opt('', 'لم يُحدَّد', !o.solicitation_type)}${Object.entries(SOLICITATION_TYPE_AR).map(([v, l]) => opt(v, l, o.solicitation_type === v)).join('')}</select>`,
     o.solicitation_type ? esc(SOLICITATION_TYPE_TIP[o.solicitation_type] || '') : '')}
+        ${/* «إذا كانت مؤهلة أو ليدز، برضو حطّ مكان نكتب فيه موقع تسليمها» — والخانة مفتوحة في كل
+              مرحلة لا في المرحلتين وحدهما: حقلٌ يظهر ثم يختفي بتغيّر المرحلة يُفقِد ما كُتب فيه من
+              عين قارئه بعد أن اتُّخذ القرار عليه. وهي **نصّ حرّ**: الجواب جهةُ استلامٍ أو مدينةُ
+              تنفيذٍ أو «عن بُعد»، وقائمةٌ مغلقة تُجبر المُدخِل على أقرب خطأ. */ ''}
+        ${fld('موقع التسليم', `<input id="oc-location" class="input" style="width:100%;font-size:12.5px"
+          value="${esc(o.delivery_location || '')}" maxlength="160"
+          placeholder="مثال: منصة اعتماد · الرياض — مقرّ الجهة · عن بُعد">`,
+    'أين تُسلَّم أو تُنفَّذ — يُكتب مبكراً لأنه يحكم السفر والتسعير والتسكين', 2)}
       </div>
       ${vatNote}
       <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-top:.85rem;padding-top:.7rem;border-top:1px dashed var(--line)">
@@ -288,6 +296,7 @@ export async function opportunityDetailPage(user, oppId, opts = {}) {
       ${kv('الرمز', `<span class="tnum">${esc(o.code || '—')}</span>`)}
       ${kv('نوع الارتباط', `<span title="${esc(ENGAGEMENT_TYPE_TIP[o.engagement_type] || '')}">${esc(engagementTypeLabel(o.engagement_type))}</span>`)}
       ${kv('نوع الطرح', `<span title="${esc(SOLICITATION_TYPE_TIP[o.solicitation_type] || '')}">${esc(solicitationTypeLabel(o.solicitation_type))}</span>`)}
+      ${kv('موقع التسليم', o.delivery_location ? esc(o.delivery_location) : '<span style="color:var(--faint)">لم يُحدَّد</span>')}
       ${kv('بدون ضريبة', `<span class="tnum">${fmtSar(money.net_halalas)}</span>`)}
       ${kv('المصدر', esc(SOURCE_LABELS[o.source] || o.source || '—'))}
       ${kv('الأولوية', o.priority ? esc(tr(o.priority)) : '—')}

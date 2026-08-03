@@ -157,12 +157,15 @@ test('sensitive: salary reaches ADMIN ONLY — sealed from every other role over
   assert.match(adminRoster.text, /"salary_halalas":\s*[1-9]/, 'مدير النظام يستقبل الراتب');
   assert.match((await req('demo.admin', '/app/team')).text, /emp-sal/, 'صفحة الفريق تعرض عمود الراتب لمدير النظام');
 
-  // demo.bd has no employee read at all → the roster (API and page) is denied outright.
-  assert.equal((await req('demo.bd', '/api/org/roster')).status, 403);
-  assert.equal((await req('demo.bd', '/app/team')).status, 403);
-
-  // كل دور آخر يقرأ الموظفين: يصل للقائمة لكن بلا أي قيمة راتب — لا في البيانات ولا في الصفحة.
-  for (const who of ['demo.hr', 'demo.sectorlead', 'demo.ceo']) {
+  // كان هنا سطران يثبتان أن `demo.bd` يُردّ ٤٠٣ عن الكشف — وهي **حقيقةٌ عن الحال لا قاعدة عن
+  // الراتب**: مدير تطوير الأعمال كان بلا منح قراءة موظف إطلاقاً. وقد نال «قراءة موظف @قطاع»
+  // بقرارٍ صريح (يسكّن الناس على فرصه، فكان يسكّن من لا يراه — انظر matrix.js)، فانتقل من
+  // «ممنوع من الباب» إلى «يدخل ولا يرى راتباً». والختم هو ما يحرسه هذا الفحص، فيُنقل الدور
+  // إلى حلقة قارئي الكشف أدناه — أي أن التغطية **تزيد**: صار الراتب مفحوصاً في وجهه أيضاً.
+  // ولو أُعيدت منحه يوماً فسيسقط الفحص في `manager-sees-people` لا هنا، وهو موضعه الصحيح.
+  //
+  // كل دور يقرأ الموظفين: يصل للقائمة لكن بلا أي قيمة راتب — لا في البيانات ولا في الصفحة.
+  for (const who of ['demo.hr', 'demo.sectorlead', 'demo.ceo', 'demo.bd']) {
     const roster = (await req(who, '/api/org/roster')).text;
     assert.doesNotMatch(roster, /"salary_halalas":\s*[1-9]/, `${who} يجب ألا يستقبل الراتب`);
     const page = await req(who, '/app/team');

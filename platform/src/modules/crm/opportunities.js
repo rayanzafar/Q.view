@@ -135,9 +135,17 @@ function valueHalalasFrom(data) {
 // «يا إنه تحطها اتفاقية إطارية، وبرضو يكون في مساحة تكون RFI أو RFP» — والقيم تُحرَس هنا لا
 // في الشاشة وحدها: كل قيمةٍ منها تُرشَّح ويُجمَع عليها لاحقاً، وقيمةٌ لا تعرفها القوائم تصنع
 // شريحةً يتيمةً في كل تقرير. والفراغ مقبولٌ صراحةً — «لم يُحدَّد بعد» جوابٌ صادق.
+// و«موقع التسليم» معها في نفس الباب: نصٌّ حرّ لا قائمة (الجواب جهةُ استلامٍ أو مدينةُ تنفيذٍ أو
+// «عن بُعد» — وقائمةٌ مغلقة تُجبر المُدخِل على أقرب خطأ). يُقصّ عند حدٍّ معقول ويُنظَّف فراغه،
+// والفراغ يُكتب فراغاً لا نصّاً فارغاً كي يُقرأ «لم يُحدَّد» في كل شاشة بنفس الشكل.
+export const DELIVERY_LOCATION_MAX = 160;
 export const ENGAGEMENT_TYPES = ['PROJECT', 'FRAMEWORK'];
 export const SOLICITATION_TYPES = ['RFI', 'RFP', 'RFQ', 'DIRECT_AWARD', 'TENDER'];
 function commercialPatch(data, patch) {
+  if ('delivery_location' in data) {
+    const v = String(data.delivery_location ?? '').trim().slice(0, DELIVERY_LOCATION_MAX);
+    patch.delivery_location = v || null;
+  }
   if ('engagement_type' in data) {
     const v = data.engagement_type || null;
     if (v && !ENGAGEMENT_TYPES.includes(v)) throw badRequest('نوع الارتباط غير معروف — اختر من القائمة');

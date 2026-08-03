@@ -54,8 +54,10 @@ export const PAGES = ['home', 'ceo', 'portfolio', 'sector', 'opportunities', 'my
 // set is exactly "every role holding an employee-read grant at ANY scope" — target-less can() is a
 // grant-existence question, not a scope question. department_manager (department), line_manager
 // (team) and bd_head (company) all hold one; operations/procurement/approver/external do not.
+// و`bd_manager` انضمّ إليها حين نال «قراءة موظف @قطاع» (matrix.js): كان يسكّن الناس على فرصه
+// ولا يرى كشفهم ولا يفتح ملف أحدهم. والخلية هنا مشتقّة من المنح لا من ردٍّ مرصود.
 const ORG_READERS = new Set(['admin', 'ceo_office', 'sector_lead', 'hr',
-  'department_manager', 'line_manager', 'bd_head']);
+  'department_manager', 'line_manager', 'bd_head', 'bd_manager']);
 
 // ── page-level expectation ─────────────────────────────────────────────────────
 // CURRENT behavior: every authenticated role gets 200 on every page EXCEPT team/org, whose page

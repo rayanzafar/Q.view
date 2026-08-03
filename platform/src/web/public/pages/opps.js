@@ -230,6 +230,9 @@
       priority: ctlVal('oc-priority') || null,
       engagement_type: ctlVal('oc-engagement') || null,
       solicitation_type: ctlVal('oc-solicitation') || null,
+      // الفراغ يُرسَل نصّاً فارغاً لا يُحذف من الحمولة: حذفُه يجعل «مسحتُ الموقع» و«لم أمسّه»
+      // طلباً واحداً، فلا يُمحى ما كُتب خطأً أبداً. والخادم يترجم الفراغ إلى «لم يُحدَّد».
+      delivery_location: ctlVal('oc-location') || '',
     };
     if (!body.title_ar) { toast('اسم الفرصة لا يكون فارغاً', true); return; }
     // المبلغ يُكتب كما اقتبسته الجهة — شاملاً الضريبة أو بدونها — والخادم يحوّله قبل الحفظ.
