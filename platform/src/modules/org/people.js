@@ -22,6 +22,23 @@ export const DEMO_LOGIN_PREFIX = 'demo.';
 const NOT_DEMO = "COALESCE(username,'') NOT LIKE 'demo.%'";
 
 /**
+ * نفس الحكم على **الموظفين** لا الحسابات.
+ *
+ * وموظفو العرض لا يحملون اسم دخول، لكن كلاً منهم **مربوطٌ بحساب عرض**: البذرة تُنشئ «ريم
+ * الدوسري (تجريبي)» وتربطها بـ`demo.deptmgr`. فالعلامة واحدة والوصول إليها بخطوةٍ واحدة —
+ * ولا نعود إلى مطابقة الاسم التي رفضتها الترحيلة ٠١٥.
+ *
+ * والربط يُقرأ من الجهتين (`app_user.employee_id` و`employee.user_id`) لأن المنتج يكتب
+ * الاثنين، فاختيار جهةٍ واحدة يترك الباب الآخر مفتوحاً.
+ *
+ * @param {string} alias — اسم جدول الموظف في الاستعلام (مثل `e` أو `employee`).
+ */
+export const notDemoEmployeeSql = (alias = 'employee') => `NOT EXISTS (
+  SELECT 1 FROM app_user au
+   WHERE (au.employee_id = ${alias}.id OR au.id = ${alias}.user_id)
+     AND COALESCE(au.username,'') LIKE 'demo.%')`;
+
+/**
  * الأشخاص الذين يصحّ إسناد عملٍ إليهم: حسابات نشطة غير محذوفة وليست حسابَ عرض.
  * @param {{sectorId?: string, limit?: number}} opts — `sectorId` يقصر القائمة على قطاعٍ بعينه.
  * @returns {Promise<Array<{id: string, name: string}>>}

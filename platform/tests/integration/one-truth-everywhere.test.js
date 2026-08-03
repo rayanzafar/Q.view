@@ -116,3 +116,34 @@ test('ولا نسخة ثانية من استعلام قائمة الأشخاص �
     'استعلامٌ ثانٍ لقائمة الأشخاص — أولُ ترشيحٍ يُضاف إلى المصدر ويُنسى هنا يُعيد حسابات العرض '
     + 'إلى الشاشة من بابٍ واحد:\n' + offenders.join('\n'));
 });
+
+// ── وموظفو العرض كذلك، حيث **يُختار** إنسان ─────────────────────────────────
+// «ريم الدوسري (تجريبي)» موظفةٌ في الكشف لا حساب. والعلامة نفسها تبلغها: كل موظف عرضٍ
+// **مربوطٌ بحساب عرض** تُنشئه البذرة — فلا نعود إلى مطابقة الاسم التي رفضتها الترحيلة ٠١٥.
+//
+// والحدّ مقصود: الاستبعاد في **قائمة الاختيار** لا في كشف الفريق. فكشف التسكين تقريرٌ عمّن
+// يوجد وكم يحمل، وتُبنى منه نِسَب الإشغال — وإخفاء صفٍّ موجود منه يجعل التقرير يكذب على
+// الطاقة. أما «من أُسكِّن على هذا المشروع» فاختيارٌ، وعرضُ شخصٍ وهمي فيه هو الضرر بعينه.
+test('موظفو العرض خارج قائمة «من المتاح للتسكين» — والحقيقيون فيها', async () => {
+  const capacity = await import('../../src/modules/pmo/capacity.js');
+  await db.insert('employee', { id: 'e_real', name_ar: 'إبراهيم صابر', job_title: 'استشاري',
+    sector_id: 'SOL', user_id: 'u_real', active: 1, created_at: T });
+  await db.insert('employee', { id: 'e_demo', name_ar: 'ريم الدوسري (تجريبي)', job_title: 'مديرة إدارة',
+    sector_id: 'SOL', user_id: 'u_d1', active: 1, created_at: T });
+  const r = await capacity.staffingCandidates(ADMIN, 'P1', {});
+  const names = (r.candidates || []).map((x) => x.name_ar);
+  assert.ok(names.includes('إبراهيم صابر'), 'أُسقط موظفٌ حقيقي من قائمة التسكين');
+  assert.ok(!names.includes('ريم الدوسري (تجريبي)'),
+    'موظف عرضٍ معروضٌ للتسكين على مشروعٍ حقيقي');
+});
+
+test('والربط يُقرأ من الجهتين — فلا بابٌ ثانٍ يمرّ منه', async () => {
+  const capacity = await import('../../src/modules/pmo/capacity.js');
+  // موظفٌ مربوطٌ بالجهة المعاكسة (`app_user.employee_id`) لا بـ`employee.user_id`.
+  await db.insert('employee', { id: 'e_demo2', name_ar: 'حساب عرضٍ آخر (تجريبي)',
+    sector_id: 'SOL', active: 1, created_at: T });
+  await db.update('app_user', 'u_d2', { employee_id: 'e_demo2' });
+  const r = await capacity.staffingCandidates(ADMIN, 'P1', {});
+  assert.ok(!(r.candidates || []).some((x) => x.id === 'e_demo2'),
+    'الربط المعاكس يمرّر موظف عرضٍ إلى قائمة التسكين');
+});
