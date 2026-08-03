@@ -26,6 +26,9 @@ node --experimental-sqlite scripts/reset-stage-clock.js || echo "stage clock res
 
 # أمرُ مالكٍ على البيانات الحيّة: صلاحية «فرص إدارة الابتكار» لسجى وهادي. مرةً واحدة بطابع في
 # schema_migration، ولا يخمّن: اسمٌ لا يُحسَم (صفر أو أكثر من واحد) يُترك ويُقال سببه في السجل.
+# قرارات المالك على الأشخاص (نقل عمر حمزة إلى تطوير الأعمال، وحساب هادي كرمي) — قبل المنح
+# والإشغال لأن كليهما يقرأ سجلّ الموظفين والحسابات.
+node --experimental-sqlite scripts/apply-owner-people.js || echo "owner people skipped"
 node --experimental-sqlite scripts/apply-owner-grants.js || echo "owner grants skipped"
 # نسب الإشغال من كشف توزيع مايو ٢٠٢٦ (تسكين المشاريع وحده — لا راتب ولا سطر «قطاع …»).
 # مرةً واحدة بطابع في schema_migration، ولا يخمّن: ما لا يُحسَم يُترك ويُطبَع سببه في السجل.

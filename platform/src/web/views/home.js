@@ -19,7 +19,7 @@
 //    أخرى يُعرض رابطاً فقط إن كانت تلك الشاشة مفتوحةً له، فلا وعدَ بشاشة يردّها النظام.
 import { layout, gauge, utilStrip, tr } from '../layout.js';
 import { icon } from '../icons.js';
-import { esc, sarShort } from './_shared.js';
+import { esc, sarShort, ddWrap } from './_shared.js';
 import { pageAllowed } from '../nav.js';
 import { MONTHS_AR, WEEKDAYS_AR, WEEKDAYS_AR_1 } from '../../core/i18n/time.js';
 import { myDay, monthGrid } from '../../modules/home/home.js';
@@ -123,6 +123,12 @@ const STYLE = `
   background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.18);border-radius:999px;padding:.24rem .75rem}
 .hm-hi{margin:.75rem 0 .35rem;font-size:clamp(1.3rem,2.5vw,2rem);font-weight:800;letter-spacing:-.02em;line-height:1.4;color:#fff}
 .hm-sub{margin:0;font-size:var(--fs-ui);color:rgba(255,255,255,.8);max-width:48ch;line-height:1.9}
+/* كلمة اليوم: خطٌّ رفيع على الحافة وميلٌ خفيف — تُقرأ اقتباساً لا إعلاناً، ولا تزاحم التحية */
+.hm-wis{margin:.7rem 0 0;padding:.15rem .8rem;max-width:52ch;
+  border-inline-start:2px solid rgba(255,255,255,.28)}
+.hm-wis blockquote{margin:0;font-size:var(--fs-ui);line-height:2;color:rgba(255,255,255,.92);
+  font-style:italic;text-wrap:balance}
+.hm-wis figcaption{margin-top:.2rem;font-size:var(--fs-micro);color:rgba(255,255,255,.6);letter-spacing:.02em}
 .hm-quick{display:flex;gap:.5rem;flex-wrap:wrap;margin-top:1.05rem}
 .hm-q{display:inline-flex;align-items:center;gap:.4rem;font-size:var(--fs-body);font-weight:700;color:#fff;
   background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);border-radius:11px;padding:.42rem .8rem;
@@ -171,7 +177,7 @@ a.hm-tt:hover .a{color:var(--brand)}
 .cal-nav a:hover{background:#f3f6fc;color:var(--ink2);border-color:#d6def0}
 .cal-w,.cal-g{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;padding:0 .85rem}
 .cal-w>div{text-align:center;font-size:var(--fs-micro);font-weight:800;color:var(--faint);padding-bottom:.3rem}
-.cal-d{position:relative;aspect-ratio:1;border-radius:11px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+.cal-d{appearance:none;border:0;font:inherit;text-align:center;cursor:pointer;position:relative;aspect-ratio:1;border-radius:11px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
   font-size:var(--fs-body);font-weight:700;color:var(--ink2);background:#f7f9fd;border:1px solid transparent;
   transition:transform .16s cubic-bezier(.22,.8,.3,1),box-shadow .16s,background .16s}
 .cal-d.we{color:var(--faint);background:#fbfcfe}
@@ -251,10 +257,29 @@ function calendarCard(grid, selected, monthKey) {
     // وكم فيه — وهو نفسه ما يظهر تلميحاً للمؤشر، فلا وصفان مختلفان لشيء واحد.
     const label = `${c.day} ${MONTHS_AR[grid.month]} — ${c.events.length === 1 ? c.events[0].title : countAr(c.events.length, DATES)}`;
     const mark = c.today ? ' aria-current="date"' : '';
-    return c.events.length
-      ? `<a class="${cls}"${mark} href="${link(monthKey, c.date)}" title="${esc(label)}" aria-label="${esc(label)}">${inner}</a>`
-      : `<div class="${cls}"${mark}>${inner}</div>`;
+    // ── اليوم يُنقر فيُفتح ما فيه ──────────────────────────────────────────────
+    // «في الكالندر خلّيه يمدّني أضغط على يوم محدَّد ويطلع بوب أب يبيّن إيش فيه» — بلسان المالك.
+    // وكان النقر يُعيد تحميل الصفحة كلها بـ`?d=` ليكتب سطراً تحت الشبكة: تنقّلٌ كامل من أجل
+    // نظرة، والشبكة نفسها تقفز فيضيع مكان العين.
+    //
+    // و**كل** يومٍ يُنقر لا أيام الأحداث وحدها: من يضغط يوماً فارغاً يسأل سؤالاً صحيحاً
+    // («هل فيه شيء؟») ويستحق جواباً، لا خليةً ميتة تجعله يظنّ النقر معطَّلاً.
+    return `<button type="button" class="${cls}"${mark} data-dd="day-${c.date}"
+      title="${esc(label)}" aria-label="${esc(label)}">${inner}</button>`;
   }).join('');
+
+  // القوالب: خاملة في الصفحة، تُفتح عند النقر — لا نداء شبكة ولا إعادة تحميل.
+  const dayTemplates = grid.cells.filter((c) => !c.blank).map((c) => ddWrap(
+    `day-${c.date}`, longDate(c.date),
+    c.events.length ? countAr(c.events.length, DATES) : 'لا موعد في هذا اليوم',
+    c.events.length
+      ? `<div class="cal-day" style="margin:0">${c.events.map((e) => `<div class="cal-e">
+          <i style="background:${(KIND[e.kind] || KIND.task).color}"></i>
+          <span>${esc(e.title || '')}${e.project ? ' — ' + esc(e.project) : ''}</span>
+          <b style="margin-inline-start:auto;font-size:11px;color:var(--muted)">${esc((KIND[e.kind] || KIND.task).ar)}</b>
+        </div>`).join('')}</div>`
+      : `<div class="empty-state" style="padding:1.1rem 1rem"><div class="s">لا مهمة ولا معلم ولا مخرَج في هذا اليوم.</div></div>`
+  )).join('');
 
   const sel = grid.cells.find((c) => !c.blank && c.date === selected);
   const dayPanel = sel && sel.events.length ? `<div class="cal-day">
@@ -276,6 +301,7 @@ function calendarCard(grid, selected, monthKey) {
     <div class="cal-g">${cells}</div>
     <div class="cal-lg">${Object.values(KIND).map((k) => `<span><i style="background:${k.color}"></i>${k.ar}</span>`).join('')}</div>
     ${dayPanel}
+    ${dayTemplates}
     <div style="height:.85rem"></div>
   </div>`;
 }
@@ -357,8 +383,13 @@ export async function homePage(user, opts = {}) {
     <div class="hm-body">
       <div class="hm-say">
         <div class="hm-date">${longDate(today)}</div>
-        <h2 class="hm-hi">${esc(g.hi)}${who ? '، ' + esc(who) : ''}</h2>
+        <h2 class="hm-hi">${esc(g.hi)}${who ? ' ' + esc(who) : ''}</h2>
         <p class="hm-sub">${esc(g.sub)}</p>
+        ${/* كلمة اليوم — بأصلها منسوباً. سطرٌ رفيع تحت النبرة، لا عنوانٌ يزاحم التحية. */ ''}
+        ${g.wisdom ? `<figure class="hm-wis">
+          <blockquote>${esc(g.wisdom.t)}</blockquote>
+          <figcaption>${esc(g.wisdom.s)}</figcaption>
+        </figure>` : ''}
         <div class="hm-quick">${quick}</div>
       </div>
       ${panel}

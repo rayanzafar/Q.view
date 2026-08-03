@@ -19,10 +19,10 @@
 // ── ويُشغَّل مرةً واحدة ────────────────────────────────────────────────────
 // طابعٌ في `schema_migration` كنظائره. وإلا أُعيدت الكتابة فوق ما صحّحه المالك بيده من شاشة
 // التسكين عند كل إقلاع — أي أن الشاشة تصير عاجزةً عن تصحيح ما كتبه السكربت.
-import { all, get, run, insert } from '../src/core/db/index.js';
+import { all, get, run, insert, update } from '../src/core/db/index.js';
 import { id, nowIso } from '../src/core/util/ids.js';
 
-const FLAG = 'op:utilization-may-2026-v4';
+const FLAG = 'op:utilization-may-2026-v5';
 const YEAR = 2026;
 
 // تطبيع عربي: الهمزات والتاء المربوطة والألف المقصورة والتشكيل والمسافات — فـ«الاركاب» و«الإركاب»
@@ -61,12 +61,9 @@ export const PLAN = [
 ];
 
 // تعارضٌ مكشوف بين المصدرين — يُترك ويُقال، ولا يُرجَّح مصدرٌ على آخر بلا قرار المالك.
+// («عمر حمزة» خرج من هنا: «حطّه على قطاع تطوير الأعمال» — قرارُ المالك فوق تعارض المصادر
+// الثلاثة، ووقتُه كله على وحدته فلا تسكينَ مشروعٍ له. النقل والحساب في `apply-owner-people.js`.)
 export const CONFLICTS = [
-  {
-    person: 'عمر حمزة',
-    reason: 'ثلاثة توزيعات مختلفة للشخص نفسه: الملف الأول (نسك ٣٥٪ + ١٥٪)، والثاني (نسك ٣٠٪ + '
-      + 'كاميرات المشاعر ٣٠٪)، وكشف مايو المرسل (٧٠٪ كاميرات و٣٠٪ تطوير أعمال) — يُحسم من شاشة التسكين',
-  },
   {
     person: 'انس الحساني · ياسر صالح · د. ايوب',
     reason: 'وردوا في كشف مايو ولم يردوا في الملفين المرسلين — والمالك أحال إلى الملفين',
@@ -142,10 +139,21 @@ const nearest = (projects, wanted) => scoreProjects(projects, wanted).slice(0, 3
   .filter((x) => x.score > 0)
   .map((x) => `${x.p.name_ar} (${x.score})`).join(' · ') || 'لا شيء قريب';
 
-// النسبة الشهرية: الاثنا عشر شهراً بنفس القيمة — الكشف شهريٌّ بلا مدى، فالمدى سنةٌ كاملة
-// حتى يُصحّحه المالك من الشاشة. والقيمة كسرٌ لا نسبة مئوية (نفس ما تقرؤه `parseMonths`).
-const monthlyJson = (pct) =>
-  JSON.stringify(Object.fromEntries(Array.from({ length: 12 }, (_, i) => [i + 1, pct / 100])));
+// ── المدى: من مايو لا من يناير ────────────────────────────────────────────────
+// «أرسلتك توزيع اليوتلايزيشن تبع ٣ شهور: الأولى كانت مايو، ويونيو ويوليو» — فالكشف يبدأ في
+// **الشهر الخامس**، وكتابةُ يناير إلى أبريل تخترع ماضياً لم يُرسَل. ويمتدّ إلى آخر السنة لا
+// إلى يوليو: التوزيع الأحدث هو القائم حتى يُغيَّر — ولو وقف عند يوليو لقرأ أغسطس «لا أحد يعمل
+// على شيء» وهو أبعد عن الحقيقة من امتداده.
+// والقيمة كسرٌ لا نسبة مئوية (نفس ما تقرؤه `parseMonths`).
+export const START_MONTH = 5;
+const monthlyJson = (pct) => JSON.stringify(Object.fromEntries(
+  Array.from({ length: 12 - START_MONTH + 1 }, (_, i) => [START_MONTH + i, pct / 100])));
+
+// وما كُتب في تشغيلٍ سابق بمدى السنة كاملةً يُصحَّح إلى المدى نفسه — **بشرط** أن يكون على
+// الشكل الذي يكتبه هذا السكربت حرفاً. فلو مسّه المالك من شاشة التسكين اختلف الشكل فيُترك:
+// تصحيحُ ما كتبتُه أنا واجب، والكتابةُ فوق ما كتبه هو ليست تصحيحاً.
+const uniformYear = (pct) => JSON.stringify(Object.fromEntries(
+  Array.from({ length: 12 }, (_, i) => [i + 1, pct / 100])));
 
 export async function applyUtilization({ force = false } = {}) {
   const done = await get('SELECT applied_at FROM schema_migration WHERE version = ?', [FLAG]);
@@ -181,7 +189,13 @@ export async function applyUtilization({ force = false } = {}) {
           WHERE employee_id = ? AND project_id = ? AND year = ? AND deleted_at IS NULL`,
         [emp.id, prj.id, YEAR]);
       if (existing) {
-        notes.push(`«${emp.name_ar}» على «${prj.name_ar}»: تسكينٌ قائم — لم يُمَسّ`);
+        const cur = await get('SELECT monthly_json FROM allocation WHERE id = ?', [existing.id]);
+        if (String(cur?.monthly_json || '') === uniformYear(pct)) {
+          await update('allocation', existing.id, { monthly_json: monthlyJson(pct), updated_at: now });
+          notes.push(`«${emp.name_ar}» على «${prj.name_ar}»: صُحِّح المدى إلى مايو–ديسمبر`);
+        } else {
+          notes.push(`«${emp.name_ar}» على «${prj.name_ar}»: تسكينٌ قائم — لم يُمَسّ`);
+        }
         continue;
       }
       await insert('allocation', {

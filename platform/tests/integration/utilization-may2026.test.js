@@ -70,7 +70,11 @@ test('يُكتب ما يُحسَم: الشخص والمشروع مطابقةً �
     ['e_rayan', 'p_data']);
   assert.ok(a, 'لا صفّ تسكين');
   assert.equal(a.year, 2026);
-  assert.equal(JSON.parse(a.monthly_json)['1'], 0.6, 'النسبة تُكتب كسراً كما تقرؤها المنصة');
+  // المدى يبدأ من مايو: الكشف ثلاثة أشهر أوّلها مايو، فيناير إلى أبريل ماضٍ لم يُرسَل.
+  const months = JSON.parse(a.monthly_json);
+  assert.equal(months['5'], 0.6, 'النسبة تُكتب كسراً كما تقرؤها المنصة');
+  assert.equal(months['12'], 0.6, 'التوزيع الأحدث لا يمتدّ إلى آخر السنة');
+  assert.equal(months['1'], undefined, 'اختُرع ماضٍ قبل أول شهرٍ في الكشف');
 });
 
 test('ويُترك ما لا يُحسَم ويُقال سببه — لا تخمين على اسمٍ مكرَّر', async () => {
@@ -83,12 +87,13 @@ test('ويُترك ما لا يُحسَم ويُقال سببه — لا تخم�
   assert.deepEqual(none, [], 'كُتب تسكينٌ على اسمٍ لم يُحسَم');
 });
 
-test('والتعارض بين المصدرين يُقال ولا يُرجَّح', async () => {
-  const r = await U.applyUtilization({ force: true });
-  assert.ok(r.notes.some((n) => n.includes('عمر حمزة') && n.includes('يُحسم من شاشة التسكين')),
-    'التعارض حُسم بلا قرار المالك');
+// «عمر حمزة» خرج من قائمة التعارض بقرار المالك («حطّه على قطاع تطوير الأعمال»)، ووقتُه كله
+// على وحدته فلا تسكينَ مشروعٍ له. والحارس باقٍ: لا يُكتب له صفٌّ من هذا السكربت بحال.
+test('ومن حسم المالك وحدته لا يُكتب له تسكين مشروع', async () => {
+  await U.applyUtilization({ force: true });
   const none = await db.all('SELECT id FROM allocation WHERE employee_id = ?', ['e_amr']);
-  assert.deepEqual(none, [], 'كُتب تسكينٌ لشخصٍ توزيعه متعارض');
+  assert.deepEqual(none, [], 'كُتب تسكينُ مشروعٍ لمن وقتُه كله على وحدته');
+  assert.ok(!U.PLAN.some((r) => r.person.includes('عمر')), 'عاد عمر إلى خطة تسكين المشاريع');
 });
 
 test('و«قطاع الحلول ٤٠٪» لا تُكتب مشروعاً — هي بقيّةُ وقتٍ محجوزة لقطاعه', async () => {
