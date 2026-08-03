@@ -346,8 +346,8 @@ Object.assign(window.Sanad, {
             ${p.rag ? `<span class="pill" style="background:${ragHex[p.rag]}22;color:${ragHex[p.rag]}">${this.esc(this.lbl(p.rag))}</span>` : ''}</div>
         </div><button class="btn btn-ghost" onclick="Sanad.closeDrawer()">✕</button></div>
         <div class="drawer-body">
-          <div class="kv-row"><span class="k">الإنجاز</span><span class="v tnum">${Math.round(p.progress_pct || 0)}%</span></div>
-          <div class="bar" style="margin:.15rem 0 .85rem"><span style="width:${Math.min(100, p.progress_pct || 0)}%;background:${ragHex[p.rag] || 'var(--brand)'}"></span></div>
+          <div class="kv-row"><span class="k">الإنجاز</span><span class="v tnum">${Math.round(p.progress_effective_pct ?? p.progress_pct ?? 0)}%</span></div>
+          <div class="bar" style="margin:.15rem 0 .85rem"><span style="width:${Math.min(100, p.progress_effective_pct ?? p.progress_pct ?? 0)}%;background:${ragHex[p.rag] || 'var(--brand)'}"></span></div>
           <div class="kv-row"><span class="k">قيمة العقد</span><span class="v tnum">${money(p.contract_value_halalas)}</span></div>
           <div class="kv-row"><span class="k">الصرف الفعلي</span><span class="v tnum">${p._redacted_actual_spend_halalas ? '<span style="color:var(--faint)">محجوب</span>' : money(p.actual_spend_halalas)}</span></div>
           <div style="margin-top:1.15rem"><div style="font-size:12px;font-weight:800;color:var(--muted);margin-bottom:.35rem;display:flex;align-items:center;gap:.4rem">${icon2('userplus')} الفريق المُسكَّن <span style="color:var(--faint);font-weight:600">(${(staff.assigned || []).length})</span></div>

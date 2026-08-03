@@ -15,6 +15,7 @@ import {
   OPP_DOC_KIND_AR, oppDocKindLabel,
 } from '../i18n/glossary.js';
 import { splitGross, VAT_RATE_PCT } from '../../modules/finance/vat.js';
+import { pickablePeople } from '../../modules/org/people.js';
 import { stageTip } from './crm.js';
 
 const ACT_KIND_LABELS = {
@@ -100,9 +101,7 @@ export async function opportunityDetailPage(user, oppId) {
     ? await all('SELECT id, name_ar, sector_id FROM department WHERE active = 1 AND deleted_at IS NULL ORDER BY name_ar') : [];
   const clientOptions = d.canEdit
     ? await all('SELECT id, name_ar FROM client WHERE deleted_at IS NULL ORDER BY name_ar LIMIT 300') : [];
-  const userOptions = d.canEdit
-    ? await all(`SELECT id, COALESCE(name_ar, username) AS "name" FROM app_user
-       WHERE active = 1 AND deleted_at IS NULL ORDER BY name_ar, username LIMIT 200`) : [];
+  const userOptions = d.canEdit ? await pickablePeople({ limit: 200 }) : [];
   // ── المبلغ بضريبة وبدون ──────────────────────────────────────────────────────
   // «وكم المبلغ بضريبة وبدون ضريبة» — والقاعدة موجودة في المنصة ومكتوبة في موضعٍ واحد
   // (`modules/finance/vat.js`): المبلغ المسجَّل على أي مستندٍ تجاري **إجمالي** — أي ما تدفعه

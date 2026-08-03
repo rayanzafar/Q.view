@@ -7,6 +7,7 @@ import { id, nowIso, toHalalas } from '../../core/util/ids.js';
 import { forbidden, notFound, badRequest } from '../../core/http/errors.js';
 import { isDelivery, SUPPORT_KIND } from '../org/org.js';
 import { staffingCandidates, projectTeamLoad } from './capacity.js';
+import { effectiveProgress } from './progress.js';
 
 export async function listProjects(user, filters = {}) {
   const f = scopeFilter(user, 'project', 'read', { ownerCol: 'owner_user_id' });
@@ -155,7 +156,18 @@ export async function getProject(user, pid) {
   const row = await get('SELECT * FROM project WHERE id = ? AND deleted_at IS NULL', [pid]);
   if (!row) throw notFound('المشروع غير موجود');
   if (!can(user, 'read', 'project', row)) throw forbidden();
-  return redact(user, 'project', row);
+  // ── نسبة الإنجاز: تُحسب هنا كي لا يقرأ أحدٌ العمود المخزَّن ─────────────────
+  // «لما أدخل تفاصيل الفرصة يجيني الإنجاز ١٠٠، لما أضغط التفاصيل يجيني ٥٨ — هذا غير مقبول».
+  // وهو نفس العطل الذي أُصلح في ست شاشات: العمود `progress_pct` رقمٌ مستورد من المنصة القديمة
+  // لا يتحرّك مهما اعتُمدت المخرجات. لكن **النافذة الجانبية تقرأ من هذا المسار لا من الشاشة**،
+  // فبقيت على الرقم الجامد وحدها — والحارس البنيوي كان يمسح `web/views` و`core/reports` ولا
+  // يمسح شيفرة المتصفّح، فأفلتت منه.
+  //
+  // والعلاج في المسار لا في النافذة: كل من ينادي هذه الخدمة — نافذةٌ اليوم وشاشةٌ غداً —
+  // يأخذ الرقم محسوباً. وهذا هو معنى «مصدرٌ واحد للحقيقة» عملياً: لا يُترك الحساب لكل قارئ.
+  const eff = await effectiveProgress([row]);
+  const e = eff.get(row.id) || null;
+  return { ...redact(user, 'project', row), progress_effective_pct: e ? e.pct : (row.progress_pct || 0) };
 }
 
 export async function createProject(ctx, data) {
