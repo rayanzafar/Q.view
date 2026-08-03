@@ -22,7 +22,7 @@
 import { all, get, run, insert } from '../src/core/db/index.js';
 import { id, nowIso } from '../src/core/util/ids.js';
 
-const FLAG = 'op:utilization-may-2026-v3';
+const FLAG = 'op:utilization-may-2026-v4';
 const YEAR = 2026;
 
 // تطبيع عربي: الهمزات والتاء المربوطة والألف المقصورة والتشكيل والمسافات — فـ«الاركاب» و«الإركاب»
@@ -115,20 +115,32 @@ export function projectWords(s) {
 // أسماءٌ حسمها المالك بنفسه حين اختلفت التسمية اختلافاً لا يقرّبه تشابهُ كلمات.
 export const PROJECT_ALIASES = { 'التخطيط والاقتصاد': 'منصة البيانات السعودية' };
 
+function scoreProjects(projects, wantedRaw) {
+  const wanted = PROJECT_ALIASES[wantedRaw] || wantedRaw;
+  const w = projectWords(wanted);
+  return projects
+    .map((p) => ({ p, score: w.length ? projectWords(p.name_ar).filter((x) => w.includes(x)).length : 0 }))
+    .sort((a, b) => b.score - a.score);
+}
+
 function matchProjects(projects, wantedRaw) {
   const wanted = PROJECT_ALIASES[wantedRaw] || wantedRaw;
   const exact = projects.filter((p) => norm(p.name_ar) === norm(wanted));
   if (exact.length === 1) return exact;
-  const w = projectWords(wanted);
-  if (!w.length) return [];
-  const scored = projects
-    .map((p) => ({ p, score: projectWords(p.name_ar).filter((x) => w.includes(x)).length }))
-    .filter((x) => x.score >= 2);
+  const scored = scoreProjects(projects, wantedRaw).filter((x) => x.score >= 2);
   if (!scored.length) return [];
-  const top = Math.max(...scored.map((x) => x.score));
-  const best = scored.filter((x) => x.score === top);
-  return best.map((x) => x.p);
+  const top = scored[0].score;
+  return scored.filter((x) => x.score === top).map((x) => x.p);
 }
+
+// ── ولا يُترك «لا مشروع بهذا الاسم» بلا دليل ────────────────────────────────
+// «قرّب الأسماء وشوف المناسب» — والتقريب لا يبلغ كل اختلاف تسمية، وأنا لا أرى سجلّ المشاريع
+// من خارج شبكة النشر. فحين لا يُحسَم اسمٌ تُطبَع **أقرب ثلاثة بأسمائها ودرجاتها**: يصير السجل
+// نفسه هو الجواب، ويقرأ المالك سطراً واحداً بدل أن يبحث. رسالةٌ تقول «لم أجد» ولا تقول «وهذا
+// أقرب ما عندي» تُحوِّل العطل إلى بحثٍ يدوي.
+const nearest = (projects, wanted) => scoreProjects(projects, wanted).slice(0, 3)
+  .filter((x) => x.score > 0)
+  .map((x) => `${x.p.name_ar} (${x.score})`).join(' · ') || 'لا شيء قريب';
 
 // النسبة الشهرية: الاثنا عشر شهراً بنفس القيمة — الكشف شهريٌّ بلا مدى، فالمدى سنةٌ كاملة
 // حتى يُصحّحه المالك من الشاشة. والقيمة كسرٌ لا نسبة مئوية (نفس ما تقرؤه `parseMonths`).
@@ -158,7 +170,8 @@ export async function applyUtilization({ force = false } = {}) {
     for (const [projectName, pct] of row.allocations) {
       const hits = matchProjects(projects, projectName);
       if (hits.length !== 1) {
-        notes.push(`«${emp.name_ar}» ⟵ «${projectName}»: ${hits.length === 0 ? 'لا مشروع بهذا الاسم'
+        notes.push(`«${emp.name_ar}» ⟵ «${projectName}»: ${hits.length === 0
+          ? `لا مشروع بهذا الاسم — أقرب ما في السجل: ${nearest(projects, projectName)}`
           : `أكثر من مشروع يطابقه (${hits.map((p) => p.name_ar).join('، ')})`} — لم يُكتب تسكين`);
         continue;
       }
