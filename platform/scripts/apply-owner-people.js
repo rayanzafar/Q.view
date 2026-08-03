@@ -20,7 +20,7 @@ import { all, get, run, insert, update } from '../src/core/db/index.js';
 import { id, nowIso } from '../src/core/util/ids.js';
 import { nameWords, norm } from './apply-utilization-may2026.js';
 
-const FLAG = 'op:owner-people-2026-08';
+const FLAG = 'op:owner-people-2026-08-v2';
 
 export const PEOPLE = [
   {
@@ -132,8 +132,25 @@ export async function applyOwnerPeople({ force = false } = {}) {
       doneList.push(`أُنشئ حساب ${p.full} (${email}) — بلا دعوة`);
     }
     // الربط عمودان لا عمود، ويُكتبان معاً — وإلا قرأت شاشةٌ الربطَ وقرأت أخرى غيابه.
-    if (acc.employee_id !== emp.id) await update('app_user', acc.id, { employee_id: emp.id, updated_at: now });
+    if (acc.employee_id !== emp.id) {
+      await update('app_user', acc.id, { employee_id: emp.id, updated_at: now });
+      doneList.push(`رُبط حساب ${p.full} بسجلّه`);
+    }
     if (emp.user_id !== acc.id) await update('employee', emp.id, { user_id: acc.id, updated_at: now });
+
+    // ── والحساب القائم يُفعَّل ─────────────────────────────────────────────────
+    // أول تشغيلٍ حيّ صمت عن هادي صمتاً كاملاً: حسابه موجود، وسجلّه موجود، ومربوطان — لكنه
+    // **غير مفعَّل**، فسقط من كل استعلامٍ يشترط `active = 1` بما فيه استعلام المنح. فقيل
+    // «لا حساب نشطاً بهذا الاسم» وهو موجود. والمالك طلب أن يكون له حساب، والحساب المعطَّل
+    // ليس حساباً. ويُقال ما جرى: صمتُ السكربت عن حالةٍ عالجها هو نصفُ عطل.
+    const live = await get('SELECT active, deactivated_at FROM app_user WHERE id = ?', [acc.id]);
+    if (live && Number(live.active) !== 1) {
+      await update('app_user', acc.id, { active: 1, deactivated_at: null, updated_at: now });
+      doneList.push(`فُعِّل حساب ${p.full} — كان معطَّلاً فلم تصله الصلاحيات`);
+    }
+    if (!doneList.some((x) => x.includes(p.full))) {
+      notes.push(`«${p.full}»: حسابه وسجلّه قائمان ومربوطان على الوحدة الصحيحة — لا تغيير`);
+    }
   }
 
   await run(

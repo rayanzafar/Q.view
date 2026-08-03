@@ -175,3 +175,34 @@ test('واسمٌ لم يُحسَم يُقال معه أقرب ما في السج
   assert.ok(miss.includes('أقرب ما في السجل'),
     'قيل «لا مشروع بهذا الاسم» بلا دليل — فيتحوّل العطل إلى بحثٍ يدوي');
 });
+
+// ── الفرع الذي سقط حيّاً ولم يمرّ به فحص ────────────────────────────────────
+// تصحيحُ المدى لم يكن يقع في الفحوص إطلاقاً: القاعدة تُبنى نظيفةً فتُكتب الصفوف بالمدى الجديد
+// مباشرةً، فلا يمرّ أحدٌ بفرع «صفٌّ قديم بمدى السنة». وعلى القاعدة الحيّة مرّ فسقط السكربت كله
+// على عمودٍ لا وجود له (`allocation` بلا `updated_at`). فالفحص هنا يزرع الحالة القديمة صراحةً.
+test('تصحيح المدى يعمل على صفٍّ قديم — ولا يكتب عموداً لا وجود له', async () => {
+  const uniform = JSON.stringify(Object.fromEntries(
+    Array.from({ length: 12 }, (_, i) => [i + 1, 0.6])));
+  await db.run('DELETE FROM allocation WHERE employee_id = ?', ['e_short']);
+  await db.insert('allocation', {
+    id: 'a_legacy', employee_id: 'e_short', project_id: 'p_data', project_name: 'منصة البيانات السعودية',
+    person_name_ar: 'ريان ظفر', sector_id: 'SOL', type: 'member', year: 2026,
+    monthly_json: uniform, created_at: T,
+  });
+  const r = await U.applyUtilization({ force: true });
+  assert.ok(r.notes.some((n) => n.includes('صُحِّح المدى')), 'لم يُصحَّح صفٌّ قديم بمدى السنة');
+  const after = JSON.parse((await db.get(
+    'SELECT monthly_json FROM allocation WHERE id = ?', ['a_legacy'])).monthly_json);
+  assert.equal(after['1'], undefined, 'بقي يناير بعد التصحيح');
+  assert.equal(after['5'], 0.6, 'ضاعت النسبة في التصحيح');
+});
+
+// وما مسّه المالك بيده لا يُصحَّح: الشكل يختلف عمّا يكتبه السكربت، فيُترك.
+test('ولا يُكتب فوق ما عدّله المالك من شاشة التسكين', async () => {
+  await db.run('UPDATE allocation SET monthly_json = ? WHERE id = ?',
+    [JSON.stringify({ 5: 0.25, 6: 0.25 }), 'a_legacy']);
+  await U.applyUtilization({ force: true });
+  const after = JSON.parse((await db.get(
+    'SELECT monthly_json FROM allocation WHERE id = ?', ['a_legacy'])).monthly_json);
+  assert.deepEqual(after, { 5: 0.25, 6: 0.25 }, 'كُتب فوق تعديلٍ يدوي');
+});

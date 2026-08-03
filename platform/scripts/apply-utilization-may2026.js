@@ -22,7 +22,7 @@
 import { all, get, run, insert, update } from '../src/core/db/index.js';
 import { id, nowIso } from '../src/core/util/ids.js';
 
-const FLAG = 'op:utilization-may-2026-v5';
+const FLAG = 'op:utilization-may-2026-v6';
 const YEAR = 2026;
 
 // تطبيع عربي: الهمزات والتاء المربوطة والألف المقصورة والتشكيل والمسافات — فـ«الاركاب» و«الإركاب»
@@ -191,7 +191,9 @@ export async function applyUtilization({ force = false } = {}) {
       if (existing) {
         const cur = await get('SELECT monthly_json FROM allocation WHERE id = ?', [existing.id]);
         if (String(cur?.monthly_json || '') === uniformYear(pct)) {
-          await update('allocation', existing.id, { monthly_json: monthlyJson(pct), updated_at: now });
+          // `allocation` بلا عمود `updated_at` (الترحيلة ٠٠١) — وكتابتُه أسقطت السكربت كله على
+          // قاعدةٍ حيّة. الدرس: الأعمدة تُقرأ من المخطط لا تُفترَض من عادة بقية الجداول.
+          await update('allocation', existing.id, { monthly_json: monthlyJson(pct) });
           notes.push(`«${emp.name_ar}» على «${prj.name_ar}»: صُحِّح المدى إلى مايو–ديسمبر`);
         } else {
           notes.push(`«${emp.name_ar}» على «${prj.name_ar}»: تسكينٌ قائم — لم يُمَسّ`);
