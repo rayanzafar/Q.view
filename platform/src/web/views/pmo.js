@@ -2488,6 +2488,62 @@ export async function personPage(user, personId) {
   const stat = (n, label, tone) => `<div class="pp-stat${tone ? ' ' + tone : ''}">
     <div class="pp-stat-n tnum">${n}</div><div class="pp-stat-l">${label}</div></div>`;
 
+  // ── لوحة المدير على شخصٍ واحد ───────────────────────────────────────────────
+  // «أقدر أضيف أو أسوّي أي أكشن أنا كمدير للموظف لما أضغط عليه — حتى في إضافة المهام».
+  // وكل لوحةٍ هنا تُعرض **فقط** إن كان فعلها مقبولاً فعلاً (القرار في الخدمة لا في الشاشة)،
+  // فلا يُعرض زرٌّ ليُرَدّ. ومن لا يملك شيئاً منها لا يرى الشريط أصلاً — لا شريطاً فارغاً.
+  const panel = (key, title, inner) => `<section class="pp-panel" data-panel="${key}" hidden>
+    <div class="pp-panel-h">${title}</div>${inner}</section>`;
+  const tabs = [
+    d.canAssignTask ? ['task', 'أضف مهمة'] : null,
+    d.canStaff ? ['staff', 'سكّنه على مشروع'] : null,
+    d.grantOptions.length ? ['grant', 'صلاحياته'] : null,
+  ].filter(Boolean);
+  const grantRow = (g) => `<div class="pp-grow" data-grant="${esc(g.id)}">
+    <span class="pp-t">${esc(g.label)} — ${esc(g.department_name)}</span>
+    ${g.granted_by_name ? `<span class="pp-tag mute">منحها ${esc(g.granted_by_name)}</span>` : ''}
+    ${g.note ? `<span class="pp-tag mute">${esc(g.note)}</span>` : ''}
+    ${d.grantOptions.length ? `<button class="btn btn-ghost btn-sm" data-action="grant-revoke"
+      data-id="${esc(g.id)}" style="color:var(--red)">ارفعها</button>` : ''}</div>`;
+  const actionBar = !tabs.length && !d.grants.length ? '' : `<section class="pp-sec">
+    <div class="pp-sec-h"><h2 class="pp-sec-t">إدارته</h2>
+      <span class="pp-sec-s">ما تستطيع فعله لهذا الشخص بحكم إدارتك له</span></div>
+    <div class="card" style="padding:.7rem .85rem">
+      ${tabs.length ? `<div class="pp-tabs">${tabs.map(([k, t]) =>
+    `<button class="btn btn-sm" data-action="pp-tab" data-tab="${k}">${t}</button>`).join('')}</div>` : ''}
+      ${d.canAssignTask ? panel('task', 'مهمة جديدة باسمه', `
+        <div class="pp-form">
+          <input id="pp-task-title" class="input" maxlength="200" placeholder="ماذا تريد منه بالضبط">
+          <input id="pp-task-due" class="input" type="date" aria-label="الموعد">
+          <button class="btn btn-primary btn-sm" data-action="pp-task-add"
+            data-user="${esc(p.userId)}">أضف المهمة</button>
+        </div>
+        <div class="pp-hint">تصل إلى قائمته فوراً، ويراها في «مهامي».</div>`) : ''}
+      ${d.canStaff ? panel('staff', 'تسكين على مشروع', `
+        <div class="pp-form">
+          <select id="pp-staff-prj" class="input">${d.staffProjects
+    .map((x) => `<option value="${esc(x.id)}">${esc(x.name_ar)}</option>`).join('')}</select>
+          <input id="pp-staff-pct" class="input tnum" type="number" min="1" max="100" value="50"
+            aria-label="نسبة وقته">
+          <button class="btn btn-primary btn-sm" data-action="pp-staff-add"
+            data-emp="${esc(d.employeeId || '')}">سكّنه</button>
+        </div>
+        <div class="pp-hint">النسبة حصّة وقته من الشهر — تُقرأ في لوحة التسكين وتُحسب في حِمله.</div>`) : ''}
+      ${d.grantOptions.length ? panel('grant', 'صلاحية إضافية على إدارة', `
+        <div class="pp-form">
+          <select id="pp-grant-dept" class="input">${d.grantOptions
+    .map((x) => `<option value="${esc(x.id)}">${esc(x.name_ar)}${x.sector_name ? ' · ' + esc(x.sector_name) : ''}</option>`).join('')}</select>
+          <input id="pp-grant-note" class="input" maxlength="200" placeholder="السبب (اختياري)">
+          <button class="btn btn-primary btn-sm" data-action="pp-grant-add"
+            data-user="${esc(p.userId)}">امنحها</button>
+        </div>
+        <div class="pp-hint">تظهر له فرص هذه الإدارة كاملةً في شاشة «الفرص» — لا المسكَّن عليها وحده.
+          و«فرصي» تبقى شخصية. ولا تمنح إلا إدارةً تراها أنت.</div>`) : ''}
+      ${d.grants.length ? `<div class="pp-glist">${d.grants.map(grantRow).join('')}</div>`
+    : '<div class="pp-hint">لا صلاحية إضافية على أي إدارة — يرى ما يمنحه دوره وما سُكِّن عليه.</div>'}
+    </div>
+  </section>`;
+
   const body = `<style>
     /* مقاس قراءة لا عرض شاشة: بلا حدٍّ يمتد الصفّ على ١٤٤٠ بكسل فيقع العنوان في أقصى اليمين
        وموعده في أقصى اليسار وبينهما فراغٌ تقفز العين فوقه — نفس عطل صفوف الشجرة. */
@@ -2507,6 +2563,15 @@ export async function personPage(user, personId) {
     .pp-stat-l{font-size:var(--fs-micro);color:var(--muted)}
     .pp-stat.bad{background:#fef2f2;border-color:#fecaca}.pp-stat.bad .pp-stat-n{color:var(--red)}
     .pp-stat.warn{background:#fefce8;border-color:#fde68a}.pp-stat.warn .pp-stat-n{color:#a16207}
+    .pp-tabs{display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:.5rem}
+    .pp-panel{border-top:1px dashed var(--line);padding-top:.6rem;margin-top:.2rem}
+    .pp-panel-h{font-size:var(--fs-micro);font-weight:800;color:var(--muted);margin-bottom:.4rem}
+    .pp-form{display:flex;gap:.4rem;flex-wrap:wrap;align-items:center}
+    .pp-form .input{flex:1 1 160px;min-width:130px;font-size:12.5px}
+    .pp-hint{font-size:var(--fs-micro);color:var(--faint);margin-top:.35rem;line-height:1.6}
+    .pp-glist{display:flex;flex-direction:column;gap:.35rem;margin-top:.6rem}
+    .pp-grow{display:flex;align-items:center;gap:.45rem;flex-wrap:wrap;background:var(--bg);
+      border:1px solid var(--line);border-radius:10px;padding:.35rem .6rem;font-size:var(--fs-micro)}
     .pp-sec{margin-bottom:1.1rem}
     .pp-sec-h{display:flex;align-items:baseline;gap:.6rem;flex-wrap:wrap;margin:0 .1rem .5rem}
     .pp-sec-t{font-size:var(--fs-title);font-weight:800;color:var(--ink2)}
@@ -2557,6 +2622,8 @@ export async function personPage(user, personId) {
     </span>
   </div>`)}
 
+  ${actionBar}
+
   ${sec('المهام المفتوحة', openTasks.length ? 'الأكثر إلحاحاً أولاً' : '',
     openTasks.length ? `<div class="pp-list">${openTasks.map(taskRow).join('')}</div>` : '',
     d.self ? 'لا مهمة مفتوحة باسمك الآن.' : 'لا مهمة مفتوحة باسمه الآن.')}
@@ -2582,5 +2649,6 @@ export async function personPage(user, personId) {
     user, active: 'tasks', title: p.name,
     subtitle: `${p.jobTitle ? esc(p.jobTitle) + ' · ' : ''}${esc(p.departmentName || 'بلا إدارة')} — مهامه وفرصه ومشاريعه`,
     body,
+    scripts: ['/static/pages/person.js'],
   });
 }

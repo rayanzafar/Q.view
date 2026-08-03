@@ -2,6 +2,7 @@
 // يُركَّب داخل apiRouter بسطر واحد في api.routes.js (وحارس التركيب في الاختبارات يلتقط سقوطه).
 import { Router } from 'express';
 import * as identity from './identity.js';
+import * as grants from './grants.js';
 
 export const identityRouter = Router();
 const h = (fn) => async (req, res, next) => { try { const r = await fn(req, res); if (r !== undefined) res.json(r); } catch (e) { next(e); } };
@@ -21,3 +22,13 @@ identityRouter.post('/identity/users/:id/revoke-sessions', h((req) => identity.r
 // لا تُقال بعد الرفض. والسبب النصّي يُمرَّر ليُسجَّل في سطر التدقيق.
 identityRouter.get('/identity/users/:id/removal-check', h((req) => identity.userRemovalCheck(req.ctx, req.params.id)));
 identityRouter.delete('/identity/users/:id', h((req) => identity.removeUser(req.ctx, req.params.id, { reason: (req.body || {}).reason })));
+
+// ── الصلاحيات الشخصية على إدارة ──────────────────────────────────────────────
+// «مدير القطاع يقدر يعطي صلاحيات كعينه، ومدير الإدارة يقدر يعطي صلاحيات». والحدّ كله في
+// الخدمة (grants.js) لا هنا: المعالج يمرّر ويعيد، والصلاحية والتدقيق تحته.
+identityRouter.get('/identity/grants/options', h((req) => grants.grantableDepartments(req.ctx.user,
+  req.query.resource || 'opportunity', req.query.action || 'read')
+  .then((departments) => ({ departments, grantable: grants.GRANTABLE }))));
+identityRouter.get('/identity/grants/:userId', h((req) => grants.listUserGrants(req.ctx.user, req.params.userId)));
+identityRouter.post('/identity/grants', h((req) => grants.grantDepartment(req.ctx, req.body || {})));
+identityRouter.delete('/identity/grants/:id', h((req) => grants.revokeDepartmentGrant(req.ctx, req.params.id)));

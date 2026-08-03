@@ -4,6 +4,7 @@ import { config } from '../config.js';
 import { unauthorized, forbidden } from './errors.js';
 import { can } from '../rbac/index.js';
 import { readerDepartmentIds } from '../rbac/departments.js';
+import { grantsForUser } from '../../modules/identity/grants.js';
 import { nowIso } from '../util/ids.js';
 
 export async function resolveUser(sessionId) {
@@ -47,6 +48,20 @@ export async function resolveUser(sessionId) {
   // فلا يجد أهل إدارته الثانية، ويفتح ملف أحدهم فيُرَدّ «خارج إدارتك» وهو مديره. القيادة
   // مكتوبة في `department.manager_user_id` منذ أول إصدار ولم تكن تُقرأ في أي فحص نطاق.
   const departmentIds = await readerDepartmentIds(u.id, emp?.department_id || null);
+  // ── الصلاحيات الشخصية على إدارة ──────────────────────────────────────────────
+  // «ممكن أنا أحطّ على سجى إنها تشوف كل فرص إدارة الابتكار» — استثناءٌ على الشخص لا ترقيةٌ
+  // لدوره. ويُقرأ **هنا** مع كل طلب لا في ذاكرة المحرّك عند الإقلاع: صلاحيةٌ تُمنَح وتُرفَع
+  // أثناء يوم العمل، ومنحٌ لا يبدأ أثره إلا بعد إعادة تشغيل الخادم لا يصلح لأن يُدار من شاشة.
+  // (وهي إضافةٌ صرفة في `can`/`scopeFilter` — لا تسلب وصولاً، ولا تمسّ `effectiveScope` فلا
+  // يتحوّل اتساع الدور نفسه بها.)
+  const departmentGrants = await grantsForUser(u.id);
+  // فرصُ تسكينه — نظير `projectIds` أعلاه: من سُكِّن على فرصة يقرؤها. والحالة «بانتظار تأكيد
+  // مديره» تُقرأ أيضاً: مَن أُضيف إلى فريقٍ يحتاج أن يرى ما أُضيف إليه ليقول رأيه فيه، والتأكيد
+  // يحكم احتساب الحِمل لا حجب الصفحة.
+  const opportunityIds = new Set(u.employee_id ? (await all(
+    `SELECT group_id FROM membership
+      WHERE group_kind = 'opportunity' AND employee_id = ? AND deleted_at IS NULL`,
+    [u.employee_id])).map((r) => r.group_id) : []);
   return {
     id: u.id,
     username: u.username,
@@ -54,6 +69,8 @@ export async function resolveUser(sessionId) {
     sector_id: u.sector_id,
     department_id: emp?.department_id || null,
     departmentIds,
+    departmentGrants,
+    opportunityIds,
     scope: u.scope,
     employee_id: u.employee_id,
     name_ar: u.name_ar,

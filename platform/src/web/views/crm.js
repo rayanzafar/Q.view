@@ -439,7 +439,14 @@ export async function opportunitiesPage(user, opts = {}) {
 export async function myOpportunitiesPage(user, opts = {}) {
   const year = Number(opts.year) || config.fiscalYear;
   const scoped = await listOpportunities(user);
-  const rows = scoped.filter((o) => o.owner_user_id === user.id);
+  // «في فرصي يطلع لها الفرص اللي هي شغالة عليها» — والعمل ملكيةٌ **أو** تسكين. وكان الشرط
+  // الملكية وحدها، فمن يعمل على فرص غيره — وهو حال فريق التسليم كله — يفتح «فرصي» فيجدها فارغة.
+  //
+  // والصلاحية الشخصية على إدارة **لا تدخل هنا** عمداً: «سجى ترى كل فرص الابتكار» في شاشة
+  // «الفرص»، أما «فرصي» فتبقى ما تعمل عليه هي. ولو دخلت لصارت الشاشتان واحدة، وضاع الفرق الذي
+  // طلبه المالك بنصّه.
+  const mine = user.opportunityIds || new Set();
+  const rows = scoped.filter((o) => o.owner_user_id === user.id || mine.has(o.id));
   const stages = await all('SELECT id,name_ar,color,default_win_pct,sort_order,is_won,is_lost FROM stage ORDER BY sort_order');
   const stById = Object.fromEntries(stages.map((s) => [s.id, s]));
   const clients = Object.fromEntries((await all('SELECT id,name_ar FROM client')).map((c) => [c.id, c.name_ar]));

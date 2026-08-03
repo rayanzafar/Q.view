@@ -43,7 +43,11 @@ function withDiscipline(row, today) {
 
 // opts.today ('YYYY-MM-DD') pins the stage-age clock for deterministic tests; defaults to now.
 export async function listOpportunities(user, filters = {}, opts = {}) {
-  const f = scopeFilter(user, 'opportunity', 'read');
+  // `deptCol` تصريحٌ بأن هذا الاستعلام يعرف عمود الإدارة — وبه وحده تُضاف الصلاحيات الشخصية
+  // («سجى ترى كل فرص إدارة الابتكار»). وبدونه لا تُوسَّع القائمة إطلاقاً: استعلامٌ لا يستطيع
+  // أن يحدّ نفسه بإدارة لا يُوسَّع بها، وإلا فُتح ما هو أوسع من المنح.
+  // ولا أثر على منح الأدوار: شرط الدور يبقى كما هو، والإضافة «أو» بعده.
+  const f = scopeFilter(user, 'opportunity', 'read', { grantCol: 'department_id', memberCol: 'id' });
   const where = [f.clause];
   const params = [...f.params];
   where.push('deleted_at IS NULL');

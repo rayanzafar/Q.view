@@ -5,6 +5,7 @@ import { departmentScope, departmentInSql, inDepartmentScope } from '../../core/
 import { audit } from '../../core/audit/index.js';
 import { id, nowIso } from '../../core/util/ids.js';
 import { forbidden, notFound, badRequest } from '../../core/http/errors.js';
+import { listUserGrants, grantableDepartments } from '../identity/grants.js';
 
 // ترتيب الإلحاح المشترك بين كل استعلامات المهام — مصدر واحد فلا يختلف ترتيب القائمة عن اللوح.
 const PRIORITY_ORDER = "CASE %s.priority WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 ELSE 3 END";
@@ -767,9 +768,35 @@ export async function personDossier(reader, personUserId) {
     openOpportunities: opportunities.filter((o) => !o.is_won && !o.is_lost && !o.pending).length,
     projects: projects.length,
   };
+  // ── ما يستطيع القارئ أن **يفعله** بهذا الشخص ────────────────────────────────
+  // «لو أبغى أسكّن الموظف، لما أدخل عليه من صفحة الفريق أشوف الفرص تبعه وتسكينه، وأقدر أضيف أو
+  // أسوّي أي أكشن أنا كمدير للموظف لما أضغط عليه — حتى في إضافة المهام» — بلسان المالك.
+  // فالصفحة لم تعد قراءةً خالصة: صارت لوحةَ المدير على شخصٍ واحد. وكل فعلٍ فيها يمرّ بخدمته
+  // وحارسها كما لو نُفِّذ من شاشته الأصلية — لا مسار مختصر، ولا فحص صلاحيةٍ مكرَّر هنا.
+  //
+  // والقدرات تُحسَب في الخدمة لا في الشاشة: الشاشة تعرض ما يُقبَل فعلاً، فلا زرّ يُضغَط ليُرَدّ.
+  const isSelf = self;
+  const canAssignTask = !isSelf && !!canWrite && can(reader, 'create', 'task');
+  const canStaff = !isSelf && can(reader, 'create', 'allocation');
+  const staffProjects = canStaff && p.employee_id
+    ? (await all(`SELECT id, name_ar, sector_id FROM project
+         WHERE deleted_at IS NULL AND status IN ('IN_PROGRESS','PLANNED') ORDER BY name_ar LIMIT 200`))
+      .filter((pr) => can(reader, 'create', 'allocation', pr))
+    : [];
+  // الصلاحيات الشخصية: تُعرض لمن يرى الكشف، وتُمنَح لمن يملك ما يمنحه (الحدّ في grants.js).
+  let grants = []; let grantOptions = [];
+  try { grants = await listUserGrants(reader, uid); } catch { grants = []; }
+  if (!isSelf) { try { grantOptions = await grantableDepartments(reader); } catch { grantOptions = []; } }
+
   return {
     self,
     canWrite: !!canWrite || self,
+    canAssignTask,
+    canStaff: canStaff && !!p.employee_id && staffProjects.length > 0,
+    staffProjects,
+    grants,
+    grantOptions,
+    employeeId: p.employee_id || null,
     person: {
       userId: p.id, name: p.name_ar || p.username || 'حساب بلا اسم', username: p.username,
       jobTitle: p.job_title || null, roleId: p.role_id, active: Number(p.active) === 1,

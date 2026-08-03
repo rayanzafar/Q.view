@@ -1,0 +1,190 @@
+// ═══ الصلاحيات الشخصية على إدارة ═══════════════════════════════════════════════════════════
+//
+// «ممكن أنا أحطّ على سجى إنها تشوف كل فرص إدارة الابتكار مو بس المسكَّنة عليها… ومدير القطاع
+// يقدر يعطي صلاحيات كعينه، ومدير الإدارة يقدر يعطي صلاحيات» — بلسان المالك.
+//
+// وهذا الملف هو **حدّ** تلك القدرة لا مجرّد كتابتها. القاعدة التي يقوم عليها كل ما تحته:
+//
+//        لا يمنح أحدٌ ما لا يملكه.
+//
+// وهي ليست شعاراً: التفويض بلا هذا القيد يجعل أي مدير إدارةٍ قادراً على أن يمنح نفسه — أو من
+// يشاء — رؤيةَ الشركة كلها بخطوتين، فينهار كل ما بُني في محرّك الصلاحيات من فوق. فالفحص هنا
+// يسأل عن المانح ثلاثة أسئلة، وسقوط أيّها يوقف المنح:
+//   ① هل يقرأ هذا المورد **في هذه الإدارة** فعلاً؟ (`can` على صفٍّ افتراضي يحمل قطاعها وإدارتها)
+//   ② هل اتساعه يبلغ الإدارة فأوسع؟ فمن نطاقه «خاصتي» أو «مشروعي» يقرأ صفوفه هو، ولا معنى
+//      لأن يمنح إدارةً كاملة لغيره — ولولا هذا السؤال لمرّ الأول على مالك الصفّ نفسه.
+//   ③ هل هذا الشخص من أهله؟ (نفس سؤال «من يؤكّد تسكين فلان» — مصدرٌ واحد لا نسختان)
+//
+// ولا يمنح أحدٌ **نفسه**. والقاعدة مطلقة بلا استثناء لمدير النظام — لا لأنه غير موثوق، بل لأن
+// «فلانٌ منح فلاناً» جملةٌ تُراجَع، و«فلانٌ منح نفسه» ليست مراجعةً بل حلقة مغلقة. ومدير النظام
+// يرى كل شيء أصلاً بمنحه الشامل، فالمنع لا يمنعه من عمل.
+//
+// ── ولا يُمنَح إلا ما هو موصولٌ فعلاً ────────────────────────────────────────
+// `GRANTABLE` قائمة مغلقة، وشرط الدخول فيها **ليس** أن الصلاحية معقولة بل أن تكون هناك شاشةٌ
+// تقرؤها اليوم. ومنحُ ما لا يقرؤه شيء يُنتج أسوأ حالة في منتج: مالكٌ يمنح، ولا يتغيّر شيء، ولا
+// خطأ يظهر — فيظنّ العطل في المنصة أو في فهمه. تُوسَّع القائمة مع كل استعلامٍ يُوصَل، لا قبله.
+import { all, get, insert, update, tx } from '../../core/db/index.js';
+import { can, effectiveScope } from '../../core/rbac/index.js';
+import { SCOPE_RANK } from '../../core/rbac/matrix.js';
+import { badRequest, forbidden, notFound } from '../../core/http/errors.js';
+import { id, nowIso } from '../../core/util/ids.js';
+import { audit } from '../../core/audit/index.js';
+import { ownsEmployee } from '../org/confirm.js';
+
+// المورد ⟵ ما يظهر للمستخدم، وأين يظهر أثره. النصّ هنا هو نصّ الشاشة: لا مصطلح يُترجَم مرتين.
+export const GRANTABLE = [
+  {
+    resource: 'opportunity',
+    action: 'read',
+    label: 'يرى كل فرص الإدارة',
+    effect: 'تظهر له فرص هذه الإدارة كاملةً في شاشة «الفرص» — لا المسكَّن عليها وحده. و«فرصي» تبقى شخصية.',
+  },
+];
+export const isGrantable = (resource, action) =>
+  GRANTABLE.some((g) => g.resource === resource && g.action === action);
+
+// ── ما يُحمَّل مع كل طلب ──────────────────────────────────────────────────────
+// يُقرأ عند بناء سياق الطلب (`resolveUser`) لا عند الإقلاع: الصلاحية الشخصية تُمنَح وتُرفَع
+// أثناء يوم العمل، ومنحٌ يبدأ أثره بعد إعادة تشغيل الخادم لا يصلح لأن يُدار من شاشة.
+export async function grantsForUser(userId) {
+  if (!userId) return [];
+  const rows = await all(
+    `SELECT g.resource, g.action, g.department_id, d.sector_id
+       FROM user_department_grant g
+       JOIN department d ON d.id = g.department_id AND d.deleted_at IS NULL
+      WHERE g.user_id = ? AND g.deleted_at IS NULL`, [userId]);
+  // الإدارة المحذوفة ناعماً لا تُقرأ (الوصل الداخلي أعلاه يُسقطها)، وغير القابل للمنح يُسقَط
+  // هنا أيضاً: لو أُخرج موردٌ من القائمة يوماً، بطلت صفوفه القديمة في نفس اللحظة بلا ترحيلة.
+  return rows.filter((r) => isGrantable(r.resource, r.action));
+}
+
+// ── الحدّ ────────────────────────────────────────────────────────────────────
+async function assertMayGrant(granter, targetUser, dept, resource, action) {
+  if (!isGrantable(resource, action)) {
+    throw badRequest('هذه الصلاحية غير متاحة للمنح من هنا — اختر من القائمة المعروضة');
+  }
+  if (granter.id === targetUser.id) {
+    throw forbidden('لا يمنح أحدٌ نفسه صلاحية — اطلبها ممن يملكها فوقك ليكون للمنح أثرٌ يُراجَع');
+  }
+  // ① و② معاً: القراءة في هذه الإدارة، وباتساعٍ يبلغ الإدارة فأوسع.
+  const target = { sector_id: dept.sector_id, department_id: dept.id };
+  const wide = SCOPE_RANK[effectiveScope(granter, action, resource)] >= SCOPE_RANK.department;
+  if (!wide || !can(granter, action, resource, target)) {
+    throw forbidden(`لا تملك رؤية «${dept.name_ar}» بنفسك — ولا يمنح أحدٌ ما لا يملكه`);
+  }
+  // ③ الشخص من أهلك: نفس سؤال تأكيد التسكين حرفاً — مصدرٌ واحد لا نسختان تتباعدان.
+  const emp = targetUser.employee_id
+    ? targetUser.employee_id
+    : (await get('SELECT id FROM employee WHERE user_id = ? AND deleted_at IS NULL', [targetUser.id]))?.id || null;
+  if (!emp) {
+    if (granter.role_id !== 'admin') {
+      throw forbidden('هذا الحساب غير مربوط بسجل موظف، فلا تُعرف إدارته ولا مَن يديره — اربطه أولاً من شاشة الفريق');
+    }
+    return;
+  }
+  if (!await ownsEmployee(granter, emp)) {
+    throw forbidden('هذا الشخص خارج من تديرهم — الصلاحية تُمنَح لمن تديره');
+  }
+}
+
+async function loadDept(departmentId) {
+  const d = await get(
+    'SELECT id, name_ar, sector_id FROM department WHERE id = ? AND deleted_at IS NULL', [departmentId]);
+  if (!d) throw badRequest('الإدارة المختارة غير موجودة — حدّث القائمة وحاول مجدداً');
+  return d;
+}
+
+async function loadTargetUser(userId) {
+  const u = await get(
+    'SELECT id, name_ar, username, role_id, employee_id, active FROM app_user WHERE id = ? AND deleted_at IS NULL',
+    [userId]);
+  if (!u) throw notFound('الحساب غير موجود');
+  return u;
+}
+
+/** قائمة صلاحيات شخصٍ واحد — للعرض في بطاقته على شاشة الفريق. */
+export async function listUserGrants(reader, userId) {
+  const u = await loadTargetUser(userId);
+  // من يرى الكشف يرى صلاحيات أهله: نفس بوابة الشاشة التي تُعرض فيها، لا بوابةٌ ثالثة.
+  if (reader.role_id !== 'admin' && reader.id !== u.id && !can(reader, 'read', 'employee')) {
+    throw forbidden('عرض صلاحيات شخصٍ آخر يتطلب صلاحية عرض الفريق');
+  }
+  const rows = await all(
+    `SELECT g.id, g.resource, g.action, g.department_id, g.note, g.created_at,
+            d.name_ar department_name, s.name_ar sector_name, u2.name_ar granted_by_name
+       FROM user_department_grant g
+       JOIN department d ON d.id = g.department_id AND d.deleted_at IS NULL
+       LEFT JOIN sector s ON s.id = d.sector_id AND s.deleted_at IS NULL
+       LEFT JOIN app_user u2 ON u2.id = g.granted_by
+      WHERE g.user_id = ? AND g.deleted_at IS NULL
+      ORDER BY g.created_at`, [userId]);
+  return rows.filter((r) => isGrantable(r.resource, r.action)).map((r) => ({
+    ...r,
+    label: GRANTABLE.find((g) => g.resource === r.resource && g.action === r.action)?.label || '',
+  }));
+}
+
+/**
+ * الإدارات التي يستطيع هذا المانح أن يمنحها لهذا المورد — تُبنى بنفس الحدّ الذي يفحصه المنح،
+ * فلا تُعرض في القائمة إدارةٌ سيُردّ عنها عند الحفظ. (قائمةٌ تعرض ما يُرفَض هي وعدٌ يُخلَف.)
+ */
+export async function grantableDepartments(granter, resource = 'opportunity', action = 'read') {
+  if (!isGrantable(resource, action)) return [];
+  if (SCOPE_RANK[effectiveScope(granter, action, resource)] < SCOPE_RANK.department) return [];
+  const rows = await all(`SELECT d.id, d.name_ar, d.sector_id, s.name_ar sector_name
+     FROM department d LEFT JOIN sector s ON s.id = d.sector_id AND s.deleted_at IS NULL
+    WHERE d.deleted_at IS NULL AND d.active = 1
+    ORDER BY s.sort_order, d.name_ar`);
+  return rows.filter((d) => can(granter, action, resource, { sector_id: d.sector_id, department_id: d.id }));
+}
+
+export async function grantDepartment(ctx, data = {}) {
+  const granter = ctx.user;
+  const targetUser = await loadTargetUser(data.user_id);
+  const dept = await loadDept(data.department_id);
+  const resource = String(data.resource || 'opportunity');
+  const action = String(data.action || 'read');
+  await assertMayGrant(granter, targetUser, dept, resource, action);
+
+  const note = String(data.note || '').trim().slice(0, 200) || null;
+  const now = nowIso();
+  const existing = await get(
+    `SELECT id FROM user_department_grant
+      WHERE user_id = ? AND resource = ? AND action = ? AND department_id = ? AND deleted_at IS NULL`,
+    [targetUser.id, resource, action, dept.id]);
+  // المنح مرتين لا يُنشئ صفّين: الصفّ الثاني يجعل الرفع يحتاج نقرتين ويُظهر السطر مكرّراً في
+  // بطاقةٍ يقرؤها المدير. والقائم يُحدَّث سببه فقط — فمن أعاد المنح أراد تصحيح السبب غالباً.
+  if (existing) {
+    if (note) await update('user_department_grant', existing.id, { note });
+    await audit(ctx, { action: 'update', resource: 'user_grant', resourceId: existing.id,
+      sectorId: dept.sector_id, detail: { user_id: targetUser.id, department_id: dept.id, resource, action } });
+    return { ok: true, id: existing.id, already: true };
+  }
+  const gid = id('ugr');
+  await tx(async () => {
+    await insert('user_department_grant', {
+      id: gid, user_id: targetUser.id, resource, action, department_id: dept.id,
+      note, granted_by: granter.id, created_at: now,
+    });
+  });
+  await audit(ctx, { action: 'create', resource: 'user_grant', resourceId: gid,
+    sectorId: dept.sector_id,
+    detail: { user_id: targetUser.id, department_id: dept.id, resource, action, note } });
+  return { ok: true, id: gid, already: false };
+}
+
+export async function revokeDepartmentGrant(ctx, grantId) {
+  const granter = ctx.user;
+  const row = await get(
+    'SELECT * FROM user_department_grant WHERE id = ? AND deleted_at IS NULL', [grantId]);
+  if (!row) throw notFound('الصلاحية غير موجودة أو رُفعت مسبقاً');
+  const targetUser = await loadTargetUser(row.user_id);
+  const dept = await loadDept(row.department_id);
+  // الرفع بنفس حدّ المنح: من يستطيع أن يمنح هذه الصلاحية يستطيع أن يرفعها. وأيُّ حدٍّ أضيق
+  // يُنتج صلاحيةً مُنحت ولا يقدر رافعها على رفعها — وهي أسوأ من ألّا تُمنَح.
+  await assertMayGrant(granter, targetUser, dept, row.resource, row.action);
+  await update('user_department_grant', grantId, { deleted_at: nowIso(), revoked_by: granter.id });
+  await audit(ctx, { action: 'delete', resource: 'user_grant', resourceId: grantId,
+    sectorId: dept.sector_id, detail: { user_id: row.user_id, department_id: row.department_id } });
+  return { ok: true };
+}

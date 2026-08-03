@@ -23,6 +23,10 @@ node --experimental-sqlite scripts/seed-roles.js --apply || echo "role accounts 
 # تصفير عدّاد المراحل مرةً واحدة (طابعه في schema_migration): الفرص المستوردة تحمل تواريخ
 # النظام القديم فتُقرأ كلها «متوقّفة» في اليوم الأول. يتخطّى نفسه بعد أول تشغيل.
 node --experimental-sqlite scripts/reset-stage-clock.js || echo "stage clock reset skipped"
+
+# أمرُ مالكٍ على البيانات الحيّة: صلاحية «فرص إدارة الابتكار» لسجى وهادي. مرةً واحدة بطابع في
+# schema_migration، ولا يخمّن: اسمٌ لا يُحسَم (صفر أو أكثر من واحد) يُترك ويُقال سببه في السجل.
+node --experimental-sqlite scripts/apply-owner-grants.js || echo "owner grants skipped"
 # idempotent legacy-history backfill (INSERT … ON CONFLICT DO NOTHING) — no-op without legacy data
 node --experimental-sqlite scripts/backfill-legacy-activity.js || echo "backfill skipped"
 # توحيد العملاء يُشغَّل مرة واحدة بعد النشر عبر `railway run` (لا في الإقلاع) كي لا يخاطر بتعليقه.

@@ -48,6 +48,26 @@ function grantsFor(roleId) {
 // قرار صريح من المالك: الراتب لا يراه إلا **مدير النظام** حتى يتم التكامل مع Odoo
 // ويصبح Odoo مصدر الحقيقة للتعويضات. التنفيذ بالحذف من المصفوفة: لا دور يملك منح
 // 'salary' بعد اليوم، ومنح مدير النظام الشامل (`*`/admin) وحده هو ما يفتحه له.
+// ── المنح الشخصية على إدارة ──────────────────────────────────────────────────
+// «ممكن أنا أحطّ على سجى إنها تشوف كل فرص إدارة الابتكار» — استثناءٌ يُكتب على الشخص لا ترقيةٌ
+// لدوره. ومصدره `user.departmentGrants`، يُحمَّل مع بناء سياق الطلب لا عند الإقلاع (منحٌ يبدأ
+// أثره بعد إعادة تشغيل الخادم لا يصلح لأن يُدار من شاشة) — انظر `modules/identity/grants.js`.
+//
+// وهي **إضافةٌ صرفة**: تُسأل بعد أن يفشل الدور، فلا تستطيع أن تسلب أحداً وصولاً يملكه. وأثرها
+// محصور بصفٍّ يحمل إدارةً بعينها: لا تُوسِّع قطاعاً، ولا تمرّ على هدفٍ بلا إدارة — فالمنح
+// «إدارة الابتكار» يعني الابتكار، لا «كل ما لا يذكر إدارته».
+function personalGrantReaches(user, action, resource, target) {
+  // التسكين على الفرصة يفتح صفّها لمن سُكِّن عليه — كما تفتح عضويةُ المشروع صفوفَه منذ اليوم
+  // الأول. وكان المسكَّن لا يقرأ الفرصة إطلاقاً ما لم يملكها: يُضمّ إلى فريقها ثم لا تُفتح له
+  // بالعنوان المباشر ولا تظهر في شاشة. والقراءة وحدها — التسكين ليس تفويضاً بالكتابة.
+  if (resource === 'opportunity' && action === 'read' && target && user.opportunityIds
+      && (target.id && user.opportunityIds.has(target.id))) return true;
+  const extra = user.departmentGrants;
+  if (!extra || !extra.length || !target || !target.department_id) return false;
+  return extra.some((g) => g.resource === resource && g.action === action
+    && g.department_id === target.department_id);
+}
+
 export function can(user, action, resource, target = null) {
   if (!user || !user.role_id) return false;
   const grants = grantsFor(user.role_id);
@@ -59,11 +79,17 @@ export function can(user, action, resource, target = null) {
   const matches = grants.filter(
     (g) => (g.resource === resource) && (g.action === action || g.action === 'admin')
   );
-  if (!matches.length) return false;
+  // بلا هدف، السؤال وجوديّ: «هل يملك هذا المنح أصلاً» — ومن مُنح إدارةً بعينها يملكه.
+  if (!matches.length) {
+    return !target
+      ? !!(user.departmentGrants || []).some((g) => g.resource === resource && g.action === action)
+      : personalGrantReaches(user, action, resource, target);
+  }
   if (!target) return true; // permission exists; row-level check happens when a target is supplied
 
   // scope check: does ANY matching grant's scope reach this target?
-  return matches.some((g) => scopeReaches(user, g.scope, target));
+  return matches.some((g) => scopeReaches(user, g.scope, target))
+    || personalGrantReaches(user, action, resource, target);
 }
 
 export function scopeReaches(user, scope, target) {
