@@ -6,7 +6,7 @@ import { icon } from '../icons.js';
 import { fmtSar, toSar } from '../../core/util/ids.js';
 import { get, all } from '../../core/db/index.js';
 import { DELIVERY_SECTOR_SQL } from '../../core/org/kind.js';
-import { opportunityDetail, ROT_THRESHOLDS } from '../../modules/crm/opportunities.js';
+import { opportunityDetail, ROT_THRESHOLDS, opportunityDepartments } from '../../modules/crm/opportunities.js';
 import { TEAM_ROLE_LABELS } from '../../modules/crm/oppteam.js';
 import { esc, pct } from './_shared.js';
 import {
@@ -36,6 +36,10 @@ export async function opportunityDetailPage(user, oppId, opts = {}) {
   const stById = Object.fromEntries(d.stages.map((s) => [s.id, s]));
   const stName = (sid) => (stById[sid] || {}).name_ar || sid || '—';
   const isOpen = !st.is_won && !st.is_lost;
+  // الإدارات المشاركة — تُقرأ دائماً لا للتحرير وحده: من يقرأ الفرصة يحتاج أن يعرف من يعمل
+  // عليها. وتُقرأ **قبل الترويسة** لأن الترويسة تعرضها — والتصريح بعد الاستعمال يسقط الصفحة.
+  const partners = await opportunityDepartments(o.id);
+  const partnerIds = new Set(partners.map((x) => x.department_id));
   const th = ROT_THRESHOLDS[o.stage_id];
   const age = d.stage_age_days;
 
@@ -59,6 +63,9 @@ export async function opportunityDetailPage(user, oppId, opts = {}) {
       <div style="margin-top:.7rem;display:flex;gap:1.1rem;flex-wrap:wrap;font-size:var(--fs-body);color:var(--muted)">
         <span style="display:inline-flex;align-items:center;gap:.3rem">${icon('building')}${o.client_id ? `<a href="/app/client/${o.client_id}" style="color:var(--brand);font-weight:700">${esc(d.client || 'العميل')}</a>` : 'بدون عميل'}</span>
         ${sectorName ? `<span style="display:inline-flex;align-items:center;gap:.3rem">${icon('sector')}${esc(sectorName)}${d.department ? ` <span style="color:var(--faint)">›</span> ${esc(d.department)}` : ''}</span>` : ''}
+        ${partners.length ? `<span style="display:inline-flex;align-items:center;gap:.3rem;flex-wrap:wrap"
+          title="إدارات تعمل على هذه الفرصة معكم — والقيمة محسوبة على الإدارة المسؤولة وحدها">
+          ${icon('users')}معها: ${partners.map((x) => `<span class="pill" style="background:#eef2ff;color:#4338ca">${esc(x.name_ar)}</span>`).join('')}</span>` : ''}
         <span style="display:inline-flex;align-items:center;gap:.3rem">${icon('flag')}المسؤول: <b style="color:var(--ink2)">${esc(d.owner || '—')}</b></span>
       </div>
     </div>
@@ -138,7 +145,16 @@ export async function opportunityDetailPage(user, oppId, opts = {}) {
           ${sectorOptions.map((s) => opt(s.id, s.name_ar, o.sector_id === s.id)).join('')}</select>`)}
         ${fld('الإدارة', `<select id="oc-dept" class="input" style="width:100%;font-size:12.5px">
           ${opt('', 'بلا إدارة', !o.department_id)}${deptOptions.map((x) => opt(x.id, x.name_ar, o.department_id === x.id, ` data-sector="${esc(x.sector_id || '')}"`)).join('')}</select>`,
-    'تتغيّر مع القطاع')}
+    'المسؤولة — عليها تُحسب')}
+        ${/* «ممكن الفرصة تتسكّن على أكثر من إدارة… خلّي مكان التسجيل ممكن أحطّ أكثر من إدارة
+              أو قطاع يشتغل على الفرصة» — والمسؤولة تبقى واحدة (المال لا يتجزأ فلا تُحسب الفرصة
+              مرتين)، وهؤلاء من يعملون عليها ويجدونها في قوائم إداراتهم. والقطاع يأتي معهم:
+              الإدارة تسكن قطاعها، فاختيارُ إدارةٍ من قطاعٍ آخر يُشرك القطاعين معاً. */ ''}
+        ${fld('إدارات مشاركة', `<select id="oc-partners" class="input" multiple size="4"
+          style="width:100%;font-size:12.5px;min-height:5.4rem">
+          ${deptOptions.filter((x) => x.id !== o.department_id)
+    .map((x) => opt(x.id, x.name_ar, partnerIds.has(x.id))).join('')}</select>`,
+    'اختر أكثر من واحدة بالضغط مع Ctrl — تراها إداراتهم في قوائمها', 2)}
         ${fld('المسؤول', `<select id="oc-owner" class="input" style="width:100%;font-size:12.5px">
           ${opt('', 'بلا مسؤول', !o.owner_user_id)}${userOptions.map((u) => opt(u.id, u.name, o.owner_user_id === u.id)).join('')}</select>`)}
         ${fld('المبلغ بالريال', `<div style="display:flex;gap:.3rem;flex-wrap:wrap">

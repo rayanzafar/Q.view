@@ -132,3 +132,28 @@ test('والمكسوبة لم تُمَسّ ساعتها — تغييرٌ بلا 
   const won = await db.get('SELECT stage_changed_at FROM opportunity WHERE id = ?', ['O_WON']);
   assert.equal(won.stage_changed_at, OLD, 'مُسَّت ساعة فرصةٍ محسومة');
 });
+
+// «المفروض ما يطلع «لا أيام» — لازم بعد ٢٠ يوم من الفرصة يذكر كم مضى عنها» — بلسان المالك.
+// وبعد تصفير العدّاد صارت كل بطاقة تحمل «لا أيام»: شارةٌ على كل شيء لا تميّز شيئاً.
+test('شارة العمر لا تظهر قبل عشرين يوماً، وتظهر بعدها قائلةً كم مضى', async () => {
+  const now = new Date();
+  const daysAgo = (n) => new Date(now.getTime() - n * 86400000).toISOString();
+  await db.update('opportunity', 'O_RFI', { stage_changed_at: daysAgo(3) });     // فتيّة
+  await db.update('opportunity', 'O_RFP1', { stage_changed_at: daysAgo(25) });   // مضى عليها
+  const html = await P.opportunitiesPage(ADMIN, {});
+  assert.ok(html.includes('مضى'), 'لا شارة عمرٍ على فرصةٍ مضى عليها خمسة وعشرون يوماً');
+  assert.ok(!html.includes('لا أيام'), '«لا أيام» ما زالت تُطبع');
+});
+
+test('لكنها تظهر قبل العشرين إن كانت متوقفة فعلاً — لا يُطفأ تنبيهٌ صحيح', async () => {
+  const now = new Date();
+  // «ترشيح» تتوقف بعد أربعة عشر يوماً — فخمسة عشر متوقّفة وإن لم تبلغ العشرين.
+  await db.update('opportunity', 'O_NONE', {
+    stage_id: 'LEAD', stage_changed_at: new Date(now.getTime() - 16 * 86400000).toISOString() });
+  const rows = await opps.listOpportunities(ADMIN, {}, { today: TODAY });
+  const rotting = rows.find((o) => o.id === 'O_NONE');
+  assert.equal(rotting.rot, true, 'العيّنة ليست متوقّفة — الفحص لا يقيس شيئاً');
+  const html = await P.opportunitiesPage(ADMIN, {});
+  assert.ok(html.includes('مضى 16 يوماً') || html.includes('مضى ١٦ يوماً') || html.includes('16'),
+    'أُخفيت شارة فرصةٍ متوقّفة لأنها دون العشرين');
+});

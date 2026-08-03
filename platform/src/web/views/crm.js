@@ -52,16 +52,28 @@ function stageColor(s) {
 // خلفية خفيفة من لون المرحلة (شفافية بصيغة hex من رقمين: 1f≈12% · 24≈14%).
 const tint = (color, aa) => `${color}${aa || '1f'}`;
 
-// شارة عمر المرحلة: تتدرج (هادئ → كهرماني > نصف العتبة → أحمر > العتبة).
-// compact: نسخة البطاقة النحيفة — بلا أيقونة وبحشوة أصغر كي يتسع السطر الثاني كاملاً.
+// ── شارة عمر المرحلة: لا تظهر قبل أن تعني شيئاً ──────────────────────────────
+// «المفروض ما يطلع «لا أيام» — لازم بعد ٢٠ يوم من الفرصة يذكر كم مضى عنها» — بلسان المالك.
+// وبعد تصفير العدّاد صارت كل بطاقة تحمل «لا أيام»: شارةٌ على كل شيء لا تميّز شيئاً، وتزاحم
+// ما يستحق النظر في سطرٍ ضيّق أصلاً.
+//
+// فالشارة تظهر في حالتين لا غير:
+//   • مضى عليها **عشرون يوماً فأكثر** — عتبة المالك.
+//   • أو تجاوزت عتبة توقّف مرحلتها ولو كانت أقلّ من ذلك (ترشيح يتوقّف عند ١٤) — وإخفاؤها
+//     حينئذٍ يطفئ علامةً حمراء صحيحة، وهو أسوأ من إظهار «لا أيام».
+// وما دون ذلك: لا شارة أصلاً — البطاقة الفتيّة تُقرأ من خلوّها.
+export const AGE_VISIBLE_DAYS = 20;
 function ageChip(o, compact = false) {
   const n = o.stage_age_days;
   if (n == null) return '';
+  const rotting = ROT_THRESHOLDS[o.stage_id] && n > ROT_THRESHOLDS[o.stage_id];
+  if (n < AGE_VISIBLE_DAYS && !rotting) return '';
   const th = ROT_THRESHOLDS[o.stage_id];
   const tone = th && n > th ? 'red' : th && n > th / 2 ? 'amber' : 'slate';
   const c = { red: 'background:#fee2e2;color:#b91c1c', amber: 'background:#fef3c7;color:#92400e', slate: 'background:#f1f5f9;color:#475569' }[tone];
   const title = th && n > th ? STALLED_HINT : G.stageAge(n);
-  return `<span class="pill tnum" style="${c}${compact ? ';padding:.12rem .38rem' : ''}" title="${esc(title)}">${compact ? '' : icon('clock') + ' '}${dayWord(n)}</span>`;
+  // «مضى» تُقال صراحةً: «٢٥ يوماً» وحدها تُقرأ عمراً أو مهلةً أو موعداً — والفرق قرار.
+  return `<span class="pill tnum" style="${c}${compact ? ';padding:.12rem .38rem' : ''}" title="${esc(title)}">${compact ? '' : icon('clock') + ' '}مضى ${dayWord(n)}</span>`;
 }
 // كهرماني لا أحمر: «بلا خطوة» تنبيه انضباط واسع الانتشار، والأحمر محجوز للمتوقفة فعلاً
 const naChip = (compact = false) => `<span class="pill" style="background:#fef3c7;color:#92400e${compact ? ';padding:.12rem .38rem' : ''}" title="كل فرصة مفتوحة تحتاج خطوة تالية مؤرّخة — أضفها من صفحة الفرصة">${compact ? '' : '● '}${G.noNextAction}</span>`;

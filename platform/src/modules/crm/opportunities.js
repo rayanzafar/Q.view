@@ -60,12 +60,55 @@ export async function listOpportunities(user, filters = {}, opts = {}) {
   // و«بلا إدارة» قيمةٌ مقصودة لا غياب مُرشِّح: الفرص غير المُسنَدة هي بالضبط ما يجب أن يُرى
   // ليُسنَد. ولو كان الترشيح بالإدارة وحده لبقيت تلك الفرص خارج كل عدسة — فلا تُنسب لأحد ولا
   // يعرف أحد بوجودها، وتظهر آخر السنة فرقاً بين مجموع الإدارات ومجموع القطاع.
-  if (filters.department === NO_DEPARTMENT) where.push('department_id IS NULL');
-  else if (filters.department) { where.push('department_id = ?'); params.push(filters.department); }
+  // «بلا إدارة» تعني بلا إدارةٍ مسؤولة **ولا مشاركة**: فرصةٌ تعمل عليها إدارةٌ مشاركة ليست
+  // غير مُسنَدة، وإدراجها في قائمة «ما يحتاج إسناداً» يُرسل المدير إلى صفٍّ مُسنَدٍ فعلاً.
+  if (filters.department === NO_DEPARTMENT) {
+    where.push(`department_id IS NULL AND NOT EXISTS (
+      SELECT 1 FROM opportunity_department od WHERE od.opportunity_id = opportunity.id)`);
+  } else if (filters.department) {
+    // والترشيح بإدارة يشمل المسؤولة **والمشاركة**: من يعمل على الفرصة يجدها في قائمة إدارته،
+    // وإلا لصار «فرص إدارتي» يُخفي ما تعمل عليه فعلاً — وهو أصل الطلب.
+    where.push(`(department_id = ? OR EXISTS (
+      SELECT 1 FROM opportunity_department od
+       WHERE od.opportunity_id = opportunity.id AND od.department_id = ?))`);
+    params.push(filters.department, filters.department);
+  }
   const rows = await all(
     `SELECT * FROM opportunity WHERE ${where.join(' AND ')} ORDER BY value_halalas DESC LIMIT 500`, params);
   const today = String(opts.today || nowIso().slice(0, 10)).slice(0, 10);
   return redactList(user, 'opportunity', rows).map((r) => withDiscipline(r, today));
+}
+
+// ── الإدارات المشاركة ────────────────────────────────────────────────────────
+// «ممكن الفرصة تتسكّن على أكثر من إدارة» — والمسؤولة تبقى واحدة (عليها يُحسب المال)، وهؤلاء
+// من يعملون عليها ويرونها في قوائمهم.
+export async function opportunityDepartments(oppId) {
+  return await all(`SELECT od.department_id, d.name_ar, d.sector_id, s.name_ar sector_name
+     FROM opportunity_department od
+     JOIN department d ON d.id = od.department_id AND d.deleted_at IS NULL
+     LEFT JOIN sector s ON s.id = d.sector_id AND s.deleted_at IS NULL
+    WHERE od.opportunity_id = ?
+    ORDER BY d.name_ar`, [oppId]);
+}
+
+// تُكتب كمجموعة: ما وصل هو الحقيقة الجديدة كاملةً — فحذفُ إدارةٍ من الشاشة يحذفها هنا، ولا
+// يحتاج المستخدم إلى زرّ حذفٍ ثانٍ لكل واحدة. والمسؤولة تُستبعَد من المشاركين: صفٌّ يقول
+// «هذه الإدارة مشاركة» وهي المسؤولة يجعلها تُعدّ مرتين في كل قائمة.
+async function setOpportunityDepartments(ctx, oppId, ids, primaryId) {
+  const wanted = [...new Set((Array.isArray(ids) ? ids : [])
+    .map((x) => String(x || '').trim()).filter(Boolean))]
+    .filter((x) => x !== primaryId);
+  const valid = wanted.length
+    ? (await all(`SELECT id FROM department WHERE deleted_at IS NULL AND id IN (${wanted.map(() => '?').join(',')})`, wanted))
+      .map((r) => r.id)
+    : [];
+  const now = nowIso();
+  await run('DELETE FROM opportunity_department WHERE opportunity_id = ?', [oppId]);
+  for (const d of valid) {
+    await insert('opportunity_department',
+      { opportunity_id: oppId, department_id: d, created_at: now, created_by: ctx.user.id });
+  }
+  return valid;
 }
 
 export async function getOpportunity(user, oppId) {
@@ -105,6 +148,9 @@ export async function createOpportunity(ctx, data) {
     ...commercialPatch(data, {}),
     created_at: now, created_by: user.id,
   });
+  if ('partner_department_ids' in data) {
+    await setOpportunityDepartments(ctx, oid, data.partner_department_ids, departmentId);
+  }
   await audit(ctx, { action: 'create', resource: 'opportunity', resourceId: oid, sectorId });
   return await getOpportunity(user, oid);
 }
@@ -218,6 +264,12 @@ export async function updateOpportunity(ctx, oppId, data) {
   }
   patch.updated_at = nowIso(); patch.updated_by = user.id;
   await update('opportunity', oppId, patch);
+  // الإدارات المشاركة بعد الكتابة: المسؤولة قد تكون تغيّرت في نفس الطلب، والمشاركون يُقاسون
+  // عليها (فلا تُسجَّل المسؤولة مشاركةً). ولا تُمَسّ إن لم تُرسَل — كبقية الحقول.
+  if ('partner_department_ids' in data) {
+    await setOpportunityDepartments(ctx, oppId, data.partner_department_ids,
+      'department_id' in patch ? patch.department_id : row.department_id);
+  }
   await audit(ctx, { action: 'update', resource: 'opportunity', resourceId: oppId, sectorId: patch.sector_id || row.sector_id, detail: patch });
   // ── الفرصة قد تخرج من نطاق ناقلها بالنقل نفسه ────────────────────────────────
   // «أنا كمدير إدارة مو عارف أنقل الفرصة من إدارة إلى إدارة» — وقد كان النقل **ينجح ويُكتب**

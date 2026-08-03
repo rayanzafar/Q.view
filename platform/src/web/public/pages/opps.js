@@ -233,7 +233,16 @@
       // الفراغ يُرسَل نصّاً فارغاً لا يُحذف من الحمولة: حذفُه يجعل «مسحتُ الموقع» و«لم أمسّه»
       // طلباً واحداً، فلا يُمحى ما كُتب خطأً أبداً. والخادم يترجم الفراغ إلى «لم يُحدَّد».
       delivery_location: ctlVal('oc-location') || '',
+      // الإدارات المشاركة تُرسَل **كمجموعة كاملة** لا كإضافةٍ واحدة: ما في الشاشة هو الحقيقة
+      // الجديدة، فرفعُ إدارةٍ يكون بإلغاء تحديدها لا بزرّ حذفٍ ثانٍ. ومصفوفةٌ فارغة تعني
+      // «لا مشارك» — ولذلك تُرسَل دائماً ولا تُحذف من الحمولة عند الفراغ.
+      partner_department_ids: (function () {
+        var el = document.getElementById('oc-partners');
+        if (!el) return undefined;
+        return Array.prototype.slice.call(el.selectedOptions || []).map(function (o) { return o.value; });
+      })(),
     };
+    if (body.partner_department_ids === undefined) delete body.partner_department_ids;
     if (!body.title_ar) { toast('اسم الفرصة لا يكون فارغاً', true); return; }
     // المبلغ يُكتب كما اقتبسته الجهة — شاملاً الضريبة أو بدونها — والخادم يحوّله قبل الحفظ.
     // الحساب هناك لا هنا: المخزَّن يبقى إجمالياً بقاعدةٍ واحدة، فلا يصير للمبلغ تفسيران.
