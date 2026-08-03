@@ -905,6 +905,15 @@ export async function tasksPage(user, opts = {}) {
     const initial = esc(String(p.name || '؟').trim().charAt(0));
     // القصّ بالحروف كان يبتر الاسم في منتصف كلمته بلا علامة («مشروع المدن الذكية (مص») فيُقرأ
     // عطلاً لا اختصاراً. القصّ الآن بالعرض مع نقاط الحذف، والاسم كاملاً في التلميح.
+    // «لما يطلع مثلاً سجى عندها مهمة، أنا كمدير مو عارف ولا باين» — والمهام كانت الشيء الوحيد
+    // على هذه البطاقة يُعرض رقماً مجرَّداً بينما المشاريع والفرص بأسمائها. فصارت بأسمائها معها،
+    // والمتأخّرة والمعطَّلة معلَّمتان: المدير يقرأ «على ماذا يعمل ومَن يحتاجه» في سطرٍ واحد.
+    const taskLine = p.tasks.list && p.tasks.list.length
+      ? `<div class="wp-line"><span class="wp-k">المهام</span><span class="wp-v">${
+        p.tasks.list.slice(0, 3).map((x) => `<a class="wp-tag${x.late ? ' late' : x.blocked ? ' blk' : ''}"
+          href="/app/tasks?who=team&q=${encodeURIComponent(x.title || '')}" title="${esc(x.title || '')}${x.late ? ' — متأخرة' : x.blocked ? ' — مُعطَّلة' : ''}">${esc(x.title || 'مهمة بلا عنوان')}</a>`).join('')
+      }${p.tasks.open > 3 ? `<span class="wp-more tnum">+${p.tasks.open - 3}</span>` : ''}</span></div>`
+      : '';
     const projLine = p.projects.length
       ? `<div class="wp-line"><span class="wp-k">المشاريع</span><span class="wp-v">${p.projects.slice(0, 3).map((x) => `<a class="wp-tag" href="/app/project/${encodeURIComponent(x.id)}" title="${esc(x.name)}">${esc(x.name)}</a>`).join('')}${p.projects.length > 3 ? `<span class="wp-more tnum">+${p.projects.length - 3}</span>` : ''}</span></div>`
       : '';
@@ -926,7 +935,7 @@ export async function tasksPage(user, opts = {}) {
         <a class="wp-count tnum${t.open ? '' : ' zero'}" href="${qp({ assignee: p.userId })}" title="عرض مهامه في هذه اللوحة">${t.open}</a>
       </div>
       ${chips ? `<div class="wp-chips">${chips}</div>` : ''}
-      ${projLine}${oppLine}
+      ${taskLine}${projLine}${oppLine}
       ${p.idle ? '<div class="wp-idle">بلا عمل مسجَّل</div>' : ''}
     </div>`;
   };
@@ -1263,6 +1272,9 @@ export async function tasksPage(user, opts = {}) {
       padding:.06rem .38rem;text-decoration:none;min-width:0;max-width:100%;
       overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     .wp-tag:hover{background:#eef2fb;color:var(--brand)}
+    /* المتأخّرة والمعطَّلة تُقرآن من لون البلاطة نفسها — لا شارة ثانية تُطيل السطر */
+    .wp-tag.late{background:#fef2f2;color:#b91c1c;font-weight:700}
+    .wp-tag.blk{background:#fffbeb;color:#b45309;font-weight:700}
     .wp-more{color:var(--faint)}
     .wp-num{font-weight:800;color:var(--ink2)}
     /* القيمة أثرٌ لا عنوان: تبقى مقروءةً لمن يحتاجها ولا تسبق اسم الفرصة إلى العين. */

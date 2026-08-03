@@ -27,6 +27,9 @@ node --experimental-sqlite scripts/reset-stage-clock.js || echo "stage clock res
 # أمرُ مالكٍ على البيانات الحيّة: صلاحية «فرص إدارة الابتكار» لسجى وهادي. مرةً واحدة بطابع في
 # schema_migration، ولا يخمّن: اسمٌ لا يُحسَم (صفر أو أكثر من واحد) يُترك ويُقال سببه في السجل.
 node --experimental-sqlite scripts/apply-owner-grants.js || echo "owner grants skipped"
+# نسب الإشغال من كشف توزيع مايو ٢٠٢٦ (تسكين المشاريع وحده — لا راتب ولا سطر «قطاع …»).
+# مرةً واحدة بطابع في schema_migration، ولا يخمّن: ما لا يُحسَم يُترك ويُطبَع سببه في السجل.
+node --experimental-sqlite scripts/apply-utilization-may2026.js || echo "utilization skipped"
 # idempotent legacy-history backfill (INSERT … ON CONFLICT DO NOTHING) — no-op without legacy data
 node --experimental-sqlite scripts/backfill-legacy-activity.js || echo "backfill skipped"
 # توحيد العملاء يُشغَّل مرة واحدة بعد النشر عبر `railway run` (لا في الإقلاع) كي لا يخاطر بتعليقه.

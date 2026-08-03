@@ -506,6 +506,30 @@ export async function teamWorkload(user, filters = {}) {
        AND t.assignee_user_id IN (${marks(userIds.length)})
      GROUP BY t.assignee_user_id`, [today, ...userIds]);
 
+  // ── وأسماء المهام، لا عددها وحده ────────────────────────────────────────────
+  // «في مهامي لما يطلع مثلاً سجى عندها مهمة، أنا كمدير مو عارف ولا باين» — بلسان المالك.
+  // وكانت المهام **الشيء الوحيد** على بطاقة الشخص يُعرض رقماً مجرَّداً: المشاريع بأسمائها،
+  // والفرص بأسمائها (بطلب المالك نفسه قبل أسابيع)، والمهام «١». فيقرأ المدير رقماً لا يقول
+  // على ماذا يعمل الرجل ولا ما الذي يعطّله، ولا سبيل إلى معرفته إلا بترك اللوحة كلها.
+  // والترتيب بالإلحاح لا بالأبجدية: ما يُقصّ حين لا تسع البطاقة هو الأقلّ إلحاحاً لا الأهمّ.
+  const taskNameRows = await all(`SELECT t.assignee_user_id uid, t.id, t.title, t.due_date, t.status,
+       t.blocked_reason, t.next_step
+     FROM task t
+     WHERE t.deleted_at IS NULL AND t.status NOT IN ('DONE','CANCELLED')
+       AND ${notPersonalSql('t.')}
+       AND t.assignee_user_id IN (${marks(userIds.length)})
+     ORDER BY ${prioritySql('t')}, t.due_date
+     LIMIT 400`, userIds);
+  const byUidTN = new Map();
+  for (const r of taskNameRows) {
+    if (!byUidTN.has(r.uid)) byUidTN.set(r.uid, []);
+    byUidTN.get(r.uid).push({
+      id: r.id, title: r.title,
+      late: !!(r.due_date && String(r.due_date).slice(0, 10) < today),
+      blocked: r.status === 'BLOCKED' || !!String(r.blocked_reason || '').trim(),
+    });
+  }
+
   // الفرص المفتوحة التي يملكها كل شخص — المرحلة تحدّد «مفتوحة» (لا فوز ولا خسارة).
   const oppRows = await all(`SELECT o.owner_user_id uid, COUNT(*) total,
        SUM(COALESCE(o.value_halalas,0)) value_halalas
@@ -562,6 +586,7 @@ export async function teamWorkload(user, filters = {}) {
       tasks: {
         open: Number(t.total || 0), overdue: Number(t.overdue || 0),
         blocked: Number(t.blocked || 0), noStep: Number(t.no_step || 0),
+        list: byUidTN.get(p.id) || [],
       },
       opportunities: {
         open: Number(o.total || 0), valueHalalas: Number(o.value_halalas || 0),
