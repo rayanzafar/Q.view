@@ -2464,6 +2464,12 @@ export async function personPage(user, personId) {
     <div class="pp-row-h">
       <span class="pp-t">${esc(o.title_ar)}</span>
       ${o.stage_name ? `<span class="pill">${esc(o.stage_name)}</span>` : ''}
+      ${/* صلته بالفرصة تُقال لا تُخمَّن: «صاحبها» غير «مسكَّن عليها» في قراءة المدير — الأول
+            يُسأل عن حالها، والثاني يُسأل عن جزئه منها. ولا تُعلَّم الملكية بشارة: هي الأصل. */ ''}
+      ${o.relation === 'member' ? `<span class="pill" style="background:#eef2ff;color:#4338ca"
+        title="مسكَّن على هذه الفرصة${o.role_in_group === 'lead' ? ' قائداً لفريقها' : ''} — وصاحبها غيره">مسكَّن${o.role_in_group === 'lead' ? ' · قائد' : ''}</span>` : ''}
+      ${o.pending ? `<span class="pill" style="background:#fef3c7;color:#b45309"
+        title="طُلب تأكيد مديره أنه يعمل على هذه الفرصة — لا يُحتسب في عدّ فرصه قبل التأكيد">بانتظار تأكيد مديره</span>` : ''}
     </div>
     <div class="pp-row-m">
       <span class="pp-tag mute">${esc(o.client_name || 'بدون جهة')}</span>

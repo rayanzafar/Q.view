@@ -703,14 +703,49 @@ export async function personDossier(reader, personUserId) {
      LIMIT 200`, [uid]);
 
   // الفرص بأسمائها لا بعددها: «٣ فرص» لا تقول للمدير أيّها متوقفة ولا أيّها الأكبر.
-  const opportunities = await all(`SELECT o.id, o.title_ar, o.value_halalas, o.next_action,
+  //
+  // ── ملكيةً **وتسكيناً** ──────────────────────────────────────────────────────
+  // كان الشرط `owner_user_id` وحده، فمن سُكِّن على فرصةٍ يقودها غيره يُقرأ في ملفه «لا فرص».
+  // وهذا يُبطل نصف ما بُني قبله بأسبوع: «ممكن في فرصة ناس من تطوير الأعمال وناس من إدارات
+  // مختلفة تشتغل عليها» — فصار التسكين عبر الإدارات ممكناً، ثم لا يظهر في الشاشة التي بُنيت
+  // للسؤال «هذا الشخص شغال على ماذا». والفجوة تتّسع مع كل تسكين جديد، وهي أشدّ ما تُخفيه على
+  // من يعمل على فرص غيره لا على فرصه — أي على فريق التسليم بالضبط.
+  //
+  // والصلة تُقال لا تُخمَّن: «صاحبها» غير «مسكَّن عليها» في قراءة المدير، والفرقُ قرارٌ لا زينة.
+  // والتسكين غير المؤكَّد (`PENDING`) يظهر **معلَّماً** ولا يُحتسب في العدّ: إخفاؤه يجعل صاحبه
+  // يسأل «أين الفرصة التي أُضفتُ إليها»، وحسابُه يجعل الرقم يعد عملاً لم يؤكّده مديره بعد.
+  const oppParams = [uid];
+  let mineClause = 'o.owner_user_id = ?';
+  if (p.employee_id) {
+    mineClause += ` OR EXISTS (SELECT 1 FROM membership m
+       WHERE m.group_kind = 'opportunity' AND m.group_id = o.id
+         AND m.employee_id = ? AND m.deleted_at IS NULL)`;
+    oppParams.push(p.employee_id);
+  }
+  const oppRows = await all(`SELECT o.id, o.title_ar, o.value_halalas, o.next_action, o.owner_user_id,
        st.name_ar stage_name, st.is_won, st.is_lost, c.name_ar client_name
      FROM opportunity o
      LEFT JOIN stage st ON st.id = o.stage_id
      LEFT JOIN client c ON c.id = o.client_id AND c.deleted_at IS NULL
-     WHERE o.deleted_at IS NULL AND o.owner_user_id = ?
+     WHERE o.deleted_at IS NULL AND (${mineClause})
      ORDER BY COALESCE(st.is_won,0) + COALESCE(st.is_lost,0), o.value_halalas DESC
-     LIMIT 60`, [uid]);
+     LIMIT 60`, oppParams);
+  // حالة التسكين تُقرأ مرةً واحدة بمفتاح الموظف ثم تُوزَّع — لا استعلام لكل صف.
+  const memberOf = new Map();
+  if (p.employee_id) {
+    for (const m of await all(`SELECT group_id, COALESCE(status,'ACTIVE') status, role_in_group
+         FROM membership
+        WHERE group_kind = 'opportunity' AND employee_id = ? AND deleted_at IS NULL`, [p.employee_id])) {
+      memberOf.set(m.group_id, m);
+    }
+  }
+  const opportunities = oppRows.map((o) => {
+    const m = memberOf.get(o.id) || null;
+    return { ...o,
+      relation: o.owner_user_id === uid ? 'owner' : 'member',
+      role_in_group: m?.role_in_group || null,
+      pending: !!m && m.status === 'PENDING' && o.owner_user_id !== uid };
+  });
 
   const projects = p.employee_id ? await all(`SELECT p3.id, p3.name_ar, p3.status, a.type, a.year
      FROM allocation a
@@ -727,7 +762,9 @@ export async function personDossier(reader, personUserId) {
     blocked: open.filter((t) => t.status === 'BLOCKED' || String(t.blocked_reason || '').trim()).length,
     noStep: open.filter((t) => !String(t.next_step || '').trim()).length,
     done: tasks.length - open.length,
-    openOpportunities: opportunities.filter((o) => !o.is_won && !o.is_lost).length,
+    // العدّ للمؤكَّد وحده — تسكينٌ ينتظر تأكيد المدير ليس عملاً قائماً بعد، وإدراجه في الرقم
+    // يجعل المدير يقرأ حِملاً لم يوافق عليه. والصفّ نفسه معروضٌ في القائمة معلَّماً.
+    openOpportunities: opportunities.filter((o) => !o.is_won && !o.is_lost && !o.pending).length,
     projects: projects.length,
   };
   return {
