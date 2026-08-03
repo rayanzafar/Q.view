@@ -22,7 +22,7 @@
 import { all, get, run, insert } from '../src/core/db/index.js';
 import { id, nowIso } from '../src/core/util/ids.js';
 
-const FLAG = 'op:utilization-may-2026-v2';
+const FLAG = 'op:utilization-may-2026-v3';
 const YEAR = 2026;
 
 // تطبيع عربي: الهمزات والتاء المربوطة والألف المقصورة والتشكيل والمسافات — فـ«الاركاب» و«الإركاب»
@@ -93,13 +93,41 @@ function matchPeople(staff, wanted) {
   });
 }
 
-// مطابقة المشروع: احتواءُ الاسم المطبَّع في أيٍّ من الاتجاهين، ومطابقةٌ واحدة فقط.
-function matchProjects(projects, wanted) {
-  const w = norm(wanted);
-  const hits = projects.filter((p) => { const n = norm(p.name_ar); return n.includes(w) || w.includes(n); });
-  if (hits.length <= 1) return hits;
-  const exact = hits.filter((p) => norm(p.name_ar) === w);
-  return exact.length === 1 ? exact : hits;
+// ── مطابقة المشروع: تقريبٌ محسوب لا احتواءُ نصّ ───────────────────────────────
+// «قرّب الأسماء وشوف المناسب، لأن هالأسماء عندنا غير متطابقة في الشركة» — بلسان المالك.
+// والاحتواء النصّي كان يسقط على أول اختلاف في الصياغة: «كاميرات المشاعر المقدسة» في كشف
+// الرواتب ليست جزءاً من «منظومة رصد دخول الحافلات للمشاعر المقدسة» ولا العكس، وهما مشروع واحد.
+//
+// فالمقارنة صارت **بالكلمات المشتركة** بعد ثلاث خطوات: تطبيع، ونزع أداة التعريف ولواصقها
+// (فـ«للمشاعر» و«المشاعر» و«مشاعر» كلمةٌ واحدة)، وإسقاط الكلمات العامّة التي تشترك فيها كل
+// المشاريع («مشروع»، «خدمات»، «عقد»…) — وإبقاؤها يجعل كل اسمين يتشابهان بلا معنى.
+//
+// والحسم يبقى مشروطاً: **أعلى نتيجة وحيدة** بكلمتين مشتركتين على الأقل. وتعادلٌ في القمة ⟵
+// لا حسم ويُقال المرشَّحون. فالتقريب يوسّع ما يُطابَق ولا يُلغي قاعدة «ما لا يُحسَم يُترك».
+const PROJECT_STOP = new Set(['مشروع', 'مشاريع', 'عقد', 'عقود', 'خدمات', 'خدمه', 'دعم', 'تنفيذ',
+  'اعمال', 'ادارة', 'اداره', 'تطوير', 'برنامج', 'منصه', 'منظومه', 'نظام', 'مركز', 'هيئه', 'وزاره']);
+const stripAl = (w) => w.replace(/^(وال|فال|بال|كال|لل|ال)/, '');
+export function projectWords(s) {
+  return [...new Set(norm(s).replace(/[—–\-_,()،/]/g, ' ').split(' ')
+    .map(stripAl).filter((w) => w.length > 2 && !PROJECT_STOP.has(w)))];
+}
+
+// أسماءٌ حسمها المالك بنفسه حين اختلفت التسمية اختلافاً لا يقرّبه تشابهُ كلمات.
+export const PROJECT_ALIASES = { 'التخطيط والاقتصاد': 'منصة البيانات السعودية' };
+
+function matchProjects(projects, wantedRaw) {
+  const wanted = PROJECT_ALIASES[wantedRaw] || wantedRaw;
+  const exact = projects.filter((p) => norm(p.name_ar) === norm(wanted));
+  if (exact.length === 1) return exact;
+  const w = projectWords(wanted);
+  if (!w.length) return [];
+  const scored = projects
+    .map((p) => ({ p, score: projectWords(p.name_ar).filter((x) => w.includes(x)).length }))
+    .filter((x) => x.score >= 2);
+  if (!scored.length) return [];
+  const top = Math.max(...scored.map((x) => x.score));
+  const best = scored.filter((x) => x.score === top);
+  return best.map((x) => x.p);
 }
 
 // النسبة الشهرية: الاثنا عشر شهراً بنفس القيمة — الكشف شهريٌّ بلا مدى، فالمدى سنةٌ كاملة

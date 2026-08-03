@@ -20,6 +20,7 @@ import { pickablePeople, seesDemoAccounts } from '../../modules/org/people.js';
 import { G, projectKindLabel, projectKindTip } from '../i18n/glossary.js';
 import { sarShort, esc, bar, statMini, noticeCard, workLens, WORK_LENS_CSS } from './_shared.js';
 import { notesPage } from './notes.js';
+import { myNotes } from '../../modules/pmo/notes.js';
 import { MONTHS_AR, MONTHS_EN3, currentMonthIndex, monthLabelDual } from '../../core/i18n/time.js';
 import { countAr, dayWord } from '../../core/i18n/plural.js';
 // ── مركز العمل اليومي (صفحة المهام) — الوارد الخاص بها وحدها، مفصولاً كي لا يختلط بوارد المحفظة ──
@@ -1017,6 +1018,34 @@ export async function tasksPage(user, opts = {}) {
     </section>`;
   }
 
+  // ── ٩ب) ملاحظاتي — في نفس صفحة مهامي لا في عدسةٍ ثالثة ──────────────────────
+  // «ملاحظاتي أبغاها تطلع في نفس صفحة المهام الخاصة بيّ» — بلسان المالك. والعدسة الثالثة تبقى
+  // (فهي مكان الكتابة والبحث والقائمة الكاملة)، لكن الملاحظة تُقرأ مع اليوم لا بعد نقرةٍ ثانية:
+  // من يكتب ملاحظةً عن اجتماعٍ يريدها أمامه وهو ينظر إلى مهامه، لا في صفحةٍ يتذكّر أن يفتحها.
+  // وأحدثُ خمسٍ يكفي هنا — المُثبَّتة أولاً — والباقي خلف «كل ملاحظاتي».
+  let notesBlock = '';
+  if (who === 'me') {
+    const myNoteRows = await myNotes(user, { limit: 5 });
+    notesBlock = `<section class="card wc-notes">
+      <div class="wc-opps-h">
+        <div><div class="wc-opps-t">${G.myNotes}</div>
+          <div class="wc-opps-s">${myNoteRows.length ? 'أحدث ما كتبته — المثبَّت أولاً' : 'لا ملاحظة بعد'}</div></div>
+        <a class="btn btn-sm" href="/app/tasks?who=notes">كل ملاحظاتي</a>
+      </div>
+      ${myNoteRows.length ? `<div class="wc-opps-list">${myNoteRows.map((n) => `<a class="wc-opp"
+        href="/app/tasks?who=notes&amp;open=${encodeURIComponent(n.id)}">
+        <span class="wc-opp-t">${n.pinned ? '📌 ' : ''}${esc(n.subject || 'ملاحظة بلا موضوع')}
+          <span class="wc-opp-c">${esc(String(n.body || '').slice(0, 90))}</span></span>
+        <span class="wc-opp-m"><span class="pp-due">${esc(String(n.note_date || n.created_at || '').slice(0, 10))}</span></span>
+      </a>`).join('')}</div>`
+    : `<div class="empty-state" style="padding:1.3rem 1rem">
+        <div class="t">لا ملاحظة بعد</div>
+        <div class="s">اكتب موضوعاً وما تحته — محضر اجتماع، أو ما لا تريد أن تنساه اليوم.</div>
+        <div style="margin-top:.6rem"><a class="btn btn-primary btn-sm" href="/app/tasks?who=notes">اكتب ملاحظة</a></div>
+      </div>`}
+    </section>`;
+  }
+
   // ── ١٠) شريط التغيير الجماعي + محرِّر المهمة (قالب واحد يُستنسخ) ──
   const bulkBar = readOnly ? '' : `<div class="wc-bulk" id="tk-bulk" hidden>
     <span class="wc-bulk-n"><b class="tnum" id="tk-bulk-n">0</b> ${G.bulkSelected}</span>
@@ -1339,6 +1368,7 @@ export async function tasksPage(user, opts = {}) {
     ${fAssignee ? `<div class="wc-beyond">تعرض مهام شخص واحد — <a href="${qp({ assignee: null })}">أعِد كل الفريق</a></div>` : ''}
     ${content}
     ${oppsBlock}
+    ${notesBlock}
     ${bulkBar}${editorTpl}`;
 
   const subtitle = who === 'team'
