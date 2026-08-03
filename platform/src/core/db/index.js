@@ -81,8 +81,22 @@ export async function exec(sql) {
 
 // Transaction. On Postgres, binds a dedicated pooled client for the duration via AsyncLocalStorage
 // so every global helper call inside `fn` runs on the same connection (BEGIN…COMMIT/ROLLBACK).
+//
+// ── والمعاملة المتداخلة تنضمّ إلى أمّها، ولا تفتح ثانيةً ──────────────────────
+// خدمةٌ تُغلِّف كتابتها بمعاملة، ثم تُنادى من خدمةٍ أخرى تُغلِّف كتابتها بمعاملة — وهذا يقع
+// كلّما ركّبنا عملاً من أعمال (فوزُ فرصةٍ يُولِّد مشروعاً، وإضافةُ مخرجاتٍ دفعةً تنادي كاتب
+// المخرَج الواحد). وكان لكلّ محرّك جوابه الخاطئ:
+//   • سكويلايت يرمي «cannot start a transaction within a transaction» — عطلٌ صريح يُوقف العمل.
+//   • وبوستجريس **أسوأ**: يطلب اتصالاً ثانياً من المجمّع فتُنفَّذ الكتابة الداخلية خارج معاملة
+//     أمّها وتُثبَّت وحدها — فلو فشلت الأمّ بعدها وتراجعت، بقي نصفُ العمل مكتوباً بلا أن يرمي
+//     شيءٌ خطأً. عطلٌ صامت يُنتج بياناتٍ نصفَ صحيحة، وهو أخطر ما في هذا الملف.
+// وسلوك «تنضمّ إلى أمّها» هو ما يَعِد به رأس هذا الملف أصلاً، فصار مُنفَّذاً لا موصوفاً:
+// المعاملة الخارجية وحدها تفتح وتُثبِّت وتتراجع، والداخلية تُنفَّذ في سياقها كما هي.
+let sqliteTxDepth = 0;
+export function inTransaction() { return USE_PG ? !!txStore.getStore() : sqliteTxDepth > 0; }
 export async function tx(fn) {
   if (USE_PG) {
+    if (txStore.getStore()) return await fn();   // منضمّة إلى معاملة قائمة على اتصالها نفسه
     const pool = await pgPool();
     const client = await pool.connect();
     return txStore.run(client, async () => {
@@ -92,9 +106,12 @@ export async function tx(fn) {
     });
   }
   const d = await sqliteDb();
+  if (sqliteTxDepth > 0) return await fn();      // اتصالٌ واحد، فالعمق يكفي للتمييز
   d.exec('BEGIN');
+  sqliteTxDepth++;
   try { const r = await fn(); d.exec('COMMIT'); return r; }
   catch (e) { try { d.exec('ROLLBACK'); } catch { /* ignore */ } throw e; }
+  finally { sqliteTxDepth--; }
 }
 
 export async function close() {

@@ -68,14 +68,81 @@
   // هوية المشروع: مديره وإدارته وجهته — ثلاثة حقول لم يكن لها مسار تحرير في المنتج إطلاقاً.
   // تُرسَل الثلاثة معاً كي يكون التصحيح قراراً واحداً، والقيمة الفارغة تعني «انزع» لا «تجاهل».
   async function prjIdentity(id) {
+    // الحقل الغائب لا يُرسَل أصلاً (`undefined`) — وحقل القيمة يغيب عمّن لا يقرأ مال المشروع،
+    // فإرسال فراغٍ مكانه كان سيصفّر قيمة عقدٍ لم يرها المستخدم ولم يقصد المساس بها.
     const pick = (el) => { const n = document.getElementById(el); return n ? (n.value || null) : undefined; };
     const body = { owner_user_id: pick('prj-owner'), department_id: pick('prj-dept'), client_id: pick('prj-client') };
+    const name = pick('prj-name');
+    if (name !== undefined) {
+      if (!String(name || '').trim()) return toast('اسم المشروع مطلوب', true);
+      body.name_ar = String(name).trim();
+    }
+    const code = pick('prj-code'); if (code !== undefined) body.code = code || '';
+    const start = pick('prj-start'); if (start !== undefined) body.start_date = start || null;
+    const end = pick('prj-end'); if (end !== undefined) body.end_date = end || null;
+    if (body.start_date && body.end_date && body.end_date < body.start_date) {
+      return toast('تاريخ الانتهاء قبل تاريخ البدء — راجع التاريخين', true);
+    }
+    const value = pick('prj-value');
+    if (value !== undefined) {
+      const n = Number(value || 0);
+      if (!isFinite(n) || n < 0) return toast('قيمة العقد تُكتب رقماً بالريال', true);
+      body.contract_value_sar = n;
+    }
     Object.keys(body).forEach((k) => { if (body[k] === undefined) delete body[k]; });
     try {
       await api('/projects/' + encodeURIComponent(id), 'PATCH', body);
-      toast('حُفظت هوية المشروع');
+      toast('حُفظت بيانات المشروع ✓');
       setTimeout(() => location.reload(), 500);
     } catch (e) { toast(e.message, true); }
+  }
+
+  // ── المخرجات دفعةً واحدة: اقرأ ← راجِع ← احفظ ─────────────────────────────
+  // الحالة تُحفظ في متغيّر واحد (`dlvxItems`) لا في وسوم الصفحة: الحذف من المراجعة يجب أن
+  // يحذف من **ما سيُرسَل**، وقراءةُ القائمة من الصفحة عند الحفظ تجعل الاسم المعروض هو المصدر —
+  // فيكفي تعديل نصٍّ في الشاشة كي يُحفظ غير ما استُخرج. والاسم يُصيَّر نصّاً لا وسماً.
+  var dlvxItems = [];
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const sar = (n) => (n == null ? '—' : Number(n).toLocaleString('en-US') + ' ر.س.');
+  function dlvxRender() {
+    const box = document.getElementById('dlvx-list');
+    const wrap = document.getElementById('dlvx-review');
+    if (!box || !wrap) return;
+    document.getElementById('dlvx-n').textContent = String(dlvxItems.length);
+    wrap.style.display = dlvxItems.length ? '' : 'none';
+    box.innerHTML = dlvxItems.map((d, i) => '<div style="display:flex;align-items:center;gap:.5rem;padding:.3rem .2rem;border-bottom:1px dashed var(--line)">'
+      + '<span style="flex:1;font-size:12px">' + esc(d.name_ar) + '</span>'
+      + '<span class="tnum" style="font-size:11px;color:var(--muted)">' + esc(sar(d.amount_sar)) + '</span>'
+      + (d.period ? '<span class="tnum" style="font-size:10.5px;color:var(--faint)">' + esc(d.period) + '</span>' : '')
+      + '<button class="btn btn-ghost btn-sm" data-action="dlvx-drop" data-i="' + i + '" title="أزِل هذا السطر" aria-label="أزِل هذا السطر">✕</button></div>').join('');
+  }
+  async function dlvxParse(id) {
+    const ta = document.getElementById('dlvx-text');
+    const text = ta ? ta.value.trim() : '';
+    if (text.length < 10) return toast('الصق نصّ المخرجات أولاً (١٠ أحرف على الأقل)', true);
+    const mode = document.getElementById('dlvx-mode');
+    if (mode) mode.textContent = '… جارٍ القراءة';
+    try {
+      const r = await api('/projects/' + encodeURIComponent(id) + '/deliverables/parse', 'POST', { text });
+      dlvxItems = r.deliverables || [];
+      if (mode) mode.textContent = (r._mode === 'local' ? '⚙ قراءة محلية' : '✨ قراءة ذكية') + (r._note ? ' — راجِع الأسماء والمبالغ' : '');
+      dlvxRender();
+      toast(dlvxItems.length ? 'قُرئ ' + dlvxItems.length + ' مخرَجاً — راجِعها قبل الحفظ' : 'لم يُقرأ أي مخرَج — راجِع النصّ', !dlvxItems.length);
+    } catch (e) { if (mode) mode.textContent = ''; toast(e.message, true); }
+  }
+  async function dlvxSave(id) {
+    if (!dlvxItems.length) return toast('لا مخرجات لإضافتها', true);
+    try {
+      const r = await api('/projects/' + encodeURIComponent(id) + '/deliverables/bulk', 'POST', { deliverables: dlvxItems });
+      toast('أُضيف ' + r.added + ' مخرَجاً ✓');
+      setTimeout(() => location.reload(), 600);
+    } catch (e) { toast(e.message, true); }
+  }
+  function dlvxFile(ev) {
+    const f = ev.target.files && ev.target.files[0]; if (!f) return;
+    const r = new FileReader();
+    r.onload = () => { const ta = document.getElementById('dlvx-text'); if (ta) ta.value = String(r.result || '').slice(0, 20000); };
+    r.readAsText(f);
   }
 
   async function prjRag(id, rag) {
@@ -158,6 +225,13 @@
     if (a === 'prj-identity-save') return void prjIdentity(el.dataset.id);
     if (a === 'doc-add') return void docAdd();
     if (a === 'doc-del') return void docDel(el.dataset.id);
+    if (a === 'dlvx-parse') return void dlvxParse(el.dataset.id);
+    if (a === 'dlvx-save') return void dlvxSave(el.dataset.id);
+    if (a === 'dlvx-drop') { dlvxItems.splice(Number(el.dataset.i), 1); return dlvxRender(); }
+    if (a === 'dlvx-cancel') { dlvxItems = []; return dlvxRender(); }
+  });
+  document.addEventListener('change', (ev) => {
+    if (ev.target && ev.target.id === 'dlvx-file') dlvxFile(ev);
   });
   document.addEventListener('change', (ev) => {
     const gs = ev.target.closest('[data-action-change="gov-status-sel"]');

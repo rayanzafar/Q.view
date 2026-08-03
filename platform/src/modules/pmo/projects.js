@@ -1,5 +1,5 @@
 // PMO — Projects service. Scope-filtered, redacts sensitive financials (cost/margin).
-import { all, get, insert, update } from '../../core/db/index.js';
+import { all, get, insert, update, tx } from '../../core/db/index.js';
 import { can, redact, redactList } from '../../core/rbac/index.js';
 import { scopeFilter } from '../../core/rbac/scope.js';
 import { audit } from '../../core/audit/index.js';
@@ -8,6 +8,7 @@ import { forbidden, notFound, badRequest } from '../../core/http/errors.js';
 import { isDelivery, SUPPORT_KIND } from '../org/org.js';
 import { staffingCandidates, projectTeamLoad } from './capacity.js';
 import { effectiveProgress } from './progress.js';
+import { ensureOpportunityForProject, syncMirrorFromProject } from '../crm/opp-project-sync.js';
 
 export async function listProjects(user, filters = {}) {
   const f = scopeFilter(user, 'project', 'read', { ownerCol: 'owner_user_id' });
@@ -176,15 +177,20 @@ export async function createProject(ctx, data) {
   if (!can(user, 'create', 'project', { sector_id: sectorId })) throw forbidden();
   if (!data.name_ar) throw badRequest('اسم المشروع مطلوب');
   const pid = id('prj'); const now = nowIso();
-  await insert('project', {
-    id: pid, code: data.code || null, name_ar: data.name_ar, sector_id: sectorId,
-    client_id: data.client_id || null, owner_user_id: data.owner_user_id || user.id,
-    status: data.status || 'IN_PROGRESS', rag: data.rag || 'GREEN', kind: data.kind || 'external',
-    budget_halalas: toHalalas(data.budget_sar), contract_value_halalas: toHalalas(data.contract_value_sar),
-    start_date: data.start_date || null, end_date: data.end_date || null,
-    source_opp_id: data.source_opp_id || null, created_at: now, created_by: user.id,
+  // «لازم تتأكد أي مشروع مضاف في المشاريع ينضاف مكسوباً» — والمشروع وفرصته يُكتبان في معاملة
+  // واحدة: مشروعٌ بلا فرصته يعيد الشاشتين إلى الافتراق من أول صفّ يُكتب بعد هذا السطر.
+  await tx(async () => {
+    await insert('project', {
+      id: pid, code: data.code || null, name_ar: data.name_ar, sector_id: sectorId,
+      client_id: data.client_id || null, owner_user_id: data.owner_user_id || user.id,
+      status: data.status || 'IN_PROGRESS', rag: data.rag || 'GREEN', kind: data.kind || 'external',
+      budget_halalas: toHalalas(data.budget_sar), contract_value_halalas: toHalalas(data.contract_value_sar),
+      start_date: data.start_date || null, end_date: data.end_date || null,
+      source_opp_id: data.source_opp_id || null, created_at: now, created_by: user.id,
+    });
+    await audit(ctx, { action: 'create', resource: 'project', resourceId: pid, sectorId });
+    await ensureOpportunityForProject(ctx, await get('SELECT * FROM project WHERE id = ?', [pid]));
   });
-  await audit(ctx, { action: 'create', resource: 'project', resourceId: pid, sectorId });
   return await getProject(user, pid);
 }
 
@@ -234,15 +240,42 @@ export async function updateProject(ctx, pid, data) {
     }
     patch.client_id = cid;
   }
+  // ── الاسم والرمز ومدّة المشروع ────────────────────────────────────────────
+  // «لازم في طريقة لتعديل المشروع: قيمته أو مدّته أو أو أو». والاسم والتواريخ كانت تُقبل هنا
+  // منذ البداية ولا يرسلها **موضعٌ واحد** في الواجهة — فالمشروع يُولَد باسمه وتاريخه الأولين
+  // ويبقى عليهما مهما تغيّر الواقع. والرمز لم يكن يُقبل أصلاً، فيُفتح معهما بحدٍّ معقول.
+  if ('code' in data) {
+    const c = String(data.code ?? '').trim().slice(0, 60);
+    patch.code = c || null;
+  }
+  if ('name_ar' in data && !String(data.name_ar ?? '').trim()) throw badRequest('اسم المشروع مطلوب');
   for (const k of ['name_ar', 'status', 'rag', 'progress_pct', 'start_date', 'end_date', 'pm_name']) {
     if (k in data) patch[k] = data[k];
   }
-  for (const [k, col] of [['budget_sar', 'budget_halalas'], ['contract_value_sar', 'contract_value_halalas']]) {
-    if (k in data) patch[col] = toHalalas(data[k]);
+  // التواريخ ترسم المدّة، ومدّةٌ تنتهي قبل أن تبدأ تقلب كل حساب جدولٍ في الصفحة إلى رقمٍ سالب
+  // يُقرأ «متأخر» بلا سبب. الحدّ هنا لا في الشاشة: الشاشة بابٌ من أبواب، والمسار يقبل من كلّها.
+  const startAfter = 'start_date' in patch ? patch.start_date : row.start_date;
+  const endAfter = 'end_date' in patch ? patch.end_date : row.end_date;
+  if (startAfter && endAfter && String(endAfter) < String(startAfter)) {
+    throw badRequest('تاريخ الانتهاء قبل تاريخ البدء — راجع التاريخين');
+  }
+  for (const [k, col] of [['budget_sar', 'budget_halalas'], ['contract_value_sar', 'contract_value_halalas'],
+    ['po_value_sar', 'po_value_halalas']]) {
+    if (k in data) {
+      const n = Number(data[k]);
+      if (!Number.isFinite(n) || n < 0) throw badRequest('القيمة تُكتب رقماً بالريال — أو صفراً إن لم تُتفق بعد');
+      if (n > 1e10) throw badRequest('القيمة أكبر من المعقول — راجع الرقم قبل الحفظ');
+      patch[col] = toHalalas(n);
+    }
   }
   patch.updated_at = nowIso(); patch.updated_by = user.id;
-  await update('project', pid, patch);
-  await audit(ctx, { action: 'update', resource: 'project', resourceId: pid, sectorId: row.sector_id, detail: patch });
+  await tx(async () => {
+    await update('project', pid, patch);
+    await audit(ctx, { action: 'update', resource: 'project', resourceId: pid, sectorId: row.sector_id, detail: patch });
+    // مرآةُ المشروع في الفرص تتبعه: تصحيحُ قيمةٍ هنا يبقى نصفَ تصحيح إن قرأ المالك الرقم القديم
+    // في «الفرص» غداً. ولا تُمَسّ الفرصة التي وُلد منها المشروع — تلك سجلّ ما عُرِض على الجهة.
+    await syncMirrorFromProject(ctx, await get('SELECT * FROM project WHERE id = ?', [pid]));
+  });
   return await getProject(user, pid);
 }
 

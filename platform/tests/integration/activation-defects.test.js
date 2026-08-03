@@ -33,6 +33,12 @@ before(async () => {
   O = await import('../../src/modules/crm/opportunities.js');
 
   await db.insert('sector', { id: 'S1', name_ar: 'قطاع التجربة', active: 1, created_at: T });
+  // الحسابان يُكتبان في القاعدة لا في الذاكرة وحدها: الفوز صار يُولّد مشروعاً يُسجَّل مالكه،
+  // ومالكٌ لا وجود له يُسقط الكتابة على قيد المفتاح الأجنبي — وهو قيدٌ صحيح لا يُلتفّ عليه.
+  for (const u of [admin, bd]) {
+    await db.insert('app_user', { id: u.id, username: u.username, role_id: u.role_id,
+      sector_id: u.sector_id, scope: u.scope, active: 1, created_at: T });
+  }
   for (const [sid, n, w, won, lost] of [['LEAD', 'رصد', 10, 0, 0], ['WON', 'فوز', 100, 1, 0], ['LOST', 'خسارة', 0, 0, 1]])
     await db.insert('stage', { id: sid, name_ar: n, default_win_pct: w, sort_order: 1, is_won: won, is_lost: lost });
   await db.insert('project', { id: 'P1', name_ar: 'مشروع', sector_id: 'S1', status: 'ACTIVE', created_at: T });
@@ -120,12 +126,28 @@ test('التقدّم إلى الفوز لا يستوجب شيئاً — القي
   assert.equal(r.stage_id, 'WON', 'الطريق إلى الأمام مفتوح كما كان');
 });
 
-test('فرصة أنتجت مشروعاً لا يُتراجَع عن فوزها — ويُدَلّ على المشروع بالاسم', async () => {
+test('فرصة أنتجت مشروعاً فيه عمل لا يُتراجَع عن فوزها — ويُدَلّ على المشروع بالاسم', async () => {
   await db.insert('opportunity', { id: 'OPP3', title_ar: 'فرصة ٣', sector_id: 'S1', stage_id: 'LEAD',
     value_halalas: 900000, year: 2026, created_at: T });
   await O.moveStage(ctx(admin), 'OPP3', 'WON');
-  await db.insert('project', { id: 'P9', name_ar: 'مشروع ناتج', sector_id: 'S1', status: 'ACTIVE',
-    source_opp_id: 'OPP3', created_at: T });
+  // المشروع يُولَد مع الفوز، ويُسمّى باسم فرصته. ثم يبدأ العمل فيه — ومن هنا يصير التراجع
+  // مناقضاً لعملٍ قائم لا تصحيحاً لضغطةٍ خاطئة.
+  const prj = await db.get('SELECT id, name_ar FROM project WHERE source_opp_id = ? AND deleted_at IS NULL', ['OPP3']);
+  assert.ok(prj, 'الفوز يُولّد مشروعاً — «أي فرصة توصل مكسوبة على طول تنعكس مشروعاً»');
+  assert.equal(prj.name_ar, 'فرصة ٣', 'باسم فرصته حتى يُعاد تسميته من صفحته');
+  await db.insert('deliverable', { id: 'D9', project_id: prj.id, name_ar: 'مخرَج أول', status: 'DRAFT', created_at: T });
   await assert.rejects(() => O.moveStage(ctx(admin), 'OPP3', 'LEAD', 'سبب مكتوب'),
-    /نشأ عنها مشروع «مشروع ناتج»/, 'التراجع يناقض عملاً قائماً — والسبب المكتوب لا يكفي هنا');
+    /نشأ عنها مشروع «فرصة ٣»[\s\S]*عمل مسجَّل/, 'التراجع يناقض عملاً قائماً — والسبب المكتوب لا يكفي هنا');
+});
+
+test('وبذرةُ مشروعٍ لم يُمسّ تُطوى مع التراجع — وإلا صار كل فوزٍ بالخطأ بلا رجعة', async () => {
+  await db.insert('opportunity', { id: 'OPP4', title_ar: 'فرصة ٤', sector_id: 'S1', stage_id: 'LEAD',
+    value_halalas: 400000, year: 2026, created_at: T });
+  await O.moveStage(ctx(admin), 'OPP4', 'WON');
+  const seed = await db.get('SELECT id FROM project WHERE source_opp_id = ? AND deleted_at IS NULL', ['OPP4']);
+  assert.ok(seed, 'وُلد المشروع مع الفوز');
+  await O.moveStage(ctx(admin), 'OPP4', 'LEAD', 'أُغلقت بالخطأ');
+  assert.equal((await db.get('SELECT stage_id FROM opportunity WHERE id = ?', ['OPP4'])).stage_id, 'LEAD');
+  assert.equal(await db.get('SELECT id FROM project WHERE id = ? AND deleted_at IS NULL', [seed.id]), undefined,
+    'والبذرة طُويت — فلا يبقى في المحفظة مشروعٌ لفوزٍ رُجع عنه');
 });

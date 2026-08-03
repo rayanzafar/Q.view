@@ -33,6 +33,10 @@ node --experimental-sqlite scripts/apply-owner-grants.js || echo "owner grants s
 # نسب الإشغال من كشف توزيع مايو ٢٠٢٦ (تسكين المشاريع وحده — لا راتب ولا سطر «قطاع …»).
 # مرةً واحدة بطابع في schema_migration، ولا يخمّن: ما لا يُحسَم يُترك ويُطبَع سببه في السجل.
 node --experimental-sqlite scripts/apply-utilization-may2026.js || echo "utilization skipped"
+# المرآة بين المشاريع والفرص: كل مشروع له فرصته المكسوبة وكل فرصة مكسوبة لها مشروعها. يربط ما
+# له فرصة قائمة بالاسم قبل أن يُنشئ شيئاً (فلا ازدواج في المبيعات)، ويُعلِّم مشاريع السنوات
+# الماضية «تاريخي» فلا يتحرّك رقمٌ أُعلن من قبل. مرةً واحدة بطابع في schema_migration.
+node --experimental-sqlite scripts/backfill-project-opportunities.js || echo "project-opportunity mirror skipped"
 # idempotent legacy-history backfill (INSERT … ON CONFLICT DO NOTHING) — no-op without legacy data
 node --experimental-sqlite scripts/backfill-legacy-activity.js || echo "backfill skipped"
 # توحيد العملاء يُشغَّل مرة واحدة بعد النشر عبر `railway run` (لا في الإقلاع) كي لا يخاطر بتعليقه.

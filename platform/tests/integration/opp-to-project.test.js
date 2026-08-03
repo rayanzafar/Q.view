@@ -97,11 +97,39 @@ test('فرصة خارج نطاق المستخدم تُرفض — الربط لا
   );
 });
 
-test('الإنشاء بلا فرصة يبقى كما كان — الرابط اختياري لا إلزامي', async () => {
+// ── القاعدة انقلبت بأمر المالك ───────────────────────────────────────────────
+// «المفروض أي شيء في المشاريع موجود في الفرص … ولازم تتأكد أي مشروع مضاف في المشاريع ينضاف
+// مكسوباً». فالمشروع بلا فرصة لم يعد حالةً مقبولة: كان يبقى خارج شاشة الفرص أبداً، فلا يظهر
+// فوزُه في المبيعات ولا في مقارنة القطاعات ولا يعرف أحدٌ أنه رُبح أصلاً.
+test('المشروع بلا فرصة مصدر تُولَد له فرصةٌ مكسوبة — «أي شيء في المشاريع موجود في الفرص»', async () => {
   const r = await intake.createFromIntake(ctx(admin), { name_ar: 'مشروع مستقل', client_name: 'جهة أخرى', sector_id: 'S1', value_sar: 5000 });
   const p = await db.get('SELECT source_opp_id, client_id FROM project WHERE id = ?', [r.project_id]);
-  assert.equal(p.source_opp_id, null);
+  assert.ok(p.source_opp_id, 'الرابط يُكتب — ولم يعد المشروع يتيماً في الفرص');
   assert.ok(p.client_id, 'العميل يُنشأ بالاسم كما في المسار القديم');
+  const o = await db.get('SELECT * FROM opportunity WHERE id = ?', [p.source_opp_id]);
+  assert.equal(o.stage_id, 'WON', 'وتُسجَّل مكسوبة — المشروع القائم فوزٌ وقع فعلاً');
+  assert.equal(o.title_ar, 'مشروع مستقل', 'باسم المشروع نفسه');
+  assert.equal(o.value_halalas, 5000 * 100, 'وبقيمته — فلا يظهر فوزٌ بصفر في المبيعات');
+  assert.equal(o.client_id, p.client_id, 'وبجهته نفسها بمعرّفها لا باسمٍ ثانٍ');
+  assert.equal(o.source, 'project', 'ومعلَّمة بمصدرها: مرآةُ مشروعٍ تتبعه، لا سجلَّ عرضٍ قُدِّم لجهة');
+});
+
+test('ومرآةُ المشروع تتبعه: تصحيح قيمته يُصحِّح قيمة فرصته — لا رقمان لعملٍ واحد', async () => {
+  const projects = await import('../../src/modules/pmo/projects.js');
+  const r = await intake.createFromIntake(ctx(admin), { name_ar: 'مشروع يُصحَّح', sector_id: 'S1', value_sar: 1000 });
+  const p0 = await db.get('SELECT source_opp_id FROM project WHERE id = ?', [r.project_id]);
+  await projects.updateProject(ctx(admin), r.project_id, { contract_value_sar: 4000, name_ar: 'مشروع بعد التصحيح' });
+  const o = await db.get('SELECT title_ar, value_halalas FROM opportunity WHERE id = ?', [p0.source_opp_id]);
+  assert.equal(o.value_halalas, 4000 * 100, 'القيمة تتبع المشروع');
+  assert.equal(o.title_ar, 'مشروع بعد التصحيح', 'والاسم كذلك');
+});
+
+test('ولا تُمَسّ الفرصة التي وُلد منها المشروع — قيمتها ما عُرِض لا ما وُقِّع', async () => {
+  const projects = await import('../../src/modules/pmo/projects.js');
+  const prj = await db.get('SELECT id FROM project WHERE source_opp_id = ? AND deleted_at IS NULL', ['O_WON']);
+  await projects.updateProject(ctx(admin), prj.id, { contract_value_sar: 12345 });
+  const o = await db.get('SELECT value_halalas FROM opportunity WHERE id = ?', ['O_WON']);
+  assert.equal(o.value_halalas, OPP_VALUE, 'سجلّ ما عُرِض على الجهة لا يُكتب فوقه من صفحة المشروع');
 });
 
 test('الواجهة تعرض إجراءً لا نصاً ميتاً — والفرصة المرتبطة تعرض مشروعها', async () => {

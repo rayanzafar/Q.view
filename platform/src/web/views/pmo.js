@@ -2045,22 +2045,43 @@ export async function projectDetailPage(user, projectId, opts = {}) {
     : [];
   const clientOptions = canEdit
     ? await all('SELECT id, name_ar FROM client WHERE deleted_at IS NULL ORDER BY name_ar LIMIT 300') : [];
-  const identityBar = canEdit ? `<div style="display:flex;gap:.45rem;align-items:center;flex-wrap:wrap;padding:.6rem 0 .2rem;margin-bottom:.6rem;border-top:1px dashed var(--line)">
-    <span style="font-size:10.5px;font-weight:800;color:var(--muted)">تعديل هوية المشروع</span>
-    <select id="prj-owner" class="input" aria-label="مدير المشروع" style="width:auto;max-width:180px;font-size:12px">
-      <option value="">بلا مدير مسجَّل</option>
-      ${users.map((u) => `<option value="${esc(u.id)}"${p.owner_user_id === u.id ? ' selected' : ''}>${esc(u.name)}</option>`).join('')}
-    </select>
-    <select id="prj-dept" class="input" aria-label="الإدارة المسؤولة" style="width:auto;max-width:180px;font-size:12px">
-      <option value="">بلا إدارة</option>
-      ${deptOptions.map((d) => `<option value="${esc(d.id)}"${p.department_id === d.id ? ' selected' : ''}>${esc(d.name_ar)}</option>`).join('')}
-    </select>
-    <select id="prj-client" class="input" aria-label="الجهة" style="width:auto;max-width:200px;font-size:12px">
-      <option value="">بلا جهة</option>
-      ${clientOptions.map((c) => `<option value="${esc(c.id)}"${p.client_id === c.id ? ' selected' : ''}>${esc(c.name_ar)}</option>`).join('')}
-    </select>
-    <button class="btn btn-sm btn-primary" data-action="prj-identity-save" data-id="${esc(p.id)}">حفظ</button>
-    <span style="font-size:10px;color:var(--faint)">الإدارة تُحدِّد لمن تُحسب إيرادات هذا المشروع آخر السنة</span>
+  // ── شريط التعديل: كل ما يُغيَّر في المشروع من مكانٍ واحد ──────────────────────
+  // «لازم في طريقة لتعديل المشروع: قيمته أو مدّته أو أو أو». وكانت ثلاثة حقول تُعدَّل من هنا
+  // (المدير والإدارة والجهة) وبقيةُ المشروع مكتوبةً عند إنشائه لا تُمَسّ — فتصحيحُ اسمٍ أو
+  // قيمةِ عقدٍ أو تاريخِ انتهاء يعني فتح القاعدة من خلف الشاشة، وهو ما طلب المالك إنهاءه.
+  //
+  // والقيمة خلف بوابة المال (`canMoney`) لا خلف صلاحية التعديل وحدها: من يُدير مشروعاً ولا يقرأ
+  // عقده لا يُفترض به أن يكتب رقمه — والحقلُ المعروض يُغري بالكتابة فيه.
+  const idField = (label, inner, hint = '') => `<div style="display:flex;flex-direction:column;gap:.2rem;min-width:0">
+    <label style="font-size:10px;font-weight:800;color:var(--muted)">${label}</label>${inner}
+    ${hint ? `<span style="font-size:9.5px;color:var(--faint)">${hint}</span>` : ''}</div>`;
+  const identityBar = canEdit ? `<div style="padding:.7rem 0 .2rem;margin-bottom:.6rem;border-top:1px dashed var(--line)">
+    <div style="font-size:10.5px;font-weight:800;color:var(--muted);margin-bottom:.5rem">تعديل بيانات المشروع</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.55rem">
+      ${idField('اسم المشروع', `<input id="prj-name" class="input" style="font-size:12px" value="${esc(p.name_ar || '')}" maxlength="200">`)}
+      ${idField('رمز المشروع', `<input id="prj-code" class="input" style="font-size:12px" value="${esc(p.code || '')}" maxlength="60" placeholder="اختياري">`)}
+      ${idField('مدير المشروع', `<select id="prj-owner" class="input" style="font-size:12px">
+        <option value="">بلا مدير مسجَّل</option>
+        ${users.map((u) => `<option value="${esc(u.id)}"${p.owner_user_id === u.id ? ' selected' : ''}>${esc(u.name)}</option>`).join('')}
+      </select>`)}
+      ${idField('الإدارة المسؤولة', `<select id="prj-dept" class="input" style="font-size:12px">
+        <option value="">بلا إدارة</option>
+        ${deptOptions.map((d) => `<option value="${esc(d.id)}"${p.department_id === d.id ? ' selected' : ''}>${esc(d.name_ar)}</option>`).join('')}
+      </select>`, 'تُحدِّد لمن تُحسب إيرادات المشروع آخر السنة')}
+      ${idField('الجهة', `<select id="prj-client" class="input" style="font-size:12px">
+        <option value="">بلا جهة</option>
+        ${clientOptions.map((c) => `<option value="${esc(c.id)}"${p.client_id === c.id ? ' selected' : ''}>${esc(c.name_ar)}</option>`).join('')}
+      </select>`)}
+      ${canMoney ? idField('قيمة العقد (ر.س.)',
+    `<input id="prj-value" class="input tnum" style="font-size:12px" type="number" min="0" step="1" value="${Math.round((p.contract_value_halalas || 0) / 100)}">`,
+    'ما وُقِّع فعلاً — يُصحَّح هنا متى تغيّر') : ''}
+      ${idField('تاريخ البدء', `<input id="prj-start" class="input" style="font-size:12px" type="date" value="${esc(p.start_date || '')}">`)}
+      ${idField('تاريخ الانتهاء', `<input id="prj-end" class="input" style="font-size:12px" type="date" value="${esc(p.end_date || '')}">`, 'التاريخان معاً يرسمان المدّة')}
+    </div>
+    <div style="display:flex;gap:.5rem;align-items:center;margin-top:.6rem">
+      <button class="btn btn-sm btn-primary" data-action="prj-identity-save" data-id="${esc(p.id)}">حفظ التعديلات</button>
+      ${srcOpp ? `<span style="font-size:10px;color:var(--faint)">التعديل هنا ينعكس على الفرصة المرتبطة حين تكون سجلّاً لهذا المشروع</span>` : ''}
+    </div>
   </div>` : '';
 
   const overviewBody = `<div style="padding:.85rem 1rem">
@@ -2206,6 +2227,38 @@ export async function projectDetailPage(user, projectId, opts = {}) {
       <option value="">بلا مسؤول</option>${users.map((u) => `<option value="${esc(u.id)}">${esc(u.name)}</option>`).join('')}</select>
     <button class="btn btn-sm btn-primary" data-action="gov-add" data-kind="deliverable">${icon('plus')} ${G.add}</button>
   </div>` : '';
+  // ── إضافة المخرجات دفعةً واحدة: تُلصَق كما هي ويقرؤها الذكاء ─────────────────
+  // «وأرفق مثلاً المخرجات وخلّي الذكاء يسوّيها ويستخرج المعلومات زي ما هو مكتوب». وجدولُ مخرجات
+  // عقدٍ حقيقي فيه عشرة صفوف أو عشرون — إدخالها صفّاً صفّاً من الشريط أعلاه عشرون دورة كتابة،
+  // فتُترك في ملفٍ خارج المنصة وتبقى نسبة الإنجاز بلا مادة تُحسب منها.
+  //
+  // والخطوتان مقصودتان: ما يستخرجه الذكاء **يُعرَض للمراجعة** قبل أن يُحفظ، فلا يدخل السجلَّ
+  // سطرٌ لم يقرأه إنسان ثم تُبنى عليه نسبةُ إنجازٍ تُقرأ حقيقةً في لوحة المالك.
+  const dlvIntake = canGov ? `<details class="psec" data-sec="dlv-intake" style="border-top:1px dashed var(--line)">
+    <summary><svg class="psec-c" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+      <span class="psec-t">أضف المخرجات دفعة واحدة</span><span class="psec-s">الصق الجدول كما هو ويقرؤه المساعد</span></summary>
+    <div class="psec-b" style="padding:.7rem .9rem">
+      <div class="field" style="margin-bottom:.5rem">
+        <label style="font-size:11px;font-weight:700;color:var(--muted)">الصق نصّ المخرجات — أو ارفع ملفاً نصياً</label>
+        <textarea id="dlvx-text" class="input" rows="5" style="font-size:12.5px"
+          placeholder="مثال: مخرج ١ — تقرير الوضع الراهن — 120000 — 2026-03
+كل مخرَج في سطر: اسمه، ومبلغه إن وُجد، وشهر استحقاقه إن حُدِّد."></textarea>
+      </div>
+      <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+        <input type="file" id="dlvx-file" accept=".txt,.md,.csv,text/plain" style="font-size:11.5px;max-width:190px">
+        <button class="btn btn-sm btn-primary" data-action="dlvx-parse" data-id="${esc(p.id)}">اقرأ المخرجات</button>
+        <span id="dlvx-mode" style="font-size:11px;color:var(--muted)"></span>
+      </div>
+      <div id="dlvx-review" style="display:none;margin-top:.7rem">
+        <div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:.3rem">راجِع قبل الحفظ (<span id="dlvx-n" class="tnum">0</span>) — أزِل ما لا يلزم</div>
+        <div id="dlvx-list" style="max-height:230px;overflow-y:auto;border:1px solid var(--line);border-radius:10px;padding:.4rem"></div>
+        <div style="display:flex;gap:.5rem;margin-top:.6rem">
+          <button class="btn btn-sm btn-primary" data-action="dlvx-save" data-id="${esc(p.id)}">أضِف المخرجات</button>
+          <button class="btn btn-sm" data-action="dlvx-cancel">إلغاء</button>
+        </div>
+      </div>
+    </div>
+  </details>` : '';
   const dlvBody = `
     <div style="padding:.5rem .9rem;font-size:11px;color:var(--muted);line-height:1.8">
       ${canGov ? 'حالة العمل بيد الفريق · الفوترة والتحصيل يُسجَّلان من المالية ولا يمسّان حالة العمل.'
@@ -2225,7 +2278,7 @@ export async function projectDetailPage(user, projectId, opts = {}) {
       <tbody>${dlvRows}</tbody></table>`
     : `<div class="empty-state" style="padding:1.4rem 1rem"><div class="t">لا مخرجات مسجَّلة على هذا المشروع</div>
         <div class="s">${canGov ? 'المخرَج هو ما يُسلَّم للعميل ويُبنى عليه المستخلص — أضِف أول مخرَج من الشريط أدناه.' : 'لم يُسجَّل أي مخرَج بعد. مدير المشروع هو من يضيفها.'}</div></div>`}</div>
-    ${dlvAddBar}`;
+    ${dlvAddBar}${dlvIntake}`;
 
   // ── ٤) الفريق والتسكين ───────────────────────────────────────────────────────
   const monthTicks = `<div class="mtrack" style="gap:2px;margin-top:.2rem">${MONTHS_EN3.map((m) => `<span style="font-size:7.5px;font-weight:400;color:var(--faint);text-align:center;line-height:1">${m}</span>`).join('')}</div>`;

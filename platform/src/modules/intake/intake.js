@@ -1,12 +1,14 @@
 // Project intake — create a project either MANUALLY or auto-filled FROM a contract's text.
 // AI extraction is best-effort (provider-agnostic); a deterministic heuristic covers no-key/failure
 // so the feature always works. No external call ever receives more than the pasted contract text.
-import { all, get, insert, tx } from '../../core/db/index.js';
+import { all, get, insert, update, tx } from '../../core/db/index.js';
 import { can } from '../../core/rbac/index.js';
 import { audit } from '../../core/audit/index.js';
 import { id, nowIso, toHalalas } from '../../core/util/ids.js';
-import { forbidden, badRequest } from '../../core/http/errors.js';
+import { forbidden, badRequest, notFound } from '../../core/http/errors.js';
 import { complete, aiMode } from '../../core/ai/provider.js';
+import { ensureOpportunityForProject, projectIsUntouched } from '../crm/opp-project-sync.js';
+import { createItem } from '../pmo/governance.js';
 
 const num = (v) => {
   if (v == null) return null;
@@ -61,6 +63,96 @@ export async function parseContract(user, { text }) {
   }
 }
 
+// ── مخرجات مشروعٍ قائم: تُلصَق كما هي مكتوبة ويستخرجها الذكاء ────────────────
+// «وأرفق مثلاً المخرجات وخلّي الذكاء يسوّيها ويستخرج المعلومات زي ما هو مكتوب» — المالك.
+//
+// الاستخراج كان محبوساً في نافذة «مشروع جديد» وحدها: من عنده جدول مخرجاتٍ لمشروعٍ قائم — وهو
+// الحال الغالب، لأن المخرجات تصل بعد التوقيع لا معه — لا سبيل أمامه إلا كتابتها صفّاً صفّاً.
+//
+// وهذا المسار **يقرأ ولا يكتب**: يعيد ما فهمه للمراجعة، والكتابة نداءٌ ثانٍ بعد موافقة المستخدم.
+// الفصل مقصود — استخراجُ نموذجٍ لغوي تخمينٌ مهما بلغ، وكتابةُ تخمينٍ بلا مراجعة تملأ سجلّ
+// المخرجات بأسطر لم يقرأها أحد ثم تُبنى عليها نسبةُ إنجازٍ يقرأها المالك على أنها حقيقة.
+const DLV_SYS = `أنت محلّل عقود خبير في شركة استشارية سعودية. أمامك نصّ يصف مخرجات مشروع (جدول أو قائمة أو فقرات).
+استخرج المخرجات وأعِدها JSON فقط دون أي شرح أو أسوار كود:
+{"deliverables":[{"name_ar":"اسم المخرج كما هو مكتوب","amount_sar":<رقم أو null>,"period":"YYYY-MM أو null"}]}
+القواعد: انقل الاسم كما ورد ولا تُعِد صياغته؛ أرقام لا نصوص؛ استخدم null لأي حقل غائب؛ لا تخترع مخرجات ولا مبالغ؛ أعِد JSON صحيحًا فقط.`;
+
+const PERIOD_RE = /\b(20\d{2})[-/](0?[1-9]|1[0-2])\b/;
+const cleanPeriod = (s) => {
+  const m = PERIOD_RE.exec(String(s ?? ''));
+  return m ? `${m[1]}-${String(m[2]).padStart(2, '0')}` : null;
+};
+export const DELIVERABLES_MAX = 60;
+
+function normalizeDeliverables(list) {
+  return (Array.isArray(list) ? list : []).filter((d) => d && d.name_ar)
+    .map((d) => ({ name_ar: String(d.name_ar).trim().slice(0, 200), amount_sar: num(d.amount_sar), period: cleanPeriod(d.period) }))
+    .filter((d) => d.name_ar)
+    .slice(0, DELIVERABLES_MAX);
+}
+
+// الاحتياط الحتمي: سطرٌ لكل مخرَج. يُقرأ آخر رقمٍ في السطر مبلغاً — وهو موضعه في كل جدول
+// مخرجاتٍ رأيناه — ويُنظَّف السطر من ترقيمه وشرطاته وبقايا الجدول. ولو خلا السطر من اسمٍ سقط.
+function deliverableHeuristic(text) {
+  const out = [];
+  for (const raw of String(text).split('\n')) {
+    let line = raw.replace(/[|\t]/g, ' ').trim();
+    if (line.length < 3) continue;
+    // الشهر يُقتطع من السطر أولاً: رقمه جزءٌ من تاريخ لا مبلغاً، وتركُه يجعل «٢٠٢٦-٠٣» آخر
+    // رقمٍ في السطر — فيُقرأ ٣ مبلغاً أو يحجب المبلغ الحقيقي الذي قبله. وهذا ما كان يقع فعلاً.
+    const period = cleanPeriod(line);
+    const pm = PERIOD_RE.exec(line);
+    if (pm) line = `${line.slice(0, pm.index)} ${line.slice(pm.index + pm[0].length)}`.trim();
+    const nums = [...line.matchAll(/\d[\d,.]*/g)];
+    const last = nums.length ? nums[nums.length - 1] : null;
+    const val = last ? Number(last[0].replace(/[,.]/g, '')) : NaN;
+    const amount = Number.isFinite(val) && val >= 100 ? val : null;
+    let name = amount != null ? line.slice(0, last.index) : line;
+    name = name.replace(/^[\s\-–—•*.\d)(]+/, '').replace(/[\s\-–—:|]+$/, '').trim();
+    if (name.length < 3) continue;
+    out.push({ name_ar: name.slice(0, 200), amount_sar: amount, period });
+    if (out.length >= DELIVERABLES_MAX) break;
+  }
+  return out;
+}
+
+export async function parseDeliverables(user, projectId, { text }) {
+  // الحارس صلاحية **تعديل هذا المشروع بعينه** لا صلاحية عامة: النصّ يُقرأ لمشروعٍ مقصود،
+  // ومن لا يملك الكتابة فيه لا شأن له باستخراجٍ لأجله.
+  const p = await get('SELECT * FROM project WHERE id = ? AND deleted_at IS NULL', [projectId]);
+  if (!p) throw notFound('المشروع غير موجود');
+  if (!can(user, 'update', 'project', { ...p, project_id: p.id })) throw forbidden('إضافة المخرجات تتطلب صلاحية إدارة المشروع');
+  if (!text || text.trim().length < 10) throw badRequest('ألصق نصّ المخرجات (١٠ أحرف على الأقل)');
+  const clipped = text.slice(0, 12000);
+  try {
+    if (aiMode() === 'local') throw new Error('no_llm');
+    const { text: out } = await complete({ system: DLV_SYS, user: clipped, maxTokens: 1200 });
+    const s = out.indexOf('{'), e = out.lastIndexOf('}');
+    if (s < 0 || e < 0) throw new Error('no_json');
+    const items = normalizeDeliverables(JSON.parse(out.slice(s, e + 1)).deliverables);
+    if (!items.length) throw new Error('empty');
+    return { deliverables: items, _mode: aiMode() };
+  } catch {
+    return { deliverables: normalizeDeliverables(deliverableHeuristic(clipped)), _mode: 'local',
+      _note: 'استُخرجت محليًا (بلا نموذج ذكي أو تعذّر التحليل) — راجِع الأسماء والمبالغ قبل الإضافة.' };
+  }
+}
+
+// الكتابة تمرّ بخدمة الحوكمة سطراً سطراً لا بإدراجٍ مباشر: هناك حارسُ الصلاحية على الصفّ،
+// وتدقيقُ المبلغ والشهر، وموائمةُ سطر الإيراد مع كل مخرَج. وإدراجٌ مباشر هنا كان سيتخطّاها كلها.
+export async function addDeliverables(ctx, projectId, items) {
+  const list = normalizeDeliverables(items);
+  if (!list.length) throw badRequest('لا مخرجات لإضافتها — راجِع القائمة قبل الحفظ');
+  const created = [];
+  await tx(async () => {
+    for (const d of list) {
+      created.push(await createItem(ctx, projectId, 'deliverable',
+        { name_ar: d.name_ar, ...(d.amount_sar == null ? {} : { amount_sar: d.amount_sar }), ...(d.period ? { period: d.period } : {}) }));
+    }
+  });
+  return { project_id: projectId, added: created.length, deliverables: created };
+}
+
 // Create project + contract + deliverables (+ find-or-create client) in one transaction.
 // Used by BOTH the manual form (no deliverables) and the from-contract flow.
 // Coerce client-supplied money to a valid, in-range SAR integer so we never write NaN/float/negatives
@@ -89,9 +181,23 @@ export async function createFromIntake(ctx, data) {
   const result = await tx(async () => {
     // فحص التكرار داخل المعاملة لا خارجها: فرصة واحدة تُنتج مشروعاً واحداً، وفحصٌ خارج المعاملة
     // يسمح لطلبين متزامنين بالمرور معاً فيصير للفرصة مشروعان — ومنه يبدأ ازدواج القيمة.
+    // ── بذرةُ الفوز تُكمَّل، ولا يُنشأ مشروعٌ ثانٍ فوقها ──────────────────────
+    // «أي فرصة توصل مكسوبة في الفرص على طول تنعكس بقيمتها وكل شيء مشروعاً — **بس أدخل عليه أحطّ
+    //  بقية المعلومات كأنه مشروع جديد**». والفوز صار يُولّد المشروع بنفسه، فهذا النموذج لم يعد
+    // بابَ إنشاءٍ بل بابَ **إكمال**: القيمة الموقَّعة والتواريخ والعقد والمخرجات.
+    // ولو بقي يرفض لوجود مشروع، لصار كل فوزٍ يغلق على نفسه هذا الباب — ولا سبيل إلى تسجيل عقده.
+    //
+    // والحدّ يبقى قائماً حيث يلزم: مشروعٌ **فيه عمل** (عقد أو مخرَج أو مهمة أو تسكين أو فاتورة)
+    // لا يُكتب فوقه — تلك محاولةُ إنشاء مشروعٍ ثانٍ للفرصة، ومنها يبدأ ازدواج القيمة.
+    let seed = null;
     if (srcOppId) {
-      const linked = await get('SELECT id, name_ar FROM project WHERE source_opp_id = ? AND deleted_at IS NULL', [srcOppId]);
-      if (linked) throw badRequest(`لهذه الفرصة مشروع بالفعل: «${linked.name_ar}» — افتحه بدل إنشاء مشروع ثانٍ`);
+      const linked = await get('SELECT * FROM project WHERE source_opp_id = ? AND deleted_at IS NULL', [srcOppId]);
+      if (linked) {
+        if (!await projectIsUntouched(linked.id)) {
+          throw badRequest(`لهذه الفرصة مشروع بالفعل: «${linked.name_ar}» — افتحه بدل إنشاء مشروع ثانٍ`);
+        }
+        seed = linked;
+      }
     }
     let clientId = data.client_id || null;
     const clientName = (data.client_name || '').trim();
@@ -102,13 +208,15 @@ export async function createFromIntake(ctx, data) {
     }
     // عميل الفرصة يُورَث بمعرّفه نفسه — لا يُنشأ عميل ثانٍ بالاسم نفسه فتنقسم أرقامه بين سجلّين.
     if (!clientId && srcOpp?.client_id) clientId = srcOpp.client_id;
-    const pid = id('prj');
-    await insert('project', {
-      id: pid, name_ar: name, sector_id: sectorId, client_id: clientId, owner_user_id: data.owner_user_id || user.id,
-      status: data.status || 'NOT_STARTED', rag: 'GREEN', kind: 'external', source_opp_id: srcOppId,
+    if (!clientId && seed?.client_id) clientId = seed.client_id;
+    const pid = seed ? seed.id : id('prj');
+    const row = {
+      name_ar: name, sector_id: sectorId, client_id: clientId, owner_user_id: data.owner_user_id || seed?.owner_user_id || user.id,
+      status: data.status || 'NOT_STARTED', rag: seed?.rag || 'GREEN', kind: 'external', source_opp_id: srcOppId,
       contract_value_halalas: toHalalas(valueSar), start_date: cleanDate(data.start_date), end_date: cleanDate(data.end_date),
-      created_at: now, created_by: user.id,
-    });
+    };
+    if (seed) await update('project', pid, { ...row, updated_at: now, updated_by: user.id });
+    else await insert('project', { id: pid, ...row, created_at: now, created_by: user.id });
     const cid = id('con');
     await insert('contract', {
       id: cid, code: (data.contract_code || '').toString().slice(0, 60) || null, client_id: clientId, project_id: pid, sector_id: sectorId,
@@ -122,10 +230,16 @@ export async function createFromIntake(ctx, data) {
         month: d.month || null, status: 'DRAFT', sector_id: sectorId, created_at: now });
       n++;
     }
-    return { project_id: pid, contract_id: cid, client_id: clientId, deliverables: n, source_opp_id: srcOppId };
+    // «لازم تتأكد أي مشروع مضاف في المشاريع ينضاف مكسوباً» — وهذا الباب هو الذي تدخل منه أغلب
+    // المشاريع (النموذج اليدوي، والتعبئة من نص العقد). المشروعُ المولود من فرصة له فرصته أصلاً،
+    // فالمرآة لا تُنشئ ثانية: الحارس داخلها يقرأ `source_opp_id` ويعود بالموجود.
+    const mirror = await ensureOpportunityForProject(ctx, await get('SELECT * FROM project WHERE id = ?', [pid]));
+    return { project_id: pid, contract_id: cid, client_id: clientId, deliverables: n,
+      source_opp_id: srcOppId || mirror.opportunity_id, opportunity_created: !!mirror.created };
   });
   await audit(ctx, { action: 'create', resource: 'project', resourceId: result.project_id, sectorId,
     detail: { via: srcOppId ? 'from-opportunity' : (data.deliverables?.length ? 'contract-intake' : 'manual'),
-      deliverables: result.deliverables, contract: result.contract_id, source_opp_id: srcOppId } });
+      deliverables: result.deliverables, contract: result.contract_id, source_opp_id: result.source_opp_id,
+      ...(result.opportunity_created ? { opportunity_created: result.source_opp_id } : {}) } });
   return result;
 }

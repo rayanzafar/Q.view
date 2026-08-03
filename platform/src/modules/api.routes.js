@@ -70,6 +70,9 @@ apiRouter.get('/projects/:id', h((req) => projects.getProject(req.ctx.user, req.
 apiRouter.patch('/projects/:id', h((req) => projects.updateProject(req.ctx, req.params.id, req.body)));
 apiRouter.post('/intake/parse', h(async (req) => intake.parseContract(req.ctx.user, req.body || {})));
 apiRouter.post('/intake/create', h((req) => intake.createFromIntake(req.ctx, req.body || {})));
+// مخرجات مشروعٍ قائم: قراءةٌ ثم كتابة بنداءين — الاستخراج يُراجَع قبل أن يُحفظ.
+apiRouter.post('/projects/:id/deliverables/parse', h((req) => intake.parseDeliverables(req.ctx.user, req.params.id, req.body || {})));
+apiRouter.post('/projects/:id/deliverables/bulk', h((req) => intake.addDeliverables(req.ctx, req.params.id, (req.body || {}).deliverables)));
 apiRouter.get('/projects/:id/staffing', h((req) => projects.projectStaffing(req.ctx.user, req.params.id, req.query)));
 // الطاقة والضغط: «من المتاح» و«ما حال فريق المشروع» — مصدر واحد للشاشتين معاً.
 apiRouter.get('/projects/:id/candidates', h((req) => capacity.staffingCandidates(req.ctx.user, req.params.id, req.query)));

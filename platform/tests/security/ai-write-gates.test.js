@@ -55,6 +55,10 @@ before(async () => {
     stage_id: 'LEAD', value_halalas: 100, created_at: T, deleted_at: T });
   await db.insert('project', { id: 'PRJ_FROM_WIN', name_ar: 'مشروع من فوز', sector_id: 'S1',
     source_opp_id: 'O_WON_PRJ', status: 'IN_PROGRESS', rag: 'GREEN', created_at: T });
+  // مخرَجٌ على المشروع = عملٌ قائم. بدونه صار المشروع بذرةً تُطوى مع التراجع (وهو سلوكٌ مقصود
+  // بعد أن صار كل فوزٍ يُولّد مشروعاً)، فيفقد هذا الفحص ما بُني ليحرسه.
+  await db.insert('deliverable', { id: 'DLV_WIN', project_id: 'PRJ_FROM_WIN', name_ar: 'مخرَج',
+    status: 'DRAFT', sector_id: 'S1', created_at: T });
   await db.insert('task', { id: 'TSK1', title: 'مهمة الموظف', sector_id: 'S1', assignee_user_id: 'u_emp',
     status: 'TODO', priority: 'P2', created_at: T });
 });
