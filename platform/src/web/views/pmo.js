@@ -18,11 +18,12 @@ import { departmentScope, departmentInSql } from '../../core/rbac/departments.js
 import { DELIVERY_SECTOR_SQL } from '../../core/org/kind.js';
 import { pickablePeople, seesDemoAccounts } from '../../modules/org/people.js';
 import { G, projectKindLabel, projectKindTip } from '../i18n/glossary.js';
-import { sarShort, esc, bar, statMini, noticeCard } from './_shared.js';
+import { sarShort, esc, bar, statMini, noticeCard, workLens, WORK_LENS_CSS } from './_shared.js';
+import { notesPage } from './notes.js';
 import { MONTHS_AR, MONTHS_EN3, currentMonthIndex, monthLabelDual } from '../../core/i18n/time.js';
 import { countAr, dayWord } from '../../core/i18n/plural.js';
 // ── مركز العمل اليومي (صفحة المهام) — الوارد الخاص بها وحدها، مفصولاً كي لا يختلط بوارد المحفظة ──
-import { completionTrend, addDays, teamTasksAccess, teamWorkload } from '../../modules/pmo/tasks.js';
+import { completionTrend, addDays, teamTasksAccess, teamWorkload, isPersonalTask } from '../../modules/pmo/tasks.js';
 import { listOpportunities } from '../../modules/crm/opportunities.js';
 import { nowDot } from '../../core/i18n/time.js';
 import { WEEKDAYS_AR, weekdayLabel, workKindLabel, deliverableStatusLabel,
@@ -429,6 +430,10 @@ const TASK_PRIORITY = { P0: { ar: 'حرجة', tone: 'red' }, P1: { ar: 'عالي
 const TASK_WINDOWS = ['today', 'week', 'overdue', 'nodate', 'all'];
 
 export async function tasksPage(user, opts = {}) {
+  // العدسة الثالثة شاشةٌ قائمة بذاتها لا كتلةٌ داخل هذه: «احسه مره زحمه» — حكم المالك على
+  // هذه الصفحة نفسها، وقد قُلّصت الإضافة والمرشّحات خلف أزرار بسببه. فالملاحظات تُبنى في
+  // ملفها (views/notes.js) وتُقرأ من الشريط نفسه، ولا يُضاف إلى هذه الصفحة استعلامٌ ولا سطر.
+  if (opts.who === 'notes') return await notesPage(user, opts);
   const today = new Date().toISOString().slice(0, 10);
   const todayMs = Date.parse(today + 'T00:00:00Z');
   const dnum = (d) => Math.round((Date.parse(String(d).slice(0, 10) + 'T00:00:00Z') - todayMs) / 86400000);
@@ -448,7 +453,7 @@ export async function tasksPage(user, opts = {}) {
   const win = winParam || (view === 'list' ? 'today' : 'all');
   const fStatus = TASK_STATUSES.includes(opts.status) ? opts.status : null;
   const fPriority = TASK_PRIORITY[opts.priority] ? opts.priority : null;
-  const fKind = ['project', 'opportunity', 'internal'].includes(opts.kind) ? opts.kind : null;
+  const fKind = ['project', 'opportunity', 'internal', 'personal'].includes(opts.kind) ? opts.kind : null;
   const fFlag = ['nostep', 'blocked', 'noparent'].includes(opts.flag) ? opts.flag : null;
   const fq = String(opts.q || '').trim().slice(0, 80);
   const fAssignee = who === 'team' && opts.assignee ? String(opts.assignee).slice(0, 64) : null;
@@ -564,6 +569,11 @@ export async function tasksPage(user, opts = {}) {
     return null;
   };
   const parentChip = (t) => {
+    // الشخصية تُعلَّم صراحةً في كل صفّ ولوحٍ وبطاقة: الوعد بالخصوصية لا يُوفى بحجبها عن
+    // الآخرين وحده، بل بأن يعرف صاحبها **وهو ينظر إليها** أنها لا تُقرأ خارج حسابه.
+    if (isPersonalTask(t)) {
+      return `<span class="tk-parent tk-personal" title="${G.personalOnlyYou}">◆ ${G.personalWork}</span>`;
+    }
     const p = parentOf(t);
     if (!p) return `<span class="tk-parent tk-parent-none">${icon('clock')} ${workKindLabel(t.work_kind) === 'مشروع' ? G.noParentLink : workKindLabel(t.work_kind)}</span>`;
     return p.href
@@ -576,6 +586,7 @@ export async function tasksPage(user, opts = {}) {
     data-progress="${Math.max(0, Math.min(100, Math.round(Number(t.progress_pct) || 0)))}"
     data-next="${esc(t.next_step || '')}" data-blocked="${esc(t.blocked_reason || '')}"
     data-project="${esc(t.project_id || '')}" data-opp="${esc(t.opportunity_id || '')}"
+    data-kind="${esc(t.work_kind || '')}"
     data-assignee="${esc(t.assignee_user_id || '')}" data-dept="${esc(t.department_id || '')}"
     data-desc="${esc(t.description || '')}"`;
   const progChip = (t) => {
@@ -678,12 +689,12 @@ export async function tasksPage(user, opts = {}) {
   </div>`;
 
   // ── ٣) العدسة + العرض + المرشّحات ──
-  const lens = `<nav class="wc-lens" aria-label="عدسة العرض">
-    <a class="wc-tab${who === 'me' ? ' on' : ''}" href="${qp({ who: null, assignee: null })}"${who === 'me' ? ' aria-current="page"' : ''}>${icon('tasks')} ${G.myWork}${who === 'me' ? ` <span class="tnum">${openT.length}</span>` : ''}</a>
-    ${canTeam ? `<a class="wc-tab${who === 'team' ? ' on' : ''}" href="${qp({ who: 'team' })}"${who === 'team' ? ' aria-current="page"' : ''}>${icon('team')} ${G.teamWork}${who === 'team' ? ` <span class="tnum">${openT.length}</span>` : ''}</a>` : ''}
-    <span class="wc-lens-sp"></span>
-    <a class="wc-tab wc-tab-me" href="/app/person/${encodeURIComponent(user.id)}">${icon('users')} صفحتي</a>
-  </nav>`;
+  // الشريط من مصدره الواحد (views/_shared.js) كي لا تتباعد شاشتا المهام والملاحظات — ورابط
+  // كل عدسة يحافظ على بقية معاملات هذه الشاشة كما كان حرفياً، إلا الملاحظات فلا معنى لعرضٍ
+  // ولا نافذةٍ زمنية فيها.
+  const lensHref = (key) => (key === 'notes' ? '/app/tasks?who=notes'
+    : key === 'team' ? qp({ who: 'team' }) : qp({ who: null, assignee: null }));
+  const lens = workLens({ userId: user.id, who, canTeam, openCount: openT.length, href: lensHref });
   const viewSeg = `<div class="wc-seg" role="group" aria-label="طريقة العرض">
     <a class="${view === 'list' ? 'on' : ''}" href="${qp({ view: null })}">${icon('list')} ${G.viewList}</a>
     <a class="${view === 'board' ? 'on' : ''}" href="${qp({ view: 'board' })}">${icon('kanban')} ${G.viewBoard}</a>
@@ -710,6 +721,7 @@ export async function tasksPage(user, opts = {}) {
       ${chip('على مشروع', fKind === 'project', qp({ kind: fKind === 'project' ? null : 'project' }))}
       ${chip('على فرصة', fKind === 'opportunity', qp({ kind: fKind === 'opportunity' ? null : 'opportunity' }))}
       ${chip(G.internalWork, fKind === 'internal', qp({ kind: fKind === 'internal' ? null : 'internal' }))}
+      ${who === 'me' ? chip(G.personalTasks, fKind === 'personal', qp({ kind: fKind === 'personal' ? null : 'personal' })) : ''}
       ${hasFilter ? `<a class="chip" href="/app/tasks${who === 'team' ? '?who=team' : ''}">مسح المرشحات</a>` : ''}
     </div>
   </details>`;
@@ -722,8 +734,12 @@ export async function tasksPage(user, opts = {}) {
   </form>`;
 
   // ── ٤) الإضافة السريعة: عنوان + جهة + مسؤول + موعد + أولوية في بطاقة واحدة ──
+  // «شخصية» خيارٌ في القائمة نفسها لا مفتاحٌ منفصل: المهمة تُنسب إلى جهةٍ واحدة، و«لصاحبها
+  // وحده» جهةٌ من جهاتها لا صفةٌ تُضاف إليها. ووضعُها هنا يجعل التحوّل في الاتجاهين ظاهراً
+  // ومقصوداً — يقرأ المرء أين ستُقرأ مهمته قبل أن يحفظها.
   const parentSelect = (idAttr, label) => `<select id="${idAttr}" class="input" aria-label="${label}">
     <option value="">${G.internalWork}</option>
+    <option value="me">${G.personalWork} — ${G.personalOnlyYou}</option>
     ${prjOptions.length ? `<optgroup label="${G.projects}">${prjOptions.map((p) => `<option value="p:${esc(p.id)}">${esc(p.name_ar)}</option>`).join('')}</optgroup>` : ''}
     ${oppOptions.length ? `<optgroup label="${G.opportunities}">${oppOptions.map((o) => `<option value="o:${esc(o.id)}">${esc(o.title_ar)}</option>`).join('')}</optgroup>` : ''}
   </select>`;
@@ -1075,16 +1091,7 @@ export async function tasksPage(user, opts = {}) {
     .wc-stat-s{display:block;font-size:10.5px;color:var(--muted)}
     .wc-stat.t-bad .wc-stat-n{color:var(--red)}
     .wc-stat.t-warn .wc-stat-n{color:#a16207}
-    .wc-lens{display:flex;gap:.4rem;border-bottom:1px solid var(--line);margin-bottom:.75rem;flex-wrap:wrap}
-    /* «صفحتي» في الطرف المقابل: مدخلٌ واحد بلا شريطٍ جديد — الشاشة مزدحمة أصلاً بشهادة المالك.
-       وهي لكل مستخدم مهما كان دوره: ملفُ المرء لا يحتاج منحاً إدارياً. */
-    .wc-lens-sp{flex:1 1 auto}
-    .wc-tab-me{color:var(--brand);font-weight:800}
-    .wc-tab-me:hover{color:var(--brand2)}
-    .wc-tab{display:inline-flex;align-items:center;gap:.4rem;padding:.5rem .85rem;font-size:13px;font-weight:700;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
-    .wc-tab:hover{color:var(--ink2)}
-    .wc-tab.on{color:var(--brand);border-bottom-color:var(--brand)}
-    .wc-tab svg{width:15px;height:15px}
+    ${WORK_LENS_CSS}
     .wc-seg{display:inline-flex;background:#eef1f7;border-radius:10px;padding:3px;gap:2px}
     .wc-seg a{display:inline-flex;align-items:center;gap:.35rem;font-size:12px;font-weight:700;color:var(--muted);padding:.35rem .7rem;border-radius:8px}
     .wc-seg a.on{background:#fff;color:var(--ink2);box-shadow:var(--sh-sm)}
@@ -1146,6 +1153,10 @@ export async function tasksPage(user, opts = {}) {
     a.tk-parent:hover{color:var(--brand)}
     .tk-parent svg{width:12px;height:12px;opacity:.75;flex:none}
     .tk-parent-none{color:var(--muted);font-style:normal}
+    /* علامةُ الخصوصية هادئة لا صارخة: لونٌ يميّزها عن بقية الوسوم ويرافقه اسمُها دائماً
+       (قاعدة «ليس لوناً فقط») — فمن لا يميّز الألوان يقرأ «مهمة شخصية» كما يقرؤها غيره. */
+    .tk-personal{color:#8a6d2f;background:#fdf8ec;border:1px solid #eadfc2;border-radius:7px;
+      padding:.02rem .4rem;font-weight:700;max-width:none}
     .tk-who{display:inline-flex;align-items:center;gap:.25rem;color:var(--muted)}
     .tk-who svg{width:12px;height:12px;opacity:.75}
     .tk-prog{display:inline-flex;align-items:center;gap:.35rem;color:var(--muted);font-weight:700}

@@ -2,6 +2,8 @@
 import { fmtSar } from '../../core/util/ids.js';
 import { yearElapsedPct, targetToDate, paceDelta, requiredRunRate } from '../../core/reports/metrics.js';
 import { nowDot } from '../../core/i18n/time.js';
+import { icon } from '../icons.js';
+import { G } from '../i18n/glossary.js';
 
 export const sarShort = (halalas) => {
   const v = (halalas || 0) / 100;
@@ -80,6 +82,39 @@ export function paceCard({ label, actual = 0, target = 0, forecast = null, weigh
     </div>
     ${track}${overTgt ? `<div style="margin-top:.3rem">${overTgt}</div>` : ''}${fcLine}
   </div>`;
+}
+
+// ── شريط عدسات مركز العمل اليومي ─────────────────────────────────────────────
+// «مهامي» · «مهام فريقي» · «ملاحظاتي» · «صفحتي». مصدرٌ واحد لأن الشريط يعلو **شاشتين**
+// (المهام والملاحظات): نسخةٌ ثانية منه تعني أن تُضاف عدسةٌ يوماً فتظهر في إحداهما وتغيب عن
+// الأخرى — فيدخل المستخدم الملاحظات ولا يجد طريق العودة إلا زرَّ المتصفّح، وهي بعينها
+// الشكوى التي عولجت على صفحة الفرصة من قبل.
+// والأنماط ترافق البناء هنا لا في إحدى الشاشتين، وإلا انتقلت العدسة ولم ينتقل شكلها.
+export const WORK_LENS_CSS = `
+  .wc-lens{display:flex;gap:.4rem;border-bottom:1px solid var(--line);margin-bottom:.75rem;flex-wrap:wrap}
+  /* «صفحتي» في الطرف المقابل: مدخلٌ واحد بلا شريطٍ جديد — الشاشة مزدحمة أصلاً بشهادة المالك.
+     وهي لكل مستخدم مهما كان دوره: ملفُ المرء لا يحتاج منحاً إدارياً. */
+  .wc-lens-sp{flex:1 1 auto}
+  .wc-tab-me{color:var(--brand);font-weight:800}
+  .wc-tab-me:hover{color:var(--brand2)}
+  .wc-tab{display:inline-flex;align-items:center;gap:.4rem;padding:.5rem .85rem;font-size:13px;font-weight:700;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+  .wc-tab:hover{color:var(--ink2)}
+  .wc-tab.on{color:var(--brand);border-bottom-color:var(--brand)}
+  .wc-tab svg{width:15px;height:15px}`;
+
+// `who` إحدى: me · team · notes. و`openCount` رقمُ عدسةٍ مفتوحة يُعرض على التبويب الحالي وحده
+// (لا نَعِد برقمٍ عن شاشةٍ لم تُقرأ بعد). و`href` يُبنى من دالةٍ يمرّرها النداء كي تحافظ كل
+// شاشة على بقية معاملات رابطها.
+export function workLens({ userId, who, canTeam, openCount = null, href }) {
+  const link = (key) => (href ? href(key) : `/app/tasks${key ? `?who=${key}` : ''}`);
+  const tab = (key, label, ic, on) => `<a class="wc-tab${on ? ' on' : ''}" href="${link(key)}"${on ? ' aria-current="page"' : ''}>${icon(ic)} ${label}${on && openCount != null ? ` <span class="tnum">${openCount}</span>` : ''}</a>`;
+  return `<nav class="wc-lens" aria-label="عدسة العرض">
+    ${tab(null, G.myWork, 'tasks', who === 'me')}
+    ${canTeam ? tab('team', G.teamWork, 'team', who === 'team') : ''}
+    ${tab('notes', G.myNotes, 'edit', who === 'notes')}
+    <span class="wc-lens-sp"></span>
+    <a class="wc-tab wc-tab-me" href="/app/person/${encodeURIComponent(userId)}">${icon('users')} صفحتي</a>
+  </nav>`;
 }
 
 export function noticeCard(title, msg, backHref = '/', backLabel = 'العودة') {

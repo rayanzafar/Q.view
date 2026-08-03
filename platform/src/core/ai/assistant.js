@@ -21,6 +21,7 @@ import { aiMode, complete, logProviderFallback, warnOnceIfKeyIgnored } from './p
 import { logAsk, savePreview, OUTCOME, PREVIEW_TTL_MINUTES } from './store.js';
 import { projectKpis } from '../reports/metrics.js';
 import { buildReport } from '../reports/engine.js';
+import { isPersonalTask, notPersonalSql } from '../../modules/pmo/tasks.js';
 import { nowIso, fmtSar } from '../util/ids.js';
 import { forbidden, badRequest, notFound } from '../http/errors.js';
 
@@ -492,8 +493,10 @@ async function lookupById(user, kind, ref) {
     const row = await get('SELECT id, title_ar, sector_id, owner_user_id FROM opportunity WHERE id = ? AND deleted_at IS NULL', [ref]);
     return row && can(user, 'read', 'opportunity', row) ? { id: row.id, label: row.title_ar, sub: null } : null;
   }
-  const row = await get('SELECT id, title, status, sector_id, assignee_user_id, created_by FROM task WHERE id = ? AND deleted_at IS NULL', [ref]);
+  const row = await get('SELECT id, title, status, work_kind, sector_id, assignee_user_id, created_by FROM task WHERE id = ? AND deleted_at IS NULL', [ref]);
   const mine = row && (row.assignee_user_id === user.id || row.created_by === user.id);
+  // المهمة الشخصية لا يبلغها منحٌ إداري — ولا المساعد. من ليست له فهي «غير موجودة» عنده.
+  if (isPersonalTask(row) && !mine) return null;
   return row && (mine || can(user, 'update', 'task', row))
     ? { id: row.id, label: row.title, sub: label(TASK_STATUS_AR, row.status) } : null;
 }
@@ -535,11 +538,14 @@ export async function optionsFor(user, kind) {
   }
   if (kind === 'task') {
     const f = scopeFilter(user, 'task', 'update', { ownerCol: 'assignee_user_id' }); // المهمة لا تحمل عمود مالك — صاحبها هو المُسنَد إليه
+    // ومهام غيره الشخصية خارج القائمة مهما اتّسع نطاقه: قائمةُ الاختيار هي المكان الذي تُقرأ
+    // فيه **عناوين** المهام، فتسرّبُ عنوانٍ واحد هنا يكشف ما وُعد بستره. أمّا مهامه هو فتبقى.
     const rows = await all(
       `SELECT id, title, status FROM task
         WHERE (assignee_user_id = ? OR created_by = ? OR ${f.clause}) AND deleted_at IS NULL
           AND status NOT IN ('DONE','CANCELLED')
-        ORDER BY title LIMIT 100`, [user.id, user.id, ...f.params]);
+          AND (assignee_user_id = ? OR ${notPersonalSql('')})
+        ORDER BY title LIMIT 100`, [user.id, user.id, ...f.params, user.id]);
     return { kind, options: rows.map((r) => ({ id: r.id, label_ar: r.title, sub_ar: label(TASK_STATUS_AR, r.status) })) };
   }
   throw badRequest('قائمة غير معروفة — اطلب إحدى قوائم النموذج.');
@@ -619,6 +625,9 @@ async function buildPreview(user, type, f) {
     const task = await get('SELECT * FROM task WHERE id = ? AND deleted_at IS NULL', [String(f.taskId || '')]);
     if (!task) throw notFound('المهمة غير موجودة');
     const mine = task.assignee_user_id === user.id || task.created_by === user.id;
+    // ولا تُكتب مهمةُ غيره الشخصية من هنا: نفس حكم `updateTask` حرفياً — «غير موجودة» لا
+    // «خارج نطاقك»، فالثانية تؤكّد وجودها وهي بذاتها كشفٌ صغير.
+    if (isPersonalTask(task) && !mine) throw notFound('المهمة غير موجودة');
     if (!mine && !can(user, 'update', 'task', task)) throw forbidden('هذه المهمة خارج نطاقك');
     const to = String(f.status || '');
     if (!TASK_STATUS_AR[to] || to === 'CANCELLED') throw badRequest('حالة غير معروفة — اخترها من القائمة.');

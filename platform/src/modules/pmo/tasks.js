@@ -10,6 +10,26 @@ import { forbidden, notFound, badRequest } from '../../core/http/errors.js';
 const PRIORITY_ORDER = "CASE %s.priority WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 ELSE 3 END";
 const prioritySql = (pfx) => PRIORITY_ORDER.replace('%s', pfx.replace(/\.$/, '') || 't');
 
+// ── المهمة الشخصية: عملُ المرء الذي لا يخصّ أحداً غيره ────────────────────────
+// «وفي برضو مكان المهام أضيف شي اسمه مهام شخصية» — بلسان المالك.
+//
+// **ولا جدول جديد ولا ترحيلة**: جدول المهام يحمل `work_kind` منذ الترحيلة ٠٠١ بقائمة قيم
+// مفتوحة (مشروع · فرصة · داخلي · منتج · عرض)، والمهمة تقوم بلا مشروع ولا فرصة أصلاً. فالمهمة
+// الشخصية = صفٌّ في الجدول نفسه: `work_kind = 'personal'` + مُسنَدةٌ إلى صاحبها + بلا جهة.
+// وبذلك تربح فوراً كل ما بُني للمهام على مدى الشاشة: النافذة الزمنية، واللوح، والتقويم،
+// والإنجاز بنقرة، وخطة اليوم، والتغيير الجماعي — بلا سطر بنيةٍ واحد وبلا شاشة ثانية.
+//
+// ── والفرق الوحيد فرقٌ في مَن يراها ──────────────────────────────────────────
+// «داخلي» عملٌ للشركة بلا مشروع، ومديرك يقرؤه بحقّ. و«شخصية» **لا تخرج من حساب صاحبها**:
+// لا في لوحة الفريق، ولا في ملف الشخص حين يفتحه غيره، ولا في تقارير الفترة، ولا في قوائم
+// المساعد. ولو تسرّبت مرةً واحدة لبطل معناها كله ولن يكتب فيها أحدٌ شيئاً بعدها.
+//
+// فالحارس هنا **مصدرٌ واحد** يستورده كل من يقرأ المهام عبر الحسابات، لا شرطٌ منسوخ في ستة
+// مواضع ينسى سابعُها. والشرط يشمل الصفوف القديمة التي عمودها فارغ (لا شيء منها شخصي).
+export const PERSONAL_WORK_KIND = 'personal';
+export const isPersonalTask = (row) => String(row?.work_kind || '') === PERSONAL_WORK_KIND;
+export const notPersonalSql = (pfx = 't.') => `(${pfx}work_kind IS NULL OR ${pfx}work_kind <> 'personal')`;
+
 // حساب تاريخ بـJS ثم ربطه كنص — لا دوال تواريخ في SQL (القاعدة المحمولة بين المحرّكين).
 export function addDays(isoDay, n) {
   const t = Date.parse(String(isoDay).slice(0, 10) + 'T00:00:00Z');
@@ -35,10 +55,14 @@ function applyTaskFilters(where, params, f, today, pfx = 't.') {
   if (f.q) { where.push(`LOWER(${p}title) LIKE ?`); params.push('%' + String(f.q).toLowerCase().trim() + '%'); }
   if (f.kind === 'project') where.push(`${p}project_id IS NOT NULL`);
   else if (f.kind === 'opportunity') where.push(`${p}opportunity_id IS NOT NULL`);
-  else if (f.kind === 'internal') where.push(`${p}project_id IS NULL AND ${p}opportunity_id IS NULL`);
+  else if (f.kind === 'personal') where.push(`${p}work_kind = 'personal'`);
+  // «داخلي» و«شخصية» كلاهما بلا جهة مرتبطة، فلولا الاستثناء لابتلع الأولُ الثاني وصار مرشِّح
+  // العمل الداخلي يعرض دفتر صاحبه الخاص في عمود عملٍ للشركة. المجموعتان لا تتقاطعان.
+  else if (f.kind === 'internal') where.push(`${p}project_id IS NULL AND ${p}opportunity_id IS NULL AND ${notPersonalSql(p)}`);
   if (f.flag === 'nostep') where.push(`(${p}next_step IS NULL OR ${p}next_step = '')`);
   else if (f.flag === 'blocked') where.push(`${p}status = 'BLOCKED'`);
-  else if (f.flag === 'noparent') where.push(`${p}project_id IS NULL AND ${p}opportunity_id IS NULL`);
+  // و«بلا جهة مرتبطة» عتابٌ على نقصٍ في الربط: المهمة الشخصية ليست ناقصةَ ربطٍ بل مقصودةٌ هكذا.
+  else if (f.flag === 'noparent') where.push(`${p}project_id IS NULL AND ${p}opportunity_id IS NULL AND ${notPersonalSql(p)}`);
   // النافذة الزمنية
   const w = f.window;
   if (w === 'overdue') { where.push(`${p}due_date IS NOT NULL AND substr(${p}due_date,1,10) < ?`); params.push(today); }
@@ -160,11 +184,27 @@ async function assertMayLink(user, data) {
 
 // المهمة تُنسب إلى جهة واحدة: مشروع أو فرصة أو عمل داخلي. اختيار جهة يمسح الأخرى صراحةً
 // بدل تركِ رابطين متناقضين يظهران في مكانين ويُحسبان مرتين.
-function normalizeParent(patch, data) {
+//
+// و«شخصية» تسبق كل رابط: مهمةٌ شخصية معلَّقة على مشروع تظهر في شاشة ذلك المشروع وفي عدّاداته
+// — أي تخرج من حساب صاحبها من الباب الذي وُعد بإغلاقه. فالاختيار حصري: إما جهةٌ وإما شخصية.
+// ومعها يسقط القطاع والإدارة: لا قطاع لها ولا إدارة، فلا تدخل تجميعاً لأحد حتى لو غفل حارس.
+//
+// `current` صفُّ المهمة القائم (فارغ عند الإنشاء). وجودُه يمنع عطلاً صامتاً: محرِّر المهمة
+// يرسل `project_id: null, opportunity_id: null` في كل حفظ، فكان الفرع الثالث يقلب كل مهمة
+// شخصية إلى «عمل داخلي» بمجرد أن يفتح صاحبها تفاصيلها ويحفظ — فتصير مقروءةً لمديره بلا أن
+// يطلب أحدٌ ذلك ولا يظهر التحوّل في أي مكان.
+function normalizeParent(patch, data, current = null) {
+  if (data.work_kind === PERSONAL_WORK_KIND) {
+    patch.work_kind = PERSONAL_WORK_KIND;
+    patch.project_id = null; patch.opportunity_id = null;
+    patch.sector_id = null; patch.department_id = null;
+    return patch;
+  }
   if ('project_id' in data && data.project_id) { patch.project_id = data.project_id; patch.opportunity_id = null; patch.work_kind = 'project'; }
   else if ('opportunity_id' in data && data.opportunity_id) { patch.opportunity_id = data.opportunity_id; patch.project_id = null; patch.work_kind = 'opportunity'; }
   else if (('project_id' in data && !data.project_id) || ('opportunity_id' in data && !data.opportunity_id)) {
-    patch.project_id = null; patch.opportunity_id = null; patch.work_kind = data.work_kind || 'internal';
+    patch.project_id = null; patch.opportunity_id = null;
+    patch.work_kind = data.work_kind || (isPersonalTask(current) ? PERSONAL_WORK_KIND : 'internal');
   }
   if ('work_kind' in data && data.work_kind && !patch.work_kind) patch.work_kind = data.work_kind;
   return patch;
@@ -177,6 +217,15 @@ export async function quickAddTask(ctx, data) {
   const user = ctx.user;
   if (!data.title || !String(data.title).trim()) throw badRequest('عنوان المهمة مطلوب');
   const assignee = data.assignee_user_id || user.id;
+  // «شخصية» تعني شخصك أنت. مهمةٌ شخصية تُدفع إلى قائمة غيرك تناقضٌ في ذاتها: صاحبُها يراها
+  // في دفتره ومن أنشأها لا يستطيع قراءتها بعدها — فيبدو النظام وكأنه ابتلعها.
+  // وموضعُ الفحص **قبل** بوابة النطاق مقصود: التناقض في الطلب نفسه لا في صلاحية صاحبه، فلو
+  // تأخّر لخرج الردّ «إنشاء المهام خارج نطاقك» — جوابٌ صحيح عن سؤال آخر، يرسل صاحبه إلى مدير
+  // النظام يطلب منحاً لن يصلح شيئاً. أخصُّ سببٍ أولاً.
+  const isPersonal = data.work_kind === PERSONAL_WORK_KIND;
+  if (isPersonal && assignee !== user.id) {
+    throw badRequest('المهمة الشخصية تخصّ صاحبها وحده — لإسنادها إلى زميل اجعلها مهمة عمل');
+  }
   // بوابة الإنشاء: كانت غائبة تماماً. `assertMayAssign` يحرس **الإسناد لغيرك** فقط، ويعود
   // مبكّراً حين يُسنِد المرء لنفسه — فبقي الباب مفتوحاً لكل حساب مسجَّل، ومنه حساب العميل
   // الخارجي: أنشأ مهمة فعلياً في قطاع لا علاقة له به لأن القطاع يُؤخذ من الطلب بلا تحقق.
@@ -210,7 +259,10 @@ export async function quickAddTask(ctx, data) {
     project_id: projectId,
     deliverable_id: deliverableId,
     opportunity_id: parent.opportunity_id ?? (data.opportunity_id || null),
-    sector_id: sectorId, department_id: data.department_id || null,
+    // القطاع والإدارة يسقطان عن الشخصية: لا تدخل تجميع قطاعٍ ولا لوحة إدارة ولا تقرير فترة
+    // حتى لو غفل حارسٌ لاحق. الحجب طبقتان — بنيةُ الصفّ وشرطُ الاستعلام — لا طبقةً واحدة.
+    sector_id: isPersonal ? null : sectorId,
+    department_id: isPersonal ? null : (data.department_id || null),
     assignee_user_id: assignee, priority: data.priority || 'P2', status: 'TODO',
     start_date: data.start_date || null, due_date: data.due_date || null,
     estimate_hours: data.estimate_hours ?? null, recurring: data.recurring || null,
@@ -247,7 +299,9 @@ export async function teamTasks(user, filters = {}) {
   // العادي (نطاق «خاصتي») كان يمرّ. السؤال هنا نطاقي لا وجودي: هل يتجاوز نطاقه نفسه؟
   const { scope } = teamTasksAccess(user);
   if (!scope) throw forbidden('عرض مهام الفريق يتطلب صلاحية قراءة مهام إدارة أو قطاع — اطلب تفعيلها من مدير النظام');
-  const where = ['t.deleted_at IS NULL'];
+  // مهام فريقك عملُهم لا دفاترهم: الشخصية محجوبة عن هذه اللوحة مهما اتّسع نطاق قارئها —
+  // وهي محجوبة **في الاستعلام** لا بترشيحٍ بعد القراءة، فلا تُقرأ أصلاً ولا تُعدّ في أي رقم.
+  const where = ['t.deleted_at IS NULL', notPersonalSql('t.')];
   const params = [];
   // الافتراضي كما كان: المنجَز خارج لوحة المدير. ومن يطلبه صراحةً (عرض اللوح بعمود «منجز»)
   // يمرّر includeDone — العدسة واحدة والبيانات واحدة.
@@ -335,7 +389,24 @@ export async function updateTask(ctx, taskId, data) {
   if (!row) throw notFound('المهمة غير موجودة');
   // own task, or manager with scope
   const isOwn = row.assignee_user_id === user.id || row.created_by === user.id;
+  // المهمة الشخصية بابها الملكية وحدها: أوسع منحٍ إداري لا يفتحها، وإلا كان الوعد بالخصوصية
+  // وعدَ عرضٍ لا وعدَ نظام. و«غير موجودة» لا «خارج نطاقك»: الثانية تؤكّد أن لفلانٍ مهمةً
+  // شخصية بهذا المعرّف — إقرارٌ صغير بما وُعد بألّا يُقال.
+  if (isPersonalTask(row) && !isOwn) throw notFound('المهمة غير موجودة');
   if (!isOwn && !can(user, 'update', 'task', row)) throw forbidden();
+  // نيّة الطلب في الجهة والنوع تُحسب مرة واحدة **من نفس الدالة التي ستكتبها** — لا قاعدةٌ
+  // ثانية تُشتقّ هنا فتتباعد عنها لاحقاً — وتُقرأ قبل بوابة الإسناد لا بعدها.
+  const parent = normalizeParent({}, data, row);
+  const willBePersonal = 'work_kind' in parent ? parent.work_kind === PERSONAL_WORK_KIND : isPersonalTask(row);
+  // ومهمةٌ تبقى شخصية لا تُسنَد إلى غيره: لو مرّت لصار صاحبها الأول لا يقرؤها والثاني يقرأ
+  // ما لم يُكتب له. والفحص على **ما ستؤول إليه** لا على ما كانت عليه — فمن يحوّلها إلى عمل
+  // ويُسنِدها في الحفظة نفسها مسارٌ مشروع لا يُردّ.
+  // وموضعُه قبل بوابة الإسناد العامة مقصود: صاحبُ المهمة الشخصية موظفٌ نطاقُه «خاصتي» غالباً،
+  // فبوابة الإسناد ترمي «يتطلب صلاحية إدارية على قطاعه» — جوابٌ صحيح عن سؤال آخر يرسله إلى
+  // مدير النظام يطلب منحاً لن يصلح شيئاً. أخصُّ سببٍ أولاً.
+  if (willBePersonal && 'assignee_user_id' in data && (data.assignee_user_id || null) !== row.assignee_user_id) {
+    throw badRequest('المهمة الشخصية تخصّ صاحبها وحده — لإسنادها إلى زميل اجعلها مهمة عمل أولاً');
+  }
   // إعادة الإسناد بوابة منفصلة: ملكية المهمة تخوّل تعديل محتواها لا دفعها إلى قائمة شخص آخر.
   // كانت assignee_user_id تُعدَّل بلا أي فحص على الوجهة، فيستطيع أي موظف إغراق قائمة أي مستخدم.
   if ('assignee_user_id' in data && data.assignee_user_id !== row.assignee_user_id) {
@@ -352,7 +423,9 @@ export async function updateTask(ctx, taskId, data) {
   if ('next_step' in patch) patch.next_step = blankToNull(patch.next_step);
   if ('blocked_reason' in patch) patch.blocked_reason = blankToNull(patch.blocked_reason);
   if ('progress_pct' in patch) patch.progress_pct = Math.max(0, Math.min(100, Math.round(Number(patch.progress_pct) || 0)));
-  normalizeParent(patch, data);
+  // الجهة والنوع تُكتب **بعد** قائمة الحقول المسموحة لا قبلها: الشخصية تُسقط القطاع والإدارة،
+  // فلو سبقتها القائمة لأعادت كتابة الإدارة من الطلب فوقها.
+  Object.assign(patch, parent);
   // العائق يُكتب ويُوجَّه: «معطَّل» بلا سبب مكتوب هي بالضبط الحالة التي لا يصلها أحد ولا يرفعها
   // أحد. الرسالة تقول ماذا يُكتب لا أن الحقل مطلوب.
   const nextStatus = 'status' in patch ? patch.status : row.status;
@@ -419,6 +492,8 @@ export async function teamWorkload(user, filters = {}) {
   const marks = (n) => new Array(n).fill('?').join(',');
 
   // مهام مفتوحة لكل شخص — عدٌّ في القاعدة لا تحميلُ صفوف ثم عدّها في الذاكرة.
+  // والشخصية خارج العدّ أيضاً — وإلا لقال الرقمُ عن الرجل ما لا يستطيع المدير رؤيته ولا سؤاله
+  // عنه: «عليه سبع مهام» وفي اللوحة أربع. رقمٌ لا يُفتح مصدره أسوأ من لا رقم.
   const taskRows = await all(`SELECT t.assignee_user_id uid,
        COUNT(*) total,
        SUM(CASE WHEN t.due_date IS NOT NULL AND substr(t.due_date,1,10) < ? THEN 1 ELSE 0 END) overdue,
@@ -426,6 +501,7 @@ export async function teamWorkload(user, filters = {}) {
        SUM(CASE WHEN t.next_step IS NULL OR t.next_step = '' THEN 1 ELSE 0 END) no_step
      FROM task t
      WHERE t.deleted_at IS NULL AND t.status NOT IN ('DONE','CANCELLED')
+       AND ${notPersonalSql('t.')}
        AND t.assignee_user_id IN (${marks(userIds.length)})
      GROUP BY t.assignee_user_id`, [today, ...userIds]);
 
@@ -524,7 +600,8 @@ export async function teamWorkload(user, filters = {}) {
   //
   // ولا تُعرَض كأشخاص وهميين: هي حالةُ إسنادٍ ناقصة يعالجها المدير بإعادة إسناد، لا شخصٌ يُقيَّم.
   // ونطاقها من عمود المهمة نفسها (قطاعها/إدارتها) لأن المهمة بلا صاحبٍ لا وصلة لها بشخص.
-  const oWhere = ["t.deleted_at IS NULL", "t.status NOT IN ('DONE','CANCELLED')",
+  // والشخصية ليست «عملاً بلا صاحب» ولو غادر صاحبها: هي دفترُه، ولا يُعاد إسناد دفتر أحد.
+  const oWhere = ["t.deleted_at IS NULL", "t.status NOT IN ('DONE','CANCELLED')", notPersonalSql('t.'),
     '(t.assignee_user_id IS NULL OR au.id IS NULL OR au.active = 0 OR au.deleted_at IS NOT NULL)'];
   const oParams = [];
   // والعمل المهمَل يتبع المجموعة نفسها: لو قُصّ على إدارة الانتماء وحدها لبقيت مهام الإدارة
@@ -608,6 +685,10 @@ export async function personDossier(reader, personUserId) {
 
   const today = nowIso().slice(0, 10);
   const year = new Date().getUTCFullYear();
+  // ملفُ المرء يعرض دفتره له، ويعرض عملَه لمديره. فالشرط على **من يقرأ** لا على من يُقرأ:
+  // صاحب الصفحة يرى مهامه الشخصية بين مهامه (هي على طاولته فعلاً)، ومن يفتح ملف غيره لا
+  // يراها ولا تدخل عدّاداته. لو حُذف هذا السطر لصارت أسهلَ طريقٍ لقراءة دفتر أي زميل:
+  // رابطٌ واحد باسمه.
   const tasks = await all(`SELECT t.id, t.title, t.status, t.priority, t.due_date, t.next_step,
        t.blocked_reason, t.progress_pct, t.completed_at,
        p2.id project_id, p2.name_ar project_name, o.id opportunity_id, o.title_ar opportunity_name,
@@ -617,6 +698,7 @@ export async function personDossier(reader, personUserId) {
      LEFT JOIN opportunity o ON o.id = t.opportunity_id AND o.deleted_at IS NULL
      LEFT JOIN department d ON d.id = t.department_id AND d.deleted_at IS NULL
      WHERE t.deleted_at IS NULL AND t.assignee_user_id = ? AND t.status <> 'CANCELLED'
+       ${self ? '' : `AND ${notPersonalSql('t.')}`}
      ORDER BY ${prioritySql('t')}, t.due_date
      LIMIT 200`, [uid]);
 

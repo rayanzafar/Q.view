@@ -31,16 +31,21 @@
   var $$ = function (sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); };
   var val = function (id) { var el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; };
 
-  // «p:معرّف» مشروع · «o:معرّف» فرصة · فارغ = عمل داخلي
+  // «p:معرّف» مشروع · «o:معرّف» فرصة · «me» مهمة شخصية · فارغ = عمل داخلي.
+  // نوعُ العمل يُرسَل صراحةً في الحالتين الأخيرتين: بدونه يقرأ الخادم «بلا جهة» فيكتب «داخلي»
+  // على الحالتين معاً — فتنقلب المهمة الشخصية عملاً للشركة بمجرد فتح تفاصيلها وحفظها،
+  // وتصير مقروءةً لمديرها بلا أن يطلب ذلك أحد ولا يظهر التحوّل في أي مكان.
   function parentPatch(raw) {
     var v = String(raw || '');
     if (v.indexOf('p:') === 0) return { project_id: v.slice(2), opportunity_id: null };
     if (v.indexOf('o:') === 0) return { opportunity_id: v.slice(2), project_id: null };
-    return { project_id: null, opportunity_id: null };
+    if (v === 'me') return { work_kind: 'personal', project_id: null, opportunity_id: null };
+    return { work_kind: 'internal', project_id: null, opportunity_id: null };
   }
   function parentValue(row) {
     if (row.dataset.project) return 'p:' + row.dataset.project;
     if (row.dataset.opp) return 'o:' + row.dataset.opp;
+    if (row.dataset.kind === 'personal') return 'me';
     return '';
   }
 
@@ -57,8 +62,10 @@
     var p = parentPatch(val('qa-parent'));
     if (p.project_id) body.project_id = p.project_id;
     if (p.opportunity_id) body.opportunity_id = p.opportunity_id;
+    if (p.work_kind === 'personal') body.work_kind = 'personal';
     var who = val('qa-assignee');
-    if (who) body.assignee_user_id = who;
+    // المهمة الشخصية لصاحبها وحده — يردّها الخادم لو أُسندت لغيره، فلا تُرسَل أصلاً.
+    if (who && p.work_kind !== 'personal') body.assignee_user_id = who;
     if (btn) btn.disabled = true;
     try {
       await api('/tasks/quick', 'POST', body);
@@ -124,10 +131,17 @@
       next_step: g('next') || null,
       blocked_reason: g('blocked') || null,
     };
+    var personal = false;
     var pv = $('[data-f="parent"]', d);
-    if (pv) { var p = parentPatch(pv.value); patch.project_id = p.project_id; patch.opportunity_id = p.opportunity_id; }
+    if (pv) {
+      var p = parentPatch(pv.value);
+      patch.project_id = p.project_id; patch.opportunity_id = p.opportunity_id;
+      if (p.work_kind) patch.work_kind = p.work_kind;
+      personal = p.work_kind === 'personal';
+    }
     var av = $('[data-f="assignee"]', d);
-    if (av) patch.assignee_user_id = av.value || null;
+    // مهمةٌ تبقى شخصية لا تُسنَد إلى غير صاحبها — والخادم يردّها. لا يُرسَل الحقل أصلاً.
+    if (av && !personal) patch.assignee_user_id = av.value || null;
     var dv = $('[data-f="dept"]', d);
     if (dv) patch.department_id = dv.value || null;
     if (!patch.title) { toast('عنوان المهمة مطلوب', true); return; }

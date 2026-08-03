@@ -28,6 +28,7 @@
 // ويُربَط معاملاً، ومقارنات التواريخ عبر `substr(col,1,10)`، والمنطقيات أعداد 0/1.
 import { all, get, insert, tx } from '../db/index.js';
 import { effectiveProgress } from '../../modules/pmo/progress.js';
+import { notPersonalSql } from '../../modules/pmo/tasks.js';
 import { audit } from '../audit/index.js';
 import { badRequest, forbidden, notFound } from '../http/errors.js';
 import { can, effectiveScope, canSeeSensitive } from '../rbac/index.js';
@@ -297,14 +298,18 @@ async function resolveScope(user, lens, targetId) {
 
 const N = (v) => Number(v) || 0;
 
+// المهمة الشخصية خارج كل تقرير — ولو كان تقرير الشخص نفسه: التقرير مستندٌ يُرسَل ويُقرأ من
+// غير صاحبه (عدسة الشخص يفتحها مديره)، وقسم «العوائق» يطبع **عناوين المهام** حرفياً. فسطرٌ
+// واحد هنا يسدّ كل استعلامات هذا الملف دفعةً واحدة، بدل شرطٍ منسوخ في خمسة مواضع.
+const NOT_PERSONAL = `${notPersonalSql('t.')} AND `;
 function taskWhere(sc) {
   switch (sc.lens) {
-    case 'company': return { where: '1=1', params: [] };
-    case 'sector': return { where: 'COALESCE(t.sector_id, p.sector_id) = ?', params: [sc.sectorId] };
-    case 'department': return { where: 't.department_id = ?', params: [sc.departmentId] };
-    case 'person': return { where: 't.assignee_user_id = ?', params: [sc.userId] };
-    case 'project': return { where: 't.project_id = ?', params: [sc.projectId] };
-    default: return { where: 't.opportunity_id = ?', params: [sc.opportunityId] };
+    case 'company': return { where: `${NOT_PERSONAL}1=1`, params: [] };
+    case 'sector': return { where: `${NOT_PERSONAL}COALESCE(t.sector_id, p.sector_id) = ?`, params: [sc.sectorId] };
+    case 'department': return { where: `${NOT_PERSONAL}t.department_id = ?`, params: [sc.departmentId] };
+    case 'person': return { where: `${NOT_PERSONAL}t.assignee_user_id = ?`, params: [sc.userId] };
+    case 'project': return { where: `${NOT_PERSONAL}t.project_id = ?`, params: [sc.projectId] };
+    default: return { where: `${NOT_PERSONAL}t.opportunity_id = ?`, params: [sc.opportunityId] };
   }
 }
 
