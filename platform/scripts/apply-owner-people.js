@@ -20,7 +20,7 @@ import { all, get, run, insert, update } from '../src/core/db/index.js';
 import { id, nowIso } from '../src/core/util/ids.js';
 import { nameWords, norm } from './apply-utilization-may2026.js';
 
-const FLAG = 'op:owner-people-2026-08-v2';
+const FLAG = 'op:owner-people-2026-08-v3';
 
 export const PEOPLE = [
   {
@@ -109,6 +109,14 @@ export async function applyOwnerPeople({ force = false } = {}) {
     } else if (emp.department_id !== deptId || emp.sector_id !== sectorId) {
       await update('employee', emp.id, { department_id: deptId, sector_id: sectorId, updated_at: now });
       doneList.push(`نُقل ${emp.name_ar} إلى «${p.unit}»`);
+    }
+    // وسجلُّ الموظف يُفعَّل كما يُفعَّل حسابه: التفعيل الأول شمل الحساب وحده، فبقي هادي ساقطاً
+    // من كل استعلامٍ يقرأ **الموظفين** النشطين — ومنه استعلام الإشغال، فقيل «لا موظف نشطاً
+    // بهذا الاسم» بعد أن صار حسابه نشطاً. حالتان لشيءٍ واحد، وعلاجُ إحداهما نصفُ علاج.
+    const liveEmp = await get('SELECT active FROM employee WHERE id = ?', [emp.id]);
+    if (liveEmp && Number(liveEmp.active) !== 1) {
+      await update('employee', emp.id, { active: 1, updated_at: now });
+      doneList.push(`فُعِّل سجلّ ${emp.name_ar} في كشف الموظفين`);
     }
 
     // ③ الحساب — بلا دعوةٍ ولا كلمة مرور (الدخول برمز البريد، والدعوة قرار المالك)

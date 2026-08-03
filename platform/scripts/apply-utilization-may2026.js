@@ -22,7 +22,7 @@
 import { all, get, run, insert, update } from '../src/core/db/index.js';
 import { id, nowIso } from '../src/core/util/ids.js';
 
-const FLAG = 'op:utilization-may-2026-v6';
+const FLAG = 'op:utilization-may-2026-v7';
 const YEAR = 2026;
 
 // تطبيع عربي: الهمزات والتاء المربوطة والألف المقصورة والتشكيل والمسافات — فـ«الاركاب» و«الإركاب»

@@ -18,7 +18,7 @@ import { all, get, run, insert } from '../src/core/db/index.js';
 import { id, nowIso } from '../src/core/util/ids.js';
 import { nameWords } from './apply-utilization-may2026.js';
 
-const FLAG = 'op:owner-grants-innovation-v3';
+const FLAG = 'op:owner-grants-innovation-v4';
 const DEPARTMENT_NAME = 'إدارة الابتكار';
 const PEOPLE = ['سجى', 'هادي'];
 const NOTE = 'بأمر المالك — متابعة خطّ فرص الابتكار';
