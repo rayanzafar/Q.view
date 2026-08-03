@@ -13,7 +13,10 @@ import { listViews } from '../../modules/views/views.js';
 import { can } from '../../core/rbac/index.js';
 import { DELIVERY_SECTOR_SQL } from '../../core/org/kind.js';
 import { sarShort, pct, esc, statMini, ddWrap, ddRows } from './_shared.js';
-import { G } from '../i18n/glossary.js';
+import { G, SOLICITATION_TYPE_AR } from '../i18n/glossary.js';
+
+// «لم يُحدَّد» كلمةٌ محجوزة لا نوعُ طرح — كما «بلا إدارة». الترشيح في الذاكرة فلا تعبر للخدمة.
+const NONE_SOL = 'none';
 import { countAr, dayWord } from '../../core/i18n/plural.js';
 
 // معنى كل مرحلة + معيار الدخول إليها — يظهر كتلميح على رأس العمود (نمط Lightning Path).
@@ -88,7 +91,36 @@ export async function opportunitiesPage(user, opts = {}) {
   // الحالية، و«الكل» يعرض كل السنوات معاً (بما فيها فرص بلا سنة مسجّلة). قائمة السنوات من كل الفرص.
   const years = [...new Set(allRows.map((o) => o.year).filter(Boolean))].sort((a, b) => b - a);
   const yearFilter = opts.year === 'all' ? 'all' : (opts.year ? Number(opts.year) : fiscalYear);
-  const rows = yearFilter === 'all' ? allRows : allRows.filter((o) => o.year === yearFilter);
+  // ── نوع الطرح: استطلاع سوق · طلب عرض · طلب سعر · تكليف مباشر · منافسة عامة ──
+  // «لازم يكون في فلتر إذا هي RFI أو RFP من صفحة الفرص» — والفرق ليس تصنيفاً بل نضجاً:
+  // استطلاعُ سوقٍ ليس فرصةً ناضجة، وخلطُه بطلبات العروض في رقمٍ واحد يضخّم خطّ الفرص بما لم
+  // يُطرَح بعد. و«لم يُحدَّد» مُرشِّحٌ قائم كما في «بلا إدارة»: غيرُ المصنَّف هو ما يجب أن يُرى
+  // ليُصنَّف. والترشيح في الذاكرة — الصفوف مقروءةٌ أصلاً وعددها محدود.
+  const solFilter = opts.sol === NONE_SOL ? NONE_SOL : (SOLICITATION_TYPE_AR[opts.sol] ? opts.sol : '');
+  const yearRows = yearFilter === 'all' ? allRows : allRows.filter((o) => o.year === yearFilter);
+  const rows = !solFilter ? yearRows
+    : yearRows.filter((o) => (solFilter === NONE_SOL ? !o.solicitation_type : o.solicitation_type === solFilter));
+
+  // عنوانُ القائمة بمُرشِّحاتها. يُعرَّف هنا — فوق أول صفٍّ يُرسَم — لأن صفوف الجدول تحمله.
+  // تبديل القطاع يُسقط الإدارة معه: إدارةُ قطاعٍ لا تعني شيئاً تحت قطاعٍ آخر، وبقاؤها في
+  // العنوان يُنتج شاشةً فارغة بلا سبب ظاهر.
+  const navHref = ({ sector = sectorFilter, year = yearFilter, dept = deptFilter, sol = solFilter } = {}) => {
+    const p = new URLSearchParams();
+    if (sector) p.set('sector', sector);
+    if (sector && sector === sectorFilter && dept) p.set('dept', dept);
+    if (year !== fiscalYear) p.set('year', year === 'all' ? 'all' : String(year));
+    if (sol) p.set('sol', sol);
+    const q = p.toString();
+    return '/app/opportunities' + (q ? '?' + q : '');
+  };
+  // ── الرجوع يعود إلى **ما كنتَ تنظر إليه** ──────────────────────────────────
+  // «إذا رجعت للخانة اللي قبلها يحتاج يرجّعني محل ما وقفت وبنفس الفلتر». وزرّ المتصفّح وحده
+  // لا يكفي: من فتح الفرصة من بحثٍ أو رابطٍ مباشر لا تاريخَ له يعود إليه.
+  const backQs = (() => {
+    const q = navHref({}).split('?')[1];
+    return q ? `?from=${encodeURIComponent(q)}` : '';
+  })();
+
   const stages = await all('SELECT id,name_ar,color,default_win_pct,sort_order,is_won,is_lost FROM stage ORDER BY sort_order');
   const clients = Object.fromEntries((await all('SELECT id,name_ar FROM client')).map((c) => [c.id, c.name_ar]));
   const users = Object.fromEntries((await all('SELECT id,name_ar,username FROM app_user')).map((u) => [u.id, u.name_ar || u.username]));
@@ -154,7 +186,7 @@ export async function opportunitiesPage(user, opts = {}) {
     const sumV = list.reduce((a, o) => a + (o.value_halalas || 0), 0);
     const backHref = '/app/opportunities' + (sectorFilter ? '?sector=' + encodeURIComponent(sectorFilter) : '');
     const listRows = list.map((o) => `<tr style="border-bottom:1px solid var(--line)">
-        <td style="padding:.55rem .7rem;min-width:200px"><a href="/app/opportunity/${o.id}" title="${esc(o.title_ar)}" style="font-size:12.5px;font-weight:700;color:var(--ink2)">${esc(o.title_ar)}</a></td>
+        <td style="padding:.55rem .7rem;min-width:200px"><a href="/app/opportunity/${o.id}${backQs}" title="${esc(o.title_ar)}" style="font-size:12.5px;font-weight:700;color:var(--ink2)">${esc(o.title_ar)}</a></td>
         <td style="padding:.55rem .7rem;font-size:12px;color:var(--muted)">${esc(clients[o.client_id] || '—')}</td>
         <td class="tnum" style="padding:.55rem .7rem;text-align:left;font-weight:800;font-size:12.5px;white-space:nowrap">${fmtSar(o.value_halalas)}</td>
         ${tblStageRow.is_won ? prjCell(o) : ''}
@@ -248,14 +280,16 @@ export async function opportunitiesPage(user, opts = {}) {
   // ── التصفية العلوية: القطاع + السنة (بدل حشر السنة داخل الأعمدة) — كل شريحة تحفظ الأخرى ──
   // تبديل القطاع يُسقط الإدارة معه — إدارةُ قطاعٍ لا تعني شيئاً تحت قطاعٍ آخر، وبقاؤها في
   // العنوان يُنتج شاشةً فارغة بلا سبب ظاهر.
-  const navHref = ({ sector = sectorFilter, year = yearFilter, dept = deptFilter } = {}) => {
-    const p = new URLSearchParams();
-    if (sector) p.set('sector', sector);
-    if (sector && sector === sectorFilter && dept) p.set('dept', dept);
-    if (year !== fiscalYear) p.set('year', year === 'all' ? 'all' : String(year));
-    const q = p.toString();
-    return '/app/opportunities' + (q ? '?' + q : '');
-  };
+  const solCount = new Map();
+  for (const o of allRows) {
+    const k = o.solicitation_type || NONE_SOL;
+    solCount.set(k, (solCount.get(k) || 0) + 1);
+  }
+  const solChip = (v, label, n, on) => `<a class="chip ${on ? 'on' : ''}" href="${navHref({ sol: v })}">${esc(label)}${n != null ? ` <span class="tnum" style="opacity:.65">${n}</span>` : ''}</a>`;
+  const solChips = solCount.size > 1 ? `<div class="chips" style="margin-bottom:.55rem"><span class="lbl">نوع الطرح</span>
+    ${solChip('', G.all, allRows.length, !solFilter)}
+    ${Object.entries(SOLICITATION_TYPE_AR).filter(([v]) => solCount.get(v)).map(([v, l]) => solChip(v, l, solCount.get(v), solFilter === v)).join('')}
+    ${solCount.get(NONE_SOL) ? solChip(NONE_SOL, 'لم يُحدَّد', solCount.get(NONE_SOL), solFilter === NONE_SOL) : ''}</div>` : '';
   const sectorChips = `<div class="chips" style="margin-bottom:.55rem"><span class="lbl">${G.filter}</span>
     <a class="chip ${!sectorFilter ? 'on' : ''}" href="${navHref({ sector: '' })}">كل القطاعات</a>
     ${sectors.map((s) => `<a class="chip ${sectorFilter === s.id ? 'on' : ''}" href="${navHref({ sector: s.id })}"><span class="dot" style="background:var(--brand)"></span>${esc(s.name_ar)}</a>`).join('')}</div>`;
@@ -304,7 +338,7 @@ export async function opportunitiesPage(user, opts = {}) {
   </div>`;
 
   // drill-downs (server-rendered inert templates; same scope as the page)
-  const oppRowDD = (o, val) => `<a class="dd-row" href="/app/opportunity/${o.id}" style="color:inherit">
+  const oppRowDD = (o, val) => `<a class="dd-row" href="/app/opportunity/${o.id}${backQs}" style="color:inherit">
     <span>${esc(o.title_ar)}${clients[o.client_id] ? ` · ${esc(clients[o.client_id])}` : ''}</span><b class="tnum">${val}</b></a>`;
   const topN = (arr, n) => arr.slice(0, n);
   const more = (arr, n) => (arr.length > n ? `<div style="font-size:11px;color:var(--faint);padding-top:.4rem">و${arr.length - n} فرصة أخرى…</div>` : '');
@@ -377,6 +411,7 @@ export async function opportunitiesPage(user, opts = {}) {
     ${viewsBar}
     ${sectorChips}
     ${deptChips}
+    ${solChips}
     ${yearChips}
     ${strip}
     <style>.kmenu-btn{opacity:.45;transition:opacity .15s,background .15s,color .15s}.kcard:hover .kmenu-btn,.kmenu-btn:focus-visible{opacity:1}.kmenu-btn:hover{background:#eef1f7;color:var(--ink2)}</style>

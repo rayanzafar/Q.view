@@ -28,7 +28,7 @@ const secHead = (t, extra = '') => `<div style="padding:.8rem 1rem;border-bottom
   <div style="font-weight:800;font-size:13.5px">${t}</div>${extra}</div>`;
 const emptySec = (ic, t, s) => `<div class="empty-state" style="padding:1.4rem .8rem">${icon(ic)}<div class="t">${t}</div><div class="s">${s}</div></div>`;
 
-export async function opportunityDetailPage(user, oppId) {
+export async function opportunityDetailPage(user, oppId, opts = {}) {
   const d = await opportunityDetail(user, oppId); // notFound/forbidden → صفحة خطأ عربية
   const o = d.opp;
   const st = d.stages.find((s) => s.id === o.stage_id) || {};
@@ -252,11 +252,12 @@ export async function opportunityDetailPage(user, oppId) {
   const docRow = (x) => `<div style="display:flex;align-items:center;gap:.5rem;padding:.45rem 0;border-bottom:1px dashed var(--line)">
     <span class="pill" style="background:#eef1f7;color:#475569;flex:0 0 auto">${esc(oppDocKindLabel(x.kind))}</span>
     <div style="flex:1;min-width:0">
-      <a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer"
-        style="font-size:var(--fs-ui);font-weight:700;color:var(--brand);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(x.name)}</a>
+      <div style="font-size:var(--fs-ui);font-weight:700;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(x.name)}</div>
       ${x.note ? `<div style="font-size:11px;color:var(--muted)">${esc(x.note)}</div>` : ''}
       <div style="font-size:var(--fs-micro);color:var(--faint)">${esc(x.uploaded_by || '—')} · <span class="tnum">${esc((x.created_at || '').slice(0, 10))}</span></div>
     </div>
+    <a class="btn btn-sm" href="${esc(x.url)}" target="_blank" rel="noopener noreferrer"
+      style="flex:0 0 auto;text-decoration:none">فتح ↗</a>
     ${d.canEdit ? `<button class="btn btn-ghost btn-sm" data-action="opp-doc-del" data-id="${esc(x.id)}" title="إزالة" aria-label="إزالة ${esc(x.name)}">✕</button>` : ''}
   </div>`;
   const addDocForm = d.canEdit ? `<div style="margin-top:.7rem">
@@ -316,8 +317,23 @@ export async function opportunityDetailPage(user, oppId) {
   // «لازم مكان يخلّيني أرجع للصفحة بعد ما أدخل على الفرصة وتفاصيلها» — وصفحةُ المشروع فيها
   // رابط رجوعٍ منذ بنائها، وصفحةُ الفرصة بلا واحد: يدخل المستخدم من قائمة الفرص ثم لا يجد
   // طريقاً إليها إلا زرّ المتصفّح — وهو يُفقد الترشيح والسنة والقطاع الذي وصل بها.
+  // حالةُ القائمة كما وصلت (`?from=`) تُعاد كما هي — ولا يُبنى منها إلا استعلامٌ نظيف: قيمةٌ
+  // تصل من الرابط لا تُدرَج في عنوانٍ بلا تدقيق، فالعنوان يُعاد بناؤه من مُرشِّحاتٍ معروفة وحدها.
+  const backTo = (() => {
+    const raw = String(opts.from || '');
+    if (!raw) return '';
+    const src = new URLSearchParams(raw);
+    const out = new URLSearchParams();
+    for (const k of ['sector', 'dept', 'year', 'sol', 'q', 'view']) {
+      const v = src.get(k);
+      if (v && v.length <= 64) out.set(k, v);
+    }
+    const q = out.toString();
+    return q ? '?' + q : '';
+  })();
+
   const body = `
-    <a href="/app/opportunities" style="font-size:12px;color:var(--muted)">← ${G.opportunities || 'الفرص'}</a>
+    <a href="/app/opportunities${backTo}" style="font-size:12px;color:var(--muted)">← ${G.opportunities || 'الفرص'}</a>
     <div style="display:flex;flex-direction:column;gap:.9rem;margin-top:.6rem">
       ${header}
       ${actionBar}

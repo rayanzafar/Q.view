@@ -446,7 +446,10 @@
       var act = actEl.dataset.action;
       if (act === 'open-opp') {
         if (e.target.closest('a,button,select,input')) return; // لا تخطف روابط/أزرار داخلية
-        location.href = '/app/opportunity/' + actEl.dataset.id; return;
+        // حالةُ القائمة تُحمَل معه كي يعود إليها كما تركها — لا إلى قائمةٍ بلا مُرشِّحات.
+        var st = location.search.replace(/^\?/, '');
+        location.href = '/app/opportunity/' + actEl.dataset.id + (st ? '?from=' + encodeURIComponent(st) : '');
+        return;
       }
       if (act === 'opp-add') { if (window.Sanad) window.Sanad.oppAdd(); return; }
       if (act === 'modal-close') { window.Sanad.closeModal(); return; }

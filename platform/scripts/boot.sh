@@ -20,6 +20,9 @@ node --experimental-sqlite scripts/seed-admin.js || true
 # آمن للتكرار: يمسّ `app_user` و`department` و`employee` فقط، ولا يقترب من تعديلات `seed.js`
 # على مالكي القطاعات والمشاريع والفرص الحقيقية — ويحرس ذلك اختبار لقطة على الجداول كلها.
 node --experimental-sqlite scripts/seed-roles.js --apply || echo "role accounts skipped"
+# تصفير عدّاد المراحل مرةً واحدة (طابعه في schema_migration): الفرص المستوردة تحمل تواريخ
+# النظام القديم فتُقرأ كلها «متوقّفة» في اليوم الأول. يتخطّى نفسه بعد أول تشغيل.
+node --experimental-sqlite scripts/reset-stage-clock.js || echo "stage clock reset skipped"
 # idempotent legacy-history backfill (INSERT … ON CONFLICT DO NOTHING) — no-op without legacy data
 node --experimental-sqlite scripts/backfill-legacy-activity.js || echo "backfill skipped"
 # توحيد العملاء يُشغَّل مرة واحدة بعد النشر عبر `railway run` (لا في الإقلاع) كي لا يخاطر بتعليقه.
