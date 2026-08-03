@@ -87,6 +87,8 @@ apiRouter.post('/projects/:id/documents', h((req) => projects.addProjectDocument
 apiRouter.delete('/projects/documents/:docId', h((req) => projects.deleteProjectDocument(req.ctx, req.params.docId)));
 apiRouter.get('/projects/:id/updates', h((req) => projects.projectUpdates(req.ctx.user, req.params.id, req.query.limit)));
 apiRouter.post('/projects/:id/staff', h((req) => projects.assignEmployee(req.ctx, req.params.id, req.body)));
+// تسكينٌ على عمل داخلي — بلا مشروع، فلا مسار تحت `/projects`: حارسه مِلكُ أمر الموظف لا المشروع.
+apiRouter.post('/staffing/internal', h((req) => projects.assignInternalWork(req.ctx, req.body || {})));
 // ── الحذف المحروس: المشروع والفرصة ──
 // لم يكن في المنتج حذفٌ لأيٍّ منهما، فبياناتٌ مستوردة لا سبيل إلى تنظيفها إلا بفتح القاعدة
 // يدوياً — خارج التدقيق وخارج الصلاحيات. والحراسة في مكانٍ واحد (core/lifecycle/remove.js):

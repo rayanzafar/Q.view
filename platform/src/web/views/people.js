@@ -9,7 +9,7 @@ import { teamTasksAccess } from '../../modules/pmo/tasks.js';
 import { canSeeSensitive, can } from '../../core/rbac/index.js';
 import { ROLE_LABELS } from '../../core/rbac/matrix.js';
 import { isDelivery } from '../../core/org/kind.js';
-import { G, workKindLabel } from '../i18n/glossary.js';
+import { G, workKindLabel, WORK_BUCKET_AR } from '../i18n/glossary.js';
 import { esc, ddWrap, ddRows } from './_shared.js';
 import { MONTHS_AR, monthLabelDual, currentMonthIndex, nowDot } from '../../core/i18n/time.js';
 import { countAr } from '../../core/i18n/plural.js';
@@ -463,7 +463,10 @@ export async function staffingPage(user, opts = {}) {
         opps: e.opportunities.map((o) => ({ name: o.name, pct: o.pct })),
       }]))).replace(/</g, '\\u003c')},
       teamProjects:${JSON.stringify(projects.map((p) => ({ id: p.id, name_ar: p.name_ar, sector_id: p.sector_id }))).replace(/</g, '\\u003c')},
-      canManage:${canManage}, canStaff:${canStaff}, currentMonth:${currentMonth},
+      ${/* بنود العمل الداخلي: تُسلَّم للمتصفّح من المعجم نفسه، فلا نسخة ثانية للأسماء تتباعد
+           عن الأولى عند إضافة بندٍ رابع. */''}
+      workBuckets:${JSON.stringify(Object.entries(WORK_BUCKET_AR).map(([k, v]) => ({ key: k, label: v }))).replace(/</g, '\\u003c')},
+      canManage:${canManage}, canStaff:${canStaff}, currentMonth:${currentMonth}, staffYear:${year},
       monthNames:${JSON.stringify(MONTHS_AR)}, teamSectorLocked:${JSON.stringify(sector)}});</script>`;
   return layout({
     user, active: 'staffing', title: 'التسكين', subtitle: `مساحة قرارات الطاقة · ${curName} ${year}`, body,

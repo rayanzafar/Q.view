@@ -9,6 +9,8 @@ import { isDelivery, SUPPORT_KIND } from '../org/org.js';
 import { staffingCandidates, projectTeamLoad } from './capacity.js';
 import { effectiveProgress } from './progress.js';
 import { ensureOpportunityForProject, syncMirrorFromProject } from '../crm/opp-project-sync.js';
+import { ownsEmployee } from '../org/confirm.js';
+import { workBucketLabel } from '../../web/i18n/glossary.js';
 
 export async function listProjects(user, filters = {}) {
   const f = scopeFilter(user, 'project', 'read', { ownerCol: 'owner_user_id' });
@@ -341,6 +343,65 @@ export function resolveAllocationYear(raw, now = new Date()) {
   return y;
 }
 
+// ── العمل الداخلي: تسكينٌ بلا مشروع ──────────────────────────────────────────
+// «في التسكين مو شرط يكون على مشروع … برضو ممكن أسكّن على مشروع أو أسكّن على تطوير أعمال ·
+//  تطوير منتجات · إدارة مشاريع» — بلسان المالك.
+//
+// وكل تسكينٍ في المنصة كان مربوطاً بمشروع، فمن يقضي نصف شهره في تطوير الأعمال أو في مكتب
+// المشاريع يُقرأ «بلا تسكين» وهو مشغول — فيُرشَّح لعملٍ جديد ويُحمَّل فوق طاقته. والبديل الذي
+// كان يُلجَأ إليه أسوأ: «مشروع داخلي» صوري يدخل المحفظة ويُحسب في تقارير المشاريع.
+//
+// والحارس هنا ليس صلاحية المشاريع — لا مشروع أصلاً — بل **مِلكُ أمر الموظف**: نفس الحكم الذي
+// يقرّر من يُسكّن من بلا تأكيد (`ownsEmployee`)، وهو ما قصده المالك بـ«سهلة ليّ كمدير إدارة»
+// وبـ«مو أي أحد يسكّن أي أحد في أي مكان» معاً.
+export const WORK_BUCKETS = ['bd', 'product', 'pmo'];
+export const isWorkBucket = (b) => WORK_BUCKETS.includes(String(b || ''));
+
+export async function assignInternalWork(ctx, { employeeId, bucket, pct, fromMonth, toMonth, year }) {
+  const user = ctx.user;
+  if (!isWorkBucket(bucket)) throw badRequest('اختر بند العمل الداخلي من القائمة');
+  const emp = await get('SELECT * FROM employee WHERE id = ? AND deleted_at IS NULL', [employeeId]);
+  if (!emp) throw badRequest('الموظف غير موجود');
+  if (!await ownsEmployee(user, employeeId)) {
+    throw forbidden('هذا الشخص خارج من تديرهم — التسكين على عمل داخلي لمن تديره');
+  }
+  const allocYear = resolveAllocationYear(year);
+  // بندٌ واحد للشخص في السنة: تكراره يُنشئ سطرين بنفس الاسم يُجمعان معاً فتُقرأ نسبةٌ مضاعفة.
+  const dup = await get(
+    'SELECT id FROM allocation WHERE employee_id = ? AND work_bucket = ? AND year = ? AND deleted_at IS NULL',
+    [employeeId, bucket, allocYear]);
+  if (dup) throw badRequest(`«${workBucketLabel(bucket)}» مسجَّل لهذا الشخص في سنة ${allocYear} — عدّل نسبته بدل إضافته مرة ثانية`);
+  const aid = id('alloc'); const now = nowIso();
+  await insert('allocation', {
+    id: aid, employee_id: employeeId, person_name_ar: emp.name_ar,
+    project_id: null, work_bucket: bucket, project_name: workBucketLabel(bucket),
+    sector_id: emp.sector_id || null, department_id: emp.department_id || null,
+    type: 'member', year: allocYear,
+    monthly_json: JSON.stringify(monthlyPlan({ pct, fromMonth, toMonth })), source: 'manual', created_at: now,
+  });
+  await audit(ctx, { action: 'create', resource: 'allocation', resourceId: aid, sectorId: emp.sector_id || null,
+    detail: { bucket, employee: employeeId, pct: pct || 100, year: allocYear } });
+  return { id: aid, employee_id: employeeId, bucket, label: workBucketLabel(bucket), year: allocYear };
+}
+
+// من يملك تعديل هذا التسكين: تسكينُ المشروع بصلاحية إدارة مشروعه، وتسكينُ العمل الداخلي بمِلك
+// أمر صاحبه. وحكمٌ واحد في موضعٍ واحد كي لا يفترق البابان (تعديل الشهر · تعديل المدى · الإزالة).
+async function mayEditAllocation(user, a) {
+  if (a.project_id) {
+    const p = await get('SELECT * FROM project WHERE id = ?', [a.project_id]);
+    return !!p && can(user, 'update', 'project', p);
+  }
+  return await ownsEmployee(user, a.employee_id);
+}
+
+// وما يُعاد بعد الكتابة: لوحة تسكين المشروع حين يكون له مشروع، وإلا سطرُ التسكين نفسه —
+// فالنداء لا يسقط لغياب مشروعٍ ليس له وجود.
+async function allocationResult(user, a) {
+  if (a.project_id) return await projectStaffing(user, a.project_id);
+  const row = await get('SELECT id, employee_id, work_bucket, monthly_json, year FROM allocation WHERE id = ?', [a.id]);
+  return { allocation: row ? { ...row, label: workBucketLabel(row.work_bucket) } : null };
+}
+
 export async function assignEmployee(ctx, projectId, { employeeId, type, pct, fromMonth, toMonth, year }) {
   const user = ctx.user;
   const p = await get('SELECT * FROM project WHERE id=? AND deleted_at IS NULL', [projectId]);
@@ -377,8 +438,7 @@ export async function setAllocation(ctx, allocationId, body = {}) {
   const user = ctx.user;
   const a = await get('SELECT * FROM allocation WHERE id=? AND deleted_at IS NULL', [allocationId]);
   if (!a) throw notFound('التسكين غير موجود');
-  const p = await get('SELECT * FROM project WHERE id=?', [a.project_id]);
-  if (!p || !can(user, 'update', 'project', p)) throw forbidden();
+  if (!await mayEditAllocation(user, a)) throw forbidden();
   // NOTE: allocation carries no updated_at column — patch only real columns.
   // الأشهر المحرَّرة يدوياً (تحرير الخلية الواحدة) تُحفظ: كان استبدال الخريطة كاملة يمحوها بصمت.
   // القاعدة: النطاق الجديد يحدد الأشهر المشمولة، وأي شهر داخل النطاق له قيمة يدوية سابقة تختلف
@@ -395,7 +455,7 @@ export async function setAllocation(ctx, allocationId, body = {}) {
   if (type) patch.type = type;
   await update('allocation', allocationId, patch);
   await audit(ctx, { action: 'update', resource: 'allocation', resourceId: allocationId, sectorId: a.sector_id, detail: { pct: pct || 100 } });
-  return await projectStaffing(user, a.project_id);
+  return await allocationResult(user, a);
 }
 
 // Single-month edit of an allocation's monthly_json (heat-grid cell editing). `pct` arrives as a
@@ -405,8 +465,9 @@ export async function setAllocationCell(ctx, allocationId, month, pct) {
   const user = ctx.user;
   const a = await get('SELECT * FROM allocation WHERE id=? AND deleted_at IS NULL', [allocationId]);
   if (!a) throw notFound('التسكين غير موجود');
-  const p = await get('SELECT * FROM project WHERE id=?', [a.project_id]);
-  if (!p || !can(user, 'update', 'project', p)) throw forbidden('تعديل التسكين يتطلب صلاحية إدارة المشروع');
+  if (!await mayEditAllocation(user, a)) {
+    throw forbidden(a.project_id ? 'تعديل التسكين يتطلب صلاحية إدارة المشروع' : 'تعديل تسكين العمل الداخلي لمن يدير صاحبه');
+  }
   const m = Number(month);
   if (!Number.isInteger(m) || m < 1 || m > 12) throw badRequest('الشهر يجب أن يكون بين 1 و12');
   const n = Number(pct);
@@ -425,11 +486,10 @@ export async function unassignEmployee(ctx, allocationId) {
   const user = ctx.user;
   const a = await get('SELECT * FROM allocation WHERE id=? AND deleted_at IS NULL', [allocationId]);
   if (!a) throw notFound('التسكين غير موجود');
-  const p = await get('SELECT * FROM project WHERE id=?', [a.project_id]);
-  if (!p || !can(user, 'update', 'project', p)) throw forbidden();
+  if (!await mayEditAllocation(user, a)) throw forbidden();
   await update('allocation', allocationId, { deleted_at: nowIso() });
   await audit(ctx, { action: 'delete', resource: 'allocation', resourceId: allocationId, sectorId: a.sector_id });
-  return await projectStaffing(user, a.project_id);
+  return await allocationResult(user, a);
 }
 
 // ── ملفات المشروع وتحديثاته ───────────────────────────────────────────────────

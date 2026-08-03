@@ -76,8 +76,12 @@
     const canStaff = !!st.canStaff;
     const rows = (e.projects || []).map((p) => {
       const v = Number((p.months || {})[m]) || 0;
+      // العمل الداخلي يُميَّز في السطر: بلا وسمٍ يُقرأ «تطوير أعمال» مشروعاً اسمه كذلك — وهو
+      // بالضبط اللبس الذي منعنا وقوعه في القاعدة حين رفضنا كياناً اسمه «مشاريع داخلية».
+      const tag = p.projectId ? ''
+        : ' <span class="pill" style="background:#e0f2fe;color:#0369a1">داخلي</span>';
       return '<div style="display:flex;align-items:center;gap:.5rem;padding:.35rem 0;border-bottom:1px dashed var(--line)">' +
-        '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px">' + esc(p.name) + '</span>' +
+        '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px">' + esc(p.name) + tag + '</span>' +
         (canStaff
           ? '<input type="number" class="input tnum" data-pop-pct data-alloc="' + p.allocId + '" value="' + v + '" min="0" max="150" step="5" aria-label="نسبة ' + esc(p.name) + ' في ' + esc(mName) + '" style="width:74px;padding:.3rem .45rem;font-size:12.5px;direction:ltr;text-align:center">' +
             '<button type="button" class="btn btn-ghost btn-sm" data-pop-remove data-alloc="' + p.allocId + '" data-pname="' + esc(p.name) + '" title="إزالة التسكين بالكامل">✕</button>'
@@ -103,9 +107,60 @@
         ? '<div style="color:var(--muted);font-size:12.5px;padding:.4rem 0">لا تسكين لهذا الموظف في ' + esc(mName) + (canStaff ? ' — أضِف تسكينًا من الزر أدناه' : '') + '.</div>'
         : rows + opps +
           '<div style="display:flex;justify-content:space-between;padding:.45rem 0 .15rem;font-size:12px;color:var(--muted)"><span>إجمالي الشهر</span><b class="tnum" data-pop-total style="color:' + (total > 110 ? 'var(--red)' : 'var(--ink2)') + '">' + total + '%</b></div>') +
-      (canStaff && st.canManage ? '<div style="padding:.35rem 0 .5rem"><button type="button" class="btn btn-sm" data-action="assign" data-emp="' + popCtx.empId + '">＋ تسكين على مشروع</button></div>' : '') +
+      (canStaff ? addRowHtml(e, m) : '') +
       (canStaff && !empty ? '<div style="font-size:10px;color:var(--faint);padding-bottom:.45rem">اكتب النسبة ثم اخرج من الحقل — يُحفظ فورًا. Esc للإغلاق.</div>' : '') +
       '</div>';
+  }
+
+  // ── سطر الإضافة داخل النافذة نفسها ────────────────────────────────────────
+  // «لما أضغط على نسبة الشخص في شهر سابع … طريقة التسكين لازم تكون مرة سهلة ليّ كمدير إدارة».
+  // وكان الزرّ الوحيد هنا يفتح نافذةً أخرى فوق النافذة ثم يعيد تحميل الصفحة — ثلاث خطوات لقرارٍ
+  // واحد. صار السطر هنا: اختر ما يشتغل عليه، اكتب النسبة، أضِف — والشهر المضغوط هو نقطة البداية.
+  //
+  // والقائمة تجمع البابين اللذين طلبهما المالك في مكانٍ واحد: **مشروع** أو **عمل داخلي**
+  // (تطوير أعمال · تطوير منتجات · إدارة مشاريع) — «مو شرط يكون على مشروع».
+  function addRowHtml(e, m) {
+    const st = S();
+    const projs = (st.teamProjects || []).filter((p) => !e.sector_id || !p.sector_id || p.sector_id === e.sector_id);
+    const buckets = st.workBuckets || [];
+    if (!projs.length && !buckets.length) return '';
+    const mName = M()[m - 1] || '';
+    return '<div style="border-top:1px dashed var(--line);padding:.5rem 0 .3rem">' +
+      '<div style="font-size:10.5px;font-weight:800;color:var(--muted);margin-bottom:.3rem">أضِف تسكيناً من ' + esc(mName) + '</div>' +
+      '<div style="display:flex;gap:.35rem;align-items:center">' +
+      '<select class="input" data-add-target style="flex:1;min-width:0;font-size:12px;padding:.3rem .4rem" aria-label="ما الذي يعمل عليه">' +
+      (buckets.length ? '<optgroup label="عمل داخلي">' + buckets.map((b) =>
+        '<option value="b:' + esc(b.key) + '">' + esc(b.label) + '</option>').join('') + '</optgroup>' : '') +
+      (projs.length ? '<optgroup label="مشروع">' + projs.map((p) =>
+        '<option value="p:' + esc(p.id) + '">' + esc(p.name_ar) + '</option>').join('') + '</optgroup>' : '') +
+      '</select>' +
+      '<input type="number" class="input tnum" data-add-pct value="50" min="0" max="150" step="5" aria-label="النسبة" style="width:66px;padding:.3rem .45rem;font-size:12.5px;direction:ltr;text-align:center">' +
+      '<button type="button" class="btn btn-sm btn-primary" data-add-go>أضِف</button>' +
+      '</div>' +
+      '<div style="font-size:10px;color:var(--faint);padding-top:.3rem">يسري من ' + esc(mName) + ' إلى آخر السنة — عدّل أي شهر من خليته.</div>' +
+      '</div>';
+  }
+
+  async function addFromPop(btn) {
+    if (!popCtx) return;
+    const sel = pop && pop.querySelector('[data-add-target]');
+    const pctEl = pop && pop.querySelector('[data-add-pct]');
+    if (!sel || !sel.value) return;
+    let pct = Math.round(Number(pctEl && pctEl.value));
+    if (!isFinite(pct) || pct < 0) pct = 0;
+    if (pct > 150) pct = 150;
+    const empId = popCtx.empId, m = popCtx.month;
+    const kind = sel.value.slice(0, 1), key = sel.value.slice(2);
+    btn.disabled = true;
+    try {
+      if (kind === 'b') {
+        await api('/staffing/internal', 'POST', { employeeId: empId, bucket: key, pct: pct, fromMonth: m, year: S().staffYear });
+      } else {
+        await api('/projects/' + encodeURIComponent(key) + '/staff', 'POST', { employeeId: empId, pct: pct, fromMonth: m, year: S().staffYear });
+      }
+      toast('أُضيف التسكين ✓');
+      setTimeout(function () { location.reload(); }, 450);
+    } catch (err) { btn.disabled = false; toast(err.message, true); }
   }
 
   function openPop(cell) {
@@ -201,6 +256,8 @@
     if (popStep) { stepPop(Number(popStep.dataset.popStep) || 0); return; }
     const popRemove = ev.target.closest('[data-pop-remove]');
     if (popRemove) { removeAlloc(popRemove); return; }
+    const addGo = ev.target.closest('[data-add-go]');
+    if (addGo) { addFromPop(addGo); return; }
     const el = ev.target.closest('[data-action]');
     if (el) {
       const a = el.dataset.action;
