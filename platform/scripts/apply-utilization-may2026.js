@@ -22,17 +22,25 @@
 import { all, get, run, insert } from '../src/core/db/index.js';
 import { id, nowIso } from '../src/core/util/ids.js';
 
-const FLAG = 'op:utilization-may-2026';
+const FLAG = 'op:utilization-may-2026-v2';
 const YEAR = 2026;
 
 // تطبيع عربي: الهمزات والتاء المربوطة والألف المقصورة والتشكيل والمسافات — فـ«الاركاب» و«الإركاب»
 // اسمٌ واحد، و«المشاعر المقدسه» و«المشاعر المقدسة» كذلك.
 export function norm(s) {
   return String(s || '')
-    .replace(/[ً-ْـ]/g, '')
+    .replace(/[\u064B-\u0652\u0640]/g, '')
     .replace(/[أإآٱ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي').replace(/ؤ/g, 'و').replace(/ئ/g, 'ي')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+// الألقاب تُنزَع قبل المقارنة: الكشف يكتب «م/ زكي سفر» والمنصة تكتب «د. أيوب الزاكي»، فلقبٌ
+// واحد يجعل أول الاسم لقباً لا اسماً — وهو ما أسقط أكثر من نصف الكشف في أول تشغيل حيّ.
+const HONORIFICS = new Set(['د', 'م', 'ا', 'أ', 'الدكتور', 'المهندس', 'الاستاذ', 'دكتور', 'مهندس']);
+export function nameWords(s) {
+  return norm(s).replace(/[./\\|,]/g, ' ').split(' ')
+    .filter((w) => w && !HONORIFICS.has(w));
 }
 
 // الكشف المنقول من الملفّين: الاسم كما ورد، ثم تسكينات المشاريع وحدها بنسبها.
@@ -65,14 +73,24 @@ export const CONFLICTS = [
   },
 ];
 
-// مطابقة الشخص: اسمٌ مطبَّع مطابق تماماً، أو **كل كلماته** موجودة في اسم الكشف (اسم ثلاثي يطابق
-// رباعياً). وأكثر من مطابقة ⟵ لا حسم.
+// مطابقة الشخص — والاتجاه هنا هو ما أخطأتُه أول مرة: الكشف يكتب الاسم **رباعياً** («ريان باسم
+// ظفر») والمنصة تحفظه **ثنائياً** («ريان ظفر»). فاشتراطُ احتواء كل كلمات الكشف في اسم المنصة
+// يُسقط كل اسمٍ مختصَر — وقد أسقط ثلاثة عشر من أربعة عشر في أول تشغيل حيّ.
+// فالمطابقة صارت في **الاتجاهين**: يكفي أن يكون أحد الاسمين مجموعةً جزئية من الآخر.
+// وشرطُ كلمتين مشتركتين على الأقل يمنع أن يجمع الاسمَ الأول وحده رجلين مختلفين.
+// والمطابقة التامّة تغلب الجزئية، وأكثر من مطابقة ⟵ لا حسم.
 function matchPeople(staff, wanted) {
-  const w = norm(wanted);
-  const exact = staff.filter((s) => norm(s.name_ar) === w);
+  const w = nameWords(wanted);
+  const key = w.join(' ');
+  const exact = staff.filter((s) => nameWords(s.name_ar).join(' ') === key);
   if (exact.length) return exact;
-  const words = w.split(' ').filter(Boolean);
-  return staff.filter((s) => { const n = norm(s.name_ar); return words.every((x) => n.includes(x)); });
+  return staff.filter((s) => {
+    const n = nameWords(s.name_ar);
+    if (n.length < 2 || w.length < 2) return false;
+    const shared = n.filter((x) => w.includes(x)).length;
+    if (shared < 2) return false;
+    return w.every((x) => n.includes(x)) || n.every((x) => w.includes(x));
+  });
 }
 
 // مطابقة المشروع: احتواءُ الاسم المطبَّع في أيٍّ من الاتجاهين، ومطابقةٌ واحدة فقط.

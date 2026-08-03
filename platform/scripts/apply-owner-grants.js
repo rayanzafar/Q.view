@@ -16,15 +16,17 @@
 // أُعيد منحُ ما رفعه المالك بيده عند كل إقلاع — أي أن الشاشة تصير عاجزةً عن رفع ما منحه السكربت.
 import { all, get, run, insert } from '../src/core/db/index.js';
 import { id, nowIso } from '../src/core/util/ids.js';
+import { nameWords } from './apply-utilization-may2026.js';
 
-const FLAG = 'op:owner-grants-innovation';
+const FLAG = 'op:owner-grants-innovation-v2';
 const DEPARTMENT_NAME = 'إدارة الابتكار';
 const PEOPLE = ['سجى', 'هادي'];
 const NOTE = 'بأمر المالك — متابعة خطّ فرص الابتكار';
 
-// المطابقة على أول كلمة من الاسم: الأسماء في الكشف ثلاثية أو رباعية، والمالك يذكر الاسم الأول.
-const firstNameIs = (fullName, first) =>
-  String(fullName || '').trim().split(/\s+/)[0] === first;
+// المطابقة على أول كلمة من الاسم — **بعد نزع اللقب**. أول تشغيلٍ حيّ سقط على هذا بالضبط:
+// «هادي» مكتوبٌ في المنصة بلقبٍ قبله، فصار أول كلمةٍ لقباً لا اسماً ولم يُطابَق أحد.
+// والتطبيع نفسه المستعمَل في سكربت الإشغال — مصدرٌ واحد للقاعدة لا نسختان تتباعدان.
+const firstNameIs = (fullName, first) => nameWords(fullName)[0] === nameWords(first)[0];
 
 export async function applyOwnerGrants({ force = false } = {}) {
   const done = await get('SELECT applied_at FROM schema_migration WHERE version = ?', [FLAG]);

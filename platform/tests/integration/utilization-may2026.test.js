@@ -110,3 +110,25 @@ test('ولا يُكرَّر تسكينٌ قائم عند إعادة التشغي
     ['e_rayan', 'p_data']);
   assert.equal(rows.length, 1, 'صفٌّ مكرَّر للشخص نفسه على المشروع نفسه');
 });
+
+// ── ما سقط في أول تشغيلٍ حيّ ────────────────────────────────────────────────
+// المطابقة الأولى اشترطت احتواء **كل** كلمات الكشف في اسم المنصة، والمنصة تحفظ الاسم مختصَراً
+// («ريان ظفر» مقابل «ريان باسم ظفر») وأحياناً بلقبٍ قبله («د. أيوب الزاكي»). فسقط ثلاثة عشر من
+// أربعة عشر اسماً على قاعدةٍ حيّة. هذا الفحص يثبت الحالتين معاً — ويسقط لو عادت المطابقة اتجاهاً
+// واحداً أو نسيت اللقب.
+test('الاسم المختصَر في المنصة يطابق الرباعي في الكشف، واللقب لا يُحسَب اسماً', async () => {
+  const dir2 = mkdtempSync(join(tmpdir(), 'sanad-util2-'));
+  const prev = process.env.SANAD_DB;
+  try {
+    assert.deepEqual(U.nameWords('د. أيوب الزاكي'), ['ايوب', 'الزاكي'], 'اللقب دخل في الاسم');
+    assert.deepEqual(U.nameWords('م/ زكي سفر'), ['زكي', 'سفر']);
+    // المطابقة في الاتجاهين على بيانات القاعدة نفسها: نضيف الاسم المختصَر ثم نعيد التشغيل.
+    await db.insert('employee', { id: 'e_short', name_ar: 'ريان ظفر', sector_id: 'SOL',
+      active: 1, created_at: T });
+    await db.run('DELETE FROM allocation WHERE employee_id = ?', ['e_rayan']);
+    await db.run('UPDATE employee SET deleted_at = ? WHERE id = ?', [T, 'e_rayan']);
+    const r = await U.applyUtilization({ force: true });
+    assert.ok(r.written.some((w) => w.includes('ريان ظفر')),
+      'الاسم المختصَر في المنصة لم يُطابَق بالرباعي في الكشف');
+  } finally { process.env.SANAD_DB = prev; rmSync(dir2, { recursive: true, force: true }); }
+});
