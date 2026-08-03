@@ -19,7 +19,7 @@ import { forbidden, notFound } from '../../core/http/errors.js';
 import { nowIso } from '../../core/util/ids.js';
 import { MONTHS_AR } from '../../core/i18n/time.js';
 import { SUPPORT_KIND } from '../org/org.js';
-import { notDemoEmployeeSql } from '../org/people.js';
+import { notDemoEmployeeSql, seesDemoAccounts } from '../org/people.js';
 
 const N = (v) => Number(v) || 0;
 
@@ -128,7 +128,7 @@ export async function staffingCandidates(user, projectId, opts = {}) {
   const emps = (await all(
     `SELECT e.* FROM employee e LEFT JOIN sector s ON s.id = e.sector_id AND s.deleted_at IS NULL
       WHERE e.active = 1 AND e.deleted_at IS NULL AND (e.sector_id = ? OR s.kind = ?)
-        AND ${notDemoEmployeeSql('e')}
+        ${seesDemoAccounts(user) ? '' : `AND ${notDemoEmployeeSql('e')}`}
       ORDER BY e.name_ar`, [p.sector_id, SUPPORT_KIND]))
     .filter((e) => !assigned.has(e.id));
   const idx = await loadIndex(emps.map((e) => e.id), year, month);

@@ -22,6 +22,18 @@ export const DEMO_LOGIN_PREFIX = 'demo.';
 const NOT_DEMO = "COALESCE(username,'') NOT LIKE 'demo.%'";
 
 /**
+ * من يرى حسابات العرض أصلاً؟ **مدير النظام وحده**.
+ *
+ * «خلّها في الباك إند فقط، وتظهر لك يا مبرمج أو تظهر لحساب الأدمن — غير كذا لازم ما تظهر في
+ * أي مكان في الإنترفيس» — بلسان المالك. والحسابات تبقى قائمة لأن المسح يدخل بها ليختبر سبعة
+ * عشر دوراً على كل شاشة؛ الممنوع أن يراها من يعمل على بياناتٍ حقيقية.
+ *
+ * ومدير النظام مستثنى لأنه هو من يديرها ويصفّيها: شاشةٌ تُخفي عنه ما يملك حذفه تجعله يظن
+ * أنها اختفت وهي باقية.
+ */
+export const seesDemoAccounts = (user) => !!user && user.role_id === 'admin';
+
+/**
  * نفس الحكم على **الموظفين** لا الحسابات.
  *
  * وموظفو العرض لا يحملون اسم دخول، لكن كلاً منهم **مربوطٌ بحساب عرض**: البذرة تُنشئ «ريم
@@ -40,11 +52,13 @@ export const notDemoEmployeeSql = (alias = 'employee') => `NOT EXISTS (
 
 /**
  * الأشخاص الذين يصحّ إسناد عملٍ إليهم: حسابات نشطة غير محذوفة وليست حسابَ عرض.
- * @param {{sectorId?: string, limit?: number}} opts — `sectorId` يقصر القائمة على قطاعٍ بعينه.
+ * @param {{sectorId?: string, limit?: number, viewer?: object}} opts — `sectorId` يقصر القائمة
+ *   على قطاعٍ بعينه، و`viewer` هو من يقرأ (مدير النظام وحده يرى حسابات العرض).
  * @returns {Promise<Array<{id: string, name: string}>>}
  */
 export async function pickablePeople(opts = {}) {
-  const where = ['active = 1', 'deleted_at IS NULL', NOT_DEMO];
+  const where = ['active = 1', 'deleted_at IS NULL'];
+  if (!seesDemoAccounts(opts.viewer)) where.push(NOT_DEMO);
   const params = [];
   if (opts.sectorId) { where.push('sector_id = ?'); params.push(opts.sectorId); }
   const limit = Number.isInteger(opts.limit) && opts.limit > 0 ? Math.min(opts.limit, 500) : 300;

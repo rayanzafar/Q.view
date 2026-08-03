@@ -26,6 +26,8 @@ for (const s of ['scripts/migrate.js', 'scripts/seed-rbac.js']) {
 let db, projects, people, P;
 const T = new Date().toISOString();
 const ADMIN = { id: 'u_admin', username: 'admin', role_id: 'admin', scope: 'company' };
+// قارئٌ عادي: القاعدة تخصّ من يعمل على بياناتٍ حقيقية، ومدير النظام مستثنى لأنه يديرها.
+const LEAD = { id: 'u_lead', username: 'lead', name_ar: 'قائد القطاع', role_id: 'sector_lead', scope: 'sector', sector_id: 'SOL' };
 
 before(async () => {
   db = await import('../../src/core/db/index.js');
@@ -38,6 +40,7 @@ before(async () => {
   await db.insert('sector', { id: 'SOL', name_ar: 'قطاع الحلول', kind: 'delivery', active: 1, created_at: T });
   await db.insert('client', { id: 'CL', name_ar: 'وزارة الاقتصاد والتخطيط', created_at: T });
   await db.insert('app_user', { id: 'u_admin', username: 'admin', name_ar: 'مدير النظام', role_id: 'admin', scope: 'company', sector_id: 'SOL', active: 1, created_at: T });
+  await db.insert('app_user', { id: 'u_lead', username: 'lead', name_ar: 'قائد القطاع', role_id: 'sector_lead', scope: 'sector', sector_id: 'SOL', active: 1, created_at: T });
   await db.insert('app_user', { id: 'u_real', username: 'saja.lashkar', name_ar: 'سجى لشكر', role_id: 'consultant', scope: 'own', sector_id: 'SOL', active: 1, created_at: T });
   // حسابا عرضٍ بنفس بادئة الدخول التي يستعملها المسح فعلاً.
   await db.insert('app_user', { id: 'u_d1', username: 'demo.ops', name_ar: 'العمليات (تجريبي)', role_id: 'operations', scope: 'company', sector_id: 'SOL', active: 1, created_at: T });
@@ -73,7 +76,7 @@ test('وصفحة المشروع والنافذة على رقمٍ واحد — ل
 
 // ── ٢ · حسابات العرض لا تظهر حيث يُختار إنسان ───────────────────────────────
 test('قائمة الأشخاص تستبعد حسابات العرض وتُبقي الحقيقيين', async () => {
-  const list = await people.pickablePeople();
+  const list = await people.pickablePeople({ viewer: LEAD });
   const names = list.map((x) => x.name);
   assert.ok(names.includes('سجى لشكر'), 'أُسقط موظفٌ حقيقي');
   assert.ok(names.includes('مدير النظام'), 'أُسقط حسابٌ حقيقي غير تجريبي');
@@ -83,14 +86,17 @@ test('قائمة الأشخاص تستبعد حسابات العرض وتُبق�
 });
 
 test('والقصر على قطاعٍ بعينه يستبعدها كذلك — لا بابٌ ثانٍ', async () => {
-  const list = await people.pickablePeople({ sectorId: 'SOL' });
+  const list = await people.pickablePeople({ sectorId: 'SOL', viewer: LEAD });
   assert.ok(!list.some((x) => /تجريبي/.test(x.name)), 'الفرع القطاعي يمرّر حسابات العرض');
   assert.ok(list.some((x) => x.name === 'سجى لشكر'));
 });
 
-test('ولا تظهر على صفحة المشروع ولا في شريط التحكم بالفرصة', async () => {
-  const html = await P.projectDetailPage(ADMIN, 'P1', {});
-  assert.ok(!html.includes('(تجريبي)'), 'حساب عرضٍ في قائمة صفحة المشروع');
+test('ولا تظهر على صفحة المشروع لقارئٍ عادي — ويراها مدير النظام وحده', async () => {
+  const forLead = await P.projectDetailPage(LEAD, 'P1', {});
+  assert.ok(!forLead.includes('(تجريبي)'), 'حساب عرضٍ في قائمة صفحة المشروع لقارئٍ عادي');
+  // والاستثناء مقصود ومُثبَت: من يملك حذفها يجب أن يراها، وإلا ظنّها اختفت وهي باقية.
+  const forAdmin = await people.pickablePeople({ viewer: ADMIN });
+  assert.ok(forAdmin.some((x) => /تجريبي/.test(x.name)), 'مدير النظام لا يرى ما يملك حذفه');
 });
 
 // حارسٌ بنيوي: لا استعلامَ ثانياً لقائمة الأشخاص خارج المصدر الواحد.
@@ -130,7 +136,7 @@ test('موظفو العرض خارج قائمة «من المتاح للتسكي
     sector_id: 'SOL', user_id: 'u_real', active: 1, created_at: T });
   await db.insert('employee', { id: 'e_demo', name_ar: 'ريم الدوسري (تجريبي)', job_title: 'مديرة إدارة',
     sector_id: 'SOL', user_id: 'u_d1', active: 1, created_at: T });
-  const r = await capacity.staffingCandidates(ADMIN, 'P1', {});
+  const r = await capacity.staffingCandidates(LEAD, 'P1', {});
   const names = (r.candidates || []).map((x) => x.name_ar);
   assert.ok(names.includes('إبراهيم صابر'), 'أُسقط موظفٌ حقيقي من قائمة التسكين');
   assert.ok(!names.includes('ريم الدوسري (تجريبي)'),
@@ -143,7 +149,7 @@ test('والربط يُقرأ من الجهتين — فلا بابٌ ثانٍ �
   await db.insert('employee', { id: 'e_demo2', name_ar: 'حساب عرضٍ آخر (تجريبي)',
     sector_id: 'SOL', active: 1, created_at: T });
   await db.update('app_user', 'u_d2', { employee_id: 'e_demo2' });
-  const r = await capacity.staffingCandidates(ADMIN, 'P1', {});
+  const r = await capacity.staffingCandidates(LEAD, 'P1', {});
   assert.ok(!(r.candidates || []).some((x) => x.id === 'e_demo2'),
     'الربط المعاكس يمرّر موظف عرضٍ إلى قائمة التسكين');
 });

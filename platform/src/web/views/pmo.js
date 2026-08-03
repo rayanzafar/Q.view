@@ -16,7 +16,7 @@ import { listViews } from '../../modules/views/views.js';
 import { canSeeSensitive, redact, can, effectiveScope } from '../../core/rbac/index.js';
 import { departmentScope, departmentInSql } from '../../core/rbac/departments.js';
 import { DELIVERY_SECTOR_SQL } from '../../core/org/kind.js';
-import { pickablePeople } from '../../modules/org/people.js';
+import { pickablePeople, seesDemoAccounts } from '../../modules/org/people.js';
 import { G, projectKindLabel, projectKindTip } from '../i18n/glossary.js';
 import { sarShort, esc, bar, statMini, noticeCard } from './_shared.js';
 import { MONTHS_AR, MONTHS_EN3, currentMonthIndex, monthLabelDual } from '../../core/i18n/time.js';
@@ -513,7 +513,7 @@ export async function tasksPage(user, opts = {}) {
   let people = [];
   if (canAssign) {
     if (teamScope === 'company') {
-      people = await pickablePeople();
+      people = await pickablePeople({ viewer: user });
     } else if (teamScope === 'department') {
       // قائمة من يجوز إسناد المهمة إليهم = أهل **كل إدارة يقودها**، لا إدارة انتمائه وحدها:
       // كان مديرُ إدارتين لا يجد اسم موظفٍ يقوده في القائمة فلا يستطيع إسناد مهمة له.
@@ -522,10 +522,11 @@ export async function tasksPage(user, opts = {}) {
       const inDeps = departmentInSql('e.department_id', departmentScope(user));
       people = await all(`SELECT u.id, COALESCE(u.name_ar, u.username) AS "name" FROM app_user u
         JOIN employee e ON e.id = u.employee_id AND e.deleted_at IS NULL
-        WHERE u.active=1 AND u.deleted_at IS NULL AND COALESCE(u.username,'') NOT LIKE 'demo.%'
+        WHERE u.active=1 AND u.deleted_at IS NULL
+          ${seesDemoAccounts(user) ? '' : "AND COALESCE(u.username,'') NOT LIKE 'demo.%'"}
           AND ${inDeps.clause} ORDER BY u.name_ar, u.username LIMIT 300`, inDeps.params);
     } else if (user.sector_id) {
-      people = await pickablePeople({ sectorId: user.sector_id });
+      people = await pickablePeople({ sectorId: user.sector_id, viewer: user });
     }
   }
   const depts = await all(`SELECT id, name_ar FROM department WHERE active=1 AND deleted_at IS NULL
@@ -1822,7 +1823,7 @@ export async function projectDetailPage(user, projectId, opts = {}) {
   const moneyCard = await projectMoneySection(user, p, { year: opts.year });
   const invSum = (await get(`SELECT COALESCE(SUM(amount_halalas),0) v FROM invoice
      WHERE project_id=? AND deleted_at IS NULL AND status NOT IN ('DRAFT','CANCELLED')`, [p.id])).v;
-  const users = await pickablePeople({ limit: 200 });
+  const users = await pickablePeople({ limit: 200, viewer: user });
   const userName = Object.fromEntries(users.map((u) => [u.id, u.name]));
   // النسب الأربع من مصدرها الواحد — لا تُعاد حسبتها هنا ولا في أي شاشة أخرى.
   const prog = await projectProgress(p.id, { today: todayStr });
