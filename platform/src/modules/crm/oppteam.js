@@ -10,6 +10,9 @@ import { audit } from '../../core/audit/index.js';
 import { id, nowIso } from '../../core/util/ids.js';
 import { forbidden, notFound, badRequest } from '../../core/http/errors.js';
 import { notDemoEmployeeSql, seesDemoAccounts } from '../org/people.js';
+import { staffingConfirmation } from '../org/confirm.js';
+import { raiseDirectApproval } from '../workflow/engine.js';
+import { notify } from '../notifications/notify.js';
 
 export const TEAM_ROLES = ['lead', 'member', 'reviewer', 'sponsor'];
 export const TEAM_ROLE_LABELS = { lead: 'قائد', member: 'عضو', reviewer: 'مراجع', sponsor: 'راعٍ' };
@@ -26,6 +29,7 @@ export async function getTeam(user, oppId) {
   if (!can(user, 'read', 'opportunity', opp)) throw forbidden();
   return await all(
     `SELECT m.id AS membership_id, m.employee_id, m.role_in_group, m.allocation_pct,
+            COALESCE(m.status, 'ACTIVE') AS status,
             e.name_ar, e.job_title
        FROM membership m JOIN employee e ON e.id = m.employee_id
       WHERE m.group_kind = 'opportunity' AND m.group_id = ? AND m.deleted_at IS NULL
@@ -55,6 +59,10 @@ export async function addMember(ctx, oppId, data = {}) {
     "SELECT id FROM membership WHERE group_kind = 'opportunity' AND group_id = ? AND employee_id = ? AND deleted_at IS NULL",
     [oppId, emp.id]);
   if (dup) throw badRequest('هذا الموظف عضو في فريق الفرصة مسبقًا');
+  // ── هل يحتاج التسكين تأكيد مدير الموظف؟ ──
+  // «مو أي أحد يسكّن أي أحد في أي مكان» — فمن لا يملك أمر هذا الموظف يضمّه معلَّقاً حتى يؤكّد
+  // مديره أنه يعمل على هذا فعلاً. ومن يملك أمره (قائد قطاعه أو مدير إدارته) يُسكّن مباشرةً.
+  const confirm = await staffingConfirmation(user, emp.id);
 
   const now = nowIso();
   const mid = id('mem');
@@ -69,13 +77,30 @@ export async function addMember(ctx, oppId, data = {}) {
     }
     await insert('membership', {
       id: mid, employee_id: emp.id, group_kind: 'opportunity', group_id: oppId,
-      role_in_group: role, allocation_pct: pct, start_date: now.slice(0, 10), created_at: now,
+      role_in_group: role, allocation_pct: pct, start_date: now.slice(0, 10),
+      status: confirm.needsConfirmation ? 'PENDING' : 'ACTIVE', created_at: now,
     });
   });
   await audit(ctx, {
     action: 'create', resource: 'opp_team', resourceId: mid, sectorId: opp.sector_id,
-    detail: { opportunity_id: oppId, employee_id: emp.id, role_in_group: role, allocation_pct: pct },
+    detail: { opportunity_id: oppId, employee_id: emp.id, role_in_group: role, allocation_pct: pct,
+      pending_confirmation: confirm.needsConfirmation || undefined },
   });
+  // الطلب يُرفع **بعد** كتابة العضوية: طلبٌ يشير إلى عضويةٍ لم تُكتب بعد يصل إلى مديرٍ يفتحه
+  // فلا يجد ما يؤكّده. وخارج المعاملة عمداً — فشلُ إشعارٍ لا يجوز أن يُلغي تسكيناً صحيحاً.
+  if (confirm.needsConfirmation) {
+    await raiseDirectApproval(ctx, {
+      resource: 'membership', resourceId: mid, assigneeUserId: confirm.approverUserId,
+      sectorId: opp.sector_id,
+      detail: { opportunity_id: oppId, employee_id: emp.id, employee_name: emp.name_ar },
+    });
+    notify(confirm.approverUserId, {
+      kind: 'approval',
+      title: `تأكيد تسكين: ${emp.name_ar}`,
+      body: `طُلب تسكين ${emp.name_ar} على فرصة «${opp.title_ar}». أكِّد أنه يعمل عليها أو ارفض.`,
+      ref_resource: 'opportunity', ref_id: oppId,
+    });
+  }
   return await getTeam(user, oppId);
 }
 

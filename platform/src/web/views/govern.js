@@ -2,7 +2,7 @@
 import { layout, card, pill, hbars } from '../layout.js';
 import { fmtSar } from '../../core/util/ids.js';
 import { all } from '../../core/db/index.js';
-import { myApprovalQueue } from '../../modules/workflow/engine.js';
+import { myApprovalQueue, myDirectApprovals } from '../../modules/workflow/engine.js';
 import { canControlSchedules } from '../../core/reports/engine.js';
 import {
   buildPeriodReport, comparePreviousSnapshot, listPeriodSnapshots, lensOptions,
@@ -16,7 +16,9 @@ import { resourceLabel, mailStatusLabel, mailStatusTone, auditActionLabel, repor
 import { esc, statMini } from './_shared.js';
 
 export async function approvalsPage(user) {
-  const q = await myApprovalQueue(user);
+  // صندوقٌ واحد لا صندوقان: ما يُوجَّه بالدور (اعتمادات مالية) وما يُوجَّه بشخصك (تأكيد تسكين
+  // موظفك) يظهران معاً — «أين أرى ما ينتظرني» يجب أن يكون له جوابٌ واحد.
+  const q = [...await myApprovalQueue(user), ...await myDirectApprovals(user)];
   const list = q.map((a) => `<tr class="border-b border-line">
     <td class="py-2.5 px-3 text-[13px]">${esc(a.workflow_name || '')}</td>
     <td class="px-3 text-[12px] text-muted">${esc(resourceLabel(a.resource))} · <span class="tnum">${esc(a.resource_id || '')}</span></td>

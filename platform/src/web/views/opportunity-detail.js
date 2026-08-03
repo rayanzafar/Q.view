@@ -174,6 +174,8 @@ export async function opportunityDetailPage(user, oppId) {
     <div style="flex:1;min-width:0"><div style="font-size:var(--fs-ui);font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m.name_ar)}</div>
       <div style="font-size:11px;color:var(--muted)">${esc(m.job_title || '—')}</div></div>
     ${pill(TEAM_ROLE_LABELS[m.role_in_group] || esc(m.role_in_group || 'عضو'), m.role_in_group === 'lead' ? 'blue' : m.role_in_group === 'sponsor' ? 'violet' : 'slate')}
+    ${m.status === 'PENDING' ? `<span class="pill" style="background:#fef3c7;color:#b45309;flex:0 0 auto"
+      title="طُلب تأكيد مديره أنه يعمل على هذه الفرصة — لا يُحتسب في تحميله قبل التأكيد">بانتظار تأكيد مديره</span>` : ''}
     ${m.allocation_pct != null ? `<span class="tnum" style="font-size:11px;color:var(--muted);flex:0 0 auto">${Math.round(m.allocation_pct)}%</span>` : ''}
     ${d.canEdit ? `<button class="btn btn-ghost btn-sm" data-action="team-remove" data-id="${m.membership_id}" title="إزالة من الفريق" aria-label="إزالة ${esc(m.name_ar)}">✕</button>` : ''}
   </div>`;

@@ -1,9 +1,10 @@
 // Approval workflow engine. Multi-step chains with role + threshold gating.
 // Permission is enforced at BOTH request time and each approval action (never assumed).
-import { all, get, insert, update } from '../../core/db/index.js';
+import { all, get, insert, update, run } from '../../core/db/index.js';
 import { can } from '../../core/rbac/index.js';
 import { audit } from '../../core/audit/index.js';
 import { notify } from '../notifications/notify.js';
+import { settleStaffing } from '../org/staffing-settle.js';
 import { id, nowIso } from '../../core/util/ids.js';
 import { forbidden, notFound, badRequest } from '../../core/http/errors.js';
 
@@ -122,8 +123,10 @@ export async function actOnApproval(ctx, requestId, action, comment) {
   const reqRow = await get('SELECT * FROM approval_request WHERE id = ?', [requestId]);
   if (!reqRow) throw notFound('طلب الاعتماد غير موجود');
   if (reqRow.status !== 'PENDING') throw badRequest('الطلب مُغلق');
-  const step = await stepFor(reqRow.workflow_id, reqRow.current_step);
-  if (!step) throw badRequest('خطوة غير معرّفة');
+  // طلبٌ موجَّه إلى شخص لا خطوةَ دورٍ له: المعتمِد هو الشخص نفسه، والفحص عليه لا على دوره.
+  const direct = !!reqRow.assignee_user_id;
+  const step = direct ? null : await stepFor(reqRow.workflow_id, reqRow.current_step);
+  if (!direct && !step) throw badRequest('خطوة غير معرّفة');
   // القرار قرارٌ واحد من اثنين. أي كلمة أخرى كانت تُسجَّل إجراءً على الطلب ثم تتركه معلَّقاً
   // كما هو، ويُكتب في سجل التدقيق أنه «اعتماد».
   if (action !== 'approve' && action !== 'reject') throw badRequest('حدّد القرار: اعتماد أو رفض');
@@ -134,14 +137,26 @@ export async function actOnApproval(ctx, requestId, action, comment) {
   // `sector_id` هنا مشتقٌّ من الصف المرفوع لا من جسم الطلب (submitForApproval) — وإلا اختار
   // الرافعُ القطاعَ الذي يُفحص عليه نطاق المعتمِد.
   const target = { sector_id: reqRow.sector_id };
-  if (user.role_id !== step.approver_role && user.role_id !== 'admin') throw forbidden('لست المعتمِد المطلوب لهذه الخطوة');
-  if (!can(user, 'approve', reqRow.resource, target)) throw forbidden('صلاحية الاعتماد غير متاحة');
+  if (direct) {
+    // الموجَّه إليه وحده — ومدير النظام. ولا يُفحص منح «اعتماد» على المورد: التأكيد هنا شهادةٌ
+    // على موظفه («هل يعمل على هذا»)، لا سلطةٌ على العنصر المُسكَّن عليه. واشتراطُ منحٍ إضافي
+    // يُسكت مديراً عن موظفه لأنه لا يملك الفرصة — وهو عكس الغرض تماماً.
+    if (reqRow.assignee_user_id !== user.id && user.role_id !== 'admin') {
+      throw forbidden('هذا التأكيد موجَّه إلى مدير الموظف، لا إليك');
+    }
+  } else {
+    if (user.role_id !== step.approver_role && user.role_id !== 'admin') throw forbidden('لست المعتمِد المطلوب لهذه الخطوة');
+    if (!can(user, 'approve', reqRow.resource, target)) throw forbidden('صلاحية الاعتماد غير متاحة');
+  }
 
   await insert('approval_action', {
     id: id('apa'), request_id: requestId, step_order: reqRow.current_step, actor_user_id: user.id,
     action, comment: comment || null, acted_at: nowIso(),
   });
 
+  // أثرُ القرار على ما طُلب تأكيده. يُستدعى للطلبات الموجَّهة وحدها، ولا يعرف المحرّكُ تفصيله:
+  // الوحدة صاحبة العضوية هي التي تُفعّلها أو تُلغيها — فلا يتسرّب علمُ التسكين إلى محرّك عام.
+  if (direct) await settleStaffing(reqRow, action === 'approve');
   if (action === 'reject') {
     await update('approval_request', requestId, { status: 'REJECTED', closed_at: nowIso() });
     notify(reqRow.requested_by, { kind: 'approval', title: 'رُفض طلب الاعتماد', body: comment || '',
@@ -177,4 +192,59 @@ export async function myApprovalQueue(user) {
        AND ar.requested_by <> ?
      ORDER BY ar.created_at`,
     [user.role_id, user.role_id, user.sector_id, user.role_id, user.id]);
+}
+
+// ═══ اعتمادٌ موجَّهٌ إلى شخصٍ بعينه ═════════════════════════════════════════════
+//
+// «عشان المدير يأكّد أن الموظف شغّال على هذا الشي» — والمعتمِد هنا ليس دوراً بل إنساناً:
+// **مدير هذا الموظف**. أما `submitForApproval` أعلاه فيوجّه بالدور والنطاق، وهو الصحيح
+// للاعتمادات المالية («أي قائد قطاع» يعتمد) وغير الصحيح هنا.
+//
+// ولماذا مسارٌ ثانٍ للرفع لا توسيعُ الأول: `submitForApproval` يشترط على الرافع صلاحية تعديل
+// العنصر المرفوع — والرافع هنا بالضبط **من لا يملك أمر ذلك الموظف**، وهو سبب الطلب لا مانعه.
+// وليّ ذلك الشرط ليقبل الحالتين يُضعف الحارس على المسار المالي بلا مقابل.
+//
+// والصندوق واحد رغم البابين: نفس `approval_request` ونفس `approval_action` ونفس الطابور —
+// فمن يفتح «الاعتمادات» يرى ما ينتظره كلَّه في مكانٍ واحد.
+export const STAFFING_WORKFLOW_KEY = 'staffing_confirmation';
+
+// تعريفُ المسار يُنشأ عند أول حاجة: الترحيلة تصف المخطط لا البيانات، والبذر لا يُعاد على
+// قاعدةٍ ممتلئة. `ON CONFLICT DO NOTHING` يجعل النداء آمناً للتكرار وللتزامن معاً.
+async function ensureStaffingWorkflow() {
+  const found = await get('SELECT * FROM workflow_definition WHERE key = ?', [STAFFING_WORKFLOW_KEY]);
+  if (found) return found;
+  await run(
+    `INSERT INTO workflow_definition (id, key, name_ar, target_resource, active, created_at)
+     VALUES (?,?,?,?,1,?) ON CONFLICT DO NOTHING`,
+    [id('wfd'), STAFFING_WORKFLOW_KEY, 'تأكيد تسكين موظف', 'membership', nowIso()]);
+  return await get('SELECT * FROM workflow_definition WHERE key = ?', [STAFFING_WORKFLOW_KEY]);
+}
+
+/**
+ * يرفع طلباً موجَّهاً إلى شخصٍ بعينه. بلا خطوات دور — الشخص هو الخطوة.
+ * @returns {Promise<object>} صفّ الطلب
+ */
+export async function raiseDirectApproval(ctx, { resource, resourceId, assigneeUserId, sectorId, detail } = {}) {
+  const user = ctx.user;
+  if (!resourceId || !assigneeUserId) throw badRequest('طلب التأكيد يحتاج العنصر والمعتمِد');
+  const wf = await ensureStaffingWorkflow();
+  const rid = id('apr'); const now = nowIso();
+  await insert('approval_request', {
+    id: rid, workflow_id: wf.id, resource: resource || 'membership', resource_id: resourceId,
+    requested_by: user.id, amount_halalas: 0, sector_id: sectorId || user.sector_id || null,
+    current_step: 1, status: 'PENDING', assignee_user_id: assigneeUserId, created_at: now,
+  });
+  await audit(ctx, { action: 'submit', resource: 'approval', resourceId: rid, sectorId: sectorId || null,
+    detail: { workflowKey: STAFFING_WORKFLOW_KEY, resource: resource || 'membership', resourceId, assignee: assigneeUserId, ...(detail || {}) } });
+  return await get('SELECT * FROM approval_request WHERE id = ?', [rid]);
+}
+
+/** الطلبات الموجَّهة إليّ بعينـي — تُدمج مع طابور الأدوار في الشاشة. */
+export async function myDirectApprovals(user) {
+  if (!user) return [];
+  return await all(
+    `SELECT ar.*, wd.name_ar workflow_name FROM approval_request ar
+      JOIN workflow_definition wd ON wd.id = ar.workflow_id
+      WHERE ar.status = 'PENDING' AND ar.assignee_user_id = ? AND ar.requested_by <> ?
+      ORDER BY ar.created_at`, [user.id, user.id]);
 }

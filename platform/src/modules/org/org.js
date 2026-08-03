@@ -607,6 +607,7 @@ export async function staffingRoster(user, opts = {}) {
   const oppRows = blind ? [] : await all(`SELECT m.id membership_id, m.employee_id, m.allocation_pct, m.role_in_group, o.id opp_id, o.title_ar
      FROM membership m JOIN opportunity o ON o.id = m.group_id LEFT JOIN stage st ON st.id = o.stage_id
      WHERE m.group_kind = 'opportunity' AND m.deleted_at IS NULL AND m.allocation_pct > 0
+       AND COALESCE(m.status, 'ACTIVE') <> 'PENDING'
        AND o.deleted_at IS NULL AND COALESCE(st.is_won, 0) = 0 AND COALESCE(st.is_lost, 0) = 0`);
   const oppByEmp = {};
   for (const r of oppRows) (oppByEmp[r.employee_id] ||= []).push(r);
