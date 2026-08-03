@@ -55,22 +55,46 @@
   });
   document.addEventListener('input', function (e) {
     if (e.target && e.target.id === 'oc-value') vatPreview();
+    if (e.target && e.target.id === 'team-emp-q') syncRosterPick();
   });
 
-  // ── قائمة الموظفين لنموذج إضافة عضو الفريق (صفحة تفاصيل الفرصة) ──
+  // ── قائمة من يُضمّ لفريق الفرصة: الشركة كلها، بحثاً بالاسم ──
+  // تُقرأ من مسار الفرصة لا من كشف التسكين: الكشف محدودٌ بإدارة القارئ عن حقّ، والعمل على
+  // الفرصة عابرٌ للإدارات. وتُحمَّل مرةً واحدة ويُرشِّح المتصفّح داخلها — فلا نداءَ لكل حرف.
+  var ROSTER = [];
   async function loadRoster() {
-    var sel = document.querySelector('select[data-roster]'); if (!sel) return;
+    var box = document.getElementById('team-roster');
+    var q = document.getElementById('team-emp-q');
+    if (!box || !S().oppId) return;
     try {
-      var r = await api('/org/roster');
-      var opts = (r.roster || []).filter(function (e) { return e.active !== 0; }).map(function (e) {
-        return '<option value="' + esc(e.id) + '">' + esc(e.name_ar) + (e.job_title ? ' · ' + esc(e.job_title) : '') + '</option>';
-      });
-      sel.innerHTML = opts.length ? '<option value="">اختر موظفًا…</option>' + opts.join('')
-        : '<option value="">لا موظفون متاحون</option>';
+      var r = await api('/opportunities/' + encodeURIComponent(S().oppId) + '/team/roster');
+      ROSTER = r.roster || [];
+      box.innerHTML = ROSTER.map(function (e) {
+        var where = [e.department_name, e.sector_name].filter(Boolean).join(' · ');
+        return '<option value="' + esc(e.name_ar) + (where ? ' — ' + esc(where) : '') + '"></option>';
+      }).join('');
+      if (q) q.placeholder = 'ابحث بالاسم… (' + ROSTER.length + ' شخصاً)';
     } catch (err) {
-      sel.innerHTML = '<option value="">تعذّر جلب الأسماء — أعد المحاولة</option>';
+      if (q) q.placeholder = 'تعذّر جلب الأسماء — أعد تحميل الصفحة';
     }
   }
+  // الحقل المخفي يحمل المعرّف: يكتب المستخدم اسماً، ونطابقه على القائمة المحمَّلة.
+  // ولا نطابق بالاسم عند الحفظ — الاسم قد يتكرّر، والمعرّف لا.
+  function syncRosterPick() {
+    var q = document.getElementById('team-emp-q');
+    var hidden = document.getElementById('team-emp');
+    if (!q || !hidden) return;
+    var typed = (q.value || '').trim();
+    var hit = null;
+    for (var i = 0; i < ROSTER.length; i++) {
+      var e = ROSTER[i];
+      var where = [e.department_name, e.sector_name].filter(Boolean).join(' · ');
+      var label = e.name_ar + (where ? ' — ' + where : '');
+      if (label === typed || e.name_ar === typed) { hit = e; break; }
+    }
+    hidden.value = hit ? hit.id : '';
+  }
+
   function init() {
     var q = new URLSearchParams(location.search).get('q');
     var el = document.getElementById('opp-q');
@@ -172,7 +196,11 @@
     var emp = (document.getElementById('team-emp') || { value: '' }).value;
     var role = (document.getElementById('team-role') || { value: 'member' }).value;
     var pct = (document.getElementById('team-pct') || { value: '' }).value;
-    if (!emp) return toast('اختر الموظف أولًا', true);
+    // اسمٌ مكتوبٌ لا يطابق أحداً ليس اختياراً: نقول ذلك بدل إرسال طلبٍ يُرَدّ.
+    if (!emp) {
+      var typed = ((document.getElementById('team-emp-q') || { value: '' }).value || '').trim();
+      return toast(typed ? 'لم أجد «' + typed + '» — اختر اسماً من القائمة' : 'ابحث عن الموظف بالاسم أولًا', true);
+    }
     var body = { employee_id: emp, role_in_group: role };
     if (pct !== '') body.allocation_pct = Number(pct);
     try {

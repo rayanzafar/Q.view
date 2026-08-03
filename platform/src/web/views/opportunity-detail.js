@@ -177,8 +177,16 @@ export async function opportunityDetailPage(user, oppId) {
     ${m.allocation_pct != null ? `<span class="tnum" style="font-size:11px;color:var(--muted);flex:0 0 auto">${Math.round(m.allocation_pct)}%</span>` : ''}
     ${d.canEdit ? `<button class="btn btn-ghost btn-sm" data-action="team-remove" data-id="${m.membership_id}" title="إزالة من الفريق" aria-label="إزالة ${esc(m.name_ar)}">✕</button>` : ''}
   </div>`;
+  // ── ضمّ عضو: بحثٌ بالاسم عبر الشركة كلها ────────────────────────────────────
+  // «مدير أي إدارة يقدر يسكّن ناس موجودين في إدارة مختلفة — ولازم البحث بالاسم». وقائمةٌ
+  // منسدلة بمئات الاسم لا يُبحث فيها؛ فالحقل مكتوبٌ فيه ويُرشِّح المتصفّح مع كل حرف
+  // (`datalist` أصلية — بلا مكتبة ولا نداءٍ لكل ضغطة). والاسم يظهر معه إدارتُه وقطاعه، فمن
+  // يضمّ شخصاً من إدارة أخرى يعرف من أين يأخذه.
   const addMemberForm = d.canEdit ? `<div style="display:flex;gap:.45rem;margin-top:.75rem;flex-wrap:wrap">
-      <select id="team-emp" data-roster class="input" style="flex:2;min-width:150px" aria-label="اختيار موظف"><option value="">جارٍ تحميل الأسماء…</option></select>
+      <input id="team-emp-q" list="team-roster" class="input" style="flex:2;min-width:170px"
+        placeholder="ابحث بالاسم… من أي إدارة" aria-label="ابحث عن موظف بالاسم" autocomplete="off">
+      <datalist id="team-roster"></datalist>
+      <input type="hidden" id="team-emp">
       <select id="team-role" class="input" style="flex:1;min-width:90px" aria-label="الدور في الفريق">
         ${['member', 'lead', 'reviewer', 'sponsor'].map((r) => `<option value="${r}">${TEAM_ROLE_LABELS[r]}</option>`).join('')}</select>
       <input id="team-pct" class="input" type="number" min="1" max="100" placeholder="٪" title="نسبة التخصيص (اختياري)" aria-label="نسبة التخصيص" style="width:64px">

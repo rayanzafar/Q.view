@@ -9,6 +9,7 @@ import { can } from '../../core/rbac/index.js';
 import { audit } from '../../core/audit/index.js';
 import { id, nowIso } from '../../core/util/ids.js';
 import { forbidden, notFound, badRequest } from '../../core/http/errors.js';
+import { notDemoEmployeeSql, seesDemoAccounts } from '../org/people.js';
 
 export const TEAM_ROLES = ['lead', 'member', 'reviewer', 'sponsor'];
 export const TEAM_ROLE_LABELS = { lead: 'قائد', member: 'عضو', reviewer: 'مراجع', sponsor: 'راعٍ' };
@@ -92,4 +93,42 @@ export async function removeMember(ctx, membershipId) {
     detail: { opportunity_id: m.group_id, employee_id: m.employee_id },
   });
   return await getTeam(user, opp.id);
+}
+
+// ── من يمكن ضمّه إلى فريق الفرصة: **الشركة كلها**، لا إدارة القارئ ─────────────
+//
+// «ممكن في فرصة ناس من تطوير الأعمال وناس من إدارات مختلفة تشتغل عليها، فمدير أي إدارة يقدر
+// يسكّن بعض الناس على فرصة موجودين في إدارة مختلفة — ولازم البحث بالاسم» — بلسان المالك.
+//
+// والصلاحية كانت مفتوحةً أصلاً: `addMember` أعلاه لا يشترط على الموظف نطاقاً، فمدير الإدارة
+// **يستطيع** ضمّ أي أحد منذ اليوم الأول. العطل أن القائمة كانت تُقرأ من كشف التسكين
+// (`staffingRoster`) وهو محدودٌ بإدارة القارئ عن حقّ — فكان يستطيع الإضافة ولا يستطيع
+// **العثور**: باب مفتوح بلا مفتاح.
+//
+// فالقائمة هنا مستقلّة عن الكشف: بوابتها صلاحية تعديل الفرصة نفسها (وهي بوابة الإضافة
+// نفسها، فلا تَعِد بما يردّه الحفظ)، ومداها الشركة كلها لأن العمل على الفرصة عابرٌ للإدارات
+// بطبيعته. وهي **قراءةُ أسماءٍ لا كشفُ طاقة**: لا نِسَب تحميل ولا رواتب ولا أي حقل حسّاس.
+//
+// وحسابات العرض مستبعَدة بنفس قاعدة بقية القوائم — ومدير النظام وحده يراها.
+export async function rosterForOpportunity(user, oppId, opts = {}) {
+  const opp = await loadOpp(oppId);
+  if (!can(user, 'update', 'opportunity', opp)) throw forbidden('ضمّ عضوٍ للفريق يتطلب صلاحية تعديل الفرصة');
+  const where = ['e.active = 1', 'e.deleted_at IS NULL'];
+  const params = [];
+  if (!seesDemoAccounts(user)) where.push(notDemoEmployeeSql('e'));
+  // البحث بالاسم: مطابقةٌ جزئية غير حسّاسة لموضع الكلمة — يكتب «صابر» فيجد «إبراهيم صابر».
+  const q = String(opts.q || '').trim();
+  if (q) { where.push('e.name_ar LIKE ?'); params.push(`%${q}%`); }
+  // ومن هو في الفريق أصلاً لا يُعرَض: عرضُه يقود إلى «عضو مسبقاً» بعد الضغط لا قبله.
+  const rows = await all(
+    `SELECT e.id, e.name_ar, e.job_title, d.name_ar AS department_name, s.name_ar AS sector_name
+       FROM employee e
+       LEFT JOIN department d ON d.id = e.department_id AND d.deleted_at IS NULL
+       LEFT JOIN sector s ON s.id = e.sector_id AND s.deleted_at IS NULL
+      WHERE ${where.join(' AND ')}
+        AND e.id NOT IN (SELECT employee_id FROM membership
+                          WHERE group_kind = 'opportunity' AND group_id = ? AND deleted_at IS NULL
+                            AND employee_id IS NOT NULL)
+      ORDER BY e.name_ar LIMIT 500`, [...params, oppId]);
+  return { opportunityId: oppId, roster: rows };
 }
