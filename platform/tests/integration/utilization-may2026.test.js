@@ -127,7 +127,7 @@ test('الاسم المختصَر في المنصة يطابق الرباعي ف
   const dir2 = mkdtempSync(join(tmpdir(), 'sanad-util2-'));
   const prev = process.env.SANAD_DB;
   try {
-    assert.deepEqual(U.nameWords('د. أيوب الزاكي'), ['ايوب', 'الزاكي'], 'اللقب دخل في الاسم');
+    assert.deepEqual(U.nameWords('د. أيوب الزاكي'), ['ايوب', 'زاكي'], 'اللقب دخل في الاسم');
     assert.deepEqual(U.nameWords('م/ زكي سفر'), ['زكي', 'سفر']);
     // المطابقة في الاتجاهين على بيانات القاعدة نفسها: نضيف الاسم المختصَر ثم نعيد التشغيل.
     await db.insert('employee', { id: 'e_short', name_ar: 'ريان ظفر', sector_id: 'SOL',
@@ -205,4 +205,13 @@ test('ولا يُكتب فوق ما عدّله المالك من شاشة الت
   const after = JSON.parse((await db.get(
     'SELECT monthly_json FROM allocation WHERE id = ?', ['a_legacy'])).monthly_json);
   assert.deepEqual(after, { 5: 0.25, 6: 0.25 }, 'كُتب فوق تعديلٍ يدوي');
+});
+
+// آخر ما سقط حيّاً: أداة التعريف على اسم العائلة. الكشف «هادي احمد الكرمي» والمنصة «هادي كرمي»
+// — كلمتان مختلفتان في المقارنة وهما اسمٌ واحد، فسقطت مطابقته بعد أن صحّ كل شيء آخر فيه.
+test('وأداة التعريف على اسم العائلة لا تفصل الاسم عن نفسه', () => {
+  assert.deepEqual(U.nameWords('هادي احمد الكرمي'), ['هادي', 'احمد', 'كرمي']);
+  assert.deepEqual(U.nameWords('هادي كرمي'), ['هادي', 'كرمي']);
+  // ولا تُمسَخ الأسماء القصيرة: النزع مشروطٌ بطول الكلمة.
+  assert.deepEqual(U.nameWords('علي'), ['علي']);
 });
