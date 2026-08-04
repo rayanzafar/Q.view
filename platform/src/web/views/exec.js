@@ -146,7 +146,7 @@ export async function ceoPage(user, opts = {}) {
   const chips = `<div class="chips"><span class="lbl">عرض:</span>
     <a href="/app/ceo?year=${year}" class="chip ${sec ? '' : 'on'}">الشركة كاملة</a>
     ${ov.sectors.map((s) => `<a href="/app/ceo?year=${year}&sector=${esc(s.id)}" class="chip ${sec === s.id ? 'on' : ''}"><span class="dot" style="background:${esc(s.color || 'var(--brand)')}"></span>${esc(s.name_ar)}</a>`).join('')}
-    ${sec ? `<a class="btn btn-sm" style="margin-inline-start:.3rem" href="/app/sector?year=${year}&sector=${sec}">فتح مركز القطاع ←</a>` : ''}
+    ${sec ? `<a class="btn btn-sm" style="margin-inline-start:.3rem" href="/app/sector?year=${year}&sector=${esc(sec)}">فتح مركز القطاع ←</a>` : ''}
   </div>`;
 
   // ── Drill-down popup datasets → templates (shared ddWrap/attain/ddRows at module scope) ──
