@@ -12,6 +12,7 @@ import { ROLE_LABELS } from '../../core/rbac/matrix.js';
 // مفتاح الشخص الواحد يُستورَد من خدمة الهوية لا يُعاد كتابته هنا: نسختان من قاعدة التطبيع
 // تنحرفان بمرور الوقت، فتحذّر الشاشة من تكرارٍ يسمح به الخادم، أو تسكت عن تكرارٍ يمنعه.
 import { personKey } from '../../modules/identity/identity.js';
+import { mailBlockedFor } from '../../core/mail/transport.js';
 import { resourceLabel, mailStatusLabel, mailStatusTone, auditActionLabel, reportName } from '../i18n/glossary.js';
 import { esc, statMini } from './_shared.js';
 
@@ -72,11 +73,20 @@ export async function usersPage(user) {
     // الخدمة ونشرتُ، وبقيت الشاشة تعرض المعطَّل «دعوة معلَّقة» — لأن فحصي غطّى الخدمة ولم
     // يُصيِّر الصفحة. المصدر واحد (العمود نفسه) وإن اختلف طريق الوصول إليه.
     const pending = !u.active && !u.last_login_at && !u.deactivated_at;
+    // ── تحذيرٌ قبل أن يصطدم صاحبُ الحساب بالجدار ──────────────────────────
+    // حارس المستقبِلين يمنع كل عنوانٍ خارج قائمة العناوين المسموح بها في هذه البيئة، والقائمة
+    // والحسابات مصدران منفصلان لا يقارنهما شيء. فحسابٌ يبدو سليماً تماماً — نشط، بريده مكتوب —
+    // لا يصله رمزٌ أبداً، ولا يُعرَف ذلك إلا حين يطلب صاحبه رمزاً ويبحث في بريده المزعج عن
+    // رسالةٍ لم تخرج من الخادم. وقع ذلك على ثلاثة أشخاص قبل أن يُكتب هذا السطر.
+    // والحساب لا يُعطَّل ولا يُخفى: الوسم خبرٌ لمن يدير الهوية، والعلاج بيده لا بيد المنصة.
+    const mailBlocked = mailBlockedFor(u.email);
     return `<tr class="border-b border-line" data-uid="${esc(u.id)}">
     <td class="py-2 px-3 text-[13px]">${esc(u.name_ar || '')}
       ${u.email
         ? `<div class="text-[11px] text-muted" dir="ltr" style="text-align:right">${esc(u.email)}</div>`
-        : '<div class="text-[11px]" style="color:var(--red);font-weight:700">بلا بريد — لا يستطيع الدخول</div>'}</td>
+        : '<div class="text-[11px]" style="color:var(--red);font-weight:700">بلا بريد — لا يستطيع الدخول</div>'}
+      ${mailBlocked ? `<div class="text-[11px]" style="color:#b45309;font-weight:700"
+        title="بريد هذا الحساب خارج قائمة العناوين المسموح بها في هذه البيئة، فرمز الدخول يُحجب قبل أن يغادر الخادم. أضِف عنوانه إلى القائمة ثم أعد تشغيل الخدمة كي يسري التعديل.">⚠ لن يصله رمز — عنوانه خارج قائمة الإرسال</div>` : ''}</td>
     <td class="px-3">${pill(esc(roleAr(u)), 'blue')}</td>
     <td class="px-3 text-[12px]">${esc(u.sector_name || (u.sector_id ? 'قطاع غير معروف' : '—'))}</td>
     <td class="px-3">${pending ? pill('دعوة معلّقة', 'amber') : u.active ? pill('نشط', 'green') : pill('معطّل', 'red')}</td>

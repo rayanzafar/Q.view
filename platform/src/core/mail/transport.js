@@ -21,6 +21,18 @@ export function filterRecipients(list) {
   return { allowed, blocked };
 }
 
+// هل يُحجَب هذا العنوان فعلاً لو أُرسل إليه الآن — بحساب **القناة** لا القائمة وحدها.
+// وهذا الشرط ليس تفصيلاً: الحارس لا يُطبَّق في قناة المعاينة إطلاقاً (الفرع الثاني أدناه لا
+// يمرّ به)، فحسابُ الحجب من القائمة وحدها يَسِم **كل** حساب في بيئة التطوير بأنه محجوب —
+// تحذيرٌ يعمّ فيصير ضجيجاً يُتجاهَل، وحين يصدق يوماً لا يُصدَّق. وقعتُ في ذلك وأسقطه اختبار.
+export function mailBlockedFor(email) {
+  if (config.mailTransport !== 'smtp') return false;
+  if (config.mailUnrestricted) return false;
+  const addr = String(email || '').trim();
+  if (!addr) return false;
+  return !filterRecipients([addr]).allowed.length;
+}
+
 export async function sendMail({ to, cc, subject, html }) {
   if (config.mailTransport === 'smtp') {
     const gTo = filterRecipients(to);

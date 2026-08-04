@@ -14,6 +14,7 @@ import { audit } from '../../core/audit/index.js';
 import { badRequest, forbidden, notFound } from '../../core/http/errors.js';
 import { id, nowIso } from '../../core/util/ids.js';
 import { requestCode, PURPOSE, normalizeEmail } from '../../core/auth/otp.js';
+import { mailBlockedFor } from '../../core/mail/transport.js';
 import { removeRecord, removalBlockers } from '../../core/lifecycle/remove.js';
 import { ROLE_LABELS } from '../../core/rbac/matrix.js';
 
@@ -89,6 +90,15 @@ export async function listUsers(user, { query = '', role = '', status = '' } = {
   // فالفعل نفسه يُسجَّل الآن: ختمٌ لحظة التعطيل (ترحيلة ٠١٦). من له ختمٌ أُغلق عليه عمداً،
   // ومن لا ختم له ولم يدخل قط فهو ينتظر التفعيل.
   for (const r of rows) r.was_deactivated = !!r.deactivated_at;
+  // ── حسابٌ لن يصله رمزٌ أبداً، ولا شيء كان يقول ذلك ────────────────────────
+  // حارس المستقبِلين يمنع الإرسال إلى كل عنوانٍ خارج قائمة العناوين المسموح بها في هذه البيئة —
+  // وهو حارسٌ مقصود (قاعدة التجربة تحمل عناوين موظفين حقيقيين). لكن القائمة والحسابات مصدران
+  // منفصلان لا يقارنهما شيء، فالحساب يُنشأ نشطاً ويبدو سليماً ثم **يُكتشف الجدارُ بجسد صاحبه**:
+  // يطلب رمزاً فلا يصله، ويبحث في بريده المزعج عن رسالةٍ لم تخرج من الخادم أصلاً.
+  // وقع هذا ثلاث مرات على ثلاثة أشخاص. والشاشة تملك كل ما يلزم لمنعه قبل أن يحاول أحد.
+  for (const r of rows) {
+    r.mail_blocked = mailBlockedFor(r.email);
+  }
   const q = String(query || '').trim().toLowerCase();
   return rows.filter((u2) => {
     if (role && u2.role_id !== role) return false;
@@ -219,8 +229,12 @@ export async function resendInvite(ctx, userId) {
   if (!u.email) throw badRequest('هذا الحساب بلا بريد — أضِف بريده أولاً كي يصله الرمز');
   const purpose = u.active ? PURPOSE.SIGNIN : PURPOSE.INVITE;
   const r = await requestCode({ email: u.email, ip: ctx.ip, purpose, inviterName: ctx.user.name_ar || null });
-  await audit(ctx, { action: 'update', resource: 'app_user', resourceId: u.id, detail: 'إعادة إرسال رمز الدخول' });
-  return { ok: true, delivered: !!r.delivered };
+  await audit(ctx, { action: 'update', resource: 'app_user', resourceId: u.id,
+    detail: `إعادة إرسال رمز الدخول${r.delivered ? '' : ` — لم تغادر الرسالة: ${r.reason || 'سبب غير معروف'}`}` });
+  // السبب يُمرَّر إلى الشاشة هنا وحدها: الضاغطُ مدير النظام لا صاحب الحساب، فلا شيء يُفشى عليه
+  // وهو أحوجُ الناس إلى معرفة لماذا لم تصل الرسالة. وبدونه يبحث الموظف في بريده المزعج عن
+  // رسالةٍ لم تخرج من الخادم أصلاً.
+  return { ok: true, delivered: !!r.delivered, reason: r.delivered ? null : (r.reason || null) };
 }
 
 // ─────────────────────────── تفعيل وتعطيل ───────────────────────────

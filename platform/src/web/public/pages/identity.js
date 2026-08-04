@@ -172,7 +172,10 @@
   async function resend(id) {
     try {
       const r = await api('/identity/users/' + encodeURIComponent(id) + '/resend', 'POST', {});
-      toast(r.delivered ? 'أُرسل الرمز إلى بريده' : 'لم تغادر الرسالة — راجع «مركز البريد» لمعرفة السبب', !r.delivered);
+      // السبب يُقال هنا لا يُحال إلى شاشةٍ أخرى: مديرُ النظام ضغط الزرّ ويريد أن يعرف الآن
+      // لماذا لم تصل. وكانت الرسالة تقول «راجع مركز البريد» فيقطع رحلةً ليقرأ سطراً واحداً.
+      toast(r.delivered ? 'أُرسل الرمز إلى بريده'
+        : ('لم تغادر الرسالة: ' + (r.reason || 'سبب غير معروف')), !r.delivered);
     } catch (e) { toast(e.message, true); }
   }
 

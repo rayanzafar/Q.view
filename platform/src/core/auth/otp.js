@@ -43,7 +43,12 @@ async function findUserByEmail(email) {
 
 // ───────────────────────────── طلب الرمز ─────────────────────────────
 
-// يردّ { ok: true } دائماً — نجح أم لم ينجح. التشخيص الحقيقي يذهب إلى سجل التدقيق لا إلى الردّ.
+// يردّ { ok: true } دائماً — نجح أم لم ينجح. والسبب (`reason`) يُرافقه للمُنادي **لا للشاشة**:
+// شاشةُ الدخول تتجاهله عمداً كي لا تُفشي وجود الحساب، وشاشةُ إدارة الهوية تعرضه لأن ضاغطَ
+// الزرّ هناك مديرُ النظام لا صاحبُ الحساب — وإخفاء السبب عنه ليس حمايةً بل عطلاً.
+//
+// وهذا ما كلّف يوماً: أربع محاولات دخولٍ لموظف حُجبت كلها لأن عنوانه خارج قائمة العناوين
+// المسموح بها، والشاشة تقول «أرسلنا رمزاً». فبحث الجميع في البريد المزعج ولا رسالة هناك أصلاً.
 export async function requestCode({ email, ip, purpose = PURPOSE.SIGNIN, inviterName = null }) {
   const u = await findUserByEmail(email);
 
@@ -56,6 +61,9 @@ export async function requestCode({ email, ip, purpose = PURPOSE.SIGNIN, inviter
   // يعرف السائلُ من له حساب في EVC ومن لا حساب له، بلا أن يملك شيئاً.
   if (!eligible) {
     hashPassword(generateCode());
+    // ولا سبب هنا **حتى للمُنادي الإداري**: الردّ في هذه الحالة يجب أن يطابق الردّ الناجح
+    // حرفاً بحرف، وأي خانةٍ زائدة تجعل الفرق قابلاً للقياس ولو لم تُعرَض على شاشة. ومدير
+    // النظام لا يبلغ هذا الفرع أصلاً — مسارُه يقرأ الحساب ويتحقق من بريده قبل النداء.
     return { ok: true, delivered: false };
   }
 
@@ -110,7 +118,7 @@ export async function requestCode({ email, ip, purpose = PURPOSE.SIGNIN, inviter
     action: 'login', resource: 'login_code', resourceId: u.id,
     detail: `طُلب ${purpose === PURPOSE.INVITE ? 'رمز تفعيل حساب' : 'رمز دخول'}${delivered ? ' وأُرسل إلى بريده' : ` — لم يُسلَّم: ${failure || 'سبب غير معروف'}`}`,
   });
-  return { ok: true, delivered };
+  return { ok: true, delivered, reason: delivered ? null : (failure || 'سبب غير معروف') };
 }
 
 // ───────────────────────────── التحقق ─────────────────────────────
