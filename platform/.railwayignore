@@ -10,9 +10,11 @@ data/backups
 data/outbox
 data/migration-reconciliation.json
 .env
-# real snapshot carries salaries/IPs — never upload it (the sanitized *.demo.json is used instead)
-seed/legacy-state.snapshot.json
-seed/legacy-users.snapshot.json
+# real snapshot carries salaries/IPs — never upload it (the sanitized *.demo.json is used instead).
+# glob, not exact names: any new snapshot must be excluded too, not just today's two files.
+seed/*.snapshot.json
+# backfill files carry secrets (labeled so in .gitignore) — never upload
+seed/*.backfill.json
 *.log
 .DS_Store
 

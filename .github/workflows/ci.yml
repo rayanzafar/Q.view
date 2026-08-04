@@ -19,7 +19,7 @@ jobs:
         with:
           node-version: '22'
       - name: Install
-        run: npm ci || npm install
+        run: npm ci
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
       - name: Syntax check (src + scripts)
@@ -49,7 +49,7 @@ jobs:
         with:
           node-version: '22'
       - name: Install
-        run: npm ci || npm install
+        run: npm ci
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
       - name: Install Chromium

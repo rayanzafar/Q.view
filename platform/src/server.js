@@ -52,7 +52,12 @@ export async function createApp() {
   // Readiness: verify DB is reachable (for load balancers / orchestrators).
   app.get('/ready', async (req, res) => {
     try { await ping(); res.json({ ready: true }); }
-    catch (e) { res.status(503).json({ ready: false, error: e.message }); }
+    catch (e) {
+      // السبب يُكتب في سجل الخادم لا في الرد: رسائل مُحرّك القاعدة تحمل مضيفاً واسم قاعدة ودوراً،
+      // فلا تُسرَّب لمتصل غير موثَّق (نفس مبدأ errors.js: لا تفصيل 5xx يغادر).
+      console.error('[ready] قاعدة البيانات غير مبلوغة:', e?.message || e);
+      res.status(503).json({ ready: false });
+    }
   });
   app.use('/static', express.static(resolve(ROOT, 'src/web/public'), { maxAge: config.env === 'production' ? '1h' : 0 }));
   app.use('/auth', authRouter);

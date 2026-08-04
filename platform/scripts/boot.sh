@@ -5,9 +5,14 @@
 #
 # Environment switch (single boot path for staging AND production):
 #   SANAD_SEED_DEMO=0   → PRODUCTION: no demo data/accounts. An initial admin is created ONCE from
-#                         SANAD_ADMIN_USER / SANAD_ADMIN_PASS. Real data is imported later in-app.
+#                         SANAD_ADMIN_EMAIL (required — it is the login identity) plus optional
+#                         SANAD_ADMIN_PASS / SANAD_ADMIN_USER. Real data is imported later in-app.
 #   (unset / anything)  → STAGING/DEV: demo business data + demo personas (unchanged behavior).
-node --experimental-sqlite scripts/migrate.js || true
+#
+# The schema migration is the ONE step that must be FATAL: booting on a stale/half-applied schema
+# would run the server green against the wrong shape (exit 0, restart policy never fires, /ready
+# only pings). Every seed/backfill step below stays guarded (idempotent, may no-op on a re-run).
+node --experimental-sqlite scripts/migrate.js || { echo "!! فشلت الترحيلة — يُوقَف الإقلاع كي لا يعمل الخادم على مخطط قديم" >&2; exit 1; }
 node --experimental-sqlite scripts/seed-rbac.js || true
 # staging/dev only — self-guards and exits early when SANAD_SEED_DEMO=0
 node --experimental-sqlite scripts/seed-staging.js || true
