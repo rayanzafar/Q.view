@@ -25,6 +25,7 @@
 // خطأ يظهر — فيظنّ العطل في المنصة أو في فهمه. تُوسَّع القائمة مع كل استعلامٍ يُوصَل، لا قبله.
 import { all, get, insert, update, tx } from '../../core/db/index.js';
 import { can, effectiveScope } from '../../core/rbac/index.js';
+import { inDepartmentScope } from '../../core/rbac/departments.js';
 import { SCOPE_RANK } from '../../core/rbac/matrix.js';
 import { badRequest, forbidden, notFound } from '../../core/http/errors.js';
 import { id, nowIso } from '../../core/util/ids.js';
@@ -58,7 +59,24 @@ export async function grantsForUser(userId) {
   return rows.filter((r) => isGrantable(r.resource, r.action));
 }
 
-// ── الحدّ ────────────────────────────────────────────────────────────────────
+// ── حدُّ المنح يُقاس بنطاق المانح لا بقراءته ────────────────────────────────
+// «مدير الإدارة يمنح إدارته، وقائد القطاع أي إدارة في قطاعه» — قرار المالك.
+//
+// وكان يُقاس بـ`can(read)` وحده، وهو مقياسٌ صار أوسع من المقصود: قراءةُ الفرص تتبع القائمة
+// (تُنهي تناقض «يظهر ولا يُفتح»)، فلو تبعها المنحُ لصار مديرُ الإدارة يمنح صلاحياتٍ على كل
+// إدارة في قطاعه — سلطةٌ لم تُمنَح له. **فرؤية شيءٍ ليست ملكاً لتوزيعه.**
+//
+// والمقياس هنا نطاقُه الفعلي على المورد: شركيٌّ يبلغ الكل · قطاعيٌّ يبلغ قطاعه · وإداريٌّ
+// يبلغ ما يقوده وحده. ويُستعمل في البابين معاً — الفحص عند الحفظ والقائمة المعروضة — كي لا
+// تعِد الشاشة بما يرفضه الخادم (وهو ما يحرسه فحصٌ قائم بعينه).
+function reachesForGrant(granter, dept, resource, action) {
+  const scope = effectiveScope(granter, action, resource);
+  if (scope === 'company') return true;
+  if (scope === 'sector') return !!granter.sector_id && dept.sector_id === granter.sector_id;
+  if (scope === 'department') return inDepartmentScope(granter, dept.id);
+  return false;
+}
+
 async function assertMayGrant(granter, targetUser, dept, resource, action) {
   if (!isGrantable(resource, action)) {
     throw badRequest('هذه الصلاحية غير متاحة للمنح من هنا — اختر من القائمة المعروضة');
@@ -69,7 +87,7 @@ async function assertMayGrant(granter, targetUser, dept, resource, action) {
   // ① و② معاً: القراءة في هذه الإدارة، وباتساعٍ يبلغ الإدارة فأوسع.
   const target = { sector_id: dept.sector_id, department_id: dept.id };
   const wide = SCOPE_RANK[effectiveScope(granter, action, resource)] >= SCOPE_RANK.department;
-  if (!wide || !can(granter, action, resource, target)) {
+  if (!wide || !can(granter, action, resource, target) || !reachesForGrant(granter, dept, resource, action)) {
     throw forbidden(`لا تملك رؤية «${dept.name_ar}» بنفسك — ولا يمنح أحدٌ ما لا يملكه`);
   }
   // ③ الشخص من أهلك: نفس سؤال تأكيد التسكين حرفاً — مصدرٌ واحد لا نسختان تتباعدان.
@@ -135,7 +153,9 @@ export async function grantableDepartments(granter, resource = 'opportunity', ac
      FROM department d LEFT JOIN sector s ON s.id = d.sector_id AND s.deleted_at IS NULL
     WHERE d.deleted_at IS NULL AND d.active = 1
     ORDER BY s.sort_order, d.name_ar`);
-  return rows.filter((d) => can(granter, action, resource, { sector_id: d.sector_id, department_id: d.id }));
+  // نفس حكم الحفظ حرفاً — القائمة المعروضة هي ما يُقبل فعلاً، لا وعدٌ يُخلَف عند الحفظ.
+  return rows.filter((d) => can(granter, action, resource, { sector_id: d.sector_id, department_id: d.id })
+    && reachesForGrant(granter, d, resource, action));
 }
 
 export async function grantDepartment(ctx, data = {}) {
