@@ -94,12 +94,14 @@ export async function addMember(ctx, oppId, data = {}) {
       sectorId: opp.sector_id,
       detail: { opportunity_id: oppId, employee_id: emp.id, employee_name: emp.name_ar },
     });
-    notify(confirm.approverUserId, {
+    // بذل أفضل، لا شرط: يُنتظَر ليُلتقَط خطؤه فلا يبقى وعداً طليقاً (رفضٌ غير مُعالَج)، ويُبتلَع
+    // الخطأ فلا يُلغي تسكيناً صحيحاً كُتب وأُقرَّ قبله — كما ينصّ التعليق أعلاه.
+    await notify(confirm.approverUserId, {
       kind: 'approval',
       title: `تأكيد تسكين: ${emp.name_ar}`,
       body: `طُلب تسكين ${emp.name_ar} على فرصة «${opp.title_ar}». أكِّد أنه يعمل عليها أو ارفض.`,
       ref_resource: 'opportunity', ref_id: oppId,
-    });
+    }).catch((e) => console.error('[notify] فشل إشعار تأكيد التسكين', e));
   }
   return await getTeam(user, oppId);
 }

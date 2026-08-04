@@ -66,10 +66,12 @@ test('المحاولة أثناء القفل لا تُجدّده — وهذا ه
   const until = new Date(Date.now() + 60_000).toISOString();
   await db.run('UPDATE app_user SET failed_attempts = ?, locked_until = ? WHERE username = ?',
     [config.maxFailedAttempts, until, 'lock.siege']);
-  // ثلاث محاولات أثناء القفل — بكلمة مرور خاطئة وصحيحة معاً.
-  for (const pw of ['wrong', PW, 'wrong']) {
-    assert.equal((await attempt('lock.siege', pw)).reason, 'locked');
-  }
+  // ثلاث محاولات أثناء القفل — بكلمة مرور خاطئة وصحيحة معاً. لا واحدة منها تُجدّد الختم أو تُحرّك
+  // العدّاد (وهو جوهر هذا الفحص). والسبب لا يُفشي القفل لغير صاحبه: الصحيحة (صاحب الحساب) «مقفول»،
+  // والخاطئة «بيانات غير صحيحة» — فلا يُستدلّ على قفل حسابٍ من خارجه (منعُ عدّ الحسابات).
+  assert.equal((await attempt('lock.siege', 'wrong')).reason, 'invalid');
+  assert.equal((await attempt('lock.siege', PW)).reason, 'locked');
+  assert.equal((await attempt('lock.siege', 'wrong')).reason, 'invalid');
   const s = await state('lock.siege');
   assert.equal(s.locked_until, until, 'الختم كما هو — لا دقيقةً واحدة أُضيفت');
   assert.equal(Number(s.failed_attempts), config.maxFailedAttempts, 'ولا عدّاد تحرّك');

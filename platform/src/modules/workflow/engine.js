@@ -1,6 +1,6 @@
 // Approval workflow engine. Multi-step chains with role + threshold gating.
 // Permission is enforced at BOTH request time and each approval action (never assumed).
-import { all, get, insert, update, run } from '../../core/db/index.js';
+import { all, get, insert, update, run, tx } from '../../core/db/index.js';
 import { can } from '../../core/rbac/index.js';
 import { audit } from '../../core/audit/index.js';
 import { notify } from '../notifications/notify.js';
@@ -114,7 +114,7 @@ async function notifyStepApprovers(workflowId, requestId, order, sectorId) {
   // (SQLite infers it either way; the cast is a no-op there). Same value bound twice.
   const approvers = await all('SELECT id FROM app_user WHERE role_id = ? AND active = 1 AND (sector_id = ? OR CAST(? AS TEXT) IS NULL)',
     [step.approver_role, sectorId, sectorId]);
-  for (const a of approvers) notify(a.id, { kind: 'approval', title: 'طلب اعتماد بانتظارك',
+  for (const a of approvers) await notify(a.id, { kind: 'approval', title: 'طلب اعتماد بانتظارك',
     body: step.name_ar || 'خطوة اعتماد', ref_resource: 'approval_request', ref_id: requestId });
 }
 
@@ -149,33 +149,38 @@ export async function actOnApproval(ctx, requestId, action, comment) {
     if (!can(user, 'approve', reqRow.resource, target)) throw forbidden('صلاحية الاعتماد غير متاحة');
   }
 
-  await insert('approval_action', {
-    id: id('apa'), request_id: requestId, step_order: reqRow.current_step, actor_user_id: user.id,
-    action, comment: comment || null, acted_at: nowIso(),
-  });
+  // سطرُ الإجراء + تسويةُ التسكين + قلبُ حالة الطلب + إخطاره + التدقيق: كتابةٌ واحدة لا تتجزّأ.
+  // بلا معاملةٍ كان عطبٌ بين السطر والحالة يترك طلباً «عُمل عليه» وهو باقٍ معلَّقاً، أو عضويةً
+  // فُعّلت لطلبٍ لم يُغلَق. والإخطارات تُنتظَر داخل المعاملة كي لا يصل خبرٌ عن تغييرٍ تراجَع.
+  await tx(async () => {
+    await insert('approval_action', {
+      id: id('apa'), request_id: requestId, step_order: reqRow.current_step, actor_user_id: user.id,
+      action, comment: comment || null, acted_at: nowIso(),
+    });
 
-  // أثرُ القرار على ما طُلب تأكيده. يُستدعى للطلبات الموجَّهة وحدها، ولا يعرف المحرّكُ تفصيله:
-  // الوحدة صاحبة العضوية هي التي تُفعّلها أو تُلغيها — فلا يتسرّب علمُ التسكين إلى محرّك عام.
-  if (direct) await settleStaffing(reqRow, action === 'approve');
-  if (action === 'reject') {
-    await update('approval_request', requestId, { status: 'REJECTED', closed_at: nowIso() });
-    notify(reqRow.requested_by, { kind: 'approval', title: 'رُفض طلب الاعتماد', body: comment || '',
-      ref_resource: reqRow.resource, ref_id: reqRow.resource_id });
-  } else if (action === 'approve') {
-    // الخطوة التالية **المنطبقة**: تُتخطّى كل خطوة سقفُها فوق مبلغ هذا الطلب بدل أن يقف
-    // عندها الطلب بانتظار معتمِد لا يعنيه المبلغ.
-    const next = await nextApplicableStep(reqRow.workflow_id, reqRow.current_step + 1, reqRow.amount_halalas);
-    if (next) {
-      await update('approval_request', requestId, { current_step: next.step_order });
-      await notifyStepApprovers(reqRow.workflow_id, requestId, next.step_order, reqRow.sector_id);
-    } else {
-      await update('approval_request', requestId, { status: 'APPROVED', closed_at: nowIso() });
-      notify(reqRow.requested_by, { kind: 'approval', title: 'اعتُمد طلبك', body: '',
+    // أثرُ القرار على ما طُلب تأكيده. يُستدعى للطلبات الموجَّهة وحدها، ولا يعرف المحرّكُ تفصيله:
+    // الوحدة صاحبة العضوية هي التي تُفعّلها أو تُلغيها — فلا يتسرّب علمُ التسكين إلى محرّك عام.
+    if (direct) await settleStaffing(reqRow, action === 'approve');
+    if (action === 'reject') {
+      await update('approval_request', requestId, { status: 'REJECTED', closed_at: nowIso() });
+      await notify(reqRow.requested_by, { kind: 'approval', title: 'رُفض طلب الاعتماد', body: comment || '',
         ref_resource: reqRow.resource, ref_id: reqRow.resource_id });
+    } else if (action === 'approve') {
+      // الخطوة التالية **المنطبقة**: تُتخطّى كل خطوة سقفُها فوق مبلغ هذا الطلب بدل أن يقف
+      // عندها الطلب بانتظار معتمِد لا يعنيه المبلغ.
+      const next = await nextApplicableStep(reqRow.workflow_id, reqRow.current_step + 1, reqRow.amount_halalas);
+      if (next) {
+        await update('approval_request', requestId, { current_step: next.step_order });
+        await notifyStepApprovers(reqRow.workflow_id, requestId, next.step_order, reqRow.sector_id);
+      } else {
+        await update('approval_request', requestId, { status: 'APPROVED', closed_at: nowIso() });
+        await notify(reqRow.requested_by, { kind: 'approval', title: 'اعتُمد طلبك', body: '',
+          ref_resource: reqRow.resource, ref_id: reqRow.resource_id });
+      }
     }
-  }
-  await audit(ctx, { action: 'approve', resource: 'approval', resourceId: requestId,
-    sectorId: reqRow.sector_id, detail: { action, step: reqRow.current_step } });
+    await audit(ctx, { action: 'approve', resource: 'approval', resourceId: requestId,
+      sectorId: reqRow.sector_id, detail: { action, step: reqRow.current_step } });
+  });
   return await get('SELECT * FROM approval_request WHERE id = ?', [requestId]);
 }
 

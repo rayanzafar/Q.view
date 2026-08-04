@@ -84,7 +84,7 @@ export async function buildReport(reportKey, user, opts = {}) {
     if (!p) throw new Error('لا يوجد مشروع متاح');
     return { period: periodLabel(), project: redact(user, 'project', p), kpis: await projectKpis(p.id),
       deliverables: (await all("SELECT name_ar FROM deliverable WHERE project_id=? AND status IN ('DRAFT','IN_PROGRESS','DELIVERED','REJECTED') AND deleted_at IS NULL LIMIT 6", [p.id])).map((d) => d.name_ar),
-      risks: (await all("SELECT title FROM risk WHERE project_id=? AND status!='CLOSED' LIMIT 6", [p.id])).map((r) => r.title) };
+      risks: (await all("SELECT title FROM risk WHERE project_id=? AND status!='CLOSED' AND deleted_at IS NULL LIMIT 6", [p.id])).map((r) => r.title) };
   }
   if (reportKey === 'workforce_utilization') {
     const sid = opts.sectorId || user.sector_id;
@@ -357,10 +357,10 @@ async function pendingDecisions(user) {
   });
 }
 async function topRisks() {
-  return (await all("SELECT title FROM risk WHERE status!='CLOSED' ORDER BY CASE impact WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END LIMIT 4")).map((r) => r.title);
+  return (await all("SELECT title FROM risk WHERE status!='CLOSED' AND deleted_at IS NULL ORDER BY CASE impact WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END LIMIT 4")).map((r) => r.title);
 }
 async function sectorRisks(sectorId) {
-  return (await all("SELECT title FROM risk WHERE sector_id=? AND status!='CLOSED' LIMIT 4", [sectorId])).map((r) => r.title);
+  return (await all("SELECT title FROM risk WHERE sector_id=? AND status!='CLOSED' AND deleted_at IS NULL LIMIT 4", [sectorId])).map((r) => r.title);
 }
 // Consulting-standard: name the client + opportunity on each deal.
 async function topWonDeals() {

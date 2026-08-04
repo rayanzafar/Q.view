@@ -148,7 +148,7 @@ async function summarizeProject(user, projectRef, text) {
   }
 
   const k = await projectKpis(project.id);
-  const risks = await all("SELECT title FROM risk WHERE project_id = ? AND status != 'CLOSED' ORDER BY title LIMIT 5", [project.id]);
+  const risks = await all("SELECT title FROM risk WHERE project_id = ? AND status != 'CLOSED' AND deleted_at IS NULL ORDER BY title LIMIT 5", [project.id]);
   const showCost = can(user, 'read', 'cost');
   const facts = [
     `الحالة: ${label(STATUS_AR, project.status)} · الصحة: ${label(RAG_AR, project.rag)} · الإنجاز: ${Math.round(project.progress_pct || 0)}%`,

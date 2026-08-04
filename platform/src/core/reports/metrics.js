@@ -132,7 +132,7 @@ export async function sectorDashboard(user, sectorId, opts = {}) {
   const projects = await all("SELECT status, COUNT(*) n FROM project WHERE sector_id = ? AND deleted_at IS NULL GROUP BY status", [sectorId]);
   const rag = await all("SELECT rag, COUNT(*) n FROM project WHERE sector_id = ? AND deleted_at IS NULL AND status='IN_PROGRESS' GROUP BY rag", [sectorId]);
   const deliverables = await all("SELECT status, COUNT(*) n FROM deliverable WHERE sector_id = ? AND deleted_at IS NULL GROUP BY status", [sectorId]);
-  const openRisks = (await get("SELECT COUNT(*) n FROM risk WHERE sector_id = ? AND status != 'CLOSED'", [sectorId])).n;
+  const openRisks = (await get("SELECT COUNT(*) n FROM risk WHERE sector_id = ? AND status != 'CLOSED' AND deleted_at IS NULL", [sectorId])).n;
   return {
     sector: { id: s.id, name_ar: s.name_ar, kind: s.kind || null, is_support: support }, year,
     projects: Object.fromEntries(projects.map((r) => [r.status, r.n])),

@@ -1,5 +1,5 @@
 // Timesheets — time entries with validation, live timer, submit/approve.
-import { all, get, insert, update, run } from '../../core/db/index.js';
+import { all, get, insert, update, run, tx } from '../../core/db/index.js';
 import { can } from '../../core/rbac/index.js';
 import { audit } from '../../core/audit/index.js';
 import { id, nowIso } from '../../core/util/ids.js';
@@ -53,15 +53,19 @@ export async function addEntry(ctx, data) {
     [user.id, data.entry_date])).t;
   if (dayTotal + hours > MAX_HOURS_PER_DAY) throw badRequest(`إجمالي ساعات اليوم سيتجاوز ${MAX_HOURS_PER_DAY}`);
   const eid = id('te'); const now = nowIso();
-  await insert('time_entry', {
-    id: eid, user_id: user.id, task_id: data.task_id || null, project_id: data.project_id || null,
-    opportunity_id: data.opportunity_id || null, work_kind: data.work_kind || 'project',
-    entry_date: data.entry_date, hours, billable: data.billable === false ? 0 : 1, note: data.note || null,
-    created_at: now,
+  // القيد + ترحيلُ ساعاته إلى المهمة + التدقيق: كتابةٌ واحدة لا تتجزّأ، فلا يُسجَّل قيدٌ لا
+  // تعكسه ساعاتُ المهمة الفعلية (ولا العكس).
+  await tx(async () => {
+    await insert('time_entry', {
+      id: eid, user_id: user.id, task_id: data.task_id || null, project_id: data.project_id || null,
+      opportunity_id: data.opportunity_id || null, work_kind: data.work_kind || 'project',
+      entry_date: data.entry_date, hours, billable: data.billable === false ? 0 : 1, note: data.note || null,
+      created_at: now,
+    });
+    // roll up actual hours to the task (only after the row-level check above passed)
+    if (task) await run('UPDATE task SET actual_hours = COALESCE(actual_hours,0) + ? WHERE id = ?', [hours, task.id]);
+    await audit(ctx, { action: 'create', resource: 'timesheet', resourceId: eid });
   });
-  // roll up actual hours to the task (only after the row-level check above passed)
-  if (task) await run('UPDATE task SET actual_hours = COALESCE(actual_hours,0) + ? WHERE id = ?', [hours, task.id]);
-  await audit(ctx, { action: 'create', resource: 'timesheet', resourceId: eid });
   return await get('SELECT * FROM time_entry WHERE id = ?', [eid]);
 }
 
@@ -72,13 +76,17 @@ export async function submitPeriod(ctx, { periodStart, periodEnd }) {
   if (!can(user, 'create', 'timesheet', { user_id: user.id }))
     throw forbidden('تقديم سجل الوقت غير متاح لحسابك. راجع مدير النظام إن كان عملك يتطلب تسجيل ساعات.');
   const pid = id('tsp'); const now = nowIso();
-  await insert('timesheet_period', {
-    id: pid, user_id: user.id, period_start: periodStart, period_end: periodEnd,
-    status: 'SUBMITTED', submitted_at: now, created_at: now,
+  // فتحُ الفترة + ضمُّ قيودها إليها + التدقيق: كتابةٌ واحدة لا تتجزّأ، فلا تُفتَح فترةٌ لا قيدَ
+  // فيها ولا تبقى قيودٌ بلا فترةٍ ضمّتها.
+  await tx(async () => {
+    await insert('timesheet_period', {
+      id: pid, user_id: user.id, period_start: periodStart, period_end: periodEnd,
+      status: 'SUBMITTED', submitted_at: now, created_at: now,
+    });
+    await run('UPDATE time_entry SET period_id = ? WHERE user_id = ? AND entry_date BETWEEN ? AND ? AND period_id IS NULL',
+      [pid, user.id, periodStart, periodEnd]);
+    await audit(ctx, { action: 'update', resource: 'timesheet', resourceId: pid, detail: { event: 'submit' } });
   });
-  await run('UPDATE time_entry SET period_id = ? WHERE user_id = ? AND entry_date BETWEEN ? AND ? AND period_id IS NULL',
-    [pid, user.id, periodStart, periodEnd]);
-  await audit(ctx, { action: 'update', resource: 'timesheet', resourceId: pid, detail: { event: 'submit' } });
   return await get('SELECT * FROM timesheet_period WHERE id = ?', [pid]);
 }
 

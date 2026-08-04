@@ -700,10 +700,14 @@ export async function mergeClients(ctx, { keepId, mergeIds = [], keepName = null
 // ويقول ذلك صراحةً — فالوعد الكاذب بالاسترجاع أسوأ من الإقرار بحدوده.
 export async function unmergeClient(ctx, clientId) {
   const user = ctx.user;
-  if (!can(user, 'update', 'client') || !can(user, 'delete', 'client')) throw forbidden();
   const row = await get('SELECT * FROM client WHERE id = ?', [clientId]);
   if (!row) throw notFound('الجهة غير موجودة.');
   if (!row.merged_into_client_id) throw badRequest('هذه الجهة غير مدموجة — لا شيء يُفَكّ.');
+  // النطاق يُفحص على الجهة الباقية (المدموج فيها) لا بمجرد وجود المنح: فحصٌ بلا هدف كان يمرّ لمن
+  // يملك تعديل الجهات في أي نطاق فيفكّ دمجاً لا يخصّه. الجهة المدموجة محذوفةٌ ظاهرياً فلا تراها
+  // getVisibleClient، لكن مِلكَ فكّ الدمج كمِلكِ الدمج (getVisibleClient على الطرفين قبله) —
+  // تعديلٌ على الجهة التي ابتلعت الدمج، وهي ظاهرةٌ يُفحص نطاقها كما يُفحص في كل باب.
+  await getVisibleClient(user, row.merged_into_client_id, 'update');
   await update('client', clientId, { merged_into_client_id: null, active: 1, deleted_at: null, updated_at: nowIso() });
   await audit(ctx, { action: 'update', resource: 'client', resourceId: clientId,
     detail: { unmerged_from: row.merged_into_client_id, note: 'أُعيدت الجهة ظاهرة؛ العمل المنقول يبقى على الجهة الباقية' } });

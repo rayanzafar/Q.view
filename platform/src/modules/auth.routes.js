@@ -46,9 +46,10 @@ authRouter.get('/me', (req, res, next) => {
 authRouter.post('/change-password', async (req, res, next) => {
   try {
     if (!req.ctx?.user) return next(unauthorized());
-    const { newPassword } = req.body || {};
+    const { currentPassword, newPassword } = req.body || {};
     if (!newPassword || String(newPassword).length < 8) return next(badRequest('كلمة المرور يجب أن تكون 8 أحرف على الأقل'));
-    await changePassword(req.ctx.user.id, newPassword);
+    const currentSessionId = req.cookies?.[config.sessionCookie] || null;
+    await changePassword({ user: req.ctx.user, ip: req.ip }, { currentPassword, newPassword, currentSessionId });
     res.json({ ok: true });
   } catch (e) { next(e); }
 });

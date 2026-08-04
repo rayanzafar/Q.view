@@ -1,7 +1,7 @@
 // Finance module — the contract→deliverable→progress-claim→collection lifecycle,
 // aggregated per project manager, per contract, per deliverable. Scope + audit enforced.
-import { all, get, insert, update, run } from '../../core/db/index.js';
-import { can, canSeeSensitive } from '../../core/rbac/index.js';
+import { all, get, insert, update, run, tx } from '../../core/db/index.js';
+import { can, canSeeSensitive, effectiveScope } from '../../core/rbac/index.js';
 import { scopeFilter } from '../../core/rbac/scope.js';
 import { audit } from '../../core/audit/index.js';
 import { id, nowIso, toHalalas } from '../../core/util/ids.js';
@@ -69,9 +69,15 @@ async function outstanding(inv) {
 // مقام «فترة التحصيل» أدناه — فالبسط (المستحق) إجمالي، وقسمةُ إجماليٍّ على صافٍ تطيل الفترة
 // خمسة عشر بالمئة بلا سبب. طرفا الكسر من عالمٍ واحد، كما وُحِّد نطاقهما من قبل.
 async function scopedRevenue(user, year) {
-  const c = scopeFilter(user, 'invoice', 'read').clause.trim();
-  const clause = c === '1=1' ? '1=1' : c === '1=0' ? '1=0' : 'sector_id = ?';
-  const params = clause === 'sector_id = ?' ? [year, user.sector_id ?? null] : [year];
+  // جدول الإيراد يحمل القطاع فقط — لا مالكاً ولا مشروعاً — فالتضييق الوحيد الذي يمثّله هو القطاع.
+  // من نطاقه دون القطاع (مشروع/فريق/خاصتي) لا يعبّر عنه هذا الجدول: فيُرَدّ **بلا رقم** بدل توسيعه
+  // إلى إيراد القطاع كله — وهو ما كان يمنح مدير المشروع إيراد قطاعه بأكمله. والقراءة على مستوى
+  // الشركة تراه كاملاً، والقطاع (والإدارة التي تفشل مفتوحةً إلى القطاع) ترى قطاعها.
+  const scope = effectiveScope(user, 'read', 'invoice');
+  let clause, params;
+  if (scope === 'company') { clause = '1=1'; params = [year]; }
+  else if (scope === 'sector' || scope === 'department') { clause = 'sector_id = ?'; params = [year, user.sector_id ?? null]; }
+  else { clause = '1=0'; params = [year]; }
   const r = await get(`SELECT ${netSum('amount_halalas', 'net_amount_halalas')} net,
        ${vatSum('amount_halalas', 'net_amount_halalas')} vat,
        COALESCE(SUM(amount_halalas),0) gross
@@ -383,25 +389,29 @@ export async function createProgressClaim(ctx, { contractId, deliverableIds = []
   // المُسلَّم تراكمياً: الحالة وحدها تكفي الآن. كانت القائمة تضمّ «مُفوتر» و«مدفوع» لأن الفوترة
   // كانت تمحو حالة التسليم فيلزم استرجاعها منها — وقد زال السبب بزوال المحو.
   const totalDelivered = (await get("SELECT COALESCE(SUM(amount_halalas),0) v FROM deliverable WHERE project_id=? AND status IN ('DELIVERED','ACCEPTED') AND deleted_at IS NULL", [c.project_id])).v;
-  await insert('invoice', {
-    id: invId, code: `${c.code || 'INV'}-C${claimCount + 1}`, contract_id: contractId, project_id: c.project_id,
-    client_id: c.client_id, sector_id: c.sector_id, amount_halalas: amount,
-    net_amount_halalas: amountSplit.net_halalas, vat_halalas: amountSplit.vat_halalas,
-    issue_date: now.slice(0, 10),
-    due_date: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10), status: 'ISSUED',
-    kind: 'progress_claim', claim_no: String(claimCount + 1), period_label: periodLabel || null,
-    progress_pct: c.value_halalas ? Math.round((totalDelivered / c.value_halalas) * 100) : null,
-    owner_user_id: project?.owner_user_id || null, created_at: now, created_by: user.id,
+  // فاتورةٌ + سطورُها + ختمُ الفوترة على كل مخرَج + التدقيق: كتابةٌ واحدة لا تتجزّأ. بلا معاملةٍ
+  // كان عطبٌ في المنتصف يترك فاتورةً بسطورٍ ناقصة أو مخرجاتٍ مختومةً لفاتورةٍ لم تكتمل.
+  await tx(async () => {
+    await insert('invoice', {
+      id: invId, code: `${c.code || 'INV'}-C${claimCount + 1}`, contract_id: contractId, project_id: c.project_id,
+      client_id: c.client_id, sector_id: c.sector_id, amount_halalas: amount,
+      net_amount_halalas: amountSplit.net_halalas, vat_halalas: amountSplit.vat_halalas,
+      issue_date: now.slice(0, 10),
+      due_date: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10), status: 'ISSUED',
+      kind: 'progress_claim', claim_no: String(claimCount + 1), period_label: periodLabel || null,
+      progress_pct: c.value_halalas ? Math.round((totalDelivered / c.value_halalas) * 100) : null,
+      owner_user_id: project?.owner_user_id || null, created_at: now, created_by: user.id,
+    });
+    for (const d of toClaim) {
+      await insert('invoice_line', { id: id('il'), invoice_id: invId, deliverable_id: d.id, label: d.name_ar, amount_halalas: d.amount_halalas || 0 });
+      // ختمُ الفوترة **بجانب** الحالة لا فوقها. كان هذا السطر يكتب `status = 'INVOICED'` فيمحو
+      // «تم الاعتماد»، فيصير المخرَج الذي اعتمده العميل مخرَجاً لا يُعرف أقُبل أم لا — والفوترة
+      // تُقرأ إنجازاً. صرفُ المستخلص واقعةٌ مالية لا شهادةَ إنجاز، فلا تلمس عمل الفريق.
+      await update('deliverable', d.id, { invoiced_at: now, updated_at: now });
+    }
+    await audit(ctx, { action: 'create', resource: 'invoice', resourceId: invId, sectorId: c.sector_id,
+      detail: { kind: 'progress_claim', claim_no: claimCount + 1, deliverables: toClaim.length, amount } });
   });
-  for (const d of toClaim) {
-    await insert('invoice_line', { id: id('il'), invoice_id: invId, deliverable_id: d.id, label: d.name_ar, amount_halalas: d.amount_halalas || 0 });
-    // ختمُ الفوترة **بجانب** الحالة لا فوقها. كان هذا السطر يكتب `status = 'INVOICED'` فيمحو
-    // «تم الاعتماد»، فيصير المخرَج الذي اعتمده العميل مخرَجاً لا يُعرف أقُبل أم لا — والفوترة
-    // تُقرأ إنجازاً. صرفُ المستخلص واقعةٌ مالية لا شهادةَ إنجاز، فلا تلمس عمل الفريق.
-    await update('deliverable', d.id, { invoiced_at: now, updated_at: now });
-  }
-  await audit(ctx, { action: 'create', resource: 'invoice', resourceId: invId, sectorId: c.sector_id,
-    detail: { kind: 'progress_claim', claim_no: claimCount + 1, deliverables: toClaim.length, amount } });
   return await get('SELECT * FROM invoice WHERE id=?', [invId]);
 }
 
@@ -418,22 +428,26 @@ export async function recordCollection(ctx, { invoiceId, amountSar, collectedAt,
   // بالمتبقي أعلاه تجري بين إجماليَّين. ويُفصَل عند التسجيل كي تُطابق التحصيلاتُ الفواتيرَ على
   // الأساسين معاً — فيُعرف كم من النقد الداخل إيرادٌ للشركة وكم منه ضريبةٌ تُورَّد للدولة.
   const split = splitGross(amt);
-  await insert('collection', { id: id('col'), invoice_id: invoiceId, amount_halalas: amt,
-    net_amount_halalas: split.net_halalas, vat_halalas: split.vat_halalas,
-    collected_at: collectedAt || nowIso().slice(0, 10), method: method || 'تحويل', created_at: nowIso() });
   const newOut = out - amt;
   const settled = newOut <= 0;
-  await update('invoice', invoiceId, { status: settled ? 'PAID' : 'PARTIALLY_PAID' });
-  // ختمُ التحصيل ينزل على مخرجات الفاتورة **حين تُسدَّد كاملة** لا مع أول دفعة: نسبة التحصيل
-  // تُقاس بالمخرَج، ومخرَجٌ سُدِّد ثلثه ليس محصَّلاً. وهو ختم ثالث مستقل — لا يقول شيئاً عن
-  // التسليم ولا عن الاعتماد، ولا يمسّ حالة المخرَج.
-  if (settled) {
-    await run(`UPDATE deliverable SET collected_at = ?, updated_at = ?
-       WHERE collected_at IS NULL AND deleted_at IS NULL
-         AND id IN (SELECT deliverable_id FROM invoice_line WHERE invoice_id = ? AND deliverable_id IS NOT NULL)`,
-    [nowIso(), nowIso(), invoiceId]);
-  }
-  await audit(ctx, { action: 'update', resource: 'invoice', resourceId: invoiceId, sectorId: inv.sector_id, detail: { collected: amt, settled } });
+  // التحصيل + قلبُ حالة الفاتورة + ختمُ التحصيل على مخرجاتها + التدقيق: كتابةٌ واحدة لا تتجزّأ.
+  // بلا معاملةٍ كان عطبٌ في المنتصف يسجّل تحصيلاً بلا قلب الحالة (أو العكس) فيتناقض الرقمان.
+  await tx(async () => {
+    await insert('collection', { id: id('col'), invoice_id: invoiceId, amount_halalas: amt,
+      net_amount_halalas: split.net_halalas, vat_halalas: split.vat_halalas,
+      collected_at: collectedAt || nowIso().slice(0, 10), method: method || 'تحويل', created_at: nowIso() });
+    await update('invoice', invoiceId, { status: settled ? 'PAID' : 'PARTIALLY_PAID' });
+    // ختمُ التحصيل ينزل على مخرجات الفاتورة **حين تُسدَّد كاملة** لا مع أول دفعة: نسبة التحصيل
+    // تُقاس بالمخرَج، ومخرَجٌ سُدِّد ثلثه ليس محصَّلاً. وهو ختم ثالث مستقل — لا يقول شيئاً عن
+    // التسليم ولا عن الاعتماد، ولا يمسّ حالة المخرَج.
+    if (settled) {
+      await run(`UPDATE deliverable SET collected_at = ?, updated_at = ?
+         WHERE collected_at IS NULL AND deleted_at IS NULL
+           AND id IN (SELECT deliverable_id FROM invoice_line WHERE invoice_id = ? AND deliverable_id IS NOT NULL)`,
+      [nowIso(), nowIso(), invoiceId]);
+    }
+    await audit(ctx, { action: 'update', resource: 'invoice', resourceId: invoiceId, sectorId: inv.sector_id, detail: { collected: amt, settled } });
+  });
   return await get('SELECT * FROM invoice WHERE id=?', [invoiceId]);
 }
 

@@ -102,6 +102,12 @@ export async function listUsers(user, { query = '', role = '', status = '' } = {
   await refreshAccountEmails();
   for (const r of rows) {
     r.mail_blocked = mailBlockedFor(r.email);
+    // بصمة كلمة المرور لا تغادر الخادم أبداً — تسريبها إلى المتصفّح سطحُ كسرٍ دون اتصال.
+    // ونستبقي حالة القفل كإشارة («مقفول الآن») دون كشف العدّاد والختم الدقيقين.
+    r.is_locked = !!(r.locked_until && r.locked_until > nowIso());
+    delete r.password_hash;
+    delete r.failed_attempts;
+    delete r.locked_until;
   }
   const q = String(query || '').trim().toLowerCase();
   return rows.filter((u2) => {

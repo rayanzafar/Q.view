@@ -104,11 +104,15 @@ async function setOpportunityDepartments(ctx, oppId, ids, primaryId) {
       .map((r) => r.id)
     : [];
   const now = nowIso();
-  await run('DELETE FROM opportunity_department WHERE opportunity_id = ?', [oppId]);
-  for (const d of valid) {
-    await insert('opportunity_department',
-      { opportunity_id: oppId, department_id: d, created_at: now, created_by: ctx.user.id });
-  }
+  // مسحٌ ثم إعادةُ كتابة: بلا معاملةٍ يترك عطبٌ بعد المسح الفرصةَ **بلا** إداراتها الشريكة —
+  // محوٌ صامت لا تعديل. المسح والإدراج معاً أو لا شيء. (المعاملة المتشعّبة تنضمّ لو غُلِّف المُنادِي.)
+  await tx(async () => {
+    await run('DELETE FROM opportunity_department WHERE opportunity_id = ?', [oppId]);
+    for (const d of valid) {
+      await insert('opportunity_department',
+        { opportunity_id: oppId, department_id: d, created_at: now, created_by: ctx.user.id });
+    }
+  });
   return valid;
 }
 
@@ -176,7 +180,12 @@ async function assertDeliverySector(sectorId) {
 // الواحدة، فلا يصير للمبلغ تفسيران حسب الباب الذي دخل منه. والراية إدخالٌ لا تُخزَّن — العمود
 // نفسه هو الجواب، والصافي يُشتقّ منه في كل شاشة.
 function valueHalalasFrom(data) {
-  const written = toHalalas(data.value_sar);
+  // فراغٌ مقبول: فرصةٌ بلا قيمةٍ بعد = صفر. لكن نصاً غير رقمي («abc»، «1,000») لا يمرّ بصمت فيصير
+  // NaN — يُخزَّن فراغاً على SQLite ويُعطِل الكتابة على Postgres، سلوكان مختلفان من مُدخَلٍ واحد —
+  // بل يُردّ بخطأٍ عربيٍّ واضح قبل الحفظ.
+  const raw = data.value_sar;
+  const written = raw == null || String(raw).trim() === '' ? 0 : toHalalas(raw);
+  if (!Number.isFinite(written)) throw badRequest('اكتب قيمة الفرصة بالريال رقماً — مثل 250000');
   const inclusive = data.value_vat_included;
   const isNet = inclusive === false || inclusive === 'false' || inclusive === 0 || inclusive === '0';
   return isNet ? grossOfNet(written) : written;

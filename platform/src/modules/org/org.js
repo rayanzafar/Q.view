@@ -1,7 +1,7 @@
 // Organization service — flexible hierarchy editable from the UI (NOT hard-coded):
 // Company → Sector → Department → Unit → Team → Position → Employee.
 import { all, get, insert, update, tx } from '../../core/db/index.js';
-import { can, effectiveScope } from '../../core/rbac/index.js';
+import { can, effectiveScope, redact } from '../../core/rbac/index.js';
 import { departmentScope, departmentInSql } from '../../core/rbac/departments.js';
 import { audit } from '../../core/audit/index.js';
 import { id, nowIso, toHalalas } from '../../core/util/ids.js';
@@ -134,6 +134,14 @@ function normHexColor(v) {
   if (!HEX_COLOR_RE.test(s)) throw badRequest('اللون يجب أن يكون رمزاً لونياً صحيحاً مثل #2563eb');
   return s;
 }
+// المستهدفات المالية بالريال: فراغٌ = صفر، لكن نصاً غير رقمي لا يمرّ بصمت فيصير NaN (فراغٌ على
+// SQLite، عطلٌ على Postgres) — بل يُردّ بخطأٍ عربيٍّ واضح.
+function normTargetHalalas(v) {
+  if (v == null || String(v).trim() === '') return 0;
+  const h = toHalalas(v);
+  if (!Number.isFinite(h) || h < 0) throw badRequest('اكتب المستهدف بالريال رقماً موجباً');
+  return h;
+}
 export async function createSector(ctx, data) {
   requireAdminSectors(ctx.user);
   if (!data.id || !data.name_ar) throw badRequest('المعرّف والاسم مطلوبان');
@@ -142,7 +150,7 @@ export async function createSector(ctx, data) {
   // النوع يُذكر صراحةً أو يُفهم قطاع تسليم — والفارق يظهر مباشرة في كل مقارنة، فيُسجَّل في التدقيق.
   const kind = normSectorKind(data.kind);
   await insert('sector', { id: data.id, name_ar: data.name_ar, name_en: data.name_en || null, color: normHexColor(data.color),
-    kind, target_sales_halalas: toHalalas(data.target_sales_sar), target_revenue_halalas: toHalalas(data.target_revenue_sar),
+    kind, target_sales_halalas: normTargetHalalas(data.target_sales_sar), target_revenue_halalas: normTargetHalalas(data.target_revenue_sar),
     target_margin_pct: data.target_margin_pct || 0, active: 1, is_placeholder: data.placeholder ? 1 : 0,
     sort_order: data.sort_order || 99, created_at: nowIso(), created_by: ctx.user.id });
   await audit(ctx, { action: 'create', resource: 'sector', resourceId: data.id, sectorId: data.id, detail: { kind } });
@@ -155,7 +163,7 @@ export async function updateSector(ctx, sectorId, data) {
   const patch = {};
   for (const k of ['name_ar', 'name_en', 'color', 'active', 'is_placeholder', 'sort_order', 'lead_user_id']) if (k in data) patch[k] = data[k];
   if ('color' in patch) patch.color = normHexColor(patch.color);
-  for (const [k, col] of [['target_sales_sar', 'target_sales_halalas'], ['target_revenue_sar', 'target_revenue_halalas']]) if (k in data) patch[col] = toHalalas(data[k]);
+  for (const [k, col] of [['target_sales_sar', 'target_sales_halalas'], ['target_revenue_sar', 'target_revenue_halalas']]) if (k in data) patch[col] = normTargetHalalas(data[k]);
   if ('target_margin_pct' in data) patch.target_margin_pct = data.target_margin_pct;
   if ('kind' in data) {
     const kind = normSectorKind(data.kind);
@@ -287,7 +295,7 @@ export async function createEmployee(ctx, data) {
     job_title: data.job_title || null, hire_date: normHireDate(data.hire_date), salary_halalas: salaryHalalas,
     employment_type: data.employment_type || 'أساسي', status: 'نشط', active: 1, created_at: nowIso(), created_by: ctx.user.id });
   await audit(ctx, { action: 'create', resource: 'employee', resourceId: eid, sectorId: data.sector_id });
-  return await get('SELECT * FROM employee WHERE id = ?', [eid]);
+  return redact(ctx.user, 'employee', await get('SELECT * FROM employee WHERE id = ?', [eid]));
 }
 export async function moveEmployee(ctx, employeeId, data) {
   const e = await get('SELECT * FROM employee WHERE id = ? AND deleted_at IS NULL', [employeeId]);
@@ -310,7 +318,7 @@ export async function moveEmployee(ctx, employeeId, data) {
   if ('salary_sar' in data && can(ctx.user, 'read', 'salary')) patch.salary_halalas = toHalalas(data.salary_sar);
   await update('employee', employeeId, patch);
   await audit(ctx, { action: 'update', resource: 'employee', resourceId: employeeId, sectorId: patch.sector_id || e.sector_id, detail: { moved: true } });
-  return await get('SELECT * FROM employee WHERE id = ?', [employeeId]);
+  return redact(ctx.user, 'employee', await get('SELECT * FROM employee WHERE id = ?', [employeeId]));
 }
 
 // الإدارة تسكن قطاعاً بعينه، فموظفٌ قطاعه «أ» وإدارته تحت «ب» سجلٌّ يناقض نفسه: تعدّه شجرة
@@ -398,10 +406,10 @@ export async function updateEmployee(ctx, employeeId, data) {
   if (patch.sector_id && patch.sector_id !== e.sector_id && !can(ctx.user, 'update', 'employee', { sector_id: patch.sector_id })) throw forbidden('لا تملك صلاحية على القطاع الهدف');
   if ('salary_sar' in data && can(ctx.user, 'read', 'salary')) patch.salary_halalas = toHalalas(data.salary_sar);
   // طلب ربط فقط ⟵ لا نكتب تعديلاً فارغاً على الموظف ولا سطر تدقيق مكرراً
-  if (linkTouched && Object.keys(patch).length === 1) return await get('SELECT * FROM employee WHERE id = ?', [employeeId]);
+  if (linkTouched && Object.keys(patch).length === 1) return redact(ctx.user, 'employee', await get('SELECT * FROM employee WHERE id = ?', [employeeId]));
   await update('employee', employeeId, patch);
   await audit(ctx, { action: 'update', resource: 'employee', resourceId: employeeId, sectorId: patch.sector_id || e.sector_id, detail: Object.keys(patch) });
-  return await get('SELECT * FROM employee WHERE id = ?', [employeeId]);
+  return redact(ctx.user, 'employee', await get('SELECT * FROM employee WHERE id = ?', [employeeId]));
 }
 
 // Soft-delete (offboarding): mark the staff record removed without erasing history. Reversible by
