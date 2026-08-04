@@ -397,8 +397,8 @@ export async function clientDetailPage(user, clientId) {
     <td style="padding:.45rem .7rem;text-align:center">${pill(tr(p.status), p.status === 'COMPLETED' ? 'green' : p.status === 'ON_HOLD' ? 'amber' : p.status === 'IN_PROGRESS' ? 'blue' : 'slate')}</td>
     <td style="padding:.45rem .7rem;text-align:left;font-size:12.5px" class="tnum">${p.value_halalas ? fmtSar(p.value_halalas) : '—'}</td>
     <td style="padding:.45rem .7rem;text-align:center;font-size:12px;color:var(--muted)" class="tnum">${Math.round(p.progress_effective_pct || 0)}%</td></tr>`).join('');
-  const conRows = d.contracts.slice(0, 20).map((t) => `<tr style="border-bottom:1px solid var(--line);cursor:pointer" onclick="location.href='/app/contract/${t.id}'">
-    <td style="padding:.45rem .7rem;font-size:12.5px"><a href="/app/contract/${t.id}" style="font-weight:700;color:var(--ink2)">${t.code ? `<bdi>${esc(t.code)}</bdi>` : 'عقد'}</a>${t.project_name_ar ? `<div style="font-size:10.5px;color:var(--muted)">${esc(t.project_name_ar)}</div>` : ''}</td>
+  const conRows = d.contracts.slice(0, 20).map((t) => `<tr style="border-bottom:1px solid var(--line)">
+    <td style="padding:.45rem .7rem;font-size:12.5px"><span style="font-weight:700;color:var(--ink2)">${t.code ? `<bdi>${esc(t.code)}</bdi>` : 'عقد'}</span>${t.project_name_ar ? `<div style="font-size:10.5px;color:var(--muted)">${esc(t.project_name_ar)}</div>` : ''}</td>
     <td style="padding:.45rem .7rem;text-align:left;font-size:12.5px;font-weight:700" class="tnum">${fmtSar(t.value_halalas)}</td>
     <td style="padding:.45rem .7rem;text-align:center">${pill(tr(t.status), t.status === 'ACTIVE' ? 'green' : t.status === 'COMPLETED' ? 'blue' : 'slate')}</td>
     <td style="padding:.45rem .7rem;text-align:center;font-size:11.5px;color:var(--muted)" class="tnum">${(t.signed_at || t.start_date || '—').toString().slice(0, 10)}</td></tr>`).join('');

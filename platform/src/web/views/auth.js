@@ -30,8 +30,8 @@ function codeStep({ err, notice, email, csrf }) {
     inner: `
   <form method="post" action="/auth/otp/verify-web">
     ${csrfField(csrf)}
-    <label>رمز الدخول</label>
-    <input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*" maxlength="6"
+    <label for="f-code">رمز الدخول</label>
+    <input id="f-code" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*" maxlength="6"
       dir="ltr" class="code" placeholder="------" autofocus>
     <button type="submit">دخول</button>
   </form>
@@ -63,8 +63,8 @@ function emailStep({ err, notice, passwordEnabled, csrf }) {
     inner: `
   <form method="post" action="/auth/otp/request-web">
     ${csrfField(csrf)}
-    <label>بريد العمل</label>
-    <input name="email" type="email" autocomplete="email" dir="ltr" placeholder="name@evc.sa" autofocus required>
+    <label for="f-email">بريد العمل</label>
+    <input id="f-email" name="email" type="email" autocomplete="email" dir="ltr" placeholder="name@evc.sa" autofocus required>
     <button type="submit">أرسل رمز الدخول</button>
   </form>
   <div class="hint">يصلك رمزٌ من ستة أرقام على بريدك. لا كلمة مرور تُحفظ ولا تُنسى.</div>
@@ -72,10 +72,10 @@ function emailStep({ err, notice, passwordEnabled, csrf }) {
   <details class="alt2">
     <summary>لم يصلك الرمز؟ ادخل باسم المستخدم وكلمة المرور</summary>
     <form method="post" action="/auth/login-web" style="margin-top:.8rem">
-      <label>اسم المستخدم</label>
-      <input name="username" autocomplete="username">
-      <label>كلمة المرور</label>
-      <input name="password" type="password" autocomplete="current-password">
+      <label for="f-username">اسم المستخدم</label>
+      <input id="f-username" name="username" autocomplete="username">
+      <label for="f-password">كلمة المرور</label>
+      <input id="f-password" name="password" type="password" autocomplete="current-password">
       <button type="submit" class="ghost">دخول بكلمة المرور</button>
     </form>
   </details>` : ''}`,
@@ -92,6 +92,9 @@ function page({ err, notice, noticeHtml, inner }) {
 @font-face{font-family:'IBM Plex Sans Arabic';src:url('/static/fonts/IBMPlexSansArabic-Regular.woff2') format('woff2');font-weight:400;font-display:swap}
 @font-face{font-family:'IBM Plex Sans Arabic';src:url('/static/fonts/IBMPlexSansArabic-Medium.woff2') format('woff2');font-weight:500 700;font-display:swap}
 @font-face{font-family:'IBM Plex Sans Arabic';src:url('/static/fonts/IBMPlexSansArabic-Bold.woff2') format('woff2');font-weight:800;font-display:swap}
+/* شاشة الدخول لا تمرّ عبر layout()، فمقاييس الخطّ (--fs-*) تُعرَّف هنا كما في layout.js — وإلا
+   سقط كل نصٍّ صغير إلى مقاسٍ موروث خاطئ على أكثر الشاشات زيارة. */
+:root{--fs-micro:10.5px;--fs-meta:11.5px;--fs-body:12.5px;--fs-ui:13px;--fs-title:14px;--fs-page:16px}
 *{box-sizing:border-box}
 body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1rem;
   background:linear-gradient(160deg,#182c56 0%,#244A99 48%,#56316b 100%);
@@ -132,9 +135,9 @@ button:disabled{background:#eef1f6;color:#94a3b8;cursor:default;box-shadow:none}
 <div class="card">
   <img class="logo" src="/static/brand/logo-color.svg" alt="رؤية الخبراء الاستشارية">
   <div class="sub">منصة سند · نظام تشغيل الأعمال</div>
-  <div class="sub2">لوحة القيادة، الفرص، المشاريع، الفريق، والمالية في مكان واحد</div>
-  ${err ? `<div class="err">${esc(err)}</div>` : ''}
-  ${noteOut ? `<div class="ok">${noteOut}</div>` : ''}
+  <div class="sub2">لوحة القيادة، الفرص، المشاريع، والفريق في مكان واحد</div>
+  ${err ? `<div class="err" role="alert">${esc(err)}</div>` : ''}
+  ${noteOut ? `<div class="ok" role="alert">${noteOut}</div>` : ''}
   ${inner}
   <div class="foot">رؤية الخبراء الاستشارية · EVC Consulting</div>
 </div></body></html>`;

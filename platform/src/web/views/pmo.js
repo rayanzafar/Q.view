@@ -2005,7 +2005,7 @@ export async function projectDetailPage(user, projectId, opts = {}) {
   // بعد أن أُغلق البابُ الأمامي.
   if (billable.length && canMoney) {
     acts.push(['blue', 'finance', `${countAr(billable.length, { one: 'مخرَج واحد', two: 'مخرَجان', few: 'مخرجات', many: 'مخرَجاً' })} جاهز للمستخلص (${fmtSar(prog.money.uninvoicedReady)})`,
-      'سُلِّم ولم يصدر به مستخلص بعد', contract ? `/app/contract/${contract.id}` : '#sec-money', 'أصدِر المستخلص']);
+      'سُلِّم ولم يصدر به مستخلص بعد', '#sec-money', 'افتح صورة المال']);
   }
   const over = (teamLoad?.team || []).filter((t) => t.over);
   if (over.length) {

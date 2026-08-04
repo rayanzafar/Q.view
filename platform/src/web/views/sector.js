@@ -325,8 +325,7 @@ export async function sectorPage(user, opts = {}) {
       </div>`).join('');
     collectCard = card(`
       <div class="card-head">
-        <span class="t">التحصيل</span>
-        <span class="aux"><a class="btn btn-sm" href="/app/finance?year=${year}">المالية والعقود</a></span></div>
+        <span class="t">التحصيل</span></div>
       ${arTotal || odRows.length ? `
       <div class="cardclick" role="button" tabindex="0" onclick="Sanad.openDD('seccollect')" style="padding:.55rem 1rem;display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px dashed var(--line)">
         <span style="font-size:var(--fs-micro);color:var(--muted)">${G.outstanding} للقطاع · ${year} <span style="color:var(--faint)">⊕</span></span>
@@ -479,7 +478,7 @@ export async function sectorPage(user, opts = {}) {
     <div>${ddRows(secContracts.map((c) => { const ip = c.value_halalas ? Math.min(100, Math.round(((c.invoiced || 0) / c.value_halalas) * 100)) : 0; return `
       <div style="padding:.4rem 0;border-bottom:1px dashed var(--line)">
         <div style="display:flex;justify-content:space-between;gap:.7rem;font-size:12.5px;align-items:baseline">
-          <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><a href="/app/contract/${c.id}" style="color:var(--brand)">${esc(c.client || c.code || 'عقد')}</a>${c.code ? ` <span style="color:var(--faint);font-size:10.5px"><bdi>${esc(c.code)}</bdi></span>` : ''}</span>
+          <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span style="color:var(--ink2)">${esc(c.client || c.code || 'عقد')}</span>${c.code ? ` <span style="color:var(--faint);font-size:10.5px"><bdi>${esc(c.code)}</bdi></span>` : ''}</span>
           <b class="tnum" style="flex:none">${fmtSar(c.value_halalas)}</b></div>
         <div style="display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted)"><span>${tr(c.status)}${c.start_date ? ' · ' + String(c.start_date).slice(0, 10) : ''}</span><span class="tnum">فُوتر ${ip}%</span></div>
         <div class="bar" style="margin-top:.25rem;height:5px"><span style="width:${ip}%;background:var(--blue)"></span></div>

@@ -217,14 +217,27 @@ export async function auditPage(user) {
   // والوصف مخزَّنٌ مُرمَّزاً (نصٌّ بين علامتَي اقتباس عادةً، وقد يكون كائناً في نداءٍ قديم)،
   // فيُفكّ هنا إلى عربيةٍ مقروءة — ولا يُطبع خاماً بحال: قوسٌ أو رمزٌ تقني على الشاشة عيبٌ
   // بذاته، وهو ما يمنعه فحص المعجم.
+  // مفاتيح الوصف تُترجَم إلى عربية؛ ما لا ترجمة له تُعرَض قيمتُه وحدها لا مفتاحه الإنجليزي —
+  // فلا رمزٌ تقني على الشاشة (يمنعه فحص المعجم). والقيمة الغائبة (null) تُسقَط لا تُطبع «null».
+  const DETAIL_KEY_AR = {
+    kind: 'النوع', moved: 'نُقل', name_ar: 'الاسم', merged_into: 'دُمجت في', merged_into_name: 'باسم',
+    merged_from: 'دُمج منها', renamed_to: 'أُعيدت التسمية', email: 'البريد', action: 'الإجراء', step: 'الخطوة',
+    event: 'الحدث', collected: 'محصَّل', settled: 'سُدِّدت', deliverables: 'مخرجات', amount: 'المبلغ',
+    claim_no: 'رقم المستخلص', restored: 'استُرجع', unmerged_from: 'فُكّ الدمج من', note: 'ملاحظة', reason: 'السبب',
+  };
+  const detailVal = (x) => (typeof x === 'object' && x !== null
+    ? Object.values(x).filter((y) => y != null && y !== '').join(' ') : String(x));
   const readDetail = (raw) => {
     if (raw == null || raw === '') return '';
     let v = raw;
     try { v = JSON.parse(raw); } catch { return String(raw); }
     if (v == null) return '';
     if (typeof v === 'string' || typeof v === 'number') return String(v);
-    if (Array.isArray(v)) return v.map((x) => (typeof x === 'object' ? Object.values(x).join(' · ') : String(x))).join('، ');
-    if (typeof v === 'object') return Object.entries(v).map(([k, x]) => `${k}: ${typeof x === 'object' ? Object.values(x || {}).join(' ') : x}`).join(' · ');
+    if (Array.isArray(v)) return v.map((x) => (typeof x === 'object' ? Object.values(x).filter((y) => y != null).join(' · ') : String(x))).join('، ');
+    if (typeof v === 'object') return Object.entries(v)
+      .filter(([, x]) => x != null && x !== '')
+      .map(([k, x]) => (DETAIL_KEY_AR[k] ? `${DETAIL_KEY_AR[k]}: ${detailVal(x)}` : detailVal(x)))
+      .join(' · ');
     return String(v);
   };
   const list = rows.map((a) => `<tr class="border-b border-line">

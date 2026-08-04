@@ -415,7 +415,7 @@ Object.assign(window.Sanad, {
       const box = document.getElementById('im-deliv'); document.getElementById('im-deliv-n').textContent = this._deliv.length;
       box.innerHTML = this._deliv.map((x) => `<div style="display:flex;justify-content:space-between;gap:.5rem;padding:.25rem 0;border-bottom:1px dashed var(--line)"><span>${this.esc(x.name_ar)}</span><span class="tnum" style="color:var(--muted)">${x.amount_sar ? this.fmtSar(x.amount_sar * 100) : '—'}</span></div>`).join('') || '<span style="color:var(--faint)">لا مخرجات مستخرجة</span>';
       document.getElementById('im-deliv-wrap').style.display = this._deliv.length ? '' : 'none';
-      document.getElementById('im-mode').textContent = (d._mode === 'local' ? '⚙ استخراج محلي' : '✨ استخراج ذكي (' + d._mode + ')') + (d._note ? ' — راجِع الحقول' : '');
+      document.getElementById('im-mode').textContent = (d._mode === 'local' ? '⚙ استخراج محلي' : '✨ استخراج ذكي') + (d._note ? ' — راجِع الحقول' : '');
       toast('تمت التعبئة — راجع الحقول قبل الإنشاء ✓');
     } catch (e) { toast(e.message, true); }
     finally { btn.disabled = false; btn.innerHTML = orig; }
@@ -446,7 +446,13 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { window.S
 // notification badge
 fetch('/api/notifications?unread=1', { credentials: 'include' }).then((r) => r.ok ? r.json() : []).then((n) => {
   const b = document.getElementById('notif-badge');
-  if (b && n.length) { b.textContent = n.length + ' إشعار'; b.classList.remove('hidden'); }
+  // الشارة تُخفى بنمطٍ داخلي (display:none)، فإزالة صنفٍ لا تحمله لا تُظهرها — يُرفع النمط نفسه.
+  // ومحتواها العددُ وحده (دائرةٌ 9px لا تتسع لكلمة)، مع وصفٍ مقروء للقارئ الصوتي.
+  if (b && n.length) {
+    b.textContent = n.length > 9 ? '9+' : String(n.length);
+    b.setAttribute('aria-label', n.length + ' إشعار غير مقروء');
+    b.style.display = '';
+  }
 }).catch(() => {});
 
 // Inject CSRF token (from readable cookie) into state-changing web forms.
