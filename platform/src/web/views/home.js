@@ -456,7 +456,7 @@ export async function homePage(user, opts = {}) {
     user,
     active: 'home',
     title: 'صفحتي',
-    subtitle: `${esc(g.weekday)} · ما يخصّك أنت`,
+    subtitle: `${g.weekday} · ما يخصّك أنت`,
     body,
     extraHead: `<style>${STYLE}</style>`,
     scripts: ['/static/pages/home.js'],

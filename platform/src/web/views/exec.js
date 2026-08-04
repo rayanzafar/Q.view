@@ -109,10 +109,10 @@ export async function ceoPage(user, opts = {}) {
     const gm = ov.canSeeMargin ? marginBySector[s.id] : undefined;
     const active = sec === s.id;
     return card(`
-    <div style="padding:.8rem .9rem${active ? ';box-shadow:inset 0 0 0 2px ' + (s.color || 'var(--brand)') + ';border-radius:var(--r)' : ''}">
+    <div style="padding:.8rem .9rem${active ? ';box-shadow:inset 0 0 0 2px ' + esc(s.color || 'var(--brand)') + ';border-radius:var(--r)' : ''}">
       <div style="display:flex;align-items:center;justify-content:space-between">
         <div style="display:flex;align-items:center;gap:.5rem">
-          <span style="width:9px;height:9px;border-radius:3px;background:${s.color || 'var(--brand)'}"></span>
+          <span style="width:9px;height:9px;border-radius:3px;background:${esc(s.color || 'var(--brand)')}"></span>
           <div><div style="font-weight:800;font-size:var(--fs-title)">${esc(s.name_ar)}</div><div style="font-size:var(--fs-micro);color:var(--muted)">${esc(s.name_en || '')}</div></div>
         </div>
         ${s.placeholder ? pill('بانتظار التفعيل', 'amber') : pill(`${s.opp_count} فرصة`, 'blue')}
@@ -123,7 +123,7 @@ export async function ceoPage(user, opts = {}) {
           <div class="bar" style="margin-top:.35rem"><span style="width:${Math.min(100, s.revenue_pct)}%;background:var(--green)"></span></div></div>
         <div><div style="font-size:11px;color:var(--muted)">المبيعات · ${pct(s.sales_pct)}</div>
           <div style="font-weight:800" class="tnum">${fmtSar(s.sales_halalas)}</div>
-          <div class="bar" style="margin-top:.35rem"><span style="width:${Math.min(100, s.sales_pct)}%;background:${s.color || 'var(--brand)'}"></span></div></div>
+          <div class="bar" style="margin-top:.35rem"><span style="width:${Math.min(100, s.sales_pct)}%;background:${esc(s.color || 'var(--brand)')}"></span></div></div>
       </div>
       <div style="margin-top:.7rem;padding-top:.6rem;border-top:1px solid var(--line);font-size:11px;color:var(--muted);display:flex;justify-content:space-between">
         <span>عقود ${year}: <b class="tnum" style="color:var(--ink2)">${fmtSar(s.contracts_halalas)}</b> (${s.contracts_count})</span>
@@ -132,8 +132,8 @@ export async function ceoPage(user, opts = {}) {
       <div style="margin-top:.55rem;display:flex;gap:.4rem">
         ${active
           ? `<a class="btn btn-sm" href="/app/ceo?year=${year}">إلغاء التصفية</a>`
-          : `<a class="btn btn-sm" href="/app/ceo?year=${year}&sector=${s.id}">تصفية اللوحة</a>`}
-        <a class="btn btn-sm btn-ghost" href="/app/sector?year=${year}&sector=${s.id}">مركز القطاع ←</a>
+          : `<a class="btn btn-sm" href="/app/ceo?year=${year}&sector=${esc(s.id)}">تصفية اللوحة</a>`}
+        <a class="btn btn-sm btn-ghost" href="/app/sector?year=${year}&sector=${esc(s.id)}">مركز القطاع ←</a>
       </div>
     </div>`, 'card-h');
   }).join('');
@@ -145,7 +145,7 @@ export async function ceoPage(user, opts = {}) {
   // ── Sector filter chips (the owner's per-sector lens) ──
   const chips = `<div class="chips"><span class="lbl">عرض:</span>
     <a href="/app/ceo?year=${year}" class="chip ${sec ? '' : 'on'}">الشركة كاملة</a>
-    ${ov.sectors.map((s) => `<a href="/app/ceo?year=${year}&sector=${s.id}" class="chip ${sec === s.id ? 'on' : ''}"><span class="dot" style="background:${s.color || 'var(--brand)'}"></span>${esc(s.name_ar)}</a>`).join('')}
+    ${ov.sectors.map((s) => `<a href="/app/ceo?year=${year}&sector=${esc(s.id)}" class="chip ${sec === s.id ? 'on' : ''}"><span class="dot" style="background:${esc(s.color || 'var(--brand)')}"></span>${esc(s.name_ar)}</a>`).join('')}
     ${sec ? `<a class="btn btn-sm" style="margin-inline-start:.3rem" href="/app/sector?year=${year}&sector=${sec}">فتح مركز القطاع ←</a>` : ''}
   </div>`;
 
@@ -184,8 +184,8 @@ export async function ceoPage(user, opts = {}) {
     <div class="dd-kpi"><span class="v tnum" style="color:var(--blue)">${fmtSar(pipelineVal)}</span><span style="font-size:12px;color:var(--muted)">القيمة المرجّحة ${fmtSar(cov.weighted_halalas)} · تغطية ${cov.coverage != null ? cov.coverage + '×' : '—'}</span></div>
     <div class="dd-sec">حسب المرحلة</div>
     <div>${ddRows(pipeStages.map((s) => `<div style="padding:.32rem 0">
-      <div style="display:flex;align-items:center;gap:.5rem;font-size:var(--fs-body)"><span style="width:9px;height:9px;border-radius:3px;background:${s.color || '#64748b'};flex:none"></span><span style="flex:1">${esc(s.name_ar)}</span><span class="tnum" style="font-weight:800">${s.n}</span><span class="tnum" style="color:var(--muted);font-size:11px">${fmtSar(s.v)}</span></div>
-      <div class="bar" style="margin-top:.22rem"><span style="width:${Math.round((s.v / maxStage) * 100)}%;background:${s.color || '#64748b'}"></span></div></div>`))}</div>`)}
+      <div style="display:flex;align-items:center;gap:.5rem;font-size:var(--fs-body)"><span style="width:9px;height:9px;border-radius:3px;background:${esc(s.color || '#64748b')};flex:none"></span><span style="flex:1">${esc(s.name_ar)}</span><span class="tnum" style="font-weight:800">${s.n}</span><span class="tnum" style="color:var(--muted);font-size:11px">${fmtSar(s.v)}</span></div>
+      <div class="bar" style="margin-top:.22rem"><span style="width:${Math.round((s.v / maxStage) * 100)}%;background:${esc(s.color || '#64748b')}"></span></div></div>`))}</div>`)}
   ${ddWrap('winrate', `نسبة الفوز · ${year}`, scopeLabel, `
     <div class="dd-kpi"><span class="v tnum" style="color:var(--green)">${pct(wr.rate)}</span><span style="font-size:12px;color:var(--muted)">فوز ${wr.won} · خسارة ${wr.lost}</span></div>
     <div class="bar" style="height:8px"><span style="width:${Math.min(100, wr.rate || 0)}%;background:var(--green)"></span></div>
@@ -197,7 +197,7 @@ export async function ceoPage(user, opts = {}) {
     <div>${ddRows(topContracts.map((c) => `<div class="dd-row"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.client || c.code || 'عقد')}<span style="color:var(--faint);font-size:var(--fs-micro)">${c.code ? ' · ' + esc(c.code) : ''}${!sec && c.sector ? ' · ' + esc(c.sector) : ''}</span></span><b class="tnum" style="flex:none">${fmtSar(c.value_halalas)}</b></div>`))}</div>`)}
   ${ov.canSeeMargin ? ddWrap('margin', `هامش الربح الإجمالي · ${year}`, 'حسب القطاعات · بيانات حساسة (مالية/قيادة فقط)', `
     ${avgMargin != null ? `<div class="dd-kpi"><span class="v tnum" style="color:${avgMargin >= 20 ? 'var(--green)' : avgMargin >= 10 ? 'var(--amber)' : 'var(--red)'}">${avgMargin}%</span><span style="font-size:12px;color:var(--muted)">متوسط الهامش عبر القطاعات</span></div>` : ''}
-    <div>${ddRows(margins.map((m) => `<div class="dd-row"><span style="display:flex;align-items:center;gap:.45rem;min-width:0"><span style="width:9px;height:9px;border-radius:2px;background:${m.color || 'var(--brand)'};flex:none"></span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m.name_ar)}</span></span><b class="tnum" style="flex:none;color:${m.margin == null ? 'var(--faint)' : m.margin >= 20 ? 'var(--green)' : m.margin >= 10 ? 'var(--amber)' : 'var(--red)'}">${m.margin == null ? '—' : m.margin + '%'}</b></div>`))}</div>`) : ''}`;
+    <div>${ddRows(margins.map((m) => `<div class="dd-row"><span style="display:flex;align-items:center;gap:.45rem;min-width:0"><span style="width:9px;height:9px;border-radius:2px;background:${esc(m.color || 'var(--brand)')};flex:none"></span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m.name_ar)}</span></span><b class="tnum" style="flex:none;color:${m.margin == null ? 'var(--faint)' : m.margin >= 20 ? 'var(--green)' : m.margin >= 10 ? 'var(--amber)' : 'var(--red)'}">${m.margin == null ? '—' : m.margin + '%'}</b></div>`))}</div>`) : ''}`;
   const body = `
     ${chips}
     ${riskBanner}
@@ -241,8 +241,8 @@ export async function ceoPage(user, opts = {}) {
         ${miniBars(qSeries(qBook, 'sales_halalas'), 'v', qOpts(year))}</div>`)}
     </div>
     ${ddTemplates}`;
-  return layout({ user, active: 'ceo', title: `لوحة القيادة${sec ? ' — ' + esc(secObj.name_ar) : ''}`,
-    subtitle: `نظرة تنفيذية · ${esc(scopeLabel)} · السنة المالية ${year}`, body, year });
+  return layout({ user, active: 'ceo', title: `لوحة القيادة${sec ? ' — ' + secObj.name_ar : ''}`,
+    subtitle: `نظرة تنفيذية · ${scopeLabel} · السنة المالية ${year}`, body, year });
 }
 
 export async function portfolioPage(user) {

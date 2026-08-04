@@ -124,13 +124,24 @@ export async function orgTree(user) {
 }
 
 // ── Sector CRUD ──
+// المعرّف يظهر في الروابط، واللون يُحقن في خاصية التنسيق (style) في كل لوحة — فكلاهما مُقيَّد
+// بشكلٍ صارم عند الكتابة: المعرّف حروفٌ وأرقامٌ وشرطة فقط، واللون رمزٌ ست‑عشري لا نصٌّ حر.
+const SECTOR_ID_RE = /^[A-Za-z0-9_-]{1,40}$/;
+const HEX_COLOR_RE = /^#[0-9a-fA-F]{3,8}$/;
+function normHexColor(v) {
+  if (v == null || v === '') return '#2563eb';
+  const s = String(v).trim();
+  if (!HEX_COLOR_RE.test(s)) throw badRequest('اللون يجب أن يكون رمزاً لونياً صحيحاً مثل #2563eb');
+  return s;
+}
 export async function createSector(ctx, data) {
   requireAdminSectors(ctx.user);
   if (!data.id || !data.name_ar) throw badRequest('المعرّف والاسم مطلوبان');
+  if (!SECTOR_ID_RE.test(String(data.id))) throw badRequest('المعرّف يقبل الحروف والأرقام والشرطة فقط');
   if (await get('SELECT id FROM sector WHERE id = ?', [data.id])) throw badRequest('المعرّف مستخدم');
   // النوع يُذكر صراحةً أو يُفهم قطاع تسليم — والفارق يظهر مباشرة في كل مقارنة، فيُسجَّل في التدقيق.
   const kind = normSectorKind(data.kind);
-  await insert('sector', { id: data.id, name_ar: data.name_ar, name_en: data.name_en || null, color: data.color || '#2563eb',
+  await insert('sector', { id: data.id, name_ar: data.name_ar, name_en: data.name_en || null, color: normHexColor(data.color),
     kind, target_sales_halalas: toHalalas(data.target_sales_sar), target_revenue_halalas: toHalalas(data.target_revenue_sar),
     target_margin_pct: data.target_margin_pct || 0, active: 1, is_placeholder: data.placeholder ? 1 : 0,
     sort_order: data.sort_order || 99, created_at: nowIso(), created_by: ctx.user.id });
@@ -143,6 +154,7 @@ export async function updateSector(ctx, sectorId, data) {
   if (!s) throw notFound('القطاع غير موجود');
   const patch = {};
   for (const k of ['name_ar', 'name_en', 'color', 'active', 'is_placeholder', 'sort_order', 'lead_user_id']) if (k in data) patch[k] = data[k];
+  if ('color' in patch) patch.color = normHexColor(patch.color);
   for (const [k, col] of [['target_sales_sar', 'target_sales_halalas'], ['target_revenue_sar', 'target_revenue_halalas']]) if (k in data) patch[col] = toHalalas(data[k]);
   if ('target_margin_pct' in data) patch.target_margin_pct = data.target_margin_pct;
   if ('kind' in data) {

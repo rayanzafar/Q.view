@@ -425,7 +425,7 @@ export async function layout({ user, active, title, subtitle, body, year, extraH
 
   return `<!doctype html><html dir="rtl" lang="ar"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${title || 'سند'} · منصة سند EVC</title>
+<title>${esc(title || 'سند')} · منصة سند EVC</title>
 <link rel="icon" type="image/svg+xml" href="/static/brand/favicon.svg">
 <link rel="icon" type="image/png" sizes="32x32" href="/static/brand/favicon-32.png">
 <link rel="apple-touch-icon" href="/static/brand/favicon-180.png">
@@ -449,7 +449,7 @@ window.__SANAD_MONTHS=${JSON.stringify(MONTHS_AR)};window.__SANAD_MONTHS_EN=${JS
     <header style="height:60px;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;flex:0 0 auto">
       <div style="display:flex;align-items:center;gap:.6rem">
         <button class="side-toggle" aria-label="القائمة" onclick="document.body.classList.toggle('side-open')">${icon('menu') || '☰'}</button>
-        <div><div style="font-weight:800;font-size:var(--fs-page)">${title || ''}</div>${subtitle ? `<div style="font-size:12px;color:var(--muted)">${subtitle}</div>` : ''}</div>
+        <div><div style="font-weight:800;font-size:var(--fs-page)">${esc(title || '')}</div>${subtitle ? `<div style="font-size:12px;color:var(--muted)">${esc(subtitle)}</div>` : ''}</div>
       </div>
       <div class="hdr-right" style="display:flex;align-items:center">
         ${yearSel}
@@ -587,10 +587,10 @@ export function hbars(items, opts = {}) {
     const w = Math.round(((i.value || 0) / max) * 100);
     return `<div>
       <div style="display:flex;justify-content:space-between;align-items:center;font-size:var(--fs-body);margin-bottom:.28rem">
-        <span style="display:flex;align-items:center;gap:.45rem;min-width:0"><span style="width:9px;height:9px;border-radius:2px;background:${i.color || '#2563eb'};flex:none"></span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${i.label}</span></span>
+        <span style="display:flex;align-items:center;gap:.45rem;min-width:0"><span style="width:9px;height:9px;border-radius:2px;background:${esc(i.color || '#2563eb')};flex:none"></span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${i.label}</span></span>
         <span class="tnum" style="font-weight:800;color:var(--ink2);flex:none;margin-inline-start:.6rem">${opts.fmt ? opts.fmt(i.value) : i.value}${i.sub ? `<span style="font-weight:600;color:var(--muted);font-size:11px"> · ${i.sub}</span>` : ''}</span>
       </div>
-      <div style="height:10px;background:#eef1f7;border-radius:999px;overflow:hidden"><div style="width:${w}%;height:100%;background:${i.color || '#2563eb'};border-radius:999px;transition:width .5s"></div></div>
+      <div style="height:10px;background:#eef1f7;border-radius:999px;overflow:hidden"><div style="width:${w}%;height:100%;background:${esc(i.color || '#2563eb')};border-radius:999px;transition:width .5s"></div></div>
     </div>`;
   }).join('')}</div>`;
 }

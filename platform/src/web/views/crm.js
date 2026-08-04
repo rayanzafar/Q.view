@@ -102,7 +102,7 @@ export async function opportunitiesPage(user, opts = {}) {
   // السنة عاملُ تصفيةٍ علويّ (بدل حشرها داخل أعمدة الحسم كما كان): الافتراضي السنة المالية
   // الحالية، و«الكل» يعرض كل السنوات معاً (بما فيها فرص بلا سنة مسجّلة). قائمة السنوات من كل الفرص.
   const years = [...new Set(allRows.map((o) => o.year).filter(Boolean))].sort((a, b) => b - a);
-  const yearFilter = opts.year === 'all' ? 'all' : (opts.year ? Number(opts.year) : fiscalYear);
+  const yearFilter = opts.year === 'all' ? 'all' : (Number(opts.year) || fiscalYear);
   // ── نوع الطرح: استطلاع سوق · طلب عرض · طلب سعر · تكليف مباشر · منافسة عامة ──
   // «لازم يكون في فلتر إذا هي RFI أو RFP من صفحة الفرص» — والفرق ليس تصنيفاً بل نضجاً:
   // استطلاعُ سوقٍ ليس فرصةً ناضجة، وخلطُه بطلبات العروض في رقمٍ واحد يضخّم خطّ الفرص بما لم
@@ -212,7 +212,7 @@ export async function opportunitiesPage(user, opts = {}) {
         <span style="font-size:11.5px;color:var(--muted)">الفرص التاريخية لا تدخل في مؤشرات المبيعات</span>
       </div>
       ${card(`<div style="padding:.8rem 1rem;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:.55rem;flex-wrap:wrap">
-        <span class="kcol-dot" style="background:${tblStageRow.color || '#cbd5e1'};width:10px;height:10px;border-radius:50%"></span>
+        <span class="kcol-dot" style="background:${esc(tblStageRow.color || '#cbd5e1')};width:10px;height:10px;border-radius:50%"></span>
         <div style="font-weight:800;font-size:13.5px">كل الفرص في مرحلة «${esc(tblStageRow.name_ar)}»</div>
         <span style="font-size:11.5px;color:var(--muted)"><span class="tnum" style="font-weight:800">${list.length}</span> فرصة بقيمة <span class="tnum" style="font-weight:800">${fmtSar(sumV)}</span></span></div>
       ${list.length ? `<div class="tblwrap"><table style="width:100%;border-collapse:collapse;min-width:680px">
@@ -226,7 +226,7 @@ export async function opportunitiesPage(user, opts = {}) {
         <a class="btn" href="${backHref}">عودة إلى اللوحة</a></div>`}`)}`;
     return layout({
       user, active: 'opportunities', title: 'الفرص والمبيعات',
-      subtitle: `مرحلة «${esc(tblStageRow.name_ar)}» · ${list.length} فرصة`, body,
+      subtitle: `مرحلة «${tblStageRow.name_ar}» · ${list.length} فرصة`, body,
       scripts: ['/static/pages/opps.js'],
     });
   }
@@ -481,7 +481,7 @@ export async function myOpportunitiesPage(user, opts = {}) {
 
   const stagePill = (o) => {
     const st = stById[o.stage_id] || {};
-    return `<span class="pill" style="background:${st.color || '#cbd5e1'}22;color:var(--ink2)"><span style="width:7px;height:7px;border-radius:50%;background:${st.color || '#cbd5e1'}"></span>${esc(st.name_ar || o.stage_id)}</span>`;
+    return `<span class="pill" style="background:${esc(st.color || '#cbd5e1')}22;color:var(--ink2)"><span style="width:7px;height:7px;border-radius:50%;background:${esc(st.color || '#cbd5e1')}"></span>${esc(st.name_ar || o.stage_id)}</span>`;
   };
   const headRow = `<thead><tr style="font-size:10.5px;color:var(--muted);text-align:right">
       <th style="padding:.45rem .7rem;font-weight:700">الفرصة</th>
@@ -550,7 +550,7 @@ export async function myOpportunitiesPage(user, opts = {}) {
         'مؤجلة بقرار من العميل أو منا — ليست «على المسار» ولا متوقفة إهمالاً؛ تُراجع دورياً.', onHoldRows) : '')}`;
   return layout({
     user, active: 'my-opportunities', title: 'فرصي',
-    subtitle: `قائمة عملي حسب الأولوية · ${esc(user.name_ar || user.username || '')} · ${year}`, body,
+    subtitle: `قائمة عملي حسب الأولوية · ${user.name_ar || user.username || ''} · ${year}`, body,
     scripts: ['/static/pages/opps.js'],
   });
 }

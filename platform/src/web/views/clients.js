@@ -542,5 +542,5 @@ export async function clientDetailPage(user, clientId) {
     </div>
     ${dd}
     <script>window.__SANAD=Object.assign(window.__SANAD||{},{clientId:${JSON.stringify(c.id).replace(/</g, '\\u003c')}});</script>`;
-  return layout({ user, active: 'clients', title: esc(c.name_ar), subtitle: `${G.client} 360°`, body, scripts: ['/static/pages/clients.js'] });
+  return layout({ user, active: 'clients', title: c.name_ar, subtitle: `${G.client} 360°`, body, scripts: ['/static/pages/clients.js'] });
 }

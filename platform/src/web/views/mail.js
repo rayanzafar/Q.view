@@ -114,7 +114,7 @@ export async function mailPage(user, opts = {}) {
     </div>
     <div id="mail-preview" class="modal" data-action="close-mail-modal"><div class="modal-card" style="width:760px;max-width:96vw">
       <div class="modal-head"><div style="font-weight:800;font-size:13.5px">معاينة الرسالة</div><button class="btn btn-ghost btn-sm" data-action="close-mail">✕</button></div>
-      <iframe id="mail-frame" style="width:100%;height:70vh;border:none;background:#fff"></iframe>
+      <iframe id="mail-frame" sandbox="" referrerpolicy="no-referrer" style="width:100%;height:70vh;border:none;background:#fff"></iframe>
     </div></div>`;
   return layout({ user, active: 'mail', title: 'مركز البريد', subtitle: 'صادرات المنصة: معاينة، طابور، وسجل', body, year: opts.year, scripts: ['/static/pages/mail.js'] });
 }

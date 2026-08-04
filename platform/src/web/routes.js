@@ -140,6 +140,10 @@ webRouter.get('/app/mail/preview/:file', requireWeb, (req, res) => {
   if (!pageAllowed(req.ctx.user, 'mail')) return deny(res);
   const html = P.outboxFileHtml(req.params.file);
   if (html == null) return res.status(404).send('الرسالة غير موجودة');
+  // محتوى مخزَّن (صادرات البريد) يُعرَض من أصل التطبيق — نمنع تنفيذ أي نص برمجي بداخله حتى لو
+  // فُتح الرابط مباشرةً لا داخل الإطار المعزول: توجيه sandbox في الرأس يجعل المتصفّح يعزله.
+  res.setHeader('Content-Security-Policy', "sandbox; default-src 'none'; img-src data: https:; style-src 'unsafe-inline'; font-src data: https:");
+  res.setHeader('X-Content-Type-Options', 'nosniff');
   res.type('html').send(html);
 });
 

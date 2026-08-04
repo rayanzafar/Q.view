@@ -555,7 +555,7 @@ async function assignPage(user, { sectorId, kind, year, limit }) {
           <div style="margin-top:.15rem">${esc(listRes.err)}</div></div></div>
         <div style="margin-top:.8rem">${back}</div>
       </div>`)}</div>`;
-    return layout({ user, active: 'org', title: 'إسناد العمل إلى الإدارات', subtitle: esc(sectorName), body,
+    return layout({ user, active: 'org', title: 'إسناد العمل إلى الإدارات', subtitle: sectorName, body,
       scripts: ['/static/pages/org-tree.js'] });
   }
 

@@ -202,7 +202,7 @@ export async function teamPage(user, opts = {}) {
         role: (ROLE_LABELS[a.role_id] || {}).ar || '' }))).replace(/</g, '\\u003c')},
       teamSectors:${JSON.stringify(allSec.map((s) => ({ id: s.id, name_ar: s.name_ar }))).replace(/</g, '\\u003c')},
       canSalary:${canSalary}, canManage:${canManage}, canCreate:${canCreate}, canDelete:${canDelete}, canLink:${canLink},
-      teamSectorLocked:${JSON.stringify(sector || (user.scope !== 'company' ? user.sector_id : null))}});</script>`;
+      teamSectorLocked:${JSON.stringify(sector || (user.scope !== 'company' ? user.sector_id : null)).replace(/</g, '\\u003c')}});</script>`;
   return layout({
     user, active: 'team', title: 'الفريق',
     subtitle: `${countAr(activeCount, { one: 'عضو نشط واحد', two: 'عضوان نشطان', few: 'أعضاء نشطون', many: 'عضواً نشطاً' })}${roster.length > activeCount ? ` · +${roster.length - activeCount} غير نشط` : ''}`,
@@ -467,7 +467,7 @@ export async function staffingPage(user, opts = {}) {
            عن الأولى عند إضافة بندٍ رابع. */''}
       workBuckets:${JSON.stringify(Object.entries(WORK_BUCKET_AR).map(([k, v]) => ({ key: k, label: v }))).replace(/</g, '\\u003c')},
       canManage:${canManage}, canStaff:${canStaff}, currentMonth:${currentMonth}, staffYear:${year},
-      monthNames:${JSON.stringify(MONTHS_AR)}, teamSectorLocked:${JSON.stringify(sector)}});</script>`;
+      monthNames:${JSON.stringify(MONTHS_AR)}, teamSectorLocked:${JSON.stringify(sector).replace(/</g, '\\u003c')}});</script>`;
   return layout({
     user, active: 'staffing', title: 'التسكين', subtitle: `مساحة قرارات الطاقة · ${curName} ${year}`, body,
     scripts: ['/static/pages/staffing.js'],

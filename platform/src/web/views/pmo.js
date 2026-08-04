@@ -204,7 +204,7 @@ export async function projectsPage(user, opts = {}) {
   // ── (1) شرائح القطاع + شرائح السنوات + البحث ──
   const secChips = user.scope === 'company' ? `<div class="chips" style="margin-bottom:.5rem"><span class="lbl">القطاع:</span>
     <a href="${qs({ sector: null })}" class="chip ${secFilter ? '' : 'on'}">الكل</a>
-    ${allSec.map((s) => `<a href="${qs({ sector: s.id })}" class="chip ${secFilter === s.id ? 'on' : ''}"><span class="dot" style="background:${s.color || 'var(--brand)'}"></span>${esc(s.name_ar)}</a>`).join('')}
+    ${allSec.map((s) => `<a href="${qs({ sector: s.id })}" class="chip ${secFilter === s.id ? 'on' : ''}"><span class="dot" style="background:${esc(s.color || 'var(--brand)')}"></span>${esc(s.name_ar)}</a>`).join('')}
   </div>` : '';
   const yearPills = `<div class="chips" style="margin-bottom:.6rem"><span class="lbl">السنة:</span>
     <a href="${qs({ year: null })}" class="chip ${year ? '' : 'on'}">كل السنوات</a>
@@ -2503,7 +2503,7 @@ export async function projectDetailPage(user, projectId, opts = {}) {
     <div id="sec-registers">${sec('registers', 'سجلات إضافية', { sub: 'مخاطر · معوقات · قرارات · طلبات تغيير — اختيارية بالكامل', badge: cnt(regCount, 'amber'), body: registersBody })}</div>
     <script>window.__SANAD=Object.assign(window.__SANAD||{},{gov:{projectId:${JSON.stringify(p.id).replace(/</g, '\\u003c')},canEdit:${canGov}},
       money:{projectId:${JSON.stringify(p.id).replace(/</g, '\\u003c')}}});</script>`;
-  return layout({ user, active: 'projects', title: esc(p.name_ar), subtitle: 'تفاصيل المشروع', body,
+  return layout({ user, active: 'projects', title: p.name_ar, subtitle: 'تفاصيل المشروع', body,
     scripts: ['/static/pages/project-governance.js', '/static/pages/project-money.js'] });
 }
 
@@ -2742,7 +2742,7 @@ export async function personPage(user, personId) {
 
   return layout({
     user, active: 'tasks', title: p.name,
-    subtitle: `${p.jobTitle ? esc(p.jobTitle) + ' · ' : ''}${esc(p.departmentName || 'بلا إدارة')} — مهامه وفرصه ومشاريعه`,
+    subtitle: `${p.jobTitle ? p.jobTitle + ' · ' : ''}${p.departmentName || 'بلا إدارة'} — مهامه وفرصه ومشاريعه`,
     body,
     scripts: ['/static/pages/person.js'],
   });

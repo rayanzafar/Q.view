@@ -146,5 +146,5 @@ export async function contractDetailPage(user, contractId) {
         <table style="width:100%;border-collapse:collapse"><thead><tr style="font-size:11px;color:var(--muted);text-align:right"><th style="padding:.4rem .75rem">المخرج</th><th style="padding:.4rem .75rem;text-align:center">القيمة</th><th style="padding:.4rem .75rem;text-align:center">حالة العمل</th><th style="padding:.4rem .75rem;text-align:center">المالية</th></tr></thead>
         <tbody>${dlvRows || '<tr><td style="padding:1rem;color:var(--muted);font-size:var(--fs-ui)" colspan="4">لا مخرجات</td></tr>'}</tbody></table>`)}
     </div>`;
-  return layout({ user, active: 'finance', title: `العقد — ${esc(c.code || c.id)}`, subtitle: esc(d.project?.name_ar || ''), body });
+  return layout({ user, active: 'finance', title: `العقد — ${c.code || c.id}`, subtitle: d.project?.name_ar || '', body });
 }

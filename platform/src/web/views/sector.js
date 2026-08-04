@@ -265,7 +265,7 @@ export async function sectorPage(user, opts = {}) {
         <b class="tnum">${s.count}</b>
         <span class="tnum" style="color:var(--muted);font-size:var(--fs-micro)">${sarShort(s.value_halalas)}</span>
       </div>
-      <div class="fnl-bar" style="width:${w}%;background:${s.color || 'var(--brand)'}"></div>
+      <div class="fnl-bar" style="width:${w}%;background:${esc(s.color || 'var(--brand)')}"></div>
     </div>
     ${conv != null ? `<div class="fnl-conv">↓ <b class="tnum">${conv}%</b> تنتقل</div>` : ''}`;
   }).join('');
@@ -494,7 +494,7 @@ export async function sectorPage(user, opts = {}) {
   ${collectDD}`;
 
   const switcher = user.scope === 'company' ? `<div class="chips" style="margin-bottom:.6rem"><span class="lbl">القطاع:</span>
-    ${allSectors.map((s) => `<a href="/app/sector?year=${year}&sector=${s.id}&win=${win}" class="chip ${s.id === sectorId ? 'on' : ''}"><span class="dot" style="background:${s.color || '#244A99'}"></span>${esc(s.name_ar)}</a>`).join('')}
+    ${allSectors.map((s) => `<a href="/app/sector?year=${year}&sector=${esc(s.id)}&win=${win}" class="chip ${s.id === sectorId ? 'on' : ''}"><span class="dot" style="background:${esc(s.color || '#244A99')}"></span>${esc(s.name_ar)}</a>`).join('')}
     <a class="btn btn-sm" style="margin-inline-start:.3rem" href="/app/ceo?year=${year}&sector=${sectorId}">لوحة القيادة</a>
   </div>` : '';
 
@@ -519,7 +519,7 @@ export async function sectorPage(user, opts = {}) {
       <div class="sec-col">${clientsCard}${reportsCard}</div>
     </div>
     ${DD}`;
-  return layout({ user, active: 'sector', title: `مركز قيادة ${esc(sd.sector.name_ar)}`, subtitle: `ما تغيّر، ما يحتاجك، وأين نقف مقابل الخطة · ${year}`, body, year });
+  return layout({ user, active: 'sector', title: `مركز قيادة ${sd.sector.name_ar}`, subtitle: `ما تغيّر، ما يحتاجك، وأين نقف مقابل الخطة · ${year}`, body, year });
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -714,6 +714,6 @@ async function mySectorPage(user, opts = {}) {
     opps.length ? countAr(opps.length, { one: 'فرصة واحدة', two: 'فرصتان', few: 'فرص', many: 'فرصة' }) : '',
   ].filter(Boolean);
   return layout({ user, active: 'sector', title: 'قطاعي',
-    subtitle: `${esc(sec.name_ar)} · ${bits.length ? bits.join(' · ') : 'ما يخصّك أنت في هذا القطاع'}`,
+    subtitle: `${sec.name_ar} · ${bits.length ? bits.join(' · ') : 'ما يخصّك أنت في هذا القطاع'}`,
     body, year });
 }

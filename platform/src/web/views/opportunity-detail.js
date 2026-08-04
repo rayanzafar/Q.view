@@ -376,7 +376,7 @@ export async function opportunityDetailPage(user, oppId, opts = {}) {
       canEditOpp:${d.canEdit ? 'true' : 'false'}
     });</script>`;
   return layout({
-    user, active: 'opportunities', title: esc(o.title_ar), subtitle: 'قصة القرار · الفرص والمبيعات', body,
+    user, active: 'opportunities', title: o.title_ar, subtitle: 'قصة القرار · الفرص والمبيعات', body,
     scripts: ['/static/pages/opps.js'],
   });
 }

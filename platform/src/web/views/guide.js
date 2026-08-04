@@ -223,7 +223,7 @@ export async function guidePage(user, opts = {}) {
   if (res.state === 'ok') {
     body = `<style>${PAGE_CSS}</style>${guideManual(res.data)}`;
     const roleName = res.data.role && res.data.role.name_ar;
-    if (roleName) subtitle = `${esc(roleName)} · شاشاتك وخطواتك الأولى`;
+    if (roleName) subtitle = `${roleName} · شاشاتك وخطواتك الأولى`;
   } else {
     body = `<style>${PAGE_CSS}</style><div class="gd-wrap">${stateCard('risk', 'تعذّر فتح دليلك الآن',
       res.msg || 'أعد تحميل الصفحة بعد قليل، وإن تكرّر الأمر أبلغ مدير النظام.',
