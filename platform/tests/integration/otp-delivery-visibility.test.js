@@ -23,6 +23,11 @@ process.env.SANAD_DB = join(dir, 't.db');
 process.env.MAIL_TRANSPORT = 'smtp';                       // القناة «الحقيقية» بلا أسرار ⇒ فشلٌ واقعي
 process.env.SANAD_MAIL_ALLOWLIST = 'allowed@evc.sa';
 delete process.env.SANAD_MAIL_UNRESTRICTED;
+// وهذا الملف يفحص **رؤية سبب الحجب**، فيلزمه حجبٌ يقع فعلاً. وقد صارت حسابات المنصة مسموحةً
+// بحكم وجودها (فالقائمة تتحدّث بنفسها ولا تحتاج يداً عند كل حساب جديد) — أي أن حساباً في
+// المنصة لا يُحجَب بعد اليوم. فيُطفأ الاشتقاق هنا وحده لتبقى القائمة المغلقة باليد، وتبقى
+// الحالة التي بُني لها الفحص قابلةً للوقوع. والسلوك الجديد مفحوصٌ في mail-blocked-visible.
+process.env.SANAD_MAIL_ACCOUNTS_ALLOWED = '0';
 const ROOT = new URL('../..', import.meta.url).pathname;
 for (const s of ['scripts/migrate.js', 'scripts/seed-rbac.js']) {
   execFileSync(process.execPath, ['--experimental-sqlite', join(ROOT, s)], { env: process.env, stdio: 'ignore' });

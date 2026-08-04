@@ -32,6 +32,10 @@ export const config = {
   mailAllowlist: String(process.env.SANAD_MAIL_ALLOWLIST || '')
     .split(',').map((a) => a.trim().toLowerCase()).filter(Boolean),
   mailUnrestricted: process.env.SANAD_MAIL_UNRESTRICTED === '1',
+  // وحسابات المنصة مسموحةٌ تلقائياً — فالقائمة تتحدّث بنفسها ولا تحتاج يداً عند كل حساب جديد.
+  // عنوانُ حسابٍ أدخله مديرُ النظام ليُستعمل ليس عنواناً مستورداً من بيانات قديمة، وهو ما بُني
+  // الحارس لمنعه. ويُطفأ صراحةً (`=0`) لمن أراد قائمةً مغلقةً باليد وحدها.
+  mailAccountsAllowed: process.env.SANAD_MAIL_ACCOUNTS_ALLOWED !== '0',
   smtp: {
     host: process.env.SMTP_HOST || null,
     port: Number(process.env.SMTP_PORT || 587),

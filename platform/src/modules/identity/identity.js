@@ -15,6 +15,7 @@ import { badRequest, forbidden, notFound } from '../../core/http/errors.js';
 import { id, nowIso } from '../../core/util/ids.js';
 import { requestCode, PURPOSE, normalizeEmail } from '../../core/auth/otp.js';
 import { mailBlockedFor } from '../../core/mail/transport.js';
+import { refreshAccountEmails } from '../../core/mail/accounts.js';
 import { removeRecord, removalBlockers } from '../../core/lifecycle/remove.js';
 import { ROLE_LABELS } from '../../core/rbac/matrix.js';
 
@@ -96,6 +97,9 @@ export async function listUsers(user, { query = '', role = '', status = '' } = {
   // منفصلان لا يقارنهما شيء، فالحساب يُنشأ نشطاً ويبدو سليماً ثم **يُكتشف الجدارُ بجسد صاحبه**:
   // يطلب رمزاً فلا يصله، ويبحث في بريده المزعج عن رسالةٍ لم تخرج من الخادم أصلاً.
   // وقع هذا ثلاث مرات على ثلاثة أشخاص. والشاشة تملك كل ما يلزم لمنعه قبل أن يحاول أحد.
+  // اللقطة تُحدَّث قبل الحكم: حسابٌ أُنشئ قبل ثوانٍ صار مسموحاً بحكم وجوده، والوسمُ المبنيّ على
+  // لقطةٍ قديمة يقول عنه «محجوب» وهو ليس كذلك — تحذيرٌ كاذب أسوأ من غيابه.
+  await refreshAccountEmails();
   for (const r of rows) {
     r.mail_blocked = mailBlockedFor(r.email);
   }

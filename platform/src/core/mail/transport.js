@@ -3,6 +3,7 @@
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { config, ROOT } from '../config.js';
+import { accountEmails, refreshAccountEmails } from './accounts.js';
 
 // نتيجة الإرسال تميّز ثلاث حالات لا حالةً واحدة. كان الوضعان (معاينة/إرسال) يُسجَّلان معاً
 // «أُرسلت»، فيبدو الطابور ناجحاً وما غادرت رسالةٌ واحدة — أخطر ما في الوحدة لأنه يكذب بصمت.
@@ -13,11 +14,21 @@ const norm = (a) => String(a || '').trim().toLowerCase();
 // حارس المستقبِلين — يُفرَض دائماً إلا إذا أُعلن الإطلاق صراحةً (SANAD_MAIL_UNRESTRICTED=1).
 // فشلٌ مغلق عن قصد: قائمة سماحٍ فارغة تمنع كل شيء ولا تفتحه. السبب مباشر — قاعدة التجربة
 // تحمل عناوين موظفين حقيقيين على evc.sa، وتشغيلُ الإرسال بلا حارس يعني رسائل حقيقية منها.
+//
+// ومصدرا السماح اثنان لا واحد:
+//  ① **حسابات المنصة نفسها** — عنوانٌ أدخله مديرُ النظام ليُستعمل، وأولُ ما يلزمه رمزُ دخول.
+//    وبه صارت القائمة **تتحدّث بنفسها**: حسابٌ يُنشأ من الشاشة يصله الرمز بلا كتابةٍ يدوية ولا
+//    إعادة تشغيل. (انظر `accounts.js` — وهناك الحدود: المُغلق عليه والمحذوف لا يُقرآن.)
+//  ② والقائمة اليدوية فوقه — لما ليس حساباً في المنصة (بريد المالك الشخصي مثلاً).
 export function filterRecipients(list) {
   const addrs = (list || []).map((a) => String(a || '').trim()).filter(Boolean);
   if (config.mailUnrestricted) return { allowed: addrs, blocked: [] };
+  const accounts = accountEmails();
   const allowed = [], blocked = [];
-  for (const a of addrs) (config.mailAllowlist.includes(norm(a)) ? allowed : blocked).push(a);
+  for (const a of addrs) {
+    const n = norm(a);
+    (config.mailAllowlist.includes(n) || accounts.has(n) ? allowed : blocked).push(a);
+  }
   return { allowed, blocked };
 }
 
@@ -35,6 +46,9 @@ export function mailBlockedFor(email) {
 
 export async function sendMail({ to, cc, subject, html }) {
   if (config.mailTransport === 'smtp') {
+    // لقطةُ الحسابات تُحدَّث قبل الفلترة لا بعدها: حسابٌ أُنشئ قبل ثوانٍ يجب أن يصله رمزه الآن،
+    // وهذا هو بيت القصيد — «طريقة يتحدّث دائماً» بلا يدٍ ولا إعادة تشغيل.
+    await refreshAccountEmails();
     const gTo = filterRecipients(to);
     const gCc = filterRecipients(cc);
     // لا مستقبِل مسموح ⇒ لا تُلمس الشبكة، وتُسجَّل الحالة «محجوبة» لا «أُرسلت».

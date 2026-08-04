@@ -13,6 +13,7 @@ import { ROLE_LABELS } from '../../core/rbac/matrix.js';
 // تنحرفان بمرور الوقت، فتحذّر الشاشة من تكرارٍ يسمح به الخادم، أو تسكت عن تكرارٍ يمنعه.
 import { personKey } from '../../modules/identity/identity.js';
 import { mailBlockedFor } from '../../core/mail/transport.js';
+import { refreshAccountEmails } from '../../core/mail/accounts.js';
 import { resourceLabel, mailStatusLabel, mailStatusTone, auditActionLabel, reportName } from '../i18n/glossary.js';
 import { esc, statMini } from './_shared.js';
 
@@ -57,6 +58,9 @@ export async function usersPage(user) {
     ORDER BY CASE WHEN u.active = 0 AND u.last_login_at IS NULL THEN 0 WHEN u.active = 1 THEN 1 ELSE 2 END,
              u.role_id, u.name_ar LIMIT 300`);
   const sectors = await all('SELECT id, name_ar FROM sector WHERE deleted_at IS NULL ORDER BY name_ar');
+  // لقطةُ عناوين الحسابات تُحدَّث قبل الحكم على أيّ صفّ: حسابٌ أُنشئ قبل ثوانٍ مسموحٌ بحكم وجوده،
+  // ووسمُه «محجوب» من لقطةٍ قديمة تحذيرٌ كاذب — وهو أسوأ من غياب التحذير.
+  await refreshAccountEmails();
 
   // الدعوة المعلّقة تتصدّر الترتيب: هي أهم صفٍّ في الشاشة — شخصٌ يُفترض أنه يعمل على المنصة
   // وهو خارجها، ولا شيء آخر ينبّه إليه. وترتيبُها في القاع بين ثلاثمئة صف يخفيها تماماً.
