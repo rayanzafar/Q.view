@@ -5,6 +5,7 @@ import { can } from '../../core/rbac/index.js';
 import { audit } from '../../core/audit/index.js';
 import { notify } from '../notifications/notify.js';
 import { settleStaffing } from '../org/staffing-settle.js';
+import { settleTask } from '../pmo/task-approval.js';
 import { id, nowIso } from '../../core/util/ids.js';
 import { forbidden, notFound, badRequest } from '../../core/http/errors.js';
 
@@ -159,8 +160,13 @@ export async function actOnApproval(ctx, requestId, action, comment) {
     });
 
     // أثرُ القرار على ما طُلب تأكيده. يُستدعى للطلبات الموجَّهة وحدها، ولا يعرف المحرّكُ تفصيله:
-    // الوحدة صاحبة العضوية هي التي تُفعّلها أو تُلغيها — فلا يتسرّب علمُ التسكين إلى محرّك عام.
-    if (direct) await settleStaffing(reqRow, action === 'approve');
+    // الوحدة صاحبة المورد هي التي تُفعّله أو تُلغيه — فلا يتسرّب علمُ نوعٍ بعينه إلى محرّك عام.
+    // والاختيار بالمورد المكتوب في الصفّ لا بنوعٍ يرسله أحد، و`hasOwn` لا الوصول المباشر
+    // (مفتاح موروث مثل 'constructor' يعيد دالةً لا مُسوّياً).
+    if (direct) {
+      const settle = Object.hasOwn(DIRECT_SETTLERS, reqRow.resource) ? DIRECT_SETTLERS[reqRow.resource] : null;
+      if (settle) await settle(reqRow, action === 'approve');
+    }
     if (action === 'reject') {
       await update('approval_request', requestId, { status: 'REJECTED', closed_at: nowIso() });
       await notify(reqRow.requested_by, { kind: 'approval', title: 'رُفض طلب الاعتماد', body: comment || '',
@@ -212,35 +218,58 @@ export async function myApprovalQueue(user) {
 // والصندوق واحد رغم البابين: نفس `approval_request` ونفس `approval_action` ونفس الطابور —
 // فمن يفتح «الاعتمادات» يرى ما ينتظره كلَّه في مكانٍ واحد.
 export const STAFFING_WORKFLOW_KEY = 'staffing_confirmation';
+// «أي موظف يضيف مهمة لازم المدير يعتمدها عشان تنضاف له — إذا كانت مهمة متعلّقة بالمشروع أو
+// فرصة معيّنة». نفس البابِ الموجَّه ونفس الصندوق: المعتمِد إنسانٌ بعينه (مدير الموظف) لا دور.
+export const TASK_WORKFLOW_KEY = 'task_approval';
+
+// ما الذي يُوجَّه إلى شخصٍ بعينه، وباسمٍ عربيٍّ يقرؤه المعتمِد في شاشته. المفاتيح هنا لأنها
+// **تعريفاتُ مسارات** (شأن المحرّك)، والتسوياتُ في وحداتها لأنها أثرٌ على مورد (شأن الوحدة).
+const DIRECT_WORKFLOWS = {
+  [STAFFING_WORKFLOW_KEY]: { nameAr: 'تأكيد تسكين موظف', target: 'membership' },
+  [TASK_WORKFLOW_KEY]: { nameAr: 'اعتماد مهمة على مشروع أو فرصة', target: 'task' },
+};
+
+// أثرُ القرار على المورد — كلٌّ في وحدته. `hasOwn` وحدها بوابةُ الاختيار: لا مورد يأتي من
+// الطلب، ومَن لا مُسوّي له لا يُبَتّ فيه بشيء (الطلب يُغلَق ويُسجَّل، والصفّ لا يُمَسّ).
+const DIRECT_SETTLERS = { membership: settleStaffing, task: settleTask };
 
 // تعريفُ المسار يُنشأ عند أول حاجة: الترحيلة تصف المخطط لا البيانات، والبذر لا يُعاد على
 // قاعدةٍ ممتلئة. `ON CONFLICT DO NOTHING` يجعل النداء آمناً للتكرار وللتزامن معاً.
-async function ensureStaffingWorkflow() {
-  const found = await get('SELECT * FROM workflow_definition WHERE key = ?', [STAFFING_WORKFLOW_KEY]);
+async function ensureDirectWorkflow(key) {
+  const def = Object.hasOwn(DIRECT_WORKFLOWS, key) ? DIRECT_WORKFLOWS[key] : null;
+  if (!def) throw badRequest('مسار الاعتماد المطلوب غير متاح. تواصل مع مدير النظام.');
+  const found = await get('SELECT * FROM workflow_definition WHERE key = ?', [key]);
   if (found) return found;
   await run(
     `INSERT INTO workflow_definition (id, key, name_ar, target_resource, active, created_at)
      VALUES (?,?,?,?,1,?) ON CONFLICT DO NOTHING`,
-    [id('wfd'), STAFFING_WORKFLOW_KEY, 'تأكيد تسكين موظف', 'membership', nowIso()]);
-  return await get('SELECT * FROM workflow_definition WHERE key = ?', [STAFFING_WORKFLOW_KEY]);
+    [id('wfd'), key, def.nameAr, def.target, nowIso()]);
+  return await get('SELECT * FROM workflow_definition WHERE key = ?', [key]);
 }
 
 /**
  * يرفع طلباً موجَّهاً إلى شخصٍ بعينه. بلا خطوات دور — الشخص هو الخطوة.
  * @returns {Promise<object>} صفّ الطلب
  */
-export async function raiseDirectApproval(ctx, { resource, resourceId, assigneeUserId, sectorId, detail } = {}) {
+export async function raiseDirectApproval(ctx, { workflowKey, resource, resourceId, assigneeUserId, sectorId, detail } = {}) {
   const user = ctx.user;
   if (!resourceId || !assigneeUserId) throw badRequest('طلب التأكيد يحتاج العنصر والمعتمِد');
-  const wf = await ensureStaffingWorkflow();
+  const key = workflowKey || STAFFING_WORKFLOW_KEY;
+  const wf = await ensureDirectWorkflow(key);
+  // نوعُ المورد يُقرأ من تعريف المسار لا من الطلب — نفس قاعدة `submitForApproval` حرفياً:
+  // من يختار النوع بنفسه يختار المُسوّي الذي يُطبَّق على معرّفه.
+  const kind = wf.target_resource;
+  if (resource && resource !== kind) throw badRequest('نوع العنصر لا يطابق مسار الاعتماد المختار. اختر المسار المناسب للعنصر.');
   const rid = id('apr'); const now = nowIso();
   await insert('approval_request', {
-    id: rid, workflow_id: wf.id, resource: resource || 'membership', resource_id: resourceId,
+    id: rid, workflow_id: wf.id, resource: kind, resource_id: resourceId,
     requested_by: user.id, amount_halalas: 0, sector_id: sectorId || user.sector_id || null,
     current_step: 1, status: 'PENDING', assignee_user_id: assigneeUserId, created_at: now,
   });
+  // ولا يُخطِر المحرّكُ هنا: الخبر يُصاغ عند الرافع بلسان الحالة («فلانٌ سُكِّن على فرصة…»،
+  // «مهمةٌ على مشروع…»)، ونصٌّ عامٌّ من المحرّك يُضاعف الرسالة ويقول أقلّ منها.
   await audit(ctx, { action: 'submit', resource: 'approval', resourceId: rid, sectorId: sectorId || null,
-    detail: { workflowKey: STAFFING_WORKFLOW_KEY, resource: resource || 'membership', resourceId, assignee: assigneeUserId, ...(detail || {}) } });
+    detail: { workflowKey: key, resource: kind, resourceId, assignee: assigneeUserId, ...(detail || {}) } });
   return await get('SELECT * FROM approval_request WHERE id = ?', [rid]);
 }
 

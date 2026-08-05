@@ -46,8 +46,9 @@
       el.disabled = true;
       api('/tasks/quick', 'POST', {
         title: title, assignee_user_id: el.dataset.user, due_date: val('pp-task-due') || null,
-      }).then(function () {
-        toast('أُضيفت المهمة ✓');
+      }).then(function (added) {
+        toast(added && added.approval_state === 'PENDING'
+          ? 'أُرسلت إلى مديرك للاعتماد — تظهر في عملك بعد اعتمادها' : 'أُضيفت المهمة ✓');
         setTimeout(function () { location.reload(); }, 500);
       }).catch(function (err) { el.disabled = false; toast(err.message, true); });
       return;

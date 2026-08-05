@@ -16,6 +16,7 @@
 import { all, get } from '../db/index.js';
 import { can, effectiveScope } from '../rbac/index.js';
 import { scopeFilter } from '../rbac/scope.js';
+import { approvedTaskSql } from '../../modules/pmo/task-approval.js';
 import { seesCompanyPerformance } from '../policy/pages.js';
 import { aiMode, complete, logProviderFallback, warnOnceIfKeyIgnored } from './provider.js';
 import { logAsk, savePreview, OUTCOME, PREVIEW_TTL_MINUTES } from './store.js';
@@ -200,7 +201,7 @@ async function detectRisks(user) {
   const overdue = await all(
     `SELECT p.id, p.name_ar, COUNT(*) n FROM task t JOIN project p ON p.id = t.project_id
       WHERE t.status != 'DONE' AND t.due_date IS NOT NULL AND substr(t.due_date,1,10) < ?
-        AND t.deleted_at IS NULL AND p.deleted_at IS NULL AND ${g.clause}
+        AND t.deleted_at IS NULL AND p.deleted_at IS NULL AND ${approvedTaskSql('t.')} AND ${g.clause}
       GROUP BY p.id, p.name_ar ORDER BY n DESC, p.name_ar LIMIT 5`,
     [nowIso().slice(0, 10), ...g.params]);
   const lines = [];
@@ -251,6 +252,7 @@ async function suggestPriorities(user) {
   const tasks = await all(
     `SELECT title, priority, due_date FROM task
       WHERE assignee_user_id = ? AND status NOT IN ('DONE','CANCELLED') AND deleted_at IS NULL
+        AND ${approvedTaskSql('')}
       ORDER BY CASE priority WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 ELSE 3 END,
                (due_date IS NULL), due_date, title LIMIT 6`, [user.id]);
   if (!tasks.length) return { reply: 'لا مهام مفتوحة لديك — قائمتك نظيفة.', outcome: OUTCOME.EMPTY };
@@ -543,7 +545,7 @@ export async function optionsFor(user, kind) {
     const rows = await all(
       `SELECT id, title, status FROM task
         WHERE (assignee_user_id = ? OR created_by = ? OR ${f.clause}) AND deleted_at IS NULL
-          AND status NOT IN ('DONE','CANCELLED')
+          AND status NOT IN ('DONE','CANCELLED') AND ${approvedTaskSql('')}
           AND (assignee_user_id = ? OR ${notPersonalSql('')})
         ORDER BY title LIMIT 100`, [user.id, user.id, ...f.params, user.id]);
     return { kind, options: rows.map((r) => ({ id: r.id, label_ar: r.title, sub_ar: label(TASK_STATUS_AR, r.status) })) };

@@ -12,6 +12,7 @@ import { projectGovernance, DELIVERABLE_MANUAL_STATUSES } from '../../modules/pm
 import { projectMoney } from '../../modules/finance/finance.js';
 import { EXPENSE_STATUS_AR, OPEN_STATUSES, SETTLED_STATUSES } from '../../modules/finance/expenses.js';
 import { myTasks, teamTasks, personDossier } from '../../modules/pmo/tasks.js';
+import { approvedTaskSql, isPendingTask } from '../../modules/pmo/task-approval.js';
 import { listViews } from '../../modules/views/views.js';
 import { canSeeSensitive, redact, can, effectiveScope } from '../../core/rbac/index.js';
 import { departmentScope, departmentInSql } from '../../core/rbac/departments.js';
@@ -621,6 +622,7 @@ export async function tasksPage(user, opts = {}) {
           ${done ? `<span style="color:var(--green);font-weight:700">أُنجزت${t.completed_at ? ` <span class="tnum">${esc(String(t.completed_at).slice(0, 10))}</span>` : ''}</span>`
             : `<span style="color:${dl.color}${dl.bold ? ';font-weight:700' : ''}">${dl.text}</span>`}
           ${parentChip(t)}
+          ${isPendingTask(t) ? `<span class="tk-await" title="${G.awaitApprovalHint}">${G.awaitApproval}</span>` : ''}
           ${who === 'team' ? `<span class="tk-who">${icon('team')} ${esc(t.assignee_name || t.assignee_username || G.unassigned)}</span>` : ''}
           ${t.department_name ? `<span class="tk-who">${esc(t.department_name)}</span>` : ''}
         </div>
@@ -1194,6 +1196,10 @@ export async function tasksPage(user, opts = {}) {
     /* علامةُ الخصوصية هادئة لا صارخة: لونٌ يميّزها عن بقية الوسوم ويرافقه اسمُها دائماً
        (قاعدة «ليس لوناً فقط») — فمن لا يميّز الألوان يقرأ «مهمة شخصية» كما يقرؤها غيره. */
     .tk-personal{color:#8a6d2f;background:#fdf8ec;border:1px solid #eadfc2;border-radius:7px;
+      padding:.02rem .4rem;font-weight:700;max-width:none}
+    /* وسمُ الانتظار كذلك: اسمٌ صريح مع لونه — «بانتظار اعتماد مديرك» تُقرأ كاملةً ولا تُخمَّن
+       من درجة لون. وهو الوسم الوحيد الذي يقول إن الصفّ ليس عملاً قائماً بعد. */
+    .tk-await{color:#92400e;background:#fef3c7;border:1px solid #fde68a;border-radius:7px;
       padding:.02rem .4rem;font-weight:700;max-width:none}
     .tk-who{display:inline-flex;align-items:center;gap:.25rem;color:var(--muted)}
     .tk-who svg{width:12px;height:12px;opacity:.75}
@@ -1863,7 +1869,8 @@ export async function projectDetailPage(user, projectId, opts = {}) {
   const today = new Date();
   const todayStr = today.toISOString().slice(0, 10);
 
-  const tasks = await all("SELECT status, COUNT(*) n FROM task WHERE project_id=? AND deleted_at IS NULL GROUP BY status", [p.id]);
+  const tasks = await all(`SELECT status, COUNT(*) n FROM task WHERE project_id=? AND deleted_at IS NULL
+     AND ${approvedTaskSql('')} GROUP BY status`, [p.id]);
   const tmap = Object.fromEntries(tasks.map((t) => [t.status, t.n]));
   const client = await get('SELECT id, name_ar, type FROM client WHERE id=?', [p.client_id]);
   const owner = p.owner_user_id ? await get('SELECT name_ar, username FROM app_user WHERE id=?', [p.owner_user_id]) : null;
@@ -1887,7 +1894,7 @@ export async function projectDetailPage(user, projectId, opts = {}) {
     `SELECT t.id, t.title, t.status, t.priority, t.due_date, t.deliverable_id,
             COALESCE(u.name_ar, u.username) assignee
        FROM task t LEFT JOIN app_user u ON u.id = t.assignee_user_id
-      WHERE t.project_id = ? AND t.deleted_at IS NULL
+      WHERE t.project_id = ? AND t.deleted_at IS NULL AND ${approvedTaskSql('t.')}
       ORDER BY (t.status = 'DONE'), (t.due_date IS NULL), t.due_date LIMIT 60`, [p.id]);
 
   // ── Financials ──

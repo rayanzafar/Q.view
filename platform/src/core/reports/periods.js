@@ -29,6 +29,7 @@
 import { all, get, insert, tx } from '../db/index.js';
 import { effectiveProgress } from '../../modules/pmo/progress.js';
 import { notPersonalSql } from '../../modules/pmo/tasks.js';
+import { approvedTaskSql } from '../../modules/pmo/task-approval.js';
 import { audit } from '../audit/index.js';
 import { badRequest, forbidden, notFound } from '../http/errors.js';
 import { can, effectiveScope, canSeeSensitive } from '../rbac/index.js';
@@ -301,7 +302,9 @@ const N = (v) => Number(v) || 0;
 // المهمة الشخصية خارج كل تقرير — ولو كان تقرير الشخص نفسه: التقرير مستندٌ يُرسَل ويُقرأ من
 // غير صاحبه (عدسة الشخص يفتحها مديره)، وقسم «العوائق» يطبع **عناوين المهام** حرفياً. فسطرٌ
 // واحد هنا يسدّ كل استعلامات هذا الملف دفعةً واحدة، بدل شرطٍ منسوخ في خمسة مواضع.
-const NOT_PERSONAL = `${notPersonalSql('t.')} AND `;
+// والمعلَّقة كذلك: مهمةٌ تنتظر اعتماد مدير كاتبها لم تُضَف بعد، فلا تُعدّ في تقرير فترة
+// ولا يُطبَع عنوانها في «العوائق». نفس السطر ونفس السبب — حاجزٌ واحد لكل استعلامات الملف.
+const NOT_PERSONAL = `${notPersonalSql('t.')} AND ${approvedTaskSql('t.')} AND `;
 function taskWhere(sc) {
   switch (sc.lens) {
     case 'company': return { where: `${NOT_PERSONAL}1=1`, params: [] };

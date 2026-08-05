@@ -11,6 +11,9 @@ import { all, get } from '../../core/db/index.js';
 // أسماء الأشهر والأيام من النموذج الزمني الواحد للمنصة — لا نسخة ثانية هنا: أول انحراف بين
 // نسختين يجعل التقويم يسمّي الشهر اسماً لا يطابق ما يسمّيه به شريط التسكين في الصفحة نفسها.
 import { MONTHS_AR, WEEKDAYS_AR } from '../../core/i18n/time.js';
+// «ما ينتظرك» يعدّ ما أُضيف فعلاً: المهمة التي تنتظر اعتماد المدير ليست على طاولة صاحبها بعد،
+// بل على طاولة مديره. وموضعها المعلَّم شاشة «مهامي» وحدها.
+import { approvedTaskSql } from '../pmo/task-approval.js';
 
 const iso = (d) => d.toISOString().slice(0, 10);
 
@@ -146,6 +149,7 @@ export async function myDay(user, opts = {}) {
        LEFT JOIN project p ON p.id = t.project_id
        LEFT JOIN opportunity o ON o.id = t.opportunity_id
       WHERE t.assignee_user_id = ? AND t.deleted_at IS NULL AND t.status NOT IN ('DONE','CANCELLED')
+        AND ${approvedTaskSql('t.')}
       ORDER BY CASE WHEN t.due_date IS NULL THEN 1 ELSE 0 END, t.due_date`, [uid]);
 
   // الفرص المفتوحة وحدها: المكسوبة والمخسورة تاريخٌ لا عمل، ووضعُها في «ما ينتظرك» يُثقل

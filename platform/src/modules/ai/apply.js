@@ -39,7 +39,7 @@ export async function applyChange(ctx, token) {
     await audit(ctx, { action: done.action, resource: done.resource, resourceId: done.resourceId,
       sectorId: claim.sectorId || done.sectorId || null,
       detail: { via: 'ai', kind: p.type, confirmed_by: user.id } });
-    return { reply: `تم تطبيق التغيير ✓ — ${p.summary}`, applied: true,
+    return { reply: `تم تطبيق التغيير ✓ — ${p.summary}${done.note ? `\n\n${done.note}` : ''}`, applied: true,
       resource: done.resource, resourceId: done.resourceId };
   });
 }
@@ -54,7 +54,10 @@ async function performChange(ctx, p) {
       title: p.title, project_id: p.projectId || null, priority: p.priority || 'P2',
       due_date: p.dueDate || null,
     });
-    return { action: 'create', resource: 'task', resourceId: row?.id || null, sectorId: row?.sector_id || null };
+    // ومهمةٌ على مشروع قد تعود معلَّقة بانتظار مدير صاحبها: يقولها المساعد صراحةً بدل
+    // «تم تطبيق التغيير ✓» وحدها — فمن أنشأها من هنا يبحث عنها في المشروع ولا يجدها.
+    return { action: 'create', resource: 'task', resourceId: row?.id || null, sectorId: row?.sector_id || null,
+      note: row?.approval_state === 'PENDING' ? 'أُرسلت إلى مديرك للاعتماد — تظهر في المشروع بعد اعتمادها' : null };
   }
   if (p.type === 'task_status') {
     const patch = { status: p.to };

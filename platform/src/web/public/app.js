@@ -21,11 +21,13 @@ window.Sanad = {
     const title = document.getElementById('qa-title').value.trim();
     if (!title) return toast('أدخل عنوان المهمة', true);
     try {
-      await api('/tasks/quick', 'POST', {
+      const added = await api('/tasks/quick', 'POST', {
         title, priority: document.getElementById('qa-priority').value,
         due_date: document.getElementById('qa-due').value || null,
       });
-      toast('أُضيفت المهمة ✓'); location.reload();
+      toast(added && added.approval_state === 'PENDING'
+        ? 'أُرسلت إلى مديرك للاعتماد — تظهر في عملك بعد اعتمادها' : 'أُضيفت المهمة ✓');
+      location.reload();
     } catch (e) { toast(e.message, true); }
   },
   async setTaskStatus(id, status) {

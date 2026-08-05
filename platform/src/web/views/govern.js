@@ -3,6 +3,7 @@ import { layout, card, pill, hbars } from '../layout.js';
 import { fmtSar } from '../../core/util/ids.js';
 import { all } from '../../core/db/index.js';
 import { myApprovalQueue, myDirectApprovals } from '../../modules/workflow/engine.js';
+import { approvalTargets } from '../../modules/workflow/targets.js';
 import { canControlSchedules } from '../../core/reports/engine.js';
 import {
   buildPeriodReport, comparePreviousSnapshot, listPeriodSnapshots, lensOptions,
@@ -21,14 +22,24 @@ export async function approvalsPage(user) {
   // صندوقٌ واحد لا صندوقان: ما يُوجَّه بالدور (اعتمادات مالية) وما يُوجَّه بشخصك (تأكيد تسكين
   // موظفك) يظهران معاً — «أين أرى ما ينتظرني» يجب أن يكون له جوابٌ واحد.
   const q = [...await myApprovalQueue(user), ...await myDirectApprovals(user)];
-  const list = q.map((a) => `<tr class="border-b border-line">
+  // ما يُعتمَد يُقرأ باسمه لا بمعرّفه: كان العمود يطبع «مهمة · tsk_9fA2…»، فيقرّر المديرُ في
+  // شيءٍ لا يعرف ما هو — أو لا يقرّر أصلاً. والاسم من مصدره (جدول العنصر نفسه) لا من نصٍّ
+  // يُنسخ في الطلب لحظة رفعه، فيبقى صحيحاً لو أُعيدت تسميته قبل أن يُبَتّ فيه.
+  const targets = await approvalTargets(q);
+  const list = q.map((a) => {
+    const t = targets.get(String(a.resource_id || '')) || null;
+    return `<tr class="border-b border-line">
     <td class="py-2.5 px-3 text-[13px]">${esc(a.workflow_name || '')}</td>
-    <td class="px-3 text-[12px] text-muted">${esc(resourceLabel(a.resource))} · <span class="tnum">${esc(a.resource_id || '')}</span></td>
+    <td class="px-3 text-[12px]">${t
+      ? `<span style="font-weight:700">${esc(t.label)}</span>${t.parent ? ` <span class="text-muted">· ${esc(t.parent)}</span>` : ''}
+         <div class="text-muted text-[11px]">${esc(resourceLabel(a.resource))}</div>`
+      : `<span class="text-muted">${esc(resourceLabel(a.resource))} — لم يعد موجوداً</span>`}</td>
     <td class="px-3 text-[13px] tabular-nums">${fmtSar(a.amount_halalas)}</td>
     <td class="px-3">${pill('الخطوة ' + a.current_step, 'amber')}</td>
     <td class="px-3">
       <button onclick="Sanad.approve('${a.id}','approve')" class="text-[12px] text-green-700 font-bold">اعتماد</button>
-      <button onclick="Sanad.approve('${a.id}','reject')" class="text-[12px] text-red-600 font-bold mr-2">رفض</button></td></tr>`).join('');
+      <button onclick="Sanad.approve('${a.id}','reject')" class="text-[12px] text-red-600 font-bold mr-2">رفض</button></td></tr>`;
+  }).join('');
   const totalAmt = q.reduce((a, x) => a + (x.amount_halalas || 0), 0);
   const byRes = {}; for (const x of q) byRes[x.resource] = (byRes[x.resource] || 0) + 1;
   const resBreak = Object.entries(byRes).map(([r, n]) => `${resourceLabel(r)}: ${n}`).join(' · ') || '—';

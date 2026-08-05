@@ -177,8 +177,9 @@
     const who = val('prj-task-assignee'); if (who) body.assignee_user_id = who;
     const dl = val('prj-task-dlv'); if (dl) body.deliverable_id = dl;
     try {
-      await api('/tasks/quick', 'POST', body);
-      toast('أُضيفت المهمة ✓');
+      const added = await api('/tasks/quick', 'POST', body);
+      toast(added && added.approval_state === 'PENDING'
+        ? 'أُرسلت إلى مديرك للاعتماد — تظهر في عملك بعد اعتمادها' : 'أُضيفت المهمة ✓');
       setTimeout(() => location.reload(), 450);
     } catch (e) { toast(e.message, true); }
   }

@@ -8,6 +8,9 @@ import { config } from '../config.js';
 import { nowIso } from '../util/ids.js';
 import { forbidden } from '../http/errors.js';
 import { DELIVERY_SECTOR_SQL, isSupportUnit } from '../org/kind.js';
+// مقاييس المشروع تُبنى على عمله المعتمَد: مهمةٌ تنتظر اعتماد مدير كاتبها ليست من عمل المشروع
+// بعد، وعدُّها يرفع مقام «الإنجاز» أو يخفضه بعملٍ لم يوافق عليه أحد.
+import { approvedTaskSql } from '../../modules/pmo/task-approval.js';
 
 const FY = () => config.fiscalYear;
 
@@ -147,11 +150,13 @@ export async function sectorDashboard(user, sectorId, opts = {}) {
 }
 
 export async function projectKpis(projectId) {
-  const tasks = await all("SELECT status, COUNT(*) n FROM task WHERE project_id = ? AND deleted_at IS NULL GROUP BY status", [projectId]);
+  const tasks = await all(`SELECT status, COUNT(*) n FROM task WHERE project_id = ? AND deleted_at IS NULL
+     AND ${approvedTaskSql('')} GROUP BY status`, [projectId]);
   const t = Object.fromEntries(tasks.map((r) => [r.status, r.n]));
   const totalTasks = Object.values(t).reduce((a, b) => a + b, 0);
   const done = t.DONE || 0;
-  const late = (await get("SELECT COUNT(*) n FROM task WHERE project_id = ? AND status != 'DONE' AND due_date IS NOT NULL AND substr(due_date,1,10) < ? AND deleted_at IS NULL", [projectId, nowIso().slice(0, 10)])).n;
+  const late = (await get(`SELECT COUNT(*) n FROM task WHERE project_id = ? AND status != 'DONE' AND due_date IS NOT NULL
+     AND substr(due_date,1,10) < ? AND deleted_at IS NULL AND ${approvedTaskSql('')}`, [projectId, nowIso().slice(0, 10)])).n;
   // «معتمَد» صار حالةً واحدة صريحة. كانت تُجمع من ثلاث (مقبول + مفوتر + مدفوع) لأن الفوترة
   // تمحو القبول فيلزم استرجاعه منها — فكان **إصدارُ المستخلص وحده يرفع نسبة الاعتماد** ولو لم
   // يعتمد العميل شيئاً. زال المحو (ترحيلة ٠١٧) فزالت الحاجة، وزالت معها الكذبة.

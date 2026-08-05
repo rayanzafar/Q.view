@@ -5,6 +5,7 @@ import { audit } from '../../core/audit/index.js';
 import { id, nowIso } from '../../core/util/ids.js';
 import { forbidden, notFound, badRequest } from '../../core/http/errors.js';
 import { isPersonalTask } from '../pmo/tasks.js';
+import { isPendingTask } from '../pmo/task-approval.js';
 
 const MAX_HOURS_PER_DAY = 16;
 
@@ -37,8 +38,8 @@ export async function addEntry(ctx, data) {
   // أي معرّف مهمة يُرسَل بلا فحص: أي مستخدم يرفع «الساعات الفعلية» لأي مهمة في الشركة.
   let task = null;
   if (data.task_id) {
-    task = await get('SELECT id, project_id, sector_id, work_kind, assignee_user_id, created_by FROM task WHERE id = ? AND deleted_at IS NULL',
-      [data.task_id]);
+    task = await get(`SELECT id, project_id, sector_id, work_kind, assignee_user_id, created_by, approval_state
+       FROM task WHERE id = ? AND deleted_at IS NULL`, [data.task_id]);
     if (!task) throw notFound('المهمة غير موجودة');
     // ومهمة غيره الشخصية ليست «خارج عمله» بل خارج وجوده: `can` الإدارية تفتحها وهي دفتر صاحبها.
     // الأثر هنا كتابةٌ على صفّها (الساعات الفعلية) لا قراءةٌ منه، لكنه يخرق التعهّد نفسه —
@@ -46,6 +47,9 @@ export async function addEntry(ctx, data) {
     if (isPersonalTask(task) && task.assignee_user_id !== user.id && task.created_by !== user.id) {
       throw notFound('المهمة غير موجودة');
     }
+    // ولا وقت يُسجَّل على مهمة لم تُضَف بعد: ساعاتٌ على عملٍ ينتظر اعتماد مديره تدخل الإشغال
+    // والتكلفة قبل أن يوافق أحد. والرسالة تقول ما يُنتظَر وما العمل، لا أن الحقل مرفوض.
+    if (isPendingTask(task)) throw badRequest('هذه المهمة بانتظار اعتماد مديرك — سجّل وقتك عليها بعد اعتمادها');
     if (!can(user, 'update', 'task', task)) throw forbidden('لا يمكنك تسجيل وقت على مهمة خارج عملك');
   }
   // prevent unrealistic daily total

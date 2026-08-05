@@ -1,11 +1,14 @@
 // PMO — Tasks service with Quick Add. Employees manage own tasks; managers see team/project scope.
-import { all, get, insert, update } from '../../core/db/index.js';
+import { all, get, insert, update, tx } from '../../core/db/index.js';
 import { can, effectiveScope } from '../../core/rbac/index.js';
 import { departmentScope, departmentInSql, inDepartmentScope } from '../../core/rbac/departments.js';
 import { audit } from '../../core/audit/index.js';
 import { id, nowIso } from '../../core/util/ids.js';
 import { forbidden, notFound, badRequest } from '../../core/http/errors.js';
 import { listUserGrants, grantableDepartments } from '../identity/grants.js';
+import { raiseDirectApproval, TASK_WORKFLOW_KEY } from '../workflow/engine.js';
+import { notify } from '../notifications/notify.js';
+import { taskApproval, approvedTaskSql, ownOrApprovedTaskSql, TASK_PENDING, isPendingTask } from './task-approval.js';
 
 // ترتيب الإلحاح المشترك بين كل استعلامات المهام — مصدر واحد فلا يختلف ترتيب القائمة عن اللوح.
 const PRIORITY_ORDER = "CASE %s.priority WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 ELSE 3 END";
@@ -90,6 +93,12 @@ export async function myTasks(user, filters = {}) {
   const today = String(filters.todayDate || nowIso().slice(0, 10)).slice(0, 10);
   const where = ['t.deleted_at IS NULL', 't.assignee_user_id = ?'];
   const params = [user.id];
+  // ── الموضع الوحيد الذي تظهر فيه مهمةٌ تنتظر اعتماداً ────────────────────────
+  // من كتبها يراها هنا معلَّمةً «بانتظار اعتماد مديرك»، وكل ما سواها من قوائم وعدّادات وتقارير
+  // لا يقرؤها (`approvedTaskSql`). ولو أُخفيت هنا أيضاً لاختفت لحظة الحفظ فحسبها صاحبها ضاعت
+  // وأعاد كتابتها. أمّا من أُسنِدت إليه وليس كاتبها فلا يراها حتى تُضاف إليه فعلاً.
+  const vis = ownOrApprovedTaskSql('t.', user.id);
+  where.push(vis.clause); params.push(...vis.params);
   applyTaskFilters(where, params, filters, today);
   return await all(`SELECT t.*, p.name_ar AS project_name, o.title_ar AS opportunity_name,
       d.name_ar AS department_name, u.name_ar AS assignee_name, u.username AS assignee_username
@@ -109,7 +118,9 @@ export async function myTasks(user, filters = {}) {
 // المهمة تخص القطاع إذا حملت القطاع نفسه أو كانت على مشروع من مشاريعه.
 export async function mySectorTasks(user, sectorId, opts = {}) {
   if (!user?.id || !sectorId) return [];
-  const where = ['t.deleted_at IS NULL', 't.assignee_user_id = ?', '(t.sector_id = ? OR p.sector_id = ?)'];
+  // والمعلَّقة خارج هذه القائمة: شاشة القطاع تعرض عملاً قائماً بلا وسم انتظار، فظهورها هنا
+  // يقول إنها أُضيفت وهي لم تُضَف بعد. موضعها المعلَّم شاشةُ «مهامي» وحدها.
+  const where = ['t.deleted_at IS NULL', 't.assignee_user_id = ?', '(t.sector_id = ? OR p.sector_id = ?)', approvedTaskSql('t.')];
   const params = [user.id, sectorId, sectorId];
   if (!opts.includeDone) where.push("t.status NOT IN ('DONE', 'CANCELLED')");
   const limit = Math.max(1, Math.min(200, Number(opts.limit) || 50));
@@ -134,6 +145,7 @@ export async function completionTrend(user, opts = {}) {
   const rows = await all(
     `SELECT substr(completed_at,1,10) AS day, COUNT(*) AS n FROM task
       WHERE deleted_at IS NULL AND assignee_user_id = ? AND status = 'DONE'
+        AND ${approvedTaskSql('')}
         AND completed_at IS NOT NULL
         AND substr(completed_at,1,10) >= ? AND substr(completed_at,1,10) <= ?
       GROUP BY substr(completed_at,1,10)`, [user.id, start, today]);
@@ -148,7 +160,10 @@ export async function projectTasks(user, projectId) {
   const p = await get('SELECT * FROM project WHERE id = ? AND deleted_at IS NULL', [projectId]);
   if (!p) throw notFound('المشروع غير موجود');
   if (!can(user, 'read', 'project', p)) throw forbidden();
-  return await all('SELECT * FROM task WHERE project_id = ? AND deleted_at IS NULL ORDER BY status, due_date', [projectId]);
+  // ومهمةٌ تنتظر اعتماد مديرِ كاتبها ليست من عمل المشروع بعد: عرضها هنا يجعل فريق المشروع
+  // يعوّل على تسليمٍ لم يوافق عليه أحد.
+  return await all(`SELECT * FROM task WHERE project_id = ? AND deleted_at IS NULL AND ${approvedTaskSql('')}
+    ORDER BY status, due_date`, [projectId]);
 }
 
 // إسناد مهمة لشخص آخر: الفحص يحتاج **قطاع المُسنَد إليه** لا معرّفه وحده. تمرير هدف بلا قطاع
@@ -253,24 +268,52 @@ export async function quickAddTask(ctx, data) {
     if (!d) throw badRequest('المخرَج المرتبط غير موجود');
     if (!projectId || d.project_id !== projectId) throw badRequest('المخرَج المرتبط من مشروع آخر — اختر مخرَجاً من هذا المشروع');
   }
+  const oppId = parent.opportunity_id ?? (data.opportunity_id || null);
+  // ── هل تُضاف الآن أم تنتظر مديره ────────────────────────────────────────────
+  // القرار يُقرأ من **الجهة بعد تطبيعها** لا من الطلب الخام: `normalizeParent` قد يمحو أحد
+  // الرابطين، فقراءةُ الطلب كانت ستُعلّق مهمةً لا جهة لها في النهاية.
+  const approval = await taskApproval(user, { project_id: projectId, opportunity_id: oppId });
   const tid = id('tsk'); const now = nowIso();
-  await insert('task', {
-    id: tid, title: String(data.title).trim(), description: data.description || null,
-    work_kind: parent.work_kind || data.work_kind || 'project',
-    project_id: projectId,
-    deliverable_id: deliverableId,
-    opportunity_id: parent.opportunity_id ?? (data.opportunity_id || null),
-    // القطاع والإدارة يسقطان عن الشخصية: لا تدخل تجميع قطاعٍ ولا لوحة إدارة ولا تقرير فترة
-    // حتى لو غفل حارسٌ لاحق. الحجب طبقتان — بنيةُ الصفّ وشرطُ الاستعلام — لا طبقةً واحدة.
-    sector_id: isPersonal ? null : sectorId,
-    department_id: isPersonal ? null : (data.department_id || null),
-    assignee_user_id: assignee, priority: data.priority || 'P2', status: 'TODO',
-    start_date: data.start_date || null, due_date: data.due_date || null,
-    estimate_hours: data.estimate_hours ?? null, recurring: data.recurring || null,
-    next_step: blankToNull(data.next_step),
-    created_at: now, created_by: user.id,
+  // كتابةٌ واحدة لا تتجزّأ: مهمةٌ تُكتب معلَّقةً ثم يتعثّر رفعُ طلبها تنتظر أبداً معتمِداً لا
+  // يعلم بها، وطلبٌ يُرفع على مهمةٍ لم تُكتب يفتح شاشةَ اعتمادٍ على عدم. (`tx` معاود الدخول،
+  // فمن نادى الدالة داخل معاملته — تطبيق المساعد الذكي مثلاً — ينضمّ إليها ولا يُقسّمها.)
+  await tx(async () => {
+    await insert('task', {
+      id: tid, title: String(data.title).trim(), description: data.description || null,
+      work_kind: parent.work_kind || data.work_kind || 'project',
+      project_id: projectId,
+      deliverable_id: deliverableId,
+      opportunity_id: oppId,
+      // القطاع والإدارة يسقطان عن الشخصية: لا تدخل تجميع قطاعٍ ولا لوحة إدارة ولا تقرير فترة
+      // حتى لو غفل حارسٌ لاحق. الحجب طبقتان — بنيةُ الصفّ وشرطُ الاستعلام — لا طبقةً واحدة.
+      sector_id: isPersonal ? null : sectorId,
+      department_id: isPersonal ? null : (data.department_id || null),
+      assignee_user_id: assignee, priority: data.priority || 'P2', status: 'TODO',
+      // و«تنتظر» ليست حالةَ عمل بل حالةَ وجود: `status` يبقى `TODO` كما هو، والعمود المستقلّ
+      // وحده يقول إن المهمة لم تُضَف بعد. فلا يتغيّر معنى الحالة على كل لوحٍ وعدّاد وتقرير.
+      approval_state: approval.needsApproval ? TASK_PENDING : null,
+      start_date: data.start_date || null, due_date: data.due_date || null,
+      estimate_hours: data.estimate_hours ?? null, recurring: data.recurring || null,
+      next_step: blankToNull(data.next_step),
+      created_at: now, created_by: user.id,
+    });
+    await audit(ctx, { action: 'create', resource: 'task', resourceId: tid, sectorId,
+      detail: approval.needsApproval ? { approval: 'PENDING', approver: approval.approverUserId } : undefined });
+    if (approval.needsApproval) {
+      await raiseDirectApproval(ctx, {
+        workflowKey: TASK_WORKFLOW_KEY, resource: 'task', resourceId: tid,
+        assigneeUserId: approval.approverUserId, sectorId,
+        detail: { title: String(data.title).trim(), project_id: projectId, opportunity_id: oppId },
+      });
+      // والخبرُ يصل بلسان الحالة لا بنصٍّ عام: المدير يقرأ **ما** يُعتمد قبل أن يفتح الشاشة.
+      await notify(approval.approverUserId, {
+        kind: 'approval',
+        title: 'مهمة بانتظار اعتمادك',
+        body: `${String(data.title).trim()} — أضافها ${user.name_ar || user.username || 'أحد أفراد إدارتك'}`,
+        ref_resource: 'task', ref_id: tid,
+      });
+    }
   });
-  await audit(ctx, { action: 'create', resource: 'task', resourceId: tid, sectorId });
   return await get('SELECT * FROM task WHERE id = ?', [tid]);
 }
 
@@ -302,7 +345,9 @@ export async function teamTasks(user, filters = {}) {
   if (!scope) throw forbidden('عرض مهام الفريق يتطلب صلاحية قراءة مهام إدارة أو قطاع — اطلب تفعيلها من مدير النظام');
   // مهام فريقك عملُهم لا دفاترهم: الشخصية محجوبة عن هذه اللوحة مهما اتّسع نطاق قارئها —
   // وهي محجوبة **في الاستعلام** لا بترشيحٍ بعد القراءة، فلا تُقرأ أصلاً ولا تُعدّ في أي رقم.
-  const where = ['t.deleted_at IS NULL', notPersonalSql('t.')];
+  // ولوحة المدير تعرض ما اعتُمد وحده: ما ينتظر اعتماده يقرؤه في شاشة «الاعتمادات» فيقرّر،
+  // وظهورُه في اللوحتين معاً يجعله يقرأ حِملاً وافق عليه وهو لم يوافق.
+  const where = ['t.deleted_at IS NULL', notPersonalSql('t.'), approvedTaskSql('t.')];
   const params = [];
   // الافتراضي كما كان: المنجَز خارج لوحة المدير. ومن يطلبه صراحةً (عرض اللوح بعمود «منجز»)
   // يمرّر includeDone — العدسة واحدة والبيانات واحدة.
@@ -394,6 +439,10 @@ export async function updateTask(ctx, taskId, data) {
   // وعدَ عرضٍ لا وعدَ نظام. و«غير موجودة» لا «خارج نطاقك»: الثانية تؤكّد أن لفلانٍ مهمةً
   // شخصية بهذا المعرّف — إقرارٌ صغير بما وُعد بألّا يُقال.
   if (isPersonalTask(row) && !isOwn) throw notFound('المهمة غير موجودة');
+  // ومهمةٌ تنتظر اعتماداً لا يكتب فيها إلا كاتبها: هي غير مقروءة لغيره في كل قائمة، فلولا هذا
+  // الشرط لبقيت مكتوبةً بمعرّفها من تغييرٍ جماعي أو من المساعد — كتابةٌ على ما لا يُرى.
+  // وكاتبها يصحّحها قبل أن ينظر فيها مديره، وهذا مقصود: الردّ يُصلَّح لا يُعاد من الصفر.
+  if (isPendingTask(row) && row.created_by !== user.id) throw notFound('المهمة غير موجودة');
   if (!isOwn && !can(user, 'update', 'task', row)) throw forbidden();
   // نيّة الطلب في الجهة والنوع تُحسب مرة واحدة **من نفس الدالة التي ستكتبها** — لا قاعدةٌ
   // ثانية تُشتقّ هنا فتتباعد عنها لاحقاً — وتُقرأ قبل بوابة الإسناد لا بعدها.
@@ -502,7 +551,7 @@ export async function teamWorkload(user, filters = {}) {
        SUM(CASE WHEN t.next_step IS NULL OR t.next_step = '' THEN 1 ELSE 0 END) no_step
      FROM task t
      WHERE t.deleted_at IS NULL AND t.status NOT IN ('DONE','CANCELLED')
-       AND ${notPersonalSql('t.')}
+       AND ${notPersonalSql('t.')} AND ${approvedTaskSql('t.')}
        AND t.assignee_user_id IN (${marks(userIds.length)})
      GROUP BY t.assignee_user_id`, [today, ...userIds]);
 
@@ -516,7 +565,7 @@ export async function teamWorkload(user, filters = {}) {
        t.blocked_reason, t.next_step
      FROM task t
      WHERE t.deleted_at IS NULL AND t.status NOT IN ('DONE','CANCELLED')
-       AND ${notPersonalSql('t.')}
+       AND ${notPersonalSql('t.')} AND ${approvedTaskSql('t.')}
        AND t.assignee_user_id IN (${marks(userIds.length)})
      ORDER BY ${prioritySql('t')}, t.due_date
      LIMIT 400`, userIds);
@@ -627,7 +676,8 @@ export async function teamWorkload(user, filters = {}) {
   // ولا تُعرَض كأشخاص وهميين: هي حالةُ إسنادٍ ناقصة يعالجها المدير بإعادة إسناد، لا شخصٌ يُقيَّم.
   // ونطاقها من عمود المهمة نفسها (قطاعها/إدارتها) لأن المهمة بلا صاحبٍ لا وصلة لها بشخص.
   // والشخصية ليست «عملاً بلا صاحب» ولو غادر صاحبها: هي دفترُه، ولا يُعاد إسناد دفتر أحد.
-  const oWhere = ["t.deleted_at IS NULL", "t.status NOT IN ('DONE','CANCELLED')", notPersonalSql('t.'),
+  // والمعلَّقة ليست «عملاً بلا صاحب» بل عملاً لم يُضَف: صاحبها معروف ومديره ينظر فيها الآن.
+  const oWhere = ["t.deleted_at IS NULL", "t.status NOT IN ('DONE','CANCELLED')", notPersonalSql('t.'), approvedTaskSql('t.'),
     '(t.assignee_user_id IS NULL OR au.id IS NULL OR au.active = 0 OR au.deleted_at IS NOT NULL)'];
   const oParams = [];
   // والعمل المهمَل يتبع المجموعة نفسها: لو قُصّ على إدارة الانتماء وحدها لبقيت مهام الإدارة
@@ -724,6 +774,7 @@ export async function personDossier(reader, personUserId) {
      LEFT JOIN opportunity o ON o.id = t.opportunity_id AND o.deleted_at IS NULL
      LEFT JOIN department d ON d.id = t.department_id AND d.deleted_at IS NULL
      WHERE t.deleted_at IS NULL AND t.assignee_user_id = ? AND t.status <> 'CANCELLED'
+       AND ${approvedTaskSql('t.')}
        ${self ? '' : `AND ${notPersonalSql('t.')}`}
      ORDER BY ${prioritySql('t')}, t.due_date
      LIMIT 200`, [uid]);
