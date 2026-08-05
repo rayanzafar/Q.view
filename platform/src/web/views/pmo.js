@@ -1197,8 +1197,11 @@ export async function tasksPage(user, opts = {}) {
        (قاعدة «ليس لوناً فقط») — فمن لا يميّز الألوان يقرأ «مهمة شخصية» كما يقرؤها غيره. */
     .tk-personal{color:#8a6d2f;background:#fdf8ec;border:1px solid #eadfc2;border-radius:7px;
       padding:.02rem .4rem;font-weight:700;max-width:none}
-    /* وسمُ الانتظار كذلك: اسمٌ صريح مع لونه — «بانتظار اعتماد مديرك» تُقرأ كاملةً ولا تُخمَّن
-       من درجة لون. وهو الوسم الوحيد الذي يقول إن الصفّ ليس عملاً قائماً بعد. */
+    /* وسمُ الانتظار كذلك: اسمٌ صريح مع لونه، يُقرأ كاملاً ولا يُخمَّن من درجة لون. وهو الوسم
+       الوحيد الذي يقول إن الصفّ ليس عملاً قائماً بعد.
+       ولا يُكتب نصّ الوسم هنا حرفياً: التعليق يُشحن مع الصفحة، فيجد أيُّ فحصٍ نصّي (مسحُ
+       الأدوار، أو تحقّقٌ بعد نشر) الكلمةَ في كل صفحة ويحسبها وسماً مرسوماً. وقعتُ في ذلك
+       بنفسي: قرأتُ «الوسم ظاهر» على صفحةٍ لا وسم فيها. النصّ في المعجم وحده. */
     .tk-await{color:#92400e;background:#fef3c7;border:1px solid #fde68a;border-radius:7px;
       padding:.02rem .4rem;font-weight:700;max-width:none}
     .tk-who{display:inline-flex;align-items:center;gap:.25rem;color:var(--muted)}
