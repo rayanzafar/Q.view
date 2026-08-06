@@ -4,6 +4,7 @@
 // داخل الاستعلامات نفسها، ونُسقط كل نوع لا يملك المستخدم قراءة مورده (فاتورة/تحصيل/عميل…).
 import { all, get } from '../db/index.js';
 import { can } from '../rbac/index.js';
+import { scopeFilter } from '../rbac/scope.js';
 
 // حساب بداية النافذة (UTC، محمول): day=أمس، week=7 أيام، month=30، quarter=91.
 export const WINDOW_DAYS = { day: 1, week: 7, month: 30, quarter: 91 };
@@ -36,10 +37,19 @@ export async function changesSince(user, sectorId, sinceIsoDate) {
   const counts = { stage: 0, invoice: 0, collection: 0, activity: 0, created: 0 };
 
   // ── 1) حركات مراحل الفرص (opportunity_stage_history.changed_at) ──
+  // الحركة تحمل عنوان الفرصة وقيمتها وعميلها — تفاصيل صفقةٍ قبل ترسيتها، لا رقماً مجمَّعاً.
+  // فتُقصّ على نطاق **قائمة الفرص نفسه** (نفس خيارات listOpportunities حرفاً، مؤهَّلةً بـ`o.`):
+  // BD يرى حركات فرصه هو، ومدير الإدارة إداراته المسؤولة والمشارِكة، وقائد القطاع قطاعه.
+  // البوابة العارية can(user,'read','opportunity') كانت وحدها هنا فتفتح حركات القطاع كله
+  // لكل من يملك المنح مهما ضاق نطاقه.
   if (can(user, 'read', 'opportunity')) {
+    const f = scopeFilter(user, 'opportunity', 'read',
+      { sectorCol: 'o.sector_id', ownerCol: 'o.owner_user_id', projectCol: 'o.id',
+        grantCol: 'o.department_id', memberCol: 'o.id', deptCol: 'o.department_id' });
     const base = `FROM opportunity_stage_history h JOIN opportunity o ON o.id = h.opportunity_id`;
-    const cond = `WHERE o.sector_id = ? AND o.deleted_at IS NULL AND h.changed_at >= ?`;
-    counts.stage = (await get(`SELECT COUNT(*) n ${base} ${cond}`, [sectorId, since]))?.n || 0;
+    const cond = `WHERE o.sector_id = ? AND o.deleted_at IS NULL AND h.changed_at >= ? AND ${f.clause}`;
+    const params = [sectorId, since, ...f.params];
+    counts.stage = (await get(`SELECT COUNT(*) n ${base} ${cond}`, params))?.n || 0;
     const rows = await all(`SELECT h.changed_at at, o.id opp_id, o.title_ar, o.value_halalas,
          sf.name_ar from_name, st.name_ar to_name, COALESCE(st.is_won,0) is_won, COALESCE(st.is_lost,0) is_lost,
          c.name_ar client
@@ -47,7 +57,7 @@ export async function changesSince(user, sectorId, sinceIsoDate) {
        LEFT JOIN stage sf ON sf.id = h.from_stage_id
        LEFT JOIN stage st ON st.id = h.to_stage_id
        LEFT JOIN client c ON c.id = o.client_id
-       ${cond} ORDER BY h.changed_at DESC LIMIT 40`, [sectorId, since]);
+       ${cond} ORDER BY h.changed_at DESC LIMIT 40`, params);
     for (const r of rows) {
       const won = Number(r.is_won) === 1, lost = Number(r.is_lost) === 1;
       items.push({
@@ -125,10 +135,32 @@ export async function changesSince(user, sectorId, sinceIsoDate) {
   // ── 5) سجلات إنشاء من سجل النظام (audit_log.at، action='create') — «من سجل النظام» ──
   const readableRes = Object.keys(CREATED_LABEL).filter((r) => can(user, 'read', r));
   if (readableRes.length) {
-    const ph = readableRes.map(() => '?').join(',');
+    // بند «فرصة جديدة» يحمل عنوان الفرصة ورابط صفحتها — تفاصيل صفقةٍ قبل ترسيتها، فيُقصّ على
+    // نطاق **قائمة الفرص نفسه** (نفس حقيقة حركات المراحل في القسم ١ أعلاه): البند الذي لا
+    // يفتحه القارئ **يسقط** ولا يُعاد تسميته — ما لا يُفتح لا يُعرض، وسجلٌّ بلا معرّف يُتحقّق
+    // منه يسقط معه (فشل مغلق). بقية الموارد (مشروع/عقد/عميل) على بوابتها كما كانت.
+    const resParts = [];
+    const resParams = [];
+    const others = readableRes.filter((r) => r !== 'opportunity');
+    if (others.length) {
+      resParts.push(`a.resource IN (${others.map(() => '?').join(',')})`);
+      resParams.push(...others);
+    }
+    if (readableRes.includes('opportunity')) {
+      const f = scopeFilter(user, 'opportunity', 'read',
+        { sectorCol: 'o.sector_id', ownerCol: 'o.owner_user_id', projectCol: 'o.id',
+          grantCol: 'o.department_id', memberCol: 'o.id', deptCol: 'o.department_id' });
+      if (f.clause === '1=1') {
+        resParts.push(`a.resource = 'opportunity'`);
+      } else {
+        resParts.push(`(a.resource = 'opportunity' AND EXISTS (
+          SELECT 1 FROM opportunity o WHERE o.id = a.resource_id AND ${f.clause}))`);
+        resParams.push(...f.params);
+      }
+    }
     const base = `FROM audit_log a`;
-    const cond = `WHERE a.action = 'create' AND a.resource IN (${ph}) AND a.sector_id = ? AND a.at >= ?`;
-    const params = [...readableRes, sectorId, since];
+    const cond = `WHERE a.action = 'create' AND (${resParts.join(' OR ')}) AND a.sector_id = ? AND a.at >= ?`;
+    const params = [...resParams, sectorId, since];
     counts.created = (await get(`SELECT COUNT(*) n ${base} ${cond}`, params))?.n || 0;
     const rows = await all(`SELECT a.at, a.resource, a.resource_id, COALESCE(u.name_ar, a.username) username ${base.replace('FROM audit_log a', 'FROM audit_log a LEFT JOIN app_user u ON u.username = a.username')} ${cond}
        ORDER BY a.at DESC LIMIT 40`, params);

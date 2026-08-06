@@ -9,6 +9,7 @@ import { forbidden, notFound, badRequest } from '../../core/http/errors.js';
 import { isSupportUnit } from '../../core/org/kind.js';
 import { grossOfNet } from '../finance/vat.js';
 import { getTeam } from './oppteam.js';
+import { loadReadableOpportunity } from './opp-access.js';
 import { ensureProjectForWonOpportunity, projectIsUntouched } from './opp-project-sync.js';
 
 // Stage-rot thresholds (benchmarks §1 — Pipedrive rotting): an OPEN opportunity sitting in a stage
@@ -44,11 +45,13 @@ function withDiscipline(row, today) {
 
 // opts.today ('YYYY-MM-DD') pins the stage-age clock for deterministic tests; defaults to now.
 export async function listOpportunities(user, filters = {}, opts = {}) {
-  // `deptCol` تصريحٌ بأن هذا الاستعلام يعرف عمود الإدارة — وبه وحده تُضاف الصلاحيات الشخصية
-  // («سجى ترى كل فرص إدارة الابتكار»). وبدونه لا تُوسَّع القائمة إطلاقاً: استعلامٌ لا يستطيع
-  // أن يحدّ نفسه بإدارة لا يُوسَّع بها، وإلا فُتح ما هو أوسع من المنح.
-  // ولا أثر على منح الأدوار: شرط الدور يبقى كما هو، والإضافة «أو» بعده.
-  const f = scopeFilter(user, 'opportunity', 'read', { grantCol: 'department_id', memberCol: 'id' });
+  // الخيارات الثلاثة تصريحٌ بأن هذا الاستعلام يعرف أعمدته: `grantCol` يُدخل الصلاحيات الشخصية
+  // («سجى ترى كل فرص إدارة الابتكار»)، و`deptCol` يفعّل قصّ نطاق «الإدارة» على إدارات القارئ
+  // (قرار المالك ٢٠٢٦-٠٨: مدير الإدارة يرى فرص إدارته لا قطاعه) ومعه مدى المشاركة والقيادة،
+  // و`memberCol` يُدخل فرص تسكينه. وكلها **مؤهَّلة باسم الجدول**: `memberCol` يُقرأ داخل
+  // استعلام EXISTS الفرعي، و`id` عاريةً هناك تنصرف إلى `od.id` فتطابق كل صف — تسريبٌ صامت.
+  const f = scopeFilter(user, 'opportunity', 'read',
+    { grantCol: 'department_id', memberCol: 'opportunity.id', deptCol: 'department_id' });
   const where = [f.clause];
   const params = [...f.params];
   where.push('deleted_at IS NULL');
@@ -117,9 +120,9 @@ async function setOpportunityDepartments(ctx, oppId, ids, primaryId) {
 }
 
 export async function getOpportunity(user, oppId) {
-  const row = await get('SELECT * FROM opportunity WHERE id = ? AND deleted_at IS NULL', [oppId]);
-  if (!row) throw notFound('الفرصة غير موجودة');
-  if (!can(user, 'read', 'opportunity', row)) throw forbidden();
+  // القراءة عبر الباب الواحد الذي يعرف الإدارات المشاركة (opp-access.js): صفٌّ تعرضه قائمة
+  // مديرةِ إدارةٍ مشارِكة يجب أن يُفتح لها — والحكم بعمود المسؤولة وحده كان يردّها عنه.
+  const row = await loadReadableOpportunity(user, oppId, 'read');
   return redact(user, 'opportunity', row);
 }
 
@@ -464,8 +467,12 @@ export async function myOpportunitiesInSector(user, sectorId, opts = {}) {
 }
 
 // Pipeline aggregation for dashboards (respects scope).
+// نفس خيارات القائمة حرفاً: كان هذا التجميع بلا خيارات فيُحسب على نطاق الدور الخام بينما
+// القائمة تحته مُوسَّعة بالمنح الشخصية والتسكين — فيقرأ المستخدم مجموعاً لا يساوي ما يعدّه
+// بيده في نفس الشاشة. المجموع والقائمة يجب أن يقرآ نفس الصفوف أو لا يُصدَّق أحدهما.
 export async function pipelineSummary(user) {
-  const f = scopeFilter(user, 'opportunity', 'read');
+  const f = scopeFilter(user, 'opportunity', 'read',
+    { grantCol: 'department_id', memberCol: 'opportunity.id', deptCol: 'department_id' });
   const rows = await all(
     `SELECT stage_id, COUNT(*) n, COALESCE(SUM(value_halalas),0) val
      FROM opportunity WHERE ${f.clause} AND deleted_at IS NULL GROUP BY stage_id`, f.params);

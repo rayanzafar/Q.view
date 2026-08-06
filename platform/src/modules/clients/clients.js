@@ -19,6 +19,7 @@ import { matchEntity, entityCount } from '../../core/org/entity-registry.js';
 // قاعدة نسبة الفاتورة إلى عميل — معرّفة مرة واحدة في وحدة المالية (صاحبة الفاتورة) ومستوردة هنا،
 // حتى لا تختلف إجابة «لمن هذه الفاتورة؟» بين قائمة العملاء وصفحة العميل وشاشة المالية.
 import { INVOICE_CLIENT_COL, INVOICE_CLIENT_JOIN } from '../finance/finance.js';
+import { loadReadableOpportunity } from '../crm/opp-access.js';
 
 const INV_CID = INVOICE_CLIENT_COL();   // COALESCE(i.client_id, p.client_id)
 const INV_JOIN = INVOICE_CLIENT_JOIN(); // LEFT JOIN project p … AND p.deleted_at IS NULL
@@ -278,7 +279,12 @@ export async function listClients(user, filters = {}) {
 //   • fy_win_rate  = فرص السنة المالية المحسومة (يستثني المستورد) = عدّاد «مكسوبة سنة FY» في عمود اللوحة.
 // استعلام تجميعي واحد خفيف (لا استعلام لكل صف). لا صلاحية = لا صفوف ⇒ قيم صفرية ونِسَب فارغة.
 export async function salesWinRate(user, fy = config.fiscalYear) {
-  const f = scopeFilter(user, 'opportunity', 'read');
+  // نفس خيارات قائمة الفرص، مؤهَّلةً باسم الجدول لأن الاستعلام يضمّ `stage` — فالنسبة تُحسب
+  // على نفس الصفوف التي تعرضها اللوحة والقائمة لنفس المستخدم، وإلا افترق الرقمان بلا سبب ظاهر.
+  const f = scopeFilter(user, 'opportunity', 'read',
+    { sectorCol: 'opportunity.sector_id', ownerCol: 'opportunity.owner_user_id',
+      grantCol: 'opportunity.department_id', memberCol: 'opportunity.id',
+      deptCol: 'opportunity.department_id' });
   const r = await get(`SELECT
       COALESCE(SUM(CASE WHEN stage.is_won = 1 AND COALESCE(opportunity.exclude_from_sales,0) = 0 AND opportunity.year = ? THEN 1 ELSE 0 END),0) fy_won,
       COALESCE(SUM(CASE WHEN stage.is_lost = 1 AND opportunity.year = ? THEN 1 ELSE 0 END),0) fy_lost,
@@ -307,7 +313,7 @@ export async function clientOverview(user, clientId) {
 
   const contacts = await all('SELECT id, name, title, email, phone, created_at FROM contact WHERE client_id = ? AND deleted_at IS NULL ORDER BY created_at', [clientId]);
 
-  // opportunities split open/won/lost
+  // opportunities split open/won/lost — البصمة كاملةً، تغذّي **المجاميع** وحدها (أدناه)
   const opps = await all(`SELECT o.id, o.code, o.title_ar, o.value_halalas, o.win_pct, o.stage_id, o.stage_changed_at,
        o.next_action, o.sector_id, o.year, s.name_ar stage_name_ar, COALESCE(s.is_won,0) is_won, COALESCE(s.is_lost,0) is_lost
      FROM opportunity o LEFT JOIN stage s ON s.id = o.stage_id
@@ -317,6 +323,22 @@ export async function clientOverview(user, clientId) {
   const lost = opps.filter((o) => o.is_lost);
   const decided = won.length + lost.length;
   const win_rate = decided ? Math.round((won.length / decided) * 100) : 0;
+  // حدود «الأرقام لا الأشخاص» داخل صفحة العميل (نفس حدود مركز القيادة — sector-feed-scope):
+  // مؤشرات العميل ومجاميعه — خط الفرص المفتوح والمرجّح وتقسيمة القطاعات ونسبة الفوز — تُحسب من
+  // بصمته كاملةً: مجاميع بلا عناوين. أما **صفوف** الفرص المفتوحة — عنوانها وقيمتها واحتمالها
+  // وخطوتها التالية — فتفاصيل صفقةٍ قبل ترسيتها، تُقصّ على نطاق قائمة الفرص نفسه (نفس خيارات
+  // listOpportunities مؤهَّلةً بـ`o.`): صفٌّ لا يفتحه القارئ لا يُعرَض له. المكسوبة والمخسورة
+  // بعد الحسم علنيةٌ داخل النطاق كما كانت.
+  let openRows = open;
+  const of_ = scopeFilter(user, 'opportunity', 'read',
+    { sectorCol: 'o.sector_id', ownerCol: 'o.owner_user_id', projectCol: 'o.id',
+      grantCol: 'o.department_id', memberCol: 'o.id', deptCol: 'o.department_id' });
+  if (of_.clause !== '1=1') {
+    const visible = new Set((await all(`SELECT o.id FROM opportunity o
+       WHERE o.client_id = ? AND o.deleted_at IS NULL AND ${of_.clause}`,
+    [clientId, ...of_.params])).map((r) => r.id));
+    openRows = open.filter((o) => visible.has(o.id));
+  }
 
   const projects = await all(`SELECT id, code, name_ar, status, rag, progress_pct, start_date, end_date, sector_id,
        COALESCE(NULLIF(contract_value_halalas,0), NULLIF(budget_halalas,0), NULLIF(po_value_halalas,0), NULLIF(revenue_halalas,0), 0) value_halalas
@@ -470,7 +492,7 @@ export async function clientOverview(user, clientId) {
       relationship: relationshipOf(last_activity_at, open.length),
     },
     activities,
-    opportunities: { open, won, lost, win_rate },
+    opportunities: { open: openRows, won, lost, win_rate },
     projects,
     contracts,
     invoices_summary: {
@@ -812,9 +834,9 @@ export async function logActivity(ctx, data = {}) {
 
   let clientId = data.client_id || null, sectorId = null;
   if (data.opportunity_id) {
-    const opp = await get('SELECT * FROM opportunity WHERE id = ? AND deleted_at IS NULL', [data.opportunity_id]);
-    if (!opp) throw notFound('الفرصة غير موجودة');
-    if (!can(user, 'read', 'opportunity', opp)) throw forbidden();
+    // بابُ القراءة الواحد (v5.2): الإدارات المشاركة تلحق عبر loadReadableOpportunity —
+    // من تُفتح له صفحةُ الفرصة يُسجِّل نشاطاً عليها، بلا فحصٍ ثانٍ أضيقَ من الأول.
+    const opp = await loadReadableOpportunity(user, data.opportunity_id);
     clientId = clientId || opp.client_id;
     sectorId = opp.sector_id || sectorId;
   }
@@ -848,9 +870,8 @@ export async function listActivities(user, filters = {}) {
   const params = [];
   let scopedByFilter = false;
   if (filters.opportunity_id) {
-    const opp = await get('SELECT * FROM opportunity WHERE id = ? AND deleted_at IS NULL', [filters.opportunity_id]);
-    if (!opp) throw notFound('الفرصة غير موجودة');
-    if (!can(user, 'read', 'opportunity', opp)) throw forbidden();
+    // نفس باب القراءة الواحد: من يرى الفرصة يرشِّح نشاطها (شاملاً الإدارات المشاركة).
+    await loadReadableOpportunity(user, filters.opportunity_id);
     where.push('a.opportunity_id = ?'); params.push(filters.opportunity_id); scopedByFilter = true;
   }
   if (filters.project_id) {

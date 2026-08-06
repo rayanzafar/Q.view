@@ -8,6 +8,7 @@ import { id, nowIso, toHalalas } from '../../core/util/ids.js';
 import { forbidden, badRequest, notFound } from '../../core/http/errors.js';
 import { complete, aiMode } from '../../core/ai/provider.js';
 import { ensureOpportunityForProject, projectIsUntouched } from '../crm/opp-project-sync.js';
+import { loadReadableOpportunity } from '../crm/opp-access.js';
 import { createItem } from '../pmo/governance.js';
 
 const num = (v) => {
@@ -168,9 +169,17 @@ export async function createFromIntake(ctx, data) {
   const srcOppId = (data.source_opp_id || '').toString().trim() || null;
   let srcOpp = null;
   if (srcOppId) {
-    srcOpp = await get('SELECT id, title_ar, client_id, sector_id FROM opportunity WHERE id = ? AND deleted_at IS NULL', [srcOppId]);
-    if (!srcOpp) throw badRequest('الفرصة المصدر غير موجودة');
-    if (!can(user, 'read', 'opportunity', srcOpp)) throw forbidden('هذه الفرصة خارج نطاقك');
+    // الباب الواحد لقراءة صفّ الفرصة (opp-access.js): كان الحارس هنا ينتقي أعمدةً بلا
+    // `department_id`، وفحص نطاق «الإدارة» يمرّ فارغاً على هدفٍ لا يحمل العمود — فمديرُ
+    // إدارةٍ يبني مشروعاً من فرصة إدارةٍ أخرى في قطاعه وقائمتُه تحجبها عنه. الباب يحمّل
+    // الصفّ كاملاً ومشاركاتِه ويحكم بنفس حكم القائمة. ورسالة الغياب تبقى بلفظها القديم:
+    // «المصدر» هنا اسمُ الحقل الذي يراه المستخدم، لا مجرد فرصة تُفتح بعنوانها.
+    try {
+      srcOpp = await loadReadableOpportunity(user, srcOppId, 'read', 'هذه الفرصة خارج نطاقك');
+    } catch (e) {
+      if (e.status === 404) throw badRequest('الفرصة المصدر غير موجودة');
+      throw e;
+    }
   }
   const sectorId = data.sector_id || srcOpp?.sector_id || user.sector_id;
   if (!can(user, 'create', 'project', { sector_id: sectorId })) throw forbidden('خارج نطاق قطاعك');

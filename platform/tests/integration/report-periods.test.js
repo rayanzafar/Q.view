@@ -85,6 +85,17 @@ before(async () => {
   await insert('opportunity_stage_history', { id: 'H1', opportunity_id: 'O1', from_stage_id: 'LEAD',
     to_stage_id: 'WON', changed_at: '2026-07-22T10:00:00Z' });
 
+  // فرصتا إدارةٍ أخرى (D_OTHER): الأولى تشارك فيها إدارة المدن الذكية عبر جدول المشاركة —
+  // عدسة الفرصة وخياراتها تفتحانها لمدير D_SMART كما تفتحها قائمته؛ والثانية بلا مشاركة تبقى مردودة.
+  await insert('department', { id: 'D_OTHER', sector_id: 'SOLUTIONS', name_ar: 'إدارة مجاورة', active: 1, created_at: T });
+  await insert('opportunity', { id: 'O_PART', code: 'O2', title_ar: 'فرصة بمشاركة المدن الذكية',
+    sector_id: 'SOLUTIONS', department_id: 'D_OTHER', client_id: 'C1', owner_user_id: 'u_lead_sol',
+    stage_id: 'LEAD', value_halalas: 20000000, win_pct: 10, year: 2026, stage_changed_at: T, created_at: T });
+  await insert('opportunity_department', { opportunity_id: 'O_PART', department_id: 'D_SMART', created_at: T });
+  await insert('opportunity', { id: 'O_FOREIGN', code: 'O3', title_ar: 'فرصة الإدارة المجاورة وحدها',
+    sector_id: 'SOLUTIONS', department_id: 'D_OTHER', client_id: 'C1', owner_user_id: 'u_lead_sol',
+    stage_id: 'LEAD', value_halalas: 15000000, win_pct: 10, year: 2026, stage_changed_at: T, created_at: T });
+
   // مهمتان منسوبتان إلى D_SMART لكن **لا شيء أُنجز داخل الأسبوع** ⟵ صفر مقيس لا غياب.
   await insert('task', { id: 'T1', project_id: 'P1', sector_id: 'SOLUTIONS', department_id: 'D_SMART',
     title: 'مهمة سابقة منجزة', status: 'DONE', assignee_user_id: 'u_e1',
@@ -247,6 +258,23 @@ test('عدستا المشروع والفرصة تُفحصان على صفّهم�
   await assert.rejects(() => P.buildPeriodReport(leadCon, { ...WEEK, lens: 'opportunity', targetId: 'O1' }),
     (e) => e.status === 403);
   assert.equal((await P.buildPeriodReport(leadSol, { ...WEEK, lens: 'project', targetId: 'P1' })).target.id, 'P1');
+});
+
+test('عدسة الفرصة تفتح فرصة الإدارة المشارِكة لمديرها وتعرضها في خياراته — والأجنبية مردودة', async () => {
+  // قبل السدّ: صفّ العدسة كان يُحمَّل بلا `partner_department_ids` فيُرَدّ مديرُ الإدارة
+  // المشارِكة (403) عن فرصةٍ تعرضها قائمتُه وتفتحها صفحتُها، وخيارات العدسة تُرشَّح بفحص
+  // الصفّ العاري فتسقط منها. الباب الآن واحد: loadReadableOpportunity + نطاق القائمة نفسه.
+  const r = await P.buildPeriodReport(deptMgr, { ...WEEK, lens: 'opportunity', targetId: 'O_PART' });
+  assert.equal(r.target.id, 'O_PART');
+  const ids = (await P.lensOptions(deptMgr)).opportunities.map((o) => o.id);
+  assert.ok(ids.includes('O_PART'), 'فرصة المشاركة غابت عن خيارات العدسة وهي تُفتح');
+  assert.ok(ids.includes('O1'), 'فرصة إدارته المسؤولة في الخيارات كما كانت');
+  assert.ok(!ids.includes('O_FOREIGN'), 'فرصة إدارةٍ أخرى بلا مشاركة تسرّبت إلى خياراته');
+  await assert.rejects(() => P.buildPeriodReport(deptMgr, { ...WEEK, lens: 'opportunity', targetId: 'O_FOREIGN' }),
+    (e) => e.status === 403 && /خارج نطاقك/.test(e.message), 'المردودة تبقى مردودة بالرسالة العربية نفسها');
+  // وقائد القطاع كما كان: الفرص الثلاث كلها في خياراته وعدسته
+  const leadIds = (await P.lensOptions(leadSol)).opportunities.map((o) => o.id);
+  for (const oid of ['O1', 'O_PART', 'O_FOREIGN']) assert.ok(leadIds.includes(oid), `${oid} غابت عن قائد القطاع`);
 });
 
 test('هدف غير موجود أو عدسة مجهولة: رسالة عربية مفهومة لا انهيار', async () => {

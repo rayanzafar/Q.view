@@ -1,18 +1,16 @@
-// ── ما يُعرَض في القائمة يجب أن يُفتح ────────────────────────────────────────
+// ── ما يُعرَض في القائمة يجب أن يُفتح — والقائمة صارت قائمة **إدارته** ─────────
 //
-// «أنا ريان، في فرص تطلع لي ولما أضغط عليها تجيني الصلاحية غير مسموحة» — والشاشة تردّ ٤٠٣.
+// القصة على فصلين، والحارس واحد:
+//  · الفصل الأول: «أنا ريان، في فرص تطلع لي ولما أضغط عليها تجيني الصلاحية غير مسموحة» —
+//    القائمة كانت قطاعية والصفُّ إدارياً، فعُولج التناقض يومها بتوسيع قراءة الصفّ إلى القطاع
+//    (SECTOR_WIDE_LISTS) كي يلحق الصفُّ بالقائمة.
+//  · الفصل الثاني (قرار المالك ٢٠٢٦-٠٨): انقلبت القاعدة نفسها — مدير الإدارة يرى فرص
+//    **إدارته** (مسؤولةً أو مشاركة) لا فرص قطاعه، ومدير تطوير الأعمال فرصَه هو. فضاقت
+//    القائمة (`deptCol` مُفعَّل في scope.js) وأُزيل المُوسِّع القديم من قراءة الصفّ — إذ صار
+//    وجودُه هو التسريب: صفٌّ لا تعرضه قائمته ويُفتح بالعنوان المباشر.
 //
-// وهو تناقضٌ بين مسارين يقرّران نفس السؤال بحكمين مختلفين:
-//  · **القائمة** (`scopeFilter` ← `roleScopeFilter`) بنطاق «إدارة» **تفشل مفتوحةً إلى القطاع**
-//    عن قصدٍ موثَّق: عمود الإدارة لا يُمرَّر للاستعلامات قبل نسبة البيانات كلها.
-//  · **الصفّ** (`can` ← `scopeReaches`) كان يقصّ على الإدارات التي يقودها القارئ وحدها.
-// فيرى مدير الإدارة صفوف قطاعه في كل قائمة، ولا يفتح منها إلا صفوف إدارته.
-//
-// والتناقض قديم لكنه كان مستوراً: أكثر الصفوف بلا إدارة فتمرّ من الفرع المتساهل. ولمّا نُسبت
-// الفرص إلى إداراتها (استدراك المرآة بين المشاريع والفرص) وقع على صفوفٍ حقيقية — وأولها فرصةٌ
-// في «إدارة المدن الذكية» ظهرت للمالك في «الفرص» ولم تُفتح.
-//
-// **والحدّ الذي لا يتحرّك: القراءة تتبع القائمة، والكتابة لا.**
+// والحارس في الفصلين هو هو: **كل ما يُعرَض يُفتح، والكتابة لا تتبع القراءة** — وتغيّر تحته
+// اتساعُ القائمة لا الحارسُ نفسه.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -34,8 +32,8 @@ const RAYAN = {
   id: 'u_rayan', username: 'rayn', role_id: 'department_manager', scope: 'sector', sector_id: 'SOLUTIONS',
   departmentIds: new Set(['dep_innovation', 'dep_ai']), projectIds: new Set(), teamIds: new Set(),
   opportunityIds: new Set(), departmentGrants: [],
+  managedDepartmentIds: new Set(['dep_innovation', 'dep_ai']),
 };
-const CTX = { user: RAYAN, ip: '1' };
 
 before(async () => {
   db = await import('../../src/core/db/index.js');
@@ -54,11 +52,14 @@ before(async () => {
   await db.insert('department', { id: 'dep_other_sector', sector_id: 'CONSULTING', name_ar: 'إدارة في قطاع آخر', active: 1, created_at: T });
   await db.insert('stage', { id: 'WON', name_ar: 'مكسوبة', default_win_pct: 100, sort_order: 9, is_won: 1, is_lost: 0 });
 
-  // الفرصة التي ردّت المالك بـ٤٠٣ — قطاعه، وإدارةٌ لا يقودها.
+  // فرصة «المدن الذكية»: قطاعُه، وإدارةٌ لا يقودها — كانت تظهر ولا تُفتح، وصارت لا تظهر ولا تُفتح.
   await db.insert('opportunity', { id: 'opp_cities', title_ar: 'المركز الوطني لإدارة النفايات',
     sector_id: 'SOLUTIONS', department_id: 'dep_cities', stage_id: 'WON', value_halalas: 0, year: 2026, created_at: T });
   await db.insert('opportunity', { id: 'opp_mine', title_ar: 'فرصة إدارته',
     sector_id: 'SOLUTIONS', department_id: 'dep_innovation', stage_id: 'WON', value_halalas: 100, year: 2026, created_at: T });
+  await db.insert('opportunity', { id: 'opp_partner', title_ar: 'فرصة تشارك فيها إدارته',
+    sector_id: 'SOLUTIONS', department_id: 'dep_cities', stage_id: 'WON', value_halalas: 100, year: 2026, created_at: T });
+  await db.insert('opportunity_department', { opportunity_id: 'opp_partner', department_id: 'dep_ai', created_at: T });
   await db.insert('opportunity', { id: 'opp_nodept', title_ar: 'فرصة بلا إدارة',
     sector_id: 'SOLUTIONS', department_id: null, stage_id: 'WON', value_halalas: 100, year: 2026, created_at: T });
   // وفرصةٌ في قطاعٍ آخر — الحدّ الذي يجب ألّا يتحرّك بأي حال.
@@ -67,30 +68,54 @@ before(async () => {
 });
 after(async () => { await db.close(); rmSync(dir, { recursive: true, force: true }); });
 
-test('كل فرصةٍ تظهر في قائمته تُفتح — لا صفَّ يُعرض ثم يُرَدّ بـ«صلاحيتك لا تسمح»', async () => {
+test('قائمته فرصُ إدارتيه — مسؤولةً أو مشاركة — وكل صفٍّ فيها يُفتح فعلاً', async () => {
   const listed = await opps.listOpportunities(RAYAN, { year: 2026 });
-  assert.ok(listed.length >= 3, 'القائمة تعرض فرص قطاعه');
+  assert.deepEqual(listed.map((o) => o.id).sort(), ['opp_mine', 'opp_partner'],
+    'القائمة لم تَعُد قطاعية: إدارتاه (والمشاركة تلحق) لا أكثر ولا أقل');
   for (const o of listed) {
     await assert.doesNotReject(() => opps.getOpportunity(RAYAN, o.id),
-      `«${o.title_ar}» تظهر في القائمة ولا تُفتح — وهذا بعينه ما رآه المالك`);
+      `«${o.title_ar}» تظهر في القائمة ولا تُفتح — وهذا بعينه ما رآه المالك في الفصل الأول`);
   }
 });
 
-test('وفرصةُ إدارةٍ أخرى داخل قطاعه تُقرأ — لأن قائمته تعرضها أصلاً', () => {
+test('فرصةُ إدارةٍ أخرى في قطاعه: لا تُعرَض ولا تُفتح — القاعدة انقلبت والاتساق بقي', async () => {
   const row = { id: 'opp_cities', sector_id: 'SOLUTIONS', department_id: 'dep_cities' };
-  assert.equal(can(RAYAN, 'read', 'opportunity', row), true);
+  assert.equal(can(RAYAN, 'read', 'opportunity', row), false,
+    'المُوسِّع القطاعي القديم ما زال حياً — وقد صار تسريباً منذ ضاقت القائمة');
+  await assert.rejects(() => opps.getOpportunity(RAYAN, 'opp_cities'),
+    (e) => e.status === 403, 'العنوان المباشر يفتح ما لا تعرضه قائمته');
 });
 
-test('**ولا تُعدَّل**: القراءة تتبع القائمة والكتابة لا — وإلا صار إصلاحُ عرضٍ منحَ صلاحية', () => {
-  const row = { id: 'opp_cities', sector_id: 'SOLUTIONS', department_id: 'dep_cities' };
-  assert.equal(can(RAYAN, 'update', 'opportunity', row), false, 'تعديل فرصة إدارة أخرى سلطة لم تُمنَح');
-  assert.equal(can(RAYAN, 'create', 'opportunity', row), false);
+test('**ولا كتابة بحال**: لا على إدارةٍ أخرى، ولا على فرصةٍ تشارك فيها إدارتُه', () => {
+  const other = { id: 'opp_cities', sector_id: 'SOLUTIONS', department_id: 'dep_cities' };
+  assert.equal(can(RAYAN, 'update', 'opportunity', other), false, 'تعديل فرصة إدارة أخرى سلطة لم تُمنَح');
+  assert.equal(can(RAYAN, 'create', 'opportunity', other), false);
+  // المشاركة تفتح القراءة (الفرصة في قائمته) ولا تفتح القلم — قرارُها عند إدارتها المسؤولة.
+  const partner = { id: 'opp_partner', sector_id: 'SOLUTIONS', department_id: 'dep_cities',
+    partner_department_ids: ['dep_ai'] };
+  assert.equal(can(RAYAN, 'read', 'opportunity', partner), true, 'المشاركة لا تفتح صفَّها');
+  assert.equal(can(RAYAN, 'update', 'opportunity', partner), false, 'المشاركة فتحت القلم — وهي رؤية عملٍ لا ولاية');
 });
 
 test('وفرصة إدارته تُقرأ وتُعدَّل كما كانت — لا نقصان في وصولٍ قائم', () => {
   const row = { id: 'opp_mine', sector_id: 'SOLUTIONS', department_id: 'dep_innovation' };
   assert.equal(can(RAYAN, 'read', 'opportunity', row), true);
   assert.equal(can(RAYAN, 'update', 'opportunity', row), true);
+});
+
+// ── الفرصة «بلا إدارة» — الحالة التي يقرّرها الكود لا التمنّي، مثبَّتةً من طرفَيها ──
+// القائمة تفشل **مغلقةً**: `departmentInSql` عضويةٌ في مجموعة إداراته، وصفٌّ إدارتُه فارغة
+// ليس عضواً في شيء — فلا يظهر في قائمة مديرِ إدارة، ويظهر لقائد القطاع وفي مُرشِّح «بلا إدارة»
+// ليُسنَد. أما **الصفُّ** فيبقى مفتوحاً بالعنوان المباشر داخل قطاعه: فحص النطاق لا يغلق هدفاً
+// بلا إدارة في قطاع القارئ (إغلاقه الكامل يحرم موارد لا تحمل عمود إدارة أصلاً — موثَّق في
+// rbac/index.js)، وفرصةٌ لم تُنسَب بعد ليست سرَّ إدارةٍ أخرى. فالعرضُ أضيق من القراءة هنا
+// عمداً — والعكس (يُعرَض ولا يُفتح) هو وحده الكسر الذي يحرسه هذا الملف.
+test('فرصة بلا إدارة: خارج قائمته (فشل مغلق) — ويفتحها العنوان المباشر داخل قطاعه', async () => {
+  const listed = await opps.listOpportunities(RAYAN, { year: 2026 });
+  assert.ok(!listed.some((o) => o.id === 'opp_nodept'), 'صفٌّ بلا إدارة ظهر في قائمة مدير إدارة');
+  const row = { id: 'opp_nodept', sector_id: 'SOLUTIONS', department_id: null };
+  assert.equal(can(RAYAN, 'read', 'opportunity', row), true,
+    'فرصة قطاعه غير المُسنَدة انغلقت عليه صفّياً — وليست سرّ إدارةٍ أخرى');
 });
 
 test('وحدُّ القطاع لا يتحرّك: فرصةُ قطاعٍ آخر لا تُقرأ ولا تُعدَّل', async () => {
@@ -100,18 +125,18 @@ test('وحدُّ القطاع لا يتحرّك: فرصةُ قطاعٍ آخر ل
   await assert.rejects(() => opps.getOpportunity(RAYAN, 'opp_far'));
 });
 
-// ── والمشروع يبقى بحدّه: توسعة القراءة **لا تشمله** ─────────────────────────
+// ── والمشروع يبقى بحدّه: لا توسعة صفٍّ ولا تضييق قائمة تسرّبا إليه ───────────
 // حارسٌ قائم يمنع ذلك صراحةً («التوسيع المطلوب كان على الفرص لا على الناس»، ومعه المشروع في
-// اثني عشر فحصاً). فحدّ الإدارة على المشاريع مقصود، وعلاجُ تناقضه **تضييق المحفظة** لا توسيع
-// الصفّ — وهو مؤجَّل حتى تُنسَب المشاريع إلى إداراتها، إذ التضييق اليوم يُخفي كل مشروعٍ بلا
-// إدارة فيستبدل تسريباً بعُطل. وهذا الفحص يُثبِّت أن التوسعة لم تتسرّب إليه.
-test('ومشروع إدارةٍ أخرى لا يُقرأ — التوسعة على الفرص وحدها لا على المشاريع', () => {
+// اثني عشر فحصاً). فحدّ الإدارة على المشاريع مقصود، وعلاجُ تناقضه **تضييق المحفظة** — وهو
+// مؤجَّل حتى تُنسَب المشاريع إلى إداراتها (نصف D15 الباقي)، إذ التضييق اليوم يُخفي كل مشروعٍ
+// بلا إدارة فيستبدل تسريباً بعُطل. وهذا الفحص يُثبِّت أن قلب قاعدة الفرص لم يمسّه.
+test('ومشروع إدارةٍ أخرى لا يُقرأ — قلبُ قاعدة الفرص لم يمسّ المشاريع ولا الناس', () => {
   const row = { id: 'p_cities', sector_id: 'SOLUTIONS', department_id: 'dep_cities' };
   assert.equal(can(RAYAN, 'read', 'project', row), false, 'حدّ المشاريع بالإدارة محروس بقرار سابق');
   assert.equal(can(RAYAN, 'read', 'employee', row), false, 'وحدّ الناس كذلك');
 });
 
-test('ومديرُ إدارةٍ في قطاعٍ آخر لا يقرأ فرص هذا القطاع — التوسعة داخل القطاع وحده', () => {
+test('ومديرُ إدارةٍ في قطاعٍ آخر لا يقرأ فرص هذا القطاع — الحدود كلها من كل جهة', () => {
   const stranger = { id: 'u_str', role_id: 'department_manager', scope: 'sector', sector_id: 'CONSULTING',
     departmentIds: new Set(['dep_other_sector']), projectIds: new Set(), teamIds: new Set() };
   const row = { id: 'opp_cities', sector_id: 'SOLUTIONS', department_id: 'dep_cities' };

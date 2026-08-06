@@ -30,6 +30,11 @@ import { all, get, insert, tx } from '../db/index.js';
 import { effectiveProgress } from '../../modules/pmo/progress.js';
 import { notPersonalSql } from '../../modules/pmo/tasks.js';
 import { approvedTaskSql } from '../../modules/pmo/task-approval.js';
+// باب قراءة صفّ الفرصة الواحد: المشاركة تسكن جدول opportunity_department لا عمودَ الصف،
+// وفحص الصفّ العاري وحده يردّ مديرَ الإدارة المشارِكة عن عدسةٍ تعرضها قائمتُه. استيراد
+// core/reports من modules/crm نمطٌ قائم هنا (attention.js يستورد ROT_THRESHOLDS من crm).
+import { loadReadableOpportunity } from '../../modules/crm/opp-access.js';
+import { scopeFilter } from '../rbac/scope.js';
 import { audit } from '../audit/index.js';
 import { badRequest, forbidden, notFound } from '../http/errors.js';
 import { can, effectiveScope, canSeeSensitive } from '../rbac/index.js';
@@ -286,9 +291,10 @@ async function resolveScope(user, lens, targetId) {
      LEFT JOIN sector s ON s.id = o.sector_id LEFT JOIN client c ON c.id = o.client_id
      WHERE o.id = ? AND o.deleted_at IS NULL`, [targetId]);
   if (!row) throw notFound('الفرصة المطلوبة غير موجودة — اخترها من القائمة.');
-  if (!can(user, 'read', 'opportunity', row)) {
-    throw forbidden('هذه الفرصة خارج نطاقك — اعرض فرصك من قائمة الفرص.');
-  }
+  // الفحص على الدرجتين (opp-access): الصفّ كما هو، فإن رُدّ فبمشاركات إداراته — لا فحص
+  // can على الصفّ العاري وحده، فذاك يردّ مديرَ إدارةٍ **مشارِكة** عن عدسة تعرضها قائمتُه.
+  await loadReadableOpportunity(user, targetId, 'read',
+    'هذه الفرصة خارج نطاقك — اعرض فرصك من قائمة الفرص.');
   return { lens: 'opportunity', id: row.id, name_ar: row.title_ar, kind_ar: 'فرصة',
     sectorId: row.sector_id || null, departmentId: row.department_id || null, opportunityId: row.id,
     parent_ar: [row.sector_name, row.client_name].filter(Boolean).join(' · '), row };
@@ -1129,12 +1135,16 @@ export async function lensOptions(user, opts = {}) {
      ORDER BY p.name_ar LIMIT ?`, [...projParams, limit]))
     .filter((p) => can(user, 'read', 'project', p));
 
-  const oppWhereSql = ['o.deleted_at IS NULL'];
-  const oppParams = [];
-  if (!companyWide) { oppWhereSql.push('o.sector_id = ?'); oppParams.push(user.sector_id || ''); }
-  const opportunities = (await all(`SELECT o.id, o.title_ar name_ar, o.sector_id, o.department_id, o.owner_user_id
-     FROM opportunity o WHERE ${oppWhereSql.join(' AND ')} ORDER BY o.value_halalas DESC LIMIT ?`,
-  [...oppParams, limit])).filter((o) => can(user, 'read', 'opportunity', o));
+  // فرص عدسة «فرصة»: نفس حقيقة قائمة الفرص حرفاً (scopeFilter بخياراتها المؤهَّلة) — فتدخل
+  // فرصُ الإدارة المشارِكة التي يفتحها حارس العدسة عبر opportunity_department، وكان فحص can
+  // على الصفّ العاري يُسقطها من الخيارات وهي تُفتح. لا فحص لاحق: شرط القائمة هو شرط الفتح.
+  const oppScope = scopeFilter(user, 'opportunity', 'read',
+    { sectorCol: 'o.sector_id', ownerCol: 'o.owner_user_id', projectCol: 'o.id',
+      grantCol: 'o.department_id', memberCol: 'o.id', deptCol: 'o.department_id' });
+  const opportunities = await all(`SELECT o.id, o.title_ar name_ar, o.sector_id, o.department_id, o.owner_user_id
+     FROM opportunity o WHERE o.deleted_at IS NULL AND ${oppScope.clause}
+     ORDER BY o.value_halalas DESC LIMIT ?`,
+  [...oppScope.params, limit]);
 
   // الجهة الافتراضية = أوسع ما **يفتحه** القارئ فعلاً، لا أوسع ما تعرضه القائمة: مدير مشروع
   // كان يهبط على تقرير قطاع يردّه النظام، فأول ما يراه في الشاشة رسالة منع لم يطلبها.

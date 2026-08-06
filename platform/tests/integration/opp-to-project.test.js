@@ -164,3 +164,36 @@ test('الإنشاء من فرصة يُدقَّق ويحمل مصدره في ا�
   const details = rows.map((r) => String(r.detail_json || ''));
   assert.ok(details.some((d) => d.includes('from-opportunity') && d.includes('O_WON')), 'سجل التدقيق يذكر الفرصة المصدر');
 });
+
+// ── انحدار: بوابة الفرصة المصدر لا تلتفّ على قصّ الإدارة ─────────────────────
+// كان الحارس ينتقي أعمدةً بلا `department_id`، وفحص نطاق «الإدارة» يمرّ فارغاً على هدفٍ لا
+// يحمل العمود — فمديرُ إدارةٍ يبني مشروعاً من فرصة إدارةٍ **أخرى** في قطاعه، وقائمتُه نفسها
+// تحجبها عنه. الحارس صار يمرّ بباب قراءة الفرصة الواحد (opp-access.js) بالصفّ الكامل ومشاركاتِه.
+test('مدير الإدارة: فرصةُ إدارته مصدرٌ يمرّ، وفرصةُ إدارةٍ أخرى تُرَدّ بعربية واضحة', async () => {
+  const now = ids.nowIso();
+  await db.insert('department', { id: 'D_A', sector_id: 'S1', name_ar: 'إدارة الابتكار', active: 1, created_at: now });
+  await db.insert('department', { id: 'D_B', sector_id: 'S1', name_ar: 'إدارة أخرى', active: 1, created_at: now });
+  const mkOpp = (oid, title, dept) => db.insert('opportunity', { id: oid, title_ar: title, client_id: 'C1',
+    sector_id: 'S1', department_id: dept, stage_id: 'WON', value_halalas: 100000, year: YEAR,
+    stage_changed_at: now, created_at: now });
+  await mkOpp('O_DEPA', 'فرصة إدارة الابتكار', 'D_A');
+  await mkOpp('O_DEPB', 'فرصة الإدارة الأخرى', 'D_B');
+  const dm = { id: 'u_dm', username: 'dm', role_id: 'department_manager', sector_id: 'S1',
+    scope: 'department', department_id: 'D_A', projectIds: new Set(), teamIds: new Set() };
+  await db.insert('app_user', { id: dm.id, username: dm.username, role_id: dm.role_id, sector_id: 'S1', scope: 'department', active: 1, created_at: now });
+  // تجهيز فحصٍ لا تغييرُ مصفوفة: منحُ إنشاء المشروع بنطاق الإدارة يُكتب في قاعدة هذا الفحص
+  // وحدها كي يبلغ مسارُ «إدارته» نهايتَه نجاحاً — فبوابة المصدر تقع **قبل** بوابة الإنشاء،
+  // وبلا هذا المنح كان النجاح سيقف عندها فلا يثبت شيئاً عن بوابة المصدر نفسها.
+  await db.run("INSERT INTO role_permission (role_id, resource, action, scope) VALUES ('department_manager','project','create','department')");
+  await (await import('../../src/core/rbac/index.js')).initRbac();
+
+  await assert.rejects(
+    () => intake.createFromIntake(ctx(dm), { name_ar: 'مشروع من فرصة إدارة أخرى', source_opp_id: 'O_DEPB', value_sar: 1 }),
+    /هذه الفرصة خارج نطاقك/,
+    'فرصةُ إدارةٍ أخرى في قطاعه مرّت بوابةَ المصدر — التفافٌ على قصّ الإدارة',
+  );
+  assert.equal(await db.get('SELECT id FROM project WHERE source_opp_id = ?', ['O_DEPB']), undefined,
+    'ولا مشروع كُتب لها');
+  const r = await intake.createFromIntake(ctx(dm), { name_ar: 'مشروع من فرصة إدارته', source_opp_id: 'O_DEPA', value_sar: 1 });
+  assert.ok(r.project_id, 'فرصة إدارته هو تمرّ وتلد مشروعها');
+});

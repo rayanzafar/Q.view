@@ -140,6 +140,11 @@ export async function sectorPage(user, opts = {}) {
     sectorClients(sectorId),
     sectorWins(sectorId, year),
   ]);
+  // ── حدّ «الأرقام لا الأشخاص» (قرار قائم، v5.2) ──────────────────────────────
+  // قمع المراحل أرقامٌ مجمَّعة — عدٌّ ومجاميع بلا عنوان فرصة ولا عميل — فيبقى **قطاعياً عمداً**
+  // لكل من فُتح له مركز القيادة: قراءة صحة الخط الجماعية لا تكشف سرّ صفقة أحد. أما البنود
+  // المسمّاة (حركات «ما تغيّر» وفرص «يحتاج انتباهك») فتتبع نطاق قائمة الفرص نفسه — القصّ هناك
+  // في core/reports/{changes,attention}.js لا هنا.
   const pipe = await all(`SELECT st.id, st.name_ar, st.color, COUNT(*) AS "count", COALESCE(SUM(o.value_halalas),0) value_halalas,
       COALESCE(SUM(o.value_halalas * o.win_pct / 100.0),0) weighted
      FROM opportunity o JOIN stage st ON st.id = o.stage_id
@@ -159,6 +164,8 @@ export async function sectorPage(user, opts = {}) {
      FROM revenue_line rl LEFT JOIN project p ON p.id = rl.project_id
      WHERE rl.sector_id = ? AND rl.year = ? GROUP BY p.id, p.name_ar, p.status, p.rag, p.progress_pct, p.contract_value_halalas, p.budget_halalas, p.po_value_halalas
      ORDER BY rev DESC LIMIT 12`, [sectorId, year]);
+  // وما بعد الترسية علنيٌّ داخل القطاع بالقرار نفسه («الأرقام لا الأشخاص»): السرّية تخصّ
+  // الفرصة **قبل** ترسيتها، وصفقات السنة المكسوبة إنجاز قطاعٍ يُعرض لأهله كلهم — فتبقى قطاعية.
   const secWon = await all(`SELECT o.title_ar, o.value_halalas, c.name_ar client FROM opportunity o
      JOIN stage st ON st.id = o.stage_id LEFT JOIN client c ON c.id = o.client_id
      WHERE o.sector_id = ? AND o.year = ? AND st.is_won = 1 AND o.exclude_from_sales = 0 AND o.deleted_at IS NULL

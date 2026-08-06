@@ -17,17 +17,17 @@ import { all, get, insert, update } from '../../core/db/index.js';
 import { can } from '../../core/rbac/index.js';
 import { audit } from '../../core/audit/index.js';
 import { id, nowIso } from '../../core/util/ids.js';
-import { forbidden, notFound, badRequest } from '../../core/http/errors.js';
+import { notFound, badRequest } from '../../core/http/errors.js';
+import { loadReadableOpportunity } from './opp-access.js';
 
 export const OPP_DOC_KINDS = ['tender', 'rfp_doc', 'technical', 'financial', 'correspondence', 'other'];
 
+// الفحص عبر الباب الواحد الذي يعرف الإدارات المشاركة (opp-access.js): صفحة الفرصة تعرض
+// مستنداتها ضمن تفاصيلها، فحكمٌ محلّي بعمود المسؤولة وحده يفتح الصفحة ويُسقط قسم المستندات
+// لمديرة الإدارة المشارِكة.
 async function reach(user, oppId, action) {
-  const o = await get('SELECT * FROM opportunity WHERE id = ? AND deleted_at IS NULL', [oppId]);
-  if (!o) throw notFound('الفرصة غير موجودة');
-  if (!can(user, action, 'opportunity', o)) {
-    throw forbidden(action === 'read' ? undefined : 'إضافة مستند تتطلب صلاحية تعديل الفرصة');
-  }
-  return o;
+  return await loadReadableOpportunity(user, oppId, action,
+    action === 'read' ? undefined : 'إضافة مستند تتطلب صلاحية تعديل الفرصة');
 }
 
 export async function opportunityDocuments(user, oppId) {

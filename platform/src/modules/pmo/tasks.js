@@ -1,6 +1,7 @@
 // PMO — Tasks service with Quick Add. Employees manage own tasks; managers see team/project scope.
 import { all, get, insert, update, run, tx } from '../../core/db/index.js';
 import { can, effectiveScope } from '../../core/rbac/index.js';
+import { scopeFilter } from '../../core/rbac/scope.js';
 import { departmentScope, departmentInSql, inDepartmentScope } from '../../core/rbac/departments.js';
 import { audit } from '../../core/audit/index.js';
 import { id, nowIso } from '../../core/util/ids.js';
@@ -630,13 +631,20 @@ export async function teamWorkload(user, filters = {}) {
   }
 
   // الفرص المفتوحة التي يملكها كل شخص — المرحلة تحدّد «مفتوحة» (لا فوز ولا خسارة).
+  // ونطاق القارئ يقصّ الصفوف: منذ v5.2 لا يقرأ أحدٌ على لوحة الفريق صفقات زملاءٍ
+  // لا تصله من قائمة الفرص نفسها — مصدرُ حقيقةٍ واحد لا بابٌ خلفي.
+  const readerOppScope = scopeFilter(user, 'opportunity', 'read', {
+    sectorCol: 'o.sector_id', ownerCol: 'o.owner_user_id',
+    deptCol: 'o.department_id', grantCol: 'o.department_id', memberCol: 'o.id',
+  });
   const oppRows = await all(`SELECT o.owner_user_id uid, COUNT(*) total,
        SUM(COALESCE(o.value_halalas,0)) value_halalas
      FROM opportunity o
      LEFT JOIN stage s ON s.id = o.stage_id
      WHERE o.deleted_at IS NULL AND COALESCE(s.is_won,0) = 0 AND COALESCE(s.is_lost,0) = 0
        AND o.owner_user_id IN (${marks(userIds.length)})
-     GROUP BY o.owner_user_id`, userIds);
+       AND (${readerOppScope.clause})
+     GROUP BY o.owner_user_id`, [...userIds, ...readerOppScope.params]);
 
   // وأسماؤها — بطلب المالك حرفياً: «مو المبالغ اللي شغال عليها من فرص انما اسماء الفرص».
   // «فرصتان بمليون ونصف» تقول حجماً ولا تقول **على ماذا** يعمل الرجل، والمدير يسأل الثاني.
@@ -646,8 +654,9 @@ export async function teamWorkload(user, filters = {}) {
      LEFT JOIN stage s ON s.id = o.stage_id
      WHERE o.deleted_at IS NULL AND COALESCE(s.is_won,0) = 0 AND COALESCE(s.is_lost,0) = 0
        AND o.owner_user_id IN (${marks(userIds.length)})
+       AND (${readerOppScope.clause})
      ORDER BY o.value_halalas DESC, o.title_ar
-     LIMIT 400`, userIds);
+     LIMIT 400`, [...userIds, ...readerOppScope.params]);
   const byUidON = new Map();
   for (const r of oppNameRows) {
     if (!byUidON.has(r.uid)) byUidON.set(r.uid, []);
@@ -849,14 +858,22 @@ export async function personDossier(reader, personUserId) {
          AND m.employee_id = ? AND m.deleted_at IS NULL)`;
     oppParams.push(p.employee_id);
   }
+  // نطاق القارئ يقصّ صفوف الفرص هنا أيضاً (v5.2): ملفُّ الشخص يجيب «على ماذا يعمل»
+  // لمن يحقّ له قراءةُ تلك الفرص أصلاً — المدير وقائدُ القطاع يريان، والزميلُ ذو
+  // النطاق الذاتي لا يقرأ صفقات غيره بقيمها من بابٍ خلفي. وصاحبُ الصفحة يرى صفوفه
+  // دوماً: بند «مالكها» وبند «مسكَّن عليها» كلاهما ضمن نطاقه.
+  const dossierOppScope = scopeFilter(reader, 'opportunity', 'read', {
+    sectorCol: 'o.sector_id', ownerCol: 'o.owner_user_id',
+    deptCol: 'o.department_id', grantCol: 'o.department_id', memberCol: 'o.id',
+  });
   const oppRows = await all(`SELECT o.id, o.title_ar, o.value_halalas, o.next_action, o.owner_user_id,
        st.name_ar stage_name, st.is_won, st.is_lost, c.name_ar client_name
      FROM opportunity o
      LEFT JOIN stage st ON st.id = o.stage_id
      LEFT JOIN client c ON c.id = o.client_id AND c.deleted_at IS NULL
-     WHERE o.deleted_at IS NULL AND (${mineClause})
+     WHERE o.deleted_at IS NULL AND (${mineClause}) AND (${dossierOppScope.clause})
      ORDER BY COALESCE(st.is_won,0) + COALESCE(st.is_lost,0), o.value_halalas DESC
-     LIMIT 60`, oppParams);
+     LIMIT 60`, [...oppParams, ...dossierOppScope.params]);
   // حالة التسكين تُقرأ مرةً واحدة بمفتاح الموظف ثم تُوزَّع — لا استعلام لكل صف.
   const memberOf = new Map();
   if (p.employee_id) {

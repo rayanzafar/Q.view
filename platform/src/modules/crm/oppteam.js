@@ -5,10 +5,10 @@
 // Permission model: managing/viewing the team follows the opportunity itself —
 // read → can(read, opportunity, row); add/remove → can(update, opportunity, row). Every write audits.
 import { all, get, insert, update, tx } from '../../core/db/index.js';
-import { can } from '../../core/rbac/index.js';
 import { audit } from '../../core/audit/index.js';
 import { id, nowIso } from '../../core/util/ids.js';
-import { forbidden, notFound, badRequest } from '../../core/http/errors.js';
+import { notFound, badRequest } from '../../core/http/errors.js';
+import { loadReadableOpportunity } from './opp-access.js';
 import { notDemoEmployeeSql, seesDemoAccounts } from '../org/people.js';
 import { staffingConfirmation } from '../org/confirm.js';
 import { raiseDirectApproval } from '../workflow/engine.js';
@@ -17,16 +17,13 @@ import { notify } from '../notifications/notify.js';
 export const TEAM_ROLES = ['lead', 'member', 'reviewer', 'sponsor'];
 export const TEAM_ROLE_LABELS = { lead: 'قائد', member: 'عضو', reviewer: 'مراجع', sponsor: 'راعٍ' };
 
-async function loadOpp(oppId) {
-  const opp = await get('SELECT * FROM opportunity WHERE id = ? AND deleted_at IS NULL', [oppId]);
-  if (!opp) throw notFound('الفرصة غير موجودة');
-  return opp;
-}
+// التحميل والفحص باباً واحداً (opp-access.js): صفحة الفرصة تنادي getTeam ضمن تفاصيلها، فلو
+// بقي الفحص هنا على عمود الإدارة المسؤولة وحده لانفتح الصفّ لمديرة الإدارة المشارِكة ثم
+// سقطت صفحتُه على فريقه — نصفُ صفحةٍ يُفتح ونصفُها يُرَدّ.
 
 // Members of an opportunity's team, with the employee's name and job title joined in.
 export async function getTeam(user, oppId) {
-  const opp = await loadOpp(oppId);
-  if (!can(user, 'read', 'opportunity', opp)) throw forbidden();
+  await loadReadableOpportunity(user, oppId, 'read');
   return await all(
     `SELECT m.id AS membership_id, m.employee_id, m.role_in_group, m.allocation_pct,
             COALESCE(m.status, 'ACTIVE') AS status,
@@ -43,8 +40,7 @@ export async function getTeam(user, oppId) {
 // sector inherited from the opportunity) then inserts the membership.
 export async function addMember(ctx, oppId, data = {}) {
   const user = ctx.user;
-  const opp = await loadOpp(oppId);
-  if (!can(user, 'update', 'opportunity', opp)) throw forbidden('إدارة فريق الفرصة تتطلب صلاحية تعديل الفرصة');
+  const opp = await loadReadableOpportunity(user, oppId, 'update', 'إدارة فريق الفرصة تتطلب صلاحية تعديل الفرصة');
   if (!data.employee_id) throw badRequest('اختر الموظف المراد إضافته للفريق');
   const emp = await get('SELECT id, name_ar, sector_id FROM employee WHERE id = ? AND deleted_at IS NULL', [data.employee_id]);
   if (!emp) throw badRequest('الموظف المحدد غير موجود — حدّث القائمة وحاول مجددًا');
@@ -112,8 +108,7 @@ export async function removeMember(ctx, membershipId) {
   const m = await get(
     "SELECT * FROM membership WHERE id = ? AND group_kind = 'opportunity' AND deleted_at IS NULL", [membershipId]);
   if (!m) throw notFound('عضوية الفريق غير موجودة');
-  const opp = await loadOpp(m.group_id);
-  if (!can(user, 'update', 'opportunity', opp)) throw forbidden('إدارة فريق الفرصة تتطلب صلاحية تعديل الفرصة');
+  const opp = await loadReadableOpportunity(user, m.group_id, 'update', 'إدارة فريق الفرصة تتطلب صلاحية تعديل الفرصة');
   await update('membership', membershipId, { deleted_at: nowIso() });
   await audit(ctx, {
     action: 'delete', resource: 'opp_team', resourceId: membershipId, sectorId: opp.sector_id,
@@ -138,8 +133,7 @@ export async function removeMember(ctx, membershipId) {
 //
 // وحسابات العرض مستبعَدة بنفس قاعدة بقية القوائم — ومدير النظام وحده يراها.
 export async function rosterForOpportunity(user, oppId, opts = {}) {
-  const opp = await loadOpp(oppId);
-  if (!can(user, 'update', 'opportunity', opp)) throw forbidden('ضمّ عضوٍ للفريق يتطلب صلاحية تعديل الفرصة');
+  await loadReadableOpportunity(user, oppId, 'update', 'ضمّ عضوٍ للفريق يتطلب صلاحية تعديل الفرصة');
   const where = ['e.active = 1', 'e.deleted_at IS NULL'];
   const params = [];
   if (!seesDemoAccounts(user)) where.push(notDemoEmployeeSql('e'));

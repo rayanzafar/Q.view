@@ -26,7 +26,7 @@ const db = await import('../../src/core/db/index.js');
 const { initRbac, can } = await import('../../src/core/rbac/index.js');
 await initRbac();
 const { seesCompanyPerformance } = await import('../../src/core/policy/pages.js');
-const { ask } = await import('../../src/core/ai/assistant.js');
+const { ask, resolveRef } = await import('../../src/core/ai/assistant.js');
 const { ROLE_GRANTS } = await import('../../src/core/rbac/matrix.js');
 
 const T = '2026-07-01T00:00:00Z';
@@ -71,6 +71,17 @@ before(async () => {
     assignee_user_id: 'u_employee', status: 'TODO', priority: 'P1', due_date: '2020-01-01', created_at: T });
   await db.insert('task', { id: 'TSK_CONS', title: 'مهمة متأخرة في الاستشارات', project_id: 'P_CONS', sector_id: 'CONS',
     assignee_user_id: 'u_consultant', status: 'TODO', priority: 'P1', due_date: '2020-01-01', created_at: T });
+  // فرص البحث بالمعرّف الصريح: إدارتان في قطاع الحلول، وفرصة لكلٍّ، وثالثة تشارك فيها D_A.
+  await db.insert('department', { id: 'D_A', sector_id: 'SOL', name_ar: 'إدارة الابتكار', active: 1, created_at: T });
+  await db.insert('department', { id: 'D_B', sector_id: 'SOL', name_ar: 'إدارة أخرى', active: 1, created_at: T });
+  await db.insert('stage', { id: 'LEAD', name_ar: 'ترشيح', default_win_pct: 10, sort_order: 1, is_won: 0, is_lost: 0 });
+  await db.insert('opportunity', { id: 'opp_own1', title_ar: 'فرصة إدارته هو', sector_id: 'SOL',
+    department_id: 'D_A', stage_id: 'LEAD', value_halalas: 100000, year: 2026, created_at: T });
+  await db.insert('opportunity', { id: 'opp_part1', title_ar: 'فرصة تشارك فيها إدارته', sector_id: 'SOL',
+    department_id: 'D_B', stage_id: 'LEAD', value_halalas: 100000, year: 2026, created_at: T });
+  await db.insert('opportunity_department', { opportunity_id: 'opp_part1', department_id: 'D_A', created_at: T });
+  await db.insert('opportunity', { id: 'opp_othr1', title_ar: 'فرصة سرية لإدارة أخرى', sector_id: 'SOL',
+    department_id: 'D_B', stage_id: 'LEAD', value_halalas: 100000, year: 2026, created_at: T });
 });
 after(async () => { await db.close(); rmSync(dir, { recursive: true, force: true }); });
 
@@ -146,6 +157,22 @@ test('الأولويات: مهام صاحب الطلب وحده', async () => {
   assert.ok(!/الاستشارات/.test(emp.reply));
   const hr = await say(U('hr'), 'ما أولوياتي');
   assert.ok(!/مهمة متأخرة/.test(hr.reply), 'لا مهام له فلا قائمة');
+});
+
+// ── انحدار: المعرّف الصريح لا يلتفّ على قصّ الإدارة ──────────────────────────
+// كان `lookupById` ينتقي أعمدةً بلا `department_id`، وفحص نطاق «الإدارة» يمرّ فارغاً على هدفٍ
+// لا يحمل العمود — فمدير الإدارة يفتح بالمعرّف الصريح (`opp_…`) فرصةَ إدارةٍ أخرى في قطاعه
+// تحجبها عنه القائمة والبحث بالاسم. الصفّ يُحمَّل الآن كاملاً ومعه مشاركاتُه قبل الحكم.
+test('المعرّف الصريح: مدير الإدارة يجد فرصة إدارته والمشارِكة، ويُرَدّ عن غيرها بلا صدى عنوان', async () => {
+  const dm = { ...U('department_manager'), department_id: 'D_A' };
+  const own = await resolveRef(dm, 'opportunity', 'انقل opp_own1');
+  assert.equal(own.total, 1, 'فرصة إدارته المسؤولة لا تُفتح بمعرّفها');
+  assert.equal(own.matches[0].id, 'opp_own1');
+  const part = await resolveRef(dm, 'opportunity', 'انقل opp_part1');
+  assert.equal(part.total, 1, 'الفرصة التي تشارك فيها إدارته لا تُفتح بمعرّفها — والقائمة تعرضها');
+  const other = await resolveRef(dm, 'opportunity', 'انقل opp_othr1');
+  assert.equal(other.total, 0, 'فرصة إدارةٍ أخرى فُتحت بالمعرّف الصريح — التفافٌ على قصّ الإدارة');
+  assert.ok(!JSON.stringify(other).includes('فرصة سرية'), 'وعنوانها لا يُردَّد في الردّ');
 });
 
 // ── ③ الختم على المال والراتب في كل ردّ لكل دور ───────────────────────────────

@@ -25,7 +25,9 @@ before(async () => {
   for (const role of ['employee', 'sector_lead', 'bd_manager', 'viewer', 'admin']) {
     await db.insert('app_user', { id: 'u_' + role, username: role, role_id: role, sector_id: 'S1', scope: role === 'admin' ? 'company' : 'own', active: 1, created_at: now });
   }
-  await db.insert('opportunity', { id: 'O1', title_ar: 'فرصة', sector_id: 'S1', stage_id: 'LEAD', value_halalas: 100000, created_at: now });
+  // O1 يملكها مدير تطوير الأعمال — فيرفعها للاعتماد أدناه: منذ قلب الرؤية (٢٠٢٦-٠٨) لا يقرأ
+  // BD إلا فرصه، ورفعُ الاعتماد يشترط قراءة الصف وتعديله.
+  await db.insert('opportunity', { id: 'O1', title_ar: 'فرصة', sector_id: 'S1', stage_id: 'LEAD', value_halalas: 100000, owner_user_id: 'u_bd_manager', created_at: now });
   ai = await import('../src/core/ai/assistant.js');
   ts = await import('../src/modules/timesheets/timesheets.js');
   wf = await import('../src/modules/workflow/engine.js');

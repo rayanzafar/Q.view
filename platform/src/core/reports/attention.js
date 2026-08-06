@@ -2,6 +2,7 @@
 // كل بند جملة عربية واحدة + إجراء سياقي واحد. مصادرها سجلات حقيقية فقط.
 import { all } from '../db/index.js';
 import { can } from '../rbac/index.js';
+import { scopeFilter } from '../rbac/scope.js';
 import { myApprovalQueue } from '../../modules/workflow/engine.js';
 import { fmtSar } from '../util/ids.js';
 import { ROT_THRESHOLDS } from '../../modules/crm/opportunities.js';
@@ -48,9 +49,16 @@ export async function attentionFeed(user, sectorId, { year, today } = {}) {
   }
 
   // 3) فرص متوقفة (تجاوزت عمر مرحلتها) أو بلا خطوة تالية
+  // البندان يسمّيان الفرص بعناوينها وقيمها — تفاصيل صفقاتٍ قبل الترسية، فيُقصّان على نطاق
+  // قائمة الفرص نفسه (نفس خيارات listOpportunities حرفاً، مؤهَّلةً بـ`o.`): كل يُنبَّه على
+  // ما يقرؤه في قائمته — لا على فرص زملائه التي تحجبها عنه القائمة نفسها.
+  const of = scopeFilter(user, 'opportunity', 'read',
+    { sectorCol: 'o.sector_id', ownerCol: 'o.owner_user_id', projectCol: 'o.id',
+      grantCol: 'o.department_id', memberCol: 'o.id', deptCol: 'o.department_id' });
   const open = await all(`SELECT o.id, o.title_ar, o.value_halalas, o.next_action, o.stage_changed_at, o.created_at, st.id stage_id, st.name_ar stage
       FROM opportunity o JOIN stage st ON st.id = o.stage_id
-      WHERE o.sector_id = ? AND o.deleted_at IS NULL AND st.is_won = 0 AND st.is_lost = 0`, [sectorId]);
+      WHERE o.sector_id = ? AND o.deleted_at IS NULL AND st.is_won = 0 AND st.is_lost = 0 AND ${of.clause}`,
+  [sectorId, ...of.params]);
   const ageDays = (iso) => iso ? Math.floor((Date.parse(t) - Date.parse(String(iso).slice(0, 10))) / 86400000) : 0;
   const stalled = open.filter((o) => ageDays(o.stage_changed_at || o.created_at) > (STAGE_ROT_DAYS[o.stage_id] || STAGE_ROT_DAYS.default));
   if (stalled.length) {

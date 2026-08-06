@@ -120,8 +120,10 @@ test('التراجع عن الفوز يستوجب سبباً مكتوباً — 
 });
 
 test('التقدّم إلى الفوز لا يستوجب شيئاً — القيد على التراجع وحده', async () => {
+  // الفرصة **فرصته هو**: منذ قلب الرؤية (٢٠٢٦-٠٨) لا يحرّك BD إلا فرصه المملوكة — والفحص
+  // هنا عن قيد التراجع لا عن النطاق، فيُعطى صفاً يملكه أصلاً.
   await db.insert('opportunity', { id: 'OPP2', title_ar: 'فرصة ٢', sector_id: 'S1', stage_id: 'LEAD',
-    value_halalas: 100000, year: 2026, created_at: T });
+    value_halalas: 100000, year: 2026, owner_user_id: 'u_bd', created_at: T });
   const r = await O.moveStage(ctx(bd), 'OPP2', 'WON');
   assert.equal(r.stage_id, 'WON', 'الطريق إلى الأمام مفتوح كما كان');
 });

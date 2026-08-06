@@ -17,11 +17,11 @@
 // القطاع بحال: قيادةُ إدارةٍ ليست قيادةَ القطاع الذي تسكنه.
 import { all } from '../db/index.js';
 
-// تُبنى مرة واحدة عند حلّ الجلسة (بجوار projectIds) لا عند كل فحص: القرار في المسار الساخن
-// يبقى متزامناً كما هو، وبلا استعلامٍ لكل صف.
-export async function readerDepartmentIds(userId, ownDepartmentId) {
+// ما **يقوده** وحده — بلا انتمائه. مفصولةً عن `readerDepartmentIds` لأن السؤالين افترقا فعلاً:
+// نطاق «الإدارة» يُبنى من الاثنين معاً (انتماء ∪ قيادة)، أما توسعة «من يقود إدارةً يقرأ فرصها»
+// فتُبنى من القيادة وحدها — موظفٌ عاديٌّ انتماؤه إلى إدارةٍ لا يجعله قارئاً لفرصها.
+export async function managedDepartmentIds(userId) {
   const set = new Set();
-  if (ownDepartmentId) set.add(ownDepartmentId);
   if (userId) {
     // الإدارة المحذوفة ناعماً لا تُقاد: صفٌّ ملغى لا يمنح وصولاً.
     const led = await all(
@@ -30,6 +30,14 @@ export async function readerDepartmentIds(userId, ownDepartmentId) {
     );
     for (const d of led) set.add(d.id);
   }
+  return set;
+}
+
+// تُبنى مرة واحدة عند حلّ الجلسة (بجوار projectIds) لا عند كل فحص: القرار في المسار الساخن
+// يبقى متزامناً كما هو، وبلا استعلامٍ لكل صف.
+export async function readerDepartmentIds(userId, ownDepartmentId) {
+  const set = await managedDepartmentIds(userId);
+  if (ownDepartmentId) set.add(ownDepartmentId);
   return set;
 }
 

@@ -309,6 +309,35 @@ test('scope: sector lead sees only clients with a footprint in their sector', as
   assert.ok(viewer.body.map((c) => c.name_ar).includes('وزارة التجربة'), 'sector viewer reads their sector clients');
 });
 
+// صفوف الفرص المفتوحة داخل 360 تفاصيل صفقةٍ قبل ترسيتها: تُقصّ على نطاق قائمة الفرص نفسه،
+// بينما مؤشرات العميل (خط الفرص والمرجّح) تبقى على البصمة كاملة — مجاميع بلا عناوين.
+test('client-360: own-scoped BD sees only their open deal rows; KPIs still count the full footprint', async () => {
+  const now = ids.nowIso();
+  const expires = new Date(Date.now() + 86400000).toISOString();
+  await db.insert('app_user', { id: 'u_bd', username: 'demo.bd', name_ar: 'مدير تطوير الأعمال',
+    role_id: 'bd_manager', sector_id: 'S1', scope: 'own', active: 1, created_at: now });
+  await db.insert('session', { id: 'sess_bd', user_id: 'u_bd', created_at: now, expires_at: expires });
+  await db.insert('opportunity', { id: 'O7', title_ar: 'فرصة يملكها مدير التطوير', client_id: CX,
+    sector_id: 'S1', stage_id: 'PROP', win_pct: 50, value_halalas: 40000, year: FY,
+    owner_user_id: 'u_bd', created_at: now });
+
+  const bd = await jf(`/api/clients/${CX}/360`, { as: 'bd' });
+  assert.equal(bd.status, 200, 'client is a sector-wide relationship record — the page opens');
+  assert.deepEqual(bd.body.opportunities.open.map((o) => o.id), ['O7'],
+    'colleague pre-award rows (title/value/win%/next action) dropped for the own-scoped reader');
+  // KPIs stay full-footprint: O1 (100000, 60%) + O7 (40000, 50%)
+  assert.equal(bd.body.kpis.open_pipeline_halalas, 140000);
+  assert.equal(bd.body.kpis.weighted_pipeline_halalas, 80000);
+  // post-award lists are sector-public as before
+  assert.equal(bd.body.opportunities.won.length, 1);
+  assert.equal(bd.body.opportunities.lost.length, 1);
+
+  const lead = await jf(`/api/clients/${CX}/360`, { as: 'lead' });
+  assert.deepEqual(lead.body.opportunities.open.map((o) => o.id).sort(), ['O1', 'O7'],
+    'sector lead unchanged — sees every open row in the sector');
+  assert.equal(lead.body.kpis.open_pipeline_halalas, 140000);
+});
+
 test('list filters: query, type, and sort variants respond consistently', async () => {
   const q = await jf('/api/clients?query=' + encodeURIComponent('وزارة'), { as: 'admin' });
   assert.ok(q.body.length >= 1 && q.body.every((c) => (c.name_ar + (c.name_en || '') + (c.code || '')).includes('وزارة')));

@@ -32,7 +32,9 @@ before(async () => {
     actual_spend_halalas: 500000, margin_pct: 22, created_at: now });
   await db.insert('project', { id: 'P2', name_ar: 'مشروع 2', sector_id: 'S2', status: 'IN_PROGRESS',
     actual_spend_halalas: 900000, margin_pct: 30, created_at: now });
-  await db.insert('opportunity', { id: 'O1', title_ar: 'فرصة 1', sector_id: 'S1', stage_id: 'LEAD', value_halalas: 100000, created_at: now });
+  // O1 يملكها مدير تطوير الأعمال: منذ قلب الرؤية (٢٠٢٦-٠٨) قائمته فرصُه المملوكة لا فرص قطاعه.
+  await db.insert('app_user', { id: 'u_bd_manager', username: 'bd1', role_id: 'bd_manager', sector_id: 'S1', scope: 'own', active: 1, created_at: now });
+  await db.insert('opportunity', { id: 'O1', title_ar: 'فرصة 1', sector_id: 'S1', stage_id: 'LEAD', value_halalas: 100000, owner_user_id: 'u_bd_manager', created_at: now });
   await db.insert('opportunity', { id: 'O2', title_ar: 'فرصة 2', sector_id: 'S2', stage_id: 'LEAD', value_halalas: 200000, created_at: now });
   await db.insert('employee', { id: 'E1', name_ar: 'موظف 1', sector_id: 'S1', salary_halalas: 2400000, created_at: now });
   opps = await import('../src/modules/crm/opportunities.js');
@@ -65,11 +67,14 @@ test('RBAC scope: sector_lead reads own sector only', () => {
   assert.equal(can(lead, 'read', 'opportunity', { sector_id: 'S2' }), false);
 });
 
-test('list scoping: bd_manager in S1 sees only S1 opportunities', async () => {
+// قرار المالك (٢٠٢٦-٠٨): «BD يرى فرصه» — لا فرص قطاعه. كان هذا الفحص يثبّت القائمة القطاعية
+// القديمة؛ صار يثبّت القلب: فرصه المملوكة وحدها، وزميله في نفس القطاع لا يرى منها شيئاً.
+test('list scoping: bd_manager sees only their OWN opportunities — not their sector', async () => {
   const bd = U('bd_manager', 'S1', 'own');
   const rows = await opps.listOpportunities(bd);
-  assert.ok(rows.length >= 1);
-  assert.ok(rows.every((o) => o.sector_id === 'S1'), 'bd must not see other sectors');
+  assert.deepEqual(rows.map((o) => o.id), ['O1'], 'قائمة BD هي فرصه المملوكة بالضبط');
+  const colleague = { ...U('bd_manager', 'S1', 'own'), id: 'u_bd2' };
+  assert.equal((await opps.listOpportunities(colleague)).length, 0, 'زميله في نفس القطاع يرى فرصه هو');
 });
 
 test('list scoping: employee sees zero opportunities (no permission)', async () => {

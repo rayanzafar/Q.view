@@ -37,10 +37,13 @@ export default {
   },
 
   async fetchRows(user, filters = {}) {
-    const f = scopeFilter(user, 'opportunity', 'read');
-    // scopeFilter clauses reference bare columns; qualify for the join
-    const scopeClause = (f.clause === '1=1' || f.clause === '1=0') ? f.clause : `o.${f.clause}`;
-    const where = [scopeClause, 'o.deleted_at IS NULL'];
+    // الأعمدة مؤهَّلة عبر الخيارات لا بلصق «o.» على نصّ الشرط بعد بنائه: اللصق كان يصلح
+    // لشرطٍ من جملة واحدة، وأول شرطٍ مركّب (أقواس، EXISTS) يجعله نصاً مكسوراً أو — أسوأ —
+    // صحيحاً نحوياً ومنصرفاً إلى العمود الخطأ. ونفس خيارات قائمة الفرص، فالمُصدَّر هو المعروض.
+    const f = scopeFilter(user, 'opportunity', 'read',
+      { sectorCol: 'o.sector_id', ownerCol: 'o.owner_user_id',
+        grantCol: 'o.department_id', memberCol: 'o.id', deptCol: 'o.department_id' });
+    const where = [f.clause, 'o.deleted_at IS NULL'];
     const params = [...f.params];
     if (filters.sector) { where.push('o.sector_id = ?'); params.push(filters.sector); }
     if (filters.year) { where.push('o.year = ?'); params.push(Number(filters.year)); }

@@ -12,9 +12,9 @@ import { departmentScope, departmentInSql } from './departments.js';
 // فتوسيعه يعني فتح ما هو أوسع من المنح. والتوسعة تُضاف حيث تُقرأ، واحداً واحداً.
 //
 // و`grantCol` **غير** `deptCol` عمداً وإن كانا اسمَ عمودٍ واحد: `deptCol` يبدّل سلوك منح الدور
-// نفسه (يقصّ «الإدارة» من القطاع إلى الإدارة)، وذلك تضييقٌ مؤجَّل حتى تُنسَب البيانات كلها —
-// وتفعيله اليوم يُخفي عن مدير الإدارة الفرصَ التي لا إدارة لها. فلو تشارك المسار الخيارَ نفسه
-// لجرّ إضافةُ صلاحيةٍ لشخصٍ واحد تضييقاً في وصول كل مديري الإدارات — أثرٌ لم يطلبه أحد.
+// نفسه (يقصّ «الإدارة» من القطاع إلى الإدارة — مُفعَّل اليوم على الفرص، مؤجَّل على المشاريع؛
+// انظر حالة «الإدارة» أدناه). فلو تشارك المسارُ الخيارَ نفسه لجرّت إضافةُ صلاحيةٍ لشخصٍ واحد
+// تغييراً في سلوك منح كل مديري الإدارات — أثرٌ لم يطلبه أحد.
 //
 // ولا تُطبَّق إذا كان الأساس شركياً أصلاً (`1=1`): إضافة «أو» إلى ما يشمل كل شيء عبثٌ يُثقل
 // الاستعلام ولا يغيّر صفاً.
@@ -42,12 +42,41 @@ function membershipClause(user, resource, memberCol) {
   return { clause: `${memberCol} IN (${ids.map(() => '?').join(',')})`, params: ids };
 }
 
+// ── مدى الإدارة على الفرص: المسؤولة **والمشاركة** معاً ───────────────────────
+// «ممكن الفرصة تتسكّن على أكثر من إدارة» — والفرصة التي تُشارك فيها إدارةُ القارئ يجب أن تظهر
+// في قائمته كما يفتحها صفّياً (scopeReaches يقرأ `partner_department_ids`). وتوسعة القائمة هنا
+// تلحق بها: عمود الإدارة المسؤولة **أو** صفٌّ في جدول المشاركة لإحدى إداراته.
+//
+// ومَن **يقود** إدارةً (`department.manager_user_id`) يقرأ فرصها ولو لم يكن دوره «مدير إدارة»:
+// مدير تطوير أعمالٍ أُسندت إليه إدارةٌ يرى فرص أهلها — قراءةً تُبنى من `managedDepartmentIds`
+// إضافةً على منح دوره، لا استبدالاً له. والكتابة لا تتبع هذه القراءة في أي حال.
+//
+// وثلاثة شروط صريحة تلزم معاً كما في بقية توسعات هذا الملف: الفرصة وحدها، والقراءة وحدها،
+// وتصريح المستدعي بالعمودين (`deptCol` + `memberCol`) — فاستعلامٌ لا يعرف كيف يعبّر عن
+// الإدارة أو عن معرّف الصف لا يُوسَّع. ومجموعةٌ فارغة تعيد null (لا توسعة) لا شرطاً فارغاً.
+export function departmentReachClause(user, resource, action, opts = {}) {
+  if (resource !== 'opportunity' || action !== 'read' || !opts.deptCol || !opts.memberCol) return null;
+  const ids = [...new Set([
+    ...(effectiveScope(user, action, resource) === 'department' ? departmentScope(user) : []),
+    ...(user.managedDepartmentIds || []),
+  ])].filter(Boolean);
+  if (!ids.length) return null;
+  const marks = ids.map(() => '?').join(',');
+  return {
+    clause: `(${opts.deptCol} IN (${marks}) OR EXISTS (
+      SELECT 1 FROM opportunity_department od
+       WHERE od.opportunity_id = ${opts.memberCol} AND od.department_id IN (${marks})))`,
+    params: [...ids, ...ids],
+  };
+}
+
 export function scopeFilter(user, resource, action = 'read', opts = {}) {
   const base = roleScopeFilter(user, resource, action, opts);
   if (base.clause === '1=1') return base;
   const extras = [
     personalDeptClause(user, resource, action, opts.grantCol),
     membershipClause(user, resource, opts.memberCol),
+    departmentReachClause(user, resource, action, opts),
   ].filter(Boolean);
   if (!extras.length) return base;
   return {
@@ -67,19 +96,18 @@ function roleScopeFilter(user, resource, action = 'read', opts = {}) {
     case 'sector':
       return { clause: `${sectorCol} = ?`, params: [user.sector_id] };
     case 'department': {
-      // القيد معروف ويفشل **مفتوحاً** (قراءة أوسع، لا انهيار): منح «الإدارة» يتحوّل عملياً إلى
-      // القطاع كله لأن الاستعلام لا يعرف عمود الإدارة ما لم يُمرَّر له.
-      // تحديث بعد الموجة 007: العمود **صار موجوداً** على المشروع والفرصة والتسكين، فالتضييق
-      // متاح تقنياً بتمرير opts.deptCol. لكنه **لا يُفعَّل قبل نسبة البيانات**: اليوم لا سجل
-      // واحد منسوب إلى إدارة، فتضييق النطاق الآن يعني أن مدير الإدارة لا يرى شيئاً إطلاقاً —
-      // أي استبدال تسريبٍ بعُطل. الترتيب الصحيح: تُنسَب الأعمال أولاً (شاشة «غير المُسنَد»)،
-      // ثم يُمرَّر deptCol في استعلامات القوائم. متتبَّع في docs/OPEN-DECISIONS.md.
-      // وحين يُفعَّل: الشرط عضويةٌ في **مجموعة إدارات القارئ** (انتماؤه ∪ ما يقوده) لا مساواة
-      // بإدارة واحدة — فمن يقود إدارتين لا يُقصّ استعلامه على إحداهما ويُترك أهل الثانية خارج
-      // كل قائمة يفتحها.
-      const deptIds = departmentScope(user);
-      return opts.deptCol && deptIds.length
-        ? departmentInSql(opts.deptCol, deptIds)
+      // نصفا القرار D15 (docs/OPEN-DECISIONS.md) افترقا هنا:
+      //  · **الفرصة — مُفعَّل (٢٠٢٦-٠٨)**: نُسبت الفرص إلى إداراتها (الموجة 010 وما بعدها)،
+      //    وقرّر المالك قلب الرؤية — مدير الإدارة يرى فرص إدارته لا قطاعه. فمن مرّر `deptCol`
+      //    يُقصّ على **مجموعة إدارات القارئ** (انتماؤه ∪ ما يقوده — لا مساواة بإدارة واحدة،
+      //    فمن يقود إدارتين لا يُترك أهل الثانية خارج قائمته)، والمجموعة الفارغة تعيد `1=0`
+      //    **فشلاً مغلقاً**: مديرُ إدارةٍ بلا إدارة يرى لا شيء، لا القطاع كله. والفرص التي
+      //    تُشاركها إدارتُه تلحق عبر `departmentReachClause` أعلاه لا هنا.
+      //  · **المشروع — مؤجَّل كما كان**: بلا `deptCol` يبقى التراجع إلى القطاع (يفشل مفتوحاً
+      //    عن قصد موثَّق) — المشاريع لم تُنسَب بعد، وتضييقها اليوم يُخفي كل مشروعٍ بلا إدارة
+      //    فيستبدل تسريباً بعُطل. الترتيب الصحيح هناك: تُنسَب الأعمال أولاً ثم يُمرَّر deptCol.
+      return opts.deptCol
+        ? departmentInSql(opts.deptCol, departmentScope(user))
         : { clause: `${sectorCol} = ?`, params: [user.sector_id] };
     }
     case 'project': {

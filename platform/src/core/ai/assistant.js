@@ -228,7 +228,12 @@ async function dataQualityScan(user) {
   }
   if (effectiveScope(user, 'read', 'opportunity')) {
     scanned.push('الفرص');
-    const f = scopeFilter(user, 'opportunity', 'read');
+    // نفس خيارات قائمة الفرص حرفاً — فما يَعُدّه الفحص هو ما تعرضه القائمة لنفس المستخدم.
+    // و`memberCol` مؤهَّل باسم الجدول لأنه يُقرأ داخل EXISTS فرعي: جدول المشاركة بلا عمود
+    // `id` أصلاً، فالاسم الباري يُحال إلى الاستعلام الخارجي — والتأهيل يدفع التباسه إذا
+    // تعدّدت جداوله يوماً، ويُبقي المقصود (`opportunity.id`) مكتوباً لا مُخمَّناً.
+    const f = scopeFilter(user, 'opportunity', 'read',
+      { grantCol: 'department_id', memberCol: 'opportunity.id', deptCol: 'department_id' });
     const n = (await get(`SELECT COUNT(*) n FROM opportunity WHERE owner_user_id IS NULL AND deleted_at IS NULL AND ${f.clause}`, f.params)).n;
     if (Number(n)) items.push(`${n} فرصة بلا مالك`);
   }
@@ -463,7 +468,9 @@ function buildRefQuery(user, kind, query, like) {
   }
   if (kind === 'opportunity') {
     if (!effectiveScope(user, 'read', 'opportunity')) return null;
-    const f = scopeFilter(user, 'opportunity', 'read');
+    // نفس خيارات قائمة الفرص: البحث يجد ما تعرضه القائمة لنفس المستخدم — لا أضيق ولا أوسع.
+    const f = scopeFilter(user, 'opportunity', 'read',
+      { grantCol: 'department_id', memberCol: 'opportunity.id', deptCol: 'department_id' });
     return {
       select: 'id, title_ar, stage_id', from: 'opportunity',
       where: `${f.clause} AND deleted_at IS NULL AND (title_ar LIKE ? OR code = ?)`,
@@ -492,8 +499,19 @@ async function lookupById(user, kind, ref) {
     return row && can(user, 'read', 'project', row) ? { id: row.id, label: row.name_ar, sub: label(STATUS_AR, row.status) } : null;
   }
   if (kind === 'opportunity') {
-    const row = await get('SELECT id, title_ar, sector_id, owner_user_id FROM opportunity WHERE id = ? AND deleted_at IS NULL', [ref]);
-    return row && can(user, 'read', 'opportunity', row) ? { id: row.id, label: row.title_ar, sub: null } : null;
+    // الصفّ **كاملاً** لا أعمدة منتقاة: فحص نطاق «الإدارة» يمرّ فارغاً على هدفٍ لا يحمل عمود
+    // `department_id` (scopeReaches يتساهل مع الهدف بلا إدارة داخل القطاع نفسه) — فاختيار
+    // الأعمدة هنا كان يفتح بالمعرّف الصريح فرصةَ إدارةٍ أخرى تحجبها القائمة عن مدير الإدارة.
+    // والمشاركات تُحمَّل على الهدف بنفس اسم `partner_department_ids` الذي يقرؤه المحرّك —
+    // كما تفعل crm/opp-access.js حرفاً. استعلامٌ محلي لا استيرادٌ منها: طبقة core لا تُثقَل
+    // باعتمادٍ جديد على modules، والحكم نفسه يبقى في مكانه الواحد (rbac/index.js).
+    const row = await get('SELECT * FROM opportunity WHERE id = ? AND deleted_at IS NULL', [ref]);
+    if (!row) return null;
+    const partners = (await all(
+      'SELECT department_id FROM opportunity_department WHERE opportunity_id = ?', [ref]
+    )).map((r) => r.department_id).filter(Boolean);
+    return can(user, 'read', 'opportunity', { ...row, partner_department_ids: partners })
+      ? { id: row.id, label: row.title_ar, sub: null } : null;
   }
   const row = await get('SELECT id, title, status, work_kind, sector_id, assignee_user_id, created_by FROM task WHERE id = ? AND deleted_at IS NULL', [ref]);
   const mine = row && (row.assignee_user_id === user.id || row.created_by === user.id);
@@ -526,9 +544,13 @@ export async function optionsFor(user, kind) {
   }
   if (kind === 'opportunity') {
     if (!effectiveScope(user, 'read', 'opportunity')) throw forbidden('قراءة الفرص خارج صلاحيتك');
-    // أعمدة النطاق مؤهَّلة صراحةً باسم الجدول (لا تعديل نصّي على الشرط بعد بنائه).
+    // أعمدة النطاق مؤهَّلة صراحةً باسم الجدول (لا تعديل نصّي على الشرط بعد بنائه) —
+    // ومنها `memberCol` الذي يُقرأ داخل EXISTS فرعي: جدول المشاركة بلا عمود `id` أصلاً،
+    // فـ`id` عاريةً تُحال إلى الاستعلام الخارجي وفيه جدولان يحملانها (o وs) — التباسٌ
+    // يحسمه التأهيل.
     const f = scopeFilter(user, 'opportunity', 'read',
-      { sectorCol: 'o.sector_id', ownerCol: 'o.owner_user_id', projectCol: 'o.id' });
+      { sectorCol: 'o.sector_id', ownerCol: 'o.owner_user_id', projectCol: 'o.id',
+        grantCol: 'o.department_id', memberCol: 'o.id', deptCol: 'o.department_id' });
     const rows = await all(`SELECT o.id, o.title_ar, s.name_ar AS stage_name, s.is_won FROM opportunity o
       LEFT JOIN stage s ON s.id = o.stage_id
       WHERE ${f.clause} AND o.deleted_at IS NULL

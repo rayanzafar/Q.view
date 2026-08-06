@@ -267,10 +267,21 @@ test('قائد قطاع لا يُسند عمل قطاع آخر — وهذه هي
   assert.equal(await auditCount('opportunity', 'OC1'), 0);
 });
 
-test('مدير تطوير الأعمال يُسند فرص قطاعه، ولا يُسند مشاريعه (لا يملك تعديلها)', async () => {
-  const ok = await attr.setWorkDepartment(ctx(bdStrat), { kind: 'opportunity', id: 'W4', departmentId: 'D_TRANS' });
+// منذ قلب الرؤية (قرار المالك ٢٠٢٦-٠٨: «BD يرى فرصه») صار إسنادُ BD محصوراً بفرصه المملوكة —
+// فالإسناد كتابةٌ على الفرصة، والكتابة تتبع منح التعديل وهو «خاصتي». فرصُ زملائه في قطاعه
+// يُسندها قائدُ القطاع لا هو.
+test('مدير تطوير الأعمال يُسند فرصه هو — لا فرص زملائه ولا مشاريعه', async () => {
+  await insert('opportunity', { id: 'WBD', code: 'WBD', title_ar: 'فرصة WBD', sector_id: 'STRATEGIC',
+    owner_user_id: 'u_bd_strat', stage_id: 'LEAD', win_pct: 20, value_halalas: 100000, year: 2026,
+    created_at: '2026-03-08T00:00:00Z' });
+  const ok = await attr.setWorkDepartment(ctx(bdStrat), { kind: 'opportunity', id: 'WBD', departmentId: 'D_TRANS' });
   assert.equal(ok.changed, true);
-  assert.equal((await all('SELECT id FROM audit_log WHERE resource_id = ?', ['W4'])).length, 1);
+  assert.equal((await all('SELECT id FROM audit_log WHERE resource_id = ?', ['WBD'])).length, 1);
+  // وفرصة زميلٍ في قطاعه نفسه تُرَدّ — وتبقى بلا إسناد وبلا سطر تدقيق.
+  await assert.rejects(
+    () => attr.setWorkDepartment(ctx(bdStrat), { kind: 'opportunity', id: 'W4', departmentId: 'D_TRANS' }),
+    (e) => e.code === 'forbidden');
+  assert.equal((await get('SELECT department_id FROM opportunity WHERE id = ?', ['W4'])).department_id, null);
   assert.equal(can(bdStrat, 'update', 'project'), false, 'لا منح تعديل مشاريع أصلاً');
   await assert.rejects(
     () => attr.setWorkDepartment(ctx(bdStrat), { kind: 'project', id: 'WP1', departmentId: 'D_TRANS' }),

@@ -6,6 +6,7 @@ import { companyOverview, sectorDashboard, grossMargin, bookToBill, multiYearTre
   projectKpis, sectorUtilization, pipelineCoverage, winRate } from './metrics.js';
 import { pipelineSummary } from '../../modules/crm/opportunities.js';
 import { redact, canSeeSensitive } from '../rbac/index.js';
+import { scopeFilter } from '../rbac/scope.js';
 import { DELIVERY_SECTOR_SQL } from '../org/kind.js';
 import { TEMPLATES } from '../mail/templates.js';
 import { sendMail, DELIVERY } from '../mail/transport.js';
@@ -42,7 +43,7 @@ export async function buildReport(reportKey, user, opts = {}) {
       period: opts.period || periodLabel(),
       totals: ov.totals, pipeline_halalas: ov.pipeline_halalas, oppCount: ov.sectors.reduce((a, s) => a + s.opp_count, 0),
       achievements: await topAchievements(), challenges: await topChallenges(), decisions: await pendingDecisions(user), risks: await topRisks(),
-      topDeals: await topWonDeals(), topPipeline: await topOpenOpps(),
+      topDeals: await topWonDeals(), topPipeline: await topOpenOpps(user),
     };
   }
   if (reportKey === 'sector_weekly_status') {
@@ -102,7 +103,7 @@ export async function buildReport(reportKey, user, opts = {}) {
     const wr = await winRate(sid, opts.year || FY());
     return { sectorName: (await get('SELECT name_ar FROM sector WHERE id=?', [sid]) || {}).name_ar || '', period: opts.period || periodLabel(),
       pipeline: pipe.map((s) => ({ ...s, color: stages[s.stage] || '#64748b' })),
-      topOpen: await topOpenOpps(sid), winRate: wr.rate, coverage: cov.coverage, weighted_halalas: cov.weighted_halalas };
+      topOpen: await topOpenOpps(scopedUser, sid), winRate: wr.rate, coverage: cov.coverage, weighted_halalas: cov.weighted_halalas };
   }
   throw new Error('تقرير غير معروف: ' + reportKey);
 }
@@ -372,9 +373,15 @@ async function topWonDeals() {
 }
 // sectorId مطلوب لتقارير القطاع: بدونه كانت القائمة تُبنى من فرص كل القطاعات وتُرسَل بالبريد
 // إلى مستلم قطاع واحد (أسماء عملاء وقيم صفقات في بريد صادر لا يُسترجَع).
-async function topOpenOpps(sectorId = null) {
-  const where = ['st.is_won=0', 'st.is_lost=0', 'o.deleted_at IS NULL'];
-  const params = [];
+// ونطاق **المستلم** يُطبَّق فوقه بنفس خيارات قائمة الفرص: التقرير يُبنى بصلاحيات مستلمه
+// (رأس هذا الملف)، ومستلمٌ ضُيّقت رؤيته إلى فرصه أو فرص إدارته كان يستلم بالبريد أسماء عملاء
+// وقيم صفقاتٍ لا تعرضها له شاشة الفرص نفسها — والبريد صادرٌ لا يُسترجَع.
+async function topOpenOpps(user, sectorId = null) {
+  const f = scopeFilter(user, 'opportunity', 'read',
+    { sectorCol: 'o.sector_id', ownerCol: 'o.owner_user_id',
+      grantCol: 'o.department_id', memberCol: 'o.id', deptCol: 'o.department_id' });
+  const where = [f.clause, 'st.is_won=0', 'st.is_lost=0', 'o.deleted_at IS NULL'];
+  const params = [...f.params];
   if (sectorId) { where.push('o.sector_id = ?'); params.push(sectorId); }
   return (await all(`SELECT o.title_ar, o.value_halalas, o.win_pct, c.name_ar client FROM opportunity o
     JOIN stage st ON st.id=o.stage_id LEFT JOIN client c ON c.id=o.client_id

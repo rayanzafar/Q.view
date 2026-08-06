@@ -3,7 +3,7 @@ import { get, all } from '../db/index.js';
 import { config } from '../config.js';
 import { unauthorized, forbidden } from './errors.js';
 import { can } from '../rbac/index.js';
-import { readerDepartmentIds } from '../rbac/departments.js';
+import { managedDepartmentIds } from '../rbac/departments.js';
 import { grantsForUser } from '../../modules/identity/grants.js';
 import { nowIso } from '../util/ids.js';
 
@@ -47,7 +47,13 @@ export async function resolveUser(sessionId) {
   // فتُقرأ من المجموعة: من يقود إدارتين — واسم مسمّاه يقول ذلك صراحةً — كان يفتح لوحة فريقه
   // فلا يجد أهل إدارته الثانية، ويفتح ملف أحدهم فيُرَدّ «خارج إدارتك» وهو مديره. القيادة
   // مكتوبة في `department.manager_user_id` منذ أول إصدار ولم تكن تُقرأ في أي فحص نطاق.
-  const departmentIds = await readerDepartmentIds(u.id, emp?.department_id || null);
+  //
+  // استعلامٌ واحد يغذّي مجموعتين: «ما يقوده» تُحفظ وحدها أيضاً (`managedDepartmentIds`) لأن
+  // توسعة «من يقود إدارةً يقرأ فرصها» تُبنى من القيادة لا من الانتماء — موظفٌ انتماؤه إلى
+  // إدارةٍ ليس قارئاً لفرصها بمجرد الانتماء. و`departmentIds` = القيادة ∪ الانتماء كما كانت.
+  const managed = await managedDepartmentIds(u.id);
+  const departmentIds = new Set(managed);
+  if (emp?.department_id) departmentIds.add(emp.department_id);
   // ── الصلاحيات الشخصية على إدارة ──────────────────────────────────────────────
   // «ممكن أنا أحطّ على سجى إنها تشوف كل فرص إدارة الابتكار» — استثناءٌ على الشخص لا ترقيةٌ
   // لدوره. ويُقرأ **هنا** مع كل طلب لا في ذاكرة المحرّك عند الإقلاع: صلاحيةٌ تُمنَح وتُرفَع
@@ -69,6 +75,7 @@ export async function resolveUser(sessionId) {
     sector_id: u.sector_id,
     department_id: emp?.department_id || null,
     departmentIds,
+    managedDepartmentIds: managed,
     departmentGrants,
     opportunityIds,
     scope: u.scope,
