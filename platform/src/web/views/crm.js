@@ -148,6 +148,9 @@ export async function opportunitiesPage(user, opts = {}) {
   const savedViews = await listViews(user, 'opportunities');
   const canCreate = can(user, 'create', 'opportunity');
   const canEdit = can(user, 'update', 'opportunity');
+  // السحب: صلاحية الحذف تفتح كل البطاقات، ومَن أنشأ فرصةً يسحب فرصته هو ولو لم يملكها —
+  // القرار يُحسم على كل بطاقة أدناه (`candel`)، والخادم يعيد الحسم عند التنفيذ.
+  const canDeleteAny = can(user, 'delete', 'opportunity');
   // مرحلتا الحسم (فائزة/خاسرة) — تُستدعيان من قائمة إجراءات البطاقة «نقل إلى فائزة/مفقودة».
   const wonStage = stages.find((s) => s.is_won) || null;
   const lostStage = stages.find((s) => s.is_lost) || null;
@@ -245,9 +248,13 @@ export async function opportunitiesPage(user, opts = {}) {
     const rot = openRow && o.rot;
     // الحدّ الجانبي للبطاقة = لون المرحلة (أو الأحمر إن كانت متوقفة) — أوضح إشارة لونية على مستوى البطاقة.
     const accent = rot ? 'var(--red)' : stageColor(st);
-    const showMenu = openRow && canEdit; // زرّ الإجراءات «⋯»: فائزة/مفقودة/نقل قطاع — للمحرّرين فقط
+    // `created_by` يصل مع `SELECT *` في الخدمة — عليه يُحسم سحبُ المنشئ لفرصته
+    const candel = canDeleteAny || o.created_by === user.id;
+    // زرّ الإجراءات «⋯»: نقل (فائزة/مفقودة/قطاع) للمحرّرين، وسحبٌ لمن يملك حذفها أو أنشأها
+    const showMenu = openRow && (canEdit || candel);
+    const menuTitle = canEdit ? 'إجراءات الفرصة (نقل · سحب)' : 'سحب الفرصة';
     const menuBtn = showMenu
-      ? `<button data-action="opp-menu" data-id="${o.id}" data-title="${esc(o.title_ar)}" data-sector="${o.sector_id || ''}" class="kmenu-btn" aria-label="إجراءات الفرصة" title="نقل الفرصة (فائزة · مفقودة · قطاع آخر)" style="position:absolute;top:.26rem;inset-inline-end:.3rem;width:20px;height:20px;border:none;background:transparent;color:var(--faint);cursor:pointer;border-radius:6px;font-size:16px;line-height:1;padding:0;display:inline-flex;align-items:center;justify-content:center;z-index:2">⋯</button>`
+      ? `<button data-action="opp-menu" data-id="${o.id}" data-title="${esc(o.title_ar)}" data-sector="${o.sector_id || ''}"${candel ? ' data-candel="1"' : ''} class="kmenu-btn" aria-label="إجراءات الفرصة" title="${menuTitle}" style="position:absolute;top:.26rem;inset-inline-end:.3rem;width:20px;height:20px;border:none;background:transparent;color:var(--faint);cursor:pointer;border-radius:6px;font-size:16px;line-height:1;padding:0;display:inline-flex;align-items:center;justify-content:center;z-index:2">⋯</button>`
       : '';
     return `<div class="kcard" ${dnd} data-action="open-opp" data-id="${o.id}" data-sector="${o.sector_id || ''}" data-hay="${esc(hay).replace(/"/g, '')}" style="--_c:${accent};cursor:pointer;padding:.5rem .6rem;position:relative" role="link" tabindex="0" aria-label="فتح الفرصة ${esc(o.title_ar)}">
       ${menuBtn}
@@ -438,6 +445,8 @@ export async function opportunitiesPage(user, opts = {}) {
       lostStage:${JSON.stringify(lostStage ? lostStage.id : null)},
       canCreateOpp:${canCreate ? 'true' : 'false'},
       canEditOpp:${canEdit ? 'true' : 'false'},
+      canDeleteAny:${canDeleteAny ? 'true' : 'false'},
+      uid:${JSON.stringify(user.id || '')},
       viewsPage:'opportunities'
     });</script>`;
   return layout({

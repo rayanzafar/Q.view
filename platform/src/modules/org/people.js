@@ -56,6 +56,21 @@ export const notDemoEmployeeSql = (alias = 'employee') => `NOT EXISTS (
  *   على قطاعٍ بعينه، و`viewer` هو من يقرأ (مدير النظام وحده يرى حسابات العرض).
  * @returns {Promise<Array<{id: string, name: string}>>}
  */
+/**
+ * أسماء عرضٍ لمعرّفات حسابات بعينها — للشاشات التي تذكر أشخاصاً بأسمائهم
+ * (طالب الاعتماد مثلاً). تشمل الحسابات الموقوفة عمداً: الاسم يبقى بعد الإيقاف.
+ * @param {string[]} ids
+ * @returns {Promise<Map<string, string>>} معرّف ← اسم العرض
+ */
+export async function namesByIds(ids = []) {
+  const clean = [...new Set(ids)].filter(Boolean);
+  if (!clean.length) return new Map();
+  const rows = await all(
+    `SELECT id, COALESCE(name_ar, username) AS "name" FROM app_user
+      WHERE id IN (${clean.map(() => '?').join(',')})`, clean);
+  return new Map(rows.map((r) => [r.id, r.name]));
+}
+
 export async function pickablePeople(opts = {}) {
   const where = ['active = 1', 'deleted_at IS NULL'];
   if (!seesDemoAccounts(opts.viewer)) where.push(NOT_DEMO);

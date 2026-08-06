@@ -1,5 +1,5 @@
 // PMO — Tasks service with Quick Add. Employees manage own tasks; managers see team/project scope.
-import { all, get, insert, update, tx } from '../../core/db/index.js';
+import { all, get, insert, update, run, tx } from '../../core/db/index.js';
 import { can, effectiveScope } from '../../core/rbac/index.js';
 import { departmentScope, departmentInSql, inDepartmentScope } from '../../core/rbac/departments.js';
 import { audit } from '../../core/audit/index.js';
@@ -228,6 +228,14 @@ function normalizeParent(patch, data, current = null) {
 
 const blankToNull = (v) => (v == null || String(v).trim() === '' ? null : String(v).trim());
 
+// تصنيف المهمة (اجتماع/تقرير/متابعة…): وسمٌ وصفي قصير — الفراغ لا تصنيف، والطول مقصوصٌ
+// عند ستين حرفاً كي لا يتحوّل الوسم إلى فقرةٍ تكسر أعمدة القوائم. القاعدة واحدة في مسارَي
+// الإنشاء والتعديل معاً، فلا يختلف ما يُخزَّن باختلاف الباب الذي دخل منه.
+const normalizeCategory = (v) => {
+  const s = String(v == null ? '' : v).trim();
+  return s ? s.slice(0, 60) : null;
+};
+
 // Quick Add — minimal fields, instant. Defaults assignee to self.
 export async function quickAddTask(ctx, data) {
   const user = ctx.user;
@@ -280,7 +288,10 @@ export async function quickAddTask(ctx, data) {
   await tx(async () => {
     await insert('task', {
       id: tid, title: String(data.title).trim(), description: data.description || null,
-      work_kind: parent.work_kind || data.work_kind || 'project',
+      // النوع يُشتقّ من الجهة الفعلية لا من قيمةٍ افتراضية عمياء: «مشروع» كانت تُكتب على كل
+      // طلبٍ لم يسمِّ نوعه — ومنه كل إضافة سريعة بلا جهة — فتُخزَّن مهمةٌ داخلية «مشروعاً»
+      // بلا مشروع. الترحيلة ٠٢٩ صحّحت المكتوب، وهذا السطر يسدّ الباب عن الجديد.
+      work_kind: parent.work_kind || data.work_kind || (projectId ? 'project' : oppId ? 'opportunity' : 'internal'),
       project_id: projectId,
       deliverable_id: deliverableId,
       opportunity_id: oppId,
@@ -289,6 +300,7 @@ export async function quickAddTask(ctx, data) {
       sector_id: isPersonal ? null : sectorId,
       department_id: isPersonal ? null : (data.department_id || null),
       assignee_user_id: assignee, priority: data.priority || 'P2', status: 'TODO',
+      category: normalizeCategory(data.category),
       // و«تنتظر» ليست حالةَ عمل بل حالةَ وجود: `status` يبقى `TODO` كما هو، والعمود المستقلّ
       // وحده يقول إن المهمة لم تُضَف بعد. فلا يتغيّر معنى الحالة على كل لوحٍ وعدّاد وتقرير.
       approval_state: approval.needsApproval ? TASK_PENDING : null,
@@ -467,9 +479,10 @@ export async function updateTask(ctx, taskId, data) {
   await assertMayLink(user, data);
   const patch = {};
   for (const k of ['title', 'description', 'status', 'priority', 'progress_pct', 'due_date',
-    'start_date', 'estimate_hours', 'blocked_reason', 'assignee_user_id', 'next_step', 'department_id']) {
+    'start_date', 'estimate_hours', 'blocked_reason', 'assignee_user_id', 'next_step', 'department_id', 'category']) {
     if (k in data) patch[k] = data[k];
   }
+  if ('category' in patch) patch.category = normalizeCategory(patch.category);
   if ('next_step' in patch) patch.next_step = blankToNull(patch.next_step);
   if ('blocked_reason' in patch) patch.blocked_reason = blankToNull(patch.blocked_reason);
   if ('progress_pct' in patch) patch.progress_pct = Math.max(0, Math.min(100, Math.round(Number(patch.progress_pct) || 0)));
@@ -492,6 +505,43 @@ export async function updateTask(ctx, taskId, data) {
   await update('task', taskId, patch);
   await audit(ctx, { action: 'update', resource: 'task', resourceId: taskId, detail: { status: patch.status } });
   return await get('SELECT * FROM task WHERE id = ?', [taskId]);
+}
+
+// ── حذف مهمة: من كتبها يمحوها، ومن فوقه صلاحيةٌ إدارية على قطاعها كذلك ──────────────────────
+// حذفٌ ناعم كقاعدة المنصة كلها (notes.js نموذجه): الصف يبقى وتاريخ إخفائه مكتوب، والأثر في
+// سجل التدقيق باسم المهمة لا بمعرّفها وحده.
+//
+// الملكية هنا **كتابةُ المهمة** لا استلامُها: من أُسنِدت إليه مهمةٌ كتبها غيره لا يمحو ما
+// كتبه غيره — يُغلقها أو يعيدها لكاتبها. والاستثناء الوحيد المهمة الشخصية: صاحبها هو
+// المُسنَد إليه بحكم تعريفها، فبابها الملكية بوجهَيها.
+//
+// و«غير موجودة» لا «ليست لك» في بابين — نفس قرار updateTask حرفياً وللسبب نفسه:
+//   • الشخصية لغير صاحبها: تأكيد وجودها إقرارٌ صغير بما وُعد بألّا يُقال.
+//   • والمعلَّقة لغير كاتبها: هي غير مقروءة له في كل قائمة، فلا يُكشف وجودُها من باب الحذف.
+//     (ومدير النظام خارج هذا الحجب — يرى كل شيء أصلاً، فحجبُها عنه تمثيلٌ لا حماية.)
+export async function deleteTask(ctx, taskId) {
+  const user = ctx.user;
+  const row = await get('SELECT * FROM task WHERE id = ? AND deleted_at IS NULL', [taskId]);
+  if (!row) throw notFound('المهمة غير موجودة');
+  const isOwn = row.created_by === user.id || (isPersonalTask(row) && row.assignee_user_id === user.id);
+  if (isPersonalTask(row) && !isOwn) throw notFound('المهمة غير موجودة');
+  if (isPendingTask(row) && row.created_by !== user.id && user.role_id !== 'admin') throw notFound('المهمة غير موجودة');
+  if (!isOwn && !can(user, 'delete', 'task', row)) {
+    throw forbidden('حذف المهمة لمن أنشأها أو لصاحب صلاحية إدارية على قطاعها');
+  }
+  const now = nowIso();
+  // كتابةٌ واحدة لا تتجزأ: مهمةٌ تُمحى ويبقى طلبُ اعتمادها معلَّقاً يُبقي في طابور المدير
+  // قراراً على عدم — يعتمد ما حُذف فيُكتب في التدقيق اعتمادُ ما لا وجود له.
+  await tx(async () => {
+    await update('task', row.id, { deleted_at: now, updated_at: now, updated_by: user.id });
+    if (isPendingTask(row)) {
+      await run(`UPDATE approval_request SET status = 'CANCELLED', closed_at = ?
+        WHERE resource = 'task' AND resource_id = ? AND status = 'PENDING'`, [now, row.id]);
+    }
+    await audit(ctx, { action: 'delete', resource: 'task', resourceId: row.id,
+      sectorId: row.sector_id || null, detail: `حذف مهمة «${row.title}»` });
+  });
+  return { ok: true };
 }
 
 // ───────────────────── حِمل الفريق: من يعمل على ماذا، مرتَّباً بإدارته ─────────────────────

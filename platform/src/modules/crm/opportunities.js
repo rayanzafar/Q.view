@@ -139,7 +139,15 @@ export async function createOpportunity(ctx, data) {
     throw badRequest(`«${sec.name_ar}» وحدة مساندة على مستوى الشركة وليست قطاع تسليم — الفرصة تُنسب إلى قطاع تسليم. اختر قطاعاً من القائمة.`);
   // الإدارة على باب الإنشاء: بدونها تُولَد كل فرصةٍ جديدة «بلا إدارة» ثم تُصنَّف لاحقاً — ونيّة
   // التصنيف تُنسى، فيظهر آخر السنة فرقٌ بين مجموع الإدارات ومجموع القطاع لا سبب له إلا النسيان.
-  const departmentId = await resolveDepartment(data.department_id || null, sectorId);
+  // الاختيار الصريح يسبق كل شيء (ويُدقَّق أنه من قطاع الفرصة). فإن غاب نُسبت الفرصة إلى إدارة
+  // منشئها — أغلبُ من يُدخل فرصةً يُدخلها لإدارته — بشرطين: أن تكون الإدارة قائمةً غير محذوفة،
+  // وأن تتبع قطاعَ الفرصة نفسه. وإلا تُركت «بلا إدارة» بصمت لا بخطأ: من ينشئ فرصةً لقطاعٍ غير
+  // قطاع إدارته لا يُوقَف على انتمائه، ومُرشِّح «بلا إدارة» يعرضها بعد ذلك لتُسنَد بوعي.
+  let departmentId = await resolveDepartment(data.department_id || null, sectorId);
+  if (!departmentId && !data.department_id && user.department_id) {
+    const own = await get('SELECT id, sector_id FROM department WHERE id = ? AND deleted_at IS NULL', [user.department_id]);
+    if (own && own.sector_id && String(own.sector_id) === String(sectorId)) departmentId = own.id;
+  }
   const oid = id('opp');
   const now = nowIso();
   await insert('opportunity', {
@@ -157,6 +165,16 @@ export async function createOpportunity(ctx, data) {
     await setOpportunityDepartments(ctx, oid, data.partner_department_ids, departmentId);
   }
   await audit(ctx, { action: 'create', resource: 'opportunity', resourceId: oid, sectorId });
+  // نفس حارس النقل (انظر updateOpportunity أدناه)، على باب الإنشاء: قد يضع المنشئ المسؤولَ
+  // غيرَه فيولَد الصفّ خارج نطاقه من لحظته الأولى — فكان الإنشاء يتمّ ويُكتب ثم تُرَدّ القراءة
+  // الأخيرة برسالة «صلاحيتك لا تسمح» على عملٍ تمّ فعلاً. يُفحص الصفّ كما كُتب، فإن خرج عن
+  // نطاق منشئه أُعيد تأكيدٌ مختصر بدل قراءةٍ محظورة.
+  const inserted = { id: oid, sector_id: sectorId, department_id: departmentId,
+    owner_user_id: data.owner_user_id || user.id, created_by: user.id };
+  if (!can(user, 'read', 'opportunity', inserted)) {
+    return { ok: true, id: oid, movedOutOfReach: true,
+      sector_id: sectorId || null, department_id: departmentId || null };
+  }
   return await getOpportunity(user, oid);
 }
 
@@ -411,11 +429,14 @@ export async function opportunityDetail(user, oppId, opts = {}) {
       WHERE a.opportunity_id = ? AND a.deleted_at IS NULL
       ORDER BY a.at DESC LIMIT 20`, [oppId]);
   const canEdit = can(user, 'update', 'opportunity', opp);
+  // السحب لمن يملك صلاحية الحذف **أو لمن أنشأها**: من أدخل فرصةً بالخطأ يصحّح إدخاله بنفسه.
+  // نفس قاعدة المحرّك (`ownDelete` في core/lifecycle/remove.js) — الشاشة تعرض الزرّ والخادم يحسم.
+  const canDelete = can(user, 'delete', 'opportunity', opp) || opp.created_by === user.id;
   const today = String(opts.today || nowIso().slice(0, 10)).slice(0, 10);
   const flags = withDiscipline(opp, today);
   return {
     opp, client, department, owner: ownerRow ? (ownerRow.name_ar || ownerRow.username) : null,
-    history, stages, team, activities, canEdit,
+    history, stages, team, activities, canEdit, canDelete,
     stage_age_days: flags.stage_age_days, rot: flags.rot, no_next_action: flags.no_next_action,
     weighted_halalas: Math.round((opp.value_halalas || 0) * ((opp.win_pct || 0) / 100)),
   };

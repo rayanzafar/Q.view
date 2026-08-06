@@ -329,15 +329,20 @@
   function oppMenuModal(el) {
     var s = S();
     var id = el.dataset.id, title = el.dataset.title || '', sector = el.dataset.sector || '';
+    // النقل للمحرّرين وحدهم — الزرّ قد يظهر الآن لمن يملك السحب فقط (منشئ الفرصة)، فلا تُعرض
+    // له أزرارُ نقلٍ يردّها الخادم. والسحب بإشارة الخادم على البطاقة نفسها (data-candel).
+    var canEdit = !!s.canEditOpp;
+    var candel = el.dataset.candel === '1';
     var others = (s.moveSectors || []).filter(function (x) { return x.id !== sector; });
-    var won = s.wonStage ? actionBtn('opp-won', 'data-id="' + esc(id) + '"', 'border-color:#bbf7d0;color:#166534;background:#f0fdf4', '#059669', 'نقل إلى فائزة') : '';
-    var lost = s.lostStage ? actionBtn('opp-lost', 'data-id="' + esc(id) + '"', 'border-color:#fecaca;color:#991b1b;background:#fef2f2', '#dc2626', 'نقل إلى مفقودة') : '';
-    var sec = others.length ? actionBtn('opp-move-sector', 'data-id="' + esc(id) + '" data-sector="' + esc(sector) + '"', '', '', '↔ نقل لقطاع آخر') : '';
+    var won = canEdit && s.wonStage ? actionBtn('opp-won', 'data-id="' + esc(id) + '"', 'border-color:#bbf7d0;color:#166534;background:#f0fdf4', '#059669', 'نقل إلى فائزة') : '';
+    var lost = canEdit && s.lostStage ? actionBtn('opp-lost', 'data-id="' + esc(id) + '"', 'border-color:#fecaca;color:#991b1b;background:#fef2f2', '#dc2626', 'نقل إلى مفقودة') : '';
+    var sec = canEdit && others.length ? actionBtn('opp-move-sector', 'data-id="' + esc(id) + '" data-sector="' + esc(sector) + '"', '', '', '↔ نقل لقطاع آخر') : '';
+    var rm = candel ? actionBtn('opp-remove', 'data-id="' + esc(id) + '"', 'border-color:#fecaca;color:#b91c1c;background:#fff', '#dc2626', 'سحب الفرصة…') : '';
     window.Sanad.openModal(
       '<div class="modal-head"><div style="min-width:0"><div style="font-size:11px;color:var(--muted);font-weight:700">إجراء سريع على الفرصة</div>' +
       '<h3 style="font-size:15px;margin-top:.15rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:330px">' + esc(title) + '</h3></div>' +
       '<button class="btn btn-ghost btn-sm" data-action="modal-close" aria-label="إغلاق">✕</button></div>' +
-      '<div class="modal-body" style="gap:.5rem">' + won + lost + sec + '</div>');
+      '<div class="modal-body" style="gap:.5rem">' + won + lost + sec + rm + '</div>');
   }
   async function oppWon(id) {
     var s = S(); if (!s.wonStage) return;
@@ -387,6 +392,65 @@
       await api('/opportunities/' + id + '/sector', 'POST', { sector: sector, note: note || null });
       window.Sanad.closeModal(); toast('نُقلت إلى القطاع الجديد ✓'); setTimeout(function () { location.reload(); }, 450);
     } catch (err) { toast(err.message, true); }
+  }
+
+  // ── سحب الفرصة: العاقبة تُعرض قبل الضغط، والسبب مطلوب ويُسجَّل في الأثر ──
+  // على نمط فحص حذف الحساب (pages/identity.js): تُقرأ الموانع وما سيُسحب تبعاً من الخادم
+  // أولاً — فمن يضغط «سحب» يعرف أن معه مستندَين ومهمة، لا أن «شيئاً ما» سيختفي.
+  async function oppRemoveModal(id) {
+    var chk;
+    try { chk = await api('/opportunities/' + encodeURIComponent(id) + '/removal-check'); }
+    catch (err) { toast(err.message, true); return; }
+    var blockers = chk.blockers || [];
+    var body, foot;
+    if (blockers.length) {
+      body = '<div style="font-size:12.5px;line-height:1.9;color:#b91c1c"><b>لا يمكن سحب هذه الفرصة الآن:</b>' +
+        '<ul style="margin:.35rem 0 0;padding-inline-start:1.1rem">' +
+        blockers.map(function (b) { return '<li>' + esc(b) + '</li>'; }).join('') + '</ul></div>' +
+        '<div style="font-size:12px;color:var(--muted);line-height:1.8;margin-top:.5rem">' +
+        'انقل إلى مفقودة بدل السحب — السجل يبقى.</div>';
+      foot = '<button class="btn" data-action="modal-close">إغلاق</button>';
+    } else {
+      var parts = (chk.cascades || []).filter(function (c) { return Number(c.count) > 0; })
+        .map(function (c) { return '<b class="tnum">' + Number(c.count) + '</b> ' + esc(c.label); });
+      body = (parts.length
+        ? '<div style="font-size:12.5px;color:var(--ink2);line-height:1.9">سيُسحب معها: ' + parts.join('، ') + '.</div>'
+        : '<div style="font-size:12.5px;color:var(--muted);line-height:1.9">لا يتبعها شيء — تُسحب وحدها.</div>') +
+        '<div style="font-size:11.5px;color:var(--faint);line-height:1.7;margin-top:.3rem">سجل مراحلها يبقى في الأثر.</div>' +
+        '<div class="field" style="margin-top:.6rem"><label>سبب السحب — يُسجَّل في الأثر</label>' +
+        '<textarea id="opp-rm-reason" class="input" rows="2" placeholder="مثال: فرصة مكررة أُدخلت مرتين"></textarea>' +
+        '<div id="opp-rm-err" style="display:none;font-size:11.5px;color:#b91c1c;margin-top:.25rem"></div></div>';
+      foot = '<button class="btn btn-primary" data-action="opp-remove-go" data-id="' + esc(id) + '" style="background:#b91c1c">سحب الفرصة</button>' +
+        '<button class="btn" data-action="modal-close">إلغاء</button>';
+    }
+    window.Sanad.openModal(
+      '<div class="modal-head"><h3 style="font-size:16px">سحب الفرصة</h3>' +
+      '<button class="btn btn-ghost btn-sm" data-action="modal-close" aria-label="إغلاق">✕</button></div>' +
+      '<div class="modal-body">' + body + '</div>' +
+      '<div class="modal-foot">' + foot + '</div>');
+    setTimeout(function () { var n = document.getElementById('opp-rm-reason'); if (n) n.focus(); }, 60);
+  }
+  async function oppRemoveGo(btn) {
+    var box = document.getElementById('opp-rm-reason');
+    var err = document.getElementById('opp-rm-err');
+    var reason = ((box && box.value) || '').trim();
+    // السبب شرطٌ لا زينة — والخطأ يُقال في مكانه لا بتنبيه المتصفح
+    if (!reason) {
+      if (err) { err.textContent = 'اكتب سبب السحب أولاً — يُسجَّل في الأثر'; err.style.display = 'block'; }
+      if (box) box.focus();
+      return;
+    }
+    btn.disabled = true;
+    try {
+      await api('/opportunities/' + encodeURIComponent(btn.dataset.id), 'DELETE', { reason: reason });
+      window.Sanad.closeModal();
+      toast('سُحبت الفرصة — والسبب مسجَّل');
+      setTimeout(function () {
+        // من صفحة الفرصة نعود إلى القائمة (صفحتها لم تعد موجودة)؛ ومن القائمة يكفي التحديث
+        if (location.pathname.indexOf('/app/opportunity/') === 0) location.href = '/app/opportunities';
+        else location.reload();
+      }, 600);
+    } catch (e2) { btn.disabled = false; toast(e2.message, true); }
   }
 
   // ── إنشاء المشروع من فرصة فائزة ──
@@ -493,6 +557,8 @@
       if (act === 'team-remove') { teamRemove(actEl.dataset.id); return; }
       if (act === 'act-add') { actAdd(); return; }
       if (act === 'opp-menu') { oppMenuModal(actEl); return; }
+      if (act === 'opp-remove') { oppRemoveModal(actEl.dataset.id); return; }
+      if (act === 'opp-remove-go') { oppRemoveGo(actEl); return; }
       if (act === 'opp-won') { oppWon(actEl.dataset.id); return; }
       if (act === 'opp-lost') { oppLostModal(actEl.dataset.id); return; }
       if (act === 'opp-lost-confirm') { oppLostConfirm(actEl.dataset.id); return; }

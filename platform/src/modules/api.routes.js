@@ -93,16 +93,17 @@ apiRouter.post('/staffing/internal', h((req) => projects.assignInternalWork(req.
 // لم يكن في المنتج حذفٌ لأيٍّ منهما، فبياناتٌ مستوردة لا سبيل إلى تنظيفها إلا بفتح القاعدة
 // يدوياً — خارج التدقيق وخارج الصلاحيات. والحراسة في مكانٍ واحد (core/lifecycle/remove.js):
 // المال يمنع الحذف دائماً، والتابع يُحذف مع أصله، والرفض يُشرح بعدده واسمه.
+// فحص الحذف صار معاينةً كاملة (removalPreview): الموانع كما كانت، ومعها **ما سيُسحب تبعاً
+// بعدده** — فالشاشة تقول «سيُسحب معها: مستندان ومهمة» قبل التأكيد لا بعده. المفتاحان
+// القديمان (blockers/removable) باقيان كما هما لمن يقرؤهما.
 apiRouter.get('/projects/:id/removal-check', h(async (req) => {
   await projects.getProject(req.ctx.user, req.params.id); // الحارس قبل كشف موانع الحذف
-  const b = await remove.removalBlockers('project', req.params.id);
-  return { blockers: b, removable: !b.length };
+  return remove.removalPreview('project', req.params.id, req.ctx);
 }));
 apiRouter.delete('/projects/:id', h((req) => remove.removeRecord(req.ctx, 'project', req.params.id, { reason: (req.body || {}).reason })));
 apiRouter.get('/opportunities/:id/removal-check', h(async (req) => {
   await opps.getOpportunity(req.ctx.user, req.params.id); // الحارس قبل كشف موانع الحذف
-  const b = await remove.removalBlockers('opportunity', req.params.id);
-  return { blockers: b, removable: !b.length };
+  return remove.removalPreview('opportunity', req.params.id, req.ctx);
 }));
 apiRouter.delete('/opportunities/:id', h((req) => remove.removeRecord(req.ctx, 'opportunity', req.params.id, { reason: (req.body || {}).reason })));
 apiRouter.delete('/projects/staff/:allocId', h((req) => projects.unassignEmployee(req.ctx, req.params.allocId)));
@@ -119,6 +120,7 @@ apiRouter.post('/tasks/quick', h((req) => tasks.quickAddTask(req.ctx, req.body))
 apiRouter.get('/tasks/team', h((req) => tasks.teamTasks(req.ctx.user, { ...req.query })));
 apiRouter.patch('/tasks/bulk', h((req) => tasks.bulkUpdateTasks(req.ctx, (req.body || {}).ids, (req.body || {}).patch || {})));
 apiRouter.patch('/tasks/:id', h((req) => tasks.updateTask(req.ctx, req.params.id, req.body)));
+apiRouter.delete('/tasks/:id', h((req) => tasks.deleteTask(req.ctx, req.params.id)));
 
 // ── Timesheets ──
 apiRouter.get('/timesheets/mine', h((req) => ts.myEntries(req.ctx.user, req.query)));

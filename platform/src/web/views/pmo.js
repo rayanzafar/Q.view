@@ -29,7 +29,7 @@ import { completionTrend, addDays, teamTasksAccess, teamWorkload, isPersonalTask
 import { listOpportunities } from '../../modules/crm/opportunities.js';
 import { nowDot } from '../../core/i18n/time.js';
 import { WEEKDAYS_AR, weekdayLabel, workKindLabel, deliverableStatusLabel,
-  DELIVERABLE_NEXT } from '../i18n/glossary.js';
+  DELIVERABLE_NEXT, TASK_CATEGORY_AR, taskCategoryLabel } from '../i18n/glossary.js';
 
 // لون لكل حالة (هوية EVC الهادئة: خط لوني رفيع + خلفية بتشبّع ~12٪). الحالة تُلوِّن أعمدة
 // الكانبان وحدّ البطاقة الأيسر؛ الصحة (RAG) تبقى في الوسم وشريط الإنجاز. الملغى رماديّ
@@ -588,7 +588,8 @@ export async function tasksPage(user, opts = {}) {
     data-progress="${Math.max(0, Math.min(100, Math.round(Number(t.progress_pct) || 0)))}"
     data-next="${esc(t.next_step || '')}" data-blocked="${esc(t.blocked_reason || '')}"
     data-project="${esc(t.project_id || '')}" data-opp="${esc(t.opportunity_id || '')}"
-    data-kind="${esc(t.work_kind || '')}"
+    data-kind="${esc(t.work_kind || '')}" data-category="${esc(t.category || '')}"
+    data-creator="${esc(t.created_by || '')}"
     data-assignee="${esc(t.assignee_user_id || '')}" data-dept="${esc(t.department_id || '')}"
     data-desc="${esc(t.description || '')}"`;
   const progChip = (t) => {
@@ -614,14 +615,15 @@ export async function tasksPage(user, opts = {}) {
     const pr = TASK_PRIORITY[t.priority] || TASK_PRIORITY.P2;
     return `<div class="tk-row${done ? ' is-done' : ''}" ${dataAttrs(t)}>
       ${readOnly ? '' : `<input type="checkbox" class="tk-sel" value="${esc(t.id)}" aria-label="تحديد المهمة للتغيير الجماعي">`}
-      <button type="button" class="tk-check${done ? ' done' : ''}" ${done || readOnly ? 'disabled' : 'data-action="task-done"'}
-        aria-label="${done ? 'مهمة منجزة' : 'وضع كمنجزة'}" title="${done ? 'منجزة' : readOnly ? 'عرض للاطّلاع' : 'وضع كمنجزة'}">${done ? '✓' : ''}</button>
+      <button type="button" class="tk-check${done ? ' done' : ''}" ${readOnly ? 'disabled' : `data-action="${done ? 'task-reopen' : 'task-done'}"`}
+        aria-label="${done ? (readOnly ? 'مهمة منجزة' : 'إعادة فتح المهمة') : 'وضع كمنجزة'}" title="${done ? (readOnly ? 'منجزة' : 'إعادة فتح المهمة') : readOnly ? 'عرض للاطّلاع' : 'وضع كمنجزة'}">${done ? '✓' : ''}</button>
       <div class="tk-body">
         <div class="tk-title">${esc(t.title)}</div>
         <div class="tk-meta">
           ${done ? `<span style="color:var(--green);font-weight:700">أُنجزت${t.completed_at ? ` <span class="tnum">${esc(String(t.completed_at).slice(0, 10))}</span>` : ''}</span>`
             : `<span style="color:${dl.color}${dl.bold ? ';font-weight:700' : ''}">${dl.text}</span>`}
           ${parentChip(t)}
+          ${t.category ? `<span class="tk-cat-chip" title="تصنيف المهمة">${esc(taskCategoryLabel(t.category))}</span>` : ''}
           ${isPendingTask(t) ? `<span class="tk-await" title="${G.awaitApprovalHint}">${G.awaitApproval}</span>` : ''}
           ${who === 'team' ? `<span class="tk-who">${icon('team')} ${esc(t.assignee_name || t.assignee_username || G.unassigned)}</span>` : ''}
           ${t.department_name ? `<span class="tk-who">${esc(t.department_name)}</span>` : ''}
@@ -740,12 +742,22 @@ export async function tasksPage(user, opts = {}) {
   // «شخصية» خيارٌ في القائمة نفسها لا مفتاحٌ منفصل: المهمة تُنسب إلى جهةٍ واحدة، و«لصاحبها
   // وحده» جهةٌ من جهاتها لا صفةٌ تُضاف إليها. ووضعُها هنا يجعل التحوّل في الاتجاهين ظاهراً
   // ومقصوداً — يقرأ المرء أين ستُقرأ مهمته قبل أن يحفظها.
+  // الخيار الافتراضي يسمّي أثره كاملاً: «عمل داخلي» وحدها كانت تُقرأ تصنيفاً غامضاً، فيظن
+  // المرء أن المهمة ستُربط بجهةٍ ما — وهي بلا مشروع ولا فرصة، وهذا هو المكتوب الآن حرفياً.
   const parentSelect = (idAttr, label) => `<select id="${idAttr}" class="input" aria-label="${label}">
-    <option value="">${G.internalWork}</option>
+    <option value="">${G.internalWork} — بلا مشروع ولا فرصة</option>
     <option value="me">${G.personalWork} — ${G.personalOnlyYou}</option>
     ${prjOptions.length ? `<optgroup label="${G.projects}">${prjOptions.map((p) => `<option value="p:${esc(p.id)}">${esc(p.name_ar)}</option>`).join('')}</optgroup>` : ''}
     ${oppOptions.length ? `<optgroup label="${G.opportunities}">${oppOptions.map((o) => `<option value="o:${esc(o.id)}">${esc(o.title_ar)}</option>`).join('')}</optgroup>` : ''}
   </select>`;
+  // تصنيف المهمة: قائمة جاهزة من المعجم + «أخرى…» تفتح حقلاً حراً صغيراً. القيمة الجاهزة
+  // تُخزَّن بمفتاحها (فتُعرض من المعجم أينما قُرئت)، والحرة تُخزَّن كما كُتبت.
+  const categorySelect = (idAttr, dataF = '') => `<select id="${idAttr}" class="input tk-cat"${dataF ? ` data-f="${dataF}"` : ''} aria-label="تصنيف المهمة">
+      <option value="">التصنيف (اختياري)</option>
+      ${Object.entries(TASK_CATEGORY_AR).map(([k, v]) => `<option value="${esc(k)}">${esc(v)}</option>`).join('')}
+      <option value="__other">أخرى…</option>
+    </select><input id="${idAttr}-other" class="input tk-cat-other"${dataF ? ` data-f="${dataF}-other"` : ''} hidden
+      maxlength="60" placeholder="اكتب التصنيف بكلمتين" aria-label="تصنيف آخر للمهمة">`;
   // الإضافة كانت بطاقةً مفتوحةً دائماً بخمسة حقول فوق كل قائمة — حتى حين لا يريد أحدٌ إضافة
   // شيئاً. صارت زرّاً يفتحها، والحقول كما هي بمعرّفاتها فلا يتغيّر شيء تحت جافاسكربت الصفحة.
   // (بلسان المالك: «طريقه اضافه المهام … احسه سيءه».)
@@ -757,6 +769,7 @@ export async function tasksPage(user, opts = {}) {
     </div>
     <div class="wc-add-row2">
       ${parentSelect('qa-parent', G.parentLink)}
+      ${categorySelect('qa-category')}
       ${canAssign && people.length ? `<select id="qa-assignee" class="input" aria-label="${G.assignee}">
         <option value="">${G.assignee}: أنا</option>
         ${people.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select>` : ''}
@@ -1091,6 +1104,7 @@ export async function tasksPage(user, opts = {}) {
         <input id="tf-blocked" class="input" data-f="blocked" placeholder="ما الذي يوقفها ومَن يستطيع رفعه؟">
         <div class="wc-fieldnote">اختيار «مُعطَّلة» يتطلب سبباً مكتوباً — بلا سبب لا تصل إلى أحد.</div></div>
       <div class="field"><label for="tf-parent">${G.parentLink}</label>${parentSelect('tf-parent', G.parentLink).replace('id="tf-parent" class="input"', 'id="tf-parent" class="input" data-f="parent"')}</div>
+      <div class="field"><label for="tf-category">تصنيف المهمة</label>${categorySelect('tf-category', 'category')}</div>
       ${canAssign && people.length ? `<div class="field"><label for="tf-assignee">${G.assignee}</label>
         <select id="tf-assignee" data-f="assignee"><option value="">${G.unassigned}</option>${people.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select></div>` : ''}
       ${depts.length ? `<div class="field"><label for="tf-dept">الإدارة المسؤولة</label>
@@ -1100,6 +1114,7 @@ export async function tasksPage(user, opts = {}) {
     <div class="drawer-foot">
       <button type="button" class="btn btn-primary" data-action="task-save">${G.save}</button>
       <button type="button" class="btn" data-action="task-close">${G.cancel}</button>
+      <button type="button" class="btn btn-ghost tk-del" data-action="task-delete" data-f="delete" hidden>${G.delete}</button>
     </div>
   </template>`;
 
@@ -1347,6 +1362,12 @@ export async function tasksPage(user, opts = {}) {
     .wc-fieldnote{font-size:10.5px;color:var(--muted);line-height:1.7}
     .wc-fieldnote[hidden]{display:none}
     .wc-fieldnote.err{color:#991b1b;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:.4rem .55rem}
+    .tk-cat-chip{display:inline-flex;align-items:center;background:#eef2f7;color:#475569;border-radius:999px;
+      padding:.1rem .55rem;font-size:10.5px;font-weight:700;max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .tk-cat-other{margin-top:.35rem}
+    .tk-cat-other[hidden]{display:none}
+    .drawer-foot .tk-del{color:#b91c1c;margin-inline-start:auto}
+    .drawer-foot .tk-del[hidden]{display:none}
     @media(max-width:900px){
       .wc-stats{grid-template-columns:repeat(2,1fr)}
       .wc-day-r{border-inline-start:none;border-top:1px solid var(--line);padding-inline-start:0;padding-top:.7rem;flex-basis:100%}
@@ -1378,7 +1399,8 @@ export async function tasksPage(user, opts = {}) {
     ${content}
     ${oppsBlock}
     ${notesBlock}
-    ${bulkBar}${editorTpl}`;
+    ${bulkBar}${editorTpl}
+    <script>window.__SANAD=Object.assign(window.__SANAD||{},{uid:${JSON.stringify(user.id || '').replace(/</g, '\\u003c')},canDelAnyTask:${can(user, 'delete', 'task') ? 'true' : 'false'}});</script>`;
 
   const subtitle = who === 'team'
     ? `${G.teamWork} · ${countAr(openT.length, { one: 'مهمة مفتوحة', two: 'مهمتان مفتوحتان', few: 'مهام مفتوحة', many: 'مهمة مفتوحة' })}${overdue.length ? ` · ${overdue.length} متأخرة` : ''}`

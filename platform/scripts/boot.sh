@@ -42,6 +42,9 @@ node --experimental-sqlite scripts/apply-utilization-may2026.js || echo "utiliza
 # له فرصة قائمة بالاسم قبل أن يُنشئ شيئاً (فلا ازدواج في المبيعات)، ويُعلِّم مشاريع السنوات
 # الماضية «تاريخي» فلا يتحرّك رقمٌ أُعلن من قبل. مرةً واحدة بطابع في schema_migration.
 node --experimental-sqlite scripts/backfill-project-opportunities.js || echo "project-opportunity mirror skipped"
+# التسكين الرجعي لإدارات الفرص: فرصةٌ بلا إدارة تُنسب إلى إدارة مالكها (أو منشئها) إن كانت من
+# قطاعها نفسه، وتُكتب مرآتها معها. مرةً واحدة بطابع في schema_migration، وما لا يُحسم يُترك.
+node --experimental-sqlite scripts/backfill-opportunity-departments.js || echo "opportunity department attribution skipped"
 # idempotent legacy-history backfill (INSERT … ON CONFLICT DO NOTHING) — no-op without legacy data
 node --experimental-sqlite scripts/backfill-legacy-activity.js || echo "backfill skipped"
 # توحيد العملاء يُشغَّل مرة واحدة بعد النشر عبر `railway run` (لا في الإقلاع) كي لا يخاطر بتعليقه.

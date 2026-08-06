@@ -49,6 +49,28 @@
     return '';
   }
 
+  // ── تصنيف المهمة: قائمة جاهزة أو «أخرى…» بحقل حر ──
+  // القيمة المرسَلة: مفتاح القائمة كما هو، أو النص الحر حين يُختار «أخرى…»، أو فراغ (بلا تصنيف).
+  function categoryValue(sel, other) {
+    if (!sel) return null;
+    var v = String(sel.value || '');
+    if (v === '__other') return (other && String(other.value || '').trim()) || null;
+    return v || null;
+  }
+  // يملأ القائمة من قيمة مخزَّنة: مفتاحٌ معروف يُختار مباشرة، ونصٌّ حر يفتح «أخرى…» ويكتبه.
+  function setCategory(sel, other, v) {
+    if (!sel) return;
+    var val = String(v || '');
+    var known = !val || Array.prototype.some.call(sel.options, function (o) { return o.value === val; });
+    if (known) {
+      sel.value = val;
+      if (other) { other.hidden = true; other.value = ''; }
+    } else {
+      sel.value = '__other';
+      if (other) { other.hidden = false; other.value = val; }
+    }
+  }
+
   // ── الإضافة السريعة (كل الحقول، لا ثلاثة منها) ──
   async function quickAdd(btn) {
     var title = val('qa-title');
@@ -59,10 +81,14 @@
       due_date: val('qa-due') || null,
       next_step: val('qa-next') || null,
     };
+    // الجهة تُرسَل كاملةً دائماً — الرابطان صراحةً (ولو فراغاً) ونوعُ العمل حين تُقرّره القائمة.
+    // كان الفراغ لا يُرسل شيئاً، فيقرأ الخادم «بلا نوع» ويكتب قيمته الافتراضية «مشروع» على
+    // مهمةٍ داخلية بلا مشروع — كذبة صامتة في الصف يقرؤها كل تقرير يثق بالنوع.
     var p = parentPatch(val('qa-parent'));
-    if (p.project_id) body.project_id = p.project_id;
-    if (p.opportunity_id) body.opportunity_id = p.opportunity_id;
-    if (p.work_kind === 'personal') body.work_kind = 'personal';
+    body.project_id = p.project_id || null;
+    body.opportunity_id = p.opportunity_id || null;
+    if (p.work_kind) body.work_kind = p.work_kind;
+    body.category = categoryValue(document.getElementById('qa-category'), document.getElementById('qa-category-other'));
     var who = val('qa-assignee');
     // المهمة الشخصية لصاحبها وحده — يردّها الخادم لو أُسندت لغيره، فلا تُرسَل أصلاً.
     if (who && p.work_kind !== 'personal') body.assignee_user_id = who;
@@ -107,8 +133,17 @@
     set('next', row.dataset.next || '');
     set('blocked', row.dataset.blocked || '');
     set('parent', parentValue(row));
+    setCategory($('[data-f="category"]', d), $('[data-f="category-other"]', d), row.dataset.category || '');
     set('assignee', row.dataset.assignee || '');
     set('dept', row.dataset.dept || '');
+    // زر الحذف يظهر لمن يملكه فعلاً: كاتب المهمة، أو صاحب الشخصية، أو من له صلاحية حذف إدارية.
+    var st = window.__SANAD || {};
+    var del = $('[data-f="delete"]', d);
+    if (del) {
+      var mine = !!st.uid && (row.dataset.creator === st.uid
+        || (row.dataset.kind === 'personal' && row.dataset.assignee === st.uid));
+      del.hidden = !(mine || st.canDelAnyTask);
+    }
     var pr = set('progress', row.dataset.progress || '0');
     var out = $('[data-f="progress-out"]', d);
     var paint = function () { if (out && pr) out.textContent = pr.value + '%'; };
@@ -147,6 +182,8 @@
     if (av && !personal) patch.assignee_user_id = av.value || null;
     var dv = $('[data-f="dept"]', d);
     if (dv) patch.department_id = dv.value || null;
+    var cv = $('[data-f="category"]', d);
+    if (cv) patch.category = categoryValue(cv, $('[data-f="category-other"]', d));
     if (!patch.title) { toast('عنوان المهمة مطلوب', true); return; }
     var err = $('[data-f="error"]', d);
     if (err) { err.hidden = true; err.classList.remove('err'); }
@@ -265,11 +302,44 @@
         .catch(function (err) { el.disabled = false; toast(err.message, true); });
       return;
     }
+    // إعادة فتح مهمة منجزة: النقر على دائرتها يعيدها إلى «بانتظار البدء» ويمحو ختم إنجازها.
+    if (act === 'task-reopen') {
+      if (!row) return;
+      e.preventDefault();
+      el.disabled = true;
+      api('/tasks/' + encodeURIComponent(row.dataset.task), 'PATCH', { status: 'TODO' })
+        .then(function () { toast('أُعيد فتح المهمة'); reload(); })
+        .catch(function (err) { el.disabled = false; toast(err.message, true); });
+      return;
+    }
+    // حذف المهمة المفتوحة في المحرِّر — بعد سؤال صريح، فالحذف لا يُستدرَك من الشاشة.
+    if (act === 'task-delete') {
+      e.preventDefault();
+      if (!editing) return;
+      if (!window.confirm('حذف هذه المهمة نهائياً من قوائمك؟')) return;
+      el.disabled = true;
+      api('/tasks/' + encodeURIComponent(editing), 'DELETE')
+        .then(function () { toast('حُذفت المهمة'); closeEditor(); reload(); })
+        .catch(function (err) { el.disabled = false; toast(err.message, true); });
+      return;
+    }
   });
 
   // ── تغيير الحالة من قائمة الصف ──
   var lastIdx = null;
   document.addEventListener('change', function (e) {
+    // «أخرى…» في قائمة التصنيف تفتح الحقل الحر الملاصق لها، وأي اختيار آخر يطويه ويمسحه.
+    var cat = e.target.closest ? e.target.closest('select.tk-cat') : null;
+    if (cat) {
+      var other = cat.nextElementSibling && cat.nextElementSibling.classList.contains('tk-cat-other')
+        ? cat.nextElementSibling : null;
+      if (other) {
+        other.hidden = cat.value !== '__other';
+        if (cat.value !== '__other') other.value = '';
+        else other.focus();
+      }
+      return;
+    }
     var sel = e.target.closest ? e.target.closest('select[data-action="task-status"]') : null;
     if (sel) {
       var row = sel.closest('[data-task]');

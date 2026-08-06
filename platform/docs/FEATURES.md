@@ -1,6 +1,6 @@
 # Feature registry — سند (Sanad)
 
-Single place to see every feature, its status, entry points, and tests. Derived from the code on branch `claude/evc-platform-analysis-r5nsri` (migrations 001–028, 1447 tests green). Code is authoritative — specs 01–06 and README are known-stale. Paths are relative to `platform/`. Update this file in the same commit that adds a page, router, migration, or module.
+Single place to see every feature, its status, entry points, and tests. Derived from the code on branch `claude/evc-platform-analysis-r5nsri` (migrations 001–029, 1489 tests green). Code is authoritative — specs 01–06 and README are known-stale. Paths are relative to `platform/`. Update this file in the same commit that adds a page, router, migration, or module.
 
 ## Pages
 
@@ -15,9 +15,9 @@ One row per key in the `PAGES` map (`src/web/routes.js`). Gate = `PAGE_ACCESS` (
 | `opportunities` | الفرص | Pipeline kanban + table, saved views, rot/stalled flags, weighted pipeline drill-downs | `can(u,'read','opportunity')` | src/web/views/crm.js | pages/opps.js | live |
 | `my-opportunities` | فرصي | Personal priority queue (stalled → no-next-step → on-track) | `can(u,'read','opportunity')` | src/web/views/crm.js | pages/opps.js | live |
 | `projects` | المشاريع | Project portfolio: comparison table + kanban, live filters, saved views, staffing drawer | `can(u,'read','project')` | src/web/views/pmo.js | pages/projects.js | live |
-| `tasks` | مهامي | Task workcenter: list/board/calendar, lenses me/team/notes, quick-add, bulk edit; `?who=notes` renders `notesPage` | everyone | src/web/views/pmo.js (notes lens: src/web/views/notes.js) | pages/tasks.js (notes lens: pages/notes.js) | live |
+| `tasks` | مهامي | Task workcenter: list/board/calendar, lenses me/team/notes, quick-add (with category presets + free text), reopen-done, delete-own, bulk edit; `?who=notes` renders `notesPage` | everyone | src/web/views/pmo.js (notes lens: src/web/views/notes.js) | pages/tasks.js (notes lens: pages/notes.js) | live |
 | `timesheet` | سجل الوقت | Time-entry page (data still feeds capacity/utilization reads) | `() => false` | src/web/views/people.js (`timesheetPage`) | — | off by owner decision |
-| `approvals` | الاعتمادات | Approval inbox: role-threshold queue + person-addressed staffing confirmations and task approvals | role in admin, sector_lead, department_manager, line_manager, approver, ceo_office | src/web/views/govern.js | — | live |
+| `approvals` | الاعتمادات | Approval inbox: role-threshold queue + person-addressed staffing confirmations and task approvals (request-shaped rows, reject-reason modal, no-manager notice for org admins) | role in admin, sector_lead, department_manager, line_manager, approver, ceo_office | src/web/views/govern.js | pages/approvals.js | live |
 | `team` | الفريق | Employee CRUD (hire/end dates; salary field only for salary-readers) | `can(u,'read','employee')` | src/web/views/people.js | pages/team-manage.js | live |
 | `staffing` | التسكين | Staffing span board, month stepper, bench/over/under drill-downs, internal work buckets | `can(u,'read','employee')` | src/web/views/people.js | pages/staffing.js | live |
 | `users` | المستخدمون والصلاحيات | User invites (OTP), role/scope edits, deactivate, login history, department grants | `u.role_id === 'admin'` | src/web/views/govern.js | pages/identity.js | live |
@@ -36,10 +36,10 @@ All `/api/*` routers hang off `apiRouter` (`src/modules/api.routes.js`, behind `
 
 | mount/area | routes summary | service file(s) | notes |
 |---|---|---|---|
-| /api opportunities + pipeline (inline in api.routes.js) | GET/POST `/opportunities`, GET `/:id`, GET `/:id/detail`, PATCH `/:id`, POST `/:id/stage`, POST `/:id/sector`, GET `/:id/removal-check`, DELETE `/:id`, GET `/pipeline` | src/modules/crm/opportunities.js, src/core/lifecycle/remove.js | Stage move mirrors won→project (src/modules/crm/opp-project-sync.js); removal-check calls `getOpportunity` first (IDOR guard) |
+| /api opportunities + pipeline (inline in api.routes.js) | GET/POST `/opportunities`, GET `/:id`, GET `/:id/detail`, PATCH `/:id`, POST `/:id/stage`, POST `/:id/sector`, GET `/:id/removal-check` (returns blockers + cascade preview), DELETE `/:id` (creator may delete own; sector_lead/admin in scope; time_entry blocks; cascades doc/team/task/partner-dept) | src/modules/crm/opportunities.js, src/core/lifecycle/remove.js | Stage move mirrors won→project (src/modules/crm/opp-project-sync.js); removal-check calls `getOpportunity` first (IDOR guard); UI «سحب الفرصة» in pages/opps.js (v5.1) |
 | /api projects (inline) | GET/POST `/projects`, GET/PATCH `/:id`, `/:id/staffing`, POST `/:id/staff`, PATCH/DELETE `/projects/staff/:allocId`, POST `/staffing/internal`, `/:id/candidates`, `/:id/team-load`, `/:id/progress`, `/:id/kpis`, `/:id/documents` (GET/POST + DELETE `/projects/documents/:docId`), `/:id/updates`, `/:id/tasks`, `/:id/removal-check`, DELETE `/:id` | src/modules/pmo/projects.js, src/modules/pmo/capacity.js, src/modules/pmo/progress.js, src/core/reports/metrics.js, src/core/lifecycle/remove.js | `/staffing/internal` = work-bucket allocation with no project (migration 027) |
 | /api intake (inline) | POST `/intake/parse`, POST `/intake/create`, POST `/projects/:id/deliverables/parse`, POST `/projects/:id/deliverables/bulk` | src/modules/intake/intake.js | AI extraction with regex fallback; create is one tx (project+contract+deliverables+client) |
-| /api tasks (inline) | GET `/tasks/mine`, POST `/tasks/quick`, GET `/tasks/team`, PATCH `/tasks/bulk`, PATCH `/tasks/:id` | src/modules/pmo/tasks.js | Personal tasks never cross accounts (`notPersonalSql`); pending-approval tasks hidden from others (`approvedTaskSql`) |
+| /api tasks (inline) | GET `/tasks/mine`, POST `/tasks/quick`, GET `/tasks/team`, PATCH `/tasks/bulk`, PATCH `/tasks/:id`, DELETE `/tasks/:id` (creator/personal-owner soft delete, cancels pending approval) | src/modules/pmo/tasks.js | Personal tasks never cross accounts (`notPersonalSql`); pending-approval tasks hidden from others (`approvedTaskSql`) |
 | /api timesheets (inline) | GET `/timesheets/mine`, POST `/timesheets`, POST `/timesheets/submit`, POST `/timesheets/:id/approve` | src/modules/timesheets/timesheets.js | Page is off; API + utilization math still live |
 | /api approvals (inline) | GET `/approvals/queue`, POST `/approvals`, POST `/approvals/:id/act` | src/modules/workflow/engine.js | One box for role-threshold workflows + direct (assignee) approvals: staffing confirmations and task approvals |
 | /api notifications (inline) | GET `/notifications?unread=1`, POST `/notifications/:id/read` | src/modules/notifications/notify.js | Feeds the header badge (links to /app/tasks; no notifications page) |
@@ -102,6 +102,7 @@ One row per file in `migrations/` (applied in order by `scripts/migrate.js`, rec
 | 026 | 026_opportunity_departments.sql | `opportunity_department` M:N (partner departments; `department_id` stays the single accountable dept) | multi-department opportunities |
 | 027 | 027_allocation_work_bucket.sql | `allocation.work_bucket` (internal work: bd/product/pmo with NULL project) | internal-work staffing |
 | 028 | 028_task_approval.sql | `task.approval_state` (NULL = added; PENDING = awaiting manager) + index | task approvals |
+| 029 | 029_task_category.sql | `task.category` (activity type: preset keys or free text) + data-fix reclassifying parentless `work_kind='project'` rows to `internal` | task types (v5.1) + internal-storage bugfix |
 
 ## Modules
 

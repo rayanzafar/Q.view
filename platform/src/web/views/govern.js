@@ -4,6 +4,7 @@ import { fmtSar } from '../../core/util/ids.js';
 import { all } from '../../core/db/index.js';
 import { myApprovalQueue, myDirectApprovals } from '../../modules/workflow/engine.js';
 import { approvalTargets } from '../../modules/workflow/targets.js';
+import { namesByIds } from '../../modules/org/people.js';
 import { canControlSchedules } from '../../core/reports/engine.js';
 import {
   buildPeriodReport, comparePreviousSnapshot, listPeriodSnapshots, lensOptions,
@@ -18,41 +19,78 @@ import { refreshAccountEmails } from '../../core/mail/accounts.js';
 import { resourceLabel, mailStatusLabel, mailStatusTone, auditActionLabel, reportName } from '../i18n/glossary.js';
 import { esc, statMini } from './_shared.js';
 
+// جمعٌ عربيٌّ صحيح لعدّ الإدارات في تنبيه «بلا مسؤول»: «إدارة واحدة» لا «1 إدارة».
+// (لا عدّاد عاماً في المعجم بعد — فالمساعد محلّي كي لا تُكتب قاعدة التطبيع في ملفٍ لا يملكها.)
+const deptCountAr = (n) => (n === 1 ? 'إدارة واحدة' : n === 2 ? 'إدارتان' : n <= 10 ? `${n} إدارات` : `${n} إدارة`);
+
 export async function approvalsPage(user) {
   // صندوقٌ واحد لا صندوقان: ما يُوجَّه بالدور (اعتمادات مالية) وما يُوجَّه بشخصك (تأكيد تسكين
-  // موظفك) يظهران معاً — «أين أرى ما ينتظرني» يجب أن يكون له جوابٌ واحد.
+  // موظفك واعتماد مهمته) يظهران معاً — «أين أرى ما ينتظرني» يجب أن يكون له جوابٌ واحد.
   const q = [...await myApprovalQueue(user), ...await myDirectApprovals(user)];
   // ما يُعتمَد يُقرأ باسمه لا بمعرّفه: كان العمود يطبع «مهمة · tsk_9fA2…»، فيقرّر المديرُ في
   // شيءٍ لا يعرف ما هو — أو لا يقرّر أصلاً. والاسم من مصدره (جدول العنصر نفسه) لا من نصٍّ
   // يُنسخ في الطلب لحظة رفعه، فيبقى صحيحاً لو أُعيدت تسميته قبل أن يُبَتّ فيه.
   const targets = await approvalTargets(q);
+  // اسمُ رافع الطلب: استعلامٌ واحد لكل الصفوف لا استعلامٌ في حلقة — الطابور يُفتح كل صباح.
+  // والاسم من مصدره الواحد (namesByIds) لا نسخةً ثانية من استعلام قائمة الأشخاص.
+  const reqNames = await namesByIds(q.map((a) => String(a.requested_by || '')));
   const list = q.map((a) => {
+    // الموجَّه إليك بشخصك (تأكيد تسكين، اعتماد مهمة) لا مبلغ له ولا «خطوة دور» — هو بانتظارك
+    // أنت. كان الصف يطبع «0 ر.س.» و«الخطوة 1» فيقرأ المديرُ حوكمةً ماليةً في طلبٍ ليس منها.
+    const direct = !!a.assignee_user_id;
     const t = targets.get(String(a.resource_id || '')) || null;
+    const isTask = a.resource === 'task';
+    const sub = isTask ? 'اعتماد مهمة' : resourceLabel(a.resource);
+    const requester = isTask ? (reqNames.get(String(a.requested_by || '')) || '') : '';
+    const requesterLine = requester ? ` · طلبها ${esc(requester)}` : '';
+    const amount = Number(a.amount_halalas) || 0;
     return `<tr class="border-b border-line">
     <td class="py-2.5 px-3 text-[13px]">${esc(a.workflow_name || '')}</td>
     <td class="px-3 text-[12px]">${t
       ? `<span style="font-weight:700">${esc(t.label)}</span>${t.parent ? ` <span class="text-muted">· ${esc(t.parent)}</span>` : ''}
-         <div class="text-muted text-[11px]">${esc(resourceLabel(a.resource))}</div>`
-      : `<span class="text-muted">${esc(resourceLabel(a.resource))} — لم يعد موجوداً</span>`}</td>
-    <td class="px-3 text-[13px] tabular-nums">${fmtSar(a.amount_halalas)}</td>
-    <td class="px-3">${pill('الخطوة ' + a.current_step, 'amber')}</td>
-    <td class="px-3">
-      <button onclick="Sanad.approve('${a.id}','approve')" class="text-[12px] text-green-700 font-bold">اعتماد</button>
-      <button onclick="Sanad.approve('${a.id}','reject')" class="text-[12px] text-red-600 font-bold mr-2">رفض</button></td></tr>`;
+         <div class="text-muted text-[11px]">${esc(sub)}${requesterLine}</div>`
+      : `<span class="text-muted">${esc(sub)} — لم يعد موجوداً</span>${requester ? `<div class="text-muted text-[11px]">طلبها ${esc(requester)}</div>` : ''}`}</td>
+    <td class="px-3 text-[13px] tabular-nums">${direct || !amount ? '<span class="text-muted">—</span>' : fmtSar(amount)}</td>
+    <td class="px-3">${direct ? pill('بانتظارك', 'amber') : pill('الخطوة ' + a.current_step, 'amber')}</td>
+    <td class="px-3" style="white-space:nowrap">
+      <button data-action="apr-approve" data-id="${esc(a.id)}" class="text-[12px] text-green-700 font-bold">اعتماد</button>
+      <button data-action="apr-reject" data-id="${esc(a.id)}" class="text-[12px] text-red-600 font-bold mr-2">رفض</button></td></tr>`;
   }).join('');
-  const totalAmt = q.reduce((a, x) => a + (x.amount_halalas || 0), 0);
+  // إجمالي المبالغ يخصّ ما يُوجَّه بالدور وحده: الطلب الموجَّه بشخصك بلا مبلغ أصلاً، وضمُّه
+  // إلى المجموع يطبع صفراً يُقرأ قياساً وهو فراغ. وبلا صفٍّ مالي واحد يُعرض «—» لا «0 ر.س.».
+  const finRows = q.filter((a) => !a.assignee_user_id);
+  const totalAmt = finRows.reduce((a, x) => a + (Number(x.amount_halalas) || 0), 0);
   const byRes = {}; for (const x of q) byRes[x.resource] = (byRes[x.resource] || 0) + 1;
   const resBreak = Object.entries(byRes).map(([r, n]) => `${resourceLabel(r)}: ${n}`).join(' · ') || '—';
   const strip = `<div style="display:flex;gap:.7rem;flex-wrap:wrap;margin-bottom:1rem">
     ${statMini('بانتظار اعتمادك', q.length, 'طلب')}
-    ${statMini('إجمالي المبالغ', fmtSar(totalAmt), 'قيمة قيد الاعتماد', 'brand')}
+    ${statMini('إجمالي المبالغ', finRows.length ? fmtSar(totalAmt) : '—', finRows.length ? 'قيمة قيد الاعتماد' : 'لا طلبات مالية', 'brand')}
     ${statMini('حسب النوع', Object.keys(byRes).length, resBreak)}</div>`;
-  const body = strip + card(`<div class="p-4 border-b border-line font-bold text-sm">طلبات بانتظار اعتمادك (${q.length})</div>
+  // ── إدارةٌ بلا مسؤولٍ معيَّن = مهام أهلها تُضاف دون اعتماد أحد ──
+  // يُعرَض التنبيه لمن يملك التعيين أو مساءلته لا لكل من يفتح الشاشة، وقائدُ القطاع يرى
+  // إدارات قطاعه وحدها — التنبيه دعوةٌ للفعل، وما ليس بيده ليس خبره.
+  let orphanNotice = '';
+  if (['admin', 'ceo_office', 'sector_lead'].includes(user.role_id)) {
+    const scoped = user.role_id === 'sector_lead' && user.sector_id ? user.sector_id : null;
+    const orphans = await all(
+      `SELECT d.name_ar AS dept_name, s.name_ar AS sector_name
+         FROM department d LEFT JOIN sector s ON s.id = d.sector_id
+        WHERE d.deleted_at IS NULL AND d.active = 1 AND d.manager_user_id IS NULL
+          ${scoped ? 'AND d.sector_id = ?' : ''}
+        ORDER BY s.name_ar, d.name_ar`, scoped ? [scoped] : []);
+    if (orphans.length) {
+      const names = orphans.map((d) => `${esc(d.dept_name || '')}${d.sector_name ? ` (${esc(d.sector_name)})` : ''}`).join('، ');
+      orphanNotice = `<div role="alert" style="margin-bottom:.9rem;padding:.65rem .95rem;border:1px solid #fcd34d;background:#fffbeb;color:#92400e;border-radius:10px;font-size:12.5px;line-height:1.9">
+        <b>${deptCountAr(orphans.length)} بلا مسؤول معيَّن:</b> ${names} — مهام أهلها تُضاف دون اعتماد.
+        <a href="/app/org" style="color:#92400e;font-weight:800;text-decoration:underline">عيّن المسؤول من الهيكل التنظيمي</a></div>`;
+    }
+  }
+  const body = orphanNotice + strip + card(`<div class="p-4 border-b border-line font-bold text-sm">طلبات بانتظار اعتمادك (${q.length})</div>
     <table class="w-full"><thead><tr class="text-[11px] text-muted text-right">
       <th class="py-2 px-3 font-medium">المسار</th><th class="px-3 font-medium">المورد</th><th class="px-3 font-medium">المبلغ</th>
       <th class="px-3 font-medium">الحالة</th><th class="px-3 font-medium">إجراء</th></tr></thead>
       <tbody>${list || '<tr><td class="p-4 text-muted text-sm" colspan="5">لا طلبات بانتظارك</td></tr>'}</tbody></table>`);
-  return layout({ user, active: 'approvals', title: 'الاعتمادات', body });
+  return layout({ user, active: 'approvals', title: 'الاعتمادات', body, scripts: ['/static/pages/approvals.js'] });
 }
 
 // شاشة إدارة الهوية. كانت جدول قراءةٍ بلا زرّ واحد بينما يقول دليل التشغيل «أنشئ الحسابات من

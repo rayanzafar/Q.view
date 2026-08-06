@@ -44,8 +44,11 @@
       var title = val('pp-task-title');
       if (!title) { toast('اكتب ما تريد منه — مهمة بلا عنوان لا يقرؤها أحد', true); return; }
       el.disabled = true;
+      // الجهة تُقال صراحةً: مهمةٌ من هذه اللوحة عملٌ داخلي بلا مشروع ولا فرصة. بدونها كان
+      // الخادم يكتب قيمته الافتراضية «مشروع» على مهمةٍ لا مشروع لها — نوعٌ كاذب في الصف.
       api('/tasks/quick', 'POST', {
         title: title, assignee_user_id: el.dataset.user, due_date: val('pp-task-due') || null,
+        work_kind: 'internal', project_id: null, opportunity_id: null,
       }).then(function (added) {
         toast(added && added.approval_state === 'PENDING'
           ? 'أُرسلت إلى مديرك للاعتماد — تظهر في عملك بعد اعتمادها' : 'أُضيفت المهمة ✓');

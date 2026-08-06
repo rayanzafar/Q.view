@@ -117,3 +117,29 @@ test('وفحصُ المانع يُقرأ قبل الحذف — فتُعرض ال
   assert.match(b[0], /فاتورة واحدة/);
   assert.deepEqual(await remove.removalBlockers('project', 'p_guard'), [], 'مشروعٌ نظيف عُدّ ممنوعاً');
 });
+
+// ── سحب الفرصة: المنشئ يسحب فرصته هو — والملكية لا تفتح فرص غيره ──────────────
+// «سحب الفرصة» قرارُ صاحبها قبل أن يكون قرارَ مديره: من أدخل فرصةً بالخطأ يصحّح إدخاله
+// بنفسه (`ownDelete` على نوع الفرصة وحده) — ولا يمسّ ما أدخله زملاؤه.
+const CREATOR = { id: 'u_c1', username: 'c1', role_id: 'consultant', scope: 'own', sector_id: 'S1' };
+
+test('ومنشئ الفرصة يسحب فرصته النظيفة — ولو لم يملك صلاحية الحذف', async () => {
+  await db.insert('opportunity', { id: 'o_mine', title_ar: 'فرصة أدخلتها بالخطأ', sector_id: 'S1', created_by: CREATOR.id, created_at: T });
+  const r = await remove.removeRecord({ user: CREATOR, ip: '1.1.1.1' }, 'opportunity', 'o_mine', { reason: 'إدخال مكرر' });
+  assert.equal(r.ok, true);
+  assert.ok((await db.get("SELECT deleted_at FROM opportunity WHERE id = 'o_mine'")).deleted_at, 'لم تُسحب فرصته هو');
+});
+
+test('ولا يسحب فرصة زميله — ملكية الإنشاء لا تتعدّى صاحبها', async () => {
+  await db.insert('opportunity', { id: 'o_peer', title_ar: 'فرصة زميل', sector_id: 'S1', created_by: 'u_colleague', created_at: T });
+  await assert.rejects(() => remove.removeRecord({ user: CREATOR, ip: '1.1.1.1' }, 'opportunity', 'o_peer'),
+    /صلاحية/, 'سحب فرصةً لم يُنشئها ولا يملك حذفها');
+  assert.equal((await db.get("SELECT deleted_at FROM opportunity WHERE id = 'o_peer'")).deleted_at, null);
+});
+
+test('وقائد القطاع يسحب فرص قطاعه كما كان — الباب الإداري لم يضق', async () => {
+  const LEAD = { id: 'u_sl', username: 'sl', role_id: 'sector_lead', scope: 'sector', sector_id: 'S1' };
+  const r = await remove.removeRecord({ user: LEAD, ip: '1.1.1.1' }, 'opportunity', 'o_peer', { reason: 'تنظيف بيانات' });
+  assert.equal(r.ok, true);
+  assert.ok((await db.get("SELECT deleted_at FROM opportunity WHERE id = 'o_peer'")).deleted_at, 'قائد القطاع لم يعد يسحب');
+});

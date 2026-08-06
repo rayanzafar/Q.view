@@ -192,6 +192,18 @@ export async function opportunityDetailPage(user, oppId, opts = {}) {
       </div>
     </div>`);
 
+  // ── سحب الفرصة ──────────────────────────────────────────────────────────────
+  // يظهر لمن يملك حذفها **أو لمن أنشأها** (فالمنشئ يصحّح إدخاله ولو لم يملك التحرير — ولذلك
+  // لا يوضع داخل بطاقة التحكم التي لا تُرسم له). العاقبة تُعرض قبل الضغط: النقر يجلب
+  // الموانع وما سيُسحب تبعاً من الخادم، والسبب مطلوبٌ ويُسجَّل في الأثر.
+  const removeBar = !d.canDelete ? '' : card(`<div style="padding:.75rem 1.15rem;display:flex;gap:.8rem;align-items:center;flex-wrap:wrap">
+    <div style="flex:1;min-width:220px;font-size:11.5px;color:var(--muted);line-height:1.7">
+      سحب الفرصة يزيلها من كل القوائم مع ما يتبعها — وسجل مراحلها يبقى في الأثر.
+      الفرصة التي خسرناها تُنقل إلى «مفقودة» ولا تُسحب: السجل يبقى.</div>
+    <button class="btn" data-action="opp-remove" data-id="${esc(o.id)}"
+      style="flex:0 0 auto;color:#b91c1c;border-color:#fecaca">سحب الفرصة…</button>
+  </div>`);
+
   // ── فريق الفرصة ──
   const memberRow = (m) => `<div style="display:flex;align-items:center;gap:.6rem;padding:.5rem 0;border-bottom:1px dashed var(--line)">
     <span class="kav" style="width:30px;height:30px;font-size:11px;flex:0 0 auto">${esc((m.name_ar || '؟').trim().charAt(0))}</span>
@@ -363,6 +375,7 @@ export async function opportunityDetailPage(user, oppId, opts = {}) {
       ${header}
       ${actionBar}
       ${controlCard}
+      ${removeBar}
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:.9rem;align-items:start">
         <div style="display:flex;flex-direction:column;gap:.9rem;min-width:0">${activityCard}${historyCard}</div>
         <div style="display:flex;flex-direction:column;gap:.9rem;min-width:0">${projectCard}${docsCard}${teamCard}${detailsCard}</div>
@@ -373,7 +386,8 @@ export async function opportunityDetailPage(user, oppId, opts = {}) {
       currentStage:${JSON.stringify(o.stage_id)},
       oppSector:${JSON.stringify(o.sector_id || '')},
       stages:${JSON.stringify(d.stages.map((s) => ({ id: s.id, name_ar: s.name_ar, color: s.color }))).replace(/</g, '\\u003c')},
-      canEditOpp:${d.canEdit ? 'true' : 'false'}
+      canEditOpp:${d.canEdit ? 'true' : 'false'},
+      canDeleteOpp:${d.canDelete ? 'true' : 'false'}
     });</script>`;
   return layout({
     user, active: 'opportunities', title: o.title_ar, subtitle: 'قصة القرار · الفرص والمبيعات', body,

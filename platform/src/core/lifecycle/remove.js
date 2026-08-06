@@ -122,13 +122,31 @@ export const REMOVABLE = {
     label: 'الفرصة',
     nameCol: 'title_ar',
     resource: 'opportunity',
+    // ── من أنشأ الفرصة يسحبها ──
+    // «سحب الفرصة» قرارُ صاحبها قبل أن يكون قرارَ مديره: من أدخل فرصةً بالخطأ أو كرّرها لا
+    // يحتاج قائد قطاعه ليصحّح إدخاله هو. والموانع تسري عليه كما تسري على الجميع — الملكية
+    // تفتح الباب ولا تُعطّل الحراسة.
+    ownDelete: (user, row) => !!user?.id && row.created_by === user.id,
     blockers: [
       // فرصةٌ تحوّلت إلى مشروع لم تعد فرصةً تُحذف: حذفها يقطع نسب المشروع إلى مصدره
       { table: 'project', col: 'source_opp_id', ar: (n) => countAr(n, 'مشروعٌ قائم', 'مشروعان قائمان', 'مشروعاً قائماً') },
-      { table: 'contract', col: 'opportunity_id', ar: (n) => countAr(n, 'عقد واحد', 'عقدين', 'عقداً') },
+      // (كان هنا مانعُ عقدٍ على `contract.opportunity_id` — والعمود لا وجود له في المخطط أصلاً:
+      //  العقد يُربط بالمشروع لا بالفرصة، فكان العدّ صفراً دائماً. حُذف الصفّ الميت كي لا يوحي
+      //  بحراسةٍ لا تقع — والعقد يمنع فعلاً من جهة المشروع الناتج، والمشروع الناتج مانعٌ أعلاه.)
+      // ساعات عملٍ سُجِّلت على الفرصة أثرُ كشوفٍ معتمدة — تمنع السحب كما يمنع المال
+      { table: 'time_entry', col: 'opportunity_id',
+        ar: (n) => countAr(n, 'ساعة عمل مسجَّلة واحدة', 'ساعتا عمل مسجَّلتان', 'ساعة عمل مسجَّلة') },
     ],
+    // التابع يُسحب مع فرصته في نفس المعاملة — ولا يُمَسّ `opportunity_stage_history`:
+    // أثر التدقيق يبقى (كما تبقى سطور التدقيق وسجل الدخول في حذف الحساب).
     cascade: [
       { table: 'opportunity_sector', col: 'opportunity_id', ar: 'إسناد قطاع', hard: true },
+      { table: 'document', col: 'opportunity_id', ar: 'مستند' },
+      // العضوية جدولٌ عام (group_kind/group_id) — الشرط يثبّت النوع كي لا تُسحب عضويةُ مشروعٍ
+      // صادف أن معرّفه يطابق معرّف الفرصة
+      { table: 'membership', col: 'group_id', where: "group_kind='opportunity'", ar: 'عضوية فريق' },
+      { table: 'task', col: 'opportunity_id', ar: 'مهمة' },
+      { table: 'opportunity_department', col: 'opportunity_id', ar: 'إسناد إدارة مشاركة', hard: true },
       { table: 'crm_activity', col: 'opportunity_id', ar: 'نشاط' },
       { table: 'proposal', col: 'opportunity_id', ar: 'عرض' },
     ],
@@ -222,6 +240,27 @@ export async function removalBlockers(kind, id, ctx = null) {
 }
 
 /**
+ * العاقبة كاملةً قبل الضغط: الموانع، وهل الحذف ممكن، **وما سيُسحب تبعاً بعدده** — فمن يؤكد
+ * السحب يعرف أن معه مستندَين ومهمة، لا أن «شيئاً ما» سيختفي. العدّ يطابق حلقة الحذف نفسها
+ * (نفس الشرط ونفس فحص شكل الجدول) كي لا تَعِد المعاينةُ بما لا يفعله الحذف.
+ * @returns {{blockers:string[], removable:boolean, cascades:{label:string,count:number}[]}}
+ */
+export async function removalPreview(kind, id, ctx = null) {
+  const cfg = REMOVABLE[kind];
+  if (!cfg) throw badRequest('نوعٌ غير معروف للحذف');
+  const blockers = await removalBlockers(kind, id, ctx);
+  const cascades = [];
+  for (const c of cfg.cascade) {
+    const shape = await shapeOf(c.table, c.col);
+    if (!shape.hasCol) continue;
+    if (!shape.soft && !c.hard) continue; // حلقة الحذف تتركه — فلا يُعدّ في المعاينة
+    const count = await countLive(c.table, c.col, id, c.where || '');
+    cascades.push({ label: c.ar, count });
+  }
+  return { blockers, removable: !blockers.length, cascades };
+}
+
+/**
  * حذفٌ ناعم محروس. يرمي رسالةً عربية تسمّي المانع بعدده، أو يحذف الأصل وتابعه معاً.
  * @returns {{ok:true, id:string, cascaded:Record<string,number>}}
  */
@@ -230,7 +269,10 @@ export async function removeRecord(ctx, kind, id, opts = {}) {
   if (!cfg) throw badRequest('نوعٌ غير معروف للحذف');
   const row = await get(`SELECT * FROM ${cfg.table} WHERE id = ? AND deleted_at IS NULL`, [id]);
   if (!row) throw notFound(`${cfg.label} غير موجود أو محذوف سابقاً`);
-  if (!can(ctx.user, 'delete', cfg.resource, row)) {
+  // الصلاحية الإدارية **أو** ملكية الإنشاء إن فتحها النوع (`ownDelete`): من أنشأ السجل يصحّح
+  // إدخاله بنفسه. والموانع أدناه تسري على الطريقين بلا فرق — الملكية لا تُعطّل الحراسة.
+  const allowed = can(ctx.user, 'delete', cfg.resource, row) || (cfg.ownDelete && cfg.ownDelete(ctx.user, row));
+  if (!allowed) {
     throw forbidden(cfg.denyAr || `حذف ${cfg.label} يتطلب صلاحية إدارية على قطاعه`);
   }
 
@@ -253,13 +295,16 @@ export async function removeRecord(ctx, kind, id, opts = {}) {
       if (!shape.hasCol) continue;
       // جدولٌ بلا حذفٍ ناعم لا يُختم — يُترك كما هو ويُذكر أنه لم يُمسّ، فلا ادّعاءَ تنظيفٍ لم يحدث
       if (!shape.soft && !c.hard) continue;
+      // `where` شرطٌ ثابت مكتوب في هذا الملف (لا مدخلَ مستخدم فيه بحال) — كما `extra` في العدّ:
+      // جدولٌ عام كالعضوية (group_kind/group_id) يحتاج تثبيت النوع كي لا يُسحب صفُّ نوعٍ آخر.
+      const cond = c.where ? ` AND (${c.where})` : '';
       if (c.hard) {
         // جداول الربط بلا حذفٍ ناعم: صفُّ ربطٍ إلى أصلٍ محذوف لا معنى له ولا أثر فيه
-        const r = await run(`DELETE FROM ${c.table} WHERE ${c.col} = ?`, [id]);
+        const r = await run(`DELETE FROM ${c.table} WHERE ${c.col} = ?${cond}`, [id]);
         if (Number(r.changes || 0)) cascaded[c.ar] = Number(r.changes);
         continue;
       }
-      const r = await run(`UPDATE ${c.table} SET deleted_at = ? WHERE ${c.col} = ? AND deleted_at IS NULL`, [stamp, id]);
+      const r = await run(`UPDATE ${c.table} SET deleted_at = ? WHERE ${c.col} = ? AND deleted_at IS NULL${cond}`, [stamp, id]);
       if (Number(r.changes || 0)) cascaded[c.ar] = Number(r.changes);
     }
     // ما يُكمل الحذف لهذا النوع (قطعُ جلسات الحساب وتحريرُ بريده) — داخل المعاملة نفسها:
