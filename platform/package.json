@@ -19,7 +19,8 @@
     "sweep": "node --experimental-sqlite scripts/sweep.mjs",
     "e2e": "node --experimental-sqlite scripts/e2e.mjs",
     "evidence": "node --experimental-sqlite scripts/evidence.mjs",
-    "quality": "sh -c 'set -e; for f in $(find src scripts -name \"*.js\" -o -name \"*.mjs\"); do node --check \"$f\"; done; echo \"syntax: clean\"; node scripts/check-glossary.mjs; npm test; npm run e2e'",
+    "check-docs": "node scripts/check-docs.mjs",
+    "quality": "sh -c 'set -e; for f in $(find src scripts -name \"*.js\" -o -name \"*.mjs\"); do node --check \"$f\"; done; echo \"syntax: clean\"; node scripts/check-glossary.mjs; node scripts/check-docs.mjs; npm test; npm run e2e'",
     "backup": "node --experimental-sqlite scripts/backup.js"
   },
   "dependencies": {

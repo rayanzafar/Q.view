@@ -29,5 +29,12 @@ Node 22 (`--experimental-sqlite`), Express 5, ES modules, **zero build step**. S
 - Deploy protocol: quality green → (pg-backup if schema/data change) → `railway up` → `/ready` → sweep against staging → evidence screenshots → CHANGELOG entry.
 - Never disable/skip a failing check to get green. Root-cause it.
 
+## Documentation contract
+The standing dev baseline lives in `docs/` — `ARCHITECTURE.md` (system map), `FEATURES.md` (feature registry), `KNOWN-ISSUES.md` (open defects & deferred items), `CHANGELOG.md` (per-change narrative). `docs/README.md` maps every doc and when it must change. Rules:
+- A commit that adds/changes a **page, route, module, or migration** updates the matching `FEATURES.md` row(s) **in the same commit** — `scripts/check-docs.mjs` (runs inside `npm run quality`) fails on drift.
+- Discovering a defect ⇒ add a `KNOWN-ISSUES.md` row immediately; the fixing commit **removes the row** and adds a regression test + CHANGELOG entry.
+- CHANGELOG versions are monotonic (one per notable change) with an explicit deployed/not-deployed marker.
+- Structural or irreversible decisions get a new ADR in `docs/adr/`; `docs/specs/01–06` are frozen history — on divergence, code + ADRs win. Significant architecture changes update `ARCHITECTURE.md` in the same commit.
+
 ## Files you must not edit casually
 - `migrations/001–00N` once deployed (immutable), `seed/*` (data snapshots), `src/core/db/index.js` (driver core), `.railwayignore`/`.gitignore` exclusion lists for secrets.

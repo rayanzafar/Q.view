@@ -1,5 +1,8 @@
 # Session Handoff — Security/Reliability Audit & Remediation (2026-08-05)
 
+> **[2026-08-06] HISTORICAL DOCUMENT — read before acting on anything below.**
+> PR #3 was **merged on 2026-08-05** into `claude/evc-platform-analysis-r5nsri`, which is now the working branch (per root `CLAUDE.md`) — the branch instructions in §0/§2 are obsolete. The standing baseline now lives in `docs/ARCHITECTURE.md` + `docs/FEATURES.md` + `docs/KNOWN-ISSUES.md`; the security status is `docs/SECURITY-REPORT.md` (2026-08-06). The "this sandbox CANNOT deploy" statement in §4 is **machine-specific**: the 2026-08-06 server has Railway egress, the Railway CLI, and a token — `railway up` works from it. Test count has since grown to 1447.
+
 > Continuation brief for picking up this work in a **new Claude Code / engineering session on another machine**.
 > Read this end-to-end, then read `platform/CLAUDE.md` (root) and `platform/platform/CLAUDE.md`… i.e. `/CLAUDE.md` + `/platform/CLAUDE.md` for the engineering conventions. Everything below is current as of the last commit on branch `claude/tool-issues-audit-qtq4a6`.
 
