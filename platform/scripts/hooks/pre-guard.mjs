@@ -23,7 +23,10 @@ if (tool === 'Edit' || tool === 'Write') {
 if (tool === 'Bash') {
   const cmd = j.tool_input?.command || '';
   const cwd = j.cwd || process.cwd();
-  const release = process.env.SANAD_RELEASE === '1';
+  // جلسةُ الإطلاق تُعلَن صراحةً: إمّا في بيئة الجلسة (SANAD_RELEASE=1) أو **بادئةً في الأمر نفسه**
+  // (`SANAD_RELEASE=1 railway up …`) — علامةٌ مقصودةٌ مرئيةٌ في السطر لا تُكتَب سهواً، فالنشر
+  // فعلٌ واعٍ لا عرَضيّ، والاختبار الاستكشافي لا يكتبها بحال.
+  const release = process.env.SANAD_RELEASE === '1' || /\bSANAD_RELEASE=1\b/.test(cmd);
   // النشر والوصول للبيئة الحيّة فعلٌ مقصود لا عرَضيّ: جلسة الاختبار الاستكشافي لا تصل إليهما.
   // railway **مستدعىً برنامجاً** (في موضع أمرٍ: بدايةً أو بعد فاصلٍ صَدَفيّ، مع إمكان إسناد
   // متغيّرات بيئةٍ قبله) يمسّ المشروع الحيّ — فيُمنَع ما لم تكن جلسةَ إطلاقٍ صريحة (SANAD_RELEASE=1).
