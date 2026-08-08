@@ -43,6 +43,7 @@ before(async () => {
   await db.insert('allocation', { id: 'al1', project_id: 'p_kids', employee_id: 'e1', sector_id: 'S1', year: 2026, created_at: T });
   await db.insert('task', { id: 'tk1', project_id: 'p_kids', title: 'مهمة', status: 'TODO', created_at: T });
   await db.insert('opportunity', { id: 'o_clean', title_ar: 'فرصة نظيفة', sector_id: 'S1', created_at: T });
+  await db.insert('opportunity', { id: 'o_clean2', title_ar: 'فرصة نظيفة أخرى', sector_id: 'S1', created_at: T });
   await db.insert('opportunity', { id: 'o_won', title_ar: 'فرصة صارت مشروعاً', sector_id: 'S1', created_at: T });
   await db.insert('project', { id: 'p_from_opp', name_ar: 'مشروع من فرصة', sector_id: 'S1', source_opp_id: 'o_won', status: 'نشط', created_at: T });
 });
@@ -86,9 +87,28 @@ test('وفرصةٌ تحوّلت إلى مشروع لا تُحذف — الحذف
 });
 
 test('والفرصة النظيفة تُحذف', async () => {
-  const r = await remove.removeRecord(ctx, 'opportunity', 'o_clean');
+  const r = await remove.removeRecord(ctx, 'opportunity', 'o_clean', { reason: 'إدخال مكرر' });
   assert.equal(r.ok, true);
   assert.ok((await db.get("SELECT deleted_at FROM opportunity WHERE id = 'o_clean'")).deleted_at);
+});
+
+test('regression (KI-029): سحب الفرصة بلا سبب يُرَدّ خادمياً — والسبب مطلوب حتى للنظيفة', async () => {
+  // فرصةٌ نظيفة (لا مانع) لكن بلا سبب: يجب أن تُرَدّ ببادئة «سحبُ الفرصة يتطلب ذكرَ السبب»
+  await assert.rejects(() => remove.removeRecord(ctx, 'opportunity', 'o_clean2'), /يتطلب ذكرَ السبب/);
+  await assert.rejects(() => remove.removeRecord(ctx, 'opportunity', 'o_clean2', { reason: '   ' }), /يتطلب ذكرَ السبب/);
+  // ولم تُحذف: الرفض قبل أي كتابة
+  assert.equal((await db.get("SELECT deleted_at FROM opportunity WHERE id = 'o_clean2'")).deleted_at, null);
+  // ومع سبب: تُحذف ويُسجَّل السبب في التدقيق
+  const r = await remove.removeRecord(ctx, 'opportunity', 'o_clean2', { reason: 'خطأ إدخال' });
+  assert.equal(r.ok, true);
+  const a = await db.get("SELECT detail_json FROM audit_log WHERE resource = 'opportunity' AND resource_id = 'o_clean2' ORDER BY at DESC");
+  assert.match(String(a.detail_json), /السبب: خطأ إدخال/);
+});
+
+test('regression (KI-030): رسالة «غير موجودة» للفرصة مؤنّثةٌ (توافق الجنس)', async () => {
+  await assert.rejects(() => remove.removeRecord(ctx, 'opportunity', 'o_ghost', { reason: 'x' }), /غير موجودة أو محذوفة/);
+  // والمشروع يبقى مذكّراً
+  await assert.rejects(() => remove.removeRecord(ctx, 'project', 'p_ghost'), /غير موجود أو محذوف/);
 });
 
 test('والصلاحية تُفحص في الخدمة لا في الشاشة — موظفٌ لا يحذف شيئاً', async () => {

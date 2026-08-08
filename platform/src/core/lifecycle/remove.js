@@ -120,8 +120,14 @@ export const REMOVABLE = {
   opportunity: {
     table: 'opportunity',
     label: 'الفرصة',
+    fem: true,            // «الفرصة» مؤنّثة — لتوافق الصفات والضمائر في رسائل الحذف (لا «موجود» و«عليه»)
     nameCol: 'title_ar',
     resource: 'opportunity',
+    // ── سببُ السحب يُفرَض خادمياً ──
+    // «سحب الفرصة يطلب سبباً يُسجَّل في التدقيق» — وعدُ سجل التغييرات v5.1. كان يُفرَض في المتصفح
+    // وحده، فطلبٌ مباشر بلا سبب يمرّ ويترك سطر تدقيقٍ بلا «لماذا». يُفرَض هنا كما يُفرَض سببُ
+    // عكس الفوز في moveStage — الحساب لا يُبنى على تهذيب الواجهة.
+    requireReason: true,
     // ── من أنشأ الفرصة يسحبها ──
     // «سحب الفرصة» قرارُ صاحبها قبل أن يكون قرارَ مديره: من أدخل فرصةً بالخطأ أو كرّرها لا
     // يحتاج قائد قطاعه ليصحّح إدخاله هو. والموانع تسري عليه كما تسري على الجميع — الملكية
@@ -268,7 +274,7 @@ export async function removeRecord(ctx, kind, id, opts = {}) {
   const cfg = REMOVABLE[kind];
   if (!cfg) throw badRequest('نوعٌ غير معروف للحذف');
   const row = await get(`SELECT * FROM ${cfg.table} WHERE id = ? AND deleted_at IS NULL`, [id]);
-  if (!row) throw notFound(`${cfg.label} غير موجود أو محذوف سابقاً`);
+  if (!row) throw notFound(`${cfg.label} ${cfg.fem ? 'غير موجودة أو محذوفة سابقاً' : 'غير موجود أو محذوف سابقاً'}`);
   // الصلاحية الإدارية **أو** ملكية الإنشاء إن فتحها النوع (`ownDelete`): من أنشأ السجل يصحّح
   // إدخاله بنفسه. والموانع أدناه تسري على الطريقين بلا فرق — الملكية لا تُعطّل الحراسة.
   const allowed = can(ctx.user, 'delete', cfg.resource, row) || (cfg.ownDelete && cfg.ownDelete(ctx.user, row));
@@ -281,9 +287,16 @@ export async function removeRecord(ctx, kind, id, opts = {}) {
   if (blockers.length) {
     throw badRequest(cfg.refuseAr
       ? cfg.refuseAr(name, blockers)
-      : `لا يمكن حذف ${cfg.label} «${name}» — عليه ${blockers.join(' و')}. `
+      : `لا يمكن حذف ${cfg.label} «${name}» — ${cfg.fem ? 'عليها' : 'عليه'} ${blockers.join(' و')}. `
         + 'السجلات المالية والتعاقدية لا تُحذف: انقلها أو أغلقها أولاً، أو غيّر حالة السجل إلى «مُلغى» بدل حذفه.',
     );
+  }
+
+  // السبب يُفرَض **بعد** الموانع: الفرصة الممنوعة تُخبر بمانعها لا بطلب سببٍ لا محلَّ له (والواجهة
+  // تُظهر حقل السبب حين لا مانع، فيتطابق الترتيبان). التحقّق قبل أي كتابة.
+  const reason = String(opts.reason || '').trim();
+  if (cfg.requireReason && !reason) {
+    throw badRequest(`سحبُ ${cfg.label} يتطلب ذكرَ السبب — يُسجَّل في سجل التدقيق.`);
   }
 
   const cascaded = {};
@@ -315,7 +328,7 @@ export async function removeRecord(ctx, kind, id, opts = {}) {
     await audit(ctx, {
       action: 'delete', resource: cfg.resource, resourceId: id, sectorId: row.sector_id || null,
       detail: `حذف ${cfg.label} «${name}»${tail ? ` ومعه ${tail}` : ''}${extra ? ` — ${extra}` : ''}`
-        + (opts.reason ? ` — السبب: ${String(opts.reason).slice(0, 160)}` : ''),
+        + (reason ? ` — السبب: ${reason.slice(0, 160)}` : ''),
     });
   });
   return { ok: true, id, name, cascaded, note: extra };
