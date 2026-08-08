@@ -15,6 +15,7 @@
 //   NODE_USE_ENV_PROXY=1                      (Node fetch honors HTTPS_PROXY)
 //   NODE_EXTRA_CA_CERTS=/root/.ccr/ca-bundle.crt   (agent-proxy CA)
 // Optional: --budget <ms> fails the sweep when overall P95 exceeds the budget.
+import './lib/throwaway-rbac-db.mjs'; // MUST be first: defaults SANAD_DB before any app module snapshots config
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { ROLES, PAGES, DEMO_PW, API_PROBES, AI_CHAT_PROBES, pageExpected, expectedStatus, loadPageAccess } from './lib/expectations.mjs';
@@ -126,10 +127,8 @@ async function loginWeb(username, attempt = 0) {
 // process (may target a remote base), so hydrate the cache from a throwaway local DB — the grant
 // matrix is seeded identically in every environment.
 {
-  const { mkdtempSync } = await import('node:fs');
-  const { tmpdir } = await import('node:os');
-  const { join } = await import('node:path');
-  if (!process.env.SANAD_DB) process.env.SANAD_DB = join(mkdtempSync(join(tmpdir(), 'sweep-rbac-')), 'rbac.db');
+  // SANAD_DB is already defaulted to a throwaway by ./lib/throwaway-rbac-db.mjs (first import),
+  // so this hydration never touches the team's dev DB even when the sweep targets a remote base.
   const { migrate } = await import('./migrate.js');
   const { seedRbac } = await import('./seed-rbac.js');
   await migrate();

@@ -63,7 +63,8 @@ Business logic in `<area>/<area>.js` (authz + validation + tx + audit **inside t
 
 - Boot & seeds: `boot.sh` (§7), `migrate.js`, `seed-rbac.js`, `seed-staging.js`, `seed-admin.js`, `seed-roles.js`, one-shot owner-directive scripts (`apply-owner-*.js`, `backfill-*.js`).
 - Gates: `sweep.mjs` (live 16-role × 21-page sweep: status/leak/jargon/P95), `e2e.mjs` + `evidence.mjs` (pinned Chromium at `/opt/pw-browsers`), `check-glossary.mjs` (static jargon scanner), `check-deps.mjs` (pretest guard), `render-parity.mjs` (byte-parity for refactors), `lib/expectations.mjs` — the **single expectation table** shared by sweep and `tests/security/permissions-matrix.test.js` so they can never drift.
-- Backups: `pg-backup.sh` (mandatory before any live migration/backfill) / `pg-restore.sh`; `backup.js` (dev SQLite). Guard hooks: `hooks/pre-guard.mjs` blocks secret-file edits, deployed-migration edits, and any mutation of legacy Railway project `honest-spirit`.
+- Backups: `pg-backup.sh` (mandatory before any live migration/backfill) / `pg-restore.sh`; `backup.js` (dev SQLite). Guard hooks: `hooks/pre-guard.mjs` blocks secret-file edits, deployed-migration edits (any existing `migrations/NNN_*.sql`), any `railway` command or staging-URL access outside a release session (`SANAD_RELEASE=1`), and mutation of legacy Railway project `honest-spirit`.
+- QA lane: `qa-up.mjs` (boot/tear down a disposable, air-gapped local instance — temp SQLite, loopback, all 16 personas) sharing `lib/qa-instance.mjs` with `e2e.mjs`. Agent-driven via `/qa-explore` + the `qa-explore` skill + `qa-explorer` agent (report-only, never touches the live deployment). See `docs/qa/README.md`.
 
 ### Tests — `tests/`
 
