@@ -152,7 +152,9 @@ export const ROLE_GRANTS = {
     // ── الفرص: فرصةُ إدارته تُفتح وتتحرّك مراحلها بيده ──
     // «لازم في طريقة أقدر أضيف الفرص والحالة تبعها» — والقراءة وحدها كانت تجعل الإدارة تُنسب
     // إليها الفرص في التقارير آخر السنة ولا تملك إدخال واحدة منها.
-    ...crud(['opportunity'], 'department', ['read', 'create', 'update']),
+    // والحذف بقرار المالك (٢٠٢٦-٠٨): سحبُ الفرصة لثلاثةٍ فقط — مدير الإدارة (في إدارته)، وقائد
+    // القطاع (في قطاعه)، ومدير تطوير الأعمال (فرصه هو) — ومنشئُها. لا أحد سواهم.
+    ...crud(['opportunity'], 'department', ['read', 'create', 'update', 'delete']),
     ...crud(['task'], 'department', ['read', 'create', 'update']),
     { resource: 'task', action: 'approve', scope: 'department' },
     { resource: 'timesheet', action: 'approve', scope: 'department' },
@@ -218,6 +220,8 @@ export const ROLE_GRANTS = {
     { resource: 'opportunity', action: 'read', scope: 'own' },
     { resource: 'opportunity', action: 'create', scope: 'sector' },
     { resource: 'opportunity', action: 'update', scope: 'own' },
+    // سحبُ الفرصة لمدير تطوير الأعمال في فرصه هو (قرار المالك ٢٠٢٦-٠٨) — لا فرص غيره.
+    { resource: 'opportunity', action: 'delete', scope: 'own' },
     ...crud(['client', 'contact', 'proposal', 'pricing_line', 'service'], 'sector',
       ['read', 'create', 'update']),
     ...read(['project', 'report', 'kpi'], 'sector'),

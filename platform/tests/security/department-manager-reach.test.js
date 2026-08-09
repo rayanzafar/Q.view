@@ -98,9 +98,10 @@ test('والتصرّف يبقى في إدارته وحدها — يكتب فيه
     ['update', 'project'], ['update', 'deliverable'], ['create', 'allocation']]) {
     assert.equal(can(DM, a, res, inSector), false, `كتب «${a}» على «${res}» في إدارةٍ أخرى من قطاعه`);
   }
-  for (const res of ['opportunity', 'project']) {
-    assert.equal(can(DM, 'delete', res, myDept), false, `يملك حذف «${res}» — والحذف لا رجعة فيه فيبقى لقائد القطاع`);
-  }
+  // حذفُ الفرصة صار له في إدارته (قرار المالك v5.6) — لا في إدارةٍ أخرى، والمشروع يبقى محجوباً.
+  assert.equal(can(DM, 'delete', 'opportunity', myDept), true, 'لا يملك حذف فرصة إدارته — والقرار منحه إياه');
+  assert.equal(can(DM, 'delete', 'opportunity', inSector), false, 'حذف فرصة إدارةٍ أخرى في قطاعه');
+  assert.equal(can(DM, 'delete', 'project', myDept), false, 'يملك حذف المشروع — والحذف لا رجعة فيه فيبقى لقائد القطاع');
 });
 
 // ── الهامش والكلفة صارا له بقرار مالك لاحق — والراتب وحده بقي مختوماً ──────────

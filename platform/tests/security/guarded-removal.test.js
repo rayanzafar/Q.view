@@ -163,3 +163,24 @@ test('وقائد القطاع يسحب فرص قطاعه كما كان — ال�
   assert.equal(r.ok, true);
   assert.ok((await db.get("SELECT deleted_at FROM opportunity WHERE id = 'o_peer'")).deleted_at, 'قائد القطاع لم يعد يسحب');
 });
+
+// حذفُ الفرصة محصورٌ (قرار المالك ٢٠٢٦-٠٨) في: مدير الإدارة (فرص إدارته)، وقائد القطاع (قطاعه)،
+// ومدير تطوير الأعمال (فرصه هو) — ومنشئها. لا أحد سواهم. هنا الأدوارُ صراحةً بفحص can(delete).
+test('حذف الفرصة: مدير الإدارة يحذف فرص إدارته لا إدارةٍ أخرى', () => {
+  const DM = { id: 'u_dm', role_id: 'department_manager', scope: 'department', sector_id: 'S1', departmentIds: new Set(['D1']) };
+  assert.equal(rbac.can(DM, 'delete', 'opportunity', { sector_id: 'S1', department_id: 'D1' }), true, 'مدير الإدارة لا يحذف فرصة إدارته');
+  assert.equal(rbac.can(DM, 'delete', 'opportunity', { sector_id: 'S1', department_id: 'D2' }), false, 'حذف فرصة إدارةٍ لا يديرها');
+});
+
+test('حذف الفرصة: مدير تطوير الأعمال يحذف فرصه هو لا فرص غيره', () => {
+  const BD = { id: 'u_bd', role_id: 'bd_manager', scope: 'own', sector_id: 'S1' };
+  assert.equal(rbac.can(BD, 'delete', 'opportunity', { sector_id: 'S1', owner_user_id: 'u_bd' }), true, 'لا يحذف فرصه هو');
+  assert.equal(rbac.can(BD, 'delete', 'opportunity', { sector_id: 'S1', owner_user_id: 'u_other' }), false, 'حذف فرصة غيره');
+});
+
+test('حذف الفرصة: لا أحد سوى الثلاثة — الاستشاري ومدير المشروع لا يحذفان بدورهما', () => {
+  const CONS = { id: 'u_cc', role_id: 'consultant', scope: 'own', sector_id: 'S1' };
+  const PM = { id: 'u_pm', role_id: 'project_manager', scope: 'own', sector_id: 'S1' };
+  assert.equal(rbac.can(CONS, 'delete', 'opportunity', { sector_id: 'S1', owner_user_id: 'u_cc' }), false, 'الاستشاري حذف بدوره لا بمِلكه');
+  assert.equal(rbac.can(PM, 'delete', 'opportunity', { sector_id: 'S1', department_id: 'D1' }), false, 'مدير المشروع يحذف الفرص');
+});
