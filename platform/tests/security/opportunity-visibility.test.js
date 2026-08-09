@@ -101,6 +101,16 @@ before(async () => {
   // القائمة تعرضها له عبر صف المشاركة، فيجب أن يفتحها صفّياً كذلك.
   await mkOpp('O_MPART', 'فرصة تشارك فيها الإدارة المُقادة', 'D_B', 'u_lead');
   await db.insert('opportunity_department', { opportunity_id: 'O_MPART', department_id: 'D_M', created_at: T });
+
+  // ── الأيتام: فرصةٌ بلا إدارة (بورتفوليو الفوز التاريخي المستورد بلا مالكٍ ولا إدارة) ──
+  // تظهر لمدير الإدارة في قطاعه هو كما تُفتح صفّياً، ولا تظهر لدورٍ «خاصتي» (BD ولو قاد إدارة)،
+  // ولا تعبر القطاع. قطاعٌ ثانٍ لإثبات عدم العبور.
+  await db.insert('sector', { id: 'SOL2', name_ar: 'قطاع آخر', kind: 'delivery', active: 1, created_at: T });
+  await mkOpp('O_ORPHAN', 'يتيمةٌ في القطاع', null, 'u_lead');
+  await db.insert('opportunity', {
+    id: 'O_ORPHAN2', title_ar: 'يتيمةٌ في قطاعٍ آخر', sector_id: 'SOL2', department_id: null,
+    stage_id: 'LEAD', client_id: 'CL', value_halalas: 1000000, owner_user_id: 'u_lead',
+    year: YEAR, stage_changed_at: T, created_at: T });
 });
 after(async () => { await db.close(); rmSync(dir, { recursive: true, force: true }); });
 
@@ -154,14 +164,68 @@ test('وفرصةٌ تشارك فيها إدارتُه المُقادة: تُعر
 });
 
 // ── مديرة الإدارة: المسؤولة والمشارِكة، وكل معروضٍ يُفتح ─────────────────────
-test('مديرة الإدارة ترى فرص إدارتها — المسؤولة والمشارِكة — وكلُّ صفٍّ معروضٍ يُفتح', async () => {
+test('مديرة الإدارة ترى فرص إدارتها — المسؤولة والمشارِكة والأيتام — وكلُّ صفٍّ معروضٍ يُفتح', async () => {
   const ids = await listedIds('u_dm');
-  assert.deepEqual(ids, ['O_A1', 'O_PART'], 'قائمتها ليست: فرص إدارتها + ما تشارك فيه');
+  // فرص إدارتها (O_A1) + ما تشارك فيه (O_PART) + اليتيمة في قطاعها (O_ORPHAN)
+  assert.deepEqual(ids, ['O_A1', 'O_ORPHAN', 'O_PART'], 'قائمتها ليست: فرص إدارتها + ما تشارك فيه + أيتام قطاعها');
   const dm = await sess('u_dm');
   for (const id of ids) {
     await assert.doesNotReject(() => opps.getOpportunity(dm, id),
       `«${id}» تُعرض في قائمتها ولا تُفتح`);
   }
+});
+
+// ── الأيتام: القائمة تُحاذي الصفّ ────────────────────────────────────────────
+// انحدار الشكوى الحيّة (ريان ظفر بعد v5.2): «مشاريع كانت WIN اختفت». الفرصة بلا إدارةٍ في
+// قطاع مدير الإدارة كان الصفُّ يفتحها والقائمةُ تُخفيها — فتُفتح بالعنوان ولا تظهر. الآن تُعرض
+// وتُفتح معاً، ولا تعبر القطاع.
+test('اليتيمة في قطاع مديرة الإدارة: تُعرض في قائمتها **وتُفتح** (القائمة تُحاذي الصفَّ)', async () => {
+  const dm = await sess('u_dm');
+  assert.ok((await listedIds('u_dm')).includes('O_ORPHAN'), 'اليتيمة غائبة عن قائمة مديرة الإدارة');
+  const one = await opps.getOpportunity(dm, 'O_ORPHAN');
+  assert.equal(one.id, 'O_ORPHAN', 'تُعرض في القائمة ولا تُفتح — عين التناقض المعكوس');
+  // ملاحظة الحدود: الصفُّ بلا إدارةٍ في القطاع نفسه داخلٌ في مدى مدير الإدارة **قراءةً وكتابةً**
+  // منذ v5.2 (scopeReaches، «ما لا يُحسم» — وهو مقصودٌ كي لا يُحرَم من كتابة المهام بلا إدارة).
+  // إصلاحُنا يخصّ القائمة (القراءة) وحدها ليُحاذيها بالصفّ؛ سلوكُ الكتابة على الأيتام سابقٌ له
+  // ولا يمسّه هذا الفحص — فلا يُدّعى هنا منعُ قلمٍ لم يكن ممنوعاً.
+  const row = await db.get('SELECT * FROM opportunity WHERE id = ?', ['O_ORPHAN']);
+  assert.equal(can(dm, 'read', 'opportunity', row), true, 'الصفّ لا يُفتح قراءةً — القائمة والصفّ افترقا');
+});
+
+test('واليتيمة في قطاعٍ آخر لا تُعرض ولا تُفتح لمديرة إدارةٍ في قطاعٍ غيره', async () => {
+  const dm = await sess('u_dm');
+  assert.ok(!(await listedIds('u_dm')).includes('O_ORPHAN2'), 'يتيمةُ قطاعٍ آخر ظهرت في قائمتها');
+  await assert.rejects(() => opps.getOpportunity(dm, 'O_ORPHAN2'), (e) => e.status === 403,
+    'يتيمةُ قطاعٍ آخر فُتحت بالعنوان المباشر');
+});
+
+test('ودورُ «خاصتي» لا ينال الأيتام: BD — ولو قاد إدارةً — لا يرى اليتيمة (وإلا عاد التناقض معكوساً)', async () => {
+  // الشرط roleIsDept (لا managedDepartmentIds): u_bdlead يقود D_M لكن دوره «خاصتي» — صفُّه لا
+  // يفتح اليتيمة (managedDepartmentReaches يلزمه معرّف إدارةٍ مطابق)، فإدراجُها في قائمته يفرّق
+  // القائمةَ والصفَّ. غيابها من قائمته هو الدليل.
+  assert.ok(!(await listedIds('u_bd')).includes('O_ORPHAN'), 'BD نقيّ رأى اليتيمة');
+  assert.ok(!(await listedIds('u_bdlead')).includes('O_ORPHAN'), 'BD يقود إدارةً رأى اليتيمة — تناقضٌ معكوس');
+  const bdlead = await sess('u_bdlead');
+  await assert.rejects(() => opps.getOpportunity(bdlead, 'O_ORPHAN'), (e) => e.status === 403,
+    'وفُتحت له بالعنوان المباشر — القائمة والصفّ افترقا');
+});
+
+// ── منحٌ شخصيٌّ على إدارةٍ لا يديرها (سيناريو ريان/المدن الذكية) ──────────────
+// «أعطِه المدن الذكية كذلك» — عبر المنح الشخصي لا بتبديل مدير الإدارة. المنح يوسّع القائمة
+// والصفَّ معاً بالآلية نفسها التي بُنيت في v5.2 (personalDeptClause + personalGrantReaches).
+test('منحٌ شخصيّ على إدارةٍ أخرى يُظهر فرصها لمديرة الإدارة — قائمةً وفتحاً', async () => {
+  // قبل المنح: O_PARTNEG (مسؤولتها D_B) خارج نطاق u_dm
+  assert.ok(!(await listedIds('u_dm')).includes('O_PARTNEG'), 'ظهرت قبل المنح');
+  await db.insert('user_department_grant', {
+    id: 'g_dm_db', user_id: 'u_dm', resource: 'opportunity', action: 'read',
+    department_id: 'D_B', note: 'رؤية مؤقتة', granted_by: 'u_lead', created_at: T });
+  // بعد المنح: كل فرص D_B تظهر لها وتُفتح
+  const ids = await listedIds('u_dm');
+  assert.ok(ids.includes('O_PARTNEG'), 'المنح لم يوسّع القائمة');
+  const dm = await sess('u_dm');
+  await assert.doesNotReject(() => opps.getOpportunity(dm, 'O_PARTNEG'), 'المنح وسّع القائمة ولم يفتح الصفّ');
+  // تنظيف: هذا الصفّ آخر ما يلمس u_dm
+  await db.run('UPDATE user_department_grant SET deleted_at = ? WHERE id = ?', [T, 'g_dm_db']);
 });
 
 test('والمشاركة السالبة لا تتسرب: فرصةٌ شريكتها إدارةٌ **أخرى** لا تُعرض ولا تُفتح', async () => {

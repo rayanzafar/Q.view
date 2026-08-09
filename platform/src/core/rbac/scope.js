@@ -56,18 +56,40 @@ function membershipClause(user, resource, memberCol) {
 // الإدارة أو عن معرّف الصف لا يُوسَّع. ومجموعةٌ فارغة تعيد null (لا توسعة) لا شرطاً فارغاً.
 export function departmentReachClause(user, resource, action, opts = {}) {
   if (resource !== 'opportunity' || action !== 'read' || !opts.deptCol || !opts.memberCol) return null;
+  const roleIsDept = effectiveScope(user, action, resource) === 'department';
   const ids = [...new Set([
-    ...(effectiveScope(user, action, resource) === 'department' ? departmentScope(user) : []),
+    ...(roleIsDept ? departmentScope(user) : []),
     ...(user.managedDepartmentIds || []),
   ])].filter(Boolean);
-  if (!ids.length) return null;
-  const marks = ids.map(() => '?').join(',');
-  return {
-    clause: `(${opts.deptCol} IN (${marks}) OR EXISTS (
-      SELECT 1 FROM opportunity_department od
-       WHERE od.opportunity_id = ${opts.memberCol} AND od.department_id IN (${marks})))`,
-    params: [...ids, ...ids],
-  };
+  const parts = [];
+  const params = [];
+  if (ids.length) {
+    const marks = ids.map(() => '?').join(',');
+    parts.push(`${opts.deptCol} IN (${marks})`);
+    parts.push(`EXISTS (SELECT 1 FROM opportunity_department od
+       WHERE od.opportunity_id = ${opts.memberCol} AND od.department_id IN (${marks}))`);
+    params.push(...ids, ...ids);
+  }
+  // ── الأيتام: فرصةٌ بلا إدارة داخل قطاع مدير الإدارة تظهر في قائمته ────────────
+  // «كل الفرص تبع البيانات… ومشاريع كانت WIN اختفت» — بلسان مستخدمٍ حقيقي بعد v5.2. صفّ الفرصة
+  // (scopeReaches، حالة «الإدارة») **يفتح** الفرصةَ بلا إدارةٍ في قطاع القارئ منذ اليوم (سطر
+  // «يبقى ما لا يُحسم… return true»)، لكن القائمة كانت تُغلقها — فتُفتح بالعنوان ولا تظهر: تناقضُ
+  // قائمةٍ وصفٍّ بعينه معكوساً. والأيتام هنا بورتفوليو الفوز التاريخي المستورد (بلا مالكٍ ولا
+  // إدارةٍ ولا حتى إدارةٍ على مشروعه المرآة) — لا فرصُ إدارةٍ أخرى تُسرَّب، بل صفوفٌ لا إدارة لها
+  // أصلاً. فتُحاذى القائمةُ الصفَّ: تظهر لمن دورُه «إدارة» في قطاعه هو، لا أوسع.
+  //
+  // والشرط `roleIsDept` (لا `managedDepartmentIds`) مقصود: مدير تطوير أعمالٍ (دورُه «خاصتي»)
+  // يقود إدارةً يُطابِق صفَّها بالمعرّف لا يفتح صفَّ اليتيم صفّياً (managedDepartmentReaches يلزمه
+  // معرّف إدارةٍ مطابق) — فإدراجُه في قائمته يُعيد التناقضَ من الجهة الأخرى.
+  if (roleIsDept && user.sector_id) {
+    // عمود القطاع يُشتقّ من `deptCol` ليطابق جدوله/كنيتَه تماماً (deptCol ينتهي دوماً بـ
+    // department_id) — فلا لبسَ في استعلامٍ يضمّ جداول أخرى، ولا حاجةَ لأن يمرّره كلُّ مستدعٍ.
+    const sectorCol = opts.sectorCol || opts.deptCol.replace(/department_id$/, 'sector_id');
+    parts.push(`(${opts.deptCol} IS NULL AND ${sectorCol} = ?)`);
+    params.push(user.sector_id);
+  }
+  if (!parts.length) return null;
+  return { clause: `(${parts.join(' OR ')})`, params };
 }
 
 export function scopeFilter(user, resource, action = 'read', opts = {}) {
