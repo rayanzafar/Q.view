@@ -35,8 +35,9 @@ function personalDeptClause(user, resource, action, grantCol) {
 // والعلاج من حيث عولج نظيره: عضوية المشروع تفتح صفوفه منذ اليوم الأول (`projectIds` في سياق
 // الطلب)، وعضوية الفرصة كانت وحدها بلا مقابل. فتُبنى `opportunityIds` بنفس الطريقة، وتُقرأ
 // إضافةً لا استبدالاً — كما هي كل توسعةٍ في هذا الملف.
-function membershipClause(user, resource, memberCol) {
-  if (resource !== 'opportunity' || !memberCol) return null;
+function membershipClause(user, resource, action, memberCol) {
+  // القراءة وحدها — كما الصفّ في index.js (personalGrantReaches يفتح تسكينَ الفرصة قراءةً لا كتابة).
+  if (resource !== 'opportunity' || action !== 'read' || !memberCol) return null;
   const ids = [...(user.opportunityIds || [])];
   if (!ids.length) return null;
   return { clause: `${memberCol} IN (${ids.map(() => '?').join(',')})`, params: ids };
@@ -97,7 +98,7 @@ export function scopeFilter(user, resource, action = 'read', opts = {}) {
   if (base.clause === '1=1') return base;
   const extras = [
     personalDeptClause(user, resource, action, opts.grantCol),
-    membershipClause(user, resource, opts.memberCol),
+    membershipClause(user, resource, action, opts.memberCol),
     departmentReachClause(user, resource, action, opts),
   ].filter(Boolean);
   if (!extras.length) return base;

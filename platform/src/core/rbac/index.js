@@ -130,7 +130,15 @@ export function scopeReaches(user, scope, target, action = null, resource = null
     case 'company':
       return true;
     case 'sector':
-      return !target.sector_id || target.sector_id === user.sector_id || (user.scope === 'company');
+      // ── الفرصة/المشروع بلا قطاع: في لا قطاعٍ فلا يُفتح بالمعرّف لقارئٍ نطاقُه قطاع ─────
+      // فرصةٌ أو مشروعٌ بلا `sector_id` لا ينتمي إلى قطاع أحد؛ التساهل القديم (`!target.sector_id`
+      // يمرّ) كان يفتحه بالعنوان المباشر لأي قارئٍ قطاعيّ. «الشركة» تفتح كل شيء كما كانت، وبقيةُ
+      // الموارد (المهمة، وصفوفٌ قد لا تحمل قطاعاً بحكم طبيعتها) تبقى كما كانت تماماً.
+      if (!target.sector_id) {
+        if (resource === 'opportunity' || resource === 'project') return user.scope === 'company';
+        return true;
+      }
+      return target.sector_id === user.sector_id || (user.scope === 'company');
     case 'department': {
       // إدارة واحدة تعيش داخل قطاع واحد بالضبط. الشرط القديم كان `!target.department_id || …`
       // فيمرّ **فارغاً** على كل هدف لا يحمل عمود الإدارة — وأكثر الصفوف كذلك (المهمة والفرصة
@@ -160,19 +168,34 @@ export function scopeReaches(user, scope, target, action = null, resource = null
         // ضاقت القوائم إلى الإدارة بقرار المالك صار الإبقاءُ عليه تسريباً صفّياً لا اتساقاً.
         return false;
       }
+      // ── الفرصة/المشروع بلا إدارة: يُحسمان بقطاعٍ مشترك لا بالتساهل ──────────────────
+      // اليتيم (فرصةٌ/مشروعٌ بلا إدارة) يحمل قطاعاً دوماً، فيُفتح يتيمُ القطاع نفسه كما كان
+      // (list==row محفوظ عبر departmentReachClause). لكن القاعدة القديمة كانت تمرّ **فارغةً**
+      // حين `user.sector_id` فارغ: مدير إدارةٍ بلا قطاع يفتح يتيمَ أي قطاع، وهدفٌ بلا قطاعٍ
+      // أصلاً يُفتح لأي مدير إدارة. فنُلزم القارئ بقطاعٍ يشاركه الهدف — لا أوسع.
+      if (resource === 'opportunity' || resource === 'project') {
+        return !!(user.sector_id && target.sector_id && target.sector_id === user.sector_id);
+      }
       // بلا إدارة على الهدف لا نستطيع إثبات الانتماء، لكن نستطيع إثبات **النفي**: هدف يذكر
       // قطاعاً غير قطاع المستخدم هو قطعاً خارج إدارته. هذا يغلق التسريب العابر للقطاعات.
       if (target.sector_id && user.sector_id && target.sector_id !== user.sector_id) return false;
-      // يبقى ما لا يُحسم: هدف بلا إدارة داخل القطاع نفسه. لا يُغلق هنا لأن الإغلاق الكامل يحرم
-      // مدير الإدارة من صفوف مشروعة لا تحمل عمود إدارة أصلاً (المهام). الحسم الصحيح أن يحمل
-      // كل صف إدارته — وهو ما بدأته الموجة 007 على المشروع والفرصة والتسكين.
+      // يبقى ما لا يُحسم: هدف بلا إدارة داخل القطاع نفسه (المهمة وصفوفٌ لا تحمل عمود إدارة أصلاً).
+      // لا يُغلق هنا لأن الإغلاق الكامل يحرم مدير الإدارة من صفوف مشروعة لا إدارة لها (المهام).
       return true;
     }
     case 'project': {
       // A bare `project` row has no `project_id` column (only `id`) — fall back to it so the
       // project resource itself is actually membership-checked instead of vacuously passing.
       const pid = target.project_id ?? target.id;
-      return !pid || (user.projectIds && user.projectIds.has(pid));
+      // A target carrying NEITHER `project_id` NOR `id` cannot prove membership. On a **read**
+      // that is a by-id bypass → fail closed (the old `!pid ||` short-circuit opened any id-less
+      // target to a project reader, and a genuine read always carries a loaded row's id). Writes
+      // and capability pre-checks legitimately pass synthetic id-less targets — a not-yet-written
+      // project/task on `create`, or `can(update,task,{sector_id,assignee})` asking "may you assign
+      // into this sector" (assertMayAssign) — so keep the permissive fallback for those, exactly as
+      // before, or project-scoped roles (project_manager) lose create/assign entirely.
+      if (!pid) return action !== 'read';
+      return !!(user.projectIds && user.projectIds.has(pid));
     }
     case 'team':
       // No caller anywhere sets target.team_id (team membership was never wired into

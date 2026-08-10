@@ -93,7 +93,13 @@ export default {
   },
 
   rowTarget(mapped, resolved, user) {
-    return { sector_id: mapped.sector || resolved?.existing?.sector_id || user.sector_id || null };
+    // الهدف يحمل الإدارة والمالك (لا القطاع وحده) كي يفحص محرّك الصلاحيات الصفَّ بنطاق «الإدارة»
+    // و«خاصتي» أيضاً — دفاعٌ في العمق فوق إعادة الحراسة داخل خدمة المشاريع نفسها.
+    return {
+      sector_id: mapped.sector || resolved?.existing?.sector_id || user.sector_id || null,
+      department_id: resolved?.existing?.department_id ?? null,
+      owner_user_id: resolved?.existing?.owner_user_id ?? null,
+    };
   },
   rowLabel(mapped) { return mapped.name_ar || mapped.code || ''; },
 

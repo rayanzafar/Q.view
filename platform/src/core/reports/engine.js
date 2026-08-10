@@ -42,7 +42,7 @@ export async function buildReport(reportKey, user, opts = {}) {
     return {
       period: opts.period || periodLabel(),
       totals: ov.totals, pipeline_halalas: ov.pipeline_halalas, oppCount: ov.sectors.reduce((a, s) => a + s.opp_count, 0),
-      achievements: await topAchievements(), challenges: await topChallenges(), decisions: await pendingDecisions(user), risks: await topRisks(),
+      achievements: await topAchievements(user), challenges: await topChallenges(user), decisions: await pendingDecisions(user), risks: await topRisks(),
       topDeals: await topWonDeals(), topPipeline: await topOpenOpps(user),
     };
   }
@@ -331,11 +331,17 @@ async function sessionlessUser(uid) {
     expires_at: new Date(Date.now() + 60000).toISOString() });
   return sid;
 }
-async function topAchievements() {
-  return (await all("SELECT name_ar FROM project WHERE status='COMPLETED' AND deleted_at IS NULL ORDER BY updated_at DESC LIMIT 3")).map((p) => 'اكتمال: ' + p.name_ar);
+// النطاق يُحترم كما في pendingDecisions أدناه: مستلمٌ نطاقُه قطاع لا تصله في بريده أسماءُ مشاريع
+// قطاعٍ آخر (اكتمالاً أو حرَجاً). التقرير يُبنى بصلاحيات مستلمه، والبريد صادرٌ لا يُسترجَع.
+async function topAchievements(user) {
+  const where = ["status='COMPLETED'", 'deleted_at IS NULL']; const params = [];
+  if (user && user.scope !== 'company') { where.push('sector_id = ?'); params.push(user.sector_id || ''); }
+  return (await all(`SELECT name_ar FROM project WHERE ${where.join(' AND ')} ORDER BY updated_at DESC LIMIT 3`, params)).map((p) => 'اكتمال: ' + p.name_ar);
 }
-async function topChallenges() {
-  return (await all("SELECT name_ar FROM project WHERE rag='RED' AND deleted_at IS NULL LIMIT 3")).map((p) => 'مشروع حرج: ' + p.name_ar);
+async function topChallenges(user) {
+  const where = ["rag='RED'", 'deleted_at IS NULL']; const params = [];
+  if (user && user.scope !== 'company') { where.push('sector_id = ?'); params.push(user.sector_id || ''); }
+  return (await all(`SELECT name_ar FROM project WHERE ${where.join(' AND ')} LIMIT 3`, params)).map((p) => 'مشروع حرج: ' + p.name_ar);
 }
 // «القرارات المطلوبة» في الموجز التنفيذي كانت `.map(() => 'طلب اعتماد بانتظار القرار')`: تقرأ
 // معرّف السجل ثم ترميه، فيصل المالك ثلاثة أسطر متطابقة حرفياً لا تقول أي فرصة ولا أي مصروف ولا
@@ -378,7 +384,7 @@ async function topWonDeals() {
 // وقيم صفقاتٍ لا تعرضها له شاشة الفرص نفسها — والبريد صادرٌ لا يُسترجَع.
 async function topOpenOpps(user, sectorId = null) {
   const f = scopeFilter(user, 'opportunity', 'read',
-    { sectorCol: 'o.sector_id', ownerCol: 'o.owner_user_id',
+    { sectorCol: 'o.sector_id', ownerCol: 'o.owner_user_id', projectCol: 'o.id',
       grantCol: 'o.department_id', memberCol: 'o.id', deptCol: 'o.department_id' });
   const where = [f.clause, 'st.is_won=0', 'st.is_lost=0', 'o.deleted_at IS NULL'];
   const params = [...f.params];

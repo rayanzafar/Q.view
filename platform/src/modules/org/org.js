@@ -2,6 +2,7 @@
 // Company → Sector → Department → Unit → Team → Position → Employee.
 import { all, get, insert, update, tx } from '../../core/db/index.js';
 import { can, effectiveScope, redact } from '../../core/rbac/index.js';
+import { scopeFilter } from '../../core/rbac/scope.js';
 import { departmentScope, departmentInSql } from '../../core/rbac/departments.js';
 import { audit } from '../../core/audit/index.js';
 import { id, nowIso, toHalalas } from '../../core/util/ids.js';
@@ -624,11 +625,19 @@ export async function staffingRoster(user, opts = {}) {
   for (const a of allocs) (byEmp[a.employee_id] ||= []).push(a);
   // Opportunity soft load: open-opportunity team memberships with an allocation % — demand that
   // hasn't converted to a project yet, so it weighs on "now" only (not the yearly plan).
+  // ونطاقُ قراءة الفرص للقارئ يقصّ الصفوف: عنوانُ فرصةٍ من قطاعٍ أو إدارةٍ لا يراها في قائمة
+  // الفرص لا يظهر هنا من باب الكشف — مصدرُ حقيقةٍ واحد لا بابٌ خلفيّ. (كان يُقرأ عنوانُ كل فرصةٍ
+  // مفتوحةٍ سُكِّن عليها موظفٌ ولو عبر القطاع، فتتسرّب أسماء صفقاتٍ خارج نطاق القارئ.)
+  const oppScope = scopeFilter(user, 'opportunity', 'read', {
+    sectorCol: 'o.sector_id', ownerCol: 'o.owner_user_id',
+    deptCol: 'o.department_id', grantCol: 'o.department_id', memberCol: 'o.id',
+  });
   const oppRows = blind ? [] : await all(`SELECT m.id membership_id, m.employee_id, m.allocation_pct, m.role_in_group, o.id opp_id, o.title_ar
      FROM membership m JOIN opportunity o ON o.id = m.group_id LEFT JOIN stage st ON st.id = o.stage_id
      WHERE m.group_kind = 'opportunity' AND m.deleted_at IS NULL AND m.allocation_pct > 0
        AND COALESCE(m.status, 'ACTIVE') <> 'PENDING'
-       AND o.deleted_at IS NULL AND COALESCE(st.is_won, 0) = 0 AND COALESCE(st.is_lost, 0) = 0`);
+       AND o.deleted_at IS NULL AND COALESCE(st.is_won, 0) = 0 AND COALESCE(st.is_lost, 0) = 0
+       AND (${oppScope.clause})`, oppScope.params);
   const oppByEmp = {};
   for (const r of oppRows) (oppByEmp[r.employee_id] ||= []).push(r);
   // "current month": explicit override wins (determinism); otherwise the live month when viewing

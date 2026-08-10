@@ -15,6 +15,7 @@
 // حقل حساس — الحمولة كلها تشغيلية (اسم · مسمّى · نسبة · عدد مهام).
 import { all, get } from '../../core/db/index.js';
 import { can } from '../../core/rbac/index.js';
+import { scopeFilter } from '../../core/rbac/scope.js';
 import { forbidden, notFound } from '../../core/http/errors.js';
 import { nowIso } from '../../core/util/ids.js';
 import { MONTHS_AR } from '../../core/i18n/time.js';
@@ -51,11 +52,17 @@ const liveMonth = (year) => (year === new Date().getUTCFullYear() ? new Date().g
 
 // ── حِمل شخصٍ واحد في شهرٍ بعينه، من كل ما سُكِّن عليه (مشاريع + فرص) ─────────────────
 // يُبنى مرة واحدة لمجموعة الموظفين كلها: استعلامان اثنان لا اثنان لكل شخص.
-async function loadIndex(employeeIds, year, month) {
+async function loadIndex(user, employeeIds, year, month) {
   const ids = [...new Set(employeeIds)].filter(Boolean);
   if (!ids.length) return { alloc: new Map(), opp: new Map(), tasks: new Map() };
   const ph = ids.map(() => '?').join(',');
   const today = nowIso().slice(0, 10);
+  // نطاقُ قراءة الفرص للقارئ يقصّ عناوين الفرص: موظفٌ من قطاع المشروع قد يكون مسكَّناً على فرصةٍ
+  // في قطاعٍ أو إدارةٍ خارج نطاق القارئ — وعنوانُها كان يظهر هنا بلا حدّ. مصدرُ حقيقةٍ واحد.
+  const oppScope = scopeFilter(user, 'opportunity', 'read', {
+    sectorCol: 'o.sector_id', ownerCol: 'o.owner_user_id',
+    deptCol: 'o.department_id', grantCol: 'o.department_id', memberCol: 'o.id',
+  });
   const [allocs, opps, tasks] = await Promise.all([
     all(`SELECT a.id, a.employee_id, a.project_id, a.type, a.monthly_json, p.name_ar proj_name, p.status proj_status
        FROM allocation a LEFT JOIN project p ON p.id = a.project_id
@@ -65,7 +72,8 @@ async function loadIndex(employeeIds, year, month) {
       WHERE m.group_kind = 'opportunity' AND m.deleted_at IS NULL AND m.allocation_pct > 0
        AND COALESCE(m.status, 'ACTIVE') <> 'PENDING'
         AND o.deleted_at IS NULL AND COALESCE(st.is_won, 0) = 0 AND COALESCE(st.is_lost, 0) = 0
-        AND m.employee_id IN (${ph})`, ids),
+        AND m.employee_id IN (${ph})
+        AND (${oppScope.clause})`, [...ids, ...oppScope.params]),
     // المهام تُسنَد إلى **مستخدم** والتسكين إلى **موظف**، والجسر بينهما عمود المستخدم على الموظف.
     // ومن لا حساب له لا مهام له في المنصة — وهو صادق: لا مسار لإسناد مهمة إلى غير مستخدم.
     all(`SELECT e.id employee_id,
@@ -132,7 +140,7 @@ export async function staffingCandidates(user, projectId, opts = {}) {
         ${seesDemoAccounts(user) ? '' : `AND ${notDemoEmployeeSql('e')}`}
       ORDER BY e.name_ar`, [p.sector_id, SUPPORT_KIND]))
     .filter((e) => !assigned.has(e.id));
-  const idx = await loadIndex(emps.map((e) => e.id), year, month);
+  const idx = await loadIndex(user, emps.map((e) => e.id), year, month);
   const rows = emps.map((e) => personLoad(e, idx, year, month));
   // الترتيب: الأقل تحميلاً أولاً، ثم الأقل تأخّراً في مهامه، ثم الاسم. ومن تجاوز طاقته يهبط
   // إلى الآخر بحكم نسبته — ولا يُخفى: إخفاؤه يجعل القائمة تكذب حين لا يبقى أحد تحت المئة.
@@ -156,7 +164,7 @@ export async function projectTeamLoad(user, projectId, opts = {}) {
        FROM allocation a LEFT JOIN employee e ON e.id = a.employee_id
       WHERE a.project_id = ? AND a.year = ? AND a.deleted_at IS NULL
       ORDER BY (a.type = 'lead') DESC, a.person_name_ar`, [projectId, year]);
-  const idx = await loadIndex(rows.map((r) => r.id).filter(Boolean), year, month);
+  const idx = await loadIndex(user, rows.map((r) => r.id).filter(Boolean), year, month);
   const team = rows.map((r) => {
     const period = allocationPeriod(r.monthly_json, year);
     const mj = parseMonths(r.monthly_json);

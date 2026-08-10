@@ -106,7 +106,7 @@ export default {
     const existing = await get(
       'SELECT * FROM allocation WHERE employee_id = ? AND project_id = ? AND year = ? AND deleted_at IS NULL ORDER BY created_at LIMIT 1',
       [mapped.employee, mapped.project, mapped.year]);
-    const project = await get('SELECT id, sector_id, name_ar FROM project WHERE id = ?', [mapped.project]);
+    const project = await get('SELECT id, sector_id, department_id, owner_user_id, name_ar FROM project WHERE id = ?', [mapped.project]);
     if (!existing) return { action: 'create', existing: null, changes: [], project };
     const changes = [];
     if (!sameMonths(monthsOf(existing.monthly_json), mapped._months)) changes.push('months');
@@ -115,7 +115,13 @@ export default {
   },
 
   rowTarget(mapped, resolved, user) {
-    return { sector_id: resolved?.project?.sector_id || user.sector_id || null };
+    // الهدف يحمل إدارة المشروع ومالكه (لا القطاع وحده) كي يفحص المحرّك نطاقَي «الإدارة» و«خاصتي»
+    // على صفّ التسكين — دفاعٌ في العمق فوق إعادة الحراسة داخل assignEmployee / setAllocation.
+    return {
+      sector_id: resolved?.project?.sector_id || user.sector_id || null,
+      department_id: resolved?.project?.department_id ?? null,
+      owner_user_id: resolved?.project?.owner_user_id ?? null,
+    };
   },
   rowLabel(mapped, lookups) {
     const emp = lookups?.employee?.rows?.find((e) => e.id === mapped.employee);

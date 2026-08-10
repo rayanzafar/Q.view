@@ -495,7 +495,10 @@ function buildRefQuery(user, kind, query, like) {
 
 async function lookupById(user, kind, ref) {
   if (kind === 'project') {
-    const row = await get('SELECT id, name_ar, status, sector_id, owner_user_id FROM project WHERE id = ? AND deleted_at IS NULL', [ref]);
+    // الصفّ **كاملاً** لا أعمدة منتقاة: فحص نطاق «الإدارة» في المحرّك يقرأ `department_id`،
+    // وإسقاطُه من الاختيار كان يمرّ الهدف بلا إدارةٍ فيتساهل الفحص ويفتح مشروع إدارةٍ أخرى
+    // بالمعرّف الصريح. لا جدول شركاء للمشروع (بخلاف الفرصة)، فـ`SELECT *` وحده يكفي.
+    const row = await get('SELECT * FROM project WHERE id = ? AND deleted_at IS NULL', [ref]);
     return row && can(user, 'read', 'project', row) ? { id: row.id, label: row.name_ar, sub: label(STATUS_AR, row.status) } : null;
   }
   if (kind === 'opportunity') {
