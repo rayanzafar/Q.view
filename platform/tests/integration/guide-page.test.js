@@ -187,6 +187,17 @@ test('زر «جولة إرشادية» وسكربتها في هيكل كل صف�
   assert.match(html, /<a href="\/app\/guide[^"]*" class="nav-a on"/, 'الصفحة معلّمة في القائمة');
 });
 
+test('رابط «بلاغ أو اقتراح» في ترويسة كل صفحة — نموذج خارجي يفتح في تبويب جديد', async () => {
+  const html = await guidePage(U('u2', 'employee', 'SOLUTIONS', 'own'), {});
+  assert.match(html, /href="https:\/\/forms\.cloud\.microsoft\/Pages\/ResponsePage\.aspx\?id=[\w-]+/, 'الرابط يقصد النموذج الخارجي');
+  assert.match(html, /class="hdr-tour-btn" href="https:\/\/forms\.cloud\.microsoft\/[^"]*" target="_blank" rel="noopener noreferrer"/, 'يفتح في تبويب جديد دون تسريب النافذة الأم');
+  // التسمية تبدأ بالنص الظاهر نفسه — فمن يأمر بصوته بالنص الذي يراه يصيب الرابط.
+  assert.match(html, /aria-label="بلاغ أو اقتراح — أبلغ عن مشكلة أو اقترح تحسيناً \(يفتح في تبويب جديد\)"/, 'للرابط تسمية تبدأ بنصه الظاهر وتُعلن التبويب الجديد');
+  assert.match(html, />بلاغ أو اقتراح</, 'ونصه الظاهر بالعربية');
+  // حين تتعطّل السكربتات يختفي زر الجولة (لا يعمل من دونها) ويبقى الرابط — فهو لا يحتاجها.
+  assert.match(html, /<noscript><style>button\.hdr-tour-btn\{display:none\}<\/style><\/noscript>/, 'الرابط يبقى ظاهراً بلا سكربتات');
+});
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // محدِّدات الجولات مقابل الوسوم المرسومة فعلاً
 //

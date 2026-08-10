@@ -13,6 +13,9 @@ const GROUPS = { me: 'البداية', company: 'قيادة الشركة', work:
 // رمز الجولة الإرشادية (بوصلة) — بنفس مقاس ورسم بقية الرموز (18px، سماكة 1.75).
 const TOUR_ICON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2.1 5-5 2.1 2.1-5z"/></svg>';
 
+// رابط «بلاغ أو اقتراح» — نموذج خارجي يفتح في تبويب جديد.
+const FEEDBACK_FORM_URL = 'https://forms.cloud.microsoft/Pages/ResponsePage.aspx?id=qrmw-eAlzEW_FKvHGlf2TNo4rAmkrtNHo1L4effPMOFUN1VHUlpXNTI2MDBRUUJJVzFXQzNWUDZRMiQlQCN0PWcu';
+
 // الإظهار في القائمة = نفس دالة السماح بفتح الصفحة (nav.js) — لا انفصال ممكن بينهما.
 export function navFor(user) { return NAV_ITEMS.filter((n) => n.live !== false && pageAllowed(user, n.key)); }
 
@@ -392,7 +395,13 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
 .cmdk-row .tx .t{font-size:13px;font-weight:700;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cmdk-row .tx .s{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media(max-width:640px){.cmdk-scrim{padding-top:4vh}.hdr-search-btn span,.hdr-search-btn kbd{display:none}.hdr-user-txt{display:none}}
-@media(max-width:520px){.hdr-search-btn{padding:.4rem}}
+.hdr-bar{padding:0 1.5rem}
+@media(max-width:520px){.hdr-search-btn{padding:.4rem}.hdr-right{gap:.4rem}select.yr{padding:.3rem .35rem;font-size:11px}.hdr-bar{padding:0 .7rem}.hdr-lead{gap:.35rem}}
+/* عنوان الترويسة يتقلّص بقصٍّ أنيق (…) بدل أن يدفع الشاشة كلها إلى تمريرٍ أفقي حين تزدحم
+   الترويسة على الجوال (سنة مالية + بحث + جولة + بلاغ + جرس + هوية في ٣٩٠ بكسل). */
+.hdr-lead{min-width:0;gap:.6rem}
+.hdr-title{min-width:0}
+.hdr-title>div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* زر الجولة الإرشادية — ضيف هادئ في الترويسة: يشرح الشاشة الحالية على الشاشة نفسها، ولا
    ينافس أزرار الصفحة (بلا خلفية ولا إطار حتى المرور عليه). على الجوال يبقى الرمز وحده. */
 .hdr-tour-btn{display:inline-flex;align-items:center;gap:.4rem;color:var(--muted);background:none;border:none;
@@ -434,7 +443,7 @@ export async function layout({ user, active, title, subtitle, body, year, extraH
 window.__SANAD_MONTHS=${JSON.stringify(MONTHS_AR)};window.__SANAD_MONTHS_EN=${JSON.stringify(MONTHS_EN3)};</script>
 <style>${STYLE}</style>
 <link rel="stylesheet" href="${asset('/static/styles.css')}">
-<noscript><style>.hdr-tour-btn{display:none}</style></noscript>${extraHead}</head>
+<noscript><style>button.hdr-tour-btn{display:none}</style></noscript>${extraHead}</head>
 <body data-page="${esc(active || '')}">
 <div style="display:flex;min-height:100vh">
   <aside class="side" style="width:250px;flex:0 0 250px;background:var(--side);display:flex;flex-direction:column;color:#fff">
@@ -446,16 +455,18 @@ window.__SANAD_MONTHS=${JSON.stringify(MONTHS_AR)};window.__SANAD_MONTHS_EN=${JS
     <div style="padding:.8rem 1.1rem;border-top:1px solid rgba(255,255,255,.08);font-size:11px;color:rgba(255,255,255,.55)">السنة المالية ${config.fiscalYear} · SAR</div>
   </aside>
   <div style="flex:1;display:flex;flex-direction:column;min-width:0">
-    <header style="height:60px;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;flex:0 0 auto">
-      <div style="display:flex;align-items:center;gap:.6rem">
+    <header class="hdr-bar" style="height:60px;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;flex:0 0 auto">
+      <div class="hdr-lead" style="display:flex;align-items:center">
         <button class="side-toggle" aria-label="القائمة" onclick="document.body.classList.toggle('side-open')">${icon('menu') || '☰'}</button>
-        <div><div style="font-weight:800;font-size:var(--fs-page)">${esc(title || '')}</div>${subtitle ? `<div style="font-size:12px;color:var(--muted)">${esc(subtitle)}</div>` : ''}</div>
+        <div class="hdr-title" title="${esc(title || '')}"><div style="font-weight:800;font-size:var(--fs-page)">${esc(title || '')}</div>${subtitle ? `<div style="font-size:12px;color:var(--muted)">${esc(subtitle)}</div>` : ''}</div>
       </div>
       <div class="hdr-right" style="display:flex;align-items:center">
         ${yearSel}
         <button type="button" class="hdr-search-btn" data-action="cmdk-open" aria-label="بحث شامل">${icon('search')}<span>ابحث في كل شيء…</span><kbd>Ctrl K</kbd></button>
         <button type="button" class="hdr-tour-btn" data-action="tour-start" data-page="${esc(active || '')}"
           aria-label="جولة إرشادية على هذه الشاشة" title="جولة إرشادية على هذه الشاشة">${TOUR_ICON}<span>جولة إرشادية</span></button>
+        <a class="hdr-tour-btn" href="${FEEDBACK_FORM_URL}" target="_blank" rel="noopener noreferrer"
+          aria-label="بلاغ أو اقتراح — أبلغ عن مشكلة أو اقترح تحسيناً (يفتح في تبويب جديد)" title="أبلغ عن مشكلة أو اقترح تحسيناً">${icon('megaphone')}<span>بلاغ أو اقتراح</span></a>
         <a href="/app/tasks" title="الإشعارات" style="position:relative;color:var(--muted)">${icon('bell')}<span id="notif-badge" style="display:none;position:absolute;top:-4px;left:-4px;background:var(--red);color:#fff;font-size:9px;border-radius:99px;padding:1px 4px;font-weight:700"></span></a>
         <div class="hdr-user" style="display:flex;align-items:center;gap:.55rem">
           <div style="width:34px;height:34px;border-radius:50%;background:var(--brand-grad);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;flex:0 0 auto">${initial}</div>

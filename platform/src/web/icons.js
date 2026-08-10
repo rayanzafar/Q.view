@@ -39,6 +39,7 @@ const P = {
   inbox: '<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5 4h14l3 8v6a2 2 0 01-2 2H4a2 2 0 01-2-2v-6z"/>',
   download: '<path d="M12 3v12m0 0l4-4m-4 4l-4-4"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/>',
   mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>',
+  megaphone: '<path d="M21 11L3 6v12l18-4v-3z"/><path d="M12.4 16.8a3 3 0 105.8-1.6"/>',
 };
 export function icon(name, cls = '') {
   const body = P[name] || P.tasks;
