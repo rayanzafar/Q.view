@@ -7,6 +7,7 @@ import { myEntries } from '../../modules/timesheets/timesheets.js';
 import { orgTree, staffingRoster, identityLinks } from '../../modules/org/org.js';
 import { teamTasksAccess } from '../../modules/pmo/tasks.js';
 import { canSeeSensitive, can } from '../../core/rbac/index.js';
+import { scopeFilter } from '../../core/rbac/scope.js';
 import { ROLE_LABELS } from '../../core/rbac/matrix.js';
 import { isDelivery } from '../../core/org/kind.js';
 import { G, workKindLabel, WORK_BUCKET_AR } from '../i18n/glossary.js';
@@ -226,8 +227,16 @@ export async function staffingPage(user, opts = {}) {
   const { year, sector, currentMonth, roster, summary } = await staffingRoster(user, { sector: opts.sector });
   const nowIdx = currentMonthIndex(year); // 0-based; -1 when viewing another year (no «now» marker)
   const curName = currentMonth ? MONTHS_AR[currentMonth - 1] : 'الشهر الحالي';
-  const projects = await all(`SELECT id, name_ar, sector_id FROM project WHERE deleted_at IS NULL AND status IN ('IN_PROGRESS','PLANNED')
-     ${sector ? 'AND sector_id = ?' : ''} ORDER BY name_ar`, sector ? [sector] : []);
+  // منتقي مشاريع التسكين يُقصّ على نطاق قارئه (v5.9): مدير الإدارة يسكّن على مشاريع إدارته +
+  // أيتام قطاعه لا القطاع كله، فلا تحمل قائمةُ المتصفّح (teamProjects) إلا أسماءً في نطاقه.
+  const pf = scopeFilter(user, 'project', 'read',
+    { deptCol: 'department_id', sectorCol: 'sector_id', ownerCol: 'owner_user_id' });
+  const projWhere = ["deleted_at IS NULL", "status IN ('IN_PROGRESS','PLANNED')"];
+  const projParams = [];
+  if (pf.clause !== '1=1') { projWhere.push(pf.clause); projParams.push(...pf.params); }
+  if (sector) { projWhere.push('sector_id = ?'); projParams.push(sector); }
+  const projects = await all(`SELECT id, name_ar, sector_id FROM project
+     WHERE ${projWhere.join(' AND ')} ORDER BY name_ar`, projParams);
 
   const activeR = roster.filter((e) => e.active !== 0);
   const uTone = (u) => u > 110 ? 'var(--red)' : u >= 70 ? 'var(--green)' : u > 0 ? 'var(--amber)' : 'var(--faint)';

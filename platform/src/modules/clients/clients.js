@@ -340,9 +340,24 @@ export async function clientOverview(user, clientId) {
     openRows = open.filter((o) => visible.has(o.id));
   }
 
-  const projects = await all(`SELECT id, code, name_ar, status, rag, progress_pct, start_date, end_date, sector_id,
+  const projects = await all(`SELECT id, code, name_ar, status, rag, progress_pct, start_date, end_date, sector_id, department_id, owner_user_id,
        COALESCE(NULLIF(contract_value_halalas,0), NULLIF(budget_halalas,0), NULLIF(po_value_halalas,0), NULLIF(revenue_halalas,0), 0) value_halalas
      FROM project WHERE client_id = ? AND deleted_at IS NULL ORDER BY (status = 'IN_PROGRESS') DESC, start_date DESC`, [clientId]);
+  // ── صفوف المشاريع: أرقامٌ للجميع، أسماءٌ لأهلها ───────────────────────────────
+  // نفس حدّ الفرص أعلاه على صفحة العميل (v5.9، نظير سطر «الأرقام لا الأشخاص»): **مجاميع**
+  // القطاع (عدد المشاريع وقيمتها والجارية منها) تبقى من البصمة كاملةً — أرقامٌ لا أشخاص —
+  // أما **صفوف** المشاريع بأسمائها وحالاتها فتُقصّ على نطاق قائمة المشاريع نفسه (deptCol +
+  // يتيم القطاع): مشروعُ إدارةٍ أخرى لا يُعرَض اسمُه لمدير إدارةٍ لا يقودها، كما لا يظهر في
+  // قائمته ولا يُفتح صفّياً. `visibleProject` = null ⟵ نطاقٌ شركيّ (الكلّ ظاهر بلا استعلام).
+  const pf = scopeFilter(user, 'project', 'read',
+    { deptCol: 'department_id', sectorCol: 'sector_id', ownerCol: 'owner_user_id' });
+  let visibleProjectIds = null;
+  if (pf.clause !== '1=1') {
+    visibleProjectIds = new Set((await all(
+      `SELECT id FROM project WHERE client_id = ? AND deleted_at IS NULL AND ${pf.clause}`,
+      [clientId, ...pf.params])).map((r) => r.id));
+  }
+  const projectVisible = (p) => visibleProjectIds === null || visibleProjectIds.has(p.id);
   // نسبة الإنجاز من مصدرها الواحد لا من العمود المخزَّن: كانت الشاشة تطبع `progress_pct` خاماً،
   // فمشروعٌ اعتُمدت مخرجاته كلها يُقرأ مئةً في صفحته و٥٨٪ هنا — رقمان في اجتماع واحد.
   const progMap = await effectiveProgress(projects);
@@ -352,6 +367,12 @@ export async function clientOverview(user, clientId) {
        t.project_id, p.name_ar project_name_ar
      FROM contract t LEFT JOIN project p ON p.id = t.project_id
      WHERE t.client_id = ? AND t.deleted_at IS NULL ORDER BY t.value_halalas DESC`, [clientId]);
+  // اسمُ المشروع على العقد صفٌّ لا رقم — يُقصّ على نطاق القارئ كبقيّة صفوف المشاريع (v5.9): العقدُ
+  // وقيمتُه يبقيان (رقمٌ للجميع)، أما اسمُ مشروعٍ من إدارةٍ (أو قطاعٍ) خارج نطاقه فيُطوى — فلا يُعرَض
+  // اسمُه هنا كما لا يظهر في قائمته ولا يُفتح صفّياً. الطيُّ آمنٌ: العرض يُخفي الاسم الفارغ أصلاً.
+  for (const t of contracts) {
+    if (visibleProjectIds !== null && t.project_id && !visibleProjectIds.has(t.project_id)) t.project_name_ar = null;
+  }
 
   // invoices + collections → summary (open AR = outstanding; overdue = outstanding past due date).
   // Legacy invoices are linked by project only — count those attached via the client's projects too.
@@ -415,7 +436,8 @@ export async function clientOverview(user, clientId) {
     derived.push({ kind: 'collection', at: l.collected_at, source: 'derived', title: 'تحصيل دفعة', detail: `بقيمة ${fmtSar(l.amount_halalas)}` });
   }
   for (const p of projects) {
-    if (p.start_date) derived.push({ kind: 'project_started', at: p.start_date, source: 'derived',
+    // اسمُ المشروع في خطّ النشاط صفٌّ لا رقم — يُقصّ على نطاق القارئ كبقيّة الصفوف.
+    if (p.start_date && projectVisible(p)) derived.push({ kind: 'project_started', at: p.start_date, source: 'derived',
       title: `بدء مشروع «${p.name_ar}»`, detail: null });
   }
   const activities = [...logged, ...derived]
@@ -467,8 +489,9 @@ export async function clientOverview(user, clientId) {
     b.projects++;
     if (p.status === 'IN_PROGRESS') b.active_projects++;
     b.project_value_halalas += p.value_halalas || 0;
-    // أسماء المشاريع الجارية أولاً — «أيش شغّال معهم» سؤال عن الحاضر لا عن الأرشيف.
-    b.project_names.push({ id: p.id, name_ar: p.name_ar, status: p.status, rag: p.rag,
+    // أسماء المشاريع الجارية أولاً — «أيش شغّال معهم» سؤال عن الحاضر لا عن الأرشيف. والاسمُ
+    // صفٌّ لا رقم: يُقصّ على نطاق القارئ، فيبقى العدّ والقيمة كاملَين والأسماءُ لأهلها (v5.9).
+    if (projectVisible(p)) b.project_names.push({ id: p.id, name_ar: p.name_ar, status: p.status, rag: p.rag,
       progress_effective_pct: p.progress_effective_pct, active: p.status === 'IN_PROGRESS' });
   }
   const by_sector = [...bySectorMap.values()]
@@ -493,7 +516,7 @@ export async function clientOverview(user, clientId) {
     },
     activities,
     opportunities: { open: openRows, won, lost, win_rate },
-    projects,
+    projects: projects.filter(projectVisible),
     contracts,
     invoices_summary: {
       invoiced: Math.round(invoiced), collected: Math.round(collected),
@@ -504,7 +527,8 @@ export async function clientOverview(user, clientId) {
     concentration_pct,
     // additive extensions (contract allows extending, not contradicting): drill-down detail rows
     invoices,
-    fy_revenue_by_project: fyRevenueByProject,
+    // تفصيل إيراد السنة بحسب المشروع صفوفٌ بأسماء المشاريع — تُقصّ على نطاق القارئ كبقيّتها.
+    fy_revenue_by_project: fyRevenueByProject.filter((r) => visibleProjectIds === null || visibleProjectIds.has(r.id)),
     fiscal_year: fy,
   };
 }

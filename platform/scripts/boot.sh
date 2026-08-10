@@ -45,6 +45,10 @@ node --experimental-sqlite scripts/backfill-project-opportunities.js || echo "pr
 # التسكين الرجعي لإدارات الفرص: فرصةٌ بلا إدارة تُنسب إلى إدارة مالكها (أو منشئها) إن كانت من
 # قطاعها نفسه، وتُكتب مرآتها معها. مرةً واحدة بطابع في schema_migration، وما لا يُحسم يُترك.
 node --experimental-sqlite scripts/backfill-opportunity-departments.js || echo "opportunity department attribution skipped"
+# التسكين الرجعي لإدارات المشاريع: مشروعٌ بلا إدارة يُنسب إلى إدارة فرصته المصدر (إن كانت من
+# قطاعه) أو إدارة مالكه — وبها تُقصّ قائمةُ مدير الإدارة إلى إدارته لا قطاعه. مرةً واحدة بطابع
+# في schema_migration، وما لا يُحسم يُترك «بلا إدارة» (يبقى يتيماً يظهر في قطاعه).
+node --experimental-sqlite scripts/backfill-project-departments.js || echo "project department attribution skipped"
 # idempotent legacy-history backfill (INSERT … ON CONFLICT DO NOTHING) — no-op without legacy data
 node --experimental-sqlite scripts/backfill-legacy-activity.js || echo "backfill skipped"
 # توحيد العملاء يُشغَّل مرة واحدة بعد النشر عبر `railway run` (لا في الإقلاع) كي لا يخاطر بتعليقه.

@@ -91,10 +91,27 @@ export default {
       LEFT JOIN employee e ON e.id = a.employee_id
       LEFT JOIN project p ON p.id = a.project_id
       WHERE ${where.join(' AND ')} ORDER BY e.name_ar, p.name_ar`, params);
+    // اسمُ المشروع في التصدير صفٌّ لا رقم — يُقصّ على نطاق قراءة القارئ للمشاريع (v5.9): نطاقُ
+    // «التسكين» يتراجع إلى القطاع لمدير الإدارة (لا عمودَ إدارةٍ له)، فكان يُصدَّر عبره اسمُ مشروع
+    // إدارةٍ شقيقةٍ لا يراه في القائمة ولا في الكشف — نفسُ الباب الخلفي المغلق في كشف `org.js`.
+    // الحِملُ (الأشهر) يبقى رقماً للجميع، واسمُ مشروعٍ خارج نطاقه يُطوى إلى «—».
+    let visibleProjects = null; // null = لا قصّ (نطاقٌ شركيّ)
+    const pids = [...new Set(rows.map((a) => a.project_id).filter(Boolean))];
+    if (pids.length) {
+      const pf = scopeFilter(user, 'project', 'read',
+        { deptCol: 'department_id', sectorCol: 'sector_id', ownerCol: 'owner_user_id' });
+      if (pf.clause !== '1=1') {
+        visibleProjects = new Set((await all(
+          `SELECT id FROM project WHERE deleted_at IS NULL AND id IN (${pids.map(() => '?').join(',')}) AND (${pf.clause})`,
+          [...pids, ...pf.params])).map((r) => r.id));
+      }
+    }
+    const inReach = (pid) => !pid || visibleProjects === null || visibleProjects.has(pid);
     return rows.map((a) => {
       const months = monthsOf(a.monthly_json);
       const out = {
-        employee: a.emp_name || a.person_name_ar, project: a.proj_code || a.proj_name || a.project_name,
+        employee: a.emp_name || a.person_name_ar,
+        project: inReach(a.project_id) ? (a.proj_code || a.proj_name || a.project_name) : '—',
         year: a.year, type: a.type,
       };
       months.forEach((v, i) => { out[`m${i + 1}`] = v > 0 ? Math.round(v * 1000) / 10 : null; });

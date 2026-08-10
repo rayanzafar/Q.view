@@ -192,12 +192,12 @@ async function detectRisks(user) {
   if (!effectiveScope(user, 'read', 'project')) {
     throw forbidden('كشف المخاطر يقرأ المشاريع، وقراءتها خارج صلاحيتك. اطلب «أولوياتي اليوم» أو التفعيل من مدير النظام.');
   }
-  const f = scopeFilter(user, 'project', 'read', { ownerCol: 'owner_user_id' });
+  const f = scopeFilter(user, 'project', 'read', { deptCol: 'department_id', sectorCol: 'sector_id', ownerCol: 'owner_user_id' });
   const red = await all(
     `SELECT name_ar FROM project WHERE rag = 'RED' AND deleted_at IS NULL AND ${f.clause}
       ORDER BY name_ar LIMIT 10`, f.params);
   const g = scopeFilter(user, 'project', 'read',
-    { sectorCol: 'p.sector_id', ownerCol: 'p.owner_user_id', projectCol: 'p.id' });
+    { deptCol: 'p.department_id', sectorCol: 'p.sector_id', ownerCol: 'p.owner_user_id', projectCol: 'p.id' });
   const overdue = await all(
     `SELECT p.id, p.name_ar, COUNT(*) n FROM task t JOIN project p ON p.id = t.project_id
       WHERE t.status != 'DONE' AND t.due_date IS NOT NULL AND substr(t.due_date,1,10) < ?
@@ -239,7 +239,7 @@ async function dataQualityScan(user) {
   }
   if (effectiveScope(user, 'read', 'project')) {
     scanned.push('المشاريع');
-    const f = scopeFilter(user, 'project', 'read', { ownerCol: 'owner_user_id' });
+    const f = scopeFilter(user, 'project', 'read', { deptCol: 'department_id', sectorCol: 'sector_id', ownerCol: 'owner_user_id' });
     const n = (await get(`SELECT COUNT(*) n FROM project WHERE (start_date IS NULL OR end_date IS NULL) AND deleted_at IS NULL AND ${f.clause}`, f.params)).n;
     if (Number(n)) items.push(`${n} مشروع بلا تواريخ بداية/نهاية`);
   }
@@ -457,7 +457,7 @@ function stripNoise(raw) {
 function buildRefQuery(user, kind, query, like) {
   if (kind === 'project') {
     if (!effectiveScope(user, 'read', 'project')) return null;
-    const f = scopeFilter(user, 'project', 'read', { ownerCol: 'owner_user_id' });
+    const f = scopeFilter(user, 'project', 'read', { deptCol: 'department_id', sectorCol: 'sector_id', ownerCol: 'owner_user_id' });
     return {
       select: 'id, name_ar, status', from: 'project',
       where: `${f.clause} AND deleted_at IS NULL AND (name_ar LIKE ? OR code = ? OR financial_code = ?)`,
@@ -540,7 +540,7 @@ export async function optionsFor(user, kind) {
   }
   if (kind === 'project') {
     if (!effectiveScope(user, 'read', 'project')) throw forbidden('قراءة المشاريع خارج صلاحيتك');
-    const f = scopeFilter(user, 'project', 'read', { ownerCol: 'owner_user_id' });
+    const f = scopeFilter(user, 'project', 'read', { deptCol: 'department_id', sectorCol: 'sector_id', ownerCol: 'owner_user_id' });
     const rows = await all(`SELECT id, name_ar, status FROM project WHERE ${f.clause} AND deleted_at IS NULL
       ORDER BY name_ar LIMIT 100`, f.params);
     return { kind, options: rows.map((r) => ({ id: r.id, label_ar: r.name_ar, sub_ar: label(STATUS_AR, r.status) })) };

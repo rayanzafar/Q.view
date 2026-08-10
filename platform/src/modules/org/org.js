@@ -623,6 +623,23 @@ export async function staffingRoster(user, opts = {}) {
      WHERE a.deleted_at IS NULL AND a.year = ? AND a.employee_id IS NOT NULL ${sec ? 'AND a.sector_id = ?' : ''}`, sec ? [year, sec] : [year]);
   const byEmp = {};
   for (const a of allocs) (byEmp[a.employee_id] ||= []).push(a);
+  // اسمُ المشروع في الكشف صفٌّ لا رقم — يُقصّ على نطاق قراءة القارئ للمشاريع (v5.9) كما قُصّ عنوانُ
+  // الفرصة أدناه: نسبةُ التسكين تبقى (رقمٌ للجميع، فالحِمل حقُّ المدير أن يراه)، أما اسمُ مشروعٍ من
+  // إدارةٍ (أو قطاعٍ) خارج نطاقه فيُطوى ومعه معرّفُه — فلا يُعرَض اسمُه من باب الكشف كما لا يظهر في
+  // قائمته ولا يُفتح صفّياً. (كان موظفٌ في إدارة القارئ سُكِّن على مشروع إدارةٍ شقيقة يُسرِّب اسمَه
+  // ومعرّفَه عبر الكشف — بابٌ خلفيّ لِما أُغلق في القائمة والصفّ.)
+  let visibleAllocProjects = null; // null = لا قصّ (نطاقٌ شركيّ: الكلّ ظاهر بلا استعلام)
+  const allocPids = [...new Set(allocs.map((a) => a.project_id).filter(Boolean))];
+  if (allocPids.length) {
+    const pScope = scopeFilter(user, 'project', 'read',
+      { deptCol: 'department_id', sectorCol: 'sector_id', ownerCol: 'owner_user_id' });
+    if (pScope.clause !== '1=1') {
+      visibleAllocProjects = new Set((await all(
+        `SELECT id FROM project WHERE deleted_at IS NULL AND id IN (${allocPids.map(() => '?').join(',')}) AND (${pScope.clause})`,
+        [...allocPids, ...pScope.params])).map((r) => r.id));
+    }
+  }
+  const projInReach = (pid) => !pid || visibleAllocProjects === null || visibleAllocProjects.has(pid);
   // Opportunity soft load: open-opportunity team memberships with an allocation % — demand that
   // hasn't converted to a project yet, so it weighs on "now" only (not the yearly plan).
   // ونطاقُ قراءة الفرص للقارئ يقصّ الصفوف: عنوانُ فرصةٍ من قطاعٍ أو إدارةٍ لا يراها في قائمة
@@ -652,7 +669,11 @@ export async function staffingRoster(user, opts = {}) {
     const projects = mine.map((a) => {
       let mj = {}; try { mj = JSON.parse(a.monthly_json || '{}'); } catch { mj = {}; }
       for (const [m, f] of Object.entries(mj)) { const i = Number(m) - 1; if (i >= 0 && i < 12) monthLoad[i] += Number(f) || 0; }
-      return { allocId: a.id, projectId: a.project_id, name: a.proj_name || a.project_name || '—', type: a.type || 'member', status: a.proj_status, months: mj };
+      // مشروعٌ خارج نطاق القارئ: يبقى الحِملُ (mj) ويُطوى الاسمُ والمعرّف — رقمٌ بلا اسم.
+      const inReach = projInReach(a.project_id);
+      return { allocId: a.id, projectId: inReach ? a.project_id : null,
+        name: inReach ? (a.proj_name || a.project_name || '—') : '—',
+        type: a.type || 'member', status: inReach ? a.proj_status : null, months: mj };
     });
     const opportunities = (oppByEmp[e.id] || []).map((r) => ({
       membershipId: r.membership_id, opportunityId: r.opp_id, name: r.title_ar || '—',

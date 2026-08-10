@@ -93,6 +93,27 @@ export function departmentReachClause(user, resource, action, opts = {}) {
   return { clause: `(${parts.join(' OR ')})`, params };
 }
 
+// ── الأيتام للمشروع: القائمة تُحاذي الصفَّ، بلا جدول مشاركة ───────────────────
+// نظيرُ فرع الأيتام في `departmentReachClause` أعلاه، لكن للمشروع وحده. والفرقُ عن الفرصة
+// مقصود: المشروع لا يملك جدول مشاركةٍ (لا نظير لـ`opportunity_department`)، فلا تُضاف له
+// «الإدارة المشاركة» — الأيتام وحدها. صفُّ المشروع بلا إدارةٍ داخل قطاع القارئ **يُفتح** صفّياً
+// (scopeReaches، فرع «الإدارة» بلا إدارةٍ على الهدف → قطاعٌ مشترك للمشروع)، وكانت القائمة تُغلقه
+// حين ضاقت إلى الإدارة (deptCol) — فيُفتح بالعنوان ولا يظهر: عين تناقض «يُعرَض ولا يُفتح» معكوساً.
+// والأيتام هنا محفظةُ الفوز التاريخي المستورد بلا إدارة — لا مشاريعُ إدارةٍ أخرى تُسرَّب، بل
+// صفوفٌ لم تُنسَب بعد. فتُحاذى القائمةُ الصفَّ: تظهر لمن دورُه «إدارة» في قطاعه هو، لا أوسع.
+//
+// وثلاثة شروط تلزم معاً كما في نظيرها: المشروع قراءةً، وتصريح المستدعي بعمود الإدارة
+// (`opts.deptCol` — فمن لم يصرّح لا يُوسَّع له، فشلٌ مغلق)، وأن يكون **نطاقُه الفعليّ إدارة**
+// (roleIsDept — فقارئ القطاع/الشركة/المشروع لا يُمَسّ)، وله قطاعٌ مسجَّل. وعمود القطاع يُشتقّ
+// من `deptCol` ليطابق جدولَه/كنيتَه تماماً — كما في `departmentReachClause` (سطر ~:88).
+export function projectReachClause(user, resource, action, opts = {}) {
+  if (resource !== 'project' || action !== 'read' || !opts.deptCol) return null;
+  if (effectiveScope(user, action, resource) !== 'department') return null;
+  if (!user.sector_id) return null;
+  const sectorCol = opts.sectorCol || opts.deptCol.replace(/department_id$/, 'sector_id');
+  return { clause: `(${opts.deptCol} IS NULL AND ${sectorCol} = ?)`, params: [user.sector_id] };
+}
+
 export function scopeFilter(user, resource, action = 'read', opts = {}) {
   const base = roleScopeFilter(user, resource, action, opts);
   if (base.clause === '1=1') return base;
@@ -100,6 +121,7 @@ export function scopeFilter(user, resource, action = 'read', opts = {}) {
     personalDeptClause(user, resource, action, opts.grantCol),
     membershipClause(user, resource, action, opts.memberCol),
     departmentReachClause(user, resource, action, opts),
+    projectReachClause(user, resource, action, opts),
   ].filter(Boolean);
   if (!extras.length) return base;
   return {
@@ -119,16 +141,18 @@ function roleScopeFilter(user, resource, action = 'read', opts = {}) {
     case 'sector':
       return { clause: `${sectorCol} = ?`, params: [user.sector_id] };
     case 'department': {
-      // نصفا القرار D15 (docs/OPEN-DECISIONS.md) افترقا هنا:
+      // قرار D15 (docs/OPEN-DECISIONS.md) اكتمل نصفاه — الفرصة أولاً ثم المشروع:
       //  · **الفرصة — مُفعَّل (٢٠٢٦-٠٨)**: نُسبت الفرص إلى إداراتها (الموجة 010 وما بعدها)،
       //    وقرّر المالك قلب الرؤية — مدير الإدارة يرى فرص إدارته لا قطاعه. فمن مرّر `deptCol`
       //    يُقصّ على **مجموعة إدارات القارئ** (انتماؤه ∪ ما يقوده — لا مساواة بإدارة واحدة،
       //    فمن يقود إدارتين لا يُترك أهل الثانية خارج قائمته)، والمجموعة الفارغة تعيد `1=0`
       //    **فشلاً مغلقاً**: مديرُ إدارةٍ بلا إدارة يرى لا شيء، لا القطاع كله. والفرص التي
       //    تُشاركها إدارتُه تلحق عبر `departmentReachClause` أعلاه لا هنا.
-      //  · **المشروع — مؤجَّل كما كان**: بلا `deptCol` يبقى التراجع إلى القطاع (يفشل مفتوحاً
-      //    عن قصد موثَّق) — المشاريع لم تُنسَب بعد، وتضييقها اليوم يُخفي كل مشروعٍ بلا إدارة
-      //    فيستبدل تسريباً بعُطل. الترتيب الصحيح هناك: تُنسَب الأعمال أولاً ثم يُمرَّر deptCol.
+      //  · **المشروع — مُفعَّل (v5.9)**: كان مؤجَّلاً حتى تُنسَب المحفظة إلى إداراتها (تضييقُها
+      //    قبل ذلك يُخفي كل مشروعٍ بلا إدارة فيستبدل تسريباً بعُطل). وقد جرى التسكين الرجعي
+      //    (backfill-project-departments.js)، فصار كلُّ موضع قراءةٍ للمشروع يمرّر `deptCol`
+      //    ويُقصّ على مجموعة الإدارات نفسها. والأيتام (مشروعٌ بلا إدارة في القطاع) تلحق عبر
+      //    `projectReachClause` أعلاه — بلا جدول مشاركةٍ للمشروع (لا نظير له).
       return opts.deptCol
         ? departmentInSql(opts.deptCol, departmentScope(user))
         : { clause: `${sectorCol} = ?`, params: [user.sector_id] };

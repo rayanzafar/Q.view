@@ -13,7 +13,11 @@ import { ownsEmployee } from '../org/confirm.js';
 import { workBucketLabel } from '../../web/i18n/glossary.js';
 
 export async function listProjects(user, filters = {}) {
-  const f = scopeFilter(user, 'project', 'read', { ownerCol: 'owner_user_id' });
+  // مدير الإدارة يرى مشاريع إدارته (انتماءً وقيادةً) + أيتام قطاعه، لا القطاع كله (D15، v5.9):
+  // `deptCol` يُفعِّل قصَّ حالة «الإدارة» في محرّك النطاق، و`projectReachClause` يُلحق الأيتام
+  // فتُحاذي القائمةُ الصفَّ. سكتور/شركة/مشروع (نطاقاً) لا يُمَسّون.
+  const f = scopeFilter(user, 'project', 'read',
+    { deptCol: 'department_id', sectorCol: 'sector_id', ownerCol: 'owner_user_id' });
   const where = [f.clause, 'deleted_at IS NULL'];
   const params = [...f.params];
   if (filters.sector) { where.push('sector_id = ?'); params.push(filters.sector); }

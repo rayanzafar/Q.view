@@ -664,12 +664,18 @@ export async function teamWorkload(user, filters = {}) {
   }
 
   // المشاريع المسكَّن عليها هذا العام — بالاسم لا بالعدد وحده: المدير يريد أن يعرف أين هو.
+  // ونطاقُ القارئ يقصّ الصفوف كما يقصّ الفرص أعلاه (v5.9): مدير الإدارة يرى أسماء مشاريع إدارته
+  // + أيتام قطاعه لا القطاع كله — فمشروعُ إدارةٍ أخرى يعمل عليه أحد رجاله لا يُطبع اسمُه.
+  const readerProjectScope = scopeFilter(user, 'project', 'read', {
+    deptCol: 'p.department_id', sectorCol: 'p.sector_id', ownerCol: 'p.owner_user_id', projectCol: 'p.id',
+  });
   const projRows = empIds.length ? await all(`SELECT a.employee_id eid, p.id project_id, p.name_ar project_name
      FROM allocation a
      JOIN project p ON p.id = a.project_id AND p.deleted_at IS NULL
      WHERE a.deleted_at IS NULL AND a.year = ? AND a.employee_id IN (${marks(empIds.length)})
+       AND ${readerProjectScope.clause}
      GROUP BY a.employee_id, p.id, p.name_ar
-     ORDER BY p.name_ar`, [year, ...empIds]) : [];
+     ORDER BY p.name_ar`, [year, ...empIds, ...readerProjectScope.params]) : [];
 
   const byUidT = new Map(taskRows.map((r) => [r.uid, r]));
   const byUidO = new Map(oppRows.map((r) => [r.uid, r]));
@@ -891,13 +897,20 @@ export async function personDossier(reader, personUserId) {
       pending: !!m && m.status === 'PENDING' && o.owner_user_id !== uid };
   });
 
+  // مشاريعُ الشخص المسكَّن عليها تُقصّ على نطاق **القارئ** كما تُقصّ فرصُه أعلاه (v5.9): مديرُ
+  // إدارةٍ يفتح ملف موظفه يرى مشاريع إدارته + أيتام قطاعه لا مشاريع إدارةٍ أخرى يعمل فيها الرجل.
+  // وصاحبُ الصفحة يرى صفوفه دوماً — ما سُكِّن عليه داخلٌ في نطاقه (projectIds) بحكم التسكين.
+  const dossierProjectScope = scopeFilter(reader, 'project', 'read', {
+    deptCol: 'p3.department_id', sectorCol: 'p3.sector_id', ownerCol: 'p3.owner_user_id', projectCol: 'p3.id',
+  });
   const projects = p.employee_id ? await all(`SELECT p3.id, p3.name_ar, p3.status, a.type, a.year
      FROM allocation a
      JOIN project p3 ON p3.id = a.project_id AND p3.deleted_at IS NULL
      WHERE a.deleted_at IS NULL AND a.employee_id = ? AND a.year = ?
+       AND ${dossierProjectScope.clause}
      GROUP BY p3.id, p3.name_ar, p3.status, a.type, a.year
      ORDER BY p3.name_ar
-     LIMIT 60`, [p.employee_id, year]) : [];
+     LIMIT 60`, [p.employee_id, year, ...dossierProjectScope.params]) : [];
 
   const open = tasks.filter((t) => t.status !== 'DONE');
   const stats = {
@@ -921,9 +934,16 @@ export async function personDossier(reader, personUserId) {
   const isSelf = self;
   const canAssignTask = !isSelf && !!canWrite && can(reader, 'create', 'task');
   const canStaff = !isSelf && can(reader, 'create', 'allocation');
+  // منتقي التسكين يُقصّ على نطاق قراءة القارئ للمشاريع (v5.9) قبل فحص منح التسكين على كل صفّ:
+  // مدير الإدارة يسكّن على مشاريع إدارته + أيتام قطاعه لا القطاع كله. الحدّان معاً — لا أحدهما.
+  const staffProjScope = scopeFilter(reader, 'project', 'read',
+    { deptCol: 'department_id', sectorCol: 'sector_id', ownerCol: 'owner_user_id' });
+  const staffProjWhere = ["deleted_at IS NULL", "status IN ('IN_PROGRESS','PLANNED')"];
+  const staffProjParams = [];
+  if (staffProjScope.clause !== '1=1') { staffProjWhere.push(staffProjScope.clause); staffProjParams.push(...staffProjScope.params); }
   const staffProjects = canStaff && p.employee_id
-    ? (await all(`SELECT id, name_ar, sector_id FROM project
-         WHERE deleted_at IS NULL AND status IN ('IN_PROGRESS','PLANNED') ORDER BY name_ar LIMIT 200`))
+    ? (await all(`SELECT id, name_ar, sector_id, department_id FROM project
+         WHERE ${staffProjWhere.join(' AND ')} ORDER BY name_ar LIMIT 200`, staffProjParams))
       .filter((pr) => can(reader, 'create', 'allocation', pr))
     : [];
   // الصلاحيات الشخصية: تُعرض لمن يرى الكشف، وتُمنَح لمن يملك ما يمنحه (الحدّ في grants.js).
