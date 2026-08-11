@@ -92,7 +92,7 @@ const maxAt = (...vals) => vals.filter(Boolean).map(String).sort().pop() || null
 
 // Per-client "last touch" dates from every real dated record class (logged activity + derived
 // business events). Returns Map(client_id → ISO/date string). No fabrication: null dates drop out.
-async function lastTouchByClient() {
+export async function lastTouchByClient() {
   const out = new Map();
   const feed = (rows) => { for (const r of rows) if (r.cid && r.at) out.set(r.cid, maxAt(out.get(r.cid), r.at)); };
   feed(await all(`SELECT client_id cid, MAX(at) at FROM crm_activity WHERE deleted_at IS NULL AND client_id IS NOT NULL GROUP BY client_id`));

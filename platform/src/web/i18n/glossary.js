@@ -6,7 +6,7 @@ import { HEALTH_LABELS, CAPACITY, CAPACITY_LEGEND } from '../../core/i18n/thresh
 
 export const G = {
   // ── الانتباه والقرار ──
-  attention: 'يحتاج انتباهك الآن',
+  attention: 'يحتاج تدخلك الآن',
   needsDecision: 'بانتظار قرارك',
   decisions: 'القرارات',
   offTrack: 'خارج المسار',
