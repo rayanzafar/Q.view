@@ -128,14 +128,13 @@ ${CARD_HEAD_CSS}
 @media(max-width:1180px){.kpi-hero{flex-basis:46%}.kpi-cell{min-width:30%}}
 @media(max-width:640px){.kpi-hero,.kpi-cell{flex-basis:100%;border-inline-start:none;border-top:1px solid var(--line)}.kpi-band>:first-child{border-top:none}}
 /* القمع v3: مقاطع شبه منحرفة متدرجة بنفسجياً كالمرجع — النسب على الجانب، والنقر يرشّح */
-.fnl-row{display:grid;grid-template-columns:30px 1fr 96px;gap:.45rem;align-items:center;border-radius:10px;padding:.12rem .25rem;border:1px solid transparent;text-decoration:none}
+.fnl-row{display:grid;grid-template-columns:1fr 96px;gap:.45rem;cursor:pointer;align-items:center;border-radius:10px;padding:.12rem .25rem;border:1px solid transparent;text-decoration:none}
 .fnl-row:hover{background:#fbfcfe;border-color:var(--line)}
 .fnl-row.on{background:#f6f3fa;border-color:#d9c9e4;box-shadow:var(--sh-sm)}
 /* التعتيم عند اختيار مرحلة يغسل الخلفية وحدها بطبقة بيضاء — الرقم يبقى فوقها مقروءاً */
 .fnl-row.dim .fnl-bar::before{content:'';position:absolute;inset:0;background:rgba(255,255,255,.74)}
 .fnl-row.dim .fnl-bar .cnt{color:var(--muted)}
 .fnl-bar .cnt{position:relative;z-index:1}
-.fnl-conv{font-size:10px;color:var(--faint);text-align:center;font-weight:700}
 .fnl-shape{display:flex;justify-content:center;min-width:0}
 .fnl-bar{position:relative;height:30px;clip-path:polygon(0 0,100% 0,calc(100% - 13px) 100%,13px 100%);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:var(--fs-body);transition:width .25s ease;min-width:46px}
 .fnl-meta{min-width:0}
@@ -394,6 +393,13 @@ export async function sectorPage(user, opts = {}) {
        AND o.sector_id = ? ${selStage ? 'AND o.stage_id = ?' : ''} AND ${fOpp.clause}
      ORDER BY o.value_halalas DESC LIMIT 3`,
   [sectorId, ...(selStage ? [selStage.id] : []), ...fOpp.params]);
+  // فرص كل مرحلة المسماة لنوافذ تفصيل القمع — بنفس قصّ قائمة الفرص (سياسة «الأرقام لا
+  // الأشخاص» v5.2): المجاميع على رأس النافذة قطاعية، والأسماء بنطاق القارئ وحده.
+  const ddOppRows = await all(`SELECT o.id, o.title_ar, o.value_halalas, o.stage_id, c.name_ar client
+     FROM opportunity o JOIN stage st ON st.id = o.stage_id LEFT JOIN client c ON c.id = o.client_id
+     WHERE st.is_won = 0 AND st.is_lost = 0 AND o.stage_id != 'ON_HOLD' AND o.deleted_at IS NULL
+       AND o.sector_id = ? AND ${fOpp.clause}
+     ORDER BY o.value_halalas DESC`, [sectorId, ...fOpp.params]);
 
   const elapsed = yearElapsedPct(now, year);
   const nowM = currentMonthIndex(year);
@@ -469,29 +475,27 @@ export async function sectorPage(user, opts = {}) {
   // المقطع الصغير يحرسه min-width في CSS لا تحريفُ المقياس.
   const openTotalV = funnelStages.reduce((a, s) => a + s.value_halalas, 0);
   const openTotalC = funnelStages.reduce((a, s) => a + s.count, 0);
-  const fnlRow = ({ href, on, dim, title, name, count, value, wv, wc, color, conv }) => `
-    <a class="fnl-row${on ? ' on' : dim ? ' dim' : ''}" href="${href}" title="${title}">
-      <span class="fnl-conv">${conv != null ? `<b class="tnum" title="نسبة الانتقال: عدد هذه المرحلة من عدد المرحلة السابقة الآن — لقطة حالية لا تدفّق تاريخي" aria-label="ينتقل ${conv}% من المرحلة السابقة">${conv}%</b>` : ''}</span>
+  // النقر يفتح نافذة تفصيل المرحلة (فرصها وقيمها وأزرار التصفية) — لا ترشيحاً صامتاً لا يُرى
+  // أثره. ونسبة «الانتقال» حُذفت: سجل المراحل شبه فارغ (أغلب الفرص استوردت بمرحلتها) فأي
+  // معدل عبور منه كذبة إحصائية — تعود النسبة حين يتراكم سجل انتقالات حقيقي.
+  const fnlRow = ({ dd, on, dim, title, name, count, value, wv, wc, color }) => `
+    <div class="fnl-row${on ? ' on' : dim ? ' dim' : ''}" role="button" tabindex="0" data-action="open-dd" data-dd="${dd}" title="${title}" aria-label="${title}">
       <span class="fnl-shape"><span class="fnl-bar tnum" data-wv="${wv}" data-wc="${wc}" style="width:${wv}%;background:${color}"><b class="cnt">${count}</b></span></span>
       <span class="fnl-meta"><span class="n">${name}</span><span class="v tnum">${sarShort(value)}</span></span>
-    </a>`;
+    </div>`;
   const funnelRows = openTotalC === 0 ? '' : [
-    fnlRow({ href: qs({ stage: null }), on: false, dim: !!selStage,
-      title: `كل الفرص المفتوحة: ${countAr(openTotalC, { one: 'فرصة واحدة', two: 'فرصتان', few: 'فرص', many: 'فرصة', zero: 'لا فرص' })} بقيمة ${fmtSar(openTotalV)}${selStage ? ' — انقر لإلغاء التصفية' : ''}`,
+    fnlRow({ dd: 'fnl-ALL', on: false, dim: !!selStage,
+      title: `كل الفرص المفتوحة: ${countAr(openTotalC, { one: 'فرصة واحدة', two: 'فرصتان', few: 'فرص', many: 'فرصة', zero: 'لا فرص' })} بقيمة ${fmtSar(openTotalV)} — انقر للتفصيل`,
       name: 'إجمالي الفرص المفتوحة', count: openTotalC, value: openTotalV,
-      wv: 100, wc: 100, color: funnelColor(0, funnelStages.length + 1), conv: null }),
+      wv: 100, wc: 100, color: funnelColor(0, funnelStages.length + 1) }),
     ...funnelStages.map((s, i) => {
       const wv = Math.round((s.value_halalas / Math.max(1, openTotalV)) * 100);
       const wc = Math.round((s.count / Math.max(1, openTotalC)) * 100);
-      const prev = i === 0 ? null : funnelStages[i - 1];
-      // النسبة لقطة أعداد حالية لا تدفّق تاريخي — وحين تكون المرحلة أكثر من سابقتها
-      // لا معنى لـ«N% تنتقل» فتُطوى بدل أن تُطبع 250%.
-      const conv = prev && prev.count > 0 && s.count <= prev.count ? Math.round((s.count / prev.count) * 100) : null;
       const on = selStage && selStage.id === s.id;
-      return fnlRow({ href: qs({ stage: on ? null : s.id }), on, dim: selStage && !on,
-        title: `${esc(s.name_ar)}: ${countAr(s.count, { one: 'فرصة واحدة', two: 'فرصتان', few: 'فرص', many: 'فرصة', zero: 'لا فرص' })} بقيمة ${fmtSar(s.value_halalas)} — انقر ${on ? 'لإلغاء التصفية' : 'لتصفية الشاشة بهذه المرحلة'}`,
+      return fnlRow({ dd: `fnl-${s.id}`, on, dim: selStage && !on,
+        title: `${esc(s.name_ar)}: ${countAr(s.count, { one: 'فرصة واحدة', two: 'فرصتان', few: 'فرص', many: 'فرصة', zero: 'لا فرص' })} بقيمة ${fmtSar(s.value_halalas)} — انقر لعرض فرص المرحلة`,
         name: esc(s.name_ar), count: s.count, value: s.value_halalas,
-        wv, wc, color: funnelColor(i + 1, funnelStages.length + 1), conv });
+        wv, wc, color: funnelColor(i + 1, funnelStages.length + 1) });
     }),
   ].join('');
   // أعمار الفرص — من الصفوف المفتوحة نفسها (وتُرشَّح بالمرحلة المختارة)
@@ -984,6 +988,34 @@ export async function sectorPage(user, opts = {}) {
       <span><a href="/app/project/${esc(p.id)}" style="color:var(--ink2);font-weight:700">${esc(p.name_ar)}</a></span>
       <b class="tnum">${progMapH.get(p.id)?.pct ?? Math.max(0, Math.min(100, Math.round(p.progress_pct || 0)))}%</b></div>`))}</div>
     <div style="display:flex;justify-content:flex-start"><a class="btn btn-sm" href="/app/projects?year=${year}${user.scope === 'company' ? '&sector=' + esc(sectorId) : ''}">عرض جميع المشاريع</a></div>`)).join('');
+  // نوافذ تفصيل القمع: للإجمالي ولكل مرحلة — أرقام الرأس قطاعية، والأسماء بنطاق القارئ،
+  // وزرّا «تصفية الشاشة» و«صفحة الفرص» داخل النافذة فلا نقرة بلا أثر مرئي.
+  const oppsPageHref = `/app/opportunities?year=${year}${user.scope === 'company' ? '&sector=' + esc(sectorId) : ''}`;
+  const fnlDDOne = (key, name, count, value, weighted, rows, stageId) => {
+    const ages = openFlow.filter((o) => !stageId || o.stage_id === stageId);
+    const avg = ages.length ? Math.round(ages.reduce((t, o) => t + ageDays(o.since), 0) / ages.length) : 0;
+    const stalled = ages.filter((o) => ageDays(o.since) > (ROT_THRESHOLDS[o.stage_id] || ROT_THRESHOLDS.default)).length;
+    const isOn = selStage && stageId && selStage.id === stageId;
+    return ddWrap(key, stageId ? `مرحلة ${esc(name)}` : 'كل الفرص المفتوحة', `${esc(sd.sector.name_ar)} · أسماء الفرص أدناه بنطاقك في قائمة الفرص`, `
+    <div class="dd-kpi"><span class="v tnum" style="color:var(--brand2)">${fmtSar(value)}</span><span style="font-size:12px;color:var(--muted)">${countAr(count, { one: 'فرصة واحدة', two: 'فرصتان', few: 'فرص', many: 'فرصة', zero: 'لا فرص' })} · ${G.weighted} ${fmtSar(Math.round(weighted))}</span></div>
+    <div style="display:flex;gap:1rem;font-size:12px;color:var(--muted);flex-wrap:wrap">
+      <span>متوسط العمر في المرحلة <b class="tnum">${dayWord(avg)}</b></span>
+      <span>متوقفة — تجاوزت المدة المعتادة <b class="tnum" style="color:${stalled ? 'var(--amber)' : 'var(--ink2)'}">${stalled}</b></span>
+    </div>
+    <div class="dd-sec">${rows.length ? `أعلى الفرص قيمةً${rows.length < count ? ` (${rows.length} من ${count})` : ''}` : 'لا فرص ضمن نطاق قراءتك في هذه المرحلة'}</div>
+    <div>${ddRows(rows.map((o) => `<div class="dd-row">
+      <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><a href="/app/opportunity/${esc(o.id)}" style="color:var(--ink2);font-weight:700">${esc(o.title_ar)}</a>${o.client ? ` <span style="color:var(--faint);font-size:10.5px">· ${esc(o.client)}</span>` : ''}</span>
+      <b class="tnum" style="flex:none">${o.value_halalas ? fmtSar(o.value_halalas) : '—'}</b></div>`))}</div>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+      ${stageId ? `<a class="btn btn-primary btn-sm" href="${qs({ stage: isOn ? null : stageId })}">${isOn ? 'إلغاء تصفية الشاشة' : 'تصفية الشاشة بهذه المرحلة'}</a>` : ''}
+      <a class="btn btn-sm" href="${oppsPageHref}">فتح صفحة الفرص</a>
+    </div>`);
+  };
+  const funnelDD = [
+    fnlDDOne('fnl-ALL', '', openTotalC, openTotalV, funnelStages.reduce((t, x) => t + x.weighted, 0), ddOppRows.slice(0, 8), null),
+    ...funnelStages.map((st) => fnlDDOne(`fnl-${st.id}`, st.name_ar, st.count, st.value_halalas, st.weighted,
+      ddOppRows.filter((o) => o.stage_id === st.id).slice(0, 8), st.id)),
+  ].join('');
   const DD = `
   ${ddWrap('secrev', `${G.revenue} حسب المشروع · ${year}`, `${esc(sd.sector.name_ar)} · المحقق مقابل قيمة كل مشروع`, `
     <div class="dd-kpi"><span class="v tnum" style="color:var(--green)">${fmtSar(sd.revenue_halalas)}</span><span style="font-size:12px;color:var(--muted)">إجمالي المحقق ${year} · ${G.forecast}: ${fmtSar(fc.forecast)}</span></div>
@@ -1017,7 +1049,8 @@ export async function sectorPage(user, opts = {}) {
   ${ddWrap('att-late-dlv', 'مخرجات تحتاج متابعة', `${esc(sd.sector.name_ar)} · مخرجات من أشهر سابقة لم تصل إلى الفوترة`, `
     <div>${ddRows(lateDlv.map((d) => `<div class="dd-row"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.project || '')} · ${esc(d.name_ar)} <span style="color:var(--faint);font-size:10.5px">${MONTHS_AR[(d.month - 1) % 12] || ''}</span></span><b class="tnum" style="flex:none">${fmtSar(d.amount_halalas || 0)}</b></div>`))}</div>`)}
   ${healthDD}
-  ${collectDD}`;
+  ${collectDD}
+  ${funnelDD}`;
 
   const switcher = user.scope === 'company' ? `<div class="chips" style="margin-bottom:.6rem"><span class="lbl">القطاع:</span>
     ${allSectors.map((s) => `<a href="/app/sector?year=${year}&sector=${esc(s.id)}&win=${win}" class="chip ${s.id === sectorId ? 'on' : ''}"><span class="dot" style="background:${esc(s.color || '#244A99')}"></span>${esc(s.name_ar)}</a>`).join('')}
