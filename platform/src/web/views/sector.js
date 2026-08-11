@@ -198,7 +198,8 @@ ${CARD_HEAD_CSS}
 .cap-nums{display:grid;grid-template-columns:repeat(4,1fr);gap:.5rem;padding:.2rem 0 .4rem}
 .cap-nums .l{font-size:10px;color:var(--muted)}
 .cap-nums .v{font-size:var(--fs-num-sm);font-weight:800}
-.cap-lists{display:grid;grid-template-columns:1fr 1fr;gap:.7rem;border-top:1px dashed var(--line);padding-top:.5rem}
+.cap-lists{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:.7rem;border-top:1px dashed var(--line);padding-top:.5rem}
+.cap-lists>div{min-width:0}
 @media(max-width:640px){.cap-lists{grid-template-columns:1fr}}
 .cap-lists .h{font-size:var(--fs-micro);font-weight:800;color:var(--muted);margin-bottom:.15rem}
 .cap-li{display:flex;justify-content:space-between;gap:.5rem;font-size:var(--fs-meta);padding:.14rem 0}
