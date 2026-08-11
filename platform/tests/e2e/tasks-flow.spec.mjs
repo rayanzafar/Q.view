@@ -135,4 +135,55 @@ export default async function tasksFlowSpec({ browser, base, t }) {
       !txt.includes('عنوان غير مسموح'), 'ظهرت جملة حجب البريد على شاشة المهام');
     await ctx.close();
   }
+
+  // ── ٥) حفظُ التفاصيل لا يمحو جهة المهمة (KI-042 سابقاً) ──
+  // مديرٌ يربط مهمةً بمشروعٍ ويسندها لموظفٍ ليس مُسكَّناً عليه: منتقي الموظف لا يحمل الجهة،
+  // فكان الحفظ يرسل فراغه ويمحو الربط بصمت. الحارس: فتحُ التفاصيل والحفظ بلا تغيير يُبقيان
+  // الجهة كما هي — والمنتقي يسمّيها «الجهة الحالية» بدل أن يقف فارغاً.
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    const page = await ctx.newPage();
+    await login(page, base, 'demo.admin');
+    await open(page, base, '/app/home');
+    const made = await page.evaluate(async () => {
+      const j = async (p, init) => { const r = await fetch('/api' + p, init); return r.ok ? r.json() : null; };
+      const users = await j('/identity/users');
+      const emp = (users || []).find((u) => u.username === 'demo.employee');
+      const projects = await j('/projects');
+      const prj = (projects || [])[0];
+      if (!emp || !prj) return { error: 'لا موظف تجريبي أو لا مشروع في البذرة' };
+      const t = await j('/tasks/quick', { method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ title: 'مهمة حارس الجهة', project_id: prj.id, assignee_user_id: emp.id }) });
+      return t && t.id ? { taskId: t.id, projectId: prj.id } : { error: 'لم تُنشأ مهمة الحارس' };
+    });
+    check('تهيئة حارس الجهة: مهمة مرتبطة بمشروع باسم الموظف', !!made.taskId, JSON.stringify(made));
+    await ctx.close();
+
+    if (made.taskId) {
+      const ctx2 = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+      const page2 = await ctx2.newPage();
+      await login(page2, base, 'demo.employee');
+      await open(page2, base, '/app/tasks?win=all');
+      const row = page2.locator(`[data-task="${made.taskId}"]`);
+      check('المهمة المرتبطة ظاهرة في قائمة صاحبها', await row.count() > 0);
+      await row.locator('[data-action="task-open"]').last().click();
+      await page2.waitForSelector('#drawer [data-f="parent"]');
+      const sel = await page2.evaluate(() => {
+        const s = document.querySelector('#drawer [data-f="parent"]');
+        return { value: s.value, initial: s.dataset.initial || '',
+          current: [...s.options].some((o) => o.textContent.includes('الجهة الحالية')) };
+      });
+      check('منتقي الجهة يقف على جهة المهمة لا على الفراغ', sel.value === 'p:' + made.projectId, JSON.stringify(sel));
+      await page2.locator('#drawer [data-action="task-save"]').click();
+      await page2.waitForLoadState('domcontentloaded');
+      await page2.waitForSelector(`[data-task="${made.taskId}"]`);
+      const kept = await page2.evaluate((id) => {
+        const r = document.querySelector(`[data-task="${id}"]`);
+        return r ? r.dataset.project : null;
+      }, made.taskId);
+      check('حفظُ التفاصيل بلا تغيير يُبقي جهة المهمة كما هي', kept === made.projectId,
+        `project=${kept} المتوقع=${made.projectId}`);
+      await ctx2.close();
+    }
+  }
 }

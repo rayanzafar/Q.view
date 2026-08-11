@@ -346,3 +346,23 @@ test('لوح المحرِّر يحمل موضع «اعتمدها فلان» — 
   assert.ok(html.includes('اعتمدها'), 'نص «اعتمدها» غائب عن قالب المحرِّر');
   assert.ok(html.includes('data-f="prov-creator"'), 'لا موضع للمُسنِد في المحرِّر');
 });
+
+// ── حراسة المدخلات في الخادم لا الشاشة وحدها (KI-044 + KI-047) ────────────────
+test('تاريخٌ بغير صيغة القاعدة يُردّ برسالة عربية — لا يُخزَّن فيصنع مهمةً شبحاً', async () => {
+  for (const bad of ['2026-8-15', '08/15/2026', 'غداً إن شاء الله', '2026-13-40']) {
+    await assert.rejects(() => T.quickAddTask(ctx(emp), { title: 'مهمة بتاريخ معطوب', due_date: bad }),
+      /بصيغة غير مقروءة/, `قُبل التاريخ «${bad}»`);
+  }
+  const ok = await T.quickAddTask(ctx(emp), { title: 'مهمة بتاريخ سليم', due_date: '2026-08-15' });
+  assert.equal(ok.due_date, '2026-08-15');
+  await assert.rejects(() => T.updateTask(ctx(emp), ok.id, { due_date: '15-08-2026' }), /بصيغة غير مقروءة/);
+  const cleared = await T.updateTask(ctx(emp), ok.id, { due_date: '' });
+  assert.equal(cleared.due_date, null, 'الفراغ مسحٌ مشروع للموعد لا خطأ');
+});
+
+test('وعنوان المهمة مسقوف في الخادم — ألف حرفٍ لا تدخل من الباب المباشر', async () => {
+  await assert.rejects(() => T.quickAddTask(ctx(emp), { title: 'م'.repeat(201) }), /أطول من اللازم/);
+  const t = await T.quickAddTask(ctx(emp), { title: 'م'.repeat(200) });
+  assert.equal(t.title.length, 200);
+  await assert.rejects(() => T.updateTask(ctx(emp), t.id, { title: 'م'.repeat(300) }), /أطول من اللازم/);
+});

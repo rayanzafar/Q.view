@@ -143,7 +143,10 @@ export async function actOnApproval(ctx, requestId, action, comment) {
     // على موظفه («هل يعمل على هذا»)، لا سلطةٌ على العنصر المُسكَّن عليه. واشتراطُ منحٍ إضافي
     // يُسكت مديراً عن موظفه لأنه لا يملك الفرصة — وهو عكس الغرض تماماً.
     if (reqRow.assignee_user_id !== user.id && user.role_id !== 'admin') {
-      throw forbidden('هذا التأكيد موجَّه إلى مدير الموظف، لا إليك');
+      // الرسالة باسم النوع الصحيح: طلبُ المهمة «اعتماد» لا «تأكيد تسكين» — والمعتمِد مديرُ كاتبها.
+      throw forbidden(reqRow.resource === 'task'
+        ? 'هذا الاعتماد موجَّه إلى مدير كاتب المهمة، لا إليك'
+        : 'هذا التأكيد موجَّه إلى مدير الموظف، لا إليك');
     }
   } else {
     if (user.role_id !== step.approver_role && user.role_id !== 'admin') throw forbidden('لست المعتمِد المطلوب لهذه الخطوة');

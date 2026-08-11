@@ -190,9 +190,10 @@ a.hm-tt:hover .a{color:var(--brand)}
 .cal-nav{display:flex;gap:.3rem}
 .cal-nav a{width:29px;height:29px;display:grid;place-items:center;border:1px solid var(--line);border-radius:9px;color:var(--muted);font-weight:800;font-size:13px}
 .cal-nav a:hover{background:#f3f6fc;color:var(--ink2);border-color:#d6def0}
-.cal-w,.cal-g{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;padding:0 .85rem}
+/* minmax(0,1fr) لا 1fr: مسار الشبكة لا يتّسع لعنوانٍ طويل داخل خلية — يُقصّ النص لا الشبكة */
+.cal-w,.cal-g{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px;padding:0 .85rem}
 .cal-w>div{text-align:center;font-size:var(--fs-micro);font-weight:800;color:var(--faint);padding-bottom:.3rem}
-.cal-d{appearance:none;border:0;font:inherit;text-align:center;cursor:pointer;position:relative;aspect-ratio:1;border-radius:11px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+.cal-d{appearance:none;border:0;font:inherit;text-align:center;cursor:pointer;position:relative;aspect-ratio:1;border-radius:11px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-width:0;overflow:hidden;
   font-size:var(--fs-body);font-weight:700;color:var(--ink2);background:#f7f9fd;border:1px solid transparent;
   transition:transform .16s cubic-bezier(.22,.8,.3,1),box-shadow .16s,background .16s}
 .cal-d.we{color:var(--faint);background:#fbfcfe}

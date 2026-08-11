@@ -232,6 +232,31 @@ function normalizeParent(patch, data, current = null) {
 
 const blankToNull = (v) => (v == null || String(v).trim() === '' ? null : String(v).trim());
 
+// التاريخ يُقبل فارغاً أو بصيغة القاعدة الواحدة YYYY-MM-DD ويُرفض ما سواها برسالةٍ تقول
+// العمل: كان أي نصٍّ يُخزَّن حرفياً («2026-8-15» من ملفٍ مستورَد مثلاً) فتختفي المهمة من كل
+// نافذةٍ زمنية ومن البحث وتبقى في اللوح وحده — مهمةٌ شبح لا يجدها صاحبها (KI-044 سابقاً).
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const dateOrNull = (v, label) => {
+  if (v == null || String(v).trim() === '') return null;
+  const s = String(v).trim();
+  if (!DATE_RE.test(s) || Number.isNaN(Date.parse(s + 'T00:00:00Z'))) {
+    throw badRequest(`${label} بصيغة غير مقروءة — اختره من منتقي التاريخ`);
+  }
+  return s;
+};
+
+// العنوان مطلوبٌ ومسقوف في الخادم لا في الشاشة وحدها: بلا سقفٍ هنا كان نصُّ آلافِ الأحرف
+// يدخل من الباب المباشر فيتضخم الصفُّ والبطاقة والرسالة معاً (KI-047 سابقاً).
+const TITLE_MAX = 200;
+const titleOf = (v) => {
+  const s = String(v == null ? '' : v).trim();
+  if (!s) throw badRequest('عنوان المهمة مطلوب');
+  if (s.length > TITLE_MAX) {
+    throw badRequest('عنوان المهمة أطول من اللازم — أوجزه في مئتي حرف وضع التفاصيل في الوصف');
+  }
+  return s;
+};
+
 // تصنيف المهمة (اجتماع/تقرير/متابعة…): وسمٌ وصفي قصير — الفراغ لا تصنيف، والطول مقصوصٌ
 // عند ستين حرفاً كي لا يتحوّل الوسم إلى فقرةٍ تكسر أعمدة القوائم. القاعدة واحدة في مسارَي
 // الإنشاء والتعديل معاً، فلا يختلف ما يُخزَّن باختلاف الباب الذي دخل منه.
@@ -243,7 +268,7 @@ const normalizeCategory = (v) => {
 // Quick Add — minimal fields, instant. Defaults assignee to self.
 export async function quickAddTask(ctx, data) {
   const user = ctx.user;
-  if (!data.title || !String(data.title).trim()) throw badRequest('عنوان المهمة مطلوب');
+  const title = titleOf(data.title);
   const assignee = data.assignee_user_id || user.id;
   // «شخصية» تعني شخصك أنت. مهمةٌ شخصية تُدفع إلى قائمة غيرك تناقضٌ في ذاتها: صاحبُها يراها
   // في دفتره ومن أنشأها لا يستطيع قراءتها بعدها — فيبدو النظام وكأنه ابتلعها.
@@ -291,7 +316,7 @@ export async function quickAddTask(ctx, data) {
   // فمن نادى الدالة داخل معاملته — تطبيق المساعد الذكي مثلاً — ينضمّ إليها ولا يُقسّمها.)
   await tx(async () => {
     await insert('task', {
-      id: tid, title: String(data.title).trim(), description: data.description || null,
+      id: tid, title, description: data.description || null,
       // النوع يُشتقّ من الجهة الفعلية لا من قيمةٍ افتراضية عمياء: «مشروع» كانت تُكتب على كل
       // طلبٍ لم يسمِّ نوعه — ومنه كل إضافة سريعة بلا جهة — فتُخزَّن مهمةٌ داخلية «مشروعاً»
       // بلا مشروع. الترحيلة ٠٢٩ صحّحت المكتوب، وهذا السطر يسدّ الباب عن الجديد.
@@ -308,7 +333,7 @@ export async function quickAddTask(ctx, data) {
       // و«تنتظر» ليست حالةَ عمل بل حالةَ وجود: `status` يبقى `TODO` كما هو، والعمود المستقلّ
       // وحده يقول إن المهمة لم تُضَف بعد. فلا يتغيّر معنى الحالة على كل لوحٍ وعدّاد وتقرير.
       approval_state: approval.needsApproval ? TASK_PENDING : null,
-      start_date: data.start_date || null, due_date: data.due_date || null,
+      start_date: dateOrNull(data.start_date, 'تاريخ البدء'), due_date: dateOrNull(data.due_date, 'تاريخ الاستحقاق'),
       estimate_hours: data.estimate_hours ?? null, recurring: data.recurring || null,
       next_step: blankToNull(data.next_step),
       created_at: now, created_by: user.id,
@@ -319,13 +344,13 @@ export async function quickAddTask(ctx, data) {
       await raiseDirectApproval(ctx, {
         workflowKey: TASK_WORKFLOW_KEY, resource: 'task', resourceId: tid,
         assigneeUserId: approval.approverUserId, sectorId,
-        detail: { title: String(data.title).trim(), project_id: projectId, opportunity_id: oppId },
+        detail: { title, project_id: projectId, opportunity_id: oppId },
       });
       // والخبرُ يصل بلسان الحالة لا بنصٍّ عام: المدير يقرأ **ما** يُعتمد قبل أن يفتح الشاشة.
       await notify(approval.approverUserId, {
         kind: 'approval',
         title: 'مهمة بانتظار اعتمادك',
-        body: `${String(data.title).trim()} — أضافها ${user.name_ar || user.username || 'أحد أفراد إدارتك'}`,
+        body: `${title} — أضافها ${user.name_ar || user.username || 'أحد أفراد إدارتك'}`,
         ref_resource: 'task', ref_id: tid,
       });
     } else if (assignee !== user.id) {
@@ -334,7 +359,7 @@ export async function quickAddTask(ctx, data) {
       await notify(assignee, {
         kind: 'task',
         title: 'مهمة جديدة أُسندت إليك',
-        body: `${String(data.title).trim()} — أسندها ${user.name_ar || user.username || 'مديرك'}`,
+        body: `${title} — أسندها ${user.name_ar || user.username || 'مديرك'}`,
         ref_resource: 'task', ref_id: tid,
       });
     }
@@ -498,6 +523,9 @@ export async function updateTask(ctx, taskId, data) {
     'start_date', 'estimate_hours', 'blocked_reason', 'assignee_user_id', 'next_step', 'department_id', 'category']) {
     if (k in data) patch[k] = data[k];
   }
+  if ('title' in patch) patch.title = titleOf(patch.title);
+  if ('due_date' in patch) patch.due_date = dateOrNull(patch.due_date, 'تاريخ الاستحقاق');
+  if ('start_date' in patch) patch.start_date = dateOrNull(patch.start_date, 'تاريخ البدء');
   if ('category' in patch) patch.category = normalizeCategory(patch.category);
   if ('next_step' in patch) patch.next_step = blankToNull(patch.next_step);
   if ('blocked_reason' in patch) patch.blocked_reason = blankToNull(patch.blocked_reason);

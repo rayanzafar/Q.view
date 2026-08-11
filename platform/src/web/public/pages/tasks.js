@@ -133,6 +133,21 @@
     set('next', row.dataset.next || '');
     set('blocked', row.dataset.blocked || '');
     set('parent', parentValue(row));
+    // جهةٌ خارج نطاق القارئ (أسندها مديرٌ إليه): ليست في قائمته، فيبقى المنتقي فارغاً ويُرسل
+    // الحفظُ فراغَه — فتُمحى الجهة بصمتٍ من تعديلٍ عادي (KI-042 سابقاً). تُحقن الجهة الحالية
+    // خياراً باسمها، ويُحفظ موضعُ البداية كي لا يُرسَل الحقل أصلاً ما لم يغيّره صاحبه فعلاً.
+    var psel = $('[data-f="parent"]', d);
+    if (psel) {
+      var want = parentValue(row);
+      if (want && psel.value !== want) {
+        var cur = document.createElement('option');
+        cur.value = want;
+        cur.textContent = (row.dataset.parentName || 'جهة خارج نطاقك') + ' — الجهة الحالية';
+        psel.appendChild(cur);
+        psel.value = want;
+      }
+      psel.dataset.initial = psel.value;
+    }
     setCategory($('[data-f="category"]', d), $('[data-f="category-other"]', d), row.dataset.category || '');
     set('assignee', row.dataset.assignee || '');
     set('dept', row.dataset.dept || '');
@@ -186,14 +201,15 @@
       next_step: g('next') || null,
       blocked_reason: g('blocked') || null,
     };
-    var personal = false;
     var pv = $('[data-f="parent"]', d);
-    if (pv) {
+    // الجهة تُرسَل فقط إن غيّرها صاحبها: إرسالُها دائماً كان يمحوها بصمت حين تكون خارج نطاقه
+    // (منتقيه لا يحملها فقيمته فارغة)، ويُردُّ من الخادم لو أُعيد إرسالُ جهةٍ لا يصل إليها.
+    if (pv && pv.value !== (pv.dataset.initial || '')) {
       var p = parentPatch(pv.value);
       patch.project_id = p.project_id; patch.opportunity_id = p.opportunity_id;
       if (p.work_kind) patch.work_kind = p.work_kind;
-      personal = p.work_kind === 'personal';
     }
+    var personal = !!pv && pv.value === 'me';
     var av = $('[data-f="assignee"]', d);
     // مهمةٌ تبقى شخصية لا تُسنَد إلى غير صاحبها — والخادم يردّها. لا يُرسَل الحقل أصلاً.
     if (av && !personal) patch.assignee_user_id = av.value || null;

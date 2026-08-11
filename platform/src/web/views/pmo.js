@@ -441,7 +441,7 @@ const parentPicker = ({ idAttr, label, projects, opportunities, withPersonal = t
     ${withPersonal ? `<option value="me">${G.personalWork} — ${G.personalOnlyYou}</option>` : ''}
     ${projects.length ? `<optgroup label="${G.projects}">${projects.map((p) => `<option value="p:${esc(p.id)}">${esc(p.name_ar)}</option>`).join('')}</optgroup>` : ''}
     ${opportunities.length ? `<optgroup label="${G.opportunities}">${opportunities.map((o) => `<option value="o:${esc(o.id)}">${esc(o.title_ar)}</option>`).join('')}</optgroup>` : ''}
-    ${!projects.length && !opportunities.length ? '<option value="" disabled>لا مشاريع ولا فرص ضمن نطاقك بعد — تظهر هنا حين تدخل نطاقك</option>' : ''}
+    ${!projects.length && !opportunities.length ? '<option value="" disabled>لا مشاريع ولا فرص ضمن نطاقك بعد — حين تُسكَّن على عملٍ أو يدخل نطاقك تظهر هنا</option>' : ''}
   </select>`;
 
 export async function tasksPage(user, opts = {}) {
@@ -611,6 +611,7 @@ export async function tasksPage(user, opts = {}) {
     data-progress="${Math.max(0, Math.min(100, Math.round(Number(t.progress_pct) || 0)))}"
     data-next="${esc(t.next_step || '')}" data-blocked="${esc(t.blocked_reason || '')}"
     data-project="${esc(t.project_id || '')}" data-opp="${esc(t.opportunity_id || '')}"
+    data-parent-name="${esc(t.project_name || t.opportunity_name || '')}"
     data-kind="${esc(t.work_kind || '')}" data-category="${esc(t.category || '')}"
     data-creator="${esc(t.created_by || '')}" data-creator-name="${esc(t.creator_name || '')}"
     data-approver-name="${esc(t.approver_name || '')}" data-approved-at="${esc(provDate(t.approved_at))}"

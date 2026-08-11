@@ -6,7 +6,19 @@
 // مسار المهام، والتسكين إلى مسار تسكين المشروع، والصلاحية إلى مسار الهوية. فالحارس والتدقيق
 // واحدٌ أينما نُفِّذ الفعل — ولا يصير لهذه الصفحة قواعدُ تخصّها تتباعد عن قواعد أصلها.
 (function () {
-  var toast = function (m, bad) { if (window.Sanad && window.Sanad.toast) window.Sanad.toast(m, bad); };
+  // إشعارٌ حقيقي لا وسيطٌ إلى دالة غير موجودة: كانت اللوحة تنادي دالةً لم تُعرَّف قط، فتُبتلع
+  // كل رسائلها — نجاحاً وخطأً وتنبيهاً — ويعمل المدير أعمى (KI-043 سابقاً). النمط نفسه
+  // المستعمل في شاشة الاعتمادات حرفياً.
+  var toast = function (m, bad) {
+    var d = document.createElement('div');
+    d.textContent = m;
+    d.setAttribute('role', 'status');
+    d.style.cssText = 'position:fixed;bottom:20px;left:20px;z-index:200;padding:10px 16px;border-radius:10px;color:#fff;'
+      + 'font-size:13px;max-width:min(92vw,420px);line-height:1.7;box-shadow:0 8px 24px rgba(0,0,0,.2);background:'
+      + (bad ? '#b91c1c' : '#047857');
+    document.body.appendChild(d);
+    setTimeout(function () { d.remove(); }, bad ? 5200 : 2600);
+  };
   var val = function (id) { var el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; };
 
   async function api(path, method, body) {

@@ -248,3 +248,11 @@ test('كل صفٍّ قائم قبل الميزة يبقى بلا انتظار �
   const prj = await tasks.projectTasks(ADMIN, 'PRJ');
   assert.ok(prj.some((x) => x.id === 'tsk_legacy'), 'اختفت مهمةٌ قائمة من مشروعها');
 });
+
+test('ومن ليس معتمِدَ الطلب يُردّ باسم النوع الصحيح: «اعتماد» للمهمة لا «تأكيد تسكين»', async () => {
+  const t = await tasks.quickAddTask(ctx(EMP), { title: 'مهمة يعتمدها مديرها وحده', project_id: 'PRJ' });
+  const req = await db.get("SELECT * FROM approval_request WHERE resource_id = ? AND status = 'PENDING'", [t.id]);
+  const OTHER = { id: 'u_lone', username: 'lone', role_id: 'employee', scope: 'own', sector_id: 'SOL', employee_id: 'e_lone' };
+  await assert.rejects(() => engine.actOnApproval(ctx(OTHER), req.id, 'approve'),
+    /موجَّه إلى مدير كاتب المهمة/, 'رسالة المنع تتحدث عن تسكينٍ في طلب مهمة');
+});
