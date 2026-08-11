@@ -3,7 +3,7 @@
 import { all } from '../db/index.js';
 import { can } from '../rbac/index.js';
 import { scopeFilter } from '../rbac/scope.js';
-import { pendingApprovalsFor } from '../../modules/workflow/inbox.js';
+import { pendingApprovalsFor, DIRECT_KIND_AR } from '../../modules/workflow/inbox.js';
 import { fmtSar } from '../util/ids.js';
 import { ROT_THRESHOLDS } from '../../modules/crm/opportunities.js';
 import { countAr } from '../i18n/plural.js';
@@ -12,10 +12,10 @@ import { countAr } from '../i18n/plural.js';
 // (كي يتطابق عدد «المتوقفة» هنا مع عدّاد اللوحة تماماً — لا رقمين مختلفين لنفس المؤشر)
 const STAGE_ROT_DAYS = ROT_THRESHOLDS;
 
-// أسماء موارد الاعتمادات بالعربية — لا يظهر اسم مورد تقني للمستخدم أبداً
+// أسماء موارد الاعتمادات بالعربية — لا يظهر اسم مورد تقني للمستخدم أبداً.
+// (الموجَّه بالشخص يأخذ اسمه من مصدره الواحد `DIRECT_KIND_AR` لا من نسخة هنا.)
 export const RESOURCE_AR = { opportunity: 'فرصة', proposal: 'عرض', expense: 'مصروف',
-  deliverable: 'مخرَج', timesheet: 'سجل وقت', invoice: 'فاتورة', project: 'مشروع', contract: 'عقد',
-  task: 'اعتماد مهمة', membership: 'تأكيد تسكين' };
+  deliverable: 'مخرَج', timesheet: 'سجل وقت', invoice: 'فاتورة', project: 'مشروع', contract: 'عقد' };
 
 export async function attentionFeed(user, sectorId, { year, today } = {}) {
   const t = today || new Date().toISOString().slice(0, 10);
@@ -29,7 +29,7 @@ export async function attentionFeed(user, sectorId, { year, today } = {}) {
     const q = await pendingApprovalsFor(user);
     if (q.length) items.push({ rank: 1, tone: 'brand', icon: 'approvals', dd: null, href: '/app/approvals',
       title: `${countAr(q.length, { one: 'طلب اعتماد واحد', two: 'طلبا اعتماد', few: 'طلبات اعتماد', many: 'طلب اعتماد' })} بانتظار قرارك`,
-      sub: q.slice(0, 2).map((r) => RESOURCE_AR[r.resource] || 'طلب').join(' · '),
+      sub: q.slice(0, 2).map((r) => DIRECT_KIND_AR[r.resource] || RESOURCE_AR[r.resource] || 'طلب').join(' · '),
       action: 'راجِع واعتمد' });
   } catch { /* قائمة الاعتمادات ليست لكل الأدوار */ }
 

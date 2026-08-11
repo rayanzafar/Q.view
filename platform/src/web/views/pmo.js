@@ -441,7 +441,7 @@ const parentPicker = ({ idAttr, label, projects, opportunities, withPersonal = t
     ${withPersonal ? `<option value="me">${G.personalWork} — ${G.personalOnlyYou}</option>` : ''}
     ${projects.length ? `<optgroup label="${G.projects}">${projects.map((p) => `<option value="p:${esc(p.id)}">${esc(p.name_ar)}</option>`).join('')}</optgroup>` : ''}
     ${opportunities.length ? `<optgroup label="${G.opportunities}">${opportunities.map((o) => `<option value="o:${esc(o.id)}">${esc(o.title_ar)}</option>`).join('')}</optgroup>` : ''}
-    ${!projects.length && !opportunities.length ? '<option value="" disabled>لا مشاريع ولا فرص داخل نطاقك — تظهر هنا حين تُسكَّن عليها</option>' : ''}
+    ${!projects.length && !opportunities.length ? '<option value="" disabled>لا مشاريع ولا فرص ضمن نطاقك بعد — تظهر هنا حين تدخل نطاقك</option>' : ''}
   </select>`;
 
 export async function tasksPage(user, opts = {}) {
@@ -599,6 +599,12 @@ export async function tasksPage(user, opts = {}) {
       ? `<a class="tk-parent" href="${p.href}" title="${p.kind}: ${p.label}">${icon(p.ic)} ${p.label}</a>`
       : `<span class="tk-parent tk-parent-none">${icon(p.ic)} ${p.label}</span>`;
   };
+  // تاريخ الاعتماد يُقرأ نثراً بعرف الشاشة نفسها («في 11 أغسطس») لا رقماً تقنياً خاماً.
+  const provDate = (iso) => {
+    const s = String(iso || '').slice(0, 10);
+    if (!s) return '';
+    return `في ${Number(s.slice(8, 10))} ${MONTHS_AR[Number(s.slice(5, 7)) - 1] || ''}`;
+  };
   // بيانات الصف تُحمَل على الحاوية نفسها فيقرأها المحرِّر واللوح والتقويم من مصدر واحد.
   const dataAttrs = (t) => `data-task="${esc(t.id)}" data-title="${esc(t.title)}" data-status="${esc(t.status || 'TODO')}"
     data-priority="${esc(t.priority || 'P2')}" data-due="${esc(String(t.due_date || '').slice(0, 10))}"
@@ -607,7 +613,7 @@ export async function tasksPage(user, opts = {}) {
     data-project="${esc(t.project_id || '')}" data-opp="${esc(t.opportunity_id || '')}"
     data-kind="${esc(t.work_kind || '')}" data-category="${esc(t.category || '')}"
     data-creator="${esc(t.created_by || '')}" data-creator-name="${esc(t.creator_name || '')}"
-    data-approver-name="${esc(t.approver_name || '')}" data-approved-at="${esc(String(t.approved_at || '').slice(0, 10))}"
+    data-approver-name="${esc(t.approver_name || '')}" data-approved-at="${esc(provDate(t.approved_at))}"
     data-assignee="${esc(t.assignee_user_id || '')}" data-dept="${esc(t.department_id || '')}"
     data-desc="${esc(t.description || '')}"`;
   const progChip = (t) => {
@@ -1097,7 +1103,7 @@ export async function tasksPage(user, opts = {}) {
     <div class="drawer-body">
       <div class="wc-prov" data-f="provenance" hidden>
         <span data-f="prov-creator" hidden>أسندها <b data-f="prov-creator-name"></b></span>
-        <span data-f="prov-approver" hidden>اعتمدها <b data-f="prov-approver-name"></b> <span class="tnum" data-f="prov-approved-at" dir="ltr"></span></span>
+        <span data-f="prov-approver" hidden>اعتمدها <b data-f="prov-approver-name"></b> <span class="tnum" data-f="prov-approved-at"></span></span>
       </div>
       <div class="field"><label for="tf-title">عنوان المهمة</label><input id="tf-title" class="input" data-f="title"></div>
       <div class="grid2">
@@ -1236,6 +1242,7 @@ export async function tasksPage(user, opts = {}) {
     .tk-who svg{width:12px;height:12px;opacity:.75}
     .wc-prov{display:flex;gap:.8rem;flex-wrap:wrap;font-size:11px;color:var(--muted);
       padding:.45rem .6rem;background:var(--bg);border:1px solid var(--line);border-radius:8px;margin-bottom:.7rem}
+    .wc-prov[hidden]{display:none}
     .wc-prov b{font-weight:700;color:var(--ink)}
     .tk-prog{display:inline-flex;align-items:center;gap:.35rem;color:var(--muted);font-weight:700}
     .tk-progbar{display:block;width:70px;height:6px;background:#eef1f7;border-radius:999px;overflow:hidden;flex:none}
@@ -2668,7 +2675,7 @@ export async function personPage(user, personId) {
             data-user="${esc(p.userId)}">أضف المهمة</button>
         </div>
         <div class="pp-hint">${linkApproval.needsApproval
-    ? 'العمل الداخلي يصل إلى قائمته فوراً؛ والمرتبط بمشروع أو فرصة يُضاف إليه بعد اعتماد مديرك.'
+    ? 'العمل الداخلي يصل إلى قائمته فوراً؛ والمرتبط بمشروع أو فرصة يُضاف إلى قائمته بعد اعتماد مديرك.'
     : 'تصل إلى قائمته فوراً، ويراها في «مهامي».'}</div>`) : ''}
       ${d.canStaff ? panel('staff', 'تسكين على مشروع', `
         <div class="pp-form">

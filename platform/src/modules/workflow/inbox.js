@@ -9,9 +9,10 @@ import { myApprovalQueue, myDirectApprovals } from './engine.js';
 import { approvalTargets } from './targets.js';
 import { namesByIds } from '../org/people.js';
 
-// اسم النوع للموجَّه بالشخص — النوعان المُفعَّلان اليوم. وما وراءهما يقع على اسم مساره
-// (`workflow_name`) فلا يظهر اسمُ موردٍ تقني إن فُعِّل مسارٌ جديد قبل أن يُسمّى هنا.
-const DIRECT_KIND_AR = { task: 'اعتماد مهمة', membership: 'تأكيد تسكين' };
+// اسم النوع للموجَّه بالشخص — النوعان المُفعَّلان اليوم، ومصدرهما الواحد لكل من يسمّيهما
+// (البطاقة والبريد ومركز القطاع). وما وراءهما يقع على اسم مساره (`workflow_name`) فلا
+// يظهر اسمُ موردٍ تقني إن فُعِّل مسارٌ جديد قبل أن يُسمّى هنا.
+export const DIRECT_KIND_AR = { task: 'اعتماد مهمة', membership: 'تأكيد تسكين' };
 
 export async function pendingApprovalsFor(user) {
   return [...await myApprovalQueue(user), ...await myDirectApprovals(user)];

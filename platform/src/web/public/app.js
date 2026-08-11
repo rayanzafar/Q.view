@@ -456,7 +456,9 @@ fetch('/api/approvals/pending-count', { credentials: 'include' }).then((r) => r.
   // ومحتواها العددُ وحده (دائرةٌ 9px لا تتسع لكلمة)، مع وصفٍ مقروء للقارئ الصوتي.
   if (b && n) {
     b.textContent = n > 9 ? '9+' : String(n);
-    b.setAttribute('aria-label', n + ' بانتظار اعتمادك');
+    // اسمٌ مسموع كامل للقارئ الصوتي — لا رقمٌ عارٍ بلا معدود.
+    const word = n === 1 ? 'طلبٌ واحد' : n === 2 ? 'طلبان' : n <= 10 ? n + ' طلبات' : n + ' طلباً';
+    b.setAttribute('aria-label', word + ' بانتظار اعتمادك');
     b.style.display = '';
   }
 }).catch(() => {});

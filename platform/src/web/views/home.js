@@ -23,12 +23,12 @@ import { esc, sarShort, ddWrap } from './_shared.js';
 import { pageAllowed } from '../nav.js';
 import { MONTHS_AR, WEEKDAYS_AR, WEEKDAYS_AR_1 } from '../../core/i18n/time.js';
 import { myDay, monthGrid } from '../../modules/home/home.js';
-// بطاقة «بانتظار اعتمادك»: الموجَّه بالشخص وحده (`assignee_user_id = صاحب الصفحة`) — فيبقى
-// عقد الصفحة قائماً: لا استعلام يتجاوز نطاق صاحبها. والصلاحية على الفعل نفسه في الخادم
-// (`actOnApproval` يقبل المعتمَد الموجَّه إليه أياً كان دوره) — فلا بوابة دورٍ هنا عمداً:
-// هذه البطاقة هي المكان الوحيد الذي يراه معتمِدٌ دورُه لا يفتح شاشة «الاعتمادات».
-import { myDirectApprovals } from '../../modules/workflow/engine.js';
-import { decorateApprovals } from '../../modules/workflow/inbox.js';
+// بطاقة «بانتظار اعتمادك»: كل ما ينتظر قرار صاحب الصفحة — بدوره وبعينه معاً، نفس ما يعدّه
+// الجرس ونفس ما تعرضه شاشة «الاعتمادات» (لو عدَّ الجرسُ ثلاثةً وقالت البطاقة «لا شيء» لكذب
+// أحدهما). وهو ضمن عقد الصفحة: طابورُ القارئ نفسه لا يتجاوز نطاقه. والصلاحية على الفعل في
+// الخادم (`actOnApproval`) — فلا بوابة دورٍ هنا عمداً: هذه البطاقة هي المكان الوحيد الذي
+// يراه معتمِدٌ دورُه لا يفتح شاشة «الاعتمادات».
+import { pendingApprovalsFor, decorateApprovals } from '../../modules/workflow/inbox.js';
 
 // ── تسمية صاحب الصفحة ────────────────────────────────────────────────────────
 // الاسم الأول وحده في التحية: «أهلاً ياسر» تُقرأ ترحيباً، و«أهلاً د. ياسر صالح الشمري»
@@ -175,8 +175,11 @@ const STYLE = `
 .hm-tt .a{display:block;font-size:var(--fs-body);font-weight:700;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .hm-tt .b{font-size:var(--fs-micro);color:var(--faint)}
 a.hm-tt:hover .a{color:var(--brand)}
-/* أزرار بطاقة الاعتمادات: القرار من مكانه — بلا فتح شاشةٍ أخرى */
+/* أزرار بطاقة الاعتمادات: القرار من مكانه — بلا فتح شاشةٍ أخرى.
+   الحد الأدنى 40px هدفَ لمسٍ، وسطر «طلبها فلان» بدرجة مقروءة لا باهتة — هو مادة القرار. */
 .hm-appr-act{flex:0 0 auto;display:inline-flex;gap:.35rem}
+.hm-appr-act .btn{min-height:40px}
+#hm-appr .hm-tt .b{color:var(--muted)}
 .hm-ok{color:#047857;border-color:#a7f3d0;font-weight:800}
 .hm-ok:hover{background:#ecfdf5}
 .hm-no{color:#b91c1c;border-color:#fecaca;font-weight:800}
@@ -321,7 +324,7 @@ function calendarCard(grid, selected, monthKey) {
 // ── الصفحة ───────────────────────────────────────────────────────────────────
 export async function homePage(user, opts = {}) {
   const day = await myDay(user);
-  const approvals = await decorateApprovals(await myDirectApprovals(user));
+  const approvals = await decorateApprovals(await pendingApprovalsFor(user));
   const today = day.today;
 
   // الشهر المعروض واليوم المفتوح — كلاهما من العنوان، فحالة الشاشة قابلة للمشاركة والرجوع.
@@ -423,11 +426,11 @@ export async function homePage(user, opts = {}) {
   // البطاقة تُعرض دوماً — والفراغ يقول صراحةً «لا اعتمادات بانتظارك» (طلب المالك نصاً).
   const ageAr = (iso) => {
     const n = Math.max(0, Math.floor((Date.parse(today + 'T00:00:00Z') - Date.parse(String(iso || '').slice(0, 10) + 'T00:00:00Z')) / 86400000));
-    return n <= 0 ? 'اليوم' : n === 1 ? 'منذ يوم' : n === 2 ? 'منذ يومين' : n <= 10 ? `منذ ${n} أيام` : `منذ ${n} يوماً`;
+    return n <= 0 ? 'اليوم' : n === 1 ? 'أمس' : n === 2 ? 'منذ يومين' : n <= 10 ? `منذ ${n} أيام` : `منذ ${n} يوماً`;
   };
   const apprCard = `<div class="card" id="hm-appr" style="margin-bottom:1rem">
     ${cardTop('بانتظار اعتمادك', approvals.length
-    ? (pageAllowed(user, 'approvals') ? '<a href="/app/approvals" style="font-weight:700">كل الاعتمادات</a>' : '')
+    ? (pageAllowed(user, 'approvals') ? '<a href="/app/approvals" style="font-weight:700;color:var(--brand)">كل الاعتمادات</a>' : '')
     : '')}
     <div class="hm-body-p">${approvals.length
     ? approvals.slice(0, 8).map((a) => `<div class="hm-row">
@@ -439,7 +442,7 @@ export async function homePage(user, opts = {}) {
           <button type="button" class="btn btn-sm hm-no" data-action="apr-reject" data-id="${esc(a.id)}">رفض</button>
         </span>
       </div>`).join('')
-    : emptyCard('لا اعتمادات بانتظارك', 'كل ما وُجّه إليك للاعتماد قد حُسم — يظهر هنا كل طلبٍ جديد فور وصوله.')}</div>
+    : emptyCard('لا طلبات بانتظارك', 'كل ما وُجّه إليك للاعتماد قد حُسم — يظهر هنا كل طلبٍ جديد فور وصوله.')}</div>
   </div>`;
 
   // ── أمامك الآن ──

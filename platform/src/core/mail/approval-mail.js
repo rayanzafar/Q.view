@@ -5,11 +5,13 @@
 //   • مجمَّعة دوماً: رسالةٌ واحدة تسرد **كل** المعلَّق لحظة الإرسال — لا رسالة لكل طلب.
 //   • العنوان يقول ماذا وصل ولا يحمل تفصيلاً: عناوينُ الرسائل تُقرأ من قوائم وشاشات مقفلة،
 //     وأسماءُ المهام والأشخاص ليست لعينٍ عابرة (نفس قاعدة رسائل الدخول حرفياً).
+import { countAr } from '../i18n/plural.js';
+
 const BRAND = '#244A99', BRAND2 = '#834798', INK = '#0f172a', MUTED = '#64748b', LINE = '#e2e8f0';
 
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-const dayAgo = (n) => (n <= 0 ? 'اليوم' : n === 1 ? 'منذ يوم' : n === 2 ? 'منذ يومين'
+const dayAgo = (n) => (n <= 0 ? 'اليوم' : n === 1 ? 'أمس' : n === 2 ? 'منذ يومين'
   : n <= 10 ? `منذ ${n} أيام` : `منذ ${n} يوماً`);
 
 // بندٌ واحد في الرسالة: اسمُ ما يُعتمَد بخطٍّ ثقيل، ثم نوعه ومن طلبه وعمره — سطرٌ يُقرأ
@@ -23,10 +25,10 @@ function shell({ title, lead, items, platformUrl }) {
   return `<!doctype html><html dir="rtl" lang="ar"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;background:#f1f5f9;font-family:'Segoe UI',Tahoma,Arial,sans-serif;color:${INK}">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:24px 0">
+<table role="presentation" dir="rtl" width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:24px 0">
 <tr><td align="center">
-<table role="presentation" width="480" cellpadding="0" cellspacing="0" style="max-width:480px;width:100%;background:#fff;border:1px solid ${LINE};border-radius:14px;overflow:hidden">
-  <tr><td style="background:linear-gradient(120deg,${BRAND},${BRAND2});padding:20px 24px;color:#fff">
+<table role="presentation" dir="rtl" width="480" cellpadding="0" cellspacing="0" style="max-width:480px;width:100%;background:#fff;border:1px solid ${LINE};border-radius:14px;overflow:hidden">
+  <tr><td style="background:${BRAND} linear-gradient(120deg,${BRAND},${BRAND2});padding:20px 24px;color:#fff">
     <div style="font-size:13px;opacity:.9">EVC · رؤية الخبراء الاستشارية · منصة سند</div>
     <div style="font-size:20px;font-weight:700;margin-top:4px">${esc(title)}</div>
   </td></tr>
@@ -46,7 +48,8 @@ function shell({ title, lead, items, platformUrl }) {
 </td></tr></table></body></html>`;
 }
 
-const countItems = (n) => (n === 1 ? 'طلبٌ واحد' : n === 2 ? 'طلبان' : n <= 10 ? `${n} طلبات` : `${n} طلباً`);
+// صيغة العدّ من المصدر الواحد (countAr) — لا نسخة ثانية من قاعدة الجمع هنا.
+const countItems = (n) => countAr(n, { one: 'طلبٌ واحد', two: 'طلبان', few: 'طلبات', many: 'طلباً' });
 
 /** وصل جديدٌ إلى طابورك — والرسالة تسرد الطابور كله كما هو لحظة الإرسال. */
 export function newApprovalsMail({ items, platformUrl }) {
@@ -54,7 +57,7 @@ export function newApprovalsMail({ items, platformUrl }) {
     subject: 'اعتمادات بانتظارك في سند',
     html: shell({
       title: 'بانتظار اعتمادك',
-      lead: `${countItems(items.length)} بانتظار قرارك — القائمة كما هي لحظة الإرسال:`,
+      lead: `${countItems(items.length)} بانتظار اعتمادك — القائمة كما هي لحظة الإرسال:`,
       items, platformUrl,
     }),
   };
@@ -66,7 +69,7 @@ export function approvalReminderMail({ items, platformUrl }) {
     subject: 'تذكير صباحي: اعتمادات بانتظارك في سند',
     html: shell({
       title: 'تذكيرك الصباحي',
-      lead: `ما زال ${countItems(items.length)} بانتظار قرارك:`,
+      lead: `ما زال ${countItems(items.length)} بانتظار اعتمادك:`,
       items, platformUrl,
     }),
   };
