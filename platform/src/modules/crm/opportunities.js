@@ -252,11 +252,35 @@ async function resolveDepartment(deptId, sectorId) {
   return d.id;
 }
 
+// حقول النسبة محجوزةٌ للإدارة المسؤولة: من وصل بالشراكة/القيادة (ADR-0006) يعدّل كل شيء إلا
+// **من تُحسب عليه الفرصة** — الإدارة المسؤولة والمشارِكة والقطاع. والمقارنة بالقيمة لا بوجود
+// المفتاح: الشاشة ترسل هذه الحقول في كل حفظ (المنتقي المعطَّل يرسل قيمته)، فلا يُمنع حفظُ
+// عنوانٍ لأن قيمةً لم تتغيّر رافقته. والتطبيع مطابقٌ لما تكتبه الكتابة نفسها أدناه.
+function assertNoAttributionChange(row, data) {
+  const wantsSector = 'sector_id' in data && data.sector_id
+    && String(data.sector_id) !== String(row.sector_id || '');
+  const wantsDept = 'department_id' in data
+    && String(data.department_id || '') !== String(row.department_id || '');
+  let wantsPartners = false;
+  if ('partner_department_ids' in data) {
+    const req = [...new Set((Array.isArray(data.partner_department_ids) ? data.partner_department_ids : [])
+      .map((x) => String(x || '').trim()).filter(Boolean)
+      .filter((x) => x !== String(row.department_id || '')))].sort();
+    const cur = [...new Set(row.partner_department_ids)].sort();
+    wantsPartners = req.length !== cur.length || req.some((x, i) => x !== cur[i]);
+  }
+  if (wantsSector || wantsDept || wantsPartners) {
+    throw badRequest('تغيير الإدارة المسؤولة أو المشارِكة أو القطاع قرارُ الإدارة المسؤولة — بقية الحقول مفتوحة لك');
+  }
+}
+
 export async function updateOpportunity(ctx, oppId, data) {
   const user = ctx.user;
-  const row = await get('SELECT * FROM opportunity WHERE id = ? AND deleted_at IS NULL', [oppId]);
-  if (!row) throw notFound('الفرصة غير موجودة');
-  if (!can(user, 'update', 'opportunity', row)) throw forbidden();
+  // الباب الواحد: يقرأ الصفّ، وإن كان الوصولُ بالشراكة/القيادة أعاده محمَّلاً بمصفوفة
+  // المشاركات (عقد opp-access.js). وجودُها ⇔ محرِّرٌ غير مسؤول ⇒ حقول النسبة محجوزة عنه.
+  const row = await loadReadableOpportunity(user, oppId, 'update');
+  const partnerOnly = Array.isArray(row.partner_department_ids);
+  if (partnerOnly) assertNoAttributionChange(row, data);
   const patch = {};
   for (const k of ['title_ar', 'client_id', 'priority', 'next_action', 'notes', 'win_pct']) {
     if (k in data) patch[k] = data[k];
@@ -312,6 +336,8 @@ export async function updateOpportunity(ctx, oppId, data) {
   // وهو ما قرّرته المنصة أصلاً في نقل القطاع. كان الحارس هنا يغطّي القطاع وحده، والإدارة
   // والمسؤول يخرجان من النطاق بنفس الطريقة تماماً. فالفحص صار على الصفّ **بعد** التعديل أياً
   // كان الحقل الذي حرّكه، ويُعاد تأكيدٌ مختصر بدل قراءةٍ محظورة.
+  // الصفّ المُثرى (لا الخام) أساسُ فحص ما بعد الكتابة: محرِّرُ الشراكة يمرّ فرعَ المشاركة في
+  // القراءة، فلا يُردّ عليه ردٌّ كاذبٌ «خرجت عن نطاقك» على تعديلٍ نجح (finding A).
   const after = { ...row, ...patch };
   if (!can(user, 'read', 'opportunity', after)) {
     return {
@@ -326,9 +352,12 @@ export async function updateOpportunity(ctx, oppId, data) {
 // في القطاع الهدف (إعادة إسناد فعلية). يُدقَّق ويُسجَّل في سجل المراحل بملاحظة النقل.
 export async function moveSector(ctx, oppId, toSectorId, note) {
   const user = ctx.user;
-  const row = await get('SELECT * FROM opportunity WHERE id = ? AND deleted_at IS NULL', [oppId]);
-  if (!row) throw notFound('الفرصة غير موجودة');
-  if (!can(user, 'update', 'opportunity', row)) throw forbidden();
+  const row = await loadReadableOpportunity(user, oppId, 'update');
+  // نقلُ القطاع يرفع الإدارة المسؤولة (يُفرَّغ عمودها أدناه) — نسبةٌ خالصة، فيُحجَز على المسؤولة
+  // وحدها: من وصل بالشراكة لا يُخرج الفرصة من قطاع إدارتها المسؤولة (ADR-0006).
+  if (Array.isArray(row.partner_department_ids)) {
+    throw badRequest('نقل الفرصة إلى قطاعٍ آخر يرفع إدارتها المسؤولة — وهو قرارُ الإدارة المسؤولة وحدها');
+  }
   // الوجهة قطاع تسليم لا وحدة مساندة. الواجهة لا تعرض وحدات المساندة في قائمة النقل، والقرار
   // يُحسم هنا أيضاً لا في الشاشة وحدها: الفرصة المنقولة إلى وحدة مساندة تخرج فوراً من مقارنة
   // القطاعات ومن مستهدف المبيعات ومن تغطية خط الفرص — تختفي من شاشات المالك بلا رسالة تقول لماذا.
@@ -350,9 +379,8 @@ export async function moveSector(ctx, oppId, toSectorId, note) {
 
 export async function moveStage(ctx, oppId, toStage, note) {
   const user = ctx.user;
-  const row = await get('SELECT * FROM opportunity WHERE id = ? AND deleted_at IS NULL', [oppId]);
-  if (!row) throw notFound('الفرصة غير موجودة');
-  if (!can(user, 'update', 'opportunity', row)) throw forbidden();
+  // نقلُ المرحلة عملٌ على الفرصة لا نسبةٌ لها — مفتوحٌ لمحرِّر الشراكة (ADR-0006). الباب الواحد.
+  const row = await loadReadableOpportunity(user, oppId, 'update', 'نقل مرحلة الفرصة يتطلب صلاحية تعديلها');
   const stage = await get('SELECT * FROM stage WHERE id = ?', [toStage]);
   if (!stage) throw badRequest('مرحلة غير معروفة');
 
@@ -432,14 +460,19 @@ export async function opportunityDetail(user, oppId, opts = {}) {
       WHERE a.opportunity_id = ? AND a.deleted_at IS NULL
       ORDER BY a.at DESC LIMIT 20`, [oppId]);
   const canEdit = can(user, 'update', 'opportunity', opp);
+  // حقول النسبة (الإدارة/القطاع/المشارِكة) للمسؤولة وحدها: `opp` مُثرى بالمشاركات من الباب
+  // (getOpportunity)، فوجودُها ⇔ الوصولُ بالشراكة/القيادة ⇒ تُقفَل تلك الحقول في الشاشة
+  // (والخادم يحجزها أيضاً في assertNoAttributionChange — لا شاشةٌ وحدها).
+  const canEditAttribution = canEdit && !Array.isArray(opp.partner_department_ids);
   // السحب لمن يملك صلاحية الحذف **أو لمن أنشأها**: من أدخل فرصةً بالخطأ يصحّح إدخاله بنفسه.
   // نفس قاعدة المحرّك (`ownDelete` في core/lifecycle/remove.js) — الشاشة تعرض الزرّ والخادم يحسم.
+  // (قائمة السماح read|update تُبقي الحذف مردوداً على محرِّر الشراكة — لا انفتاح صامت.)
   const canDelete = can(user, 'delete', 'opportunity', opp) || opp.created_by === user.id;
   const today = String(opts.today || nowIso().slice(0, 10)).slice(0, 10);
   const flags = withDiscipline(opp, today);
   return {
     opp, client, department, owner: ownerRow ? (ownerRow.name_ar || ownerRow.username) : null,
-    history, stages, team, activities, canEdit, canDelete,
+    history, stages, team, activities, canEdit, canEditAttribution, canDelete,
     stage_age_days: flags.stage_age_days, rot: flags.rot, no_next_action: flags.no_next_action,
     weighted_halalas: Math.round((opp.value_halalas || 0) * ((opp.win_pct || 0) / 100)),
   };

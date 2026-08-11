@@ -11,8 +11,14 @@
 // نادرة.
 //
 // والفعل وسيطٌ مقصود (قراءةً كان الافتراض): فريق الفرصة ومستنداتها يفحصان «تعديلاً» بنفس
-// الدرجتين — والمشاركة لا تفتح التعديل (scopeReaches يحصر فرع المشاركة بالقراءة حرفاً)، لكن
-// مسار التحميل وإعادة الفحص واحد، ونسخُه في كل خدمة يجعلها تختلف يوم يتغيّر أحدها.
+// الدرجتين — والمشاركة تفتح التعديل منذ ADR-0006 (قائمة سماح read|update في المحرّك)، ومسار
+// التحميل وإعادة الفحص واحد، ونسخُه في كل خدمة يجعلها تختلف يوم يتغيّر أحدها.
+//
+// ── عقدُ الباب (ADR-0006) ────────────────────────────────────────────────────
+// حين تنجح الدرجةُ الثانية يعود الصفُّ **محمَّلاً** بمصفوفة `partner_department_ids`:
+// وجودُها على الصفّ العائد ⇔ الوصولُ جاء بالشراكة/القيادة لا بعمود الصفّ. هذه العلامة
+// الواحدة هي ما يبني عليه `updateOpportunity` حجزَ حقول النسبة، و`opportunityDetail` رايةَ
+// `canEditAttribution`، وفحوصُ ما بعد الكتابة قراءةَ الصفّ بلا ردٍّ كاذب «خرجت عن نطاقك».
 import { all, get } from '../../core/db/index.js';
 import { can } from '../../core/rbac/index.js';
 import { forbidden, notFound } from '../../core/http/errors.js';
@@ -28,8 +34,9 @@ export async function loadReadableOpportunity(user, oppId, action = 'read', deni
   const partners = (await all(
     'SELECT department_id FROM opportunity_department WHERE opportunity_id = ?', [oppId]
   )).map((r) => r.department_id).filter(Boolean);
-  if (partners.length && can(user, action, 'opportunity', { ...row, partner_department_ids: partners })) {
-    return row;
+  const enriched = { ...row, partner_department_ids: partners };
+  if (partners.length && can(user, action, 'opportunity', enriched)) {
+    return enriched;
   }
   throw forbidden(deniedMsg);
 }

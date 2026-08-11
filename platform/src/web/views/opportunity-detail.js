@@ -135,26 +135,32 @@ export async function opportunityDetailPage(user, oppId, opts = {}) {
     <label style="display:block;font-size:10.5px;font-weight:800;color:var(--muted);margin-bottom:.2rem">${label}</label>
     ${control}${hint ? `<div style="font-size:10px;color:var(--faint);margin-top:.15rem">${hint}</div>` : ''}</div>`;
   const opt = (v, label, sel, extra = '') => `<option value="${esc(v)}"${sel ? ' selected' : ''}${extra}>${esc(label)}</option>`;
-  const controlCard = !d.canEdit ? '' : card(`${secHead('التحكم بالفرصة', '<span style="font-size:11px;color:var(--muted)">كل شيء يُعدَّل من هنا</span>')}
+  // حقول النسبة تُقفَل لمحرِّر الشراكة (لا تُخفى): إخفاؤها يجعل الشاشة ترسل قيمةً فارغة فتمسح
+  // الإدارة عند الحفظ (الشاشة ترسل كل الحقول)، وتحرمه رؤيةَ من تُحسب عليه الفرصة. القفلُ مرئيٌّ
+  // بتلميحٍ يقول لماذا، والخادم يحجزها أيضاً (ADR-0006) — لا شاشةٌ وحدها.
+  const lockAttribution = d.canEdit && !d.canEditAttribution;
+  const lockAttrs = lockAttribution
+    ? ' disabled title="قرارُ الإدارة المسؤولة — اطلب منها تغيير الإدارة أو القطاع أو المشارِكات"' : '';
+  const controlCard = !d.canEdit ? '' : card(`${secHead('التحكم بالفرصة', `<span style="font-size:11px;color:var(--muted)">${lockAttribution ? 'إدارتك مشاركة — تعدّل كل شيء عدا نسبة الفرصة' : 'كل شيء يُعدَّل من هنا'}</span>`)}
     <div style="padding:.85rem 1rem 1rem">
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.7rem .6rem">
         ${fld('اسم الفرصة', `<input id="oc-title" class="input" style="width:100%;font-size:12.5px" value="${esc(o.title_ar || '')}" maxlength="200">`)}
         ${fld('الجهة', `<select id="oc-client" class="input" style="width:100%;font-size:12.5px">
           ${opt('', 'بلا جهة', !o.client_id)}${clientOptions.map((c) => opt(c.id, c.name_ar, o.client_id === c.id)).join('')}</select>`)}
-        ${fld('القطاع', `<select id="oc-sector" class="input" style="width:100%;font-size:12.5px">
+        ${fld('القطاع', `<select id="oc-sector" class="input" style="width:100%;font-size:12.5px"${lockAttrs}>
           ${sectorOptions.map((s) => opt(s.id, s.name_ar, o.sector_id === s.id)).join('')}</select>`)}
-        ${fld('الإدارة', `<select id="oc-dept" class="input" style="width:100%;font-size:12.5px">
+        ${fld('الإدارة', `<select id="oc-dept" class="input" style="width:100%;font-size:12.5px"${lockAttrs}>
           ${opt('', 'بلا إدارة', !o.department_id)}${deptOptions.map((x) => opt(x.id, x.name_ar, o.department_id === x.id, ` data-sector="${esc(x.sector_id || '')}"`)).join('')}</select>`,
-    'المسؤولة — عليها تُحسب')}
+    lockAttribution ? 'المسؤولة — قرارُها لإدارتها' : 'المسؤولة — عليها تُحسب')}
         ${/* «ممكن الفرصة تتسكّن على أكثر من إدارة… خلّي مكان التسجيل ممكن أحطّ أكثر من إدارة
               أو قطاع يشتغل على الفرصة» — والمسؤولة تبقى واحدة (المال لا يتجزأ فلا تُحسب الفرصة
               مرتين)، وهؤلاء من يعملون عليها ويجدونها في قوائم إداراتهم. والقطاع يأتي معهم:
               الإدارة تسكن قطاعها، فاختيارُ إدارةٍ من قطاعٍ آخر يُشرك القطاعين معاً. */ ''}
         ${fld('إدارات مشاركة', `<select id="oc-partners" class="input" multiple size="4"
-          style="width:100%;font-size:12.5px;min-height:5.4rem">
+          style="width:100%;font-size:12.5px;min-height:5.4rem"${lockAttrs}>
           ${deptOptions.filter((x) => x.id !== o.department_id)
     .map((x) => opt(x.id, x.name_ar, partnerIds.has(x.id))).join('')}</select>`,
-    'اختر أكثر من واحدة بالضغط مع Ctrl — تراها إداراتهم في قوائمها', 2)}
+    lockAttribution ? 'قرارُ الإدارة المسؤولة' : 'اختر أكثر من واحدة بالضغط مع Ctrl — تراها إداراتهم في قوائمها', 2)}
         ${fld('المسؤول', `<select id="oc-owner" class="input" style="width:100%;font-size:12.5px">
           ${opt('', 'بلا مسؤول', !o.owner_user_id)}${userOptions.map((u) => opt(u.id, u.name, o.owner_user_id === u.id)).join('')}</select>`)}
         ${fld('المبلغ بالريال', `<div style="display:flex;gap:.3rem;flex-wrap:wrap">

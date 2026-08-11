@@ -5,7 +5,7 @@
 // ترسيتها سرُّ صاحبها. فانقلبت الرؤية على ثلاث درجات، ولكل درجةٍ حدّها المحروس هنا:
 //   • مدير تطوير الأعمال: فرصه هو (ملكاً أو تسكيناً) — والإنشاء في قطاعه يبقى مفتوحاً.
 //   • مدير الإدارة (بالدور أو بالقيادة المكتوبة في `department.manager_user_id`): فرص
-//     إداراته — المسؤولة والمشارِكة — **قراءةً** حيث لم يملك الكتابة أصلاً.
+//     إداراته — المسؤولة والمشارِكة — قراءةً **وتعديلاً** (ADR-0006)، لا حذفاً ولا إنشاءً.
 //   • قائد القطاع فما فوق: كما كانوا، لم يمسّهم شيء.
 //
 // والفحوص تُبنى بجلساتٍ حقيقية (`resolveUser`) لا بكائنات مركّبة باليد: المجموعات التي يقوم
@@ -137,30 +137,34 @@ test('وينشئ فرصةً فتُنسب لإدارته آلياً وتعود إ
 });
 
 // ── القيادة صفةُ شخصٍ لا دور: BD يقود إدارةً يرى فرص أهلها — ولا يكتب عليها ──
-test('BD يقود إدارةً: يجدها في قائمته ويفتح صفَّها — والقلم يبقى مرفوعاً', async () => {
+test('BD يقود إدارةً: يجدها في قائمته ويفتح صفَّها ويعدّلها — والحذف يبقى مرفوعاً', async () => {
   const ids = await listedIds('u_bdlead');
   assert.ok(ids.includes('O_M1'), 'فرص الإدارة التي يقودها غائبة عن قائمته');
   assert.ok(!ids.includes('O_BD2') && !ids.includes('O_A1'), 'القيادة على إدارةٍ فتحت غيرها');
   const bdlead = await sess('u_bdlead');
   const one = await opps.getOpportunity(bdlead, 'O_M1');
-  assert.equal(one.id, 'O_M1', 'تُعرض له ولا تُفتح — عين التناقض القديم');
+  assert.equal(one.id, 'O_M1', 'تُعرض له وتُفتح');
   const row = await db.get('SELECT * FROM opportunity WHERE id = ?', ['O_M1']);
-  assert.equal(can(bdlead, 'update', 'opportunity', row), false,
-    'القيادة فتحت التعديل — وهي رؤيةٌ قراءتُها حرفية، والكتابة تُطلب منحاً صريحاً');
+  // قرار المالك (2026-08-11، ADR-0006): قيادةُ الإدارة تفتح التعديل كما تفتح القراءة —
+  // والحذف والإنشاء يبقيان للمنح الصريح (قائمة السماح read|update).
+  assert.equal(can(bdlead, 'update', 'opportunity', row), true, 'القيادة لا تفتح التعديل (ADR-0006)');
+  assert.equal(can(bdlead, 'delete', 'opportunity', row), false, 'القيادة فتحت الحذف — وهو للمنح الصريح');
 });
 
-// انحدار: كانت القائمة تعرضها (departmentReachClause يقرأ ما يقوده في جدول المشاركة) وفتحُ
-// الصفّ يردّها — فرع القيادة في المحرّك كان يفحص عمود الإدارة المسؤولة وحده ولا يقرأ
-// `partner_department_ids` التي يحمّلها opp-access.js. عين تناقض «يُعرَض ولا يُفتح».
-test('وفرصةٌ تشارك فيها إدارتُه المُقادة: تُعرض في قائمته **وتُفتح** — والقلم مرفوع', async () => {
+// كانت القائمة تعرضها (departmentReachClause يقرأ ما يقوده في جدول المشاركة) وفتحُ الصفّ
+// يردّها — فرع القيادة في المحرّك كان يفحص عمود الإدارة المسؤولة وحده. الآن يقرأ
+// `partner_department_ids` التي يحمّلها opp-access.js، والتعديل يتبع القراءة (ADR-0006).
+test('وفرصةٌ تشارك فيها إدارتُه المُقادة: تُعرض وتُفتح وتُعدَّل — والحذف مرفوع', async () => {
   const ids = await listedIds('u_bdlead');
   assert.ok(ids.includes('O_MPART'), 'فرصة تشارك فيها الإدارة التي يقودها غائبة عن قائمته');
   const bdlead = await sess('u_bdlead');
   const one = await opps.getOpportunity(bdlead, 'O_MPART');
-  assert.equal(one.id, 'O_MPART', 'تُعرض له ولا تُفتح — القائمة والصفّ افترقا على المشاركة');
+  assert.equal(one.id, 'O_MPART', 'تُعرض له وتُفتح');
   const row = await db.get('SELECT * FROM opportunity WHERE id = ?', ['O_MPART']);
-  assert.equal(can(bdlead, 'update', 'opportunity', { ...row, partner_department_ids: ['D_M'] }), false,
-    'مشاركةُ إدارةٍ يقودها فتحت التعديل — وهي قراءةٌ بحرفها');
+  assert.equal(can(bdlead, 'update', 'opportunity', { ...row, partner_department_ids: ['D_M'] }), true,
+    'مشاركةُ إدارةٍ يقودها لا تفتح التعديل (ADR-0006)');
+  assert.equal(can(bdlead, 'delete', 'opportunity', { ...row, partner_department_ids: ['D_M'] }), false,
+    'المشاركة فتحت الحذف — وهو للمسؤولة');
 });
 
 // ── مديرة الإدارة: المسؤولة والمشارِكة، وكل معروضٍ يُفتح ─────────────────────

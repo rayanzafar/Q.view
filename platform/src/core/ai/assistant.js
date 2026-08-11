@@ -611,7 +611,15 @@ async function buildPreview(user, type, f) {
     if (!can(user, 'update', 'opportunity')) throw forbidden(denialFor('move_opportunity_stage'));
     const opp = await get('SELECT * FROM opportunity WHERE id = ? AND deleted_at IS NULL', [String(f.oppId || '')]);
     if (!opp) throw notFound('الفرصة غير موجودة');
-    if (!can(user, 'update', 'opportunity', opp)) throw forbidden('لا تملك صلاحية تعديل هذه الفرصة');
+    if (!can(user, 'update', 'opportunity', opp)) {
+      // الدرجة الثانية: مديرُ إدارةٍ مشاركة يعدّل مرحلتها (ADR-0006) — تُحمَّل المشاركات ويُعاد الفحص.
+      const partners = (await all(
+        'SELECT department_id FROM opportunity_department WHERE opportunity_id = ?', [opp.id]
+      )).map((r) => r.department_id).filter(Boolean);
+      if (!(partners.length && can(user, 'update', 'opportunity', { ...opp, partner_department_ids: partners }))) {
+        throw forbidden('لا تملك صلاحية تعديل هذه الفرصة');
+      }
+    }
     // المرحلة تُتحقَّق **وقت المعاينة**: كانت تُكتب في الصف كما وصلت، فأي قيمة مكتوبة تصير مرحلة.
     const to = await get('SELECT id, name_ar FROM stage WHERE id = ?', [String(f.stage || '')]);
     if (!to) throw badRequest('مرحلة غير معروفة — اختر مرحلة من القائمة.');

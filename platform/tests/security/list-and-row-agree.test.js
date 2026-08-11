@@ -88,15 +88,17 @@ test('فرصةُ إدارةٍ أخرى في قطاعه: لا تُعرَض ولا
     (e) => e.status === 403, 'العنوان المباشر يفتح ما لا تعرضه قائمته');
 });
 
-test('**ولا كتابة بحال**: لا على إدارةٍ أخرى، ولا على فرصةٍ تشارك فيها إدارتُه', () => {
+test('الحذف والإنشاء يبقيان مرفوعين على إدارةٍ أخرى — والمشاركة تفتح القراءة والتعديل (ADR-0006)', () => {
   const other = { id: 'opp_cities', sector_id: 'SOLUTIONS', department_id: 'dep_cities' };
-  assert.equal(can(RAYAN, 'update', 'opportunity', other), false, 'تعديل فرصة إدارة أخرى سلطة لم تُمنَح');
+  assert.equal(can(RAYAN, 'update', 'opportunity', other), false, 'تعديل فرصة إدارة أخرى (لا شراكة) سلطة لم تُمنَح');
   assert.equal(can(RAYAN, 'create', 'opportunity', other), false);
-  // المشاركة تفتح القراءة (الفرصة في قائمته) ولا تفتح القلم — قرارُها عند إدارتها المسؤولة.
+  // المشاركة تفتح القراءة **والتعديل** بقرار المالك (2026-08-11): الفرصة على إدارتين يعدّلها
+  // مديراهما معاً. والحذف والإنشاء يبقيان للإدارة المسؤولة (قائمة السماح read|update).
   const partner = { id: 'opp_partner', sector_id: 'SOLUTIONS', department_id: 'dep_cities',
     partner_department_ids: ['dep_ai'] };
   assert.equal(can(RAYAN, 'read', 'opportunity', partner), true, 'المشاركة لا تفتح صفَّها');
-  assert.equal(can(RAYAN, 'update', 'opportunity', partner), false, 'المشاركة فتحت القلم — وهي رؤية عملٍ لا ولاية');
+  assert.equal(can(RAYAN, 'update', 'opportunity', partner), true, 'المشاركة لا تفتح تعديلها (ADR-0006)');
+  assert.equal(can(RAYAN, 'delete', 'opportunity', partner), false, 'المشاركة فتحت الحذف — وهو للمسؤولة');
 });
 
 test('وفرصة إدارته تُقرأ وتُعدَّل كما كانت — لا نقصان في وصولٍ قائم', () => {

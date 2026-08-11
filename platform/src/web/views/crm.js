@@ -468,6 +468,15 @@ export async function myOpportunitiesPage(user, opts = {}) {
   // طلبه المالك بنصّه.
   const mine = user.opportunityIds || new Set();
   const rows = scoped.filter((o) => o.owner_user_id === user.id || mine.has(o.id));
+  // المشاركاتُ دفعةً واحدة كي يتّسق تعديلُ السطر مع صفحة الفرصة (ADR-0006): مديرُ إدارةٍ مشاركة
+  // يحرّر الخطوة التالية من السطر كما يحرّرها من الصفحة — بلا هذا يُعرَض الزرّ ثم يُرَدّ عند الحفظ.
+  const partnersByOpp = {};
+  if (rows.length) {
+    for (const r of await all(`SELECT opportunity_id, department_id FROM opportunity_department
+        WHERE opportunity_id IN (${rows.map(() => '?').join(',')})`, rows.map((o) => o.id))) {
+      (partnersByOpp[r.opportunity_id] ||= []).push(r.department_id);
+    }
+  }
   const stages = await all('SELECT id,name_ar,color,default_win_pct,sort_order,is_won,is_lost FROM stage ORDER BY sort_order');
   const stById = Object.fromEntries(stages.map((s) => [s.id, s]));
   const clients = Object.fromEntries((await all('SELECT id,name_ar FROM client')).map((c) => [c.id, c.name_ar]));
@@ -501,7 +510,8 @@ export async function myOpportunitiesPage(user, opts = {}) {
       <th style="padding:.45rem .7rem;font-weight:700;text-align:left">القيمة</th></tr></thead>`;
 
   const rowHtml = (o, accent) => {
-    const rowEdit = can(user, 'update', 'opportunity', o);
+    const rowEdit = can(user, 'update', 'opportunity',
+      partnersByOpp[o.id] ? { ...o, partner_department_ids: partnersByOpp[o.id] } : o);
     const team = teamCounts[o.id] || 0;
     const naCell = rowEdit
       ? `<span class="editable" data-action="na-edit" data-id="${o.id}" data-value="${esc(o.next_action || '')}" role="button" tabindex="0" title="انقر لتعديل الخطوة التالية" style="font-size:12px;${o.no_next_action ? 'color:var(--red);font-weight:700' : ''}">${o.no_next_action ? '● أضف الخطوة التالية' : esc(o.next_action)}</span>`
