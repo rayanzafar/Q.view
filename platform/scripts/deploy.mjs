@@ -106,7 +106,10 @@ if (args.has('--no-backup')) {
     pgBin = cand[0];
     console.log(`ℹ pg_dump من: ${pgBin}`);
   }
-  const libDir = pgBin ? resolve(pgBin, '../../../../x86_64-linux-gnu') : '';
+  // مكتبة libpq بجوار ثنائيات pg (‎.../usr/lib/x86_64-linux-gnu حين تُستخرَج حزمة pg18)،
+  // أو يمرّرها المشغّل بـ PG_LIB. بلا LD_LIBRARY_PATH يفشل pg_dump المُستخرَج بـ libpq.so.5.
+  const libDir = process.env.PG_LIB
+    || (pgBin ? resolve(pgBin, '../../../x86_64-linux-gnu') : '');
   const inner = `${pgBin ? `PATH="${pgBin}:$PATH" ` : ''}${libDir && existsSync(libDir) ? `LD_LIBRARY_PATH="${libDir}" ` : ''}DATABASE_URL="$DATABASE_PUBLIC_URL" sh scripts/pg-backup.sh`;
   // الخدمة تُسمّى صراحةً في نداء الحقن — بلا الاعتماد على حال الربط. (حقنُ بيئةٍ لا نشرٌ.)
   const bk = run('railway', ['run', '--service', 'Postgres', '--', 'sh', '-c', inner], { capture: true });
