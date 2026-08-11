@@ -7,6 +7,7 @@ import { all } from '../../core/db/index.js';
 import { config, ROOT } from '../../core/config.js';
 import { mailEventLabel, mailStatusLabel, mailStatusTone } from '../i18n/glossary.js';
 import { esc } from './_shared.js';
+import { loadApprovalMailRules } from '../../modules/workflow/approval-notify.js';
 
 export async function mailPage(user, opts = {}) {
   const dir = resolve(ROOT, 'data/outbox');
@@ -97,9 +98,34 @@ export async function mailPage(user, opts = {}) {
       <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink2)">${esc(l.subject || l.detail || '')}</span>
     </div>`).join('') || `<div style="font-size:var(--fs-meta);color:var(--faint);padding:.4rem 0">لا أحداث بعد</div>`;
 
+  // ── سياسة بريد الاعتمادات — لمدير النظام وحده (الصفحة تُفتح أيضاً لمكتب الرئيس اطّلاعاً،
+  // والقرار قرارُ مدير النظام؛ والخادم يحرس الكتابة بنفس الشرط لا بالشاشة وحدها). ──
+  let policyCard = '';
+  if (user?.role_id === 'admin') {
+    const r = await loadApprovalMailRules();
+    policyCard = card(`<div style="padding:.85rem 1rem;display:flex;flex-direction:column;gap:.6rem">
+      <div style="font-weight:800;font-size:13.5px">سياسة بريد الاعتمادات</div>
+      <label style="display:flex;align-items:center;gap:.5rem;font-size:var(--fs-body);flex-wrap:wrap">
+        <input type="checkbox" id="pol-reminder"${r.reminderEnabled ? ' checked' : ''}>
+        التذكير الدوري بالطلبات المعلَّقة
+        <span style="font-size:var(--fs-meta);color:var(--muted)">يُرسَل داخل ساعات العمل (8–18 بتوقيت الرياض) فقط.</span>
+      </label>
+      <div style="display:flex;gap:.9rem;flex-wrap:wrap;align-items:flex-end">
+        <div class="field" style="margin:0"><label for="pol-hours">فاصل التذكير بالساعات</label>
+          <input class="input tnum" id="pol-hours" type="number" min="1" max="168" value="${r.reminderIntervalMs / 3600000}"${r.reminderEnabled ? '' : ' disabled'} style="width:110px">
+          <div style="font-size:var(--fs-meta);color:var(--muted)">من 1 إلى 168 ساعة.</div></div>
+        <div class="field" style="margin:0"><label for="pol-cooldown">تهدئة رسائل الطلبات الجديدة بالدقائق</label>
+          <input class="input tnum" id="pol-cooldown" type="number" min="0" max="1440" value="${r.newCooldownMs / 60000}" style="width:110px">
+          <div style="font-size:var(--fs-meta);color:var(--muted)">0 = رسالة فور وصول كل طلب جديد، في أي ساعة.</div></div>
+        <button class="btn btn-primary btn-sm" data-action="save-mail-policy">حفظ</button>
+      </div>
+    </div>`);
+  }
+
   const th = (t, a) => `<th style="padding:.4rem .6rem;font-size:var(--fs-micro);color:var(--muted);font-weight:700;text-align:${a || 'right'}">${t}</th>`;
   const body = `
     ${chan}
+    ${policyCard ? `<div style="margin-top:.9rem">${policyCard}</div>` : ''}
     <div style="display:grid;grid-template-columns:1.2fr 1fr;gap:.9rem;margin-top:.9rem">
       ${card(`<div style="padding:.85rem 1rem;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center">
           <div style="font-weight:800;font-size:13.5px">صندوق المعاينة</div>

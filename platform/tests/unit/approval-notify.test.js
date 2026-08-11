@@ -1,11 +1,9 @@
-// بريد الاعتمادات — القرار النقي بكل صفوف جدول القواعد، ثم الكنسة على القاعدة الحقيقية.
+// بريد الاعتمادات بسياسة المالك الجديدة — القرار النقي بجدول قواعده، ثم الكنسة على القاعدة.
 //
-// النموذج هو `report-schedule.test.js`: الدوال النقية تُختبر بحقن اللحظة (لا انتظار ولا
-// ساعة حقيقية)، والكنسة تُثبَت على طلبات اعتماد حقيقية من المسار الحقيقي (موظف يضيف مهمة
-// مرتبطة بمشروع ⟵ طلب موجَّه إلى مديره) لا على صفوف مصنوعة.
-//
-// حدود النافذة تُقرأ بتوقيت الرياض (+٣): ‏04:59Z = ‏07:59 (خارجها) و05:00Z = ‏08:00 (داخلها)
-// و14:59Z = ‏17:59 (داخلها) و15:00Z = ‏18:00 (خارجها).
+// السياسة الافتراضية (قرار المالك): رسالة الطلب الجديد فورية (تهدئة صفر) وفي **أي ساعة**؛
+// والتذكير الدوري مُطفأ. وحين يُفعَّل: بفاصلٍ يضبطه مدير النظام وداخل ٨–١٨ بتوقيت الرياض.
+// و«الجديد» عضويةٌ لا زمن: صفوفٌ لم تُختم بإخطار (`notified_at IS NULL`) — والختمُ المشروط
+// هو حَكَم التزامن بين نسخ الخادم.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -24,20 +22,19 @@ const db = await import('../../src/core/db/index.js');
 const { initRbac } = await import('../../src/core/rbac/index.js');
 await initRbac();
 const tasks = await import('../../src/modules/pmo/tasks.js');
-const {
-  approvalMailDecision, sweepApprovalMail,
-  COOLDOWN_MS, BACKLOG_COOLDOWN_MS, BACKLOG_THRESHOLD,
-} = await import('../../src/modules/workflow/approval-notify.js');
+const { approvalMailDecision, sweepApprovalMail, DEFAULT_RULES } = await import('../../src/modules/workflow/approval-notify.js');
 
 const at = (iso) => new Date(iso);
 const T = '2026-08-01T00:00:00Z';
 const ctx = (u) => ({ user: u, ip: '1.1.1.1' });
 const EMP = { id: 'u_emp', username: 'emp', name_ar: 'سجى لشكر', role_id: 'employee', scope: 'own',
   sector_id: 'SOL', employee_id: 'e_emp', projectIds: new Set(['PRJ']) };
+const REM_ON = { ...DEFAULT_RULES, reminderEnabled: true };
 
-// أدوات القرار النقي: صفوف معلَّقة بأزمنة إنشاء صريحة، وحالٌ صريح.
-const p = (createdAt) => ({ created_at: createdAt });
-const st = (lastSent, reminderDate) => ({ last_sent_at: lastSent || null, last_reminder_date: reminderDate || null });
+// أدوات القرار النقي: «مختوم» و«غير مختوم» صراحةً، والحالُ آخرَ إرسال.
+const fresh = () => ({ notified_at: null });
+const seen = () => ({ notified_at: '2026-08-10T05:00:00Z' });
+const st = (lastSent) => ({ last_sent_at: lastSent || null });
 
 before(async () => {
   await db.insert('sector', { id: 'SOL', name_ar: 'قطاع الحلول', kind: 'delivery', active: 1, created_at: T });
@@ -64,144 +61,139 @@ after(() => rmSync(dir, { recursive: true, force: true }));
 
 // ═══ القرار النقي — جدول القواعد صفاً صفاً ═══════════════════════════════════════
 
-test('لا معلَّق ⟵ لا رسالة، وخارج النافذة ⟵ لا رسالة مهما تراكم', () => {
+test('لا معلَّق ⟵ لا رسالة، وغير المختوم يُرسَل فوراً في أي ساعة — الليل ليس عذراً', () => {
   assert.equal(approvalMailDecision(at('2026-08-11T06:00:00Z'), null, []).action, 'none');
-  for (const iso of ['2026-08-11T16:30:00Z', '2026-08-11T19:00:00Z', '2026-08-11T02:00:00Z']) {
-    assert.equal(approvalMailDecision(at(iso), null, [p('2026-08-10T05:00:00Z')]).action, 'none', iso);
+  for (const iso of ['2026-08-11T20:00:00Z', '2026-08-11T02:00:00Z', '2026-08-11T10:00:00Z']) {
+    const d = approvalMailDecision(at(iso), null, [fresh()]);
+    assert.deepEqual([d.action, d.kind], ['send', 'new'], iso);
   }
 });
 
-test('حدود النافذة بالدقيقة: 07:59 لا، 08:00 نعم، 17:59 نعم، 18:00 لا', () => {
-  const pending = [p('2026-08-10T05:00:00Z')];
-  assert.equal(approvalMailDecision(at('2026-08-11T04:59:00Z'), null, pending).action, 'none');
-  assert.equal(approvalMailDecision(at('2026-08-11T05:00:00Z'), null, pending).action, 'send');
-  assert.equal(approvalMailDecision(at('2026-08-11T14:59:00Z'), null, pending).action, 'send');
-  assert.equal(approvalMailDecision(at('2026-08-11T15:00:00Z'), null, pending).action, 'none');
+test('التهدئة إن رُفعت عن الصفر تُمسك الجديد وتُطلقه بعدها — ولا تذكير يتسلّل من تحتها', () => {
+  const rules = { ...REM_ON, newCooldownMs: 30 * 60000 };
+  const held = approvalMailDecision(at('2026-08-11T07:10:00Z'), st('2026-08-11T07:00:00Z'), [seen(), fresh()], rules);
+  assert.equal(held.action, 'none', 'جديدٌ داخل التهدئة أُرسل');
+  const freed = approvalMailDecision(at('2026-08-11T07:31:00Z'), st('2026-08-11T07:00:00Z'), [seen(), fresh()], rules);
+  assert.deepEqual([freed.action, freed.kind], ['send', 'new']);
+  const first = approvalMailDecision(at('2026-08-11T07:00:00Z'), null, [fresh()], rules);
+  assert.equal(first.action, 'send', 'أول رسالةٍ لا تهدئة قبلها');
 });
 
-test('أول رسالة تخرج فوراً، والجديد داخل نصف الساعة يُمسَك ثم يُطلَق بعدها', () => {
-  const first = approvalMailDecision(at('2026-08-11T07:00:00Z'), null, [p('2026-08-11T06:50:00Z'), p('2026-08-11T06:55:00Z')]);
-  assert.deepEqual([first.action, first.kind], ['send', 'new']);
-  // أُرسلت 07:00Z؛ بند جديد 07:05Z — عند 07:10Z ممسوك، وعند 07:31Z يُطلَق.
-  const held = approvalMailDecision(at('2026-08-11T07:10:00Z'), st('2026-08-11T07:00:00Z'), [p('2026-08-11T06:50:00Z'), p('2026-08-11T07:05:00Z')]);
-  assert.equal(held.action, 'none');
-  const freed = approvalMailDecision(at('2026-08-11T07:31:00Z'), st('2026-08-11T07:00:00Z'), [p('2026-08-11T06:50:00Z'), p('2026-08-11T07:05:00Z')]);
-  assert.deepEqual([freed.action, freed.kind, freed.cooldownMs], ['send', 'new', COOLDOWN_MS]);
+test('كلُّه مختومٌ والتذكير مُطفأ ⟵ صمتٌ ولو مضت أيام — هذا هو الافتراض المطلوب', () => {
+  const d = approvalMailDecision(at('2026-08-13T06:00:00Z'), st('2026-08-11T06:00:00Z'), [seen(), seen()]);
+  assert.equal(d.action, 'none');
+  assert.equal(d.reason, 'التذكير موقوف');
 });
 
-test('ركامٌ مُخطَرٌ به يفوق ثلاثة يمدّ التهدئة إلى أربع ساعات — وثلاثة بالضبط لا يمدّها', () => {
-  const olds = ['2026-08-11T05:10:00Z', '2026-08-11T05:20:00Z', '2026-08-11T05:30:00Z', '2026-08-11T05:40:00Z', '2026-08-11T05:50:00Z'].map(p);
-  const state = st('2026-08-11T06:00:00Z');
-  // خمسة قديمة (مُخطَر بها) + جديد — بعد ساعة ونصف: ممسوك (٤ ساعات)، وبعد أربعٍ ودقيقة: يُطلَق.
-  const six = [...olds, p('2026-08-11T08:00:00Z')];
-  const held = approvalMailDecision(at('2026-08-11T09:00:00Z'), state, six);
-  assert.equal(held.action, 'none');
-  const freed = approvalMailDecision(at('2026-08-11T10:01:00Z'), state, six);
-  assert.deepEqual([freed.action, freed.kind, freed.cooldownMs], ['send', 'new', BACKLOG_COOLDOWN_MS]);
-  // ثلاثة قديمة بالضبط (= العتبة لا فوقها) + جديد — نصف ساعة تكفي.
-  const four = [...olds.slice(0, BACKLOG_THRESHOLD), p('2026-08-11T08:00:00Z')];
-  const soon = approvalMailDecision(at('2026-08-11T08:31:00Z'), st('2026-08-11T08:00:00Z'), four);
-  assert.deepEqual([soon.action, soon.cooldownMs], ['send', COOLDOWN_MS]);
-});
-
-test('التذكير الصباحي: مرة كل يوم رياض ما دام معلَّق، وأول فرصةٍ داخل النافذة إن فات الصباح', () => {
-  const olds = [p('2026-08-10T05:00:00Z')];
-  // ذُكِّر أمس ولا جديد — اليوم 08:30: تذكير.
-  const rem = approvalMailDecision(at('2026-08-12T05:30:00Z'), st('2026-08-11T06:00:00Z', '2026-08-11'), olds);
+test('التذكير المُفعَّل: بفاصله وداخل النافذة وحدها — وحدود الساعة بالدقيقة', () => {
+  const old = [seen()];
+  // مضى الفاصل (٢٤ ساعة) داخل النافذة ⟵ تذكير
+  const rem = approvalMailDecision(at('2026-08-12T06:30:00Z'), st('2026-08-11T06:00:00Z'), old, REM_ON);
   assert.deepEqual([rem.action, rem.kind], ['send', 'reminder']);
-  // ذُكِّر اليوم ولا جديد — لا شيء.
-  assert.equal(approvalMailDecision(at('2026-08-12T08:00:00Z'), st('2026-08-12T05:30:00Z', '2026-08-12'), olds).action, 'none');
-  // تعطّل الخادم حتى الظهر: التذكير يخرج ظهراً لا يسقط.
-  const late = approvalMailDecision(at('2026-08-12T10:00:00Z'), st('2026-08-11T06:00:00Z', '2026-08-11'), olds);
-  assert.deepEqual([late.action, late.kind], ['send', 'reminder']);
-  // والتذكير يشارك في التهدئة: ذُكِّر 08:00 وبند جديد 08:05 — عند 08:10 ممسوك.
-  const held = approvalMailDecision(at('2026-08-12T05:10:00Z'), st('2026-08-12T05:00:00Z', '2026-08-12'),
-    [...olds, p('2026-08-12T05:05:00Z')]);
-  assert.equal(held.action, 'none');
+  // لم يمض الفاصل ⟵ لا شيء
+  assert.equal(approvalMailDecision(at('2026-08-12T05:30:00Z'), st('2026-08-11T06:30:00Z'), old, REM_ON).action, 'none');
+  // خارج النافذة لا تذكير — ٠٤:٥٩Z=٠٧:٥٩ لا، ٠٥:٠٠Z=٠٨:٠٠ نعم، ١٤:٥٩Z=١٧:٥٩ نعم، ١٥:٠٠Z=١٨:٠٠ لا
+  const oldSent = st('2026-08-10T06:00:00Z');
+  assert.equal(approvalMailDecision(at('2026-08-12T04:59:00Z'), oldSent, old, REM_ON).action, 'none');
+  assert.equal(approvalMailDecision(at('2026-08-12T05:00:00Z'), oldSent, old, REM_ON).action, 'send');
+  assert.equal(approvalMailDecision(at('2026-08-12T14:59:00Z'), oldSent, old, REM_ON).action, 'send');
+  assert.equal(approvalMailDecision(at('2026-08-12T15:00:00Z'), oldSent, old, REM_ON).action, 'none');
+  // فاصلٌ قصير (ساعتان) يُحترم
+  const two = { ...REM_ON, reminderIntervalMs: 2 * 3600000 };
+  assert.equal(approvalMailDecision(at('2026-08-12T08:30:00Z'), st('2026-08-12T07:00:00Z'), old, two).action, 'none');
+  assert.equal(approvalMailDecision(at('2026-08-12T09:01:00Z'), st('2026-08-12T07:00:00Z'), old, two).action, 'send');
+  // هيئة التعافي: مختومٌ كله بلا حالِ إرسال ⟵ تذكيرٌ فوراً (داخل النافذة)
+  const rec = approvalMailDecision(at('2026-08-12T06:00:00Z'), null, old, REM_ON);
+  assert.deepEqual([rec.action, rec.kind], ['send', 'reminder']);
 });
 
-test('وما وصل ليلاً يلتقطه بريد الصباح رسالةً واحدة — «جديد» لا تذكيراً ثانياً بعدها', () => {
-  const state = st('2026-08-11T14:50:00Z', '2026-08-11');
-  const overnight = [p('2026-08-11T05:00:00Z'), p('2026-08-11T20:00:00Z')];
-  const d = approvalMailDecision(at('2026-08-12T05:00:00Z'), state, overnight);
+test('الأولوية للجديد: غير مختومٍ وتذكيرٌ مستحق معاً ⟵ رسالة «جديد» واحدة', () => {
+  const d = approvalMailDecision(at('2026-08-12T06:00:00Z'), st('2026-08-11T05:00:00Z'), [seen(), fresh()], REM_ON);
   assert.deepEqual([d.action, d.kind], ['send', 'new']);
-  // القيد يكتب الحقلين معاً — فلا تذكير ثانٍ في نفس اليوم بعد رسالة «الجديد» الصباحية.
-  const after8 = approvalMailDecision(at('2026-08-12T06:00:00Z'), st('2026-08-12T05:00:00Z', '2026-08-12'), overnight);
-  assert.equal(after8.action, 'none');
 });
 
-// ═══ الكنسة على القاعدة الحقيقية ═══════════════════════════════════════════════
+// ═══ الكنسة على القاعدة الحقيقية — بالسياسة الافتراضية (فوري، بلا تذكير) ═══════════
 
-let reqTitles = ['إعداد خطة الاختبار', 'تجهيز العرض الفني'];
+const reqTitles = ['إعداد خطة الاختبار', 'تجهيز العرض الفني'];
 
-test('كنسة أولى: رسالة واحدة للمعتمِد تسرد البندين معاً باسم طالبهما — وتدخل طابور البريد', async () => {
+test('كنسة ليلية أولى: رسالة واحدة مجمَّعة فوراً — وتختم الطلبات وتقيّد الحال', async () => {
   for (const title of reqTitles) {
     await tasks.quickAddTask(ctx(EMP), { title, project_id: 'PRJ' });
   }
-  // أزمنة الإنشاء تُثبَّت كي لا تتأرجح النتيجة بساعة تشغيل الاختبار الحقيقية.
   await db.run("UPDATE approval_request SET created_at = ? WHERE assignee_user_id = 'u_mgr'", ['2026-08-11T04:00:00Z']);
 
-  const res = await sweepApprovalMail(at('2026-08-11T06:00:00Z'));
+  // ٢٣:٠٠ بتوقيت الرياض — خارج نافذة العمل، والجديد يخرج رغم ذلك: هذا هو المطلوب.
+  const res = await sweepApprovalMail(at('2026-08-11T20:00:00Z'));
   assert.equal(res.enqueued, 1, 'رسالة واحدة مجمَّعة لا رسالة لكل طلب');
   const q = await db.all("SELECT * FROM email_queue WHERE status = 'QUEUED' ORDER BY created_at");
   assert.equal(q.length, 1);
   assert.equal(q[0].subject, 'اعتمادات بانتظارك في سند');
   for (const title of reqTitles) assert.ok(q[0].html.includes(title), `البند «${title}» غائب عن الرسالة`);
   assert.ok(q[0].html.includes('طلبها سجى لشكر'), 'اسم طالب الاعتماد غائب');
-  assert.ok(q[0].html.includes('/app/home'), 'رابط الفتح لا يقود إلى «صفحتي»');
   assert.deepEqual(JSON.parse(q[0].to_json), ['mgr@evc.test']);
 
+  const unclaimed = await db.all("SELECT * FROM approval_request WHERE assignee_user_id = 'u_mgr' AND notified_at IS NULL");
+  assert.equal(unclaimed.length, 0, 'طلبٌ بقي بلا ختم إخطار');
   const state = await db.get("SELECT * FROM approval_mail_state WHERE user_id = 'u_mgr'");
-  assert.equal(state.last_sent_at, '2026-08-11T06:00:00.000Z');
-  assert.equal(state.last_reminder_date, '2026-08-11');
+  assert.equal(state.last_sent_at, '2026-08-11T20:00:00.000Z');
   assert.equal(state.notified_count, 2);
 });
 
-test('كنسة بعد دقيقة: لا شيء — التهدئة تحكم', async () => {
-  const res = await sweepApprovalMail(at('2026-08-11T06:01:00Z'));
+test('كنسة تالية بلا جديد: صمتٌ رغم التهدئة الصفرية — الختم هو الحَكَم لا الوقت', async () => {
+  const res = await sweepApprovalMail(at('2026-08-11T20:01:00Z'));
   assert.equal(res.enqueued, 0);
-  assert.equal((await db.all("SELECT * FROM email_queue")).length, 1);
+  assert.equal((await db.all('SELECT * FROM email_queue')).length, 1);
 });
 
-test('وصباح الغد: تذكيرٌ واحد ما دام المعلَّق معلَّقاً', async () => {
-  const res = await sweepApprovalMail(at('2026-08-12T05:00:00Z'));
+test('طلبٌ ثالث يصل: رسالةٌ فورية تسرد الثلاثة كلها — الجديدُ يفتح والقائمةُ كاملة', async () => {
+  await tasks.quickAddTask(ctx(EMP), { title: 'مراجعة العقد النهائي', project_id: 'PRJ' });
+  const res = await sweepApprovalMail(at('2026-08-11T21:00:00Z'));
   assert.equal(res.enqueued, 1);
-  const q = await db.all("SELECT * FROM email_queue ORDER BY created_at");
+  const q = await db.all('SELECT * FROM email_queue ORDER BY created_at');
   assert.equal(q.length, 2);
-  assert.equal(q[1].subject, 'تذكير صباحي: اعتمادات بانتظارك في سند');
-  for (const title of reqTitles) assert.ok(q[1].html.includes(title));
+  for (const title of [...reqTitles, 'مراجعة العقد النهائي']) {
+    assert.ok(q[1].html.includes(title), `الرسالة لا تسرد «${title}»`);
+  }
 });
 
-test('القيد المشروط حكَمُ التزامن: من ظفر به مرة لا يظفر به ثانية بنفس الشرط', async () => {
-  // نفس عبارة القيد التي تنفّذها الكنسة، مرتين بنفس الحدّ — الأولى تكتب والثانية تسكت.
-  const claim = (ts, cutoff) => db.run(
-    `INSERT INTO approval_mail_state (user_id, last_sent_at, last_reminder_date, notified_count, updated_at)
-     VALUES (?, ?, ?, ?, ?)
-     ON CONFLICT (user_id) DO UPDATE SET
-       last_sent_at = excluded.last_sent_at, last_reminder_date = excluded.last_reminder_date,
-       notified_count = excluded.notified_count, updated_at = excluded.updated_at
-     WHERE approval_mail_state.last_sent_at IS NULL OR approval_mail_state.last_sent_at <= ?`,
-    ['u_ghost', ts, '2026-08-12', 1, ts, cutoff]);
-  const first = await claim('2026-08-12T06:00:00Z', '2026-08-12T05:30:00Z');
-  assert.equal(first.changes, 1, 'القيد الأول لم يُكتب');
-  const second = await claim('2026-08-12T06:00:30Z', '2026-08-12T05:30:00Z');
-  assert.equal(second.changes, 0, 'نسختان كتبتا نفس الرسالة');
-  await db.run("DELETE FROM approval_mail_state WHERE user_id = 'u_ghost'");
+test('واليوم التالي بلا جديد: لا تذكير — السياسة الافتراضية مُطفأتُه', async () => {
+  const res = await sweepApprovalMail(at('2026-08-12T06:00:00Z'));
+  assert.equal(res.enqueued, 0);
 });
 
-test('معتمِدٌ بلا بريد يُتخطّى بلا قيد — فإن أُضيف بريده وصلته من أول كنسة', async () => {
-  const GEMP = { id: 'u_gemp', username: 'gemp', name_ar: 'موظف الإدارة الثانية', role_id: 'employee',
-    scope: 'own', sector_id: 'SOL', employee_id: 'e_gemp', projectIds: new Set(['PRJ']) };
-  await tasks.quickAddTask(ctx(GEMP), { title: 'مهمة لمدير بلا بريد', project_id: 'PRJ' });
-  await db.run("UPDATE approval_request SET created_at = ? WHERE assignee_user_id = 'u_ghost'", ['2026-08-12T04:00:00Z']);
+test('وبتفعيل التذكير (سياسة محقونة): تذكيرٌ واحد بفاصله — والثاني داخل الفاصل صامت', async () => {
+  // آخر رسالةٍ كانت 2026-08-11T21:00Z — بعد ٣٣ ساعة (داخل نافذة العمل) يستحق التذكير.
+  const on = { ...DEFAULT_RULES, reminderEnabled: true };
+  const res = await sweepApprovalMail(at('2026-08-13T06:30:00Z'), on);
+  assert.equal(res.enqueued, 1);
+  const q = await db.all('SELECT * FROM email_queue ORDER BY created_at');
+  assert.equal(q[2].subject, 'تذكير: اعتمادات بانتظارك في سند');
+  const again = await sweepApprovalMail(at('2026-08-13T07:30:00Z'), on);
+  assert.equal(again.enqueued, 0, 'تذكيرٌ ثانٍ داخل الفاصل');
+});
 
+test('ختم الإخطار حَكَمُ التزامن: من ظفر بالتحديث المشروط مرةً لا يظفر به ثانية', async () => {
+  await tasks.quickAddTask(ctx({ ...EMP, id: 'u_gemp', username: 'gemp', employee_id: 'e_gemp', projectIds: new Set(['PRJ']) }),
+    { title: 'مهمة لمدير بلا بريد', project_id: 'PRJ' });
+  const req = await db.get("SELECT * FROM approval_request WHERE assignee_user_id = 'u_ghost' AND status = 'PENDING'");
+  const claim = () => db.run(
+    'UPDATE approval_request SET notified_at = ? WHERE id IN (?) AND notified_at IS NULL',
+    ['2026-08-12T08:00:00Z', req.id]);
+  const first = await claim();
+  assert.equal(first.changes, 1, 'الختم الأول لم يقع');
+  const second = await claim();
+  assert.equal(second.changes, 0, 'نسختان ختمتا نفس الطلب');
+  await db.run('UPDATE approval_request SET notified_at = NULL WHERE id = ?', [req.id]);
+});
+
+test('معتمِدٌ بلا بريد يُتخطّى بلا ختم — فإن أُضيف بريدُه وصلته طلباتُه القائمة فوراً', async () => {
   const before = (await db.all('SELECT * FROM email_queue')).length;
-  await sweepApprovalMail(at('2026-08-12T06:30:00Z'));
+  await sweepApprovalMail(at('2026-08-12T08:30:00Z'));
   assert.equal((await db.all('SELECT * FROM email_queue')).length, before, 'أُرسلت رسالة لعنوانٍ لا وجود له');
-  assert.equal(await db.get("SELECT * FROM approval_mail_state WHERE user_id = 'u_ghost'"), undefined,
-    'قُيِّد حالٌ لمن لم يُحاوَل له إرسال');
+  assert.equal((await db.get("SELECT * FROM approval_request WHERE assignee_user_id = 'u_ghost'")).notified_at, null,
+    'خُتم طلبٌ لم تُرسَل عنه رسالة');
 
   await db.run("UPDATE app_user SET email = 'ghost@evc.test' WHERE id = 'u_ghost'");
-  const res = await sweepApprovalMail(at('2026-08-12T06:31:00Z'));
+  const res = await sweepApprovalMail(at('2026-08-12T08:31:00Z'));
   assert.equal(res.enqueued, 1, 'البريد المضاف حديثاً لم يلتقط المعلَّق القائم');
 });

@@ -11,6 +11,7 @@ import * as progress from './pmo/progress.js';
 import * as ts from './timesheets/timesheets.js';
 import * as wf from './workflow/engine.js';
 import { pendingApprovalsFor } from './workflow/inbox.js';
+import { setApprovalMailPolicy } from './workflow/approval-notify.js';
 import * as notif from './notifications/notify.js';
 import * as org from './org/org.js';
 import * as finance from './finance/finance.js';
@@ -134,6 +135,8 @@ apiRouter.get('/approvals/queue', h((req) => wf.myApprovalQueue(req.ctx.user)));
 // عدّاد الجرس: كم طلباً ينتظر قرار صاحب الجلسة — بدوره وبعينه معاً. عدٌّ ذاتي النطاق
 // (لا يقرأ إلا ما وُجِّه إليه) وذاتي الانطفاء: يهبط بمجرد الحسم، بلا «تعليم كمقروء».
 apiRouter.get('/approvals/pending-count', h(async (req) => ({ n: (await pendingApprovalsFor(req.ctx.user)).length })));
+// سياسة بريد الاعتمادات — الحارس والتدقيق داخل الخدمة (مدير النظام وحده).
+apiRouter.post('/mail/approval-policy', h((req) => setApprovalMailPolicy(req.ctx, req.body || {})));
 apiRouter.post('/approvals', h((req) => wf.submitForApproval(req.ctx, req.body)));
 apiRouter.post('/approvals/:id/act', h((req) => wf.actOnApproval(req.ctx, req.params.id, req.body.action, req.body.comment)));
 

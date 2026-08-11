@@ -74,6 +74,7 @@ const MOUNTED = [
   ['GET', '/api/org/health', 'صحة الهيكل'],
   ['GET', '/api/identity/users', 'حسابات الدخول'],
   ['GET', '/api/approvals/pending-count', 'عدّاد الاعتمادات المنتظرة (شارة الجرس)'],
+  ['POST', '/api/mail/approval-policy', 'سياسة بريد الاعتمادات'],
 ];
 
 for (const [method, path, label] of MOUNTED) {

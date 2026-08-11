@@ -63,12 +63,12 @@ export function newApprovalsMail({ items, platformUrl }) {
   };
 }
 
-/** التذكير الصباحي — مرةً واحدة في اليوم ما دام شيءٌ معلَّقاً، ولا شيء حين لا شيء. */
+/** التذكير الدوري — بفاصلٍ يضبطه مدير النظام ما دام شيءٌ معلَّقاً، ولا شيء حين لا شيء. */
 export function approvalReminderMail({ items, platformUrl }) {
   return {
-    subject: 'تذكير صباحي: اعتمادات بانتظارك في سند',
+    subject: 'تذكير: اعتمادات بانتظارك في سند',
     html: shell({
-      title: 'تذكيرك الصباحي',
+      title: 'تذكير بما ينتظر قرارك',
       lead: `ما زال ${countItems(items.length)} بانتظار اعتمادك:`,
       items, platformUrl,
     }),

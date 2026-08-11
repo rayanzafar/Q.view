@@ -23,7 +23,7 @@ test('العنوان يقول ماذا وصل ولا يحمل تفصيلاً —
   const n = newApprovalsMail({ items, platformUrl: config.platformUrl });
   const r = approvalReminderMail({ items, platformUrl: config.platformUrl });
   assert.equal(n.subject, 'اعتمادات بانتظارك في سند');
-  assert.equal(r.subject, 'تذكير صباحي: اعتمادات بانتظارك في سند');
+  assert.equal(r.subject, 'تذكير: اعتمادات بانتظارك في سند');
   assert.notEqual(n.subject, r.subject);
   for (const s of [n.subject, r.subject]) {
     assert.ok(!s.includes('الاختبار') && !s.includes('سجى'), 'تفصيلٌ حيّ في عنوان رسالة');
