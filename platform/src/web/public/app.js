@@ -445,14 +445,18 @@ function icon2(n) { const P = {
 }; return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-2px">${P[n] || ''}</svg>`; }
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { window.Sanad.closeDrawer(); window.Sanad.closeModal(); } });
 
-// notification badge
-fetch('/api/notifications?unread=1', { credentials: 'include' }).then((r) => r.ok ? r.json() : []).then((n) => {
+// شارة الجرس — عدّ الاعتمادات المنتظرة فعلاً لا صفوفَ إشعاراتٍ لا تُقرأ ولا تُصفَّر:
+// كانت الشارة تعدّ إشعارات «غير مقروءة» لا قارئ لها ولا مسارَ تصفير، فتتضخم إلى «9+» وتبقى —
+// والجرس يقود إلى شاشةٍ تُخفي ما جاء الإشعار من أجله. الآن العددُ حيٌّ من مصدر القرار نفسه
+// (يهبط بمجرد الحسم) والجرس يقود إلى بطاقة «بانتظار اعتمادك» في «صفحتي».
+fetch('/api/approvals/pending-count', { credentials: 'include' }).then((r) => r.ok ? r.json() : { n: 0 }).then((c) => {
   const b = document.getElementById('notif-badge');
+  const n = (c && Number(c.n)) || 0;
   // الشارة تُخفى بنمطٍ داخلي (display:none)، فإزالة صنفٍ لا تحمله لا تُظهرها — يُرفع النمط نفسه.
   // ومحتواها العددُ وحده (دائرةٌ 9px لا تتسع لكلمة)، مع وصفٍ مقروء للقارئ الصوتي.
-  if (b && n.length) {
-    b.textContent = n.length > 9 ? '9+' : String(n.length);
-    b.setAttribute('aria-label', n.length + ' إشعار غير مقروء');
+  if (b && n) {
+    b.textContent = n > 9 ? '9+' : String(n);
+    b.setAttribute('aria-label', n + ' بانتظار اعتمادك');
     b.style.display = '';
   }
 }).catch(() => {});

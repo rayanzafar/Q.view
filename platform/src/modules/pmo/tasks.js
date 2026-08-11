@@ -328,6 +328,15 @@ export async function quickAddTask(ctx, data) {
         body: `${String(data.title).trim()} — أضافها ${user.name_ar || user.username || 'أحد أفراد إدارتك'}`,
         ref_resource: 'task', ref_id: tid,
       });
+    } else if (assignee !== user.id) {
+      // مهمةٌ أُسنِدت إلى غير كاتبها وأُضيفت في حينها — كانت تظهر في قائمته صامتةً بلا اسم
+      // مُسنِد ولا خبر (KI-038). الخبرُ باسم من أسندها، والمهمةُ نفسها تحمل الاسم في صفّها.
+      await notify(assignee, {
+        kind: 'task',
+        title: 'مهمة جديدة أُسندت إليك',
+        body: `${String(data.title).trim()} — أسندها ${user.name_ar || user.username || 'مديرك'}`,
+        ref_resource: 'task', ref_id: tid,
+      });
     }
   });
   return await get('SELECT * FROM task WHERE id = ?', [tid]);

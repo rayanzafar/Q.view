@@ -20,6 +20,7 @@ import { get, update } from '../../core/db/index.js';
 import { nowIso } from '../../core/util/ids.js';
 import { effectiveScope } from '../../core/rbac/index.js';
 import { managerOfEmployee } from '../org/confirm.js';
+import { notify } from '../notifications/notify.js';
 
 /** القيمة الوحيدة غير الفارغة في `task.approval_state` — «تنتظر اعتماداً». */
 export const TASK_PENDING = 'PENDING';
@@ -87,10 +88,21 @@ export const linkedTaskApproval = (user) => taskApproval(user, { project_id: '·
  */
 export async function settleTask(reqRow, approved, actorUserId = null) {
   if (!reqRow || reqRow.resource !== 'task' || !reqRow.resource_id) return;
-  const t = await get('SELECT id, approval_state, deleted_at FROM task WHERE id = ?', [reqRow.resource_id]);
+  const t = await get('SELECT id, title, assignee_user_id, approval_state, deleted_at FROM task WHERE id = ?', [reqRow.resource_id]);
   if (!t || t.deleted_at) return;                    // حُذفت قبل البتّ — لا شيء يُبتّ فيه
   if (approved) {
     await update('task', t.id, { approval_state: null, approved_by: actorUserId || null, approved_at: nowIso() });
+    // مهمةٌ كتبها غيرُ صاحبها وأُضيفت الآن باعتماد المدير: صاحبُها لم يعلم بها قط — الحجب
+    // كان يخفيها عنه حتى هذه اللحظة. المحرّكُ يُخطر كاتبها («اعتُمد طلبك»)، وهذا خبرُ صاحبها.
+    // أما الردّ فلا خبر فيه لصاحبها: لم يرَ المهمة أصلاً، وخبرُ الردّ يذهب لكاتبها من المحرّك.
+    if (t.assignee_user_id && t.assignee_user_id !== reqRow.requested_by) {
+      await notify(t.assignee_user_id, {
+        kind: 'task',
+        title: 'مهمة جديدة أُسندت إليك',
+        body: `${String(t.title || '').trim()} — أُضيفت بعد اعتماد المدير`,
+        ref_resource: 'task', ref_id: t.id,
+      });
+    }
     return;
   }
   // والردّ يُزيلها ولا يتركها معلَّقة إلى الأبد: «لم تُعتمد» حالةٌ لا تنتهي. حذفٌ ناعم يُبقي

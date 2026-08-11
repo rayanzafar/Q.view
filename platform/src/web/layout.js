@@ -467,7 +467,7 @@ window.__SANAD_MONTHS=${JSON.stringify(MONTHS_AR)};window.__SANAD_MONTHS_EN=${JS
           aria-label="جولة إرشادية على هذه الشاشة" title="جولة إرشادية على هذه الشاشة">${TOUR_ICON}<span>جولة إرشادية</span></button>
         <a class="hdr-tour-btn" href="${FEEDBACK_FORM_URL}" target="_blank" rel="noopener noreferrer"
           aria-label="بلاغ أو اقتراح — أبلغ عن مشكلة أو اقترح تحسيناً (يفتح في تبويب جديد)" title="أبلغ عن مشكلة أو اقترح تحسيناً">${icon('megaphone')}<span>بلاغ أو اقتراح</span></a>
-        <a href="/app/tasks" title="الإشعارات" style="position:relative;color:var(--muted)">${icon('bell')}<span id="notif-badge" style="display:none;position:absolute;top:-4px;left:-4px;background:var(--red);color:#fff;font-size:9px;border-radius:99px;padding:1px 4px;font-weight:700"></span></a>
+        <a href="/app/home#hm-appr" title="بانتظار اعتمادك" style="position:relative;color:var(--muted)">${icon('bell')}<span id="notif-badge" style="display:none;position:absolute;top:-4px;left:-4px;background:var(--red);color:#fff;font-size:9px;border-radius:99px;padding:1px 4px;font-weight:700"></span></a>
         <div class="hdr-user" style="display:flex;align-items:center;gap:.55rem">
           <div style="width:34px;height:34px;border-radius:50%;background:var(--brand-grad);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;flex:0 0 auto">${initial}</div>
           <div class="hdr-user-txt" style="text-align:right"><div style="font-size:var(--fs-ui);font-weight:700">${esc(user.name_ar || user.username)}</div><div style="font-size:11px;color:var(--muted)">${roleLabel}</div></div>

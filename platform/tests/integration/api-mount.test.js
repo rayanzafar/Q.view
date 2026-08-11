@@ -73,6 +73,7 @@ const MOUNTED = [
   ['GET', '/api/clients', 'العملاء'],
   ['GET', '/api/org/health', 'صحة الهيكل'],
   ['GET', '/api/identity/users', 'حسابات الدخول'],
+  ['GET', '/api/approvals/pending-count', 'عدّاد الاعتمادات المنتظرة (شارة الجرس)'],
 ];
 
 for (const [method, path, label] of MOUNTED) {

@@ -127,3 +127,39 @@ test('ومن لا شيء في نطاقه يقرأ ذلك نصاً — لا مج�
   assert.ok(!html.includes('value="p:PRJ"'), 'مشروع ليس في نطاقه ظهر في منتقيه');
   assert.ok(html.includes('لا مشاريع ولا فرص داخل نطاقك'), 'الفراغ بلا تفسير مكتوب');
 });
+
+// ═══ KI-038: الخبر يصل من أُسندت إليه المهمة — عند الإضافة وعند الاعتماد ═══════════
+
+test('إسنادٌ مباشر (بلا اعتماد) يوصل خبراً باسم المُسنِد لحظة الإضافة', async () => {
+  await tasks.quickAddTask(ctx(BOSS), { title: 'مهمة يصل خبرها', project_id: 'PRJ', assignee_user_id: 'u_mid' });
+  const n = await db.all(
+    "SELECT * FROM notification WHERE user_id = 'u_mid' AND title = 'مهمة جديدة أُسندت إليك' ORDER BY created_at DESC");
+  assert.ok(n.length >= 1, 'لا خبر لمن أُسندت إليه المهمة');
+  assert.ok(n[0].body.includes('مهمة يصل خبرها'), 'الخبر بلا اسم المهمة');
+  assert.ok(n[0].body.includes('أسندها مدير الرأس'), 'الخبر بلا اسم المُسنِد');
+});
+
+test('والمعلَّقة يصل خبرُها لصاحبها لحظة الاعتماد لا قبله — ولا خبر مكرر لكاتبها هو', async () => {
+  const t = await tasks.quickAddTask(ctx(MID), { title: 'مهمة تصل بعد الاعتماد', opportunity_id: 'OPP', assignee_user_id: 'u_emp' });
+  const before = (await db.all("SELECT * FROM notification WHERE user_id = 'u_emp' AND title = 'مهمة جديدة أُسندت إليك'")).length;
+  assert.equal(before, 0, 'وصل الخبر قبل الاعتماد — والمهمة ليست عنده بعد');
+
+  const req = (await engine.myDirectApprovals(BOSS)).find((a) => a.resource_id === t.id);
+  await engine.actOnApproval(ctx(BOSS), req.id, 'approve');
+  const after = await db.all(
+    "SELECT * FROM notification WHERE user_id = 'u_emp' AND title = 'مهمة جديدة أُسندت إليك'");
+  assert.equal(after.length, 1, 'لا خبر بعد الاعتماد');
+  assert.ok(after[0].body.includes('بعد اعتماد المدير'));
+
+  // ومن كتب مهمته لنفسه واعتُمدت: يخطره المحرّك «اعتُمد طلبك» — لا خبر «أُسندت إليك» مكرر.
+  const own = await tasks.quickAddTask(ctx({ ...EMP, opportunityIds: new Set(['OPP']) }),
+    { title: 'مهمة كاتبها صاحبها', opportunity_id: 'OPP' });
+  const req2 = (await engine.myDirectApprovals(MID)).find((a) => a.resource_id === own.id);
+  await engine.actOnApproval(ctx(MID), req2.id, 'approve');
+  const dup = await db.all(
+    "SELECT * FROM notification WHERE user_id = 'u_emp' AND title = 'مهمة جديدة أُسندت إليك'");
+  assert.equal(dup.length, 1, 'خبرُ إسنادٍ مكرر لمن كتب مهمته بنفسه');
+  const engineNote = await db.all(
+    "SELECT * FROM notification WHERE user_id = 'u_emp' AND title = 'اعتُمد طلبك'");
+  assert.ok(engineNote.length >= 1, 'خبر المحرّك «اعتُمد طلبك» غائب عن كاتبها');
+});
