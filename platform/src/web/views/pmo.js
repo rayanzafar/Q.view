@@ -12,7 +12,7 @@ import { projectGovernance, DELIVERABLE_MANUAL_STATUSES } from '../../modules/pm
 import { projectMoney } from '../../modules/finance/finance.js';
 import { EXPENSE_STATUS_AR, OPEN_STATUSES, SETTLED_STATUSES } from '../../modules/finance/expenses.js';
 import { myTasks, teamTasks, personDossier } from '../../modules/pmo/tasks.js';
-import { approvedTaskSql, isPendingTask } from '../../modules/pmo/task-approval.js';
+import { approvedTaskSql, isPendingTask, linkedTaskApproval } from '../../modules/pmo/task-approval.js';
 import { listViews } from '../../modules/views/views.js';
 import { canSeeSensitive, redact, can, effectiveScope } from '../../core/rbac/index.js';
 import { departmentScope, departmentInSql } from '../../core/rbac/departments.js';
@@ -431,6 +431,19 @@ const TASK_STATUS_COLOR = { TODO: '#64748b', IN_PROGRESS: '#244A99', BLOCKED: '#
 const TASK_PRIORITY = { P0: { ar: 'حرجة', tone: 'red' }, P1: { ar: 'عالية', tone: 'amber' }, P2: { ar: 'متوسطة', tone: 'slate' }, P3: { ar: 'منخفضة', tone: 'slate' } };
 const TASK_WINDOWS = ['today', 'week', 'overdue', 'nodate', 'all'];
 
+// منتقي «الجهة المرتبطة» — مصدرٌ واحد لكل شاشةٍ تربط مهمةً بمشروع أو فرصة (مهامي، لوح
+// التفاصيل، لوحة الشخص). «شخصية» خيارٌ في القائمة نفسها لا مفتاحٌ منفصل: المهمة تُنسب إلى
+// جهةٍ واحدة، و«لصاحبها وحده» جهةٌ من جهاتها — وتُحذف حيث لا معنى لها (مهمةٌ باسم غيرك لا
+// تكون شخصية). والخيار الافتراضي يسمّي أثره كاملاً: «عمل داخلي» وحدها كانت تُقرأ تصنيفاً
+// غامضاً. وحين لا مشاريع ولا فرص في نطاق القارئ يُقال ذلك نصاً — لا مجموعةٌ تختفي صامتة.
+const parentPicker = ({ idAttr, label, projects, opportunities, withPersonal = true, dataF = '' }) => `<select id="${idAttr}" class="input"${dataF ? ` data-f="${dataF}"` : ''} aria-label="${label}">
+    <option value="">${G.internalWork} — بلا مشروع ولا فرصة</option>
+    ${withPersonal ? `<option value="me">${G.personalWork} — ${G.personalOnlyYou}</option>` : ''}
+    ${projects.length ? `<optgroup label="${G.projects}">${projects.map((p) => `<option value="p:${esc(p.id)}">${esc(p.name_ar)}</option>`).join('')}</optgroup>` : ''}
+    ${opportunities.length ? `<optgroup label="${G.opportunities}">${opportunities.map((o) => `<option value="o:${esc(o.id)}">${esc(o.title_ar)}</option>`).join('')}</optgroup>` : ''}
+    ${!projects.length && !opportunities.length ? '<option value="" disabled>لا مشاريع ولا فرص داخل نطاقك — تظهر هنا حين تُسكَّن عليها</option>' : ''}
+  </select>`;
+
 export async function tasksPage(user, opts = {}) {
   // العدسة الثالثة شاشةٌ قائمة بذاتها لا كتلةٌ داخل هذه: «احسه مره زحمه» — حكم المالك على
   // هذه الصفحة نفسها، وقد قُلّصت الإضافة والمرشّحات خلف أزرار بسببه. فالملاحظات تُبنى في
@@ -514,8 +527,12 @@ export async function tasksPage(user, opts = {}) {
 
   // ── قوائم الاختيار (نطاق صحيح من الخدمات نفسها، لا استعلام مواز) ──
   const prjOptions = (await listProjects(user)).slice(0, 200);
+  // «الفرص» في المنتقي بمدى الخادم نفسه لا ببوابةٍ أوسع منه: `listOpportunities` تفشل مغلقةً
+  // وتُدخل عضوية التسكين — فمن سُكِّن على فرصةٍ يربط مهمته بها كما يقبل الخادم تماماً (KI-040
+  // سابقاً: كانت البوابة العامة تحجب المجموعة كلها عمّن قَبِله الخادم). و`canReadOpp` تبقى
+  // بوابةَ لوحة «الفرص اللي عليّ» المالية وحدها.
   const canReadOpp = can(user, 'read', 'opportunity');
-  const allOpps = canReadOpp ? await listOpportunities(user, {}, { today }) : [];
+  const allOpps = await listOpportunities(user, {}, { today });
   const oppOptions = allOpps.slice(0, 200);
   let people = [];
   if (canAssign) {
@@ -742,17 +759,6 @@ export async function tasksPage(user, opts = {}) {
   </form>`;
 
   // ── ٤) الإضافة السريعة: عنوان + جهة + مسؤول + موعد + أولوية في بطاقة واحدة ──
-  // «شخصية» خيارٌ في القائمة نفسها لا مفتاحٌ منفصل: المهمة تُنسب إلى جهةٍ واحدة، و«لصاحبها
-  // وحده» جهةٌ من جهاتها لا صفةٌ تُضاف إليها. ووضعُها هنا يجعل التحوّل في الاتجاهين ظاهراً
-  // ومقصوداً — يقرأ المرء أين ستُقرأ مهمته قبل أن يحفظها.
-  // الخيار الافتراضي يسمّي أثره كاملاً: «عمل داخلي» وحدها كانت تُقرأ تصنيفاً غامضاً، فيظن
-  // المرء أن المهمة ستُربط بجهةٍ ما — وهي بلا مشروع ولا فرصة، وهذا هو المكتوب الآن حرفياً.
-  const parentSelect = (idAttr, label) => `<select id="${idAttr}" class="input" aria-label="${label}">
-    <option value="">${G.internalWork} — بلا مشروع ولا فرصة</option>
-    <option value="me">${G.personalWork} — ${G.personalOnlyYou}</option>
-    ${prjOptions.length ? `<optgroup label="${G.projects}">${prjOptions.map((p) => `<option value="p:${esc(p.id)}">${esc(p.name_ar)}</option>`).join('')}</optgroup>` : ''}
-    ${oppOptions.length ? `<optgroup label="${G.opportunities}">${oppOptions.map((o) => `<option value="o:${esc(o.id)}">${esc(o.title_ar)}</option>`).join('')}</optgroup>` : ''}
-  </select>`;
   // تصنيف المهمة: قائمة جاهزة من المعجم + «أخرى…» تفتح حقلاً حراً صغيراً. القيمة الجاهزة
   // تُخزَّن بمفتاحها (فتُعرض من المعجم أينما قُرئت)، والحرة تُخزَّن كما كُتبت.
   const categorySelect = (idAttr, dataF = '') => `<select id="${idAttr}" class="input tk-cat"${dataF ? ` data-f="${dataF}"` : ''} aria-label="تصنيف المهمة">
@@ -771,7 +777,7 @@ export async function tasksPage(user, opts = {}) {
       <button class="btn btn-primary" data-action="task-add">${G.add}</button>
     </div>
     <div class="wc-add-row2">
-      ${parentSelect('qa-parent', G.parentLink)}
+      ${parentPicker({ idAttr: 'qa-parent', label: G.parentLink, projects: prjOptions, opportunities: oppOptions })}
       ${categorySelect('qa-category')}
       ${canAssign && people.length ? `<select id="qa-assignee" class="input" aria-label="${G.assignee}">
         <option value="">${G.assignee}: أنا</option>
@@ -1110,7 +1116,7 @@ export async function tasksPage(user, opts = {}) {
       <div class="field"><label for="tf-blocked">${G.blocker}</label>
         <input id="tf-blocked" class="input" data-f="blocked" placeholder="ما الذي يوقفها ومَن يستطيع رفعه؟">
         <div class="wc-fieldnote">اختيار «مُعطَّلة» يتطلب سبباً مكتوباً — بلا سبب لا تصل إلى أحد.</div></div>
-      <div class="field"><label for="tf-parent">${G.parentLink}</label>${parentSelect('tf-parent', G.parentLink).replace('id="tf-parent" class="input"', 'id="tf-parent" class="input" data-f="parent"')}</div>
+      <div class="field"><label for="tf-parent">${G.parentLink}</label>${parentPicker({ idAttr: 'tf-parent', label: G.parentLink, projects: prjOptions, opportunities: oppOptions, dataF: 'parent' })}</div>
       <div class="field"><label for="tf-category">تصنيف المهمة</label>${categorySelect('tf-category', 'category')}</div>
       ${canAssign && people.length ? `<div class="field"><label for="tf-assignee">${G.assignee}</label>
         <select id="tf-assignee" data-f="assignee"><option value="">${G.unassigned}</option>${people.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select></div>` : ''}
@@ -2563,6 +2569,11 @@ export async function personPage(user, personId) {
   const dnum = (day) => Math.round((Date.parse(String(day).slice(0, 10) + 'T00:00:00Z')
     - Date.parse(d.today + 'T00:00:00Z')) / 86400000);
   const canReadOpp = can(user, 'read', 'opportunity');
+  // خيارات ربط المهمة بجهةٍ — بمدى **القارئ** (المُسنِد) لا المُسنَد إليه: الخادم يفحص وصول
+  // كاتب المهمة (`assertMayLink`)، فالقائمة تعرض ما سيقبله بالضبط. وتُبنى فقط لمن يملك الإسناد.
+  const prjOptions = d.canAssignTask ? (await listProjects(user)).slice(0, 200) : [];
+  const oppOptions = d.canAssignTask ? (await listOpportunities(user, {}, { today: d.today })).slice(0, 200) : [];
+  const linkApproval = d.canAssignTask ? await linkedTaskApproval(user) : { needsApproval: false };
 
   const due = (t) => {
     if (!t.due_date) return `<span class="pp-due none">${G.noDueDate}</span>`;
@@ -2651,11 +2662,14 @@ export async function personPage(user, personId) {
       ${d.canAssignTask ? panel('task', 'مهمة جديدة باسمه', `
         <div class="pp-form">
           <input id="pp-task-title" class="input" maxlength="200" placeholder="ماذا تريد منه بالضبط">
+          ${parentPicker({ idAttr: 'pp-task-parent', label: G.parentLink, projects: prjOptions, opportunities: oppOptions, withPersonal: false })}
           <input id="pp-task-due" class="input" type="date" aria-label="الموعد">
           <button class="btn btn-primary btn-sm" data-action="pp-task-add"
             data-user="${esc(p.userId)}">أضف المهمة</button>
         </div>
-        <div class="pp-hint">تصل إلى قائمته فوراً، ويراها في «مهامي».</div>`) : ''}
+        <div class="pp-hint">${linkApproval.needsApproval
+    ? 'العمل الداخلي يصل إلى قائمته فوراً؛ والمرتبط بمشروع أو فرصة يُضاف إليه بعد اعتماد مديرك.'
+    : 'تصل إلى قائمته فوراً، ويراها في «مهامي».'}</div>`) : ''}
       ${d.canStaff ? panel('staff', 'تسكين على مشروع', `
         <div class="pp-form">
           <select id="pp-staff-prj" class="input">${d.staffProjects

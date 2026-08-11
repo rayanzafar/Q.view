@@ -71,6 +71,10 @@ export async function taskApproval(user, link = {}) {
   return approverUserId ? { needsApproval: true, approverUserId } : none;
 }
 
+/** هل تنتظر مهمةُ هذا المستخدم المرتبطةُ بجهةٍ اعتمادَ مديره — لتقوله الشاشةُ قبل الحفظ لا بعده.
+ *  (تمرَّر جهةٌ رمزية: `taskApproval` لا تقرأ من الجهة إلا وجودَها.) */
+export const linkedTaskApproval = (user) => taskApproval(user, { project_id: '·' });
+
 /**
  * أثرُ قرار المدير على المهمة.
  *

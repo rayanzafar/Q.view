@@ -18,7 +18,8 @@
     });
     var txt = await res.text();
     var data = null; try { data = txt ? JSON.parse(txt) : null; } catch (e) { data = null; }
-    if (!res.ok) throw new Error((data && (data.error || data.message)) || 'تعذّر إتمام العملية');
+    // غلاف الخطأ من الخادم كائنٌ داخله الرسالة — قراءةُ الغلاف نفسه كانت تعرض نصاً تقنياً بلا معنى.
+    if (!res.ok) throw new Error((data && data.error && data.error.message) || 'تعذّر إتمام العملية');
     return data;
   }
 
@@ -44,14 +45,20 @@
       var title = val('pp-task-title');
       if (!title) { toast('اكتب ما تريد منه — مهمة بلا عنوان لا يقرؤها أحد', true); return; }
       el.disabled = true;
-      // الجهة تُقال صراحةً: مهمةٌ من هذه اللوحة عملٌ داخلي بلا مشروع ولا فرصة. بدونها كان
-      // الخادم يكتب قيمته الافتراضية «مشروع» على مهمةٍ لا مشروع لها — نوعٌ كاذب في الصف.
-      api('/tasks/quick', 'POST', {
-        title: title, assignee_user_id: el.dataset.user, due_date: val('pp-task-due') || null,
-        work_kind: 'internal', project_id: null, opportunity_id: null,
-      }).then(function (added) {
+      // الجهة من المنتقي بترميز `p:`/`o:` نفسه المعتمد في شاشة «مهامي» (`parentPatch` في
+      // pages/tasks.js هو مصدر الاصطلاح). والفراغ عملٌ داخلي يُقال صراحةً: بدون `work_kind`
+      // كان الخادم يكتب قيمته الافتراضية «مشروع» على مهمةٍ لا مشروع لها — نوعٌ كاذب في الصف.
+      var pv = val('pp-task-parent');
+      var body = { title: title, assignee_user_id: el.dataset.user, due_date: val('pp-task-due') || null,
+        project_id: null, opportunity_id: null };
+      if (pv.indexOf('p:') === 0) { body.project_id = pv.slice(2); }
+      else if (pv.indexOf('o:') === 0) { body.opportunity_id = pv.slice(2); }
+      else { body.work_kind = 'internal'; }
+      api('/tasks/quick', 'POST', body).then(function (added) {
+        // المهمة هنا باسم شخصٍ آخر: إن عُلِّقت فهي تنتظر اعتماد مدير **كاتبها**، وتُضاف إلى
+        // قائمة المُسنَد إليه بعد الاعتماد — لا «تظهر في عملك» كما في صيغة الإسناد الذاتي.
         toast(added && added.approval_state === 'PENDING'
-          ? 'أُرسلت إلى مديرك للاعتماد — تظهر في عملك بعد اعتمادها' : 'أُضيفت المهمة ✓');
+          ? 'أُرسلت إلى مديرك للاعتماد — تُضاف إلى قائمته بعد الاعتماد' : 'أُضيفت المهمة ✓');
         setTimeout(function () { location.reload(); }, 500);
       }).catch(function (err) { el.disabled = false; toast(err.message, true); });
       return;
