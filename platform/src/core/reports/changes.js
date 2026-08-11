@@ -83,9 +83,11 @@ export async function changesSince(user, sectorId, sinceIsoDate) {
        ${base} LEFT JOIN client c ON c.id = i.client_id
        ${cond} ORDER BY i.issue_date DESC LIMIT 40`, [sectorId, since]);
     for (const r of rows) {
+      // الرمز حقلٌ مستقل لا وسمٌ في النص: الشاشة تهرّب العنوان كله، فوسمٌ داخله يظهر حرفياً
+      // «<bdi>…</bdi>» أمام القارئ — والشاشة هي من يغلّف الرمز بعزل الاتجاه بعد التهريب.
       items.push({
         kind: 'invoice', at: r.at,
-        title: r.code ? `صدرت فاتورة <bdi>${r.code}</bdi>` : 'صدرت فاتورة',
+        title: 'صدرت فاتورة', code: r.code || null,
         sub: r.client || r.project || '',
         amount_halalas: r.amount_halalas || 0, href: '/app/finance',
       });
@@ -102,8 +104,8 @@ export async function changesSince(user, sectorId, sinceIsoDate) {
        ${ccond} ORDER BY col.collected_at DESC LIMIT 40`, [sectorId, since]);
     for (const r of crows) {
       items.push({
-        kind: 'collection', at: r.at, title: 'تحصيل دفعة',
-        sub: [r.client, r.code ? `فاتورة <bdi>${r.code}</bdi>` : null].filter(Boolean).join(' · '),
+        kind: 'collection', at: r.at, title: 'تحصيل دفعة', code: r.code || null,
+        sub: r.client || '',
         amount_halalas: r.amount_halalas || 0, href: '/app/finance',
       });
     }

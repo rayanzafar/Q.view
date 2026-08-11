@@ -85,7 +85,8 @@ test('الشاشات الثلاث تتفق: التنبيه = قائمة تحصي
 
   // «ما تغيّر» تعدّ الفواتير الصادرة بنفس رجوع القطاع إلى المشروع
   const ch = await changesSince(admin, 'S1', '2026-01-01');
-  const codes = ch.items.filter((i) => i.kind === 'invoice').map((i) => i.title);
+  // الرمز حقلٌ مستقل منذ إصلاح ظهور وسم <bdi> حرفياً على الشاشة.
+  const codes = ch.items.filter((i) => i.kind === 'invoice').map((i) => i.code || '');
   assert.ok(codes.some((c) => c.includes('I_LEGACY')), 'الفاتورة الموروثة معروفة لـ«ما تغيّر» أيضاً');
   assert.ok(!codes.some((c) => c.includes('I_OTHER')), 'ولا تسرّب من قطاع آخر');
 });

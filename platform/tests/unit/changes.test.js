@@ -94,9 +94,10 @@ test('changesSince: سجلات حقيقية مؤرّخة فقط، داخل ال�
   assert.equal(won.amount_halalas, 5_000_000);
   assert.equal(won.href, '/app/opportunity/O1');
   // مسار COALESCE: فاتورة بلا قطاع لكن مشروعها في S1 حاضرة، والمسودة والقطاع الآخر غائبان
-  const invTitles = r.items.filter((i) => i.kind === 'invoice').map((i) => i.title);
-  assert.ok(invTitles.some((t) => t.includes('INV-2')), 'فاتورة المشروع (COALESCE) مفقودة');
-  assert.ok(!invTitles.some((t) => t.includes('INV-3') || t.includes('INV-5')), 'مسودة أو فاتورة قطاع آخر تسرّبت');
+  // الرمز حقلٌ مستقل منذ إصلاح ظهور وسم <bdi> حرفياً على الشاشة — العنوان نصّ عربي خالص.
+  const invCodes = r.items.filter((i) => i.kind === 'invoice').map((i) => i.code || '');
+  assert.ok(invCodes.some((t) => t.includes('INV-2')), 'فاتورة المشروع (COALESCE) مفقودة');
+  assert.ok(!invCodes.some((t) => t.includes('INV-3') || t.includes('INV-5')), 'مسودة أو فاتورة قطاع آخر تسرّبت');
   // التواصل: قطاع صريح + بصمة العميل، دون نشاط القطاع الآخر
   const acts = r.items.filter((i) => i.kind === 'activity').map((i) => i.title);
   assert.deepEqual(acts.sort(), ['اجتماع تمهيدي', 'مكالمة متابعة']);
@@ -115,7 +116,7 @@ test('changesSince: القطاع الآخر يرى سجلاته هو فقط', as
   const ceo = { id: 'u-ceo', role_id: 'ceo_office', scope: 'company' };
   const r = await changesSince(ceo, 'S2', SINCE);
   assert.deepEqual(r.counts, { stage: 1, invoice: 1, collection: 0, activity: 1, created: 1 });
-  assert.ok(r.items.every((i) => !i.title.includes('قطاع أ') && !i.title.includes('INV-1')));
+  assert.ok(r.items.every((i) => !i.title.includes('قطاع أ') && !String(i.code || '').includes('INV-1') && !i.title.includes('INV-1')));
 });
 
 test('changesSince: الأنواع المالية (فواتير/تحصيل) صفر لمن لا يقرأ الفواتير', async () => {
