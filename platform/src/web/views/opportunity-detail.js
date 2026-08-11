@@ -14,7 +14,6 @@ import { get, all } from '../../core/db/index.js';
 import { DELIVERY_SECTOR_SQL } from '../../core/org/kind.js';
 import { opportunityDetail, ROT_THRESHOLDS, opportunityDepartments } from '../../modules/crm/opportunities.js';
 import { TEAM_ROLE_LABELS } from '../../modules/crm/oppteam.js';
-import { OPP_FILE_TYPES } from '../../modules/crm/oppdocs.js';
 import { esc, pct } from './_shared.js';
 import {
   G, ENGAGEMENT_TYPE_AR, ENGAGEMENT_TYPE_TIP, engagementTypeLabel,
@@ -50,8 +49,8 @@ const TAB_DEFS = [
   ['history', 'السجل'],
 ];
 
-// أنماط خاصة بالصفحة: مسار المراحل (نقاط على خط) ومنطقة إسقاط الملفات — وما عداهما من طبقة
-// التصميم العامة في layout.js بلا تكرار.
+// أنماط خاصة بالصفحة: مسار المراحل (نقاط على خط) — وما عداه من طبقة التصميم العامة في
+// layout.js بلا تكرار.
 const PAGE_STYLE = `<style>
 /* المسار يُقرأ كما يُقرأ النص: أول مرحلة يميناً — خصائص منطقية فلا قاعدة ثانية للاتجاه.
    المرحلة الحالية تتّسع لسطرها الثاني («في هذه المرحلة منذ…») بدل قصّه بثلاث نقاط. */
@@ -65,11 +64,6 @@ const PAGE_STYLE = `<style>
 .opp-rail-lb{font-size:10.5px;font-weight:700;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .opp-rail-it.cur .opp-rail-lb{color:var(--ink2);font-weight:800}
 .opp-rail-sub{font-size:10px;color:var(--faint);margin-top:.1rem;line-height:1.6}
-/* منطقة رفع الملف: إطار متقطّع يقول «أفلت هنا» قبل أي شرح — والنقر يفتح المنتقي (بالتفويض). */
-.doc-drop{border:1.5px dashed #c9d3e8;border-radius:12px;padding:.85rem 1rem;text-align:center;color:var(--muted);font-size:var(--fs-body);cursor:pointer;background:#fbfcfe;transition:border-color .15s,background .15s,color .15s}
-.doc-drop:hover,.doc-drop.drag{border-color:var(--brand);background:#f3f6fd;color:var(--ink2)}
-.doc-drop:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
-.doc-drop svg{width:20px;height:20px;color:var(--faint)}
 </style>`;
 
 export async function opportunityDetailPage(user, oppId, opts = {}) {
@@ -105,8 +99,7 @@ export async function opportunityDetailPage(user, oppId, opts = {}) {
   const dash = '<span style="color:var(--faint);font-size:var(--fs-ui)">—</span>';
   const statStrip = `<div style="display:flex;gap:1.5rem;flex-wrap:wrap;align-items:flex-start;border-top:1px solid var(--line);padding:.8rem 1.15rem">
     ${statCell(G.raw, `<b class="tnum" style="font-size:var(--fs-num-md);letter-spacing:-.02em">${fmtSar(o.value_halalas)}</b>`)}
-    ${statCell(G.weighted, `<b class="tnum" style="font-size:var(--fs-num-sm);color:var(--brand2)">${fmtSar(d.weighted_halalas)}</b>`)}
-    ${statCell('احتمال الفوز', `<b class="tnum" style="font-size:var(--fs-num-sm)">${pct(o.win_pct)}</b>`)}
+        ${statCell('احتمال الفوز', `<b class="tnum" style="font-size:var(--fs-num-sm)">${pct(o.win_pct)}</b>`)}
     ${statCell('عمر المرحلة', agePill || (isOpen && age === 0 ? '<span style="color:var(--muted);font-size:var(--fs-ui)">أقل من يوم</span>' : dash))}
     ${statCell('آخر نشاط', lastAct ? `<b class="tnum" style="font-size:var(--fs-num-sm)">${esc(lastAct)}</b>` : dash)}
   </div>`;
@@ -243,13 +236,36 @@ export async function opportunityDetailPage(user, oppId, opts = {}) {
               أو قطاع يشتغل على الفرصة» — والمسؤولة تبقى واحدة (المال لا يتجزأ فلا تُحسب الفرصة
               مرتين)، وهؤلاء من يعملون عليها ويجدونها في قوائم إداراتهم. والقطاع يأتي معهم:
               الإدارة تسكن قطاعها، فاختيارُ إدارةٍ من قطاعٍ آخر يُشرك القطاعين معاً. */ ''}
-        ${fld('إدارات مشاركة', `<select id="oc-partners" class="input" multiple size="4"
-          style="width:100%;font-size:12.5px;min-height:5.4rem"${lockAttrs}>
+        ${/* منسدلة بصناديق اختيار لا select متعدداً (ملاحظة المالك: «ما أبغى أختار بسلكت
+              وCtrl») — الحقيقة تبقى في select الخفي بمعرّفه المثبَّت `oc-partners` (الحفظ
+              والاختبارات يقرآنه)، والصناديق تُزامنه (pages/opps.js). */ ''}
+        ${fld('إدارات مشاركة', `<select id="oc-partners" multiple hidden aria-hidden="true"${lockAttrs}>
           ${deptOptions.filter((x) => x.id !== o.department_id)
-    .map((x) => opt(x.id, x.name_ar, partnerIds.has(x.id))).join('')}</select>`,
-    lockAttribution ? 'قرارُ الإدارة المسؤولة' : 'اختر أكثر من واحدة بالضغط مع Ctrl — تراها إداراتهم في قوائمها', 2)}
+    .map((x) => opt(x.id, x.name_ar, partnerIds.has(x.id))).join('')}</select>
+          <div id="oc-partners-pick" style="position:relative">
+            <button type="button" class="input" data-action="partners-toggle" aria-haspopup="listbox" aria-expanded="false"
+              style="width:100%;font-size:12.5px;text-align:start;display:flex;justify-content:space-between;align-items:center;gap:.4rem;cursor:pointer"${lockAttrs}>
+              <span id="oc-partners-label" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(() => {
+    const names = deptOptions.filter((x) => x.id !== o.department_id && partnerIds.has(x.id)).map((x) => x.name_ar);
+    return names.length ? esc(names.join('، ')) : 'بلا إدارات مشاركة';
+  })()}</span><span aria-hidden="true" style="color:var(--muted);flex:0 0 auto">▾</span></button>
+            <div id="oc-partners-menu" hidden role="listbox" aria-label="الإدارات المشاركة"
+              style="position:absolute;inset-inline:0;top:calc(100% + 4px);z-index:70;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 16px 40px rgba(15,23,42,.18);max-height:220px;overflow:auto;padding:.35rem">
+              ${deptOptions.filter((x) => x.id !== o.department_id)
+    .map((x) => `<label style="display:flex;gap:.5rem;align-items:center;padding:.4rem .55rem;border-radius:8px;cursor:pointer;font-size:12.5px">
+                <input type="checkbox" data-partner-opt value="${esc(x.id)}"${partnerIds.has(x.id) ? ' checked' : ''}${lockAttribution ? ' disabled' : ''}> ${esc(x.name_ar)}</label>`).join('')
+    || '<div style="padding:.5rem .55rem;font-size:12px;color:var(--faint)">لا إدارات أخرى معرّفة — تُضاف الإدارات من الهيكل التنظيمي.</div>'}
+            </div>
+          </div>`,
+    lockAttribution ? 'قرارُ الإدارة المسؤولة' : 'افتح القائمة وعلّم أكثر من إدارة — تراها إداراتهم في قوائمها', 2)}
         ${fld('المسؤول', `<select id="oc-owner" class="input" style="width:100%;font-size:12.5px">
-          ${opt('', 'بلا مسؤول', !o.owner_user_id)}${userOptions.map((u) => opt(u.id, u.name, o.owner_user_id === u.id)).join('')}</select>`)}
+          ${opt('', 'بلا مسؤول', !o.owner_user_id)}${
+  /* المالك الحالي يظهر مختاراً ولو كان خارج قائمة المنتقى (منتقي الأشخاص يخفي بعض
+     الحسابات عن غير مدير النظام) — وإلا سقط الاختيار إلى «بلا مسؤول» ومسح الحفظُ
+     المالكَ بصمت وأخرج الفرصة من نطاق محرِّرها. */
+  (o.owner_user_id && !userOptions.some((u) => u.id === o.owner_user_id)
+    ? opt(o.owner_user_id, d.owner || 'المسؤول الحالي', true) : '')
+}${userOptions.map((u) => opt(u.id, u.name, o.owner_user_id === u.id)).join('')}</select>`)}
         ${fld('المبلغ بالريال', `<div style="display:flex;gap:.3rem;flex-wrap:wrap">
           <input id="oc-value" class="input tnum" type="number" min="0" step="1000" style="flex:1 1 130px;min-width:130px;font-size:12.5px" value="${toSar(o.value_halalas)}">
           <select id="oc-vat" class="input" style="flex:0 0 auto;width:auto;font-size:11.5px" aria-label="هل المبلغ المكتوب شامل الضريبة"
@@ -304,8 +320,7 @@ export async function opportunityDetailPage(user, oppId, opts = {}) {
       ${vatNote}
       <div style="margin-top:.35rem">
         ${kv('احتمال الفوز', `<span class="tnum">${pct(o.win_pct)}</span>`)}
-        ${kv(G.weighted, `<span class="tnum">${fmtSar(d.weighted_halalas)}</span>`)}
-        ${kv('السنة', `<span class="tnum">${o.year || '—'}</span>`)}
+                ${kv('السنة', `<span class="tnum">${o.year || '—'}</span>`)}
       </div>
     </div>`);
   const classificationCard = card(`${secHead('التصنيف')}
@@ -394,27 +409,13 @@ export async function opportunityDetailPage(user, oppId, opts = {}) {
       ${x.note ? `<div style="font-size:11px;color:var(--muted)">${esc(x.note)}</div>` : ''}
       <div style="font-size:var(--fs-micro);color:var(--faint)">${esc(x.uploaded_by || '—')} · <span class="tnum">${esc((x.created_at || '').slice(0, 10))}</span>${x.size_bytes ? ` · <span class="tnum">${fmtBytes(x.size_bytes)}</span>` : ''}</div>
     </div>
-    ${x.has_file ? `<a class="btn btn-sm" href="/api/opportunities/documents/${esc(x.id)}/download"
-      style="flex:0 0 auto;text-decoration:none">تنزيل</a>` : ''}
     ${x.url ? `<a class="btn btn-sm" href="${esc(x.url)}" target="_blank" rel="noopener noreferrer"
       style="flex:0 0 auto;text-decoration:none">فتح ↗</a>` : ''}
     ${d.canEdit ? `<button class="btn btn-ghost btn-sm" data-action="opp-doc-del" data-id="${esc(x.id)}" title="إزالة" aria-label="إزالة ${esc(x.name)}">✕</button>` : ''}
   </div>`;
-  // منطقة الرفع: الحدّ (١٥ ميغابايت) والأنواع المسموحة من الخدمة نفسها (oppdocs.js) — الشاشة
-  // لا تخترع قاعدة ثانية، وaccept ترشيحُ متصفّحٍ مبكّر والخادم يحسم.
-  const uploadZone = !d.canEdit ? '' : `<div style="margin-bottom:.65rem">
-      <div class="doc-drop" data-action="doc-upload-pick" role="button" tabindex="0"
-        aria-label="رفع ملف — اسحب ملفاً هنا أو اضغط للاختيار">
-        ${icon('upload')}<div style="margin-top:.25rem;font-weight:700">اسحب ملفاً هنا أو اضغط للاختيار — حتى 15 ميغابايت</div>
-      </div>
-      <div style="display:flex;gap:.45rem;align-items:center;margin-top:.45rem;flex-wrap:wrap">
-        <label for="doc-file-kind" style="font-size:11px;font-weight:800;color:var(--muted)">نوع الملف</label>
-        <select id="doc-file-kind" class="input" style="width:150px;font-size:12px">
-          ${Object.entries(OPP_DOC_KIND_AR).map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join('')}</select>
-        <span id="doc-file-state" class="tnum" style="font-size:11px;color:var(--muted)"></span>
-      </div>
-      <input type="file" id="doc-file" hidden accept="${Object.keys(OPP_FILE_TYPES).map((e) => '.' + e).join(',')}">
-    </div>`;
+  // لا رفع ملفات — بقرار المالك (2026-08-11): «خلّيه بالرابط أفضل، ما أبغى أحفظ ملفات حالياً
+  // في المنصة». القدرة الخلفية (document_blob وخدمتها) خاملة مختبَرة إن عاد القرار؛ الشاشة
+  // والمسارات روابط فقط.
   const addDocForm = d.canEdit ? `<div style="margin-top:.7rem">
       <div style="display:flex;gap:.45rem;flex-wrap:wrap">
         <select id="doc-kind" class="input" style="width:130px" aria-label="نوع المستند">
@@ -428,9 +429,8 @@ export async function opportunityDetailPage(user, oppId, opts = {}) {
         <button class="btn" data-action="opp-doc-add" data-id="${esc(o.id)}">${icon('plus')} إضافة</button>
       </div>
     </div>` : '';
-  const filesCard = card(`${secHead('المستندات المرفوعة', `<span class="tnum" style="font-size:11px;color:var(--muted)">${docs.length}</span>`)}
+  const filesCard = card(`${secHead('مستندات الفرصة', `<span class="tnum" style="font-size:11px;color:var(--muted)">${docs.length}</span>`)}
     <div style="padding:.6rem 1rem .8rem">
-      ${uploadZone}
       ${docs.map(docRow).join('') || emptySec('upload', 'لا مستندات بعد',
     d.canEdit ? 'اربط هنا إعلان المنافسة وكراسة الشروط والعرض الفني والعرض المالي — فيجدها الفريق في مكان واحد.'
       : 'لم تُربط مستندات بهذه الفرصة بعد.')}

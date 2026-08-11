@@ -1,6 +1,6 @@
 // CRM pages (v2.1): opportunity pipeline with saved views + rot/next-action discipline,
 // and the personal pipeline (فرصي) run as a priority work queue (stalled → no-next-step → on-track).
-// Patterns: benchmarks §1 (stage dictionary popovers via stageInfo, default win % → weighted value,
+// Patterns: benchmarks §1 (stage dictionary popovers via stageInfo, default win % per stage,
 // rot as a first-class visual state, next-action selling). Page JS: /static/pages/opps.js.
 import { layout, card, pill } from '../layout.js';
 import { icon } from '../icons.js';
@@ -35,7 +35,6 @@ export function stageTip(s) {
 }
 
 const STALLED_HINT = 'فرصة متوقفة — حرّكها أو حدّث خطوتها التالية';
-const weightedOf = (o) => (o.value_halalas || 0) * ((o.win_pct || 0) / 100);
 
 // ── نظام ألوان المراحل ──────────────────────────────────────────────────────
 // كل مرحلة بلونها الحقيقي من قاعدة البيانات (stage.color) ويُستعمل بوضوح: شريط علوي
@@ -184,7 +183,6 @@ export async function opportunitiesPage(user, opts = {}) {
       data-action="opp-make-project" data-opp="${esc(o.id)}" data-name="${esc(o.title_ar || '')}" data-sector="${esc(o.sector_id || '')}"
       >أنشئ المشروع</button></td>`; };
   const total = open.reduce((a, o) => a + (o.value_halalas || 0), 0);
-  const weighted = Math.round(open.reduce((a, o) => a + weightedOf(o), 0));
   const decided = wonAll.length + lostAll.length;
   const winRate = decided ? Math.round((wonAll.length / decided) * 100) : 0;
 
@@ -283,7 +281,6 @@ export async function opportunitiesPage(user, opts = {}) {
     const c = stageColor(s); // لون المرحلة: شريط علوي + رأس مُظلَّل + حدّ البطاقات الجانبي
     const drop = canEdit ? 'ondragover="Sanad.kOver(event)" ondragleave="Sanad.kLeave(event)" ondrop="Sanad.kDrop(event)"' : '';
     const colTotal = items.reduce((a, o) => a + (o.value_halalas || 0), 0);
-    const colWeighted = Math.round(items.reduce((a, o) => a + weightedOf(o), 0));
     return `<div class="kcol" data-stage="${s.id}" ${drop} style="box-shadow:inset 0 3px 0 0 ${c}">
       <div class="kcol-head" style="background:${tint(c, '24')};border-radius:10px">
         <span class="kcol-dot" style="background:${c};width:10px;height:10px"></span>
@@ -291,7 +288,6 @@ export async function opportunitiesPage(user, opts = {}) {
         <button data-action="stage-info" data-stage="${s.id}" aria-label="شرح المرحلة" title="شرح المرحلة" style="width:16px;height:16px;border-radius:50%;border:1px solid var(--line);background:#fff;color:var(--muted);font-size:10px;font-weight:800;line-height:1;cursor:pointer;padding:0;flex:none;display:inline-flex;align-items:center;justify-content:center">؟</button>
         <span class="n" data-count>${items.length}</span>
         <span class="v tnum" data-total>${sarShort(colTotal)}</span></div>
-      ${isDecided ? '' : `<div style="padding:0 .55rem .5rem;font-size:10.5px;color:var(--muted)">${G.weighted}: <span class="tnum" style="font-weight:800" data-weighted>${sarShort(colWeighted)}</span></div>`}
       <div class="kcol-body">${items.map(opCard).join('') || colEmpty(s)}</div>
     </div>`;
   };
@@ -352,7 +348,6 @@ export async function opportunitiesPage(user, opts = {}) {
       <div style="font-size:10.5px;color:var(--faint)">${sub}</div></div>`;
   const strip = `<div style="display:flex;gap:.7rem;flex-wrap:wrap;margin-bottom:1rem">
     ${tile('raw', G.raw, fmtSar(total), countAr(open.length, { one: 'فرصة واحدة قيد المتابعة', two: 'فرصتان قيد المتابعة', few: 'فرص قيد المتابعة', many: 'فرصة قيد المتابعة' }))}
-    ${tile('weighted', G.weighted, fmtSar(weighted), 'القيمة × احتمال الفوز', 'var(--brand2)')}
     ${tile('winrate', `نسبة الفوز · ${yearFilter === 'all' ? 'كل السنوات' : `<span class="tnum">${yearFilter}</span>`}`, winRate + '%', `${wonAll.length} ${G.won} · ${lostAll.length} ${G.lost}`, winRate >= 50 ? 'var(--green)' : '')}
     ${tile('stalled', 'فرص متوقفة', stalled.length, stalled.length ? 'تجاوزت مدة مرحلتها — تحتاج تحريكاً' : 'لا فرص متجاوزة لمدتها', stalled.length ? 'var(--amber)' : 'var(--green)')}
   </div>`;
@@ -366,9 +361,6 @@ export async function opportunitiesPage(user, opts = {}) {
   const dds = [
     ddWrap('raw', G.raw, `${open.length} فرصة مفتوحة بقيمة ${fmtSar(total)}`,
       ddRows(topN(byVal, 30).map((o) => oppRowDD(o, fmtSar(o.value_halalas)))) + more(byVal, 30)),
-    ddWrap('weighted', G.weighted, `الإجمالي المرجّح ${fmtSar(weighted)} — كل فرصة بقيمتها × احتمالها`,
-      ddRows(topN(byVal.slice().sort((a, b) => weightedOf(b) - weightedOf(a)), 30)
-        .map((o) => oppRowDD(o, `${fmtSar(Math.round(weightedOf(o)))} <span style="color:var(--faint);font-weight:600">(${pct(o.win_pct)})</span>`))) + more(byVal, 30)),
     ddWrap('winrate', 'نسبة الفوز', `${winRate}% من ${decided} فرصة محسومة`,
       ddRows([
         ...topN(wonAll, 15).map((o) => oppRowDD(o, `${pill(G.won, 'green')} <span class="tnum">${fmtSar(o.value_halalas)}</span>`)),
@@ -401,7 +393,6 @@ export async function opportunitiesPage(user, opts = {}) {
       <td data-label="${G.stage}" class="px-3" data-v="${st.sort_order ?? 0}">${pill(esc(st.name_ar || o.stage_id), 'blue')}</td>
       <td data-label="العمر في المرحلة" class="px-3 text-[12px]" data-v="${age ?? -1}">${openRow ? (ageChip(o) || '<span style="color:var(--faint)">—</span>') : '<span class="text-faint">—</span>'}</td>
       <td data-label="القيمة" class="px-3 text-[13px] tnum" data-v="${o.value_halalas || 0}">${fmtSar(o.value_halalas)}</td>
-      <td data-label="${G.weighted}" class="px-3 text-[12px] tnum" data-v="${Math.round((o.value_halalas || 0) * ((o.win_pct || 0) / 100))}">${fmtSar(Math.round((o.value_halalas || 0) * ((o.win_pct || 0) / 100)))}</td>
       <td data-label="${G.probability}" class="px-3 text-[12px] text-muted tnum" data-v="${o.win_pct || 0}">${pct(o.win_pct)}</td>
       <td data-label="المالك" class="px-3 text-[12px]" data-v="${esc(users[o.owner_user_id] || '')}">${esc(users[o.owner_user_id] || '—')}</td>
       <td data-label="آخر نشاط" class="px-3 text-[12px]" data-v="${esc(o.last_activity_at || '')}">${dateCell(o.last_activity_at)}</td>
@@ -418,9 +409,9 @@ export async function opportunitiesPage(user, opts = {}) {
         ${canCreate ? `<button class="btn btn-primary" data-action="opp-add">${icon('plus')} فرصة جديدة</button>` : ''}</div></div>`
     : `<div id="opp-kanban" class="kanban" tabindex="0" role="region" aria-label="لوحة الفرص">${columns}</div>
       <div id="opp-table" class="card" style="display:none;overflow-x:auto">
-        <table class="rtbl w-full" style="min-width:1240px"><thead><tr class="text-[11px] text-muted text-right">
+        <table class="rtbl w-full" style="min-width:1140px"><thead><tr class="text-[11px] text-muted text-right">
           ${oth('العنوان')}${oth('العميل')}${oth(G.stage)}${oth('العمر في المرحلة', 'اضغط للترتيب — الأخطر (الأطول ركوداً) أولاً')}
-          ${oth('القيمة')}${oth(G.weighted, 'القيمة × احتمال الفوز')}${oth(G.probability)}${oth('المالك')}${oth('آخر نشاط', 'آخر تواصل مسجَّل على الفرصة')}${oth('تاريخ الإنشاء')}${oth('آخر تحديث')}${oth(G.nextAction)}</tr></thead>
+          ${oth('القيمة')}${oth(G.probability)}${oth('المالك')}${oth('آخر نشاط', 'آخر تواصل مسجَّل على الفرصة')}${oth('تاريخ الإنشاء')}${oth('آخر تحديث')}${oth(G.nextAction)}</tr></thead>
         <tbody>${tableRows}</tbody></table></div>`;
 
   const body = `
@@ -455,7 +446,7 @@ export async function opportunitiesPage(user, opts = {}) {
     });</script>`;
   return layout({
     user, active: 'opportunities', title: 'الفرص والمبيعات',
-    subtitle: `${yearFilter === 'all' ? 'كل السنوات' : `سنة ${yearFilter}`} · ${rows.length} فرصة · ${G.weighted} ${fmtSar(weighted)}`, body,
+    subtitle: `${yearFilter === 'all' ? 'كل السنوات' : `سنة ${yearFilter}`} · ${rows.length} فرصة · القيمة الإجمالية ${fmtSar(total)}`, body,
     scripts: ['/static/pages/opps.js'],
   });
 }
@@ -498,7 +489,6 @@ export async function myOpportunitiesPage(user, opts = {}) {
   const onTrack = open.filter((o) => !o.rot && o.stage_id !== 'ON_HOLD' && !noAction(o));
   const naAll = open.filter((o) => o.no_next_action).length;
   const total = open.reduce((a, o) => a + (o.value_halalas || 0), 0);
-  const weighted = Math.round(open.reduce((a, o) => a + weightedOf(o), 0));
   const hasTeams = open.some((o) => teamCounts[o.id]);
 
   const stagePill = (o) => {
@@ -529,7 +519,7 @@ export async function myOpportunitiesPage(user, opts = {}) {
       ${hasTeams ? `<td style="padding:.55rem .7rem;text-align:center">${team ? `<span class="pill tnum" style="background:#eef1f7;color:#475569" title="${team} في فريق الفرصة">${icon('team')} ${team}</span>` : '<span style="color:var(--faint)">—</span>'}</td>` : ''}
       <td style="padding:.55rem .7rem;min-width:170px">${naCell}</td>
       <td class="tnum" style="padding:.55rem .7rem;text-align:left;font-weight:800;font-size:12.5px;white-space:nowrap">${fmtSar(o.value_halalas)}
-        <div style="font-weight:600;font-size:10px;color:var(--muted)">مرجّح ${fmtSar(Math.round(weightedOf(o)))}</div></td>
+</td>
     </tr>`;
   };
 
@@ -555,7 +545,7 @@ export async function myOpportunitiesPage(user, opts = {}) {
         <a class="btn" href="/app/opportunities">تصفّح كل الفرص</a></div></div>`
     : `
     <div style="display:flex;gap:.7rem;flex-wrap:wrap;margin-bottom:1rem">
-      ${statMini('قيمتي المفتوحة', fmtSar(total), `${countAr(open.length, { one: 'فرصة واحدة', two: 'فرصتان', few: 'فرص', many: 'فرصة' })} · ${G.weighted} ${fmtSar(weighted)}`, 'brand')}
+      ${statMini('قيمتي المفتوحة', fmtSar(total), `${countAr(open.length, { one: 'فرصة واحدة', two: 'فرصتان', few: 'فرص', many: 'فرصة' })} مفتوحة`, 'brand')}
       ${statMini('متوقفة', stalled.length, stalled.length ? 'تجاوزت مدة مرحلتها — ابدأ بها' : 'لا شيء متوقف', stalled.length ? 'warn' : 'good')}
       ${statMini(G.noNextAction, naAll, naAll ? (naAll > noStepRows.length ? `منها ${naAll - noStepRows.length} ضمن المتوقفة — حدّد خطوة لكل فرصة` : 'حدّد خطوة مؤرّخة لكل فرصة') : 'لكل فرصة خطوة واضحة', naAll ? 'bad' : 'good')}
     </div>
