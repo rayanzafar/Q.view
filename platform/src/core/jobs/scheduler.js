@@ -2,6 +2,7 @@
 import { all, run } from '../db/index.js';
 import { processQueue, enqueueReport, nextRunAt } from '../reports/engine.js';
 import { purgeExpiredCodes } from '../auth/otp.js';
+import { sweepApprovalMail } from '../../modules/workflow/approval-notify.js';
 
 let timer = null;
 
@@ -17,6 +18,9 @@ async function tick() {
   // الطابور والجدولة معزولان: فشل أي منهما لا يمنع الآخر. كان الاثنان داخل حماية واحدة،
   // فأي جدولة تفشل كانت توقف إرسال كل بريد المنصة بصمت.
   try { await fireDueSchedules(); } catch (e) { console.error('[scheduler] fireDueSchedules:', e.message); }
+  // بريد الاعتمادات قبل معالجة الطابور عمداً: ما يُقيَّد في هذه الدقيقة يغادر فيها لا في التالية.
+  // والقرار كله داخل الكنسة (جدول الحال هو الحَكَم) — الدقّة هنا مجرد نبض.
+  try { await sweepApprovalMail(); } catch (e) { console.error('[scheduler] sweepApprovalMail:', e.message); }
   try { await processQueue(30); } catch (e) { console.error('[scheduler] processQueue:', e.message); }
   // رموز الدخول المنتهية تُكنَس كل ساعة لا كل دقيقة: الجدول ينمو بصفٍّ لكل طلب دخول في
   // الشركة كلها، وكلٌّ منها أثرٌ لا حاجة إليه بعد انتهائه. والكنس رخيص، لكنه لا يستحق دقيقة.

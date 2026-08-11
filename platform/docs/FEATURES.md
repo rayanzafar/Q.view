@@ -8,7 +8,7 @@ One row per key in the `PAGES` map (`src/web/routes.js`). Gate = `PAGE_ACCESS` (
 
 | key | Arabic name | what it does | access gate | view file | page JS | status |
 |---|---|---|---|---|---|---|
-| `home` | صفحتي | Personal my-day: greeting, today's tasks/milestones/deliverables, SSR month calendar (`myDay` in `src/modules/home/home.js`) | everyone (`() => true`; every query behind it is scoped to the user) | src/web/views/home.js | pages/home.js | live |
+| `home` | صفحتي | Personal my-day: greeting, today's tasks/milestones/deliverables, SSR month calendar (`myDay` in `src/modules/home/home.js`), pending-approvals card with inline approve/reject (directed approvals only — self-scoped; deliberately no role gate, the KI-035 structural fix) | everyone (`() => true`; every query behind it is scoped to the user) | src/web/views/home.js | pages/home.js, pages/approvals.js (shared listener) | live |
 | `ceo` | لوحة القيادة | Company KPI dashboard with drill-downs (revenue/sales/pipeline/win-rate/backlog/margin), sector chips, year selector | `seesCompanyPerformance(u)` (company-wide report/kpi grant AND `user.scope==='company'`) | src/web/views/exec.js | — | live |
 | `portfolio` | محفظة المشاريع | Portfolio health view across all projects | `seesCompanyPerformance(u)` | src/web/views/exec.js | — | live |
 | `sector` | مركز القطاع | Sector command center: period lens, what-changed feed, attention, pipeline funnel/aging, project health, capacity, approvals | `can(u,'read','project') \|\| can(u,'read','opportunity')` | src/web/views/sector.js | — | live |
@@ -104,6 +104,7 @@ One row per file in `migrations/` (applied in order by `scripts/migrate.js`, rec
 | 028 | 028_task_approval.sql | `task.approval_state` (NULL = added; PENDING = awaiting manager) + index | task approvals |
 | 029 | 029_task_category.sql | `task.category` (activity type: preset keys or free text) + data-fix reclassifying parentless `work_kind='project'` rows to `internal` | task types (v5.1) + internal-storage bugfix |
 | 030 | 030_task_provenance.sql | `task.approved_by`/`approved_at` written by `settleTask` at decision time + backfill of already-approved tasks from `approval_action` | task provenance (who assigned / who approved) |
+| 031 | 031_approval_mail_state.sql | `approval_mail_state` per-recipient send state (cooldown + daily-reminder claims; the row is the replica-safe send lock) | batched approval-notification email |
 
 ## Modules
 
@@ -126,7 +127,7 @@ One row per directory in `src/modules/`. Root-level files in `src/modules/` are 
 | src/modules/search | Global search over opportunities/projects/clients/employees, reusing scoped list services | search.js, search.routes.js | no dedicated suite — touched by tests/security/exec-surfaces.test.js (known thin coverage, SESSION-HANDOFF §8) |
 | src/modules/timesheets | Time entries (≤16h/day), period submit/approve, utilization math | timesheets.js | tests/integration/utilization-may2026.test.js, task-approval.test.js; tests/security/write-gates.test.js, rbac-scope-bypass.test.js |
 | src/modules/views | Saved views per page (max 20/user/page, default flag) | views.js, views.routes.js | tests/integration/saved-views.test.js |
-| src/modules/workflow | Approval engine: threshold steps, act/advance, queues, direct (assignee) approvals for staffing + tasks | engine.js | tests/governance.test.js; tests/integration/staffing-confirmation.test.js, task-approval.test.js, activation-defects.test.js |
+| src/modules/workflow | Approval engine: threshold steps, act/advance, queues, direct (assignee) approvals for staffing + tasks; shared pending-inbox (`pendingApprovalsFor`/`decorateApprovals`); batched approval-mail decision + sweep (30-min/4-h cooldowns, 8–18 Riyadh window, 8AM reminder) | engine.js, inbox.js, approval-notify.js | tests/governance.test.js; tests/integration/staffing-confirmation.test.js, task-approval.test.js, activation-defects.test.js, home-approvals.test.js; tests/unit/approval-notify.test.js, approval-mail-templates.test.js |
 
 `src/core/` areas (infrastructure, not features — see subsystem docs for depth):
 
@@ -139,8 +140,8 @@ One row per directory in `src/modules/`. Root-level files in `src/modules/` are 
 | src/core/policy | `PAGE_ACCESS` + `seesCompanyPerformance` — page-open policy shared by nav, guard, guide, search |
 | src/core/ai | AI assistant: intents, options, preview store (assistant.js, provider.js, store.js); local engine default, provider only with `AI_ENGINE=provider` + key |
 | src/core/reports | Report engine/templates/schedules (engine.js), KPI math single source (metrics.js), period reports (periods.js), attention/changes/project-cash |
-| src/core/mail | Transport preview\|smtp with fail-closed recipient allowlist, templates, SMTP, OTP mail |
-| src/core/jobs | 60s in-process scheduler: due report schedules, email queue, hourly OTP purge |
+| src/core/mail | Transport preview\|smtp with fail-closed recipient allowlist, templates, SMTP, OTP mail, approval-notification mail (approval-mail.js, transactional shell) |
+| src/core/jobs | 60s in-process scheduler: due report schedules, approval-mail sweep, email queue, hourly OTP purge |
 | src/core/audit | `audit(ctx,…)` → `audit_log`, called by every write |
 | src/core/lifecycle | Guarded soft-delete engine (project/opportunity/user): money blocks, cascades, Arabic refusals |
 | src/core/backup | In-app NDJSON logical dump (serves /api/backup/*) |

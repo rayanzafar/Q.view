@@ -19,6 +19,7 @@ const ROOT = new URL('..', import.meta.url).pathname;
 // منه فعلاً قيمة حالة خام داخل جملة عربية، ورمز أولوية، ومعرّف مرحلة داخلي. الطبقة لا تُقرَّر
 // بمجلدها بل بمن يقرأ مخرجاتها.
 const UI_TARGETS = ['src/web/views', 'src/web/i18n', 'src/core/i18n', 'src/core/mail/templates.js',
+  'src/core/mail/approval-mail.js',
   'src/web/layout.js', 'src/web/nav.js', 'src/web/public/pages', 'src/core/ai'];
 const ERROR_TARGETS = ['src/modules', 'src/core', 'src/web'];
 

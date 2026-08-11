@@ -3,7 +3,7 @@
 import { all } from '../db/index.js';
 import { can } from '../rbac/index.js';
 import { scopeFilter } from '../rbac/scope.js';
-import { myApprovalQueue } from '../../modules/workflow/engine.js';
+import { pendingApprovalsFor } from '../../modules/workflow/inbox.js';
 import { fmtSar } from '../util/ids.js';
 import { ROT_THRESHOLDS } from '../../modules/crm/opportunities.js';
 import { countAr } from '../i18n/plural.js';
@@ -14,7 +14,8 @@ const STAGE_ROT_DAYS = ROT_THRESHOLDS;
 
 // أسماء موارد الاعتمادات بالعربية — لا يظهر اسم مورد تقني للمستخدم أبداً
 export const RESOURCE_AR = { opportunity: 'فرصة', proposal: 'عرض', expense: 'مصروف',
-  deliverable: 'مخرَج', timesheet: 'سجل وقت', invoice: 'فاتورة', project: 'مشروع', contract: 'عقد' };
+  deliverable: 'مخرَج', timesheet: 'سجل وقت', invoice: 'فاتورة', project: 'مشروع', contract: 'عقد',
+  task: 'اعتماد مهمة', membership: 'تأكيد تسكين' };
 
 export async function attentionFeed(user, sectorId, { year, today } = {}) {
   const t = today || new Date().toISOString().slice(0, 10);
@@ -22,9 +23,10 @@ export async function attentionFeed(user, sectorId, { year, today } = {}) {
   const m = Number(t.slice(5, 7));
   const items = [];
 
-  // 1) قرارات بانتظارك (موافقات على دورك)
+  // 1) قرارات بانتظارك — بدورك وبعينك معاً: كان البند يقرأ طابور الأدوار وحده، وكلُّ الحجم
+  // الحيّ (اعتماد المهام وتأكيد التسكين) موجَّهٌ بالشخص — فكان «يحتاج انتباهك» أعمى عنه.
   try {
-    const q = await myApprovalQueue(user);
+    const q = await pendingApprovalsFor(user);
     if (q.length) items.push({ rank: 1, tone: 'brand', icon: 'approvals', dd: null, href: '/app/approvals',
       title: `${countAr(q.length, { one: 'طلب اعتماد واحد', two: 'طلبا اعتماد', few: 'طلبات اعتماد', many: 'طلب اعتماد' })} بانتظار قرارك`,
       sub: q.slice(0, 2).map((r) => RESOURCE_AR[r.resource] || 'طلب').join(' · '),

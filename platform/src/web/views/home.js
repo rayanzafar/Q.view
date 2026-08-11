@@ -23,6 +23,12 @@ import { esc, sarShort, ddWrap } from './_shared.js';
 import { pageAllowed } from '../nav.js';
 import { MONTHS_AR, WEEKDAYS_AR, WEEKDAYS_AR_1 } from '../../core/i18n/time.js';
 import { myDay, monthGrid } from '../../modules/home/home.js';
+// بطاقة «بانتظار اعتمادك»: الموجَّه بالشخص وحده (`assignee_user_id = صاحب الصفحة`) — فيبقى
+// عقد الصفحة قائماً: لا استعلام يتجاوز نطاق صاحبها. والصلاحية على الفعل نفسه في الخادم
+// (`actOnApproval` يقبل المعتمَد الموجَّه إليه أياً كان دوره) — فلا بوابة دورٍ هنا عمداً:
+// هذه البطاقة هي المكان الوحيد الذي يراه معتمِدٌ دورُه لا يفتح شاشة «الاعتمادات».
+import { myDirectApprovals } from '../../modules/workflow/engine.js';
+import { decorateApprovals } from '../../modules/workflow/inbox.js';
 
 // ── تسمية صاحب الصفحة ────────────────────────────────────────────────────────
 // الاسم الأول وحده في التحية: «أهلاً ياسر» تُقرأ ترحيباً، و«أهلاً د. ياسر صالح الشمري»
@@ -169,6 +175,12 @@ const STYLE = `
 .hm-tt .a{display:block;font-size:var(--fs-body);font-weight:700;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .hm-tt .b{font-size:var(--fs-micro);color:var(--faint)}
 a.hm-tt:hover .a{color:var(--brand)}
+/* أزرار بطاقة الاعتمادات: القرار من مكانه — بلا فتح شاشةٍ أخرى */
+.hm-appr-act{flex:0 0 auto;display:inline-flex;gap:.35rem}
+.hm-ok{color:#047857;border-color:#a7f3d0;font-weight:800}
+.hm-ok:hover{background:#ecfdf5}
+.hm-no{color:#b91c1c;border-color:#fecaca;font-weight:800}
+.hm-no:hover{background:#fef2f2}
 
 /* ── التقويم ── */
 .cal-h{display:flex;align-items:center;justify-content:space-between;gap:.5rem;padding:var(--pad-card-h)}
@@ -309,6 +321,7 @@ function calendarCard(grid, selected, monthKey) {
 // ── الصفحة ───────────────────────────────────────────────────────────────────
 export async function homePage(user, opts = {}) {
   const day = await myDay(user);
+  const approvals = await decorateApprovals(await myDirectApprovals(user));
   const today = day.today;
 
   // الشهر المعروض واليوم المفتوح — كلاهما من العنوان، فحالة الشاشة قابلة للمشاركة والرجوع.
@@ -405,6 +418,30 @@ export async function homePage(user, opts = {}) {
     ${tile({ n: day.opportunities.length, label: 'فرص تملكها', extra: oppValue ? `بقيمة ${sarShort(oppValue)}` : 'لا قيمة مسجَّلة', tone: 'var(--green)', href: canOpp ? '/app/my-opportunities' : null })}
   </div>`;
 
+  // ── بانتظار اعتمادك ──
+  // فوق «أمامك الآن» عمداً: المعلَّق هنا يحبس عمل **غيرك** لا عملك، فحسمُه أولى بالصباح.
+  // البطاقة تُعرض دوماً — والفراغ يقول صراحةً «لا اعتمادات بانتظارك» (طلب المالك نصاً).
+  const ageAr = (iso) => {
+    const n = Math.max(0, Math.floor((Date.parse(today + 'T00:00:00Z') - Date.parse(String(iso || '').slice(0, 10) + 'T00:00:00Z')) / 86400000));
+    return n <= 0 ? 'اليوم' : n === 1 ? 'منذ يوم' : n === 2 ? 'منذ يومين' : n <= 10 ? `منذ ${n} أيام` : `منذ ${n} يوماً`;
+  };
+  const apprCard = `<div class="card" id="hm-appr" style="margin-bottom:1rem">
+    ${cardTop('بانتظار اعتمادك', approvals.length
+    ? (pageAllowed(user, 'approvals') ? '<a href="/app/approvals" style="font-weight:700">كل الاعتمادات</a>' : '')
+    : '')}
+    <div class="hm-body-p">${approvals.length
+    ? approvals.slice(0, 8).map((a) => `<div class="hm-row">
+        <div class="hm-kind" style="background:var(--brand2)">${icon('approvals')}</div>
+        <div class="hm-tt"><span class="a">${esc(a.label || a.kindLabel)}${a.parent ? ` · ${esc(a.parent)}` : ''}</span>
+          <span class="b">${esc(a.kindLabel)}${a.requesterName ? ` · طلبها ${esc(a.requesterName)}` : ''} · ${esc(ageAr(a.created_at))}</span></div>
+        <span class="hm-appr-act">
+          <button type="button" class="btn btn-sm hm-ok" data-action="apr-approve" data-id="${esc(a.id)}">اعتماد</button>
+          <button type="button" class="btn btn-sm hm-no" data-action="apr-reject" data-id="${esc(a.id)}">رفض</button>
+        </span>
+      </div>`).join('')
+    : emptyCard('لا اعتمادات بانتظارك', 'كل ما وُجّه إليك للاعتماد قد حُسم — يظهر هنا كل طلبٍ جديد فور وصوله.')}</div>
+  </div>`;
+
   // ── أمامك الآن ──
   const dueCard = `<div class="card" id="hm-due">
     ${cardTop('أمامك الآن', due.length > 12 ? `أقرب ${num(12)} من ${num(due.length)}` : '')}
@@ -448,7 +485,7 @@ export async function homePage(user, opts = {}) {
   // الطابور والفرص، فلو جُمعت الثلاثة فيه لبقي تحت التقويم فراغٌ بطول الصفحة.
   const body = `${hero}${tiles}
   <div class="hm-grid">
-    <div>${dueCard}${oppCard}</div>
+    <div>${apprCard}${dueCard}${oppCard}</div>
     <div>${calendarCard(grid, selected, mParam)}${projCard}</div>
   </div>`;
 
@@ -459,6 +496,8 @@ export async function homePage(user, opts = {}) {
     subtitle: `${g.weekday} · ما يخصّك أنت`,
     body,
     extraHead: `<style>${STYLE}</style>`,
-    scripts: ['/static/pages/home.js'],
+    // أزرار البطاقة يخدمها معالج شاشة الاعتمادات نفسه — تفويض أحداث على مستوى الوثيقة،
+    // فلا نصَّ عميلٍ جديداً هنا ولا نسخةَ ثانية من منطق الاعتماد/الرفض.
+    scripts: ['/static/pages/home.js', '/static/pages/approvals.js'],
   });
 }

@@ -2,7 +2,7 @@
 import { layout, card, pill, hbars } from '../layout.js';
 import { fmtSar } from '../../core/util/ids.js';
 import { all } from '../../core/db/index.js';
-import { myApprovalQueue, myDirectApprovals } from '../../modules/workflow/engine.js';
+import { pendingApprovalsFor } from '../../modules/workflow/inbox.js';
 import { approvalTargets } from '../../modules/workflow/targets.js';
 import { namesByIds } from '../../modules/org/people.js';
 import { canControlSchedules } from '../../core/reports/engine.js';
@@ -26,7 +26,8 @@ const deptCountAr = (n) => (n === 1 ? 'إدارة واحدة' : n === 2 ? 'إد�
 export async function approvalsPage(user) {
   // صندوقٌ واحد لا صندوقان: ما يُوجَّه بالدور (اعتمادات مالية) وما يُوجَّه بشخصك (تأكيد تسكين
   // موظفك واعتماد مهمته) يظهران معاً — «أين أرى ما ينتظرني» يجب أن يكون له جوابٌ واحد.
-  const q = [...await myApprovalQueue(user), ...await myDirectApprovals(user)];
+  // (المصدر المشترك نفسه الذي تقرأ منه بطاقة «صفحتي» وبريدُ التنبيه ومركز القطاع.)
+  const q = await pendingApprovalsFor(user);
   // ما يُعتمَد يُقرأ باسمه لا بمعرّفه: كان العمود يطبع «مهمة · tsk_9fA2…»، فيقرّر المديرُ في
   // شيءٍ لا يعرف ما هو — أو لا يقرّر أصلاً. والاسم من مصدره (جدول العنصر نفسه) لا من نصٍّ
   // يُنسخ في الطلب لحظة رفعه، فيبقى صحيحاً لو أُعيدت تسميته قبل أن يُبَتّ فيه.

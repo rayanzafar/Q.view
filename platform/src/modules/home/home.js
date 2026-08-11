@@ -10,7 +10,7 @@
 import { all, get } from '../../core/db/index.js';
 // أسماء الأشهر والأيام من النموذج الزمني الواحد للمنصة — لا نسخة ثانية هنا: أول انحراف بين
 // نسختين يجعل التقويم يسمّي الشهر اسماً لا يطابق ما يسمّيه به شريط التسكين في الصفحة نفسها.
-import { MONTHS_AR, WEEKDAYS_AR } from '../../core/i18n/time.js';
+import { MONTHS_AR, WEEKDAYS_AR, riyadhHour, RIYADH_OFFSET_HOURS } from '../../core/i18n/time.js';
 // «ما ينتظرك» يعدّ ما أُضيف فعلاً: المهمة التي تنتظر اعتماد المدير ليست على طاولة صاحبها بعد،
 // بل على طاولة مديره. وموضعها المعلَّم شاشة «مهامي» وحدها.
 import { approvedTaskSql } from '../pmo/task-approval.js';
@@ -24,10 +24,8 @@ const iso = (d) => d.toISOString().slice(0, 10);
 // فصارت تحيةً كما يُحيّي الناسُ بعضهم، والوقت من ساعة الرياض لا من ساعة الخادم.
 //
 // والعطلة تُحيّى بما يليق بها: من يفتح المنصة يوم الجمعة لا يُدفع إلى العمل بل يُشكر.
-const RIYADH_OFFSET_HOURS = 3;
-export function riyadhHour(date = new Date()) {
-  return (date.getUTCHours() + RIYADH_OFFSET_HOURS) % 24;
-}
+// (ساعة الرياض من النموذج الزمني الواحد — نفس الساعة التي تحكم نافذة بريد الاعتمادات.)
+export { riyadhHour };
 function timeGreeting(date) {
   const h = riyadhHour(date);
   if (h < 5) return 'ليلةٌ طيبة';

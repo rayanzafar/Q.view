@@ -5,6 +5,18 @@
 //   • الاتجاه: الزمن يُقرأ كما يُقرأ النص — يناير في أقصى اليمين وديسمبر في أقصى اليسار
 //     (فئة .mtrack في layout.js: grid بـdirection:rtl). لا شريط زمني LTR بعد اليوم.
 //   • مؤشر «نحن هنا» موحّد: النقطة الذهبية nowDot() لا غير.
+// ── ساعة الرياض: مصدرٌ واحد للتحية ونافذة البريد وكل ما يسأل «كم الساعة عندنا» ──
+// السعودية على +٣ ثابتة بلا توقيتٍ صيفي، فالإزاحة رقمٌ لا جدولُ مناطق.
+export const RIYADH_OFFSET_HOURS = 3;
+export function riyadhHour(date = new Date()) {
+  return (date.getUTCHours() + RIYADH_OFFSET_HOURS) % 24;
+}
+// يومُ الرياض YYYY-MM-DD — يتقدّم على يوم UTC بعد التاسعة مساءً، وهذا هو المقصود:
+// «مرة باليوم» بيوم الناس هنا لا بيوم غرينتش.
+export function riyadhDate(date = new Date()) {
+  return new Date(date.getTime() + RIYADH_OFFSET_HOURS * 3600000).toISOString().slice(0, 10);
+}
+
 export const MONTHS_AR = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
 export const MONTHS_EN3 = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 // أيام الأسبوع من الأحد (getDay صفري) — لا من الاثنين: أسبوع العمل في السعودية يبدأ الأحد
