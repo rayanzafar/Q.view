@@ -163,3 +163,34 @@ test('والمعلَّقة يصل خبرُها لصاحبها لحظة الاع�
     "SELECT * FROM notification WHERE user_id = 'u_emp' AND title = 'اعتُمد طلبك'");
   assert.ok(engineNote.length >= 1, 'خبر المحرّك «اعتُمد طلبك» غائب عن كاتبها');
 });
+
+// ═══ KI-041: من أسند مهمةً معلَّقةً يراها حتى تُحسم — معلَّمةً وخارج عدّادات يومه ═══════
+
+test('الكاتب يرى مهمته المعلَّقة باسم غيره في «مهامي» قسماً معلَّماً — لا عدّاً في يومه ولا لوحه', async () => {
+  const t = await tasks.quickAddTask(ctx(MID), { title: 'مهمة معلَّقة يراها كاتبها', opportunity_id: 'OPP', assignee_user_id: 'u_emp' });
+  assert.equal(t.approval_state, 'PENDING');
+  const mine = await tasks.myTasks(MID, {});
+  assert.ok(mine.some((x) => x.id === t.id), 'اختفت عن كاتبها حتى تُحسم');
+  assert.ok(!(await tasks.myTasks(EMP, {})).some((x) => x.id === t.id), 'ظهرت لمن أُسندت إليه قبل اعتمادها');
+
+  const html = mainOf(await tasksPage(MID, { win: 'all' }));
+  assert.ok(html.includes('بانتظار الاعتماد'), 'قسم المعلَّق غائب عن القائمة');
+  assert.ok(html.includes('مهمة معلَّقة يراها كاتبها'), 'المهمة غائبة عن القسم');
+  assert.ok(html.includes('باسم موظف الفرع'), 'اسم المُسنَد إليه غائب عن صفّها');
+  assert.ok(!html.includes('أسندها مدير الفرع'), 'صفُّ كاتبها يقول «أسندها» عن كاتبها نفسه');
+  const board = mainOf(await tasksPage(MID, { view: 'board', win: 'all' }));
+  assert.ok(!board.includes('مهمة معلَّقة يراها كاتبها'), 'المعلَّقة تسرّبت إلى اللوح');
+});
+
+test('وصفحة الشخص تعرضها لكاتبها معلَّمةً بلا عدٍّ — وتبقى محجوبةً عن قارئٍ غيره', async () => {
+  const d = await tasks.personDossier(MID, 'u_emp');
+  assert.ok(d.tasks.some((x) => x.title === 'مهمة معلَّقة يراها كاتبها'), 'غابت عن صفحة الشخص عند كاتبها');
+  assert.equal(d.stats.open,
+    d.tasks.filter((x) => x.status !== 'DONE' && x.approval_state !== 'PENDING').length,
+    'المعلَّقة دخلت عدّاد المفتوح');
+  const html = mainOf(await personPage(MID, 'u_emp'));
+  assert.ok(html.includes('بانتظار اعتماد المدير'), 'وسم المعلَّقة غائب عن صفحة الشخص');
+  // صاحب الصفحة نفسه (ليس كاتبها) لا يراها — الحجب عن المُسنَد إليه قائم في كل سطح.
+  const own = await tasks.personDossier(EMP, 'u_emp');
+  assert.ok(!own.tasks.some((x) => x.title === 'مهمة معلَّقة يراها كاتبها'), 'ظهرت لغير كاتبها قبل اعتمادها');
+});

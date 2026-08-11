@@ -54,7 +54,7 @@ const BY_ID = /\b(?:t\.)?id\s*(?:=\s*\?|IN\s*\()/i;
 const ALLOWED_MARKERS = [/audit_log/];
 
 // الحاجزُ نفسه، أينما ورد: نصاً في الاستعلام، أو دالةً تُركَّب فيه.
-const GUARD = /approval_state|approvedTaskSql|ownOrApprovedTaskSql/;
+const GUARD = /approval_state|approvedTaskSql|ownOrApprovedTaskSql|myWorkOrMyPendingSql/;
 
 test('كل استعلام يسرد المهام يحجب ما ينتظر اعتماداً — أو يقرأ صفاً بمعرّفه', () => {
   const misses = [];

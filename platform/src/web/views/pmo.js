@@ -494,6 +494,13 @@ export async function tasksPage(user, opts = {}) {
     flat = await myTasks(user, baseFilters);
   }
   flat = flat.filter((t) => t.status !== 'CANCELLED');
+  // ما كتبتُه وينتظر الاعتماد باسم غيري: قسمٌ مستقل خارج كل عدّادٍ ولوحٍ وتقويم — ليس عملي
+  // أنا بل قراري المعلَّق (KI-041 سابقاً: كان لا يُرى في أي مكان حتى يُحسم فيحسبه صاحبه ضاع).
+  const pendingMine = who === 'me' ? flat.filter((t) => isPendingTask(t) && t.assignee_user_id !== user.id) : [];
+  if (pendingMine.length) {
+    const pendingIds = new Set(pendingMine.map((t) => t.id));
+    flat = flat.filter((t) => !pendingIds.has(t.id));
+  }
 
   // ── التصنيف حسب الإلحاح (مجموعات لا تتقاطع: كل مهمة في نطاق واحد) ──
   const isDone = (t) => t.status === 'DONE';
@@ -649,10 +656,12 @@ export async function tasksPage(user, opts = {}) {
             : `<span style="color:${dl.color}${dl.bold ? ';font-weight:700' : ''}">${dl.text}</span>`}
           ${parentChip(t)}
           ${t.category ? `<span class="tk-cat-chip" title="تصنيف المهمة">${esc(taskCategoryLabel(t.category))}</span>` : ''}
-          ${isPendingTask(t) ? `<span class="tk-await" title="${G.awaitApprovalHint}">${G.awaitApproval}</span>` : ''}
+          ${isPendingTask(t) ? `<span class="tk-await" title="${t.created_by === t.assignee_user_id ? G.awaitApprovalHint : G.awaitApprovalAssignedHint}">${G.awaitApproval}</span>` : ''}
           ${who === 'team' ? `<span class="tk-who">${icon('team')} ${esc(t.assignee_name || t.assignee_username || G.unassigned)}</span>` : ''}
-          ${who !== 'team' && t.creator_name && t.created_by && t.created_by !== t.assignee_user_id
+          ${who !== 'team' && t.created_by !== user.id && t.creator_name && t.created_by && t.created_by !== t.assignee_user_id
             ? `<span class="tk-who" title="أسندها إليك ${esc(t.creator_name)}">${icon('team')} أسندها ${esc(t.creator_name)}</span>` : ''}
+          ${who !== 'team' && t.created_by === user.id && t.assignee_user_id !== user.id
+            ? `<span class="tk-who" title="مُسندة إلى ${esc(t.assignee_name || t.assignee_username || '')}">${icon('team')} باسم ${esc(t.assignee_name || t.assignee_username || G.unassigned)}</span>` : ''}
           ${t.department_name ? `<span class="tk-who">${esc(t.department_name)}</span>` : ''}
         </div>
         ${done ? '' : `<div class="tk-meta tk-meta2">${progChip(t)}${stepChip(t)}</div>`}
@@ -820,12 +829,13 @@ export async function tasksPage(user, opts = {}) {
       <div class="s">جرّب توسيع النافذة الزمنية أو مسح المرشحات لترى بقية عملك.</div>
       <a class="btn" href="/app/tasks${who === 'team' ? '?who=team' : ''}">مسح المرشحات</a></div>`;
   };
-  const listBody = (vis(todayBand).length + vis(weekBand).length + vis(laterBand).length + vis(nodateBand).length + doneVisible.length) === 0
+  const listBody = (vis(todayBand).length + vis(weekBand).length + vis(laterBand).length + vis(nodateBand).length + doneVisible.length + pendingMine.length) === 0
     ? emptyList()
     : section(`${G.winToday} — طاولتك الآن`, vis(todayBand), 'var(--brand)', 'المتأخر والمستحق اليوم وما بدأتَه فعلاً')
       + section(G.winWeek, vis(weekBand), '#a16207', '')
       + section(G.winLater, vis(laterBand), '#64748b', '')
       + section(G.noDueDate, vis(nodateBand), '#64748b', 'امنحها موعداً أو أغلقها — القائمة الميتة تخفي المهم')
+      + section('بانتظار الاعتماد', pendingMine, '#92400e', 'أسندتَها وتنتظر اعتماد مديرك — لا تدخل عدّادات يومك')
       + (doneVisible.length ? `<details class="tk-fold"${vis(todayBand).length ? '' : ' open'}>
           <summary class="tk-sec-head"><span class="tk-dot" style="background:var(--green)"></span>
             <span class="tk-sec-title">أنجزتها مؤخراً</span>
@@ -2601,6 +2611,7 @@ export async function personPage(user, personId) {
   const taskRow = (t) => `<div class="pp-row${t.status === 'BLOCKED' || t.blocked_reason ? ' blocked' : ''}">
     <div class="pp-row-h">
       <span class="pp-t">${esc(t.title || 'مهمة بلا عنوان')}</span>
+      ${isPendingTask(t) ? `<span class="pill" style="background:#fef3c7;color:#92400e" title="${G.awaitApprovalAssignedHint}">بانتظار اعتماد المدير</span>` : ''}
       <span class="pill">${esc(tr(t.status))}</span>
       ${due(t)}
     </div>

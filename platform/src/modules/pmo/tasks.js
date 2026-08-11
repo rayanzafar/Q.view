@@ -9,7 +9,7 @@ import { forbidden, notFound, badRequest } from '../../core/http/errors.js';
 import { listUserGrants, grantableDepartments } from '../identity/grants.js';
 import { raiseDirectApproval, TASK_WORKFLOW_KEY } from '../workflow/engine.js';
 import { notify } from '../notifications/notify.js';
-import { taskApproval, approvedTaskSql, ownOrApprovedTaskSql, TASK_PENDING, isPendingTask } from './task-approval.js';
+import { taskApproval, approvedTaskSql, ownOrApprovedTaskSql, myWorkOrMyPendingSql, TASK_PENDING, isPendingTask } from './task-approval.js';
 
 // ترتيب الإلحاح المشترك بين كل استعلامات المهام — مصدر واحد فلا يختلف ترتيب القائمة عن اللوح.
 const PRIORITY_ORDER = "CASE %s.priority WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 ELSE 3 END";
@@ -92,8 +92,11 @@ const clampLimit = (n, def = 500) => Math.max(1, Math.min(500, Number(n) || def)
 // الصفحة كانت تجمع الأسماء بنفسها بعد القراءة، فتكرّرت المعرفة في مكانين.
 export async function myTasks(user, filters = {}) {
   const today = String(filters.todayDate || nowIso().slice(0, 10)).slice(0, 10);
-  const where = ['t.deleted_at IS NULL', 't.assignee_user_id = ?'];
-  const params = [user.id];
+  // العضوية: ما أُسند إليّ + ما كتبتُه وينتظر الاعتماد باسم غيري (KI-041) — والشاشة تعزل
+  // الصنف الثاني قسماً معلَّماً خارج العدّادات.
+  const mine = myWorkOrMyPendingSql('t.', user.id);
+  const where = ['t.deleted_at IS NULL', mine.clause];
+  const params = [...mine.params];
   // ── الموضع الوحيد الذي تظهر فيه مهمةٌ تنتظر اعتماداً ────────────────────────
   // من كتبها يراها هنا معلَّمةً «بانتظار اعتماد مديرك»، وكل ما سواها من قوائم وعدّادات وتقارير
   // لا يقرؤها (`approvedTaskSql`). ولو أُخفيت هنا أيضاً لاختفت لحظة الحفظ فحسبها صاحبها ضاعت
@@ -873,8 +876,12 @@ export async function personDossier(reader, personUserId) {
   // صاحب الصفحة يرى مهامه الشخصية بين مهامه (هي على طاولته فعلاً)، ومن يفتح ملف غيره لا
   // يراها ولا تدخل عدّاداته. لو حُذف هذا السطر لصارت أسهلَ طريقٍ لقراءة دفتر أي زميل:
   // رابطٌ واحد باسمه.
+  // المعلَّقة تُقرأ هنا لقارئها **الكاتب** وحده (ownOrApprovedTaskSql بمعرّف القارئ): من أسند
+  // مهمةً من هذه الصفحة يرى أنها بانتظار الاعتماد — معلَّمةً وخارج العدّادات، كنظير التسكين
+  // غير المؤكَّد حرفياً. وما كتبه غيرُ القارئ يبقى محجوباً كما كان (KI-041).
+  const dossierVis = ownOrApprovedTaskSql('t.', reader.id);
   const tasks = await all(`SELECT t.id, t.title, t.status, t.priority, t.due_date, t.next_step,
-       t.blocked_reason, t.progress_pct, t.completed_at,
+       t.blocked_reason, t.progress_pct, t.completed_at, t.approval_state, t.created_by,
        p2.id project_id, p2.name_ar project_name, o.id opportunity_id, o.title_ar opportunity_name,
        d.name_ar department_name
      FROM task t
@@ -882,10 +889,10 @@ export async function personDossier(reader, personUserId) {
      LEFT JOIN opportunity o ON o.id = t.opportunity_id AND o.deleted_at IS NULL
      LEFT JOIN department d ON d.id = t.department_id AND d.deleted_at IS NULL
      WHERE t.deleted_at IS NULL AND t.assignee_user_id = ? AND t.status <> 'CANCELLED'
-       AND ${approvedTaskSql('t.')}
+       AND ${dossierVis.clause}
        ${self ? '' : `AND ${notPersonalSql('t.')}`}
      ORDER BY ${prioritySql('t')}, t.due_date
-     LIMIT 200`, [uid]);
+     LIMIT 200`, [uid, ...dossierVis.params]);
 
   // الفرص بأسمائها لا بعددها: «٣ فرص» لا تقول للمدير أيّها متوقفة ولا أيّها الأكبر.
   //
@@ -955,13 +962,14 @@ export async function personDossier(reader, personUserId) {
      ORDER BY p3.name_ar
      LIMIT 60`, [p.employee_id, year, ...dossierProjectScope.params]) : [];
 
-  const open = tasks.filter((t) => t.status !== 'DONE');
+  // المعلَّقة خارج كل عدّاد — كنظير التسكين غير المؤكَّد أدناه حرفياً: تُعرض معلَّمةً ولا تُحتسب.
+  const open = tasks.filter((t) => t.status !== 'DONE' && !isPendingTask(t));
   const stats = {
     open: open.length,
     overdue: open.filter((t) => t.due_date && String(t.due_date).slice(0, 10) < today).length,
     blocked: open.filter((t) => t.status === 'BLOCKED' || String(t.blocked_reason || '').trim()).length,
     noStep: open.filter((t) => !String(t.next_step || '').trim()).length,
-    done: tasks.length - open.length,
+    done: tasks.filter((t) => t.status === 'DONE').length,
     // العدّ للمؤكَّد وحده — تسكينٌ ينتظر تأكيد المدير ليس عملاً قائماً بعد، وإدراجه في الرقم
     // يجعل المدير يقرأ حِملاً لم يوافق عليه. والصفّ نفسه معروضٌ في القائمة معلَّماً.
     openOpportunities: opportunities.filter((o) => !o.is_won && !o.is_lost && !o.pending).length,
