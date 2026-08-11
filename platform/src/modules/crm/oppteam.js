@@ -153,3 +153,22 @@ export async function rosterForOpportunity(user, oppId, opts = {}) {
       ORDER BY e.name_ar LIMIT 500`, [...params, oppId]);
   return { opportunityId: oppId, roster: rows };
 }
+
+// ── الطلبات المعلَّقة على فريق هذه الفرصة (v5.24) ────────────────────────────
+// رؤية «الطالب»: من يفتح تبويب الفريق يرى أن فلاناً أُضيف وطلبُ تأكيده عند مديره لم يُحسم —
+// بنفس بوابة قراءة الفرصة، ومن سجلّ الموافقات القائم نفسه (لا نظام موازٍ).
+export async function pendingTeamApprovals(user, oppId) {
+  await loadReadableOpportunity(user, oppId, 'read');
+  return await all(
+    `SELECT r.id AS request_id, r.created_at, r.requested_by,
+            ru.name_ar AS requested_by_name,
+            au.name_ar AS approver_name,
+            m.employee_id, e.name_ar AS employee_name
+       FROM approval_request r
+       JOIN membership m ON m.id = r.resource_id AND r.resource = 'membership'
+       JOIN employee e ON e.id = m.employee_id
+       LEFT JOIN app_user ru ON ru.id = r.requested_by
+       LEFT JOIN app_user au ON au.id = r.assignee_user_id
+      WHERE m.group_kind = 'opportunity' AND m.group_id = ? AND r.status = 'PENDING'
+      ORDER BY r.created_at DESC`, [oppId]);
+}

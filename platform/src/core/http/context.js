@@ -61,12 +61,15 @@ export async function resolveUser(sessionId) {
   // (وهي إضافةٌ صرفة في `can`/`scopeFilter` — لا تسلب وصولاً، ولا تمسّ `effectiveScope` فلا
   // يتحوّل اتساع الدور نفسه بها.)
   const departmentGrants = await grantsForUser(u.id);
-  // فرصُ تسكينه — نظير `projectIds` أعلاه: من سُكِّن على فرصة يقرؤها. والحالة «بانتظار تأكيد
-  // مديره» تُقرأ أيضاً: مَن أُضيف إلى فريقٍ يحتاج أن يرى ما أُضيف إليه ليقول رأيه فيه، والتأكيد
-  // يحكم احتساب الحِمل لا حجب الصفحة.
+  // فرصُ تسكينه — نظير `projectIds` أعلاه: من سُكِّن على فرصة يقرؤها. والعضوية «بانتظار
+  // تأكيد مديره» **لا تُقرأ**: القاعدة المعتمدة (B8، وعمارة المنصة الموثَّقة) أن لا عضوية
+  // ولا وصول قبل الموافقة — الطلب المعلَّق وعدٌ لم يُبرَم، وقراءة الفرصة قبل موافقة مديره
+  // تجعل الرفض بلا معنى. (كان الضمّ متعمَّداً قديماً ليقول المضاف رأيه؛ حسم قرار v5.24
+  // العكس، وسجلّه في docs/opportunities-redesign/decision-log.md ق2.)
   const opportunityIds = new Set(u.employee_id ? (await all(
     `SELECT group_id FROM membership
-      WHERE group_kind = 'opportunity' AND employee_id = ? AND deleted_at IS NULL`,
+      WHERE group_kind = 'opportunity' AND employee_id = ? AND deleted_at IS NULL
+        AND COALESCE(status, 'ACTIVE') != 'PENDING'`,
     [u.employee_id])).map((r) => r.group_id) : []);
   return {
     id: u.id,

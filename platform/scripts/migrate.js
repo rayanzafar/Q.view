@@ -5,9 +5,9 @@ import { exec, get, run, close } from '../src/core/db/index.js';
 import { ROOT, config } from '../src/core/config.js';
 import { nowIso } from '../src/core/util/ids.js';
 
-// The .sql migrations are authored for SQLite; translate the two type differences for Postgres.
+// The .sql migrations are authored for SQLite; translate the three type differences for Postgres.
 const pgify = (sql) => (config.databaseUrl
-  ? sql.replace(/\bINTEGER\b/g, 'BIGINT').replace(/\bREAL\b/g, 'DOUBLE PRECISION')
+  ? sql.replace(/\bINTEGER\b/g, 'BIGINT').replace(/\bREAL\b/g, 'DOUBLE PRECISION').replace(/\bBLOB\b/g, 'BYTEA')
   : sql);
 
 export async function migrate() {

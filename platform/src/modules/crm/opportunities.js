@@ -8,7 +8,7 @@ import { id, nowIso, toHalalas } from '../../core/util/ids.js';
 import { forbidden, notFound, badRequest } from '../../core/http/errors.js';
 import { isSupportUnit } from '../../core/org/kind.js';
 import { grossOfNet } from '../finance/vat.js';
-import { getTeam } from './oppteam.js';
+import { getTeam, pendingTeamApprovals } from './oppteam.js';
 import { loadReadableOpportunity } from './opp-access.js';
 import { ensureProjectForWonOpportunity, projectIsUntouched } from './opp-project-sync.js';
 
@@ -77,8 +77,14 @@ export async function listOpportunities(user, filters = {}, opts = {}) {
        WHERE od.opportunity_id = opportunity.id AND od.department_id = ?))`);
     params.push(filters.department, filters.department);
   }
+  // «آخر نشاط» بضمٍّ مجمَّع إضافي (v5.24): لا يغيّر عدد الصفوف ولا أي مجموع — المجمَّع صفٌّ
+  // واحد لكل فرصة بحكم GROUP BY، والقصّ النطاقي يبقى على أعمدة الفرصة وحدها.
   const rows = await all(
-    `SELECT * FROM opportunity WHERE ${where.join(' AND ')} ORDER BY value_halalas DESC LIMIT 500`, params);
+    `SELECT opportunity.*, la.last_activity_at FROM opportunity
+      LEFT JOIN (SELECT opportunity_id, MAX(at) AS last_activity_at FROM crm_activity
+                  WHERE deleted_at IS NULL AND opportunity_id IS NOT NULL GROUP BY opportunity_id) la
+        ON la.opportunity_id = opportunity.id
+      WHERE ${where.join(' AND ')} ORDER BY value_halalas DESC LIMIT 500`, params);
   const today = String(opts.today || nowIso().slice(0, 10)).slice(0, 10);
   return redactList(user, 'opportunity', rows).map((r) => withDiscipline(r, today));
 }
@@ -470,9 +476,16 @@ export async function opportunityDetail(user, oppId, opts = {}) {
   const canDelete = can(user, 'delete', 'opportunity', opp) || opp.created_by === user.id;
   const today = String(opts.today || nowIso().slice(0, 10)).slice(0, 10);
   const flags = withDiscipline(opp, today);
+  // طلبات ضمّ الفريق المعلَّقة — رؤية الطالب لمصير طلبه (v5.24)، من سجل الموافقات القائم.
+  const pendingRequests = await pendingTeamApprovals(user, oppId);
+  // سجل التدقيق لمن يقرأ صفحة التدقيق أصلاً (المدير العام) — بوابة pages.js نفسها، صفر توسعة.
+  const auditTrail = user.role_id === 'admin' ? await all(
+    `SELECT at, username, action, detail_json FROM audit_log
+      WHERE resource = 'opportunity' AND resource_id = ? ORDER BY at DESC LIMIT 50`, [oppId]) : [];
   return {
     opp, client, department, owner: ownerRow ? (ownerRow.name_ar || ownerRow.username) : null,
     history, stages, team, activities, canEdit, canEditAttribution, canDelete,
+    pendingRequests, auditTrail,
     stage_age_days: flags.stage_age_days, rot: flags.rot, no_next_action: flags.no_next_action,
     weighted_halalas: Math.round((opp.value_halalas || 0) * ((opp.win_pct || 0) / 100)),
   };

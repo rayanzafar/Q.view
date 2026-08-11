@@ -118,7 +118,16 @@ test('و«فرصي» لا تتحرّك بالمنح — الشاشتان تبق�
 
 test('والتسكين وحده يفتح صفَّه: من سُكِّن على فرصة يراها ويجدها في «فرصي»', async () => {
   // المسكِّن مدير إدارة الفرصة (الذكاء) لا مدير إدارة الشخص — فالتسكين عبر الإدارات هو الحالة.
+  // ومنذ v5.24: الضمّ عبر الإدارات يُعلَّق حتى يؤكّد مديرُ الموظف، **ولا وصول قبل التأكيد** —
+  // فالباب يُفتح بالعضوية الفعلية لا بالطلب (قاعدة B8.5 وحارسها opportunity-pending-access).
   await team.addMember(await ctxOf('u_dm2'), 'O_AI1', { employee_id: 'e_hadi', role_in_group: 'member' });
+  const pendingHadi = await sess('u_hadi');
+  assert.ok(!(await opps.listOpportunities(pendingHadi)).some((o) => o.id === 'O_AI1'),
+    'المعلَّق يرى الفرصة قبل موافقة مديره — التسريب عاد');
+  const engine = await import('../../src/modules/workflow/engine.js');
+  const q = await engine.myDirectApprovals(await sess('u_dm'));
+  assert.ok(q.length, 'طلب التأكيد لم يصل إلى مدير الموظف');
+  await engine.actOnApproval(await ctxOf('u_dm'), q[0].id, 'approve', 'يعمل عليها');
   const hadi = await sess('u_hadi');
   const ids = (await opps.listOpportunities(hadi)).map((o) => o.id);
   assert.ok(ids.includes('O_AI1'), 'المسكَّن لا يرى الفرصة التي ضُمّ إلى فريقها');

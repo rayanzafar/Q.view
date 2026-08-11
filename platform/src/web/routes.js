@@ -164,7 +164,9 @@ webRouter.get('/app/project/:id', requireWeb, guardDetail('project'), async (req
   try { res.send(await P.projectDetailPage(req.ctx.user, req.params.id, { ...req.query })); } catch (e) { next(e); }
 });
 webRouter.get('/app/opportunity/:id', requireWeb, guardDetail('opportunity'), async (req, res, next) => {
-  try { res.send(await P.opportunityDetailPage(req.ctx.user, req.params.id)); } catch (e) { next(e); }
+  // ‎{...req.query}‎ كمسار المشروع أعلاه — كان يُسقَط هنا فتموت روابط «عودة إلى مرشِّحاتك»
+  // (?from=) في التشغيل الحي رغم خضرة اختبارها الذي يستدعي الدالة مباشرة، ولا يصل ?tab=.
+  try { res.send(await P.opportunityDetailPage(req.ctx.user, req.params.id, { ...req.query })); } catch (e) { next(e); }
 });
 webRouter.get('/app/client/:id', requireWeb, guardDetail('client'), async (req, res, next) => {
   try { res.send(await P.clientDetailPage(req.ctx.user, req.params.id)); } catch (e) { next(e); }

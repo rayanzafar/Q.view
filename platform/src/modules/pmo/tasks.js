@@ -922,14 +922,25 @@ export async function personDossier(reader, personUserId) {
     sectorCol: 'o.sector_id', ownerCol: 'o.owner_user_id',
     deptCol: 'o.department_id', grantCol: 'o.department_id', memberCol: 'o.id',
   });
+  // العضوية المعلَّقة لم تعد تفتح الفرصة (v5.24 — لا وصول قبل موافقة المدير)، لكن صاحبها
+  // يرى في **ملفه هو** أنها بانتظار تأكيد مديره — معلَّمةً وخارج العدّادات: إشعارٌ بمصير
+  // طلبه لا باباً خلفياً لقراءة صفقات الغير (قرار المالك المثبَّت بفحص هذه الصفحة نفسها).
+  let dossierOppClause = dossierOppScope.clause;
+  const dossierOppParams = [...dossierOppScope.params];
+  if (self && p.employee_id) {
+    dossierOppClause = `(${dossierOppClause}) OR EXISTS (SELECT 1 FROM membership pm
+       WHERE pm.group_kind = 'opportunity' AND pm.group_id = o.id AND pm.employee_id = ?
+         AND pm.deleted_at IS NULL AND COALESCE(pm.status,'ACTIVE') = 'PENDING')`;
+    dossierOppParams.push(p.employee_id);
+  }
   const oppRows = await all(`SELECT o.id, o.title_ar, o.value_halalas, o.next_action, o.owner_user_id,
        st.name_ar stage_name, st.is_won, st.is_lost, c.name_ar client_name
      FROM opportunity o
      LEFT JOIN stage st ON st.id = o.stage_id
      LEFT JOIN client c ON c.id = o.client_id AND c.deleted_at IS NULL
-     WHERE o.deleted_at IS NULL AND (${mineClause}) AND (${dossierOppScope.clause})
+     WHERE o.deleted_at IS NULL AND (${mineClause}) AND (${dossierOppClause})
      ORDER BY COALESCE(st.is_won,0) + COALESCE(st.is_lost,0), o.value_halalas DESC
-     LIMIT 60`, [...oppParams, ...dossierOppScope.params]);
+     LIMIT 60`, [...oppParams, ...dossierOppParams]);
   // حالة التسكين تُقرأ مرةً واحدة بمفتاح الموظف ثم تُوزَّع — لا استعلام لكل صف.
   const memberOf = new Map();
   if (p.employee_id) {

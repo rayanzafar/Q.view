@@ -256,10 +256,10 @@ export async function opportunitiesPage(user, opts = {}) {
     const menuBtn = showMenu
       ? `<button data-action="opp-menu" data-id="${o.id}" data-title="${esc(o.title_ar)}" data-sector="${o.sector_id || ''}"${candel ? ' data-candel="1"' : ''} class="kmenu-btn" aria-label="إجراءات الفرصة" title="${menuTitle}" style="position:absolute;top:.26rem;inset-inline-end:.3rem;width:20px;height:20px;border:none;background:transparent;color:var(--faint);cursor:pointer;border-radius:6px;font-size:16px;line-height:1;padding:0;display:inline-flex;align-items:center;justify-content:center;z-index:2">⋯</button>`
       : '';
-    return `<div class="kcard" ${dnd} data-action="open-opp" data-id="${o.id}" data-sector="${o.sector_id || ''}" data-hay="${esc(hay).replace(/"/g, '')}" style="--_c:${accent};cursor:pointer;padding:.5rem .6rem;position:relative" role="link" tabindex="0" aria-label="فتح الفرصة ${esc(o.title_ar)}">
+    return `<div class="kcard" ${dnd} data-action="opp-preview" data-id="${o.id}" data-sector="${o.sector_id || ''}" data-hay="${esc(hay).replace(/"/g, '')}" style="--_c:${accent};cursor:pointer;padding:.5rem .6rem;position:relative">
       ${menuBtn}
       <div style="${showMenu ? 'padding-inline-end:18px' : ''}">
-        <div style="font-weight:700;font-size:12.5px;color:var(--ink2);line-height:1.4;word-break:break-word">${esc(o.title_ar)}</div>
+        <div data-action="opp-preview" data-id="${o.id}" role="button" tabindex="0" aria-label="معاينة سريعة: ${esc(o.title_ar)}" style="font-weight:700;font-size:12.5px;color:var(--ink2);line-height:1.4;word-break:break-word">${esc(o.title_ar)}</div>
         ${cl ? `<div style="font-size:10.5px;color:var(--muted);line-height:1.4;margin-top:.1rem;word-break:break-word">${esc(cl)}</div>` : ''}
       </div>
       <div style="display:flex;align-items:center;gap:.35rem;margin-top:.3rem;flex-wrap:wrap;font-size:11px;color:var(--muted);${ow ? 'padding-inline-end:20px' : ''}">
@@ -268,6 +268,7 @@ export async function opportunitiesPage(user, opts = {}) {
         ${openRow ? ageChip(o, true) : ''}
         ${openRow && o.no_next_action ? naChip(true) : ''}
       </div>
+      ${o.last_activity_at ? `<div style="margin-top:.2rem;font-size:10px;color:var(--faint)">آخر نشاط <span class="tnum">${esc(String(o.last_activity_at).slice(0, 10))}</span></div>` : ''}
       ${st.is_won && projByOpp[o.id] ? `<div style="margin-top:.35rem;padding-top:.3rem;border-top:1px solid var(--line);font-size:10px;color:var(--muted);word-break:break-word">▸ المشروع: <a href="/app/project/${projByOpp[o.id].id}" style="color:var(--brand);font-weight:700">${esc(projByOpp[o.id].name_ar)}</a></div>` : ''}
       ${ow ? `<span class="kav" title="مالك الفرصة: ${esc(ow)}" style="width:17px;height:17px;font-size:8.5px;position:absolute;inset-inline-end:.45rem;bottom:.45rem">${esc((ow || '؟').trim().charAt(0))}</span>` : ''}
     </div>`;
@@ -394,13 +395,16 @@ export async function opportunitiesPage(user, opts = {}) {
     const openRow = isOpen(o);
     const age = o.stage_age_days;
     const updated = o.updated_at || o.created_at;
-    return `<tr class="border-b border-line" data-action="open-opp" data-id="${o.id}" data-hay="${esc(`${o.title_ar} ${clients[o.client_id] || ''}`.toLowerCase()).replace(/"/g, '')}" data-sector="${o.sector_id || ''}" style="cursor:pointer">
+    return `<tr class="border-b border-line" data-action="opp-preview" data-id="${o.id}" data-hay="${esc(`${o.title_ar} ${clients[o.client_id] || ''}`.toLowerCase()).replace(/"/g, '')}" data-sector="${o.sector_id || ''}" style="cursor:pointer">
       <td data-label="العنوان" class="py-2.5 px-3 text-[13px]">${esc(o.title_ar)}</td>
       <td data-label="العميل" class="px-3 text-[12px]" data-v="${esc(clients[o.client_id] || '')}">${esc(clients[o.client_id] || '—')}</td>
       <td data-label="${G.stage}" class="px-3" data-v="${st.sort_order ?? 0}">${pill(esc(st.name_ar || o.stage_id), 'blue')}</td>
       <td data-label="العمر في المرحلة" class="px-3 text-[12px]" data-v="${age ?? -1}">${openRow ? (ageChip(o) || '<span style="color:var(--faint)">—</span>') : '<span class="text-faint">—</span>'}</td>
       <td data-label="القيمة" class="px-3 text-[13px] tnum" data-v="${o.value_halalas || 0}">${fmtSar(o.value_halalas)}</td>
+      <td data-label="${G.weighted}" class="px-3 text-[12px] tnum" data-v="${Math.round((o.value_halalas || 0) * ((o.win_pct || 0) / 100))}">${fmtSar(Math.round((o.value_halalas || 0) * ((o.win_pct || 0) / 100)))}</td>
       <td data-label="${G.probability}" class="px-3 text-[12px] text-muted tnum" data-v="${o.win_pct || 0}">${pct(o.win_pct)}</td>
+      <td data-label="المالك" class="px-3 text-[12px]" data-v="${esc(users[o.owner_user_id] || '')}">${esc(users[o.owner_user_id] || '—')}</td>
+      <td data-label="آخر نشاط" class="px-3 text-[12px]" data-v="${esc(o.last_activity_at || '')}">${dateCell(o.last_activity_at)}</td>
       <td data-label="تاريخ الإنشاء" class="px-3 text-[12px]" data-v="${esc(o.created_at || '')}">${dateCell(o.created_at)}</td>
       <td data-label="آخر تحديث" class="px-3 text-[12px]" data-v="${esc(updated || '')}">${dateCell(updated)}</td>
       <td data-label="${G.nextAction}" class="px-3 text-[11.5px] text-muted">${o.no_next_action ? (openRow ? naChip() : '—') : esc(o.next_action)}</td></tr>`;
@@ -414,9 +418,9 @@ export async function opportunitiesPage(user, opts = {}) {
         ${canCreate ? `<button class="btn btn-primary" data-action="opp-add">${icon('plus')} فرصة جديدة</button>` : ''}</div></div>`
     : `<div id="opp-kanban" class="kanban" tabindex="0" role="region" aria-label="لوحة الفرص">${columns}</div>
       <div id="opp-table" class="card" style="display:none;overflow-x:auto">
-        <table class="rtbl w-full" style="min-width:980px"><thead><tr class="text-[11px] text-muted text-right">
+        <table class="rtbl w-full" style="min-width:1240px"><thead><tr class="text-[11px] text-muted text-right">
           ${oth('العنوان')}${oth('العميل')}${oth(G.stage)}${oth('العمر في المرحلة', 'اضغط للترتيب — الأخطر (الأطول ركوداً) أولاً')}
-          ${oth('القيمة')}${oth(G.probability)}${oth('تاريخ الإنشاء')}${oth('آخر تحديث')}${oth(G.nextAction)}</tr></thead>
+          ${oth('القيمة')}${oth(G.weighted, 'القيمة × احتمال الفوز')}${oth(G.probability)}${oth('المالك')}${oth('آخر نشاط', 'آخر تواصل مسجَّل على الفرصة')}${oth('تاريخ الإنشاء')}${oth('آخر تحديث')}${oth(G.nextAction)}</tr></thead>
         <tbody>${tableRows}</tbody></table></div>`;
 
   const body = `

@@ -96,12 +96,21 @@
   }
 
   function init() {
-    var q = new URLSearchParams(location.search).get('q');
+    var params = new URLSearchParams(location.search);
+    var q = params.get('q');
     var el = document.getElementById('opp-q');
     if (q && el) { el.value = q; filterCards(); }
     loadRoster();
     syncDeptOptions();
     vatPreview();
+    // صفحة التفاصيل: التبويب من الرابط (?tab=)، وفتح نافذة التعديل عند الوصول بـ ?edit=1
+    // — رابط «تعديل» في المعاينة السريعة يصل إلى النافذة مفتوحة لا إلى صفحة يبحث فيها عن زرّ.
+    var tab = params.get('tab');
+    if (tab) {
+      var btn = document.querySelector('[data-action="opp-tab"][data-tab="' + tab.replace(/[^a-z-]/g, '') + '"]');
+      if (btn && typeof oppTab === 'function') oppTab(btn);
+    }
+    if (params.get('edit') === '1' && document.getElementById('opp-edit-tpl')) oppEditOpen();
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
@@ -494,6 +503,178 @@
     } catch (err) { btn.disabled = false; toast(err.message, true); }
   }
 
+  // ── المعاينة السريعة (v5.24): drawer يقرأ حمولة التفاصيل القائمة نفسها ──
+  // النقرة على بطاقة أو صف لا تنقل فوراً إلى صفحة كاملة: تعرض الخلاصة في مكانها، ومنها
+  // يقرر القارئ الفتح أو النقل أو التواصل. الحمولة من `GET /opportunities/:id/detail`
+  // القائم — لا مسار جديد ولا رقم يُحسب في الواجهة إلا ما يعرضه الخادم أصلاً.
+  var PREVIEW = null; // آخر حمولة معاينة — يستعملها زرا نقل المرحلة والفتح
+  function daysStamp(n) {
+    n = Math.max(0, Math.round(Number(n) || 0));
+    if (n === 0) return 'اليوم';
+    if (n === 1) return 'مضى يوم';
+    if (n === 2) return 'مضى يومان';
+    if (n <= 10) return 'مضى ' + n + ' أيام';
+    return 'مضى ' + n + ' يوماً';
+  }
+  function stagePill(st, fallbackId) {
+    if (!st) return esc(fallbackId || '—');
+    var c = /^#[0-9a-fA-F]{6}$/.test(st.color || '') ? st.color : '#475569';
+    return '<span style="display:inline-block;padding:.14rem .6rem;border-radius:999px;font-size:11.5px;font-weight:800;background:' + c + '1a;color:' + c + '">' + esc(st.name_ar) + '</span>';
+  }
+  async function oppPreview(id) {
+    if (!window.Sanad || !window.Sanad.openDrawer) return;
+    var d;
+    try { d = await api('/opportunities/' + encodeURIComponent(id) + '/detail'); }
+    catch (err) { toast(err.message, true); return; }
+    PREVIEW = d;
+    var o = d.opp || {};
+    var fmtSar = function (h) { return window.Sanad.fmtSar ? window.Sanad.fmtSar(h) : String(Math.round((h || 0) / 100)); };
+    var row = function (label, valueHtml) {
+      return '<div class="kv-row"><span class="k">' + label + '</span><span class="v">' + valueHtml + '</span></div>';
+    };
+    var st = (d.stages || []).filter(function (s) { return s.id === o.stage_id; })[0];
+    // «صحة الفرصة» = إشارتا الانضباط القائمتان لا معادلة جديدة (خريطة التنفيذ §7).
+    var health = d.rot ? ['متوقفة — حرّكها', 'var(--red)']
+      : (d.no_next_action ? ['بلا خطوة تالية', 'var(--amber)'] : ['على المسار', 'var(--green)']);
+    var la = (d.activities || [])[0];
+    var laDays = la && la.at ? Math.floor((Date.now() - Date.parse(la.at)) / 86400000) : null;
+    var laHtml = la
+      ? '<span class="tnum">' + esc((la.at || '').slice(0, 10)) + '</span>' +
+        (laDays != null && isFinite(laDays) ? ' <span style="color:var(--muted);font-size:11px">· ' + esc(daysStamp(laDays)) + '</span>' : '')
+      : '<span style="color:var(--faint)">لا نشاط مسجّل بعد</span>';
+    var ownerHtml = d.owner
+      ? '<span style="display:inline-flex;align-items:center;gap:.4rem">' + esc(d.owner) +
+        '<span aria-hidden="true" style="width:22px;height:22px;border-radius:50%;background:var(--brand);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;flex:none">' + esc(String(d.owner).trim().slice(0, 1)) + '</span></span>'
+      : '<span style="color:var(--faint)">غير مُسندة</span>';
+    // حالة القائمة تُحمَل مع كل الروابط — يعود القارئ إلى قائمته كما تركها (نفس عقد open-opp).
+    var q = location.search.replace(/^\?/, '');
+    var from = q ? 'from=' + encodeURIComponent(q) : '';
+    var href = function (extra) {
+      var parts = [from, extra].filter(Boolean).join('&');
+      return '/app/opportunity/' + encodeURIComponent(o.id) + (parts ? '?' + parts : '');
+    };
+    window.Sanad.openDrawer(
+      '<div class="drawer-head"><div style="flex:1;min-width:0">' +
+      '<div style="font-size:11px;color:var(--muted);font-weight:700">معاينة سريعة' + (o.code ? ' · <span class="tnum">' + esc(o.code) + '</span>' : '') + '</div>' +
+      '<h3 style="font-size:17px;margin-top:.25rem;line-height:1.5">' + esc(o.title_ar || '') + '</h3></div>' +
+      '<button class="btn btn-ghost" data-action="drawer-close" aria-label="إغلاق المعاينة">✕</button></div>' +
+      '<div class="drawer-body">' +
+      row('العميل', d.client ? esc(d.client) : '<span style="color:var(--faint)">بلا عميل</span>') +
+      row('المرحلة الحالية', stagePill(st, o.stage_id)) +
+      row('إجمالي القيمة', '<span class="tnum">' + fmtSar(o.value_halalas) + '</span>') +
+      row('القيمة الموزونة', '<span class="tnum">' + fmtSar(d.weighted_halalas) + '</span> <span style="color:var(--muted);font-size:11px">(' + Math.round(o.win_pct || 0) + '%)</span>') +
+      row('احتمال الفوز', '<span class="tnum" style="font-weight:800;color:' + ((o.win_pct || 0) >= 60 ? 'var(--green)' : (o.win_pct || 0) >= 30 ? 'var(--amber)' : 'var(--ink2)') + '">' + Math.round(o.win_pct || 0) + '%</span>') +
+      row('المالك', ownerHtml) +
+      row('آخر نشاط', laHtml) +
+      row('عمر المرحلة', '<span class="tnum">' + esc(daysStamp(d.stage_age_days)) + '</span>') +
+      row('الخطوة التالية', o.next_action ? esc(o.next_action) : '<span style="color:var(--red);font-weight:700">لم تُحدَّد</span>') +
+      row('صحة الفرصة', '<span style="display:inline-block;padding:.14rem .6rem;border-radius:999px;font-size:11.5px;font-weight:800;color:#fff;background:' + health[1] + '">' + health[0] + '</span>') +
+      '</div>' +
+      '<div class="drawer-foot" style="flex-wrap:wrap;gap:.4rem">' +
+      '<a class="btn btn-primary" href="' + href(d.canEdit ? '' : '') + '">فتح الفرصة ↗</a>' +
+      (d.canEdit ? '<a class="btn" href="' + href('edit=1') + '">تعديل</a>' : '') +
+      (d.canEdit ? '<button class="btn" data-action="drawer-stage-open">نقل المرحلة</button>' : '') +
+      '<a class="btn" href="' + href('tab=activity') + '">إضافة تواصل</a>' +
+      '</div>');
+  }
+  // نقل المرحلة من المعاينة: نفس نافذة صفحة التفاصيل ونفس مسار الحفظ — تُغذَّى حالتها
+  // من حمولة المعاينة لأن صفحة القائمة لا تحمل بيانات فرصة بعينها.
+  function drawerStageOpen() {
+    if (!PREVIEW || !PREVIEW.opp) return;
+    var s = S();
+    s.oppId = PREVIEW.opp.id; s.currentStage = PREVIEW.opp.stage_id; s.stages = PREVIEW.stages || [];
+    window.__SANAD = s;
+    window.Sanad.closeDrawer();
+    stageMoveModal();
+  }
+
+  // ── تبويبات صفحة التفاصيل (v5.24): الألواح كلها مُصيَّرة من الخادم، والتبديل عرضٌ فقط ──
+  function oppTab(btn) {
+    var tab = btn.dataset.tab; if (!tab) return;
+    document.querySelectorAll('[data-action="opp-tab"]').forEach(function (b) {
+      var on = b === btn;
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+      b.classList.toggle('on', on);
+      b.tabIndex = on ? 0 : -1;
+    });
+    document.querySelectorAll('[id^="opp-panel-"]').forEach(function (p) {
+      p.hidden = p.id !== 'opp-panel-' + tab;
+    });
+    // التبويب يبقى في الرابط — إعادة التحميل بعد حفظٍ تعيد القارئ إلى حيث كان.
+    try {
+      var u = new URL(location.href); u.searchParams.set('tab', tab);
+      history.replaceState(null, '', u.pathname + u.search);
+    } catch (e) { /* المتصفحات القديمة: التبديل يعمل والرابط لا يتحدّث */ }
+  }
+
+  // ── نافذتا التعديل والفريق: من القالبين الخاملين المُصيَّرين خادمياً ──
+  function oppEditOpen() {
+    var tpl = document.getElementById('opp-edit-tpl'); if (!tpl || !window.Sanad) return;
+    window.Sanad.openModal(tpl.innerHTML);
+    // القوائم المترابطة والمعاينة الضريبية تُعاد تهيئتها على نسخة النافذة الحيّة.
+    setTimeout(function () { syncDeptOptions(); vatPreview(); }, 30);
+  }
+  function teamModalOpen() {
+    var tpl = document.getElementById('opp-team-tpl'); if (!tpl || !window.Sanad) return;
+    // القالب هو النموذج حرفياً (بمعرّفاته المثبَّتة) — والإطار هنا: عنوانٌ وإغلاق وجسم.
+    window.Sanad.openModal(
+      '<div class="modal-head"><h3 style="font-size:16px">إضافة عضو لفريق الفرصة</h3>' +
+      '<button class="btn btn-ghost" data-action="modal-close" aria-label="إغلاق">✕</button></div>' +
+      '<div class="modal-body">' + tpl.innerHTML +
+      '<div style="font-size:11.5px;color:var(--muted);line-height:1.8;margin-top:.5rem">موظف من إدارة أخرى يُضاف بحالة «بانتظار تأكيد مديره» حتى يوافق مديره من صندوق الاعتمادات.</div></div>');
+    setTimeout(loadRoster, 30);
+  }
+
+  // ── رفع ملف مستند (v5.24): جسم خام + الاسم في الترويسة — نفس نمط محرك الاستيراد ──
+  var UPLOAD_MAX = 15 * 1024 * 1024;
+  var uploading = false;
+  async function docUploadFiles(files) {
+    if (!files || !files.length || uploading) return;
+    var f = files[0];
+    if (!f.size) return toast('الملف فارغ — اختر ملفاً فيه محتوى', true);
+    if (f.size > UPLOAD_MAX) return toast('حجم الملف يتجاوز الحد (15 ميغابايت) — اضغطه أو ضع رابطه', true);
+    var kind = (document.getElementById('doc-file-kind') || { value: 'other' }).value;
+    uploading = true;
+    var state = document.getElementById('doc-file-state');
+    if (state) state.textContent = 'جارٍ رفع «' + f.name + '»…';
+    try {
+      var r = await fetch('/api/opportunities/' + encodeURIComponent(S().oppId) + '/documents/upload?kind=' + encodeURIComponent(kind), {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/octet-stream', 'x-file-name': encodeURIComponent(f.name) },
+        body: f,
+      });
+      var j = await r.json().catch(function () { return {}; });
+      if (!r.ok) throw new Error((j.error && j.error.message) || ('خطأ ' + r.status));
+      toast('رُفع الملف ✓');
+      setTimeout(function () { location.reload(); }, 500);
+    } catch (err) {
+      uploading = false;
+      if (state) state.textContent = '';
+      toast(err.message, true);
+    }
+  }
+  document.addEventListener('change', function (e) {
+    if (e.target && e.target.id === 'doc-file') {
+      docUploadFiles(e.target.files);
+      e.target.value = '';
+    }
+  });
+  // السحب والإفلات على منطقة الرفع — والنقر عليها يفتح المنتقي (doc-upload-pick).
+  document.addEventListener('dragover', function (e) {
+    var z = e.target.closest && e.target.closest('.doc-drop');
+    if (z) { e.preventDefault(); z.classList.add('drag'); }
+  });
+  document.addEventListener('dragleave', function (e) {
+    var z = e.target.closest && e.target.closest('.doc-drop');
+    if (z) z.classList.remove('drag');
+  });
+  document.addEventListener('drop', function (e) {
+    var z = e.target.closest && e.target.closest('.doc-drop');
+    if (!z) return;
+    e.preventDefault(); z.classList.remove('drag');
+    if (e.dataTransfer && e.dataTransfer.files) docUploadFiles(e.dataTransfer.files);
+  });
+
   // ── ترتيب أعمدة الجدول التقريري: نقرة على رأس عمود يحمل data-sort — رقمي/تاريخي إن أمكن
   // (data-v على كل خلية) وإلا نصي محلي، مع عكس الاتجاه عند النقر المتكرر (نفس نمط جدول المشاريع). ──
   function sortOppTable(thEl) {
@@ -527,6 +708,17 @@
         location.href = '/app/opportunity/' + actEl.dataset.id + (st ? '?from=' + encodeURIComponent(st) : '');
         return;
       }
+      if (act === 'opp-preview') {
+        if (e.target.closest('a,button,select,input')) return; // لا تخطف روابط/أزرار داخل البطاقة
+        oppPreview(actEl.dataset.id);
+        return;
+      }
+      if (act === 'drawer-close') { if (window.Sanad) window.Sanad.closeDrawer(); return; }
+      if (act === 'drawer-stage-open') { drawerStageOpen(); return; }
+      if (act === 'opp-tab') { oppTab(actEl); return; }
+      if (act === 'opp-edit-open') { oppEditOpen(); return; }
+      if (act === 'team-modal-open') { teamModalOpen(); return; }
+      if (act === 'doc-upload-pick') { var fi = document.getElementById('doc-file'); if (fi) fi.click(); return; }
       if (act === 'opp-add') { if (window.Sanad) window.Sanad.oppAdd(); return; }
       if (act === 'modal-close') { window.Sanad.closeModal(); return; }
       if (act === 'view-save') { viewSaveModal(); return; }
@@ -577,7 +769,7 @@
   document.addEventListener('keydown', function (e) {
     if (e.key !== 'Enter') return;
     var t = e.target;
-    if (t.matches && t.matches('[data-action="open-opp"],[data-dd],[data-action="na-edit"],#opp-table th[data-sort]')) { e.preventDefault(); t.click(); }
+    if (t.matches && t.matches('[data-action="open-opp"],[data-action="opp-preview"],[data-action="doc-upload-pick"],[data-dd],[data-action="na-edit"],#opp-table th[data-sort]')) { e.preventDefault(); t.click(); }
   });
 
   // (الإفلات على عمودَي الحسم الملخّصين يتولاه Sanad.kDrop نفسه: يحفظ ثم يعيد التحميل فوراً)
