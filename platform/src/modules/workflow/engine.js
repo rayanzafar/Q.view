@@ -165,7 +165,7 @@ export async function actOnApproval(ctx, requestId, action, comment) {
     // (مفتاح موروث مثل 'constructor' يعيد دالةً لا مُسوّياً).
     if (direct) {
       const settle = Object.hasOwn(DIRECT_SETTLERS, reqRow.resource) ? DIRECT_SETTLERS[reqRow.resource] : null;
-      if (settle) await settle(reqRow, action === 'approve');
+      if (settle) await settle(reqRow, action === 'approve', user.id);
     }
     if (action === 'reject') {
       await update('approval_request', requestId, { status: 'REJECTED', closed_at: nowIso() });
@@ -231,6 +231,8 @@ const DIRECT_WORKFLOWS = {
 
 // أثرُ القرار على المورد — كلٌّ في وحدته. `hasOwn` وحدها بوابةُ الاختيار: لا مورد يأتي من
 // الطلب، ومَن لا مُسوّي له لا يُبَتّ فيه بشيء (الطلب يُغلَق ويُسجَّل، والصفّ لا يُمَسّ).
+// الوسيطُ الثالث معرّفُ المعتمِد نفسه — يستهلكه من يكتب أثرَ القرار على مورده (مثل المهام
+// في ٠٣٠) ويتجاهله من لا شأن له به.
 const DIRECT_SETTLERS = { membership: settleStaffing, task: settleTask };
 
 // تعريفُ المسار يُنشأ عند أول حاجة: الترحيلة تصف المخطط لا البيانات، والبذر لا يُعاد على

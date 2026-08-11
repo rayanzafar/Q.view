@@ -136,6 +136,23 @@
     setCategory($('[data-f="category"]', d), $('[data-f="category-other"]', d), row.dataset.category || '');
     set('assignee', row.dataset.assignee || '');
     set('dept', row.dataset.dept || '');
+    // من أين جاءت المهمة: من أسندها (إن كان غير صاحبها) ومن اعتمدها — نصٌّ للقراءة لا للتحرير.
+    var showC = !!row.dataset.creatorName && !!row.dataset.creator && row.dataset.creator !== row.dataset.assignee;
+    var showA = !!row.dataset.approverName;
+    var pc = $('[data-f="prov-creator"]', d), pa = $('[data-f="prov-approver"]', d), pw = $('[data-f="provenance"]', d);
+    if (pc) {
+      pc.hidden = !showC;
+      var pcn = $('[data-f="prov-creator-name"]', d);
+      if (pcn) pcn.textContent = row.dataset.creatorName || '';
+    }
+    if (pa) {
+      pa.hidden = !showA;
+      var pan = $('[data-f="prov-approver-name"]', d);
+      if (pan) pan.textContent = row.dataset.approverName || '';
+      var pad = $('[data-f="prov-approved-at"]', d);
+      if (pad) pad.textContent = row.dataset.approvedAt || '';
+    }
+    if (pw) pw.hidden = !showC && !showA;
     // زر الحذف يظهر لمن يملكه فعلاً: كاتب المهمة، أو صاحب الشخصية، أو من له صلاحية حذف إدارية.
     var st = window.__SANAD || {};
     var del = $('[data-f="delete"]', d);

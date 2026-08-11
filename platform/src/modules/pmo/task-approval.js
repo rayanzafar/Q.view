@@ -79,12 +79,16 @@ export async function taskApproval(user, link = {}) {
  *
  * @param {object} reqRow صفّ طلب الاعتماد (resource_id = معرّف المهمة)
  * @param {boolean} approved اعتُمدت أم رُدّت
+ * @param {string|null} actorUserId معرّف المعتمِد — يُكتب على المهمة أثراً دائماً (٠٣٠)
  */
-export async function settleTask(reqRow, approved) {
+export async function settleTask(reqRow, approved, actorUserId = null) {
   if (!reqRow || reqRow.resource !== 'task' || !reqRow.resource_id) return;
   const t = await get('SELECT id, approval_state, deleted_at FROM task WHERE id = ?', [reqRow.resource_id]);
   if (!t || t.deleted_at) return;                    // حُذفت قبل البتّ — لا شيء يُبتّ فيه
-  if (approved) { await update('task', t.id, { approval_state: null }); return; }
+  if (approved) {
+    await update('task', t.id, { approval_state: null, approved_by: actorUserId || null, approved_at: nowIso() });
+    return;
+  }
   // والردّ يُزيلها ولا يتركها معلَّقة إلى الأبد: «لم تُعتمد» حالةٌ لا تنتهي. حذفٌ ناعم يُبقي
   // الأثر كاملاً في التدقيق ويُخلي قائمة صاحبها ممّا لم يُقبل.
   await update('task', t.id, { deleted_at: nowIso() });

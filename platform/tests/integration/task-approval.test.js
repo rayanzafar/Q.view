@@ -178,11 +178,31 @@ test('اعتماد المدير يُضيفها في حينها — فتصير ع
   assert.ok(req, 'لم يصل الطلب');
   await engine.actOnApproval(ctx(MGR), req.id, 'approve');
 
-  assert.equal((await taskRow(t.id)).approval_state, null, 'بقيت معلَّقة بعد الاعتماد');
+  const row = await taskRow(t.id);
+  assert.equal(row.approval_state, null, 'بقيت معلَّقة بعد الاعتماد');
+  // أثر القرار يُكتب على المهمة نفسها لحظة اتخاذه (٠٣٠) — من اعتمدها ومتى.
+  assert.equal(row.approved_by, 'u_mgr', 'لم يُكتب المعتمِد على المهمة');
+  assert.ok(row.approved_at, 'لم يُكتب وقت الاعتماد');
   const prj = await tasks.projectTasks(ADMIN, 'PRJ');
   assert.ok(prj.some((x) => x.id === t.id), 'لم تظهر في المشروع بعد اعتمادها');
   const board = await tasks.teamTasks(MGR, {});
   assert.ok(board.flatMap((b) => b.tasks).some((x) => x.id === t.id), 'لم تظهر في لوحة المدير بعد اعتمادها');
+});
+
+test('واسم المعتمِد يُقرأ في قائمة صاحبها — ولا معتمِد لِما لم يُعتمَد', async () => {
+  const t = await tasks.quickAddTask(ctx(EMP), { title: 'مهمة يظهر معتمِدها', project_id: 'PRJ' });
+  const req = (await engine.myDirectApprovals(MGR)).find((a) => a.resource_id === t.id);
+  await engine.actOnApproval(ctx(MGR), req.id, 'approve');
+
+  const mine = (await tasks.myTasks(EMP, {})).find((x) => x.id === t.id);
+  assert.equal(mine.approver_name, 'مدير الابتكار', 'لم يصل اسم المعتمِد إلى قائمة صاحب المهمة');
+  assert.equal(mine.creator_name, 'سجى لشكر', 'لم يصل اسم كاتب المهمة');
+
+  // عملٌ داخلي لم يحتج اعتماداً: عموداه فارغان — وهذا معناهما الصحيح.
+  const internal = await tasks.quickAddTask(ctx(EMP), { title: 'عمل داخلي بلا معتمِد' });
+  const irow = await taskRow(internal.id);
+  assert.equal(irow.approved_by, null);
+  assert.equal(irow.approved_at, null);
 });
 
 test('وردُّها يُزيلها — فلا تبقى معلَّقة إلى الأبد ولا تُقرأ عند أحد', async () => {
@@ -192,6 +212,7 @@ test('وردُّها يُزيلها — فلا تبقى معلَّقة إلى ا
 
   const row = await taskRow(t.id);
   assert.ok(row.deleted_at, 'بقيت المهمة قائمةً بعد ردّها');
+  assert.equal(row.approved_by, null, 'كُتب معتمِدٌ على مهمةٍ رُدَّت');
   const mine = await tasks.myTasks(EMP, {});
   assert.ok(!mine.some((x) => x.id === t.id), 'بقيت في قائمة كاتبها بعد الردّ');
 });

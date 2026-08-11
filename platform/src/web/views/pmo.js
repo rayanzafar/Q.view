@@ -589,7 +589,8 @@ export async function tasksPage(user, opts = {}) {
     data-next="${esc(t.next_step || '')}" data-blocked="${esc(t.blocked_reason || '')}"
     data-project="${esc(t.project_id || '')}" data-opp="${esc(t.opportunity_id || '')}"
     data-kind="${esc(t.work_kind || '')}" data-category="${esc(t.category || '')}"
-    data-creator="${esc(t.created_by || '')}"
+    data-creator="${esc(t.created_by || '')}" data-creator-name="${esc(t.creator_name || '')}"
+    data-approver-name="${esc(t.approver_name || '')}" data-approved-at="${esc(String(t.approved_at || '').slice(0, 10))}"
     data-assignee="${esc(t.assignee_user_id || '')}" data-dept="${esc(t.department_id || '')}"
     data-desc="${esc(t.description || '')}"`;
   const progChip = (t) => {
@@ -626,6 +627,8 @@ export async function tasksPage(user, opts = {}) {
           ${t.category ? `<span class="tk-cat-chip" title="تصنيف المهمة">${esc(taskCategoryLabel(t.category))}</span>` : ''}
           ${isPendingTask(t) ? `<span class="tk-await" title="${G.awaitApprovalHint}">${G.awaitApproval}</span>` : ''}
           ${who === 'team' ? `<span class="tk-who">${icon('team')} ${esc(t.assignee_name || t.assignee_username || G.unassigned)}</span>` : ''}
+          ${who !== 'team' && t.creator_name && t.created_by && t.created_by !== t.assignee_user_id
+            ? `<span class="tk-who" title="أسندها إليك ${esc(t.creator_name)}">${icon('team')} أسندها ${esc(t.creator_name)}</span>` : ''}
           ${t.department_name ? `<span class="tk-who">${esc(t.department_name)}</span>` : ''}
         </div>
         ${done ? '' : `<div class="tk-meta tk-meta2">${progChip(t)}${stepChip(t)}</div>`}
@@ -1086,6 +1089,10 @@ export async function tasksPage(user, opts = {}) {
       <button type="button" class="btn btn-ghost btn-sm" data-action="task-close" aria-label="إغلاق">✕</button>
     </div>
     <div class="drawer-body">
+      <div class="wc-prov" data-f="provenance" hidden>
+        <span data-f="prov-creator" hidden>أسندها <b data-f="prov-creator-name"></b></span>
+        <span data-f="prov-approver" hidden>اعتمدها <b data-f="prov-approver-name"></b> <span class="tnum" data-f="prov-approved-at" dir="ltr"></span></span>
+      </div>
       <div class="field"><label for="tf-title">عنوان المهمة</label><input id="tf-title" class="input" data-f="title"></div>
       <div class="grid2">
         <div class="field"><label for="tf-status">${G.taskStatus}</label>
@@ -1221,6 +1228,9 @@ export async function tasksPage(user, opts = {}) {
       padding:.02rem .4rem;font-weight:700;max-width:none}
     .tk-who{display:inline-flex;align-items:center;gap:.25rem;color:var(--muted)}
     .tk-who svg{width:12px;height:12px;opacity:.75}
+    .wc-prov{display:flex;gap:.8rem;flex-wrap:wrap;font-size:11px;color:var(--muted);
+      padding:.45rem .6rem;background:var(--bg);border:1px solid var(--line);border-radius:8px;margin-bottom:.7rem}
+    .wc-prov b{font-weight:700;color:var(--ink)}
     .tk-prog{display:inline-flex;align-items:center;gap:.35rem;color:var(--muted);font-weight:700}
     .tk-progbar{display:block;width:70px;height:6px;background:#eef1f7;border-radius:999px;overflow:hidden;flex:none}
     .tk-progbar>span{display:block;height:100%;background:var(--brand);border-radius:999px}

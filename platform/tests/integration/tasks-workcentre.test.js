@@ -326,3 +326,23 @@ test('الصفحة تعرض لوحة الفريق للمدير المباشر ب
   assert.ok(!main.includes('class="tk-sel"'), 'ولا مربّعات تحديد');
   assert.ok(!/undefined|NaN|\[object/.test(main));
 });
+
+// ── من أين جاءت المهمة (٠٣٠): من أسندها يظهر لمن أُسندت إليه ─────────────────
+test('مهمة أسندها غيرك تعرض «أسندها فلان» — ومهمتك بيدك لا تعرضه', async () => {
+  await T.quickAddTask(ctx(lead), { title: 'مهمة من القائد', assignee_user_id: 'w_emp' });
+  const mine = await T.myTasks(emp, { win: 'all' });
+  const assigned = mine.find((r) => r.title === 'مهمة من القائد');
+  assert.equal(assigned.creator_name, 'مستخدم w_lead', 'اسم من أسندها لا يصل مع الصف');
+
+  const html = mainOf(await tasksPage(emp, { win: 'all' }));
+  assert.ok(html.includes('أسندها مستخدم w_lead'), 'الصف لا يقول من أسند المهمة');
+  assert.ok(html.includes('data-creator-name="مستخدم w_lead"'), 'اسم المُسنِد لا يصل إلى المحرِّر');
+  assert.ok(!html.includes('أسندها مستخدم w_emp'), 'مهمة كتبها صاحبها لنفسه تعرض «أسندها» بلا معنى');
+});
+
+test('لوح المحرِّر يحمل موضع «اعتمدها فلان» — يظهر حين يكون للمهمة معتمِد', async () => {
+  const html = await tasksPage(emp, { win: 'all' });
+  assert.ok(html.includes('data-f="prov-approver"'), 'لا موضع للمعتمِد في المحرِّر');
+  assert.ok(html.includes('اعتمدها'), 'نص «اعتمدها» غائب عن قالب المحرِّر');
+  assert.ok(html.includes('data-f="prov-creator"'), 'لا موضع للمُسنِد في المحرِّر');
+});

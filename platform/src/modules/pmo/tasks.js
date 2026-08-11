@@ -102,12 +102,15 @@ export async function myTasks(user, filters = {}) {
   where.push(vis.clause); params.push(...vis.params);
   applyTaskFilters(where, params, filters, today);
   return await all(`SELECT t.*, p.name_ar AS project_name, o.title_ar AS opportunity_name,
-      d.name_ar AS department_name, u.name_ar AS assignee_name, u.username AS assignee_username
+      d.name_ar AS department_name, u.name_ar AS assignee_name, u.username AS assignee_username,
+      COALESCE(uc.name_ar, uc.username) AS creator_name, COALESCE(ua.name_ar, ua.username) AS approver_name
     FROM task t
     LEFT JOIN project p ON p.id = t.project_id AND p.deleted_at IS NULL
     LEFT JOIN opportunity o ON o.id = t.opportunity_id AND o.deleted_at IS NULL
     LEFT JOIN department d ON d.id = t.department_id AND d.deleted_at IS NULL
     LEFT JOIN app_user u ON u.id = t.assignee_user_id
+    LEFT JOIN app_user uc ON uc.id = t.created_by
+    LEFT JOIN app_user ua ON ua.id = t.approved_by
     WHERE ${where.join(' AND ')}
     ORDER BY ${prioritySql('t')}, t.due_date
     LIMIT ${clampLimit(filters.limit)}`, params);
@@ -396,13 +399,16 @@ export async function teamTasks(user, filters = {}) {
   if (filters.overdue) { where.push('t.due_date IS NOT NULL AND substr(t.due_date,1,10) < ?'); params.push(today); }
   applyTaskFilters(where, params, filters, today);
   const rows = await all(`SELECT t.*, u.name_ar assignee_name, u.username assignee_username,
-       p.name_ar project_name, o.title_ar opportunity_name, d.name_ar department_name
+       p.name_ar project_name, o.title_ar opportunity_name, d.name_ar department_name,
+       COALESCE(uc.name_ar, uc.username) creator_name, COALESCE(ua.name_ar, ua.username) approver_name
      FROM task t
      LEFT JOIN app_user u ON u.id = t.assignee_user_id
      LEFT JOIN employee emp ON emp.id = u.employee_id AND emp.deleted_at IS NULL
      LEFT JOIN project p ON p.id = t.project_id AND p.deleted_at IS NULL
      LEFT JOIN opportunity o ON o.id = t.opportunity_id AND o.deleted_at IS NULL
      LEFT JOIN department d ON d.id = t.department_id AND d.deleted_at IS NULL
+     LEFT JOIN app_user uc ON uc.id = t.created_by
+     LEFT JOIN app_user ua ON ua.id = t.approved_by
      WHERE ${where.join(' AND ')}
      ORDER BY ${prioritySql('t')}, t.due_date
      LIMIT ${clampLimit(filters.limit)}`, params);
