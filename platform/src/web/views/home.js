@@ -99,7 +99,8 @@ const dueChip = (state, dateStr, today, approx) => {
 const STYLE = `
 /* ── «صفحتي»: العمق ─────────────────────────────────────────────────────────
    الميلان يعمل على المؤشر فقط؛ اللمس ولوحة المفاتيح يريان البطاقة ساكنة وكاملة. */
-.hm-hero{perspective:1500px;perspective-origin:50% 38%;margin-bottom:1.05rem}
+/* سقفُ عرضٍ للبطاقة: بطاقة تحيةٍ بعرض ثلاثة أمتار فراغٌ لا تصميم — وتُوسَّط فيما بقي. */
+.hm-hero{perspective:1500px;perspective-origin:50% 38%;margin-bottom:1.05rem;max-width:1500px;margin-inline:auto}
 .hm-tilt{position:relative;transform-style:preserve-3d;transform:rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg));
   transition:transform .5s cubic-bezier(.22,.8,.3,1)}
 /* القشرة تحمل التدرّج والقصّ — منفصلةً عن الطبقة ثلاثية الأبعاد عمداً: overflow يُسطّح
@@ -122,7 +123,10 @@ const STYLE = `
   -webkit-mask-image:linear-gradient(transparent,#000 58%);mask-image:linear-gradient(transparent,#000 58%)}
 .hm-floor::before{content:"";position:absolute;inset-inline:22%;top:-1px;height:1px;
   background:linear-gradient(90deg,transparent,rgba(255,255,255,.5),transparent);filter:blur(.4px)}
-.hm-body{position:relative;padding:1.7rem 1.8rem;display:flex;gap:1.5rem;align-items:center;justify-content:space-between;flex-wrap:wrap;
+/* الحاشية الجانبية تكبر مع عرض البطاقة (نسبةً مئوية) لا ثابتةً: المحتوى مرفوعٌ على عمق
+   translateZ(45px) تحت منظور 1500px فيتضخّم ×1.031 حول المنتصف — إزاحةٌ تنمو خطياً مع العرض
+   بينما الحاشية الثابتة لا تنمو، فيتجاوزها المحتوى عند ~1920px ويلامس حوافّ البطاقة. */
+.hm-body{position:relative;padding:1.7rem clamp(1.8rem, 1.8rem + 1.7%, 4.5rem);display:flex;gap:1.5rem;align-items:center;justify-content:space-between;flex-wrap:wrap;
   transform:translateZ(45px)}
 .hm-say{flex:1 1 320px;min-width:0}
 .hm-date{display:inline-flex;align-items:center;gap:.4rem;font-size:var(--fs-meta);font-weight:700;color:rgba(255,255,255,.78);
@@ -145,17 +149,22 @@ const STYLE = `
   background:rgba(255,255,255,.11);border:1px solid rgba(255,255,255,.22);-webkit-backdrop-filter:blur(9px);backdrop-filter:blur(9px);
   box-shadow:0 20px 36px -22px rgba(6,12,30,.9)}
 .hm-pt{font-size:var(--fs-micro);font-weight:800;letter-spacing:.04em;color:rgba(255,255,255,.65)}
+/* القرص كتلةٌ لا سطرَ نص: تركُه سطرياً يضيف فراغَ سطرٍ أسفله (ارتفاع السطر 1.7 + هوابط الخط)
+   فيجلس أعلى مركز اللوح الزجاجي بصرياً. */
+.hm-panel svg{display:block;margin-inline:auto}
 .hm-ps{font-size:var(--fs-meta);color:rgba(255,255,255,.72);margin-top:.35rem;line-height:1.7}
 .hm-big{font-size:2.5rem;font-weight:800;line-height:1.1;color:#fff;letter-spacing:-.03em;margin:.35rem 0 .1rem}
 
 /* ── بطاقات الخلاصة ── */
 .hm-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(152px,1fr));gap:.7rem;margin-bottom:1.05rem;perspective:900px}
-.hm-tile{position:relative;display:block;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:.9rem 1rem;
+/* القصّ يحبس شريطَ اللون داخل الزوايا المدوّرة: الشريط بارتفاع 3px لا يستطيع أن يحمل تدويرة
+   16px (قاعدة تداخل الأقواس تقلّصها إلى 3px) فكانت زاويتاه تبرزان خارج البطاقة. والقصُّ لا
+   يمسّ أثر التمرير: الظلال تُرسم خارجه والتحويل لا يُقصّ بقصّ صاحبه. */
+.hm-tile{position:relative;display:block;overflow:hidden;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:.9rem 1rem;
   box-shadow:var(--sh-sm);transition:transform .2s cubic-bezier(.22,.8,.3,1),box-shadow .2s,border-color .2s}
 .hm-tile:hover{transform:translateY(-4px) rotateX(7deg);border-color:#d6def0;
   box-shadow:0 18px 30px -18px rgba(15,23,42,.34),0 4px 10px -6px rgba(15,23,42,.16)}
-.hm-tile::before{content:"";position:absolute;top:0;inset-inline:0;height:3px;border-start-start-radius:16px;border-start-end-radius:16px;
-  background:var(--tone,var(--brand))}
+.hm-tile::before{content:"";position:absolute;top:0;inset-inline:0;height:3px;background:var(--tone,var(--brand))}
 .hm-n{font-size:1.7rem;font-weight:800;letter-spacing:-.02em;line-height:1.2;color:var(--tone,var(--ink))}
 .hm-l{font-size:var(--fs-meta);color:var(--ink2);font-weight:700;margin-top:.05rem}
 .hm-x{font-size:var(--fs-micro);color:var(--faint);margin-top:.1rem}

@@ -85,6 +85,34 @@ export default async function homeSpec({ browser, base, t }) {
   else t.fail('عرض الجوال', 'الصفحة أعرض من الشاشة');
   await mob.close();
 
+  // الشاشة العريضة: محتوى البطاقة لا يلامس حوافّها (كان الإسقاط المنظوري يدفعه خارجها فوق
+  // ~1920px لأن الحاشية كانت ثابتة والإزاحة تنمو مع العرض)، وشريط لون البطاقات محبوس داخلها.
+  const wide = await browser.newContext({ viewport: { width: 2560, height: 1000 } });
+  const p4 = await wide.newPage();
+  await login(p4, base, 'demo.employee');
+  await open(p4, base, '/app/home');
+  const gutters = await p4.evaluate(() => {
+    const skin = document.querySelector('.hm-skin')?.getBoundingClientRect();
+    const date = document.querySelector('.hm-date')?.getBoundingClientRect();
+    const quick = document.querySelector('.hm-quick')?.getBoundingClientRect();
+    if (!skin || !date || !quick) return null;
+    // RTL: بداية السطر يمين — نفحص الجانبين معاً لكل عنصر.
+    return {
+      dateIn: date.left >= skin.left + 4 && date.right <= skin.right - 4,
+      quickIn: quick.left >= skin.left + 4 && quick.right <= skin.right - 4,
+      heroW: Math.round(skin.width),
+    };
+  });
+  if (gutters && gutters.dateIn && gutters.quickIn) t.pass(`محتوى البطاقة داخل حوافّها على الشاشة العريضة (عرضها ${gutters.heroW}px)`);
+  else t.fail('حواف البطاقة العريضة', JSON.stringify(gutters));
+  const tileClip = await p4.evaluate(() => {
+    const tl = document.querySelector('.hm-tile');
+    return tl ? getComputedStyle(tl).overflow : null;
+  });
+  if (tileClip === 'hidden') t.pass('شريط اللون محبوس داخل زوايا البطاقات');
+  else t.fail('قصّ شريط البطاقة', `overflow=${tileClip}`);
+  await wide.close();
+
   const real = realConsoleErrors(errs);
   if (!real.length) t.pass('بلا أخطاء في المتصفح');
   else t.fail('أخطاء المتصفح', real.slice(0, 3).join(' | '));
