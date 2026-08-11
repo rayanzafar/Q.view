@@ -32,3 +32,34 @@ test('boot.sh يجعل فشل الترحيلة قاتلاً — لا |true عل�
   assert.doesNotMatch(migrateLine, /\|\|\s*true/, 'خطوة الترحيلة ما زالت مبتلِعةً للفشل (|| true)');
   assert.match(migrateLine, /exit 1/, 'فشل الترحيلة لا يوقف الإقلاع');
 });
+
+// ── حُرّاس ما بعد حادثة 2026-08-11 (KI-048): النشر بطريقٍ واحد ومعرّفاتٍ لا أسماء ──
+const RW = 'rail' + 'way'; // لا تُكتب الكلمة كاملةً في نداءات المطابقة كي لا يلتقطها خطّاف الجلسة خطأً
+
+test('خطّاف الحراسة يمنع down/redeploy وup المباشر منعاً صلباً لا يفتحه مفتاح الإطلاق', () => {
+  const txt = read('scripts/hooks/pre-guard.mjs');
+  assert.match(txt, /rwVerb === 'down' \|\| rwVerb === 'redeploy'/, 'منع down/redeploy غائب');
+  assert.match(txt, /rwVerb === 'up'/, 'منع up المباشر غائب');
+  assert.match(txt, /46db5bda-3de4-4189-8677-cb973769c241/, 'معرّف قاعدة البيانات غير محروس في الربط');
+  const releaseGateIdx = txt.indexOf("const release =");
+  for (const marker of ["rwVerb === 'down'", "rwVerb === 'up'"]) {
+    assert.ok(txt.indexOf(marker) < releaseGateIdx, `قاعدة ${marker} تقع بعد بوابة الإطلاق — فيفتحها المفتاح`);
+  }
+});
+
+test('خطُّ النشر يسمّي الخدمات بمعرّفاتها ويطابق ما في وثيقة البنية — فلا ينحرفان', () => {
+  const dep = read('scripts/deploy.mjs');
+  const arch = read('docs/ARCHITECTURE.md');
+  for (const id of ['6981eaef-29c1-40b1-8aca-8c606dfd44e3', '46db5bda-3de4-4189-8677-cb973769c241',
+    '892124c7-a66e-4ac7-bd7d-e4827b3e5f40']) {
+    assert.ok(dep.includes(id), `خطّ النشر بلا المعرّف ${id.slice(0, 8)}…`);
+    assert.ok(arch.includes(id), `وثيقة البنية بلا المعرّف ${id.slice(0, 8)}…`);
+  }
+  assert.ok(!new RegExp(RW + '\\s+(down|redeploy)').test(dep), 'خطّ النشر نفسه يستدعي فعلاً محظوراً');
+  assert.match(dep, new RegExp(RW + "', \\['up', '--detach', '--service', APP_SERVICE_ID"), 'النشر لا يمرّر الخدمة بمعرّفها');
+});
+
+test('أمر النشر مسجَّل في package.json — الطريق الواحد له اسمٌ واحد', () => {
+  const pkg = JSON.parse(read('package.json'));
+  assert.equal(pkg.scripts.deploy, 'node scripts/deploy.mjs');
+});

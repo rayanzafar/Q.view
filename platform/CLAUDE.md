@@ -26,7 +26,7 @@ Node 22 (`--experimental-sqlite`), Express 5, ES modules, **zero build step**. S
 ## Quality bar
 - Tests: `node --experimental-sqlite --test "tests/**/*.test.js"` (unit/integration/security). New behavior ⇒ new test; every fixed defect ⇒ regression test. E2E/screenshots: `scripts/e2e.mjs`, `scripts/evidence.mjs` (Playwright, chromium at `/opt/pw-browsers`).
 - `scripts/sweep.mjs <base-url>` logs in as every demo role and checks every page/API for status + `undefined|NaN|null` leaks + banned jargon. Run it after every deploy.
-- Deploy protocol: quality green → (pg-backup if schema/data change) → `railway up` → `/ready` → sweep against staging → evidence screenshots → CHANGELOG entry.
+- Deploy protocol: **ONE command only — `SANAD_RELEASE=1 npm run deploy`** (`scripts/deploy.mjs`: gates → backup ALWAYS → `up` pinned to the app-service UUID → `/ready` → boot-log check → sweep). Direct `railway up`/`down`/`redeploy` are hook-blocked even in release sessions (post-incident 2026-08-11 — the CLI link state can point at the DATABASE; see `docs/guides/DEPLOY-PIPELINE.md`). Then evidence screenshots → CHANGELOG deployed marker.
 - Never disable/skip a failing check to get green. Root-cause it.
 
 ## Documentation contract

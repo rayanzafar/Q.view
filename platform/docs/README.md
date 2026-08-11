@@ -18,7 +18,7 @@ The code is the source of truth; these documents are its ledger. Four of them fo
 | `CONSULTING-REVIEW.md` | Tier-1 consulting review of executive dashboards/reports (Arabic). | Historical input — frozen. |
 | `benchmarks.md` | Research summary: best-practice patterns adapted for EVC. | Historical input — frozen. |
 | `adr/ADR-000*.md` | Architecture Decision Records (monolith/SSR, data conventions, DB driver). | New ADR for every **irreversible or structural** decision; existing ADRs are amended with status notes, never rewritten. |
-| `guides/` | Runbooks: `GO-LIVE.md`, `DEPLOYMENT.md`, `ROLLBACK.md`, `BACKUP-RESTORE-DRILL.md`, `ADMIN-and-USER.md`. | When the procedure they describe changes (env vars, boot steps, drill results). |
+| `guides/` | Runbooks: **`DEPLOY-PIPELINE.md` (THE deploy path — start here)**, `GO-LIVE.md`, `DEPLOYMENT.md`, `ROLLBACK.md`, `BACKUP-RESTORE-DRILL.md`, `ADMIN-and-USER.md`. | When the procedure they describe changes (env vars, boot steps, drill results). |
 | `specs/07-contracts-delivery2.md` | The **frozen delivery contract**: routes, API shapes, DDL. | Extending is fine; contradicting is not (see `/CLAUDE.md`). |
 | `specs/01–06, 00, 08` | Original analysis/specs — **frozen historical reference**. Known stale in places (e.g. `*_sar NUMERIC` vs implemented `*_halalas INTEGER`). | Never — on any divergence, **code + ADRs win** (declared in `specs/README.md`). |
 | `evidence/` | Screenshot evidence packs per deploy/lane (Playwright). | Appended by `scripts/evidence.mjs` at each verified deploy; never edited by hand. |

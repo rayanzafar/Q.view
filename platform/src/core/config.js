@@ -81,6 +81,11 @@ export function assertProdSecrets() {
       if (!config.mailUnrestricted && !config.mailAllowlist.length) {
         missing.push('SANAD_MAIL_ALLOWLIST (أو SANAD_MAIL_UNRESTRICTED=1 للإطلاق الكامل)');
       }
+      // قناةٌ تُرسل فعلياً وروابطُ رسائلها تشير إلى جهاز المطوّر: كل زرّ «افتح صفحتك» ميت.
+      // وقعت فعلاً على staging (رسالة اعتماد حقيقية برابط 127.0.0.1) — فصار الشرط قاطعاً.
+      if (/^http:\/\/127\.0\.0\.1|^http:\/\/localhost/.test(config.platformUrl)) {
+        missing.push('PLATFORM_URL (روابط الرسائل تشير حالياً إلى جهازٍ محلي)');
+      }
     }
     if (missing.length) throw new Error('Missing required production secrets: ' + missing.join(', '));
   }

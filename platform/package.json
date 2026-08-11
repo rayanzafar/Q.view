@@ -21,7 +21,8 @@
     "evidence": "node --experimental-sqlite scripts/evidence.mjs",
     "check-docs": "node scripts/check-docs.mjs",
     "quality": "sh -c 'set -e; for f in $(find src scripts -name \"*.js\" -o -name \"*.mjs\"); do node --check \"$f\"; done; echo \"syntax: clean\"; node scripts/check-glossary.mjs; node scripts/check-docs.mjs; npm test; npm run e2e'",
-    "backup": "node --experimental-sqlite scripts/backup.js"
+    "backup": "node --experimental-sqlite scripts/backup.js",
+    "deploy": "node scripts/deploy.mjs"
   },
   "dependencies": {
     "cookie-parser": "^1.4.7",
