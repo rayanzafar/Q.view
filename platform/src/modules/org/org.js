@@ -614,11 +614,25 @@ export async function staffingRoster(user, opts = {}) {
     empWhere.push(inDeps.clause);
     empParams.push(...inDeps.params);
   }
+  // مرشِّح الإدارة (v5.26) يضيّق داخل النطاق المحلول ولا يوسّعه أبداً: قارئٌ بنطاق إداراتٍ
+  // لا يمرّر إلا إحداها، وقارئُ قطاعٍ/شركةٍ تُقبل إدارته إن كانت من قطاع الكشف — وما سوى
+  // ذلك يُتجاهل بصمت (فاشل-مغلقاً: رابطٌ معطوب يعرض نطاقه المعتاد لا أكثر ولا خطأً).
+  let effectiveDept = null;
+  const wantDept = String(opts.department || '').trim();
+  if (wantDept && !blind) {
+    if (deps.length) {
+      if (deps.includes(wantDept)) effectiveDept = wantDept;
+    } else {
+      const dRow = await get('SELECT id, sector_id FROM department WHERE id = ? AND deleted_at IS NULL', [wantDept]);
+      if (dRow && (!sec || dRow.sector_id === sec)) effectiveDept = wantDept;
+    }
+    if (effectiveDept) { empWhere.push('department_id = ?'); empParams.push(effectiveDept); }
+  }
   const emps = blind ? []
     : await all(`SELECT * FROM employee WHERE ${empWhere.join(' AND ')} ORDER BY name_ar`, empParams);
   // التسكينات تُقرأ بمفتاح الموظف ثم تُوزَّع على الكشف؛ فمن خرج من الكشف لا يُقرأ له سطر أصلاً.
   const allocs = blind ? []
-    : await all(`SELECT a.id, a.employee_id, a.project_id, a.project_name, a.type, a.monthly_json, p.name_ar proj_name, p.status proj_status
+    : await all(`SELECT a.id, a.employee_id, a.project_id, a.project_name, a.type, a.work_bucket, a.monthly_json, p.name_ar proj_name, p.status proj_status
      FROM allocation a LEFT JOIN project p ON p.id = a.project_id
      WHERE a.deleted_at IS NULL AND a.year = ? AND a.employee_id IS NOT NULL ${sec ? 'AND a.sector_id = ?' : ''}`, sec ? [year, sec] : [year]);
   const byEmp = {};
@@ -673,6 +687,7 @@ export async function staffingRoster(user, opts = {}) {
       const inReach = projInReach(a.project_id);
       return { allocId: a.id, projectId: inReach ? a.project_id : null,
         name: inReach ? (a.proj_name || a.project_name || '—') : '—',
+        bucket: a.work_bucket || null,
         type: a.type || 'member', status: inReach ? a.proj_status : null, months: mj };
     });
     const opportunities = (oppByEmp[e.id] || []).map((r) => ({
@@ -691,7 +706,8 @@ export async function staffingRoster(user, opts = {}) {
     const intensity = staffedMonths ? Math.round(months.filter((m) => m > 0).reduce((a, b) => a + b, 0) / staffedMonths) : 0; // avg load WHEN staffed
     return { id: e.id, name_ar: e.name_ar, name_en: e.name_en, job_title: e.job_title, employment_type: e.employment_type,
       // طرفا الخدمة معاً: بلا تاريخ المغادرة يبقى «غير نشط» في الكشف بلا إجابة على «متى غادر»
-      status: e.status, active: e.active, sector_id: e.sector_id, hire_date: e.hire_date, end_date: e.end_date,
+      status: e.status, active: e.active, sector_id: e.sector_id, department_id: e.department_id,
+      hire_date: e.hire_date, end_date: e.end_date, capacity_pct: e.capacity_pct ?? null,
       // QH-1: الراتب حقل حساس — يُسلسَل فقط لمن يملك صلاحية قراءته (HR/admin)، في الواجهة والـAPI معاً
       ...(can(user, 'read', 'salary') ? { salary_halalas: e.salary_halalas } : {}),
       months, annualUtil, currentUtil, prevMonthUtil, monthDelta, oppLoadPct, staffedMonths, intensity, peak: Math.max(0, ...months),
@@ -708,5 +724,5 @@ export async function staffingRoster(user, opts = {}) {
     overloadedNow: active.filter((e) => e.currentUtil > 110).length,
     underusedNow: active.filter((e) => e.currentUtil > 0 && e.currentUtil < 40).length,
   };
-  return { year, sector: sec, currentMonth: nowM, roster, summary };
+  return { year, sector: sec, department: effectiveDept, currentMonth: nowM, roster, summary };
 }

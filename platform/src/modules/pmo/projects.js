@@ -330,6 +330,30 @@ function monthlyPlan({ pct, fromMonth, toMonth }) {
   return mj;
 }
 
+// خريطة أشهر مخصّصة {شهر: نسبة} من مساحة عمل التسكين (v5.26): أشهر غير متتالية أو نسبٌ
+// تختلف شهراً بشهر — ما لا يقوله المدى الموحّد. نفس قواعد الخلية الواحدة حرفياً: الشهر
+// 1..12، النسبة رقمٌ يُقصّ إلى 0–150، والصفر «لا شيء في هذا الشهر». تعيد {شهر: كسر}.
+function customMonthsMap(months) {
+  const out = {};
+  for (const [k, v] of Object.entries(months || {})) {
+    const m = Number(k);
+    if (!Number.isInteger(m) || m < 1 || m > 12) throw badRequest('الشهر يجب أن يكون بين 1 و12');
+    const n = Number(v);
+    if (!Number.isFinite(n)) throw badRequest('أدخل نسبة تسكين صحيحة (0–150)');
+    const frac = Math.max(0, Math.min(150, n)) / 100;
+    if (frac > 0) out[m] = frac;
+  }
+  return out;
+}
+const hasCustomMonths = (months) => months && typeof months === 'object' && !Array.isArray(months) && Object.keys(months).length > 0;
+// خريطةٌ صارت فارغة بعد إسقاط الأصفار = تسكينٌ بلا شهر واحد — خطأ إدخال يُقال لا يُحفظ صامتاً.
+function assertSomeMonths(mj) {
+  if (!Object.keys(mj).length) throw badRequest('حدّد شهراً واحداً على الأقل بنسبة أكبر من صفر');
+  return mj;
+}
+// للأثر: الكسور تُدوَّن نسباً مقروءة {شهر: نسبة} كما يقرؤها المدقّق، لا كسوراً داخلية.
+const roundedMonths = (mj) => Object.fromEntries(Object.entries(mj).map(([m, f]) => [m, Math.round(Number(f) * 100)]));
+
 // سنة التسكين: كانت تُؤخذ من ساعة الخادم دائماً، فيستحيل تسكين خطة السنة القادمة — يفتح
 // المدير في نوفمبر خطة العام المقبل فتُكتب على العام الجاري صامتةً، ويقرأ الجميع أرقاماً
 // في السنة الخطأ. والسنة تُقبل الآن من الطلب ضمن نافذة معقولة: سنة سابقة (تصحيح متأخر)
@@ -361,7 +385,7 @@ export function resolveAllocationYear(raw, now = new Date()) {
 export const WORK_BUCKETS = ['bd', 'product', 'pmo'];
 export const isWorkBucket = (b) => WORK_BUCKETS.includes(String(b || ''));
 
-export async function assignInternalWork(ctx, { employeeId, bucket, pct, fromMonth, toMonth, year }) {
+export async function assignInternalWork(ctx, { employeeId, bucket, pct, fromMonth, toMonth, year, months }) {
   const user = ctx.user;
   if (!isWorkBucket(bucket)) throw badRequest('اختر بند العمل الداخلي من القائمة');
   const emp = await get('SELECT * FROM employee WHERE id = ? AND deleted_at IS NULL', [employeeId]);
@@ -381,10 +405,12 @@ export async function assignInternalWork(ctx, { employeeId, bucket, pct, fromMon
     project_id: null, work_bucket: bucket, project_name: workBucketLabel(bucket),
     sector_id: emp.sector_id || null, department_id: emp.department_id || null,
     type: 'member', year: allocYear,
-    monthly_json: JSON.stringify(monthlyPlan({ pct, fromMonth, toMonth })), source: 'manual', created_at: now,
+    // خريطة أشهر مخصّصة (v5.26) إن أُرسلت، وإلا المدى الموحّد كما كان حرفياً.
+    monthly_json: JSON.stringify(hasCustomMonths(months) ? assertSomeMonths(customMonthsMap(months)) : monthlyPlan({ pct, fromMonth, toMonth })),
+    source: 'manual', created_at: now,
   });
   await audit(ctx, { action: 'create', resource: 'allocation', resourceId: aid, sectorId: emp.sector_id || null,
-    detail: { bucket, employee: employeeId, pct: pct || 100, year: allocYear } });
+    detail: { bucket, employee: employeeId, ...(hasCustomMonths(months) ? { months: roundedMonths(customMonthsMap(months)) } : { pct: pct || 100 }), year: allocYear } });
   return { id: aid, employee_id: employeeId, bucket, label: workBucketLabel(bucket), year: allocYear };
 }
 
@@ -406,7 +432,7 @@ async function allocationResult(user, a) {
   return { allocation: row ? { ...row, label: workBucketLabel(row.work_bucket) } : null };
 }
 
-export async function assignEmployee(ctx, projectId, { employeeId, type, pct, fromMonth, toMonth, year }) {
+export async function assignEmployee(ctx, projectId, { employeeId, type, pct, fromMonth, toMonth, year, months }) {
   const user = ctx.user;
   const p = await get('SELECT * FROM project WHERE id=? AND deleted_at IS NULL', [projectId]);
   if (!p) throw notFound('المشروع غير موجود');
@@ -429,14 +455,18 @@ export async function assignEmployee(ctx, projectId, { employeeId, type, pct, fr
   const aid = id('alloc'); const now = nowIso();
   await insert('allocation', { id: aid, employee_id: employeeId, person_name_ar: emp.name_ar, project_id: projectId,
     project_name: p.name_ar, sector_id: p.sector_id, type: type || 'member', year: allocYear,
-    monthly_json: JSON.stringify(monthlyPlan({ pct, fromMonth, toMonth })), source: 'manual', created_at: now });
-  await audit(ctx, { action: 'create', resource: 'allocation', resourceId: aid, sectorId: p.sector_id, detail: { project: projectId, employee: employeeId, pct: pct || 100, year: allocYear } });
+    monthly_json: JSON.stringify(hasCustomMonths(months) ? assertSomeMonths(customMonthsMap(months)) : monthlyPlan({ pct, fromMonth, toMonth })),
+    source: 'manual', created_at: now });
+  await audit(ctx, { action: 'create', resource: 'allocation', resourceId: aid, sectorId: p.sector_id,
+    detail: { project: projectId, employee: employeeId, ...(hasCustomMonths(months) ? { months: roundedMonths(customMonthsMap(months)) } : { pct: pct || 100 }), year: allocYear } });
   return await projectStaffing(user, projectId);
 }
 
 // Edit an existing allocation's load (%/month-range). Same permission as staffing the project.
 // A body carrying `month` is a SINGLE-CELL edit (heat-grid inline editing) → setAllocationCell.
 export async function setAllocation(ctx, allocationId, body = {}) {
+  // خريطة أشهر (v5.26) أولاً — مفاتيحها منفصلة عن فرعَي الخلية والمدى فلا يختلط عقدٌ بعقد.
+  if (hasCustomMonths(body.months)) return setAllocationMonths(ctx, allocationId, body.months);
   if (body.month != null) return setAllocationCell(ctx, allocationId, body.month, body.pct);
   const { pct, fromMonth, toMonth, type } = body;
   const user = ctx.user;
@@ -486,6 +516,37 @@ export async function setAllocationCell(ctx, allocationId, month, pct) {
     pct: Math.round(frac * 100), months: mj };
 }
 
+// تعديل عدة أشهر لتسكينٍ واحد دفعةً واحدة (v5.26 — مساحة عمل التسكين): «طبّق على الأشهر
+// المحددة» و«نسخ شهرٍ إلى مدى» يكتبان خريطةً لا خليةً خلية — تحديثٌ واحد وسطرُ تدقيقٍ واحد
+// بتفصيل الأشهر، بدل عاصفة نداءاتٍ نصفُ نجاحها يكذب على المصفوفة. نفس تفويض الخلية ورسائلها.
+export async function setAllocationMonths(ctx, allocationId, months) {
+  const user = ctx.user;
+  const a = await get('SELECT * FROM allocation WHERE id=? AND deleted_at IS NULL', [allocationId]);
+  if (!a) throw notFound('التسكين غير موجود');
+  if (!await mayEditAllocation(user, a)) {
+    throw forbidden(a.project_id ? 'تعديل التسكين يتطلب صلاحية إدارة المشروع' : 'تعديل تسكين العمل الداخلي لمن يدير صاحبه');
+  }
+  if (!hasCustomMonths(months)) throw badRequest('حدّد شهراً واحداً على الأقل');
+  // الدمج على الخريطة القائمة: القيمة الجديدة تحكم أشهرها فقط (والصفر يمسح شهره)، وما لم
+  // يُذكر يبقى كما هو — «طبّق على أغسطس وسبتمبر» لا يمسّ أكتوبر المحرَّر يدوياً.
+  let mj = {}; try { mj = JSON.parse(a.monthly_json || '{}'); } catch { mj = {}; }
+  const changed = {};
+  for (const [k, v] of Object.entries(months)) {
+    const m = Number(k);
+    if (!Number.isInteger(m) || m < 1 || m > 12) throw badRequest('الشهر يجب أن يكون بين 1 و12');
+    const n = Number(v);
+    if (!Number.isFinite(n)) throw badRequest('أدخل نسبة تسكين صحيحة (0–150)');
+    const frac = Math.max(0, Math.min(150, n)) / 100;
+    if (frac > 0) mj[m] = frac; else delete mj[m];
+    changed[m] = Math.round(frac * 100);
+  }
+  await update('allocation', allocationId, { monthly_json: JSON.stringify(mj) });
+  await audit(ctx, { action: 'update', resource: 'allocation', resourceId: allocationId, sectorId: a.sector_id,
+    detail: { months: changed } });
+  return { id: allocationId, employee_id: a.employee_id, project_id: a.project_id,
+    bucket: a.work_bucket || null, months: mj };
+}
+
 export async function unassignEmployee(ctx, allocationId) {
   const user = ctx.user;
   const a = await get('SELECT * FROM allocation WHERE id=? AND deleted_at IS NULL', [allocationId]);
@@ -494,6 +555,57 @@ export async function unassignEmployee(ctx, allocationId) {
   await update('allocation', allocationId, { deleted_at: nowIso() });
   await audit(ctx, { action: 'delete', resource: 'allocation', resourceId: allocationId, sectorId: a.sector_id });
   return await allocationResult(user, a);
+}
+
+// ── دفعة تسكين ذرّية (v5.26 — مساحة عمل التسكين) ────────────────────────────
+// التحديد المتعدد و«تسكين جديد» يعرضان معاينةً ثم «تطبيق» — والتطبيق وعدٌ بما عُرض كاملاً:
+// إما كل العمليات أو لا شيء. مصفوفةٌ نصفُ مطبَّقةٍ تكذب على قارئها، ولذلك ننحرف عمداً عن
+// سابقة دفعة المهام (أفضل-جهد) — القرار في decision-log ق٤.
+//
+// كل عملية تمرّ بدالتها القائمة حرفياً، فتفويضُها القائم (إدارة المشروع / مِلك أمر الموظف)
+// وتدقيقُها القائم يعملان كما هما — والفشل يُرجع كلَّ شيءٍ بما فيه صفوف التدقيق («رفضٌ لا
+// يترك أثر كتابة»)، ويسمّي بندَه بالعربية كي يُصلَح لا كي يُحزَر.
+export const BULK_STAFFING_MAX = 100;
+export async function bulkStaffing(ctx, { year, ops } = {}) {
+  if (!Array.isArray(ops) || !ops.length) throw badRequest('لا تغييرات في الدفعة — حدّد ما يُطبَّق أولاً');
+  if (ops.length > BULK_STAFFING_MAX) throw badRequest(`حدّد ${BULK_STAFFING_MAX} تغييراً كحد أقصى في المرة الواحدة`);
+  // اسمُ البند الفاشل يُجلب على مسار الفشل وحده — النجاح لا يدفع كلفة تسمية أحد.
+  const labelFor = async (op) => {
+    try {
+      if (op.op === 'assign') {
+        const emp = op.employeeId ? await get('SELECT name_ar FROM employee WHERE id = ?', [op.employeeId]) : null;
+        const what = op.kind === 'bucket' ? workBucketLabel(op.targetId)
+          : (op.targetId ? (await get('SELECT name_ar FROM project WHERE id = ?', [op.targetId]))?.name_ar : '');
+        return [emp?.name_ar, what].filter(Boolean).join(' على ');
+      }
+      const a = op.allocId ? await get('SELECT person_name_ar, project_name FROM allocation WHERE id = ?', [op.allocId]) : null;
+      return a ? [a.person_name_ar, a.project_name].filter(Boolean).join(' على ') : '';
+    } catch { return ''; }
+  };
+  return await tx(async () => {
+    for (const [i, op] of ops.entries()) {
+      try {
+        if (op.op === 'assign' && op.kind === 'project') {
+          await assignEmployee(ctx, op.targetId, { employeeId: op.employeeId, type: op.type,
+            pct: op.pct, fromMonth: op.fromMonth, toMonth: op.toMonth, months: op.months, year });
+        } else if (op.op === 'assign' && op.kind === 'bucket') {
+          await assignInternalWork(ctx, { employeeId: op.employeeId, bucket: op.targetId,
+            pct: op.pct, fromMonth: op.fromMonth, toMonth: op.toMonth, months: op.months, year });
+        } else if (op.op === 'set') {
+          await setAllocationMonths(ctx, op.allocId, op.months);
+        } else if (op.op === 'remove') {
+          await unassignEmployee(ctx, op.allocId);
+        } else {
+          throw badRequest('نوع التغيير غير معروف — أعد المحاولة من الشاشة');
+        }
+      } catch (e) {
+        const who = await labelFor(op);
+        e.message = `البند ${i + 1}${who ? ' — ' + who : ''}: ${e.message}`;
+        throw e;
+      }
+    }
+    return { ok: true, applied: ops.length };
+  });
 }
 
 // ── ملفات المشروع وتحديثاته ───────────────────────────────────────────────────

@@ -91,6 +91,8 @@ apiRouter.get('/projects/:id/updates', h((req) => projects.projectUpdates(req.ct
 apiRouter.post('/projects/:id/staff', h((req) => projects.assignEmployee(req.ctx, req.params.id, req.body)));
 // تسكينٌ على عمل داخلي — بلا مشروع، فلا مسار تحت `/projects`: حارسه مِلكُ أمر الموظف لا المشروع.
 apiRouter.post('/staffing/internal', h((req) => projects.assignInternalWork(req.ctx, req.body || {})));
+// دفعة تسكين ذرّية (v5.26): معاينة الشاشة ثم تطبيقٌ واحد — التفويض والتدقيق داخل كل عملية.
+apiRouter.post('/staffing/bulk', h((req) => projects.bulkStaffing(req.ctx, req.body || {})));
 // ── الحذف المحروس: المشروع والفرصة ──
 // لم يكن في المنتج حذفٌ لأيٍّ منهما، فبياناتٌ مستوردة لا سبيل إلى تنظيفها إلا بفتح القاعدة
 // يدوياً — خارج التدقيق وخارج الصلاحيات. والحراسة في مكانٍ واحد (core/lifecycle/remove.js):
@@ -152,7 +154,7 @@ apiRouter.post('/org/departments', h((req) => org.createDepartment(req.ctx, req.
 apiRouter.patch('/org/departments/:id', h((req) => org.updateDepartment(req.ctx, req.params.id, req.body)));
 apiRouter.delete('/org/departments/:id', h((req) => org.deleteDepartment(req.ctx, req.params.id)));
 apiRouter.post('/org/units', h((req) => org.createUnit(req.ctx, req.body)));
-apiRouter.get('/org/roster', h((req) => org.staffingRoster(req.ctx.user, { sector: req.query.sector, year: req.query.year })));
+apiRouter.get('/org/roster', h((req) => org.staffingRoster(req.ctx.user, { sector: req.query.sector, year: req.query.year, department: req.query.department })));
 apiRouter.post('/org/employees', h((req) => org.createEmployee(req.ctx, req.body)));
 apiRouter.patch('/org/employees/:id', h((req) => org.updateEmployee(req.ctx, req.params.id, req.body)));
 apiRouter.patch('/org/employees/:id/move', h((req) => org.moveEmployee(req.ctx, req.params.id, req.body)));
