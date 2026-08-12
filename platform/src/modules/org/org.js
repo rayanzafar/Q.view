@@ -645,8 +645,11 @@ export async function staffingRoster(user, opts = {}) {
   let visibleAllocProjects = null; // null = لا قصّ (نطاقٌ شركيّ: الكلّ ظاهر بلا استعلام)
   const allocPids = [...new Set(allocs.map((a) => a.project_id).filter(Boolean))];
   if (allocPids.length) {
+    // `memberCol` (v5.27): المشروع الذي **تشارك** فيه إدارةُ القارئ يظهر باسمه لا مطوياً —
+    // «التسكين يطلع فيها بشكل صحيح لأنه مشترك بين إدارتين». نفس فرع projectReachClause
+    // الذي يفتح قائمةَ المشاريع يفتح اسمَها في الكشف: مصدرُ حقيقةٍ واحد لا بابٌ خلفيّ.
     const pScope = scopeFilter(user, 'project', 'read',
-      { deptCol: 'department_id', sectorCol: 'sector_id', ownerCol: 'owner_user_id' });
+      { deptCol: 'department_id', sectorCol: 'sector_id', ownerCol: 'owner_user_id', memberCol: 'id' });
     if (pScope.clause !== '1=1') {
       visibleAllocProjects = new Set((await all(
         `SELECT id FROM project WHERE deleted_at IS NULL AND id IN (${allocPids.map(() => '?').join(',')}) AND (${pScope.clause})`,
@@ -684,9 +687,12 @@ export async function staffingRoster(user, opts = {}) {
       let mj = {}; try { mj = JSON.parse(a.monthly_json || '{}'); } catch { mj = {}; }
       for (const [m, f] of Object.entries(mj)) { const i = Number(m) - 1; if (i >= 0 && i < 12) monthLoad[i] += Number(f) || 0; }
       // مشروعٌ خارج نطاق القارئ: يبقى الحِملُ (mj) ويُطوى الاسمُ والمعرّف — رقمٌ بلا اسم.
+      // والطيّ يُسمّى «مشروع خارج نطاقك» لا شرطةً صمّاء (v5.27): شرطةٌ بلا تفسير قرأها
+      // المالك عطباً — «تطلع بالشرطات، مو واضح المشروع، شي غريب» — والاسم الصريح يقول
+      // إنها حالةٌ مقصودة (خصوصية v5.9) لا بياناتٍ مفقودة. المعرّف يبقى مطوياً كما كان.
       const inReach = projInReach(a.project_id);
       return { allocId: a.id, projectId: inReach ? a.project_id : null,
-        name: inReach ? (a.proj_name || a.project_name || '—') : '—',
+        name: inReach ? (a.proj_name || a.project_name || '—') : 'مشروع خارج نطاقك',
         bucket: a.work_bucket || null,
         type: a.type || 'member', status: inReach ? a.proj_status : null, months: mj };
     });

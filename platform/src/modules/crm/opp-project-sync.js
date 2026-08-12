@@ -15,9 +15,32 @@
 // لا تنسخ الفرصة إلى مشروعٍ نسخاً كاملاً ولا العكس: المشروع يحمل **بذرة** ما يعرفه سجلّ الفرصة
 // (الاسم والجهة والقطاع والإدارة والقيمة والمالك) ثم يُكمَّل من صفحته — «بس أدخل عليه أحطّ بقية
 // المعلومات كأنه مشروع جديد». والمخرجات والمعالم والعقد تبقى قراراتٍ تُكتب في المشروع لا تُخمَّن.
-import { all, get, insert, update } from '../../core/db/index.js';
+import { all, get, insert, update, run } from '../../core/db/index.js';
 import { audit } from '../../core/audit/index.js';
 import { id, nowIso } from '../../core/util/ids.js';
+
+// ── الإدارات المشاركة تعبر المرآة (ADR-0008) ─────────────────────────────────
+// «مشترك بين إدارتين ولازم المنصة تستقبل هذا الشيء»: فرصةٌ مشتركة تربح فيُولَد مشروعُها
+// مشتركاً بنفس إداراته، ومشروعٌ مشترك يُنشأ فتُولَد مرآتُه كذلك — وإلا افترقت الشاشتان من
+// أول يوم. المسؤولة تُستبعَد من النسخ (لا تكون مسؤولةً ومشاركةً معاً).
+const PARTNER_TABLES = {
+  opportunity: { table: 'opportunity_department', col: 'opportunity_id' },
+  project: { table: 'project_department', col: 'project_id' },
+};
+async function partnerIdsOf(kind, rowId) {
+  const t = PARTNER_TABLES[kind];
+  return (await all(`SELECT department_id FROM ${t.table} WHERE ${t.col} = ?`, [rowId]))
+    .map((r) => r.department_id).filter(Boolean);
+}
+async function copyPartners(ctx, fromKind, fromId, toKind, toId, excludeDeptId) {
+  const src = (await partnerIdsOf(fromKind, fromId)).filter((d) => d !== (excludeDeptId || null));
+  const t = PARTNER_TABLES[toKind];
+  const now = nowIso();
+  for (const d of src) {
+    await insert(t.table, { [t.col]: toId, department_id: d, created_at: now, created_by: ctx.user?.id || null });
+  }
+  return src;
+}
 
 // الفرصة المولودة من مشروع تُعلَّم في `opportunity.source`. والعلامة ليست زينة: بها يُعرف
 // **اتجاه الحقيقة**. الفرصة التي وُلد منها مشروع هي سجلّ ما بِيع (قيمتها ما عُرِض)، أما مرآةُ
@@ -81,8 +104,12 @@ export async function ensureProjectForWonOpportunity(ctx, opp) {
     source_opp_id: opp.id,
     created_at: now, created_by: ctx.user?.id || null,
   });
+  // الفرصة المشتركة تربح مشروعاً مشتركاً: إداراتها المشاركة تُنسخ على مشروعها ساعة ولادته —
+  // «لازم في المشاريع تطلع» لمن كان يعمل عليها فرصةً.
+  const partners = await copyPartners(ctx, 'opportunity', opp.id, 'project', pid, opp.department_id || null);
   await audit(ctx, { action: 'create', resource: 'project', resourceId: pid, sectorId: opp.sector_id || null,
-    detail: { mirror: 'opportunity', source_opp_id: opp.id, value_halalas: Number(opp.value_halalas) || 0 } });
+    detail: { mirror: 'opportunity', source_opp_id: opp.id, value_halalas: Number(opp.value_halalas) || 0,
+      ...(partners.length ? { partner_department_ids: partners } : {}) } });
   return { project_id: pid, created: true };
 }
 
@@ -122,8 +149,11 @@ export async function ensureOpportunityForProject(ctx, project, opts = {}) {
     note: 'سُجِّل الفوز مع إنشاء المشروع',
   });
   await update('project', project.id, { source_opp_id: oid });
+  // مشروعٌ مشترك تُولَد مرآتُه مشتركة — الاتجاه المقابل لنسخ الفوز، بنفس الاستبعاد.
+  const partners = await copyPartners(ctx, 'project', project.id, 'opportunity', oid, project.department_id || null);
   await audit(ctx, { action: 'create', resource: 'opportunity', resourceId: oid, sectorId: project.sector_id || null,
-    detail: { mirror: 'project', project_id: project.id, value_halalas: value } });
+    detail: { mirror: 'project', project_id: project.id, value_halalas: value,
+      ...(partners.length ? { partner_department_ids: partners } : {}) } });
   return { opportunity_id: oid, created: true };
 }
 
@@ -144,12 +174,29 @@ export async function syncMirrorFromProject(ctx, project) {
   }
   const value = projectHeadlineValue(project);
   if (value !== (Number(opp.value_halalas) || 0)) patch.value_halalas = value;
-  if (!Object.keys(patch).length) return { updated: false };
-  patch.updated_at = nowIso();
-  patch.updated_by = ctx.user?.id || null;
-  await update('opportunity', opp.id, patch);
+  // الإدارات المشاركة تتبع المشروع كما تتبعه إدارتُه المسؤولة (ADR-0008): تُقارن مجموعتان
+  // وتُكتب مجموعة المشروع كاملةً عند الاختلاف — مسحٌ فكتابة، كما يكتبها بابا التعديل نفساهما.
+  const pPartners = (await partnerIdsOf('project', project.id))
+    .filter((d) => d !== (project.department_id || null)).sort();
+  const oPartners = (await partnerIdsOf('opportunity', opp.id)).sort();
+  const partnersDiffer = pPartners.length !== oPartners.length || pPartners.some((d, i) => d !== oPartners[i]);
+  if (!Object.keys(patch).length && !partnersDiffer) return { updated: false };
+  if (partnersDiffer) {
+    const now = nowIso();
+    await run('DELETE FROM opportunity_department WHERE opportunity_id = ?', [opp.id]);
+    for (const d of pPartners) {
+      await insert('opportunity_department',
+        { opportunity_id: opp.id, department_id: d, created_at: now, created_by: ctx.user?.id || null });
+    }
+  }
+  if (Object.keys(patch).length) {
+    patch.updated_at = nowIso();
+    patch.updated_by = ctx.user?.id || null;
+    await update('opportunity', opp.id, patch);
+  }
   await audit(ctx, { action: 'update', resource: 'opportunity', resourceId: opp.id, sectorId: project.sector_id || null,
-    detail: { mirror: 'project', project_id: project.id, fields: Object.keys(patch) } });
+    detail: { mirror: 'project', project_id: project.id,
+      fields: [...Object.keys(patch), ...(partnersDiffer ? ['partner_department_ids'] : [])] } });
   return { updated: true, opportunity_id: opp.id };
 }
 

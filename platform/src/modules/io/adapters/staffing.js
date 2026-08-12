@@ -99,7 +99,7 @@ export default {
     const pids = [...new Set(rows.map((a) => a.project_id).filter(Boolean))];
     if (pids.length) {
       const pf = scopeFilter(user, 'project', 'read',
-        { deptCol: 'department_id', sectorCol: 'sector_id', ownerCol: 'owner_user_id' });
+        { deptCol: 'department_id', sectorCol: 'sector_id', ownerCol: 'owner_user_id', memberCol: 'id' });
       if (pf.clause !== '1=1') {
         visibleProjects = new Set((await all(
           `SELECT id FROM project WHERE deleted_at IS NULL AND id IN (${pids.map(() => '?').join(',')}) AND (${pf.clause})`,

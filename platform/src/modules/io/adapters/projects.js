@@ -58,7 +58,7 @@ export default {
     // شرطُ نطاق «الإدارة» صار مركّباً (إدارةٌ في المجموعة **أو** يتيمُ القطاع)، ولصقُ الكنية
     // على أوّله وحده يكسر بقيّته. و`deptCol` يُقصّ التصدير على إدارة القارئ + أيتام قطاعه (v5.9).
     const f = scopeFilter(user, 'project', 'read',
-      { deptCol: 'p.department_id', sectorCol: 'p.sector_id', ownerCol: 'p.owner_user_id', projectCol: 'p.id' });
+      { deptCol: 'p.department_id', sectorCol: 'p.sector_id', ownerCol: 'p.owner_user_id', projectCol: 'p.id', memberCol: 'p.id' });
     const where = [f.clause, 'p.deleted_at IS NULL'];
     const params = [...f.params];
     if (filters.sector) { where.push('p.sector_id = ?'); params.push(filters.sector); }

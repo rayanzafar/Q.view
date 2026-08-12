@@ -93,25 +93,44 @@ export function departmentReachClause(user, resource, action, opts = {}) {
   return { clause: `(${parts.join(' OR ')})`, params };
 }
 
-// ── الأيتام للمشروع: القائمة تُحاذي الصفَّ، بلا جدول مشاركة ───────────────────
-// نظيرُ فرع الأيتام في `departmentReachClause` أعلاه، لكن للمشروع وحده. والفرقُ عن الفرصة
-// مقصود: المشروع لا يملك جدول مشاركةٍ (لا نظير لـ`opportunity_department`)، فلا تُضاف له
-// «الإدارة المشاركة» — الأيتام وحدها. صفُّ المشروع بلا إدارةٍ داخل قطاع القارئ **يُفتح** صفّياً
-// (scopeReaches، فرع «الإدارة» بلا إدارةٍ على الهدف → قطاعٌ مشترك للمشروع)، وكانت القائمة تُغلقه
-// حين ضاقت إلى الإدارة (deptCol) — فيُفتح بالعنوان ولا يظهر: عين تناقض «يُعرَض ولا يُفتح» معكوساً.
-// والأيتام هنا محفظةُ الفوز التاريخي المستورد بلا إدارة — لا مشاريعُ إدارةٍ أخرى تُسرَّب، بل
-// صفوفٌ لم تُنسَب بعد. فتُحاذى القائمةُ الصفَّ: تظهر لمن دورُه «إدارة» في قطاعه هو، لا أوسع.
+// ── مدى الإدارة على المشاريع: المشاركة + الأيتام ─────────────────────────────
+// فرعان يوسّعان قائمة مدير الإدارة (نطاقاً فعلياً «إدارة» — قارئ القطاع/الشركة/المشروع لا
+// يُمَسّ)، وكلاهما يُحاذي ما يفتحه الصفُّ فعلاً:
 //
-// وثلاثة شروط تلزم معاً كما في نظيرها: المشروع قراءةً، وتصريح المستدعي بعمود الإدارة
-// (`opts.deptCol` — فمن لم يصرّح لا يُوسَّع له، فشلٌ مغلق)، وأن يكون **نطاقُه الفعليّ إدارة**
-// (roleIsDept — فقارئ القطاع/الشركة/المشروع لا يُمَسّ)، وله قطاعٌ مسجَّل. وعمود القطاع يُشتقّ
-// من `deptCol` ليطابق جدولَه/كنيتَه تماماً — كما في `departmentReachClause` (سطر ~:88).
+//  · **المشاركة (v5.27)**: «هذان المشروعان مشتركان بين إدارتين — لازم في المشاريع تطلع
+//    والتسكين يطلع فيها بشكل صحيح». جدول `project_department` نظيرُ جدول الفرص (ترحيلة 034
+//    تنظر 026)، وصفُّ المشروع المشترك **يُفتح** لمدير الإدارة الشريكة منذ اليوم عبر فرع
+//    الشراكة العام في scopeReaches (يقرأ `partner_department_ids` المحمَّلة على الهدف —
+//    pmo/project-access.js). فلو بقيت القائمة على عمود المسؤولة وحده لعُرض التناقض معكوساً:
+//    يُفتح بالعنوان ولا يظهر. وتلزم `opts.memberCol` (معرّف المشروع في الاستعلام) — من لم
+//    يصرّح لا يُوسَّع له، فشلٌ مغلق.
+//    وعمداً **لا** تدخل `managedDepartmentIds` هنا (بخلاف نظير الفرص): قيادةُ إدارةٍ لا
+//    تفتح صفَّ مشروعٍ في المحرّك (قرارٌ محروس باختبار list-and-row-agree «حدّ المشاريع
+//    بالإدارة محروس بقرار سابق») — وقائمةٌ تعرض ما لا يُفتح هي عين التناقض المحروس.
+//  · **الأيتام**: صفُّ المشروع بلا إدارةٍ داخل قطاع القارئ يُفتح صفّياً (فرع «الإدارة» بلا
+//    إدارةٍ على الهدف → قطاعٌ مشترك)، وكانت القائمة تُغلقه حين ضاقت إلى الإدارة (deptCol).
+//    والأيتام محفظةُ الفوز التاريخي المستورد بلا إدارة — صفوفٌ لم تُنسَب بعد، لا تسريب.
 export function projectReachClause(user, resource, action, opts = {}) {
   if (resource !== 'project' || action !== 'read' || !opts.deptCol) return null;
   if (effectiveScope(user, action, resource) !== 'department') return null;
-  if (!user.sector_id) return null;
-  const sectorCol = opts.sectorCol || opts.deptCol.replace(/department_id$/, 'sector_id');
-  return { clause: `(${opts.deptCol} IS NULL AND ${sectorCol} = ?)`, params: [user.sector_id] };
+  const parts = [];
+  const params = [];
+  if (opts.memberCol) {
+    const ids = departmentScope(user).filter(Boolean);
+    if (ids.length) {
+      const marks = ids.map(() => '?').join(',');
+      parts.push(`EXISTS (SELECT 1 FROM project_department prjd
+       WHERE prjd.project_id = ${opts.memberCol} AND prjd.department_id IN (${marks}))`);
+      params.push(...ids);
+    }
+  }
+  if (user.sector_id) {
+    const sectorCol = opts.sectorCol || opts.deptCol.replace(/department_id$/, 'sector_id');
+    parts.push(`(${opts.deptCol} IS NULL AND ${sectorCol} = ?)`);
+    params.push(user.sector_id);
+  }
+  if (!parts.length) return null;
+  return { clause: parts.length === 1 ? parts[0] : `(${parts.join(' OR ')})`, params };
 }
 
 export function scopeFilter(user, resource, action = 'read', opts = {}) {

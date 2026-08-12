@@ -110,6 +110,7 @@ export const REMOVABLE = {
     // التابع يُحذف معه في نفس المعاملة — فلا صفَّ يشير إلى مشروعٍ لا وجود له
     cascade: [
       { table: 'allocation', col: 'project_id', ar: 'تسكين' },
+      { table: 'project_department', col: 'project_id', ar: 'إسناد إدارة مشاركة', hard: true },
       { table: 'task', col: 'project_id', ar: 'مهمة' },
       { table: 'deliverable', col: 'project_id', ar: 'مخرج' },
       { table: 'milestone', col: 'project_id', ar: 'معلم' },

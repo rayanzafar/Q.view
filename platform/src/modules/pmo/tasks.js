@@ -713,7 +713,7 @@ export async function teamWorkload(user, filters = {}) {
   // ونطاقُ القارئ يقصّ الصفوف كما يقصّ الفرص أعلاه (v5.9): مدير الإدارة يرى أسماء مشاريع إدارته
   // + أيتام قطاعه لا القطاع كله — فمشروعُ إدارةٍ أخرى يعمل عليه أحد رجاله لا يُطبع اسمُه.
   const readerProjectScope = scopeFilter(user, 'project', 'read', {
-    deptCol: 'p.department_id', sectorCol: 'p.sector_id', ownerCol: 'p.owner_user_id', projectCol: 'p.id',
+    deptCol: 'p.department_id', sectorCol: 'p.sector_id', ownerCol: 'p.owner_user_id', projectCol: 'p.id', memberCol: 'p.id',
   });
   const projRows = empIds.length ? await all(`SELECT a.employee_id eid, p.id project_id, p.name_ar project_name
      FROM allocation a

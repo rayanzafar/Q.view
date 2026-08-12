@@ -63,7 +63,7 @@ export async function staffingPage(user, opts = {}) {
 
   // منتقي المشاريع للعميل (درج الخلية/الموظف و«تسكين جديد») — نطاق قراءة القارئ نفسه، كما كان.
   const pf = scopeFilter(user, 'project', 'read',
-    { deptCol: 'department_id', sectorCol: 'sector_id', ownerCol: 'owner_user_id' });
+    { deptCol: 'department_id', sectorCol: 'sector_id', ownerCol: 'owner_user_id', memberCol: 'id' });
   const projWhere = ["deleted_at IS NULL", "status IN ('IN_PROGRESS','PLANNED')"];
   const projParams = [];
   if (pf.clause !== '1=1') { projWhere.push(pf.clause); projParams.push(...pf.params); }

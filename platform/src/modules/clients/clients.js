@@ -350,7 +350,7 @@ export async function clientOverview(user, clientId) {
   // يتيم القطاع): مشروعُ إدارةٍ أخرى لا يُعرَض اسمُه لمدير إدارةٍ لا يقودها، كما لا يظهر في
   // قائمته ولا يُفتح صفّياً. `visibleProject` = null ⟵ نطاقٌ شركيّ (الكلّ ظاهر بلا استعلام).
   const pf = scopeFilter(user, 'project', 'read',
-    { deptCol: 'department_id', sectorCol: 'sector_id', ownerCol: 'owner_user_id' });
+    { deptCol: 'department_id', sectorCol: 'sector_id', ownerCol: 'owner_user_id', memberCol: 'id' });
   let visibleProjectIds = null;
   if (pf.clause !== '1=1') {
     visibleProjectIds = new Set((await all(

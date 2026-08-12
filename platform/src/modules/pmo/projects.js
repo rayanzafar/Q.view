@@ -1,5 +1,5 @@
 // PMO — Projects service. Scope-filtered, redacts sensitive financials (cost/margin).
-import { all, get, insert, update, tx } from '../../core/db/index.js';
+import { all, get, insert, update, run, tx } from '../../core/db/index.js';
 import { can, redact, redactList } from '../../core/rbac/index.js';
 import { scopeFilter } from '../../core/rbac/scope.js';
 import { audit } from '../../core/audit/index.js';
@@ -11,13 +11,16 @@ import { effectiveProgress } from './progress.js';
 import { ensureOpportunityForProject, syncMirrorFromProject } from '../crm/opp-project-sync.js';
 import { ownsEmployee } from '../org/confirm.js';
 import { workBucketLabel } from '../../web/i18n/glossary.js';
+import { loadReadableProject } from './project-access.js';
+
+export { loadReadableProject, projectDepartments } from './project-access.js';
 
 export async function listProjects(user, filters = {}) {
-  // مدير الإدارة يرى مشاريع إدارته (انتماءً وقيادةً) + أيتام قطاعه، لا القطاع كله (D15، v5.9):
-  // `deptCol` يُفعِّل قصَّ حالة «الإدارة» في محرّك النطاق، و`projectReachClause` يُلحق الأيتام
-  // فتُحاذي القائمةُ الصفَّ. سكتور/شركة/مشروع (نطاقاً) لا يُمَسّون.
+  // مدير الإدارة يرى مشاريع إدارته (انتماءً وقيادةً) + ما **تشارك** فيه إدارتُه (v5.27،
+  // `memberCol` يُفعِّل فرع المشاركة في projectReachClause) + أيتام قطاعه — لا القطاع كله
+  // (D15، v5.9). سكتور/شركة/مشروع (نطاقاً) لا يُمَسّون.
   const f = scopeFilter(user, 'project', 'read',
-    { deptCol: 'department_id', sectorCol: 'sector_id', ownerCol: 'owner_user_id' });
+    { deptCol: 'department_id', sectorCol: 'sector_id', ownerCol: 'owner_user_id', memberCol: 'id' });
   const where = [f.clause, 'deleted_at IS NULL'];
   const params = [...f.params];
   if (filters.sector) { where.push('sector_id = ?'); params.push(filters.sector); }
@@ -160,9 +163,9 @@ export async function projectRevenue(projectIds = [], year = null) {
 }
 
 export async function getProject(user, pid) {
-  const row = await get('SELECT * FROM project WHERE id = ? AND deleted_at IS NULL', [pid]);
-  if (!row) throw notFound('المشروع غير موجود');
-  if (!can(user, 'read', 'project', row)) throw forbidden();
+  // الباب الواحد الذي يعرف الإدارات المشاركة (project-access.js): صفٌّ تعرضه قائمة مديرةِ
+  // إدارةٍ مشارِكة يجب أن يُفتح لها — والحكم بعمود المسؤولة وحده كان يردّها عنه.
+  const row = await loadReadableProject(user, pid, 'read');
   // ── نسبة الإنجاز: تُحسب هنا كي لا يقرأ أحدٌ العمود المخزَّن ─────────────────
   // «لما أدخل تفاصيل الفرصة يجيني الإنجاز ١٠٠، لما أضغط التفاصيل يجيني ٥٨ — هذا غير مقبول».
   // وهو نفس العطل الذي أُصلح في ست شاشات: العمود `progress_pct` رقمٌ مستورد من المنصة القديمة
@@ -200,11 +203,57 @@ export async function createProject(ctx, data) {
   return await getProject(user, pid);
 }
 
+// تُكتب كمجموعة: ما وصل هو الحقيقة الجديدة كاملةً — فحذفُ إدارةٍ من الشاشة يحذفها هنا.
+// والمسؤولة تُستبعَد من المشاركين: صفٌّ يقول «هذه الإدارة مشاركة» وهي المسؤولة يجعلها
+// تُعدّ مرتين في كل قائمة. (النظير الحرفي لـsetOpportunityDepartments — ADR-0008.)
+async function setProjectDepartments(ctx, pid, ids, primaryId) {
+  const wanted = [...new Set((Array.isArray(ids) ? ids : [])
+    .map((x) => String(x || '').trim()).filter(Boolean))]
+    .filter((x) => x !== primaryId);
+  const valid = wanted.length
+    ? (await all(`SELECT id FROM department WHERE deleted_at IS NULL AND id IN (${wanted.map(() => '?').join(',')})`, wanted))
+      .map((r) => r.id)
+    : [];
+  const now = nowIso();
+  // مسحٌ ثم إعادةُ كتابة داخل معاملة: عطبٌ بعد المسح يترك المشروع بلا إداراته الشريكة —
+  // محوٌ صامت لا تعديل. (المعاملة المتشعّبة تنضمّ لو غُلِّف المُنادِي.)
+  await tx(async () => {
+    await run('DELETE FROM project_department WHERE project_id = ?', [pid]);
+    for (const d of valid) {
+      await insert('project_department',
+        { project_id: pid, department_id: d, created_at: now, created_by: ctx.user.id });
+    }
+  });
+  return valid;
+}
+
+// حقول النسبة محجوزةٌ للإدارة المسؤولة: من وصل بالشراكة (ADR-0008 على خطى ADR-0006) يعدّل
+// كل شيء إلا **من يُحسب عليه المشروع** — الإدارة المسؤولة والمشارِكة. والمقارنة بالقيمة لا
+// بوجود المفتاح: الشاشة ترسل هذه الحقول في كل حفظ، فلا يُمنع حفظُ اسمٍ لأن قيمةً لم
+// تتغيّر رافقته.
+function assertNoProjectAttributionChange(row, data) {
+  const wantsDept = 'department_id' in data
+    && String(data.department_id || '') !== String(row.department_id || '');
+  let wantsPartners = false;
+  if ('partner_department_ids' in data) {
+    const req = [...new Set((Array.isArray(data.partner_department_ids) ? data.partner_department_ids : [])
+      .map((x) => String(x || '').trim()).filter(Boolean)
+      .filter((x) => x !== String(row.department_id || '')))].sort();
+    const cur = [...new Set(row.partner_department_ids)].sort();
+    wantsPartners = req.length !== cur.length || req.some((x, i) => x !== cur[i]);
+  }
+  if (wantsDept || wantsPartners) {
+    throw badRequest('تغيير الإدارة المسؤولة أو المشارِكة قرارُ الإدارة المسؤولة — بقية الحقول مفتوحة لك');
+  }
+}
+
 export async function updateProject(ctx, pid, data) {
   const user = ctx.user;
-  const row = await get('SELECT * FROM project WHERE id = ? AND deleted_at IS NULL', [pid]);
-  if (!row) throw notFound('المشروع غير موجود');
-  if (!can(user, 'update', 'project', row)) throw forbidden();
+  // الباب الواحد: يقرأ الصفّ، وإن كان الوصولُ بالشراكة أعاده محمَّلاً بمصفوفة المشاركات
+  // (عقد project-access.js). وجودُها ⇔ محرِّرٌ غير مسؤول ⇒ حقول النسبة محجوزة عنه.
+  const row = await loadReadableProject(user, pid, 'update');
+  const partnerOnly = Array.isArray(row.partner_department_ids);
+  if (partnerOnly) assertNoProjectAttributionChange(row, data);
   // Validate controlled enums so the Kanban PATCH (or any client) can't store arbitrary values.
   const STATUSES = ['NOT_STARTED', 'PLANNED', 'IN_PROGRESS', 'ON_HOLD', 'COMPLETED', 'CANCELLED'];
   const RAGS = ['GREEN', 'AMBER', 'RED'];
@@ -277,11 +326,26 @@ export async function updateProject(ctx, pid, data) {
   patch.updated_at = nowIso(); patch.updated_by = user.id;
   await tx(async () => {
     await update('project', pid, patch);
-    await audit(ctx, { action: 'update', resource: 'project', resourceId: pid, sectorId: row.sector_id, detail: patch });
+    // الإدارات المشاركة بعد الكتابة: المسؤولة قد تكون تغيّرت في نفس الطلب، والمشاركون
+    // يُقاسون عليها (فلا تُسجَّل المسؤولة مشاركةً). ولا تُمَسّ إن لم تُرسَل — كبقية الحقول.
+    // وتدخل الأثر مع بقية الحقول: كل كتابةٍ تُدقَّق.
+    const auditDetail = { ...patch };
+    if ('partner_department_ids' in data) {
+      auditDetail.partner_department_ids = await setProjectDepartments(ctx, pid, data.partner_department_ids,
+        'department_id' in patch ? patch.department_id : row.department_id);
+    }
+    await audit(ctx, { action: 'update', resource: 'project', resourceId: pid, sectorId: row.sector_id, detail: auditDetail });
     // مرآةُ المشروع في الفرص تتبعه: تصحيحُ قيمةٍ هنا يبقى نصفَ تصحيح إن قرأ المالك الرقم القديم
     // في «الفرص» غداً. ولا تُمَسّ الفرصة التي وُلد منها المشروع — تلك سجلّ ما عُرِض على الجهة.
     await syncMirrorFromProject(ctx, await get('SELECT * FROM project WHERE id = ?', [pid]));
   });
+  // المشروع قد يخرج من نطاق محرِّره بإعادة إسنادٍ نجحت (نقل الإدارة المسؤولة): يُفحص الصفّ
+  // كما صار، فإن خرج أُعيد تأكيدٌ مختصر بدل قراءةٍ محظورة على عملٍ تمّ فعلاً — كما في الفرص.
+  const after = { ...row, ...patch };
+  if (!can(user, 'read', 'project', after)) {
+    return { ok: true, id: pid, movedOutOfReach: true,
+      sector_id: after.sector_id || null, department_id: after.department_id || null };
+  }
   return await getProject(user, pid);
 }
 
