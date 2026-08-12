@@ -89,6 +89,13 @@
       if (!isFinite(n) || n < 0) return toast('قيمة العقد تُكتب رقماً بالريال', true);
       body.contract_value_sar = n;
     }
+    // الإدارات المشاركة تُرسَل **كمجموعة كاملة** لا كإضافةٍ واحدة (عقد الفرص نفسه): ما في
+    // الشاشة هو الحقيقة الجديدة، ومصفوفةٌ فارغة تعني «لا مشارك». ولا تُقرأ من حقلٍ معطَّل:
+    // المعطَّل عرضٌ لا قرار — والخادم يحرسه أصلاً، لكن لا نرسل ما لا يُقصد.
+    const partners = document.getElementById('prj-partners');
+    if (partners && !partners.disabled) {
+      body.partner_department_ids = [...partners.querySelectorAll('option:checked')].map((o) => o.value);
+    }
     Object.keys(body).forEach((k) => { if (body[k] === undefined) delete body[k]; });
     try {
       await api('/projects/' + encodeURIComponent(id), 'PATCH', body);
@@ -96,6 +103,25 @@
       setTimeout(() => location.reload(), 500);
     } catch (e) { toast(e.message, true); }
   }
+
+  // ── الإدارات المشاركة: منسدلة بصناديق اختيار تُزامن select الخفي (prj-partners) ──
+  // نظير partnersSync في pages/opps.js حرفاً — بمعرّفات المشروع بدل الفرصة: الحقيقة في
+  // select الخفي (الحفظ أعلاه يقرؤه)، والصناديق تُزامنه وتُحدّث الملصق مع كل نقرة.
+  function partnersSync() {
+    const sel = document.getElementById('prj-partners');
+    const label = document.getElementById('prj-partners-label');
+    if (!sel) return;
+    const names = [];
+    document.querySelectorAll('[data-partner-opt]').forEach((cb) => {
+      const o = sel.querySelector('option[value="' + cb.value.replace(/"/g, '\\"') + '"]');
+      if (o) o.selected = cb.checked;
+      if (cb.checked) names.push((cb.parentElement.textContent || '').trim());
+    });
+    if (label) label.textContent = names.length ? names.join('، ') : 'بلا إدارات مشاركة';
+  }
+  document.addEventListener('change', (ev) => {
+    if (ev.target && ev.target.matches && ev.target.matches('[data-partner-opt]')) partnersSync();
+  });
 
   // ── المخرجات دفعةً واحدة: اقرأ ← راجِع ← احفظ ─────────────────────────────
   // الحالة تُحفظ في متغيّر واحد (`dlvxItems`) لا في وسوم الصفحة: الحذف من المراجعة يجب أن
@@ -215,9 +241,21 @@
   document.addEventListener('click', (ev) => {
     const link = ev.target.closest('a[href^="#sec-"]');
     if (link) { if (openSection(link.getAttribute('href'))) ev.preventDefault(); return; }
+    // إغلاق منسدلة المشارِكات بالنقر خارجها — قبل حسم [data-action]: النقرة الخارجية لا تحمله.
+    const pmenu = document.getElementById('prj-partners-menu');
+    if (pmenu && !pmenu.hidden && !ev.target.closest('#prj-partners-pick')) {
+      pmenu.hidden = true;
+      const pbtn = document.querySelector('[data-action="partners-toggle"]');
+      if (pbtn) pbtn.setAttribute('aria-expanded', 'false');
+    }
     const el = ev.target.closest('[data-action]');
     if (!el) return;
     const a = el.dataset.action;
+    if (a === 'partners-toggle') {
+      const menu = document.getElementById('prj-partners-menu');
+      if (menu) { menu.hidden = !menu.hidden; el.setAttribute('aria-expanded', menu.hidden ? 'false' : 'true'); }
+      return;
+    }
     if (a === 'gov-tab') return showTab(el.dataset.tab);
     if (a === 'gov-add') return void govAdd(el.dataset.kind);
     if (a === 'gov-status') return void govStatus(el.dataset.kind, el.dataset.id, el.dataset.status);
@@ -244,6 +282,16 @@
   });
   // Enter inside an add-bar field submits that bar
   document.addEventListener('keydown', (ev) => {
+    // Esc يغلق منسدلة المشارِكات ويعيد التركيز إلى زرّها — فلوحة المفاتيح تخرج كما دخلت.
+    if (ev.key === 'Escape') {
+      const pm = document.getElementById('prj-partners-menu');
+      if (pm && !pm.hidden) {
+        pm.hidden = true;
+        const pb = document.querySelector('[data-action="partners-toggle"]');
+        if (pb) { pb.setAttribute('aria-expanded', 'false'); pb.focus(); }
+      }
+      return;
+    }
     if (ev.key === 'Enter' && ev.target.id === 'prj-task-title') {
       ev.preventDefault();
       const btn = document.querySelector('[data-action="prj-task-add"]');

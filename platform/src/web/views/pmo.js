@@ -5,7 +5,7 @@ import { fmtSar } from '../../core/util/ids.js';
 import { all, get } from '../../core/db/index.js';
 import { projectKpis } from '../../core/reports/metrics.js';
 import { listProjects, nextMilestones, projectKind, projectRevenue,
-  projectDocuments, projectUpdates } from '../../modules/pmo/projects.js';
+  projectDocuments, projectUpdates, projectDepartments, loadReadableProject } from '../../modules/pmo/projects.js';
 import { projectProgress, portfolioProgress, effectiveProgress } from '../../modules/pmo/progress.js';
 import { projectTeamLoad, staffingCandidates } from '../../modules/pmo/capacity.js';
 import { projectGovernance, DELIVERABLE_MANUAL_STATUSES } from '../../modules/pmo/governance.js';
@@ -1905,13 +1905,28 @@ export async function projectMoneySection(user, project, opts = {}) {
 // المنتج من بياناته (معلم فات · مخرَج سُلِّم ولم يُعتمد · مخرَج معتمد بلا مستخلص · شخص فوق
 // طاقته · مهام متأخرة)، ومعها الرابط الذي يعالجها.
 export async function projectDetailPage(user, projectId, opts = {}) {
-  const p = await get('SELECT * FROM project WHERE id = ? AND deleted_at IS NULL', [projectId]);
-  if (!p) return layout({ user, active: 'projects', title: 'المشروع', body: noticeCard('المشروع غير موجود', 'ربما حُذف المشروع أو أن الرابط غير صحيح.', '/app/projects', 'العودة للمشاريع') });
-  if (!can(user, 'read', 'project', p)) return layout({ user, active: 'projects', title: 'المشروع', body: noticeCard('لا تملك صلاحية الوصول', 'هذا المشروع خارج نطاق صلاحياتك الحالية — تواصل مع مدير النظام إن كنت تحتاج الوصول.', '/app/projects', 'العودة للمشاريع') });
+  // الباب الواحد الذي يعرف الإدارات المشاركة (v5.27 — ADR-0008، نظير صفحة الفرصة حرفياً):
+  // درجتان — الصفّ كما هو (يمرّ لأغلب القرّاء)، فإن رُدَّ حُمِّلت المشاركات وأُعيد الفحص.
+  // فمديرةُ إدارةٍ **تشارك** في المشروع تفتح صفحته كما تعرضه قائمتُها (scope.js v5.27)، ويصلها
+  // الصفُّ محمَّلاً بمصفوفة `partner_department_ids` — وجودُها ⇔ الوصولُ بالشراكة، وعليها
+  // يُبنى قفل حقول النسبة أدناه. لو بقيت الصفحة على قراءة الصفّ الخام لعُرض المشروع المشترك
+  // في قائمتها ثم رُدَّت عنه حين تضغطه — عين التناقض الذي أُغلق في الفرص (ADR-0006).
+  let p;
+  try {
+    p = await loadReadableProject(user, projectId, 'read');
+  } catch (e) {
+    if (e && e.status === 404) return layout({ user, active: 'projects', title: 'المشروع', body: noticeCard('المشروع غير موجود', 'ربما حُذف المشروع أو أن الرابط غير صحيح.', '/app/projects', 'العودة للمشاريع') });
+    if (e && e.status === 403) return layout({ user, active: 'projects', title: 'المشروع', body: noticeCard('لا تملك صلاحية الوصول', 'هذا المشروع خارج نطاق صلاحياتك الحالية — تواصل مع مدير النظام إن كنت تحتاج الوصول.', '/app/projects', 'العودة للمشاريع') });
+    throw e;
+  }
   const row = redact(user, 'project', p);
   const k = await projectKpis(p.id);
   const canCost = canSeeSensitive(user, 'cost');
   const canEdit = can(user, 'update', 'project', p);
+  // حقول النسبة (الإدارة المسؤولة والمشارِكة) للمسؤولة وحدها — نفس عقد الفرص حرفياً: الصفُّ
+  // مُثرى بالمشاركات من الباب أعلاه، فوجودُها ⇔ محرِّرٌ غير مسؤول ⇒ تُقفَل تلك الحقول في
+  // الشاشة (والخادم يحجزها أيضاً في assertNoProjectAttributionChange — لا شاشةٌ وحدها).
+  const canEditAttribution = canEdit && !Array.isArray(p.partner_department_ids);
   // ── من يرى مالَ المشروع ──────────────────────────────────────────────────────
   // قرار مالك صريح: «مو أي موظف مسكَّن على المشروع يمديه يشوف هذي الأشياء أصلاً». وكان القسم
   // يُعرض لكل من يقرأ المشروع — والاستشاري والموظف يقرآن مشاريعهم بحكم تسكينهم، فيرى كلٌّ منهما
@@ -1935,7 +1950,24 @@ export async function projectDetailPage(user, projectId, opts = {}) {
   const owner = p.owner_user_id ? await get('SELECT name_ar, username FROM app_user WHERE id=?', [p.owner_user_id]) : null;
   const srcOpp = p.source_opp_id ? await get('SELECT id, title_ar FROM opportunity WHERE id=? AND deleted_at IS NULL', [p.source_opp_id]) : null;
   const contract = await get("SELECT id, code, value_halalas, status, start_date, end_date FROM contract WHERE project_id=? AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1", [p.id]);
-  const gov = await projectGovernance(user, p.id);
+  // بابُ خدمة الحوكمة يحكم بعمود الصفّ وحده فيَرُدّ محرِّرَ الشراكة عن مشروعٍ فُتح له من
+  // الباب أعلاه. ومن قرأ المشروعَ قرأ توابعَه — كما تقرأ الصفحةُ مهامَه وعقدَه وفواتيرَه
+  // قراءةً مباشرة أعلاه وأدناه، وبنفس ترتيب الخدمة حرفاً. والتحرير يبقى مقفلاً
+  // (canEdit=false): أزرارُ كتابةٍ يردّها بابُ الخدمة لا تُرسَم أصلاً.
+  const gov = await projectGovernance(user, p.id).catch(async (e) => {
+    if (!(Array.isArray(p.partner_department_ids) && e && e.status === 403)) throw e;
+    const govRows = (t, order) => all(`SELECT * FROM ${t} WHERE project_id = ? AND deleted_at IS NULL ${order}`, [p.id]);
+    const [risks, issues, decisions, changes, milestones, deliverables, phaseRows2] = await Promise.all([
+      govRows('risk', "ORDER BY (status = 'CLOSED'), created_at DESC"),
+      govRows('issue', "ORDER BY (status = 'CLOSED'), opened_at DESC"),
+      govRows('decision', 'ORDER BY decided_at DESC, created_at DESC'),
+      govRows('change_request', 'ORDER BY created_at DESC'),
+      govRows('milestone', 'ORDER BY (due_date IS NULL), due_date, created_at'),
+      govRows('deliverable', 'ORDER BY (year IS NULL), year, (month IS NULL), month, created_at'),
+      govRows('project_phase', 'ORDER BY order_no, (start_date IS NULL), start_date, created_at'),
+    ]);
+    return { projectId: p.id, canEdit: false, risks, issues, decisions, changes, milestones, deliverables, phases: phaseRows2 };
+  });
   const canGov = gov.canEdit;
   const dlv = gov.deliverables || [];
   const phases = gov.phases || [];
@@ -2109,6 +2141,20 @@ export async function projectDetailPage(user, projectId, opts = {}) {
   const deptOptions = p.sector_id
     ? await all('SELECT id, name_ar FROM department WHERE sector_id = ? AND active = 1 AND deleted_at IS NULL ORDER BY name_ar', [p.sector_id])
     : [];
+  // الإدارات المشاركة (v5.27) — تُقرأ دائماً لا للتحرير وحده: من يقرأ المشروع يحتاج أن يعرف
+  // من يعمل عليه معه. العرض قراءةً في بطاقة التعريف، والتحرير في شريط التعديل أدناه.
+  const projPartners = await projectDepartments(p.id);
+  const partnerIdSet = new Set(projPartners.map((x) => x.department_id));
+  // خيارات المشارِكات = إدارات قطاع المشروع عدا المسؤولة الحالية (القيد المعلن: المشاركة داخل
+  // قطاع المشروع — لا تُضاف عابرةٌ للقطاعات من هنا). ومشارِكةٌ قائمةٌ من خارج هذه القائمة
+  // (نُسخت من فرصةٍ عابرة للقطاعات أو إدارةٍ أُوقفت) تُعرض كما هي كي لا يمسحها حفظٌ بريء
+  // بصمت — فالحمولة تُرسَل مجموعةً كاملة، وما غاب عن الشاشة غاب عن المحفوظ.
+  const partnerChoices = [
+    ...deptOptions.filter((d) => d.id !== p.department_id),
+    ...projPartners.filter((x) => x.department_id !== p.department_id
+      && !deptOptions.some((d) => d.id === x.department_id))
+      .map((x) => ({ id: x.department_id, name_ar: x.name_ar })),
+  ];
   const clientOptions = canEdit
     ? await all('SELECT id, name_ar FROM client WHERE deleted_at IS NULL ORDER BY name_ar LIMIT 300') : [];
   // ── شريط التعديل: كل ما يُغيَّر في المشروع من مكانٍ واحد ──────────────────────
@@ -2121,8 +2167,18 @@ export async function projectDetailPage(user, projectId, opts = {}) {
   const idField = (label, inner, hint = '') => `<div style="display:flex;flex-direction:column;gap:.2rem;min-width:0">
     <label style="font-size:10px;font-weight:800;color:var(--muted)">${label}</label>${inner}
     ${hint ? `<span style="font-size:9.5px;color:var(--faint)">${hint}</span>` : ''}</div>`;
-  const identityBar = canEdit ? `<div style="padding:.7rem 0 .2rem;margin-bottom:.6rem;border-top:1px dashed var(--line)">
-    <div style="font-size:10.5px;font-weight:800;color:var(--muted);margin-bottom:.5rem">تعديل بيانات المشروع</div>
+  // حقول النسبة تُقفَل لمحرِّر الشراكة (لا تُخفى) — نفس قرار صفحة الفرصة حرفاً: إخفاؤها يجعل
+  // الشاشة ترسل قيمةً فارغة فتمسح الإدارةَ عند الحفظ، وتحرمه رؤيةَ من يُحسب عليه المشروع.
+  // القفلُ مرئيٌّ بتلميحٍ يقول لماذا، والخادم يحجزها أيضاً (ADR-0008) — لا شاشةٌ وحدها.
+  const lockAttribution = canEdit && !canEditAttribution;
+  const lockAttrs = lockAttribution
+    ? ' disabled title="قرارُ الإدارة المسؤولة — اطلب منها تغيير الإدارة أو المشارِكات"' : '';
+  const identityBar = canEdit ? `<style>
+  /* منسدلة المشارِكات تنسدل تحت حدود قسمها (psec يقصّ بحوافّه المدوّرة) — تُرفَع القصّةُ
+     وهي مفتوحة فقط، فتبقى الحواف مقصوصةً في كل الأحوال الأخرى. */
+  .psec:has(#prj-partners-menu:not([hidden])){overflow:visible}
+  </style><div style="padding:.7rem 0 .2rem;margin-bottom:.6rem;border-top:1px dashed var(--line)">
+    <div style="font-size:10.5px;font-weight:800;color:var(--muted);margin-bottom:.5rem">تعديل بيانات المشروع${lockAttribution ? ` <span style="font-weight:600;color:var(--faint)">— إدارتك مشاركة: تعدّل كل شيء عدا نسبة المشروع</span>` : ''}</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.55rem">
       ${idField('اسم المشروع', `<input id="prj-name" class="input" style="font-size:12px" value="${esc(p.name_ar || '')}" maxlength="200">`)}
       ${idField('رمز المشروع', `<input id="prj-code" class="input" style="font-size:12px" value="${esc(p.code || '')}" maxlength="60" placeholder="اختياري">`)}
@@ -2130,10 +2186,32 @@ export async function projectDetailPage(user, projectId, opts = {}) {
         <option value="">بلا مدير مسجَّل</option>
         ${users.map((u) => `<option value="${esc(u.id)}"${p.owner_user_id === u.id ? ' selected' : ''}>${esc(u.name)}</option>`).join('')}
       </select>`)}
-      ${idField('الإدارة المسؤولة', `<select id="prj-dept" class="input" style="font-size:12px">
+      ${idField('الإدارة المسؤولة', `<select id="prj-dept" class="input" style="font-size:12px"${lockAttrs}>
         <option value="">بلا إدارة</option>
         ${deptOptions.map((d) => `<option value="${esc(d.id)}"${p.department_id === d.id ? ' selected' : ''}>${esc(d.name_ar)}</option>`).join('')}
-      </select>`, 'تُحدِّد لمن تُحسب إيرادات المشروع آخر السنة')}
+      </select>`, lockAttribution ? 'قرارُ الإدارة المسؤولة' : 'تُحدِّد لمن تُحسب إيرادات المشروع آخر السنة')}
+      ${/* «هذان المشروعان مشتركان بين إدارتين… لازم في المشاريع تطلع» — والمسؤولة تبقى واحدة
+            (المال لا يتجزأ فلا يُحسب المشروع مرتين)، وهؤلاء من يعملون عليه ويجدونه في قوائم
+            إداراتهم. منسدلة بصناديق اختيار لا select متعدداً (ملاحظة المالك: «ما أبغى أختار
+            بسلكت وCtrl») — الحقيقة تبقى في select الخفي بمعرّفه المثبَّت `prj-partners`
+            (الحفظ والاختبارات يقرآنه)، والصناديق تُزامنه (pages/project-governance.js). */ ''}
+      ${idField('إدارات مشاركة', `<select id="prj-partners" multiple hidden aria-hidden="true"${lockAttrs}>
+        ${partnerChoices.map((d) => `<option value="${esc(d.id)}"${partnerIdSet.has(d.id) ? ' selected' : ''}>${esc(d.name_ar)}</option>`).join('')}</select>
+        <div id="prj-partners-pick" style="position:relative">
+          <button type="button" class="input" data-action="partners-toggle" aria-haspopup="listbox" aria-expanded="false"
+            style="width:100%;font-size:12px;text-align:start;display:flex;justify-content:space-between;align-items:center;gap:.4rem;cursor:pointer"${lockAttrs}>
+            <span id="prj-partners-label" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(() => {
+    const names = partnerChoices.filter((d) => partnerIdSet.has(d.id)).map((d) => d.name_ar);
+    return names.length ? esc(names.join('، ')) : 'بلا إدارات مشاركة';
+  })()}</span><span aria-hidden="true" style="color:var(--muted);flex:0 0 auto">▾</span></button>
+          <div id="prj-partners-menu" hidden role="listbox" aria-label="الإدارات المشاركة"
+            style="position:absolute;inset-inline:0;top:calc(100% + 4px);z-index:70;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 16px 40px rgba(15,23,42,.18);max-height:220px;overflow:auto;padding:.35rem">
+            ${partnerChoices.map((d) => `<label style="display:flex;gap:.5rem;align-items:center;padding:.4rem .55rem;border-radius:8px;cursor:pointer;font-size:12px">
+              <input type="checkbox" data-partner-opt value="${esc(d.id)}"${partnerIdSet.has(d.id) ? ' checked' : ''}${lockAttribution ? ' disabled' : ''}> ${esc(d.name_ar)}</label>`).join('')
+    || '<div style="padding:.5rem .55rem;font-size:12px;color:var(--faint)">لا إدارات أخرى معرّفة — تُضاف الإدارات من الهيكل التنظيمي.</div>'}
+          </div>
+        </div>`,
+    lockAttribution ? 'قرارُ الإدارة المسؤولة' : 'افتح القائمة وعلّم أكثر من إدارة — تراها إداراتهم في قوائمها')}
       ${idField('الجهة', `<select id="prj-client" class="input" style="font-size:12px">
         <option value="">بلا جهة</option>
         ${clientOptions.map((c) => `<option value="${esc(c.id)}"${p.client_id === c.id ? ' selected' : ''}>${esc(c.name_ar)}</option>`).join('')}
@@ -2164,6 +2242,10 @@ export async function projectDetailPage(user, projectId, opts = {}) {
     '<div style="font-size:10px;color:var(--faint)">خبرٌ عن العقد — لا يُصنَّف بها المشروع</div>') : ''}
       ${srcOpp ? fact('الفرصة المصدر', `<a href="/app/opportunity/${esc(srcOpp.id)}" style="color:var(--brand2);text-decoration:none">${esc(String(srcOpp.title_ar).slice(0, 28))}</a>`) : ''}
       ${fact('الإدارة', projDept ? esc(projDept.name_ar) : `<span style="color:var(--faint)">غير مُسنَد</span>`)}
+      ${/* المشاركات قراءةً بجوار المسؤولة — لمن يقرأ ولا يعدّل. مشروعٌ بلا شراكة لا يطبع
+            سطراً فارغاً: غيابُ البند أصدقُ من بندٍ يقول «لا شيء». (صيغة chip صفحةِ الفرصة.) */ ''}
+      ${projPartners.length ? fact('إدارات مشاركة', `<span style="display:inline-flex;gap:.35rem;flex-wrap:wrap"
+        title="إدارات تعمل على هذا المشروع معكم — والقيمة محسوبة على الإدارة المسؤولة وحدها">${projPartners.map((x) => `<span class="pill" style="background:#eef2ff;color:#4338ca">${esc(x.name_ar)}</span>`).join('')}</span>`) : ''}
     </div>
     ${identityBar}
     <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted)"><span class="tnum">${esc(p.start_date || '—')}</span><span class="tnum">${esc(p.end_date || '—')}</span></div>
