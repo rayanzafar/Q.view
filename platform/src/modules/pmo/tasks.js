@@ -10,6 +10,8 @@ import { listUserGrants, grantableDepartments } from '../identity/grants.js';
 import { raiseDirectApproval, TASK_WORKFLOW_KEY } from '../workflow/engine.js';
 import { notify } from '../notifications/notify.js';
 import { taskApproval, approvedTaskSql, ownOrApprovedTaskSql, myWorkOrMyPendingSql, TASK_PENDING, isPendingTask } from './task-approval.js';
+import { loadReadableOpportunity } from '../crm/opp-access.js';
+import { loadReadableProject } from './project-access.js';
 
 // ترتيب الإلحاح المشترك بين كل استعلامات المهام — مصدر واحد فلا يختلف ترتيب القائمة عن اللوح.
 const PRIORITY_ORDER = "CASE %s.priority WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 ELSE 3 END";
@@ -188,16 +190,31 @@ async function assertMayAssign(user, assigneeId) {
 // بلا هذا الفحص يستطيع أي شخص أن يعلّق مهمته على مشروع أو فرصة خارج نطاقه، فتظهر في صفحة ذلك
 // المشروع وفي عدّاداته — تلويثُ نطاقٍ لا يملكه. الفحص يحمل صف الوجهة كاملاً لا معرّفه وحده،
 // وإلا مرّ فارغاً كما يمرّ أي فحص بلا هدف.
+//
+// وفرعا المشروع والفرصة يمرّان من البابين الواحدين (`project-access.js` / `opp-access.js`)
+// لا من الصفّ العاري: المشاركةُ تسكن جدولَي `project_department` و`opportunity_department`
+// لا عمودَ الصفّ (ADR-0006 ومدُّه ADR-0008)، وصفٌّ يُناوَل بعموده وحده يُحكَم عليه بإدارته
+// المسؤولة وحدها — فكان مديرُ الإدارة المشارِكة يختار فرصته من المنتقي (القائمة تعرفها منذ
+// v5.11) ثم يُرَدّ عند الحفظ «خارج نطاقك» عن جهةٍ يفتحها ويعدّلها. و«غير موجود» يبقى
+// برسالة المنتقي الإرشادية لا برسالة الباب العامة.
 async function assertMayLink(user, data) {
   if (data.project_id) {
-    const p = await get('SELECT id, sector_id, department_id, owner_user_id FROM project WHERE id = ? AND deleted_at IS NULL', [data.project_id]);
-    if (!p) throw badRequest('المشروع المختار غير موجود — اختر مشروعاً من القائمة');
-    if (!can(user, 'read', 'project', p)) throw forbidden('هذا المشروع خارج نطاقك — اربط المهمة بمشروع من قائمتك');
+    try {
+      await loadReadableProject(user, data.project_id, 'read',
+        'هذا المشروع خارج نطاقك — اربط المهمة بمشروع من قائمتك');
+    } catch (e) {
+      if (e.status === 404) throw badRequest('المشروع المختار غير موجود — اختر مشروعاً من القائمة');
+      throw e;
+    }
   }
   if (data.opportunity_id) {
-    const o = await get('SELECT id, sector_id, department_id, owner_user_id FROM opportunity WHERE id = ? AND deleted_at IS NULL', [data.opportunity_id]);
-    if (!o) throw badRequest('الفرصة المختارة غير موجودة — اخترها من القائمة');
-    if (!can(user, 'read', 'opportunity', o)) throw forbidden('هذه الفرصة خارج نطاقك — اربط المهمة بفرصة من قائمتك');
+    try {
+      await loadReadableOpportunity(user, data.opportunity_id, 'read',
+        'هذه الفرصة خارج نطاقك — اربط المهمة بفرصة من قائمتك');
+    } catch (e) {
+      if (e.status === 404) throw badRequest('الفرصة المختارة غير موجودة — اخترها من القائمة');
+      throw e;
+    }
   }
   if (data.department_id) {
     const d = await get('SELECT id, sector_id FROM department WHERE id = ? AND deleted_at IS NULL', [data.department_id]);
