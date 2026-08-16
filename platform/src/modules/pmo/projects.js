@@ -15,6 +15,23 @@ import { loadReadableProject } from './project-access.js';
 
 export { loadReadableProject, projectDepartments } from './project-access.js';
 
+// ── «مشروع السنة» قاعدةٌ واحدة تُقرأ من مكان واحد ────────────────────────────
+// المشروع «يخص السنة» إذا تقاطعت مدته معها (بدأ فيها أو قبلها ولم ينتهِ قبلها) أو سُجّل له
+// إيراد فيها. وُلدت القاعدة هنا لمرشّح صفحة المشاريع، ثم قرّر المالك أنها **الحقيقة الوحيدة**
+// («الموجود في صفحة المشاريع هو الصحيح» — 2026-08-16) بعد أن عرض مركزُ القطاع، الأعمى عن
+// السنة يومها، مشاريعَ قديمة بلا تواريخ ولا إيراد في «صحة التنفيذ 2026». فكل شاشةٍ تعدّ
+// مشاريعَ سنةٍ تستدعي هذه الدالة — لا نسخةَ ثانية تنحرف بأول تعديل.
+// Portable on both drivers: year via substr(date,1,4) (no strftime/date()).
+export function projectYearClause(year, col = '') {
+  const y = Number(year);
+  if (!Number.isInteger(y) || y < 2000 || y > 2100) return null;
+  return {
+    clause: `((${col}start_date IS NOT NULL AND substr(${col}start_date,1,4) <= ? AND (${col}end_date IS NULL OR substr(${col}end_date,1,4) >= ?))
+      OR ${col}id IN (SELECT project_id FROM revenue_line WHERE year = ? AND project_id IS NOT NULL))`,
+    params: [String(y), String(y), y],
+  };
+}
+
 export async function listProjects(user, filters = {}) {
   // مدير الإدارة يرى مشاريع إدارته (انتماءً وقيادةً) + ما **تشارك** فيه إدارتُه (v5.27،
   // `memberCol` يُفعِّل فرع المشاركة في projectReachClause) + أيتام قطاعه — لا القطاع كله
@@ -25,14 +42,11 @@ export async function listProjects(user, filters = {}) {
   const params = [...f.params];
   if (filters.sector) { where.push('sector_id = ?'); params.push(filters.sector); }
   if (filters.status) { where.push('status = ?'); params.push(filters.status); }
-  // مرشّح السنة (اختياري): المشروع «يخص السنة» إذا تقاطعت مدته معها (بدأ فيها أو قبلها ولم
-  // ينتهِ قبلها) أو سُجّل له إيراد فيها. بدون سنة = السلوك السابق كاملًا.
-  // Portable on both drivers: year via substr(date,1,4) (no strftime/date()).
-  const y = Number(filters.year);
-  if (Number.isInteger(y) && y >= 2000 && y <= 2100) {
-    where.push(`((start_date IS NOT NULL AND substr(start_date,1,4) <= ? AND (end_date IS NULL OR substr(end_date,1,4) >= ?))
-      OR id IN (SELECT project_id FROM revenue_line WHERE year = ? AND project_id IS NOT NULL))`);
-    params.push(String(y), String(y), y);
+  // مرشّح السنة (اختياري) — القاعدة الواحدة أعلاه. بدون سنة = السلوك السابق كاملًا.
+  const yc = projectYearClause(filters.year);
+  if (yc) {
+    where.push(yc.clause);
+    params.push(...yc.params);
   }
   const rows = await all(`SELECT * FROM project WHERE ${where.join(' AND ')} ORDER BY updated_at DESC LIMIT 500`, params);
   return redactList(user, 'project', rows);

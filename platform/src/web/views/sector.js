@@ -13,7 +13,7 @@ import { attentionFeed, RESOURCE_AR } from '../../core/reports/attention.js';
 import { changesSince, sinceForWindow } from '../../core/reports/changes.js';
 import { arAging } from '../../modules/finance/finance.js';
 import { mySectorTasks } from '../../modules/pmo/tasks.js';
-import { myProjectsInSector, nextMilestones } from '../../modules/pmo/projects.js';
+import { myProjectsInSector, nextMilestones, projectYearClause } from '../../modules/pmo/projects.js';
 import { effectiveProgress } from '../../modules/pmo/progress.js';
 import { myOpportunitiesInSector, ROT_THRESHOLDS } from '../../modules/crm/opportunities.js';
 import { sectorIdentity } from '../../modules/org/org.js';
@@ -408,17 +408,25 @@ export async function sectorPage(user, opts = {}) {
      WHERE p.sector_id = ? AND d.deleted_at IS NULL ORDER BY d.decided_at DESC LIMIT 5`, [sectorId]);
   const pendingApprovals = await all(`SELECT ar.resource, ar.amount_halalas, ar.created_at FROM approval_request ar
      WHERE ar.sector_id = ? AND ar.status = 'PENDING' ORDER BY ar.created_at DESC LIMIT 6`, [sectorId]);
+  // كل عدٍّ للمشاريع في هذا المركز بعدسة السنة المعروضة — قاعدة «مشروع السنة» الواحدة
+  // (projectYearClause، نفس مرشّح صفحة المشاريع حرفاً): كانت هذه الاستعلامات عمياء عن السنة
+  // فعرضت نافذة «على المسار 2026» مشاريعَ قديمة بلا تواريخ ولا إيراد (الجيوبارك، تجربة عسير…)
+  // لا تعرضها صفحة المشاريع لنفس السنة — وقرّر المالك: «الموجود في صفحة المشاريع هو الصحيح».
+  const pyc = projectYearClause(year, 'p.');
+  const pycBare = projectYearClause(year);
   // المشاريع التي تحتاج نظر القائد — الحمراء أولاً، ومع كلٍّ أبرزُ خطرٍ مفتوح إن سُجِّل.
   const needProjects = await all(`SELECT p.id, p.name_ar, p.rag,
       (SELECT COUNT(*) FROM risk r WHERE r.project_id = p.id AND r.status != 'CLOSED' AND r.deleted_at IS NULL) risks,
       (SELECT r2.title FROM risk r2 WHERE r2.project_id = p.id AND r2.status != 'CLOSED' AND r2.deleted_at IS NULL
         ORDER BY CASE r2.probability WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END LIMIT 1) top_risk
      FROM project p WHERE p.sector_id = ? AND p.deleted_at IS NULL AND p.status = 'IN_PROGRESS' AND p.rag IN ('RED','AMBER')
-     ORDER BY CASE p.rag WHEN 'RED' THEN 0 ELSE 1 END, p.name_ar LIMIT 6`, [sectorId]);
+       AND ${pyc.clause}
+     ORDER BY CASE p.rag WHEN 'RED' THEN 0 ELSE 1 END, p.name_ar LIMIT 6`, [sectorId, ...pyc.params]);
   const healthLists = {};
   for (const rag of ['GREEN', 'AMBER', 'RED']) {
     healthLists[rag] = (sd.rag[rag]) ? await all(`SELECT id, name_ar, progress_pct FROM project
-       WHERE sector_id = ? AND deleted_at IS NULL AND status = 'IN_PROGRESS' AND rag = ? ORDER BY name_ar LIMIT 30`, [sectorId, rag]) : [];
+       WHERE sector_id = ? AND deleted_at IS NULL AND status = 'IN_PROGRESS' AND rag = ? AND ${pycBare.clause}
+       ORDER BY name_ar LIMIT 30`, [sectorId, rag, ...pycBare.params]) : [];
   }
   // نسبة الإنجاز من مصدرها الواحد (المخرجات الموزونة) لا من العمود المخزَّن — قاعدة «رقم واحد
   // حقيقة واحدة»، والحارس البنيوي يسقط أي شاشة تخالفها.
@@ -873,12 +881,16 @@ export async function sectorPage(user, opts = {}) {
        COALESCE(SUM(CASE WHEN st.is_won = 0 AND st.is_lost = 0 THEN 1 ELSE 0 END),0) open_n
      FROM opportunity o JOIN stage st ON st.id = o.stage_id
      WHERE o.sector_id = ? AND o.deleted_at IS NULL AND o.client_id IS NOT NULL GROUP BY o.client_id`, [sectorId]);
+  // عدّ مشاريع كل عميل بعدسة السنة أيضاً — عمود «المشاريع» في جدول العملاء يجاور إيراد
+  // السنة، فخلطُ كل التاريخ فيه يناقض جارَه في نفس الصف.
   const prjAgg = await all(`SELECT client_id cid, COUNT(*) n FROM project
-     WHERE sector_id = ? AND deleted_at IS NULL AND client_id IS NOT NULL GROUP BY client_id`, [sectorId]);
+     WHERE sector_id = ? AND deleted_at IS NULL AND client_id IS NOT NULL AND ${pycBare.clause}
+     GROUP BY client_id`, [sectorId, ...pycBare.params]);
   const revByCid = Object.fromEntries(revByClient.map((r) => [r.cid, r.rev]));
   const stalledCids = new Set(stalledRows.map((o) => o.client_id).filter(Boolean));
   const redProjClients = new Set((await all(`SELECT DISTINCT client_id FROM project
-     WHERE sector_id = ? AND deleted_at IS NULL AND status = 'IN_PROGRESS' AND rag = 'RED' AND client_id IS NOT NULL`, [sectorId])).map((r) => r.client_id));
+     WHERE sector_id = ? AND deleted_at IS NULL AND status = 'IN_PROGRESS' AND rag = 'RED' AND client_id IS NOT NULL
+       AND ${pycBare.clause}`, [sectorId, ...pycBare.params])).map((r) => r.client_id));
   // إشارة كل عميل بأولوية معلنة: تحصيل متأخر (لمن يقرأ الفواتير) ← فرصة متوقفة ← مشروع في خطر.
   let overdueCids = new Set();
   if (canInvoices) {

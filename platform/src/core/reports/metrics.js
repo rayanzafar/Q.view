@@ -11,6 +11,8 @@ import { DELIVERY_SECTOR_SQL, isSupportUnit } from '../org/kind.js';
 // مقاييس المشروع تُبنى على عمله المعتمَد: مهمةٌ تنتظر اعتماد مدير كاتبها ليست من عمل المشروع
 // بعد، وعدُّها يرفع مقام «الإنجاز» أو يخفضه بعملٍ لم يوافق عليه أحد.
 import { approvedTaskSql } from '../../modules/pmo/task-approval.js';
+// قاعدة «مشروع السنة» الواحدة — نفس مرشّح صفحة المشاريع حرفاً (قرار المالك 2026-08-16).
+import { projectYearClause } from '../../modules/pmo/projects.js';
 
 const FY = () => config.fiscalYear;
 
@@ -132,8 +134,12 @@ export async function sectorDashboard(user, sectorId, opts = {}) {
   const targetRevenue = support ? null : s.target_revenue_halalas;
   const targetSales = support ? null : s.target_sales_halalas;
   const f = await sectorYearFigures(sectorId, year);
-  const projects = await all("SELECT status, COUNT(*) n FROM project WHERE sector_id = ? AND deleted_at IS NULL GROUP BY status", [sectorId]);
-  const rag = await all("SELECT rag, COUNT(*) n FROM project WHERE sector_id = ? AND deleted_at IS NULL AND status='IN_PROGRESS' GROUP BY rag", [sectorId]);
+  // عدّ المشاريع بعدسة السنة نفسها التي تعرضها اللوحة — قاعدة «مشروع السنة» الواحدة
+  // (projectYearClause): كانت العدسة عمياء عن السنة فعرضت «صحة التنفيذ 2026» مشاريعَ
+  // قديمة بلا تواريخ ولا إيراد، وقرّر المالك أن صفحة المشاريع هي الصحيحة (2026-08-16).
+  const yc = projectYearClause(year);
+  const projects = await all(`SELECT status, COUNT(*) n FROM project WHERE sector_id = ? AND deleted_at IS NULL AND ${yc.clause} GROUP BY status`, [sectorId, ...yc.params]);
+  const rag = await all(`SELECT rag, COUNT(*) n FROM project WHERE sector_id = ? AND deleted_at IS NULL AND status='IN_PROGRESS' AND ${yc.clause} GROUP BY rag`, [sectorId, ...yc.params]);
   const deliverables = await all("SELECT status, COUNT(*) n FROM deliverable WHERE sector_id = ? AND deleted_at IS NULL GROUP BY status", [sectorId]);
   const openRisks = (await get("SELECT COUNT(*) n FROM risk WHERE sector_id = ? AND status != 'CLOSED' AND deleted_at IS NULL", [sectorId])).n;
   return {
