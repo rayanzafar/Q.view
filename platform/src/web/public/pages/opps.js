@@ -1,5 +1,6 @@
 // صفحات الفرص v2 — سلوك تفاعلي بتفويض أحداث فقط (data-action / data-dd / data-stage-move).
 // يعتمد على بنية app.js المجمّدة: Sanad.openModal/closeModal/openDD/esc — ولا يعدّلها.
+// نافذة «فرصة جديدة» محلية هنا (v5.30) — نسخة Sanad.oppAdd في app.js بقيت بلا مستدعٍ.
 (function () {
   'use strict';
   var S = function () { return window.__SANAD || {}; };
@@ -52,6 +53,13 @@
   document.addEventListener('change', function (e) {
     if (e.target && e.target.id === 'oc-sector') syncDeptOptions();
     if (e.target && (e.target.id === 'oc-vat' || e.target.id === 'oc-value')) vatPreview();
+    // نافذة «فرصة جديدة»: القطاع يقيّد الإدارةَ والمشارِكات، والمسؤولة تُستبعد من المشارِكات.
+    if (e.target && e.target.id === 'na-sector') {
+      var naDep = document.getElementById('na-dept');
+      if (naDep) naDep.innerHTML = naDeptOptionsHtml(e.target.value, naDeptDefault(e.target.value));
+      naPartnersFill();
+    }
+    if (e.target && e.target.id === 'na-dept') naPartnersFill();
   });
   document.addEventListener('input', function (e) {
     if (e.target && e.target.id === 'oc-value') vatPreview();
@@ -93,6 +101,330 @@
       if (label === typed || e.name_ar === typed) { hit = e; break; }
     }
     hidden.value = hit ? hit.id : '';
+  }
+
+  // ═══ باحث الجهة المشترك + نافذة «فرصة جديدة» (v5.30) ═══════════════════════
+  // «لازم من الإضافة أحط أهم المعلومات كاملة: الجهة، القطاع، الإدارة، المبلغ إن وجد —
+  // والعميل أبحث عنه أو أكتب اسم عميل جديد إذا مو موجود ويضاف» — بلسان المالك.
+  // الباحث منطقٌ واحد يخدم النافذتين بتمرير السابقة: الإضافة (na-*) والتعديل (oc-*).
+  // الحقيقة في حقلين مخفيين: `<سابقة>-client` معرّفُ جهةٍ مختارة، و`<سابقة>-client-new`
+  // اسمُ جهةٍ جديدة — ولا يمتلئان معاً أبداً، والحفظ يرسل أحدهما وحده.
+
+  // أنماط الباحث تُحقن مرةً — فتخدم القالب المُصيَّر خادمياً (نافذة التعديل) والمبنيّ هنا.
+  (function () {
+    var st = document.createElement('style');
+    st.textContent =
+      '.san-cl-list{position:absolute;inset-inline:0;top:calc(100% + 4px);z-index:75;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 16px 40px rgba(15,23,42,.18);max-height:264px;overflow:auto;padding:.3rem}' +
+      '.san-cl-row{display:block;width:100%;text-align:start;padding:.45rem .6rem;border-radius:8px;cursor:pointer;font-size:12.5px;color:var(--ink2);background:none;border:none;font-family:inherit;line-height:1.7}' +
+      '.san-cl-row:hover,.san-cl-row:focus-visible{background:#f1f5ff}' +
+      '.san-cl-row b{color:var(--brand)}' +
+      '.san-cl-new{color:var(--brand);font-weight:700;border-top:1px dashed var(--line);margin-top:.2rem;padding-top:.55rem;border-radius:0 0 8px 8px}' +
+      '.san-cl-new:first-child{border-top:none;margin-top:0;padding-top:.45rem;border-radius:8px}' +
+      '.san-cl-empty{padding:.55rem .6rem;font-size:11.5px;color:var(--muted);line-height:1.8}' +
+      '.san-cl-more{padding:.35rem .6rem;font-size:10.5px;color:var(--faint)}' +
+      '.san-cl-badge{display:flex;align-items:center;gap:.45rem;margin-top:.3rem;padding:.25rem .55rem;border-radius:9px;background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;font-size:11.5px;font-weight:700}' +
+      '.san-cl-badge[hidden]{display:none}';
+    document.head.appendChild(st);
+  })();
+
+  // تطبيعٌ خفيف للمطابقة: الهمزات على الألف واحدة، والتاء المربوطة هاء، والألف المقصورة ياء.
+  // كل إبدالٍ حرفٌ بحرف — كي تبقى مواضع الإبراز في الاسم الأصلي صحيحة.
+  function normAr(s) {
+    return String(s == null ? '' : s).toLowerCase()
+      .replace(/[أإآٱ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي');
+  }
+  function clientHintClear(prefix) {
+    var h = document.getElementById(prefix + '-client-hint');
+    if (h) h.hidden = true;
+    if (prefix === 'na') {
+      var sb = document.querySelector('[data-action="na-save"]');
+      if (sb) delete sb.dataset.sure;
+    }
+  }
+  // بناء قائمة النتائج من __SANAD.clientsList: ثماني نتائج بإبراز المطابقة، و«لا نتائج»
+  // مصمَّمة، وسطرُ «إضافة … جهةً جديدة» متى لم يطابق المكتوبُ اسمَ جهةٍ قائمةٍ حرفياً.
+  function clientListRender(prefix) {
+    var qEl = document.getElementById(prefix + '-client-q');
+    var listEl = document.getElementById(prefix + '-client-list');
+    if (!qEl || !listEl || qEl.readOnly) return;
+    var q = (qEl.value || '').trim();
+    var nq = normAr(q);
+    var items = S().clientsList || [];
+    var hits = [];
+    for (var i = 0; i < items.length; i++) {
+      var name = items[i].name_ar || '';
+      var at = nq ? normAr(name).indexOf(nq) : 0;
+      if (at !== -1) hits.push({ id: items[i].id, name: name, at: at });
+    }
+    var exact = !!nq && items.some(function (c) { return normAr(String(c.name_ar || '').trim()) === nq; });
+    var shown = hits.slice(0, 8);
+    var rows = shown.map(function (h) {
+      var marked = nq
+        ? esc(h.name.slice(0, h.at)) + '<b>' + esc(h.name.slice(h.at, h.at + q.length)) + '</b>' + esc(h.name.slice(h.at + q.length))
+        : esc(h.name);
+      return '<button type="button" class="san-cl-row" role="option" data-action="client-pick" data-prefix="' + prefix + '" data-id="' + esc(h.id) + '" data-name="' + esc(h.name) + '">' + marked + '</button>';
+    });
+    if (!shown.length) {
+      rows.push('<div class="san-cl-empty">' + (nq
+        ? 'لا جهة مسجّلة بهذا الاسم — أضفها من السطر التالي'
+        : (items.length ? 'اكتب حرفاً أو أكثر للبحث بين <span class="tnum">' + items.length + '</span> جهة' : 'لا جهات مسجّلة بعد — اكتب الاسم لتُسجَّل جهةً جديدة')) + '</div>');
+    }
+    if (hits.length > shown.length) {
+      rows.push('<div class="san-cl-more">و<span class="tnum">' + (hits.length - shown.length) + '</span> نتيجة أخرى — تابع الكتابة للتضييق</div>');
+    }
+    if (nq && !exact) {
+      rows.push('<button type="button" class="san-cl-row san-cl-new" data-action="client-new" data-prefix="' + prefix + '" data-name="' + esc(q) + '">+ إضافة «' + esc(q) + '» جهةً جديدة</button>');
+    }
+    listEl.innerHTML = rows.join('');
+    listEl.hidden = false;
+  }
+  function clientPickSet(prefix, id, name) {
+    var qEl = document.getElementById(prefix + '-client-q');
+    var idEl = document.getElementById(prefix + '-client');
+    var newEl = document.getElementById(prefix + '-client-new');
+    var badge = document.getElementById(prefix + '-client-badge');
+    var listEl = document.getElementById(prefix + '-client-list');
+    if (idEl) idEl.value = id || '';
+    if (newEl) newEl.value = '';
+    if (qEl) { qEl.readOnly = false; qEl.value = name || ''; }
+    if (badge) badge.hidden = true;
+    if (listEl) listEl.hidden = true;
+    clientHintClear(prefix);
+  }
+  // وضع «جهة جديدة»: الاسم في الحقل المخفي، والخانة تُقفل عليه، وشارةٌ تقول ما سيحدث
+  // مع زرّ إلغاءٍ يرجع للبحث.
+  function clientNewSet(prefix, name) {
+    name = String(name || '').trim();
+    if (!name) return;
+    var qEl = document.getElementById(prefix + '-client-q');
+    var idEl = document.getElementById(prefix + '-client');
+    var newEl = document.getElementById(prefix + '-client-new');
+    var badge = document.getElementById(prefix + '-client-badge');
+    var bname = document.getElementById(prefix + '-client-badge-name');
+    var listEl = document.getElementById(prefix + '-client-list');
+    if (idEl) idEl.value = '';
+    if (newEl) newEl.value = name;
+    if (qEl) { qEl.value = name; qEl.readOnly = true; }
+    if (bname) bname.textContent = name;
+    if (badge) badge.hidden = false;
+    if (listEl) listEl.hidden = true;
+    clientHintClear(prefix);
+  }
+  function clientNewCancel(prefix) {
+    var qEl = document.getElementById(prefix + '-client-q');
+    var idEl = document.getElementById(prefix + '-client');
+    var newEl = document.getElementById(prefix + '-client-new');
+    var badge = document.getElementById(prefix + '-client-badge');
+    if (idEl) idEl.value = '';
+    if (newEl) newEl.value = '';
+    if (badge) badge.hidden = true;
+    if (qEl) { qEl.readOnly = false; qEl.value = ''; qEl.focus(); }
+    clientListRender(prefix);
+  }
+  // الكتابة بحثٌ دائماً: أي حرفٍ يمسح الاختيار السابق (معرّفاً أو اسماً جديداً) ويعيد الترشيح.
+  document.addEventListener('input', function (e) {
+    var m = e.target && e.target.id ? /^(na|oc)-client-q$/.exec(e.target.id) : null;
+    if (!m) return;
+    var idEl = document.getElementById(m[1] + '-client');
+    var newEl = document.getElementById(m[1] + '-client-new');
+    if (idEl) idEl.value = '';
+    if (newEl) newEl.value = '';
+    clientHintClear(m[1]);
+    clientListRender(m[1]);
+  });
+  document.addEventListener('focusin', function (e) {
+    var m = e.target && e.target.id ? /^(na|oc)-client-q$/.exec(e.target.id) : null;
+    if (m) clientListRender(m[1]);
+  });
+  // Esc يغلق المفتوحَ من قوائم الباحث والمشارِكات قبل أن يغلق app.js النافذةَ كلها —
+  // التقاطٌ في طور الالتقاط كي نسبق مستمعَه، ولا نوقف الانتشار إلا وقد أغلقنا شيئاً.
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    var closed = false;
+    ['na', 'oc'].forEach(function (p) {
+      var cl = document.getElementById(p + '-client-list');
+      if (cl && !cl.hidden) {
+        cl.hidden = true; closed = true;
+        var q = document.getElementById(p + '-client-q');
+        if (q) q.focus();
+      }
+      var pm = document.getElementById(p + '-partners-menu');
+      if (pm && !pm.hidden) {
+        pm.hidden = true; closed = true;
+        var b = document.querySelector('#' + p + '-partners-pick [data-action="partners-toggle"]');
+        if (b) { b.setAttribute('aria-expanded', 'false'); b.focus(); }
+      }
+    });
+    if (closed) { e.stopPropagation(); e.preventDefault(); }
+  }, true);
+  function clientPickHtml(prefix) {
+    return '<div id="' + prefix + '-client-pick" style="position:relative">' +
+      '<input class="input" id="' + prefix + '-client-q" autocomplete="off" placeholder="ابحث باسم الجهة أو اكتب اسم جهة جديدة…" aria-label="ابحث عن الجهة أو اكتب اسم جهة جديدة">' +
+      '<input type="hidden" id="' + prefix + '-client">' +
+      '<input type="hidden" id="' + prefix + '-client-new">' +
+      '<div id="' + prefix + '-client-badge" class="san-cl-badge" hidden>' +
+      '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">ستُسجَّل جهةً جديدة: <b id="' + prefix + '-client-badge-name"></b></span>' +
+      '<button type="button" class="btn btn-ghost btn-sm" data-action="client-new-cancel" data-prefix="' + prefix + '" style="flex:0 0 auto">إلغاء</button></div>' +
+      '<div id="' + prefix + '-client-list" class="san-cl-list" hidden role="listbox" aria-label="نتائج البحث في الجهات"></div></div>';
+  }
+
+  // ── إدارات القطاع المختار في نافذة الإضافة ──
+  function naDeps(sectorId) {
+    return (S().allDepartments || []).filter(function (d) { return String(d.sector_id || '') === String(sectorId || ''); });
+  }
+  function naDeptDefault(sectorId) {
+    var ud = S().userDept || '';
+    return ud && naDeps(sectorId).some(function (d) { return d.id === ud; }) ? ud : '';
+  }
+  function naDeptOptionsHtml(sectorId, selectedId) {
+    return '<option value="">بلا إدارة — تُسنَد لاحقاً</option>' + naDeps(sectorId).map(function (d) {
+      return '<option value="' + esc(d.id) + '"' + (d.id === selectedId ? ' selected' : '') + '>' + esc(d.name_ar) + '</option>';
+    }).join('');
+  }
+  // المشارِكات: إدارات القطاع عدا المسؤولة المختارة — يُعاد بناؤها عند تغيّر القطاع أو
+  // المسؤولة مع الإبقاء على ما بقي صالحاً من المحدَّد.
+  function naPartnersFill() {
+    var sel = document.getElementById('na-partners');
+    var menu = document.getElementById('na-partners-menu');
+    if (!sel || !menu) return;
+    var keep = {};
+    Array.prototype.forEach.call(sel.selectedOptions || [], function (o) { keep[o.value] = true; });
+    var deptId = (document.getElementById('na-dept') || { value: '' }).value;
+    var deps = naDeps((document.getElementById('na-sector') || { value: '' }).value)
+      .filter(function (d) { return d.id !== deptId; });
+    sel.innerHTML = deps.map(function (d) {
+      return '<option value="' + esc(d.id) + '"' + (keep[d.id] ? ' selected' : '') + '>' + esc(d.name_ar) + '</option>';
+    }).join('');
+    menu.innerHTML = deps.length ? deps.map(function (d) {
+      return '<label style="display:flex;gap:.5rem;align-items:center;padding:.4rem .55rem;border-radius:8px;cursor:pointer;font-size:12.5px">' +
+        '<input type="checkbox" data-partner-opt value="' + esc(d.id) + '"' + (keep[d.id] ? ' checked' : '') + '> ' + esc(d.name_ar) + '</label>';
+    }).join('') : '<div style="padding:.5rem .55rem;font-size:12px;color:var(--faint)">لا إدارات أخرى في هذا القطاع.</div>';
+    partnersSync('na');
+  }
+
+  // ── نافذة «فرصة جديدة»: أهم المعلومات كاملةً من لحظة الإضافة ──
+  function oppAddModal() {
+    var s = S();
+    var sectors = s.sectors || [];
+    if (!sectors.length) { toast('لا قطاعات تسليم معرّفة — تُضاف من الهيكل التنظيمي أولاً', true); return; }
+    var stages = s.stages || [];
+    var owners = s.owners || [];
+    // الافتراضيات: قطاع المُدخِل إن كان من القائمة، وإدارتُه إن كانت من القطاع — يغيّرهما بحرّية.
+    var sec0 = (s.userSector && sectors.some(function (x) { return x.id === s.userSector; })) ? s.userSector : sectors[0].id;
+    var uidIn = owners.some(function (u) { return u.id === s.uid; });
+    var lbl = function (p) { return (window.Sanad && window.Sanad.lbl) ? window.Sanad.lbl(p) : p; };
+    var opt = function (v, label, on) { return '<option value="' + esc(v) + '"' + (on ? ' selected' : '') + '>' + esc(label) + '</option>'; };
+    window.Sanad.openModal(
+      '<div class="modal-head"><div style="min-width:0"><h3 style="font-size:16px">فرصة جديدة</h3>' +
+      '<div style="font-size:11px;color:var(--muted);margin-top:.1rem">الأساسيات هنا — وبقية التفاصيل من صفحة الفرصة بعد الإضافة</div></div>' +
+      '<button class="btn btn-ghost" data-action="modal-close" aria-label="إغلاق">✕</button></div>' +
+      '<div class="modal-body">' +
+      '<div class="field"><label>عنوان الفرصة *</label><input class="input" id="na-title" maxlength="200" placeholder="مثال: تطوير استراتيجية التحول الرقمي"></div>' +
+      '<div class="field"><label>الجهة</label>' + clientPickHtml('na') +
+      '<div style="font-size:10px;color:var(--faint)">ابحث بالاسم — والاسم غير الموجود يُضاف جهةً جديدة من سطر الإضافة</div></div>' +
+      '<div class="field"><label>القطاع *</label><select id="na-sector">' +
+      sectors.map(function (x) { return opt(x.id, x.name_ar, x.id === sec0); }).join('') + '</select></div>' +
+      '<div class="field"><label>الإدارة المسؤولة</label><select id="na-dept">' + naDeptOptionsHtml(sec0, naDeptDefault(sec0)) + '</select>' +
+      '<div style="font-size:10px;color:var(--faint)">بلا اختيار تُنسَب لإدارتك إن كانت من القطاع</div></div>' +
+      '<div class="field"><label>إدارات مشاركة</label>' +
+      '<select id="na-partners" multiple hidden aria-hidden="true"></select>' +
+      '<div id="na-partners-pick" style="position:relative">' +
+      '<button type="button" class="input" data-action="partners-toggle" data-menu="na-partners-menu" aria-haspopup="listbox" aria-expanded="false"' +
+      ' style="width:100%;font-size:12.5px;text-align:start;display:flex;justify-content:space-between;align-items:center;gap:.4rem;cursor:pointer">' +
+      '<span id="na-partners-label" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">بلا إدارات مشاركة</span>' +
+      '<span aria-hidden="true" style="color:var(--muted);flex:0 0 auto">▾</span></button>' +
+      '<div id="na-partners-menu" hidden role="listbox" aria-label="الإدارات المشاركة"' +
+      ' style="position:absolute;inset-inline:0;top:calc(100% + 4px);z-index:70;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 16px 40px rgba(15,23,42,.18);max-height:220px;overflow:auto;padding:.35rem"></div></div>' +
+      '<div style="font-size:10px;color:var(--faint)">إدارات تعمل عليها مع المسؤولة — تراها في قوائمها</div></div>' +
+      '<div class="field"><label>المبلغ (ر.س.)</label><input class="input tnum" id="na-value" type="number" min="0" step="1000" value="0">' +
+      '<div style="font-size:10px;color:var(--faint)">شاملاً الضريبة — اتركه صفراً إن لم يُعرف بعد</div></div>' +
+      '<div class="grid2">' +
+      '<div class="field"><label>المرحلة</label><select id="na-stage">' +
+      stages.map(function (x, i) { return opt(x.id, x.name_ar, i === 0); }).join('') + '</select></div>' +
+      '<div class="field"><label>الأولوية</label><select id="na-priority"><option value="">بلا أولوية</option>' +
+      ['P0', 'P1', 'P2', 'P3'].map(function (p) { return opt(p, lbl(p)); }).join('') + '</select></div></div>' +
+      '<div class="grid2">' +
+      '<div class="field"><label>المسؤول</label><select id="na-owner">' +
+      (uidIn ? '' : '<option value="" selected>أنا — المنشئ</option>') +
+      owners.map(function (u) { return opt(u.id, u.name, u.id === s.uid); }).join('') + '</select></div>' +
+      '<div class="field"><label>السنة</label><input class="input tnum" id="na-year" type="number" min="2000" max="2100" value="' + new Date().getFullYear() + '"></div></div>' +
+      '<div class="field"><label>الإجراء التالي</label><input class="input" id="na-next" maxlength="200" placeholder="اختياري — مثال: اتصال متابعة يوم الأحد"></div>' +
+      '</div>' +
+      '<div class="modal-foot" style="flex-wrap:wrap;align-items:center">' +
+      '<button class="btn btn-primary" data-action="na-save">إضافة الفرصة</button>' +
+      '<button class="btn" data-action="modal-close">إلغاء</button>' +
+      '<span id="na-client-hint" hidden style="font-size:11.5px;color:#92400e;font-weight:700">بلا جهة؟ اضغط «إضافة الفرصة» مرة أخرى للتأكيد</span>' +
+      '</div>');
+    setTimeout(function () {
+      naPartnersFill();
+      var t = document.getElementById('na-title');
+      if (t) t.focus();
+    }, 30);
+  }
+  // الحفظ: تحقّقٌ محلي يقول مكانَ النقص، وحمولةٌ بلا مفاتيح فارغة عبثاً. النجاح ينتقل إلى
+  // صفحة الفرصة الجديدة (تُكمَل تفاصيلها هناك)، وما وُلد خارج نطاق منشئه يُقال بلسانه.
+  async function oppAddSave(btn) {
+    var title = (ctlVal('na-title') || '').trim();
+    if (!title) {
+      toast('عنوان الفرصة مطلوب', true);
+      var tEl = document.getElementById('na-title');
+      if (tEl) tEl.focus();
+      return;
+    }
+    var cid = ctlVal('na-client') || '';
+    var cnew = (ctlVal('na-client-new') || '').trim();
+    var cq = (ctlVal('na-client-q') || '').trim();
+    // نصٌّ مكتوب بلا اختيارٍ ولا إضافة ليس قراراً — يُقال ذلك بدل حفظ ما لم يُقصد.
+    if (!cid && !cnew && cq) { toast('اختر الجهة من نتائج البحث أو أضفها من سطر «إضافة … جهةً جديدة»', true); return; }
+    if (!cid && !cnew && !cq && btn.dataset.sure !== '1') {
+      // بلا جهة؟ تأكيدٌ خفيف بجانب الزر لا منعٌ — الفرصة المبكرة قد لا تُعرف جهتها بعد.
+      btn.dataset.sure = '1';
+      var hint = document.getElementById('na-client-hint');
+      if (hint) hint.hidden = false;
+      return;
+    }
+    var sector = ctlVal('na-sector') || '';
+    if (!sector) { toast('اختر القطاع المسؤول عن الفرصة', true); return; }
+    var body = { title_ar: title, sector_id: sector };
+    if (cid) body.client_id = cid;
+    else if (cnew) body.new_client_name = cnew;
+    var dept = ctlVal('na-dept'); if (dept) body.department_id = dept;
+    var pSel = document.getElementById('na-partners');
+    var partners = pSel ? Array.prototype.slice.call(pSel.selectedOptions || []).map(function (o) { return o.value; }) : [];
+    if (partners.length) body.partner_department_ids = partners;
+    var v = ctlVal('na-value');
+    if (v !== null && v !== '') {
+      var n = Number(v);
+      if (!isFinite(n) || n < 0) return toast('المبلغ يُكتب رقماً بالريال — أو اتركه صفراً', true);
+      if (n > 0) body.value_sar = n;
+    }
+    var stage = ctlVal('na-stage'); if (stage) body.stage_id = stage;
+    var pri = ctlVal('na-priority'); if (pri) body.priority = pri;
+    var owner = ctlVal('na-owner'); if (owner) body.owner_user_id = owner;
+    var y = ctlVal('na-year');
+    if (y !== null && y !== '') {
+      var yn = Number(y);
+      if (!isFinite(yn) || yn < 2000 || yn > 2100) return toast('السنة تُكتب بأربعة أرقام — مثل 2026', true);
+      body.year = yn;
+    }
+    var next = (ctlVal('na-next') || '').trim(); if (next) body.next_action = next;
+    btn.disabled = true;
+    try {
+      var r = await api('/opportunities', 'POST', body);
+      window.Sanad.closeModal();
+      if (r && r.movedOutOfReach) {
+        toast('أُضيفت خارج نطاق عرضك ✓');
+        setTimeout(function () { location.reload(); }, 900);
+        return;
+      }
+      toast('أُضيفت الفرصة ✓');
+      if (r && r.id) setTimeout(function () { location.href = '/app/opportunity/' + encodeURIComponent(r.id); }, 450);
+      else setTimeout(function () { location.reload(); }, 500);
+    } catch (err) {
+      btn.disabled = false;
+      delete btn.dataset.sure;
+      toast(err.message, true);
+    }
   }
 
   function init() {
@@ -239,7 +571,6 @@
   async function oppControlSave(id) {
     var body = {
       title_ar: (ctlVal('oc-title') || '').trim(),
-      client_id: ctlVal('oc-client') || null,
       sector_id: ctlVal('oc-sector') || null,
       department_id: ctlVal('oc-dept') || null,
       owner_user_id: ctlVal('oc-owner') || null,
@@ -260,6 +591,18 @@
     };
     if (body.partner_department_ids === undefined) delete body.partner_department_ids;
     if (!body.title_ar) { toast('اسم الفرصة لا يكون فارغاً', true); return; }
+    // الجهة من الباحث (v5.30): اسمٌ جديد يُرسَل وحده (new_client_name — والخادم يعيد استعمال
+    // المطابق أو يسجّل جهةً جديدة) فلا يُرسَل معه client_id؛ وإلا فالمعرّف المختار، وفراغُ
+    // الخانة كلها = «بلا جهة». ونصٌّ مكتوب بلا اختيارٍ ولا إضافة ليس قراراً — يُقال ذلك
+    // بدل مسح جهة الفرصة بما لم يُقصد.
+    var cnew = (ctlVal('oc-client-new') || '').trim();
+    if (cnew) { body.new_client_name = cnew; }
+    else {
+      var cq = (ctlVal('oc-client-q') || '').trim();
+      var ccur = ctlVal('oc-client') || '';
+      if (!ccur && cq) { toast('لم تُختَر الجهة — اخترها من نتائج البحث أو أضفها من سطر «إضافة … جهةً جديدة»', true); return; }
+      body.client_id = ccur || null;
+    }
     // المبلغ يُكتب كما اقتبسته الجهة — شاملاً الضريبة أو بدونها — والخادم يحوّله قبل الحفظ.
     // الحساب هناك لا هنا: المخزَّن يبقى إجمالياً بقاعدةٍ واحدة، فلا يصير للمبلغ تفسيران.
     var v = ctlVal('oc-value');
@@ -632,13 +975,16 @@
     }, 30);
   }
 
-  // ── الإدارات المشاركة: منسدلة بصناديق اختيار تُزامن select الخفي (oc-partners) ──
-  function partnersSync() {
-    var sel = document.getElementById('oc-partners');
-    var label = document.getElementById('oc-partners-label');
+  // ── الإدارات المشاركة: منسدلة بصناديق اختيار تُزامن select الخفي ──
+  // بالسابقة تخدم النافذتين: التعديل (oc-partners) والإضافة (na-partners) — حقيقةٌ واحدة
+  // في select الخفي بمعرّفه المثبَّت، والصناديق تُزامنه وتُحدّث الملصق مع كل نقرة.
+  function partnersSync(prefix) {
+    prefix = prefix || 'oc';
+    var sel = document.getElementById(prefix + '-partners');
+    var label = document.getElementById(prefix + '-partners-label');
     if (!sel) return;
     var names = [];
-    document.querySelectorAll('[data-partner-opt]').forEach(function (cb) {
+    document.querySelectorAll('#' + prefix + '-partners-menu [data-partner-opt]').forEach(function (cb) {
       var o = sel.querySelector('option[value="' + cb.value.replace(/"/g, '\\"') + '"]');
       if (o) o.selected = cb.checked;
       if (cb.checked) names.push((cb.parentElement.textContent || '').trim());
@@ -646,7 +992,9 @@
     if (label) label.textContent = names.length ? names.join('، ') : 'بلا إدارات مشاركة';
   }
   document.addEventListener('change', function (e) {
-    if (e.target && e.target.matches && e.target.matches('[data-partner-opt]')) partnersSync();
+    if (e.target && e.target.matches && e.target.matches('[data-partner-opt]')) {
+      partnersSync(e.target.closest('#na-partners-menu') ? 'na' : 'oc');
+    }
   });
   function teamModalOpen() {
     var tpl = document.getElementById('opp-team-tpl'); if (!tpl || !window.Sanad) return;
@@ -680,12 +1028,17 @@
 
   // ── تفويض النقر ──
   document.addEventListener('click', function (e) {
-    var pmenu = document.getElementById('oc-partners-menu');
-    if (pmenu && !pmenu.hidden && !e.target.closest('#oc-partners-pick')) {
-      pmenu.hidden = true;
-      var pbtn = document.querySelector('[data-action="partners-toggle"]');
-      if (pbtn) pbtn.setAttribute('aria-expanded', 'false');
-    }
+    // النقر خارج منسدلةٍ مفتوحة يغلقها — منسدلتا المشارِكات وقائمتا باحث الجهة (oc/na).
+    ['oc', 'na'].forEach(function (p) {
+      var pmenu = document.getElementById(p + '-partners-menu');
+      if (pmenu && !pmenu.hidden && !e.target.closest('#' + p + '-partners-pick')) {
+        pmenu.hidden = true;
+        var pbtn = document.querySelector('#' + p + '-partners-pick [data-action="partners-toggle"]');
+        if (pbtn) pbtn.setAttribute('aria-expanded', 'false');
+      }
+      var clist = document.getElementById(p + '-client-list');
+      if (clist && !clist.hidden && !e.target.closest('#' + p + '-client-pick')) clist.hidden = true;
+    });
     var sortTh = e.target.closest('#opp-table th[data-sort]');
     if (sortTh) { sortOppTable(sortTh); return; }
     var actEl = e.target.closest('[data-action]');
@@ -708,12 +1061,16 @@
       if (act === 'opp-tab') { oppTab(actEl); return; }
       if (act === 'opp-edit-open') { oppEditOpen(); return; }
       if (act === 'partners-toggle') {
-        var menu = document.getElementById('oc-partners-menu');
+        var menu = document.getElementById(actEl.dataset.menu || 'oc-partners-menu');
         if (menu) { menu.hidden = !menu.hidden; actEl.setAttribute('aria-expanded', menu.hidden ? 'false' : 'true'); }
         return;
       }
       if (act === 'team-modal-open') { teamModalOpen(); return; }
-      if (act === 'opp-add') { if (window.Sanad) window.Sanad.oppAdd(); return; }
+      if (act === 'opp-add') { oppAddModal(); return; }
+      if (act === 'na-save') { oppAddSave(actEl); return; }
+      if (act === 'client-pick') { clientPickSet(actEl.dataset.prefix, actEl.dataset.id, actEl.dataset.name); return; }
+      if (act === 'client-new') { clientNewSet(actEl.dataset.prefix, actEl.dataset.name); return; }
+      if (act === 'client-new-cancel') { clientNewCancel(actEl.dataset.prefix); return; }
       if (act === 'modal-close') { window.Sanad.closeModal(); return; }
       if (act === 'view-save') { viewSaveModal(); return; }
       if (act === 'view-save-confirm') { viewSaveConfirm(); return; }

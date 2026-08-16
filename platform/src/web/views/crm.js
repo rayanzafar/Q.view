@@ -151,6 +151,8 @@ export async function opportunitiesPage(user, opts = {}) {
   // عدّة نافذتي «فرصة جديدة» والتعديل (v5.30 — «لازم من الإضافة أحط أهم المعلومات كاملة»):
   // جهاتٌ حيّة للباحث (لا المحذوفة ولا الموقوفة — خريطة العرض أعلاه تبقى شاملة للتاريخ)،
   // ومسؤولون بنفس بانِي صفحة الفرصة، وكل الإدارات النشطة لتقييد القائمة بقطاع الاختيار.
+  // وقطاعُ المُدخِل وإدارتُه يُحقنان (userSector/userDept) ليكونا الاختيارَ الافتراضي في
+  // النافذة إن كانا من قوائمها — أغلبُ من يُدخل فرصةً يُدخلها لقطاعه وإدارته.
   const pickerClients = (canCreate || canEdit)
     ? await all('SELECT id, name_ar FROM client WHERE deleted_at IS NULL AND active = 1 ORDER BY name_ar')
     : [];
@@ -456,6 +458,8 @@ export async function opportunitiesPage(user, opts = {}) {
       canEditOpp:${canEdit ? 'true' : 'false'},
       canDeleteAny:${canDeleteAny ? 'true' : 'false'},
       uid:${JSON.stringify(user.id || '')},
+      userSector:${JSON.stringify(user.sector_id || '')},
+      userDept:${JSON.stringify(user.department_id || '')},
       viewsPage:'opportunities'
     });</script>`;
   return layout({

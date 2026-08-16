@@ -225,8 +225,24 @@ export async function opportunityDetailPage(user, oppId, opts = {}) {
     <div style="padding:.85rem 1rem 1rem">
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.7rem .6rem">
         ${fld('اسم الفرصة', `<input id="oc-title" class="input" style="width:100%;font-size:12.5px" value="${esc(o.title_ar || '')}" maxlength="200">`)}
-        ${fld('الجهة', `<select id="oc-client" class="input" style="width:100%;font-size:12.5px">
-          ${opt('', 'بلا جهة', !o.client_id)}${clientOptions.map((c) => opt(c.id, c.name_ar, o.client_id === c.id)).join('')}</select>`)}
+        ${/* الجهة باحثٌ لا قائمة (v5.30 — «العميل أبحث عنه أو أكتب اسم عميل جديد إذا مو
+              موجود ويضاف»): ثلاثمئة جهةٍ في select لا يُبحث فيها. الحقيقة تبقى في المخفيّ
+              `oc-client` بمعرّفه المثبَّت (الحفظ والاختبارات يقرآنه)، وخانة البحث تعرض الاسم
+              وتُرشِّح من clientsList المحقونة أدناه (pages/opps.js — نفس باحث نافذة الإضافة).
+              والاسم غير الموجود يُعرض سطرَ «إضافة … جهةً جديدة» فيملأ `oc-client-new` ويرسله
+              الحفظ new_client_name — والخادم يعيد استعمال المطابق أو يسجّل جهةً جديدة. */ ''}
+        ${fld('الجهة', `<div id="oc-client-pick" style="position:relative">
+          <input class="input" id="oc-client-q" style="width:100%;font-size:12.5px" autocomplete="off"
+            placeholder="ابحث باسم الجهة…" aria-label="ابحث عن الجهة أو اكتب اسم جهة جديدة"
+            value="${esc(o.client_id ? (d.client || '') : '')}">
+          <input type="hidden" id="oc-client" value="${esc(o.client_id || '')}">
+          <input type="hidden" id="oc-client-new" value="">
+          <div id="oc-client-badge" class="san-cl-badge" hidden>
+            <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">ستُسجَّل جهةً جديدة: <b id="oc-client-badge-name"></b></span>
+            <button type="button" class="btn btn-ghost btn-sm" data-action="client-new-cancel" data-prefix="oc" style="flex:0 0 auto">إلغاء</button>
+          </div>
+          <div id="oc-client-list" class="san-cl-list" hidden role="listbox" aria-label="نتائج البحث في الجهات"></div>
+        </div>`, 'اكتب للبحث — ومسحُ الخانة يعني «بلا جهة»')}
         ${fld('القطاع', `<select id="oc-sector" class="input" style="width:100%;font-size:12.5px"${lockAttrs}>
           ${sectorOptions.map((s) => opt(s.id, s.name_ar, o.sector_id === s.id)).join('')}</select>`)}
         ${fld('الإدارة', `<select id="oc-dept" class="input" style="width:100%;font-size:12.5px"${lockAttrs}>
@@ -563,6 +579,7 @@ export async function opportunityDetailPage(user, oppId, opts = {}) {
       oppSector:${JSON.stringify(o.sector_id || '')},
       oppTab:${JSON.stringify(tab)},
       stages:${JSON.stringify(d.stages.map((s) => ({ id: s.id, name_ar: s.name_ar, color: s.color }))).replace(/</g, '\\u003c')},
+      clientsList:${JSON.stringify(clientOptions.map((c) => ({ id: c.id, name_ar: c.name_ar }))).replace(/</g, '\\u003c')},
       canEditOpp:${d.canEdit ? 'true' : 'false'},
       canDeleteOpp:${d.canDelete ? 'true' : 'false'}
     });</script>`;
