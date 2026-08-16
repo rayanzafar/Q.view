@@ -12,6 +12,7 @@ import { stageInfo } from '../../core/i18n/stages.js';
 import { listViews } from '../../modules/views/views.js';
 import { can } from '../../core/rbac/index.js';
 import { DELIVERY_SECTOR_SQL } from '../../core/org/kind.js';
+import { pickablePeople } from '../../modules/org/people.js';
 import { sarShort, pct, esc, statMini, ddWrap, ddRows } from './_shared.js';
 import { G, SOLICITATION_TYPE_AR } from '../i18n/glossary.js';
 
@@ -147,6 +148,16 @@ export async function opportunitiesPage(user, opts = {}) {
   const savedViews = await listViews(user, 'opportunities');
   const canCreate = can(user, 'create', 'opportunity');
   const canEdit = can(user, 'update', 'opportunity');
+  // عدّة نافذتي «فرصة جديدة» والتعديل (v5.30 — «لازم من الإضافة أحط أهم المعلومات كاملة»):
+  // جهاتٌ حيّة للباحث (لا المحذوفة ولا الموقوفة — خريطة العرض أعلاه تبقى شاملة للتاريخ)،
+  // ومسؤولون بنفس بانِي صفحة الفرصة، وكل الإدارات النشطة لتقييد القائمة بقطاع الاختيار.
+  const pickerClients = (canCreate || canEdit)
+    ? await all('SELECT id, name_ar FROM client WHERE deleted_at IS NULL AND active = 1 ORDER BY name_ar')
+    : [];
+  const ownerOptions = (canCreate || canEdit) ? await pickablePeople({ limit: 200, viewer: user }) : [];
+  const allDepartments = (canCreate || canEdit)
+    ? await all('SELECT id, name_ar, sector_id FROM department WHERE active = 1 AND deleted_at IS NULL ORDER BY name_ar')
+    : [];
   // السحب: صلاحية الحذف تفتح كل البطاقات، ومَن أنشأ فرصةً يسحب فرصته هو ولو لم يملكها —
   // القرار يُحسم على كل بطاقة أدناه (`candel`)، والخادم يعيد الحسم عند التنفيذ.
   const canDeleteAny = can(user, 'delete', 'opportunity');
@@ -435,6 +446,9 @@ export async function opportunitiesPage(user, opts = {}) {
     <script>window.__SANAD=Object.assign(window.__SANAD||{},{
       stages:${JSON.stringify(stages.map((s) => ({ id: s.id, name_ar: s.name_ar, color: s.color }))).replace(/</g, '\\u003c')},
       sectors:${JSON.stringify(sectors.map((s) => ({ id: s.id, name_ar: s.name_ar }))).replace(/</g, '\\u003c')},
+      clientsList:${JSON.stringify(pickerClients.map((c) => ({ id: c.id, name_ar: c.name_ar }))).replace(/</g, '\\u003c')},
+      owners:${JSON.stringify(ownerOptions.map((u) => ({ id: u.id, name: u.name }))).replace(/</g, '\\u003c')},
+      allDepartments:${JSON.stringify(allDepartments.map((d) => ({ id: d.id, name_ar: d.name_ar, sector_id: d.sector_id }))).replace(/</g, '\\u003c')},
       moveSectors:${JSON.stringify(moveTargets.map((s) => ({ id: s.id, name_ar: s.name_ar }))).replace(/</g, '\\u003c')},
       wonStage:${JSON.stringify(wonStage ? wonStage.id : null)},
       lostStage:${JSON.stringify(lostStage ? lostStage.id : null)},

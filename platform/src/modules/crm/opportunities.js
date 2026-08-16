@@ -132,6 +132,34 @@ export async function getOpportunity(user, oppId) {
   return redact(user, 'opportunity', row);
 }
 
+// ── الجهة تُسجَّل من باب الفرصة نفسه (v5.30) ─────────────────────────────────
+// «العميل لازم يكون موجوداً وأقدر أبحث عنه، أو أكتب اسم عميل جديد إذا مو موجود ويضاف في
+// المنصة» — بلسان المالك (2026-08-16). الاسم المكتوب يُطابَق أولاً على الجهات القائمة
+// (تطبيع المسافات وحالة الأحرف) **فيُعاد استعمال** الموجود لا تكرارُه — منصة الجهات كلها
+// مبنية على محاربة التكرار (ترحيلتا الدمج 011 وتأكيد الاسم 012) فلا يفتح هذا الباب ما
+// أغلقتاه. فإن لم يوجد أُنشئت جهةٌ باسمها فقط، بتدقيقٍ يسمّي بابها.
+//
+// والسلطة سلطةُ تسجيل الفرصة لا منحةُ «إنشاء جهة»: مدير الإدارة يسجّل فرصه بقرار المالك
+// ولا يملك منحة الجهات — ولو اشتُرطت لسقط تسجيل الجهة في وجهه فعاد يكتبها نصاً حراً في
+// العنوان. القيد الوحيد: اسمٌ غير فارغ، والباقي يُكمَل من صفحة الجهة (نوعها ورمزها).
+async function resolveIntakeClient(ctx, data) {
+  if (data.client_id) {
+    const c = await get('SELECT id FROM client WHERE id = ? AND deleted_at IS NULL', [data.client_id]);
+    if (!c) throw badRequest('الجهة المختارة غير موجودة — حدّثها من القائمة أو اكتب اسمها لتُضاف');
+    return data.client_id;
+  }
+  const name = String(data.new_client_name || '').trim().replace(/\s+/g, ' ');
+  if (!name) return null;
+  const existing = await get(
+    `SELECT id, name_ar FROM client WHERE deleted_at IS NULL AND lower(trim(name_ar)) = lower(?)`, [name]);
+  if (existing) return existing.id;
+  const cid = id('cli');
+  await insert('client', { id: cid, name_ar: name, active: 1, created_at: nowIso(), created_by: ctx.user.id });
+  await audit(ctx, { action: 'create', resource: 'client', resourceId: cid,
+    detail: { name_ar: name, via: 'تسجيل فرصة' } });
+  return cid;
+}
+
 export async function createOpportunity(ctx, data) {
   const user = ctx.user;
   if (!can(user, 'create', 'opportunity')) throw forbidden();
@@ -157,11 +185,13 @@ export async function createOpportunity(ctx, data) {
     const own = await get('SELECT id, sector_id FROM department WHERE id = ? AND deleted_at IS NULL', [user.department_id]);
     if (own && own.sector_id && String(own.sector_id) === String(sectorId)) departmentId = own.id;
   }
+  // الجهة: معرّفٌ قائم أو اسمٌ جديد يُسجَّل من هذا الباب (resolveIntakeClient أعلاه).
+  const intakeClientId = await resolveIntakeClient(ctx, data);
   const oid = id('opp');
   const now = nowIso();
   await insert('opportunity', {
     id: oid, code: data.code || null, title_ar: data.title_ar,
-    client_id: data.client_id || null, sector_id: sectorId, department_id: departmentId,
+    client_id: intakeClientId, sector_id: sectorId, department_id: departmentId,
     owner_user_id: data.owner_user_id || user.id, stage_id: data.stage_id || 'LEAD',
     win_pct: data.win_pct ?? null, value_halalas: valueHalalasFrom(data),
     priority: data.priority || null, year: data.year || new Date().getUTCFullYear(),
@@ -288,8 +318,12 @@ export async function updateOpportunity(ctx, oppId, data) {
   const partnerOnly = Array.isArray(row.partner_department_ids);
   if (partnerOnly) assertNoAttributionChange(row, data);
   const patch = {};
-  for (const k of ['title_ar', 'client_id', 'priority', 'next_action', 'notes', 'win_pct']) {
+  for (const k of ['title_ar', 'priority', 'next_action', 'notes', 'win_pct']) {
     if (k in data) patch[k] = data[k];
+  }
+  // الجهة من نفس باب الإنشاء: معرّفٌ قائم، أو اسمٌ جديد يُبحث فيُعاد استعماله أو يُسجَّل.
+  if ('client_id' in data || String(data.new_client_name || '').trim()) {
+    patch.client_id = await resolveIntakeClient(ctx, data);
   }
   if ('value_sar' in data) patch.value_halalas = valueHalalasFrom(data);
   commercialPatch(data, patch);
