@@ -13,6 +13,7 @@
 // ما لا تفعله هذه الوحدة عمداً: لا تخترع عمود وصف ولا فئة مصروف ولا دورة تكرار. الجدول يحمل
 // حقلاً وصفياً واحداً (`type`) وشهراً وسنة، فهذا كل ما يُسجَّل. توسيع الجدول قرار هجرة مستقلة.
 import { all, get, insert, update, tx } from '../../core/db/index.js';
+import { loadReadableProject } from '../pmo/project-access.js';
 import { can, redactList } from '../../core/rbac/index.js';
 import { audit } from '../../core/audit/index.js';
 import { id, nowIso, toHalalas } from '../../core/util/ids.js';
@@ -33,10 +34,8 @@ export const SETTLED_STATUSES = ['APPROVED', 'REJECTED', 'PAID'];
 export const projectTarget = (p) => ({ ...p, project_id: p.id });
 
 export async function readableProject(user, projectId) {
-  const p = await get('SELECT * FROM project WHERE id = ? AND deleted_at IS NULL', [projectId]);
-  if (!p) throw notFound('المشروع غير موجود');
-  if (!can(user, 'read', 'project', projectTarget(p))) throw forbidden('هذا المشروع خارج نطاق صلاحياتك');
-  return p;
+  // الباب الواحد (v5.32): نفس بابِ صفحة المشروع — الشراكة والعضوية تفتحان ما تعرضه القوائم.
+  return await loadReadableProject(user, projectId, 'read', 'هذا المشروع خارج نطاق صلاحياتك');
 }
 
 // هدف فحص الصلاحية على المصروف: قطاعه ومشروعه ومن طلبه — الأعمدة الثلاثة التي تقرؤها نطاقات

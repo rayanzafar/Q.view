@@ -365,9 +365,9 @@ export async function updateProject(ctx, pid, data) {
 
 // ── Staffing (تسكين): assign/unassign employees to a project via the allocation model ──
 export async function projectStaffing(user, projectId, opts = {}) {
-  const p = await get('SELECT * FROM project WHERE id=? AND deleted_at IS NULL', [projectId]);
-  if (!p) throw notFound('المشروع غير موجود');
-  if (!can(user, 'read', 'project', p)) throw forbidden();
+  // الباب الواحد (v5.27): مديرة الإدارة الشريكة تفتح فريق مشروعٍ تشارك فيه إدارتُها —
+  // الفحص الخام كان يردّها فيُبتلع الخطأ وتظهر «لا فريق مُسكَّن» كذباً (لقطة المالك 2026-08-16).
+  const p = await loadReadableProject(user, projectId, 'read');
   const assigned = await all(`SELECT a.id, a.employee_id, a.person_name_ar, a.type, e.job_title
      FROM allocation a LEFT JOIN employee e ON e.id=a.employee_id
      WHERE a.project_id=? AND a.deleted_at IS NULL ORDER BY a.created_at`, [projectId]);
@@ -694,9 +694,7 @@ export async function bulkStaffing(ctx, { year, ops } = {}) {
 const DOC_KINDS = ['contract', 'proposal', 'report', 'letter', 'other'];
 
 export async function projectDocuments(user, projectId) {
-  const p = await get('SELECT * FROM project WHERE id = ? AND deleted_at IS NULL', [projectId]);
-  if (!p) throw notFound('المشروع غير موجود');
-  if (!can(user, 'read', 'project', { ...p, project_id: p.id })) throw forbidden('هذا المشروع خارج نطاق صلاحياتك');
+  const p = await loadReadableProject(user, projectId, 'read', 'هذا المشروع خارج نطاق صلاحياتك');
   const documents = await all(`SELECT id, name, kind, url, note, uploaded_by, created_at
      FROM document WHERE project_id = ? AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 100`, [projectId]);
   return { projectId, documents, canEdit: can(user, 'update', 'project', { ...p, project_id: p.id }) };
@@ -749,9 +747,7 @@ const UPDATE_RESOURCE_AR = {
   risk: 'خطر', issue: 'معوق', decision: 'قرار', change_request: 'طلب تغيير', contract: 'عقد',
 };
 export async function projectUpdates(user, projectId, limit = 20) {
-  const p = await get('SELECT * FROM project WHERE id = ? AND deleted_at IS NULL', [projectId]);
-  if (!p) throw notFound('المشروع غير موجود');
-  if (!can(user, 'read', 'project', { ...p, project_id: p.id })) throw forbidden('هذا المشروع خارج نطاق صلاحياتك');
+  const p = await loadReadableProject(user, projectId, 'read', 'هذا المشروع خارج نطاق صلاحياتك');
   const n = Math.max(1, Math.min(100, Number(limit) || 20));
   const rows = await all(
     `SELECT a.id, a.at, a.action, a.resource, a.detail_json, COALESCE(u.name_ar, a.username) actor

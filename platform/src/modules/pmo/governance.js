@@ -1,9 +1,10 @@
 // PMO governance depth — risks / issues / decisions / change requests / milestones per project.
 // Read = whoever may read the project; write = whoever may UPDATE the project (the project's PM
 // via project-scope grants, sector update rights, operations, admin). Every write audited.
-import { all, get, insert, update, tx } from '../../core/db/index.js';
+import { all, get, insert, update, run, tx } from '../../core/db/index.js';
 import { can } from '../../core/rbac/index.js';
 import { syncDeliverableRevenue } from '../finance/recognition.js';
+import { loadReadableProject, projectActionAllowed } from './project-access.js';
 import { audit } from '../../core/audit/index.js';
 import { id, nowIso, toHalalas } from '../../core/util/ids.js';
 import { forbidden, notFound, badRequest } from '../../core/http/errors.js';
@@ -269,13 +270,17 @@ function kindCfg(kind) {
 // project-scoped roles (consultant/PM) while sector/company scopes stay untouched.
 const asTarget = (p) => ({ ...p, project_id: p.id });
 async function readableProject(user, projectId) {
-  const p = await get('SELECT * FROM project WHERE id = ? AND deleted_at IS NULL', [projectId]);
-  if (!p) throw notFound('المشروع غير موجود');
-  if (!can(user, 'read', 'project', asTarget(p))) throw forbidden('هذا المشروع خارج نطاق صلاحياتك');
-  return p;
+  // الباب الواحد (v5.32): الشراكة تفتح القراءة كما تفتح صفحة المشروع نفسها — لا فحص خام
+  // يردّ مديرة الإدارة الشريكة عن سجلات حوكمة مشروعٍ تعمل عليه إدارتُها.
+  return await loadReadableProject(user, projectId, 'read', 'هذا المشروع خارج نطاق صلاحياتك');
 }
-function requireWrite(user, project) {
-  if (!can(user, 'update', 'project', asTarget(project))) throw forbidden('تعديل سجلات الحوكمة يتطلب صلاحية إدارة المشروع');
+async function requireWrite(user, project) {
+  // والكتابة تتبع القراءة بعقد الشراكة نفسه (ADR-0008 + «كله يتم العمل عليه من مدير المشروع
+  // ومدير الإدارة والقطاع اللي لهم صلاحية» — المالك 2026-08-16): من يملك تعديل المشروع —
+  // مسؤوليةً أو شراكةً — يحرّك حوكمته. الفحص بدرجتَي الباب على الصف المحمَّل سلفاً.
+  if (!(await projectActionAllowed(user, 'update', project))) {
+    throw forbidden('تعديل سجلات الحوكمة يتطلب صلاحية إدارة المشروع');
+  }
 }
 async function checkOwner(d) {
   if (d.owner_user_id && !(await get('SELECT id FROM app_user WHERE id = ? AND deleted_at IS NULL', [d.owner_user_id])))
@@ -315,13 +320,13 @@ export async function projectGovernance(user, projectId) {
   const kinds = ['risk', 'issue', 'decision', 'change', 'milestone', 'deliverable', 'phase'];
   const [risks, issues, decisions, changes, milestones, deliverables, phases] = await Promise.all(
     kinds.map((k) => all(`SELECT * FROM ${KINDS[k].table} WHERE project_id = ? AND deleted_at IS NULL ${ORDER[k]}`, [projectId])));
-  return { projectId: p.id, canEdit: can(user, 'update', 'project', asTarget(p)), risks, issues, decisions, changes, milestones, deliverables, phases };
+  return { projectId: p.id, canEdit: await projectActionAllowed(user, 'update', p), risks, issues, decisions, changes, milestones, deliverables, phases };
 }
 
 export async function createItem(ctx, projectId, kind, data = {}) {
   const cfg = kindCfg(kind);
   const p = await readableProject(ctx.user, projectId);
-  requireWrite(ctx.user, p);
+  await requireWrite(ctx.user, p);
   const title = titleOf(cfg, data);
   if (!title) throw badRequest(cfg.titleError || 'العنوان مطلوب');
   cfg.validate(data);
@@ -343,7 +348,7 @@ async function writableItem(user, kind, itemId) {
   if (!row) throw notFound('السجل غير موجود');
   const p = row.project_id ? await get('SELECT * FROM project WHERE id = ? AND deleted_at IS NULL', [row.project_id]) : null;
   if (!p) throw notFound('المشروع غير موجود');
-  requireWrite(user, p); // row-level sector/PM guard (IDOR)
+  await requireWrite(user, p); // row-level sector/PM guard (IDOR)
   return { cfg, row, p };
 }
 
@@ -377,4 +382,67 @@ export async function deleteItem(ctx, kind, itemId) {
     if (cfg.afterWrite) await cfg.afterWrite(ctx, { ...row, deleted_at: at }, p);
   });
   return { ok: true };
+}
+
+// ── كل إيرادٍ مربوط (v5.32) ──────────────────────────────────────────────────
+// «مشروع عليه إيرادات بس ما هي مكتوبة في المخرجات أو في أي مكان ثاني — ما ينفع، لازم كل
+// إيراد يكون مربوطاً بشكل كامل» — بلسان المالك (2026-08-16). سطرُ الإيراد المستورد (بلا
+// مخرَج) يُربط من صفحة المشروع بأحد بابين، وكلاهما يحفظ المجموع هللةً بهللة:
+//   • **الربط بمخرَجٍ قائم**: مخرَجٌ مُسلَّم أو معتمَد **بلا قيمة** يتبنّى قيمةَ السطر
+//     (فيتولّد سطرُه المشتق بنفس المبلغ) ويُمحى السطرُ المستورد في المعاملة نفسها. مخرَجٌ
+//     له قيمته يُرفض — ربطُه يعدّ المال مرتين. ومسودةٌ تُرفض — الإيراد المعترف به لا
+//     يُعلَّق على عملٍ لم يخرج.
+//   • **التحويل إلى مخرَج**: يُنشأ مخرَجٌ معتمَد باسم السطر وقيمته وشهره ويُمحى السطر —
+//     قرارُ صاحب الصلاحية وحده (الواجهة تقول أثره على نسبة الإنجاز قبل التأكيد).
+const isImportedOrphanLine = (l) => l && !l.deliverable_id && !String(l.id).startsWith('rl_dlv_');
+async function orphanLineOf(projectId, lineId) {
+  const line = await get('SELECT * FROM revenue_line WHERE id = ?', [lineId]);
+  if (!line || String(line.project_id || '') !== String(projectId)) throw notFound('سطر الإيراد غير موجود على هذا المشروع');
+  if (!isImportedOrphanLine(line)) throw badRequest('هذا السطر مربوطٌ بمخرَجه أصلاً — لا يحتاج ربطاً');
+  return line;
+}
+const lineSarOf = (line) => (Number(line.amount_halalas) || 0) / 100;
+const linePeriodOf = (line) => (line.year && line.month
+  ? `${line.year}-${String(line.month).padStart(2, '0')}` : '');
+
+export async function attachRevenueLine(ctx, projectId, lineId, deliverableId) {
+  const p = await readableProject(ctx.user, projectId);
+  await requireWrite(ctx.user, p);
+  const line = await orphanLineOf(projectId, lineId);
+  const dlv = await get('SELECT * FROM deliverable WHERE id = ? AND deleted_at IS NULL', [deliverableId]);
+  if (!dlv || String(dlv.project_id) !== String(projectId)) throw notFound('المخرَج غير موجود على هذا المشروع');
+  if (!['DELIVERED', 'ACCEPTED'].includes(dlv.status)) {
+    throw badRequest('اربط بمخرَجٍ مُسلَّم أو معتمَد — الإيراد المعترف به لا يُعلَّق على مسودة');
+  }
+  if (Number(dlv.amount_halalas) > 0) {
+    throw badRequest('لهذا المخرَج قيمتُه وإيرادُه المشتق — ربطُ السطر به يعدّ المال مرتين. اختر مخرَجاً بلا قيمة.');
+  }
+  return await tx(async () => {
+    // القيمة تُتبنّى عبر مسار الحوكمة نفسه (تدقيقٌ واعترافٌ تلقائي)، والشهر من السطر إن كان
+    // المخرَج بلا شهر — شهرُ الإيراد لا يُخترع.
+    const patch = { amount_sar: lineSarOf(line) };
+    if (!dlv.month && line.month) patch.period = linePeriodOf(line);
+    await updateItem(ctx, 'deliverable', deliverableId, patch);
+    await run('DELETE FROM revenue_line WHERE id = ?', [line.id]);
+    await audit(ctx, { action: 'delete', resource: 'revenue_line', resourceId: line.id, sectorId: line.sector_id || p.sector_id,
+      detail: { reason: 'رُبط بالمخرَج — حلّ محلّه سطرُه المشتق', deliverable_id: deliverableId, amount_halalas: line.amount_halalas } });
+    return { ok: true, deliverable_id: deliverableId, amount_halalas: line.amount_halalas };
+  });
+}
+
+export async function convertRevenueLine(ctx, projectId, lineId) {
+  const p = await readableProject(ctx.user, projectId);
+  await requireWrite(ctx.user, p);
+  const line = await orphanLineOf(projectId, lineId);
+  const name = String(line.label || '').trim() || `إيراد مسجَّل ${line.month || ''}${line.month ? '/' : ''}${line.year || ''}`.trim();
+  return await tx(async () => {
+    const dlv = await createItem(ctx, projectId, 'deliverable', {
+      name_ar: name, period: linePeriodOf(line), amount_sar: lineSarOf(line), status: 'ACCEPTED',
+      notes: 'أُنشئ من سطر إيرادٍ كان مسجَّلاً على المشروع بلا مخرَج — القيمة والشهر منه',
+    });
+    await run('DELETE FROM revenue_line WHERE id = ?', [line.id]);
+    await audit(ctx, { action: 'delete', resource: 'revenue_line', resourceId: line.id, sectorId: line.sector_id || p.sector_id,
+      detail: { reason: 'حُوِّل مخرَجاً معتمَداً — حلّ محلّه سطرُه المشتق', deliverable_id: dlv.id, amount_halalas: line.amount_halalas } });
+    return { ok: true, deliverable_id: dlv.id, amount_halalas: line.amount_halalas };
+  });
 }

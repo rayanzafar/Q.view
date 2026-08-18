@@ -21,6 +21,7 @@ import { nowIso } from '../../core/util/ids.js';
 import { MONTHS_AR } from '../../core/i18n/time.js';
 import { SUPPORT_KIND } from '../org/org.js';
 import { notDemoEmployeeSql, seesDemoAccounts } from '../org/people.js';
+import { loadReadableProject } from './project-access.js';
 
 const N = (v) => Number(v) || 0;
 
@@ -131,9 +132,8 @@ function personLoad(emp, idx, year, month, { excludeProjectId = null } = {}) {
 // **مع** موظفي وحدات المساندة، لأنهم مورد مشترك للشركة بحكم تعريف وحدتهم. أي قاعدة ثانية هنا
 // تعني قائمةً تعرض من لا يقبله الحفظ — أسوأ من قائمة ناقصة.
 export async function staffingCandidates(user, projectId, opts = {}) {
-  const p = await get('SELECT * FROM project WHERE id = ? AND deleted_at IS NULL', [projectId]);
-  if (!p) throw notFound('المشروع غير موجود');
-  if (!can(user, 'read', 'project', { ...p, project_id: p.id })) throw forbidden('هذا المشروع خارج نطاق صلاحياتك');
+  // الباب الواحد (v5.27/v5.32): الشراكة والعضوية يفتحان ما تعرضه القوائم — لا فحص خام يُبتلع.
+  const p = await loadReadableProject(user, projectId, 'read', 'هذا المشروع خارج نطاق صلاحياتك');
   if (!can(user, 'read', 'employee')) throw forbidden('عرض الفريق يتطلب صلاحية');
   const year = Number(opts.year) || new Date().getUTCFullYear();
   const month = Number(opts.month) || liveMonth(year) || 1;
@@ -160,9 +160,8 @@ export async function staffingCandidates(user, projectId, opts = {}) {
 // «نسبته على هذا المشروع» و«مجموع تسكينه» رقمان مختلفان، وعرضُ الأول وحده هو ما يجعل مديراً
 // يضيف عشرين بالمئة على شخصٍ بلغ مئةً وأربعين في مكانٍ آخر لا يراه.
 export async function projectTeamLoad(user, projectId, opts = {}) {
-  const p = await get('SELECT * FROM project WHERE id = ? AND deleted_at IS NULL', [projectId]);
-  if (!p) throw notFound('المشروع غير موجود');
-  if (!can(user, 'read', 'project', { ...p, project_id: p.id })) throw forbidden('هذا المشروع خارج نطاق صلاحياتك');
+  // الباب الواحد (v5.27/v5.32): الشراكة والعضوية يفتحان ما تعرضه القوائم — لا فحص خام يُبتلع.
+  const p = await loadReadableProject(user, projectId, 'read', 'هذا المشروع خارج نطاق صلاحياتك');
   const year = Number(opts.year) || new Date().getUTCFullYear();
   const month = Number(opts.month) || liveMonth(year) || 1;
   const rows = await all(

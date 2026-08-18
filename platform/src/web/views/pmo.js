@@ -2332,11 +2332,18 @@ export async function projectDetailPage(user, projectId, opts = {}) {
   // سطر الإيراد المشتقّ من كل مخرَج — ليقول الجدول صراحةً «إيراده مسجَّل في القطاع» بدل أن
   // يبقى الاعتراف محرّكاً صامتاً يشكّ المالك في عمله. المعرّف مشتق (rl_dlv_…) والعلاقة
   // واحد-لواحد، فالخريطة قراءة مباشرة لا اجتهاد.
-  const dlvRevRows = dlv.length ? await all(
-    `SELECT deliverable_id, month, year, amount_halalas FROM revenue_line
-      WHERE project_id = ? AND rule_id = 'deliverable_delivered' AND deliverable_id IS NOT NULL`, [p.id]) : [];
+  // «لازم كل إيراد يكون مربوطاً بشكل كامل» (v5.32): يُقرأ سجل إيراد المشروع كله — المربوط
+  // بمخرَجه والمستورد اليتيم معاً — فيُقال الاثنان بمجموعيهما، ويُعرض اليتيم بأدوات ربطه.
+  const projRevLines = await all(
+    `SELECT id, deliverable_id, month, year, amount_halalas, label FROM revenue_line
+      WHERE project_id = ? ORDER BY year, month`, [p.id]);
+  const dlvRevRows = projRevLines.filter((r) => r.deliverable_id);
+  const orphanRevLines = projRevLines.filter((r) => !r.deliverable_id && !String(r.id).startsWith('rl_dlv_'));
   const dlvRevBy = Object.fromEntries(dlvRevRows.map((r) => [r.deliverable_id, r]));
   const dlvRevSum = dlvRevRows.reduce((a, r) => a + (Number(r.amount_halalas) || 0), 0);
+  const orphanRevSum = orphanRevLines.reduce((a, r) => a + (Number(r.amount_halalas) || 0), 0);
+  // المخرجات المؤهلة للربط: مُسلَّم/معتمَد بلا قيمة — نفس شرطَي الخادم حرفاً.
+  const attachTargets = dlv.filter((d) => ['DELIVERED', 'ACCEPTED'].includes(d.status) && !Number(d.amount_halalas));
   const RECOGNIZED = new Set(['DELIVERED', 'ACCEPTED']);
   const dlvRevChip = (d) => {
     if (!canDlvMoney) return '';
@@ -2447,6 +2454,23 @@ export async function projectDetailPage(user, projectId, opts = {}) {
       ${prog.delivery.total ? `<b class="tnum">${prog.delivery.accepted}</b> معتمَد · <b class="tnum">${prog.delivery.delivered}</b> مُسلَّم · <b class="tnum">${prog.delivery.invoiced}</b> مفوتر · <b class="tnum">${prog.delivery.collected}</b> محصَّل` : ''}
       ${canDlvMoney && dlvRevSum ? ` · المسجَّل إيراداً للقطاع من هذا المشروع: <b class="tnum" style="color:var(--green)">${fmtSar(dlvRevSum)}</b>` : ''}
     </div>
+    ${/* الإيراد اليتيم يُقال ويُربط من مكانه (v5.32): «مشروع عليه إيرادات بس ما هي مكتوبة
+         في المخرجات أو في أي مكان ثاني — ما ينفع». لكل سطرٍ مستورد بلا مخرَج: ربطٌ بمخرَجٍ
+         مؤهل (مُسلَّم/معتمَد بلا قيمة — يتبنّى قيمته فلا يُعدّ المال مرتين) أو تحويلٌ
+         لمخرَجٍ معتمَد بقرارٍ مؤكَّد يقول أثره على نسبة الإنجاز. */''}
+    ${canDlvMoney && orphanRevLines.length ? `<div style="margin:.35rem .9rem .6rem;padding:.6rem .75rem;background:#fffbeb;border:1px solid #fde68a;border-radius:10px">
+      <div style="font-size:11.5px;font-weight:800;color:#92400e;margin-bottom:.35rem">إيراد مسجَّل على المشروع غير مربوط بأي مخرَج: <span class="tnum">${fmtSar(orphanRevSum)}</span> في ${orphanRevLines.length === 1 ? 'سطر واحد' : orphanRevLines.length === 2 ? 'سطرين' : `<span class="tnum">${orphanRevLines.length}</span> أسطر`} — اربطه ليكتمل الحساب</div>
+      ${orphanRevLines.map((l) => `<div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;padding:.35rem 0;border-top:1px dashed #fde68a;font-size:12px">
+        <span style="flex:1;min-width:180px">${esc(String(l.label || 'إيراد مسجَّل').slice(0, 60))}
+          <span style="color:var(--muted);font-size:10.5px">· ${l.month ? `${MONTHS_AR[(l.month - 1) % 12] || ''} ` : ''}<span class="tnum">${l.year || ''}</span></span>
+          <b class="tnum" style="margin-inline-start:.4rem">${fmtSar(l.amount_halalas)}</b></span>
+        ${canGov ? (attachTargets.length ? `<select class="input" id="rvl-${esc(l.id)}" aria-label="المخرَج الذي يُربط به" style="width:auto;max-width:220px;font-size:11.5px;padding:.2rem .35rem">
+            ${attachTargets.map((d) => `<option value="${esc(d.id)}">${esc(String(d.name_ar).slice(0, 40))}</option>`).join('')}</select>
+          <button class="btn btn-sm" data-action="rev-attach" data-project="${esc(p.id)}" data-line="${esc(l.id)}" title="يتبنّى المخرَجُ المختار قيمةَ السطر ويحلّ سطرُه المشتق محلّه — المجموع لا يتغيّر">اربطه بالمخرَج</button>`
+    : `<span style="font-size:10.5px;color:#92400e">لا مخرَج مؤهلاً للربط — سجِّل مخرجات المشروع (مُسلَّمة أو معتمَدة بلا قيمة) ثم اربطه، أو حوِّله:</span>`)
+          + `<button class="btn btn-ghost btn-sm" data-action="rev-convert" data-project="${esc(p.id)}" data-line="${esc(l.id)}" data-name="${esc(String(l.label || '').slice(0, 40))}" title="يُنشأ مخرَجٌ معتمَد باسم السطر وقيمته وشهره — سترتفع نسبة الإنجاز المشتقة">حوِّله مخرَجاً</button>` : ''}
+      </div>`).join('')}
+    </div>` : ''}
     <div class="tblwrap">${dlv.length ? `<table style="width:100%;border-collapse:collapse;min-width:${canGov ? 620 : 420}px">
       <thead><tr style="font-size:10.5px;color:var(--muted);text-align:right">
         ${/* عمود «المالية» أُزيل بقرار المالك: «موضوع الفواتير خلاص ألغِه». وحالة المخرَج الظاهرة

@@ -22,3 +22,9 @@ for (const kind of Object.values(PLURALS)) {
   governanceRouter.patch(`/pmo/${kind}/:id`, h((req) => gov.updateItem(req.ctx, kind, req.params.id, req.body || {})));
   governanceRouter.delete(`/pmo/${kind}/:id`, h((req) => gov.deleteItem(req.ctx, kind, req.params.id)));
 }
+
+// ربط سطر إيرادٍ مستورد بمخرَجٍ قائم أو تحويله مخرَجاً معتمَداً (v5.32 — «كل إيراد مربوط»).
+governanceRouter.post('/projects/:id/revenue/:lineId/attach',
+  h((req) => gov.attachRevenueLine(req.ctx, req.params.id, req.params.lineId, (req.body || {}).deliverableId)));
+governanceRouter.post('/projects/:id/revenue/:lineId/convert',
+  h((req) => gov.convertRevenueLine(req.ctx, req.params.id, req.params.lineId)));

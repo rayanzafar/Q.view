@@ -77,6 +77,31 @@
     const amt = ev.target && ev.target.closest && ev.target.closest('[data-action-blur="dlv-amount"]');
     if (amt) dlvAmountSave(amt);
   });
+  // ربط الإيراد اليتيم (v5.32): «اربطه بالمخرَج» يتبنّى المخرَجُ القيمةَ ويحلّ سطرُه المشتق
+  // محلّ المستورد — المجموع محفوظ. و«حوِّله مخرَجاً» قرارٌ يُؤكَّد بأثره على نسبة الإنجاز.
+  async function revAttach(el) {
+    const sel = document.getElementById('rvl-' + el.dataset.line);
+    if (!sel || !sel.value) { toast('اختر المخرَج الذي يُربط به السطر', true); return; }
+    try {
+      await api('/projects/' + el.dataset.project + '/revenue/' + el.dataset.line + '/attach', 'POST', { deliverableId: sel.value });
+      toast('رُبط الإيراد بمخرَجه ✓ — المجموع كما هو');
+      setTimeout(() => location.reload(), 500);
+    } catch (e) { toast(e.message, true); }
+  }
+  async function revConvert(el) {
+    const name = el.dataset.name || 'السطر';
+    if (!window.confirm('سيُنشأ مخرَجٌ معتمَد باسم «' + name + '» بقيمة السطر وشهره، وسترتفع نسبة الإنجاز المشتقة للمشروع. متابعة؟')) return;
+    try {
+      await api('/projects/' + el.dataset.project + '/revenue/' + el.dataset.line + '/convert', 'POST', {});
+      toast('حُوِّل الإيراد مخرَجاً معتمَداً ✓');
+      setTimeout(() => location.reload(), 500);
+    } catch (e) { toast(e.message, true); }
+  }
+  document.addEventListener('click', (ev) => {
+    const a = ev.target && ev.target.closest && ev.target.closest('[data-action="rev-attach"],[data-action="rev-convert"]');
+    if (!a) return;
+    if (a.dataset.action === 'rev-attach') revAttach(a); else revConvert(a);
+  });
   async function govDel(kind, id) {
     if (!window.confirm('حذف هذا السجل نهائيًا من العرض؟')) return;
     try { await api('/pmo/' + kind + '/' + id, 'DELETE'); toast('حُذف السجل ✓'); setTimeout(() => location.reload(), 450); }

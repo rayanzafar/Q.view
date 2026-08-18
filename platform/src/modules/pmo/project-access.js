@@ -18,17 +18,33 @@ import { forbidden, notFound } from '../../core/http/errors.js';
 export async function loadReadableProject(user, projectId, action = 'read', deniedMsg) {
   const row = await get('SELECT * FROM project WHERE id = ? AND deleted_at IS NULL', [projectId]);
   if (!row) throw notFound('المشروع غير موجود');
-  if (can(user, action, 'project', row)) return row;
+  // صف المشروع لا يحمل عمود `project_id` فيمرّ نطاق «مشروع» عليه فارغاً — يُمرَّر صراحةً
+  // (نمط `projectTarget` نفسه) كي تفتح العضويةُ البابَ لمن نطاقُه مشروع (مدير مشروع/استشاري)،
+  // فيصلح البابُ الواحد لكل الأقسام الداخلية التي كانت تفحص خاماً بهذا التمرير (v5.32).
+  const target = { ...row, project_id: row.id };
+  if (can(user, action, 'project', target)) return row;
   // الدرجة الثانية: المشاركات تُحمَّل على الهدف باسمٍ يعرفه المحرّك (`partner_department_ids`)
   // ويُعاد السؤال نفسه — لا حكمٌ محلّي هنا، فالقرار يبقى في مكانه الواحد (rbac/index.js).
   const partners = (await all(
     'SELECT department_id FROM project_department WHERE project_id = ?', [projectId]
   )).map((r) => r.department_id).filter(Boolean);
   const enriched = { ...row, partner_department_ids: partners };
-  if (partners.length && can(user, action, 'project', enriched)) {
+  if (partners.length && can(user, action, 'project', { ...enriched, project_id: row.id })) {
     return enriched;
   }
   throw forbidden(deniedMsg);
+}
+
+// حكمُ فعلٍ على صفٍّ محمَّلٍ سلفاً، بنفس درجتَي الباب: الصفّ كما هو ثم محمَّلاً بالمشاركات.
+// لخدماتٍ عندها الصفُّ أصلاً (حارس كتابة الحوكمة) — فلا تُعيد قراءته لتسأل عنه.
+export async function projectActionAllowed(user, action, row) {
+  if (!row?.id) return false;
+  const target = { ...row, project_id: row.id };
+  if (can(user, action, 'project', target)) return true;
+  const partners = (await all(
+    'SELECT department_id FROM project_department WHERE project_id = ?', [row.id]
+  )).map((r) => r.department_id).filter(Boolean);
+  return partners.length > 0 && can(user, action, 'project', { ...target, partner_department_ids: partners });
 }
 
 // الإدارات المشاركة بأسمائها — للعرض (صفحة المشروع وبطاقاته). المحذوفة لا تُعرض.
