@@ -58,6 +58,25 @@
     try { await api('/pmo/' + kind + '/' + id, 'PATCH', { status }); toast('حُدّثت الحالة ✓'); setTimeout(() => location.reload(), 450); }
     catch (e) { toast(e.message, true); }
   }
+  // قيمة المخرَج تُكتب من خانتها في الجدول وتُحفظ عند الخروج (v5.31 — «لازم يتبيّن في
+  // الجدول قيمة المخرَج… كله يتم العمل عليه من أصحاب الصلاحية»): نفس مسار الحوكمة، والخادم
+  // يلحق الاعترافَ الإيرادي تلقائياً. القيمة كما كانت لا تُرسل — خروجٌ بلا تعديل ليس حفظاً.
+  async function dlvAmountSave(el) {
+    const prev = String(el.dataset.prev ?? '');
+    const now = String(el.value ?? '').trim();
+    if (now === prev) return;
+    const n = Number(now);
+    if (now !== '' && (!Number.isFinite(n) || n < 0)) { toast('قيمة المخرَج تُكتب رقماً بالريال', true); el.value = prev; return; }
+    try {
+      await api('/pmo/deliverable/' + el.dataset.id, 'PATCH', { amount_sar: now === '' ? null : n });
+      toast('حُفظت القيمة ✓ — والإيراد يتبعها تلقائياً');
+      setTimeout(() => location.reload(), 450);
+    } catch (e) { toast(e.message, true); el.value = prev; }
+  }
+  document.addEventListener('focusout', (ev) => {
+    const amt = ev.target && ev.target.closest && ev.target.closest('[data-action-blur="dlv-amount"]');
+    if (amt) dlvAmountSave(amt);
+  });
   async function govDel(kind, id) {
     if (!window.confirm('حذف هذا السجل نهائيًا من العرض؟')) return;
     try { await api('/pmo/' + kind + '/' + id, 'DELETE'); toast('حُذف السجل ✓'); setTimeout(() => location.reload(), 450); }

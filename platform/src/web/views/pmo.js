@@ -2323,6 +2323,30 @@ export async function projectDetailPage(user, projectId, opts = {}) {
 
   // ── ٣) المخرجات ──────────────────────────────────────────────────────────────
   const dlvTone = (s) => (s === 'ACCEPTED' ? 'green' : s === 'DELIVERED' ? 'blue' : s === 'IN_PROGRESS' ? 'amber' : s === 'REJECTED' ? 'red' : 'slate');
+  // قيمة المخرَج لمن يعمل عليه لا لقارئ المال وحده: «لازم يتبيّن في جدول المخرجات قيمة
+  // المخرَج وحالته… كله يتم العمل عليه من مدير المشروع ومدير الإدارة والقطاع اللي لهم
+  // صلاحية» (المالك، 2026-08-16). فمن يملك تحريك حالة المخرَج (canGov) يرى قيمته وأثرها
+  // الإيرادي — والموظف المسكَّن قراءةً يبقى على الوزن وحده (قرار «مو أي موظف مسكَّن يشوف»
+  // باقٍ على قسم مال المشروع كاملاً).
+  const canDlvMoney = canMoney || canGov;
+  // سطر الإيراد المشتقّ من كل مخرَج — ليقول الجدول صراحةً «إيراده مسجَّل في القطاع» بدل أن
+  // يبقى الاعتراف محرّكاً صامتاً يشكّ المالك في عمله. المعرّف مشتق (rl_dlv_…) والعلاقة
+  // واحد-لواحد، فالخريطة قراءة مباشرة لا اجتهاد.
+  const dlvRevRows = dlv.length ? await all(
+    `SELECT deliverable_id, month, year, amount_halalas FROM revenue_line
+      WHERE project_id = ? AND rule_id = 'deliverable_delivered' AND deliverable_id IS NOT NULL`, [p.id]) : [];
+  const dlvRevBy = Object.fromEntries(dlvRevRows.map((r) => [r.deliverable_id, r]));
+  const dlvRevSum = dlvRevRows.reduce((a, r) => a + (Number(r.amount_halalas) || 0), 0);
+  const RECOGNIZED = new Set(['DELIVERED', 'ACCEPTED']);
+  const dlvRevChip = (d) => {
+    if (!canDlvMoney) return '';
+    const rl = dlvRevBy[d.id];
+    if (rl) return `<div style="font-size:10px;color:var(--green);font-weight:700" title="قرارك القائم: الإيراد يتبع التسليم لا الفاتورة — سطرُ إيرادٍ باسم هذا المخرَج محسوب في إيراد القطاع، ويُحدَّث ويُمحى مع حالته تلقائياً">✓ إيراده مسجَّل في القطاع${rl.month ? ` · ${MONTHS_AR[(rl.month - 1) % 12] || ''} <span class="tnum">${rl.year || ''}</span>` : ''}</div>`;
+    if (RECOGNIZED.has(d.status) && !Number(d.amount_halalas)) {
+      return `<div style="font-size:10px;color:var(--amber,#b45309);font-weight:700" title="الاعتراف بالإيراد يحتاج قيمةً متفقاً عليها — اكتبها في خانة القيمة وسيُسجَّل تلقائياً">بلا قيمة — لن يُسجَّل إيراده حتى تُحدَّد</div>`;
+    }
+    return '';
+  };
   const dlvRows = dlv.map((d) => {
     const next = DELIVERABLE_NEXT[d.status];
     const due = d.due_date ? `<span class="tnum">${esc(String(d.due_date).slice(0, 10))}</span>`
@@ -2334,11 +2358,17 @@ export async function projectDetailPage(user, projectId, opts = {}) {
     return `<tr style="border-bottom:1px solid var(--line)">
       <td style="padding:.45rem .75rem;font-size:12.5px">${esc(d.name_ar)}
         <div style="font-size:10px;color:var(--muted)">${due}${d.owner_user_id && userName[d.owner_user_id] ? ` · ${esc(userName[d.owner_user_id])}` : ''}${stamp ? ` · آخر تغيير: ${stamp}` : ''}</div></td>
-      ${/* قيمة المخرَج رقمُ مالٍ لا وصفُ عمل: اسمه وحالته وموعده ومسؤوله عملُ الفريق، وسِعرُه
-           أمرٌ تجاري. فتُحجب عمّن لا يملك مال المشروع — ويبقى **الوزن** ظاهراً لأنه نسبةُ تقدّمٍ
-           لا مبلغ، ومن دونه لا يُفهم الإنجاز. */''}
-      ${canMoney ? `<td style="padding:.45rem .75rem;text-align:center;white-space:nowrap;font-size:12px" class="${d.amount_halalas == null ? '' : 'tnum'}">${d.amount_halalas == null ? `<span style="color:var(--muted);font-size:11px">${G.amountUnset}</span>` : fmtSar(d.amount_halalas)}
-        ${w != null ? `<div style="font-size:10px;color:var(--faint)">وزن <span class="tnum">${Math.round(w)}%</span></div>` : ''}</td>`
+      ${/* قيمة المخرَج لمن يعمل عليه (canDlvMoney = مال المشروع أو صلاحية حوكمته): اسمه
+           وحالته وموعده عملُ الفريق، وقيمتُه قرارُ من يحرّك حالته — «لازم يتبيّن في الجدول
+           قيمة المخرَج». ولمن يملك الحوكمة تُكتب القيمة من الخانة نفسها وتُحفظ عند الخروج،
+           والاعترافُ الإيرادي يلحقها تلقائياً. الموظف المسكَّن قراءةً يبقى على الوزن وحده. */''}
+      ${canDlvMoney ? `<td style="padding:.45rem .75rem;text-align:center;white-space:nowrap;font-size:12px">
+        ${canGov ? `<input class="input tnum" type="number" min="0" step="1" dir="ltr" value="${d.amount_halalas == null ? '' : Math.round(d.amount_halalas / 100)}"
+            placeholder="${G.amountUnset}" aria-label="قيمة المخرَج بالريال" title="قيمة المخرَج بالريال شاملةً الضريبة — تُحفظ عند الخروج من الخانة، والإيراد يتبعها تلقائياً"
+            style="width:104px;font-size:12px;padding:.2rem .35rem;text-align:center" data-action-blur="dlv-amount" data-id="${esc(d.id)}" data-prev="${d.amount_halalas == null ? '' : Math.round(d.amount_halalas / 100)}">`
+    : (d.amount_halalas == null ? `<span style="color:var(--muted);font-size:11px">${G.amountUnset}</span>` : `<span class="tnum">${fmtSar(d.amount_halalas)}</span>`)}
+        ${w != null ? `<div style="font-size:10px;color:var(--faint)">وزن <span class="tnum">${Math.round(w)}%</span></div>` : ''}
+        ${dlvRevChip(d)}</td>`
     : `<td style="padding:.45rem .75rem;text-align:center;white-space:nowrap;font-size:12px">${w != null ? `<span style="color:var(--faint);font-size:10.5px">وزن <span class="tnum">${Math.round(w)}%</span></span>` : '<span style="color:var(--faint)">—</span>'}</td>`}
       <td style="padding:.45rem .75rem;text-align:center;white-space:nowrap">${pill(deliverableStatusLabel(d.status), dlvTone(d.status))}</td>
       ${canGov ? `<td style="padding:.45rem .75rem;text-align:center;white-space:nowrap">
@@ -2348,7 +2378,7 @@ export async function projectDetailPage(user, projectId, opts = {}) {
             data-action-change="gov-status-sel" data-kind="deliverable" data-id="${esc(d.id)}">
             ${DELIVERABLE_MANUAL_STATUSES.map((s) => `<option value="${s}"${s === d.status ? ' selected' : ''}>${deliverableStatusLabel(s)}</option>`).join('')}
           </select>
-          ${d.invoiced_at ? `<span style="font-size:10.5px;color:var(--muted)" title="صدر بهذا المخرَج مستخلص — حالته تبقى بيدك، لكن حذفه يترك سطر فاتورة يشير إلى لا شيء">${G.financeOwned}</span>`
+          ${d.invoiced_at ? `<span style="font-size:10.5px;color:var(--muted)" title="صدر بهذا المخرَج مستخلص — حالته وقيمته تبقيان بيدك، والحذف وحده ممنوع لأن فاتورةً صادرة تشير إليه">${G.financeOwned}</span>`
     : `<button class="btn btn-ghost btn-sm" data-action="gov-del" data-kind="deliverable" data-id="${esc(d.id)}" aria-label="حذف المخرج" title="حذف المخرج">✕</button>`}
         </div></td>` : ''}
     </tr>`;
@@ -2409,9 +2439,13 @@ export async function projectDetailPage(user, projectId, opts = {}) {
   </details>` : '';
   const dlvBody = `
     <div style="padding:.5rem .9rem;font-size:11px;color:var(--muted);line-height:1.8">
-      ${canGov ? 'حالة العمل بيد الفريق · الفوترة والتحصيل يُسجَّلان من المالية ولا يمسّان حالة العمل.'
+      ${/* «ما يكون في مسار مالي خلاص» (المالك، 2026-08-16): لا إحالة إلى «المالية» — الحالة
+           والقيمة بيد أصحاب الصلاحية هنا، والمُسلَّم/المعتمَد ذو القيمة يُحسب إيراداً للقطاع
+           تلقائياً. الفوترة والتحصيل ختمان لاحقان يظهران في العدّ ولا يقفلان شيئاً. */''}
+      ${canGov ? 'الحالة والقيمة بيدك من هذا الجدول — والمُسلَّم أو المعتمَد ذو القيمة يُحسب إيراداً للقطاع تلقائياً. الفوترة والتحصيل ختمان لاحقان لا يمسّان حالة العمل.'
     : 'للقراءة فقط بدورك الحالي — مدير المشروع هو من يحرّك حالات المخرجات.'}
       ${prog.delivery.total ? `<b class="tnum">${prog.delivery.accepted}</b> معتمَد · <b class="tnum">${prog.delivery.delivered}</b> مُسلَّم · <b class="tnum">${prog.delivery.invoiced}</b> مفوتر · <b class="tnum">${prog.delivery.collected}</b> محصَّل` : ''}
+      ${canDlvMoney && dlvRevSum ? ` · المسجَّل إيراداً للقطاع من هذا المشروع: <b class="tnum" style="color:var(--green)">${fmtSar(dlvRevSum)}</b>` : ''}
     </div>
     <div class="tblwrap">${dlv.length ? `<table style="width:100%;border-collapse:collapse;min-width:${canGov ? 620 : 420}px">
       <thead><tr style="font-size:10.5px;color:var(--muted);text-align:right">
@@ -2420,7 +2454,7 @@ export async function projectDetailPage(user, projectId, opts = {}) {
              هذا المخرَج». والفوترة والتحصيل لم يُحذفا من المنتج: مجموعهما في سطر الخلاصة أعلى
              الجدول، والتنبيه «صدر بهذا المخرَج مستخلص» يبقى في خانة الإجراء حيث يلزم فعلاً —
              قبل الحذف. */''}
-        <th style="padding:.35rem .75rem">المخرَج</th><th style="padding:.35rem .75rem;text-align:center">${canMoney ? 'القيمة' : 'الوزن'}</th>
+        <th style="padding:.35rem .75rem">المخرَج</th><th style="padding:.35rem .75rem;text-align:center">${canDlvMoney ? 'القيمة' : 'الوزن'}</th>
         <th style="padding:.35rem .75rem;text-align:center">حالة المخرَج</th>
         ${canGov ? '<th style="padding:.35rem .75rem;text-align:center">إجراء</th>' : ''}</tr></thead>
       <tbody>${dlvRows}</tbody></table>`
