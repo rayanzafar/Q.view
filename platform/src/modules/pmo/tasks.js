@@ -6,7 +6,7 @@ import { departmentScope, departmentInSql, inDepartmentScope } from '../../core/
 import { audit } from '../../core/audit/index.js';
 import { id, nowIso } from '../../core/util/ids.js';
 import { forbidden, notFound, badRequest } from '../../core/http/errors.js';
-import { listUserGrants, grantableDepartments } from '../identity/grants.js';
+import { listUserGrants, grantableOptions } from '../identity/grants.js';
 import { raiseDirectApproval, TASK_WORKFLOW_KEY } from '../workflow/engine.js';
 import { notify } from '../notifications/notify.js';
 import { taskApproval, approvedTaskSql, ownOrApprovedTaskSql, myWorkOrMyPendingSql, TASK_PENDING, isPendingTask } from './task-approval.js';
@@ -1026,9 +1026,10 @@ export async function personDossier(reader, personUserId) {
       .filter((pr) => can(reader, 'create', 'allocation', pr))
     : [];
   // الصلاحيات الشخصية: تُعرض لمن يرى الكشف، وتُمنَح لمن يملك ما يمنحه (الحدّ في grants.js).
-  let grants = []; let grantOptions = [];
+  // القائمة صارت صلاحياتٍ متعددة (v5.33): كل صلاحيةٍ قابلة للمنح ومعها إدارات هذا المانح لها.
+  let grants = []; let grantChoices = [];
   try { grants = await listUserGrants(reader, uid); } catch { grants = []; }
-  if (!isSelf) { try { grantOptions = await grantableDepartments(reader); } catch { grantOptions = []; } }
+  if (!isSelf) { try { grantChoices = await grantableOptions(reader); } catch { grantChoices = []; } }
 
   return {
     self,
@@ -1037,7 +1038,7 @@ export async function personDossier(reader, personUserId) {
     canStaff: canStaff && !!p.employee_id && staffProjects.length > 0,
     staffProjects,
     grants,
-    grantOptions,
+    grantChoices,
     employeeId: p.employee_id || null,
     person: {
       userId: p.id, name: p.name_ar || p.username || 'حساب بلا اسم', username: p.username,

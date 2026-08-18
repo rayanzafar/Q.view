@@ -2804,13 +2804,13 @@ export async function personPage(user, personId) {
   const tabs = [
     d.canAssignTask ? ['task', 'أضف مهمة'] : null,
     d.canStaff ? ['staff', 'سكّنه على مشروع'] : null,
-    d.grantOptions.length ? ['grant', 'صلاحياته'] : null,
+    d.grantChoices.length ? ['grant', 'صلاحياته'] : null,
   ].filter(Boolean);
   const grantRow = (g) => `<div class="pp-grow" data-grant="${esc(g.id)}">
     <span class="pp-t">${esc(g.label)} — ${esc(g.department_name)}</span>
     ${g.granted_by_name ? `<span class="pp-tag mute">منحها ${esc(g.granted_by_name)}</span>` : ''}
     ${g.note ? `<span class="pp-tag mute">${esc(g.note)}</span>` : ''}
-    ${d.grantOptions.length ? `<button class="btn btn-ghost btn-sm" data-action="grant-revoke"
+    ${d.grantChoices.length ? `<button class="btn btn-ghost btn-sm" data-action="grant-revoke"
       data-id="${esc(g.id)}" style="color:var(--red)">ارفعها</button>` : ''}</div>`;
   const actionBar = !tabs.length && !d.grants.length ? '' : `<section class="pp-sec">
     <div class="pp-sec-h"><h2 class="pp-sec-t">إدارته</h2>
@@ -2839,16 +2839,21 @@ export async function personPage(user, personId) {
             data-emp="${esc(d.employeeId || '')}">سكّنه</button>
         </div>
         <div class="pp-hint">النسبة حصّة وقته من الشهر — تُقرأ في لوحة التسكين وتُحسب في حِمله.</div>`) : ''}
-      ${d.grantOptions.length ? panel('grant', 'صلاحية إضافية على إدارة', `
+      ${d.grantChoices.length ? panel('grant', 'صلاحية إضافية على إدارة', `
         <div class="pp-form">
-          <select id="pp-grant-dept" class="input">${d.grantOptions
+          <select id="pp-grant-perm" class="input">${d.grantChoices
+    .map((x, i) => `<option value="${esc(x.resource)}:${esc(x.action)}"${i ? '' : ' selected'}>${esc(x.label)}</option>`).join('')}</select>
+          <select id="pp-grant-dept" class="input">${d.grantChoices[0].departments
     .map((x) => `<option value="${esc(x.id)}">${esc(x.name_ar)}${x.sector_name ? ' · ' + esc(x.sector_name) : ''}</option>`).join('')}</select>
           <input id="pp-grant-note" class="input" maxlength="200" placeholder="السبب (اختياري)">
           <button class="btn btn-primary btn-sm" data-action="pp-grant-add"
             data-user="${esc(p.userId)}">امنحها</button>
         </div>
-        <div class="pp-hint">تظهر له فرص هذه الإدارة كاملةً في شاشة «الفرص» — لا المسكَّن عليها وحده.
-          و«فرصي» تبقى شخصية. ولا تمنح إلا إدارةً تراها أنت.</div>`) : ''}
+        <div class="pp-hint" id="pp-grant-hint">${esc(d.grantChoices[0].effect)} ولا تمنح إلا إدارةً تبلغها أنت.</div>
+        <script type="application/json" id="pp-grant-data">${
+  JSON.stringify(d.grantChoices.map((x) => ({ key: x.resource + ':' + x.action, effect: x.effect,
+    departments: x.departments.map((dd) => ({ id: dd.id, name: dd.name_ar + (dd.sector_name ? ' · ' + dd.sector_name : '') }) ) })))
+    .replace(/</g, '\\u003c')}</script>`) : ''}
       ${d.grants.length ? `<div class="pp-glist">${d.grants.map(grantRow).join('')}</div>`
     : '<div class="pp-hint">لا صلاحية إضافية على أي إدارة — يرى ما يمنحه دوره وما سُكِّن عليه.</div>'}
     </div>

@@ -35,9 +35,10 @@ export function projectYearClause(year, col = '') {
 export async function listProjects(user, filters = {}) {
   // مدير الإدارة يرى مشاريع إدارته (انتماءً وقيادةً) + ما **تشارك** فيه إدارتُه (v5.27،
   // `memberCol` يُفعِّل فرع المشاركة في projectReachClause) + أيتام قطاعه — لا القطاع كله
-  // (D15، v5.9). سكتور/شركة/مشروع (نطاقاً) لا يُمَسّون.
+  // (D15، v5.9). سكتور/شركة/مشروع (نطاقاً) لا يُمَسّون. و`grantCol` (v5.33، ADR-0009) يُدخل
+  // المنح الشخصية: من مُنح «مشاريع إدارة البيانات» تظهر له — مسؤولةً ومشارِكة — كما يفتحها صفّياً.
   const f = scopeFilter(user, 'project', 'read',
-    { deptCol: 'department_id', sectorCol: 'sector_id', ownerCol: 'owner_user_id', memberCol: 'id' });
+    { deptCol: 'department_id', sectorCol: 'sector_id', ownerCol: 'owner_user_id', memberCol: 'id', grantCol: 'department_id' });
   const where = [f.clause, 'deleted_at IS NULL'];
   const params = [...f.params];
   if (filters.sector) { where.push('sector_id = ?'); params.push(filters.sector); }
@@ -197,14 +198,41 @@ export async function getProject(user, pid) {
 export async function createProject(ctx, data) {
   const user = ctx.user;
   const sectorId = data.sector_id || user.sector_id;
-  if (!can(user, 'create', 'project', { sector_id: sectorId })) throw forbidden();
+  // منحةُ الإنشاء الشخصية تُحكَم بإدارة الصفّ المولود لا بالقطاع (ADR-0009 — نظير باب الفرص
+  // حرفاً): من ملك الإنشاء بدوره يُحكَم بالقطاع كما كان، ومن ملكه بمنحةٍ يُرجأ حكمُه حتى
+  // تُعرَف إدارة المشروع أدناه.
+  const reachesByRole = can(user, 'create', 'project', { sector_id: sectorId });
+  if (!reachesByRole
+      && !(user.departmentGrants || []).some((g) => g.resource === 'project' && g.action === 'create')) {
+    throw forbidden();
+  }
   if (!data.name_ar) throw badRequest('اسم المشروع مطلوب');
+  // ── الإدارة على باب الإنشاء (v5.33) — نظير باب الفرص ─────────────────────────
+  // كانت الإدارة تُكتب بالتعديل وحده، فيُولَد كلُّ مشروعٍ «بلا إدارة» ثم تُنسى نيّةُ التصنيف —
+  // وفرقُ آخرِ السنة بين مجموع الإدارات ومجموع القطاع لا سبب له إلا النسيان. الاختيار الصريح
+  // يُدقَّق (إدارةٌ قائمة من قطاع المشروع نفسه — نفس حكم updateProject)، فإن غاب نُسب المشروع
+  // إلى إدارة منشئه بشرطيها، وإلا تُرك «بلا إدارة» بصمت لا بخطأ.
+  let departmentId = null;
+  if (data.department_id) {
+    const d = await get('SELECT id, sector_id FROM department WHERE id = ? AND deleted_at IS NULL', [data.department_id]);
+    if (!d) throw badRequest('الإدارة المختارة غير موجودة');
+    if (sectorId && d.sector_id !== sectorId) throw badRequest('الإدارة المختارة تتبع قطاعاً آخر — اختر إدارة من قطاع المشروع نفسه');
+    departmentId = d.id;
+  } else if (user.department_id) {
+    const own = await get('SELECT id, sector_id FROM department WHERE id = ? AND deleted_at IS NULL', [user.department_id]);
+    if (own && own.sector_id && String(own.sector_id) === String(sectorId)) departmentId = own.id;
+  }
+  // حكمُ المنحة المؤجَّل: الصفُّ المولود بإدارته المعلومة الآن — إدارةٌ ممنوحة تمرّ، وغيرُها يُرَدّ.
+  if (!reachesByRole && !can(user, 'create', 'project', { sector_id: sectorId, department_id: departmentId })) {
+    throw forbidden('إضافة المشاريع ممنوحةٌ لك على إدارتك وحدها — اجعل المشروع لإدارتك الممنوحة');
+  }
   const pid = id('prj'); const now = nowIso();
   // «لازم تتأكد أي مشروع مضاف في المشاريع ينضاف مكسوباً» — والمشروع وفرصته يُكتبان في معاملة
   // واحدة: مشروعٌ بلا فرصته يعيد الشاشتين إلى الافتراق من أول صفّ يُكتب بعد هذا السطر.
   await tx(async () => {
     await insert('project', {
       id: pid, code: data.code || null, name_ar: data.name_ar, sector_id: sectorId,
+      department_id: departmentId,
       client_id: data.client_id || null, owner_user_id: data.owner_user_id || user.id,
       status: data.status || 'IN_PROGRESS', rag: data.rag || 'GREEN', kind: data.kind || 'external',
       budget_halalas: toHalalas(data.budget_sar), contract_value_halalas: toHalalas(data.contract_value_sar),
@@ -214,6 +242,14 @@ export async function createProject(ctx, data) {
     await audit(ctx, { action: 'create', resource: 'project', resourceId: pid, sectorId });
     await ensureOpportunityForProject(ctx, await get('SELECT * FROM project WHERE id = ?', [pid]));
   });
+  // نفس حارس باب الفرص: الصفُّ كما وُلد قد لا تبلغه قراءةُ منشئه (نطاق «مشروع» يُبنى عند فتح
+  // الجلسة فلا يعرف مولوداً بعدها) — فيُعاد تأكيدٌ مختصر بدل رسالة منعٍ على عملٍ تمّ فعلاً.
+  const inserted = { id: pid, project_id: pid, sector_id: sectorId, department_id: departmentId,
+    owner_user_id: data.owner_user_id || user.id, created_by: user.id };
+  if (!can(user, 'read', 'project', inserted)) {
+    return { ok: true, id: pid, movedOutOfReach: true,
+      sector_id: sectorId || null, department_id: departmentId || null };
+  }
   return await getProject(user, pid);
 }
 

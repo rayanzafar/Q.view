@@ -33,12 +33,49 @@ import { audit } from '../../core/audit/index.js';
 import { ownsEmployee } from '../org/confirm.js';
 
 // المورد ⟵ ما يظهر للمستخدم، وأين يظهر أثره. النصّ هنا هو نصّ الشاشة: لا مصطلح يُترجَم مرتين.
+//
+// ── توسعة v5.33 (ADR-0009): الكتابة تُمنَح كما تُمنَح القراءة ────────────────
+// «اعطي صلاحية لـم. يعقوب وم. إسحاق في إضافة فرص وتعديل الفرص، تعديل وإضافة على المشاريع
+// التابعة لقطاع البيانات والذكاء الاصطناعي» — بلسان المالك (٢٠٢٦-٠٨-١٦). وكل صفٍّ أُضيف هنا
+// موصولٌ فعلاً يوم إضافته: الإنشاء يفحص إدارة الصفّ المولود على بابَي createOpportunity
+// وcreateProject، والتعديل يمرّ ببابَي opp-access/project-access (فرع المنح في المحرّك يقرأ
+// المسؤولةَ والمشاركة معاً)، والقوائم تتوسّع بـpersonalDeptClause حيث صرّح الاستعلام بأعمدته.
 export const GRANTABLE = [
   {
     resource: 'opportunity',
     action: 'read',
     label: 'يرى كل فرص الإدارة',
     effect: 'تظهر له فرص هذه الإدارة كاملةً في شاشة «الفرص» — لا المسكَّن عليها وحده. و«فرصي» تبقى شخصية.',
+  },
+  {
+    resource: 'opportunity',
+    action: 'create',
+    label: 'يضيف فرصاً لهذه الإدارة',
+    effect: 'يفتح له تسجيل فرصة جديدة تُنسب إلى هذه الإدارة — لا إلى غيرها.',
+  },
+  {
+    resource: 'opportunity',
+    action: 'update',
+    label: 'يعدّل فرص الإدارة',
+    effect: 'يفتح له تعديل فرص هذه الإدارة من صفحة الفرصة — وفي المشتركة مع غيرها تبقى حقول النسبة لإدارتها المسؤولة.',
+  },
+  {
+    resource: 'project',
+    action: 'read',
+    label: 'يرى كل مشاريع الإدارة',
+    effect: 'تظهر له مشاريع هذه الإدارة في شاشة «المشاريع» وتُفتح صفحاتها — بما فيها ما تشارك فيه الإدارة مع غيرها.',
+  },
+  {
+    resource: 'project',
+    action: 'create',
+    label: 'يضيف مشاريع لهذه الإدارة',
+    effect: 'يفتح له تسجيل مشروع جديد يُنسب إلى هذه الإدارة — لا إلى غيرها.',
+  },
+  {
+    resource: 'project',
+    action: 'update',
+    label: 'يعدّل مشاريع الإدارة',
+    effect: 'يفتح له تعديل مشاريع الإدارة ومخرجاتها وفريقها — وفي المشترك مع غيرها تبقى حقول النسبة للإدارة المسؤولة.',
   },
 ];
 export const isGrantable = (resource, action) =>
@@ -156,6 +193,28 @@ export async function grantableDepartments(granter, resource = 'opportunity', ac
   // نفس حكم الحفظ حرفاً — القائمة المعروضة هي ما يُقبل فعلاً، لا وعدٌ يُخلَف عند الحفظ.
   return rows.filter((d) => can(granter, action, resource, { sector_id: d.sector_id, department_id: d.id })
     && reachesForGrant(granter, d, resource, action));
+}
+
+/**
+ * لوحة المنح على صفحة الشخص: كل صلاحيةٍ قابلة للمنح ومعها إداراتُ هذا المانح لها — بنفس حكم
+ * الحفظ حرفاً (can + reachesForGrant لكل إدارة)، فلا يُعرض خيارٌ سيُرَدّ. استعلامُ إداراتٍ
+ * واحد للقائمة كلها، والصلاحية التي لا إدارةَ لمانحها فيها لا تظهر أصلاً.
+ */
+export async function grantableOptions(granter) {
+  const rows = await all(`SELECT d.id, d.name_ar, d.sector_id, s.name_ar sector_name
+     FROM department d LEFT JOIN sector s ON s.id = d.sector_id AND s.deleted_at IS NULL
+    WHERE d.deleted_at IS NULL AND d.active = 1
+    ORDER BY s.sort_order, d.name_ar`);
+  const out = [];
+  for (const g of GRANTABLE) {
+    if ((SCOPE_RANK[effectiveScope(granter, g.action, g.resource)] || 0) < SCOPE_RANK.department) continue;
+    const departments = rows
+      .filter((d) => can(granter, g.action, g.resource, { sector_id: d.sector_id, department_id: d.id })
+        && reachesForGrant(granter, d, g.resource, g.action))
+      .map((d) => ({ id: d.id, name_ar: d.name_ar, sector_name: d.sector_name || null }));
+    if (departments.length) out.push({ ...g, departments });
+  }
+  return out;
 }
 
 export async function grantDepartment(ctx, data = {}) {

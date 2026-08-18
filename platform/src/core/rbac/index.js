@@ -56,6 +56,15 @@ function grantsFor(roleId) {
 // وهي **إضافةٌ صرفة**: تُسأل بعد أن يفشل الدور، فلا تستطيع أن تسلب أحداً وصولاً يملكه. وأثرها
 // محصور بصفٍّ يحمل إدارةً بعينها: لا تُوسِّع قطاعاً، ولا تمرّ على هدفٍ بلا إدارة — فالمنح
 // «إدارة الابتكار» يعني الابتكار، لا «كل ما لا يذكر إدارته».
+//
+// ── والمنحة تبلغ ما تبلغه الإدارة نفسها: عمودَ المسؤولية **والمشاركة** ──────
+// «تعديل وإضافة على المشاريع التابعة لقطاع البيانات والذكاء الاصطناعي» (قرار المالك
+// ٢٠٢٦-٠٨-١٦، ADR-0009) — ومشروعا الحافلات اللذان عناهما المالك بعينهما إدارتُه فيهما
+// **مشارِكة** لا مسؤولة (034). فمنحةٌ تقف عند عمود المسؤولة تفتح مشروعاً واحداً وتغلق
+// عين ما طُلب. تُقرأ المشاركة من `partner_department_ids` المحمَّلة على الهدف (بابا
+// opp-access/project-access يحمّلانها عند الحاجة)، وبقائمة سماح الشراكة نفسها — القراءة
+// والتعديل لا الحذف والإنشاء (DEPARTMENT_REACH_ACTIONS أدناه): فالإنشاء لا هدفَ صفٍّ له
+// أصلاً، والحذف قرارُ الإدارة المسؤولة كما هو في فرعَي الشراكة الآخرين حرفاً.
 function personalGrantReaches(user, action, resource, target) {
   // التسكين على الفرصة يفتح صفّها لمن سُكِّن عليه — كما تفتح عضويةُ المشروع صفوفَه منذ اليوم
   // الأول. وكان المسكَّن لا يقرأ الفرصة إطلاقاً ما لم يملكها: يُضمّ إلى فريقها ثم لا تُفتح له
@@ -63,9 +72,12 @@ function personalGrantReaches(user, action, resource, target) {
   if (resource === 'opportunity' && action === 'read' && target && user.opportunityIds
       && (target.id && user.opportunityIds.has(target.id))) return true;
   const extra = user.departmentGrants;
-  if (!extra || !extra.length || !target || !target.department_id) return false;
+  if (!extra || !extra.length || !target) return false;
+  const partnered = DEPARTMENT_REACH_ACTIONS.has(action) && Array.isArray(target.partner_department_ids)
+    ? target.partner_department_ids : null;
   return extra.some((g) => g.resource === resource && g.action === action
-    && g.department_id === target.department_id);
+    && ((!!target.department_id && g.department_id === target.department_id)
+      || (!!partnered && partnered.includes(g.department_id))));
 }
 
 // ── قيادةُ الإدارة تفتح فرصها — قراءةً وتعديلاً، لا حذفاً ولا إنشاءً ─────────

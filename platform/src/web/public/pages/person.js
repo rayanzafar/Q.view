@@ -94,10 +94,13 @@
     if (act === 'pp-grant-add') {
       var dept = val('pp-grant-dept');
       if (!dept) { toast('اختر الإدارة', true); return; }
+      // الصلاحية من المنتقي لا من ثابتٍ هنا (v5.33): القائمة صارت صلاحياتٍ عدة — القراءة
+      // والإضافة والتعديل على الفرص والمشاريع — والقيمة `مورد:فعل` كما بناها الخادم.
+      var perm = (val('pp-grant-perm') || 'opportunity:read').split(':');
       el.disabled = true;
       api('/identity/grants', 'POST', {
         user_id: el.dataset.user, department_id: dept,
-        resource: 'opportunity', action: 'read', note: val('pp-grant-note') || null,
+        resource: perm[0], action: perm[1] || 'read', note: val('pp-grant-note') || null,
       }).then(function (r) {
         toast(r && r.already ? 'الصلاحية ممنوحة له مسبقاً' : 'مُنحت الصلاحية ✓');
         setTimeout(function () { location.reload(); }, 500);
@@ -113,5 +116,28 @@
           setTimeout(function () { location.reload(); }, 500);
         }).catch(function (err) { el.disabled = false; toast(err.message, true); });
     }
+  });
+
+  // تبديلُ الصلاحية يبدّل إداراتها وشرحَها: إدارات كل صلاحيةٍ محسوبة في الخادم بنفس حكم
+  // الحفظ (grantableOptions)، ومضمّنة في الصفحة — فلا نداءَ شبكةٍ لمجرد تغيير اختيار.
+  document.addEventListener('change', function (e) {
+    if (!e.target || e.target.id !== 'pp-grant-perm') return;
+    var dataEl = document.getElementById('pp-grant-data');
+    var deptSel = document.getElementById('pp-grant-dept');
+    if (!dataEl || !deptSel) return;
+    var choices = [];
+    try { choices = JSON.parse(dataEl.textContent || '[]'); } catch (err) { choices = []; }
+    var c = null;
+    for (var i = 0; i < choices.length; i++) { if (choices[i].key === e.target.value) { c = choices[i]; break; } }
+    if (!c) return;
+    deptSel.innerHTML = '';
+    for (var j = 0; j < c.departments.length; j++) {
+      var o = document.createElement('option');
+      o.value = c.departments[j].id;
+      o.textContent = c.departments[j].name;
+      deptSel.appendChild(o);
+    }
+    var hint = document.getElementById('pp-grant-hint');
+    if (hint) hint.textContent = c.effect + ' ولا تمنح إلا إدارةً تبلغها أنت.';
   });
 })();

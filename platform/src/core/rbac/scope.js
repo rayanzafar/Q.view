@@ -16,15 +16,35 @@ import { departmentScope, departmentInSql } from './departments.js';
 // انظر حالة «الإدارة» أدناه). فلو تشارك المسارُ الخيارَ نفسه لجرّت إضافةُ صلاحيةٍ لشخصٍ واحد
 // تغييراً في سلوك منح كل مديري الإدارات — أثرٌ لم يطلبه أحد.
 //
+// ── والقائمة تعرض ما يفتحه الصفّ: المسؤولةَ **والمشاركة** (ADR-0009) ─────────
+// منحةُ «مشاريع إدارة البيانات» تفتح صفّياً المشروعَ الذي تشارك فيه الإدارة (فرع الشراكة في
+// personalGrantReaches — ومشروعا الحافلات اللذان طلبهما المالك بعينهما إدارتُه فيهما مشارِكة
+// لا مسؤولة). فلو وقفت القائمة عند عمود المسؤولة لعُرض التناقض المحروس معكوساً: يُفتح
+// بالعنوان ولا يظهر. جدول المشاركة يُختار بالمورد، وتلزم `opts.memberCol` (معرّف الصف في
+// الاستعلام) — من لم يصرّح لا يُوسَّع له، فشلٌ مغلق كما هو عقد هذا الملف كله.
+//
 // ولا تُطبَّق إذا كان الأساس شركياً أصلاً (`1=1`): إضافة «أو» إلى ما يشمل كل شيء عبثٌ يُثقل
 // الاستعلام ولا يغيّر صفاً.
-function personalDeptClause(user, resource, action, grantCol) {
-  if (!grantCol) return null;
+const GRANT_PARTNER_TABLES = {
+  opportunity: ['opportunity_department', 'opportunity_id'],
+  project: ['project_department', 'project_id'],
+};
+function personalDeptClause(user, resource, action, opts = {}) {
+  if (!opts.grantCol) return null;
   const ids = [...new Set((user.departmentGrants || [])
     .filter((g) => g.resource === resource && g.action === action)
     .map((g) => g.department_id).filter(Boolean))];
   if (!ids.length) return null;
-  return { clause: `${grantCol} IN (${ids.map(() => '?').join(',')})`, params: ids };
+  const marks = ids.map(() => '?').join(',');
+  const parts = [`${opts.grantCol} IN (${marks})`];
+  const params = [...ids];
+  const pt = GRANT_PARTNER_TABLES[resource];
+  if (pt && opts.memberCol && (action === 'read' || action === 'update')) {
+    parts.push(`EXISTS (SELECT 1 FROM ${pt[0]} gpd
+       WHERE gpd.${pt[1]} = ${opts.memberCol} AND gpd.department_id IN (${marks}))`);
+    params.push(...ids);
+  }
+  return { clause: parts.length === 1 ? parts[0] : `(${parts.join(' OR ')})`, params };
 }
 
 // ── والتسكين نفسه يفتح صفَّه ─────────────────────────────────────────────────
@@ -137,7 +157,7 @@ export function scopeFilter(user, resource, action = 'read', opts = {}) {
   const base = roleScopeFilter(user, resource, action, opts);
   if (base.clause === '1=1') return base;
   const extras = [
-    personalDeptClause(user, resource, action, opts.grantCol),
+    personalDeptClause(user, resource, action, opts),
     membershipClause(user, resource, action, opts.memberCol),
     departmentReachClause(user, resource, action, opts),
     projectReachClause(user, resource, action, opts),

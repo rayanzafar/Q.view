@@ -164,7 +164,16 @@ export async function createOpportunity(ctx, data) {
   const user = ctx.user;
   if (!can(user, 'create', 'opportunity')) throw forbidden();
   const sectorId = data.sector_id || user.sector_id;
-  if (!can(user, 'create', 'opportunity', { sector_id: sectorId })) throw forbidden('خارج نطاق قطاعك');
+  // ── منحةُ الإنشاء الشخصية تُحكَم بإدارة الصفّ المولود لا بالقطاع (ADR-0009) ──
+  // فحصُ القطاع وحدَه يسبق معرفةَ الإدارة، ومنحةُ «يضيف فرصاً لإدارة البيانات» لا قطاعَ لها
+  // أصلاً — هدفُ `{sector_id}` بلا إدارةٍ لا يطابقها فتُرَدّ وهي مأمورٌ بها. فمن ملك الإنشاء
+  // بدوره يُحكَم هنا كما كان حرفاً، ومن ملكه بمنحةٍ يُرجأ حكمُه حتى تُعرَف إدارة الفرصة
+  // (بعد resolveDepartment أدناه) فيُفحص الزوج كاملاً: الإدارةُ الممنوحة لا غيرها.
+  const reachesByRole = can(user, 'create', 'opportunity', { sector_id: sectorId });
+  if (!reachesByRole
+      && !(user.departmentGrants || []).some((g) => g.resource === 'opportunity' && g.action === 'create')) {
+    throw forbidden('خارج نطاق قطاعك');
+  }
   if (!data.title_ar) throw badRequest('عنوان الفرصة مطلوب');
   // نفس حارس النقل، على باب الإنشاء: الفرصة تُنسب إلى قطاع تسليم لا إلى وحدة مساندة. الباب هنا
   // أخطر من باب النقل لأنه يُفتح ضمناً — القطاع الافتراضي هو قطاع المنشئ، فعضو «الخدمات المشتركة»
@@ -184,6 +193,11 @@ export async function createOpportunity(ctx, data) {
   if (!departmentId && !data.department_id && user.department_id) {
     const own = await get('SELECT id, sector_id FROM department WHERE id = ? AND deleted_at IS NULL', [user.department_id]);
     if (own && own.sector_id && String(own.sector_id) === String(sectorId)) departmentId = own.id;
+  }
+  // حكمُ المنحة المؤجَّل (انظر أعلاه): الصفُّ المولود بإدارته المعلومة الآن — إدارةٌ ممنوحة
+  // تمرّ، وغيرُها (أو بلا إدارة) يُرَدّ بقولٍ يسمّي العلاج.
+  if (!reachesByRole && !can(user, 'create', 'opportunity', { sector_id: sectorId, department_id: departmentId })) {
+    throw forbidden('إضافة الفرص ممنوحةٌ لك على إدارتك وحدها — اجعل الفرصة لإدارتك الممنوحة');
   }
   // الجهة: معرّفٌ قائم أو اسمٌ جديد يُسجَّل من هذا الباب (resolveIntakeClient أعلاه).
   const intakeClientId = await resolveIntakeClient(ctx, data);

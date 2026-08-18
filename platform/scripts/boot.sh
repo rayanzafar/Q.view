@@ -35,6 +35,9 @@ node --experimental-sqlite scripts/reset-stage-clock.js || echo "stage clock res
 # والإشغال لأن كليهما يقرأ سجلّ الموظفين والحسابات.
 node --experimental-sqlite scripts/apply-owner-people.js || echo "owner people skipped"
 node --experimental-sqlite scripts/apply-owner-grants.js || echo "owner grants skipped"
+# أمر المالك ٢٠٢٦-٠٨-١٦ (v5.33): م. يعقوب وم. إسحاق يضيفان ويعدّلان فرص إدارة الذكاء
+# الاصطناعي والبيانات ومشاريعها (قراءةً وإضافةً وتعديلاً). نفس عقد سابقه: مرةً واحدة، ولا يخمّن.
+node --experimental-sqlite scripts/apply-owner-grants-v533.js || echo "owner grants v533 skipped"
 # نسب الإشغال من كشف توزيع مايو ٢٠٢٦ (تسكين المشاريع وحده — لا راتب ولا سطر «قطاع …»).
 # مرةً واحدة بطابع في schema_migration، ولا يخمّن: ما لا يُحسَم يُترك ويُطبَع سببه في السجل.
 node --experimental-sqlite scripts/apply-utilization-may2026.js || echo "utilization skipped"
