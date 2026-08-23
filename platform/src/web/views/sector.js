@@ -260,20 +260,22 @@ ${CARD_HEAD_CSS}
 .cap-li{display:flex;justify-content:space-between;gap:.5rem;font-size:var(--fs-meta);padding:.14rem 0}
 /* صفوف تُفتح: مؤشّر وخلفية عند المرور والتركيز — والعلامة ⊕ تقول «هذا يُفتح» كبقية الصفحة */
 .cap-li-btn{cursor:pointer;border-radius:7px;padding:.14rem .35rem;margin:0 -.35rem}
-.cap-li-btn:hover{background:#fbfcfe}
+.cap-li-btn:hover{background:var(--bg,#f1f5f9)}
+.dd-row.cap-li-btn{padding:.5rem .35rem}
+@media(max-width:640px){.cap-li-btn{padding:.45rem .35rem}}
 .cap-li-btn:focus-visible{outline:2px solid var(--brand);outline-offset:1px}
 /* نافذة الشخص: ثلاث إحصاءات وشريط اثني عشر شهراً — خطةٌ صرفة بألوان عتبات التسكين */
 .cap-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.5rem;margin:.3rem 0 .2rem}
 .cap-stat{background:#f8fafc;border:1px solid var(--line);border-radius:10px;padding:.45rem .6rem;min-width:0}
 .cap-stat .l{display:block;font-size:var(--fs-micro);color:var(--muted);font-weight:700}
 .cap-stat b{font-size:var(--fs-num-sm);font-weight:800}
-.cap-stat small{font-size:10px;color:var(--faint)}
+.cap-stat small{display:block;font-size:10px;color:var(--muted)}
 .cap-strip{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:3px;margin:.2rem 0 .4rem}
 .cap-strip .cs{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:2px;height:46px;border-radius:6px;padding:2px 1px 0;background:#f8fafc}
 .cap-strip .cs i{display:block;width:100%;max-width:18px;border-radius:3px 3px 0 0;min-height:2px}
-.cap-strip .cs b{font-size:9.5px;color:var(--faint);font-weight:700;line-height:1}
+.cap-strip .cs b{font-size:9.5px;color:var(--muted);font-weight:700;line-height:1}
 .cap-strip .cs.cur{outline:2px solid var(--brand);outline-offset:-2px}
-@media(max-width:640px){.cap-stats{grid-template-columns:1fr 1fr}}
+@media(max-width:640px){.cap-stats{grid-template-columns:1fr 1fr}.cap-stat:last-child:nth-child(odd){grid-column:1/-1}}
 /* صحة المشاريع */
 .hl-wrap{display:flex;gap:1rem;align-items:center;padding:.7rem 1rem .4rem;flex-wrap:wrap}
 .hl-legend{display:flex;flex-direction:column;gap:.3rem;min-width:0;flex:1}
@@ -757,14 +759,17 @@ export async function sectorPage(user, opts = {}) {
       aria-label="${esc(e.name)} — الحِمل ${nowMonth ? vNow : e.utilization}% — التفصيل">${esc(String(e.name || '؟').trim().charAt(0))}</button>`;
   }).join('');
   // صفوف القائمتين أزرار تفتح نافذة الشخص نفسها — لا نصّ جامد بجوار صورةٍ تُفتح.
-  const capList = (rows, valFn) => rows.slice(0, 5).map((e) => `<div class="cap-li${e.id ? ' cap-li-btn' : ''}"${e.id ? ` role="button" tabindex="0" data-action="cap-person" data-emp="${esc(e.id)}" aria-label="${esc(e.name)} — التفصيل"` : ''}>
+  const capList = (rows, valFn) => rows.slice(0, 5).map((e) => `<div class="cap-li${e.id ? ' cap-li-btn' : ''}"${e.id ? ` role="button" tabindex="0" data-action="cap-person" data-emp="${esc(e.id)}" aria-label="${esc(e.name)} — الحِمل ${valFn(e)}% — التفصيل"` : ''}>
       <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(e.name)}${e.job ? ` <span style="color:var(--faint);font-size:var(--fs-micro)">· ${esc(e.job)}</span>` : ''}</span>
       <b class="tnum" style="flex:none">${valFn(e)}%${e.id ? ' <span style="color:var(--faint)" aria-hidden="true">⊕</span>' : ''}</b></div>`).join('')
     || '<div style="font-size:var(--fs-meta);color:var(--faint)">لا أحد ضمن هذه الفئة الآن</div>';
   const staffingHref = `/app/staffing?year=${year}${user.scope === 'company' ? '&sector=' + esc(sectorId) : ''}`;
   // مُسكَّنون على أعمال القطاع من خارج كشف القارئ (قطاعٌ آخر، أو إدارةٌ خارج نطاقه): العدّ
   // يُقال ولا يُخفى — وإلا قرأ القائد «١٧ في الفريق» هنا و«٢٤» في تقريره ولم يعرف لماذا.
-  const outsideRoster = team ? Math.max(0, (staff.employees || []).length - emps.length) : 0;
+  const outsideRoster = team ? team.outsideRoster : 0;
+  const outsideLine = (n) => n === 1 ? 'وشخصٌ آخر مُسكَّن على أعمال القطاع من خارج نطاقك — يظهر في صفحة مشروعه'
+    : n === 2 ? 'وشخصان آخران مُسكَّنان على أعمال القطاع من خارج نطاقك — يظهران في صفحات مشاريعهما'
+      : `و<b class="tnum">${n}</b> ${n <= 10 ? 'آخرون مُسكَّنون' : 'شخصاً آخر مُسكَّناً'} على أعمال القطاع من خارج نطاقك — يظهرون في صفحات مشاريعهم`;
   // الشهر القادم من الأرقام الحاضرة: من يتفرّغ ومن يتجاوز — قرار توزيعٍ قبل أن يقع.
   const nextHint = (() => {
     if (!nowMonth || nowMonth >= 12 || !emps.length) return '';
@@ -772,7 +777,7 @@ export async function sectorPage(user, opts = {}) {
     const overNext = emps.filter((e) => winVal(e, 'next') > OVER_ABOVE).length;
     if (!freeing && !overNext) return '';
     const parts = [];
-    if (freeing) parts.push(`يتفرّغ <b class="tnum">${freeing}</b>`);
+    if (freeing) parts.push(`بلا تسكين <b class="tnum">${freeing}</b>`);
     if (overNext) parts.push(`يتجاوز الطاقة <b class="tnum" style="color:var(--red)">${overNext}</b>`);
     return `<div style="font-size:var(--fs-micro);color:var(--muted);padding:0 0 .3rem">الشهر القادم (${monthLabel(nowMonth)}): ${parts.join(' · ')}</div>`;
   })();
@@ -794,7 +799,7 @@ export async function sectorPage(user, opts = {}) {
     { v: freeNow.length, color: 'var(--brand2)' },
     { v: overNow.length, color: 'var(--red)' },
   ], { size: 176, sw: 18 })}
-        <span class="cc"><b class="tnum">${teamSize}</b><small>${team ? 'في كشفك' : 'في الفريق'}</small></span>
+        <span class="cc"><b class="tnum">${teamSize}</b><small>${team ? 'ضمن نطاقك' : 'في الفريق'}</small></span>
       </span>
       <div class="cap-avg">متوسط ${G.utilization} <b class="tnum" style="color:${teamLoad > OVER_ABOVE ? 'var(--red)' : 'var(--ink2)'}">${teamLoad}%</b></div>
       <div class="cap-leg">
@@ -806,14 +811,14 @@ export async function sectorPage(user, opts = {}) {
     <div style="padding:0 1rem">
       <div class="cap-axis" dir="ltr" data-staffing="${staffingHref}">
         <div class="cap-band" role="img" aria-label="طيف الحِمل: حتى ${FREE_BELOW}% سعة متاحة، من ${FREE_BELOW} إلى ${OVER_ABOVE} ضمن الطاقة، وفوق ${OVER_ABOVE} تجاوز للطاقة"></div>
-        ${capAv || `<div dir="rtl" style="position:absolute;inset-inline:0;top:18px;text-align:center;font-size:var(--fs-micro);color:var(--muted)">أسماء الأفراد وأحمالهم تظهر لمن يملك قراءة الموظفين</div>`}
+        ${capAv || `<div dir="rtl" style="position:absolute;inset-inline:0;top:18px;text-align:center;font-size:var(--fs-micro);color:var(--muted)">أسماء الأفراد وأحمالهم تظهر لمن يملك صلاحية عرض الفريق</div>`}
       </div>
       <div class="cap-ticks" dir="ltr">
         <span style="left:0%">0%</span><span style="left:${capPos(FREE_BELOW)}%">${FREE_BELOW}%</span><span style="left:${capPos(OVER_ABOVE)}%">${OVER_ABOVE}%</span><span style="left:98%">+120%</span>
       </div>
-      <div id="cap-caption" style="font-size:var(--fs-micro);color:var(--muted);padding:.15rem 0 .25rem">${nowMonth ? `النافذة: هذا الشهر (${monthLabel(nowMonth - 1)}) — والقادمة ضمن تسكين ${year} وحدها` : 'النافذة: متوسط السنة'} · الحدود من قواعد التسكين نفسها: ${FREE_BELOW}% و${OVER_ABOVE}%${canPeople ? ' · اضغط على شخصٍ لتفصيله' : ''}</div>
+      <div id="cap-caption" data-tail="الحدود من قواعد التسكين نفسها: ${FREE_BELOW}% و${OVER_ABOVE}%${canPeople ? ' · اضغط على أي شخص لعرض التفصيل' : ''}" style="font-size:var(--fs-micro);color:var(--muted);padding:.15rem 0 .25rem">${nowMonth ? `النافذة: هذا الشهر (${monthLabel(nowMonth - 1)}) — والقادمة ضمن تسكين ${year} وحدها` : 'النافذة: متوسط السنة'} · الحدود من قواعد التسكين نفسها: ${FREE_BELOW}% و${OVER_ABOVE}%${canPeople ? ' · اضغط على أي شخص لعرض التفصيل' : ''}</div>
       ${nextHint}
-      ${outsideRoster ? `<div style="font-size:var(--fs-micro);color:var(--faint);padding:0 0 .3rem">و<b class="tnum">${outsideRoster}</b> ${outsideRoster === 1 ? 'آخر مُسكَّن' : outsideRoster === 2 ? 'آخران مُسكَّنان' : 'آخرون مُسكَّنون'} على أعمال القطاع من خارج كشفك — يظهرون في صفحات مشاريعهم</div>` : ''}
+      ${outsideRoster ? `<div style="font-size:var(--fs-micro);color:var(--muted);padding:0 0 .3rem">${outsideLine(outsideRoster)}</div>` : ''}
     </div>
     ${canPeople ? `<div class="cap-lists" style="padding:.4rem 1rem .55rem;flex:1">
       <div><div class="h">متاحون للعمل — الأقل حِملاً</div>${capList([...emps].filter((e) => loadOf(e) < FREE_BELOW).sort((a, b) => loadOf(a) - loadOf(b)), loadOf)}</div>
@@ -1168,7 +1173,7 @@ export async function sectorPage(user, opts = {}) {
       : v < FREE_BELOW ? `<span class="pill" style="background:#dcfce7;color:#166534">${G.underused}</span>`
         : `<span class="pill" style="background:#dcfce7;color:#166534">ضمن الطاقة</span>`;
   const bandColor = (v) => v > OVER_ABOVE ? 'var(--red)' : v === 0 ? 'var(--brand2)' : 'var(--green)';
-  const capStrip = (months) => `<div class="cap-strip" dir="ltr" role="img" aria-label="حِمل الأشهر الاثني عشر">${months.map((v, i) => `
+  const capStrip = (months) => `<div class="cap-strip" dir="ltr" role="img" aria-label="حِمل الأشهر: ${months.map((v, i) => `${MONTHS_AR[i]} ${v}%`).join('، ')}">${months.map((v, i) => `
     <span class="cs${nowMonth === i + 1 ? ' cur' : ''}" title="${MONTHS_AR[i]}: ${v}%"><i style="height:${Math.min(100, Math.round(v / 150 * 100))}%;background:${bandColor(v)}"></i><b class="tnum">${i + 1}</b></span>`).join('')}</div>`;
   const capEmpDD = (p) => {
     const live = !!nowMonth;
@@ -1176,44 +1181,48 @@ export async function sectorPage(user, opts = {}) {
     const sub = [p.job_title, p.department_id ? deptNameOf.get(p.department_id) : null, p.capacity_pct && p.capacity_pct !== 100 ? `${G.capacity} ${p.capacity_pct}%` : null]
       .filter(Boolean).map(esc).join(' · ');
     const stat = (l, v, extra = '') => `<div class="cap-stat"><span class="l">${l}</span><b class="tnum" style="color:${bandColor(v)}">${v}%</b>${extra}</div>`;
-    const stats = live ? [
-      stat('الشهر القادم', p.next),
-      stat('متوسط الأشهر الثلاثة القادمة', p.q3),
-      stat('إشغال السنة', p.annual, p.monthDelta ? `<small class="tnum" dir="ltr">${p.monthDelta > 0 ? '+' : '−'}${Math.abs(p.monthDelta)}</small><small> نقطة عن الشهر الماضي</small>` : ''),
-    ] : [stat('الذروة', p.peak), `<div class="cap-stat"><span class="l">أشهر مُسكَّنة</span><b class="tnum">${p.staffedMonths}</b></div>`];
+    // ديسمبر: «الشهر القادم» خارج خطة السنة — لا صفرٌ يقرأه القائد «بلا تسكين».
+    const nextStat = nowMonth >= 12
+      ? `<div class="cap-stat"><span class="l">الشهر القادم</span><b>—</b><small>خارج خطة السنة</small></div>`
+      : stat('الشهر القادم', p.next);
+    const stats = live ? [nextStat, stat('متوسط الأشهر الثلاثة القادمة', p.q3), stat('متوسط السنة', p.annual)]
+      : [stat('الذروة', p.peak), `<div class="cap-stat"><span class="l">${G.monthsStaffed}</span><b class="tnum">${p.staffedMonths}</b></div>`];
+    const deltaLine = live && p.monthDelta
+      ? `<div style="font-size:var(--fs-meta);color:var(--muted)"><span class="tnum" dir="ltr" style="font-weight:800;color:${p.monthDelta > 0 ? 'var(--ink2)' : 'var(--green)'}">${p.monthDelta > 0 ? '+' : '−'}${countAr(Math.abs(p.monthDelta), { one: 'نقطة واحدة', two: 'نقطتان', few: 'نقاط', many: 'نقطة' })}</span> عن الشهر الماضي</div>` : '';
     const projRows = p.projects.slice(0, 8).map((pr) => {
       const period = allocationPeriod(JSON.stringify(pr.months), year);
       const v = live ? Math.round((Number(pr.months[nowMonth]) || 0) * 100) : period.avgPct;
       const name = pr.projectId ? `<a href="/app/project/${esc(pr.projectId)}" style="color:var(--ink2);font-weight:700">${esc(pr.name)}</a>` : `<span style="font-weight:700">${esc(pr.name)}</span>`;
       const tags = [pr.type === 'lead' ? '<span class="pill" style="background:#dbeafe;color:#1e3a8a">قائد</span>' : '', pr.bucket ? '<span class="pill" style="background:#f1f5f9;color:#475569">عمل داخلي</span>' : ''].join(' ');
-      return `<div class="dd-row"><span>${name} ${tags} <span style="color:var(--faint);font-size:10.5px">· ${esc(period.label)}</span></span><b class="tnum">${v}%</b></div>`;
+      return `<div class="dd-row"><span>${name} ${tags} <span style="color:var(--muted);font-size:10.5px">· ${esc(period.label)}</span></span><b class="tnum">${v}%</b></div>`;
     });
-    const moreProj = p.projects.length > 8 ? `<div style="font-size:var(--fs-micro);color:var(--faint)">و<b class="tnum">${p.projects.length - 8}</b> بند آخر في لوحة التسكين</div>` : '';
+    const moreProj = p.projects.length > 8 ? `<div style="font-size:var(--fs-micro);color:var(--muted)">و${countAr(p.projects.length - 8, { one: 'بند واحد آخر', two: 'بندان آخران', few: 'بنود أخرى', many: 'بنداً آخر' })} في لوحة التسكين</div>` : '';
     const oppRows = p.opportunities.map((o) => `<div class="dd-row"><span>${o.opportunityId ? `<a href="/app/opportunity/${esc(o.opportunityId)}" style="color:var(--ink2);font-weight:700">${esc(o.name)}</a>` : esc(o.name)} <span class="pill" style="background:#fef3c7;color:#92400e">${G.opportunity}</span></span><b class="tnum">${o.pct}%</b></div>`);
     const t = p.tasks;
     const tasksBlock = !t
-      ? '<div style="font-size:var(--fs-meta);color:var(--muted)">لا حساب دخول مرتبط — لا مهام تُقرأ له</div>'
+      ? `<div style="font-size:var(--fs-meta);color:var(--muted)">${p.tasksState === 'no_account' ? 'لا حساب دخول مرتبط — فلا مهام تُعرض' : 'المهام تظهر لمن يملك صلاحية عرض مهام الفريق'}</div>`
       : `<div style="display:flex;gap:1rem;font-size:var(--fs-meta);color:var(--muted);flex-wrap:wrap">
           <span>مفتوحة <b class="tnum" style="color:var(--ink2)">${t.open}</b></span>
           <span>متأخرة <b class="tnum" style="color:${t.late ? 'var(--red)' : 'var(--ink2)'}">${t.late}</b></span>
           <span>مُعطَّلة <b class="tnum" style="color:${t.blocked ? 'var(--amber)' : 'var(--ink2)'}">${t.blocked}</b></span></div>
          ${t.top.length ? `<div>${t.top.map((k) => `<div class="dd-row"><span>${esc(k.title)} ${k.late ? '<span class="pill" style="background:#fee2e2;color:#991b1b">متأخرة</span>' : ''}${k.blocked ? ' <span class="pill" style="background:#fef3c7;color:#92400e">مُعطَّلة</span>' : ''}</span><b class="tnum" style="font-weight:600;color:var(--muted)">${k.due ? esc(k.due) : '—'}</b></div>`).join('')}</div>`
-    : (t.open ? '<div style="font-size:var(--fs-micro);color:var(--faint)">عناوين المهام في صفحته الكاملة</div>' : '')}`;
+    : (t.open ? '<div style="font-size:var(--fs-micro);color:var(--muted)">العدّ فقط — عناوين المهام تظهر لمن يحقّ له فتح الصفحة الكاملة</div>' : '')}`;
     const footer = [
-      p.userId && p.dossierOk ? `<a class="btn btn-primary btn-sm" href="/app/person/${esc(p.userId)}">صفحته الكاملة</a>` : '',
-      `<a class="btn btn-sm" href="${staffingHref}&emp=${esc(p.id)}">فتح في لوحة التسكين</a>`,
+      p.userId && p.dossierOk ? `<a class="btn btn-primary btn-sm" href="/app/person/${esc(p.userId)}">الصفحة الكاملة</a>` : '',
+      `<a class="btn btn-sm" href="${staffingHref}&emp=${esc(p.id)}">لوحة التسكين</a>`,
     ].join('');
     return ddWrap(`cap-emp-${esc(p.id)}`, esc(p.name_ar), sub || esc(sd.sector.name_ar), `
     <div class="dd-kpi"><span class="v tnum" style="color:${bandColor(headline)}">${headline}%</span><span style="font-size:12px;color:var(--muted)">${live ? `${G.utilization} هذا الشهر (${monthLabel(nowMonth - 1)})` : `${G.utilization} — متوسط ${year}`}</span>${loadPill(headline)}</div>
-    ${live && p.oppLoadPct ? `<div style="font-size:var(--fs-meta);color:var(--muted)">+<b class="tnum">${p.oppLoadPct}%</b> حِمل مبدئي من فرص مفتوحة — يُحتسب على هذا الشهر فقط (المجموع <b class="tnum">${p.currentUtil}%</b>)</div>` : ''}
+    ${deltaLine}
+    ${live && p.oppLoadPct ? `<div style="font-size:var(--fs-meta);color:var(--muted)"><b class="tnum" dir="ltr">+${p.oppLoadPct}%</b> حِمل مبدئي من فرص مفتوحة — يُحتسب على هذا الشهر فقط (المجموع <b class="tnum">${p.currentUtil}%</b>)</div>` : ''}
     <div class="cap-stats">${stats.join('')}</div>
     ${capStrip(p.months)}
     <div class="dd-sec">المشاريع والبنود · ${year}</div>
     <div>${projRows.length ? projRows.join('') : `<div style="color:var(--faint);font-size:12px">لا بنود تسكين في ${year} — يُسكَّن من لوحة التسكين</div>`}${moreProj}</div>
-    ${oppRows.length ? `<div class="dd-sec">فرص مفتوحة يشارك فيها</div><div>${oppRows.join('')}</div>` : ''}
-    <div class="dd-sec">مهامه</div>
+    ${oppRows.length ? `<div class="dd-sec">الفرص المفتوحة</div><div>${oppRows.join('')}</div>` : ''}
+    <div class="dd-sec">المهام المفتوحة</div>
     ${tasksBlock}
-    <div style="font-size:10.5px;color:var(--faint);margin-top:.4rem">الأرقام من خطة التسكين الشهرية — وليست ساعات عمل فعلية.</div>
+    <div style="font-size:10.5px;color:var(--muted);margin-top:.4rem">الأرقام من خطة التسكين الشهرية — وليست ساعات عمل فعلية.</div>
     <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.2rem">${footer}</div>`);
   };
   const capEmpDDs = team ? team.people.map(capEmpDD).join('') : '';
@@ -1221,12 +1230,12 @@ export async function sectorPage(user, opts = {}) {
   // نافذة بند «فوق الطاقة» في «يحتاج تدخلك»: الأسماء من الخدمة (محجوبة لمن لا يقرأ الموظفين)،
   // والصفّ يفتح نافذة صاحبه إن كان في الكشف.
   const overRows = (attn.find((a) => a.dd === 'att-overload')?.ddRowsData) || [];
-  const overloadDD = ddWrap('att-overload', 'فوق الطاقة هذا الشهر', `${esc(sd.sector.name_ar)} · من خطة تسكين ${MONTHS_AR[Number(today.slice(5, 7)) - 1] || ''}`, `
+  const overloadDD = ddWrap('att-overload', `${G.overloaded} هذا الشهر`, `${esc(sd.sector.name_ar)} · من خطة تسكين ${MONTHS_AR[Number(today.slice(5, 7)) - 1] || ''}`, `
     <div>${overRows.length ? overRows.map((x) => rosterIds.has(x.employee_id)
     ? `<div class="dd-row cap-li-btn" role="button" tabindex="0" data-action="cap-person" data-emp="${esc(x.employee_id)}"><span style="font-weight:700">${esc(x.name)} <span style="color:var(--faint)" aria-hidden="true">⊕</span></span><b class="tnum" style="color:var(--red)">${x.pct}%</b></div>`
     : `<div class="dd-row"><span style="font-weight:700">${esc(x.name)}</span><b class="tnum" style="color:var(--red)">${x.pct}%</b></div>`).join('')
-    : `<div style="color:var(--faint);font-size:12px">${canPeople ? 'لا أحد فوق الطاقة ضمن نطاقك' : 'أسماء الأفراد تظهر لمن يملك قراءة الموظفين'}</div>`}</div>
-    <div style="font-size:10.5px;color:var(--faint);margin-top:.4rem">الأرقام من خطة التسكين الشهرية — وليست ساعات عمل فعلية.</div>
+    : `<div style="color:var(--muted);font-size:12px">${canPeople ? 'لا أحد تجاوز الطاقة ضمن نطاقك' : 'أسماء الأفراد تظهر لمن يملك صلاحية عرض الفريق'}</div>`}</div>
+    <div style="font-size:10.5px;color:var(--muted);margin-top:.4rem">الأرقام من خطة التسكين الشهرية — وليست ساعات عمل فعلية.</div>
     ${canPeople ? `<div style="display:flex;gap:.5rem;flex-wrap:wrap"><a class="btn btn-sm" href="${staffingHref}">لوحة التسكين</a></div>` : ''}`);
   const DD = `
   ${capEmpDDs}

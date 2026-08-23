@@ -108,8 +108,8 @@ test('قائد القطاع: لكل شخصٍ نافذةٌ بحِمله ومشا�
   const html = await sectorPage(lead, { year: YEAR });
   for (const rx of NO_LEAK) assert.ok(!rx.test(html), `تسرّب ${rx}`);
   const body = mainOf(html);
-  assert.ok(body.includes('في كشفك'), 'عدّاد الفريق يقول إنه كشف القارئ');
-  assert.ok(body.includes('اضغط على شخصٍ لتفصيله'), 'الدعوة إلى النقر مكتوبة');
+  assert.ok(body.includes('ضمن نطاقك'), 'عدّاد الفريق يقول إنه نطاق القارئ');
+  assert.ok(body.includes('اضغط على أي شخص لعرض التفصيل'), 'الدعوة إلى النقر مكتوبة');
   assert.match(body, /class="cap-av[^"]*"[^>]*data-emp="E1"/, 'الصورة الرمزية تحمل معرّف الشخص');
   assert.match(body, /class="cap-li cap-li-btn" role="button" tabindex="0" data-action="cap-person" data-emp="E2"/, 'صفّ «يحتاجون إعادة توزيع» زرٌّ يفتح نافذة خالد');
 
@@ -150,7 +150,7 @@ test('من لا يقرأ الموظفين: لا قالب ولا اسم — مج�
   const html = await sectorPage(analyst, { year: YEAR });
   const body = mainOf(html);
   assert.ok(body.includes('طاقة الفريق'), 'البطاقة حاضرة');
-  assert.ok(body.includes('أسماء الأفراد وأحمالهم تظهر لمن يملك قراءة الموظفين'));
+  assert.ok(body.includes('أسماء الأفراد وأحمالهم تظهر لمن يملك صلاحية عرض الفريق'));
   assert.ok(!html.includes('dd-cap-emp-'), 'لا قوالب أشخاص');
   for (const name of ['سارة العلي', 'خالد العتيبي', 'نورة القحطاني']) assert.ok(!html.includes(name), `اسم متسرّب: ${name}`);
   const ov = tpl(html, 'att-overload');
@@ -162,7 +162,7 @@ test('سنةٌ غير جارية: لا «الشهر القادم» — الذر�
   const s = tpl(html, 'cap-emp-E1');
   assert.ok(s, 'القالب موجود للسنة الماضية أيضاً');
   assert.ok(!s.includes('الشهر القادم'));
-  assert.ok(s.includes('الذروة') && s.includes('أشهر مُسكَّنة'));
+  assert.ok(s.includes('الذروة') && s.includes('أشهر التسكين'));
 });
 
 test('لوحة التسكين: ?emp= يفتح درج الشخص إن كان في الكشف، ويتجاهل الغريب', async () => {

@@ -210,9 +210,12 @@ async function teamTaskLoad(employeeIds, today, topN = 3) {
   const out = new Map();
   if (!ids.length) return out;
   const ph = ids.map(() => '?').join(',');
+  // الجسر بمفتاح صفحة الشخص نفسه (`app_user.employee_id`) لا بعمود الموظف — فما يُعدّ هنا هو ما
+  // تفتحه «الصفحة الكاملة» حرفاً. والسقف ثلاثة آلاف مهمة مفتوحة للكشف كله — بعده يُعدّ الباقون صفراً.
   const rows = await all(`SELECT e.id employee_id, t.id, t.title, t.due_date, t.status, t.blocked_reason
-     FROM employee e JOIN task t ON t.assignee_user_id = e.user_id
-    WHERE e.id IN (${ph}) AND e.user_id IS NOT NULL AND t.deleted_at IS NULL
+     FROM employee e JOIN app_user u ON u.employee_id = e.id AND u.deleted_at IS NULL
+     JOIN task t ON t.assignee_user_id = u.id
+    WHERE e.id IN (${ph}) AND t.deleted_at IS NULL
       AND t.status NOT IN ('DONE','CANCELLED') AND ${notPersonalSql('t.')} AND ${approvedTaskSql('t.')}
     ORDER BY e.id, CASE WHEN t.due_date IS NULL THEN 1 ELSE 0 END, t.due_date
     LIMIT 3000`, ids);
@@ -244,18 +247,27 @@ async function teamTaskLoad(employeeIds, today, topN = 3) {
 // الشهر الجاري وحده) يُفصَل في `oppLoadPct` ولا يُخلَط بالخطة — فالبطاقة تقرأ `planNow`
 // وتتسق مع متوسطها، والنافذة تقول «+N% حِمل مبدئي» سطراً مستقلاً.
 export async function sectorTeamDetail(user, opts = {}) {
-  if (user.role_id !== 'admin' && !can(user, 'read', 'employee')) throw forbidden('عرض أفراد الفريق يتطلب صلاحية عرض الفريق');
+  if (user.role_id !== 'admin' && !can(user, 'read', 'employee')) throw forbidden('لا تملك صلاحية عرض أفراد الفريق — اطلبها من مدير النظام');
   const r = await staffingRoster(user, { sector: opts.sector, year: opts.year, month: opts.month });
   const { year, currentMonth: nowM } = r;
-  const ids = r.roster.map((e) => e.id);
+  // الطاقة سؤالٌ عن الحاضرين: من غادر لا يُعدّ «متاحاً» ولا يُرسَم له وجه. الكشف يحمله لتاريخه.
+  const roster = r.roster.filter((e) => e.active !== 0);
+  const ids = roster.map((e) => e.id);
   const ph = ids.map(() => '?').join(',');
   const today = String(opts.todayDate || nowIso().slice(0, 10)).slice(0, 10);
-  const [links, tasks] = ids.length ? await Promise.all([
-    all(`SELECT e.id, e.user_id, u.sector_id user_sector_id FROM employee e
-         LEFT JOIN app_user u ON u.id = e.user_id AND u.deleted_at IS NULL AND u.active = 1
+  const sectorId = r.sector || opts.sector || null;
+  // حساب الدخول بمفتاح صفحة الشخص نفسه (`app_user.employee_id`) — والحساب الموقوف يبقى حساباً:
+  // صفحتُه تُفتح لمديره كما كانت، فلا يُخفى الرابط عن شخصٍ صفحتُه مفتوحة.
+  const [links, tasks, outsideRow] = ids.length ? await Promise.all([
+    all(`SELECT e.id, u.id user_id, u.sector_id user_sector_id FROM employee e
+         LEFT JOIN app_user u ON u.employee_id = e.id AND u.deleted_at IS NULL
         WHERE e.id IN (${ph})`, ids),
     teamTaskLoad(ids, today),
-  ]) : [[], new Map()];
+    // مُسكَّنون على أعمال القطاع من خارج الكشف (قطاعٌ آخر أو إدارةٌ خارج نطاق القارئ): يُعدّون ولا يُخفون.
+    sectorId ? get(`SELECT COUNT(DISTINCT a.employee_id) n FROM allocation a JOIN employee e ON e.id = a.employee_id
+        WHERE a.sector_id = ? AND a.year = ? AND a.deleted_at IS NULL AND e.deleted_at IS NULL AND e.active = 1
+          AND a.employee_id NOT IN (${ph})`, [sectorId, year, ...ids]) : null,
+  ]) : [[], new Map(), null];
   const linkMap = new Map(links.map((l) => [l.id, l]));
   const access = teamTasksAccess(user);
   // نفس باب `personDossier`: الذات دائماً؛ ثم نطاق مهام الفريق — الشركة كلها، أو إداراته، أو قطاعه.
@@ -269,7 +281,7 @@ export async function sectorTeamDetail(user, opts = {}) {
     return !!link.user_sector_id && link.user_sector_id === user.sector_id;
   };
   const avg = (xs) => (xs.length ? Math.round(xs.reduce((a, b) => a + b, 0) / xs.length) : 0);
-  const people = r.roster.map((e) => {
+  const people = roster.map((e) => {
     const link = linkMap.get(e.id) || null;
     const userId = link?.user_id || null;
     const ok = dossierOk(e, link);
@@ -280,18 +292,23 @@ export async function sectorTeamDetail(user, opts = {}) {
     const next = nowM && nowM < 12 ? planMonths[nowM] : 0;
     const q3 = nowM ? avg(planMonths.slice(nowM, nowM + 3)) : 0;
     const annual = avg(planMonths);
-    const t = userId ? (tasks.get(e.id) || { open: 0, late: 0, blocked: 0, top: [] }) : null;
+    // المهام عن زميلٍ مسمّى سجلٌّ لا رقم: تُقرأ لمن يقرأ مهام الفريق (نفس باب «مهام فريقي»)؛ ومن بلا
+    // حساب لا مهام له أصلاً. والحالة مسمّاة في `tasksState` كي تقولها النافذة لا أن تُصفّر.
+    const tasksState = !userId ? 'no_account' : !access.scope ? 'no_scope' : 'ok';
+    const t = tasksState === 'ok' ? (tasks.get(e.id) || { open: 0, late: 0, blocked: 0, top: [] }) : null;
     return {
       id: e.id, userId, dossierOk: ok, name_ar: e.name_ar, job_title: e.job_title || '',
       department_id: e.department_id || null, active: e.active, capacity_pct: e.capacity_pct ?? null,
       employment_type: e.employment_type || null,
       months: planMonths, planNow, next, q3, annual,
-      currentUtil: e.currentUtil, prevMonthUtil: e.prevMonthUtil, monthDelta: e.monthDelta,
+      // الفرق عن الشهر الماضي على أساس الخطة وحدها — كالعنوان فوقه، لا على رقم الكشف المخلوط.
+      currentUtil: e.currentUtil, prevMonthUtil: e.prevMonthUtil, monthDelta: nowM ? planNow - e.prevMonthUtil : 0,
       oppLoadPct: e.oppLoadPct, peak: Math.max(0, ...planMonths), staffedMonths: planMonths.filter((m) => m > 0).length,
       projects: e.projects.map((p) => ({ allocId: p.allocId, projectId: p.projectId || null, name: p.name, bucket: p.bucket || null,
         type: p.type || 'member', status: p.status || null, months: p.months })),
       opportunities: e.opportunities.map((o) => ({ opportunityId: o.opportunityId, name: o.name, pct: o.pct })),
       // عناوين المهام سجلّات لا أرقام: تُعرض لمن يحقّ له فتح ملف صاحبها فحسب؛ العدّ يبقى.
+      tasksState,
       tasks: t ? { open: t.open, late: t.late, blocked: t.blocked, top: ok ? t.top : [] } : null,
     };
   });
@@ -318,8 +335,10 @@ export async function sectorTeamDetail(user, opts = {}) {
   })).sort((a, b) => (a.id === null) - (b.id === null) || (b.headcount - a.headcount)
     || String(a.name_ar).localeCompare(String(b.name_ar), 'ar'));
   return {
-    year, sector: r.sector || null, currentMonth: nowM, basis: 'plan',
+    year, sector: sectorId, currentMonth: nowM, basis: 'plan',
     people, departments,
+    outsideRoster: Number(outsideRow?.n) || 0,
+    inactive: r.roster.length - roster.length,
     avgNow: avg(people.map(loadOf)),
     over: people.filter((p) => loadOf(p) > UTIL_BANDS.OVER_ABOVE).length,
     free: people.filter((p) => loadOf(p) === 0).length,

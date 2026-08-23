@@ -4,8 +4,8 @@
 //   ١) الأساس خطةُ التسكين وحدها: حِمل الفرص المبدئي يُفصَل في سطره ولا يدخل `planNow`.
 //   ٢) النطاق من كشف التسكين نفسه: قارئٌ بنطاق «إدارة» يرى إدارته وحدها، واسمُ مشروعٍ خارج
 //      نطاقه يُطوى «مشروع خارج نطاقك» بلا معرّف.
-//   ٣) المهام بقواعد لوحة «مهام فريقي»: لا شخصية ولا معلَّقة ولا منتهية — والعناوين لمن يحقّ
-//      له فتح الملف فحسب، والعدّ للجميع. ومن بلا حساب لا مهام له (فارغ لا صفر كاذب).
+//   ٣) المهام بقواعد لوحة «مهام فريقي»: لا شخصية ولا معلَّقة ولا منتهية — لمن يقرأ مهام الفريق
+//      فحسب (عدّاً)، والعناوين لمن يحقّ له فتح الملف. ومن بلا حساب لا مهام له (فارغ لا صفر كاذب).
 //   ٤) رابط الملف لا يُرسَم لمن يُردّ: `dossierOk` يتبع باب `personDossier` حرفياً.
 //   ٥) التجميع بالإدارات القائمة فقط، و«بلا إدارة» سلّة مسمّاة في الذيل.
 //   ٦) لا راتب يخرج من هنا مهما كان القارئ، ومن لا يقرأ الموظفين يُردّ.
@@ -81,12 +81,16 @@ before(async () => {
   await emp('E4', 'نورة القحطاني', 'D_AI', null, 1_200_000);
   await emp('E2', 'خالد العتيبي', 'D_CITY', 'u_e2', 1_800_000);
   await emp('E3', 'فهد بلا إدارة', null, null, 900_000);
+  await insert('employee', { id: 'E_GONE', name_ar: 'موظف غادر', sector_id: 'SOLUTIONS', department_id: 'D_AI', active: 0, created_at: T });
+  await insert('sector', { id: 'CONSULTING', name_ar: 'قطاع الاستشارات', kind: 'delivery', active: 1, sort_order: 2, created_at: T });
+  await insert('employee', { id: 'E_OUT', name_ar: 'مستشار من قطاع آخر', sector_id: 'CONSULTING', job_title: 'استشاري', active: 1, created_at: T });
   for (const [id, empId] of [['u_e1', 'E1'], ['u_e2', 'E2']]) await run('UPDATE app_user SET employee_id = ? WHERE id = ?', [empId, id]);
   const alloc = (id, empId, pid, pname, mj) => insert('allocation', { id, employee_id: empId, person_name_ar: 'x', project_id: pid,
     project_name: pname, sector_id: 'SOLUTIONS', type: 'member', year: YEAR, monthly_json: JSON.stringify(mj), source: 'manual', created_at: T });
   await alloc('A1', 'E1', 'P_AI', 'مشروع الذكاء', { 1: 0.5, 2: 0.5, 3: 0.5, 4: 0.6 });
   await alloc('A2', 'E1', 'P_CITY', 'مشروع المدن', { 3: 0.2 });           // خارج نطاق قارئ إدارة الذكاء
   await alloc('A3', 'E2', 'P_CITY', 'مشروع المدن', { 3: 1.2 });           // فوق الطاقة
+  await alloc('A4', 'E_OUT', 'P_CITY', 'مشروع المدن', { 3: 0.3 });         // من خارج الكشف
   // حِمل فرصة مبدئي على سارة: ٣٠٪ — يقع على الشهر الجاري ولا يدخل الخطة
   await insert('opportunity', { id: 'O1', code: 'OPP-1', title_ar: 'فرصة منصة البيانات', sector_id: 'SOLUTIONS', department_id: 'D_AI',
     client_id: 'C1', stage_id: 'LEAD', owner_user_id: 'u_lead', value_halalas: 100_000_00, win_pct: 20, year: YEAR, created_at: T });
@@ -147,12 +151,21 @@ test('قارئ إدارة: إدارته وحدها، والمشروع الشقي
   assert.deepEqual(d.departments.map((x) => [x.id, x.headcount]), [['D_AI', 2]]);
 });
 
-test('من يقرأ الأفراد ولا يقرأ مهام الفريق: العدّ يبقى والعناوين تُحجب ولا رابط ملف', async () => {
+test('من يقرأ الأفراد ولا يقرأ مهام الفريق: لا مهام عن زميلٍ مسمّى (عدّاً ولا أسماء) ولا رابط ملف', async () => {
   const d = await sectorTeamDetail(peopleOnly, { sector: 'SOLUTIONS', year: YEAR, month: MONTH, todayDate: TODAY });
   const s = byId(d, 'E1');
   assert.equal(s.dossierOk, false);
-  assert.equal(s.tasks.open, 2);
-  assert.deepEqual(s.tasks.top, []);
+  assert.equal(s.tasks, null);
+  assert.equal(s.tasksState, 'no_scope');
+  assert.equal(byId(d, 'E3').tasksState, 'no_account');
+});
+
+test('الطاقة سؤالٌ عن الحاضرين: من غادر لا يُعدّ، ومن سُكِّن من خارج الكشف يُعدّ في سطره', async () => {
+  const d = await sectorTeamDetail(lead, { sector: 'SOLUTIONS', year: YEAR, month: MONTH, todayDate: TODAY });
+  assert.ok(!byId(d, 'E_GONE'), 'الموظف غير النشط لا وجه له على البطاقة');
+  assert.equal(d.inactive, 1);
+  assert.equal(d.outsideRoster, 1, 'موظف قطاع الاستشارات المُسكَّن على مشروع الحلول');
+  assert.equal(d.free, 2, 'ولا يُعدّ المغادر «متاحاً»');
 });
 
 test('التجميع بالإدارات القائمة، و«بلا إدارة» سلّةٌ مسمّاة في الذيل', async () => {

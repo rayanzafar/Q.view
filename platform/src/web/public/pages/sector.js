@@ -78,19 +78,21 @@
       var name = av.getAttribute('data-name') || '';
       var job = av.getAttribute('data-job') || '';
       av.title = name + (job ? ' · ' + job : '') + ' — الحِمل ' + v + '%';
-      av.setAttribute('aria-label', name + ' — الحِمل ' + v + '%');
+      av.setAttribute('aria-label', name + ' — الحِمل ' + v + '% — التفصيل');
       av.classList.toggle('over', v > 110);
       av.classList.toggle('free', v === 0);
     });
     var cap = document.getElementById('cap-caption');
-    if (cap) cap.textContent = 'النافذة: ' + btn.textContent.trim() + ' · الحدود من قواعد التسكين نفسها: 70% و110%';
+    if (cap) cap.textContent = 'النافذة: ' + btn.textContent.trim() + ' · ' + (cap.getAttribute('data-tail') || '');
   }
 
   // الضغط على شخصٍ — في الطيف أو في القائمتين أو في نافذة «فوق الطاقة» — يفتح نافذته هنا
   // (قالبها مخدوم من الخادم بنطاق القارئ). ومن لا قالب له (طبقة بلا أسماء) يبقى على لوحة التسكين.
+  var lastTrigger = null; // من فتح النافذة بلوحة المفاتيح يعود إليه التركيز عند إغلاقها
   function capPerson(el) {
     var id = el.getAttribute('data-emp');
     if (id && document.getElementById('dd-cap-emp-' + id)) {
+      lastTrigger = el;
       Sanad.openDD('cap-emp-' + id);
       var close = document.querySelector('#modal .modal-head button');
       if (close) close.focus();
@@ -123,6 +125,16 @@
   });
   // بطاقات لها دور زر تُفتح بلوحة المفاتيح أيضاً — Enter والمسافة. ومنها بطاقات «الإيقاع»
   // المبنية في مكوّن مشترك بنقرة داخلية بلا data-action: تُنقَر برمجياً فلا تبقى صمّاء.
+  // إغلاق نافذة الشخص (Esc أو زر الإغلاق) يعيد التركيز إلى الصفّ أو الصورة التي فتحتها — كي لا
+  // يفقد مستخدم لوحة المفاتيح موضعه في القائمة. التأجيل لأن الإغلاق نفسه يجري في app.js بعدنا.
+  function restoreFocus() {
+    var t = lastTrigger; lastTrigger = null;
+    if (t && document.contains(t)) setTimeout(function () { t.focus(); }, 0);
+  }
+  on(document, 'keydown', function (e) { if (e.key === 'Escape' && lastTrigger) restoreFocus(); });
+  on(document, 'click', function (e) {
+    if (lastTrigger && e.target.closest('#modal .modal-head button')) restoreFocus();
+  });
   on(document, 'keydown', function (e) {
     if (e.key !== 'Enter' && e.key !== ' ') return;
     var el = e.target.closest('[role="button"]');

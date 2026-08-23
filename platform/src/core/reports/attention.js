@@ -91,7 +91,7 @@ export async function attentionFeed(user, sectorId, { year, today } = {}) {
 
   // 5) أشخاص فوق الطاقة الآن
   const allocs = await all(`SELECT a.employee_id, e.name_ar, e.sector_id emp_sector, e.department_id, a.monthly_json FROM allocation a
-      JOIN employee e ON e.id = a.employee_id
+      JOIN employee e ON e.id = a.employee_id AND e.deleted_at IS NULL
       WHERE a.sector_id = ? AND a.deleted_at IS NULL AND a.year = ? AND a.employee_id IS NOT NULL`, [sectorId, y]);
   const loadNow = {};
   for (const a of allocs) {
@@ -110,7 +110,7 @@ export async function attentionFeed(user, sectorId, { year, today } = {}) {
     .map((x) => ({ employee_id: x.employee_id, name: x.name, pct: Math.round(x.v * 100) }));
   if (over.length) items.push({ rank: 6, tone: 'red', icon: 'team', dd: 'att-overload',
     title: `${countAr(over.length, { one: 'موظف واحد محمّل فوق طاقته', two: 'موظفان فوق الطاقة', few: 'موظفين فوق الطاقة', many: 'موظفاً فوق الطاقة' })} هذا الشهر`,
-    sub: namesOk ? over.slice(0, 3).map((x) => `${x.name} ${x.pct}%`).join(' · ') : 'أسماء الأفراد تظهر لمن يملك قراءة الموظفين',
+    sub: namesOk ? over.slice(0, 3).map((x) => `${x.name} ${x.pct}%`).join(' · ') : 'أسماء الأفراد تظهر لمن يملك صلاحية عرض الفريق',
     action: 'أعد توزيع التسكين', ddRowsData: namesOk ? over : [] });
 
   // 6) مخاطر عالية مفتوحة
