@@ -117,6 +117,7 @@ a{text-decoration:none;color:inherit}
 .fig-cols .cc b{font-size:var(--fs-micro);color:var(--muted);font-weight:700}
 @media(max-width:1280px){.g12 .c4{grid-column:span 6}}
 @media(max-width:980px){.g12 .c4,.g12 .c5,.g12 .c7,.g12 .c8{grid-column:span 12}}
+@media(max-width:640px){.fig-r{grid-template-columns:minmax(56px,auto) 1fr auto auto;gap:6px}.fig-r .v{font-size:var(--fs-body)}}
 select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding:.3rem .6rem;font-size:12px;font-weight:700;color:var(--ink2)}
 
 /* ── component layer (v2 redesign) ── */

@@ -28,16 +28,6 @@
     if (close) close.focus();
   }
 
-  // ── مقياس القمع: بالقيمة (الافتراضي) أو بالعدد — العرضان محسوبان سلفاً على الخادم ──
-  function funnelMode(btn) {
-    var mode = btn.getAttribute('data-mode');
-    pressGroup(btn, 'button[data-action="fnl-mode"]');
-    document.querySelectorAll('.fnl-bar').forEach(function (bar) {
-      var w = bar.getAttribute(mode === 'count' ? 'data-wc' : 'data-wv');
-      if (w != null) bar.style.width = w + '%';
-    });
-  }
-
   // ── فئات «ما تغيّر»: ترشيحُ عرضٍ محض على صفوف حاضرة — لا طلب جديد ──
   // حالة «عرض الكل» تُقرأ من مصدر واحد (data-shown التي يكتبها زر التوسيع)، لا من وضع الإخفاء
   // اللحظي — وإلا بقيت فئةٌ زارها القارئ مفتوحةً عند عودته إلى «الكل» وغيرها مطوية.
@@ -111,12 +101,21 @@
     if (href) location.assign(href);
   }
 
+  // «يحتاج تدخلك» في الشريط يقفز إلى قائمته في طبقة «ماذا أفعل اليوم؟» ويركّز أول بند
+  function actJump() {
+    var h = document.getElementById('act');
+    if (!h) return;
+    h.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    var first = h.parentElement && h.parentElement.querySelector('.act-r .go, .card-foot a');
+    if (first) setTimeout(function () { first.focus({ preventScroll: true }); }, 350);
+  }
+
   function reportPreview(el) { if (window.Sanad && Sanad.previewReport) Sanad.previewReport(el.getAttribute('data-report')); }
   function reportSend(el) { if (window.Sanad && Sanad.testSend) Sanad.testSend(el.getAttribute('data-report')); }
 
   var ACTIONS = {
     'open-dd': openDD,
-    'fnl-mode': funnelMode,
+    'act-jump': actJump,
     'chg-cat': chgCat,
     'chg-more': chgMore,
     'cap-win': capWin,

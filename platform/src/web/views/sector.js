@@ -6,7 +6,7 @@
 // على شخصٍ في «طاقة الفريق» يفتح نافذته هنا (حِمله، مشاريعه، مهامه) ولا ينقل القارئ إلى لوحة
 // التسكين؛ والروابط إلى صفحته الكاملة ولوحة التسكين أفعالٌ ثانوية داخل النافذة.
 // لا رقم بلا مصدر مسجَّل، ولا نصّ مولَّد بالتخمين: جملة الملخص تُركَّب بقواعد معلنة من الأرقام نفسها.
-import { layout, card, pill, tr } from '../layout.js';
+import { layout, card, pill, tr, figBullet, figStacked100, figBars, figColumns } from '../layout.js';
 import { netSql } from '../../modules/finance/vat.js';
 import { icon } from '../icons.js';
 import { fmtSar } from '../../core/util/ids.js';
@@ -28,7 +28,7 @@ import { SCOPE_RANK } from '../../core/rbac/matrix.js';
 import { config } from '../../core/config.js';
 import { DELIVERY_SECTOR_SQL } from '../../core/org/kind.js';
 import { G } from '../i18n/glossary.js';
-import { monthLabel, monthLabelDual, quarterLabel, nowDot, currentMonthIndex, MONTHS_AR } from '../../core/i18n/time.js';
+import { monthLabel, quarterLabel, nowDot, currentMonthIndex, MONTHS_AR } from '../../core/i18n/time.js';
 import { countAr, dayWord } from '../../core/i18n/plural.js';
 import { esc, ddWrap, attain, ddRows, sarShort } from './_shared.js';
 
@@ -55,62 +55,6 @@ const CHG_SEV = (it) => (it.won || it.lost) ? ['عالية', '#fee2e2', '#991b1b
   : (it.kind === 'stage' || it.kind === 'invoice') ? ['متوسطة', '#fef3c7', '#92400e']
   : ['منخفضة', '#f1f5f9', '#64748b'];
 
-// ── لبنات رسم صغيرة (SVG محلي — لا مكتبة رسم) ────────────────────────────────
-// حلقة إنجاز واحدة: تُستعمل حصراً حيث الرقم «جزء من هدف/كل» — لا زينة على كل رقم.
-function ring(p, { size = 70, sw = 10, color = 'var(--brand2)', lbl = '' } = {}) {
-  const shown = Math.max(0, Math.round(Number(p) || 0));
-  const pc = Math.min(100, shown);
-  const r = (size - sw) / 2, c = 2 * Math.PI * r;
-  const off = c * (1 - pc / 100);
-  // dasharray كامل المحيط + dashoffset للهدف: الحلقة «تمتلئ» عند التحميل بحركة CSS واحدة (ringIn).
-  return `<span class="ringw" style="width:${size}px;height:${size}px">
-    <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-hidden="true" style="transform:rotate(-90deg)">
-      <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="#eef1f7" stroke-width="${sw}"/>
-      ${pc > 0 ? `<circle class="ring-fill" cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="${color}" stroke-width="${sw}" stroke-linecap="round" stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}" style="--c0:${c.toFixed(1)}"/>` : ''}
-    </svg><span class="ringv tnum">${shown}%${lbl ? `<small>${esc(lbl)}</small>` : ''}</span></span>`;
-}
-// دونات مقسومة (صحة المشاريع): كل قطعة قوس بطول نسبتها — والمجموع في الوسط.
-function donutSVG(segs, { size = 104, sw = 13 } = {}) {
-  const total = segs.reduce((a, s) => a + s.v, 0) || 1;
-  const r = (size - sw) / 2, c = 2 * Math.PI * r;
-  let off = 0;
-  const arcs = segs.filter((s) => s.v > 0).map((s) => {
-    const len = (s.v / total) * c;
-    const el = `<circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="${s.color}" stroke-width="${sw}" stroke-dasharray="${len.toFixed(1)} ${c.toFixed(1)}" stroke-dashoffset="${(-off).toFixed(1)}"/>`;
-    off += len;
-    return el;
-  }).join('');
-  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-hidden="true" style="transform:rotate(-90deg)">
-    <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="#eef1f7" stroke-width="${sw}"/>${arcs}</svg>`;
-}
-// عدّاد نصف دائري (طاقة الفريق): كل منطقة قوس بطول حصتها من الأفراد — يُقرأ من اليمين إلى
-// اليسار كالنص (انعكاس رأسي للدائرة يجعل البداية عند اليمين فوق الوسط)، والمجموع في وسطه.
-function semiGauge(segs, { size = 176, sw = 18 } = {}) {
-  const total = segs.reduce((a, s) => a + s.v, 0) || 1;
-  const r = (size - sw) / 2, c = 2 * Math.PI * r, half = c / 2;
-  const cx = size / 2, cy = size / 2, h = size / 2 + sw / 2 + 1;
-  let off = 0;
-  const arcs = segs.filter((s) => s.v > 0).map((s) => {
-    const len = (s.v / total) * half;
-    const el = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${s.color}" stroke-width="${sw}" stroke-dasharray="${len.toFixed(1)} ${c.toFixed(1)}" stroke-dashoffset="${(-off).toFixed(1)}"/>`;
-    off += len;
-    return el;
-  }).join('');
-  return `<svg width="${size}" height="${h.toFixed(0)}" viewBox="0 0 ${size} ${h.toFixed(0)}" aria-hidden="true">
-    <g transform="translate(0 ${(2 * cy).toFixed(0)}) scale(1 -1)">
-      <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#eef1f7" stroke-width="${sw}" stroke-dasharray="${half.toFixed(1)} ${c.toFixed(1)}"/>
-      ${arcs}</g></svg>`;
-}
-// تدرّج القمع: من الأزرق الملكي إلى البنفسجي — عائلة الهوية وحدها، لا أخضر/أحمر داخل القمع
-// كي لا تختلط ألوان المراحل بألوان الحالة (قاعدة المواصفة). لون المرحلة المخزَّن يبقى
-// للوحة كانبان الفرص؛ هنا الترميز موضعي: موقع المرحلة في المسار.
-function funnelColor(i, n) {
-  const a = [0x24, 0x4A, 0x99], b = [0x83, 0x47, 0x98];
-  const t = n <= 1 ? 0 : i / (n - 1);
-  const mix = a.map((av, k) => Math.round(av + (b[k] - av) * t));
-  return `#${mix.map((v) => v.toString(16).padStart(2, '0')).join('')}`;
-}
-
 const CARD_HEAD_CSS = `.card-head{padding:var(--pad-card-h);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
 .card-head .t{font-weight:800;font-size:var(--fs-title)}
 .card-head .aux{margin-inline-start:auto;display:flex;gap:.35rem;align-items:center}`;
@@ -119,88 +63,47 @@ const CARD_HEAD_CSS = `.card-head{padding:var(--pad-card-h);border-bottom:1px so
 const AXIS_MAX = 125;
 const axisPct = (v) => (Math.min(AXIS_MAX, Math.max(0, v)) / AXIS_MAX * 100).toFixed(1);
 const CSS = `<style>
-/* شبكة المرجع v5.23: شريط المؤشرات ← [يحتاج تدخلك | ما تغيّر] (٥:٤) ← [القمع | الصحة | الطاقة] ← العملاء */
-.row-main{display:grid;gap:var(--gap);margin-bottom:var(--gap);grid-template-columns:1.25fr 1fr}
-.row-ana{display:grid;gap:var(--gap);margin-bottom:var(--gap);grid-template-columns:1.1fr 1fr 1fr}
-.row-two{display:grid;gap:var(--gap);margin-bottom:var(--gap);grid-template-columns:1.5fr 1fr}
-@media(max-width:1280px){.row-ana{grid-template-columns:1fr 1fr}.row-ana>:first-child{grid-column:1/-1}}
-@media(max-width:1100px){.row-main{grid-template-columns:1fr}}
-@media(max-width:980px){.row-main,.row-ana,.row-two{grid-template-columns:1fr}}
-.row-main>.card,.row-ana>.card{display:flex;flex-direction:column;min-width:0}
-/* حزام علوي رفيع يميّز كل بطاقة بلون معناها — تمييز هادئ لا زخرفة */
-.band{position:relative}
-.band::before{content:'';position:absolute;top:-1px;inset-inline:-1px;height:3px;border-radius:var(--r) var(--r) 0 0;background:var(--bandc,var(--brand-grad))}
-.b-red{--bandc:linear-gradient(90deg,#dc2626,#f87171)}
-.b-blue{--bandc:linear-gradient(90deg,#2563eb,#7ab3f9)}
-.b-violet{--bandc:linear-gradient(90deg,#834798,#b083c0)}
-.b-green{--bandc:linear-gradient(90deg,#047857,#34d399)}
-.b-amber{--bandc:linear-gradient(90deg,#b45309,#f0b04f)}
-/* المرور يرفع بطاقات الصفوف الرئيسية بظل خفيف موحّد */
-.row-main>.card:hover,.row-ana>.card:hover,.row-two>.card:hover{box-shadow:var(--sh);transform:translateY(-2px);border-color:#d6def0}
-/* حركات التحميل: الحلقات تمتلئ والأشرطة تنمو — CSS وحدها، وتُطفأ لمن طلب سكون الحركة */
-@keyframes ringIn{from{stroke-dashoffset:var(--c0)}}
-.ring-fill{animation:ringIn .8s ease-out}
-@keyframes growW{from{width:0}}
-.fnl-bar,.blt .trk .fill,.bar>span{animation:growW .7s ease-out both}
-@media (prefers-reduced-motion:reduce){.ring-fill,.fnl-bar,.blt .trk .fill,.bar>span,.row-main>.card,.row-ana>.card,.row-two>.card{animation:none;transition:none}}
 /* عدسة الفترة روابط لا أزرار (حالتها في الرابط) — تلبس زيّ .seg نفسه */
 .seg a{font-size:12px;font-weight:700;color:var(--muted);padding:.35rem .7rem;border-radius:8px;display:flex;align-items:center;gap:.35rem;transition:background .18s,color .18s}
 .seg a.on{background:#fff;color:var(--ink2);box-shadow:var(--sh-sm)}
+/* الطبقات وشريط الستّ: رؤوس بطاقات بخلاصةٍ محسوبة، صفوف «افعل اليوم»، ودرج التحليل */
+.band6{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:1rem}
+@media(max-width:1280px){.band6{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:640px){.band6{grid-template-columns:1fr 1fr}.band6>.tile:first-child{grid-column:span 2}}
+.g12>div>.card{display:flex;flex-direction:column;min-width:0;height:100%}
+.card.h-c,.card.h-d{max-height:460px}
+.card .cbody{overflow-y:auto;flex:1;min-height:0}
+.hgrp{display:grid;gap:2px;min-width:0}
+.card-head .eyebrow,.eyebrow{font-size:var(--fs-body);color:var(--muted);font-weight:700}
+.card-head .hgrp .t{font-size:var(--fs-title);font-weight:800;color:var(--ink2);line-height:1.45}
+.chead-x{display:grid;gap:2px;margin-bottom:.45rem}
+.chead-x .tt{font-size:var(--fs-title);font-weight:800;color:var(--ink2)}
+.act-r{display:grid;grid-template-columns:28px 1fr auto;align-items:center;gap:.6rem;padding:.55rem .2rem;border-bottom:1px dashed var(--line)}
+.act-r:last-child{border-bottom:none}
+.act-r .rank{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;flex:none;justify-self:center}
+.act-r .tx{min-width:0}
+.act-r .tx .h{font-size:var(--fs-body);font-weight:800;color:var(--ink2);display:block;line-height:1.5}
+.act-r .tx .s{font-size:var(--fs-body);color:var(--muted);display:block}
+.act-r .go{justify-self:start}
+.act-r .go svg{width:13px;height:13px}
+@media(max-width:640px){.act-r{grid-template-columns:28px 1fr}.act-r .go{grid-column:2;justify-self:start}}
+.rmenu{position:relative}
+.rmenu summary{list-style:none;cursor:pointer}
+.rmenu summary::-webkit-details-marker{display:none}
+.rmenu .rmenu-b{position:absolute;inset-inline-end:0;top:calc(100% + 6px);background:var(--surface);border:1px solid var(--line);border-radius:10px;box-shadow:var(--sh);padding:.5rem;display:grid;gap:.35rem;z-index:30;min-width:200px}
+.x-drawer{background:var(--surface);border:1px solid var(--line);border-radius:var(--r)}
+.x-drawer>summary{cursor:pointer;padding:.7rem 1rem;font-weight:800;color:var(--ink2);font-size:var(--fs-title);list-style:none;display:flex;gap:.5rem;align-items:center}
+.x-drawer>summary::-webkit-details-marker{display:none}
+.x-drawer>summary::before{content:'▾';color:var(--muted);font-size:11px;transition:transform .15s}
+.x-drawer:not([open])>summary::before{transform:rotate(90deg)}
+@keyframes growW{from{width:0}}
+.fig-b .fl,.fig-r .tr i,.bar>span{animation:growW .7s ease-out both}
+@media (prefers-reduced-motion:reduce){.fig-b .fl,.fig-r .tr i,.bar>span{animation:none;transition:none}}
 ${CARD_HEAD_CSS}
 .empty-mini{padding:.6rem 1rem;font-size:var(--fs-meta);color:var(--muted);display:flex;gap:.45rem;align-items:center}
 .empty-mini svg{width:14px;height:14px;color:var(--faint);flex:none}
 .card-foot{margin-top:auto;padding:.45rem 1rem .55rem;border-top:1px solid var(--line)}
 .card-foot a,.card-foot button{font-size:var(--fs-meta);font-weight:700;color:var(--brand);background:none;border:none;font-family:inherit;cursor:pointer;padding:0;display:inline-flex;gap:.3rem;align-items:center}
-/* شريط المؤشرات: بطاقة بيضاء واحدة بحدّ علوي متدرج — خلايا مفصولة بحدود رأسية رفيعة */
-.kpi-band{position:relative;display:flex;align-items:stretch;margin-bottom:var(--gap);padding:.5rem 0;flex-wrap:wrap}
-.kpi-band::before{content:'';position:absolute;top:-1px;inset-inline:-1px;height:3px;border-radius:var(--r) var(--r) 0 0;background:var(--brand-grad)}
-.kpi-cell{flex:1 1 0;min-width:128px;padding:.6rem 1rem;display:flex;flex-direction:column;gap:.15rem;justify-content:center;border-inline-start:1px solid var(--line)}
-.kpi-cell:first-child{border-inline-start:none}
-.kpi-hero{flex:1.7 1 0;min-width:230px;flex-direction:row;align-items:center;gap:.85rem}
-.kpi-hero .lbl{font-size:var(--fs-meta);color:var(--muted);font-weight:700}
-.kpi-hero .num{font-size:var(--fs-num-lg);font-weight:800;letter-spacing:-.02em;line-height:1.25}
-.kpi-hero .tgt{font-size:var(--fs-micro);color:var(--faint);display:flex;gap:.35rem;align-items:center;flex-wrap:wrap}
-.ringw{position:relative;display:inline-flex;align-items:center;justify-content:center;flex:none}
-.ringv{position:absolute;font-size:13px;font-weight:800;color:var(--ink2);text-align:center;line-height:1.15}
-.ringv small{display:block;font-size:8px;color:var(--muted);font-weight:700}
-.kpi-cell .l{font-size:var(--fs-micro);color:var(--muted);font-weight:700;display:flex;align-items:center;gap:.3rem}
-.kpi-cell .l svg{width:12px;height:12px;opacity:.75}
-.kpi-cell .v{font-size:var(--fs-num-md);font-weight:800;letter-spacing:-.01em;line-height:1.3;display:flex;align-items:center;gap:.4rem}
-.kpi-cell .s{font-size:var(--fs-micro);color:var(--faint)}
-.kpi-ok{width:20px;height:20px;border-radius:50%;background:#dcfce7;color:var(--green);display:inline-flex;align-items:center;justify-content:center;flex:none}
-.kpi-ok svg{width:12px;height:12px}
-/* شريط صغير أسفل التغطية: قيمة كل مرحلة مفتوحة — بيانات القمع نفسها لا سلسلة مُختلَقة */
-.kpi-spark{display:flex;align-items:flex-end;gap:2px;height:16px;margin-top:.2rem}
-.kpi-spark span{width:9px;border-radius:2px 2px 0 0;background:var(--green);opacity:.8;min-height:2px}
-@media(max-width:1180px){.kpi-hero{flex-basis:46%}.kpi-cell{min-width:30%}}
-@media(max-width:640px){.kpi-hero,.kpi-cell{flex-basis:100%;border-inline-start:none;border-top:1px solid var(--line)}.kpi-band>:first-child{border-top:none}}
-/* القمع v4: أشرطة أفقية مستقيمة متدرجة العرض — الاسم يميناً، شارة العدد الداكنة على رأس الشريط،
-   والقيمة على طرفه. النقر يفتح تفصيل المرحلة كما كان. */
-.fnl-cols{display:grid;grid-template-columns:minmax(76px,104px) 1fr 64px;gap:.55rem;padding:.1rem .35rem;font-size:var(--fs-micro);color:var(--faint);font-weight:800}
-.fnl-cols span:nth-child(2){text-align:center}
-.fnl-row{display:grid;grid-template-columns:minmax(76px,104px) 1fr 64px;gap:.55rem;cursor:pointer;align-items:center;border-radius:10px;padding:.22rem .35rem;border:1px solid transparent;text-decoration:none}
-.fnl-row:hover{background:#fbfcfe;border-color:var(--line)}
-.fnl-row.on{background:#f6f3fa;border-color:#d9c9e4;box-shadow:var(--sh-sm)}
-.fnl-row .n{font-size:var(--fs-body);font-weight:700;color:var(--ink2);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.fnl-track{position:relative;height:24px;border-radius:8px;background:#f4f6fb;min-width:0}
-.fnl-bar{position:absolute;inset-inline-start:0;top:0;bottom:0;border-radius:8px;min-width:34px;transition:width .3s ease}
-.fnl-bar .cnt{position:absolute;inset-inline-end:4px;top:50%;transform:translateY(-50%);background:var(--ink);color:#fff;font-size:10px;font-weight:800;line-height:1;border-radius:6px;padding:.2rem .42rem;box-shadow:0 1px 2px rgba(15,23,42,.3);z-index:1}
-/* التعتيم عند اختيار مرحلة يغسل الشريط بطبقة بيضاء — الرقم يبقى فوقها مقروءاً */
-.fnl-row.dim .fnl-bar::before{content:'';position:absolute;inset:0;background:rgba(255,255,255,.74);border-radius:8px}
-.fnl-row.dim .fnl-bar .cnt{background:#94a3b8}
-.fnl-val{font-size:var(--fs-meta);color:var(--muted);font-weight:800;white-space:nowrap}
-/* إحصاءات أعلى بطاقة القمع + صندوق أعلى الفرص */
-.fnl-stats{display:flex;gap:.5rem;padding:.6rem .9rem 0;flex-wrap:wrap}
-.fnl-stat{flex:1 1 120px;background:#fafbfe;border:1px solid var(--line);border-radius:10px;padding:.45rem .6rem;min-width:0}
-.fnl-stat .h{font-size:var(--fs-micro);font-weight:800;color:var(--muted);display:flex;gap:.3rem;align-items:center}
-.fnl-stat .h svg{width:12px;height:12px}
-.fnl-stat .v{font-size:var(--fs-num-sm);font-weight:800}
-.fnl-stat .s{font-size:var(--fs-micro);color:var(--faint)}
-.fnl-box{background:#fafbfe;border:1px solid var(--line);border-radius:10px;padding:.45rem .6rem;margin:.4rem .9rem 0}
-.fnl-box .h{font-size:var(--fs-micro);font-weight:800;color:var(--muted);display:flex;gap:.3rem;align-items:center}
-.fnl-box .h svg{width:12px;height:12px}
-.fnl-kv{display:flex;justify-content:space-between;gap:.6rem;font-size:var(--fs-meta);align-items:baseline}
-.fnl-kv b{flex:none}
 /* «ما تغيّر» — كالمرجع: أيقونة ثم نص وسطر فرعي، شارة حدّة، والزمن النسبي على الطرف */
 .chg{display:flex;align-items:flex-start;gap:.55rem;padding:.45rem .55rem;border-radius:10px;border:1px solid transparent;border-inline-start:3px solid transparent}
 .chg:hover{background:#fbfcfe;border-color:var(--line)}
@@ -218,21 +121,6 @@ ${CARD_HEAD_CSS}
 .chg-cats{padding:.45rem .8rem;display:flex;gap:.3rem;flex-wrap:wrap;border-bottom:1px dashed var(--line)}
 .chg-cat{border:1px solid var(--line);background:#fff;color:var(--muted);font-family:inherit;font-weight:700;font-size:var(--fs-micro);padding:.22rem .6rem;border-radius:999px;cursor:pointer}
 .chg-cat.on{background:var(--brand);border-color:transparent;color:#fff}
-/* «يحتاج تدخلك الآن» — جدول أولويات مرقّم: دائرة رتبة ملوّنة بحدّة البند، عنوان جريء وسطر
-   «لماذا يهم؟»، وزر الإجراء المقترح بإطار وأيقونة على الطرف */
-.attn-count{width:22px;height:22px;border-radius:50%;background:var(--red);color:#fff;font-size:11px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;flex:none}
-.attn-cols{display:grid;grid-template-columns:34px 1fr auto;gap:.6rem;padding:.4rem 1rem .35rem;font-size:var(--fs-micro);color:var(--faint);font-weight:800;border-bottom:1px solid var(--line)}
-.attn-cols span:last-child{text-align:start}
-.attn{display:grid;grid-template-columns:34px 1fr auto;align-items:center;gap:.6rem;padding:.55rem .2rem;border:none;border-radius:0;background:transparent;border-bottom:1px dashed var(--line)}
-.attn:hover{border-color:var(--line);box-shadow:none;background:#fbfcfe}
-.attn:last-child{border-bottom:none}
-.attn .rank{width:27px;height:27px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:800;flex:none;justify-self:center}
-.attn .tx{min-width:0}
-.attn .tx .h{font-size:var(--fs-body);font-weight:800;color:var(--ink2);display:block;line-height:1.45}
-.attn .tx .s{font-size:var(--fs-micro);color:var(--muted);display:block}
-.attn .go{justify-self:start}
-.attn .go svg{width:13px;height:13px}
-@media(max-width:640px){.attn{grid-template-columns:34px 1fr}.attn .go{grid-column:2;justify-self:start}.attn-cols span:last-child{display:none}.attn-cols{grid-template-columns:34px 1fr}}
 /* طيف قدرة الفريق — محور أرقام يقرأ يساراً كالأرقام نفسها */
 .cap-axis{position:relative;height:74px;margin:.4rem 0 .1rem}
 .cap-band{position:absolute;inset-inline:0;top:30px;height:12px;border-radius:999px;overflow:hidden;
@@ -244,18 +132,12 @@ ${CARD_HEAD_CSS}
 .cap-axis.dense .cap-av.r2{top:36px}
 .cap-axis.dense .cap-av.r3{top:66px}
 .cap-av:hover,.cap-av:focus-visible{z-index:3;transform:translateX(-50%) scale(1.15)}
-.cap-leg button{all:unset;display:inline-flex;align-items:center;gap:.3rem;cursor:pointer;border-radius:6px;padding:.05rem .3rem;position:relative}
-.cap-leg button::after{content:'';position:absolute;inset:-12px -4px}
-.cap-leg button:hover{background:var(--bg,#f1f5f9)}
-.cap-leg button:focus-visible{outline:2px solid var(--brand);outline-offset:1px}
 .cap-dept{display:grid;grid-template-columns:1fr auto auto auto;gap:.6rem;align-items:center;padding:.5rem .35rem;border-bottom:1px dashed var(--line);border-radius:7px;cursor:pointer;font-size:var(--fs-body)}
 .cap-dept:hover{background:var(--bg,#f1f5f9)}
 .cap-dept:focus-visible{outline:2px solid var(--brand);outline-offset:1px}
 .cap-dept .n{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700}
 .cap-dept small{color:var(--muted);font-size:var(--fs-micro);white-space:nowrap}
 @media(max-width:640px){.cap-dept{grid-template-columns:1fr auto auto;min-height:40px}.cap-dept small:nth-of-type(2){display:none}.dd-row.cap-li-btn{min-height:40px}.cap-plus{min-height:40px}}
-/* سطور الخلايا الفرعية بلون مقروء — لا الباهت الذي يسقط دون حدّ التباين عند هذا الحجم */
-.kpi-cell .s,.fnl-stat .s{color:var(--muted)}
 .cap-av{position:absolute;top:14px;width:26px;height:26px;border-radius:50%;border:2px solid #fff;box-shadow:var(--sh-sm);
   background:var(--brand-grad);color:#fff;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;
   transform:translateX(-50%);cursor:pointer;padding:0;font-family:inherit;transition:left .25s ease}
@@ -265,16 +147,6 @@ ${CARD_HEAD_CSS}
 .cap-av.free{background:linear-gradient(120deg,#047857,#059669)}
 .cap-ticks{position:relative;height:14px;font-size:9.5px;color:var(--faint)}
 .cap-ticks span{position:absolute;transform:translateX(-50%)}
-/* عدّاد نصف دائري لثلاث فئات الحِمل — والمجموع في وسطه، ومتوسط الإشغال تحته */
-.cap-gauge{display:flex;flex-direction:column;align-items:center;padding:.65rem 1rem 0}
-.cap-gauge .cw{position:relative;display:inline-flex;justify-content:center}
-.cap-gauge .cc{position:absolute;inset-inline:0;bottom:1px;text-align:center;line-height:1.15}
-.cap-gauge .cc b{font-size:var(--fs-num-md);font-weight:800;letter-spacing:-.01em}
-.cap-gauge .cc small{display:block;font-size:9.5px;color:var(--muted);font-weight:700}
-.cap-avg{font-size:var(--fs-meta);color:var(--muted);font-weight:700;margin-top:.35rem}
-.cap-leg{display:flex;gap:.8rem;flex-wrap:wrap;justify-content:center;font-size:var(--fs-micro);color:var(--muted);font-weight:700;padding:.3rem 0 .4rem}
-.cap-leg span{display:inline-flex;align-items:center;gap:.3rem}
-.cap-leg i{width:8px;height:8px;border-radius:50%;flex:none}
 .cap-lists{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:.7rem;border-top:1px dashed var(--line);padding-top:.5rem}
 .cap-lists>div{min-width:0}
 @media(max-width:640px){.cap-lists{grid-template-columns:1fr}}
@@ -506,12 +378,6 @@ export async function sectorPage(user, opts = {}) {
   const fOpp = scopeFilter(user, 'opportunity', 'read',
     { sectorCol: 'o.sector_id', ownerCol: 'o.owner_user_id', projectCol: 'o.id',
       grantCol: 'o.department_id', memberCol: 'o.id', deptCol: 'o.department_id' });
-  const topOpps = await all(`SELECT o.id, o.title_ar, o.value_halalas, c.name_ar client
-     FROM opportunity o JOIN stage st ON st.id = o.stage_id LEFT JOIN client c ON c.id = o.client_id
-     WHERE st.is_won = 0 AND st.is_lost = 0 AND o.stage_id != 'ON_HOLD' AND o.deleted_at IS NULL
-       AND o.sector_id = ? ${selStage ? 'AND o.stage_id = ?' : ''} AND ${fOpp.clause}
-     ORDER BY o.value_halalas DESC LIMIT 3`,
-  [sectorId, ...(selStage ? [selStage.id] : []), ...fOpp.params]);
   // فرص كل مرحلة المسماة لنوافذ تفصيل القمع — بنفس قصّ قائمة الفرص (سياسة «الأرقام لا
   // الأشخاص» v5.2): المجاميع على رأس النافذة قطاعية، والأسماء بنطاق القارئ وحده.
   const ddOppRows = await all(`SELECT o.id, o.title_ar, o.value_halalas, o.stage_id, c.name_ar client
@@ -540,60 +406,46 @@ export async function sectorPage(user, opts = {}) {
   // صحة التنفيذ، قدرة الفريق، يحتاج تدخلاً. البقية في بطاقاتها التفصيلية لا هنا. ──
   const attainSales = sd.target_sales_halalas ? Math.round((sd.sales_halalas / sd.target_sales_halalas) * 100) : null;
   const dSales = paceDelta(sd.sales_halalas, sd.target_sales_halalas, now, year);
-  const ptWord = (n) => (Math.abs(n) <= 10 ? 'نقاط' : 'نقطة');
-  const paceChip = (d) => d == null ? '' : d >= 3 ? `<span class="pace-chip up">متقدم بـ<b class="tnum">${d}</b> ${ptWord(d)}</span>`
-    : d <= -3 ? `<span class="pace-chip down">متأخر بـ<b class="tnum">${Math.abs(d)}</b> ${ptWord(d)}</span>`
-    : '<span class="pace-chip flat">على المسار</span>';
-  // بطلا الشريط بحلقتي هدف بنفسجيتين سميكتين كالمرجع — والرقم الكامل في التفصيل، هنا المختصر
-  const hero = (label, actualH, targetH, atn, dlt, dd, extra) => `
-    <div class="kpi-cell kpi-hero cardclick" role="button" tabindex="0" data-action="open-dd" data-dd="${dd}" aria-label="${label} — التفصيل">
-      ${atn != null ? ring(atn, { size: 74, sw: 10, color: 'var(--brand2)', lbl: 'من الهدف' }) : `<span class="ringw" style="width:74px;height:74px"><span style="font-size:10px;color:var(--faint);text-align:center;line-height:1.5">بلا هدف<br>مسجَّل</span></span>`}
-      <div style="min-width:0">
-        <div class="lbl">${label} <span style="color:var(--faint)" aria-hidden="true">⊕</span></div>
-        <div class="num tnum" title="${fmtSar(actualH)}">${sarShort(actualH)}</div>
-        <div class="tgt">${targetH ? `من هدف <span class="tnum">${sarShort(targetH)}</span>` : 'لا هدف مسجّل لهذه السنة'} ${paceChip(dlt)}</div>
-        ${extra || ''}
-      </div>
-    </div>`;
   const ragActive = (sd.rag.GREEN || 0) + (sd.rag.AMBER || 0) + (sd.rag.RED || 0);
   const needsN = (sd.rag.AMBER || 0) + (sd.rag.RED || 0);
-  const okBadge = `<span class="kpi-ok" aria-hidden="true">${icon('check')}</span>`;
-  const mini = (label, ic, val, sub, color, act, extra = '') => `
-    <${act ? 'a' : 'div'} class="kpi-cell${act ? ' cardclick' : ''}" ${act || ''} style="text-decoration:none">
-      <span class="l">${ic ? icon(ic) : ''}${label}</span><span class="v tnum" style="color:${color || 'var(--ink2)'}">${val}</span>${sub ? `<span class="s">${sub}</span>` : ''}${extra}
-    </${act ? 'a' : 'div'}>`;
-  // أساسٌ واحد للفريق على الصفحة كلها: من يقرأ الموظفين يقرأ كشف التسكين (خطةً صرفة، بنطاقه)،
-  // ومن لا يقرؤهم يقرأ مجاميع القطاع — فلا يحمل الصفُّ العلوي رقماً وبطاقةُ الطاقة رقماً آخر.
-  const bandLoad = team ? team.avgNow : (staff.currentMonth ? (staff.teamCurrent ?? staff.teamUtil) : staff.teamUtil);
-  const teamSize = team ? team.people.length : staff.headcount;
-  // شريط صغير تحت التغطية: قيمة كل مرحلة مفتوحة من صفوف القمع نفسها — لا سلسلة مُختلَقة
-  const covSpark = funnelStages.some((s) => s.value_halalas > 0)
-    ? `<span class="kpi-spark" aria-hidden="true">${funnelStages.map((s) =>
-      `<span style="height:${Math.max(2, Math.round((s.value_halalas / maxV) * 16))}px" title="${esc(s.name_ar)}: ${fmtSar(s.value_halalas)}"></span>`).join('')}</span>` : '';
-  const kpiStrip = `<div class="card kpi-band">
-    ${hero(`${G.revenue} المحقق ${year}`, sd.revenue_halalas, sd.target_revenue_halalas, attainRev, dRev, 'secrev')}
-    ${hero(`${G.sales} ${year}`, sd.sales_halalas, sd.target_sales_halalas, attainSales, dSales, 'secwins',
-    `<div class="tgt">${countAr(wins.won, { one: 'صفقة مكسوبة واحدة', two: 'صفقتان مكسوبتان', few: 'صفقات مكسوبة', many: 'صفقة مكسوبة' })}</div>`)}
-    ${mini('تغطية خط الفرص', 'filter', cover?.coverage != null ? `×${cover.coverage}` : '—',
-    'المفتوح ÷ المتبقي من هدف المبيعات', (cover?.coverage ?? 1) < 1 ? 'var(--amber)' : 'var(--ink2)',
-    `role="button" tabindex="0" data-action="open-dd" data-dd="seccover"`, covSpark)}
-    ${mini('صحة التنفيذ', 'check', ragActive ? `${sd.rag.GREEN || 0}/${ragActive}${ragActive && !needsN ? okBadge : ''}` : '—',
-    ragActive ? 'على المسار من المقيَّمة الصحة' : 'لا مشاريع مقيَّمة الصحة', 'var(--green)',
-    ragActive ? `role="button" tabindex="0" data-action="open-dd" data-dd="sec-health-GREEN"` : '')}
-    ${mini('طاقة الفريق', 'team', `${bandLoad}%`, `متوسط ${G.utilization} · ${countAr(teamSize, { one: 'موظف واحد', two: 'موظفان', few: 'موظفين', many: 'موظفاً' })}`,
-    bandLoad > UTIL_BANDS.OVER_ABOVE ? 'var(--red)' : 'var(--ink2)', `role="button" tabindex="0" data-action="open-dd" data-dd="seccap"`)}
-    ${mini('تحتاج تدخلاً', 'risk', needsN ? String(needsN) : `0${okBadge}`, needsN ? `${G.hCritical} ${sd.rag.RED || 0} · ${G.hAtRisk} ${sd.rag.AMBER || 0}` : 'لا مشروع متعثر', needsN ? 'var(--red)' : 'var(--ink2)', needsN ? `role="button" tabindex="0" data-action="open-dd" data-dd="sec-health-RED"` : '')}
-  </div>`;
+  const ptWord = (n) => countAr(Math.abs(n), { one: 'نقطة واحدة', two: 'نقطتين', few: 'نقاط', many: 'نقطة' });
+  // شارة الحكم: رمزٌ وكلمة معاً — واللون لغير السليم وحده (قاعدة «الرمادي أولاً»، ADR-0011)
+  const sig = (tone, glyph, text) => `<span class="sig ${tone}"><span class="g" aria-hidden="true">${glyph}</span><span>${text}</span></span>`;
+  const paceSig = (d) => d == null ? ''
+    : d >= 3 ? sig('ok', '▲', `متقدم بـ${ptWord(d)} عن المسار الزمني`)
+      : d <= -3 ? sig('warn', '▼', `متأخر بـ${ptWord(d)} عن المسار الزمني`)
+        : sig('ok', '✓', 'على المسار الزمني');
+  // بطاقة المؤشر: تسمية ← قيمة ← وحدة/فترة ← رسم خطي ← حكم — والبطاقة كلها تفتح تفصيلها.
+  const tile = ({ eye, val, valColor = '', unit = '', fig = '', verdict = '', dd = '', act = '', title = '' }) => `
+    <div class="tile"${dd || act ? ` role="button" tabindex="0" data-action="${act || 'open-dd'}"${dd ? ` data-dd="${dd}"` : ''} aria-label="${eye} — التفصيل"` : ''}${title ? ` title="${esc(title)}"` : ''}>
+      <span class="chev" aria-hidden="true">‹</span>
+      <span class="eye">${eye}</span>
+      <span class="val tnum"${valColor ? ` style="color:${valColor}"` : ''}>${val}</span>
+      <span class="unit">${unit}</span>
+      ${fig}${verdict}
+    </div>`;
+
   // ── (٣) عدسة الفترة — تسكن رأس بطاقة «ما تغيّر» نفسها (المرجع)، وهي روابط تعيد التحميل ──
   const lens = `<div class="seg" role="group" aria-label="عدسة الفترة">${WINS.map(([k, l]) =>
     `<a class="${k === win ? 'on' : ''}" style="text-decoration:none" href="${qs({ win: k })}" ${k === win ? 'aria-current="true"' : ''}>${l}</a>`).join('')}</div>`;
   const stageChip = selStage ? `<a class="chip on" href="${qs({ stage: null })}" title="إلغاء تصفية المرحلة">
       المرحلة: ${esc(selStage.name_ar)} <span aria-hidden="true">✕</span></a>
     <span style="font-size:var(--fs-micro);color:var(--muted)">أرقام القمع وأعلى الفرص وأعمارها مصفّاة بهذه المرحلة</span>` : '';
-  const toolbar = `<div class="toolbar" style="margin-bottom:var(--gap)">
+  // شريط الأدوات الواحد (ADR-0011): القطاع (للشركة) · نافذة التغيّر · تصفية المرحلة ·
+  // انقضاء السنة · قائمة التقارير — لا أداة تحكم عامة داخل بطاقة بعد اليوم.
+  const toolbar = `<div class="toolbar" style="row-gap:.45rem">
+    <span style="font-size:var(--fs-body);color:var(--muted);font-weight:700">التغيّر منذ:</span>
+    ${lens}
     ${stageChip}
     <span class="spacer"></span>
     <span class="pill" style="background:#fdf6e3;color:#8a6d1a;gap:.4rem">${nowDot('')} ${G.yearElapsed(elapsed)}</span>
+    <details class="rmenu"><summary class="btn btn-sm">التقارير ▾</summary>
+      <div class="rmenu-b">
+        <button class="btn btn-sm" data-action="report-preview" data-report="sector_weekly_status">التقرير الأسبوعي</button>
+        <button class="btn btn-sm" data-action="report-preview" data-report="monthly_sector_performance">التقرير الشهري</button>
+        <button class="btn btn-sm" data-action="report-send" data-report="sector_weekly_status">أرسله لي الآن</button>
+        <a class="btn btn-primary btn-sm" href="/app/reports">جدولة التقارير</a>
+      </div></details>
   </div>`;
 
   // ── (٤) قمع الفرص — عرض المرحلة ∝ قيمتها (أو عددها بالمبدّل)، والنقر يرشّح ──
@@ -604,82 +456,36 @@ export async function sectorPage(user, opts = {}) {
   // النقر يفتح نافذة تفصيل المرحلة (فرصها وقيمها وأزرار التصفية) — لا ترشيحاً صامتاً لا يُرى
   // أثره. ونسبة «الانتقال» حُذفت: سجل المراحل شبه فارغ (أغلب الفرص استوردت بمرحلتها) فأي
   // معدل عبور منه كذبة إحصائية — تعود النسبة حين يتراكم سجل انتقالات حقيقي.
-  const fnlRow = ({ dd, on, dim, title, name, count, value, wv, wc, color }) => `
-    <div class="fnl-row${on ? ' on' : dim ? ' dim' : ''}" role="button" tabindex="0" data-action="open-dd" data-dd="${dd}" title="${title}" aria-label="${title}">
-      <span class="n">${name}</span>
-      <span class="fnl-track"><span class="fnl-bar" data-wv="${wv}" data-wc="${wc}" style="width:${wv}%;background:${color}"><b class="cnt tnum">${count}</b></span></span>
-      <span class="fnl-val tnum">${sarShort(value)}</span>
-    </div>`;
-  const funnelRows = openTotalC === 0 ? '' : [
-    fnlRow({ dd: 'fnl-ALL', on: false, dim: !!selStage,
-      title: `كل الفرص المفتوحة: ${countAr(openTotalC, { one: 'فرصة واحدة', two: 'فرصتان', few: 'فرص', many: 'فرصة', zero: 'لا فرص' })} بقيمة ${fmtSar(openTotalV)} — انقر للتفصيل`,
-      name: 'الإجمالي المفتوح', count: openTotalC, value: openTotalV,
-      wv: 100, wc: 100, color: funnelColor(0, funnelStages.length + 1) }),
-    ...funnelStages.map((s, i) => {
-      const wv = Math.round((s.value_halalas / Math.max(1, openTotalV)) * 100);
-      const wc = Math.round((s.count / Math.max(1, openTotalC)) * 100);
-      const on = selStage && selStage.id === s.id;
-      return fnlRow({ dd: `fnl-${s.id}`, on, dim: selStage && !on,
-        title: `${esc(s.name_ar)}: ${countAr(s.count, { one: 'فرصة واحدة', two: 'فرصتان', few: 'فرص', many: 'فرصة', zero: 'لا فرص' })} بقيمة ${fmtSar(s.value_halalas)} — انقر لعرض فرص المرحلة`,
-        name: esc(s.name_ar), count: s.count, value: s.value_halalas,
-        wv, wc, color: funnelColor(i + 1, funnelStages.length + 1) });
-    }),
-  ].join('');
-  // أعمار الفرص — من الصفوف المفتوحة نفسها (وتُرشَّح بالمرحلة المختارة)
-  const AGE_BUCKETS = [
-    { label: 'أقل من أسبوعين', max: 14 }, { label: 'أسبوعان إلى شهر', max: 30 },
-    { label: 'شهر إلى شهرين', max: 60 }, { label: 'أكثر من شهرين', max: Infinity }];
-  const aging = AGE_BUCKETS.map((b) => ({ ...b, n: 0, v: 0 }));
-  for (const o of scoped) {
-    const b = aging.find((x) => ageDays(o.since) <= x.max);
-    if (b) { b.n++; b.v += o.value_halalas || 0; }
-  }
-  const agingMax = Math.max(1, ...aging.map((b) => b.v));
-  const agingRows = aging.map((b, i) => `<div style="display:flex;align-items:center;gap:.5rem;font-size:var(--fs-meta);padding:.16rem 0">
-      <span style="flex:0 0 96px;color:var(--muted)">${b.label}</span>
-      <div class="bar" style="flex:1"><span style="width:${Math.round((b.v / agingMax) * 100)}%;background:${i >= 2 ? 'var(--amber)' : 'var(--brand)'}"></span></div>
-      <span class="tnum" style="flex:none;font-weight:700">${b.n}</span>
-      <span class="tnum" style="flex:none;color:var(--muted);font-size:var(--fs-micro)">${sarShort(b.v)}</span>
-    </div>`).join('');
-  const topOppRows = topOpps.map((o, i) => `<div class="fnl-kv">
-      <a href="/app/opportunity/${esc(o.id)}" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink2)"><span class="tnum" style="color:var(--faint)">${i + 1}</span> ${esc(o.title_ar)}${o.client ? ` <span style="color:var(--faint);font-size:var(--fs-micro)">· ${esc(o.client)}</span>` : ''}</a>
-      <b class="tnum">${o.value_halalas ? sarShort(o.value_halalas) : '—'}</b>
-    </div>`).join('') || '<div style="font-size:var(--fs-meta);color:var(--faint)">لا فرص ضمن هذه التصفية</div>';
+  // القمع بلغة الرسم الواحدة (figBars): لونٌ واحد، العدُّ والقيمة معاً، وكل صفٍّ يفتح تفصيله —
+  // لا مبدّل عرضٍ بعد اليوم (كلا الرقمين مطبوع). صفّ القمة مجموع ما تحته على مقياسٍ واحد.
+  const stageRow = (st) => ({
+    labelHtml: `${esc(st.name_ar)}${selStage && selStage.id === st.id ? ' <span aria-hidden="true">✕</span>' : ''}`,
+    value: st.value_halalas, count: st.count, dd: `fnl-${st.id}`,
+    ariaLabel: `مرحلة ${st.name_ar}: ${countAr(st.count, { one: 'فرصة واحدة', two: 'فرصتان', few: 'فرص', many: 'فرصة', zero: 'لا فرص' })} بقيمة ${fmtSar(st.value_halalas)} — التفصيل`,
+    fill: selStage && selStage.id === st.id ? 'var(--brand2)' : null,
+  });
+  const funnelRows = openTotalC === 0 ? '' : figBars([
+    { labelHtml: 'الإجمالي المفتوح', value: openTotalV, count: openTotalC, dd: 'fnl-ALL', total: true,
+      ariaLabel: `كل الفرص المفتوحة: ${countAr(openTotalC, { one: 'فرصة واحدة', two: 'فرصتان', few: 'فرص', many: 'فرصة', zero: 'لا فرص' })} بقيمة ${fmtSar(openTotalV)} — التفصيل` },
+    ...funnelStages.map(stageRow),
+  ], { fmt: sarShort, max: Math.max(1, openTotalV) });
+  const stalledV = stalledRows.reduce((a, o) => a + (o.value_halalas || 0), 0);
   const oppsHref = `/app/opportunities?year=${year}${user.scope === 'company' ? '&sector=' + esc(sectorId) : ''}`;
-  // لا شارة «قيمة مرجّحة» على الرأس — المالك ألغى مفهوم الترجيح: القيمة الإجمالية وحدها تُعرض.
   const funnelCard = card(`
     <div class="card-head">
-      <span class="t">${G.funnel}${selStage ? ` — مرحلة ${esc(selStage.name_ar)}` : ''}</span>
-      <span class="aux">
-        <div class="seg" role="group" aria-label="مقياس عرض القمع">
-          <button type="button" class="on" aria-pressed="true" data-action="fnl-mode" data-mode="value">بالقيمة</button>
-          <button type="button" aria-pressed="false" data-action="fnl-mode" data-mode="count">بالعدد</button>
-        </div></span></div>
-    <div class="fnl-stats">
-      <div class="fnl-stat${stalledRows.length ? ' cardclick' : ''}" ${stalledRows.length ? 'role="button" tabindex="0" data-action="open-dd" data-dd="fnl-stalled"' : ''}>
-        <div class="h">${icon('risk')} متوقفة تحتاج متابعة${stalledRows.length ? ' <span style="color:var(--faint)" aria-hidden="true">⊕</span>' : ''}</div>
-        <div class="v tnum" style="color:${stalledRows.length ? 'var(--amber)' : 'var(--ink2)'}">${stalledRows.length}</div>
-        <div class="s tnum">بقيمة ${sarShort(stalledRows.reduce((a, o) => a + (o.value_halalas || 0), 0))}</div>
-      </div>
-      <div class="fnl-stat">
-        <div class="h">${icon('clock')} متوسط عمر المرحلة</div>
-        <div class="v tnum">${dayWord(avgAge)}</div>
-        <div class="s">${selStage ? 'ضمن المرحلة المختارة' : 'لكل الفرص المفتوحة'}</div>
-      </div>
+      <span class="hgrp"><span class="eyebrow">${G.funnel}${selStage ? ` — مرحلة ${esc(selStage.name_ar)}` : ''} <span data-tip="عرض كل شريط من قيمته نسبةً إلى الإجمالي المفتوح — والعدد والقيمة مطبوعان معاً. «معلّقة» خارج القمع بقرار تأجيل." tabindex="0" style="color:var(--faint)">ⓘ</span></span>
+      <span class="t">${!openTotalC ? 'لا فرص مفتوحة الآن'
+    : stalledRows.length ? `${countAr(stalledRows.length, { one: 'فرصة واحدة متوقفة', two: 'فرصتان متوقفتان', few: 'فرص متوقفة', many: 'فرصة متوقفة' })} من ${countAr(openTotalC, { one: 'فرصة مفتوحة', two: 'فرصتين مفتوحتين', few: 'مفتوحة', many: 'مفتوحة' })}`
+      : `${countAr(openTotalC, { one: 'فرصة مفتوحة واحدة', two: 'فرصتان مفتوحتان', few: 'فرص مفتوحة', many: 'فرصة مفتوحة' })} بقيمة ${sarShort(openTotalV)}`}</span></span></div>
+    <div class="cbody" style="padding:.3rem 1rem .4rem">
+      ${funnelRows || `<div class="empty-mini">${icon('filter')} لا فرص مفتوحة الآن — تُنشأ من صفحة «${G.opportunities || 'الفرص'}»</div>`}
+      ${openTotalC ? `<div style="font-size:var(--fs-body);color:var(--muted);margin-top:.6rem;display:flex;gap:.8rem;flex-wrap:wrap;align-items:center">
+        <span>متوسط عمر المرحلة <b class="tnum" style="color:var(--ink2)">${dayWord(avgAge)}</b></span>
+        ${stalledRows.length ? `<button type="button" class="sig warn" data-action="open-dd" data-dd="fnl-stalled" style="border:none;cursor:pointer;font-family:inherit"><span class="g" aria-hidden="true">▲</span><span>${countAr(stalledRows.length, { one: 'فرصة تجاوزت مدتها', two: 'فرصتان تجاوزتا مدتهما', few: 'تجاوزت المدة المعتادة', many: 'تجاوزت المدة المعتادة' })} · ${sarShort(stalledV)}</span></button>` : sig('ok', '✓', 'لا فرص متوقفة')}
+      </div>` : ''}
+      ${onHoldStage && onHoldStage.count ? `<div style="font-size:var(--fs-body);color:var(--muted);border-top:1px dashed var(--line);padding-top:.4rem;margin-top:.45rem">خارج القمع: <b class="tnum">${countAr(onHoldStage.count, { one: 'فرصة واحدة معلّقة', two: 'فرصتان معلّقتان', few: 'فرص معلّقة', many: 'فرصة معلّقة' })}</b> بقيمة <b class="tnum">${sarShort(onHoldStage.value_halalas)}</b></div>` : ''}
     </div>
-    <div style="padding:.5rem .55rem .2rem;min-width:0">
-      ${funnelRows ? `<div class="fnl-cols" aria-hidden="true"><span></span><span>العدد</span><span>القيمة</span></div>` : ''}
-      <div style="display:flex;flex-direction:column;gap:2px;min-width:0">${funnelRows || `<div class="empty-mini">${icon('filter')} لا فرص مفتوحة الآن — تُنشأ من صفحة «${G.opportunities || 'الفرص'}»</div>`}
-        ${onHoldStage && onHoldStage.count ? `<div style="font-size:var(--fs-micro);color:var(--muted);border-top:1px dashed var(--line);padding-top:.4rem;margin-top:.2rem">خارج القمع: <b class="tnum">${countAr(onHoldStage.count, { one: 'فرصة واحدة معلّقة', two: 'فرصتان معلّقتان', few: 'فرص معلّقة', many: 'فرصة معلّقة' })}</b> بقيمة <b class="tnum">${sarShort(onHoldStage.value_halalas)}</b> — بقرار تأجيل يُراجع دورياً</div>` : ''}</div>
-    </div>
-    <div class="fnl-box">
-      <div class="h">${icon('trend')} أعلى ${countAr(Math.min(3, topOpps.length) || 3, { one: 'فرصة', two: 'فرصتين', few: 'فرص', many: 'فرص' })} قيمةً</div>
-      ${topOppRows}
-    </div>
-    <div style="padding:.45rem .9rem .5rem;border-top:1px dashed var(--line);margin-top:.45rem">
-      <div style="font-size:var(--fs-micro);font-weight:700;color:var(--muted);margin-bottom:.2rem">عمر الفرص في مرحلتها الحالية${selStage ? ` — مرحلة ${esc(selStage.name_ar)}` : ''}</div>${agingRows}
-    </div>
-    <div class="card-foot"><a href="${oppsHref}">عرض جميع الفرص <span aria-hidden="true">←</span></a></div>`, 'band b-violet');
+    <div class="card-foot"><a href="${oppsHref}">عرض جميع الفرص (<span class="tnum">${openTotalC}</span>) <span aria-hidden="true">←</span></a></div>`, 'h-d');
 
   // ── (٥) «ما تغيّر» — سجلات مؤرّخة منسَّقة، بفئات وحدّة، خمسة أولاً والبقية بنقرة ──
   const relDay = (at) => {
@@ -691,10 +497,12 @@ export async function sectorPage(user, opts = {}) {
     if (d <= 10) return `قبل ${d} أيام`;
     return String(at).slice(0, 10);
   };
-  // الفئات الست ثابتة الحضور (v5.22) — المحتوى نفسه مقصوص خادمياً بنطاق القارئ، فشارة
-  // «المالية» لمن لا يقرأ الفواتير تعرض فراغاً مدمجاً لا سراً.
+  // فئاتٌ فيها بيانات فقط (v5.38 — عدل قرار v5.22 بإذن إعادة البناء): شريحة فئةٍ فارغة زرٌّ
+  // يقود إلى لا شيء. تعود الفئة يوم يسجَّل لها حدثٌ مؤرَّخ.
   const catDefs = [['all', 'الكل'], ['opp', 'الفرص'], ['prj', G.projects], ['client', G.clients], ['team', 'الفريق'], ['fin', 'المالية']];
-  const chgCats = catDefs.map(([k, l]) => `<button type="button" class="chg-cat${k === 'all' ? ' on' : ''}" aria-pressed="${k === 'all'}" data-action="chg-cat" data-cat="${k}">${l}</button>`).join('');
+  const catsPresent = new Set(chg.items.map((it) => CHG_CAT[it.kind] || 'new'));
+  const chgCats = catDefs.filter(([k]) => k === 'all' || catsPresent.has(k))
+    .map(([k, l]) => `<button type="button" class="chg-cat${k === 'all' ? ' on' : ''}" aria-pressed="${k === 'all'}" data-action="chg-cat" data-cat="${k}">${l}</button>`).join('');
   const SHOW_CHG = 5;
   const chgRows = chg.items.map((it, i) => {
     const [bg, fg] = it.won ? ['#dcfce7', 'var(--green)'] : it.lost ? ['#fee2e2', 'var(--red)'] : (CHG_TONE[it.kind] || CHG_TONE.activity);
@@ -710,22 +518,20 @@ export async function sectorPage(user, opts = {}) {
   // (changes.js) لا فترة تقويمية — وعنوانٌ تقويمي فوق صفوفٍ مؤرَّخة خارج فترته يناقض نفسه.
   const winEcho = WINS.find((w) => w[0] === win)[2];
   const changesCard = card(`
-    <div class="card-head"><span class="t">${G.whatChanged} ${winEcho}</span>
-      <span class="aux">${lens}</span></div>
-    <div class="chg-cats">${chgCats}</div>
-    <div id="chg-list" style="padding:.45rem .5rem;display:flex;flex-direction:column;gap:2px;max-height:430px;overflow-y:auto;flex:1">
-      ${chgRows || `<div class="empty-mini">${icon('history')} لا تغييرات مسجَّلة خلال هذه الفترة — وسّع العدسة إلى الشهر أو الربع</div>`}
+    <div class="card-head"><span class="hgrp"><span class="eyebrow">${G.whatChanged}</span>
+      <span class="t">${chg.items.length ? `${countAr(chg.items.length, { one: 'تغيير واحد', two: 'تغييران', few: 'تغييرات', many: 'تغييراً' })} ${winEcho}` : `لا تغييرات ${winEcho}`}</span></span></div>
+    ${chg.items.length ? `<div class="chg-cats">${chgCats}</div>` : ''}
+    <div id="chg-list" class="cbody" style="padding:.45rem .5rem;display:flex;flex-direction:column;gap:2px">
+      ${chgRows || `<div class="empty-mini">${icon('history')} لا تغييرات مسجَّلة خلال هذه الفترة — وسّع النافذة إلى الشهر أو الربع من شريط الأدوات</div>`}
     </div>
-    ${chg.items.length > SHOW_CHG ? `<div class="card-foot"><button type="button" data-action="chg-more">عرض كل التغييرات (<span class="tnum">${chg.items.length}</span>) <span aria-hidden="true">←</span></button></div>` : ''}`, 'band b-blue');
+    ${chg.items.length > SHOW_CHG ? `<div class="card-foot"><button type="button" data-action="chg-more">عرض كل التغييرات (<span class="tnum">${chg.items.length}</span>) <span aria-hidden="true">←</span></button></div>` : ''}`, 'h-c');
 
-  // ── (٦) يحتاج تدخلك الآن — ستة كحد أقصى، مرتبة بأثر القرار (ترتيب المصدر نفسه) ──
-  // دائرة الرتبة تلبس لون حدّة البند نفسه (أحمر تصرّف، كهرماني راقب، رمادي أخبار) لا موقعه
-  // في القائمة — فالترقيم يقول الترتيب واللون يقول الحدّة، ولا يكذب أحدهما على الآخر.
-  const rankTone = (t) => t === 'red' ? ['#fee2e2', '#991b1b'] : t === 'amber' ? ['#fef3c7', '#92400e'] : ['#f1f5f9', '#64748b'];
+  // ── يحتاج تدخلك الآن — ستة كحد أقصى بأثر القرار؛ فئات .act-* (لا .attn — تتصادم مع layout.js) ──
+  const rankTone = (t) => t === 'red' ? ['var(--st-bad-soft)', 'var(--st-bad)'] : t === 'amber' ? ['var(--st-warn-soft)', 'var(--st-warn)'] : ['var(--st-neut-soft)', 'var(--st-neut)'];
   const attnItems = attn.slice(0, 6).map((a, i) => {
     const [rb, rf] = rankTone(a.tone);
     return `
-    <div class="attn">
+    <div class="act-r">
       <span class="rank tnum" style="background:${rb};color:${rf}">${i + 1}</span>
       <span class="tx"><span class="h">${esc(a.title)}</span>${a.sub ? `<span class="s">${esc(a.sub)}</span>` : ''}</span>
       ${a.dd ? `<button class="btn btn-sm go" data-action="open-dd" data-dd="${esc(a.dd)}">${icon(a.icon)} ${esc(a.action)}</button>`
@@ -733,16 +539,13 @@ export async function sectorPage(user, opts = {}) {
     </div>`;
   }).join('');
   const attnCard = card(`
-    <div class="card-head">
-      <span class="t">${G.attention}</span>
-      ${attn.length ? `<span class="attn-count tnum">${Math.min(attn.length, 6)}</span>` : ''}
-      <span class="aux" style="font-size:var(--fs-micro);color:var(--faint)">مرتبة حسب أثر القرار</span>
-    </div>
-    ${attnItems ? `<div class="attn-cols" aria-hidden="true"><span>الأولوية</span><span>لماذا يهم؟</span><span>الإجراء المقترح</span></div>` : ''}
-    <div style="padding:.15rem .8rem .5rem;display:flex;flex-direction:column;flex:1">
+    <div class="card-head" id="act">
+      <span class="hgrp"><span class="eyebrow">${G.attention} <span data-tip="بنود من سجلات القطاع الحية مرتبة حسب أثر القرار: اعتمادات معلقة، مستحقات متأخرة، فرص متوقفة أو بلا خطوة، مخرجات لم تُفوتر، تجاوز طاقة" tabindex="0" style="color:var(--faint)">ⓘ</span></span>
+      <span class="t">${attn.length ? `${countAr(Math.min(attn.length, 6), { one: 'أمر واحد يحتاج تدخلك اليوم', two: 'أمران يحتاجان تدخلك اليوم', few: 'أمور تحتاج تدخلك اليوم', many: 'أمراً يحتاج تدخلك اليوم' })}` : `${G.nothingNeedsYou} — ${G.allGood}`}</span></span></div>
+    <div class="cbody" style="padding:.15rem .8rem .5rem;display:flex;flex-direction:column">
       ${attnItems || `<div class="alert ok" style="justify-content:center;margin:.5rem 0">${icon('approvals')} ${G.nothingNeedsYou} — ${G.allGood}</div>`}
     </div>
-    <div class="card-foot"><a href="/app/approvals">عرض ${G.decisions} والاعتمادات <span aria-hidden="true">←</span></a></div>`, 'band b-red');
+    <div class="card-foot"><a href="/app/approvals">عرض ${G.decisions} والاعتمادات <span aria-hidden="true">←</span></a></div>`, 'h-c');
 
   // ── (٧) قدرة الفريق — طيف حِمل حقيقي من تسكين الشهر، بعتبات المنصة نفسها (70/110) ──
   // العتبات ليست من المرجع البصري بل من الكود القائم: <70 سعة متاحة، 70–110 ضمن النطاق،
@@ -751,6 +554,10 @@ export async function sectorPage(user, opts = {}) {
   // الطبقة المسمّاة (الصور الرمزية والقائمتان والنوافذ) من كشف التسكين حين يقرأ القارئ
   // الموظفين — خطةً صرفة (`planNow`)؛ ومن لا يقرؤهم يرى مجاميع `sectorStaffing` بلا أسماء.
   const nowMonth = staff.currentMonth;                       // 0 حين تكون السنة غير الجارية
+  // أساسٌ واحد للفريق على الصفحة كلها: من يقرأ الموظفين يقرأ كشف التسكين (خطةً صرفة بنطاقه)،
+  // ومن لا يقرؤهم يقرأ مجاميع القطاع — فلا يحمل الشريطُ رقماً وبطاقةُ الطاقة رقماً آخر.
+  const bandLoad = team ? team.avgNow : (nowMonth ? (staff.teamCurrent ?? staff.teamUtil) : staff.teamUtil);
+  const teamSize = team ? team.people.length : staff.headcount;
   const emps = team
     ? team.people.map((p) => ({ id: p.id, name: p.name_ar, job: p.job_title, projects: p.projects.length,
       months: p.months, utilization: p.annual, current: p.planNow }))
@@ -809,9 +616,14 @@ export async function sectorPage(user, opts = {}) {
     return `<div style="font-size:var(--fs-micro);color:var(--muted);padding:0 0 .3rem">الشهر القادم (${monthLabel(nowMonth)}): ${parts.join(' · ')}</div>`;
   })();
   const capEmptyState = !emps.length;
+  const capInsight = capEmptyState ? (team ? 'لا موظفين ضمن نطاقك في هذا القطاع' : `لا تسكين مسجَّلاً لسنة ${year}`)
+    : overNow.length ? `${countAr(overNow.length, { one: 'موظف واحد فوق الطاقة', two: 'موظفان فوق الطاقة', few: 'موظفين فوق الطاقة', many: 'موظفاً فوق الطاقة' })} من ${teamSize}`
+      : freeNow.length ? `${countAr(freeNow.length, { one: 'موظف واحد بلا تسكين', two: 'موظفان بلا تسكين', few: 'موظفين بلا تسكين', many: 'موظفاً بلا تسكين' })} من ${teamSize}`
+        : `الفريق ضمن الطاقة — ${countAr(teamSize, { one: 'موظف واحد', two: 'موظفان', few: 'موظفين', many: 'موظفاً' })}`;
   const capCard = card(`
     <div class="card-head">
-      <span class="t">طاقة الفريق</span>
+      <span class="hgrp"><span class="eyebrow">طاقة الفريق · <b class="tnum">${teamSize}</b> ${team ? 'ضمن نطاقك' : 'في الفريق'} <span data-tip="${nowMonth ? `النافذة: هذا الشهر (${monthLabel(nowMonth - 1)}) — والقادمة ضمن تسكين ${year} وحدها` : 'النافذة: متوسط السنة'} · الأرقام من خطة التسكين الشهرية لا ساعات العمل" tabindex="0" style="color:var(--faint)">ⓘ</span></span>
+      <span class="t">${capInsight}</span></span>
       <span class="aux">
         ${nowMonth && canPeople && !capEmptyState ? `<div class="seg" role="group" aria-label="نافذة الحِمل">${capWindows.map(([k, l], i) =>
     `<button type="button" class="${i === 0 ? 'on' : ''}" aria-pressed="${i === 0}" data-action="cap-win" data-w="${k}">${l}</button>`).join('')}</div>` : ''}</span></div>
@@ -819,21 +631,20 @@ export async function sectorPage(user, opts = {}) {
       <div class="t">${team ? 'لا موظفين ضمن نطاقك في هذا القطاع' : `لا تسكين مسجَّلاً لسنة ${year}`}</div>
       <div class="s">${team ? 'يُضاف الموظفون من صفحة الفريق، ويُسكَّنون من لوحة التسكين.' : 'يُسجَّل التسكين من لوحة التسكين فتظهر الطاقة هنا.'}</div>
     </div>` : `
-    <div class="cap-gauge">
-      <span class="cw">
-        ${semiGauge([
-    { v: midNow.length, color: 'var(--green)' },
-    { v: freeNow.length, color: 'var(--brand2)' },
-    { v: overNow.length, color: 'var(--red)' },
-  ], { size: 176, sw: 18 })}
-        <span class="cc"><b class="tnum">${teamSize}</b><small>${team ? 'ضمن نطاقك' : 'في الفريق'}</small></span>
-      </span>
-      <div class="cap-avg">متوسط ${G.utilization} <b class="tnum" style="color:${teamLoad > OVER_ABOVE ? 'var(--red)' : 'var(--ink2)'}">${teamLoad}%</b></div>
-      <div class="cap-leg">
-        ${[['mid', 'var(--green)', 'ضمن الطاقة', midNow.length, ''], ['free', 'var(--brand2)', nowMonth ? G.onBench : 'بلا تسكين طوال السنة', freeNow.length, ''],
-    ['over', 'var(--red)', G.overloaded, overNow.length, overNow.length ? 'color:var(--red)' : '']].map(([k, c, l, n, st]) => canPeople
-    ? `<button type="button" data-action="open-dd" data-dd="cap-band-${k}" aria-label="${l}: ${countAr(n, { one: 'شخص واحد', two: 'شخصان', few: 'أشخاص', many: 'شخصاً', zero: 'لا أحد' })} — اعرض التفصيل"><i style="background:${c}"></i>${l} <b class="tnum" style="${st}">${n}</b></button>`
-    : `<span><i style="background:${c}"></i>${l} <b class="tnum" style="${st}">${n}</b></span>`).join('')}
+    <div class="cbody-top" style="padding:.35rem 1rem 0">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:.6rem;margin-bottom:.3rem">
+        <span style="font-size:var(--fs-body);color:var(--muted);font-weight:700">متوسط ${G.utilization}</span>
+        <b class="tnum" style="font-size:var(--fs-val-sm);color:${teamLoad > OVER_ABOVE ? 'var(--st-bad)' : 'var(--ink2)'}">${teamLoad}%</b></div>
+      ${figStacked100([
+    { v: midNow.length, color: 'var(--st-good)' },
+    { v: freeNow.length, color: '#c6cdd9' },
+    { v: overNow.length, color: 'var(--st-bad)' },
+  ], { ariaLabel: `ضمن الطاقة ${midNow.length} · ${nowMonth ? G.onBench : 'بلا تسكين طوال السنة'} ${freeNow.length} · ${G.overloaded} ${overNow.length}` })}
+      <div class="fig-leg" style="margin-top:.35rem">
+        ${[['mid', 'var(--st-good)', 'ضمن الطاقة', midNow.length], ['free', '#c6cdd9', nowMonth ? G.onBench : 'بلا تسكين طوال السنة', freeNow.length],
+    ['over', 'var(--st-bad)', G.overloaded, overNow.length]].map(([k, c, l, n]) => canPeople
+    ? `<button type="button" class="r" role="button" data-action="open-dd" data-dd="cap-band-${k}" aria-label="${l}: ${countAr(n, { one: 'شخص واحد', two: 'شخصان', few: 'أشخاص', many: 'شخصاً', zero: 'لا أحد' })} — اعرض التفصيل"><span class="d" style="background:${c}"></span><span class="n">${l}</span><b class="tnum"${k === 'over' && n ? ' style="color:var(--st-bad)"' : ''}>${n}</b></button>`
+    : `<span class="r"><span class="d" style="background:${c}"></span><span class="n">${l}</span><b class="tnum">${n}</b></span>`).join('')}
       </div>
     </div>
     <div style="padding:0 1rem">
@@ -853,112 +664,60 @@ export async function sectorPage(user, opts = {}) {
       <div><div class="h">متاحون للعمل — الأقل حِملاً</div>${capList([...emps].filter((e) => loadOf(e) < FREE_BELOW).sort((a, b) => loadOf(a) - loadOf(b)), loadOf)}</div>
       <div><div class="h">يحتاجون إعادة توزيع — تجاوزوا الطاقة</div>${capList([...overNow].sort((a, b) => loadOf(b) - loadOf(a)), loadOf)}</div>
     </div>` : '<div style="flex:1"></div>'}`}
-    <div class="card-foot"><a href="${staffingHref}">لوحة التسكين الكاملة <span aria-hidden="true">←</span></a></div>`, 'band b-amber');
+    <div class="card-foot"><a href="${staffingHref}">لوحة التسكين الكاملة <span aria-hidden="true">←</span></a></div>`, 'h-d');
 
-  // ── (٨) صحة المشاريع — دونات واحد للحالة، وأبرز ما يحتاج نظر القائد بسببه ──
-  const HEALTH = [['GREEN', G.hOnTrack, 'var(--green)'], ['AMBER', G.hAtRisk, 'var(--amber)'], ['RED', G.hCritical, 'var(--red)']];
-  const healthSegs = HEALTH.map(([k, l, c]) => ({ k, l, color: c, v: sd.rag[k] || 0 }));
-  const healthRows = HEALTH.map(([k, l, c]) => `<button type="button" class="hl-row" data-action="open-dd" data-dd="sec-health-${k}" ${!(sd.rag[k]) ? 'disabled style="opacity:.45;cursor:default"' : ''}>
-      <span class="dot" style="background:${c}"></span><span>${l}</span>
-      <b class="tnum" style="color:${c};font-size:var(--fs-num-sm)">${ragActive ? Math.round(((sd.rag[k] || 0) / ragActive) * 100) : 0}%</b>
-      <span class="tnum" style="color:var(--faint);font-size:var(--fs-micro)">${sd.rag[k] || 0}</span>
+  // ── صحة المشاريع — شريط تركيبةٍ واحد بدل الدونات (الطول لا الزاوية)، وأبرز ما يحتاج نظراً ──
+  const HEALTH = [['GREEN', G.hOnTrack, 'var(--st-good)'], ['AMBER', G.hAtRisk, 'var(--st-warn)'], ['RED', G.hCritical, 'var(--st-bad)']];
+  const healthRows = HEALTH.map(([k, l, c]) => `<button type="button" class="r" role="button" data-action="open-dd" data-dd="sec-health-${k}" ${!(sd.rag[k]) ? 'disabled style="opacity:.45;cursor:default"' : ''} aria-label="${l}: ${sd.rag[k] || 0} — التفصيل">
+      <span class="d" style="background:${c}"></span><span class="n">${l}</span>
+      <b class="tnum">${sd.rag[k] || 0}</b>
+      <span class="m tnum">${ragActive ? Math.round(((sd.rag[k] || 0) / ragActive) * 100) : 0}%</span>
     </button>`).join('');
   const needRows = needProjects.slice(0, 3).map((p) => `<a href="/app/project/${esc(p.id)}" style="display:block;padding:.4rem 0;border-bottom:1px dashed var(--line)">
       <div style="display:flex;align-items:center;gap:.45rem;font-size:var(--fs-body)">
-        <span style="width:8px;height:8px;border-radius:50%;background:${p.rag === 'RED' ? 'var(--red)' : 'var(--amber)'};flex:none"></span>
+        <span style="width:8px;height:8px;border-radius:50%;background:${p.rag === 'RED' ? 'var(--st-bad)' : 'var(--st-warn)'};flex:none"></span>
         <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700">${esc(p.name_ar)}</span>
       </div>
-      <div style="font-size:var(--fs-micro);color:var(--muted);margin-top:.1rem">${p.top_risk ? `أبرز خطر: ${esc(p.top_risk)}` : p.risks ? countAr(p.risks, { one: 'خطر مفتوح واحد', two: 'خطران مفتوحان', few: 'مخاطر مفتوحة', many: 'خطراً مفتوحاً' }) : 'لا سبب مسجَّل — يُسجَّل من صفحة المشروع'}</div>
+      <div style="font-size:var(--fs-body);color:var(--muted);margin-top:.1rem">${p.top_risk ? `أبرز خطر: ${esc(p.top_risk)}` : p.risks ? countAr(p.risks, { one: 'خطر مفتوح واحد', two: 'خطران مفتوحان', few: 'مخاطر مفتوحة', many: 'خطراً مفتوحاً' }) : 'لا سبب مسجَّل — يُسجَّل من صفحة المشروع'}</div>
     </a>`).join('');
   const healthCard = card(`
     <div class="card-head">
-      <span class="t">صحة ${G.projects}</span>
-      ${sd.openRisks ? `<span class="pill" style="background:#fee2e2;color:#991b1b">${G.risks} ${sd.openRisks}</span>` : ''}</div>
-    ${ragActive ? `<div class="hl-wrap" style="flex-wrap:nowrap">
-      <span class="ringw" style="width:112px;height:112px">${donutSVG(healthSegs, { size: 112, sw: 15 })}<span style="position:absolute;text-align:center;line-height:1.3"><b class="tnum" style="font-size:1.2rem">${sd.rag.GREEN || 0}/${ragActive}</b><br><span style="font-size:9px;color:var(--muted)">على المسار</span></span></span>
-      <div class="hl-legend">${healthRows}</div>
-    </div>
-    ${needRows ? `<div style="padding:.2rem 1rem .45rem;flex:1"><div style="font-size:var(--fs-micro);font-weight:800;color:var(--muted)">أبرز ما يحتاج تدخلاً</div>${needRows}</div>` : '<div style="flex:1"></div>'}`
-    : `<div class="empty-mini" style="flex:1">${icon('projects')} لا مشاريع قيد التنفيذ مقيَّمة الصحة — تُقيَّم من صفحة المشروع</div>`}
-    <div class="card-foot"><a href="/app/projects?year=${year}${user.scope === 'company' ? '&sector=' + esc(sectorId) : ''}">عرض جميع المشاريع <span aria-hidden="true">←</span></a></div>`, 'band b-green');
+      <span class="hgrp"><span class="eyebrow">صحة ${G.projects}${sd.openRisks ? ` · ${G.risks} <b class="tnum">${sd.openRisks}</b>` : ''}</span>
+      <span class="t">${!ragActive ? 'لا مشاريع مقيَّمة الصحة'
+    : needsN ? `${countAr(needsN, { one: 'مشروع واحد يحتاج تدخلاً', two: 'مشروعان يحتاجان تدخلاً', few: 'مشاريع تحتاج تدخلاً', many: 'مشروعاً يحتاج تدخلاً' })} من ${ragActive}`
+      : `${countAr(ragActive, { one: 'المشروع المقيَّم على المسار', two: 'المشروعان المقيَّمان على المسار', few: 'المشاريع المقيَّمة كلها على المسار', many: 'المشاريع المقيَّمة كلها على المسار' })}`}</span></span></div>
+    ${ragActive ? `<div class="cbody" style="padding:.35rem 1rem .45rem">
+      ${figStacked100(HEALTH.map(([k, , c]) => ({ v: sd.rag[k] || 0, color: c })), { ariaLabel: HEALTH.map(([k, l]) => `${l} ${sd.rag[k] || 0}`).join(' · ') })}
+      <div class="fig-leg">${healthRows}</div>
+      ${needRows ? `<div style="margin-top:.55rem"><div style="font-size:var(--fs-body);font-weight:800;color:var(--muted)">أبرز ما يحتاج تدخلاً</div>${needRows}</div>` : ''}
+    </div>`
+    : `<div class="empty-mini cbody">${icon('projects')} لا مشاريع قيد التنفيذ مقيَّمة الصحة — تُقيَّم من صفحة المشروع</div>`}
+    <div class="card-foot"><a href="/app/projects?year=${year}${user.scope === 'company' ? '&sector=' + esc(sectorId) : ''}">عرض جميع المشاريع <span aria-hidden="true">←</span></a></div>`, 'h-d');
 
-  // ── (٩) الأداء مقابل الخطة — أشرطة رصاصة مدمجة كالمرجع: النسبة، والعلامة الذهبية «أين
-  // يجب أن نكون اليوم» (المستهدف حتى تاريخه). لا خطة شهرية مسجَّلة فلا يُرسم منحنى خطة.
-  // لكل شريط مقياسه المعلَن بجانب اسمه — مقياسٌ واحد مدَّعى لأربعة أشرطة مختلفة كذبة بصرية:
-  // شريطا الهدف يكتملان عند المستهدف السنوي، وشريط التغطية عند ×1، وشريط الهامش نسبة من الإيراد.
-  const bullet = (name, pct, color, { tick = null, val = null, dd = null, tip = null, sc = null } = {}) => pct == null ? '' : `
-    <div class="blt${dd ? ' cardclick' : ''}" ${dd ? `role="button" tabindex="0" data-action="open-dd" data-dd="${dd}"` : ''} ${tip ? `data-tip="${tip}"${dd ? '' : ' tabindex="0"'}` : ''}>
-      <div class="top"><span class="n">${name}${sc ? ` <span style="font-weight:400;color:var(--faint);font-size:var(--fs-micro)">· ${sc}</span>` : ''}</span><b class="tnum" style="color:${color}">${val ?? pct + '%'}</b></div>
-      <div class="trk"><span class="fill" style="width:${Math.min(100, Math.max(0, pct))}%;background:${color}"></span>
-        ${tick != null ? `<span class="tick" style="inset-inline-start:${Math.min(100, Math.max(0, tick))}%"></span>` : ''}</div>
-    </div>`;
-  const paceSection = card(`
-    <div class="card-head"><span class="t">الأداء مقابل الخطة</span>
-      <span class="aux" style="font-size:var(--fs-micro);color:var(--faint)" data-tip="شريطا الإيراد والمبيعات يكتملان عند المستهدف السنوي، والعلامة الذهبية أين يجب أن نكون اليوم بنسبة السنة المنقضية. ولكل شريط آخر مقياسه المكتوب بجانب اسمه." tabindex="0">كيف يُقرأ؟ ⓘ</span></div>
-    <div style="padding:.35rem 1rem .5rem;flex:1">
-      ${bullet(`${G.revenue} المحقق`, attainRev, 'var(--brand2)', { tick: elapsed, dd: 'secrev', sc: 'من المستهدف السنوي' })}
-      ${bullet(G.sales, attainSales, 'var(--brand)', { tick: elapsed, dd: 'secwins', sc: 'من المستهدف السنوي' })}
-      ${bullet('تغطية خط الفرص', cover?.coverage != null ? Math.min(100, Math.round(cover.coverage * 100)) : null,
-    (cover?.coverage ?? 1) < 1 ? 'var(--amber)' : 'var(--green)',
-    { val: cover?.coverage != null ? `×${cover.coverage}` : null, sc: 'الشريط يكتمل عند ×1', dd: 'seccover',
-      tip: 'القيمة المفتوحة ÷ المتبقي من هدف المبيعات — ×1 فأكثر يعني الخط يغطي المتبقي، وما فوقها لا يزيد الشريط' })}
-      ${canMargin && margin && margin.margin_pct != null
-    ? bullet('هامش الربح الإجمالي', Math.max(0, margin.margin_pct), margin.margin_pct < 0 ? 'var(--red)' : 'var(--green)', { val: `${margin.margin_pct}%`, sc: 'نسبة من الإيراد', tip: 'الإيراد − الكلفة والمصروف المعتمد، نسبةً إلى الإيراد — الهامش السالب يُطبع رقماً ولا شريط له' })
-    : bullet(G.forecast, attainRev != null && sd.target_revenue_halalas ? Math.min(100, Math.round((fc.forecast / sd.target_revenue_halalas) * 100)) : null, 'var(--blue)', { val: sarShort(fc.forecast), sc: 'من هدف السنة', tip: 'المحقق + ما يُتوقّع كسبه من الفرص المفتوحة — نسبةً إلى هدف السنة، وما فوق الهدف لا يزيد الشريط' })}
-      ${attainRev == null && attainSales == null ? `<div style="font-size:var(--fs-meta);color:var(--faint);padding:.4rem 0">لا مستهدفات مسجَّلة لسنة ${year} — تُسجَّل من صفحة «الهيكل التنظيمي»</div>` : ''}
-    </div>
-    <div class="card-foot"><button type="button" data-action="open-dd" data-dd="secrev">عرض التحليل التفصيلي <span aria-hidden="true">←</span></button></div>`);
-
-  // ── (١٠) الاتجاه الشهري والمقارنات — الطبقة الثانية بعد التمرير ──
-  const mMax = Math.max(1, ...monthly);
-  const monthlyBars = `<div class="mtrack" style="gap:4px">${monthly.map((v, i) => `
-    <div style="display:flex;flex-direction:column;align-items:center;gap:2px;min-width:0" title="${monthLabel(i)}: ${fmtSar(v)}">
-      <div style="height:9px;display:flex;align-items:center">${i === nowM ? nowDot() : ''}</div>
-      <div style="width:100%;border-radius:4px 4px 0 0;background:${i === nowM ? 'var(--brand2)' : 'var(--brand)'};opacity:${v ? 1 : .18};height:${Math.max(3, Math.round((v / mMax) * 46))}px"></div>
-      <span style="font-size:9.5px;color:var(--muted);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${monthLabelDual(i)}</span>
-    </div>`).join('')}</div>`;
+  // ── التحليل الموسّع (الدرج): الإيراد عبر السنة بلغة الأعمدة الواحدة + الفجوة والمتوقع
+  // والهامش — «الأداء مقابل الخطة» صار عنوان شريط المؤشرات، وأشرطته في البطاقات نفسها. ──
   const tToDate = targetToDate(sd.target_revenue_halalas, now, year);
   const ytdGap = sd.target_revenue_halalas ? sd.revenue_halalas - tToDate : null;
   const qRevN = (qRev || []).map((r) => (typeof r === 'number' ? r : r.revenue_halalas || 0));
   const qBookN = (qBook || []).map((r) => (typeof r === 'number' ? r : r.sales_halalas || 0));
-  const qMax = Math.max(1, ...qRevN, ...qBookN);
   const nowQ = year === now.getUTCFullYear() ? Math.floor(now.getUTCMonth() / 3) : -1;
-  const qBars = `<div style="display:grid;grid-template-columns:repeat(4,1fr);direction:rtl;gap:.5rem">${[0, 1, 2, 3].map((i) => `
-    <div style="display:flex;flex-direction:column;align-items:center;gap:3px">
-      <div style="height:9px;display:flex;align-items:center">${i === nowQ ? nowDot('الربع الحالي') : ''}</div>
-      <div style="display:flex;gap:3px;align-items:flex-end;height:52px">
-        <div title="${G.revenue}: ${fmtSar(qRevN[i])}" style="width:14px;border-radius:3px 3px 0 0;background:var(--green);height:${Math.max(3, Math.round((qRevN[i] / qMax) * 48))}px"></div>
-        <div title="${G.bookings}: ${fmtSar(qBookN[i])}" style="width:14px;border-radius:3px 3px 0 0;background:var(--brand2);height:${Math.max(3, Math.round((qBookN[i] / qMax) * 48))}px"></div>
-      </div><span style="font-size:9.5px;color:var(--faint);white-space:nowrap">${quarterLabel(i)}</span></div>`).join('')}</div>`;
   const qDelta = nowQ > 0 && qRevN[nowQ - 1] ? Math.round(((qRevN[nowQ] - qRevN[nowQ - 1]) / qRevN[nowQ - 1]) * 100) : null;
-  // كالمرجع: الرسم الشهري يتصدّر وبجانبه صندوقا «الفجوة حتى اليوم» و«المتوقع نهاية السنة».
-  // لا منحنى خطة شهرية — لا خطة شهرية مسجَّلة في النظام، والمقارنة على المستهدف السنوي وإيقاعه.
   const gapPct = ytdGap != null && tToDate ? Math.round((ytdGap / tToDate) * 100) : null;
   const fcPct = sd.target_revenue_halalas ? Math.round(((fc.forecast - sd.target_revenue_halalas) / sd.target_revenue_halalas) * 100) : null;
-  const statBox = (label, main, sub, color, tip) => `<div style="background:#fafbfe;border:1px solid var(--line);border-radius:10px;padding:.5rem .7rem" ${tip ? `data-tip="${tip}" tabindex="0"` : ''}>
-      <div style="font-size:var(--fs-micro);color:var(--muted);font-weight:700">${label}${tip ? ' ⓘ' : ''}</div>
-      <div class="tnum" style="font-size:var(--fs-num-sm);font-weight:800;color:${color}">${main}</div>
-      ${sub ? `<div class="tnum" style="font-size:9.5px;color:var(--faint)">${sub}</div>` : ''}
+  const signed = (v) => `<span class="tnum" dir="ltr">${v >= 0 ? '+' : '−'}${sarShort(Math.abs(v))}</span>`;
+  const trendSection = `
+    <div class="c8" style="min-width:0">
+      <div class="chead-x"><span class="eyebrow">${G.revenue} عبر السنة <span data-tip="توزيع المحقق شهرياً — لا خطة شهرية مسجَّلة فلا تُرسم" tabindex="0" style="color:var(--faint)">ⓘ</span></span>
+        <span class="tt">${ytdGap != null ? `الفجوة حتى اليوم ${signed(ytdGap)}${gapPct != null ? ` (<span class="tnum" dir="ltr">${gapPct >= 0 ? '+' : '−'}${Math.abs(gapPct)}%</span>)` : ''} · ` : ''}${G.forecast} <b class="tnum">${sarShort(fc.forecast)}</b>${fcPct != null ? ` (<span class="tnum" dir="ltr">${fcPct >= 0 ? '+' : '−'}${Math.abs(fcPct)}%</span> عن الهدف)` : ''}</span></div>
+      ${figColumns(monthly.map((v, i) => ({ v, label: i + 1 })), { now: nowM + 1, ariaLabel: `الإيراد الشهري ${year}: ${monthly.map((v, i) => `${monthLabel(i)} ${sarShort(v)}`).join('، ')}` })}
+      ${qDelta != null ? `<div style="font-size:var(--fs-body);color:var(--muted);margin-top:.35rem">إيراد الربع الحالي ${qDelta >= 0 ? 'أعلى' : 'أدنى'} من الربع السابق بنسبة <b class="tnum" style="color:${qDelta >= 0 ? 'var(--st-good)' : 'var(--st-bad)'}">${Math.abs(qDelta)}%</b></div>` : ''}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:.6rem">
+        <div><div class="eyebrow" style="margin-bottom:.2rem">${G.revenue} بالأرباع</div>${figColumns(qRevN.map((v, i) => ({ v, label: quarterLabel(i) })), { now: nowQ + 1 })}</div>
+        <div><div class="eyebrow" style="margin-bottom:.2rem">${G.bookings} بالأرباع</div>${figColumns(qBookN.map((v, i) => ({ v, label: quarterLabel(i) })), { now: nowQ + 1 })}</div>
+      </div>
+      ${canMargin && margin && margin.margin_pct != null ? `<div style="font-size:var(--fs-body);color:var(--muted);margin-top:.5rem">هامش الربح الإجمالي <b class="tnum" style="color:${margin.margin_pct < 0 ? 'var(--st-bad)' : 'var(--ink2)'}">${margin.margin_pct}%</b> من الإيراد</div>` : ''}
     </div>`;
-  const trendCard = card(`
-    <div class="card-head"><span class="t">${G.revenue} عبر السنة</span>
-      <span class="aux" style="font-size:var(--fs-micro);color:var(--faint)">توزيع المحقق شهرياً — لا خطة شهرية مسجَّلة فلا تُرسم</span></div>
-    <div class="trend-grid">
-      <div style="min-width:0;display:grid;gap:.55rem">
-        ${monthlyBars}
-        <div style="border-top:1px dashed var(--line);padding-top:.5rem">
-          ${qBars}
-          <div style="display:flex;gap:.8rem;font-size:10px;color:var(--muted);justify-content:center;margin-top:.3rem">
-            <span><span style="display:inline-block;width:8px;height:8px;background:var(--green);border-radius:2px"></span> ${G.revenue}</span>
-            <span><span style="display:inline-block;width:8px;height:8px;background:var(--brand2);border-radius:2px"></span> ${G.bookings}</span></div>
-          ${qDelta != null ? `<div style="font-size:var(--fs-meta);color:var(--muted);margin-top:.35rem">إيراد الربع الحالي ${qDelta >= 0 ? 'أعلى' : 'أدنى'} من الربع السابق بنسبة <b class="tnum" style="color:${qDelta >= 0 ? 'var(--green)' : 'var(--red)'}">${Math.abs(qDelta)}%</b></div>` : ''}
-        </div>
-      </div>
-      <div style="display:flex;flex-direction:column;gap:.5rem">
-        ${ytdGap != null ? statBox('الفجوة حتى اليوم', `<span dir="ltr">${ytdGap >= 0 ? '+' : '−'}${sarShort(Math.abs(ytdGap))}</span>`, gapPct != null ? `<span dir="ltr">${ytdGap >= 0 ? '+' : '−'}${Math.abs(gapPct)}%</span> عن مسار الهدف` : '', ytdGap >= 0 ? 'var(--green)' : 'var(--red)', 'المحقق حتى اليوم مقابل (الهدف × نسبة السنة المنقضية)') : ''}
-        ${statBox(G.forecast, sarShort(fc.forecast), fcPct != null ? `<span dir="ltr">${fcPct >= 0 ? '+' : '−'}${Math.abs(fcPct)}%</span> عن الهدف` : 'لا هدف للمقارنة', fcPct == null ? 'var(--ink2)' : fcPct >= 0 ? 'var(--green)' : 'var(--amber)', 'المعادلة: المحقق + ما يُتوقّع كسبه من الفرص المفتوحة')}
-      </div>
-    </div>`);
+
   // ── (١١) أهم العملاء — خمسة، وبإشارة قرار واحدة لكل عميل لا سجلّ علاقات كامل ──
   // الترتيب يُبنى على **كل** عملاء القطاع: عدّ الفرص والمشاريع والقيمة المفتوحة لكل عميل بلا
   // سقف صفوف، ثم يُدمج مع إيراده — وإلا سقط صاحبُ أعلى إيرادٍ لأن قائمةً محدودةً بخط الفرص
@@ -1002,58 +761,41 @@ export async function sectorPage(user, opts = {}) {
     .sort((a, b) => (b.rev - a.rev) || (b.pipeline_halalas - a.pipeline_halalas))
     .slice(0, 5);
   const clientSignal = (c) => {
-    if (overdueCids.has(c.id)) return `<span class="cl-sig" style="background:#fee2e2;color:#991b1b">تحصيل متأخر</span>`;
-    if (stalledCids.has(c.id)) return `<span class="cl-sig" style="background:#fef3c7;color:#92400e">فرصة متوقفة</span>`;
-    if (redProjClients.has(c.id)) return `<span class="cl-sig" style="background:#fee2e2;color:#991b1b">مشروع في خطر</span>`;
+    if (overdueCids.has(c.id)) return sig('bad', '▲', 'تحصيل متأخر');
+    if (stalledCids.has(c.id)) return sig('warn', '▲', 'فرصة متوقفة');
+    if (redProjClients.has(c.id)) return sig('bad', '▲', 'مشروع في خطر');
     return '';
   };
-  // جدول مدمج كالمرجع: عميل (بحرفه الأول)، الإيراد، المفتوح من خط فرصه، وإشارة قراره —
-  // بلا عمود «اتجاه»: لا سلسلة زمنية لكل عميل في النظام، والسهم بلا بيانات كذبة صغيرة.
   const secRevTotal = sd.revenue_halalas || 0;
   const clientRows = topClients.map((c) => {
     const share = secRevTotal && c.rev ? Math.round((c.rev / secRevTotal) * 100) : null;
+    const rel = relationshipOf(lastTouch.get(c.id), oppBy[c.id]?.open_n || 0);
     return `<tr>
       <td><span class="cl-nm"><span class="cl-av" aria-hidden="true">${esc(String(c.name_ar || '؟').trim().charAt(0))}</span><a href="/app/client/${esc(c.id)}" title="${esc(c.name_ar)}">${esc(c.name_ar)}</a></span></td>
       <td class="tnum" style="font-weight:800">${c.rev ? sarShort(c.rev) : '—'}</td>
+      <td class="tnum">${share != null ? `${share}%` : '<span style="color:var(--faint)" aria-hidden="true">—</span>'}</td>
       <td class="tnum" title="الفرص ${c.opps} · المشاريع ${c.projects}">${c.pipeline_halalas ? sarShort(c.pipeline_halalas) : '—'}</td>
-      <td>${share != null ? `<span style="display:inline-flex;align-items:center;gap:.4rem"><b class="tnum">${share}%</b><span class="bar" style="width:56px;display:inline-block;flex:none"><span style="width:${Math.min(100, share)}%;background:var(--brand)"></span></span></span>` : '<span style="color:var(--faint)" aria-hidden="true">—</span>'}</td>
-      <td>${(() => { const rel = relationshipOf(lastTouch.get(c.id), oppBy[c.id]?.open_n || 0);
-        const relC = rel === 'نشطة' ? ['#dcfce7', '#166534'] : rel === 'فاترة' ? ['#fef3c7', '#92400e'] : ['#f1f5f9', '#64748b'];
-        return `<span class="pill" style="background:${relC[0]};color:${relC[1]}">${rel}</span>`; })()}</td>
-      <td>${clientSignal(c) || '<span style="color:var(--faint)" aria-hidden="true">—</span>'}</td>
+      <td>${clientSignal(c) || `<span style="color:var(--muted);font-size:var(--fs-body)">${rel}</span>`}</td>
     </tr>`;
   }).join('');
-  // جملة التركّز لا تُقال إلا حين يوجد ثلاثة فعلاً — «أكبر ثلاثة» عن عميلين كذبة صغيرة.
+  // جملة التركّز لا تُقال إلا حين يوجد ثلاثة فعلاً — وهي الآن عنوان البطاقة نفسه، ومعها
+  // شريط تركيبةٍ واحد بدل بطاقة الدونات المستقلة (اندماج «مخاطر التركّز»).
   const top3 = topClients.filter((c) => c.rev > 0).slice(0, 3);
   const concPct = secRevTotal && top3.length === 3 ? Math.round((top3.reduce((a, c) => a + c.rev, 0) / secRevTotal) * 100) : null;
+  const concColors = ['var(--brand)', 'var(--brand2)', '#5b8def'];
   const clientsCard = card(`
-    <div class="card-head"><span class="t">أهم ${G.clients}</span>
-      <span class="aux" style="font-size:var(--fs-micro);color:var(--faint)">مرتَّبون حسب إيراد ${year}</span></div>
-    ${concPct != null && concPct > 0 ? `<div class="cl-note" style="color:${concPct >= 60 ? '#92400e' : 'var(--muted)'}">
-      أكبر ثلاثة عملاء يمثلون <b class="tnum">${concPct}%</b> من إيراد القطاع هذه السنة${concPct >= 60 ? ' — تركّز مرتفع' : ''} <span data-tip="مجموع إيراد أكبر ثلاثة عملاء ÷ إيراد القطاع المحقق لهذه السنة" tabindex="0" style="color:var(--faint)">ⓘ</span></div>` : ''}
-    <div style="padding:.15rem .5rem .3rem;flex:1;overflow-x:auto" tabindex="0" role="region" aria-label="جدول أهم العملاء">
+    <div class="card-head"><span class="hgrp"><span class="eyebrow">أهم ${G.clients} · مرتَّبون حسب إيراد ${year}${concPct != null ? ` <span data-tip="مجموع إيراد أكبر ثلاثة عملاء ÷ إيراد القطاع المحقق لهذه السنة" tabindex="0" style="color:var(--faint)">ⓘ</span>` : ''}</span>
+      <span class="t">${concPct != null ? `أكبر ثلاثة عملاء يمثلون <span class="tnum">${concPct}%</span> من الإيراد${concPct >= 60 ? ' — تركّز مرتفع' : ''}` : topClients.length ? `${countAr(topClients.length, { one: 'عميل واحد يقود النشاط', two: 'عميلان يقودان النشاط', few: 'عملاء يقودون النشاط', many: 'عميلاً يقودون النشاط' })}` : G.emptyList}</span></span></div>
+    ${concPct != null ? `<div style="padding:.15rem 1rem 0">${figStacked100([
+    ...top3.map((c, i) => ({ v: c.rev, color: concColors[i] })),
+    { v: Math.max(0, secRevTotal - top3.reduce((a, c) => a + c.rev, 0)), color: '#e8ecf5' },
+  ], { mini: true, ariaLabel: `${top3.map((c) => `${c.name_ar} ${Math.round((c.rev / secRevTotal) * 100)}%`).join(' · ')}` })}</div>` : ''}
+    <div class="cbody" style="padding:.15rem .5rem .3rem;overflow-x:auto" tabindex="0" role="region" aria-label="جدول أهم العملاء">
       ${clientRows ? `<table class="cl-tbl">
-        <thead><tr><th>العميل</th><th>الإيراد ${year}</th><th>المفتوح من فرصه</th><th>حصة من الإيراد</th><th>الحالة</th><th>الإشارة</th></tr></thead>
+        <thead><tr><th>العميل</th><th>الإيراد ${year}</th><th>الحصة</th><th>المفتوح من فرصه</th><th>الإشارة</th></tr></thead>
         <tbody>${clientRows}</tbody></table>` : `<div class="empty-state" style="padding:1rem"><div class="s">${G.emptyList}</div></div>`}
     </div>
     <div class="card-foot"><a href="/app/clients">عرض جميع العملاء <span aria-hidden="true">←</span></a></div>`);
-  // ── مخاطر التركّز — دونات حصص أكبر ثلاثة عملاء من إيراد القطاع (طبقة التمرير) ──
-  const concColors = ['var(--brand)', 'var(--brand2)', '#5b8def'];
-  const concCard = concPct != null && concPct <= 100 ? card(`
-    <div class="card-head"><span class="t">مخاطر التركّز</span></div>
-    <div class="conc-wrap">
-      <span class="ringw" style="width:96px;height:96px">${donutSVG([
-    ...top3.map((c, i) => ({ v: c.rev, color: concColors[i] })),
-    { v: Math.max(0, secRevTotal - top3.reduce((a, c) => a + c.rev, 0)), color: '#e8ecf5' },
-  ], { size: 96, sw: 12 })}<span style="position:absolute;text-align:center;line-height:1.25"><b class="tnum" style="font-size:1.05rem">${concPct}%</b><br><span style="font-size:8.5px;color:var(--muted)">من الإيراد<br>من أكبر 3 عملاء</span></span></span>
-      <div class="conc-legend">
-        ${top3.map((c, i) => `<div class="conc-li"><span class="sw" style="background:${concColors[i]}"></span>
-          <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.name_ar)}</span>
-          <b class="tnum">${Math.round((c.rev / secRevTotal) * 100)}%</b>
-          <span class="tnum" style="color:var(--muted);font-size:var(--fs-micro)">${sarShort(c.rev)}</span></div>`).join('')}
-        <div style="font-size:var(--fs-micro);color:${concPct >= 60 ? '#92400e' : 'var(--muted)'};margin-top:.15rem">${concPct >= 60 ? 'تركّز مرتفع على عدد قليل من العملاء — تنويع القاعدة يقلل الأثر لو تعثّر أحدهم' : 'التركّز ضمن الحدود المريحة'}</div>
-      </div>
-    </div>`) : '';
 
   // ── (١٢) التحصيل — يظهر فقط لمن يقرأ الفواتير (لا تسريب مالي لبقية الأدوار) ──
   let collectCard = '', collectDD = '';
@@ -1074,11 +816,10 @@ export async function sectorPage(user, opts = {}) {
     const BUCKETS = [['0-30', 'حتى شهر من الإصدار'], ['31-60', 'شهر إلى شهرين'], ['61-90', 'شهران إلى ثلاثة'], ['90+', 'أكثر من ثلاثة أشهر']];
     const arTotal = BUCKETS.reduce((a, [k]) => a + (buckets[k] || 0), 0);
     const bMax = Math.max(1, ...BUCKETS.map(([k]) => buckets[k] || 0));
-    const bucketRows = BUCKETS.map(([k, l], i) => `<div style="display:flex;align-items:center;gap:.5rem;font-size:var(--fs-meta);padding:.2rem 0">
-        <span style="flex:0 0 128px;color:var(--muted)">${l}</span>
-        <div class="bar" style="flex:1"><span style="width:${Math.round(((buckets[k] || 0) / bMax) * 100)}%;background:${i >= 2 ? 'var(--red)' : i === 1 ? 'var(--amber)' : 'var(--brand)'}"></span></div>
-        <span class="tnum" style="flex:none;font-weight:700;font-size:var(--fs-micro)">${fmtSar(buckets[k] || 0)}</span>
-      </div>`).join('');
+    const bucketRows = figBars(BUCKETS.map(([k, l], i) => ({
+      label: l, value: buckets[k] || 0, count: '',
+      fill: i === 3 ? 'var(--st-bad)' : null,
+    })), { fmt: sarShort, max: bMax });
     const lateRows = odRows.slice(0, 3).map((r) => `<div class="cardclick" role="button" tabindex="0" data-action="open-dd" data-dd="seccollect" style="display:flex;justify-content:space-between;gap:.6rem;align-items:baseline;padding:.32rem 0;border-bottom:1px dashed var(--line);font-size:var(--fs-body)">
         <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.client || r.project || 'فاتورة')}${r.code ? ` <span style="color:var(--faint);font-size:var(--fs-micro)"><bdi>${esc(r.code)}</bdi></span>` : ''}</span>
         <span style="flex:none;display:flex;gap:.5rem;align-items:baseline">
@@ -1086,15 +827,17 @@ export async function sectorPage(user, opts = {}) {
           ${r.days != null ? `<span class="pill" style="background:#fee2e2;color:#991b1b">متأخر ${dayWord(r.days)}</span>` : ''}
         </span>
       </div>`).join('');
+    const odTotal = odRows.reduce((a, b) => a + b.out, 0);
     collectCard = card(`
       <div class="card-head">
-        <span class="t">التحصيل والمطالبات</span></div>
+        <span class="hgrp"><span class="eyebrow">التحصيل والمطالبات</span>
+        <span class="t">${odRows.length ? `مستحقات متأخرة <span class="tnum">${fmtSar(odTotal)}</span> على ${countAr(odRows.length, { one: 'فاتورة واحدة', two: 'فاتورتين', few: 'فواتير', many: 'فاتورة' })}` : arTotal ? `مستحقات قائمة ${fmtSar(arTotal)} — لا متأخر منها` : 'لا مستحقات قائمة'}</span></span></div>
       ${arTotal || odRows.length ? `
       <div class="cardclick" role="button" tabindex="0" data-action="open-dd" data-dd="seccollect" style="padding:.55rem 1rem;display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px dashed var(--line)">
         <span style="font-size:var(--fs-micro);color:var(--muted)">${G.outstanding} للقطاع · ${year} <span style="color:var(--faint)" aria-hidden="true">⊕</span></span>
         <b class="tnum" style="font-size:var(--fs-num-sm);color:${arTotal ? 'var(--amber)' : 'var(--ink2)'}">${fmtSar(arTotal)}</b></div>
       <div style="padding:.45rem 1rem .3rem">
-        <div style="font-size:var(--fs-micro);font-weight:700;color:var(--muted);margin-bottom:.15rem">أعمار المستحقات منذ إصدار الفاتورة</div>${bucketRows}
+        <div style="font-size:var(--fs-body);font-weight:700;color:var(--muted);margin-bottom:.15rem">أعمار المستحقات منذ إصدار الفاتورة</div>${bucketRows}
       </div>
       <div style="padding:.35rem 1rem .6rem">
         <div style="font-size:var(--fs-micro);font-weight:700;color:var(--muted)">${G.lateClaim}${odRows.length > 3 ? ` — الأكثر تأخراً (3 من ${odRows.length})` : ''}</div>
@@ -1144,17 +887,6 @@ export async function sectorPage(user, opts = {}) {
     <div style="padding:.5rem 1rem .6rem">
       <div style="font-size:var(--fs-micro);font-weight:700;color:var(--muted)">طلبات معلقة في القطاع</div>${apRows}
       <div style="font-size:var(--fs-micro);font-weight:700;color:var(--muted);margin-top:.5rem">آخر القرارات</div>${decRows}
-    </div>`);
-
-  // ── (١٤) شريط التقارير — قاع الصفحة كالمرجع: معاينة، إرسال، وجدولة ──
-  const reportsStrip = card(`<div style="padding:.6rem 1rem;display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
-      <span style="font-size:var(--fs-meta);font-weight:800;color:var(--ink2)">التقارير الدورية</span>
-      <span style="font-size:var(--fs-micro);color:var(--faint)">معاينة فورية أو إرسال تجريبي إلى بريدك</span>
-      <span class="spacer"></span>
-      <button class="btn btn-sm" data-action="report-preview" data-report="sector_weekly_status">التقرير الأسبوعي</button>
-      <button class="btn btn-sm" data-action="report-preview" data-report="monthly_sector_performance">التقرير الشهري</button>
-      <button class="btn btn-sm" data-action="report-send" data-report="sector_weekly_status">أرسله لي الآن</button>
-      <a class="btn btn-primary btn-sm" href="/app/reports">جدولة التقارير</a>
     </div>`);
 
   // ── قوالب التفصيل (drill-down) — تُحسب على الخادم بنفس نطاق الصفحة فلا يتسرب محجوب ──
@@ -1387,32 +1119,100 @@ export async function sectorPage(user, opts = {}) {
   ${collectDD}
   ${funnelDD}`;
 
-  const switcher = user.scope === 'company' ? `<div class="chips" style="margin-bottom:.6rem"><span class="lbl">القطاع:</span>
+  const switcher = user.scope === 'company' ? `<span class="lbl" style="font-size:var(--fs-body);color:var(--muted);font-weight:700">القطاع:</span>
     ${allSectors.map((s) => `<a href="/app/sector?year=${year}&sector=${esc(s.id)}&win=${win}" class="chip ${s.id === sectorId ? 'on' : ''}"><span class="dot" style="background:${esc(s.color || '#244A99')}"></span>${esc(s.name_ar)}</a>`).join('')}
-    <a class="btn btn-sm" style="margin-inline-start:.3rem" href="/app/ceo?year=${year}&sector=${esc(sectorId)}">لوحة القيادة</a>
-  </div>` : '';
+    <a class="btn btn-sm" href="/app/ceo?year=${year}&sector=${esc(sectorId)}">لوحة القيادة</a>
+    <span style="flex:0 0 100%;height:0" aria-hidden="true"></span>` : '';
 
-  // هرمية المرجع (v5.23): شريط المؤشرات ← [يحتاج تدخلك | ما تغيّر] (٥:٤) ←
-  // [القمع | صحة المشاريع | طاقة الفريق] ← أهم العملاء صفاً كاملاً ←
-  // [الإيراد عبر السنة + الأداء مقابل الخطة] ← [التحصيل + (التركّز والقرارات)] ← التقارير.
-  const scrollB = [collectCard, [concCard, decisionsCard, contractsCard].filter(Boolean).join('')].filter(Boolean);
+  // ── شريط المؤشرات الستة (ADR-0011): أولها يميناً «يحتاج تدخلك» — محفّز الفعل في أول ما
+  // تقع عليه العين، والأرقام كلها محسوبة أعلاه. لا حلقة ولا عداد: مساراتٌ وأشرطة تركيب. ──
+  const covGapH = cover?.coverage != null && cover.coverage < 1 ? Math.max(0, (cover.remaining_target_halalas || 0) - (cover.open_halalas || 0)) : 0;
+  const bandTiles = [
+    tile({
+      eye: G.attention, act: 'act-jump',
+      val: attn.length ? String(Math.min(attn.length, 6)) : `0`,
+      valColor: attn.length ? 'var(--st-bad)' : '',
+      unit: attn.length ? 'بنود مرتّبة بأثر القرار' : 'لا شيء بانتظارك الآن',
+      verdict: attn.length ? sig('bad', '▲', `أعلاها: ${esc(attn[0].title)}`) : sig('ok', '✓', G.allGood),
+    }),
+    tile({
+      eye: `${G.revenue} المحقق`, dd: 'secrev', title: fmtSar(sd.revenue_halalas),
+      val: sarShort(sd.revenue_halalas),
+      unit: sd.target_revenue_halalas ? `من ${G.target} <b class="tnum">${sarShort(sd.target_revenue_halalas)}</b> · ${year}` : 'لا هدف مسجّل لهذه السنة',
+      fig: attainRev != null ? figBullet({ pct: attainRev, tick: elapsed, ariaLabel: `تحقق ${attainRev}% من المستهدف وانقضى ${elapsed}% من السنة` }) : '',
+      verdict: paceSig(dRev),
+    }),
+    tile({
+      eye: G.sales, dd: 'secwins', title: fmtSar(sd.sales_halalas),
+      val: sarShort(sd.sales_halalas),
+      unit: sd.target_sales_halalas ? `من ${G.target} <b class="tnum">${sarShort(sd.target_sales_halalas)}</b> · ${countAr(wins.won, { one: 'صفقة مكسوبة', two: 'صفقتان مكسوبتان', few: 'صفقات مكسوبة', many: 'صفقة مكسوبة', zero: 'لا صفقات مكسوبة' })}` : 'لا هدف مسجّل لهذه السنة',
+      fig: attainSales != null ? figBullet({ pct: attainSales, tick: elapsed, ariaLabel: `تحقق ${attainSales}% من المستهدف وانقضى ${elapsed}% من السنة` }) : '',
+      verdict: paceSig(dSales),
+    }),
+    tile({
+      eye: 'تغطية خط الفرص', dd: 'seccover',
+      val: cover?.coverage != null ? `×${cover.coverage}` : '—',
+      unit: 'المفتوح ÷ المتبقي من هدف المبيعات',
+      fig: cover?.coverage != null ? figBullet({ pct: Math.min(100, cover.coverage * 50), tick: 50, ariaLabel: `التغطية ×${cover.coverage} والعلامة عند ×1` }) : '',
+      verdict: cover?.coverage == null ? '' : cover.coverage >= 1 ? sig('ok', '✓', 'الخط يغطي المتبقي من الهدف') : sig('warn', '▼', `فجوة ${sarShort(covGapH)} دون ×1`),
+    }),
+    tile({
+      eye: 'صحة التنفيذ', dd: ragActive ? (needsN ? 'sec-health-RED' : 'sec-health-GREEN') : '',
+      val: ragActive ? `<span dir="ltr">${sd.rag.GREEN || 0}/${ragActive}</span>` : '—',
+      unit: ragActive ? 'على المسار من المقيَّمة الصحة' : 'لا مشاريع مقيَّمة الصحة',
+      fig: ragActive ? figStacked100([
+        { v: sd.rag.GREEN || 0, color: 'var(--st-good)' }, { v: sd.rag.AMBER || 0, color: 'var(--st-warn)' }, { v: sd.rag.RED || 0, color: 'var(--st-bad)' },
+      ], { mini: true, ariaLabel: `${G.hOnTrack} ${sd.rag.GREEN || 0} · ${G.hAtRisk} ${sd.rag.AMBER || 0} · ${G.hCritical} ${sd.rag.RED || 0}` }) : '',
+      verdict: !ragActive ? '' : needsN ? sig('warn', '▲', `${G.hCritical} ${sd.rag.RED || 0} · ${G.hAtRisk} ${sd.rag.AMBER || 0}`) : sig('ok', '✓', 'الكل على المسار'),
+    }),
+    tile({
+      eye: 'طاقة الفريق', dd: 'seccap',
+      val: `${bandLoad}%`, valColor: bandLoad > OVER_ABOVE ? 'var(--st-bad)' : '',
+      unit: `متوسط ${G.utilization} · ${countAr(teamSize, { one: 'موظف واحد', two: 'موظفان', few: 'موظفين', many: 'موظفاً' })}${nowMonth ? ` · ${monthLabel(nowMonth - 1)}` : ''}`,
+      fig: emps.length ? figStacked100([
+        { v: midNow.length, color: 'var(--st-good)' }, { v: freeNow.length, color: '#c6cdd9' }, { v: overNow.length, color: 'var(--st-bad)' },
+      ], { mini: true, ariaLabel: `ضمن الطاقة ${midNow.length} · بلا تسكين ${freeNow.length} · ${G.overloaded} ${overNow.length}` }) : '',
+      verdict: overNow.length ? sig('bad', '▲', `${countAr(overNow.length, { one: 'موظف فوق الطاقة', two: 'موظفان فوق الطاقة', few: 'موظفين فوق الطاقة', many: 'موظفاً فوق الطاقة' })}`)
+        : freeNow.length ? sig('neut', '•', `${countAr(freeNow.length, { one: 'موظف بلا تسكين', two: 'موظفان بلا تسكين', few: 'موظفين بلا تسكين', many: 'موظفاً بلا تسكين' })}`)
+          : emps.length ? sig('ok', '✓', 'الفريق ضمن الطاقة') : '',
+    }),
+  ].join('');
+
+  // ── الدرج: التحليل الموسّع — تفصيلٌ للفحص لا للمراقبة اليومية ──
+  const drawer = `<details class="psec x-drawer"><summary>التحليل الموسّع — ${G.revenue} عبر السنة · ${G.decisions} والاعتمادات · العقود</summary>
+    <div class="g12" style="padding:.4rem 1rem 1rem">
+      ${trendSection}
+      <div class="c4" style="min-width:0;display:grid;gap:.8rem;align-content:start">
+        ${decisionsCard}
+        ${contractsCard}
+      </div>
+    </div>
+  </details>`;
+
+  // ── تكوين الصفحة: ثلاث طبقاتٍ مُعنونة بسؤالها ثم الدرج (ADR-0011) ──
   const body = `${CSS}
-    ${switcher}
+    <div class="dash">
+    ${switcher ? `<div class="toolbar" style="row-gap:.45rem">${switcher}</div>` : ''}
     ${toolbar}
-    ${kpiStrip}
-    <div class="row-main">
-      ${attnCard}
-      ${changesCard}
+    <div class="tier"><h2 class="q">هل نحن على المسار؟</h2><span class="s">الأداء مقابل الخطة · ${year}</span></div>
+    <div class="band6">${bandTiles}</div>
+    <div class="tier"><h2 class="q">ماذا أفعل اليوم؟</h2></div>
+    <div class="g12">
+      <div class="c7" style="min-width:0">${attnCard}</div>
+      <div class="c5" style="min-width:0">${changesCard}</div>
     </div>
-    <div class="row-ana">
-      ${funnelCard}
-      ${healthCard}
-      ${capCard}
+    <div class="tier"><h2 class="q">أين الفجوة ولماذا؟</h2></div>
+    <div class="g12">
+      <div class="c4" style="min-width:0">${funnelCard}</div>
+      <div class="c4" style="min-width:0">${healthCard}</div>
+      <div class="c4" style="min-width:0">${capCard}</div>
     </div>
-    <div style="margin-bottom:var(--gap)">${clientsCard}</div>
-    <div class="row-two">${trendCard}${paceSection}</div>
-    ${scrollB.length === 2 ? `<div class="row-two">${scrollB[0]}<div style="display:flex;flex-direction:column;gap:var(--gap);min-width:0">${scrollB[1]}</div></div>` : `<div style="display:grid;gap:var(--gap);margin-bottom:var(--gap)">${scrollB.join('')}</div>`}
-    ${reportsStrip}
+    <div class="g12">
+      <div class="${canInvoices && collectCard ? 'c7' : 'c12'}" style="min-width:0">${clientsCard}</div>
+      ${canInvoices && collectCard ? `<div class="c5" style="min-width:0">${collectCard}</div>` : ''}
+    </div>
+    ${drawer}
+    </div>
     ${DD}`;
   return layout({ user, active: 'sector', title: `مركز قيادة ${sd.sector.name_ar}`,
     subtitle: `الوضع، ثم السبب، ثم الإجراء التالي · ${year}`, body, year,
