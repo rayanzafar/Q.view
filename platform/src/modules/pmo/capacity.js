@@ -19,9 +19,12 @@ import { scopeFilter } from '../../core/rbac/scope.js';
 import { forbidden, notFound } from '../../core/http/errors.js';
 import { nowIso } from '../../core/util/ids.js';
 import { MONTHS_AR } from '../../core/i18n/time.js';
-import { SUPPORT_KIND } from '../org/org.js';
+import { SUPPORT_KIND, staffingRoster } from '../org/org.js';
 import { notDemoEmployeeSql, seesDemoAccounts } from '../org/people.js';
+import { inDepartmentScope } from '../../core/rbac/departments.js';
 import { loadReadableProject } from './project-access.js';
+import { teamTasksAccess, notPersonalSql } from './tasks.js';
+import { approvedTaskSql } from './task-approval.js';
 
 const N = (v) => Number(v) || 0;
 
@@ -197,4 +200,128 @@ export async function projectTeamLoad(user, projectId, opts = {}) {
     overloaded: team.filter((t) => t.over).length,
     // مجموع ما يُنفَق على المشروع هذا الشهر بوحدة الشخص الكامل — الرقم الذي يُقارن بالميزانية.
     fteNow: Math.round(team.reduce((a, t) => a + t.onThisPct, 0)) / 100 };
+}
+
+// ── مهام الفريق بأسمائها، لكل موظف: عدٌّ ثم أبرز ثلاث ─────────────────────────────
+// بقواعد لوحة «مهام فريقي» حرفياً: لا مهام شخصية، ولا معلَّقة بانتظار الاعتماد — وإلا قال
+// الرقمُ عن الرجل ما لا يستطيع قارئه فتحه. المتأخرة أولاً، ثم الأقرب استحقاقاً.
+async function teamTaskLoad(employeeIds, today, topN = 3) {
+  const ids = [...new Set(employeeIds)].filter(Boolean);
+  const out = new Map();
+  if (!ids.length) return out;
+  const ph = ids.map(() => '?').join(',');
+  const rows = await all(`SELECT e.id employee_id, t.id, t.title, t.due_date, t.status, t.blocked_reason
+     FROM employee e JOIN task t ON t.assignee_user_id = e.user_id
+    WHERE e.id IN (${ph}) AND e.user_id IS NOT NULL AND t.deleted_at IS NULL
+      AND t.status NOT IN ('DONE','CANCELLED') AND ${notPersonalSql('t.')} AND ${approvedTaskSql('t.')}
+    ORDER BY e.id, CASE WHEN t.due_date IS NULL THEN 1 ELSE 0 END, t.due_date
+    LIMIT 3000`, ids);
+  for (const r of rows) {
+    if (!out.has(r.employee_id)) out.set(r.employee_id, { open: 0, late: 0, blocked: 0, top: [] });
+    const t = out.get(r.employee_id);
+    const late = !!(r.due_date && String(r.due_date).slice(0, 10) < today);
+    const blocked = r.status === 'BLOCKED' || !!String(r.blocked_reason || '').trim();
+    t.open += 1; if (late) t.late += 1; if (blocked) t.blocked += 1;
+    t.top.push({ id: r.id, title: r.title || '—', due: r.due_date ? String(r.due_date).slice(0, 10) : null, late, blocked });
+  }
+  for (const t of out.values()) {
+    t.top.sort((a, b) => (b.late - a.late) || (b.blocked - a.blocked) || String(a.due || '9').localeCompare(String(b.due || '9')));
+    t.top = t.top.slice(0, topN);
+  }
+  return out;
+}
+
+// ── تفصيل فريق القطاع لمركز القيادة: الشخص، وحِمله المخطَّط، وما على طاولته ─────────────
+//
+// بطاقة «طاقة الفريق» كانت تُرسَم من `sectorStaffing` (أرقام بلا معرِّفات)، فالضغط على شخصٍ
+// لم يكن يجد ما يفتحه. هذا التفصيل يُبنى على كشف التسكين نفسه (`staffingRoster`) — بنطاق
+// الأشخاص وقصّ أسماء المشاريع خارج نطاق القارئ كما هي في لوحة التسكين — ويضيف إليه ما
+// يحتاجه النافذة المنبثقة: حساب الدخول (به يُفتح ملفه)، وهل يحقّ للقارئ فتح الملف أصلاً
+// (بقاعدة `personDossier` حرفياً فلا يُرسَم رابطٌ يُردّ)، ومهامه عدّاً وأسماءً، وتجميعاً
+// بالإدارة القائمة. لا راتب ولا حقل حساس يخرج من هنا مهما كان القارئ.
+//
+// أساس الأرقام واحد: **خطة التسكين الشهرية** لا ساعات عمل. حِمل الفرص المبدئي (يقع على
+// الشهر الجاري وحده) يُفصَل في `oppLoadPct` ولا يُخلَط بالخطة — فالبطاقة تقرأ `planNow`
+// وتتسق مع متوسطها، والنافذة تقول «+N% حِمل مبدئي» سطراً مستقلاً.
+export async function sectorTeamDetail(user, opts = {}) {
+  if (user.role_id !== 'admin' && !can(user, 'read', 'employee')) throw forbidden('عرض أفراد الفريق يتطلب صلاحية عرض الفريق');
+  const r = await staffingRoster(user, { sector: opts.sector, year: opts.year, month: opts.month });
+  const { year, currentMonth: nowM } = r;
+  const ids = r.roster.map((e) => e.id);
+  const ph = ids.map(() => '?').join(',');
+  const today = String(opts.todayDate || nowIso().slice(0, 10)).slice(0, 10);
+  const [links, tasks] = ids.length ? await Promise.all([
+    all(`SELECT e.id, e.user_id, u.sector_id user_sector_id FROM employee e
+         LEFT JOIN app_user u ON u.id = e.user_id AND u.deleted_at IS NULL AND u.active = 1
+        WHERE e.id IN (${ph})`, ids),
+    teamTaskLoad(ids, today),
+  ]) : [[], new Map()];
+  const linkMap = new Map(links.map((l) => [l.id, l]));
+  const access = teamTasksAccess(user);
+  // نفس باب `personDossier`: الذات دائماً؛ ثم نطاق مهام الفريق — الشركة كلها، أو إداراته، أو قطاعه.
+  const dossierOk = (emp, link) => {
+    const uid = link?.user_id || null;
+    if (!uid) return false;
+    if (uid === user.id) return true;
+    if (!access.scope) return false;
+    if (access.scope === 'company') return true;
+    if (access.scope === 'department') return inDepartmentScope(user, emp.department_id);
+    return !!link.user_sector_id && link.user_sector_id === user.sector_id;
+  };
+  const avg = (xs) => (xs.length ? Math.round(xs.reduce((a, b) => a + b, 0) / xs.length) : 0);
+  const people = r.roster.map((e) => {
+    const link = linkMap.get(e.id) || null;
+    const userId = link?.user_id || null;
+    const ok = dossierOk(e, link);
+    // الخطة وحدها، بلا حِمل الفرص المبدئي الذي يضيفه الكشف على الشهر الجاري.
+    const planMonths = e.months.slice();
+    if (nowM && e.oppLoadPct) planMonths[nowM - 1] = Math.max(0, planMonths[nowM - 1] - e.oppLoadPct);
+    const planNow = nowM ? planMonths[nowM - 1] : 0;
+    const next = nowM && nowM < 12 ? planMonths[nowM] : 0;
+    const q3 = nowM ? avg(planMonths.slice(nowM, nowM + 3)) : 0;
+    const annual = avg(planMonths);
+    const t = userId ? (tasks.get(e.id) || { open: 0, late: 0, blocked: 0, top: [] }) : null;
+    return {
+      id: e.id, userId, dossierOk: ok, name_ar: e.name_ar, job_title: e.job_title || '',
+      department_id: e.department_id || null, active: e.active, capacity_pct: e.capacity_pct ?? null,
+      employment_type: e.employment_type || null,
+      months: planMonths, planNow, next, q3, annual,
+      currentUtil: e.currentUtil, prevMonthUtil: e.prevMonthUtil, monthDelta: e.monthDelta,
+      oppLoadPct: e.oppLoadPct, peak: Math.max(0, ...planMonths), staffedMonths: planMonths.filter((m) => m > 0).length,
+      projects: e.projects.map((p) => ({ allocId: p.allocId, projectId: p.projectId || null, name: p.name, bucket: p.bucket || null,
+        type: p.type || 'member', status: p.status || null, months: p.months })),
+      opportunities: e.opportunities.map((o) => ({ opportunityId: o.opportunityId, name: o.name, pct: o.pct })),
+      // عناوين المهام سجلّات لا أرقام: تُعرض لمن يحقّ له فتح ملف صاحبها فحسب؛ العدّ يبقى.
+      tasks: t ? { open: t.open, late: t.late, blocked: t.blocked, top: ok ? t.top : [] } : null,
+    };
+  });
+  const loadOf = (p) => (nowM ? p.planNow : p.annual);
+  // الإدارات القائمة فحسب — لا تُنشأ هنا إدارةٌ ولا تُفترض. من بلا إدارة له سلّته المسمّاة.
+  const deptIds = [...new Set(people.map((p) => p.department_id).filter(Boolean))];
+  const deptRows = deptIds.length
+    ? await all(`SELECT id, name_ar FROM department WHERE id IN (${deptIds.map(() => '?').join(',')}) AND deleted_at IS NULL`, deptIds)
+    : [];
+  const deptName = new Map(deptRows.map((d) => [d.id, d.name_ar]));
+  const groups = new Map();
+  for (const p of people) {
+    const key = p.department_id && deptName.has(p.department_id) ? p.department_id : null;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(p);
+  }
+  const departments = [...groups.entries()].map(([key, members]) => ({
+    id: key, name_ar: key ? deptName.get(key) : 'بلا إدارة',
+    headcount: members.length,
+    avgNow: avg(members.map(loadOf)), avgAnnual: avg(members.map((p) => p.annual)),
+    over: members.filter((p) => loadOf(p) > UTIL_BANDS.OVER_ABOVE).length,
+    free: members.filter((p) => loadOf(p) === 0).length,
+    ids: members.map((p) => p.id),
+  })).sort((a, b) => (a.id === null) - (b.id === null) || (b.headcount - a.headcount)
+    || String(a.name_ar).localeCompare(String(b.name_ar), 'ar'));
+  return {
+    year, sector: r.sector || null, currentMonth: nowM, basis: 'plan',
+    people, departments,
+    avgNow: avg(people.map(loadOf)),
+    over: people.filter((p) => loadOf(p) > UTIL_BANDS.OVER_ABOVE).length,
+    free: people.filter((p) => loadOf(p) === 0).length,
+  };
 }
