@@ -270,7 +270,7 @@ test('قائد قطاع لا يُسند عمل قطاع آخر — وهذه هي
 // منذ قلب الرؤية (قرار المالك ٢٠٢٦-٠٨: «BD يرى فرصه») صار إسنادُ BD محصوراً بفرصه المملوكة —
 // فالإسناد كتابةٌ على الفرصة، والكتابة تتبع منح التعديل وهو «خاصتي». فرصُ زملائه في قطاعه
 // يُسندها قائدُ القطاع لا هو.
-test('مدير تطوير الأعمال يُسند فرصه هو — لا فرص زملائه ولا مشاريعه', async () => {
+test('مدير تطوير الأعمال يُسند فرصه هو ومشاريع قطاعه — لا فرص زملائه ولا مشاريع قطاع آخر', async () => {
   await insert('opportunity', { id: 'WBD', code: 'WBD', title_ar: 'فرصة WBD', sector_id: 'STRATEGIC',
     owner_user_id: 'u_bd_strat', stage_id: 'LEAD', win_pct: 20, value_halalas: 100000, year: 2026,
     created_at: '2026-03-08T00:00:00Z' });
@@ -282,9 +282,15 @@ test('مدير تطوير الأعمال يُسند فرصه هو — لا فر�
     () => attr.setWorkDepartment(ctx(bdStrat), { kind: 'opportunity', id: 'W4', departmentId: 'D_TRANS' }),
     (e) => e.code === 'forbidden');
   assert.equal((await get('SELECT department_id FROM opportunity WHERE id = ?', ['W4'])).department_id, null);
-  assert.equal(can(bdStrat, 'update', 'project'), false, 'لا منح تعديل مشاريع أصلاً');
+  // قرار المالك ٢٠٢٦-٠٨-١٧: صار يدير مشاريع قطاعه — تعديلاً وإسناداً — فانقلب الشرط قصداً.
+  assert.equal(can(bdStrat, 'update', 'project'), true, 'منح تعديل مشاريع قطاعه (قرار ٢٠٢٦-٠٨-١٧)');
+  const okProj = await attr.setWorkDepartment(ctx(bdStrat), { kind: 'project', id: 'WP1', departmentId: 'D_TRANS' });
+  assert.equal(okProj.ok, true, 'يُسند مشروع قطاعه إلى إدارة داخله');
+  // ومشروع قطاعٍ آخر يبقى مردوداً — الحدود القطاعية لم تتغيّر.
+  await insert('project', { id: 'WP_CONS', name_ar: 'مشروع استشاري', sector_id: 'CONSULTING',
+    owner_user_id: 'u_lead_sol', status: 'IN_PROGRESS', created_at: T });
   await assert.rejects(
-    () => attr.setWorkDepartment(ctx(bdStrat), { kind: 'project', id: 'WP1', departmentId: 'D_TRANS' }),
+    () => attr.setWorkDepartment(ctx(bdStrat), { kind: 'project', id: 'WP_CONS', departmentId: 'D_PMO' }),
     (e) => e.code === 'forbidden');
 });
 

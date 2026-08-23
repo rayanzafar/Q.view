@@ -80,13 +80,19 @@ test('الفجوة التاريخية تُرسم «غير مسكن» بحتمي�
 });
 
 test('القراءة بلا كتابة: قارئٌ يبلغ الصفحة يرى المصفوفة و#staff-q بلا أزرار كتابة', async () => {
-  // bd_manager يقرأ الموظفين (بوابة الصفحة القائمة) ولا يملك تسكيناً — القارئ الحقيقي هنا.
-  const reader = { id: 'u_bd', username: 'bd', role_id: 'bd_manager', scope: 'sector', sector_id: 'S1' };
+  // المدير المباشر يقرأ موظفي إدارته ولا يكتب تسكيناً ولا مشروعاً — القارئ الحقيقي هنا.
+  // (كان القارئ مديرَ تطوير الأعمال حتى قرار المالك ٢٠٢٦-٠٨-١٧: صار يدير مشاريع قطاعه
+  //  فصارت أزرار التسكين حقاً له — انظر tests/security/bd-project-management.test.js.)
+  const reader = { id: 'u_lm', username: 'lm', role_id: 'line_manager', scope: 'department', sector_id: 'S1', departmentIds: ['D1'] };
   const html = await P.staffingPage(reader, {});
   assert.ok(html.includes('id="staff-q"'), 'مرساة الجولة يجب أن تُرندر لكل دور يبلغ الصفحة');
   assert.ok(!html.includes('data-action="staff-new"'), 'زر تسكين جديد ظهر لقارئ');
   assert.ok(!html.includes('data-action="mx-select-toggle"'), 'زر التحديد ظهر لقارئ');
   assert.ok(!/undefined|NaN|\[object/.test(html));
+  // ومدير تطوير الأعمال لم يعد قارئاً: زر التسكين يظهر له بقرار المالك ٢٠٢٦-٠٨-١٧.
+  const bd = { id: 'u_bd', username: 'bd', role_id: 'bd_manager', scope: 'sector', sector_id: 'S1' };
+  const bdHtml = await P.staffingPage(bd, {});
+  assert.ok(bdHtml.includes('data-action="staff-new"'), 'يدير مشاريع قطاعه فيسكّن عليها');
 });
 
 test('نطاق أعمى: «لا أعضاء ضمن نطاقك» حرفياً', async () => {

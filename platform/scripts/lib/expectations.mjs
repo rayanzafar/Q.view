@@ -154,7 +154,8 @@ export const API_PROBES = [
   // seven new roles holds it (bd_head reads the roster, it does not write it).
   { method: 'POST', path: '/api/org/employees', body: {}, expect: { default: 403, admin: 400, sector_lead: 400, hr: 400 } },
   // operations: create project @sector and its sector matches its own → reaches validation.
-  { method: 'POST', path: '/api/projects', body: {}, expect: { default: 403, admin: 400, sector_lead: 400, project_manager: 400, bd_head: 400, operations: 400 } },
+  // bd_manager انضمّ بقرار المالك ٢٠٢٦-٠٨-١٧: يدير مشاريع قطاعه إنشاءً وتعديلاً (بلا حذف).
+  { method: 'POST', path: '/api/projects', body: {}, expect: { default: 403, admin: 400, sector_lead: 400, project_manager: 400, bd_head: 400, operations: 400, bd_manager: 400 } },
   // «مهامي» و«سجل الوقت» مفتوحتان لكل مستخدم مسجَّل بقرار منتج معلن (PAGE_ACCESS.tasks/timesheet)،
   // والخدمتان لا تفحصان منح الإنشاء إطلاقاً — لذلك 400 للجميع. القاعدة كُتبت حين كان «كل مستخدم
   // مسجَّل» = موظفاً؛ حساب `external` يكسر هذا الافتراض. مُبلَّغ عنه كعيب QD-3.
