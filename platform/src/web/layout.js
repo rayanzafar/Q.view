@@ -38,6 +38,11 @@ const STYLE = `
   --fs-micro:10.5px; --fs-meta:11.5px; --fs-body:12.5px; --fs-ui:13px; --fs-title:14px; --fs-page:16px;
   --fs-num-sm:15px; --fs-num-md:1.35rem; --fs-num-lg:1.9rem;
   --pad-card-h:.85rem 1rem; --pad-card-b:.7rem 1rem; --pad-cell:.45rem .7rem; --gap:.9rem;
+  /* لوحة القيادة (v5.38 · ADR-0011): أحجام قيم ثلاثة، رموز حالة دلالية، مسار/علامة الرسم */
+  --fs-val-lg:30px; --fs-val-md:22px; --fs-val-sm:16px;
+  --st-good:#047857; --st-warn:#d97706; --st-bad:#b91c1c; --st-neut:#64748b;
+  --st-good-soft:#e1f3e9; --st-warn-soft:#fdf0e0; --st-bad-soft:#fbe9e9; --st-neut-soft:#eef1f5;
+  --track:#eef1f7; --tick:#98a2b3;
 }
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font-family:'IBM Plex Sans Arabic','Segoe UI',Tahoma,system-ui,-apple-system,sans-serif;line-height:1.7;-webkit-font-smoothing:antialiased}
@@ -57,6 +62,61 @@ a{text-decoration:none;color:inherit}
 .metric{font-size:1.9rem;font-weight:800;letter-spacing:-.02em;line-height:1.1}
 .bar{height:6px;background:#eef1f7;border-radius:999px;overflow:hidden}
 .bar>span{display:block;height:100%;border-radius:999px}
+/* ── لبنات لوحة القيادة (v5.38 · ADR-0011): شبكة 12، طبقات بسؤالها، بطاقة مؤشر، شارة حكم، لغة رسم واحدة ── */
+.dash{max-width:1400px;margin-inline:auto;display:grid;gap:1rem}
+.g12{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:1rem}
+.c4{grid-column:span 4}.c5{grid-column:span 5}.c7{grid-column:span 7}.c8{grid-column:span 8}.c12{grid-column:span 12}
+.tier{display:flex;align-items:baseline;gap:.6rem;margin-top:.2rem}
+.tier .q{font-size:var(--fs-page);font-weight:800;color:var(--ink2)}
+.tier .s{font-size:var(--fs-body);color:var(--muted)}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--sh-sm);padding:.9rem 1rem;display:grid;gap:.34rem;align-content:start;cursor:pointer;position:relative;text-align:start;font-family:inherit;transition:box-shadow .15s}
+.tile:hover{box-shadow:var(--sh)}
+.tile:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.tile .eye{font-size:var(--fs-body);color:var(--muted);font-weight:700}
+.tile .val{font-size:var(--fs-val-lg);font-weight:800;color:var(--ink2);line-height:1.15;letter-spacing:-.01em}
+.tile .unit{font-size:var(--fs-body);color:var(--muted)}
+.tile .chev{position:absolute;inset-inline-end:.7rem;top:.75rem;color:var(--line);font-size:12px}
+.tile:hover .chev{color:var(--muted)}
+.sig{display:inline-flex;align-items:center;gap:.35rem;font-size:var(--fs-body);font-weight:700;color:var(--ink2);border-radius:999px;padding:.08rem .6rem;background:var(--st-neut-soft);width:fit-content;max-width:100%}
+.sig .g{font-size:10px;flex:none}
+.sig>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sig.ok{background:var(--st-good-soft)} .sig.ok .g{color:var(--st-good)}
+.sig.warn{background:var(--st-warn-soft);color:var(--st-warn)}
+.sig.bad{background:var(--st-bad-soft);color:var(--st-bad)}
+.fig-b{display:grid;gap:3px}
+.fig-b .tr{position:relative;height:6px;border-radius:4px;background:var(--track)}
+.fig-b .fl{position:absolute;inset-block:0;inset-inline-start:0;border-radius:inherit;background:var(--brand)}
+.fig-b .tk{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--tick)}
+.fig-s{display:flex;height:10px;border-radius:5px;overflow:hidden;gap:2px}
+.fig-s.mini{height:6px;margin-top:2px}
+.fig-s i{display:block;height:100%}
+.fig-bars{display:grid;gap:7px}
+.fig-r{display:grid;grid-template-columns:minmax(72px,96px) 1fr 34px 64px;gap:8px;align-items:center;font-size:var(--fs-body);border:none;background:none;padding:.1rem .2rem;font-family:inherit;text-align:start;width:100%}
+.fig-r .l{color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fig-r .tr{height:12px;border-radius:3px;background:var(--track);position:relative}
+.fig-r .tr i{position:absolute;inset-block:0;inset-inline-start:0;background:var(--brand);border-radius:inherit;opacity:.92}
+.fig-r .c{color:var(--muted);text-align:start}
+.fig-r .v{font-weight:800;color:var(--ink2);text-align:start;white-space:nowrap}
+.fig-r.total .l{font-weight:800}
+.fig-r[role=button]{cursor:pointer;border-radius:6px}
+.fig-r[role=button]:hover{background:var(--bg)}
+.fig-r[role=button]:focus-visible{outline:2px solid var(--brand);outline-offset:1px}
+.fig-leg{display:grid;gap:4px;margin-top:.5rem;font-size:var(--fs-body)}
+.fig-leg .r{display:flex;align-items:center;gap:.5rem;border:none;background:none;padding:.12rem .25rem;font-family:inherit;font-size:inherit;text-align:start;border-radius:6px;width:100%;color:var(--ink2)}
+.fig-leg .r[role=button]{cursor:pointer}
+.fig-leg .r[role=button]:hover{background:var(--bg)}
+.fig-leg .r[role=button]:focus-visible{outline:2px solid var(--brand);outline-offset:1px}
+.fig-leg .d{width:8px;height:8px;border-radius:2px;flex:none}
+.fig-leg .n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fig-leg b{font-weight:800;color:var(--ink2)}
+.fig-leg .m{color:var(--muted)}
+.fig-cols{display:flex;align-items:flex-end;gap:4px;height:96px;direction:ltr;justify-content:flex-end}
+.fig-cols .cc{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;justify-content:flex-end;height:100%;min-width:0}
+.fig-cols .cc i{width:70%;max-width:22px;background:var(--brand);border-radius:3px 3px 0 0;display:block;opacity:.85;min-height:2px}
+.fig-cols .cc.now i{background:var(--brand2);opacity:1}
+.fig-cols .cc b{font-size:var(--fs-micro);color:var(--muted);font-weight:700}
+@media(max-width:1280px){.g12 .c4{grid-column:span 6}}
+@media(max-width:980px){.g12 .c4,.g12 .c5,.g12 .c7,.g12 .c8{grid-column:span 12}}
 select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding:.3rem .6rem;font-size:12px;font-weight:700;color:var(--ink2)}
 
 /* ── component layer (v2 redesign) ── */
@@ -339,9 +399,6 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
 
 /* شريط «الإيقاع مقابل الخطة»: مقياسه المستهدف فقط (100% = الهدف السنوي)؛ التعبئة = المحقق؛
    النقطة الذهبية = أين يجب أن نكون اليوم (انقضى N% من السنة). المتوقع سطر نصي، لا شريط. */
-.pace-bar{position:relative;height:14px;background:#eef1f7;border-radius:7px}
-.pace-bar .fill{position:absolute;inset-block:2.5px;inset-inline-start:0;border-radius:5px;max-width:100%;background:var(--brand)}
-.pace-bar .now{position:absolute;top:50%;transform:translate(50%,-50%);z-index:1}
 .pace-chip{display:inline-flex;align-items:center;gap:.3rem;padding:.14rem .5rem;border-radius:999px;font-size:var(--fs-micro);font-weight:800;line-height:1.5}
 .pace-chip.up{background:#ecfdf5;color:var(--green)}
 .pace-chip.down{background:#fef2f2;color:var(--red)}
@@ -618,6 +675,52 @@ export function utilStrip(months, now = 0) {
 }
 
 // Radial attainment gauge (SVG donut). pct may exceed 100 (over-target) — arc clamps, label shows true %.
+// ── لغة الرسم الواحدة (v5.38 · ADR-0011) — أسلوبٌ واحد للمفهوم الواحد عبر المنصة ──
+// «محقّق مقابل مستهدف» = مسار خطي بعلامة «أين يجب أن نكون» — لا حلقة ولا عداد.
+// pct/tick بنسب مئوية (يُقصّان 0–100)، والوصف الصوتي يُمرَّر جاهزاً بالأرقام كلماتٍ.
+export function figBullet({ pct = 0, tick = null, fill = null, ariaLabel = '' } = {}) {
+  const p = Math.max(0, Math.min(100, Math.round(Number(pct) || 0)));
+  const t = tick == null ? null : Math.max(0, Math.min(100, Math.round(Number(tick) || 0)));
+  return `<div class="fig-b" role="img"${ariaLabel ? ` aria-label="${esc(ariaLabel)}"` : ' aria-hidden="true"'}>
+    <div class="tr"><i class="fl" style="width:${p}%${fill ? `;background:${esc(fill)}` : ''}"></i>${t == null ? '' : `<i class="tk" style="inset-inline-start:${t}%"></i>`}</div></div>`;
+}
+
+// تركيبة كلٍّ = شريط مكدَّس 100% بفواصل سطحية — القطعة الصفرية لا تُرسم (الأصفار في الوصف).
+export function figStacked100(segs, { mini = false, ariaLabel = '' } = {}) {
+  const rows = (segs || []).map((x) => ({ v: Math.max(0, Number(x.v) || 0), color: x.color || 'var(--st-neut)' }));
+  const sum = rows.reduce((a, x) => a + x.v, 0);
+  const inner = sum <= 0 ? `<i style="width:100%;background:var(--track)"></i>`
+    : rows.filter((x) => x.v > 0).map((x) => `<i style="width:${(x.v / sum * 100).toFixed(1)}%;background:${esc(x.color)}"></i>`).join('');
+  return `<div class="fig-s${mini ? ' mini' : ''}" role="img"${ariaLabel ? ` aria-label="${esc(ariaLabel)}"` : ' aria-hidden="true"'}>${inner}</div>`;
+}
+
+// مقاديرُ مرتَّبة = صفوف شريطية بلونٍ واحد، العدُّ والقيمة معاً — لا مبدّل عرض.
+// صفٌّ له dd يُرسم زرّاً يفتح تفصيله في مكانه؛ labelHtml يُمرَّر مُؤمَّناً من المستدعي.
+export function figBars(rows, { fmt = (v) => String(v), max = null } = {}) {
+  const list = rows || [];
+  const top = max ?? Math.max(1, ...list.map((r) => Number(r.value) || 0));
+  return `<div class="fig-bars">${list.map((r) => {
+    const w = Math.max(0, Math.min(100, (Number(r.value) || 0) / top * 100)).toFixed(1);
+    const tag = r.dd ? 'button' : 'div';
+    const attrs = r.dd ? ` type="button" data-action="open-dd" data-dd="${esc(r.dd)}" aria-label="${esc(r.ariaLabel || '')}"` : '';
+    return `<${tag} class="fig-r${r.total ? ' total' : ''}"${r.dd ? ' role="button"' : ''}${attrs}>
+      <span class="l">${r.labelHtml ?? esc(r.label || '')}</span>
+      <span class="tr"><i style="width:${w}%${r.fill ? `;background:${esc(r.fill)}` : ''}"></i></span>
+      <span class="c tnum">${r.count ?? ''}</span>
+      <span class="v tnum">${esc(fmt(Number(r.value) || 0))}</span>
+    </${tag}>`;
+  }).join('')}</div>`;
+}
+
+// قيمة عبر الزمن = أعمدة على محورٍ يقرأ يميناً (اتجاه القراءة = مضيّ الزمن)، والجاري مميّز.
+// cols بترتيب الزمن تصاعدياً؛ تُعكس داخلياً كي يكون الأقدم أقصى اليمين.
+export function figColumns(cols, { now = 0, ariaLabel = '' } = {}) {
+  const list = (cols || []).map((c, i) => ({ v: Math.max(0, Number(c.v) || 0), label: c.label ?? String(i + 1), idx: i + 1 }));
+  const top = Math.max(1, ...list.map((c) => c.v));
+  return `<div class="fig-cols" role="img"${ariaLabel ? ` aria-label="${esc(ariaLabel)}"` : ' aria-hidden="true"'}>${[...list].reverse().map((c) => `
+    <span class="cc${c.idx === now ? ' now' : ''}" title="${esc(c.label)}"><i style="height:${(c.v / top * 100).toFixed(0)}%"></i><b class="tnum">${esc(String(c.label))}</b></span>`).join('')}</div>`;
+}
+
 export function gauge(pct, opts = {}) {
   const size = opts.size || 128, sw = opts.sw || 12, r = (size - sw) / 2, C = 2 * Math.PI * r;
   const p = Math.max(0, Math.min(100, pct || 0));
