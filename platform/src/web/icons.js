@@ -1,5 +1,7 @@
 // Inline SVG line icons (24px, stroke-based) — no external requests. Consistent 1.75 stroke.
 const P = {
+  // تلميح معلومة: دائرة i — بديل محرف ⓘ الذي لا تحمله خطوط المنصة (v5.38)
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 8h.01"/><path d="M11 12h1v4h1.5"/>',
   // «صفحتي»: شروقٌ لا منزل — الصفحة بدايةُ يومٍ لا مسكن، وشكلها يميّزها عن كل أيقونة أخرى.
   home: '<path d="M3 18h18"/><path d="M7.5 18a4.5 4.5 0 019 0"/><path d="M12 4.5v2.5M5.4 7.4l1.8 1.8M18.6 7.4l-1.8 1.8M2.5 13.5h2M19.5 13.5h2"/>',
   ceo: '<path d="M3 3v18h18"/><path d="M7 14l3-3 3 2 5-6"/>',

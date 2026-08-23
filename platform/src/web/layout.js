@@ -81,7 +81,7 @@ a{text-decoration:none;color:inherit}
 .sig .g{font-size:10px;flex:none}
 .sig>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sig.ok{background:var(--st-good-soft)} .sig.ok .g{color:var(--st-good)}
-.sig.warn{background:var(--st-warn-soft);color:var(--st-warn)}
+.sig.warn{background:var(--st-warn-soft);color:#92400e} .sig.warn .g{color:var(--st-warn)}
 .sig.bad{background:var(--st-bad-soft);color:var(--st-bad)}
 .fig-b{display:grid;gap:3px}
 .fig-b .tr{position:relative;height:6px;border-radius:4px;background:var(--track)}
@@ -117,7 +117,8 @@ a{text-decoration:none;color:inherit}
 .fig-cols .cc b{font-size:var(--fs-micro);color:var(--muted);font-weight:700}
 @media(max-width:1280px){.g12 .c4{grid-column:span 6}}
 @media(max-width:980px){.g12 .c4,.g12 .c5,.g12 .c7,.g12 .c8{grid-column:span 12}}
-@media(max-width:640px){.fig-r{grid-template-columns:minmax(56px,auto) 1fr auto auto;gap:6px}.fig-r .v{font-size:var(--fs-body)}}
+@media(max-width:640px){.fig-r{grid-template-columns:minmax(56px,auto) 1fr auto auto;gap:6px}.fig-r .v{font-size:var(--fs-body)}
+.fig-r[role=button],.fig-leg .r[role=button],.tile{min-height:40px}}
 select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding:.3rem .6rem;font-size:12px;font-weight:700;color:var(--ink2)}
 
 /* ── component layer (v2 redesign) ── */
@@ -516,7 +517,7 @@ window.__SANAD_MONTHS=${JSON.stringify(MONTHS_AR)};window.__SANAD_MONTHS_EN=${JS
     <header class="hdr-bar" style="height:60px;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;flex:0 0 auto">
       <div class="hdr-lead" style="display:flex;align-items:center">
         <button class="side-toggle" aria-label="القائمة" onclick="document.body.classList.toggle('side-open')">${icon('menu') || '☰'}</button>
-        <div class="hdr-title" title="${esc(title || '')}"><div style="font-weight:800;font-size:var(--fs-page)">${esc(title || '')}</div>${subtitle ? `<div style="font-size:12px;color:var(--muted)">${esc(subtitle)}</div>` : ''}</div>
+        <div class="hdr-title" title="${esc(title || '')}"><h1 style="margin:0;font-weight:800;font-size:var(--fs-page);color:var(--ink2)">${esc(title || '')}</h1>${subtitle ? `<div style="font-size:12px;color:var(--muted)">${esc(subtitle)}</div>` : ''}</div>
       </div>
       <div class="hdr-right" style="display:flex;align-items:center">
         ${yearSel}
@@ -707,7 +708,7 @@ export function figBars(rows, { fmt = (v) => String(v), max = null } = {}) {
     return `<${tag} class="fig-r${r.total ? ' total' : ''}"${r.dd ? ' role="button"' : ''}${attrs}>
       <span class="l">${r.labelHtml ?? esc(r.label || '')}</span>
       <span class="tr"><i style="width:${w}%${r.fill ? `;background:${esc(r.fill)}` : ''}"></i></span>
-      <span class="c tnum">${r.count ?? ''}</span>
+      <span class="c tnum">${esc(String(r.count ?? ''))}</span>
       <span class="v tnum">${esc(fmt(Number(r.value) || 0))}</span>
     </${tag}>`;
   }).join('')}</div>`;

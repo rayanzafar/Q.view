@@ -139,6 +139,15 @@
     if (t && document.contains(t)) setTimeout(function () { t.focus(); }, 0);
   }
   on(document, 'keydown', function (e) { if (e.key === 'Escape' && lastTrigger) restoreFocus(); });
+  // قائمة «التقارير» تُغلق بالهروب وبالنقر خارجها — كسائر نوافذ الصفحة
+  function closeMenu(refocus) {
+    var m = document.querySelector('.rmenu[open]');
+    if (!m) return;
+    m.removeAttribute('open');
+    if (refocus) { var sm = m.querySelector('summary'); if (sm) sm.focus(); }
+  }
+  on(document, 'keydown', function (e) { if (e.key === 'Escape') closeMenu(true); });
+  on(document, 'click', function (e) { if (!e.target.closest('.rmenu')) closeMenu(false); });
   on(document, 'click', function (e) {
     if (lastTrigger && e.target.closest('#modal .modal-head button')) restoreFocus();
   });

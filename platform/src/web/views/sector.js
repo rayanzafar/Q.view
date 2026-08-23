@@ -68,8 +68,8 @@ const CSS = `<style>
 .seg a.on{background:#fff;color:var(--ink2);box-shadow:var(--sh-sm)}
 /* الطبقات وشريط الستّ: رؤوس بطاقات بخلاصةٍ محسوبة، صفوف «افعل اليوم»، ودرج التحليل */
 .band6{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:1rem}
-@media(max-width:1280px){.band6{grid-template-columns:repeat(3,1fr)}}
-@media(max-width:640px){.band6{grid-template-columns:1fr 1fr}.band6>.tile:first-child{grid-column:span 2}}
+@media(max-width:1280px){.band6{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:640px){.band6{grid-template-columns:repeat(2,minmax(0,1fr))}.band6>.tile:first-child{grid-column:span 2}}
 .g12>div>.card{display:flex;flex-direction:column;min-width:0;height:100%}
 .card.h-c,.card.h-d{max-height:460px}
 .card .cbody{overflow-y:auto;flex:1;min-height:0}
@@ -86,7 +86,9 @@ const CSS = `<style>
 .act-r .tx .s{font-size:var(--fs-body);color:var(--muted);display:block}
 .act-r .go{justify-self:start}
 .act-r .go svg{width:13px;height:13px}
-@media(max-width:640px){.act-r{grid-template-columns:28px 1fr}.act-r .go{grid-column:2;justify-self:start}}
+@media(max-width:640px){.act-r{grid-template-columns:28px 1fr}.act-r .go{grid-column:2;justify-self:start;min-height:40px}
+.chg-cat,.seg a,.seg button,.rmenu summary,.cap-li-btn{min-height:40px;display:inline-flex;align-items:center}
+.card-foot a,.card-foot button{min-height:40px;display:inline-flex;align-items:center}}
 .rmenu{position:relative}
 .rmenu summary{list-style:none;cursor:pointer}
 .rmenu summary::-webkit-details-marker{display:none}
@@ -114,7 +116,7 @@ ${CARD_HEAD_CSS}
 .chg .s{display:block;font-size:var(--fs-micro);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .chg .meta{flex:none;text-align:left;display:flex;flex-direction:column;align-items:flex-end;gap:.15rem}
 .chg .amt{font-size:var(--fs-meta);font-weight:800;color:var(--ink2)}
-.chg .d{font-size:10px;color:var(--faint)}
+.chg .d{font-size:10px;color:var(--muted)}
 .chg.won{border-inline-start-color:var(--green);background:#f0fdf4}
 .chg.lost{border-inline-start-color:var(--red);background:#fef2f2}
 .chg[hidden]{display:none}
@@ -145,7 +147,7 @@ ${CARD_HEAD_CSS}
 .cap-av.r2{top:44px}
 .cap-av.over{background:linear-gradient(120deg,#b91c1c,#dc2626)}
 .cap-av.free{background:linear-gradient(120deg,#047857,#059669)}
-.cap-ticks{position:relative;height:14px;font-size:9.5px;color:var(--faint)}
+.cap-ticks{position:relative;height:14px;font-size:9.5px;color:var(--muted)}
 .cap-ticks span{position:absolute;transform:translateX(-50%)}
 .cap-lists{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:.7rem;border-top:1px dashed var(--line);padding-top:.5rem}
 .cap-lists>div{min-width:0}
@@ -158,6 +160,8 @@ ${CARD_HEAD_CSS}
 .dd-row.cap-li-btn{padding:.5rem .35rem}
 @media(max-width:640px){.cap-li-btn{padding:.45rem .35rem}}
 .cap-li-btn:focus-visible{outline:2px solid var(--brand);outline-offset:1px}
+.tipdot{color:var(--muted);display:inline-flex;vertical-align:middle}
+.tipdot svg{width:13px;height:13px}
 /* نافذة الشخص: ثلاث إحصاءات وشريط اثني عشر شهراً — خطةٌ صرفة بألوان عتبات التسكين */
 .cap-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.5rem;margin:.3rem 0 .2rem}
 .cap-stat{background:#f8fafc;border:1px solid var(--line);border-radius:10px;padding:.45rem .6rem;min-width:0}
@@ -408,16 +412,17 @@ export async function sectorPage(user, opts = {}) {
   const dSales = paceDelta(sd.sales_halalas, sd.target_sales_halalas, now, year);
   const ragActive = (sd.rag.GREEN || 0) + (sd.rag.AMBER || 0) + (sd.rag.RED || 0);
   const needsN = (sd.rag.AMBER || 0) + (sd.rag.RED || 0);
-  const ptWord = (n) => countAr(Math.abs(n), { one: 'نقطة واحدة', two: 'نقطتين', few: 'نقاط', many: 'نقطة' });
-  // شارة الحكم: رمزٌ وكلمة معاً — واللون لغير السليم وحده (قاعدة «الرمادي أولاً»، ADR-0011)
+  const ptWord = (n) => { const a = Math.abs(n); return a === 1 ? 'بنقطة واحدة' : a === 2 ? 'بنقطتين' : a <= 10 ? `بـ${a} نقاط` : `بـ${a} نقطة`; };
+  // شارة الحكم: رمزٌ وكلمة معاً — واللون لغير السليم وحده (قاعدة «الرمادي أولاً»، ADR-0011).
+  // نصّها HTML جاهز الهروب لدى المستدعي (كاتفاق labelHtml) — النصوص الحيّة تمرّ بـesc() هناك.
   const sig = (tone, glyph, text) => `<span class="sig ${tone}"><span class="g" aria-hidden="true">${glyph}</span><span>${text}</span></span>`;
   const paceSig = (d) => d == null ? ''
-    : d >= 3 ? sig('ok', '▲', `متقدم بـ${ptWord(d)} عن المسار الزمني`)
-      : d <= -3 ? sig('warn', '▼', `متأخر بـ${ptWord(d)} عن المسار الزمني`)
+    : d >= 3 ? sig('ok', '▲', `متقدم ${ptWord(d)} عن المسار الزمني`)
+      : d <= -3 ? sig('warn', '▼', `متأخر ${ptWord(d)} عن المسار الزمني`)
         : sig('ok', '✓', 'على المسار الزمني');
   // بطاقة المؤشر: تسمية ← قيمة ← وحدة/فترة ← رسم خطي ← حكم — والبطاقة كلها تفتح تفصيلها.
   const tile = ({ eye, val, valColor = '', unit = '', fig = '', verdict = '', dd = '', act = '', title = '' }) => `
-    <div class="tile"${dd || act ? ` role="button" tabindex="0" data-action="${act || 'open-dd'}"${dd ? ` data-dd="${dd}"` : ''} aria-label="${eye} — التفصيل"` : ''}${title ? ` title="${esc(title)}"` : ''}>
+    <div class="tile"${dd || act ? ` role="button" tabindex="0" data-action="${esc(act || 'open-dd')}"${dd ? ` data-dd="${esc(dd)}"` : ''} aria-label="${esc(eye)}: ${esc(String(val).replace(/<[^>]*>/g, ''))} — التفصيل"` : ''}${title ? ` title="${esc(title)}"` : ''}>
       <span class="chev" aria-hidden="true">‹</span>
       <span class="eye">${eye}</span>
       <span class="val tnum"${valColor ? ` style="color:${valColor}"` : ''}>${val}</span>
@@ -441,8 +446,8 @@ export async function sectorPage(user, opts = {}) {
     <span class="pill" style="background:#fdf6e3;color:#8a6d1a;gap:.4rem">${nowDot('')} ${G.yearElapsed(elapsed)}</span>
     <details class="rmenu"><summary class="btn btn-sm">التقارير ▾</summary>
       <div class="rmenu-b">
-        <button class="btn btn-sm" data-action="report-preview" data-report="sector_weekly_status">التقرير الأسبوعي</button>
-        <button class="btn btn-sm" data-action="report-preview" data-report="monthly_sector_performance">التقرير الشهري</button>
+        <button class="btn btn-sm" data-action="report-preview" data-report="sector_weekly_status">حالة القطاع الأسبوعية</button>
+        <button class="btn btn-sm" data-action="report-preview" data-report="monthly_sector_performance">أداء القطاع الشهري</button>
         <button class="btn btn-sm" data-action="report-send" data-report="sector_weekly_status">أرسله لي الآن</button>
         <a class="btn btn-primary btn-sm" href="/app/reports">جدولة التقارير</a>
       </div></details>
@@ -461,7 +466,7 @@ export async function sectorPage(user, opts = {}) {
   const stageRow = (st) => ({
     labelHtml: `${esc(st.name_ar)}${selStage && selStage.id === st.id ? ' <span aria-hidden="true">✕</span>' : ''}`,
     value: st.value_halalas, count: st.count, dd: `fnl-${st.id}`,
-    ariaLabel: `مرحلة ${st.name_ar}: ${countAr(st.count, { one: 'فرصة واحدة', two: 'فرصتان', few: 'فرص', many: 'فرصة', zero: 'لا فرص' })} بقيمة ${fmtSar(st.value_halalas)} — التفصيل`,
+    ariaLabel: `مرحلة ${st.name_ar}: ${countAr(st.count, { one: 'فرصة واحدة', two: 'فرصتان', few: 'فرص', many: 'فرصة', zero: 'لا فرص' })}${st.count ? ` بقيمة ${fmtSar(st.value_halalas)}` : ''} — التفصيل`,
     fill: selStage && selStage.id === st.id ? 'var(--brand2)' : null,
   });
   const funnelRows = openTotalC === 0 ? '' : figBars([
@@ -473,15 +478,15 @@ export async function sectorPage(user, opts = {}) {
   const oppsHref = `/app/opportunities?year=${year}${user.scope === 'company' ? '&sector=' + esc(sectorId) : ''}`;
   const funnelCard = card(`
     <div class="card-head">
-      <span class="hgrp"><span class="eyebrow">${G.funnel}${selStage ? ` — مرحلة ${esc(selStage.name_ar)}` : ''} <span data-tip="عرض كل شريط من قيمته نسبةً إلى الإجمالي المفتوح — والعدد والقيمة مطبوعان معاً. «معلّقة» خارج القمع بقرار تأجيل." tabindex="0" style="color:var(--faint)">ⓘ</span></span>
+      <span class="hgrp"><span class="eyebrow">${G.funnel}${selStage ? ` — مرحلة ${esc(selStage.name_ar)}` : ''} <span class="tipdot" data-tip="عرض كل شريط من قيمته نسبةً إلى الإجمالي المفتوح — والعدد والقيمة مطبوعان معاً. «معلّقة» خارج القمع بقرار تأجيل." tabindex="0" role="img" aria-label="عرض كل شريط من قيمته نسبةً إلى الإجمالي المفتوح — والعدد والقيمة مطبوعان معاً. «معلّقة» خارج القمع بقرار تأجيل.">${icon('info')}</span></span>
       <span class="t">${!openTotalC ? 'لا فرص مفتوحة الآن'
     : stalledRows.length ? `${countAr(stalledRows.length, { one: 'فرصة واحدة متوقفة', two: 'فرصتان متوقفتان', few: 'فرص متوقفة', many: 'فرصة متوقفة' })} من ${countAr(openTotalC, { one: 'فرصة مفتوحة', two: 'فرصتين مفتوحتين', few: 'مفتوحة', many: 'مفتوحة' })}`
       : `${countAr(openTotalC, { one: 'فرصة مفتوحة واحدة', two: 'فرصتان مفتوحتان', few: 'فرص مفتوحة', many: 'فرصة مفتوحة' })} بقيمة ${sarShort(openTotalV)}`}</span></span></div>
     <div class="cbody" style="padding:.3rem 1rem .4rem">
       ${funnelRows || `<div class="empty-mini">${icon('filter')} لا فرص مفتوحة الآن — تُنشأ من صفحة «${G.opportunities || 'الفرص'}»</div>`}
       ${openTotalC ? `<div style="font-size:var(--fs-body);color:var(--muted);margin-top:.6rem;display:flex;gap:.8rem;flex-wrap:wrap;align-items:center">
-        <span>متوسط عمر المرحلة <b class="tnum" style="color:var(--ink2)">${dayWord(avgAge)}</b></span>
-        ${stalledRows.length ? `<button type="button" class="sig warn" data-action="open-dd" data-dd="fnl-stalled" style="border:none;cursor:pointer;font-family:inherit"><span class="g" aria-hidden="true">▲</span><span>${countAr(stalledRows.length, { one: 'فرصة تجاوزت مدتها', two: 'فرصتان تجاوزتا مدتهما', few: 'تجاوزت المدة المعتادة', many: 'تجاوزت المدة المعتادة' })} · ${sarShort(stalledV)}</span></button>` : sig('ok', '✓', 'لا فرص متوقفة')}
+        <span>متوسط عمر المرحلة <b class="tnum" style="color:var(--ink2)">${avgAge ? dayWord(avgAge) : 'أقل من يوم'}</b></span>
+        ${stalledRows.length ? `<button type="button" class="sig warn" data-action="open-dd" data-dd="fnl-stalled" style="border:none;cursor:pointer;font-family:inherit"><span class="g" aria-hidden="true">▲</span><span>${countAr(stalledRows.length, { one: 'فرصة تجاوزت مدتها', two: 'فرصتان تجاوزتا مدتهما', few: 'فرص تجاوزت مدتها المعتادة', many: 'فرصة تجاوزت مدتها المعتادة' })} · ${sarShort(stalledV)}</span></button>` : sig('ok', '✓', 'لا فرص متوقفة')}
       </div>` : ''}
       ${onHoldStage && onHoldStage.count ? `<div style="font-size:var(--fs-body);color:var(--muted);border-top:1px dashed var(--line);padding-top:.4rem;margin-top:.45rem">خارج القمع: <b class="tnum">${countAr(onHoldStage.count, { one: 'فرصة واحدة معلّقة', two: 'فرصتان معلّقتان', few: 'فرص معلّقة', many: 'فرصة معلّقة' })}</b> بقيمة <b class="tnum">${sarShort(onHoldStage.value_halalas)}</b></div>` : ''}
     </div>
@@ -540,8 +545,8 @@ export async function sectorPage(user, opts = {}) {
   }).join('');
   const attnCard = card(`
     <div class="card-head" id="act">
-      <span class="hgrp"><span class="eyebrow">${G.attention} <span data-tip="بنود من سجلات القطاع الحية مرتبة حسب أثر القرار: اعتمادات معلقة، مستحقات متأخرة، فرص متوقفة أو بلا خطوة، مخرجات لم تُفوتر، تجاوز طاقة" tabindex="0" style="color:var(--faint)">ⓘ</span></span>
-      <span class="t">${attn.length ? `${countAr(Math.min(attn.length, 6), { one: 'أمر واحد يحتاج تدخلك اليوم', two: 'أمران يحتاجان تدخلك اليوم', few: 'أمور تحتاج تدخلك اليوم', many: 'أمراً يحتاج تدخلك اليوم' })}` : `${G.nothingNeedsYou} — ${G.allGood}`}</span></span></div>
+      <span class="hgrp"><span class="eyebrow">${G.attention} <span class="tipdot" data-tip="بنود من سجلات القطاع الحية مرتبة حسب أثر القرار: اعتمادات معلقة، مستحقات متأخرة، فرص متوقفة أو بلا خطوة، مخرجات لم تُفوتر، تجاوز طاقة" tabindex="0" role="img" aria-label="بنود من سجلات القطاع الحية مرتبة حسب أثر القرار: اعتمادات معلقة، مستحقات متأخرة، فرص متوقفة أو بلا خطوة، مخرجات لم تُفوتر، تجاوز طاقة">${icon('info')}</span></span>
+      <span class="t">${attn.length ? `${countAr(Math.min(attn.length, 6), { one: 'أمر واحد يحتاج تدخلك الآن', two: 'أمران يحتاجان تدخلك الآن', few: 'أمور تحتاج تدخلك الآن', many: 'أمراً يحتاج تدخلك الآن' })}` : `${G.nothingNeedsYou} — ${G.allGood}`}</span></span></div>
     <div class="cbody" style="padding:.15rem .8rem .5rem;display:flex;flex-direction:column">
       ${attnItems || `<div class="alert ok" style="justify-content:center;margin:.5rem 0">${icon('approvals')} ${G.nothingNeedsYou} — ${G.allGood}</div>`}
     </div>
@@ -603,7 +608,7 @@ export async function sectorPage(user, opts = {}) {
   const outsideRoster = team ? team.outsideRoster : 0;
   const outsideLine = (n) => n === 1 ? 'وشخصٌ آخر مُسكَّن على أعمال القطاع من خارج نطاقك — يظهر في صفحة مشروعه'
     : n === 2 ? 'وشخصان آخران مُسكَّنان على أعمال القطاع من خارج نطاقك — يظهران في صفحات مشاريعهما'
-      : `و<b class="tnum">${n}</b> ${n <= 10 ? 'آخرون مُسكَّنون' : 'شخصاً آخر مُسكَّناً'} على أعمال القطاع من خارج نطاقك — يظهرون في صفحات مشاريعهم`;
+      : `و<b class="tnum">${n}</b> ${n <= 10 ? 'آخرين مُسكَّنين' : 'شخصاً آخر مُسكَّنين'} على أعمال القطاع من خارج نطاقك — يظهرون في صفحات مشاريعهم`;
   // الشهر القادم من الأرقام الحاضرة: من يتفرّغ ومن يتجاوز — قرار توزيعٍ قبل أن يقع.
   const nextHint = (() => {
     if (!nowMonth || nowMonth >= 12 || !emps.length) return '';
@@ -617,12 +622,12 @@ export async function sectorPage(user, opts = {}) {
   })();
   const capEmptyState = !emps.length;
   const capInsight = capEmptyState ? (team ? 'لا موظفين ضمن نطاقك في هذا القطاع' : `لا تسكين مسجَّلاً لسنة ${year}`)
-    : overNow.length ? `${countAr(overNow.length, { one: 'موظف واحد فوق الطاقة', two: 'موظفان فوق الطاقة', few: 'موظفين فوق الطاقة', many: 'موظفاً فوق الطاقة' })} من ${teamSize}`
-      : freeNow.length ? `${countAr(freeNow.length, { one: 'موظف واحد بلا تسكين', two: 'موظفان بلا تسكين', few: 'موظفين بلا تسكين', many: 'موظفاً بلا تسكين' })} من ${teamSize}`
+    : overNow.length ? `${countAr(overNow.length, { one: 'موظف واحد فوق الطاقة', two: 'موظفان فوق الطاقة', few: 'موظفين فوق الطاقة', many: 'موظفاً فوق الطاقة' })} من أصل ${teamSize}`
+      : freeNow.length ? `${countAr(freeNow.length, { one: 'موظف واحد بلا تسكين', two: 'موظفان بلا تسكين', few: 'موظفين بلا تسكين', many: 'موظفاً بلا تسكين' })} من أصل ${teamSize}`
         : `الفريق ضمن الطاقة — ${countAr(teamSize, { one: 'موظف واحد', two: 'موظفان', few: 'موظفين', many: 'موظفاً' })}`;
   const capCard = card(`
     <div class="card-head">
-      <span class="hgrp"><span class="eyebrow">طاقة الفريق · <b class="tnum">${teamSize}</b> ${team ? 'ضمن نطاقك' : 'في الفريق'} <span data-tip="${nowMonth ? `النافذة: هذا الشهر (${monthLabel(nowMonth - 1)}) — والقادمة ضمن تسكين ${year} وحدها` : 'النافذة: متوسط السنة'} · الأرقام من خطة التسكين الشهرية لا ساعات العمل" tabindex="0" style="color:var(--faint)">ⓘ</span></span>
+      <span class="hgrp"><span class="eyebrow">طاقة الفريق · <b class="tnum">${teamSize}</b> ${team ? 'ضمن نطاقك' : 'في الفريق'} <span class="tipdot" data-tip="${nowMonth ? `النافذة: هذا الشهر (${monthLabel(nowMonth - 1)}) — والنوافذ القادمة ضمن تسكين ${year} وحدها` : 'النافذة: متوسط السنة'} · الأرقام من خطة التسكين الشهرية لا ساعات العمل" tabindex="0" role="img" aria-label="${nowMonth ? `النافذة: هذا الشهر (${monthLabel(nowMonth - 1)}) — والنوافذ القادمة ضمن تسكين ${year} وحدها` : 'النافذة: متوسط السنة'} · الأرقام من خطة التسكين الشهرية لا ساعات العمل">${icon('info')}</span></span>
       <span class="t">${capInsight}</span></span>
       <span class="aux">
         ${nowMonth && canPeople && !capEmptyState ? `<div class="seg" role="group" aria-label="نافذة الحِمل">${capWindows.map(([k, l], i) =>
@@ -653,10 +658,10 @@ export async function sectorPage(user, opts = {}) {
         ${capAv || `<div dir="rtl" style="position:absolute;inset-inline:0;top:18px;text-align:center;font-size:var(--fs-micro);color:var(--muted)">أسماء الأفراد وأحمالهم تظهر لمن يملك صلاحية عرض الفريق</div>`}
       </div>
       <div class="cap-ticks" dir="ltr">
-        <span style="left:0%">0%</span><span style="left:${capPos(FREE_BELOW)}%">${FREE_BELOW}%</span><span style="left:${capPos(OVER_ABOVE)}%">${OVER_ABOVE}%</span><span style="left:100%;transform:translateX(-100%)">+${AXIS_MAX - 5}%</span>
+        <span style="left:0%">0%</span><span style="left:${capPos(FREE_BELOW)}%">${FREE_BELOW}%</span><span style="left:${capPos(OVER_ABOVE)}%">${OVER_ABOVE}%</span>
       </div>
       ${canPeople && emps.length > CAP_AVATARS ? `<div style="text-align:center;padding:.1rem 0 .2rem"><button type="button" class="btn btn-ghost btn-sm cap-plus" data-action="open-dd" data-dd="seccap">${emps.length - CAP_AVATARS === 1 ? 'وشخصٌ آخر' : emps.length - CAP_AVATARS === 2 ? 'وشخصان آخران' : `و<span class="tnum">${emps.length - CAP_AVATARS}</span> آخرون`} <span aria-hidden="true">⊕</span></button></div>` : ''}
-      <div id="cap-caption" data-tail="الحدود من قواعد التسكين نفسها: ${FREE_BELOW}% و${OVER_ABOVE}%${canPeople ? ' · اضغط على أي شخص لعرض التفصيل' : ''}" style="font-size:var(--fs-micro);color:var(--muted);padding:.15rem 0 .25rem">${nowMonth ? `النافذة: هذا الشهر (${monthLabel(nowMonth - 1)}) — والقادمة ضمن تسكين ${year} وحدها` : 'النافذة: متوسط السنة'} · الحدود من قواعد التسكين نفسها: ${FREE_BELOW}% و${OVER_ABOVE}%${canPeople ? ' · اضغط على أي شخص لعرض التفصيل' : ''}</div>
+      <div id="cap-caption" data-tail="الحدود من قواعد التسكين نفسها: ${FREE_BELOW}% و${OVER_ABOVE}%${canPeople ? ' · اضغط على أي شخص لعرض التفصيل' : ''}" style="font-size:var(--fs-micro);color:var(--muted);padding:.15rem 0 .25rem">${nowMonth ? `النافذة: هذا الشهر (${monthLabel(nowMonth - 1)}) — والنوافذ القادمة ضمن تسكين ${year} وحدها` : 'النافذة: متوسط السنة'} · الحدود من قواعد التسكين نفسها: ${FREE_BELOW}% و${OVER_ABOVE}%${canPeople ? ' · اضغط على أي شخص لعرض التفصيل' : ''}</div>
       ${nextHint}
       ${outsideRoster ? `<div style="font-size:var(--fs-micro);color:var(--muted);padding:0 0 .3rem">${outsideLine(outsideRoster)}</div>` : ''}
     </div>
@@ -684,8 +689,8 @@ export async function sectorPage(user, opts = {}) {
     <div class="card-head">
       <span class="hgrp"><span class="eyebrow">صحة ${G.projects}${sd.openRisks ? ` · ${G.risks} <b class="tnum">${sd.openRisks}</b>` : ''}</span>
       <span class="t">${!ragActive ? 'لا مشاريع مقيَّمة الصحة'
-    : needsN ? `${countAr(needsN, { one: 'مشروع واحد يحتاج تدخلاً', two: 'مشروعان يحتاجان تدخلاً', few: 'مشاريع تحتاج تدخلاً', many: 'مشروعاً يحتاج تدخلاً' })} من ${ragActive}`
-      : `${countAr(ragActive, { one: 'المشروع المقيَّم على المسار', two: 'المشروعان المقيَّمان على المسار', few: 'المشاريع المقيَّمة كلها على المسار', many: 'المشاريع المقيَّمة كلها على المسار' })}`}</span></span></div>
+    : needsN ? `${countAr(needsN, { one: 'مشروع واحد يحتاج تدخلاً', two: 'مشروعان يحتاجان تدخلاً', few: 'مشاريع تحتاج تدخلاً', many: 'مشروعاً يحتاج تدخلاً' })} من أصل ${ragActive}`
+      : `المشاريع المقيَّمة كلها على المسار (<span class="tnum">${ragActive}</span>)`}</span></span></div>
     ${ragActive ? `<div class="cbody" style="padding:.35rem 1rem .45rem">
       ${figStacked100(HEALTH.map(([k, , c]) => ({ v: sd.rag[k] || 0, color: c })), { ariaLabel: HEALTH.map(([k, l]) => `${l} ${sd.rag[k] || 0}`).join(' · ') })}
       <div class="fig-leg">${healthRows}</div>
@@ -707,8 +712,8 @@ export async function sectorPage(user, opts = {}) {
   const signed = (v) => `<span class="tnum" dir="ltr">${v >= 0 ? '+' : '−'}${sarShort(Math.abs(v))}</span>`;
   const trendSection = `
     <div class="c8" style="min-width:0">
-      <div class="chead-x"><span class="eyebrow">${G.revenue} عبر السنة <span data-tip="توزيع المحقق شهرياً — لا خطة شهرية مسجَّلة فلا تُرسم" tabindex="0" style="color:var(--faint)">ⓘ</span></span>
-        <span class="tt">${ytdGap != null ? `الفجوة حتى اليوم ${signed(ytdGap)}${gapPct != null ? ` (<span class="tnum" dir="ltr">${gapPct >= 0 ? '+' : '−'}${Math.abs(gapPct)}%</span>)` : ''} · ` : ''}${G.forecast} <b class="tnum">${sarShort(fc.forecast)}</b>${fcPct != null ? ` (<span class="tnum" dir="ltr">${fcPct >= 0 ? '+' : '−'}${Math.abs(fcPct)}%</span> عن الهدف)` : ''}</span></div>
+      <div class="chead-x"><span class="eyebrow">${G.revenue} عبر السنة <span class="tipdot" data-tip="توزيع المحقق شهرياً — لا خطة شهرية مسجَّلة فلا تُرسم" tabindex="0" role="img" aria-label="توزيع المحقق شهرياً — لا خطة شهرية مسجَّلة فلا تُرسم">${icon('info')}</span></span>
+        <span class="tt">${ytdGap != null ? `${ytdGap >= 0 ? 'متقدم على الخطة' : 'الفجوة حتى اليوم'} ${signed(ytdGap)}${gapPct != null ? ` (<span class="tnum" dir="ltr">${gapPct >= 0 ? '+' : '−'}${Math.abs(gapPct)}%</span>)` : ''} · ` : ''}${G.forecast} <b class="tnum">${sarShort(fc.forecast)}</b>${fcPct != null ? ` (<span class="tnum" dir="ltr">${fcPct >= 0 ? '+' : '−'}${Math.abs(fcPct)}%</span> عن الهدف)` : ''}</span></div>
       ${figColumns(monthly.map((v, i) => ({ v, label: i + 1 })), { now: nowM + 1, ariaLabel: `الإيراد الشهري ${year}: ${monthly.map((v, i) => `${monthLabel(i)} ${sarShort(v)}`).join('، ')}` })}
       ${qDelta != null ? `<div style="font-size:var(--fs-body);color:var(--muted);margin-top:.35rem">إيراد الربع الحالي ${qDelta >= 0 ? 'أعلى' : 'أدنى'} من الربع السابق بنسبة <b class="tnum" style="color:${qDelta >= 0 ? 'var(--st-good)' : 'var(--st-bad)'}">${Math.abs(qDelta)}%</b></div>` : ''}
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:.6rem">
@@ -784,7 +789,7 @@ export async function sectorPage(user, opts = {}) {
   const concPct = secRevTotal && top3.length === 3 ? Math.round((top3.reduce((a, c) => a + c.rev, 0) / secRevTotal) * 100) : null;
   const concColors = ['var(--brand)', 'var(--brand2)', '#5b8def'];
   const clientsCard = card(`
-    <div class="card-head"><span class="hgrp"><span class="eyebrow">أهم ${G.clients} · مرتَّبون حسب إيراد ${year}${concPct != null ? ` <span data-tip="مجموع إيراد أكبر ثلاثة عملاء ÷ إيراد القطاع المحقق لهذه السنة" tabindex="0" style="color:var(--faint)">ⓘ</span>` : ''}</span>
+    <div class="card-head"><span class="hgrp"><span class="eyebrow">أهم ${G.clients} · مرتَّبون حسب إيراد ${year}${concPct != null ? ` <span class="tipdot" data-tip="مجموع إيراد أكبر ثلاثة عملاء ÷ إيراد القطاع المحقق لهذه السنة" tabindex="0" role="img" aria-label="مجموع إيراد أكبر ثلاثة عملاء ÷ إيراد القطاع المحقق لهذه السنة">${icon('info')}</span>` : ''}</span>
       <span class="t">${concPct != null ? `أكبر ثلاثة عملاء يمثلون <span class="tnum">${concPct}%</span> من الإيراد${concPct >= 60 ? ' — تركّز مرتفع' : ''}` : topClients.length ? `${countAr(topClients.length, { one: 'عميل واحد يقود النشاط', two: 'عميلان يقودان النشاط', few: 'عملاء يقودون النشاط', many: 'عميلاً يقودون النشاط' })}` : G.emptyList}</span></span></div>
     ${concPct != null ? `<div style="padding:.15rem 1rem 0">${figStacked100([
     ...top3.map((c, i) => ({ v: c.rev, color: concColors[i] })),
@@ -824,7 +829,7 @@ export async function sectorPage(user, opts = {}) {
         <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.client || r.project || 'فاتورة')}${r.code ? ` <span style="color:var(--faint);font-size:var(--fs-micro)"><bdi>${esc(r.code)}</bdi></span>` : ''}</span>
         <span style="flex:none;display:flex;gap:.5rem;align-items:baseline">
           <b class="tnum">${fmtSar(r.out)}</b>
-          ${r.days != null ? `<span class="pill" style="background:#fee2e2;color:#991b1b">متأخر ${dayWord(r.days)}</span>` : ''}
+          ${r.days ? `<span class="pill" style="background:#fee2e2;color:#991b1b">متأخر ${dayWord(r.days)}</span>` : r.days === 0 ? '<span class="pill" style="background:#fef3c7;color:#92400e">استحق اليوم</span>' : ''}
         </span>
       </div>`).join('');
     const odTotal = odRows.reduce((a, b) => a + b.out, 0);
@@ -842,7 +847,7 @@ export async function sectorPage(user, opts = {}) {
       <div style="padding:.35rem 1rem .6rem">
         <div style="font-size:var(--fs-micro);font-weight:700;color:var(--muted)">${G.lateClaim}${odRows.length > 3 ? ` — الأكثر تأخراً (3 من ${odRows.length})` : ''}</div>
         ${lateRows || `<div style="font-size:var(--fs-meta);color:var(--faint);padding:.3rem 0">لا فواتير متأخرة السداد — التحصيل منضبط</div>`}
-        ${odRows.length > 3 ? `<button class="btn btn-ghost btn-sm" data-action="open-dd" data-dd="seccollect" style="margin-top:.2rem"><span class="tnum">+${odRows.length - 3}</span> أخرى — الكل <span aria-hidden="true">⊕</span></button>` : ''}
+        ${odRows.length > 3 ? `<button class="btn btn-ghost btn-sm" data-action="open-dd" data-dd="seccollect" style="margin-top:.2rem"><span class="tnum" dir="ltr">+${odRows.length - 3}</span> أخرى — الكل <span aria-hidden="true">⊕</span></button>` : ''}
       </div>`
     : `<div class="empty-state" style="padding:1.2rem 1rem">${icon('money')}<div class="t">لا مستحقات قائمة لهذا القطاع · ${year}</div><div class="s">كل الفواتير الصادرة لهذه السنة حُصّلت، أو لم تصدر فواتير بعد</div></div>`}`);
     collectDD = ddWrap('seccollect', `${G.lateClaim} — ${esc(sd.sector.name_ar)}`, `فواتير قائمة تجاوزت تاريخ استحقاقها · حتى ${today}`, `
@@ -853,7 +858,7 @@ export async function sectorPage(user, opts = {}) {
           <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.client || r.project || 'فاتورة')}${r.code ? ` <span style="color:var(--faint);font-size:10.5px"><bdi>${esc(r.code)}</bdi></span>` : ''}</span>
           <b class="tnum" style="flex:none">${fmtSar(r.out)}</b></div>
         <div style="display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted)">
-          <span>يستحق ${r.due_date ? String(r.due_date).slice(0, 10) : '—'}</span>${r.days != null ? `<span class="tnum" style="color:var(--red);font-weight:800">متأخر ${dayWord(r.days)}</span>` : ''}</div>
+          <span>يستحق ${r.due_date ? String(r.due_date).slice(0, 10) : '—'}</span>${r.days ? `<span class="tnum" style="color:var(--red);font-weight:800">متأخر ${dayWord(r.days)}</span>` : r.days === 0 ? '<span style="color:var(--amber);font-weight:800">استحق اليوم</span>' : ''}</div>
       </div>`))}</div>`);
   }
 
@@ -909,7 +914,7 @@ export async function sectorPage(user, opts = {}) {
     return ddWrap(key, stageId ? `مرحلة ${esc(name)}` : 'كل الفرص المفتوحة', `${esc(sd.sector.name_ar)} · أسماء الفرص أدناه بنطاقك في قائمة الفرص`, `
     <div class="dd-kpi"><span class="v tnum" style="color:var(--brand2)">${fmtSar(value)}</span><span style="font-size:12px;color:var(--muted)">${countAr(count, { one: 'فرصة واحدة', two: 'فرصتان', few: 'فرص', many: 'فرصة', zero: 'لا فرص' })}</span></div>
     <div style="display:flex;gap:1rem;font-size:12px;color:var(--muted);flex-wrap:wrap">
-      <span>متوسط العمر في المرحلة <b class="tnum">${dayWord(avg)}</b></span>
+      <span>متوسط العمر في المرحلة <b class="tnum">${avg ? dayWord(avg) : 'أقل من يوم'}</b></span>
       <span>متوقفة — تجاوزت المدة المعتادة <b class="tnum" style="color:${stalled ? 'var(--amber)' : 'var(--ink2)'}">${stalled}</b></span>
     </div>
     <div class="dd-sec">${rows.length ? `أعلى الفرص قيمةً${rows.length < count ? ` (${rows.length} من ${count})` : ''}` : 'لا فرص ضمن نطاق قراءتك في هذه المرحلة'}</div>
@@ -917,7 +922,7 @@ export async function sectorPage(user, opts = {}) {
       <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><a href="/app/opportunity/${esc(o.id)}" style="color:var(--ink2);font-weight:700">${esc(o.title_ar)}</a>${o.client ? ` <span style="color:var(--faint);font-size:10.5px">· ${esc(o.client)}</span>` : ''}</span>
       <b class="tnum" style="flex:none">${o.value_halalas ? fmtSar(o.value_halalas) : '—'}</b></div>`))}</div>
     <div style="display:flex;gap:.5rem;flex-wrap:wrap">
-      ${stageId ? `<a class="btn btn-primary btn-sm" href="${qs({ stage: isOn ? null : stageId })}">${isOn ? 'إلغاء تصفية الشاشة' : 'تصفية الشاشة بهذه المرحلة'}</a>` : ''}
+      ${stageId ? `<a class="btn btn-primary btn-sm" href="${qs({ stage: isOn ? null : stageId })}">${isOn ? 'إلغاء تصفية الشاشة' : 'تصفية بهذه المرحلة'}</a>` : ''}
       <a class="btn btn-sm" href="${oppsPageHref}">فتح صفحة الفرص</a>
     </div>`);
   };
@@ -949,7 +954,7 @@ export async function sectorPage(user, opts = {}) {
     const stats = live ? [nextStat, stat('متوسط الأشهر الثلاثة القادمة', p.q3), stat('متوسط السنة', p.annual)]
       : [stat('الذروة', p.peak), `<div class="cap-stat"><span class="l">${G.monthsStaffed}</span><b class="tnum">${p.staffedMonths}</b></div>`];
     const deltaLine = live && p.monthDelta
-      ? `<div style="font-size:var(--fs-meta);color:var(--muted)"><span class="tnum" dir="ltr" style="font-weight:800;color:${p.monthDelta > 0 ? 'var(--ink2)' : 'var(--green)'}">${p.monthDelta > 0 ? '+' : '−'}${countAr(Math.abs(p.monthDelta), { one: 'نقطة واحدة', two: 'نقطتان', few: 'نقاط', many: 'نقطة' })}</span> عن الشهر الماضي</div>` : '';
+      ? `<div style="font-size:var(--fs-meta);color:var(--muted)"><b class="tnum" dir="ltr" style="color:${p.monthDelta > 0 ? 'var(--ink2)' : 'var(--green)'}">${p.monthDelta > 0 ? '+' : '−'}${Math.abs(p.monthDelta)}</b> ${countAr(Math.abs(p.monthDelta), { one: 'نقطة واحدة', two: 'نقطتان', few: 'نقاط', many: 'نقطة' })} عن الشهر الماضي</div>` : '';
     const projRows = p.projects.slice(0, 8).map((pr) => {
       const period = allocationPeriod(JSON.stringify(pr.months), year);
       const v = live ? Math.round((Number(pr.months[nowMonth]) || 0) * 100) : period.avgPct;
@@ -1042,7 +1047,7 @@ export async function sectorPage(user, opts = {}) {
     <div>
       <div class="dd-row"><span>القيمة المفتوحة في خط الفرص</span><b class="tnum">${fmtSar(cover?.open_halalas || 0)}</b></div>
       <div class="dd-row"><span>المتبقي من هدف المبيعات ${year}</span><b class="tnum">${fmtSar(cover?.remaining_target_halalas || 0)}</b></div>
-      <div class="dd-row"><span>المفتوح موزوناً بنسبة الفوز <span style="color:var(--muted);font-size:10.5px">· للاستئناس لا للحكم</span></span><b class="tnum">${fmtSar(cover?.weighted_halalas || 0)}</b></div>
+      <div class="dd-row"><span>المفتوح مرجّحاً باحتمال الفوز <span style="color:var(--muted);font-size:10.5px">· للاستئناس لا للحكم</span></span><b class="tnum">${fmtSar(cover?.weighted_halalas || 0)}</b></div>
     </div>
     <div style="font-size:var(--fs-micro);color:var(--muted);margin-top:.3rem">×1 فأكثر يعني أن ما في الخط يغطي المتبقي من الهدف لو كُسب كله — وما تحت ×1 فجوةٌ تحتاج فرصاً جديدة.</div>
     <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.4rem">
@@ -1132,7 +1137,7 @@ export async function sectorPage(user, opts = {}) {
       eye: G.attention, act: 'act-jump',
       val: attn.length ? String(Math.min(attn.length, 6)) : `0`,
       valColor: attn.length ? 'var(--st-bad)' : '',
-      unit: attn.length ? 'بنود مرتّبة بأثر القرار' : 'لا شيء بانتظارك الآن',
+      unit: attn.length === 1 ? 'بند مرتّب بأثر القرار' : attn.length ? 'بنود مرتّبة بأثر القرار' : G.nothingNeedsYou,
       verdict: attn.length ? sig('bad', '▲', `أعلاها: ${esc(attn[0].title)}`) : sig('ok', '✓', G.allGood),
     }),
     tile({
@@ -1145,7 +1150,7 @@ export async function sectorPage(user, opts = {}) {
     tile({
       eye: G.sales, dd: 'secwins', title: fmtSar(sd.sales_halalas),
       val: sarShort(sd.sales_halalas),
-      unit: sd.target_sales_halalas ? `من ${G.target} <b class="tnum">${sarShort(sd.target_sales_halalas)}</b> · ${countAr(wins.won, { one: 'صفقة مكسوبة', two: 'صفقتان مكسوبتان', few: 'صفقات مكسوبة', many: 'صفقة مكسوبة', zero: 'لا صفقات مكسوبة' })}` : 'لا هدف مسجّل لهذه السنة',
+      unit: sd.target_sales_halalas ? `من ${G.target} <b class="tnum">${sarShort(sd.target_sales_halalas)}</b> · ${countAr(wins.won, { one: 'صفقة واحدة مكسوبة', two: 'صفقتان مكسوبتان', few: 'صفقات مكسوبة', many: 'صفقة مكسوبة', zero: 'لا صفقات مكسوبة' })}` : 'لا هدف مسجّل لهذه السنة',
       fig: attainSales != null ? figBullet({ pct: attainSales, tick: elapsed, ariaLabel: `تحقق ${attainSales}% من المستهدف وانقضى ${elapsed}% من السنة` }) : '',
       verdict: paceSig(dSales),
     }),
@@ -1159,7 +1164,7 @@ export async function sectorPage(user, opts = {}) {
     tile({
       eye: 'صحة التنفيذ', dd: ragActive ? (needsN ? 'sec-health-RED' : 'sec-health-GREEN') : '',
       val: ragActive ? `<span dir="ltr">${sd.rag.GREEN || 0}/${ragActive}</span>` : '—',
-      unit: ragActive ? 'على المسار من المقيَّمة الصحة' : 'لا مشاريع مقيَّمة الصحة',
+      unit: ragActive ? 'على المسار من المشاريع المقيَّمة' : 'لا مشاريع مقيَّمة الصحة',
       fig: ragActive ? figStacked100([
         { v: sd.rag.GREEN || 0, color: 'var(--st-good)' }, { v: sd.rag.AMBER || 0, color: 'var(--st-warn)' }, { v: sd.rag.RED || 0, color: 'var(--st-bad)' },
       ], { mini: true, ariaLabel: `${G.hOnTrack} ${sd.rag.GREEN || 0} · ${G.hAtRisk} ${sd.rag.AMBER || 0} · ${G.hCritical} ${sd.rag.RED || 0}` }) : '',
@@ -1172,8 +1177,8 @@ export async function sectorPage(user, opts = {}) {
       fig: emps.length ? figStacked100([
         { v: midNow.length, color: 'var(--st-good)' }, { v: freeNow.length, color: '#c6cdd9' }, { v: overNow.length, color: 'var(--st-bad)' },
       ], { mini: true, ariaLabel: `ضمن الطاقة ${midNow.length} · بلا تسكين ${freeNow.length} · ${G.overloaded} ${overNow.length}` }) : '',
-      verdict: overNow.length ? sig('bad', '▲', `${countAr(overNow.length, { one: 'موظف فوق الطاقة', two: 'موظفان فوق الطاقة', few: 'موظفين فوق الطاقة', many: 'موظفاً فوق الطاقة' })}`)
-        : freeNow.length ? sig('neut', '•', `${countAr(freeNow.length, { one: 'موظف بلا تسكين', two: 'موظفان بلا تسكين', few: 'موظفين بلا تسكين', many: 'موظفاً بلا تسكين' })}`)
+      verdict: overNow.length ? sig('bad', '▲', `${countAr(overNow.length, { one: 'موظف واحد فوق الطاقة', two: 'موظفان فوق الطاقة', few: 'موظفين فوق الطاقة', many: 'موظفاً فوق الطاقة' })}`)
+        : freeNow.length ? sig('neut', '•', `${countAr(freeNow.length, { one: 'موظف واحد بلا تسكين', two: 'موظفان بلا تسكين', few: 'موظفين بلا تسكين', many: 'موظفاً بلا تسكين' })}`)
           : emps.length ? sig('ok', '✓', 'الفريق ضمن الطاقة') : '',
     }),
   ].join('');
@@ -1215,7 +1220,7 @@ export async function sectorPage(user, opts = {}) {
     </div>
     ${DD}`;
   return layout({ user, active: 'sector', title: `مركز قيادة ${sd.sector.name_ar}`,
-    subtitle: `الوضع، ثم السبب، ثم الإجراء التالي · ${year}`, body, year,
+    subtitle: `الوضع، ثم السبب، ثم ${G.nextAction} · ${year}`, body, year,
     scripts: ['/static/pages/sector.js'] });
 }
 // ═══════════════════════════════════════════════════════════════════════════════
