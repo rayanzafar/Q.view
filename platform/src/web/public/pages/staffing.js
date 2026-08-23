@@ -980,4 +980,6 @@
   });
 
   initFilters();
+  // وصولٌ عميق من مركز القيادة (v5.35): ?emp= يفتح درج الشخص نفسه إن كان في الكشف — وإلا لا شيء.
+  if (S().deepEmp && emp(S().deepEmp)) openEmpDrawer(S().deepEmp);
 })();

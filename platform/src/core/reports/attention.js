@@ -6,6 +6,7 @@ import { scopeFilter } from '../rbac/scope.js';
 import { pendingApprovalsFor, DIRECT_KIND_AR } from '../../modules/workflow/inbox.js';
 import { fmtSar } from '../util/ids.js';
 import { ROT_THRESHOLDS } from '../../modules/crm/opportunities.js';
+import { peopleScope } from '../../modules/org/org.js';
 import { countAr } from '../i18n/plural.js';
 
 // عتبات ركود المرحلة (أيام) — نفس مصدر لوحة الفرص حرفياً: المرحلة بلا عتبة لا تركد
@@ -89,19 +90,28 @@ export async function attentionFeed(user, sectorId, { year, today } = {}) {
   }
 
   // 5) أشخاص فوق الطاقة الآن
-  const allocs = await all(`SELECT a.employee_id, e.name_ar, a.monthly_json FROM allocation a
+  const allocs = await all(`SELECT a.employee_id, e.name_ar, e.sector_id emp_sector, e.department_id, a.monthly_json FROM allocation a
       JOIN employee e ON e.id = a.employee_id
       WHERE a.sector_id = ? AND a.deleted_at IS NULL AND a.year = ? AND a.employee_id IS NOT NULL`, [sectorId, y]);
   const loadNow = {};
   for (const a of allocs) {
     let mj = {}; try { mj = JSON.parse(a.monthly_json || '{}'); } catch { mj = {}; }
-    loadNow[a.employee_id] = { name: a.name_ar, v: (loadNow[a.employee_id]?.v || 0) + (Number(mj[m]) || 0) };
+    loadNow[a.employee_id] = { employee_id: a.employee_id, name: a.name_ar, sector: a.emp_sector, department: a.department_id,
+      v: (loadNow[a.employee_id]?.v || 0) + (Number(mj[m]) || 0) };
   }
-  const over = Object.values(loadNow).filter((x) => x.v > 1.1);
-  if (over.length) items.push({ rank: 6, tone: 'red', icon: 'team', href: '/app/staffing',
+  // الأسماء لمن يقرأ الموظفين — وبنطاق الأشخاص نفسه الذي يحكم كشف التسكين وبطاقة «طاقة الفريق»
+  // (KI-068): قارئُ إدارةٍ يرى إدارته، وقارئُ قطاعٍ كشفَ قطاعه. ومن لا يقرأ الموظفين يرى العدّ
+  // القطاعي بلا أسماء. والبند يفتح تفصيله في الصفحة لا لوحة التسكين (التي تُردّ لمن لا يقرؤهم).
+  const namesOk = can(user, 'read', 'employee');
+  const ps = namesOk ? peopleScope(user, sectorId) : null;
+  const inReach = (x) => !ps || (!ps.blind && (!ps.sector || x.sector === ps.sector)
+    && (!ps.departments.length || ps.departments.includes(x.department)));
+  const over = Object.values(loadNow).filter((x) => x.v > 1.1 && inReach(x)).sort((a, b) => b.v - a.v)
+    .map((x) => ({ employee_id: x.employee_id, name: x.name, pct: Math.round(x.v * 100) }));
+  if (over.length) items.push({ rank: 6, tone: 'red', icon: 'team', dd: 'att-overload',
     title: `${countAr(over.length, { one: 'موظف واحد محمّل فوق طاقته', two: 'موظفان فوق الطاقة', few: 'موظفين فوق الطاقة', many: 'موظفاً فوق الطاقة' })} هذا الشهر`,
-    sub: over.slice(0, 3).map((x) => `${x.name} ${Math.round(x.v * 100)}%`).join(' · '),
-    action: 'أعد توزيع التسكين' });
+    sub: namesOk ? over.slice(0, 3).map((x) => `${x.name} ${x.pct}%`).join(' · ') : 'أسماء الأفراد تظهر لمن يملك قراءة الموظفين',
+    action: 'أعد توزيع التسكين', ddRowsData: namesOk ? over : [] });
 
   // 6) مخاطر عالية مفتوحة
   const risks = await all(`SELECT r.title, p.name_ar project FROM risk r LEFT JOIN project p ON p.id = r.project_id

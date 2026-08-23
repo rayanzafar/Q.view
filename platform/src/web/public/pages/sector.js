@@ -86,9 +86,17 @@
     if (cap) cap.textContent = 'النافذة: ' + btn.textContent.trim() + ' · الحدود من قواعد التسكين نفسها: 70% و110%';
   }
 
-  // الضغط على شخصٍ في الطيف يفتح لوحة التسكين — رابطها محمول على المحور نفسه
+  // الضغط على شخصٍ — في الطيف أو في القائمتين أو في نافذة «فوق الطاقة» — يفتح نافذته هنا
+  // (قالبها مخدوم من الخادم بنطاق القارئ). ومن لا قالب له (طبقة بلا أسماء) يبقى على لوحة التسكين.
   function capPerson(el) {
-    var axis = el.closest('.cap-axis');
+    var id = el.getAttribute('data-emp');
+    if (id && document.getElementById('dd-cap-emp-' + id)) {
+      Sanad.openDD('cap-emp-' + id);
+      var close = document.querySelector('#modal .modal-head button');
+      if (close) close.focus();
+      return;
+    }
+    var axis = el.closest('.cap-axis') || document.querySelector('.cap-axis');
     var href = axis && axis.getAttribute('data-staffing');
     if (href) location.assign(href);
   }

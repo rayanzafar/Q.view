@@ -353,6 +353,7 @@ export async function staffingPage(user, opts = {}) {
       limits:${JSON.stringify(UTIL_BANDS)},
       canManage:${canManage}, canStaff:${canStaff},
       filters:${JSON.stringify({ sector: sector || null, dept: department || null }).replace(/</g, '\\u003c')},
+      deepEmp:${JSON.stringify(roster.some((e) => e.id === String(opts.emp || '')) ? String(opts.emp) : null).replace(/</g, '\\u003c')},
       sectorNames:${JSON.stringify(sectorNames).replace(/</g, '\\u003c')}});</script>`;
 
   return layout({
