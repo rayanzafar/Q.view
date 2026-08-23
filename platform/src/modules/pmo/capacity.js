@@ -34,8 +34,8 @@ export const DEFAULT_CAPACITY_PCT = 100;
 
 // عتبات الإشغال بثابتٍ واحد (v5.26): دون 70 سعة متاحة، 101–110 قربٌ من الحد، فوق 110
 // تجاوز، و150 سقف الإدخال المقصود (`monthlyPlan`/`setAllocationCell` يقصّان عنده).
-// مساحة عمل التسكين وعميلها يقرآن من هنا؛ النسخ الحرفية القديمة في صفحات أخرى تُوحَّد
-// في موجة لاحقة (decision-log ق٦) — التحذير لا يمنع الحفظ في كل الأحوال.
+// مساحة عمل التسكين وعميلها ومركز القيادة (v5.37: البطاقة والطيف وعميله) يقرؤون من هنا؛
+// التحذير لا يمنع الحفظ في كل الأحوال.
 export const UTIL_BANDS = Object.freeze({ FREE_BELOW: 70, NEAR_FROM: 101, OVER_ABOVE: 110, MAX_PCT: 150 });
 export const capacityOf = (emp) => {
   const c = Number(emp?.capacity_pct);

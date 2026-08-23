@@ -15,9 +15,14 @@
   }
 
   // ── فتح التفصيل: قوالب dd المخدومة من الخادم — والتركيز يدخل النافذة لا يبقى خلفها ──
+  // مَن فتح النافذة من الصفحة (لا من داخل نافذةٍ أخرى) يعود إليه التركيز عند الإغلاق — والفتح
+  // المتداخل (الفريق ← الإدارة ← الشخص) يُبقي المُطلِق الأول لأن محتوى النافذة يُستبدل.
+  var lastTrigger = null;
+  function remember(el) { if (!el.closest('#modal')) lastTrigger = el; }
   function openDD(el) {
     var k = el.getAttribute('data-dd');
     if (!k || !window.Sanad || !Sanad.openDD) return;
+    remember(el);
     Sanad.openDD(k);
     var close = document.querySelector('#modal .modal-head button');
     if (close) close.focus();
@@ -72,14 +77,18 @@
   function capWin(btn) {
     var w = btn.getAttribute('data-w');
     pressGroup(btn, 'button[data-action="cap-win"]');
+    // العتبات ومقياس المحور من الخادم (سماتٌ على المحور) — لا نسخة ثانية هنا تتباعد عن المصدر.
+    var axis = document.querySelector('.cap-axis');
+    var over = Number(axis && axis.getAttribute('data-over')) || 110;
+    var axisMax = Number(axis && axis.getAttribute('data-axis-max')) || 125;
     document.querySelectorAll('.cap-av').forEach(function (av) {
       var v = Number(av.getAttribute('data-' + w) || 0);
-      av.style.left = (Math.min(125, Math.max(0, v)) / 125 * 100).toFixed(1) + '%';
+      av.style.left = (Math.min(axisMax, Math.max(0, v)) / axisMax * 100).toFixed(1) + '%';
       var name = av.getAttribute('data-name') || '';
       var job = av.getAttribute('data-job') || '';
       av.title = name + (job ? ' · ' + job : '') + ' — الحِمل ' + v + '%';
       av.setAttribute('aria-label', name + ' — الحِمل ' + v + '% — التفصيل');
-      av.classList.toggle('over', v > 110);
+      av.classList.toggle('over', v > over);
       av.classList.toggle('free', v === 0);
     });
     var cap = document.getElementById('cap-caption');
@@ -88,11 +97,10 @@
 
   // الضغط على شخصٍ — في الطيف أو في القائمتين أو في نافذة «فوق الطاقة» — يفتح نافذته هنا
   // (قالبها مخدوم من الخادم بنطاق القارئ). ومن لا قالب له (طبقة بلا أسماء) يبقى على لوحة التسكين.
-  var lastTrigger = null; // من فتح النافذة بلوحة المفاتيح يعود إليه التركيز عند إغلاقها
   function capPerson(el) {
     var id = el.getAttribute('data-emp');
     if (id && document.getElementById('dd-cap-emp-' + id)) {
-      lastTrigger = el;
+      remember(el);
       Sanad.openDD('cap-emp-' + id);
       var close = document.querySelector('#modal .modal-head button');
       if (close) close.focus();

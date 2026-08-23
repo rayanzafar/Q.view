@@ -115,6 +115,9 @@ const CARD_HEAD_CSS = `.card-head{padding:var(--pad-card-h);border-bottom:1px so
 .card-head .t{font-weight:800;font-size:var(--fs-title)}
 .card-head .aux{margin-inline-start:auto;display:flex;gap:.35rem;align-items:center}`;
 
+// مقياس المحور (عرضٌ لا عتبة): الطيف يمتدّ إلى 125% كي يظهر من تجاوز الطاقة داخل الإطار.
+const AXIS_MAX = 125;
+const axisPct = (v) => (Math.min(AXIS_MAX, Math.max(0, v)) / AXIS_MAX * 100).toFixed(1);
 const CSS = `<style>
 /* شبكة المرجع v5.23: شريط المؤشرات ← [يحتاج تدخلك | ما تغيّر] (٥:٤) ← [القمع | الصحة | الطاقة] ← العملاء */
 .row-main{display:grid;gap:var(--gap);margin-bottom:var(--gap);grid-template-columns:1.25fr 1fr}
@@ -233,7 +236,26 @@ ${CARD_HEAD_CSS}
 /* طيف قدرة الفريق — محور أرقام يقرأ يساراً كالأرقام نفسها */
 .cap-axis{position:relative;height:74px;margin:.4rem 0 .1rem}
 .cap-band{position:absolute;inset-inline:0;top:30px;height:12px;border-radius:999px;overflow:hidden;
-  background:linear-gradient(to right,#bbf1d4 0%,#bbf1d4 56%,#e4e9f2 56%,#e4e9f2 88%,#fecaca 88%,#fecaca 100%)}
+  background:linear-gradient(to right,#bbf1d4 0%,#bbf1d4 ${axisPct(UTIL_BANDS.FREE_BELOW)}%,#e4e9f2 ${axisPct(UTIL_BANDS.FREE_BELOW)}%,#e4e9f2 ${axisPct(UTIL_BANDS.OVER_ABOVE)}%,#fecaca ${axisPct(UTIL_BANDS.OVER_ABOVE)}%,#fecaca 100%)}
+/* ازدحام: فوق ستة عشر شخصاً ثلاثة صفوف بدل اثنين، والمحور أطول — ومن تحت المؤشر يعلو عند المرور */
+.cap-axis.dense{height:104px}
+.cap-axis.dense .cap-band{top:46px}
+.cap-axis.dense .cap-av{top:6px}
+.cap-axis.dense .cap-av.r2{top:36px}
+.cap-axis.dense .cap-av.r3{top:66px}
+.cap-av:hover,.cap-av:focus-visible{z-index:3;transform:translateX(-50%) scale(1.15)}
+.cap-leg button{all:unset;display:inline-flex;align-items:center;gap:.3rem;cursor:pointer;border-radius:6px;padding:.05rem .3rem;position:relative}
+.cap-leg button::after{content:'';position:absolute;inset:-12px -4px}
+.cap-leg button:hover{background:var(--bg,#f1f5f9)}
+.cap-leg button:focus-visible{outline:2px solid var(--brand);outline-offset:1px}
+.cap-dept{display:grid;grid-template-columns:1fr auto auto auto;gap:.6rem;align-items:center;padding:.5rem .35rem;border-bottom:1px dashed var(--line);border-radius:7px;cursor:pointer;font-size:var(--fs-body)}
+.cap-dept:hover{background:var(--bg,#f1f5f9)}
+.cap-dept:focus-visible{outline:2px solid var(--brand);outline-offset:1px}
+.cap-dept .n{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700}
+.cap-dept small{color:var(--muted);font-size:var(--fs-micro);white-space:nowrap}
+@media(max-width:640px){.cap-dept{grid-template-columns:1fr auto auto;min-height:40px}.cap-dept small:nth-of-type(2){display:none}.dd-row.cap-li-btn{min-height:40px}.cap-plus{min-height:40px}}
+/* سطور الخلايا الفرعية بلون مقروء — لا الباهت الذي يسقط دون حدّ التباين عند هذا الحجم */
+.kpi-cell .s,.fnl-stat .s{color:var(--muted)}
 .cap-av{position:absolute;top:14px;width:26px;height:26px;border-radius:50%;border:2px solid #fff;box-shadow:var(--sh-sm);
   background:var(--brand-grad);color:#fff;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;
   transform:translateX(-50%);cursor:pointer;padding:0;font-family:inherit;transition:left .25s ease}
@@ -371,6 +393,7 @@ export async function sectorPage(user, opts = {}) {
   // تُحجب بطاقة التحصيل عمّن لا يقرأ الفواتير. والأسماء من كشف التسكين (نطاق الأشخاص) لا من
   // مجاميع القطاع — KI-068.
   const canPeople = can(user, 'read', 'employee');
+  const canOpps = can(user, 'read', 'opportunity');
   const [chg, attn, fc, monthly, qRev, qBook, cover, staff, wins, team] = await Promise.all([
     changesSince(user, sectorId, sinceForWindow(win, now)),
     attentionFeed(user, sectorId, { year, today }),
@@ -553,12 +576,12 @@ export async function sectorPage(user, opts = {}) {
     `<div class="tgt">${countAr(wins.won, { one: 'صفقة مكسوبة واحدة', two: 'صفقتان مكسوبتان', few: 'صفقات مكسوبة', many: 'صفقة مكسوبة' })}</div>`)}
     ${mini('تغطية خط الفرص', 'filter', cover?.coverage != null ? `×${cover.coverage}` : '—',
     'المفتوح ÷ المتبقي من هدف المبيعات', (cover?.coverage ?? 1) < 1 ? 'var(--amber)' : 'var(--ink2)',
-    `href="/app/opportunities?year=${year}${user.scope === 'company' ? '&sector=' + esc(sectorId) : ''}"`, covSpark)}
+    `role="button" tabindex="0" data-action="open-dd" data-dd="seccover"`, covSpark)}
     ${mini('صحة التنفيذ', 'check', ragActive ? `${sd.rag.GREEN || 0}/${ragActive}${ragActive && !needsN ? okBadge : ''}` : '—',
     ragActive ? 'على المسار من المقيَّمة الصحة' : 'لا مشاريع مقيَّمة الصحة', 'var(--green)',
     ragActive ? `role="button" tabindex="0" data-action="open-dd" data-dd="sec-health-GREEN"` : '')}
-    ${mini('قدرة الفريق', 'team', `${bandLoad}%`, `متوسط ${G.utilization} · ${countAr(teamSize, { one: 'موظف واحد', two: 'موظفان', few: 'موظفين', many: 'موظفاً' })}`,
-    bandLoad > UTIL_BANDS.OVER_ABOVE ? 'var(--red)' : 'var(--ink2)', `href="/app/staffing?year=${year}${user.scope === 'company' ? '&sector=' + esc(sectorId) : ''}"`)}
+    ${mini('طاقة الفريق', 'team', `${bandLoad}%`, `متوسط ${G.utilization} · ${countAr(teamSize, { one: 'موظف واحد', two: 'موظفان', few: 'موظفين', many: 'موظفاً' })}`,
+    bandLoad > UTIL_BANDS.OVER_ABOVE ? 'var(--red)' : 'var(--ink2)', `role="button" tabindex="0" data-action="open-dd" data-dd="seccap"`)}
     ${mini('تحتاج تدخلاً', 'risk', needsN ? String(needsN) : `0${okBadge}`, needsN ? `${G.hCritical} ${sd.rag.RED || 0} · ${G.hAtRisk} ${sd.rag.AMBER || 0}` : 'لا مشروع متعثر', needsN ? 'var(--red)' : 'var(--ink2)', needsN ? `role="button" tabindex="0" data-action="open-dd" data-dd="sec-health-RED"` : '')}
   </div>`;
   // ── (٣) عدسة الفترة — تسكن رأس بطاقة «ما تغيّر» نفسها (المرجع)، وهي روابط تعيد التحميل ──
@@ -633,8 +656,8 @@ export async function sectorPage(user, opts = {}) {
           <button type="button" aria-pressed="false" data-action="fnl-mode" data-mode="count">بالعدد</button>
         </div></span></div>
     <div class="fnl-stats">
-      <div class="fnl-stat">
-        <div class="h">${icon('risk')} متوقفة تحتاج متابعة</div>
+      <div class="fnl-stat${stalledRows.length ? ' cardclick' : ''}" ${stalledRows.length ? 'role="button" tabindex="0" data-action="open-dd" data-dd="fnl-stalled"' : ''}>
+        <div class="h">${icon('risk')} متوقفة تحتاج متابعة${stalledRows.length ? ' <span style="color:var(--faint)" aria-hidden="true">⊕</span>' : ''}</div>
         <div class="v tnum" style="color:${stalledRows.length ? 'var(--amber)' : 'var(--ink2)'}">${stalledRows.length}</div>
         <div class="s tnum">بقيمة ${sarShort(stalledRows.reduce((a, o) => a + (o.value_halalas || 0), 0))}</div>
       </div>
@@ -745,14 +768,18 @@ export async function sectorPage(user, opts = {}) {
     return span.length ? Math.round(span.reduce((a, b) => a + b, 0) / span.length) : 0;
   };
   const { FREE_BELOW, OVER_ABOVE } = UTIL_BANDS;
-  const capPos = (v) => Math.min(125, Math.max(0, v)) / 125 * 100;
+  const capPos = (v) => Number(axisPct(v));
   const overNow = emps.filter((e) => loadOf(e) > OVER_ABOVE);
   const freeNow = emps.filter((e) => loadOf(e) === 0);
   const midNow = emps.filter((e) => loadOf(e) > 0 && loadOf(e) <= OVER_ABOVE);
-  const capAv = (canPeople ? emps.slice(0, 24) : []).map((e, i) => {
+  // يُرسَم الجميع حتى ستين (الأكثر حِملاً أولاً)، وبعدها «+N آخرون» يفتح نافذة الفريق — لا قصٌّ صامت.
+  const CAP_AVATARS = 60;
+  const dense = emps.length > 16;
+  const capAv = (canPeople ? emps.slice(0, CAP_AVATARS) : []).map((e, i) => {
     const vNow = winVal(e, nowMonth ? 'now' : 'q'), vNext = winVal(e, 'next'), vQ = winVal(e, 'q');
     const cls = loadOf(e) > OVER_ABOVE ? ' over' : loadOf(e) === 0 ? ' free' : '';
-    return `<button type="button" class="cap-av${i % 2 ? ' r2' : ''}${cls}" style="left:${capPos(vNow).toFixed(1)}%"
+    const row = dense ? ['', ' r2', ' r3'][i % 3] : (i % 2 ? ' r2' : '');
+    return `<button type="button" class="cap-av${row}${cls}" style="left:${capPos(vNow).toFixed(1)}%"
       data-action="cap-person" data-emp="${esc(e.id || '')}" data-name="${esc(e.name)}" data-job="${esc(e.job || '')}" data-projects="${e.projects}"
       data-now="${vNow}" data-next="${vNext}" data-q="${vQ}"
       title="${esc(e.name)}${e.job ? ' · ' + esc(e.job) : ''} — الحِمل ${nowMonth ? vNow : e.utilization}% · ${countAr(e.projects, { one: 'مشروع واحد', two: 'مشروعان', few: 'مشاريع', many: 'مشروعاً' })}"
@@ -762,7 +789,7 @@ export async function sectorPage(user, opts = {}) {
   const capList = (rows, valFn) => rows.slice(0, 5).map((e) => `<div class="cap-li${e.id ? ' cap-li-btn' : ''}"${e.id ? ` role="button" tabindex="0" data-action="cap-person" data-emp="${esc(e.id)}" aria-label="${esc(e.name)} — الحِمل ${valFn(e)}% — التفصيل"` : ''}>
       <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(e.name)}${e.job ? ` <span style="color:var(--faint);font-size:var(--fs-micro)">· ${esc(e.job)}</span>` : ''}</span>
       <b class="tnum" style="flex:none">${valFn(e)}%${e.id ? ' <span style="color:var(--faint)" aria-hidden="true">⊕</span>' : ''}</b></div>`).join('')
-    || '<div style="font-size:var(--fs-meta);color:var(--faint)">لا أحد ضمن هذه الفئة الآن</div>';
+    || '<div style="font-size:var(--fs-meta);color:var(--muted)">لا أحد ضمن هذه الفئة في هذه النافذة</div>';
   const staffingHref = `/app/staffing?year=${year}${user.scope === 'company' ? '&sector=' + esc(sectorId) : ''}`;
   // مُسكَّنون على أعمال القطاع من خارج كشف القارئ (قطاعٌ آخر، أو إدارةٌ خارج نطاقه): العدّ
   // يُقال ولا يُخفى — وإلا قرأ القائد «١٧ في الفريق» هنا و«٢٤» في تقريره ولم يعرف لماذا.
@@ -803,19 +830,21 @@ export async function sectorPage(user, opts = {}) {
       </span>
       <div class="cap-avg">متوسط ${G.utilization} <b class="tnum" style="color:${teamLoad > OVER_ABOVE ? 'var(--red)' : 'var(--ink2)'}">${teamLoad}%</b></div>
       <div class="cap-leg">
-        <span><i style="background:var(--green)"></i>ضمن الطاقة <b class="tnum">${midNow.length}</b></span>
-        <span><i style="background:var(--brand2)"></i>${nowMonth ? 'بلا تسكين الآن' : 'بلا تسكين في السنة'} <b class="tnum">${freeNow.length}</b></span>
-        <span><i style="background:var(--red)"></i>${G.overloaded} <b class="tnum" style="color:${overNow.length ? 'var(--red)' : 'inherit'}">${overNow.length}</b></span>
+        ${[['mid', 'var(--green)', 'ضمن الطاقة', midNow.length, ''], ['free', 'var(--brand2)', nowMonth ? G.onBench : 'بلا تسكين طوال السنة', freeNow.length, ''],
+    ['over', 'var(--red)', G.overloaded, overNow.length, overNow.length ? 'color:var(--red)' : '']].map(([k, c, l, n, st]) => canPeople
+    ? `<button type="button" data-action="open-dd" data-dd="cap-band-${k}" aria-label="${l}: ${countAr(n, { one: 'شخص واحد', two: 'شخصان', few: 'أشخاص', many: 'شخصاً', zero: 'لا أحد' })} — اعرض التفصيل"><i style="background:${c}"></i>${l} <b class="tnum" style="${st}">${n}</b></button>`
+    : `<span><i style="background:${c}"></i>${l} <b class="tnum" style="${st}">${n}</b></span>`).join('')}
       </div>
     </div>
     <div style="padding:0 1rem">
-      <div class="cap-axis" dir="ltr" data-staffing="${staffingHref}">
+      <div class="cap-axis${dense ? ' dense' : ''}" dir="ltr" data-staffing="${staffingHref}" data-free="${FREE_BELOW}" data-over="${OVER_ABOVE}" data-axis-max="${AXIS_MAX}">
         <div class="cap-band" role="img" aria-label="طيف الحِمل: حتى ${FREE_BELOW}% سعة متاحة، من ${FREE_BELOW} إلى ${OVER_ABOVE} ضمن الطاقة، وفوق ${OVER_ABOVE} تجاوز للطاقة"></div>
         ${capAv || `<div dir="rtl" style="position:absolute;inset-inline:0;top:18px;text-align:center;font-size:var(--fs-micro);color:var(--muted)">أسماء الأفراد وأحمالهم تظهر لمن يملك صلاحية عرض الفريق</div>`}
       </div>
       <div class="cap-ticks" dir="ltr">
-        <span style="left:0%">0%</span><span style="left:${capPos(FREE_BELOW)}%">${FREE_BELOW}%</span><span style="left:${capPos(OVER_ABOVE)}%">${OVER_ABOVE}%</span><span style="left:98%">+120%</span>
+        <span style="left:0%">0%</span><span style="left:${capPos(FREE_BELOW)}%">${FREE_BELOW}%</span><span style="left:${capPos(OVER_ABOVE)}%">${OVER_ABOVE}%</span><span style="left:100%;transform:translateX(-100%)">+${AXIS_MAX - 5}%</span>
       </div>
+      ${canPeople && emps.length > CAP_AVATARS ? `<div style="text-align:center;padding:.1rem 0 .2rem"><button type="button" class="btn btn-ghost btn-sm cap-plus" data-action="open-dd" data-dd="seccap">${emps.length - CAP_AVATARS === 1 ? 'وشخصٌ آخر' : emps.length - CAP_AVATARS === 2 ? 'وشخصان آخران' : `و<span class="tnum">${emps.length - CAP_AVATARS}</span> آخرون`} <span aria-hidden="true">⊕</span></button></div>` : ''}
       <div id="cap-caption" data-tail="الحدود من قواعد التسكين نفسها: ${FREE_BELOW}% و${OVER_ABOVE}%${canPeople ? ' · اضغط على أي شخص لعرض التفصيل' : ''}" style="font-size:var(--fs-micro);color:var(--muted);padding:.15rem 0 .25rem">${nowMonth ? `النافذة: هذا الشهر (${monthLabel(nowMonth - 1)}) — والقادمة ضمن تسكين ${year} وحدها` : 'النافذة: متوسط السنة'} · الحدود من قواعد التسكين نفسها: ${FREE_BELOW}% و${OVER_ABOVE}%${canPeople ? ' · اضغط على أي شخص لعرض التفصيل' : ''}</div>
       ${nextHint}
       ${outsideRoster ? `<div style="font-size:var(--fs-micro);color:var(--muted);padding:0 0 .3rem">${outsideLine(outsideRoster)}</div>` : ''}
@@ -871,7 +900,7 @@ export async function sectorPage(user, opts = {}) {
       ${bullet(G.sales, attainSales, 'var(--brand)', { tick: elapsed, dd: 'secwins', sc: 'من المستهدف السنوي' })}
       ${bullet('تغطية خط الفرص', cover?.coverage != null ? Math.min(100, Math.round(cover.coverage * 100)) : null,
     (cover?.coverage ?? 1) < 1 ? 'var(--amber)' : 'var(--green)',
-    { val: cover?.coverage != null ? `×${cover.coverage}` : null, sc: 'الشريط يكتمل عند ×1',
+    { val: cover?.coverage != null ? `×${cover.coverage}` : null, sc: 'الشريط يكتمل عند ×1', dd: 'seccover',
       tip: 'القيمة المفتوحة ÷ المتبقي من هدف المبيعات — ×1 فأكثر يعني الخط يغطي المتبقي، وما فوقها لا يزيد الشريط' })}
       ${canMargin && margin && margin.margin_pct != null
     ? bullet('هامش الربح الإجمالي', Math.max(0, margin.margin_pct), margin.margin_pct < 0 ? 'var(--red)' : 'var(--green)', { val: `${margin.margin_pct}%`, sc: 'نسبة من الإيراد', tip: 'الإيراد − الكلفة والمصروف المعتمد، نسبةً إلى الإيراد — الهامش السالب يُطبع رقماً ولا شريط له' })
@@ -1226,6 +1255,84 @@ export async function sectorPage(user, opts = {}) {
     <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.2rem">${footer}</div>`);
   };
   const capEmpDDs = team ? team.people.map(capEmpDD).join('') : '';
+  // ── نافذة الفريق (v5.36): القطاع ← إداراته القائمة ← أفراد كل إدارة ← نافذة الشخص ──
+  // الإدارات كما هي في الهيكل — لا تُنشأ هنا ولا تُفترض؛ و«بلا إدارة» سلّةٌ مسمّاة. أعمدة الإدارة
+  // أعدادٌ وإشغال فحسب — لا إيراد ولا حكم «إدارة متعثّرة» (القرار D14 مفتوح).
+  const personRow = (e) => `<div class="dd-row cap-li-btn" role="button" tabindex="0" data-action="cap-person" data-emp="${esc(e.id)}" aria-label="${esc(e.name)} — الحِمل ${loadOf(e)}% — التفصيل">
+      <span>${esc(e.name)}${e.job ? ` <span style="color:var(--muted);font-size:10.5px">· ${esc(e.job)}</span>` : ''} <span style="color:var(--faint)" aria-hidden="true">⊕</span></span>
+      <b class="tnum" style="color:${loadOf(e) > OVER_ABOVE ? 'var(--red)' : loadOf(e) === 0 ? 'var(--brand2)' : 'var(--ink2)'}">${loadOf(e)}%</b></div>`;
+  const empById = new Map(emps.map((e) => [e.id, e]));
+  const deptRows = (team?.departments || []).map((d) => `<div class="cap-dept" role="button" tabindex="0" data-action="open-dd" data-dd="cap-dept-${esc(d.id || 'none')}" aria-label="${esc(d.name_ar)} — ${countAr(d.headcount, { one: 'موظف واحد', two: 'موظفان', few: 'موظفين', many: 'موظفاً' })} — متوسط ${G.utilization} ${d.avgNow}% — اعرض التفصيل">
+      <span class="n">${esc(d.name_ar)} <span style="color:var(--faint)" aria-hidden="true">⊕</span></span>
+      <small>${countAr(d.headcount, { one: 'موظف واحد', two: 'موظفان', few: 'موظفين', many: 'موظفاً' })}</small>
+      <small>${nowMonth ? 'بلا تسكين' : 'بلا تسكين في السنة'} <b class="tnum">${d.free}</b> · ${G.overloaded} <b class="tnum" style="color:${d.over ? 'var(--red)' : 'inherit'}">${d.over}</b></small>
+      <b class="tnum" style="color:${d.avgNow > OVER_ABOVE ? 'var(--red)' : 'var(--ink2)'}">${d.avgNow}%</b></div>`).join('');
+  const basisLine = '<div style="font-size:10.5px;color:var(--muted);margin-top:.4rem">الأرقام من خطة التسكين الشهرية — وليست ساعات عمل فعلية.</div>';
+  const teamDD = ddWrap('seccap', `طاقة الفريق — ${esc(sd.sector.name_ar)}`, `${nowMonth ? `${G.utilization} هذا الشهر (${monthLabel(nowMonth - 1)})` : `متوسط إشغال ${year}`} · ${canPeople ? 'بالإدارات ثم بالأفراد' : 'مجاميع القطاع'}`, `
+    <div class="dd-kpi"><span class="v tnum" style="color:${teamLoad > OVER_ABOVE ? 'var(--red)' : 'var(--ink2)'}">${teamLoad}%</span><span style="font-size:12px;color:var(--muted)">متوسط ${G.utilization} · ${countAr(teamSize, { one: 'موظف واحد', two: 'موظفان', few: 'موظفين', many: 'موظفاً' })}${team ? ' ضمن نطاقك' : ''}</span></div>
+    <div style="display:flex;gap:1rem;font-size:12px;color:var(--muted);flex-wrap:wrap">
+      <span>ضمن الطاقة <b class="tnum" style="color:var(--ink2)">${midNow.length}</b></span>
+      <span>${nowMonth ? 'بلا تسكين الآن' : 'بلا تسكين في السنة'} <b class="tnum" style="color:var(--ink2)">${freeNow.length}</b></span>
+      <span>${G.overloaded} <b class="tnum" style="color:${overNow.length ? 'var(--red)' : 'var(--ink2)'}">${overNow.length}</b></span></div>
+    ${canPeople ? `
+    <div class="dd-sec">حسب الإدارة</div>
+    <div>${deptRows || '<div style="color:var(--muted);font-size:12px">لا إدارات ضمن نطاقك في هذا القطاع</div>'}</div>
+    <div class="dd-sec">كل الأفراد — الأكثر حِملاً أولاً</div>
+    <div>${ddRows([...emps].sort((a, b) => loadOf(b) - loadOf(a)).map(personRow))}</div>
+    ${outsideRoster ? `<div style="font-size:var(--fs-micro);color:var(--muted);margin-top:.3rem">${outsideLine(outsideRoster)}</div>` : ''}
+    ${basisLine}
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.2rem"><a class="btn btn-sm" href="${staffingHref}">لوحة التسكين الكاملة</a></div>`
+    : `<div style="font-size:var(--fs-meta);color:var(--muted);margin-top:.4rem">أسماء الأفراد وأحمالهم تظهر لمن يملك صلاحية عرض الفريق.</div>${basisLine}`}`);
+  const deptDDs = (team?.departments || []).map((d) => {
+    const members = d.ids.map((id) => empById.get(id)).filter(Boolean).sort((a, b) => loadOf(b) - loadOf(a));
+    return ddWrap(`cap-dept-${esc(d.id || 'none')}`, esc(d.name_ar), `${esc(sd.sector.name_ar)} · ${nowMonth ? `${G.utilization} هذا الشهر` : `متوسط إشغال ${year}`}`, `
+    <div class="dd-kpi"><span class="v tnum" style="color:${d.avgNow > OVER_ABOVE ? 'var(--red)' : 'var(--ink2)'}">${d.avgNow}%</span><span style="font-size:12px;color:var(--muted)">متوسط ${G.utilization} · ${countAr(d.headcount, { one: 'موظف واحد', two: 'موظفان', few: 'موظفين', many: 'موظفاً' })}${nowMonth ? ` · متوسط السنة <b class="tnum">${d.avgAnnual}%</b>` : ''}</span></div>
+    <div style="display:flex;gap:1rem;font-size:12px;color:var(--muted);flex-wrap:wrap">
+      <span>${nowMonth ? 'بلا تسكين الآن' : 'بلا تسكين في السنة'} <b class="tnum" style="color:var(--ink2)">${d.free}</b></span>
+      <span>${G.overloaded} <b class="tnum" style="color:${d.over ? 'var(--red)' : 'var(--ink2)'}">${d.over}</b></span></div>
+    <div class="dd-sec">الأفراد</div>
+    <div>${members.length ? members.map(personRow).join('') : '<div style="color:var(--muted);font-size:12px">لا موظفين في هذه الإدارة ضمن نطاقك</div>'}</div>
+    ${basisLine}
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.2rem"><button type="button" class="btn btn-sm" data-action="open-dd" data-dd="seccap">كل الفريق</button></div>`);
+  }).join('');
+  const bandDDs = !canPeople ? '' : [
+    ['mid', 'ضمن الطاقة', midNow, `مُسكَّنون حتى ${OVER_ABOVE}% من الطاقة — ومنهم من لديه ${G.underused} (أقل من ${FREE_BELOW}%)`],
+    ['free', nowMonth ? G.onBench : 'بلا تسكين طوال السنة', freeNow, nowMonth ? `لا بند تسكين في ${monthLabel(nowMonth - 1)}` : `لا شهر مُسكَّن واحد في ${year}`],
+    ['over', G.overloaded, overNow, `فوق ${OVER_ABOVE}% من الطاقة`],
+  ].map(([k, l, rows, sub]) => ddWrap(`cap-band-${k}`, l, `${esc(sd.sector.name_ar)} · ${sub}`, `
+    <div class="dd-kpi"><span class="v tnum" style="color:${k === 'over' ? 'var(--red)' : k === 'free' ? 'var(--brand2)' : 'var(--green)'}">${rows.length}</span><span style="font-size:12px;color:var(--muted)">${countAr(rows.length, { one: 'شخص واحد', two: 'شخصان', few: 'أشخاص', many: 'شخصاً', zero: 'لا أحد' })} ضمن نطاقك</span></div>
+    <div>${rows.length ? [...rows].sort((a, b) => loadOf(b) - loadOf(a)).map(personRow).join('') : '<div style="color:var(--muted);font-size:12px">لا أحد ضمن هذه الفئة في هذه النافذة</div>'}</div>
+    ${basisLine}
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.2rem"><button type="button" class="btn btn-sm" data-action="open-dd" data-dd="seccap">كل الفريق</button></div>`)).join('');
+  // ── تغطية خط الفرص: المعادلة مكشوفة بأطرافها، ثم القمع وصفحة الفرص ──
+  const coverDD = ddWrap('seccover', 'تغطية خط الفرص', `${esc(sd.sector.name_ar)} · ${year}`, `
+    <div class="dd-kpi"><span class="v tnum" style="color:${(cover?.coverage ?? 1) < 1 ? 'var(--amber)' : 'var(--ink2)'}">${cover?.coverage != null ? `×${cover.coverage}` : '—'}</span><span style="font-size:12px;color:var(--muted)">${cover?.coverage != null ? 'المفتوح ÷ المتبقي من هدف المبيعات' : 'لا متبقٍّ من هدف المبيعات — الهدف محقَّق أو غير مسجَّل'}</span></div>
+    <div>
+      <div class="dd-row"><span>القيمة المفتوحة في خط الفرص</span><b class="tnum">${fmtSar(cover?.open_halalas || 0)}</b></div>
+      <div class="dd-row"><span>المتبقي من هدف المبيعات ${year}</span><b class="tnum">${fmtSar(cover?.remaining_target_halalas || 0)}</b></div>
+      <div class="dd-row"><span>المفتوح موزوناً بنسبة الفوز <span style="color:var(--muted);font-size:10.5px">· للاستئناس لا للحكم</span></span><b class="tnum">${fmtSar(cover?.weighted_halalas || 0)}</b></div>
+    </div>
+    <div style="font-size:var(--fs-micro);color:var(--muted);margin-top:.3rem">×1 فأكثر يعني أن ما في الخط يغطي المتبقي من الهدف لو كُسب كله — وما تحت ×1 فجوةٌ تحتاج فرصاً جديدة.</div>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.4rem">
+      <button type="button" class="btn btn-primary btn-sm" data-action="open-dd" data-dd="fnl-ALL">تفصيل القمع</button>
+      ${canOpps ? `<a class="btn btn-sm" href="${oppsPageHref}">فتح صفحة الفرص</a>` : ''}
+    </div>`);
+  // ── المتوقفة: الفرص التي تجاوزت المدة المعتادة لمرحلتها — أسماؤها بنطاق القارئ ──
+  const stalledIds = new Set(stalledRows.map((o) => o.id));
+  const stalledNamed = ddOppRows.filter((o) => stalledIds.has(o.id));
+  const stalledAge = new Map(stalledRows.map((o) => [o.id, ageDays(o.since)]));
+  const stalledShown = stalledNamed.slice(0, 12);
+  const stalledDD = ddWrap('fnl-stalled', 'فرص متوقفة تحتاج متابعة', `${esc(sd.sector.name_ar)} · تجاوزت المدة المعتادة لمرحلتها`, `
+    <div class="dd-kpi"><span class="v tnum" style="color:${stalledRows.length ? 'var(--amber)' : 'var(--ink2)'}">${stalledRows.length}</span><span style="font-size:12px;color:var(--muted)">بقيمة ${fmtSar(stalledRows.reduce((a, o) => a + (o.value_halalas || 0), 0))}</span></div>
+    <div class="dd-sec">${!stalledShown.length ? 'لا فرص متوقفة ضمن نطاق قراءتك'
+    : stalledShown.length === stalledRows.length ? 'الفرص'
+      : stalledNamed.length === stalledRows.length ? `الفرص (الأعلى ${stalledShown.length} قيمةً من ${stalledRows.length})`
+        : stalledShown.length === stalledNamed.length ? `الفرص (${stalledShown.length} من ${stalledRows.length} ضمن نطاق قراءتك)`
+          : `الفرص (الأعلى ${stalledShown.length} قيمةً من ${stalledNamed.length} ضمن نطاق قراءتك — الإجمالي ${stalledRows.length})`}</div>
+    <div>${ddRows(stalledShown.map((o) => `<div class="dd-row">
+      <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><a href="/app/opportunity/${esc(o.id)}" style="color:var(--ink2);font-weight:700">${esc(o.title_ar)}</a>${o.client ? ` <span style="color:var(--muted);font-size:10.5px">· ${esc(o.client)}</span>` : ''} <span style="color:var(--amber);font-size:10.5px">· ${dayWord(stalledAge.get(o.id) || 0)} في المرحلة</span></span>
+      <b class="tnum" style="flex:none">${o.value_halalas ? fmtSar(o.value_halalas) : '—'}</b></div>`))}</div>
+    ${canOpps ? `<div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.4rem"><a class="btn btn-sm" href="${oppsPageHref}">فتح صفحة الفرص</a></div>` : ''}`);
   const rosterIds = new Set((team?.people || []).map((p) => p.id));
   // نافذة بند «فوق الطاقة» في «يحتاج تدخلك»: الأسماء من الخدمة (محجوبة لمن لا يقرأ الموظفين)،
   // والصفّ يفتح نافذة صاحبه إن كان في الكشف.
@@ -1240,6 +1347,11 @@ export async function sectorPage(user, opts = {}) {
   const DD = `
   ${capEmpDDs}
   ${overloadDD}
+  ${teamDD}
+  ${deptDDs}
+  ${bandDDs}
+  ${coverDD}
+  ${stalledDD}
   ${ddWrap('secrev', `${G.revenue} حسب المشروع · ${year}`, `${esc(sd.sector.name_ar)} · المحقق مقابل قيمة كل مشروع`, `
     <div class="dd-kpi"><span class="v tnum" style="color:var(--green)">${fmtSar(sd.revenue_halalas)}</span><span style="font-size:12px;color:var(--muted)">إجمالي المحقق ${year} · ${G.forecast}: ${fmtSar(fc.forecast)}</span></div>
     ${attain(sd.revenue_halalas, sd.target_revenue_halalas, 'var(--green)')}
