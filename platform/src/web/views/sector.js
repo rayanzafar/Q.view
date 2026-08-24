@@ -143,13 +143,24 @@ const CSS = `<style>
 .vja small{font-size:10px;font-weight:800;color:rgba(255,255,255,.75)}
 .vjw{margin-top:.5rem;display:flex;gap:.45rem;align-items:center;font-size:var(--fs-body);font-weight:700;color:#ffd9a3;flex-wrap:wrap}
 .vjw svg{width:14px;height:14px;flex:none}
-/* النسخة الفاتحة من الرحلة (قسم ٥) */
+/* النسخة الفاتحة من الرحلة (قسم ٥) — أيقونات سداسية كنموذج المالك، بسلّم الرتب نفسه */
 .vj-light .vjn{background:var(--bg);border-color:var(--line)}
 .vj-light .vjn b{color:var(--ink2)}
 .vj-light .vjn>span{color:var(--muted)}
-.vj-light .vjn i{background:var(--st-neut-soft)}
-.vj-light .vjn i svg{color:var(--brand)}
-.vj-light .vjn.leak{border-color:var(--st-warn);background:var(--st-warn-soft)}
+.vj-light .vjn i{width:36px;height:32px;border-radius:0;clip-path:polygon(25% 0,75% 0,100% 50%,75% 100%,25% 100%,0 50%);background:var(--ord-3)}
+.vj-light .vjn i svg{color:#fff}
+.vj-light .vjn:nth-child(2) i{background:var(--ord-1)}
+.vj-light .vjn:nth-child(4) i{background:var(--ord-2)}
+.vj-light .vjn:nth-child(6) i{background:var(--ord-3)}
+.vj-light .vjn:nth-child(8) i{background:var(--ord-4)}
+.vj-light .vjn:nth-child(10) i{background:var(--ord-4)}
+.vj-light .vjn:nth-child(12) i{background:var(--ord-5)}
+.vj-light .vjn.leak{border-color:var(--st-bad);background:var(--st-bad-soft)}
+.vj-light .vjn.leak i{background:var(--st-bad)}
+.vj-light .vjn.off{opacity:.75;border-style:dashed}
+.vj-light .vjn.off i{background:var(--track)}
+.vj-light .vjn.off i svg{color:var(--faint)}
+.vjoff{font-size:9px;color:var(--faint);max-width:110px;text-align:center;line-height:1.4}
 .vj-light .vja{color:var(--muted)}
 .vj-light .vja small{color:var(--ink2)}
 .vj-light .vjw{color:var(--st-warn)}
@@ -1372,6 +1383,10 @@ export async function sectorPage(user, opts = {}) {
     </div>`;
 
   // ── رحلة القيمة داخل اللوحة الداكنة: من التعاقد إلى التحصيل بنسب التسرب ──
+  // محطةٌ صفرية جدولُها فارغ «لم تُسجَّل» لا «تسرب −100%»: قطاعٌ بلا عقود مسجَّلة أو تحصيلٍ لم
+  // يبدأ لا يُتَّهم بتسريب ما لم يُقِده أحد. النسب والتسرب الأكبر بين المحطات المسجَّلة وحدها،
+  // والمقارنة بآخر محطةٍ غير صفرية (لا قسمة على صفرٍ توهم بقفزة).
+  const VJ_EMPTY = { 'متعاقد': 'لا عقود مسجَّلة لهذا القطاع', 'محصَّل': 'لا تحصيل مسجَّلاً بعد' };
   const vj = [
     { k: 'متعاقد', v: vjContracted?.v || 0, ic: 'contracts' },
     { k: 'المحقق', v: sd.revenue_halalas || 0, ic: 'projects' },
@@ -1379,21 +1394,21 @@ export async function sectorPage(user, opts = {}) {
     { k: 'مقبول', v: vjAccepted?.v || 0, ic: 'approvals' },
     ...(canInvoices ? [{ k: 'مفوتر', v: vjInvoiced?.v || 0, ic: 'money' }, { k: 'محصَّل', v: vjCollected?.v || 0, ic: 'money' }] : []),
   ];
-  let vjWorst = null;
-  const vjSteps = vj.map((st, i) => {
-    if (!i) return { ...st, drop: null };
-    const prev = vj[i - 1].v;
-    const drop = prev > 0 ? Math.round(((st.v - prev) / prev) * 100) : null;
-    if (drop != null && drop < 0 && (!vjWorst || drop < vjWorst.drop)) vjWorst = { name: st.k, drop, loss: prev - st.v };
-    return { ...st, drop };
+  let vjWorst = null, vjPrev = null;
+  const vjSteps = vj.map((st) => {
+    const empty = !st.v;
+    const drop = !empty && vjPrev != null && vjPrev > 0 ? Math.round(((st.v - vjPrev) / vjPrev) * 100) : null;
+    if (drop != null && drop < 0 && (!vjWorst || drop < vjWorst.drop)) vjWorst = { name: st.k, drop, loss: vjPrev - st.v };
+    if (!empty) vjPrev = st.v;
+    return { ...st, drop, empty };
   });
   const journey = `
-    <div class="vj" role="img" aria-label="رحلة القيمة: ${vjSteps.map((st) => `${st.k} ${sarShort(st.v)}`).join(' ثم ')}">
+    <div class="vj" role="img" aria-label="رحلة القيمة: ${vjSteps.map((st) => `${st.k} ${st.empty ? 'لم يُسجَّل' : sarShort(st.v)}`).join(' ثم ')}">
       ${vjSteps.map((st, i) => `
-        ${i ? `<span class="vja" aria-hidden="true">←<small class="tnum" dir="ltr">${st.drop == null ? '' : `${st.drop > 0 ? '+' : ''}${st.drop}%`}</small></span>` : ''}
-        <span class="vjn${vjWorst && vjWorst.name === st.k ? ' leak' : ''}"><i>${icon(st.ic)}</i><b class="tnum">${sarShort(st.v)}</b><span>${st.k}</span></span>`).join('')}
+        ${i ? `<span class="vja" aria-hidden="true">←<small class="tnum" dir="ltr">${st.drop == null ? (st.empty ? '' : '') : `${st.drop > 0 ? '+' : ''}${st.drop}%`}</small></span>` : ''}
+        <span class="vjn${vjWorst && vjWorst.name === st.k ? ' leak' : ''}${st.empty ? ' off' : ''}"${st.empty ? ` title="${esc(VJ_EMPTY[st.k] || 'لم يُسجَّل بعد')}"` : ''}><i>${icon(st.ic)}</i><b class="tnum">${st.empty ? '—' : sarShort(st.v)}</b><span>${st.k}</span>${st.empty ? `<small class="vjoff">${esc(VJ_EMPTY[st.k] || 'لم يُسجَّل')}</small>` : ''}</span>`).join('')}
     </div>
-    ${vjWorst ? `<div class="vjw">${icon('risk')} أكبر تسرب عند «${vjWorst.name}»: <b class="tnum" dir="ltr">${vjWorst.drop}%</b> (<b class="tnum">${sarShort(vjWorst.loss)}</b>) ${estMark('النسب بين مجاميع سجلات السنة (عقود، إيراد، مخرجات، فواتير، تحصيل) — وليست تتبعاً لكل ريال بعينه')}</div>` : ''}`;
+    ${vjWorst ? `<div class="vjw">${icon('risk')} أكبر تسرب عند «${vjWorst.name}»: <b class="tnum" dir="ltr">${vjWorst.drop}%</b> (<b class="tnum">${sarShort(vjWorst.loss)}</b>) ${estMark('النسب بين مجاميع سجلات السنة المسجَّلة فعلاً (عقود، إيراد، مخرجات، فواتير، تحصيل) — محطةٌ جدولُها فارغ خارج الحساب، وليست النسب تتبعاً لكل ريال بعينه')}</div>` : ''}`;
 
   const attnChip = `<button type="button" class="xb-attn" data-action="act-jump" aria-label="${G.attention}: ${attn.length} — الانتقال إلى القائمة">${icon('risk')} ${G.attention} <b class="tnum">${attn.length}</b></button>`;
   const execBand = `
@@ -1440,17 +1455,15 @@ export async function sectorPage(user, opts = {}) {
   </section>`;
 
   // ── ٤: الفصل التجاري — قمعٌ متدرّج + أعمار الفرص + فقاعات قيمة×احتمال×عمر ──
-  const funnelGrad = (i, n) => {
-    const a = [0x24, 0x4A, 0x99], b = [0x83, 0x47, 0x98];
-    const t = n <= 1 ? 0 : i / (n - 1);
-    return `#${a.map((av, k) => Math.round(av + (b[k] - av) * t).toString(16).padStart(2, '0')).join('')}`;
-  };
+  // سلّم رتبيّ واحد للمراحل (اجتاز فاحص dataviz بوضع --ordinal): الأغمق أول المراحل، والقيم
+  // مطبوعة على كل صف فلا يُقرأ اللون وحده.
+  const ordColor = (i, n) => `var(--ord-${Math.min(5, Math.max(1, Math.round(1 + (i / Math.max(1, n - 1)) * 4)))})`;
   const trapRows = funnelStages.map((st, i) => {
     const wv = Math.max(6, Math.round((st.value_halalas / Math.max(1, openTotalV)) * 100));
     return `<button type="button" class="trp" data-action="open-dd" data-dd="fnl-${esc(st.id)}" aria-label="مرحلة ${esc(st.name_ar)}: ${countAr(st.count, { one: 'فرصة واحدة', two: 'فرصتان', few: 'فرص', many: 'فرصة', zero: 'لا فرص' })}${st.count ? ` بقيمة ${fmtSar(st.value_halalas)}` : ''} — التفصيل">
       <span class="tn">${esc(st.name_ar)}</span>
-      <span class="tt"><i style="width:${wv}%;background:${funnelGrad(i, funnelStages.length)}"><b class="tnum">${st.count}</b></i></span>
-      <span class="tv tnum">${sarShort(st.value_halalas)}</span>
+      <span class="tt"><i style="width:${wv}%;background:${ordColor(i, funnelStages.length)}"><b class="tnum">${st.count}</b></i></span>
+      <span class="tv tnum">${sarShort(st.value_halalas)}<small style="display:block;color:var(--faint);font-size:9.5px" title="من قيمة الخط المفتوح">${openTotalV ? Math.round((st.value_halalas / openTotalV) * 100) : 0}%</small></span>
     </button>`;
   }).join('');
   const AGE_B = [['0-30', 'حتى شهر', 0, 30], ['31-60', 'شهر إلى شهرين', 31, 60], ['61-90', 'شهران إلى ثلاثة', 61, 90], ['90+', 'أكثر من ثلاثة', 91, 99999]];
@@ -1461,15 +1474,24 @@ export async function sectorPage(user, opts = {}) {
     const maxAge = Math.max(30, ...rows.map((o) => ageDays(o.since)));
     const maxV = Math.max(1, ...rows.map((o) => o.value_halalas));
     const w = 460, h = 190, padX = 26, padB = 24, padT = 10;
-    const X = (age) => padX + (1 - age / maxAge) * (w - padX * 2);
+    const X = (age) => padX + (age / maxAge) * (w - padX * 2);
     const Y = (wp) => padT + (1 - Math.max(0, Math.min(100, wp)) / 100) * (h - padT - padB);
     const R = (v) => 4 + Math.sqrt(v / maxV) * 14;
+    // مفتاح الحجم: ثلاث دوائر مرجعية بقيمها — الحجم يعني القيمة ولا يُترك للتخمين
+    const legR = [5, 10, 16];
+    const legend = legR.map((r, k) => {
+      const v = Math.pow((r - 4) / 14, 2) * maxV;
+      const cx = padX + 14 + k * 58;
+      return `<circle cx="${cx}" cy="${padT + 12}" r="${r}" fill="var(--ord-3)" opacity=".4" stroke="#fff" stroke-width="1"/>
+        <text x="${cx + r + 3}" y="${padT + 15}" text-anchor="start">${esc(sarShort(v))}</text>`;
+    }).join('');
     return `<svg class="fig-svg" viewBox="0 0 ${w} ${h}" role="img" aria-label="قيمة الفرصة مقابل احتمال الفوز مقابل عمر المرحلة — كل فقاعة فرصة وحجمها قيمتها" style="width:100%;height:auto">
       <line class="axis" x1="${padX}" y1="${h - padB}" x2="${w - padX}" y2="${h - padB}"/>
-      <line class="axis" x1="${w - padX}" y1="${padT}" x2="${w - padX}" y2="${h - padB}"/>
-      <text x="${w - padX}" y="${h - 6}" text-anchor="end">0 يوم</text><text x="${padX}" y="${h - 6}" text-anchor="start">${dayWord(maxAge)}</text>
-      <text x="${w - padX + 2}" y="${padT + 6}" text-anchor="start" transform="rotate(0)">100%</text>
-      ${rows.map((o) => `<circle cx="${X(ageDays(o.since)).toFixed(1)}" cy="${Y(Number(o.win_pct) || 0).toFixed(1)}" r="${R(o.value_halalas).toFixed(1)}" fill="${funnelGrad(funnelStages.findIndex((st) => st.id === o.stage_id), funnelStages.length)}" opacity=".55" stroke="#fff" stroke-width="1"><title>${esc(o.title_ar)} — ${fmtSar(o.value_halalas)} · احتمال ${Math.round(Number(o.win_pct) || 0)}% · ${dayWord(ageDays(o.since))} في المرحلة</title></circle>`).join('')}
+      <line class="axis" x1="${padX}" y1="${padT}" x2="${padX}" y2="${h - padB}"/>
+      <text x="${padX}" y="${h - 6}" text-anchor="start">0 يوم</text><text x="${w - padX}" y="${h - 6}" text-anchor="end">${dayWord(maxAge)}</text>
+      <text x="${padX + 3}" y="${padT + 6}" text-anchor="start">100%</text>
+      ${legend}
+      ${rows.map((o) => `<circle cx="${X(ageDays(o.since)).toFixed(1)}" cy="${Y(Number(o.win_pct) || 0).toFixed(1)}" r="${R(o.value_halalas).toFixed(1)}" fill="${ordColor(funnelStages.findIndex((st) => st.id === o.stage_id), funnelStages.length)}" opacity=".55" stroke="#fff" stroke-width="1"><title>${esc(o.title_ar)} — ${fmtSar(o.value_halalas)} · احتمال ${Math.round(Number(o.win_pct) || 0)}% · ${dayWord(ageDays(o.since))} في المرحلة</title></circle>`).join('')}
     </svg>`;
   })();
   const commercialSection = `
