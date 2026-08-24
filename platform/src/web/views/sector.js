@@ -204,10 +204,13 @@ const CSS = `<style>
 .conc-panel{display:grid;gap:.5rem;align-content:start}
 .cp-hero{font-size:var(--fs-title);font-weight:800;color:var(--ink2)}
 .opsd{display:grid;gap:.4rem;justify-items:center}
-.hr2{display:grid;grid-template-columns:1.2fr 1fr;gap:1.2rem;align-items:start}
-.com3>div,.ops3>div,.hr2>div,.out3>div{min-width:0}
+.hr3{display:grid;grid-template-columns:1.15fr 1.15fr .7fr;gap:1.2rem;align-items:start}
+.com3>div,.ops3>div,.hr3>div,.out3>div{min-width:0}
 .out3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1.1rem}
-.outg{margin-bottom:.5rem}
+.outg{margin-bottom:.5rem;border-inline-start:2px solid var(--line);padding-inline-start:.75rem;position:relative}
+.outg .msr{position:relative}
+.outg .msr .d{position:relative}
+.outg .msr .d::before{content:'';position:absolute;inset-inline-start:-1.05rem;top:50%;transform:translateY(-50%);width:9px;height:9px;border-radius:50%;background:#101733;border:2px solid var(--surface);box-shadow:0 0 0 1px var(--line)}
 .og{display:inline-block;font-size:var(--fs-micro);font-weight:800;color:var(--brand);background:var(--st-neut-soft);border-radius:999px;padding:.05rem .6rem;margin-bottom:.2rem}
 .msr{display:flex;gap:.5rem;align-items:baseline;padding:.32rem 0;border-bottom:1px dashed var(--line2);font-size:var(--fs-body);min-width:0}
 .msr:last-child{border-bottom:none}
@@ -217,7 +220,14 @@ const CSS = `<style>
 .msr .d{flex:none;color:var(--muted);font-weight:700}
 .msr .im{font-size:var(--fs-meta)}
 .dotc{width:9px;height:9px;border-radius:50%;flex:none;align-self:center}
-@media(max-width:1100px){.ins{grid-template-columns:1fr}.com3{grid-template-columns:1fr}.ops3{grid-template-columns:1fr}.hr2{grid-template-columns:1fr}.out3{grid-template-columns:1fr}.kpi5{grid-template-columns:repeat(2,minmax(0,1fr))}.kpi5>.kpi:first-child{grid-column:span 2}}
+.foot-strip{display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;padding:.55rem 1rem;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--muted);font-size:11.5px;font-weight:700}
+.fs-compl{display:inline-flex;gap:.45rem;align-items:center;background:none;border:none;font-family:inherit;font-size:11.5px;font-weight:700;color:var(--muted);cursor:pointer;padding:.2rem .3rem;border-radius:8px}
+.fs-compl:hover{background:var(--bg)}
+.fs-compl:focus-visible{outline:2px solid var(--brand);outline-offset:1px}
+.fs-compl b{color:var(--ink2)}
+.pmeter{display:inline-block;width:110px;height:6px;border-radius:999px;background:var(--track);overflow:hidden;vertical-align:middle}
+.pmeter i{display:block;height:100%;border-radius:999px;background:var(--acc-navy)}
+@media(max-width:1100px){.ins{grid-template-columns:1fr}.com3{grid-template-columns:1fr}.ops3{grid-template-columns:1fr}.hr3{grid-template-columns:1fr}.out3{grid-template-columns:1fr}.kpi5{grid-template-columns:repeat(2,minmax(0,1fr))}.kpi5>.kpi:first-child{grid-column:span 2}}
 @media(max-width:640px){.vjn{min-width:70px;padding:.4rem .5rem}.secn .upd{display:none}
 .kpi5{gap:.6rem}.kv{font-size:24px}
 .fig-svg text{font-size:15px}}
@@ -1189,7 +1199,14 @@ export async function sectorPage(user, opts = {}) {
     : `<div style="color:var(--muted);font-size:12px">${canPeople ? 'لا أحد تجاوز الطاقة ضمن نطاقك' : 'أسماء الأفراد تظهر لمن يملك صلاحية عرض الفريق'}</div>`}</div>
     <div style="font-size:10.5px;color:var(--muted);margin-top:.4rem">الأرقام من خطة التسكين الشهرية — وليست ساعات عمل فعلية.</div>
     ${canPeople ? `<div style="display:flex;gap:.5rem;flex-wrap:wrap"><a class="btn btn-sm" href="${staffingHref}">لوحة التسكين</a></div>` : ''}`);
+  const complDD = compl.score != null ? ddWrap('completeness', 'اكتمال البيانات', `${esc(sd.sector.name_ar)} · نِسَبٌ مسمّاة البسط والمقام — والدرجة متوسطها الموزون`, `
+    <div class="dd-kpi"><span class="v tnum">${compl.score}%</span><span style="font-size:12px;color:var(--muted)">كلما اكتملت البيانات صدقت أرقام هذه الصفحة</span></div>
+    ${compl.items.map((it) => `<div class="dd-row"><span>${esc(it.label)} <span class="tipdot" data-tip="${esc(it.hint)}" tabindex="0" role="img" aria-label="${esc(it.hint)}">${icon('info')}</span></span>
+      <span style="display:inline-flex;gap:.5rem;align-items:center"><span class="pmeter"><i style="width:${it.pct}%"></i></span>
+      <b class="tnum">${it.num} من ${it.den}</b>
+      <a class="btn btn-ghost btn-sm" href="${esc(it.href)}">أكمِلها</a></span></div>`).join('')}`) : '';
   const DD = `
+  ${complDD}
   ${capEmpDDs}
   ${overloadDD}
   ${teamDD}
@@ -1602,21 +1619,45 @@ export async function sectorPage(user, opts = {}) {
       return members.length ? Math.round(members.reduce((a, p) => a + (p.months[m] || 0), 0) / members.length) : null;
     }) }))
     : [{ label: 'القطاع', cells: Array.from({ length: 12 }, (_, m) => (staff.employees || []).length ? Math.round((staff.employees || []).reduce((a, e) => a + (e.months[m] || 0), 0) / (staff.employees || []).length) : null) }];
+  // خريطة السنة الجارية: ثلاثة أشهر قادمة بأسماء الشهور (نموذج المالك) — قرارُ التسكين قرارُ
+  // المدى القريب، والسنة كاملةً بأرقام شهورها للسنوات المطوية. الأعمدة يسارية القراءة.
+  const heat3Months = nowMonth ? [nowMonth, nowMonth + 1, nowMonth + 2].filter((m) => m <= 12) : [];
+  const heat3Rows = heat3Months.length ? heatRows.map((r) => ({ label: r.label, cells: heat3Months.map((m) => r.cells[m - 1]) })) : null;
+  // العرض حسب المسمى الوظيفي — جانب العرض وحده: احتياج الأدوار غير مسجَّل في الفرص والمشاريع
+  const rosterPeople = team ? team.people : (staff.employees || []);
+  const jobCounts = {};
+  for (const pRow of rosterPeople) { const j = (pRow.job || '').trim() || 'بلا مسمى مسجّل'; jobCounts[j] = (jobCounts[j] || 0) + 1; }
+  const jobBars = Object.entries(jobCounts).sort((a, b) => b[1] - a[1]).slice(0, 6)
+    .map(([j, n]) => ({ label: j, value: n, count: '', fill: j === 'بلا مسمى مسجّل' ? 'var(--tick)' : 'var(--acc-navy)' }));
+  const heatTone = (v) => v == null ? ['var(--track)', 'var(--muted)'] : v > OVER_ABOVE ? ['var(--st-bad-soft)', 'var(--st-bad)'] : v === 0 ? ['var(--st-neut-soft)', 'var(--muted)'] : v < FREE_BELOW ? ['#fdf6e3', '#8a6d1a'] : ['var(--st-good-soft)', 'var(--st-good)'];
   const hrSection = `
   <section class="card pad">
     ${secn(8, 'الفصل البشري — التسكين والموارد', `${G.utilization} المخطَّط بالإدارة والشهر، والطلب مقابل الطاقة — من خطة التسكين لا ساعات العمل`)}
-    <div class="hr2">
+    <div class="hr3">
       <div>
-        <div class="sh">${G.utilization} حسب ${team && team.departments.length ? 'الإدارة' : 'القطاع'} والشهر</div>
-        ${figHeat(heatRows, Array.from({ length: 12 }, (_, i) => i + 1), { tone: (v) => v == null ? ['var(--track)', 'var(--muted)'] : v > OVER_ABOVE ? ['var(--st-bad-soft)', 'var(--st-bad)'] : v === 0 ? ['var(--st-neut-soft)', 'var(--muted)'] : v < FREE_BELOW ? ['#fdf6e3', '#8a6d1a'] : ['var(--st-good-soft)', 'var(--st-good)'] })}
+        <div class="sh">${G.utilization} حسب ${team && team.departments.length ? 'الإدارة' : 'القطاع'} ${heat3Rows ? 'للأشهر الثلاثة القادمة' : 'والشهر'}</div>
+        ${heat3Rows
+    ? figHeat(heat3Rows, heat3Months.map((m) => monthLabel(m - 1)), { tone: heatTone, ltr: true })
+    : figHeat(heatRows, Array.from({ length: 12 }, (_, i) => i + 1), { tone: heatTone, ltr: true })}
+        <div class="pulses" style="border-top:none;padding-top:.35rem;margin-top:.2rem">
+          <div class="pch"><span class="l">ضمن الطاقة</span><b class="tnum" style="color:var(--st-good)">${midNow.length}</b></div>
+          <div class="pch"><span class="l">تجاوز</span><b class="tnum"${overNow.length ? ' style="color:var(--st-bad)"' : ''}>${overNow.length}</b></div>
+          <div class="pch"><span class="l">${nowMonth ? G.onBench : 'بلا تسكين'}</span><b class="tnum">${freeNow.length}</b></div>
+        </div>
       </div>
       <div>
         <div class="sh">الطلب المخطَّط مقابل الطاقة (مكافئ التفرغ)</div>
         ${figLine([
-    { points: demandFte, color: 'var(--brand)', area: true, name: 'المخطَّط له' },
-    { points: Array.from({ length: 12 }, () => capFte), color: 'var(--tick)', dash: true, dots: false, name: 'الطاقة' },
-  ], { labels: Array.from({ length: 12 }, (_, i) => i + 1), now: nowM + 1, h: 120, fmt: (v) => `${Math.round(v * 10) / 10} م.ت` })}
+    { points: demandFte, color: 'var(--acc-indigo)', area: true, name: 'المخطَّط له' },
+    { points: Array.from({ length: 12 }, () => capFte), color: 'var(--muted)', dash: true, dots: false, name: 'الطاقة' },
+  ], { labels: Array.from({ length: 12 }, (_, i) => i + 1), now: nowM + 1, h: 120, fmt: (v) => `${Math.round(v * 10) / 10} من مكافئ التفرغ`, axisDir: 'ltr',
+    marks: gapFte != null && gapFte < 0 && worstGap ? [{ i: worstGap.i, label: `فجوة ${Math.abs(gapFte)} مكافئ تفرغ في ${monthLabel(worstGap.i)}`, color: 'var(--st-bad)' }] : [] })}
         ${gapFte != null && nowMonth ? `<div class="comfoot"><span>${gapFte > 0 ? `سعة غير مستغلة <b class="tnum">${gapFte}</b> من مكافئ التفرغ في ${monthLabel(worstGap.i)}` : `عجز <b class="tnum">${Math.abs(gapFte)}</b> من مكافئ التفرغ في ${monthLabel(worstGap.i)}`}</span></div>` : ''}
+      </div>
+      <div>
+        <div class="sh">العرض حسب المسمى الوظيفي</div>
+        ${jobBars.length ? figBars(jobBars, { fmt: (v) => countAr(v, { one: 'شخص واحد', two: 'شخصان', few: 'أشخاص', many: 'شخصاً' }) }) : `<div class="empty-mini">${icon('team')} لا كشف أفراد ضمن نطاقك</div>`}
+        <div class="comfoot">جانب العرض فقط — احتياج الأدوار غير مسجَّل في الفرص والمشاريع بعد</div>
       </div>
     </div>
   </section>`;
@@ -1706,6 +1747,17 @@ export async function sectorPage(user, opts = {}) {
       </div>
     </section>
     ${outlookSection}
+    <div class="foot-strip">
+      <span>بيانات سند</span>
+      <span>·</span>
+      <span>${lastUpd ? `آخر تحديث <b class="tnum" dir="ltr">${esc(String(lastUpd).slice(0, 10))} ${esc(String(lastUpd).slice(11, 16))}</b>` : 'لا تحديثات مسجَّلة بعد'}</span>
+      ${compl.score != null ? `<span>·</span>
+      <button type="button" class="fs-compl" data-action="open-dd" data-dd="completeness" aria-label="اكتمال البيانات ${compl.score}% — التفصيل">
+        اكتمال البيانات <b class="tnum">${compl.score}%</b>
+        <span class="pmeter" aria-hidden="true"><i style="width:${compl.score}%"></i></span>
+        ${estMark('درجة مركّبة: متوسط موزون لنِسَب اكتمالٍ مسمّاة البسط والمقام — تفصيلها بالنقر')}
+      </button>` : ''}
+    </div>
     ${drawer}
     </div>
     ${DD}`;
