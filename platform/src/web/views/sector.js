@@ -190,7 +190,19 @@ const CSS = `<style>
 .trp .tt i{height:100%;border-radius:5px;display:flex;align-items:center;justify-content:center;min-width:30px;transition:width .3s}
 .trp .tt i b{color:#fff;font-size:11.5px}
 .trp .tv{font-size:var(--fs-body);font-weight:800;color:var(--ink2);text-align:start}
-.ops3{display:grid;grid-template-columns:auto 1fr 1fr;gap:1.2rem;align-items:start}
+.ops3{display:grid;grid-template-columns:auto 1.3fr .8fr;gap:1.2rem;align-items:start}
+.ops-stats{display:grid;gap:.5rem;align-content:start}
+.prj-tbl{width:100%;border-collapse:collapse;font-size:var(--fs-body)}
+.prj-tbl th{font-size:var(--fs-micro);color:var(--muted);font-weight:700;text-align:start;padding:.3rem .5rem;border-bottom:1px solid var(--line);white-space:nowrap}
+.prj-tbl td{padding:.45rem .5rem;border-bottom:1px dashed var(--line);vertical-align:middle}
+.prj-tbl tr:last-child td{border-bottom:none}
+.prj-tbl tr:hover td{background:#fbfcfe}
+.prj-tbl td a{color:var(--ink2);font-weight:700}
+.prj-tbl .dotc{display:inline-block;vertical-align:middle;margin-inline-end:.25rem}
+.ptrk{display:inline-block;vertical-align:middle;width:72px;height:6px;border-radius:999px;background:var(--track);overflow:hidden;margin-inline-end:.3rem}
+.ptrk i{display:block;height:100%;border-radius:999px}
+.conc-panel{display:grid;gap:.5rem;align-content:start}
+.cp-hero{font-size:var(--fs-title);font-weight:800;color:var(--ink2)}
 .opsd{display:grid;gap:.4rem;justify-items:center}
 .hr2{display:grid;grid-template-columns:1.2fr 1fr;gap:1.2rem;align-items:start}
 .com3>div,.ops3>div,.hr2>div,.out3>div{min-width:0}
@@ -513,7 +525,7 @@ export async function sectorPage(user, opts = {}) {
      ORDER BY CASE p.rag WHEN 'RED' THEN 0 ELSE 1 END, p.name_ar LIMIT 6`, [sectorId, ...pyc.params]);
   const healthLists = {};
   for (const rag of ['GREEN', 'AMBER', 'RED']) {
-    healthLists[rag] = (sd.rag[rag]) ? await all(`SELECT id, name_ar, progress_pct FROM project
+    healthLists[rag] = (sd.rag[rag]) ? await all(`SELECT id, name_ar, progress_pct, end_date FROM project
        WHERE sector_id = ? AND deleted_at IS NULL AND status = 'IN_PROGRESS' AND rag = ? AND ${pycBare.clause}
        ORDER BY name_ar LIMIT 30`, [sectorId, rag, ...pycBare.params]) : [];
   }
@@ -807,13 +819,6 @@ export async function sectorPage(user, opts = {}) {
       <b class="tnum">${sd.rag[k] || 0}</b>
       <span class="m tnum">${ragActive ? Math.round(((sd.rag[k] || 0) / ragActive) * 100) : 0}%</span>
     </button>`).join('');
-  const needRows = needProjects.slice(0, 3).map((p) => `<a href="/app/project/${esc(p.id)}" style="display:block;padding:.4rem 0;border-bottom:1px dashed var(--line)">
-      <div style="display:flex;align-items:center;gap:.45rem;font-size:var(--fs-body)">
-        <span style="width:8px;height:8px;border-radius:50%;background:${p.rag === 'RED' ? 'var(--st-bad)' : 'var(--st-warn)'};flex:none"></span>
-        <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700">${esc(p.name_ar)}</span>
-      </div>
-      <div style="font-size:var(--fs-body);color:var(--muted);margin-top:.1rem">${p.top_risk ? `أبرز خطر: ${esc(p.top_risk)}` : p.risks ? countAr(p.risks, { one: 'خطر مفتوح واحد', two: 'خطران مفتوحان', few: 'مخاطر مفتوحة', many: 'خطراً مفتوحاً' }) : 'لا سبب مسجَّل — يُسجَّل من صفحة المشروع'}</div>
-    </a>`).join('');
 
   // ── التحليل الموسّع (الدرج): الإيراد عبر السنة بلغة الأعمدة الواحدة + الفجوة والمتوقع
   // والهامش — «الأداء مقابل الخطة» صار عنوان شريط المؤشرات، وأشرطته في البطاقات نفسها. ──
@@ -1527,9 +1532,40 @@ export async function sectorPage(user, opts = {}) {
   });
   const msDueTot = weekBuckets.reduce((a, b) => a + b.due, 0);
   const msMetTot = weekBuckets.reduce((a, b) => a + b.met, 0);
+  // جدول «تقدم المشاريع الرئيسية» (نموذج المالك): الحمراء فالصفراء أولاً ثم الأعلى إيراداً —
+  // التقدم من المخرجات الموزونة (المصدر الواحد)، والمعلم القادم من جدول المعالم إن سُجِّل
+  // («لم تُسجَّل معالم» حالةُ إدخالٍ ناقص لا عيبَ مشروع)، والتأخر من تاريخ الانتهاء مقابل اليوم.
+  const revByPid = Object.fromEntries(revByProject.map((r) => [r.id, r]));
+  const nextMsByPid = {};
+  for (const m of msUpcoming) if (!nextMsByPid[m.pid]) nextMsByPid[m.pid] = m;
+  const RAG_ORD = { RED: 0, AMBER: 1, GREEN: 2 };
+  const prjRows = [...healthLists.RED.map((r) => ({ ...r, rag: 'RED' })), ...healthLists.AMBER.map((r) => ({ ...r, rag: 'AMBER' })), ...healthLists.GREEN.map((r) => ({ ...r, rag: 'GREEN' }))]
+    .sort((a, b) => (RAG_ORD[a.rag] - RAG_ORD[b.rag]) || ((revByPid[b.id]?.rev || 0) - (revByPid[a.id]?.rev || 0)))
+    .slice(0, 7);
+  const RAG_LBL = { GREEN: [G.hOnTrack, 'var(--st-good)'], AMBER: [G.hAtRisk, 'var(--st-warn)'], RED: [G.hCritical, 'var(--st-bad)'] };
+  const lateDaysOf = (r, prog) => r.end_date && prog < 100 && String(r.end_date).slice(0, 10) < today
+    ? Math.floor((Date.parse(today) - Date.parse(String(r.end_date).slice(0, 10))) / 86400000) : 0;
+  const lateVals = prjRows.map((r) => lateDaysOf(r, progMapH.get(r.id)?.pct ?? Math.round(r.progress_pct || 0))).filter((d) => d > 0);
+  const prjTable = prjRows.length ? `<div class="tblwrap"><table class="prj-tbl rtbl">
+    <thead><tr><th>المشروع</th><th>الحالة</th><th>التقدم</th><th>المعلم القادم</th><th>التأخر</th></tr></thead><tbody>
+    ${prjRows.map((r) => {
+    const prog = progMapH.get(r.id)?.pct ?? Math.max(0, Math.min(100, Math.round(r.progress_pct || 0)));
+    const [lbl, col] = RAG_LBL[r.rag];
+    const ms = nextMsByPid[r.id];
+    const late = lateDaysOf(r, prog);
+    const risk = needProjects.find((np) => np.id === r.id)?.top_risk;
+    return `<tr>
+      <td data-l="المشروع"><a href="/app/project/${esc(r.id)}">${esc(r.name_ar)}</a></td>
+      <td data-l="الحالة"><span class="dotc" style="background:${col}"${risk ? ` title="أبرز خطر مفتوح: ${esc(risk)}"` : ''}></span> ${lbl}</td>
+      <td data-l="التقدم"><span class="ptrk"><i style="width:${prog}%;background:${col}"></i></span> <b class="tnum">${prog}%</b></td>
+      <td data-l="المعلم القادم">${ms ? `${esc(ms.name_ar)} — <span class="tnum">${esc(String(ms.due_date).slice(0, 10))}</span>` : '<span style="color:var(--faint)">لم تُسجَّل معالم</span>'}</td>
+      <td data-l="التأخر">${late ? `<span style="color:var(--st-bad);font-weight:700">${dayWord(late)}</span>` : '<span style="color:var(--faint)">—</span>'}</td>
+    </tr>`;
+  }).join('')}
+  </tbody></table></div>` : `<div class="empty-mini">${icon('projects')} لا مشاريع في سنة ${year}</div>`;
   const opsSection = `
   <section class="card pad">
-    ${secn(6, 'الفصل التشغيلي', 'صحة المشاريع والتزام المعالم في الأسابيع الثمانية الماضية')}
+    ${secn(6, 'الفصل التشغيلي', 'صحة المشاريع والتزام المعالم وتقدم المشاريع الرئيسية')}
     <div class="ops3">
       <div class="opsd">
         <span class="ringw" style="width:112px;height:112px">${figDonut([
@@ -1538,20 +1574,23 @@ export async function sectorPage(user, opts = {}) {
         <div class="fig-leg">${healthRows}</div>
       </div>
       <div>
-        <div class="sh">الالتزام بالمعالم — آخر 8 أسابيع${msDueTot ? ` · <b class="tnum">${Math.round((msMetTot / msDueTot) * 100)}%</b>` : ''}</div>
-        ${msDueTot ? figLine([{ points: weekBuckets.map((b) => b.pct ?? 0), color: 'var(--st-good)', name: 'التزام المعالم' }], { labels: weekBuckets.map((_, i) => i + 1), h: 100, fmt: (v) => `${v}%` }) : `<div class="empty-mini">${icon('clock')} لا معالم مستحقة في الأسابيع الثمانية الماضية</div>`}
-        <div class="comfoot"><span>${G.deliverables} المقبولة <b class="tnum">${vjDelivered?.v ? Math.round(((vjAccepted?.v || 0) / vjDelivered.v) * 100) : 0}%</b> من المسلَّمة</span></div>
+        <div class="sh">الالتزام بالمعالم — آخر 8 أسابيع</div>
+        ${msDueTot ? figLine([{ points: weekBuckets.map((b) => b.pct ?? 0), color: 'var(--st-good)', name: 'التزام المعالم' }], { labels: weekBuckets.map((_, i) => i + 1), h: 100, fmt: (v) => `${v}%`, axisDir: 'ltr' }) : `<div class="empty-mini">${icon('clock')} لا معالم مستحقة في الأسابيع الثمانية الماضية</div>`}
       </div>
-      <div>
-        <div class="sh">أبرز ما يحتاج تدخلاً</div>
-        ${needRows || `<div class="empty-mini">${icon('check')} لا مشاريع متعثرة</div>`}
+      <div class="ops-stats">
+        ${msDueTot ? `<div class="pch"><span class="l">التزام المعالم · 8 أسابيع</span><b class="tnum">${Math.round((msMetTot / msDueTot) * 100)}%</b><span class="c">من ${countAr(msDueTot, { one: 'معلم واحد مستحق', two: 'معلمين مستحقين', few: 'معالم مستحقة', many: 'معلماً مستحقاً' })}</span></div>` : ''}
+        <div class="pch"><span class="l">${G.deliverables} المقبولة</span><b class="tnum">${vjDelivered?.v ? Math.round(((vjAccepted?.v || 0) / vjDelivered.v) * 100) : 0}%</b><span class="c">من المسلَّمة</span></div>
+        <div class="pch"><span class="l">يحتاج نظراً</span><b class="tnum"${needsN ? ' style="color:var(--st-bad)"' : ''}>${needsN}</b><span class="c">${needsN ? 'أحمر وأصفر من المقيَّمة' : 'لا مشاريع متعثرة'}</span></div>
+        ${lateVals.length ? `<div class="pch"><span class="l">متوسط التأخر</span><b class="tnum">${dayWord(Math.round(lateVals.reduce((a, b) => a + b, 0) / lateVals.length))}</b><span class="c">على ${countAr(lateVals.length, { one: 'مشروع متأخر', two: 'مشروعين متأخرين', few: 'مشاريع متأخرة', many: 'مشروعاً متأخراً' })}</span></div>` : ''}
       </div>
     </div>
+    <div class="sh" style="margin-top:.8rem">تقدم المشاريع الرئيسية</div>
+    ${prjTable}
     <div class="card-foot"><a href="/app/projects?year=${year}${user.scope === 'company' ? '&sector=' + esc(sectorId) : ''}">عرض جميع المشاريع <span aria-hidden="true">←</span></a></div>
   </section>`;
 
   // ── ٧: تركيز الإيراد والعملاء — خريطة مساحية + الجدول + التحصيل ──
-  const treeColors = ['#1f3a75', '#2f5fb3', '#5b8def', '#834798', '#a06cb5'];
+  const treeColors = ['var(--ord-1)', 'var(--ord-2)', 'var(--ord-3)', 'var(--ord-4)', 'var(--ord-5)'];
   const treemap = topClients.filter((c) => c.rev > 0).length >= 2 ? figTreemap(topClients.filter((c) => c.rev > 0).map((c, i) => ({
     label: c.name_ar, v: c.rev, sub: sarShort(c.rev), color: treeColors[i % treeColors.length],
   })), { h: 170 }) : '';
@@ -1644,7 +1683,17 @@ export async function sectorPage(user, opts = {}) {
     ${opsSection}
     <section class="card pad">
       ${secn(7, canInvoices ? 'تركيز الإيراد والعملاء والتحصيل' : 'تركيز الإيراد والعملاء', `مرتَّبون حسب إيراد ${year}`)}
-      ${treemap ? `<div style="margin-bottom:1rem">${treemap}</div>` : ''}
+      ${treemap ? `<div class="g12" style="margin-bottom:1rem">
+        <div class="c7" style="min-width:0">${treemap}</div>
+        <div class="c5 conc-panel" style="min-width:0">
+          <div class="cp-hero">${concPct != null ? `أكبر 3 عملاء = <b class="tnum">${concPct}%</b> من الإيراد${concPct >= 60 ? ' <span class="pill" style="background:var(--st-warn-soft);color:#92400e">تركّز مرتفع</span>' : ''}` : 'لا يوجد ثلاثة عملاء بإيراد بعد'}</div>
+          ${concPct != null ? figBars([
+    { label: 'الإيراد الحالي', value: concPct, count: '', fill: 'var(--acc-navy)' },
+    ...(concAfterPipe != null ? [{ label: 'مع الخط المرجّح', value: concAfterPipe, count: '', fill: 'var(--acc-indigo)' }] : []),
+  ], { fmt: (v) => `${v}%`, max: 100 }) : ''}
+          ${concAfterPipe != null ? `<div class="comfoot">حصة أكبر ثلاثة عملاء لو أُضيف خط الفرص المفتوح مرجّحاً ${estMark('قيمة تقديرية: (إيراد أكبر ثلاثة + فرصهم المفتوحة مرجّحة) ÷ (إيراد القطاع + كل المفتوح مرجّحاً) — ليست التزاماً')}</div>` : ''}
+        </div>
+      </div>` : ''}
       <div class="g12">
         <div class="${canInvoices && collectCard ? 'c7' : 'c12'}" style="min-width:0">${clientsCard}</div>
         ${canInvoices && collectCard ? `<div class="c5" style="min-width:0">${collectCard}</div>` : ''}
