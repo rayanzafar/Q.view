@@ -800,7 +800,9 @@ export function figLine(seriesList, { labels = [], now = 0, w = 480, h = 130, fm
     const dots = sr.dots === false ? '' : sr.points.map((v, i) => `<circle cx="${X(i).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="${i + 1 === now ? 4 : 2.5}" fill="${i + 1 === now ? 'var(--gold)' : col}"><title>${esc(labels[i] ?? i + 1)}: ${esc(fmt(sr.points[i]))}${sr.name ? ` — ${esc(sr.name)}` : ''}</title></circle>`).join('');
     return `${area}<polyline points="${pts}" fill="none" stroke="${col}" stroke-width="2"${sr.dash ? ' stroke-dasharray="5 4"' : ''} stroke-linejoin="round" stroke-linecap="round"/>${dots}`;
   }).join('');
-  const ticks = labels.length ? labels.map((l, i) => `<text x="${X(i).toFixed(1)}" y="${h - 4}" text-anchor="middle">${esc(String(l))}</text>`).join('') : '';
+  // عنوانا الطرفين يُثبَّتان داخل الإطار: text-anchor=middle عند الحافة يقصّ نصف الرقم.
+  const tickX = (i) => Math.min(Math.max(X(i), padX + 8), w - padX - 8);
+  const ticks = labels.length ? labels.map((l, i) => `<text x="${tickX(i).toFixed(1)}" y="${h - 4}" text-anchor="middle">${esc(String(l))}</text>`).join('') : '';
   const marksEl = (marks || []).filter((m) => m && m.i >= 0 && m.i < n).map((m) => {
     const x = X(m.i), col = esc(m.color || 'var(--st-bad)');
     const tx = Math.min(Math.max(x, padX + 40), w - padX - 40); // النص داخل الإطار مهما طرُف الخط
@@ -864,9 +866,10 @@ export function figCombo({ bars = [], cum = [], target = null, forecast = null, 
   })() : '';
   const fcEl = fcLineEl || (forecast ? `<circle cx="${X(n - 1).toFixed(1)}" cy="${Y(fcShown).toFixed(1)}" r="5" fill="none" stroke="var(--brand2)" stroke-width="2.5"><title>المتوقع نهاية السنة: ${esc(fmt(forecast))}${fcShown < forecast ? ' (خارج مقياس الرسم)' : ''}</title></circle>` : '');
   // عنوانا شهرٍ مزدوجان (عربي كامل على الواسع، Jan على الضيق) حين يمرّر المستدعي labelsTight
+  const tickX = (i) => Math.min(Math.max(X(i), padX + 12), w - padX - 12);
   const ticks = labels.map((l, i) => labelsTight
-    ? `<text class="m-full" x="${X(i).toFixed(1)}" y="${h - 5}" text-anchor="middle">${esc(String(l))}</text><text class="m-tight" x="${X(i).toFixed(1)}" y="${h - 5}" text-anchor="middle">${esc(String(labelsTight[i] ?? ''))}</text>`
-    : `<text x="${X(i).toFixed(1)}" y="${h - 5}" text-anchor="middle">${esc(String(l))}</text>`).join('');
+    ? `<text class="m-full" x="${tickX(i).toFixed(1)}" y="${h - 5}" text-anchor="middle">${esc(String(l))}</text><text class="m-tight" x="${tickX(i).toFixed(1)}" y="${h - 5}" text-anchor="middle">${esc(String(labelsTight[i] ?? ''))}</text>`
+    : `<text x="${tickX(i).toFixed(1)}" y="${h - 5}" text-anchor="middle">${esc(String(l))}</text>`).join('');
   return `<svg class="fig-svg" viewBox="0 0 ${w} ${h}" role="img"${ariaLabel ? ` aria-label="${esc(ariaLabel)}"` : ' aria-hidden="true"'} style="width:100%;height:auto">
     <line class="axis" x1="${padX}" y1="${h - padB}" x2="${w - padX}" y2="${h - padB}"/>${barsEl}${targetEl}${cumEl}${fcEl}${ticks}</svg>`;
 }

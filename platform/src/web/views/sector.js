@@ -55,7 +55,7 @@ const CHG_CAT = { stage: 'opp', invoice: 'fin', collection: 'fin', activity: 'cl
 // والتحصيل والتواصل والسجل الجديد أخبار هادئة.
 const CHG_SEV = (it) => (it.won || it.lost) ? ['عالية', '#fee2e2', '#991b1b']
   : (it.kind === 'stage' || it.kind === 'invoice') ? ['متوسطة', '#fef3c7', '#92400e']
-  : ['منخفضة', '#f1f5f9', '#64748b'];
+  : ['منخفضة', '#f1f5f9', '#566173'];
 
 const CARD_HEAD_CSS = `.card-head{padding:var(--pad-card-h);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
 .card-head .t{font-weight:800;font-size:var(--fs-title)}
@@ -100,10 +100,10 @@ const CSS = `<style>
 .kpi:hover{box-shadow:var(--sh)}
 .kpi:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
 .ke{font-size:11.5px;font-weight:700;color:var(--muted);display:flex;gap:.3rem;align-items:center;flex-wrap:wrap;min-width:0}
-.ks{margin-inline-start:auto;font-size:10px;color:var(--faint);font-weight:700;background:var(--track);border-radius:999px;padding:.05rem .5rem;flex:none}
+.ks{margin-inline-start:auto;font-size:10px;color:var(--muted);font-weight:700;background:var(--track);border-radius:999px;padding:.05rem .5rem;flex:none}
 .kv{font-size:var(--fs-val-lg);font-weight:800;color:var(--ink2);line-height:1.15;letter-spacing:-.01em}
 .kb{font-size:11.5px;color:var(--muted);line-height:1.55}
-.kc{font-size:10px;color:var(--faint);line-height:1.5}
+.kc{font-size:10px;color:var(--muted);line-height:1.5}
 .kd{font-size:11px;display:flex}
 .kviz{display:flex;gap:.6rem;align-items:center;min-width:0;margin-top:2px}
 .kviz>.ringw{flex:none}
@@ -160,7 +160,7 @@ const CSS = `<style>
 .vj-light .vjn.off{opacity:.75;border-style:dashed}
 .vj-light .vjn.off i{background:var(--track)}
 .vj-light .vjn.off i svg{color:var(--faint)}
-.vjoff{font-size:9px;color:var(--faint);max-width:110px;text-align:center;line-height:1.4}
+.vjoff{font-size:9.5px;color:var(--muted);max-width:110px;text-align:center;line-height:1.4}
 .vj-light .vja{color:var(--muted)}
 .vj-light .vja small{color:var(--ink2)}
 .vj-light .vjw{color:var(--st-warn)}
@@ -252,7 +252,8 @@ const CSS = `<style>
 .act-r .go{justify-self:start}
 .act-r .go svg{width:13px;height:13px}
 @media(max-width:640px){.act-r{grid-template-columns:28px 1fr}.act-r .go{grid-column:2;justify-self:start;min-height:40px}
-.chg-cat,.seg a,.seg button,.rmenu summary,.cap-li-btn{min-height:40px;display:inline-flex;align-items:center}
+.chg-cat,.seg a,.seg button,.rmenu summary,.cap-li-btn,.fs-compl,.xb-attn{min-height:40px;display:inline-flex;align-items:center}
+.kd .sig{min-width:0}
 .card-foot a,.card-foot button{min-height:40px;display:inline-flex;align-items:center}}
 .rmenu{position:relative}
 .rmenu summary{list-style:none;cursor:pointer}
@@ -325,8 +326,11 @@ ${CARD_HEAD_CSS}
 .dd-row.cap-li-btn{padding:.5rem .35rem}
 @media(max-width:640px){.cap-li-btn{padding:.45rem .35rem}}
 .cap-li-btn:focus-visible{outline:2px solid var(--brand);outline-offset:1px}
-.tipdot{color:var(--muted);display:inline-flex;vertical-align:middle}
+.tipdot{color:var(--muted);display:inline-flex;vertical-align:middle;position:relative}
 .tipdot svg{width:13px;height:13px}
+/* رقعة نقرٍ غير مرئية حول مثيري التلميح (نمط .cap-av::after) — ١٣px هدفٌ لا يُلمس */
+.tipdot::after,.wmark::after{content:'';position:absolute;inset:-10px}
+.wmark{position:relative}
 /* نافذة الشخص: ثلاث إحصاءات وشريط اثني عشر شهراً — خطةٌ صرفة بألوان عتبات التسكين */
 .cap-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.5rem;margin:.3rem 0 .2rem}
 .cap-stat{background:#f8fafc;border:1px solid var(--line);border-radius:10px;padding:.45rem .6rem;min-width:0}
@@ -1481,13 +1485,16 @@ export async function sectorPage(user, opts = {}) {
   // ── ٤: الفصل التجاري — قمعٌ متدرّج + أعمار الفرص + فقاعات قيمة×احتمال×عمر ──
   // سلّم رتبيّ واحد للمراحل (اجتاز فاحص dataviz بوضع --ordinal): الأغمق أول المراحل، والقيم
   // مطبوعة على كل صف فلا يُقرأ اللون وحده.
-  const ordColor = (i, n) => `var(--ord-${Math.min(5, Math.max(1, Math.round(1 + (i / Math.max(1, n - 1)) * 4)))})`;
+  const ordIdx = (i, n) => Math.min(5, Math.max(1, Math.round(1 + (i / Math.max(1, n - 1)) * 4)));
+  const ordColor = (i, n) => `var(--ord-${ordIdx(i, n)})`;
+  // الطرفان الفاتحان من السلّم لا يحملان نصاً أبيض: العدّ رقمٌ يُقرأ لا زينة (تباين 2.3:1).
+  const ordInk = (i, n) => (ordIdx(i, n) >= 4 ? 'var(--ink2)' : '#fff');
   const trapRows = funnelStages.map((st, i) => {
     const wv = Math.max(6, Math.round((st.value_halalas / Math.max(1, openTotalV)) * 100));
     return `<button type="button" class="trp" data-action="open-dd" data-dd="fnl-${esc(st.id)}" aria-label="مرحلة ${esc(st.name_ar)}: ${countAr(st.count, { one: 'فرصة واحدة', two: 'فرصتان', few: 'فرص', many: 'فرصة', zero: 'لا فرص' })}${st.count ? ` بقيمة ${fmtSar(st.value_halalas)}` : ''} — التفصيل">
       <span class="tn">${esc(st.name_ar)}</span>
-      <span class="tt"><i style="width:${wv}%;background:${ordColor(i, funnelStages.length)}"><b class="tnum">${st.count}</b></i></span>
-      <span class="tv tnum">${sarShort(st.value_halalas)}<small style="display:block;color:var(--faint);font-size:9.5px" title="من قيمة الخط المفتوح">${openTotalV ? Math.round((st.value_halalas / openTotalV) * 100) : 0}%</small></span>
+      <span class="tt"><i style="width:${wv}%;background:${ordColor(i, funnelStages.length)}"><b class="tnum" style="color:${ordInk(i, funnelStages.length)}">${st.count}</b></i></span>
+      <span class="tv tnum">${sarShort(st.value_halalas)}<small style="display:block;color:var(--muted);font-size:9.5px" title="من قيمة الخط المفتوح">${openTotalV ? Math.round((st.value_halalas / openTotalV) * 100) : 0}%</small></span>
     </button>`;
   }).join('');
   const AGE_B = [['0-30', 'حتى شهر', 0, 30], ['31-60', 'شهر إلى شهرين', 31, 60], ['61-90', 'شهران إلى ثلاثة', 61, 90], ['90+', 'أكثر من ثلاثة', 91, 99999]];
@@ -1509,7 +1516,7 @@ export async function sectorPage(user, opts = {}) {
       return `<circle cx="${cx}" cy="${padT + 12}" r="${r}" fill="var(--ord-3)" opacity=".4" stroke="#fff" stroke-width="1"/>
         <text x="${cx + r + 3}" y="${padT + 15}" text-anchor="start">${esc(sarShort(v))}</text>`;
     }).join('');
-    return `<svg class="fig-svg" viewBox="0 0 ${w} ${h}" role="img" aria-label="قيمة الفرصة مقابل احتمال الفوز مقابل عمر المرحلة — كل فقاعة فرصة وحجمها قيمتها" style="width:100%;height:auto">
+    return `<svg class="fig-svg" viewBox="0 0 ${w} ${h}" role="img" aria-label="قيمة الفرصة مقابل احتمال الفوز مقابل عمر المرحلة — كل فقاعة فرصة وحجمها قيمتها · تفصيل كل فرصة في نافذة مرحلتها من القمع" style="width:100%;height:auto">
       <line class="axis" x1="${padX}" y1="${h - padB}" x2="${w - padX}" y2="${h - padB}"/>
       <line class="axis" x1="${padX}" y1="${padT}" x2="${padX}" y2="${h - padB}"/>
       <text x="${padX}" y="${h - 6}" text-anchor="start">0 يوم</text><text x="${w - padX}" y="${h - 6}" text-anchor="end">${dayWord(maxAge)}</text>
@@ -1574,11 +1581,11 @@ export async function sectorPage(user, opts = {}) {
     const late = lateDaysOf(r, prog);
     const risk = needProjects.find((np) => np.id === r.id)?.top_risk;
     return `<tr>
-      <td data-l="المشروع"><a href="/app/project/${esc(r.id)}">${esc(r.name_ar)}</a></td>
-      <td data-l="الحالة"><span class="dotc" style="background:${col}"${risk ? ` title="أبرز خطر مفتوح: ${esc(risk)}"` : ''}></span> ${lbl}</td>
-      <td data-l="الإنجاز"><span class="ptrk"><i style="width:${prog}%;background:${col}"></i></span> <b class="tnum">${prog}%</b></td>
-      <td data-l="المعلم القادم">${ms ? `${esc(ms.name_ar)} — <span class="tnum">${esc(String(ms.due_date).slice(0, 10))}</span>` : '<span style="color:var(--faint)">لم تُسجَّل معالم</span>'}</td>
-      <td data-l="التأخر">${late ? `<span style="color:var(--st-bad);font-weight:700">${dayWord(late)}</span>` : '<span style="color:var(--faint)">—</span>'}</td>
+      <td data-label="المشروع"><a href="/app/project/${esc(r.id)}">${esc(r.name_ar)}</a></td>
+      <td data-label="الحالة"><span class="dotc" style="background:${col}"${risk ? ` title="أبرز خطر مفتوح: ${esc(risk)}"` : ''}></span> ${lbl}</td>
+      <td data-label="الإنجاز"><span class="ptrk"><i style="width:${prog}%;background:${col}"></i></span> <b class="tnum">${prog}%</b></td>
+      <td data-label="المعلم القادم">${ms ? `${esc(ms.name_ar)} — <span class="tnum">${esc(String(ms.due_date).slice(0, 10))}</span>` : '<span style="color:var(--faint)">لم تُسجَّل معالم</span>'}</td>
+      <td data-label="التأخر">${late ? `<span style="color:var(--st-bad);font-weight:700">${dayWord(late)}</span>` : '<span style="color:var(--faint)">—</span>'}</td>
     </tr>`;
   }).join('')}
   </tbody></table></div>` : `<div class="empty-mini">${icon('projects')} لا مشاريع في سنة ${year}</div>`;
