@@ -118,7 +118,30 @@ a{text-decoration:none;color:inherit}
 @media(max-width:1280px){.g12 .c4{grid-column:span 6}}
 @media(max-width:980px){.g12 .c4,.g12 .c5,.g12 .c7,.g12 .c8{grid-column:span 12}}
 @media(max-width:640px){.fig-r{grid-template-columns:minmax(56px,auto) 1fr auto auto;gap:6px}.fig-r .v{font-size:var(--fs-body)}
-.fig-r[role=button],.fig-leg .r[role=button],.tile{min-height:40px}}
+.fig-r[role=button],.fig-leg .r[role=button],.tile,.trp{min-height:40px}}
+/* ── عودة الرسوم الدائرية بقرار المالك (v5.39، نماذجه المرجعية 2026-08-24) — تعديل ADR-0011 ── */
+.ringw{position:relative;display:inline-flex;align-items:center;justify-content:center;flex:none}
+.ringv{position:absolute;font-size:13px;font-weight:800;color:var(--ink2);text-align:center;line-height:1.15}
+.ringv small{display:block;font-size:9px;color:var(--muted);font-weight:700}
+@keyframes ringIn{from{stroke-dashoffset:var(--c0)}}
+.ring-fill{animation:ringIn .8s ease-out}
+@media (prefers-reduced-motion:reduce){.ring-fill{animation:none}}
+/* رسم خطي/مركّب: نص المحاور من رموز المنصة */
+.fig-svg text{font-family:inherit;font-size:9.5px;fill:var(--muted);direction:ltr}
+.fig-svg .axis{stroke:var(--line);stroke-width:1}
+/* خريطة حرارية: خلايا ملوّنة بعتبات معلنة، والرقم داخل الخلية */
+.fig-heat{border-collapse:collapse;width:100%;font-size:var(--fs-body)}
+.fig-heat th{font-size:var(--fs-micro);color:var(--muted);font-weight:700;padding:2px 4px;text-align:center}
+.fig-heat th.rl{text-align:start;white-space:nowrap}
+.fig-heat td{padding:0;border:2px solid var(--surface)}
+.fig-heat td .cell{display:block;text-align:center;padding:.32rem .2rem;border-radius:6px;font-weight:700;font-size:var(--fs-meta)}
+/* خريطة مساحية (تركّز العملاء): كتلة كبرى وبقية أعمدة، النسب مساحاتٍ */
+.fig-tree{display:flex;gap:3px;min-height:150px}
+.fig-tree .maj{border-radius:10px;padding:.6rem .7rem;color:#fff;display:flex;flex-direction:column;justify-content:flex-end;min-width:0}
+.fig-tree .rest{display:flex;flex-direction:column;gap:3px;min-width:0}
+.fig-tree .cellt{border-radius:8px;padding:.35rem .55rem;color:#fff;min-width:0;display:flex;flex-direction:column;justify-content:center}
+.fig-tree .nm{font-size:var(--fs-meta);font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fig-tree .vv{font-size:var(--fs-micro);opacity:.9}
 select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding:.3rem .6rem;font-size:12px;font-weight:700;color:var(--ink2)}
 
 /* ── component layer (v2 redesign) ── */
@@ -721,6 +744,101 @@ export function figColumns(cols, { now = 0, ariaLabel = '' } = {}) {
   const top = Math.max(1, ...list.map((c) => c.v));
   return `<div class="fig-cols" role="img"${ariaLabel ? ` aria-label="${esc(ariaLabel)}"` : ' aria-hidden="true"'}>${[...list].reverse().map((c) => `
     <span class="cc${c.idx === now ? ' now' : ''}" title="${esc(c.label)}"><i style="height:${(c.v / top * 100).toFixed(0)}%"></i><b class="tnum">${esc(String(c.label))}</b></span>`).join('')}</div>`;
+}
+
+// ── عودة الرسوم الدائرية والمركّبة بقرار المالك (v5.39 — نماذجه المرجعية 2026-08-24).
+// تعديلٌ معلَن على ADR-0011: الحلقة والدونات مسموحتان حيث «جزء من هدف/كل»، والقيم المرجّحة
+// والخلاصات المحسوبة مسموحة **بشرط علامةٍ وتلميحٍ يقولان أساسها** — لا رقم يوحي بيقينٍ ليس له.
+
+// حلقة إنجاز واحدة: النسبة قوسٌ يمتلئ، والرقم فوقها بعنصر HTML جدولي الاتجاه.
+export function figRing(p, { size = 70, sw = 10, color = 'var(--brand2)', lbl = '' } = {}) {
+  const shown = Math.max(0, Math.round(Number(p) || 0));
+  const pc = Math.min(100, shown);
+  const r = (size - sw) / 2, c = 2 * Math.PI * r;
+  const off = c * (1 - pc / 100);
+  return `<span class="ringw" style="width:${size}px;height:${size}px">
+    <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-hidden="true" style="transform:rotate(-90deg)">
+      <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="var(--track)" stroke-width="${sw}"/>
+      ${pc > 0 ? `<circle class="ring-fill" cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="${esc(color)}" stroke-width="${sw}" stroke-linecap="round" stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}" style="--c0:${c.toFixed(1)}"/>` : ''}
+    </svg><span class="ringv tnum">${shown}%${lbl ? `<small>${esc(lbl)}</small>` : ''}</span></span>`;
+}
+
+// دونات مقسومة: كل قطعة قوس بطول نسبتها — والوسط للمستدعي (يغلّفها بـ.ringw ويضع نصّه).
+export function figDonut(segs, { size = 104, sw = 13 } = {}) {
+  const total = (segs || []).reduce((a, s) => a + Math.max(0, s.v), 0) || 1;
+  const r = (size - sw) / 2, c = 2 * Math.PI * r;
+  let off = 0;
+  const arcs = (segs || []).filter((s) => s.v > 0).map((s) => {
+    const len = (s.v / total) * c;
+    const el = `<circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="${esc(s.color)}" stroke-width="${sw}" stroke-dasharray="${len.toFixed(1)} ${c.toFixed(1)}" stroke-dashoffset="${(-off).toFixed(1)}"/>`;
+    off += len;
+    return el;
+  }).join('');
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-hidden="true" style="transform:rotate(-90deg)">
+    <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="var(--track)" stroke-width="${sw}"/>${arcs}</svg>`;
+}
+
+// رسم خطي متعدد السلاسل على محور زمنٍ يقرأ يميناً (كبقية المنصة): كل سلسلة نقاطها بالترتيب
+// الزمني تصاعدياً وتُعكس داخلياً. لكل نقطة عنوان تحويم بقيمتها. سلسلة بلا لون ترث الهوية.
+export function figLine(seriesList, { labels = [], now = 0, w = 480, h = 130, fmt = (v) => String(v), ariaLabel = '' } = {}) {
+  const list = (seriesList || []).filter((sr) => (sr.points || []).length);
+  if (!list.length) return '';
+  const n = Math.max(...list.map((sr) => sr.points.length));
+  const top = Math.max(1, ...list.flatMap((sr) => sr.points.map((v) => Number(v) || 0)));
+  const padX = 6, padT = 8, padB = 18;
+  const X = (i) => padX + ((n - 1 - i) / Math.max(1, n - 1)) * (w - padX * 2);   // الأقدم يميناً
+  const Y = (v) => padT + (1 - (Math.max(0, Number(v) || 0) / top)) * (h - padT - padB);
+  const paths = list.map((sr) => {
+    const pts = sr.points.map((v, i) => `${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(' ');
+    const col = esc(sr.color || 'var(--brand)');
+    const area = sr.area ? `<polygon points="${pts} ${X(sr.points.length - 1).toFixed(1)},${(h - padB).toFixed(1)} ${X(0).toFixed(1)},${(h - padB).toFixed(1)}" fill="${col}" opacity=".08"/>` : '';
+    const dots = sr.dots === false ? '' : sr.points.map((v, i) => `<circle cx="${X(i).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="${i + 1 === now ? 4 : 2.5}" fill="${i + 1 === now ? 'var(--gold)' : col}"><title>${esc(labels[i] ?? i + 1)}: ${esc(fmt(sr.points[i]))}${sr.name ? ` — ${esc(sr.name)}` : ''}</title></circle>`).join('');
+    return `${area}<polyline points="${pts}" fill="none" stroke="${col}" stroke-width="2"${sr.dash ? ' stroke-dasharray="5 4"' : ''} stroke-linejoin="round" stroke-linecap="round"/>${dots}`;
+  }).join('');
+  const ticks = labels.length ? labels.map((l, i) => `<text x="${X(i).toFixed(1)}" y="${h - 4}" text-anchor="middle">${esc(String(l))}</text>`).join('') : '';
+  return `<svg class="fig-svg" viewBox="0 0 ${w} ${h}" role="img"${ariaLabel ? ` aria-label="${esc(ariaLabel)}"` : ' aria-hidden="true"'} style="width:100%;height:auto">
+    <line class="axis" x1="${padX}" y1="${h - padB}" x2="${w - padX}" y2="${h - padB}"/>${paths}${ticks}</svg>`;
+}
+
+// رسم مركّب (الفعلي مقابل المستهدف والتوقع): أعمدة شهرية + خط تراكمي + خط هدفٍ متقطع +
+// نقطة التوقع في آخر السنة — محور يميني القراءة، وكل عمودٍ ونقطةٍ بعنوان تحويم.
+export function figCombo({ bars = [], cum = [], target = null, forecast = null, labels = [], now = 0, fmt = (v) => String(v), ariaLabel = '' } = {}) {
+  const n = Math.max(bars.length, cum.length);
+  if (!n) return '';
+  const top = Math.max(1, ...bars, ...cum, target || 0, forecast || 0);
+  const w = 560, h = 170, padX = 8, padT = 14, padB = 20, bw = Math.min(22, (w - padX * 2) / n * .55);
+  const X = (i) => padX + ((n - 1 - i) / Math.max(1, n - 1)) * (w - padX * 2 - bw) + bw / 2;
+  const Y = (v) => padT + (1 - (Math.max(0, v) / top)) * (h - padT - padB);
+  const barsEl = bars.map((v, i) => `<rect x="${(X(i) - bw / 2).toFixed(1)}" y="${Y(v).toFixed(1)}" width="${bw.toFixed(1)}" height="${(h - padB - Y(v)).toFixed(1)}" rx="3" fill="${i + 1 === now ? 'var(--brand2)' : 'var(--brand)'}" opacity="${v ? '.85' : '.2'}"><title>${esc(String(labels[i] ?? i + 1))}: ${esc(fmt(v))}</title></rect>`).join('');
+  const cumPts = cum.map((v, i) => `${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(' ');
+  const cumEl = cum.length ? `<polyline points="${cumPts}" fill="none" stroke="var(--ink2)" stroke-width="2" stroke-linejoin="round"/>${cum.map((v, i) => `<circle cx="${X(i).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="${i + 1 === now ? 4 : 2.5}" fill="${i + 1 === now ? 'var(--gold)' : 'var(--ink2)'}"><title>${esc(String(labels[i] ?? i + 1))} تراكمياً: ${esc(fmt(v))}</title></circle>`).join('')}` : '';
+  const targetEl = target ? `<line x1="${padX}" y1="${Y(target).toFixed(1)}" x2="${w - padX}" y2="${Y(target).toFixed(1)}" stroke="var(--tick)" stroke-width="1.5" stroke-dasharray="6 5"/><text x="${(w - padX - 10).toFixed(1)}" y="${(Y(target) + 12).toFixed(1)}" text-anchor="end">${esc(fmt(target))}</text>` : '';
+  const fcEl = forecast ? `<circle cx="${X(n - 1).toFixed(1)}" cy="${Y(forecast).toFixed(1)}" r="5" fill="none" stroke="var(--brand2)" stroke-width="2.5"><title>المتوقع نهاية السنة: ${esc(fmt(forecast))}</title></circle>` : '';
+  const ticks = labels.map((l, i) => `<text x="${X(i).toFixed(1)}" y="${h - 5}" text-anchor="middle">${esc(String(l))}</text>`).join('');
+  return `<svg class="fig-svg" viewBox="0 0 ${w} ${h}" role="img"${ariaLabel ? ` aria-label="${esc(ariaLabel)}"` : ' aria-hidden="true"'} style="width:100%;height:auto">
+    <line class="axis" x1="${padX}" y1="${h - padB}" x2="${w - padX}" y2="${h - padB}"/>${barsEl}${targetEl}${cumEl}${fcEl}${ticks}</svg>`;
+}
+
+// خريطة حرارية (صفوف × أشهر): لون الخلية بعتباتٍ يمرّرها المستدعي، والرقم داخلها.
+export function figHeat(rows, colLabels, { tone } = {}) {
+  const t = tone || ((v) => v == null ? ['var(--track)', 'var(--muted)'] : v > 110 ? ['var(--st-bad-soft)', 'var(--st-bad)'] : v < 70 && v > 0 ? ['#fdf6e3', '#8a6d1a'] : v === 0 ? ['var(--st-neut-soft)', 'var(--muted)'] : ['var(--st-good-soft)', 'var(--st-good)']);
+  return `<div style="overflow-x:auto"><table class="fig-heat"><thead><tr><th class="rl"></th>${colLabels.map((c) => `<th>${esc(String(c))}</th>`).join('')}</tr></thead><tbody>
+    ${rows.map((r) => `<tr><th class="rl">${esc(r.label)}</th>${r.cells.map((v) => { const [bg, fg] = t(v); return `<td><span class="cell tnum" style="background:${bg};color:${fg}" title="${esc(r.label)}: ${v == null ? '—' : v + '%'}">${v == null ? '—' : v + '%'}</span></td>`; }).join('')}</tr>`).join('')}
+  </tbody></table></div>`;
+}
+
+// خريطة مساحية بسيطة: الأكبر كتلةً يمنى وبقيةُ الحصص عموداً — المساحة تقول الحصة.
+export function figTreemap(items, { h = 160 } = {}) {
+  const list = (items || []).filter((x) => x.v > 0).sort((a, b) => b.v - a.v);
+  if (!list.length) return '';
+  const total = list.reduce((a, x) => a + x.v, 0);
+  const [maj, ...rest] = list;
+  const majPct = Math.round((maj.v / total) * 100);
+  const restTotal = rest.reduce((a, x) => a + x.v, 0) || 1;
+  return `<div class="fig-tree" style="min-height:${h}px" role="img" aria-label="${esc(list.map((x) => `${x.label} ${Math.round((x.v / total) * 100)}%`).join(' · '))}">
+    <div class="maj" style="flex:${majPct} 1 0;background:${esc(maj.color || 'var(--brand)')}" title="${esc(maj.label)}: ${esc(maj.sub || '')}"><span class="nm">${esc(maj.label)}</span><span class="vv tnum">${esc(maj.sub || '')} (${majPct}%)</span></div>
+    ${rest.length ? `<div class="rest" style="flex:${100 - majPct} 1 0">${rest.map((x) => `<div class="cellt" style="flex:${Math.max(8, Math.round((x.v / restTotal) * 100))} 1 0;background:${esc(x.color || 'var(--brand2)')}" title="${esc(x.label)}: ${esc(x.sub || '')}"><span class="nm">${esc(x.label)}</span><span class="vv tnum">${esc(x.sub || '')} (${Math.round((x.v / total) * 100)}%)</span></div>`).join('')}</div>` : ''}
+  </div>`;
 }
 
 export function gauge(pct, opts = {}) {
