@@ -805,7 +805,11 @@ export function figLine(seriesList, { labels = [], now = 0, w = 480, h = 130, fm
 export function figCombo({ bars = [], cum = [], target = null, forecast = null, labels = [], now = 0, fmt = (v) => String(v), ariaLabel = '' } = {}) {
   const n = Math.max(bars.length, cum.length);
   if (!n) return '';
-  const top = Math.max(1, ...bars, ...cum, target || 0, forecast || 0);
+  // المقياس على الفعلي والهدف — توقعٌ شاذّ الحجم (يتجاوز الهدف بأضعاف) يُثبَّت عند حافة
+  // الرسم بقيمته الدقيقة في التحويم، ولا يُسمح له بسحق الأعمدة والخط.
+  const topBase = Math.max(1, ...bars, ...cum, target || 0);
+  const top = forecast && forecast <= topBase * 1.5 ? Math.max(topBase, forecast) : topBase;
+  const fcShown = forecast ? Math.min(forecast, top) : null;
   const w = 560, h = 170, padX = 8, padT = 14, padB = 20, bw = Math.min(22, (w - padX * 2) / n * .55);
   const X = (i) => padX + ((n - 1 - i) / Math.max(1, n - 1)) * (w - padX * 2 - bw) + bw / 2;
   const Y = (v) => padT + (1 - (Math.max(0, v) / top)) * (h - padT - padB);
@@ -813,7 +817,7 @@ export function figCombo({ bars = [], cum = [], target = null, forecast = null, 
   const cumPts = cum.map((v, i) => `${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(' ');
   const cumEl = cum.length ? `<polyline points="${cumPts}" fill="none" stroke="var(--ink2)" stroke-width="2" stroke-linejoin="round"/>${cum.map((v, i) => `<circle cx="${X(i).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="${i + 1 === now ? 4 : 2.5}" fill="${i + 1 === now ? 'var(--gold)' : 'var(--ink2)'}"><title>${esc(String(labels[i] ?? i + 1))} تراكمياً: ${esc(fmt(v))}</title></circle>`).join('')}` : '';
   const targetEl = target ? `<line x1="${padX}" y1="${Y(target).toFixed(1)}" x2="${w - padX}" y2="${Y(target).toFixed(1)}" stroke="var(--tick)" stroke-width="1.5" stroke-dasharray="6 5"/><text x="${(w - padX - 10).toFixed(1)}" y="${(Y(target) + 12).toFixed(1)}" text-anchor="end">${esc(fmt(target))}</text>` : '';
-  const fcEl = forecast ? `<circle cx="${X(n - 1).toFixed(1)}" cy="${Y(forecast).toFixed(1)}" r="5" fill="none" stroke="var(--brand2)" stroke-width="2.5"><title>المتوقع نهاية السنة: ${esc(fmt(forecast))}</title></circle>` : '';
+  const fcEl = forecast ? `<circle cx="${X(n - 1).toFixed(1)}" cy="${Y(fcShown).toFixed(1)}" r="5" fill="none" stroke="var(--brand2)" stroke-width="2.5"><title>المتوقع نهاية السنة: ${esc(fmt(forecast))}${fcShown < forecast ? ' (خارج مقياس الرسم)' : ''}</title></circle>` : '';
   const ticks = labels.map((l, i) => `<text x="${X(i).toFixed(1)}" y="${h - 5}" text-anchor="middle">${esc(String(l))}</text>`).join('');
   return `<svg class="fig-svg" viewBox="0 0 ${w} ${h}" role="img"${ariaLabel ? ` aria-label="${esc(ariaLabel)}"` : ' aria-hidden="true"'} style="width:100%;height:auto">
     <line class="axis" x1="${padX}" y1="${h - padB}" x2="${w - padX}" y2="${h - padB}"/>${barsEl}${targetEl}${cumEl}${fcEl}${ticks}</svg>`;
