@@ -14,6 +14,30 @@ export function sinceForWindow(win, today = new Date()) {
   return new Date(t - days * 86400000).toISOString().slice(0, 10);
 }
 
+// حدود النافذة محصورةً داخل السنة المعروضة دائماً: [sinceIso, untilIso) والحد الأعلى حصري.
+// السنة الجارية: «حتى الغد» حصرياً أي اليومَ كاملاً، والبداية تطابق sinceForWindow حرفاً.
+// سنة ماضية: النوافذ ترسو على آخر السنة (شهرٌ على 2025 = ديسمبر 2025) — فلا انقلاب since>until
+// الذي كان يُصفّر الرقائق صمتاً. سنة قادمة: نافذة فارغة معلنة لا مقلوبة. والنافذة لا تعبر
+// حدود سنتها أبداً (أرضيتها أول السنة) — ألسنة الفترة تُقسّم السنة المعروضة لا تخرج منها.
+export function windowBounds(win, year, now = new Date()) {
+  const y = Number(year);
+  const yearStart = `${y}-01-01`, yearEndExcl = `${y + 1}-01-01`;
+  const t = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const tomorrow = new Date(t + 86400000).toISOString().slice(0, 10);
+  const untilIso = tomorrow < yearStart ? yearStart : (tomorrow < yearEndExcl ? tomorrow : yearEndExcl);
+  if (win === 'year') return { sinceIso: yearStart, untilIso };
+  const days = WINDOW_DAYS[win] || WINDOW_DAYS.week;
+  const rolled = new Date(Date.parse(untilIso) - (days + 1) * 86400000).toISOString().slice(0, 10);
+  return { sinceIso: rolled > yearStart ? rolled : yearStart, untilIso };
+}
+
+// «آخر تحديث» الحقيقي: أحدث سجلّ في سجل النظام للقطاع — كل كتابةٍ في المنصة تمرّ به.
+// لا وجود لسجل ⇒ null، والشاشة تقول «لا تحديثات مسجَّلة بعد» لا تاريخَ اليوم المُختلق.
+export async function lastChangeAt(sectorId) {
+  const r = await get('SELECT at FROM audit_log WHERE sector_id = ? ORDER BY at DESC LIMIT 1', [sectorId]);
+  return r?.at || null;
+}
+
 const CREATED_LABEL = { opportunity: 'فرصة جديدة', project: 'مشروع جديد', contract: 'عقد جديد', client: 'عميل جديد' };
 const CREATED_HREF = {
   opportunity: (id) => `/app/opportunity/${id}`, project: (id) => `/app/project/${id}`,
@@ -31,8 +55,10 @@ async function createdNames(resource, ids) {
   return Object.fromEntries(rows.map((r) => [r.id, r.nm]));
 }
 
-export async function changesSince(user, sectorId, sinceIsoDate) {
+export async function changesSince(user, sectorId, sinceIsoDate, untilIsoDate = null) {
   const since = String(sinceIsoDate).slice(0, 10);
+  // حدٌّ أعلى اختياري (حصري) — سنةٌ ماضية بلا سقفٍ كانت تعرض أحداث السنة الجارية في تغذيتها.
+  const until = untilIsoDate ? String(untilIsoDate).slice(0, 10) : null;
   const items = [];
   const counts = { stage: 0, invoice: 0, collection: 0, activity: 0, created: 0 };
 
@@ -47,8 +73,8 @@ export async function changesSince(user, sectorId, sinceIsoDate) {
       { sectorCol: 'o.sector_id', ownerCol: 'o.owner_user_id', projectCol: 'o.id',
         grantCol: 'o.department_id', memberCol: 'o.id', deptCol: 'o.department_id' });
     const base = `FROM opportunity_stage_history h JOIN opportunity o ON o.id = h.opportunity_id`;
-    const cond = `WHERE o.sector_id = ? AND o.deleted_at IS NULL AND h.changed_at >= ? AND ${f.clause}`;
-    const params = [sectorId, since, ...f.params];
+    const cond = `WHERE o.sector_id = ? AND o.deleted_at IS NULL AND h.changed_at >= ?${until ? ' AND h.changed_at < ?' : ''} AND ${f.clause}`;
+    const params = [sectorId, since, ...(until ? [until] : []), ...f.params];
     counts.stage = (await get(`SELECT COUNT(*) n ${base} ${cond}`, params))?.n || 0;
     const rows = await all(`SELECT h.changed_at at, o.id opp_id, o.title_ar, o.value_halalas,
          sf.name_ar from_name, st.name_ar to_name, COALESCE(st.is_won,0) is_won, COALESCE(st.is_lost,0) is_lost,
@@ -76,12 +102,13 @@ export async function changesSince(user, sectorId, sinceIsoDate) {
     const base = `FROM invoice i LEFT JOIN project p ON p.id = i.project_id`;
     const cond = `WHERE COALESCE(i.sector_id, p.sector_id) = ? AND i.deleted_at IS NULL
          AND i.status NOT IN ('DRAFT','CANCELLED')
-         AND i.issue_date IS NOT NULL AND substr(i.issue_date,1,10) >= ?`;
-    counts.invoice = (await get(`SELECT COUNT(*) n ${base} ${cond}`, [sectorId, since]))?.n || 0;
+         AND i.issue_date IS NOT NULL AND substr(i.issue_date,1,10) >= ?${until ? ' AND substr(i.issue_date,1,10) < ?' : ''}`;
+    const iparams = [sectorId, since, ...(until ? [until] : [])];
+    counts.invoice = (await get(`SELECT COUNT(*) n ${base} ${cond}`, iparams))?.n || 0;
     const rows = await all(`SELECT i.code, i.amount_halalas, substr(i.issue_date,1,10) at,
          c.name_ar client, p.name_ar project
        ${base} LEFT JOIN client c ON c.id = i.client_id
-       ${cond} ORDER BY i.issue_date DESC LIMIT 40`, [sectorId, since]);
+       ${cond} ORDER BY i.issue_date DESC LIMIT 40`, iparams);
     for (const r of rows) {
       // الرمز حقلٌ مستقل لا وسمٌ في النص: الشاشة تهرّب العنوان كله، فوسمٌ داخله يظهر حرفياً
       // «<bdi>…</bdi>» أمام القارئ — والشاشة هي من يغلّف الرمز بعزل الاتجاه بعد التهريب.
@@ -97,11 +124,12 @@ export async function changesSince(user, sectorId, sinceIsoDate) {
     const cbase = `FROM collection col JOIN invoice i ON i.id = col.invoice_id
        LEFT JOIN project p ON p.id = i.project_id`;
     const ccond = `WHERE COALESCE(i.sector_id, p.sector_id) = ? AND i.deleted_at IS NULL
-         AND col.collected_at IS NOT NULL AND substr(col.collected_at,1,10) >= ?`;
-    counts.collection = (await get(`SELECT COUNT(*) n ${cbase} ${ccond}`, [sectorId, since]))?.n || 0;
+         AND col.collected_at IS NOT NULL AND substr(col.collected_at,1,10) >= ?${until ? ' AND substr(col.collected_at,1,10) < ?' : ''}`;
+    const cparams = [sectorId, since, ...(until ? [until] : [])];
+    counts.collection = (await get(`SELECT COUNT(*) n ${cbase} ${ccond}`, cparams))?.n || 0;
     const crows = await all(`SELECT col.amount_halalas, substr(col.collected_at,1,10) at, i.code, c.name_ar client
        ${cbase} LEFT JOIN client c ON c.id = i.client_id
-       ${ccond} ORDER BY col.collected_at DESC LIMIT 40`, [sectorId, since]);
+       ${ccond} ORDER BY col.collected_at DESC LIMIT 40`, cparams);
     for (const r of crows) {
       items.push({
         kind: 'collection', at: r.at, title: 'تحصيل دفعة', code: r.code || null,
@@ -114,11 +142,11 @@ export async function changesSince(user, sectorId, sinceIsoDate) {
   // ── 4) تواصل العملاء (crm_activity.at) — قطاع النشاط، أو عميل له بصمة في هذا القطاع ──
   if (can(user, 'read', 'client') || can(user, 'read', 'opportunity')) {
     const base = `FROM crm_activity a`;
-    const cond = `WHERE a.deleted_at IS NULL AND a.at >= ?
+    const cond = `WHERE a.deleted_at IS NULL AND a.at >= ?${until ? ' AND a.at < ?' : ''}
          AND (a.sector_id = ? OR (a.sector_id IS NULL AND a.client_id IS NOT NULL AND (
               EXISTS(SELECT 1 FROM opportunity o WHERE o.client_id = a.client_id AND o.sector_id = ? AND o.deleted_at IS NULL)
            OR EXISTS(SELECT 1 FROM project pr WHERE pr.client_id = a.client_id AND pr.sector_id = ? AND pr.deleted_at IS NULL))))`;
-    const params = [since, sectorId, sectorId, sectorId];
+    const params = [since, ...(until ? [until] : []), sectorId, sectorId, sectorId];
     counts.activity = (await get(`SELECT COUNT(*) n ${base} ${cond}`, params))?.n || 0;
     const rows = await all(`SELECT a.at, a.title, a.client_id, COALESCE(a.actor_name, u.name_ar, u.username) actor, c.name_ar client
        ${base}
@@ -161,8 +189,8 @@ export async function changesSince(user, sectorId, sinceIsoDate) {
       }
     }
     const base = `FROM audit_log a`;
-    const cond = `WHERE a.action = 'create' AND (${resParts.join(' OR ')}) AND a.sector_id = ? AND a.at >= ?`;
-    const params = [...resParams, sectorId, since];
+    const cond = `WHERE a.action = 'create' AND (${resParts.join(' OR ')}) AND a.sector_id = ? AND a.at >= ?${until ? ' AND a.at < ?' : ''}`;
+    const params = [...resParams, sectorId, since, ...(until ? [until] : [])];
     counts.created = (await get(`SELECT COUNT(*) n ${base} ${cond}`, params))?.n || 0;
     const rows = await all(`SELECT a.at, a.resource, a.resource_id, COALESCE(u.name_ar, a.username) username ${base.replace('FROM audit_log a', 'FROM audit_log a LEFT JOIN app_user u ON u.username = a.username')} ${cond}
        ORDER BY a.at DESC LIMIT 40`, params);

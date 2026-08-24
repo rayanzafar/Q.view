@@ -16,7 +16,7 @@ execFileSync(process.execPath, ['--experimental-sqlite', join(ROOT, 'scripts/see
 const { insert, close } = await import('../../src/core/db/index.js');
 const { initRbac } = await import('../../src/core/rbac/index.js');
 await initRbac();
-const { changesSince, sinceForWindow } = await import('../../src/core/reports/changes.js');
+const { changesSince, sinceForWindow, lastChangeAt } = await import('../../src/core/reports/changes.js');
 
 const T = '2026-01-10T08:00:00.000Z';
 const SINCE = '2026-07-01';       // النافذة تحت الاختبار
@@ -117,6 +117,24 @@ test('changesSince: القطاع الآخر يرى سجلاته هو فقط', as
   const r = await changesSince(ceo, 'S2', SINCE);
   assert.deepEqual(r.counts, { stage: 1, invoice: 1, collection: 0, activity: 1, created: 1 });
   assert.ok(r.items.every((i) => !i.title.includes('قطاع أ') && !String(i.code || '').includes('INV-1') && !i.title.includes('INV-1')));
+});
+
+test('changesSince: الحد الأعلى الاختياري يقصّ ما بعده — سنةٌ ماضية لا تعرض أحداث الجارية', async () => {
+  // نافذة يونيو وحده [2026-06-01, 2026-07-01): سجلات يوليو (IN) كلها خارجها
+  const r = await changesSince(LEAD, 'S1', '2026-06-01', '2026-07-01');
+  assert.deepEqual(r.counts, { stage: 1, invoice: 1, collection: 1, activity: 1, created: 1 });
+  for (const it of r.items) {
+    const d = String(it.at).slice(0, 10);
+    assert.ok(d >= '2026-06-01' && d < '2026-07-01', `${it.kind} ${it.at} خارج النافذة`);
+  }
+  // وبلا حدٍّ أعلى يبقى السلوك القديم حرفاً
+  const open = await changesSince(LEAD, 'S1', '2026-06-01');
+  assert.deepEqual(open.counts, { stage: 2, invoice: 3, collection: 2, activity: 3, created: 2 });
+});
+
+test('lastChangeAt: أحدث سجلّ للقطاع نفسه، وقطاعٌ بلا سجلات ⇒ null', async () => {
+  assert.equal(await lastChangeAt('S1'), '2026-07-05T10:00:00.000Z'); // AU-in/AU-upd الأحدث في S1
+  assert.equal(await lastChangeAt('S-none'), null);
 });
 
 test('changesSince: الأنواع المالية (فواتير/تحصيل) صفر لمن لا يقرأ الفواتير', async () => {

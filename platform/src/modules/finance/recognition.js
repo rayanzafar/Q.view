@@ -38,6 +38,13 @@ const isRecognized = (d) =>
 // شهر الاعتراف: شهر استحقاق المخرَج إن حدّده مدير المشروع، وإلا شهرُ الحدث نفسه (القبول ثم
 // التسليم ثم آخر تغيير حالة). وترتيبٌ آخر كان سيضع إيراد مخرَجٍ سُلِّم في يوليو داخل شهر تعديلِ
 // اسمه في أغسطس — فيتنقّل الإيراد بين الشهور بلا عمل.
+// توأم periodOf في SQL — سنةُ المخرَج المخزَّنة إن سُجِّلت وإلا سنةُ حدثه (القبول ثم التسليم ثم
+// آخر تغيير حالة ثم الإنشاء)، حرفاً كترحيلة 020 التي بُني عليها إيراد التسليم. رشّح «مخرجات
+// السنة» بها لا بعمود year العاري: العمود فارغ على أغلب الصفوف المستوردة فكان يُسقطها كلها.
+// (periodOf أعلاه يستشير updated_at أيضاً كملاذ أخير قبل الإنشاء — فرقٌ موثَّق في فحص الوحدة.)
+export const DLV_YEAR_SQL =
+  "COALESCE(year, CAST(substr(COALESCE(accepted_at, delivered_at, status_at, created_at),1,4) AS INTEGER))";
+
 function periodOf(d) {
   if (d.year && d.month) return { year: Number(d.year), month: Number(d.month) };
   const stamp = String(d.accepted_at || d.delivered_at || d.status_at || d.updated_at || d.created_at || nowIso());

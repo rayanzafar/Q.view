@@ -3,7 +3,7 @@
 // Sales = WON opportunities in a fiscal year. Revenue = recognized revenue_line in that year.
 // Contracts span years; contract value is total, revenue is recognized per year.
 import { all, get } from '../db/index.js';
-import { canSeeSensitive } from '../rbac/index.js';
+import { can, canSeeSensitive } from '../rbac/index.js';
 import { config } from '../config.js';
 import { nowIso } from '../util/ids.js';
 import { forbidden } from '../http/errors.js';
@@ -383,6 +383,103 @@ export async function revenueForecast(sectorId, year) {
       ${sectorId ? 'AND o.sector_id = ?' : ''}`, sectorId ? [year, sectorId] : [year]))?.v || 0;
   const weightedOpen = Math.round(wp);
   return { actual, weightedOpen, forecast: actual + weightedOpen };
+}
+
+// ── التعبير القانوني الواحد للخط المرجّح ─────────────────────────────────────────────
+// فرصة بلا احتمال فوز تُساهم بصفر في المرجّح (لا تُسمِّم المجموع بـnull فتُسقط غيرها) — وكانت
+// ثلاثة مواضع تحسبه بصيغتين مختلفتين فيعرض للقارئ رقمان «مرجّحان» لا يتطابقان. من هنا فقط.
+export const WEIGHTED_OPEN = 'COALESCE(SUM(o.value_halalas * COALESCE(o.win_pct,0) / 100.0),0)';
+
+// المرسّى شهرياً — سلسلة اثني عشر شهراً متتابعة تنتهي عند نهاية النافذة، بتاريخ الفوز الفعلي
+// (stage_changed_at للفرص المحسومة موثوق — إعادة ضبط ساعة المراحل 2026-08-03 مسّت المفتوحة وحدها).
+// تعبر حدود سنة الفرصة عمداً: سلسلةٌ زمنية متدحرجة لا إسنادُ سنةٍ مالية.
+export async function winsByMonth(sectorId, { untilIso, months = 12 } = {}) {
+  const u = String(untilIso).slice(0, 10);
+  const last = new Date(Date.parse(u) - 86400000);
+  const slots = [];
+  for (let k = months - 1; k >= 0; k--) {
+    const d = new Date(Date.UTC(last.getUTCFullYear(), last.getUTCMonth() - k, 1));
+    slots.push({ ym: d.toISOString().slice(0, 7), year: d.getUTCFullYear(), month: d.getUTCMonth() + 1, n: 0, v: 0 });
+  }
+  const sinceIso = `${slots[0].ym}-01`;
+  const rows = await all(`SELECT substr(o.stage_changed_at,1,7) ym, COUNT(*) n, COALESCE(SUM(o.value_halalas),0) v
+     FROM opportunity o JOIN stage st ON st.id = o.stage_id
+     WHERE st.is_won = 1 AND o.exclude_from_sales = 0 AND o.deleted_at IS NULL AND o.stage_changed_at IS NOT NULL
+       AND substr(o.stage_changed_at,1,10) >= ? AND substr(o.stage_changed_at,1,10) < ?
+       ${sectorId ? 'AND o.sector_id = ?' : ''}
+     GROUP BY substr(o.stage_changed_at,1,7)`, [sinceIso, u, ...(sectorId ? [sectorId] : [])]);
+  const byYm = Object.fromEntries(rows.map((r) => [r.ym, r]));
+  for (const sl of slots) { const r = byYm[sl.ym]; if (r) { sl.n = r.n || 0; sl.v = r.v || 0; } }
+  return { sinceIso, untilIso: u, slots };
+}
+
+// أرقام النافذة — مصدر واحد يغذّي شريط المؤشرات ورقائق النبض معاً فلا يفترق رقمان لنفس الشيء.
+// المكسوب ونسبة الفوز في استعلام واحد؛ المفوتر والمحصَّل لمن يقرأ الفواتير وإلا null (لا صفر كاذب).
+export async function windowFigures(user, sectorId, sinceIso, untilIso) {
+  const invoicesOk = can(user, 'read', 'invoice');
+  const [w, inv, col] = await Promise.all([
+    get(`SELECT
+        SUM(CASE WHEN st.is_won = 1 AND o.exclude_from_sales = 0 THEN 1 ELSE 0 END) won_n,
+        COALESCE(SUM(CASE WHEN st.is_won = 1 AND o.exclude_from_sales = 0 THEN o.value_halalas ELSE 0 END),0) won_v,
+        SUM(CASE WHEN st.is_lost = 1 THEN 1 ELSE 0 END) lost_n
+      FROM opportunity o JOIN stage st ON st.id = o.stage_id
+      WHERE o.sector_id = ? AND o.deleted_at IS NULL AND o.stage_changed_at IS NOT NULL
+        AND substr(o.stage_changed_at,1,10) >= ? AND substr(o.stage_changed_at,1,10) < ?`,
+    [sectorId, sinceIso, untilIso]),
+    invoicesOk ? get(`SELECT COUNT(*) n, COALESCE(SUM(i.amount_halalas),0) v FROM invoice i LEFT JOIN project p ON p.id = i.project_id
+      WHERE COALESCE(i.sector_id, p.sector_id) = ? AND i.deleted_at IS NULL AND i.status NOT IN ('DRAFT','CANCELLED')
+        AND i.issue_date IS NOT NULL AND substr(i.issue_date,1,10) >= ? AND substr(i.issue_date,1,10) < ?`,
+    [sectorId, sinceIso, untilIso]) : null,
+    invoicesOk ? get(`SELECT COUNT(*) n, COALESCE(SUM(col.amount_halalas),0) v FROM collection col
+      JOIN invoice i ON i.id = col.invoice_id LEFT JOIN project p ON p.id = i.project_id
+      WHERE COALESCE(i.sector_id, p.sector_id) = ? AND i.deleted_at IS NULL
+        AND col.collected_at IS NOT NULL AND substr(col.collected_at,1,10) >= ? AND substr(col.collected_at,1,10) < ?`,
+    [sectorId, sinceIso, untilIso]) : null,
+  ]);
+  const won = w?.won_n || 0, lost = w?.lost_n || 0, decided = won + lost;
+  return {
+    wins: { n: won, v: w?.won_v || 0 },
+    decided: { won, lost, rate: decided ? Math.round((won / decided) * 100) : null },
+    invoiced: inv ? { n: inv.n || 0, v: inv.v || 0 } : null,
+    collected: col ? { n: col.n || 0, v: col.v || 0 } : null,
+  };
+}
+
+// نطاق التوقع — ثلاثة سيناريوهات كلها من سجلات حقيقية، والصيغ معلنة في تلميح العلامة الحمراء:
+//   المتشائم = المحقق + المفتوح غير المرجّح × نسبة الفوز التاريخية (أو المرجّح إن كان أدنى)
+//   الأساس   = المحقق + المرجّح باحتمال كل فرصة كما سجّله صاحبها
+//   المتفائل = المحقق + كامل المفتوح
+// المجموعة القانونية للفرص المفتوحة: فرص السنة **أو بلا سنة** — فرصة مفتوحة لم تُسند لسنةٍ بعد
+// ما تزال في الملعب، وإسقاطها كان يعرض «مرجّحين» مختلفين للقطاع نفسه في الصفحة الواحدة.
+export async function forecastRange(sectorId, year) {
+  const actual = (await get(`SELECT ${NET_REVENUE} v FROM revenue_line
+      WHERE year = ? ${sectorId ? 'AND sector_id = ?' : ''}`, sectorId ? [year, sectorId] : [year]))?.v || 0;
+  const open = await get(`SELECT COALESCE(SUM(o.value_halalas),0) raw, ${WEIGHTED_OPEN} weighted
+      FROM opportunity o JOIN stage st ON st.id = o.stage_id
+      WHERE o.deleted_at IS NULL AND st.is_won = 0 AND st.is_lost = 0 AND (o.year = ? OR o.year IS NULL)
+      ${sectorId ? 'AND o.sector_id = ?' : ''}`, sectorId ? [year, sectorId] : [year]);
+  const { rate } = await winRate(sectorId, year);
+  const weighted = Math.round(open?.weighted || 0), raw = open?.raw || 0;
+  const low = actual + Math.min(weighted, Math.round(raw * (rate || 0) / 100));
+  return { actual, open_raw: raw, open_weighted: weighted, rate: rate || 0,
+    low, base: actual + weighted, high: actual + raw };
+}
+
+// إيراد النافذة — بنود الإيراد شهرية، فالمجموع لأشهرٍ تتقاطع مع النافذة (والشاشة تُعلن الأساس).
+// النافذة مقصوصة على سنتها في windowBounds فكل أشهرها من السنة نفسها.
+export async function windowRevenue(sectorId, year, sinceIso, untilIso) {
+  const since = String(sinceIso).slice(0, 10), until = String(untilIso).slice(0, 10);
+  if (!(since < until)) return { v: 0, months: [] };
+  const last = new Date(Date.parse(until) - 86400000);
+  const firstM = Number(since.slice(5, 7));
+  const lastM = last.getUTCFullYear() === Number(year) ? last.getUTCMonth() + 1
+    : (last.getUTCFullYear() > Number(year) ? 12 : 0);
+  if (!lastM || lastM < firstM) return { v: 0, months: [] };
+  const months = []; for (let m = firstM; m <= lastM; m++) months.push(m);
+  const r = await get(`SELECT ${NET_REVENUE} v FROM revenue_line
+      WHERE year = ? ${sectorId ? 'AND sector_id = ?' : ''} AND month IN (${months.map(() => '?').join(',')})`,
+  [year, ...(sectorId ? [sectorId] : []), ...months]);
+  return { v: r?.v || 0, months };
 }
 
 // Open-pipeline age buckets by days-in-current-stage (needs a bound `today` for portability).
