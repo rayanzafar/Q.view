@@ -62,6 +62,25 @@ const CARD_HEAD_CSS = `.card-head{padding:var(--pad-card-h);border-bottom:1px so
 // مقياس المحور (عرضٌ لا عتبة): الطيف يمتدّ إلى 125% كي يظهر من تجاوز الطاقة داخل الإطار.
 const AXIS_MAX = 125;
 const axisPct = (v) => (Math.min(AXIS_MAX, Math.max(0, v)) / AXIS_MAX * 100).toFixed(1);
+
+// ── سمة الشاشة (نموذج المالك الكثيف): أرضية باردة فاتحة وبطاقات بيضاء وعائلة كحلي/نيلي/بنفسجي ──
+// تُحقن في <head> بعد أنماط المنصة فتفوز بترتيب التسلسل لا بالتخصيص — متغيراتٌ فقط، لا محدّدات.
+// اللوحة اجتازت فاحص dataviz (تباين ≥3:1 على الأبيض وفرق CVD كافٍ بترتيب الخانات هذا؛
+// لا يجاور البنفسجيُ الكحليَ في رسم واحد — زوجهما وحده يسقط في عمى الألوان).
+const SECTOR_THEME = `<style>body[data-page="sector"]{
+  --bg:#f7f9fc; --surface:#fff;
+  --ink:#101733; --ink2:#1c2447; --muted:#5d6785; --faint:#8b93ad;
+  --line:#e4e9f4; --line2:#edf1f8;
+  --r:16px; --r-sm:12px;
+  --sh-sm:0 1px 2px rgba(28,36,71,.04),0 2px 6px rgba(28,36,71,.05);
+  --sh:0 4px 12px rgba(28,36,71,.06),0 16px 32px rgba(45,85,168,.10);
+  --track:#edf1f8; --tick:#97a1c0;
+  --acc-navy:#2d55a8; --acc-indigo:#6b93ea; --acc-violet:#834798;
+  --acc-teal:#2f9e8f; --acc-amber:#a16207;
+  --ord-1:#22366b; --ord-2:#2d55a8; --ord-3:#4a76d0; --ord-4:#6f93e4; --ord-5:#8fabec;
+  --dk-s:#16224e; --dk-sky:#7ab3f9; --dk-violet:#a78bfa; --dk-teal:#4ec9a8;
+  --fs-val-lg:28px; --fs-val-md:20px;
+}</style>`;
 const CSS = `<style>
 /* عدسة الفترة روابط لا أزرار (حالتها في الرابط) — تلبس زيّ .seg نفسه */
 .seg a{font-size:12px;font-weight:700;color:var(--muted);padding:.35rem .7rem;border-radius:8px;display:flex;align-items:center;gap:.35rem;transition:background .18s,color .18s}
@@ -69,8 +88,8 @@ const CSS = `<style>
 /* ═══ كابينة v5.39 (نماذج المالك): لوحة داكنة، أقسام مرقّمة، رسوم غنية ═══ */
 .card.pad{padding:1rem 1.15rem;display:block}
 .secn{display:flex;align-items:baseline;gap:.6rem;margin-bottom:.7rem;flex-wrap:wrap}
-.secn .n{width:24px;height:24px;border-radius:50%;background:var(--brand);color:#fff;font-size:12.5px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;flex:none;align-self:center}
-.secn h2{font-size:var(--fs-page);font-weight:800;color:var(--ink2);margin:0}
+.secn .n{width:26px;height:26px;border-radius:50%;background:#101733;color:#fff;font-size:12.5px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;flex:none;align-self:center}
+.secn h2{font-size:16px;font-weight:800;color:var(--ink2);margin:0}
 .secn .s{font-size:var(--fs-body);color:var(--muted)}
 .secn .upd{font-size:var(--fs-body);color:var(--muted);display:inline-flex;gap:.35rem;align-items:center}
 /* اللوحة الداكنة */
@@ -158,6 +177,7 @@ const CSS = `<style>
 .ops3{display:grid;grid-template-columns:auto 1fr 1fr;gap:1.2rem;align-items:start}
 .opsd{display:grid;gap:.4rem;justify-items:center}
 .hr2{display:grid;grid-template-columns:1.2fr 1fr;gap:1.2rem;align-items:start}
+.com3>div,.ops3>div,.hr2>div,.out3>div{min-width:0}
 .out3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1.1rem}
 .outg{margin-bottom:.5rem}
 .og{display:inline-block;font-size:var(--fs-micro);font-weight:800;color:var(--brand);background:var(--st-neut-soft);border-radius:999px;padding:.05rem .6rem;margin-bottom:.2rem}
@@ -173,12 +193,10 @@ const CSS = `<style>
 @media(max-width:640px){.dk-num .v{font-size:26px}.vjn{min-width:70px;padding:.4rem .5rem}.secn .upd{display:none}
 .dk-num{min-width:0}.dk-num .sig{max-width:100%}.dk-num .sig>span{white-space:normal}
 .fig-svg text{font-size:15px}}
-/* الطبقات وشريط الستّ: رؤوس بطاقات بخلاصةٍ محسوبة، صفوف «افعل اليوم»، ودرج التحليل */
-.band6{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:1rem}
-@media(max-width:1280px){.band6{grid-template-columns:repeat(3,minmax(0,1fr))}}
-@media(max-width:640px){.band6{grid-template-columns:repeat(2,minmax(0,1fr))}.band6>.tile:first-child{grid-column:span 2}}
+/* رؤوس البطاقات وصفوف «افعل اليوم» ودرج التحليل */
 .g12>div>.card{display:flex;flex-direction:column;min-width:0;height:100%}
-.card.h-c,.card.h-d{max-height:460px}
+/* بطاقة الطاقة بلا سقف ارتفاع: القوائم جزء من البطاقة لا ما بعدها (تسرّب الأسماء عند المالك) */
+.card.h-c{max-height:460px}
 .card .cbody{overflow-y:auto;flex:1;min-height:0}
 .hgrp{display:grid;gap:2px;min-width:0}
 .card-head .eyebrow,.eyebrow{font-size:var(--fs-body);color:var(--muted);font-weight:700}
@@ -281,26 +299,7 @@ ${CARD_HEAD_CSS}
 .cap-strip .cs b{font-size:9.5px;color:var(--muted);font-weight:700;line-height:1}
 .cap-strip .cs.cur{outline:2px solid var(--brand);outline-offset:-2px}
 @media(max-width:640px){.cap-stats{grid-template-columns:1fr 1fr}.cap-stat:last-child:nth-child(odd){grid-column:1/-1}}
-/* صحة المشاريع */
-.hl-wrap{display:flex;gap:1rem;align-items:center;padding:.7rem 1rem .4rem;flex-wrap:wrap}
-.hl-legend{display:flex;flex-direction:column;gap:.3rem;min-width:0;flex:1}
-.hl-row{display:flex;align-items:center;gap:.5rem;font-size:var(--fs-body);border:none;background:none;font-family:inherit;cursor:pointer;padding:.18rem .35rem;border-radius:8px;text-align:start}
-.hl-row:hover{background:#fbfcfe}
-.hl-row .dot{width:9px;height:9px;border-radius:50%;flex:none}
-.hl-row b{margin-inline-start:auto}
-/* الأداء مقابل الخطة — أشرطة رصاصة مدمجة كالمرجع: اسم، نسبة، شريط رفيع، وعلامة «أين يجب أن نكون» */
-.blt{padding:.42rem 0}
-.blt .top{display:flex;justify-content:space-between;gap:.6rem;font-size:var(--fs-body);align-items:baseline}
-.blt .top .n{color:var(--ink2);font-weight:700;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.blt .top b{flex:none}
-.blt .trk{position:relative;height:7px;border-radius:999px;background:#eef1f7;margin-top:.3rem;overflow:visible}
-.blt .trk .fill{position:absolute;inset-inline-start:0;top:0;bottom:0;border-radius:999px}
-.blt .trk .tick{position:absolute;top:-3px;bottom:-3px;width:2px;background:#c9a227;border-radius:2px}
-/* الإيراد عبر السنة: الرسم وبجانبه صندوقا الفجوة والمتوقع — عمود واحد على الضيّق */
-.trend-grid{padding:var(--pad-card-b);display:grid;grid-template-columns:1fr 168px;gap:.8rem;align-items:start}
-@media(max-width:640px){.trend-grid{grid-template-columns:1fr}}
-/* أهم العملاء — جدول مدمج كالمرجع: عميل، إيراد، مفتوح، حصة، حالة، إشارة */
-.cl-note{padding:.45rem 1rem;border-bottom:1px dashed var(--line);font-size:var(--fs-micro)}
+/* أهم العملاء — جدول مدمج: عميل، إيراد، مفتوح، حصة، حالة، إشارة */
 .cl-tbl{width:100%;border-collapse:collapse;font-size:var(--fs-body)}
 .cl-tbl th{font-size:var(--fs-micro);color:var(--muted);font-weight:700;text-align:start;padding:.3rem .5rem;border-bottom:1px solid var(--line);white-space:nowrap}
 .cl-tbl td{padding:.42rem .5rem;border-bottom:1px dashed var(--line);vertical-align:middle}
@@ -310,12 +309,6 @@ ${CARD_HEAD_CSS}
 .cl-nm{display:flex;gap:.5rem;align-items:center;min-width:0}
 .cl-nm a{color:var(--ink2);font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cl-sig{display:inline-flex;align-items:center;gap:.3rem;font-size:10px;font-weight:800;padding:.12rem .5rem;border-radius:999px;white-space:nowrap}
-/* مخاطر التركّز */
-.conc-wrap{display:flex;gap:1rem;align-items:center;padding:.7rem 1rem .5rem;flex-wrap:wrap}
-.conc-legend{flex:1;min-width:0;display:flex;flex-direction:column;gap:.3rem}
-.conc-li{display:flex;align-items:center;gap:.5rem;font-size:var(--fs-body)}
-.conc-li .sw{width:9px;height:9px;border-radius:3px;flex:none}
-.conc-li b{margin-inline-start:auto}
 </style>`;
 
 // ── من يرى أي وجه من الصفحة؟ ─────────────────────────────────────────────────
@@ -786,7 +779,7 @@ export async function sectorPage(user, opts = {}) {
       <div><div class="h">متاحون للعمل — الأقل حِملاً</div>${capList([...emps].filter((e) => loadOf(e) < FREE_BELOW).sort((a, b) => loadOf(a) - loadOf(b)), loadOf)}</div>
       <div><div class="h">يحتاجون إعادة توزيع — تجاوزوا الطاقة</div>${capList([...overNow].sort((a, b) => loadOf(b) - loadOf(a)), loadOf)}</div>
     </div>` : '<div style="flex:1"></div>'}`}
-    <div class="card-foot"><a href="${staffingHref}">لوحة التسكين الكاملة <span aria-hidden="true">←</span></a></div>`, 'h-d');
+    <div class="card-foot"><a href="${staffingHref}">لوحة التسكين الكاملة <span aria-hidden="true">←</span></a></div>`);
 
   // ── صحة المشاريع — شريط تركيبةٍ واحد بدل الدونات (الطول لا الزاوية)، وأبرز ما يحتاج نظراً ──
   const HEALTH = [['GREEN', G.hOnTrack, 'var(--st-good)'], ['AMBER', G.hAtRisk, 'var(--st-warn)'], ['RED', G.hCritical, 'var(--st-bad)']];
@@ -1558,6 +1551,7 @@ export async function sectorPage(user, opts = {}) {
     ${DD}`;
   return layout({ user, active: 'sector', title: `مركز قيادة ${sd.sector.name_ar}`,
     subtitle: `الوضع، ثم السبب، ثم ${G.nextAction} · ${year}`, body, year,
+    extraHead: SECTOR_THEME,
     scripts: ['/static/pages/sector.js'] });
 }
 // ═══════════════════════════════════════════════════════════════════════════════
