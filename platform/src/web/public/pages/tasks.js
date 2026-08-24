@@ -148,6 +148,9 @@
       }
       psel.dataset.initial = psel.value;
     }
+    // اللوح يُستنسخ من قالبٍ خامل، فمنتقي الجهة فيه يُوقَظ الآن ويُملأ حقلُه بما اختير فعلاً
+    // — ومنه الخيار المحقون أعلاه لجهةٍ خارج نطاق القارئ.
+    if (window.Sanad && window.Sanad.pickerInit) { window.Sanad.pickerInit(d); window.Sanad.pickerSync('tf-parent', d); }
     setCategory($('[data-f="category"]', d), $('[data-f="category-other"]', d), row.dataset.category || '');
     set('assignee', row.dataset.assignee || '');
     set('dept', row.dataset.dept || '');
@@ -402,6 +405,29 @@
       refreshBulk();
     }
   });
+
+  // ── مصالحة الصفوف بعد كل تحميل ──
+  // المتصفّح يحفظ قيم عناصر النماذج ويعيدها بعد إعادة التحميل. الهويّات الثابتة في الوسوم
+  // (اسمٌ لكل قائمة مشتقٌّ من معرّف مهمّتها) هي العلاج، وهذه جولةٌ ثانية تُغلق الباب كلّه:
+  // حالةُ الصفّ ما كتبه الخادم لا ما تذكّره المتصفّح. والتحديد الجماعي لا يُورَّث عبر إعادة
+  // تحميل — تطبيقُ تغييرٍ على صفٍّ لم يختره أحد أسوأ من قائمةٍ خاطئة. ولمس المستخدم شيئاً
+  // يُوقفها: من نقر قبل أن تستقرّ الصفحة لا تُلغى نقرته.
+  var touched = false;
+  document.addEventListener('change', function () { touched = true; }, true);
+  document.addEventListener('click', function () { touched = true; }, true);
+  function settleRows() {
+    if (touched) return;
+    // النطاق «الصفّ» لا «كل ما يحمل data-status»: أعمدة اللوح تحملها أيضاً.
+    $$('.tk-row[data-task]').forEach(function (row) {
+      var s = row.querySelector('.tk-status');
+      if (s && s.value !== (row.dataset.status || 'TODO')) s.value = row.dataset.status || 'TODO';
+      var c = row.querySelector('.tk-sel');
+      if (c && c.checked) c.checked = false;
+    });
+    refreshBulk();
+  }
+  settleRows();
+  window.addEventListener('pageshow', settleRows);
 
   // ── Enter في حقل العنوان يضيف المهمة، وEsc يغلق المحرِّر ──
   document.addEventListener('keydown', function (e) {

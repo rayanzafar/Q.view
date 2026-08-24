@@ -19,7 +19,7 @@ import { departmentScope, departmentInSql } from '../../core/rbac/departments.js
 import { DELIVERY_SECTOR_SQL } from '../../core/org/kind.js';
 import { pickablePeople, seesDemoAccounts } from '../../modules/org/people.js';
 import { G, projectKindLabel, projectKindTip } from '../i18n/glossary.js';
-import { sarShort, esc, bar, statMini, noticeCard, workLens, WORK_LENS_CSS } from './_shared.js';
+import { sarShort, esc, bar, statMini, noticeCard, workLens, WORK_LENS_CSS, searchPicker, PICKER_CSS } from './_shared.js';
 import { notesPage } from './notes.js';
 import { myNotes } from '../../modules/pmo/notes.js';
 import { MONTHS_AR, MONTHS_EN3, currentMonthIndex, monthLabelDual } from '../../core/i18n/time.js';
@@ -436,13 +436,21 @@ const TASK_WINDOWS = ['today', 'week', 'overdue', 'nodate', 'all'];
 // جهةٍ واحدة، و«لصاحبها وحده» جهةٌ من جهاتها — وتُحذف حيث لا معنى لها (مهمةٌ باسم غيرك لا
 // تكون شخصية). والخيار الافتراضي يسمّي أثره كاملاً: «عمل داخلي» وحدها كانت تُقرأ تصنيفاً
 // غامضاً. وحين لا مشاريع ولا فرص في نطاق القارئ يُقال ذلك نصاً — لا مجموعةٌ تختفي صامتة.
-const parentPicker = ({ idAttr, label, projects, opportunities, withPersonal = true, dataF = '' }) => `<select id="${idAttr}" class="input"${dataF ? ` data-f="${dataF}"` : ''} aria-label="${label}">
-    <option value="">${G.internalWork} — بلا مشروع ولا فرصة</option>
-    ${withPersonal ? `<option value="me">${G.personalWork} — ${G.personalOnlyYou}</option>` : ''}
-    ${projects.length ? `<optgroup label="${G.projects}">${projects.map((p) => `<option value="p:${esc(p.id)}">${esc(p.name_ar)}</option>`).join('')}</optgroup>` : ''}
-    ${opportunities.length ? `<optgroup label="${G.opportunities}">${opportunities.map((o) => `<option value="o:${esc(o.id)}">${esc(o.title_ar)}</option>`).join('')}</optgroup>` : ''}
-    ${!projects.length && !opportunities.length ? '<option value="" disabled>لا مشاريع ولا فرص ضمن نطاقك بعد — حين تُسكَّن على عملٍ أو يدخل نطاقك تظهر هنا</option>' : ''}
-  </select>`;
+const parentPicker = ({ idAttr, label, projects, opportunities, withPersonal = true, dataF = '' }) => searchPicker({
+  idAttr,
+  label,
+  dataF,
+  placeholder: 'ابحث بالاسم أو الرمز…',
+  lead: [
+    { value: '', name: `${G.internalWork} — بلا مشروع ولا فرصة` },
+    ...(withPersonal ? [{ value: 'me', name: `${G.personalWork} — ${G.personalOnlyYou}` }] : []),
+  ],
+  groups: [
+    { label: G.projects, items: projects.map((p) => ({ value: `p:${p.id}`, name: p.name_ar, code: p.code || '' })) },
+    { label: G.opportunities, items: opportunities.map((o) => ({ value: `o:${o.id}`, name: o.title_ar, code: o.code || '' })) },
+  ],
+  emptyNote: 'لا مشاريع ولا فرص ضمن نطاقك بعد — حين تُسكَّن على عملٍ أو يدخل نطاقك تظهر هنا',
+});
 
 export async function tasksPage(user, opts = {}) {
   // العدسة الثالثة شاشةٌ قائمة بذاتها لا كتلةٌ داخل هذه: «احسه مره زحمه» — حكم المالك على
@@ -641,12 +649,18 @@ export async function tasksPage(user, opts = {}) {
       ${readOnly ? '' : `<button type="button" class="tk-link" data-action="task-open" data-focus="blocked">${why ? 'تحديث العائق' : G.setBlocker}</button>`}</div>`;
   };
 
+  // لكل عنصر تحكّم في الصفّ اسمٌ ومعرّف مشتقّان من معرّف المهمة — وليست زينة. المتصفّح يحفظ
+  // قيم عناصر النماذج ويعيدها بعد إعادة التحميل، وما لا اسم له يُعاد **بموضعه**: تُنجَز مهمة
+  // فينتقل صفّها إلى درج «أنجزتها» في آخر القائمة، فتنزلق كل قيمةٍ بعده صفّاً واحداً وتحطّ
+  // «منجز» على جارتها — وهي في نطاقها لم تتغيّر. ومن حاول إنجاز تلك الجارة لم يستطع: قائمتها
+  // تعرض «منجز» أصلاً فلا يقع تغيير. الاسم يجعل الاستعادة تعود إلى صفّها هي لا إلى من يليه.
   const taskRow = (t) => {
     const done = isDone(t);
     const dl = dueLabel(t);
     const pr = TASK_PRIORITY[t.priority] || TASK_PRIORITY.P2;
     return `<div class="tk-row${done ? ' is-done' : ''}" ${dataAttrs(t)}>
-      ${readOnly ? '' : `<input type="checkbox" class="tk-sel" value="${esc(t.id)}" aria-label="تحديد المهمة للتغيير الجماعي">`}
+      ${readOnly ? '' : `<input type="checkbox" class="tk-sel" id="tk-sel-${esc(t.id)}" name="tk-sel-${esc(t.id)}"
+        autocomplete="off" value="${esc(t.id)}" aria-label="تحديد المهمة للتغيير الجماعي">`}
       <button type="button" class="tk-check${done ? ' done' : ''}" ${readOnly ? 'disabled' : `data-action="${done ? 'task-reopen' : 'task-done'}"`}
         aria-label="${done ? (readOnly ? 'مهمة منجزة' : 'إعادة فتح المهمة') : 'وضع كمنجزة'}" title="${done ? (readOnly ? 'منجزة' : 'إعادة فتح المهمة') : readOnly ? 'عرض للاطّلاع' : 'وضع كمنجزة'}">${done ? '✓' : ''}</button>
       <div class="tk-body">
@@ -670,7 +684,8 @@ export async function tasksPage(user, opts = {}) {
       <div class="tk-side">
         ${done ? '' : `<span class="pill" style="background:${pr.tone === 'red' ? '#fee2e2' : pr.tone === 'amber' ? '#fef3c7' : '#f1f5f9'};color:${pr.tone === 'red' ? '#b91c1c' : pr.tone === 'amber' ? '#92400e' : '#475569'}">${pr.ar}</span>`}
         ${readOnly ? `<span class="pill" style="background:#f1f5f9;color:#475569">${tr(t.status)}</span>`
-          : `<select class="tk-status" data-action="task-status" aria-label="حالة المهمة">
+          : `<select class="tk-status" id="tk-st-${esc(t.id)}" name="tk-st-${esc(t.id)}" autocomplete="off"
+            data-action="task-status" aria-label="حالة المهمة">
           ${TASK_STATUSES.map((s) => `<option value="${s}"${s === t.status ? ' selected' : ''}>${tr(s)}</option>`).join('')}
         </select>
         <button type="button" class="btn btn-ghost btn-sm" data-action="task-open">${G.details}</button>`}
@@ -777,11 +792,11 @@ export async function tasksPage(user, opts = {}) {
   // ── ٤) الإضافة السريعة: عنوان + جهة + مسؤول + موعد + أولوية في بطاقة واحدة ──
   // تصنيف المهمة: قائمة جاهزة من المعجم + «أخرى…» تفتح حقلاً حراً صغيراً. القيمة الجاهزة
   // تُخزَّن بمفتاحها (فتُعرض من المعجم أينما قُرئت)، والحرة تُخزَّن كما كُتبت.
-  const categorySelect = (idAttr, dataF = '') => `<select id="${idAttr}" class="input tk-cat"${dataF ? ` data-f="${dataF}"` : ''} aria-label="تصنيف المهمة">
+  const categorySelect = (idAttr, dataF = '') => `<select id="${idAttr}" name="${idAttr}" autocomplete="off" class="input tk-cat"${dataF ? ` data-f="${dataF}"` : ''} aria-label="تصنيف المهمة">
       <option value="">التصنيف (اختياري)</option>
       ${Object.entries(TASK_CATEGORY_AR).map(([k, v]) => `<option value="${esc(k)}">${esc(v)}</option>`).join('')}
       <option value="__other">أخرى…</option>
-    </select><input id="${idAttr}-other" class="input tk-cat-other"${dataF ? ` data-f="${dataF}-other"` : ''} hidden
+    </select><input id="${idAttr}-other" name="${idAttr}-other" autocomplete="off" class="input tk-cat-other"${dataF ? ` data-f="${dataF}-other"` : ''} hidden
       maxlength="60" placeholder="اكتب التصنيف بكلمتين" aria-label="تصنيف آخر للمهمة">`;
   // الإضافة كانت بطاقةً مفتوحةً دائماً بخمسة حقول فوق كل قائمة — حتى حين لا يريد أحدٌ إضافة
   // شيئاً. صارت زرّاً يفتحها، والحقول كما هي بمعرّفاتها فلا يتغيّر شيء تحت جافاسكربت الصفحة.
@@ -789,21 +804,21 @@ export async function tasksPage(user, opts = {}) {
   const quickAdd = readOnly ? '' : `<details class="card wc-add">
     <summary class="wc-add-sum">${icon('plus')} مهمة جديدة</summary>
     <div class="wc-add-row">
-      <input id="qa-title" class="input" placeholder="ما الذي ستنجزه؟ اكتبه هنا…" aria-label="عنوان المهمة">
+      <input id="qa-title" name="qa-title" autocomplete="off" class="input" placeholder="ما الذي ستنجزه؟ اكتبه هنا…" aria-label="عنوان المهمة">
       <button class="btn btn-primary" data-action="task-add">${G.add}</button>
     </div>
     <div class="wc-add-row2">
       ${parentPicker({ idAttr: 'qa-parent', label: G.parentLink, projects: prjOptions, opportunities: oppOptions })}
       ${categorySelect('qa-category')}
-      ${canAssign && people.length ? `<select id="qa-assignee" class="input" aria-label="${G.assignee}">
+      ${canAssign && people.length ? `<select id="qa-assignee" name="qa-assignee" autocomplete="off" class="input" aria-label="${G.assignee}">
         <option value="">${G.assignee}: أنا</option>
         ${people.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select>` : ''}
-      <input id="qa-due" type="date" class="input" dir="ltr" aria-label="تاريخ الاستحقاق" title="تاريخ الاستحقاق">
-      <select id="qa-priority" class="input" aria-label="${G.priority}">
+      <input id="qa-due" name="qa-due" autocomplete="off" type="date" class="input" dir="ltr" aria-label="تاريخ الاستحقاق" title="تاريخ الاستحقاق">
+      <select id="qa-priority" name="qa-priority" autocomplete="off" class="input" aria-label="${G.priority}">
         <option value="P2">${TASK_PRIORITY.P2.ar}</option><option value="P0">${TASK_PRIORITY.P0.ar}</option>
         <option value="P1">${TASK_PRIORITY.P1.ar}</option><option value="P3">${TASK_PRIORITY.P3.ar}</option>
       </select>
-      <input id="qa-next" class="input wc-add-next" placeholder="${G.nextStep} (اختياري)" aria-label="${G.nextStep}">
+      <input id="qa-next" name="qa-next" autocomplete="off" class="input wc-add-next" placeholder="${G.nextStep} (اختياري)" aria-label="${G.nextStep}">
     </div>
   </details>`;
 
@@ -1090,16 +1105,16 @@ export async function tasksPage(user, opts = {}) {
   // ── ١٠) شريط التغيير الجماعي + محرِّر المهمة (قالب واحد يُستنسخ) ──
   const bulkBar = readOnly ? '' : `<div class="wc-bulk" id="tk-bulk" hidden>
     <span class="wc-bulk-n"><b class="tnum" id="tk-bulk-n">0</b> ${G.bulkSelected}</span>
-    <select id="bk-status" class="input" aria-label="تغيير الحالة">
+    <select id="bk-status" name="bk-status" autocomplete="off" class="input" aria-label="تغيير الحالة">
       <option value="">${G.taskStatus}…</option>
       ${TASK_STATUSES.filter((s) => s !== 'BLOCKED').map((s) => `<option value="${s}">${tr(s)}</option>`).join('')}
     </select>
-    <select id="bk-priority" class="input" aria-label="تغيير الأولوية">
+    <select id="bk-priority" name="bk-priority" autocomplete="off" class="input" aria-label="تغيير الأولوية">
       <option value="">${G.priority}…</option>
       ${Object.entries(TASK_PRIORITY).map(([k, v]) => `<option value="${k}">${v.ar}</option>`).join('')}
     </select>
-    <input id="bk-due" type="date" class="input" dir="ltr" aria-label="تغيير تاريخ الاستحقاق" title="تغيير تاريخ الاستحقاق">
-    ${canAssign && people.length ? `<select id="bk-assignee" class="input" aria-label="تغيير المسؤول">
+    <input id="bk-due" name="bk-due" autocomplete="off" type="date" class="input" dir="ltr" aria-label="تغيير تاريخ الاستحقاق" title="تغيير تاريخ الاستحقاق">
+    ${canAssign && people.length ? `<select id="bk-assignee" name="bk-assignee" autocomplete="off" class="input" aria-label="تغيير المسؤول">
       <option value="">${G.assignee}…</option>${people.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select>` : ''}
     <button class="btn btn-primary btn-sm" data-action="task-bulk">${G.bulkApply}</button>
     <button class="btn btn-sm" data-action="task-bulk-clear">${G.bulkClear}</button>
@@ -1177,6 +1192,7 @@ export async function tasksPage(user, opts = {}) {
     .wc-stat.t-bad .wc-stat-n{color:var(--red)}
     .wc-stat.t-warn .wc-stat-n{color:#a16207}
     ${WORK_LENS_CSS}
+    ${PICKER_CSS}
     .wc-seg{display:inline-flex;background:#eef1f7;border-radius:10px;padding:3px;gap:2px}
     .wc-seg a{display:inline-flex;align-items:center;gap:.35rem;font-size:12px;font-weight:700;color:var(--muted);padding:.35rem .7rem;border-radius:8px}
     .wc-seg a.on{background:#fff;color:var(--ink2);box-shadow:var(--sh-sm)}
@@ -1442,7 +1458,7 @@ export async function tasksPage(user, opts = {}) {
       ? `${countAr(todayBand.length, { one: 'مهمة على طاولتك اليوم', two: 'مهمتان على طاولتك اليوم', few: 'مهام على طاولتك اليوم', many: 'مهمة على طاولتك اليوم' })}${overdue.length ? ` · ${overdue.length} متأخرة` : ''}`
       : (openT.length ? `لا شيء مستحق اليوم · ${countAr(openT.length, { one: 'مهمة مفتوحة', two: 'مهمتان مفتوحتان', few: 'مهام مفتوحة', many: 'مهمة مفتوحة' })}` : 'لا مهام مفتوحة'));
 
-  return layout({ user, active: 'tasks', title: who === 'team' ? G.teamWork : G.myWork, subtitle, body, scripts: ['/static/pages/tasks.js'] });
+  return layout({ user, active: 'tasks', title: who === 'team' ? G.teamWork : G.myWork, subtitle, body, scripts: ['/static/pages/picker.js', '/static/pages/tasks.js'] });
 }
 
 // ═══ حركة المال على المشروع ══════════════════════════════════════════════════════════════════
@@ -2860,6 +2876,7 @@ export async function personPage(user, personId) {
   </section>`;
 
   const body = `<style>
+    ${PICKER_CSS}
     /* مقاس قراءة لا عرض شاشة: بلا حدٍّ يمتد الصفّ على ١٤٤٠ بكسل فيقع العنوان في أقصى اليمين
        وموعده في أقصى اليسار وبينهما فراغٌ تقفز العين فوقه — نفس عطل صفوف الشجرة. */
     .pp-wrap{max-width:1020px;margin-inline:auto}
@@ -2964,6 +2981,6 @@ export async function personPage(user, personId) {
     user, active: 'tasks', title: p.name,
     subtitle: `${p.jobTitle ? p.jobTitle + ' · ' : ''}${p.departmentName || 'بلا إدارة'} — مهامه وفرصه ومشاريعه`,
     body,
-    scripts: ['/static/pages/person.js'],
+    scripts: ['/static/pages/picker.js', '/static/pages/person.js'],
   });
 }

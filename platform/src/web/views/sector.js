@@ -156,6 +156,11 @@ const CSS = `<style>
 /* أقسام ٣–٩ */
 .legend-r{display:flex;gap:1rem;align-items:center;font-size:var(--fs-body);color:var(--muted);flex-wrap:wrap;margin-top:.35rem}
 .legend-r i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-inline-end:.3rem;vertical-align:middle}
+.leg-chips{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin:.1rem 0 .5rem}
+.lgc{display:inline-flex;gap:.4rem;align-items:center;background:var(--bg);border:1px solid var(--line);border-radius:999px;padding:.22rem .7rem;font-size:var(--fs-body);color:var(--muted)}
+.lgc b{color:var(--ink2)}
+.lgc i{display:inline-block;width:10px;height:10px;border-radius:3px}
+.lgc .dashline{display:inline-block;width:14px;height:0;border-top:2.5px dashed var(--acc-violet);border-radius:0}
 .pulses{display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;margin-top:.6rem;border-top:1px dashed var(--line);padding-top:.55rem}
 .pch{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:.4rem .7rem;display:grid;gap:1px;min-width:130px}
 .pch .l{font-size:var(--fs-micro);color:var(--muted);font-weight:700}
@@ -1401,24 +1406,37 @@ export async function sectorPage(user, opts = {}) {
   // ── رأس قسمٍ مرقّم كنماذج المالك ──
   const secn = (n, t, aux = '') => `<div class="secn"><span class="n tnum">${n}</span><h2>${t}</h2>${aux ? `<span class="s">${aux}</span>` : ''}</div>`;
 
-  // ── ٣: الفعلي مقابل المستهدف والتوقع + نبض النافذة (يتحدث مع ألسنة الفترة أعلى الصفحة) ──
+  // ── ٣: الفعلي مقابل المستهدف والتوقع — محور أيسر بأسماء الشهور كنموذج المالك، وخط توقعٍ
+  // متقطع إلى ديسمبر (التقطيع وحده يعني إسقاطاً)، وأعمدة نافذتك المختارة تبقى مضيئة والبقية
+  // تخفت — البيانات نفسها عبر الألسنة (سنوية بطبيعتها) والحارس فحصٌ بايت-ببايت. ──
   const pulseChip = (label, row) => row == null ? '' : `<div class="pch"><span class="l">${label} ${winEcho2}</span><b class="tnum">${row.n ? sarShort(row.v) : '—'}</b><span class="c tnum">${row.n ? countAr(row.n, { one: 'سجل واحد', two: 'سجلان', few: 'سجلات', many: 'سجلاً' }) : 'لا سجلات'}</span></div>`;
+  const fcLine = year === now.getUTCFullYear() && fc.forecast && nowM >= 0 && cumMonthly[nowM] != null && nowM < 11
+    ? { points: [{ i: nowM, v: cumMonthly[nowM] }, { i: 11, v: fc.forecast }], color: 'var(--acc-violet)', endLabel: sarShort(fc.forecast) }
+    : null;
+  const legChip = (sw, label, val, mark = '') => `<span class="lgc">${sw}<span>${label}</span><b class="tnum">${val}</b>${mark}</span>`;
   const comboSection = `
   <section class="card pad">
-    ${secn(3, `${G.revenue} الفعلي مقابل ${G.target} والتوقع`, `أعمدة الأشهر + الخط التراكمي + خط الهدف — والدائرة المجوّفة توقعُ نهاية السنة`)}
-    ${figCombo({ bars: monthly, cum: cumMonthly, target: sd.target_revenue_halalas || null, forecast: fc.forecast || null,
-    labels: monthly.map((_, i) => i + 1), now: nowM + 1, fmt: sarShort, ariaLabel: `الإيراد الشهري والتراكمي مقابل مستهدف ${year}` })}
-    <div class="legend-r">
-      <span><i style="background:var(--brand)"></i>شهري</span><span><i style="background:var(--ink2)"></i>تراكمي</span>
-      <span><i style="background:var(--tick)"></i>${G.target}</span><span><i style="border:2.5px solid var(--brand2);background:none"></i>${G.forecast}</span>
-      ${qDelta != null ? `<span style="margin-inline-start:auto">الربع الحالي ${qDelta >= 0 ? 'أعلى' : 'أدنى'} من السابق بنسبة <b class="tnum">${Math.abs(qDelta)}%</b></span>` : ''}
+    ${secn(3, `${G.revenue} الفعلي مقابل ${G.target} والتوقع`, `أعمدة الأشهر + الخط التراكمي + خط الهدف — والخط المتقطع مسارُ التوقع إلى نهاية السنة`)}
+    <div class="leg-chips">
+      ${legChip('<i style="background:var(--acc-indigo)"></i>', 'الفعلي', sarShort(sd.revenue_halalas))}
+      ${sd.target_revenue_halalas ? legChip('<i style="background:var(--tick)"></i>', G.target, sarShort(sd.target_revenue_halalas)) : ''}
+      ${fc.forecast ? legChip('<i class="dashline"></i>', G.forecast, sarShort(fc.forecast),
+    estMark(`قيمة تقديرية: المحقق + الخط المرجّح باحتمال كل فرصة — والنطاق ${sarShort(fr.low)}–${sarShort(fr.high)} بصيغه على بطاقة التوقع`)) : ''}
+      ${qDelta != null ? `<span style="margin-inline-start:auto;font-size:var(--fs-body);color:var(--muted)">الربع الحالي ${qDelta >= 0 ? 'أعلى' : 'أدنى'} من السابق بنسبة <b class="tnum">${Math.abs(qDelta)}%</b></span>` : ''}
     </div>
+    ${figCombo({ bars: monthly, cum: cumMonthly, target: sd.target_revenue_halalas || null, forecast: fc.forecast || null,
+    labels: MONTHS_AR, labelsTight: MONTHS_EN3, now: nowM + 1, fmt: sarShort, axisDir: 'ltr', w: 960, h: 220,
+    barColor: 'var(--acc-indigo)', nowBarColor: 'var(--acc-violet)', forecastLine: fcLine,
+    hi: isWinMode && wrev && wrev.months.length ? wrev.months : null,
+    ariaLabel: `الإيراد الشهري والتراكمي مقابل مستهدف ${year}` })}
+    ${isWinMode && wrev && wrev.months.length ? `<div class="comfoot">الأعمدة المضيئة أشهرُ نافذتك (${winName}) — والرسم سنويٌّ لا يتغير بالألسنة</div>` : ''}
     <div class="pulses">
       ${pulseChip('المكسوب', pulseWins)}
       ${pulseChip('المفوتر', pulseInv)}
       ${pulseChip('المحصَّل', pulseCol)}
       <span class="ph">نافذة ${winName} — بدّلها من ألسنة أعلى الصفحة</span>
     </div>
+    <div class="comfoot">توزيع الأشهر من تواريخ قبول المخرجات أو تسجيلها في المنصة — لا من تاريخ تنفيذ العمل ${estMark('شهر بند الإيراد من تاريخ قبول المخرَج أو تسليمه أو تسجيله (قاعدة الاعتراف بالتسليم) — فمنحنى الأشهر يتبع حركة التسجيل لا تنفيذ العمل، ويصدق كلما اكتملت تواريخ المخرجات')}</div>
   </section>`;
 
   // ── ٤: الفصل التجاري — قمعٌ متدرّج + أعمار الفرص + فقاعات قيمة×احتمال×عمر ──

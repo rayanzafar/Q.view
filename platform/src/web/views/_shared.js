@@ -80,3 +80,44 @@ export function noticeCard(title, msg, backHref = '/', backLabel = 'العودة
     <a href="${backHref}" style="display:inline-block;margin-top:20px;background:linear-gradient(120deg,var(--brand),var(--brand2));color:#fff;text-decoration:none;padding:9px 22px;border-radius:10px;font-size:13px;font-weight:600">${backLabel}</a>
   </div>`;
 }
+
+// ── منتقٍ بالبحث: حقلٌ يُكتب فيه وقائمةٌ تُصفّى، وخلفه قائمةُ اختيارٍ حقيقية تحمل القيمة ──
+// القائمة الطويلة بلا بحث ليست قائمة: من عنده ثمانون مشروعاً يتصفّح ثمانين سطراً ليجد واحداً
+// يعرف اسمه. والبحث يقبل الاسم **والرمز** معاً، فمن يحفظ رمز مشروعه لا يُجبَر على تهجّي اسمه.
+//
+// القيمة تبقى في `<select>` مخفيّة كما كانت: كل ما يقرأ المنتقي اليوم — الحفظ في «مهامي»
+// وصفحة الشخص، وترميم «الجهة خارج نطاقك» في لوح التحرير — يقرأ `.value` نفسه ولا يتغيّر
+// تحته شيء. والخياراتُ هي مصدر البحث نفسه، فلا تُبعَث نسخةٌ ثانيةٌ من القائمة إلى الصفحة
+// تفترق عن الأولى يوماً.
+export const PICKER_CSS = `
+  .sp{position:relative;min-width:0}
+  .sp-q{width:100%}
+  .sp-q[aria-expanded="true"]{border-color:var(--brand);box-shadow:0 0 0 3px rgba(36,74,153,.14)}
+  .sp-list{position:absolute;inset-inline:0;top:calc(100% + 4px);z-index:75;background:var(--surface);
+    border:1px solid var(--line);border-radius:12px;box-shadow:0 16px 40px rgba(15,23,42,.18);
+    max-height:264px;overflow:auto;padding:.35rem}
+  .sp-row{display:block;width:100%;text-align:start;border:0;background:none;font:inherit;cursor:pointer;
+    padding:.42rem .55rem;border-radius:8px;font-size:12.5px;color:var(--ink2);line-height:1.6}
+  .sp-row:hover,.sp-row.active{background:#eef3fc;color:var(--brand)}
+  .sp-row b{color:var(--brand);font-weight:800}
+  .sp-code{color:var(--faint);font-size:var(--fs-micro);margin-inline-start:.3rem}
+  .sp-grp{font-size:var(--fs-micro);font-weight:800;color:var(--faint);padding:.35rem .55rem .15rem}
+  .sp-empty{padding:.55rem;font-size:12px;color:var(--muted);line-height:1.7}`;
+
+// `groups` = [{ label, items: [{ value, name, code }] }] — كل عنصر يحمل قيمته المرمّزة كما هي.
+// و`lead` خياراتٌ تتصدّر القائمة بلا مجموعة (العمل الداخلي والشخصي).
+export function searchPicker({ idAttr, label, groups = [], lead = [], dataF = '', placeholder = '', emptyNote = '' }) {
+  const opt = (o) => `<option value="${esc(o.value)}"${o.code ? ` data-code="${esc(o.code)}"` : ''}>${esc(o.code ? `${o.code} — ${o.name}` : o.name)}</option>`;
+  const any = groups.some((g) => g.items.length);
+  return `<div class="sp" data-picker="${esc(idAttr)}">
+    <select id="${esc(idAttr)}" name="${esc(idAttr)}" autocomplete="off" hidden${dataF ? ` data-f="${esc(dataF)}"` : ''} aria-hidden="true" tabindex="-1">
+      ${lead.map(opt).join('')}
+      ${groups.map((g) => (g.items.length ? `<optgroup label="${esc(g.label)}">${g.items.map(opt).join('')}</optgroup>` : '')).join('')}
+      ${!any && !emptyNote ? '' : (!any ? `<option value="" disabled>${esc(emptyNote)}</option>` : '')}
+    </select>
+    <input class="input sp-q" id="${esc(idAttr)}-q" name="${esc(idAttr)}-q" autocomplete="off" type="text"
+      role="combobox" aria-expanded="false" aria-controls="${esc(idAttr)}-list" aria-autocomplete="list"
+      aria-label="${esc(label)}" placeholder="${esc(placeholder || label)}">
+    <div class="sp-list" id="${esc(idAttr)}-list" role="listbox" aria-label="${esc(label)}" hidden></div>
+  </div>`;
+}

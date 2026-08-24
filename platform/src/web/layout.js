@@ -835,7 +835,7 @@ export function figSpark(points, { w = 120, h = 36, color = 'var(--brand)', axis
 
 // رسم مركّب (الفعلي مقابل المستهدف والتوقع): أعمدة شهرية + خط تراكمي + خط هدفٍ متقطع +
 // نقطة التوقع في آخر السنة — محور يميني القراءة، وكل عمودٍ ونقطةٍ بعنوان تحويم.
-export function figCombo({ bars = [], cum = [], target = null, forecast = null, labels = [], labelsTight = null, now = 0, fmt = (v) => String(v), ariaLabel = '', axisDir = 'rtl', w = 560, h = 170, forecastLine = null, barColor = null, nowBarColor = null } = {}) {
+export function figCombo({ bars = [], cum = [], target = null, forecast = null, labels = [], labelsTight = null, now = 0, fmt = (v) => String(v), ariaLabel = '', axisDir = 'rtl', w = 560, h = 170, forecastLine = null, barColor = null, nowBarColor = null, hi = null } = {}) {
   const n = Math.max(bars.length, cum.length);
   if (!n) return '';
   // المقياس على الفعلي والهدف — توقعٌ شاذّ الحجم (يتجاوز الهدف بأضعاف) يُثبَّت عند حافة
@@ -847,7 +847,7 @@ export function figCombo({ bars = [], cum = [], target = null, forecast = null, 
   const padX = 8, padT = 14, padB = 20, bw = Math.min(22, (w - padX * 2) / n * .55);
   const X = (i) => padX + ((axisDir === 'ltr' ? i : n - 1 - i) / Math.max(1, n - 1)) * (w - padX * 2 - bw) + bw / 2;
   const Y = (v) => padT + (1 - (Math.max(0, v) / top)) * (h - padT - padB);
-  const barsEl = bars.map((v, i) => `<rect x="${(X(i) - bw / 2).toFixed(1)}" y="${Y(v).toFixed(1)}" width="${bw.toFixed(1)}" height="${(h - padB - Y(v)).toFixed(1)}" rx="3" fill="${i + 1 === now ? (nowBarColor || 'var(--brand2)') : (barColor || 'var(--brand)')}" opacity="${v ? '.85' : '.2'}"><title>${esc(String(labels[i] ?? i + 1))}: ${esc(fmt(v))}</title></rect>`).join('');
+  const barsEl = bars.map((v, i) => `<rect x="${(X(i) - bw / 2).toFixed(1)}" y="${Y(v).toFixed(1)}" width="${bw.toFixed(1)}" height="${(h - padB - Y(v)).toFixed(1)}" rx="3" fill="${i + 1 === now ? (nowBarColor || 'var(--brand2)') : (barColor || 'var(--brand)')}" opacity="${hi && hi.length ? (hi.includes(i + 1) ? '.9' : '.25') : (v ? '.85' : '.2')}"><title>${esc(String(labels[i] ?? i + 1))}: ${esc(fmt(v))}</title></rect>`).join('');
   const cumPts = cum.map((v, i) => `${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(' ');
   const cumEl = cum.length ? `<polyline points="${cumPts}" fill="none" stroke="var(--ink2)" stroke-width="2" stroke-linejoin="round"/>${cum.map((v, i) => `<circle cx="${X(i).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="${i + 1 === now ? 4 : 2.5}" fill="${i + 1 === now ? 'var(--gold)' : 'var(--ink2)'}"><title>${esc(String(labels[i] ?? i + 1))} تراكمياً: ${esc(fmt(v))}</title></circle>`).join('')}` : '';
   const targetEl = target ? `<line x1="${padX}" y1="${Y(target).toFixed(1)}" x2="${w - padX}" y2="${Y(target).toFixed(1)}" stroke="var(--tick)" stroke-width="1.5" stroke-dasharray="6 5"/><text x="${(w - padX - 10).toFixed(1)}" y="${(Y(target) + 12).toFixed(1)}" text-anchor="end">${esc(fmt(target))}</text>` : '';
