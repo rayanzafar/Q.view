@@ -11,7 +11,7 @@ import { netSql } from '../../modules/finance/vat.js';
 import { icon } from '../icons.js';
 import { fmtSar } from '../../core/util/ids.js';
 import { all, get } from '../../core/db/index.js';
-import { sectorDashboard, sectorStaffing, sectorWins, quarterlyRevenue, quarterlyBookings, pipelineCoverage, monthlyRevenue, revenueForecast, yearElapsedPct, targetToDate, paceDelta, grossMargin } from '../../core/reports/metrics.js';
+import { sectorDashboard, sectorStaffing, sectorWins, quarterlyRevenue, quarterlyBookings, pipelineCoverage, monthlyRevenue, revenueForecast, yearElapsedPct, targetToDate, paceDelta, grossMargin, WEIGHTED_OPEN } from '../../core/reports/metrics.js';
 import { attentionFeed, RESOURCE_AR } from '../../core/reports/attention.js';
 import { changesSince, sinceForWindow } from '../../core/reports/changes.js';
 import { arAging } from '../../modules/finance/finance.js';
@@ -439,7 +439,7 @@ export async function sectorPage(user, opts = {}) {
   // ومن جدول المراحل يساراً: المرحلة الفارغة تظهر بصفرها ولا تختفي — وإلا قفز سهم الانتقال
   // فوقها فقارن مرحلتين غير متجاورتين.
   const pipe = await all(`SELECT st.id, st.name_ar, st.color, COUNT(o.id) AS "count", COALESCE(SUM(o.value_halalas),0) value_halalas,
-      COALESCE(SUM(o.value_halalas * o.win_pct / 100.0),0) weighted
+      ${WEIGHTED_OPEN} weighted
      FROM stage st LEFT JOIN opportunity o ON o.stage_id = st.id AND o.deleted_at IS NULL AND o.sector_id = ?
      WHERE st.is_won = 0 AND st.is_lost = 0
      GROUP BY st.id, st.name_ar, st.color, st.sort_order ORDER BY st.sort_order`, [sectorId]);

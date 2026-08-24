@@ -301,7 +301,7 @@ export async function pipelineCoverage(sectorId, year) {
      WHERE st.is_won=1 AND o.exclude_from_sales=0 AND o.year=? ${sectorId ? 'AND o.sector_id=?' : ''} AND o.deleted_at IS NULL`,
     [year, ...(sectorId ? [sectorId] : [])]);
   const openRow = await get(`SELECT COALESCE(SUM(o.value_halalas),0) raw,
-       COALESCE(SUM(o.value_halalas * COALESCE(o.win_pct,0)/100.0),0) weighted
+       ${WEIGHTED_OPEN} weighted
      FROM opportunity o JOIN stage st ON st.id=o.stage_id
      WHERE st.is_won=0 AND st.is_lost=0 ${sectorId ? 'AND o.sector_id=?' : ''} AND o.deleted_at IS NULL`,
     sectorId ? [sectorId] : []);
@@ -377,9 +377,11 @@ export async function monthlyRevenue(sectorId, year) {
 export async function revenueForecast(sectorId, year) {
   const actual = (await get(`SELECT ${NET_REVENUE} v FROM revenue_line
       WHERE year = ? ${sectorId ? 'AND sector_id = ?' : ''}`, sectorId ? [year, sectorId] : [year]))?.v || 0;
-  const wp = (await get(`SELECT COALESCE(SUM(o.value_halalas * o.win_pct / 100.0),0) v
+  // التعبير والمجموعة القانونيان (WEIGHTED_OPEN + فرص السنة أو بلا سنة) — الصيغة العارية كانت
+  // تُسمَّم بـnull وتُسقط الفرص بلا سنة، فيتقاطع في الصفحة «مرجّحان» لا يتطابقان.
+  const wp = (await get(`SELECT ${WEIGHTED_OPEN} v
       FROM opportunity o JOIN stage st ON st.id = o.stage_id
-      WHERE o.deleted_at IS NULL AND st.is_won = 0 AND st.is_lost = 0 AND o.year = ?
+      WHERE o.deleted_at IS NULL AND st.is_won = 0 AND st.is_lost = 0 AND (o.year = ? OR o.year IS NULL)
       ${sectorId ? 'AND o.sector_id = ?' : ''}`, sectorId ? [year, sectorId] : [year]))?.v || 0;
   const weightedOpen = Math.round(wp);
   return { actual, weightedOpen, forecast: actual + weightedOpen };

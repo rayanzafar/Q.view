@@ -64,3 +64,16 @@ test('forecastRange: بلا فرص محسومة تبقى النطاقات سلي
   assert.equal(r.high, 400_000);
   assert.ok(r.low <= r.base && r.base <= r.high);
 });
+
+// ── انحدار المصالحة: ثلاثة مواضع، رقم مرجّح واحد ─────────────────────────────────────────
+test('المصالحة: revenueForecast وforecastRange واستعلام الصفحة تُخرج المرجّح نفسه', async () => {
+  const { revenueForecast, WEIGHTED_OPEN } = await import('../../src/core/reports/metrics.js');
+  const { all } = await import('../../src/core/db/index.js');
+  const [rf, fr] = await Promise.all([revenueForecast('S1', 2026), forecastRange('S1', 2026)]);
+  assert.equal(rf.weightedOpen, fr.open_weighted);           // 700k — الفرص بلا سنة داخل الاثنين
+  assert.equal(rf.forecast, fr.base);
+  const pipe = await all(`SELECT ${WEIGHTED_OPEN} weighted FROM opportunity o
+     JOIN stage st ON st.id = o.stage_id
+     WHERE st.is_won = 0 AND st.is_lost = 0 AND o.deleted_at IS NULL AND o.sector_id = ?`, ['S1']);
+  assert.equal(Math.round(pipe[0].weighted), fr.open_weighted); // تعبير الصفحة = التعبير القانوني
+});
