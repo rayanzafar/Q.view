@@ -149,12 +149,12 @@ const CSS = `<style>
 .vj-light .vjn>span{color:var(--muted)}
 .vj-light .vjn i{width:36px;height:32px;border-radius:0;clip-path:polygon(25% 0,75% 0,100% 50%,75% 100%,25% 100%,0 50%);background:var(--ord-3)}
 .vj-light .vjn i svg{color:#fff}
-.vj-light .vjn:nth-child(2) i{background:var(--ord-1)}
-.vj-light .vjn:nth-child(4) i{background:var(--ord-2)}
-.vj-light .vjn:nth-child(6) i{background:var(--ord-3)}
-.vj-light .vjn:nth-child(8) i{background:var(--ord-4)}
-.vj-light .vjn:nth-child(10) i{background:var(--ord-4)}
-.vj-light .vjn:nth-child(12) i{background:var(--ord-5)}
+.vj-light .vjn:nth-child(1) i{background:var(--ord-1)}
+.vj-light .vjn:nth-child(3) i{background:var(--ord-2)}
+.vj-light .vjn:nth-child(5) i{background:var(--ord-3)}
+.vj-light .vjn:nth-child(7) i{background:var(--ord-4)}
+.vj-light .vjn:nth-child(9) i{background:var(--ord-4)}
+.vj-light .vjn:nth-child(11) i{background:var(--ord-5)}
 .vj-light .vjn.leak{border-color:var(--st-bad);background:var(--st-bad-soft)}
 .vj-light .vjn.leak i{background:var(--st-bad)}
 .vj-light .vjn.off{opacity:.75;border-style:dashed}
@@ -230,7 +230,9 @@ const CSS = `<style>
 @media(max-width:1100px){.ins{grid-template-columns:1fr}.com3{grid-template-columns:1fr}.ops3{grid-template-columns:1fr}.hr3{grid-template-columns:1fr}.out3{grid-template-columns:1fr}.kpi5{grid-template-columns:repeat(2,minmax(0,1fr))}.kpi5>.kpi:first-child{grid-column:span 2}}
 @media(max-width:640px){.vjn{min-width:70px;padding:.4rem .5rem}.secn .upd{display:none}
 .kpi5{gap:.6rem}.kv{font-size:24px}
-.fig-svg text{font-size:15px}}
+.fig-svg text{font-size:15px}
+/* الرسم المركّب عرضُه 960 وحدة فتنكمش حروفه إلى النصف تقريباً على 390 — رفعٌ يعوّض الانكماش */
+.fig-svg text.m-tight,.fig-svg .mk-l{font-size:21px}}
 /* رؤوس البطاقات وصفوف «افعل اليوم» ودرج التحليل */
 .g12>div>.card{display:flex;flex-direction:column;min-width:0;height:100%}
 /* بطاقة الطاقة بلا سقف ارتفاع: القوائم جزء من البطاقة لا ما بعدها (تسرّب الأسماء عند المالك) */
@@ -1461,7 +1463,7 @@ export async function sectorPage(user, opts = {}) {
     estMark(`قيمة تقديرية: المحقق + الخط المرجّح باحتمال كل فرصة — والنطاق ${sarShort(fr.low)}–${sarShort(fr.high)} بصيغه على بطاقة التوقع`)) : ''}
       ${qDelta != null ? `<span style="margin-inline-start:auto;font-size:var(--fs-body);color:var(--muted)">الربع الحالي ${qDelta >= 0 ? 'أعلى' : 'أدنى'} من السابق بنسبة <b class="tnum">${Math.abs(qDelta)}%</b></span>` : ''}
     </div>
-    ${figCombo({ bars: monthly, cum: cumMonthly, target: sd.target_revenue_halalas || null, forecast: fc.forecast || null,
+    ${figCombo({ bars: monthly, cum: year === now.getUTCFullYear() && nowM >= 0 ? cumMonthly.slice(0, nowM + 1) : cumMonthly, target: sd.target_revenue_halalas || null, forecast: fc.forecast || null,
     labels: MONTHS_AR, labelsTight: MONTHS_EN3, now: nowM + 1, fmt: sarShort, axisDir: 'ltr', w: 960, h: 220,
     barColor: 'var(--acc-indigo)', nowBarColor: 'var(--acc-violet)', forecastLine: fcLine,
     hi: isWinMode && wrev && wrev.months.length ? wrev.months : null,
@@ -1626,7 +1628,7 @@ export async function sectorPage(user, opts = {}) {
   // العرض حسب المسمى الوظيفي — جانب العرض وحده: احتياج الأدوار غير مسجَّل في الفرص والمشاريع
   const rosterPeople = team ? team.people : (staff.employees || []);
   const jobCounts = {};
-  for (const pRow of rosterPeople) { const j = (pRow.job || '').trim() || 'بلا مسمى مسجّل'; jobCounts[j] = (jobCounts[j] || 0) + 1; }
+  for (const pRow of rosterPeople) { const j = (pRow.job_title ?? pRow.job ?? '').trim() || 'بلا مسمى مسجّل'; jobCounts[j] = (jobCounts[j] || 0) + 1; }
   const jobBars = Object.entries(jobCounts).sort((a, b) => b[1] - a[1]).slice(0, 6)
     .map(([j, n]) => ({ label: j, value: n, count: '', fill: j === 'بلا مسمى مسجّل' ? 'var(--tick)' : 'var(--acc-navy)' }));
   const heatTone = (v) => v == null ? ['var(--track)', 'var(--muted)'] : v > OVER_ABOVE ? ['var(--st-bad-soft)', 'var(--st-bad)'] : v === 0 ? ['var(--st-neut-soft)', 'var(--muted)'] : v < FREE_BELOW ? ['#fdf6e3', '#8a6d1a'] : ['var(--st-good-soft)', 'var(--st-good)'];
@@ -1635,7 +1637,7 @@ export async function sectorPage(user, opts = {}) {
     ${secn(8, 'الفصل البشري — التسكين والموارد', `${G.utilization} المخطَّط بالإدارة والشهر، والطلب مقابل الطاقة — من خطة التسكين لا ساعات العمل`)}
     <div class="hr3">
       <div>
-        <div class="sh">${G.utilization} حسب ${team && team.departments.length ? 'الإدارة' : 'القطاع'} ${heat3Rows ? 'للأشهر الثلاثة القادمة' : 'والشهر'}</div>
+        <div class="sh">${G.utilization} حسب ${team && team.departments.length ? 'الإدارة' : 'القطاع'} ${heat3Rows ? 'لهذا الشهر والشهرين بعده' : 'والشهر'}</div>
         ${heat3Rows
     ? figHeat(heat3Rows, heat3Months.map((m) => monthLabel(m - 1)), { tone: heatTone, ltr: true })
     : figHeat(heatRows, Array.from({ length: 12 }, (_, i) => i + 1), { tone: heatTone, ltr: true })}
