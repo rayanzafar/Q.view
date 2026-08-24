@@ -129,6 +129,10 @@ a{text-decoration:none;color:inherit}
 /* رسم خطي/مركّب: نص المحاور من رموز المنصة */
 .fig-svg text{font-family:inherit;font-size:9.5px;fill:var(--muted);direction:ltr}
 .fig-svg .axis{stroke:var(--line);stroke-width:1}
+.fig-svg .mk-l{font-weight:800}
+.gh-w{position:relative;display:inline-flex;flex:none}
+.gh-v{position:absolute;inset-inline:0;bottom:0;text-align:center;font-size:15px;font-weight:800;color:var(--ink2)}
+.gh-v small{display:block;font-size:9px;color:var(--muted);font-weight:700}
 /* خريطة حرارية: خلايا ملوّنة بعتبات معلنة، والرقم داخل الخلية */
 .fig-heat{border-collapse:collapse;width:100%;font-size:var(--fs-body)}
 .fig-heat th{font-size:var(--fs-micro);color:var(--muted);font-weight:700;padding:2px 4px;text-align:center}
@@ -778,15 +782,16 @@ export function figDonut(segs, { size = 104, sw = 13 } = {}) {
     <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="var(--track)" stroke-width="${sw}"/>${arcs}</svg>`;
 }
 
-// رسم خطي متعدد السلاسل على محور زمنٍ يقرأ يميناً (كبقية المنصة): كل سلسلة نقاطها بالترتيب
-// الزمني تصاعدياً وتُعكس داخلياً. لكل نقطة عنوان تحويم بقيمتها. سلسلة بلا لون ترث الهوية.
-export function figLine(seriesList, { labels = [], now = 0, w = 480, h = 130, fmt = (v) => String(v), ariaLabel = '' } = {}) {
+// رسم خطي متعدد السلاسل: المحور يقرأ يميناً افتراضاً (عرف المنصة)، وaxisDir:'ltr' يقلبه —
+// استثناء شاشة مركز القيادة بقرار المالك على نموذجه المرجعي (2026-08-24، ADR-0011).
+// marks: شروح رأسية [{i,label,color}] — خطٌّ متقطع عند نقطةٍ ونصُّه فوقه (فجوة طاقة ونحوها).
+export function figLine(seriesList, { labels = [], now = 0, w = 480, h = 130, fmt = (v) => String(v), ariaLabel = '', axisDir = 'rtl', marks = [] } = {}) {
   const list = (seriesList || []).filter((sr) => (sr.points || []).length);
   if (!list.length) return '';
   const n = Math.max(...list.map((sr) => sr.points.length));
   const top = Math.max(1, ...list.flatMap((sr) => sr.points.map((v) => Number(v) || 0)));
   const padX = 6, padT = 8, padB = 18;
-  const X = (i) => padX + ((n - 1 - i) / Math.max(1, n - 1)) * (w - padX * 2);   // الأقدم يميناً
+  const X = (i) => padX + ((axisDir === 'ltr' ? i : n - 1 - i) / Math.max(1, n - 1)) * (w - padX * 2);
   const Y = (v) => padT + (1 - (Math.max(0, Number(v) || 0) / top)) * (h - padT - padB);
   const paths = list.map((sr) => {
     const pts = sr.points.map((v, i) => `${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(' ');
@@ -796,37 +801,80 @@ export function figLine(seriesList, { labels = [], now = 0, w = 480, h = 130, fm
     return `${area}<polyline points="${pts}" fill="none" stroke="${col}" stroke-width="2"${sr.dash ? ' stroke-dasharray="5 4"' : ''} stroke-linejoin="round" stroke-linecap="round"/>${dots}`;
   }).join('');
   const ticks = labels.length ? labels.map((l, i) => `<text x="${X(i).toFixed(1)}" y="${h - 4}" text-anchor="middle">${esc(String(l))}</text>`).join('') : '';
+  const marksEl = (marks || []).filter((m) => m && m.i >= 0 && m.i < n).map((m) => {
+    const x = X(m.i), col = esc(m.color || 'var(--st-bad)');
+    const tx = Math.min(Math.max(x, padX + 40), w - padX - 40); // النص داخل الإطار مهما طرُف الخط
+    return `<line x1="${x.toFixed(1)}" y1="${padT}" x2="${x.toFixed(1)}" y2="${h - padB}" stroke="${col}" stroke-width="1.5" stroke-dasharray="4 3"/>
+      <text class="mk-l" x="${tx.toFixed(1)}" y="${padT + 2}" dominant-baseline="hanging" text-anchor="middle" fill="${col}">${esc(String(m.label || ''))}</text>`;
+  }).join('');
   return `<svg class="fig-svg" viewBox="0 0 ${w} ${h}" role="img"${ariaLabel ? ` aria-label="${esc(ariaLabel)}"` : ' aria-hidden="true"'} style="width:100%;height:auto">
-    <line class="axis" x1="${padX}" y1="${h - padB}" x2="${w - padX}" y2="${h - padB}"/>${paths}${ticks}</svg>`;
+    <line class="axis" x1="${padX}" y1="${h - padB}" x2="${w - padX}" y2="${h - padB}"/>${paths}${marksEl}${ticks}</svg>`;
+}
+
+// شرارة مساحية صغيرة: خطٌّ واحد بتعبئة متدرّجة ونقطة نهاية — لا محاور ولا أرقام، للاتجاه وحده.
+// المحور يساري القراءة افتراضاً (زمنٌ في بطاقة مؤشر على نموذج المالك). معرّف التدرّج من عدّاد
+// الوحدة — ترتيب التصيير ثابت في المنصة (ملاحظة render-parity) فلا تصادم.
+let _sparkSeq = 0;
+export function figSpark(points, { w = 120, h = 36, color = 'var(--brand)', axisDir = 'ltr', ariaLabel = '' } = {}) {
+  const pts = (points || []).map((v) => Math.max(0, Number(v) || 0));
+  if (pts.length < 2) return '';
+  const gid = 'spkGrad' + (++_sparkSeq);
+  const top = Math.max(1, ...pts);
+  const pad = 3;
+  const X = (i) => pad + ((axisDir === 'ltr' ? i : pts.length - 1 - i) / (pts.length - 1)) * (w - pad * 2);
+  const Y = (v) => pad + (1 - v / top) * (h - pad * 2);
+  const line = pts.map((v, i) => `${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(' ');
+  const lastI = axisDir === 'ltr' ? pts.length - 1 : 0;
+  const endX = axisDir === 'ltr' ? X(pts.length - 1) : X(0);
+  return `<div style="min-width:0;overflow:hidden"><svg class="fig-svg" viewBox="0 0 ${w} ${h}" role="img"${ariaLabel ? ` aria-label="${esc(ariaLabel)}"` : ' aria-hidden="true"'} style="width:100%;height:auto;display:block">
+    <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${esc(color)}" stop-opacity=".18"/><stop offset="1" stop-color="${esc(color)}" stop-opacity="0"/></linearGradient></defs>
+    <polygon points="${line} ${endX.toFixed(1)},${(h - pad).toFixed(1)} ${X(axisDir === 'ltr' ? 0 : pts.length - 1).toFixed(1)},${(h - pad).toFixed(1)}" fill="url(#${gid})"/>
+    <polyline points="${line}" fill="none" stroke="${esc(color)}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    <circle cx="${X(lastI).toFixed(1)}" cy="${Y(pts[lastI]).toFixed(1)}" r="3" fill="${esc(color)}" stroke="#fff" stroke-width="1.5"/></svg></div>`;
 }
 
 // رسم مركّب (الفعلي مقابل المستهدف والتوقع): أعمدة شهرية + خط تراكمي + خط هدفٍ متقطع +
 // نقطة التوقع في آخر السنة — محور يميني القراءة، وكل عمودٍ ونقطةٍ بعنوان تحويم.
-export function figCombo({ bars = [], cum = [], target = null, forecast = null, labels = [], now = 0, fmt = (v) => String(v), ariaLabel = '' } = {}) {
+export function figCombo({ bars = [], cum = [], target = null, forecast = null, labels = [], labelsTight = null, now = 0, fmt = (v) => String(v), ariaLabel = '', axisDir = 'rtl', w = 560, h = 170, forecastLine = null, barColor = null, nowBarColor = null } = {}) {
   const n = Math.max(bars.length, cum.length);
   if (!n) return '';
   // المقياس على الفعلي والهدف — توقعٌ شاذّ الحجم (يتجاوز الهدف بأضعاف) يُثبَّت عند حافة
   // الرسم بقيمته الدقيقة في التحويم، ولا يُسمح له بسحق الأعمدة والخط.
-  const topBase = Math.max(1, ...bars, ...cum, target || 0);
+  const fcLinePts = (forecastLine && forecastLine.points || []).map((p) => ({ i: p.i, v: Math.max(0, Number(p.v) || 0) }));
+  const topBase = Math.max(1, ...bars, ...cum, target || 0, ...fcLinePts.map((p) => p.v));
   const top = forecast && forecast <= topBase * 1.5 ? Math.max(topBase, forecast) : topBase;
   const fcShown = forecast ? Math.min(forecast, top) : null;
-  const w = 560, h = 170, padX = 8, padT = 14, padB = 20, bw = Math.min(22, (w - padX * 2) / n * .55);
-  const X = (i) => padX + ((n - 1 - i) / Math.max(1, n - 1)) * (w - padX * 2 - bw) + bw / 2;
+  const padX = 8, padT = 14, padB = 20, bw = Math.min(22, (w - padX * 2) / n * .55);
+  const X = (i) => padX + ((axisDir === 'ltr' ? i : n - 1 - i) / Math.max(1, n - 1)) * (w - padX * 2 - bw) + bw / 2;
   const Y = (v) => padT + (1 - (Math.max(0, v) / top)) * (h - padT - padB);
-  const barsEl = bars.map((v, i) => `<rect x="${(X(i) - bw / 2).toFixed(1)}" y="${Y(v).toFixed(1)}" width="${bw.toFixed(1)}" height="${(h - padB - Y(v)).toFixed(1)}" rx="3" fill="${i + 1 === now ? 'var(--brand2)' : 'var(--brand)'}" opacity="${v ? '.85' : '.2'}"><title>${esc(String(labels[i] ?? i + 1))}: ${esc(fmt(v))}</title></rect>`).join('');
+  const barsEl = bars.map((v, i) => `<rect x="${(X(i) - bw / 2).toFixed(1)}" y="${Y(v).toFixed(1)}" width="${bw.toFixed(1)}" height="${(h - padB - Y(v)).toFixed(1)}" rx="3" fill="${i + 1 === now ? (nowBarColor || 'var(--brand2)') : (barColor || 'var(--brand)')}" opacity="${v ? '.85' : '.2'}"><title>${esc(String(labels[i] ?? i + 1))}: ${esc(fmt(v))}</title></rect>`).join('');
   const cumPts = cum.map((v, i) => `${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(' ');
   const cumEl = cum.length ? `<polyline points="${cumPts}" fill="none" stroke="var(--ink2)" stroke-width="2" stroke-linejoin="round"/>${cum.map((v, i) => `<circle cx="${X(i).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="${i + 1 === now ? 4 : 2.5}" fill="${i + 1 === now ? 'var(--gold)' : 'var(--ink2)'}"><title>${esc(String(labels[i] ?? i + 1))} تراكمياً: ${esc(fmt(v))}</title></circle>`).join('')}` : '';
   const targetEl = target ? `<line x1="${padX}" y1="${Y(target).toFixed(1)}" x2="${w - padX}" y2="${Y(target).toFixed(1)}" stroke="var(--tick)" stroke-width="1.5" stroke-dasharray="6 5"/><text x="${(w - padX - 10).toFixed(1)}" y="${(Y(target) + 12).toFixed(1)}" text-anchor="end">${esc(fmt(target))}</text>` : '';
-  const fcEl = forecast ? `<circle cx="${X(n - 1).toFixed(1)}" cy="${Y(fcShown).toFixed(1)}" r="5" fill="none" stroke="var(--brand2)" stroke-width="2.5"><title>المتوقع نهاية السنة: ${esc(fmt(forecast))}${fcShown < forecast ? ' (خارج مقياس الرسم)' : ''}</title></circle>` : '';
-  const ticks = labels.map((l, i) => `<text x="${X(i).toFixed(1)}" y="${h - 5}" text-anchor="middle">${esc(String(l))}</text>`).join('');
+  // خط التوقع المتقطع (من آخر شهرٍ فعلي إلى ديسمبر) يحلّ محل الدائرة حين يُمرَّر — التقطيعُ
+  // وحده يعني «إسقاط»، والقيمة النهائية معلنةٌ نصاً عند طرفه.
+  const fcLineEl = fcLinePts.length >= 2 ? (() => {
+    const col = esc((forecastLine && forecastLine.color) || 'var(--brand2)');
+    const pts = fcLinePts.map((p) => `${X(p.i).toFixed(1)},${Y(Math.min(p.v, top)).toFixed(1)}`).join(' ');
+    const last = fcLinePts[fcLinePts.length - 1];
+    const endTx = Math.min(Math.max(X(last.i), padX + 34), w - padX - 34);
+    return `<polyline points="${pts}" fill="none" stroke="${col}" stroke-width="2" stroke-dasharray="5 4" stroke-linejoin="round"/>
+      <circle cx="${X(last.i).toFixed(1)}" cy="${Y(Math.min(last.v, top)).toFixed(1)}" r="4" fill="none" stroke="${col}" stroke-width="2"><title>${esc(String((forecastLine && forecastLine.title) || 'المتوقع نهاية السنة'))}: ${esc(fmt(last.v))}</title></circle>
+      <text class="mk-l" x="${endTx.toFixed(1)}" y="${Math.max(padT + 2, Y(Math.min(last.v, top)) - 9).toFixed(1)}" text-anchor="middle" fill="${col}">${esc((forecastLine && forecastLine.endLabel) || fmt(last.v))}</text>`;
+  })() : '';
+  const fcEl = fcLineEl || (forecast ? `<circle cx="${X(n - 1).toFixed(1)}" cy="${Y(fcShown).toFixed(1)}" r="5" fill="none" stroke="var(--brand2)" stroke-width="2.5"><title>المتوقع نهاية السنة: ${esc(fmt(forecast))}${fcShown < forecast ? ' (خارج مقياس الرسم)' : ''}</title></circle>` : '');
+  // عنوانا شهرٍ مزدوجان (عربي كامل على الواسع، Jan على الضيق) حين يمرّر المستدعي labelsTight
+  const ticks = labels.map((l, i) => labelsTight
+    ? `<text class="m-full" x="${X(i).toFixed(1)}" y="${h - 5}" text-anchor="middle">${esc(String(l))}</text><text class="m-tight" x="${X(i).toFixed(1)}" y="${h - 5}" text-anchor="middle">${esc(String(labelsTight[i] ?? ''))}</text>`
+    : `<text x="${X(i).toFixed(1)}" y="${h - 5}" text-anchor="middle">${esc(String(l))}</text>`).join('');
   return `<svg class="fig-svg" viewBox="0 0 ${w} ${h}" role="img"${ariaLabel ? ` aria-label="${esc(ariaLabel)}"` : ' aria-hidden="true"'} style="width:100%;height:auto">
     <line class="axis" x1="${padX}" y1="${h - padB}" x2="${w - padX}" y2="${h - padB}"/>${barsEl}${targetEl}${cumEl}${fcEl}${ticks}</svg>`;
 }
 
 // خريطة حرارية (صفوف × أشهر): لون الخلية بعتباتٍ يمرّرها المستدعي، والرقم داخلها.
-export function figHeat(rows, colLabels, { tone } = {}) {
+export function figHeat(rows, colLabels, { tone, ltr = false } = {}) {
   const t = tone || ((v) => v == null ? ['var(--track)', 'var(--muted)'] : v > 110 ? ['var(--st-bad-soft)', 'var(--st-bad)'] : v < 70 && v > 0 ? ['#fdf6e3', '#8a6d1a'] : v === 0 ? ['var(--st-neut-soft)', 'var(--muted)'] : ['var(--st-good-soft)', 'var(--st-good)']);
-  return `<div style="overflow-x:auto"><table class="fig-heat"><thead><tr><th class="rl"></th>${colLabels.map((c) => `<th>${esc(String(c))}</th>`).join('')}</tr></thead><tbody>
+  return `<div style="overflow-x:auto"><table class="fig-heat"${ltr ? ' dir="ltr"' : ''}><thead><tr><th class="rl"></th>${colLabels.map((c) => `<th>${esc(String(c))}</th>`).join('')}</tr></thead><tbody>
     ${rows.map((r) => `<tr><th class="rl">${esc(r.label)}</th>${r.cells.map((v) => { const [bg, fg] = t(v); return `<td><span class="cell tnum" style="background:${bg};color:${fg}" title="${esc(r.label)}: ${v == null ? '—' : v + '%'}">${v == null ? '—' : v + '%'}</span></td>`; }).join('')}</tr>`).join('')}
   </tbody></table></div>`;
 }
@@ -843,6 +891,21 @@ export function figTreemap(items, { h = 160 } = {}) {
     <div class="maj" style="flex:${majPct} 1 0;background:${esc(maj.color || 'var(--brand)')}" title="${esc(maj.label)}: ${esc(maj.sub || '')}"><span class="nm">${esc(maj.label)}</span><span class="vv tnum">${esc(maj.sub || '')} (${majPct}%)</span></div>
     ${rest.length ? `<div class="rest" style="flex:${100 - majPct} 1 0">${rest.map((x) => `<div class="cellt" style="flex:${Math.max(8, Math.round((x.v / restTotal) * 100))} 1 0;background:${esc(x.color || 'var(--brand2)')}" title="${esc(x.label)}: ${esc(x.sub || '')}"><span class="nm">${esc(x.label)}</span><span class="vv tnum">${esc(x.sub || '')} (${Math.round((x.v / total) * 100)}%)</span></div>`).join('')}</div>` : ''}
   </div>`;
+}
+
+// نصف عدّاد (بطاقة الإشغال على نموذج المالك): قوسُ 180° يمتلئ حتى سقف المحور الممرَّر من
+// قواعد التسكين — والنسبة الحقيقية مطبوعة نصاً ولو ثُبّت القوس عند سقفه. لا يمسّ gauge()
+// المستهلَك في الرئيسة ولوحة الرئيس.
+export function figGaugeHalf(pct, { size = 120, sw = 12, color = 'var(--brand)', max = 100, sub = '', ariaLabel = '' } = {}) {
+  const shown = Math.round(Number(pct) || 0);
+  const frac = Math.min(1, Math.max(0, shown / Math.max(1, max)));
+  const r = (size - sw) / 2, half = Math.PI * r;
+  const hgt = size / 2 + sw / 2 + 4;
+  return `<span class="gh-w" style="width:${size}px;height:${hgt}px" role="img"${ariaLabel ? ` aria-label="${esc(ariaLabel)}"` : ' aria-hidden="true"'}>
+    <svg width="${size}" height="${hgt}" viewBox="0 0 ${size} ${hgt}">
+      <path d="M ${sw / 2} ${size / 2 + sw / 2} A ${r} ${r} 0 0 1 ${size - sw / 2} ${size / 2 + sw / 2}" fill="none" stroke="var(--track)" stroke-width="${sw}" stroke-linecap="round"/>
+      ${frac > 0 ? `<path class="ring-fill" d="M ${sw / 2} ${size / 2 + sw / 2} A ${r} ${r} 0 0 1 ${size - sw / 2} ${size / 2 + sw / 2}" fill="none" stroke="${esc(color)}" stroke-width="${sw}" stroke-linecap="round" stroke-dasharray="${(half * frac).toFixed(1)} ${(half + 20).toFixed(1)}" style="--c0:${(half * frac).toFixed(1)}"/>` : ''}
+    </svg><span class="gh-v tnum">${shown}%${sub ? `<small>${esc(sub)}</small>` : ''}</span></span>`;
 }
 
 export function gauge(pct, opts = {}) {
