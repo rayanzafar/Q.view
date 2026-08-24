@@ -1201,7 +1201,7 @@ export async function sectorPage(user, opts = {}) {
     : `<div style="color:var(--muted);font-size:12px">${canPeople ? 'لا أحد تجاوز الطاقة ضمن نطاقك' : 'أسماء الأفراد تظهر لمن يملك صلاحية عرض الفريق'}</div>`}</div>
     <div style="font-size:10.5px;color:var(--muted);margin-top:.4rem">الأرقام من خطة التسكين الشهرية — وليست ساعات عمل فعلية.</div>
     ${canPeople ? `<div style="display:flex;gap:.5rem;flex-wrap:wrap"><a class="btn btn-sm" href="${staffingHref}">لوحة التسكين</a></div>` : ''}`);
-  const complDD = compl.score != null ? ddWrap('completeness', 'اكتمال البيانات', `${esc(sd.sector.name_ar)} · نِسَبٌ مسمّاة البسط والمقام — والدرجة متوسطها الموزون`, `
+  const complDD = compl.score != null ? ddWrap('completeness', 'اكتمال البيانات', `${esc(sd.sector.name_ar)} · نِسَبُ اكتمالٍ معلنة (كم اكتمل من كم) — والدرجة متوسطها الموزون`, `
     <div class="dd-kpi"><span class="v tnum">${compl.score}%</span><span style="font-size:12px;color:var(--muted)">كلما اكتملت البيانات صدقت أرقام هذه الصفحة</span></div>
     ${compl.items.map((it) => `<div class="dd-row"><span>${esc(it.label)} <span class="tipdot" data-tip="${esc(it.hint)}" tabindex="0" role="img" aria-label="${esc(it.hint)}">${icon('info')}</span></span>
       <span style="display:inline-flex;gap:.5rem;align-items:center"><span class="pmeter"><i style="width:${it.pct}%"></i></span>
@@ -1296,11 +1296,11 @@ export async function sectorPage(user, opts = {}) {
       delta: paceSig(dRev), dd: 'secrev' })
     : (wrev
       ? kpiCard({ eye: `${G.revenue} المحقق`, val: wrev.v ? sarShort(wrev.v) : '—',
-        sub: `${winEcho2} · ${countAr(wrev.months.length, { one: 'شهر واحد', two: 'شهران', few: 'أشهر', many: 'شهراً' })} متقاطعة مع النافذة`,
-        mark: estMark('بنود الإيراد مسجّلة بالشهر — الرقم مجموع الأشهر المتقاطعة مع النافذة، لا قصّاً يومياً'),
+        sub: `${winEcho2} · ${countAr(wrev.months.length, { one: 'شهر واحد متقاطع', two: 'شهران متقاطعان', few: 'أشهر متقاطعة', many: 'شهراً متقاطعاً' })} مع النافذة`,
+        mark: estMark('بنود الإيراد مسجّلة بالشهر — الرقم مجموع الأشهر المتقاطعة مع النافذة، وليس قصّاً يومياً'),
         sub2: attainRev != null ? `سنة ${year}: ${attainRev}% من ${G.target}` : 'لا هدف مسجّل لهذه السنة',
         viz: figSpark(monthly, { color: 'var(--acc-navy)', ariaLabel: 'الإيراد الشهري عبر السنة' }), dd: 'secrev' })
-      : kpiCard({ eye: `${G.revenue} المحقق`, val: '—', sub: 'الإيراد يُسجَّل شهرياً — اختر الشهر أو أوسع',
+      : kpiCard({ eye: `${G.revenue} المحقق`, val: '—', sub: 'الإيراد يُسجَّل شهرياً — اختر نافذة الشهر أو أوسع',
         sub2: attainRev != null ? `سنة ${year}: ${attainRev}% من ${G.target}` : 'لا هدف مسجّل لهذه السنة', dd: 'secrev' }));
 
   // بطاقة المبيعات: سنةً كاملة بإسناد سنة الفرصة (رقم بقية الشاشات)، ونافذةً بتاريخ الفوز الفعلي
@@ -1313,11 +1313,11 @@ export async function sectorPage(user, opts = {}) {
     ? kpiCard({ eye: G.sales, val: sarShort(sd.sales_halalas), valTitle: fmtSar(sd.sales_halalas),
       sub: sd.target_sales_halalas ? `من ${G.target} <b class="tnum">${sarShort(sd.target_sales_halalas)}</b>${yoySales != null ? ` · <span class="tnum" dir="ltr">${yoySales >= 0 ? '+' : '−'}${Math.abs(yoySales)}%</span> عن ${year - 1}` : ''}` : 'لا هدف مسجّل لهذه السنة',
       viz: `${attainSales != null ? figRing(attainSales, { size: 48, sw: 7, color: 'var(--acc-indigo)' }) : ''}${figSpark(wbm.slots.map((x) => x.v), { color: 'var(--acc-indigo)', ariaLabel: 'قيمة الفرص المكسوبة شهرياً في آخر اثني عشر شهراً' })}`,
-      sub2: 'الشرارة: المكسوب شهرياً · آخر 12 شهراً بتاريخ الفوز',
+      sub2: 'المكسوب شهرياً · آخر 12 شهراً بتاريخ الفوز',
       delta: paceSig(dSales), dd: 'secwins' })
     : kpiCard({ eye: G.sales, val: winf.wins.n ? sarShort(winf.wins.v) : '—',
-      sub: winf.wins.n ? `${countAr(winf.wins.n, { one: 'فوز واحد', two: 'فوزان', few: 'انتصارات', many: 'فوزاً' })} ${winEcho2}` : `لا فوز ${winEcho2}`,
-      sub2: [winRateLine, 'بتاريخ الفوز الفعلي — وإسناد السنة للرقم السنوي قد يختلف'].filter(Boolean).join(' · '),
+      sub: winf.wins.n ? `${countAr(winf.wins.n, { one: 'فرصة مكسوبة واحدة', two: 'فرصتان مكسوبتان', few: 'فرص مكسوبة', many: 'فرصة مكسوبة' })} ${winEcho2}` : `لا فرص مكسوبة ${winEcho2}`,
+      sub2: [winRateLine, 'بتاريخ الفوز الفعلي — وقد يختلف عن الرقم السنوي المحسوب بسنة الفرصة'].filter(Boolean).join(' · '),
       viz: figSpark(wbm.slots.map((x) => x.v), { color: 'var(--acc-indigo)', ariaLabel: 'قيمة الفرص المكسوبة شهرياً في آخر اثني عشر شهراً' }),
       delta: deltaChip(prevPct(winf.wins.v, winfPrev?.wins?.v)), dd: 'secwins' });
 
@@ -1331,11 +1331,11 @@ export async function sectorPage(user, opts = {}) {
 
   // بطاقة الخط المرجّح: رصيدٌ لحظي لا يتأثر بالفترة — والشرارة مرسّى الفوز الشهري الحقيقي
   // (لا سجل تاريخي لقيمة الخط نفسه — فلا نختلقه).
-  const kpiPipeline = kpiCard({ eye: 'خط الفرص المرجح', val: wq ? sarShort(wq) : '—',
+  const kpiPipeline = kpiCard({ eye: 'خط الفرص المرجّح', val: wq ? sarShort(wq) : '—',
     mark: estMark('قيمة تقديرية: مجموع الفرص المفتوحة مرجّحاً باحتمال الفوز لكل فرصة — ليست التزاماً ولا رقماً محاسبياً'),
     sub: cover?.coverage != null ? `تغطية ×<b class="tnum">${cover.coverage}</b> من المتبقي من هدف المبيعات` : 'لا هدف مبيعات للتغطية',
     viz: figSpark(wbm.slots.map((x) => x.v), { color: 'var(--acc-violet)', ariaLabel: 'المكسوب شهرياً — لا سجل تاريخي لقيمة الخط فيُعرض المرسّى الفعلي' }),
-    sub2: 'الشرارة: المكسوب شهرياً — لا سجل تاريخي لقيمة الخط',
+    sub2: 'المكسوب شهرياً — لا سجل تاريخي لقيمة الخط',
     scope: 'لحظي', dd: 'seccover' });
 
   // بطاقة الإشغال: نصف عدّاد على سقف محور التسكين نفسه — والحدود من قواعده لا أرقاماً مكتوبة.
@@ -1402,7 +1402,7 @@ export async function sectorPage(user, opts = {}) {
     { points: demandFte.map((v) => Math.round(v * 100) / 100), color: 'var(--acc-indigo)', name: 'المخطَّط له' },
     { points: Array.from({ length: 12 }, () => capFte), color: 'var(--muted)', dash: true, dots: false, name: 'الطاقة' },
   ], { labels: monthly.map((_, i) => i + 1), now: nowM + 1, h: 74, fmt: (v) => `${v} من مكافئ التفرغ`, axisDir: 'ltr',
-    marks: gapFte != null && gapFte < 0 && worstGap ? [{ i: worstGap.i, label: `فجوة ${Math.abs(gapFte)} مكافئ تفرغ في ${monthLabel(worstGap.i)}`, color: 'var(--st-bad)' }] : [] })}
+    marks: gapFte != null && gapFte < 0 && worstGap ? [{ i: worstGap.i, label: `فجوة ${Math.abs(gapFte)} من مكافئ التفرغ في ${monthLabel(worstGap.i)}`, color: 'var(--st-bad)' }] : [] })}
       </div>
     </div>`;
 
@@ -1457,7 +1457,7 @@ export async function sectorPage(user, opts = {}) {
   <section class="card pad">
     ${secn(3, `${G.revenue} الفعلي مقابل ${G.target} والتوقع`, `أعمدة الأشهر + الخط التراكمي + خط الهدف — والخط المتقطع مسارُ التوقع إلى نهاية السنة`)}
     <div class="leg-chips">
-      ${legChip('<i style="background:var(--acc-indigo)"></i>', 'الفعلي', sarShort(sd.revenue_halalas))}
+      ${legChip('<i style="background:var(--acc-indigo)"></i>', 'المحقق', sarShort(sd.revenue_halalas))}
       ${sd.target_revenue_halalas ? legChip('<i style="background:var(--tick)"></i>', G.target, sarShort(sd.target_revenue_halalas)) : ''}
       ${fc.forecast ? legChip('<i class="dashline"></i>', G.forecast, sarShort(fc.forecast),
     estMark(`قيمة تقديرية: المحقق + الخط المرجّح باحتمال كل فرصة — والنطاق ${sarShort(fr.low)}–${sarShort(fr.high)} بصيغه على بطاقة التوقع`)) : ''}
@@ -1475,7 +1475,7 @@ export async function sectorPage(user, opts = {}) {
       ${pulseChip('المحصَّل', pulseCol)}
       <span class="ph">نافذة ${winName} — بدّلها من ألسنة أعلى الصفحة</span>
     </div>
-    <div class="comfoot">توزيع الأشهر من تواريخ قبول المخرجات أو تسجيلها في المنصة — لا من تاريخ تنفيذ العمل ${estMark('شهر بند الإيراد من تاريخ قبول المخرَج أو تسليمه أو تسجيله (قاعدة الاعتراف بالتسليم) — فمنحنى الأشهر يتبع حركة التسجيل لا تنفيذ العمل، ويصدق كلما اكتملت تواريخ المخرجات')}</div>
+    <div class="comfoot">توزيع الأشهر من تواريخ قبول المخرجات أو تسجيلها في المنصة — لا من تاريخ تنفيذ العمل ${estMark('شهر بند الإيراد من تاريخ قبول المخرَج أو تسليمه أو تسجيله (قاعدة الاعتراف بالإيراد عند التسليم) — فمنحنى الأشهر يتبع حركة التسجيل لا تنفيذ العمل، ويصدق كلما اكتملت تواريخ المخرجات')}</div>
   </section>`;
 
   // ── ٤: الفصل التجاري — قمعٌ متدرّج + أعمار الفرص + فقاعات قيمة×احتمال×عمر ──
@@ -1566,7 +1566,7 @@ export async function sectorPage(user, opts = {}) {
     ? Math.floor((Date.parse(today) - Date.parse(String(r.end_date).slice(0, 10))) / 86400000) : 0;
   const lateVals = prjRows.map((r) => lateDaysOf(r, progMapH.get(r.id)?.pct ?? Math.round(r.progress_pct || 0))).filter((d) => d > 0);
   const prjTable = prjRows.length ? `<div class="tblwrap"><table class="prj-tbl rtbl">
-    <thead><tr><th>المشروع</th><th>الحالة</th><th>التقدم</th><th>المعلم القادم</th><th>التأخر</th></tr></thead><tbody>
+    <thead><tr><th>المشروع</th><th>الحالة</th><th>الإنجاز</th><th>المعلم القادم</th><th>التأخر</th></tr></thead><tbody>
     ${prjRows.map((r) => {
     const prog = progMapH.get(r.id)?.pct ?? Math.max(0, Math.min(100, Math.round(r.progress_pct || 0)));
     const [lbl, col] = RAG_LBL[r.rag];
@@ -1576,7 +1576,7 @@ export async function sectorPage(user, opts = {}) {
     return `<tr>
       <td data-l="المشروع"><a href="/app/project/${esc(r.id)}">${esc(r.name_ar)}</a></td>
       <td data-l="الحالة"><span class="dotc" style="background:${col}"${risk ? ` title="أبرز خطر مفتوح: ${esc(risk)}"` : ''}></span> ${lbl}</td>
-      <td data-l="التقدم"><span class="ptrk"><i style="width:${prog}%;background:${col}"></i></span> <b class="tnum">${prog}%</b></td>
+      <td data-l="الإنجاز"><span class="ptrk"><i style="width:${prog}%;background:${col}"></i></span> <b class="tnum">${prog}%</b></td>
       <td data-l="المعلم القادم">${ms ? `${esc(ms.name_ar)} — <span class="tnum">${esc(String(ms.due_date).slice(0, 10))}</span>` : '<span style="color:var(--faint)">لم تُسجَّل معالم</span>'}</td>
       <td data-l="التأخر">${late ? `<span style="color:var(--st-bad);font-weight:700">${dayWord(late)}</span>` : '<span style="color:var(--faint)">—</span>'}</td>
     </tr>`;
@@ -1599,7 +1599,7 @@ export async function sectorPage(user, opts = {}) {
       <div class="ops-stats">
         ${msDueTot ? `<div class="pch"><span class="l">التزام المعالم · 8 أسابيع</span><b class="tnum">${Math.round((msMetTot / msDueTot) * 100)}%</b><span class="c">من ${countAr(msDueTot, { one: 'معلم واحد مستحق', two: 'معلمين مستحقين', few: 'معالم مستحقة', many: 'معلماً مستحقاً' })}</span></div>` : ''}
         <div class="pch"><span class="l">${G.deliverables} المقبولة</span><b class="tnum">${vjDelivered?.v ? Math.round(((vjAccepted?.v || 0) / vjDelivered.v) * 100) : 0}%</b><span class="c">من المسلَّمة</span></div>
-        <div class="pch"><span class="l">يحتاج نظراً</span><b class="tnum"${needsN ? ' style="color:var(--st-bad)"' : ''}>${needsN}</b><span class="c">${needsN ? 'أحمر وأصفر من المقيَّمة' : 'لا مشاريع متعثرة'}</span></div>
+        <div class="pch"><span class="l">يحتاج نظراً</span><b class="tnum"${needsN ? ' style="color:var(--st-bad)"' : ''}>${needsN}</b><span class="c">${needsN ? `بحالة ${G.hCritical} أو ${G.hAtRisk} من المقيَّمة` : 'لا مشاريع متعثرة'}</span></div>
         ${lateVals.length ? `<div class="pch"><span class="l">متوسط التأخر</span><b class="tnum">${dayWord(Math.round(lateVals.reduce((a, b) => a + b, 0) / lateVals.length))}</b><span class="c">على ${countAr(lateVals.length, { one: 'مشروع متأخر', two: 'مشروعين متأخرين', few: 'مشاريع متأخرة', many: 'مشروعاً متأخراً' })}</span></div>` : ''}
       </div>
     </div>
@@ -1653,11 +1653,11 @@ export async function sectorPage(user, opts = {}) {
     { points: demandFte, color: 'var(--acc-indigo)', area: true, name: 'المخطَّط له' },
     { points: Array.from({ length: 12 }, () => capFte), color: 'var(--muted)', dash: true, dots: false, name: 'الطاقة' },
   ], { labels: Array.from({ length: 12 }, (_, i) => i + 1), now: nowM + 1, h: 120, fmt: (v) => `${Math.round(v * 10) / 10} من مكافئ التفرغ`, axisDir: 'ltr',
-    marks: gapFte != null && gapFte < 0 && worstGap ? [{ i: worstGap.i, label: `فجوة ${Math.abs(gapFte)} مكافئ تفرغ في ${monthLabel(worstGap.i)}`, color: 'var(--st-bad)' }] : [] })}
+    marks: gapFte != null && gapFte < 0 && worstGap ? [{ i: worstGap.i, label: `فجوة ${Math.abs(gapFte)} من مكافئ التفرغ في ${monthLabel(worstGap.i)}`, color: 'var(--st-bad)' }] : [] })}
         ${gapFte != null && nowMonth ? `<div class="comfoot"><span>${gapFte > 0 ? `سعة غير مستغلة <b class="tnum">${gapFte}</b> من مكافئ التفرغ في ${monthLabel(worstGap.i)}` : `عجز <b class="tnum">${Math.abs(gapFte)}</b> من مكافئ التفرغ في ${monthLabel(worstGap.i)}`}</span></div>` : ''}
       </div>
       <div>
-        <div class="sh">العرض حسب المسمى الوظيفي</div>
+        <div class="sh">المتاح من الفريق حسب المسمى الوظيفي</div>
         ${!canPeople ? `<div class="empty-mini">${icon('team')} المسميات الوظيفية تظهر لمن يملك صلاحية عرض الفريق</div>`
     : jobBars.length ? figBars(jobBars, { fmt: (v) => countAr(v, { one: 'شخص واحد', two: 'شخصان', few: 'أشخاص', many: 'شخصاً' }) })
       : `<div class="empty-mini">${icon('team')} لا كشف أفراد ضمن نطاقك</div>`}
@@ -1731,7 +1731,7 @@ export async function sectorPage(user, opts = {}) {
       ${treemap ? `<div class="g12" style="margin-bottom:1rem">
         <div class="c7" style="min-width:0">${treemap}</div>
         <div class="c5 conc-panel" style="min-width:0">
-          <div class="cp-hero">${concPct != null ? `أكبر 3 عملاء = <b class="tnum">${concPct}%</b> من الإيراد${concPct >= 60 ? ' <span class="pill" style="background:var(--st-warn-soft);color:#92400e">تركّز مرتفع</span>' : ''}` : 'لا يوجد ثلاثة عملاء بإيراد بعد'}</div>
+          <div class="cp-hero">${concPct != null ? `أكبر ثلاثة عملاء = <b class="tnum">${concPct}%</b> من الإيراد${concPct >= 60 ? ' <span class="pill" style="background:var(--st-warn-soft);color:#92400e">تركّز مرتفع</span>' : ''}` : 'لا يوجد ثلاثة عملاء بإيراد بعد'}</div>
           ${concPct != null ? figBars([
     { label: 'الإيراد الحالي', value: concPct, count: '', fill: 'var(--acc-navy)' },
     ...(concAfterPipe != null ? [{ label: 'مع الخط المرجّح', value: concAfterPipe, count: '', fill: 'var(--acc-indigo)' }] : []),
@@ -1759,7 +1759,7 @@ export async function sectorPage(user, opts = {}) {
       <button type="button" class="fs-compl" data-action="open-dd" data-dd="completeness" aria-label="اكتمال البيانات ${compl.score}% — التفصيل">
         اكتمال البيانات <b class="tnum">${compl.score}%</b>
         <span class="pmeter" aria-hidden="true"><i style="width:${compl.score}%"></i></span>
-        ${estMark('درجة مركّبة: متوسط موزون لنِسَب اكتمالٍ مسمّاة البسط والمقام — تفصيلها بالنقر')}
+        ${estMark('درجة مركّبة: متوسط موزون لنِسَب اكتمالٍ معلنة (كم اكتمل من كم) — تفصيلها بالنقر')}
       </button>` : ''}
     </div>
     ${drawer}

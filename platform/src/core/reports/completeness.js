@@ -48,7 +48,7 @@ export async function completenessScore(user, sectorId, { year } = {}) {
     { id: 'prj_end_date', sev: 'high', num: prj?.ed, den: prj?.total,
       label: 'مشاريع بتاريخ انتهاء', hint: 'سجّل تاريخ انتهاء المشروع من صفحته', href: '/app/projects' },
     { id: 'prj_deliverables', sev: 'medium', num: prj?.hd, den: prj?.total,
-      label: 'مشاريع لها مخرجات مسجّلة', hint: 'أضف مخرجات المشروع ليُقاس تقدمه وإيراده', href: '/app/projects' },
+      label: 'مشاريع لها مخرجات مسجّلة', hint: 'أضف مخرجات المشروع ليُقاس إنجازه وإيراده', href: '/app/projects' },
     { id: 'dlv_dates', sev: 'medium', num: dlv?.dated, den: dlv?.total,
       label: 'مخرجات مؤرّخة', hint: 'أرِّخ التسليم والقبول أو حدّد شهر الاستحقاق — عليها يُبنى منحنى الإيراد الشهري', href: '/app/projects' },
     { id: 'emp_job_title', sev: 'medium', num: emp?.jt, den: emp?.total,
