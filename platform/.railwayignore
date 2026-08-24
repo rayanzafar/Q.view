@@ -20,3 +20,8 @@ seed/*.backfill.json
 
 # release evidence packs are repo artifacts, not deploy payload
 docs/evidence
+# محاضر الاجتماعات وصندوق الوارد: مادة داخلية (نصوص اجتماعات وملفات يرسلها المالك) لا يحتاجها
+# التشغيل — وهذا الملف يحلّ محل .gitignore عند الرفع، فغيابها هنا كان يرفعها ولو كانت مُتجاهَلة
+# في git. أضيفت بعد أن نبّه إليها فحصٌ قبل نشر v5.40.
+docs/meetings
+docs/inbox

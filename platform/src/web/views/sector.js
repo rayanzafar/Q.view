@@ -1390,7 +1390,7 @@ export async function sectorPage(user, opts = {}) {
         <div class="ih">تركّز الإيراد</div>
         <div class="ib">${concPct != null ? `<b class="tnum">${concPct}%</b> من الإيراد لدى أكبر ثلاثة عملاء${concAfterPipe != null ? ` — وبعد خط الفرص <b class="tnum">${concAfterPipe}%</b>` : ''}${concPct >= 60 ? ' · تركّز مرتفع' : ''}` : 'لا يوجد ثلاثة عملاء بإيراد بعد'}</div>
         ${concPct != null ? figBars([
-    { label: `أكبر عميل (${esc(top3[0].name_ar)})`, value: largestPct, count: '', fill: 'var(--acc-navy)' },
+    { label: `أكبر عميل (${top3[0].name_ar})`, value: largestPct, count: '', fill: 'var(--acc-navy)' },
     { label: 'أكبر ثلاثة عملاء', value: concPct, count: '', fill: 'var(--acc-indigo)' },
     ...(concAfterPipe != null ? [{ label: 'أكبر ثلاثة مع الخط المرجّح', value: concAfterPipe, count: '', fill: 'var(--acc-teal)' }] : []),
   ], { fmt: (v) => `${v}%`, max: 100 }) : ''}
@@ -1626,8 +1626,8 @@ export async function sectorPage(user, opts = {}) {
   const heat3Months = nowMonth ? [nowMonth, nowMonth + 1, nowMonth + 2].filter((m) => m <= 12) : [];
   const heat3Rows = heat3Months.length ? heatRows.map((r) => ({ label: r.label, cells: heat3Months.map((m) => r.cells[m - 1]) })) : null;
   // العرض حسب المسمى الوظيفي — جانب العرض وحده: احتياج الأدوار غير مسجَّل في الفرص والمشاريع
-  const rosterPeople = team ? team.people : (staff.employees || []);
-  const jobCounts = {};
+  const rosterPeople = canPeople ? (team ? team.people : (staff.employees || [])) : [];
+  const jobCounts = Object.create(null); // مفتاحٌ حرٌّ من إدخال المستخدم: لا وراثة تبتلع «__proto__»
   for (const pRow of rosterPeople) { const j = (pRow.job_title ?? pRow.job ?? '').trim() || 'بلا مسمى مسجّل'; jobCounts[j] = (jobCounts[j] || 0) + 1; }
   const jobBars = Object.entries(jobCounts).sort((a, b) => b[1] - a[1]).slice(0, 6)
     .map(([j, n]) => ({ label: j, value: n, count: '', fill: j === 'بلا مسمى مسجّل' ? 'var(--tick)' : 'var(--acc-navy)' }));
@@ -1658,7 +1658,9 @@ export async function sectorPage(user, opts = {}) {
       </div>
       <div>
         <div class="sh">العرض حسب المسمى الوظيفي</div>
-        ${jobBars.length ? figBars(jobBars, { fmt: (v) => countAr(v, { one: 'شخص واحد', two: 'شخصان', few: 'أشخاص', many: 'شخصاً' }) }) : `<div class="empty-mini">${icon('team')} لا كشف أفراد ضمن نطاقك</div>`}
+        ${!canPeople ? `<div class="empty-mini">${icon('team')} المسميات الوظيفية تظهر لمن يملك صلاحية عرض الفريق</div>`
+    : jobBars.length ? figBars(jobBars, { fmt: (v) => countAr(v, { one: 'شخص واحد', two: 'شخصان', few: 'أشخاص', many: 'شخصاً' }) })
+      : `<div class="empty-mini">${icon('team')} لا كشف أفراد ضمن نطاقك</div>`}
         <div class="comfoot">جانب العرض فقط — احتياج الأدوار غير مسجَّل في الفرص والمشاريع بعد</div>
       </div>
     </div>
