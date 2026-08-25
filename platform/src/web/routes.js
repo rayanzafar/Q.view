@@ -7,12 +7,45 @@ import * as P from './pages.js';
 import { pageAllowed, DETAIL_ACCESS } from './nav.js';
 import { buildReport, renderReport, enqueueReport, createSchedule, setScheduleActive, deleteSchedule } from '../core/reports/engine.js';
 import { canSeeSensitive } from '../core/rbac/index.js';
+import { unauthorized } from '../core/http/errors.js';
 import { resolveUser } from '../core/http/context.js';
+import { setSessionCookie, clearSessionCookie } from '../core/http/session-cookie.js';
 
 export const webRouter = Router();
 
+// ── الخروجُ يُقال، ولا يُترك الموظف حيث لم يكن ──────────────────────────────────
+// كان السطر `res.redirect('/login')` وحده: لا سبب، ولا وجهة عودة. فمن انتهت جلسته يجد
+// شاشة دخولٍ نظيفة كأنه لم يدخل قط — لا يعرف أنه كان داخلاً، ولا لماذا خرج، ولا كيف يعود
+// إلى الصفحة التي كان فيها. وهذا بعينه ما يجعل الانتهاء يُوصَف بأنه «طردٌ صامت».
+//
+// والتفريق بسيط وصادق: طلبٌ **يحمل كعكة جلسة** ولا مستخدم له = جلسةٌ انتهت (أو أُلغيت)،
+// وصاحبها يستحق الخبر. وطلبٌ بلا كعكة أصلاً = زائرٌ لم يدخل بعد، وشاشة الدخول الصامتة
+// جوابُه الصحيح. والكعكة الميتة تُمحى في الحالة الأولى كي لا تتكرّر الرسالة بعد الدخول.
+//
+// وطلبات JSON تأخذ ٤٠١ لا تحويلة: مسارات `/app/reports/*` تُنادى بـ`fetch` وهي محروسة بهذا
+// الحارس، فكانت التحويلة تُتبَع إلى صفحة دخولٍ HTML ثم تنكسر عند `.json()` — خطأُ تحليلٍ
+// غامض مكان «يلزم تسجيل الدخول».
+// «هل ينتظر هذا الطلب صفحةً أم بيانات؟» ثلاث شهاداتٍ مرتّبة بالثقة:
+//   · `Sec-Fetch-Dest: empty` — يرسلها المتصفّح نفسه مع كل fetch/XHR ولا يملك النصّ تزويرها،
+//     والتصفّح العادي يرسل `document`. أوثقُها، وتغطّي كل مُنادٍ قائمٍ أو قادم بلا تعديله.
+//   · ترويسةٌ صريحة نضعها نحن — لمتصفّحٍ قديم لا يرسل الأولى.
+//   · `Accept` صريحٌ للبيانات دون HTML.
+// وما لا يشهد بشيء (curl، سكربت المسح) يأخذ التحويلة كما كان — وهو الصحيح له.
+const wantsJson = (req) => req.get('sec-fetch-dest') === 'empty'
+  || req.get('x-requested-with') === 'fetch'
+  || ((req.get('accept') || '').includes('application/json') && !(req.get('accept') || '').includes('text/html'));
+
+function loginRedirect(req, res) {
+  const expired = !!req.cookies?.[config.sessionCookie];
+  if (expired) clearSessionCookie(res);
+  // الرسالة من مصدرها الواحد (`unauthorized()`) لا نسخةً ثانية منها تفترق عنها يوماً.
+  if (wantsJson(req)) return res.status(401).json({ error: { code: 'unauthorized', message: unauthorized().message } });
+  if (req.method === 'GET') rememberDestination(req, res);
+  return res.redirect(expired ? '/login?e=7' : '/login');
+}
+
 function requireWeb(req, res, next) {
-  if (!req.ctx?.user) return res.redirect('/login');
+  if (!req.ctx?.user) return loginRedirect(req, res);
   next();
 }
 
@@ -27,6 +60,50 @@ const LOGIN_ERRORS = {
   5: 'استُنفدت محاولات هذا الرمز — اطلب رمزاً جديداً',
   6: 'هذا الحساب موقوف — راجع مدير النظام',
 };
+
+// ٧ ليس خطأً بل خبر، فلا يسكن جدول الأخطاء ولا صندوقها الأحمر (يُمرَّر `info`).
+// و«انتهت جلستك» لا «انتهت مدّتها»: هذا الفرع يقع لكل كعكةٍ ميتة — مهلةٌ انقضت، أو
+// «إنهاء الجلسات» ضغطه مدير النظام، أو تغييرُ كلمة مرورٍ أنهى بقية الجلسات. والمدّة
+// واحدةٌ من ثلاث، فالتعميم عليها كذبٌ في الحالتين الأخريين. والنصّ نفسه مستعمَل في
+// مساعد سند (`public/pages/ai.js`) — لفظٌ واحد لواقعةٍ واحدة.
+const SESSION_ENDED = 'انتهت جلستك — سجّل الدخول من جديد وستعود إلى الصفحة نفسها';
+
+// ── الوجهة المحفوظة ──────────────────────────────────────────────────────────
+// الدخول بالرمز خطوتان (طلبٌ ثم تحقّق)، والوجهة لا تنجو بينهما في العنوان. فتُحمل كما
+// يُحمل البريد المعلَّق: كعكةٌ قصيرة العمر مقصورةٌ على الخادم — ووضعُها في العنوان يُبقيها
+// في سجل المتصفح وفي ترويسة المُحيل.
+const NEXT_COOKIE = 'sanad_next';
+// عمرٌ خاصٌّ بها أطولُ من عمر البريد المعلَّق: الرمز يعيش عشر دقائق، ومن فاته الأول وطلب
+// ثانياً يتجاوز الربع ساعة بسهولة — فتموت الوجهة قبل دخوله ويسقط الوعد صامتاً. ولا ثمن
+// لإطالتها: مسارٌ داخلي محروس، يُقرأ مرةً ويُمحى.
+const nextCookieOpts = { httpOnly: true, sameSite: 'lax', secure: config.env === 'production', maxAge: 60 * 60000, path: '/' };
+
+// حارسُ التحويلة المفتوحة: المقبول مسارٌ داخلي تحت `/app/` فقط. و`//host` يبدأ بشرطة مائلة
+// أيضاً لكنه عنوانٌ خارجي كامل عند المتصفح — فالفحص على البادئة وحدها لا يكفي، ولذلك
+// يُرفض كل ما ثانيه شرطة. ولا حاجة إلى أكثر: كل صفحات المنتج تحت `/app/`.
+// ومعاينة التقرير مستثناةٌ: تُحمَّل داخل إطارٍ مضمَّن، فحفظُها «الصفحةَ التي كنتُ فيها»
+// يُنزل الموظفَ بعد دخوله على مستندٍ عارٍ بلا قائمةٍ ولا طريق رجوع.
+function safeDestination(raw) {
+  const v = String(raw || '');
+  if (!v.startsWith('/app/') || v.startsWith('//') || v.includes('\\')) return null;
+  // و`..` مرفوضة كذلك: `/app/..//evil.example` يمرّ بالفحوص أعلاه، ويحلّه المتصفّح المطابق
+  // للمواصفة إلى مسارٍ من أصلنا (فلا تحويلة مفتوحة) — لكن أي وسيطٍ يُسوّي المسار ثم يُعيد
+  // تحليل الناتج يرى `//evil.example` مضيفاً. الحارس لا يتّكئ على تسامح قارئه.
+  if (v.includes('..')) return null;
+  return v.startsWith('/app/reports/preview/') ? null : v;
+}
+
+function rememberDestination(req, res) {
+  const dest = safeDestination(req.originalUrl);
+  if (dest) res.cookie(NEXT_COOKIE, dest, nextCookieOpts);
+}
+
+// تُقرأ وتُمحى معاً: وجهةٌ تبقى بعد استعمالها تخطف الدخول التالي إلى صفحةٍ قديمة.
+function takeDestination(req, res) {
+  const dest = safeDestination(req.cookies?.[NEXT_COOKIE]);
+  if (req.cookies?.[NEXT_COOKIE]) res.clearCookie(NEXT_COOKIE, { path: '/' });
+  return dest;
+}
 
 // البريد المعلَّق بين الخطوتين يعيش في كعكة قصيرة العمر لا في المسار: وضعُه في العنوان يُبقيه
 // في سجل المتصفح وفي ترويسة المُحيل — وبريد الموظف ليس شيئاً يُنثر في السجلات.
@@ -48,9 +125,17 @@ const passwordLoginEnabled = () => {
 
 webRouter.get('/login', (req, res) => {
   if (req.query.reset) { res.clearCookie(PENDING_EMAIL_COOKIE, { path: '/' }); return res.redirect('/login'); }
+  // ولا تُقرأ وجهةٌ من العنوان هنا. كانت `?next=` تُقبل لتخدم صفحةً مفتوحة ردّت واجهتُها ٤٠١،
+  // لكنها بذلك صارت **كتابةَ كعكةٍ يملكها أي غريب**: رابطٌ واحد يُرسَل إلى موظف يزرع في
+  // متصفّحه وجهةً تُطبَّق على دخوله التالي بعد ساعة — وشاشة الدخول بلا حراسة ولا جلسة.
+  // والصفحة المفتوحة لم تعد تحتاجها: عند ٤٠١ تُعيد تحميل نفسها، فيمرّ طلبُها على الحارس
+  // الذي يحفظ وجهتها من `originalUrl` كأي تصفّحٍ آخر. مصدرٌ واحد للوجهة، وهو الخادم.
   const pending = req.cookies?.[PENDING_EMAIL_COOKIE] || '';
   res.send(P.loginPage({
-    err: LOGIN_ERRORS[req.query.e] || '',
+    // بحثٌ عن خاصّيةٍ مملوكة لا مسحٌ لسلسلة النماذج: `?e=constructor` كان يطبع
+    // «function Object() { [native code] }» في صندوق الخطأ — نصٌّ برمجي في وجه المستخدم.
+    err: (Object.hasOwn(LOGIN_ERRORS, req.query.e) ? LOGIN_ERRORS[req.query.e] : '') || '',
+    info: String(req.query.e) === '7' ? SESSION_ENDED : '',
     step: pending ? 'code' : 'email',
     email: pending,
     passwordEnabled: passwordLoginEnabled(),
@@ -80,8 +165,9 @@ webRouter.post('/auth/otp/verify-web', async (req, res, next) => {
       return res.redirect('/login?e=' + code);
     }
     res.clearCookie(PENDING_EMAIL_COOKIE, { path: '/' });
-    res.cookie(config.sessionCookie, r.sessionId, { httpOnly: true, sameSite: 'lax', secure: config.env === 'production', maxAge: config.sessionTtlHours * 3600000, path: '/' });
-    res.redirect('/app/' + landingFor(await resolveUser(r.sessionId)));
+    setSessionCookie(res, r.sessionId);
+    // الوجهة المحفوظة أولاً — وعدُ «ستعود إلى الصفحة نفسها» يُوفى هنا أو لا يُوفى أبداً.
+    res.redirect(takeDestination(req, res) || ('/app/' + landingFor(await resolveUser(r.sessionId))));
   } catch (e) { next(e); }
 });
 
@@ -92,15 +178,17 @@ webRouter.post('/auth/login-web', async (req, res, next) => {
     if (!passwordLoginEnabled()) return res.redirect('/login');
     const r = await login({ username: req.body.username, password: req.body.password, ip: req.ip, userAgent: req.get('user-agent') });
     if (!r.ok) return res.redirect('/login?e=1');
-    res.cookie(config.sessionCookie, r.sessionId, { httpOnly: true, sameSite: 'lax', secure: config.env === 'production', maxAge: config.sessionTtlHours * 3600000, path: '/' });
-    res.redirect('/app/' + landingFor(await resolveUser(r.sessionId)));
+    setSessionCookie(res, r.sessionId);
+    res.redirect(takeDestination(req, res) || ('/app/' + landingFor(await resolveUser(r.sessionId))));
   } catch (e) { next(e); }
 });
 
 webRouter.post('/auth/logout-web', async (req, res, next) => {
   try {
     await logout(req.cookies?.[config.sessionCookie]);
-    res.clearCookie(config.sessionCookie, { path: '/' });
+    clearSessionCookie(res);
+    // خروجٌ بالإرادة يمحو الوجهة معه: من خرج عمداً لا يُعاد إلى حيث كان عند دخوله التالي.
+    res.clearCookie(NEXT_COOKIE, { path: '/' });
     res.redirect('/login');
   } catch (e) { next(e); }
 });
@@ -123,7 +211,10 @@ export function landingFor(user) {
   if (managesScope && pageAllowed(user, 'sector')) return 'sector';
   return 'tasks';                                                    // القاع الآمن — مفتوح للجميع
 }
-webRouter.get('/', (req, res) => res.redirect(req.ctx?.user ? '/app/' + landingFor(req.ctx.user) : '/login'));
+// الجذر يمرّ بنفس الحارس: من انتهت جلسته ووصل إلى `/` يستحق الخبر كما يستحقه من وصل إلى صفحة.
+webRouter.get('/', (req, res) => (req.ctx?.user
+  ? res.redirect('/app/' + landingFor(req.ctx.user))
+  : loginRedirect(req, res)));
 
 const PAGES = {
   home: P.homePage,

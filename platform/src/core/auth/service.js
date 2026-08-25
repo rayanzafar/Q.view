@@ -76,6 +76,55 @@ export async function logout(sessionId) {
   if (sessionId) await run('UPDATE session SET revoked_at = ? WHERE id = ?', [nowIso(), sessionId]);
 }
 
+// ── تدحرجُ الجلسة ─────────────────────────────────────────────────────────────
+// نافذةُ الخمول تُجدَّد مع النشاط: كل طلبٍ يدفع `expires_at` إلى «الآن + النافذة»، فلا
+// ينتهي عملٌ في منتصفه. وثلاثة قيود تحكم الدفع:
+//
+//   ١) **السقف المطلق** يُحسب من لحظة الدخول ولا يتجاوزه التمديد أبداً. جلسةٌ تتدحرج بلا
+//      سقفٍ ليست جلسةً بل حسابٌ مفتوح: كعكةٌ تُسرق اليوم تبقى صالحةً ما دام سارقها ينقر.
+//      وحين تبلغ الجلسةُ سقفها يعود السلوك القديم بالضبط — انتهاءٌ في موعدٍ ثابت.
+//   ٢) **خانقُ الكتابة**: لا يُكتب شيء ما لم تمضِ `sessionTouchMinutes` على آخر لمسة. صفحةٌ
+//      واحدة عشرات الطلبات، وكتابةٌ لكل طلب تجعل من كل نقرةٍ حِملاً على القاعدة. والثمن
+//      المقبول أن يكون الانتهاء الفعلي متأخّراً بدقائق معدودة عن آخر نشاط — لا أكثر.
+//   ٣) **الملغى لا يُبعث**: `revoked_at IS NULL` شرطٌ في جملة التحديث نفسها لا فحصٌ قبلها.
+//      بينهما فجوة، وفيها قد يضغط مديرُ النظام «إنهاء الجلسات» على جهازٍ ضائع — فتُعيده
+//      لمسةٌ متأخّرة إلى الحياة. الشرطُ داخل الكتابة يجعل السباق مستحيلاً لا نادراً.
+//
+// تُعيد `expires_at` السارية دائماً (المُمدَّدة أو القائمة كما هي) كي يجدّد المُنادي الكعكة
+// بها — فالمتصفّح شريكٌ في المهلة: كعكةٌ تموت في موعدها الأول تُنهي الجلسة ولو امتدّ صفّها.
+export async function touchSession(session) {
+  const idleMs = config.sessionTtlHours * 3600000;
+  const now = Date.now();
+  const born = new Date(session.created_at).getTime();
+  const current = new Date(session.expires_at).getTime();
+  // ختمٌ لا يُقرأ (صفٌّ مكتوبٌ بيدٍ أخرى، أو عمودٌ تالف) = لا سقف يُحتسب. والفشل مغلق:
+  // لا تمديد. وبلا هذا يصير `new Date(NaN).toISOString()` رميةً تُسقط **كل طلبٍ** لصاحب
+  // ذلك الصفّ — أي طردٌ دائم بخطأ خادم، وهو أسوأ من العيب الذي جاء التدحرج ليصلحه.
+  if (!Number.isFinite(born) || !Number.isFinite(current)) return session.expires_at;
+  const cap = born + config.sessionMaxDays * 86400000;
+  const next = Math.min(now + idleMs, cap);
+
+  if (next <= current) return session.expires_at;            // بلغت سقفها — لا تمديد بعده
+  const lastSeen = new Date(session.last_seen_at || session.created_at).getTime();
+  if (now - lastSeen < config.sessionTouchMinutes * 60000) return session.expires_at;
+
+  const nextIso = new Date(next).toISOString();
+  const r = await run(
+    'UPDATE session SET expires_at = ?, last_seen_at = ? WHERE id = ? AND revoked_at IS NULL',
+    [nextIso, new Date(now).toISOString(), session.id]);
+  return Number(r.changes) === 1 ? nextIso : session.expires_at;
+}
+
+// كنسُ الجلسات المنتهية — يُستدعى من المجدول. الجدول لم يُكنَس منذ أول إصدار، ويُغذّيه أكثر
+// من الدخول: محرّك التقارير يكتب صفّاً لكل تقرير لكل مستقبِل. والمهلة تُقاس بالسقف المطلق لا
+// بالنافذة: صفٌّ انتهت نافذتُه اليوم قد يكون آخرَ أثرٍ لجهازٍ يُسأل عنه غداً، فيبقى حتى يسقط
+// سقفُه ثم يُمحى. (`login_history` هو السجل الدائم — هذا الجدول حالةٌ لا أرشيف.)
+export async function purgeExpiredSessions() {
+  const cutoff = new Date(Date.now() - config.sessionMaxDays * 86400000).toISOString();
+  const r = await run('DELETE FROM session WHERE expires_at < ?', [cutoff]);
+  return { removed: Number(r.changes || 0) };
+}
+
 // تغيير كلمة المرور أخطرُ كتابةٍ في المنتج، فيُحاط بثلاثة شروط لم تكن قائمة:
 //   ١) إعادة توثيق: كلمة المرور الحالية تُطلب وتُتحقَّق — جلسةٌ وحدها (حاسوبٌ معار، كوكيز
 //      مسروقة) لا تكفي للاستيلاء على الحساب. حسابات الرمز فقط (بلا كلمة مرور) تُستثنى.

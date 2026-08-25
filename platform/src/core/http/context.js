@@ -5,13 +5,28 @@ import { unauthorized, forbidden } from './errors.js';
 import { can } from '../rbac/index.js';
 import { managedDepartmentIds } from '../rbac/departments.js';
 import { grantsForUser } from '../../modules/identity/grants.js';
-import { nowIso } from '../util/ids.js';
+import { touchSession } from '../auth/service.js';
+import { setSessionCookie } from './session-cookie.js';
 
-export async function resolveUser(sessionId) {
+// الجلسة الحيّة وحدها — مفصولةٌ عن حلّ المستخدم لأن `attachContext` يحتاج **الصفّ نفسه**
+// (لا صاحبه فقط) كي يدحرج مهلته: بلا الفصل كان الطريق الوحيد قراءةً ثانية لنفس الصفّ.
+export async function loadSession(sessionId) {
   if (!sessionId) return null;
   const s = await get('SELECT * FROM session WHERE id = ? AND revoked_at IS NULL', [sessionId]);
   if (!s) return null;
   if (new Date(s.expires_at).getTime() < Date.now()) return null;
+  return s;
+}
+
+// بالمعرّف — التوقيع الذي تناديه مسارات الدخول مباشرةً بعد إنشاء الجلسة.
+export async function resolveUser(sessionId) {
+  return await resolveUserFromSession(await loadSession(sessionId));
+}
+
+// بصفٍّ محمَّل — لمن قرأ الجلسة أصلاً (`attachContext`) فلا يقرؤها مرتين. مفصولٌ عن نظيره
+// أعلاه بدل توقيعٍ يقبل الاثنين: دالةٌ تخمّن نوع وسيطها تصمت على الخطأ بدل أن تكشفه.
+export async function resolveUserFromSession(s) {
+  if (!s) return null;
   const u = await get('SELECT * FROM app_user WHERE id = ? AND active = 1 AND deleted_at IS NULL', [s.user_id]);
   if (!u) return null;
   // نطاق المشروع: ما يملكه المستخدم، أو عضويةٌ فيه، أو **تسكينٌ عليه**.
@@ -91,11 +106,30 @@ export async function resolveUser(sessionId) {
 }
 
 // Express middleware factories
+//
+// ويدحرج المهلة مع النشاط: الصفّ يُقرأ مرةً واحدة، ويُمرَّر إلى `resolveUserFromSession` فلا قراءة
+// ثانية، ثم تُدفع مهلتُه (بخانقها وسقفها — انظر touchSession). والكعكة تُجدَّد مع الصفّ:
+// لو امتدّ الصفُّ وحده لانتهت الكعكة في موعدها الأول فتوقّف المتصفّح عن إرسالها — أي
+// الطردُ نفسه الذي جاء التدحرج ليمنعه.
 export function attachContext() {
   return async (req, res, next) => {
     try {
       const sid = req.cookies?.[config.sessionCookie];
-      req.ctx = { user: await resolveUser(sid), ip: req.ip, sessionId: sid };
+      const session = await loadSession(sid);
+      const user = await resolveUserFromSession(session);
+      // التمديد لمن ثبتت هويته وحده: صفٌّ حيٌّ صاحبُه معطَّل أو محذوف لا يُمدَّد.
+      if (session && user) {
+        const before = session.expires_at;
+        if (await touchSession(session) !== before) {
+          // كعكة الجلسة كانت تُصدَر في ردَّين اثنين لا غير (تحويلتا الدخول)، وصارت مع
+          // التدحرج تركب كل صفحةٍ وكل ردٍّ تقريباً. ولا شيء في المكدّس يضبط التخزين —
+          // فأي وسيطٍ مشترك (وكيل الشركة، حافة، طبقة تخزينٍ تُضاف غداً) يخزّن صفحةً
+          // ٢٠٠ بترويستها يسلّم **كعكة موظّفٍ لزائرٍ آخر**. `no-store` مع الإصدار.
+          res.setHeader('Cache-Control', 'no-store');
+          setSessionCookie(res, sid);
+        }
+      }
+      req.ctx = { user, ip: req.ip, sessionId: sid };
       next();
     } catch (e) { next(e); }
   };

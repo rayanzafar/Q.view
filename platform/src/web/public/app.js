@@ -1,12 +1,41 @@
 // Minimal client layer — progressive enhancement over SSR pages. Calls the JSON API.
+
+// جلسةٌ انتهت والصفحة ما زالت مفتوحة: **تُعاد الصفحة إلى نفسها** لا إلى عنوانٍ نبنيه هنا.
+// إعادةُ التحميل تمرّ على حارس الخادم، وهو يعرف الوجهة من مسار الطلب ويحفظها ويقول السبب —
+// فلا نحمل الوجهة في العنوان، ولا نفتح لغريبٍ بابَ زرعِ وجهةٍ برابطٍ يُرسله إلى موظف.
+// والوعد المُعلَّق (`Promise` لا يُحلّ) يمنع المُنادي من عرض خطأٍ بينما الصفحة تغادر.
+const sessionEnded = () => { location.reload(); return new Promise(() => {}); };
+
 const api = async (path, method = 'GET', body) => {
   const r = await fetch('/api' + path, {
     method, credentials: 'include',
-    headers: body ? { 'Content-Type': 'application/json' } : {},
+    headers: Object.assign({ 'X-Requested-With': 'fetch' }, body ? { 'Content-Type': 'application/json' } : {}),
     body: body ? JSON.stringify(body) : undefined,
   });
+  // جلسةٌ انتهت والصفحة ما زالت مفتوحة: كانت ترتدّ رسالةَ خطأ في فقاعة عند كل ضغطة زرّ،
+  // والشاشة تبدو داخلةً وهي ليست كذلك — فيُعاد الضغط ويُعاد الخطأ بلا مخرج. الآن تُقال
+  // الرسالة مرةً واحدة على شاشة الدخول، والوجهة محفوظةٌ فيعود إلى صفحته بعد دخوله.
+  if (r.status === 401) return sessionEnded();
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j.error?.message || ('خطأ ' + r.status));
+  return j;
+};
+// مسارات `/app/...` التي تُنادى بالجلب لا بالتصفّح. تُفصَل عن `api()` لأن بادئتها ليست
+// `/api`، ويجمعهما شرطٌ واحد: **يُفحص الردّ قبل قراءة حقوله**.
+//
+// وهذا ما كان ناقصاً وصار خطراً بردّ ٤٠١ الجديد: قبله كانت الجلسة المنتهية تُحوَّل إلى صفحة
+// دخولٍ HTML فينكسر `.json()` ويقع النداء في `catch` — خطأٌ غامض لكنه خطأ. والآن يُردّ
+// `{error:…}` سليماً فينجح التحليل، فيقرأ المُنادي حقلاً غير موجود ويعلن **نجاحاً كاذباً**
+// («أُدرج ✓ (undefined)») — ومعه مصطلح محظور في وجه المستخدم.
+const webJson = async (path, { method = 'GET', body } = {}) => {
+  const r = await fetch(path, {
+    method, credentials: 'include',
+    headers: Object.assign({ 'X-Requested-With': 'fetch' }, body ? { 'Content-Type': 'application/json' } : {}),
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (r.status === 401) return sessionEnded();
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || j.error) throw new Error(j.error?.message || ('خطأ ' + r.status));
   return j;
 };
 const toast = (msg, bad) => {
@@ -56,7 +85,7 @@ window.Sanad = {
     el.innerHTML = `<div class="bg-white border border-line rounded-xl overflow-hidden"><iframe src="/app/reports/preview/${key}" style="width:100%;height:620px;border:0"></iframe></div>`;
   },
   async testSend(key) {
-    try { const r = await fetch('/app/reports/test-send/' + key, { method: 'POST', credentials: 'include' }).then((x) => x.json()); toast('أُدرج في طابور المعاينة ✓ (' + r.queued + ')'); }
+    try { const r = await webJson('/app/reports/test-send/' + key, { method: 'POST' }); toast('أُدرج في طابور المعاينة ✓ (' + r.queued + ')'); }
     catch (e) { toast(e.message, true); }
   },
 };
@@ -97,9 +126,7 @@ Object.assign(window.Sanad, {
       sendTime: document.getElementById('sch-time').value,
     };
     try {
-      const r = await fetch('/app/reports/schedule', { method: 'POST', credentials: 'include',
-        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then((x) => x.json());
-      if (r.error) throw new Error(r.error.message);
+      await webJson('/app/reports/schedule', { method: 'POST', body });
       toast('تمت الجدولة ✓'); location.reload();
     } catch (e) { toast(e.message, true); }
   },

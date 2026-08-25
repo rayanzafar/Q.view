@@ -6,6 +6,22 @@ import { dirname, resolve } from 'node:path';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const ROOT = resolve(__dirname, '../..');
 
+// ── رقمٌ من البيئة يُتحقَّق منه هنا، لا حيث يُستعمل ───────────────────────────────
+// `Number('30 days')` = NaN، و`Number('')` = 0. وكلاهما يصل الحساب صامتاً:
+//   · NaN في مهلة الجلسة يجعل `new Date(NaN).toISOString()` رميةً في وسيطة الطلب — أي
+//     **٥٠٠ لكل مستخدمٍ داخل**، بينما `/health` و`/ready` و`/login` تبقى خضراء (الثلاثة
+//     قبل حلّ الجلسة). منصةٌ تُعلن سلامتها ولا يعملها أحد.
+//   · وسقفٌ سالب يقلب مهلة الكنسة إلى المستقبل، فتمحو الجلسات **الحيّة**.
+// والدليل التشغيلي يطلب من المُشغِّل كتابة هذه الأرقام بيده — فالتحقّق ليس ترفاً.
+// وقيمةٌ لا تصلح تسقط إلى الافتراض المقصود بدل أن تُعطّل المنصة: الفشل مغلق لا قاتل.
+// و«فارغ» يعني «غير مضبوط» لا صفراً: `Number('')` و`Number(' ')` كلاهما صفر صحيح، ومُشغّلٌ
+// ترك القيمة خاويةً في اللوحة لم يطلب صفراً — وصفرُ خانقِ الكتابة يعني كتابةً مع كل طلب.
+const num = (raw, fallback, min) => {
+  if (raw == null || String(raw).trim() === '') return fallback;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= min ? n : fallback;
+};
+
 export const config = {
   env: process.env.NODE_ENV || 'development',
   port: Number(process.env.PORT || 4000),
@@ -19,7 +35,17 @@ export const config = {
   // Session cookie signing secret. MUST be set in prod; ephemeral dev fallback otherwise.
   sessionSecret: process.env.SESSION_SECRET || randomBytes(32).toString('hex'),
   sessionCookie: 'sanad_sid',
-  sessionTtlHours: Number(process.env.SESSION_TTL_HOURS || 12),
+  // ── الجلسة نافذةُ خمولٍ تتدحرج، لا عدّاداً تنازلياً من لحظة الدخول ──
+  // `sessionTtlHours` يبقى اسمَ المتغيّر ومعناه: طول النافذة. الفرق أن النافذة تُجدَّد مع كل
+  // نشاط (انظر touchSession) بدل أن تُحسب مرةً واحدة — فمن يعمل لا يُطرَد وهو يعمل، ومن غاب
+  // اثنتي عشرة ساعة يعود بدخولٍ جديد كما كان تماماً.
+  sessionTtlHours: num(process.env.SESSION_TTL_HOURS, 12, 0.001),
+  // والسقفُ المطلق يبقى فوق التدحرج: جلسةٌ نشِطة أبداً ليست جلسةً بل حسابٌ مفتوح. يُحسب من
+  // `created_at` فلا يمدّده نشاطٌ مهما طال، وبه يُحدّ أثرُ كعكةٍ مسروقة زمنياً لا بالأمل.
+  sessionMaxDays: num(process.env.SESSION_MAX_DAYS, 30, 1),
+  // خانقُ الكتابة: التمديد يُكتب مرةً كل هذه الدقائق لكل جلسة لا مع كل طلب. الصفحة الواحدة
+  // عشرات الطلبات، وكتابةٌ لكل واحدٍ منها تحوّل قراءةً رخيصة إلى حملٍ دائم على القاعدة.
+  sessionTouchMinutes: num(process.env.SESSION_TOUCH_MINUTES, 5, 0),
   csrfCookie: 'sanad_csrf',
   // Auth policy
   bcryptRounds: 12, // documented target; dev uses scrypt (no native dep) — see auth/password.js

@@ -38,16 +38,19 @@ export async function createApp() {
   app.use(express.json({ limit: '1mb' }));
   app.use(express.urlencoded({ extended: false }));
   app.use(cookieParser());
+  // ── الملفات الساكنة قبل **الاثنين** ───────────────────────────────────────────
+  // فوق `attachContext` لأنها لا تقرأ `req.ctx`، وفوق `csrf()` لأن الأخير يُصدر كعكة رمزٍ
+  // لكل طلبٍ لا يحملها — فكان كل ملف نمطٍ ونصٍّ برمجي يخرج ومعه `Set-Cookie` وهو **قابل
+  // للتخزين ساعةً في الإنتاج**. ووسيطٌ مشترك يخزّن ذلك يثبّت رمز حمايةٍ واحداً على كل
+  // زائرٍ خلفه، ورمزُ الحماية هنا «إرسالٌ مزدوج» — أي أن معرفته تُبطله.
+  app.use('/static', express.static(resolve(ROOT, 'src/web/public'), { maxAge: config.env === 'production' ? '1h' : 0 }));
   app.use(csrf());
-  app.use(attachContext());
-  app.use('/auth/login', loginLimiter);
-  app.use('/auth/login-web', loginLimiter);
-  // طلب الرمز: حدٌّ بالبريد وآخر بالعنوان معاً. والتحقق بدلوٍ خاص به لا بدلو كلمة المرور —
-  // تحويلة ذاك مشروطة بمساره، فتسقط هنا إلى حمولة خام في وجه متصفّح ينتظر صفحة.
-  app.use('/auth/otp/request-web', otpEmailLimiter, otpIpLimiter);
-  app.use('/auth/otp/verify-web', otpVerifyLimiter);
-  app.use('/api', apiLimiter);
-
+  // ── وبقية المسارات العامة **قبل** حلّ الجلسة ──────────────────────────────────
+  // `attachContext` يحلّ الجلسة والمستخدم ونطاقه (ستة استعلامات) لكل طلبٍ يمرّ به — وكان
+  // يمرّ به كلُّ ملفِّ نمطٍ وصورةٍ ونصٍّ برمجي أيضاً، فالصفحة الواحدة تدفع ثمن الحلّ عشر
+  // مرات بلا أن يقرأ أحدٌ نتيجته. ولا شيء من الثلاثة يقرأ `req.ctx`: الفحصان معلنان
+  // للموازِن، والملفات الساكنة عامةٌ بحكم كونها ساكنة.
+  // ومع التدحرج صار للترتيب أثرٌ ثانٍ: طلبُ صورةٍ لا يُعدّ نشاطاً يُطيل جلسةً منسيّة.
   app.get('/health', (req, res) => res.json({ ok: true, ts: new Date().toISOString() }));
   // Readiness: verify DB is reachable (for load balancers / orchestrators).
   app.get('/ready', async (req, res) => {
@@ -59,7 +62,15 @@ export async function createApp() {
       res.status(503).json({ ready: false });
     }
   });
-  app.use('/static', express.static(resolve(ROOT, 'src/web/public'), { maxAge: config.env === 'production' ? '1h' : 0 }));
+  app.use(attachContext());
+  app.use('/auth/login', loginLimiter);
+  app.use('/auth/login-web', loginLimiter);
+  // طلب الرمز: حدٌّ بالبريد وآخر بالعنوان معاً. والتحقق بدلوٍ خاص به لا بدلو كلمة المرور —
+  // تحويلة ذاك مشروطة بمساره، فتسقط هنا إلى حمولة خام في وجه متصفّح ينتظر صفحة.
+  app.use('/auth/otp/request-web', otpEmailLimiter, otpIpLimiter);
+  app.use('/auth/otp/verify-web', otpVerifyLimiter);
+  app.use('/api', apiLimiter);
+
   app.use('/auth', authRouter);
   app.use('/api', apiRouter);
   app.use('/api/ai', aiRouter);

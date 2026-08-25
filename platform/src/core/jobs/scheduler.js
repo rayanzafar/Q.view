@@ -2,6 +2,7 @@
 import { all, run } from '../db/index.js';
 import { processQueue, enqueueReport, nextRunAt } from '../reports/engine.js';
 import { purgeExpiredCodes } from '../auth/otp.js';
+import { purgeExpiredSessions } from '../auth/service.js';
 import { sweepApprovalMail } from '../../modules/workflow/approval-notify.js';
 
 let timer = null;
@@ -28,6 +29,15 @@ async function tick() {
   if (Date.now() - lastPurge > hour) {
     lastPurge = Date.now();
     try { await purgeExpiredCodes(24); } catch (e) { console.error('[scheduler] purgeExpiredCodes:', e.message); }
+    // والجلسات معها: جدولٌ لم يُكنَس منذ أول إصدار، ويُغذّيه محرّك التقارير بصفٍّ لكل تقرير
+    // لكل مستقبِل (تعليقه يقول «cleaned by TTL» ولا شيء كان ينظّفها). كلٌّ في حمايته: فشلُ
+    // أحدهما لا يمنع الآخر — نفس مبدأ العزل في أعلى الكنسة.
+    // العدد يُطبع: الكنسة تُتلف صفوفاً، وإتلافٌ بلا أثرٍ في أي مكان لا يُراجَع ولا يُلاحَظ
+    // لو انقلبت مهلتُه يوماً. (وليس سطر تدقيق: التدقيق لأفعال الناس لا لكنس الآلة.)
+    try {
+      const { removed } = await purgeExpiredSessions();
+      if (removed) console.log(`[scheduler] كُنست ${removed} جلسة منتهية`);
+    } catch (e) { console.error('[scheduler] purgeExpiredSessions:', e.message); }
   }
 }
 let lastPurge = 0;

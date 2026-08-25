@@ -2,15 +2,9 @@ import { Router } from 'express';
 import { login, logout, changePassword } from '../core/auth/service.js';
 import { config } from '../core/config.js';
 import { badRequest, unauthorized } from '../core/http/errors.js';
+import { setSessionCookie, clearSessionCookie } from '../core/http/session-cookie.js';
 
 export const authRouter = Router();
-
-function setSessionCookie(res, sid) {
-  res.cookie(config.sessionCookie, sid, {
-    httpOnly: true, sameSite: 'lax', secure: config.env === 'production',
-    maxAge: config.sessionTtlHours * 3600000, path: '/',
-  });
-}
 
 authRouter.post('/login', async (req, res, next) => {
   try {
@@ -31,7 +25,7 @@ authRouter.post('/login', async (req, res, next) => {
 authRouter.post('/logout', async (req, res, next) => {
   try {
     await logout(req.cookies?.[config.sessionCookie]);
-    res.clearCookie(config.sessionCookie, { path: '/' });
+    clearSessionCookie(res);
     res.json({ ok: true });
   } catch (e) { next(e); }
 });

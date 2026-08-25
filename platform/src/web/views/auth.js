@@ -8,8 +8,8 @@ const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&':
 export function loginPage(opts = {}) {
   // التوافق مع النداء القديم loginPage('رسالة خطأ') — كان يمرَّر نصاً لا كائناً.
   const o = typeof opts === 'string' ? { err: opts } : (opts || {});
-  const { err = '', notice = '', step = 'email', email = '', passwordEnabled = false, csrf = '' } = o;
-  return step === 'code' ? codeStep({ err, notice, email, csrf }) : emailStep({ err, notice, passwordEnabled, csrf });
+  const { err = '', notice = '', info = '', step = 'email', email = '', passwordEnabled = false, csrf = '' } = o;
+  return step === 'code' ? codeStep({ err, notice, info, email, csrf }) : emailStep({ err, notice, info, passwordEnabled, csrf });
 }
 
 // نماذج الدخول محروسة بالرمز المزدوج مثل بقية النماذج — والاستثناء الوحيد الباقي هو مسار
@@ -19,13 +19,14 @@ const csrfField = (t) => (t ? `<input type="hidden" name="_csrf" value="${esc(t)
 
 // ملاحظة على الرمز: inputmode=numeric يفتح لوحة الأرقام على الجوال، و autocomplete=one-time-code
 // يجعل النظام يقترح الرمز من الإشعار مباشرةً — فلا يتنقّل الموظف بين البريد والمنصة يدوياً.
-function codeStep({ err, notice, email, csrf }) {
+function codeStep({ err, notice, info, email, csrf }) {
   // البريد لاتينيٌّ داخل جملة عربية. الترتيب صحيح بلا عزل (جُرّب: الصورتان متطابقتان)، و`<bdi>`
   // احتياطٌ لا إصلاح: عنوانٌ أو اسمٌ يحمل حرفاً عربياً أو علامةً في طرفه يختلط بالنص حوله بلا عزل.
   const noticeHtml = notice ? esc(notice)
     : `أرسلنا رمزاً إلى <bdi dir="ltr">${esc(email || 'بريدك')}</bdi>. يصل خلال ثوانٍ.`;
   return page({
     err,
+    info,
     noticeHtml,
     inner: `
   <form method="post" action="/auth/otp/verify-web">
@@ -56,10 +57,11 @@ function codeStep({ err, notice, email, csrf }) {
   });
 }
 
-function emailStep({ err, notice, passwordEnabled, csrf }) {
+function emailStep({ err, notice, info, passwordEnabled, csrf }) {
   return page({
     err,
     notice,
+    info,
     inner: `
   <form method="post" action="/auth/otp/request-web">
     ${csrfField(csrf)}
@@ -83,7 +85,9 @@ function emailStep({ err, notice, passwordEnabled, csrf }) {
 }
 
 // `noticeHtml` تُركَّب من أجزاءٍ مهرَّبة سلفاً (عزل البريد) — و`notice` نصٌّ عادي يُهرَّب هنا.
-function page({ err, notice, noticeHtml, inner }) {
+// و`info` خبرٌ محايد لا خطأ ولا نجاح: «انتهت جلستك» واقعةٌ يومية عادية، وصبغُها بالأحمر
+// يستهلك لون الخطر على ما ليس خطراً — ويقول للموظف إنه أخطأ وهو لم يفعل شيئاً.
+function page({ err, notice, noticeHtml, info, inner }) {
   const noteOut = noticeHtml || (notice ? esc(notice) : '');
   return `<!doctype html><html dir="rtl" lang="ar"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>دخول · منصة سند EVC</title>
@@ -112,6 +116,7 @@ button{width:100%;padding:.7rem;border:none;border-radius:11px;color:#fff;font-s
 button:hover{background:#1d3d80}
 .err{font-size:12px;color:#991b1b;background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:.55rem .8rem;text-align:center;margin-bottom:1rem}
 .ok{font-size:12px;color:#155e33;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:.55rem .8rem;text-align:center;margin-bottom:1rem;line-height:1.75}
+.note{font-size:12px;color:#334155;background:#f6f8fc;border:1px solid #dbe2ef;border-radius:10px;padding:.55rem .8rem;text-align:center;margin-bottom:1rem;line-height:1.75}
 .foot{margin-top:1.2rem;text-align:center;font-size:var(--fs-micro);color:#94a3b8}
 .hint{margin-top:.85rem;text-align:center;font-size:var(--fs-micro);color:#94a3b8;line-height:1.75}
 .code{text-align:center;font-family:'Courier New',Courier,monospace;font-size:26px;font-weight:700;letter-spacing:9px;padding:.6rem .5rem}
@@ -136,6 +141,7 @@ button:disabled{background:#eef1f6;color:#94a3b8;cursor:default;box-shadow:none}
   <img class="logo" src="/static/brand/logo-color.svg" alt="رؤية الخبراء الاستشارية">
   <div class="sub">منصة سند · نظام تشغيل الأعمال</div>
   <div class="sub2">لوحة القيادة، الفرص، المشاريع، والفريق في مكان واحد</div>
+  ${info ? `<div class="note" role="status">${esc(info)}</div>` : ''}
   ${err ? `<div class="err" role="alert">${esc(err)}</div>` : ''}
   ${noteOut ? `<div class="ok" role="alert">${noteOut}</div>` : ''}
   ${inner}
