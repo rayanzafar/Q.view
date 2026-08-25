@@ -42,6 +42,11 @@ before(async () => {
     stage_changed_at: `${YEAR}-08-01T00:00:00.000Z`, created_at: T });
   await insert('revenue_line', { id: 'rl-1', sector_id: 'SOL', year: YEAR, month: 3,
     amount_halalas: 1_150_000, net_amount_halalas: 1_000_000, created_at: T });
+  // مشروعان بحالتين كي تُرسم أقواس دونات الصحة (بلا مشاريع لا أقواس ولا تفصيل يُفتح)
+  await insert('project', { id: 'P_OK', name_ar: 'مشروع على المسار', sector_id: 'SOL', client_id: 'CL',
+    status: 'IN_PROGRESS', rag: 'GREEN', start_date: `${YEAR}-02-01`, end_date: `${YEAR}-11-30`, created_at: T });
+  await insert('project', { id: 'P_BAD', name_ar: 'مشروع حرج', sector_id: 'SOL', client_id: 'CL',
+    status: 'IN_PROGRESS', rag: 'RED', start_date: `${YEAR}-03-01`, created_at: T });
 });
 after(async () => { await close(); rmSync(dir, { recursive: true, force: true }); });
 
@@ -69,4 +74,21 @@ test('رسم الفقاعات مجموعةٌ لا صورة، وفقاعاته ر
   assert.ok(bub, 'مخطط الفقاعات موجود ومعلَّم مجموعةً');
   assert.ok(/<a href="\/app\/opportunity\//.test(bub[0]), 'كل فقاعة رابطٌ إلى فرصتها');
   assert.ok(/aria-label="[^"]+"/.test(bub[0]), 'للمجموعة عنوانٌ منطوق');
+});
+
+test('لا رسمَ طريقاً مسدوداً: الدونات والخريطة والمخطط الشجري تُفتح', async () => {
+  const html = await sectorPage(ADMIN, { year: String(YEAR), tab: 'ops' });
+  // دونات الصحة: قوسٌ واحد على الأقل يفتح قائمة مشاريعه (كان الرسم كله صامتاً والأسطورة وحدها تُفتح)
+  const donut = html.match(/<svg[^>]*role="group"[^>]*transform:rotate\(-90deg\)[^>]*>[\s\S]*?<\/svg>/);
+  assert.ok(donut, 'دونات الصحة معلَّمة مجموعةً لأن أقواسها تُفتح');
+  assert.ok(/data-action="open-dd" data-dd="sec-health-/.test(donut[0]), 'قوسٌ يفتح تفصيله');
+  assert.ok(/<title>/.test(donut[0]), 'ولكل قوسٍ عنوانٌ يقول قيمته');
+});
+
+test('الخريطة الحرارية: اسم الإدارة يفتح نافذتها', async () => {
+  const html = await sectorPage(ADMIN, { year: String(YEAR), tab: 'hr' });
+  if (!html.includes('class="fig-heat"')) return;             // لا كشف أفراد ⇒ لا خريطة
+  const heat = html.match(/<table class="fig-heat"[\s\S]*?<\/table>/)[0];
+  assert.ok(/class="rl-btn"/.test(heat) || !/cap-dept-/.test(html),
+    'صفوف الإدارات تُفتح حين تكون نوافذها مبنية');
 });

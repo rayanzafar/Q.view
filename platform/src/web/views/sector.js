@@ -1761,7 +1761,9 @@ export async function sectorPage(user, opts = {}) {
       <div class="opsd">
         <div class="sh" style="justify-content:center">صحة المشاريع</div>
         <span class="ringw" style="width:112px;height:112px">${figDonut([
-    { v: sd.rag.GREEN || 0, color: 'var(--st-good)' }, { v: sd.rag.AMBER || 0, color: 'var(--st-warn)' }, { v: sd.rag.RED || 0, color: 'var(--st-bad)' },
+    { v: sd.rag.GREEN || 0, color: 'var(--st-good)', dd: sd.rag.GREEN ? 'sec-health-GREEN' : '', label: `${G.hOnTrack}: ${sd.rag.GREEN || 0}` },
+    { v: sd.rag.AMBER || 0, color: 'var(--st-warn)', dd: sd.rag.AMBER ? 'sec-health-AMBER' : '', label: `${G.hAtRisk}: ${sd.rag.AMBER || 0}` },
+    { v: sd.rag.RED || 0, color: 'var(--st-bad)', dd: sd.rag.RED ? 'sec-health-RED' : '', label: `${G.hCritical}: ${sd.rag.RED || 0}` },
   ], { size: 112, sw: 14 })}<span class="ringv"><b class="tnum" dir="ltr" style="font-size:1.15rem">${sd.rag.GREEN || 0}/${ragActive || 0}</b><small>على المسار</small></span></span>
         <div class="fig-leg">${healthRows}</div>
       </div>
@@ -1795,11 +1797,12 @@ export async function sectorPage(user, opts = {}) {
   // فيظهر العميل نفسه بـ74% في المخطط و73% في الجدول على بعد ثلاثين بكسلاً.
   const treemap = topClients.filter((c) => c.rev > 0).length >= 2 ? figTreemap(topClients.filter((c) => c.rev > 0).map((c, i) => ({
     label: c.name_ar, v: c.rev, sub: sarShort(c.rev), color: treeColors[i % treeColors.length],
+    href: c.id ? `/app/client/${esc(c.id)}` : '',
   })), { h: 170, total: secRevTotal }) : '';
 
   // ── ٨: الفصل البشري — خريطة حرارية إدارة×شهر + الطلب مقابل الطاقة ──
   const heatRows = team && team.departments.length
-    ? team.departments.map((d) => ({ label: d.name_ar, cells: Array.from({ length: 12 }, (_, m) => {
+    ? team.departments.map((d) => ({ label: d.name_ar, dd: canPeople ? `cap-dept-${d.id}` : '', cells: Array.from({ length: 12 }, (_, m) => {
       const members = d.ids.map((id) => team.people.find((p) => p.id === id)).filter(Boolean);
       return members.length ? Math.round(members.reduce((a, p) => a + (p.months[m] || 0), 0) / members.length) : null;
     }) }))
@@ -1807,7 +1810,7 @@ export async function sectorPage(user, opts = {}) {
   // خريطة السنة الجارية: ثلاثة أشهر قادمة بأسماء الشهور (نموذج المالك) — قرارُ التسكين قرارُ
   // المدى القريب، والسنة كاملةً بأرقام شهورها للسنوات المطوية. الأعمدة يسارية القراءة.
   const heat3Months = nowMonth ? [nowMonth, nowMonth + 1, nowMonth + 2].filter((m) => m <= 12) : [];
-  const heat3Rows = heat3Months.length ? heatRows.map((r) => ({ label: r.label, cells: heat3Months.map((m) => r.cells[m - 1]) })) : null;
+  const heat3Rows = heat3Months.length ? heatRows.map((r) => ({ label: r.label, dd: r.dd, cells: heat3Months.map((m) => r.cells[m - 1]) })) : null;
   // العرض حسب المسمى الوظيفي — جانب العرض وحده: احتياج الأدوار غير مسجَّل في الفرص والمشاريع
   const rosterPeople = canPeople ? (team ? team.people : (staff.employees || [])) : [];
   const jobCounts = Object.create(null); // مفتاحٌ حرٌّ من إدخال المستخدم: لا وراثة تبتلع «__proto__»

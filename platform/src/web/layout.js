@@ -138,6 +138,12 @@ a{text-decoration:none;color:inherit}
 .fig-tree .maj:hover,.fig-tree .cellt:hover{filter:brightness(1.08)}
 .fig-cols .cc{transition:opacity .15s}
 .fig-cols .cc:hover{opacity:.82}
+.arc-live{cursor:pointer}
+.arc-live:hover{filter:brightness(1.1)}
+.arc-live:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.fig-heat .rl-btn{background:none;border:none;font-family:inherit;font-size:inherit;font-weight:inherit;color:var(--brand);cursor:pointer;padding:0;text-align:start}
+.fig-heat .rl-btn:hover{text-decoration:underline}
+.fig-tree a{text-decoration:none}
 .fig-live{cursor:crosshair}
 .fig-live:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
 .fig-xhair{stroke:var(--ink2);stroke-width:1;stroke-dasharray:3 3;pointer-events:none}
@@ -809,11 +815,14 @@ export function figDonut(segs, { size = 104, sw = 13 } = {}) {
   let off = 0;
   const arcs = (segs || []).filter((s) => s.v > 0).map((s) => {
     const len = (s.v / total) * c;
-    const el = `<circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="${esc(s.color)}" stroke-width="${sw}" stroke-dasharray="${len.toFixed(1)} ${c.toFixed(1)}" stroke-dashoffset="${(-off).toFixed(1)}"/>`;
+    // قوسٌ له تفصيلٌ يفتحه: كان الرسم كله طريقاً مسدوداً وصفُّ الأسطورة وحده يفتح النافذة
+    const act = s.dd ? ` class="arc-live" role="button" tabindex="0" data-action="open-dd" data-dd="${esc(s.dd)}" aria-label="${esc(s.label || '')}"` : '';
+    const el = `<circle${act} cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="${esc(s.color)}" stroke-width="${sw}" stroke-dasharray="${len.toFixed(1)} ${c.toFixed(1)}" stroke-dashoffset="${(-off).toFixed(1)}">${s.label ? `<title>${esc(s.label)}</title>` : ''}</circle>`;
     off += len;
     return el;
   }).join('');
-  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-hidden="true" style="transform:rotate(-90deg)">
+  const live = (segs || []).some((x) => x.dd);
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"${live ? ' role="group"' : ' aria-hidden="true"'} style="transform:rotate(-90deg)">
     <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="var(--track)" stroke-width="${sw}"/>${arcs}</svg>`;
 }
 
@@ -935,7 +944,7 @@ export function figCombo({ bars = [], cum = [], target = null, forecast = null, 
 export function figHeat(rows, colLabels, { tone, ltr = false } = {}) {
   const t = tone || ((v) => v == null ? ['var(--track)', 'var(--muted)'] : v > 110 ? ['var(--st-bad-soft)', 'var(--st-bad)'] : v < 70 && v > 0 ? ['#fdf6e3', '#8a6d1a'] : v === 0 ? ['var(--st-neut-soft)', 'var(--muted)'] : ['var(--st-good-soft)', 'var(--st-good)']);
   return `<div style="overflow-x:auto"><table class="fig-heat"${ltr ? ' dir="ltr"' : ''}><thead><tr><th class="rl"></th>${colLabels.map((c) => `<th>${esc(String(c))}</th>`).join('')}</tr></thead><tbody>
-    ${rows.map((r) => `<tr><th class="rl">${esc(r.label)}</th>${r.cells.map((v) => { const [bg, fg] = t(v); return `<td><span class="cell tnum" style="background:${bg};color:${fg}" title="${esc(r.label)}: ${v == null ? '—' : v + '%'}">${v == null ? '—' : v + '%'}</span></td>`; }).join('')}</tr>`).join('')}
+    ${rows.map((r) => `<tr><th class="rl">${r.dd ? `<button type="button" class="rl-btn" data-action="open-dd" data-dd="${esc(r.dd)}" aria-label="${esc(r.label)} — التفصيل">${esc(r.label)}</button>` : esc(r.label)}</th>${r.cells.map((v) => { const [bg, fg] = t(v); return `<td><span class="cell tnum" style="background:${bg};color:${fg}" title="${esc(r.label)}: ${v == null ? '—' : v + '%'}">${v == null ? '—' : v + '%'}</span></td>`; }).join('')}</tr>`).join('')}
   </tbody></table></div>`;
 }
 
@@ -951,9 +960,9 @@ export function figTreemap(items, { h = 160, total: totalOpt = null } = {}) {
   const majShare = Math.round((maj.v / shown) * 100);   // للتقسيم المرئي
   const majPct = Math.round((maj.v / total) * 100);     // للنسبة المعروضة
   const restTotal = rest.reduce((a, x) => a + x.v, 0) || 1;
-  return `<div class="fig-tree" style="min-height:${h}px" role="img" aria-label="${esc(list.map((x) => `${x.label} ${Math.round((x.v / total) * 100)}%`).join(' · '))}">
-    <div class="maj" style="flex:${majShare} 1 0;background:${esc(maj.color || 'var(--brand)')}" title="${esc(maj.label)}: ${esc(maj.sub || '')}"><span class="nm">${esc(maj.label)}</span><span class="vv tnum">${esc(maj.sub || '')} (${majPct}%)</span></div>
-    ${rest.length ? `<div class="rest" style="flex:${100 - majShare} 1 0">${rest.map((x) => `<div class="cellt" style="flex:${Math.max(8, Math.round((x.v / restTotal) * 100))} 1 0;background:${esc(x.color || 'var(--brand2)')}" title="${esc(x.label)}: ${esc(x.sub || '')}"><span class="nm">${esc(x.label)}</span><span class="vv tnum">${esc(x.sub || '')} (${Math.round((x.v / total) * 100)}%)</span></div>`).join('')}</div>` : ''}
+  return `<div class="fig-tree" style="min-height:${h}px" role="${list.some((x) => x.href) ? 'group' : 'img'}" aria-label="${esc(list.map((x) => `${x.label} ${Math.round((x.v / total) * 100)}%`).join(' · '))}">
+    ${maj.href ? `<a class="maj" href="${esc(maj.href)}"` : '<div class="maj"'} style="flex:${majShare} 1 0;background:${esc(maj.color || 'var(--brand)')}" title="${esc(maj.label)}: ${esc(maj.sub || '')}"><span class="nm">${esc(maj.label)}</span><span class="vv tnum">${esc(maj.sub || '')} (${majPct}%)</span>${maj.href ? '</a>' : '</div>'}
+    ${rest.length ? `<div class="rest" style="flex:${100 - majShare} 1 0">${rest.map((x) => `${x.href ? `<a class="cellt" href="${esc(x.href)}"` : '<div class="cellt"'} style="flex:${Math.max(8, Math.round((x.v / restTotal) * 100))} 1 0;background:${esc(x.color || 'var(--brand2)')}" title="${esc(x.label)}: ${esc(x.sub || '')}"><span class="nm">${esc(x.label)}</span><span class="vv tnum">${esc(x.sub || '')} (${Math.round((x.v / total) * 100)}%)</span>${x.href ? '</a>' : '</div>'}`).join('')}</div>` : ''}
   </div>`;
 }
 
