@@ -192,10 +192,11 @@ const CSS = `<style>
 .trp .tv{font-size:var(--fs-body);font-weight:800;color:var(--ink2);text-align:start}
 .ops3{display:grid;grid-template-columns:auto 1.3fr .8fr;gap:1.2rem;align-items:start}
 .ops3.two{grid-template-columns:auto 1fr}
+.ops3.two .ops-stats{grid-template-columns:repeat(auto-fit,minmax(160px,max-content))}
 /* سطرُ نقصٍ هادئ: يقول ما ينقص وأين يُدخَل، بلا صندوقٍ أجوف ولا رسمٍ فارغ */
 .gapline{font-size:var(--fs-micro);color:var(--muted);padding:.45rem .2rem;border-top:1px dashed var(--line);margin-top:.4rem}
 .gapline a{color:var(--brand);font-weight:700}
-.ops-stats{display:grid;gap:.5rem;align-content:start}
+.ops-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:.5rem;align-content:start}
 .prj-tbl{width:100%;border-collapse:collapse;font-size:var(--fs-body)}
 .prj-tbl th{font-size:var(--fs-micro);color:var(--muted);font-weight:700;text-align:start;padding:.3rem .5rem;border-bottom:1px solid var(--line);white-space:nowrap}
 .prj-tbl td{padding:.45rem .5rem;border-bottom:1px dashed var(--line);vertical-align:middle}
@@ -1575,7 +1576,8 @@ export async function sectorPage(user, opts = {}) {
       return `<circle cx="${cx}" cy="${padT + 12}" r="${r}" fill="var(--ord-3)" opacity=".4" stroke="#fff" stroke-width="1"/>
         <text x="${cx + r + 3}" y="${padT + 15}" text-anchor="start">${esc(sarShort(v))}</text>`;
     }).join('');
-    return `<svg class="fig-svg" viewBox="0 0 ${w} ${h}" role="img" aria-label="قيمة الفرصة مقابل احتمال الفوز مقابل عمر المرحلة — كل فقاعة فرصة وحجمها قيمتها · تفصيل كل فرصة في نافذة مرحلتها من القمع" style="width:100%;height:auto">
+    // مجموعةٌ لا صورة: صار داخل الرسم روابطُ فرصٍ تُنقَر، وrole="img" يمنع العناصر التفاعلية بداخله
+    return `<svg class="fig-svg" viewBox="0 0 ${w} ${h}" role="group" aria-label="قيمة الفرصة مقابل احتمال الفوز مقابل عمر المرحلة — كل فقاعة فرصة وحجمها قيمتها · وضغطُها يفتح صفحتها" style="width:100%;height:auto">
       <line class="axis" x1="${padX}" y1="${h - padB}" x2="${w - padX}" y2="${h - padB}"/>
       <line class="axis" x1="${padX}" y1="${padT}" x2="${padX}" y2="${h - padB}"/>
       <text x="${padX}" y="${h - 6}" text-anchor="start">0 يوم</text><text x="${(w / 2).toFixed(0)}" y="${h - 6}" text-anchor="middle">عمر المرحلة ←</text><text x="${w - padX}" y="${h - 6}" text-anchor="end">${dayWord(maxAge)}</text>

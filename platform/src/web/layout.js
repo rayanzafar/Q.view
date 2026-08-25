@@ -508,6 +508,10 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
 .hdr-lead{min-width:0;gap:.6rem}
 .hdr-title{min-width:0}
 .hdr-title>div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* العنوان يقصّ نفسه ولا يلتفّ فوق أدوات الرأس: كان «مركز قيادة قطاع الحلول» ينكسر ثلاثة أسطر
+   على 390 فيطبع فوق أيقونات البحث والسنة والتنبيهات، ويُقصّ العنوان الفرعي في منتصف كلمته. */
+.hdr-title h1{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media(max-width:640px){.hdr-title h1{font-size:15px}.hdr-title>div{display:none}}
 /* زر الجولة الإرشادية — ضيف هادئ في الترويسة: يشرح الشاشة الحالية على الشاشة نفسها، ولا
    ينافس أزرار الصفحة (بلا خلفية ولا إطار حتى المرور عليه). على الجوال يبقى الرمز وحده. */
 .hdr-tour-btn{display:inline-flex;align-items:center;gap:.4rem;color:var(--muted);background:none;border:none;
@@ -515,7 +519,9 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
 .hdr-tour-btn:hover{background:#eef1f7;color:var(--ink2)}
 .hdr-tour-btn:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
 .hdr-right{gap:1rem}
-@media(max-width:640px){.hdr-tour-btn span{display:none}.hdr-tour-btn{padding:.35rem}.hdr-right{gap:.55rem}}
+/* على الجوال تتنحّى الأفعال الثانوية (الجولة والبلاغ) ليتّسع اسم الشاشة — كان ينكسر ثلاثة
+   أسطر فوق الأيقونات ثم يُقصّ إلى «مرك...». والبحث والسنة والتنبيهات والحساب تبقى. */
+@media(max-width:640px){.hdr-tour-btn{display:none}.hdr-right{gap:.55rem}}
 /* وميض تأكيد الوصول — يُستخدم عند القفز إلى صف من لوحة الأوامر (مثال: موظف من نتيجة البحث) */
 @keyframes hl-flash{0%,100%{background:transparent}30%{background:rgba(36,74,153,.12)}}
 .hl-flash{animation:hl-flash 1.6s ease}
@@ -836,7 +842,7 @@ export function figLine(seriesList, { labels = [], now = 0, w = 480, h = 130, fm
     return `<rect class="fig-hit" x="${(X(i) - hitW / 2).toFixed(1)}" y="${padT}" width="${hitW.toFixed(1)}" height="${(h - padT - padB).toFixed(1)}" fill="transparent" data-i="${i}" data-x="${X(i).toFixed(1)}" data-l="${esc(String(labels[i] ?? i + 1))}" data-rows="${esc(rows)}"></rect>`;
   }).join('')}</g>` : '';
   const xhair = hover ? `<line class="fig-xhair" x1="0" y1="${padT}" x2="0" y2="${h - padB}" opacity="0"/>` : '';
-  return `<svg class="fig-svg${hover ? ' fig-live' : ''}" viewBox="0 0 ${w} ${h}" role="img"${ariaLabel ? ` aria-label="${esc(ariaLabel)}"` : ' aria-hidden="true"'}${hover ? ' tabindex="0"' : ''} style="width:100%;height:auto">
+  return `<svg class="fig-svg${hover ? ' fig-live' : ''}" viewBox="0 0 ${w} ${h}" role="img"${ariaLabel ? ` aria-label="${esc(ariaLabel)}"` : ' aria-hidden="true"'}${hover && ariaLabel ? ' tabindex="0"' : ''} style="width:100%;height:auto">
     <line class="axis" x1="${padX}" y1="${h - padB}" x2="${w - padX}" y2="${h - padB}"/>${paths}${marksEl}${ticks}${xhair}${hits}</svg>`;
 }
 
@@ -913,7 +919,7 @@ export function figCombo({ bars = [], cum = [], target = null, forecast = null, 
     return `<rect class="fig-hit" x="${(X(i) - hitW / 2).toFixed(1)}" y="${padT}" width="${hitW.toFixed(1)}" height="${(h - padT - padB).toFixed(1)}" fill="transparent" data-i="${i}" data-x="${X(i).toFixed(1)}" data-l="${esc(String(l))}" data-rows="${esc(rows)}"></rect>`;
   }).join('')}</g>` : '';
   const xhair = hover ? `<line class="fig-xhair" x1="0" y1="${padT}" x2="0" y2="${h - padB}" opacity="0"/>` : '';
-  return `<svg class="fig-svg${hover ? ' fig-live' : ''}" viewBox="0 0 ${w} ${h}" role="img"${ariaLabel ? ` aria-label="${esc(ariaLabel)}"` : ' aria-hidden="true"'}${hover ? ' tabindex="0"' : ''} style="width:100%;height:auto">
+  return `<svg class="fig-svg${hover ? ' fig-live' : ''}" viewBox="0 0 ${w} ${h}" role="img"${ariaLabel ? ` aria-label="${esc(ariaLabel)}"` : ' aria-hidden="true"'}${hover && ariaLabel ? ' tabindex="0"' : ''} style="width:100%;height:auto">
     <line class="axis" x1="${padX}" y1="${h - padB}" x2="${w - padX}" y2="${h - padB}"/>${barsEl}${targetEl}${cumEl}${fcEl}${ticks}${xhair}${hits}</svg>`;
 }
 
