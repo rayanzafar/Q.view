@@ -167,14 +167,19 @@ export default async function tasksFlowSpec({ browser, base, t }) {
       const row = page2.locator(`[data-task="${made.taskId}"]`);
       check('المهمة المرتبطة ظاهرة في قائمة صاحبها', await row.count() > 0);
       await row.locator('[data-action="task-open"]').last().click();
-      // منتقي الجهة صار حقل بحثٍ فوق قائمةٍ مخفيّة: الانتظار على المرئي، والقراءة من القائمة.
+      // منذ منتقي البحث: القائمة الخفيّة تحمل القيمة، والمرئيُّ حقلُ بحثٍ فوقها — فالانتظار
+      // على **ما يراه المستخدم** (حقل المنتقي)، والقيمة تُقرأ من حاملها كما يقرؤها الحفظ.
       await page2.waitForSelector('#drawer [data-picker="tf-parent"] .sp-q');
       const sel = await page2.evaluate(() => {
         const s = document.querySelector('#drawer [data-f="parent"]');
+        const q = document.querySelector('#drawer [data-picker="tf-parent"] .sp-q');
+        const chosen = s.options[s.selectedIndex];
         return { value: s.value, initial: s.dataset.initial || '',
-          current: [...s.options].some((o) => o.textContent.includes('الجهة الحالية')) };
+          current: [...s.options].some((o) => o.textContent.includes('الجهة الحالية')),
+          mirrored: !!q && !!chosen && q.value.trim() === chosen.textContent.trim() && q.value.trim() !== '' };
       });
       check('منتقي الجهة يقف على جهة المهمة لا على الفراغ', sel.value === 'p:' + made.projectId, JSON.stringify(sel));
+      check('والحقل المرئي يسمّي المختار — لا يقف فارغاً فوق قيمةٍ خفيّة', sel.mirrored, JSON.stringify(sel));
       await page2.locator('#drawer [data-action="task-save"]').click();
       await page2.waitForLoadState('domcontentloaded');
       await page2.waitForSelector(`[data-task="${made.taskId}"]`);
