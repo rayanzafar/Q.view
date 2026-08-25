@@ -471,18 +471,23 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
 .attn .tx .s{font-size:var(--fs-meta);color:var(--muted)}
 .attn .go{flex:0 0 auto}
 
-/* تلميح معنى (شرح مصطلح/مرحلة) — CSS فقط */
+/* تلميح معنى (شرح مصطلح/مرحلة) — المحرّك في app.js يرسم .tipbox مثبَّتةً على النافذة فتفلت
+   من أسلاف قصّ الفائض ومن حوافّ النافذة (كانا يبتران الطويل أو يلفّانه فوق المحتوى).
+   ونسخة CSS الخالصة تبقى لمن عطّل JavaScript، خلف html:not(.tipjs). */
 [data-tip]{position:relative;cursor:help}
-[data-tip]:hover::after,[data-tip]:focus-visible::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 8px);inset-inline-start:50%;transform:translateX(50%);
+.tipbox{position:fixed;background:var(--ink);color:#fff;font-size:var(--fs-meta);font-weight:600;line-height:1.7;
+  padding:.5rem .7rem;border-radius:9px;width:max-content;max-width:min(320px,calc(100vw - 16px));white-space:normal;
+  z-index:220;box-shadow:var(--sh);pointer-events:none;text-align:right}
+html:not(.tipjs) [data-tip]:hover::after,html:not(.tipjs) [data-tip]:focus-visible::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 8px);inset-inline-start:50%;transform:translateX(50%);
   background:var(--ink);color:#fff;font-size:var(--fs-meta);font-weight:600;line-height:1.7;padding:.5rem .7rem;border-radius:9px;width:max-content;max-width:300px;white-space:normal;z-index:70;box-shadow:var(--sh);pointer-events:none;text-align:right}
-[data-tip]:hover::before,[data-tip]:focus-visible::before{content:'';position:absolute;bottom:calc(100% + 2px);inset-inline-start:50%;transform:translateX(50%);border:6px solid transparent;border-top-color:var(--ink);z-index:70;pointer-events:none}
+html:not(.tipjs) [data-tip]:hover::before,html:not(.tipjs) [data-tip]:focus-visible::before{content:'';position:absolute;bottom:calc(100% + 2px);inset-inline-start:50%;transform:translateX(50%);border:6px solid transparent;border-top-color:var(--ink);z-index:70;pointer-events:none}
 /* ── تلميحٌ ينزل بدل أن يصعد ────────────────────────────────────────────────────────────
    التلميح يُرسم فوق مُطلِقه دائماً، فمُطلِقٌ في أعلى الصفحة (بطاقات المؤشرات) يدفعه خارج
    حافة النافذة العليا فيُقصّ، ولا يبقى منه إلا ذيلٌ يتراكب مع الرقم — وهو ما رآه المالك
    حرفياً: نصٌّ فوق «370.3M» غير مقروء. من يقع أعلى الشاشة يحمل data-tip-pos="below". */
-[data-tip][data-tip-pos="below"]:hover::after,[data-tip][data-tip-pos="below"]:focus-visible::after{
+html:not(.tipjs) [data-tip][data-tip-pos="below"]:hover::after,html:not(.tipjs) [data-tip][data-tip-pos="below"]:focus-visible::after{
   bottom:auto;top:calc(100% + 8px)}
-[data-tip][data-tip-pos="below"]:hover::before,[data-tip][data-tip-pos="below"]:focus-visible::before{
+html:not(.tipjs) [data-tip][data-tip-pos="below"]:hover::before,html:not(.tipjs) [data-tip][data-tip-pos="below"]:focus-visible::before{
   bottom:auto;top:calc(100% + 2px);border-top-color:transparent;border-bottom-color:var(--ink)}
 
 /* الموبايل: القائمة الجانبية تنزلق كطبقة */

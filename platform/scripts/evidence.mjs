@@ -40,9 +40,14 @@ async function login(page, username) {
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       await page.goto(base + '/login', { waitUntil: 'domcontentloaded', timeout: 30000 });
+      // كلمة المرور بديلٌ مطويّ داخل <details> منذ صار الدخول بالرمز أولاً — تُفتح الطيّة
+      // وإلا انتظر playwright ظهورَ حقلٍ لن يظهر (نفس إصلاح tests/e2e/_helpers.mjs)
+      const disclosure = page.locator('.alt2 summary');
+      if (await disclosure.count()) await disclosure.click();
       await page.fill('[name=username]', username);
       await page.fill('[name=password]', DEMO_PW);
-      await Promise.all([page.waitForURL('**/app/**', { timeout: 20000 }), page.click('button[type=submit]')]);
+      await Promise.all([page.waitForURL('**/app/**', { timeout: 20000 }),
+        page.click('form[action="/auth/login-web"] button[type=submit]')]);
       return true;
     } catch (e) {
       if (attempt === 0) { await page.waitForTimeout(7000); continue; } // login limiter refill

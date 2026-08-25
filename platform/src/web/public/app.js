@@ -507,3 +507,63 @@ function injectCsrf() {
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', injectCsrf);
 else injectCsrf();
+
+// ── تلميحات [data-tip]: محرّكٌ يحترم حواف النافذة (إصلاح عيب عرض، 2026-08-25) ──────────
+// التلميح النقي بـCSS يُرسم داخل تدفّق مُطلِقه: سلفٌ بقصّ الفائض يبتره (شريط القراءة الداكن)،
+// وحافة النافذة تقصّ طويلَه أو تلفّه فوق المحتوى فلا يُقرأ — والعيب ظهر في مواضع كثيرة لا
+// موضعٍ يُرقَّع. المحرّك يرسم فقاعةً واحدة مثبَّتة على النافذة نفسها فتفلت من كل قصّ، ويحبسها
+// داخل حدود النافذة، ويقلبها أعلى/أسفل حسب المساحة — وdata-tip-pos="below" يبقى تفضيلاً
+// محترماً. CSS القديم يبقى لمن عطّل JavaScript، مُبوَّباً خلف html:not(.tipjs).
+(function () {
+  try {
+    document.documentElement.classList.add('tipjs');
+    var tbox = null, curTrig = null;
+    function tEl() {
+      if (!tbox) {
+        tbox = document.createElement('div');
+        tbox.className = 'tipbox';
+        tbox.setAttribute('role', 'tooltip');
+        tbox.hidden = true;
+        document.body.appendChild(tbox);
+      }
+      return tbox;
+    }
+    function tShow(trig) {
+      var txt = trig.getAttribute('data-tip');
+      if (!txt) return;
+      curTrig = trig;
+      var b = tEl();
+      b.textContent = txt;
+      b.hidden = false;
+      b.style.left = '0px'; b.style.top = '-9999px';       // قياس قبل التموضع
+      var r = trig.getBoundingClientRect();
+      var w = b.offsetWidth, h = b.offsetHeight, pad = 8;
+      var x = Math.min(Math.max(pad, r.left + r.width / 2 - w / 2), window.innerWidth - w - pad);
+      var below = trig.getAttribute('data-tip-pos') === 'below';
+      var y = below ? r.bottom + 8 : r.top - h - 8;
+      if (!below && y < pad) y = r.bottom + 8;                              // لا مساحة فوق ⇒ ينزل
+      if (below && y + h > window.innerHeight - pad) y = r.top - h - 8;     // ولا تحت ⇒ يصعد
+      y = Math.min(Math.max(pad, y), window.innerHeight - h - pad);         // وفي كل حال: داخل النافذة
+      b.style.left = x + 'px';
+      b.style.top = y + 'px';
+    }
+    function tHide() { if (tbox) tbox.hidden = true; curTrig = null; }
+    document.addEventListener('mouseenter', function (e) {
+      var t = e.target && e.target.closest ? e.target.closest('[data-tip]') : null;
+      if (t) tShow(t);
+    }, true);
+    document.addEventListener('mouseleave', function (e) {
+      if (curTrig && e.target === curTrig) tHide();
+    }, true);
+    document.addEventListener('focusin', function (e) {
+      var t = e.target && e.target.closest ? e.target.closest('[data-tip]') : null;
+      if (t) tShow(t); else if (curTrig) tHide();
+    });
+    document.addEventListener('focusout', function (e) {
+      if (curTrig && e.target === curTrig) tHide();
+    });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') tHide(); });
+    window.addEventListener('scroll', tHide, true);
+    window.addEventListener('resize', tHide);
+  } catch (e) { /* التلميح عونُ قراءة — لا يُسقط الصفحة */ }
+})();

@@ -11,7 +11,7 @@ import { netSql } from '../../modules/finance/vat.js';
 import { icon } from '../icons.js';
 import { fmtSar } from '../../core/util/ids.js';
 import { all, get } from '../../core/db/index.js';
-import { sectorDashboard, sectorStaffing, sectorWins, quarterlyRevenue, quarterlyBookings, pipelineCoverage, monthlyRevenue, revenueOutlook, revenueScope, outlookFromMonths, winsByMonth, windowFigures, windowRevenue, yearElapsedPct, targetToDate, paceDelta, grossMargin, WEIGHTED_OPEN } from '../../core/reports/metrics.js';
+import { sectorDashboard, sectorStaffing, sectorWins, quarterlyRevenue, quarterlyBookings, pipelineCoverage, monthlyRevenue, revenueOutlook, revenueScope, outlookFromMonths, winsByMonth, windowFigures, windowRevenue, yearElapsedPct, targetToDate, paceDelta, grossMargin, WEIGHTED_OPEN, availableYears } from '../../core/reports/metrics.js';
 import { attentionFeed, RESOURCE_AR } from '../../core/reports/attention.js';
 import { changesSince, periodBounds, lastChangeAt } from '../../core/reports/changes.js';
 import { completenessScore } from '../../core/reports/completeness.js';
@@ -427,8 +427,11 @@ export async function sectorPage(user, opts = {}) {
   // محوّل القطاع: قطاعات التسليم وحدها — الأربعة لا خامس لها. وحدة المساندة لا مركز قيادة
   // تجاري لها (بلا هدف ولا خط فرص)، ووضعها في المحوّل يجعلها قطاعاً في عين كل من يستعمله.
   // ملاحظة: القائمة تحكم أيضاً ما يُقبل من ?sector= — فطلب وحدة مساندة يعود إلى قطاع المستخدم.
-  const allSectors = await all(`SELECT id, name_ar, color FROM sector
-     WHERE active = 1 AND deleted_at IS NULL AND ${DELIVERY_SECTOR_SQL} ORDER BY sort_order`);
+  const [allSectors, yearsAll] = await Promise.all([
+    all(`SELECT id, name_ar, color FROM sector
+     WHERE active = 1 AND deleted_at IS NULL AND ${DELIVERY_SECTOR_SQL} ORDER BY sort_order`),
+    availableYears(),
+  ]);
   const requested = opts.sector && allSectors.some((s) => s.id === opts.sector) ? opts.sector : null;
   // لا قطاع افتراضي مكتوب في الكود. كان السطران يسقطان إلى «SOLUTIONS» نصاً، فمستخدمٌ بلا قطاع
   // — عضو وحدة مساندة، أو حساب لم يُربط بقطاع بعد — يفتح الصفحة فيرى **مركز قيادة قطاع الحلول
@@ -741,6 +744,13 @@ export async function sectorPage(user, opts = {}) {
         ${sectorDepts.map((d) => `<a class="fitem${deptSel === d.id ? ' on' : ''}" href="${qs({ dept: d.id })}">${esc(d.name_ar)}</a>`).join('')}
         <a class="fitem${deptSel === NO_DEPT ? ' on' : ''}" href="${qs({ dept: NO_DEPT })}" title="سجلات لم تُسنَد إلى إدارة بعد">بلا إدارة${deptGap ? ` (${deptGap.prj + deptGap.opp})` : ''}</a>
       </div></details>` : '';
+  // منتقي السنة مع بقية المرشِّحات (ملاحظة أ. حسين 2026-08-25: «لا أرى منتقي السنة في أي
+  // مكان» — كان في رأس الصفحة البعيد وبقي هناك أيضاً؛ رحلةُ سنةٍ → أشهرها وأرباعها تُدار من
+  // موضعٍ واحد). الروابط تحمل بقية الحالة (الفصل والمرشِّحات) كسائر روابط الصفحة.
+  const yearPick = `<details class="rmenu fmenu"><summary class="btn btn-sm">سنة ${year}${year > config.fiscalYear ? ' — قادمة' : ''} ▾</summary>
+      <div class="rmenu-b">
+        ${yearsAll.map((y) => `<a class="fitem${y === year ? ' on' : ''}" href="${qs({ year: y })}"${y > config.fiscalYear ? ' title="سنة قادمة — تُعرض بالمتوقع لا بالمحقق"' : ''}>سنة ${y}${y > config.fiscalYear ? ' — قادمة' : ''}</a>`).join('')}
+      </div></details>`;
   const clientPick = sectorClientRows.length ? `<details class="rmenu fmenu"><summary class="btn btn-sm">${clientSel ? esc(sectorClientRows.find((c) => c.id === clientSel)?.name_ar || G.clients) : G.clients} ▾</summary>
       <div class="rmenu-b" style="max-height:320px;overflow-y:auto">
         <a class="fitem${!clientSel ? ' on' : ''}" href="${qs({ client: null })}">كل العملاء</a>
@@ -779,6 +789,8 @@ export async function sectorPage(user, opts = {}) {
   // والخلاصات المحسوبة تحمل علامةً وتلميحاً يقولان أساسها — شرط أ. حسين الصريح. ═══
   const toolbar = `<div class="toolbar" style="row-gap:.4rem">
     ${switcher || ''}
+    <span style="font-size:var(--fs-body);color:var(--muted);font-weight:700">السنة:</span>
+    ${yearPick}
     <span style="font-size:var(--fs-body);color:var(--muted);font-weight:700">الفترة: <span class="tipdot" data-tip="اختر السنة أو ربعاً أو شهراً بعينه. التدفقات (الإيراد والمكسوب والمفوتر والمحصَّل وما تغيّر) تُعاد لهذه الفترة، والأرصدة اللحظية (خط الفرص، الإشغال، صحة التنفيذ) لا تتأثر بها وتحمل وسمها. والفترة القادمة تُعرض بالمتوقع لا بالمحقق." tabindex="0" role="img" aria-label="اختر السنة أو ربعاً أو شهراً — التدفقات تُعاد للفترة والأرصدة اللحظية لا تتأثر">${icon('info')}</span></span>
     ${lens}
     ${deptPick}
