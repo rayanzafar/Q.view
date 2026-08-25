@@ -944,9 +944,9 @@ export async function sectorPage(user, opts = {}) {
         <span style="font-size:var(--fs-body);color:var(--muted);font-weight:700">متوسط ${G.utilization}</span>
         <b class="tnum" style="font-size:var(--fs-val-sm);color:${teamLoad > OVER_ABOVE ? 'var(--st-bad)' : 'var(--ink2)'}">${teamLoad}%</b></div>
       ${figStacked100([
-    { v: midNow.length, color: 'var(--st-good)' },
-    { v: freeNow.length, color: '#c6cdd9' },
-    { v: overNow.length, color: 'var(--st-bad)' },
+    { v: midNow.length, color: 'var(--st-good)', label: `ضمن الطاقة: ${midNow.length}`, dd: canPeople && midNow.length ? 'cap-band-mid' : '' },
+    { v: freeNow.length, color: '#c6cdd9', label: `${nowMonth ? G.onBench : 'بلا تسكين'}: ${freeNow.length}`, dd: canPeople && freeNow.length ? 'cap-band-free' : '' },
+    { v: overNow.length, color: 'var(--st-bad)', label: `${G.overloaded}: ${overNow.length}`, dd: canPeople && overNow.length ? 'cap-band-over' : '' },
   ], { ariaLabel: `ضمن الطاقة ${midNow.length} · ${nowMonth ? G.onBench : 'بلا تسكين طوال السنة'} ${freeNow.length} · ${G.overloaded} ${overNow.length}` })}
       <div class="fig-leg" style="margin-top:.35rem">
         ${[['mid', 'var(--st-good)', 'ضمن الطاقة', midNow.length], ['free', '#c6cdd9', nowMonth ? G.onBench : 'بلا تسكين طوال السنة', freeNow.length],
@@ -1062,8 +1062,8 @@ export async function sectorPage(user, opts = {}) {
     <div class="card-head"><span class="hgrp"><span class="eyebrow">أهم ${G.clients} · مرتَّبون حسب إيراد ${year}${concPct != null ? ` <span class="tipdot" data-tip="مجموع إيراد أكبر ثلاثة عملاء ÷ إيراد القطاع المحقق لهذه السنة" tabindex="0" role="img" aria-label="مجموع إيراد أكبر ثلاثة عملاء ÷ إيراد القطاع المحقق لهذه السنة">${icon('info')}</span>` : ''}</span>
       <span class="t">${concPct != null ? `أكبر ثلاثة عملاء يمثلون <span class="tnum">${concPct}%</span> من الإيراد${concPct >= 60 ? ' — تركّز مرتفع' : ''}` : topClients.length ? `${countAr(topClients.length, { one: 'عميل واحد يقود النشاط', two: 'عميلان يقودان النشاط', few: 'عملاء يقودون النشاط', many: 'عميلاً يقودون النشاط' })}` : G.emptyList}</span></span></div>
     ${concPct != null ? `<div style="padding:.15rem 1rem 0">${figStacked100([
-    ...top3.map((c, i) => ({ v: c.rev, color: concColors[i] })),
-    { v: Math.max(0, secRevTotal - top3.reduce((a, c) => a + c.rev, 0)), color: '#e8ecf5' },
+    ...top3.map((c, i) => ({ v: c.rev, color: concColors[i], label: `${c.name_ar} — ${sarShort(c.rev)}` })),
+    { v: Math.max(0, secRevTotal - top3.reduce((a, c) => a + c.rev, 0)), color: '#e8ecf5', label: 'بقية العملاء' },
   ], { mini: true, ariaLabel: `${top3.map((c) => `${c.name_ar} ${Math.round((c.rev / secRevTotal) * 100)}%`).join(' · ')}` })}</div>` : ''}
     <div class="cbody" style="padding:.15rem .5rem .3rem;overflow-x:auto" tabindex="0" role="region" aria-label="جدول أهم العملاء">
       ${clientRows ? `<table class="cl-tbl">

@@ -138,6 +138,9 @@ a{text-decoration:none;color:inherit}
 .fig-tree .maj:hover,.fig-tree .cellt:hover{filter:brightness(1.08)}
 .fig-cols .cc{transition:opacity .15s}
 .fig-cols .cc:hover{opacity:.82}
+.fig-s .sg-live{border:none;padding:0;cursor:pointer;display:block;height:100%}
+.fig-s .sg-live:hover{filter:brightness(1.12)}
+.fig-s .sg-live:focus-visible{outline:2px solid var(--brand);outline-offset:1px}
 .arc-live{cursor:pointer}
 .arc-live:hover{filter:brightness(1.1)}
 .arc-live:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
@@ -755,12 +758,23 @@ export function figBullet({ pct = 0, tick = null, fill = null, ariaLabel = '' } 
 }
 
 // تركيبة كلٍّ = شريط مكدَّس 100% بفواصل سطحية — القطعة الصفرية لا تُرسم (الأصفار في الوصف).
+// قطعُ الشريط تقول قيمتها عند التحويم، وتفتح تفصيلها إن كان مبنياً — كان الشريط كله صامتاً
+// وأسطورتُه المجاورة وحدها تُفتح، فيبدو الرسم نفسه طريقاً مسدوداً لمن يضغطه.
 export function figStacked100(segs, { mini = false, ariaLabel = '' } = {}) {
-  const rows = (segs || []).map((x) => ({ v: Math.max(0, Number(x.v) || 0), color: x.color || 'var(--st-neut)' }));
+  const rows = (segs || []).map((x) => ({ v: Math.max(0, Number(x.v) || 0), color: x.color || 'var(--st-neut)', label: x.label || '', dd: x.dd || '' }));
   const sum = rows.reduce((a, x) => a + x.v, 0);
+  const seg = (x) => {
+    const pct = (x.v / sum * 100).toFixed(1);
+    const tip = x.label ? `${x.label} — ${pct}%` : `${pct}%`;
+    const style = `width:${pct}%;background:${esc(x.color)}`;
+    return x.dd
+      ? `<button type="button" class="sg-live" style="${style}" data-action="open-dd" data-dd="${esc(x.dd)}" title="${esc(tip)}" aria-label="${esc(tip)} — التفصيل"></button>`
+      : `<i style="${style}" title="${esc(tip)}"></i>`;
+  };
   const inner = sum <= 0 ? `<i style="width:100%;background:var(--track)"></i>`
-    : rows.filter((x) => x.v > 0).map((x) => `<i style="width:${(x.v / sum * 100).toFixed(1)}%;background:${esc(x.color)}"></i>`).join('');
-  return `<div class="fig-s${mini ? ' mini' : ''}" role="img"${ariaLabel ? ` aria-label="${esc(ariaLabel)}"` : ' aria-hidden="true"'}>${inner}</div>`;
+    : rows.filter((x) => x.v > 0).map(seg).join('');
+  const live = rows.some((x) => x.dd);
+  return `<div class="fig-s${mini ? ' mini' : ''}"${live ? ' role="group"' : ' role="img"'}${ariaLabel ? ` aria-label="${esc(ariaLabel)}"` : (live ? '' : ' aria-hidden="true"')}>${inner}</div>`;
 }
 
 // مقاديرُ مرتَّبة = صفوف شريطية بلونٍ واحد، العدُّ والقيمة معاً — لا مبدّل عرض.
