@@ -111,7 +111,7 @@ const CSS = `<style>
 @media(max-width:900px){.psel .pmon{overflow-x:auto;max-width:100%}}
 .seg a.on{background:#fff;color:var(--ink2);box-shadow:var(--sh-sm)}
 /* ═══ كابينة v5.39 (نماذج المالك): لوحة داكنة، أقسام مرقّمة، رسوم غنية ═══ */
-.card.pad{padding:1rem 1.15rem;display:block}
+.card.pad{padding:.8rem 1rem;display:block}
 .secn{display:flex;align-items:baseline;gap:.6rem;margin-bottom:.7rem;flex-wrap:wrap}
 .secn .n{width:26px;height:26px;border-radius:50%;background:#101733;color:#fff;font-size:12.5px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;flex:none;align-self:center}
 .secn h2{font-size:16px;font-weight:800;color:var(--ink2);margin:0}
@@ -274,7 +274,8 @@ const CSS = `<style>
 /* رؤوس البطاقات وصفوف «افعل اليوم» ودرج التحليل */
 .g12>div>.card{display:flex;flex-direction:column;min-width:0;height:100%}
 /* بطاقة الطاقة بلا سقف ارتفاع: القوائم جزء من البطاقة لا ما بعدها (تسرّب الأسماء عند المالك) */
-.card.h-c{max-height:460px}
+/* وسقفُ بطاقتَي «ماذا أفعل اليوم؟» أخفضُ في فصلٍ يُراد له شاشة — وهما تمرّران داخلياً فلا يُخفى بند */
+.card.h-c{max-height:340px}
 .card .cbody{overflow-y:auto;flex:1;min-height:0}
 .hgrp{display:grid;gap:2px;min-width:0}
 .card-head .eyebrow,.eyebrow{font-size:var(--fs-body);color:var(--muted);font-weight:700}
@@ -1680,7 +1681,7 @@ export async function sectorPage(user, opts = {}) {
   })() : ''}
     </div>
     ${figCombo({ bars: monthly, cum: year === now.getUTCFullYear() && nowM >= 0 ? cumMonthly.slice(0, nowM + 1) : cumMonthly, target: sd.target_revenue_halalas || null, forecast: fc.forecast || null,
-    labels: MONTHS_AR, labelsTight: MONTHS_EN3, now: nowM + 1, fmt: sarShort, axisDir: 'ltr', w: 960, h: 220,
+    labels: MONTHS_AR, labelsTight: MONTHS_EN3, now: nowM + 1, fmt: sarShort, axisDir: 'ltr', w: 960, h: 190,
     barColor: 'var(--acc-indigo)', nowBarColor: 'var(--acc-violet)', forecastLine: fcLine,
     hi: isWinMode && wrev && wrev.months.length ? wrev.months : null, hover: true,
     ariaLabel: `الإيراد الشهري والتراكمي مقابل مستهدف ${year} — مرّر على أي شهر لقراءة قيمه (أو ركّز الرسم واستعمل الأسهم)` })}
