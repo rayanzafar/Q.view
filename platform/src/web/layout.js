@@ -926,16 +926,20 @@ export function figHeat(rows, colLabels, { tone, ltr = false } = {}) {
 }
 
 // خريطة مساحية بسيطة: الأكبر كتلةً يمنى وبقيةُ الحصص عموداً — المساحة تقول الحصة.
-export function figTreemap(items, { h = 160 } = {}) {
+export function figTreemap(items, { h = 160, total: totalOpt = null } = {}) {
   const list = (items || []).filter((x) => x.v > 0).sort((a, b) => b.v - a.v);
   if (!list.length) return '';
-  const total = list.reduce((a, x) => a + x.v, 0);
+  // المقام من المستدعي حين يكون للنسبة مرجعٌ خارج المعروضين (إيراد القطاع كله مثلاً) — وإلا
+  // ظهرت الحصة نفسها برقمين مختلفين هنا وفي الجدول المجاور.
+  const total = totalOpt && totalOpt > 0 ? totalOpt : list.reduce((a, x) => a + x.v, 0);
   const [maj, ...rest] = list;
-  const majPct = Math.round((maj.v / total) * 100);
+  const shown = list.reduce((a, x) => a + x.v, 0);
+  const majShare = Math.round((maj.v / shown) * 100);   // للتقسيم المرئي
+  const majPct = Math.round((maj.v / total) * 100);     // للنسبة المعروضة
   const restTotal = rest.reduce((a, x) => a + x.v, 0) || 1;
   return `<div class="fig-tree" style="min-height:${h}px" role="img" aria-label="${esc(list.map((x) => `${x.label} ${Math.round((x.v / total) * 100)}%`).join(' · '))}">
-    <div class="maj" style="flex:${majPct} 1 0;background:${esc(maj.color || 'var(--brand)')}" title="${esc(maj.label)}: ${esc(maj.sub || '')}"><span class="nm">${esc(maj.label)}</span><span class="vv tnum">${esc(maj.sub || '')} (${majPct}%)</span></div>
-    ${rest.length ? `<div class="rest" style="flex:${100 - majPct} 1 0">${rest.map((x) => `<div class="cellt" style="flex:${Math.max(8, Math.round((x.v / restTotal) * 100))} 1 0;background:${esc(x.color || 'var(--brand2)')}" title="${esc(x.label)}: ${esc(x.sub || '')}"><span class="nm">${esc(x.label)}</span><span class="vv tnum">${esc(x.sub || '')} (${Math.round((x.v / total) * 100)}%)</span></div>`).join('')}</div>` : ''}
+    <div class="maj" style="flex:${majShare} 1 0;background:${esc(maj.color || 'var(--brand)')}" title="${esc(maj.label)}: ${esc(maj.sub || '')}"><span class="nm">${esc(maj.label)}</span><span class="vv tnum">${esc(maj.sub || '')} (${majPct}%)</span></div>
+    ${rest.length ? `<div class="rest" style="flex:${100 - majShare} 1 0">${rest.map((x) => `<div class="cellt" style="flex:${Math.max(8, Math.round((x.v / restTotal) * 100))} 1 0;background:${esc(x.color || 'var(--brand2)')}" title="${esc(x.label)}: ${esc(x.sub || '')}"><span class="nm">${esc(x.label)}</span><span class="vv tnum">${esc(x.sub || '')} (${Math.round((x.v / total) * 100)}%)</span></div>`).join('')}</div>` : ''}
   </div>`;
 }
 

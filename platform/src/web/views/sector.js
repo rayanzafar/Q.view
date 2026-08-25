@@ -100,7 +100,7 @@ const CSS = `<style>
 .kpi:hover{box-shadow:var(--sh)}
 .kpi:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
 .ke{font-size:11.5px;font-weight:700;color:var(--muted);display:flex;gap:.3rem;align-items:center;flex-wrap:wrap;min-width:0}
-.ks{margin-inline-start:auto;font-size:10px;color:var(--muted);font-weight:700;background:var(--track);border-radius:999px;padding:.05rem .5rem;flex:none}
+.ks{margin-inline-start:auto;font-size:9.5px;color:var(--muted);font-weight:700;background:var(--track);border-radius:999px;padding:.05rem .45rem;flex:none;white-space:nowrap}
 .kv{font-size:var(--fs-val-lg);font-weight:800;color:var(--ink2);line-height:1.15;letter-spacing:-.01em}
 .kb{font-size:11.5px;color:var(--muted);line-height:1.55}
 .kc{font-size:10px;color:var(--muted);line-height:1.5}
@@ -1373,16 +1373,16 @@ export async function sectorPage(user, opts = {}) {
   const monthWord = (n) => countAr(n, { one: 'شهر واحد', two: 'شهران', few: 'أشهر', many: 'شهراً' });
   const kpiForecast = fr.tooEarly
     ? kpiCard({ eye: G.forecast, val: '—', sub: 'مبكرٌ على التوقع — لم يكتمل شهرٌ من السنة بعد',
-      sub2: attainRev != null ? `المحقق ${sarShort(fr.actual)} من ${G.target}` : '', scope: `سنة ${year}`, dd: 'secrev' })
+      sub2: attainRev != null ? `المحقق ${sarShort(fr.actual)} من ${G.target}` : '', scope: 'لا يتأثر بالفترة', dd: 'secrev' })
     : fr.closed
       ? kpiCard({ eye: G.forecast, val: sarShort(fr.actual), valTitle: fmtSar(fr.actual),
-        sub: 'السنة انتهت — الرقم محقّقها لا توقّعاً', scope: `سنة ${year}`, dd: 'secrev' })
+        sub: 'السنة انتهت — الرقم محقّقها لا توقّعاً', scope: 'لا يتأثر بالفترة', dd: 'secrev' })
       : kpiCard({ eye: G.forecast, val: sarShort(fr.base), valTitle: fmtSar(fr.base),
         mark: estMark(`تقديرٌ محسوب من الإيراد المُسجَّل وحده — لا من قيمة الفرص: الأساس ${sarShort(fr.base)} = المحقق ${sarShort(fr.actual)} ÷ ما انقضى من السنة (${fr.elapsedPct}%)؛ والمتحفّظ ${sarShort(fr.low)} = المحقق + أبطأ شهر مسجَّل (${sarShort(fr.minMonth)}) × ${monthWord(fr.remainingMonths)} متبقية؛ والمتفائل ${sarShort(fr.high)} = المحقق + أفضل شهر مسجَّل (${sarShort(fr.maxMonth)}) × المتبقية. وتوزيع الأشهر يتبع تواريخ قبول المخرجات أو تسجيلها لا تنفيذ العمل.`),
         sub: `النطاق <b class="tnum" dir="ltr">${sarShort(fr.low)}–${sarShort(fr.high)}</b>${fcPct != null ? ` · <span class="tnum" dir="ltr">${fcPct >= 0 ? '+' : '−'}${Math.abs(fcPct)}%</span> عن الهدف` : ''}`,
         sub2: `على وتيرة ${sarShort(Math.round(fr.actual / Math.max(1, fr.monthsSeen)))} شهرياً خلال ${monthWord(fr.monthsSeen)} مضت`,
         viz: figSpark(cumMonthly, { color: 'var(--acc-teal)', ariaLabel: 'مسار الإيراد التراكمي الذي تُقاس عليه الوتيرة' }),
-        scope: `سنة ${year}`, dd: 'secrev' });
+        scope: 'لا يتأثر بالفترة', dd: 'secrev' });
 
   // بطاقة الخط المرجّح: رصيدٌ لحظي لا يتأثر بالفترة — والشرارة مرسّى الفوز الشهري الحقيقي
   // (لا سجل تاريخي لقيمة الخط نفسه — فلا نختلقه).
@@ -1391,7 +1391,7 @@ export async function sectorPage(user, opts = {}) {
     sub: cover?.coverage != null ? `تغطية ×<b class="tnum">${cover.coverage}</b> من المتبقي من هدف المبيعات` : 'لا هدف مبيعات للتغطية',
     viz: figSpark(wbm.slots.map((x) => x.v), { color: 'var(--acc-violet)', ariaLabel: 'المكسوب شهرياً — لا سجل تاريخي لقيمة الخط فيُعرض المرسّى الفعلي' }),
     sub2: 'المكسوب شهرياً — لا سجل تاريخي لقيمة الخط',
-    scope: 'لحظي', dd: 'seccover' });
+    scope: 'لا يتأثر بالفترة', dd: 'seccover' });
 
   // بطاقة الإشغال: نصف عدّاد على سقف محور التسكين نفسه — والحدود من قواعده لا أرقاماً مكتوبة.
   const kpiCap = kpiCard({ eye: 'إشغال الفريق', val: '',
@@ -1399,7 +1399,7 @@ export async function sectorPage(user, opts = {}) {
     sub: `${countAr(teamSize, { one: 'موظف واحد', two: 'موظفان', few: 'موظفين', many: 'موظفاً' })} · ${G.utilization} المخطَّط`,
     viz: figGaugeHalf(bandLoad, { size: 108, sw: 11, max: AXIS_MAX, color: bandLoad > OVER_ABOVE ? 'var(--st-bad)' : 'var(--acc-navy)', sub: 'من الطاقة' }),
     sub2: `${midNow.length} ضمن الطاقة · ${overNow.length} تجاوز · ${freeNow.length} بلا تسكين`,
-    scope: 'لحظي', dd: 'seccap' });
+    scope: 'لا يتأثر بالفترة', dd: 'seccap' });
 
   const kpiBand = `
   <section id="kpi-band" aria-label="نبض القطاع">
@@ -1516,7 +1516,15 @@ export async function sectorPage(user, opts = {}) {
       ${sd.target_revenue_halalas ? legChip('<i style="background:var(--tick)"></i>', G.target, sarShort(sd.target_revenue_halalas)) : ''}
       ${fc.forecast ? legChip('<i class="dashline"></i>', G.forecast, sarShort(fc.forecast),
     estMark(`تقديرٌ من وتيرة الإيراد المُسجَّل — والنطاق ${sarShort(fr.low)}–${sarShort(fr.high)} بصيغه على بطاقة التوقع`)) : ''}
-      ${qDelta != null ? `<span style="margin-inline-start:auto;font-size:var(--fs-body);color:var(--muted)">الربع الحالي ${qDelta >= 0 ? 'أعلى' : 'أدنى'} من السابق بنسبة <b class="tnum">${Math.abs(qDelta)}%</b></span>` : ''}
+      ${qDelta != null ? (() => {
+    // الربع الجاري ناقصٌ بطبيعته، فمقارنتُه بربعٍ كامل تقول «أدنى بـ100%» وهي ليست تراجعاً.
+    // إما أن نقارن ربعاً مكتملاً بمثله، وإما أن نقول صراحةً كم مضى منه.
+    const mInQ = Math.min(3, Math.max(0, (nowM + 1) - nowQ * 3));
+    const partial = mInQ > 0 && mInQ < 3;
+    return `<span style="margin-inline-start:auto;font-size:var(--fs-body);color:var(--muted)">${partial
+      ? `الربع الحالي ${countAr(mInQ, { one: 'شهرٌ واحد منه مضى', two: 'شهران منه مضيا', few: 'أشهر منه مضت', many: 'شهراً منه مضى' })} — لا يُقارَن بربعٍ كامل بعد`
+      : `الربع الحالي ${qDelta >= 0 ? 'أعلى' : 'أدنى'} من السابق بنسبة <b class="tnum">${Math.abs(qDelta)}%</b>`}</span>`;
+  })() : ''}
     </div>
     ${figCombo({ bars: monthly, cum: year === now.getUTCFullYear() && nowM >= 0 ? cumMonthly.slice(0, nowM + 1) : cumMonthly, target: sd.target_revenue_halalas || null, forecast: fc.forecast || null,
     labels: MONTHS_AR, labelsTight: MONTHS_EN3, now: nowM + 1, fmt: sarShort, axisDir: 'ltr', w: 960, h: 220,
@@ -1701,9 +1709,11 @@ export async function sectorPage(user, opts = {}) {
 
   // ── ٧: تركيز الإيراد والعملاء — خريطة مساحية + الجدول + التحصيل ──
   const treeColors = ['var(--ord-1)', 'var(--ord-2)', 'var(--ord-3)', 'var(--ord-4)', 'var(--ord-5)'];
+  // المقام واحدٌ مع جدول العملاء (إيراد القطاع) — كان المخطط يقسم على مجموع المعروضين وحدهم
+  // فيظهر العميل نفسه بـ74% في المخطط و73% في الجدول على بعد ثلاثين بكسلاً.
   const treemap = topClients.filter((c) => c.rev > 0).length >= 2 ? figTreemap(topClients.filter((c) => c.rev > 0).map((c, i) => ({
     label: c.name_ar, v: c.rev, sub: sarShort(c.rev), color: treeColors[i % treeColors.length],
-  })), { h: 170 }) : '';
+  })), { h: 170, total: secRevTotal }) : '';
 
   // ── ٨: الفصل البشري — خريطة حرارية إدارة×شهر + الطلب مقابل الطاقة ──
   const heatRows = team && team.departments.length
