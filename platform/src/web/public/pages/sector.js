@@ -70,16 +70,22 @@
     // العتبات ومقياس المحور من الخادم (سماتٌ على المحور) — لا نسخة ثانية هنا تتباعد عن المصدر.
     var axis = document.querySelector('.cap-axis');
     var over = Number(axis && axis.getAttribute('data-over')) || 110;
+    var free = Number(axis && axis.getAttribute('data-free')) || 70;
     var axisMax = Number(axis && axis.getAttribute('data-axis-max')) || 125;
     document.querySelectorAll('.cap-av').forEach(function (av) {
       var v = Number(av.getAttribute('data-' + w) || 0);
-      av.style.left = (Math.min(axisMax, Math.max(0, v)) / axisMax * 100).toFixed(1) + '%';
+      // مروحة المتساوين محفوظة على العنصر: من دونها يعود أربعة عشر شخصاً إلى نقطةٍ واحدة
+      // عند تبديل النافذة، فيختفي أحد عشر منهم تحت غيرهم رغم أن التعليق يَعِد بنقرهم.
+      var fan = Number(av.getAttribute('data-fan') || 0);
+      var pos = Math.min(axisMax, Math.max(0, v)) / axisMax * 100;
+      av.style.left = Math.min(100, pos + fan).toFixed(1) + '%';
       var name = av.getAttribute('data-name') || '';
       var job = av.getAttribute('data-job') || '';
       av.title = name + (job ? ' · ' + job : '') + ' — الحِمل ' + v + '%';
       av.setAttribute('aria-label', name + ' — الحِمل ' + v + '% — التفصيل');
       av.classList.toggle('over', v > over);
       av.classList.toggle('free', v === 0);
+      av.classList.toggle('under', v > 0 && v < free);
     });
     var cap = document.getElementById('cap-caption');
     if (cap) cap.textContent = 'النافذة: ' + btn.textContent.trim() + ' · ' + (cap.getAttribute('data-tail') || '');
@@ -112,6 +118,71 @@
 
   function reportPreview(el) { if (window.Sanad && Sanad.previewReport) Sanad.previewReport(el.getAttribute('data-report')); }
   function reportSend(el) { if (window.Sanad && Sanad.testSend) Sanad.testSend(el.getAttribute('data-report')); }
+
+  // ── تلميح الرسوم الحيّ: شريحة الشهر تلتقط المؤشر، فيخرج التلميح فوراً ومعه خيط تتبّع ──
+  // البديل كان <title> الأصلي: هدفه نقطةٌ بقطر 2.5 ويتأخر ثانية ولا يترك أثراً — يُقرأ ساكناً.
+  // والقيم نفسها متاحة بلوحة المفاتيح: الرسم قابل للتركيز والأسهم تتنقّل بين شهوره.
+  var tipEl = null;
+  function tip() {
+    if (!tipEl) { tipEl = document.createElement('div'); tipEl.className = 'fig-tip'; tipEl.hidden = true; document.body.appendChild(tipEl); }
+    return tipEl;
+  }
+  function showTip(hit, evt) {
+    var svg = hit.ownerSVGElement;
+    if (!svg) return;
+    var rows = (hit.getAttribute('data-rows') || '').split('|').filter(Boolean).map(function (r) {
+      var p = r.split('=');
+      return '<span class="r"><span>' + p[0] + '</span><b>' + (p[1] || '') + '</b></span>';
+    }).join('');
+    var t = tip();
+    t.innerHTML = '<span class="t">' + (hit.getAttribute('data-l') || '') + '</span>' + rows;
+    t.hidden = false;
+    // خيط التتبّع على إحداثيات الرسم نفسه (viewBox) لا الشاشة
+    var xh = svg.querySelector('.fig-xhair');
+    if (xh) {
+      var x = hit.getAttribute('data-x');
+      xh.setAttribute('x1', x); xh.setAttribute('x2', x); xh.setAttribute('opacity', '.45');
+    }
+    var box = hit.getBoundingClientRect();
+    var cx = evt && evt.clientX != null ? evt.clientX : box.left + box.width / 2;
+    var cy = evt && evt.clientY != null ? evt.clientY : box.top + box.height / 2;
+    var tw = t.offsetWidth, th = t.offsetHeight;
+    var left = Math.min(Math.max(8, cx - tw / 2), window.innerWidth - tw - 8);
+    var top = cy - th - 14;
+    if (top < 8) top = cy + 18;
+    t.style.left = left + 'px';
+    t.style.top = top + 'px';
+  }
+  function hideTip(svg) {
+    if (tipEl) tipEl.hidden = true;
+    var host = svg || document;
+    host.querySelectorAll ? host.querySelectorAll('.fig-xhair').forEach(function (x) { x.setAttribute('opacity', '0'); })
+      : null;
+  }
+  on(document, 'mousemove', function (e) {
+    var hit = e.target.closest ? e.target.closest('.fig-hit') : null;
+    if (hit) showTip(hit, e);
+    else if (tipEl && !tipEl.hidden) hideTip(document);
+  });
+  on(document, 'mouseleave', function (e) {
+    if (e.target.closest && e.target.closest('.fig-live')) hideTip(e.target.closest('.fig-live'));
+  }, true);
+  // لوحة المفاتيح: الأسهم تتنقّل بين شهور الرسم المركَّز، وEscape يخفي التلميح
+  on(document, 'keydown', function (e) {
+    var svg = document.activeElement && document.activeElement.classList
+      && document.activeElement.classList.contains('fig-live') ? document.activeElement : null;
+    if (!svg) return;
+    var hits = [].slice.call(svg.querySelectorAll('.fig-hit'));
+    if (!hits.length) return;
+    if (e.key === 'Escape') { hideTip(svg); return; }
+    var dir = e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowRight' ? 1 : 0;
+    if (!dir) return;
+    e.preventDefault();
+    var cur = Number(svg.getAttribute('data-cur') || -1);
+    var next = Math.min(hits.length - 1, Math.max(0, cur < 0 ? 0 : cur + dir));
+    svg.setAttribute('data-cur', String(next));
+    showTip(hits[next], null);
+  });
 
   var ACTIONS = {
     'open-dd': openDD,
