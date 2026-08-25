@@ -94,6 +94,13 @@ const CSS = `<style>
 .tabpanel{display:grid;gap:1rem}
 .tabpanel[hidden]{display:none}
 @media(max-width:900px){.tabs{overflow-x:auto;max-width:100%}}
+/* مُنتقيا الإدارة والعميل + رقائق المرشِّحات النشطة وسطرُ ما يُستبعَد */
+.fmenu summary{white-space:nowrap}
+.fitem{display:block;padding:.35rem .6rem;border-radius:8px;font-size:12px;color:var(--ink2);text-decoration:none;white-space:nowrap}
+.fitem:hover{background:var(--bg)}
+.fitem.on{background:var(--acc-soft,#eaf0fc);color:var(--brand);font-weight:800}
+.fnote{font-size:var(--fs-micro);color:var(--muted);background:var(--st-warn-soft);border:1px solid var(--line);border-radius:10px;padding:.35rem .7rem;margin-top:.35rem;display:flex;gap:.4rem;align-items:center;flex-wrap:wrap}
+.nofilt{font-size:9.5px;font-weight:700;color:var(--muted);background:var(--track);border-radius:999px;padding:.05rem .5rem;white-space:nowrap}
 .psel{display:flex;gap:.4rem;align-items:center;flex-wrap:wrap}
 .psel .seg{padding:2px}
 .psel .pmon a{padding:.35rem .45rem;font-size:11px}
@@ -439,6 +446,48 @@ export async function sectorPage(user, opts = {}) {
   const sd = sectorId ? await sectorDashboard(user, sectorId, { year }) : null;
   if (!sd) return layout({ user, active: 'sector', title: G.commandCenter, body: `<div class="empty-state"><div class="t">لا يوجد قطاع مرتبط بحسابك</div><div class="s">اطلب من مدير النظام ربطك بقطاع لعرض مركز قيادته.</div></div>` });
 
+  // ── مرشِّحا الإدارة والعميل (طلب المالك ٦) ─────────────────────────────────────────────
+  // الإدارة **المسؤولة** هي المرجع: تعليق ترحيلة 034 صريح — الجمع على كل إدارةٍ مشارِكة يحسب
+  // المشروع الواحد مرتين. و«بلا إدارة» خيارٌ صريح لأن أكثر من نصف المشاريع بلا إدارة مسجَّلة،
+  // فترشيحٌ صامت كان سيُخفيها ويترك القارئ يحار لماذا لا تُجمَع الأرقام إلى القطاع.
+  const NO_DEPT = 'none';
+  const sectorDepts = await all(`SELECT id, name_ar FROM department
+     WHERE sector_id = ? AND deleted_at IS NULL ORDER BY name_ar`, [sectorId]);
+  const deptSel = opts.dept === NO_DEPT ? NO_DEPT
+    : (opts.dept && sectorDepts.some((d) => d.id === opts.dept) ? String(opts.dept) : null);
+  // العميل: يُتحقَّق منه من عملاء لهم أثرٌ في هذا القطاع (فرصةٌ أو مشروع) — لا من كل العملاء
+  const sectorClientRows = await all(`SELECT DISTINCT c.id, c.name_ar FROM client c
+     WHERE c.deleted_at IS NULL AND (
+       EXISTS(SELECT 1 FROM opportunity o WHERE o.client_id = c.id AND o.sector_id = ? AND o.deleted_at IS NULL)
+       OR EXISTS(SELECT 1 FROM project pr WHERE pr.client_id = c.id AND pr.sector_id = ? AND pr.deleted_at IS NULL))
+     ORDER BY c.name_ar`, [sectorId, sectorId]);
+  const clientSel = opts.client && sectorClientRows.some((c) => c.id === opts.client) ? String(opts.client) : null;
+  const deptSql = (col) => (deptSel === NO_DEPT ? ` AND ${col} IS NULL`
+    : deptSel ? ` AND ${col} = ?` : '');
+  const deptArg = deptSel && deptSel !== NO_DEPT ? [deptSel] : [];
+  const clientSql = (col) => (clientSel ? ` AND ${col} = ?` : '');
+  const clientArg = clientSel ? [clientSel] : [];
+  // كم يُستبعَد لعدم وجود إدارة مسجَّلة له؟ يُقال صراحةً حين يُرشَّح — أكثر من نصف المشاريع
+  // بلا إدارة، فترشيحٌ صامت يُخفيها ويترك القارئ يحار لماذا لا تُجمَع الأرقام إلى القطاع.
+  const deptGap = sectorDepts.length ? await get(`SELECT
+      (SELECT COUNT(*) FROM project p WHERE p.sector_id = ? AND p.deleted_at IS NULL AND p.department_id IS NULL) prj,
+      (SELECT COUNT(*) FROM opportunity o JOIN stage st ON st.id = o.stage_id
+        WHERE o.sector_id = ? AND o.deleted_at IS NULL AND st.is_won = 0 AND st.is_lost = 0
+          AND o.department_id IS NULL) opp`, [sectorId, sectorId]) : null;
+  // فصول الصفحة تُعرَّف مبكراً: كل رابطٍ في الصفحة (مرشِّح أو فترة) يحمل الفصل الحالي، وإلا
+  // أعادك تبديلُ مرشِّحٍ إلى الفصل الأول وضاع موضعك.
+  const TAB_DEFS = [
+    ['pulse', 'الإيقاع'],
+    ['com', 'التجاري'],
+    ['ops', 'التشغيلي'],
+    ['cli', G.clients],
+    ['hr', 'البشري'],
+    ['next', 'القادم'],
+  ];
+  const tabSel = TAB_DEFS.some(([k]) => k === opts.tab) ? String(opts.tab) : 'pulse';
+  // pos='below' لما يقع أعلى الشاشة: التلميح فوق مُطلِقه يُقصّ عند حافة النافذة فيتراكب مع الرقم
+  const estMark = (tip, pos = '') => `<span class="wmark" data-tip="${esc(tip)}"${pos ? ` data-tip-pos="${pos}"` : ''} tabindex="0" role="img" aria-label="قيمة تقديرية — ${esc(tip)}">${icon('risk')}</span>`;
+  const noteMark = (tip, pos = '') => `<span class="tipdot" data-tip="${esc(tip)}"${pos ? ` data-tip-pos="${pos}"` : ''} tabindex="0" role="img" aria-label="${esc(tip)}">${icon('info')}</span>`;
   const canInvoices = can(user, 'read', 'invoice');
   const canContracts = can(user, 'read', 'contract');
   const canMargin = canSeeSensitive(user, 'margin');
@@ -523,15 +572,16 @@ export async function sectorPage(user, opts = {}) {
   // فوقها فقارن مرحلتين غير متجاورتين.
   const pipe = await all(`SELECT st.id, st.name_ar, st.color, COUNT(o.id) AS "count", COALESCE(SUM(o.value_halalas),0) value_halalas,
       ${WEIGHTED_OPEN} weighted
-     FROM stage st LEFT JOIN opportunity o ON o.stage_id = st.id AND o.deleted_at IS NULL AND o.sector_id = ?
+     FROM stage st LEFT JOIN opportunity o ON o.stage_id = st.id AND o.deleted_at IS NULL AND o.sector_id = ?${deptSql('o.department_id')}${clientSql('o.client_id')}
      WHERE st.is_won = 0 AND st.is_lost = 0
-     GROUP BY st.id, st.name_ar, st.color, st.sort_order ORDER BY st.sort_order`, [sectorId]);
+     GROUP BY st.id, st.name_ar, st.color, st.sort_order ORDER BY st.sort_order`, [sectorId, ...deptArg, ...clientArg]);
   // صفوف الفرص المفتوحة نفسها — تخدم متوسط العمر والمتوقفة وأعلى القيم وترشيح المرحلة،
   // فلا تُحسب الأرقام مرتين من استعلامين قد يفترقان.
   const openRows = await all(`SELECT o.id, o.title_ar, o.value_halalas, o.win_pct, o.stage_id, o.client_id,
       COALESCE(substr(o.stage_changed_at,1,10), substr(o.created_at,1,10)) since, c.name_ar client
      FROM opportunity o JOIN stage st ON st.id = o.stage_id LEFT JOIN client c ON c.id = o.client_id
-     WHERE st.is_won = 0 AND st.is_lost = 0 AND o.deleted_at IS NULL AND o.sector_id = ?`, [sectorId]);
+     WHERE st.is_won = 0 AND st.is_lost = 0 AND o.deleted_at IS NULL AND o.sector_id = ?${deptSql('o.department_id')}${clientSql('o.client_id')}`,
+  [sectorId, ...deptArg, ...clientArg]);
   const activeC = canContracts ? await get(`SELECT COUNT(*) n, COALESCE(SUM(value_halalas),0) v FROM contract
      WHERE sector_id = ? AND deleted_at IS NULL AND status = 'ACTIVE'`, [sectorId]) : null;
   const secContracts = canContracts ? await all(`SELECT c.id, c.code, c.value_halalas, c.status, c.start_date, cl.name_ar client,
@@ -596,6 +646,9 @@ export async function sectorPage(user, opts = {}) {
   const qs = (over = {}) => {
     const p = new URLSearchParams();
     p.set('year', String(year)); p.set('p', win);
+    if (deptSel) p.set('dept', deptSel);
+    if (clientSel) p.set('client', clientSel);
+    if (tabSel) p.set('tab', tabSel);
     if (user.scope === 'company' && sectorId) p.set('sector', sectorId);
     if (selStage) p.set('stage', selStage.id);
     for (const [k, v] of Object.entries(over)) { if (v == null) p.delete(k); else p.set(k, String(v)); }
@@ -657,6 +710,25 @@ export async function sectorPage(user, opts = {}) {
     const on = k === win;
     return `<a class="${on ? 'on' : ''}${b.isFuture ? ' fut' : ''}" style="text-decoration:none" href="${qs({ p: k })}"${on ? ' aria-current="true"' : ''}${b.isFuture ? ' title="فترة قادمة — تُعرض بالمتوقع لا بالمحقق"' : ''}>${label}</a>`;
   };
+  const fchip = (label, href, on, title = '') => `<a class="chip${on ? ' on' : ''}" style="text-decoration:none" href="${href}"${title ? ` title="${esc(title)}"` : ''}>${esc(label)}${on ? ' <span aria-hidden="true">✕</span>' : ''}</a>`;
+  const deptPick = sectorDepts.length ? `<details class="rmenu fmenu"><summary class="btn btn-sm">${deptSel ? (deptSel === NO_DEPT ? 'بلا إدارة' : esc(sectorDepts.find((d) => d.id === deptSel)?.name_ar || 'الإدارة')) : 'الإدارة'} ▾</summary>
+      <div class="rmenu-b">
+        <a class="fitem${!deptSel ? ' on' : ''}" href="${qs({ dept: null })}">كل الإدارات</a>
+        ${sectorDepts.map((d) => `<a class="fitem${deptSel === d.id ? ' on' : ''}" href="${qs({ dept: d.id })}">${esc(d.name_ar)}</a>`).join('')}
+        <a class="fitem${deptSel === NO_DEPT ? ' on' : ''}" href="${qs({ dept: NO_DEPT })}" title="سجلات لم تُسنَد إلى إدارة بعد">بلا إدارة${deptGap ? ` (${deptGap.prj + deptGap.opp})` : ''}</a>
+      </div></details>` : '';
+  const clientPick = sectorClientRows.length ? `<details class="rmenu fmenu"><summary class="btn btn-sm">${clientSel ? esc(sectorClientRows.find((c) => c.id === clientSel)?.name_ar || G.clients) : G.clients} ▾</summary>
+      <div class="rmenu-b" style="max-height:320px;overflow-y:auto">
+        <a class="fitem${!clientSel ? ' on' : ''}" href="${qs({ client: null })}">كل العملاء</a>
+        ${sectorClientRows.slice(0, 40).map((c) => `<a class="fitem${clientSel === c.id ? ' on' : ''}" href="${qs({ client: c.id })}">${esc(c.name_ar)}</a>`).join('')}
+      </div></details>` : '';
+  const activeChips = [
+    deptSel ? fchip(deptSel === NO_DEPT ? 'بلا إدارة' : (sectorDepts.find((d) => d.id === deptSel)?.name_ar || ''), qs({ dept: null }), true, 'إزالة ترشيح الإدارة') : '',
+    clientSel ? fchip(sectorClientRows.find((c) => c.id === clientSel)?.name_ar || '', qs({ client: null }), true, 'إزالة ترشيح العميل') : '',
+  ].filter(Boolean).join('');
+  const filterNote = (deptSel && deptSel !== NO_DEPT && deptGap && (deptGap.prj || deptGap.opp))
+    ? `<div class="fnote">${noteMark('الأرقام المالية تُجمع على الإدارة المسؤولة وحدها — ولو جُمعت على كل إدارةٍ مشارِكة لحُسب المشروع الواحد مرتين')} ترشيحٌ بالإدارة: ${countAr(deptGap.prj, { one: 'مشروع واحد', two: 'مشروعان', few: 'مشاريع', many: 'مشروعاً' })} و${countAr(deptGap.opp, { one: 'فرصة مفتوحة واحدة', two: 'فرصتان مفتوحتان', few: 'فرص مفتوحة', many: 'فرصة مفتوحة' })} بلا إدارة مسجَّلة — لا تظهر هنا</div>`
+    : '';
   const lens = `<div class="psel">
     <div class="seg" role="group" aria-label="الفترة">${pOpt('y', 'السنة')}</div>
     <div class="seg" role="group" aria-label="الأرباع">${[1, 2, 3, 4].map((q) => pOpt(`q${q}`, `ر${q}`)).join('')}</div>
@@ -680,6 +752,9 @@ export async function sectorPage(user, opts = {}) {
     ${switcher || ''}
     <span style="font-size:var(--fs-body);color:var(--muted);font-weight:700">الفترة: <span class="tipdot" data-tip="اختر السنة أو ربعاً أو شهراً بعينه. التدفقات (الإيراد والمكسوب والمفوتر والمحصَّل وما تغيّر) تُعاد لهذه الفترة، والأرصدة اللحظية (خط الفرص، الإشغال، صحة التنفيذ) لا تتأثر بها وتحمل وسمها. والفترة القادمة تُعرض بالمتوقع لا بالمحقق." tabindex="0" role="img" aria-label="اختر السنة أو ربعاً أو شهراً — التدفقات تُعاد للفترة والأرصدة اللحظية لا تتأثر">${icon('info')}</span></span>
     ${lens}
+    ${deptPick}
+    ${clientPick}
+    ${activeChips}
     ${stageChip}
     <span class="spacer"></span>
     <span class="pill" style="background:#fdf6e3;color:#8a6d1a;gap:.4rem">${nowDot('')} ${G.yearElapsed(elapsed)}</span>
@@ -1384,9 +1459,6 @@ export async function sectorPage(user, opts = {}) {
 
   const winName = periodLabel(period.kind, period.index);
   const winEcho2 = winEcho;
-  // pos='below' لما يقع أعلى الشاشة: التلميح فوق مُطلِقه يُقصّ عند حافة النافذة فيتراكب مع الرقم
-  const estMark = (tip, pos = '') => `<span class="wmark" data-tip="${esc(tip)}"${pos ? ` data-tip-pos="${pos}"` : ''} tabindex="0" role="img" aria-label="قيمة تقديرية — ${esc(tip)}">${icon('risk')}</span>`;
-  const noteMark = (tip, pos = '') => `<span class="tipdot" data-tip="${esc(tip)}"${pos ? ` data-tip-pos="${pos}"` : ''} tabindex="0" role="img" aria-label="${esc(tip)}">${icon('info')}</span>`;
   const prevTrend = (sd.trend || []).find((t) => t.year === year - 1) || null;
   const yoyPct = prevTrend?.revenue_halalas ? Math.round(((sd.revenue_halalas - prevTrend.revenue_halalas) / prevTrend.revenue_halalas) * 100) : null;
   const yoySales = prevTrend?.sales_halalas ? Math.round(((sd.sales_halalas - prevTrend.sales_halalas) / prevTrend.sales_halalas) * 100) : null;
@@ -1821,6 +1893,7 @@ export async function sectorPage(user, opts = {}) {
   const hrSection = `
   <section class="card pad">
     ${secn(8, 'الفصل البشري — التسكين والموارد', `${G.utilization} المخطَّط بالإدارة والشهر، والطلب مقابل الطاقة — من خطة التسكين لا ساعات العمل`)}
+    ${clientSel ? '<div class="nofilt" style="margin-bottom:.5rem">غير مرشَّح بالعميل — التسكين على المشاريع لا على العملاء</div>' : ''}
     <div class="hr3">
       <div>
         <div class="sh">${G.utilization} حسب ${team && team.departments.length ? 'الإدارة' : 'القطاع'} ${heat3Rows ? 'لهذا الشهر والشهرين بعده' : 'والشهر'}</div>
@@ -1915,15 +1988,8 @@ export async function sectorPage(user, opts = {}) {
   // قراءة سند وشريط الألسنة (~294 بكسل)، ويبقى للفصل المختار ~546 — فصلٌ واحد في كل مرة.
   // كل الفصول مُصيَّرة في الصفحة ويُخفى غير المختار بـhidden (لا جلبَ ولا انتظار عند التبديل)،
   // واللسان في الرابط `?tab=` فيبقى بعد التحديث ويُشارَك برابطه — نمط تفصيل الفرصة نفسه.
-  const TABS = [
-    ['pulse', 'الإيقاع'],
-    ['com', 'التجاري'],
-    ['ops', 'التشغيلي'],
-    ['cli', G.clients],
-    ['hr', 'البشري'],
-    ['next', 'القادم'],
-  ];
-  const tab = TABS.some(([k]) => k === opts.tab) ? String(opts.tab) : 'pulse';
+  const TABS = TAB_DEFS;
+  const tab = tabSel;
   const tabsBar = `<div class="seg tabs" role="tablist" aria-label="فصول مركز القطاع">${TABS.map(([k, l], i) => `
     <button type="button" role="tab" id="sec-tab-${k}" data-action="sec-tab" data-tab="${k}"
       aria-selected="${tab === k}" aria-controls="sec-panel-${k}" tabindex="${tab === k ? '0' : '-1'}"
@@ -1934,6 +2000,7 @@ export async function sectorPage(user, opts = {}) {
   const body = `${CSS}
     <div class="dash">
     ${toolbar}
+    ${filterNote}
     ${kpiBand}
     ${execBand}
     ${tabsBar}
