@@ -89,7 +89,10 @@ test('ترشيحٌ بعميل يقصّ فرصه — والفصل البشري ي
   const com = opensSection(h);
   assert.ok(com.includes('فرصة المدن باء'), 'فرصة العميل المختار حاضرة');
   assert.ok(!com.includes('فرصة الذكاء ألف'), 'فرصة عميلٍ آخر تسرّبت');
-  assert.ok(h.includes('غير مرشَّح بالعميل'), 'الفصل البشري لا يحمل وسم «غير مرشَّح بالعميل»');
+  // الشارة صارت تغطي المرشِّحَين معاً وتسمّي سببها (v5.46)
+  assert.ok(h.includes('خطة التسكين موردٌ قطاعي'), 'الفصل البشري لا يحمل شارة «القطاع كله» تحت ترشيح العميل');
+  const hd = await sectorPage(ADMIN, { year: String(YEAR), tab: 'hr', dept: 'D_AI' });
+  assert.ok(hd.includes('خطة التسكين موردٌ قطاعي'), 'الشارة غائبة تحت ترشيح الإدارة');
 });
 
 const comboSvg = (html) => {
@@ -117,6 +120,23 @@ test('رسم الإيقاع يُعاد تصييره بالترشيح: سلسلة
   // ترشيح العميل يمرّ من مشروع البند أيضاً
   const cl = await sectorPage(ADMIN, { year: String(YEAR), client: 'CL_A' });
   assert.ok(comboSvg(cl).includes('فبراير: 4.0M'), 'بند عميل المشروع باقٍ تحت ترشيح عميله');
+});
+
+test('الفصول الأخرى تتحرك مع الترشيح: الرحلة والصحة ونسبة الفوز وجدول العملاء (تدقيق 2026-08-25)', async () => {
+  const plain = await sectorPage(ADMIN, { year: String(YEAR) });
+  const dept = await sectorPage(ADMIN, { year: String(YEAR), dept: 'D_AI' });
+  const panel = (h, k, nx) => h.slice(h.indexOf(`id="sec-panel-${k}"`), h.indexOf(`id="sec-panel-${nx}"`));
+  // رحلة القيمة: محطة «المحقق» من السلسلة المرشَّحة (4M المنسوبة) لا رقم القطاع (6M)
+  const comD = panel(dept, 'com', 'ops'), comP = panel(plain, 'com', 'ops');
+  assert.ok(comP.includes('6.0M'), 'محطة المحقق القطاعية 6M غائبة');
+  assert.ok(comD.includes('4.0M') && !comD.includes('6.0M'), 'محطة المحقق لم تُقصّ بالترشيح');
+  // صحة المشاريع: الدونات والحلقة من العدّ المرشَّح (1/1) لا القطاعي (2/2)
+  assert.ok(panel(plain, 'ops', 'cli').includes('>2/2<'), 'حلقة الصحة القطاعية 2/2 غائبة');
+  assert.ok(panel(dept, 'ops', 'cli').includes('>1/1<'), 'حلقة الصحة لم تُقصّ بالترشيح');
+  // نسبة الفوز في ذيل القمع تحت الترشيح من فرص الترشيح لا القطاع
+  assert.ok(comD.includes('لا فرص حُسمت تحت الترشيح'), 'ذيل القمع بقي رقماً قطاعياً تحت الترشيح');
+  // جدول العملاء: عميل إدارةٍ أخرى لا يتسرب
+  assert.ok(!panel(dept, 'cli', 'hr').includes('جهة باء'), 'عميل إدارةٍ أخرى تسرّب إلى جدول العملاء المرشَّح');
 });
 
 test('مرشِّحٌ مجهول يسقط بلا خطأ ولا قصٍّ عشوائي', async () => {

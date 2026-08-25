@@ -44,6 +44,9 @@ const isRecognized = (d) =>
 // (periodOf أعلاه يستشير updated_at أيضاً كملاذ أخير قبل الإنشاء — فرقٌ موثَّق في فحص الوحدة.)
 export const DLV_YEAR_SQL =
   "COALESCE(year, CAST(substr(COALESCE(accepted_at, delivered_at, status_at, created_at),1,4) AS INTEGER))";
+// النسخة المؤهَّلة باسمٍ مستعار — لاستعلامٍ يضمّ project (created_at موجود في الجدولين فيلتبس العاري)
+export const dlvYearSqlFor = (a) =>
+  `COALESCE(${a}.year, CAST(substr(COALESCE(${a}.accepted_at, ${a}.delivered_at, ${a}.status_at, ${a}.created_at),1,4) AS INTEGER))`;
 
 function periodOf(d) {
   if (d.year && d.month) return { year: Number(d.year), month: Number(d.month) };

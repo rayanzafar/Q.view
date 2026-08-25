@@ -92,3 +92,14 @@ test('الخريطة الحرارية: اسم الإدارة يفتح نافذت
   assert.ok(/class="rl-btn"/.test(heat) || !/cap-dept-/.test(html),
     'صفوف الإدارات تُفتح حين تكون نوافذها مبنية');
 });
+
+test('كل زرِّ تفصيل (data-dd) له قالبه — لا نقرة ميتة', async () => {
+  // الحارس وُلد من عطلٍ حقيقي: صف «بلا إدارة» في الخريطة الحرارية حمل data-dd="cap-dept-null"
+  // ولا قالب بهذا الاسم — النقر لا يفتح شيئاً (تدقيق 2026-08-25).
+  const html = await sectorPage(ADMIN, { year: String(YEAR) });
+  const keys = new Set([...html.matchAll(/data-dd="([^"]+)"/g)].map((m) => m[1]));
+  for (const k of keys) {
+    assert.ok(html.includes(`id="dd-${k}"`), `زر تفصيل يشير إلى قالب غائب: ${k}`);
+  }
+  assert.ok(keys.size > 10, 'عدد أزرار التفصيل أقل من المتوقع — الحارس لا يفحص شيئاً');
+});

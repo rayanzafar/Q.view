@@ -34,9 +34,9 @@ export async function availableYears() {
     ) WHERE y IS NOT NULL ORDER BY y DESC`);
   const years = new Set(rows.map((r) => r.y));
   years.add(FY());
-  // سنةٌ قادمة واحدة تُعرض للتخطيط: توقّعها «امتداد الوتيرة» المعلَن وصفقاتها المجدولة —
-  // ولا أبعد منها: سنةٌ بلا سجلٍّ ولا أساسِ توقّعٍ شاشةٌ فارغة تُوهم بعطل.
-  years.add(FY() + 1);
+  // سنوات البيانات وحدها (+ الجارية). كانت السنة القادمة تُحقن دائماً فتفتح صفحةً كلها
+  // «لا سجلّ بعد» — وقرّر أ. حسين إخفاءها ما دامت فارغة (2026-08-25). متى أُسنِدت صفقةٌ أو
+  // سُجِّل بندٌ لسنةٍ قادمة ظهرت وحدها من الصف الأول أعلاه، بوسم «قادمة» وتوقّعِ الامتداد.
   return [...years].sort((a, b) => b - a);
 }
 
@@ -192,10 +192,12 @@ export async function sectorUtilization(sectorId, from, to) {
 }
 
 // ── Period model: quarter (1-4) maps to months; month filters revenue_line directly. ──
-export async function quarterlyRevenue(sectorId, year) {
-  const rows = await all(`SELECT month, ${NET_REVENUE} v FROM revenue_line
-     WHERE year = ? ${sectorId ? 'AND sector_id = ?' : ''} AND month IS NOT NULL GROUP BY month`,
-    [year, ...(sectorId ? [sectorId] : [])]);
+export async function quarterlyRevenue(sectorId, year, scope = {}) {
+  const sc = projectScopeSql('p', scope);
+  const rows = await all(`SELECT rl.month, ${NET_REVENUE} v FROM revenue_line rl
+     ${sc.active ? 'LEFT JOIN project p ON p.id = rl.project_id' : ''}
+     WHERE rl.year = ? ${sectorId ? 'AND rl.sector_id = ?' : ''} AND rl.month IS NOT NULL${sc.clause} GROUP BY rl.month`,
+    [year, ...(sectorId ? [sectorId] : []), ...sc.args]);
   const byMonth = Object.fromEntries(rows.map((r) => [r.month, r.v]));
   const q = [0, 0, 0, 0];
   for (let m = 1; m <= 12; m++) q[Math.floor((m - 1) / 3)] += byMonth[m] || 0;
@@ -254,11 +256,12 @@ export async function sectorWins(sectorId, year) {
 }
 
 // Bookings (won-opportunity value) per quarter of the year, by the win date (stage_changed_at).
-export async function quarterlyBookings(sectorId, year) {
+export async function quarterlyBookings(sectorId, year, scope = {}) {
+  const sc = projectScopeSql('o', scope);
   const rows = await all(`SELECT CAST(substr(o.stage_changed_at,6,2) AS INTEGER) m, COALESCE(SUM(o.value_halalas),0) v
      FROM opportunity o JOIN stage st ON st.id=o.stage_id
      WHERE st.is_won=1 AND o.exclude_from_sales=0 AND o.year=? AND o.deleted_at IS NULL AND o.stage_changed_at IS NOT NULL
-     ${sectorId ? 'AND o.sector_id = ?' : ''} GROUP BY m`, [year, ...(sectorId ? [sectorId] : [])]);
+     ${sectorId ? 'AND o.sector_id = ?' : ''}${sc.clause} GROUP BY m`, [year, ...(sectorId ? [sectorId] : []), ...sc.args]);
   const byM = Object.fromEntries(rows.map((r) => [r.m, r.v]));
   const q = [0, 0, 0, 0];
   for (let m = 1; m <= 12; m++) q[Math.floor((m - 1) / 3)] += byM[m] || 0;
@@ -416,7 +419,7 @@ export async function windowFigures(user, sectorId, sinceIso, untilIso, scope = 
   // قصّ الإدارة/العميل: الفرص بعموديها مباشرةً، والفواتير والتحصيل عبر مشروع الفاتورة —
   // فاتورةٌ بلا مشروع تدخل «بلا إدارة» وتسقط من الترشيح الموجب (الشاشة تُفصح عن غير المنسوب).
   const osc = projectScopeSql('o', scope);
-  const psc = projectScopeSql('p', scope);
+  const psc = invoiceScopeSql(scope);
   const [w, inv, col] = await Promise.all([
     get(`SELECT
         SUM(CASE WHEN st.is_won = 1 AND o.exclude_from_sales = 0 THEN 1 ELSE 0 END) won_n,
@@ -517,6 +520,17 @@ export function projectScopeSql(alias, { dept = null, client = null } = {}) {
   if (dept === 'none') clause += ` AND ${alias}.department_id IS NULL`;
   else if (dept) { clause += ` AND ${alias}.department_id = ?`; args.push(dept); }
   if (client) { clause += ` AND ${alias}.client_id = ?`; args.push(client); }
+  return { clause, args, active: !!(dept || client) };
+}
+
+// قصّ الفواتير خاصةً: العميل من الفاتورة نفسها إن سُجِّل وإلا من مشروعها (الفاتورة تحمل
+// عميلها مباشرةً)، والإدارة عبر المشروع دوماً. يفترض الاستعلامَ ضامّاً invoice i وproject p.
+export function invoiceScopeSql({ dept = null, client = null } = {}) {
+  let clause = '';
+  const args = [];
+  if (dept === 'none') clause += ' AND p.department_id IS NULL';
+  else if (dept) { clause += ' AND p.department_id = ?'; args.push(dept); }
+  if (client) { clause += ' AND COALESCE(i.client_id, p.client_id) = ?'; args.push(client); }
   return { clause, args, active: !!(dept || client) };
 }
 

@@ -126,12 +126,18 @@ export async function financeSummary(user, year = FY()) {
 // Optional {sector}: focus on one sector (sector command center) — the invoice's own sector,
 // falling back to its project's sector (same COALESCE path used across finance views).
 // Existing callers (arAging(user, year)) are unchanged in signature and result.
-export async function arAging(user, year = FY(), { sector } = {}) {
+export async function arAging(user, year = FY(), { sector, dept, client } = {}) {
   const f = scopeFilter(user, 'invoice', 'read', { sectorCol: 'i.sector_id', ownerCol: 'i.owner_user_id' });
+  // قصّ إدارة/عميل اختياري (مركز القطاع): الإدارة عبر مشروع الفاتورة، والعميل من الفاتورة
+  // نفسها وإلا من مشروعها — نفس قاعدة invoiceScopeSql في المقاييس.
+  const dc = { clause: '', args: [] };
+  if (dept === 'none') dc.clause += ' AND p.department_id IS NULL';
+  else if (dept) { dc.clause += ' AND p.department_id = ?'; dc.args.push(dept); }
+  if (client) { dc.clause += ' AND COALESCE(i.client_id, p.client_id) = ?'; dc.args.push(client); }
   const rows = await all(`SELECT i.* FROM invoice i LEFT JOIN project p ON p.id = i.project_id
      WHERE ${f.clause} AND i.deleted_at IS NULL AND i.status IN ('ISSUED','PARTIALLY_PAID','OVERDUE') AND ${YEAR_PRED('i.')}
-     ${sector ? 'AND COALESCE(i.sector_id, p.sector_id) = ?' : ''}`,
-    [...f.params, year, ...(sector ? [sector] : [])]);
+     ${sector ? 'AND COALESCE(i.sector_id, p.sector_id) = ?' : ''}${dc.clause}`,
+    [...f.params, year, ...(sector ? [sector] : []), ...dc.args]);
   const buckets = { '0-30': 0, '31-60': 0, '61-90': 0, '90+': 0 };
   const now = Date.now();
   for (const inv of rows) {

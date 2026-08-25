@@ -102,10 +102,12 @@ test('سنةٌ قادمة: امتدادُ الوتيرة — متوسط الشه
   assert.ok(!far.nextYear, 'سنة+2 ليست «السنة القادمة»');
 });
 
-test('منتقي السنوات يضمّ سنةً قادمة واحدة — وبترتيب تنازلي', async () => {
+test('منتقي السنوات: سنوات البيانات وحدها — سنةٌ قادمة فارغة لا تُعرض (قرار 2026-08-25)', async () => {
+  // لا سجلّ لسنةٍ قادمة في هذه البذرة ⇒ لا تظهر. متى أُسنِدت صفقةٌ لسنةٍ قادمة ظهرت وحدها
+  // (يحرسه فحص التكامل sector-next-year).
   const years = await availableYears();
-  assert.ok(years.includes(config.fiscalYear + 1), 'السنة القادمة غائبة عن المنتقي');
-  assert.ok(!years.includes(config.fiscalYear + 2), 'سنةٌ أبعد تسرّبت إلى المنتقي');
+  assert.ok(!years.includes(config.fiscalYear + 1), 'سنةٌ قادمة فارغة حُقنت في المنتقي');
+  assert.ok(years.includes(config.fiscalYear), 'السنة الجارية غائبة');
   assert.deepEqual(years, [...years].sort((a, b) => b - a), 'الترتيب تنازلي');
 });
 

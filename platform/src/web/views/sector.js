@@ -15,7 +15,7 @@ import { sectorDashboard, sectorStaffing, sectorWins, quarterlyRevenue, quarterl
 import { attentionFeed, RESOURCE_AR } from '../../core/reports/attention.js';
 import { changesSince, periodBounds, lastChangeAt } from '../../core/reports/changes.js';
 import { completenessScore } from '../../core/reports/completeness.js';
-import { DLV_YEAR_SQL } from '../../modules/finance/recognition.js';
+import { DLV_YEAR_SQL, dlvYearSqlFor } from '../../modules/finance/recognition.js';
 import { arAging } from '../../modules/finance/finance.js';
 import { mySectorTasks } from '../../modules/pmo/tasks.js';
 import { myProjectsInSector, nextMilestones, projectYearClause } from '../../modules/pmo/projects.js';
@@ -131,6 +131,8 @@ const CSS = `<style>
 .kviz{display:flex;gap:.6rem;align-items:center;min-width:0;margin-top:2px}
 .kviz>.ringw{flex:none}
 .kviz>div{flex:1;min-width:0}
+/* عدّاد الإشغال وحده في خليته — يتوسّطها كبيراً بدل ركنٍ صغير وفراغ (ملاحظة أ. حسين) */
+.gviz{flex:1;display:flex;justify-content:center;padding:.2rem 0}
 /* (٢) شريط القراءة الداكن — البقعة البنفسجية والرقم الأحمر الفاتح موروثان من لوحة v5.39 */
 .exec-band{background:linear-gradient(135deg,#101733,#16224e 55%,#2b1a55);border-radius:18px;padding:.8rem 1rem;color:#eef2fb;position:relative;overflow:hidden}
 .exec-band::before{content:'';position:absolute;inset:-40% -20% auto auto;width:420px;height:420px;border-radius:50%;background:radial-gradient(closest-side,rgba(131,71,152,.35),transparent)}
@@ -189,6 +191,13 @@ const CSS = `<style>
 .vj-light .vja{color:var(--muted)}
 .vj-light .vja small{color:var(--ink2)}
 .vj-light .vjw{color:var(--st-warn)}
+/* محطة الرحلة زرٌّ يفتح تفصيلها — نفس هيئة الشارة الساكنة، بمؤشرٍ وتركيزٍ مرئيين */
+button.vjn{font-family:inherit;font-size:inherit;cursor:pointer}
+button.vjn:hover{box-shadow:var(--sh-sm)}
+button.vjn:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.pch-btn{font-family:inherit;background:none;border:none;padding:0;cursor:pointer;text-align:inherit}
+.pch-btn:hover .l{color:var(--brand)}
+.pch-btn:focus-visible{outline:2px solid var(--brand);outline-offset:2px;border-radius:6px}
 /* أقسام ٣–٩ */
 .legend-r{display:flex;gap:1rem;align-items:center;font-size:var(--fs-body);color:var(--muted);flex-wrap:wrap;margin-top:.35rem}
 .legend-r i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-inline-end:.3rem;vertical-align:middle}
@@ -512,8 +521,8 @@ export async function sectorPage(user, opts = {}) {
     attentionFeed(user, sectorId, { year, today }),
     revenueOutlook(sectorId, year, now),
     monthlyRevenue(sectorId, year),
-    quarterlyRevenue(sectorId, year),
-    quarterlyBookings(sectorId, year),
+    quarterlyRevenue(sectorId, year, fscope),
+    quarterlyBookings(sectorId, year, fscope),
     pipelineCoverage(sectorId, year),
     sectorStaffing(sectorId, year),
     sectorWins(sectorId, year),
@@ -530,31 +539,40 @@ export async function sectorPage(user, opts = {}) {
     completenessScore(user, sectorId, { year }),
     lastChangeAt(sectorId),
     // رحلة القيمة: المتعاقد (نشط أو موقّع هذه السنة) ← المحقق ← المسلَّم ← المقبول ← المفوتر ← المحصَّل
-    get(`SELECT COALESCE(SUM(value_halalas),0) v FROM contract WHERE sector_id = ? AND deleted_at IS NULL
-       AND (status IN ('ACTIVE','COMPLETED') OR substr(COALESCE(signed_at, start_date, created_at),1,4) = ?)`, [sectorId, String(year)]),
-    get(`SELECT COALESCE(SUM(amount_halalas),0) v FROM deliverable WHERE sector_id = ? AND deleted_at IS NULL AND ${DLV_YEAR_SQL} = ?
-       AND status IN ('DELIVERED','ACCEPTED','INVOICED','PAID')`, [sectorId, year]),
-    get(`SELECT COALESCE(SUM(amount_halalas),0) v FROM deliverable WHERE sector_id = ? AND deleted_at IS NULL AND ${DLV_YEAR_SQL} = ?
-       AND status IN ('ACCEPTED','INVOICED','PAID')`, [sectorId, year]),
+    get(`SELECT COALESCE(SUM(c.value_halalas),0) v FROM contract c LEFT JOIN project p ON p.id = c.project_id
+       WHERE c.sector_id = ? AND c.deleted_at IS NULL
+       AND (c.status IN ('ACTIVE','COMPLETED') OR substr(COALESCE(c.signed_at, c.start_date, c.created_at),1,4) = ?)${deptSql('p.department_id')}${clientSql('COALESCE(c.client_id, p.client_id)')}`,
+    [sectorId, String(year), ...deptArg, ...clientArg]),
+    get(`SELECT COALESCE(SUM(d.amount_halalas),0) v FROM deliverable d LEFT JOIN project p ON p.id = d.project_id
+       WHERE d.sector_id = ? AND d.deleted_at IS NULL AND ${dlvYearSqlFor('d')} = ?
+       AND d.status IN ('DELIVERED','ACCEPTED','INVOICED','PAID')${deptSql('p.department_id')}${clientSql('p.client_id')}`,
+    [sectorId, year, ...deptArg, ...clientArg]),
+    get(`SELECT COALESCE(SUM(d.amount_halalas),0) v FROM deliverable d LEFT JOIN project p ON p.id = d.project_id
+       WHERE d.sector_id = ? AND d.deleted_at IS NULL AND ${dlvYearSqlFor('d')} = ?
+       AND d.status IN ('ACCEPTED','INVOICED','PAID')${deptSql('p.department_id')}${clientSql('p.client_id')}`,
+    [sectorId, year, ...deptArg, ...clientArg]),
     canInvoices ? get(`SELECT COALESCE(SUM(i.amount_halalas),0) v FROM invoice i LEFT JOIN project p ON p.id = i.project_id
        WHERE COALESCE(i.sector_id, p.sector_id) = ? AND i.deleted_at IS NULL AND i.status NOT IN ('DRAFT','CANCELLED')
-         AND substr(COALESCE(i.issue_date, i.created_at),1,4) = ?`, [sectorId, String(year)]) : null,
+         AND substr(COALESCE(i.issue_date, i.created_at),1,4) = ?${deptSql('p.department_id')}${clientSql('COALESCE(i.client_id, p.client_id)')}`,
+    [sectorId, String(year), ...deptArg, ...clientArg]) : null,
     canInvoices ? get(`SELECT COALESCE(SUM(col.amount_halalas),0) v FROM collection col
        JOIN invoice i ON i.id = col.invoice_id LEFT JOIN project p ON p.id = i.project_id
        WHERE COALESCE(i.sector_id, p.sector_id) = ? AND i.deleted_at IS NULL
-         AND substr(COALESCE(col.collected_at, col.created_at),1,4) = ?`, [sectorId, String(year)]) : null,
+         AND substr(COALESCE(col.collected_at, col.created_at),1,4) = ?${deptSql('p.department_id')}${clientSql('COALESCE(i.client_id, p.client_id)')}`,
+    [sectorId, String(year), ...deptArg, ...clientArg]) : null,
     // التزام المعالم في الأسابيع الثمانية الماضية: المستحق منها وما تحقق (MET)
     all(`SELECT m.due_date, m.status FROM milestone m JOIN project p ON p.id = m.project_id
        WHERE p.sector_id = ? AND m.deleted_at IS NULL AND p.deleted_at IS NULL
-         AND m.due_date IS NOT NULL AND substr(m.due_date,1,10) >= ? AND substr(m.due_date,1,10) < ?`,
-    [sectorId, new Date(Date.parse(today) - 56 * 86400000).toISOString().slice(0, 10), today]),
+         AND m.due_date IS NOT NULL AND substr(m.due_date,1,10) >= ? AND substr(m.due_date,1,10) < ?${deptSql('p.department_id')}${clientSql('p.client_id')}`,
+    [sectorId, new Date(Date.parse(today) - 56 * 86400000).toISOString().slice(0, 10), today, ...deptArg, ...clientArg]),
     all(`SELECT m.name_ar, m.due_date, m.status, p.name_ar project, p.id pid FROM milestone m JOIN project p ON p.id = m.project_id
        WHERE p.sector_id = ? AND m.deleted_at IS NULL AND p.deleted_at IS NULL AND m.status = 'PENDING'
-         AND m.due_date IS NOT NULL AND substr(m.due_date,1,10) >= ? AND substr(m.due_date,1,10) <= ?
-       ORDER BY m.due_date LIMIT 9`, [sectorId, today, new Date(Date.parse(today) + 90 * 86400000).toISOString().slice(0, 10)]),
-    all(`SELECT r.title, r.probability, r.impact, p.name_ar project FROM risk r LEFT JOIN project p ON p.id = r.project_id
-       WHERE r.sector_id = ? AND r.deleted_at IS NULL AND r.status != 'CLOSED'
-       ORDER BY CASE r.probability WHEN 'high' THEN 0 WHEN 'med' THEN 1 WHEN 'medium' THEN 1 ELSE 2 END LIMIT 4`, [sectorId]),
+         AND m.due_date IS NOT NULL AND substr(m.due_date,1,10) >= ? AND substr(m.due_date,1,10) <= ?${deptSql('p.department_id')}${clientSql('p.client_id')}
+       ORDER BY m.due_date LIMIT 9`, [sectorId, today, new Date(Date.parse(today) + 90 * 86400000).toISOString().slice(0, 10), ...deptArg, ...clientArg]),
+    all(`SELECT r.title, r.probability, r.impact, p.name_ar project, p.id pid FROM risk r LEFT JOIN project p ON p.id = r.project_id
+       WHERE r.sector_id = ? AND r.deleted_at IS NULL AND r.status != 'CLOSED'${deptSql('p.department_id')}${clientSql('p.client_id')}
+       ORDER BY CASE r.probability WHEN 'high' THEN 0 WHEN 'med' THEN 1 WHEN 'medium' THEN 1 ELSE 2 END LIMIT 4`,
+    [sectorId, ...deptArg, ...clientArg]),
   ]);
 
   // توافق الأسماء مع بقية الصفحة: fc.forecast هو أساس النطاق، والرقائق من أرقام النافذة نفسها.
@@ -609,35 +627,41 @@ export async function sectorPage(user, opts = {}) {
      FROM opportunity o JOIN stage st ON st.id = o.stage_id LEFT JOIN client c ON c.id = o.client_id
      WHERE st.is_won = 0 AND st.is_lost = 0 AND o.deleted_at IS NULL AND o.sector_id = ?${deptSql('o.department_id')}${clientSql('o.client_id')}`,
   [sectorId, ...deptArg, ...clientArg]);
-  const activeC = canContracts ? await get(`SELECT COUNT(*) n, COALESCE(SUM(value_halalas),0) v FROM contract
-     WHERE sector_id = ? AND deleted_at IS NULL AND status = 'ACTIVE'`, [sectorId]) : null;
+  const activeC = canContracts ? await get(`SELECT COUNT(*) n, COALESCE(SUM(c.value_halalas),0) v
+     FROM contract c LEFT JOIN project p ON p.id = c.project_id
+     WHERE c.sector_id = ? AND c.deleted_at IS NULL AND c.status = 'ACTIVE'${deptSql('p.department_id')}${clientSql('COALESCE(c.client_id, p.client_id)')}`,
+  [sectorId, ...deptArg, ...clientArg]) : null;
   const secContracts = canContracts ? await all(`SELECT c.id, c.code, c.value_halalas, c.status, c.start_date, cl.name_ar client,
      (SELECT COALESCE(SUM(i.amount_halalas),0) FROM invoice i WHERE i.contract_id = c.id AND i.status != 'DRAFT' AND i.deleted_at IS NULL) invoiced
-     FROM contract c LEFT JOIN client cl ON cl.id = c.client_id
-     WHERE c.sector_id = ? AND c.deleted_at IS NULL ORDER BY c.value_halalas DESC LIMIT 10`, [sectorId]) : [];
+     FROM contract c LEFT JOIN client cl ON cl.id = c.client_id LEFT JOIN project p ON p.id = c.project_id
+     WHERE c.sector_id = ? AND c.deleted_at IS NULL${deptSql('p.department_id')}${clientSql('COALESCE(c.client_id, p.client_id)')}
+     ORDER BY c.value_halalas DESC LIMIT 10`, [sectorId, ...deptArg, ...clientArg]) : [];
   const revByProject = await all(`SELECT p.id, p.name_ar, p.status, p.rag, p.progress_pct,
        COALESCE(NULLIF(p.contract_value_halalas,0), NULLIF(p.budget_halalas,0), NULLIF(p.po_value_halalas,0)) cv,
        CASE WHEN COALESCE(p.contract_value_halalas,0)>0 THEN 'عقد' WHEN COALESCE(p.budget_halalas,0)>0 THEN 'ميزانية'
             WHEN COALESCE(p.po_value_halalas,0)>0 THEN 'أمر شراء' ELSE NULL END cvbasis,
        COALESCE(SUM(${netSql('rl.amount_halalas', 'rl.net_amount_halalas')}),0) rev
      FROM revenue_line rl LEFT JOIN project p ON p.id = rl.project_id
-     WHERE rl.sector_id = ? AND rl.year = ? GROUP BY p.id, p.name_ar, p.status, p.rag, p.progress_pct, p.contract_value_halalas, p.budget_halalas, p.po_value_halalas
-     ORDER BY rev DESC LIMIT 12`, [sectorId, year]);
+     WHERE rl.sector_id = ? AND rl.year = ?${deptSql('p.department_id')}${clientSql('p.client_id')}
+     GROUP BY p.id, p.name_ar, p.status, p.rag, p.progress_pct, p.contract_value_halalas, p.budget_halalas, p.po_value_halalas
+     ORDER BY rev DESC LIMIT 12`, [sectorId, year, ...deptArg, ...clientArg]);
   // إيراد كل عميل في هذا القطاع وهذه السنة — عبر مشروع البند (بند بلا مشروع لا يُنسب لعميل).
   const revByClient = await all(`SELECT p.client_id cid, COALESCE(SUM(${netSql('rl.amount_halalas', 'rl.net_amount_halalas')}),0) rev
      FROM revenue_line rl JOIN project p ON p.id = rl.project_id
-     WHERE rl.sector_id = ? AND rl.year = ? AND p.client_id IS NOT NULL GROUP BY p.client_id`, [sectorId, year]);
+     WHERE rl.sector_id = ? AND rl.year = ? AND p.client_id IS NOT NULL${deptSql('p.department_id')}${clientSql('p.client_id')} GROUP BY p.client_id`,
+  [sectorId, year, ...deptArg, ...clientArg]);
   // وما بعد الترسية علنيٌّ داخل القطاع بالقرار نفسه («الأرقام لا الأشخاص»): السرّية تخصّ
   // الفرصة **قبل** ترسيتها، وصفقات السنة المكسوبة إنجاز قطاعٍ يُعرض لأهله كلهم — فتبقى قطاعية.
   const secWon = await all(`SELECT o.title_ar, o.value_halalas, c.name_ar client FROM opportunity o
      JOIN stage st ON st.id = o.stage_id LEFT JOIN client c ON c.id = o.client_id
-     WHERE o.sector_id = ? AND o.year = ? AND st.is_won = 1 AND o.exclude_from_sales = 0 AND o.deleted_at IS NULL
-     ORDER BY o.value_halalas DESC LIMIT 8`, [sectorId, year]);
+     WHERE o.sector_id = ? AND o.year = ? AND st.is_won = 1 AND o.exclude_from_sales = 0 AND o.deleted_at IS NULL${deptSql('o.department_id')}${clientSql('o.client_id')}
+     ORDER BY o.value_halalas DESC LIMIT 8`, [sectorId, year, ...deptArg, ...clientArg]);
   // القرار بلا مشروعٍ صفٌّ شركيّ لا قطاع له — وعرضه في كل مركز قطاع يُسرّب عناوين قرارات
   // القطاعات الأخرى لقارئٍ نطاقه قطاعه وحده. قرارات القطاع = قرارات مشاريعه.
-  const recentDecisions = await all(`SELECT d.title, d.decided_by, substr(d.decided_at,1,10) dat, p.name_ar project
+  const recentDecisions = await all(`SELECT d.title, d.decided_by, substr(d.decided_at,1,10) dat, p.name_ar project, p.id pid
      FROM decision d JOIN project p ON p.id = d.project_id
-     WHERE p.sector_id = ? AND d.deleted_at IS NULL ORDER BY d.decided_at DESC LIMIT 5`, [sectorId]);
+     WHERE p.sector_id = ? AND d.deleted_at IS NULL${deptSql('p.department_id')}${clientSql('p.client_id')}
+     ORDER BY d.decided_at DESC LIMIT 5`, [sectorId, ...deptArg, ...clientArg]);
   const pendingApprovals = await all(`SELECT ar.resource, ar.amount_halalas, ar.created_at FROM approval_request ar
      WHERE ar.sector_id = ? AND ar.status = 'PENDING' ORDER BY ar.created_at DESC LIMIT 6`, [sectorId]);
   // كل عدٍّ للمشاريع في هذا المركز بعدسة السنة المعروضة — قاعدة «مشروع السنة» الواحدة
@@ -646,19 +670,33 @@ export async function sectorPage(user, opts = {}) {
   // لا تعرضها صفحة المشاريع لنفس السنة — وقرّر المالك: «الموجود في صفحة المشاريع هو الصحيح».
   const pyc = projectYearClause(year, 'p.');
   const pycBare = projectYearClause(year);
+  // صحة المشاريع تحت الترشيح: عدّ rag مقصوصاً بالإدارة المسؤولة/العميل — يغذّي الدونات
+  // والوسيلة و«يحتاج نظراً»، وإلا عرضت الدونات 2/5 قطاعياً فوق جدولٍ مرشَّح يقول 1/3.
+  const ragScoped = filtered ? await all(`SELECT rag, COUNT(*) n FROM project
+     WHERE sector_id = ? AND deleted_at IS NULL AND status = 'IN_PROGRESS' AND ${pycBare.clause}${deptSql('department_id')}${clientSql('client_id')}
+     GROUP BY rag`, [sectorId, ...pycBare.params, ...deptArg, ...clientArg]) : null;
+  const ragView = ragScoped ? Object.fromEntries(ragScoped.map((r) => [r.rag, r.n])) : sd.rag;
+  // نسبة الفوز في ذيل القمع — تحت الترشيح تُحسب من فرص الترشيح نفسها (كانت قطاعية فتظهر
+  // 50% فوق قمعٍ نسبتُه الحقيقية 100%)، وبمقامٍ مطبوع وحارس العيّنة الصغيرة.
+  const winsScoped = filtered ? await get(`SELECT
+      SUM(CASE WHEN st.is_won = 1 THEN 1 ELSE 0 END) won,
+      SUM(CASE WHEN st.is_lost = 1 THEN 1 ELSE 0 END) lost
+    FROM opportunity o JOIN stage st ON st.id = o.stage_id
+    WHERE o.sector_id = ? AND o.year = ? AND o.deleted_at IS NULL${deptSql('o.department_id')}${clientSql('o.client_id')}`,
+  [sectorId, year, ...deptArg, ...clientArg]) : null;
   // المشاريع التي تحتاج نظر القائد — الحمراء أولاً، ومع كلٍّ أبرزُ خطرٍ مفتوح إن سُجِّل.
   const needProjects = await all(`SELECT p.id, p.name_ar, p.rag,
       (SELECT COUNT(*) FROM risk r WHERE r.project_id = p.id AND r.status != 'CLOSED' AND r.deleted_at IS NULL) risks,
       (SELECT r2.title FROM risk r2 WHERE r2.project_id = p.id AND r2.status != 'CLOSED' AND r2.deleted_at IS NULL
         ORDER BY CASE r2.probability WHEN 'high' THEN 0 WHEN 'med' THEN 1 WHEN 'medium' THEN 1 ELSE 2 END LIMIT 1) top_risk
      FROM project p WHERE p.sector_id = ? AND p.deleted_at IS NULL AND p.status = 'IN_PROGRESS' AND p.rag IN ('RED','AMBER')
-       AND ${pyc.clause}
-     ORDER BY CASE p.rag WHEN 'RED' THEN 0 ELSE 1 END, p.name_ar LIMIT 6`, [sectorId, ...pyc.params]);
+       AND ${pyc.clause}${deptSql('p.department_id')}${clientSql('p.client_id')}
+     ORDER BY CASE p.rag WHEN 'RED' THEN 0 ELSE 1 END, p.name_ar LIMIT 6`, [sectorId, ...pyc.params, ...deptArg, ...clientArg]);
   const healthLists = {};
   for (const rag of ['GREEN', 'AMBER', 'RED']) {
-    healthLists[rag] = (sd.rag[rag]) ? await all(`SELECT id, name_ar, progress_pct, end_date FROM project
-       WHERE sector_id = ? AND deleted_at IS NULL AND status = 'IN_PROGRESS' AND rag = ? AND ${pycBare.clause}
-       ORDER BY name_ar LIMIT 30`, [sectorId, rag, ...pycBare.params]) : [];
+    healthLists[rag] = (ragView[rag]) ? await all(`SELECT id, name_ar, progress_pct, end_date FROM project
+       WHERE sector_id = ? AND deleted_at IS NULL AND status = 'IN_PROGRESS' AND rag = ? AND ${pycBare.clause}${deptSql('department_id')}${clientSql('client_id')}
+       ORDER BY name_ar LIMIT 30`, [sectorId, rag, ...pycBare.params, ...deptArg, ...clientArg]) : [];
   }
   // نسبة الإنجاز من مصدرها الواحد (المخرجات الموزونة) لا من العمود المخزَّن — قاعدة «رقم واحد
   // حقيقة واحدة»، والحارس البنيوي يسقط أي شاشة تخالفها.
@@ -685,6 +723,9 @@ export async function sectorPage(user, opts = {}) {
   const ageDays = (d) => (d ? Math.max(0, Math.floor((Date.parse(today) - Date.parse(d)) / 86400000)) : 0);
   const avgAge = scoped.length ? Math.round(scoped.reduce((a, o) => a + ageDays(o.since), 0) / scoped.length) : 0;
   const stalledRows = scoped.filter((o) => ageDays(o.since) > (ROT_THRESHOLDS[o.stage_id] ?? Infinity));
+  // حِزم أعمار الفرص — تُحسب مبكراً لأن نوافذ تفصيلها تُبنى مع بقية النوافذ أعلى الملف
+  const AGE_B = [['0-30', 'حتى شهر', 0, 30], ['31-60', 'شهر إلى شهرين', 31, 60], ['61-90', 'شهران إلى ثلاثة', 61, 90], ['90+', 'أكثر من ثلاثة', 91, 99999]];
+  const ages = AGE_B.map(([k, l, lo, hi]) => { const rows = openFlow.filter((o) => { const d = ageDays(o.since); return d >= lo && d <= hi; }); return { k, l, n: rows.length, v: rows.reduce((a, o) => a + (o.value_halalas || 0), 0) }; });
   // «أعلى ٣ فرص» بندٌ مسمّى (عنوان + عميل) لا رقمٌ مجمَّع — فيتبع نطاق قائمة الفرص نفسه
   // (سياسة «الأرقام لا الأشخاص» v5.2، بنفس خيارات القصّ في core/reports/changes.js حرفياً):
   // مدير الإدارة يقرأ أسماء فرص إداراته، وقائد القطاع قطاعه. المتوسطات والأعمار تبقى مجاميع.
@@ -693,11 +734,12 @@ export async function sectorPage(user, opts = {}) {
       grantCol: 'o.department_id', memberCol: 'o.id', deptCol: 'o.department_id' });
   // فرص كل مرحلة المسماة لنوافذ تفصيل القمع — بنفس قصّ قائمة الفرص (سياسة «الأرقام لا
   // الأشخاص» v5.2): المجاميع على رأس النافذة قطاعية، والأسماء بنطاق القارئ وحده.
-  const ddOppRows = await all(`SELECT o.id, o.title_ar, o.value_halalas, o.stage_id, c.name_ar client
+  const ddOppRows = await all(`SELECT o.id, o.title_ar, o.value_halalas, o.stage_id, c.name_ar client,
+      COALESCE(substr(o.stage_changed_at,1,10), substr(o.created_at,1,10)) since
      FROM opportunity o JOIN stage st ON st.id = o.stage_id LEFT JOIN client c ON c.id = o.client_id
      WHERE st.is_won = 0 AND st.is_lost = 0 AND o.stage_id != 'ON_HOLD' AND o.deleted_at IS NULL
-       AND o.sector_id = ? AND ${fOpp.clause}
-     ORDER BY o.value_halalas DESC`, [sectorId, ...fOpp.params]);
+       AND o.sector_id = ? AND ${fOpp.clause}${deptSql('o.department_id')}${clientSql('o.client_id')}
+     ORDER BY o.value_halalas DESC`, [sectorId, ...fOpp.params, ...deptArg, ...clientArg]);
 
   const elapsed = yearElapsedPct(now, year);
   const nowM = currentMonthIndex(year);
@@ -719,8 +761,8 @@ export async function sectorPage(user, opts = {}) {
   // صحة التنفيذ، قدرة الفريق، يحتاج تدخلاً. البقية في بطاقاتها التفصيلية لا هنا. ──
   const attainSales = sd.target_sales_halalas ? Math.round((sd.sales_halalas / sd.target_sales_halalas) * 100) : null;
   const dSales = paceDelta(sd.sales_halalas, sd.target_sales_halalas, now, year);
-  const ragActive = (sd.rag.GREEN || 0) + (sd.rag.AMBER || 0) + (sd.rag.RED || 0);
-  const needsN = (sd.rag.AMBER || 0) + (sd.rag.RED || 0);
+  const ragActive = (ragView.GREEN || 0) + (ragView.AMBER || 0) + (ragView.RED || 0);
+  const needsN = (ragView.AMBER || 0) + (ragView.RED || 0);
   const ptWord = (n) => { const a = Math.abs(n); return a === 1 ? 'بنقطة واحدة' : a === 2 ? 'بنقطتين' : a <= 10 ? `بـ${a} نقاط` : `بـ${a} نقطة`; };
   // شارة الحكم: رمزٌ وكلمة معاً — واللون لغير السليم وحده (قاعدة «الرمادي أولاً»، ADR-0011).
   // نصّها HTML جاهز الهروب لدى المستدعي (كاتفاق labelHtml) — النصوص الحيّة تمرّ بـesc() هناك.
@@ -819,7 +861,7 @@ export async function sectorPage(user, opts = {}) {
   // القمع بلغة الرسم الواحدة (figBars): لونٌ واحد، العدُّ والقيمة معاً، وكل صفٍّ يفتح تفصيله —
   // لا مبدّل عرضٍ بعد اليوم (كلا الرقمين مطبوع). صفّ القمة مجموع ما تحته على مقياسٍ واحد.
   const stalledV = stalledRows.reduce((a, o) => a + (o.value_halalas || 0), 0);
-  const oppsHref = `/app/opportunities?year=${year}${user.scope === 'company' ? '&sector=' + esc(sectorId) : ''}`;
+  const oppsHref = `/app/opportunities?year=${year}${user.scope === 'company' ? '&sector=' + esc(sectorId) : ''}${deptSel && deptSel !== NO_DEPT ? '&dept=' + esc(deptSel) : ''}`;
 
   // ── (٥) «ما تغيّر» — سجلات مؤرّخة منسَّقة، بفئات وحدّة، خمسة أولاً والبقية بنقرة ──
   const relDay = (at) => {
@@ -1017,10 +1059,10 @@ export async function sectorPage(user, opts = {}) {
 
   // ── صحة المشاريع — شريط تركيبةٍ واحد بدل الدونات (الطول لا الزاوية)، وأبرز ما يحتاج نظراً ──
   const HEALTH = [['GREEN', G.hOnTrack, 'var(--st-good)'], ['AMBER', G.hAtRisk, 'var(--st-warn)'], ['RED', G.hCritical, 'var(--st-bad)']];
-  const healthRows = HEALTH.map(([k, l, c]) => `<button type="button" class="r" role="button" data-action="open-dd" data-dd="sec-health-${k}" ${!(sd.rag[k]) ? 'disabled style="opacity:.45;cursor:default"' : ''} aria-label="${l}: ${sd.rag[k] || 0} — التفصيل">
+  const healthRows = HEALTH.map(([k, l, c]) => `<button type="button" class="r" role="button" data-action="open-dd" data-dd="sec-health-${k}" ${!(ragView[k]) ? 'disabled style="opacity:.45;cursor:default"' : ''} aria-label="${l}: ${ragView[k] || 0} — التفصيل">
       <span class="d" style="background:${c}"></span><span class="n">${l}</span>
-      <b class="tnum">${sd.rag[k] || 0}</b>
-      <span class="m tnum">${ragActive ? Math.round(((sd.rag[k] || 0) / ragActive) * 100) : 0}%</span>
+      <b class="tnum">${ragView[k] || 0}</b>
+      <span class="m tnum">${ragActive ? Math.round(((ragView[k] || 0) / ragActive) * 100) : 0}%</span>
     </button>`).join('');
 
   // ── التحليل الموسّع (الدرج): الإيراد عبر السنة بلغة الأعمدة الواحدة + الفجوة والمتوقع
@@ -1042,24 +1084,26 @@ export async function sectorPage(user, opts = {}) {
        COALESCE(SUM(CASE WHEN st.is_won = 0 AND st.is_lost = 0 THEN o.value_halalas ELSE 0 END),0) open_v,
        COALESCE(SUM(CASE WHEN st.is_won = 0 AND st.is_lost = 0 THEN 1 ELSE 0 END),0) open_n
      FROM opportunity o JOIN stage st ON st.id = o.stage_id
-     WHERE o.sector_id = ? AND o.deleted_at IS NULL AND o.client_id IS NOT NULL GROUP BY o.client_id`, [sectorId]);
+     WHERE o.sector_id = ? AND o.deleted_at IS NULL AND o.client_id IS NOT NULL${deptSql('o.department_id')}${clientSql('o.client_id')} GROUP BY o.client_id`,
+  [sectorId, ...deptArg, ...clientArg]);
   // عدّ مشاريع كل عميل بعدسة السنة أيضاً — عمود «المشاريع» في جدول العملاء يجاور إيراد
   // السنة، فخلطُ كل التاريخ فيه يناقض جارَه في نفس الصف.
   const prjAgg = await all(`SELECT client_id cid, COUNT(*) n FROM project
-     WHERE sector_id = ? AND deleted_at IS NULL AND client_id IS NOT NULL AND ${pycBare.clause}
-     GROUP BY client_id`, [sectorId, ...pycBare.params]);
+     WHERE sector_id = ? AND deleted_at IS NULL AND client_id IS NOT NULL AND ${pycBare.clause}${deptSql('department_id')}${clientSql('client_id')}
+     GROUP BY client_id`, [sectorId, ...pycBare.params, ...deptArg, ...clientArg]);
   const revByCid = Object.fromEntries(revByClient.map((r) => [r.cid, r.rev]));
   const stalledCids = new Set(stalledRows.map((o) => o.client_id).filter(Boolean));
   const redProjClients = new Set((await all(`SELECT DISTINCT client_id FROM project
      WHERE sector_id = ? AND deleted_at IS NULL AND status = 'IN_PROGRESS' AND rag = 'RED' AND client_id IS NOT NULL
-       AND ${pycBare.clause}`, [sectorId, ...pycBare.params])).map((r) => r.client_id));
+       AND ${pycBare.clause}${deptSql('department_id')}${clientSql('client_id')}`,
+  [sectorId, ...pycBare.params, ...deptArg, ...clientArg])).map((r) => r.client_id));
   // إشارة كل عميل بأولوية معلنة: تحصيل متأخر (لمن يقرأ الفواتير) ← فرصة متوقفة ← مشروع في خطر.
   let overdueCids = new Set();
   if (canInvoices) {
     overdueCids = new Set((await all(`SELECT DISTINCT i.client_id cid FROM invoice i LEFT JOIN project p ON p.id = i.project_id
        WHERE COALESCE(i.sector_id, p.sector_id) = ? AND i.deleted_at IS NULL AND i.client_id IS NOT NULL
-         AND (i.status = 'OVERDUE' OR (i.status IN ('ISSUED','PARTIALLY_PAID') AND i.due_date IS NOT NULL AND substr(i.due_date,1,10) < ?))`,
-    [sectorId, today])).map((r) => r.cid));
+         AND (i.status = 'OVERDUE' OR (i.status IN ('ISSUED','PARTIALLY_PAID') AND i.due_date IS NOT NULL AND substr(i.due_date,1,10) < ?))${deptSql('p.department_id')}${clientSql('COALESCE(i.client_id, p.client_id)')}`,
+    [sectorId, today, ...deptArg, ...clientArg])).map((r) => r.cid));
   }
   const oppBy = Object.fromEntries(oppAgg.map((r) => [r.cid, r]));
   const prjBy = Object.fromEntries(prjAgg.map((r) => [r.cid, r.n]));
@@ -1082,7 +1126,7 @@ export async function sectorPage(user, opts = {}) {
     if (redProjClients.has(c.id)) return sig('bad', '▲', 'مشروع في خطر');
     return '';
   };
-  const secRevTotal = sd.revenue_halalas || 0;
+  const secRevTotal = filtered ? (rsTotal || 0) : (sd.revenue_halalas || 0);
   const clientRows = topClients.map((c) => {
     const share = secRevTotal && c.rev ? Math.round((c.rev / secRevTotal) * 100) : null;
     const rel = relationshipOf(lastTouch.get(c.id), oppBy[c.id]?.open_n || 0);
@@ -1116,14 +1160,14 @@ export async function sectorPage(user, opts = {}) {
   // ── (١٢) التحصيل — يظهر فقط لمن يقرأ الفواتير (لا تسريب مالي لبقية الأدوار) ──
   let collectCard = '', collectDD = '';
   if (canInvoices) {
-    const buckets = await arAging(user, year, { sector: sectorId });
+    const buckets = await arAging(user, year, { sector: sectorId, dept: deptSel, client: clientSel });
     const odRaw = await all(`SELECT i.id, i.code, i.amount_halalas, i.retention_halalas, i.due_date, cl.name_ar client, p.name_ar project,
         (SELECT COALESCE(SUM(col.amount_halalas),0) FROM collection col WHERE col.invoice_id = i.id) collected
       FROM invoice i LEFT JOIN project p ON p.id = i.project_id LEFT JOIN client cl ON cl.id = i.client_id
       WHERE COALESCE(i.sector_id, p.sector_id) = ? AND i.deleted_at IS NULL
         AND i.status IN ('ISSUED','PARTIALLY_PAID','OVERDUE')
-        AND (i.status = 'OVERDUE' OR (i.due_date IS NOT NULL AND substr(i.due_date,1,10) < ?))
-      ORDER BY i.due_date LIMIT 12`, [sectorId, today]);
+        AND (i.status = 'OVERDUE' OR (i.due_date IS NOT NULL AND substr(i.due_date,1,10) < ?))${deptSql('p.department_id')}${clientSql('COALESCE(i.client_id, p.client_id)')}
+      ORDER BY i.due_date LIMIT 12`, [sectorId, today, ...deptArg, ...clientArg]);
     const odRows = odRaw.map((r) => ({
       ...r,
       out: Math.max(0, (r.amount_halalas || 0) - (r.retention_halalas || 0) - (r.collected || 0)),
@@ -1135,7 +1179,8 @@ export async function sectorPage(user, opts = {}) {
         SUM(CASE WHEN i.due_date IS NULL THEN 1 ELSE 0 END) no_due
       FROM invoice i LEFT JOIN project p ON p.id = i.project_id
       WHERE COALESCE(i.sector_id, p.sector_id) = ? AND i.deleted_at IS NULL
-        AND i.status IN ('ISSUED','PARTIALLY_PAID','OVERDUE')`, [sectorId]);
+        AND i.status IN ('ISSUED','PARTIALLY_PAID','OVERDUE')${deptSql('p.department_id')}${clientSql('COALESCE(i.client_id, p.client_id)')}`,
+  [sectorId, ...deptArg, ...clientArg]);
     const openInv = dueFacts?.n || 0, noDue = dueFacts?.no_due || 0;
     const blindToLate = openInv > 0 && noDue === openInv;   // لا تاريخ استحقاق واحد ⇒ التأخر غير قابل للقياس
     const nothingCollected = !(vjCollected?.v);
@@ -1196,14 +1241,14 @@ export async function sectorPage(user, opts = {}) {
     <div style="font-size:var(--fs-micro);color:var(--muted);margin-top:.15rem">${countAr(activeC.n, { one: 'عقد نشط واحد', two: 'عقدان نشطان', few: 'عقود نشطة', many: 'عقداً نشطاً' })} · موقّع ${year}: ${sd.contracts_count} (${fmtSar(sd.contracts_halalas)})</div>
   </div>`, 'card-h') : '';
   const decRows = recentDecisions.map((d) => `<div style="padding:.35rem 0;border-bottom:1px dashed var(--line);font-size:12px">
-      <div style="font-weight:700">${esc(d.title)}</div>
+      <div style="font-weight:700">${d.pid ? `<a href="/app/project/${esc(d.pid)}" style="color:var(--ink2)">${esc(d.title)}</a>` : esc(d.title)}</div>
       <div style="font-size:var(--fs-micro);color:var(--muted)">${esc(d.project || '')}${d.decided_by ? ' · ' + esc(d.decided_by) : ''}${d.dat ? ' · ' + d.dat : ''}</div>
     </div>`).join('') || `<div style="font-size:var(--fs-meta);color:var(--faint);padding:.35rem 0">لا قرارات مسجلة بعد — تُسجَّل القرارات من صفحة المشروع</div>`;
   // مبلغ المصروف حقلٌ مختوم ببوابة الكلفة (redact على مسارات الواجهة البرمجية) — فلا يُطبع
   // هنا لمن لا يملكها؛ يبقى اسم الطلب ويُحجب رقمه وحده.
   const canCost = canSeeSensitive(user, 'cost');
   const apRows = pendingApprovals.map((a) => `<div style="display:flex;justify-content:space-between;gap:.6rem;padding:.3rem 0;border-bottom:1px dashed var(--line);font-size:12px">
-      <span>${esc(RESOURCE_AR[a.resource] || tr(a.resource) || 'طلب')}</span>
+      <span><a href="/app/approvals" style="color:var(--ink2)">${esc(RESOURCE_AR[a.resource] || tr(a.resource) || 'طلب')}</a></span>
       <b class="tnum" style="flex:none">${a.amount_halalas && (a.resource !== 'expense' || canCost) ? fmtSar(a.amount_halalas) : ''}</b>
     </div>`).join('') || `<div style="font-size:var(--fs-meta);color:var(--faint);padding:.3rem 0">لا طلبات معلقة</div>`;
   const decisionsCard = (!pendingApprovals.length && !recentDecisions.length)
@@ -1231,7 +1276,7 @@ export async function sectorPage(user, opts = {}) {
     <div style="display:flex;justify-content:flex-start"><a class="btn btn-sm" href="/app/projects?year=${year}${user.scope === 'company' ? '&sector=' + esc(sectorId) : ''}">عرض جميع المشاريع</a></div>`)).join('');
   // نوافذ تفصيل القمع: للإجمالي ولكل مرحلة — أرقام الرأس قطاعية، والأسماء بنطاق القارئ،
   // وزرّا «تصفية الشاشة» و«صفحة الفرص» داخل النافذة فلا نقرة بلا أثر مرئي.
-  const oppsPageHref = `/app/opportunities?year=${year}${user.scope === 'company' ? '&sector=' + esc(sectorId) : ''}`;
+  const oppsPageHref = `/app/opportunities?year=${year}${user.scope === 'company' ? '&sector=' + esc(sectorId) : ''}${deptSel && deptSel !== NO_DEPT ? '&dept=' + esc(deptSel) : ''}`;
   const fnlDDOne = (key, name, count, value, rows, stageId) => {
     const ages = openFlow.filter((o) => !stageId || o.stage_id === stageId);
     const avg = ages.length ? Math.round(ages.reduce((t, o) => t + ageDays(o.since), 0) / ages.length) : 0;
@@ -1479,7 +1524,30 @@ export async function sectorPage(user, opts = {}) {
         في المنصة لا تواريخ تنفيذ العمل، فيصدق كلما اكتملت تواريخ المخرجات.
       </div>`);
   })();
+  // نافذة المخرجات لمحطتي مسلَّم/مقبول: أعلى المخرجات المعترَف بها هذه السنة، بحالتها
+  const dlvTop = await all(`SELECT d.name_ar, d.amount_halalas, d.status, p.name_ar project
+     FROM deliverable d LEFT JOIN project p ON p.id = d.project_id
+     WHERE d.sector_id = ? AND d.deleted_at IS NULL AND ${dlvYearSqlFor('d')} = ?
+       AND d.status IN ('DELIVERED','ACCEPTED','INVOICED','PAID')${deptSql('p.department_id')}${clientSql('p.client_id')}
+     ORDER BY d.amount_halalas DESC LIMIT 10`, [sectorId, year, ...deptArg, ...clientArg]);
+  const DLV_ST_AR = { DELIVERED: 'مسلَّم', ACCEPTED: 'مقبول', INVOICED: 'فُوتر', PAID: 'مدفوع' };
+  const secdlvDD = ddWrap('secdlv', `${G.deliverables} · ${year}`, `${esc(sd.sector.name_ar)} · المسلَّم والمقبول${filtered ? ' — تحت الترشيح' : ''}`, `
+    <div class="dd-kpi"><span class="v tnum">${sarShort(vjDelivered?.v || 0)}</span><span style="font-size:12px;color:var(--muted)">قيمة المسلَّم — والمقبول منها ${sarShort(vjAccepted?.v || 0)}</span></div>
+    ${dlvTop.length ? `<div class="dd-sec">أعلى المخرجات قيمةً</div>
+    <div>${ddRows(dlvTop.map((d) => `<div class="dd-row"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.name_ar)}${d.project ? ` <span style="color:var(--faint);font-size:10.5px">· ${esc(d.project)}</span>` : ''} <span class="pill" style="background:var(--st-neut-soft);color:var(--muted)">${DLV_ST_AR[d.status] || esc(tr(d.status))}</span></span><b class="tnum" style="flex:none">${fmtSar(d.amount_halalas || 0)}</b></div>`))}</div>` : `<div class="empty-mini">${icon('info')} لا مخرجات معترفاً بها هذه السنة${filtered ? ' تحت هذا الترشيح' : ''}</div>`}`);
+  // نوافذ حِزم الأعمار: رأسها المجموع القطاعي، وأسماؤها بنطاق القارئ (نفس قاعدة نوافذ المراحل)
+  const ageDDs = AGE_B.map(([k, l, lo, hi]) => {
+    const b = ages.find((x) => x.k === k);
+    const rows = ddOppRows.filter((o) => { const d = ageDays(o.since); return d >= lo && d <= hi; })
+      .sort((a, x) => (x.value_halalas || 0) - (a.value_halalas || 0)).slice(0, 12);
+    return ddWrap(`fnl-age-${k}`, `عمر الفرص: ${l}`, `${esc(sd.sector.name_ar)} · في مرحلتها منذ ${lo === 0 ? 'أقل من' : lo} ${hi > 9000 ? 'يوماً فأكثر' : `إلى ${hi} يوماً`}`, `
+      <div class="dd-kpi"><span class="v tnum">${sarShort(b?.v || 0)}</span><span style="font-size:12px;color:var(--muted)">${countAr(b?.n || 0, { one: 'فرصة مفتوحة واحدة', two: 'فرصتان مفتوحتان', few: 'فرص مفتوحة', many: 'فرصة مفتوحة', zero: 'لا فرص في هذه الحزمة' })}</span></div>
+      ${rows.length ? `<div class="dd-sec">الفرص المسماة — بنطاق حسابك</div>
+      <div>${ddRows(rows.map((o) => `<div class="dd-row"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><a href="/app/opportunity/${esc(o.id)}" style="color:var(--ink2)">${esc(o.title_ar)}</a><span style="color:var(--faint);font-size:10.5px"> · ${esc(o.client || '—')} · ${dayWord(ageDays(o.since))}</span></span><b class="tnum" style="flex:none">${fmtSar(o.value_halalas || 0)}</b></div>`))}</div>` : (b?.n ? `<div class="empty-mini">${icon('info')} فرص هذه الحزمة خارج نطاق حسابك المسمّى — المجموع أعلاه قطاعي</div>` : '')}`);
+  }).join('');
   const DD = `
+  ${secdlvDD}
+  ${ageDDs}
   ${fcDD}
   ${complDD}
   ${capEmpDDs}
@@ -1513,9 +1581,9 @@ export async function sectorPage(user, opts = {}) {
         <div style="display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted)"><span>${tr(c.status)}${c.start_date ? ' · ' + String(c.start_date).slice(0, 10) : ''}</span><span class="tnum">فُوتر ${ip}%</span></div>
         <div class="bar" style="margin-top:.25rem;height:5px"><span style="width:${ip}%;background:var(--blue)"></span></div>
       </div>`; }))}</div>`) : ''}
-  ${ddWrap('secwins', `${G.sales} والفوز · ${year}`, `${esc(sd.sector.name_ar)} · مقابل هدف المبيعات`, `
-    <div class="dd-kpi"><span class="v tnum" style="color:var(--brand2)">${fmtSar(sd.sales_halalas)}</span><span style="font-size:12px;color:var(--muted)">${countAr(wins.won, { one: 'صفقة واحدة مكسوبة', two: 'صفقتان مكسوبتان', few: 'صفقات مكسوبة', many: 'صفقة مكسوبة' })} · ${G.winRate} ${wins.winRate}%</span></div>
-    ${attain(sd.sales_halalas, sd.target_sales_halalas, 'var(--brand2)')}
+  ${ddWrap('secwins', `${G.sales} والفوز · ${year}`, `${esc(sd.sector.name_ar)}${filtered ? ' · تحت الترشيح' : ' · مقابل هدف المبيعات'}`, `
+    <div class="dd-kpi"><span class="v tnum" style="color:var(--brand2)">${fmtSar(filtered && salesScoped ? salesScoped.v : sd.sales_halalas)}</span><span style="font-size:12px;color:var(--muted)">${countAr(filtered && salesScoped ? salesScoped.n : wins.won, { one: 'صفقة واحدة مكسوبة', two: 'صفقتان مكسوبتان', few: 'صفقات مكسوبة', many: 'صفقة مكسوبة', zero: 'لا صفقات مكسوبة' })}${filtered ? '' : ` · ${G.winRate} ${wins.winRate}%`}</span></div>
+    ${filtered ? '' : attain(sd.sales_halalas, sd.target_sales_halalas, 'var(--brand2)')}
     <div class="dd-sec">الصفقات المكسوبة</div>
     <div>${ddRows(secWon.map((d) => `<div class="dd-row"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.title_ar)}<span style="color:var(--faint);font-size:10.5px"> · ${esc(d.client || '—')}</span></span><b class="tnum" style="flex:none">${fmtSar(d.value_halalas)}</b></div>`))}</div>`)}
   ${ddWrap('att-late-dlv', 'مخرجات تحتاج متابعة', `${esc(sd.sector.name_ar)} · مخرجات من أشهر سابقة لم تصل إلى الفوترة`, `
@@ -1659,7 +1727,7 @@ export async function sectorPage(user, opts = {}) {
   const kpiCap = kpiCard({ eye: 'إشغال الفريق', val: '',
     aria: `إشغال الفريق: ${bandLoad}% — ${midNow.length} ضمن الطاقة و${overNow.length} فوقها — التفصيل`,
     sub: `${countAr(teamSize, { one: 'موظف واحد', two: 'موظفان', few: 'موظفين', many: 'موظفاً' })} · ${G.utilization} المخطَّط`,
-    viz: figGaugeHalf(bandLoad, { size: 108, sw: 11, max: AXIS_MAX, color: bandLoad > OVER_ABOVE ? 'var(--st-bad)' : 'var(--acc-navy)', sub: 'من الطاقة' }),
+    viz: `<span class="gviz">${figGaugeHalf(bandLoad, { size: 150, sw: 14, max: AXIS_MAX, color: bandLoad > OVER_ABOVE ? 'var(--st-bad)' : 'var(--acc-navy)', sub: 'من الطاقة' })}</span>`,
     sub2: `${midNow.length} ضمن الطاقة · ${overNow.length} تجاوز · ${freeNow.length} بلا تسكين`,
     scope: filtered ? 'القطاع كله · لحظي' : 'لا يتأثر بالفترة', dd: 'seccap' });
 
@@ -1741,7 +1809,7 @@ export async function sectorPage(user, opts = {}) {
   const VJ_EMPTY = { 'متعاقد': 'لا عقود مسجَّلة لهذا القطاع', 'محصَّل': 'لا تحصيل مسجَّلاً بعد' };
   const vj = [
     { k: 'متعاقد', v: vjContracted?.v || 0, ic: 'contracts' },
-    { k: 'المحقق', v: sd.revenue_halalas || 0, ic: 'projects' },
+    { k: 'المحقق', v: (filtered ? rsTotal : sd.revenue_halalas) || 0, ic: 'projects' },
     { k: 'مسلَّم', v: vjDelivered?.v || 0, ic: 'check' },
     { k: 'مقبول', v: vjAccepted?.v || 0, ic: 'approvals' },
     ...(canInvoices ? [{ k: 'مفوتر', v: vjInvoiced?.v || 0, ic: 'money' }, { k: 'محصَّل', v: vjCollected?.v || 0, ic: 'money' }] : []),
@@ -1754,11 +1822,20 @@ export async function sectorPage(user, opts = {}) {
     if (!empty) vjPrev = st.v;
     return { ...st, drop, empty };
   });
+  // كل محطةٍ تفتح تفصيلها القائم (كانت الرحلة role="img" صمّاء والنوافذ خلفها مبنية أصلاً)
+  const VJ_DD = { 'متعاقد': canContracts ? 'seccontracts' : '', 'المحقق': 'secrev', 'مسلَّم': 'secdlv',
+    'مقبول': 'secdlv', 'مفوتر': canInvoices ? 'seccollect' : '', 'محصَّل': canInvoices ? 'seccollect' : '' };
   const journey = `
-    <div class="vj" role="img" aria-label="رحلة القيمة: ${vjSteps.map((st) => `${st.k} ${st.empty ? 'لم يُسجَّل' : sarShort(st.v)}`).join(' ثم ')}">
-      ${vjSteps.map((st, i) => `
+    <div class="vj" role="group" aria-label="رحلة القيمة — كل محطة تفتح تفصيلها">
+      ${vjSteps.map((st, i) => {
+    const dd = !st.empty && VJ_DD[st.k] ? VJ_DD[st.k] : '';
+    const inner = `<i aria-hidden="true">${icon(st.ic)}</i><b class="tnum">${st.empty ? '—' : sarShort(st.v)}</b><span>${st.k}</span>${st.empty ? `<small class="vjoff">${esc(VJ_EMPTY[st.k] || 'لم يُسجَّل')}</small>` : ''}`;
+    const cls = `vjn${vjWorst && vjWorst.name === st.k ? ' leak' : ''}${st.empty ? ' off' : ''}`;
+    return `
         ${i ? `<span class="vja" aria-hidden="true">←<small class="tnum" dir="ltr">${st.drop == null ? (st.empty ? '' : '') : `${st.drop > 0 ? '+' : ''}${st.drop}%`}</small></span>` : ''}
-        <span class="vjn${vjWorst && vjWorst.name === st.k ? ' leak' : ''}${st.empty ? ' off' : ''}"${st.empty ? ` title="${esc(VJ_EMPTY[st.k] || 'لم يُسجَّل بعد')}"` : ''}><i>${icon(st.ic)}</i><b class="tnum">${st.empty ? '—' : sarShort(st.v)}</b><span>${st.k}</span>${st.empty ? `<small class="vjoff">${esc(VJ_EMPTY[st.k] || 'لم يُسجَّل')}</small>` : ''}</span>`).join('')}
+        ${dd ? `<button type="button" class="${cls}" data-action="open-dd" data-dd="${dd}" aria-label="${esc(st.k)}: ${st.empty ? 'لم يُسجَّل' : esc(sarShort(st.v))} — التفصيل">${inner}</button>`
+    : `<span class="${cls}"${st.empty ? ` title="${esc(VJ_EMPTY[st.k] || 'لم يُسجَّل بعد')}"` : ''}>${inner}</span>`}`;
+  }).join('')}
     </div>
     ${vjWorst ? `<div class="vjw">${icon('risk')} أكبر تسرب عند «${vjWorst.name}»: <b class="tnum" dir="ltr">${vjWorst.drop}%</b> (<b class="tnum">${sarShort(vjWorst.loss)}</b>) ${estMark('النسب بين مجاميع سجلات السنة المسجَّلة فعلاً (عقود، إيراد، مخرجات، فواتير، تحصيل) — محطةٌ جدولُها فارغ خارج الحساب، وليست النسب تتبعاً لكل ريال بعينه')}</div>` : ''}`;
 
@@ -1771,7 +1848,10 @@ export async function sectorPage(user, opts = {}) {
   </section>`;
 
   // ── رأس قسمٍ مرقّم كنماذج المالك ──
-  const secn = (n, t, aux = '') => `<div class="secn"><span class="n tnum">${n}</span><h2>${t}</h2>${aux ? `<span class="s">${aux}</span>` : ''}</div>`;
+  // الرقم واحدٌ لكل فصلٍ بترتيب فصوله (3..8) — الترقيم القديم 3..9 وُضع لصفحةٍ واحدة طويلة،
+  // ومع الألسنة صار قسمٌ ثانٍ داخل فصلٍ (رحلة القيمة «5») يغيب تحت الطيّ فيُقرأ التسلسل
+  // مثقوباً (ملاحظة أ. حسين 2026-08-25). القسم الثاني داخل الفصل يحمل عنوانه بلا رقم.
+  const secn = (n, t, aux = '') => `<div class="secn">${n ? `<span class="n tnum">${n}</span>` : ''}<h2>${t}</h2>${aux ? `<span class="s">${aux}</span>` : ''}</div>`;
 
   // ── ٣: رسم الإيقاع يُعاد تصييره فعلاً (ملاحظة أ. حسين ٤، 2026-08-25) ─────────────────
   // فترةٌ مختارة تُقرِّب الرسم إلى أشهرها وحدها (لا إضاءةً بعد اليوم) والهدفُ حصةً بالتناسب
@@ -1848,8 +1928,6 @@ export async function sectorPage(user, opts = {}) {
       <span class="tv tnum">${st.count}<small style="display:block;color:var(--muted);font-size:9.5px">${openTotalV ? Math.round((st.value_halalas / openTotalV) * 100) : 0}% من القيمة</small></span>
     </button>`;
   }).join('');
-  const AGE_B = [['0-30', 'حتى شهر', 0, 30], ['31-60', 'شهر إلى شهرين', 31, 60], ['61-90', 'شهران إلى ثلاثة', 61, 90], ['90+', 'أكثر من ثلاثة', 91, 99999]];
-  const ages = AGE_B.map(([k, l, lo, hi]) => { const rows = openFlow.filter((o) => { const d = ageDays(o.since); return d >= lo && d <= hi; }); return { k, l, n: rows.length, v: rows.reduce((a, o) => a + (o.value_halalas || 0), 0) }; });
   const bubbles = (() => {
     const rows = openFlow.filter((o) => o.value_halalas > 0).slice(0, 60);
     if (!rows.length) return '';
@@ -1886,16 +1964,23 @@ export async function sectorPage(user, opts = {}) {
   })();
   const commercialSection = `
   <section class="card pad">
-    ${secn(4, 'الفصل التجاري', `${G.funnel} — عرضُ الشريط قيمةُ المرحلة والعددُ بجانبه · وأعمار الفرص وقيمتها باحتمالها`)}
+    ${secn(4, 'الفصل التجاري', `${G.funnel} — عرضُ الشريط قيمةُ المرحلة والعددُ بجانبه · أرصدة لحظية لا تتأثر بالفترة`)}
     <div class="com3">
       <div>
         <div class="sh">${G.funnel}${selStage ? ` — مرحلة ${esc(selStage.name_ar)}` : ''}</div>
         ${openTotalC ? `<div class="trap">${trapRows}</div>
-        <div class="comfoot"><span>${G.winRate} <b class="tnum">${wins.winRate}%</b></span><span>الإجمالي <b class="tnum">${openTotalC}</b> · <b class="tnum">${sarShort(openTotalV)}</b></span></div>` : `<div class="empty-mini">${icon('filter')} لا فرص مفتوحة الآن</div>`}
+        <div class="comfoot"><span>${(() => {
+    const w = winsScoped ? (winsScoped.won || 0) : wins.won, l = winsScoped ? (winsScoped.lost || 0) : wins.lost;
+    const dec = w + l;
+    if (!dec) return `${G.winRate} — لا فرص حُسمت${filtered ? ' تحت الترشيح' : ''} هذه السنة`;
+    const rate = Math.round((w / dec) * 100);
+    return dec < 3 ? `${G.winRate} <b class="tnum">${rate}%</b> — عيّنة صغيرة (${countAr(dec, { one: 'فرصة واحدة حُسمت', two: 'فرصتان حُسمتا', few: 'فرص حُسمت', many: 'فرصة حُسمت' })})`
+      : `${G.winRate} <b class="tnum">${rate}%</b> من ${countAr(dec, { one: 'فرصة حُسمت', two: 'فرصتين حُسمتا', few: 'فرص حُسمت', many: 'فرصة حُسمت' })}`;
+  })()}</span><span>الإجمالي <b class="tnum">${openTotalC}</b> · <b class="tnum">${sarShort(openTotalV)}</b></span></div>` : `<div class="empty-mini">${icon('filter')} لا فرص مفتوحة الآن</div>`}
       </div>
       <div>
         <div class="sh">عمر الفرص في مرحلتها</div>
-        ${figBars(ages.map((b, i) => ({ label: b.l, value: b.v, count: b.n, fill: i >= 2 ? 'var(--st-warn)' : null })), { fmt: sarShort })}
+        ${figBars(ages.map((b, i) => ({ label: b.l, value: b.v, count: b.n, fill: i >= 2 ? 'var(--st-warn)' : null, dd: `fnl-age-${b.k}` })), { fmt: sarShort })}
         <div class="comfoot"><span>متوسط عمر المرحلة <b class="tnum">${avgAge ? dayWord(avgAge) : 'أقل من يوم'}</b></span>
         ${stalledRows.length ? `<button type="button" class="sig warn" data-action="open-dd" data-dd="fnl-stalled" style="border:none;cursor:pointer;font-family:inherit"><span class="g" aria-hidden="true">▲</span><span>${countAr(stalledRows.length, { one: 'فرصة متوقفة', two: 'فرصتان متوقفتان', few: 'فرص متوقفة', many: 'فرصة متوقفة' })}</span></button>` : sig('ok', '✓', 'لا فرص متوقفة')}</div>
       </div>
@@ -1967,15 +2052,15 @@ export async function sectorPage(user, opts = {}) {
   </tbody></table></div>${anyMs ? '' : `<div class="gapline">لا معالم مسجَّلة لمشاريع هذه السنة — تُسجَّل من صفحة المشروع فيظهر القادم منها هنا</div>`}` : `<div class="empty-mini">${icon('projects')} لا مشاريع في سنة ${year}</div>`;
   const opsSection = `
   <section class="card pad">
-    ${secn(6, 'الفصل التشغيلي', 'صحة المشاريع والتزام المعالم وتقدم المشاريع الرئيسية')}
+    ${secn(5, 'الفصل التشغيلي', 'صحة المشاريع والتزام المعالم وتقدم المشاريع الرئيسية · أرصدة لحظية لا تتأثر بالفترة')}
     <div class="ops3${msDueTot ? '' : ' two'}">
       <div class="opsd">
         <div class="sh" style="justify-content:center">صحة المشاريع</div>
         <span class="ringw" style="width:112px;height:112px">${figDonut([
-    { v: sd.rag.GREEN || 0, color: 'var(--st-good)', dd: sd.rag.GREEN ? 'sec-health-GREEN' : '', label: `${G.hOnTrack}: ${sd.rag.GREEN || 0}` },
-    { v: sd.rag.AMBER || 0, color: 'var(--st-warn)', dd: sd.rag.AMBER ? 'sec-health-AMBER' : '', label: `${G.hAtRisk}: ${sd.rag.AMBER || 0}` },
-    { v: sd.rag.RED || 0, color: 'var(--st-bad)', dd: sd.rag.RED ? 'sec-health-RED' : '', label: `${G.hCritical}: ${sd.rag.RED || 0}` },
-  ], { size: 112, sw: 14 })}<span class="ringv"><b class="tnum" dir="ltr" style="font-size:1.15rem">${sd.rag.GREEN || 0}/${ragActive || 0}</b><small>على المسار</small></span></span>
+    { v: ragView.GREEN || 0, color: 'var(--st-good)', dd: ragView.GREEN ? 'sec-health-GREEN' : '', label: `${G.hOnTrack}: ${ragView.GREEN || 0}` },
+    { v: ragView.AMBER || 0, color: 'var(--st-warn)', dd: ragView.AMBER ? 'sec-health-AMBER' : '', label: `${G.hAtRisk}: ${ragView.AMBER || 0}` },
+    { v: ragView.RED || 0, color: 'var(--st-bad)', dd: ragView.RED ? 'sec-health-RED' : '', label: `${G.hCritical}: ${ragView.RED || 0}` },
+  ], { size: 112, sw: 14 })}<span class="ringv"><b class="tnum" dir="ltr" style="font-size:1.15rem">${ragView.GREEN || 0}/${ragActive || 0}</b><small>على المسار</small></span></span>
         <div class="fig-leg">${healthRows}</div>
       </div>
       ${msDueTot ? `<div>
@@ -2013,7 +2098,7 @@ export async function sectorPage(user, opts = {}) {
 
   // ── ٨: الفصل البشري — خريطة حرارية إدارة×شهر + الطلب مقابل الطاقة ──
   const heatRows = team && team.departments.length
-    ? team.departments.map((d) => ({ label: d.name_ar, dd: canPeople ? `cap-dept-${d.id}` : '', cells: Array.from({ length: 12 }, (_, m) => {
+    ? team.departments.map((d) => ({ label: d.name_ar, dd: canPeople ? `cap-dept-${d.id || 'none'}` : '', cells: Array.from({ length: 12 }, (_, m) => {
       const members = d.ids.map((id) => team.people.find((p) => p.id === id)).filter(Boolean);
       return members.length ? Math.round(members.reduce((a, p) => a + (p.months[m] || 0), 0) / members.length) : null;
     }) }))
@@ -2031,8 +2116,8 @@ export async function sectorPage(user, opts = {}) {
   const heatTone = (v) => v == null ? ['var(--track)', 'var(--muted)'] : v > OVER_ABOVE ? ['var(--st-bad-soft)', 'var(--st-bad)'] : v === 0 ? ['var(--st-neut-soft)', 'var(--muted)'] : v < FREE_BELOW ? ['#fdf6e3', '#8a6d1a'] : ['var(--st-good-soft)', 'var(--st-good)'];
   const hrSection = `
   <section class="card pad">
-    ${secn(8, 'الفصل البشري — التسكين والموارد', `${G.utilization} المخطَّط بالإدارة والشهر، والطلب مقابل الطاقة — من خطة التسكين لا ساعات العمل`)}
-    ${clientSel ? '<div class="nofilt" style="margin-bottom:.5rem">غير مرشَّح بالعميل — التسكين على المشاريع لا على العملاء</div>' : ''}
+    ${secn(7, 'الفصل البشري — التسكين والموارد', `${G.utilization} المخطَّط بالإدارة والشهر، والطلب مقابل الطاقة — من خطة التسكين لا ساعات العمل`)}
+    ${filtered ? '<div class="nofilt" style="margin-bottom:.5rem">القطاع كله — خطة التسكين موردٌ قطاعي لا يُنسَب لإدارةٍ أو عميل؛ مرشِّحا الإدارة والعملاء لا يسريان على هذا الفصل</div>' : ''}
     <div class="hr3">
       <div>
         <div class="sh">${G.utilization} حسب ${team && team.departments.length ? 'الإدارة' : 'القطاع'} ${heat3Rows ? 'لهذا الشهر والشهرين بعده' : 'والشهر'}</div>
@@ -2040,9 +2125,11 @@ export async function sectorPage(user, opts = {}) {
     ? figHeat(heat3Rows, heat3Months.map((m) => monthLabel(m - 1)), { tone: heatTone, ltr: true })
     : figHeat(heatRows, Array.from({ length: 12 }, (_, i) => i + 1), { tone: heatTone, ltr: true })}
         <div class="pulses" style="border-top:none;padding-top:.35rem;margin-top:.2rem">
-          <div class="pch"><span class="l">ضمن الطاقة</span><b class="tnum" style="color:var(--st-good)">${midNow.length}</b></div>
-          <div class="pch"><span class="l">تجاوز</span><b class="tnum"${overNow.length ? ' style="color:var(--st-bad)"' : ''}>${overNow.length}</b></div>
-          <div class="pch"><span class="l">${nowMonth ? G.onBench : 'بلا تسكين'}</span><b class="tnum">${freeNow.length}</b></div>
+          ${[['mid', 'ضمن الطاقة', midNow.length, 'style="color:var(--st-good)"'],
+    ['over', 'تجاوز', overNow.length, overNow.length ? 'style="color:var(--st-bad)"' : ''],
+    ['free', nowMonth ? G.onBench : 'بلا تسكين', freeNow.length, '']].map(([k, l, n, st]) =>
+    (canPeople && n ? `<button type="button" class="pch pch-btn" data-action="open-dd" data-dd="cap-band-${k}" aria-label="${l}: ${n} — التفصيل"><span class="l">${l}</span><b class="tnum" ${st}>${n}</b></button>`
+      : `<div class="pch"><span class="l">${l}</span><b class="tnum" ${st}>${n}</b></div>`)).join('')}
         </div>
       </div>
       <div>
@@ -2087,19 +2174,19 @@ export async function sectorPage(user, opts = {}) {
       ${[['30 يوماً', h30], ['60 يوماً', h60], ['90 يوماً', h90]].map(([l, rows]) => rows.length ? `<div class="outg"><span class="og">${l}</span>${rows.slice(0, 3).map(msRow).join('')}</div>` : '').join('')}
     </div>` : '',
     topRisks.length ? `<div><div class="sh">${G.risks} المفتوحة</div>
-      ${topRisks.map((r) => { const [pl, pc] = probAr[r.probability] || probAr.low; return `<div class="msr"><span class="dotc" style="background:${pc}"></span><span><b>${esc(r.title)}</b>${r.project ? ` <span>· ${esc(r.project)}</span>` : ''}${r.impact ? ` <span class="im">· الأثر: ${impactAr[r.impact] || esc(r.impact)}</span>` : ''}</span><span class="pill" style="background:var(--st-neut-soft);color:var(--muted);flex:none">احتمال ${pl}</span></div>`; }).join('')}
+      ${topRisks.map((r) => { const [pl, pc] = probAr[r.probability] || probAr.low; return `<div class="msr"><span class="dotc" style="background:${pc}"></span><span>${r.pid ? `<a href="/app/project/${esc(r.pid)}" style="color:var(--ink2)"><b>${esc(r.title)}</b></a>` : `<b>${esc(r.title)}</b>`}${r.project ? ` <span>· ${esc(r.project)}</span>` : ''}${r.impact ? ` <span class="im">· الأثر: ${impactAr[r.impact] || esc(r.impact)}</span>` : ''}</span><span class="pill" style="background:var(--st-neut-soft);color:var(--muted);flex:none">احتمال ${pl}</span></div>`; }).join('')}
     </div>` : '',
-    capRows.length ? `<div><div class="sh">${overloadedAhead ? 'قيود الطاقة القادمة' : 'السعة المتاحة في الأشهر القادمة'}</div>
-      ${capRows.slice(0, 4).join('')}${capRows.length > 4 ? `<div class="gapline">و${countAr(capRows.length - 4, { one: 'شهر آخر', two: 'شهران آخران', few: 'أشهر أخرى', many: 'شهراً آخر' })} — التفصيل في لوحة التسكين</div>` : ''}
+    capRows.length ? `<div><div class="sh">${overloadedAhead ? 'قيود الطاقة القادمة' : 'السعة المتاحة في الأشهر القادمة'}${filtered ? ' <span class="icb">القطاع كله</span>' : ''}</div>
+      ${capRows.slice(0, 4).join('')}${capRows.length > 4 ? `<div class="gapline">و${countAr(capRows.length - 4, { one: 'شهر آخر', two: 'شهران آخران', few: 'أشهر أخرى', many: 'شهراً آخر' })} — التفصيل في <a href="/app/staffing">لوحة التسكين</a></div>` : ''}
     </div>` : '',
   ].filter(Boolean);
   const outGaps = [
     !msUpcoming.length ? 'لا معالم مستحقة في التسعين يوماً القادمة — تُسجَّل من صفحة المشروع' : '',
-    !topRisks.length ? `لا ${G.risks} مفتوحة مسجَّلة — تُسجَّل من صفحة المشروع` : '',
+    !topRisks.length ? 'لا مخاطر مفتوحة مسجَّلة — تُسجَّل من صفحة المشروع' : '',
   ].filter(Boolean);
   const outlookSection = outCols.length ? `
   <section class="card pad">
-    ${secn(9, 'نظرة الفترة القادمة', outCols.length === 3 ? 'معالم الثلاثين والستين والتسعين يوماً، والمخاطر المفتوحة، وقيود الطاقة' : 'ما هو مسجَّل للأشهر القادمة')}
+    ${secn(8, 'نظرة الفترة القادمة', `${outCols.length === 3 ? 'معالم الثلاثين والستين والتسعين يوماً، والمخاطر المفتوحة، وقيود الطاقة' : 'ما هو مسجَّل للأشهر القادمة'} · نظرة أمامية من اليوم — لا تتأثر بالفترة`)}
     <div class="out3${outCols.length < 3 ? ` c${outCols.length}` : ''}">${outCols.join('')}</div>
     ${outGaps.length ? `<div class="gapline">${outGaps.join(' · ')}</div>` : ''}
   </section>` : '';
@@ -2155,13 +2242,14 @@ export async function sectorPage(user, opts = {}) {
     ${panel('com', 'التجاري', `
       ${commercialSection}
       <section class="card pad">
-        ${secn(5, 'رحلة القيمة — من التعاقد إلى التحصيل', 'مجاميع سجلات السنة، والنسب بين كل محطتين')}
+        ${secn(null, 'رحلة القيمة — من التعاقد إلى التحصيل', `مجاميع سجلات السنة كاملةً${filtered ? ' تحت الترشيح — كل محطةٍ عبر مشروع سجلها' : ''}، والنسب بين كل محطتين · لا تتأثر بالفترة`)}
         <div class="vj-light">${journey}</div>
       </section>`)}
     ${panel('ops', 'التشغيلي', opsSection)}
     ${panel('cli', G.clients, `
       <section class="card pad">
-        ${secn(7, canInvoices ? 'تركيز الإيراد والعملاء والتحصيل' : 'تركيز الإيراد والعملاء', `مرتَّبون حسب إيراد ${year}`)}
+        ${secn(6, canInvoices ? 'تركيز الإيراد والعملاء والتحصيل' : 'تركيز الإيراد والعملاء', `مرتَّبون حسب إيراد ${year} كاملةً — لا يتأثر بالفترة`)}
+        ${!treemap ? `<div class="empty-mini" style="margin-bottom:1rem">${icon('info')} لا يُرسم توزيع العملاء بعد — يلزم عميلان على الأقل بإيراد مسجَّل هذه السنة${filtered ? ' تحت هذا الترشيح' : ''}</div>` : ''}
         ${treemap ? `<div class="g12" style="margin-bottom:1rem">
           <div class="c7" style="min-width:0">${treemap}</div>
           <div class="c5 conc-panel" style="min-width:0">
