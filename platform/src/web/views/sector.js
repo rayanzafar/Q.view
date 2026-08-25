@@ -1254,7 +1254,45 @@ export async function sectorPage(user, opts = {}) {
       <span style="display:inline-flex;gap:.5rem;align-items:center"><span class="pmeter"><i style="width:${it.pct}%"></i></span>
       <b class="tnum">${it.num} من ${it.den}</b>
       <a class="btn btn-ghost btn-sm" href="${esc(it.href)}">أكمِلها</a></span></div>`).join('')}`) : '';
+  const monthWord = (n) => countAr(n, { one: 'شهر واحد', two: 'شهران', few: 'أشهر', many: 'شهراً' });
+  // ── نافذة التوقع: الحساب مكشوفاً، لا رقمٌ يُؤخذ على عهدة الشاشة ────────────────────────
+  // البطاقة كانت تفتح «الإيراد حسب المشروع» — نافذةٌ لا علاقة لها بالتوقع (ملاحظة المالك).
+  // وهذه تعرض الأساس والحدَّين وصيغةَ كلٍّ منها، والأشهرَ المسجَّلة التي بُنيت عليها الوتيرة،
+  // ورسماً تفاعلياً يقول قيمة كل شهر بالتحويم — «كي نفهم الحساب» (طلب أ. حسين).
+  const fcDD = (() => {
+    if (fr.tooEarly) {
+      return ddWrap('secfc', G.forecast, `${esc(sd.sector.name_ar)} · ${year}`, `
+        <div class="empty-mini">${icon('clock')} مبكرٌ على التوقع — لم يكتمل شهرٌ من السنة بعد، ولا وتيرة تُقاس عليها.</div>`);
+    }
+    if (fr.closed) {
+      return ddWrap('secfc', G.forecast, `${esc(sd.sector.name_ar)} · ${year}`, `
+        <div class="dd-kpi"><span class="v tnum">${sarShort(fr.actual)}</span><span style="font-size:12px;color:var(--muted)">السنة انتهت — هذا محقّقها لا توقّعاً</span></div>`);
+    }
+    const seen = monthly.slice(0, fr.monthsSeen);
+    const rows = seen.map((v, i) => ({ label: MONTHS_AR[i], value: v, count: '', fill: v === fr.maxMonth ? 'var(--st-good)' : v === fr.minMonth ? 'var(--st-warn)' : 'var(--acc-navy)' }));
+    return ddWrap('secfc', G.forecast, `${esc(sd.sector.name_ar)} · ${year} · الحساب مكشوفاً`, `
+      <div class="dd-kpi"><span class="v tnum">${sarShort(fr.base)}</span><span style="font-size:12px;color:var(--muted)">الأساس — لو استمرت الوتيرة نفسها</span>
+        ${fcPct != null ? `<span class="pill" style="background:${fcPct >= 0 ? 'var(--st-good-soft)' : 'var(--st-warn-soft)'};color:${fcPct >= 0 ? 'var(--st-good)' : '#92400e'}"><span class="tnum" dir="ltr">${fcPct >= 0 ? '+' : '−'}${Math.abs(fcPct)}%</span> عن ${G.target}</span>` : ''}</div>
+      <div class="dd-sec">الصيغ الثلاث — كلها من الإيراد المُسجَّل وحده</div>
+      <div class="dd-row"><span>المتحفّظ — لو تكرّر <b>أبطأ</b> شهر مسجَّل</span>
+        <span><b class="tnum">${sarShort(fr.low)}</b> <small style="color:var(--muted)">= ${sarShort(fr.actual)} + ${sarShort(fr.minMonth)} × ${monthWord(fr.remainingMonths)}</small></span></div>
+      <div class="dd-row"><span>الأساس — لو استمرت الوتيرة</span>
+        <span><b class="tnum">${sarShort(fr.base)}</b> <small style="color:var(--muted)">= ${sarShort(fr.actual)} ÷ ${fr.elapsedPct}% من السنة</small></span></div>
+      <div class="dd-row"><span>المتفائل — لو تكرّر <b>أفضل</b> شهر مسجَّل</span>
+        <span><b class="tnum">${sarShort(fr.high)}</b> <small style="color:var(--muted)">= ${sarShort(fr.actual)} + ${sarShort(fr.maxMonth)} × ${monthWord(fr.remainingMonths)}</small></span></div>
+      <div class="dd-sec">الأشهر المسجَّلة التي قِيست عليها الوتيرة (${monthWord(fr.monthsSeen)})</div>
+      ${figBars(rows, { fmt: sarShort })}
+      <div class="dd-row"><span>أبطأ شهر</span><b class="tnum">${sarShort(fr.minMonth)}</b></div>
+      <div class="dd-row"><span>أفضل شهر</span><b class="tnum">${sarShort(fr.maxMonth)}</b></div>
+      <div class="dd-row"><span>متوسط الشهر</span><b class="tnum">${sarShort(Math.round(fr.actual / Math.max(1, fr.monthsSeen)))}</b></div>
+      <div style="font-size:var(--fs-micro);color:var(--muted);padding:.5rem 0 0;line-height:1.8">
+        لا تدخل قيمةُ الفرص هذا الحساب إطلاقاً: قيمة الفرصة قيمةٌ تعاقدية قد تمتدّ سنوات، والإيراد
+        لا يُعترف به إلا عند تسليم المخرَج أو قبوله. وتوزيع الأشهر يتبع تواريخ القبول أو التسجيل
+        في المنصة لا تواريخ تنفيذ العمل، فيصدق كلما اكتملت تواريخ المخرجات.
+      </div>`);
+  })();
   const DD = `
+  ${fcDD}
   ${complDD}
   ${capEmpDDs}
   ${overloadDD}
@@ -1308,8 +1346,9 @@ export async function sectorPage(user, opts = {}) {
   // والخلاصات المحسوبة تحمل علامةً وتلميحاً يقولان أساسها — شرط أ. حسين الصريح. ═══
   const winName = WINS.find((w) => w[0] === win)[1];
   const winEcho2 = winEcho;
-  const estMark = (tip) => `<span class="wmark" data-tip="${esc(tip)}" tabindex="0" role="img" aria-label="قيمة تقديرية — ${esc(tip)}">${icon('risk')}</span>`;
-  const noteMark = (tip) => `<span class="tipdot" data-tip="${esc(tip)}" tabindex="0" role="img" aria-label="${esc(tip)}">${icon('info')}</span>`;
+  // pos='below' لما يقع أعلى الشاشة: التلميح فوق مُطلِقه يُقصّ عند حافة النافذة فيتراكب مع الرقم
+  const estMark = (tip, pos = '') => `<span class="wmark" data-tip="${esc(tip)}"${pos ? ` data-tip-pos="${pos}"` : ''} tabindex="0" role="img" aria-label="قيمة تقديرية — ${esc(tip)}">${icon('risk')}</span>`;
+  const noteMark = (tip, pos = '') => `<span class="tipdot" data-tip="${esc(tip)}"${pos ? ` data-tip-pos="${pos}"` : ''} tabindex="0" role="img" aria-label="${esc(tip)}">${icon('info')}</span>`;
   const prevTrend = (sd.trend || []).find((t) => t.year === year - 1) || null;
   const yoyPct = prevTrend?.revenue_halalas ? Math.round(((sd.revenue_halalas - prevTrend.revenue_halalas) / prevTrend.revenue_halalas) * 100) : null;
   const yoySales = prevTrend?.sales_halalas ? Math.round(((sd.sales_halalas - prevTrend.sales_halalas) / prevTrend.sales_halalas) * 100) : null;
@@ -1371,19 +1410,18 @@ export async function sectorPage(user, opts = {}) {
 
   // بطاقة التوقع: سنويةٌ بطبيعتها — النطاق من الصيغ الثلاث المعلنة على العلامة الحمراء (قرار
   // أ. حسين 2026-08-24: «نطاق التوقع» لا «الثقة» — لا إحصاء وراءه، سيناريوهات من سجلات حقيقية).
-  const monthWord = (n) => countAr(n, { one: 'شهر واحد', two: 'شهران', few: 'أشهر', many: 'شهراً' });
   const kpiForecast = fr.tooEarly
     ? kpiCard({ eye: G.forecast, val: '—', sub: 'مبكرٌ على التوقع — لم يكتمل شهرٌ من السنة بعد',
-      sub2: attainRev != null ? `المحقق ${sarShort(fr.actual)} من ${G.target}` : '', scope: 'لا يتأثر بالفترة', dd: 'secrev' })
+      sub2: attainRev != null ? `المحقق ${sarShort(fr.actual)} من ${G.target}` : '', scope: 'لا يتأثر بالفترة', dd: 'secfc' })
     : fr.closed
       ? kpiCard({ eye: G.forecast, val: sarShort(fr.actual), valTitle: fmtSar(fr.actual),
-        sub: 'السنة انتهت — الرقم محقّقها لا توقّعاً', scope: 'لا يتأثر بالفترة', dd: 'secrev' })
+        sub: 'السنة انتهت — الرقم محقّقها لا توقّعاً', scope: 'لا يتأثر بالفترة', dd: 'secfc' })
       : kpiCard({ eye: G.forecast, val: sarShort(fr.base), valTitle: fmtSar(fr.base),
-        mark: estMark(`تقديرٌ محسوب من الإيراد المُسجَّل وحده — لا من قيمة الفرص: الأساس ${sarShort(fr.base)} = المحقق ${sarShort(fr.actual)} ÷ ما انقضى من السنة (${fr.elapsedPct}%)؛ والمتحفّظ ${sarShort(fr.low)} = المحقق + أبطأ شهر مسجَّل (${sarShort(fr.minMonth)}) × ${monthWord(fr.remainingMonths)} متبقية؛ والمتفائل ${sarShort(fr.high)} = المحقق + أفضل شهر مسجَّل (${sarShort(fr.maxMonth)}) × المتبقية. وتوزيع الأشهر يتبع تواريخ قبول المخرجات أو تسجيلها لا تنفيذ العمل.`),
+        mark: estMark('تقديرٌ من وتيرة الإيراد المُسجَّل وحده — اضغط البطاقة لتفصيل الحساب', 'below'),
         sub: `النطاق <b class="tnum" dir="ltr">${sarShort(fr.low)}–${sarShort(fr.high)}</b>${fcPct != null ? ` · <span class="tnum" dir="ltr">${fcPct >= 0 ? '+' : '−'}${Math.abs(fcPct)}%</span> عن الهدف` : ''}`,
         sub2: `على وتيرة ${sarShort(Math.round(fr.actual / Math.max(1, fr.monthsSeen)))} شهرياً خلال ${monthWord(fr.monthsSeen)} مضت`,
         viz: figSpark(cumMonthly, { color: 'var(--acc-teal)', ariaLabel: 'مسار الإيراد التراكمي الذي تُقاس عليه الوتيرة' }),
-        scope: 'لا يتأثر بالفترة', dd: 'secrev' });
+        scope: 'لا يتأثر بالفترة', dd: 'secfc' });
 
   // بطاقة الخط المرجّح: رصيدٌ لحظي لا يتأثر بالفترة — والشرارة مرسّى الفوز الشهري الحقيقي
   // (لا سجل تاريخي لقيمة الخط نفسه — فلا نختلقه).

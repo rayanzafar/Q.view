@@ -31,6 +31,41 @@ export function windowBounds(win, year, now = new Date()) {
   return { sinceIso: rolled > yearStart ? rolled : yearStart, untilIso };
 }
 
+// ── فترةٌ تقويمية محدَّدة: شهرٌ بعينه أو ربعٌ بعينه أو السنة ──────────────────────────
+// النافذة المتدحرجة (windowBounds) تجيب «ما الجديد» — وهي الصواب لتغذية «ما تغيّر» وحدها.
+// أما «كم أنجزنا في أغسطس؟» فيحتاج حدّاً تقويمياً: «الشهر» المتدحرج يعني آخر ثلاثين يوماً،
+// ولذلك كان «الربع» يعرض أربعة أشهر متقاطعة — رقمٌ لا يطابق ما يفهمه القارئ من التسمية.
+//
+// الحدّان هما الفترة كاملةً كما في التقويم (لا مقصوصةً عند اليوم): الاستعلامات تعيد ما سُجِّل
+// فعلاً، والشاشة هي التي تقول «حتى اليوم» للفترة الجارية و«متوقع» للقادمة. وخلطُ المحقق
+// بالمتوقع في خانةٍ واحدة ممنوع — ولهذا تُعاد الحالة مع الحدّين لا الحدّان وحدهما.
+export const PERIOD_KINDS = ['y', 'q', 'm'];
+export function parsePeriod(p) {
+  const v = String(p || 'y').trim().toLowerCase();
+  if (v === 'y') return { kind: 'y', index: 0 };
+  const q = /^q([1-4])$/.exec(v);
+  if (q) return { kind: 'q', index: Number(q[1]) };
+  const m = /^m(1[0-2]|[1-9])$/.exec(v);
+  if (m) return { kind: 'm', index: Number(m[1]) };
+  return { kind: 'y', index: 0 };           // مجهولٌ ⇒ السنة، لا خطأ في وجه القارئ
+}
+export function periodBounds(p, year, now = new Date()) {
+  const { kind, index } = parsePeriod(p);
+  const y = Number(year);
+  const pad = (n) => String(n).padStart(2, '0');
+  let startM = 1, endM = 13;                 // endM حصري (13 = أول العام التالي)
+  if (kind === 'q') { startM = (index - 1) * 3 + 1; endM = startM + 3; }
+  else if (kind === 'm') { startM = index; endM = index + 1; }
+  const sinceIso = `${y}-${pad(startM)}-01`;
+  const untilIso = endM > 12 ? `${y + 1}-01-01` : `${y}-${pad(endM)}-01`;
+  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
+    .toISOString().slice(0, 10);
+  const isPast = untilIso <= today;          // انقضت كاملةً
+  const isFuture = sinceIso > today;         // لم تبدأ بعد
+  return { kind, index, sinceIso, untilIso, isPast, isFuture, isCurrent: !isPast && !isFuture,
+    months: Array.from({ length: (endM > 12 ? 13 : endM) - startM }, (_, i) => startM + i) };
+}
+
 // «آخر تحديث» الحقيقي: أحدث سجلّ في سجل النظام للقطاع — كل كتابةٍ في المنصة تمرّ به.
 // لا وجود لسجل ⇒ null، والشاشة تقول «لا تحديثات مسجَّلة بعد» لا تاريخَ اليوم المُختلق.
 export async function lastChangeAt(sectorId) {
