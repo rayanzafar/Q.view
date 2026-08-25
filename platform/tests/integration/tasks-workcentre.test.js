@@ -366,3 +366,46 @@ test('وعنوان المهمة مسقوف في الخادم — ألف حرفٍ
   assert.equal(t.title.length, 200);
   await assert.rejects(() => T.updateTask(ctx(emp), t.id, { title: 'م'.repeat(300) }), /أطول من اللازم/);
 });
+
+// ── هويّة عناصر التحكّم في الصفّ: الحارس ضدّ انزلاق القيم المستعادة ──────────────
+// المتصفّح يحفظ قيم عناصر النماذج ويعيدها بعد إعادة التحميل، وما لا اسم له يُعاد **بموضعه**.
+// وصفحة المهام تُعيد تحميل نفسها بعد كل تغيير حالة، والمهمة المنجَزة تنتقل إلى درج «أنجزتها»
+// في آخر القائمة — فتنزلق كل قيمةٍ بعدها صفّاً واحداً وتحطّ «منجز» على المهمة التالية وهي في
+// نطاقها لم تتغيّر. ومن حاول إنجاز تلك التالية لم يستطع: قائمتها تعرض «منجز» أصلاً فلا يقع
+// تغيير، فيضطرّ إلى نقلها إلى حالةٍ أخرى ثم إعادتها. الاسم المشتقّ من معرّف المهمة يمنع ذلك.
+test('لكل قائمة حالة ومربّع تحديد اسمٌ مشتقٌّ من معرّف مهمّته — لا يُستعاد على صفّ غيره', async () => {
+  const html = await tasksPage(emp, { win: 'all' });
+  const sels = [...html.matchAll(/<select[^>]*class="tk-status"[^>]*>/g)].map((m) => m[0]);
+  const boxes = [...html.matchAll(/<input[^>]*class="tk-sel"[^>]*>/g)].map((m) => m[0]);
+  assert.ok(sels.length >= 3, `الصفحة لم تعرض صفوفاً تكفي للفحص (${sels.length})`);
+  assert.equal(sels.length, boxes.length, 'لكل صفٍّ قائمةٌ ومربّع');
+
+  const ids = new Set();
+  for (const tag of [...sels, ...boxes]) {
+    const id = /\sid="([^"]+)"/.exec(tag)?.[1];
+    const nm = /\sname="([^"]+)"/.exec(tag)?.[1];
+    assert.ok(id && nm && id === nm, `عنصرٌ بلا هويّة ثابتة: ${tag}`);
+    assert.match(tag, /autocomplete="off"/, `عنصرٌ يقبل الاستعادة: ${tag}`);
+    assert.ok(!ids.has(id), `هويّة مكرّرة تُبطل الغرض: ${id}`);
+    ids.add(id);
+  }
+  // والهويّة من معرّف المهمة لا من ترتيبها في القائمة
+  for (const t of [tOverdue, tToday, tLater, tNoDate]) {
+    assert.ok(html.includes(`id="tk-st-${t.id}"`), `لا قائمة حالة باسم المهمة ${t.id}`);
+    assert.ok(html.includes(`id="tk-sel-${t.id}"`), `لا مربّع تحديد باسم المهمة ${t.id}`);
+  }
+});
+
+// ── منتقي الجهة: بحثٌ بالاسم والرمز، والقيمة تبقى حيث يقرؤها الحفظ ─────────────
+test('منتقي الجهة قائمةٌ خلفيّة بمعرّفها المعهود، وخياراتها تحمل الرمز للبحث', async () => {
+  await update('project', 'WP1', { code: 'SOL-26-09' });
+  const html = await tasksPage(emp, { win: 'all' });
+  // المعرّف الذي يقرؤه الحفظ في الصفحة وفي صفحة الشخص لم يتغيّر
+  assert.match(html, /<select id="qa-parent" name="qa-parent"/, 'تغيّر معرّف منتقي الجهة فانقطع عنه الحفظ');
+  assert.match(html, /id="qa-parent-q"[^>]*role="combobox"/, 'لا حقل بحث فوق منتقي الجهة');
+  // الترميز `p:`/`o:`/`me` هو ما يفكّه parentPatch — تغييره يكسر الربط بصمت
+  assert.ok(html.includes('value="p:WP1"') && html.includes('value="o:WO1"') && html.includes('value="me"'));
+  // الرمز مبذول للبحث ومعروضٌ قبل الاسم
+  assert.match(html, /data-code="SOL-26-09"/, 'رمز المشروع غير قابل للبحث');
+  assert.ok(html.includes('SOL-26-09 — مشروع الحلول'), 'الرمز لا يسبق الاسم في نصّ الخيار');
+});

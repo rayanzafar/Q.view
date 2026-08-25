@@ -13,7 +13,7 @@ import { fmtSar } from '../../core/util/ids.js';
 import { all, get } from '../../core/db/index.js';
 import { sectorDashboard, sectorStaffing, sectorWins, quarterlyRevenue, quarterlyBookings, pipelineCoverage, monthlyRevenue, revenueOutlook, winsByMonth, windowFigures, windowRevenue, yearElapsedPct, targetToDate, paceDelta, grossMargin, WEIGHTED_OPEN } from '../../core/reports/metrics.js';
 import { attentionFeed, RESOURCE_AR } from '../../core/reports/attention.js';
-import { changesSince, windowBounds, lastChangeAt } from '../../core/reports/changes.js';
+import { changesSince, periodBounds, lastChangeAt } from '../../core/reports/changes.js';
 import { completenessScore } from '../../core/reports/completeness.js';
 import { DLV_YEAR_SQL } from '../../modules/finance/recognition.js';
 import { arAging } from '../../modules/finance/finance.js';
@@ -30,15 +30,15 @@ import { SCOPE_RANK } from '../../core/rbac/matrix.js';
 import { config } from '../../core/config.js';
 import { DELIVERY_SECTOR_SQL } from '../../core/org/kind.js';
 import { G } from '../i18n/glossary.js';
-import { monthLabel, quarterLabel, nowDot, currentMonthIndex, MONTHS_AR, MONTHS_EN3 } from '../../core/i18n/time.js';
+import { monthLabel, quarterLabel, nowDot, currentMonthIndex, MONTHS_AR, MONTHS_EN3, QUARTERS_AR } from '../../core/i18n/time.js';
 import { countAr, dayWord } from '../../core/i18n/plural.js';
 import { esc, ddWrap, attain, ddRows, sarShort } from './_shared.js';
 
-// عدسة الفترة: قيمة ?win + نص الصدى في عناوين الأقسام
-const WINS = [
-  ['year', 'السنة', 'منذ بداية السنة'], ['quarter', 'الربع', 'منذ ربع سنة'],
-  ['month', 'الشهر', 'منذ شهر'], ['week', 'الأسبوع', 'منذ أسبوع'], ['day', 'اليوم', 'منذ أمس'],
-];
+// الفترة التقويمية (?p=y | q1..q4 | m1..m12) — تحلّ محل النافذة المتدحرجة على الصفحة كلها:
+// «الشهر» المتدحرج كان يعني آخر ثلاثين يوماً، و«الربع» أربعة أشهر متقاطعة، وهو ما لا يفهمه
+// القارئ من التسمية. ومرشِّحٌ واحد للفترة أوضح من اثنين، فتغذية «ما تغيّر» تتبعه أيضاً.
+const periodLabel = (kind, index) => (kind === 'y' ? 'السنة كاملة' : kind === 'q' ? QUARTERS_AR[index - 1] : MONTHS_AR[index - 1]);
+const periodEcho = (kind, index, year) => (kind === 'y' ? `خلال ${year}` : kind === 'q' ? `في ${QUARTERS_AR[index - 1]} ${year}` : `في ${MONTHS_AR[index - 1]} ${year}`);
 
 // أيقونة ولون كل نوع في «ما تغيّر»
 const CHG_IC = { stage: 'trend', invoice: 'money', collection: 'check', activity: 'mail', created: 'plus' };
@@ -86,6 +86,14 @@ const SECTOR_THEME = `<style>body[data-page="sector"]{
 const CSS = `<style>
 /* عدسة الفترة روابط لا أزرار (حالتها في الرابط) — تلبس زيّ .seg نفسه */
 .seg a{font-size:12px;font-weight:700;color:var(--muted);padding:.35rem .7rem;border-radius:8px;display:flex;align-items:center;gap:.35rem;transition:background .18s,color .18s}
+/* مُنتقي الفترة: سنةٌ وأربعةُ أرباعٍ واثنا عشر شهراً — والقادمة موسومةٌ «توقع» في المُنتقي نفسه */
+.psel{display:flex;gap:.4rem;align-items:center;flex-wrap:wrap}
+.psel .seg{padding:2px}
+.psel .pmon a{padding:.35rem .45rem;font-size:11px}
+.psel a.fut{color:var(--faint)}
+.psel a.fut i{font-style:normal;font-size:8.5px;background:var(--st-neut-soft);color:var(--muted);border-radius:999px;padding:0 .3rem;margin-inline-start:.2rem}
+.psel a.on.fut{color:var(--ink2)}
+@media(max-width:900px){.psel .pmon{overflow-x:auto;max-width:100%}}
 .seg a.on{background:#fff;color:var(--ink2);box-shadow:var(--sh-sm)}
 /* ═══ كابينة v5.39 (نماذج المالك): لوحة داكنة، أقسام مرقّمة، رسوم غنية ═══ */
 .card.pad{padding:1rem 1.15rem;display:block}
@@ -396,7 +404,8 @@ export async function sectorPage(user, opts = {}) {
   const year = Number(opts.year) || config.fiscalYear;
   const now = new Date();
   const today = now.toISOString().slice(0, 10);
-  const win = WINS.some((w) => w[0] === opts.win) ? opts.win : 'year';
+  const period = periodBounds(opts.p, year, now);
+  const win = `${period.kind}${period.kind === 'y' ? '' : period.index}`;   // قيمة الرابط
   // محوّل القطاع: قطاعات التسليم وحدها — الأربعة لا خامس لها. وحدة المساندة لا مركز قيادة
   // تجاري لها (بلا هدف ولا خط فرص)، ووضعها في المحوّل يجعلها قطاعاً في عين كل من يستعمله.
   // ملاحظة: القائمة تحكم أيضاً ما يُقبل من ?sector= — فطلب وحدة مساندة يعود إلى قطاع المستخدم.
@@ -425,10 +434,13 @@ export async function sectorPage(user, opts = {}) {
   // حدود النافذة من قاعدةٍ واحدة (windowBounds): داخل السنة المعروضة دائماً — الجارية حتى
   // اليوم، والماضية ترسو على آخرها (كان الانقلاب since>until يصفّر الرقائق صمتاً)، والقادمة
   // فارغة معلنة. والنافذة السابقة المكافئة [since-len, since) للدلتا — تُطوى إن خرجت من السنة.
-  const { sinceIso, untilIso } = windowBounds(win, year, now);
+  const { sinceIso, untilIso } = period;
   const winLen = Math.max(0, Date.parse(untilIso) - Date.parse(sinceIso));
-  const prevSinceIso = new Date(Date.parse(sinceIso) - winLen).toISOString().slice(0, 10);
-  const prevOk = win !== 'year' && winLen > 0 && prevSinceIso >= `${year}-01-01`;
+  // الفترة السابقة المكافئة: الشهر/الربع الذي قبله داخل السنة نفسها — للمقارنة الصادقة
+  const prevP = period.kind === 'm' && period.index > 1 ? `m${period.index - 1}`
+    : period.kind === 'q' && period.index > 1 ? `q${period.index - 1}` : null;
+  const prevB = prevP ? periodBounds(prevP, year, now) : null;
+  const prevSinceIso = prevB?.sinceIso, prevOk = !!prevB && !period.isFuture;
   const [chg, attn, fr, monthly, qRev, qBook, cover, staff, wins, team] = await Promise.all([
     changesSince(user, sectorId, sinceIso, untilIso),
     attentionFeed(user, sectorId, { year, today }),
@@ -446,8 +458,8 @@ export async function sectorPage(user, opts = {}) {
   const [winf, winfPrev, wrev, wbm, compl, lastUpd, vjContracted, vjDelivered, vjAccepted, vjInvoiced, vjCollected, msWindow, msUpcoming, topRisks] = await Promise.all([
     // أرقام النافذة من مصدرٍ واحد يغذي شريط المؤشرات ورقائق النبض معاً — لا رقمان لشيء واحد
     windowFigures(user, sectorId, sinceIso, untilIso),
-    prevOk ? windowFigures(user, sectorId, prevSinceIso, sinceIso) : null,
-    (win === 'month' || win === 'quarter') ? windowRevenue(sectorId, year, sinceIso, untilIso) : null,
+    prevOk ? windowFigures(user, sectorId, prevB.sinceIso, prevB.untilIso) : null,
+    period.kind !== 'y' ? windowRevenue(sectorId, year, sinceIso, untilIso) : null,
     winsByMonth(sectorId, { untilIso }),
     completenessScore(user, sectorId, { year }),
     lastChangeAt(sectorId),
@@ -567,7 +579,7 @@ export async function sectorPage(user, opts = {}) {
   const scoped = selStage ? openFlow.filter((o) => o.stage_id === selStage.id) : openFlow;
   const qs = (over = {}) => {
     const p = new URLSearchParams();
-    p.set('year', String(year)); p.set('win', win);
+    p.set('year', String(year)); p.set('p', win);
     if (user.scope === 'company' && sectorId) p.set('sector', sectorId);
     if (selStage) p.set('stage', selStage.id);
     for (const [k, v] of Object.entries(over)) { if (v == null) p.delete(k); else p.set(k, String(v)); }
@@ -622,15 +634,25 @@ export async function sectorPage(user, opts = {}) {
       : d <= -3 ? sig('warn', '▼', `متأخرٌ ${ptWord(d)} عن المسار الزمني`)
         : sig('ok', '✓', 'على المسار الزمني');
   // ── (٣) عدسة الفترة — تسكن رأس بطاقة «ما تغيّر» نفسها (المرجع)، وهي روابط تعيد التحميل ──
-  const lens = `<div class="seg" role="group" aria-label="عدسة الفترة">${WINS.map(([k, l]) =>
-    `<a class="${k === win ? 'on' : ''}" style="text-decoration:none" href="${qs({ win: k })}" ${k === win ? 'aria-current="true"' : ''}>${l}</a>`).join('')}</div>`;
+  // كل فترةٍ تقويمية بحالتها: الماضية والجارية تُقرأ من المُسجَّل، والقادمة تُعلَّم «متوقع»
+  // في المُنتقي نفسه كي لا يظنّ القارئ أنه ينظر إلى محقَّق. لا سنةٌ قادمة (لا أساس لها).
+  const pOpt = (k, label) => {
+    const b = periodBounds(k, year, now);
+    const on = k === win;
+    return `<a class="${on ? 'on' : ''}${b.isFuture ? ' fut' : ''}" style="text-decoration:none" href="${qs({ p: k })}"${on ? ' aria-current="true"' : ''}${b.isFuture ? ' title="فترة قادمة — تُعرض بالمتوقع لا بالمحقق"' : ''}>${label}${b.isFuture ? '<i aria-hidden="true">توقع</i>' : ''}</a>`;
+  };
+  const lens = `<div class="psel">
+    <div class="seg" role="group" aria-label="الفترة">${pOpt('y', 'السنة')}</div>
+    <div class="seg" role="group" aria-label="الأرباع">${[1, 2, 3, 4].map((q) => pOpt(`q${q}`, `ر${q}`)).join('')}</div>
+    <div class="seg pmon" role="group" aria-label="الأشهر">${MONTHS_AR.map((m, i) => pOpt(`m${i + 1}`, monthLabel(i, 'tight'))).join('')}</div>
+  </div>`;
   const stageChip = selStage ? `<a class="chip on" href="${qs({ stage: null })}" title="إلغاء تصفية المرحلة">
       المرحلة: ${esc(selStage.name_ar)} <span aria-hidden="true">✕</span></a>
     <span style="font-size:var(--fs-micro);color:var(--muted)">أرقام القمع وأعلى الفرص وأعمارها مصفّاة بهذه المرحلة</span>` : '';
   // شريط الأدوات الواحد (ADR-0011): القطاع (للشركة) · نافذة التغيّر · تصفية المرحلة ·
   // انقضاء السنة · قائمة التقارير — لا أداة تحكم عامة داخل بطاقة بعد اليوم.
   const toolbar = `<div class="toolbar" style="row-gap:.45rem">
-    <span style="font-size:var(--fs-body);color:var(--muted);font-weight:700">الفترة: <span class="tipdot" data-tip="الألسنة تعيد حساب التدفقات (المكسوب والمفوتر والمحصَّل والإيراد وما تغيّر) — والأرصدة اللحظية (خط الفرص، الإشغال، صحة التنفيذ) لا تتأثر بالفترة وتحمل وسم «لحظي»" tabindex="0" role="img" aria-label="الألسنة تعيد حساب التدفقات — والأرصدة اللحظية لا تتأثر بالفترة">${icon('info')}</span></span>
+    <span style="font-size:var(--fs-body);color:var(--muted);font-weight:700">الفترة: <span class="tipdot" data-tip="اختر السنة أو ربعاً أو شهراً بعينه. التدفقات (الإيراد والمكسوب والمفوتر والمحصَّل وما تغيّر) تُعاد لهذه الفترة، والأرصدة اللحظية (خط الفرص، الإشغال، صحة التنفيذ) لا تتأثر بها وتحمل وسمها. والفترة القادمة تُعرض بالمتوقع لا بالمحقق." tabindex="0" role="img" aria-label="اختر السنة أو ربعاً أو شهراً — التدفقات تُعاد للفترة والأرصدة اللحظية لا تتأثر">${icon('info')}</span></span>
     ${lens}
     ${stageChip}
     <span class="spacer"></span>
@@ -686,9 +708,7 @@ export async function sectorPage(user, opts = {}) {
   }).join('');
   // صدى النافذة «منذ أسبوع/منذ شهر…» لا «هذا الأسبوع/هذا الشهر»: النافذة متدحرجة بعدد أيام
   // (changes.js) لا فترة تقويمية — وعنوانٌ تقويمي فوق صفوفٍ مؤرَّخة خارج فترته يناقض نفسه.
-  const isPastYear = year < now.getUTCFullYear();
-  const PAST_ECHO = { year: `خلال ${year}`, quarter: `في آخر ربع من ${year}`, month: `في آخر شهر من ${year}`, week: `في آخر أسبوع من ${year}`, day: `في آخر يوم من ${year}` };
-  const winEcho = isPastYear ? PAST_ECHO[win] : WINS.find((w) => w[0] === win)[2];
+  const winEcho = periodEcho(period.kind, period.index, year);
   const changesCard = card(`
     <div class="card-head"><span class="hgrp"><span class="eyebrow">${G.whatChanged}</span>
       <span class="t">${chg.items.length ? `${countAr(chg.items.length, { one: 'تغيير واحد', two: 'تغييران', few: 'تغييرات', many: 'تغييراً' })} ${winEcho}` : `لا تغييرات ${winEcho}`}</span></span></div>
@@ -1337,14 +1357,14 @@ export async function sectorPage(user, opts = {}) {
   ${funnelDD}`;
 
   const switcher = user.scope === 'company' ? `<span class="lbl" style="font-size:var(--fs-body);color:var(--muted);font-weight:700">القطاع:</span>
-    ${allSectors.map((s) => `<a href="/app/sector?year=${year}&sector=${esc(s.id)}&win=${win}" class="chip ${s.id === sectorId ? 'on' : ''}"><span class="dot" style="background:${esc(s.color || '#244A99')}"></span>${esc(s.name_ar)}</a>`).join('')}
+    ${allSectors.map((s) => `<a href="/app/sector?year=${year}&sector=${esc(s.id)}&p=${win}" class="chip ${s.id === sectorId ? 'on' : ''}"><span class="dot" style="background:${esc(s.color || '#244A99')}"></span>${esc(s.name_ar)}</a>`).join('')}
     <a class="btn btn-sm" href="/app/ceo?year=${year}&sector=${esc(sectorId)}">لوحة القيادة</a>
     <span style="flex:0 0 100%;height:0" aria-hidden="true"></span>` : '';
 
   // ═══ كابينة v5.39 — على نماذج المالك المرجعية (2026-08-24): لوحة داكنة نابضة، أقسام
   // مرقّمة، رسوم داخل البطاقات، ونافذة فترةٍ تسري على أرقام «ماذا حدث». القيم المرجّحة
   // والخلاصات المحسوبة تحمل علامةً وتلميحاً يقولان أساسها — شرط أ. حسين الصريح. ═══
-  const winName = WINS.find((w) => w[0] === win)[1];
+  const winName = periodLabel(period.kind, period.index);
   const winEcho2 = winEcho;
   // pos='below' لما يقع أعلى الشاشة: التلميح فوق مُطلِقه يُقصّ عند حافة النافذة فيتراكب مع الرقم
   const estMark = (tip, pos = '') => `<span class="wmark" data-tip="${esc(tip)}"${pos ? ` data-tip-pos="${pos}"` : ''} tabindex="0" role="img" aria-label="قيمة تقديرية — ${esc(tip)}">${icon('risk')}</span>`;
@@ -1358,7 +1378,7 @@ export async function sectorPage(user, opts = {}) {
 
   // ── (١) خمس بطاقات مؤشرات على نموذج المالك: قيمة ورسم ودلتا في كل بطاقة — والألسنة
   // تعيد حساب التدفقات فيها فعلاً (شكوى المالك «الألسنة لا تؤثر فيما تحتها مباشرة»). ──
-  const isWinMode = win !== 'year';
+  const isWinMode = period.kind !== 'y';
   const prevPct = (cur, prev) => (prev && prev > 0 ? Math.round(((cur - prev) / prev) * 100) : null);
   const deltaChip = (pct) => pct == null ? ''
     : sig(pct >= 0 ? 'ok' : 'warn', pct >= 0 ? '▲' : '▼', `<span class="tnum" dir="ltr">${pct >= 0 ? '+' : '−'}${Math.abs(pct)}%</span> عن النافذة السابقة المكافئة`);
@@ -1570,12 +1590,12 @@ export async function sectorPage(user, opts = {}) {
     barColor: 'var(--acc-indigo)', nowBarColor: 'var(--acc-violet)', forecastLine: fcLine,
     hi: isWinMode && wrev && wrev.months.length ? wrev.months : null, hover: true,
     ariaLabel: `الإيراد الشهري والتراكمي مقابل مستهدف ${year} — مرّر على أي شهر لقراءة قيمه (أو ركّز الرسم واستعمل الأسهم)` })}
-    ${isWinMode && wrev && wrev.months.length ? `<div class="comfoot">الأعمدة المضيئة أشهرُ نافذتك (${winName}) — والرسم سنويٌّ لا يتغير بالألسنة</div>` : ''}
+    ${isWinMode && wrev && wrev.months.length ? `<div class="comfoot">الأعمدة المضيئة أشهرُ ${winName} — والرسم سنويٌّ لا يتغيّر بتبديل الفترة</div>` : ''}
     <div class="pulses">
       ${pulseChip('المكسوب', pulseWins)}
       ${pulseChip('المفوتر', pulseInv)}
       ${pulseChip('المحصَّل', pulseCol)}
-      <span class="ph">نافذة ${winName} — بدّلها من ألسنة أعلى الصفحة</span>
+      <span class="ph">${winName} · ${year}${period.isCurrent && period.kind !== 'y' ? ' — حتى اليوم' : ''}${period.isFuture ? ' — فترة قادمة' : ''}</span>
     </div>
     <div class="comfoot">توزيع الأشهر من تواريخ قبول المخرجات أو تسجيلها في المنصة — لا من تاريخ تنفيذ العمل ${noteMark('شهر بند الإيراد من تاريخ قبول المخرَج أو تسليمه أو تسجيله (قاعدة الاعتراف بالإيراد عند التسليم) — فمنحنى الأشهر يتبع حركة التسجيل لا تنفيذ العمل، ويصدق كلما اكتملت تواريخ المخرجات')}</div>
   </section>`;

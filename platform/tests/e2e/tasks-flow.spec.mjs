@@ -167,7 +167,8 @@ export default async function tasksFlowSpec({ browser, base, t }) {
       const row = page2.locator(`[data-task="${made.taskId}"]`);
       check('المهمة المرتبطة ظاهرة في قائمة صاحبها', await row.count() > 0);
       await row.locator('[data-action="task-open"]').last().click();
-      await page2.waitForSelector('#drawer [data-f="parent"]');
+      // منتقي الجهة صار حقل بحثٍ فوق قائمةٍ مخفيّة: الانتظار على المرئي، والقراءة من القائمة.
+      await page2.waitForSelector('#drawer [data-picker="tf-parent"] .sp-q');
       const sel = await page2.evaluate(() => {
         const s = document.querySelector('#drawer [data-f="parent"]');
         return { value: s.value, initial: s.dataset.initial || '',
@@ -186,4 +187,119 @@ export default async function tasksFlowSpec({ browser, base, t }) {
       await ctx2.close();
     }
   }
+
+  // ── ٥) حالة الصفّ بعد إعادة التحميل، والبحث في منتقي الجهة ──
+  // شكوى من الشاشة: مهمةٌ تُوضَع «منجز» فتظهر التالية لها منجزةً كذلك، وهي في نطاق «بانتظار
+  // البدء» لم يمسّها أحد — ومن حاول إنجازها لم يستطع، فقائمتها تعرض «منجز» فلا يقع تغيير.
+  // السبب أن عناصر النماذج كانت بلا اسم، فيستعيدها المتصفّح بموضعها لا بهويّتها، والمهمة
+  // المنجَزة تنتقل إلى درج «أنجزتها» في آخر القائمة فتنزلق القيم صفّاً.
+  //
+  // ملاحظة على الحارس: متصفّح الاختبار المُشغَّل بلا واجهة لا يُفعِّل استعادة النماذج أصلاً
+  // (تُحقّق من ذلك بتجربة معزولة)، فالتحقّق السلوكي وحده قد يمرّ فارغاً. لذلك الحارس الحقيقي
+  // هو فحص الهويّة — يسقط لحظة يُحذف `name` من الوسم — ومعه محاكاةٌ صريحة للانزلاق تُثبت أن
+  // جولة المصالحة تردّ القيمة إلى ما كتبه الخادم مهما كان الذي أزاحها.
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    const page = await ctx.newPage();
+    await login(page, base, 'demo.consultant');
+    await open(page, base, '/app/home');
+    const seeded = await page.evaluate(async () => {
+      const today = new Date().toISOString().slice(0, 10);
+      const out = [];
+      for (const n of ['ألف', 'باء', 'جيم']) {
+        const r = await fetch('/api/tasks/quick', {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ title: 'حارس الاستعادة ' + n + ' ' + Date.now(), due_date: today, priority: 'P2' }),
+        });
+        if (r.ok) out.push((await r.json()).id);
+      }
+      return out;
+    });
+    check('تهيئة الحارس: ثلاث مهام مستحقّة اليوم', seeded.length === 3, JSON.stringify(seeded));
+
+    await open(page, base, '/app/tasks');
+    const ident = await page.evaluate(() => {
+      const els = [...document.querySelectorAll('.tk-status, .tk-sel')];
+      const ids = new Set(); let bad = 0, dupe = 0;
+      for (const el of els) {
+        const row = el.closest('[data-task]');
+        if (!row) { bad++; continue; }
+        if (!el.id || !el.name || el.id !== el.name || el.id.indexOf(row.dataset.task) < 0
+            || el.getAttribute('autocomplete') !== 'off') bad++;
+        if (ids.has(el.id)) dupe++;
+        ids.add(el.id);
+      }
+      return { total: els.length, bad, dupe };
+    });
+    check('لكل قائمة حالة ومربّع تحديد هويّةٌ ثابتة مشتقّة من معرّف مهمّته',
+      ident.total > 0 && ident.bad === 0 && ident.dupe === 0, JSON.stringify(ident));
+
+    // محاكاة الانزلاق: تُكتب «منجز» على قائمة الصفّ الثاني بلا حدث تغيير — كما تفعل الاستعادة
+    // تماماً — ويُحدَّد مربّعه. جولة المصالحة تردّ الاثنين إلى ما يقوله الخادم.
+    const settled = await page.evaluate(() => {
+      const sels = [...document.querySelectorAll('.tk-status')];
+      if (sels.length < 2) return { skip: true };
+      sels[1].value = 'DONE';
+      document.querySelectorAll('.tk-sel')[1].checked = true;
+      const drifted = sels[1].value !== sels[1].closest('[data-task]').dataset.status;
+      window.dispatchEvent(new Event('pageshow'));
+      const s = document.querySelectorAll('.tk-status')[1];
+      return { drifted, shown: s.value, server: s.closest('[data-task]').dataset.status,
+        ghosts: document.querySelectorAll('.tk-sel:checked').length };
+    });
+    check('قيمةٌ منزلقة على صفٍّ لم يتغيّر تُردّ إلى حالته المكتوبة',
+      settled.skip || (settled.drifted && settled.shown === settled.server), JSON.stringify(settled));
+    check('ولا يبقى تحديدٌ جماعي شبحيّ يعبر إعادة التحميل',
+      settled.skip || settled.ghosts === 0, JSON.stringify(settled));
+
+    // والتدفّق الحقيقي: إنجاز أول مهمة لا يترك أي قائمةٍ تخالف صفّها
+    const first = page.locator('.tk-status').first();
+    if (await first.count()) {
+      await first.selectOption('DONE');
+      await page.waitForLoadState('load');
+      await page.waitForTimeout(1200);
+      await page.waitForSelector('.tk-status');
+      const drift = await page.evaluate(() => [...document.querySelectorAll('.tk-status')]
+        .filter((s) => s.value !== s.closest('[data-task]').dataset.status)
+        .map((s) => s.closest('[data-task]').dataset.task));
+      check('بعد الإنجاز وإعادة التحميل: كل قائمة تعرض حالة صفّها هي',
+        drift.length === 0, JSON.stringify(drift));
+    }
+    await ctx.close();
+  }
+
+  // ── ٦) منتقي الجهة يُبحَث فيه بالاسم وبالرمز ──
+  // القائمة الطويلة بلا بحث ليست قائمة: من عنده عشرات المشاريع كان يتصفّحها كلها ليبلغ واحداً
+  // يعرف اسمه ورمزه («يجب ان يكون فيه بحث» — بلسان المالك).
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    const page = await ctx.newPage();
+    await login(page, base, 'demo.sectorlead');
+    await open(page, base, '/app/tasks?win=all');
+    const fold = page.locator('details:has(#qa-title) summary').first();
+    if (await fold.count()) await fold.click();
+
+    const target = await page.evaluate(() => {
+      const sel = document.getElementById('qa-parent');
+      if (!sel) return null;
+      const o = [...sel.options].find((x) => x.getAttribute('data-code'));
+      return o ? { value: o.value, code: o.getAttribute('data-code'), text: o.textContent.trim() } : null;
+    });
+    check('منتقي الجهة يحمل رموز المشاريع صالحةً للبحث', !!target, JSON.stringify(target));
+
+    if (target) {
+      await page.fill('#qa-parent-q', target.code);
+      await page.waitForSelector('.sp-row');
+      await page.locator('.sp-row').first().click();
+      const byCode = await page.evaluate(() => document.getElementById('qa-parent').value);
+      check('الكتابة بالرمز وحده تبلغ الجهة الصحيحة', byCode === target.value, `${byCode} ≠ ${target.value}`);
+
+      const namePart = target.text.split('—').pop().trim().slice(0, 5);
+      await page.fill('#qa-parent-q', namePart);
+      await page.waitForTimeout(150);
+      check('والبحث بالاسم يعرض نتائج كذلك', await page.locator('.sp-row').count() > 0, `الاسم=${namePart}`);
+    }
+    await ctx.close();
+  }
+
 }

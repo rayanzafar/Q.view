@@ -1,8 +1,7 @@
-// ── ألسنة الفترة تحكم شريط المؤشرات فعلاً (شكوى المالك: «لا تؤثر فيما تحتها مباشرة») ────
-// الحارسان: (١) عرضان بنافذتين مختلفتين يختلفان في منطقة #kpi-band، والنافذة الضيقة تعرض
-// فوزها وحده؛ (٢) رسم السنة المركّب لا يتأثر بالألسنة (بياناته سنوية بطبيعتها).
-// السنة المعروضة **ماضية** عمداً: حدودها من windowBounds مرساةٌ على آخرها فالفحص حتميٌّ لا
-// يتأثر بيوم تشغيله — وهو نفسه انحدارُ علّة الانقلاب since>until التي كانت تصفّر الرقائق.
+// ── مُنتقي الفترة يحكم شريط المؤشرات فعلاً (شكوى المالك: «لا تؤثر فيما تحتها مباشرة») ────
+// الحارسان: (١) عرضان بفترتين مختلفتين يختلفان في منطقة #kpi-band، والفترة الضيقة تعرض
+// ما وقع فيها وحده؛ (٢) رسم السنة المركّب لا يتأثر بالفترة (بياناته سنوية بطبيعتها).
+// السنة المعروضة **ماضية** عمداً فالفترات كلها تقويمية منتهية والفحص حتميٌّ لا يتأثر بيوم تشغيله.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -49,6 +48,9 @@ before(async () => {
 });
 after(async () => { await close(); rmSync(dir, { recursive: true, force: true }); });
 
+// عدّاد معرّفات التدرّج في layout.js تراكميّ عبر التصييرات، فأي مقارنة بايت-ببايت بين عرضين
+// في العملية نفسها تفشل لسببٍ لا علاقة له بالبيانات. نُسوّي المعرّف قبل المقارنة.
+const norm = (h) => h.replace(/spkGrad\d+/g, 'spkGrad');
 const band = (html) => {
   const a = html.indexOf('id="kpi-band"');
   const b = html.indexOf('class="exec-band"');
@@ -62,30 +64,48 @@ const comboRegion = (html) => {
   return m[0];
 };
 
-test('نافذتان مختلفتان ⇒ شريطان مختلفان، والنافذة الضيقة تعرض فوزها وحده (سنة ماضية — لا أصفار)', async () => {
-  const yearHtml = await sectorPage(ADMIN, { year: String(YEAR), win: 'year' });
-  const monthHtml = await sectorPage(ADMIN, { year: String(YEAR), win: 'month' });
-  const yb = band(yearHtml), mb = band(monthHtml);
-  assert.notEqual(yb, mb, 'الشريط يتغيّر مع اللسان');
-  // نافذة «الشهر» على سنة ماضية = ديسمبر: قيمة فوز ديسمبر وحدها (7.8M) — لا فوز مارس
-  assert.ok(mb.includes('7.8M'), 'قيمة فوز ديسمبر في شريط نافذة الشهر');
-  assert.ok(!mb.includes('11.1M'), 'مجموع السنة لا يظهر في نافذة الشهر');
-  // ولسان السنة يجمع الفوزين (7.77M + 3.33M = 11.1M)
+test('فترتان مختلفتان ⇒ شريطان مختلفان، وشهرٌ بعينه يعرض فوزه وحده', async () => {
+  const yearHtml = await sectorPage(ADMIN, { year: String(YEAR), p: 'y' });
+  const decHtml = await sectorPage(ADMIN, { year: String(YEAR), p: 'm12' });
+  const yb = norm(band(yearHtml)), db = norm(band(decHtml));
+  assert.notEqual(yb, db, 'الشريط يتغيّر مع الفترة');
+  assert.ok(db.includes('7.8M'), 'فوز ديسمبر في شريط ديسمبر');
+  assert.ok(!db.includes('11.1M'), 'مجموع السنة لا يظهر في شهرٍ بعينه');
   assert.ok(yb.includes('11.1M'), 'مجموع فوزَي السنة في شريط السنة');
-  // صدى سنةٍ ماضية لا يوهم بالحاضر
-  assert.ok(monthHtml.includes(`في آخر شهر من ${YEAR}`), 'صدى النافذة يسمّي السنة الماضية');
+  // والصدى يسمّي الفترة تقويمياً لا «منذ شهر»
+  assert.ok(decHtml.includes(`في ديسمبر ${YEAR}`), 'صدى الفترة تقويمي');
 });
 
-test('رسم السنة المركّب لا يتأثر بالألسنة — بياناته سنوية بطبيعتها', async () => {
-  const a = comboRegion(await sectorPage(ADMIN, { year: String(YEAR), win: 'year' }));
-  const b = comboRegion(await sectorPage(ADMIN, { year: String(YEAR), win: 'week' }));
-  assert.equal(a, b, 'رسم السنة بايت-ببايت عبر الألسنة');
+test('مارس يعرض فوزه وحده — والفترة التقويمية لا تتدحرج', async () => {
+  const mar = band(await sectorPage(ADMIN, { year: String(YEAR), p: 'm3' }));
+  assert.ok(mar.includes('3.3M'), 'فوز مارس في شريط مارس');
+  assert.ok(!mar.includes('7.8M'), 'فوز ديسمبر خارج مارس');
 });
 
-test('نافذة أسبوعٍ خالية على سنة ماضية: شريطٌ بلا فوز — لا انقلاب ولا تسريب من السنة الجارية', async () => {
-  const weekHtml = await sectorPage(ADMIN, { year: String(YEAR), win: 'week' });
-  const wb = band(weekHtml);
-  // آخر أسبوع من السنة يشمل فوز ديسمبر (28 ديسمبر داخل [24-12، 01-01))
-  assert.ok(wb.includes('7.8M'), 'فوز 28 ديسمبر داخل آخر أسبوع من السنة');
-  assert.ok(!wb.includes('3.3M'), 'فوز مارس خارج أسبوع النهاية');
+test('رسم السنة المركّب: بياناته لا تتغيّر بالفترة — والإضاءة وحدها تتحرك', async () => {
+  const a = comboRegion(await sectorPage(ADMIN, { year: String(YEAR), p: 'y' }));
+  const b = comboRegion(await sectorPage(ADMIN, { year: String(YEAR), p: 'q2' }));
+  // القيم نفسها: كل عناوين التحويم (شهري/تراكمي/هدف/توقع) متطابقة
+  const vals = (svg) => [...svg.matchAll(/<title>([^<]*)<\/title>/g)].map((m) => m[1]);
+  assert.deepEqual(vals(a), vals(b), 'قيم الرسم متطابقة عبر الفترات');
+  // ونقاط الرسم نفسها (المسار التراكمي) متطابقة
+  const poly = (svg) => svg.match(/<polyline points="([^"]+)"/)[1];
+  assert.equal(poly(a), poly(b), 'مسار الرسم متطابق');
+  // والفرق الوحيد المسموح: إضاءة أشهر الفترة المختارة
+  assert.notEqual(a, b, 'أشهر الفترة تُضاء — وإلا فالمُنتقي بلا أثر مرئي على الرسم');
+});
+
+test('الربع الرابع ثلاثة أشهر: يضمّ ديسمبر ولا يضمّ مارس', async () => {
+  const q4 = band(await sectorPage(ADMIN, { year: String(YEAR), p: 'q4' }));
+  assert.ok(q4.includes('7.8M'), 'فوز ديسمبر داخل الربع الرابع');
+  assert.ok(!q4.includes('3.3M'), 'فوز مارس خارج الربع الرابع');
+  const q1 = band(await sectorPage(ADMIN, { year: String(YEAR), p: 'q1' }));
+  assert.ok(q1.includes('3.3M'), 'فوز مارس داخل الربع الأول');
+  assert.ok(!q1.includes('7.8M'), 'فوز ديسمبر خارج الربع الأول');
+});
+
+test('فترةٌ مجهولة تسقط إلى السنة بلا خطأ في وجه القارئ', async () => {
+  const bad = norm(band(await sectorPage(ADMIN, { year: String(YEAR), p: '../etc' })));
+  const y = norm(band(await sectorPage(ADMIN, { year: String(YEAR), p: 'y' })));
+  assert.equal(bad, y, 'المجهول = السنة');
 });
