@@ -1564,10 +1564,17 @@ export async function sectorPage(user, opts = {}) {
     return `<svg class="fig-svg" viewBox="0 0 ${w} ${h}" role="img" aria-label="قيمة الفرصة مقابل احتمال الفوز مقابل عمر المرحلة — كل فقاعة فرصة وحجمها قيمتها · تفصيل كل فرصة في نافذة مرحلتها من القمع" style="width:100%;height:auto">
       <line class="axis" x1="${padX}" y1="${h - padB}" x2="${w - padX}" y2="${h - padB}"/>
       <line class="axis" x1="${padX}" y1="${padT}" x2="${padX}" y2="${h - padB}"/>
-      <text x="${padX}" y="${h - 6}" text-anchor="start">0 يوم</text><text x="${w - padX}" y="${h - 6}" text-anchor="end">${dayWord(maxAge)}</text>
-      <text x="${padX + 3}" y="${padT + 6}" text-anchor="start">100%</text>
+      <text x="${padX}" y="${h - 6}" text-anchor="start">0 يوم</text><text x="${(w / 2).toFixed(0)}" y="${h - 6}" text-anchor="middle">عمر المرحلة ←</text><text x="${w - padX}" y="${h - 6}" text-anchor="end">${dayWord(maxAge)}</text>
+      <text x="${padX + 3}" y="${padT + 6}" text-anchor="start">احتمال الفوز 100%</text>
       ${legend}
-      ${rows.map((o) => `<circle cx="${X(ageDays(o.since)).toFixed(1)}" cy="${Y(Number(o.win_pct) || 0).toFixed(1)}" r="${R(o.value_halalas).toFixed(1)}" fill="${ordColor(funnelStages.findIndex((st) => st.id === o.stage_id), funnelStages.length)}" opacity=".55" stroke="#fff" stroke-width="1"><title>${esc(o.title_ar)} — ${fmtSar(o.value_halalas)} · احتمال ${Math.round(Number(o.win_pct) || 0)}% · ${dayWord(ageDays(o.since))} في المرحلة</title></circle>`).join('')}
+      ${rows.map((o) => {
+    const stName = funnelStages.find((st) => st.id === o.stage_id)?.name_ar || '';
+    const tipRows = [`القيمة=${sarShort(o.value_halalas)}`, `احتمال الفوز=${Math.round(Number(o.win_pct) || 0)}%`,
+      `عمر المرحلة=${dayWord(ageDays(o.since))}`, stName ? `المرحلة=${stName}` : ''].filter(Boolean).join('|');
+    // كل فقاعة فرصةٌ بعينها: تلميحٌ فوري بتفاصيلها ونقرةٌ تفتح صفحتها — كان <title> أصلياً
+    // بطيئاً على هدفٍ نصف قطره أربعة بكسلات، ولا سبيل منه إلى الفرصة نفسها.
+    return `<a href="/app/opportunity/${esc(o.id)}" aria-label="${esc(o.title_ar)} — ${esc(sarShort(o.value_halalas))} · احتمال ${Math.round(Number(o.win_pct) || 0)}%"><circle class="fig-hit bub" cx="${X(ageDays(o.since)).toFixed(1)}" cy="${Y(Number(o.win_pct) || 0).toFixed(1)}" r="${R(o.value_halalas).toFixed(1)}" fill="${ordColor(funnelStages.findIndex((st) => st.id === o.stage_id), funnelStages.length)}" opacity=".55" stroke="#fff" stroke-width="1" data-x="${X(ageDays(o.since)).toFixed(1)}" data-l="${esc(o.title_ar)}" data-rows="${esc(tipRows)}"></circle></a>`;
+  }).join('')}
     </svg>`;
   })();
   const commercialSection = `
