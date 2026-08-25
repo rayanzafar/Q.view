@@ -1660,8 +1660,11 @@ export async function sectorPage(user, opts = {}) {
 
   // ── الخلاصة التحليلية: جملة واحدة بقواعد معلنة — وعلامةٌ تقول إنها محسوبة ──
   const paceWord = dRev == null ? '' : dRev >= 3 ? `متقدمٌ ${ptWord(dRev)}` : dRev <= -3 ? `متأخرٌ ${ptWord(Math.abs(dRev))}` : 'على المسار الزمني';
+  // سنةٌ قادمة لا مسار زمنياً لها ولا مقارنة سنوية: «0% من المستهدف» و«−100% عن السنة الماضية»
+  // لسنةٍ لم تبدأ قراءتان موهمتان — فتُقال الحقيقة: لا سجلّ بعد، والتوقع بامتداده المعلَن.
   const summaryLine = [
-    attainRev != null ? `الإيراد ${paceWord} (${attainRev}% من المستهدف)` : null,
+    futureYr ? `سنةٌ قادمة — لا سجلّ لسنة ${year} بعد${fr.base ? `، والتوقع بامتداد وتيرة ${fr.basisYear}: ${sarShort(fr.base)}` : ''}`
+      : attainRev != null ? `الإيراد ${paceWord} (${attainRev}% من المستهدف)` : null,
     stalledRows.length ? `أكبر رافعة: تحريك ${countAr(stalledRows.length, { one: 'فرصة متوقفة', two: 'فرصتين متوقفتين', few: 'فرص متوقفة', many: 'فرصة متوقفة' })} بقيمة ${sarShort(stalledV)}` : null,
     freeNow.length ? `وأكبر قيد: ${countAr(freeNow.length, { one: 'موظف بلا تسكين', two: 'موظفان بلا تسكين', few: 'موظفين بلا تسكين', many: 'موظفاً بلا تسكين' })}` : overNow.length ? `وأكبر قيد: ${countAr(overNow.length, { one: 'موظف فوق الطاقة', two: 'موظفان فوق الطاقة', few: 'موظفين فوق الطاقة', many: 'موظفاً فوق الطاقة' })}` : null,
   ].filter(Boolean).join('؛ ') || 'لا بيانات كافية لخلاصةٍ بعد';
@@ -1687,10 +1690,12 @@ export async function sectorPage(user, opts = {}) {
   const insightPace = `
       <div class="ic1">
         <div class="ih">الإيقاع والتوقع${filtered ? ' <span class="icb">تحت الترشيح</span>' : ''}</div>
-        <div class="ib">${filtered
+        <div class="ib">${futureYr
+    ? `سنةٌ قادمة — لا سجلّ بعد${fr.base ? `، والتوقع بامتداد وتيرة ${fr.basisYear} <b class="tnum">${sarShort(fr.base)}</b>` : ''}`
+    : filtered
     ? (rsTotal ? `<b class="tnum">${sarShort(rsTotal)}</b> تحت الترشيح${rsShare != null ? ` — <b class="tnum">${rsShare}%</b> من إيراد القطاع` : ''}${rsOutlook?.base ? `، والتوقع بوتيرته <b class="tnum">${sarShort(rsOutlook.base)}</b>` : ''}` : 'لا إيراد منسوباً تحت هذا الترشيح')
     : (attainRev != null ? `الإيراد ${paceWord}، ${fc.forecast != null ? `والتوقع بالوتيرة <b class="tnum">${sarShort(fc.forecast)}</b>${fcPct != null ? ` = <b class="tnum" dir="ltr">${100 + fcPct}%</b> من المستهدف` : ''}` : 'ولا توقّع بعد'}${yoyPct != null ? ` · <span dir="ltr">${yoyPct >= 0 ? '+' : '−'}${Math.abs(yoyPct)}%</span> مقارنة بـ${year - 1}` : ''}` : 'لا مستهدف مسجَّلاً لهذه السنة')}</div>
-        ${figLine([
+        ${futureYr ? '' : figLine([
     { points: rsCum, color: 'var(--acc-navy)', area: true, name: 'التراكمي' },
     ...(!filtered && paceLine ? [{ points: paceLine, color: 'var(--tick)', dash: true, dots: false, name: 'المسار الزمني للهدف' }] : []),
   ], { labels: MONTHS_AR, now: nowM + 1, h: 64, fmt: sarShort, axisDir: 'ltr', hover: true })}
