@@ -184,7 +184,46 @@
     showTip(hits[next], null);
   });
 
+  // ── فصولٌ بألسنة: كلها مُصيَّرة، والتبديل إخفاءٌ وإظهار بلا جلب ──────────────────────────
+  // اللسان يُكتب في الرابط (replaceState) فيبقى بعد التحديث ويُشارَك — ونمطُ tablist كامل:
+  // aria-selected وroving tabindex وتنقّلٌ بالأسهم وHome/End كما يتوقع مستخدم لوحة المفاتيح.
+  function showTab(key, focus) {
+    var tabs = [].slice.call(document.querySelectorAll('[role="tab"][data-tab]'));
+    if (!tabs.length) return;
+    tabs.forEach(function (b) {
+      var on = b.getAttribute('data-tab') === key;
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+      b.tabIndex = on ? 0 : -1;
+      b.classList.toggle('on', on);
+      var panel = document.getElementById('sec-panel-' + b.getAttribute('data-tab'));
+      if (panel) panel.hidden = !on;
+      if (on && focus) b.focus();
+    });
+    try {
+      var u = new URL(location.href);
+      u.searchParams.set('tab', key);
+      history.replaceState(null, '', u.pathname + u.search);
+    } catch (e) { /* لا يمنع التبديل */ }
+    if (tipEl) tipEl.hidden = true;          // تلميحُ رسمٍ في فصلٍ اختفى لا يبقى معلَّقاً
+  }
+  function secTab(el) { showTab(el.getAttribute('data-tab'), false); }
+  on(document, 'keydown', function (e) {
+    var cur = e.target.closest && e.target.closest('[role="tab"][data-tab]');
+    if (!cur) return;
+    var tabs = [].slice.call(document.querySelectorAll('[role="tab"][data-tab]'));
+    var i = tabs.indexOf(cur), n = tabs.length, next = -1;
+    // في RTL يقرأ السهم الأيمن «السابق» — والترتيب البصري هو المرجع
+    if (e.key === 'ArrowLeft') next = (i + 1) % n;
+    else if (e.key === 'ArrowRight') next = (i - 1 + n) % n;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = n - 1;
+    if (next < 0) return;
+    e.preventDefault();
+    showTab(tabs[next].getAttribute('data-tab'), true);
+  });
+
   var ACTIONS = {
+    'sec-tab': secTab,
     'open-dd': openDD,
     'act-jump': actJump,
     'chg-cat': chgCat,

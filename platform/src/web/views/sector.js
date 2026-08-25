@@ -87,11 +87,19 @@ const CSS = `<style>
 /* عدسة الفترة روابط لا أزرار (حالتها في الرابط) — تلبس زيّ .seg نفسه */
 .seg a{font-size:12px;font-weight:700;color:var(--muted);padding:.35rem .7rem;border-radius:8px;display:flex;align-items:center;gap:.35rem;transition:background .18s,color .18s}
 /* مُنتقي الفترة: سنةٌ وأربعةُ أرباعٍ واثنا عشر شهراً — والقادمة موسومةٌ «توقع» في المُنتقي نفسه */
+.tabs{gap:2px;padding:3px;position:sticky;top:0;z-index:20;background:var(--bg);box-shadow:0 6px 12px -10px rgba(28,36,71,.35)}
+.tabs button{font-size:12.5px;font-weight:800;color:var(--muted);padding:.45rem .95rem;border-radius:9px;border:none;background:none;font-family:inherit;cursor:pointer;white-space:nowrap}
+.tabs button.on{background:var(--surface);color:var(--ink2);box-shadow:var(--sh-sm)}
+.tabs button:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.tabpanel{display:grid;gap:1rem}
+.tabpanel[hidden]{display:none}
+@media(max-width:900px){.tabs{overflow-x:auto;max-width:100%}}
 .psel{display:flex;gap:.4rem;align-items:center;flex-wrap:wrap}
 .psel .seg{padding:2px}
 .psel .pmon a{padding:.35rem .45rem;font-size:11px}
 .psel a.fut{color:var(--faint)}
-.psel a.fut i{font-style:normal;font-size:8.5px;background:var(--st-neut-soft);color:var(--muted);border-radius:999px;padding:0 .3rem;margin-inline-start:.2rem}
+.psel a.fut{opacity:.75}
+.futnote{font-size:var(--fs-micro);color:#92400e;background:var(--st-warn-soft);border-radius:999px;padding:.15rem .6rem;font-weight:700}
 .psel a.on.fut{color:var(--ink2)}
 @media(max-width:900px){.psel .pmon{overflow-x:auto;max-width:100%}}
 .seg a.on{background:#fff;color:var(--ink2);box-shadow:var(--sh-sm)}
@@ -104,12 +112,12 @@ const CSS = `<style>
 .secn .upd{font-size:var(--fs-body);color:var(--muted);display:inline-flex;gap:.35rem;align-items:center}
 /* (١) خمس بطاقات مؤشرات — نموذج المالك: قيمة كبيرة ورسمٌ ودلتا في بطاقة بيضاء ناعمة الظل */
 .kpi5{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:.8rem}
-.kpi{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:.7rem .85rem .6rem;display:grid;gap:3px;align-content:start;text-align:start;font-family:inherit;cursor:pointer;box-shadow:var(--sh-sm);transition:box-shadow .18s;min-width:0}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:.5rem .8rem .45rem;display:grid;gap:3px;align-content:start;text-align:start;font-family:inherit;cursor:pointer;box-shadow:var(--sh-sm);transition:box-shadow .18s;min-width:0}
 .kpi:hover{box-shadow:var(--sh)}
 .kpi:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
 .ke{font-size:11.5px;font-weight:700;color:var(--muted);display:flex;gap:.3rem;align-items:center;flex-wrap:wrap;min-width:0}
 .ks{margin-inline-start:auto;font-size:9.5px;color:var(--muted);font-weight:700;background:var(--track);border-radius:999px;padding:.05rem .45rem;flex:none;white-space:nowrap}
-.kv{font-size:var(--fs-val-lg);font-weight:800;color:var(--ink2);line-height:1.15;letter-spacing:-.01em}
+.kv{font-size:26px;font-weight:800;color:var(--ink2);line-height:1.1;letter-spacing:-.01em}
 .kb{font-size:11.5px;color:var(--muted);line-height:1.55}
 .kc{font-size:10px;color:var(--muted);line-height:1.5}
 .kd{font-size:11px;display:flex}
@@ -117,7 +125,8 @@ const CSS = `<style>
 .kviz>.ringw{flex:none}
 .kviz>div{flex:1;min-width:0}
 /* (٢) شريط القراءة الداكن — البقعة البنفسجية والرقم الأحمر الفاتح موروثان من لوحة v5.39 */
-.exec-band{background:linear-gradient(135deg,#101733,#16224e 55%,#2b1a55);border-radius:18px;padding:1rem 1.25rem;color:#eef2fb;position:relative;overflow:hidden}
+.exec-band{background:linear-gradient(135deg,#101733,#16224e 55%,#2b1a55);border-radius:18px;padding:.55rem .8rem;color:#eef2fb;position:relative;overflow:hidden}
+.xb-sum .n{width:20px;height:20px;border-radius:50%;background:rgba(255,255,255,.16);color:#fff;font-size:11px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;flex:none}
 .exec-band::before{content:'';position:absolute;inset:-40% -20% auto auto;width:420px;height:420px;border-radius:50%;background:radial-gradient(closest-side,rgba(131,71,152,.35),transparent)}
 .exec-band>*{position:relative}
 .exec-band .secn .n{background:rgba(255,255,255,.16)}
@@ -132,9 +141,16 @@ const CSS = `<style>
 .wmark{color:#ff8f8f;display:inline-flex;vertical-align:middle;cursor:help}
 .wmark svg{width:13px;height:13px}
 .card .wmark,.kpi .wmark{color:var(--st-bad)}
-.xb-sum{display:flex;gap:.5rem;align-items:center;font-size:var(--fs-title);font-weight:700;color:#fff;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:.5rem .8rem;flex-wrap:wrap}
+.xb-sum{display:flex;gap:.5rem;align-items:center;font-size:var(--fs-body);font-weight:700;color:#fff;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:.42rem .7rem;flex-wrap:wrap}
 .xb-sum>svg{width:15px;height:15px;color:#a78bfa;flex:none}
 .ins{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.6rem;margin-top:.6rem}
+/* البطاقات الثلاث نزلت إلى فصولها (ميزانية الشاشة الواحدة): كلٌّ منها وحدها في صفّها */
+.ins.one{grid-template-columns:1fr;margin-top:0}
+.ins.one .ic1{background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--sh-sm);
+  display:grid;grid-template-columns:minmax(0,1fr) minmax(0,460px);align-items:center;gap:1rem;padding:.7rem 1rem}
+.ins.one .ic1>.ih,.ins.one .ic1>.ib{grid-column:1}
+.ins.one .ic1>div:last-child{grid-column:2;grid-row:1/3}
+@media(max-width:900px){.ins.one .ic1{grid-template-columns:1fr}.ins.one .ic1>div:last-child{grid-column:1;grid-row:auto}}
 .ic1{background:rgba(255,255,255,.9);color:var(--ink);border-radius:12px;padding:.6rem .75rem;min-width:0}
 .ic1 .ih{font-size:var(--fs-body);font-weight:800;color:var(--brand);margin-bottom:.15rem}
 .ic1 .ib{font-size:var(--fs-body);color:var(--ink2);line-height:1.6;margin-bottom:.3rem}
@@ -639,19 +655,29 @@ export async function sectorPage(user, opts = {}) {
   const pOpt = (k, label) => {
     const b = periodBounds(k, year, now);
     const on = k === win;
-    return `<a class="${on ? 'on' : ''}${b.isFuture ? ' fut' : ''}" style="text-decoration:none" href="${qs({ p: k })}"${on ? ' aria-current="true"' : ''}${b.isFuture ? ' title="فترة قادمة — تُعرض بالمتوقع لا بالمحقق"' : ''}>${label}${b.isFuture ? '<i aria-hidden="true">توقع</i>' : ''}</a>`;
+    return `<a class="${on ? 'on' : ''}${b.isFuture ? ' fut' : ''}" style="text-decoration:none" href="${qs({ p: k })}"${on ? ' aria-current="true"' : ''}${b.isFuture ? ' title="فترة قادمة — تُعرض بالمتوقع لا بالمحقق"' : ''}>${label}</a>`;
   };
   const lens = `<div class="psel">
     <div class="seg" role="group" aria-label="الفترة">${pOpt('y', 'السنة')}</div>
     <div class="seg" role="group" aria-label="الأرباع">${[1, 2, 3, 4].map((q) => pOpt(`q${q}`, `ر${q}`)).join('')}</div>
     <div class="seg pmon" role="group" aria-label="الأشهر">${MONTHS_AR.map((m, i) => pOpt(`m${i + 1}`, monthLabel(i, 'tight'))).join('')}</div>
+    ${period.isFuture ? '<span class="futnote">فترة قادمة — بالمتوقع لا بالمحقق</span>' : ''}
   </div>`;
   const stageChip = selStage ? `<a class="chip on" href="${qs({ stage: null })}" title="إلغاء تصفية المرحلة">
       المرحلة: ${esc(selStage.name_ar)} <span aria-hidden="true">✕</span></a>
     <span style="font-size:var(--fs-micro);color:var(--muted)">أرقام القمع وأعلى الفرص وأعمارها مصفّاة بهذه المرحلة</span>` : '';
   // شريط الأدوات الواحد (ADR-0011): القطاع (للشركة) · نافذة التغيّر · تصفية المرحلة ·
   // انقضاء السنة · قائمة التقارير — لا أداة تحكم عامة داخل بطاقة بعد اليوم.
-  const toolbar = `<div class="toolbar" style="row-gap:.45rem">
+  const switcher = user.scope === 'company' ? `<span class="lbl" style="font-size:var(--fs-body);color:var(--muted);font-weight:700">القطاع:</span>
+    ${allSectors.map((s) => `<a href="/app/sector?year=${year}&sector=${esc(s.id)}&p=${win}" class="chip ${s.id === sectorId ? 'on' : ''}"><span class="dot" style="background:${esc(s.color || '#244A99')}"></span>${esc(s.name_ar)}</a>`).join('')}
+    <a class="btn btn-sm" href="/app/ceo?year=${year}&sector=${esc(sectorId)}">لوحة القيادة</a>
+    <span style="flex:0 0 100%;height:0" aria-hidden="true"></span>` : '';
+
+  // ═══ كابينة v5.39 — على نماذج المالك المرجعية (2026-08-24): لوحة داكنة نابضة، أقسام
+  // مرقّمة، رسوم داخل البطاقات، ونافذة فترةٍ تسري على أرقام «ماذا حدث». القيم المرجّحة
+  // والخلاصات المحسوبة تحمل علامةً وتلميحاً يقولان أساسها — شرط أ. حسين الصريح. ═══
+  const toolbar = `<div class="toolbar" style="row-gap:.4rem">
+    ${switcher || ''}
     <span style="font-size:var(--fs-body);color:var(--muted);font-weight:700">الفترة: <span class="tipdot" data-tip="اختر السنة أو ربعاً أو شهراً بعينه. التدفقات (الإيراد والمكسوب والمفوتر والمحصَّل وما تغيّر) تُعاد لهذه الفترة، والأرصدة اللحظية (خط الفرص، الإشغال، صحة التنفيذ) لا تتأثر بها وتحمل وسمها. والفترة القادمة تُعرض بالمتوقع لا بالمحقق." tabindex="0" role="img" aria-label="اختر السنة أو ربعاً أو شهراً — التدفقات تُعاد للفترة والأرصدة اللحظية لا تتأثر">${icon('info')}</span></span>
     ${lens}
     ${stageChip}
@@ -1356,14 +1382,6 @@ export async function sectorPage(user, opts = {}) {
   ${collectDD}
   ${funnelDD}`;
 
-  const switcher = user.scope === 'company' ? `<span class="lbl" style="font-size:var(--fs-body);color:var(--muted);font-weight:700">القطاع:</span>
-    ${allSectors.map((s) => `<a href="/app/sector?year=${year}&sector=${esc(s.id)}&p=${win}" class="chip ${s.id === sectorId ? 'on' : ''}"><span class="dot" style="background:${esc(s.color || '#244A99')}"></span>${esc(s.name_ar)}</a>`).join('')}
-    <a class="btn btn-sm" href="/app/ceo?year=${year}&sector=${esc(sectorId)}">لوحة القيادة</a>
-    <span style="flex:0 0 100%;height:0" aria-hidden="true"></span>` : '';
-
-  // ═══ كابينة v5.39 — على نماذج المالك المرجعية (2026-08-24): لوحة داكنة نابضة، أقسام
-  // مرقّمة، رسوم داخل البطاقات، ونافذة فترةٍ تسري على أرقام «ماذا حدث». القيم المرجّحة
-  // والخلاصات المحسوبة تحمل علامةً وتلميحاً يقولان أساسها — شرط أ. حسين الصريح. ═══
   const winName = periodLabel(period.kind, period.index);
   const winEcho2 = winEcho;
   // pos='below' لما يقع أعلى الشاشة: التلميح فوق مُطلِقه يُقصّ عند حافة النافذة فيتراكب مع الرقم
@@ -1490,8 +1508,8 @@ export async function sectorPage(user, opts = {}) {
   // خط المسار الزمني للهدف: قسمة الهدف السنوي بالتساوي على الشهور — قاعدة معلنة لا منحنى مختلق.
   const paceLine = revTarget ? monthly.map((_, i) => Math.round(revTarget * (i + 1) / 12)) : null;
   const largestPct = secRevTotal && top3.length ? Math.round((top3[0].rev / secRevTotal) * 100) : null;
-  const insightCards = `
-    <div class="ins">
+  const insightPace = `
+    <div class="ins one">
       <div class="ic1">
         <div class="ih">الإيقاع والتوقع</div>
         <div class="ib">${attainRev != null ? `الإيراد ${paceWord}، ${fc.forecast != null ? `والتوقع بالوتيرة <b class="tnum">${sarShort(fc.forecast)}</b>${fcPct != null ? ` = <b class="tnum" dir="ltr">${100 + fcPct}%</b> من المستهدف` : ''}` : 'ولا توقّع بعد'}${yoyPct != null ? ` · <span dir="ltr">${yoyPct >= 0 ? '+' : '−'}${Math.abs(yoyPct)}%</span> مقارنة بـ${year - 1}` : ''}` : 'لا مستهدف مسجَّلاً لهذه السنة'}</div>
@@ -1500,6 +1518,9 @@ export async function sectorPage(user, opts = {}) {
     ...(paceLine ? [{ points: paceLine, color: 'var(--tick)', dash: true, dots: false, name: 'المسار الزمني للهدف' }] : []),
   ], { labels: MONTHS_AR, now: nowM + 1, h: 74, fmt: sarShort, axisDir: 'ltr', hover: true })}
       </div>
+    </div>`;
+  const insightConc = `
+    <div class="ins one">
       <div class="ic1">
         <div class="ih">تركّز الإيراد</div>
         <div class="ib">${concPct != null ? `<b class="tnum">${concPct}%</b> من الإيراد لدى أكبر ثلاثة عملاء${concAfterPipe != null ? ` — وبعد خط الفرص <b class="tnum">${concAfterPipe}%</b>` : ''}${concPct >= 60 ? ' · تركّز مرتفع' : ''}` : 'لا يوجد ثلاثة عملاء بإيراد بعد'}</div>
@@ -1509,6 +1530,9 @@ export async function sectorPage(user, opts = {}) {
     ...(concAfterPipe != null ? [{ label: 'أكبر ثلاثة مع الخط المرجّح', value: concAfterPipe, count: '', fill: 'var(--acc-teal)' }] : []),
   ], { fmt: (v) => `${v}%`, max: 100 }) : ''}
       </div>
+    </div>`;
+  const insightCap = `
+    <div class="ins one">
       <div class="ic1">
         <div class="ih">الطاقة القادمة</div>
         <div class="ib">${gapFte != null && nowMonth ? (gapFte > 0 ? `سعة غير مستغلة تبلغ <b class="tnum">${gapFte}</b> من مكافئ التفرغ في ${monthLabel(worstGap.i)} — ${countAr(freeNow.length, { one: 'موظف بلا تسكين الآن', two: 'موظفان بلا تسكين الآن', few: 'موظفين بلا تسكين الآن', many: 'موظفاً بلا تسكين الآن', zero: 'لا أحد بلا تسكين الآن' })}` : `طلبٌ يفوق الطاقة بـ<b class="tnum">${Math.abs(gapFte)}</b> من مكافئ التفرغ في ${monthLabel(worstGap.i)}`) : 'لا خطة تسكين لأشهر قادمة'}</div>
@@ -1551,9 +1575,7 @@ export async function sectorPage(user, opts = {}) {
   const attnChip = `<button type="button" class="xb-attn" data-action="act-jump" aria-label="${G.attention}: ${attn.length} — الانتقال إلى القائمة">${icon('risk')} ${G.attention} <b class="tnum">${attn.length}</b></button>`;
   const execBand = `
   <section class="exec-band" aria-label="قراءة سند التنفيذية">
-    <div class="secn"><span class="n tnum">2</span><h2>قراءة سند التنفيذية</h2><span class="s">ثلاث قراءات محسوبة بقواعد معلنة — لا تقييم بشري</span></div>
-    <div class="xb-sum">${icon('trend')} <span>${summaryLine}.</span> ${noteMark('خلاصة مركَّبة بقواعد معلنة من أرقام هذه الصفحة — ليست تقييماً بشرياً')} <span class="spacer"></span> ${attnChip}</div>
-    ${insightCards}
+    <div class="xb-sum"><span class="n tnum" aria-hidden="true">2</span>${icon('trend')} <span>${summaryLine}.</span> ${noteMark('خلاصة مركَّبة بقواعد معلنة من أرقام هذه الصفحة — ليست تقييماً بشرياً', 'below')} <span class="spacer"></span> ${attnChip}</div>
   </section>`;
 
   // ── رأس قسمٍ مرقّم كنماذج المالك ──
@@ -1885,51 +1907,81 @@ export async function sectorPage(user, opts = {}) {
   </details>`;
 
   // ── تكوين الصفحة: الكابينة المرقّمة ──
+  // ── فصولٌ بألسنة: شاشةٌ واحدة بلا تمرير (طلب المالك «avoid scroll, keep it all in one page») ──
+  // الصفحة كانت 4628 بكسل ≈ خمس شاشات. المثبَّت أعلى الشاشة: المرشِّحات وبطاقات المؤشرات وسطر
+  // قراءة سند وشريط الألسنة (~294 بكسل)، ويبقى للفصل المختار ~546 — فصلٌ واحد في كل مرة.
+  // كل الفصول مُصيَّرة في الصفحة ويُخفى غير المختار بـhidden (لا جلبَ ولا انتظار عند التبديل)،
+  // واللسان في الرابط `?tab=` فيبقى بعد التحديث ويُشارَك برابطه — نمط تفصيل الفرصة نفسه.
+  const TABS = [
+    ['pulse', 'الإيقاع'],
+    ['com', 'التجاري'],
+    ['ops', 'التشغيلي'],
+    ['cli', G.clients],
+    ['hr', 'البشري'],
+    ['next', 'القادم'],
+  ];
+  const tab = TABS.some(([k]) => k === opts.tab) ? String(opts.tab) : 'pulse';
+  const tabsBar = `<div class="seg tabs" role="tablist" aria-label="فصول مركز القطاع">${TABS.map(([k, l], i) => `
+    <button type="button" role="tab" id="sec-tab-${k}" data-action="sec-tab" data-tab="${k}"
+      aria-selected="${tab === k}" aria-controls="sec-panel-${k}" tabindex="${tab === k ? '0' : '-1'}"
+      class="${tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+  const panel = (k, label, inner) => `<section id="sec-panel-${k}" role="tabpanel" aria-labelledby="sec-tab-${k}"
+    class="tabpanel"${tab === k ? '' : ' hidden'}>${inner}</section>`;
+
   const body = `${CSS}
     <div class="dash">
-    ${switcher ? `<div class="toolbar" style="row-gap:.45rem">${switcher}</div>` : ''}
     ${toolbar}
     ${kpiBand}
     ${execBand}
-    <section class="card pad">
-      <div class="secn"><h2>ماذا أفعل اليوم؟</h2></div>
-      <div class="g12">
-        <div class="c7" style="min-width:0">${attnCard}</div>
-        <div class="c5" style="min-width:0">${changesCard}</div>
-      </div>
-    </section>
-    ${comboSection}
-    ${commercialSection}
-    <section class="card pad">
-      ${secn(5, 'رحلة القيمة — من التعاقد إلى التحصيل', 'مجاميع سجلات السنة، والنسب بين كل محطتين')}
-      <div class="vj-light">${journey}</div>
-    </section>
-    ${opsSection}
-    <section class="card pad">
-      ${secn(7, canInvoices ? 'تركيز الإيراد والعملاء والتحصيل' : 'تركيز الإيراد والعملاء', `مرتَّبون حسب إيراد ${year}`)}
-      ${treemap ? `<div class="g12" style="margin-bottom:1rem">
-        <div class="c7" style="min-width:0">${treemap}</div>
-        <div class="c5 conc-panel" style="min-width:0">
-          <div class="cp-hero">${concPct != null ? `أكبر ثلاثة عملاء = <b class="tnum">${concPct}%</b> من الإيراد${concPct >= 60 ? ' <span class="pill" style="background:var(--st-warn-soft);color:#92400e">تركّز مرتفع</span>' : ''}` : 'لا يوجد ثلاثة عملاء بإيراد بعد'}</div>
-          ${concPct != null ? figBars([
+    ${tabsBar}
+    ${panel('pulse', 'الإيقاع', `
+      ${insightPace}
+      ${comboSection}
+      <section class="card pad">
+        <div class="secn"><h2>ماذا أفعل اليوم؟</h2></div>
+        <div class="g12">
+          <div class="c7" style="min-width:0">${attnCard}</div>
+          <div class="c5" style="min-width:0">${changesCard}</div>
+        </div>
+      </section>`)}
+    ${panel('com', 'التجاري', `
+      ${commercialSection}
+      <section class="card pad">
+        ${secn(5, 'رحلة القيمة — من التعاقد إلى التحصيل', 'مجاميع سجلات السنة، والنسب بين كل محطتين')}
+        <div class="vj-light">${journey}</div>
+      </section>`)}
+    ${panel('ops', 'التشغيلي', opsSection)}
+    ${panel('cli', G.clients, `
+      ${insightConc}
+      <section class="card pad">
+        ${secn(7, canInvoices ? 'تركيز الإيراد والعملاء والتحصيل' : 'تركيز الإيراد والعملاء', `مرتَّبون حسب إيراد ${year}`)}
+        ${treemap ? `<div class="g12" style="margin-bottom:1rem">
+          <div class="c7" style="min-width:0">${treemap}</div>
+          <div class="c5 conc-panel" style="min-width:0">
+            <div class="cp-hero">${concPct != null ? `أكبر ثلاثة عملاء = <b class="tnum">${concPct}%</b> من الإيراد${concPct >= 60 ? ' <span class="pill" style="background:var(--st-warn-soft);color:#92400e">تركّز مرتفع</span>' : ''}` : 'لا يوجد ثلاثة عملاء بإيراد بعد'}</div>
+            ${concPct != null ? figBars([
     { label: 'الإيراد الحالي', value: concPct, count: '', fill: 'var(--acc-navy)' },
     ...(concAfterPipe != null ? [{ label: 'مع الخط المرجّح', value: concAfterPipe, count: '', fill: 'var(--acc-indigo)' }] : []),
   ], { fmt: (v) => `${v}%`, max: 100 }) : ''}
-          ${concAfterPipe != null ? `<div class="comfoot">حصة أكبر ثلاثة عملاء لو أُضيف خط الفرص المفتوح مرجّحاً ${estMark('قيمة تقديرية: (إيراد أكبر ثلاثة + فرصهم المفتوحة مرجّحة) ÷ (إيراد القطاع + كل المفتوح مرجّحاً) — ليست التزاماً')}</div>` : ''}
+            ${concAfterPipe != null ? `<div class="comfoot">حصة أكبر ثلاثة عملاء لو أُضيف خط الفرص المفتوح مرجّحاً ${estMark('قيمة تقديرية: (إيراد أكبر ثلاثة + فرصهم المفتوحة مرجّحة) ÷ (إيراد القطاع + كل المفتوح مرجّحاً) — ليست التزاماً')}</div>` : ''}
+          </div>
+        </div>` : ''}
+        <div class="g12">
+          <div class="${canInvoices && collectCard ? 'c7' : 'c12'}" style="min-width:0">${clientsCard}</div>
+          ${canInvoices && collectCard ? `<div class="c5" style="min-width:0">${collectCard}</div>` : ''}
         </div>
-      </div>` : ''}
-      <div class="g12">
-        <div class="${canInvoices && collectCard ? 'c7' : 'c12'}" style="min-width:0">${clientsCard}</div>
-        ${canInvoices && collectCard ? `<div class="c5" style="min-width:0">${collectCard}</div>` : ''}
-      </div>
-    </section>
-    ${hrSection}
-    <section class="card pad" style="padding:0;border:none;background:none;box-shadow:none">
-      <div class="g12">
-        <div class="c12" style="min-width:0">${capCard}</div>
-      </div>
-    </section>
-    ${outlookSection}
+      </section>`)}
+    ${panel('hr', 'البشري', `
+      ${insightCap}
+      ${hrSection}
+      <section class="card pad" style="padding:0;border:none;background:none;box-shadow:none">
+        <div class="g12">
+          <div class="c12" style="min-width:0">${capCard}</div>
+        </div>
+      </section>`)}
+    ${panel('next', 'القادم', `
+      ${outlookSection}
+      ${drawer}`)}
     <div class="foot-strip">
       <span>بيانات سند</span>
       <span>·</span>
@@ -1941,7 +1993,6 @@ export async function sectorPage(user, opts = {}) {
         ${noteMark('درجة مركّبة: متوسط موزون لنِسَب اكتمالٍ معلنة (كم اكتمل من كم) — تفصيلها بالنقر')}
       </button>` : ''}
     </div>
-    ${drawer}
     </div>
     ${DD}`;
   return layout({ user, active: 'sector', title: `مركز قيادة ${sd.sector.name_ar}`,
