@@ -56,7 +56,8 @@ const band = (html) => {
   return html.slice(a, b);
 };
 const comboRegion = (html) => {
-  const m = html.match(/<svg class="fig-svg"[^>]*aria-label="الإيراد الشهري والتراكمي[^"]*"[\s\S]*?<\/svg>/);
+  // الرسم صار حيّاً (fig-live + شرائح التقاط) — والتأكيد نفسه: منطقته بايت-ببايت عبر الألسنة
+  const m = html.match(/<svg class="fig-svg[^"]*"[^>]*aria-label="الإيراد الشهري والتراكمي[^"]*"[\s\S]*?<\/svg>/);
   assert.ok(m, 'رسم السنة المركّب موجود');
   return m[0];
 };

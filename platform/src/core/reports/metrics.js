@@ -300,14 +300,20 @@ export async function pipelineCoverage(sectorId, year) {
   const soldRow = await get(`SELECT COALESCE(SUM(o.value_halalas),0) v FROM opportunity o JOIN stage st ON st.id=o.stage_id
      WHERE st.is_won=1 AND o.exclude_from_sales=0 AND o.year=? ${sectorId ? 'AND o.sector_id=?' : ''} AND o.deleted_at IS NULL`,
     [year, ...(sectorId ? [sectorId] : [])]);
+  // الطرف المفتوح كان بلا سنةٍ وبلا استبعادٍ وبمعلّقةٍ داخله، ثم تُقسَم قيمتُه **الخام** على
+  // المتبقي بينما البطاقة تعرض **المرجّح** فوقها — رقمان لا يتطابقان فوق بعضهما. التعريف الآن
+  // واحد: مرجّحٌ · سنة معروضة (أو بلا سنة) · بلا «معلّقة» — كما يستبعدها قمع الصفحة نفسه.
   const openRow = await get(`SELECT COALESCE(SUM(o.value_halalas),0) raw,
        ${WEIGHTED_OPEN} weighted
      FROM opportunity o JOIN stage st ON st.id=o.stage_id
-     WHERE st.is_won=0 AND st.is_lost=0 ${sectorId ? 'AND o.sector_id=?' : ''} AND o.deleted_at IS NULL`,
-    sectorId ? [sectorId] : []);
+     WHERE st.is_won=0 AND st.is_lost=0 AND o.stage_id != 'ON_HOLD' AND o.exclude_from_sales=0
+       AND (o.year = ? OR o.year IS NULL)
+       ${sectorId ? 'AND o.sector_id=?' : ''} AND o.deleted_at IS NULL`,
+    [year, ...(sectorId ? [sectorId] : [])]);
   const remaining = Math.max(0, target - soldRow.v);
-  return { open_halalas: openRow.raw, weighted_halalas: Math.round(openRow.weighted),
-    remaining_target_halalas: remaining, coverage: remaining ? +(openRow.raw / remaining).toFixed(1) : null };
+  const weighted = Math.round(openRow.weighted);
+  return { open_halalas: openRow.raw, weighted_halalas: weighted,
+    remaining_target_halalas: remaining, coverage: remaining ? +(weighted / remaining).toFixed(1) : null };
 }
 
 // Book-to-Bill = new bookings (won value in year) ÷ revenue recognized in year.
@@ -372,21 +378,6 @@ export async function monthlyRevenue(sectorId, year) {
   return out;
 }
 
-// End-of-year revenue forecast = recognized revenue + weighted OPEN pipeline for the same FY.
-// (المتوقع نهاية السنة = المحقق + المرجّح من الفرص المفتوحة لهذه السنة — معادلة معلنة في الواجهة.)
-export async function revenueForecast(sectorId, year) {
-  const actual = (await get(`SELECT ${NET_REVENUE} v FROM revenue_line
-      WHERE year = ? ${sectorId ? 'AND sector_id = ?' : ''}`, sectorId ? [year, sectorId] : [year]))?.v || 0;
-  // التعبير والمجموعة القانونيان (WEIGHTED_OPEN + فرص السنة أو بلا سنة) — الصيغة العارية كانت
-  // تُسمَّم بـnull وتُسقط الفرص بلا سنة، فيتقاطع في الصفحة «مرجّحان» لا يتطابقان.
-  const wp = (await get(`SELECT ${WEIGHTED_OPEN} v
-      FROM opportunity o JOIN stage st ON st.id = o.stage_id
-      WHERE o.deleted_at IS NULL AND st.is_won = 0 AND st.is_lost = 0 AND (o.year = ? OR o.year IS NULL)
-      ${sectorId ? 'AND o.sector_id = ?' : ''}`, sectorId ? [year, sectorId] : [year]))?.v || 0;
-  const weightedOpen = Math.round(wp);
-  return { actual, weightedOpen, forecast: actual + weightedOpen };
-}
-
 // ── التعبير القانوني الواحد للخط المرجّح ─────────────────────────────────────────────
 // فرصة بلا احتمال فوز تُساهم بصفر في المرجّح (لا تُسمِّم المجموع بـnull فتُسقط غيرها) — وكانت
 // ثلاثة مواضع تحسبه بصيغتين مختلفتين فيعرض للقارئ رقمان «مرجّحان» لا يتطابقان. من هنا فقط.
@@ -447,24 +438,43 @@ export async function windowFigures(user, sectorId, sinceIso, untilIso) {
   };
 }
 
-// نطاق التوقع — ثلاثة سيناريوهات كلها من سجلات حقيقية، والصيغ معلنة في تلميح العلامة الحمراء:
-//   المتشائم = المحقق + المفتوح غير المرجّح × نسبة الفوز التاريخية (أو المرجّح إن كان أدنى)
-//   الأساس   = المحقق + المرجّح باحتمال كل فرصة كما سجّله صاحبها
-//   المتفائل = المحقق + كامل المفتوح
-// المجموعة القانونية للفرص المفتوحة: فرص السنة **أو بلا سنة** — فرصة مفتوحة لم تُسند لسنةٍ بعد
-// ما تزال في الملعب، وإسقاطها كان يعرض «مرجّحين» مختلفين للقطاع نفسه في الصفحة الواحدة.
-export async function forecastRange(sectorId, year) {
+// ── توقّع الإيراد نهاية السنة: من الإيراد نفسه، لا من قيمة الصفقات ────────────────────────
+// الصيغة السابقة (المحقق + الخط المرجّح) كانت تجمع **مخزوناً** من قيمةٍ تعاقدية إجمالية متعددة
+// السنوات إلى **تدفّقٍ** من إيراد سنةٍ واحدة معترفٍ به — ولا علاقة حسابية بينهما: لا مسار في
+// المنصة يحوّل قيمة فرصة إلى إيراد؛ الإيراد لا يُولَد إلا حين يبلغ مخرَجٌ حالة «سُلِّم/قُبِل»
+// (recognition.js وترحيلة 020). فصفقةُ خدماتٍ مُدارة بـ270 مليوناً على خمس سنوات كانت تُضيف
+// 81 مليوناً إلى توقّع سنةٍ هدفُها 32 — فيخرج «+1057%» بجانب شارةٍ تقول «متقدّم بعشر نقاط».
+//
+// الأساس الآن الوتيرة المُثبَتة: ما تحقّق مقسوماً على ما انقضى من السنة. والحدّان من تباين
+// الأشهر المسجَّلة نفسها لا من الخط:
+//   المتحفّظ = المحقق + (أدنى شهرٍ مسجَّل × الأشهر المتبقية)   ← «إن استمر أبطأ شهر»
+//   الأساس   = المحقق ÷ نسبة انقضاء السنة                      ← «إن استمرت الوتيرة نفسها»
+//   المتفائل = المحقق + (أفضل شهرٍ مسجَّل × الأشهر المتبقية)   ← «إن تكرّر أفضل شهر»
+// وسنةٌ منقضية توقّعُها = محقّقها (لا تنبّؤ لما مضى)، وسنةٌ لم يمضِ منها شهرٌ بعدُ لا تُتنبَّأ.
+export async function revenueOutlook(sectorId, year, today = new Date()) {
   const actual = (await get(`SELECT ${NET_REVENUE} v FROM revenue_line
       WHERE year = ? ${sectorId ? 'AND sector_id = ?' : ''}`, sectorId ? [year, sectorId] : [year]))?.v || 0;
-  const open = await get(`SELECT COALESCE(SUM(o.value_halalas),0) raw, ${WEIGHTED_OPEN} weighted
-      FROM opportunity o JOIN stage st ON st.id = o.stage_id
-      WHERE o.deleted_at IS NULL AND st.is_won = 0 AND st.is_lost = 0 AND (o.year = ? OR o.year IS NULL)
-      ${sectorId ? 'AND o.sector_id = ?' : ''}`, sectorId ? [year, sectorId] : [year]);
-  const { rate } = await winRate(sectorId, year);
-  const weighted = Math.round(open?.weighted || 0), raw = open?.raw || 0;
-  const low = actual + Math.min(weighted, Math.round(raw * (rate || 0) / 100));
-  return { actual, open_raw: raw, open_weighted: weighted, rate: rate || 0,
-    low, base: actual + weighted, high: actual + raw };
+  const elapsed = yearElapsedPct(today, year);
+  const months = await monthlyRevenue(sectorId, year);
+  // الأشهر المنقضية وحدها هي المسجَّلة: شهرٌ لم يأتِ بعد ليس «شهراً بصفر»
+  const doneM = elapsed >= 100 ? 12 : Math.max(0, Math.min(12, Math.floor(elapsed / 100 * 12)));
+  const seen = months.slice(0, doneM);
+  const remainingM = Math.max(0, 12 - doneM);
+  if (elapsed >= 100) {
+    return { actual, elapsedPct: 100, base: actual, low: actual, high: actual,
+      monthsSeen: doneM, remainingMonths: 0, minMonth: 0, maxMonth: 0, closed: true, tooEarly: false };
+  }
+  if (!doneM || !elapsed) {
+    return { actual, elapsedPct: elapsed, base: null, low: null, high: null,
+      monthsSeen: doneM, remainingMonths: remainingM, minMonth: 0, maxMonth: 0, closed: false, tooEarly: true };
+  }
+  const minMonth = Math.min(...seen), maxMonth = Math.max(...seen);
+  const base = Math.round(actual / (elapsed / 100));
+  const low = actual + minMonth * remainingM;
+  const high = actual + maxMonth * remainingM;
+  return { actual, elapsedPct: elapsed,
+    base: Math.max(low, Math.min(high, base)), low, high,
+    monthsSeen: doneM, remainingMonths: remainingM, minMonth, maxMonth, closed: false, tooEarly: false };
 }
 
 // إيراد النافذة — بنود الإيراد شهرية، فالمجموع لأشهرٍ تتقاطع مع النافذة (والشاشة تُعلن الأساس).

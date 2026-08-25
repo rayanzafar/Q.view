@@ -16,7 +16,7 @@ const { insert, close } = await import('../../src/core/db/index.js');
 const { initRbac } = await import('../../src/core/rbac/index.js');
 await initRbac(); // attentionFeed يفحص can(user,'read','invoice') قبل بند الفواتير المتأخرة
 const { attentionFeed } = await import('../../src/core/reports/attention.js');
-const { revenueForecast, pipelineAging } = await import('../../src/core/reports/metrics.js');
+const { revenueOutlook, pipelineAging } = await import('../../src/core/reports/metrics.js');
 
 const T = '2026-07-20';
 before(async () => {
@@ -53,15 +53,15 @@ test('attentionFeed: بند الفواتير المتأخرة محجوب عن د
   assert.ok(!items.some((i) => i.title.includes('متأخرة')), 'رقم مالي تسرّب لمن لا يقرأ الفواتير');
 });
 
-test('revenueForecast = المحقق + المرجّح من الفرص المفتوحة', async () => {
-  const fc = await revenueForecast('S1', 2026);
+test('revenueOutlook: التوقع من وتيرة الإيراد لا من قيمة الفرص', async () => {
+  const fc = await revenueOutlook('S1', 2026, new Date('2026-07-01T00:00:00Z'));
   // المحقق **صافٍ** بعد فصل الضريبة (ترحيلة ٠١٩): ١٠٠٬٠٠٠ هللة إجمالاً ⟵ ٨٦٬٩٥٦ صافياً.
-  // الإيراد وحده يُقاس صافياً لأنه ما يخصّ الشركة، وهذا الرقم يُقارن بمستهدفٍ صافٍ أصلاً.
   assert.equal(fc.actual, 86956);
-  // O1: 100000000×50% + O2: 50000000×50% = 75,000,000
-  // والمرجّح من الفرص لم يتغيّر: قيمة الفرصة تقديرُ ما قبل التعاقد، وبقيت خارج فصل الضريبة عمداً.
-  assert.equal(fc.weightedOpen, 75000000);
-  assert.equal(fc.forecast, 75086956);
+  // قيمة الفرص المفتوحة (١٥٠ مليون هللة) لا تدخل التوقع إطلاقاً — إيرادٌ لم يُعترف به بعد.
+  assert.ok(fc.base < 1_000_000, `التوقع ${fc.base} تسرّبت إليه قيمة الفرص`);
+  // الحدود من الأشهر المسجَّلة نفسها، والأساس بينهما
+  assert.ok(fc.low <= fc.base && fc.base <= fc.high);
+  assert.equal(fc.closed, false);
 });
 
 test('pipelineAging يوزّع الفرص على سلال العمر الصحيحة', async () => {
