@@ -11,7 +11,7 @@ import { netSql } from '../../modules/finance/vat.js';
 import { icon } from '../icons.js';
 import { fmtSar } from '../../core/util/ids.js';
 import { all, get } from '../../core/db/index.js';
-import { sectorDashboard, sectorStaffing, sectorWins, quarterlyRevenue, quarterlyBookings, pipelineCoverage, monthlyRevenue, revenueOutlook, winsByMonth, windowFigures, windowRevenue, yearElapsedPct, targetToDate, paceDelta, grossMargin, WEIGHTED_OPEN } from '../../core/reports/metrics.js';
+import { sectorDashboard, sectorStaffing, sectorWins, quarterlyRevenue, quarterlyBookings, pipelineCoverage, monthlyRevenue, revenueOutlook, revenueScope, outlookFromMonths, winsByMonth, windowFigures, windowRevenue, yearElapsedPct, targetToDate, paceDelta, grossMargin, WEIGHTED_OPEN } from '../../core/reports/metrics.js';
 import { attentionFeed, RESOURCE_AR } from '../../core/reports/attention.js';
 import { changesSince, periodBounds, lastChangeAt } from '../../core/reports/changes.js';
 import { completenessScore } from '../../core/reports/completeness.js';
@@ -132,8 +132,7 @@ const CSS = `<style>
 .kviz>.ringw{flex:none}
 .kviz>div{flex:1;min-width:0}
 /* (٢) شريط القراءة الداكن — البقعة البنفسجية والرقم الأحمر الفاتح موروثان من لوحة v5.39 */
-.exec-band{background:linear-gradient(135deg,#101733,#16224e 55%,#2b1a55);border-radius:18px;padding:.55rem .8rem;color:#eef2fb;position:relative;overflow:hidden}
-.xb-sum .n{width:20px;height:20px;border-radius:50%;background:rgba(255,255,255,.16);color:#fff;font-size:11px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;flex:none}
+.exec-band{background:linear-gradient(135deg,#101733,#16224e 55%,#2b1a55);border-radius:18px;padding:.8rem 1rem;color:#eef2fb;position:relative;overflow:hidden}
 .exec-band::before{content:'';position:absolute;inset:-40% -20% auto auto;width:420px;height:420px;border-radius:50%;background:radial-gradient(closest-side,rgba(131,71,152,.35),transparent)}
 .exec-band>*{position:relative}
 .exec-band .secn .n{background:rgba(255,255,255,.16)}
@@ -151,14 +150,9 @@ const CSS = `<style>
 .xb-sum{display:flex;gap:.5rem;align-items:center;font-size:var(--fs-body);font-weight:700;color:#fff;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:.42rem .7rem;flex-wrap:wrap}
 .xb-sum>svg{width:15px;height:15px;color:#a78bfa;flex:none}
 .ins{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.6rem;margin-top:.6rem}
-/* البطاقات الثلاث نزلت إلى فصولها (ميزانية الشاشة الواحدة): كلٌّ منها وحدها في صفّها */
-.ins.one{grid-template-columns:1fr;margin-top:0}
-.ins.one .ic1{background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--sh-sm);
-  display:grid;grid-template-columns:minmax(0,1fr) minmax(0,460px);align-items:center;gap:1rem;padding:.7rem 1rem}
-.ins.one .ic1>.ih,.ins.one .ic1>.ib{grid-column:1}
-.ins.one .ic1>div:last-child{grid-column:2;grid-row:1/3}
-@media(max-width:900px){.ins.one .ic1{grid-template-columns:1fr}.ins.one .ic1>div:last-child{grid-column:1;grid-row:auto}}
+@media(max-width:900px){.ins{grid-template-columns:1fr}}
 .ic1{background:rgba(255,255,255,.9);color:var(--ink);border-radius:12px;padding:.6rem .75rem;min-width:0}
+.ic1 .icb{display:inline-block;font-size:9.5px;font-weight:700;color:var(--muted);background:var(--track);border-radius:999px;padding:.05rem .45rem;vertical-align:middle;margin-inline-start:.3rem}
 .ic1 .ih{font-size:var(--fs-body);font-weight:800;color:var(--brand);margin-bottom:.15rem}
 .ic1 .ib{font-size:var(--fs-body);color:var(--ink2);line-height:1.6;margin-bottom:.3rem}
 .ic1 .fig-leg{margin-top:.2rem}
@@ -468,6 +462,9 @@ export async function sectorPage(user, opts = {}) {
   const deptArg = deptSel && deptSel !== NO_DEPT ? [deptSel] : [];
   const clientSql = (col) => (clientSel ? ` AND ${col} = ?` : '');
   const clientArg = clientSel ? [clientSel] : [];
+  // نطاق الترشيح الواحد الذي تمرّره الصفحة لدوال المقاييس (بنود الإيراد والفواتير عبر مشروعها)
+  const fscope = { dept: deptSel, client: clientSel };
+  const filtered = !!(deptSel || clientSel);
   // كم يُستبعَد لعدم وجود إدارة مسجَّلة له؟ يُقال صراحةً حين يُرشَّح — أكثر من نصف المشاريع
   // بلا إدارة، فترشيحٌ صامت يُخفيها ويترك القارئ يحار لماذا لا تُجمَع الأرقام إلى القطاع.
   const deptGap = sectorDepts.length ? await get(`SELECT
@@ -523,9 +520,9 @@ export async function sectorPage(user, opts = {}) {
   // ── بيانات الكابينة (v5.39 — نماذج المالك المرجعية): كلها من سجلات حيّة مؤرَّخة ──
   const [winf, winfPrev, wrev, wbm, compl, lastUpd, vjContracted, vjDelivered, vjAccepted, vjInvoiced, vjCollected, msWindow, msUpcoming, topRisks] = await Promise.all([
     // أرقام النافذة من مصدرٍ واحد يغذي شريط المؤشرات ورقائق النبض معاً — لا رقمان لشيء واحد
-    windowFigures(user, sectorId, sinceIso, untilIso),
-    prevOk ? windowFigures(user, sectorId, prevB.sinceIso, prevB.untilIso) : null,
-    period.kind !== 'y' ? windowRevenue(sectorId, year, sinceIso, untilIso) : null,
+    windowFigures(user, sectorId, sinceIso, untilIso, fscope),
+    prevOk ? windowFigures(user, sectorId, prevB.sinceIso, prevB.untilIso, fscope) : null,
+    period.kind !== 'y' ? windowRevenue(sectorId, year, sinceIso, untilIso, fscope) : null,
     winsByMonth(sectorId, { untilIso }),
     completenessScore(user, sectorId, { year }),
     lastChangeAt(sectorId),
@@ -562,6 +559,32 @@ export async function sectorPage(user, opts = {}) {
   // إطار المبيعات حيث ينتمي. سنةٌ منقضية أو لم يمضِ منها شهر: لا رقم توقّعٍ يُعرض.
   const fc = { forecast: fr.base, actual: fr.actual };
   const pulseWins = winf.wins, pulseInv = winf.invoiced, pulseCol = winf.collected;
+
+  // ── السلسلة المرشَّحة بإدارة/عميل + بيانات السنة القادمة — تُجلب عند الحاجة وحدها ──
+  // rsc: بنود الإيراد عبر مشروعها (غير المنسوب يُفصَح عنه)؛ basisMonthly: أشهر سنة الأساس
+  // لنافذة تفصيل توقّع السنة القادمة؛ nextSched: صفقات الخط المُسنَدة للسنة القادمة؛
+  // salesScoped: المكسوب سنوياً تحت الترشيح (إسناد سنة الفرصة — رقم بقية الشاشات).
+  const [rsc, basisMonthly, nextSched, salesScoped] = await Promise.all([
+    filtered ? revenueScope(sectorId, year, fscope) : null,
+    fr.nextYear ? monthlyRevenue(sectorId, fr.basisYear) : null,
+    fr.nextYear && canOpps ? get(`SELECT COUNT(*) n, COALESCE(SUM(o.value_halalas),0) raw, ${WEIGHTED_OPEN} weighted
+       FROM opportunity o JOIN stage st ON st.id = o.stage_id
+       WHERE o.sector_id = ? AND o.year = ? AND st.is_won = 0 AND st.is_lost = 0
+         AND o.stage_id != 'ON_HOLD' AND o.exclude_from_sales = 0 AND o.deleted_at IS NULL`, [sectorId, year]) : null,
+    filtered ? get(`SELECT COUNT(*) n, COALESCE(SUM(o.value_halalas),0) v
+       FROM opportunity o JOIN stage st ON st.id = o.stage_id
+       WHERE o.sector_id = ? AND o.year = ? AND st.is_won = 1 AND o.exclude_from_sales = 0
+         AND o.deleted_at IS NULL${deptSql('o.department_id')}${clientSql('o.client_id')}`,
+    [sectorId, year, ...deptArg, ...clientArg]) : null,
+  ]);
+  // السلسلة التي يقرأها رسم الإيقاع وبطاقات الإيراد: المرشَّحة إن رُشِّح وإلا سلسلة القطاع.
+  // تحت الترشيح لا هدف يُقارَن به (الأهداف قطاعية) — فتحلّ «الحصة من إيراد القطاع» محلّه.
+  const rs = filtered ? rsc.months : monthly;
+  const rsTotal = filtered ? rsc.total : sd.revenue_halalas;
+  const rsShare = filtered && sd.revenue_halalas ? Math.round(((rsc.total || 0) / sd.revenue_halalas) * 100) : null;
+  const rsOutlook = filtered ? outlookFromMonths(rs, year, now) : null;
+  const rsCum = rs.reduce((acc, v) => { acc.push((acc[acc.length - 1] || 0) + v); return acc; }, []);
+  const futureYr = year > now.getUTCFullYear();
 
   // مراحل القمع من جدول المراحل الحقيقي — لا أسماء مكتوبة في الكود.
   // ── حدّ «الأرقام لا الأشخاص» (قرار قائم، v5.2) ──────────────────────────────
@@ -727,9 +750,14 @@ export async function sectorPage(user, opts = {}) {
     deptSel ? fchip(deptSel === NO_DEPT ? 'بلا إدارة' : (sectorDepts.find((d) => d.id === deptSel)?.name_ar || ''), qs({ dept: null }), true, 'إزالة ترشيح الإدارة') : '',
     clientSel ? fchip(sectorClientRows.find((c) => c.id === clientSel)?.name_ar || '', qs({ client: null }), true, 'إزالة ترشيح العميل') : '',
   ].filter(Boolean).join('');
-  const filterNote = (deptSel && deptSel !== NO_DEPT && deptGap && (deptGap.prj || deptGap.opp))
-    ? `<div class="fnote">${noteMark('الأرقام المالية تُجمع على الإدارة المسؤولة وحدها — ولو جُمعت على كل إدارةٍ مشارِكة لحُسب المشروع الواحد مرتين')} ترشيحٌ بالإدارة: ${countAr(deptGap.prj, { one: 'مشروع واحد', two: 'مشروعان', few: 'مشاريع', many: 'مشروعاً' })} و${countAr(deptGap.opp, { one: 'فرصة مفتوحة واحدة', two: 'فرصتان مفتوحتان', few: 'فرص مفتوحة', many: 'فرصة مفتوحة' })} بلا إدارة مسجَّلة — لا تظهر هنا</div>`
-    : '';
+  const filterNotes = [];
+  if (deptSel && deptSel !== NO_DEPT && deptGap && (deptGap.prj || deptGap.opp)) {
+    filterNotes.push(`<div class="fnote">${noteMark('الأرقام المالية تُجمع على الإدارة المسؤولة وحدها — ولو جُمعت على كل إدارةٍ مشارِكة لحُسب المشروع الواحد مرتين')} ترشيحٌ بالإدارة: ${countAr(deptGap.prj, { one: 'مشروع واحد', two: 'مشروعان', few: 'مشاريع', many: 'مشروعاً' })} و${countAr(deptGap.opp, { one: 'فرصة مفتوحة واحدة', two: 'فرصتان مفتوحتان', few: 'فرص مفتوحة', many: 'فرصة مفتوحة' })} بلا إدارة مسجَّلة — لا تظهر هنا</div>`);
+  }
+  if (filtered && rsc && rsc.unattributed > 0) {
+    filterNotes.push(`<div class="fnote">${noteMark('بند إيرادٍ قديم بلا مشروعٍ مسجَّل لا يُعرف لأي إدارةٍ أو عميلٍ ينتمي — يبقى في أرقام القطاع غير المرشَّحة')} ${sarShort(rsc.unattributed)} من إيراد ${year} غير منسوبٍ لمشروع — لا يظهر تحت هذا الترشيح</div>`);
+  }
+  const filterNote = filterNotes.join('');
   const lens = `<div class="psel">
     <div class="seg" role="group" aria-label="الفترة">${pOpt('y', 'السنة')}</div>
     <div class="seg" role="group" aria-label="الأرباع">${[1, 2, 3, 4].map((q) => pOpt(`q${q}`, `ر${q}`)).join('')}</div>
@@ -1382,6 +1410,32 @@ export async function sectorPage(user, opts = {}) {
   // وهذه تعرض الأساس والحدَّين وصيغةَ كلٍّ منها، والأشهرَ المسجَّلة التي بُنيت عليها الوتيرة،
   // ورسماً تفاعلياً يقول قيمة كل شهر بالتحويم — «كي نفهم الحساب» (طلب أ. حسين).
   const fcDD = (() => {
+    if (fr.nextYear && fr.tooEarly) {
+      return ddWrap('secfc', G.forecast, `${esc(sd.sector.name_ar)} · ${year}`, `
+        <div class="empty-mini">${icon('clock')} لا وتيرة مسجَّلة في ${fr.basisYear} بعدُ تُمدّ إلى ${year} — يبدأ التوقع حين يكتمل شهرٌ من سنة الأساس.</div>`);
+    }
+    if (fr.nextYear) {
+      const bSeen = (basisMonthly || []).slice(0, fr.monthsSeen);
+      const bRows = bSeen.map((v, i) => ({ label: MONTHS_AR[i], value: v, count: '', fill: v === fr.maxMonth ? 'var(--st-good)' : v === fr.minMonth ? 'var(--st-warn)' : 'var(--acc-navy)' }));
+      return ddWrap('secfc', G.forecast, `${esc(sd.sector.name_ar)} · ${year} · امتداد وتيرة ${fr.basisYear}`, `
+        <div class="dd-kpi"><span class="v tnum">${sarShort(fr.base)}</span><span style="font-size:12px;color:var(--muted)">لا سجلّ لسنة ${year} — الأساس امتدادُ وتيرة ${fr.basisYear} المسجَّلة</span></div>
+        <div class="dd-sec">الصيغ الثلاث — كلها من إيراد ${fr.basisYear} المُسجَّل وحده</div>
+        <div class="dd-row"><span>المتحفّظ — لو تكرّر <b>أبطأ</b> شهرٍ مسجَّل اثني عشر شهراً</span>
+          <span><b class="tnum">${sarShort(fr.low)}</b> <small style="color:var(--muted)">= ${sarShort(fr.minMonth)} × 12</small></span></div>
+        <div class="dd-row"><span>الأساس — لو استمرت وتيرة ${fr.basisYear} نفسها</span>
+          <span><b class="tnum">${sarShort(fr.base)}</b> <small style="color:var(--muted)">= ${sarShort(fr.avgMonth)} × 12</small></span></div>
+        <div class="dd-row"><span>المتفائل — لو تكرّر <b>أفضل</b> شهرٍ مسجَّل اثني عشر شهراً</span>
+          <span><b class="tnum">${sarShort(fr.high)}</b> <small style="color:var(--muted)">= ${sarShort(fr.maxMonth)} × 12</small></span></div>
+        ${nextSched && nextSched.n ? `<div class="dd-sec">المُسنَد لسنة ${year} في خط الفرص</div>
+        <div class="dd-row"><span>${countAr(nextSched.n, { one: 'فرصة مفتوحة واحدة مُسنَدة لهذه السنة', two: 'فرصتان مفتوحتان مُسنَدتان لهذه السنة', few: 'فرص مفتوحة مُسنَدة لهذه السنة', many: 'فرصة مفتوحة مُسنَدة لهذه السنة' })}</span>
+          <span><b class="tnum">${sarShort(Math.round(nextSched.weighted))}</b> <small style="color:var(--muted)">مرجّحاً من ${sarShort(nextSched.raw)}</small></span></div>` : ''}
+        <div class="dd-sec">أشهر ${fr.basisYear} التي قِيست عليها الوتيرة (${monthWord(fr.monthsSeen)})</div>
+        ${figBars(bRows, { fmt: sarShort })}
+        <div style="font-size:var(--fs-micro);color:var(--muted);padding:.5rem 0 0;line-height:1.8">
+          امتدادُ وتيرةٍ لا تنبؤ: يفترض أن السنة القادمة تشبه الجارية شهراً بشهر، بلا موسميةٍ ولا
+          صفقاتٍ جديدة — وكلما أُسنِدت صفقاتٌ لسنة ${year} ظهر مجدولُها هنا بجانبه.
+        </div>`);
+    }
     if (fr.tooEarly) {
       return ddWrap('secfc', G.forecast, `${esc(sd.sector.name_ar)} · ${year}`, `
         <div class="empty-mini">${icon('clock')} مبكرٌ على التوقع — لم يكتمل شهرٌ من السنة بعد، ولا وتيرة تُقاس عليها.</div>`);
@@ -1486,8 +1540,22 @@ export async function sectorPage(user, opts = {}) {
 
   // بطاقة الإيراد: سنةً كاملة قيمتها السنوية، ونافذةَ شهرٍ/ربعٍ مجموعُ الأشهر المتقاطعة
   // (بنود الإيراد شهرية — الأساس معلن على العلامة)، وأسبوعاً/يوماً لا غرام إيراد يومي أصلاً.
+  // وسنةً قادمة «لا سجلّ بعد» والمتوقعُ في سطرها الثاني معلَّماً — لا خلط محققٍ بمتوقعٍ في خانة.
+  // وتحت ترشيح إدارة/عميل: المنسوب وحده وحصتُه من القطاع — لا حلقة هدفٍ (الأهداف قطاعية).
   const revTarget = sd.target_revenue_halalas || 0;
-  const kpiRevenue = !isWinMode
+  const pMonthsN = period.kind === 'y' ? 12 : period.months.length;
+  const expShare = futureYr && fr.base ? Math.round(fr.base * pMonthsN / 12) : null;
+  const kpiRevenue = (futureYr && !sd.revenue_halalas)
+    ? kpiCard({ eye: `${G.revenue} المحقق`, val: '—', sub: `سنة قادمة — لا سجلّ لسنة ${year} بعد`,
+      mark: expShare != null ? estMark(`المتوقع امتدادُ وتيرة ${fr.basisYear} موزَّعاً بالتساوي على الأشهر (الأساس ÷ 12 × أشهر الفترة) — قاعدة معلنة لا موسمية فيها`, 'below') : '',
+      sub2: expShare != null ? `المتوقع ${period.kind === 'y' ? 'للسنة' : `في ${periodLabel(period.kind, period.index)}`}: ${sarShort(expShare)}` : '',
+      dd: 'secrev' })
+    : (!isWinMode && filtered)
+      ? kpiCard({ eye: `${G.revenue} المحقق`, val: rsTotal ? sarShort(rsTotal) : '—', valTitle: rsTotal ? fmtSar(rsTotal) : '',
+        sub: rsTotal ? (rsShare != null ? `حصة من إيراد القطاع <b class="tnum">${rsShare}%</b> (${sarShort(sd.revenue_halalas)})` : '') : 'لا إيراد منسوباً تحت هذا الترشيح',
+        mark: noteMark('الإيراد يُنسَب لإدارة/عميل عبر مشروع بنده — وغير المنسوب معلَنٌ تحت شريط المرشِّحات'),
+        viz: rsTotal ? figSpark(rsCum, { color: 'var(--acc-navy)', ariaLabel: `الإيراد التراكمي المرشَّح شهراً بشهر حتى ${sarShort(rsTotal)}` }) : '', dd: 'secrev' })
+      : !isWinMode
     ? kpiCard({ eye: `${G.revenue} المحقق`, val: sarShort(sd.revenue_halalas), valTitle: fmtSar(sd.revenue_halalas),
       sub: revTarget ? `من ${G.target} <b class="tnum">${sarShort(revTarget)}</b>${yoyPct != null ? ` · <span class="tnum" dir="ltr">${yoyPct >= 0 ? '+' : '−'}${Math.abs(yoyPct)}%</span> عن ${year - 1}` : ''}` : 'لا هدف مسجّل لهذه السنة',
       viz: `${attainRev != null ? figRing(attainRev, { size: 48, sw: 7, color: 'var(--acc-navy)' }) : ''}${figSpark(cumMonthly, { color: 'var(--acc-navy)', ariaLabel: `الإيراد التراكمي شهراً بشهر حتى ${sarShort(sd.revenue_halalas)}` })}`,
@@ -1496,8 +1564,8 @@ export async function sectorPage(user, opts = {}) {
       ? kpiCard({ eye: `${G.revenue} المحقق`, val: wrev.v ? sarShort(wrev.v) : '—',
         sub: `${winEcho2} · ${countAr(wrev.months.length, { one: 'شهر واحد متقاطع', two: 'شهران متقاطعان', few: 'أشهر متقاطعة', many: 'شهراً متقاطعاً' })} مع النافذة`,
         mark: noteMark('بنود الإيراد مسجّلة بالشهر — الرقم مجموع الأشهر المتقاطعة مع النافذة، وليس قصّاً يومياً'),
-        sub2: attainRev != null ? `سنة ${year}: ${attainRev}% من ${G.target}` : 'لا هدف مسجّل لهذه السنة',
-        viz: figSpark(monthly, { color: 'var(--acc-navy)', ariaLabel: 'الإيراد الشهري عبر السنة' }), dd: 'secrev' })
+        sub2: filtered ? (rsShare != null ? `تحت الترشيح — سنة ${year}: ${sarShort(rsTotal)} (${rsShare}% من القطاع)` : 'تحت الترشيح') : (attainRev != null ? `سنة ${year}: ${attainRev}% من ${G.target}` : 'لا هدف مسجّل لهذه السنة'),
+        viz: figSpark(rs, { color: 'var(--acc-navy)', ariaLabel: 'الإيراد الشهري عبر السنة' }), dd: 'secrev' })
       : kpiCard({ eye: `${G.revenue} المحقق`, val: '—', sub: 'الإيراد يُسجَّل شهرياً — اختر نافذة الشهر أو أوسع',
         sub2: attainRev != null ? `سنة ${year}: ${attainRev}% من ${G.target}` : 'لا هدف مسجّل لهذه السنة', dd: 'secrev' }));
 
@@ -1507,7 +1575,22 @@ export async function sectorPage(user, opts = {}) {
     : (winf.decided.won + winf.decided.lost) < 3
       ? `عيّنة صغيرة (${countAr(winf.decided.won + winf.decided.lost, { one: 'فرصة واحدة حُسمت', two: 'فرصتان حُسمتا', few: 'فرص حُسمت', many: 'فرصة حُسمت' })})`
       : `${G.winRate} ${winf.decided.rate}% من ${countAr(winf.decided.won + winf.decided.lost, { one: 'فرصة حُسمت', two: 'فرصتين حُسمتا', few: 'فرص حُسمت', many: 'فرصة حُسمت' })}`;
-  const kpiSales = !isWinMode
+  const kpiSales = (futureYr && !isWinMode)
+    ? (sd.sales_halalas
+      ? kpiCard({ eye: G.sales, val: sarShort(sd.sales_halalas), valTitle: fmtSar(sd.sales_halalas),
+        sub: `صفقات مُسنَدة مسبقاً لسنة ${year} — بإسناد سنة الفرصة`,
+        sub2: 'لا فوز وقع في هذه السنة بعد — الرقم ما جُدول لها', dd: 'secwins' })
+      : kpiCard({ eye: G.sales, val: '—', sub: `لا مبيعات مُسنَدة لسنة ${year} بعد`,
+        sub2: nextSched?.n ? `في الخط المرجّح لهذه السنة: ${sarShort(Math.round(nextSched.weighted))} من ${countAr(nextSched.n, { one: 'فرصة مفتوحة واحدة', two: 'فرصتين مفتوحتين', few: 'فرص مفتوحة', many: 'فرصة مفتوحة' })}` : '',
+        dd: 'secwins' }))
+    : (!isWinMode && filtered)
+      ? kpiCard({ eye: G.sales, val: salesScoped?.n ? sarShort(salesScoped.v) : '—',
+        sub: salesScoped?.n
+          ? `${countAr(salesScoped.n, { one: 'صفقة واحدة مكسوبة', two: 'صفقتان مكسوبتان', few: 'صفقات مكسوبة', many: 'صفقة مكسوبة' })}${sd.sales_halalas ? ` · حصة من مبيعات القطاع <b class="tnum">${Math.round((salesScoped.v / sd.sales_halalas) * 100)}%</b>` : ''}`
+          : 'لا صفقات مكسوبة تحت هذا الترشيح',
+        sub2: 'بإسناد سنة الفرصة — لا حلقة هدفٍ تحت الترشيح: أهداف المبيعات قطاعية',
+        dd: 'secwins' })
+      : !isWinMode
     ? kpiCard({ eye: G.sales, val: sarShort(sd.sales_halalas), valTitle: fmtSar(sd.sales_halalas),
       sub: sd.target_sales_halalas ? `من ${G.target} <b class="tnum">${sarShort(sd.target_sales_halalas)}</b>${yoySales != null ? ` · <span class="tnum" dir="ltr">${yoySales >= 0 ? '+' : '−'}${Math.abs(yoySales)}%</span> عن ${year - 1}` : ''}` : 'لا هدف مسجّل لهذه السنة',
       viz: `${attainSales != null ? figRing(attainSales, { size: 48, sw: 7, color: 'var(--acc-indigo)' }) : ''}${figSpark(wbm.slots.map((x) => x.v), { color: 'var(--acc-indigo)', ariaLabel: 'قيمة الفرص المكسوبة شهرياً في آخر اثني عشر شهراً' })}`,
@@ -1521,22 +1604,39 @@ export async function sectorPage(user, opts = {}) {
 
   // بطاقة التوقع: سنويةٌ بطبيعتها — النطاق من الصيغ الثلاث المعلنة على العلامة الحمراء (قرار
   // أ. حسين 2026-08-24: «نطاق التوقع» لا «الثقة» — لا إحصاء وراءه، سيناريوهات من سجلات حقيقية).
-  const kpiForecast = fr.tooEarly
+  const fcScope = filtered ? 'القطاع كله · لا يتأثر بالفترة' : 'لا يتأثر بالفترة';
+  const kpiForecast = fr.nextYear
+    ? (fr.tooEarly
+      ? kpiCard({ eye: G.forecast, val: '—', sub: `لا وتيرة مسجَّلة في ${fr.basisYear} بعدُ تُمدّ إلى ${year}`,
+        scope: fcScope, dd: 'secfc' })
+      : kpiCard({ eye: G.forecast, val: sarShort(fr.base), valTitle: fmtSar(fr.base),
+        mark: estMark(`امتداد وتيرة ${fr.basisYear}: متوسط الشهر المسجَّل ${sarShort(fr.avgMonth)} × 12 — لا سجلّ لسنة ${year} بعد. اضغط البطاقة لتفصيل الحساب`, 'below'),
+        sub: `النطاق <b class="tnum" dir="ltr">${sarShort(fr.low)}–${sarShort(fr.high)}</b> · امتداد وتيرة ${fr.basisYear}`,
+        sub2: nextSched?.n ? `مبيعات مجدولة لسنة ${year}: ${sarShort(Math.round(nextSched.weighted))} مرجّحاً من ${countAr(nextSched.n, { one: 'فرصة واحدة', two: 'فرصتين', few: 'فرص', many: 'فرصة' })}` : `لا صفقات مُسنَدة لسنة ${year} في الخط بعد`,
+        scope: fcScope, dd: 'secfc' }))
+    : fr.tooEarly
     ? kpiCard({ eye: G.forecast, val: '—', sub: 'مبكرٌ على التوقع — لم يكتمل شهرٌ من السنة بعد',
-      sub2: attainRev != null ? `المحقق ${sarShort(fr.actual)} من ${G.target}` : '', scope: 'لا يتأثر بالفترة', dd: 'secfc' })
+      sub2: attainRev != null ? `المحقق ${sarShort(fr.actual)} من ${G.target}` : '', scope: fcScope, dd: 'secfc' })
     : fr.closed
       ? kpiCard({ eye: G.forecast, val: sarShort(fr.actual), valTitle: fmtSar(fr.actual),
-        sub: 'السنة انتهت — الرقم محقّقها لا توقّعاً', scope: 'لا يتأثر بالفترة', dd: 'secfc' })
+        sub: 'السنة انتهت — الرقم محقّقها لا توقّعاً', scope: fcScope, dd: 'secfc' })
       : kpiCard({ eye: G.forecast, val: sarShort(fr.base), valTitle: fmtSar(fr.base),
         mark: estMark('تقديرٌ من وتيرة الإيراد المُسجَّل وحده — اضغط البطاقة لتفصيل الحساب', 'below'),
         sub: `النطاق <b class="tnum" dir="ltr">${sarShort(fr.low)}–${sarShort(fr.high)}</b>${fcPct != null ? ` · <span class="tnum" dir="ltr">${fcPct >= 0 ? '+' : '−'}${Math.abs(fcPct)}%</span> عن الهدف` : ''}`,
         sub2: `على وتيرة ${sarShort(Math.round(fr.actual / Math.max(1, fr.monthsSeen)))} شهرياً خلال ${monthWord(fr.monthsSeen)} مضت`,
         viz: figSpark(cumMonthly, { color: 'var(--acc-teal)', ariaLabel: 'مسار الإيراد التراكمي الذي تُقاس عليه الوتيرة' }),
-        scope: 'لا يتأثر بالفترة', dd: 'secfc' });
+        scope: fcScope, dd: 'secfc' });
 
   // بطاقة الخط المرجّح: رصيدٌ لحظي لا يتأثر بالفترة — والشرارة مرسّى الفوز الشهري الحقيقي
   // (لا سجل تاريخي لقيمة الخط نفسه — فلا نختلقه).
-  const kpiPipeline = kpiCard({ eye: 'خط الفرص المرجّح', val: wq ? sarShort(wq) : '—',
+  const wqScoped = filtered ? Math.round(funnelStages.reduce((a, st) => a + (Number(st.weighted) || 0), 0)) : null;
+  const kpiPipeline = filtered
+    ? kpiCard({ eye: 'خط الفرص المرجّح', val: wqScoped ? sarShort(wqScoped) : '—',
+      mark: estMark('قيمة تقديرية: مجموع الفرص المفتوحة المطابقة للترشيح مرجّحاً باحتمال الفوز — ليست التزاماً ولا رقماً محاسبياً'),
+      sub: wqScoped ? 'المفتوح المطابق للترشيح مرجّحاً باحتمال الفوز' : 'لا فرص مفتوحة تحت هذا الترشيح',
+      sub2: 'لا هدف مبيعات لإدارةٍ أو عميل — فلا نسبة تغطية تحت الترشيح',
+      scope: 'لا يتأثر بالفترة', dd: 'seccover' })
+    : kpiCard({ eye: 'خط الفرص المرجّح', val: wq ? sarShort(wq) : '—',
     mark: estMark('قيمة تقديرية: مجموع الفرص المفتوحة مرجّحاً باحتمال الفوز لكل فرصة — ليست التزاماً ولا رقماً محاسبياً'),
     sub: cover?.coverage != null ? `تغطية ×<b class="tnum">${cover.coverage}</b> من المتبقي من هدف المبيعات` : 'لا هدف مبيعات للتغطية',
     viz: figSpark(wbm.slots.map((x) => x.v), { color: 'var(--acc-violet)', ariaLabel: 'المكسوب شهرياً — لا سجل تاريخي لقيمة الخط فيُعرض المرسّى الفعلي' }),
@@ -1549,7 +1649,7 @@ export async function sectorPage(user, opts = {}) {
     sub: `${countAr(teamSize, { one: 'موظف واحد', two: 'موظفان', few: 'موظفين', many: 'موظفاً' })} · ${G.utilization} المخطَّط`,
     viz: figGaugeHalf(bandLoad, { size: 108, sw: 11, max: AXIS_MAX, color: bandLoad > OVER_ABOVE ? 'var(--st-bad)' : 'var(--acc-navy)', sub: 'من الطاقة' }),
     sub2: `${midNow.length} ضمن الطاقة · ${overNow.length} تجاوز · ${freeNow.length} بلا تسكين`,
-    scope: 'لا يتأثر بالفترة', dd: 'seccap' });
+    scope: filtered ? 'القطاع كله · لحظي' : 'لا يتأثر بالفترة', dd: 'seccap' });
 
   const kpiBand = `
   <section id="kpi-band" aria-label="نبض القطاع">
@@ -1581,41 +1681,41 @@ export async function sectorPage(user, opts = {}) {
   // خط المسار الزمني للهدف: قسمة الهدف السنوي بالتساوي على الشهور — قاعدة معلنة لا منحنى مختلق.
   const paceLine = revTarget ? monthly.map((_, i) => Math.round(revTarget * (i + 1) / 12)) : null;
   const largestPct = secRevTotal && top3.length ? Math.round((top3[0].rev / secRevTotal) * 100) : null;
+  // ── بطاقات القراءة الثلاث — عادت برسومها إلى الشريط البنفسجي (طلب أ. حسين ٥،
+  // 2026-08-25: «أعيدوا الشريط الكبير بكل رسومه»): بطاقة الإيقاع من السلسلة المرشَّحة نفسها
+  // فتتحرك مع المرشِّحات، والتركّز والطاقة قراءتان بنيويتان للقطاع كله وتقولان ذلك بشارة. ──
   const insightPace = `
-    <div class="ins one">
       <div class="ic1">
-        <div class="ih">الإيقاع والتوقع</div>
-        <div class="ib">${attainRev != null ? `الإيراد ${paceWord}، ${fc.forecast != null ? `والتوقع بالوتيرة <b class="tnum">${sarShort(fc.forecast)}</b>${fcPct != null ? ` = <b class="tnum" dir="ltr">${100 + fcPct}%</b> من المستهدف` : ''}` : 'ولا توقّع بعد'}${yoyPct != null ? ` · <span dir="ltr">${yoyPct >= 0 ? '+' : '−'}${Math.abs(yoyPct)}%</span> مقارنة بـ${year - 1}` : ''}` : 'لا مستهدف مسجَّلاً لهذه السنة'}</div>
+        <div class="ih">الإيقاع والتوقع${filtered ? ' <span class="icb">تحت الترشيح</span>' : ''}</div>
+        <div class="ib">${filtered
+    ? (rsTotal ? `<b class="tnum">${sarShort(rsTotal)}</b> تحت الترشيح${rsShare != null ? ` — <b class="tnum">${rsShare}%</b> من إيراد القطاع` : ''}${rsOutlook?.base ? `، والتوقع بوتيرته <b class="tnum">${sarShort(rsOutlook.base)}</b>` : ''}` : 'لا إيراد منسوباً تحت هذا الترشيح')
+    : (attainRev != null ? `الإيراد ${paceWord}، ${fc.forecast != null ? `والتوقع بالوتيرة <b class="tnum">${sarShort(fc.forecast)}</b>${fcPct != null ? ` = <b class="tnum" dir="ltr">${100 + fcPct}%</b> من المستهدف` : ''}` : 'ولا توقّع بعد'}${yoyPct != null ? ` · <span dir="ltr">${yoyPct >= 0 ? '+' : '−'}${Math.abs(yoyPct)}%</span> مقارنة بـ${year - 1}` : ''}` : 'لا مستهدف مسجَّلاً لهذه السنة')}</div>
         ${figLine([
-    { points: cumMonthly, color: 'var(--acc-navy)', area: true, name: 'التراكمي' },
-    ...(paceLine ? [{ points: paceLine, color: 'var(--tick)', dash: true, dots: false, name: 'المسار الزمني للهدف' }] : []),
-  ], { labels: MONTHS_AR, now: nowM + 1, h: 74, fmt: sarShort, axisDir: 'ltr', hover: true })}
-      </div>
-    </div>`;
+    { points: rsCum, color: 'var(--acc-navy)', area: true, name: 'التراكمي' },
+    ...(!filtered && paceLine ? [{ points: paceLine, color: 'var(--tick)', dash: true, dots: false, name: 'المسار الزمني للهدف' }] : []),
+  ], { labels: MONTHS_AR, now: nowM + 1, h: 64, fmt: sarShort, axisDir: 'ltr', hover: true })}
+      </div>`;
   const insightConc = `
-    <div class="ins one">
       <div class="ic1">
-        <div class="ih">تركّز الإيراد</div>
+        <div class="ih">تركّز الإيراد${filtered ? ' <span class="icb">القطاع كله</span>' : ''}</div>
         <div class="ib">${concPct != null ? `<b class="tnum">${concPct}%</b> من الإيراد لدى أكبر ثلاثة عملاء${concAfterPipe != null ? ` — وبعد خط الفرص <b class="tnum">${concAfterPipe}%</b>` : ''}${concPct >= 60 ? ' · تركّز مرتفع' : ''}` : 'لا يوجد ثلاثة عملاء بإيراد بعد'}</div>
         ${concPct != null ? figBars([
     { label: `أكبر عميل (${top3[0].name_ar})`, value: largestPct, count: '', fill: 'var(--acc-navy)' },
     { label: 'أكبر ثلاثة عملاء', value: concPct, count: '', fill: 'var(--acc-indigo)' },
     ...(concAfterPipe != null ? [{ label: 'أكبر ثلاثة مع الخط المرجّح', value: concAfterPipe, count: '', fill: 'var(--acc-teal)' }] : []),
   ], { fmt: (v) => `${v}%`, max: 100 }) : ''}
-      </div>
-    </div>`;
+      </div>`;
   const insightCap = `
-    <div class="ins one">
       <div class="ic1">
-        <div class="ih">الطاقة القادمة</div>
+        <div class="ih">الطاقة القادمة${filtered ? ' <span class="icb">القطاع كله</span>' : ''}</div>
         <div class="ib">${gapFte != null && nowMonth ? (gapFte > 0 ? `سعة غير مستغلة تبلغ <b class="tnum">${gapFte}</b> من مكافئ التفرغ في ${monthLabel(worstGap.i)} — ${countAr(freeNow.length, { one: 'موظف بلا تسكين الآن', two: 'موظفان بلا تسكين الآن', few: 'موظفين بلا تسكين الآن', many: 'موظفاً بلا تسكين الآن', zero: 'لا أحد بلا تسكين الآن' })}` : `طلبٌ يفوق الطاقة بـ<b class="tnum">${Math.abs(gapFte)}</b> من مكافئ التفرغ في ${monthLabel(worstGap.i)}`) : 'لا خطة تسكين لأشهر قادمة'}</div>
         ${figLine([
     { points: demandFte.map((v) => Math.round(v * 100) / 100), color: 'var(--acc-indigo)', name: 'المخطَّط له' },
     { points: Array.from({ length: 12 }, () => capFte), color: 'var(--muted)', dash: true, dots: false, name: 'الطاقة' },
-  ], { labels: MONTHS_AR, now: nowM + 1, h: 74, fmt: (v) => `${v} من مكافئ التفرغ`, axisDir: 'ltr', hover: true,
+  ], { labels: MONTHS_AR, now: nowM + 1, h: 64, fmt: (v) => `${v} من مكافئ التفرغ`, axisDir: 'ltr', hover: true,
     marks: gapFte != null && gapFte < 0 && worstGap ? [{ i: worstGap.i, label: `فجوة ${Math.abs(gapFte)} من مكافئ التفرغ في ${monthLabel(worstGap.i)}`, color: 'var(--st-bad)' }] : [] })}
-      </div>
-    </div>`;
+      </div>`;
+  const insightCards = `<div class="ins">${insightPace}${insightConc}${insightCap}</div>`;
 
   // ── رحلة القيمة داخل اللوحة الداكنة: من التعاقد إلى التحصيل بنسب التسرب ──
   // محطةٌ صفرية جدولُها فارغ «لم تُسجَّل» لا «تسرب −100%»: قطاعٌ بلا عقود مسجَّلة أو تحصيلٍ لم
@@ -1648,29 +1748,51 @@ export async function sectorPage(user, opts = {}) {
   const attnChip = `<button type="button" class="xb-attn" data-action="act-jump" aria-label="${G.attention}: ${attn.length} — الانتقال إلى القائمة">${icon('risk')} ${G.attention} <b class="tnum">${attn.length}</b></button>`;
   const execBand = `
   <section class="exec-band" aria-label="قراءة سند التنفيذية">
-    <div class="xb-sum"><span class="n tnum" aria-hidden="true">2</span>${icon('trend')} <span>${summaryLine}.</span> ${noteMark('خلاصة مركَّبة بقواعد معلنة من أرقام هذه الصفحة — ليست تقييماً بشرياً', 'below')} <span class="spacer"></span> ${attnChip}</div>
+    <div class="secn"><span class="n tnum">2</span><h2>قراءة سند التنفيذية</h2><span class="s">ثلاث قراءات محسوبة بقواعد معلنة — لا تقييم بشري</span></div>
+    <div class="xb-sum">${icon('trend')} <span>${summaryLine}.</span> ${noteMark('خلاصة مركَّبة بقواعد معلنة من أرقام هذه الصفحة — ليست تقييماً بشرياً', 'below')} <span class="spacer"></span> ${attnChip}</div>
+    ${insightCards}
   </section>`;
 
   // ── رأس قسمٍ مرقّم كنماذج المالك ──
   const secn = (n, t, aux = '') => `<div class="secn"><span class="n tnum">${n}</span><h2>${t}</h2>${aux ? `<span class="s">${aux}</span>` : ''}</div>`;
 
-  // ── ٣: الفعلي مقابل المستهدف والتوقع — محور أيسر بأسماء الشهور كنموذج المالك، وخط توقعٍ
-  // متقطع إلى ديسمبر (التقطيع وحده يعني إسقاطاً)، وأعمدة نافذتك المختارة تبقى مضيئة والبقية
-  // تخفت — البيانات نفسها عبر الألسنة (سنوية بطبيعتها) والحارس فحصٌ بايت-ببايت. ──
+  // ── ٣: رسم الإيقاع يُعاد تصييره فعلاً (ملاحظة أ. حسين ٤، 2026-08-25) ─────────────────
+  // فترةٌ مختارة تُقرِّب الرسم إلى أشهرها وحدها (لا إضاءةً بعد اليوم) والهدفُ حصةً بالتناسب
+  // معلَنة؛ وترشيحُ إدارة/عميل يعيد بناء السلسلة كلها (الأعمدة والتراكمي والتوقع) من البنود
+  // المنسوبة عبر مشروعها — وغير المنسوب مُفصَحٌ عنه تحت المرشِّحات، ولا خطَّ هدفٍ تحت الترشيح
+  // (الأهداف قطاعية ومقارنةُ مقصوصٍ بها تضليل — مكانها «الحصة من إيراد القطاع»). ──
   const pulseChip = (label, row) => row == null ? '' : `<div class="pch"><span class="l">${label} ${winEcho2}</span><b class="tnum">${row.n ? sarShort(row.v) : '—'}</b><span class="c tnum">${row.n ? countAr(row.n, { one: 'سجل واحد', two: 'سجلان', few: 'سجلات', many: 'سجلاً' }) : 'لا سجلات'}</span></div>`;
-  const fcLine = year === now.getUTCFullYear() && fc.forecast && nowM >= 0 && cumMonthly[nowM] != null && nowM < 11
-    ? { points: [{ i: nowM, v: cumMonthly[nowM] }, { i: 11, v: fc.forecast }], color: 'var(--acc-violet)', endLabel: sarShort(fc.forecast) }
+  const zoomed = period.kind !== 'y';
+  const zoomIdx = zoomed ? period.months.map((m) => m - 1) : rs.map((_, i) => i);
+  const zBars = zoomIdx.map((i) => rs[i] || 0);
+  const zSum = zBars.reduce((a, v) => a + v, 0);
+  const zLabels = zoomIdx.map((i) => MONTHS_AR[i]);
+  const zTight = zoomIdx.map((i) => MONTHS_EN3[i]);
+  // التراكمي داخل النطاق المعروض، مقصوصاً عند آخر شهرٍ بدأ — لا خطَّ على شهورٍ لم تأتِ
+  const lastDoneIdx = year < now.getUTCFullYear() ? 11 : futureYr ? -1 : nowM;
+  const zCumAll = zBars.reduce((acc, v) => { acc.push((acc[acc.length - 1] || 0) + v); return acc; }, []);
+  const zCum = zCumAll.slice(0, zoomIdx.filter((i) => i <= lastDoneIdx).length);
+  const nowPos = zoomIdx.indexOf(nowM);
+  const zTarget = filtered ? null
+    : zoomed ? (revTarget ? Math.round(revTarget * zoomIdx.length / 12) : null) : (revTarget || null);
+  const zForecast = zoomed || futureYr ? null : ((filtered ? rsOutlook?.base : fc.forecast) || null);
+  const fcLine = zForecast && year === now.getUTCFullYear() && nowM >= 0 && rsCum[nowM] != null && nowM < 11
+    ? { points: [{ i: nowM, v: rsCum[nowM] }, { i: 11, v: zForecast }], color: 'var(--acc-violet)', endLabel: sarShort(zForecast) }
     : null;
   const legChip = (sw, label, val, mark = '') => `<span class="lgc">${sw}<span>${label}</span><b class="tnum">${val}</b>${mark}</span>`;
   const comboSection = `
   <section class="card pad">
-    ${secn(3, `${G.revenue} الفعلي مقابل ${G.target} والتوقع`, `أعمدة الأشهر + الخط التراكمي + خط الهدف — والخط المتقطع مسارُ التوقع إلى نهاية السنة`)}
+    ${secn(3, `${G.revenue} الفعلي${filtered ? ' تحت الترشيح' : ` مقابل ${G.target}`}${zoomed ? ` · ${winName}` : filtered ? '' : ' والتوقع'}`,
+    zoomed ? `الرسم مقصوصٌ على ${winName} — و«السنة» في المُنتقي تعيد الاثني عشر شهراً`
+      : `أعمدة الأشهر + الخط التراكمي${filtered ? ' — من البنود المنسوبة للترشيح عبر مشروعها' : ' + خط الهدف — والخط المتقطع مسارُ التوقع إلى نهاية السنة'}`)}
     <div class="leg-chips">
-      ${legChip('<i style="background:var(--acc-indigo)"></i>', 'المحقق', sarShort(sd.revenue_halalas))}
-      ${sd.target_revenue_halalas ? legChip('<i style="background:var(--tick)"></i>', G.target, sarShort(sd.target_revenue_halalas)) : ''}
-      ${fc.forecast ? legChip('<i class="dashline"></i>', G.forecast, sarShort(fc.forecast),
-    estMark(`تقديرٌ من وتيرة الإيراد المُسجَّل — والنطاق ${sarShort(fr.low)}–${sarShort(fr.high)} بصيغه على بطاقة التوقع`)) : ''}
-      ${qDelta != null ? (() => {
+      ${legChip('<i style="background:var(--acc-indigo)"></i>', zoomed ? `المحقق في ${winName}` : 'المحقق', zSum || !futureYr ? sarShort(zoomed ? zSum : rsTotal) : '—')}
+      ${zTarget ? legChip('<i style="background:var(--tick)"></i>', zoomed ? `حصة ${winName} من الهدف` : G.target, sarShort(zTarget),
+    zoomed ? noteMark(`الهدف يوضع سنوياً — حصة الفترة = الهدف السنوي ÷ 12 × ${countAr(zoomIdx.length, { one: 'شهرها الواحد', two: 'شهراها', few: 'أشهرها', many: 'شهراً' })}`) : '') : ''}
+      ${filtered && rsShare != null ? legChip('', 'حصة من إيراد القطاع', `${rsShare}%`) : ''}
+      ${zForecast ? legChip('<i class="dashline"></i>', G.forecast, sarShort(zForecast),
+    estMark(filtered ? `تقديرٌ من وتيرة السلسلة المرشَّحة نفسها — النطاق ${sarShort(rsOutlook.low)}–${sarShort(rsOutlook.high)}` : `تقديرٌ من وتيرة الإيراد المُسجَّل — والنطاق ${sarShort(fr.low)}–${sarShort(fr.high)} بصيغه على بطاقة التوقع`)) : ''}
+      ${!filtered && qDelta != null ? (() => {
     // الربع الجاري ناقصٌ بطبيعته، فمقارنتُه بربعٍ كامل تقول «أدنى بـ100%» وهي ليست تراجعاً.
     // إما أن نقارن ربعاً مكتملاً بمثله، وإما أن نقول صراحةً كم مضى منه.
     const mInQ = Math.min(3, Math.max(0, (nowM + 1) - nowQ * 3));
@@ -1680,12 +1802,11 @@ export async function sectorPage(user, opts = {}) {
       : `الربع الحالي ${qDelta >= 0 ? 'أعلى' : 'أدنى'} من السابق بنسبة <b class="tnum">${Math.abs(qDelta)}%</b>`}</span>`;
   })() : ''}
     </div>
-    ${figCombo({ bars: monthly, cum: year === now.getUTCFullYear() && nowM >= 0 ? cumMonthly.slice(0, nowM + 1) : cumMonthly, target: sd.target_revenue_halalas || null, forecast: fc.forecast || null,
-    labels: MONTHS_AR, labelsTight: MONTHS_EN3, now: nowM + 1, fmt: sarShort, axisDir: 'ltr', w: 960, h: 190,
-    barColor: 'var(--acc-indigo)', nowBarColor: 'var(--acc-violet)', forecastLine: fcLine,
-    hi: isWinMode && wrev && wrev.months.length ? wrev.months : null, hover: true,
-    ariaLabel: `الإيراد الشهري والتراكمي مقابل مستهدف ${year} — مرّر على أي شهر لقراءة قيمه (أو ركّز الرسم واستعمل الأسهم)` })}
-    ${isWinMode && wrev && wrev.months.length ? `<div class="comfoot">الأعمدة المضيئة أشهرُ ${winName} — والرسم سنويٌّ لا يتغيّر بتبديل الفترة</div>` : ''}
+    ${futureYr && !zSum ? `<div class="empty-mini">${icon('clock')} سنةٌ قادمة — لا إيراد مسجَّلاً بعد، والأعمدة تبدأ حين يُسجَّل. التوقع على بطاقته أعلاه بامتداد وتيرة ${year - 1}.</div>`
+    : figCombo({ bars: zBars, cum: zCum, target: zTarget, forecast: zForecast,
+      labels: zLabels, labelsTight: zTight, now: nowPos + 1, fmt: sarShort, axisDir: 'ltr', w: 960, h: 190,
+      barColor: 'var(--acc-indigo)', nowBarColor: 'var(--acc-violet)', forecastLine: fcLine, hover: true,
+      ariaLabel: `الإيراد الشهري والتراكمي${zoomed ? ` في ${winName}` : ` مقابل مستهدف ${year}`}${filtered ? ' تحت الترشيح' : ''} — مرّر على أي شهر لقراءة قيمه (أو ركّز الرسم واستعمل الأسهم)` })}
     <div class="pulses">
       ${pulseChip('المكسوب', pulseWins)}
       ${pulseChip('المفوتر', pulseInv)}
@@ -2006,7 +2127,6 @@ export async function sectorPage(user, opts = {}) {
     ${execBand}
     ${tabsBar}
     ${panel('pulse', 'الإيقاع', `
-      ${insightPace}
       ${comboSection}
       <section class="card pad">
         <div class="secn"><h2>ماذا أفعل اليوم؟</h2></div>
@@ -2023,7 +2143,6 @@ export async function sectorPage(user, opts = {}) {
       </section>`)}
     ${panel('ops', 'التشغيلي', opsSection)}
     ${panel('cli', G.clients, `
-      ${insightConc}
       <section class="card pad">
         ${secn(7, canInvoices ? 'تركيز الإيراد والعملاء والتحصيل' : 'تركيز الإيراد والعملاء', `مرتَّبون حسب إيراد ${year}`)}
         ${treemap ? `<div class="g12" style="margin-bottom:1rem">
@@ -2043,7 +2162,6 @@ export async function sectorPage(user, opts = {}) {
         </div>
       </section>`)}
     ${panel('hr', 'البشري', `
-      ${insightCap}
       ${hrSection}
       <section class="card pad" style="padding:0;border:none;background:none;box-shadow:none">
         <div class="g12">

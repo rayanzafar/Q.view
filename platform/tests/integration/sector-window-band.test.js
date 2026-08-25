@@ -1,6 +1,8 @@
 // ── مُنتقي الفترة يحكم شريط المؤشرات فعلاً (شكوى المالك: «لا تؤثر فيما تحتها مباشرة») ────
 // الحارسان: (١) عرضان بفترتين مختلفتين يختلفان في منطقة #kpi-band، والفترة الضيقة تعرض
-// ما وقع فيها وحده؛ (٢) رسم السنة المركّب لا يتأثر بالفترة (بياناته سنوية بطبيعتها).
+// ما وقع فيها وحده؛ (٢) رسم الإيقاع **يتقرّب إلى الفترة المختارة**: أشهرُها وحدها أعمدةً،
+// والهدف حصةً بالتناسب — قلبٌ مقصود لحارسٍ قديم كان يثبّت الرسم سنوياً بايت-ببايت
+// (قرار أ. حسين 2026-08-25: «الرسم لا يُعاد تصييره — أريده يتغيّر فعلاً»).
 // السنة المعروضة **ماضية** عمداً فالفترات كلها تقويمية منتهية والفحص حتميٌّ لا يتأثر بيوم تشغيله.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -58,11 +60,12 @@ const band = (html) => {
   return html.slice(a, b);
 };
 const comboRegion = (html) => {
-  // الرسم صار حيّاً (fig-live + شرائح التقاط) — والتأكيد نفسه: منطقته بايت-ببايت عبر الألسنة
   const m = html.match(/<svg class="fig-svg[^"]*"[^>]*aria-label="الإيراد الشهري والتراكمي[^"]*"[\s\S]*?<\/svg>/);
-  assert.ok(m, 'رسم السنة المركّب موجود');
+  assert.ok(m, 'رسم الإيقاع المركّب موجود');
   return m[0];
 };
+// أعمدة الرسم وحدها (شرائح الالتقاط الشفافة rects أيضاً — تُستبعد بفئتها)
+const comboBars = (svg) => [...svg.matchAll(/<rect(?![^>]*fig-hit)[^>]*><title>([^<]*)<\/title>/g)].map((m) => m[1]);
 
 test('فترتان مختلفتان ⇒ شريطان مختلفان، وشهرٌ بعينه يعرض فوزه وحده', async () => {
   const yearHtml = await sectorPage(ADMIN, { year: String(YEAR), p: 'y' });
@@ -82,17 +85,25 @@ test('مارس يعرض فوزه وحده — والفترة التقويمية 
   assert.ok(!mar.includes('7.8M'), 'فوز ديسمبر خارج مارس');
 });
 
-test('رسم السنة المركّب: بياناته لا تتغيّر بالفترة — والإضاءة وحدها تتحرك', async () => {
-  const a = comboRegion(await sectorPage(ADMIN, { year: String(YEAR), p: 'y' }));
-  const b = comboRegion(await sectorPage(ADMIN, { year: String(YEAR), p: 'q2' }));
-  // القيم نفسها: كل عناوين التحويم (شهري/تراكمي/هدف/توقع) متطابقة
-  const vals = (svg) => [...svg.matchAll(/<title>([^<]*)<\/title>/g)].map((m) => m[1]);
-  assert.deepEqual(vals(a), vals(b), 'قيم الرسم متطابقة عبر الفترات');
-  // ونقاط الرسم نفسها (المسار التراكمي) متطابقة
-  const poly = (svg) => svg.match(/<polyline points="([^"]+)"/)[1];
-  assert.equal(poly(a), poly(b), 'مسار الرسم متطابق');
-  // والفرق الوحيد المسموح: إضاءة أشهر الفترة المختارة
-  assert.notEqual(a, b, 'أشهر الفترة تُضاء — وإلا فالمُنتقي بلا أثر مرئي على الرسم');
+test('رسم الإيقاع يتقرّب إلى الفترة: أشهرُها وحدها، والهدف حصةً بالتناسب', async () => {
+  const y = comboRegion(await sectorPage(ADMIN, { year: String(YEAR), p: 'y' }));
+  assert.equal(comboBars(y).length, 12, 'رسم السنة اثنا عشر عموداً');
+  // ربعٌ ⇒ ثلاثة أعمدة بأشهره وحدها، وقيم مارس فيها (صافي بند مارس = 1M)
+  const q1 = comboRegion(await sectorPage(ADMIN, { year: String(YEAR), p: 'q1' }));
+  const q1bars = comboBars(q1);
+  assert.equal(q1bars.length, 3, 'رسم الربع ثلاثة أعمدة لا اثنا عشر');
+  assert.ok(q1bars.some((t) => t.startsWith('مارس') && t.includes('1.0M')), 'صافي مارس على عموده في الربع الأول');
+  assert.ok(!q1.includes('ديسمبر'), 'ديسمبر خارج رسم الربع الأول');
+  // وحصة الربع من الهدف السنوي (مليون ريال) = 250 ألفاً — معلَنة على الرسم لا الهدف كاملاً
+  assert.ok(q1.includes('250K'), 'خط الهدف حصة الربع (الهدف ÷ 12 × 3)');
+  // شهرٌ ⇒ عمود واحد بقيمته
+  const m12 = comboRegion(await sectorPage(ADMIN, { year: String(YEAR), p: 'm12' }));
+  const m12bars = comboBars(m12);
+  assert.equal(m12bars.length, 1, 'رسم الشهر عمود واحد');
+  assert.ok(m12bars[0].startsWith('ديسمبر') && m12bars[0].includes('2.0M'), 'صافي ديسمبر على عموده');
+  // والصفحة تقول صراحةً أن «السنة» تعيد الرسم كاملاً
+  const q1Html = await sectorPage(ADMIN, { year: String(YEAR), p: 'q1' });
+  assert.ok(q1Html.includes('تعيد الاثني عشر شهراً'), 'إعلان العودة إلى رسم السنة');
 });
 
 test('الربع الرابع ثلاثة أشهر: يضمّ ديسمبر ولا يضمّ مارس', async () => {

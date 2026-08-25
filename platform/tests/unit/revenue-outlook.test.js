@@ -18,7 +18,8 @@ for (const s of ['scripts/migrate.js', 'scripts/seed-rbac.js']) {
 
 const { insert, close } = await import('../../src/core/db/index.js');
 await (await import('../../src/core/rbac/index.js')).initRbac();
-const { revenueOutlook, pipelineCoverage } = await import('../../src/core/reports/metrics.js');
+const { revenueOutlook, outlookFromMonths, availableYears, pipelineCoverage } = await import('../../src/core/reports/metrics.js');
+const { config } = await import('../../src/core/config.js');
 
 const T = '2026-01-10T08:00:00.000Z';
 // منتصف السنة تماماً: 2026-07-02 ⇒ انقضى ~50% وستة أشهر مسجَّلة
@@ -80,6 +81,45 @@ test('سنةٌ منقضية: التوقع محقّقها لا تنبّؤ؛ وس�
   const early = await revenueOutlook('S1', 2026, new Date('2026-01-03T00:00:00Z'));
   assert.equal(early.tooEarly, true);
   assert.equal(early.base, null);
+});
+
+test('سنةٌ قادمة: امتدادُ الوتيرة — متوسط الشهر ×12 والحدّان أبطأ/أفضل شهر ×12', async () => {
+  // MID في 2026 ⇒ السنة القادمة 2027. الأساس من أشهر 2026 الستة: مجموعها 15M ومتوسطها 2.5M،
+  // أدناها 1M وأعلاها 3M — فالأساس 30M بين حدّي 12M و36M، والوسم صريح.
+  const r = await revenueOutlook('S1', 2027, MID);
+  assert.equal(r.nextYear, true);
+  assert.equal(r.basisYear, 2026);
+  assert.equal(r.base, 30_000_000);
+  assert.equal(r.low, 12_000_000);
+  assert.equal(r.high, 36_000_000);
+  assert.equal(r.avgMonth, 2_500_000);
+  assert.equal(r.remainingMonths, 12);
+  assert.equal(r.actual, 0, 'لا سجلّ للسنة القادمة — المحقق صفر لا اختلاق');
+  // وأبعد من سنة: لا توقّع — لا أساس يُمدّ
+  const far = await revenueOutlook('S1', 2028, MID);
+  assert.equal(far.base, null);
+  assert.equal(far.tooEarly, true);
+  assert.ok(!far.nextYear, 'سنة+2 ليست «السنة القادمة»');
+});
+
+test('منتقي السنوات يضمّ سنةً قادمة واحدة — وبترتيب تنازلي', async () => {
+  const years = await availableYears();
+  assert.ok(years.includes(config.fiscalYear + 1), 'السنة القادمة غائبة عن المنتقي');
+  assert.ok(!years.includes(config.fiscalYear + 2), 'سنةٌ أبعد تسرّبت إلى المنتقي');
+  assert.deepEqual(years, [...years].sort((a, b) => b - a), 'الترتيب تنازلي');
+});
+
+test('outlookFromMonths: رياضيات revenueOutlook نفسها على سلسلةٍ جاهزة (المرشَّحة)', async () => {
+  const months = [1, 3, 3, 3, 3, 2, 0, 0, 0, 0, 0, 0].map((v) => v * 1_000_000);
+  const r = outlookFromMonths(months, 2026, MID);
+  const full = await revenueOutlook('S1', 2026, MID);
+  assert.equal(r.actual, full.actual);
+  assert.equal(r.base, full.base);
+  assert.equal(r.low, full.low);
+  assert.equal(r.high, full.high);
+  // سنة منقضية: محقّقها؛ وسلسلة سنةٍ لم يكتمل شهرها: لا توقع
+  assert.equal(outlookFromMonths(months, 2020, MID).closed, true);
+  assert.equal(outlookFromMonths(Array(12).fill(0), 2027, new Date('2027-01-05T00:00:00Z')).tooEarly, true);
 });
 
 test('تغطية خط الفرص: مرجّحة، بلا معلّقة، وبلا المستبعد من المبيعات', async () => {

@@ -222,6 +222,38 @@
     showTab(tabs[next].getAttribute('data-tab'), true);
   });
 
+  // ── اللسان لا يضيع عند الترشيح: الروابط الخادمية (فترة/إدارة/عميل/قطاع) تحمل لسانَ وقتِ
+  // التصيير، وتبديلُ اللسان في المتصفح replaceState فقط — فكان النقر على أي مرشِّحٍ بعد تبديل
+  // لسانٍ يعيد القارئ إلى الفصل الأول ويضيع موضعه. الحقن لحظة النقر (لا إعادة كتابة الروابط عند
+  // كل تبديل) يصحّ لكل رابطٍ حاضرٍ ومستقبلي. وpointerdown قبل click ليشمل فتحاً بالزر الأوسط.
+  function carryTab(e) {
+    var a = e.target.closest ? e.target.closest('a[href*="/app/sector"]') : null;
+    if (!a) return;
+    var cur = null;
+    try { cur = new URLSearchParams(location.search).get('tab'); } catch (err) { return; }
+    if (!cur) return;
+    try {
+      var u = new URL(a.getAttribute('href'), location.origin);
+      if (u.origin !== location.origin || u.pathname !== '/app/sector') return;
+      u.searchParams.set('tab', cur);
+      a.setAttribute('href', u.pathname + u.search + u.hash);
+    } catch (err) { /* رابط شاذ — يُترك كما هو */ }
+  }
+  on(document, 'pointerdown', carryTab);
+  on(document, 'click', carryTab);
+  on(document, 'keydown', function (e) { if (e.key === 'Enter') carryTab(e); });
+
+  // ── القوائم المنسدلة حصريّات: فتحُ واحدةٍ يغلق أخواتها (الإدارة/العملاء/التقارير) —
+  // المرشِّحان معاً يبقيان فعّالَين؛ الحصر في الفتح وحده (ملاحظة أ. حسين ٣). حدثُ toggle
+  // لا يفقّع، فيُلتقط بالطور الهابط على المستند.
+  document.addEventListener('toggle', function (e) {
+    var d = e.target;
+    if (!d || d.tagName !== 'DETAILS' || !d.open || !d.classList || !d.classList.contains('rmenu')) return;
+    document.querySelectorAll('details.rmenu[open]').forEach(function (o) {
+      if (o !== d) o.removeAttribute('open');
+    });
+  }, true);
+
   var ACTIONS = {
     'sec-tab': secTab,
     'open-dd': openDD,

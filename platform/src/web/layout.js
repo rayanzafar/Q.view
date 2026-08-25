@@ -558,7 +558,7 @@ export async function layout({ user, active, title, subtitle, body, year, extraH
   const showYear = ['ceo', 'portfolio', 'sector'].includes(active);
   // Preserve other query params (e.g. the owner's ?sector= filter) when switching year.
   const yearSel = showYear ? `<select class="yr" aria-label="السنة المالية" onchange="const p=new URLSearchParams(location.search);p.set('year',this.value);location.search=p.toString()">
-    ${years.map((y) => `<option value="${y}" ${String(y) === String(year || config.fiscalYear) ? 'selected' : ''}>سنة ${y}</option>`).join('')}
+    ${years.map((y) => `<option value="${y}" ${String(y) === String(year || config.fiscalYear) ? 'selected' : ''}>سنة ${y}${y > config.fiscalYear ? ' — قادمة' : ''}</option>`).join('')}
   </select>` : '';
 
   return `<!doctype html><html dir="rtl" lang="ar"><head><meta charset="utf-8">

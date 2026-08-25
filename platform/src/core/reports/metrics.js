@@ -32,9 +32,12 @@ export async function availableYears() {
       UNION SELECT year FROM opportunity WHERE year IS NOT NULL
       UNION SELECT CAST(substr(start_date,1,4) AS INTEGER) FROM contract WHERE start_date IS NOT NULL
     ) WHERE y IS NOT NULL ORDER BY y DESC`);
-  const years = rows.map((r) => r.y);
-  if (!years.includes(FY())) years.unshift(FY());
-  return years;
+  const years = new Set(rows.map((r) => r.y));
+  years.add(FY());
+  // سنةٌ قادمة واحدة تُعرض للتخطيط: توقّعها «امتداد الوتيرة» المعلَن وصفقاتها المجدولة —
+  // ولا أبعد منها: سنةٌ بلا سجلٍّ ولا أساسِ توقّعٍ شاشةٌ فارغة تُوهم بعطل.
+  years.add(FY() + 1);
+  return [...years].sort((a, b) => b - a);
 }
 
 // ── per-sector figures for a single year ──
@@ -408,8 +411,12 @@ export async function winsByMonth(sectorId, { untilIso, months = 12 } = {}) {
 
 // أرقام النافذة — مصدر واحد يغذّي شريط المؤشرات ورقائق النبض معاً فلا يفترق رقمان لنفس الشيء.
 // المكسوب ونسبة الفوز في استعلام واحد؛ المفوتر والمحصَّل لمن يقرأ الفواتير وإلا null (لا صفر كاذب).
-export async function windowFigures(user, sectorId, sinceIso, untilIso) {
+export async function windowFigures(user, sectorId, sinceIso, untilIso, scope = {}) {
   const invoicesOk = can(user, 'read', 'invoice');
+  // قصّ الإدارة/العميل: الفرص بعموديها مباشرةً، والفواتير والتحصيل عبر مشروع الفاتورة —
+  // فاتورةٌ بلا مشروع تدخل «بلا إدارة» وتسقط من الترشيح الموجب (الشاشة تُفصح عن غير المنسوب).
+  const osc = projectScopeSql('o', scope);
+  const psc = projectScopeSql('p', scope);
   const [w, inv, col] = await Promise.all([
     get(`SELECT
         SUM(CASE WHEN st.is_won = 1 AND o.exclude_from_sales = 0 THEN 1 ELSE 0 END) won_n,
@@ -417,17 +424,17 @@ export async function windowFigures(user, sectorId, sinceIso, untilIso) {
         SUM(CASE WHEN st.is_lost = 1 THEN 1 ELSE 0 END) lost_n
       FROM opportunity o JOIN stage st ON st.id = o.stage_id
       WHERE o.sector_id = ? AND o.deleted_at IS NULL AND o.stage_changed_at IS NOT NULL
-        AND substr(o.stage_changed_at,1,10) >= ? AND substr(o.stage_changed_at,1,10) < ?`,
-    [sectorId, sinceIso, untilIso]),
+        AND substr(o.stage_changed_at,1,10) >= ? AND substr(o.stage_changed_at,1,10) < ?${osc.clause}`,
+    [sectorId, sinceIso, untilIso, ...osc.args]),
     invoicesOk ? get(`SELECT COUNT(*) n, COALESCE(SUM(i.amount_halalas),0) v FROM invoice i LEFT JOIN project p ON p.id = i.project_id
       WHERE COALESCE(i.sector_id, p.sector_id) = ? AND i.deleted_at IS NULL AND i.status NOT IN ('DRAFT','CANCELLED')
-        AND i.issue_date IS NOT NULL AND substr(i.issue_date,1,10) >= ? AND substr(i.issue_date,1,10) < ?`,
-    [sectorId, sinceIso, untilIso]) : null,
+        AND i.issue_date IS NOT NULL AND substr(i.issue_date,1,10) >= ? AND substr(i.issue_date,1,10) < ?${psc.clause}`,
+    [sectorId, sinceIso, untilIso, ...psc.args]) : null,
     invoicesOk ? get(`SELECT COUNT(*) n, COALESCE(SUM(col.amount_halalas),0) v FROM collection col
       JOIN invoice i ON i.id = col.invoice_id LEFT JOIN project p ON p.id = i.project_id
       WHERE COALESCE(i.sector_id, p.sector_id) = ? AND i.deleted_at IS NULL
-        AND col.collected_at IS NOT NULL AND substr(col.collected_at,1,10) >= ? AND substr(col.collected_at,1,10) < ?`,
-    [sectorId, sinceIso, untilIso]) : null,
+        AND col.collected_at IS NOT NULL AND substr(col.collected_at,1,10) >= ? AND substr(col.collected_at,1,10) < ?${psc.clause}`,
+    [sectorId, sinceIso, untilIso, ...psc.args]) : null,
   ]);
   const won = w?.won_n || 0, lost = w?.lost_n || 0, decided = won + lost;
   return {
@@ -452,6 +459,28 @@ export async function windowFigures(user, sectorId, sinceIso, untilIso) {
 //   المتفائل = المحقق + (أفضل شهرٍ مسجَّل × الأشهر المتبقية)   ← «إن تكرّر أفضل شهر»
 // وسنةٌ منقضية توقّعُها = محقّقها (لا تنبّؤ لما مضى)، وسنةٌ لم يمضِ منها شهرٌ بعدُ لا تُتنبَّأ.
 export async function revenueOutlook(sectorId, year, today = new Date()) {
+  // ── سنةٌ قادمة واحدة: «امتداد الوتيرة المُثبَتة» (قرار أ. حسين 2026-08-25) ────────────
+  // لا سجلّ للسنة القادمة، فأساسها متوسطُ الشهر المسجَّل في السنة الجارية × 12، وحدّاها
+  // أبطأ/أفضل شهرٍ مسجَّل × 12 — امتدادُ وتيرةٍ معلَنٌ يحمل علامته، لا تنبؤاً بغيب. وما
+  // سُجِّل عليها فعلاً (نادراً) يُعاد في actual كما هو. وأبعدُ من سنةٍ: لا توقّع — لا أساس يُمدّ.
+  const nowY = today.getUTCFullYear();
+  if (Number(year) === nowY + 1) {
+    const actual = (await get(`SELECT ${NET_REVENUE} v FROM revenue_line
+        WHERE year = ? ${sectorId ? 'AND sector_id = ?' : ''}`, sectorId ? [year, sectorId] : [year]))?.v || 0;
+    const basis = await revenueOutlook(sectorId, nowY, today);
+    if (basis.tooEarly || !basis.monthsSeen) {
+      return { actual, elapsedPct: 0, base: null, low: null, high: null, monthsSeen: 0,
+        remainingMonths: 12, minMonth: 0, maxMonth: 0, closed: false, tooEarly: true,
+        nextYear: true, basisYear: nowY, avgMonth: 0 };
+    }
+    const avgMonth = Math.round(basis.actual / Math.max(1, basis.monthsSeen));
+    const low = basis.minMonth * 12, high = basis.maxMonth * 12;
+    return { actual, elapsedPct: 0,
+      base: Math.max(low, Math.min(high, avgMonth * 12)), low, high,
+      monthsSeen: basis.monthsSeen, remainingMonths: 12,
+      minMonth: basis.minMonth, maxMonth: basis.maxMonth,
+      closed: false, tooEarly: false, nextYear: true, basisYear: nowY, avgMonth };
+  }
   const actual = (await get(`SELECT ${NET_REVENUE} v FROM revenue_line
       WHERE year = ? ${sectorId ? 'AND sector_id = ?' : ''}`, sectorId ? [year, sectorId] : [year]))?.v || 0;
   const elapsed = yearElapsedPct(today, year);
@@ -477,9 +506,65 @@ export async function revenueOutlook(sectorId, year, today = new Date()) {
     monthsSeen: doneM, remainingMonths: remainingM, minMonth, maxMonth, closed: false, tooEarly: false };
 }
 
+// ── قصّ الإدارة/العميل عبر مشروع السجل (قاعدة ترحيلة 034: الإدارة المسؤولة وحدها) ─────────
+// بنود الإيراد والفواتير تُنسَب لإدارةٍ أو عميلٍ عبر مشروعها: LEFT JOIN ثم شرطٌ على أعمدة
+// المشروع. بندٌ بلا مشروع يدخل «بلا إدارة» (أعمدته كلها فارغة في الضم الأيسر) ويسقط من أي
+// ترشيحٍ موجب — والشاشة تُفصح عن الساقط بدل إسقاطه صامتاً. صالحةٌ أيضاً لجدول الفرص مباشرةً
+// (فيه العمودان نفساهما) بتمرير اسمه المستعار.
+export function projectScopeSql(alias, { dept = null, client = null } = {}) {
+  let clause = '';
+  const args = [];
+  if (dept === 'none') clause += ` AND ${alias}.department_id IS NULL`;
+  else if (dept) { clause += ` AND ${alias}.department_id = ?`; args.push(dept); }
+  if (client) { clause += ` AND ${alias}.client_id = ?`; args.push(client); }
+  return { clause, args, active: !!(dept || client) };
+}
+
+// بنود الإيراد مرشَّحةً بإدارة/عميل: الأشهر للرسم، والإجمالي للبطاقة (يضمّ بنوداً منسوبةً بلا
+// شهر)، وغير المنسوب (بند بلا مشروع) يُعاد ليُفصَح عنه — تحت ترشيحٍ موجب لا سبيل لنسبته.
+export async function revenueScope(sectorId, year, scope = {}) {
+  const sc = projectScopeSql('p', scope);
+  const rows = await all(`SELECT rl.month, ${NET_REVENUE} v FROM revenue_line rl
+      LEFT JOIN project p ON p.id = rl.project_id
+      WHERE rl.sector_id = ? AND rl.year = ?${sc.clause} GROUP BY rl.month ORDER BY rl.month`,
+  [sectorId, year, ...sc.args]);
+  const months = Array(12).fill(0);
+  let total = 0;
+  for (const r of rows) { total += r.v || 0; const i = Number(r.month) - 1; if (i >= 0 && i < 12) months[i] = r.v || 0; }
+  const needsAttr = !!(scope.client || (scope.dept && scope.dept !== 'none'));
+  const un = needsAttr ? (await get(`SELECT ${NET_REVENUE} v FROM revenue_line
+      WHERE sector_id = ? AND year = ? AND project_id IS NULL`, [sectorId, year]))?.v || 0 : 0;
+  return { months, total, unattributed: un };
+}
+
+// التوقّع من سلسلةٍ شهرية جاهزة (المقصوصة بإدارة/عميل) — رياضيات revenueOutlook نفسها حرفاً:
+// الأساس محقّقُ السلسلة ÷ المنقضي من السنة مثبَّتاً بين الحدّين، والحدّان من تباين أشهرها.
+export function outlookFromMonths(months, year, today = new Date()) {
+  const elapsed = yearElapsedPct(today, year);
+  const actual = (months || []).reduce((a, v) => a + (v || 0), 0);
+  const doneM = elapsed >= 100 ? 12 : Math.max(0, Math.min(12, Math.floor(elapsed / 100 * 12)));
+  const seen = (months || []).slice(0, doneM);
+  const remainingM = Math.max(0, 12 - doneM);
+  if (elapsed >= 100) {
+    return { actual, elapsedPct: 100, base: actual, low: actual, high: actual,
+      monthsSeen: doneM, remainingMonths: 0, minMonth: 0, maxMonth: 0, closed: true, tooEarly: false };
+  }
+  if (!doneM || !elapsed) {
+    return { actual, elapsedPct: elapsed, base: null, low: null, high: null,
+      monthsSeen: doneM, remainingMonths: remainingM, minMonth: 0, maxMonth: 0, closed: false, tooEarly: true };
+  }
+  const minMonth = Math.min(...seen), maxMonth = Math.max(...seen);
+  const base = Math.round(actual / (elapsed / 100));
+  const low = actual + minMonth * remainingM;
+  const high = actual + maxMonth * remainingM;
+  return { actual, elapsedPct: elapsed,
+    base: Math.max(low, Math.min(high, base)), low, high,
+    monthsSeen: doneM, remainingMonths: remainingM, minMonth, maxMonth, closed: false, tooEarly: false };
+}
+
 // إيراد النافذة — بنود الإيراد شهرية، فالمجموع لأشهرٍ تتقاطع مع النافذة (والشاشة تُعلن الأساس).
 // النافذة مقصوصة على سنتها في windowBounds فكل أشهرها من السنة نفسها.
-export async function windowRevenue(sectorId, year, sinceIso, untilIso) {
+export async function windowRevenue(sectorId, year, sinceIso, untilIso, scope = {}) {
   const since = String(sinceIso).slice(0, 10), until = String(untilIso).slice(0, 10);
   if (!(since < until)) return { v: 0, months: [] };
   const last = new Date(Date.parse(until) - 86400000);
@@ -488,9 +573,11 @@ export async function windowRevenue(sectorId, year, sinceIso, untilIso) {
     : (last.getUTCFullYear() > Number(year) ? 12 : 0);
   if (!lastM || lastM < firstM) return { v: 0, months: [] };
   const months = []; for (let m = firstM; m <= lastM; m++) months.push(m);
-  const r = await get(`SELECT ${NET_REVENUE} v FROM revenue_line
-      WHERE year = ? ${sectorId ? 'AND sector_id = ?' : ''} AND month IN (${months.map(() => '?').join(',')})`,
-  [year, ...(sectorId ? [sectorId] : []), ...months]);
+  const sc = projectScopeSql('p', scope);
+  const r = await get(`SELECT ${NET_REVENUE} v FROM revenue_line rl
+      ${sc.active ? 'LEFT JOIN project p ON p.id = rl.project_id' : ''}
+      WHERE rl.year = ? ${sectorId ? 'AND rl.sector_id = ?' : ''} AND rl.month IN (${months.map(() => '?').join(',')})${sc.clause}`,
+  [year, ...(sectorId ? [sectorId] : []), ...months, ...sc.args]);
   return { v: r?.v || 0, months };
 }
 

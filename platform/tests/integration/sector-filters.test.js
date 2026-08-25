@@ -42,6 +42,14 @@ before(async () => {
   await opp('O_ORPHAN', { client_id: 'CL_A', title_ar: 'فرصة بلا إدارة', value_halalas: 5_000_000 });  // بلا إدارة
   await insert('project', { id: 'P_ORPHAN', name_ar: 'مشروع بلا إدارة', sector_id: 'SOL', status: 'IN_PROGRESS',
     rag: 'GREEN', start_date: `${YEAR}-02-01`, client_id: 'CL_A', created_at: T });
+  // بنود إيراد لفحص إعادة تصيير رسم الإيقاع تحت الترشيح: بندٌ منسوب لمشروع إدارة الذكاء
+  // (4M صافياً في فبراير) وبندٌ قديم بلا مشروع (2M في مارس) لا سبيل لنسبته — يُفصَح عنه.
+  await insert('project', { id: 'P_AI', name_ar: 'مشروع الذكاء', sector_id: 'SOL', status: 'IN_PROGRESS',
+    rag: 'GREEN', start_date: `${YEAR}-01-15`, department_id: 'D_AI', client_id: 'CL_A', created_at: T });
+  await insert('revenue_line', { id: 'RL_AI', sector_id: 'SOL', project_id: 'P_AI', year: YEAR, month: 2,
+    amount_halalas: 4_600_000_00, net_amount_halalas: 4_000_000_00, created_at: T });
+  await insert('revenue_line', { id: 'RL_LEGACY', sector_id: 'SOL', year: YEAR, month: 3,
+    amount_halalas: 2_300_000_00, net_amount_halalas: 2_000_000_00, created_at: T });
 });
 after(async () => { await close(); rmSync(dir, { recursive: true, force: true }); });
 
@@ -82,6 +90,33 @@ test('ترشيحٌ بعميل يقصّ فرصه — والفصل البشري ي
   assert.ok(com.includes('فرصة المدن باء'), 'فرصة العميل المختار حاضرة');
   assert.ok(!com.includes('فرصة الذكاء ألف'), 'فرصة عميلٍ آخر تسرّبت');
   assert.ok(h.includes('غير مرشَّح بالعميل'), 'الفصل البشري لا يحمل وسم «غير مرشَّح بالعميل»');
+});
+
+const comboSvg = (html) => {
+  const m = html.match(/<svg class="fig-svg[^"]*"[^>]*aria-label="الإيراد الشهري والتراكمي[^"]*"[\s\S]*?<\/svg>/);
+  assert.ok(m, 'رسم الإيقاع موجود');
+  return m[0];
+};
+
+test('رسم الإيقاع يُعاد تصييره بالترشيح: سلسلة الإدارة وحدها، وغير المنسوب مُفصَحٌ عنه', async () => {
+  // بلا ترشيح: فبراير 4M (منسوب) ومارس 2M (بلا مشروع) كلاهما على الرسم، ولا سطر إفصاح
+  const plain = await sectorPage(ADMIN, { year: String(YEAR) });
+  const pv = comboSvg(plain);
+  assert.ok(pv.includes('فبراير: 4.0M'), 'بند فبراير على رسم القطاع');
+  assert.ok(pv.includes('مارس: 2.0M'), 'البند غير المنسوب على رسم القطاع (لا ترشيح يقصّه)');
+  assert.ok(!plain.includes('غير منسوبٍ لمشروع'), 'لا إفصاح بلا ترشيح — لا ضجيج');
+  // ترشيح الإدارة: المنسوب وحده على الرسم، والمُسقَط معلَن بقيمته
+  const dept = await sectorPage(ADMIN, { year: String(YEAR), dept: 'D_AI' });
+  const dv = comboSvg(dept);
+  assert.ok(dv.includes('فبراير: 4.0M'), 'بند الإدارة باقٍ تحت ترشيحها');
+  assert.ok(dv.includes('مارس: 0'), 'غير المنسوب سقط من السلسلة المرشَّحة');
+  assert.ok(dept.includes('غير منسوبٍ لمشروع'), 'سطر الإفصاح عن غير المنسوب غائب');
+  assert.ok(dept.includes('2.0M'), 'قيمة غير المنسوب معلنة');
+  assert.ok(!dv.includes('المستهدف='), 'لا خطَّ هدفٍ تحت الترشيح — الأهداف قطاعية');
+  assert.ok(dept.includes('حصة من إيراد القطاع'), 'حصة الترشيح من إيراد القطاع معلنة');
+  // ترشيح العميل يمرّ من مشروع البند أيضاً
+  const cl = await sectorPage(ADMIN, { year: String(YEAR), client: 'CL_A' });
+  assert.ok(comboSvg(cl).includes('فبراير: 4.0M'), 'بند عميل المشروع باقٍ تحت ترشيح عميله');
 });
 
 test('مرشِّحٌ مجهول يسقط بلا خطأ ولا قصٍّ عشوائي', async () => {
