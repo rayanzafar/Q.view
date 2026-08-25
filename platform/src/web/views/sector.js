@@ -191,6 +191,10 @@ const CSS = `<style>
 .trp .tt i b{color:#fff;font-size:11.5px}
 .trp .tv{font-size:var(--fs-body);font-weight:800;color:var(--ink2);text-align:start}
 .ops3{display:grid;grid-template-columns:auto 1.3fr .8fr;gap:1.2rem;align-items:start}
+.ops3.two{grid-template-columns:auto 1fr}
+/* سطرُ نقصٍ هادئ: يقول ما ينقص وأين يُدخَل، بلا صندوقٍ أجوف ولا رسمٍ فارغ */
+.gapline{font-size:var(--fs-micro);color:var(--muted);padding:.45rem .2rem;border-top:1px dashed var(--line);margin-top:.4rem}
+.gapline a{color:var(--brand);font-weight:700}
 .ops-stats{display:grid;gap:.5rem;align-content:start}
 .prj-tbl{width:100%;border-collapse:collapse;font-size:var(--fs-body)}
 .prj-tbl th{font-size:var(--fs-micro);color:var(--muted);font-weight:700;text-align:start;padding:.3rem .5rem;border-bottom:1px solid var(--line);white-space:nowrap}
@@ -207,6 +211,8 @@ const CSS = `<style>
 .hr3{display:grid;grid-template-columns:1.15fr 1.15fr .7fr;gap:1.2rem;align-items:start}
 .com3>div,.ops3>div,.hr3>div,.out3>div{min-width:0}
 .out3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1.1rem}
+.out3.c1{grid-template-columns:minmax(0,1fr)}
+.out3.c2{grid-template-columns:repeat(2,minmax(0,1fr))}
 .outg{margin-bottom:.5rem;border-inline-start:2px solid var(--line);padding-inline-start:.75rem;position:relative}
 .outg .msr{position:relative}
 .outg .msr .d{position:relative}
@@ -1636,8 +1642,11 @@ export async function sectorPage(user, opts = {}) {
     if (prog === 0 && started) { if (key === 'GREEN') key = 'AMBER'; why.push('بلا إنجاز مسجَّل'); }
     return { key, why };
   };
+  // «لم تُسجَّل معالم» مكرّرةً في كل صفٍّ ليست معلومة — إن خلا الجدولُ كله منها سقط العمود
+  // وقيلت الحقيقة سطراً واحداً تحته مع طريق إدخالها.
+  const anyMs = prjRows.some((r) => nextMsByPid[r.id]);
   const prjTable = prjRows.length ? `<div class="tblwrap"><table class="prj-tbl rtbl">
-    <thead><tr><th>المشروع</th><th>الحالة</th><th>الإنجاز</th><th>المعلم القادم</th><th>التأخر</th></tr></thead><tbody>
+    <thead><tr><th>المشروع</th><th>الحالة</th><th>الإنجاز</th>${anyMs ? '<th>المعلم القادم</th>' : ''}<th>التأخر</th></tr></thead><tbody>
     ${prjRows.map((r) => {
     const prog = progMapH.get(r.id)?.pct ?? Math.max(0, Math.min(100, Math.round(r.progress_pct || 0)));
     const ms = nextMsByPid[r.id];
@@ -1650,15 +1659,15 @@ export async function sectorPage(user, opts = {}) {
       <td data-label="المشروع"><a href="/app/project/${esc(r.id)}">${esc(r.name_ar)}</a></td>
       <td data-label="الحالة"${why ? ` title="${esc(why)}"` : ''}><span class="dotc" style="background:${col}"></span> ${lbl}${eff.why.length ? ` <small style="color:var(--muted);font-size:9.5px">${esc(eff.why[0])}</small>` : ''}</td>
       <td data-label="الإنجاز"><span class="ptrk"><i style="width:${prog}%;background:${col}"></i></span> <b class="tnum">${prog}%</b></td>
-      <td data-label="المعلم القادم">${ms ? `${esc(ms.name_ar)} — <span class="tnum">${esc(String(ms.due_date).slice(0, 10))}</span>` : '<span style="color:var(--faint)">لم تُسجَّل معالم</span>'}</td>
+      ${anyMs ? `<td data-label="المعلم القادم">${ms ? `${esc(ms.name_ar)} — <span class="tnum">${esc(String(ms.due_date).slice(0, 10))}</span>` : '<span style="color:var(--faint)">—</span>'}</td>` : ''}
       <td data-label="التأخر">${late ? `<span style="color:var(--st-bad);font-weight:700">${dayWord(late)}</span>` : '<span style="color:var(--faint)">—</span>'}</td>
     </tr>`;
   }).join('')}
-  </tbody></table></div>` : `<div class="empty-mini">${icon('projects')} لا مشاريع في سنة ${year}</div>`;
+  </tbody></table></div>${anyMs ? '' : `<div class="gapline">لا معالم مسجَّلة لمشاريع هذه السنة — تُسجَّل من صفحة المشروع فيظهر القادم منها هنا</div>`}` : `<div class="empty-mini">${icon('projects')} لا مشاريع في سنة ${year}</div>`;
   const opsSection = `
   <section class="card pad">
     ${secn(6, 'الفصل التشغيلي', 'صحة المشاريع والتزام المعالم وتقدم المشاريع الرئيسية')}
-    <div class="ops3">
+    <div class="ops3${msDueTot ? '' : ' two'}">
       <div class="opsd">
         <div class="sh" style="justify-content:center">صحة المشاريع</div>
         <span class="ringw" style="width:112px;height:112px">${figDonut([
@@ -1666,10 +1675,10 @@ export async function sectorPage(user, opts = {}) {
   ], { size: 112, sw: 14 })}<span class="ringv"><b class="tnum" dir="ltr" style="font-size:1.15rem">${sd.rag.GREEN || 0}/${ragActive || 0}</b><small>على المسار</small></span></span>
         <div class="fig-leg">${healthRows}</div>
       </div>
-      <div>
+      ${msDueTot ? `<div>
         <div class="sh">الالتزام بالمعالم — آخر 8 أسابيع</div>
-        ${msDueTot ? figLine([{ points: weekBuckets.map((b) => b.pct ?? 0), color: 'var(--st-good)', name: 'التزام المعالم' }], { labels: weekBuckets.map((_, i) => `الأسبوع ${i + 1}`), h: 100, fmt: (v) => `${v}%`, axisDir: 'ltr', hover: true }) : `<div class="empty-mini">${icon('clock')} لا معالم مستحقة في الأسابيع الثمانية الماضية</div>`}
-      </div>
+        ${figLine([{ points: weekBuckets.map((b) => b.pct ?? 0), color: 'var(--st-good)', name: 'التزام المعالم' }], { labels: weekBuckets.map((_, i) => `الأسبوع ${i + 1}`), h: 100, fmt: (v) => `${v}%`, axisDir: 'ltr', hover: true })}
+      </div>` : ''}
       <div class="ops-stats">
         ${msDueTot ? `<div class="pch"><span class="l">التزام المعالم · 8 أسابيع</span><b class="tnum">${Math.round((msMetTot / msDueTot) * 100)}%</b><span class="c">من ${countAr(msDueTot, { one: 'معلم واحد مستحق', two: 'معلمين مستحقين', few: 'معالم مستحقة', many: 'معلماً مستحقاً' })}</span></div>` : ''}
         <div class="pch"><span class="l">${G.deliverables} المقبولة</span><b class="tnum">${vjDelivered?.v ? Math.round(((vjAccepted?.v || 0) / vjDelivered.v) * 100) : 0}%</b><span class="c">من المسلَّمة</span></div>
@@ -1754,21 +1763,39 @@ export async function sectorPage(user, opts = {}) {
   const msRow = (m) => `<div class="msr"><span class="d tnum">${String(m.due_date).slice(5, 10)}</span><a href="/app/project/${esc(m.pid)}"><b>${esc(m.name_ar)}</b> <span>· ${esc(m.project)}</span></a></div>`;
   const probAr = { high: ['مرتفع', 'var(--st-bad)'], med: ['متوسط', 'var(--st-warn)'], medium: ['متوسط', 'var(--st-warn)'], low: ['منخفض', 'var(--st-neut)'] };
   const impactAr = { high: 'مرتفع', med: 'متوسط', medium: 'متوسط', low: 'منخفض' };
-  const outlookSection = `
+  // ── النظرة القادمة: عمودٌ بلا بياناتٍ يسقط ويُقال نقصُه سطراً واحداً، وقسمٌ خلَت أعمدته
+  // الثلاثة يسقط كله. لا صندوقَ أجوف ولا رسمٌ فارغ (قرار أ. حسين: ما لا بيانات له لا يُعرض).
+  const capRows = nowMonth ? (() => {
+    const rows = [];
+    for (let m = nowMonth - 1; m < 12; m++) {
+      const d = demandFte[m];
+      if (d > capFte) rows.push(`<div class="msr"><span class="dotc" style="background:var(--st-bad)"></span><span>${monthLabel(m)}: طلبٌ يفوق الطاقة بـ<b class="tnum">${Math.round((d - capFte) * 10) / 10}</b> من مكافئ التفرغ</span></div>`);
+      else if (capFte - d >= 2) rows.push(`<div class="msr"><span class="dotc" style="background:var(--st-neut)"></span><span>${monthLabel(m)}: سعة متاحة <b class="tnum">${Math.round((capFte - d) * 10) / 10}</b> من مكافئ التفرغ</span></div>`);
+    }
+    return rows;
+  })() : [];
+  const overloadedAhead = capRows.some((r) => r.includes('يفوق الطاقة'));
+  const outCols = [
+    msUpcoming.length ? `<div><div class="sh">الجدول الزمني القادم</div>
+      ${[['30 يوماً', h30], ['60 يوماً', h60], ['90 يوماً', h90]].map(([l, rows]) => rows.length ? `<div class="outg"><span class="og">${l}</span>${rows.slice(0, 3).map(msRow).join('')}</div>` : '').join('')}
+    </div>` : '',
+    topRisks.length ? `<div><div class="sh">${G.risks} المفتوحة</div>
+      ${topRisks.map((r) => { const [pl, pc] = probAr[r.probability] || probAr.low; return `<div class="msr"><span class="dotc" style="background:${pc}"></span><span><b>${esc(r.title)}</b>${r.project ? ` <span>· ${esc(r.project)}</span>` : ''}${r.impact ? ` <span class="im">· الأثر: ${impactAr[r.impact] || esc(r.impact)}</span>` : ''}</span><span class="pill" style="background:var(--st-neut-soft);color:var(--muted);flex:none">احتمال ${pl}</span></div>`; }).join('')}
+    </div>` : '',
+    capRows.length ? `<div><div class="sh">${overloadedAhead ? 'قيود الطاقة القادمة' : 'السعة المتاحة في الأشهر القادمة'}</div>
+      ${capRows.slice(0, 4).join('')}${capRows.length > 4 ? `<div class="gapline">و${countAr(capRows.length - 4, { one: 'شهر آخر', two: 'شهران آخران', few: 'أشهر أخرى', many: 'شهراً آخر' })} — التفصيل في لوحة التسكين</div>` : ''}
+    </div>` : '',
+  ].filter(Boolean);
+  const outGaps = [
+    !msUpcoming.length ? 'لا معالم مستحقة في التسعين يوماً القادمة — تُسجَّل من صفحة المشروع' : '',
+    !topRisks.length ? `لا ${G.risks} مفتوحة مسجَّلة — تُسجَّل من صفحة المشروع` : '',
+  ].filter(Boolean);
+  const outlookSection = outCols.length ? `
   <section class="card pad">
-    ${secn(9, 'نظرة الفترة القادمة', 'معالم الثلاثين والستين والتسعين يوماً، والمخاطر المفتوحة، وقيود الطاقة')}
-    <div class="out3">
-      <div><div class="sh">الجدول الزمني القادم</div>
-        ${[['30 يوماً', h30], ['60 يوماً', h60], ['90 يوماً', h90]].map(([l, rows]) => rows.length ? `<div class="outg"><span class="og">${l}</span>${rows.slice(0, 3).map(msRow).join('')}</div>` : '').join('') || `<div class="empty-mini">${icon('clock')} لا معالم مستحقة في التسعين يوماً القادمة</div>`}
-      </div>
-      <div><div class="sh">${G.risks} المفتوحة</div>
-        ${topRisks.length ? topRisks.map((r) => { const [pl, pc] = probAr[r.probability] || probAr.low; return `<div class="msr"><span class="dotc" style="background:${pc}"></span><span><b>${esc(r.title)}</b>${r.project ? ` <span>· ${esc(r.project)}</span>` : ''}${r.impact ? ` <span class="im">· الأثر: ${impactAr[r.impact] || esc(r.impact)}</span>` : ''}</span><span class="pill" style="background:var(--st-neut-soft);color:var(--muted);flex:none">احتمال ${pl}</span></div>`; }).join('') : `<div class="empty-mini">${icon('check')} لا مخاطر مفتوحة مسجَّلة</div>`}
-      </div>
-      <div><div class="sh">قيود الطاقة القادمة</div>
-        ${nowMonth ? (() => { const rows = []; for (let m = nowMonth - 1; m < 12; m++) { const d = demandFte[m]; if (d > capFte) rows.push(`<div class="msr"><span class="dotc" style="background:var(--st-bad)"></span><span>${monthLabel(m)}: طلبٌ يفوق الطاقة بـ<b class="tnum">${Math.round((d - capFte) * 10) / 10}</b> من مكافئ التفرغ</span></div>`); else if (capFte - d >= 2) rows.push(`<div class="msr"><span class="dotc" style="background:var(--st-neut)"></span><span>${monthLabel(m)}: سعة متاحة <b class="tnum">${Math.round((capFte - d) * 10) / 10}</b> من مكافئ التفرغ</span></div>`); } return rows.slice(0, 4).join('') || `<div class="empty-mini">${icon('check')} الخطة متوازنة مع الطاقة</div>`; })() : `<div class="empty-mini">${icon('clock')} سنة غير جارية — لا نظرة قادمة</div>`}
-      </div>
-    </div>
-  </section>`;
+    ${secn(9, 'نظرة الفترة القادمة', outCols.length === 3 ? 'معالم الثلاثين والستين والتسعين يوماً، والمخاطر المفتوحة، وقيود الطاقة' : 'ما هو مسجَّل للأشهر القادمة')}
+    <div class="out3${outCols.length < 3 ? ` c${outCols.length}` : ''}">${outCols.join('')}</div>
+    ${outGaps.length ? `<div class="gapline">${outGaps.join(' · ')}</div>` : ''}
+  </section>` : '';
 
   // ── الدرج: القرارات والعقود والأرباع ──
   const drawer = `<details class="psec x-drawer"><summary>التحليل الموسّع — الأرباع · ${G.decisions} والاعتمادات · العقود</summary>
