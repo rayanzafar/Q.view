@@ -6,10 +6,13 @@
 // helpers automatically route to the transaction's dedicated client.
 import { config } from '../config.js';
 // المُسجِّل وحده — لا يستورد قاعدة بيانات ولا إعداداً، فلا دورة استيراد.
-import { logError } from '../obs/log.js';
+import { logError, logInfo } from '../obs/log.js';
 import { AsyncLocalStorage } from 'node:async_hooks';
 
 const USE_PG = !!config.databaseUrl;
+// القرار الأخطر في زمن التشغيل كان صامتاً تماماً: أيّ محرّكٍ اختارته المنصة. سطرٌ واحد
+// يجعل الحادثة التالية من هذا النوع تُشخَّص من السجل في عشر ثوانٍ بدل تخمين.
+logInfo('db_driver', USE_PG ? { driver: 'postgres' } : { driver: 'sqlite', file: config.dbFile });
 const txStore = new AsyncLocalStorage();
 
 // undefined → null (drivers can't bind undefined); boolean → 0/1 (schema uses integer flags).

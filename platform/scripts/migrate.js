@@ -2,7 +2,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { exec, get, run, close } from '../src/core/db/index.js';
-import { ROOT, config } from '../src/core/config.js';
+import { ROOT, config, assertProdDatabase } from '../src/core/config.js';
 import { nowIso } from '../src/core/util/ids.js';
 
 // The .sql migrations are authored for SQLite; translate the three type differences for Postgres.
@@ -11,6 +11,9 @@ const pgify = (sql) => (config.databaseUrl
   : sql);
 
 export async function migrate() {
+  // قبل أول كتابة، لا بعد اثنتي عشرة خطوةَ بذرٍ في القاعدة الخطأ: `assertProdSecrets` يعمل
+  // عند بناء التطبيق — أي في آخر سطرٍ من سكربت الإقلاع — وقد أنشأ المخطط كاملاً قبله.
+  assertProdDatabase();
   await exec('CREATE TABLE IF NOT EXISTS schema_migration (version TEXT PRIMARY KEY, applied_at TEXT NOT NULL)');
   const dir = resolve(ROOT, 'migrations');
   const files = readdirSync(dir).filter((f) => f.endsWith('.sql')).sort();

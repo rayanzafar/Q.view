@@ -49,7 +49,9 @@ export const config = {
   host: process.env.HOST || ((process.env.NODE_ENV === 'production') ? '::' : '127.0.0.1'),
   // Dev DB file; prod would set DATABASE_URL for Postgres (repository layer switches driver).
   dbFile: process.env.SANAD_DB || resolve(ROOT, 'data/sanad.db'),
-  databaseUrl: process.env.DATABASE_URL || null,
+  // يُقرأ لا يُنسخ خاماً: قيمةٌ من مسافاتٍ وحدها (يُنتجها مسحُ الحقل في لوحة المستضيف)
+  // كانت تمرّ نصّاً غير فارغ إلى مُحرّك القاعدة فتُخفق بعبارةٍ غامضة. الآن هي «غير مضبوط».
+  databaseUrl: readText(process.env.DATABASE_URL),
   // Session cookie signing secret. MUST be set in prod; ephemeral dev fallback otherwise.
   sessionSecret: process.env.SESSION_SECRET || randomBytes(32).toString('hex'),
   sessionCookie: 'sanad_sid',
@@ -122,14 +124,34 @@ export const config = {
   fiscalYear: Number(process.env.FISCAL_YEAR || 2026),
 };
 
+// ── قاعدة البيانات في الإنتاج: لا مهرب ──
+// كان ثمّة إعفاء: `STAGING=1` يُسقط اشتراط `DATABASE_URL`. أصلُه ترقيعُ نشرٍ من تموز ٢٠٢٦
+// قبل أن توجد Postgres على المستضيف أصلاً، وقد أعلن ADR-0004 بعدها أن SQLite محرّك تطويرٍ
+// واختبارٍ لا غير — ولم يُزَل الإعفاء. وخطره أنه **مسلَّحٌ على الخدمة الحيّة الآن**: الرايةُ
+// مضبوطة، وإنما يحجبها وجودُ `DATABASE_URL`. فمسحُ ذلك الحقل — لا حذفُه — يُقلع المنصة
+// خضراءَ فارغةً على ملفٍ محلّي زائل: كل الحسابات تفشل بالدخول، والمالك وحده يدخل على منصةٍ
+// بلا موظفٍ ولا مشروع، ويبدو ذلك فقداناً كاملاً للبيانات. (Postgres سليمةٌ طوال الوقت،
+// لكن ما يُكتب في تلك النافذة يضيع مع أول إعادة تشغيل — ولا نسخة احتياطية له.)
+// فلا إعفاء: الإنتاج يطلب قاعدةً حقيقية دائماً. والرايةُ نفسها تُترك في اللوحة بلا أثر.
+function databaseMissing() {
+  return config.databaseUrl ? [] : ['DATABASE_URL'];
+}
+
+// تُنادى **قبل أول كتابة** — أي في مطلع الترحيلة، لا عند بناء التطبيق. `assertProdSecrets`
+// يعمل بعد أن يكون سكربت الإقلاع قد أنشأ المخطط كاملاً وبذر اثنتي عشرة خطوة في القاعدة
+// الخطأ. وهي مقصورةٌ على القاعدة كي لا ترث الترحيلةُ اشتراطاتِ البريد بلا داعٍ.
+export function assertProdDatabase() {
+  const missing = databaseMissing();
+  if (config.env === 'production' && missing.length) {
+    throw new Error(`إعداد ناقص للتشغيل: ${missing.join('، ')} — لا تُشغَّل المنصة على قاعدةٍ محلّية في الإنتاج`);
+  }
+}
+
 export function assertProdSecrets() {
   if (config.env === 'production') {
     const missing = [];
     if (!process.env.SESSION_SECRET) missing.push('SESSION_SECRET');
-    // DATABASE_URL (Postgres) is required only for a full production deploy. A staging environment
-    // runs on the built-in SQLite driver — set STAGING=1 to opt into SQLite-in-production and skip it.
-    const sqliteStaging = process.env.STAGING === '1' || process.env.STAGING === 'true';
-    if (!config.databaseUrl && !sqliteStaging) missing.push('DATABASE_URL');
+    missing.push(...databaseMissing());
     if (config.mailTransport === 'smtp') {
       // قيمةٌ خاطئة تُقال بعلّتها لا كغياب: «SMTP_HOST ناقص» لمن ضبطه فعلاً يُرسله يبحث عن
       // حقلٍ موجود. والإقلاع يتوقف هنا عمداً — القناة الأصلية تحكم الدخول كلَّه، وعنوانٌ
