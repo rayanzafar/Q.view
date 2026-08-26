@@ -8,6 +8,7 @@ import { config, ROOT } from '../../core/config.js';
 import { mailEventLabel, mailStatusLabel, mailStatusTone } from '../i18n/glossary.js';
 import { esc } from './_shared.js';
 import { loadApprovalMailRules } from '../../modules/workflow/approval-notify.js';
+import { channelStatus } from '../../core/mail/smtp.js';
 
 export async function mailPage(user, opts = {}) {
   const dir = resolve(ROOT, 'data/outbox');
@@ -55,7 +56,11 @@ export async function mailPage(user, opts = {}) {
 
   // حالة القناة الاحتياطية تُقرأ من إعدادها لا من محاولةِ إرسال — الشاشة تصف الجاهزية.
   const fb = config.smtpFallback || {};
-  const fbReady = !!(fb.host && fb.user && fb.pass && fb.from);
+  // الحال من مصدرٍ واحد مشترك مع الإرسال نفسه — لا نسخةٍ ثانية هنا تُخالفه فتُظهر البطاقة
+  // خضراء بينما يرفض المرسِل العنوان.
+  const fbSt = channelStatus(fb);
+  const fbReady = fbSt.state === 'ready';
+  const priSt = channelStatus(config.smtp);
   const fbFrom = String(fb.from || '').trim();
   const fbAddr = (fbFrom.match(/<([^>]+)>/)?.[1] || fbFrom).trim();
   const canTest = user?.role_id === 'admin';
@@ -82,19 +87,23 @@ export async function mailPage(user, opts = {}) {
           البريد بابُ المنصة الوحيد (الدخول برمزٍ بريدي)، فقناةٌ ثانيةٌ بمزوّدٍ ونطاقٍ آخرين
           هي الفارق بين انقطاعٍ ساعة وانقطاعٍ يوم. وحالتها تُقال هنا لأن غيابها لا يظهر في
           أي مكانٍ آخر: كل شيء يبدو سليماً حتى تسقط الأولى. */''}
+    ${smtpOn && priSt.state === 'invalid' ? `<div style="flex:1 0 100%;font-size:var(--fs-meta);color:var(--red);line-height:1.8">
+      عنوان خادم القناة الأصلية غير صالح — ${esc(priSt.reason)}. ولا يخرج بريدٌ حتى يُصحَّح، والدخول إلى المنصة بريديٌّ كلّه.</div>` : ''}
     ${smtpOn ? `<div style="flex:1 0 100%;display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;padding-top:.5rem;border-top:1px dashed var(--line)">
       <span style="font-weight:700;font-size:var(--fs-meta)">القناة الاحتياطية</span>
-      ${fbReady ? pill(`جاهزة · تُرسَل من ${esc(fbAddr)}`, 'green') : pill('غير مضبوطة', 'amber')}
-      <span style="font-size:var(--fs-meta);color:var(--muted)">${fbReady
+      ${fbSt.state === 'ready' ? pill(`جاهزة · تُرسَل من ${esc(fbAddr)}`, 'green')
+        : fbSt.state === 'invalid' ? pill('قيمة غير صالحة', 'red') : pill('غير مضبوطة', 'amber')}
+      <span style="font-size:var(--fs-meta);color:var(--muted)">${fbSt.state === 'ready'
         ? 'تُجرَّب تلقائياً حين تُخفق الأصلية، ويُكتب ذلك في سجل الرسالة.'
-        : 'لا بديل اليوم: إن سكتت القناة الأصلية توقّف الدخول إلى المنصة كلها.'}</span>
+        : fbSt.state === 'invalid' ? esc(fbSt.reason)
+          : 'لا بديل اليوم: إن سكتت القناة الأصلية توقّف الدخول إلى المنصة كلها.'}</span>
     </div>` : ''}
     ${/* رسالة تجربة إلى عنوان القارئ نفسه — لا حقل مستقبِل، فلا تصلح لإرسال شيءٍ لأحد.
           وبها يُختبر البديل بلا تعطيل الأصلية على بيئةٍ يعمل عليها الناس. */''}
     ${smtpOn && canTest ? `<div style="flex:1 0 100%;display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;padding-top:.5rem;border-top:1px dashed var(--line)">
       <span style="font-weight:700;font-size:var(--fs-meta)">تحقّق</span>
       <button class="btn btn-sm" data-action="mail-test" data-channel="primary">جرّب الأصلية</button>
-      <button class="btn btn-sm" data-action="mail-test" data-channel="fallback"${fbReady ? '' : ' disabled title="اضبط القناة الاحتياطية أولاً"'}>جرّب الاحتياطية</button>
+      <button class="btn btn-sm" data-action="mail-test" data-channel="fallback"${fbSt.state === 'unset' ? ' disabled title="اضبط القناة الاحتياطية أولاً"' : ''}>جرّب الاحتياطية</button>
       <span style="font-size:var(--fs-meta);color:var(--muted)">تصل إلى عنوان حسابك أنت، والنتيجة تُقيَّد في السجل أسفل الصفحة.</span>
     </div>` : ''}
   </div>`);

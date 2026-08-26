@@ -63,3 +63,35 @@ test('كل قناة تُبنى من إعدادها هي — لا قراءةَ إ
   // لو قرأ المرسِل `config.smtp` مباشرةً لأرسل البديل بأسرار الأصلية.
   assert.ok(!/const \{[^}]*\} = config\.smtp;/.test(smtp), 'المرسِل ما زال يقرأ إعداد الأصلية مباشرةً');
 });
+
+// ── ثلاث حالاتٍ للقناة لا اثنتان ───────────────────────────────────────────────
+// «مضبوطةٌ بقيمةٍ خاطئة» ليست «غير مضبوطة». ودمجُهما يكذب في ثلاثة مواضع: البطاقة تقول
+// «غير مضبوطة» لمن ضبط كل حقولها، والزرّ الوحيد الذي يشخّص العطب يُقفَل في وجهه، والسجل
+// يقول «لا قناة احتياطية» بينما هي موجودةٌ ومعطوبة. وهذا ما وقع حياً: عنوانٌ نُسخ رابطاً.
+test('حالُ القناة على ثلاث: جاهزة · غير مضبوطة · قيمة غير صالحة', async () => {
+  const { channelStatus } = await import('../../src/core/mail/smtp.js');
+  assert.equal(channelStatus(null).state, 'unset');
+  assert.equal(channelStatus({}).state, 'unset');
+  assert.equal(channelStatus({ host: 'h', user: 'u', pass: 'p' }).state, 'unset', 'ناقصُ المُرسِل ليس جاهزاً');
+  assert.equal(channelStatus({ host: 'h', user: 'u', pass: 'p', from: 'f' }).state, 'ready');
+  const bad = channelStatus({ hostError: 'علّة', user: 'u', pass: 'p', from: 'f' });
+  assert.equal(bad.state, 'invalid', 'قيمةٌ خاطئة عُدّت غياباً');
+  assert.equal(bad.reason, 'علّة', 'العلّة لا تصل إلى الشاشة');
+});
+
+test('و«صالحة للمحاولة» تشمل الثلاث: لا يُطلَب من الشبكة عنوانٌ نعرف أنه لا يُترجَم', async () => {
+  const { channelReady } = await import('../../src/core/mail/smtp.js');
+  assert.equal(channelReady({ host: 'h', user: 'u', pass: 'p', from: 'f' }), true);
+  assert.equal(channelReady({ hostError: 'علّة', user: 'u', pass: 'p', from: 'f' }), false,
+    'حاولت المنصة الاتصال بعنوانٍ معطوب — انتظارٌ يُقاس بالثواني على مسار الدخول');
+  assert.equal(channelReady({}), false);
+});
+
+test('وعطبُ القناة الاحتياطية لا يُوقف الإقلاع — والأصلية توقفه', async () => {
+  const cfg = readFileSync(new URL('../../src/core/config.js', import.meta.url), 'utf8');
+  assert.match(cfg, /config\.smtp\.hostError\) missing\.push/, 'عطبُ الأصلية لا يُوقف الإقلاع — والدخول كله بريديّ');
+  const i = cfg.indexOf('config.smtpFallback.hostError');
+  assert.ok(i > 0, 'عطبُ الاحتياطية لا يُقال إطلاقاً');
+  assert.ok(!/config\.smtpFallback\.hostError[^;]*missing\.push/.test(cfg),
+    'عطبُ قناةٍ اختيارية يُوقف المنصة — عاقبةٌ أسوأ من العطب الذي تُعالجه');
+});

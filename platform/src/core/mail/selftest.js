@@ -15,8 +15,30 @@ import { insert } from '../db/index.js';
 import { audit } from '../audit/index.js';
 import { forbidden, badRequest } from '../http/errors.js';
 import { config } from '../config.js';
-import { CHANNEL, channelConfig, channelReady, sendViaSmtp } from './smtp.js';
+import { CHANNEL, channelConfig, channelStatus, sendViaSmtp } from './smtp.js';
 import { filterRecipients, DELIVERY } from './transport.js';
+
+
+// كلمةُ مرورٍ قد تسكن نصَّ عطبٍ يأتي من مكتبة الإرسال، وهذا النصّ يُخزَّن ويُعرض لمديري
+// النظام. تُمسح قبل التخزين لا عند العرض: ما لا يُكتب لا يُسرَّب.
+const redact = (s) => String(s || '').replace(/\/\/[^/\s@]+:[^/\s@]+@/g, '//***:***@');
+
+// أشيع خمسة أعطاب، بترجمةٍ تقول الخطوة التالية. والتمييز مقصود: «تعذّر العثور على الخادم»
+// ليست دائماً اسماً خاطئاً — قد تكون ترجمةَ أسماء معطّلة أو شبكةً مقطوعة عن الخادم، فتُقال
+// الاحتمالان ولا يُرسَل المُشغّل خلف اسمٍ صحيح.
+function explain(e, ch) {
+  const code = e?.code || '';
+  const rc = Number(e?.responseCode || 0);
+  const host = ch?.host || 'الخادم';
+  if (code === 'ENOTFOUND') return `تعذّر العثور على الخادم «${host}» — تأكّد من اسمه، فإن كان صحيحاً فالعطب في شبكة الخادم`;
+  if (code === 'EAI_AGAIN') return 'تعذّرت ترجمة اسم الخادم مؤقتاً — أعِد المحاولة بعد قليل';
+  if (code === 'EAUTH' || [530, 534, 535].includes(rc)) return 'رفض المزوّد اسم المستخدم أو كلمة المرور — أعِد نسخهما من المزوّد';
+  if ([550, 553, 554].includes(rc)) return `رفض المزوّد المُرسِل «${ch?.from || ''}» — اعتمِده في حساب المزوّد أولاً`;
+  if (code === 'ETIMEDOUT' || code === 'ESOCKET' || code === 'ECONNREFUSED') {
+    return `تعذّر الاتصال بالخادم «${host}» على المنفذ ${ch?.port ?? ''} — تأكّد من المنفذ وحقل التشفير`;
+  }
+  return 'أخفق الإرسال';
+}
 
 const LABEL = { [CHANNEL.PRIMARY]: 'الأصلية', [CHANNEL.FALLBACK]: 'الاحتياطية' };
 
@@ -45,7 +67,11 @@ export async function sendChannelTest(ctx, { channel } = {}) {
     // في وضع المعاينة لا شبكة إطلاقاً — ويُقال ذلك بدل ادّعاء إرسال.
     detail = 'قناة المعاينة مشغّلة — لم تُلمس الشبكة ولم تُرسَل رسالة';
     event = DELIVERY.PREVIEWED;
-  } else if (!channelReady(channelConfig(which))) {
+  } else if (channelStatus(channelConfig(which)).state === 'invalid') {
+    // مضبوطةٌ بقيمةٍ خاطئة ≠ غير مضبوطة. قولُ «غير مضبوطة» لمن ضبط كل حقولها يدفعه لإعادة
+    // ضبطها كلها بحثاً عن حقلٍ ناقص، والناقصُ ليس حقلاً بل قيمةُ حقلٍ موجود.
+    detail = channelStatus(channelConfig(which)).reason;
+  } else if (channelStatus(channelConfig(which)).state === 'unset') {
     detail = `القناة ${LABEL[which]} غير مضبوطة في هذه البيئة — تحتاج خادماً واسم مستخدم وكلمة مرور وعنوان مُرسِل`;
   } else if (!filterRecipients([to]).allowed.length) {
     detail = 'عنوانك خارج قائمة العناوين المسموح بها في هذه البيئة';
@@ -58,7 +84,9 @@ export async function sendChannelTest(ctx, { channel } = {}) {
       event = DELIVERY.SENT;
       detail = `أُرسلت من ${res.from} إلى ${to}`;
     } catch (e) {
-      detail = String(e?.message || e).slice(0, 300);
+      // نصُّ المزوّد يبقى — هو الدليل — ويُسبَق بترجمةٍ تقول للمُشغّل ما يفعل. والتصنيف على
+      // رمز العطب لا على مطابقة نصّه: النصوص تتغيّر بين المزوّدين وتُترجَم أحياناً.
+      detail = `${explain(e, channelConfig(which))} — نصّ المزوّد: ${redact(String(e?.message || e))}`.slice(0, 300);
     }
   }
 

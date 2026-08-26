@@ -16,11 +16,29 @@ export const ROOT = resolve(__dirname, '../..');
 // وقيمةٌ لا تصلح تسقط إلى الافتراض المقصود بدل أن تُعطّل المنصة: الفشل مغلق لا قاتل.
 // و«فارغ» يعني «غير مضبوط» لا صفراً: `Number('')` و`Number(' ')` كلاهما صفر صحيح، ومُشغّلٌ
 // ترك القيمة خاويةً في اللوحة لم يطلب صفراً — وصفرُ خانقِ الكتابة يعني كتابةً مع كل طلب.
+// قراءةُ عنوان الخادم والأعلام من نصٍّ يكتبه إنسان — القواعد ولماذا كلٌّ منها في net.js.
+const { readHost, readFlag, readText } = await import('./util/net.js');
+
 const num = (raw, fallback, min) => {
   if (raw == null || String(raw).trim() === '') return fallback;
   const n = Number(raw);
   return Number.isFinite(n) && n >= min ? n : fallback;
 };
+
+// عنوانُ خادمِ بريدٍ ومنفذُه من متغيّرَين. والمنفذ قد يأتي ملحقاً بالعنوان — فإن جاء من
+// الجهتين مختلفاً رُفض ولم يُرجَّح أحدهما: ٤٦٥ و٥٨٧ يختلفان في التشفير أيضاً، فالترجيح
+// الصامت يقلب نمط التشفير ويُخرج عطباً يبدو شهادةً معطوبة وهو رقمٌ متعارض.
+function smtpHost(rawHost, rawPort, portKey) {
+  const h = readHost(rawHost);
+  const explicit = rawPort != null && String(rawPort).trim() !== '';
+  const fromKey = explicit ? num(rawPort, null, 1) : null;
+  let error = h.error;
+  if (!error && explicit && fromKey == null) error = `قيمة ${portKey} ليست رقم منفذ صالح`;
+  if (!error && h.port != null && fromKey != null && h.port !== fromKey) {
+    error = `المنفذ في عنوان الخادم (${h.port}) يخالف ${portKey} (${fromKey}) — وحّدهما`;
+  }
+  return { host: error ? null : h.host, hostRaw: readText(rawHost), hostError: error, port: h.port ?? fromKey ?? 587 };
+}
 
 export const config = {
   env: process.env.NODE_ENV || 'development',
@@ -63,17 +81,20 @@ export const config = {
   // الحارس لمنعه. ويُطفأ صراحةً (`=0`) لمن أراد قائمةً مغلقةً باليد وحدها.
   mailAccountsAllowed: process.env.SANAD_MAIL_ACCOUNTS_ALLOWED !== '0',
   smtp: {
-    host: process.env.SMTP_HOST || null,
-    port: Number(process.env.SMTP_PORT || 587),
-    user: process.env.SMTP_USER || null,
-    pass: process.env.SMTP_PASS || null,
+    // العنوان يُقرأ لا يُنسخ خاماً: نُسخ مرةً مع بادئة رابطٍ فأخفقت الترجمة بعبارةٍ تقنية.
+    // ويبقى الأصل (`hostRaw`) كي تقتبسه الرسالة، والعلّة (`hostError`) كي تُعرض بدل أن
+    // تُكتشف عند أول محاولة إرسال — وهي على القناة الأصلية تعني تعذُّر الدخول للجميع.
+    ...smtpHost(process.env.SMTP_HOST, process.env.SMTP_PORT, 'SMTP_PORT'),
+    user: readText(process.env.SMTP_USER),
+    pass: readText(process.env.SMTP_PASS),
     // ── لا مُرسِل افتراضي ──
     // كان الافتراضي `no-reply@evc.com.sa`. وevc.com.sa **نطاقٌ حيّ مملوك لجهةٍ أخرى** (مسجَّل
     // على Namecheap وبريده على Google Workspace)، وليس نطاق الشركة (evc.sa). فأي رسالة تخرج
     // به ترتطم بـSPF/DMARC أو — وهو الأسوأ — تصل صندوقاً لا نملكه ومعها رمز دخول.
     // وخطورة الافتراضي هنا ليست في قيمته بل في **وجوده**: قيمةٌ صامتة تجعل قناة إرسالٍ خاطئة
     // تعمل بلا أن يُخطئ أحد ظاهرياً. فلا افتراض — والإقلاع يتوقف إن نُسي (assertProdSecrets).
-    from: process.env.MAIL_FROM || null,
+    from: readText(process.env.MAIL_FROM),
+    secure: readFlag(process.env.SMTP_SECURE),
   },
   // ── قناة احتياطية ──
   // البريد هو البابُ الوحيد للمنصة: الدخول برمزٍ يصل بالبريد، والدعوة كذلك. فإن سكتت القناة
@@ -82,12 +103,11 @@ export const config = {
   // نفسه. ولها مُرسِلها الخاص لزاماً: المزوّد الثاني لا يأذن بالإرسال باسم نطاق الأول، فتُرفض
   // الرسالة أو تسقط في المهملات. فراغُ الإعداد = لا قناة احتياطية، وهو وضعٌ صالحٌ ومُعلَن.
   smtpFallback: {
-    host: process.env.SMTP_FALLBACK_HOST || null,
-    port: Number(process.env.SMTP_FALLBACK_PORT || 587),
-    user: process.env.SMTP_FALLBACK_USER || null,
-    pass: process.env.SMTP_FALLBACK_PASS || null,
-    from: process.env.SMTP_FALLBACK_FROM || null,
-    secureEnv: process.env.SMTP_FALLBACK_SECURE,
+    ...smtpHost(process.env.SMTP_FALLBACK_HOST, process.env.SMTP_FALLBACK_PORT, 'SMTP_FALLBACK_PORT'),
+    user: readText(process.env.SMTP_FALLBACK_USER),
+    pass: readText(process.env.SMTP_FALLBACK_PASS),
+    from: readText(process.env.SMTP_FALLBACK_FROM),
+    secure: readFlag(process.env.SMTP_FALLBACK_SECURE),
   },
   platformUrl: process.env.PLATFORM_URL || 'http://127.0.0.1:4000',
   // AI: provider-agnostic; disabled unless a key is present. Governed (preview/audit/scope).
@@ -111,11 +131,20 @@ export function assertProdSecrets() {
     const sqliteStaging = process.env.STAGING === '1' || process.env.STAGING === 'true';
     if (!config.databaseUrl && !sqliteStaging) missing.push('DATABASE_URL');
     if (config.mailTransport === 'smtp') {
-      if (!config.smtp.host) missing.push('SMTP_HOST');
+      // قيمةٌ خاطئة تُقال بعلّتها لا كغياب: «SMTP_HOST ناقص» لمن ضبطه فعلاً يُرسله يبحث عن
+      // حقلٍ موجود. والإقلاع يتوقف هنا عمداً — القناة الأصلية تحكم الدخول كلَّه، وعنوانٌ
+      // معطوب فيها يعني منصةً تعمل ولا يستطيع أحدٌ دخولها.
+      if (config.smtp.hostError) missing.push(`SMTP_HOST (${config.smtp.hostError})`);
+      else if (!config.smtp.host) missing.push('SMTP_HOST');
       if (!config.smtp.user) missing.push('SMTP_USER');
       if (!config.smtp.pass) missing.push('SMTP_PASS');
       // المُرسِل يُعلَن ولا يُورَث: بلا MAIL_FROM لا قناةَ إرسال. (شُرح أعلاه.)
       if (!config.smtp.from) missing.push('MAIL_FROM');
+      // والقناة الاحتياطية **لا** تُوقف الإقلاع مهما كانت: قناةٌ اختيارية معطوبة تُسقط
+      // المنصة عاقبةٌ أسوأ من العطب الذي تُعالجه. تُقال في السجل وتُعرض في مركز البريد.
+      if (config.smtpFallback.hostError) {
+        console.error('[config] عنوان خادم القناة الاحتياطية غير صالح —', config.smtpFallback.hostError);
+      }
       // نطاق الإرسال قرارٌ يُعلَن، لا حالةٌ تُورَث: إمّا قائمة سماح وإمّا إطلاقٌ صريح.
       // بلا أحدهما يتوقف الإقلاع بدل أن يعمل صامتاً وهو يحجب كل رسالة.
       if (!config.mailUnrestricted && !config.mailAllowlist.length) {
