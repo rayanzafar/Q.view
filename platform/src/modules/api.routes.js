@@ -12,6 +12,7 @@ import * as ts from './timesheets/timesheets.js';
 import * as wf from './workflow/engine.js';
 import { pendingApprovalsFor } from './workflow/inbox.js';
 import { setApprovalMailPolicy } from './workflow/approval-notify.js';
+import { sendChannelTest } from '../core/mail/selftest.js';
 import * as notif from './notifications/notify.js';
 import * as org from './org/org.js';
 import * as finance from './finance/finance.js';
@@ -139,6 +140,8 @@ apiRouter.get('/approvals/queue', h((req) => wf.myApprovalQueue(req.ctx.user)));
 apiRouter.get('/approvals/pending-count', h(async (req) => ({ n: (await pendingApprovalsFor(req.ctx.user)).length })));
 // سياسة بريد الاعتمادات — الحارس والتدقيق داخل الخدمة (مدير النظام وحده).
 apiRouter.post('/mail/approval-policy', h((req) => setApprovalMailPolicy(req.ctx, req.body || {})));
+// رسالة تجربة لقناةٍ بعينها — إلى عنوان صاحب الطلب وحده (لا مستقبِل في الجسم)، ولمدير النظام.
+apiRouter.post('/mail/test', h((req) => sendChannelTest(req.ctx, req.body || {})));
 apiRouter.post('/approvals', h((req) => wf.submitForApproval(req.ctx, req.body)));
 apiRouter.post('/approvals/:id/act', h((req) => wf.actOnApproval(req.ctx, req.params.id, req.body.action, req.body.comment)));
 

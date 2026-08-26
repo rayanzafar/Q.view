@@ -21,6 +21,25 @@ document.addEventListener('click', (e) => {
     modal.classList.remove('on');
     document.getElementById('mail-frame').src = 'about:blank';
   }
+  if (el.dataset.action === 'mail-test') {
+    // النتيجة تُقال كاملةً: القناة أُرسلت أم لا ولماذا. والزر يُقفل أثناء المحاولة كي لا
+    // تُرسَل نسختان فيُقرأ نجاحُ الثانية على أنه نجاح الأولى.
+    const ch = el.dataset.channel === 'fallback' ? 'fallback' : 'primary';
+    const label = ch === 'fallback' ? 'الاحتياطية' : 'الأصلية';
+    const was = el.textContent;
+    el.disabled = true; el.textContent = 'جارٍ الإرسال…';
+    fetch('/api/mail/test', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ channel: ch }),
+    }).then((r) => r.json().then((j) => ({ ok: r.ok, j })))
+      .then(({ ok, j }) => {
+        if (ok && j.ok) mailToast('وصلت عبر القناة ' + label + ' إلى ' + j.to + ' — تحقّق من صندوق الوارد لا المزعج.');
+        else mailToast('لم تُرسَل عبر القناة ' + label + ': ' + (j.detail || j.error?.message || 'سبب غير معروف'), true);
+      })
+      .catch(() => mailToast('تعذّر إرسال رسالة التجربة — أعِد المحاولة.', true))
+      .finally(() => { el.disabled = false; el.textContent = was; setTimeout(() => location.reload(), 2400); });
+  }
   if (el.dataset.action === 'save-mail-policy') {
     el.disabled = true;
     fetch('/api/mail/approval-policy', {

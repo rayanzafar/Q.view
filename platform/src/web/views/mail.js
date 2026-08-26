@@ -53,6 +53,13 @@ export async function mailPage(user, opts = {}) {
       ? 'هذا نطاق تجربة من مزوّد الإرسال: الرسائل لا تصل إلا صاحب حساب المزوّد نفسه، مهما أُضيف إلى قائمة السماح. وثِّق نطاق الشركة لدى المزوّد ثم اضبط المُرسِل عليه.'
       : '';
 
+  // حالة القناة الاحتياطية تُقرأ من إعدادها لا من محاولةِ إرسال — الشاشة تصف الجاهزية.
+  const fb = config.smtpFallback || {};
+  const fbReady = !!(fb.host && fb.user && fb.pass && fb.from);
+  const fbFrom = String(fb.from || '').trim();
+  const fbAddr = (fbFrom.match(/<([^>]+)>/)?.[1] || fbFrom).trim();
+  const canTest = user?.role_id === 'admin';
+
   const chan = card(`<div style="padding:.85rem 1rem;display:flex;align-items:center;gap:.7rem;flex-wrap:wrap">
     <div style="font-weight:800;font-size:13.5px">قناة الإرسال</div>
     ${smtpOn ? pill('بريد حقيقي مفعّل', 'green') : pill('وضع المعاينة — لا يُرسل بريد حقيقي', 'amber')}
@@ -70,6 +77,25 @@ export async function mailPage(user, opts = {}) {
       <span>العناوين المسموح بها:</span>
       ${allow.map((a) => `<code dir="ltr" style="background:var(--surface2,#f1f5f9);border:1px solid var(--line);border-radius:6px;padding:.1rem .4rem;font-size:11.5px">${esc(a)}</code>`).join('')}
       <span>· وما عداها يُحجب ويُسجَّل «حُجبت» في السجل أسفل الصفحة.</span>
+    </div>` : ''}
+    ${/* ── القناة الاحتياطية ──
+          البريد بابُ المنصة الوحيد (الدخول برمزٍ بريدي)، فقناةٌ ثانيةٌ بمزوّدٍ ونطاقٍ آخرين
+          هي الفارق بين انقطاعٍ ساعة وانقطاعٍ يوم. وحالتها تُقال هنا لأن غيابها لا يظهر في
+          أي مكانٍ آخر: كل شيء يبدو سليماً حتى تسقط الأولى. */''}
+    ${smtpOn ? `<div style="flex:1 0 100%;display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;padding-top:.5rem;border-top:1px dashed var(--line)">
+      <span style="font-weight:700;font-size:var(--fs-meta)">القناة الاحتياطية</span>
+      ${fbReady ? pill(`جاهزة · تُرسَل من ${esc(fbAddr)}`, 'green') : pill('غير مضبوطة', 'amber')}
+      <span style="font-size:var(--fs-meta);color:var(--muted)">${fbReady
+        ? 'تُجرَّب تلقائياً حين تُخفق الأصلية، ويُكتب ذلك في سجل الرسالة.'
+        : 'لا بديل اليوم: إن سكتت القناة الأصلية توقّف الدخول إلى المنصة كلها.'}</span>
+    </div>` : ''}
+    ${/* رسالة تجربة إلى عنوان القارئ نفسه — لا حقل مستقبِل، فلا تصلح لإرسال شيءٍ لأحد.
+          وبها يُختبر البديل بلا تعطيل الأصلية على بيئةٍ يعمل عليها الناس. */''}
+    ${smtpOn && canTest ? `<div style="flex:1 0 100%;display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;padding-top:.5rem;border-top:1px dashed var(--line)">
+      <span style="font-weight:700;font-size:var(--fs-meta)">تحقّق</span>
+      <button class="btn btn-sm" data-action="mail-test" data-channel="primary">جرّب الأصلية</button>
+      <button class="btn btn-sm" data-action="mail-test" data-channel="fallback"${fbReady ? '' : ' disabled title="اضبط القناة الاحتياطية أولاً"'}>جرّب الاحتياطية</button>
+      <span style="font-size:var(--fs-meta);color:var(--muted)">تصل إلى عنوان حسابك أنت، والنتيجة تُقيَّد في السجل أسفل الصفحة.</span>
     </div>` : ''}
   </div>`);
 
