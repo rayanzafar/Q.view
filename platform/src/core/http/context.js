@@ -1,5 +1,6 @@
 // Per-request context: resolves the session → user with scope sets used by RBAC.
 import { get, all } from '../db/index.js';
+import { currentScope } from '../obs/reqctx.js';
 import { config } from '../config.js';
 import { unauthorized, forbidden } from './errors.js';
 import { can } from '../rbac/index.js';
@@ -130,6 +131,10 @@ export function attachContext() {
         }
       }
       req.ctx = { user, ip: req.ip, sessionId: sid };
+      // والسياق المحيط يُستكمل هنا: بُذر قبل حلّ الجلسة فلم يكن يعرف صاحبه بعد. المخزن
+      // قابلٌ للتعديل عمداً لهذا السبب وحده.
+      const scope = currentScope();
+      if (scope) { scope.user = user?.username || null; scope.role = user?.role_id || null; }
       next();
     } catch (e) { next(e); }
   };

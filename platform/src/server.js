@@ -11,7 +11,8 @@ import { attachContext } from './core/http/context.js';
 import { csrf } from './core/http/csrf.js';
 import { securityHeaders, loginLimiter, apiLimiter, otpEmailLimiter, otpIpLimiter, otpVerifyLimiter } from './core/http/security.js';
 import { errorHandler } from './core/http/errors.js';
-import { logError } from './core/obs/log.js';
+import { logError, writeFatalSync, trimStack } from './core/obs/log.js';
+import { requestScope, currentScope } from './core/obs/reqctx.js';
 import { authRouter } from './modules/auth.routes.js';
 import { apiRouter } from './modules/api.routes.js';
 import { aiRouter } from './modules/ai.routes.js';
@@ -45,6 +46,10 @@ export async function createApp() {
   // للتخزين ساعةً في الإنتاج**. ووسيطٌ مشترك يخزّن ذلك يثبّت رمز حمايةٍ واحداً على كل
   // زائرٍ خلفه، ورمزُ الحماية هنا «إرسالٌ مزدوج» — أي أن معرفته تُبطله.
   app.use('/static', express.static(resolve(ROOT, 'src/web/public'), { maxAge: config.env === 'production' ? '1h' : 0 }));
+  // ── سياق الطلب: بعد الملفات الساكنة وقبل كل شيء يمكن لإنسان أن يعثر فيه ──
+  // الملفات الساكنة أكثر مرور المنصة وأقلّه إثارةً للاهتمام، ولا تقرأ سياقاً — فلا تدفع
+  // إطاراً لكل ملف نمط. وما بعدها كله داخل السياق: الحماية والصحة والجاهزية والصفحات.
+  app.use(requestScope());
   app.use(csrf());
   // ── وبقية المسارات العامة **قبل** حلّ الجلسة ──────────────────────────────────
   // `attachContext` يحلّ الجلسة والمستخدم ونطاقه (ستة استعلامات) لكل طلبٍ يمرّ به — وكان
@@ -81,8 +86,19 @@ export async function createApp() {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  process.on('uncaughtException', (e) => { console.error('!! uncaughtException:', e?.stack || e); process.exit(1); });
-  process.on('unhandledRejection', (e) => { console.error('!! unhandledRejection:', e?.stack || e); });
+  // الكتابة إلى أنبوبٍ لا تزامنية على لينكس، و`process.exit` بعدها مباشرةً يقطع ما لم
+  // يُنفَذ — فأهمّ سطرٍ في المنصة قد يضيع. النداء المتزامن يصل قبل الخروج.
+  process.on('uncaughtException', (e) => {
+    writeFatalSync('uncaught_exception', { err_kind: e?.name || null, err_msg: String(e?.message || e).slice(0, 300), stack: trimStack(e) });
+    console.error('!! uncaughtException:', e?.stack || e);
+    process.exit(1);
+  });
+  // والرفض غير الملتقَط **لا يُخرج العملية** (قرار موثَّق): تبقى تعمل في نصف حالٍ مجهول.
+  // فهو أولى ما يُلتقط بعد أخطاء الطلبات — وكان يكتب سطراً واحداً لا يقرؤه أحد.
+  process.on('unhandledRejection', (e) => {
+    logError('unhandled_rejection', { err_kind: e?.name || null, err_msg: String(e?.message || e).slice(0, 300), stack: trimStack(e) });
+    console.error('!! unhandledRejection:', e?.stack || e);
+  });
   let app;
   try {
     console.log('▶ boot: createApp…');

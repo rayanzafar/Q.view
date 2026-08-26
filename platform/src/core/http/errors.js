@@ -1,3 +1,5 @@
+import { logError, trimStack } from '../obs/log.js';
+import { currentScope, maskPath } from '../obs/reqctx.js';
 // Uniform error envelope + typed HTTP errors.
 export class HttpError extends Error {
   constructor(status, code, message, details) {
@@ -39,7 +41,30 @@ export function errorHandler() {
   // eslint-disable-next-line no-unused-vars
   return (err, req, res, next) => {
     const status = err.status || 500;
-    if (status >= 500) console.error('[error]', err);
+    // ── نقطة الالتقاط الوحيدة ──
+    // كل خطأ في كل مسار يمرّ من هنا: ستة عشر غلافاً للمسارات، وحوارس الجلسة، وصفحات العرض،
+    // ووسائط Express نفسها. مُسجَّلٌ مرةً واحدة، ولا يُلتقط في أي موضعٍ آخر.
+    //
+    // والتمييز **بالنوع لا بالرقم**: `badRequest`/`forbidden` منتَجٌ يعمل — رسالةٌ عربية
+    // مقصودة، لا عطب — والتقاطها يدفن الإشارة تحت ضجيج. وفي المقابل `TypeError` زُيِّن
+    // بالرقم 400 هو عطبٌ حقيقي كانت قاعدة «500 فأكثر» تُسقطه.
+    // ولا `await` هنا أبداً: انتظارُ كتابةٍ في قاعدةٍ هي نفسها ما تعطّل يُحوّل فشلاً سريعاً
+    // إلى تعليقٍ يخنق مسبار الجاهزية — والفشل السريع ميزةٌ وقت العطل.
+    if (!(err instanceof HttpError) || status >= 500) {
+      const s = currentScope();
+      logError('http_error', {
+        req_id: s?.id || null,
+        method: req.method || null,
+        path: s?.path || maskPath(req.originalUrl || ''),
+        status,
+        user: s?.user || req.ctx?.user?.username || null,
+        role: s?.role || req.ctx?.user?.role_id || null,
+        err_kind: err?.name || null,
+        err_code: err?.code || null,
+        err_msg: String(err?.message || err).slice(0, 300),
+        stack: trimStack(err),
+      });
+    }
     // Never leak internal 500 details to the client; typed <500 errors carry safe Arabic messages.
     const safeMessage = status >= 500 ? 'حدث خطأ غير متوقع، تم تسجيله. حاول مجددًا.' : (err.message || 'طلب غير صالح');
     const wantsHtml = !req.originalUrl.startsWith('/api') && (req.accepts?.(['html', 'json']) === 'html' || (req.get?.('accept') || '').includes('text/html'));
