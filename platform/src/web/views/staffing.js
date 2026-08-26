@@ -89,9 +89,16 @@ export async function staffingPage(user, opts = {}) {
   const avg = live
     ? (summary.capacityFte ? Math.round((summary.assignedNowFte / summary.capacityFte) * 100) : 0)
     : (activeR.length ? Math.round(activeR.reduce((a, e) => a + N(e.annualUtil), 0) / activeR.length) : 0);
-  const benchList = live ? activeR.filter((e) => N(e.currentUtil) === 0) : activeR.filter((e) => N(e.staffedMonths) === 0);
+  // «على الرف» و«لم يُسجَّل تسكينه» ليسا حالةً واحدة، وخلطُهما يجعل المنصة تدّعي عن أكثر
+  // موظفي الشركة أنهم فارغون بينما الحقيقة أن أحداً لم يُدخل تسكينهم بعد. الفارق في الصفّ
+  // نفسه: `projectCount === 0` يعني لا سجلَّ تسكينٍ أصلاً لهذه السنة، لا صفراً مقيساً.
+  const unset = (e) => N(e.projectCount) === 0;
+  const benchAll = live ? activeR.filter((e) => N(e.currentUtil) === 0) : activeR.filter((e) => N(e.staffedMonths) === 0);
+  const unsetList = benchAll.filter(unset);
+  const benchList = benchAll.filter((e) => !unset(e));
+  const recorded = activeR.length - unsetList.length;
   const overList = live ? activeR.filter((e) => N(e.currentUtil) > UTIL_BANDS.OVER_ABOVE) : activeR.filter((e) => N(e.peak) > UTIL_BANDS.OVER_ABOVE);
-  const benchVal = live ? summary.benchNow : benchList.length;
+  const benchVal = benchList.length;
   const overVal = live ? summary.overloadedNow : overList.length;
   const gapsSub = gaps.activeMonths
     ? `من ${countAr(gaps.activeMonths, { one: 'شهر نشط واحد', two: 'شهرين نشطين', few: 'أشهر نشطة', many: 'شهراً نشطاً' })} · أشهر ${year} الماضية`
@@ -103,10 +110,15 @@ export async function staffingPage(user, opts = {}) {
       ${sub ? `<div class="s">${sub}</div>` : ''}</div>`;
   const band = `<div class="kpi4">
     ${tile(live ? 'متوسط الإشغال' : `متوسط إشغال ${year}`, avg + '%',
-    live ? `${fte(summary.assignedNowFte)} من ${summary.capacityFte} طاقة كاملة · ${esc(curName)}` : 'متوسط السنة للموظفين النشطين',
+    // والأساس يُعلَن: المتوسط يقسم على **كل** نشط، ومن لم يُسجَّل تسكينه يدخله صفراً. لا نغيّر
+    // المقام (فذلك يرفع الرقم بلا عمل جديد) — نقول للقارئ على كم سجلٍّ حقيقي بُني الرقم.
+    `${live ? `${fte(summary.assignedNowFte)} من ${summary.capacityFte} طاقة كاملة · ${esc(curName)}` : 'متوسط السنة للموظفين النشطين'}`
+    + (unsetList.length ? ` · مبنيٌّ على <b class="tnum">${recorded}</b> من <b class="tnum">${activeR.length}</b> سُجِّل تسكينهم` : ''),
     { tone: uTone(avg) })}
     ${tile(live ? G.onBench : 'بلا تسكين طوال السنة', benchVal,
-    live ? `بلا أي بند في ${esc(curName)}` : `لا شهر مُسكَّن واحد في ${year}`,
+    unsetList.length
+      ? `${live ? `بلا أي بند في ${esc(curName)}` : `لا شهر مُسكَّن واحد في ${year}`} — و<b class="tnum">${unsetList.length}</b> لم يُسجَّل تسكينهم بعد`
+      : live ? `بلا أي بند في ${esc(curName)}` : `لا شهر مُسكَّن واحد في ${year}`,
     { dd: 'bench', tone: benchVal ? 'var(--amber)' : 'var(--green)' })}
     ${tile(G.overloaded, overVal,
     live ? `تجاوز ${UTIL_BANDS.OVER_ABOVE}% في ${esc(curName)}` : `ذروة فوق ${UTIL_BANDS.OVER_ABOVE}% خلال ${year}`,
@@ -129,7 +141,11 @@ export async function staffingPage(user, opts = {}) {
   const dds = [
     ddWrap('bench', live ? G.onBench : 'بلا تسكين طوال السنة',
       live ? `${esc(curName)} — بلا أي بند تسكين أو فرصة` : `سنة ${year} — لا شهر مُسكَّن واحد`,
-      ddRows(benchList.map((e) => nameRow(e, '0%')))),
+      // والقائمتان مفصولتان: «صفر مقيس» فوق، و«لم يُسجَّل بعد» تحته بعنوانه — لأن العلاج
+      // مختلف: الأول يحتاج عملاً يُسنَد، والثاني يحتاج مَن يُدخل تسكينه أصلاً.
+      ddRows(benchList.map((e) => nameRow(e, '0%')))
+      + (unsetList.length ? `<div class="dd-sub">لم يُسجَّل تسكينهم بعد — الصفر هنا غيابُ بيانات لا فراغُ طاقة</div>`
+        + ddRows(unsetList.map((e) => nameRow(e, 'لم يُسجَّل'))) : '')),
     ddWrap('over', G.overloaded,
       live ? `${esc(curName)} — تجاوز ${UTIL_BANDS.OVER_ABOVE}% من الطاقة` : `ذروة السنة فوق ${UTIL_BANDS.OVER_ABOVE}%`,
       ddRows(overList.map((e) => nameRow(e, (live ? N(e.currentUtil) : N(e.peak)) + '%')))),
@@ -166,7 +182,7 @@ export async function staffingPage(user, opts = {}) {
     ${loadProjects.length ? `<optgroup label="مشروع">${loadProjects.map(([pid, nm]) => `<option value="p:${esc(pid)}">${esc(nm)}</option>`).join('')}</optgroup>` : ''}
   </select>`;
   const statusSeg = `<div class="seg" id="mx-status" role="group" aria-label="ترشيح بالحالة">
-    ${[['all', 'الكل'], ['bench', 'غير مسكن'], ['avail', 'لديه سعة'], ['ok', 'ضمن الحد'], ['over', 'فوق الطاقة'], ['gap', 'فجوة تاريخية']]
+    ${[['all', 'الكل'], ['unset', 'بلا تسكين مسجَّل'], ['bench', 'غير مسكن'], ['avail', 'لديه سعة'], ['ok', 'ضمن الحد'], ['over', 'فوق الطاقة'], ['gap', 'فجوة تاريخية']]
     .map(([k, l], i) => `<button type="button" data-status="${k}"${i === 0 ? ' class="on"' : ''}>${l}</button>`).join('')}
   </div>`;
   const toolbar = `<div class="toolbar" style="margin-bottom:.8rem">
@@ -191,6 +207,8 @@ export async function staffingPage(user, opts = {}) {
   const countsByEmp = Object.fromEntries(roster.map((e) => [e.id, countsOf(e)]));
   const statusOf = (e) => {
     if (e.active === 0) return 'off';
+    // لا سجلَّ تسكينٍ أصلاً ⇒ حالةٌ ثالثة لا «رف». الرفُّ قياسٌ يقول «فارغ»، وهذا غيابُ قياس.
+    if (unset(e)) return 'unset';
     if (live) {
       const u = N(e.currentUtil);
       if (u === 0) return 'bench';

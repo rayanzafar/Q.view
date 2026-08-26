@@ -142,7 +142,7 @@
     if (!document.getElementById('mx')) return;
     const p = new URLSearchParams(location.search);
     const st = p.get('status') || 'all';
-    if (['all', 'bench', 'avail', 'ok', 'over', 'gap'].indexOf(st) !== -1) flt.status = st;
+    if (['all', 'unset', 'bench', 'avail', 'ok', 'over', 'gap'].indexOf(st) !== -1) flt.status = st;
     flt.target = p.get('target') || '';
     flt.q = p.get('q') || '';
     const q = document.getElementById('staff-q');
