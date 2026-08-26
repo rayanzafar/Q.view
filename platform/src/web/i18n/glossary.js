@@ -493,7 +493,7 @@ export const RESOURCE_AR = {
   opp_team: 'فريق فرصة', opportunity: 'فرصة', project: 'مشروع', proposal: 'عرض',
   report: 'تقرير', report_schedule: 'جدولة تقرير', revenue_line: 'بند إيراد', risk: 'خطر',
   saved_view: 'عرض محفوظ', sector: 'قطاع', session: 'جلسة دخول', task: 'مهمة',
-  timesheet: 'سجل وقت', unit: 'وحدة',
+  timesheet: 'سجل وقت', unit: 'وحدة', error_event: 'عطل',
 };
 export const resourceLabel = (r) => RESOURCE_AR[String(r || '').toLowerCase()] || 'سجل';
 
@@ -545,6 +545,47 @@ export const MAIL_EVENT_AR = {
   previewed: 'عُوينت ولم تُرسل', blocked: 'حُجبت — عنوان غير مسموح',
 };
 export const mailEventLabel = (e) => MAIL_EVENT_AR[String(e || '').toLowerCase()] || 'حدث بريد';
+
+// ── أعطال المنصة، بالعربية ──
+// القاعدة القاطعة: **نصُّ العطب الخام وأثرُه لا يبلغان الشاشة أبداً.** والحارس الفعلي هنا
+// ليس فاحص المعجم (يقرأ النصوص الثابتة وحدها فلا يرى قيمةً محقونة) بل مسحُ ما بعد النشر:
+// يقرأ **النصّ المعروض** بحثاً عن كلماتٍ محظورة، فأولُ «Cannot read properties of undefined»
+// يُحمّر النشرة. ولذلك يُترجَم كلُّ عطبٍ إلى عبارةٍ عربية من جدول، وما لا يُعرف يسقط إلى
+// عبارةٍ عامة — لا إلى قيمته الخام. نفس عرف `workKindLabel`.
+const FAULT_AR = {
+  TypeError: 'قيمة غير متوقَّعة أثناء العرض',
+  ReferenceError: 'استدعاء لشيء غير موجود',
+  RangeError: 'قيمة خارج المدى المسموح',
+  SyntaxError: 'صيغة غير مقروءة في البيانات',
+  '23505': 'محاولة تكرار سجل موجود',
+  '23503': 'ارتباط بسجل غير موجود',
+  '23502': 'حقل مطلوب تُرك فارغاً',
+  '42P01': 'جدول مفقود — ترحيلة لم تُطبَّق',
+  '57P01': 'تعذّر الوصول إلى قاعدة البيانات',
+  ECONNREFUSED: 'تعذّر الوصول إلى قاعدة البيانات',
+  ETIMEDOUT: 'انقضت المهلة قبل الاستجابة',
+  ENOTFOUND: 'تعذّر العثور على الخادم المطلوب',
+};
+export const faultLabel = (row) => FAULT_AR[String(row?.err_code || '')]
+  || FAULT_AR[String(row?.err_kind || '')] || 'عطل غير مصنَّف';
+
+// موضعُ العطب: مسارٌ مقنَّع أو اسمُ مهمّة — ويُترجَم اسمُ المهمّة لا يُعرض كما هو.
+const FAULT_JOB_AR = {
+  fireDueSchedules: 'إطلاق التقارير المجدولة',
+  sweepApprovalMail: 'بريد الاعتمادات',
+  processQueue: 'إرسال البريد المنتظِر',
+  purgeExpiredCodes: 'كنس رموز الدخول',
+  purgeExpiredSessions: 'كنس الجلسات',
+  purgeFaults: 'كنس سجل الأعطال',
+  errorDigest: 'تنبيه الأعطال',
+  unhandledRejection: 'عملية غير مكتملة',
+};
+export const faultSurfaceLabel = (row) => FAULT_JOB_AR[String(row?.source || '')]
+  || (row?.kind === 'http' ? String(row?.source || 'صفحة غير معروفة') : 'موضع غير معروف');
+
+// نوعُ العطب بلغةٍ تقول أين وقع لا ما اسمه التقني.
+export const FAULT_KIND_AR = { http: 'أثناء طلب من المستخدم', job: 'مهمّة تعمل في الخلفية', rejection: 'عملية لم تكتمل' };
+export const faultKindLabel = (k) => FAULT_KIND_AR[String(k || '')] || 'غير محدَّد';
 
 // مصطلحات محظورة في أي نص يظهر للمستخدم (تُفحص آلياً في scripts/check-glossary.mjs).
 // حرّاس الفحص يتجاهلون أسماء المنتجات المسموحة (Excel) والكود غير المعروض.

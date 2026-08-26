@@ -46,7 +46,7 @@ export const ROLES = [
 // «صفحتي» مفتوحة للجميع كـ«دليلي» — بلا بوابة لأن كل بياناتها مقيَّدة بصاحب الحساب. ووجودها
 // هنا هو ما يُخضِعها للمسح الحيّ ولفحص التسرّب: صفحة الهبوط لكل مستخدم أولى الصفحات بالفحص.
 export const PAGES = ['home', 'ceo', 'portfolio', 'sector', 'opportunities', 'my-opportunities', 'projects',
-  'clients', 'tasks', 'timesheet', 'approvals', 'team', 'staffing', 'imports', 'users', 'audit', 'reports', 'org', 'finance', 'mail',
+  'clients', 'tasks', 'timesheet', 'approvals', 'team', 'staffing', 'imports', 'users', 'audit', 'reports', 'org', 'finance', 'mail', 'ops',
   'guide'];
 
 // Roles whose service guards admit them to the people/org surfaces: staffingRoster() and orgTree()

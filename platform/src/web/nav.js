@@ -43,6 +43,7 @@ export const NAV_ITEMS = [
   { key: 'org', ar: 'الهيكل التنظيمي', ic: 'sector', group: 'admin' },
   { key: 'users', ar: 'المستخدمون والصلاحيات', ic: 'users', group: 'admin' },
   { key: 'audit', ar: 'سجل التدقيق', ic: 'audit', group: 'admin' },
+  { key: 'ops', ar: 'صحة المنصة', ic: 'audit', group: 'admin' },
 ];
 
 export function pageAllowed(user, key) {

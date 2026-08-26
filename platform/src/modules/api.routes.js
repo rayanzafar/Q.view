@@ -13,6 +13,7 @@ import * as wf from './workflow/engine.js';
 import { pendingApprovalsFor } from './workflow/inbox.js';
 import { setApprovalMailPolicy } from './workflow/approval-notify.js';
 import { sendChannelTest } from '../core/mail/selftest.js';
+import { muteFaultFor } from '../core/obs/admin.js';
 import * as notif from './notifications/notify.js';
 import * as org from './org/org.js';
 import * as finance from './finance/finance.js';
@@ -142,6 +143,8 @@ apiRouter.get('/approvals/pending-count', h(async (req) => ({ n: (await pendingA
 apiRouter.post('/mail/approval-policy', h((req) => setApprovalMailPolicy(req.ctx, req.body || {})));
 // رسالة تجربة لقناةٍ بعينها — إلى عنوان صاحب الطلب وحده (لا مستقبِل في الجسم)، ولمدير النظام.
 apiRouter.post('/mail/test', h((req) => sendChannelTest(req.ctx, req.body || {})));
+// إسكاتُ عطلٍ في «صحة المنصة» — لمدير النظام وحده (الحارس في الخدمة).
+apiRouter.post('/ops/fault/:fp/mute', h((req) => muteFaultFor(req.ctx, req.params.fp, req.body?.muted)));
 apiRouter.post('/approvals', h((req) => wf.submitForApproval(req.ctx, req.body)));
 apiRouter.post('/approvals/:id/act', h((req) => wf.actOnApproval(req.ctx, req.params.id, req.body.action, req.body.comment)));
 

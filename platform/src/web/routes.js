@@ -221,7 +221,7 @@ const PAGES = {
   ceo: P.ceoPage, portfolio: P.portfolioPage, sector: P.sectorPage, opportunities: P.opportunitiesPage,
   'my-opportunities': P.myOpportunitiesPage,
   projects: P.projectsPage, tasks: P.tasksPage, timesheet: P.timesheetPage, approvals: P.approvalsPage,
-  team: P.teamPage, staffing: P.staffingPage, users: P.usersPage, audit: P.auditPage, reports: P.reportsPage, org: P.orgTreePage,
+  team: P.teamPage, staffing: P.staffingPage, users: P.usersPage, audit: P.auditPage, ops: P.opsPage, reports: P.reportsPage, org: P.orgTreePage,
   finance: P.financePage, mail: P.mailPage, clients: P.clientsPage, imports: P.importsPage,
   guide: P.guidePage,
 };

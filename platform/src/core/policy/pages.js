@@ -87,4 +87,6 @@ export const PAGE_ACCESS = {
   org: (u) => u.role_id === 'admin' || can(u, 'create', 'sector') || can(u, 'read', 'employee'),
   users: (u) => u.role_id === 'admin',
   audit: (u) => u.role_id === 'admin',
+  // أعطال المنصة داخليّة: ليست سطحاً لمكتب الرئيس، والتنبيه البريدي هو ما يخدم غيره.
+  ops: (u) => u.role_id === 'admin',
 };

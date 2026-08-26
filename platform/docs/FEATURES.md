@@ -22,6 +22,7 @@ One row per key in the `PAGES` map (`src/web/routes.js`). Gate = `PAGE_ACCESS` (
 | `staffing` | التسكين | Staffing Workspace (v5.26): flat sticky Employee×Month matrix (state-only tones from `UTIL_BANDS`, cell = total% + item count), 4 KPI tiles incl. historical gaps (`staffing-gaps.js`, employee-month unit, current sector attribution), filters (year finally honored, dept narrows-only, target/status/search — `#staff-q` tour anchor kept), cell drawer (per-target month edit + add this-month/multi-month + over-110 warn-only), employee drawer (target×month grid, copy month→range, one atomic save), multi-select + preview → atomic `POST /staffing/bulk`, «تسكين جديد» modal starting from the REAL target types (project + the 3 owner work buckets) | `can(u,'read','employee')` | src/web/views/staffing.js (re-exported via views/people.js) | pages/staffing.js | live |
 | `users` | المستخدمون والصلاحيات | User invites (OTP), role/scope edits, deactivate, login history, department grants | `u.role_id === 'admin'` | src/web/views/govern.js | pages/identity.js | live |
 | `audit` | سجل التدقيق | Audit log browser (Arabic-rendered detail keys) | `u.role_id === 'admin'` | src/web/views/govern.js | — | live |
+| `ops` | صحة المنصة | Platform-health screen (v5.56): distinct faults grouped by fingerprint — what happened, where, how many times, and the seniority of whoever hit it; 8-hex short code for pulling the full stack out of the host log; per-group mute (POST /api/ops/fault/:fp/mute, admin-only, audited — mute hides nothing, it only dims the row and takes it out of the future digest). Raw message/stack never reach the page (Arabic labels only, `glossary.js`) | `u.role_id === 'admin'` | src/web/views/ops.js | pages/ops.js | live |
 | `reports` | التقارير والبريد | Period reports (week/month/quarter, 6 lenses) with snapshots/compare/issue/print + email schedule CRUD + test-send | `can(u,'read','report')` | src/web/views/govern.js (`reportsPage`) | pages/reports-period.js | live |
 | `org` | الهيكل التنظيمي | Org tree (sector→department→unit→employee), org-health card, unassigned-work panel, bulk assign/move sub-screens | admin OR `can(u,'create','sector')` OR `can(u,'read','employee')` | src/web/views/org.js | pages/org-tree.js | live |
 | `finance` | المالية والعقود | Company finance screen (bridge, contracts, invoices) — data still flows to every other screen | `() => false` | src/web/views/finance.js (`financePage`) | — | off by owner decision |
@@ -109,6 +110,7 @@ One row per file in `migrations/` (applied in order by `scripts/migrate.js`, rec
 | 033 | 033_document_blob.sql | `document_blob` (document_id PK/FK, content BLOB→BYTEA, mime, sha256) — uploaded file bytes live in the DB because the container FS is wiped on every deploy (ADR-0007) | real file upload for opportunity documents (v5.24) |
 | 034 | 034_project_departments.sql | `project_department` (composite PK project×department + dept index) — the literal twin of 026 for projects: partner departments see and work the project, the money stays on the responsible column (ADR-0008) | shared bus-tracking projects across two departments (v5.27) |
 | 035 | 035_session_sliding.sql | `session.last_seen_at` (write throttle for the rolling touch, and a real liveness stamp for the admin session list) + `ix_session_expiry` (the hourly purge reads it; the table had never been swept) + backfill of `last_seen_at` from `created_at` | sliding sessions with a 30-day absolute cap (ADR-0012) |
+| 036 | 036_error_event.sql | `error_event` — one row per distinct fault (fingerprint PK, `hits`, `first_at`/`last_at`, `top_role_rank`, `digestable`, `notified_at`/`notified_hits`, `muted_at`) + `ix_error_last_at`/`ix_error_notified`. All `CREATE … IF NOT EXISTS`; hard-delete not soft-delete (a retention sweep whose rows never leave defeats itself) | error capture + «صحة المنصة» (v5.56) |
 | 036 | `036_error_event.sql` | `error_event` — صفٌّ لكل عطبٍ مميَّز (بصمة، عدّ وقعات، أول/آخر ظهور، رتبة من أصابه، وسم «قابل للتنبيه» الذي يقطع حلقة البريد، وإسكات). حذفٌ قاطع لا ناعم: سياسة الاحتفاظ لا تحتملها الأعطال | مراقبة المنصة — التقاط الأعطال وصفحة «صحة المنصة» |
 
 ## Modules
@@ -156,7 +158,8 @@ One row per directory in `src/modules/`. Root-level files in `src/modules/` are 
 | src/core/guide | Guide/tour content |
 | src/core/i18n | Shared vocabulary helpers (plural, stages, thresholds, time) |
 | src/core/util | `id(prefix)`, `nowIso()`, halalas money helpers |
-| src/core/config.js | Env config + `assertProdSecrets` boot gate |
+| src/core/obs | Observability: zero-dependency JSON line logger (`log.js`, imports only `node:`), request/job scope via AsyncLocalStorage (`reqctx.js`), fault fingerprinting (`fingerprint.js`), seniority + digest eligibility (`severity.js`), non-throwing coalesced capture (`capture.js`), reads + retention sweep (`store.js`) |
+| src/core/config.js | Env config + `assertProdSecrets` boot gate, and `assertProdDatabase()` — production refuses to boot on the embedded file database (v5.55) |
 
 ## Detail routes & cross-cutting features
 
