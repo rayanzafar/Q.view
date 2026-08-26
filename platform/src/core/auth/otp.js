@@ -123,6 +123,9 @@ export async function requestCode({ email, ip, purpose = PURPOSE.SIGNIN, inviter
     event = res.delivery;
     if (res.delivery === DELIVERY.BLOCKED) failure = res.reason || 'العنوان خارج قائمة العناوين المسموح بها في هذه البيئة';
     else if (res.delivery === DELIVERY.PREVIEWED) failure = 'قناة المعاينة مشغّلة — حُفظت الرسالة ولم تغادر الخادم';
+    // وصلت لكن عبر القناة الاحتياطية ⇒ الأصلية معطوبة. يُكتب في الأثر نفسه كي يظهر في مركز
+    // البريد بجوار الرسالة، لا في سجل خادمٍ لا يفتحه أحد.
+    else if (res.note) failure = res.note;
   } catch (e) {
     failure = String(e.message).slice(0, 200);
   }

@@ -302,9 +302,12 @@ export async function processQueue(limit = 20) {
       // الحالة تصف ما جرى فعلاً: غادرت، أم عُوينت على القرص، أم حجبها حارس المستقبِلين.
       const status = res.delivery === DELIVERY.SENT ? 'SENT'
         : res.delivery === DELIVERY.BLOCKED ? 'BLOCKED' : 'PREVIEWED';
+      // ولجوءُ القناة الاحتياطية يُكتب في الأثر: نجاحٌ عبر البديل يعني أن الأصلية معطوبة،
+      // وبلا هذا السطر تعمل المنصة شهراً على قناةٍ ثانية ولا أحد يدري أن الأولى ساقطة.
       const detail = res.delivery === DELIVERY.BLOCKED
         ? `${res.reason} — ${(res.blocked || []).length} مستقبِلاً`
-        : (res.blocked || []).length ? `حُجب ${res.blocked.length} مستقبِلاً خارج قائمة السماح` : null;
+        : res.note ? res.note
+          : (res.blocked || []).length ? `حُجب ${res.blocked.length} مستقبِلاً خارج قائمة السماح` : null;
       await run('UPDATE email_queue SET status=?, sent_at=? WHERE id=?', [status, nowIso(), q.id]);
       await insert('email_log', { id: id('el'), queue_id: q.id, event: status.toLowerCase(), detail, at: nowIso() });
       if (status === 'SENT') sent++; else skipped++;

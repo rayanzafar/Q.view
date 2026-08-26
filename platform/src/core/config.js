@@ -75,6 +75,20 @@ export const config = {
     // تعمل بلا أن يُخطئ أحد ظاهرياً. فلا افتراض — والإقلاع يتوقف إن نُسي (assertProdSecrets).
     from: process.env.MAIL_FROM || null,
   },
+  // ── قناة احتياطية ──
+  // البريد هو البابُ الوحيد للمنصة: الدخول برمزٍ يصل بالبريد، والدعوة كذلك. فإن سكتت القناة
+  // الأولى لم يدخل أحد. ولذلك قناةٌ ثانية بمزوّدٍ **ونطاقٍ** مختلفين — لا نسخةٌ ثانية من
+  // الأولى: عطبُ النطاق الأول (SPF/DMARC، حظرُ مزوّد، انقطاع) لا يُصلحه خادمٌ ثانٍ على النطاق
+  // نفسه. ولها مُرسِلها الخاص لزاماً: المزوّد الثاني لا يأذن بالإرسال باسم نطاق الأول، فتُرفض
+  // الرسالة أو تسقط في المهملات. فراغُ الإعداد = لا قناة احتياطية، وهو وضعٌ صالحٌ ومُعلَن.
+  smtpFallback: {
+    host: process.env.SMTP_FALLBACK_HOST || null,
+    port: Number(process.env.SMTP_FALLBACK_PORT || 587),
+    user: process.env.SMTP_FALLBACK_USER || null,
+    pass: process.env.SMTP_FALLBACK_PASS || null,
+    from: process.env.SMTP_FALLBACK_FROM || null,
+    secureEnv: process.env.SMTP_FALLBACK_SECURE,
+  },
   platformUrl: process.env.PLATFORM_URL || 'http://127.0.0.1:4000',
   // AI: provider-agnostic; disabled unless a key is present. Governed (preview/audit/scope).
   ai: {

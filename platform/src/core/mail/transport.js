@@ -59,9 +59,41 @@ export async function sendMail({ to, cc, subject, html }) {
         reason: 'كل المستقبِلين خارج قائمة العناوين المسموح بها في هذه البيئة',
       };
     }
-    const { sendViaSmtp } = await import('./smtp.js');
-    const res = await sendViaSmtp({ to: gTo.allowed, cc: gCc.allowed, subject, html });
-    return { ...res, delivery: DELIVERY.SENT, blocked: [...gTo.blocked, ...gCc.blocked] };
+    // ── قناتان: الأصلية ثم الاحتياطية ──
+    // البريد بابُ المنصة الوحيد (الدخول برمزٍ بريدي)، فسكوتُه يعني ألا يدخل أحد. والقناة
+    // الثانية بمزوّدٍ ونطاقٍ مختلفين تُجرَّب **فقط** حين تُخفق الأولى إخفاقاً حقيقياً.
+    // وثلاثة قيود متعمَّدة:
+    //  ① الحجب ليس إخفاقاً: حارس المستقبِلين حكمٌ لا عطل، فلا يُجرَّب عليه بديل (يقع قبل هنا).
+    //  ② لا تُبتلع أخطاء الأولى: إن أخفقت الثانية أيضاً رُفع خطأ الأولى — فهي التي يجب إصلاحها.
+    //  ③ اللجوء إلى البديل **يُقال**: يُكتب في أثر الرسالة ويُطبع في سجل الخادم. قناةٌ احتياطية
+    //    تعمل بصمت شهراً تعني أن الأصلية معطوبة منذ شهرٍ ولا أحد يدري.
+    const { sendViaSmtp, CHANNEL, channelConfig, channelReady } = await import('./smtp.js');
+    const blocked = [...gTo.blocked, ...gCc.blocked];
+    const msg = { to: gTo.allowed, cc: gCc.allowed, subject, html };
+    try {
+      const res = await sendViaSmtp(msg, CHANNEL.PRIMARY);
+      return { ...res, delivery: DELIVERY.SENT, blocked };
+    } catch (primaryErr) {
+      const reason = String(primaryErr?.message || primaryErr).slice(0, 200);
+      if (!channelReady(channelConfig(CHANNEL.FALLBACK))) {
+        console.error('[mail] أخفقت القناة الأصلية ولا قناة احتياطية مُعدَّة:', reason);
+        throw primaryErr;
+      }
+      console.error('[mail] أخفقت القناة الأصلية — التحويل إلى الاحتياطية. السبب:', reason);
+      try {
+        const res = await sendViaSmtp(msg, CHANNEL.FALLBACK);
+        console.error('[mail] غادرت عبر القناة الاحتياطية:', res.from);
+        return {
+          ...res,
+          delivery: DELIVERY.SENT,
+          blocked,
+          note: `أُرسلت عبر القناة الاحتياطية (${res.from}) — القناة الأصلية أخفقت: ${reason}`,
+        };
+      } catch (fallbackErr) {
+        console.error('[mail] وأخفقت الاحتياطية أيضاً:', String(fallbackErr?.message || fallbackErr).slice(0, 200));
+        throw primaryErr;      // خطأ الأولى هو ما يجب إصلاحه، فهو الذي يُرفع
+      }
+    }
   }
   // قناة المعاينة — تكتب على القرص ولا تغادر الجهاز، فحالتها «عُوينت» لا «أُرسلت».
   const dir = resolve(ROOT, 'data/outbox');
