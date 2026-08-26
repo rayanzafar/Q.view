@@ -455,3 +455,25 @@ test('KI-075/078: منجَزةٌ بلا ختم إنجاز تسقط من الصف
   const board = mainOf(await tasksPage(emp, { view: 'board', win: 'all' }));
   assert.ok(!board.includes('منجزة بلا ختم'), 'ظهر عنوانها رغم سقوط صفّها');
 });
+
+// ── KI-076: اللوح يحلّ محل الصفحة، لا يُكدَّس تحتها ───────────────────────────
+// بلاغ المالك حرفياً: «الكانبان في مهام فريقي… لا يحلّ محلّ ما في الصفحة». السبب أن
+// لوح الأشخاص كان مشروطاً بالعدسة وحدها (`who === 'team'`) بلا نظرٍ إلى العرض، فيُرسم
+// كاملاً ثم يُلحق به الكانبان تحته. ولم يكن أيُّ اختبارٍ يجمع العدستين مع العرض.
+test('KI-076: في عرض اللوح يحلّ شريط الخلاصة محل لوح الأشخاص — ولا يجتمعان', async () => {
+  // العلامة هي ترويسة القسم نفسها، لا مجرد العبارة: نصُّ رابط العودة في الشريط يحوي العبارة
+  // ذاتها، فالفحص عليها وحدها يُطابق الشريطَ نفسه ويكذب.
+  const HEAD = '<span class="tk-sec-title">الفريق حسب الإدارة</span>';
+  const list = mainOf(await tasksPage(lead, { who: 'team' }));
+  assert.ok(list.includes(HEAD), 'لوح الأشخاص غائب عن عرض القائمة — موضعه الصحيح');
+
+  const board = mainOf(await tasksPage(lead, { who: 'team', view: 'board' }));
+  assert.ok(board.includes('id="tk-board"'), 'الكانبان غائب عن عرض اللوح');
+  assert.ok(!board.includes(HEAD), 'لوح الأشخاص ما زال مكدَّساً فوق الكانبان — علّة KI-076');
+  assert.ok(board.includes('فريقك:'), 'لا شريط خلاصة يُبقي القارئ على اتجاهه');
+  assert.match(board, /لوح الفريق حسب الإدارة في عرض القائمة/, 'لا طريق عودة إلى لوح الأشخاص');
+
+  const cal = mainOf(await tasksPage(lead, { who: 'team', view: 'calendar' }));
+  assert.ok(!cal.includes(HEAD), 'لوح الأشخاص مكدَّس فوق التقويم أيضاً');
+  assert.ok(cal.includes('cal-days'), 'التقويم غائب');
+});

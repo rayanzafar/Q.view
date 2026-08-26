@@ -963,7 +963,10 @@ export async function tasksPage(user, opts = {}) {
   // على مشروعين. والتجميع بالإدارة لأن المدير يدير إدارةً — وسؤاله اليومي «ما حال هذه
   // الإدارة» لا «من أكثر الناس تأخّراً في الشركة كلها».
   // سنة التسكين تُشتقّ من اليوم نفسه — الصفحة لا تحمل مُرشِّح سنة، فلا مصدر آخر لها.
-  const wl = who === 'team' ? await teamWorkload(user, { year: Number(today.slice(0, 4)), todayDate: today }) : null;
+  // ولا يُستدعى تجميع الأشخاص إلا للعرض الذي يعرضه: كان يُحسب في اللوح والتقويم أيضاً
+  // ثم يُرمى — أثقل استعلام في الصفحة يُدفع ثمنه بلا أن يُقرأ.
+  const wl = who === 'team' && view === 'list'
+    ? await teamWorkload(user, { year: Number(today.slice(0, 4)), todayDate: today }) : null;
   const personCard = (p) => {
     const t = p.tasks;
     const chips = [
@@ -1055,6 +1058,14 @@ export async function tasksPage(user, opts = {}) {
     : `<div class="card"><div class="empty-state">${icon('team')}
         <div class="t">لا أحد ضمن نطاقك بعد</div>
         <div class="s">لا حسابات نشطة في نطاقك الآن. تُضاف الحسابات وتُربط بالموظفين من شاشة المستخدمين والصلاحيات.</div></div></div>`) : '';
+
+  // شريطُ خلاصةٍ يحلّ محل لوح الأشخاص في اللوح والتقويم. لماذا لا يُخفى تماماً: القارئ يفقد
+  // اتجاهه («أين فريقي؟») بثمن سطرٍ واحد. ولماذا لا يبقى اللوح: كان يُكدَّس فوق الكانبان فلا
+  // يحلّ العرضُ محلّ الصفحة أبداً — وهو بلاغ المالك حرفياً. الأرقام من المعدود سلفاً، بلا استعلام.
+  const teamStrip = who === 'team' ? `<div class="wc-beyond">
+    فريقك: <b class="tnum">${openT.length}</b> ${countAr(openT.length, { one: 'مهمة مفتوحة', two: 'مهمتان مفتوحتان', few: 'مهام مفتوحة', many: 'مهمة مفتوحة' })}${overdue.length ? ` · <b class="tnum">${overdue.length}</b> متأخرة` : ''}${blockedCount ? ` · <b class="tnum">${blockedCount}</b> مُعطَّلة` : ''}
+    — <a href="${qp({ view: null })}">لوح الفريق حسب الإدارة في عرض القائمة</a>
+  </div>` : '';
 
   // ── ٩) «الفرص اللي عليّ» — من خدمة الفرص نفسها، لا استعلام مواز ──
   const myOpps = who === 'me' && canReadOpp ? allOpps.filter((o) => o.owner_user_id === user.id) : [];
@@ -1456,7 +1467,7 @@ export async function tasksPage(user, opts = {}) {
     <div class="wc-barfilters">${winChips}${moreChips}</div>
     ${quickAdd}
     ${readOnly ? `<div class="alert info" style="margin-bottom:.8rem">${icon('team')}<span>عرض للاطّلاع على عمل فريقك. تعديل مهام غيرك يتطلب صلاحية إدارية على المهام — اطلبها من مدير النظام.</span></div>` : ''}
-    ${who === 'team' ? teamBoard : ''}
+    ${who === 'team' ? (view === 'list' ? teamBoard : teamStrip) : ''}
     ${fAssignee ? `<div class="wc-beyond">تعرض مهام شخص واحد — <a href="${qp({ assignee: null })}">أعِد كل الفريق</a></div>` : ''}
     ${content}
     ${oppsBlock}
