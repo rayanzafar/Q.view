@@ -35,6 +35,16 @@ async function pgPool() {
     connectionTimeoutMillis: 10000,
     ...(process.env.PGSSL === 'require' ? { ssl: { rejectUnauthorized: false } } : {}),
   });
+  // An idle client killed by the SERVER (Postgres restart, Railway maintenance, an idle-session
+  // timeout) makes node-postgres emit 'error' on the Pool. Unhandled, that is a throw on an
+  // EventEmitter → uncaughtException → process.exit(1) → Railway restart, and Railway stops
+  // restarting after `restartPolicyMaxRetries`. So a routine database restart could take the
+  // platform down for good. Swallowing it here is correct: the pool discards the dead client by
+  // itself and the next acquire reconnects; in-flight queries still reject through their own
+  // call path and surface as a normal error. We log so the event is never silent.
+  _pgPool.on('error', (err) => {
+    console.error('[db] خطأ على اتصالٍ خاملٍ في المجمّع — أُسقط الاتصال وسيُعاد الاتصال عند أول طلب:', err?.message || err);
+  });
   return _pgPool;
 }
 // `?` placeholders → `$1,$2,…` (this app uses ? for bound values only — never inside SQL literals).

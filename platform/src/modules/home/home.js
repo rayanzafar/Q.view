@@ -14,6 +14,8 @@ import { MONTHS_AR, WEEKDAYS_AR, riyadhHour, RIYADH_OFFSET_HOURS } from '../../c
 // «ما ينتظرك» يعدّ ما أُضيف فعلاً: المهمة التي تنتظر اعتماد المدير ليست على طاولة صاحبها بعد،
 // بل على طاولة مديره. وموضعها المعلَّم شاشة «مهامي» وحدها.
 import { approvedTaskSql } from '../pmo/task-approval.js';
+// حالات المخرَج غير المنتهية — من مصدرها الوحيد في وحدة الحوكمة، لا نسخةً ثانية هنا.
+import { DELIVERABLE_OPEN_STATUSES } from '../pmo/governance.js';
 
 const iso = (d) => d.toISOString().slice(0, 10);
 
@@ -182,12 +184,16 @@ export async function myDay(user, opts = {}) {
 
   // المخرجات: موعدها شهر/سنة لا تاريخ يوم — فيُشتقّ آخر يوم في شهرها موعداً تقريبياً،
   // ويُقال ذلك للمستخدم صراحةً («خلال الشهر») بدل ادّعاء يومٍ بعينه.
+  // والحالات تُستورد ولا تُكتب هنا: القائمة المكتوبة يدوياً كانت `('PENDING',…)` وقد أعادت
+  // الترحيلة 017 تسمية PENDING إلى DRAFT، فصار الشرط لا يطابق صفاً واحداً وسقطت كل مخرجات
+  // الموظف من صفحته الأولى بلا خطأ ظاهر (KI-050).
+  const dlvPh = DELIVERABLE_OPEN_STATUSES.map(() => '?').join(',');
   const deliverables = pids.length ? await all(
     `SELECT d.id, d.name_ar, d.month, d.year, d.status, d.phase_name_ar, p.name_ar project_name, p.id project_id
        FROM deliverable d JOIN project p ON p.id = d.project_id
       WHERE d.project_id IN (${ph}) AND d.deleted_at IS NULL
-        AND d.status IN ('PENDING','DELIVERED','REJECTED')
-      ORDER BY d.year, d.month`, pids) : [];
+        AND d.status IN (${dlvPh})
+      ORDER BY d.year, d.month`, [...pids, ...DELIVERABLE_OPEN_STATUSES]) : [];
 
   const withDue = deliverables.map((d) => {
     const y = Number(d.year) || null, m = Number(d.month) || null;

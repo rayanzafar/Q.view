@@ -8,7 +8,7 @@
 // وموعد المخرج يُشتقّ من شهره آخرَ يومٍ فيه لأنه لا يملك تاريخ يوم، وشبكة التقويم تبدأ الأحد.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -56,8 +56,12 @@ before(async () => {
   await db.insert('milestone', { id: 'ms_met', name_ar: 'معلم منتهٍ', project_id: 'p_mine', due_date: day(-9), status: 'MET', created_at: T });
   await db.insert('milestone', { id: 'ms_other', name_ar: 'معلم غيري', project_id: 'p_theirs', due_date: day(3), status: 'PLANNED', created_at: T });
 
-  await db.insert('deliverable', { id: 'dv_mine', name_ar: 'مخرجي', project_id: 'p_mine', month: 8, year: 2026, status: 'PENDING', created_at: T });
-  await db.insert('deliverable', { id: 'dv_other', name_ar: 'مخرج غيري', project_id: 'p_theirs', month: 8, year: 2026, status: 'PENDING', created_at: T });
+  // الحالات هنا من قائمة الحوكمة الحيّة لا من اسمٍ قديم: «PENDING» أُعيدت تسميتها DRAFT في
+  // الترحيلة 017، وبقاؤها في التجهيز هو ما جعل الاختبار يمرّ بينما تسقط المخرجات حياً (KI-050).
+  await db.insert('deliverable', { id: 'dv_mine', name_ar: 'مخرجي', project_id: 'p_mine', month: 8, year: 2026, status: 'DRAFT', created_at: T });
+  await db.insert('deliverable', { id: 'dv_prog', name_ar: 'مخرجي الجاري', project_id: 'p_mine', month: 8, year: 2026, status: 'IN_PROGRESS', created_at: T });
+  await db.insert('deliverable', { id: 'dv_done', name_ar: 'مخرجي المعتمد', project_id: 'p_mine', month: 8, year: 2026, status: 'ACCEPTED', created_at: T });
+  await db.insert('deliverable', { id: 'dv_other', name_ar: 'مخرج غيري', project_id: 'p_theirs', month: 8, year: 2026, status: 'DRAFT', created_at: T });
 
   await db.insert('opportunity', { id: 'o_mine', title_ar: 'فرصتي', client_id: 'c1', sector_id: 'S1', stage_id: 'PROPOSAL', owner_user_id: 'u_me', value_halalas: 500000, created_at: T });
   await db.insert('opportunity', { id: 'o_won', title_ar: 'فرصة مكسوبة', client_id: 'c1', sector_id: 'S1', stage_id: 'WON', owner_user_id: 'u_me', value_halalas: 900000, created_at: T });
@@ -105,6 +109,33 @@ test('موعد المخرج يُشتقّ آخرَ يومٍ في شهره، وي�
   const dv = d.deliverables.find((x) => x.id === 'dv_mine');
   assert.equal(dv.due_date, '2026-08-31', 'موعد المخرج ليس آخر يوم في شهره');
   assert.equal(dv.approx, true, 'عُرض موعد المخرج كأنه يومٌ محدَّد');
+});
+
+// KI-050 — الانحدار: «صفحتي» كانت تُرشِّح المخرجات على حالةٍ أعادت الترحيلة 017 تسميتها،
+// فلا يطابق الشرط صفاً واحداً وتُسقَط كلُّ مخرجات الموظف من أول شاشةٍ يفتحها، بلا خطأ ظاهر.
+// الشرط الصحيح: كلُّ ما لم يُعتمد بعد — أياً كان اسم حالته في القائمة الحيّة.
+test('KI-050: كل مخرَجٍ لم يُعتمد بعد يصل «صفحتي» — والمعتمَد وحده يخرج', async () => {
+  const d = await home.myDay(ME, { today: TODAY });
+  const ids = d.deliverables.map((x) => x.id);
+  assert.ok(ids.includes('dv_mine'), 'مخرَج «مسودة» لم يصل صفحة صاحبه');
+  assert.ok(ids.includes('dv_prog'), 'مخرَج «جارٍ العمل» لم يصل صفحة صاحبه');
+  assert.ok(!ids.includes('dv_done'), 'مخرَج معتمَد ما زال يُعرض كعملٍ منتظر');
+});
+
+// وحارسٌ على المصدر نفسه: القائمة تُشتقّ من حالات الحوكمة ولا تُكتب يدوياً في الشاشة،
+// فإعادةُ تسميةٍ قادمة تُكتشف هنا لا في وجه المستخدم.
+test('KI-050: قائمة «لم يُعتمد» مشتقّة من حالات الحوكمة لا مكتوبةً في الشاشة', async () => {
+  const g = await import('../../src/modules/pmo/governance.js');
+  assert.ok(!g.DELIVERABLE_OPEN_STATUSES.includes('ACCEPTED'), 'المعتمَد داخل قائمة غير المنتهي');
+  assert.ok(!g.DELIVERABLE_OPEN_STATUSES.includes('PENDING'), 'اسمٌ ميّت عاد إلى القائمة');
+  for (const s of g.DELIVERABLE_STATUSES) {
+    if (s === 'ACCEPTED') continue;
+    assert.ok(g.DELIVERABLE_OPEN_STATUSES.includes(s), `حالة حيّة سقطت من القائمة: ${s}`);
+  }
+  // والفحص على الكود وحده — سطور الشرح تذكر الاسم الميّت عمداً لتوثيق العلّة.
+  const code = readFileSync(new URL('../../src/modules/home/home.js', import.meta.url), 'utf8')
+    .split('\n').filter((l) => !l.trimStart().startsWith('//')).join('\n');
+  assert.ok(!code.includes("'PENDING'"), 'عادت حالةٌ مكتوبةً يدوياً في «صفحتي»');
 });
 
 // ── الخاصية الرابعة: الإشغال رقمُ صاحبه وحده ──

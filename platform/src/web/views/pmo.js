@@ -596,6 +596,19 @@ export async function tasksPage(user, opts = {}) {
     const d = new Date(String(t.due_date).slice(0, 10) + 'T00:00:00Z');
     return { text: `<span class="tnum">${d.getUTCDate()}</span> ${MONTHS_AR[d.getUTCMonth()]}`, color: 'var(--muted)', bold: false };
   };
+  // ورديفُ `dueLabel` للمنجَز. الموعد يقول متى **كان** يجب أن تنتهي، وهو سؤالٌ ماتَ لحظةَ
+  // إنجازها: لوحُ المهام كان يطبع «متأخرة N يوماً» على المنجَز ويكبر الرقم كل يوم إلى الأبد،
+  // فتُقرأ المهمة المنجَزة تأنيباً دائماً (KI-075). والتاريخ محفوظٌ أصلاً في `completed_at`.
+  // القريب نسبيّ («أُنجزت أمس») لأنه يُقرأ بلا حساب، والبعيد بتاريخه لأن «منذ ٤٠ يوماً» لا يفيد.
+  const doneLabel = (t) => {
+    const green = 'var(--green)';
+    if (!t.completed_at) return { text: 'أُنجزت', color: green, bold: true, title: 'بلا تاريخ إنجاز مسجَّل' };
+    const n = -dnum(t.completed_at);                       // موجبٌ = مضى منذ الإنجاز
+    if (n <= 0) return { text: 'أُنجزت اليوم', color: green, bold: true, title: '' };
+    if (n === 1) return { text: 'أُنجزت أمس', color: green, bold: true, title: '' };
+    if (n <= 7) return { text: `أُنجزت منذ ${dayWord(n)}`, color: green, bold: false, title: '' };
+    return { text: `أُنجزت ${provDate(t.completed_at)}`, color: green, bold: false, title: '' };
+  };
   const parentOf = (t) => {
     if (t.project_id && t.project_name) return { href: `/app/project/${encodeURIComponent(t.project_id)}`, ic: 'projects', label: esc(t.project_name), kind: 'مشروع' };
     if (t.opportunity_id && t.opportunity_name) return { href: `/app/opportunity/${encodeURIComponent(t.opportunity_id)}`, ic: 'opportunity', label: esc(t.opportunity_name), kind: G.opportunity };
@@ -656,7 +669,7 @@ export async function tasksPage(user, opts = {}) {
   // تعرض «منجز» أصلاً فلا يقع تغيير. الاسم يجعل الاستعادة تعود إلى صفّها هي لا إلى من يليه.
   const taskRow = (t) => {
     const done = isDone(t);
-    const dl = dueLabel(t);
+    const dl = done ? doneLabel(t) : dueLabel(t);
     const pr = TASK_PRIORITY[t.priority] || TASK_PRIORITY.P2;
     return `<div class="tk-row${done ? ' is-done' : ''}" ${dataAttrs(t)}>
       ${readOnly ? '' : `<input type="checkbox" class="tk-sel" id="tk-sel-${esc(t.id)}" name="tk-sel-${esc(t.id)}"
@@ -666,8 +679,7 @@ export async function tasksPage(user, opts = {}) {
       <div class="tk-body">
         <div class="tk-title">${esc(t.title)}</div>
         <div class="tk-meta">
-          ${done ? `<span style="color:var(--green);font-weight:700">أُنجزت${t.completed_at ? ` <span class="tnum">${esc(String(t.completed_at).slice(0, 10))}</span>` : ''}</span>`
-            : `<span style="color:${dl.color}${dl.bold ? ';font-weight:700' : ''}">${dl.text}</span>`}
+          <span style="color:${dl.color}${dl.bold ? ';font-weight:700' : ''}"${dl.title ? ` title="${esc(dl.title)}"` : ''}>${dl.text}</span>
           ${parentChip(t)}
           ${t.category ? `<span class="tk-cat-chip" title="تصنيف المهمة">${esc(taskCategoryLabel(t.category))}</span>` : ''}
           ${isPendingTask(t) ? `<span class="tk-await" title="${t.created_by === t.assignee_user_id ? G.awaitApprovalHint : G.awaitApprovalAssignedHint}">${G.awaitApproval}</span>` : ''}
@@ -867,13 +879,13 @@ export async function tasksPage(user, opts = {}) {
 
   // ── ٦) عرض اللوح ──
   const boardCard = (t) => {
-    const dl = dueLabel(t);
+    const dl = isDone(t) ? doneLabel(t) : dueLabel(t);
     const pr = TASK_PRIORITY[t.priority] || TASK_PRIORITY.P2;
     const p = Math.max(0, Math.min(100, Math.round(Number(t.progress_pct) || 0)));
     return `<article class="kcard tk-card" draggable="${readOnly ? 'false' : 'true'}" ${dataAttrs(t)} style="--_c:${TASK_STATUS_COLOR[t.status] || '#cbd5e1'}${readOnly ? ';cursor:default' : ''}">
       ${readOnly ? `<div class="tk-card-t">${esc(t.title)}</div>` : `<button type="button" class="tk-card-t" data-action="task-open">${esc(t.title)}</button>`}
       <div class="km">
-        <span style="color:${dl.color}${dl.bold ? ';font-weight:700' : ''}">${dl.text}</span>
+        <span style="color:${dl.color}${dl.bold ? ';font-weight:700' : ''}"${dl.title ? ` title="${esc(dl.title)}"` : ''}>${dl.text}</span>
         <span class="pill" style="background:${pr.tone === 'red' ? '#fee2e2' : pr.tone === 'amber' ? '#fef3c7' : '#f1f5f9'};color:${pr.tone === 'red' ? '#b91c1c' : pr.tone === 'amber' ? '#92400e' : '#475569'}">${pr.ar}</span>
       </div>
       <div class="km">${parentChip(t)}${who === 'team' ? `<span class="tk-who">${esc(t.assignee_name || t.assignee_username || G.unassigned)}</span>` : ''}</div>
@@ -2750,6 +2762,17 @@ export async function personPage(user, personId) {
   const linkApproval = d.canAssignTask ? await linkedTaskApproval(user) : { needsApproval: false };
 
   const due = (t) => {
+    // المنجَزة تُقرأ بتاريخ إنجازها لا بموعدٍ فات: هذه الشاشة كانت تعرض «متأخرة N يوماً» على
+    // المنجَز أيضاً (KI-075) لأن الفرع الوحيد كان على الموعد. نفس عرف لوح «مهامي».
+    if (t.status === 'DONE') {
+      if (!t.completed_at) return '<span class="pp-due" title="بلا تاريخ إنجاز مسجَّل">أُنجزت</span>';
+      const k = -dnum(t.completed_at);
+      if (k <= 0) return '<span class="pp-due">أُنجزت اليوم</span>';
+      if (k === 1) return '<span class="pp-due">أُنجزت أمس</span>';
+      if (k <= 7) return `<span class="pp-due">أُنجزت منذ ${dayWord(k)}</span>`;
+      const c = String(t.completed_at).slice(0, 10);
+      return `<span class="pp-due">أُنجزت في <span class="tnum">${Number(c.slice(8, 10))}</span> ${MONTHS_AR[Number(c.slice(5, 7)) - 1] || ''}</span>`;
+    }
     if (!t.due_date) return `<span class="pp-due none">${G.noDueDate}</span>`;
     const n = dnum(t.due_date);
     if (n < 0) return `<span class="pp-due late">متأخرة ${countAr(-n, { one: 'يوماً', two: 'يومين', few: 'أيام', many: 'يوماً' })}</span>`;

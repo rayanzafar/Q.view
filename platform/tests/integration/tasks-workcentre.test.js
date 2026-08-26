@@ -409,3 +409,49 @@ test('منتقي الجهة قائمةٌ خلفيّة بمعرّفها المع�
   assert.match(html, /data-code="SOL-26-09"/, 'رمز المشروع غير قابل للبحث');
   assert.ok(html.includes('SOL-26-09 — مشروع الحلول'), 'الرمز لا يسبق الاسم في نصّ الخيار');
 });
+
+// ── KI-075: المنجَز يُقرأ بتاريخ إنجازه لا بموعدٍ فات ──────────────────────────
+// كان `dueLabel` وحده يحكم على كل بطاقة، وهو لا ينظر إلى الحالة إطلاقاً — فالمهمة المنجَزة
+// تظهر «متأخرة N يوماً» ورقمها يكبر كل يوم إلى الأبد. ثلاثة أسطح كانت تتناقض على المهمة
+// نفسها: القائمة تطبع تاريخاً خاماً، واللوح يطبع تأنيباً، والتقويم وحده يصدق.
+test('KI-075: مهمة منجَزة متأخرة الموعد لا تُوسم «متأخرة» — لا في القائمة ولا في اللوح', async () => {
+  // موعدها مضى بأيام ثم أُنجزت اليوم: أسوأ حالة — الموعد يقول «متأخرة» والحقيقة أنها انتهت.
+  const done = await T.quickAddTask(ctx(emp), { title: 'مهمة أُنجزت بعد موعدها', due_date: day(-9), project_id: 'WP1' });
+  await T.updateTask(ctx(emp), done.id, { status: 'DONE' });
+
+  const row = (html) => {
+    const i = html.indexOf(`data-task="${done.id}"`);
+    assert.ok(i > 0, 'المهمة المنجَزة غائبة عن الصفحة');
+    return html.slice(i, i + 900);
+  };
+  const listCard = row(mainOf(await tasksPage(emp, { win: 'all' })));
+  assert.ok(!listCard.includes('متأخرة'), 'القائمة ما زالت تُوسم المنجَز متأخراً');
+  assert.ok(listCard.includes('أُنجزت'), 'القائمة لا تقول متى أُنجزت');
+
+  const boardCard = row(mainOf(await tasksPage(emp, { view: 'board', win: 'all' })));
+  assert.ok(!boardCard.includes('متأخرة'), 'اللوح ما زال يُوسم المنجَز متأخراً — علّة KI-075 بعينها');
+  assert.ok(boardCard.includes('أُنجزت اليوم'), 'اللوح لا يقول «أُنجزت اليوم» للمنجَز اليوم');
+
+  // والمفتوحة المتأخرة تبقى متأخرة — الإصلاح لا يُسكِت التأخير الحقيقي
+  const stillLate = mainOf(await tasksPage(emp, { view: 'board', win: 'all' }));
+  const openCard = stillLate.slice(stillLate.indexOf(`data-task="${tOverdue.id}"`));
+  assert.ok(openCard.slice(0, 900).includes('متأخرة'), 'المهمة المفتوحة المتأخرة فقدت وسمها');
+});
+
+// وصفٌّ منجَزٌ بلا ختم إنجاز **لا يُعرض أصلاً** في «مهامي»: نافذة الأربعة عشر يوماً تشترط
+// `completed_at IS NOT NULL` (tasks.js:86)، فيسقط الصفّ القديم من القائمة واللوح معاً بلا أثر.
+// يُثبَّت هنا بوصفه سلوكاً قائماً — لا مُصلَحاً — كي لا يُقرأ اختفاؤه لاحقاً على أنه علّة الوسم.
+// (الحدّ نفسه غير مُعلَن للمستخدم — KI-078.) وفرعُ «أُنجزت بلا تاريخ» في الوسم يبقى حارساً
+// لصفحة الشخص، فهي تقرأ مهام الشخص بلا هذه النافذة.
+test('KI-075/078: منجَزةٌ بلا ختم إنجاز تسقط من الصفحة كلها — لا تُوسم متأخرة', async () => {
+  const t2 = await T.quickAddTask(ctx(emp), { title: 'منجزة بلا ختم', due_date: day(-5), project_id: 'WP1' });
+  await T.updateTask(ctx(emp), t2.id, { status: 'DONE' });
+  await update('task', t2.id, { completed_at: null });          // صفٌّ قديم كُتب قبل وجود الختم
+  for (const view of ['list', 'board']) {
+    const html = mainOf(await tasksPage(emp, { view, win: 'all' }));
+    assert.ok(!html.includes(`data-task="${t2.id}"`), `صفٌّ بلا ختم ظهر في عرض ${view} خلافاً لشرط النافذة`);
+  }
+  // والأهم: لم يظهر في أي مكانٍ موسوماً «متأخرة»
+  const board = mainOf(await tasksPage(emp, { view: 'board', win: 'all' }));
+  assert.ok(!board.includes('منجزة بلا ختم'), 'ظهر عنوانها رغم سقوط صفّها');
+});

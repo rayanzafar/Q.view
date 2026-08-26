@@ -44,6 +44,10 @@ const DLV_STATUSES = ['DRAFT', 'IN_PROGRESS', 'DELIVERED', 'ACCEPTED', 'REJECTED
 export const DELIVERABLE_STATUSES = DLV_STATUSES;
 // أُبقيت باسمها القديم لأن الشاشات تستوردها: كل الحالات صارت بيد الإنسان، فالقائمة واحدة.
 export const DELIVERABLE_MANUAL_STATUSES = DLV_STATUSES;
+// المخرجات التي **لم يُفرَغ منها بعد** — كل حالةٍ عدا «تم الاعتماد». مصدرٌ واحد لهذا المعنى
+// كي لا تُعاد كتابة القائمة في شاشةٍ أخرى: إعادةُ تسمية حالةٍ في 017 (PENDING ← DRAFT) تركت
+// «صفحتي» تُرشِّح على اسمٍ لا وجود له، فأسقطت كل مخرجات الموظف بصمت (KI-050).
+export const DELIVERABLE_OPEN_STATUSES = DLV_STATUSES.filter((s) => s !== 'ACCEPTED');
 
 // شهر الاستحقاق يصل كنص «YYYY-MM» من قائمة واحدة، فلا يُخمَّن شهرٌ بلا سنة ولا سنةٌ بلا شهر.
 function periodParts(period) {
