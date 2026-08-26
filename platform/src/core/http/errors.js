@@ -1,5 +1,6 @@
 import { logError, trimStack } from '../obs/log.js';
 import { currentScope, maskPath } from '../obs/reqctx.js';
+import { captureHttpError } from '../obs/capture.js';
 // Uniform error envelope + typed HTTP errors.
 export class HttpError extends Error {
   constructor(status, code, message, details) {
@@ -64,6 +65,8 @@ export function errorHandler() {
         err_msg: String(err?.message || err).slice(0, 300),
         stack: trimStack(err),
       });
+      // ويُحفظ صفّاً مجمَّعاً — بلا انتظار: الصفُّ فهرسٌ للشاشة، والحقيقةُ في السطر أعلاه.
+      captureHttpError(err, req, status);
     }
     // Never leak internal 500 details to the client; typed <500 errors carry safe Arabic messages.
     const safeMessage = status >= 500 ? 'حدث خطأ غير متوقع، تم تسجيله. حاول مجددًا.' : (err.message || 'طلب غير صالح');

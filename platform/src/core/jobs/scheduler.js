@@ -4,6 +4,10 @@ import { processQueue, enqueueReport, nextRunAt } from '../reports/engine.js';
 import { purgeExpiredCodes } from '../auth/otp.js';
 import { purgeExpiredSessions } from '../auth/service.js';
 import { sweepApprovalMail } from '../../modules/workflow/approval-notify.js';
+// أثرُ الاستدعاء كان يُرمى في كل هذه الحمايات — أكبرُ ضياعِ معلومةٍ في المستودع.
+import { logError, logInfo, trimStack } from '../obs/log.js';
+import { captureJobError } from '../obs/capture.js';
+import { purgeFaults } from '../obs/store.js';
 
 let timer = null;
 // ── نبضةٌ واحدة في كل لحظة ──
@@ -32,17 +36,17 @@ async function tick() {
 async function tickBody() {
   // الطابور والجدولة معزولان: فشل أي منهما لا يمنع الآخر. كان الاثنان داخل حماية واحدة،
   // فأي جدولة تفشل كانت توقف إرسال كل بريد المنصة بصمت.
-  try { await fireDueSchedules(); } catch (e) { console.error('[scheduler] fireDueSchedules:', e.message); }
+  try { await fireDueSchedules(); } catch (e) { logError('job_failed', { job: 'fireDueSchedules', err_msg: String(e?.message || e).slice(0, 300), stack: trimStack(e) }); captureJobError('fireDueSchedules', e); }
   // بريد الاعتمادات قبل معالجة الطابور عمداً: ما يُقيَّد في هذه الدقيقة يغادر فيها لا في التالية.
   // والقرار كله داخل الكنسة (جدول الحال هو الحَكَم) — الدقّة هنا مجرد نبض.
-  try { await sweepApprovalMail(); } catch (e) { console.error('[scheduler] sweepApprovalMail:', e.message); }
-  try { await processQueue(30); } catch (e) { console.error('[scheduler] processQueue:', e.message); }
+  try { await sweepApprovalMail(); } catch (e) { logError('job_failed', { job: 'sweepApprovalMail', err_msg: String(e?.message || e).slice(0, 300), stack: trimStack(e) }); captureJobError('sweepApprovalMail', e); }
+  try { await processQueue(30); } catch (e) { logError('job_failed', { job: 'processQueue', err_msg: String(e?.message || e).slice(0, 300), stack: trimStack(e) }); captureJobError('processQueue', e); }
   // رموز الدخول المنتهية تُكنَس كل ساعة لا كل دقيقة: الجدول ينمو بصفٍّ لكل طلب دخول في
   // الشركة كلها، وكلٌّ منها أثرٌ لا حاجة إليه بعد انتهائه. والكنس رخيص، لكنه لا يستحق دقيقة.
   const hour = 3600000;
   if (Date.now() - lastPurge > hour) {
     lastPurge = Date.now();
-    try { await purgeExpiredCodes(24); } catch (e) { console.error('[scheduler] purgeExpiredCodes:', e.message); }
+    try { await purgeExpiredCodes(24); } catch (e) { logError('job_failed', { job: 'purgeExpiredCodes', err_msg: String(e?.message || e).slice(0, 300), stack: trimStack(e) }); captureJobError('purgeExpiredCodes', e); }
     // والجلسات معها: جدولٌ لم يُكنَس منذ أول إصدار، ويُغذّيه محرّك التقارير بصفٍّ لكل تقرير
     // لكل مستقبِل (تعليقه يقول «cleaned by TTL» ولا شيء كان ينظّفها). كلٌّ في حمايته: فشلُ
     // أحدهما لا يمنع الآخر — نفس مبدأ العزل في أعلى الكنسة.
@@ -51,7 +55,13 @@ async function tickBody() {
     try {
       const { removed } = await purgeExpiredSessions();
       if (removed) console.log(`[scheduler] كُنست ${removed} جلسة منتهية`);
-    } catch (e) { console.error('[scheduler] purgeExpiredSessions:', e.message); }
+    } catch (e) { logError('job_failed', { job: 'purgeExpiredSessions', err_msg: String(e?.message || e).slice(0, 300), stack: trimStack(e) }); captureJobError('purgeExpiredSessions', e); }
+    // وسجلُّ الأعطال معها: عمرٌ محدود وسقفٌ للصفوف، وإلا نما بلا حدّ. والعدد يُطبع لأن
+    // الكنس يُتلف صفوفاً — وإتلافٌ بلا أثرٍ لا يُلاحَظ لو انقلبت مهلتُه يوماً.
+    try {
+      const { removed } = await purgeFaults();
+      if (removed) logInfo('faults_purged', { removed });
+    } catch (e) { logError('job_failed', { job: 'purgeFaults', err_msg: String(e?.message || e).slice(0, 300) }); }
   }
 }
 let lastPurge = 0;

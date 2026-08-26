@@ -109,6 +109,7 @@ One row per file in `migrations/` (applied in order by `scripts/migrate.js`, rec
 | 033 | 033_document_blob.sql | `document_blob` (document_id PK/FK, content BLOB→BYTEA, mime, sha256) — uploaded file bytes live in the DB because the container FS is wiped on every deploy (ADR-0007) | real file upload for opportunity documents (v5.24) |
 | 034 | 034_project_departments.sql | `project_department` (composite PK project×department + dept index) — the literal twin of 026 for projects: partner departments see and work the project, the money stays on the responsible column (ADR-0008) | shared bus-tracking projects across two departments (v5.27) |
 | 035 | 035_session_sliding.sql | `session.last_seen_at` (write throttle for the rolling touch, and a real liveness stamp for the admin session list) + `ix_session_expiry` (the hourly purge reads it; the table had never been swept) + backfill of `last_seen_at` from `created_at` | sliding sessions with a 30-day absolute cap (ADR-0012) |
+| 036 | `036_error_event.sql` | `error_event` — صفٌّ لكل عطبٍ مميَّز (بصمة، عدّ وقعات، أول/آخر ظهور، رتبة من أصابه، وسم «قابل للتنبيه» الذي يقطع حلقة البريد، وإسكات). حذفٌ قاطع لا ناعم: سياسة الاحتفاظ لا تحتملها الأعطال | مراقبة المنصة — التقاط الأعطال وصفحة «صحة المنصة» |
 
 ## Modules
 

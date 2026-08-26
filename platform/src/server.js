@@ -13,6 +13,7 @@ import { securityHeaders, loginLimiter, apiLimiter, otpEmailLimiter, otpIpLimite
 import { errorHandler } from './core/http/errors.js';
 import { logError, writeFatalSync, trimStack } from './core/obs/log.js';
 import { requestScope, currentScope } from './core/obs/reqctx.js';
+import { captureRejection } from './core/obs/capture.js';
 import { authRouter } from './modules/auth.routes.js';
 import { apiRouter } from './modules/api.routes.js';
 import { aiRouter } from './modules/ai.routes.js';
@@ -97,6 +98,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   // فهو أولى ما يُلتقط بعد أخطاء الطلبات — وكان يكتب سطراً واحداً لا يقرؤه أحد.
   process.on('unhandledRejection', (e) => {
     logError('unhandled_rejection', { err_kind: e?.name || null, err_msg: String(e?.message || e).slice(0, 300), stack: trimStack(e) });
+    captureRejection(e);
     console.error('!! unhandledRejection:', e?.stack || e);
   });
   let app;
