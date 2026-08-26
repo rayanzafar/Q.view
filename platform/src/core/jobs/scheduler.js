@@ -6,6 +6,14 @@ import { purgeExpiredSessions } from '../auth/service.js';
 import { sweepApprovalMail } from '../../modules/workflow/approval-notify.js';
 
 let timer = null;
+// ── نبضةٌ واحدة في كل لحظة ──
+// `setInterval` لا ينتظر دالةً غير متزامنة: إن تجاوزت النبضةُ الدقيقة انطلقت التالية فوقها.
+// والأثر ليس بطئاً بل **إرسالاً مكرَّراً**: `processQueue` يختار الصفوف `QUEUED` ثم يضع
+// `status='SENDING'` بتحديثٍ غير مشروط (لا مطالبة) — فنبضتان متوازيتان تلتقطان الصفّ نفسه
+// وتُرسلان الرسالة مرتين. وخادمُ بريدٍ بطيء وحده كافٍ لإطالة النبضة (وقد صار له الآن سقفُ
+// مهلةٍ صريح في smtp.js). القفلُ هنا يمنع التداخل، ويبقى ما فات دون تعويض عمداً: النبضة
+// التالية تلتقط ما تأخّر، ولا طابور نبضاتٍ يتراكم فينفجر دفعةً حين تنفرج الأمور.
+let running = false;
 
 export function startScheduler() {
   if (timer) return;
@@ -16,6 +24,12 @@ export function startScheduler() {
 export function stopScheduler() { if (timer) { clearInterval(timer); timer = null; } }
 
 async function tick() {
+  if (running) return;                      // نبضةٌ سابقة ما زالت تعمل — تُترك لتُكمل
+  running = true;
+  try { await tickBody(); } finally { running = false; }
+}
+
+async function tickBody() {
   // الطابور والجدولة معزولان: فشل أي منهما لا يمنع الآخر. كان الاثنان داخل حماية واحدة،
   // فأي جدولة تفشل كانت توقف إرسال كل بريد المنصة بصمت.
   try { await fireDueSchedules(); } catch (e) { console.error('[scheduler] fireDueSchedules:', e.message); }

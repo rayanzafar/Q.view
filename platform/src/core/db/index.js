@@ -5,6 +5,8 @@
 // Transactions are connection-safe on Postgres via AsyncLocalStorage: inside tx(), the global
 // helpers automatically route to the transaction's dedicated client.
 import { config } from '../config.js';
+// المُسجِّل وحده — لا يستورد قاعدة بيانات ولا إعداداً، فلا دورة استيراد.
+import { logError } from '../obs/log.js';
 import { AsyncLocalStorage } from 'node:async_hooks';
 
 const USE_PG = !!config.databaseUrl;
@@ -43,7 +45,11 @@ async function pgPool() {
   // itself and the next acquire reconnects; in-flight queries still reject through their own
   // call path and surface as a normal error. We log so the event is never silent.
   _pgPool.on('error', (err) => {
-    console.error('[db] خطأ على اتصالٍ خاملٍ في المجمّع — أُسقط الاتصال وسيُعاد الاتصال عند أول طلب:', err?.message || err);
+    logError('db_pool_error', {
+      err_code: err?.code || null,
+      err_msg: String(err?.message || err).slice(0, 200),
+      total: _pgPool?.totalCount ?? null, idle: _pgPool?.idleCount ?? null, waiting: _pgPool?.waitingCount ?? null,
+    });
   });
   return _pgPool;
 }

@@ -11,6 +11,7 @@ import { attachContext } from './core/http/context.js';
 import { csrf } from './core/http/csrf.js';
 import { securityHeaders, loginLimiter, apiLimiter, otpEmailLimiter, otpIpLimiter, otpVerifyLimiter } from './core/http/security.js';
 import { errorHandler } from './core/http/errors.js';
+import { logError } from './core/obs/log.js';
 import { authRouter } from './modules/auth.routes.js';
 import { apiRouter } from './modules/api.routes.js';
 import { aiRouter } from './modules/ai.routes.js';
@@ -58,7 +59,7 @@ export async function createApp() {
     catch (e) {
       // السبب يُكتب في سجل الخادم لا في الرد: رسائل مُحرّك القاعدة تحمل مضيفاً واسم قاعدة ودوراً،
       // فلا تُسرَّب لمتصل غير موثَّق (نفس مبدأ errors.js: لا تفصيل 5xx يغادر).
-      console.error('[ready] قاعدة البيانات غير مبلوغة:', e?.message || e);
+      logError('ready_probe_failed', { err_msg: String(e?.message || e).slice(0, 200) });
       res.status(503).json({ ready: false });
     }
   });

@@ -43,7 +43,15 @@ export async function sendViaSmtp({ to, cc, subject, html }, which = CHANNEL.PRI
   // تصل مقروءةً منطقيةً من الإعداد: كان الفراغ يُقرأ هنا `true` فيُحاوَل التشفير الضمني على
   // منفذٍ لا يقبله، وتنقضي المهلة بعطبٍ يبدو شبكياً وهو حقلٌ مُسِح في اللوحة.
   const sec = secure != null ? secure : Number(port) === 465;
-  const t = nodemailer.createTransport({ host, port: Number(port), secure: sec, auth: { user, pass } });
+  // ── سقوفُ مهلةٍ صريحة ──
+  // افتراضات nodemailer دقيقتان للاتصال وعشرٌ للمقبس. وخادمُ بريدٍ صامت بها يُعلّق حلقةَ
+  // إرسال الطابور (ثلاثون رسالة بالتتابع) فتتجاوز نبضةُ المجدول الدقيقة — وذاك بابُ
+  // التداخل الذي أُغلق في scheduler.js. القيمُ هنا تجعل العطب يظهر سريعاً بدل أن يتحوّل
+  // إلى تعليقٍ صامت، والقناة الاحتياطية تُجرَّب بعده بدل أن تنتظر عشر دقائق.
+  const t = nodemailer.createTransport({
+    host, port: Number(port), secure: sec, auth: { user, pass },
+    connectionTimeout: 10000, greetingTimeout: 10000, socketTimeout: 20000,
+  });
   const info = await t.sendMail({ from, to: (to || []).join(', '), cc: (cc || []).join(', '), subject, html });
   return { transport: 'smtp', channel: which, from, id: info.messageId, to, cc, subject };
 }
