@@ -28,6 +28,11 @@ export async function decorateApprovals(rows) {
       label: t ? t.label : null,
       parent: (t && t.parent) || '',
       requesterName: names.get(String(a.requested_by || '')) || '',
+      // «الحجم: ١٠٪ من طاقته» — يقرؤه المعتمِد قبل قراره. والفراغ يُقال صراحةً: مهمةٌ بلا
+      // تقدير قرارٌ ناقصُ المعلومة، وإخفاءُ ذلك يجعل الاعتماد يبدو أعلمَ مما هو.
+      sizeLabel: a.resource === 'task'
+        ? (t && t.utilPct != null ? `الحجم: ${t.utilPct}٪ من طاقته` : 'بلا نسبة مقدَّرة')
+        : '',
       kindLabel: DIRECT_KIND_AR[a.resource] || a.workflow_name || 'طلب اعتماد',
       isDirect: !!a.assignee_user_id,
     };

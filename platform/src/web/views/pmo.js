@@ -26,6 +26,8 @@ import { MONTHS_AR, MONTHS_EN3, currentMonthIndex, monthLabelDual } from '../../
 import { countAr, dayWord } from '../../core/i18n/plural.js';
 // ── مركز العمل اليومي (صفحة المهام) — الوارد الخاص بها وحدها، مفصولاً كي لا يختلط بوارد المحفظة ──
 import { completionTrend, addDays, teamTasksAccess, teamWorkload, isPersonalTask } from '../../modules/pmo/tasks.js';
+import { myTaskLoad, TASK_LOAD_AR, TASK_LOAD_BASIS_AR, TASK_LOAD_NOT_RATING_AR } from '../../modules/pmo/task-load.js';
+import { capacityColor } from '../../core/i18n/thresholds.js';
 import { listOpportunities } from '../../modules/crm/opportunities.js';
 import { nowDot } from '../../core/i18n/time.js';
 import { WEEKDAYS_AR, weekdayLabel, workKindLabel, deliverableStatusLabel,
@@ -638,6 +640,7 @@ export async function tasksPage(user, opts = {}) {
     data-priority="${esc(t.priority || 'P2')}" data-due="${esc(String(t.due_date || '').slice(0, 10))}"
     data-progress="${Math.max(0, Math.min(100, Math.round(Number(t.progress_pct) || 0)))}"
     data-next="${esc(t.next_step || '')}" data-blocked="${esc(t.blocked_reason || '')}"
+    data-util="${t.utilization_pct == null ? '' : Number(t.utilization_pct)}"
     data-project="${esc(t.project_id || '')}" data-opp="${esc(t.opportunity_id || '')}"
     data-parent-name="${esc(t.project_name || t.opportunity_name || '')}"
     data-kind="${esc(t.work_kind || '')}" data-category="${esc(t.category || '')}"
@@ -712,6 +715,8 @@ export async function tasksPage(user, opts = {}) {
 
   // ── ١) رأس اليوم: تقدّم حقيقي + أثر سبعة أيام (عدسة «مهامي» وحدها) ──
   const trend = who === 'me' ? await completionTrend(user, { days: 7, today }) : [];
+  // حِمل المهام: نداءٌ واحد، وللعدسة «مهامي» وحدها — لوحةُ الفريق تقرؤه من تجميعها القائم.
+  const myLoad = who === 'me' ? await myTaskLoad(user) : null;
   const weekDone = trend.reduce((a, d) => a + d.done, 0);
   const plate = todayBand.length + doneTodayList.length;
   const donePct = plate ? Math.round((doneTodayList.length / plate) * 100) : 0;
@@ -728,6 +733,17 @@ export async function tasksPage(user, opts = {}) {
         <span class="wc-tnum tnum">${dd.getUTCDate()}</span>
         ${isToday ? nowDot('اليوم') : ''}</div>`;
     }).join('')}</div>` : '';
+  // ── حِمل المهام على رأس «مهامي» ──
+  // مقياسٌ ثالث باسمه الخاص، لا يُجمع مع الإشغال المخطَّط ولا مع القابل للفوترة — وسطرُ
+  // أساسه يقول ذلك في العنوان المنبثق. و«بلا نسبة مقدَّرة» معلَنٌ دائماً: بدونه يقرأ الجميع
+  // صفراً في اليوم الأول ويبدو الرقم كذباً هادئاً.
+  const loadBlock = myLoad && (myLoad.open || myLoad.pct) ? `<div class="wc-load" title="${esc(TASK_LOAD_BASIS_AR)}">
+      <div class="wc-day-h" style="margin-top:.7rem">${TASK_LOAD_AR}</div>
+      <div class="wc-bar" role="img" aria-label="${TASK_LOAD_AR} ${myLoad.pct} بالمئة"><span style="width:${Math.min(100, myLoad.pct)}%;background:${capacityColor(myLoad.pct)}"></span></div>
+      <div class="wc-day-num"><b class="tnum">${myLoad.pct}</b>٪ من طاقتك على <b class="tnum">${myLoad.open}</b> ${countAr(myLoad.open, { one: 'مهمة مفتوحة', two: 'مهمتين مفتوحتين', few: 'مهام مفتوحة', many: 'مهمة مفتوحة', zero: 'مهمة' })}${
+        myLoad.unsized ? ` · <b class="tnum">${myLoad.unsized}</b> بلا نسبة مقدَّرة — قدِّرها من محرِّر المهمة` : ''}</div>
+    </div>` : '';
+
   const dayCard = who === 'me' ? `<section class="card wc-day">
     <div class="wc-day-l">
       <div class="wc-day-h">${G.dayPlan}</div>
@@ -737,6 +753,7 @@ export async function tasksPage(user, opts = {}) {
         <div class="wc-day-num"><b class="tnum">${doneTodayList.length}</b> من <b class="tnum">${plate}</b> ${todayBand.length === 0 ? '· يومك مُغلق ✓' : `· بقيت <b class="tnum">${todayBand.length}</b>`}</div>`
         : `<div class="wc-day-empty">${G.nothingScheduled} — ${weekBand.length ? `لديك <b class="tnum">${weekBand.length}</b> خلال الأسبوع` : 'ابدأ بإضافة مهمة من الشريط أدناه'}
             <a class="tk-link" href="${qp({ win: weekBand.length ? 'week' : 'all', view: null })}">${weekBand.length ? G.winWeek : G.winAll}</a></div>`}
+      ${loadBlock}
     </div>
     <div class="wc-day-r">
       <div class="wc-day-h">${G.doneThisWeek}</div>
@@ -830,6 +847,8 @@ export async function tasksPage(user, opts = {}) {
         <option value="P2">${TASK_PRIORITY.P2.ar}</option><option value="P0">${TASK_PRIORITY.P0.ar}</option>
         <option value="P1">${TASK_PRIORITY.P1.ar}</option><option value="P3">${TASK_PRIORITY.P3.ar}</option>
       </select>
+      <input id="qa-util" name="qa-util" autocomplete="off" type="number" min="1" max="100" step="1" class="input" style="max-width:9.5rem"
+        placeholder="الحجم ٪" aria-label="حجم المهمة نسبة من طاقتك" title="حجم المهمة: كم تأخذ من طاقتك حتى تُنجز — من ١ إلى ١٠٠. اتركه فارغاً إن لم تُقدِّره بعد.">
       <input id="qa-next" name="qa-next" autocomplete="off" class="input wc-add-next" placeholder="${G.nextStep} (اختياري)" aria-label="${G.nextStep}">
     </div>
   </details>`;
@@ -999,6 +1018,15 @@ export async function tasksPage(user, opts = {}) {
         canReadOpp && p.opportunities.valueHalalas ? `<span class="wp-money tnum">${fmtSar(p.opportunities.valueHalalas)}</span>` : ''
       }</span></div>`
       : '';
+    // ── حِمل المهام على بطاقة الشخص ──
+    // «الإشغال يُعرض لموظفيك بناءً على الحساب الذي ننفّذه» — بلسان المالك. والرقم هنا يجيب
+    // «من يحتاج مساعدة»، لا «من يستحق تقييماً»: سطرُ «مقياس سعة لا تقييم» جزءٌ من العرض لا
+    // زينةٌ فيه (صنو نصِّ تقرير القوى العاملة). ويُعرض للقارئ بلا صلاحية تعديلٍ أيضاً.
+    const L = p.taskLoad || { pct: 0, unsized: 0, open: 0 };
+    const loadLine = (L.open || L.pct) ? `<div class="wp-line" title="${esc(TASK_LOAD_BASIS_AR)} — ${TASK_LOAD_NOT_RATING_AR}">
+      <span class="wp-k">${TASK_LOAD_AR}</span>
+      <span class="wp-v"><span class="wc-bar" style="display:inline-block;width:76px;vertical-align:middle"><span style="width:${Math.min(100, L.pct)}%;background:${capacityColor(L.pct)}"></span></span>
+        <b class="tnum">${L.pct}</b>٪${L.unsized ? ` <span class="wp-more tnum">${L.unsized} بلا تقدير</span>` : ''}</span></div>` : '';
     return `<div class="wp${p.attention ? ' hot' : ''}${p.idle ? ' idle' : ''}">
       <div class="wp-h">
         <span class="wp-av" aria-hidden="true">${initial}</span>
@@ -1007,6 +1035,7 @@ export async function tasksPage(user, opts = {}) {
         <a class="wp-count tnum${t.open ? '' : ' zero'}" href="${qp({ assignee: p.userId })}" title="عرض مهامه في هذه اللوحة">${t.open}</a>
       </div>
       ${chips ? `<div class="wp-chips">${chips}</div>` : ''}
+      ${loadLine}
       ${taskLine}${projLine}${oppLine}
       ${p.idle ? '<div class="wp-idle">بلا عمل مسجَّل</div>' : ''}
     </div>`;
@@ -1166,6 +1195,10 @@ export async function tasksPage(user, opts = {}) {
         <div class="field"><label for="tf-progress">${G.taskProgress} <b class="tnum" data-f="progress-out">0%</b></label>
           <input id="tf-progress" type="range" min="0" max="100" step="5" data-f="progress"></div>
       </div>
+      <div class="field"><label for="tf-util">حجم المهمة — كم تأخذ من طاقة صاحبها</label>
+        <input id="tf-util" class="input" type="number" min="1" max="100" step="1" dir="ltr" data-f="util"
+          placeholder="من ١ إلى ١٠٠ — اتركه فارغاً إن لم تُقدِّره بعد">
+        <div class="hint">مجموع نِسَب مهامه المفتوحة هو «حِمل المهام». مقياس مستقل عن الإشغال المخطَّط في التسكين — لا يُجمع معه.</div></div>
       <div class="field"><label for="tf-next">${G.nextStep}</label>
         <input id="tf-next" class="input" data-f="next" placeholder="ما الفعل التالي المحدَّد الذي يحرّك هذه المهمة؟"></div>
       <div class="field"><label for="tf-blocked">${G.blocker}</label>

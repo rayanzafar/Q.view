@@ -5,6 +5,7 @@ import { availableYears } from '../core/reports/metrics.js';
 import { config } from '../core/config.js';
 import { NAV_ITEMS, pageAllowed } from './nav.js';
 import { MONTHS_AR, MONTHS_EN3 } from '../core/i18n/time.js';
+import { TASK_STATUS_AR, TASK_PRIORITY_AR } from '../core/i18n/task-vocab.js';
 import { esc } from './views/_shared.js';
 import { asset } from './assets.js';
 
@@ -656,10 +657,10 @@ export const LABELS = {
   IN_PROGRESS: 'قيد التنفيذ', COMPLETED: 'مكتمل', PLANNED: 'مُخطَّط', ON_HOLD: 'متوقّف مؤقتًا', CANCELLED: 'ملغى', NOT_STARTED: 'لم يبدأ',
   // RAG
   GREEN: 'أخضر', AMBER: 'أصفر', RED: 'أحمر',
-  // task status
-  TODO: 'قيد الانتظار', BLOCKED: 'مُعطَّل', IN_REVIEW: 'قيد المراجعة', DONE: 'منجز',
-  // priority
-  P0: 'حرجة', P1: 'عالية', P2: 'متوسطة', P3: 'منخفضة',
+  // حالات المهمة وأولوياتها من مصدرها الواحد في core/i18n — تقرؤها الخدمات أيضاً (سجل
+  // التدقيق يكتب «منجز» لا «DONE»)، وملفُّ العرض هذا لا تستورده الخدمات فلا يصلح مصدراً.
+  ...TASK_STATUS_AR,
+  ...TASK_PRIORITY_AR,
   // deliverable status — الحالات نفسها في المعجم (deliverableStatusLabel) وهو ما تستعمله
   // الشاشات فعلاً. أُبقيت هنا الأربع المشتركة فقط، وحُذفت INVOICED وPENDING: الأولى لم تعد
   // حالةَ مخرَج أصلاً (صارت ختماً زمنياً — ترحيلة ٠١٧)، والثانية كانت تعني «قيد الإعداد» على

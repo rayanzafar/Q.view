@@ -9,9 +9,12 @@ import { forbidden, notFound, badRequest } from '../../core/http/errors.js';
 import { listUserGrants, grantableOptions } from '../identity/grants.js';
 import { raiseDirectApproval, TASK_WORKFLOW_KEY } from '../workflow/engine.js';
 import { notify } from '../notifications/notify.js';
-import { taskApproval, approvedTaskSql, ownOrApprovedTaskSql, myWorkOrMyPendingSql, TASK_PENDING, isPendingTask } from './task-approval.js';
+import { taskApproval, approvedTaskSql, ownOrApprovedTaskSql, myWorkOrMyPendingSql, TASK_PENDING, isPendingTask,
+  PERSONAL_WORK_KIND, isPersonalTask, notPersonalSql } from './task-approval.js';
 import { loadReadableOpportunity } from '../crm/opp-access.js';
 import { loadReadableProject } from './project-access.js';
+import { loadSumsSql, shapeLoad } from './task-load.js';
+import { taskStatusLabel, taskPriorityLabel, TASK_FIELD_AR } from '../../core/i18n/task-vocab.js';
 
 // ترتيب الإلحاح المشترك بين كل استعلامات المهام — مصدر واحد فلا يختلف ترتيب القائمة عن اللوح.
 const PRIORITY_ORDER = "CASE %s.priority WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 ELSE 3 END";
@@ -33,9 +36,10 @@ const prioritySql = (pfx) => PRIORITY_ORDER.replace('%s', pfx.replace(/\.$/, '')
 //
 // فالحارس هنا **مصدرٌ واحد** يستورده كل من يقرأ المهام عبر الحسابات، لا شرطٌ منسوخ في ستة
 // مواضع ينسى سابعُها. والشرط يشمل الصفوف القديمة التي عمودها فارغ (لا شيء منها شخصي).
-export const PERSONAL_WORK_KIND = 'personal';
-export const isPersonalTask = (row) => String(row?.work_kind || '') === PERSONAL_WORK_KIND;
-export const notPersonalSql = (pfx = 't.') => `(${pfx}work_kind IS NULL OR ${pfx}work_kind <> 'personal')`;
+// وموضعُ تعريفه `task-approval.js` — ملفُّ الحوارس الذي يجيب سؤال «أيُّ المهام تُقرأ وتُعدّ»
+// (`approvedTaskSql` وأخواته). أُنزل إليه كي يبلغه مقياسُ «حِمل المهام» بلا دورةِ استيراد،
+// ويُعاد تصديره من هنا فلا يتغيّر شيءٌ عند مستورديه الخمسة.
+export { PERSONAL_WORK_KIND, isPersonalTask, notPersonalSql } from './task-approval.js';
 
 // حساب تاريخ بـJS ثم ربطه كنص — لا دوال تواريخ في SQL (القاعدة المحمولة بين المحرّكين).
 export function addDays(isoDay, n) {
@@ -265,6 +269,19 @@ const dateOrNull = (v, label) => {
   return s;
 };
 
+// حجمُ المهمة: نسبةٌ من طاقة صاحبها، ١ إلى ١٠٠. الفارغ والصفر كلاهما «لم يُقدَّر بعد» لا
+// «صفرُ حِمل»: مهمةٌ قائمة لا تستهلك شيئاً تناقضٌ في ذاتها، والصفرُ المخترَع يجعل المُثقَل
+// يقرأ فارغاً. والسقفُ للمهمة الواحدة لا لمجموع الشخص — مجموعُه يتجاوز المئة بحقّ، وذلك
+// معنى «فوق طاقته» نفسه المعتمَد في `UTIL_BANDS`.
+const utilPctOrNull = (v) => {
+  if (v == null || String(v).trim() === '') return null;
+  const n = Number(v);
+  if (!Number.isFinite(n) || Math.round(n) !== n || n < 0 || n > 100) {
+    throw badRequest('حجم المهمة نسبة من ١ إلى ١٠٠ — أو اتركه فارغاً حتى تُقدِّره');
+  }
+  return n === 0 ? null : n;
+};
+
 // العنوان مطلوبٌ ومسقوف في الخادم لا في الشاشة وحدها: بلا سقفٍ هنا كان نصُّ آلافِ الأحرف
 // يدخل من الباب المباشر فيتضخم الصفُّ والبطاقة والرسالة معاً (KI-047 سابقاً).
 const TITLE_MAX = 200;
@@ -355,6 +372,7 @@ export async function quickAddTask(ctx, data) {
       approval_state: approval.needsApproval ? TASK_PENDING : null,
       start_date: dateOrNull(data.start_date, 'تاريخ البدء'), due_date: dateOrNull(data.due_date, 'تاريخ الاستحقاق'),
       estimate_hours: data.estimate_hours ?? null, recurring: data.recurring || null,
+      utilization_pct: utilPctOrNull(data.utilization_pct),
       next_step: blankToNull(data.next_step),
       created_at: now, created_by: user.id,
     });
@@ -502,6 +520,42 @@ export async function bulkUpdateTasks(ctx, taskIds, data) {
   return { updated: done.length, failed };
 }
 
+// ── وصفُ ما تغيّر، بالعربية، من الصفّ نفسه ─────────────────────────────────────
+// الحقول المرصودة **قائمةُ سماحٍ لا قائمةَ حظر**: حقلٌ جديد لا يدخل الأثر بمجرد إضافته إلى
+// الجدول، فلا يتسرّب وصفٌ حسّاس إلى شاشة التدقيق بغفلة. و`description` خارجها عمداً — نصٌّ
+// طويل يُغرق السطر ولا يُقرأ منه شيء.
+const DIFF_FIELDS = ['title', 'status', 'priority', 'due_date', 'start_date', 'assignee_user_id',
+  'utilization_pct', 'progress_pct', 'project_id', 'opportunity_id', 'department_id',
+  'category', 'next_step', 'blocked_reason'];
+// المعرّف يُستبدَل باسمه: سطرُ تدقيقٍ فيه `usr_9Kx…` لا يقرؤه أحد، والاسمُ هو الغرضُ كله.
+const DIFF_REF = {
+  assignee_user_id: ['app_user', 'name_ar'], project_id: ['project', 'name_ar'],
+  opportunity_id: ['opportunity', 'title_ar'], department_id: ['department', 'name_ar'],
+};
+async function diffValue(field, v) {
+  if (v == null || String(v) === '') return 'بلا';
+  if (field === 'status') return taskStatusLabel(v);
+  if (field === 'priority') return taskPriorityLabel(v);
+  if (field === 'utilization_pct' || field === 'progress_pct') return `${Number(v)}٪`;
+  const ref = DIFF_REF[field];
+  if (ref) {
+    // الجدول والعمود ثابتان من الخريطة أعلاه لا من الطلب — لا تركيب نصٍّ من مُدخَل.
+    const r = await get(`SELECT ${ref[1]} n FROM ${ref[0]} WHERE id = ?`, [v]);
+    return r?.n || 'غير معروف';
+  }
+  return String(v).slice(0, 60);
+}
+async function changeSummary(row, patch) {
+  const parts = [];
+  for (const f of DIFF_FIELDS) {
+    if (!(f in patch)) continue;
+    const from = row[f] ?? null, to = patch[f] ?? null;
+    if (String(from ?? '') === String(to ?? '')) continue;   // كُتب الحقل بقيمته نفسها — لا تغيير
+    parts.push(`${TASK_FIELD_AR[f]}: من ${await diffValue(f, from)} إلى ${await diffValue(f, to)}`);
+  }
+  return parts.length ? parts.join(' · ') : null;
+}
+
 export async function updateTask(ctx, taskId, data) {
   const user = ctx.user;
   const row = await get('SELECT * FROM task WHERE id = ? AND deleted_at IS NULL', [taskId]);
@@ -540,7 +594,8 @@ export async function updateTask(ctx, taskId, data) {
   await assertMayLink(user, data);
   const patch = {};
   for (const k of ['title', 'description', 'status', 'priority', 'progress_pct', 'due_date',
-    'start_date', 'estimate_hours', 'blocked_reason', 'assignee_user_id', 'next_step', 'department_id', 'category']) {
+    'start_date', 'estimate_hours', 'blocked_reason', 'assignee_user_id', 'next_step', 'department_id',
+    'category', 'utilization_pct']) {
     if (k in data) patch[k] = data[k];
   }
   if ('title' in patch) patch.title = titleOf(patch.title);
@@ -550,6 +605,7 @@ export async function updateTask(ctx, taskId, data) {
   if ('next_step' in patch) patch.next_step = blankToNull(patch.next_step);
   if ('blocked_reason' in patch) patch.blocked_reason = blankToNull(patch.blocked_reason);
   if ('progress_pct' in patch) patch.progress_pct = Math.max(0, Math.min(100, Math.round(Number(patch.progress_pct) || 0)));
+  if ('utilization_pct' in patch) patch.utilization_pct = utilPctOrNull(patch.utilization_pct);
   // الجهة والنوع تُكتب **بعد** قائمة الحقول المسموحة لا قبلها: الشخصية تُسقط القطاع والإدارة،
   // فلو سبقتها القائمة لأعادت كتابة الإدارة من الطلب فوقها.
   Object.assign(patch, parent);
@@ -562,12 +618,32 @@ export async function updateTask(ctx, taskId, data) {
   } else if (row.status === 'BLOCKED' && nextStatus !== 'BLOCKED' && !('blocked_reason' in patch)) {
     patch.blocked_reason = null; // زال التعطيل فيزول سببه، ولا يبقى نصّاً قديماً يُقرأ خطأً
   }
-  if (data.status === 'DONE' && row.status !== 'DONE') { patch.completed_at = nowIso(); patch.progress_pct = 100; }
+  // ختمُ الإنجاز يحمل صاحبه: للمهمة كاتبٌ ومعدِّلٌ ومعتمِد ولم يكن لها مُغلِق، فسؤال «من
+  // وسمها منجزة» بلا جواب — في عملٍ يمرّ باعتماد (نصف صفّ KI-080، ترحيلة 037).
+  if (data.status === 'DONE' && row.status !== 'DONE') { patch.completed_at = nowIso(); patch.completed_by = user.id; patch.progress_pct = 100; }
   // إعادة فتح مهمة منجَزة تمحو ختم الإنجاز — وإلا بقيت تُحسب في «أنجزت اليوم» وهي مفتوحة.
-  if ('status' in patch && patch.status !== 'DONE' && row.status === 'DONE') patch.completed_at = null;
+  if ('status' in patch && patch.status !== 'DONE' && row.status === 'DONE') { patch.completed_at = null; patch.completed_by = null; }
+  // ── الأثر يقول ماذا تغيّر، لا أن شيئاً تغيّر ──
+  // كان الوصف `{ status }` وحده: نقلُ المهمة إلى شخصٍ آخر، وتبديلُ موعدها، ونقلُ جهتها،
+  // ورفعُ نسبتها بعد اعتمادها — كلُّها تمرّ بلا أثرٍ يُقرأ (KI-080). والرقم بعد الاعتماد
+  // تحديداً: بلا فرقٍ مسجَّل تصير النسبةُ المعتمَدة قابلةً للتغيير بلا شاهد.
+  // والنصُّ عربيٌّ من مصدره: القيمة الخام تُطبع في شاشة التدقيق كما هي، و«DONE» مصطلحٌ
+  // يرصده فاحص المعجم — فالترجمة هنا شرطُ عرضٍ لا تجميل.
+  const changed = await changeSummary(row, patch);
   patch.updated_at = nowIso(); patch.updated_by = user.id;
   await update('task', taskId, patch);
-  await audit(ctx, { action: 'update', resource: 'task', resourceId: taskId, detail: { status: patch.status } });
+  await audit(ctx, { action: 'update', resource: 'task', resourceId: taskId, detail: changed ? { changed } : undefined });
+  // ومن أُسنِدت إليه يعلم أنها أُسنِدت إليه — كانت تظهر في قائمته صامتةً بلا خبرٍ ولا اسم
+  // مُسنِد (KI-080)، والنصُّ هو نصُّ مسار الإنشاء نفسه فلا يختلف الخبر باختلاف الباب.
+  if ('assignee_user_id' in patch && patch.assignee_user_id && patch.assignee_user_id !== row.assignee_user_id
+      && patch.assignee_user_id !== user.id) {
+    await notify(patch.assignee_user_id, {
+      kind: 'task',
+      title: 'مهمة أُسندت إليك',
+      body: `${'title' in patch ? patch.title : row.title} — أسندها ${user.name_ar || user.username || 'مديرك'}`,
+      ref_resource: 'task', ref_id: taskId,
+    });
+  }
   return await get('SELECT * FROM task WHERE id = ?', [taskId]);
 }
 
@@ -658,8 +734,11 @@ export async function teamWorkload(user, filters = {}) {
   // مهام مفتوحة لكل شخص — عدٌّ في القاعدة لا تحميلُ صفوف ثم عدّها في الذاكرة.
   // والشخصية خارج العدّ أيضاً — وإلا لقال الرقمُ عن الرجل ما لا يستطيع المدير رؤيته ولا سؤاله
   // عنه: «عليه سبع مهام» وفي اللوحة أربع. رقمٌ لا يُفتح مصدره أسوأ من لا رقم.
+  // وعمودا «حِمل المهام» يركبان هذا التجميع نفسه: شرطُه (مفتوحة · معتمدة · غير شخصية) هو
+  // تعريفُ المقياس حرفياً، فالإضافة **صفرُ استعلام** — والتعريف يبقى في مصدره الواحد
+  // (`task-load.js`) لا منسوخاً هنا.
   const taskRows = await all(`SELECT t.assignee_user_id uid,
-       COUNT(*) total,
+       COUNT(*) total, ${loadSumsSql('t.')},
        SUM(CASE WHEN t.due_date IS NOT NULL AND substr(t.due_date,1,10) < ? THEN 1 ELSE 0 END) overdue,
        SUM(CASE WHEN t.status = 'BLOCKED' OR (t.blocked_reason IS NOT NULL AND t.blocked_reason <> '') THEN 1 ELSE 0 END) blocked,
        SUM(CASE WHEN t.next_step IS NULL OR t.next_step = '' THEN 1 ELSE 0 END) no_step
@@ -765,6 +844,9 @@ export async function teamWorkload(user, filters = {}) {
         blocked: Number(t.blocked || 0), noStep: Number(t.no_step || 0),
         list: byUidTN.get(p.id) || [],
       },
+      // «حِمل المهام» من الأعمدة نفسها — مقياسٌ ثالث باسمه، لا يُجمع مع الإشغال المخطَّط
+      // ولا مع القابل للفوترة، ويحمل عدّاد «بلا نسبة مقدَّرة» كي لا يكذب الرقم في بداياته.
+      taskLoad: shapeLoad({ ...t, open_count: t.total }),
       opportunities: {
         open: Number(o.total || 0), valueHalalas: Number(o.value_halalas || 0),
         list: byUidON.get(p.id) || [],

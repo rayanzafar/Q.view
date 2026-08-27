@@ -44,12 +44,15 @@ export async function approvalsPage(user) {
     const sub = isTask ? 'اعتماد مهمة' : resourceLabel(a.resource);
     const requester = isTask ? (reqNames.get(String(a.requested_by || '')) || '') : '';
     const requesterLine = requester ? ` · طلبها ${esc(requester)}` : '';
+    // حجم المهمة مادةُ القرار لا زينة: «اعتمدها» تعني «اعتمد أن يأخذ عشرة بالمئة من طاقته
+    // لها». والفراغ يُقال صراحةً كي لا يبدو القرار أعلمَ مما هو.
+    const sizeLine = isTask ? ` · ${t && t.utilPct != null ? `الحجم ${t.utilPct}٪ من طاقته` : 'بلا نسبة مقدَّرة'}` : '';
     const amount = Number(a.amount_halalas) || 0;
     return `<tr class="border-b border-line">
     <td class="py-2.5 px-3 text-[13px]">${esc(a.workflow_name || '')}</td>
     <td class="px-3 text-[12px]">${t
       ? `<span style="font-weight:700">${esc(t.label)}</span>${t.parent ? ` <span class="text-muted">· ${esc(t.parent)}</span>` : ''}
-         <div class="text-muted text-[11px]">${esc(sub)}${requesterLine}</div>`
+         <div class="text-muted text-[11px]">${esc(sub)}${requesterLine}${sizeLine}</div>`
       : `<span class="text-muted">${esc(sub)} — لم يعد موجوداً</span>${requester ? `<div class="text-muted text-[11px]">طلبها ${esc(requester)}</div>` : ''}`}</td>
     <td class="px-3 text-[13px] tabular-nums">${direct || !amount ? '<span class="text-muted">—</span>' : fmtSar(amount)}</td>
     <td class="px-3">${direct ? pill('بانتظارك', 'amber') : pill('الخطوة ' + a.current_step, 'amber')}</td>

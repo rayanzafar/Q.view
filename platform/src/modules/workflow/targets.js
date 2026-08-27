@@ -14,7 +14,7 @@ import { all } from '../../core/db/index.js';
 //
 // `%IN%` موضع علامات الاستفهام: عددها يُبنى من طول القائمة لا من مدخلٍ خارجي.
 const LABEL_SQL = {
-  task: `SELECT t.id, t.title label, p.name_ar parent, o.title_ar parent2
+  task: `SELECT t.id, t.title label, p.name_ar parent, o.title_ar parent2, t.utilization_pct
            FROM task t
            LEFT JOIN project p ON p.id = t.project_id AND p.deleted_at IS NULL
            LEFT JOIN opportunity o ON o.id = t.opportunity_id AND o.deleted_at IS NULL
@@ -66,7 +66,9 @@ export async function approvalTargets(rows) {
     for (const row of await all(sql, ids)) {
       const label = String(row.label || '').trim();
       if (!label) continue;                   // بلا اسمٍ حقيقي لا نخترع اسماً — الصف يبقى بلا وسم
-      out.set(String(row.id), { label, parent: row.parent || row.parent2 || null });
+      // حجم المهمة يركب الصفَّ نفسه — الاعتماد قرارٌ واحد على المهمة وحجمها معاً، لا سكّتان.
+      out.set(String(row.id), { label, parent: row.parent || row.parent2 || null,
+        utilPct: row.utilization_pct == null ? null : Number(row.utilization_pct) });
     }
   }
   return out;

@@ -80,6 +80,8 @@
       priority: val('qa-priority') || 'P2',
       due_date: val('qa-due') || null,
       next_step: val('qa-next') || null,
+      // حجم المهمة: الفارغ يُرسَل فراغاً لا صفراً — «لم يُقدَّر» ليست «صفرُ حِمل».
+      utilization_pct: val('qa-util') || null,
     };
     // الجهة تُرسَل كاملةً دائماً — الرابطان صراحةً (ولو فراغاً) ونوعُ العمل حين تُقرّره القائمة.
     // كان الفراغ لا يُرسل شيئاً، فيقرأ الخادم «بلا نوع» ويكتب قيمته الافتراضية «مشروع» على
@@ -130,6 +132,7 @@
     set('status', presetStatus || row.dataset.status || 'TODO');
     set('priority', row.dataset.priority || 'P2');
     set('due', row.dataset.due || '');
+    set('util', row.dataset.util || '');
     set('next', row.dataset.next || '');
     set('blocked', row.dataset.blocked || '');
     set('parent', parentValue(row));
@@ -203,6 +206,8 @@
       progress_pct: Number(g('progress') || 0),
       next_step: g('next') || null,
       blocked_reason: g('blocked') || null,
+      // الفارغ يُرسَل فراغاً صريحاً: «لم يُقدَّر بعد» حالةٌ تُكتب، لا حقلٌ يُسقَط فيبقى القديم.
+      utilization_pct: g('util') === '' ? null : g('util'),
     };
     var pv = $('[data-f="parent"]', d);
     // الجهة تُرسَل فقط إن غيّرها صاحبها: إرسالُها دائماً كان يمحوها بصمت حين تكون خارج نطاقه
