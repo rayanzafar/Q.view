@@ -17,3 +17,4 @@ export * from './views/org.js';
 export * from './views/guide.js';
 export * from './views/_shared.js';
 export * from './views/ops.js';
+export * from './views/events.js';

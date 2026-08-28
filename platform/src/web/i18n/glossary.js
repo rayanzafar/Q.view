@@ -298,6 +298,24 @@ export const G = {
   // لا سلطةً وهمية — الحالة والقيمة بيد أصحاب الصلاحية، والحذف وحده محجوز بسند الفاتورة.
   financeOwned: 'صدر بها مستخلص',
 
+  // ── الفعاليات ──
+  // قسم المعارض: بطاقةٌ تُلتقط في ثوانٍ، وتُراجَع بعد المعرض. «جهة ملتقطة» لا «جهة اتصال»
+  // عمداً: الثانية اسمُ سجل العملاء، وهذه ليست فيه حتى يقرّر مراجعٌ ذلك.
+  events: 'الفعاليات',
+  eventContacts: 'الجهات الملتقطة',
+  eventCapture: 'الالتقاط',
+  eventPartners: 'الشراكات',
+  eventQr: 'QR للزوّار',
+  eventReview: 'ما بعد المعرض',
+  newEvent: 'فعالية جديدة',
+  captureContact: 'التقط جهة',
+  saveAndNext: 'احفظ وابدأ التالية',
+  cardKind: 'نوع البطاقة',
+  pasteCardText: 'الصق نصّ البطاقة',
+  fillFromText: 'املأ من النصّ',
+  recentCaptures: 'آخر ما التقطت',
+  possibleDuplicate: 'قد تكون مكرّرة',
+
   // ── عام ──
   overview: 'نظرة عامة',
   details: 'التفاصيل',
@@ -390,6 +408,15 @@ export const DELIVERABLE_NEXT = {
 };
 // الحقائق المالية على المخرَج — ختمان لا حالتان، ولفظُهما يقول إنهما نتيجةُ مسارٍ في المالية.
 export const DELIVERABLE_MONEY_AR = { invoiced: 'تمت الفوترة', collected: 'تم التحصيل' };
+
+// ── حالة الفعالية ──────────────────────────────────────────────────────────────
+// تُحسب في الخدمة من تاريخي الفعالية وختم إغلاقها (لا تُخزَّن)، وتُعرض بهذه الكلمات وحدها.
+// الخدمة تعيد الكلمة العربية مباشرةً، فالمُسمّي يقبل المفتاح والكلمة معاً ولا يُعيد قيمةً خاماً.
+export const EVENT_STATUS_AR = { upcoming: 'قادمة', live: 'جارية', ended: 'انتهت', closed: 'مُغلقة' };
+export const eventStatusLabel = (v) => {
+  const s = String(v || '');
+  return EVENT_STATUS_AR[s.toLowerCase()] || Object.values(EVENT_STATUS_AR).find((ar) => ar === s) || 'غير محدَّدة';
+};
 
 // ── أيام الأسبوع بالعربية الكاملة ──────────────────────────────────────────────
 // الفهرس صفري بمعيار JS (0 = الأحد)، والأسبوع السعودي يبدأ من الأحد — فرؤوس التقويم تُقرأ
@@ -494,6 +521,7 @@ export const RESOURCE_AR = {
   report: 'تقرير', report_schedule: 'جدولة تقرير', revenue_line: 'بند إيراد', risk: 'خطر',
   saved_view: 'عرض محفوظ', sector: 'قطاع', session: 'جلسة دخول', task: 'مهمة',
   timesheet: 'سجل وقت', unit: 'وحدة', error_event: 'عطل',
+  event: 'فعالية', event_contact: 'جهة ملتقطة', event_partner: 'شراكة فعالية', event_blob: 'ملف فعالية',
 };
 export const resourceLabel = (r) => RESOURCE_AR[String(r || '').toLowerCase()] || 'سجل';
 

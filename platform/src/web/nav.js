@@ -14,6 +14,7 @@ export const DETAIL_ACCESS = {
   contract: PAGE_ACCESS.finance,
   client: PAGE_ACCESS.clients,
   opportunity: PAGE_ACCESS.opportunities,
+  event: PAGE_ACCESS.events,
 };
 
 // عناصر القائمة الجانبية (المفاتيح تطابق PAGE_ACCESS — الإظهار من نفس الدالة)
@@ -28,6 +29,7 @@ export const NAV_ITEMS = [
   { key: 'my-opportunities', ar: 'فرصي', ic: 'flag', group: 'work' },
   { key: 'projects', ar: 'المشاريع', ic: 'projects', group: 'work' },
   { key: 'clients', ar: 'العملاء', ic: 'client', group: 'work' },
+  { key: 'events', ar: 'الفعاليات', ic: 'megaphone', group: 'work' },
   { key: 'tasks', ar: 'مهامي', ic: 'tasks', group: 'work' },
   // «سجل الوقت» أُزيل من المنصة بطلب المالك. الصفحة والخدمة باقيتان في الكود لأن بيانات
   // الوقت تُقرأ في حسابات أخرى (الطاقة والإشغال)، لكنها لم تعد سطحاً يراه أحد — والإخفاء

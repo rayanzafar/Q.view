@@ -224,6 +224,7 @@ const PAGES = {
   team: P.teamPage, staffing: P.staffingPage, users: P.usersPage, audit: P.auditPage, ops: P.opsPage, reports: P.reportsPage, org: P.orgTreePage,
   finance: P.financePage, mail: P.mailPage, clients: P.clientsPage, imports: P.importsPage,
   guide: P.guidePage,
+  events: P.eventsPage,
 };
 
 // معاينة رسالة من صندوق المعاينة — بنفس صلاحية صفحة مركز البريد
@@ -261,6 +262,9 @@ webRouter.get('/app/opportunity/:id', requireWeb, guardDetail('opportunity'), as
 });
 webRouter.get('/app/client/:id', requireWeb, guardDetail('client'), async (req, res, next) => {
   try { res.send(await P.clientDetailPage(req.ctx.user, req.params.id)); } catch (e) { next(e); }
+});
+webRouter.get('/app/event/:id', requireWeb, guardDetail('event'), async (req, res, next) => {
+  try { res.send(await P.eventDetailPage(req.ctx.user, req.params.id, { ...req.query })); } catch (e) { next(e); }
 });
 // صفحة الشخص: بلا guardDetail عمداً — بوابتها ليست «هل يرى هذا النوع من التفاصيل» بل «هل هذا
 // الشخص داخل نطاقك»، وهو سؤالٌ لا يُجاب إلا بعد قراءة صفّه. فالخدمة (personDossier) هي البوابة

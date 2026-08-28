@@ -351,6 +351,35 @@ for (const [roleId, grants] of Object.entries(ROLE_GRANTS)) {
   }
 }
 
+// ── «الفعاليات»: التقاط جهات الاتصال في المعارض — حقٌّ لكل موظف، لا امتياز دور ────────
+// قسمٌ معزول (الترحيلة ٠٣٨) لا يمسّ العملاء ولا الفرص، فلا يرث نطاقاتها الضيّقة: المعرض
+// معرضُ الشركة كلها، ومن يقف في الجناح يلتقط لكل القطاعات. ولذلك النطاق «شركة» في كل منح
+// هنا — ولا يُضاف «event» إلى OPERATIONAL أعلاه عمداً، كي لا يجرّ معه نطاقات القطاع والإدارة.
+//   • كل دور موظَّف: يقرأ الفعاليات، ويلتقط البطاقات والشراكات ويعدّلها (والملكية تُحكم في
+//     الخدمة: من التقط يعدّل، ومعه أدوار المراجعة).
+//   • قائد القطاع ومكتب الرئيس التنفيذي: يديران الفعالية نفسها (إنشاءً وتعديلاً وحذفاً)
+//     ويحذفان بطاقات الغير.
+//   • رئيس تطوير الأعمال: ينشئ الفعالية ويعدّلها **بلا حذف** — قاعدته المعلنة أعلاه «لا حذف
+//     لأي مورد» تبقى كما هي (يحرسها support-units.test.js)، وحذف بطاقات الغير يبقى معها.
+//   • المشاهد: قراءةً فقط. الخارجي: لا شيء — حساب بوابة عميل لا يرى بطاقات المعارض.
+//   • «المدير المباشر» وحده بنطاق **الإدارة** لا الشركة: قراره المعلن أعلاه أن منحه الإداري
+//     كله بنطاق الإدارة (يحرسه staffing-project-scope.test.js). ولا أثر للفرق في السلوك: خدمة
+//     الفعاليات تسأل عن وجود المنح لا عن نطاقه (لا صفَّ هدف في أي فحص)، والملكية هي الحارس.
+const EVENTS_RO = read(['event', 'event_contact', 'event_partner'], 'company');
+const eventsAll = (scope) => [...read(['event'], scope), ...crud(['event_contact', 'event_partner'], scope)];
+const EVENTS_MANAGE = [
+  ...crud(['event'], 'company', ['create', 'update', 'delete']),
+  ...crud(['event_contact', 'event_partner'], 'company', ['delete']),
+];
+const EVENT_MANAGERS = new Set(['sector_lead', 'ceo_office']);
+for (const [roleId, grants] of Object.entries(ROLE_GRANTS)) {
+  if (roleId === 'admin' || roleId === 'external') continue;
+  if (roleId === 'viewer') { grants.push(...EVENTS_RO); continue; }
+  grants.push(...eventsAll(roleId === 'line_manager' ? 'department' : 'company'));
+  if (EVENT_MANAGERS.has(roleId)) grants.push(...EVENTS_MANAGE);
+  if (roleId === 'bd_head') grants.push(...crud(['event'], 'company', ['create', 'update']));
+}
+
 export const ROLE_LABELS = {
   admin: { ar: 'مدير النظام', en: 'System Admin' },
   ceo_office: { ar: 'مكتب الرئيس التنفيذي', en: 'CEO Office' },
