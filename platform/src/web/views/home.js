@@ -29,6 +29,11 @@ import { myDay, monthGrid } from '../../modules/home/home.js';
 // الخادم (`actOnApproval`) — فلا بوابة دورٍ هنا عمداً: هذه البطاقة هي المكان الوحيد الذي
 // يراه معتمِدٌ دورُه لا يفتح شاشة «الاعتمادات».
 import { pendingApprovalsFor, decorateApprovals } from '../../modules/workflow/inbox.js';
+// بطاقة «الفعالية الجارية» — مؤقتة بطبيعتها: «مؤقتاً، زر سريع للمعرض في الصفحة الرئيسية»
+// بلسان المالك. تظهر ما دامت فعاليةٌ جارية اليوم وتختفي بنفسها بعد آخر يوم فيها — لا مفتاح
+// تشغيل ولا صفّ يُحذف. والاستعلام بلا حارس، فالحارس هنا: تُعرض لمن يفتح «الفعاليات» فقط،
+// كي لا تَعِد بشاشةٍ يردّها النظام (نفس قاعدة كل رابط في هذه الصفحة).
+import { activeEvents } from '../../modules/events/events.js';
 
 // ── تسمية صاحب الصفحة ────────────────────────────────────────────────────────
 // الاسم الأول وحده في التحية: «أهلاً ياسر» تُقرأ ترحيباً، و«أهلاً د. ياسر صالح الشمري»
@@ -194,6 +199,20 @@ a.hm-tt:hover .a{color:var(--brand)}
 .hm-no{color:#b91c1c;border-color:#fecaca;font-weight:800}
 .hm-no:hover{background:#fef2f2}
 
+/* ── الفعالية الجارية ── */
+/* شريط الهوية على حافة البداية (يمين العربية) والنقطة الذهبية «الآن»: اللون هنا معنى — هذه
+   البطاقة الوحيدة في الصفحة التي تقول «حدثٌ يجري في هذه اللحظة». والقصّ يحبس الشريط داخل
+   الزوايا المدوّرة كما في بطاقات الخلاصة. */
+.hm-ev{position:relative;overflow:hidden;display:flex;align-items:center;flex-wrap:wrap;gap:.6rem 1rem;
+  padding:.85rem 1rem;margin-bottom:1rem}
+.hm-ev::before{content:"";position:absolute;inset-block:0;inset-inline-start:0;width:4px;background:var(--brand-grad)}
+.hm-ev-x{flex:1 1 240px;min-width:0}
+.hm-ev-t{display:flex;align-items:center;gap:.5rem;min-width:0}
+.hm-ev-t .a{font-size:var(--fs-title);font-weight:800;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hm-ev-s{font-size:var(--fs-meta);color:var(--muted);margin-top:.1rem}
+.hm-ev-go{flex:0 0 auto;min-height:38px;justify-content:center}
+@media(max-width:520px){.hm-ev-go{flex:1 1 100%}}
+
 /* ── التقويم ── */
 .cal-h{display:flex;align-items:center;justify-content:space-between;gap:.5rem;padding:var(--pad-card-h)}
 .cal-nav{display:flex;gap:.3rem}
@@ -257,6 +276,26 @@ function feedRow(e, today, linkable) {
 function emptyCard(title, msg, action) {
   return `<div class="empty-state">${icon('check')}
     <div class="t">${title}</div><div class="s">${msg}</div>${action || ''}</div>`;
+}
+
+// ── الفعالية الجارية ─────────────────────────────────────────────────────────
+// بطاقة لكل فعاليةٍ جارية (غالباً واحدة): اسمها، ومكانها وجناحها وآخر يومٍ فيها، وزرٌّ واحد
+// يفتح تبويب الالتقاط مباشرةً — فالموظف في الجناح يريد نقرةً واحدة لا تصفّحاً.
+// وفراغُ القائمة لا بطاقة له عمداً: لا شيء يُقال عن معرضٍ لا يجري.
+function bannerFor(rows, today) {
+  if (!rows || !rows.length) return '';
+  return rows.map((e) => {
+    const where = [e.venue ? esc(e.venue) : '', e.booth_no ? `جناح ${esc(e.booth_no)}` : ''].filter(Boolean);
+    const until = shortDate(e.ends_on, today);
+    if (until) where.push(`حتى ${until}`);
+    return `<div class="card hm-ev">
+      <div class="hm-ev-x">
+        <div class="hm-ev-t"><span class="now-dot"></span><span class="a">${esc(e.name_ar)} يعمل الآن</span></div>
+        ${where.length ? `<div class="hm-ev-s">${where.join(' · ')}</div>` : ''}
+      </div>
+      <a class="btn btn-primary btn-sm hm-ev-go" href="/app/event/${encodeURIComponent(e.id)}?tab=capture">التقط جهة</a>
+    </div>`;
+  }).join('');
 }
 
 // ── التقويم ──────────────────────────────────────────────────────────────────
@@ -336,6 +375,8 @@ export async function homePage(user, opts = {}) {
   const day = await myDay(user);
   const approvals = await decorateApprovals(await pendingApprovalsFor(user));
   const today = day.today;
+  // الفعالية الجارية — التاريخ نفسه الذي تُقرأ به بقية الصفحة، فلا يختلف «اليوم» بين بطاقتين.
+  const evCard = pageAllowed(user, 'events') ? bannerFor(await activeEvents(today), today) : '';
 
   // الشهر المعروض واليوم المفتوح — كلاهما من العنوان، فحالة الشاشة قابلة للمشاركة والرجوع.
   const mParam = /^\d{4}-(0[1-9]|1[0-2])$/.test(String(opts.m || '')) ? String(opts.m) : today.slice(0, 7);
@@ -498,7 +539,7 @@ export async function homePage(user, opts = {}) {
   // الطابور والفرص، فلو جُمعت الثلاثة فيه لبقي تحت التقويم فراغٌ بطول الصفحة.
   const body = `${hero}${tiles}
   <div class="hm-grid">
-    <div>${apprCard}${dueCard}${oppCard}</div>
+    <div>${evCard}${apprCard}${dueCard}${oppCard}</div>
     <div>${calendarCard(grid, selected, mParam)}${projCard}</div>
   </div>`;
 

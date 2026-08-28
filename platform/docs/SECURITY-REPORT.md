@@ -22,7 +22,7 @@ scrypt + قفل بعد محاولات فاشلة، دخول برمز بريد أ
 ## 4. المتبقّي (مقصود وموثَّق — لا يحجب التشغيل)
 | البند | الحالة | الموضع |
 |-------|--------|--------|
-| CSP | **Report-Only** حتى اكتمال الانتقال onclick → `data-action`؛ التحويل إلى enforcing قرار إصدار لاحق | `src/core/http/security.js:30` |
+| CSP | **Report-Only** حتى اكتمال الانتقال onclick → `data-action`؛ التحويل إلى enforcing قرار إصدار لاحق. وتوجيها قارئ البطاقات داخل المتصفّح — `'wasm-unsafe-eval'` على `script-src` و`worker-src 'self'` — مكتوبان منذ E2 من «الفعاليات» (ADR-0014) فلا يكسرهما التحويل؛ ولا `blob:` في أي توجيه | `src/core/http/security.js:17-18,33` |
 | CSRF على طلبات JSON | مؤجَّل — التغطية الحالية لنماذج urlencoded فقط؛ SameSite=Lax هو الدفاع المتبقي | `src/core/http/csrf.js` |
 | `must_change_pw` | مخزَّن ويُعاد في ردّ الدخول لكن **لا وسيط يفرضه** | `src/core/auth/service.js` |
 | `trust proxy` | مضبوط على `1` (قفزة وكيل واحدة — يطابق Railway؛ يُراجع عند تغيير البنية) | `src/server.js:36` |

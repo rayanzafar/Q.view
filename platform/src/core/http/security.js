@@ -1,6 +1,8 @@
 // ترويسات الأمان + مُقيّد معدل الطلبات — بلا اعتماديات خارجية.
 // CSP بوضع Report-Only أولاً (الصفحات القائمة تستخدم onclick داخلياً)؛ التحويل إلى
 // enforcing قرار إصدار لاحق بعد اكتمال الانتقال إلى data-action (انظر docs/SECURITY-REPORT.md).
+// وتوجيها 'wasm-unsafe-eval' وworker-src 'self' لقارئ البطاقات داخل المتصفّح (عاملٌ من أصلنا
+// يشغّل WebAssembly) — يُكتبان اليوم كي لا يكسر التحويلُ إلى enforcing القارئَ بصمت غداً (ADR-0014).
 import { config } from '../config.js';
 
 // مسارا معاينة داخليان فقط يُضمَّنان فعلياً بـ<iframe> من نفس المنصة (معاينة التقرير في صفحة
@@ -12,7 +14,8 @@ const FRAMEABLE_SAMEORIGIN = [/^\/app\/reports\/preview\//, /^\/app\/mail\/previ
 export function securityHeaders() {
   const csp = (allowSelfFrame) => [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline'",
+    "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'",
+    "worker-src 'self'",
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data:",
     "font-src 'self'",
