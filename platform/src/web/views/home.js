@@ -290,7 +290,7 @@ function bannerFor(rows, today) {
     if (until) where.push(`حتى ${until}`);
     return `<div class="card hm-ev">
       <div class="hm-ev-x">
-        <div class="hm-ev-t"><span class="now-dot"></span><span class="a">${esc(e.name_ar)} يعمل الآن</span></div>
+        <div class="hm-ev-t"><span class="now-dot"></span><span class="a">الآن: ${esc(e.name_ar)}</span></div>
         ${where.length ? `<div class="hm-ev-s">${where.join(' · ')}</div>` : ''}
       </div>
       <a class="btn btn-primary btn-sm hm-ev-go" href="/app/event/${encodeURIComponent(e.id)}?tab=capture">التقط جهة</a>

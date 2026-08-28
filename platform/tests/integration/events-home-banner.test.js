@@ -63,7 +63,7 @@ test('ما دام المعرض جارياً تظهر بطاقته على «صف�
   assert.equal(live.status, 'جارية', 'الفعالية المزروعة ليست جارية — الفحص يقيس لا شيء');
   const main = mainOf(await homePage(ME, {}));
   assert.equal(cards(main), 1, 'بطاقة واحدة لفعاليةٍ جارية واحدة');
-  assert.ok(main.includes(`${LIVE_NAME} يعمل الآن`), 'عنوان البطاقة «… يعمل الآن» غائب');
+  assert.ok(main.includes(`الآن: ${LIVE_NAME}`), 'عنوان البطاقة «الآن: …» غائب');
   assert.ok(main.includes('class="now-dot"'), 'نقطة «الآن» الذهبية غائبة');
   assert.ok(main.includes(`href="/app/event/${live.id}?tab=capture"`), 'الزر لا يقود إلى تبويب الالتقاط');
   assert.ok(main.includes('التقط جهة'), 'نص الزر غائب');
@@ -97,7 +97,7 @@ test('والخارجي — الذي لا يفتح «الفعاليات» — ل�
   assert.equal(nav.pageAllowed(ME, 'events'), true, 'الاستشاري محروم من الفعاليات — الفحص الأول يقيس لا شيء');
   const main = mainOf(await homePage(EXT, {}));
   assert.equal(cards(main), 0, 'بطاقة الفعالية ظهرت لمن لا يفتح شاشتها');
-  assert.ok(!main.includes('يعمل الآن'));
+  assert.ok(!main.includes('الآن: '));
   assert.ok(!main.includes('/app/event/'), 'رابط فعالية لمن يردّه حارس الصفحة');
   assert.ok(!main.includes(LIVE_NAME), 'اسم الفعالية تسرّب إلى صفحة الخارجي');
 });
@@ -106,7 +106,7 @@ test('وإغلاق الفعالية يُسقط البطاقة فوراً — و�
   await ev.closeEvent(CTX, live.id);
   let main = mainOf(await homePage(ME, {}));
   assert.equal(cards(main), 0, 'فعاليةٌ مُغلقة ما زالت تدعو إلى الالتقاط');
-  assert.ok(!main.includes('يعمل الآن'));
+  assert.ok(!main.includes('الآن: '));
   assert.ok(!main.includes(LIVE_NAME));
   assert.ok(!main.includes('/app/event/'));
 
