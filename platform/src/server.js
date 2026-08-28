@@ -11,6 +11,7 @@ import { attachContext } from './core/http/context.js';
 import { csrf } from './core/http/csrf.js';
 import { securityHeaders, loginLimiter, apiLimiter, otpEmailLimiter, otpIpLimiter, otpVerifyLimiter } from './core/http/security.js';
 import { errorHandler } from './core/http/errors.js';
+import { readBuildId } from './core/http/build-id.js';
 import { logError, writeFatalSync, trimStack } from './core/obs/log.js';
 import { requestScope, currentScope } from './core/obs/reqctx.js';
 import { captureRejection } from './core/obs/capture.js';
@@ -69,8 +70,10 @@ export async function createApp() {
   // ومع التدحرج صار للترتيب أثرٌ ثانٍ: طلبُ صورةٍ لا يُعدّ نشاطاً يُطيل جلسةً منسيّة.
   app.get('/health', (req, res) => res.json({ ok: true, ts: new Date().toISOString() }));
   // Readiness: verify DB is reachable (for load balancers / orchestrators).
+  // معرّف النشرة يُقرأ مرةً: به يميّز خطُّ النشر الحاويةَ الجديدة من القديمة أثناء التبديل.
+  const buildId = readBuildId(ROOT);
   app.get('/ready', async (req, res) => {
-    try { await ping(); res.json({ ready: true }); }
+    try { await ping(); res.json({ ready: true, build: buildId }); }
     catch (e) {
       // السبب يُكتب في سجل الخادم لا في الرد: رسائل مُحرّك القاعدة تحمل مضيفاً واسم قاعدة ودوراً،
       // فلا تُسرَّب لمتصل غير موثَّق (نفس مبدأ errors.js: لا تفصيل 5xx يغادر).

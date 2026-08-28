@@ -16,7 +16,7 @@
 // الاستعمال: SANAD_RELEASE=1 npm run deploy [-- --skip-gates --no-backup --allow-dirty --no-sweep]
 // الدليل الكامل: docs/guides/DEPLOY-PIPELINE.md
 import { spawnSync } from 'node:child_process';
-import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { resolve, join } from 'node:path';
 
@@ -127,6 +127,13 @@ if (args.has('--no-backup')) {
 
 // ── ٤) النشر — الخدمة بمعرّفها الفريد، لا بالاسم ولا بحال الربط ────────────────
 log(`٤/٧ النشر إلى خدمة التطبيق ${APP_SERVICE_ID}`);
+// معرّف هذه النشرة: التزام git + طابع زمني، في ملفٍ مُهمَل من git ومشحونٍ مع الصورة. الخادم
+// يعلنه في /ready، وبه تُميَّز الحاوية الجديدة من القديمة التي تبقى تجيب أثناء التبديل
+// (المسحُ الحي انطلق مرةً على القديمة فأنذر كذباً — انظر src/core/http/build-id.js).
+const headSha = (run('git', ['rev-parse', '--short=12', 'HEAD'], { capture: true }).stdout || '').trim() || 'nogit';
+const BUILD_ID = `${headSha}-${new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14)}`;
+writeFileSync(join(ROOT, '.build-id'), BUILD_ID + '\n');
+console.log(`ℹ معرّف النشرة المكتوب: ${BUILD_ID}`);
 const up = run('railway', ['up', '--detach', '--service', APP_SERVICE_ID, '--environment', ENV_ID], { capture: true });
 const upOut = (up.stdout || '') + (up.stderr || '');
 console.log(upOut.trim());
@@ -135,20 +142,25 @@ const depId = (upOut.match(/id=([0-9a-f-]{36})/) || [])[1] || null;
 console.log(depId ? `ℹ معرّف النشرة: ${depId}` : 'ℹ لم يُلتقط معرّف النشرة من المخرجات');
 
 // ── ٥) انتظار الجاهزية ────────────────────────────────────────────────────────
-log('٥/٧ انتظار /ready (حتى ٧ دقائق)');
-let ready = false;
+log(`٥/٧ انتظار /ready بالمعرّف ${BUILD_ID} (حتى ٧ دقائق)`);
+// «جاهز» وحدها لا تكفي: الحاوية القديمة تقولها أيضاً. نطلب المعرّف الذي كتبناه للتوّ.
+let ready = false; let sawOld = false;
 const deadline = Date.now() + 7 * 60000;
 while (Date.now() < deadline) {
   await new Promise((r) => setTimeout(r, 10000));
   try {
     const res = await fetch(`${STAGING_URL}/ready`, { signal: AbortSignal.timeout(5000) });
-    if (res.ok && (await res.json()).ready === true) { ready = true; break; }
+    if (res.ok) {
+      const j = await res.json();
+      if (j.ready === true && j.build === BUILD_ID) { ready = true; break; }
+      if (j.ready === true) sawOld = true; // القديمة ما زالت تجيب — ننتظر التبديل
+    }
   } catch { /* لم تجهز بعد */ }
-  process.stdout.write('.');
+  process.stdout.write(sawOld ? '·' : '.');
 }
 console.log('');
-if (!ready) fail('/ready لم تُجب خلال المهلة — افحص سجلّات الإقلاع (الترحيلة الفاشلة توقف الإقلاع عمداً)');
-console.log('✓ البيئة جاهزة');
+if (!ready) fail(`/ready لم تُعلن المعرّف ${BUILD_ID} خلال المهلة — افحص سجلّات الإقلاع (الترحيلة الفاشلة توقف الإقلاع عمداً)، وإن كانت النشرة قد نجحت فأعد المسح يدوياً: node scripts/sweep.mjs ${STAGING_URL}`);
+console.log(`✓ البيئة جاهزة بالنشرة ${BUILD_ID}`);
 
 // ── ٦) سجلّات الإقلاع: الترحيلات طُبّقت ولا أخطاء ─────────────────────────────
 log('٦/٧ فحص سجلّات الإقلاع');
