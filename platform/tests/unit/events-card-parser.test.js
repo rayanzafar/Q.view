@@ -104,6 +104,29 @@ test('كل حقل نصّي مقصوصٌ على مئة وستين حرفاً', ()
   assert.ok(r.org_name.length <= 160, 'اسم الجهة تجاوز الحدّ');
 });
 
+// حدّ العمل: سطرٌ من اثني عشر ألف حرف كان يحتجز المعالج (تعبير الموقع يعود على السطر مرةً لكل
+// حرف) — والقصّ إلى مئتي حرف للسطر وثمانين سطراً يجعل الأسوأ ثابتاً.
+test('سطرٌ من اثني عشر ألف حرف — «www.» أو «•» مكرَّرة — يُقرأ في أقل من خمسين ملّي ثانية ويعود فارغاً', () => {
+  parseCardText('أحمد العلي\nجوال 0501234567'); // تسخين المحرّك قبل القياس
+  const blank = { person_name: null, org_name: null, job_title: null, phone: null, email: null, website: null, extra_phones: [] };
+  for (const [label, line] of [['www.', 'www.'.repeat(3000)], ['•', '•'.repeat(12000)], [' - ', ' - '.repeat(4000)], ['a@', 'a@'.repeat(6000)]]) {
+    const t0 = performance.now();
+    const r = parseCardText(line);
+    const ms = performance.now() - t0;
+    assert.ok(ms < 50, `السطر «${label}» المكرَّر استغرق ${ms.toFixed(1)} ملّي ثانية`);
+    assert.deepEqual(r, blank, `السطر «${label}» المكرَّر أنتج حقولاً`);
+  }
+  // والحدّ لا يُسقط بطاقةً حقيقية طويلة الذيل: ما قبل السطر الثمانين يُقرأ وما بعده يُهمَل.
+  const tail = Array.from({ length: 200 }, (_, i) => `سطر حشو رقم ${i}`).join('\n');
+  const r = parseCardText(`أحمد العلي\nشركة النخبة\nجوال 0501234567\n${tail}`);
+  assert.equal(r.person_name, 'أحمد العلي');
+  assert.equal(r.org_name, 'شركة النخبة');
+  assert.equal(r.phone, '0501234567');
+  // وسطرٌ طويل حقيقي يُقصّ لا يُهمَل: الجوال في أوله يُقرأ.
+  const long = parseCardText('جوال 0501234567 ' + 'ملاحظة '.repeat(100));
+  assert.equal(long.phone, '0501234567');
+});
+
 test('ولا مكالمة خارجية واحدة تخرج من القارئ', () => {
   calls = [];
   for (let i = 0; i < 5; i++) parseCardText(`اسم ${i} تجريبي\nشركة تجريبية\nجوال 050000000${i}\nx${i}@test.sa`);

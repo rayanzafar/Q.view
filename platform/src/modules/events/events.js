@@ -1,4 +1,4 @@
-// ══ الفعاليات — التقاط جهات الاتصال في المعارض ═════════════════════════════════════════
+// ══ الفعاليات — التقاط بطاقات الزوّار في المعارض ═══════════════════════════════════════
 //
 // قسمٌ مستقل للمعارض: نلتقط من نقابلهم بسرعة على الجوال، وبعد المعرض نراجع من يصير فرصةً
 // ومن يصير شراكة — بلسان المالك (٢٠٢٦-٠٨-٢٧).
@@ -12,9 +12,12 @@
 //   • القراءة: منح «قراءة فعالية» — لكل موظف بنطاق الشركة، والمشاهد قراءةً فقط، والخارجي لا.
 //   • الإدارة (إنشاء فعالية/تعديلها/إغلاقها/حذفها): منح على «فعالية» — لمدير النظام وقادة
 //     القطاعات ومكتب الرئيس (ورئيس تطوير الأعمال بلا حذف — قاعدته العامة في المصفوفة).
-//   • الالتقاط: منح «إنشاء جهة ملتقطة» — كل حسابٍ تشغيلي؛ المشاهد يقرأ ولا يلتقط.
-//   • التعديل والحذف على البطاقة: **مِلكيةٌ أو قيادة** — من التقطها، أو أدوار المراجعة
-//     (REVIEW_ROLES). فالبطاقة أمانة ملتقِطها حتى تُراجَع، ومراجعتها شأن قيادة الفريق.
+//   • الالتقاط: منح «إنشاء» على الجهة الملتقطة أو الشراكة — كل حسابٍ تشغيلي؛ المشاهد يقرأ ولا يلتقط.
+//   • التعديل على البطاقة: منحُ «تعديل» من المصفوفة **ثم** مِلكيةٌ أو قيادة — من التقطها، أو
+//     أدوار المراجعة (REVIEW_ROLES). فالبطاقة أمانة ملتقِطها حتى تُراجَع، ومراجعتها شأن قيادة
+//     الفريق — والمصفوفة أولاً: من فقد منحَ التعديل (كالمشاهد) لا تفتحه له ملكيته.
+//   • الحذف: المالك بمنح التعديل، أو من يحمل منحَ «حذف» من المصفوفة (قائد القطاع ومكتب
+//     الرئيس). ورئيس تطوير الأعمال يعدّل كل بطاقة ولا يحذف إلا بطاقته — قاعدته العامة.
 //
 // ── كشف التكرار: داخل الفعالية الواحدة، وبثلاثة مفاتيح ──────────────────────────────────
 // في معرضٍ يلتقط ثلاثة زملاء البطاقة نفسها. فكل التقاطٍ يُسأل: هل في هذه الفعالية بطاقةٌ
@@ -90,7 +93,7 @@ export function eventStatus(row, day = today()) {
   if (!row) return 'غير محدَّدة';
   if (row.closed_at) return 'مُغلقة';
   if (day < String(row.starts_on || '')) return 'قادمة';
-  if (day > String(row.ends_on || '')) return 'انتهت';
+  if (day > String(row.ends_on || '')) return 'منتهية';
   return 'جارية';
 }
 
@@ -99,12 +102,17 @@ function assertRead(user) {
   if (!can(user, 'read', 'event')) throw forbidden('الفعاليات خارج صلاحياتك');
 }
 function assertManage(user, action) {
-  if (!can(user, action, 'event')) throw forbidden('إدارة الفعاليات لمدير النظام وقادة القطاعات');
+  if (!can(user, action, 'event')) throw forbidden('إنشاء الفعاليات وتعديلها ليس ضمن صلاحيتك — اطلبه من قائد القطاع أو مدير النظام');
 }
-function assertCapture(user) {
-  if (!can(user, 'create', 'event_contact')) throw forbidden('صلاحيتك للمشاهدة فقط — التقاط جهات الاتصال يحتاج حساباً تشغيلياً');
+// resource: «event_contact» للبطاقة و«event_partner» للشراكة — لكلٍّ منحُ إنشائه في المصفوفة.
+function assertCapture(user, resource) {
+  if (!can(user, 'create', resource)) throw forbidden('صلاحيتك للمشاهدة فقط — اطلب من مدير النظام صلاحية الالتقاط');
 }
-const mayEdit = (user, row) => row.captured_by === user.id || REVIEW_ROLES.includes(user.role_id);
+// الملكية لا تُعوِّض منحاً غائباً: المصفوفة تُسأل أولاً، ثم من التقط أو من يراجع.
+const mayEdit = (user, row, resource) => can(user, 'update', resource)
+  && (row.captured_by === user.id || REVIEW_ROLES.includes(user.role_id));
+const mayDelete = (user, row, resource) => (row.captured_by === user.id && can(user, 'update', resource))
+  || can(user, 'delete', resource);
 
 // ══ الفعاليات ═══════════════════════════════════════════════════════════════════════════
 const EVENT_COLS = ['id', 'name_ar', 'venue', 'starts_on', 'ends_on', 'booth_no', 'created_by', 'created_by_name',
@@ -124,7 +132,7 @@ function eventPatch(data, base = null) {
   const p = {};
   if (has('name_ar')) {
     const v = clean(data.name_ar);
-    if (!v) throw badRequest('اكتب اسم الفعالية — كلمتان تكفيان، مثل: معرض التقنية ٢٠٢٦');
+    if (!v) throw badRequest('اكتب اسم الفعالية — كلمتان تكفيان، مثل: معرض التقنية 2026');
     p.name_ar = v;
   }
   if (has('venue')) p.venue = clean(data.venue);
@@ -245,17 +253,26 @@ export async function deleteEvent(ctx, eventId) {
 // ══ البطاقات الملتقطة ═══════════════════════════════════════════════════════════════════
 // raw_text خارج أعمدة القائمة: قد يبلغ اثني عشر ألف حرف للبطاقة، والقائمة مئة بطاقة. تُقرأ
 // مع البطاقة الواحدة فقط.
-const CONTACT_COLS = ['id', 'event_id', 'kind', 'person_name', 'org_name', 'job_title', 'phone', 'phone_norm',
-  'email', 'email_norm', 'website', 'note', 'name_norm', 'org_norm', 'sector_id', 'capture_key',
+// أعمدة القائمة هي ما تقرؤه الشاشة. والصور المطبَّعة (phone_norm وأخواتها) مفاتيحُ كشف التكرار
+// لا بيانات عرض، ومفتاحُ الالتقاط شأنُ المتصفّح الذي ولّده — فلا يخرج أيٌّ منها في القوائم؛
+// المطبَّعات تُقرأ مع البطاقة الواحدة فقط (المراجعة تحتاجها لتفهم لماذا عُلِّمت مكرَّرة)،
+// ومفتاح الالتقاط لا يخرج أبداً.
+const CONTACT_LIST_COLS = ['id', 'event_id', 'kind', 'person_name', 'org_name', 'job_title', 'phone',
+  'email', 'website', 'note', 'sector_id',
   'possible_duplicate_of', 'outcome', 'outcome_note', 'outcome_by', 'outcome_by_name', 'outcome_at',
   'captured_by', 'captured_by_name', 'captured_at', 'updated_at'];
+const CONTACT_FULL_COLS = [...CONTACT_LIST_COLS, 'phone_norm', 'email_norm', 'name_norm', 'org_norm', 'raw_text'];
 const HAS_PHOTO = (a) => `CASE WHEN EXISTS (SELECT 1 FROM event_blob b WHERE b.kind = 'card' AND b.ref_id = ${a}.id) THEN 1 ELSE 0 END AS has_photo`;
-const contactSelect = (a = 'c', withRaw = false) =>
-  `${CONTACT_COLS.map((k) => `${a}.${k}`).join(', ')}${withRaw ? `, ${a}.raw_text` : ''}, ${HAS_PHOTO(a)}`;
+const contactSelect = (a = 'c', full = false) =>
+  `${(full ? CONTACT_FULL_COLS : CONTACT_LIST_COLS).map((k) => `${a}.${k}`).join(', ')}, ${HAS_PHOTO(a)}`;
 const CONTACT_TEXT = ['person_name', 'org_name', 'job_title', 'phone', 'email', 'website'];
 
+// البطاقة تحت فعاليةٍ محذوفة محذوفةٌ معها: الربط بالفعالية شرطُ القراءة لا زينة — وإلا فُتحت
+// بطاقاتُ فعاليةٍ أُزيلت بعنوانها المباشر وعُدِّلت وهي لا تظهر في أي قائمة.
 async function loadContact(cid) {
-  const row = await get(`SELECT ${contactSelect('c', true)} FROM event_contact c WHERE c.id = ? AND c.deleted_at IS NULL`, [String(cid || '')]);
+  const row = await get(`SELECT ${contactSelect('c', true)} FROM event_contact c
+     JOIN event e ON e.id = c.event_id AND e.deleted_at IS NULL
+     WHERE c.id = ? AND c.deleted_at IS NULL`, [String(cid || '')]);
   if (!row) throw notFound('البطاقة غير موجودة');
   return row;
 }
@@ -323,7 +340,8 @@ export async function listContacts(user, eventId, opts = {}) {
   if (outcome) { where.push('c.outcome = ?'); params.push(outcome); }
   if (truthy(opts.mine)) { where.push('c.captured_by = ?'); params.push(user.id); }
   if (truthy(opts.dup)) where.push('c.possible_duplicate_of IS NOT NULL');
-  const limit = Math.max(1, Math.min(500, Number(opts.limit) || 100));
+  // الحدّ عددٌ صحيح دائماً — «1.5» في العنوان لا يصل إلى الاستعلام نصاً.
+  const limit = Math.max(1, Math.min(500, Math.floor(Number(opts.limit)) || 100));
   return all(`SELECT ${contactSelect('c')} FROM event_contact c
      WHERE ${where.join(' AND ')}
      ORDER BY c.captured_at DESC, c.id DESC
@@ -334,7 +352,7 @@ export async function listContacts(user, eventId, opts = {}) {
 export async function recentContacts(user, eventId, opts = {}) {
   assertRead(user);
   const ev = await loadEvent(eventId);
-  const limit = Math.max(1, Math.min(50, Number(opts.limit) || 12));
+  const limit = Math.max(1, Math.min(50, Math.floor(Number(opts.limit)) || 12));
   const rows = await all(`SELECT ${contactSelect('c')} FROM event_contact c
      WHERE c.event_id = ? AND c.deleted_at IS NULL AND c.captured_by = ?
      ORDER BY c.captured_at DESC, c.id DESC
@@ -349,24 +367,33 @@ export async function getContact(user, cid) {
   return loadContact(cid);
 }
 
+// خرقُ التفرّد على (event_id, capture_key): سكويلايت يقولها في نصّ الخطأ، وبوستجريس برمزه.
+export const isUniqueViolation = (e) => !!e
+  && (String(e.code || '') === '23505' || /UNIQUE constraint failed/i.test(String(e.message || '')));
+
+// الصفّ الذي يحمل مفتاح الالتقاط هذا في هذه الفعالية — لصاحبه وحده، وما حُذف لا يُستأنف.
+async function resumeByKey(ev, captureKey, user) {
+  const prior = await get('SELECT id, captured_by, deleted_at FROM event_contact WHERE event_id = ? AND capture_key = ?', [ev.id, captureKey]);
+  if (!prior) return null;
+  if (prior.deleted_at) throw badRequest('هذه البطاقة حُذفت من قبل — حدّث الصفحة وأعد الإدخال');
+  if (prior.captured_by !== user.id) throw badRequest('هذا الالتقاط مسجَّل باسم زميل — حدّث الصفحة وأعد الإدخال');
+  const contact = await loadContact(prior.id);
+  const dup = contact.possible_duplicate_of
+    ? await get(`SELECT ${contactSelect('c')} FROM event_contact c WHERE c.id = ?`, [contact.possible_duplicate_of]) : null;
+  return { contact, possibleDuplicate: summarize(dup), resumed: true };
+}
+
 export async function createContact(ctx, eventId, data = {}) {
   const user = ctx.user;
-  assertCapture(user);
+  assertCapture(user, 'event_contact');
   const ev = await loadEvent(eventId);
   if (ev.closed_at) throw badRequest('هذه الفعالية مُغلقة — لا يُلتقط فيها جديد');
 
   // مفتاح الالتقاط: الشبكة انقطعت بعد الحفظ فأعاد المتصفّح الإرسال — نُعيد الصفّ نفسه بلا كتابة.
   const captureKey = clean(data.capture_key, 80);
   if (captureKey) {
-    const prior = await get('SELECT id, captured_by, deleted_at FROM event_contact WHERE event_id = ? AND capture_key = ?', [ev.id, captureKey]);
-    if (prior) {
-      if (prior.deleted_at) throw badRequest('هذه البطاقة حُذفت من قبل — افتح نموذجاً جديداً');
-      if (prior.captured_by !== user.id) throw badRequest('هذا الالتقاط مسجَّل باسم زميل — افتح نموذجاً جديداً');
-      const contact = await loadContact(prior.id);
-      const dup = contact.possible_duplicate_of
-        ? await get(`SELECT ${contactSelect('c')} FROM event_contact c WHERE c.id = ?`, [contact.possible_duplicate_of]) : null;
-      return { contact, possibleDuplicate: summarize(dup), resumed: true };
-    }
+    const resumed = await resumeByKey(ev, captureKey, user);
+    if (resumed) return resumed;
   }
 
   const kind = clean(data.kind);
@@ -376,23 +403,33 @@ export async function createContact(ctx, eventId, data = {}) {
   f.note = clean(data.note, NOTE_MAX);
   f.raw_text = clean(data.raw_text, RAW_MAX);
   f.sector_id = clean(data.sector_id, 80);
-  if (!f.person_name && !f.org_name && !f.phone) throw badRequest('اكتب اسم الشخص أو جهته أو رقم جواله — حقل واحد يكفي');
+  if (!f.person_name && !f.org_name && !f.phone) throw badRequest('اكتب اسم الشخص أو جهته أو رقم جوّاله — حقل واحد يكفي');
   await assertSector(f.sector_id);
   const norms = normsOf(f);
   const dup = await findPossibleDuplicate(ev.id, norms, null);
 
   const cid = id('evc');
   const now = nowIso();
-  await tx(async () => {
-    await insert('event_contact', {
-      id: cid, event_id: ev.id, kind, ...f, ...norms,
-      capture_key: captureKey, possible_duplicate_of: dup ? dup.id : null,
-      outcome: OUTCOMES[0],
-      captured_by: user.id, captured_by_name: nameOf(user), captured_at: now,
+  try {
+    await tx(async () => {
+      await insert('event_contact', {
+        id: cid, event_id: ev.id, kind, ...f, ...norms,
+        capture_key: captureKey, possible_duplicate_of: dup ? dup.id : null,
+        outcome: OUTCOMES[0],
+        captured_by: user.id, captured_by_name: nameOf(user), captured_at: now,
+      });
+      await audit(ctx, { action: 'create', resource: 'event_contact', resourceId: cid, sectorId: f.sector_id || null,
+        detail: { event_id: ev.id, kind, dup: dup ? dup.id : null } });
     });
-    await audit(ctx, { action: 'create', resource: 'event_contact', resourceId: cid, sectorId: f.sector_id || null,
-      detail: { event_id: ev.id, kind, dup: dup ? dup.id : null } });
-  });
+  } catch (e) {
+    // السباق: الطلبُ وإعادتُه وصلا معاً فمرّا كلاهما من فحص المفتاح قبل أن يكتب أحدهما — الفهرس
+    // الفريد يوقف الثاني، فنعامله كإعادة إرسال لا كعطل: الصفّ الأول هو الجواب، ولا صفّ ثانٍ.
+    if (captureKey && isUniqueViolation(e)) {
+      const resumed = await resumeByKey(ev, captureKey, user);
+      if (resumed) return resumed;
+    }
+    throw e;
+  }
   return { contact: await loadContact(cid), possibleDuplicate: summarize(dup), resumed: false };
 }
 
@@ -400,7 +437,7 @@ export async function updateContact(ctx, cid, patch = {}) {
   const user = ctx.user;
   assertRead(user);
   const row = await loadContact(cid);
-  if (!mayEdit(user, row)) throw forbidden('تعديل هذه البطاقة لمن التقطها أو لقيادة الفريق');
+  if (!mayEdit(user, row, 'event_contact')) throw forbidden('تعديل هذه البطاقة لمن التقطها أو لقيادة الفريق');
   const p = {};
   if ('kind' in patch) {
     const kind = clean(patch.kind);
@@ -410,10 +447,10 @@ export async function updateContact(ctx, cid, patch = {}) {
   for (const k of CONTACT_TEXT) if (k in patch) p[k] = textField(k, patch[k]);
   if ('note' in patch) p.note = clean(patch.note, NOTE_MAX);
   if ('sector_id' in patch) { p.sector_id = clean(patch.sector_id, 80); await assertSector(p.sector_id); }
-  // raw_text وcapture_key وحقول الحال لا تمرّ من هنا: الأول أثرٌ لا يُمَسّ، والحال لها مسارها.
+  // raw_text وcapture_key وحقول المتابعة لا تمرّ من هنا: الأول أثرٌ لا يُمَسّ، والمتابعة لها مسارها.
   if (!Object.keys(p).length) throw badRequest('حدّد ما تريد تغييره في البطاقة');
   const merged = { ...row, ...p };
-  if (!merged.person_name && !merged.org_name && !merged.phone) throw badRequest('اكتب اسم الشخص أو جهته أو رقم جواله — حقل واحد يكفي');
+  if (!merged.person_name && !merged.org_name && !merged.phone) throw badRequest('اكتب اسم الشخص أو جهته أو رقم جوّاله — حقل واحد يكفي');
   const changed = Object.keys(p);
   Object.assign(p, normsOf(merged));
   const dup = await findPossibleDuplicate(row.event_id, p, row.id, row.captured_at);
@@ -431,9 +468,9 @@ export async function setOutcome(ctx, cid, data = {}) {
   const user = ctx.user;
   assertRead(user);
   const row = await loadContact(cid);
-  if (!mayEdit(user, row)) throw forbidden('تعديل هذه البطاقة لمن التقطها أو لقيادة الفريق');
+  if (!mayEdit(user, row, 'event_contact')) throw forbidden('تعديل هذه البطاقة لمن التقطها أو لقيادة الفريق');
   const outcome = clean(data.outcome);
-  if (!OUTCOMES.includes(outcome)) throw badRequest('حال البطاقة غير معروف — اختر من القائمة');
+  if (!OUTCOMES.includes(outcome)) throw badRequest('قيمة المتابعة غير معروفة — اختر من القائمة');
   const now = nowIso();
   const p = { outcome, outcome_by: user.id, outcome_by_name: nameOf(user), outcome_at: now, updated_at: now };
   if ('outcome_note' in data) p.outcome_note = clean(data.outcome_note, NOTE_MAX);
@@ -449,7 +486,7 @@ export async function deleteContact(ctx, cid) {
   const user = ctx.user;
   assertRead(user);
   const row = await loadContact(cid);
-  if (!mayEdit(user, row)) throw forbidden('حذف هذه البطاقة لمن التقطها أو لقيادة الفريق');
+  if (!mayDelete(user, row, 'event_contact')) throw forbidden('حذف هذه البطاقة لمن التقطها أو لقيادة الفريق');
   await tx(async () => {
     await update('event_contact', row.id, { deleted_at: nowIso() });
     // الصورة تُمحى فعلاً لا ناعماً: بايتاتٌ بلا بطاقة تُقرأ لا تستحق مكانها في القاعدة.
@@ -462,10 +499,11 @@ export async function deleteContact(ctx, cid) {
 
 // قراءة نصّ البطاقة — محلياً، بلا حفظ: الشاشة تعرض المقترَح ويراجعه الملتقِط ثم يحفظ بنفسه.
 export async function parseCard(user, data = {}) {
-  assertCapture(user);
-  const text = String(data.text == null ? '' : data.text).trim();
-  if (text.length < 5) throw badRequest('ألصق نص البطاقة (٥ أحرف على الأقل)');
-  return { ...parseCardText(text.slice(0, RAW_MAX)), _mode: 'local', _note: 'استُخرج محلياً من النص — راجع الحقول قبل الحفظ' };
+  assertCapture(user, 'event_contact');
+  // القصّ قبل التشذيب: نصٌّ من فراغاتٍ طويلة ثم كلام لا يُشذَّب كاملاً قبل أن يُحدّ.
+  const text = String(data.text == null ? '' : data.text).slice(0, RAW_MAX).trim();
+  if (text.length < 5) throw badRequest('الصق نصّ البطاقة أولاً — سطر واحد يكفي');
+  return { ...parseCardText(text), _mode: 'local', _note: 'استُخرج محلياً من النصّ — راجع الحقول قبل الحفظ' };
 }
 
 // ══ الشراكات ════════════════════════════════════════════════════════════════════════════
@@ -473,8 +511,11 @@ const PARTNER_COLS = ['id', 'event_id', 'org_name', 'org_norm', 'partner_kind', 
   'scope_note', 'status', 'next_step', 'next_date', 'contact_id', 'captured_by', 'captured_by_name', 'captured_at', 'updated_at'];
 const partnerSelect = (a = 'p') => PARTNER_COLS.map((k) => `${a}.${k}`).join(', ');
 
+// كالبطاقة: الشراكة تحت فعاليةٍ محذوفة لا تُقرأ ولا تُعدَّل.
 async function loadPartner(pid) {
-  const row = await get(`SELECT ${partnerSelect('p')} FROM event_partner p WHERE p.id = ? AND p.deleted_at IS NULL`, [String(pid || '')]);
+  const row = await get(`SELECT ${partnerSelect('p')} FROM event_partner p
+     JOIN event e ON e.id = p.event_id AND e.deleted_at IS NULL
+     WHERE p.id = ? AND p.deleted_at IS NULL`, [String(pid || '')]);
   if (!row) throw notFound('الشراكة غير موجودة');
   return row;
 }
@@ -497,7 +538,7 @@ async function partnerPatch(data, base, eventId) {
   if (has('next_step')) p.next_step = clean(data.next_step, 400);
   if (has('status')) {
     const v = clean(data.status, 60) || (base === null ? PARTNER_STATUSES[0] : null);
-    if (!PARTNER_STATUSES.includes(v)) throw badRequest('حال الشراكة غير معروف — اختر من القائمة');
+    if (!PARTNER_STATUSES.includes(v)) throw badRequest('حالة الشراكة غير معروفة — اختر من القائمة');
     p.status = v;
   }
   if (has('next_date')) {
@@ -509,7 +550,7 @@ async function partnerPatch(data, base, eventId) {
     p.contact_id = clean(data.contact_id, 80);
     if (p.contact_id) {
       const c = await get('SELECT id FROM event_contact WHERE id = ? AND event_id = ? AND deleted_at IS NULL', [p.contact_id, eventId]);
-      if (!c) throw badRequest('جهة الاتصال المختارة ليست من هذه الفعالية');
+      if (!c) throw badRequest('البطاقة المختارة ليست من هذه الفعالية');
     }
   }
   return p;
@@ -525,7 +566,7 @@ export async function listPartners(user, eventId) {
 
 export async function createPartner(ctx, eventId, data = {}) {
   const user = ctx.user;
-  assertCapture(user);
+  assertCapture(user, 'event_partner');
   const ev = await loadEvent(eventId);
   if (ev.closed_at) throw badRequest('هذه الفعالية مُغلقة — لا يُلتقط فيها جديد');
   const p = await partnerPatch(data, null, ev.id);
@@ -543,7 +584,7 @@ export async function updatePartner(ctx, pid, patch = {}) {
   const user = ctx.user;
   assertRead(user);
   const row = await loadPartner(pid);
-  if (!mayEdit(user, row)) throw forbidden('تعديل هذه الشراكة لمن سجّلها أو لقيادة الفريق');
+  if (!mayEdit(user, row, 'event_partner')) throw forbidden('تعديل هذه الشراكة لمن سجّلها أو لقيادة الفريق');
   const p = await partnerPatch(patch, row, row.event_id);
   if (!Object.keys(p).length) throw badRequest('حدّد ما تريد تغييره في الشراكة');
   const changed = Object.keys(p);
@@ -560,7 +601,7 @@ export async function deletePartner(ctx, pid) {
   const user = ctx.user;
   assertRead(user);
   const row = await loadPartner(pid);
-  if (!mayEdit(user, row)) throw forbidden('حذف هذه الشراكة لمن سجّلها أو لقيادة الفريق');
+  if (!mayDelete(user, row, 'event_partner')) throw forbidden('حذف هذه الشراكة لمن سجّلها أو لقيادة الفريق');
   await tx(async () => {
     await update('event_partner', row.id, { deleted_at: nowIso() });
     await audit(ctx, { action: 'delete', resource: 'event_partner', resourceId: row.id, sectorId: null,

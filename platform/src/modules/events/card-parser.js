@@ -20,6 +20,10 @@
 import { normalizeEntityName } from '../../core/org/entity-registry.js';
 
 const MAX = 160;
+// حدود العمل: النصّ كله، وعدد الأسطر، وطول السطر — تُطبَّق قبل أي تعبير نمطي يعود على السطر.
+const MAX_TEXT = 24000;
+const MAX_LINES = 80;
+const MAX_LINE = 200;
 
 // ── الأرقام: العربية-الهندية والفارسية ⟵ لاتينية ──────────────────────────────────────
 const AR_DIGITS = '٠١٢٣٤٥٦٧٨٩';
@@ -144,9 +148,12 @@ const empty = () => ({ person_name: null, org_name: null, job_title: null, phone
 export function parseCardText(text) {
   const out = empty();
   try {
-    let s = String(text == null ? '' : (typeof text === 'object' ? '' : text));
+    let s = String(text == null ? '' : (typeof text === 'object' ? '' : text)).slice(0, MAX_TEXT);
     s = foldDigits(s.normalize('NFC')).replace(ZERO_WIDTH, '');
-    const rawLines = s.split(/\r\n|\r|\n/).map((l) => l.trim()).filter(Boolean);
+    // بطاقةٌ لا تتجاوز ثمانين سطراً ولا مئتي حرف في السطر. والأطول (صفحةٌ أُلصقت خطأً، أو سطرٌ من
+    // اثني عشر ألف «www.») يُقصّ لا يُقرأ: التعابير أدناه تعود على السطر مراتٍ بعدد حروفه،
+    // وطولُ السطر — لا عددُ الأسطر — هو ما يحتجز المعالج.
+    const rawLines = s.split(/\r\n|\r|\n/).map((l) => l.slice(0, MAX_LINE).trim()).filter(Boolean).slice(0, MAX_LINES);
 
     let email = null; let website = null;
     const phones = [];
@@ -170,8 +177,10 @@ export function parseCardText(text) {
       residual = stripPhones(residual.replace(LABEL_RE, ' '));
 
       // ما بقي يُقسَّم على الفواصل المرئية: «أحمد العلي | Ahmed Ali» و«مدير المبيعات - شركة كذا».
-      for (const part of residual.split(/\s+[|•·]\s+|\s+[-–—]\s+|\s*[،,;]\s+/)) {
-        const t = part.replace(/^[\s|,،:;\-–—•·]+|[\s|,،:;\-–—•·]+$/g, '').replace(/\s+/g, ' ').trim();
+      // الفواصل بمسافةٍ أو جدولة لا بـ\s، والتشذيب من كل طرفٍ تعبيرٌ مستقل: بدائل لا تتداخل
+      // فلا يعود المحرّك على فراغٍ طويل مرةً لكل بديل.
+      for (const part of residual.split(/[ \t\u00A0]+[|•·][ \t\u00A0]+|[ \t\u00A0]+[-–—][ \t\u00A0]+|[ \t\u00A0]*[،,;][ \t\u00A0]+/)) {
+        const t = part.replace(/^[ \t\u00A0|,،:;\-–—•·]+/, '').replace(/[ \t\u00A0|,،:;\-–—•·]+$/, '').replace(/\s+/g, ' ').trim();
         if (!t || !HAS_LETTER.test(t)) continue;
         const toks = tokensOf(t);
         const isOrg = toks.some(isOrgTok);

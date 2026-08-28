@@ -1,10 +1,11 @@
-// «الفعاليات» — قسمٌ معزول لالتقاط جهات الاتصال في المعارض (الترحيلة ٠٣٨، الوحدة modules/events).
+// «الفعاليات» — قسمٌ معزول لالتقاط بطاقات الزوّار في المعارض (الترحيلة ٠٣٨، الوحدة modules/events).
 //
 // ما يحرسه هذا الملف بترتيب أهميته:
 //   ١) **العزل**: سيناريو كامل في الفعاليات — فعاليتان وبطاقات ومكرَّرات وشراكات وأحوال وحذف —
 //      لا يحرّك صفاً واحداً في الفرص والعملاء وجهات الاتصال والمشاريع والمستندات. وفحصٌ بنيويّ
 //      يقرأ ملفات الوحدة نصّاً فلا يجد فيها جدولاً محمياً ولا استيراداً من وحدتَي العملاء والبيع.
-//   ٢) الحُرّاس: من ينشئ الفعالية، ومن يلتقط، ومن يعدّل بطاقة غيره — وكل رفضٍ بالعربية وقبل الكتابة.
+//   ٢) الحُرّاس: من ينشئ الفعالية، ومن يلتقط، ومن يعدّل بطاقة غيره — المصفوفة أولاً ثم الملكية —
+//      وكل رفضٍ بالعربية وقبل الكتابة. وما تحت فعاليةٍ محذوفة لا يُفتح بعنوانه المباشر.
 //   ٣) كشف التكرار بثلاثة مفاتيح داخل الفعالية الواحدة، ولا شيء عبر الفعاليات.
 //   ٤) ما لا يتغيّر: نصّ البطاقة الخام، وأثرُ كل كتابة في سجل التدقيق.
 // الخدمات تُنادى مباشرةً (كما في personal-tasks-and-notes.test.js)، والقاعدة مؤقتة تُبنى
@@ -38,6 +39,8 @@ const LEAD = user('u_lead', 'sector_lead', { name_ar: 'قائد القطاع', s
 const SARA = user('u_sara', 'consultant', { name_ar: 'سارة' });
 const KHALID = user('u_khalid', 'consultant', { name_ar: 'خالد' });
 const VIEWER = user('u_viewer', 'viewer', { name_ar: 'مشاهد', scope: 'sector' });
+// رئيس تطوير الأعمال: دورُ مراجعةٍ يعدّل كل بطاقة، ولا منحَ حذفٍ له في المصفوفة (قاعدته العامة).
+const BD_HEAD = user('u_bdhead', 'bd_head', { name_ar: 'رئيس تطوير الأعمال', scope: 'company' });
 const EXT = user('u_ext', 'external', { name_ar: 'زائر', sector_id: null });
 const CTX = (u) => ({ user: u, ip: '127.0.0.1' });
 
@@ -67,7 +70,7 @@ before(async () => {
   for (const [id, name] of [['SOL', 'قطاع الحلول'], ['CONS', 'قطاع الاستشارات']]) {
     await db.insert('sector', { id, name_ar: name, kind: 'delivery', active: 1, created_at: T });
   }
-  for (const u of [LEAD, SARA, KHALID, VIEWER, EXT]) {
+  for (const u of [LEAD, SARA, KHALID, VIEWER, BD_HEAD, EXT]) {
     await db.insert('app_user', { id: u.id, username: u.username, name_ar: u.name_ar, role_id: u.role_id,
       sector_id: u.sector_id, scope: u.scope, active: 1, created_at: T });
   }
@@ -119,7 +122,7 @@ test('قائد القطاع ينشئ فعالية ويُكتب أثرها — و
   const before = Number((await db.get('SELECT COUNT(*) AS n FROM event')).n);
   for (const u of [SARA, KHALID, VIEWER, EXT]) {
     await assert.rejects(() => ev.createEvent(CTX(u), { name_ar: 'محاولة', starts_on: TODAY, ends_on: TODAY }),
-      (e) => e.status === 403 && /لمدير النظام وقادة القطاعات/.test(e.message), `الدور ${u.role_id} أنشأ فعالية`);
+      (e) => e.status === 403 && /قائد القطاع أو مدير النظام/.test(e.message), `الدور ${u.role_id} أنشأ فعالية`);
   }
   assert.equal(Number((await db.get('SELECT COUNT(*) AS n FROM event')).n), before, 'الرفض كتب صفاً');
   await assert.rejects(() => ev.createEvent(CTX(LEAD), { starts_on: TODAY, ends_on: TODAY }),
@@ -144,7 +147,7 @@ test('حالة الفعالية تُحسب من تاريخيها وختم إغل
   assert.equal(ev.eventStatus(row, '2026-09-01'), 'قادمة');
   assert.equal(ev.eventStatus(row, '2026-09-10'), 'جارية');
   assert.equal(ev.eventStatus(row, '2026-09-12'), 'جارية');
-  assert.equal(ev.eventStatus(row, '2026-09-13'), 'انتهت');
+  assert.equal(ev.eventStatus(row, '2026-09-13'), 'منتهية');
   assert.equal(ev.eventStatus({ ...row, closed_at: T }, '2026-09-11'), 'مُغلقة');
   for (const raw of ['+966 50 123 4567', '00966501234567', '0501234567', '٠٥٠١٢٣٤٥٦٧', '501234567', '966-50-123-4567']) {
     assert.equal(ev.normalizePhone(raw), '0501234567', raw);
@@ -251,7 +254,7 @@ test('وبالبريد مهما اختلفت حالة الأحرف', async () =>
 
 test('ولا يُكشف عبر الفعاليات، ولا للاسم نفسه في جهة أخرى، ولا للفارغ بالفارغ', async () => {
   EV2 = await ev.createEvent(CTX(LEAD), { name_ar: 'مؤتمر البيانات', starts_on: day(-3), ends_on: day(-2) });
-  assert.equal(EV2.status, 'انتهت');
+  assert.equal(EV2.status, 'منتهية');
   const other = await ev.createContact(CTX(SARA), EV2.id, { kind: 'شراكة', person_name: 'أحمد العلي', org_name: 'شركة النخبة للاستشارات', phone: '0501234567', email: 'ahmed@elite.sa' });
   assert.equal(other.contact.possible_duplicate_of, null, 'كُشف تكرار عبر فعاليتين');
   const r = await ev.createContact(CTX(SARA), EV1.id, { kind: 'شراكة', person_name: 'أحمد العلي', org_name: 'شركة أخرى', phone: '0566666666' });
@@ -311,7 +314,8 @@ test('المشاهد يقرأ ولا يلتقط، والخارجي لا يقرأ
   await assert.rejects(() => ev.createContact(CTX(VIEWER), EV1.id, { kind: 'تعاون', person_name: 'فلان الفلاني' }),
     (e) => e.status === 403 && /للمشاهدة فقط/.test(e.message));
   await assert.rejects(() => ev.parseCard(VIEWER, { text: 'نص بطاقة طويل بما يكفي' }), (e) => e.status === 403);
-  await assert.rejects(() => ev.createPartner(CTX(VIEWER), EV1.id, { org_name: 'جهة' }), (e) => e.status === 403);
+  await assert.rejects(() => ev.createPartner(CTX(VIEWER), EV1.id, { org_name: 'جهة' }),
+    (e) => e.status === 403 && /للمشاهدة فقط/.test(e.message), 'الشراكة تُحرس بمنح إنشائها هي');
   for (const fn of [() => ev.listEvents(EXT, {}), () => ev.getEvent(EXT, EV1.id), () => ev.eventSummary(EXT, EV1.id),
     () => ev.listContacts(EXT, EV1.id, {}), () => ev.recentContacts(EXT, EV1.id, {}), () => ev.getContact(EXT, C1.id),
     () => ev.listPartners(EXT, EV1.id)]) {
@@ -323,7 +327,7 @@ test('المشاهد يقرأ ولا يلتقط، والخارجي لا يقرأ
 // ── الحال ─────────────────────────────────────────────────────────────────────
 test('الحال: قيمة غير معروفة تُرَدّ، والمراجِع واسمه ووقته يُسجَّلون مع الأثر', async () => {
   await assert.rejects(() => ev.setOutcome(CTX(LEAD), C1.id, { outcome: 'صار شيئاً' }),
-    (e) => e.status === 400 && /حال البطاقة غير معروف/.test(e.message));
+    (e) => e.status === 400 && /قيمة المتابعة غير معروفة/.test(e.message));
   const r = await ev.setOutcome(CTX(LEAD), C1.id, { outcome: 'صارت فرصة', outcome_note: 'تُفتح فرصة بعد الاجتماع' });
   assert.equal(r.outcome, 'صارت فرصة');
   assert.equal(r.outcome_by, LEAD.id);
@@ -367,7 +371,7 @@ test('القوائم: الأحدث أولاً، والبحث بالنصّ وبا
 test('الشراكات: إنشاء بتحقق، وربطٌ ببطاقة من الفعالية نفسها فقط، وملكية كالبطاقات', async () => {
   await assert.rejects(() => ev.createPartner(CTX(SARA), EV1.id, {}), (e) => e.status === 400 && /اسم جهة التعاون/.test(e.message));
   await assert.rejects(() => ev.createPartner(CTX(SARA), EV1.id, { org_name: 'علم', partner_kind: 'غير معروف' }), (e) => /نوع الشراكة/.test(e.message));
-  await assert.rejects(() => ev.createPartner(CTX(SARA), EV1.id, { org_name: 'علم', status: 'ملغاة' }), (e) => /حال الشراكة/.test(e.message));
+  await assert.rejects(() => ev.createPartner(CTX(SARA), EV1.id, { org_name: 'علم', status: 'ملغاة' }), (e) => /حالة الشراكة غير معروفة/.test(e.message));
   await assert.rejects(() => ev.createPartner(CTX(SARA), EV1.id, { org_name: 'علم', next_date: 'الأسبوع القادم' }), (e) => /سنة-شهر-يوم/.test(e.message));
   const foreign = (await ev.listContacts(SARA, EV2.id, {}))[0];
   await assert.rejects(() => ev.createPartner(CTX(SARA), EV1.id, { org_name: 'علم', contact_id: foreign.id }),
@@ -420,7 +424,7 @@ test('الفعالية المُغلقة لا تقبل التقاطاً ولا ش
   await assert.rejects(() => ev.closeEvent(CTX(SARA), EV1.id, {}), (e) => e.status === 403);
   const reopened = await ev.closeEvent(CTX(LEAD), EV2.id, { reopen: true });
   assert.equal(reopened.closed_at, null);
-  assert.equal(reopened.status, 'انتهت');
+  assert.equal(reopened.status, 'منتهية');
   const upd = await ev.updateEvent(CTX(LEAD), EV2.id, { venue: 'جدة', ends_on: day(1) });
   assert.equal(upd.venue, 'جدة');
   assert.equal(upd.status, 'جارية');
@@ -472,8 +476,131 @@ test('كل كتابة تترك أثراً — إنشاءً وتعديلاً وح
   }
 });
 
+// ── المصفوفة قبل الملكية (S1) ────────────────────────────────────────────────
+test('المصفوفة أولاً ثم الملكية: رئيس تطوير الأعمال يعدّل بطاقة غيره ولا يحذفها، والمشاهد لا يعدّل بطاقته، وقائد القطاع يحذف بطاقة غيره', async () => {
+  const mine = (await ev.createContact(CTX(SARA), EV1.id, { kind: 'تعاون', person_name: 'بطاقة سارة للملكية' })).contact;
+  // رئيس تطوير الأعمال: منح التعديل + دور مراجعة ⟵ يعدّل؛ ولا منح حذف ⟵ لا يحذف بطاقة غيره.
+  assert.equal((await ev.updateContact(CTX(BD_HEAD), mine.id, { note: 'من رئيس تطوير الأعمال' })).note, 'من رئيس تطوير الأعمال');
+  await assert.rejects(() => ev.deleteContact(CTX(BD_HEAD), mine.id),
+    (e) => e.status === 403 && /لمن التقطها/.test(e.message), 'رئيس تطوير الأعمال حذف بطاقة غيره بلا منح حذف');
+  assert.equal((await db.get('SELECT deleted_at FROM event_contact WHERE id = ?', [mine.id])).deleted_at, null, 'الرفض حذف');
+  // ويحذف بطاقته هو: المالك بمنح التعديل.
+  const own = (await ev.createContact(CTX(BD_HEAD), EV1.id, { kind: 'تعاون', person_name: 'بطاقة رئيس تطوير الأعمال' })).contact;
+  await ev.deleteContact(CTX(BD_HEAD), own.id);
+  assert.ok((await db.get('SELECT deleted_at FROM event_contact WHERE id = ?', [own.id])).deleted_at);
+  // مشاهدٌ التقط بطاقةً (قبل أن يُنزَّل دوره مثلاً): الملكية لا تُعوِّض منح التعديل الغائب.
+  const vid = 'evc_viewer_owned';
+  await db.insert('event_contact', { id: vid, event_id: EV1.id, kind: 'تعاون', person_name: 'بطاقة التقطها مشاهد',
+    outcome: 'لم تُراجع', captured_by: VIEWER.id, captured_by_name: 'مشاهد', captured_at: T });
+  await assert.rejects(() => ev.updateContact(CTX(VIEWER), vid, { note: 'من صاحبها المشاهد' }), (e) => e.status === 403 && /لمن التقطها/.test(e.message));
+  await assert.rejects(() => ev.setOutcome(CTX(VIEWER), vid, { outcome: 'تواصلنا' }), (e) => e.status === 403);
+  await assert.rejects(() => ev.deleteContact(CTX(VIEWER), vid), (e) => e.status === 403);
+  const vrow = await db.get('SELECT note, outcome, deleted_at FROM event_contact WHERE id = ?', [vid]);
+  assert.deepEqual([vrow.note, vrow.outcome, vrow.deleted_at], [null, 'لم تُراجع', null], 'رفض المشاهد كتب');
+  // قائد القطاع يحذف بطاقة غيره: منح الحذف من المصفوفة.
+  await ev.deleteContact(CTX(LEAD), mine.id);
+  await ev.deleteContact(CTX(LEAD), vid);
+  assert.ok((await db.get('SELECT deleted_at FROM event_contact WHERE id = ?', [mine.id])).deleted_at);
+  assert.ok((await db.get('SELECT deleted_at FROM event_contact WHERE id = ?', [vid])).deleted_at);
+  // والشراكة على القاعدة نفسها.
+  const p = await ev.createPartner(CTX(SARA), EV1.id, { org_name: 'شراكة للملكية' });
+  assert.equal((await ev.updatePartner(CTX(BD_HEAD), p.id, { status: 'نشطة' })).status, 'نشطة');
+  await assert.rejects(() => ev.deletePartner(CTX(BD_HEAD), p.id), (e) => e.status === 403 && /لمن سجّلها/.test(e.message));
+  await ev.deletePartner(CTX(LEAD), p.id);
+  assert.ok(!(await ev.listPartners(SARA, EV1.id)).some((x) => x.id === p.id));
+  // ولا أثر للمشاهد بعد كل هذا الرفض.
+  assert.equal(Number((await db.get('SELECT COUNT(*) AS n FROM audit_log WHERE user_id = ?', [VIEWER.id])).n), 0);
+});
+
+// ── ما تحت فعاليةٍ محذوفة (S2) ───────────────────────────────────────────────
+test('ما تحت فعاليةٍ محذوفة محذوفٌ معها: البطاقة والشراكة لا تُقرآن ولا تُعدَّلان ولا تُحذفان بعنوانهما المباشر', async () => {
+  const E = await ev.createEvent(CTX(LEAD), { name_ar: 'فعالية تُحذف', starts_on: TODAY, ends_on: TODAY });
+  const c = (await ev.createContact(CTX(SARA), E.id, { kind: 'تعاون', person_name: 'بطاقة تحت فعالية محذوفة', capture_key: 'k-gone' })).contact;
+  const p = await ev.createPartner(CTX(SARA), E.id, { org_name: 'شراكة تحت فعالية محذوفة' });
+  assert.equal((await ev.getContact(SARA, c.id)).id, c.id);
+  await ev.deleteEvent(CTX(LEAD), E.id);
+  const gone = (e) => e.status === 404;
+  await assert.rejects(() => ev.getContact(SARA, c.id), gone, 'البطاقة تُقرأ بعد حذف فعاليتها');
+  await assert.rejects(() => ev.updateContact(CTX(SARA), c.id, { note: 'x' }), gone);
+  await assert.rejects(() => ev.setOutcome(CTX(LEAD), c.id, { outcome: 'تواصلنا' }), gone);
+  await assert.rejects(() => ev.deleteContact(CTX(LEAD), c.id), gone);
+  await assert.rejects(() => ev.updatePartner(CTX(SARA), p.id, { status: 'نشطة' }), gone);
+  await assert.rejects(() => ev.deletePartner(CTX(LEAD), p.id), gone);
+  await assert.rejects(() => ev.createContact(CTX(SARA), E.id, { kind: 'تعاون', person_name: 'فلان', capture_key: 'k-gone' }), gone);
+  const row = await db.get('SELECT note, outcome, deleted_at FROM event_contact WHERE id = ?', [c.id]);
+  assert.deepEqual([row.note, row.outcome, row.deleted_at], [null, 'لم تُراجع', null], 'الرفض كتب');
+});
+
+// ── حدود القوائم وأعمدتها (S4، N1) ───────────────────────────────────────────
+test('حدّ القائمة عددٌ صحيح دائماً: كسرٌ أو نصٌّ أو صفر لا يُسقط الاستعلام', async () => {
+  assert.equal((await ev.listContacts(SARA, EV1.id, { limit: 1.5 })).length, 1);
+  assert.equal((await ev.recentContacts(SARA, EV1.id, { limit: '2.7' })).rows.length, 2);
+  // كسرٌ دون الواحد يُقرأ صفراً فيسقط إلى الحدّ الافتراضي — لا إلى صفر صفوف ولا إلى خطأ.
+  assert.equal((await ev.listContacts(SARA, EV1.id, { limit: 0.2 })).length, (await ev.listContacts(SARA, EV1.id, {})).length, 'كسرٌ دون الواحد أسقط صفوفاً');
+  for (const bad of ['abc', 0, -3, null, '', {}, 1e9, '1e3', Infinity]) {
+    await assert.doesNotReject(() => ev.listContacts(SARA, EV1.id, { limit: bad }), `الحدّ ${String(bad)} أسقط القائمة`);
+    await assert.doesNotReject(() => ev.recentContacts(SARA, EV1.id, { limit: bad }), `الحدّ ${String(bad)} أسقط «آخر ما التقطت»`);
+  }
+});
+
+test('القوائم لا تحمل مفتاح الالتقاط ولا الصور المطبَّعة ولا النصّ الخام — والبطاقة الواحدة تحمل المطبَّعات والنصّ لا المفتاح', async () => {
+  const hidden = ['capture_key', 'phone_norm', 'email_norm', 'name_norm', 'org_norm', 'raw_text'];
+  const rows = await ev.listContacts(SARA, EV1.id, {});
+  assert.ok(rows.length > 0);
+  for (const c of rows) for (const k of hidden) assert.ok(!(k in c), `القائمة تحمل «${k}»`);
+  for (const c of (await ev.recentContacts(SARA, EV1.id, {})).rows) for (const k of hidden) assert.ok(!(k in c), `«آخر ما التقطت» تحمل «${k}»`);
+  const one = await ev.getContact(SARA, C1.id);
+  assert.equal(one.phone_norm, '0501234567');
+  assert.ok('raw_text' in one, 'البطاقة الواحدة بلا نصّها الخام');
+  assert.ok(!('capture_key' in one), 'البطاقة الواحدة تُخرج مفتاح الالتقاط');
+});
+
+// ── سباق مفتاح الالتقاط (S5) ─────────────────────────────────────────────────
+test('سباق مفتاح الالتقاط: صفٌّ سابق بالمفتاح نفسه، أو طلبان متزامنان — صفٌّ واحد وأثرٌ واحد وإعادةٌ لا عطل', async () => {
+  // خرق التفرّد يُعرف بنصّ سكويلايت وبرمز بوستجريس، ولا يُخلط بغيره.
+  assert.equal(ev.isUniqueViolation({ message: 'UNIQUE constraint failed: event_contact.event_id, event_contact.capture_key' }), true);
+  assert.equal(ev.isUniqueViolation({ code: '23505', message: 'duplicate key value violates unique constraint "ux_evc_capture_key"' }), true);
+  assert.equal(ev.isUniqueViolation({ message: 'NOT NULL constraint failed: event_contact.kind' }), false);
+  assert.equal(ev.isUniqueViolation({ code: '23502' }), false);
+  assert.equal(ev.isUniqueViolation(null), false);
+  // صفٌّ سابق بالمفتاح نفسه لصاحبه (كُتب من خارج الخدمة): يُستأنف كما هو، ولا صفّ ثانٍ.
+  await db.insert('event_contact', { id: 'evc_pre_key', event_id: EV1.id, kind: 'تعاون', person_name: 'سابقة بالمفتاح',
+    outcome: 'لم تُراجع', capture_key: 'k-race-0', captured_by: SARA.id, captured_by_name: 'سارة', captured_at: T });
+  const r0 = await ev.createContact(CTX(SARA), EV1.id, { kind: 'شراكة', person_name: 'أخرى', capture_key: 'k-race-0' });
+  assert.equal(r0.resumed, true);
+  assert.equal(r0.contact.id, 'evc_pre_key');
+  assert.equal(r0.contact.person_name, 'سابقة بالمفتاح');
+  const n = async (key) => Number((await db.get('SELECT COUNT(*) AS n FROM event_contact WHERE event_id = ? AND capture_key = ?', [EV1.id, key])).n);
+  assert.equal(await n('k-race-0'), 1);
+  // طلبان متزامنان بالمفتاح نفسه: كلاهما يمرّ من فحص المفتاح قبل أن يكتب أحدهما — الفهرس الفريد
+  // يوقف الثاني فيُعاد الصفّ الأول (على سكويلايت الثاني ينضمّ إلى معاملة الأول ويفشل إدراجه وحده).
+  const audits = async () => Number((await db.get("SELECT COUNT(*) AS n FROM audit_log WHERE resource = 'event_contact' AND action = 'create'")).n);
+  const before = await audits();
+  const [a, b] = await Promise.all([
+    ev.createContact(CTX(SARA), EV1.id, { kind: 'تعاون', person_name: 'سباق أ', capture_key: 'k-race-1' }),
+    ev.createContact(CTX(SARA), EV1.id, { kind: 'تعاون', person_name: 'سباق ب', capture_key: 'k-race-1' }),
+  ]);
+  assert.equal(a.contact.id, b.contact.id, 'صفّان لمفتاحٍ واحد');
+  assert.deepEqual([a.resumed, b.resumed].sort(), [false, true], 'واحدٌ كتب والآخر استأنف');
+  assert.equal(await n('k-race-1'), 1);
+  assert.equal(await audits(), before + 1, 'أثران لكتابةٍ واحدة');
+  // ومفتاح الزميل في السباق يُرَدّ بالعربية لا بخطأ قاعدة.
+  const settled = await Promise.allSettled([
+    ev.createContact(CTX(SARA), EV1.id, { kind: 'تعاون', person_name: 'سباق ج', capture_key: 'k-race-2' }),
+    ev.createContact(CTX(KHALID), EV1.id, { kind: 'تعاون', person_name: 'سباق د', capture_key: 'k-race-2' }),
+  ]);
+  const ok = settled.filter((s) => s.status === 'fulfilled');
+  const ko = settled.filter((s) => s.status === 'rejected');
+  assert.equal(ok.length, 1, 'واحدٌ فقط يكتب');
+  assert.equal(ko.length, 1);
+  assert.ok(ko[0].reason.status === 400 && /زميل/.test(ko[0].reason.message), `الزميل رُدّ بخطأ قاعدة: ${ko[0].reason.message}`);
+  assert.equal(await n('k-race-2'), 1);
+});
+
 test('قراءة البطاقة: البوابة، والنصّ القصير، والوضع محلي دائماً مع تنبيه المراجعة', async () => {
-  await assert.rejects(() => ev.parseCard(SARA, { text: 'قص' }), (e) => e.status === 400 && /٥ أحرف/.test(e.message));
+  await assert.rejects(() => ev.parseCard(SARA, { text: 'قص' }), (e) => e.status === 400 && /سطر واحد يكفي/.test(e.message));
+  // القصّ قبل التشذيب: فراغٌ أطول من الحدّ ثم كلام — يُحدّ أولاً فلا يبقى ما يُقرأ.
+  await assert.rejects(() => ev.parseCard(SARA, { text: ' '.repeat(13000) + 'أحمد العلي' }), (e) => e.status === 400, 'التشذيب سبق القصّ');
   await assert.rejects(() => ev.parseCard(SARA, {}), (e) => e.status === 400);
   const r = await ev.parseCard(SARA, { text: 'أحمد العلي\nشركة النخبة\nجوال ٠٥٠١٢٣٤٥٦٧' });
   assert.equal(r._mode, 'local');

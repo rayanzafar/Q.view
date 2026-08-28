@@ -305,8 +305,8 @@ export const G = {
   eventContacts: 'الجهات الملتقطة',
   eventCapture: 'الالتقاط',
   eventPartners: 'الشراكات',
-  eventQr: 'QR للزوّار',
-  eventReview: 'ما بعد المعرض',
+  eventQr: 'رمز QR للزوّار',
+  eventReview: 'ما بعد الفعالية',
   newEvent: 'فعالية جديدة',
   captureContact: 'التقط جهة',
   saveAndNext: 'احفظ وابدأ التالية',
@@ -412,7 +412,7 @@ export const DELIVERABLE_MONEY_AR = { invoiced: 'تمت الفوترة', collect
 // ── حالة الفعالية ──────────────────────────────────────────────────────────────
 // تُحسب في الخدمة من تاريخي الفعالية وختم إغلاقها (لا تُخزَّن)، وتُعرض بهذه الكلمات وحدها.
 // الخدمة تعيد الكلمة العربية مباشرةً، فالمُسمّي يقبل المفتاح والكلمة معاً ولا يُعيد قيمةً خاماً.
-export const EVENT_STATUS_AR = { upcoming: 'قادمة', live: 'جارية', ended: 'انتهت', closed: 'مُغلقة' };
+export const EVENT_STATUS_AR = { upcoming: 'قادمة', live: 'جارية', ended: 'منتهية', closed: 'مُغلقة' };
 export const eventStatusLabel = (v) => {
   const s = String(v || '');
   return EVENT_STATUS_AR[s.toLowerCase()] || Object.values(EVENT_STATUS_AR).find((ar) => ar === s) || 'غير محدَّدة';
@@ -521,7 +521,7 @@ export const RESOURCE_AR = {
   report: 'تقرير', report_schedule: 'جدولة تقرير', revenue_line: 'بند إيراد', risk: 'خطر',
   saved_view: 'عرض محفوظ', sector: 'قطاع', session: 'جلسة دخول', task: 'مهمة',
   timesheet: 'سجل وقت', unit: 'وحدة', error_event: 'عطل',
-  event: 'فعالية', event_contact: 'جهة ملتقطة', event_partner: 'شراكة فعالية', event_blob: 'ملف فعالية',
+  event: 'فعالية', event_contact: 'جهة ملتقطة', event_partner: 'شراكة فعالية', event_blob: 'صورة بطاقة',
 };
 export const resourceLabel = (r) => RESOURCE_AR[String(r || '').toLowerCase()] || 'سجل';
 

@@ -155,10 +155,10 @@
           el.classList.add('ev-auto');
           filled++;
         }
-        toast(filled ? 'مُلئت الحقول الفارغة من النص — راجعها قبل الحفظ' : 'لم أجد في النص ما يُملأ — اكتب الحقول يدوياً', !filled);
+        toast(filled ? 'مُلئت الحقول الفارغة من النصّ — راجعها قبل الحفظ' : 'لم نجد في النصّ ما يُملأ — اكتب الحقول يدوياً', !filled);
         if (filled) scheduleDraft();
       })
-      .catch(function () { toast('تعذّر تحليل النص الآن — أكمل الحقول يدوياً؛ النص نفسه سيُحفظ مع البطاقة', true); })
+      .catch(function () { toast('تعذّرت قراءة النصّ الآن — أكمل الحقول يدوياً، وسيُحفظ النصّ مع البطاقة', true); })
       .then(function () { btn.disabled = false; });
   }
 
@@ -202,7 +202,7 @@
     var org = dup.org_name || dup.org || '';
     var who = dup.captured_by_name || dup.who || 'زميل';
     var at = hhmm(dup.captured_at || dup.at);
-    box.textContent = 'قد تكون مكرّرة: ' + name + (org && org !== name ? ' — ' + org : '') + ' · التقطها ' + who + ' الساعة ' + at + ' — حُفظت بطاقتك على كل حال';
+    box.textContent = 'قد تكون مكرّرة: ' + name + (org && org !== name ? ' — ' + org : '') + ' · سُجّلت قبلك باسم ' + who + ' الساعة ' + at + ' — وحُفظت بطاقتك أيضاً';
     box.hidden = false;
   }
   function resetForm() {
@@ -216,7 +216,7 @@
     if (!EV.canCapture) { toast(EV.closed ? 'هذه الفعالية مُغلقة — لا يُلتقط فيها جديد' : 'صلاحيتك للمشاهدة فقط', true); return; }
     var name = val('ev-name'), org = val('ev-org'), phone = latinDigits(val('ev-phone'));
     if (!name && !org && !phone) {
-      toast('اكتب اسم الشخص أو جهته أو رقم جواله — حقل واحد يكفي للحفظ', true);
+      toast('اكتب اسم الشخص أو جهته أو رقم جوّاله — حقل واحد يكفي للحفظ', true);
       var n = $('ev-name'); if (n) n.focus();
       return;
     }

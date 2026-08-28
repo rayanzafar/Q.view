@@ -23,7 +23,7 @@ const CONTACTS_LIMIT = 200;
 const RECENT_LIMIT = 8;
 
 // ── ألوان الحالة: اللون معنى لا زينة — أخضر يجري، أزرق قادم، رمادي انتهى أو أُغلق ──
-const STATUS_TONE = { 'جارية': 'green', 'قادمة': 'blue', 'انتهت': 'slate', 'مُغلقة': 'slate' };
+const STATUS_TONE = { 'جارية': 'green', 'قادمة': 'blue', 'منتهية': 'slate', 'مُغلقة': 'slate' };
 const OUTCOME_TONE = { 'لم تُراجع': 'slate', 'تواصلنا': 'amber', 'صارت فرصة': 'green', 'صارت شراكة': 'blue', 'لا متابعة': 'slate' };
 const statusPill = (s) => pill(esc(s || '—'), STATUS_TONE[s] || 'slate');
 const outcomePill = (o) => pill(esc(o || OUTCOMES[0]), OUTCOME_TONE[o] || 'slate');
@@ -149,7 +149,7 @@ export async function eventsPage(user, opts = {}) {
   const allRows = await listEvents(user, { includeClosed: true });
   const rows = allRows.filter((e) => (
     status === 'live' ? e.status === 'جارية'
-      : status === 'done' ? (e.status === 'انتهت' || e.status === 'مُغلقة')
+      : status === 'done' ? (e.status === 'منتهية' || e.status === 'مُغلقة')
         : true));
   const sums = await Promise.all(rows.map((e) => eventSummary(user, e.id).catch(() => null)));
 
@@ -178,14 +178,15 @@ export async function eventsPage(user, opts = {}) {
   if (rows.length) {
     list = `<div class="ev-grid">${rows.map((e, i) => cardOf(e, sums[i])).join('')}</div>`;
   } else if (!allRows.length) {
+    // أول مرة: من يملك الإنشاء يُدعى إليه، ومن لا يملكه يُقال له من يملكه — لا زرٌّ غائب بلا تفسير.
     list = card(`<div class="empty-state">${icon('megaphone')}
       <div class="t">لا فعاليات بعد</div>
-      <div class="s">أضِف أوّل فعالية، ثم التقط بطاقات الزوّار من جوّالك في الجناح مباشرة.</div>
+      <div class="s">${canCreate ? 'أضِف أوّل فعالية، ثم التقط بطاقات الزوّار من جوّالك في الجناح مباشرة.' : 'لم تُضف فعاليات بعد — يضيفها قائد القطاع أو مدير النظام.'}</div>
       ${newBtn}</div>`);
   } else {
     list = card(`<div class="empty-state">${icon('filter')}
       <div class="t">${status === 'live' ? 'لا فعاليات جارية الآن' : 'لا فعاليات منتهية'}</div>
-      <div class="s">جرّب «${G.all}» لترى القادمة والمنتهية معاً.</div>
+      <div class="s">${status === 'live' ? `اعرض «${G.all}» لترى القادمة والمنتهية أيضاً.` : `اعرض «${G.all}» لترى الجارية والقادمة أيضاً.`}</div>
       <a class="btn" href="${esc(linkOf({}, { status: '' }))}">${G.all}</a></div>`);
   }
 
@@ -193,7 +194,7 @@ export async function eventsPage(user, opts = {}) {
     <div class="modal-head"><div style="font-weight:800;font-size:15px">${G.newEvent}</div>
       <button type="button" class="btn btn-ghost btn-sm" data-action="modal-close" aria-label="إغلاق">✕</button></div>
     <div class="modal-body" style="display:grid;gap:.8rem">
-      <div class="field"><label for="evn-name">اسم الفعالية *</label><input class="input" id="evn-name" required maxlength="160" placeholder="مثال: معرض التقنية 2026"></div>
+      <div class="field"><label for="evn-name">اسم الفعالية</label><input class="input" id="evn-name" required maxlength="160" placeholder="مثال: معرض التقنية 2026"></div>
       <div class="field"><label for="evn-venue">المكان</label><input class="input" id="evn-venue" maxlength="160" placeholder="مثال: مركز الرياض للمعارض"></div>
       <div class="grid2">
         <div class="field"><label for="evn-start">من تاريخ</label><input class="input" id="evn-start" type="date"></div>
@@ -229,6 +230,9 @@ export async function eventDetailPage(user, id, opts = {}) {
   const dates = fmtRange(ev.starts_on, ev.ends_on, true);
 
   // ── الترويسة ──
+  // عدّاد «التقط الفريق اليوم» يظهر مرةً واحدة في الصفحة: تحت نموذج الالتقاط حين يُعرض النموذج
+  // (وهو الذي يزيده المتصفّح بعد كل حفظ)، وفي الترويسة فيما عدا ذلك.
+  const todayInHeader = !(tab === 'capture' && captureOpen);
   const header = card(`<div style="padding:1rem 1.15rem">
     <div style="font-size:11px;color:var(--muted);font-weight:700"><a href="/app/events" style="color:var(--brand)">${G.events}</a></div>
     <div class="ev-hd"><h2>${esc(ev.name_ar)}</h2>${statusPill(ev.status)}</div>
@@ -237,7 +241,7 @@ export async function eventDetailPage(user, id, opts = {}) {
       ${ev.venue ? `<span>${icon('building')}${esc(ev.venue)}</span>` : ''}
       ${ev.booth_no ? `<span>${icon('flag')}جناح <span class="tnum">${esc(ev.booth_no)}</span></span>` : ''}
     </div>
-    <div class="ev-today">التقط الفريق اليوم: <b class="tnum">${Number(summary.today) || 0}</b></div>
+    ${todayInHeader ? `<div class="ev-today">التقط الفريق اليوم: <b class="tnum">${Number(summary.today) || 0}</b></div>` : ''}
   </div>`);
 
   // ── التبويبات: روابط حقيقية تحفظ بقية المعاملات، لا أزرار تُخفي وتُظهر ──
@@ -284,7 +288,7 @@ async function capturePanel(user, ev, { closed, canCapture, cur }) {
   const ltr = ' dir="ltr" style="text-align:left"';
 
   const form = card(`<div style="padding:1rem 1.15rem">
-    <div class="ev-sec-t">${G.captureContact}</div>
+    <div class="ev-sec-t">التقط بطاقة</div>
     <div class="ev-sec-s">حقل واحد يكفي للحفظ — الباقي يُكمَل لاحقاً عند المراجعة.</div>
     <form id="ev-form" class="ev-form" autocomplete="off" novalidate style="margin-top:.9rem">
       <div class="field"><label>${G.cardKind}</label>
@@ -294,16 +298,16 @@ async function capturePanel(user, ev, { closed, canCapture, cur }) {
         <input type="hidden" id="ev-kind" name="kind" value="${esc(CARD_KINDS[0])}"></div>
       ${field('ev-name', 'الاسم', text('ev-name', 'اسم الشخص كما على البطاقة'))}
       ${field('ev-org', 'الجهة', text('ev-org', 'الشركة أو الجهة'))}
-      ${field('ev-title', 'المنصب', text('ev-title', 'المسمّى الوظيفي'))}
+      ${field('ev-title', 'المنصب', text('ev-title', 'مثال: مدير المشتريات'))}
       ${field('ev-phone', 'الجوّال', `<input class="input" id="ev-phone" type="tel" inputmode="tel" maxlength="40" autocomplete="off" placeholder="05xxxxxxxx"${ltr}>`)}
       ${field('ev-email', 'البريد', `<input class="input" id="ev-email" type="email" inputmode="email" maxlength="200" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="name@company.com"${ltr}>`)}
-      ${field('ev-web', 'الموقع', `<input class="input" id="ev-web" type="text" inputmode="url" maxlength="200" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="company.com"${ltr}>`)}
+      ${field('ev-web', 'الموقع الإلكتروني', `<input class="input" id="ev-web" type="text" inputmode="url" maxlength="200" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="company.com"${ltr}>`)}
       ${field('ev-sector', 'القطاع المعني', `<select id="ev-sector"><option value="">غير محدَّد</option>${sectors.map((s) => `<option value="${esc(s.id)}">${esc(s.name_ar)}</option>`).join('')}</select>`)}
       ${field('ev-note', 'ملاحظة', '<textarea id="ev-note" rows="2" maxlength="2000" placeholder="ما دار في الحديث — سطر يكفي"></textarea>')}
       <div class="ev-paste">
         <label for="ev-paste">${G.pasteCardText}</label>
         <textarea id="ev-paste" rows="4" dir="auto" maxlength="4000" placeholder="الصق نصّ البطاقة هنا"></textarea>
-        <div class="ev-hint">من كاميرا جوّالك: صوّر البطاقة ← اضغط النصّ ← نسخ ← الصق هنا. تُملأ الخانات الفارغة فقط.</div>
+        <div class="ev-hint">صوّر البطاقة بكاميرا الجوّال، ثم حدّد النصّ في الصورة وانسخه والصقه هنا — تُملأ الحقول الفارغة فقط.</div>
         <button type="button" class="btn" data-action="ev-parse">${icon('edit')} ${G.fillFromText}</button>
       </div>
       <div id="ev-dup" class="alert warn" hidden role="status"></div>
@@ -352,20 +356,20 @@ async function contactsPanel(user, ev, { summary, cur, captureOpen }) {
   const chipRow = (label, key, values, current) => `<div class="chips" style="margin-bottom:.5rem" role="group" aria-label="${label}"><span class="lbl">${label}</span>
     <a class="chip${!current ? ' on' : ''}" href="${esc(linkOf(filters, { [key]: '' }))}">${G.all}</a>
     ${values.map((v) => `<a class="chip${current === v ? ' on' : ''}" href="${esc(linkOf(filters, { [key]: v }))}"${current === v ? ' aria-current="page"' : ''}>${esc(v)}</a>`).join('')}</div>`;
-  const chips = `${chipRow('النوع', 'kind', CARD_KINDS, kind)}${chipRow('الحال', 'outcome', OUTCOMES, outcome)}
-    <div class="chips" role="group" aria-label="عدسة">
+  const chips = `${chipRow('النوع', 'kind', CARD_KINDS, kind)}${chipRow('المتابعة', 'outcome', OUTCOMES, outcome)}
+    <div class="chips" role="group" aria-label="تصفية إضافية">
       <a class="chip${cur.mine ? ' on' : ''}" href="${esc(linkOf(filters, { mine: cur.mine ? '' : '1' }))}"${cur.mine ? ' aria-current="page"' : ''}>${icon('users')} بطاقاتي</a>
       <a class="chip${cur.dup ? ' on' : ''}" href="${esc(linkOf(filters, { dup: cur.dup ? '' : '1' }))}"${cur.dup ? ' aria-current="page"' : ''}>${icon('risk')} محتمَلة التكرار</a>
     </div>`;
 
   const th = (l) => `<th scope="col">${l}</th>`;
   const row = (c) => `<tr data-contact="${esc(c.id)}">
-    <td data-label="الشخص"><div><b>${esc(contactLabel(c))}</b>${c.possible_duplicate_of ? ` <span class="ev-tag">مكرّرة؟</span>` : ''}</div>${c.job_title ? `<div class="ev-sm">${esc(c.job_title)}</div>` : ''}</td>
+    <td data-label="الشخص"><div><b>${esc(contactLabel(c))}</b>${c.possible_duplicate_of ? ` <span class="ev-tag">${G.possibleDuplicate}</span>` : ''}</div>${c.job_title ? `<div class="ev-sm">${esc(c.job_title)}</div>` : ''}</td>
     <td data-label="الجهة">${esc(c.org_name || '—')}</td>
     <td data-label="النوع">${kindPill(c.kind)}</td>
     <td data-label="التواصل">${c.phone ? `<div class="ev-ltr tnum">${esc(c.phone)}</div>` : ''}${c.email ? `<div class="ev-ltr ev-sm">${esc(c.email)}</div>` : ''}${!c.phone && !c.email ? '<span class="ev-sm">بلا وسيلة تواصل</span>' : ''}</td>
     <td data-label="التقطها"><div>${esc(c.captured_by_name || '—')}</div><div class="ev-sm tnum">${esc(dayLabel(c.captured_at))} · ${esc(hhmm(c.captured_at))}</div></td>
-    <td data-label="الحال">${outcomePill(c.outcome)}</td>
+    <td data-label="المتابعة">${outcomePill(c.outcome)}</td>
   </tr>`;
 
   const empty = filtered
@@ -375,7 +379,7 @@ async function contactsPanel(user, ev, { summary, cur, captureOpen }) {
         ${captureOpen ? `<a class="btn btn-primary" href="${esc(linkOf({}, { tab: 'capture' }))}">${G.captureContact}</a>` : ''}</div>`;
   const capNote = rows.length >= CONTACTS_LIMIT ? `<div class="ev-sm" style="padding:.5rem .7rem">تُعرض أوّل <span class="tnum">${CONTACTS_LIMIT}</span> بطاقة — ضيّق البحث لترى البقية.</div>` : '';
   const table = card(`<div class="tblwrap"><table class="rtbl ev-tbl" style="width:100%;border-collapse:collapse;min-width:760px">
-    <thead><tr>${th('الشخص')}${th('الجهة')}${th('النوع')}${th('التواصل')}${th('التقطها')}${th('الحال')}</tr></thead>
+    <thead><tr>${th('الشخص')}${th('الجهة')}${th('النوع')}${th('التواصل')}${th('التقطها')}${th('المتابعة')}</tr></thead>
     <tbody>${rows.map(row).join('')}</tbody></table>${rows.length ? capNote : empty}</div>`);
 
   return `<section id="ev-panel-contacts" role="tabpanel" aria-label="${G.eventContacts}">${stats}${search}${chips}${table}</section>`;
