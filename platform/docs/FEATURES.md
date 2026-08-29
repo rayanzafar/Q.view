@@ -101,7 +101,7 @@ One row per file in `migrations/` (applied in order by `scripts/migrate.js`, rec
 | 022 | 022_staffing_confirmation.sql | `membership.status` (PENDING/ACTIVE) + `approval_request.assignee_user_id` | manager-confirmed staffing |
 | 023 | 023_personal_notes.sql | `personal_note` table (owner-only, deliberately no sector column) | personal notebook (ملاحظاتي) |
 | 024 | 024_opportunity_delivery_location.sql | `opportunity.delivery_location` (free text ≤160) | delivery location on opportunities |
-| 025 | 025_user_department_grants.sql | `user_department_grant` (additive per-person grants, soft-deleted; read-only at birth, write pairs since v5.33/ADR-0009 — no schema change) | personal department grants |
+| 025 | 025_user_department_grants.sql | `user_department_grant` (additive per-person grants, soft-deleted; read-only at birth, write pairs since v5.33/ADR-0009, events-manage pairs since v5.60 — company-wide effect, the row's department is bookkeeping only; no schema change) | personal department grants |
 | 026 | 026_opportunity_departments.sql | `opportunity_department` M:N (partner departments; `department_id` stays the single accountable dept) | multi-department opportunities |
 | 027 | 027_allocation_work_bucket.sql | `allocation.work_bucket` (internal work: bd/product/pmo with NULL project) | internal-work staffing |
 | 028 | 028_task_approval.sql | `task.approval_state` (NULL = added; PENDING = awaiting manager) + index | task approvals |
