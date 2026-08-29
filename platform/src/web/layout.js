@@ -687,7 +687,7 @@ export const LABELS = {
 export const tr = (v) => (v == null ? v : (LABELS[v] || v));
 
 export function pill(text, color = 'slate') {
-  const c = { green: '#dcfce7|#059669', red: '#fee2e2|#b91c1c', amber: '#fef3c7|#92400e', blue: '#dbeafe|#2563eb', violet: '#ede9fe|#7c3aed', slate: '#f1f5f9|#475569' }[color] || '#f1f5f9|#475569';
+  const c = { green: '#dcfce7|#047857', red: '#fee2e2|#b91c1c', amber: '#fef3c7|#92400e', blue: '#dbeafe|#244A99', violet: '#ede9fe|#7c3aed', slate: '#f1f5f9|#475569' }[color] || '#f1f5f9|#475569';
   const [bg, fg] = c.split('|');
   return `<span class="pill" style="background:${bg};color:${fg}">${text}</span>`;
 }

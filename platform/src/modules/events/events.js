@@ -18,6 +18,8 @@
 //     الفريق — والمصفوفة أولاً: من فقد منحَ التعديل (كالمشاهد) لا تفتحه له ملكيته.
 //   • الحذف: المالك بمنح التعديل، أو من يحمل منحَ «حذف» من المصفوفة (قائد القطاع ومكتب
 //     الرئيس). ورئيس تطوير الأعمال يعدّل كل بطاقة ولا يحذف إلا بطاقته — قاعدته العامة.
+//   • الصور (E2): صورةُ البطاقة بمنح تعديلها نفسِه (الملتقِط أو المراجِع)؛ ورموزُ الكشك بمنح
+//     تعديل الفعالية — من يدير الفعالية يقرّر ما يُعرض في جناحها. والقراءة لكل من يقرأ الفعالية.
 //
 // ── كشف التكرار: داخل الفعالية الواحدة، وبثلاثة مفاتيح ──────────────────────────────────
 // في معرضٍ يلتقط ثلاثة زملاء البطاقة نفسها. فكل التقاطٍ يُسأل: هل في هذه الفعالية بطاقةٌ
@@ -30,6 +32,7 @@
 // raw_text — نصّ البطاقة كما أُلصق — لا يمرّ من التعديل أبداً: هو الأصل الذي يُرجَع إليه إذا
 // اختلف اثنان على ما كان مكتوباً. والحذف ناعم كعرف المنصة، إلا صورة البطاقة فتُمحى فعلاً.
 import { all, get, insert, update, run, tx } from '../../core/db/index.js';
+import { createHash } from 'node:crypto';
 import { audit } from '../../core/audit/index.js';
 import { id, nowIso } from '../../core/util/ids.js';
 import { can } from '../../core/rbac/index.js';
@@ -48,9 +51,18 @@ const NOTE_MAX = 4000;
 const RAW_MAX = 12000;
 
 // ── أدوات صغيرة ─────────────────────────────────────────────────────────────────────────
-const clean = (v, max = FIELD_MAX) => {
-  const s = String(v == null ? '' : v).trim();
-  return s ? s.slice(0, max) : null;
+// المحارف الضابطة (C0 وDEL) تُنزَع من كل حقلٍ نصّي قبل أن يُربَط: NUL واحد في عمود TEXT رميةٌ على
+// بوستجريس تُسقط الطلب كله بخطأ خادم — في الاسم كما في الملاحظة. والسطر الجديد يبقى في الحقول
+// متعدّدة الأسطر وحدها (الملاحظات والنصّ الخام) ويُطوى فراغاً في سواها، وفراغاتٌ متتالية فراغٌ واحد.
+// والقصّ بالحرف (نقطة الترميز) لا بوحدة UTF-16: رمزٌ تعبيري في آخر العنوان يبقى كاملاً أو يسقط
+// كاملاً — لا نصفَ زوجٍ بديلٍ يُخزَّن ثم يُعرض علامةَ استفهام.
+const CTRL_RE = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
+const MULTI = { multi: true };
+const clean = (v, max = FIELD_MAX, { multi = false } = {}) => {
+  let s = String(v == null ? '' : v).replace(CTRL_RE, '');
+  s = multi ? s.replace(/\r\n?/g, '\n').replace(/ {2,}/g, ' ') : s.replace(/\s+/g, ' ');
+  s = Array.from(s.trim()).slice(0, max).join('').trim();
+  return s || null;
 };
 const truthy = (v) => v === true || v === 1 || ['1', 'true', 'yes', 'on'].includes(String(v == null ? '' : v).toLowerCase());
 const today = () => nowIso().slice(0, 10);
@@ -245,6 +257,9 @@ export async function deleteEvent(ctx, eventId) {
   const row = await loadEvent(eventId);
   await tx(async () => {
     await update('event', row.id, { deleted_at: nowIso() });
+    // صورُ الفعالية — بطاقاتٍ ورموزَ كشك — تُمحى فعلاً: الصفّ يبقى أثراً ناعماً، والبايتات لا
+    // تستحق مكانها في القاعدة بعد أن غاب ما يُقرأ بها (نفس قاعدة حذف البطاقة).
+    await run('DELETE FROM event_blob WHERE event_id = ?', [row.id]);
     await audit(ctx, { action: 'delete', resource: 'event', resourceId: row.id, sectorId: null, detail: { name_ar: row.name_ar } });
   });
   return { ok: true };
@@ -263,8 +278,11 @@ const CONTACT_LIST_COLS = ['id', 'event_id', 'kind', 'person_name', 'org_name', 
   'captured_by', 'captured_by_name', 'captured_at', 'updated_at'];
 const CONTACT_FULL_COLS = [...CONTACT_LIST_COLS, 'phone_norm', 'email_norm', 'name_norm', 'org_norm', 'raw_text'];
 const HAS_PHOTO = (a) => `CASE WHEN EXISTS (SELECT 1 FROM event_blob b WHERE b.kind = 'card' AND b.ref_id = ${a}.id) THEN 1 ELSE 0 END AS has_photo`;
+// بصمة الصورة مع الصفّ: الشاشة تبني بها رابط المصغَّرة فيتغيّر الرابط حين تتغيّر الصورة — وإلا
+// أبقى المتصفّح صورةً قديمة من ذاكرته بعد الاستبدال. فارغةٌ حين لا صورة.
+const PHOTO_SHA = (a) => `(SELECT b.sha256 FROM event_blob b WHERE b.kind = 'card' AND b.ref_id = ${a}.id) AS photo_sha`;
 const contactSelect = (a = 'c', full = false) =>
-  `${(full ? CONTACT_FULL_COLS : CONTACT_LIST_COLS).map((k) => `${a}.${k}`).join(', ')}, ${HAS_PHOTO(a)}`;
+  `${(full ? CONTACT_FULL_COLS : CONTACT_LIST_COLS).map((k) => `${a}.${k}`).join(', ')}, ${HAS_PHOTO(a)}, ${PHOTO_SHA(a)}`;
 const CONTACT_TEXT = ['person_name', 'org_name', 'job_title', 'phone', 'email', 'website'];
 
 // البطاقة تحت فعاليةٍ محذوفة محذوفةٌ معها: الربط بالفعالية شرطُ القراءة لا زينة — وإلا فُتحت
@@ -400,8 +418,8 @@ export async function createContact(ctx, eventId, data = {}) {
   if (!CARD_KINDS.includes(kind)) throw badRequest('نوع البطاقة غير معروف — اختر: تعريف بالشركة / شراكة / تعاون / توظيف');
   const f = {};
   for (const k of CONTACT_TEXT) f[k] = textField(k, data[k]);
-  f.note = clean(data.note, NOTE_MAX);
-  f.raw_text = clean(data.raw_text, RAW_MAX);
+  f.note = clean(data.note, NOTE_MAX, MULTI);
+  f.raw_text = clean(data.raw_text, RAW_MAX, MULTI);
   f.sector_id = clean(data.sector_id, 80);
   if (!f.person_name && !f.org_name && !f.phone) throw badRequest('اكتب اسم الشخص أو جهته أو رقم جوّاله — حقل واحد يكفي');
   await assertSector(f.sector_id);
@@ -445,7 +463,7 @@ export async function updateContact(ctx, cid, patch = {}) {
     p.kind = kind;
   }
   for (const k of CONTACT_TEXT) if (k in patch) p[k] = textField(k, patch[k]);
-  if ('note' in patch) p.note = clean(patch.note, NOTE_MAX);
+  if ('note' in patch) p.note = clean(patch.note, NOTE_MAX, MULTI);
   if ('sector_id' in patch) { p.sector_id = clean(patch.sector_id, 80); await assertSector(p.sector_id); }
   // raw_text وcapture_key وحقول المتابعة لا تمرّ من هنا: الأول أثرٌ لا يُمَسّ، والمتابعة لها مسارها.
   if (!Object.keys(p).length) throw badRequest('حدّد ما تريد تغييره في البطاقة');
@@ -473,7 +491,7 @@ export async function setOutcome(ctx, cid, data = {}) {
   if (!OUTCOMES.includes(outcome)) throw badRequest('قيمة المتابعة غير معروفة — اختر من القائمة');
   const now = nowIso();
   const p = { outcome, outcome_by: user.id, outcome_by_name: nameOf(user), outcome_at: now, updated_at: now };
-  if ('outcome_note' in data) p.outcome_note = clean(data.outcome_note, NOTE_MAX);
+  if ('outcome_note' in data) p.outcome_note = clean(data.outcome_note, NOTE_MAX, MULTI);
   await tx(async () => {
     await update('event_contact', row.id, p);
     await audit(ctx, { action: 'update', resource: 'event_contact', resourceId: row.id, sectorId: row.sector_id || null,
@@ -534,7 +552,7 @@ async function partnerPatch(data, base, eventId) {
     if (p.partner_kind && !PARTNER_KINDS.includes(p.partner_kind)) throw badRequest('نوع الشراكة غير معروف — اختر من القائمة');
   }
   for (const k of ['contact_name', 'phone', 'email', 'website']) if (has(k)) p[k] = textField(k, data[k]);
-  if (has('scope_note')) p.scope_note = clean(data.scope_note, NOTE_MAX);
+  if (has('scope_note')) p.scope_note = clean(data.scope_note, NOTE_MAX, MULTI);
   if (has('next_step')) p.next_step = clean(data.next_step, 400);
   if (has('status')) {
     const v = clean(data.status, 60) || (base === null ? PARTNER_STATUSES[0] : null);
@@ -606,6 +624,167 @@ export async function deletePartner(ctx, pid) {
     await update('event_partner', row.id, { deleted_at: nowIso() });
     await audit(ctx, { action: 'delete', resource: 'event_partner', resourceId: row.id, sectorId: null,
       detail: { event_id: row.event_id } });
+  });
+  return { ok: true };
+}
+
+// ══ الصور: صورة البطاقة ورموز الكشك (E2) ═══════════════════════════════════════════════
+// البايتات في القاعدة (الترحيلة ٠٣٨ على قرار ٠٣٣: قرص الحاوية يزول مع كل نشرة). صنفان في جدولٍ
+// واحد: «card» صورةُ بطاقةٍ مرجعُها البطاقة — واحدةٌ لكل بطاقة يحرسها الفهرس الفريد — و«qr»
+// صورةُ رمزٍ يُعرض على شاشة الجناح ليمسحه الزائر، مرجعُها نفسُها وعنوانُها ما يقرؤه الزائر
+// (الترحيلة ٠٣٩).
+//
+// النوع من البايتات لا من ترويسة المتصفّح ولا من اسم الملف: الترويسة تصريحُ مرسِل، والاسم أهونُ
+// منها — وما سنقدّمه لاحقاً بـ«صورة» يجب أن يكون صورة. والحدّ ثمانية ميغابايت: صورةُ كاميرا
+// الجوال المضغوطة تقلّ عنه بكثير، وما فوقه ملفٌّ من الاستوديو بدقّته الخام لا التقاطٌ من الزرّ.
+export const PHOTO_MAX_BYTES = 8 * 1024 * 1024;
+export const PHOTO_TOO_LARGE_MESSAGE = 'حجم الصورة يتجاوز الحدّ (8 ميغابايت) — التقطها بالكاميرا من الزرّ بدل الاستوديو';
+const QR_TITLE_MAX = 120;
+
+// ── سقوف التخزين ──────────────────────────────────────────────────────────────────────────
+// البايتات في القاعدة، والقاعدة ليست قرصاً بلا قاع: حسابٌ واحد بمفتاح جلسةٍ صالح يستطيع — بلا
+// هذه السقوف — أن يملأها في ساعةٍ بصورٍ من ثمانية ميغابايت. فلكل جناحٍ حدٌّ من رموز الزوّار
+// (شاشةٌ واحدة لا تعرض أكثر)، ولكل حسابٍ ميزانيةُ يومٍ ملفّاتٍ وبايتات — تُحسب على ما بقي له في
+// القاعدة خلال الأربع والعشرين ساعة الماضية، فاستبدالُ صورةٍ بأخرى لا يُحتسب ملفاً جديداً.
+// كائنٌ قابلٌ للتعديل عمداً: الاختبار يخفضه ليبلغ السقف بثلاث صور لا بثلاثمئة.
+export const UPLOAD_LIMITS = { qrPerEvent: 12, dailyFiles: 300, dailyBytes: 500 * 1024 * 1024 };
+const DAILY_LIMIT_MESSAGE = 'بلغ حسابك حدّ رفع الصور لليوم — تواصل مع مدير النظام إن كان الجناح يحتاج أكثر';
+// `minus`: الصفّ الذي سيُستبدَل — يُطرح من الحساب لأنه يزول مع الكتابة نفسها.
+async function assertDailyBudget(user, addBytes, minus = null) {
+  const since = new Date(Date.now() - 86400000).toISOString();
+  const r = await get('SELECT COUNT(*) AS n, COALESCE(SUM(size_bytes), 0) AS b FROM event_blob WHERE uploaded_by = ? AND created_at >= ?', [user.id, since]);
+  const files = Number(r?.n || 0) - (minus ? 1 : 0);
+  const bytes = Number(r?.b || 0) - (minus ? Number(minus.size_bytes || 0) : 0);
+  if (files >= UPLOAD_LIMITS.dailyFiles || bytes + addBytes > UPLOAD_LIMITS.dailyBytes) throw badRequest(DAILY_LIMIT_MESSAGE);
+}
+const IMAGE_EXT = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
+export const imageExt = (mime) => IMAGE_EXT[mime] || 'bin';
+
+// توقيع الصورة في أوائل بايتاتها: JPEG وPNG وWEBP — وما سواها ليس صورةً نقبلها.
+export function sniffImageMime(buf) {
+  if (!buf || typeof buf !== 'object' || typeof buf.length !== 'number') return null;
+  const at = (i, v) => buf[i] === v;
+  if (buf.length >= 3 && at(0, 0xFF) && at(1, 0xD8) && at(2, 0xFF)) return 'image/jpeg';
+  if (buf.length >= 8 && [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A].every((v, i) => at(i, v))) return 'image/png';
+  if (buf.length >= 12 && at(0, 0x52) && at(1, 0x49) && at(2, 0x46) && at(3, 0x46)
+    && at(8, 0x57) && at(9, 0x45) && at(10, 0x42) && at(11, 0x50)) return 'image/webp';
+  return null;
+}
+
+// الحُرّاس الثلاثة على كل صورة تُرفع — بالترتيب: فارغة، ثم فوق الحدّ، ثم ليست صورة.
+function checkImage(bytes) {
+  if (!Buffer.isBuffer(bytes) || !bytes.length) throw badRequest('الصورة فارغة — أعد الالتقاط');
+  if (bytes.length > PHOTO_MAX_BYTES) throw badRequest(PHOTO_TOO_LARGE_MESSAGE);
+  const mime = sniffImageMime(bytes);
+  if (!mime) throw badRequest('صيغة الصورة غير مدعومة — التقطها بالكاميرا من الزرّ وتُحفظ صورةً عادية');
+  return { mime, sha256: createHash('sha256').update(bytes).digest('hex') };
+}
+// بايتات الصفّ كما يعيدها المحرّك: بوستجريس يعيد Buffer، وسكويلايت Uint8Array — والمرسِل يريد Buffer.
+const asBuffer = (c) => (Buffer.isBuffer(c) ? c
+  : ArrayBuffer.isView(c) ? Buffer.from(c.buffer, c.byteOffset, c.byteLength) : Buffer.from(c || []));
+// رابط الصورة ببصمتها: يتغيّر حين تتغيّر الصورة، فلا يعرض المتصفّح قديمةً من ذاكرته.
+const photoUrl = (cid, sha) => '/api/events/contacts/' + cid + '/photo?v=' + sha.slice(0, 12);
+
+// ── صورة البطاقة ──────────────────────────────────────────────────────────────────────────
+// من يعدّل البطاقة يُرفق صورتها. والفعالية المُغلقة لا تمنع: البطاقة قائمة، وصورتُها جزءٌ منها
+// لا التقاطٌ جديد — أما ما تحت فعاليةٍ محذوفة فلا يُفتح أصلاً (loadContact).
+export async function attachContactPhoto(ctx, cid, bytes, { fileName } = {}) {
+  const user = ctx.user;
+  assertRead(user);
+  const row = await loadContact(cid);
+  if (!mayEdit(user, row, 'event_contact')) throw forbidden('إرفاق صورة البطاقة لمن التقطها أو لقيادة الفريق');
+  const { mime, sha256 } = checkImage(bytes);
+  const prior = await get(`SELECT id, sha256, size_bytes, uploaded_by FROM event_blob WHERE kind = 'card' AND ref_id = ?`, [row.id]);
+  const result = (replaced) => ({ ok: true, sha256, size_bytes: bytes.length, mime, replaced, photo_url: photoUrl(row.id, sha256) });
+  // الصورة نفسها مرةً ثانية (إعادة إرسال بعد انقطاع): لا كتابة ولا أثر — الحقيقة لم تتغيّر.
+  if (prior && prior.sha256 === sha256) return result(false);
+  const replaced = !!prior;
+  // الميزانية على مسار الكتابة وحده: ما استُبدل يُطرح إن كان من رفع الحساب نفسه.
+  await assertDailyBudget(user, bytes.length, prior && prior.uploaded_by === user.id ? prior : null);
+  await tx(async () => {
+    // كتابةٌ واحدة لا حذفٌ ثم إدراج: طلبان متزامنان على البطاقة نفسها كانا يمرّان كلاهما من الحذف
+    // ثم يصطدم ثانيهما بالفهرس الفريد (kind, ref_id) على بوستجريس فيُردّ بخطأ خادم. الإدراج
+    // بـ«عند التعارض حدِّث» يجعل الفهرس نفسه هو الحكم: آخر كاتبٍ يفوز، وصفٌّ واحد دائماً.
+    await run(`INSERT INTO event_blob (id, event_id, kind, ref_id, title, content, mime, size_bytes, sha256, uploaded_by, created_at)
+       VALUES (?, ?, 'card', ?, NULL, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (kind, ref_id) DO UPDATE SET content = excluded.content, mime = excluded.mime,
+         size_bytes = excluded.size_bytes, sha256 = excluded.sha256, uploaded_by = excluded.uploaded_by,
+         created_at = excluded.created_at, event_id = excluded.event_id`,
+    [id('evb'), row.event_id, row.id, bytes, mime, bytes.length, sha256, user.id, nowIso()]);
+    await audit(ctx, { action: 'photo', resource: 'event_contact', resourceId: row.id, sectorId: row.sector_id || null,
+      detail: { event_id: row.event_id, size_bytes: bytes.length, mime, replaced, file_name: clean(fileName) } });
+  });
+  return result(replaced);
+}
+
+export async function readContactPhoto(user, cid) {
+  assertRead(user);
+  const row = await loadContact(cid);
+  const b = await get(`SELECT content, mime, sha256, size_bytes FROM event_blob WHERE kind = 'card' AND ref_id = ?`, [row.id]);
+  if (!b) throw notFound('لا صورة لهذه البطاقة بعد — أرفقها من القائمة');
+  return { mime: b.mime, content: asBuffer(b.content), sha256: b.sha256, size_bytes: Number(b.size_bytes) };
+}
+
+// ── رموز الكشك ─────────────────────────────────────────────────────────────────────────────
+// شاشةُ الجناح تعرض رموزاً يمسحها الزائر بجواله (رابط الشركة، نموذج التسجيل، ملف التعريف).
+// إضافتُها وحذفُها بمنح «تعديل الفعالية» — من يدير الفعالية يقرّر ما يُعرض في جناحها؛ وقراءتها
+// لكل من يقرأ الفعالية. والفعالية المُغلقة تعرض ما فيها ولا تقبل جديداً.
+const QR_COLS = 'b.id, b.title, b.mime, b.size_bytes, b.created_at, b.uploaded_by';
+function assertQrManage(user, verb) {
+  if (!can(user, 'update', 'event')) throw forbidden(`${verb} رموز الكشك لقادة القطاعات ومدير النظام`);
+}
+async function loadQr(eventId, bid, cols) {
+  const b = await get(`SELECT ${cols} FROM event_blob b WHERE b.id = ? AND b.event_id = ? AND b.kind = 'qr'`, [String(bid || ''), eventId]);
+  if (!b) throw notFound('الرمز غير موجود');
+  return b;
+}
+
+export async function listQr(user, eventId) {
+  assertRead(user);
+  const ev = await loadEvent(eventId);
+  const rows = await all(`SELECT ${QR_COLS} FROM event_blob b WHERE b.event_id = ? AND b.kind = 'qr'
+     ORDER BY b.created_at ASC, b.id ASC`, [ev.id]);
+  return rows.map((r) => ({ ...r, size_bytes: Number(r.size_bytes) }));
+}
+
+export async function addQr(ctx, eventId, bytes, { title, fileName } = {}) {
+  const user = ctx.user;
+  assertQrManage(user, 'إضافة');
+  const ev = await loadEvent(eventId);
+  if (ev.closed_at) throw badRequest('هذه الفعالية مُغلقة — لا يُضاف إليها رمزٌ جديد');
+  const t = clean(title, QR_TITLE_MAX);
+  if (!t) throw badRequest('اكتب عنوان الرمز — ما الذي يفتحه الزائر؟');
+  const { mime, sha256 } = checkImage(bytes);
+  const have = await count(`SELECT COUNT(*) AS n FROM event_blob WHERE event_id = ? AND kind = 'qr'`, [ev.id]);
+  if (have >= UPLOAD_LIMITS.qrPerEvent) throw badRequest(`بلغ هذا الجناح حدّ رموز الزوّار (${UPLOAD_LIMITS.qrPerEvent}) — احذف رمزاً قبل إضافة آخر`);
+  await assertDailyBudget(user, bytes.length);
+  const bid = id('evb');
+  await tx(async () => {
+    // مرجع الرمز نفسُه: الفهرس الفريد (kind, ref_id) يبقى صادقاً، ولا «صاحبَ» للرمز غير فعاليته.
+    await insert('event_blob', { id: bid, event_id: ev.id, kind: 'qr', ref_id: bid, title: t,
+      content: bytes, mime, size_bytes: bytes.length, sha256, uploaded_by: user.id, created_at: nowIso() });
+    await audit(ctx, { action: 'create', resource: 'event_blob', resourceId: bid, sectorId: null,
+      detail: { event_id: ev.id, kind: 'qr', title: t, size_bytes: bytes.length, mime, file_name: clean(fileName) } });
+  });
+  return { id: bid, title: t, mime, size_bytes: bytes.length, url: '/api/events/' + ev.id + '/qr/' + bid };
+}
+
+export async function readQr(user, eventId, bid) {
+  assertRead(user);
+  const ev = await loadEvent(eventId);
+  const b = await loadQr(ev.id, bid, 'b.content, b.mime, b.sha256, b.size_bytes, b.title');
+  return { mime: b.mime, content: asBuffer(b.content), sha256: b.sha256, size_bytes: Number(b.size_bytes), title: b.title };
+}
+
+export async function deleteQr(ctx, eventId, bid) {
+  const user = ctx.user;
+  assertQrManage(user, 'حذف');
+  const ev = await loadEvent(eventId);
+  const b = await loadQr(ev.id, bid, 'b.id, b.title');
+  await tx(async () => {
+    await run('DELETE FROM event_blob WHERE id = ?', [b.id]);
+    await audit(ctx, { action: 'delete', resource: 'event_blob', resourceId: b.id, sectorId: null,
+      detail: { event_id: ev.id, kind: 'qr', title: b.title } });
   });
   return { ok: true };
 }

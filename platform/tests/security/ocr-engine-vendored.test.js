@@ -6,7 +6,8 @@
 //     اعتماد على شبكةٍ خارجية في القاعة، ولا صورةٌ ولا نصٌّ يغادر المنصّة.
 //   • قوائم استبعاد النشر لا تُسقط المجلّد ولا ملفّات .gz ولا النواة من حمولة النشر.
 //   • وعبر التطبيق الحقيقي: ملفّ التوريد يخرج بـimmutable، وملفّ الشيفرة العادي لا يخرج به.
-// (ذكرُ صفحة الفعالية لمسارات التوريد شأن الخطوة التالية — لا يُفحص هنا.)
+//   • وصفحة الفعالية تشير إلى المسارات الثلاثة المورَّدة (العامل، النواة، اللغات) وتحمّل العامل
+//     من مساره المباشر لا من رابطٍ مؤقّت (workerBlobURL: false) — فسياسة المصدر تبقى صارمة.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, statSync, openSync, readSync, closeSync, mkdtempSync, rmSync } from 'node:fs';
@@ -61,6 +62,23 @@ test('شيفرة الصفحات لا تذكر شبكة التوزيع الافت
       assert.ok(!txt.includes(cdn), `pages/${f} يذكر «${cdn}» — القارئ سيجلب من شبكةٍ خارجية لا من أصلنا`);
     }
   }
+});
+
+// ── صفحة الفعالية: المسارات الثلاثة من مجلّد التوريد، والعامل من مساره لا من رابط مؤقّت ──
+const PAGE = 'src/web/public/pages/events.js';
+test('شيفرة صفحة الفعالية تشير إلى مسارات التوريد الثلاثة (العامل، النواة، اللغات) من أصل سند', () => {
+  const txt = read(PAGE);
+  assert.ok(txt.includes("VENDOR = '/static/vendor/tesseract-5.1.1/'"),
+    `${PAGE} لا يعرّف مجلّد التوريد /static/vendor/tesseract-5.1.1/ — القارئ سيبحث عن ملفّاته في غير مكانها`);
+  for (const [key, file] of [['workerPath', 'worker.min.js'], ['corePath', 'tesseract-core-simd-lstm.wasm.js'], ['langPath', 'lang']]) {
+    assert.ok(txt.includes(`${key}: VENDOR + '${file}'`),
+      `${PAGE} لا يضبط ${key} على VENDOR + '${file}' — الملفّ لن يُجلَب من التوريد`);
+  }
+});
+
+test('العامل يُحمَّل من مساره المباشر لا من رابطٍ مؤقّت — workerBlobURL: false', () => {
+  assert.ok(read(PAGE).includes('workerBlobURL: false'),
+    `${PAGE} بلا workerBlobURL: false — العامل سيُغلَّف في رابطٍ مؤقّت تمنعه سياسة المصدر`);
 });
 
 for (const f of ['.railwayignore', '.dockerignore']) {

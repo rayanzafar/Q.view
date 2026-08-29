@@ -43,6 +43,8 @@ const VIEWER = user('u_viewer', 'viewer', { name_ar: 'مشاهد', scope: 'secto
 const BD_HEAD = user('u_bdhead', 'bd_head', { name_ar: 'رئيس تطوير الأعمال', scope: 'company' });
 const EXT = user('u_ext', 'external', { name_ar: 'زائر', sector_id: null });
 const CTX = (u) => ({ user: u, ip: '127.0.0.1' });
+// صورٌ بحجم الاختبار لسيناريو العزل (E2): ترويسة JPEG صحيحة وحشوٌ يختلف بالبذرة فتختلف البصمة.
+const IMG = (seed) => Buffer.concat([Buffer.from([0xFF, 0xD8, 0xFF, 0xE0]), Buffer.alloc(64, seed)]);
 
 let EV1, EV2, C1, C2, C3, C4, C5, P1;
 
@@ -228,6 +230,32 @@ test('التحقق: نوع البطاقة من القائمة، وحقلٌ وا�
   await ev.deleteContact(CTX(SARA), big.contact.id);
 });
 
+test('المحارف الضابطة تُنزَع من كل حقل: NUL وسطرٌ جديد في الاسم يزولان، والملاحظة والنصّ الخام يحتفظان بأسطرهما بلا NUL — والقصّ بالحرف لا يشطر رمزاً تعبيرياً', async () => {
+  const r = await ev.createContact(CTX(SARA), EV1.id, { kind: 'تعاون',
+    person_name: 'أحمد\u0000 \r\nالعلي', org_name: 'شركة\t\u001Fالنخبة  الرقمية', job_title: '\u0007مدير\u007F',
+    note: 'سطر أول\r\nسطر\u0000 ثانٍ   بفراغات', raw_text: 'الاسم: أحمد\nالجهة: النخبة\u0000' });
+  const c = r.contact;
+  assert.equal(c.person_name, 'أحمد العلي');
+  assert.equal(c.org_name, 'شركة النخبة الرقمية');
+  assert.equal(c.job_title, 'مدير');
+  assert.equal(c.note, 'سطر أول\nسطر ثانٍ بفراغات', 'الملاحظة فقدت سطرها أو أبقت NUL');
+  assert.equal(c.raw_text, 'الاسم: أحمد\nالجهة: النخبة', 'النصّ الخام فقد سطره أو أبقى NUL');
+  const CTRL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/;
+  for (const v of [c.person_name, c.org_name, c.job_title, c.note, c.raw_text]) assert.ok(!CTRL.test(v), 'محرفٌ ضابط بقي');
+  assert.equal(c.name_norm, 'احمد العلي', 'المفتاح المطبَّع بُني على النصّ قبل التنظيف');
+  // القصّ بالحرف: رمزٌ تعبيري في الحرف المئة والستين يبقى كاملاً — لا نصفَ زوجٍ بديل.
+  const long = await ev.createContact(CTX(SARA), EV1.id, { kind: 'تعاون', person_name: 'ن'.repeat(159) + '😀' + 'زيادة' });
+  assert.ok(long.contact.person_name.isWellFormed(), 'نصفُ زوجٍ بديل في الاسم');
+  assert.equal(Array.from(long.contact.person_name).length, 160);
+  assert.ok(long.contact.person_name.endsWith('😀'));
+  // وفي التعديل والمتابعة الطريقُ نفسه.
+  const u = await ev.updateContact(CTX(SARA), c.id, { job_title: 'مدير\u0000 التقنية' });
+  assert.equal(u.job_title, 'مدير التقنية');
+  const o = await ev.setOutcome(CTX(SARA), c.id, { outcome: 'تواصلنا', outcome_note: 'اتصلنا\u0000\r\nوردّ' });
+  assert.equal(o.outcome_note, 'اتصلنا\nوردّ');
+  for (const x of [c, long.contact]) await ev.deleteContact(CTX(SARA), x.id);
+});
+
 // ── التكرار ───────────────────────────────────────────────────────────────────
 test('التكرار يُكشف بالجوال ولو اختلفت صيغته — ويُشار إلى الأقدم ويُكتب في الأثر', async () => {
   const r = await ev.createContact(CTX(KHALID), EV1.id, { kind: 'شراكة', person_name: 'شخص آخر تماماً', phone: '0501234567', capture_key: 'k-2' });
@@ -349,6 +377,7 @@ test('القوائم: الأحدث أولاً، والبحث بالنصّ وبا
   for (let i = 1; i < rows.length; i++) assert.ok(rows[i - 1].captured_at >= rows[i].captured_at, 'الأحدث ليس أولاً');
   assert.ok(rows.every((c) => c.raw_text === undefined), 'القائمة تحمل النصّ الخام');
   assert.ok(rows.every((c) => c.has_photo === 0));
+  assert.ok(rows.every((c) => 'photo_sha' in c && c.photo_sha === null), 'بصمة الصورة غائبة عن القائمة أو غير فارغة بلا صورة');
   assert.deepEqual((await ev.listContacts(SARA, EV1.id, { q: 'النخبة' })).map((c) => c.id), [C1.id]);
   assert.deepEqual((await ev.listContacts(SARA, EV1.id, { q: 'ELITE' })).map((c) => c.id).sort(), [C1.id, C4.id].sort(), 'البحث في البريد بلا حساسية للحالة');
   assert.deepEqual((await ev.listContacts(SARA, EV1.id, { q: '+966 50 123 4567' })).map((c) => c.id).sort(), [C1.id, C2.id, C5.id].sort(), 'الرقم بصيغة أخرى لا يجد نظيره المطبَّع');
@@ -443,6 +472,7 @@ test('حذف البطاقة ناعمٌ على الصفّ وقاطعٌ على ص�
   await db.insert('event_blob', { id: 'evb_t1', event_id: EV1.id, kind: 'card', ref_id: C4.id, content: Buffer.from('img'),
     mime: 'image/jpeg', size_bytes: 3, sha256: 'x', uploaded_by: KHALID.id, created_at: T });
   assert.equal((await ev.getContact(SARA, C4.id)).has_photo, 1);
+  assert.equal((await ev.getContact(SARA, C4.id)).photo_sha, 'x', 'بصمة الصورة لا تصحب البطاقة');
   await ev.deleteContact(CTX(KHALID), C4.id);
   const row = await db.get('SELECT deleted_at FROM event_contact WHERE id = ?', [C4.id]);
   assert.ok(row, 'مُحي الصفّ فعلياً بدل إخفائه');
@@ -548,6 +578,7 @@ test('القوائم لا تحمل مفتاح الالتقاط ولا الصور
   const rows = await ev.listContacts(SARA, EV1.id, {});
   assert.ok(rows.length > 0);
   for (const c of rows) for (const k of hidden) assert.ok(!(k in c), `القائمة تحمل «${k}»`);
+  for (const c of rows) assert.ok('has_photo' in c && 'photo_sha' in c && !('content' in c), 'القائمة بلا علامة الصورة وبصمتها — أو تحمل بايتاتها');
   for (const c of (await ev.recentContacts(SARA, EV1.id, {})).rows) for (const k of hidden) assert.ok(!(k in c), `«آخر ما التقطت» تحمل «${k}»`);
   const one = await ev.getContact(SARA, C1.id);
   assert.equal(one.phone_norm, '0501234567');
@@ -633,6 +664,12 @@ test('العزل: سيناريو كامل في الفعاليات لا يحرّ�
   assert.equal(b2.possible_duplicate_of, null);
   const p1 = await ev.createPartner(CTX(SARA), A.id, { org_name: 'عميل شاهد', partner_kind: 'شراكة تقنية', contact_id: a1.id });
   const p2 = await ev.createPartner(CTX(KHALID), B.id, { org_name: 'مشروع شاهد', status: 'قيد النقاش' });
+  // صورٌ (E2): بطاقتان مصوَّرتان واستبدالُ إحداهما، ورمزا كشك — أحدهما يُحذف بنفسه والآخر مع فعاليته.
+  await ev.attachContactPhoto(CTX(SARA), a1.id, IMG(1), { fileName: 'card.jpg' });
+  await ev.attachContactPhoto(CTX(KHALID), a2.id, IMG(2));
+  await ev.attachContactPhoto(CTX(LEAD), a1.id, IMG(3));
+  const q1 = await ev.addQr(CTX(LEAD), A.id, IMG(4), { title: 'رابط التسجيل' });
+  await ev.addQr(CTX(LEAD), B.id, IMG(5), { title: 'ملف الشركة' });
   await ev.setOutcome(CTX(LEAD), a1.id, { outcome: 'صارت فرصة', outcome_note: 'تُفتح فرصة يدوياً من شاشة الفرص' });
   await ev.setOutcome(CTX(LEAD), a3.id, { outcome: 'صارت شراكة' });
   await ev.setOutcome(CTX(SARA), a4.id, { outcome: 'لا متابعة' });
@@ -640,6 +677,7 @@ test('العزل: سيناريو كامل في الفعاليات لا يحرّ�
   await ev.updatePartner(CTX(KHALID), p2.id, { status: 'نشطة' });
   await ev.deleteContact(CTX(KHALID), a2.id);
   await ev.deletePartner(CTX(SARA), p1.id);
+  await ev.deleteQr(CTX(LEAD), A.id, q1.id);
   await ev.closeEvent(CTX(LEAD), A.id, {});
   await ev.deleteEvent(CTX(LEAD), B.id);
 
@@ -651,6 +689,13 @@ test('العزل: سيناريو كامل في الفعاليات لا يحرّ�
   }
   // والجهة الأخرى تحرّكت فعلاً — وإلا فالفحص يقارن سكوناً بسكون.
   assert.ok(Number((await db.get('SELECT COUNT(*) AS n FROM event_contact')).n) >= 13);
+  // والصور تحرّكت وزالت في مكانها: صورة a2 ذهبت مع بطاقتها، ورمز B ذهب مع فعاليته، ورمز A حُذف
+  // بنفسه — وصورة a1 (المستبدَلة) باقية صفّاً واحداً.
+  const blobs = async (where, params) => Number((await db.get(`SELECT COUNT(*) AS n FROM event_blob ${where}`, params)).n);
+  assert.equal(await blobs('WHERE ref_id = ?', [a1.id]), 1);
+  assert.equal(await blobs('WHERE ref_id = ?', [a2.id]), 0);
+  assert.equal(await blobs('WHERE event_id = ?', [B.id]), 0);
+  assert.equal(await blobs("WHERE event_id = ? AND kind = 'qr'", [A.id]), 0);
   assert.ok(Number((await db.get("SELECT COUNT(*) AS n FROM audit_log WHERE resource LIKE 'event%'")).n) >= 30);
 });
 
@@ -687,9 +732,11 @@ test('ومسارات الفعاليات مركَّبة فعلاً تحت واج�
   };
   apiRouter.stack.forEach(walk);
   for (const p of ['/events', '/events/:id', '/events/:id/contacts', '/events/:id/contacts/recent', '/events/contacts/:cid',
-    '/events/contacts/:cid/outcome', '/events/parse-card', '/events/:id/partners', '/events/partners/:pid', '/events/:id/close']) {
+    '/events/contacts/:cid/outcome', '/events/parse-card', '/events/:id/partners', '/events/partners/:pid', '/events/:id/close',
+    '/events/contacts/:cid/photo', '/events/:id/qr', '/events/:id/qr/:bid']) {
     assert.ok(paths.includes(p), `المسار ${p} غير مركَّب في api.routes.js`);
   }
   assert.ok(paths.indexOf('/events/parse-card') < paths.indexOf('/events/:id'), '«parse-card» بعد «:id» فيُقرأ معرّفاً');
   assert.ok(paths.indexOf('/events/contacts/:cid') < paths.indexOf('/events/:id'), '«contacts» بعد «:id» فيُقرأ معرّفاً');
+  assert.ok(paths.indexOf('/events/contacts/:cid/photo') < paths.indexOf('/events/:id'), '«contacts/…/photo» بعد «:id» فيُقرأ معرّفاً');
 });
