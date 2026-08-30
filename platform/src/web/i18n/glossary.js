@@ -315,6 +315,10 @@ export const G = {
   fillFromText: 'املأ من النصّ',
   recentCaptures: 'آخر ما التقطت',
   possibleDuplicate: 'قد تكون مكرّرة',
+  editEvent: 'تعديل الفعالية',
+  closeEvent: 'إغلاق الفعالية',
+  reopenEvent: 'فتح الفعالية',
+  deleteEvent: 'حذف الفعالية',
   // اجتماعات الفعالية (الترحيلة ٠٤٠): موعدٌ له رابطٌ يُفتح بضغطة — و«رابط الاجتماع» أبداً
   // لا كلمة تقنية أجنبية.
   eventMeetings: 'الاجتماعات',

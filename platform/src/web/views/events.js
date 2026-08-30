@@ -92,6 +92,8 @@ const CSS = `<style>
 .ev-meta{display:flex;flex-wrap:wrap;gap:.35rem 1rem;margin-top:.45rem;font-size:var(--fs-body);color:var(--muted)}
 .ev-meta span{display:inline-flex;align-items:center;gap:.3rem;min-width:0}
 .ev-meta svg{width:14px;height:14px;flex:none}
+.ev-admin{display:flex;flex-wrap:wrap;gap:.45rem;margin-top:.7rem}
+.ev-admin .btn{min-height:40px}
 .ev-counts{display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem;margin-top:.85rem;border-top:1px solid var(--line);padding-top:.7rem}
 .ev-counts b{display:block;font-size:var(--fs-num-sm);font-weight:800;color:var(--ink2)}
 .ev-counts span{font-size:var(--fs-micro);color:var(--muted);font-weight:700}
@@ -284,6 +286,7 @@ export async function eventDetailPage(user, id, opts = {}) {
   const closed = ev.status === 'مُغلقة';
   const canCapture = can(user, 'create', 'event_contact');
   const canManage = can(user, 'update', 'event');
+  const canDelete = can(user, 'delete', 'event');
   const captureOpen = canCapture && !closed;
   const summary = await eventSummary(user, ev.id);
   const qr = await listQr(user, ev.id);
@@ -297,6 +300,15 @@ export async function eventDetailPage(user, id, opts = {}) {
   // عدّاد «التقط الفريق اليوم» يظهر مرةً واحدة في الصفحة: تحت نموذج الالتقاط حين يُعرض النموذج
   // (وهو الذي يزيده المتصفّح بعد كل حفظ)، وفي الترويسة فيما عدا ذلك.
   const todayInHeader = !(tab === 'capture' && captureOpen);
+  // إدارةُ الفعالية لمن يملكها: تعديلٌ وإغلاق/فتح لحامل التعديل، وحذفٌ لحامل الحذف وحده —
+  // كانت واجهةُ البرمجة وحدها تعرفها (v5.58) حتى احتاجها حسين ليلةَ LEAP فلم يجد زراً (v5.65).
+  const adminBar = (canManage || canDelete) ? `<div class="ev-admin">
+      ${canManage ? `<button type="button" class="btn btn-sm" data-action="ev-edit">${icon('edit')} ${G.editEvent}</button>` : ''}
+      ${canManage ? (closed
+    ? `<button type="button" class="btn btn-sm" data-action="ev-reopen">${G.reopenEvent}</button>`
+    : `<button type="button" class="btn btn-sm" data-action="ev-close">${G.closeEvent}</button>`) : ''}
+      ${canDelete ? `<button type="button" class="btn btn-ghost btn-sm" data-action="ev-del-event" style="color:var(--red)">${icon('x')} ${G.deleteEvent}</button>` : ''}
+    </div>` : '';
   const header = card(`<div style="padding:1rem 1.15rem">
     <div style="font-size:11px;color:var(--muted);font-weight:700"><a href="/app/events" style="color:var(--brand)">${G.events}</a></div>
     <div class="ev-hd"><h2>${esc(ev.name_ar)}</h2>${statusPill(ev.status)}</div>
@@ -305,8 +317,27 @@ export async function eventDetailPage(user, id, opts = {}) {
       ${ev.venue ? `<span>${icon('building')}${esc(ev.venue)}</span>` : ''}
       ${ev.booth_no ? `<span>${icon('flag')}جناح <span class="tnum">${esc(ev.booth_no)}</span></span>` : ''}
     </div>
+    ${adminBar}
     ${todayInHeader ? `<div class="ev-today">التقط الفريق اليوم: <b class="tnum">${Number(summary.today) || 0}</b></div>` : ''}
   </div>`);
+
+  // نافذة التعديل — قالبٌ خامل بقيم الفعالية نفسها، على نسق نافذة «فعالية جديدة» حرفاً.
+  const editTpl = canManage ? `<template id="ev-edit-tpl">
+    <div class="modal-head"><div style="font-weight:800;font-size:15px">${G.editEvent}</div>
+      <button type="button" class="btn btn-ghost btn-sm ev-x" data-action="modal-close" aria-label="إغلاق">✕</button></div>
+    <div class="modal-body ev-form">
+      <div class="field"><label for="evn-name">اسم الفعالية</label><input class="input" id="evn-name" required maxlength="160" value="${esc(ev.name_ar || '')}"></div>
+      <div class="field"><label for="evn-venue">المكان</label><input class="input" id="evn-venue" maxlength="160" value="${esc(ev.venue || '')}"></div>
+      <div class="grid2">
+        <div class="field"><label for="evn-start">من تاريخ</label><input class="input" id="evn-start" type="date" value="${esc(ev.starts_on || '')}"></div>
+        <div class="field"><label for="evn-end">إلى تاريخ</label><input class="input" id="evn-end" type="date" value="${esc(ev.ends_on || '')}"></div>
+      </div>
+      <div class="field"><label for="evn-booth">رقم الجناح</label><input class="input" id="evn-booth" maxlength="40" value="${esc(ev.booth_no || '')}" placeholder="اختياري"></div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn btn-primary" data-action="ev-edit-save">احفظ التعديل</button>
+      <button type="button" class="btn" data-action="modal-close">${G.cancel}</button></div>
+  </template>` : '';
 
   // ── التبويبات: روابط حقيقية تحفظ بقية المعاملات، لا أزرار تُخفي وتُظهر ──
   const tabLink = (k, label, ic) => `<a href="${esc(linkOf({ ...cur, tab }, { tab: k, status: '' }))}" class="${tab === k ? 'on' : ''}"${tab === k ? ' aria-current="page"' : ''}>${icon(ic)} ${label}</a>`;
@@ -332,10 +363,12 @@ export async function eventDetailPage(user, id, opts = {}) {
     closed,
     canCapture: captureOpen,
     canManage,
+    canDelete,
+    cards: Number(summary.contacts) || 0,
     qr: qr.map((b) => ({ id: b.id, title: b.title || '' })),
     ...(meetings ? { mt: meetings.mt } : {}),
   }).replace(/</g, '\\u003c');
-  const body = `${CSS}<div class="ev-page">${header}${tabs}${panel}</div>
+  const body = `${CSS}<div class="ev-page">${header}${tabs}${panel}${editTpl}</div>
     <script>window.__SANAD=Object.assign(window.__SANAD||{},{ev:${embed}});</script>`;
   const subtitle = `${fmtRange(ev.starts_on, ev.ends_on)} · ${ev.status || ''}`;
   return layout({ user, active: 'events', title: ev.name_ar, subtitle, body, scripts: DETAIL_SCRIPTS });

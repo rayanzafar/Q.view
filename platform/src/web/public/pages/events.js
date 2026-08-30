@@ -753,6 +753,46 @@
     restoreFocus();
   }
 
+  // ── إدارة الفعالية (v5.65): تعديلٌ وإغلاق/فتح وحذف — أزرارٌ لواجهةٍ كانت للخدمة وحدها ──
+  function evOpenEdit() {
+    var t = $('ev-edit-tpl');
+    if (t && SN().openModal) SN().openModal(t.innerHTML);
+  }
+  function evSaveEdit(btn) {
+    if (!EV) return;
+    var name = val('evn-name');
+    if (!name) { toast('اكتب اسم الفعالية أولاً', true); return; }
+    var s = val('evn-start'), en = val('evn-end');
+    if (!s || !en) { toast('حدّد تاريخ البداية والنهاية', true); return; }
+    if (en < s) { toast('تاريخ النهاية قبل البداية — صحّحه', true); return; }
+    btn.disabled = true;
+    api('/events/' + encodeURIComponent(EV.eventId), 'PATCH',
+      { name_ar: name, venue: val('evn-venue'), starts_on: s, ends_on: en, booth_no: val('evn-booth') })
+      .then(function () { toast('حُفظ التعديل ✓'); setTimeout(function () { location.reload(); }, 400); })
+      .catch(function (e) { btn.disabled = false; toast(e.message, true); });
+  }
+  function evToggleClose(reopen) {
+    if (!EV) return;
+    var msg = reopen ? 'تُفتح الفعالية من جديد فيعود الالتقاط فيها — متابعة؟'
+      : 'تُغلق الفعالية فيتوقف الالتقاط فيها وتخرج من قائمة الفعاليات الجارية — متابعة؟';
+    if (!window.confirm(msg)) return;
+    api('/events/' + encodeURIComponent(EV.eventId) + '/close', 'POST', reopen ? { reopen: 1 } : {})
+      .then(function () { toast(reopen ? 'فُتحت الفعالية ✓' : 'أُغلقت الفعالية ✓'); setTimeout(function () { location.reload(); }, 400); })
+      .catch(function (e) { toast(e.message, true); });
+  }
+  function evDeleteEvent(btn) {
+    if (!EV) return;
+    var n = Number(EV.cards) || 0;
+    var msg = n
+      ? 'تُحذف الفعالية وبطاقاتها (' + n + ') وصورها نهائياً من الشاشات — متابعة؟'
+      : 'تُحذف الفعالية من الشاشات — متابعة؟';
+    if (!window.confirm(msg)) return;
+    btn.disabled = true;
+    api('/events/' + encodeURIComponent(EV.eventId), 'DELETE')
+      .then(function () { toast('حُذفت الفعالية ✓'); setTimeout(function () { location.href = '/app/events'; }, 400); })
+      .catch(function (e) { btn.disabled = false; toast(e.message, true); });
+  }
+
   // ── الاجتماعات: نموذجٌ على الصفحة، ومدعوّون رقاقات، وتعارضٌ يُفحص حياً ولا يمنع ──
   var MT = EV && EV.mt ? EV.mt : null;
   var mtEditing = null;   // معرّف الاجتماع قيد التعديل — فارغٌ عند الإنشاء
@@ -949,6 +989,11 @@
     if (act === 'ev-qr-show') { e.preventDefault(); qrShow(el); return; }
     if (act === 'ev-qr-del') { e.preventDefault(); qrDelete(el); return; }
     if (act === 'ev-qr-close') { e.preventDefault(); closeKiosk(); return; }
+    if (act === 'ev-edit') { e.preventDefault(); evOpenEdit(); return; }
+    if (act === 'ev-edit-save') { e.preventDefault(); evSaveEdit(el); return; }
+    if (act === 'ev-close') { e.preventDefault(); evToggleClose(false); return; }
+    if (act === 'ev-reopen') { e.preventDefault(); evToggleClose(true); return; }
+    if (act === 'ev-del-event') { e.preventDefault(); evDeleteEvent(el); return; }
     if (act === 'mt-new') { e.preventDefault(); mtOpenForm(null); return; }
     if (act === 'mt-cancel') { e.preventDefault(); mtHideForm(); return; }
     if (act === 'mt-chip-x') { e.preventDefault(); mtRemoveChip(el); return; }
@@ -1008,7 +1053,9 @@
     }
     if (e.key === 'Enter' && modalOpen() && e.target && e.target.tagName === 'INPUT' && e.target.closest && e.target.closest('#modal')) {
       var btn = document.querySelector('#modal [data-action="ev-new-save"]');
-      if (btn) { e.preventDefault(); saveNew(btn); }
+      if (btn) { e.preventDefault(); saveNew(btn); return; }
+      var ebtn = document.querySelector('#modal [data-action="ev-edit-save"]');
+      if (ebtn) { e.preventDefault(); evSaveEdit(ebtn); }
     }
   });
 
