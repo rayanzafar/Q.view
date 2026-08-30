@@ -149,16 +149,23 @@ export default {
     const months = mapped._months;
     const range = uniformRange(months) || { pct: 100, fromMonth: 1, toMonth: 12 };
     if (resolved.action === 'create') {
-      const staffing = await assignEmployee(ctx, mapped.project, {
+      // السنة تمرّ إلى الخدمة نفسها لا تُرقَّع بعدها: إسقاطُها كان يُنشئ كل تسكين على سنة
+      // اليوم ثم يرقّعه — والرقعة كانت تلتقط **أقدم** تسكينٍ للشخص على المشروع لا أحدثَه
+      // (projectStaffing يرتّب بالإنشاء والالتقاط كان بأول نتيجة)، فتفسد سنواتُ الأزواج
+      // متعددة السنين ويصطدم صفُّ السنة الحالية بمانع التكرار (KI-092، دفتر SAP 2026-08-30).
+      await assignEmployee(ctx, mapped.project, {
         employeeId: mapped.employee, type: mapped.type || 'member',
         pct: range.pct, fromMonth: range.fromMonth, toMonth: range.toMonth,
+        year: mapped.year,
       });
-      const allocId = staffing.assigned.find((a) => a.employee_id === mapped.employee)?.id;
-      // استكمال المخطط الدقيق/السنة (الخدمة أنجزت الصلاحيات والتدقيق ومنع التكرار)
-      const after0 = await get('SELECT * FROM allocation WHERE id = ?', [allocId]);
+      // التسكين المنشأ يُلتقط بمفتاحه الفريد (المشروع×الموظف×السنة) — الخدمة تضمن وحدانيته
+      const after0 = await get(
+        'SELECT * FROM allocation WHERE project_id = ? AND employee_id = ? AND year = ? AND deleted_at IS NULL',
+        [mapped.project, mapped.employee, mapped.year]);
+      const allocId = after0.id;
+      // استكمال المخطط الشهري الدقيق (الخدمة أنجزت الصلاحيات والتدقيق ومنع التكرار)
       const exact = { };
       if (!sameMonths(monthsOf(after0.monthly_json), months)) exact.monthly_json = JSON.stringify(toMj(months));
-      if (Number(after0.year) !== Number(mapped.year)) exact.year = mapped.year;
       if (Object.keys(exact).length) await update('allocation', allocId, exact);
       const after = await get('SELECT * FROM allocation WHERE id = ?', [allocId]);
       return { resource: 'allocation', resourceId: allocId, before: null, after };
