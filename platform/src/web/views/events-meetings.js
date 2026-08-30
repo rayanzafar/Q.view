@@ -9,7 +9,7 @@ import { esc, searchPicker, PICKER_CSS, ddWrap } from './_shared.js';
 import { icon } from '../icons.js';
 import { G } from '../i18n/glossary.js';
 import { can } from '../../core/rbac/index.js';
-import { riyadhDate } from '../../core/i18n/time.js';
+import { riyadhDate, WEEKDAYS_AR } from '../../core/i18n/time.js';
 import { pickablePeople } from '../../modules/org/people.js';
 import { listMeetings, dayLabelOf } from '../../modules/events/meetings.js';
 
@@ -43,8 +43,10 @@ const MEETINGS_CSS = `<style>
 .mt-chip button{border:0;background:none;cursor:pointer;font-size:13px;color:var(--muted);
   min-width:28px;min-height:28px;border-radius:50%}
 .mt-chip button:hover{background:#e2e8f0;color:var(--red)}
-.mt-add{display:flex;gap:.5rem;align-items:flex-start}
-.mt-add .btn{min-height:44px;flex:0 0 auto}
+.mt-days .chip{min-height:40px}
+.mt-more{margin-bottom:.7rem;border:1px solid var(--line);border-radius:10px;padding:0 .8rem}
+.mt-more summary{cursor:pointer;min-height:44px;display:flex;align-items:center;font-size:12.5px;font-weight:700;color:var(--brand)}
+.mt-more[open]{padding-bottom:.4rem}
 .mt-save{width:100%;min-height:48px;font-size:15px;justify-content:center;margin-top:.3rem}
 @media(max-width:640px){
   .mt-row{grid-template-columns:auto minmax(0,1fr)}
@@ -70,14 +72,12 @@ const joinBtn = (m, small) => (m.join_url
 function meetingRow(m) {
   const sub = [attendeesSummary(m), m.location ? esc(m.location) : '', m.created_by_name ? `أنشأه ${esc(m.created_by_name)}` : '']
     .filter(Boolean).join(' · ');
+  // الصفّ زرّان لا أكثر: الصفّ نفسه (يفتح التفاصيل) و«انضم» إن كان له رابط — والتعديل
+  // والحذف داخل نافذة التفاصيل، فلا يزدحم السطر على شاشة الجوّال بأزرارٍ تُلمس خطأً.
   return `<div class="card mt-row" data-dd="mtg-${esc(m.id)}" role="button" tabindex="0" aria-label="تفاصيل ${esc(m.title)}">
     <div class="mt-time">${timeSpan(m)}${statePill(m.state)}</div>
     <div class="mt-main"><b>${esc(m.title)}</b>${sub ? `<div class="mt-sub">${sub}</div>` : ''}</div>
-    <div class="mt-act">
-      ${joinBtn(m, true)}
-      ${m.may_edit ? `<button type="button" class="btn btn-ghost btn-sm" data-action="mt-edit" data-mid="${esc(m.id)}" aria-label="تعديل ${esc(m.title)}">${icon('edit')}</button>` : ''}
-      ${m.may_delete ? `<button type="button" class="btn btn-ghost btn-sm" data-action="mt-del" data-mid="${esc(m.id)}" aria-label="حذف ${esc(m.title)}" style="color:var(--red)">${icon('x')}</button>` : ''}
-    </div>
+    ${m.join_url ? `<div class="mt-act">${joinBtn(m, true)}</div>` : ''}
   </div>`;
 }
 
@@ -94,37 +94,70 @@ function meetingDD(m) {
       ${li('أنشأه', m.created_by_name ? esc(m.created_by_name) : '')}
       ${li('ملاحظة', m.note ? esc(m.note).replace(/\n/g, '<br>') : '')}
     </div>
-    ${m.join_url ? `<div style="margin-top:1rem">${joinBtn(m)}</div>` : ''}`);
+    ${m.join_url ? `<div style="margin-top:1rem">${joinBtn(m)}</div>` : ''}
+    ${(m.may_edit || m.may_delete) ? `<div style="display:flex;gap:.5rem;margin-top:1rem;padding-top:.8rem;border-top:1px solid var(--line)">
+      ${m.may_edit ? `<button type="button" class="btn" data-action="mt-edit" data-mid="${esc(m.id)}">تعديل الاجتماع</button>` : ''}
+      ${m.may_delete ? `<button type="button" class="btn btn-ghost" data-action="mt-del" data-mid="${esc(m.id)}" style="color:var(--red)">حذف</button>` : ''}
+    </div>` : ''}`);
 }
+
+// أيام الفعالية رقاقاتٍ بدل منتقي التاريخ: المعرض أيامٌ معدودة معروفة، ومنتقي التاريخ أثقل
+// عنصرٍ على الجوّال. سبعةُ أيام فأكثر تُبقي المنتقي — رقاقاتٌ كثيرة أسوأ منه.
+function eventDays(ev) {
+  const a = new Date(String(ev.starts_on || '') + 'T00:00:00Z');
+  const b = new Date(String(ev.ends_on || '') + 'T00:00:00Z');
+  if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return [];
+  const out = [];
+  for (let t = a.getTime(); t <= b.getTime() && out.length < 7; t += 86400000) {
+    out.push(new Date(t).toISOString().slice(0, 10));
+  }
+  return out;
+}
+const dayChipLabel = (d, today) => {
+  if (d === today) return 'اليوم';
+  const t = new Date(d + 'T00:00:00Z');
+  return `${WEEKDAYS_AR[t.getUTCDay()]} <span class="tnum">${t.getUTCDate()}</span>`;
+};
 
 function meetingForm(ev, people, today) {
   const inRange = today >= ev.starts_on && today <= ev.ends_on;
   const defDate = inRange ? today : ev.starts_on;
   const field = (id, label, inner) => `<div class="field"><label for="${id}">${label}</label>${inner}</div>`;
+  // أيامُ الفعالية رقاقات (يومان إلى ستة)، و«يوم آخر» يكشف منتقي التاريخ لمن أراد الخروج عنها.
+  const days = eventDays(ev);
+  const chips = days.length >= 2 && days.length <= 6;
+  const dayField = chips
+    ? `<div class="field"><label>اليوم</label>
+        <div class="chips mt-days" style="margin-bottom:0" role="group" aria-label="اليوم">
+          ${days.map((d) => `<button type="button" class="chip mt-day${d === defDate ? ' on' : ''}" data-action="mt-day" data-day="${esc(d)}"${d === defDate ? ' aria-current="date"' : ''}>${dayChipLabel(d, today)}</button>`).join('')}
+          <button type="button" class="chip" data-action="mt-day-other">يوم آخر</button>
+        </div>
+        <input class="input" id="mt-date" type="date" value="${esc(defDate || '')}" aria-label="التاريخ" hidden></div>`
+    : field('mt-date', 'التاريخ', `<input class="input" id="mt-date" type="date" value="${esc(defDate || '')}">`);
   return `<form id="mt-form" class="card mt-form ev-form" hidden autocomplete="off" novalidate style="padding:1rem 1.1rem">
     <h3 class="ev-sec-t" id="mt-form-t">${G.newMeeting}</h3>
     ${field('mt-title', G.meetingTitle, `<input class="input" id="mt-title" maxlength="160" required placeholder="مثال: عرضٌ تعريفي لوفد الوزارة">`)}
-    ${field('mt-date', 'التاريخ', `<input class="input" id="mt-date" type="date" value="${esc(defDate || '')}">`)}
+    ${dayField}
     <div class="mt-grid2">
       ${field('mt-start', 'من الساعة', `<input class="input" id="mt-start" type="time">`)}
-      ${field('mt-end', 'إلى الساعة', `<input class="input" id="mt-end" type="time">`)}
+      ${field('mt-end', 'إلى الساعة', `<input class="input" id="mt-end" type="time">
+        <div class="ev-hint">تُملأ وحدها نصفَ ساعةٍ بعد البداية — وعدّلها كما تشاء.</div>`)}
     </div>
     ${field('mt-url', G.meetingLink, `<input class="input" id="mt-url" type="text" dir="ltr" inputmode="url" maxlength="600"
       autocapitalize="off" spellcheck="false" placeholder="https://teams.microsoft.com/...">
       <div class="ev-hint">اختياري — الاجتماع الحضوري في الجناح يُترك رابطه فارغاً.</div>`)}
-    ${field('mt-location', 'المكان', `<input class="input" id="mt-location" maxlength="160" placeholder="اختياري — جناحنا، قاعة الاجتماعات…">`)}
-    ${field('mt-note', 'ملاحظة', `<textarea id="mt-note" rows="2" maxlength="2000" placeholder="ما يستعدّ له الحاضرون — سطر يكفي"></textarea>`)}
     <div class="field"><label for="mt-people-q">${G.meetingAttendees}</label>
-      <div class="mt-add">
-        ${searchPicker({ idAttr: 'mt-people', label: G.meetingAttendees, placeholder: 'ابحث بالاسم ثم أضِف',
+      ${searchPicker({ idAttr: 'mt-people', label: G.meetingAttendees, placeholder: 'اكتب الاسم واختره — يُضاف فوراً',
     lead: [{ value: '', name: 'اختر شخصاً' }],
     groups: [{ label: 'حسابات المنصة', items: people.map((p) => ({ value: p.id, name: p.name })) }] })}
-        <button type="button" class="btn" data-action="mt-add-attendee">${G.addAttendee}</button>
-      </div>
       <div class="mt-chips" id="mt-chips"></div>
       <input type="hidden" id="mt-attendees" value="[]">
       <div class="ev-hint">تُضاف أنت تلقائياً — والدعوة تصل المدعوين بالبريد وفيها ${G.meetingLink}.</div>
     </div>
+    <details class="mt-more"><summary>تفاصيل إضافية — المكان وملاحظة</summary>
+      ${field('mt-location', 'المكان', `<input class="input" id="mt-location" maxlength="160" placeholder="جناحنا، قاعة الاجتماعات…">`)}
+      ${field('mt-note', 'ملاحظة', `<textarea id="mt-note" rows="2" maxlength="2000" placeholder="ما يستعدّ له الحاضرون — سطر يكفي"></textarea>`)}
+    </details>
     <div id="mt-conflict" class="alert warn" hidden role="status"></div>
     <button type="submit" class="btn btn-primary mt-save" data-action="mt-save">${icon('check')} ${G.saveMeeting}</button>
     <button type="button" class="btn btn-ghost" data-action="mt-cancel" style="width:100%;justify-content:center;margin-top:.4rem">${G.cancel}</button>

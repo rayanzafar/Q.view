@@ -799,12 +799,15 @@
     var t = $('mt-form-t');
     if (t) t.textContent = row ? 'تعديل الاجتماع' : 'اجتماع جديد';
     setVal('mt-title', row ? row.title : '');
-    if (row) setVal('mt-date', row.meeting_date);
+    mtSyncDay(row ? row.meeting_date : '');
     setVal('mt-start', row ? row.start_time : '');
     setVal('mt-end', row ? row.end_time : '');
+    mtAutoEnd = null;
     setVal('mt-url', row ? row.join_url : '');
     setVal('mt-location', row ? row.location : '');
     setVal('mt-note', row ? row.note : '');
+    var more = f.querySelector('.mt-more');
+    if (more) more.open = !!(row && (row.location || row.note));
     mtResetChips(row ? row.attendee_ids : []);
     mtHideConflict();
     f.hidden = false;
@@ -814,19 +817,47 @@
     mtCheckSoon();
   }
   function mtHideForm() { var f = $('mt-form'); if (f) f.hidden = true; mtEditing = null; }
-  function mtAddAttendee() {
+  // اختيار الشخص من المنتقي يضيفه فوراً — لا زرّ «أضِف» بينهما: ضغطةٌ واحدة لكل مدعوّ.
+  function mtPickAttendee() {
     var sel = $('mt-people');
     var uid = sel ? String(sel.value || '') : '';
-    if (!uid) { toast('اختر شخصاً من القائمة أولاً', true); return; }
+    if (!uid) return;
     if (!mtChips.some(function (c) { return c.id === uid; })) {
       mtChips.push({ id: uid, name: mtNameOf(uid) });
       mtRenderChips();
       mtCheckSoon();
     }
     sel.value = '';
-    if (SN().pickerSync) SN().pickerSync('mt-people');
     var q = $('mt-people-q');
-    if (q) q.focus();
+    if (q) { q.value = ''; q.focus(); }
+  }
+  // «إلى الساعة» تُملأ وحدها نصفَ ساعةٍ بعد البداية — وما كتبه المستخدم بيده لا يُمسّ أبداً.
+  var mtAutoEnd = null;
+  function mtMaybeAutoEnd() {
+    var s = val('mt-start');
+    if (!s) return;
+    var en = val('mt-end');
+    if (en && en !== mtAutoEnd) return;
+    var p = s.split(':');
+    var mins = Math.min((+p[0]) * 60 + (+p[1]) + 30, 23 * 60 + 59);
+    var v = ('0' + Math.floor(mins / 60)).slice(-2) + ':' + ('0' + (mins % 60)).slice(-2);
+    setVal('mt-end', v);
+    mtAutoEnd = v;
+  }
+  // رقاقات أيام الفعالية تكتب في حقل التاريخ المخفيّ — وهو مصدرُ الحقيقة للحفظ والفحص معاً.
+  function mtSyncDay(d) {
+    var input = $('mt-date');
+    if (!input) return;
+    if (d) input.value = d;
+    var chips = document.querySelectorAll('.mt-day');
+    if (!chips.length) return;
+    var matched = false;
+    Array.prototype.forEach.call(chips, function (c) {
+      var on = c.getAttribute('data-day') === input.value;
+      c.classList.toggle('on', on);
+      if (on) { c.setAttribute('aria-current', 'date'); matched = true; } else c.removeAttribute('aria-current');
+    });
+    input.hidden = matched;
   }
   function mtRemoveChip(btn) {
     var chip = btn.closest ? btn.closest('.mt-chip') : null;
@@ -920,10 +951,17 @@
     if (act === 'ev-qr-close') { e.preventDefault(); closeKiosk(); return; }
     if (act === 'mt-new') { e.preventDefault(); mtOpenForm(null); return; }
     if (act === 'mt-cancel') { e.preventDefault(); mtHideForm(); return; }
-    if (act === 'mt-add-attendee') { e.preventDefault(); mtAddAttendee(); return; }
     if (act === 'mt-chip-x') { e.preventDefault(); mtRemoveChip(el); return; }
-    if (act === 'mt-edit') { e.preventDefault(); mtOpenForm(el.getAttribute('data-mid')); return; }
-    if (act === 'mt-del') { e.preventDefault(); mtDelete(el); return; }
+    if (act === 'mt-day') { e.preventDefault(); mtSyncDay(el.getAttribute('data-day') || ''); mtCheckSoon(); return; }
+    if (act === 'mt-day-other') {
+      e.preventDefault();
+      var di = $('mt-date');
+      if (di) { di.hidden = false; Array.prototype.forEach.call(document.querySelectorAll('.mt-day'), function (c) { c.classList.remove('on'); }); di.focus(); }
+      return;
+    }
+    // التعديل والحذف يُفتحان من نافذة التفاصيل — فتُغلق أولاً ثم يُنفَّذ الفعل.
+    if (act === 'mt-edit') { e.preventDefault(); if (SN().closeModal) SN().closeModal(); mtOpenForm(el.getAttribute('data-mid')); return; }
+    if (act === 'mt-del') { e.preventDefault(); if (SN().closeModal) SN().closeModal(); mtDelete(el); return; }
   });
 
   // صفّ الاجتماع يفتح تفاصيله — والنقر على زرٍّ أو رابطٍ داخله شأنُ الزرّ وحده.
@@ -953,7 +991,10 @@
     });
     mtFormEl.addEventListener('change', function (e) {
       var idv = e.target && e.target.id;
+      if (idv === 'mt-people') { mtPickAttendee(); return; }
+      if (idv === 'mt-start') mtMaybeAutoEnd();
       if (idv === 'mt-date' || idv === 'mt-start' || idv === 'mt-end') mtCheckSoon();
+      if (idv === 'mt-date') mtSyncDay('');
     });
   }
 
