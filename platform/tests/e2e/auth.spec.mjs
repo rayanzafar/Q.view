@@ -57,6 +57,25 @@ export default async function authSpec({ browser, base, t }) {
   t[code ? 'pass' : 'fail']('a six-digit code reached the mailbox', code ? '' : 'no code found in the preview outbox');
   if (!code) { await ctx.close(); return; }
 
+  // ٣٫٥ — حارس الضغط المزدوج، على المحرّك الحقيقي لا على وجود الوسم في النص فقط:
+  // إرسالٌ يُقفل الزر بعنوان انشغاله، والثاني أثناءه يُمنع، والعودة من ذاكرة المتصفح تفكّ
+  // القفل. (أحداثٌ اصطناعية عمداً: حدثُ submit المُنشأ برمجياً يشغّل الحارس بلا انتقالٍ
+  // فعلي، فلا سباق مع سرعة الخادم المحلي.)
+  const guard = await page.evaluate(() => {
+    const f = document.querySelector('form[action="/auth/otp/verify-web"]');
+    const b = f.querySelector('button[type=submit]');
+    const before = b.textContent;
+    f.dispatchEvent(new Event('submit', { cancelable: true }));
+    const locked = b.disabled && b.textContent !== before && !!f.dataset.sending;
+    const secondAllowed = f.dispatchEvent(new Event('submit', { cancelable: true }));
+    window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
+    const restored = !b.disabled && b.textContent === before && !f.dataset.sending;
+    return { locked, secondAllowed, restored };
+  });
+  t[guard.locked ? 'pass' : 'fail']('submitting locks the button with its busy label', guard.locked ? '' : 'button not locked');
+  t[!guard.secondAllowed ? 'pass' : 'fail']('a second submit while busy is prevented');
+  t[guard.restored ? 'pass' : 'fail']('a back-navigation restore unlocks the form again');
+
   // ٤ — رمز خاطئ يُردّ برسالته الخاصة ويبقى على خطوته.
   await page.fill('input[name=code]', '000000');
   await page.click('form[action="/auth/otp/verify-web"] button[type=submit]');

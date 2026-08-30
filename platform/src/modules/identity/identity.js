@@ -239,8 +239,12 @@ export async function resendInvite(ctx, userId) {
   if (!u.email) throw badRequest('هذا الحساب بلا بريد — أضِف بريده أولاً كي يصله الرمز');
   const purpose = u.active ? PURPOSE.SIGNIN : PURPOSE.INVITE;
   const r = await requestCode({ email: u.email, ip: ctx.ip, purpose, inviterName: ctx.user.name_ar || null });
+  // «أُعيد الإرسال» تُكتب فقط حين خرجت رسالةٌ فعلاً: طلبٌ خلال مهلة التكرار يُمسك الرسالة
+  // ويُبقي الرمز الحيّ — وتسجيلُه «إعادة إرسال» يجعل السجلّ يشهد بما لم يقع.
   await audit(ctx, { action: 'update', resource: 'app_user', resourceId: u.id,
-    detail: `إعادة إرسال رمز الدخول${r.delivered ? '' : ` — لم تغادر الرسالة: ${r.reason || 'سبب غير معروف'}`}` });
+    detail: r.suppressed
+      ? 'طُلبت إعادة إرسال الرمز — الرمز المُرسَل قبل لحظات ما زال صالحاً، فلم تُرسَل رسالة جديدة'
+      : `إعادة إرسال رمز الدخول${r.delivered ? '' : ` — لم تغادر الرسالة: ${r.reason || 'سبب غير معروف'}`}` });
   // السبب يُمرَّر إلى الشاشة هنا وحدها: الضاغطُ مدير النظام لا صاحب الحساب، فلا شيء يُفشى عليه
   // وهو أحوجُ الناس إلى معرفة لماذا لم تصل الرسالة. وبدونه يبحث الموظف في بريده المزعج عن
   // رسالةٍ لم تخرج من الخادم أصلاً.
@@ -326,11 +330,13 @@ export async function updateUser(ctx, userId, data = {}) {
     patch.scope = v; notes.push('نطاق البيانات');
   }
   if (data.sector_id !== undefined) { patch.sector_id = data.sector_id || null; notes.push('القطاع'); }
+  let emailChanged = false;
   if (data.email !== undefined) {
     const v = normalizeEmail(data.email);
     if (!v || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) throw badRequest('اكتب بريد عمل صحيحاً');
     const clash = await get('SELECT id FROM app_user WHERE lower(trim(email)) = ? AND id <> ? AND deleted_at IS NULL', [v, u.id]);
     if (clash) throw badRequest('هذا البريد مستعمل في حساب آخر');
+    emailChanged = v !== normalizeEmail(u.email);
     patch.email = v; notes.push('البريد');
   }
   if (!Object.keys(patch).length) return { ok: true, unchanged: true };
@@ -341,6 +347,12 @@ export async function updateUser(ctx, userId, data = {}) {
   await tx(async () => {
     await run(`UPDATE app_user SET ${cols.map((c) => `${c} = ?`).join(', ')} WHERE id = ?`,
       [...cols.map((c) => patch[c]), u.id]);
+    // بريدٌ تغيّر يعني أن كل رمز دخولٍ حيّ أُرسل إلى عنوانٍ لم يعد عنوانَ الحساب — عنوانٍ
+    // مخطوءٍ صُحِّح، أو صندوقٍ قديم بيد غير صاحبه. يُحرق فوراً: لا يبقى في الصندوق الخطأ
+    // مفتاحُ دخولٍ صالح، ولا تصدّ مهلةُ التكرار إعادةَ الإرسال إلى العنوان المصحَّح.
+    if (emailChanged) {
+      await run('UPDATE login_code SET consumed_at = ? WHERE user_id = ? AND consumed_at IS NULL', [nowIso(), u.id]);
+    }
     await audit(ctx, {
       action: 'update', resource: 'app_user', resourceId: u.id, sectorId: patch.sector_id ?? u.sector_id,
       detail: `تعديل ${u.name_ar || u.username}: ${notes.join('، ')}`,

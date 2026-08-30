@@ -3,6 +3,8 @@
 //
 // خطوتان: البريد، ثم الرمز الواصل إليه. والخطوة الثانية لا تعرف إن كان للبريد حسابٌ أصلاً —
 // فهي تظهر كما هي للجميع، وإلا صارت الشاشة تجيب سؤال «من يعمل في EVC» لمن يسأل بلا حساب.
+import { OTP_REQUEST_COOLDOWN_SECONDS } from '../../core/auth/otp.js';
+
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 export function loginPage(opts = {}) {
@@ -29,22 +31,23 @@ function codeStep({ err, notice, info, email, csrf }) {
     info,
     noticeHtml,
     inner: `
-  <form method="post" action="/auth/otp/verify-web">
+  <form method="post" action="/auth/otp/verify-web" data-busy="جارٍ التحقق…">
     ${csrfField(csrf)}
     <label for="f-code">رمز الدخول</label>
     <input id="f-code" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*" maxlength="6"
       dir="ltr" class="code" placeholder="------" autofocus>
     <button type="submit">دخول</button>
   </form>
-  <form method="post" action="/auth/otp/request-web" style="margin-top:.75rem">
+  <form method="post" action="/auth/otp/request-web" style="margin-top:.75rem" data-busy="جارٍ الإرسال…">
     ${csrfField(csrf)}
     <button type="submit" class="ghost" id="resend">إرسال رمز جديد</button>
   </form>
   <div class="alt"><a href="/login?reset=1">استخدام بريد آخر</a></div>
   <script>
   // عدّاد إعادة الإرسال: بلا مهلة يضغط الموظف مراراً فيُبطل كلُّ رمزٍ سابقَه ولا يعمل أيٌّ منها.
+  // وطوله طولُ مهلة الخادم نفسها (OTP_REQUEST_COOLDOWN_SECONDS) — زرٌّ يُفتح قبلها يَعِد بما يُرفض.
   (function () {
-    var b = document.getElementById('resend'), n = 30;
+    var b = document.getElementById('resend'), n = ${OTP_REQUEST_COOLDOWN_SECONDS};
     if (!b) return;
     var t = setInterval(function () {
       n -= 1;
@@ -63,7 +66,7 @@ function emailStep({ err, notice, info, passwordEnabled, csrf }) {
     notice,
     info,
     inner: `
-  <form method="post" action="/auth/otp/request-web">
+  <form method="post" action="/auth/otp/request-web" data-busy="جارٍ الإرسال…">
     ${csrfField(csrf)}
     <label for="f-email">بريد العمل</label>
     <input id="f-email" name="email" type="email" autocomplete="email" dir="ltr" placeholder="name@evc.sa" autofocus required>
@@ -73,7 +76,7 @@ function emailStep({ err, notice, info, passwordEnabled, csrf }) {
   ${passwordEnabled ? `
   <details class="alt2">
     <summary>لم يصلك الرمز؟ ادخل باسم المستخدم وكلمة المرور</summary>
-    <form method="post" action="/auth/login-web" style="margin-top:.8rem">
+    <form method="post" action="/auth/login-web" style="margin-top:.8rem" data-busy="جارٍ الدخول…">
       <label for="f-username">اسم المستخدم</label>
       <input id="f-username" name="username" autocomplete="username">
       <label for="f-password">كلمة المرور</label>
@@ -146,5 +149,33 @@ button:disabled{background:#eef1f6;color:#94a3b8;cursor:default;box-shadow:none}
   ${noteOut ? `<div class="ok" role="alert">${noteOut}</div>` : ''}
   ${inner}
   <div class="foot">رؤية الخبراء الاستشارية · EVC Consulting</div>
-</div></body></html>`;
+</div>
+<script>
+// ضغطتان رسالتان: الثانية تُبطل رمزَ الأولى (وقع فعلاً — ثلاث رسائل من محاولة دخولٍ واحدة).
+// فمع أول إرسالٍ يُقفَل زرُّ النموذج. ويُفتح من جديد في ثلاث حالات، وإلا انحبس الموظف أمام
+// زرٍّ ميّت: «عودة» المتصفح تُعيد الصفحة من ذاكرته بزرّها المقفل؛ وضغطُ Esc أثناء إرسالٍ
+// بطيء يُلغي الانتقال ويُبقي الصفحة كما هي؛ فمهلةُ أمانٍ تفكّ القفل بعد ثوانٍ كافية — وإن
+// كرّر الموظفُ الإرسالَ بعدها كبحه الخادم بمهلته، فلا رسالة مزدوجة في كل الأحوال.
+// (دوالُّ الأسهم عمداً: حارسُ شاشة الدخول — tests/security/session-return-to.test.js —
+// يعدّ الكلمة المفتاحية القديمة للدوال أثرَ تسريبٍ من داخليات المحرّك.)
+(() => {
+  var forms = Array.prototype.slice.call(document.querySelectorAll('form[data-busy]'));
+  var release = (f) => {
+    delete f.dataset.sending;
+    var b = f.querySelector('button[type="submit"]');
+    if (b && b.dataset.label) { b.disabled = false; b.textContent = b.dataset.label; delete b.dataset.label; }
+  };
+  forms.forEach((f) => {
+    f.addEventListener('submit', (e) => {
+      if (f.dataset.sending) { e.preventDefault(); return; }
+      f.dataset.sending = '1';
+      var b = f.querySelector('button[type="submit"]');
+      if (b) { b.dataset.label = b.textContent; b.disabled = true; b.textContent = f.dataset.busy; }
+      setTimeout(() => release(f), 15000);
+    });
+  });
+  window.addEventListener('pageshow', (e) => { if (e.persisted) forms.forEach(release); });
+})();
+</script>
+</body></html>`;
 }

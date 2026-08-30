@@ -106,14 +106,23 @@ test('خمس محاولات خاطئة تحرق الرمز — فلا يُخمَ
   assert.equal(correct.ok, false, 'الرمز الصحيح عمل بعد استنفاد المحاولات');
 });
 
+// يُشيخ الرمزَ الحيّ إلى ما قبل مهلة التكرار: طلبٌ خلالها لا يُرسل ولا يُبطل عمداً (KI-090)،
+// والاختبارات التي تفحص سلوك «طلبٌ جديد» يلزمها أن تقف خارج المهلة لا داخلها.
+async function ageLiveCodes(userId) {
+  const aged = new Date(Date.now() - (otp.OTP_REQUEST_COOLDOWN_SECONDS + 1) * 1000).toISOString();
+  await db.run('UPDATE login_code SET created_at = ? WHERE user_id = ? AND consumed_at IS NULL', [aged, userId]);
+}
+
 test('طلب رمز جديد يُبطل السابق — فلا يبقى بابان مفتوحان', async () => {
   await plantCode(USER, '666666');
+  await ageLiveCodes(USER);
   await otp.requestCode({ email: EMAIL, ip: '127.0.0.1' });
   const r = await otp.verifyCode({ email: EMAIL, code: '666666', ip: '127.0.0.1' });
   assert.equal(r.ok, false);
 });
 
 test('بريد غير مسجَّل: نفس الردّ تماماً، وبلا أي أثر في الجدول', async () => {
+  await ageLiveCodes(USER);
   const before = (await db.all('SELECT id FROM login_code')).length;
   const r = await otp.requestCode({ email: 'ghost@evc.sa', ip: '127.0.0.1' });
   assert.deepEqual(r, { ok: true, delivered: false });

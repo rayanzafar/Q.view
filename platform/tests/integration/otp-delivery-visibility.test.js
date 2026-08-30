@@ -66,6 +66,11 @@ test('والعنوان المسموح يبلغ قناة الإرسال، فيُ�
   assert.equal(row.event, 'failed', 'المحاولة التي بلغت القناة وفشلت لم تُسجَّل فشلاً');
   // نصّ الخطأ كما جاء من الطبقة الأدنى — لا «حدث خطأ» مبهمة
   assert.match(row.detail, /قناة البريد الأصلية غير مفعّلة/, 'السبب الحقيقي لم يُنقل إلى الأثر');
+  // وفشلُ القناة (رمي استثناء) يحرق الرمز كما يحرقه الحجب — المساران مختلفان في الشيفرة،
+  // وضيقُ شرط الحرق إلى «المحجوب» وحده يُبقي رمزاً حياً لمن لم يصله شيء ثم تكبحه المهلة.
+  const code = await db.get(
+    "SELECT consumed_at FROM login_code WHERE user_id = 'u_allowed' ORDER BY created_at DESC LIMIT 1");
+  assert.ok(code?.consumed_at, 'رمزُ إرسالٍ رمى استثناءً بقي حياً — لم يُحرق إلا المحجوب');
 });
 
 test('ولا يُكتب الرمز في الأثر — لا كاملاً ولا جزءاً منه', async () => {
@@ -113,6 +118,23 @@ test('وسجلّ التدقيق يعرض «ماذا جرى» — العمود ا
   assert.match(html, /ماذا جرى/, 'لا عمود للتفصيل في سجل التدقيق');
   assert.match(html, /طُلب رمز دخول/, 'تفصيل الحدث غير معروض رغم تسجيله');
   assert.match(html, /لم يُسلَّم/, 'حالة عدم التسليم غير ظاهرة في السجل');
+});
+
+// الرسالة التي لم تخرج يُحرق رمزُها لحظةَ الإخفاق — وإلا صدّت مهلةُ التكرار (KI-090) المحاولةَ
+// التالية عن موظفٍ لم يصله شيء: «انتظر نصف دقيقة» على رسالةٍ لم تُرسَل أصلاً عطلٌ لا حماية.
+test('الإرسال المُخفق يحرق رمزه — فلا تصدّ مهلةُ التكرار من لم يصله شيء', async () => {
+  await requestCode({ email: 'blocked@evc.sa', ip: '127.0.0.1' });
+  const burned = await db.get(
+    "SELECT consumed_at FROM login_code WHERE user_id = 'u_blocked' ORDER BY created_at DESC LIMIT 1");
+  assert.ok(burned.consumed_at, 'رمزُ رسالةٍ محجوبة بقي حياً — سيصدّ المهلةُ محاولةً لم يصل صاحبَها شيء');
+
+  // والمحاولة التالية فوراً تُعامَل طلباً جديداً كاملاً: تُحاوَل وتُسجَّل — لا تُكبح
+  const logsBefore = (await db.get('SELECT COUNT(*) n FROM email_log')).n;
+  const retry = await requestCode({ email: 'blocked@evc.sa', ip: '127.0.0.1' });
+  assert.equal(retry.suppressed, undefined, 'كُبحت محاولةُ من لم تخرج له رسالة');
+  assert.equal(retry.delivered, false);
+  assert.equal(Number((await db.get('SELECT COUNT(*) n FROM email_log')).n), Number(logsBefore) + 1,
+    'المحاولة الثانية بعد إخفاقٍ لم تُسجَّل في مركز البريد');
 });
 
 test('وطلبُ رمزٍ لبريدٍ غير مسجَّل يبقى صامتاً تماماً — لا أثر يكشف من له حساب', async () => {

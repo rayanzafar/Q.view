@@ -22,6 +22,9 @@ import { randomInt } from 'node:crypto';
 export const OTP_TTL_MINUTES = 10;
 export const OTP_MAX_ATTEMPTS = 5;
 export const OTP_LENGTH = 6;
+// مهلةُ التكرار: طلبٌ ثانٍ خلالها لا يُرسل رسالةً ولا يُبطل الرمز الحيّ. بطول عدّاد
+// «إرسال رمز جديد» في شاشة الدخول — فالزرّ لا يَعِد بما يرفضه الخادم (شاشة الدخول تقرؤها من هنا).
+export const OTP_REQUEST_COOLDOWN_SECONDS = 30;
 export const PURPOSE = { SIGNIN: 'signin', INVITE: 'invite' };
 
 export const normalizeEmail = (e) => String(e || '').trim().toLowerCase();
@@ -98,13 +101,42 @@ export async function requestCode({ email, ip, purpose = PURPOSE.SIGNIN, inviter
     return { ok: true, delivered: false };
   }
 
+  // ── مهلةُ التكرار: ضغطةٌ ثانية خلال ثوانٍ لا تُرسل رسالةً ثانية ──
+  // وقع حرفياً (2026-08-30): ثلاث ضغطات على «أرسل رمز الدخول» في إحدى عشرة ثانية — عودةٌ بزرّ
+  // الرجوع وإعادةُ إرسال — فثلاث رسائل متطابقة، وكل واحدةٍ تُبطل رمز ما قبلها، فلا يصلح من
+  // الثلاثة إلا الأحدث. ومن جرّب رمزَ أول رسالةٍ وصلته وجده ميّتاً فأعاد الطلب — والدائرة تدور.
+  // فمن لرمزه الحيّ رسالةٌ خرجت قبل أقل من المهلة يُترك رمزُه كما هو: لا رسالة ولا إبطال.
+  //
+  // والرمز الحيّ هنا رمزٌ **خرجت رسالته فعلاً**: ما أخفق إرساله يُحرق لحظةَ إخفاقه (أدناه)،
+  // فلا تحجب المهلةُ محاولةً تاليةً عن موظفٍ لم تصله رسالةٌ أصلاً.
+  //
+  // ومقايضةٌ مقبولة عمداً: الفرع المكبوح يعود أسرع من فرعٍ يُرسل فعلاً (لا اتصال بخادم بريد)،
+  // فمن قاس الزمن وبيده رمزُ الحماية المزدوج عرف أن لهذا البريد رمزاً حياً طُلب قبل لحظات — لا
+  // أكثر. لا يكشف وجودَ الحساب (فرعُ المجهول أدناه كما هو)، وكلُّ مسبارٍ خاطئ يُرسل رسالةً
+  // مرئية لصاحب الحساب ويأكل من سقف «خمسة لكل بريد» — فالثمن أعلى من الخبر.
+  const live = await get(
+    `SELECT id, created_at FROM login_code
+      WHERE user_id = ? AND consumed_at IS NULL AND expires_at > ?
+      ORDER BY created_at DESC LIMIT 1`, [u.id, nowIso()]);
+  if (live && Date.now() - Date.parse(live.created_at) < OTP_REQUEST_COOLDOWN_SECONDS * 1000) {
+    hashPassword(generateCode());   // نفس العمل الحسابي تقريباً — فلا يُقاس الفرق من الخارج
+    // ويُكتب أثرٌ في سجل التدقيق لا في مركز البريد: لم تُحاوَل رسالة، لكن «طلب ثم لا شيء»
+    // هو بالضبط الصمت الذي كلّف من قبل — والسطر هنا هو ما أجاب «لماذا ثلاث رسائل؟» يومها.
+    await audit({ user: u, ip }, {
+      action: 'login', resource: 'login_code', resourceId: u.id,
+      detail: `طُلب ${kind === PURPOSE.INVITE ? 'رمز تفعيل حساب' : 'رمز دخول'} مرةً أخرى بعد لحظات — لم تُرسَل رسالة جديدة، والرمز المُرسَل قبل قليل ما زال صالحاً`,
+    });
+    return { ok: true, delivered: true, reason: null, suppressed: true };
+  }
+
   // طلبُ رمزٍ جديد يُبطل ما قبله فوراً: وإلا بقيت عدة رموز حيّة معاً، وكل واحد منها بابٌ مفتوح.
   await run('UPDATE login_code SET consumed_at = ? WHERE user_id = ? AND consumed_at IS NULL',
     [nowIso(), u.id]);
 
   const code = generateCode();
+  const codeId = id('lc');
   await insert('login_code', {
-    id: id('lc'), user_id: u.id, code_hash: hashPassword(code), purpose: kind,
+    id: codeId, user_id: u.id, code_hash: hashPassword(code), purpose: kind,
     expires_at: plusMinutes(OTP_TTL_MINUTES), attempts: 0, ip, created_at: nowIso(),
   });
 
@@ -128,6 +160,14 @@ export async function requestCode({ email, ip, purpose = PURPOSE.SIGNIN, inviter
     else if (res.note) failure = res.note;
   } catch (e) {
     failure = String(e.message).slice(0, 200);
+  }
+
+  // رسالةٌ لم تخرج يُحرق رمزُها فوراً: لا أحد يملك ذلك الرمز، وبقاؤه حياً يجعل مهلة التكرار
+  // أعلاه تصدّ محاولةً تاليةً عن موظفٍ لم يصله شيء — فتصير المهلةُ نفسها هي العطل. وقناةُ
+  // المعاينة ليست إخفاقاً: رسالتها تصل إلى ملفٍ يقرؤه المطوّر، فرمزُها مملوكٌ فعلاً.
+  if (!delivered && event !== DELIVERY.PREVIEWED) {
+    try { await run('UPDATE login_code SET consumed_at = ? WHERE id = ?', [nowIso(), codeId]); }
+    catch { /* الحرقُ نظافةُ حالٍ — فشلُه لا يُسقط الطلب */ }
   }
 
   // ── أثرُ الرسالة يُكتب حيث يبحث عنه المُشغّل ──
