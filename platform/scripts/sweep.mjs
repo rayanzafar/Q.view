@@ -76,11 +76,20 @@ const cookieHeader = (jar) => Object.entries(jar).map(([k, v]) => `${k}=${v}`).j
 async function hit(path, { method = 'GET', jar = {}, headers = {}, body } = {}) {
   for (let attempt = 0; ; attempt++) {
     const t0 = performance.now();
-    const res = await fetch(base + path, {
-      method, body, redirect: 'manual',
-      headers: { cookie: cookieHeader(jar), connection: 'close', ...headers },
-      signal: AbortSignal.timeout(30000),
-    });
+    let res;
+    try {
+      res = await fetch(base + path, {
+        method, body, redirect: 'manual',
+        headers: { cookie: cookieHeader(jar), connection: 'close', ...headers },
+        signal: AbortSignal.timeout(30000),
+      });
+    } catch (e) {
+      // انقطاعٌ عابر من صندوق الفحص (كل طلبٍ هنا اتصالٌ جديد، وضياعُ تحيةِ اتصالٍ واحدة يعني
+      // مهلةَ undici) كان يُسقط المسح كله في منتصفه — والمسح تحقّقٌ بعد النشر، فسقوطُه يترك
+      // النشرة بلا تحقّق لا المنتجَ بلا عيب. يُعاد الطلب نفسه حتى ثلاث مرات ثم يُرفع الخطأ.
+      if (attempt < 3) { await new Promise((r) => setTimeout(r, 1500)); continue; }
+      throw e;
+    }
     const ms = performance.now() - t0;
     if (res.status === 429 && attempt < 2) { // login/api limiter — honor Retry-After and retry
       const wait = (Number(res.headers.get('retry-after')) || 6) * 1000 + 500;
