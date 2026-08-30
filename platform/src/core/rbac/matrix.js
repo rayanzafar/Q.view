@@ -365,11 +365,14 @@ for (const [roleId, grants] of Object.entries(ROLE_GRANTS)) {
 //   • «المدير المباشر» وحده بنطاق **الإدارة** لا الشركة: قراره المعلن أعلاه أن منحه الإداري
 //     كله بنطاق الإدارة (يحرسه staffing-project-scope.test.js). ولا أثر للفرق في السلوك: خدمة
 //     الفعاليات تسأل عن وجود المنح لا عن نطاقه (لا صفَّ هدف في أي فحص)، والملكية هي الحارس.
-const EVENTS_RO = read(['event', 'event_contact', 'event_partner'], 'company');
-const eventsAll = (scope) => [...read(['event'], scope), ...crud(['event_contact', 'event_partner'], scope)];
+//   • «event_meeting» (الترحيلة ٠٤٠): اجتماعات الفعالية على القواعد نفسها حرفاً بحرف —
+//     كل موظف ينشئ ويعدّل (والملكية في الخدمة: من أنشأ يعدّل، ومعه من يدير الفعالية)،
+//     والحذفُ الشامل لمن يدير، والمشاهد يقرأ، والخارجي لا شيء.
+const EVENTS_RO = read(['event', 'event_contact', 'event_partner', 'event_meeting'], 'company');
+const eventsAll = (scope) => [...read(['event'], scope), ...crud(['event_contact', 'event_partner', 'event_meeting'], scope)];
 const EVENTS_MANAGE = [
   ...crud(['event'], 'company', ['create', 'update', 'delete']),
-  ...crud(['event_contact', 'event_partner'], 'company', ['delete']),
+  ...crud(['event_contact', 'event_partner', 'event_meeting'], 'company', ['delete']),
 ];
 const EVENT_MANAGERS = new Set(['sector_lead', 'ceo_office']);
 for (const [roleId, grants] of Object.entries(ROLE_GRANTS)) {

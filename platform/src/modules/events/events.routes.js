@@ -10,6 +10,7 @@
 // والترويسات هنا شكلُ النقل لا حكمٌ: النوع من الصفّ الذي شمّته الخدمة، لا من تخمين المتصفّح.
 import express, { Router } from 'express';
 import * as ev from './events.js';
+import * as mt from './meetings.js';
 import { badRequest } from '../../core/http/errors.js';
 
 export const eventsRouter = Router();
@@ -87,6 +88,12 @@ eventsRouter.get('/events/contacts/:cid/photo', image(
 eventsRouter.patch('/events/partners/:pid', h((req) => ev.updatePartner(req.ctx, req.params.pid, req.body || {})));
 eventsRouter.delete('/events/partners/:pid', h((req) => ev.deletePartner(req.ctx, req.params.pid)));
 
+// الاجتماعات — «check» الحرفية قبل «:mid» عمداً (قاعدة الترتيب المعلنة أعلى الملف)
+eventsRouter.post('/events/meetings/check', h((req) => mt.checkConflicts(req.ctx.user, req.body || {})));
+eventsRouter.get('/events/meetings/:mid', h((req) => mt.getMeeting(req.ctx.user, req.params.mid)));
+eventsRouter.patch('/events/meetings/:mid', h((req) => mt.updateMeeting(req.ctx, req.params.mid, req.body || {})));
+eventsRouter.delete('/events/meetings/:mid', h((req) => mt.deleteMeeting(req.ctx, req.params.mid)));
+
 // الفعالية الواحدة
 eventsRouter.get('/events/:id', h(async (req) => ({
   event: await ev.getEvent(req.ctx.user, req.params.id),
@@ -104,6 +111,10 @@ eventsRouter.post('/events/:id/contacts', h((req) => ev.createContact(req.ctx, r
 // شراكات الفعالية
 eventsRouter.get('/events/:id/partners', h((req) => ev.listPartners(req.ctx.user, req.params.id)));
 eventsRouter.post('/events/:id/partners', h((req) => ev.createPartner(req.ctx, req.params.id, req.body || {})));
+
+// اجتماعات الفعالية
+eventsRouter.get('/events/:id/meetings', h((req) => mt.listMeetings(req.ctx.user, req.params.id, req.query || {})));
+eventsRouter.post('/events/:id/meetings', h((req) => mt.createMeeting(req.ctx, req.params.id, req.body || {})));
 
 // رموز الكشك: صورٌ يمسحها الزائر على شاشة الجناح — عنوانها في ترويسة x-title مرمَّزاً كالاسم.
 eventsRouter.get('/events/:id/qr', h((req) => ev.listQr(req.ctx.user, req.params.id)));

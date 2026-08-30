@@ -753,6 +753,149 @@
     restoreFocus();
   }
 
+  // ── الاجتماعات: نموذجٌ على الصفحة، ومدعوّون رقاقات، وتعارضٌ يُفحص حياً ولا يمنع ──
+  var MT = EV && EV.mt ? EV.mt : null;
+  var mtEditing = null;   // معرّف الاجتماع قيد التعديل — فارغٌ عند الإنشاء
+  var mtChips = [];       // [{id, name, fixed}] — والمثبَّت («أنت») بلا زرّ إزالة
+  var mtSeq = 0;          // يُسقط ردَّ فحصٍ تأخّر عن حالةٍ تغيّرت بعده
+  var mtTimer = null;
+
+  function mtNameOf(uid) {
+    if (EV && EV.me && uid === EV.me.id) return 'أنت';
+    var list = (MT && MT.people) || [];
+    for (var i = 0; i < list.length; i++) if (list[i].id === uid) return list[i].name;
+    return uid;
+  }
+  function mtRenderChips() {
+    var box = $('mt-chips');
+    if (!box) return;
+    box.innerHTML = mtChips.map(function (c) {
+      return '<span class="mt-chip" data-uid="' + escHtml(c.id) + '">' + escHtml(c.name)
+        + (c.fixed ? '' : '<button type="button" data-action="mt-chip-x" aria-label="إزالة ' + escHtml(c.name) + '">✕</button>')
+        + '</span>';
+    }).join('');
+    setVal('mt-attendees', JSON.stringify(mtChips.map(function (c) { return c.id; })));
+  }
+  function mtResetChips(ids) {
+    var me = EV && EV.me ? EV.me.id : null;
+    var seen = {};
+    mtChips = [];
+    var base = [me].concat(ids || []);
+    for (var i = 0; i < base.length; i++) {
+      var uid = base[i];
+      if (!uid || seen[uid]) continue;
+      seen[uid] = 1;
+      mtChips.push({ id: uid, name: mtNameOf(uid), fixed: uid === me });
+    }
+    mtRenderChips();
+  }
+  function mtConflictBox() { return $('mt-conflict'); }
+  function mtHideConflict() { var b = mtConflictBox(); if (b) { b.hidden = true; b.innerHTML = ''; } }
+  function mtOpenForm(mid) {
+    var f = $('mt-form');
+    if (!f) return;
+    mtEditing = mid || null;
+    var row = mid && MT && MT.rows ? MT.rows[mid] : null;
+    var t = $('mt-form-t');
+    if (t) t.textContent = row ? 'تعديل الاجتماع' : 'اجتماع جديد';
+    setVal('mt-title', row ? row.title : '');
+    if (row) setVal('mt-date', row.meeting_date);
+    setVal('mt-start', row ? row.start_time : '');
+    setVal('mt-end', row ? row.end_time : '');
+    setVal('mt-url', row ? row.join_url : '');
+    setVal('mt-location', row ? row.location : '');
+    setVal('mt-note', row ? row.note : '');
+    mtResetChips(row ? row.attendee_ids : []);
+    mtHideConflict();
+    f.hidden = false;
+    if (f.scrollIntoView) f.scrollIntoView({ block: 'start' });
+    var ti = $('mt-title');
+    if (ti) ti.focus();
+    mtCheckSoon();
+  }
+  function mtHideForm() { var f = $('mt-form'); if (f) f.hidden = true; mtEditing = null; }
+  function mtAddAttendee() {
+    var sel = $('mt-people');
+    var uid = sel ? String(sel.value || '') : '';
+    if (!uid) { toast('اختر شخصاً من القائمة أولاً', true); return; }
+    if (!mtChips.some(function (c) { return c.id === uid; })) {
+      mtChips.push({ id: uid, name: mtNameOf(uid) });
+      mtRenderChips();
+      mtCheckSoon();
+    }
+    sel.value = '';
+    if (SN().pickerSync) SN().pickerSync('mt-people');
+    var q = $('mt-people-q');
+    if (q) q.focus();
+  }
+  function mtRemoveChip(btn) {
+    var chip = btn.closest ? btn.closest('.mt-chip') : null;
+    var uid = chip ? chip.getAttribute('data-uid') : '';
+    mtChips = mtChips.filter(function (c) { return c.id !== uid || c.fixed; });
+    mtRenderChips();
+    mtCheckSoon();
+  }
+  // الفحص الحيّ: تنبيهٌ أثناء الكتابة لا بعد الحفظ — ومدخلٌ ناقص يُسكِت التنبيه بلا خطأ.
+  function mtCheckSoon() { clearTimeout(mtTimer); mtTimer = setTimeout(mtCheckNow, 400); }
+  function mtCheckNow() {
+    var box = mtConflictBox();
+    if (!box) return;
+    var d = val('mt-date'), s = val('mt-start'), en = val('mt-end');
+    if (!d || !s || !en || en <= s) { mtHideConflict(); return; }
+    var seq = ++mtSeq;
+    api('/events/meetings/check', 'POST', {
+      meeting_date: d, start_time: s, end_time: en,
+      attendee_ids: mtChips.map(function (c) { return c.id; }),
+      except_id: mtEditing || undefined,
+    }).then(function (j) {
+      if (seq !== mtSeq) return;
+      var list = (j && j.conflicts) || [];
+      if (!list.length) { mtHideConflict(); return; }
+      box.innerHTML = '<div style="font-weight:800">تعارض في المواعيد — يمكنك الحفظ رغم ذلك</div>'
+        + list.map(function (c) {
+          return '<div style="margin-top:.2rem">' + escHtml(c.user_name || '') + ' — «' + escHtml(c.title || '') + '» '
+            + '<span class="tnum" dir="ltr">' + escHtml(c.start_time) + '–' + escHtml(c.end_time) + '</span>'
+            + (c.event_name ? ' في «' + escHtml(c.event_name) + '»' : '') + '</div>';
+        }).join('');
+      box.hidden = false;
+    }).catch(noop);
+  }
+  function mtSave(btn) {
+    if (!EV) return;
+    var title = val('mt-title');
+    if (!title) { toast('اكتب عنوان الاجتماع', true); var t1 = $('mt-title'); if (t1) t1.focus(); return; }
+    if (!val('mt-date')) { toast('حدّد تاريخ الاجتماع', true); return; }
+    var s = val('mt-start'), en = val('mt-end');
+    if (!s || !en) { toast('حدّد وقتي البداية والنهاية', true); return; }
+    if (en <= s) { toast('وقت النهاية قبل البداية — صحّحه', true); return; }
+    var body = {
+      title: title, meeting_date: val('mt-date'), start_time: s, end_time: en,
+      join_url: val('mt-url'), location: val('mt-location'), note: val('mt-note'),
+      attendee_ids: mtChips.map(function (c) { return c.id; }),
+    };
+    btn.disabled = true;
+    var req = mtEditing
+      ? api('/events/meetings/' + encodeURIComponent(mtEditing), 'PATCH', body)
+      : api('/events/' + encodeURIComponent(EV.eventId) + '/meetings', 'POST', body);
+    req.then(function (j) {
+      var n = (j && j.conflicts && j.conflicts.length) || 0;
+      toast(n ? 'حُفظ الاجتماع — مع تنبيه تعارض في المواعيد' : 'حُفظ الاجتماع ✓', !!n);
+      setTimeout(function () { location.reload(); }, n ? 1200 : 500);
+    }).catch(function (e) {
+      btn.disabled = false;
+      toast(isOffline(e) ? 'لا اتصال بالشبكة — أعد المحاولة عند عودة الاتصال' : e.message, true);
+    });
+  }
+  function mtDelete(btn) {
+    var mid = btn.getAttribute('data-mid');
+    if (!mid) return;
+    if (!window.confirm('يُحذف الاجتماع ويصل المدعوين إشعار — متابعة؟')) return;
+    btn.disabled = true;
+    api('/events/meetings/' + encodeURIComponent(mid), 'DELETE')
+      .then(function () { toast('حُذف الاجتماع ✓'); setTimeout(function () { location.reload(); }, 400); })
+      .catch(function (e) { btn.disabled = false; toast(e.message, true); });
+  }
+
   // ── مُعالِج نقرٍ واحد للصفحة كلها ──
   document.addEventListener('click', function (e) {
     // النقر على خلفية النافذة يغلقها (app.js) — فيُعاد التركيز إلى ما كان عليه.
@@ -775,7 +918,44 @@
     if (act === 'ev-qr-show') { e.preventDefault(); qrShow(el); return; }
     if (act === 'ev-qr-del') { e.preventDefault(); qrDelete(el); return; }
     if (act === 'ev-qr-close') { e.preventDefault(); closeKiosk(); return; }
+    if (act === 'mt-new') { e.preventDefault(); mtOpenForm(null); return; }
+    if (act === 'mt-cancel') { e.preventDefault(); mtHideForm(); return; }
+    if (act === 'mt-add-attendee') { e.preventDefault(); mtAddAttendee(); return; }
+    if (act === 'mt-chip-x') { e.preventDefault(); mtRemoveChip(el); return; }
+    if (act === 'mt-edit') { e.preventDefault(); mtOpenForm(el.getAttribute('data-mid')); return; }
+    if (act === 'mt-del') { e.preventDefault(); mtDelete(el); return; }
   });
+
+  // صفّ الاجتماع يفتح تفاصيله — والنقر على زرٍّ أو رابطٍ داخله شأنُ الزرّ وحده.
+  document.addEventListener('click', function (e) {
+    if (e.target.closest && e.target.closest('[data-action], a')) return;
+    var row = e.target.closest ? e.target.closest('.mt-row[data-dd]') : null;
+    if (!row) return;
+    var k = row.getAttribute('data-dd');
+    if (k && SN().openDD) SN().openDD(k);
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    var row = e.target && e.target.classList && e.target.classList.contains('mt-row') ? e.target : null;
+    if (!row) return;
+    e.preventDefault();
+    var k = row.getAttribute('data-dd');
+    if (k && SN().openDD) SN().openDD(k);
+  });
+
+  // نموذج الاجتماع: الإرسال يحفظ، وتغيّر التاريخ أو الوقتين يعيد فحص التعارض.
+  var mtFormEl = $('mt-form');
+  if (mtFormEl) {
+    mtFormEl.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var btn = mtFormEl.querySelector('[data-action="mt-save"]');
+      if (btn) mtSave(btn);
+    });
+    mtFormEl.addEventListener('change', function (e) {
+      var idv = e.target && e.target.id;
+      if (idv === 'mt-date' || idv === 'mt-start' || idv === 'mt-end') mtCheckSoon();
+    });
+  }
 
   // Esc يغلق شاشة العرض أو النافذة — كما تفعل بقية النوافذ في المنصة. و«إدخال» داخل حقول
   // نافذة الفعالية الجديدة يحفظها (النافذة بلا نموذج، فلا إرسالَ تلقائياً يُعتمد عليه).

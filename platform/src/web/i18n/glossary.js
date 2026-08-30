@@ -315,6 +315,18 @@ export const G = {
   fillFromText: 'املأ من النصّ',
   recentCaptures: 'آخر ما التقطت',
   possibleDuplicate: 'قد تكون مكرّرة',
+  // اجتماعات الفعالية (الترحيلة ٠٤٠): موعدٌ له رابطٌ يُفتح بضغطة — و«رابط الاجتماع» أبداً
+  // لا كلمة تقنية أجنبية.
+  eventMeetings: 'الاجتماعات',
+  newMeeting: 'اجتماع جديد',
+  meetingTitle: 'عنوان الاجتماع',
+  meetingLink: 'رابط الاجتماع',
+  joinMeeting: 'انضم',
+  meetingAttendees: 'المدعوون',
+  myMeetings: 'اجتماعاتي',
+  addAttendee: 'أضِف',
+  saveMeeting: 'احفظ الاجتماع',
+  meetingConflict: 'تعارض في المواعيد',
 
   // ── عام ──
   overview: 'نظرة عامة',

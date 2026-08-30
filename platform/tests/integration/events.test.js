@@ -702,7 +702,7 @@ test('العزل: سيناريو كامل في الفعاليات لا يحرّ�
 test('البنية: وحدة الفعاليات لا تقرأ ولا تكتب جدولاً من الفرص والعملاء والمستندات، ولا تستورد وحدتَي العملاء والبيع', () => {
   const dirPath = join(ROOT, 'src/modules/events');
   const files = readdirSync(dirPath).filter((f) => f.endsWith('.js')).sort();
-  assert.deepEqual(files, ['card-parser.js', 'events.js', 'events.routes.js']);
+  assert.deepEqual(files, ['card-parser.js', 'events.js', 'events.routes.js', 'meetings.js']);
   const FORBIDDEN_SQL = /\b(FROM|JOIN|INTO|UPDATE)\s+(opportunity|project|client|contact|document|document_blob)\b/i;
   // النمط نفسه يُفحص أولاً: يمسك الجدول المحمي ولا يخلط «event_contact» بـ«contact».
   assert.ok(FORBIDDEN_SQL.test('SELECT * FROM contact WHERE'), 'النمط لا يمسك «contact»');
@@ -733,10 +733,13 @@ test('ومسارات الفعاليات مركَّبة فعلاً تحت واج�
   apiRouter.stack.forEach(walk);
   for (const p of ['/events', '/events/:id', '/events/:id/contacts', '/events/:id/contacts/recent', '/events/contacts/:cid',
     '/events/contacts/:cid/outcome', '/events/parse-card', '/events/:id/partners', '/events/partners/:pid', '/events/:id/close',
-    '/events/contacts/:cid/photo', '/events/:id/qr', '/events/:id/qr/:bid']) {
+    '/events/contacts/:cid/photo', '/events/:id/qr', '/events/:id/qr/:bid',
+    '/events/:id/meetings', '/events/meetings/:mid', '/events/meetings/check']) {
     assert.ok(paths.includes(p), `المسار ${p} غير مركَّب في api.routes.js`);
   }
   assert.ok(paths.indexOf('/events/parse-card') < paths.indexOf('/events/:id'), '«parse-card» بعد «:id» فيُقرأ معرّفاً');
   assert.ok(paths.indexOf('/events/contacts/:cid') < paths.indexOf('/events/:id'), '«contacts» بعد «:id» فيُقرأ معرّفاً');
   assert.ok(paths.indexOf('/events/contacts/:cid/photo') < paths.indexOf('/events/:id'), '«contacts/…/photo» بعد «:id» فيُقرأ معرّفاً');
+  assert.ok(paths.indexOf('/events/meetings/check') < paths.indexOf('/events/meetings/:mid'), '«meetings/check» بعد «:mid» فيُقرأ معرّفاً');
+  assert.ok(paths.indexOf('/events/meetings/:mid') < paths.indexOf('/events/:id'), '«meetings» بعد «:id» فيُقرأ معرّفاً');
 });

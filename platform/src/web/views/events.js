@@ -17,6 +17,7 @@ import { all } from '../../core/db/index.js';
 import { can } from '../../core/rbac/index.js';
 import { MONTHS_AR, RIYADH_OFFSET_HOURS } from '../../core/i18n/time.js';
 import * as EVS from '../../modules/events/events.js';
+import { meetingsPanel } from './events-meetings.js';
 
 const {
   CARD_KINDS, OUTCOMES, listEvents, getEvent, eventSummary, listContacts, recentContacts, listQr,
@@ -25,10 +26,11 @@ const {
 // ترتيب الملفّين مقصود: مُحمِّل القارئ أولاً (يعرّف window.Tesseract) ثم شيفرة الصفحة التي
 // تسأل عنه. كلاهما من أصل سند ويمرّ ببصمة النسخة في layout (asset()).
 const PAGE_SCRIPT = ['/static/pages/events.js'];
-const DETAIL_SCRIPTS = ['/static/vendor/tesseract-5.1.1/tesseract.min.js', '/static/pages/events.js'];
+// منتقي المدعوين (picker.js) قبل شيفرة الصفحة — الترتيب ترتيب التحميل (asset() في layout).
+const DETAIL_SCRIPTS = ['/static/vendor/tesseract-5.1.1/tesseract.min.js', '/static/pages/picker.js', '/static/pages/events.js'];
 const CONTACTS_LIMIT = 200;
 const RECENT_LIMIT = 8;
-const TABS = ['capture', 'contacts', 'qr'];
+const TABS = ['capture', 'contacts', 'meetings', 'qr'];
 
 // ── ألوان الحالة: اللون معنى لا زينة — أخضر يجري، أزرق قادم، رمادي انتهى أو أُغلق ──
 const STATUS_TONE = { 'جارية': 'green', 'قادمة': 'blue', 'منتهية': 'slate', 'مُغلقة': 'slate' };
@@ -179,7 +181,7 @@ const CSS = `<style>
 </style>`;
 
 // روابط التصفية تحفظ بقية المعاملات: من ضيّق النوع ثم بحث لا يفقد ما ضيّقه.
-const KEYS = ['tab', 'q', 'kind', 'outcome', 'mine', 'dup', 'status'];
+const KEYS = ['tab', 'q', 'kind', 'outcome', 'mine', 'dup', 'status', 'scope'];
 const linkOf = (cur, over) => {
   const p = new URLSearchParams();
   for (const k of KEYS) {
@@ -288,7 +290,7 @@ export async function eventDetailPage(user, id, opts = {}) {
 
   const defaultTab = (captureOpen && (ev.status === 'جارية' || ev.status === 'قادمة')) ? 'capture' : 'contacts';
   const tab = TABS.includes(opts.tab) ? opts.tab : defaultTab;
-  const cur = { q: String(opts.q || '').trim(), kind: opts.kind, outcome: opts.outcome, mine: opts.mine === '1' ? '1' : '', dup: opts.dup === '1' ? '1' : '' };
+  const cur = { q: String(opts.q || '').trim(), kind: opts.kind, outcome: opts.outcome, mine: opts.mine === '1' ? '1' : '', dup: opts.dup === '1' ? '1' : '', scope: opts.scope === 'all' ? 'all' : '' };
   const dates = fmtRange(ev.starts_on, ev.ends_on, true);
 
   // ── الترويسة (عنوان الصفحة h1 في شريط layout؛ اسم الفعالية هنا h2 — عنوانٌ رئيسي واحد) ──
@@ -309,14 +311,18 @@ export async function eventDetailPage(user, id, opts = {}) {
   // ── التبويبات: روابط حقيقية تحفظ بقية المعاملات، لا أزرار تُخفي وتُظهر ──
   const tabLink = (k, label, ic) => `<a href="${esc(linkOf({ ...cur, tab }, { tab: k, status: '' }))}" class="${tab === k ? 'on' : ''}"${tab === k ? ' aria-current="page"' : ''}>${icon(ic)} ${label}</a>`;
   const tabs = `<nav class="ev-nav" aria-label="أقسام الفعالية"><div class="seg">
-    ${tabLink('capture', G.eventCapture, 'plus')}${tabLink('contacts', G.eventContacts, 'list')}${tabLink('qr', G.eventQr, 'portfolio')}
+    ${tabLink('capture', G.eventCapture, 'plus')}${tabLink('contacts', G.eventContacts, 'list')}${tabLink('meetings', G.eventMeetings, 'clock')}${tabLink('qr', G.eventQr, 'portfolio')}
   </div></nav>`;
 
+  // بيانات الاجتماعات تُضمَّن مع تبويبها وحده — قائمة الأشخاص ثقلٌ لا يلزم تبويب الالتقاط.
+  let meetings = null;
   const panel = tab === 'capture'
     ? await capturePanel(user, ev, { closed, canCapture, cur })
     : tab === 'qr'
       ? qrPanel(ev, { qr, canManage })
-      : await contactsPanel(user, ev, { summary, cur, captureOpen });
+      : tab === 'meetings'
+        ? (meetings = await meetingsPanel(user, ev, { cur, closed, link: (over) => linkOf({ ...cur, tab }, over) })).html
+        : await contactsPanel(user, ev, { summary, cur, captureOpen });
 
   const embed = JSON.stringify({
     eventId: ev.id,
@@ -327,6 +333,7 @@ export async function eventDetailPage(user, id, opts = {}) {
     canCapture: captureOpen,
     canManage,
     qr: qr.map((b) => ({ id: b.id, title: b.title || '' })),
+    ...(meetings ? { mt: meetings.mt } : {}),
   }).replace(/</g, '\\u003c');
   const body = `${CSS}<div class="ev-page">${header}${tabs}${panel}</div>
     <script>window.__SANAD=Object.assign(window.__SANAD||{},{ev:${embed}});</script>`;
