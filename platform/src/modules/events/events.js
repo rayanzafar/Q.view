@@ -380,9 +380,12 @@ export async function recentContacts(user, eventId, opts = {}) {
   return { rows, teamToday };
 }
 
+// مع البطاقة الواحدة حكمُ التعديل جاهزاً: نافذةُ المراجعة تعرض الحقول للكتابة أو للقراءة
+// بحسبه، والقرار قرارُ الخدمة نفسها (mayEdit) لا تخمينُ الشاشة.
 export async function getContact(user, cid) {
   assertRead(user);
-  return loadContact(cid);
+  const row = await loadContact(cid);
+  return { ...row, may_edit: mayEdit(user, row, 'event_contact') };
 }
 
 // خرقُ التفرّد على (event_id, capture_key): سكويلايت يقولها في نصّ الخطأ، وبوستجريس برمزه.

@@ -81,7 +81,8 @@ const photoUrl = (c) => {
   return `/api/events/contacts/${encodeURIComponent(c.id)}/photo${sha ? `?v=${encodeURIComponent(sha)}` : ''}`;
 };
 const hasPhoto = (c) => Number(c.has_photo) === 1;
-const thumb = (c) => `<img class="ev-thumb" loading="lazy" alt="" src="${esc(photoUrl(c))}">`;
+// المصغّرة زرٌّ يفتح نافذة مراجعة البطاقة (الصورة كبيرةً، وتنزيلها، والحقول للتصحيح) — لا صورةٌ صمّاء.
+const thumb = (c) => `<button type="button" class="ev-thumb-btn" data-action="ev-card-view" data-cid="${esc(c.id)}" aria-label="عرض بطاقة ${esc(contactLabel(c))}"><img class="ev-thumb" loading="lazy" alt="" src="${esc(photoUrl(c))}"></button>`;
 
 const CSS = `<style>
 .ev-page [hidden],.ev-form [hidden]{display:none!important}
@@ -146,6 +147,19 @@ const CSS = `<style>
 .ev-rc-side .tnum{color:var(--muted);font-size:var(--fs-meta)}
 .ev-rc-ph{flex:0 0 auto;display:flex;align-items:center;justify-content:center;min-width:44px}
 .ev-thumb{width:44px;height:44px;object-fit:cover;border-radius:8px;border:1px solid var(--line);background:#fff;display:block}
+.ev-thumb-btn{border:0;background:none;padding:0;cursor:pointer;border-radius:8px;display:block}
+.ev-thumb-btn:hover .ev-thumb{box-shadow:0 0 0 3px rgba(36,74,153,.18)}
+tr[data-contact],.ev-rc[data-contact]{cursor:pointer}
+.cv-img{display:block;width:100%;max-height:55vh;object-fit:contain;background:#f8fafc;border:1px solid var(--line);border-radius:10px}
+.cv-act{display:flex;gap:.5rem;flex-wrap:wrap;margin:.6rem 0 .9rem}
+.cv-act .btn{min-height:40px}
+.cv-form .field{margin-bottom:.55rem}
+.cv-form .input,.cv-form select,.cv-form textarea{font-size:16px;min-height:44px}
+.cv-form .grid2{display:grid;grid-template-columns:1fr 1fr;gap:.55rem}
+.cv-raw{white-space:pre-wrap;font-size:12px;color:var(--muted);background:#f8fafc;border:1px solid var(--line);border-radius:8px;padding:.5rem .7rem;max-height:160px;overflow:auto}
+.cv-ro{font-size:13px;line-height:1.9}
+.cv-ro span{color:var(--muted)}
+@media(max-width:640px){.cv-form .grid2{grid-template-columns:1fr}}
 .ev-nophoto{font-size:var(--fs-micro);color:var(--faint);white-space:nowrap}
 .ev-rc-ph .btn{min-height:40px;font-size:var(--fs-micro);padding:.3rem .5rem;white-space:nowrap}
 .ev-rc-warn{margin-top:.35rem;display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;font-size:var(--fs-meta);color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:.35rem .6rem}

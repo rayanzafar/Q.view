@@ -753,6 +753,83 @@
     restoreFocus();
   }
 
+  // ── مراجعة البطاقة (v5.66): الصورة كبيرةً وتنزيلها، والحقول للتصحيح لمن يملك التعديل ──
+  // تُبنى من البطاقة الواحدة لحظة الفتح (النصّ الخام ثقيلٌ على القوائم فلا يُضمَّن فيها).
+  var CV_FIELDS = [
+    ['person_name', 'الاسم'], ['org_name', 'الجهة'], ['job_title', 'المنصب'],
+    ['phone', 'الجوّال'], ['email', 'البريد'], ['website', 'الموقع الإلكتروني'],
+  ];
+  function cardPhotoUrl(c, download) {
+    var sha = String(c.photo_sha || '').slice(0, 12);
+    var u = '/api/events/contacts/' + encodeURIComponent(c.id) + '/photo';
+    var q = [];
+    if (sha) q.push('v=' + encodeURIComponent(sha));
+    if (download) q.push('download=1');
+    return u + (q.length ? '?' + q.join('&') : '');
+  }
+  function cardModalHtml(c) {
+    var title = c.person_name || c.org_name || c.phone || 'بطاقة بلا اسم';
+    var has = Number(c.has_photo) === 1;
+    var ltr = { phone: 1, email: 1, website: 1 };
+    var photo = has
+      ? '<img class="cv-img" alt="" src="' + escHtml(cardPhotoUrl(c, false)) + '">'
+        + '<div class="cv-act">'
+        + '<a class="btn btn-primary" href="' + escHtml(cardPhotoUrl(c, true)) + '">تنزيل الصورة</a>'
+        + '<a class="btn" target="_blank" rel="noopener noreferrer" href="' + escHtml(cardPhotoUrl(c, false)) + '">افتح الصورة</a>'
+        + '</div>'
+      : '<div class="alert info" style="margin-bottom:.8rem">بلا صورة — حُفظت البطاقة بحقولها فقط.</div>';
+    var fields;
+    if (c.may_edit) {
+      var kinds = (EV && EV.kinds) || [];
+      fields = '<div class="cv-form ev-form" id="cv-form" data-cid="' + escHtml(c.id) + '">'
+        + '<div class="field"><label for="cv-kind">نوع البطاقة</label><select class="input" id="cv-kind">'
+        + kinds.map(function (k) { return '<option value="' + escHtml(k) + '"' + (k === c.kind ? ' selected' : '') + '>' + escHtml(k) + '</option>'; }).join('')
+        + '</select></div>'
+        + '<div class="grid2">'
+        + CV_FIELDS.map(function (f) {
+          return '<div class="field"><label for="cv-' + f[0] + '">' + f[1] + '</label>'
+            + '<input class="input" id="cv-' + f[0] + '" maxlength="160"' + (ltr[f[0]] ? ' dir="ltr"' : '')
+            + ' value="' + escHtml(c[f[0]] || '') + '"></div>';
+        }).join('')
+        + '</div>'
+        + '<div class="field"><label for="cv-note">ملاحظة</label><textarea id="cv-note" rows="2" maxlength="4000">' + escHtml(c.note || '') + '</textarea></div>'
+        + '</div>';
+    } else {
+      fields = '<div class="cv-ro">' + CV_FIELDS.map(function (f) {
+        return c[f[0]] ? '<div><span>' + f[1] + ':</span> ' + (ltr[f[0]] ? '<span dir="ltr" class="tnum" style="color:inherit">' : '<span style="color:inherit">') + escHtml(c[f[0]]) + '</span></div>' : '';
+      }).join('') + (c.note ? '<div><span>ملاحظة:</span> ' + escHtml(c.note) + '</div>' : '') + '</div>';
+    }
+    var raw = c.raw_text
+      ? '<details style="margin-top:.7rem"><summary style="cursor:pointer;font-size:12.5px;font-weight:700;color:var(--brand);min-height:40px;display:flex;align-items:center">النصّ كما قرأه القارئ</summary>'
+        + '<div class="cv-raw" dir="auto">' + escHtml(c.raw_text) + '</div></details>'
+      : '';
+    var who = (c.captured_by_name ? 'التقطها ' + escHtml(c.captured_by_name) : '') + (c.kind ? ' · ' + escHtml(c.kind) : '');
+    return '<div class="modal-head"><div><div style="font-weight:800;font-size:15px">' + escHtml(title) + '</div>'
+      + '<div style="font-size:11.5px;color:var(--muted)">' + who + '</div></div>'
+      + '<button type="button" class="btn btn-ghost btn-sm" data-action="modal-close" aria-label="إغلاق">✕</button></div>'
+      + '<div class="modal-body">' + photo + fields + raw + '</div>'
+      + '<div class="modal-foot">'
+      + (c.may_edit ? '<button type="button" class="btn btn-primary" data-action="ev-card-save" data-cid="' + escHtml(c.id) + '">احفظ التعديل</button>' : '')
+      + '<button type="button" class="btn" data-action="modal-close">إغلاق</button></div>';
+  }
+  function openCard(cid) {
+    if (!cid) return;
+    api('/events/contacts/' + encodeURIComponent(cid)).then(function (c) {
+      if (SN().openModal) SN().openModal(cardModalHtml(c));
+    }).catch(function (e) { toast(e.message, true); });
+  }
+  function saveCard(btn) {
+    var cid = btn.getAttribute('data-cid');
+    if (!cid) return;
+    var body = { kind: val('cv-kind'), note: val('cv-note') };
+    CV_FIELDS.forEach(function (f) { body[f[0]] = val('cv-' + f[0]); });
+    if (!body.person_name && !body.org_name && !body.phone) { toast('اكتب اسم الشخص أو جهته أو رقم جوّاله — حقل واحد يكفي للحفظ', true); return; }
+    btn.disabled = true;
+    api('/events/contacts/' + encodeURIComponent(cid), 'PATCH', body)
+      .then(function () { toast('حُفظ التعديل ✓'); setTimeout(function () { location.reload(); }, 400); })
+      .catch(function (e) { btn.disabled = false; toast(e.message, true); });
+  }
+
   // ── إدارة الفعالية (v5.65): تعديلٌ وإغلاق/فتح وحذف — أزرارٌ لواجهةٍ كانت للخدمة وحدها ──
   function evOpenEdit() {
     var t = $('ev-edit-tpl');
@@ -972,8 +1049,17 @@
     // النقر على خلفية النافذة يغلقها (app.js) — فيُعاد التركيز إلى ما كان عليه.
     if (e.target && e.target.id === 'modal') { setTimeout(function () { if (!modalOpen()) restoreFocus(); }, 0); return; }
     var el = e.target.closest ? e.target.closest('[data-action]') : null;
-    if (!el) return;
+    if (!el) {
+      // الصفّ نفسه يفتح مراجعة البطاقة — والزرّ أو الرابط داخله شأنُه وحده.
+      if (e.target.closest && !e.target.closest('button,a,input,select,textarea')) {
+        var rowEl = e.target.closest('[data-contact]');
+        if (rowEl) { openCard(rowEl.getAttribute('data-contact')); }
+      }
+      return;
+    }
     var act = el.dataset.action;
+    if (act === 'ev-card-view') { e.preventDefault(); openCard(el.getAttribute('data-cid')); return; }
+    if (act === 'ev-card-save') { e.preventDefault(); saveCard(el); return; }
     if (act === 'ev-new') { e.preventDefault(); openNew(); return; }
     if (act === 'ev-new-save') { e.preventDefault(); saveNew(el); return; }
     if (act === 'modal-close') { e.preventDefault(); closeModal(); return; }

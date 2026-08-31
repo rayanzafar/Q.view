@@ -48,7 +48,9 @@ function sendImage(req, res, p, baseName, utf8Name = null) {
   res.setHeader('Vary', 'Cookie');
   if (req.get('if-none-match') === tag) return res.status(304).end();
   const ext = ev.imageExt(p.mime);
-  let disposition = `inline; filename="${baseName}.${ext}"`;
+  // `?download=1` يُنزّل الصورة ملفاً بدل عرضها — زرّ «تنزيل الصورة» في نافذة مراجعة البطاقة.
+  const mode = req.query && ['1', 'true', 'yes'].includes(String(req.query.download || '').toLowerCase()) ? 'attachment' : 'inline';
+  let disposition = `${mode}; filename="${baseName}.${ext}"`;
   if (utf8Name) disposition += `; filename*=UTF-8''${rfc5987(utf8Name)}.${ext}`;
   res.setHeader('Content-Type', p.mime);
   res.setHeader('Content-Length', String(p.content.length));
