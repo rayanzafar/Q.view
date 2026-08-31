@@ -72,7 +72,8 @@ before(async () => {
   // الحسابات التسعة القائمة على البيئة الحيّة اليوم — والسبعة غائبة، كما هي الحال هناك.
   // (وكانت عشرة: `demo.finance` مُختَّم بعد إلغاء دور «المالية» — الترحيلة ٠١٨.)
   for (const u of ['demo.admin', 'demo.ceo', 'demo.sectorlead', 'demo.bd', 'demo.pm',
-    'demo.hr', 'demo.consultant', 'demo.employee', 'demo.viewer']) {
+    'demo.hr', 'demo.consultant', 'demo.employee', 'demo.viewer',
+    'demo.officecoord', 'demo.officemember']) {
     const d = DEMO_USERS.find((x) => x.u === u);
     await db.insert('app_user', { id: 'u_' + u.replace('.', '_'), username: d.u, email: d.email || d.u + '@evc.com.sa',
       name_ar: d.name, role_id: d.role, sector_id: d.sector, scope: d.scope, active: 1, must_change_pw: 0, created_at: at });
@@ -198,7 +199,7 @@ test('مدير الإدارة والمدير المباشر لهما سجل مو
   assert.equal(deps.length, 2, 'الموظفون كلهم في إدارة واحدة');
 });
 
-test('كل دور في المصفوفة صار له حساب حيّ — التغطية ١٦ من ١٦ (أُلغي دور «المالية»)', async () => {
+test('كل دور في المصفوفة صار له حساب حيّ — التغطية ١٨ من ١٨ (أُلغي دور «المالية»)', async () => {
   const have = new Set((await db.all(
     'SELECT DISTINCT role_id FROM app_user WHERE active = 1 AND deleted_at IS NULL')).map((r) => r.role_id));
   const missing = Object.keys(ROLE_GRANTS).filter((r) => !have.has(r));

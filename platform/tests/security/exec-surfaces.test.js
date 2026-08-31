@@ -106,7 +106,7 @@ const shapeOf = (role) => {
 // إضافةُ دورٍ أو حذفُه قرارُ صلاحيات لا تفصيلَ تنفيذ، فيسقط الفحص حتى يُقرَّ العدد الجديد بيدٍ.
 test('الجدول يغطي الأدوار الستة عشر كلها — لا دور بلا قرار معلن', () => {
   const roles = Object.keys(ROLE_GRANTS);
-  assert.equal(roles.length, 16, 'عدد الأدوار في المصفوفة');
+  assert.equal(roles.length, 18, 'عدد الأدوار في المصفوفة');
   assert.equal(roles.includes('finance'), false, 'ودور «المالية» مُلغى — إعادتُه تُعيده إلى القاعدة');
   for (const r of roles) assert.ok(EXP.ROLES.some((x) => x.role === r), `${r} بلا حساب تجريبي فلا يُفحص`);
   for (const r of [...LEADERSHIP, ...CLIENT_READERS]) assert.ok(roles.includes(r), `${r} ليس دوراً في المصفوفة`);

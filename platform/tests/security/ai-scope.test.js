@@ -42,6 +42,7 @@ const PERSONAS = {
   department_manager: ['department', 'SOL'], line_manager: ['team', 'SOL'], bd_head: ['company', null],
   operations: ['sector', 'SOL'], procurement: ['company', null], approver: ['sector', 'SOL'],
   external: ['own', null],
+  office_coordinator: ['own', null], office_member: ['own', null],
 };
 const U = (role) => ({ id: 'u_' + role, username: role, role_id: role, scope: PERSONAS[role][0],
   sector_id: PERSONAS[role][1], projectIds: new Set(), teamIds: new Set() });

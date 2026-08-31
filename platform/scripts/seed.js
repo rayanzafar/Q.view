@@ -81,6 +81,10 @@ export const DEMO_USERS = [
   //   • بريده على نطاق العميل لا نطاق الشركة — حساب بوابة خارجية لا حساب موظف.
   { u: 'demo.external', role: 'external', scope: 'own', name: 'مستخدم خارجي (تجريبي)', sector: null,
     email: 'demo.external@client.example' },
+  // مكتب الرئيس التنفيذي وحدةً معزولة (لا الدور الشركي `ceo_office` أعلاه): نطاق «خاصتي» بلا قطاع —
+  // بركةُ عملهم تُقرأ عبر ربط الموظف بإدارة المكتب لا عبر نطاق الحساب، فالحساب التجريبي يكفيه «خاصتي».
+  { u: 'demo.officecoord', role: 'office_coordinator', scope: 'own', name: 'منسّق مكتب الرئيس (تجريبي)', sector: null },
+  { u: 'demo.officemember', role: 'office_member', scope: 'own', name: 'عضو مكتب الرئيس (تجريبي)', sector: null },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────

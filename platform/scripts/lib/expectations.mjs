@@ -34,6 +34,8 @@ export const ROLES = [
   { username: 'demo.procurement', role: 'procurement', scope: 'company', sector_id: null },
   { username: 'demo.approver', role: 'approver', scope: 'sector', sector_id: 'SOLUTIONS' },
   { username: 'demo.external', role: 'external', scope: 'own', sector_id: null },
+  { username: 'demo.officecoord', role: 'office_coordinator', scope: 'own', sector_id: null },
+  { username: 'demo.officemember', role: 'office_member', scope: 'own', sector_id: null },
 ];
 
 // Current PAGES map in src/web/routes.js (hardcoded on purpose: the harness must notice when a
@@ -138,7 +140,7 @@ export const API_PROBES = [
   // ومصدره واحد يشترك فيه هذا المسار وشاشتا القيادة والمحفظة والقائمة الجانبية والدليل والبحث.
   { method: 'GET', path: '/api/metrics/company', expect: { default: 403, admin: 200, ceo_office: 200, hr: 200, bd_head: 200 } },
   // sector metrics: company scope OR membership of that sector. demo.external has neither.
-  { method: 'GET', path: '/api/metrics/sector/SOLUTIONS', expect: { default: 200, external: 403 } },
+  { method: 'GET', path: '/api/metrics/sector/SOLUTIONS', expect: { default: 200, external: 403, office_member: 403, office_coordinator: 403 } },
   { method: 'GET', path: '/api/tasks/mine', expect: 200 },                 // own-scoped
   { method: 'GET', path: '/api/timesheets/mine', expect: 200 },            // own-scoped
   { method: 'GET', path: '/api/notifications', expect: 200 },              // own-scoped
@@ -174,7 +176,7 @@ export const API_PROBES = [
   // قراءة المشروع ممنوحة لكل دور تقريباً (ولو بنطاق «مشروعي» أو «خاصتي»)؛ والثلاثة المستثناة
   // بلا منح مشروع إطلاقاً في matrix.js: الموارد البشرية، والمدير المباشر، والمعتمِد.
   { method: 'GET', path: '/api/ai/options/project',
-    expect: { default: 200, hr: 403, line_manager: 403, approver: 403 } },
+    expect: { default: 200, hr: 403, line_manager: 403, approver: 403, office_member: 403, office_coordinator: 403 } },
   // والفرص أضيق: من لا يملك **قراءة** الفرصة يُردّ — ومنه المعتمِد الذي يملك «اعتماد» بلا قراءة.
   // `department_manager` أُضيف بقرار المالك: «مدراء الإدارات لهم صلاحية يشوفوا كل الفرص» —
   // وكان بلا منح قراءةٍ على الفرصة إطلاقاً، فتغيب الخانة كلها عن شاشته لا تظهر فارغة.

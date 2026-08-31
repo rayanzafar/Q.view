@@ -328,6 +328,31 @@ export const ROLE_GRANTS = {
     { resource: 'project', action: 'read', scope: 'own' },
     { resource: 'invoice', action: 'read', scope: 'own' },
   ],
+
+  // ── مكتب الرئيس التنفيذي وحدةً معزولة (لا الدورَ الشركيَّ `ceo_office` أعلاه) ──────────
+  // مساعدو الرئيس فريقٌ يرى بركة عمله وحدها، ولا يرى قطاعاً آخر (لا «SAP» ولا غيره). وهذا
+  // ليس الدورَ الشركيَّ صاحبَ الاسم نفسه فوق — ذاك يقرأ الشركة كلها؛ هذان نطاقُهما الإدارةُ
+  // وحدها. والعزلُ يُحكَم بالمنح لا بالاسم: لا فرصةَ ولا مشروعَ ولا عميلَ ولا قطاعَ ولا موظفَ
+  // (للعضو)، فكلُّ قائمةٍ خارج المكتب تعود فارغةً وكلُّ صفٍّ غريبٍ يسقط في `scopeReaches`.
+  // ولأنّ مهامّ المكتب لا تُربَط بمشروعٍ ولا فرصة (لا منحَ قراءةٍ لهما) فلا اعتمادَ يُطلَب
+  // أصلاً؛ ولو طُلِب فمعتمِدُه مديرُ الإدارة (المنسّقة) لا الرئيس. الأدوار تُبذَر من الكود
+  // (`seed-rbac.js`) بلا ترحيلة.
+  office_member: [
+    { resource: 'task', action: 'read', scope: 'department' },   // بركة عمل المكتب المشتركة
+    { resource: 'task', action: 'create', scope: 'own' },        // عمله هو ومهامه الشخصية
+    { resource: 'task', action: 'update', scope: 'own' },
+    { resource: 'notification', action: 'read', scope: 'own' },
+  ],
+
+  office_coordinator: [
+    { resource: 'task', action: 'read', scope: 'department' },
+    { resource: 'task', action: 'create', scope: 'department' }, // يُنشئ ويُسنِد داخل المكتب
+    { resource: 'task', action: 'update', scope: 'department' }, // يعيد الإسناد ويغيّر الحالة
+    // لا منحَ «قراءة الموظفين»: منتقي المُسنَد إليه يُبنى من إدارة المنسّقة نفسها (بحكم كونها
+    // مديرتها) لا من هذا المنح — وإعطاؤه يفتح شجرةَ الهيكل غيرَ المقيَّدة بقطاع فتُرى أسماءُ
+    // كل القطاعات (SAP وغيره). فالعزل يقتضي تركه: تُسنِد لأهل مكتبها بلا أن ترى ما سواه.
+    { resource: 'notification', action: 'read', scope: 'own' },
+  ],
 };
 
 // ── وقتُ المرء على عمله: حقٌّ لكل موظف، لا امتياز دور ──────────────────────────
@@ -378,7 +403,10 @@ const EVENT_MANAGERS = new Set(['sector_lead', 'ceo_office']);
 for (const [roleId, grants] of Object.entries(ROLE_GRANTS)) {
   if (roleId === 'admin' || roleId === 'external') continue;
   if (roleId === 'viewer') { grants.push(...EVENTS_RO); continue; }
-  grants.push(...eventsAll(roleId === 'line_manager' ? 'department' : 'company'));
+  // مكتب الرئيس وحدةٌ معزولة: نطاق «إدارة» على الفعاليات يسقط مغلقاً (لا مفتاح إدارةٍ على صفوفها)
+  // فلا يلتقط المكتبُ في المعارض ولا يرى فعاليةً — وهذا المقصود، كي لا تُسرَّب له بياناتُ الشركة.
+  const eventsScope = ['line_manager', 'office_member', 'office_coordinator'].includes(roleId) ? 'department' : 'company';
+  grants.push(...eventsAll(eventsScope));
   if (EVENT_MANAGERS.has(roleId)) grants.push(...EVENTS_MANAGE);
   if (roleId === 'bd_head') grants.push(...crud(['event'], 'company', ['create', 'update']));
 }
@@ -400,6 +428,8 @@ export const ROLE_LABELS = {
   approver: { ar: 'معتمِد', en: 'Approver' },
   viewer: { ar: 'مشاهدة فقط', en: 'Viewer' },
   external: { ar: 'مستخدم خارجي', en: 'External' },
+  office_member: { ar: 'عضو مكتب الرئيس التنفيذي', en: 'CEO Office Member' },
+  office_coordinator: { ar: 'منسّق مكتب الرئيس التنفيذي', en: 'CEO Office Coordinator' },
 };
 
 // Scope ordering: higher includes lower for read purposes.

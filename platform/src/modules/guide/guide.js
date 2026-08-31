@@ -49,13 +49,18 @@ function widestSight(user) {
 // القدرات: سؤال واحد لكل جملة إرشادية مشروطة. كلها قرارات محرّك الصلاحيات، بلا استثناء.
 export function capsOf(user) {
   const sight = widestSight(user);
+  // مكتب الرئيس التنفيذي وحدةٌ معزولة: نطاقُه «إدارة» في المهام وحدها، بلا قراءةٍ للمشاريع
+  // والفرص والقطاع. فلا يُوصَف بوصف مدير الإدارة (الذي تصله قوائمُ القطاع) ولا بالضيّق (الذي
+  // يرى صورةً عامة عن قطاعه) — بل بوصفه هو: بركةُ مهامّ المكتب المشتركة لا غير.
+  const office = user.role_id === 'office_member' || user.role_id === 'office_coordinator';
   return {
     companySight: sight === 'company',
-    sectorSight: sight === 'sector',
+    sectorSight: sight === 'sector' && !office,
     // نطاق «الإدارة» كان يسقط في `narrowSight` فيقرأ مدير الإدارة أن ما يراه «محصور في عملك
     // ومشاريعك» — وهو خطأ في الوصف لا في الصلاحية: نطاقه أشخاص إدارته لا عمله هو.
-    departmentSight: sight === 'department',
-    narrowSight: !['company', 'sector', 'department'].includes(sight),
+    departmentSight: sight === 'department' && !office,
+    narrowSight: !office && !['company', 'sector', 'department'].includes(sight),
+    officeSight: office,
     teamTasks: teamTasksAccess(user).canRead,
     // الدمج يتطلب التعديل **والحذف** معاً — نفس شرط بطاقة «جهات يُحتمل أنها جهة واحدة» في
     // شاشة العملاء حرفياً، لأن أثر الدمج يفوق أثر التعديل وحده.
