@@ -328,11 +328,24 @@
     return postBytes('/events/contacts/' + encodeURIComponent(cid) + '/photo', blob, { 'x-file-name': encodeURIComponent(fileNameFor(blob)) });
   }
   var rowOf = function (cid) { return document.querySelector('#ev-recent .ev-rc[data-contact="' + String(cid).replace(/"/g, '') + '"]'); };
-  function setRowPhoto(cid, src) {
+  // المصغّرة في الصفّ زرٌّ يفتح نافذة المراجعة — كما تبنيها الصفحة على الخادم حرفاً — وعليها
+  // شارة «+٢» حين تحمل البطاقة أكثر من صورة. وإن لم يبقَ للبطاقة صورةٌ عاد زرّ الإرفاق مكانها.
+  function setRowPhoto(cid, src, count) {
     var row = rowOf(cid);
     if (!row) return;
     var ph = row.querySelector('.ev-rc-ph');
-    if (ph) ph.innerHTML = '<img class="ev-thumb" alt="" src="' + escHtml(src) + '">';
+    if (!ph) return;
+    var n = Number(count) || 0;
+    if (!src) {
+      ph.innerHTML = '<button type="button" class="btn btn-ghost" data-action="ev-photo-attach" data-cid="' + escHtml(cid) + '">أرفق صورة</button>';
+    } else {
+      var nameEl = row.querySelector('.ev-rc-main b');
+      var label = 'عرض بطاقة ' + ((nameEl && nameEl.textContent) || '');
+      ph.innerHTML = '<button type="button" class="ev-thumb-btn" data-action="ev-card-view" data-cid="' + escHtml(cid) + '" aria-label="' + escHtml(label) + '">'
+        + '<img class="ev-thumb" alt="" src="' + escHtml(src) + '">'
+        + (n > 1 ? '<span class="ev-thumb-n tnum">+' + (n - 1) + '</span>' : '')
+        + '</button>';
+    }
     setRowWarn(cid, false);
   }
   function setRowUploading(cid) {
@@ -359,9 +372,13 @@
     setRowUploading(cid);
     return uploadPhoto(cid, blob).then(function (j) {
       delete S.pending[cid];
+      var n = Number(j && j.photo_count) || 1;
       var sha = String((j && j.sha256) || '').slice(0, 12);
-      setRowPhoto(cid, preview || ('/api/events/contacts/' + encodeURIComponent(cid) + '/photo' + (sha ? '?v=' + sha : '')));
-      toast(opts && opts.afterSave ? 'حُفظت البطاقة ✓' : 'أُرفقت الصورة ✓');
+      var cover = (j && j.photo_url) || ('/api/events/contacts/' + encodeURIComponent(cid) + '/photo' + (sha ? '?v=' + sha : ''));
+      // معاينةُ ما رُفع تكفي حين تكون صورةَ البطاقة الوحيدة؛ ومع أكثر من صورة الغلافُ صورةٌ أخرى.
+      setRowPhoto(cid, n > 1 ? cover : (preview || cover), n);
+      toast(opts && opts.afterSave ? 'حُفظت البطاقة ✓'
+        : (j && j.added === false ? 'هذه الصورة مضافة مسبقاً' : 'أُرفقت الصورة ✓'));
     }).catch(function (e) {
       S.pending[cid] = { blob: blob, preview: preview || '' };
       setRowWarn(cid, true);
@@ -532,7 +549,7 @@
     var org = c.org_name && c.person_name ? ' <span class="ev-rc-org">· ' + escHtml(c.org_name) + '</span>' : '';
     var ph = photoState === 'uploading' ? '<span class="ev-nophoto">يرفع الصورة…</span>'
       : '<button type="button" class="btn btn-ghost" data-action="ev-photo-attach" data-cid="' + escHtml(c.id || '') + '">أرفق صورة</button>';
-    return '<div class="ev-rc" data-contact="' + escHtml(c.id || '') + '" data-own="1"><div class="ev-rc-row">'
+    return '<div class="ev-rc" data-contact="' + escHtml(c.id || '') + '"><div class="ev-rc-row">'
       + '<div class="ev-rc-ph">' + ph + '</div>'
       + '<div class="ev-rc-main"><b>' + escHtml(contactLabel(c)) + '</b>' + org + '</div>'
       + '<div class="ev-rc-side"><span class="pill" style="background:#eef1f7;color:#475569">' + escHtml(c.kind || '') + '</span>'
@@ -753,12 +770,17 @@
     restoreFocus();
   }
 
-  // ── مراجعة البطاقة (v5.66): الصورة كبيرةً وتنزيلها، والحقول للتصحيح لمن يملك التعديل ──
+  // ── مراجعة البطاقة (v5.66، ومعرض الصور في v5.67): الصورة كبيرةً وتنزيلها، وصورٌ أخرى
+  // للبطاقة الواحدة (وجه البطاقة وظهرها، أو بطاقةٌ ثانية للشخص نفسه) تُضاف من النافذة وتُحذف
+  // منها، والحقول للتصحيح — و«القطاع المعني» بينها — لمن يملك التعديل.
   // تُبنى من البطاقة الواحدة لحظة الفتح (النصّ الخام ثقيلٌ على القوائم فلا يُضمَّن فيها).
   var CV_FIELDS = [
     ['person_name', 'الاسم'], ['org_name', 'الجهة'], ['job_title', 'المنصب'],
     ['phone', 'الجوّال'], ['email', 'البريد'], ['website', 'الموقع الإلكتروني'],
   ];
+  // حالة النافذة المفتوحة: البطاقة، وصورها بالترتيب (الغلاف أولاً)، والمعروضة منها الآن.
+  var CV = { cid: null, photos: [], idx: 0, may_edit: false };
+
   function cardPhotoUrl(c, download) {
     var sha = String(c.photo_sha || '').slice(0, 12);
     var u = '/api/events/contacts/' + encodeURIComponent(c.id) + '/photo';
@@ -767,23 +789,68 @@
     if (download) q.push('download=1');
     return u + (q.length ? '?' + q.join('&') : '');
   }
+  // عنوان صورةٍ بعينها: عرضاً، أو تنزيلاً ملفاً حين يُطلب.
+  function photoHref(p, download) {
+    var u = String((p && p.url) || '');
+    if (!download) return u;
+    return u + (u.indexOf('?') >= 0 ? '&' : '?') + 'download=1';
+  }
+  // الصور تصل مع البطاقة مرتَّبةً بالغلاف أولاً؛ وإن لم تصل قائمةٌ أصلاً عُرض الغلاف وحده.
+  function cvPhotos(c) {
+    if (c && c.photos && c.photos.length) return c.photos;
+    if (c && Number(c.has_photo) === 1) return [{ id: '', url: cardPhotoUrl(c, false), uploaded_by_name: null }];
+    return [];
+  }
+  var sectorList = function () { return (EV && EV.sectors) || []; };
+  function sectorNameOf(sid) {
+    var list = sectorList();
+    for (var i = 0; i < list.length; i++) if (list[i].id === sid) return list[i].name_ar;
+    return '';
+  }
+
   function cardModalHtml(c) {
     var title = c.person_name || c.org_name || c.phone || 'بطاقة بلا اسم';
-    var has = Number(c.has_photo) === 1;
     var ltr = { phone: 1, email: 1, website: 1 };
-    var photo = has
-      ? '<img class="cv-img" alt="" src="' + escHtml(cardPhotoUrl(c, false)) + '">'
-        + '<div class="cv-act">'
-        + '<a class="btn btn-primary" href="' + escHtml(cardPhotoUrl(c, true)) + '">تنزيل الصورة</a>'
-        + '<a class="btn" target="_blank" rel="noopener noreferrer" href="' + escHtml(cardPhotoUrl(c, false)) + '">افتح الصورة</a>'
-        + '</div>'
-      : '<div class="alert info" style="margin-bottom:.8rem">بلا صورة — حُفظت البطاقة بحقولها فقط.</div>';
+    var photos = cvPhotos(c);
+    CV = { cid: c.id, photos: photos, idx: 0, may_edit: !!c.may_edit };
+
+    // معرض الصور: الصورة الكبيرة، وشريطٌ تحتها حين تتعدّد الصور، ومن رفع المعروضة منها.
+    var body = '';
+    var acts = [];
+    if (photos.length) {
+      var strip = photos.length > 1
+        ? '<div class="cv-strip" role="group" aria-label="صور البطاقة">' + photos.map(function (p, i) {
+          return '<button type="button" class="' + (i === 0 ? 'on' : '') + '" data-action="cv-photo-pick" data-i="' + i + '"'
+            + ' aria-label="الصورة ' + (i + 1) + '"><img alt="" src="' + escHtml(photoHref(p, false)) + '"></button>';
+        }).join('') + '</div>'
+        : '';
+      var by = photos[0].uploaded_by_name || '';
+      body = '<img class="cv-img" id="cv-main" alt="" src="' + escHtml(photoHref(photos[0], false)) + '">'
+        + strip
+        + '<div class="cv-who" id="cv-who"' + (by ? '' : ' hidden') + '>' + (by ? 'رفعها ' + escHtml(by) : '') + '</div>';
+      acts.push('<a class="btn btn-primary" id="cv-dl" href="' + escHtml(photoHref(photos[0], true)) + '">تنزيل الصورة</a>');
+      acts.push('<a class="btn" id="cv-open" target="_blank" rel="noopener noreferrer" href="' + escHtml(photoHref(photos[0], false)) + '">افتح الصورة</a>');
+      if (CV.may_edit) acts.push('<button type="button" class="btn btn-ghost" data-action="cv-photo-del" style="color:var(--red)">احذف الصورة</button>');
+    } else {
+      body = '<div class="alert info" style="margin-bottom:.8rem">بلا صورة — حُفظت البطاقة بحقولها فقط.</div>';
+    }
+    if (CV.may_edit) acts.push('<button type="button" class="btn" data-action="cv-photo-add">أضف صورة</button>');
+    var photo = body
+      + (acts.length ? '<div class="cv-act">' + acts.join('') + '</div>' : '')
+      + (CV.may_edit ? '<input type="file" id="cv-photo" accept="image/*" capture="environment" hidden aria-label="صورة إضافية للبطاقة">' : '');
+
     var fields;
     if (c.may_edit) {
       var kinds = (EV && EV.kinds) || [];
       fields = '<div class="cv-form ev-form" id="cv-form" data-cid="' + escHtml(c.id) + '">'
         + '<div class="field"><label for="cv-kind">نوع البطاقة</label><select class="input" id="cv-kind">'
         + kinds.map(function (k) { return '<option value="' + escHtml(k) + '"' + (k === c.kind ? ' selected' : '') + '>' + escHtml(k) + '</option>'; }).join('')
+        + '</select></div>'
+        + '<div class="field"><label for="cv-sector">القطاع المعني</label><select class="input" id="cv-sector">'
+        + '<option value="">غير محدَّد</option>'
+        + sectorList().map(function (sec) {
+          return '<option value="' + escHtml(sec.id) + '"' + (sec.id === c.sector_id ? ' selected' : '') + '>' + escHtml(sec.name_ar) + '</option>';
+        }).join('')
         + '</select></div>'
         + '<div class="grid2">'
         + CV_FIELDS.map(function (f) {
@@ -795,9 +862,12 @@
         + '<div class="field"><label for="cv-note">ملاحظة</label><textarea id="cv-note" rows="2" maxlength="4000">' + escHtml(c.note || '') + '</textarea></div>'
         + '</div>';
     } else {
-      fields = '<div class="cv-ro">' + CV_FIELDS.map(function (f) {
-        return c[f[0]] ? '<div><span>' + f[1] + ':</span> ' + (ltr[f[0]] ? '<span dir="ltr" class="tnum" style="color:inherit">' : '<span style="color:inherit">') + escHtml(c[f[0]]) + '</span></div>' : '';
-      }).join('') + (c.note ? '<div><span>ملاحظة:</span> ' + escHtml(c.note) + '</div>' : '') + '</div>';
+      var secName = sectorNameOf(c.sector_id);
+      fields = '<div class="cv-ro">'
+        + (secName ? '<div><span>القطاع:</span> ' + escHtml(secName) + '</div>' : '')
+        + CV_FIELDS.map(function (f) {
+          return c[f[0]] ? '<div><span>' + f[1] + ':</span> ' + (ltr[f[0]] ? '<span dir="ltr" class="tnum" style="color:inherit">' : '<span style="color:inherit">') + escHtml(c[f[0]]) + '</span></div>' : '';
+        }).join('') + (c.note ? '<div><span>ملاحظة:</span> ' + escHtml(c.note) + '</div>' : '') + '</div>';
     }
     var raw = c.raw_text
       ? '<details style="margin-top:.7rem"><summary style="cursor:pointer;font-size:12.5px;font-weight:700;color:var(--brand);min-height:40px;display:flex;align-items:center">النصّ كما قرأه القارئ</summary>'
@@ -818,10 +888,65 @@
       if (SN().openModal) SN().openModal(cardModalHtml(c));
     }).catch(function (e) { toast(e.message, true); });
   }
+  // اختيار صورةٍ من الشريط: الكبيرة وروابطها ومن رفعها تتبع المختارة — بلا نداءٍ للخادم.
+  function cvShow(i) {
+    var p = CV.photos[i];
+    if (!p) return;
+    CV.idx = i;
+    var main = $('cv-main');
+    if (main) main.setAttribute('src', photoHref(p, false));
+    var dl = $('cv-dl');
+    if (dl) dl.setAttribute('href', photoHref(p, true));
+    var op = $('cv-open');
+    if (op) op.setAttribute('href', photoHref(p, false));
+    var who = $('cv-who');
+    if (who) {
+      who.textContent = p.uploaded_by_name ? 'رفعها ' + p.uploaded_by_name : '';
+      who.hidden = !p.uploaded_by_name;
+    }
+    var btns = document.querySelectorAll('.cv-strip [data-action="cv-photo-pick"]');
+    for (var k = 0; k < btns.length; k++) btns[k].classList.toggle('on', Number(btns[k].getAttribute('data-i')) === i);
+  }
+  // صورةٌ إضافية للبطاقة: تُصغَّر على الجهاز ثم تُلحق بالبطاقة — ولا تمرّ بالقارئ (القارئ لأوّل
+  // صورةٍ تُلتقط مع البطاقة وحدها؛ الإضافة هنا حفظُ وجهٍ آخر للبطاقة لا قراءةٌ جديدة).
+  function onCardPhotoChange(input) {
+    var file = input.files && input.files[0];
+    input.value = '';
+    if (!file || !CV.cid) return;
+    var cid = CV.cid;
+    toast('يرفع الصورة…');
+    processImage(file).then(function (res) {
+      return uploadPhoto(cid, res.blob);
+    }, function () {
+      // المتصفّح لم يفكّ الصورة وبايتاتها سليمة الصيغة: تُرفع كما هي.
+      if (!keepable(file)) throw new Error('تعذّرت قراءة الصورة على هذا الجهاز — التقطها بالكاميرا من الزرّ مباشرة');
+      return uploadPhoto(cid, file);
+    }).then(function (j) {
+      toast(j && j.added === false ? 'هذه الصورة مضافة مسبقاً' : 'أُضيفت الصورة ✓');
+      if (j && j.photo_url) setRowPhoto(cid, j.photo_url, j.photo_count);
+      openCard(cid);
+    }).catch(function (e) {
+      toast(isOffline(e) ? 'لا اتصال بالشبكة — الصورة لم تُرفع، أعد المحاولة عند عودة الاتصال' : e.message, true);
+    });
+  }
+  function cvDelete() {
+    var p = CV.photos[CV.idx];
+    if (!CV.cid || !p || !p.id) { toast('لم نجد هذه الصورة — حدّث الصفحة وأعد المحاولة', true); return; }
+    if (!window.confirm('تُحذف هذه الصورة نهائياً — متابعة؟')) return;
+    var cid = CV.cid;
+    api('/events/contacts/' + encodeURIComponent(cid) + '/photos/' + encodeURIComponent(p.id), 'DELETE')
+      .then(function (j) {
+        toast('حُذفت الصورة ✓');
+        setRowPhoto(cid, (j && j.photo_url) || '', (j && j.photo_count) || 0);
+        openCard(cid);
+      })
+      .catch(function (e) { toast(e.message, true); });
+  }
   function saveCard(btn) {
     var cid = btn.getAttribute('data-cid');
     if (!cid) return;
     var body = { kind: val('cv-kind'), note: val('cv-note') };
+    if ($('cv-sector')) body.sector_id = val('cv-sector');
     CV_FIELDS.forEach(function (f) { body[f[0]] = val('cv-' + f[0]); });
     if (!body.person_name && !body.org_name && !body.phone) { toast('اكتب اسم الشخص أو جهته أو رقم جوّاله — حقل واحد يكفي للحفظ', true); return; }
     btn.disabled = true;
@@ -1060,6 +1185,9 @@
     var act = el.dataset.action;
     if (act === 'ev-card-view') { e.preventDefault(); openCard(el.getAttribute('data-cid')); return; }
     if (act === 'ev-card-save') { e.preventDefault(); saveCard(el); return; }
+    if (act === 'cv-photo-pick') { e.preventDefault(); cvShow(Number(el.getAttribute('data-i')) || 0); return; }
+    if (act === 'cv-photo-add') { e.preventDefault(); var cvIn = $('cv-photo'); if (cvIn) cvIn.click(); return; }
+    if (act === 'cv-photo-del') { e.preventDefault(); cvDelete(); return; }
     if (act === 'ev-new') { e.preventDefault(); openNew(); return; }
     if (act === 'ev-new-save') { e.preventDefault(); saveNew(el); return; }
     if (act === 'modal-close') { e.preventDefault(); closeModal(); return; }
@@ -1150,6 +1278,7 @@
     var t = e.target;
     if (!t || !t.id) return;
     if (t.id === 'ev-photo') onPhotoChange(t);
+    else if (t.id === 'cv-photo') onCardPhotoChange(t);
     else if (t.id === 'ev-qr-file') onQrChange(t);
   });
 

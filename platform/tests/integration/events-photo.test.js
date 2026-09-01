@@ -4,8 +4,10 @@
 //   ١) جولة البايتات كاملة: إرفاقٌ ⟵ قراءةٌ بالبايتات نفسها والبصمة نفسها — خدمةً، ثم عبر الشبكة
 //      بترويسات التنزيل الستّ و«لم تتغيّر» (٣٠٤) للمتصفّح العائد ببصمته.
 //   ٢) الحقيقة من البايتات: ملفٌّ نصّي اسمه photo.jpg وترويسته image/jpeg يُردّ — الشمّ يحسم لا الاسم.
-//   ٣) الاستبدال صفٌّ واحد دائماً، والصورة نفسها مرةً ثانية لا تكتب ولا تُؤثّر.
-//   ٤) الحُرّاس: من يعدّل البطاقة يُرفق صورتها؛ رموز الكشك لمن يدير الفعالية؛ والقراءة لكل قارئ.
+//   ٣) الإضافة إضافة لا استبدال (v5.67، الترحيلة ٠٤١): الصورة الثانية تنضمّ ولا تمحو، والغلاف
+//      يبقى أقدمَها، والصورة نفسها مرةً ثانية لا تكتب ولا تُؤثّر. (وتفصيلُ القائمة في
+//      events-photos-multi.test.js — وهذا الملف يحرس أن جولة البايتات لم تنكسر بها.)
+//   ٤) الحُرّاس: من يحمل منح تعديل البطاقات يُرفق صورتها؛ رموز الكشك لمن يدير الفعالية؛ والقراءة لكل قارئ.
 //   ٥) المحو الفعلي: حذفُ البطاقة يمحو صورتها، وحذفُ الفعالية يمحو كل صورها ورموزها.
 //   ٦) الحدّ فوق ٨ ميغابايت يُردّ بالعربية على الطبقتين: الخدمة، والقارئ الخام في المسار (٤١٣ ⟵ ٤٠٠) —
 //      وكذا كل تعثّرٍ في الاستلام (ترميزٌ مضغوط أو مجهول: ٤١٥ ⟵ ٤٠٠ بالعربية بلا كلمةٍ تقنية).
@@ -94,7 +96,7 @@ before(async () => {
   base = `http://127.0.0.1:${server.address().port}`;
 });
 after(async () => {
-  if (ev) Object.assign(ev.UPLOAD_LIMITS, { qrPerEvent: 12, dailyFiles: 300, dailyBytes: 500 * 1024 * 1024 });
+  if (ev) Object.assign(ev.UPLOAD_LIMITS, { qrPerEvent: 12, photosPerCard: 6, dailyFiles: 300, dailyBytes: 500 * 1024 * 1024 });
   server?.closeAllConnections?.();
   if (server) await new Promise((res) => server.close(res));
   await db.close();
@@ -133,8 +135,10 @@ test('النوع من البايتات لا من الاسم: JPEG وPNG وWEBP �
 // ── الإرفاق والقراءة ──────────────────────────────────────────────────────────
 test('الإرفاق: صورة JPEG تُحفظ بايتاتٍ وبصمةً وتعود بحقيقتها ورابطها — والقوائم تحمل العلامة والبصمة لا البايتات', async () => {
   const r = await ev.attachContactPhoto(CTX(SARA), C_SARA.id, JPEG, { fileName: 'IMG_0001.jpg' });
-  assert.deepEqual(r, { ok: true, sha256: sha(JPEG), size_bytes: JPEG.length, mime: 'image/jpeg', replaced: false,
-    photo_url: cardOf(C_SARA.id) + '?v=' + sha(JPEG).slice(0, 12) });
+  assert.match(r.id, /^evb_/);
+  assert.deepEqual(r, { ok: true, id: r.id, sha256: sha(JPEG), size_bytes: JPEG.length, mime: 'image/jpeg', added: true,
+    photo_count: 1, photo_url: cardOf(C_SARA.id) + '?v=' + sha(JPEG).slice(0, 12),
+    url: `/api/events/contacts/${C_SARA.id}/photos/${r.id}` });
   const p = await ev.readContactPhoto(SARA, C_SARA.id);
   assert.ok(Buffer.isBuffer(p.content), 'المحتوى ليس بَفراً');
   assert.equal(Buffer.compare(p.content, JPEG), 0, 'البايتات المقروءة ليست هي المرفوعة');
@@ -146,39 +150,52 @@ test('الإرفاق: صورة JPEG تُحفظ بايتاتٍ وبصمةً وت�
   assert.equal(a.user_id, SARA.id);
   assert.equal(a.sector_id, 'SOL');
   const d = JSON.parse(a.detail_json);
-  assert.deepEqual([d.event_id, d.size_bytes, d.mime, d.replaced, d.file_name], [EV1.id, JPEG.length, 'image/jpeg', false, 'IMG_0001.jpg']);
+  assert.deepEqual([d.event_id, d.size_bytes, d.mime, d.added, d.blob_id, d.photo_count, d.file_name],
+    [EV1.id, JPEG.length, 'image/jpeg', true, r.id, 1, 'IMG_0001.jpg']);
   const rows = await ev.listContacts(SARA, EV1.id, {});
   const mine = rows.find((c) => c.id === C_SARA.id);
   const other = rows.find((c) => c.id === C_KHALID.id);
-  assert.deepEqual([mine.has_photo, mine.photo_sha], [1, sha(JPEG)]);
-  assert.deepEqual([other.has_photo, other.photo_sha], [0, null]);
+  assert.deepEqual([mine.has_photo, mine.photo_sha, mine.photo_count], [1, sha(JPEG), 1]);
+  assert.deepEqual([other.has_photo, other.photo_sha, other.photo_count], [0, null, 0]);
   assert.ok(rows.every((c) => !('content' in c)), 'القائمة تحمل البايتات');
   assert.equal((await ev.recentContacts(SARA, EV1.id, {})).rows.find((c) => c.id === C_SARA.id).photo_sha, sha(JPEG));
   assert.equal((await ev.getContact(VIEWER, C_SARA.id)).photo_sha, sha(JPEG));
 });
 
-test('الصورة نفسها مرةً ثانية (إعادة إرسال): لا كتابة ولا أثر — وreplaced يقول لا', async () => {
+test('الصورة نفسها مرةً ثانية (إعادة إرسال): لا كتابة ولا أثر — وadded يقول لا، ومعرّف الصفّ القائم يعود', async () => {
   const before = await audits('photo', 'event_contact', C_SARA.id);
+  const have = await db.get(`SELECT id FROM event_blob WHERE kind = 'card' AND ref_id = ?`, [C_SARA.id]);
   const r = await ev.attachContactPhoto(CTX(SARA), C_SARA.id, Buffer.from(JPEG));
-  assert.equal(r.replaced, false);
+  assert.equal(r.added, false);
   assert.equal(r.sha256, sha(JPEG));
+  assert.equal(r.id, have.id, 'إعادة الإرسال لم تعد بمعرّف الصفّ القائم');
+  assert.equal(r.photo_count, 1);
   assert.equal(await audits('photo', 'event_contact', C_SARA.id), before, 'إعادة الإرسال كتبت أثراً');
   assert.equal(await blobs("WHERE kind = 'card' AND ref_id = ?", [C_SARA.id]), 1);
 });
 
-test('صورةٌ مختلفة تستبدل: صفٌّ واحد ببصمة جديدة ورابط جديد، وأثرٌ يقول استُبدلت', async () => {
+test('صورةٌ مختلفة تُضاف ولا تستبدل: صفّان، والغلاف يبقى الأقدم ورابطه ثابت، وأثرٌ يقول أُضيفت', async () => {
   const before = await audits('photo', 'event_contact', C_SARA.id);
+  await tick();
   const r = await ev.attachContactPhoto(CTX(SARA), C_SARA.id, PNG, { fileName: 'card.png' });
-  assert.deepEqual([r.replaced, r.mime, r.sha256, r.size_bytes], [true, 'image/png', sha(PNG), PNG.length]);
-  assert.equal(r.photo_url, cardOf(C_SARA.id) + '?v=' + sha(PNG).slice(0, 12), 'الرابط لم يتغيّر مع الصورة');
-  assert.equal(await blobs("WHERE kind = 'card' AND ref_id = ?", [C_SARA.id]), 1, 'الاستبدال ترك صفّين');
-  const p = await ev.readContactPhoto(SARA, C_SARA.id);
-  assert.equal(Buffer.compare(p.content, PNG), 0);
-  assert.equal(p.mime, 'image/png');
+  assert.deepEqual([r.added, r.mime, r.sha256, r.size_bytes, r.photo_count], [true, 'image/png', sha(PNG), PNG.length, 2]);
+  assert.equal(r.photo_url, cardOf(C_SARA.id) + '?v=' + sha(JPEG).slice(0, 12), 'الغلاف تغيّر بالإضافة');
+  assert.equal(r.url, `/api/events/contacts/${C_SARA.id}/photos/${r.id}`);
+  assert.equal(await blobs("WHERE kind = 'card' AND ref_id = ?", [C_SARA.id]), 2, 'الإضافة محت ما قبلها');
+  // الغلاف الأولى، والثانية تُقرأ بمعرّفها.
+  const cover = await ev.readContactPhoto(SARA, C_SARA.id);
+  assert.equal(Buffer.compare(cover.content, JPEG), 0, 'الغلاف ليس أقدم الصور');
+  assert.equal(cover.mime, 'image/jpeg');
+  const second = await ev.readContactPhoto(SARA, C_SARA.id, r.id);
+  assert.equal(Buffer.compare(second.content, PNG), 0);
+  assert.equal(second.mime, 'image/png');
   assert.equal(await audits('photo', 'event_contact', C_SARA.id), before + 1);
   const a = await db.get("SELECT detail_json FROM audit_log WHERE action = 'photo' AND resource_id = ? ORDER BY at DESC LIMIT 1", [C_SARA.id]);
-  assert.equal(JSON.parse(a.detail_json).replaced, true);
-  assert.equal((await ev.getContact(SARA, C_SARA.id)).photo_sha, sha(PNG));
+  assert.deepEqual([JSON.parse(a.detail_json).added, JSON.parse(a.detail_json).photo_count], [true, 2]);
+  const c = await ev.getContact(SARA, C_SARA.id);
+  assert.equal(c.photo_sha, sha(JPEG), 'بصمة الصفّ ليست بصمة الغلاف');
+  assert.equal(c.photo_count, 2);
+  assert.deepEqual(c.photos.map((p) => p.sha256), [sha(JPEG), sha(PNG)]);
 });
 
 test('الممنوع يُردّ بالعربية قبل أي كتابة: فارغة، وبلا جسم، وفوق ٨ ميغابايت، وملفٌّ نصّي اسمه photo.jpg', async () => {
@@ -196,20 +213,26 @@ test('الممنوع يُردّ بالعربية قبل أي كتابة: فار�
       (e) => e.status === 400 && re.test(e.message), `${label}: قُبلت أو رُدّت برسالة أخرى`);
   }
   assert.deepEqual([await blobs(), await n("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'photo'")], before, 'الرفض كتب');
-  assert.equal((await ev.readContactPhoto(SARA, C_SARA.id)).sha256, sha(PNG), 'الرفض مسّ الصورة القائمة');
+  assert.equal((await ev.readContactPhoto(SARA, C_SARA.id)).sha256, sha(JPEG), 'الرفض مسّ الغلاف القائم');
 });
 
-test('الحُرّاس: الزميل والمشاهد والخارجي يُرَدّون، وقائد القطاع يُرفق على بطاقة غيره، والقراءة لكل قارئ — ولا صورة تعني ٤٠٤ بالعربية', async () => {
-  await assert.rejects(() => ev.attachContactPhoto(CTX(KHALID), C_SARA.id, JPEG),
-    (e) => e.status === 403 && /لمن التقطها أو لقيادة الفريق/.test(e.message), 'زميلٌ أرفق على بطاقة غيره');
-  await assert.rejects(() => ev.attachContactPhoto(CTX(VIEWER), C_SARA.id, JPEG), (e) => e.status === 403);
-  await assert.rejects(() => ev.attachContactPhoto(CTX(EXT), C_SARA.id, JPEG), (e) => e.status === 403 && /خارج صلاحياتك/.test(e.message));
+test('الحُرّاس (v5.67): الزميل يُرفق على بطاقة زميله، والمشاهد والخارجي يُرَدّان، والقراءة لكل قارئ — ولا صورة تعني ٤٠٤ بالعربية', async () => {
+  await assert.rejects(() => ev.attachContactPhoto(CTX(VIEWER), C_SARA.id, WEBP),
+    (e) => e.status === 403 && /ليس ضمن صلاحيتك/.test(e.message), 'المشاهد أرفق صورة');
+  await assert.rejects(() => ev.attachContactPhoto(CTX(EXT), C_SARA.id, WEBP), (e) => e.status === 403 && /خارج صلاحياتك/.test(e.message));
   await assert.rejects(() => ev.readContactPhoto(EXT, C_SARA.id), (e) => e.status === 403);
-  assert.equal((await ev.readContactPhoto(VIEWER, C_SARA.id)).sha256, sha(PNG), 'المشاهد لا يقرأ الصورة');
-  assert.equal((await ev.readContactPhoto(KHALID, C_SARA.id)).sha256, sha(PNG), 'الزميل لا يقرأ الصورة');
-  const r = await ev.attachContactPhoto(CTX(LEAD), C_SARA.id, WEBP);
-  assert.deepEqual([r.replaced, r.mime], [true, 'image/webp']);
-  assert.equal((await db.get(`SELECT uploaded_by FROM event_blob WHERE kind = 'card' AND ref_id = ?`, [C_SARA.id])).uploaded_by, LEAD.id);
+  assert.equal((await ev.readContactPhoto(VIEWER, C_SARA.id)).sha256, sha(JPEG), 'المشاهد لا يقرأ الصورة');
+  assert.equal((await ev.readContactPhoto(KHALID, C_SARA.id)).sha256, sha(JPEG), 'الزميل لا يقرأ الصورة');
+  // الزميل يُرفق على بطاقة زميله — هذا ما تغيّر في v5.67 (البطاقة أمانة الفريق).
+  await tick();
+  const r = await ev.attachContactPhoto(CTX(KHALID), C_SARA.id, WEBP);
+  assert.deepEqual([r.added, r.mime, r.photo_count], [true, 'image/webp', 3]);
+  // وقائد القطاع يرسل الصورة نفسها بعده: تكرارٌ لا كتابة — ولا يسرق رفعَها من صاحبه.
+  const dup = await ev.attachContactPhoto(CTX(LEAD), C_SARA.id, WEBP);
+  assert.deepEqual([dup.added, dup.id, dup.photo_count], [false, r.id, 3]);
+  const newest = await db.get(`SELECT uploaded_by FROM event_blob WHERE kind = 'card' AND ref_id = ?
+     ORDER BY created_at DESC, id DESC LIMIT 1`, [C_SARA.id]);
+  assert.equal(newest.uploaded_by, KHALID.id, 'آخر صورةٍ ليست باسم من رفعها');
   await assert.rejects(() => ev.readContactPhoto(SARA, C_KHALID.id),
     (e) => e.status === 404 && /لا صورة لهذه البطاقة بعد/.test(e.message));
   await assert.rejects(() => ev.readContactPhoto(SARA, 'evc_nope'), (e) => e.status === 404 && /البطاقة غير موجودة/.test(e.message));
@@ -233,23 +256,23 @@ test('الفعالية المُغلقة تقبل صورةً على بطاقةٍ 
 test('عبر الشبكة: التنزيل يعيد البايتات نفسها بالترويسات الستّ، والبصمة العائدة تُردّ بـ«لم تتغيّر»، وبلا جلسة ٤٠١', async () => {
   const r = await http(cardOf(C_SARA.id));
   assert.equal(r.status, 200);
-  assert.equal(r.headers.get('content-type'), 'image/webp');
-  assert.equal(r.headers.get('content-length'), String(WEBP.length));
-  assert.equal(r.headers.get('content-disposition'), `inline; filename="card-${C_SARA.id}.webp"`);
+  assert.equal(r.headers.get('content-type'), 'image/jpeg');
+  assert.equal(r.headers.get('content-length'), String(JPEG.length));
+  assert.equal(r.headers.get('content-disposition'), `inline; filename="card-${C_SARA.id}.jpg"`);
   assert.equal(r.headers.get('x-content-type-options'), 'nosniff');
   assert.equal(r.headers.get('cache-control'), 'private, no-cache');
   assert.equal(r.headers.get('vary'), 'Cookie');
   assert.equal(r.headers.get('set-cookie'), null, 'الردّ العادي لا يحمل كعكة');
-  assert.equal(r.headers.get('etag'), '"' + sha(WEBP) + '"');
-  assert.equal(Buffer.compare(r.buf, WEBP), 0, 'البايتات النازلة ليست هي المحفوظة');
+  assert.equal(r.headers.get('etag'), '"' + sha(JPEG) + '"');
+  assert.equal(Buffer.compare(r.buf, JPEG), 0, 'البايتات النازلة ليست هي المحفوظة');
   const again = await http(cardOf(C_SARA.id), { headers: { 'if-none-match': r.headers.get('etag') } });
   assert.equal(again.status, 304);
   assert.equal(again.buf.length, 0, '«لم تتغيّر» حملت بايتات');
-  assert.equal(again.headers.get('etag'), '"' + sha(WEBP) + '"');
+  assert.equal(again.headers.get('etag'), '"' + sha(JPEG) + '"');
   assert.equal(again.headers.get('cache-control'), 'private, no-cache', '«لم تتغيّر» بلا قاعدة تخزين');
   assert.equal(again.headers.get('vary'), 'Cookie');
-  const stale = await http(cardOf(C_SARA.id), { headers: { 'if-none-match': '"' + sha(JPEG) + '"' } });
-  assert.equal(stale.status, 200, 'بصمةٌ قديمة رُدّت بـ«لم تتغيّر»');
+  const stale = await http(cardOf(C_SARA.id), { headers: { 'if-none-match': '"' + sha(WEBP) + '"' } });
+  assert.equal(stale.status, 200, 'بصمةُ صورةٍ أخرى على البطاقة نفسها رُدّت بـ«لم تتغيّر»');
   assert.equal((await http(cardOf(C_SARA.id), { as: 'viewer' })).status, 200);
   assert.equal((await http(cardOf(C_SARA.id), { as: 'ext' })).status, 403);
   const anon = await http(cardOf(C_SARA.id), { as: null });
@@ -269,10 +292,10 @@ test('عبر الشبكة: حين يجدّد وسيط الجلسة الكعكة 
   assert.match(rolled.headers.get('set-cookie') || '', /sanad_sid=/, 'الكعكة لم تُجدَّد — السيناريو لم يتحقّق');
   assert.equal(rolled.headers.get('cache-control'), 'no-store', 'ردٌّ يحمل كعكة جلسة صار قابلاً للتخزين');
   assert.equal(rolled.headers.get('vary'), 'Cookie');
-  assert.equal(Buffer.compare(rolled.buf, WEBP), 0);
+  assert.equal(Buffer.compare(rolled.buf, JPEG), 0);
   // والبصمة العائدة على ردٍّ يجدّد الكعكة: ٣٠٤ و«لا يُخزَّن» أيضاً.
   await db.run('UPDATE session SET last_seen_at = ?, expires_at = ? WHERE id = ?', [twoHoursAgo, inAnHour, 'sess_sara']);
-  const rolled304 = await http(cardOf(C_SARA.id), { headers: { 'if-none-match': '"' + sha(WEBP) + '"' } });
+  const rolled304 = await http(cardOf(C_SARA.id), { headers: { 'if-none-match': '"' + sha(JPEG) + '"' } });
   assert.equal(rolled304.status, 304);
   assert.match(rolled304.headers.get('set-cookie') || '', /sanad_sid=/);
   assert.equal(rolled304.headers.get('cache-control'), 'no-store');
@@ -288,16 +311,18 @@ test('عبر الشبكة: الرفع جسمٌ خام باسمٍ مرمَّز، 
   const up = await http(cardOf(C_KHALID.id), { method: 'POST', as: 'khalid', body: JPEG,
     headers: { 'content-type': 'image/jpeg', 'x-file-name': encodeURIComponent('بطاقة خالد.jpg') } });
   assert.equal(up.status, 200, JSON.stringify(up.json));
-  assert.deepEqual([up.json.ok, up.json.sha256, up.json.replaced, up.json.mime], [true, sha(JPEG), false, 'image/jpeg']);
+  assert.deepEqual([up.json.ok, up.json.sha256, up.json.added, up.json.mime, up.json.photo_count], [true, sha(JPEG), true, 'image/jpeg', 1]);
+  assert.equal(up.json.url, `/api/events/contacts/${C_KHALID.id}/photos/${up.json.id}`);
   const a = await db.get("SELECT detail_json FROM audit_log WHERE action = 'photo' AND resource_id = ? ORDER BY at DESC LIMIT 1", [C_KHALID.id]);
   assert.equal(JSON.parse(a.detail_json).file_name, 'بطاقة خالد.jpg', 'اسم الملف العربي لم يُفكّ');
   const down = await http(cardOf(C_KHALID.id), { as: 'khalid' });
   assert.equal(down.status, 200);
   assert.equal(Buffer.compare(down.buf, JPEG), 0);
   // application/octet-stream مقبولٌ أيضاً — والنوع الحقيقي من البايتات.
+  await tick();
   const oct = await http(cardOf(C_KHALID.id), { method: 'POST', as: 'khalid', body: PNG, headers: { 'content-type': 'application/octet-stream' } });
   assert.equal(oct.status, 200);
-  assert.deepEqual([oct.json.replaced, oct.json.mime], [true, 'image/png']);
+  assert.deepEqual([oct.json.added, oct.json.mime, oct.json.photo_count], [true, 'image/png', 2]);
   // ملفٌّ نصّي بترويسة image/jpeg واسم photo.jpg: الشمّ يحسم.
   const lie = await http(cardOf(C_KHALID.id), { method: 'POST', as: 'khalid', body: TEXT, headers: { 'content-type': 'image/jpeg', 'x-file-name': 'photo.jpg' } });
   assert.equal(lie.status, 400);
@@ -311,13 +336,18 @@ test('عبر الشبكة: الرفع جسمٌ خام باسمٍ مرمَّز، 
   const big = await http(cardOf(C_KHALID.id), { method: 'POST', as: 'khalid', body: huge, headers: { 'content-type': 'image/jpeg' } });
   assert.equal(big.status, 400, `الجسم الضخم رُدّ بـ${big.status}`);
   assert.match(big.json.error.message, /8 ميغابايت/);
-  // الزميل ٤٠٣، وبلا جلسة ٤٠١ — وكلاهما قبل أي كتابة.
+  // الزميل يمرّ (v5.67) — وهذه صورة الغلاف نفسها فتُردّ تكراراً بلا كتابة؛ والمشاهد ٤٠٣،
+  // وبلا جلسة ٤٠١ — وكلاهما قبل أي كتابة.
   const other = await http(cardOf(C_SARA.id), { method: 'POST', as: 'khalid', body: JPEG, headers: { 'content-type': 'image/jpeg' } });
-  assert.equal(other.status, 403);
+  assert.equal(other.status, 200, JSON.stringify(other.json));
+  assert.equal(other.json.added, false);
+  const viewer = await http(cardOf(C_SARA.id), { method: 'POST', as: 'viewer', body: WEBP, headers: { 'content-type': 'image/webp' } });
+  assert.equal(viewer.status, 403);
+  assert.match(viewer.json.error.message, /ليس ضمن صلاحيتك/);
   const anon = await http(cardOf(C_KHALID.id), { method: 'POST', as: null, body: JPEG, headers: { 'content-type': 'image/jpeg' } });
   assert.equal(anon.status, 401);
-  assert.equal((await ev.readContactPhoto(KHALID, C_KHALID.id)).sha256, sha(PNG), 'رفضٌ كتب فوق الصورة');
-  assert.equal((await ev.readContactPhoto(SARA, C_SARA.id)).sha256, sha(WEBP));
+  assert.equal((await ev.readContactPhoto(KHALID, C_KHALID.id)).sha256, sha(JPEG), 'رفضٌ كتب فوق الغلاف');
+  assert.equal((await ev.readContactPhoto(SARA, C_SARA.id)).sha256, sha(JPEG));
 });
 
 test('عبر الشبكة: جسمٌ مضغوط أو بترميزٍ مجهول يُردّ ٤٠٠ بالعربية لا ٤١٥ بالإنجليزية — وبلا كلمةٍ تقنية في الردّ', async () => {
@@ -333,14 +363,14 @@ test('عبر الشبكة: جسمٌ مضغوط أو بترميزٍ مجهول ي
     headers: { 'content-type': 'image/png', 'x-title': 'x', 'content-encoding': 'gzip' } });
   assert.equal(q.status, 400);
   assert.match(q.json.error.message, /تعذّر استلام الصورة/);
-  assert.equal((await ev.readContactPhoto(KHALID, C_KHALID.id)).sha256, sha(PNG), 'رفضُ الاستلام كتب فوق الصورة');
+  assert.equal((await ev.readContactPhoto(KHALID, C_KHALID.id)).sha256, sha(JPEG), 'رفضُ الاستلام كتب فوق الغلاف');
   assert.equal(await blobs("WHERE kind = 'qr'"), 0, 'رفضُ الاستلام كتب رمزاً');
 });
 
-test('حذف البطاقة يمحو صورتها فعلاً', async () => {
-  assert.equal(await blobs("WHERE kind = 'card' AND ref_id = ?", [C_KHALID.id]), 1);
+test('حذف البطاقة يمحو صورها كلها فعلاً', async () => {
+  assert.equal(await blobs("WHERE kind = 'card' AND ref_id = ?", [C_KHALID.id]), 2);
   await ev.deleteContact(CTX(KHALID), C_KHALID.id);
-  assert.equal(await blobs("WHERE kind = 'card' AND ref_id = ?", [C_KHALID.id]), 0, 'الصورة بقيت بلا بطاقة');
+  assert.equal(await blobs("WHERE kind = 'card' AND ref_id = ?", [C_KHALID.id]), 0, 'صورةٌ بقيت بلا بطاقة');
   await assert.rejects(() => ev.readContactPhoto(SARA, C_KHALID.id), (e) => e.status === 404);
   assert.equal((await http(cardOf(C_KHALID.id))).status, 404);
 });
@@ -515,7 +545,7 @@ test('سقف رموز الجناح: عند بلوغه يُردّ بالعربي�
   await ev.deleteEvent(CTX(LEAD), E.id);
 });
 
-test('ميزانية اليوم لكل حساب: الثالثة تُردّ بالعربية، وإعادةُ الصورة نفسها لا تُحتسب، واستبدالُ صورةٍ لا يُحتسب ملفاً، والبايتات تُحاسَب — ورمز الكشك بالميزانية نفسها', async () => {
+test('ميزانية اليوم لكل حساب: الثالثة تُردّ بالعربية، وإعادةُ الصورة نفسها لا تُحتسب، وكل صورةٍ جديدة تُحتسب ولو على بطاقةٍ مصوَّرة، والبايتات تُحاسَب — ورمز الكشك بالميزانية نفسها', async () => {
   const DANA = user('u_dana', 'consultant', { name_ar: 'دانة' });
   await db.insert('app_user', { id: DANA.id, username: DANA.username, name_ar: DANA.name_ar, role_id: DANA.role_id,
     sector_id: DANA.sector_id, scope: DANA.scope, active: 1, created_at: T });
@@ -535,20 +565,21 @@ test('ميزانية اليوم لكل حساب: الثالثة تُردّ با�
     assert.equal(await mine(), 2, 'الرفض كتب');
     assert.equal(await audits('photo', 'event_contact', cards[2].id), before, 'الرفض ترك أثراً');
     // الصورة نفسها مرةً ثانية: لا كتابة ولا اصطدام بالميزانية.
-    assert.equal((await ev.attachContactPhoto(CTX(DANA), cards[0].id, Buffer.from(JPEG))).replaced, false);
-    // استبدالٌ عند السقف: الملفّ المستبدَل يزول مع الكتابة نفسها فلا يُحتسب ملفاً جديداً.
-    const rep = await ev.attachContactPhoto(CTX(DANA), cards[0].id, WEBP);
-    assert.deepEqual([rep.replaced, rep.mime], [true, 'image/webp']);
-    assert.equal(await mine(), 2);
+    assert.equal((await ev.attachContactPhoto(CTX(DANA), cards[0].id, Buffer.from(JPEG))).added, false);
+    // وصورةٌ ثانية على بطاقةٍ مصوَّرة: إضافةٌ صافية منذ v5.67 — تُحتسب ملفاً، فتُردّ عند السقف.
+    await assert.rejects(() => ev.attachContactPhoto(CTX(DANA), cards[0].id, WEBP),
+      (e) => e.status === 400 && /حدّ رفع الصور لليوم/.test(e.message), 'الإضافة على بطاقةٍ مصوَّرة لم تُحتسب');
+    assert.equal(await mine(), 2, 'الرفض كتب');
     // وعبر الشبكة الرسالة نفسها.
     const r = await http(cardOf(cards[2].id), { method: 'POST', as: 'dana', body: PNG, headers: { 'content-type': 'image/png' } });
     assert.equal(r.status, 400);
     assert.match(r.json.error.message, /حدّ رفع الصور لليوم/);
     // الحدّ بالبايتات: عدد الملفات دون السقف لكن ما تبقّى من الميزانية أقلّ من الصورة القادمة.
+    const used = JPEG.length + PNG.length;   // ما رفعته دانة فعلاً: صورةٌ على الأولى وأخرى على الثانية
     ev.UPLOAD_LIMITS.dailyFiles = 300;
-    ev.UPLOAD_LIMITS.dailyBytes = WEBP.length + PNG.length + JPEG.length - 1;
+    ev.UPLOAD_LIMITS.dailyBytes = used + JPEG.length - 1;
     await assert.rejects(() => ev.attachContactPhoto(CTX(DANA), cards[2].id, JPEG), (e) => e.status === 400 && /لليوم/.test(e.message));
-    ev.UPLOAD_LIMITS.dailyBytes = WEBP.length + PNG.length + JPEG.length;
+    ev.UPLOAD_LIMITS.dailyBytes = used + JPEG.length;
     assert.equal((await ev.attachContactPhoto(CTX(DANA), cards[2].id, JPEG)).ok, true, 'ما يملأ الميزانية تماماً يُقبل');
     assert.equal(await mine(), 3);
     await assert.rejects(() => ev.attachContactPhoto(CTX(DANA), cards[3].id, PNG), (e) => e.status === 400 && /لليوم/.test(e.message));
@@ -561,7 +592,7 @@ test('ميزانية اليوم لكل حساب: الثالثة تُردّ با�
     ev.UPLOAD_LIMITS.dailyFiles = saved.dailyFiles;
     assert.ok((await ev.addQr(CTX(LEAD), E.id, PNG, { title: 'رمز ضمن الميزانية' })).id);
   } finally { Object.assign(ev.UPLOAD_LIMITS, saved); }
-  assert.deepEqual(ev.UPLOAD_LIMITS, { qrPerEvent: 12, dailyFiles: 300, dailyBytes: 500 * 1024 * 1024 });
+  assert.deepEqual(ev.UPLOAD_LIMITS, { qrPerEvent: 12, photosPerCard: 6, dailyFiles: 300, dailyBytes: 500 * 1024 * 1024 });
   await ev.deleteEvent(CTX(LEAD), E.id);
 });
 
@@ -583,7 +614,7 @@ test('حذف الفعالية يمحو كل صورها ورموزها فعلاً
   assert.ok((await db.get('SELECT deleted_at FROM event WHERE id = ?', [E.id])).deleted_at, 'الفعالية حُذفت حذفاً صلباً');
 });
 
-test('كل كتابةٍ على الصور لها أثر — إرفاقاً واستبدالاً وإنشاء رمز وحذفه — ولا أثر لمن رُدّ', async () => {
+test('كل كتابةٍ على الصور لها أثر — إرفاقاً وإضافةً وإنشاء رمز وحذفه — ولا أثر لمن رُدّ', async () => {
   assert.ok(await n("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'photo' AND resource = 'event_contact'") >= 5);
   assert.ok(await n("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'create' AND resource = 'event_blob'") >= 3);
   assert.ok(await n("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'delete' AND resource = 'event_blob'") >= 2);

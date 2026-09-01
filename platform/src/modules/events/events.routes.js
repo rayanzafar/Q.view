@@ -79,12 +79,19 @@ eventsRouter.patch('/events/contacts/:cid', h((req) => ev.updateContact(req.ctx,
 eventsRouter.post('/events/contacts/:cid/outcome', h((req) => ev.setOutcome(req.ctx, req.params.cid, req.body || {})));
 eventsRouter.delete('/events/contacts/:cid', h((req) => ev.deleteContact(req.ctx, req.params.cid)));
 
-// صورة البطاقة: رفعٌ خام، وتنزيلٌ ببصمة
+// صور البطاقة (v5.67): رفعٌ خام يُضيف ولا يستبدل، وغلافٌ يُنزَّل ببصمته، وقائمةٌ بها، وكلُّ
+// صورةٍ بعينها ببايتاتها — وحذفُ واحدةٍ. و«photo» المفردة عنوانُ الغلاف الثابت الذي تبنيه
+// الشاشة في المصغَّرات، و«photos» عنوانُ القائمة وما تحتها — والاثنان حرفيان لا يلتبسان.
 eventsRouter.post('/events/contacts/:cid/photo', imageBody,
   h((req) => ev.attachContactPhoto(req.ctx, req.params.cid, req.body, { fileName: hdr(req, 'x-file-name') })));
 eventsRouter.get('/events/contacts/:cid/photo', image(
   (req) => ev.readContactPhoto(req.ctx.user, req.params.cid),
   (req) => ['card-' + safeName(req.params.cid), null]));
+eventsRouter.get('/events/contacts/:cid/photos', h((req) => ev.listContactPhotos(req.ctx.user, req.params.cid)));
+eventsRouter.get('/events/contacts/:cid/photos/:bid', image(
+  (req) => ev.readContactPhoto(req.ctx.user, req.params.cid, req.params.bid),
+  (req) => ['card-' + safeName(req.params.bid), null]));
+eventsRouter.delete('/events/contacts/:cid/photos/:bid', h((req) => ev.deleteContactPhoto(req.ctx, req.params.cid, req.params.bid)));
 
 // الشراكة الواحدة
 eventsRouter.patch('/events/partners/:pid', h((req) => ev.updatePartner(req.ctx, req.params.pid, req.body || {})));

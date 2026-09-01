@@ -106,9 +106,12 @@ test('الترحيلة ٠٣٨ مطبَّقة مرة واحدة، وملفها ب
   const idx = (await db.all(`SELECT name FROM sqlite_master WHERE type = 'index'
      AND (name LIKE 'ix_ev%' OR name LIKE 'ux_ev%' OR name = 'ix_event_dates') ORDER BY name`)).map((r) => r.name);
   for (const must of ['ix_event_dates', 'ix_evc_event_time', 'ix_evc_event_phone', 'ix_evc_event_name', 'ix_evc_event_email',
-    'ix_evc_captured_by', 'ux_evc_capture_key', 'ix_evp_event', 'ux_evb_ref', 'ix_evb_event']) {
+    'ix_evc_captured_by', 'ux_evc_capture_key', 'ix_evp_event', 'ix_evb_ref', 'ix_evb_event']) {
     assert.ok(idx.includes(must), `الفهرس ${must} غائب`);
   }
+  // والفهرس الفريد على (kind, ref_id) أُسقط في الترحيلة ٠٤١ — بقاؤه يعني أن البطاقة ما زالت
+  // تحمل صورةً واحدة تمحو ما قبلها (حادثة LEAP)، وأن إدراج الصورة الثانية سيُردّ.
+  assert.ok(!idx.includes('ux_evb_ref'), 'الفهرس الفريد ux_evb_ref ما زال قائماً — الترحيلة ٠٤١ لم تُطبَّق');
 });
 
 // ── الفعالية ──────────────────────────────────────────────────────────────────
@@ -318,21 +321,33 @@ test('نصّ البطاقة الخام لا يتغيّر بالتعديل — و
   assert.deepEqual(JSON.parse(a.detail_json).fields, ['phone']);
 });
 
-test('الملكية: الملتقِط يعدّل ويحذف، والزميل يُرَدّ، وقائد القطاع يعدّل — والرفض قبل أي كتابة', async () => {
-  await assert.rejects(() => ev.updateContact(CTX(KHALID), C1.id, { note: 'من زميل' }),
-    (e) => e.status === 403 && /لمن التقطها/.test(e.message));
-  await assert.rejects(() => ev.setOutcome(CTX(KHALID), C1.id, { outcome: 'تواصلنا' }), (e) => e.status === 403);
-  await assert.rejects(() => ev.deleteContact(CTX(KHALID), C1.id),
-    (e) => e.status === 403 && /لمن التقطها/.test(e.message));
-  await assert.rejects(() => ev.updateContact(CTX(VIEWER), C1.id, { note: 'من مشاهد' }), (e) => e.status === 403);
+// v5.67: البطاقة أمانةُ الفريق لا أمانةُ ملتقِطها — التعديل بمنح المصفوفة وحده، والحذف على
+// قاعدة الملكية كما كان (ADR-0013، تعديل ٢٠٢٦-٠٨-٣١).
+test('التعديل بالمنح لا بالملكية: المشاهد والخارجي يُرَدّان قبل أي كتابة، ثم الزميل يعدّل بطاقة زميله ويحسم حالها، والملتقِط وقائد القطاع كما كانا', async () => {
+  // ① الرفض أولاً — ولا يكتب شيئاً.
+  await assert.rejects(() => ev.updateContact(CTX(VIEWER), C1.id, { note: 'من مشاهد' }),
+    (e) => e.status === 403 && /ليس ضمن صلاحيتك/.test(e.message), 'المشاهد عدّل بطاقة غيره');
+  await assert.rejects(() => ev.setOutcome(CTX(VIEWER), C1.id, { outcome: 'تواصلنا' }),
+    (e) => e.status === 403 && /ليس ضمن صلاحيتك/.test(e.message));
   await assert.rejects(() => ev.updateContact(CTX(EXT), C1.id, { note: 'من خارجي' }),
     (e) => e.status === 403 && /خارج صلاحياتك/.test(e.message));
+  // والحذف يبقى على قاعدته: الزميل لا يحذف بطاقة زميله وإن كان يعدّلها.
+  await assert.rejects(() => ev.deleteContact(CTX(KHALID), C1.id),
+    (e) => e.status === 403 && /لمن التقطها/.test(e.message), 'الزميل حذف بطاقة زميله');
   const row = await db.get('SELECT note, outcome, deleted_at FROM event_contact WHERE id = ?', [C1.id]);
   assert.equal(row.note, 'ملاحظة محدَّثة', 'الرفض كتب');
   assert.equal(row.outcome, 'لم تُراجع');
   assert.equal(row.deleted_at, null);
+  // ② ثم النجاح: الزميل يصحّح بطاقة زميله ويحسم حالها — هذا ما تغيّر في v5.67.
+  assert.equal((await ev.updateContact(CTX(KHALID), C1.id, { note: 'من زميل' })).note, 'من زميل');
+  const o = await ev.setOutcome(CTX(KHALID), C1.id, { outcome: 'تواصلنا' });
+  assert.deepEqual([o.outcome, o.outcome_by], ['تواصلنا', KHALID.id], 'الزميل حسم الحال ولم يُسجَّل باسمه');
+  // ③ وقائد القطاع والملتقِط كما كانا.
   assert.equal((await ev.updateContact(CTX(LEAD), C1.id, { note: 'من قائد القطاع' })).note, 'من قائد القطاع');
   assert.equal((await ev.updateContact(CTX(KHALID), C2.id, { note: 'خالد يعدّل بطاقته' })).note, 'خالد يعدّل بطاقته');
+  // وحال C1 يعود «لم تُراجع» كي تبقى بقية الملف على ما بُنيت عليه.
+  await ev.setOutcome(CTX(SARA), C1.id, { outcome: 'لم تُراجع' });
+  assert.equal((await db.get('SELECT outcome FROM event_contact WHERE id = ?', [C1.id])).outcome, 'لم تُراجع');
 });
 
 test('المشاهد يقرأ ولا يلتقط، والخارجي لا يقرأ شيئاً', async () => {
@@ -509,7 +524,7 @@ test('كل كتابة تترك أثراً — إنشاءً وتعديلاً وح
 // ── المصفوفة قبل الملكية (S1) ────────────────────────────────────────────────
 test('المصفوفة أولاً ثم الملكية: رئيس تطوير الأعمال يعدّل بطاقة غيره ولا يحذفها، والمشاهد لا يعدّل بطاقته، وقائد القطاع يحذف بطاقة غيره', async () => {
   const mine = (await ev.createContact(CTX(SARA), EV1.id, { kind: 'تعاون', person_name: 'بطاقة سارة للملكية' })).contact;
-  // رئيس تطوير الأعمال: منح التعديل + دور مراجعة ⟵ يعدّل؛ ولا منح حذف ⟵ لا يحذف بطاقة غيره.
+  // رئيس تطوير الأعمال: منح التعديل ⟵ يعدّل؛ ولا منح حذف ⟵ لا يحذف بطاقة غيره.
   assert.equal((await ev.updateContact(CTX(BD_HEAD), mine.id, { note: 'من رئيس تطوير الأعمال' })).note, 'من رئيس تطوير الأعمال');
   await assert.rejects(() => ev.deleteContact(CTX(BD_HEAD), mine.id),
     (e) => e.status === 403 && /لمن التقطها/.test(e.message), 'رئيس تطوير الأعمال حذف بطاقة غيره بلا منح حذف');
@@ -522,7 +537,7 @@ test('المصفوفة أولاً ثم الملكية: رئيس تطوير ال�
   const vid = 'evc_viewer_owned';
   await db.insert('event_contact', { id: vid, event_id: EV1.id, kind: 'تعاون', person_name: 'بطاقة التقطها مشاهد',
     outcome: 'لم تُراجع', captured_by: VIEWER.id, captured_by_name: 'مشاهد', captured_at: T });
-  await assert.rejects(() => ev.updateContact(CTX(VIEWER), vid, { note: 'من صاحبها المشاهد' }), (e) => e.status === 403 && /لمن التقطها/.test(e.message));
+  await assert.rejects(() => ev.updateContact(CTX(VIEWER), vid, { note: 'من صاحبها المشاهد' }), (e) => e.status === 403 && /ليس ضمن صلاحيتك/.test(e.message));
   await assert.rejects(() => ev.setOutcome(CTX(VIEWER), vid, { outcome: 'تواصلنا' }), (e) => e.status === 403);
   await assert.rejects(() => ev.deleteContact(CTX(VIEWER), vid), (e) => e.status === 403);
   const vrow = await db.get('SELECT note, outcome, deleted_at FROM event_contact WHERE id = ?', [vid]);
@@ -664,7 +679,8 @@ test('العزل: سيناريو كامل في الفعاليات لا يحرّ�
   assert.equal(b2.possible_duplicate_of, null);
   const p1 = await ev.createPartner(CTX(SARA), A.id, { org_name: 'عميل شاهد', partner_kind: 'شراكة تقنية', contact_id: a1.id });
   const p2 = await ev.createPartner(CTX(KHALID), B.id, { org_name: 'مشروع شاهد', status: 'قيد النقاش' });
-  // صورٌ (E2): بطاقتان مصوَّرتان واستبدالُ إحداهما، ورمزا كشك — أحدهما يُحذف بنفسه والآخر مع فعاليته.
+  // صورٌ (E2): بطاقتان مصوَّرتان وصورةٌ ثانية على إحداهما (تُضاف ولا تستبدل منذ v5.67)، ورمزا
+  // كشك — أحدهما يُحذف بنفسه والآخر مع فعاليته.
   await ev.attachContactPhoto(CTX(SARA), a1.id, IMG(1), { fileName: 'card.jpg' });
   await ev.attachContactPhoto(CTX(KHALID), a2.id, IMG(2));
   await ev.attachContactPhoto(CTX(LEAD), a1.id, IMG(3));
@@ -690,9 +706,9 @@ test('العزل: سيناريو كامل في الفعاليات لا يحرّ�
   // والجهة الأخرى تحرّكت فعلاً — وإلا فالفحص يقارن سكوناً بسكون.
   assert.ok(Number((await db.get('SELECT COUNT(*) AS n FROM event_contact')).n) >= 13);
   // والصور تحرّكت وزالت في مكانها: صورة a2 ذهبت مع بطاقتها، ورمز B ذهب مع فعاليته، ورمز A حُذف
-  // بنفسه — وصورة a1 (المستبدَلة) باقية صفّاً واحداً.
+  // بنفسه — وبطاقة a1 تحمل صورتيها معاً (الثانية أُضيفت ولم تمحُ الأولى — الترحيلة ٠٤١).
   const blobs = async (where, params) => Number((await db.get(`SELECT COUNT(*) AS n FROM event_blob ${where}`, params)).n);
-  assert.equal(await blobs('WHERE ref_id = ?', [a1.id]), 1);
+  assert.equal(await blobs('WHERE ref_id = ?', [a1.id]), 2);
   assert.equal(await blobs('WHERE ref_id = ?', [a2.id]), 0);
   assert.equal(await blobs('WHERE event_id = ?', [B.id]), 0);
   assert.equal(await blobs("WHERE event_id = ? AND kind = 'qr'", [A.id]), 0);
@@ -733,13 +749,16 @@ test('ومسارات الفعاليات مركَّبة فعلاً تحت واج�
   apiRouter.stack.forEach(walk);
   for (const p of ['/events', '/events/:id', '/events/:id/contacts', '/events/:id/contacts/recent', '/events/contacts/:cid',
     '/events/contacts/:cid/outcome', '/events/parse-card', '/events/:id/partners', '/events/partners/:pid', '/events/:id/close',
-    '/events/contacts/:cid/photo', '/events/:id/qr', '/events/:id/qr/:bid',
+    '/events/contacts/:cid/photo', '/events/contacts/:cid/photos', '/events/contacts/:cid/photos/:bid',
+    '/events/:id/qr', '/events/:id/qr/:bid',
     '/events/:id/meetings', '/events/meetings/:mid', '/events/meetings/check']) {
     assert.ok(paths.includes(p), `المسار ${p} غير مركَّب في api.routes.js`);
   }
   assert.ok(paths.indexOf('/events/parse-card') < paths.indexOf('/events/:id'), '«parse-card» بعد «:id» فيُقرأ معرّفاً');
   assert.ok(paths.indexOf('/events/contacts/:cid') < paths.indexOf('/events/:id'), '«contacts» بعد «:id» فيُقرأ معرّفاً');
   assert.ok(paths.indexOf('/events/contacts/:cid/photo') < paths.indexOf('/events/:id'), '«contacts/…/photo» بعد «:id» فيُقرأ معرّفاً');
+  assert.ok(paths.indexOf('/events/contacts/:cid/photos') < paths.indexOf('/events/:id'), '«contacts/…/photos» بعد «:id» فيُقرأ معرّفاً');
+  assert.ok(paths.indexOf('/events/contacts/:cid/photos/:bid') < paths.indexOf('/events/:id'), '«contacts/…/photos/:bid» بعد «:id» فيُقرأ معرّفاً');
   assert.ok(paths.indexOf('/events/meetings/check') < paths.indexOf('/events/meetings/:mid'), '«meetings/check» بعد «:mid» فيُقرأ معرّفاً');
   assert.ok(paths.indexOf('/events/meetings/:mid') < paths.indexOf('/events/:id'), '«meetings» بعد «:id» فيُقرأ معرّفاً');
 });

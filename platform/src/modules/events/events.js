@@ -13,13 +13,19 @@
 //   • الإدارة (إنشاء فعالية/تعديلها/إغلاقها/حذفها): منح على «فعالية» — لمدير النظام وقادة
 //     القطاعات ومكتب الرئيس (ورئيس تطوير الأعمال بلا حذف — قاعدته العامة في المصفوفة).
 //   • الالتقاط: منح «إنشاء» على الجهة الملتقطة أو الشراكة — كل حسابٍ تشغيلي؛ المشاهد يقرأ ولا يلتقط.
-//   • التعديل على البطاقة: منحُ «تعديل» من المصفوفة **ثم** مِلكيةٌ أو قيادة — من التقطها، أو
-//     أدوار المراجعة (REVIEW_ROLES). فالبطاقة أمانة ملتقِطها حتى تُراجَع، ومراجعتها شأن قيادة
-//     الفريق — والمصفوفة أولاً: من فقد منحَ التعديل (كالمشاهد) لا تفتحه له ملكيته.
-//   • الحذف: المالك بمنح التعديل، أو من يحمل منحَ «حذف» من المصفوفة (قائد القطاع ومكتب
-//     الرئيس). ورئيس تطوير الأعمال يعدّل كل بطاقة ولا يحذف إلا بطاقته — قاعدته العامة.
-//   • الصور (E2): صورةُ البطاقة بمنح تعديلها نفسِه (الملتقِط أو المراجِع)؛ ورموزُ الكشك بمنح
-//     تعديل الفعالية — من يدير الفعالية يقرّر ما يُعرض في جناحها. والقراءة لكل من يقرأ الفعالية.
+//   • التعديل على البطاقة (v5.67): منحُ «تعديل» على الجهة الملتقطة من المصفوفة **وحده**، بلا
+//     مِلكية — كل حسابٍ تشغيلي يحمله، والمشاهد لا. وسببُه من LEAP: البطاقة تُلتقط في الزحام
+//     ناقصةً أو بحرفٍ مقلوب، ويصحّحها من يجلس إليها بعد المعرض. فردُّ زميلٍ عن تصحيح رقمٍ
+//     لأن غيره هو من صوّرها يُبقي الخطأ حيّاً إلى الأبد ويُحوّل الصواب إلى انتظار. البطاقة
+//     أمانةُ الفريق لا أمانةُ ملتقِطها (ADR-0013، تعديل ٢٠٢٦-٠٨-٣١).
+//   • الحذف: كما كان — المالك بمنح التعديل، أو من يحمل منحَ «حذف» من المصفوفة (قائد القطاع
+//     ومكتب الرئيس). فالتصحيح يُبقي البطاقة والحذفُ يُغيّبها، وبابُ ما لا يُستعاد أضيق.
+//     ورئيس تطوير الأعمال يعدّل كل بطاقة ولا يحذف إلا بطاقته — قاعدته العامة.
+//   • الشراكة: على قاعدتها القديمة نفسِها — منحُ «تعديل» ثم مِلكيةٌ أو دورُ مراجعة (REVIEW_ROLES).
+//   • الصور (E2، وقائمةً منذ v5.67): للبطاقة صورٌ لا صورةٌ واحدة — ستٌّ حدّاً أعلى، تُضاف ولا
+//     تستبدل، وغلافُها أقدمُها (يُحسب عند القراءة ولا يُخزَّن). إضافتُها وحذفُ واحدةٍ منها
+//     بمنح تعديل البطاقة نفسِه؛ ورموزُ الكشك بمنح تعديل الفعالية — من يدير الفعالية يقرّر ما
+//     يُعرض في جناحها. والقراءة — الغلافُ وكلُّ صورةٍ بعينها — لكل من يقرأ الفعالية.
 //
 // ── كشف التكرار: داخل الفعالية الواحدة، وبثلاثة مفاتيح ──────────────────────────────────
 // في معرضٍ يلتقط ثلاثة زملاء البطاقة نفسها. فكل التقاطٍ يُسأل: هل في هذه الفعالية بطاقةٌ
@@ -120,9 +126,13 @@ function assertManage(user, action) {
 function assertCapture(user, resource) {
   if (!can(user, 'create', resource)) throw forbidden('صلاحيتك للمشاهدة فقط — اطلب من مدير النظام صلاحية الالتقاط');
 }
-// الملكية لا تُعوِّض منحاً غائباً: المصفوفة تُسأل أولاً، ثم من التقط أو من يراجع.
+// الشراكة: الملكية لا تُعوِّض منحاً غائباً — المصفوفة تُسأل أولاً، ثم من سجّل أو من يراجع.
 const mayEdit = (user, row, resource) => can(user, 'update', resource)
   && (row.captured_by === user.id || REVIEW_ROLES.includes(user.role_id));
+// البطاقة (v5.67): المصفوفة وحدها، بلا صفٍّ هدف ولا مِلكية — من يحمل منحَ التعديل يصحّح أي
+// بطاقة ويدير صورها. سؤالٌ وجوديّ لا سؤالُ نطاق: المعرض معرضُ الشركة كلها (قرار المصفوفة).
+const mayEditContact = (user) => can(user, 'update', 'event_contact');
+const EDIT_DENIED = 'تعديل البطاقات ليس ضمن صلاحيتك — اطلب الصلاحية من مدير النظام';
 const mayDelete = (user, row, resource) => (row.captured_by === user.id && can(user, 'update', resource))
   || can(user, 'delete', resource);
 
@@ -278,11 +288,21 @@ const CONTACT_LIST_COLS = ['id', 'event_id', 'kind', 'person_name', 'org_name', 
   'captured_by', 'captured_by_name', 'captured_at', 'updated_at'];
 const CONTACT_FULL_COLS = [...CONTACT_LIST_COLS, 'phone_norm', 'email_norm', 'name_norm', 'org_norm', 'raw_text'];
 const HAS_PHOTO = (a) => `CASE WHEN EXISTS (SELECT 1 FROM event_blob b WHERE b.kind = 'card' AND b.ref_id = ${a}.id) THEN 1 ELSE 0 END AS has_photo`;
-// بصمة الصورة مع الصفّ: الشاشة تبني بها رابط المصغَّرة فيتغيّر الرابط حين تتغيّر الصورة — وإلا
-// أبقى المتصفّح صورةً قديمة من ذاكرته بعد الاستبدال. فارغةٌ حين لا صورة.
-const PHOTO_SHA = (a) => `(SELECT b.sha256 FROM event_blob b WHERE b.kind = 'card' AND b.ref_id = ${a}.id) AS photo_sha`;
+// بصمة الغلاف مع الصفّ: الشاشة تبني بها رابط المصغَّرة فيتغيّر الرابط حين يتغيّر الغلاف — وإلا
+// أبقى المتصفّح صورةً قديمة من ذاكرته. فارغةٌ حين لا صورة.
+// و«ORDER BY … LIMIT 1» شرطُ صحّةٍ لا زينة منذ الترحيلة ٠٤١: البطاقة صارت تحمل صوراً عدّة،
+// واستعلامٌ فرعيّ في قائمة الأعمدة يعيد صفّين يُسقط الطلب كله على بوستجريس بالرمز 21000
+// («أعاد الاستعلام الفرعي أكثر من صفّ») — وسكويلايت يبتلعها صامتاً بصفٍّ عشوائي، وهو أسوأ.
+// والترتيب هو ترتيب الغلاف نفسه في كل موضع: الأقدم أولاً، والمعرّف فاصلاً عند تساوي اللحظة.
+const PHOTO_SHA = (a) => `(SELECT b.sha256 FROM event_blob b WHERE b.kind = 'card' AND b.ref_id = ${a}.id
+     ORDER BY b.created_at ASC, b.id ASC LIMIT 1) AS photo_sha`;
+// وعددُ الصور: الشاشة تكتب «٣ صور» على المصغَّرة، والعدّ في الاستعلام أرخص من قراءة صفوفها.
+const PHOTO_COUNT = (a) => `(SELECT COUNT(*) FROM event_blob b WHERE b.kind = 'card' AND b.ref_id = ${a}.id) AS photo_count`;
 const contactSelect = (a = 'c', full = false) =>
-  `${(full ? CONTACT_FULL_COLS : CONTACT_LIST_COLS).map((k) => `${a}.${k}`).join(', ')}, ${HAS_PHOTO(a)}, ${PHOTO_SHA(a)}`;
+  `${(full ? CONTACT_FULL_COLS : CONTACT_LIST_COLS).map((k) => `${a}.${k}`).join(', ')}, ${HAS_PHOTO(a)}, ${PHOTO_SHA(a)}, ${PHOTO_COUNT(a)}`;
+// العدّادان رقمان دائماً: سكويلايت يعيد عدداً، وبوستجريس يعيد عدداً كذلك — والتصريح هنا يجعل
+// الشاشة تقرأ رقماً بلا سؤال عن المحرّك، وCASE يعود ٠ أو ١ لا صواباً وخطأً.
+const normRow = (r) => (r ? { ...r, has_photo: Number(r.has_photo || 0), photo_count: Number(r.photo_count || 0) } : r);
 const CONTACT_TEXT = ['person_name', 'org_name', 'job_title', 'phone', 'email', 'website'];
 
 // البطاقة تحت فعاليةٍ محذوفة محذوفةٌ معها: الربط بالفعالية شرطُ القراءة لا زينة — وإلا فُتحت
@@ -292,7 +312,7 @@ async function loadContact(cid) {
      JOIN event e ON e.id = c.event_id AND e.deleted_at IS NULL
      WHERE c.id = ? AND c.deleted_at IS NULL`, [String(cid || '')]);
   if (!row) throw notFound('البطاقة غير موجودة');
-  return row;
+  return normRow(row);
 }
 const normsOf = (f) => ({
   phone_norm: normalizePhone(f.phone),
@@ -360,10 +380,10 @@ export async function listContacts(user, eventId, opts = {}) {
   if (truthy(opts.dup)) where.push('c.possible_duplicate_of IS NOT NULL');
   // الحدّ عددٌ صحيح دائماً — «1.5» في العنوان لا يصل إلى الاستعلام نصاً.
   const limit = Math.max(1, Math.min(500, Math.floor(Number(opts.limit)) || 100));
-  return all(`SELECT ${contactSelect('c')} FROM event_contact c
+  return (await all(`SELECT ${contactSelect('c')} FROM event_contact c
      WHERE ${where.join(' AND ')}
      ORDER BY c.captured_at DESC, c.id DESC
-     LIMIT ${limit}`, params);
+     LIMIT ${limit}`, params)).map(normRow);
 }
 
 // «آخر ما التقطت» + عدّاد الفريق اليوم — ما يراه الملتقِط تحت النموذج بين لقاءين.
@@ -377,15 +397,16 @@ export async function recentContacts(user, eventId, opts = {}) {
      LIMIT ${limit}`, [ev.id, user.id]);
   const teamToday = await count(`SELECT COUNT(*) AS n FROM event_contact
      WHERE event_id = ? AND deleted_at IS NULL AND substr(captured_at, 1, 10) = ?`, [ev.id, today()]);
-  return { rows, teamToday };
+  return { rows: rows.map(normRow), teamToday };
 }
 
-// مع البطاقة الواحدة حكمُ التعديل جاهزاً: نافذةُ المراجعة تعرض الحقول للكتابة أو للقراءة
-// بحسبه، والقرار قرارُ الخدمة نفسها (mayEdit) لا تخمينُ الشاشة.
+// مع البطاقة الواحدة حكمُ التعديل جاهزاً وقائمةُ صورها كاملةً: نافذةُ المراجعة تعرض الحقول
+// للكتابة أو للقراءة بحسب الحكم، وتعرض الصور شريطاً بغلافها أولاً — والقرار قرارُ الخدمة
+// نفسها (mayEditContact) لا تخمينُ الشاشة، والصورُ نداءٌ واحد لا نداءان.
 export async function getContact(user, cid) {
   assertRead(user);
   const row = await loadContact(cid);
-  return { ...row, may_edit: mayEdit(user, row, 'event_contact') };
+  return { ...row, may_edit: mayEditContact(user), photos: await contactPhotos(row) };
 }
 
 // خرقُ التفرّد على (event_id, capture_key): سكويلايت يقولها في نصّ الخطأ، وبوستجريس برمزه.
@@ -458,7 +479,7 @@ export async function updateContact(ctx, cid, patch = {}) {
   const user = ctx.user;
   assertRead(user);
   const row = await loadContact(cid);
-  if (!mayEdit(user, row, 'event_contact')) throw forbidden('تعديل هذه البطاقة لمن التقطها أو لقيادة الفريق');
+  if (!mayEditContact(user)) throw forbidden(EDIT_DENIED);
   const p = {};
   if ('kind' in patch) {
     const kind = clean(patch.kind);
@@ -489,7 +510,7 @@ export async function setOutcome(ctx, cid, data = {}) {
   const user = ctx.user;
   assertRead(user);
   const row = await loadContact(cid);
-  if (!mayEdit(user, row, 'event_contact')) throw forbidden('تعديل هذه البطاقة لمن التقطها أو لقيادة الفريق');
+  if (!mayEditContact(user)) throw forbidden(EDIT_DENIED);
   const outcome = clean(data.outcome);
   if (!OUTCOMES.includes(outcome)) throw badRequest('قيمة المتابعة غير معروفة — اختر من القائمة');
   const now = nowIso();
@@ -510,7 +531,8 @@ export async function deleteContact(ctx, cid) {
   if (!mayDelete(user, row, 'event_contact')) throw forbidden('حذف هذه البطاقة لمن التقطها أو لقيادة الفريق');
   await tx(async () => {
     await update('event_contact', row.id, { deleted_at: nowIso() });
-    // الصورة تُمحى فعلاً لا ناعماً: بايتاتٌ بلا بطاقة تُقرأ لا تستحق مكانها في القاعدة.
+    // الصور كلها تُمحى فعلاً لا ناعماً — واحدةً كانت أو ستّاً (الترحيلة ٠٤١): بايتاتٌ بلا
+    // بطاقةٍ تُقرأ لا تستحق مكانها في القاعدة. والعبارة تمحو ما وجدت بلا عدّ، فهي محمولةٌ على العدد.
     await run(`DELETE FROM event_blob WHERE kind = 'card' AND ref_id = ?`, [row.id]);
     await audit(ctx, { action: 'delete', resource: 'event_contact', resourceId: row.id, sectorId: row.sector_id || null,
       detail: { event_id: row.event_id } });
@@ -633,7 +655,8 @@ export async function deletePartner(ctx, pid) {
 
 // ══ الصور: صورة البطاقة ورموز الكشك (E2) ═══════════════════════════════════════════════
 // البايتات في القاعدة (الترحيلة ٠٣٨ على قرار ٠٣٣: قرص الحاوية يزول مع كل نشرة). صنفان في جدولٍ
-// واحد: «card» صورةُ بطاقةٍ مرجعُها البطاقة — واحدةٌ لكل بطاقة يحرسها الفهرس الفريد — و«qr»
+// واحد: «card» صورةُ بطاقةٍ مرجعُها البطاقة — صفٌّ لكل صورة، وللبطاقة صورٌ عدّة منذ الترحيلة
+// ٠٤١ التي أسقطت الفهرس الفريد (kind, ref_id)، والسقفُ في الخدمة لا في القاعدة — و«qr»
 // صورةُ رمزٍ يُعرض على شاشة الجناح ليمسحه الزائر، مرجعُها نفسُها وعنوانُها ما يقرؤه الزائر
 // (الترحيلة ٠٣٩).
 //
@@ -647,17 +670,19 @@ const QR_TITLE_MAX = 120;
 // ── سقوف التخزين ──────────────────────────────────────────────────────────────────────────
 // البايتات في القاعدة، والقاعدة ليست قرصاً بلا قاع: حسابٌ واحد بمفتاح جلسةٍ صالح يستطيع — بلا
 // هذه السقوف — أن يملأها في ساعةٍ بصورٍ من ثمانية ميغابايت. فلكل جناحٍ حدٌّ من رموز الزوّار
-// (شاشةٌ واحدة لا تعرض أكثر)، ولكل حسابٍ ميزانيةُ يومٍ ملفّاتٍ وبايتات — تُحسب على ما بقي له في
-// القاعدة خلال الأربع والعشرين ساعة الماضية، فاستبدالُ صورةٍ بأخرى لا يُحتسب ملفاً جديداً.
+// (شاشةٌ واحدة لا تعرض أكثر)، ولكل بطاقةٍ حدٌّ من صورها (وجهاها وكُتيّبٌ وما زاد — والستّ سعةٌ
+// لا ضيق)، ولكل حسابٍ ميزانيةُ يومٍ ملفّاتٍ وبايتات تُحسب على ما بقي له في القاعدة خلال الأربع
+// والعشرين ساعة الماضية.
 // كائنٌ قابلٌ للتعديل عمداً: الاختبار يخفضه ليبلغ السقف بثلاث صور لا بثلاثمئة.
-export const UPLOAD_LIMITS = { qrPerEvent: 12, dailyFiles: 300, dailyBytes: 500 * 1024 * 1024 };
+export const UPLOAD_LIMITS = { qrPerEvent: 12, photosPerCard: 6, dailyFiles: 300, dailyBytes: 500 * 1024 * 1024 };
 const DAILY_LIMIT_MESSAGE = 'بلغ حسابك حدّ رفع الصور لليوم — تواصل مع مدير النظام إن كان الجناح يحتاج أكثر';
-// `minus`: الصفّ الذي سيُستبدَل — يُطرح من الحساب لأنه يزول مع الكتابة نفسها.
-async function assertDailyBudget(user, addBytes, minus = null) {
+// كل صورةٍ مقبولة إضافةٌ صافية منذ الترحيلة ٠٤١: لا استبدال يُطرح من الحساب، فلا معاملَ خصمٍ هنا
+// — ما يُحتسب هو ما سيُكتب، وما يزول لا يزول إلا بحذفٍ صريح يسبق الرفع.
+async function assertDailyBudget(user, addBytes) {
   const since = new Date(Date.now() - 86400000).toISOString();
   const r = await get('SELECT COUNT(*) AS n, COALESCE(SUM(size_bytes), 0) AS b FROM event_blob WHERE uploaded_by = ? AND created_at >= ?', [user.id, since]);
-  const files = Number(r?.n || 0) - (minus ? 1 : 0);
-  const bytes = Number(r?.b || 0) - (minus ? Number(minus.size_bytes || 0) : 0);
+  const files = Number(r?.n || 0);
+  const bytes = Number(r?.b || 0);
   if (files >= UPLOAD_LIMITS.dailyFiles || bytes + addBytes > UPLOAD_LIMITS.dailyBytes) throw badRequest(DAILY_LIMIT_MESSAGE);
 }
 const IMAGE_EXT = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
@@ -685,47 +710,120 @@ function checkImage(bytes) {
 // بايتات الصفّ كما يعيدها المحرّك: بوستجريس يعيد Buffer، وسكويلايت Uint8Array — والمرسِل يريد Buffer.
 const asBuffer = (c) => (Buffer.isBuffer(c) ? c
   : ArrayBuffer.isView(c) ? Buffer.from(c.buffer, c.byteOffset, c.byteLength) : Buffer.from(c || []));
-// رابط الصورة ببصمتها: يتغيّر حين تتغيّر الصورة، فلا يعرض المتصفّح قديمةً من ذاكرته.
+// رابط غلاف البطاقة ببصمته: يتغيّر حين يتغيّر الغلاف، فلا يعرض المتصفّح قديماً من ذاكرته.
 const photoUrl = (cid, sha) => '/api/events/contacts/' + cid + '/photo?v=' + sha.slice(0, 12);
+// ورابط صورةٍ بعينها بمعرّفها — المعرّف لا يتكرّر ولا يتغيّر محتواه، فلا حاجة لبصمةٍ فيه.
+const photoPath = (cid, bid) => '/api/events/contacts/' + cid + '/photos/' + bid;
 
-// ── صورة البطاقة ──────────────────────────────────────────────────────────────────────────
-// من يعدّل البطاقة يُرفق صورتها. والفعالية المُغلقة لا تمنع: البطاقة قائمة، وصورتُها جزءٌ منها
-// لا التقاطٌ جديد — أما ما تحت فعاليةٍ محذوفة فلا يُفتح أصلاً (loadContact).
+// أسماء من رفعوا الصور: «من صوّر هذه» سؤالٌ يُسأل في المراجعة، ورقمُ الحساب لا يجيبه. وقراءة
+// `app_user` للأسماء داخل عقد العزل (ADR-0013): المحظور جداولُ الفرص والعملاء والمستندات.
+async function uploaderNames(ids) {
+  const uniq = [...new Set((ids || []).filter(Boolean))];
+  if (!uniq.length) return new Map();
+  const rows = await all(`SELECT id, COALESCE(name_ar, username) AS "name" FROM app_user
+     WHERE id IN (${uniq.map(() => '?').join(', ')})`, uniq);
+  return new Map(rows.map((r) => [r.id, r.name]));
+}
+
+// صور البطاقة بعقدها المعلن: الأقدم أولاً — وهو الغلاف — ثم ما بعده بترتيب التقاطه. و`is_cover`
+// محسوبةٌ من الموضع لا مقروءةٌ من عمود: عمودٌ يُخزِّن الغلاف حقيقةٌ ثانية تكذب عند أول حذف.
+async function contactPhotos(row) {
+  const rows = await all(`SELECT b.id, b.sha256, b.mime, b.size_bytes, b.uploaded_by, b.created_at
+     FROM event_blob b WHERE b.kind = 'card' AND b.ref_id = ?
+     ORDER BY b.created_at ASC, b.id ASC`, [row.id]);
+  const names = await uploaderNames(rows.map((r) => r.uploaded_by));
+  return rows.map((r, i) => ({
+    id: r.id, sha256: r.sha256, mime: r.mime, size_bytes: Number(r.size_bytes),
+    uploaded_by: r.uploaded_by, uploaded_by_name: names.get(r.uploaded_by) || null,
+    created_at: r.created_at, is_cover: i === 0, url: photoPath(row.id, r.id),
+  }));
+}
+// صفوفُ صور البطاقة مرتَّبةً — بلا بايتات: الغلافُ أولُها، والعدُّ طولُها.
+const cardBlobs = (contactId) => all(`SELECT id, sha256, size_bytes FROM event_blob
+   WHERE kind = 'card' AND ref_id = ? ORDER BY created_at ASC, id ASC`, [contactId]);
+
+// ── صور البطاقة: قائمةٌ لا صورةٌ واحدة (v5.67، الترحيلة ٠٤١) ──────────────────────────────
+// من يحمل منح تعديل البطاقات يُرفق ويحذف. والفعالية المُغلقة لا تمنع: البطاقة قائمة، وصورتُها
+// جزءٌ منها لا التقاطٌ جديد — أما ما تحت فعاليةٍ محذوفة فلا يُفتح أصلاً (loadContact).
+//
+// الإضافةُ إضافة: الوجه الثاني لا يمحو الأول، والكُتيّب لا يمحو البطاقة. والترتيب هو الأقدمية،
+// وأقدمُها الغلاف — يُحسب هنا في كل قراءة ولا يُخزَّن في عمود.
 export async function attachContactPhoto(ctx, cid, bytes, { fileName } = {}) {
   const user = ctx.user;
   assertRead(user);
   const row = await loadContact(cid);
-  if (!mayEdit(user, row, 'event_contact')) throw forbidden('إرفاق صورة البطاقة لمن التقطها أو لقيادة الفريق');
+  if (!mayEditContact(user)) throw forbidden(EDIT_DENIED);
   const { mime, sha256 } = checkImage(bytes);
-  const prior = await get(`SELECT id, sha256, size_bytes, uploaded_by FROM event_blob WHERE kind = 'card' AND ref_id = ?`, [row.id]);
-  const result = (replaced) => ({ ok: true, sha256, size_bytes: bytes.length, mime, replaced, photo_url: photoUrl(row.id, sha256) });
-  // الصورة نفسها مرةً ثانية (إعادة إرسال بعد انقطاع): لا كتابة ولا أثر — الحقيقة لم تتغيّر.
-  if (prior && prior.sha256 === sha256) return result(false);
-  const replaced = !!prior;
-  // الميزانية على مسار الكتابة وحده: ما استُبدل يُطرح إن كان من رفع الحساب نفسه.
-  await assertDailyBudget(user, bytes.length, prior && prior.uploaded_by === user.id ? prior : null);
+  const have = await cardBlobs(row.id);
+  const coverOf = (list) => (list.length ? photoUrl(row.id, list[0].sha256) : null);
+  // الصورة نفسها مرةً ثانية (إعادة إرسال بعد انقطاع، أو ضغطةٌ مكرّرة): لا كتابة ولا أثر ولا
+  // احتساب — الحقيقة لم تتغيّر، ويُعاد إليه معرّفُ الصفّ القائم كي يعرف المتصفّح أين هي.
+  const same = have.find((b) => b.sha256 === sha256);
+  if (same) {
+    return { ok: true, id: same.id, sha256, mime, size_bytes: bytes.length, added: false,
+      photo_count: have.length, photo_url: coverOf(have), url: photoPath(row.id, same.id) };
+  }
+  if (have.length >= UPLOAD_LIMITS.photosPerCard) {
+    throw badRequest(`بلغت هذه البطاقة حدّ الصور (${UPLOAD_LIMITS.photosPerCard}) — احذف واحدة قبل إضافة أخرى`);
+  }
+  // ميزانية اليوم بعد سقف البطاقة: من بلغ ستّاً يُقال له «احذف واحدة» — وهو ما يستطيع فعله —
+  // لا «بلغتَ حدّ اليوم» الذي لا حيلة له فيه.
+  await assertDailyBudget(user, bytes.length);
+  const bid = id('evb');
+  const photoCount = have.length + 1;
   await tx(async () => {
-    // كتابةٌ واحدة لا حذفٌ ثم إدراج: طلبان متزامنان على البطاقة نفسها كانا يمرّان كلاهما من الحذف
-    // ثم يصطدم ثانيهما بالفهرس الفريد (kind, ref_id) على بوستجريس فيُردّ بخطأ خادم. الإدراج
-    // بـ«عند التعارض حدِّث» يجعل الفهرس نفسه هو الحكم: آخر كاتبٍ يفوز، وصفٌّ واحد دائماً.
-    await run(`INSERT INTO event_blob (id, event_id, kind, ref_id, title, content, mime, size_bytes, sha256, uploaded_by, created_at)
-       VALUES (?, ?, 'card', ?, NULL, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT (kind, ref_id) DO UPDATE SET content = excluded.content, mime = excluded.mime,
-         size_bytes = excluded.size_bytes, sha256 = excluded.sha256, uploaded_by = excluded.uploaded_by,
-         created_at = excluded.created_at, event_id = excluded.event_id`,
-    [id('evb'), row.event_id, row.id, bytes, mime, bytes.length, sha256, user.id, nowIso()]);
+    // إدراجٌ عادي: الفهرس الفريد (kind, ref_id) أُسقط في الترحيلة ٠٤١، و«عند التعارض حدِّث»
+    // بعده خطأُ خادمٍ على بوستجريس (لا فهرس يطابق عناصر التعارض) لا حارساً.
+    await insert('event_blob', { id: bid, event_id: row.event_id, kind: 'card', ref_id: row.id, title: null,
+      content: bytes, mime, size_bytes: bytes.length, sha256, uploaded_by: user.id, created_at: nowIso() });
     await audit(ctx, { action: 'photo', resource: 'event_contact', resourceId: row.id, sectorId: row.sector_id || null,
-      detail: { event_id: row.event_id, size_bytes: bytes.length, mime, replaced, file_name: clean(fileName) } });
+      detail: { event_id: row.event_id, blob_id: bid, size_bytes: bytes.length, mime, added: true,
+        photo_count: photoCount, file_name: clean(fileName) } });
   });
-  return result(replaced);
+  // الغلاف لا يتغيّر بإضافةٍ إلا حين تكون الإضافة أولى الصور — فالرابط ثابتٌ لمن يعرضه.
+  return { ok: true, id: bid, sha256, mime, size_bytes: bytes.length, added: true, photo_count: photoCount,
+    photo_url: have.length ? coverOf(have) : photoUrl(row.id, sha256), url: photoPath(row.id, bid) };
 }
 
-export async function readContactPhoto(user, cid) {
+// قائمة صور البطاقة لمن يقرأ الفعالية — ومعها حكمُ التعديل، فالشاشة تعرض أزرار الحذف بحسبه.
+export async function listContactPhotos(user, cid) {
   assertRead(user);
   const row = await loadContact(cid);
-  const b = await get(`SELECT content, mime, sha256, size_bytes FROM event_blob WHERE kind = 'card' AND ref_id = ?`, [row.id]);
-  if (!b) throw notFound('لا صورة لهذه البطاقة بعد — أرفقها من القائمة');
+  return { photos: await contactPhotos(row), may_edit: mayEditContact(user) };
+}
+
+// بلا معرّف: الغلاف (أقدم الصور). وبمعرّف: تلك الصورة وحدها — مقيَّدةً بصنفها وببطاقتها معاً،
+// فمعرّفُ صورةِ بطاقةٍ أخرى أو معرّفُ رمز كشكٍ لا يُقرأ من هنا أبداً.
+export async function readContactPhoto(user, cid, bid = null) {
+  assertRead(user);
+  const row = await loadContact(cid);
+  const cols = 'content, mime, sha256, size_bytes';
+  const b = bid
+    ? await get(`SELECT ${cols} FROM event_blob WHERE id = ? AND kind = 'card' AND ref_id = ?`, [String(bid), row.id])
+    : await get(`SELECT ${cols} FROM event_blob WHERE kind = 'card' AND ref_id = ?
+         ORDER BY created_at ASC, id ASC LIMIT 1`, [row.id]);
+  if (!b) throw notFound(bid ? 'هذه الصورة غير موجودة — حدّث الصفحة' : 'لا صورة لهذه البطاقة بعد — أرفقها من القائمة');
   return { mime: b.mime, content: asBuffer(b.content), sha256: b.sha256, size_bytes: Number(b.size_bytes) };
+}
+
+// حذف صورةٍ واحدة: محوٌ فعليّ كعرف الصور كلها في القسم، ويعود بالغلاف الجديد — فإن كانت
+// المحذوفة هي الغلاف تولّى ما بعدها، وإن كانت الأخيرة فلا غلاف ولا رابط.
+export async function deleteContactPhoto(ctx, cid, bid) {
+  const user = ctx.user;
+  assertRead(user);
+  const row = await loadContact(cid);
+  if (!mayEditContact(user)) throw forbidden(EDIT_DENIED);
+  const b = await get(`SELECT id, sha256, size_bytes FROM event_blob WHERE id = ? AND kind = 'card' AND ref_id = ?`,
+    [String(bid == null ? '' : bid), row.id]);
+  if (!b) throw notFound('هذه الصورة غير موجودة — حدّث الصفحة');
+  await tx(async () => {
+    await run('DELETE FROM event_blob WHERE id = ?', [b.id]);
+    await audit(ctx, { action: 'delete', resource: 'event_blob', resourceId: b.id, sectorId: row.sector_id || null,
+      detail: { event_id: row.event_id, kind: 'card', contact_id: row.id, size_bytes: Number(b.size_bytes), sha256: b.sha256 } });
+  });
+  const rest = await cardBlobs(row.id);
+  const cover = rest.length ? rest[0].sha256 : null;
+  return { ok: true, photo_count: rest.length, cover_sha: cover, photo_url: cover ? photoUrl(row.id, cover) : null };
 }
 
 // ── رموز الكشك ─────────────────────────────────────────────────────────────────────────────
@@ -763,7 +861,8 @@ export async function addQr(ctx, eventId, bytes, { title, fileName } = {}) {
   await assertDailyBudget(user, bytes.length);
   const bid = id('evb');
   await tx(async () => {
-    // مرجع الرمز نفسُه: الفهرس الفريد (kind, ref_id) يبقى صادقاً، ولا «صاحبَ» للرمز غير فعاليته.
+    // مرجع الرمز نفسُه: فريدٌ بالمفتاح الأساسي بلا حاجةٍ إلى فهرس (الترحيلة ٠٤١ أسقطته)،
+    // ولا «صاحبَ» للرمز غير فعاليته — وسقفُ رموز الجناح أعلاه هو حارسُه.
     await insert('event_blob', { id: bid, event_id: ev.id, kind: 'qr', ref_id: bid, title: t,
       content: bytes, mime, size_bytes: bytes.length, sha256, uploaded_by: user.id, created_at: nowIso() });
     await audit(ctx, { action: 'create', resource: 'event_blob', resourceId: bid, sectorId: null,

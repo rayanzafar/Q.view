@@ -81,8 +81,16 @@ const photoUrl = (c) => {
   return `/api/events/contacts/${encodeURIComponent(c.id)}/photo${sha ? `?v=${encodeURIComponent(sha)}` : ''}`;
 };
 const hasPhoto = (c) => Number(c.has_photo) === 1;
+// «صورتان» و«٣ صور»: العدد يُقال كما يُقال في الحديث، لا رقماً عارياً في وصفٍ صوتي.
+const photosAr = (n) => (n === 2 ? 'صورتان' : `${n} صور`);
 // المصغّرة زرٌّ يفتح نافذة مراجعة البطاقة (الصورة كبيرةً، وتنزيلها، والحقول للتصحيح) — لا صورةٌ صمّاء.
-const thumb = (c) => `<button type="button" class="ev-thumb-btn" data-action="ev-card-view" data-cid="${esc(c.id)}" aria-label="عرض بطاقة ${esc(contactLabel(c))}"><img class="ev-thumb" loading="lazy" alt="" src="${esc(photoUrl(c))}"></button>`;
+// وشارة «+٢» على زاويتها تقول إن خلف الغلاف صوراً أخرى، فلا يظنّ القارئ أن البطاقة صورةٌ واحدة.
+const thumb = (c) => {
+  const n = Number(c.photo_count) || 0;
+  const badge = n > 1 ? `<span class="ev-thumb-n tnum">+${n - 1}</span>` : '';
+  const label = n > 1 ? `عرض بطاقة ${contactLabel(c)} · ${photosAr(n)}` : `عرض بطاقة ${contactLabel(c)}`;
+  return `<button type="button" class="ev-thumb-btn" data-action="ev-card-view" data-cid="${esc(c.id)}" aria-label="${esc(label)}"><img class="ev-thumb" loading="lazy" alt="" src="${esc(photoUrl(c))}">${badge}</button>`;
+};
 
 const CSS = `<style>
 .ev-page [hidden],.ev-form [hidden]{display:none!important}
@@ -147,10 +155,21 @@ const CSS = `<style>
 .ev-rc-side .tnum{color:var(--muted);font-size:var(--fs-meta)}
 .ev-rc-ph{flex:0 0 auto;display:flex;align-items:center;justify-content:center;min-width:44px}
 .ev-thumb{width:44px;height:44px;object-fit:cover;border-radius:8px;border:1px solid var(--line);background:#fff;display:block}
-.ev-thumb-btn{border:0;background:none;padding:0;cursor:pointer;border-radius:8px;display:block}
+.ev-thumb-btn{border:0;background:none;padding:0;cursor:pointer;border-radius:8px;display:block;position:relative}
 .ev-thumb-btn:hover .ev-thumb{box-shadow:0 0 0 3px rgba(36,74,153,.18)}
+.ev-thumb-n{position:absolute;inset-block-end:-4px;inset-inline-start:-4px;background:var(--brand);color:#fff;border-radius:999px;font-size:10px;font-weight:800;line-height:16px;min-width:18px;padding:0 4px;text-align:center;box-shadow:0 0 0 2px #fff}
 tr[data-contact],.ev-rc[data-contact]{cursor:pointer}
 .cv-img{display:block;width:100%;max-height:55vh;object-fit:contain;background:#f8fafc;border:1px solid var(--line);border-radius:10px}
+/* الشريط يمرَّر أفقياً (ستّ مصغّرات لا تسع عرض جوّال)، وهو بندٌ في شبكة جسم النافذة. وبندٌ
+   يمرَّر داخل شبكةٍ ذات ارتفاع محدَّد لا يُسهم في ارتفاع صفّه شيئاً في المتصفّح، فيصير الصفّ صفراً
+   ويُمطّ الشريط إليه: قِيس فعلاً شريطٌ ارتفاعه ٣ بكسل وزرٌّ ارتفاعه صفر وصورةٌ داخله ٥٤ — لا
+   تُرى ولا تُضغط، وما بعدها يركب عليها. ارتفاعٌ أدنى صريح (٥٤ للصورة + إطارها + حشوة الشريط)
+   يعطي الصفّ مقاساً لا يُشتقّ من دورةٍ مغلقة، و«ابدأ من الأعلى» تمنع مطّ المصغّرة نفسها. */
+.cv-strip{display:flex;align-items:flex-start;gap:.4rem;overflow-x:auto;margin:.55rem 0 .2rem;padding-bottom:.2rem;min-height:60px}
+.cv-strip button{border:0;background:none;padding:0;border-radius:8px;flex:0 0 auto;cursor:pointer}
+.cv-strip img{width:54px;height:54px;object-fit:cover;border-radius:8px;border:1px solid var(--line);display:block}
+.cv-strip .on img{outline:2px solid var(--brand);outline-offset:1px}
+.cv-who{font-size:var(--fs-micro);color:var(--muted);margin-bottom:.5rem}
 .cv-act{display:flex;gap:.5rem;flex-wrap:wrap;margin:.6rem 0 .9rem}
 .cv-act .btn{min-height:40px}
 .cv-form .field{margin-bottom:.55rem}
@@ -304,6 +323,13 @@ export async function eventDetailPage(user, id, opts = {}) {
   const captureOpen = canCapture && !closed;
   const summary = await eventSummary(user, ev.id);
   const qr = await listQr(user, ev.id);
+  // القطاعات تُقرأ مرةً واحدة للصفحة كلها: نموذج الالتقاط يختار منها، وجدول الجهات يسمّي
+  // «القطاع المعني» لكل بطاقة، ونافذة المراجعة تعدّله — فلا استعلامٌ مكرَّر لكل تبويب.
+  const sectors = await all('SELECT id, name_ar FROM sector WHERE deleted_at IS NULL ORDER BY sort_order, name_ar');
+  const sectorName = new Map(sectors.map((s) => [s.id, s.name_ar]));
+  // تصحيحُ البطاقة وإضافةُ صورةٍ إليها لكل من يملك التعديل، لا لمن التقطها وحده: بطاقةٌ التُقطت
+  // في زحام الجناح يكملها زميلٌ بعد ساعة (v5.67).
+  const mayEditCards = can(user, 'update', 'event_contact');
 
   const defaultTab = (captureOpen && (ev.status === 'جارية' || ev.status === 'قادمة')) ? 'capture' : 'contacts';
   const tab = TABS.includes(opts.tab) ? opts.tab : defaultTab;
@@ -362,12 +388,12 @@ export async function eventDetailPage(user, id, opts = {}) {
   // بيانات الاجتماعات تُضمَّن مع تبويبها وحده — قائمة الأشخاص ثقلٌ لا يلزم تبويب الالتقاط.
   let meetings = null;
   const panel = tab === 'capture'
-    ? await capturePanel(user, ev, { closed, canCapture, cur })
+    ? await capturePanel(user, ev, { closed, canCapture, cur, sectors, mayEditCards })
     : tab === 'qr'
       ? qrPanel(ev, { qr, canManage })
       : tab === 'meetings'
         ? (meetings = await meetingsPanel(user, ev, { cur, closed, link: (over) => linkOf({ ...cur, tab }, over) })).html
-        : await contactsPanel(user, ev, { summary, cur, captureOpen });
+        : await contactsPanel(user, ev, { summary, cur, captureOpen, sectorName, mayEditCards });
 
   const embed = JSON.stringify({
     eventId: ev.id,
@@ -379,6 +405,7 @@ export async function eventDetailPage(user, id, opts = {}) {
     canManage,
     canDelete,
     cards: Number(summary.contacts) || 0,
+    sectors: sectors.map((s) => ({ id: s.id, name_ar: s.name_ar })),
     qr: qr.map((b) => ({ id: b.id, title: b.title || '' })),
     ...(meetings ? { mt: meetings.mt } : {}),
   }).replace(/</g, '\\u003c');
@@ -389,7 +416,7 @@ export async function eventDetailPage(user, id, opts = {}) {
 }
 
 // ── تبويب الالتقاط ─────────────────────────────────────────────────────────
-async function capturePanel(user, ev, { closed, canCapture, cur }) {
+async function capturePanel(user, ev, { closed, canCapture, cur, sectors, mayEditCards }) {
   const contactsHref = esc(linkOf({ ...cur }, { tab: 'contacts', status: '' }));
   const notice = (msg) => card(`<div style="padding:1.1rem 1.15rem;display:grid;gap:.8rem">
     <div class="alert info">${icon('info')}<div>${msg}</div></div>
@@ -399,7 +426,6 @@ async function capturePanel(user, ev, { closed, canCapture, cur }) {
   if (closed) return panelOpen(notice('هذه الفعالية مُغلقة — لا يُلتقط فيها جديد'));
   if (!canCapture) return panelOpen(notice('صلاحيتك للمشاهدة فقط — يمكنك تصفّح ما التُقط دون إضافة'));
 
-  const sectors = await all('SELECT id, name_ar FROM sector WHERE deleted_at IS NULL ORDER BY sort_order, name_ar');
   const recent = await recentContacts(user, ev.id, { limit: RECENT_LIMIT });
   const rows = (recent && recent.rows) || [];
   const teamToday = Number(recent && recent.teamToday) || 0;
@@ -454,12 +480,11 @@ async function capturePanel(user, ev, { closed, canCapture, cur }) {
     </form>
   </div>`);
 
-  // صفّ «آخر ما التقطت»: صورة مصغّرة أو «بلا صورة»، وصاحب البطاقة وحده يرى زرّ الإرفاق.
-  const own = (c) => c.captured_by === user.id;
+  // صفّ «آخر ما التقطت»: صورة مصغّرة أو «بلا صورة»، وزرّ الإرفاق لكل من يملك التعديل (v5.67).
   const photoCell = (c) => (hasPhoto(c) ? thumb(c)
-    : own(c) ? `<button type="button" class="btn btn-ghost" data-action="ev-photo-attach" data-cid="${esc(c.id)}">أرفق صورة</button>`
+    : mayEditCards ? `<button type="button" class="btn btn-ghost" data-action="ev-photo-attach" data-cid="${esc(c.id)}">أرفق صورة</button>`
       : '<span class="ev-nophoto">بلا صورة</span>');
-  const recentRow = (c) => `<div class="ev-rc" data-contact="${esc(c.id)}"${own(c) ? ' data-own="1"' : ''}>
+  const recentRow = (c) => `<div class="ev-rc" data-contact="${esc(c.id)}">
     <div class="ev-rc-row">
       <div class="ev-rc-ph">${photoCell(c)}</div>
       <div class="ev-rc-main"><b>${esc(contactLabel(c))}</b>${c.org_name && c.person_name ? ` <span class="ev-rc-org">· ${esc(c.org_name)}</span>` : ''}</div>
@@ -477,7 +502,7 @@ async function capturePanel(user, ev, { closed, canCapture, cur }) {
 }
 
 // ── تبويب الجهات الملتقطة ────────────────────────────────────────────────────
-async function contactsPanel(user, ev, { summary, cur, captureOpen }) {
+async function contactsPanel(user, ev, { summary, cur, captureOpen, sectorName, mayEditCards }) {
   const kind = CARD_KINDS.includes(cur.kind) ? cur.kind : '';
   const outcome = OUTCOMES.includes(cur.outcome) ? cur.outcome : '';
   const q = cur.q;
@@ -511,10 +536,15 @@ async function contactsPanel(user, ev, { summary, cur, captureOpen }) {
   // كل خلية تحمل عنصراً واحداً: على الجوال تصير الخلية سطراً (عنوان العمود ⟷ القيمة)،
   // والعنصر الواحد يحفظ المحاذاة مهما تعدّدت الأسطر داخله.
   const th = (l) => `<th scope="col">${l}</th>`;
+  // خلية بلا صورة ليست شرطةً صمّاء لمن يملك التعديل: هي دعوةٌ لإضافة صورة من النافذة نفسها.
+  const photoCell = (c) => (hasPhoto(c) ? thumb(c)
+    : mayEditCards ? `<button type="button" class="btn btn-ghost btn-sm" data-action="ev-card-view" data-cid="${esc(c.id)}">أضف صورة</button>`
+      : '<span class="ev-sm">—</span>');
   const row = (c) => `<tr data-contact="${esc(c.id)}">
     <td data-label="الشخص"><div><b>${esc(contactLabel(c))}</b>${c.possible_duplicate_of ? ` <span class="ev-tag">${G.possibleDuplicate}</span>` : ''}${c.job_title ? `<div class="ev-sm">${esc(c.job_title)}</div>` : ''}</div></td>
-    <td data-label="الصورة"><div>${hasPhoto(c) ? thumb(c) : '<span class="ev-sm">—</span>'}</div></td>
+    <td data-label="الصورة"><div>${photoCell(c)}</div></td>
     <td data-label="الجهة"><div>${esc(c.org_name || '—')}</div></td>
+    <td data-label="القطاع"><div>${esc(sectorName.get(c.sector_id) || '—')}</div></td>
     <td data-label="النوع"><div>${kindPill(c.kind)}</div></td>
     <td data-label="التواصل"><div>${c.phone ? `<div class="ev-ltr tnum">${esc(c.phone)}</div>` : ''}${c.email ? `<div class="ev-ltr ev-sm">${esc(c.email)}</div>` : ''}${!c.phone && !c.email ? '<span class="ev-sm">بلا وسيلة تواصل</span>' : ''}</div></td>
     <td data-label="التقطها"><div>${esc(c.captured_by_name || '—')}${whenLabel(c.captured_at) ? `<div class="ev-sm tnum">${whenLabel(c.captured_at)}</div>` : ''}</div></td>
@@ -527,8 +557,8 @@ async function contactsPanel(user, ev, { summary, cur, captureOpen }) {
     : `<div class="empty-state">${icon('inbox')}<div class="t">لم تُلتقط بطاقات بعد</div><div class="s">${captureOpen ? 'أوّل بطاقة تأخذ نصف دقيقة من جوّالك في الجناح.' : 'ستظهر هنا بطاقات الزوّار حين يلتقطها الفريق.'}</div>
         ${captureOpen ? `<a class="btn btn-primary" href="${esc(linkOf({}, { tab: 'capture' }))}">${G.captureContact}</a>` : ''}</div>`;
   const capNote = rows.length >= CONTACTS_LIMIT ? `<div class="ev-sm" style="padding:.5rem .7rem">تُعرض أوّل <span class="tnum">${CONTACTS_LIMIT}</span> بطاقة — ضيّق البحث لترى البقية.</div>` : '';
-  const table = card(`<div class="tblwrap"><table class="rtbl ev-tbl" style="width:100%;border-collapse:collapse;min-width:820px">
-    <thead><tr>${th('الشخص')}${th('الصورة')}${th('الجهة')}${th('النوع')}${th('التواصل')}${th('التقطها')}${th('المتابعة')}</tr></thead>
+  const table = card(`<div class="tblwrap"><table class="rtbl ev-tbl" style="width:100%;border-collapse:collapse;min-width:900px">
+    <thead><tr>${th('الشخص')}${th('الصورة')}${th('الجهة')}${th('القطاع')}${th('النوع')}${th('التواصل')}${th('التقطها')}${th('المتابعة')}</tr></thead>
     <tbody>${rows.map(row).join('')}</tbody></table>${rows.length ? capNote : empty}</div>`);
 
   return `<section id="ev-panel-contacts" aria-label="${G.eventContacts}">${stats}${search}${chips}${table}</section>`;
