@@ -7,6 +7,13 @@
 //   ② والمنحةُ تفتح البابَ الذي سُمّيت له فقط، ورفعُها يُطفئه من الطلب التالي بلا إعادة دخول.
 //   ③ ومَن لا يملك إدارة الفعاليات لا يمنحها (مديرُ الإدارة يُرَدّ)، والقائمةُ المغلقة تبقى
 //      مغلقةً أمام ما لم يُسمَّ (event_blob مثلاً).
+//
+// ── سحب v5.70 (قرار حسين ٢٠٢٦-٠٩-٠١) ────────────────────────────────────────
+// صارت الأزواجُ أربعةً: «يحذف فعاليات» خرج من القائمة المغلقة، وحذفُ الفعالية لمدير النظام
+// وحده — لأنه يمحو صور البطاقات ورموز الكشك محواً فعلياً لا رجعة فيه. ويُحرَس هنا أمران:
+// أن الزوج لم يعد يُمنَح أصلاً، وأن صفّاً قديماً باقياً في الجدول (منحُ ٢٠٢٦-٠٨-٢٩ على الحيّ)
+// لا يفتح الباب — لأن `grantsForUser()` يمرّر كل صفٍّ على `isGrantable()` ويُسقط ما خرج،
+// فلا ترحيلةَ ولا سكربتَ رفعٍ يلزم.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -65,8 +72,8 @@ before(async () => {
 });
 after(async () => { await db.close(); rmSync(dir, { recursive: true, force: true }); });
 
-const FIVE = [
-  ['event', 'create'], ['event', 'update'], ['event', 'delete'],
+const FOUR = [
+  ['event', 'create'], ['event', 'update'],
   ['event_contact', 'delete'], ['event_partner', 'delete'],
 ];
 
@@ -94,18 +101,28 @@ test('قبل المنح: الموظف لا ينشئ فعالية ولا يعدّ
 });
 
 // ── ③ القائمة المغلقة ومَن يمنح ─────────────────────────────────────────────
-test('القائمة المغلقة تقبل الأزواج الخمسة وتردّ الغريب — ومدير الإدارة لا يمنح ما لا يملكه', async () => {
+test('القائمة المغلقة تقبل الأزواج الأربعة وتردّ الغريب و«يحذف فعاليات» المسحوب — ومدير الإدارة لا يمنح ما لا يملكه', async () => {
   const admin = await ctxOf('u_admin');
   await assert.rejects(() => G.grantDepartment(admin,
     { user_id: 'u_maz', department_id: 'D_DATA', resource: 'event_blob', action: 'delete' }),
   /غير متاحة للمنح/, 'event_blob تسرّب إلى القائمة المغلقة');
+
+  // الزوج المسحوب: لا في القائمة، ولا يُمنَح، ولا يظهر في لوحة المنح لمن يملك كل شيء.
+  assert.equal(G.isGrantable('event', 'delete'), false, '«يحذف فعاليات» ما زال قابلاً للمنح');
+  assert.equal(G.GRANTABLE.filter((g) => g.resource.startsWith('event')).length, 4,
+    'أزواج الفعاليات القابلة للمنح ليست أربعة');
+  await assert.rejects(() => G.grantDepartment(admin,
+    { user_id: 'u_maz', department_id: 'D_DATA', resource: 'event', action: 'delete' }),
+  /غير متاحة للمنح/, 'حذف الفعالية ما زال يُمنَح لشخص');
+  assert.ok(!(await G.grantableOptions(admin.user)).some((g) => g.resource === 'event' && g.action === 'delete'),
+    'حذف الفعالية معروضٌ في لوحة المنح');
 
   const dm = await ctxOf('u_dm');
   await assert.rejects(() => G.grantDepartment(dm,
     { user_id: 'u_abd', department_id: 'D_DATA', resource: 'event', action: 'update' }),
   /لا يملكه|لا تملك/, 'مدير الإدارة منح إدارة الفعاليات وهو لا يملكها');
 
-  for (const [resource, action] of FIVE) {
+  for (const [resource, action] of FOUR) {
     const r = await G.grantDepartment(admin, { user_id: 'u_maz', department_id: 'D_DATA',
       resource, action, note: 'إدارة فعالية LEAP — بطلب حسين 2026-08-29' });
     assert.equal(r.ok, true, `${resource}:${action} رُفض وهو في القائمة`);
@@ -117,7 +134,7 @@ test('القائمة المغلقة تقبل الأزواج الخمسة وتر�
 });
 
 // ── ② المنحة تفتح بابها المسمّى فقط ─────────────────────────────────────────
-test('بعد المنح: الموظف ينشئ فعاليةً باسمه ويعدّل ويغلق ويحذف بطاقة زميله وشراكته', async () => {
+test('بعد المنح: الموظف ينشئ فعاليةً باسمه ويعدّل ويغلق ويحذف بطاقة زميله وشراكته — ولا يحذف الفعالية', async () => {
   const ctxMaz = await ctxOf('u_maz');
 
   const created = await ev.createEvent(ctxMaz, {
@@ -134,7 +151,12 @@ test('بعد المنح: الموظف ينشئ فعاليةً باسمه ويع�
     { org_name: 'شركة تجريبية', partner_kind: 'شراكة تقنية' });
   await ev.deletePartner(ctxMaz, partner.id || partner.partner?.id);
   await ev.closeEvent(ctxMaz, mine);
-  await ev.deleteEvent(ctxMaz, mine);
+  // والحذف ليس من منحه ولا من منح أحدٍ: بابُ حذف الفعالية لمدير النظام وحده (٢٠٢٦-٠٩-٠١).
+  await assert.rejects(() => ev.deleteEvent(ctxMaz, mine), /ليس ضمن صلاحيتك|لا تسمح/,
+    'حاملُ منح الفعاليات حذف فعاليةً كاملة');
+  assert.equal((await db.get('SELECT deleted_at FROM event WHERE id = ?', [mine])).deleted_at, null, 'الرفض حذف');
+  await ev.deleteEvent(await ctxOf('u_admin'), mine);
+  assert.ok((await db.get('SELECT deleted_at FROM event WHERE id = ?', [mine])).deleted_at, 'مدير النظام لم يحذف');
 
   // والموظف الآخر مُنح التعديل وحده: يعدّل ولا يحذف بطاقةً ليست له.
   const ctxAbd = await ctxOf('u_abd');
@@ -158,4 +180,28 @@ test('رفعُ منحة التعديل يُقفل البابَ من الطلب �
     "SELECT action FROM audit_log WHERE resource = 'user_grant' ORDER BY at");
   assert.ok(trail.some((r) => r.action === 'create'), 'المنح بلا أثر');
   assert.ok(trail.some((r) => r.action === 'delete'), 'الرفع بلا أثر');
+});
+
+// ── الصفُّ القديم لا يفتح باباً سُحب (v5.70) ──────────────────────────────────
+// ثلاثةُ صفوفٍ على الحيّ تحمل «event:delete» من منح ٢٠٢٦-٠٨-٢٩. لا ترحيلةَ ترفعها ولا سكربت:
+// `grantsForUser()` يمرّر كل صفٍّ على القائمة المغلقة، فما خرج منها يبطل من الطلب التالي.
+test('صفُّ منحٍ قديمٌ بـ«يحذف فعاليات» يبقى في الجدول ولا أثر له — لا في السياق ولا في الكشف ولا على الباب', async () => {
+  await db.insert('user_department_grant', { id: 'ugr_legacy_del', user_id: 'u_abd', resource: 'event',
+    action: 'delete', department_id: 'D_DATA', note: 'منحةٌ قديمة قبل السحب', granted_by: 'u_admin', created_at: T });
+  assert.ok(await db.get('SELECT id FROM user_department_grant WHERE id = ?', ['ugr_legacy_del']), 'الصفّ لم يُكتب');
+
+  const ctxAbd = await ctxOf('u_abd'); // جلسةٌ جديدة: المنح تُقرأ مع كل طلب
+  assert.ok(!(ctxAbd.user.departmentGrants || []).some((g) => g.resource === 'event' && g.action === 'delete'),
+    'الصفّ القديم تسرّب إلى سياق الطلب');
+
+  const target = await ev.createEvent(await ctxOf('u_lead'),
+    { name_ar: 'فعالية تحرس الصفّ القديم', starts_on: '2026-09-20', ends_on: '2026-09-21' });
+  const tid = target.id || target.event?.id;
+  await assert.rejects(() => ev.deleteEvent(ctxAbd, tid), /ليس ضمن صلاحيتك|لا تسمح/,
+    'صفٌّ قديمٌ بـevent:delete فتح الباب بعد سحب الزوج');
+  assert.equal((await db.get('SELECT deleted_at FROM event WHERE id = ?', [tid])).deleted_at, null, 'الرفض حذف');
+
+  const shown = await G.listUserGrants((await ctxOf('u_admin')).user, 'u_abd');
+  assert.ok(!shown.some((r) => r.resource === 'event' && r.action === 'delete'),
+    'الصفّ القديم معروضٌ في كشف الصلاحيات وهو بلا أثر');
 });

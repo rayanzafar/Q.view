@@ -1,6 +1,8 @@
 // إدارة الفعالية من جوّال (٣٩٠×٨٤٤): قائد قطاع يرى شريط الإدارة على صفحة فعاليته —
-// يعدّل اسمها من النافذة، يغلقها فيتوقف الالتقاط، يفتحها، ثم يحذفها فيعود إلى القائمة
-// وقد اختفت. والاستشاري لا يرى الشريط أصلاً — الزرّ الغائب حكمُ الخادم لا نسيانُ الشاشة.
+// يعدّل اسمها من النافذة، يغلقها فيتوقف الالتقاط، يفتحها — **ولا يرى زرّ الحذف** منذ
+// ٢٠٢٦-٠٩-٠١: حذفُ الفعالية يمحو صور البطاقات والرموز محواً لا رجعة فيه، فبابه مدير النظام
+// وحده، وهو من يحذفها هنا فيعود إلى القائمة وقد اختفت. والاستشاري لا يرى الشريط أصلاً —
+// والزرّ الغائب حكمُ الخادم لا نسيانُ الشاشة.
 import { login, open, collectErrors, realConsoleErrors } from './_helpers.mjs';
 import { createEvent, overflowOf } from './events-capture.spec.mjs';
 
@@ -18,8 +20,11 @@ export default async function eventsManageSpec({ browser, base, t }) {
     const id = await createEvent(page, 'فعالية فحص الإدارة');
     await open(page, base, `/app/event/${encodeURIComponent(id)}`);
     await page.waitForSelector('.ev-admin');
-    for (const act of ['ev-edit', 'ev-close', 'ev-del-event']) {
+    for (const act of ['ev-edit', 'ev-close']) {
       if (!(await page.locator(`[data-action="${act}"]`).count())) fail('admin bar', `زرّ ${act} غائب`);
+    }
+    if (await page.locator('[data-action="ev-del-event"]').count()) {
+      fail('lead delete', 'قائد القطاع ما زال يرى زرّ حذف الفعالية');
     }
 
     // التعديل: النافذة تفتح بالقيم الحالية، وتغيير الاسم يظهر في الترويسة بعد الحفظ.
@@ -42,10 +47,19 @@ export default async function eventsManageSpec({ browser, base, t }) {
     const of = await overflowOf(page);
     if (of.doc > 1 || of.main > 1) fail('overflow', `فيض أفقي: doc ${of.doc}px / main ${of.main}px`);
 
-    // الحذف: عودةٌ إلى القائمة وقد اختفت الفعالية منها.
-    await page.click('[data-action="ev-del-event"]');
-    await page.waitForURL('**/app/events**', { timeout: 10000 });
-    if (await page.locator('text=فعالية فحص الإدارة').count()) fail('deleted', 'الفعالية المحذوفة ما زالت في القائمة');
+    // الحذف بمدير النظام وحده: يرى الزرّ، ويحذف، فيعود إلى القائمة وقد اختفت الفعالية منها.
+    const ctxAdmin = await browser.newContext({ viewport: VIEWPORT });
+    const pAdmin = await ctxAdmin.newPage();
+    pAdmin.on('dialog', (d) => d.accept());
+    await login(pAdmin, base, 'demo.admin');
+    await open(pAdmin, base, `/app/event/${encodeURIComponent(id)}`);
+    if (!(await pAdmin.locator('[data-action="ev-del-event"]').count())) {
+      fail('admin delete', 'مدير النظام لا يرى زرّ حذف الفعالية');
+    }
+    await pAdmin.click('[data-action="ev-del-event"]');
+    await pAdmin.waitForURL('**/app/events**', { timeout: 10000 });
+    if (await pAdmin.locator('text=فعالية فحص الإدارة').count()) fail('deleted', 'الفعالية المحذوفة ما زالت في القائمة');
+    await ctxAdmin.close();
 
     // الاستشاري لا يرى شريط الإدارة على فعاليةٍ أخرى.
     const ctx2 = await browser.newContext({ viewport: VIEWPORT });
@@ -60,7 +74,7 @@ export default async function eventsManageSpec({ browser, base, t }) {
     if (await p3.locator('.ev-admin').count()) fail('consultant bar', 'الاستشاري يرى شريط الإدارة');
     await ctx3.close();
 
-    if (!bad) t.pass('events-manage @390px — تعديلٌ وإغلاقٌ وفتحٌ وحذفٌ من الشاشة، والشريط لأهله وحدهم');
+    if (!bad) t.pass('events-manage @390px — تعديلٌ وإغلاقٌ وفتحٌ من الشاشة، والحذفُ لمدير النظام وحده، والشريط لأهله');
   } catch (e) {
     fail('flow', e.message);
   }

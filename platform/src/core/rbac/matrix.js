@@ -382,8 +382,10 @@ for (const [roleId, grants] of Object.entries(ROLE_GRANTS)) {
 // هنا — ولا يُضاف «event» إلى OPERATIONAL أعلاه عمداً، كي لا يجرّ معه نطاقات القطاع والإدارة.
 //   • كل دور موظَّف: يقرأ الفعاليات، ويلتقط البطاقات والشراكات ويعدّلها (والملكية تُحكم في
 //     الخدمة: من التقط يعدّل، ومعه أدوار المراجعة).
-//   • قائد القطاع ومكتب الرئيس التنفيذي: يديران الفعالية نفسها (إنشاءً وتعديلاً وحذفاً)
-//     ويحذفان بطاقات الغير.
+//   • قائد القطاع ومكتب الرئيس التنفيذي: ينشئان الفعالية ويعدّلانها ويغلقانها — **ولا يحذفانها**،
+//     ويحذفان بطاقات الغير وشراكاتهم واجتماعاتهم كما كانا. فحذفُ الفعالية يمحو صور البطاقات
+//     ورموز الكشك محواً فعلياً لا رجعة فيه، فبابه مدير النظام وحده — قرار حسين ٢٠٢٦-٠٩-٠١.
+//     ولا سطرَ صريح لمدير النظام هنا: منحه الشامل {resource:'*', action:'admin'} يبلغه.
 //   • رئيس تطوير الأعمال: ينشئ الفعالية ويعدّلها **بلا حذف** — قاعدته المعلنة أعلاه «لا حذف
 //     لأي مورد» تبقى كما هي (يحرسها support-units.test.js)، وحذف بطاقات الغير يبقى معها.
 //   • المشاهد: قراءةً فقط. الخارجي: لا شيء — حساب بوابة عميل لا يرى بطاقات المعارض.
@@ -396,7 +398,7 @@ for (const [roleId, grants] of Object.entries(ROLE_GRANTS)) {
 const EVENTS_RO = read(['event', 'event_contact', 'event_partner', 'event_meeting'], 'company');
 const eventsAll = (scope) => [...read(['event'], scope), ...crud(['event_contact', 'event_partner', 'event_meeting'], scope)];
 const EVENTS_MANAGE = [
-  ...crud(['event'], 'company', ['create', 'update', 'delete']),
+  ...crud(['event'], 'company', ['create', 'update']),
   ...crud(['event_contact', 'event_partner', 'event_meeting'], 'company', ['delete']),
 ];
 const EVENT_MANAGERS = new Set(['sector_lead', 'ceo_office']);

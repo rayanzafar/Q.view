@@ -58,11 +58,22 @@ test('المشاهد يدخل ولا يلتقط، والخارجي لا يدخل
   assert.equal(can(viewer, 'create', 'event_contact'), false, 'ولا يلتقط بطاقة');
   assert.equal(can(viewer, 'create', 'event'), false, 'ولا ينشئ فعالية');
   assert.equal(PAGE_ACCESS.events(shape('external')), false, 'حساب البوابة الخارجية خارج الشاشة');
-  // ومن يدير الفعالية نفسها ثلاثة بقرار المصفوفة: مدير النظام وقائد القطاع ومكتب الرئيس.
-  for (const role of ['admin', 'sector_lead', 'ceo_office']) {
-    assert.equal(can(shape(role), 'delete', 'event'), true, `الدور «${role}» يدير الفعالية`);
-  }
-  for (const role of ['consultant', 'employee', 'bd_manager', 'hr', 'operations', 'bd_head']) {
+  // وحذفُ الفعالية نفسها لمدير النظام وحده منذ ٢٠٢٦-٠٩-٠١: الحذف يمحو صور البطاقات ورموز
+  // الكشك محواً فعلياً لا رجعة فيه، فبابه أضيق باب في الوحدة — وقائد القطاع ومكتب الرئيس
+  // ينشئان ويعدّلان ويغلقان ولا يحذفان (وزوجُ المنح الشخصي «يحذف فعاليات» سُحب معه).
+  assert.equal(can(shape('admin'), 'delete', 'event'), true, 'مدير النظام لا يحذف فعالية');
+  for (const role of ['sector_lead', 'ceo_office', 'consultant', 'employee', 'bd_manager', 'hr',
+    'operations', 'bd_head']) {
     assert.equal(can(shape(role), 'delete', 'event'), false, `الدور «${role}» لا يحذف فعالية`);
+  }
+  // ولا يمسّ هذا الضيقُ إنشاءَها وتعديلها: من كان يديرها يبقى يديرها.
+  for (const role of ['sector_lead', 'ceo_office', 'bd_head']) {
+    assert.equal(can(shape(role), 'create', 'event'), true, `الدور «${role}» فقد إنشاء الفعالية`);
+    assert.equal(can(shape(role), 'update', 'event'), true, `الدور «${role}» فقد تعديل الفعالية`);
+  }
+  // وتنظيفُ بطاقات الغير وشراكاتهم يبقى لقائد القطاع ومكتب الرئيس كما كان.
+  for (const role of ['sector_lead', 'ceo_office']) {
+    assert.equal(can(shape(role), 'delete', 'event_contact'), true, `الدور «${role}» فقد حذف بطاقات الغير`);
+    assert.equal(can(shape(role), 'delete', 'event_partner'), true, `الدور «${role}» فقد حذف شراكات الغير`);
   }
 });

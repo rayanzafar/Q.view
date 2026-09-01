@@ -42,6 +42,10 @@ const VIEWER = user('u_viewer', 'viewer', { name_ar: 'مشاهد', scope: 'secto
 // رئيس تطوير الأعمال: دورُ مراجعةٍ يعدّل كل بطاقة، ولا منحَ حذفٍ له في المصفوفة (قاعدته العامة).
 const BD_HEAD = user('u_bdhead', 'bd_head', { name_ar: 'رئيس تطوير الأعمال', scope: 'company' });
 const EXT = user('u_ext', 'external', { name_ar: 'زائر', sector_id: null });
+// ومدير النظام ومكتب الرئيس التنفيذي: بابُ حذف الفعالية وحده صار لمدير النظام (٢٠٢٦-٠٩-٠١)،
+// فيلزم شاهدان — من يفتحه، ومن كان يفتحه بالأمس فصار يُردّ.
+const ADMIN = user('u_admin', 'admin', { name_ar: 'مدير النظام', scope: 'company' });
+const CEO = user('u_ceo', 'ceo_office', { name_ar: 'مكتب الرئيس التنفيذي', scope: 'company' });
 const CTX = (u) => ({ user: u, ip: '127.0.0.1' });
 // صورٌ بحجم الاختبار لسيناريو العزل (E2): ترويسة JPEG صحيحة وحشوٌ يختلف بالبذرة فتختلف البصمة.
 const IMG = (seed) => Buffer.concat([Buffer.from([0xFF, 0xD8, 0xFF, 0xE0]), Buffer.alloc(64, seed)]);
@@ -72,7 +76,7 @@ before(async () => {
   for (const [id, name] of [['SOL', 'قطاع الحلول'], ['CONS', 'قطاع الاستشارات']]) {
     await db.insert('sector', { id, name_ar: name, kind: 'delivery', active: 1, created_at: T });
   }
-  for (const u of [LEAD, SARA, KHALID, VIEWER, BD_HEAD, EXT]) {
+  for (const u of [LEAD, SARA, KHALID, VIEWER, BD_HEAD, EXT, ADMIN, CEO]) {
     await db.insert('app_user', { id: u.id, username: u.username, name_ar: u.name_ar, role_id: u.role_id,
       sector_id: u.sector_id, scope: u.scope, active: 1, created_at: T });
   }
@@ -499,9 +503,16 @@ test('حذف البطاقة ناعمٌ على الصفّ وقاطعٌ على ص�
     (e) => e.status === 400 && /حُذفت من قبل/.test(e.message), 'مفتاح بطاقة محذوفة انفجر بدل رسالة عربية');
 });
 
-test('حذف الفعالية ناعم ولقادة القطاعات وحدهم — وما تحتها يختفي معها', async () => {
-  await assert.rejects(() => ev.deleteEvent(CTX(SARA), EV2.id), (e) => e.status === 403);
-  await ev.deleteEvent(CTX(LEAD), EV2.id);
+// بابُ الحذف أضيقُ باب في الوحدة (قرار حسين ٢٠٢٦-٠٩-٠١): الحذف يمحو صور البطاقات ورموز
+// الكشك محواً فعلياً لا رجعة فيه، فلا يفتحه قائد قطاعٍ ولا مكتبُ الرئيس ولا رئيس تطوير
+// الأعمال — ولا حاملُ منحةٍ شخصية (زوجُ v5.60 «يحذف فعاليات» سُحب، grants.js).
+test('حذف الفعالية لمدير النظام وحده — يُردّ عن كل من سواه، وناعمٌ على الصفّ، وما تحتها يختفي معها', async () => {
+  for (const u of [SARA, LEAD, CEO, BD_HEAD]) {
+    await assert.rejects(() => ev.deleteEvent(CTX(u), EV2.id), (e) => e.status === 403,
+      `الدور «${u.role_id}» حذف فعاليةً وليس له ذلك`);
+  }
+  assert.equal((await db.get('SELECT deleted_at FROM event WHERE id = ?', [EV2.id])).deleted_at, null, 'الرفض حذف');
+  await ev.deleteEvent(CTX(ADMIN), EV2.id);
   await assert.rejects(() => ev.getEvent(SARA, EV2.id), (e) => e.status === 404);
   assert.ok((await db.get('SELECT deleted_at FROM event WHERE id = ?', [EV2.id])).deleted_at);
   await assert.rejects(() => ev.listContacts(SARA, EV2.id, {}), (e) => e.status === 404);
@@ -563,7 +574,7 @@ test('ما تحت فعاليةٍ محذوفة محذوفٌ معها: البطا�
   const c = (await ev.createContact(CTX(SARA), E.id, { kind: 'تعاون', person_name: 'بطاقة تحت فعالية محذوفة', capture_key: 'k-gone' })).contact;
   const p = await ev.createPartner(CTX(SARA), E.id, { org_name: 'شراكة تحت فعالية محذوفة' });
   assert.equal((await ev.getContact(SARA, c.id)).id, c.id);
-  await ev.deleteEvent(CTX(LEAD), E.id);
+  await ev.deleteEvent(CTX(ADMIN), E.id);
   const gone = (e) => e.status === 404;
   await assert.rejects(() => ev.getContact(SARA, c.id), gone, 'البطاقة تُقرأ بعد حذف فعاليتها');
   await assert.rejects(() => ev.updateContact(CTX(SARA), c.id, { note: 'x' }), gone);
@@ -695,7 +706,7 @@ test('العزل: سيناريو كامل في الفعاليات لا يحرّ�
   await ev.deletePartner(CTX(SARA), p1.id);
   await ev.deleteQr(CTX(LEAD), A.id, q1.id);
   await ev.closeEvent(CTX(LEAD), A.id, {});
-  await ev.deleteEvent(CTX(LEAD), B.id);
+  await ev.deleteEvent(CTX(ADMIN), B.id);
 
   const after = await snapshot();
   for (const [t] of PROTECTED) {

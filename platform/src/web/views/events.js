@@ -517,15 +517,15 @@ async function contactsPanel(user, ev, { summary, cur, captureOpen, sectorName, 
   </div>`;
 
   const hidden = (k, v) => (v ? `<input type="hidden" name="${k}" value="${esc(v)}">` : '');
-  // زرّ التصدير (v5.68) لمن يدير الفعالية وحده — كحكم الخدمة نفسه، فلا يُعرض زرٌّ يُردّ صاحبه.
+  // زرّ التصدير لكل من يفتح الصفحة (قرار المالك ٢٠٢٦-٠٩-٠١) — كحكم الخدمة نفسه: بوّابة الصفحة
+  // تشترط قراءة الفعاليات، ومن قرأها على الشاشة يُنزِلها ملفاً، فلا شرط زائد هنا.
   // ويحمل الرابطُ التصفيةَ المعروضة نفسها: ما على الشاشة هو ما ينزل في الملف، لا كل ما التُقط.
   const exportQs = new URLSearchParams();
   for (const [k, v] of [['q', q], ['kind', kind], ['outcome', outcome], ['mine', cur.mine], ['dup', cur.dup]]) {
     if (v) exportQs.set(k, String(v));
   }
   const exportHref = `/api/events/${encodeURIComponent(ev.id)}/contacts/export.xlsx${exportQs.toString() ? `?${exportQs}` : ''}`;
-  const exportBtn = can(user, 'update', 'event')
-    ? `<a class="btn" href="${esc(exportHref)}" style="min-height:40px">${icon('download')} ${G.exportData}</a>` : '';
+  const exportBtn = `<a class="btn" href="${esc(exportHref)}" style="min-height:40px">${icon('download')} ${G.exportData}</a>`;
   const search = `<form method="get" class="ev-tb" role="search" aria-label="${G.search}">
     <input type="hidden" name="tab" value="contacts">${hidden('kind', kind)}${hidden('outcome', outcome)}${hidden('mine', cur.mine)}${hidden('dup', cur.dup)}
     <input class="input" id="ev-q" name="q" type="search" value="${esc(q)}" placeholder="ابحث بالاسم أو الجهة أو الجوّال" aria-label="${G.search}">

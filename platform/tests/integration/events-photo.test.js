@@ -44,6 +44,8 @@ const SARA = user('u_sara', 'consultant', { name_ar: 'سارة' });
 const KHALID = user('u_khalid', 'consultant', { name_ar: 'خالد' });
 const VIEWER = user('u_viewer', 'viewer', { name_ar: 'مشاهد', scope: 'sector' });
 const EXT = user('u_ext', 'external', { name_ar: 'زائر', sector_id: null });
+// مدير النظام: بابُ حذف الفعالية وحده بعد قرار ٢٠٢٦-٠٩-٠١ — قائد القطاع يُنشئ ويعدّل ولا يحذف.
+const ADMIN = user('u_admin', 'admin', { name_ar: 'مدير النظام', scope: 'company' });
 const CTX = (u) => ({ user: u, ip: '127.0.0.1' });
 const sha = (b) => createHash('sha256').update(b).digest('hex');
 
@@ -80,7 +82,7 @@ before(async () => {
   await rbac.initRbac();
   ev = await import('../../src/modules/events/events.js');
   await db.insert('sector', { id: 'SOL', name_ar: 'قطاع الحلول', kind: 'delivery', active: 1, created_at: T });
-  for (const u of [LEAD, SARA, KHALID, VIEWER, EXT]) {
+  for (const u of [LEAD, SARA, KHALID, VIEWER, EXT, ADMIN]) {
     await db.insert('app_user', { id: u.id, username: u.username, name_ar: u.name_ar, role_id: u.role_id,
       sector_id: u.sector_id, scope: u.scope, active: 1, created_at: T });
     await db.insert('session', { id: 'sess_' + u.username, user_id: u.id, created_at: T,
@@ -246,7 +248,7 @@ test('الفعالية المُغلقة تقبل صورةً على بطاقةٍ 
   await ev.closeEvent(CTX(LEAD), E.id, {});
   assert.equal((await ev.attachContactPhoto(CTX(SARA), c.id, JPEG)).ok, true, 'الإغلاق منع صورة بطاقةٍ قائمة');
   assert.equal((await ev.readContactPhoto(SARA, c.id)).sha256, sha(JPEG));
-  await ev.deleteEvent(CTX(LEAD), E.id);
+  await ev.deleteEvent(CTX(ADMIN), E.id);
   await assert.rejects(() => ev.attachContactPhoto(CTX(SARA), c.id, PNG), (e) => e.status === 404);
   await assert.rejects(() => ev.readContactPhoto(SARA, c.id), (e) => e.status === 404);
   assert.equal(await blobs('WHERE event_id = ?', [E.id]), 0, 'حذف الفعالية أبقى صورة');
@@ -421,7 +423,7 @@ test('قائمة الرموز بترتيب إضافتها لكل قارئ، وق
   await assert.rejects(() => ev.readQr(SARA, EV1.id, 'evb_nope'), (e) => e.status === 404);
   await assert.rejects(() => ev.deleteQr(CTX(LEAD), E.id, Q1.id), (e) => e.status === 404, 'رمزُ فعاليةٍ حُذف من أخرى');
   assert.deepEqual(await ev.listQr(SARA, E.id), []);
-  await ev.deleteEvent(CTX(LEAD), E.id);
+  await ev.deleteEvent(CTX(ADMIN), E.id);
   await assert.rejects(() => ev.listQr(SARA, E.id), (e) => e.status === 404);
 });
 
@@ -519,7 +521,7 @@ test('عنوان الرمز يُقصّ بالحرف لا بوحدة UTF-16: رم
   assert.equal(q2.title, 'امسح هنا للتسجيل');
   const a = await db.get("SELECT detail_json FROM audit_log WHERE action = 'create' AND resource = 'event_blob' AND resource_id = ?", [q2.id]);
   assert.equal(JSON.parse(a.detail_json).file_name, 'qr.png');
-  await ev.deleteEvent(CTX(LEAD), E.id);
+  await ev.deleteEvent(CTX(ADMIN), E.id);
 });
 
 test('سقف رموز الجناح: عند بلوغه يُردّ بالعربية قبل الكتابة، وحذفُ رمزٍ يفتح مكاناً — والحدّ يُخفَض في الاختبار ويُعاد', async () => {
@@ -542,7 +544,7 @@ test('سقف رموز الجناح: عند بلوغه يُردّ بالعربي�
     assert.equal(await blobs("WHERE event_id = ? AND kind = 'qr'", [E.id]), 2);
   } finally { ev.UPLOAD_LIMITS.qrPerEvent = was; }
   assert.equal(ev.UPLOAD_LIMITS.qrPerEvent, 12);
-  await ev.deleteEvent(CTX(LEAD), E.id);
+  await ev.deleteEvent(CTX(ADMIN), E.id);
 });
 
 test('ميزانية اليوم لكل حساب: الثالثة تُردّ بالعربية، وإعادةُ الصورة نفسها لا تُحتسب، وكل صورةٍ جديدة تُحتسب ولو على بطاقةٍ مصوَّرة، والبايتات تُحاسَب — ورمز الكشك بالميزانية نفسها', async () => {
@@ -593,7 +595,7 @@ test('ميزانية اليوم لكل حساب: الثالثة تُردّ با�
     assert.ok((await ev.addQr(CTX(LEAD), E.id, PNG, { title: 'رمز ضمن الميزانية' })).id);
   } finally { Object.assign(ev.UPLOAD_LIMITS, saved); }
   assert.deepEqual(ev.UPLOAD_LIMITS, { qrPerEvent: 12, photosPerCard: 6, dailyFiles: 300, dailyBytes: 500 * 1024 * 1024 });
-  await ev.deleteEvent(CTX(LEAD), E.id);
+  await ev.deleteEvent(CTX(ADMIN), E.id);
 });
 
 test('حذف الفعالية يمحو كل صورها ورموزها فعلاً — وصور الفعاليات الأخرى لا تُمسّ', async () => {
@@ -606,9 +608,12 @@ test('حذف الفعالية يمحو كل صورها ورموزها فعلاً
   assert.equal(await blobs('WHERE event_id = ?', [E.id]), 3);
   const others = await blobs('WHERE event_id <> ?', [E.id]);
   assert.ok(others >= 2, 'لا شهود في الفعاليات الأخرى');
-  await assert.rejects(() => ev.deleteEvent(CTX(SARA), E.id), (e) => e.status === 403);
+  // والرفض يشمل قائد القطاع منذ ٢٠٢٦-٠٩-٠١: محوُ الصور لا رجعة فيه، فبابه مدير النظام وحده.
+  for (const u of [SARA, LEAD]) {
+    await assert.rejects(() => ev.deleteEvent(CTX(u), E.id), (e) => e.status === 403, `${u.role_id} حذف فعالية`);
+  }
   assert.equal(await blobs('WHERE event_id = ?', [E.id]), 3, 'الرفض محا');
-  await ev.deleteEvent(CTX(LEAD), E.id);
+  await ev.deleteEvent(CTX(ADMIN), E.id);
   assert.equal(await blobs('WHERE event_id = ?', [E.id]), 0, 'حذف الفعالية أبقى صوراً');
   assert.equal(await blobs('WHERE event_id <> ?', [E.id]), others, 'حذف الفعالية مسّ صور غيرها');
   assert.ok((await db.get('SELECT deleted_at FROM event WHERE id = ?', [E.id])).deleted_at, 'الفعالية حُذفت حذفاً صلباً');

@@ -45,6 +45,8 @@ const SARA = user('u_sara', 'consultant', { name_ar: 'سارة' });
 const KHALID = user('u_khalid', 'consultant', { name_ar: 'خالد' });
 const VIEWER = user('u_viewer', 'viewer', { name_ar: 'مشاهد', scope: 'sector' });
 const EXT = user('u_ext', 'external', { name_ar: 'زائر', sector_id: null });
+// مدير النظام: بابُ حذف الفعالية وحده بعد قرار ٢٠٢٦-٠٩-٠١ — قائد القطاع يُنشئ ويعدّل ولا يحذف.
+const ADMIN = user('u_admin', 'admin', { name_ar: 'مدير النظام', scope: 'company' });
 const CTX = (u) => ({ user: u, ip: '127.0.0.1' });
 const sha = (b) => createHash('sha256').update(b).digest('hex');
 
@@ -102,7 +104,7 @@ before(async () => {
   await rbac.initRbac();
   ev = await import('../../src/modules/events/events.js');
   await db.insert('sector', { id: 'SOL', name_ar: 'قطاع الحلول', kind: 'delivery', active: 1, created_at: T });
-  for (const u of [LEAD, SARA, KHALID, VIEWER, EXT]) {
+  for (const u of [LEAD, SARA, KHALID, VIEWER, EXT, ADMIN]) {
     await db.insert('app_user', { id: u.id, username: u.username, name_ar: u.name_ar, role_id: u.role_id,
       sector_id: u.sector_id, scope: u.scope, active: 1, created_at: T });
     await db.insert('session', { id: 'sess_' + u.username, user_id: u.id, created_at: T,
@@ -480,7 +482,7 @@ test('المحو على العدد كلِّه: حذفُ بطاقةٍ بثلاث 
   assert.equal(await blobs("WHERE kind = 'card' AND ref_id = ?", [solo.id]), 0, 'حذف البطاقة أبقى صوراً');
   assert.equal(await blobs('WHERE event_id = ?', [E.id]), 6);
 
-  await ev.deleteEvent(CTX(LEAD), E.id);
+  await ev.deleteEvent(CTX(ADMIN), E.id);
   assert.equal(await blobs('WHERE event_id = ?', [E.id]), 0, 'حذف الفعالية أبقى صوراً');
   assert.equal(await blobs('WHERE event_id <> ?', [E.id]), others, 'حذف الفعالية مسّ صور غيرها');
   assert.equal(await blobs("WHERE kind = 'card' AND ref_id = ?", [C1.id]), 3, 'صور فعاليةٍ أخرى زالت');

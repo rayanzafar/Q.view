@@ -1,5 +1,5 @@
 // «الفعاليات» v5.68 — تصدير الجهات الملتقطة ملفَّ Excel: ما على الشاشة هو ما ينزل في الملف،
-// ولمن يدير الفعالية وحده.
+// ولكلِّ من يقرأ الفعالية (قرار المالك ٢٠٢٦-٠٩-٠١، بعد أن كان لمن يديرها وحده).
 //
 // ما يحرسه هذا الملف بترتيب أهميته:
 //   ١) الملف يُقرأ فعلاً: البايتات تعود جدولاً برؤوسه الستة عشر بترتيبها، وبصفوفه الثلاثة —
@@ -7,11 +7,12 @@
 //      لمن له صورة وفارغٌ لمن لا صورة له، ووقتُ الالتقاط بساعة الرياض لا بساعة غرينتش.
 //   ٢) ما لا يخرج: النصّ الخام (raw_text) ليس في الملف — لا رأساً ولا خلية.
 //   ٣) التصفية تُحترَم: تصديرٌ بنوعٍ واحد يُنزِل صفوف ذلك النوع وحدها.
-//   ٤) الباب: من يدير الفعالية (ومعه حاملُ المنح الشخصي v5.60) يصدّر؛ والمستشار والمشاهد
-//      يُردّان برسالةٍ تقول لمن هو، والخارجي لا يبلغ الفعاليات أصلاً.
+//   ٤) الباب هو باب القراءة نفسه: القائد والمستشار والمشاهد وحاملُ المنح الشخصي (v5.60)
+//      يصدّرون جميعاً، والخارجي وحده يُردّ لأنه لا يبلغ الفعاليات أصلاً.
 //   ٥) التدقيق: كل تصديرٍ ناجح صفٌّ بعدد صفوفه وتصفيته — والتصديرُ المردود لا يكتب شيئاً.
 //   ٦) عبر الشبكة: ترويسات التنزيل (نوعُ الملف، «مرفق» باسمين، «لا يُخزَّن»، «لا تخمين نوع»)،
-//      والجسمُ يُقرأ جدولاً؛ والمردودُ حمولةٌ عربية؛ وفعاليةٌ محذوفة ٤٠٤.
+//      والجسمُ يُقرأ جدولاً للقائد والمستشار والمشاهد؛ والمردودُ (الخارجي) حمولةٌ عربية؛
+//      وفعاليةٌ محذوفة ٤٠٤.
 // الخدمة تُنادى مباشرةً، والمسار عبر التطبيق الحقيقي بلا تطعيم — كما في events-photo.test.js.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -40,6 +41,8 @@ const LEAD = user('u_lead', 'sector_lead', { name_ar: 'قائد القطاع', s
 const SARA = user('u_sara', 'consultant', { name_ar: 'سارة' });
 const VIEWER = user('u_viewer', 'viewer', { name_ar: 'مشاهد', scope: 'sector' });
 const EXT = user('u_ext', 'external', { name_ar: 'زائر', sector_id: null });
+// مدير النظام: بابُ حذف الفعالية وحده بعد قرار ٢٠٢٦-٠٩-٠١ — قائد القطاع يُنشئ ويعدّل ولا يحذف.
+const ADMIN = user('u_admin', 'admin', { name_ar: 'مدير النظام', scope: 'company' });
 // موظفٌ يحمل منح v5.60 الشخصية «يعدّل الفعاليات» — يصدّر دون أن يكون دوره إدارياً.
 const MAZIN = user('u_mazin', 'employee', { name_ar: 'مازن',
   departmentGrants: [{ resource: 'event', action: 'update', department_id: 'D1' }] });
@@ -81,7 +84,7 @@ before(async () => {
   ev = await import('../../src/modules/events/events.js');
   ({ config: cfg } = await import('../../src/core/config.js'));
   await db.insert('sector', { id: 'SOL', name_ar: 'قطاع الحلول', kind: 'delivery', active: 1, created_at: T });
-  for (const u of [LEAD, SARA, VIEWER, EXT, MAZIN]) {
+  for (const u of [LEAD, SARA, VIEWER, EXT, MAZIN, ADMIN]) {
     await db.insert('app_user', { id: u.id, username: u.username, name_ar: u.name_ar, role_id: u.role_id,
       sector_id: u.sector_id, scope: u.scope, active: 1, created_at: T });
     await db.insert('session', { id: 'sess_' + u.username, user_id: u.id, created_at: T,
@@ -89,7 +92,7 @@ before(async () => {
   }
   EV1 = await ev.createEvent(CTX(LEAD), { name_ar: 'معرض التقنية 2026', venue: 'الرياض', starts_on: TODAY, ends_on: TODAY });
   EV_GONE = await ev.createEvent(CTX(LEAD), { name_ar: 'معرضٌ أُلغي', venue: 'جدة', starts_on: TODAY, ends_on: TODAY });
-  await ev.deleteEvent(CTX(LEAD), EV_GONE.id);
+  await ev.deleteEvent(CTX(ADMIN), EV_GONE.id);
 
   // أ) بطاقةٌ كاملة: قطاعٌ محدَّد، ونصٌّ خام، وصورةٌ تُدرَج صفّاً مباشرةً في القاعدة.
   A = (await ev.createContact(CTX(SARA), EV1.id, { kind: 'تعريف بالشركة', person_name: 'أحمد العلي',
@@ -193,13 +196,13 @@ test('التصفية تُحترَم: تصديرٌ بنوعٍ واحد يُنزِ
 });
 
 // ── ٤) الباب ──────────────────────────────────────────────────────────────────
-test('التصدير لمن يدير الفعالية: قائد القطاع وحاملُ المنح الشخصي نعم، والمستشار والمشاهد لا، والخارجي لا يبلغ الفعاليات', async () => {
-  const mazin = await ev.exportContacts(CTX(MAZIN), EV1.id);
-  assert.equal(sheet(mazin.buffer).rows.length, 3, 'حاملُ منح تعديل الفعاليات لم يصدّر');
-
-  for (const u of [SARA, VIEWER]) {
-    await assert.rejects(() => ev.exportContacts(CTX(u), EV1.id),
-      (e) => e.status === 403 && /لمن يدير الفعالية/.test(e.message), `${u.name_ar}: لم يُردّ`);
+test('التصدير لكل من يقرأ الفعالية: القائد والمستشار والمشاهد وحاملُ المنح — والخارجي وحده يُردّ', async () => {
+  // أربعةُ أبوابٍ تُفتح: قائدٌ يدير، وحاملُ منحٍ شخصيّ (v5.60)، ومستشارٌ يلتقط، ومشاهدٌ يقرأ
+  // فقط — وكلُّهم ينالون الملف نفسه بصفوفه الثلاثة ورؤوسه الستة عشر، لا ملفاً منقوصاً.
+  for (const u of [LEAD, MAZIN, SARA, VIEWER]) {
+    const s = sheet((await ev.exportContacts(CTX(u), EV1.id)).buffer);
+    assert.deepEqual(s.headers, HEADERS, `${u.name_ar}: رؤوس الملف ليست الرؤوس المتّفق عليها`);
+    assert.equal(s.rows.length, 3, `${u.name_ar}: لم ينزل الملف بصفوفه الثلاثة`);
   }
   await assert.rejects(() => ev.exportContacts(CTX(EXT), EV1.id),
     (e) => e.status === 403 && /خارج صلاحياتك/.test(e.message));
@@ -222,13 +225,14 @@ test('كل تصديرٍ ناجح صفُّ تدقيقٍ بعدد صفوفه وت�
   assert.equal(detail.rows, 3);
   assert.deepEqual(detail.filters, { q: null, kind: null, outcome: null, mine: false, dup: false });
 
+  // والمردود صار واحداً: الخارجي وحده — وردُّه لا يترك أثراً في التدقيق.
   const now = await exportAudits();
-  await assert.rejects(() => ev.exportContacts(CTX(SARA), EV1.id), (e) => e.status === 403);
+  await assert.rejects(() => ev.exportContacts(CTX(EXT), EV1.id), (e) => e.status === 403);
   assert.equal(await exportAudits(), now, 'تصديرٌ مردود كتب صفّاً في التدقيق');
 });
 
 // ── ٦) عبر الشبكة ─────────────────────────────────────────────────────────────
-test('المسار: الملف ينزل بترويساته لمن يدير، ويُردّ المستشار بالعربية، والفعالية المحذوفة غير موجودة', async () => {
+test('المسار: الملف ينزل بترويساته للقائد والمستشار والمشاهد، ويُردّ الخارجي بالعربية، والفعالية المحذوفة غير موجودة', async () => {
   const r = await http(`/api/events/${EV1.id}/contacts/export.xlsx`, { as: 'lead' });
   assert.equal(r.status, 200);
   assert.equal(r.headers.get('content-type'), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -248,9 +252,24 @@ test('المسار: الملف ينزل بترويساته لمن يدير، و�
   assert.equal(filtered.status, 200);
   assert.equal(sheet(filtered.buf).rows.length, 1);
 
-  const sara = await http(`/api/events/${EV1.id}/contacts/export.xlsx`, { as: 'sara' });
-  assert.equal(sara.status, 403);
-  assert.match(sara.json.error.message, /تصدير بطاقات الفعالية لمن يدير الفعالية/);
+  // والمستشار والمشاهد ينزل عليهما الملف نفسه بترويساته نفسها — لا صفحةَ رفضٍ ولا حمولةَ خطأ.
+  for (const who of ['sara', 'viewer']) {
+    const g = await http(`/api/events/${EV1.id}/contacts/export.xlsx`, { as: who });
+    assert.equal(g.status, 200, `${who}: لم ينزل الملف`);
+    assert.equal(g.headers.get('content-type'), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    const gcd = g.headers.get('content-disposition');
+    assert.ok(gcd.startsWith('attachment'), `${who}: «مرفق» غائبة عن الترويسة: ${gcd}`);
+    assert.ok(gcd.includes(`filename="event-${EV1.id}-contacts.xlsx"`), `${who}: الاسم اللاتيني غائب: ${gcd}`);
+    assert.ok(gcd.includes("filename*=UTF-8''"), `${who}: الاسم العربي بصيغة UTF-8 غائب: ${gcd}`);
+    const gs = sheet(g.buf);
+    assert.deepEqual(gs.headers, HEADERS, `${who}: رؤوس الملف تغيّرت`);
+    assert.equal(gs.rows.length, 3, `${who}: عدد صفوف الملف ليس ثلاثة`);
+  }
+
+  // والخارجي وحده يُردّ — وردُّه حمولةٌ عربية تقول له أين هو، لا بايتات.
+  const ext = await http(`/api/events/${EV1.id}/contacts/export.xlsx`, { as: 'ext' });
+  assert.equal(ext.status, 403);
+  assert.match(ext.json.error.message, /الفعاليات خارج صلاحياتك/);
 
   const gone = await http(`/api/events/${EV_GONE.id}/contacts/export.xlsx`, { as: 'lead' });
   assert.equal(gone.status, 404);

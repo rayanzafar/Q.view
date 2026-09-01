@@ -32,6 +32,8 @@ const KHALID = user('u_khalid', 'consultant', { name_ar: 'خالد' });
 const VIEWER = user('u_viewer', 'viewer', { name_ar: 'مشاهد', scope: 'sector' });
 const BD_HEAD = user('u_bdhead', 'bd_head', { name_ar: 'رئيس تطوير الأعمال', scope: 'company' });
 const EXT = user('u_ext', 'external', { name_ar: 'زائر', sector_id: null });
+// مدير النظام: بابُ حذف الفعالية وحده بعد قرار ٢٠٢٦-٠٩-٠١ — قائد القطاع يُنشئ ويعدّل ولا يحذف.
+const ADMIN = user('u_admin', 'admin', { name_ar: 'مدير النظام', scope: 'company' });
 // موظفٌ يحمل منح v5.60 الشخصية «يعدّل الفعاليات» — يدير الاجتماعات دون أن يكون دوره إدارياً.
 const MAZIN = user('u_mazin', 'employee', { name_ar: 'مازن',
   departmentGrants: [{ resource: 'event', action: 'update', department_id: 'D1' }] });
@@ -61,7 +63,7 @@ before(async () => {
   ev = await import('../../src/modules/events/events.js');
   mt = await import('../../src/modules/events/meetings.js');
   await db.insert('sector', { id: 'SOL', name_ar: 'قطاع الحلول', kind: 'delivery', active: 1, created_at: T });
-  for (const u of [LEAD, SARA, KHALID, VIEWER, BD_HEAD, EXT, MAZIN]) {
+  for (const u of [LEAD, SARA, KHALID, VIEWER, BD_HEAD, EXT, MAZIN, ADMIN]) {
     await db.insert('app_user', { id: u.id, username: u.username, name_ar: u.name_ar, role_id: u.role_id,
       sector_id: u.sector_id, scope: u.scope, active: 1, created_at: T,
       email: u.id === EXT.id ? null : u.username + '@evc.sa' });
@@ -293,7 +295,7 @@ test('الفعالية المغلقة لا يُنشأ فيها اجتماع، و
 test('اجتماعٌ تحت فعالية محذوفة لا يُقرأ — كقاعدة البطاقات', async () => {
   const gone = await ev.createEvent(CTX(LEAD), { name_ar: 'معرض سيُحذف', starts_on: day(0), ends_on: day(1) });
   const m = await mt.createMeeting(CTX(SARA), gone.id, { title: 'يتيم', meeting_date: D1, start_time: '09:00', end_time: '10:00' });
-  await ev.deleteEvent(CTX(LEAD), gone.id);
+  await ev.deleteEvent(CTX(ADMIN), gone.id);
   await assert.rejects(mt.getMeeting(SARA, m.meeting.id), /غير موجود/);
   await assert.rejects(mt.listMeetings(SARA, gone.id), /الفعالية غير موجودة/);
 });
