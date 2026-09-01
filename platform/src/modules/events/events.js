@@ -45,6 +45,9 @@ import { can } from '../../core/rbac/index.js';
 import { badRequest, forbidden, notFound } from '../../core/http/errors.js';
 import { normalizeEntityName } from '../../core/org/entity-registry.js';
 import { parseCardText, foldDigits } from './card-parser.js';
+import { buildExport } from '../io/xlsx.js';
+import { RIYADH_OFFSET_HOURS } from '../../core/i18n/time.js';
+import { config } from '../../core/config.js';
 
 export const CARD_KINDS = ['تعريف بالشركة', 'شراكة', 'تعاون', 'توظيف'];
 export const OUTCOMES = ['لم تُراجع', 'تواصلنا', 'صارت فرصة', 'صارت شراكة', 'لا متابعة'];
@@ -352,11 +355,13 @@ export async function findPossibleDuplicate(eventId, norms = {}, exceptId = null
   return (await get(sql, [...params, ...orParams])) || null;
 }
 
-export async function listContacts(user, eventId, opts = {}) {
-  assertRead(user);
-  const ev = await loadEvent(eventId);
+// شرطُ التصفية واحدٌ للقائمة وللتصدير معاً (v5.68): ما تراه الشاشة هو ما ينزل في الملف
+// حرفاً. ولو انفصل الشرطان لصدّر الملفُ غير ما عُرض وهو يدّعي أنه هو — وخطأٌ كهذا لا
+// يُرى إلا بعد أن يُوزَّع الملف على الفريق. ويعود معه `applied`: التصفية كما فُهمت فعلاً
+// لا كما وصلت، ليكتبها التدقيق فيُعرف ماذا خرج من المنصة لا ماذا طُلب.
+function contactFilter(user, evId, opts = {}) {
   const where = ['c.event_id = ?', 'c.deleted_at IS NULL'];
-  const params = [ev.id];
+  const params = [evId];
   const q = clean(opts.q, 80);
   if (q) {
     const like = '%' + q.toLowerCase() + '%';
@@ -376,14 +381,24 @@ export async function listContacts(user, eventId, opts = {}) {
   if (kind) { where.push('c.kind = ?'); params.push(kind); }
   const outcome = clean(opts.outcome);
   if (outcome) { where.push('c.outcome = ?'); params.push(outcome); }
-  if (truthy(opts.mine)) { where.push('c.captured_by = ?'); params.push(user.id); }
-  if (truthy(opts.dup)) where.push('c.possible_duplicate_of IS NOT NULL');
+  const mine = truthy(opts.mine);
+  if (mine) { where.push('c.captured_by = ?'); params.push(user.id); }
+  const dup = truthy(opts.dup);
+  if (dup) where.push('c.possible_duplicate_of IS NOT NULL');
+  return { sql: where.join(' AND '), params,
+    applied: { q: q || null, kind: kind || null, outcome: outcome || null, mine, dup } };
+}
+
+export async function listContacts(user, eventId, opts = {}) {
+  assertRead(user);
+  const ev = await loadEvent(eventId);
+  const f = contactFilter(user, ev.id, opts);
   // الحدّ عددٌ صحيح دائماً — «1.5» في العنوان لا يصل إلى الاستعلام نصاً.
   const limit = Math.max(1, Math.min(500, Math.floor(Number(opts.limit)) || 100));
   return (await all(`SELECT ${contactSelect('c')} FROM event_contact c
-     WHERE ${where.join(' AND ')}
+     WHERE ${f.sql}
      ORDER BY c.captured_at DESC, c.id DESC
-     LIMIT ${limit}`, params)).map(normRow);
+     LIMIT ${limit}`, f.params)).map(normRow);
 }
 
 // «آخر ما التقطت» + عدّاد الفريق اليوم — ما يراه الملتقِط تحت النموذج بين لقاءين.
@@ -538,6 +553,97 @@ export async function deleteContact(ctx, cid) {
       detail: { event_id: row.event_id } });
   });
   return { ok: true };
+}
+
+// ══ تصدير الجهات الملتقطة ملفَّ Excel (v5.68) ═══════════════════════════════════════════
+// بعد المعرض يُقسَّم ما التُقط على الفريق ويُوزَّع على القطاعات: ملفٌّ واحد يُفتح في الجدول،
+// تُرتَّب فيه الصفوف وتُكتب المتابعة بجوارها. وهذا ما كان يُفعل باليد نسخاً من الشاشة.
+//
+// والباب هنا أضيق من باب القراءة عمداً: البطاقة يقرؤها كل موظّف على الشاشة، وإخراجُ ما
+// التُقط ملفاً يُخرجه من المنصة إلى جهازٍ لا رقيب بعده — فهو لمن يدير الفعالية وحده (ومعه
+// حاملُ المنح الشخصي، v5.60)، وكلُّ تصدير يُكتب في التدقيق بعدد صفوفه وتصفيته.
+//
+// وما لا يخرج أبداً: النصّ الخام (raw_text)، ومفتاح الالتقاط، والمفاتيح المطبَّعة — الأول
+// أصلٌ يُرجَع إليه عند الخلاف لا بيانٌ يُوزَّع، والباقي شأنُ الآلة لا شأنُ قارئ.
+const EXPORT_COLUMNS = [
+  { key: 'person_name', labelAr: 'الشخص' },
+  { key: 'org_name', labelAr: 'الجهة' },
+  { key: 'job_title', labelAr: 'المنصب' },
+  { key: 'phone', labelAr: 'الجوّال' },
+  { key: 'email', labelAr: 'البريد' },
+  { key: 'website', labelAr: 'الموقع الإلكتروني' },
+  { key: 'kind', labelAr: 'نوع البطاقة' },
+  { key: 'sector_name', labelAr: 'القطاع المعني' },
+  { key: 'outcome', labelAr: 'المتابعة' },
+  { key: 'outcome_note', labelAr: 'ملاحظة المتابعة' },
+  { key: 'note', labelAr: 'ملاحظة' },
+  { key: 'dup', labelAr: 'قد تكون مكرّرة' },
+  { key: 'captured_by_name', labelAr: 'التقطها' },
+  { key: 'captured_at', labelAr: 'وقت الالتقاط' },
+  { key: 'photo_count', labelAr: 'عدد الصور' },
+  { key: 'photo_url', labelAr: 'رابط الصورة' },
+];
+// الرؤوس مُصدَّرة كي يقيسها الاختبار على مصدرها لا على نسخةٍ منها.
+export const EXPORT_HEADERS = EXPORT_COLUMNS.map((c) => c.labelAr);
+const SECTOR_UNSET = 'غير محدَّد';
+// سقفٌ أعلى من أي معرض بمرات: أضخمُ ما يُلتقط مئاتٌ قليلة، والسقف حارسُ ذاكرةٍ لا قاعدةُ
+// عمل — وعددُ ما خرج فعلاً مكتوبٌ في التدقيق فلا يُظنّ ناقصٌ كاملاً.
+const EXPORT_MAX_ROWS = 5000;
+
+// وقتُ الالتقاط بساعة الرياض لا بساعة غرينتش: من يقرأ الملف يقرأ ساعة الجناح. والإزاحة
+// ثابتة (+٣ بلا توقيت صيفي) فهي جمعٌ لا جدولُ مناطق — مصدرها core/i18n/time.js.
+const riyadhStamp = (iso) => {
+  const t = new Date(String(iso || ''));
+  if (Number.isNaN(t.getTime())) return '';
+  const s = new Date(t.getTime() + RIYADH_OFFSET_HOURS * 3600000).toISOString();
+  return `${s.slice(0, 10)} ${s.slice(11, 16)}`;
+};
+// رابطٌ مطلق لا نسبيّ: الملف يُقرأ خارج المتصفّح فلا أصلَ يُكمَّل منه العنوان. والصورة تبقى
+// خلف الدخول كما هي — الرابط يفتحها لمن يقرأ الفعالية، لا لمن وصله الملف.
+const contactPhotoLink = (cid) =>
+  `${String(config.platformUrl || '').replace(/\/+$/, '')}/api/events/contacts/${encodeURIComponent(cid)}/photo`;
+
+export async function exportContacts(ctx, eventId, filters = {}) {
+  const user = ctx.user;
+  assertRead(user);
+  if (!can(user, 'update', 'event')) {
+    throw forbidden('تصدير بطاقات الفعالية لمن يدير الفعالية — اطلبه من قائد القطاع أو مدير النظام');
+  }
+  const ev = await loadEvent(eventId);
+  const f = contactFilter(user, ev.id, filters);
+  // ترتيبُ الملف ترتيبُ الالتقاط (الأقدم أوّلاً) لا ترتيبُ الشاشة: الشاشة تعرض الجديد أوّلاً
+  // لأن الملتقِط يراجع ما توّه التقطه، والملفُ يُقرأ بعد المعرض فيمشي مع اليوم كما جرى.
+  const rows = (await all(`SELECT ${contactSelect('c')} FROM event_contact c
+     WHERE ${f.sql}
+     ORDER BY c.captured_at ASC, c.id ASC
+     LIMIT ${EXPORT_MAX_ROWS}`, f.params)).map(normRow);
+  // اسم القطاع يُقرأ استعلاماً واحداً لا استعلاماً لكل صفّ — والبطاقة تحمل معرّفه لا اسمه.
+  const sectorName = new Map((await all('SELECT id, name_ar FROM sector WHERE deleted_at IS NULL'))
+    .map((s) => [s.id, s.name_ar]));
+
+  const data = rows.map((r) => ({
+    person_name: r.person_name || '',
+    org_name: r.org_name || '',
+    job_title: r.job_title || '',
+    phone: r.phone || '',
+    email: r.email || '',
+    website: r.website || '',
+    kind: r.kind || '',
+    sector_name: (r.sector_id && sectorName.get(r.sector_id)) || SECTOR_UNSET,
+    outcome: r.outcome || '',
+    outcome_note: r.outcome_note || '',
+    note: r.note || '',
+    dup: r.possible_duplicate_of ? 'نعم' : '',
+    captured_by_name: r.captured_by_name || '',
+    captured_at: riyadhStamp(r.captured_at),
+    photo_count: r.photo_count || 0,
+    photo_url: r.has_photo ? contactPhotoLink(r.id) : '',
+  }));
+
+  const out = buildExport({ columns: EXPORT_COLUMNS, rows: data, sheetName: 'الجهات الملتقطة' });
+  await audit(ctx, { action: 'export', resource: 'event_contact', resourceId: ev.id, sectorId: null,
+    detail: { event_id: ev.id, rows: rows.length, filters: f.applied } });
+  return { buffer: out.buffer, mime: out.mime, fileName: `الجهات الملتقطة — ${ev.name_ar}.${out.ext}` };
 }
 
 // قراءة نصّ البطاقة — محلياً، بلا حفظ: الشاشة تعرض المقترَح ويراجعه الملتقِط ثم يحفظ بنفسه.

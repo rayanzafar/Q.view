@@ -115,6 +115,21 @@ eventsRouter.delete('/events/:id', h((req) => ev.deleteEvent(req.ctx, req.params
 // بطاقات الفعالية
 eventsRouter.get('/events/:id/contacts', h((req) => ev.listContacts(req.ctx.user, req.params.id, req.query || {})));
 eventsRouter.get('/events/:id/contacts/recent', h((req) => ev.recentContacts(req.ctx.user, req.params.id, req.query || {})));
+// تصدير ما التُقط ملفَّ Excel (v5.68): ردٌّ ببايتات لا بحمولة، فهو الاستثناء الثاني بعد الصور.
+// و«export.xlsx» حرفيةٌ لا تلتبس بـ«contacts» ولا بمعرّف بطاقة. واسمان للملف: لاتينيٌّ للمتصفّح
+// القديم، وعربيٌّ بصيغة UTF-8 هو ما يقرؤه صاحبه. و«لا يُخزَّن» لأن الملف بيانات لقاءات المعرض
+// بحالها — لا تُترك في ذاكرة وسيطٍ ولا في قرص المتصفّح بعد أن تُحفظ حيث أراد صاحبها.
+eventsRouter.get('/events/:id/contacts/export.xlsx', async (req, res, next) => {
+  try {
+    const { buffer, fileName, mime } = await ev.exportContacts(req.ctx, req.params.id, req.query || {});
+    res.setHeader('Content-Type', mime);
+    res.setHeader('Content-Disposition',
+      `attachment; filename="event-${safeName(req.params.id)}-contacts.xlsx"; filename*=UTF-8''${rfc5987(fileName)}`);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.send(buffer);
+  } catch (e) { next(e); }
+});
 eventsRouter.post('/events/:id/contacts', h((req) => ev.createContact(req.ctx, req.params.id, req.body || {})));
 
 // شراكات الفعالية

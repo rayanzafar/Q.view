@@ -747,7 +747,8 @@ test('ومسارات الفعاليات مركَّبة فعلاً تحت واج�
     else if (layer.handle && layer.handle.stack) layer.handle.stack.forEach(walk);
   };
   apiRouter.stack.forEach(walk);
-  for (const p of ['/events', '/events/:id', '/events/:id/contacts', '/events/:id/contacts/recent', '/events/contacts/:cid',
+  for (const p of ['/events', '/events/:id', '/events/:id/contacts', '/events/:id/contacts/recent',
+    '/events/:id/contacts/export.xlsx', '/events/contacts/:cid',
     '/events/contacts/:cid/outcome', '/events/parse-card', '/events/:id/partners', '/events/partners/:pid', '/events/:id/close',
     '/events/contacts/:cid/photo', '/events/contacts/:cid/photos', '/events/contacts/:cid/photos/:bid',
     '/events/:id/qr', '/events/:id/qr/:bid',
