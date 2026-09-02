@@ -47,6 +47,59 @@ const STATUS_UI = Object.fromEntries(PRJ_STATUS.map((s) => [s.id, s]));
 const statusUi = (id) => STATUS_UI[id] || { id, color: '#64748b', tint: '#e9edf2', ink: '#475569' };
 // ترتيب شرائح المرشّح كما يقرأها المالك: العمل الجاري أولاً ثم المعلّق فالمكتمل فما لم يبدأ فالملغى.
 const STATUS_FILTER_ORDER = ['IN_PROGRESS', 'ON_HOLD', 'COMPLETED', 'NOT_STARTED', 'CANCELLED'];
+
+// ── ضابطُ حالة المشروع: قائمةٌ تُرى قائمةً، في الصفحة وفي القائمة معاً ─────────
+// «حالة المشروع إلى الآن ما حطّيتوها — أغيّر حالة المشروع مكتمل ولا معلّق ولا قيد التشغيل»
+// (قائدة قطاع الاستشارات، 2026-09-02). والضابط كان موجوداً في ترويسة المشروع فعلاً — بل
+// استعملته مرّتين في ٢٤ أغسطس — لكنه كان **يُقرأ وسماً**: حدٌّ شفاف، وحشوةُ شارةٍ، وبلا
+// عنوانٍ يسبقه ولا سهمٍ يقول «هنا تُختار». فالبلاغ صادق وإن كان الشيء قائماً: ما لا يُرى
+// أداةً ليس أداة.
+//
+// وموضعُ التنظيف الحقيقي هو **قائمة المشاريع** لا صفحةُ كل مشروع: المشاريع القديمة تُغلق
+// دفعةً واحدة بالمرور على الصفوف، وفتحُ صفحةٍ لكل مشروعٍ ثم العودة عملٌ لا يُنجَز. فالضابط
+// نفسه — نفس المسار ونفس التحقّق — صار في خانة الحالة على الصف والبطاقة، لمن يملك تعديل
+// **ذلك الصفّ بعينه** لا لمن يملك التعديل في الجملة.
+const PRJ_STATUS_ORDER = ['NOT_STARTED', 'IN_PROGRESS', 'ON_HOLD', 'COMPLETED', 'CANCELLED'];
+const PRJ_STATUS_ACTION = 'غيّر حالة المشروع';
+// أنماطٌ محليّة (لا تُضاف إلى نسق التصميم العام): حدٌّ بلون الحالة + سهمٌ خارج <option> +
+// حشوةٌ تفتح مكانه. اللون معنى لا زينة — هو لون الحالة نفسه في الكانبان والشرائح.
+const PRJ_STATUS_CSS = `<style>
+.prj-st{position:relative;display:inline-flex;align-items:center;vertical-align:middle}
+.prj-st > select{appearance:none;-webkit-appearance:none;-moz-appearance:none;font-family:inherit;font-size:11.5px;
+  font-weight:700;line-height:1.75;border-radius:999px;cursor:pointer;max-width:140px;
+  padding-block:.2rem;padding-inline-start:.6rem;padding-inline-end:1.45rem;
+  background:var(--_stb);color:var(--_sti);border:1px solid var(--_stl)}
+.prj-st > select:hover{filter:brightness(.97)}
+.prj-st > select:focus-visible{outline:2px solid var(--brand);outline-offset:1px}
+.prj-st > .prj-st-c{position:absolute;inset-inline-end:.5rem;font-size:9px;line-height:1;color:var(--_sti);pointer-events:none}
+.prj-st-lbl{font-size:11.5px;font-weight:700;color:var(--muted)}
+.prj-st-sm > select{font-size:11px;max-width:120px;padding-inline-start:.5rem;padding-inline-end:1.3rem}
+/* الإصبعُ ليست فأرة: القائمة تجلس داخل صفٍّ/بطاقةٍ كلُّها زرُّ فتحٍ للمشروع، فلمسةٌ تُخطئ
+   الهدفَ الصغير تفتح المشروع بدل أن تفتح الخيارات. ٤٠ بكسل حدُّ اللمس على الشاشتين. */
+@media (pointer:coarse){
+  .prj-st > select{min-height:40px;padding-block:.45rem}
+  .dlv-per{min-height:40px}
+}
+</style>`;
+// شارةُ الحالة لمن يقرأ ولا يعدّل — نصٌّ واحد للجدول والبطاقة والترويسة معاً.
+const statusPill = (st) => pill(tr(st || 'IN_PROGRESS'),
+  st === 'COMPLETED' ? 'green' : st === 'ON_HOLD' ? 'amber' : st === 'CANCELLED' ? 'slate' : 'blue');
+// حالةٌ مخزَّنة خارج الخمس (مثل «مُخطَّط» من الترحيل) تُضاف إلى القائمة بدل أن تُبتلع صامتة:
+// قائمةٌ لا تحوي القيمة المحفوظة تعرض أول خياراتها فيقرأ المستخدم حالةً غير حالة مشروعه.
+function statusSelect(p, opts = {}) {
+  const cur = p.status || 'IN_PROGRESS';
+  const list = PRJ_STATUS_ORDER.includes(cur) ? PRJ_STATUS_ORDER : [cur, ...PRJ_STATUS_ORDER];
+  const ui = statusUi(cur);
+  const title = opts.tip ? `${PRJ_STATUS_ACTION} — ${opts.tip}` : PRJ_STATUS_ACTION;
+  // في القائمة تتكرّر القائمةُ على كل صفّ: اسمٌ واحد مكرّر يجعل قارئ الشاشة يسمع «غيّر حالة
+  // المشروع» عشرين مرة بلا مشروع. اسمُ المشروع يدخل التسمية هنا وحده — في الترويسة هو العنوان.
+  const label = opts.inList ? `${PRJ_STATUS_ACTION} «${p.name_ar || ''}»` : PRJ_STATUS_ACTION;
+  return `<span class="prj-st${opts.compact ? ' prj-st-sm' : ''}" draggable="false" style="--_stl:${ui.color};--_sti:${ui.ink};--_stb:${ui.tint}">`
+    + `<select data-action-change="prj-status-sel" data-id="${esc(p.id)}" data-prev="${esc(cur)}"${opts.inList ? ' data-list="1"' : ''}`
+    + ` aria-label="${esc(label)}" title="${esc(title)}">`
+    + list.map((v) => `<option value="${esc(v)}"${cur === v ? ' selected' : ''}>${esc(tr(v))}</option>`).join('')
+    + `</select><span class="prj-st-c" aria-hidden="true">▾</span></span>`;
+}
 const ragHex = { GREEN: '#059669', AMBER: '#d97706', RED: '#dc2626' };
 // حالة الصحة بمعناها لا باسم لونها التقني — «أحمر» جرجون؛ «حرج» قرار. مصدر واحد يُستخدم في
 // الكانبان والجدول وصفحة التفاصيل معاً (كانت صفحة التفاصيل تعرض اسم اللون بدل المعنى).
@@ -115,6 +168,28 @@ export async function projectsPage(user, opts = {}) {
   const totalCount = rows.length;
   const statusFilter = STATUS_FILTER_ORDER.includes(opts.status) ? opts.status : null;
   if (statusFilter) rows = rows.filter((p) => normStatus(p) === statusFilter);
+  // ── بوابة الصفّ لا بوابة الشاشة ──────────────────────────────────────────────
+  // `canEdit` يقول «يملك المنح في الجملة»، وهذا يقول «يملكه على هذا المشروع بعينه» — فالضابط
+  // لا يُرسَم على صفٍّ سيردّه الخادم. ومشروعُ الترحيل (بلا مالك ولا إدارة) يُحكَم بقطاعه، وهو
+  // ما يفتحه لقائد قطاعه تحديداً — وهي الحالة التي يُنظَّف فيها القديم فعلاً.
+  //
+  // وبدرجتَي الباب نفسه الذي يحكم الكتابة (pmo/project-access.js): الصفُّ كما هو أولاً، فإن
+  // رُدَّ حُمِّلت إداراتُه المشاركة وأُعيد السؤال بها. وإلا رأت مديرةُ إدارةٍ **مشارِكة** شارةً
+  // جامدة في القائمة وقائمةً في ترويسة المشروع نفسه، والخادم يقبل كتابتها في الحالتين.
+  // استعلامٌ واحد لكل ٢٠٠ صفّ مردود، لا استعلامٌ لكل صفّ.
+  const rowTarget = (p, partners) => ({ ...p, project_id: p.id, ...(partners ? { partner_department_ids: partners } : {}) });
+  const directEdit = new Map(rows.map((p) => [p.id, can(user, 'update', 'project', rowTarget(p))]));
+  const partnersOf = {};
+  const needPartners = rows.filter((p) => !directEdit.get(p.id)).map((p) => p.id);
+  for (let i = 0; i < needPartners.length; i += 200) {
+    const chunk = needPartners.slice(i, i + 200);
+    for (const r of await all(
+      `SELECT project_id, department_id FROM project_department WHERE project_id IN (${chunk.map(() => '?').join(',')})`, chunk)) {
+      if (r.department_id) (partnersOf[r.project_id] ||= []).push(r.department_id);
+    }
+  }
+  const canEditRow = (p) => directEdit.get(p.id)
+    || (partnersOf[p.id]?.length ? can(user, 'update', 'project', rowTarget(p, partnersOf[p.id])) : false);
   const savedViews = await listViews(user, 'projects');
   const userName = Object.fromEntries((await all('SELECT id, name_ar, username FROM app_user')).map((u) => [u.id, u.name_ar || u.username]));
   // The legacy source has progress_pct=0 for 37/43 projects and no contract value for 20/43 —
@@ -214,10 +289,10 @@ export async function projectsPage(user, opts = {}) {
     ${yearsAvail.map((y) => `<a href="${qs({ year: y })}" class="chip ${year === y ? 'on' : ''}"><span class="tnum">${y}</span></a>`).join('')}
   </div>`;
   // ── شرائح مرشّح الحالة (?status=) — كل شريحة تحمل عددها؛ تُركّب مع القطاع والسنة والبحث ──
-  const statusChipN = (on, n) => `<span class="tnum" style="font-weight:800;color:${on ? 'rgba(255,255,255,.85)' : 'var(--faint)'}">${n}</span>`;
+  const statusChipN = (on, n, key) => `<span class="tnum" data-status-count="${key}" style="font-weight:800;color:${on ? 'rgba(255,255,255,.85)' : 'var(--faint)'}">${n}</span>`;
   const statusChips = `<div class="chips" style="margin-bottom:.6rem"><span class="lbl">الحالة:</span>
-    <a href="${qs({ status: null })}" class="chip ${statusFilter ? '' : 'on'}">الكل ${statusChipN(!statusFilter, totalCount)}</a>
-    ${STATUS_FILTER_ORDER.map((s) => { const on = statusFilter === s; return `<a href="${qs({ status: s })}" class="chip ${on ? 'on' : ''}"><span class="dot" style="background:${statusUi(s).color}"></span>${tr(s)} ${statusChipN(on, statusCount[s] || 0)}</a>`; }).join('')}
+    <a href="${qs({ status: null })}" class="chip ${statusFilter ? '' : 'on'}">الكل ${statusChipN(!statusFilter, totalCount, 'all')}</a>
+    ${STATUS_FILTER_ORDER.map((s) => { const on = statusFilter === s; return `<a href="${qs({ status: s })}" class="chip ${on ? 'on' : ''}"><span class="dot" style="background:${statusUi(s).color}"></span>${tr(s)} ${statusChipN(on, statusCount[s] || 0, s)}</a>`; }).join('')}
   </div>`;
 
   // ── (2) «يحتاج انتباهك الآن» — فقط: أحمر / صرف يسبق الإنجاز بـ10+ نقاط / تجاوز الانتهاء ──
@@ -305,7 +380,9 @@ export async function projectsPage(user, opts = {}) {
         <a href="/app/project/${p.id}" title="${esc(p.name_ar)}" style="font-size:12.5px;font-weight:700;color:var(--ink2);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.name_ar)}</a>
         <div style="font-size:10.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(cl) || '—'}</div>
         ${srcOppTitle ? `<a href="/app/opportunity/${esc(p.source_opp_id)}" title="نشأ من الفرصة: ${esc(srcOppTitle)}" style="display:inline-flex;align-items:center;gap:.22rem;margin-top:.2rem;font-size:9.5px;font-weight:800;color:var(--brand2);background:#f3eef7;border-radius:6px;padding:.08rem .34rem;line-height:1.5;white-space:nowrap">${oppGlyph}<span>من فرصة</span></a>` : ''}</div></td>
-      <td data-label="الحالة" style="padding:.5rem .55rem;text-align:center">${pill(tr(p.status), p.status === 'COMPLETED' ? 'green' : p.status === 'ON_HOLD' ? 'amber' : p.status === 'CANCELLED' ? 'slate' : 'blue')}</td>
+      <td data-label="الحالة" style="padding:.5rem .55rem;text-align:center">${canEditRow(p)
+        ? statusSelect(p, { compact: true, inList: true, tip: `«${p.name_ar}»: الإغلاق قرارُك، ولا يتم من تلقاء نفسه` })
+        : statusPill(p.status)}</td>
       <td data-label="الصحة" style="padding:.5rem .55rem;white-space:nowrap" data-v="${health.rank}"><span style="display:inline-flex;align-items:center;gap:.35rem;font-size:12px;font-weight:700;color:${health.color}"><span style="width:9px;height:9px;border-radius:50%;background:${health.color};flex:none"></span>${health.label}</span></td>
       <td data-label="${G.spendPct}·${G.progressPct}" class="rtbl-hm" style="padding:.5rem .55rem" data-v="${prog.v}"><div style="display:flex;align-items:center;gap:.2rem">${twinBar(canCost ? (burn ? burn.v : null) : null, prog.v, twinTip)}${prog.derived ? '<span style="color:var(--faint);font-size:9.5px">⁎</span>' : ''}</div></td>
       <td data-label="المدة" class="rtbl-hm" style="padding:.5rem .55rem;font-size:11.5px;color:var(--muted)" data-v="${lateDays != null ? 100000 + lateDays : (ageMonths ?? -1)}">${durHtml}</td>
@@ -354,6 +431,9 @@ export async function projectsPage(user, opts = {}) {
       <div class="kt">${esc(p.name_ar)}</div>
       <div class="km">${cl ? `<span style="display:inline-flex;align-items:center;gap:.25rem">${icon('building')}${esc(cl)}</span>` : ''}
         ${p.rag ? pill(RAG_LABEL[p.rag] || RAG_LABEL.GREEN, ragTone[p.rag] || 'slate') : ''}</div>
+      ${/* عمودُ اللوح يقول الحالة لمن يقرأ؛ ومن يملك تغييرها يجدها هنا بلا سحبٍ ولا فأرة —
+           السحب وحده كان الطريق، وهو لا يعمل باللمس ولا بلوحة المفاتيح. */''}
+      ${canEditRow(p) ? `<div class="km">${statusSelect(p, { compact: true, inList: true, tip: 'الإغلاق قرارُك، ولا يتم من تلقاء نفسه' })}</div>` : ''}
       <div class="km">${(() => { const bv = bestVal(p); const e = effProg(p); return `
         ${bv.l ? `<span class="kv tnum">${fmtSar(bv.v)}</span><span style="font-size:9.5px;font-weight:700;color:var(--faint);background:#eef1f7;border-radius:6px;padding:.1rem .35rem">${bv.l}</span>`
                : '<span style="color:var(--faint);font-size:11px">بلا قيمة مسجلة</span>'}
@@ -393,6 +473,7 @@ export async function projectsPage(user, opts = {}) {
   // قائمة القطاعات المُسلَّمة للمتصفّح تملأ خانة «القطاع» في نافذة «مشروع جديد» — قطاعات تسليم
   // وحدها: المشروع عمل يُنسب إلى قطاع له هدف وإيراد، لا إلى وحدة مساندة تُعير أشخاصها للمشاريع.
   const body = `
+    ${PRJ_STATUS_CSS}
     ${secChips}
     ${yearPills}
     ${statusChips}
@@ -408,9 +489,9 @@ export async function projectsPage(user, opts = {}) {
     ${viewsBar}
     ${rows.length ? `<div style="font-size:10.5px;color:var(--faint);margin:0 0 .6rem">⁎ نسبة إنجاز محسوبة من حالة المخرجات — المنصة السابقة بلا نسبة مسجلة · شارة القيمة توضح أساسها (عقد / أمر شراء / ميزانية / إيراد محقق)</div>` : ''}
     ${content}
-    <script>window.__SANAD=Object.assign(window.__SANAD||{},{sectors:${JSON.stringify(await all(`SELECT id,name_ar FROM sector WHERE active=1 AND ${DELIVERY_SECTOR_SQL} ORDER BY name_ar`)).replace(/</g, '\\u003c')},canEditPrj:${canEdit},viewsPage:'projects',prjSectorLocked:${JSON.stringify(user.scope === 'company' ? null : user.sector_id)}});</script>`;
+    <script>window.__SANAD=Object.assign(window.__SANAD||{},{sectors:${JSON.stringify(await all(`SELECT id,name_ar FROM sector WHERE active=1 AND ${DELIVERY_SECTOR_SQL} ORDER BY name_ar`)).replace(/</g, '\\u003c')},canEditPrj:${canEdit},viewsPage:'projects',prjSectorLocked:${JSON.stringify(user.scope === 'company' ? null : user.sector_id)},prjStatusUi:${JSON.stringify(STATUS_UI).replace(/</g, '\\u003c')},prjStatusFilter:${JSON.stringify(statusFilter || '')}});</script>`;
   return layout({ user, active: 'projects', title: 'المشاريع', subtitle: `المحفظة · ${rows.length} مشروع${statusFilter ? ` · ${tr(statusFilter)}` : ''}${year ? ` · سنة ${year}` : ''}`,
-    body, year: year || undefined, scripts: ['/static/pages/projects.js'] });
+    body, year: year || undefined, scripts: ['/static/pages/project-status.js', '/static/pages/projects.js'] });
 }
 
 // ── مركز العمل اليومي («مهامي») ───────────────────────────────────────────────
@@ -2110,16 +2191,19 @@ export async function projectDetailPage(user, projectId, opts = {}) {
   // وحالة المشروع **ليست نسبة إنجازه**: قد تُعتمَد المخرجات كلها ويبقى المشروع قائماً (دعمٌ
   // متّفق عليه، أو مخرَجٌ إضافي قادم) — «حتى لو صرفنا كل المخرجات بس هو قائم برضو ممكن».
   // لذلك لا يُغلق المشروع تلقائياً باكتمال مخرجاته أبداً؛ الإغلاق قرارُ مديره وحده، ومن هنا.
-  const STATUS_ORDER = ['NOT_STARTED', 'IN_PROGRESS', 'ON_HOLD', 'COMPLETED', 'CANCELLED'];
-  const stUi = statusUi(p.status);
   const statusTip = 'حالة المشروع قرارُك أنت ولا تتغيّر وحدها: اكتمال المخرجات كلها لا يُغلق المشروع — '
     + 'قد تكتمل ويبقى قائماً. اختر «مكتمل» حين ينتهي فعلاً.';
+  // والقارئ بلا ضابطٍ يقرأ الوصف نفسه، فلا يُؤمَر بما لا سبيل له إليه («اختر مكتمل» وهو لا يملك
+  // الاختيار) — يُخبَر من يقرّرها وأنها لا تتغيّر وحدها، وهذا كل ما يعنيه.
+  const statusReadTip = 'حالة المشروع يقرّرها مدير المشروع ولا تتغيّر وحدها باكتمال المخرجات.';
+  // وكانت هنا قائمةٌ بحدٍّ **شفاف** وحشوةِ شارةٍ وبلا عنوانٍ ولا سهم — فقُرئت وسماً يُقرأ لا
+  // قراراً يُتَّخذ، وقيل فيها «ما حطّيتوها» وهي قائمة. الآن: عنوانٌ «الحالة:» يسبقها، وحدٌّ
+  // بلون الحالة يُرى، وسهمٌ خارج <option> يقول إنها تُفتح.
   const statusBadge = canEdit
-    ? `<select data-action-change="prj-status-sel" data-id="${p.id}" data-prev="${esc(p.status || '')}" aria-label="حالة المشروع" title="${esc(statusTip)}"
-        style="font-size:11.5px;font-weight:700;padding:.22rem .55rem;border-radius:999px;border:1px solid transparent;cursor:pointer;background:${stUi.tint};color:${stUi.ink}">
-        ${STATUS_ORDER.map((v) => `<option value="${v}"${p.status === v ? ' selected' : ''}>${esc(tr(v))}</option>`).join('')}
-      </select>`
-    : `<span title="${esc(statusTip)}">${pill(tr(p.status), p.status === 'COMPLETED' ? 'green' : p.status === 'ON_HOLD' ? 'amber' : 'blue')}</span>`;
+    ? `<span style="display:inline-flex;align-items:center;gap:.35rem">
+        <span class="prj-st-lbl">الحالة:</span>${statusSelect(p, { tip: statusTip })}</span>`
+    : `<span style="display:inline-flex;align-items:center;gap:.35rem" title="${esc(statusReadTip)}">
+        <span class="prj-st-lbl">الحالة:</span>${statusPill(p.status)}</span>`;
 
   // ── قسمٌ قابل للطيّ ──────────────────────────────────────────────────────────
   const sec = (key, title, { sub = '', badge = '', open = false, body: inner = '' }) => `
@@ -2426,6 +2510,40 @@ export async function projectDetailPage(user, projectId, opts = {}) {
     }
     return '';
   };
+  const dlvYears = (() => {
+    const ys = new Set();
+    const sy = Number(String(p.start_date || '').slice(0, 4)); const ey = Number(String(p.end_date || '').slice(0, 4));
+    const cy = today.getUTCFullYear();
+    const from = Number.isFinite(sy) && sy > 2000 ? sy : cy;
+    const to = Number.isFinite(ey) && ey > 2000 ? ey : cy + 1;
+    for (let y = Math.min(from, cy); y <= Math.max(to, cy); y++) ys.add(y);
+    return [...ys].sort();
+  })();
+  // ── شهر الاستحقاق يُصحَّح من صفّ المخرَج (v5.72) ───────────────────────────────
+  // كان الشهر يُختار مرةً واحدة لحظة الإضافة ولا سبيل إلى تغييره بعدها — فبقيت مئات المخرجات
+  // بلا شهر، وإيرادُها يؤرَّخ بيوم تسليمها لا بشهر استحقاقه، فتخرج سنةٌ كاملة بأرقامٍ لا تشبه
+  // الواقع (بلاغ قائدة قطاع الاستشارات، 2026-09-02). والقائمة واحدة للإضافة وللصفّ: مولِّدٌ
+  // واحد لا نسخة ثانية تشيخ. وسنةُ المخرَج المخزَّنة تُضاف إن كانت خارج مدى المشروع، وإلا
+  // ظهر صفٌّ له شهرٌ محفوظ وكأنه «بلا شهر».
+  const periodOptions = (cur) => {
+    const cy = Number(String(cur || '').slice(0, 4));
+    const years = Number.isFinite(cy) && cy > 2000 && !dlvYears.includes(cy) ? [...dlvYears, cy].sort() : dlvYears;
+    return `<option value=""${cur ? '' : ' selected'}>${G.monthUnset}</option>`
+      + years.flatMap((y) => MONTHS_AR.map((mn, i) => {
+        const v = `${y}-${String(i + 1).padStart(2, '0')}`;
+        return `<option value="${v}"${v === cur ? ' selected' : ''}>${mn} ${y}</option>`;
+      })).join('');
+  };
+  const dlvPeriodOf = (d) => (d.year && d.month ? `${d.year}-${String(d.month).padStart(2, '0')}` : '');
+  const dlvPeriodSel = (d) => {
+    const cur = dlvPeriodOf(d);
+    return `<select class="input dlv-per" aria-label="${G.deliverableMonth} للمخرَج ${esc(d.name_ar)}"
+        title="شهر استحقاق المخرَج — إيرادُه يُحسب في هذا الشهر، وتغييرُه يحرّك إيرادَه معه. و«${G.monthUnset}» يؤرِّخه بيوم تسليمه."
+        style="width:104px;font-size:11px;padding:.15rem .3rem;margin-top:.25rem${cur ? '' : ';color:var(--muted)'}"
+        data-action-change="dlv-period" data-id="${esc(d.id)}" data-prev="${cur}"${RECOGNIZED.has(d.status) ? ' data-recognized="1"' : ''}>${periodOptions(cur)}</select>`;
+  };
+  // مخرجاتٌ بلا شهرٍ مخزَّن — بالشرط نفسه الذي يقرؤه الاعتراف (سنةٌ وشهرٌ معاً وإلا فيوم التسليم).
+  const dlvNoMonth = dlv.filter((d) => !dlvPeriodOf(d)).length;
   const dlvRows = dlv.map((d) => {
     const next = DELIVERABLE_NEXT[d.status];
     const due = d.due_date ? `<span class="tnum">${esc(String(d.due_date).slice(0, 10))}</span>`
@@ -2444,7 +2562,8 @@ export async function projectDetailPage(user, projectId, opts = {}) {
       ${canDlvMoney ? `<td style="padding:.45rem .75rem;text-align:center;white-space:nowrap;font-size:12px">
         ${canGov ? `<input class="input tnum" type="number" min="0" step="1" dir="ltr" value="${d.amount_halalas == null ? '' : Math.round(d.amount_halalas / 100)}"
             placeholder="${G.amountUnset}" aria-label="قيمة المخرَج بالريال" title="قيمة المخرَج بالريال شاملةً الضريبة — تُحفظ عند الخروج من الخانة، والإيراد يتبعها تلقائياً"
-            style="width:104px;font-size:12px;padding:.2rem .35rem;text-align:center" data-action-blur="dlv-amount" data-id="${esc(d.id)}" data-prev="${d.amount_halalas == null ? '' : Math.round(d.amount_halalas / 100)}">`
+            style="width:104px;font-size:12px;padding:.2rem .35rem;text-align:center" data-action-blur="dlv-amount" data-id="${esc(d.id)}" data-prev="${d.amount_halalas == null ? '' : Math.round(d.amount_halalas / 100)}">
+          <div>${dlvPeriodSel(d)}</div>`
     : (d.amount_halalas == null ? `<span style="color:var(--muted);font-size:11px">${G.amountUnset}</span>` : `<span class="tnum">${fmtSar(d.amount_halalas)}</span>`)}
         ${w != null ? `<div style="font-size:10px;color:var(--faint)">وزن <span class="tnum">${Math.round(w)}%</span></div>` : ''}
         ${dlvRevChip(d)}</td>`
@@ -2462,20 +2581,10 @@ export async function projectDetailPage(user, projectId, opts = {}) {
         </div></td>` : ''}
     </tr>`;
   }).join('');
-  const dlvYears = (() => {
-    const ys = new Set();
-    const sy = Number(String(p.start_date || '').slice(0, 4)); const ey = Number(String(p.end_date || '').slice(0, 4));
-    const cy = today.getUTCFullYear();
-    const from = Number.isFinite(sy) && sy > 2000 ? sy : cy;
-    const to = Number.isFinite(ey) && ey > 2000 ? ey : cy + 1;
-    for (let y = Math.min(from, cy); y <= Math.max(to, cy); y++) ys.add(y);
-    return [...ys].sort();
-  })();
   const dlvAddBar = canGov ? `<div style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;padding:.55rem .9rem;border-top:1px dashed var(--line)">
     <input id="g-dlv-name" class="input" placeholder="${G.deliverableName}…" aria-label="${G.deliverableName}" style="flex:1;min-width:140px;font-size:12.5px">
     <select id="g-dlv-period" class="input" aria-label="${G.deliverableMonth}" style="width:auto;font-size:12px;max-width:150px">
-      <option value="">${G.monthUnset}</option>
-      ${dlvYears.flatMap((y) => MONTHS_AR.map((mn, i) => `<option value="${y}-${String(i + 1).padStart(2, '0')}">${mn} ${y}</option>`)).join('')}
+      ${periodOptions('')}
     </select>
     <input id="g-dlv-amount" class="input" type="number" min="0" step="1" dir="ltr" placeholder="${G.deliverableAmount}" aria-label="${G.deliverableAmount} بالريال" style="width:110px;font-size:12.5px">
     ${phases.length ? `<select id="g-dlv-phase" class="input" aria-label="المرحلة" style="width:auto;max-width:150px;font-size:12px">
@@ -2542,6 +2651,10 @@ export async function projectDetailPage(user, projectId, opts = {}) {
     : `<span style="font-size:10.5px;color:#92400e">لا مخرَج مؤهلاً للربط — سجِّل مخرجات المشروع (مُسلَّمة أو معتمَدة بلا قيمة) ثم اربطه، أو حوِّله:</span>`)
           + `<button class="btn btn-ghost btn-sm" data-action="rev-convert" data-project="${esc(p.id)}" data-line="${esc(l.id)}" data-name="${esc(String(l.label || '').slice(0, 40))}" title="يُنشأ مخرَجٌ معتمَد باسم السطر وقيمته وشهره — سترتفع نسبة الإنجاز المشتقة">حوِّله مخرَجاً</button>` : ''}
       </div>`).join('')}
+    </div>` : ''}
+    ${canDlvMoney && dlvNoMonth ? `<div style="margin:.35rem .9rem .55rem;padding:.5rem .7rem;background:var(--bg);border:1px solid var(--line);border-radius:10px;font-size:11.5px;color:var(--ink2)">
+      ${countAr(dlvNoMonth, { one: 'مخرَجٌ واحد', two: 'مخرَجان', few: 'مخرَجات', many: 'مخرَجاً' })} بلا شهر استحقاق — والإيراد يؤرَّخ بيوم التسليم
+      ${canGov ? '<span style="color:var(--muted)">· اختر الشهر من خانته في صفّ المخرَج</span>' : ''}
     </div>` : ''}
     <div class="tblwrap">${dlv.length ? `<table style="width:100%;border-collapse:collapse;min-width:${canGov ? 620 : 420}px">
       <thead><tr style="font-size:10.5px;color:var(--muted);text-align:right">
@@ -2763,6 +2876,7 @@ export async function projectDetailPage(user, projectId, opts = {}) {
     + gov.decisions.length + gov.changes.filter((c) => c.status === 'REQUESTED').length;
 
   const body = `
+    ${PRJ_STATUS_CSS}
     <a href="/app/projects" style="font-size:12px;color:var(--muted)">← المشاريع</a>
     <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin:.6rem 0 1rem">
       <h2 style="font-size:18px;margin:0">${esc(p.name_ar)}</h2>${statusBadge}${ragBadge}
@@ -2782,7 +2896,7 @@ export async function projectDetailPage(user, projectId, opts = {}) {
     <script>window.__SANAD=Object.assign(window.__SANAD||{},{gov:{projectId:${JSON.stringify(p.id).replace(/</g, '\\u003c')},canEdit:${canGov}},
       money:{projectId:${JSON.stringify(p.id).replace(/</g, '\\u003c')}}});</script>`;
   return layout({ user, active: 'projects', title: p.name_ar, subtitle: 'تفاصيل المشروع', body,
-    scripts: ['/static/pages/project-governance.js', '/static/pages/project-money.js'] });
+    scripts: ['/static/pages/project-status.js', '/static/pages/project-governance.js', '/static/pages/project-money.js'] });
 }
 
 // ═══ صفحة الشخص ══════════════════════════════════════════════════════════════════════════════

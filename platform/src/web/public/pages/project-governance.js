@@ -77,6 +77,20 @@
     const amt = ev.target && ev.target.closest && ev.target.closest('[data-action-blur="dlv-amount"]');
     if (amt) dlvAmountSave(amt);
   });
+  // شهر استحقاق المخرَج يُصحَّح من صفّه (v5.72): كان يُختار مرةً واحدة عند الإضافة ولا يُراجَع
+  // بعدها، فبقيت مخرجاتٌ بلا شهر وإيرادُها مؤرَّخ بيوم تسليمها. الفراغ يعني «بلا شهر» صراحةً،
+  // والقيمة السابقة تُستعاد عند الردّ كي لا تبقى الشاشة تقول شهراً لم يُحفظ.
+  async function dlvPeriodSave(el) {
+    const prev = String(el.dataset.prev == null ? '' : el.dataset.prev);
+    const now = String(el.value == null ? '' : el.value);
+    if (now === prev) return;
+    try {
+      await api('/pmo/deliverable/' + el.dataset.id, 'PATCH', { period: now });
+      el.dataset.prev = now;
+      toast(el.dataset.recognized === '1' ? 'حُفظ الشهر — وتحرّك إيراده معه' : 'حُفظ الشهر');
+      setTimeout(() => location.reload(), 450);
+    } catch (e) { toast(e.message, true); el.value = prev; }
+  }
   // ربط الإيراد اليتيم (v5.32): «اربطه بالمخرَج» يتبنّى المخرَجُ القيمةَ ويحلّ سطرُه المشتق
   // محلّ المستورد — المجموع محفوظ. و«حوِّله مخرَجاً» قرارٌ يُؤكَّد بأثره على نسبة الإنجاز.
   async function revAttach(el) {
@@ -215,26 +229,14 @@
     r.readAsText(f);
   }
 
+  // «صحة المشروع» لا «حالة المشروع»: القائمة المجاورة صارت تحمل عنوان «الحالة:» ورسالتها
+  // «حُفظت الحالة» — فرسالةٌ تقول «حالة المشروع» هنا تسمّي الضابط الآخر.
   async function prjRag(id, rag) {
-    try { await api('/projects/' + id, 'PATCH', { rag }); toast('حُدّثت حالة المشروع ✓'); setTimeout(() => location.reload(), 450); }
+    try { await api('/projects/' + id, 'PATCH', { rag }); toast('حُفظت صحة المشروع'); setTimeout(() => location.reload(), 450); }
     catch (e) { toast(e.message, true); }
   }
-  // حالة المشروع (قائم · معلّق · مكتمل · ملغى) — تُغيَّر من ترويسة المشروع. إغلاقٌ وإلغاء
-  // قراران يُقرآن في المحفظة ولوحة القيادة، فيُستأذن فيهما قبل الحفظ لا بعده.
-  const STATUS_AR = { NOT_STARTED: 'لم يبدأ', IN_PROGRESS: 'قيد التنفيذ', ON_HOLD: 'متوقّف مؤقتًا', COMPLETED: 'مكتمل', CANCELLED: 'ملغى' };
-  async function prjStatus(id, status, el) {
-    const prev = el ? el.dataset.prev : '';
-    if ((status === 'COMPLETED' || status === 'CANCELLED')
-      && !window.confirm(`سيصير المشروع «${STATUS_AR[status]}» ويظهر كذلك في المحفظة ولوحة القيادة. تأكيد؟`)) {
-      if (el && prev) el.value = prev;
-      return;
-    }
-    try {
-      await api('/projects/' + id, 'PATCH', { status });
-      toast(`صار المشروع «${STATUS_AR[status] || status}» ✓`);
-      setTimeout(() => location.reload(), 450);
-    } catch (e) { toast(e.message, true); if (el && prev) el.value = prev; }
-  }
+  // حالة المشروع: انتقلت كاملةً إلى /static/pages/project-status.js (v5.73) — ضابطٌ واحد
+  // تشترك فيه ترويسةُ المشروع وقائمةُ المشاريع، فلا نسختان تفترقان. لا تُعِد كتابتها هنا.
   // إضافة مهمة مربوطة بهذا المشروع مباشرة — كانت غير متاحة أصلاً من صفحة التفاصيل (لازم
   // الذهاب لصفحة «مهامي» العامة ولا رابط بالمشروع)؛ نفس نقطة نهاية الإضافة السريعة العامة.
   async function prjTaskAdd(projectId) {
@@ -319,10 +321,10 @@
   document.addEventListener('change', (ev) => {
     const gs = ev.target.closest('[data-action-change="gov-status-sel"]');
     if (gs) return void govStatus(gs.dataset.kind, gs.dataset.id, gs.value);
+    const dp = ev.target.closest('[data-action-change="dlv-period"]');
+    if (dp) return void dlvPeriodSave(dp);
     const rg = ev.target.closest('[data-action-change="prj-rag-sel"]');
     if (rg) return void prjRag(rg.dataset.id, rg.value);
-    const ss = ev.target.closest('[data-action-change="prj-status-sel"]');
-    if (ss) return void prjStatus(ss.dataset.id, ss.value, ss);
   });
   // Enter inside an add-bar field submits that bar
   document.addEventListener('keydown', (ev) => {

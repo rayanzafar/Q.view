@@ -157,8 +157,16 @@ const KINDS = {
         const w = Number(d.weight);
         if (!Number.isFinite(w) || w < 0 || w > 100) throw badRequest('وزن المخرج نسبة بين ٠ و١٠٠ — أو يُترك فارغاً فيُشتقّ من قيمته');
       }
-      if ('period' in d && d.period != null && String(d.period).trim() !== '' && !/^\d{4}-(0[1-9]|1[0-2])$/.test(String(d.period)))
-        throw badRequest('اختر شهر الاستحقاق من القائمة');
+      if ('period' in d && d.period != null && String(d.period).trim() !== '') {
+        const per = String(d.period).trim();
+        if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(per)) throw badRequest('اختر شهر الاستحقاق من القائمة');
+        // وسنةٌ خارج المعقول تُردّ كما تُردّ قيمةٌ خارج المعقول: شهرُ الاستحقاق يؤرِّخ سطرَ
+        // الإيراد، فسنةٌ مثل ٢٠٩٩ تُخرج إيراداً محقّقاً من تقارير سنته كلها والمخرَج مُسلَّم.
+        // والقائمة على الشاشة محدودة أصلاً بسنوات المشروع — فهذا حدُّ الخادم لما لا يمرّ منها.
+        const y = Number(per.slice(0, 4));
+        if (y < 2000 || y > new Date().getUTCFullYear() + 5)
+          throw badRequest('سنة شهر الاستحقاق خارج المعقول — راجع السنة قبل الحفظ');
+      }
       // الفوترة والتحصيل ختمان تكتبهما المالية عند إصدار المستخلص وتحصيله. قبولهما من هنا
       // يفصل الرقم عن الفاتورة فتصبح نسبة الفوترة رقماً بلا مستند خلفه.
       for (const k of ['invoiced_at', 'collected_at']) {
