@@ -11,7 +11,7 @@ import { netSql } from '../../modules/finance/vat.js';
 import { icon } from '../icons.js';
 import { fmtSar } from '../../core/util/ids.js';
 import { all, get } from '../../core/db/index.js';
-import { sectorDashboard, sectorStaffing, sectorWins, quarterlyRevenue, quarterlyBookings, pipelineCoverage, monthlyRevenue, revenueOutlook, revenueScope, outlookFromMonths, winsByMonth, windowFigures, windowRevenue, yearElapsedPct, targetToDate, paceDelta, grossMargin, WEIGHTED_OPEN, availableYears } from '../../core/reports/metrics.js';
+import { sectorDashboard, sectorStaffing, sectorWins, quarterlyRevenue, quarterlyBookings, pipelineCoverage, monthlyRevenue, revenueOutlook, revenueScope, outlookFromMonths, winsByMonth, windowFigures, windowRevenue, yearElapsedPct, targetToDate, paceDelta, grossMargin, sectorCosts, WEIGHTED_OPEN, availableYears } from '../../core/reports/metrics.js';
 import { attentionFeed, RESOURCE_AR } from '../../core/reports/attention.js';
 import { changesSince, periodBounds, lastChangeAt } from '../../core/reports/changes.js';
 import { completenessScore } from '../../core/reports/completeness.js';
@@ -133,6 +133,33 @@ const CSS = `<style>
 .kviz>div{flex:1;min-width:0}
 /* عدّاد الإشغال وحده في خليته — يتوسّطها كبيراً بدل ركنٍ صغير وفراغ (ملاحظة أ. حسين) */
 .gviz{flex:1;display:flex;justify-content:center;padding:.2rem 0}
+/* (١-ب) «المال في القطاع» — سطرٌ مضغوط فوق الفصول كلها: الإيراد والمفوتر والتكاليف والهامش.
+   خلاياه أزرارٌ تفتح تفصيلها (كبطاقات المؤشرات)، وشريطٌ رفيع على حافة كل خلية يقول معناها:
+   كحليٌّ للإيراد، أخضرُ مزرقّ للمفوتر، عنبريٌّ للتكلفة، وأحمرُ للهامش السالب وحده. */
+.money-band{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-sm);box-shadow:var(--sh-sm);padding:.45rem .8rem .5rem}
+.mhead{display:flex;gap:.45rem;align-items:baseline;flex-wrap:wrap;margin-bottom:.3rem}
+.mhead h2.me{margin:0;font-size:11.5px;font-weight:800;color:var(--muted)}
+.mhead .mp{font-size:var(--fs-micro);color:var(--muted);font-weight:700}
+.mhead .icb{font-size:9.5px;font-weight:700;color:var(--muted);background:var(--track);border-radius:999px;padding:.05rem .45rem}
+/* عدد الخلايا يتبع بوابات القارئ لا رقماً ثابتاً: أربعٌ للقائد، وثلاثٌ لمدير الإدارة (بلا
+   مفوتر)، واثنتان لمن يقرأ الفواتير وحدها — وعمودٌ رابعٌ فارغٌ عند حافة السطر يُقرأ خليةً
+   سقطت لا مساحةً لا تلزم. فيُمرَّر العدد على الوسم ويُقسَّم السطر عليه. */
+.mcells{display:grid;grid-template-columns:repeat(var(--n,4),minmax(0,1fr));gap:.5rem}
+.mcell{background:none;border:none;border-inline-start:3px solid var(--_mc,var(--line));border-radius:var(--r-sm);padding:.15rem .55rem;display:grid;gap:1px;align-content:start;text-align:start;font-family:inherit;cursor:pointer;min-width:0;transition:background .18s}
+.mcell:hover{background:var(--bg)}
+.mcell:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.mcell .ml{font-size:11px;font-weight:700;color:var(--muted);display:flex;gap:.3rem;align-items:center;flex-wrap:wrap;min-width:0}
+.mcell .mv{font-size:var(--fs-val-md);font-weight:800;color:var(--ink2);line-height:1.2;letter-spacing:-.01em}
+/* «لم يُسجَّل» هو **قيمة** الخلية حين تخلو الفترة، لا زخرفةً حولها — فبرتبة النصّ الخافت
+   المقروء (--muted) لا الأخفت (--faint، ٣:١ على الأبيض وهو دون حدّ التباين). */
+.mcell .mv.mz{font-size:13px;font-weight:700;color:var(--muted);line-height:1.5}
+.mcell .ms{font-size:10.5px;color:var(--muted);line-height:1.5;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* سطرُ السبب جملةٌ لا رقم: يلتفّ في سطرين عند الضيق ولا يُبتر بثلاث نقاط — نصفُ الجملة
+   («لا تكاليف مسجَّلة —…») يُقرأ حكماً غير الذي تقوله تمامها. */
+.mcell .ms.msw{white-space:normal;overflow:visible;text-overflow:clip;line-height:1.45}
+.mcell .ms .mz{color:var(--muted)}
+@media(max-width:1100px){.mcells{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:640px){.mcells{grid-template-columns:minmax(0,1fr)}}
 /* (٢) شريط القراءة الداكن — البقعة البنفسجية والرقم الأحمر الفاتح موروثان من لوحة v5.39 */
 .exec-band{background:linear-gradient(135deg,#101733,#16224e 55%,#2b1a55);border-radius:18px;padding:.8rem 1rem;color:#eef2fb;position:relative;overflow:hidden}
 .exec-band::before{content:'';position:absolute;inset:-40% -20% auto auto;width:420px;height:420px;border-radius:50%;background:radial-gradient(closest-side,rgba(131,71,152,.35),transparent)}
@@ -501,6 +528,10 @@ export async function sectorPage(user, opts = {}) {
   const canInvoices = can(user, 'read', 'invoice');
   const canContracts = can(user, 'read', 'contract');
   const canMargin = canSeeSensitive(user, 'margin');
+  // بوابة الكلفة تُقرأ مرّةً واحدة في الصفحة: يقرؤها شريط «المال في القطاع» أعلى الشاشة وصفُّ
+  // طلبات الاعتماد أسفلها. كانت تُعلَن مرتين في ملفٍ واحد، وتكرارُ بوابةٍ أمنية في موضعين
+  // بابُ افتراقهما يوماً — فتُشدّ إحداهما وتبقى الأخرى مفتوحة.
+  const canCost = canSeeSensitive(user, 'cost');
   // أسماء الأفراد وأحمالهم لمن يقرأ الموظفين — البقية يرون مجاميع الفريق بلا أسماء، كما
   // تُحجب بطاقة التحصيل عمّن لا يقرأ الفواتير. والأسماء من كشف التسكين (نطاق الأشخاص) لا من
   // مجاميع القطاع — KI-068.
@@ -574,6 +605,57 @@ export async function sectorPage(user, opts = {}) {
        ORDER BY CASE r.probability WHEN 'high' THEN 0 WHEN 'med' THEN 1 WHEN 'medium' THEN 1 ELSE 2 END LIMIT 4`,
     [sectorId, ...deptArg, ...clientArg]),
   ]);
+
+  // ── (v5.71) «المال في القطاع»: الإيراد والمفوتر والتكاليف في سطرٍ واحد ─────────────────
+  // طلب المالك (2026-09-02): «في الداشبورد الأساسية نحتاج يكون معروض الإيراد والمفوتر
+  // والتكاليف بشكل واضح على كل القطاع». الأرقام الثلاثة موجودة في الصفحة اليوم لكنها متفرّقة:
+  // الإيراد في بطاقةٍ أعلى، والمفوتر محطةٌ داخل «رحلة القيمة» تحت لسانٍ آخر، والتكلفة والهامش
+  // سطرٌ صغير أسفل رسم الأرباع. الشريط يجمعها في سطرٍ واحد فوق الفصول كلها.
+  //
+  // وهو **قطاعيٌّ دائماً** ولو رُشِّحت إدارةٌ أو عميل: الفاتورة تُنسب لإدارةٍ عبر مشروعها وكثيرٌ
+  // منها بلا مشروع، وبنودُ التكلفة والمصروفات لا تحمل إدارةً ولا عميلاً أصلاً — فجمعُها تحت
+  // ترشيحٍ يُخرج رقماً ناقصاً يُقرأ كأنه كامل. فتُعاد قراءة أرقامه بلا مرشِّح عند الترشيح،
+  // وتقول شارةُ «القطاع كله» ذلك للقارئ صراحةً بدل أن يخمّنه.
+  const MB_ALL = { dept: null, client: null };
+  const mbWin = (filtered && canInvoices && period.kind !== 'y')
+    ? await windowFigures(user, sectorId, sinceIso, untilIso, MB_ALL) : winf;
+  const mbWrev = period.kind === 'y' ? null
+    : (filtered ? await windowRevenue(sectorId, year, sinceIso, untilIso, MB_ALL) : wrev);
+  const [mbInvYear, mbColYear] = (filtered && canInvoices) ? await Promise.all([
+    get(`SELECT COALESCE(SUM(i.amount_halalas),0) v FROM invoice i LEFT JOIN project p ON p.id = i.project_id
+       WHERE COALESCE(i.sector_id, p.sector_id) = ? AND i.deleted_at IS NULL AND i.status NOT IN ('DRAFT','CANCELLED')
+         AND substr(COALESCE(i.issue_date, i.created_at),1,4) = ?`, [sectorId, String(year)]),
+    get(`SELECT COALESCE(SUM(col.amount_halalas),0) v FROM collection col
+       JOIN invoice i ON i.id = col.invoice_id LEFT JOIN project p ON p.id = i.project_id
+       WHERE COALESCE(i.sector_id, p.sector_id) = ? AND i.deleted_at IS NULL
+         AND substr(COALESCE(col.collected_at, col.created_at),1,4) = ?`, [sectorId, String(year)]),
+  ]) : [vjInvoiced, vjCollected];
+  // التكاليف: بنود التكلفة المسجَّلة + المصروفات المعتمدة أو المدفوعة (صافية) — بأشهر الفترة
+  // المختارة وحدها، أو السنة كاملةً حين تكون الفترة سنة. وطلبُ المصروف قيد الاعتماد ليس تكلفة.
+  const mbCosts = canCost
+    ? await sectorCosts(sectorId, year, { months: period.kind === 'y' ? null : period.months }) : null;
+  // أرقام الشريط جاهزةً: تقرؤها خليّةُ الشريط ونافذتا التفصيل من مصدرٍ واحد — لا رقمان لشيء واحد.
+  const mbRev = period.kind === 'y' ? sd.revenue_halalas : (mbWrev ? mbWrev.v : null);
+  const mbInvoiced = period.kind === 'y' ? (mbInvYear?.v || 0) : (mbWin.invoiced?.v || 0);
+  const mbCollected = period.kind === 'y' ? (mbColYear?.v || 0) : (mbWin.collected?.v || 0);
+  const mbCost = mbCosts?.cost_halalas || 0;
+  const mbProfit = mbRev == null ? null : mbRev - mbCost;
+  const mbPct = mbRev ? Math.round((mbProfit / mbRev) * 100) : null;
+  // نافذتا التفصيل الجديدتان: الفواتير الصادرة حسب الحالة وأحدثها، والتكاليف حسب النوع والشهر.
+  const [mbInvByStatus, mbInvRecent] = canInvoices ? await Promise.all([
+    all(`SELECT i.status status, COUNT(*) n, COALESCE(SUM(i.amount_halalas),0) v
+       FROM invoice i LEFT JOIN project p ON p.id = i.project_id
+       WHERE COALESCE(i.sector_id, p.sector_id) = ? AND i.deleted_at IS NULL AND i.status NOT IN ('DRAFT','CANCELLED')
+         AND substr(COALESCE(i.issue_date, i.created_at),1,4) = ?
+       GROUP BY i.status`, [sectorId, String(year)]),
+    all(`SELECT i.code code, i.amount_halalas amount_halalas, i.status status,
+         substr(COALESCE(i.issue_date, i.created_at),1,10) d, c.name_ar client, p.name_ar project
+       FROM invoice i LEFT JOIN project p ON p.id = i.project_id
+       LEFT JOIN client c ON c.id = COALESCE(i.client_id, p.client_id)
+       WHERE COALESCE(i.sector_id, p.sector_id) = ? AND i.deleted_at IS NULL AND i.status NOT IN ('DRAFT','CANCELLED')
+         AND substr(COALESCE(i.issue_date, i.created_at),1,4) = ?
+       ORDER BY COALESCE(i.issue_date, i.created_at) DESC LIMIT 12`, [sectorId, String(year)]),
+  ]) : [[], []];
 
   // توافق الأسماء مع بقية الصفحة: fc.forecast هو أساس النطاق، والرقائق من أرقام النافذة نفسها.
   // التوقع من الإيراد نفسه بالوتيرة المُثبَتة (لا من قيمة الصفقات) — والخط المرجّح انتقل إلى
@@ -1245,8 +1327,7 @@ export async function sectorPage(user, opts = {}) {
       <div style="font-size:var(--fs-micro);color:var(--muted)">${esc(d.project || '')}${d.decided_by ? ' · ' + esc(d.decided_by) : ''}${d.dat ? ' · ' + d.dat : ''}</div>
     </div>`).join('') || `<div style="font-size:var(--fs-meta);color:var(--faint);padding:.35rem 0">لا قرارات مسجلة بعد — تُسجَّل القرارات من صفحة المشروع</div>`;
   // مبلغ المصروف حقلٌ مختوم ببوابة الكلفة (redact على مسارات الواجهة البرمجية) — فلا يُطبع
-  // هنا لمن لا يملكها؛ يبقى اسم الطلب ويُحجب رقمه وحده.
-  const canCost = canSeeSensitive(user, 'cost');
+  // هنا لمن لا يملكها؛ يبقى اسم الطلب ويُحجب رقمه وحده (البوابة تُقرأ أعلى الصفحة مرّةً واحدة).
   const apRows = pendingApprovals.map((a) => `<div style="display:flex;justify-content:space-between;gap:.6rem;padding:.3rem 0;border-bottom:1px dashed var(--line);font-size:12px">
       <span><a href="/app/approvals" style="color:var(--ink2)">${esc(RESOURCE_AR[a.resource] || tr(a.resource) || 'طلب')}</a></span>
       <b class="tnum" style="flex:none">${a.amount_halalas && (a.resource !== 'expense' || canCost) ? fmtSar(a.amount_halalas) : ''}</b>
@@ -1545,7 +1626,72 @@ export async function sectorPage(user, opts = {}) {
       ${rows.length ? `<div class="dd-sec">الفرص المسماة — بنطاق حسابك</div>
       <div>${ddRows(rows.map((o) => `<div class="dd-row"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><a href="/app/opportunity/${esc(o.id)}" style="color:var(--ink2)">${esc(o.title_ar)}</a><span style="color:var(--faint);font-size:10.5px"> · ${esc(o.client || '—')} · ${dayWord(ageDays(o.since))}</span></span><b class="tnum" style="flex:none">${fmtSar(o.value_halalas || 0)}</b></div>`))}</div>` : (b?.n ? `<div class="empty-mini">${icon('info')} فرص هذه الحزمة خارج نطاق حسابك المسمّى — المجموع أعلاه قطاعي</div>` : '')}`);
   }).join('');
+  // ── (v5.71) نافذتا شريط «المال في القطاع» ─────────────────────────────────────────────
+  // «الفواتير الصادرة»: ما طُولب به العميل فعلاً هذه السنة — **مع الضريبة** بلفظ المعجم (هو ما
+  // يُدفع)، عدا المسودّات (لم تُرسَل) والملغاة (سُحبت). والحالة تُعرض بمعناها العربي لا برمزها،
+  // مؤنّثةً لأن الموصوف «فاتورة». و«متأخرة السداد» بتمامها كما في المعجم (G.overdue): «متأخرة»
+  // وحدها تُقرأ تأخّراً في التسليم لا في الدفع.
+  const INV_ST_AR = { ISSUED: 'صادرة', PARTIALLY_PAID: 'محصَّلة جزئياً', PAID: 'محصَّلة', OVERDUE: 'متأخرة السداد' };
+  const INV_ST_ORDER = ['ISSUED', 'PARTIALLY_PAID', 'PAID', 'OVERDUE'];
+  const mbEcho = period.kind === 'y' ? `سنة ${year}` : `${periodLabel(period.kind, period.index)} ${year}`;
+  // صيغتان لاسم الفترة: `mbEcho` اسمٌ يُعطَف («سنة ٢٠٢٦»، «مارس ٢٠٢٦») يصلح عنواناً وبعد فاصلة،
+  // و`mbWhen` ظرفٌ بحرفه («خلال ٢٠٢٦»، «في مارس ٢٠٢٦») يصلح داخل جملةٍ تامة. وخلطُهما يُخرج
+  // «لا تكاليف مسجَّلة مارس ٢٠٢٦» — جملةً ناقصة الحرف.
+  const mbWhen = periodEcho(period.kind, period.index, year);
+  const mbMonths = period.kind === 'y' ? null : new Set(period.months);
+  const secinvDD = !canInvoices ? '' : (() => {
+    const tot = mbInvByStatus.reduce((a, r) => a + (r.v || 0), 0);
+    const cnt = mbInvByStatus.reduce((a, r) => a + (r.n || 0), 0);
+    const rows = [...mbInvByStatus].sort((a, b) => {
+      const ia = INV_ST_ORDER.indexOf(a.status), ib = INV_ST_ORDER.indexOf(b.status);
+      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+    });
+    return ddWrap('secinv', `الفواتير الصادرة · ${year}`, `${esc(sd.sector.name_ar)} · ${G.withVat}`, `
+      <div class="dd-kpi"><span class="v tnum">${fmtSar(tot)}</span><span style="font-size:12px;color:var(--muted)">${countAr(cnt, { one: 'فاتورة واحدة صادرة', two: 'فاتورتان صادرتان', few: 'فواتير صادرة', many: 'فاتورة صادرة', zero: 'لا فواتير صادرة هذه السنة' })} · ${G.collected} ${mbColYear?.v ? fmtSar(mbColYear.v) : 'لم يُسجَّل'}</span></div>
+      ${rows.length ? `<div class="dd-sec">حسب الحالة</div>
+      <div>${ddRows(rows.map((r) => `<div class="dd-row"><span>${esc(INV_ST_AR[r.status] || tr(r.status) || 'حالة غير مسجَّلة')} <span style="color:var(--faint);font-size:10.5px">${countAr(r.n || 0, { one: 'فاتورة واحدة', two: 'فاتورتان', few: 'فواتير', many: 'فاتورة' })}</span></span><b class="tnum">${fmtSar(r.v || 0)}</b></div>`))}</div>` : ''}
+      ${mbInvRecent.length ? `<div class="dd-sec">أحدث الفواتير</div>
+      <div>${ddRows(mbInvRecent.map((r) => `<div style="padding:.4rem 0;border-bottom:1px dashed var(--line)">
+        <div style="display:flex;justify-content:space-between;gap:.7rem;font-size:12.5px;align-items:baseline">
+          <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.client || r.project || 'فاتورة')}${r.code ? ` <span style="color:var(--faint);font-size:10.5px"><bdi>${esc(r.code)}</bdi></span>` : ''}</span>
+          <b class="tnum" style="flex:none">${fmtSar(r.amount_halalas || 0)}</b></div>
+        <div style="display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted)">
+          <span class="tnum" dir="ltr">${esc(r.d || '')}</span><span>${esc(INV_ST_AR[r.status] || tr(r.status) || '')}</span></div>
+      </div>`))}</div>`
+    : `<div class="empty-mini">${icon('info')} لا فواتير صادرة لهذا القطاع في ${year} — الفواتير تصل من الترحيل أو من المالية، والمسودّات والملغاة لا تُعدّ صادرة</div>`}`);
+  })();
+  // «التكاليف والهامش»: بنودُ التكلفة المسجَّلة والمصروفاتُ المعتمدة أو المدفوعة — والطلبُ الذي
+  // ما زال ينتظر اعتماداً ليس تكلفةً بعد. وأعمدةُ الأشهر للسنة كاملةً ولو ضاقت الفترة، كي يُقرأ
+  // موضعُ الفترة من السنة لا شهرُها وحده معلَّقاً في الهواء.
+  const seccostDD = !canCost ? '' : (() => {
+    const typeRow = (t) => `<div class="dd-row"><span>${esc(t.type || 'غير مصنَّف')}</span><b class="tnum">${fmtSar(t.amount_halalas || 0)}</b></div>`;
+    const cl = mbCosts.by_type.cost_lines, ex = mbCosts.by_type.expenses;
+    return ddWrap('seccost', `التكاليف والهامش · ${year}`, `${esc(sd.sector.name_ar)} · بنود التكلفة والمصروفات المعتمدة`, `
+      <div class="dd-kpi">${mbCost ? `<span class="v tnum" style="color:var(--acc-amber)">${fmtSar(mbCost)}</span>`
+    : '<span class="v" style="font-size:15px;font-weight:700;color:var(--muted)">لم تُسجَّل</span>'}<span style="font-size:12px;color:var(--muted)">تكلفة ${esc(mbEcho)} · بنود التكلفة ${mbCosts.cost_lines_halalas ? fmtSar(mbCosts.cost_lines_halalas) : 'لم تُسجَّل'} · مصروفات معتمدة ${mbCosts.expenses_halalas ? fmtSar(mbCosts.expenses_halalas) : 'لم تُسجَّل'}</span></div>
+      ${cl.length ? `<div class="dd-sec">بنود التكلفة حسب النوع</div><div>${ddRows(cl.map(typeRow))}</div>` : ''}
+      ${ex.length ? `<div class="dd-sec">المصروفات المعتمدة حسب النوع</div><div>${ddRows(ex.map(typeRow))}</div>` : ''}
+      ${!cl.length && !ex.length ? `<div class="empty-mini">${icon('info')} لا تكاليف مسجَّلة ${esc(mbWhen)} — تُسجَّل بنود التكلفة من المالية، والمصروف يُحتسب بعد اعتماده</div>` : ''}
+      ${/* أشهرُ السنة بأسمائها العربية في صفوفٍ أفقية: العمودُ الرأسي لا يتّسع لاثني عشر اسماً
+           عربياً في نافذةٍ عرضها ٥٢٠ بكسل، وبديلُه الوحيد اختصارٌ لاتيني (Jan…Dec) في شاشةٍ
+           عربية — وأسماءُ الأشهر تُقرأ في الصفوف كما تُقرأ في نافذة التوقّع بالضبط.
+           والشهرُ الخالي يُقال «—» لا «٠»: لا نُثبت صفراً لم يحسبه أحد. */''}
+      <div class="dd-sec">حسب الشهر — السنة كاملة${mbMonths ? '، وأشهر الفترة مميّزة' : ''}</div>
+      ${figBars(mbCosts.by_month.map((v, i) => ({
+    label: MONTHS_AR[i], value: v, count: '',
+    fill: (!mbMonths || mbMonths.has(i + 1)) ? 'var(--acc-amber)' : null,
+  })), { fmt: (v) => (v ? sarShort(v) : '—') })}
+      ${/* سطرُ الهامش يُكشف حسابُه حين يكتمل طرفاه وحدهما: بلا إيرادٍ لا مقسومَ عليه، وبلا تكلفةٍ
+           مسجَّلةٍ تصير المعادلة «الإيراد − ٠ = الإيراد (100%)» — رقمُ ربحٍ كاملٍ صنعه غيابُ
+           الإدخال. فيُقال الحال بجملةٍ واحدة بدل معادلةٍ طرفُها فارغ. */''}
+      ${canMargin ? `<div style="font-size:var(--fs-body);color:var(--muted);padding-top:.6rem;line-height:1.9">${!mbRev
+    ? `لا إيراد مسجَّلاً ${esc(mbWhen)} — فلا هامش يُحسب عليه`
+    : !mbCost ? 'لا هامش يُحسب قبل تسجيل التكاليف'
+      : `${G.netRevenue} <b class="tnum">${fmtSar(mbRev)}</b> − التكاليف <b class="tnum">${fmtSar(mbCost)}</b> = <b class="tnum" style="color:${mbProfit < 0 ? 'var(--st-bad)' : 'var(--ink2)'}">${fmtSar(mbProfit)}</b> (<span class="tnum"><bdi dir="ltr">${mbPct}%</bdi></span>) — ${esc(mbEcho)}`}</div>` : ''}`);
+  })();
   const DD = `
+  ${secinvDD}
+  ${seccostDD}
   ${secdlvDD}
   ${ageDDs}
   ${fcDD}
@@ -1736,6 +1882,92 @@ export async function sectorPage(user, opts = {}) {
     <div class="secn"><span class="n tnum">1</span><h2>نبض القطاع</h2><span class="s">الأداء مقابل الخطة · ${year}</span>
       <span class="spacer"></span><span class="upd">${lastUpd ? `آخر تحديث: <span class="tnum" dir="ltr">${esc(String(lastUpd).slice(0, 10))} ${esc(String(lastUpd).slice(11, 16))}</span>` : 'لا تحديثات مسجَّلة بعد'} ${nowDot('')}</span></div>
     <div class="kpi5">${kpiRevenue}${kpiSales}${kpiForecast}${kpiPipeline}${kpiCap}</div>
+  </section>`;
+
+  // ── (١-ب) شريط «المال في القطاع» — ثلاثةُ أرقامٍ يطلبها المالك في سطرٍ واحد ─────────────
+  // يُبنى لمن يقرأ الفواتير أو الكلفة وحده: من لا يقرأ واحدةً منهما لا يبقى في الشريط إلا
+  // الإيراد، وبطاقةُ الإيراد أعلاه تقوله أصلاً — فسطرٌ يعيد رقماً واحداً زحمةٌ لا فائدة.
+  // وقيمةٌ صفرية تُقال «لم يُسجَّل» لا «٠ ر.س.»: الفرق بين «حسبناه فكان صفراً» و«لم يُدخَل بعد»
+  // فرقٌ يبني عليه القائد قراراً (قاعدة المنصة منذ v5.47).
+  const mbNum = (v, color = '') => v
+    ? `<span class="mv tnum"${color ? ` style="color:${color}"` : ''} title="${esc(fmtSar(v))}">${sarShort(v)}</span>`
+    : '<span class="mv mz">لم يُسجَّل</span>';
+  // ومؤنَّثةً حيث الموصوف مؤنّث: «بنود التكلفة **لم تُسجَّل**» لا «لم يُسجَّل» — الجمعُ غير
+  // العاقل يُعامَل معاملة المفردة المؤنثة، وهو ما تقوله نافذة التكاليف عن البندين نفسيهما.
+  const mbSmall = (v, fem = false) => (v ? `<b class="tnum">${sarShort(v)}</b>`
+    : `<span class="mz">${fem ? 'لم تُسجَّل' : 'لم يُسجَّل'}</span>`);
+  // `subw`: سطرٌ ثانٍ **جملةٌ** لا رقم — يلتفّ ولا يُبتر. السطرُ الافتراضي رقمٌ قصير يكفيه سطرٌ
+  // واحد بثلاث نقاطٍ عند الضيق، أما جملةُ السبب («لا تكاليف مسجَّلة — يُحسب الهامش بعد تسجيلها»)
+  // فبترُها يُخرج نصفَ معنى.
+  const mbCell = ({ eye, mark = '', val, sub = '', subw = false, dd, aria, tone }) => `
+    <button type="button" class="mcell" style="--_mc:${tone}" data-action="open-dd" data-dd="${esc(dd)}" aria-label="${esc(aria)}">
+      <span class="ml">${eye}${mark}</span>${val}${sub ? `<span class="ms${subw ? ' msw' : ''}">${sub}</span>` : ''}
+    </button>`;
+  const mbSay = (v) => (v ? sarShort(v) : 'لم يُسجَّل');
+  const mbRevCell = mbCell({
+    eye: `${G.revenue} المحقق`,
+    mark: noteMark(`${G.withoutVat} — من بنود الإيراد المسجَّلة بالشهر`, 'below'),
+    val: mbRev == null ? '<span class="mv mz">—</span>' : mbNum(mbRev),
+    sub: mbRev == null ? 'الإيراد يُسجَّل شهرياً — اختر نافذة الشهر أو أوسع'
+      : (period.kind === 'y' ? '' : `سنة ${year}: ${mbSmall(sd.revenue_halalas)}`),
+    dd: 'secrev', tone: 'var(--acc-navy)',
+    aria: `${G.revenue} المحقق ${mbEcho}: ${mbRev == null ? 'غير متاح' : mbSay(mbRev)} — التفصيل`,
+  });
+  // فترةٌ لم تُصدَر فيها فاتورةٌ وقد حُصِّل فيها مالٌ: «المفوتر: لم يُسجَّل» فوق «المحصَّل 1.0M»
+  // يُقرأ جزءاً من عنوانٍ غائب — فمن أين جاء المحصَّل إن لم يُفوتر شيء؟ الجواب أن الطرفين
+  // بتاريخين مختلفين: المفوتر بتاريخ الإصدار والمحصَّل بتاريخ التحصيل، والمال المحصَّل هنا
+  // لفواتير أُصدرت قبل الفترة. فيُقال ذلك في السطر نفسه بدل أن يُخمَّن.
+  const mbColOnly = !mbInvoiced && mbCollected > 0;
+  const mbInvSub = mbColOnly
+    ? `${G.collected} ${mbSmall(mbCollected)} — لفواتير سابقة، بتاريخ التحصيل`
+    : `${G.collected} ${mbSmall(mbCollected)}`;
+  const mbInvCell = !canInvoices ? '' : mbCell({
+    eye: G.invoiced,
+    mark: noteMark(`${G.withVat} — تُحسب بتاريخ الإصدار، عدا المسودّات والملغاة. والمحصَّل يُحسب بتاريخ التحصيل`, 'below'),
+    val: mbNum(mbInvoiced),
+    sub: mbInvSub,
+    subw: mbColOnly,
+    dd: 'secinv', tone: 'var(--acc-teal)',
+    aria: `${G.invoiced} ${mbEcho}: ${mbSay(mbInvoiced)} · ${G.collected} ${mbSay(mbCollected)}${mbColOnly ? ' لفواتير سابقة، بتاريخ التحصيل' : ''} — التفصيل`,
+  });
+  const mbCostCell = !canCost ? '' : mbCell({
+    eye: 'التكاليف',
+    mark: noteMark(`بنود التكلفة المسجَّلة + المصروفات المعتمدة أو المدفوعة ${G.withoutVat} — لا تشمل طلبات المصروف قيد الاعتماد`, 'below'),
+    val: mbNum(mbCost),
+    sub: `بنود التكلفة ${mbSmall(mbCosts.cost_lines_halalas, true)} · مصروفات معتمدة ${mbSmall(mbCosts.expenses_halalas, true)}`,
+    dd: 'seccost', tone: 'var(--acc-amber)',
+    aria: `التكاليف ${mbEcho}: ${mbSay(mbCost)} — التفصيل`,
+  });
+  // الهامش يلزمه طرفاه: الإيراد والتكلفة. فبوابتا «الهامش» و«الكلفة» تُشترطان معاً — وإلا صار
+  // الرقمُ بابَ استنتاجٍ للتكلفة المحجوبة (الإيراد معروضٌ فوقه، والطرح يردّها).
+  // ويلزمه طرفاه **رقماً** أيضاً لا بوابةً فقط: فترةٌ فيها إيرادٌ ولم تُسجَّل تكلفتها بعد تُخرج
+  // «100% — ربحاً»، وهي دعوى ربحٍ كاملٍ صنعها غيابُ الإدخال لا الأداء. فالتكلفة الخالية تُقال
+  // كما يُقال الإيراد الخالي: «—» وسببها تحتها، ولا نسبةَ تُطبع حتى يُسجَّل الطرفان.
+  const mbMarginOn = mbPct != null && mbCost > 0;
+  const mbMarginWhy = mbPct == null ? 'لا إيراد في هذه الفترة'
+    : 'لا تكاليف مسجَّلة — يُحسب الهامش بعد تسجيلها';
+  const mbMarginCell = !(canMargin && canCost) ? '' : mbCell({
+    eye: `${G.margin} الإجمالي`,
+    mark: noteMark(`${G.netRevenue} ناقص التكاليف في الفترة نفسها — نسبةً من الإيراد`, 'below'),
+    // النسبة تُقرأ يساراً («84%» لا «%84») لكن الاتجاه على عازلٍ داخلها لا على الخليّة نفسها:
+    // `.mcell` شبكةٌ، ووضعُ dir على عنصرها يقلب حافةَ بدايته إلى اليسار فينزلق الرقم خارج
+    // الشاشة الضيّقة ويُقرأ صفراً. فالعازل (bdi) يحمي ترتيب الرقم بلا أن يمسّ موضع الخليّة.
+    val: !mbMarginOn ? '<span class="mv mz">—</span>'
+      : `<span class="mv tnum" style="color:${mbPct < 0 ? 'var(--st-bad)' : 'var(--ink2)'}"><bdi dir="ltr">${mbPct}%</bdi></span>`,
+    sub: !mbMarginOn ? mbMarginWhy
+      : (mbProfit >= 0 ? `<b class="tnum">${sarShort(mbProfit)}</b> ربحاً` : `<b class="tnum">${sarShort(-mbProfit)}</b> خسارة`),
+    subw: !mbMarginOn,
+    dd: 'seccost', tone: mbMarginOn && mbPct < 0 ? 'var(--st-bad)' : 'var(--acc-navy)',
+    aria: `${G.margin} الإجمالي ${mbEcho}: ${mbMarginOn ? `${mbPct}%` : mbMarginWhy} — التفصيل`,
+  });
+  // عنوانُ الشريط عنوانٌ حقيقي (h2) لا نصٌّ مُصغَّر: جارتاه «نبض القطاع» و«قراءة سند التنفيذية»
+  // عنوانان من الرتبة نفسها، ومن يتنقّل بالعناوين (قارئ الشاشة) كان يقفز فوق أرقام المال الأربعة.
+  // وهيئتُه لم تتغيّر — الحجمُ والوزنُ واللون في `.mhead h2.me`.
+  const mbCells = [mbRevCell, mbInvCell, mbCostCell, mbMarginCell].filter(Boolean);
+  const moneyBand = !(canInvoices || canCost) ? '' : `
+  <section id="money-band" aria-label="المال في القطاع">
+    <div class="mhead"><h2 class="me">المال في القطاع</h2><span class="mp">${esc(mbEcho)}</span>${filtered ? '<span class="icb">القطاع كله</span>' : ''}</div>
+    <div class="mcells" style="--n:${mbCells.length}">${mbCells.join('')}</div>
   </section>`;
 
   // ── الخلاصة التحليلية: جملة واحدة بقواعد معلنة — وعلامةٌ تقول إنها محسوبة ──
@@ -2199,7 +2431,10 @@ export async function sectorPage(user, opts = {}) {
           <div><div class="eyebrow" style="margin-bottom:.2rem">${G.revenue} بالأرباع</div>${figColumns(qRevN.map((v, i) => ({ v, label: quarterLabel(i) })), { now: nowQ + 1 })}</div>
           <div><div class="eyebrow" style="margin-bottom:.2rem">${G.bookings} بالأرباع</div>${figColumns(qBookN.map((v, i) => ({ v, label: quarterLabel(i) })), { now: nowQ + 1 })}</div>
         </div>
-        ${canMargin && margin && margin.margin_pct != null ? `<div style="font-size:var(--fs-body);color:var(--muted);margin-top:.5rem">هامش الربح الإجمالي <b class="tnum" style="color:${margin.margin_pct < 0 ? 'var(--st-bad)' : 'var(--ink2)'}">${margin.margin_pct}%</b> من الإيراد</div>` : ''}
+        ${/* الاسم واحدٌ مع خلية الشريط أعلى الشاشة («الهامش الإجمالي») — والرقمان من `sectorCosts`
+             نفسها منذ v5.71، فاسمان لمعنىً واحد يوهمان مقياسين. وصدى «· السنة» لأن هذا السطر
+             سنويٌّ دائماً بينما خليةُ الشريط تتبع الفترة المختارة. */''}
+        ${canMargin && margin && margin.margin_pct != null ? `<div style="font-size:var(--fs-body);color:var(--muted);margin-top:.5rem">${G.margin} الإجمالي <b class="tnum" style="color:${margin.margin_pct < 0 ? 'var(--st-bad)' : 'var(--ink2)'}">${margin.margin_pct}%</b> من الإيراد · سنة ${year}</div>` : ''}
       </div>
       <div class="c4" style="min-width:0;display:grid;gap:.8rem;align-content:start">
         ${decisionsCard}
@@ -2228,6 +2463,7 @@ export async function sectorPage(user, opts = {}) {
     ${toolbar}
     ${filterNote}
     ${kpiBand}
+    ${moneyBand}
     ${execBand}
     ${tabsBar}
     ${panel('pulse', 'الإيقاع', `

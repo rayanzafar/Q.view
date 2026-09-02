@@ -337,20 +337,78 @@ export async function bookToBill(sectorId, year) {
     ratio: revenue ? +(bookings / revenue).toFixed(2) : null };
 }
 
+// ── تكاليف القطاع في سنةٍ (أو في أشهرٍ منها) — مصدرٌ واحد للتكلفة والهامش معاً ──────────────
+// طرفا التكلفة اثنان لا واحد، وكلاهما يُقرأ صافياً:
+//   • بند الكلفة (cost_line): اعترافٌ بكلفةٍ صافية بطبيعته — الضريبة المدخلة مستردّة فلا تدخله،
+//     وأول أنواعه «رواتب» ولا ضريبة على راتب. فصلُه كان يخترع ضريبةً مستردّة وينقص الكلفة.
+//   • المصروف (expense): صافيه **المسجَّل** إن سُجِّل وإلا إجماليه (ما لم تُسجَّل ضريبته يُحمَّل
+//     كاملاً — لا يُفترض استردادٌ لم يُثبته أحد)، ولا يدخل إلا معتمَداً أو مدفوعاً: طلبٌ ينتظر
+//     الاعتماد ليس كلفةً بعد، ومرفوضٌ ليس كلفةً أصلاً، ومحذوفٌ سقط من الدفاتر.
+// `months` مصفوفة أرقام أشهر (١..١٢) أو null للسنة كلها. وصفٌّ بلا شهر (month/incurred_month
+// فارغ) يدخل مجاميع السنة كلها، ويسقط من أي نافذة أشهرٍ موجبة لأنه لا سبيل لنسبته إلى شهر.
+// `by_month` يعود **دائماً** باثني عشر شقّاً للسنة كاملة (الشقّ الأول يناير) مهما ضاقت النافذة:
+// أعمدته الصغيرة تعرض شكل السنة كلها خلف الفترة المختارة. والصفوف بلا شهر ليست فيه أصلاً.
+// و`sectorId` فارغاً = الشركة كلها (كما في grossMargin الذي يستدعيها).
+export async function sectorCosts(sectorId, year, { months = null } = {}) {
+  const secC = sectorId ? 'AND sector_id = ?' : '';
+  const secP = sectorId ? [sectorId] : [];
+  const mList = months == null ? null
+    : [...new Set(months.map((m) => Number(m)).filter((m) => Number.isInteger(m) && m >= 1 && m <= 12))].sort((a, b) => a - b);
+  const mf = (col) => {
+    if (mList === null) return { clause: '', args: [] };
+    if (!mList.length) return { clause: ' AND 1 = 0', args: [] }; // نافذة بلا أشهر صالحة = لا شيء
+    return { clause: ` AND ${col} IN (${mList.map(() => '?').join(',')})`, args: mList };
+  };
+  const mc = mf('month'), me = mf('incurred_month');
+  const [cl, ex, clT, exT, clM, exM] = await Promise.all([
+    get(`SELECT COALESCE(SUM(amount_halalas),0) v FROM cost_line
+        WHERE year = ? ${secC}${mc.clause}`, [year, ...secP, ...mc.args]),
+    get(`SELECT COALESCE(SUM(COALESCE(net_amount_halalas, amount_halalas)),0) v FROM expense
+        WHERE incurred_year = ? AND status IN ('APPROVED','PAID') AND deleted_at IS NULL ${secC}${me.clause}`,
+    [year, ...secP, ...me.args]),
+    all(`SELECT type, COALESCE(SUM(amount_halalas),0) v FROM cost_line
+        WHERE year = ? ${secC}${mc.clause} GROUP BY type`, [year, ...secP, ...mc.args]),
+    all(`SELECT type, COALESCE(SUM(COALESCE(net_amount_halalas, amount_halalas)),0) v FROM expense
+        WHERE incurred_year = ? AND status IN ('APPROVED','PAID') AND deleted_at IS NULL ${secC}${me.clause}
+        GROUP BY type`, [year, ...secP, ...me.args]),
+    all(`SELECT month m, COALESCE(SUM(amount_halalas),0) v FROM cost_line
+        WHERE year = ? ${secC} AND month IS NOT NULL GROUP BY month`, [year, ...secP]),
+    all(`SELECT incurred_month m, COALESCE(SUM(COALESCE(net_amount_halalas, amount_halalas)),0) v FROM expense
+        WHERE incurred_year = ? AND status IN ('APPROVED','PAID') AND deleted_at IS NULL ${secC}
+          AND incurred_month IS NOT NULL GROUP BY incurred_month`, [year, ...secP]),
+  ]);
+  // التجميع بالنوع في الذاكرة: نوعٌ فارغ ونوعٌ غير مسجَّل شيءٌ واحد للقارئ («غير مصنَّف» في
+  // الشاشة)، والترتيب من الأكبر كي يقرأ المالك أثقل بند أولاً — وترتيبٌ ثابت لا يختلف بمحرّك.
+  const byType = (rows) => {
+    const m = new Map();
+    for (const r of rows) { const k = r.type || null; m.set(k, (m.get(k) || 0) + (r.v || 0)); }
+    return [...m].map(([type, amount_halalas]) => ({ type, amount_halalas }))
+      .sort((a, b) => (b.amount_halalas - a.amount_halalas)
+        || String(a.type || '').localeCompare(String(b.type || ''), 'ar'));
+  };
+  const by_month = Array(12).fill(0);
+  for (const r of [...clM, ...exM]) { const i = Number(r.m) - 1; if (i >= 0 && i < 12) by_month[i] += r.v || 0; }
+  const costLines = cl?.v || 0, expenses = ex?.v || 0;
+  return {
+    cost_lines_halalas: costLines, expenses_halalas: expenses, cost_halalas: costLines + expenses,
+    by_type: { cost_lines: byType(clT), expenses: byType(exT) },
+    by_month,
+  };
+}
+
 // Gross Margin % for a sector/year = (revenue − cost − approved expense) ÷ revenue. SENSITIVE.
 // المعادلة صافيةٌ في أطرافها الثلاثة الآن، وكان طرفها الأول وحده إجمالياً فيخرج هامشٌ أعلى من
 // حقيقته: خمسة عشر بالمئة من الإيراد كانت تُحسب ربحاً وهي أمانةٌ تُورَّد للدولة.
 //   • الإيراد: صافٍ بالقاعدة الواحدة.
-//   • بند الكلفة: كما هو — اعترافٌ بكلفةٍ صافية بطبيعته (الضريبة المدخلة مستردّة فلا تدخله)،
-//     وأول أنواعه «رواتب» ولا ضريبة على راتب. فصلُه كان يخترع ضريبةً مستردّة وينقص الكلفة.
-//   • المصروف: صافيه **المسجَّل** إن سُجِّل، وإلا فإجماليه. أي أن ما لم تُسجَّل ضريبته يُحمَّل
-//     كاملاً على الكلفة — وهو التحفّظ الصحيح: لا يُفترض استردادٌ لم يُثبته أحد.
+//   • والتكلفة بطرفيها من `sectorCosts` أعلاه — تعريفٌ واحد للتكلفة تقرؤه بطاقة «التكاليف»
+//     في مركز القطاع ويقرؤه الهامش هنا، فلا يظهر للمالك رقمان لشيء واحد في شاشةٍ واحدة.
+//     وفارقٌ واحد عن الصيغة السابقة مقصود: المصروف المحذوف (deleted_at) لم يعد يُحمَّل كلفةً —
+//     كان يُحتسب لأن الشرط سقط سهواً، خلافاً لقاعدة المنصة أن كل قراءة تُرشِّح المحذوف.
 export async function grossMargin(sectorId, year) {
   const rev = (await get(`SELECT ${NET_REVENUE} v FROM revenue_line WHERE year=? ${sectorId ? 'AND sector_id=?' : ''}`, [year, ...(sectorId ? [sectorId] : [])])).v;
-  const cost = (await get(`SELECT COALESCE(SUM(amount_halalas),0) v FROM cost_line WHERE year=? ${sectorId ? 'AND sector_id=?' : ''}`, [year, ...(sectorId ? [sectorId] : [])])).v;
-  const exp = (await get(`SELECT COALESCE(SUM(COALESCE(net_amount_halalas, amount_halalas)),0) v FROM expense WHERE incurred_year=? AND status IN ('APPROVED','PAID') ${sectorId ? 'AND sector_id=?' : ''}`, [year, ...(sectorId ? [sectorId] : [])])).v;
-  const gp = rev - cost - exp;
-  return { revenue_halalas: rev, cost_halalas: cost + exp, gross_profit_halalas: gp, margin_pct: rev ? Math.round((gp / rev) * 100) : null };
+  const c = await sectorCosts(sectorId, year);
+  const gp = rev - c.cost_halalas;
+  return { revenue_halalas: rev, cost_halalas: c.cost_halalas, gross_profit_halalas: gp, margin_pct: rev ? Math.round((gp / rev) * 100) : null };
 }
 
 // Year-over-year delta % for a numeric field between year and year-1 (uses a getter fn).
