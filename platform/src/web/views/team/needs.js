@@ -36,7 +36,7 @@ const fte = (v) => { const r = Math.round(N(v) * 100) / 100; return String(r); }
 const today = () => new Date().toISOString().slice(0, 10);
 
 export const LEVEL_AR = Object.freeze({ beginner: 'مبتدئ', practitioner: 'ممارس', advanced: 'متقدم', expert: 'خبير' });
-const levelLabel = (v) => (v ? (LEVEL_AR[String(v)] || String(v)) : '');
+const levelLabel = (v) => (v ? (LEVEL_AR[String(v)] || 'غير محدد') : '');
 const CERT_TONE = { confirmed: 'blue', tentative: 'slate' };
 const COVER_TONE = { covered: 'green', partial: 'amber', pending: 'blue', uncovered: 'slate' };
 const STATUS_TONE = { draft: 'slate', open: 'blue', shortlisting: 'violet', partial: 'amber', covered: 'green', cancelled: 'red' };
@@ -214,7 +214,7 @@ function needDrawer({ user, projects, opps, sectors }) {
             <div class="field"><label class="req" for="nd-from">من شهر</label><input id="nd-from" type="month" name="from_month" class="input"></div>
             <div class="field"><label class="req" for="nd-to">إلى شهر</label><input id="nd-to" type="month" name="to_month" class="input"></div>
             <div class="field"><label class="req" for="nd-head">عدد الموارد</label><input id="nd-head" type="number" name="headcount" class="input" min="1" max="50" step="1" value="1"></div>
-            <div class="field"><label class="req" for="nd-fte">الطاقة لكل مورد (FTE %)</label><input id="nd-fte" type="number" name="fte_pct" class="input" min="1" max="100" step="1" value="100"></div>
+            <div class="field"><label class="req" for="nd-fte">الطاقة لكل مورد (% من الدوام الكامل)</label><input id="nd-fte" type="number" name="fte_pct" class="input" min="1" max="100" step="1" value="100"></div>
           </div>
           <label style="display:flex;gap:.4rem;align-items:center;margin-top:.6rem;font-size:var(--fs-body)"><input type="checkbox" name="splittable"> يمكن تقسيم العمل بين أكثر من مورد</label>
           <div class="tm-info tnum" style="margin-top:.6rem" data-demand>إجمالي الطلب: ${esc(demandAr(1, 100))}</div></div>
@@ -265,10 +265,10 @@ export async function needsPage(user, opts = {}) {
     <div class="tm-kpi"><div class="l">احتياج مؤكد</div><div class="v">${num(N(summary.confirmed))}</div><div class="s">${esc(periodLabel)}</div></div>
     <div class="tm-kpi"><div class="l">احتياج مبدئي</div><div class="v">${num(N(summary.tentative))}</div><div class="s">${esc(periodLabel)}</div></div>
     <div class="tm-kpi"><div class="l">غير مغطى</div><div class="v">${num(N(summary.uncovered))}</div><div class="s">بلا طلب تسكين مرتبط</div></div>
-    <div class="tm-kpi"><div class="l">بانتظار اعتماد</div><div class="v">${num(N(summary.pending))}</div><div class="s">طلب تسكين معلَّق</div></div>
+    <div class="tm-kpi"><div class="l">بانتظار الاعتماد</div><div class="v">${num(N(summary.pending))}</div><div class="s">طلب تسكين معلَّق</div></div>
   </div>
-  ${peak ? `<div class="tm-nd-peak">${icon('trend')}<span>أعلى طلب شهري: <b class="tnum">${esc(fte(peak.confirmed))} FTE</b> مؤكد + <b class="tnum">${esc(fte(peak.tentative))} FTE</b> مبدئي في ${esc(monthKeyLabel(peak.key))}</span>
-    <span class="tm-note">الوحدة: وحدات دوام كامل لكل شهر — الاحتياجات ذات الفترات المختلفة لا تُجمع رقماً واحداً.</span></div>` : ''}`;
+  ${peak ? `<div class="tm-nd-peak">${icon('trend')}<span>ذروة الطلب في ${esc(monthKeyLabel(peak.key))}: <b class="tnum">${esc(fte(peak.confirmed))}</b> وحدة دوام كامل مؤكدة${Number(peak.tentative) > 0 ? ` + <b class="tnum">${esc(fte(peak.tentative))}</b> مبدئية` : ''}</span>
+    <span class="tm-note">الوحدة: وحدات الدوام الكامل لكل شهر — الاحتياجات ذات الفترات المختلفة لا تُجمع رقماً واحداً.</span></div>` : ''}`;
 
   let table;
   if (!rows.length && !filtered) {
@@ -361,7 +361,7 @@ export async function needCandidatesPage(user, needId, opts = {}) {
       <div class="blk"><div class="l">الطلب</div><div class="v tnum">${esc(need.demand_ar)}</div>${need.splittable ? '<div class="tm-nd-meta">يمكن تقسيم العمل بين أكثر من مورد</div>' : ''}</div>
       <div class="blk"><div class="l">المهارات</div>${skillChips(need.skills)}${need.level ? `<div class="tm-nd-meta">المستوى: ${esc(levelLabel(need.level))}</div>` : ''}</div>
       <div class="blk"><div class="l">الحسم والمسؤول</div><div class="v">${need.decide_by ? fmtDate(need.decide_by) : '—'}</div><div class="tm-nd-meta">${esc(need.owner?.name || '—')}</div>
-        ${(need.requests || []).length ? `<div class="tm-nd-meta">الطلبات المرتبطة: ${need.requests.map((r) => `<a href="/app/team/requests/${encodeURIComponent(r.id)}" style="color:var(--brand)" class="tnum">${esc(r.id)}</a>`).join('، ')}</div>` : ''}</div>
+        ${(need.requests || []).length ? `<div class="tm-nd-meta">الطلبات المرتبطة: ${need.requests.map((r, i) => `<a href="/app/team/requests/${encodeURIComponent(r.id)}" style="color:var(--brand)">الطلب <span class="tnum">${i + 1}</span>${r.status_ar ? ` (${esc(r.status_ar)})` : ''}</a>`).join('، ')}</div>` : ''}</div>
       ${need.goal ? `<div class="blk" style="flex-basis:100%"><div class="l">الهدف</div><div style="font-size:var(--fs-body)">${esc(need.goal)}</div></div>` : ''}
     </div></div>`;
 

@@ -48,7 +48,7 @@ const MAX_MONTHS = 36;
 
 // ── صياغة الحجم بلسانٍ عربي: «مورد واحد × 50% FTE طوال الفترة» ──────────────────────────
 const countAr = (n) => (n === 1 ? 'مورد واحد' : n === 2 ? 'موردان' : n <= 10 ? `${n} موارد` : `${n} مورداً`);
-export const demandAr = (headcount, ftePct) => `${countAr(N(headcount))} × ${N(ftePct)}% FTE طوال الفترة`;
+export const demandAr = (headcount, ftePct) => `${countAr(N(headcount))} × ${N(ftePct)}% من الدوام الكامل طوال الفترة`;
 
 // ── محقِّقات المدخلات — رسالةٌ تقول ما حدث وما العمل ─────────────────────────────────
 const isoDate = (v) => {
@@ -593,10 +593,10 @@ export async function requestFromCandidate(ctx, needId, employeeId, { pct, alloc
       ORDER BY created_at DESC`, [needId, eid]);
   const pendingReq = prior.find((r) => r.status === 'pending');
   if (pendingReq)
-    throw badRequest(`يوجد طلب تسكين معلَّق لـ${emp.name_ar} على هذا الاحتياج (الطلب ${pendingReq.id} بتاريخ ${String(pendingReq.created_at).slice(0, 10)}) — انتظر قراره أو اسحبه قبل طلبٍ جديد`);
+    throw badRequest(`يوجد طلب تسكين معلَّق لـ${emp.name_ar} على هذا الاحتياج (منذ ${String(pendingReq.created_at).slice(0, 10)}) — انتظر قراره أو اسحبه قبل طلبٍ جديد`);
   const applied = prior.find((r) => r.status !== 'pending');
   if (applied)
-    throw badRequest(`${emp.name_ar} مسكَّن على هذا الاحتياج فعلاً (الطلب ${applied.id}) — عدّل تسكينه من مصفوفة التسكين`);
+    throw badRequest(`${emp.name_ar} مسكَّن على هذا الاحتياج فعلاً — عدّل تسكينه من مصفوفة التسكين`);
   const fromKey = monthKeyOfDate(n.from_date); const toKey = monthKeyOfDate(n.to_date);
   const months = monthsBetween(fromKey, toKey);
   // طلب التسكين يغطي سنةً واحدة (وحدة allocation_request) — فالاحتياج الممتد على سنتين طلبٌ لكل سنة.

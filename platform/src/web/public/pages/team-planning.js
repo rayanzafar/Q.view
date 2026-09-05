@@ -309,7 +309,7 @@
       + row('الفترة', esc(monthLabel(sn.from)) + (sn.from === sn.to ? '' : ' – ' + esc(monthLabel(sn.to))) + (sn.parts.length > 1 ? ' <span style="color:var(--muted);font-size:var(--fs-micro)">· طلب لكل سنة (' + sn.parts.length + ')</span>' : ''))
       + row('النسبة من طاقة المورد', '<span class="tnum">' + esc(pct) + '</span>')
       + '</tbody></table></section>'
-      + '<section class="tm-sec"><div class="sh">الموافقات المطلوبة</div>' + reviewersHtml(m).replace(' style="margin-top:.6rem"', '') + '</section>'
+      + '<section class="tm-sec"><div class="sh">الاعتمادات المطلوبة</div>' + reviewersHtml(m).replace(' style="margin-top:.6rem"', '') + '</section>'
       + '<section class="tm-sec"><div class="sh">الاستثناءات</div>' + (conflicts.length ? '<div class="tm-danger">تجاوز الطاقة — يُعرض للمعتمِد ولا يُعتمد تلقائياً:<br>' + conflicts.map(esc).join('<br>') + '</div>' : '<div class="tm-ok">ضمن الطاقة · لا يوجد تعارض</div>')
       + (m.warnings.length ? '<div class="tm-warn" style="margin-top:.5rem">' + m.warnings.map(esc).join('<br>') + '</div>' : '') + '</section>';
   }
@@ -343,7 +343,7 @@
   function outcomeRow(r) {
     const st = r.status;
     const cls = st === 'applied' ? 'ok' : st === 'pending' ? 'wait' : st === 'draft' ? '' : 'bad';
-    const what = st === 'applied' ? 'طُبّق التسكين مباشرة' : st === 'pending' ? (r.reviewer && r.reviewer.name ? 'بانتظار اعتماد ' + r.reviewer.name : (r.note || 'بانتظار القرار'))
+    const what = st === 'applied' ? 'طُبّق التسكين مباشرة' : st === 'pending' ? (r.reviewer && r.reviewer.name ? 'بانتظار اعتماد ' + r.reviewer.name : (r.note || 'بانتظار الاعتماد'))
       : st === 'draft' ? 'حُفظ كمسودة' : st === 'returned' ? 'أُعيد: ' + (r.reason || '') : (r.status_ar || st);
     return '<div class="row-o ' + cls + '"><span><b>' + esc((r.employee || {}).name || '—') + '</b> · ' + esc((r.target || {}).label || '') + '</span><span>' + esc(what) + '</span></div>';
   }
@@ -361,7 +361,7 @@
       }
     });
     html += '</div>';
-    if (reused) html += '<div class="tm-info" style="margin-top:.5rem">وُجد طلب سابق بالمفتاح نفسه — لم يُكرَّر.</div>';
+    if (reused) html += '<div class="tm-info" style="margin-top:.5rem">هذا الطلب أُرسل من قبل — لم يُكرَّر.</div>';
     if (!failed) {
       html = '<div class="tm-ok" style="margin-bottom:.6rem"><b>' + (draft ? 'حُفظت المسودة.' : 'اكتمل الإرسال.') + '</b> نتيجة كل مورد أدناه — والمصفوفة تُحدَّث عند الإغلاق.</div>' + html;
       dw.dirty = false; dw.done = true; dw.reloadOnClose = true;
@@ -404,7 +404,7 @@
 
   function openFix(empId, key, opener) {
     const r = resOf(empId); const c = cellOf(empId, key);
-    if (!r || !c) { toast('الخلية ليست ضمن العرض الحالي — وسّع الفترة أو الفلتر', true); return; }
+    if (!r || !c) { toast('الخلية ليست ضمن العرض الحالي — وسّع الفترة أو التصفية', true); return; }
     const items = (c.items || []).filter((it) => it.status === 'confirmed' && it.allocationId);
     if (!items.length) { toast('لا بنود مؤكدة يمكن تعديلها في هذا الشهر', true); return; }
     if (!openDrawer('tpl-pl-fix', 'fix', opener)) return;
@@ -533,7 +533,7 @@
     if (!d.open || !drawer) return;
     if (d.open === 'fix') {
       if (d.employee && d.month && cellOf(d.employee, d.month)) openFromCell(d.employee, d.month, document.getElementById('pl-new-btn'));
-      else toast('الخلية المطلوبة ليست ضمن العرض الحالي — عدّل الفترة أو الفلتر', true);
+      else toast('الخلية المطلوبة ليست ضمن العرض الحالي — عدّل الفترة أو التصفية', true);
       return;
     }
     const pre = { resIds: d.employee ? [d.employee] : [], need: d.need || null };

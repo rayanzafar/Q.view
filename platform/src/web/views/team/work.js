@@ -5,7 +5,7 @@
 //
 // الأرقام كلها من `teamCommitments` (T23: المهمة مرةً واحدة — لها مسؤولٌ واحد وجهةٌ واحدة؛ ولا مال).
 // شريط الملخص يُحسب هنا من الصفوف المعروضة نفسها، فما يُقرأ في الأعلى هو ما يُعدّ في الأسفل تحت
-// الفلاتر ذاتها. الفلاتر (السنة، الشهر، الإدارة، وجه العرض) تُقرأ من الرابط وتُكتب إليه؛ وتوسيع
+// التصفية ذاتها. التصفية (السنة، الشهر، الإدارة، وجه العرض) تُقرأ من الرابط وتُكتب إليه؛ وتوسيع
 // العمل بـ<details> الأصلية يعمل بلا جافاسكربت. «لا مهام مسجلة» تُقال باسمها ولا تُقرأ عبئاً منخفضاً.
 import { all } from '../../../core/db/index.js';
 import { teamCommitments } from '../../../modules/team/commitments.js';
@@ -47,7 +47,7 @@ const dayLabel = (iso, year) => {
 };
 const profileHref = (id) => `/app/team/resources/${encodeURIComponent(id)}`;
 
-// إدارات الفلتر = إدارات نطاق القارئ نفسه (الشرط الذي تبني به الخدمة صفوفها) — لا خيارٌ سيُرفض.
+// إدارات التصفية = إدارات نطاق القارئ نفسه (الشرط الذي تبني به الخدمة صفوفها) — لا خيارٌ سيُرفض.
 async function departmentOptions(user) {
   const sc = resourceScopeSql(user, 'e');
   if (sc.clause === '1=0') return [];
@@ -90,7 +90,7 @@ function kpis(s, periodLabel) {
   </div>`;
 }
 
-// ── الفلاتر: كلها في الرابط ─────────────────────────────────────────────────────────────────────
+// ── التصفية: كلها في الرابط ─────────────────────────────────────────────────────────────────────
 function filters({ period, by, department, deps }) {
   const years = [...new Set([period.year - 1, period.year, period.year + 1, new Date().getUTCFullYear()])].sort((a, b) => a - b);
   const opt = (v, label, sel) => `<option value="${esc(v)}"${sel ? ' selected' : ''}>${esc(label)}</option>`;
@@ -226,7 +226,7 @@ function resourceItem(r, period) {
       <div class="tm-work-bh"><b>المهام</b> <span class="m">${countTnum(r.taskCount, TASKS)}${N(r.lateCount) ? ` · <span class="tnum">${N(r.lateCount)}</span> متأخرة` : ''}</span></div>
       ${(r.tasks || []).length ? tasksTable(r.tasks, { showWork: true, year: period.year })
     : noTasks(r.hasAccount
-      ? `${esc(G.noTasksRecorded)} لهذا المورد في المنصة — وليس ذلك دليلاً على انخفاض عبء العمل.`
+      ? `${esc(G.noTasksRecorded)} لهذا المورد في المنصة — وليس ذلك دليلاً على انخفاض حِمل المهام.`
       : `${esc(G.noAccountNoTasks)} — المهام تُسند إلى حسابات الدخول، فاربط حسابه من نموذج المورد إن كان له حساب.`)}
       <div class="tm-work-acts">
         <a class="btn btn-sm" href="${esc(profileHref(res.employeeId))}">${esc(G.openFullProfile)}</a>
@@ -307,11 +307,11 @@ export async function teamWorkPage(user, opts = {}) {
     list = view === 'work'
       ? `<div class="tm-card">${s.resources
         ? emptyState(`لا تسكين ولا مهام جارية في ${period.label_ar}`, 'الموارد ضمن النطاق بلا تسكين لهذا الشهر وبلا مهام جارية مسندة إليهم — أضف تسكيناً من التخطيط، أو مهاماً من سجلات الأعمال.')
-        : emptyState('لا موارد ضمن هذا النطاق', 'اختر إدارةً أخرى من الفلتر أو راجع سجل الموارد.')}
+        : emptyState('لا موارد ضمن هذا النطاق', 'اختر إدارةً أخرى من التصفية أو راجع سجل الموارد.')}
         <div class="tm-work-cta">${s.resources
     ? `<a class="btn btn-primary btn-sm" href="/app/team/planning?from=${from}&amp;to=${to}${department ? `&amp;department=${encodeURIComponent(department)}` : ''}">${esc(G.planningTab)}</a>`
     : `<a class="btn btn-sm" href="/app/team/resources">${esc(G.resourcesRegistry)}</a>`}</div></div>`
-      : `<div class="tm-card">${emptyState('لا موارد ضمن هذا النطاق', 'اختر إدارةً أخرى من الفلتر أو راجع سجل الموارد.')}<div class="tm-work-cta"><a class="btn btn-sm" href="/app/team/resources">${esc(G.resourcesRegistry)}</a></div></div>`;
+      : `<div class="tm-card">${emptyState('لا موارد ضمن هذا النطاق', 'اختر إدارةً أخرى من التصفية أو راجع سجل الموارد.')}<div class="tm-work-cta"><a class="btn btn-sm" href="/app/team/resources">${esc(G.resourcesRegistry)}</a></div></div>`;
   } else {
     const head = view === 'work'
       ? headRow(['العمل', G.linkedTeam, G.confirmedAllocTotal, G.nextCommitment, G.followUp])

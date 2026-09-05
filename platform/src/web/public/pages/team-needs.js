@@ -17,7 +17,7 @@
       body: body ? JSON.stringify(body) : undefined,
     });
     const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error((j.error && j.error.message) || ('تعذّر إتمام الطلب (' + r.status + ') — حاول مرة أخرى'));
+    if (!r.ok) throw new Error((j.error && j.error.message) || 'تعذّر إتمام الطلب — حاول مرة أخرى');
     return j;
   };
   const toast = (msg, bad) => {
@@ -30,7 +30,7 @@
 
   // اتفاق العدد والمعدود — مرآة demandAr الخادمية حرفاً
   const countAr = (n) => (n === 1 ? 'مورد واحد' : n === 2 ? 'موردان' : n <= 10 ? n + ' موارد' : n + ' مورداً');
-  const demandAr = (h, p) => countAr(h) + ' × ' + p + '% FTE طوال الفترة';
+  const demandAr = (h, p) => countAr(h) + ' × ' + p + '% من الدوام الكامل طوال الفترة';
   const lastDay = (ym) => { const p = ym.split('-').map(Number); return ym + '-' + String(new Date(Date.UTC(p[0], p[1], 0)).getUTCDate()).padStart(2, '0'); };
   const splitSkills = (s) => Array.from(new Set(String(s || '').split(/[,،]/).map((x) => x.trim()).filter(Boolean)));
 

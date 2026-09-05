@@ -74,7 +74,7 @@
   }
   async function withdraw(id) {
     if (inflight) return;
-    if (!window.confirm('سحب الطلب؟ يخرج من صندوق المراجع ولا يمكن التراجع.')) return;
+    if (!window.confirm('سحب الطلب؟ يخرج من قائمة المراجع ولا يمكن التراجع.')) return;
     inflight = true; setBusy(true); msg('جارٍ السحب…');
     try {
       await api('/team/allocations/requests/' + encodeURIComponent(id) + '/withdraw', 'POST', {});

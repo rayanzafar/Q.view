@@ -180,9 +180,9 @@ test('S19: الاحتياج بحجمه والملخص والمتابعة، ود�
   const lead = await P.needsPage(await sess('u_lead'), {});
   noLeak(lead, 'S19');
   assert.ok(lead.includes('محلل بيانات') && lead.includes('منصة البيانات الوطنية'));
-  assert.ok(lead.includes('مورد واحد × 50% FTE طوال الفترة'), 'حجم الطلب بلا وحدة');
+  assert.ok(lead.includes('مورد واحد × 50% من الدوام الكامل طوال الفترة'), 'حجم الطلب بلا وحدة');
   assert.ok(lead.includes('احتياج مؤكد') && lead.includes('احتياج مبدئي'), 'الملخص غائب');
-  assert.ok(lead.includes('0.5 FTE') && lead.includes('وحدات دوام كامل لكل شهر'), 'الذروة الشهرية بلا وحدة معلنة');
+  assert.ok(lead.includes('وحدة دوام كامل مؤكدة') && lead.includes('وحدات الدوام الكامل لكل شهر'), 'الذروة الشهرية بلا وحدة معلنة');
   assert.ok(lead.includes('غير مغطى'), 'حالة التغطية غائبة');
   assert.ok(lead.includes(`href="/app/team/needs/${needId}"`) && lead.includes('عرض المرشحين'));
   assert.ok(lead.includes('بحاجة إلى متابعة'), 'موعد القرار القريب ليس في المتابعات');

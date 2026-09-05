@@ -206,7 +206,7 @@
     var s = S();
     var html = '<div class="modal-head"><div style="font-weight:800;font-size:15px">اعتماد وإقفال الشهر</div><button class="btn btn-ghost btn-sm" data-action="close-modal-close" aria-label="إغلاق">✕</button></div>'
       + '<div class="modal-body"><p style="margin:0 0 .6rem">إقفال شهر <b>' + esc(s.month || '') + '</b> — الإصدار <b class="tnum">' + esc(version) + '</b>.</p>'
-      + '<p style="margin:0 0 .6rem;color:var(--muted);font-size:12.5px;line-height:1.8">يُعاد التحقق من الأكواد والمجاميع والاعتمادات داخل المعاملة قبل تثبيت النسخة. بعد الإقفال لا تعديل مباشر — التعديل بطلب تصحيح يُنشئ إصداراً جديداً. حالة الترحيل للنظام المالي تبقى «لم يتم»: لا تكامل خارجي في هذا الإصدار.</p></div>'
+      + '<p style="margin:0 0 .6rem;color:var(--muted);font-size:12.5px;line-height:1.8">يُعاد التحقق من الأكواد والمجاميع والاعتمادات قبل تثبيت النسخة. بعد الإقفال لا تعديل مباشر — التعديل بطلب تصحيح يُنشئ إصداراً جديداً. حالة الترحيل للنظام المالي تبقى «لم يتم»: لا تكامل خارجي في هذا الإصدار.</p></div>'
       + '<div class="modal-foot"><button class="btn" data-action="close-modal-close">إلغاء</button><button class="btn btn-primary" data-action="close-lock-go" data-version="' + esc(version) + '">اعتماد وإقفال الشهر</button></div>';
     if (!modal(html)) { if (window.confirm('اعتماد وإقفال شهر ' + (s.month || '') + ' — الإصدار ' + version + '؟')) doLock(version, null); }
   }

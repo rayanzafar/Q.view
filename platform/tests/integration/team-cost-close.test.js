@@ -4,7 +4,7 @@
 // T28 (كود مالي مفقود يبقى استثناءً)، T29 (البنود الداخلية وغير المسكَّن إلى القطاع، وغير
 // المرتبط يُستبعد بسبب)، T30 (مشروع مغلق اليوم كان قائماً في الشهر)، T31 (إقفالان متزامنان)،
 // T32 (لا تعديل بعد الإقفال)، T33 (التصحيح إصدارٌ جديد والسابق محفوظ)، T34 (تعارض الإصدار)،
-// T35 (المجموع 10000 والتصدير يطابق اللقطة)، T36 (الترحيل «لم يتم» دائماً).
+// T35 (المجموع 10000 والتصدير يطابق اللقطة)، T36 (الترحيل «لم يُرحَّل» دائماً).
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -397,14 +397,14 @@ test('T35 — كل مورد في اللقطة مجموعه 10000، والتصد�
   assert.ok((await audits('cost_period', 'export')).some((r) => r.resource_id === periodId && r.user_id === 'u_ceo'), 'التصدير بلا أثر');
 });
 
-test('T36 — حالة الترحيل «لم يتم» دائماً: في النظرة وفي الإقفال وفي الصف', async () => {
+test('T36 — حالة الترحيل «لم يُرحَّل» دائماً: في النظرة وفي الإقفال وفي الصف', async () => {
   const view = await C.periodOverview(await sess('u_ceo'), { sector: 'SOL', period: KEY });
-  assert.deepEqual(view.transfer, { status: 'not_transferred', status_ar: 'لم يتم' });
-  assert.deepEqual(view.period.transfer, { status: 'not_transferred', status_ar: 'لم يتم' });
+  assert.deepEqual(view.transfer, { status: 'not_transferred', status_ar: 'لم يُرحَّل' });
+  assert.deepEqual(view.period.transfer, { status: 'not_transferred', status_ar: 'لم يُرحَّل' });
   const row = await db.get('SELECT transfer_status FROM cost_period WHERE id = ?', [periodId]);
   assert.equal(row.transfer_status, 'not_transferred');
   const out = await C.exportPeriod(await sess('u_admin'), periodId);
-  assert.equal(out.transfer.status_ar, 'لم يتم');
+  assert.equal(out.transfer.status_ar, 'لم يُرحَّل');
   assert.ok(!out.csv.includes('transfer'), 'لا عمود ترحيل في الملف — لا تكامل خارجي في هذه النسخة');
 });
 
@@ -429,7 +429,7 @@ test('T33 — التصحيح بعد الإقفال: طلب معلق بالقدي
     reason: 'كشف الدوام النهائي يثبت 80% على المنصة', evidenceLabel: 'كشف دوام حزيران',
   });
   assert.equal(corr.status, 'pending');
-  assert.equal(corr.status_ar, 'بانتظار القرار');
+  assert.equal(corr.status_ar, 'بانتظار الاعتماد');
   assert.deepEqual(corr.previous.map((l) => [l.target_kind, l.share_bp]), [['project', 7000], ['sector', 3000]], 'القديم من اللقطة');
   assert.deepEqual(corr.proposed.map((l) => [l.target_kind, l.share_bp]), [['project', 8000], ['sector', 2000]]);
   assert.equal(corr.previous_version, 1);
@@ -563,7 +563,7 @@ test('الموجّه: النظرة والتصدير والرفض تمرّ بال
     const view = await ov.json();
     assert.equal(view.period.version, 3);
     assert.equal(view.period.status, 'locked');
-    assert.equal(view.transfer.status_ar, 'لم يتم');
+    assert.equal(view.transfer.status_ar, 'لم يُرحَّل');
 
     const rs = await fetch(`${base}/api/team/close/${view.period.id}/resources/e_a`);
     assert.equal(rs.status, 200);

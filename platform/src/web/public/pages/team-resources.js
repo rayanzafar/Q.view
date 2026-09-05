@@ -17,7 +17,7 @@
     });
     if (r.status === 401) { location.reload(); return new Promise(() => {}); }
     const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error((j.error && j.error.message) || ('تعذّر إتمام الطلب (' + r.status + ')'));
+    if (!r.ok) throw new Error((j.error && j.error.message) || 'تعذّر إتمام الطلب — أعد المحاولة');
     return j;
   };
   const N = (v) => Number(v) || 0;
@@ -148,8 +148,8 @@
     const kvRows = [
       ['الإدارة', r.department_name ? esc(r.department_name) : ''],
       ['القطاع', r.sector_name ? esc(r.sector_name) : ''],
-      ['المدير المباشر', r.manager_name ? esc(r.manager_name) : (r.manager && r.manager.name ? esc(r.manager.name) : '')],
-      ['الطاقة الأساسية', r.capacityPct != null ? '<span class="tnum">' + Math.round(N(r.capacityPct)) + '%</span>' : ''],
+      ['مدير المورد', r.manager_name ? esc(r.manager_name) : (r.manager && r.manager.name ? esc(r.manager.name) : '')],
+      ['الطاقة التعاقدية', r.capacityPct != null ? '<span class="tnum">' + Math.round(N(r.capacityPct)) + '%</span>' : ''],
       ['الارتباط', (eng.hire_date || eng.end_date) ? '<span class="tnum">' + (eng.hire_date ? 'من ' + esc(String(eng.hire_date).slice(0, 10)) : '') + (eng.end_date ? ' إلى ' + esc(String(eng.end_date).slice(0, 10)) : '') + '</span>' : ''],
     ].filter((x) => x[1]);
     const kv = kvRows.length ? '<table class="tm-tbl keep-all" style="margin:.7rem 0"><tbody>'
@@ -162,7 +162,7 @@
         + '<div><div class="l">المتاح</div><div class="v tnum">' + Math.round(N(f.availablePct)) + '%</div><div class="tm-bar" aria-hidden="true"><i class="c-int" style="width:' + W(f.availablePct) + '%"></i></div></div>'
         + (N(f.tentativePct) > 0 ? '<div><div class="l">مبدئي (لا يُخصم)</div><div class="v tnum">' + Math.round(N(f.tentativePct)) + '%</div><div class="tm-bar" aria-hidden="true"><i class="c-tent" style="width:' + W(f.tentativePct) + '%"></i></div></div>' : '')
         + '</div>';
-    const load = '<div class="tm-pv-load"><span>عبء المهام: <b>' + esc(tl.level_ar || 'غير مقاس') + '</b>'
+    const load = '<div class="tm-pv-load"><span>حِمل المهام: <b>' + esc(tl.level_ar || 'غير مقاس') + '</b>'
       + (tl.open ? ' <span class="tnum" style="color:var(--muted)">(' + Math.round(N(tl.pct)) + '% من ' + N(tl.open) + (N(tl.open) === 1 ? ' مهمة' : ' مهام') + (N(tl.unsized) ? '، ' + N(tl.unsized) + ' بلا نسبة' : '') + ')</span>' : '') + '</span>'
       + (tl.basis_ar ? '<span class="tm-note">' + esc(tl.basis_ar) + '</span>' : '') + '</div>';
 

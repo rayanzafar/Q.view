@@ -125,7 +125,7 @@ test('S22 لقائد القطاع: المراحل والعدادات تتصال�
   assert.ok(/data-action="close-send" disabled/.test(html), 'زر الإرسال ليس معطَّلاً');
   assert.ok(html.includes('لا يمكن الإرسال') && html.includes('بانتظار تأكيد المدير'), 'الموانع غير مذكورة تحت الزر');
   assert.ok(html.includes('data-action="close-regen"'), 'زر تحديث المسودة غائب لمن يراجع');
-  assert.ok(html.includes('حالة الترحيل للنظام المالي') && html.includes('<b>لم يتم</b>'), 'سطر الترحيل غائب');
+  assert.ok(html.includes('حالة الترحيل للنظام المالي') && html.includes('<b>لم يُرحَّل</b>'), 'سطر الترحيل غائب');
   assert.ok(html.includes('مراجعة الاستثناءات') && html.includes('exceptions=1'), 'زر مراجعة الاستثناءات غائب');
   assert.ok(html.includes('تأكيد المدير لا يقفل الشهر مالياً'));
   assert.ok(html.includes('/static/pages/team-close.js'));
@@ -169,13 +169,13 @@ test('S23: مرجع التسكين للقراءة، أسطر قابلة للتح
   const html = await view.closeResourcePage(lead, 'e_b', { period: periodId });
   clean(html, 'S23');
   assert.ok(html.includes('مرجع التسكين للشهر') && html.includes('إدارة مشاريع') && html.includes('غير مسكَّن'), 'مرجع التسكين ناقص');
-  assert.ok(html.includes('لا نسبة الطاقة (FTE)'), 'ملاحظة «تكلفة لا FTE» غائبة');
+  assert.ok(html.includes('لا نسبة من الطاقة ولا مبلغاً'), 'ملاحظة «تكلفة لا FTE» غائبة');
   assert.ok(html.includes('data-kind="project" data-target="P2"') && html.includes('data-kind="sector" data-target="SOL"'), 'أسطر التوزيع غائبة');
   assert.ok(html.includes('كود مفقود') && html.includes('/app/project/P2'), 'الكود المفقود بلا إشارة إلى صفحة المشروع');
   assert.ok(html.includes('CC-SOL'), 'مركز تكلفة القطاع غائب');
   assert.equal(count(html, /class="tm-close-pct"/g), 2, 'حقول النسبة ليست بعدد الأسطر');
   assert.ok(html.includes('value="30.00"') && html.includes('value="70.00"'), 'النسب بخانتين من نقاط الأساس');
-  assert.ok(html.includes('id="tm-close-total"') && html.includes('100.00%') && html.includes('يساوي 100% بدقة التخزين'));
+  assert.ok(html.includes('id="tm-close-total"') && html.includes('100.00%') && html.includes('يساوي 100% تماماً'));
   assert.ok(html.includes('الفرق عن المسودة') && html.includes('مطابق للتسكين المؤكد للشهر'));
   assert.ok(html.includes('data-action="close-confirm"') && html.includes('data-action="close-line-add"'));
   assert.ok(html.includes('تأكيد المدير لا يقفل الشهر مالياً'));
@@ -226,7 +226,7 @@ test('S24: بعد التأكيد والإرسال — للقراءة عند ال
   assert.ok(f.includes('جاهزية الإقفال') && f.includes('المصادر والاعتمادات') && f.includes('لا توجد استثناءات مفتوحة'));
   assert.ok(f.includes('حساب u_lead') && f.includes('من التسكين المؤكد'), 'من أكّد وماذا غائب');
   assert.ok(f.includes('id="tm-close-conflict"') && f.includes('تغيّرت النسخة منذ فتح الشاشة'), 'لافتة تعارض الإصدار غائبة');
-  assert.ok(f.includes('حالة الترحيل للنظام المالي') && f.includes('<b>لم يتم</b>'));
+  assert.ok(f.includes('حالة الترحيل للنظام المالي') && f.includes('<b>لم يُرحَّل</b>'));
   assert.ok(f.includes('"canLock":true') && f.includes('"canReturn":true') && f.includes('"version":1'));
   // S23 عند المراجعة المالية: للقراءة
   const r = await view.closeResourcePage(lead, 'e_a', { period: periodId });
@@ -277,13 +277,13 @@ test('S25: طلب تصحيح معلق يظهر بقرار الاعتماد/ال�
   const ceo = await sess('u_ceo');
   const p = await view.closePage(ceo, { sector: SECTOR, year: YEAR, month: MONTH });
   clean(p, 'S25/تصحيح معلق');
-  assert.ok(p.includes(`data-corr="${corr.id}"`) && p.includes('بانتظار القرار') && p.includes('مذكرة مدير المشروع'));
+  assert.ok(p.includes(`data-corr="${corr.id}"`) && p.includes('بانتظار الاعتماد') && p.includes('مذكرة مدير المشروع'));
   assert.ok(p.includes(`data-action="close-decide" data-id="${corr.id}" data-act="approve"`) && p.includes('data-act="reject"'));
   assert.ok(p.includes('المقترح:') && p.includes('50.00%') && p.includes('60.00%'), 'القديم والمقترح غائبان');
   const lead = ctxLead.user;
   const lp = await view.closePage(lead, { year: YEAR, month: MONTH });
   clean(lp, 'S25/تصحيح معلق/مدير');
-  assert.ok(lp.includes('بانتظار القرار') && !lp.includes('data-action="close-decide"'), 'قرار التصحيح ظهر لغير المراجعة المالية');
+  assert.ok(lp.includes('بانتظار الاعتماد') && !lp.includes('data-action="close-decide"'), 'قرار التصحيح ظهر لغير المراجعة المالية');
 
   const done = await close.decideCorrection(await ctxOf('u_ceo'), corr.id, 'approve', '');
   assert.equal(done.period.version, 2);

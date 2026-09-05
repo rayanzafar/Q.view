@@ -3,7 +3,7 @@
 // «الاسم والدور، نوع المورد، الإدارة الأساسية، حالة الارتباط، المتاح للفترة المحددة… ضع
 //  تاريخ/فترة قياس واضحة حتى لا يبدو رقماً دائماً. حالات صفر نتائج وعدم وجود موارد مختلفة»
 // — الموجّه §11/S02. الصفحة تعرض الحالة الأولى كاملةً خادمياً من `listResources` (نفس النطاق
-// والعدّاد والفلاتر — لا فلترة بعد القراءة)، والفلاتر والفترة تُقرأ من الرابط وتُكتب إليه
+// والعدّاد والتصفية — لا فلترة بعد القراءة)، والتصفية والفترة تُقرأ من الرابط وتُكتب إليه
 // (نموذج GET) فتبقى الحالة عند العودة من الملف. المعاينة (S03) درجٌ يجلبه العميل من
 // `/api/team/resources/:id/preview` ولا يُنسخ إليه شيء من ملف المورد.
 import { all } from '../../../core/db/index.js';
@@ -138,7 +138,7 @@ export async function resourcesPage(user, opts = {}) {
     return '/app/team/resources' + (s ? '?' + s : '');
   };
 
-  // ── شريط البحث والفلاتر (نموذج GET — الحالة في الرابط) ─────────────────────────────
+  // ── شريط البحث والتصفية (نموذج GET — الحالة في الرابط) ─────────────────────────────
   const sectorName = Object.fromEntries((form.sectors || []).map((s) => [s.id, s.name_ar]));
   const deptOption = (d) => `<option value="${esc(d.id)}"${d.id === department ? ' selected' : ''}>${esc(d.name_ar)}</option>`;
   let deptOptions = '';
@@ -153,14 +153,14 @@ export async function resourcesPage(user, opts = {}) {
 
   const toolbar = `<form method="get" action="/app/team/resources" class="tm-card tm-res-bar" id="tm-res-filters" role="search" aria-label="بحث الموارد وفلاترها">
     ${sector ? `<input type="hidden" name="sector" value="${esc(sector)}">` : ''}${pageSize ? `<input type="hidden" name="pageSize" value="${esc(pageSize)}">` : ''}
-    <div class="tm-res-q">${icon('search')}<input class="input" type="search" name="q" value="${esc(q)}" placeholder="ابحث بالاسم، المسمى أو المهارة" aria-label="ابحث بالاسم، المسمى أو المهارة"></div>
+    <div class="tm-res-q">${icon('search')}<input class="input" type="search" name="q" value="${esc(q)}" placeholder="ابحث بالاسم أو المسمى أو المهارة" aria-label="ابحث بالاسم أو المسمى أو المهارة"></div>
     <select class="input" name="department" aria-label="الإدارة"><option value="">كل الإدارات</option>${deptOptions}</select>
     <select class="input" name="type" aria-label="نوع المورد"><option value="">كل الأنواع</option>${typeOptions}</select>
     <select class="input" name="status" aria-label="حالة الارتباط"><option value="">كل الحالات</option>${statusOptions}</select>
     <label class="tm-res-period"><span>من</span><input class="input tnum" type="month" name="from" value="${esc(period.from)}" aria-label="بداية فترة القياس"></label>
     <label class="tm-res-period"><span>إلى</span><input class="input tnum" type="month" name="to" value="${esc(period.to)}" aria-label="نهاية فترة القياس"></label>
     <button class="btn" type="submit">تطبيق</button>
-    ${hasFilters ? '<a class="btn btn-ghost" href="/app/team/resources">مسح الفلاتر</a>' : ''}
+    ${hasFilters ? '<a class="btn btn-ghost" href="/app/team/resources">مسح التصفية</a>' : ''}
     <span class="tm-res-count"><span class="tnum">${esc(countLabel)}</span></span>
   </form>`;
 
@@ -190,8 +190,8 @@ export async function resourcesPage(user, opts = {}) {
   if (!total) {
     // حالتان مختلفتان: نطاقٌ بلا موارد أصلاً، أو بحثٌ لم يُطابق شيئاً.
     listHtml = hasFilters
-      ? `${emptyState('لا نتائج لهذا البحث', 'جرّب اسماً أو مسمى أو مهارة أخرى، أو وسّع الفلاتر.')}
-         <div class="tm-res-empty-act"><a class="btn" href="/app/team/resources">مسح الفلاتر</a></div>`
+      ? `${emptyState('لا نتائج لهذا البحث', 'جرّب اسماً أو مسمى أو مهارة أخرى، أو وسّع التصفية.')}
+         <div class="tm-res-empty-act"><a class="btn" href="/app/team/resources">مسح التصفية</a></div>`
       : `${emptyState('لا موارد في نطاقك بعد', canCreate ? 'أضِف أول مورد — يظهر هنا فور حفظه.' : 'حين يُضاف موظفون إلى إدارتك أو قطاعك سيظهرون هنا.')}
          ${canCreate ? `<div class="tm-res-empty-act"><button type="button" class="btn btn-primary" data-action="resource-add">${icon('plus')} ${esc(G.addResource)}</button></div>` : ''}`;
   } else if (!rows.length) {

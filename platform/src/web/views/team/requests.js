@@ -65,7 +65,7 @@ function effectTable(effect) {
   </tbody></table></div>`;
 }
 
-const ACTION_AR = { approve: 'اعتُمد', reject: 'رُدّ', return: 'أُعيد', cancel: 'أُلغي' };
+const ACTION_AR = { approve: 'اعتُمد', reject: 'رُفض', return: 'أُعيد', cancel: 'أُلغي' };
 function approvalsList(r) {
   const steps = [];
   if (r.approval) {
@@ -120,7 +120,7 @@ async function panelHtml(user, r) {
   return `<div class="tm-card" id="rq-panel"><div class="tm-card-h"><div><div class="tm-card-t">مراجعة طلب ${esc(r.employee?.name || '')}</div><div class="tm-card-s">${esc(r.kind_ar || '')} · ${statusPill(r)}</div></div></div>
     <div class="tm-card-b">${notes.join('')}${kv(rows)}
       <div style="font-weight:800;color:var(--ink2);margin:.9rem 0 .3rem">الأثر بعد الاعتماد</div>${effectTable(r.effect)}${effectNote}
-      <div style="font-weight:800;color:var(--ink2);margin:.9rem 0 .3rem">الموافقات</div>${approvalsList(r)}
+      <div style="font-weight:800;color:var(--ink2);margin:.9rem 0 .3rem">الاعتمادات</div>${approvalsList(r)}
       ${actions.join('')}<div id="rq-msg" aria-live="polite" style="margin-top:.5rem"></div></div></div>`;
 }
 

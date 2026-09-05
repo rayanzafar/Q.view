@@ -148,7 +148,7 @@ function listPanel(data, hc, q, canAdd) {
     body = `${emptyState('لا موارد في هذه الإدارة', 'لم يُسجَّل أي مورد تحت هذه الإدارة ضمن نطاقك بعد.')}<div class="tm-org-cta"><a class="btn btn-sm" href="/app/team/resources">${esc(G.resourcesRegistry)}</a>${canAdd ? `<a class="btn btn-primary btn-sm" href="/app/team/resources?new=1&amp;department=${encodeURIComponent(dep.id)}">${esc(G.addResource)}</a>` : ''}</div>`;
   } else {
     body = `<div class="tblwrap"><table class="tm-tbl tm-org-tbl" id="tm-org-rows">
-      <thead><tr><th>المورد</th><th>النوع</th><th>حالة التوفر <span class="tm-org-thm">(${esc((data.month && data.month.label_ar) || '')})</span></th><th>الارتباط</th><th></th></tr></thead>
+      <thead><tr><th>المورد</th><th>النوع</th><th>المتاح من طاقته <span class="tm-org-thm">(${esc((data.month && data.month.label_ar) || '')})</span></th><th>الارتباط</th><th></th></tr></thead>
       <tbody>${rows.map(resourceRow).join('')}</tbody></table>
       <div class="tm-empty" id="tm-org-none" hidden><div class="t">لا نتائج تطابق البحث</div><div>جرّب اسماً أو مسمًّى آخر.</div></div></div>
       <div class="tm-note tm-org-basis">${icon('info')}<span>${esc(data.basis_ar || '')} · ${esc(data.noMoney_ar || '')}</span></div>`;

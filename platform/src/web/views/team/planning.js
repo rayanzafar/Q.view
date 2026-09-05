@@ -54,7 +54,7 @@ export function pagePlanningRights(user) {
   return { direct, request };
 }
 
-// ── قوائم الفلاتر بنفس حدود الصفوف (readerBreadth) ────────────────────────────────────────────
+// ── قوائم التصفية بنفس حدود الصفوف (readerBreadth) ────────────────────────────────────────────
 async function filterLists(user, sector) {
   const breadth = readerBreadth(user);
   const sectors = breadth === 'company'
@@ -269,7 +269,7 @@ export async function planningPage(user, opts = {}) {
   const canRequest = rights.request;
   const projects = canRequest ? await pickerProjects(user) : [];
 
-  // ── الفلاتر (تُحفظ في الرابط؛ العميل يرسل النموذج عند التغيير) ────────────────────────
+  // ── التصفية (تُحفظ في الرابط؛ العميل يرسل النموذج عند التغيير) ────────────────────────
   const opt = (v, label, sel) => `<option value="${esc(v)}"${sel ? ' selected' : ''}>${esc(label)}</option>`;
   const filters = `<form class="tm-pl-filters" id="pl-filters" method="get" action="/app/team/planning" role="search" aria-label="مرشِّحات المصفوفة">
     <div class="field"><label for="pl-f-from">من شهر</label><input class="input" type="month" id="pl-f-from" name="from" value="${esc(period.from)}"></div>
@@ -302,7 +302,7 @@ export async function planningPage(user, opts = {}) {
     matrix = `<div class="tm-card">${emptyState('لا نتائج لهذا البحث', `لا مورد يطابق «${q}» ضمن نطاقك — جرّب اسماً آخر أو امسح البحث.`)}
       <div class="tm-pl-empty-actions" style="padding-bottom:1.2rem"><a class="btn" href="/app/team/planning?from=${esc(period.from)}&to=${esc(period.to)}${sector ? `&sector=${esc(sector)}` : ''}${department ? `&department=${esc(department)}` : ''}${showTentative ? '' : '&tentative=0'}">امسح البحث</a></div></div>`;
   } else {
-    matrix = `<div class="tm-card">${emptyState('لا موارد ضمن نطاقك', hasFilters ? 'وسّع الفلتر (القطاع أو الإدارة) لترى مواردَ أخرى.' : 'أضِف موارد من سجل الموارد، أو راجع صلاحيات حسابك.')}
+    matrix = `<div class="tm-card">${emptyState('لا موارد ضمن نطاقك', hasFilters ? 'وسّع التصفية (القطاع أو الإدارة) لترى مواردَ أخرى.' : 'أضِف موارد من سجل الموارد، أو راجع صلاحيات حسابك.')}
       <div class="tm-pl-empty-actions" style="padding-bottom:1.2rem">${hasFilters ? `<a class="btn" href="/app/team/planning?from=${esc(period.from)}&to=${esc(period.to)}">كل الموارد</a>` : `<a class="btn" href="/app/team/resources">${esc(G.resourcesRegistry)}</a>`}</div></div>`;
   }
   const count = countAr(rows.length, { one: 'مورد واحد', two: 'موردان', few: 'موارد', many: 'مورداً', zero: 'لا موارد' });

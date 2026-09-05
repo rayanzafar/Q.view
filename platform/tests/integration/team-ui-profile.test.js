@@ -125,7 +125,7 @@ test('S04 — الرأس والتبويبات والمؤشرات والتوزي�
   const html = await page(lead, 'e_res', {});
   for (const s of ['موظف الاختبار', 'مستشار بيانات', 'خارجي', 'إدارة البيانات', 'قطاع الحلول',
     'نظرة عامة', 'العمل المرتبط', 'المهام', 'القدرات والتطور', 'الارتباط والطاقة', 'سجل التغييرات',
-    'الطاقة الأساسية', 'التسكين المؤكد', 'عبء المهام', 'منصة الاختبار', 'إدارة مشاريع', 'مشروع مبدئي', 'لا يُخصم',
+    'الطاقة التعاقدية', 'التسكين المؤكد', 'حِمل المهام', 'منصة الاختبار', 'إدارة مشاريع', 'مشروع مبدئي', 'لا يُخصم',
     'القادم خلال', 'مراجعة المتطلبات', 'آخر تحديث', 'بيانات المورد', 'سجل الموارد',
     'تعديل الملف', 'طلب تسكين', 'مهامه وملفه']) assert.ok(html.includes(s), `غاب عن النظرة العامة: ${s}`);
   assert.ok(html.includes('data-action="resource-edit"') && html.includes('data-emp="e_res"'), 'زر التعديل بلا معرّف المورد');
@@ -177,7 +177,7 @@ test('S06 — المهام من خدمة المهام القائمة: مفتوح
   const lead = await sess('u_lead');
   const html = await page(lead, 'e_res', { tab: 'tasks' });
   for (const s of ['المهام المفتوحة', 'المهام المكتملة', 'مراجعة المتطلبات', 'اختبار جودة البيانات', 'نموذج العرض', 'قيد التنفيذ', 'منجز', 'مُعطَّل',
-    'عالية', 'بانتظار بيانات العميل', 'data-action="task-open"', 'data-task="T1"', 'فتح المهمة الأصلية', 'href="/app/person/u_res"', 'عبء المهام']) {
+    'عالية', 'بانتظار بيانات العميل', 'data-action="task-open"', 'data-task="T1"', 'فتح المهمة الأصلية', 'href="/app/person/u_res"', 'حِمل المهام']) {
     assert.ok(html.includes(s), `غاب عن المهام: ${s}`);
   }
   const payload = html.match(/teamProfile:(\{.*\})\}\);<\/script>/)[1];
@@ -191,7 +191,7 @@ test('S06 — المهام من خدمة المهام القائمة: مفتوح
   assert.ok(noacc.includes('لا حساب دخول — لا مهام مسجلة لهذا المورد'), 'حالة «لا حساب» غائبة');
   assert.ok(!noacc.includes('لا توجد مهام مسجلة'), 'خُلطت «لا حساب» بـ«لا مهام»');
   const zero = await page(lead, 'e_zero', { tab: 'tasks' });
-  assert.ok(zero.includes('لا توجد مهام مسجلة') && zero.includes('غير انخفاض عبء العمل'), 'حالة «لا مهام» غائبة أو غير مميّزة عن العبء');
+  assert.ok(zero.includes('لا توجد مهام مسجلة') && zero.includes('غير انخفاض حِمل المهام'), 'حالة «لا مهام» غائبة أو غير مميّزة عن العبء');
   // الموارد البشرية ترى المورد ولا تقرأ مهامه: يُقال لها ذلك لا قائمة فارغة
   const hr = await page(await sess('u_hr'), 'e_res', { tab: 'tasks' });
   assert.ok(hr.includes('tm-warn') && hr.includes('صلاحية'), 'الموارد البشرية لم تُخبَر بحدّ قراءة المهام');
@@ -236,7 +236,7 @@ test('S08 — نصف دوامٍ محجوزٌ بكامله: 100% من طاقته 
   const r = await R.setCapacity(await ctxOf('u_lead'), 'e_res', { capacity_pct: 80, effective_from: future, note: 'زيادة الدوام' });
   assert.equal(r.applied, false); assert.ok(Array.isArray(r.effect.months) && r.effect.months.length, 'الخدمة لا تعيد أثر التغيير');
   const html2 = await page(lead, 'e_res', { tab: 'engagement' });
-  for (const s of ['زيادة الدوام', 'تسري لاحقاً', 'السارية الآن', 'تاريخ السريان', 'وقت التنفيذ', dayAr(future)]) assert.ok(html2.includes(s), `غاب بعد الإصدار: ${s}`);
+  for (const s of ['زيادة الدوام', 'تسري لاحقاً', 'السارية الآن', 'تاريخ السريان', 'وقت التسجيل', dayAr(future)]) assert.ok(html2.includes(s), `غاب بعد الإصدار: ${s}`);
   assert.ok(html2.match(/data-kpi="busy">[\s\S]*?<\/td>/)[0].includes('>100%<'), 'إصدارٌ مستقبلي غيّر الحاضر');
   assert.ok(html2.includes('<div class="tm-profile-big"><span class="tnum">50%</span>'), 'الطاقة السارية ليست 50');
   // صاحب الملف يرى ولا يعدّل الطاقة
@@ -251,7 +251,7 @@ test('S10 — سجل التغييرات: وقت التنفيذ وتاريخ ال
   await R.updateResource(await ctxOf('u_lead'), 'e_res', { job_title: 'مستشار بيانات أول' });
   const html = await page(lead, 'e_res', { tab: 'audit' });
   const future = addDays(TODAY, 40);
-  for (const s of ['الطاقة التعاقدية', 'بيانات المورد', 'وقت التنفيذ', 'تاريخ السريان', 'قبل/بعد', 'زيادة الدوام', 'حساب u_lead',
+  for (const s of ['الطاقة التعاقدية', 'بيانات المورد', 'وقت التسجيل', 'تاريخ السريان', 'قبل/بعد', 'زيادة الدوام', 'حساب u_lead',
     'data-action="audit-diff"', '<template id="dd-audit-', 'المسمى', 'مستشار بيانات أول', 'قبل التعديل', 'بعد التعديل', 'السجل للقراءة',
     'tab=audit&amp;filter=capacity', 'tab=audit&amp;filter=allocation', 'tab=audit&amp;filter=profile', 'tab=engagement', dayAr(future)]) {
     assert.ok(html.includes(s), `غاب عن السجل: ${s}`);

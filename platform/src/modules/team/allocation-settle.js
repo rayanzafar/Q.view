@@ -29,11 +29,11 @@ import { capacityForMonth, monthKey, FULL } from './capacity-model.js';
 
 // ── تسمياتٌ عربية محلية (المعجم لا يُمَسّ) ─────────────────────────────────────────────
 export const REQUEST_STATUS_AR = Object.freeze({
-  draft: 'مسودة', pending: 'بانتظار القرار', approved: 'معتمَد', returned: 'مُعاد للتصحيح',
+  draft: 'مسودة', pending: 'بانتظار الاعتماد', approved: 'معتمَد', returned: 'مُعاد للتعديل',
   rejected: 'مرفوض', withdrawn: 'مسحوب', applied: 'مطبَّق',
 });
 export const REQUEST_KIND_AR = Object.freeze({ new: 'تسكين جديد', adjust: 'تعديل تسكين', remove: 'إزالة تسكين' });
-export const ALLOC_STATUS_AR = Object.freeze({ confirmed: 'مؤكد', tentative: 'مبدئي', pending: 'بانتظار القرار' });
+export const ALLOC_STATUS_AR = Object.freeze({ confirmed: 'مؤكد', tentative: 'مبدئي', pending: 'بانتظار الاعتماد' });
 export const PLAN_CHANGED_AR = 'تغيّرت الخطة منذ المعاينة';
 export const PLAN_CHANGED_ACTION_AR = `${PLAN_CHANGED_AR} — أعد المعاينة ثم أرسل الطلب من جديد`;
 export const NO_MANAGER_NOTE_AR = 'لا مدير مسجَّل لإدارة المورد — يبقى الطلب معلَّقاً حتى يقرّره من يملك أمر المورد (قائد القطاع أو مدير النظام)';

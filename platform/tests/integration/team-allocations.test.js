@@ -197,7 +197,7 @@ test('T18: طلبٌ عبر إدارةٍ أخرى لا يغيّر المؤكد ق
     { expectedFingerprints: pv.fingerprints, idempotencyKey: 'k-t18' });
   const req = r.requests[0];
   assert.equal(req.status, 'pending');
-  assert.equal(req.status_ar, 'بانتظار القرار');
+  assert.equal(req.status_ar, 'بانتظار الاعتماد');
   assert.equal(req.reviewer.id, 'u_dm1');
   assert.ok(req.approvalRequestId, 'طلب اعتماد موجَّه في الصندوق الواحد');
   assert.equal(await allocCount('e_1'), before1, 'الطلب المعلَّق لا يحجز شيئاً');
@@ -270,7 +270,7 @@ test('T20: طلبان متنافسان بالبصمة نفسها — الأول 
   assert.equal((await db.get('SELECT status FROM approval_request WHERE id = ?', [b.approvalRequestId])).status, 'REJECTED', 'طلب الاعتماد أُغلق بسببه');
   assert.ok((await auditActions(b.id)).some((x) => x.action === 'return'), 'الإعادة في الأثر');
   const gb = await A.getRequest(bdUser, b.id);
-  assert.equal(gb.status_ar, 'مُعاد للتصحيح');
+  assert.equal(gb.status_ar, 'مُعاد للتعديل');
   assert.match(gb.approval.actions[0].comment, /تغيّرت الخطة/);
 
   // ومعاينةٌ قديمة لا تُرسل أصلاً: بصمة ما قبل التطبيق تُرَدّ عند الإرسال

@@ -292,7 +292,7 @@ function buildEvidence(row, period) {
     { title_ar: 'الأشهر القادمة', value_ar: row.upcoming.map((u) => `${MONTHS_AR[Number(u.key.slice(5, 7)) - 1]} ${u.state === 'out' ? 'خارج الارتباط' : `${u.confirmedPct}%`}${u.pendingPct ? ` (طلب معلَّق ${u.pendingPct}%)` : ''}`).join(' · '), source: planning, asOf },
     { title_ar: 'الارتباط والطاقة', value_ar: `${e.hire_date ? 'من ' + String(e.hire_date).slice(0, 10) : 'بلا تاريخ تعيين'}${e.end_date ? ' إلى ' + String(e.end_date).slice(0, 10) : ''} — الطاقة ${row.capacityPct != null ? row.capacityPct + '%' : 'غير مسجلة'}`,
       source: { label_ar: 'ملف المورد', href: `/app/team/resources/${e.id}?tab=engagement` }, asOf },
-    { title_ar: 'التغطية المالية', value_ar: `${COVERAGE_UNAVAILABLE.state_ar} — ${COVERAGE_UNAVAILABLE.note_ar}`, source: { label_ar: 'قرار C8', href: null }, asOf },
+    { title_ar: 'التغطية المالية', value_ar: `${COVERAGE_UNAVAILABLE.state_ar} — ${COVERAGE_UNAVAILABLE.note_ar}`, source: { label_ar: 'قرار الإدارة لهذه النسخة', href: null }, asOf },
   ];
   return ev;
 }

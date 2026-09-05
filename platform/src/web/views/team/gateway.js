@@ -76,43 +76,50 @@ export async function teamGatewayPage(user, opts = {}) {
   if (res) {
     const rows = Array.isArray(res.rows) ? res.rows : [];
     const total = N(res.total);
-    F.people.push({ value: total, label: 'موارد نشطة', href: '/app/team/resources?status=active' });
+    F.people.push({ value: total, plural: { one: 'مورد نشط', two: 'موردان نشطان', few: 'موارد نشطة', many: 'مورداً نشطاً' }, href: '/app/team/resources?status=active' });
     // العدّان التاليان يُقرآن من الصفوف نفسها؛ إن لم تصل كل الصفوف فلا يُعرض عدٌّ ناقص.
     if (rows.length === total) {
-      F.people.push({ value: rows.filter((r) => r.availablePct != null && N(r.availablePct) > 0).length, label: 'بسعة متاحة',
+      F.people.push({ value: rows.filter((r) => r.availablePct != null && N(r.availablePct) > 0).length, plural: { one: 'مورد بسعة متاحة', two: 'موردان بسعة متاحة', few: 'موارد بسعة متاحة', many: 'مورداً بسعة متاحة' },
         href: '/app/team/resources?status=active', title: 'موارد نشطة لديها طاقة متاحة في الفترة الحالية' });
-      F.people.push({ value: new Set(rows.map((r) => r.resourceType || 'internal')).size, label: 'أنواع موارد', href: '/app/team/resources' });
+      F.people.push({ value: new Set(rows.map((r) => r.resourceType || 'internal')).size, plural: { one: 'نوع موارد', two: 'نوعا موارد', few: 'أنواع موارد', many: 'نوعاً من الموارد' }, href: '/app/team/resources' });
     }
     basis.people = String(res.basis_ar || '');
   }
   if (util) {
     const rows = Array.isArray(util.rows) ? util.rows : [];
-    F.planning.push({ value: rows.filter((r) => N(r.overPct) > 0).length, label: 'تجاوزات هذا الشهر', href: `/app/team/planning?from=${key}&to=${key}` });
+    F.planning.push({ value: rows.filter((r) => N(r.overPct) > 0).length, plural: { one: 'تجاوز هذا الشهر', two: 'تجاوزان هذا الشهر', few: 'تجاوزات هذا الشهر', many: 'تجاوزاً هذا الشهر' }, href: `/app/team/planning?from=${key}&to=${key}` });
     basis.planning = String(util.basis_ar || '');
   }
   if (pending) {
     const n = Array.isArray(pending) ? pending.length : N(pending.total != null ? pending.total : (pending.rows || []).length);
-    F.planning.push({ value: n, label: 'بانتظار قراري', href: '/app/team/requests?filter=pending_my_decision' });
+    F.planning.push({ value: n, plural: { one: 'طلب بانتظار قرارك', two: 'طلبان بانتظار قرارك', few: 'طلبات بانتظار قرارك', many: 'طلباً بانتظار قرارك' }, href: '/app/team/requests?filter=pending_my_decision' });
   }
-  F.planning.push({ text: monthLabel(`${year}-12`), label: 'نظرة حتى', href: `/app/team/planning?from=${key}&to=${year}-12` });
+  F.planning.push({ text: monthLabel(`${year}-12`), label: 'أفق التخطيط', href: `/app/team/planning?from=${key}&to=${year}-12` });
   if (work?.counts) {
     const workHref = `/app/team/work?year=${year}&month=${month}`;
-    F.work.push({ value: N(work.counts.tasks), label: 'مهام مفتوحة', href: workHref },
-      { value: N(work.counts.late), label: 'متأخرة', href: workHref },
-      { value: N(work.counts.works), label: 'أعمال نشطة', href: workHref });
+    F.work.push({ value: N(work.counts.tasks), plural: { one: 'مهمة مفتوحة', two: 'مهمتان مفتوحتان', few: 'مهام مفتوحة', many: 'مهمة مفتوحة' }, href: workHref },
+      { value: N(work.counts.late), plural: { one: 'مهمة متأخرة', two: 'مهمتان متأخرتان', few: 'مهام متأخرة', many: 'مهمة متأخرة' }, href: workHref },
+      { value: N(work.counts.works), plural: { one: 'عمل نشط', two: 'عملان نشطان', few: 'أعمال نشطة', many: 'عملاً نشطاً' }, href: workHref });
     basis.work = String(work.basis_ar || '');
   }
   if (needs) {
-    F.analysis.push({ value: N(needs.total), label: 'احتياجات مفتوحة', href: '/app/team/needs' });
+    F.analysis.push({ value: N(needs.total), plural: { one: 'احتياج مفتوح', two: 'احتياجان مفتوحان', few: 'احتياجات مفتوحة', many: 'احتياجاً مفتوحاً' }, href: '/app/team/needs' });
     basis.analysis = String(needs.basis_ar || '');
   }
   if (util) {
-    F.analysis.push({ value: Math.max(0, N(util.total) - N(util.counts?.bySignal?.none)), label: 'إشارات للمراجعة', href: `/app/team/analysis?year=${year}&month=${month}` });
+    F.analysis.push({ value: Math.max(0, N(util.total) - N(util.counts?.bySignal?.none)), plural: { one: 'إشارة للمراجعة', two: 'إشارتان للمراجعة', few: 'إشارات للمراجعة', many: 'إشارة للمراجعة' }, href: `/app/team/analysis?year=${year}&month=${month}` });
   }
 
   const factVal = (f) => (f.text != null ? esc(f.text) : String(N(f.value)));
-  const cardFact = (f) => `<a class="fact" href="${esc(f.href)}"${f.title ? ` title="${esc(f.title)}"` : ''}><b class="tnum">${factVal(f)}</b><span>${esc(f.label)}</span></a>`;
-  const pvFact = (p, f) => `<a class="fact" href="${esc(f.href)}"${f.title ? ` title="${esc(f.title)}"` : ''}>${icon(p.icon)}<div><b class="tnum">${factVal(f)}</b><span>${esc(f.label)}</span></div></a>`;
+  // التسمية تتبع العدد كما في العربية (احتياج مفتوح · احتياجان · احتياجات · احتياجاً): الرقم كبيراً
+  // والكلمة بصيغتها الصحيحة تحته — لا «1 احتياجات مفتوحة».
+  const factLabel = (f) => {
+    if (!f.plural) return f.label;
+    const n = N(f.value);
+    return n === 1 ? f.plural.one : n === 2 ? f.plural.two : (n >= 3 && n <= 10) || n === 0 ? f.plural.few : f.plural.many;
+  };
+  const cardFact = (f) => `<a class="fact" href="${esc(f.href)}"${f.title ? ` title="${esc(f.title)}"` : ''}><b class="tnum">${factVal(f)}</b><span>${esc(factLabel(f))}</span></a>`;
+  const pvFact = (p, f) => `<a class="fact" href="${esc(f.href)}"${f.title ? ` title="${esc(f.title)}"` : ''}>${icon(p.icon)}<div><b class="tnum">${factVal(f)}</b><span>${esc(factLabel(f))}</span></div></a>`;
 
   // ── بطاقة المسار: زرٌّ بلوحة المفاتيح، والسهم رابطٌ حقيقي يعمل بلا JavaScript ─────────
   const card = (p) => {

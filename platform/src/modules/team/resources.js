@@ -89,7 +89,7 @@ const normText = (v, max = 200) => { const s = v == null ? '' : String(v).trim()
 function normCapacityPct(v) {
   const n = Number(v);
   if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1 || n > 100)
-    throw badRequest('الطاقة التعاقدية نسبة صحيحة بين ١ و١٠٠ — ١٠٠ تعني دواماً كاملاً و٥٠ نصف دوام');
+    throw badRequest('الطاقة التعاقدية نسبة صحيحة بين 1 و100 — 100 دوام كامل و50 نصف دوام');
   return n;
 }
 function normResourceType(v) {
@@ -118,7 +118,7 @@ function monthOf(opts = {}) {
   const today = riyadhDate();
   const y = opts.year == null || opts.year === '' ? Number(today.slice(0, 4)) : Number(opts.year);
   const m = opts.month == null || opts.month === '' ? Number(today.slice(5, 7)) : Number(opts.month);
-  if (!Number.isInteger(y) || y < 2000 || y > 2100 || !Number.isInteger(m) || m < 1 || m > 12) throw badRequest('اختر شهراً صحيحاً (١–١٢) وسنةً صحيحة');
+  if (!Number.isInteger(y) || y < 2000 || y > 2100 || !Number.isInteger(m) || m < 1 || m > 12) throw badRequest('اختر شهراً صحيحاً (1–12) وسنةً صحيحة');
   return { year: y, month: m, key: monthKey(y, m) };
 }
 
@@ -240,7 +240,7 @@ async function taskLoadOf(userId) {
   const r = (await taskLoadFor([userId])).get(userId) || { pct: 0, unsized: 0, open: 0 };
   const level = r.open > 0 && r.pct === 0 && r.unsized > 0 ? 'unmeasured' : r.pct < 40 ? 'low' : r.pct <= 100 ? 'medium' : 'high';
   return { level, level_ar: TASK_LEVEL_AR[level], pct: r.pct, unsized: r.unsized, open: r.open, linked: true,
-    basis_ar: `${TASK_LOAD_BASIS_AR} أقل من ٤٠٪ منخفض، حتى ١٠٠٪ متوسط، وفوقها مرتفع؛ ومهامٌ بلا نسبٍ مقدَّرة وحدها = غير مقاس.` };
+    basis_ar: `${TASK_LOAD_BASIS_AR} أقل من 40% منخفض، حتى 100% متوسط، وفوقها مرتفع؛ ومهامٌ بلا نسبٍ مقدَّرة وحدها = غير مقاس.` };
 }
 
 // ── القادم: مهام الحساب المرتبط (الجارية بتعريف الحِمل الواحد) + معالم المشاريع المسكَّن عليها ──
@@ -741,7 +741,7 @@ export async function engagement(user, employeeId) {
     account: account ? { linked: true, active: Number(account.active) === 1, userId: account.id, username: account.username || null, name: account.name_ar || null }
       : { linked: false, active: false, userId: null, username: null, name: null },
     capacity: {
-      currentPct, basis_ar: 'وفق الطاقة التعاقدية المسجلة — ١٠٠ دوام كامل، والشهر الذي تتغيّر فيه يُوزَن بالأيام',
+      currentPct, basis_ar: 'وفق الطاقة التعاقدية المسجلة — 100 = دوام كامل، والشهر الذي تتغيّر فيه يُوزَن بالأيام',
       versions: versions.map((v) => ({ id: v.id, effective_from: day(v.effective_from), capacity_pct: Number(v.capacity_pct), note: v.note || null,
         created_by: v.created_by || null, created_by_name: v.created_by ? people.get(v.created_by) || null : null, created_at: v.created_at })),
       changes,

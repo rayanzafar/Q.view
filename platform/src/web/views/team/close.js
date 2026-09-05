@@ -399,7 +399,7 @@ export async function closePage(user, opts = {}) {
     body = draftBody(view, { exceptionsOnly });
     actions = exceptionsOnly
       ? `<a class="btn" href="${esc(closeUrl(period))}">${G.closeShowAll}</a>`
-      : `<a class="btn btn-primary" href="${esc(closeUrl(period, { exceptions: 1 }))}">${icon('risk')} ${G.closeReviewExceptions} (<span class="tnum">${withEx}</span>)</a>`;
+      : `<a class="btn btn-primary" href="${esc(closeUrl(period, { exceptions: 1 }))}">${icon('risk')} <span>${G.closeReviewExceptions} · <span class="tnum">${withEx}</span></span></a>`;
   }
   const bar = `<div class="tm-close-bar">${filterBar({ sectors, company, sectorId: period.sector_id, sectorName: period.sector_name, year: period.year, month: period.month, exceptions: exceptionsOnly, version: opts.version || '' })}</div>`;
   const clientData = locked ? '' : inject({
@@ -457,7 +457,7 @@ export async function closeResourcePage(user, employeeId, opts = {}) {
       <tbody>${d.lines.map(lineRow).join('') || `<tr><td colspan="4"><div class="tm-note" style="padding:.4rem 0">${esc(d.draftDiff_ar)}</div></td></tr>`}</tbody></table></div>
     ${editable ? `<div style="margin-top:.5rem"><button type="button" class="btn btn-sm" data-action="close-line-add">${icon('plus')} ${G.closeAddTarget}</button></div><div class="tm-info" id="tm-close-other-note" hidden style="margin-top:.5rem">${esc(G.closeOtherSector)} — لا يُحفظ من هذه الشاشة في هذا الإصدار؛ حمّله على قطاع الفترة أو مشروع فيه.</div>` : ''}
     <div class="tm-close-foot">
-      <div><div class="l">الإجمالي</div><div class="v ${totalOk ? 'ok' : 'bad'}" id="tm-close-total"><span class="tnum">${bpToPct(d.totalBp)}%</span></div><div class="tm-close-sub" id="tm-close-total-note">${totalOk ? 'يساوي 100% بدقة التخزين' : 'يجب أن يساوي 100.00% بالضبط'}</div></div>
+      <div><div class="l">الإجمالي</div><div class="v ${totalOk ? 'ok' : 'bad'}" id="tm-close-total"><span class="tnum">${bpToPct(d.totalBp)}%</span></div><div class="tm-close-sub" id="tm-close-total-note">${totalOk ? 'يساوي 100% تماماً' : 'يجب أن يساوي 100.00% بالضبط'}</div></div>
       <div><div class="l">غير موزع</div><div class="v" id="tm-close-unalloc"><span class="tnum">${bpToPct(d.unallocatedBp)}%</span></div></div>
       <div><div class="l">الفرق عن المسودة</div><div class="v" style="font-size:var(--fs-body);font-weight:600" id="tm-close-diff">${esc(d.draftDiff_ar)}</div></div>
     </div>`;

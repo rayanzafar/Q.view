@@ -18,7 +18,7 @@
     });
     if (r.status === 401) { location.reload(); return new Promise(() => {}); }
     const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error((j.error && j.error.message) || ('تعذّر إتمام الطلب (' + r.status + ')'));
+    if (!r.ok) throw new Error((j.error && j.error.message) || 'تعذّر إتمام الطلب — أعد المحاولة');
     return j;
   };
   const toast = (msg, bad) => {
@@ -185,7 +185,7 @@
     const h = val('hire_date'); const e = val('end_date');
     if (e && e < h) return fail('end_date', 'نهاية الارتباط أسبق من بدايتها — صحّح أحد التاريخين');
     const cap = Number(val('capacity_pct'));
-    if (!Number.isFinite(cap) || cap < 10 || cap > 150) return fail('capacity_pct', 'الطاقة الأساسية بين 10 و150 (100 = دوام كامل)');
+    if (!Number.isFinite(cap) || cap < 1 || cap > 100) return fail('capacity_pct', 'الطاقة التعاقدية بين 1 و100 (100 = دوام كامل)');
     const cb = field('create_account');
     if (cb && cb.checked && !cb.disabled && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(val('email'))) return fail('email', 'اكتب بريد عمل صحيحاً لإنشاء حساب الدخول');
     return null;

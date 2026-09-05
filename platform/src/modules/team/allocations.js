@@ -48,7 +48,7 @@ export const BASIS_AR = 'المتاح محسوب من الطاقة التعاق�
 export const LEGEND = Object.freeze([
   { key: 'free', label_ar: BAND_AR.free }, { key: 'low', label_ar: BAND_AR.low }, { key: 'ok', label_ar: BAND_AR.ok },
   { key: 'near', label_ar: BAND_AR.near }, { key: 'over', label_ar: BAND_AR.over }, { key: 'out', label_ar: BAND_AR.out },
-  { key: 'tentative', label_ar: 'مبدئي — لا يُخصم من المتاح' }, { key: 'pending', label_ar: 'طلب بانتظار القرار — لا يُخصم' },
+  { key: 'tentative', label_ar: 'مبدئي — لا يُخصم من المتاح' }, { key: 'pending', label_ar: 'طلب بانتظار الاعتماد — لا يُخصم' },
 ]);
 const AUDIT_ACTION_AR = { create: 'أُنشئ', submit: 'أُرسل', apply: 'طُبِّق', return: 'أُعيد', reject: 'رُفض', withdraw: 'سُحب', update: 'عُدِّل' };
 
@@ -93,7 +93,7 @@ function periodOf(p) {
 }
 
 /**
- * مصفوفة مورد × شهر لمن يقرأ الفريق، بنطاقه (resourceScopeSql) — والفلاتر تضيّق داخله ولا توسّعه.
+ * مصفوفة مورد × شهر لمن يقرأ الفريق، بنطاقه (resourceScopeSql) — والتصفية تضيّق داخله ولا توسّعه.
  */
 export async function planningMatrix(user, { from, to, sector, department, q, showTentative = true } = {}) {
   if (!canReadResources(user)) throw forbidden('مصفوفة التسكين لمن يقرأ الفريق — اطلب صلاحية عرض الفريق');
@@ -528,7 +528,7 @@ export async function listRequests(user, { filter = 'all', q, from, to, status }
     const own = ownedEmployeeSql(user, 'e');
     where.push(`r.status = 'pending'`, 'r.requested_by <> ?', `(r.reviewer_user_id = ? OR (r.reviewer_user_id IS NULL AND ${own.clause}))`);
     params.push(user.id, user.id, ...own.params);
-  } else if (f !== 'all') throw badRequest('الفلتر: الكل، أو طلباتي، أو بانتظار قراري');
+  } else if (f !== 'all') throw badRequest('التصفية: الكل، أو طلباتي، أو بانتظار قراري');
   if (status) { where.push('r.status = ?'); params.push(String(status)); }
   const qq = String(q || '').trim();
   if (qq) { where.push('(e.name_ar LIKE ? OR p.name_ar LIKE ?)'); params.push(`%${qq}%`, `%${qq}%`); }

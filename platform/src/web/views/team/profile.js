@@ -342,7 +342,7 @@ function tasksHtml(p, { payload, today }) {
   }
   const tasks = t.tasks || [];
   if (!tasks.length) {
-    return `<div class="tm-card tm-profile-sec"><div class="tm-card-b">${loadLine}${emptyState(G.noTasksRecorded, 'لا مهمة مسنَدة إلى حسابه — وهذا غير انخفاض عبء العمل: العبء يُقاس من النسب المكتوبة على المهام لا من عددها.')}
+    return `<div class="tm-card tm-profile-sec"><div class="tm-card-b">${loadLine}${emptyState(G.noTasksRecorded, 'لا مهمة مسنَدة إلى حسابه — وهذا غير انخفاض حِمل المهام: العبء يُقاس من النسب المكتوبة على المهام لا من عددها.')}
       ${openHref ? `<div style="text-align:center;margin-top:-1rem;padding-bottom:1rem"><a class="btn btn-sm" href="${esc(openHref)}">${esc(p.rights.self ? G.myTasksAndDossier : G.tasksAndDossier)}</a></div>` : ''}</div></div>`;
   }
   const open = tasks.filter((x) => x.status !== 'DONE');
@@ -442,7 +442,7 @@ async function engagementHtml(user, p, { payload }) {
     ['مرجع الارتباط', e.ref ? esc(e.ref) : null],
     ['القطاع', e.sector_name ? esc(e.sector_name) : null],
     ['الإدارة', e.department_name ? esc(e.department_name) : null],
-    ['المدير', e.manager ? (e.manager.name ? `<a href="/app/person/${encodeURIComponent(e.manager.userId)}" style="text-decoration:none">${esc(e.manager.name)}</a>` : 'مدير الإدارة') : '<span class="tm-profile-sub">لا مدير مسجَّل للإدارة</span>'],
+    ['مدير المورد', e.manager ? (e.manager.name ? `<a href="/app/person/${encodeURIComponent(e.manager.userId)}" style="text-decoration:none">${esc(e.manager.name)}</a>` : 'مدير الإدارة') : '<span class="tm-profile-sub">لا مدير مسجَّل للإدارة</span>'],
     ['تاريخ البداية', dayAr(e.hire_date)],
     ['تاريخ النهاية', e.end_date ? dayAr(e.end_date) : 'ارتباط مفتوح'],
     ['حساب الدخول', `${acct}${e.account.name ? ` <span class="tm-profile-sub">${esc(e.account.name)}</span>` : ''}${acctNote}`],
@@ -458,7 +458,7 @@ async function engagementHtml(user, p, { payload }) {
     ? `<div class="tm-warn">${esc(p.month.label_ar)}: ${esc(G.outOfEngagement)} — لا طاقة محسوبة، ولا يُعرض الشهر متاحاً.</div>`
     : `<table class="tm-tbl keep-all" style="margin-top:.6rem"><tbody>
         <tr><td style="color:var(--muted)">المسكَّن · ${esc(p.month.label_ar)}</td><td>${fteHtml(f.units.confirmed)} من الدوام الكامل</td></tr>
-        <tr><td style="color:var(--muted)">المشغول من طاقته</td><td data-kpi="busy">${pctHtml(f.confirmedPct)} ${bandPill(f.band, f.band_ar)}</td></tr>
+        <tr><td style="color:var(--muted)">المؤكد من طاقته</td><td data-kpi="busy">${pctHtml(f.confirmedPct)} ${bandPill(f.band, f.band_ar)}</td></tr>
         <tr><td style="color:var(--muted)">المتاح من طاقته</td><td data-kpi="available">${pctHtml(f.availablePct)}</td></tr>
         ${N(f.tentativePct) > 0 ? `<tr><td style="color:var(--muted)">مبدئي (لا يُخصم)</td><td>${pctHtml(f.tentativePct)}</td></tr>` : ''}
         <tr><td style="color:var(--muted)">من الطاقة التعاقدية</td><td><div style="display:flex;gap:.5rem;align-items:center">${pctHtml(f.confirmedPct)}<div style="flex:1">${stackBar([{ pct: Math.min(100, N(f.confirmedPct)), tone: N(f.overPct) > 0 ? 'over' : 'proj', label: 'المشغول' }])}</div></div></td></tr>
@@ -504,7 +504,7 @@ const AUDIT_KEY_AR = {
   period_to: 'نهاية الخبرة', target_date: 'موعد الهدف', source: 'المصدر', reviewed_by: 'راجعه', note: 'ملاحظة', type: 'الدور',
   project_id: 'المشروع', project_name: 'اسم المشروع', work_bucket: 'البند الداخلي', billable: 'قابل للفوترة', year: 'السنة',
   alloc_status: 'نوع التسكين', kind: 'النوع', target_kind: 'نوع الوجهة', target_id: 'الوجهة', reason: 'السبب', person_name_ar: 'اسم الشخص',
-  line_manager_id: 'المدير المباشر', seasonal: 'موسمي', month_start: 'من شهر', month_end: 'إلى شهر', pct: 'النسبة', applied: 'طُبّق الآن',
+  line_manager_id: 'مدير المورد', seasonal: 'موسمي', month_start: 'من شهر', month_end: 'إلى شهر', pct: 'النسبة', applied: 'طُبّق الآن',
   employee_capacity_pct: 'الطاقة السارية', decision_note: 'ملاحظة القرار', requested_by: 'طلبه', reviewer_user_id: 'المراجع', need_id: 'الاحتياج',
 };
 const AUDIT_KEY_SKIP = new Set(['id', 'employee_id', 'updated_at', 'created_at', 'deleted_at', 'created_by', 'baseline_version_id', 'idempotency_key', 'expected_fingerprint', 'approval_request_id', 'applied_allocation_id', 'allocation_id', 'department_id_prev']);

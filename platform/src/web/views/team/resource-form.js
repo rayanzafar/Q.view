@@ -74,10 +74,10 @@ export function resourceFormTemplate({ mode = 'create', sectors = [], department
   // (org/confirm.js managerOfEmployee) — فيُعرض مشتقاً من الإدارة المختارة. وإن مرّرت الصفحة
   // قائمة مديرين صريحة عُرضت اختياراً اختيارياً بدلاً منه.
   const managerField = (managers || []).length
-    ? `<div class="field"><label for="rf-manager">المدير المسؤول</label>
+    ? `<div class="field"><label for="rf-manager">مدير المورد</label>
         <select id="rf-manager" name="line_manager_id"><option value="">مدير الإدارة المختارة (تلقائي)</option>${managers.map((m) => `<option value="${esc(m.id)}" data-dept="${esc(m.department_id || '')}">${esc(m.name_ar)}</option>`).join('')}</select>
         <small>يُترك تلقائياً ليكون مدير الإدارة هو المعتمِد</small></div>`
-    : `<div class="field"><label>المدير المسؤول</label>
+    : `<div class="field"><label>مدير المورد</label>
         <div class="tm-rf-ro" id="rf-manager-ro" data-empty="يُحدَّد من الإدارة المختارة" aria-live="polite">يُحدَّد من الإدارة المختارة</div>
         <small>مدير الإدارة يعتمد التسكين على هذا المورد</small></div>`;
   const accountBlock = canCreateAccount
@@ -127,7 +127,7 @@ export function resourceFormTemplate({ mode = 'create', sectors = [], department
         <div class="row">
           <div class="field"><label class="req" for="rf-hire">بداية الارتباط</label><input class="input tnum" type="date" id="rf-hire" name="hire_date" required></div>
           <div class="field"><label for="rf-end">نهاية الارتباط</label><input class="input tnum" type="date" id="rf-end" name="end_date"><small>اتركه فارغاً للارتباط المفتوح</small></div>
-          <div class="field"><label class="req" for="rf-cap">الطاقة الأساسية</label><input class="input tnum" type="number" id="rf-cap" name="capacity_pct" min="10" max="150" step="5" value="100" required><small>100 = دوام كامل</small></div>
+          <div class="field"><label class="req" for="rf-cap">الطاقة التعاقدية</label><input class="input tnum" type="number" id="rf-cap" name="capacity_pct" min="1" max="100" step="1" value="100" required><small>100 = دوام كامل، 50 = نصف دوام</small></div>
         </div>
         <div class="row tm-rf-vendor" hidden>
           <div class="field"><label class="req" for="rf-vendor">الجهة المتعاقدة</label><input class="input" id="rf-vendor" name="vendor_name" maxlength="160" placeholder="اسم الشركة أو الجهة"></div>

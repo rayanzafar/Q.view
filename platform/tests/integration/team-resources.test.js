@@ -207,7 +207,7 @@ test('S08: يرفض تاريخاً ناقصاً ونسبةً خارج الحدو
   const ctx = await ctxOf('u_admin');
   const n0 = (await db.get('SELECT COUNT(*) n FROM capacity_version')).n;
   await assert.rejects(() => R.setCapacity(ctx, 'e_half', { capacity_pct: 40 }), /تاريخ سريان الطاقة مطلوب/);
-  await assert.rejects(() => R.setCapacity(ctx, 'e_half', { capacity_pct: 140, effective_from: TODAY }), /بين ١ و١٠٠/);
+  await assert.rejects(() => R.setCapacity(ctx, 'e_half', { capacity_pct: 140, effective_from: TODAY }), /بين 1 و100/);
   await assert.rejects(() => R.setCapacity(ctx, 'e_half', { capacity_pct: 40, effective_from: '2024-01-01' }), /أسبق من تاريخ التعيين/);
   assert.equal((await db.get('SELECT COUNT(*) n FROM capacity_version')).n, n0);
 });
@@ -378,7 +378,7 @@ test('S09: الإنشاء يغلّف إنشاء الموظف، يكتب النو
   await assert.rejects(() => R.createResource(ctx, { name_ar: 'محمد أحمد الشهري', sector_id: 'SOL' }), /مستخدم بالفعل/);
   await assert.rejects(() => R.createResource(ctx, { name_ar: 'جهة شريكة', sector_id: 'SOL', resource_type: 'partner' }), /الجهة الشريكة/);
   await assert.rejects(() => R.createResource(ctx, { name_ar: 'خطأ الإدارة', sector_id: 'SOL', department_id: 'D_CONS' }), /ليست تحت القطاع/);
-  await assert.rejects(() => R.createResource(ctx, { name_ar: 'طاقة خاطئة', sector_id: 'SOL', capacity_pct: 0 }), /بين ١ و١٠٠/);
+  await assert.rejects(() => R.createResource(ctx, { name_ar: 'طاقة خاطئة', sector_id: 'SOL', capacity_pct: 0 }), /بين 1 و100/);
   await assert.rejects(() => R.createResource(ctx, { name_ar: 'بلا قطاع' }), /اختر القطاع/);
   await assert.rejects(() => R.createResource(ctx, { name_ar: 'قطاع وهمي', sector_id: 'NOPE' }), /القطاع المختار غير موجود/);
   const rows = await db.all("SELECT action, detail_json FROM audit_log WHERE resource = 'employee' AND resource_id = ? ORDER BY at", [c1.resource.id]);

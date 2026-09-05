@@ -173,7 +173,7 @@ test('S16: القائمة بشرائحها الثلاث وعدّاد «بانت�
   for (const t of ['كل الطلبات', 'طلباتي', 'بانتظار قراري']) assert.ok(html.includes(t), `شريحة «${t}» غائبة`);
   assert.ok(html.includes('<span class="n tnum">(1)</span>'), 'عدّاد «بانتظار قراري» ليس 1');
   assert.ok(html.includes('محمد العمري') && html.includes('تطوير أعمال'), 'صف الطلب غائب');
-  assert.ok(html.includes('بانتظار القرار'), 'حالة الطلب غائبة');
+  assert.ok(html.includes('بانتظار الاعتماد'), 'حالة الطلب غائبة');
   assert.ok(html.includes(`href="/app/team/requests/${reqId}"`), 'الصف لا يفتح الطلب');
   const mine = await P.requestsPage(dm, { filter: 'mine' });
   assert.ok(mine.includes('لم ترفع طلبات بعد'), 'حالة «طلباتي» الفارغة غير مصمَّمة');

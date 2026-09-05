@@ -41,8 +41,8 @@ export const PERIOD_STATUS_AR = Object.freeze({
 export const REVIEW_STATUS_AR = Object.freeze({ draft: 'مسودة', confirmed: 'مؤكد', excluded: 'مستبعد', missing: 'بلا توزيع' });
 export const TARGET_KIND_AR = Object.freeze({ project: 'مشروع', sector: 'القطاع' });
 export const BASIS_AR = Object.freeze({ allocation: 'من التسكين المؤكد', manager: 'تعديل المدير', correction: 'تصحيح بعد الإقفال' });
-export const TRANSFER_STATUS_AR = Object.freeze({ not_transferred: 'لم يتم' });
-export const CORRECTION_STATUS_AR = Object.freeze({ draft: 'مسودة', pending: 'بانتظار القرار', approved: 'معتمد', rejected: 'مرفوض' });
+export const TRANSFER_STATUS_AR = Object.freeze({ not_transferred: 'لم يُرحَّل' });
+export const CORRECTION_STATUS_AR = Object.freeze({ draft: 'مسودة', pending: 'بانتظار الاعتماد', approved: 'معتمد', rejected: 'مرفوض' });
 export const EXCEPTION_AR = Object.freeze({
   missing_fin_code: 'كود مالي مفقود',
   sum_mismatch: 'المجموع لا يساوي 100%',
@@ -55,7 +55,7 @@ const STAGES = [['draft', 'المسودة'], ['manager_review', 'مراجعة ا
 const EDITABLE = new Set(['draft', 'manager_review']);
 export const EXPORT_COLUMNS = Object.freeze(['resource_id', 'month', 'sector', 'target_kind', 'fin_code', 'share_bp', 'share_pct',
   'basis', 'review_status', 'confirmed_by', 'confirmed_at', 'lock_version', 'correction_ref', 'note']);
-export const BASIS_NOTE_AR = 'النسب من تكلفة الشهر بنقاط أساس (10000 = 100%): التسكين المؤكد يُوزَّع على المشاريع بأكوادها المالية، والعمل الداخلي وما لم يُسكَّن على مركز تكلفة القطاع — بلا أي قيمة مالية';
+export const BASIS_NOTE_AR = 'النسب من تكلفة شهر المورد: التسكين المؤكد يُوزَّع على المشاريع بأكوادها المالية، والعمل الداخلي وما لم يُسكَّن على مركز تكلفة القطاع — بلا أي قيمة مالية';
 
 const ph = (arr) => arr.map(() => '?').join(',');
 const N = (v) => Number(v) || 0;
@@ -547,7 +547,9 @@ export async function periodOverview(user, { sector, year, month, period, mutate
   if (!sec) throw notFound('القطاع غير موجود — اختر قطاعاً من القائمة');
   const ctx = { user, ip: ip || null };
   let p = await latestVersion(sec.id, y, m);
-  const mayWrite = mutate && canManagerReview(user, sec.id);
+  // إنشاء المسودة واستكمال الناقصين: لمن يراجع الشهر في هذا القطاع (قائد القطاع، مدير إدارةٍ فيه،
+  // المراجعة المالية) — سؤالُ القطاع لا سؤالُ موردٍ بعينه، فمنحُ الإدارة يكفي هنا (الصفوف تُقصّ بعده).
+  const mayWrite = mutate && (user.role_id === 'admin' || isFinanceReviewer(user) || can(user, 'update', 'cost_close', { sector_id: sec.id, department_id: null }));
   if (!p) {
     if (!mayWrite) return { period: null, sector: { id: sec.id, name_ar: sec.name_ar }, year: y, month: m, rows: [], excluded: [], counters: { resources: 0, complete: 0, exceptions: 0, pending: 0, excluded: 0 },
       blockers_ar: [], canGenerate: false, canSendToFinance: false, canReturn: false, canLock: false, canExport: false, canCorrect: false, corrections: [], versions: [],

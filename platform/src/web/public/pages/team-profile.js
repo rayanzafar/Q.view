@@ -208,7 +208,7 @@
     var cap = S().capacity || {};
     var body = '<div class="tm-info" style="margin-bottom:.8rem">الطاقة تُحفظ بإصدارٍ مؤرخ: تسري من التاريخ المحدد، والأشهر السابقة تبقى كما كانت.</div>'
       + '<div class="tm-form">'
-      + field('الطاقة التعاقدية (١٠٠ = دوام كامل)', input('capacity_pct', absent(cap.currentPct) ? 100 : Math.round(Number(cap.currentPct)), 'type="number" min="1" max="100" step="1" class="input tnum" required'), true)
+      + field('الطاقة التعاقدية (100 = دوام كامل)', input('capacity_pct', absent(cap.currentPct) ? 100 : Math.round(Number(cap.currentPct)), 'type="number" min="1" max="100" step="1" class="input tnum" required'), true)
       + field('تاريخ السريان', input('effective_from', S().today || '', 'type="date" required' + (cap.hireDate ? ' min="' + esc(cap.hireDate) + '"' : '')), true)
       + field('سبب التغيير', '<textarea class="input" name="note" rows="3" maxlength="300" style="width:100%" placeholder="مثال: تغيّر الدوام إلى نصف وقت"></textarea>')
       + '</div>';
@@ -218,7 +218,7 @@
   async function capacitySave(btn) {
     var pct = Number(val('capacity_pct'));
     var from = val('effective_from');
-    if (!Number.isInteger(pct) || pct < 1 || pct > 100) { showError('الطاقة نسبة صحيحة بين ١ و١٠٠'); return; }
+    if (!Number.isInteger(pct) || pct < 1 || pct > 100) { showError('الطاقة نسبة صحيحة بين 1 و100'); return; }
     if (!from) { showError('حدّد تاريخ السريان — لا يُحفظ تغيير الطاقة بلا تاريخ'); return; }
     var my = ++seq;
     btn.disabled = true;

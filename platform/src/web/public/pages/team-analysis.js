@@ -15,7 +15,7 @@
       body: body ? JSON.stringify(body) : undefined,
     });
     const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error((j.error && j.error.message) || ('تعذّر إتمام الطلب (' + r.status + ') — حاول مرة أخرى'));
+    if (!r.ok) throw new Error((j.error && j.error.message) || 'تعذّر إتمام الطلب — حاول مرة أخرى');
     return j;
   };
   const toast = (msg, bad) => {

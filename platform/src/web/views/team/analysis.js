@@ -194,7 +194,7 @@ export async function analysisPage(user, opts = {}) {
 
   return teamLayout({
     user, path: 'analysis', section: 'utilization', title: G.pathAnalysis,
-    subtitle: `${period.label_ar} · اقرأ التسكين وعبء العمل والتغطية كلاً على حدة`,
+    subtitle: `${period.label_ar} · اقرأ التسكين وحِمل المهام والتغطية كلاً على حدة`,
     crumbs: [{ label: G.utilizationTab, href: base }],
     body, scripts: ['/static/pages/team-analysis.js'], year: opts.year,
   });
@@ -202,7 +202,7 @@ export async function analysisPage(user, opts = {}) {
 
 // ── S18: فحص الحالة وإجراء المتابعة ────────────────────────────────────────────────────
 const FOLLOWUP_ACTIONS = [
-  'مراجعة عبء العمل مع مدير المشروع',
+  'مراجعة حِمل المهام مع مدير المشروع',
   'تحديث التسكين ليعكس العمل الفعلي',
   'تأكيد الاحتياج الفعلي قبل تغيير التسكين',
   'استكمال بيانات المورد وطاقته',

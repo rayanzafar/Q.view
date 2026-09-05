@@ -108,7 +108,7 @@ test('حفظ الاحتياج لا يحجز: لا تسكين ولا طلب يُ�
   const allocsBefore = await count('allocation'); const reqsBefore = await count('allocation_request');
   const n = await needs.createNeed(await ctxOf('u_lead'), NEED);
   needId = n.id;
-  assert.equal(n.demand_ar, 'مورد واحد × 50% FTE طوال الفترة');
+  assert.equal(n.demand_ar, 'مورد واحد × 50% من الدوام الكامل طوال الفترة');
   assert.equal(n.status, 'open');
   assert.equal(n.certainty_ar, 'مؤكد');
   assert.equal(n.source.label, 'منصة البيانات الوطنية');
@@ -137,7 +137,7 @@ test('المصدر ضمن صلاحية القارئ: الاستشاري بلا �
   await assert.rejects(async () => needs.createNeed(await ctxOf('u_pm'), { ...NEED, source_id: 'P2' }), /خارج نطاق/);
   await assert.rejects(async () => needs.createNeed(await ctxOf('u_pm'), { ...NEED, source_kind: 'bucket', source_id: 'bd' }), /مدير الإدارة أو قائد القطاع/);
   const mine = await needs.createNeed(await ctxOf('u_pm'), { ...NEED, role_ar: 'مهندس بيانات', headcount: 2, fte_pct: 100 });
-  assert.equal(mine.demand_ar, 'موردان × 100% FTE طوال الفترة');
+  assert.equal(mine.demand_ar, 'موردان × 100% من الدوام الكامل طوال الفترة');
   // وقائد قطاعٍ آخر لا يفتح احتياج الحلول
   await assert.rejects(async () => needs.getNeed(await sess('u_conslead'), mine.id), /خارج نطاقك/);
   // وبند داخلي بيد قائد القطاع يصحّ — قطاعه قطاع البند
@@ -209,7 +209,7 @@ test('طلبٌ معلَّق للاحتياج نفسه والمورد نفسه ي
     requested_by: 'u_lead', created_at: T });
   const reqsBefore = await count('allocation_request');
   await assert.rejects(async () => needs.requestFromCandidate(await ctxOf('u_lead'), needId, 'e_ai', { pct: 50 }),
-    (e) => e.status === 400 && /طلب تسكين معلَّق/.test(e.message) && e.message.includes('areq_dup') && e.message.includes('خالد الذكاء'));
+    (e) => e.status === 400 && /طلب تسكين معلَّق/.test(e.message) && e.message.includes('خالد الذكاء') && !/areq_/.test(e.message));
   assert.equal(await count('allocation_request'), reqsBefore, 'الرفض كتب طلباً');
   // والفحوص الأخرى قبل الحجز: النسبة، ونوع التسكين، والمرشح
   await assert.rejects(async () => needs.requestFromCandidate(await ctxOf('u_lead'), needId, 'e_nov', { pct: 0 }), /نسبة التسكين المطلوبة/);
@@ -258,7 +258,7 @@ test('القائمة بنطاق القارئ: مدير إدارة البيانا
 
 test('التعديل لصاحبه أو لمن يدير إدارته أو قطاعه — والأثر يحمل قبل/بعد', async () => {
   const u = await needs.updateNeed(await ctxOf('u_dm'), needId, { fte_pct: 60, certainty: 'tentative' });
-  assert.equal(u.demand_ar, 'مورد واحد × 60% FTE طوال الفترة');
+  assert.equal(u.demand_ar, 'مورد واحد × 60% من الدوام الكامل طوال الفترة');
   assert.equal(u.certainty_ar, 'مبدئي');
   const a = await db.get("SELECT detail_json FROM audit_log WHERE resource = 'resource_need' AND resource_id = ? AND action = 'update' ORDER BY at DESC", [needId]);
   const d = JSON.parse(a.detail_json);
