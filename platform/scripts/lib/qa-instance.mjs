@@ -13,15 +13,20 @@ export const PLATFORM = resolve(dirname(fileURLToPath(import.meta.url)), '..', '
 // adds deterministic business data (fixed FX- ids) so pages render non-empty. Optional scenario
 // data (story-shaped, purge-registered) is appended when `scenarios` is true.
 export function buildDb(dbPath, { scenarios = false } = {}) {
-  const steps = ['scripts/migrate.js', 'scripts/seed-rbac.js', 'scripts/seed.js', 'scripts/lib/seed-fixture.mjs'];
-  if (scenarios) steps.push('scripts/seed-scenarios.mjs');
+  const steps = ['scripts/migrate.js', 'scripts/seed-rbac.js', 'scripts/seed.js', 'scripts/lib/seed-fixture.mjs'].map((s) => [s]);
+  // Users are seeded before the fixture creates sectors, so seedDemoOrg initially skips.
+  // Finish only the missing identity/department links after sectors exist; rerunning all of
+  // seed.js would also redistribute the deliberately fixed fixture's opportunity ownership.
+  steps.push(['--input-type=module', '--eval',
+    "const {seedDemoOrg}=await import('./scripts/seed.js'); await seedDemoOrg(); await (await import('./src/core/db/index.js')).close();"]);
+  if (scenarios) steps.push(['scripts/seed-scenarios.mjs']);
   for (const s of steps) {
-    const r = spawnSync(process.execPath, ['--experimental-sqlite', s], {
+    const r = spawnSync(process.execPath, ['--experimental-sqlite', ...s], {
       cwd: PLATFORM, env: { ...process.env, SANAD_DB: dbPath }, encoding: 'utf8',
     });
     if (r.status !== 0) {
       const tail = (r.stderr || r.stdout || '').split('\n').slice(-12).join('\n');
-      throw new Error(`seed step failed: ${s}\n${tail}`);
+      throw new Error(`seed step failed: ${s[0]}\n${tail}`);
     }
   }
 }

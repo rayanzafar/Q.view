@@ -54,7 +54,7 @@ export const ROLES = [
 // بوابتها بوابة «الفريق» إلا «الإقفال الشهري» فبوابته منح الإقفال.
 export const PAGES = ['home', 'ceo', 'portfolio', 'sector', 'opportunities', 'my-opportunities', 'projects',
   'clients', 'events', 'tasks', 'timesheet', 'approvals', 'team', 'staffing', 'imports', 'users', 'audit', 'reports', 'org', 'finance', 'mail', 'ops',
-  'guide',
+  'guide', 'revenue-review',
   'team/resources', 'team/org', 'team/people', 'team/work', 'team/planning', 'team/requests', 'team/analysis', 'team/needs', 'team/close'];
 
 // Roles whose service guards admit them to the people/org surfaces: staffingRoster() and orgTree()
@@ -200,14 +200,14 @@ export const API_PROBES = [
 // `deny` يعني أن الردّ المتوقَّع رفضٌ ٤٠٣ لهذه الأدوار (بوابة أرقام الشركة).
 export const AI_CHAT_PROBES = [
   { message: 'ما أولوياتي اليوم', expect: 200 },                      // مهام صاحب الطلب — لكل دور
-  { message: 'ما المخاطر البارزة', expect: { default: 200, hr: 403, line_manager: 403, approver: 403 } },
+  { message: 'ما المخاطر البارزة', expect: { default: 200, hr: 403, line_manager: 403, approver: 403, office_member: 403, office_coordinator: 403 } },
   { message: 'افحص جودة البيانات', expect: 200 },                     // يردّ ولو بـ«لا شيء ضمن صلاحيتك»
   // نية كتابة من نص حر: تعيد **نموذجاً** لمن يملك منح الإنشاء، وتُرَدّ ٤٠٣ لمن لا يملكه.
   // مدير الإدارة انضمّ إلى مالكي منح الإنشاء بقرار المالك («التعديل والتسكين بدءاً من مدير
   // المشروع واللي فوقه»)، فصار المساعد يعيد له نموذجاً بدل رفضٍ — والنية نفسها والبوابة نفسها.
   { message: 'أنشئ مهمة متابعة العقد',
     expect: { default: 403, admin: 200, sector_lead: 200, department_manager: 200, project_manager: 200,
-      consultant: 200, employee: 200, bd_head: 200, operations: 200 } },
+      consultant: 200, employee: 200, bd_head: 200, operations: 200, office_member: 200, office_coordinator: 200 } },
   // نفس بوابة /api/metrics/company حرفياً — وهذا هو أصل العطل الذي أُغلق.
   { message: 'اكتب الموجز التنفيذي الأسبوعي',
     expect: { default: 403, admin: 200, ceo_office: 200, hr: 200, bd_head: 200 } },

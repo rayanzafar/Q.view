@@ -98,7 +98,7 @@ test('anonymous: pages redirect to /login, APIs return 401', async () => {
 });
 
 // ── page matrix: every role × every page in the PAGES map ─────────────────────
-test('page matrix: exact status per role for all 15 pages', async () => {
+test('page matrix: exact status per role for every registered QA page', async () => {
   const mode = pageAccess ? 'STRICT (nav.js PAGE_ACCESS detected)' : 'PENDING nav-guard (no src/web/nav.js — asserting current 200-for-all-authed behavior)';
   console.log(`    page-authz mode: ${mode}`);
   let pending = 0;
@@ -198,4 +198,18 @@ test('IDOR: out-of-sector single-row reads are 403, not silently redacted', asyn
   const admin = await req('demo.admin', '/api/opportunities/FX-OPP-CONS');
   assert.equal(admin.status, 200);
   assert.equal(JSON.parse(admin.text).id, 'FX-OPP-CONS');
+});
+
+// The account URL used by team-task links must resolve to the actual resource, with its period.
+test('person journey over HTTP opens the canonical resource and preserves period with row permissions', async () => {
+  const person = await db.get("SELECT id, employee_id FROM app_user WHERE username='demo.deptmgr'");
+  assert.ok(person.employee_id, 'QA identity must be linked before checking the journey');
+  const old = await req('demo.admin', `/app/person/${person.id}?year=2025&month=12`);
+  assert.equal(old.status, 302);
+  assert.equal(old.headers.get('location'), `/app/team/resources/${person.employee_id}?year=2025&month=12`);
+  const profile = await req('demo.admin', old.headers.get('location'));
+  assert.equal(profile.status, 200);
+  assert.ok(profile.text.includes('إدارة الملف'));
+  const denied = await req('demo.employee', `/app/person/${person.id}?year=2025&month=12`);
+  assert.equal(denied.status, 403);
 });

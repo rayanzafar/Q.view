@@ -86,6 +86,10 @@ export async function loadReadableResource(user, employeeId) {
   const emp = await get('SELECT * FROM employee WHERE id = ? AND deleted_at IS NULL', [employeeId]);
   if (!emp) throw notFound('المورد غير موجود — قد يكون سجله حُذف');
   if (!resourceInScope(user, emp)) throw forbidden('هذا المورد خارج نطاقك — يُفتح ملفه لمن يدير إدارته أو قطاعه');
+  if (!seesDemoAccounts(user) && !isSelf(user, emp)
+      && !await get(`SELECT id FROM employee WHERE id = ? AND ${notDemoEmployeeSql('employee')}`, [employeeId])) {
+    throw notFound('المورد غير متاح في سجل الفريق');
+  }
   return emp;
 }
 

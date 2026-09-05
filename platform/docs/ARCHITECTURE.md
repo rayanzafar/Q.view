@@ -158,7 +158,7 @@ Both direct flows reuse the standard `approval_request` inbox via `assignee_user
   3. One-shot data operations stamped in `schema_migration`: `reset-stage-clock.js`, `apply-owner-people.js`, `apply-owner-grants.js`, `apply-utilization-may2026.js`, `backfill-project-opportunities.js`, `backfill-legacy-activity.js`. All guarded `|| true` idempotent — boot.sh doubles as the data-operations ledger because the staging DB port is unreachable from dev.
   4. `exec node src/server.js` (PID 1 for signals). Boot takes ~2 min against the 5-min healthcheck window — trim before adding steps.
 - **Prod switches** (`src/core/config.js`): `SANAD_SEED_DEMO=0` = no demo data/accounts; `assertProdSecrets()` halts boot in production on missing `SESSION_SECRET` / `DATABASE_URL` (**no escape hatch since v5.54** — the old `STAGING=1` waiver let a blank `DATABASE_URL` boot green on ephemeral SQLite; `assertProdDatabase()` now also runs at the top of `scripts/migrate.js`, before the first write) / SMTP vars / `MAIL_FROM` (no code default — the old default pointed at a domain EVC does not own) / mail allowlist. Mail fails closed: SMTP sends only to active platform accounts ∪ env allowlist (`src/core/mail/transport.js`).
-- **Deploy protocol** (`CLAUDE.md`): quality green → `scripts/pg-backup.sh` if the change carries a migration/backfill → `railway up` from `platform/` → `/ready` → `scripts/sweep.mjs https://staging.os.evcsol.com` (all demo roles × pages: status vs expectations, leak scan, jargon, P95) → evidence screenshots → CHANGELOG entry. Production go-live is a separate owner-triggered runbook (`docs/guides/GO-LIVE.md`).
+- **Deploy protocol**: only `SANAD_RELEASE=1 npm run deploy` from `platform/` under `docs/guides/DEPLOY-PIPELINE.md`. The gate owns validation, a mandatory pre-release backup, the permitted Railway destination, readiness and post-release checks. Never invoke Railway deploy commands directly. Production go-live remains a separate owner-triggered runbook (`docs/guides/GO-LIVE.md`).
 
 
 ## 8. v5.75 cross-module contracts (not deployed)
@@ -170,3 +170,10 @@ Both direct flows reuse the standard `approval_request` inbox via `assignee_user
 - `/app/revenue-review` reads current ledger/source conflicts within `revenue_line` permissions. It does not certify correctness, discover missing source rows, or mutate records. It links from imports and sector pages.
 - Demo purge retries only registered failed rows while progress is possible; foreign keys stay enabled, true external dependencies remain failures, and table names must be seedable. Timestamp ties cannot establish dependency order.
 - CI grants `contents: read`, validates documentation, and adds a disposable PostgreSQL revenue regression job before E2E. The local SQLite result is not a PostgreSQL or remote CI result.
+
+## 9. v5.76 operational read contracts (not deployed)
+
+- PMO task readers scope context JOINs with the same project/opportunity permission engine, including memberships and department grants. Denied names become null; the assigned task itself remains visible.
+- Historical invoice/collection aggregates use matching read scopes and exclude draft/deleted invoices. Bookings use opportunity read scope independently of invoice grants.
+- Demo employee identity is established by a linked demo login or an active `demo_record`, never the display name. Resource lists/direct profiles and assignee pickers apply it; admin visibility and self access remain deliberate exceptions.
+- `initRbac` ignores the retired finance role in restored/stale data. No live grant deletion or schema migration is part of this change.
