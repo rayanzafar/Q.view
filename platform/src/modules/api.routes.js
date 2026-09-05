@@ -185,8 +185,8 @@ apiRouter.get('/finance/summary', h((req) => finance.financeSummary(req.ctx.user
 apiRouter.get('/finance/by-pm', h((req) => finance.financeByPM(req.ctx.user, Number(req.query.year) || undefined)));
 apiRouter.get('/finance/by-contract', h((req) => finance.financeByContract(req.ctx.user)));
 apiRouter.get('/finance/contracts/:id', h((req) => finance.contractDetail(req.ctx.user, req.params.id)));
-apiRouter.post('/finance/progress-claim', h((req) => finance.createProgressClaim(req.ctx, req.body)));
-apiRouter.post('/finance/collections', h((req) => finance.recordCollection(req.ctx, req.body)));
+apiRouter.post('/finance/progress-claim', (req, res) => res.status(410).json({ error: { code: 'gone', message: 'أُلغي مسار الفوترة والتحصيل من المنصة' } }));
+apiRouter.post('/finance/collections', (req, res) => res.status(410).json({ error: { code: 'gone', message: 'أُلغي مسار الفوترة والتحصيل من المنصة' } }));
 
 // ── Metrics / dashboards ──
 // QH-2: مقاييس الشركة/القطاع أرقام قيادية — ليست لكل مستخدم مسجَّل

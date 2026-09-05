@@ -9,6 +9,8 @@
 //   • «غير متاح» ≠ صفر: شهرٌ خارج الارتباط يُقال «خارج فترة الارتباط» لا «100% متاح» (S08/T11).
 //   • المبدئي يُعرض منفصلاً ولا يُخصم من المتاح (T02)، وعدد المهام لا يتحوّل إلى نسبة استغلال (S06).
 //   • لا مال: أسماء الأعمال وفتراتها ونسبها فقط، ولا مفتاح راتبٍ في السجل (الخدمة تُسقطه ونحن لا نطبعه).
+import { personActions } from '../pmo.js';
+import { personDossier } from '../../../modules/pmo/tasks.js';
 import { all } from '../../../core/db/index.js';
 import { MONTHS_AR, riyadhDate } from '../../../core/i18n/time.js';
 import { countAr } from '../../../core/i18n/plural.js';
@@ -27,7 +29,7 @@ import {
 import { resourceFormTemplate } from './resource-form.js';
 import { resourceFormOptions } from './resources.js';
 
-const TABS = ['overview', 'work', 'tasks', 'skills', 'engagement', 'audit'];
+const TABS = ['overview', 'work', 'tasks', 'skills', 'engagement', 'audit', 'manage'];
 const AUDIT_FILTERS = [['all', 'الكل'], ['profile', 'الملف'], ['capacity', 'الطاقة'], ['allocation', 'التسكين'], ['capability', 'القدرات']];
 const DASH = '<span style="color:var(--faint)">—</span>';
 const pad2 = (n) => String(n).padStart(2, '0');
@@ -75,6 +77,13 @@ const clean = (v) => (v == null ? '' : Array.isArray(v) ? v.map(clean) : typeof 
 const json = (v) => JSON.stringify(clean(v)).replace(/</g, '\\u003c');
 
 const CSS = `
+  .pp-sec{margin-bottom:1rem}.pp-sec-h{display:flex;gap:.6rem;align-items:baseline;flex-wrap:wrap}
+  .pp-sec-t{font-size:var(--fs-title)}.pp-sec-s,.pp-hint{font-size:var(--fs-meta);color:var(--muted)}
+  .pp-tabs,.pp-form{display:flex;gap:.5rem;flex-wrap:wrap}.pp-form{margin:.7rem 0;align-items:center}
+  .pp-form .input{flex:1 1 180px;min-width:0}.pp-panel{margin-top:.8rem}.pp-panel-h{font-weight:700}
+  .pp-grow{padding:.75rem;border-bottom:1px solid var(--line);display:flex;gap:.5rem;flex-wrap:wrap}
+  .pp-grow .pp-t{font-weight:700}.pp-tag{font-size:var(--fs-meta);color:var(--muted)}
+  .pp-glist{margin-top:.5rem}.pp-grow button{margin-inline-start:auto}
   .tm-profile-id{padding:1rem 1.1rem 0;margin-bottom:1rem}
   .tm-profile-idrow{display:flex;gap:.9rem;align-items:flex-start;flex-wrap:wrap}
   .tm-profile-idrow .tm-av{width:56px;height:56px;font-size:22px}
@@ -119,7 +128,11 @@ export async function resourceProfilePage(user, employeeId, opts = {}) {
   const tab = TABS.includes(String(opts.tab || '')) ? String(opts.tab) : 'overview';
   const p = await resourceProfile(user, employeeId, { year: opts.year, month: opts.month, tab });
   const r = p.resource;
+  const canManagePerson = !!r.userId && !!p.tabs.tasks.dossier && !p.rights.self;
+  const visibleTabs = TABS.filter((k) => k !== 'manage' || canManagePerson);
   const base = `/app/team/resources/${encodeURIComponent(r.id)}`;
+  const staffingQuery = new URLSearchParams({ new: '1', employee: r.id, from: p.month.key, to: p.month.key });
+  const staffingHref = `/app/team/planning?${staffingQuery}`;
   // كل رابطٍ داخلي يحفظ الشهر المختار (الحالة في الرابط) ويبدّل التبويب أو المعامل وحده.
   const link = (params = {}) => {
     const q = new URLSearchParams();
@@ -134,13 +147,13 @@ export async function resourceProfilePage(user, employeeId, opts = {}) {
   const actions = [];
   if (p.rights.edit) actions.push(`<button type="button" class="btn" data-action="resource-edit" data-emp="${esc(r.id)}">${icon('edit')} ${esc(G.editProfile)}</button>`);
   if (p.rights.planning && p.rights.planning.request) {
-    actions.push(`<a class="btn btn-primary" href="${esc(`/app/team/planning?new=1&employee=${r.id}`)}">${icon('plus')} ${esc(G.requestAllocation)}</a>`);
+    actions.push(`<a class="btn btn-primary" href="${esc(staffingHref)}">${icon('plus')} ${esc(G.requestAllocation)}</a>`);
   }
   if (r.userId && p.tabs.tasks.dossier) {
-    actions.push(`<a class="btn" href="/app/person/${encodeURIComponent(r.userId)}">${icon('users')} ${esc(p.rights.self ? G.myTasksAndDossier : G.tasksAndDossier)}</a>`);
+    actions.push(`<a class="btn" href="${esc(link({ tab: 'tasks' }))}">${icon('users')} ${esc(G.tasks)}</a>`);
   }
   const tabCount = (k) => (p.tabs[k] && p.tabs[k].count != null ? `<span class="c tnum">${N(p.tabs[k].count)}</span>` : '');
-  const tabsHtml = `<nav class="tm-profile-tabs" role="tablist" aria-label="أقسام ملف المورد">${TABS.map((k) => `<a role="tab" href="${esc(link({ tab: k, window: null, filter: null }))}" class="${k === tab ? 'on' : ''}"${k === tab ? ' aria-current="page"' : ''}>${esc(p.tabs[k]?.label_ar || k)}${tabCount(k)}</a>`).join('')}</nav>`;
+  const tabsHtml = `<nav class="tm-profile-tabs" role="tablist" aria-label="أقسام ملف المورد">${visibleTabs.map((k) => `<a role="tab" href="${esc(link({ tab: k, window: null, filter: null }))}" class="${k === tab ? 'on' : ''}"${k === tab ? ' aria-current="page"' : ''}>${esc(k === 'manage' ? 'إدارة الملف' : p.tabs[k]?.label_ar || k)}${tabCount(k)}</a>`).join('')}</nav>`;
   const orgLine = [r.department_name, r.sector_name].filter(Boolean).map(esc).join(' · ') || 'بلا إدارة مسجَّلة';
   const header = `<div class="tm-card tm-profile-id">
     <div class="tm-profile-idrow">
@@ -163,6 +176,10 @@ export async function resourceProfilePage(user, employeeId, opts = {}) {
   else if (tab === 'tasks') body = tasksHtml(p, { payload, today });
   else if (tab === 'skills') body = await skillsHtml(user, p, { payload });
   else if (tab === 'engagement') body = await engagementHtml(user, p, { payload });
+  else if (tab === 'manage' && canManagePerson) {
+    body = await personActions(user, await personDossier(user, r.userId), { staffingHref });
+  }
+  else if (tab === 'manage') body = emptyState('إدارة الملف غير متاحة', 'إجراءات الإدارة متاحة لمن يملك الصلاحية على هذا الشخص.');
   else body = await auditHtml(user, p, { link, filter: opts.filter, base });
 
   // نموذج S09 (درج «تعديل الملف»): قالبٌ خامل يُضمَّن لمن يملك التعديل، ويستنسخه عميله
@@ -175,7 +192,7 @@ export async function resourceProfilePage(user, employeeId, opts = {}) {
     user, path: 'people', section: 'resources', title: G.resourceProfile,
     crumbs: [{ label: G.resourcesRegistry, href: '/app/team/resources' }, { label: r.name_ar }],
     actions: actions.join(''), body: html, year: opts.year,
-    scripts: ['/static/pages/team-profile.js', ...(p.rights.edit ? ['/static/pages/team-resource-form.js'] : [])],
+    scripts: ['/static/pages/team-profile.js', ...(tab === 'manage' && canManagePerson ? ['/static/pages/picker.js', '/static/pages/person.js'] : []), ...(p.rights.edit ? ['/static/pages/team-resource-form.js'] : [])],
   });
 }
 
@@ -320,7 +337,7 @@ async function workHtml(user, p, { link, window }) {
 function tasksHtml(p, { payload, today }) {
   const r = p.resource;
   const t = p.tasks || { linked: !!r.userId, available: false, tasks: [], limits_ar: [], note_ar: null, taskLoad: p.taskLoad };
-  const openHref = t.linked && p.tabs.tasks.dossier && r.userId ? `/app/person/${encodeURIComponent(r.userId)}` : null;
+  const openHref = t.available && p.tabs.tasks.dossier ? t.href : null;
   payload.tasks = (t.tasks || []).map((x) => ({
     id: x.id, title: x.title, status: x.status, status_ar: x.status_ar, priority: x.priority, priority_ar: x.priority_ar, due_date: x.due_date,
     next_step: x.next_step, blocked_reason: x.blocked_reason, pending: !!x.pending, department_name: x.department_name,
@@ -360,7 +377,7 @@ function tasksHtml(p, { payload, today }) {
   const table = (rows) => `<div class="tblwrap"><table class="tm-tbl keep-all tm-profile-tbl"><thead><tr><th>المهمة</th><th>العمل</th><th>${esc(G.dueDate)}</th><th>${esc(G.taskStatus)}</th><th>${esc(G.priority)}</th></tr></thead><tbody>${rows.map(row).join('')}</tbody></table></div>`;
   return `<div class="tm-card tm-profile-sec">
     <div class="tm-card-h"><div><div class="tm-card-t">المهام المفتوحة <span class="tnum">${open.length}</span></div><div class="tm-card-s">عرض مرتبط بسجلات المهام الأصلية — اضغط المهمة لتفاصيلها</div></div>
-      ${openHref ? `<a class="btn btn-sm" href="${esc(openHref)}">${esc(G.openOriginalTask)}</a>` : ''}</div>
+      ${openHref ? `<a class="btn btn-sm" href="${esc(openHref)}">إدارة المهام</a>` : ''}</div>
     <div class="tm-card-b" style="padding-bottom:0">${loadLine}</div>
     ${open.length ? table(open) : emptyState('لا مهام مفتوحة', `كل مهامه المسجَّلة منجزة (${done.length}).`)}
   </div>

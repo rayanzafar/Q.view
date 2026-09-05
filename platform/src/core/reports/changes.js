@@ -76,10 +76,10 @@ export async function lastChangeAt(sectorId) {
 const CREATED_LABEL = { opportunity: 'فرصة جديدة', project: 'مشروع جديد', contract: 'عقد جديد', client: 'عميل جديد' };
 const CREATED_HREF = {
   opportunity: (id) => `/app/opportunity/${id}`, project: (id) => `/app/project/${id}`,
-  contract: (id) => `/app/contract/${id}`, client: (id) => `/app/client/${id}`,
+  contract: (id) => '/app/projects', client: (id) => `/app/client/${id}`,
 };
 // سجل إنشاء بلا معرّف (نادر) → صفحة القائمة الأم بدل رابط مكسور
-const CREATED_LIST = { opportunity: '/app/opportunities', project: '/app/projects', contract: '/app/finance', client: '/app/clients' };
+const CREATED_LIST = { opportunity: '/app/opportunities', project: '/app/projects', contract: '/app/projects', client: '/app/clients' };
 
 // أسماء السجلات المُنشأة (من سجل النظام) — جلب دفعة واحدة لكل مورد، بلا اختلاق عند الغياب.
 async function createdNames(resource, ids) {
@@ -151,7 +151,7 @@ export async function changesSince(user, sectorId, sinceIsoDate, untilIsoDate = 
         kind: 'invoice', at: r.at,
         title: 'صدرت فاتورة', code: r.code || null,
         sub: r.client || r.project || '',
-        amount_halalas: r.amount_halalas || 0, href: '/app/finance',
+        amount_halalas: r.amount_halalas || 0, href: '/app/projects',
       });
     }
 
@@ -169,7 +169,7 @@ export async function changesSince(user, sectorId, sinceIsoDate, untilIsoDate = 
       items.push({
         kind: 'collection', at: r.at, title: 'تحصيل دفعة', code: r.code || null,
         sub: r.client || '',
-        amount_halalas: r.amount_halalas || 0, href: '/app/finance',
+        amount_halalas: r.amount_halalas || 0, href: '/app/projects',
       });
     }
   }

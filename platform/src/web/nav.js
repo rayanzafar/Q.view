@@ -11,7 +11,6 @@ import { PAGE_ACCESS } from '../core/policy/pages.js';
 // تدقيق مستوى السجل نفسه يتم داخل الخدمة (نطاق/ملكية).
 export const DETAIL_ACCESS = {
   project: PAGE_ACCESS.projects,
-  contract: PAGE_ACCESS.finance,
   client: PAGE_ACCESS.clients,
   opportunity: PAGE_ACCESS.opportunities,
   event: PAGE_ACCESS.events,
@@ -36,7 +35,6 @@ export const NAV_ITEMS = [
   // من القائمة وحده لا يكفي، فالبوابة في policy/pages.js مغلقة كذلك.
   { key: 'approvals', ar: 'الاعتمادات', ic: 'approvals', group: 'work' },
   { key: 'guide', ar: 'دليلي', ic: 'list', group: 'work' },
-  { key: 'finance', ar: 'المالية والعقود', ic: 'money', group: 'manage' },
   { key: 'team', ar: 'الفريق', ic: 'team', group: 'manage' },
   { key: 'staffing', ar: 'التسكين', ic: 'clock', group: 'manage' },
   { key: 'imports', ar: 'البيانات', ic: 'upload', group: 'manage' },

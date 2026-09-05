@@ -2462,6 +2462,7 @@ export async function sectorPage(user, opts = {}) {
     <div class="dash">
     ${toolbar}
     ${filterNote}
+    ${can(user, 'read', 'revenue_line') ? `<div class="alert info">الإيراد حسب فترة المخرجات، والمبيعات حسب سنة الفوز. <a href="/app/revenue-review?year=${year}&amp;sector=${encodeURIComponent(sectorId)}">راجع جودة الإيراد</a></div>` : ''}
     ${kpiBand}
     ${moneyBand}
     ${execBand}

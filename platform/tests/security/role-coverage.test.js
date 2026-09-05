@@ -200,7 +200,7 @@ test('bd_head: company-wide operations by design, but READ-ONLY on money', async
   assert.equal((await req(u, '/api/finance/contracts/FX-CON-1')).status, 200, 'يقرأ العقد');
   // «المال قراءة فقط» — تحصيل أو تعديل فاتورة مرفوض قبل أي تحقّق من المبلغ.
   const col = await req(u, '/api/finance/collections', { method: 'POST', body: { invoiceId: 'FX-INV-2', amountSar: 1000 } });
-  assert.equal(col.status, 403, 'تسجيل تحصيل خارج صلاحيته');
+  assert.equal(col.status, 410, 'تسجيل التحصيل ملغى لكل الأدوار');
   // ولا راتب بأي شكل — الختم لا يُفتح لدور جديد مهما اتسعت مسؤوليته.
   assert.doesNotMatch((await req(u, '/api/org/roster')).text, /"salary_halalas"/);
 });

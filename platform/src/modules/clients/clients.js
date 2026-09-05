@@ -586,10 +586,19 @@ export function entityTokens(name) {
 //   • `overlap` — تقاطع عالٍ بلا احتواء. **ليس دليلاً**: «أمانة منطقة الرياض» و«أمانة منطقة
 //     الجوف» يتقاطعان بقوة وهما جهتان مختلفتان قطعاً. يُعرَض للمراجعة ولا يُدمَج تلقائياً.
 export function similarityOf(a, b) {
+  const ma = matchEntity(a); const mb = matchEntity(b);
+  // A trusted registry identity outranks lexical overlap (e.g. two different funds).
+  if (ma?.confidence === 'مؤكَّد' && mb?.confidence === 'مؤكَّد'
+      && ma.entity.id !== mb.entity.id) return null;
   const ta = entityTokens(a); const tb = entityTokens(b);
   if (!ta.length || !tb.length) return null;
   const sa = new Set(ta); const sb = new Set(tb);
-  const inter = [...sa].filter((w) => sb.has(w)).length;
+  const shared = [...sa].filter((w) => sb.has(w));
+  // Institution words carry no identity. Dropping «الوطني» used to make the
+  // national development fund a subset of every specialised development fund.
+  const generic = new Set(['جامعه', 'الملك', 'صندوق', 'التنميه', 'تنميه', 'هيئه', 'الهيئه', 'وزاره', 'شركه', 'امانه']);
+  if (!shared.some((w) => !generic.has(w))) return null;
+  const inter = shared.length;
   if (!inter) return null;
   const contained = inter === Math.min(sa.size, sb.size);
   const overlap = inter / Math.max(sa.size, sb.size);

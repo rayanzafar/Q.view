@@ -1,5 +1,6 @@
 // SSR page routes + web-form auth handlers + report preview.
 import { Router } from 'express';
+import { personProfileLink } from '../modules/team/person-link.js';
 import { login, logout } from '../core/auth/service.js';
 import { requestCode, verifyCode, normalizeEmail, REASON as OTP_REASON } from '../core/auth/otp.js';
 import { config } from '../core/config.js';
@@ -218,13 +219,14 @@ webRouter.get('/', (req, res) => (req.ctx?.user
 
 const PAGES = {
   home: P.homePage,
+  'revenue-review': P.revenueReviewPage,
   ceo: P.ceoPage, portfolio: P.portfolioPage, sector: P.sectorPage, opportunities: P.opportunitiesPage,
   'my-opportunities': P.myOpportunitiesPage,
   projects: P.projectsPage, tasks: P.tasksPage, timesheet: P.timesheetPage, approvals: P.approvalsPage,
   // «الفريق» صار بوابةً بأربعة مسارات (ADR-0016)؛ شاشة الموظفين وحسابات الدخول القائمة تحت
   // `/app/team/people` (تبويب «حسابات الدخول») — لم تُمحَ ولم يتغيّر عقدها.
   team: P.teamGatewayPage, staffing: P.staffingPage, users: P.usersPage, audit: P.auditPage, ops: P.opsPage, reports: P.reportsPage, org: P.orgTreePage,
-  finance: P.financePage, mail: P.mailPage, clients: P.clientsPage, imports: P.importsPage,
+  mail: P.mailPage, clients: P.clientsPage, imports: P.importsPage,
   guide: P.guidePage,
   events: P.eventsPage,
 };
@@ -247,8 +249,9 @@ function deny(res) {
 }
 const guardDetail = (kind) => (req, res, next) => (DETAIL_ACCESS[kind]?.(req.ctx.user) ? next() : deny(res));
 
-webRouter.get('/app/contract/:id', requireWeb, guardDetail('contract'), async (req, res, next) => {
-  try { res.send(await P.contractDetailPage(req.ctx.user, req.params.id)); } catch (e) { next(e); }
+// Retired by the owner: explicit tombstones, never a permission/reenablement prompt.
+webRouter.get(['/app/finance', '/app/contract/:id'], requireWeb, (req, res) => {
+  res.status(410).send('<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>القسم ملغى — سند</title><main style="font-family:system-ui;max-width:560px;margin:15vh auto;padding:24px"><h1>أُلغي قسم المالية</h1><p>تجد قيمة المشروع وإيراده وفترات مخرجاته داخل المشاريع ومركز القطاع.</p><a href="/app/projects">افتح المشاريع</a></main></html>');
 });
 // الاستعلام يُمرَّر كما تفعل صفحات القوائم (`/app/:page` أدناه) — فسنة «حركة المال» تصير
 // قابلة للمشاركة برابط. وبدونه كانت الصفحة تُبنى بلا استعلام أصلاً، فالمبدِّل يعمل داخل
@@ -272,7 +275,11 @@ webRouter.get('/app/event/:id', requireWeb, guardDetail('event'), async (req, re
 // الشخص داخل نطاقك»، وهو سؤالٌ لا يُجاب إلا بعد قراءة صفّه. فالخدمة (personDossier) هي البوابة
 // وحدها، وترمي رفضاً عربياً واضحاً — ويُفتح ملفُ صاحب الحساب نفسه دائماً بلا أي منح إداري.
 webRouter.get('/app/person/:id', requireWeb, async (req, res, next) => {
-  try { res.send(await P.personPage(req.ctx.user, req.params.id)); } catch (e) { next(e); }
+  try {
+    const href = await personProfileLink(req.ctx.user, req.params.id, req.query);
+    if (href) return res.redirect(href);
+    res.send(await P.personPage(req.ctx.user, req.params.id));
+  } catch (e) { next(e); }
 });
 
 // ── وحدة الفريق والموارد (ADR-0016): /app/team/:section و /app/team/:section/:id ──────────

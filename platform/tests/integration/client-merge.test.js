@@ -271,3 +271,13 @@ test('اعتماد الاسم يحتاج صلاحية تعديل الجهات �
   assert.equal(after.name_ar, c.name_ar, 'الاعتماد قرارٌ عن الاسم لا تغييرٌ له');
   assert.equal(after.name_confirmed_at, null, 'ولم يُختَم');
 });
+
+
+test('regression: different universities and development funds are not merge candidates', () => {
+  for (const [a, b] of [
+    ['جامعة الملك سعود', 'جامعة الملك فيصل'],
+    ['صندوق التنمية السياحي', 'صندوق التنمية الوطني'],
+    ['صندوق التنمية العقارية', 'صندوق التنمية الوطني'],
+    ['صندوق التنمية السياحي', 'صندوق التنمية العقارية'],
+  ]) assert.equal(C.similarityOf(a, b), null, a + ' / ' + b);
+});

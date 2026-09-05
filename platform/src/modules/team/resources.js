@@ -456,7 +456,7 @@ export async function resourceTasks(user, employeeId, { emp = null, account = un
   try {
     const d = await personDossier(user, userId);
     return {
-      linked: true, available: true, userId, href: `/app/person/${userId}`,
+      linked: true, available: true, userId, href: user.id === userId ? '/app/tasks' : `/app/tasks?who=team&assignee=${encodeURIComponent(userId)}`,
       tasks: (d.tasks || []).map((t) => ({
         id: t.id, title: t.title, status: t.status, status_ar: taskStatusLabel(t.status), priority: t.priority || null,
         priority_ar: t.priority ? taskPriorityLabel(t.priority) : null, due_date: day(t.due_date) || null, next_step: t.next_step || null,

@@ -73,6 +73,7 @@ const ORG_READERS = new Set(['admin', 'ceo_office', 'sector_lead', 'hr',
 // access map yet — that is the documented 'PENDING nav-guard' gap. Once src/web/nav.js exists and
 // exports PAGE_ACCESS, loadPageAccess() returns it and expectations flip to strict 200/403.
 export function pageExpected(role, page, pageAccess = null) {
+  if (page === 'finance') return { status: 410, soft: false };
   if (pageAccess) {
     const allowed = pageAllowed(role, page, pageAccess);
     if (allowed === null) return { status: 200, soft: true }; // unknown shape — stay soft
@@ -234,7 +235,7 @@ export const FIXTURE_PROBES = [
   { method: 'GET', path: '/api/finance/contracts/FX-CON-1', expect: { default: 403, admin: 200, ceo_office: 200, sector_lead: 200, bd_head: 200, project_manager: 200 } },
   // Row-level write probe on a real invoice: authorized roles fall through to amount validation.
   // bd_head is READ-ONLY on money (matrix.js: «المال … قراءة فقط») → must stay 403 here.
-  { method: 'POST', path: '/api/finance/collections', body: { invoiceId: 'FX-INV-2' }, expect: { default: 403, admin: 400, ceo_office: 400, sector_lead: 400 } },
+  { method: 'POST', path: '/api/finance/collections', body: { invoiceId: 'FX-INV-2' }, expect: 410 },
 ];
 
 export function expectedStatus(expect, role) {

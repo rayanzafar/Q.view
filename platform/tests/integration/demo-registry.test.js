@@ -120,3 +120,30 @@ test('البذر لا يتكرّر فوق نفسه — تشغيلٌ ثانٍ ب�
   assert.equal(res.added, 0);
   assert.equal(res.skipped, true);
 });
+
+test('تساوي أختام التسجيل لا يترك الآباء؛ والارتباط الحقيقي يمنع المحو', async () => {
+  const stamp = '2026-01-01T00:00:00.000Z';
+  const batch = 'same-timestamp-regression';
+  await insert('client', { id: 'tie_client', name_ar: 'جهة', created_at: stamp });
+  await insert('project', { id: 'tie_project', name_ar: 'مشروع', client_id: 'tie_client', created_at: stamp });
+  await insert('contract', { id: 'tie_contract', project_id: 'tie_project', created_at: stamp });
+  await insert('invoice', { id: 'tie_invoice', contract_id: 'tie_contract', project_id: 'tie_project', created_at: stamp });
+  // Reverse dependency order, deliberately identical timestamps and adverse ids.
+  for (const [key, table] of [['z', 'client'], ['y', 'project'], ['x', 'contract'], ['a', 'invoice']]) {
+    await insert('demo_record', { id: 'tie_' + key, batch, table_name: table, row_id: 'tie_' + table, created_at: stamp });
+  }
+  const result = await purgeBatch(batch);
+  assert.equal(result.purged, 4);
+  assert.deepEqual(result.failed, []);
+  assert.equal((await previewPurge(batch)).total, 0);
+
+  await insert('client', { id: 'protected_demo', name_ar: 'تجريبي', created_at: stamp });
+  await insert('opportunity', { id: 'real_dependency', client_id: 'protected_demo', title_ar: 'فرصة حقيقية', created_at: stamp });
+  await recordDemo('protected-batch', 'client', 'protected_demo');
+  const protectedResult = await purgeBatch('protected-batch');
+  assert.equal(protectedResult.purged, 0);
+  assert.equal(protectedResult.failed.length, 1);
+  assert.ok(await get('SELECT id FROM opportunity WHERE id = ?', ['real_dependency']));
+  assert.ok(await get('SELECT id FROM client WHERE id = ?', ['protected_demo']));
+  assert.equal((await previewPurge('protected-batch')).total, 1);
+});

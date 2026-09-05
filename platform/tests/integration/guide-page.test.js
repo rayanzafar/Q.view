@@ -220,12 +220,13 @@ test('رابط «بلاغ أو اقتراح» في ترويسة كل صفحة �
 // القائمة)، والتحليل الكامل للوسوم يعني اعتماداً جديداً لأجل فحص واحد. وأي شكل محدِّد خارج
 // الأشكال الخمسة يُسقط الاختبار صراحةً بدل أن يمرّ بلا فحص.
 const PAGE_FN = {
+  'revenue-review': P.revenueReviewPage,
   home: P.homePage,
   ceo: P.ceoPage, portfolio: P.portfolioPage, sector: P.sectorPage, opportunities: P.opportunitiesPage,
   'my-opportunities': P.myOpportunitiesPage, projects: P.projectsPage, tasks: P.tasksPage,
   timesheet: P.timesheetPage, approvals: P.approvalsPage, team: P.teamGatewayPage, staffing: P.staffingPage,
   users: P.usersPage, audit: P.auditPage, ops: P.opsPage, reports: P.reportsPage, org: P.orgTreePage,
-  finance: P.financePage, mail: P.mailPage, clients: P.clientsPage, imports: P.importsPage,
+  mail: P.mailPage, clients: P.clientsPage, imports: P.importsPage,
   guide: P.guidePage,
   // وحدة الفريق والموارد (ADR-0016): البوابة وأقسامها بمفاتيح سياسة الصفحات.
   'team/resources': P.resourcesPage, 'team/people': P.teamPage, 'team/planning': P.planningPage,

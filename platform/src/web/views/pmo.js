@@ -2914,11 +2914,6 @@ export async function personPage(user, personId) {
   const dnum = (day) => Math.round((Date.parse(String(day).slice(0, 10) + 'T00:00:00Z')
     - Date.parse(d.today + 'T00:00:00Z')) / 86400000);
   const canReadOpp = can(user, 'read', 'opportunity');
-  // خيارات ربط المهمة بجهةٍ — بمدى **القارئ** (المُسنِد) لا المُسنَد إليه: الخادم يفحص وصول
-  // كاتب المهمة (`assertMayLink`)، فالقائمة تعرض ما سيقبله بالضبط. وتُبنى فقط لمن يملك الإسناد.
-  const prjOptions = d.canAssignTask ? (await listProjects(user)).slice(0, 200) : [];
-  const oppOptions = d.canAssignTask ? (await listOpportunities(user, {}, { today: d.today })).slice(0, 200) : [];
-  const linkApproval = d.canAssignTask ? await linkedTaskApproval(user) : { needsApproval: false };
 
   const due = (t) => {
     // المنجَزة تُقرأ بتاريخ إنجازها لا بموعدٍ فات: هذه الشاشة كانت تعرض «متأخرة N يوماً» على
@@ -2993,69 +2988,7 @@ export async function personPage(user, personId) {
   const stat = (n, label, tone) => `<div class="pp-stat${tone ? ' ' + tone : ''}">
     <div class="pp-stat-n tnum">${n}</div><div class="pp-stat-l">${label}</div></div>`;
 
-  // ── لوحة المدير على شخصٍ واحد ───────────────────────────────────────────────
-  // «أقدر أضيف أو أسوّي أي أكشن أنا كمدير للموظف لما أضغط عليه — حتى في إضافة المهام».
-  // وكل لوحةٍ هنا تُعرض **فقط** إن كان فعلها مقبولاً فعلاً (القرار في الخدمة لا في الشاشة)،
-  // فلا يُعرض زرٌّ ليُرَدّ. ومن لا يملك شيئاً منها لا يرى الشريط أصلاً — لا شريطاً فارغاً.
-  const panel = (key, title, inner) => `<section class="pp-panel" data-panel="${key}" hidden>
-    <div class="pp-panel-h">${title}</div>${inner}</section>`;
-  const tabs = [
-    d.canAssignTask ? ['task', 'أضف مهمة'] : null,
-    d.canStaff ? ['staff', 'سكّنه على مشروع'] : null,
-    d.grantChoices.length ? ['grant', 'صلاحياته'] : null,
-  ].filter(Boolean);
-  const grantRow = (g) => `<div class="pp-grow" data-grant="${esc(g.id)}">
-    <span class="pp-t">${esc(g.label)} — ${esc(g.department_name)}</span>
-    ${g.granted_by_name ? `<span class="pp-tag mute">منحها ${esc(g.granted_by_name)}</span>` : ''}
-    ${g.note ? `<span class="pp-tag mute">${esc(g.note)}</span>` : ''}
-    ${d.grantChoices.length ? `<button class="btn btn-ghost btn-sm" data-action="grant-revoke"
-      data-id="${esc(g.id)}" style="color:var(--red)">ارفعها</button>` : ''}</div>`;
-  const actionBar = !tabs.length && !d.grants.length ? '' : `<section class="pp-sec">
-    <div class="pp-sec-h"><h2 class="pp-sec-t">إدارته</h2>
-      <span class="pp-sec-s">ما تستطيع فعله لهذا الشخص بحكم إدارتك له</span></div>
-    <div class="card" style="padding:.7rem .85rem">
-      ${tabs.length ? `<div class="pp-tabs">${tabs.map(([k, t]) =>
-    `<button class="btn btn-sm" data-action="pp-tab" data-tab="${k}">${t}</button>`).join('')}</div>` : ''}
-      ${d.canAssignTask ? panel('task', 'مهمة جديدة باسمه', `
-        <div class="pp-form">
-          <input id="pp-task-title" class="input" maxlength="200" placeholder="ماذا تريد منه بالضبط">
-          ${parentPicker({ idAttr: 'pp-task-parent', label: G.parentLink, projects: prjOptions, opportunities: oppOptions, withPersonal: false })}
-          <input id="pp-task-due" class="input" type="date" aria-label="الموعد">
-          <button class="btn btn-primary btn-sm" data-action="pp-task-add"
-            data-user="${esc(p.userId)}">أضف المهمة</button>
-        </div>
-        <div class="pp-hint">${linkApproval.needsApproval
-    ? 'العمل الداخلي يصل إلى قائمته فوراً؛ والمرتبط بمشروع أو فرصة يُضاف إلى قائمته بعد اعتماد مديرك.'
-    : 'تصل إلى قائمته فوراً، ويراها في «مهامي».'}</div>`) : ''}
-      ${d.canStaff ? panel('staff', 'تسكين على مشروع', `
-        <div class="pp-form">
-          <select id="pp-staff-prj" class="input">${d.staffProjects
-    .map((x) => `<option value="${esc(x.id)}">${esc(x.name_ar)}</option>`).join('')}</select>
-          <input id="pp-staff-pct" class="input tnum" type="number" min="1" max="100" value="50"
-            aria-label="نسبة وقته">
-          <button class="btn btn-primary btn-sm" data-action="pp-staff-add"
-            data-emp="${esc(d.employeeId || '')}">سكّنه</button>
-        </div>
-        <div class="pp-hint">النسبة حصّة وقته من الشهر — تُقرأ في لوحة التسكين وتُحسب في حِمله.</div>`) : ''}
-      ${d.grantChoices.length ? panel('grant', 'صلاحية إضافية على إدارة', `
-        <div class="pp-form">
-          <select id="pp-grant-perm" class="input">${d.grantChoices
-    .map((x, i) => `<option value="${esc(x.resource)}:${esc(x.action)}"${i ? '' : ' selected'}>${esc(x.label)}</option>`).join('')}</select>
-          <select id="pp-grant-dept" class="input">${d.grantChoices[0].departments
-    .map((x) => `<option value="${esc(x.id)}">${esc(x.name_ar)}${x.sector_name ? ' · ' + esc(x.sector_name) : ''}</option>`).join('')}</select>
-          <input id="pp-grant-note" class="input" maxlength="200" placeholder="السبب (اختياري)">
-          <button class="btn btn-primary btn-sm" data-action="pp-grant-add"
-            data-user="${esc(p.userId)}">امنحها</button>
-        </div>
-        <div class="pp-hint" id="pp-grant-hint">${esc(d.grantChoices[0].effect)} ولا تمنح إلا إدارةً تبلغها أنت.</div>
-        <script type="application/json" id="pp-grant-data">${
-  JSON.stringify(d.grantChoices.map((x) => ({ key: x.resource + ':' + x.action, effect: x.effect,
-    departments: x.departments.map((dd) => ({ id: dd.id, name: dd.name_ar + (dd.sector_name ? ' · ' + dd.sector_name : '') }) ) })))
-    .replace(/</g, '\\u003c')}</script>`) : ''}
-      ${d.grants.length ? `<div class="pp-glist">${d.grants.map(grantRow).join('')}</div>`
-    : '<div class="pp-hint">لا صلاحية إضافية على أي إدارة — يرى ما يمنحه دوره وما سُكِّن عليه.</div>'}
-    </div>
-  </section>`;
+  const actionBar = await personActions(user, d);
 
   const body = `<style>
     ${PICKER_CSS}
@@ -3165,4 +3098,80 @@ export async function personPage(user, personId) {
     body,
     scripts: ['/static/pages/picker.js', '/static/pages/person.js'],
   });
+}
+
+// إجراءات الشخص مشتركة بين ملف المورد وملف الحساب غير المرتبط.
+export async function personActions(user, d, { staffingHref = null } = {}) {
+  const p = d.person;
+  // خيارات ربط المهمة بجهةٍ — بمدى **القارئ** (المُسنِد) لا المُسنَد إليه: الخادم يفحص وصول
+  // كاتب المهمة (`assertMayLink`)، فالقائمة تعرض ما سيقبله بالضبط. وتُبنى فقط لمن يملك الإسناد.
+  const prjOptions = d.canAssignTask ? (await listProjects(user)).slice(0, 200) : [];
+  const oppOptions = d.canAssignTask ? (await listOpportunities(user, {}, { today: d.today })).slice(0, 200) : [];
+  const linkApproval = d.canAssignTask ? await linkedTaskApproval(user) : { needsApproval: false };
+  // ── لوحة المدير على شخصٍ واحد ───────────────────────────────────────────────
+  // «أقدر أضيف أو أسوّي أي أكشن أنا كمدير للموظف لما أضغط عليه — حتى في إضافة المهام».
+  // وكل لوحةٍ هنا تُعرض **فقط** إن كان فعلها مقبولاً فعلاً (القرار في الخدمة لا في الشاشة)،
+  // فلا يُعرض زرٌّ ليُرَدّ. ومن لا يملك شيئاً منها لا يرى الشريط أصلاً — لا شريطاً فارغاً.
+  const panel = (key, title, inner) => `<section class="pp-panel" data-panel="${key}" hidden>
+    <div class="pp-panel-h">${title}</div>${inner}</section>`;
+  const tabs = [
+    d.canAssignTask ? ['task', 'أضف مهمة'] : null,
+    d.canStaff ? ['staff', 'سكّنه على مشروع'] : null,
+    d.grantChoices.length ? ['grant', 'صلاحياته'] : null,
+  ].filter(Boolean);
+  const grantRow = (g) => `<div class="pp-grow" data-grant="${esc(g.id)}">
+    <span class="pp-t">${esc(g.label)} — ${esc(g.department_name)}</span>
+    ${g.granted_by_name ? `<span class="pp-tag mute">منحها ${esc(g.granted_by_name)}</span>` : ''}
+    ${g.note ? `<span class="pp-tag mute">${esc(g.note)}</span>` : ''}
+    ${d.grantChoices.length ? `<button class="btn btn-ghost btn-sm" data-action="grant-revoke"
+      data-id="${esc(g.id)}" style="color:var(--red)">ارفعها</button>` : ''}</div>`;
+  const actionBar = !tabs.length && !d.grants.length ? '' : `<section class="pp-sec">
+    <div class="pp-sec-h"><h2 class="pp-sec-t">إدارته</h2>
+      <span class="pp-sec-s">ما تستطيع فعله لهذا الشخص بحكم إدارتك له</span></div>
+    <div class="card" style="padding:.7rem .85rem">
+      ${tabs.length ? `<div class="pp-tabs">${tabs.map(([k, t]) =>
+    `<button class="btn btn-sm" data-action="pp-tab" data-tab="${k}">${t}</button>`).join('')}</div>` : ''}
+      ${d.canAssignTask ? panel('task', 'مهمة جديدة باسمه', `
+        <div class="pp-form">
+          <input id="pp-task-title" class="input" maxlength="200" placeholder="ماذا تريد منه بالضبط">
+          ${parentPicker({ idAttr: 'pp-task-parent', label: G.parentLink, projects: prjOptions, opportunities: oppOptions, withPersonal: false })}
+          <input id="pp-task-due" class="input" type="date" aria-label="الموعد">
+          <button class="btn btn-primary btn-sm" data-action="pp-task-add"
+            data-user="${esc(p.userId)}">أضف المهمة</button>
+        </div>
+        <div class="pp-hint">${linkApproval.needsApproval
+    ? 'العمل الداخلي يصل إلى قائمته فوراً؛ والمرتبط بمشروع أو فرصة يُضاف إلى قائمته بعد اعتماد مديرك.'
+    : 'تصل إلى قائمته فوراً، ويراها في «مهامي».'}</div>`) : ''}
+      ${d.canStaff ? panel('staff', 'تسكين على مشروع', staffingHref
+    ? `<p class="pp-hint">اختر الفترة ونوع التسكين، وراجع الطاقة والتعارضات قبل الاعتماد.</p><a class="btn btn-primary" href="${esc(staffingHref)}">افتح طلب التسكين</a>` : `
+        <div class="pp-form">
+          <select id="pp-staff-prj" class="input">${d.staffProjects
+    .map((x) => `<option value="${esc(x.id)}">${esc(x.name_ar)}</option>`).join('')}</select>
+          <input id="pp-staff-pct" class="input tnum" type="number" min="1" max="100" value="50"
+            aria-label="نسبة وقته">
+          <button class="btn btn-primary btn-sm" data-action="pp-staff-add"
+            data-emp="${esc(d.employeeId || '')}">سكّنه</button>
+        </div>
+        <div class="pp-hint">النسبة حصّة وقته من الشهر — تُقرأ في لوحة التسكين وتُحسب في حِمله.</div>`) : ''}
+      ${d.grantChoices.length ? panel('grant', 'صلاحية إضافية على إدارة', `
+        <div class="pp-form">
+          <select id="pp-grant-perm" class="input">${d.grantChoices
+    .map((x, i) => `<option value="${esc(x.resource)}:${esc(x.action)}"${i ? '' : ' selected'}>${esc(x.label)}</option>`).join('')}</select>
+          <select id="pp-grant-dept" class="input">${d.grantChoices[0].departments
+    .map((x) => `<option value="${esc(x.id)}">${esc(x.name_ar)}${x.sector_name ? ' · ' + esc(x.sector_name) : ''}</option>`).join('')}</select>
+          <input id="pp-grant-note" class="input" maxlength="200" placeholder="السبب (اختياري)">
+          <button class="btn btn-primary btn-sm" data-action="pp-grant-add"
+            data-user="${esc(p.userId)}">امنحها</button>
+        </div>
+        <div class="pp-hint" id="pp-grant-hint">${esc(d.grantChoices[0].effect)} ولا تمنح إلا إدارةً تبلغها أنت.</div>
+        <script type="application/json" id="pp-grant-data">${
+  JSON.stringify(d.grantChoices.map((x) => ({ key: x.resource + ':' + x.action, effect: x.effect,
+    departments: x.departments.map((dd) => ({ id: dd.id, name: dd.name_ar + (dd.sector_name ? ' · ' + dd.sector_name : '') }) ) })))
+    .replace(/</g, '\\u003c')}</script>`) : ''}
+      ${d.grants.length ? `<div class="pp-glist">${d.grants.map(grantRow).join('')}</div>`
+    : '<div class="pp-hint">لا صلاحية إضافية على أي إدارة — يرى ما يمنحه دوره وما سُكِّن عليه.</div>'}
+    </div>
+  </section>`;
+
+  return `<style>${PICKER_CSS}</style>${actionBar}`;
 }

@@ -11,7 +11,7 @@ const W = { high: 8, medium: 4, low: 1 };
 
 export async function completenessScore(user, sectorId, { year } = {}) {
   const yc = projectYearClause(year, 'p.');
-  const [opp, prj, dlv, emp, con, inv] = await Promise.all([
+  const [opp, prj, dlv, emp] = await Promise.all([
     get(`SELECT COUNT(*) total,
         SUM(CASE WHEN o.win_pct IS NOT NULL THEN 1 ELSE 0 END) wp,
         SUM(CASE WHEN o.next_action IS NOT NULL AND o.next_action != '' THEN 1 ELSE 0 END) na
@@ -31,13 +31,7 @@ export async function completenessScore(user, sectorId, { year } = {}) {
         SUM(CASE WHEN e.job_title IS NOT NULL AND e.job_title != '' THEN 1 ELSE 0 END) jt,
         SUM(CASE WHEN EXISTS(SELECT 1 FROM allocation a WHERE a.employee_id = e.id AND a.year = ? AND a.deleted_at IS NULL) THEN 1 ELSE 0 END) al
       FROM employee e WHERE e.sector_id = ? AND e.active = 1 AND e.deleted_at IS NULL`, [year, sectorId]) : null,
-    can(user, 'read', 'contract') ? get(`SELECT COUNT(*) total,
-        SUM(CASE WHEN signed_at IS NOT NULL THEN 1 ELSE 0 END) sg
-      FROM contract WHERE sector_id = ? AND deleted_at IS NULL`, [sectorId]) : null,
-    can(user, 'read', 'invoice') ? get(`SELECT COUNT(*) total,
-        SUM(CASE WHEN i.due_date IS NOT NULL THEN 1 ELSE 0 END) dd
-      FROM invoice i LEFT JOIN project p ON p.id = i.project_id
-      WHERE COALESCE(i.sector_id, p.sector_id) = ? AND i.deleted_at IS NULL AND i.status != 'CANCELLED'`, [sectorId]) : null,
+
   ]);
 
   const defs = [
@@ -55,10 +49,6 @@ export async function completenessScore(user, sectorId, { year } = {}) {
       label: 'موظفون بمسمى وظيفي', hint: 'أكمل المسميات الوظيفية من صفحة الفريق', href: '/app/team' },
     { id: 'emp_alloc', sev: 'medium', num: emp?.al, den: emp?.total,
       label: 'موظفون على خطة التسكين', hint: 'سكِّن الموظفين على مشاريع أو أعمالٍ من لوحة التسكين', href: '/app/staffing' },
-    { id: 'con_signed', sev: 'low', num: con?.sg, den: con?.total,
-      label: 'عقود بتاريخ توقيع', hint: 'سجّل تاريخ توقيع كل عقد', href: '/app/finance' },
-    { id: 'inv_due', sev: 'low', num: inv?.dd, den: inv?.total,
-      label: 'فواتير بتاريخ استحقاق', hint: 'سجّل تاريخ استحقاق الفواتير ليصدق عدّاد التأخر', href: '/app/finance' },
   ];
 
   const items = [];

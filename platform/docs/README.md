@@ -6,6 +6,8 @@ The code is the source of truth; these documents are its ledger. Four of them fo
 
 | File | What it is | When it must change |
 |---|---|---|
+| `delivery-waves/` | Per-wave acceptance, QA evidence, blockers and owner trial steps. | Every delivery wave. |
+| `BLUEPRINT.md` | Active delivery wave, tool roles, owner decisions and acceptance criteria. | Every scope/acceptance or delivery change. |
 | `README.md` | This map + the maintenance contract. | When a doc is added/retired or a rule changes. |
 | `ARCHITECTURE.md` | System map: runtime, layers, data flow, deploy topology. | Same commit as any structural change (new layer, driver, boot step, cross-module contract). |
 | `FEATURES.md` | Feature registry: every page (`## Pages`, keys in backticks), every migration (`| NNN ` rows), every `src/modules/<name>`, with routes/APIs. | **Same commit** as any new/renamed page, route, migration, or module. The gate enforces presence; you keep the row's content truthful. |

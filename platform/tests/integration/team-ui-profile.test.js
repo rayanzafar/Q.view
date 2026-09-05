@@ -127,10 +127,10 @@ test('S04 — الرأس والتبويبات والمؤشرات والتوزي�
     'نظرة عامة', 'العمل المرتبط', 'المهام', 'القدرات والتطور', 'الارتباط والطاقة', 'سجل التغييرات',
     'الطاقة التعاقدية', 'التسكين المؤكد', 'حِمل المهام', 'منصة الاختبار', 'إدارة مشاريع', 'مشروع مبدئي', 'لا يُخصم',
     'القادم خلال', 'مراجعة المتطلبات', 'آخر تحديث', 'بيانات المورد', 'سجل الموارد',
-    'تعديل الملف', 'طلب تسكين', 'مهامه وملفه']) assert.ok(html.includes(s), `غاب عن النظرة العامة: ${s}`);
+    'تعديل الملف', 'طلب تسكين', 'المهام']) assert.ok(html.includes(s), `غاب عن النظرة العامة: ${s}`);
   assert.ok(html.includes('data-action="resource-edit"') && html.includes('data-emp="e_res"'), 'زر التعديل بلا معرّف المورد');
   assert.ok(html.includes('/app/team/planning?new=1&amp;employee=e_res'), 'رابط طلب التسكين لا يحمل سياق المورد');
-  assert.ok(html.includes('href="/app/person/u_res"'), 'رابط «مهامه وملفه» غائب');
+  assert.ok(html.includes('href="/app/team/resources/e_res?tab=tasks"'), 'رابط «مهامه وملفه» غائب');
   assert.ok(html.includes('/static/pages/team-profile.js'), 'عميل الصفحة غير مضمَّن');
   // نصف دوامٍ محجوزٌ بكامله: المتاح 0% — لا 50% ولا 100%
   const avail = html.match(/data-kpi="available"[\s\S]*?<div class="s">/)[0];
@@ -177,14 +177,14 @@ test('S06 — المهام من خدمة المهام القائمة: مفتوح
   const lead = await sess('u_lead');
   const html = await page(lead, 'e_res', { tab: 'tasks' });
   for (const s of ['المهام المفتوحة', 'المهام المكتملة', 'مراجعة المتطلبات', 'اختبار جودة البيانات', 'نموذج العرض', 'قيد التنفيذ', 'منجز', 'مُعطَّل',
-    'عالية', 'بانتظار بيانات العميل', 'data-action="task-open"', 'data-task="T1"', 'فتح المهمة الأصلية', 'href="/app/person/u_res"', 'حِمل المهام']) {
+    'عالية', 'بانتظار بيانات العميل', 'data-action="task-open"', 'data-task="T1"', 'إدارة المهام', 'href="/app/tasks?who=team&amp;assignee=u_res"', 'حِمل المهام']) {
     assert.ok(html.includes(s), `غاب عن المهام: ${s}`);
   }
   const payload = html.match(/teamProfile:(\{.*\})\}\);<\/script>/)[1];
   const data = JSON.parse(payload);
   assert.equal(data.tasks.length, 3, 'حمولة الدرج ناقصة');
   assert.ok(data.taskLimits.some((x) => x.includes('لا مشاركون متعددون')), 'قيد «لا مشاركون متعددون» غير معلن');
-  assert.equal(data.openHref, '/app/person/u_res');
+  assert.equal(data.openHref, '/app/tasks?who=team&assignee=u_res');
   assert.ok(!/utilization|مقياس استغلال/.test(visible(html).replace(/<[^>]+>/g, '')) || true);
   // لا حساب دخول ≠ لا مهام ≠ عبء منخفض
   const noacc = await page(lead, 'e_noacc', { tab: 'tasks' });
@@ -278,7 +278,7 @@ test('النطاق — خارج النطاق يُرَدّ من الخدمة، و
   await assert.rejects(async () => page(await sess('u_out'), 'e_res', {}), /خارج نطاقك/);
   await assert.rejects(async () => page(await sess('u_lead'), 'e_missing', {}), /غير موجود/);
   const own = await page(await sess('u_res'), 'e_res', {});
-  assert.ok(own.includes('موظف الاختبار') && own.includes('مهامي وملفي'), 'صاحب الملف لا يفتح ملفه');
+  assert.ok(own.includes('موظف الاختبار') && own.includes('href="/app/team/resources/e_res?tab=tasks"'), 'صاحب الملف لا يفتح ملفه');
   assert.ok(!own.includes('data-action="resource-edit"'), 'زر التعديل ظهر لمن لا يملكه');
   assertClean(own, 'ملف صاحبه');
 });
@@ -292,4 +292,20 @@ test('كل التبويبات لكل قارئ: بلا تسرّب ولا راتب
       assertClean(html, `${uid}/${tab}`);
     }
   }
+});
+
+
+test('regression: old person links resolve to the resource profile and preserve its permission gate', async () => {
+  const { personProfileLink } = await import('../../src/modules/team/person-link.js');
+  const lead = await sess('u_lead');
+  assert.equal(await personProfileLink(lead, 'u_res', { year: '2025', month: '12' }), '/app/team/resources/e_res?year=2025&month=12');
+  await assert.rejects(personProfileLink(lead, 'u_out'), (e) => e.status === 403);
+  assert.equal(await personProfileLink(await sess('u_res'), 'u_res'), '/app/team/resources/e_res');
+  const html = await page(lead, 'e_res', { tab: 'manage', year: '2025', month: '12' });
+  assert.ok(html.includes('إدارة الملف'));
+  assert.ok(html.includes('id="pp-task-parent"'));
+  assert.ok(html.includes('/static/pages/person.js'));
+  assert.ok(html.includes('/app/team/planning?new=1&amp;employee=e_res&amp;from=2025-12&amp;to=2025-12'));
+  assert.ok(!html.includes('id="pp-staff-pct"'), 'التسكين يمر بمعاينة الطاقة واعتماد الفترة');
+  assertClean(html, 'إدارة الملف');
 });

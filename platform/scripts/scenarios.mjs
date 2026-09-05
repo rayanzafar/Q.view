@@ -795,68 +795,26 @@ scenario('approvals', 'مسار الاعتماد: من يرفع لا يعتمد�
   t.status(ext, 403, 'حساب البوابة الخارجية لا يفتح مساراً داخلياً');
 });
 
-// ⑪ المال: المستخلص والتحصيل والذمم
-scenario('finance', 'المال: مستخلص من مخرجات، تحصيل بحدوده، وأرقام بالهللات', async ({ C, db, t, ids, D, remember }) => {
-  const contract = ids.contract.sol_main;
-  const none = await C.req('demo.ceo', '/api/finance/progress-claim', { method: 'POST',
-    body: { contractId: contract, periodLabel: D.tag('الدفعة الأولى') } });
-  t.status(none, 400, 'بلا مخرجات مسلَّمة لا مستخلص');
-  t.says(none, /مخرجات مؤهلة/, 'والرسالة تقول ما ينقص');
-
-  // المسار الواقعي كاملاً: المخرج يُسلَّم أولاً ثم يُفوتَر. كان يمرّ سابقاً بلا تسليم لأن تمرير
-  // المعرّفات صراحةً كان يُسقط شرطَي الحالة والانتماء معاً — وهو العيب الذي أُصلح. فصار
-  // السيناريو يمشي على الحقيقة: تغيير حالة المخرج إلى «مُسلَّم» عبر مساره، ثم إصدار المستخلص.
-  const delivered = await C.req('demo.pm', `/api/pmo/deliverable/${ids.deliverable.sol_main[0]}`,
-    { method: 'PATCH', body: { status: 'DELIVERED' } });
-  t.status(delivered, 200, 'مدير المشروع يعلّم المخرج مُسلَّماً');
-
-  const claim = await C.req('demo.ceo', '/api/finance/progress-claim', { method: 'POST',
-    body: { contractId: contract, deliverableIds: [ids.deliverable.sol_main[0]], periodLabel: D.tag('الدفعة الأولى') } });
-  t.status(claim, 200, 'إصدار مستخلص بمخرجات محدَّدة');
-  const invId = claim.json?.id; remember('invoice', invId);
-  t.eq(claim.json?.amount_halalas, 25_000_000, 'قيمة المستخلص = قيمة المخرج (٢٥٠ ألف ريال) بالهللات');
-  t.ok(Number.isInteger(claim.json?.amount_halalas), 'المبلغ عدد صحيح');
-  const lines = await db.all('SELECT id FROM invoice_line WHERE invoice_id = ?', [invId]);
-  for (const l of lines) remember('invoice_line', l.id);
-  t.eq(lines.length, 1, 'بند واحد على الفاتورة');
-
-  const bd = await C.req('demo.bdhead', '/api/finance/collections', { method: 'POST',
-    body: { invoiceId: invId, amountSar: 1000 } });
-  t.status(bd, 403, 'رئيس تطوير الأعمال يقرأ المال ولا يكتبه');
-
-  const tooMuch = await C.req('demo.ceo', '/api/finance/collections', { method: 'POST',
-    body: { invoiceId: invId, amountSar: 900_000 } });
-  t.status(tooMuch, 400, 'تحصيل يتجاوز المتبقي مرفوض');
-
-  const part = await C.req('demo.ceo', '/api/finance/collections', { method: 'POST',
-    body: { invoiceId: invId, amountSar: 100_000, collectedAt: '2026-07-01', method: 'تحويل' } });
-  t.status(part, 200, 'تحصيل جزئي');
-  t.eq(part.json?.status, 'PARTIALLY_PAID', 'الفاتورة صارت محصَّلة جزئياً');
-  for (const c of await db.all('SELECT id FROM collection WHERE invoice_id = ?', [invId])) remember('collection', c.id);
-
-  const rest = await C.req('demo.ceo', '/api/finance/collections', { method: 'POST',
-    body: { invoiceId: invId, amountSar: 150_000, collectedAt: '2026-07-05' } });
-  t.status(rest, 200, 'تحصيل الباقي');
-  t.eq(rest.json?.status, 'PAID', 'الفاتورة صارت مسدَّدة');
-  for (const c of await db.all('SELECT id FROM collection WHERE invoice_id = ?', [invId])) remember('collection', c.id);
-
-  const sum = await C.req('demo.ceo', '/api/finance/summary?year=2026');
-  t.status(sum, 200, 'الملخص المالي على مستوى الشركة');
-  for (const k of ['bookings_halalas', 'revenue_halalas', 'invoiced_halalas', 'collected_halalas', 'ar_halalas']) {
-    t.ok(Number.isInteger(sum.json?.[k]), `${k} عدد صحيح بالهللات`);
+// ⑪ الفوترة ملغاة؛ إنجاز المخرج وفترته يبقيان في مسار المشاريع.
+scenario('finance', 'الإيراد من المخرج، والفوترة والتحصيل مساران ملغيان', async ({ C, db, t, ids, remember }) => {
+  const before = await db.get('SELECT COUNT(*) n FROM invoice');
+  for (const username of ['demo.ceo', 'demo.pm', 'demo.bdhead']) {
+    for (const endpoint of ['progress-claim', 'collections']) {
+      const response = await C.req(username, '/api/finance/' + endpoint, { method: 'POST', body: {} });
+      t.status(response, 410, `${username}: المسار الملغى لا ينفّذ كتابة`);
+      t.says(response, /أُلغي/, 'سبب الإلغاء معلن');
+    }
   }
-  t.eq(sum.json?.collected_halalas, 25_000_000, 'المحصَّل = ٢٥٠ ألف ريال بالهللات');
-
-  const secSum = await C.req('demo.sectorlead', '/api/finance/summary?year=2026');
-  t.status(secSum, 200, 'وقائد القطاع يرى ملخص قطاعه');
-  t.ok(secSum.json.invoiced_halalas <= sum.json.invoiced_halalas, 'ورقم القطاع لا يتجاوز رقم الشركة');
-
-  const byContract = await C.req('demo.ceo', '/api/finance/by-contract');
-  t.ok((byContract.json || []).some((c) => c.id === contract), 'العقد يظهر في كشف العقود');
-
-  const c360 = await C.req('demo.ceo', `/api/clients/${ids.client.gov}/360`);
-  t.status(c360, 200, 'صفحة العميل المالية تفتح');
-  t.ok(!/undefined|NaN/.test(c360.text), 'وبلا قيم مكسورة');
+  t.eq((await db.get('SELECT COUNT(*) n FROM invoice')).n, before.n, 'لم تنشأ فاتورة');
+  const did = ids.deliverable.sol_main[0];
+  const delivered = await C.req('demo.pm', `/api/pmo/deliverable/${did}`,
+    { method: 'PATCH', body: { status: 'DELIVERED', period: '2026-03' } });
+  t.status(delivered, 200, 'مدير المشروع يسجل التسليم وفترته');
+  const revenue = await db.get('SELECT * FROM revenue_line WHERE deliverable_id = ?', [did]);
+  if (revenue) remember('revenue_line', revenue.id);
+  t.eq(revenue?.year, 2026, 'الإيراد في سنة المخرج');
+  t.eq(revenue?.month, 3, 'الإيراد في شهر المخرج');
+  t.eq(revenue?.amount_halalas, 25_000_000, 'المبلغ محفوظ بالهللات');
 });
 
 // ⑫ الحذف الناعم — والصدق حياله
@@ -953,7 +911,7 @@ scenario('pages', 'كل صفحة لكل شخص: الحالة مطابقة لسي
     t.status(me, 200, `${u.u} جلسته حيّة`);
     const shape = { role_id: u.role, scope: u.scope, sector_id: u.sector ?? null };
     for (const page of pages) {
-      const expect = PAGE_ACCESS[page](shape) ? 200 : 403;
+      const expect = page === 'finance' ? 410 : PAGE_ACCESS[page](shape) ? 200 : 403;
       const r = await C.req(u.u, `/app/${page}`);
       t.status(r, expect, `${u.u} ← /app/${page}`);
       if (r.status === 200) {
@@ -976,8 +934,8 @@ scenario('defects', 'حراسة ما عولج: كل عيب مثبَّت سابق
     body: { contractId: ids.contract.sol_side, deliverableIds: [foreignDeliverable] } });
   if (cross.status === 200) { remember('invoice', cross.json?.id);  // شبكة أمان لو عاد العطل: لا يبقى أثر
     for (const l of await db.all('SELECT id FROM invoice_line WHERE invoice_id = ?', [cross.json?.id])) remember('invoice_line', l.id); }
-  t.status(cross, 400, 'مستخلص عقدِ قطاعٍ يرفض مخرج مشروع قطاع آخر');
-  t.says(cross, /من مشروع آخر/, 'ويقول سبب الرفض بدل إسقاط المخرج بصمت');
+  t.status(cross, 410, 'المستخلص ملغى حتى مع معرف مخرج صحيح أو خارج القطاع');
+  t.says(cross, /أُلغي/, 'الإلغاء معلن بدل تنفيذ مسار مالي متروك');
   const foreignAfter = await db.get('SELECT status FROM deliverable WHERE id = ?', [foreignDeliverable]);
   t.ok(foreignAfter?.status !== 'INVOICED', 'والمخرج الغريب لم يُختم مفوتراً فيخسره مشروعه الحقيقي');
 
