@@ -10,6 +10,7 @@
 // قاعدة (مبدأ /ready نفسه: لا تفصيل يغادر لمتصل غير موثَّق).
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { createHash } from 'node:crypto';
 
 export const BUILD_ID_FILE = '.build-id';
 
@@ -20,3 +21,20 @@ export function readBuildId(root) {
     return /^[A-Za-z0-9._-]{1,64}$/.test(raw) ? raw : null;
   } catch { return null; }
 }
+
+// ── الطريق الثاني: وسم النشرة من معرّف Railway ──────────────────────────────────────────
+// في نشرة v5.74 (2026-09-05) لم يصل ملف `.build-id` إلى الحاوية (طرفية Railway 5.41 تُهمل ما في
+// `.gitignore` عند الرفع رغم `.railwayignore`)، فأعلن /ready «جاهز» بلا معرّف وانتظر الخطُّ سبع دقائق
+// ثم أنذر — والنشرة كانت قد نجحت فعلاً. لا يُعتمد على ملفٍ يُشحن: Railway تحقن معرّف النشرة نفسه
+// في البيئة (`RAILWAY_DEPLOYMENT_ID`)، والخطّ يلتقط المعرّف ذاته من مخرجات الرفع — فيُقارَن **وسمٌ**
+// مشتقّ منه (اقتطاع من بصمته، لا المعرّف الخام: لا تفصيل داخلي يغادر لمتصل غير موثَّق).
+export function deploymentTagOf(deploymentId) {
+  const id = String(deploymentId || '').trim();
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
+  return 'dep-' + createHash('sha256').update(id.toLowerCase()).digest('hex').slice(0, 12);
+}
+/** وسم النشرة الحالية من بيئة التشغيل؛ null خارج Railway. */
+export const deploymentTag = (env = process.env) => deploymentTagOf(env.RAILWAY_DEPLOYMENT_ID);
+
+/** ما يُعلنه /ready: ملف `.build-id` إن شُحن، وإلا وسم النشرة من البيئة، وإلا null (تشغيل محلي). */
+export const announcedBuildId = (root, env = process.env) => readBuildId(root) || deploymentTag(env);

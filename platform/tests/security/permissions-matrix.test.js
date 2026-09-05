@@ -27,12 +27,16 @@ before(async () => {
   db = await import('../../src/core/db/index.js');
   const { migrate } = await import('../../scripts/migrate.js');
   const { seedRbac } = await import('../../scripts/seed-rbac.js');
-  const { seed } = await import('../../scripts/seed.js');
+  const { seed, seedDemoOrg } = await import('../../scripts/seed.js');
   const { seedFixture } = await import('../../scripts/lib/seed-fixture.mjs');
   await migrate();
   await seedRbac();
   await seed();
   await seedFixture();
+  // إدارات العرض تُبذر بعد القطاع (seed.js يتخطّاها بصمت إن لم يوجد) — كما على staging تماماً:
+  // مدير الإدارة التجريبي يقود «إدارة تحول الأعمال»، وبدونها كانت المصفوفة تختبر حساباً بلا إدارة
+  // لا وجود له في البيئة الحيّة (فتُقرأ ٤٠٣ على شاشة الإقفال «صحيحة» وهي ليست كذلك).
+  await seedDemoOrg();
   EXP = await import('../../scripts/lib/expectations.mjs');
   pageAccess = await EXP.loadPageAccess();
 

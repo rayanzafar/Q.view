@@ -19,6 +19,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, existsSync, readdirSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { resolve, join } from 'node:path';
+import { deploymentTagOf } from '../src/core/http/build-id.js';
 
 const PROJECT_ID = '892124c7-a66e-4ac7-bd7d-e4827b3e5f40';   // sanad-staging (المشروع)
 const ENV_ID = 'd654abc4-b261-476b-a11a-b1df477a55b9';       // production (بيئة staging الوحيدة)
@@ -142,9 +143,13 @@ const depId = (upOut.match(/id=([0-9a-f-]{36})/) || [])[1] || null;
 console.log(depId ? `ℹ معرّف النشرة: ${depId}` : 'ℹ لم يُلتقط معرّف النشرة من المخرجات');
 
 // ── ٥) انتظار الجاهزية ────────────────────────────────────────────────────────
-log(`٥/٧ انتظار /ready بالمعرّف ${BUILD_ID} (حتى ٧ دقائق)`);
-// «جاهز» وحدها لا تكفي: الحاوية القديمة تقولها أيضاً. نطلب المعرّف الذي كتبناه للتوّ.
-let ready = false; let sawOld = false;
+// «جاهز» وحدها لا تكفي: الحاوية القديمة تقولها أيضاً. نطلب المعرّف الذي كتبناه للتوّ — أو وسمَ
+// النشرة المشتقّ من معرّف Railway الذي التقطناه من مخرجات الرفع (الطريق الثاني حين لا يصل
+// ملف `.build-id` إلى الحاوية — نشرة v5.74: الطرفية 5.41 تُهمل ما في .gitignore عند الرفع).
+const DEP_TAG = deploymentTagOf(depId);
+const accepted = [BUILD_ID, DEP_TAG].filter(Boolean);
+log(`٥/٧ انتظار /ready بالمعرّف ${BUILD_ID}${DEP_TAG ? ` أو الوسم ${DEP_TAG}` : ''} (حتى ٧ دقائق)`);
+let ready = false; let sawOld = false; let seenBuild = null;
 const deadline = Date.now() + 7 * 60000;
 while (Date.now() < deadline) {
   await new Promise((r) => setTimeout(r, 10000));
@@ -152,15 +157,15 @@ while (Date.now() < deadline) {
     const res = await fetch(`${STAGING_URL}/ready`, { signal: AbortSignal.timeout(5000) });
     if (res.ok) {
       const j = await res.json();
-      if (j.ready === true && j.build === BUILD_ID) { ready = true; break; }
+      if (j.ready === true && accepted.includes(j.build)) { ready = true; seenBuild = j.build; break; }
       if (j.ready === true) sawOld = true; // القديمة ما زالت تجيب — ننتظر التبديل
     }
   } catch { /* لم تجهز بعد */ }
   process.stdout.write(sawOld ? '·' : '.');
 }
 console.log('');
-if (!ready) fail(`/ready لم تُعلن المعرّف ${BUILD_ID} خلال المهلة — افحص سجلّات الإقلاع (الترحيلة الفاشلة توقف الإقلاع عمداً)، وإن كانت النشرة قد نجحت فأعد المسح يدوياً: node scripts/sweep.mjs ${STAGING_URL}`);
-console.log(`✓ البيئة جاهزة بالنشرة ${BUILD_ID}`);
+if (!ready) fail(`/ready لم تُعلن المعرّف ${BUILD_ID}${DEP_TAG ? ` ولا الوسم ${DEP_TAG}` : ''} خلال المهلة — افحص سجلّات الإقلاع (الترحيلة الفاشلة توقف الإقلاع عمداً)، وإن كانت النشرة قد نجحت فأعد المسح يدوياً: node scripts/sweep.mjs ${STAGING_URL}`);
+console.log(`✓ البيئة جاهزة بالنشرة ${seenBuild}${seenBuild === DEP_TAG ? ' (وسم النشرة — ملف .build-id لم يُشحن)' : ''}`);
 
 // ── ٦) سجلّات الإقلاع: الترحيلات طُبّقت ولا أخطاء ─────────────────────────────
 log('٦/٧ فحص سجلّات الإقلاع');

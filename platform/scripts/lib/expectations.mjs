@@ -27,7 +27,10 @@ export const ROLES = [
   { username: 'demo.consultant', role: 'consultant', scope: 'own', sector_id: 'SOLUTIONS' },
   { username: 'demo.employee', role: 'employee', scope: 'own', sector_id: 'SOLUTIONS' },
   { username: 'demo.viewer', role: 'viewer', scope: 'sector', sector_id: 'SOLUTIONS' },
-  { username: 'demo.deptmgr', role: 'department_manager', scope: 'department', sector_id: 'SOLUTIONS' },
+  // مدير الإدارة التجريبي يقود إدارةً مبذورة فعلاً (seed.js: «إدارة تحول الأعمال» بمعرّفٍ مولَّد)؛
+  // شروط الصفحات تسأل «هل له إدارة؟» (departmentScope) لا عن معرّفها — فيُمرَّر معرّفٌ رمزي.
+  // بدونه كانت الأداة تتوقع ٤٠٣ على شاشة الإقفال وتُعلن انحرافاً كاذباً على ٢٠٠ الصحيحة.
+  { username: 'demo.deptmgr', role: 'department_manager', scope: 'department', sector_id: 'SOLUTIONS', department_id: 'seeded-department' },
   { username: 'demo.linemgr', role: 'line_manager', scope: 'team', sector_id: 'SOLUTIONS' },
   { username: 'demo.bdhead', role: 'bd_head', scope: 'company', sector_id: null },
   { username: 'demo.ops', role: 'operations', scope: 'sector', sector_id: 'SOLUTIONS' },
@@ -92,7 +95,7 @@ function pageAllowed(role, page, pageAccess) {
     // فابتلع الالتقاط الرمية وأعلن ٢٠٠ لقائد قطاع تردّه المنصة ٤٠٣ — فسقط الفحص الحيّ على عطلٍ
     // في الأداة لا في المنتج. الأداة التي تفشل مفتوحةً أسوأ من غياب الأداة: تُخفي الحقيقة وتُطمئن.
     try {
-      return !!rule({ role_id: role, scope: p?.scope || 'own', sector_id: p?.sector_id ?? null });
+      return !!rule({ role_id: role, scope: p?.scope || 'own', sector_id: p?.sector_id ?? null, department_id: p?.department_id ?? null });
     } catch (e) {
       throw new Error(`تعذّر تقييم شرط فتح صفحة «${page}» للدور «${role}»: ${e.message}\n`
         + 'الأداة لا تفترض السماح عند العجز — حمِّل منح الصلاحيات قبل اشتقاق التوقعات.');
