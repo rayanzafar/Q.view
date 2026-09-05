@@ -60,6 +60,32 @@ export const INTENTS = [
     allow: (u) => can(u, 'update', 'opportunity') },
 ];
 const INTENT_BY_KEY = Object.fromEntries(INTENTS.map((i) => [i.intent, i]));
+
+// ── نوايا تسجّلها الوحدات (إضافة لا استبدال) ─────────────────────────────────
+// `core` لا يستورد `modules`، فالوحدات هي التي تأتي إلى هنا وتسجّل نواياها مرةً عند التركيب
+// (src/modules/ai.routes.js). كل نية: { intent, label_ar, kind, allow(user), match(text), run(ctx, text, opts) }.
+// تُستشار قبل الأنماط المبنيّة هنا في التصنيف والتوجيه، وتظهر في بطاقات الاقتراح بمنحها،
+// وتخضع للثابت نفسه: لا رمز تأكيد يخرج من الدردشة مهما أعادت.
+const EXTERNAL_INTENTS = [];
+const EXTERNAL_BY_KEY = {};
+export function registerIntents(list = []) {
+  for (const it of list || []) {
+    if (!it || !it.intent || INTENT_BY_KEY[it.intent] || typeof it.run !== 'function') continue;
+    const spec = { intent: it.intent, label_ar: it.label_ar || it.intent, kind: it.kind === 'write' ? 'write' : 'read',
+      allow: typeof it.allow === 'function' ? it.allow : () => true };
+    INTENTS.push(spec);
+    INTENT_BY_KEY[it.intent] = spec;
+    EXTERNAL_INTENTS.push(it);
+    EXTERNAL_BY_KEY[it.intent] = it;
+  }
+  return INTENTS.length;
+}
+async function runExternal(it, ctx, text, opts) {
+  if (!INTENT_BY_KEY[it.intent].allow(ctx.user)) {
+    throw forbidden(it.deny_ar || 'هذا الطلب خارج صلاحيتك — اطلب تفعيله من مدير النظام إن كان من عملك.');
+  }
+  return await it.run(ctx, text, opts || {});
+}
 // النية ⟵ نوع التغيير المبنيّ الذي تُرسله الواجهة إلى `proposePreview`.
 const WRITE_TYPE_OF = { create_task: 'task_create', update_task_status: 'task_status',
   move_opportunity_stage: 'opp_stage' };
@@ -71,7 +97,7 @@ export async function ask(ctx, message, opts = {}) {
   const text = String(message || '').trim();
   const intent = classify(text, opts.intent);
   try {
-    const out = await route(user, intent, text, opts);
+    const out = await route(user, intent, text, opts, ctx);
     // نزع أي رمز تأكيد **بنيوياً** لا اتفاقاً: لو أعادت نيّةٌ يوماً رمزاً بالخطأ فلن يصل إلى
     // الواجهة أصلاً. هذا هو الثابت الذي يجعل خطأ «فهمٍ» غير قادر على إنتاج كتابة.
     const { outcome = OUTCOME.OK, applyToken: _t, previewId: _p, preview: _v, ...answer } = out;
@@ -87,7 +113,8 @@ export async function ask(ctx, message, opts = {}) {
   }
 }
 
-async function route(user, intent, text, opts) {
+async function route(user, intent, text, opts, ctx = { user, ip: null }) {
+  if (EXTERNAL_BY_KEY[intent]) return await runExternal(EXTERNAL_BY_KEY[intent], ctx, text, opts);
   switch (intent) {
     case 'summarize_project': return await summarizeProject(user, opts.projectId || null, text);
     case 'weekly_report': return await weeklyReportDraft(user);
@@ -104,6 +131,10 @@ async function route(user, intent, text, opts) {
 function classify(text, forced) {
   if (forced && INTENT_BY_KEY[forced]) return forced;
   if (forced) return 'smalltalk';
+  // نوايا الوحدات أولاً: أنماطها أخصّ من الأنماط العامة أدناه (وتُفحص بوابتها عند التوجيه لا هنا).
+  for (const it of EXTERNAL_INTENTS) {
+    try { if (typeof it.match === 'function' && it.match(text)) return it.intent; } catch { /* نمط معطوب لا يُسقط التصنيف */ }
+  }
   if (/(أنشئ|أضف|اضف|سجّل|سجل).*(مهمة|مهمّة)|مهمة جديدة/.test(text)) return 'create_task';
   if (/(حالة|أنجز|انجز|أغلق|اغلق|عطّل|علّق).*(مهمة|مهمّة)|(مهمة|مهمّة).*(منجزة|معطَّلة|معطلة)/.test(text)) return 'update_task_status';
   if (/(فرصة|الفرصة).*(فائزة|مكسوبة|خسارة|مفقودة|مؤهلة|تفاوض|عرض)|انقل.*(فرصة|الفرصة)/.test(text)) return 'move_opportunity_stage';

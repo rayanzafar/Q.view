@@ -56,7 +56,7 @@
       if (c.classList.contains('on')) wasOn = c;
       const on = !!path && c.dataset.path === path;
       c.classList.toggle('on', on);
-      c.setAttribute('aria-pressed', on ? 'true' : 'false');
+      const ttl = c.querySelector('.tm-path-ttl'); if (ttl) ttl.setAttribute('aria-expanded', on ? 'true' : 'false');
       const tag = c.querySelector('.tag'); if (tag) tag.hidden = !on;
       if (on) card = c;
     });
@@ -223,7 +223,9 @@
       el('tm-pv-body').innerHTML = skeleton(); fetchPreview(id); return;
     }
     if (a === 'path-select') {
-      if (e.target.closest('a,button')) return;           // الحقائق والسهم روابط حقيقية
+      // عنوان البطاقة زرٌّ معلَن (.tm-path-ttl) وهو الضابط نفسه — لا يُستثنى؛ ما سواه من روابط
+      // (الحقائق والسهم) يعمل كما هو.
+      if (e.target.closest('a,button') && !e.target.closest('.tm-path-ttl')) return;
       e.preventDefault(); gwSelect(t.dataset.path, true); return;
     }
     if (a === 'path-close') { e.preventDefault(); gwSelect(null, true); }
@@ -236,8 +238,9 @@
       if (dw && !dw.hidden) { e.preventDefault(); closePreview(); }
       return;
     }
+    // الزرّ الحقيقي يُنقَر بلوحة المفاتيح بنفسه — النقر المصطنع للصفوف والبطاقات غير الأصلية فقط.
     if ((e.key === 'Enter' || e.key === ' ') && e.target && e.target.matches
-      && e.target.matches('[data-action="resource-preview"],[data-action="path-select"]')) {
+      && e.target.matches('[data-action="resource-preview"],[data-action="path-select"]') && !e.target.matches('a,button')) {
       e.preventDefault(); e.target.click();
     }
   });

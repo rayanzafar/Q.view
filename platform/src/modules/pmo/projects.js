@@ -232,6 +232,7 @@ export async function createProject(ctx, data) {
   await tx(async () => {
     await insert('project', {
       id: pid, code: data.code || null, name_ar: data.name_ar, sector_id: sectorId,
+      financial_code: String(data.financial_code ?? '').trim().slice(0, 40) || null,
       department_id: departmentId,
       client_id: data.client_id || null, owner_user_id: data.owner_user_id || user.id,
       status: data.status || 'IN_PROGRESS', rag: data.rag || 'GREEN', kind: data.kind || 'external',
@@ -352,6 +353,14 @@ export async function updateProject(ctx, pid, data) {
   if ('code' in data) {
     const c = String(data.code ?? '').trim().slice(0, 60);
     patch.code = c || null;
+  }
+  // ── الكود المالي ── كانت شاشة الإقفال ترفض التصحيح بـ«سجّل كوده المالي في صفحة المشروع» ولا
+  // حقل في المنتج يكتبه: العمود يُقرأ في الإقفال والتصحيح والتصدير ولا يُكتب في موضعٍ واحد. يُفتح
+  // هنا لمن يعدّل المشروع (مديره فمن فوقه) — حروف وأرقام وشرطات بحدٍّ معقول، والفراغ ينزعه.
+  if ('financial_code' in data) {
+    const f = String(data.financial_code ?? '').trim().slice(0, 40);
+    if (f && !/^[\p{L}\p{N}][\p{L}\p{N} _./-]*$/u.test(f)) throw badRequest('الكود المالي يُكتب حروفاً وأرقاماً وشرطات فقط');
+    patch.financial_code = f || null;
   }
   if ('name_ar' in data && !String(data.name_ar ?? '').trim()) throw badRequest('اسم المشروع مطلوب');
   for (const k of ['name_ar', 'status', 'rag', 'progress_pct', 'start_date', 'end_date', 'pm_name']) {

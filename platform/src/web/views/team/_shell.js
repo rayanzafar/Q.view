@@ -130,7 +130,7 @@ export const TEAM_CSS = `
   .tm-danger{background:#fdeaea;border:1px solid #f3b4b4;border-radius:12px;padding:.7rem .9rem;font-size:var(--fs-body);color:#8a1c1c}
   .tm-ok{background:#e9f8f1;border:1px solid #b7e4cc;border-radius:12px;padding:.7rem .9rem;font-size:var(--fs-body);color:#0f5132}
   .tm-info{background:#eef2fb;border:1px solid #cbd7f5;border-radius:12px;padding:.7rem .9rem;font-size:var(--fs-body);color:#1e3a8a}
-  .tm-foot{font-size:var(--fs-micro);color:var(--faint);margin-top:1rem}
+  .tm-foot{font-size:var(--fs-micro);color:var(--muted);margin-top:1rem}
   .tm-list{display:flex;flex-direction:column;gap:.45rem}
   .tm-li{display:flex;justify-content:space-between;align-items:center;gap:.6rem;background:var(--bg);border-radius:10px;padding:.55rem .75rem;font-size:var(--fs-body)}
   .tm-li .m{color:var(--muted);font-size:var(--fs-micro)}

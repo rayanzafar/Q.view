@@ -8,6 +8,9 @@
 //   POST /api/ai/preview        ⟵ { reply, preview, applyToken, previewId, expires_at }  ← المدخل الوحيد لأي تغيير
 //   POST /api/ai/apply          ⟵ { reply, applied, resource, resourceId }
 //   GET  /api/ai/activity       ⟵ { scope, rows[] }            ← بمنح قراءة التدقيق وحدها
+//   GET  /api/ai/tools          ⟵ { tools: [{ name, label_ar, kind, description_ar, input, output_ar }] }
+//                                  ← العقد الآلي لأدوات «الفريق والموارد» مُرشَّحاً بمنح صاحب الجلسة
+//   POST /api/ai/tools/:name    ⟵ نتيجة الأداة (أداة الكتابة تقبل رمز المعاينة وحده — لا حمولة خام)
 //
 // وثلاثة أشياء يقولها الخادم بنفسه فلا تخمّنها اللوحة:
 //   • `expires_at` — لحظة انتهاء المعاينة كما حُفظت، فتُعرض «صالحة للتأكيد حتى …» ويُعطَّل
@@ -18,9 +21,15 @@
 //     المسمّى إلى نيّته نفسها، ولا يُعاد تصنيفه نصّاً فيضيع.
 import { Router } from 'express';
 import { requireAuth } from '../core/http/context.js';
-import { ask, aiStatus, optionsFor, proposePreview } from '../core/ai/assistant.js';
+import { ask, aiStatus, optionsFor, proposePreview, registerIntents } from '../core/ai/assistant.js';
 import { listActivity } from '../core/ai/store.js';
 import { applyChange } from './ai/apply.js';
+import { listTools, runTool } from './ai/team-tools.js';
+import { TEAM_INTENTS } from './ai/team-intents.js';
+
+// نوايا وحدة «الفريق والموارد» تُسجَّل هنا مرةً واحدة: `core/ai` لا يستورد `modules`، والوحدة
+// تأتي إليه عند التركيب — فتظهر في بطاقات الاقتراح بمنحها وتُصنَّف قبل الأنماط العامة.
+registerIntents(TEAM_INTENTS);
 
 export const aiRouter = Router();
 aiRouter.use(requireAuth());
@@ -42,3 +51,9 @@ aiRouter.post('/preview', h((req) => proposePreview(req.ctx, req.body || {})));
 aiRouter.post('/apply', h((req) => applyChange(req.ctx, req.body?.applyToken || req.body?.previewId)));
 
 aiRouter.get('/activity', h((req) => listActivity(req.ctx.user, { limit: req.query?.limit })));
+
+// ── أدوات «الفريق والموارد» (الموجّه §13): سطحٌ محدود ومُخوَّل، لا استعلام حرّ ولا أمر عام ──
+// القائمة مُرشَّحة بمنح صاحب الجلسة، والتشغيل يفحص البوابة ثانيةً ثم يمرّ بالخدمة ويُسجَّل بنتيجته.
+// الكتابة برمز معاينةٍ صادرٍ من أداة المعاينة وحده — نفس انضباط /preview ⟵ /apply أعلاه.
+aiRouter.get('/tools', h((req) => ({ tools: listTools(req.ctx.user) })));
+aiRouter.post('/tools/:name', h((req) => runTool(req.ctx, String(req.params.name || ''), req.body || {})));

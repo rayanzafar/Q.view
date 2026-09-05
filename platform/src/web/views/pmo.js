@@ -2338,6 +2338,7 @@ export async function projectDetailPage(user, projectId, opts = {}) {
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.55rem">
       ${idField('اسم المشروع', `<input id="prj-name" class="input" style="font-size:12px" value="${esc(p.name_ar || '')}" maxlength="200">`)}
       ${idField('رمز المشروع', `<input id="prj-code" class="input" style="font-size:12px" value="${esc(p.code || '')}" maxlength="60" placeholder="اختياري">`)}
+      ${idField('الكود المالي', `<input id="prj-fincode" class="input" style="font-size:12px" value="${esc(p.financial_code || '')}" maxlength="40" placeholder="اختياري">`, 'يُحمَّل عليه توزيع تكلفة الشهر في الإقفال والتصحيح')}
       ${idField('مدير المشروع', `<select id="prj-owner" class="input" style="font-size:12px">
         <option value="">بلا مدير مسجَّل</option>
         ${users.map((u) => `<option value="${esc(u.id)}"${p.owner_user_id === u.id ? ' selected' : ''}>${esc(u.name)}</option>`).join('')}

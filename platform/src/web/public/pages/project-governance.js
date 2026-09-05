@@ -136,6 +136,7 @@
       body.name_ar = String(name).trim();
     }
     const code = pick('prj-code'); if (code !== undefined) body.code = code || '';
+    const fin = pick('prj-fincode'); if (fin !== undefined) body.financial_code = fin || '';
     const start = pick('prj-start'); if (start !== undefined) body.start_date = start || null;
     const end = pick('prj-end'); if (end !== undefined) body.end_date = end || null;
     if (body.start_date && body.end_date && body.end_date < body.start_date) {

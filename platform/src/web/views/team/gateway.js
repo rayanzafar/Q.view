@@ -31,7 +31,8 @@ const GATEWAY_CSS = `
   .tm-gw-ask .q{font-size:22px;font-weight:800;color:var(--ink2);line-height:1.4}
   .tm-gw-ask .s{font-size:var(--fs-body);color:var(--muted);margin-top:.25rem}
   .tm-gw .tm-path{padding-bottom:3.4rem;text-decoration:none;color:inherit}
-  .tm-gw .tm-path:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+  .tm-gw .tm-path-ttl{background:none;border:0;padding:0;font:inherit;font-size:var(--fs-title);font-weight:800;color:var(--ink2);cursor:pointer;text-align:right;display:block;width:100%}
+  .tm-gw .tm-path-ttl:focus-visible{outline:2px solid var(--brand);outline-offset:2px;border-radius:6px}
   .tm-gw .tm-path .art svg{width:46px;height:46px}
   .tm-gw .tm-path .go{text-decoration:none;font-size:18px}
   .tm-gw .tm-path .go:hover{border-color:var(--brand);color:var(--brand)}
@@ -125,9 +126,12 @@ export async function teamGatewayPage(user, opts = {}) {
   const card = (p) => {
     const on = sel === p.key;
     const facts = F[p.key].slice(0, 3);
-    return `<div class="tm-path${on ? ' on' : ''}" role="button" tabindex="0" data-action="path-select" data-path="${p.key}" aria-pressed="${on ? 'true' : 'false'}" aria-controls="tm-gw-pv-${p.key}">
+    // البطاقة كلها تُنقر (تفويض data-action) لكنها ليست عنصراً تفاعلياً في شجرة الوصول — العنصرُ
+    // التفاعلي هو زرّ العنوان وحده (aria-expanded على لوحة المعاينة)، فلا «تفاعلٌ داخل تفاعل»
+    // مع روابط الحقائق وسهم الفتح (فحص axe: nested-interactive).
+    return `<div class="tm-path${on ? ' on' : ''}" data-action="path-select" data-path="${p.key}">
       <div style="flex:1;min-width:0">
-        <div class="ttl">${esc(p.label)}</div>
+        <button type="button" class="ttl tm-path-ttl" data-action="path-select" data-path="${p.key}" aria-expanded="${on ? 'true' : 'false'}" aria-controls="tm-gw-pv-${p.key}">${esc(p.label)}</button>
         <div class="blurb">${esc(p.blurb)}</div>
         <div class="facts">${facts.length ? facts.map(cardFact).join('') : `<span class="tm-note">افتح المسار لاستعراض التفاصيل</span>`}</div>
       </div>

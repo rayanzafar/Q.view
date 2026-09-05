@@ -46,6 +46,10 @@ before(async () => {
   await mkUser('u_e1', 'consultant');          // موظف الإدارة الأولى
   await mkUser('u_e2', 'employee');            // موظف الإدارة الثانية — بلا أي منح على الطلبات
   await mkUser('u_hr', 'hr', 'own', null);     // يقرأ الطلبات شركةً ولا يطلب
+  await mkUser('u_pm', 'project_manager', 'own'); // مدير مشروع P1: «طلب تسكين» بنطاق مشروع بلا قراءة الموظفين
+  await db.insert('sector', { id: 'CONS', name_ar: 'قطاع الاستشارات', kind: 'delivery', active: 1, created_at: T });
+  await db.insert('employee', { id: 'e_c', user_id: null, name_ar: 'مورد قطاع آخر', sector_id: 'CONS', department_id: null,
+    job_title: 'استشاري', status: 'نشط', active: 1, hire_date: '2025-01-01', created_at: T });
   await db.insert('department', { id: 'D1', sector_id: 'SOL', name_ar: 'إدارة المدن الذكية', manager_user_id: 'u_dm1', active: 1, created_at: T });
   await db.insert('department', { id: 'D2', sector_id: 'SOL', name_ar: 'إدارة الذكاء الاصطناعي', manager_user_id: 'u_dm2', active: 1, created_at: T });
   const mkEmp = async (eid, uid, dept) => {
@@ -56,7 +60,32 @@ before(async () => {
   await mkEmp('e_dm1', 'u_dm1', 'D1'); await mkEmp('e_dm2', 'u_dm2', 'D2');
   await mkEmp('e_1', 'u_e1', 'D1'); await mkEmp('e_2', 'u_e2', 'D2'); await mkEmp('e_3', null, 'D1');
   await db.insert('project', { id: 'P1', name_ar: 'منظومة رصد الحافلات', sector_id: 'SOL', department_id: 'D1', status: 'IN_PROGRESS',
-    budget_halalas: 500000, contract_value_halalas: 900000, created_at: T });
+    owner_user_id: 'u_pm', budget_halalas: 500000, contract_value_halalas: 900000, created_at: T });
+});
+
+// ── مدير المشروع: يخطّط بسياج قطاعه ولا يقرأ الفريق ─────────────────────────────────────────
+// رحلة e2e كشفت أن صفحة التخطيط كانت تُغلق دونه (بوابتها «قراءة الموظفين») بينما الخدمة تقبل طلبه —
+// فصار يرى مصفوفة قطاعه أسماءً وطاقةً (لا مال)، ويبقى سجل الموارد وملف المورد لمن يقرأ الموظفين.
+test('مدير المشروع بلا قراءة الموظفين: يفتح مصفوفة قطاعه فقط (لا قطاعاً آخر)، وصفحة التخطيط تفتح له، وسجل الموارد وملف المورد لا', async () => {
+  const pm = await sess('u_pm');
+  const { canReadResources, canPlanResources } = await import('../../src/modules/team/access.js');
+  assert.equal(canReadResources(pm), false); assert.equal(canPlanResources(pm), true);
+  const m = await A.planningMatrix(pm, { from: K(11), to: K(11) });
+  const ids = m.rows.map((r) => r.resource.id).sort();
+  assert.deepEqual(ids, ['e_1', 'e_2', 'e_3', 'e_dm1', 'e_dm2'], 'زملاء قطاعه كلهم — ولا مورد القطاع الآخر');
+  assert.ok(!ids.includes('e_c'));
+  assert.ok(!JSON.stringify(m).match(/salary|halalas|_sar"/), 'لا مال في المصفوفة');
+  const cross = await A.planningMatrix(pm, { from: K(11), to: K(11), sector: 'CONS' });
+  assert.ok(!cross.rows.some((r) => r.resource.id === 'e_c'), 'مرشِّح القطاع لا يوسّع السياج');
+  const { PAGE_ACCESS } = await import('../../src/core/policy/pages.js');
+  assert.equal(!!PAGE_ACCESS['team/planning'](pm), true);
+  assert.equal(!!PAGE_ACCESS['team/resources'](pm), false);
+  assert.equal(!!PAGE_ACCESS['team'](pm), false);
+  const R = await import('../../src/modules/team/resources.js');
+  await assert.rejects(async () => R.listResources(pm, {}), /صلاحية/);
+  await assert.rejects(async () => R.resourceProfile(pm, 'e_1', {}), /خارج نطاقك/);
+  // والموظف بلا أي منح لا يزال خارج المصفوفة (لا يخطّط ولا يقرأ)
+  await assert.rejects(async () => A.planningMatrix(await sess('u_e2'), { from: K(11), to: K(11) }), /صلاحية/);
 });
 after(async () => { await db.close(); rmSync(dir, { recursive: true, force: true }); });
 

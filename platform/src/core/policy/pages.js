@@ -84,7 +84,10 @@ export const PAGE_ACCESS = {
   'team/org': (u) => can(u, 'read', 'employee'),
   'team/people': (u) => can(u, 'read', 'employee'),
   'team/work': (u) => can(u, 'read', 'employee'),
-  'team/planning': (u) => can(u, 'read', 'employee'),
+  // التخطيط (S13/S14) لمن يقرأ الفريق **أو** يملك «طلب تسكين»/كتابة التسكين بلا قراءة الموظفين
+  // (مدير المشروع بنطاق «مشروع»): الخدمة تقبل طلبه بسياج قطاعه (allocations.requestGate) وتعرض
+  // له مصفوفة قطاعه أسماءً وطاقةً (access.canPlanResources) — فلا تُغلق الصفحة دونه.
+  'team/planning': (u) => can(u, 'read', 'employee') || can(u, 'create', 'allocation_request') || can(u, 'create', 'allocation') || can(u, 'update', 'allocation'),
   // طلبات التسكين: كلٌّ يرى طلباته هو (الخدمة تقصّ القائمة على النطاق) — كـ«صفحتي».
   'team/requests': () => true,
   'team/analysis': (u) => can(u, 'read', 'employee'),

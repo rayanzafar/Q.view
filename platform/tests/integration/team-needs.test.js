@@ -197,8 +197,13 @@ test('المهارات بحالة توثيقها: موثقة / تحتاج تأك
   assert.deepEqual(q.rows.map((x) => x.employeeId), ['e_nov']);
 });
 
-test('المرشحون خلف بوابة الفريق: من لا يقرأ الموظفين لا يقارن، ومن لا يقرأ الاحتياج لا يفتحه', async () => {
-  await assert.rejects(async () => needs.candidates(await sess('u_pm'), needId), /صلاحية عرض الفريق/);
+test('المرشحون خلف بوابة التخطيط: مدير المشروع (بلا قراءة الموظفين) يقارن مرشّحي قطاعه كقائد القطاع نفسه، ومن لا يقرأ الاحتياج لا يفتحه', async () => {
+  // «مدير المشروع: إنشاء الاحتياج وطلب الموارد» (§10) — يرى مرشّحي احتياجه بسياج قطاعه: الصفوف نفسها
+  // التي يراها قائد القطاع (أسماء وطاقة ومهارات)، لا أوسع ولا أضيق، ولا مال (تُختبر في أدوات المساعد).
+  const pm = await needs.candidates(await sess('u_pm'), needId);
+  const lead = await needs.candidates(await sess('u_lead'), needId);
+  assert.ok(pm.rows.length >= 3, 'مرشّحون فعلاً لا قائمة فارغة');
+  assert.deepEqual(pm.rows.map((x) => x.employeeId).sort(), lead.rows.map((x) => x.employeeId).sort());
   await assert.rejects(async () => needs.candidates(await sess('u_conslead'), needId), /خارج نطاقك/);
 });
 

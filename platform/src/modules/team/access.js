@@ -34,11 +34,28 @@ export function resourceTypeOf(emp) {
 export const canReadResources = (user) => !!user && (user.role_id === 'admin' || can(user, 'read', 'employee'));
 
 /**
+ * هل يخطّط على الموارد: من يقرأ الفريق، **أو** من يملك «طلب تسكين» أو كتابة التسكين بلا قراءة
+ * الموظفين — مدير المشروع بنطاق «مشروع» (الموجّه §10: «إنشاء الاحتياج وطلب الموارد… لا بيانات
+ * موارد أخرى المالية»). هؤلاء يرون في مصفوفة التسكين ومرشّحي الاحتياج **زملاء قطاعهم** بأسمائهم
+ * وطاقتهم ومتاحهم — لا مال ولا ملفاً (سجل الموارد وملف المورد يبقيان لمن يقرأ الموظفين). وهو
+ * السياج نفسه الذي يقبل به طلبهم (allocations.requestGate)؛ وإلا طُلب تسكينٌ على مجهولٍ لا يُرى متاحه.
+ */
+export const canPlanResources = (user) => canReadResources(user)
+  || (!!user && (can(user, 'create', 'allocation_request') || can(user, 'create', 'allocation') || can(user, 'update', 'allocation')));
+const isPlannerOnly = (user) => !!user && !canReadResources(user) && canPlanResources(user);
+/** نطاق المخطِّط الذي لا يقرأ الموظفين: قطاعه (أو الشركة لصاحب النطاق الشركي)، بلا حصر إدارة. */
+function plannerScope(user, requestedSector = null) {
+  if (user.scope === 'company') return { sector: requestedSector || null, departments: [], department: null, blind: false };
+  return { sector: user.sector_id || null, departments: [], department: null, blind: !user.sector_id };
+}
+
+/**
  * شرط SQL لنطاق الموارد المقروءة — نفس `peopleScope` الذي يبني كشف الفريق حرفياً، مع استثناء
  * حسابات العرض لغير مدير النظام. يعيد { clause, params } على كنية جدول الموظف.
+ * والمخطِّط الذي لا يقرأ الموظفين يأخذ سياج قطاعه (plannerScope) — حيث تفتح له البوابة فقط.
  */
 export function resourceScopeSql(user, alias = 'e', requestedSector = null) {
-  const { sector, departments, blind } = peopleScope(user, requestedSector);
+  const { sector, departments, blind } = isPlannerOnly(user) ? plannerScope(user, requestedSector) : peopleScope(user, requestedSector);
   if (blind) return { clause: '1=0', params: [] };
   const where = [`${alias}.deleted_at IS NULL`];
   const params = [];
@@ -150,6 +167,7 @@ export const canReadClose = (user, sectorId) => !!user && (user.role_id === 'adm
 export function readerBreadth(user) {
   if (!user) return 'none';
   if (user.role_id === 'admin') return 'company';
+  if (isPlannerOnly(user)) return user.scope === 'company' ? 'company' : (user.sector_id ? 'sector' : 'none');
   const s = effectiveScope(user, 'read', 'employee');
   if (s === 'company') return 'company';
   if (s === 'department') return departmentScope(user).length ? 'department' : 'none';

@@ -27,7 +27,7 @@ import { loadReadableProject } from '../pmo/project-access.js';
 import { SKILL_LEVELS } from './resources.js';
 import { loadReadableOpportunity } from '../crm/opp-access.js';
 import { seesDemoAccounts, notDemoEmployeeSql, namesByIds } from '../org/people.js';
-import { canReadResources, resourceScopeSql } from './access.js';
+import { canReadResources, canPlanResources, resourceScopeSql } from './access.js';
 import { inDepartmentScope } from '../../core/rbac/departments.js';
 import { figuresFor } from './capacity-read.js';
 import { monthsBetween, parseMonthKey } from './capacity-model.js';
@@ -445,7 +445,8 @@ function fitSentences({ needPct, engaged, gaps, potentialOverPct, potentialMonth
  */
 export async function candidates(user, needId, { department, q } = {}) {
   const n = await loadReadableNeed(user, needId);
-  if (!canReadResources(user)) throw forbidden('مقارنة المرشحين تتطلب صلاحية عرض الفريق — اطلبها من مدير النظام');
+  // مدير المشروع يقارن مرشّحي احتياجه بسياج قطاعه (canPlanResources) — أسماء وطاقة ومهارات، لا مال.
+  if (!canPlanResources(user)) throw forbidden('مقارنة المرشحين تتطلب صلاحية عرض الفريق أو «طلب تسكين» — اطلبها من مدير النظام');
   const months = monthsBetween(monthKeyOfDate(n.from_date), monthKeyOfDate(n.to_date));
   if (!months.length) throw badRequest('فترة الاحتياج غير صالحة — صحّح تاريخي البداية والنهاية');
   const needPct = N(n.fte_pct);

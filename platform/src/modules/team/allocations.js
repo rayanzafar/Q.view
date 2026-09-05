@@ -26,7 +26,7 @@ import { loadReadableProject } from '../pmo/project-access.js';
 import { raiseDirectApproval, actOnApproval, ALLOCATION_WORKFLOW_KEY } from '../workflow/engine.js';
 import { notify } from '../notifications/notify.js';
 import { workBucketLabel } from '../../web/i18n/glossary.js';
-import { canReadResources, resourceScopeSql, resourceInScope, planningRights, resourceTypeOf, RESOURCE_TYPE_AR, managesResource } from './access.js';
+import { canReadResources, canPlanResources, resourceScopeSql, resourceInScope, planningRights, resourceTypeOf, RESOURCE_TYPE_AR, managesResource } from './access.js';
 import { loadCapacityContext, figuresFromContext, allocationFingerprint } from './capacity-read.js';
 import { monthsBetween, parseMonthKey, monthKey, monthStart, bandOf, BAND_AR } from './capacity-model.js';
 import {
@@ -96,7 +96,9 @@ function periodOf(p) {
  * مصفوفة مورد × شهر لمن يقرأ الفريق، بنطاقه (resourceScopeSql) — والتصفية تضيّق داخله ولا توسّعه.
  */
 export async function planningMatrix(user, { from, to, sector, department, q, showTentative = true } = {}) {
-  if (!canReadResources(user)) throw forbidden('مصفوفة التسكين لمن يقرأ الفريق — اطلب صلاحية عرض الفريق');
+  // لمن يقرأ الفريق، ولمن يملك «طلب تسكين» بلا قراءة الموظفين (مدير المشروع) بسياج قطاعه —
+  // فلا تُغلق المصفوفة دون من تقبل الخدمة طلبه (requestGate).
+  if (!canPlanResources(user)) throw forbidden('مصفوفة التسكين لمن يقرأ الفريق أو يملك «طلب تسكين» — اطلب صلاحية عرض الفريق');
   const period = resolvePeriod(from, to);
   const scope = resourceScopeSql(user, 'e', sector || null);
   const where = [scope.clause]; const params = [...scope.params];

@@ -86,7 +86,7 @@ test('S01 — البوابة تعرض المسارات الأربعة وسؤال
   assert.ok(access.canCreateResource(lead), 'العيّنة: قائد القطاع يجب أن يملك الإنشاء');
   const html = await gateway.teamGatewayPage(lead, {});
   for (const p of ['الفريق والقدرات', 'التسكين والطاقة', 'العمل والالتزامات', 'التحليل والاحتياجات']) assert.ok(html.includes(p), 'مسار غائب: ' + p);
-  assert.equal((html.match(/data-action="path-select"/g) || []).length, 4, 'عدد بطاقات المسارات ليس أربعاً');
+  assert.equal((html.match(/class="ttl tm-path-ttl"/g) || []).length, 4, 'عدد بطاقات المسارات ليس أربعاً');
   assert.ok(html.includes('ماذا تريد أن تدير اليوم؟'));
   assert.ok(html.includes('إضافة مورد'), 'قائد القطاع يملك الإنشاء ولا يرى الزر');
   assert.ok(!LEAK.test(visible(html)), 'تسرّب في البوابة');
@@ -96,7 +96,7 @@ test('S01 — البوابة تعرض المسارات الأربعة وسؤال
   assert.ok(!access.canCreateResource(dm));
   const h2 = await gateway.teamGatewayPage(dm, {});
   assert.ok(!h2.includes('إضافة مورد'), 'مدير الإدارة لا يملك الإنشاء ويرى الزر');
-  assert.equal((h2.match(/data-action="path-select"/g) || []).length, 4);
+  assert.equal((h2.match(/class="ttl tm-path-ttl"/g) || []).length, 4);
 
   const emp = await sess('u_emp');
   const h3 = await gateway.teamGatewayPage(emp, {});
@@ -107,8 +107,8 @@ test('S01 — البوابة تعرض المسارات الأربعة وسؤال
 test('S01 — ?path=planning يسبق الاختيار ويعرض معاينته؛ الإقفال يُخفى عن غير المخوَّل ولا يُخفى التخطيط', async () => {
   const emp = await sess('u_emp');
   const html = await gateway.teamGatewayPage(emp, { path: 'planning' });
-  assert.ok(/data-path="planning" aria-pressed="true"/.test(html), 'بطاقة التسكين غير محددة');
-  assert.ok(/data-path="people" aria-pressed="false"/.test(html), 'بطاقة أخرى محددة خطأً');
+  assert.ok(/data-path="planning" aria-expanded="true"/.test(html), 'بطاقة التسكين غير محددة');
+  assert.ok(/data-path="people" aria-expanded="false"/.test(html), 'بطاقة أخرى محددة خطأً');
   assert.ok(html.includes('id="tm-gw-pv-planning" data-path'), 'معاينة التسكين مخفية رغم الاختيار');
   assert.ok(html.includes('id="tm-gw-pv-people" hidden'), 'معاينة غير مختارة ظاهرة');
   assert.ok(html.includes('href="/app/team/planning"'), 'رابط التخطيط غائب');
@@ -120,7 +120,7 @@ test('S01 — ?path=planning يسبق الاختيار ويعرض معاينته
   assert.ok(!LEAK.test(visible(h2)));
   // مسارٌ غير معروف لا يختار شيئاً ولا يكسر الصفحة
   const h3 = await gateway.teamGatewayPage(admin, { path: 'nope' });
-  assert.ok(!/aria-pressed="true"/.test(h3));
+  assert.ok(!/tm-path-ttl"[^>]*aria-expanded="true"/.test(h3));
 });
 
 // ── S02 ─────────────────────────────────────────────────────────────────────────────
@@ -165,7 +165,7 @@ test('S02 — البحث يعيد مجموعة جزئية بترقيمها، و�
   assert.ok(html.includes(NAMES[3]) && !html.includes(NAMES[0]), 'البحث لم يقصّ القائمة');
   assert.ok(html.includes('1–1 من 1'), 'ترقيم نتيجة البحث الواحدة');
   assert.ok(html.includes('value="الشمري"'), 'نص البحث لا يبقى في الحقل');
-  assert.ok(html.includes('مسح الفلاتر'));
+  assert.ok(html.includes('مسح التصفية'));
 
   const none = await resources.resourcesPage(lead, { q: 'اسم-لا-وجود-له' });
   assert.ok(none.includes('لا نتائج'), 'حالة «لا نتائج» غائبة');
