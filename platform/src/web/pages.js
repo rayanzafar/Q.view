@@ -18,3 +18,4 @@ export * from './views/guide.js';
 export * from './views/_shared.js';
 export * from './views/ops.js';
 export * from './views/events.js';
+export * from './views/team/index.js';

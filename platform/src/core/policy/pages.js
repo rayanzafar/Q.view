@@ -5,6 +5,7 @@
 // يُنتج وعداً بشاشة يردّها النظام. المصدر هنا واحد، فلا انعكاس ولا نسخة ثانية.
 // لا تستورد هذه الوحدة إلا من `core` كي تبقى صالحة لكل الطبقات.
 import { can, effectiveScope } from '../rbac/index.js';
+import { departmentScope } from '../rbac/departments.js';
 
 const IO_TYPES_READ = ['opportunity', 'project', 'client', 'employee', 'allocation', 'revenue'];
 
@@ -75,6 +76,24 @@ export const PAGE_ACCESS = {
   // في مواضعها، والإيراد يُقرأ منها في كل شاشة. وإعادةُ الشاشة يوماً سطرٌ واحد.
   finance: () => false,
   team: (u) => can(u, 'read', 'employee'),
+  // أقسام «الفريق والموارد» (ADR-0016) — `/app/team/<section>`: بوابة القوائم هي بوابة «الفريق»
+  // نفسها، إلا «الإقفال الشهري» فبوابته منح الإقفال (قراءةً أو اعتماداً) — لا الموظف ولا الموارد
+  // البشرية. المفاتيح بالشرطة المائلة كي تُشتقّ منها توقعات المسح الحيّ ومصفوفة الصلاحيات كما
+  // تُشتقّ لبقية الصفحات، ويقرأها موجّه الأقسام بالمفتاح نفسه — مصدرٌ واحد لا نسختان.
+  'team/resources': (u) => can(u, 'read', 'employee'),
+  'team/org': (u) => can(u, 'read', 'employee'),
+  'team/people': (u) => can(u, 'read', 'employee'),
+  'team/work': (u) => can(u, 'read', 'employee'),
+  'team/planning': (u) => can(u, 'read', 'employee'),
+  // طلبات التسكين: كلٌّ يرى طلباته هو (الخدمة تقصّ القائمة على النطاق) — كـ«صفحتي».
+  'team/requests': () => true,
+  'team/analysis': (u) => can(u, 'read', 'employee'),
+  // الاحتياجات لمن يقرأ «الاحتياج» (مدير المشروع على مشاريعه ولو لم يقرأ الموظفين).
+  'team/needs': (u) => can(u, 'read', 'resource_need'),
+  // الإقفال: منح الإقفال قراءةً أو اعتماداً؛ ومنحُ «إدارة» بلا إدارةٍ مُدارة لا يفتح شيئاً
+  // (الخدمة ترفضه بالرسالة نفسها — البوابة والخدمة على قولٍ واحد).
+  'team/close': (u) => u.role_id === 'admin' || can(u, 'approve', 'cost_close')
+    || (can(u, 'read', 'cost_close') && (u.scope !== 'department' || departmentScope(u).length > 0)),
   staffing: (u) => can(u, 'read', 'employee'),
   imports: (u) => u.role_id === 'admin' || ['client', 'employee', 'opportunity', 'project', 'allocation', 'revenue_line'].some((r) => can(u, 'read', r) || can(u, 'create', r) || can(u, 'update', r)),
   reports: (u) => can(u, 'read', 'report'),

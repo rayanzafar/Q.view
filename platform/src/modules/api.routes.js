@@ -37,6 +37,12 @@ import { reportsRouter } from './reports.routes.js';
 import { moneyRouter } from './finance/money.routes.js';
 import { identityRouter } from './identity/identity.routes.js';
 import { eventsRouter } from './events/events.routes.js';
+// وحدة الفريق والموارد (ADR-0016) — خمسة موجّهات تحت `/team/...`
+import { teamResourcesRouter } from './team/team-resources.routes.js';
+import { teamAllocationsRouter } from './team/team-allocations.routes.js';
+import { teamNeedsRouter } from './team/team-needs.routes.js';
+import { teamAnalysisRouter } from './team/team-analysis.routes.js';
+import { teamCloseRouter } from './team/team-close.routes.js';
 
 export const apiRouter = Router();
 apiRouter.use(requireAuth());
@@ -57,6 +63,11 @@ apiRouter.use(reportsRouter);
 apiRouter.use(moneyRouter);
 apiRouter.use(identityRouter);
 apiRouter.use(eventsRouter);
+apiRouter.use(teamResourcesRouter);
+apiRouter.use(teamAllocationsRouter);
+apiRouter.use(teamNeedsRouter);
+apiRouter.use(teamAnalysisRouter);
+apiRouter.use(teamCloseRouter);
 const h = (fn) => async (req, res, next) => { try { const r = await fn(req, res); if (r !== undefined) res.json(r); } catch (e) { next(e); } };
 
 // ── Opportunities / CRM ──

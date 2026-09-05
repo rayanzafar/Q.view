@@ -47,9 +47,12 @@ export const ROLES = [
 // الذي أصاب «دليلي»: صفحة مشحونة خارج كل بوابة جودة. حارسها هو حارس «الفريق» نفسه.
 // «صفحتي» مفتوحة للجميع كـ«دليلي» — بلا بوابة لأن كل بياناتها مقيَّدة بصاحب الحساب. ووجودها
 // هنا هو ما يُخضِعها للمسح الحيّ ولفحص التسرّب: صفحة الهبوط لكل مستخدم أولى الصفحات بالفحص.
+// أقسام «الفريق والموارد» (ADR-0016) بمفاتيحها في سياسة الصفحات `team/<section>` — تُفحص كصفحات:
+// بوابتها بوابة «الفريق» إلا «الإقفال الشهري» فبوابته منح الإقفال.
 export const PAGES = ['home', 'ceo', 'portfolio', 'sector', 'opportunities', 'my-opportunities', 'projects',
   'clients', 'events', 'tasks', 'timesheet', 'approvals', 'team', 'staffing', 'imports', 'users', 'audit', 'reports', 'org', 'finance', 'mail', 'ops',
-  'guide'];
+  'guide',
+  'team/resources', 'team/org', 'team/people', 'team/work', 'team/planning', 'team/requests', 'team/analysis', 'team/needs', 'team/close'];
 
 // Roles whose service guards admit them to the people/org surfaces: staffingRoster() and orgTree()
 // both open on `role==='admin' || can(read employee)` (orgTree also on `can(create sector)`), so the

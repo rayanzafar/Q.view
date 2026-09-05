@@ -155,7 +155,8 @@ test('sensitive: salary reaches ADMIN ONLY — sealed from every other role over
   const adminRoster = await req('demo.admin', '/api/org/roster');
   assert.equal(adminRoster.status, 200);
   assert.match(adminRoster.text, /"salary_halalas":\s*[1-9]/, 'مدير النظام يستقبل الراتب');
-  assert.match((await req('demo.admin', '/app/team')).text, /emp-sal/, 'صفحة الفريق تعرض عمود الراتب لمدير النظام');
+  // شاشة الموظفين (عمود الراتب) صارت تبويب «حسابات الدخول» تحت البوابة: /app/team/people (ADR-0016).
+  assert.match((await req('demo.admin', '/app/team/people')).text, /emp-sal/, 'صفحة الموظفين تعرض عمود الراتب لمدير النظام');
 
   // كان هنا سطران يثبتان أن `demo.bd` يُردّ ٤٠٣ عن الكشف — وهي **حقيقةٌ عن الحال لا قاعدة عن
   // الراتب**: مدير تطوير الأعمال كان بلا منح قراءة موظف إطلاقاً. وقد نال «قراءة موظف @قطاع»
@@ -168,7 +169,7 @@ test('sensitive: salary reaches ADMIN ONLY — sealed from every other role over
   for (const who of ['demo.hr', 'demo.sectorlead', 'demo.ceo', 'demo.bd']) {
     const roster = (await req(who, '/api/org/roster')).text;
     assert.doesNotMatch(roster, /"salary_halalas":\s*[1-9]/, `${who} يجب ألا يستقبل الراتب`);
-    const page = await req(who, '/app/team');
+    const page = await req(who, '/app/team/people');
     if (page.status === 200) {
       const html = page.text;
       assert.doesNotMatch(html, /emp-sal/, `${who} يجب ألا يرى عمود الراتب`);

@@ -277,21 +277,40 @@ export async function auditPage(user) {
     merged_from: 'دُمج منها', renamed_to: 'أُعيدت التسمية', email: 'البريد', action: 'الإجراء', step: 'الخطوة',
     event: 'الحدث', collected: 'محصَّل', settled: 'سُدِّدت', deliverables: 'مخرجات', amount: 'المبلغ',
     claim_no: 'رقم المستخلص', restored: 'استُرجع', unmerged_from: 'فُكّ الدمج من', note: 'ملاحظة', reason: 'السبب',
+    // وحدة الفريق والموارد
+    employee: 'المورد', target: 'الوجهة', year: 'السنة', months: 'الأشهر', alloc_status: 'نوع التسكين',
+    from: 'من', to: 'إلى', before: 'قبل', after: 'بعد', pct: 'النسبة', status: 'الحالة', effective_from: 'يسري من',
+    capacity_pct: 'الطاقة', role_ar: 'الدور', headcount: 'العدد', fte_pct: 'الطاقة لكل مورد', certainty: 'اليقين',
+    lines: 'الأسطر', version: 'الإصدار', period: 'الفترة', signal: 'الإشارة', requested_by: 'طلبه',
   };
-  const detailVal = (x) => (typeof x === 'object' && x !== null
-    ? Object.values(x).filter((y) => y != null && y !== '').join(' ') : String(x));
+  // القيمة تُقرأ **بعمقٍ** لا بمستوى واحد: وحدة الفريق تكتب في الوصف كائنات متداخلة (الوجهة
+  // {النوع، المعرّف}، الأشهر {"10": 50}، قبل/بعد) ونصوصاً مرمَّزة (المهارات) — فكانت تُطبع
+  // «[object Object]» وبين علامتَي اقتباس. والمنطقيات تُقال بالعربية لا `true`.
+  const detailVal = (x, depth = 0) => {
+    if (x == null || x === '') return '';
+    if (typeof x === 'boolean') return x ? 'نعم' : 'لا';
+    if (typeof x === 'string') {
+      const t = x.trim();
+      if (depth < 3 && ((t.startsWith('{') && t.endsWith('}')) || (t.startsWith('[') && t.endsWith(']')))) {
+        try { return detailVal(JSON.parse(t), depth + 1); } catch { /* نصّ عادي */ }
+      }
+      return x;
+    }
+    if (Array.isArray(x)) return x.map((y) => detailVal(y, depth + 1)).filter(Boolean).join('، ');
+    if (typeof x === 'object') {
+      return Object.entries(x)
+        .filter(([, y]) => y != null && y !== '')
+        .map(([k, y]) => (DETAIL_KEY_AR[k] ? `${DETAIL_KEY_AR[k]}: ${detailVal(y, depth + 1)}`
+          : /^\d+$/.test(k) ? `${k}: ${detailVal(y, depth + 1)}` : detailVal(y, depth + 1)))
+        .filter(Boolean).join(depth ? ' ' : ' · ');
+    }
+    return String(x);
+  };
   const readDetail = (raw) => {
     if (raw == null || raw === '') return '';
     let v = raw;
     try { v = JSON.parse(raw); } catch { return String(raw); }
-    if (v == null) return '';
-    if (typeof v === 'string' || typeof v === 'number') return String(v);
-    if (Array.isArray(v)) return v.map((x) => (typeof x === 'object' ? Object.values(x).filter((y) => y != null).join(' · ') : String(x))).join('، ');
-    if (typeof v === 'object') return Object.entries(v)
-      .filter(([, x]) => x != null && x !== '')
-      .map(([k, x]) => (DETAIL_KEY_AR[k] ? `${DETAIL_KEY_AR[k]}: ${detailVal(x)}` : detailVal(x)))
-      .join(' · ');
-    return String(v);
+    return detailVal(v);
   };
   const list = rows.map((a) => `<tr class="border-b border-line">
     <td class="py-1.5 px-3 text-[11px] text-muted tabular-nums" style="white-space:nowrap;vertical-align:top">${a.at.slice(0, 19).replace('T', ' ')}</td>

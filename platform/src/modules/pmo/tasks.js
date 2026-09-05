@@ -184,9 +184,13 @@ export async function projectTasks(user, projectId) {
 // أي مستخدم في الشركة كلها. نحلّ قطاعه من حسابه ونمرّره صراحةً.
 async function assertMayAssign(user, assigneeId) {
   if (!assigneeId || assigneeId === user.id) return;
-  const target = await get('SELECT id, sector_id FROM app_user WHERE id = ? AND deleted_at IS NULL AND active = 1', [assigneeId]);
+  // إدارةُ المُسنَد إليه تدخل الهدف: منحُ «إدارة» بلا مفتاح الإدارة كان يمرّ من `can()` فيُسند مدير
+  // إدارةٍ مهمةً لأي موظف في قطاعه — الهدف الآن يحمل إدارة صاحب الحساب (من سجل موظفه) فيُقارَن بها.
+  const target = await get(`SELECT u.id, u.sector_id, e.department_id FROM app_user u
+      LEFT JOIN employee e ON e.id = u.employee_id AND e.deleted_at IS NULL
+      WHERE u.id = ? AND u.deleted_at IS NULL AND u.active = 1`, [assigneeId]);
   if (!target) throw badRequest('المستخدم المُسنَد إليه غير موجود');
-  if (!can(user, 'update', 'task', { sector_id: target.sector_id, assignee_user_id: assigneeId, user_id: assigneeId }))
+  if (!can(user, 'update', 'task', { sector_id: target.sector_id, department_id: target.department_id || null, assignee_user_id: assigneeId, user_id: assigneeId }))
     throw forbidden('إسناد مهمة لشخص آخر يتطلب صلاحية إدارية على قطاعه');
 }
 

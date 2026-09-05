@@ -79,7 +79,8 @@ for (const { username, role } of ROLES) {
     let file = null, mobileFile = null;
     if (status === 200) {
       await settle(page);
-      file = `${username}/${p}.png`;
+      // مفاتيح أقسام الفريق تحمل شرطة مائلة (`team/resources`) — تُسطَّح في اسم الملف.
+      file = `${username}/${p.replace(/\//g, '-')}.png`;
       await page.screenshot({ path: resolve(outDir, file), fullPage: true });
       if (MOBILE_PAGES.includes(p)) {
         if (!mobileReady) mobileReady = await login(mobilePage, username);
@@ -87,7 +88,7 @@ for (const { username, role } of ROLES) {
           const mres = await mobilePage.goto(`${base}/app/${p}`, { waitUntil: 'load', timeout: 30000 }).catch(() => null);
           if (mres?.status() === 200) {
             await settle(mobilePage);
-            mobileFile = `${username}/${p}.mobile.png`;
+            mobileFile = `${username}/${p.replace(/\//g, '-')}.mobile.png`;
             await mobilePage.screenshot({ path: resolve(outDir, mobileFile), fullPage: true });
           }
         }

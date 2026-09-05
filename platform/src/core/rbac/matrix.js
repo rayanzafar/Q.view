@@ -61,6 +61,11 @@ export const ROLE_GRANTS = {
     // exec sees company margins/cost/revenue (aggregate), not individual salary or IPs
     { resource: 'margin', action: 'read', scope: 'company' },
     { resource: 'cost', action: 'read', scope: 'company' },
+    // ── وحدة الفريق والموارد (ADR-0016) ──
+    // «المراجعة المالية» للإقفال الشهري: لا دور مالية في الشركة (قرار مالك) والسلطة المالية
+    // كلها هنا — فمراجعة توزيع التكلفة وإقفاله وتصحيحه وتصديره لمكتب الرئيس التنفيذي.
+    ...crud(['cost_close'], 'company', ['read', 'update', 'approve', 'export']),
+    ...read(['resource_need', 'allocation_request'], 'company'),
   ],
 
   sector_lead: [
@@ -89,6 +94,12 @@ export const ROLE_GRANTS = {
     { resource: 'report', action: 'export', scope: 'sector' },
     { resource: 'margin', action: 'read', scope: 'sector' },
     { resource: 'cost', action: 'read', scope: 'sector' },
+    // ── وحدة الفريق والموارد (ADR-0016) ──
+    // «مدير القطاع: تخطيط موارده ومراجعة الطلبات وتأكيد توزيع التكلفة ضمن صلاحياته» — الموجّه
+    // §10. مراجعة المدير على الإقفال (لا الإقفال المالي)، والاحتياجات وطلبات التسكين في قطاعه.
+    ...crud(['cost_close'], 'sector', ['read', 'update']),
+    ...crud(['resource_need'], 'sector', ['read', 'create', 'update', 'delete']),
+    ...crud(['allocation_request'], 'sector', ['read', 'create']),
   ],
 
   // منح التقارير هنا يعالج **عكس** العطل الموصوف تحت «المدير المباشر»: هذان الدوران كانا
@@ -162,6 +173,12 @@ export const ROLE_GRANTS = {
     ...read(['report', 'kpi'], 'sector'),
     { resource: 'margin', action: 'read', scope: 'sector' },
     { resource: 'cost', action: 'read', scope: 'sector' },
+    // ── وحدة الفريق والموارد (ADR-0016) ──
+    // «مدير الإدارة: التسكين والاحتياجات ومراجعة طلبات استخدام موارده — لا إقفال مالي» (§10).
+    // مراجعة المدير على توزيع أهل إدارته فقط (قراءة وتأكيد)، والاحتياجات وطلبات التسكين بإدارته.
+    ...crud(['cost_close'], 'department', ['read', 'update']),
+    ...crud(['resource_need'], 'department', ['read', 'create', 'update', 'delete']),
+    ...crud(['allocation_request'], 'department', ['read', 'create']),
   ],
 
   // «المدير المباشر» — منحُه كان كلّه بنطاق «الفريق»، وهو نطاق **لا يمكن اجتيازه إطلاقاً**: فحصه
@@ -177,6 +194,8 @@ export const ROLE_GRANTS = {
   line_manager: [
     ...read(['employee', 'task', 'timesheet', 'report'], 'department'),
     { resource: 'timesheet', action: 'approve', scope: 'department' },
+    // وحدة الفريق والموارد (ADR-0016): يقرأ تسكين أهل إدارته ليرى متاحهم — قراءةً لا كتابة.
+    ...read(['allocation', 'allocation_request'], 'department'),
   ],
 
   // مدير المشروع يملك **مالية مشروعه** — قرار مالك صريح: «مدير المشروع ومن فوقه يقدر يعدلها
@@ -194,6 +213,10 @@ export const ROLE_GRANTS = {
     ...read(['contract', 'revenue_line', 'contract_payment'], 'project'),
     { resource: 'invoice', action: 'read', scope: 'project' },
     { resource: 'invoice', action: 'create', scope: 'project' }, // المستخلص على مخرَجٍ سلّمه
+    // وحدة الفريق والموارد (ADR-0016): «مدير المشروع: إنشاء الاحتياج وطلب الموارد… لا بيانات
+    // موارد أخرى المالية» (§10) — احتياجاتُ مشاريعه وطلباتُ التسكين عليها؛ الاعتماد لمدير المورد.
+    ...crud(['resource_need'], 'project', ['read', 'create', 'update']),
+    ...crud(['allocation_request'], 'project', ['read', 'create']),
   ],
 
   // «مدير تطوير الأعمال» — فرصُه هو، لا فرص قطاعه. قرار مالك (٢٠٢٦-٠٨): كان الدور يقرأ
@@ -234,6 +257,10 @@ export const ROLE_GRANTS = {
     ...crud(['project'], 'sector', ['read', 'create', 'update']),
     ...read(['report', 'kpi'], 'sector'),
     ...read(['employee', 'task'], 'sector'),
+    // وحدة الفريق والموارد (ADR-0016): «تطوير الأعمال: طلب موارد للعرض أو طلب مستقبلي مبدئي» (§10).
+    ...crud(['resource_need'], 'sector', ['read', 'create', 'update']),
+    ...crud(['allocation_request'], 'sector', ['read', 'create']),
+    ...read(['allocation'], 'sector'),
   ],
 
   // رئيس تطوير الأعمال — وحدة مساندة على مستوى **الشركة** لا داخل قطاع واحد: يعمل على فرص
@@ -286,11 +313,20 @@ export const ROLE_GRANTS = {
     { resource: 'employee', action: 'delete', scope: 'company' }, // HR owns the staff roster: offboard/remove
     // NOTE: no salary grant — sealed platform-wide until the Odoo integration (owner decision).
     ...read(['timesheet', 'report', 'kpi'], 'company'),
+    // ── وحدة الفريق والموارد (ADR-0016) ──
+    // «الموارد البشرية ترى موارد الشركة وملفاتهم ومهامهم ومشاريعهم وتسكينهم… لا رواتب أو قيم
+    // مشاريع أو ربحية فردية» (§10). فتقرأ التسكين والطلبات والاحتياجات شركةً — **بلا** منح
+    // «مشروع» أو «فرصة» كي لا تُفتح لها شاشات قيم العقود؛ أسماءُ الأعمال تصلها من خدمة
+    // الموارد نفسها (أسماء وفترات بلا مال).
+    ...read(['allocation', 'allocation_request', 'resource_need'], 'company'),
   ],
 
   operations: [
     ...crud(['project', 'task', 'allocation', 'milestone', 'deliverable'], 'sector'),
     ...read(['report', 'kpi'], 'sector'),
+    // وحدة الفريق والموارد (ADR-0016): العمليات تخطّط موارد قطاعها — احتياجات وطلبات تسكين.
+    ...crud(['resource_need'], 'sector', ['read', 'create', 'update']),
+    ...crud(['allocation_request'], 'sector', ['read', 'create']),
   ],
 
   consultant: [

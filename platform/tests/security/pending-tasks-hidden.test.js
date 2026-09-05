@@ -53,8 +53,9 @@ const BY_ID = /\b(?:t\.)?id\s*(?:=\s*\?|IN\s*\()/i;
 // والمهمة المعلَّقة جرى عليها شيءٌ فعلاً (أُنشئت ورُفع طلبها) — فإخفاء ذلك يُخفي واقعة حدثت.
 const ALLOWED_MARKERS = [/audit_log/];
 
-// الحاجزُ نفسه، أينما ورد: نصاً في الاستعلام، أو دالةً تُركَّب فيه.
-const GUARD = /approval_state|approvedTaskSql|ownOrApprovedTaskSql|myWorkOrMyPendingSql/;
+// الحاجزُ نفسه، أينما ورد: نصاً في الاستعلام، أو دالةً تُركَّب فيه. و`openLoadSql` (مقياس الحِمل)
+// يحمل الحاجز في جوفه (`approvedTaskSql` + `notPersonalSql`) — فورودُه ورودٌ للحاجز.
+const GUARD = /approval_state|approvedTaskSql|ownOrApprovedTaskSql|myWorkOrMyPendingSql|openLoadSql/;
 
 test('كل استعلام يسرد المهام يحجب ما ينتظر اعتماداً — أو يقرأ صفاً بمعرّفه', () => {
   const misses = [];

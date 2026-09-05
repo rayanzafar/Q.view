@@ -166,11 +166,18 @@ export async function actOnApproval(ctx, requestId, action, comment) {
     // الوحدة صاحبة المورد هي التي تُفعّله أو تُلغيه — فلا يتسرّب علمُ نوعٍ بعينه إلى محرّك عام.
     // والاختيار بالمورد المكتوب في الصفّ لا بنوعٍ يرسله أحد، و`hasOwn` لا الوصول المباشر
     // (مفتاح موروث مثل 'constructor' يعيد دالةً لا مُسوّياً).
+    // المُسوّي قد يردّ الطلب رغم موافقة المعتمِد (تغيّرت الخطة منذ المعاينة، أو تعذّر التنفيذ
+    // بصلاحية المعتمِد): يعيد `{ outcome: 'returned', reason }` فيُغلَق الطلب مرفوضاً بسببه بدل
+    // «اعتُمد طلبك» على تسكينٍ لم يقع. المُسوّون الأقدم لا يعيدون شيئاً فيبقى سلوكهم كما هو.
+    let settled = null;
     if (direct) {
       const settle = Object.hasOwn(DIRECT_SETTLERS, reqRow.resource) ? DIRECT_SETTLERS[reqRow.resource] : null;
-      if (settle) await settle(reqRow, action === 'approve', user.id);
+      if (settle) settled = await settle(reqRow, action === 'approve', user.id);
     }
-    if (action === 'reject') {
+    if (action === 'approve' && settled && settled.outcome === 'returned') {
+      await update('approval_request', requestId, { status: 'REJECTED', closed_at: nowIso() });
+      // الإخطار كتبه المُسوّي بسببه (يعرف التفصيل) — لا يُكرَّر هنا.
+    } else if (action === 'reject') {
       await update('approval_request', requestId, { status: 'REJECTED', closed_at: nowIso() });
       await notify(reqRow.requested_by, { kind: 'approval', title: 'رُفض طلب الاعتماد', body: comment || '',
         ref_resource: reqRow.resource, ref_id: reqRow.resource_id });
@@ -227,16 +234,25 @@ export const TASK_WORKFLOW_KEY = 'task_approval';
 
 // ما الذي يُوجَّه إلى شخصٍ بعينه، وباسمٍ عربيٍّ يقرؤه المعتمِد في شاشته. المفاتيح هنا لأنها
 // **تعريفاتُ مسارات** (شأن المحرّك)، والتسوياتُ في وحداتها لأنها أثرٌ على مورد (شأن الوحدة).
+// طلب التسكين (وحدة الفريق والموارد — ADR-0016): التغيير المقترح يسكن `allocation_request`،
+// ومعتمِده مدير المورد بعينه — نفس الباب الموجَّه ونفس الصندوق، لا صندوقَ ثانياً.
+export const ALLOCATION_WORKFLOW_KEY = 'allocation_request';
+
 const DIRECT_WORKFLOWS = {
   [STAFFING_WORKFLOW_KEY]: { nameAr: 'تأكيد تسكين موظف', target: 'membership' },
   [TASK_WORKFLOW_KEY]: { nameAr: 'اعتماد مهمة على مشروع أو فرصة', target: 'task' },
+  [ALLOCATION_WORKFLOW_KEY]: { nameAr: 'طلب تسكين على مشروع أو عمل داخلي', target: 'allocation_request' },
 };
 
 // أثرُ القرار على المورد — كلٌّ في وحدته. `hasOwn` وحدها بوابةُ الاختيار: لا مورد يأتي من
 // الطلب، ومَن لا مُسوّي له لا يُبَتّ فيه بشيء (الطلب يُغلَق ويُسجَّل، والصفّ لا يُمَسّ).
 // الوسيطُ الثالث معرّفُ المعتمِد نفسه — يستهلكه من يكتب أثرَ القرار على مورده (مثل المهام
 // في ٠٣٠) ويتجاهله من لا شأن له به.
-const DIRECT_SETTLERS = { membership: settleStaffing, task: settleTask };
+// مُسوّي طلب التسكين يُحمَّل عند أول حاجة: وحدة الفريق تستورد هذا المحرّك (لرفع الطلب)، فاستيرادٌ
+// ساكن في الاتجاهين دورةٌ — والتحميل الكسول يقطعها بلا وسيطٍ ثالث.
+const settleAllocation = async (reqRow, approved, actorUserId) =>
+  (await import('../team/allocation-settle.js')).settleAllocationRequest(reqRow, approved, actorUserId);
+const DIRECT_SETTLERS = { membership: settleStaffing, task: settleTask, allocation_request: settleAllocation };
 
 // تعريفُ المسار يُنشأ عند أول حاجة: الترحيلة تصف المخطط لا البيانات، والبذر لا يُعاد على
 // قاعدةٍ ممتلئة. `ON CONFLICT DO NOTHING` يجعل النداء آمناً للتكرار وللتزامن معاً.

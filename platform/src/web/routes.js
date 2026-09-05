@@ -221,7 +221,9 @@ const PAGES = {
   ceo: P.ceoPage, portfolio: P.portfolioPage, sector: P.sectorPage, opportunities: P.opportunitiesPage,
   'my-opportunities': P.myOpportunitiesPage,
   projects: P.projectsPage, tasks: P.tasksPage, timesheet: P.timesheetPage, approvals: P.approvalsPage,
-  team: P.teamPage, staffing: P.staffingPage, users: P.usersPage, audit: P.auditPage, ops: P.opsPage, reports: P.reportsPage, org: P.orgTreePage,
+  // «الفريق» صار بوابةً بأربعة مسارات (ADR-0016)؛ شاشة الموظفين وحسابات الدخول القائمة تحت
+  // `/app/team/people` (تبويب «حسابات الدخول») — لم تُمحَ ولم يتغيّر عقدها.
+  team: P.teamGatewayPage, staffing: P.staffingPage, users: P.usersPage, audit: P.auditPage, ops: P.opsPage, reports: P.reportsPage, org: P.orgTreePage,
   finance: P.financePage, mail: P.mailPage, clients: P.clientsPage, imports: P.importsPage,
   guide: P.guidePage,
   events: P.eventsPage,
@@ -271,6 +273,38 @@ webRouter.get('/app/event/:id', requireWeb, guardDetail('event'), async (req, re
 // وحدها، وترمي رفضاً عربياً واضحاً — ويُفتح ملفُ صاحب الحساب نفسه دائماً بلا أي منح إداري.
 webRouter.get('/app/person/:id', requireWeb, async (req, res, next) => {
   try { res.send(await P.personPage(req.ctx.user, req.params.id)); } catch (e) { next(e); }
+});
+
+// ── وحدة الفريق والموارد (ADR-0016): /app/team/:section و /app/team/:section/:id ──────────
+// بوابة القوائم هي بوابة «الفريق» نفسها (قراءة الموظف)، و«الإقفال الشهري» فوقها بوابة الإقفال
+// (مكتب الرئيس التنفيذي/المدير العام/قائد القطاع/مدير الإدارة — لا الموظف ولا الموارد البشرية).
+// أما صفحات التفاصيل فبوابتها الخدمة وحدها كصفحة الشخص: ملفُ المورد يُفتح لصاحبه دائماً ولو لم
+// يملك قراءة الموظفين عموماً، والخدمة ترمي رفضاً عربياً لمن هو خارج النطاق.
+const TEAM_SECTIONS = {
+  resources: P.resourcesPage, org: P.teamOrgPage, people: P.teamPage, work: P.teamWorkPage,
+  planning: P.planningPage, requests: P.requestsPage, analysis: P.analysisPage, needs: P.needsPage, close: P.closePage,
+};
+const TEAM_DETAILS = {
+  resources: P.resourceProfilePage, requests: P.requestDetailPage, analysis: P.analysisCasePage,
+  needs: P.needCandidatesPage, close: P.closeResourcePage,
+};
+// بوابة القسم تُقرأ من سياسة الصفحات بمفتاح `team/<section>` (core/policy/pages.js) — نفس المصدر
+// الذي تشتقّ منه مصفوفة الصلاحيات والمسح الحيّ توقعاتهما.
+const sectionAllowed = (user, section) => pageAllowed(user, `team/${section}`);
+webRouter.get('/app/team/:section', requireWeb, async (req, res, next) => {
+  const fn = TEAM_SECTIONS[req.params.section];
+  if (!fn) return res.redirect('/app/team');
+  if (!sectionAllowed(req.ctx.user, req.params.section)) return deny(res);
+  // `_crossSite` يُكتب هنا لا من الاستعلام: صفحة الإقفال تُنشئ المسودة عند الفتح لمن يراجعها، ولا
+  // تفعل ذلك لطلبٍ وصل من موقعٍ آخر بجلسة القارئ (Sec-Fetch-Site: cross-site).
+  const crossSite = String(req.get('sec-fetch-site') || '').toLowerCase() === 'cross-site';
+  try { res.send(await fn(req.ctx.user, { ...req.query, _crossSite: crossSite, _ip: req.ctx.ip || null })); } catch (e) { next(e); }
+});
+webRouter.get('/app/team/:section/:id', requireWeb, async (req, res, next) => {
+  const fn = TEAM_DETAILS[req.params.section];
+  if (!fn) return res.redirect('/app/team');
+  if (req.params.section !== 'resources' && !sectionAllowed(req.ctx.user, req.params.section)) return deny(res);
+  try { res.send(await fn(req.ctx.user, req.params.id, { ...req.query })); } catch (e) { next(e); }
 });
 
 webRouter.get('/app/:page', requireWeb, async (req, res, next) => {
