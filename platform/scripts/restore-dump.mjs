@@ -19,6 +19,9 @@ import { config } from '../src/core/config.js';
 
 const SAFE_IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const SKIP_TRUNCATE = new Set(['schema_migration']);
+// قيم النسخة قادمة من JSON: القاعدة تخزّن المنطقي عدداً (0/1) والبنى نصاً — فتُطبَّع قبل الربط
+// (SQLite يرفض ربط boolean أو كائن؛ وعلى PostgreSQL أعمدة البنى نصية أيضاً).
+const bindable = (v) => (v === undefined ? null : typeof v === 'boolean' ? (v ? 1 : 0) : (v !== null && typeof v === 'object') ? JSON.stringify(v) : v);
 
 /** يقرأ النسخة سطراً سطراً: الترويسة، وعدادات الجداول، والصفوف مجمَّعةً بجدولها. */
 export async function readDump(file) {
@@ -114,7 +117,7 @@ export async function restoreDump(dump, { log = () => {} } = {}) {
           const exists = await get('SELECT version FROM schema_migration WHERE version = ?', [r.version]);
           if (exists) continue;
         }
-        await run(`INSERT INTO ${t} (${keys.join(', ')}) VALUES (${keys.map(() => '?').join(', ')})`, keys.map((k) => r[k]));
+        await run(`INSERT INTO ${t} (${keys.join(', ')}) VALUES (${keys.map(() => '?').join(', ')})`, keys.map((k) => bindable(r[k])));
         n++;
       }
       restored[t] = n;
