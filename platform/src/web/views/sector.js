@@ -12,6 +12,7 @@ import { icon } from '../icons.js';
 import { fmtSar } from '../../core/util/ids.js';
 import { all, get } from '../../core/db/index.js';
 import { sectorDashboard, sectorStaffing, sectorWins, quarterlyRevenue, quarterlyBookings, pipelineCoverage, monthlyRevenue, revenueOutlook, revenueScope, outlookFromMonths, winsByMonth, windowFigures, windowRevenue, yearElapsedPct, targetToDate, paceDelta, grossMargin, sectorCosts, WEIGHTED_OPEN, availableYears } from '../../core/reports/metrics.js';
+import { monthlyRevenueTargets } from '../../modules/org/sector-targets.js';
 import { attentionFeed, RESOURCE_AR } from '../../core/reports/attention.js';
 import { changesSince, periodBounds, lastChangeAt } from '../../core/reports/changes.js';
 import { completenessScore } from '../../core/reports/completeness.js';
@@ -1994,8 +1995,10 @@ export async function sectorPage(user, opts = {}) {
     const denom = secRevTotal + openTot;
     return denom && top3.length === 3 ? Math.round(((top3.reduce((a, c) => a + c.rev, 0) + top3open) / denom) * 100) : null;
   })();
-  // خط المسار الزمني للهدف: قسمة الهدف السنوي بالتساوي على الشهور — قاعدة معلنة لا منحنى مختلق.
-  const paceLine = revTarget ? monthly.map((_, i) => Math.round(revTarget * (i + 1) / 12)) : null;
+  // خط المسار الزمني للهدف: من التوزيع الدوري **المعتمد** للقطاع (KI-110 — تراكمي مستهدف الإيراد الشهري)؛
+  // وبلا توزيع معتمد لا خط: القسمة المتساوية على الشهور افتراضٌ لا قرار للشركة، فلا يُرسم باسمها.
+  const planMonths = revTarget ? await monthlyRevenueTargets(sectorId, year) : null;
+  const paceLine = planMonths ? planMonths.reduce((acc, v) => { acc.push((acc[acc.length - 1] || 0) + v); return acc; }, []) : null;
   const largestPct = secRevTotal && top3.length ? Math.round((top3[0].rev / secRevTotal) * 100) : null;
   // ── بطاقات القراءة الثلاث — عادت برسومها إلى الشريط البنفسجي (طلب أ. حسين ٥،
   // 2026-08-25: «أعيدوا الشريط الكبير بكل رسومه»): بطاقة الإيقاع من السلسلة المرشَّحة نفسها
@@ -2103,8 +2106,9 @@ export async function sectorPage(user, opts = {}) {
   const zCumAll = zBars.reduce((acc, v) => { acc.push((acc[acc.length - 1] || 0) + v); return acc; }, []);
   const zCum = zCumAll.slice(0, zoomIdx.filter((i) => i <= lastDoneIdx).length);
   const nowPos = zoomIdx.indexOf(nowM);
+  // هدف النافذة المقرَّبة من التوزيع المعتمد (مجموع أشهرها)؛ وبلا توزيع معتمد لا هدفَ جزئياً مفترضاً.
   const zTarget = filtered ? null
-    : zoomed ? (revTarget ? Math.round(revTarget * zoomIdx.length / 12) : null) : (revTarget || null);
+    : zoomed ? (planMonths ? zoomIdx.reduce((a, i) => a + (planMonths[i] || 0), 0) : null) : (revTarget || null);
   const zForecast = zoomed || futureYr ? null : ((filtered ? rsOutlook?.base : fc.forecast) || null);
   const fcLine = zForecast && year === now.getUTCFullYear() && nowM >= 0 && rsCum[nowM] != null && nowM < 11
     ? { points: [{ i: nowM, v: rsCum[nowM] }, { i: 11, v: zForecast }], color: 'var(--acc-violet)', endLabel: sarShort(zForecast) }

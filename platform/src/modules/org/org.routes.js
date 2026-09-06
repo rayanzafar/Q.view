@@ -3,7 +3,7 @@
 // يُركَّب داخل apiRouter بسطر واحد من جلسة التكامل، بعد requireAuth().
 import { Router } from 'express';
 import * as org from './org.js';
-import { sectorTargets, saveSectorTargets } from './sector-targets.js';
+import { sectorTargets, saveSectorTargets, savePeriodPlan } from './sector-targets.js';
 import * as orgQuality from './org-quality.js';
 
 export const orgRouter = Router();
@@ -36,3 +36,5 @@ orgRouter.delete('/org/employees/:id/link', h((req) => org.unlinkUserFromEmploye
 // Annual targets: services enforce sector scope and revision checks.
 orgRouter.get('/org/sectors/:id/targets', h((req) => sectorTargets(req.ctx.user, { sector: req.params.id, year: req.query.year })));
 orgRouter.put('/org/sectors/:id/targets', h((req) => saveSectorTargets(req.ctx, req.params.id, req.body || {})));
+// التوزيع الدوري للمستهدف (KI-110): 12 شهراً بمجموعٍ يساوي السنوي، بسبب وإصدار وأثر
+orgRouter.put('/org/sectors/:id/targets/plan', h((req) => savePeriodPlan(req.ctx, req.params.id, req.body || {})));

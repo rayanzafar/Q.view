@@ -1,13 +1,13 @@
 {
   "version": 1,
-  "sourceDigest": "51cfdf27b6ead1f860a88e9c70e338e42cb29ba70ed2957b5dcd4d71ee0e445a",
+  "sourceDigest": "3342b5da2899585709db68e05f6add9dc227454edab140895cb3ec95ff9e3e9e",
   "sourceFiles": 617,
   "counts": {
     "code": 234,
     "test": 286,
     "automation": 51,
     "module": 18,
-    "route": 271,
+    "route": 272,
     "page": 24,
     "table": 97,
     "role": 18,
@@ -7416,7 +7416,7 @@
       "path": "/employees/:id"
     },
     {
-      "id": "route:src/modules/org/org.routes.js:766:/org/identity-links",
+      "id": "route:src/modules/org/org.routes.js:782:/org/identity-links",
       "kind": "route",
       "label": "GET /org/identity-links",
       "detail": "تصريح مسار محلي في orgRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -7427,7 +7427,7 @@
       "path": "/org/identity-links"
     },
     {
-      "id": "route:src/modules/org/org.routes.js:1450:/org/health",
+      "id": "route:src/modules/org/org.routes.js:1466:/org/health",
       "kind": "route",
       "label": "GET /org/health",
       "detail": "تصريح مسار محلي في orgRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -7438,7 +7438,7 @@
       "path": "/org/health"
     },
     {
-      "id": "route:src/modules/org/org.routes.js:1771:/employees/:id/link",
+      "id": "route:src/modules/org/org.routes.js:1787:/employees/:id/link",
       "kind": "route",
       "label": "POST /employees/:id/link",
       "detail": "تصريح مسار محلي في orgRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -7449,7 +7449,7 @@
       "path": "/employees/:id/link"
     },
     {
-      "id": "route:src/modules/org/org.routes.js:1870:/employees/:id/link",
+      "id": "route:src/modules/org/org.routes.js:1886:/employees/:id/link",
       "kind": "route",
       "label": "DELETE /employees/:id/link",
       "detail": "تصريح مسار محلي في orgRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -7460,7 +7460,7 @@
       "path": "/employees/:id/link"
     },
     {
-      "id": "route:src/modules/org/org.routes.js:2073:/org/employees/:id/link",
+      "id": "route:src/modules/org/org.routes.js:2089:/org/employees/:id/link",
       "kind": "route",
       "label": "POST /org/employees/:id/link",
       "detail": "تصريح مسار محلي في orgRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -7471,7 +7471,7 @@
       "path": "/org/employees/:id/link"
     },
     {
-      "id": "route:src/modules/org/org.routes.js:2176:/org/employees/:id/link",
+      "id": "route:src/modules/org/org.routes.js:2192:/org/employees/:id/link",
       "kind": "route",
       "label": "DELETE /org/employees/:id/link",
       "detail": "تصريح مسار محلي في orgRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -7482,7 +7482,7 @@
       "path": "/org/employees/:id/link"
     },
     {
-      "id": "route:src/modules/org/org.routes.js:2372:/org/sectors/:id/targets",
+      "id": "route:src/modules/org/org.routes.js:2388:/org/sectors/:id/targets",
       "kind": "route",
       "label": "GET /org/sectors/:id/targets",
       "detail": "تصريح مسار محلي في orgRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -7493,7 +7493,7 @@
       "path": "/org/sectors/:id/targets"
     },
     {
-      "id": "route:src/modules/org/org.routes.js:2505:/org/sectors/:id/targets",
+      "id": "route:src/modules/org/org.routes.js:2521:/org/sectors/:id/targets",
       "kind": "route",
       "label": "PUT /org/sectors/:id/targets",
       "detail": "تصريح مسار محلي في orgRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -7502,6 +7502,17 @@
       ],
       "method": "PUT",
       "path": "/org/sectors/:id/targets"
+    },
+    {
+      "id": "route:src/modules/org/org.routes.js:2720:/org/sectors/:id/targets/plan",
+      "kind": "route",
+      "label": "PUT /org/sectors/:id/targets/plan",
+      "detail": "تصريح مسار محلي في orgRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
+      "sources": [
+        "src/modules/org/org.routes.js"
+      ],
+      "method": "PUT",
+      "path": "/org/sectors/:id/targets/plan"
     },
     {
       "id": "route:src/modules/pmo/governance.routes.js:780:/projects/:id/governance",
@@ -26180,56 +26191,63 @@
     },
     {
       "from": "file:src/modules/org/org.routes.js",
-      "to": "route:src/modules/org/org.routes.js:766:/org/identity-links",
+      "to": "route:src/modules/org/org.routes.js:782:/org/identity-links",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/org/org.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/org/org.routes.js",
-      "to": "route:src/modules/org/org.routes.js:1450:/org/health",
+      "to": "route:src/modules/org/org.routes.js:1466:/org/health",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/org/org.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/org/org.routes.js",
-      "to": "route:src/modules/org/org.routes.js:1771:/employees/:id/link",
+      "to": "route:src/modules/org/org.routes.js:1787:/employees/:id/link",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/org/org.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/org/org.routes.js",
-      "to": "route:src/modules/org/org.routes.js:1870:/employees/:id/link",
+      "to": "route:src/modules/org/org.routes.js:1886:/employees/:id/link",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/org/org.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/org/org.routes.js",
-      "to": "route:src/modules/org/org.routes.js:2073:/org/employees/:id/link",
+      "to": "route:src/modules/org/org.routes.js:2089:/org/employees/:id/link",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/org/org.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/org/org.routes.js",
-      "to": "route:src/modules/org/org.routes.js:2176:/org/employees/:id/link",
+      "to": "route:src/modules/org/org.routes.js:2192:/org/employees/:id/link",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/org/org.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/org/org.routes.js",
-      "to": "route:src/modules/org/org.routes.js:2372:/org/sectors/:id/targets",
+      "to": "route:src/modules/org/org.routes.js:2388:/org/sectors/:id/targets",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/org/org.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/org/org.routes.js",
-      "to": "route:src/modules/org/org.routes.js:2505:/org/sectors/:id/targets",
+      "to": "route:src/modules/org/org.routes.js:2521:/org/sectors/:id/targets",
+      "label": "يصرح بالمسار",
+      "evidence": "src/modules/org/org.routes.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/org/org.routes.js",
+      "to": "route:src/modules/org/org.routes.js:2720:/org/sectors/:id/targets/plan",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/org/org.routes.js",
       "kind": "source"
@@ -30297,6 +30315,13 @@
     {
       "from": "file:src/web/views/sector.js",
       "to": "file:src/core/reports/metrics.js",
+      "label": "استيراد صريح",
+      "evidence": "src/web/views/sector.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/web/views/sector.js",
+      "to": "file:src/modules/org/sector-targets.js",
       "label": "استيراد صريح",
       "evidence": "src/web/views/sector.js",
       "kind": "source"
@@ -35475,6 +35500,13 @@
       "kind": "source"
     },
     {
+      "from": "file:tests/integration/sector-targets.test.js",
+      "to": "file:src/modules/org/sector-targets.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/sector-targets.test.js",
+      "kind": "source"
+    },
+    {
       "from": "file:tests/integration/sector-team-detail.test.js",
       "to": "file:src/core/db/index.js",
       "label": "استيراد صريح",
@@ -35540,6 +35572,13 @@
     {
       "from": "file:tests/integration/sector-window-band.test.js",
       "to": "file:src/web/views/sector.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/sector-window-band.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/sector-window-band.test.js",
+      "to": "file:src/modules/org/sector-targets.js",
       "label": "استيراد صريح",
       "evidence": "tests/integration/sector-window-band.test.js",
       "kind": "source"

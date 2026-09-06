@@ -96,3 +96,43 @@ test('generic targets page provides a scoped chooser and defaults only the permi
   await assert.rejects(() => sectorTargetsPage(lead, { sector: 'B' }), (e) => e.code === 'forbidden');
   await assert.rejects(() => sectorTargetsPage({ role_id: 'employee', scope: 'own', id: 'no-budget' }), (e) => e.code === 'forbidden');
 });
+
+// ── KI-110: التوزيع الدوري — مجموع الأشهر يساوي السنوي حرفاً، بإصدار وسبب وأثر، والقديم محفوظ حتى يُستبدل ──
+const { savePeriodPlan, periodPlanOf, monthlyRevenueTargets } = await import('../../src/modules/org/sector-targets.js');
+const monthsOf = (sales, revenue, fix = {}) => Array.from({ length: 12 }, (_, i) => ({ month: i + 1, sales_sar: sales, revenue_sar: revenue, ...(fix[i + 1] || {}) }));
+test('period plan: rejected until it equals the annual target exactly; saved plan feeds the monthly revenue targets', async () => {
+  const cur0 = await sectorTargets(lead, { sector: 'A', year: 2029 });
+  await saveSectorTargets(ctx, 'A', payload(2029, { revision: cur0.budget?.revision || 0, target_sales_sar: '1200', target_revenue_sar: '600' }));
+  const rev = (await sectorTargets(lead, { sector: 'A', year: 2029 })).budget.revision;
+  await assert.rejects(() => savePeriodPlan(ctx, 'A', { year: 2029, revision: rev, reason: 'توزيع الخطة', months: monthsOf('100', '40') }), /مجموع أشهر الإيراد 480\.00 لا يساوي المستهدف السنوي 600\.00 — الفرق 120\.00/);
+  await assert.rejects(() => savePeriodPlan(ctx, 'A', { year: 2029, revision: rev, reason: 'توزيع', months: monthsOf('100', '50').slice(0, 11) }), /الأشهر الاثني عشر/);
+  await assert.rejects(() => savePeriodPlan(ctx, 'A', { year: 2029, revision: rev, reason: 'توزيع', months: monthsOf('100', '50', { 3: { sales_sar: 'x' } }) }), /أدخل المستهدف بالريال/);
+  assert.equal(await monthlyRevenueTargets('A', 2029), null, 'لا توزيع معتمد ⇒ لا مستهدف شهري (لا قسمة متساوية مفترضة)');
+  const saved = await savePeriodPlan(ctx, 'A', { year: 2029, revision: rev, reason: 'توزيع معتمد من قيادة القطاع', months: monthsOf('100', '50', { 12: { sales_sar: '100', revenue_sar: '50' } }) });
+  assert.equal(saved.plan.kind, 'v2'); assert.equal(saved.plan.consistent, true); assert.equal(saved.budget.revision, rev + 1);
+  assert.equal(saved.plan.quarters[0].sales_halalas, 30000); assert.equal(saved.plan.quarters[3].revenue_halalas, 15000);
+  assert.deepEqual(await monthlyRevenueTargets('A', 2029), Array(12).fill(5000));
+  const planHist = saved.history.find((h) => h.kind === 'plan');
+  assert.ok(planHist && planHist.after.quarters.length === 4 && planHist.reason === 'توزيع معتمد من قيادة القطاع');
+  // إصدار قديم يُرفض بلا كتابة
+  await assert.rejects(() => savePeriodPlan(ctx, 'A', { year: 2029, revision: rev, reason: 'قديم', months: monthsOf('100', '50') }), /عدّل مستخدم آخر/);
+  // تعديل السنوي لاحقاً يجعل التوزيع غير متسق — يُعلَن ولا يُقرأ في التقارير
+  await saveSectorTargets(ctx, 'A', payload(2029, { revision: rev + 1, target_sales_sar: '1300', target_revenue_sar: '600', reason: 'رفع مستهدف المبيعات' }));
+  const after = await sectorTargets(lead, { sector: 'A', year: 2029 });
+  assert.equal(after.plan.kind, 'v2'); assert.equal(after.plan.consistent, false);
+  assert.deepEqual(await monthlyRevenueTargets('A', 2029), Array(12).fill(5000), 'الإيراد ما زال متسقاً فيُقرأ');
+  // القطاع الآخر مرفوض، والوحدة بلا مستهدف سنوي لا توزيع لها
+  await assert.rejects(() => savePeriodPlan(ctx, 'B', { year: 2029, revision: 0, reason: 'خارج النطاق', months: monthsOf('0', '0') }), (e) => e.status === 403);
+  await assert.rejects(() => savePeriodPlan({ user: admin }, 'B', { year: 2028, revision: 0, reason: 'بلا سنوي', months: monthsOf('0', '0') }), /سجّل المستهدف السنوي أولاً/);
+});
+test('legacy monthly_json is reported as legacy, never read as an approved plan, and survives an annual edit', async () => {
+  await insert('budget', { id: 'legacy:2024:A', fiscal_year: 2024, sector_id: 'A', target_sales_halalas: 120000, target_revenue_halalas: 60000, revision: 0, created_at: '2024-01-01',
+    monthly_json: JSON.stringify([{ month: 1, previousSar: 100, newSar: 0 }]) });
+  const d = await sectorTargets(lead, { sector: 'A', year: 2024 });
+  assert.equal(d.plan.kind, 'legacy'); assert.equal(await monthlyRevenueTargets('A', 2024), null);
+  assert.equal(periodPlanOf({ monthly_json: '{"v":2,"months":{"1":{"sales_halalas":5}}}' }).months[1].sales_halalas, 5);
+  await saveSectorTargets(ctx, 'A', payload(2024, { revision: 0, target_sales_sar: '1200', target_revenue_sar: '600', reason: 'تثبيت السنوي' }));
+  assert.equal((await get("SELECT monthly_json FROM budget WHERE id='legacy:2024:A'")).monthly_json.includes('previousSar'), true, 'القديم محفوظ حتى يُستبدل');
+  const html = await sectorTargetsPage(lead, { sector: 'A', year: 2024 });
+  assert.match(html, /توزيع شهري قديم/); assert.match(html, /id="sector-plan-form"/);
+});

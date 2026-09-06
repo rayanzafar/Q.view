@@ -95,8 +95,14 @@ test('رسم الإيقاع يتقرّب إلى الفترة: أشهرُها و�
   assert.equal(q1bars.length, 3, 'رسم الربع ثلاثة أعمدة لا اثنا عشر');
   assert.ok(q1bars.some((t) => t.startsWith('مارس') && t.includes('1.0M')), 'صافي مارس على عموده في الربع الأول');
   assert.ok(!q1.includes('ديسمبر'), 'ديسمبر خارج رسم الربع الأول');
-  // وحصة الربع من الهدف السنوي (مليون ريال) = 250 ألفاً — معلَنة على الرسم لا الهدف كاملاً
-  assert.ok(q1.includes('250K'), 'خط الهدف حصة الربع (الهدف ÷ 12 × 3)');
+  // KI-110: بلا توزيع دوري معتمد لا حصة ربعية مفترضة (القسمة على 12 افتراض لا قرار للشركة)
+  assert.ok(!q1.includes('250K'), 'حصة الربع رُسمت من قسمة متساوية بلا توزيع معتمد');
+  // وبتوزيعٍ معتمد (الربع الأول 300 ألف من مليون) تُرسم حصة الربع من الخطة نفسها
+  const { savePeriodPlan } = await import('../../src/modules/org/sector-targets.js');
+  const plan = Array.from({ length: 12 }, (_, i) => { const m = i + 1; const v = m <= 3 ? '100000' : m <= 11 ? '80000' : '60000'; return { month: m, sales_sar: v, revenue_sar: v }; });
+  await savePeriodPlan({ user: ADMIN, ip: '1' }, 'SOL', { year: YEAR, revision: 0, reason: 'توزيع معتمد للاختبار', months: plan });
+  const q1p = comboRegion(await sectorPage(ADMIN, { year: String(YEAR), p: 'q1' }));
+  assert.ok(q1p.includes('300K'), 'خط الهدف حصة الربع من التوزيع المعتمد (300 ألف)');
   // شهرٌ ⇒ عمود واحد بقيمته
   const m12 = comboRegion(await sectorPage(ADMIN, { year: String(YEAR), p: 'm12' }));
   const m12bars = comboBars(m12);
