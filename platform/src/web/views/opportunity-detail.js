@@ -581,7 +581,9 @@ export async function opportunityDetailPage(user, oppId, opts = {}) {
       stages:${JSON.stringify(d.stages.map((s) => ({ id: s.id, name_ar: s.name_ar, color: s.color }))).replace(/</g, '\\u003c')},
       clientsList:${JSON.stringify(clientOptions.map((c) => ({ id: c.id, name_ar: c.name_ar }))).replace(/</g, '\\u003c')},
       canEditOpp:${d.canEdit ? 'true' : 'false'},
-      canDeleteOpp:${d.canDelete ? 'true' : 'false'}
+      canDeleteOpp:${d.canDelete ? 'true' : 'false'},
+      isWon:${st.is_won ? 'true' : 'false'},
+      wonProject:${JSON.stringify(wonPrj ? { id: wonPrj.id, name_ar: wonPrj.name_ar, status: wonPrj.status } : null).replace(/</g, '\\u003c')}
     });</script>`;
   return layout({
     user, active: 'opportunities', title: o.title_ar, subtitle: 'قصة القرار · الفرص والمبيعات', body,

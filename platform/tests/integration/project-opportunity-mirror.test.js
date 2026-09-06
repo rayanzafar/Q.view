@@ -273,3 +273,49 @@ test('تأكيد سنة البيع يصلح المرآة الجديدة دون �
   assert.equal(e.year, 2025); assert.equal(e.exclude_from_sales, 0);
   await assert.rejects(() => projects.createProject(CTX, { name_ar: 'سنة خاطئة', sector_id: 'SOL', sale_year: 'wrong' }), /سنة البيع غير صحيحة/);
 });
+
+// ── KI-112: التراجع المراجَع عن فوزٍ له مشروع — قرارٌ على الطرفين بلا حذف ─────────────────
+test('التراجع المراجَع: «إلغاء المشروع» يُبقي السجل بحالة ملغى ويعيد الفرصة بسبب وأثر، و«إبقاؤه» يفكّ الربط ويولّد مرآة مستبعدة من المبيعات', async () => {
+  const opp1 = await opps.createOpportunity(CTX, { title_ar: 'فرصة تراجع — إلغاء', client_id: 'CL', sector_id: 'SOL', value_sar: 50000, year: 2026 });
+  await opps.moveStage(CTX, opp1.id, 'WON', 'فوز');
+  const prj1 = await db.get('SELECT * FROM project WHERE source_opp_id = ?', [opp1.id]);
+  assert.ok(prj1, 'الفوز ولّد مشروعاً');
+  // الحارس القائم: النقل العادي يرفض
+  await assert.rejects(() => opps.moveStage(CTX, opp1.id, 'LEAD', 'تراجع'), /لا يمكن التراجع تلقائياً/);
+  // بلا سبب أو قرار: يُرفض
+  await assert.rejects(() => opps.reviewedWonReversal(CTX, opp1.id, { to_stage: 'LEAD', project_action: 'cancel', reason: '' }), /سبب التراجع/);
+  await assert.rejects(() => opps.reviewedWonReversal(CTX, opp1.id, { to_stage: 'LEAD', project_action: 'drop', reason: 'سبب كافٍ' }), /قرار المشروع/);
+  await assert.rejects(() => opps.reviewedWonReversal(CTX, opp1.id, { to_stage: 'WON', project_action: 'cancel', reason: 'سبب كافٍ' }), /غير فائزة/);
+  const r1 = await opps.reviewedWonReversal(CTX, opp1.id, { to_stage: 'LEAD', project_action: 'cancel', reason: 'الجهة ألغت التعاقد قبل البدء' });
+  assert.equal(r1.project_action, 'cancel'); assert.equal(r1.stage_id, 'LEAD');
+  const p1 = await db.get('SELECT status, deleted_at, source_opp_id FROM project WHERE id = ?', [prj1.id]);
+  assert.equal(p1.status, 'CANCELLED'); assert.equal(p1.deleted_at, null, 'لا حذف'); assert.equal(p1.source_opp_id, opp1.id, 'الربط باقٍ للتاريخ');
+  const h1 = await db.all('SELECT to_stage_id, note FROM opportunity_stage_history WHERE opportunity_id = ? ORDER BY changed_at', [opp1.id]);
+  assert.equal(h1[h1.length - 1].to_stage_id, 'LEAD'); assert.match(h1[h1.length - 1].note, /تراجع مراجَع.*ألغت/);
+  const a1 = await db.all("SELECT action, resource, detail_json FROM audit_log WHERE resource_id IN (?, ?) AND detail_json LIKE '%won_reversal%'", [opp1.id, prj1.id]);
+  assert.ok(a1.some((a) => a.resource === 'project' && a.action === 'cancel'));
+  assert.ok(a1.some((a) => a.resource === 'opportunity' && JSON.parse(a.detail_json).reviewed === true));
+
+  const opp2 = await opps.createOpportunity(CTX, { title_ar: 'فرصة تراجع — إبقاء', client_id: 'CL', sector_id: 'SOL', value_sar: 70000, year: 2026 });
+  await opps.moveStage(CTX, opp2.id, 'WON', 'فوز');
+  const prj2 = await db.get('SELECT * FROM project WHERE source_opp_id = ?', [opp2.id]);
+  const r2 = await opps.reviewedWonReversal(CTX, opp2.id, { to_stage: 'LOST', project_action: 'keep', reason: 'العمل استمر بتعاقد آخر خارج هذه الفرصة' });
+  assert.equal(r2.project_action, 'keep'); assert.ok(r2.mirror_opportunity_id && r2.mirror_opportunity_id !== opp2.id, 'مرآة جديدة للمشروع');
+  const p2 = await db.get('SELECT status, deleted_at, source_opp_id FROM project WHERE id = ?', [prj2.id]);
+  assert.equal(p2.deleted_at, null); assert.equal(p2.source_opp_id, r2.mirror_opportunity_id, 'المشروع مربوط بمرآته الجديدة لا بالفرصة الأصل');
+  assert.notEqual(p2.status, 'CANCELLED');
+  const mirror = await db.get('SELECT stage_id, year, exclude_from_sales, source FROM opportunity WHERE id = ?', [r2.mirror_opportunity_id]);
+  assert.equal(mirror.stage_id, 'WON'); assert.equal(mirror.year, null); assert.equal(Number(mirror.exclude_from_sales), 1, 'مستبعدة من المبيعات حتى تُؤكَّد سنتها'); assert.equal(mirror.source, 'project');
+  const orig = await db.get('SELECT stage_id, deleted_at FROM opportunity WHERE id = ?', [opp2.id]);
+  assert.equal(orig.stage_id, 'LOST'); assert.equal(orig.deleted_at, null, 'الفرصة الأصل باقية بتاريخها');
+});
+
+test('التراجع المراجَع يتطلب صلاحية تعديل الفرصة والمشروع معاً', async () => {
+  const opp = await opps.createOpportunity(CTX, { title_ar: 'فرصة تراجع — صلاحية', client_id: 'CL', sector_id: 'SOL', value_sar: 1000, year: 2026 });
+  await opps.moveStage(CTX, opp.id, 'WON', 'فوز');
+  await db.insert('app_user', { id: 'u_viewer', username: 'viewer', role_id: 'viewer', scope: 'sector', sector_id: 'SOL', active: 1, created_at: T });
+  const viewer = { user: { id: 'u_viewer', username: 'viewer', role_id: 'viewer', scope: 'sector', sector_id: 'SOL', projectIds: new Set(), teamIds: new Set() }, ip: '1' };
+  await assert.rejects(() => opps.reviewedWonReversal(viewer, opp.id, { to_stage: 'LEAD', project_action: 'cancel', reason: 'محاولة بلا صلاحية' }), (e) => e.status === 403);
+  const p = await db.get('SELECT status FROM project WHERE source_opp_id = ?', [opp.id]);
+  assert.notEqual(p.status, 'CANCELLED');
+});

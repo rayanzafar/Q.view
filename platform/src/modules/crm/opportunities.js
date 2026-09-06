@@ -477,6 +477,59 @@ export async function moveStage(ctx, oppId, toStage, note) {
   return mirror?.project_id ? { ...out, project_id: mirror.project_id, project_created: !!mirror.created } : out;
 }
 
+// ── التراجع المراجَع عن الفوز (KI-112) ─────────────────────────────────────────
+// `moveStage` يرفض التراجع عن فوزٍ له مشروع — لأن الحذف الصامت كان يمحو عملاً وأثراً. هنا الطريق
+// المراجَع: قرارٌ مكتوب بسببه، على الفرصة **والمشروع معاً** في معاملة واحدة، ولا حذف لأي سجل:
+//   • `keep`  — المشروع يبقى عملاً قائماً مستقلاً: يُفكّ ربطه بالفرصة، وتُولَد له مرآةٌ خاصة (كمشروعٍ
+//              يدوي) بسنة بيعٍ غير مؤكدة فتبقى **مستبعدة من المبيعات** حتى تُؤكَّد — والفرصة الأصل
+//              تعود إلى المرحلة المختارة فيخرج مبلغها من مبيعات سنتها بأثرٍ معلَن.
+//   • `cancel` — المشروع يُلغى (حالة «ملغى» — السجل باقٍ بتاريخه ومخرجاته) ويبقى مربوطاً بفرصته،
+//              والفرصة تعود إلى المرحلة المختارة.
+// الصلاحية: تعديل الفرصة **و** تعديل مشروعها — القرار على الطرفين فلا يكفي أحدهما.
+export async function reviewedWonReversal(ctx, oppId, data = {}) {
+  const user = ctx.user;
+  const row = await loadReadableOpportunity(user, oppId, 'update', 'مراجعة التراجع عن الفوز تتطلب صلاحية تعديل الفرصة');
+  const reason = String(data.reason || '').trim();
+  if (reason.length < 3 || reason.length > 1000) throw badRequest('اكتب سبب التراجع (من 3 إلى 1000 حرف) — يُحفظ في سجل الفرصة والمشروع');
+  const action = String(data.project_action || '');
+  if (!['keep', 'cancel'].includes(action)) throw badRequest('حدّد قرار المشروع: إبقاؤه مستقلاً أو إلغاؤه');
+  const fromStage = row.stage_id ? await get('SELECT id, is_won FROM stage WHERE id = ?', [row.stage_id]) : null;
+  if (!fromStage?.is_won) throw badRequest('الفرصة ليست في مرحلة فائزة — استعمل نقل المرحلة العادي');
+  const stage = await get('SELECT * FROM stage WHERE id = ?', [String(data.to_stage || '')]);
+  if (!stage) throw badRequest('مرحلة غير معروفة');
+  if (stage.is_won) throw badRequest('اختر مرحلة غير فائزة للعودة إليها');
+  const prj = await get('SELECT * FROM project WHERE source_opp_id = ? AND deleted_at IS NULL', [oppId]);
+  if (!prj) throw badRequest('لا مشروع مرتبط بهذه الفرصة — انقل المرحلة من نقل المرحلة العادي مع سبب التراجع');
+  if (!can(user, 'update', 'project', prj)) throw forbidden('قرار المشروع المرتبط يتطلب صلاحية تعديله — راجعه مع مسؤول المشروع');
+  const now = nowIso();
+  const result = await tx(async () => {
+    await update('opportunity', oppId, { stage_id: stage.id, win_pct: stage.default_win_pct, stage_changed_at: now, updated_at: now, updated_by: user.id });
+    await insert('opportunity_stage_history', {
+      id: id('osh'), opportunity_id: oppId, from_stage_id: row.stage_id, to_stage_id: stage.id,
+      changed_by: user.id, changed_at: now,
+      note: `تراجع مراجَع عن الفوز (${action === 'keep' ? 'المشروع باقٍ مستقلاً' : 'المشروع مُلغى'}): ${reason}`,
+    });
+    let mirror = null;
+    if (action === 'keep') {
+      await update('project', prj.id, { source_opp_id: null, updated_at: now });
+      const { ensureOpportunityForProject } = await import('./opp-project-sync.js');
+      mirror = await ensureOpportunityForProject(ctx, { ...prj, source_opp_id: null }, { year: null });
+      await audit(ctx, { action: 'unlink', resource: 'project', resourceId: prj.id, sectorId: prj.sector_id || null,
+        detail: { won_reversal_reviewed: true, unlinked_from: oppId, reason_ar: reason, mirror_opportunity_id: mirror?.opportunity_id || null, sales_year_unresolved: true } });
+    } else {
+      await update('project', prj.id, { status: 'CANCELLED', updated_at: now });
+      await audit(ctx, { action: 'cancel', resource: 'project', resourceId: prj.id, sectorId: prj.sector_id || null,
+        detail: { won_reversal_reviewed: true, opportunity_id: oppId, reason_ar: reason, previous_status: prj.status || null } });
+    }
+    await audit(ctx, { action: 'update', resource: 'opportunity', resourceId: oppId, sectorId: row.sector_id,
+      detail: { stage: `${row.stage_id}→${stage.id}`, won_reversal: true, reviewed: true, project_action: action, project_id: prj.id,
+        value_halalas: row.value_halalas || 0, reason_ar: reason } });
+    return { project_id: prj.id, project_action: action, mirror_opportunity_id: mirror?.opportunity_id || null };
+  });
+  const out = await getOpportunity(user, oppId);
+  return { ...out, ...result };
+}
+
 // Rich detail for the opportunity page/drawer: names + stage history + the stage ladder
 // (with default win %), the opportunity team, the latest activities, and the discipline flags.
 export async function opportunityDetail(user, oppId, opts = {}) {
