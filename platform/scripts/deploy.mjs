@@ -185,16 +185,24 @@ async function appLevelBackup() {
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
     const file = join(dir, `app-${headShaShort()}-${new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14)}.ndjson`);
     writeFileSync(file, buf);
-    // المطابقة: الترويسة، ثم عدد صفوف كل جدول في الملف مقابل عدادات الخادم قبل التنزيل
+    // المطابقة على مستويين: (١) كل جدول في الملف يحمل عدد صفوفه المعلَن وقت الأخذ ويجب أن يساوي ما وصل
+    // فعلاً (اكتمال البث)؛ (٢) عدادات الخادم قبل التنزيل تساوي ما في الملف — إلا سجل التدقيق، فهو
+    // يُلحَق فقط، وطلبا العدادات والنسخة نفساهما يكتبان فيه سطراً لكلٍّ منهما، فيُقبل نموّه بهذا القدر لا أكثر.
     const lines = buf.toString('utf8').split('\n').filter(Boolean);
     const head = JSON.parse(lines[0] || '{}');
     if (head._meta !== 'sanad-backup') { console.log('✗ النسخة بلا ترويسة سند'); return null; }
-    const seen = {}; let cur = null;
+    const seen = {}; const declared = {}; let cur = null;
     for (const l of lines.slice(1)) {
-      if (l.startsWith('{"_table":')) { cur = JSON.parse(l)._table; seen[cur] = 0; continue; }
+      if (l.startsWith('{"_table":')) { const m = JSON.parse(l); cur = m._table; seen[cur] = 0; declared[cur] = Number(m._rows) || 0; continue; }
       if (cur) seen[cur]++;
     }
-    const mism = Object.keys(counts).filter((t) => (seen[t] ?? -1) !== counts[t]);
+    const cut = Object.keys(declared).filter((t) => seen[t] !== declared[t]);
+    if (cut.length) { console.log(`✗ النسخة ناقصة — صفوف أقل من المعلَن في: ${cut.slice(0, 8).join('، ')}`); return null; }
+    const APPEND_ONLY_SLACK = { audit_log: 4 };
+    const mism = Object.keys(counts).filter((t) => {
+      const got = seen[t] ?? -1; const slack = APPEND_ONLY_SLACK[t] || 0;
+      return got < counts[t] || got > counts[t] + slack;
+    });
     if (mism.length) { console.log(`✗ عدادات النسخة لا تطابق الخادم: ${mism.slice(0, 8).join('، ')}`); return null; }
     const rows = Object.values(seen).reduce((a, b) => a + b, 0);
     console.log(`✓ backup: app-level ${file} (${buf.length} bytes، ${Object.keys(seen).length} جدولاً، ${rows} صفاً — العدادات مطابقة)`);
