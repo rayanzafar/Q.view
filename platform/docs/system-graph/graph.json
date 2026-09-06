@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "sourceDigest": "83073640452f49b20c7fba2cec75206dfbb24f98cf5ea76c09a89276bae1aa67",
+  "sourceDigest": "386033ab3297e523fccb4cc12142f909be16c7e8cdacbf94915767dc30183e94",
   "sourceFiles": 606,
   "counts": {
     "code": 231,
@@ -12,7 +12,7 @@
     "table": 97,
     "role": 18,
     "permission": 9,
-    "issue": 71,
+    "issue": 74,
     "journey": 13,
     "metric": 4,
     "workflow": 6,
@@ -19756,6 +19756,36 @@
           "action": "update",
           "scope": "department"
         }
+      ]
+    },
+    {
+      "id": "issue:KI-106",
+      "kind": "issue",
+      "label": "KI-106 · crm/handoff",
+      "detail": "Won opportunity creates a project with GREEN health before delivery assessment; opportunity amount is also copied into contract value without an explicit confirmation step. Source defaults are confirmed; live records have not been assessed.",
+      "status": "open",
+      "sources": [
+        "docs/KNOWN-ISSUES.md"
+      ]
+    },
+    {
+      "id": "issue:KI-107",
+      "kind": "issue",
+      "label": "KI-107 · crm/sales-year",
+      "detail": "Reverse project-to-opportunity mirror derives sales year from project start/creation in mirrorYear; delivery start does not establish year of sale.",
+      "status": "open",
+      "sources": [
+        "docs/KNOWN-ISSUES.md"
+      ]
+    },
+    {
+      "id": "issue:KI-108",
+      "kind": "issue",
+      "label": "KI-108 · sector/targets",
+      "detail": "Leadership, sectorDashboard and pipelineCoverage read targets on sector while filtering actuals by year. Changing the sector target can change historical-year comparisons; an existing budget table does not make those readers period-specific.",
+      "status": "open",
+      "sources": [
+        "docs/KNOWN-ISSUES.md"
       ]
     },
     {
@@ -61450,6 +61480,34 @@
       "label": "update @ department",
       "evidence": "src/core/rbac/matrix.js",
       "kind": "grant"
+    },
+    {
+      "from": "issue:KI-106",
+      "to": "file:src/modules/crm/opp-project-sync.js",
+      "label": "يشير السجل إلى",
+      "evidence": "docs/KNOWN-ISSUES.md",
+      "kind": "reported"
+    },
+    {
+      "from": "issue:KI-107",
+      "to": "file:src/modules/crm/opp-project-sync.js",
+      "label": "يشير السجل إلى",
+      "evidence": "docs/KNOWN-ISSUES.md",
+      "kind": "reported"
+    },
+    {
+      "from": "issue:KI-108",
+      "to": "file:src/core/reports/metrics.js",
+      "label": "يشير السجل إلى",
+      "evidence": "docs/KNOWN-ISSUES.md",
+      "kind": "reported"
+    },
+    {
+      "from": "issue:KI-108",
+      "to": "file:src/modules/org/org.js",
+      "label": "يشير السجل إلى",
+      "evidence": "docs/KNOWN-ISSUES.md",
+      "kind": "reported"
     },
     {
       "from": "issue:KI-001",
