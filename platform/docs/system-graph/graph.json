@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "sourceDigest": "87579cddab7c0fb68533470779ed7fc4eaaf79f310b7b0e47512ad4ffed769dc",
+  "sourceDigest": "4a553f5842989b36d8930b39ac68424554bf8682d25bf50d206dd0fafde50712",
   "sourceFiles": 617,
   "counts": {
     "code": 234,
@@ -12,7 +12,7 @@
     "table": 97,
     "role": 18,
     "permission": 9,
-    "issue": 74,
+    "issue": 72,
     "journey": 14,
     "metric": 4,
     "workflow": 6,
@@ -20400,16 +20400,6 @@
       ]
     },
     {
-      "id": "issue:KI-105",
-      "kind": "issue",
-      "label": "KI-105 · QA/runtime",
-      "detail": "One full-suite run on Node 24.19.0 failed inside the test runner result transport for scenario-harness.test.js with `Unable to deserialize cloned data due to invalid or unsupported version`. The file passed alone (8/8); the same default-parallel full command then passed 2341/2341. Root cause is unconfirmed, so no application or runtime fix is claimed.",
-      "status": "open",
-      "sources": [
-        "docs/KNOWN-ISSUES.md"
-      ]
-    },
-    {
       "id": "issue:KI-013",
       "kind": "issue",
       "label": "KI-013 · web/security",
@@ -20525,16 +20515,6 @@
       "label": "KI-100 · team/close",
       "detail": "**No external finance integration**: the monthly close produces a locked snapshot + versioned CSV; the «حالة الترحيل للنظام المالي» is always «لم يُرحَّل».",
       "status": "deferred-by-design",
-      "sources": [
-        "docs/KNOWN-ISSUES.md"
-      ]
-    },
-    {
-      "id": "issue:KI-101",
-      "kind": "issue",
-      "label": "KI-101 · deploy pipeline",
-      "detail": "**`.build-id` did not reach the container on the v5.74 release** (Railway CLI 5.41 honours `.gitignore` on `up` even though `.railwayignore` exists), so `/ready` answered `build: null`, `deploy.mjs` timed out on step 5 and skipped its own sweep/log checks although the deployment had succeeded (deployment list SUCCESS, boot log «applied migration 042», new static asset served; sweep and screenshots were run manually).",
-      "status": "fix-landed-unverified",
       "sources": [
         "docs/KNOWN-ISSUES.md"
       ]
@@ -62817,27 +62797,6 @@
     {
       "from": "issue:KI-100",
       "to": "file:tests/integration/team-cost-close.test.js",
-      "label": "يشير السجل إلى",
-      "evidence": "docs/KNOWN-ISSUES.md",
-      "kind": "reported"
-    },
-    {
-      "from": "issue:KI-101",
-      "to": "file:src/core/http/build-id.js",
-      "label": "يشير السجل إلى",
-      "evidence": "docs/KNOWN-ISSUES.md",
-      "kind": "reported"
-    },
-    {
-      "from": "issue:KI-101",
-      "to": "file:tests/unit/build-id.test.js",
-      "label": "يشير السجل إلى",
-      "evidence": "docs/KNOWN-ISSUES.md",
-      "kind": "reported"
-    },
-    {
-      "from": "issue:KI-101",
-      "to": "file:scripts/deploy.mjs",
       "label": "يشير السجل إلى",
       "evidence": "docs/KNOWN-ISSUES.md",
       "kind": "reported"
