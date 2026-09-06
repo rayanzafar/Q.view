@@ -209,3 +209,10 @@ task stays visible. Registered demo employees are excluded from operational reso
 assignee pickers even without a demo login; admins retain classification visibility. Finance
 history uses consistent invoice/collection scope and excludes draft/deleted invoices. Sales
 totals use opportunity scope. No new screen or change to historical data.
+
+## Development system graph (v5.77, local)
+
+Offline graph in `docs/system-graph/index.html` links journeys, source files, tests, modules,
+routes, schema, default grants and recorded gaps. Maintained by `npm run graph` and CI freshness
+check. This is a development artifact, not a new authenticated product page. Task date validation
+also rejects impossible calendar days on create/update instead of accepting JavaScript rollover.

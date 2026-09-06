@@ -282,7 +282,8 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const dateOrNull = (v, label) => {
   if (v == null || String(v).trim() === '') return null;
   const s = String(v).trim();
-  if (!DATE_RE.test(s) || Number.isNaN(Date.parse(s + 'T00:00:00Z'))) {
+  if (!DATE_RE.test(s) || Number.isNaN(Date.parse(s + 'T00:00:00Z'))
+      || new Date(s + 'T00:00:00Z').toISOString().slice(0, 10) !== s) {
     throw badRequest(`${label} بصيغة غير مقروءة — اختره من منتقي التاريخ`);
   }
   return s;

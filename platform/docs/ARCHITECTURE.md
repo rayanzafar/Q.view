@@ -177,3 +177,13 @@ Both direct flows reuse the standard `approval_request` inbox via `assignee_user
 - Historical invoice/collection aggregates use matching read scopes and exclude draft/deleted invoices. Bookings use opportunity read scope independently of invoice grants.
 - Demo employee identity is established by a linked demo login or an active `demo_record`, never the display name. Resource lists/direct profiles and assignee pickers apply it; admin visibility and self access remain deliberate exceptions.
 - `initRbac` ignores the retired finance role in restored/stale data. No live grant deletion or schema migration is part of this change.
+
+## 10. Source-backed system graph (v5.77, local)
+
+`docs/system-graph/` contains an offline viewer, machine-readable graph and reviewed business
+model. The builder extracts explicit imports/routes, source table references, canonical role
+grants, the issue registry and schema foreign keys from disposable SQLite after migrations.
+It never reads production rows. Text references are distinguished from enforced foreign keys
+and reviewed business edges. Source fingerprints are checked in CI; this does not prove runtime
+permissions, complete test coverage or deployed connectivity. No graph database or new runtime
+service was added.

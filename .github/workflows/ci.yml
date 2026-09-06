@@ -37,6 +37,8 @@ jobs:
         run: node scripts/check-glossary.mjs
       - name: Documentation matches the implementation
         run: node scripts/check-docs.mjs
+      - name: System graph matches source
+        run: npm run graph:check
       - name: Migrate + seed RBAC + seeded demo (schema + fixture sanity)
         run: |
           node --experimental-sqlite scripts/migrate.js

@@ -477,3 +477,17 @@ test('KI-076: في عرض اللوح يحلّ شريط الخلاصة محل ل�
   assert.ok(!cal.includes(HEAD), 'لوح الأشخاص مكدَّس فوق التقويم أيضاً');
   assert.ok(cal.includes('cal-days'), 'التقويم غائب');
 });
+
+test('task dates reject impossible calendar days on create and update without changing the task', async () => {
+  for (const invalid of ['2026-02-30', '2025-02-29', '2026-04-31']) {
+    await assert.rejects(T.quickAddTask(ctx(emp), { title: 'تاريخ غير صالح', due_date: invalid }), /التاريخ|تاريخ/);
+  }
+  const valid = await T.quickAddTask(ctx(emp), { title: 'موعد كبيس صالح', due_date: '2028-02-29' });
+  assert.equal(valid.due_date, '2028-02-29');
+  await assert.rejects(T.updateTask(ctx(emp), valid.id, { due_date: '2026-02-30', title: 'يجب ألا يتغير' }), /التاريخ|تاريخ/);
+  await assert.rejects(T.updateTask(ctx(emp), valid.id, { start_date: '2026-04-31' }), /التاريخ|تاريخ/);
+  const after = await get('SELECT title, due_date, start_date FROM task WHERE id=?', [valid.id]);
+  assert.equal(after.title, valid.title);
+  assert.equal(after.due_date, valid.due_date);
+  assert.equal(after.start_date, valid.start_date);
+});
