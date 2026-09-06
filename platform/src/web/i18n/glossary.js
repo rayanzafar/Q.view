@@ -1,8 +1,12 @@
 // المعجم الموحّد — المصدر الوحيد لكل مصطلح يظهر للمستخدم (صفحات، بريد، تقارير، تصدير، أخطاء).
 // القاعدة: عربية أعمال طبيعية، لا ترجمة حرفية، لا مصطلحات تقنية، أزرار ≤ 3 كلمات.
+// تسميات حالة المشروع وعتبات الطاقة تأتي من core/i18n/thresholds.js — المصدر الواحد الذي
+// يشترك فيه البريد والصفحات معاً (web يستورد من core، ولا عكس أبداً).
+import { HEALTH_LABELS, CAPACITY, CAPACITY_LEGEND } from '../../core/i18n/thresholds.js';
+
 export const G = {
   // ── الانتباه والقرار ──
-  attention: 'يحتاج انتباهك الآن',
+  attention: 'يحتاج تدخلك الآن',
   needsDecision: 'بانتظار قرارك',
   decisions: 'القرارات',
   offTrack: 'خارج المسار',
@@ -48,6 +52,21 @@ export const G = {
   cost: 'التكلفة',
   deviation: 'الانحراف',
 
+  // ── ضريبة القيمة المضافة: المبلغ له وجهان دائماً ──
+  // القاعدة المعلنة للمستخدم: ما يدفعه العميل «مع الضريبة»، وما يخصّ الشركة «بدون الضريبة»،
+  // والفارق أمانةٌ تُورَّد للدولة. تُكتب بهذه الألفاظ لا بغيرها كي لا يظهر مصطلحان لمعنى واحد.
+  vat: 'ضريبة القيمة المضافة',
+  vatShort: 'الضريبة',
+  withVat: 'مع الضريبة',
+  withoutVat: 'بدون الضريبة',
+  netAmount: 'المبلغ بدون الضريبة',
+  grossAmount: 'المبلغ مع الضريبة',
+  netRevenue: 'الإيراد بدون الضريبة',
+  vatOfWhich: 'منها ضريبة',
+  vatNotRecorded: 'الضريبة غير مُسجَّلة',
+  vatExempt: 'بلا ضريبة',
+  vatExplain: 'المطالبة والتحصيل مع الضريبة لأن العميل يدفعها، والإيراد بدون الضريبة لأنها تُورَّد للدولة ولا تخصّ الشركة.',
+
   // ── المشاريع ──
   projects: 'المشاريع',
   project: 'المشروع',
@@ -76,6 +95,126 @@ export const G = {
   monthlyStaffing: 'التسكين الشهري',
   sectorParking: 'تسكين قطاعي',
   peak: 'الذروة',
+  // ── وحدة الفريق والموارد (ADR-0016) — نصّ الشاشات كما في الحزمة المرجعية ──
+  teamGatewaySub: 'إدارة الفريق والموارد من مكان واحد',
+  teamAsk: 'ماذا تريد أن تدير اليوم؟',
+  teamAskSub: 'اختر المسار، واطلع على الملخص، ثم انتقل للتفاصيل.',
+  pathPeople: 'الفريق والقدرات',
+  pathPlanning: 'التسكين والطاقة',
+  pathWork: 'العمل والالتزامات',
+  pathAnalysis: 'التحليل والاحتياجات',
+  resourcesRegistry: 'سجل الموارد',
+  orgStructure: 'الهيكل الإداري',
+  planningTab: 'التخطيط',
+  requestsTab: 'طلبات التسكين',
+  closeTab: 'الإقفال الشهري',
+  utilizationTab: 'تحليل الاستخدام',
+  needsTab: 'الاحتياجات القادمة',
+  accountsTab: 'حسابات الدخول',
+  addResource: 'إضافة مورد',
+  requestAllocation: 'طلب تسكين',
+  openFullProfile: 'فتح الملف الكامل',
+  availableOfCapacity: 'المتاح من طاقته',
+  engagementStatus: 'حالة الارتباط',
+  taskLoad: 'حِمل المهام',
+  confirmedAlloc: 'مؤكد',
+  tentativeAlloc: 'مبدئي',
+  pendingDecision: 'بانتظار الاعتماد',
+  outOfEngagement: 'خارج فترة الارتباط',
+  unmeasured: 'غير مقاس',
+  unavailable: 'غير متاحة',
+  // S17–S21: تحليل الاستخدام، فحص الحالة، الاحتياجات، المرشحون
+  checkCase: 'فحص الحالة',
+  defineIndicators: 'تعريف المؤشرات',
+  reviewSignal: 'إشارة المراجعة',
+  authorizedCoverage: 'التغطية المصرح بها',
+  billableOfCapacity: 'القابل للفوترة',
+  signalNotAvailability: 'الإشارة لا تعني أن المورد متاح — التغيير يتم عبر طلب تسكين.',
+  addNeed: 'إضافة احتياج',
+  viewCandidates: 'عرض المرشحين',
+  prepareRequest: 'إعداد طلب التسكين',
+  needNoBooking: 'حفظ الاحتياج لا يحجز مورداً.',
+  // ملف المورد (S04–S08 + S10)
+  resourceProfile: 'ملف المورد',
+  editProfile: 'تعديل الملف',
+  tasksAndDossier: 'مهامه وملفه',
+  myTasksAndDossier: 'مهامي وملفي',
+  baseCapacity: 'الطاقة التعاقدية',
+  confirmedAllocation: 'التسكين المؤكد',
+  availableNow: 'المتاح',
+  ofHisCapacity: 'من طاقته',
+  noTasksRecorded: 'لا توجد مهام مسجلة',
+  noAccountNoTasks: 'لا حساب دخول — لا مهام مسجلة لهذا المورد',
+  openOriginalTask: 'فتح المهمة الأصلية',
+  editCapacity: 'تعديل الطاقة',
+  beforeAfter: 'قبل/بعد',
+  recordedAt: 'وقت التسجيل',
+  effectiveFrom: 'تاريخ السريان',
+  engagementNotEndedByAccount: 'تعطيل حساب الدخول لا ينهي الارتباط، وتاريخ النهاية لا يمحو السجل السابق — الأشهر الماضية تبقى تاريخاً ولا تُعرض طاقةً متاحة.',
+  // الإقفال الشهري (S22–S25): نسب توزيع التكلفة — لا رواتب ولا مبالغ في أي شاشة
+  closeSubtitle: 'مراجعة توزيع التكلفة على المشاريع والقطاع',
+  closeReviewExceptions: 'مراجعة الاستثناءات',
+  closeShowAll: 'عرض الكل',
+  closeRefreshDraft: 'تحديث المسودة',
+  closeSendFinance: 'إرسال للمالية',
+  closeCannotSend: 'لا يمكن الإرسال',
+  closeReturnManager: 'إعادة للمدير',
+  closeLockMonth: 'اعتماد وإقفال الشهر',
+  closeExport: 'تصدير',
+  closeRequestCorrection: 'طلب تصحيح',
+  closeConfirmShares: 'تأكيد التوزيع',
+  closeAddTarget: 'إضافة جهة تحميل',
+  closeTransferLine: 'حالة الترحيل للنظام المالي',
+  closeManagerNoLock: 'تأكيد المدير لا يقفل الشهر مالياً',
+  closeLockedEditVia: 'الشهر مقفل — التعديل عبر طلب تصحيح',
+  closeVersionStale: 'تغيّرت النسخة منذ فتح الشاشة — حدّث الصفحة وراجع من جديد',
+  closeCurrentStays: 'تبقى النسخة الحالية سارية أثناء مراجعة الطلب',
+  closeOtherSector: 'تحميل قطاع آخر يمر بموافقته',
+  closeNotFte: 'كل النسب هي توزيع تكلفة الشهر — لا نسبة من الطاقة ولا مبلغاً',
+  closeReference: 'مرجع التسكين للشهر',
+  closeMissingCode: 'كود مفقود',
+  closeReadiness: 'جاهزية الإقفال',
+  closeSourcesApprovals: 'المصادر والاعتمادات',
+  closeVersionHistory: 'سجل الإصدارات',
+  closeCorrections: 'طلبات التصحيح',
+  // S13–S16 (التخطيط وطلبات التسكين)
+  newAllocation: 'تسكين جديد',
+  showTentative: 'إظهار المبدئي',
+  outOfEngagementShort: 'خارج الارتباط',
+  allocTypeWanted: 'نوع التسكين المطلوب',
+  previewBtn: 'معاينة',
+  reviewRequest: 'مراجعة الطلب',
+  sendRequest: 'إرسال الطلب',
+  applyAllocation: 'تطبيق التسكين',
+  saveDraft: 'حفظ كمسودة',
+  withdrawRequest: 'سحب الطلب',
+  approveBtn: 'اعتماد',
+  returnForEdit: 'إعادة للتعديل',
+  rejectBtn: 'رفض',
+  allRequests: 'كل الطلبات',
+  myRequests: 'طلباتي',
+  pendingMyDecision: 'بانتظار قراري',
+  resourceDepartment: 'إدارة المورد',
+  resourceManager: 'مدير المورد',
+  planChangedRepreview: 'تغيّرت الخطة منذ المعاينة — أعد المعاينة',
+  appliedDirectly: 'يُطبَّق مباشرة',
+  // S11 الهيكل الإداري · S12 العمل والالتزامات
+  orgAffiliation: 'الارتباط الإداري',
+  orgAffiliationSub: 'الإدارة الأساسية تحدد التبعية، والتسكين يحدد العمل.',
+  pickDepartment: 'اختر إدارة من الهيكل',
+  sharedEngagements: 'ارتباطات تشغيلية مشتركة',
+  primaryDeptUnchanged: 'لا يغيّر الإدارة الأساسية',
+  byWork: 'حسب العمل',
+  byResource: 'حسب المورد',
+  linkedTeam: 'الفريق المرتبط',
+  confirmedAllocTotal: 'إجمالي التسكين المؤكد',
+  nextCommitment: 'الالتزام القادم',
+  followUp: 'المتابعة',
+  showDistribution: 'عرض التوزيع',
+  openSourceRecord: 'فتح السجل الأصلي',
+  openTasks: 'المهام الجارية',
+  blockedTasks: 'المهام المتعطلة',
+  viewTasks: 'عرض المهام',
 
   // ── العملاء ──
   clients: 'العملاء',
@@ -116,9 +255,14 @@ export const G = {
   commandCenter: 'مركز القيادة',
   pipelineLine: 'خط الفرص',
   funnel: 'قمع الفرص',
-  hOnTrack: 'على المسار',
-  hAtRisk: 'في خطر',
-  hCritical: 'حرج',
+  // حالة المشروع: نفس التسميات التي يستعملها البريد حرفياً (مصدرها core/i18n/thresholds.js)
+  hOnTrack: HEALTH_LABELS.GREEN,
+  hAtRisk: HEALTH_LABELS.AMBER,
+  hCritical: HEALTH_LABELS.RED,
+  // شرح عتبات الطاقة بجملة واحدة — تُعرض تحت أي مقياس إشغال
+  capacityLegend: CAPACITY_LEGEND,
+  overCapacityPct: CAPACITY.over,
+  healthyCapacityPct: CAPACITY.healthy,
   spendPct: 'صرف%',
   progressPct: 'إنجاز%',
   delivered: 'مُسلّم',
@@ -129,6 +273,184 @@ export const G = {
   whatChanged: 'ما تغيّر',
   yearElapsed: (n) => `انقضى ${n}% من السنة`,
   relOwner: 'مالك العلاقة',
+
+  // ── مركز العمل اليومي (المهام) ──
+  // القاعدة الحاكمة لهذا المقطع (docs/benchmarks.md، جولة 2026-07-27): لغة إنجاز مهنية هادئة،
+  // لا نقاط ولا أوسمة ولا سلاسل أيام؛ وكل رقم من مصدر مسجَّل أو فراغ معلن.
+  workCentre: 'مركز عملي',
+  myWork: 'مهامي',
+  teamWork: 'مهام فريقي',
+  task: 'مهمة',
+  tasks: 'المهام',
+  viewList: 'قائمة',
+  viewBoard: 'لوح',
+  viewCalendar: 'تقويم',
+  dayPlan: 'خطة اليوم',
+  doneToday: 'أنجزت اليوم',
+  doneThisWeek: 'أنجزت هذا الأسبوع',
+  remainingToday: 'المتبقي اليوم',
+  dayClear: 'يومك مُغلق',
+  dayClearSub: 'لا شيء مستحق اليوم — راجع القادم متى شئت.',
+  nothingScheduled: 'لا شيء مجدول لليوم',
+  assignee: 'المسؤول',
+  unassigned: 'غير مُسنَدة',
+  taskStatus: 'الحالة',
+  priority: 'الأولوية',
+  dueDate: 'الاستحقاق',
+  noDueDate: 'بلا موعد',
+  taskProgress: 'التقدم',
+  noProgressYet: 'لم يُسجَّل تقدم بعد',
+  blocker: 'العائق',
+  noBlocker: 'بلا عائق',
+  setBlocker: 'اكتب سبب التعطيل',
+  nextStep: 'الخطوة التالية',
+  setNextStep: 'حدّد الخطوة التالية',
+  parentLink: 'الجهة المرتبطة',
+  internalWork: 'عمل داخلي',
+  noParentLink: 'بلا جهة مرتبطة',
+  window: 'النافذة الزمنية',
+  winToday: 'اليوم',
+  winWeek: 'هذا الأسبوع',
+  winLater: 'لاحقاً',
+  winOverdue: 'متأخرة',
+  winAll: 'الكل',
+  bulkSelected: 'مهمة محددة',
+  bulkApply: 'تطبيق',
+  bulkClear: 'إلغاء التحديد',
+  myOpenOpportunities: 'الفرص اللي عليّ',
+  markDone: 'إنجاز',
+  quickAdd: 'إضافة سريعة',
+
+  // ── المهام الشخصية والملاحظات ───────────────────────────────────────────────
+  // «وفي برضو مكان المهام أضيف شي اسمه مهام شخصية، وأضيف مكان الواحد يكتب فيه النوت» —
+  // بلسان المالك. والكلمتان تحملان وعداً صريحاً بالخصوصية، فلا تُستعملان في شاشة يقرؤها
+  // غير صاحبها أبداً: «شخصية» تعني لصاحبها وحده، و«عمل داخلي» تعني للشركة بلا مشروع.
+  personalWork: 'مهمة شخصية',
+  personalTasks: 'مهام شخصية',
+  personalOnlyYou: 'تظهر لك وحدك',
+
+  // ── انتظار الاعتماد ─────────────────────────────────────────────────────────
+  // «أي موظف يضيف مهمة لازم المدير يعتمدها عشان تنضاف له — إذا كانت مهمة متعلّقة بالمشروع
+  // أو فرصة معيّنة». والوسم يقول **حالها ومكانها**: لم تُضَف بعد، وهي عند مديرك الآن. ولولا
+  // ذلك لظنّ صاحبها أن الحفظ لم ينجح فأعاد كتابتها.
+  awaitApproval: 'بانتظار اعتماد مديرك',
+  awaitApprovalHint: 'لم تُضَف بعد — تظهر في عملك وفي شاشة المشروع بعد اعتماد مديرك لها',
+  // نفس الوسم لمهمةٍ أسندتَها لغيرك: مكانُ وصولها قائمةُ صاحبها لا قائمتك — فالتلميح يقولها.
+  awaitApprovalAssignedHint: 'لم تصل إليه بعد — تُضاف إلى قائمته بعد اعتماد مديرك',
+  awaitApprovalSent: 'أُرسلت إلى مديرك للاعتماد',
+  myNotes: 'ملاحظاتي',
+  noteSubject: 'الموضوع',
+  noteBody: 'نص الملاحظة',
+  noteDay: 'اليوم',
+  newNote: 'ملاحظة جديدة',
+  pinNote: 'تثبيت',
+  unpinNote: 'إلغاء التثبيت',
+  pinnedNotes: 'المثبَّتة',
+  noteEdit: 'تعديل',
+  noteDelete: 'حذف',
+
+  // ── حركة المال على المشروع ──────────────────────────────────────────────────
+  // مفردات طلب المالك بلغته: «الكاش إن والكاش آوت والمصروفات والتسكين… ونسبتهم حسب الشهر».
+  // القاعدة الحاكمة لهذا المقطع: الغياب والتقييد والصفر ثلاث حالات لا تتشابه — ولكلٍّ كلمتها.
+  moneyOnProject: 'حركة المال على المشروع',
+  moneyOnProjectSub: 'الداخل والخارج والمصروفات والتسكين — شهراً بشهر، بما هو مسجَّل فقط',
+  moneyBridge: 'من التعاقد إلى التحصيل',
+  moneyStage: 'مرحلة',
+  contracted: 'قيمة التعاقد',
+  revenueRecognised: 'الإيراد المحقق',
+  cashIn: 'الداخل النقدي',
+  cashOut: 'الخارج النقدي',
+  monthlyMovement: 'الحركة الشهرية',
+  monthDetails: 'تفصيل الأشهر',
+  clientPo: 'أمر شراء العميل',
+  retentionHeld: 'محتجز',
+  draftInvoices: 'فواتير مسودة',
+  invoicesByStatus: 'الفواتير حسب حالتها',
+  expenses: 'المصروفات',
+  expenseRegister: 'سجل المصروفات',
+  expenseByType: 'المصروفات حسب الوصف',
+  expenseDesc: 'وصف المصروف',
+  expenseAmount: 'المبلغ بالريال',
+  expenseMonth: 'شهر الصرف',
+  expenseWho: 'مَن سجَّله',
+  addExpense: 'تسجيل مصروف',
+  saveExpense: 'حفظ التعديل',
+  paidOut: 'مدفوع فعلاً',
+  committedNotPaid: 'معتمد لم يُصرف',
+  requestedNotApproved: 'مطلوب لم يُعتمد',
+  rejectedExpenses: 'مرفوض',
+  recordedCost: 'الكلفة المسجّلة',
+  actualSpendField: 'المصروف الفعلي المدوَّن',
+  suppliers: 'الموردون',
+  subscriptions: 'الاشتراكات',
+  recurringExpenses: 'مصروفات تتكرر',
+  staffingShare: 'التسكين بالنسب الشهرية',
+  staffingCostLine: 'كلفة التسكين لكل شخص',
+  monthsStaffed: 'أشهر التسكين',
+  averageShare: 'المتوسط الشهري',
+  yearShare: 'حصة السنة',
+  monthlyTotalShare: 'مجموع النِّسَب الشهرية',
+  allMonths: 'التغطية الشهرية',
+  notRecorded: 'غير مُسجَّل',
+  notRecordedF: 'غير مسجّلة',
+  restricted: 'مقيَّد',
+  restrictedAmounts: 'المبالغ مقيَّدة عن دورك',
+  noWritePathYet: 'لا مسار لتسجيله بعد',
+  notTrackedYet: 'بلا سجل في المنصة',
+  whatIsMissing: 'ما ينقص الصورة',
+  pictureComplete: 'لا نقص معلوماً في هذه الصورة',
+  whatItNeeds: 'ما يحتاجه التسجيل',
+  workaroundNow: 'البديل المتاح اليوم',
+  undatedRows: 'بلا شهر مسجَّل',
+  showYear: 'سنة العرض',
+  otherYearsMovement: 'وللمشروع حركة مسجّلة في',
+  moneyLoadFailed: 'تعذّر عرض حركة المال على هذا المشروع',
+
+  // ── المخرجات داخل المشروع ──
+  deliverable: 'مخرَج',
+  addDeliverable: 'إضافة مخرج',
+  deliverableName: 'اسم المخرج',
+  deliverableMonth: 'شهر الاستحقاق',
+  deliverableAmount: 'القيمة',
+  amountUnset: 'غير محدَّدة',
+  monthUnset: 'بلا شهر',
+  // «ما يكون في مسار مالي خلاص» (المالك، 2026-08-16): الشارة تسمّي الواقعة (مستخلص صادر)
+  // لا سلطةً وهمية — الحالة والقيمة بيد أصحاب الصلاحية، والحذف وحده محجوز بسند الفاتورة.
+  financeOwned: 'صدر بها مستخلص',
+
+  // ── الفعاليات ──
+  // قسم المعارض: بطاقةٌ تُلتقط في ثوانٍ، وتُراجَع بعد المعرض. «جهة ملتقطة» لا «جهة اتصال»
+  // عمداً: الثانية اسمُ سجل العملاء، وهذه ليست فيه حتى يقرّر مراجعٌ ذلك.
+  events: 'الفعاليات',
+  eventContacts: 'الجهات الملتقطة',
+  eventCapture: 'الالتقاط',
+  eventPartners: 'الشراكات',
+  eventQr: 'رمز QR للزوّار',
+  eventReview: 'ما بعد الفعالية',
+  newEvent: 'فعالية جديدة',
+  captureContact: 'التقط جهة',
+  saveAndNext: 'احفظ وابدأ التالية',
+  cardKind: 'نوع البطاقة',
+  pasteCardText: 'الصق نصّ البطاقة',
+  fillFromText: 'املأ من النصّ',
+  recentCaptures: 'آخر ما التقطت',
+  possibleDuplicate: 'قد تكون مكرّرة',
+  editEvent: 'تعديل الفعالية',
+  closeEvent: 'إغلاق الفعالية',
+  reopenEvent: 'فتح الفعالية',
+  deleteEvent: 'حذف الفعالية',
+  // اجتماعات الفعالية (الترحيلة ٠٤٠): موعدٌ له رابطٌ يُفتح بضغطة — و«رابط الاجتماع» أبداً
+  // لا كلمة تقنية أجنبية.
+  eventMeetings: 'الاجتماعات',
+  newMeeting: 'اجتماع جديد',
+  meetingTitle: 'عنوان الاجتماع',
+  meetingLink: 'رابط الاجتماع',
+  joinMeeting: 'انضم',
+  meetingAttendees: 'المدعوون',
+  myMeetings: 'اجتماعاتي',
+  addAttendee: 'أضِف',
+  saveMeeting: 'احفظ الاجتماع',
+  meetingConflict: 'تعارض في المواعيد',
 
   // ── عام ──
   overview: 'نظرة عامة',
@@ -159,6 +481,276 @@ export const G = {
   vsLastYear: 'مقارنة بالسنة الماضية',
 };
 
+// ── صفة الفرصة التجارية: نوع ارتباطها ونوع طرحها ───────────────────────────────
+// «يا إنه تحطها اتفاقية إطارية، وبرضو يكون في مساحة تكون RFI أو RFP» — بلسان المالك.
+//
+// والاسمان الأجنبيان يبقيان مكتوبين بحروفهما بجانب شرحهما العربي، خلافاً لقاعدة المنصة في
+// إخفاء المصطلح التقني: هذان ليسا مصطلحَي برمجيات بل **لغة العطاءات الحكومية** التي يقرؤها
+// الفريق في كراسات الشروط كل يوم — و«طلب عرض» وحده لا يميّزه عن «طلب سعر» عند من يعمل بها.
+export const ENGAGEMENT_TYPE_AR = {
+  PROJECT: 'عمل محدَّد',
+  FRAMEWORK: 'اتفاقية إطارية',
+};
+export const engagementTypeLabel = (v) => ENGAGEMENT_TYPE_AR[String(v || '').toUpperCase()] || 'لم يُحدَّد';
+// شرحُ كلٍّ في سطر — يظهر عند الوقوف على الخانة، فلا يُختار نوعٌ بالتخمين.
+export const ENGAGEMENT_TYPE_TIP = {
+  PROJECT: 'عملٌ محدَّد النطاق والقيمة والمدة — قيمته التزامٌ متوقَّع.',
+  FRAMEWORK: 'اتفاقية إطارية يُسحَب منها بأوامر عمل لاحقة — قيمتها سقفٌ لا التزامٌ مؤكَّد.',
+};
+export const SOLICITATION_TYPE_AR = {
+  RFI: 'استطلاع سوق (RFI)',
+  RFP: 'طلب عرض (RFP)',
+  RFQ: 'طلب سعر (RFQ)',
+  DIRECT_AWARD: 'تكليف مباشر',
+  TENDER: 'منافسة عامة',
+};
+export const solicitationTypeLabel = (v) => SOLICITATION_TYPE_AR[String(v || '').toUpperCase()] || 'لم يُحدَّد';
+export const SOLICITATION_TYPE_TIP = {
+  RFI: 'الجهة تستطلع السوق ولم تطرح بعد — فرصةٌ مبكّرة لا عرضٌ مطلوب.',
+  RFP: 'طلب عرضٍ فنّي ومالي على نطاقٍ معلَن.',
+  RFQ: 'طلب سعرٍ على نطاقٍ محدَّد سلفاً — المنافسة على السعر غالباً.',
+  DIRECT_AWARD: 'تكليفٌ من الجهة بلا منافسة.',
+  TENDER: 'منافسة عامة مُعلَنة يتقدّم إليها الجميع.',
+};
+
+// ── مستندات الفرصة: لغة العطاء لا لغة المشروع ──────────────────────────────────
+// الفرصة قبل الترسية، فأسماء مستنداتها أسماء ما يُتداول في العطاء — لا «عقد» ولا «تقرير».
+export const OPP_DOC_KIND_AR = {
+  tender: 'إعلان المنافسة',
+  rfp_doc: 'كراسة الشروط',
+  technical: 'العرض الفني',
+  financial: 'العرض المالي',
+  correspondence: 'مراسلات',
+  other: 'مستند آخر',
+};
+export const oppDocKindLabel = (v) => OPP_DOC_KIND_AR[String(v || '').toLowerCase()] || 'مستند آخر';
+
+// ── حالات المخرج ومسارها ───────────────────────────────────────────────────────
+// دورة عمل واحدة بيد الإنسان، من أول ما يُكتب إلى أن يعتمده العميل. والفوترة والتحصيل **ليستا
+// حالتين هنا**: كانتا قيمتين في نفس الخانة، فيكتب إصدارُ المستخلص «مُفوتر» فوق «مقبول» ويُمحى
+// أثرُ القبول — ويصير المخرَج المعتمَد من العميل مخرَجاً لا يُعرف أقُبل أم لا. صارتا ختمين
+// مستقلين على الصف (تاريخ الفوترة وتاريخ التحصيل) يُقرآن مع الحالة لا بدلاً منها.
+export const DELIVERABLE_STATUS_AR = {
+  DRAFT: 'مسودة', IN_PROGRESS: 'جارٍ العمل', DELIVERED: 'تم التسليم',
+  ACCEPTED: 'تم الاعتماد', REJECTED: 'مُعاد للتعديل',
+};
+export const deliverableStatusLabel = (s) => DELIVERABLE_STATUS_AR[String(s || '').toUpperCase()] || 'حالة غير محدَّدة';
+// الخطوة التالية بنقرة واحدة — من الحالة الراهنة إلى الفعل الطبيعي بعدها (زر واحد ≤ 3 كلمات).
+export const DELIVERABLE_NEXT = {
+  DRAFT: { to: 'IN_PROGRESS', ar: 'بدء العمل' },
+  IN_PROGRESS: { to: 'DELIVERED', ar: 'تسليم' },
+  DELIVERED: { to: 'ACCEPTED', ar: 'اعتماد' },
+  REJECTED: { to: 'DELIVERED', ar: 'إعادة تسليم' },
+};
+// الحقائق المالية على المخرَج — ختمان لا حالتان، ولفظُهما يقول إنهما نتيجةُ مسارٍ في المالية.
+export const DELIVERABLE_MONEY_AR = { invoiced: 'تمت الفوترة', collected: 'تم التحصيل' };
+
+// ── حالة الفعالية ──────────────────────────────────────────────────────────────
+// تُحسب في الخدمة من تاريخي الفعالية وختم إغلاقها (لا تُخزَّن)، وتُعرض بهذه الكلمات وحدها.
+// الخدمة تعيد الكلمة العربية مباشرةً، فالمُسمّي يقبل المفتاح والكلمة معاً ولا يُعيد قيمةً خاماً.
+export const EVENT_STATUS_AR = { upcoming: 'قادمة', live: 'جارية', ended: 'منتهية', closed: 'مُغلقة' };
+export const eventStatusLabel = (v) => {
+  const s = String(v || '');
+  return EVENT_STATUS_AR[s.toLowerCase()] || Object.values(EVENT_STATUS_AR).find((ar) => ar === s) || 'غير محدَّدة';
+};
+
+// ── أيام الأسبوع بالعربية الكاملة ──────────────────────────────────────────────
+// الفهرس صفري بمعيار JS (0 = الأحد)، والأسبوع السعودي يبدأ من الأحد — فرؤوس التقويم تُقرأ
+// من اليمين: الأحد ثم الاثنين… حتى السبت في أقصى اليسار. القاعدة نفسها المطبَّقة على الأشهر
+// في core/i18n/time.js: لا اختصارات عربية إطلاقاً، والاسم الكامل حيث تتسع المساحة.
+// الشكل القصير هنا ليس اختصاراً مقطوعاً بل الاسم المفرد المتداول («أحد» لا «أح»).
+export const WEEKDAYS_AR = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+export const WEEKDAYS_AR_SHORT = ['أحد', 'اثنين', 'ثلاثاء', 'أربعاء', 'خميس', 'جمعة', 'سبت'];
+export const weekdayLabel = (i, density = 'full') =>
+  (density === 'short' ? WEEKDAYS_AR_SHORT : WEEKDAYS_AR)[((Number(i) % 7) + 7) % 7] || '';
+
+// ── تسميات القيم المخزَّنة (لا تُطبع قيمة خام للمستخدم أبداً) ──────────────────
+// نوع العمل في سجل الوقت — كان يُطبع كما هو مخزَّن (project/opportunity/internal…).
+export const WORK_KIND_AR = {
+  project: 'مشروع',
+  opportunity: 'فرصة',
+  proposal: 'إعداد عرض',
+  product: 'منتج',
+  internal: 'عمل داخلي',
+  leave: 'إجازة',
+  training: 'تدريب',
+  bd: 'تطوير أعمال',
+  admin: 'أعمال إدارية',
+  // «شخصية» لا «داخلي»: الأولى لصاحبها وحده والثانية عملٌ للشركة بلا مشروع — والخلط بينهما
+  // في الكلمة يُغري بالخلط بينهما في الاستعمال، فيكتب المرء ما لا يريد أن يُقرأ حيث يُقرأ.
+  personal: 'شخصية',
+};
+// القائمة بترتيب العرض في نموذج تسجيل الوقت (القيمة المخزَّنة، التسمية العربية)
+export const WORK_KIND_OPTIONS = ['project', 'opportunity', 'proposal', 'product', 'internal', 'leave', 'training', 'bd']
+  .map((k) => [k, WORK_KIND_AR[k]]);
+export const workKindLabel = (k) => WORK_KIND_AR[String(k || '').toLowerCase()] || 'غير محدَّد';
+
+// ── تصنيف المهمة: صفة النشاط لا جهته ─────────────────────────────────────────
+// محورٌ ثانٍ مستقل عن «نوع العمل» أعلاه: النوع يقول **لمن** يعود العمل (مشروع/فرصة/داخلي/
+// شخصية) وعليه تُبنى الرؤية، والتصنيف يقول **ما هو** النشاط نفسه (اجتماع/تقرير/متابعة).
+// القائمة هنا جاهزةٌ للاختيار السريع، والقيمة الحرة تُعرض كما كُتبت — فالمكتوب بيد صاحبه
+// عربيٌّ أصلاً ولا يُترجم وسمُ إنسانٍ إلى «غير محدَّد».
+export const TASK_CATEGORY_AR = {
+  meeting_internal: 'اجتماع داخلي',
+  meeting_client: 'اجتماع مع جهة',
+  meeting_vendor: 'اجتماع مع مورّد',
+  report: 'إعداد تقرير',
+  followup: 'متابعة',
+  admin_work: 'عمل إداري',
+};
+export const taskCategoryLabel = (v) => TASK_CATEGORY_AR[String(v || '')] || String(v || '');
+
+// ── بنود العمل الداخلي في التسكين ─────────────────────────────────────────────
+// «في التسكين مو شرط يكون على مشروع … برضو ممكن أسكّن على مشروع أو أسكّن على تطوير أعمال ·
+//  تطوير منتجات · إدارة مشاريع» — قرار المالك، والبنود الثلاثة بأسمائها كما سمّاها.
+// وهي ليست مشاريع ولا تدخل المحفظة: حجزٌ من وقت الشخص باسمٍ معلوم يُقرأ في لوحة الطاقة وحدها.
+// المفتاح في الخدمة (`WORK_BUCKETS` في وحدة المشاريع) والكلمة هنا — كما في «نوع العمل» أعلاه.
+export const WORK_BUCKET_AR = {
+  bd: 'تطوير أعمال',
+  product: 'تطوير منتجات',
+  pmo: 'إدارة مشاريع',
+};
+export const workBucketLabel = (k) => WORK_BUCKET_AR[String(k || '').toLowerCase()] || '';
+
+// ── تصنيف المشروع: لمن يُنجَز هذا العمل؟ ───────────────────────────────────────
+// القاعدة كلها في مكان واحد: `projectKind` في خدمة المشاريع تُقرّر المفتاح من قرائن الصف،
+// وهنا الكلمة العربية وحدها — تماماً كما يفعل «نوع العمل» و«اسم السجل» أعلاه (القاعدة في
+// الخدمة، والكلمة في المعجم، والطبقات لا تنعكس).
+// قرار المالك في التسمية: لا كيان اسمه «مشاريع داخلية». العمل غير المرتبط بعميل يُقال له
+// «تشغيل داخلي»، ومنتجات الشركة يُقال لها «منتج».
+export const PROJECT_KIND_AR = {
+  client: 'مشروع عميل',
+  product: 'منتج',
+  internal: 'تشغيل داخلي',
+};
+export const projectKindLabel = (k) => PROJECT_KIND_AR[String(k || '').toLowerCase()] || 'غير مصنَّف';
+
+// سبب التصنيف بالعربية — يُعرض في تلميح الوسم كي يعرف القارئ من أين جاءت الكلمة، فلا يظنها رأياً.
+export const PROJECT_KIND_BASIS_AR = {
+  client: 'له عميل مسجَّل',
+  internal_client: 'العميل المسجَّل هو الشركة نفسها',
+  contract: 'له قيمة تعاقدية مسجَّلة',
+  purchase_order: 'له أمر شراء مسجَّل',
+  revenue: 'سُجِّل له إيراد محقق',
+  opportunity: 'نشأ من فرصة بيع',
+  stated_product: 'مسجَّل ضمن منتجات الشركة',
+  stated_external: 'مسجَّل عملاً لعميل',
+  none: 'لا عميل ولا قيمة تعاقدية ولا إيراد مسجَّل له',
+};
+export const projectKindBasisLabel = (b) => PROJECT_KIND_BASIS_AR[String(b || '').toLowerCase()] || '';
+// تلميح الوسم: التصنيف وسببه؛ وحين يخالف السببُ التصنيفَ القديم المدوَّن على المشروع نقولها
+// صراحةً — إخفاء التناقض يجعل التصحيح مستحيلاً، وإظهاره سطراً واحداً يكفي.
+export const projectKindTip = ({ key, basis, stale } = {}) => {
+  const why = projectKindBasisLabel(basis);
+  const head = `التصنيف: ${projectKindLabel(key)}${why ? ` — ${why}` : ''}`;
+  return stale ? `${head}. التصنيف المدوَّن على المشروع منذ نقل المنصة يقول غير ذلك ولم يُصحَّح بعد.` : head;
+};
+
+// اسم السجل المرتبط بطلب اعتماد أو حدث تدقيق — بدل طباعة اسم الجدول الإنجليزي.
+export const RESOURCE_AR = {
+  activity: 'نشاط تواصل', allocation: 'تسكين', app_user: 'مستخدم', approval: 'اعتماد',
+  approval_request: 'طلب اعتماد', client: 'عميل', contact: 'جهة اتصال', contract: 'عقد',
+  cost: 'تكلفة', deliverable: 'مخرج', department: 'إدارة', document: 'مستند',
+  employee: 'موظف', expense: 'مصروف', import_run: 'عملية استيراد', invoice: 'فاتورة',
+  issue: 'معوّق', login_code: 'رمز دخول', margin: 'هامش', milestone: 'معلم', notification: 'إشعار',
+  opp_team: 'فريق فرصة', opportunity: 'فرصة', project: 'مشروع', proposal: 'عرض',
+  report: 'تقرير', report_schedule: 'جدولة تقرير', revenue_line: 'بند إيراد', risk: 'خطر',
+  saved_view: 'عرض محفوظ', sector: 'قطاع', session: 'جلسة دخول', task: 'مهمة',
+  timesheet: 'سجل وقت', unit: 'وحدة', error_event: 'عطل',
+  event: 'فعالية', event_contact: 'جهة ملتقطة', event_partner: 'شراكة فعالية', event_blob: 'صورة بطاقة',
+};
+export const resourceLabel = (r) => RESOURCE_AR[String(r || '').toLowerCase()] || 'سجل';
+
+// أسماء التقارير الستة — تُعرض من هنا لا من الاسم المخزَّن، لأن قواعد قائمة تحمل أسماءً قديمة
+// فيها اختصارات إنجليزية («تقرير حالة المشروع (RAG)») ولا توجد شاشة لإعادة تسميتها.
+export const REPORT_NAME_AR = {
+  weekly_exec_brief: 'الموجز التنفيذي الأسبوعي',
+  sector_weekly_status: 'حالة القطاع الأسبوعية',
+  monthly_sector_performance: 'أداء القطاع الشهري',
+  project_status_report: 'تقرير حالة المشروع',
+  workforce_utilization: 'تقرير القوى العاملة والإشغال',
+  opportunity_pipeline: 'تقرير خط الفرص',
+};
+export const reportName = (key, stored) => REPORT_NAME_AR[key] || stored || 'تقرير';
+
+// إجراءات سجل التدقيق — كل قيمة تُكتب فعلياً في السجل لها تسمية هنا (كانت تظهر لاتينية
+// لأي إجراء خارج جدول التسميات: read/export/submit/import.apply…).
+export const AUDIT_ACTION_AR = {
+  create: 'إنشاء', update: 'تعديل', delete: 'حذف', approve: 'اعتماد', reject: 'رفض',
+  submit: 'رفع للاعتماد', read: 'اطّلاع', export: 'تصدير', import: 'استيراد',
+  'import.upload': 'رفع ملف استيراد', 'import.apply': 'تنفيذ استيراد', 'import.undo': 'تراجع عن استيراد',
+  login: 'تسجيل دخول', logout: 'تسجيل خروج', error: 'عطل مسجَّل', skip: 'تم التجاوز',
+  next_action: 'تحديد الخطوة التالية', admin: 'إجراء إداري', send: 'إرسال', schedule: 'جدولة',
+};
+export const auditActionLabel = (a) => AUDIT_ACTION_AR[String(a || '').toLowerCase()] || 'إجراء آخر';
+
+// حالة الرسالة في طابور الإرسال — «جارٍ الإرسال» كانت تظهر بحروف لاتينية لأنها خارج جدول التسميات.
+export const MAIL_STATUS_AR = {
+  QUEUED: 'بانتظار الإرسال', SENDING: 'جارٍ الإرسال', PROCESSING: 'قيد المعالجة',
+  SENT: 'أُرسلت', FAILED: 'تعذّر الإرسال', CANCELLED: 'أُلغيت',
+  // «عُوينت» و«حُجبت» تفصلان ما لم يكن مفصولاً: رسالةٌ كُتبت للمعاينة، وأخرى منعها حارس
+  // العناوين — وكلتاهما كانت تُعرض «أُرسلت» فيبدو الطابور ناجحاً وما غادرت رسالة.
+  PREVIEWED: 'عُوينت ولم تُرسل', BLOCKED: 'حُجبت — عنوان غير مسموح',
+};
+export const mailStatusLabel = (s) => MAIL_STATUS_AR[String(s || '').toUpperCase()] || 'حالة غير معروفة';
+
+// لون الحالة في مكان واحد — كانت كل شاشة تختار لونها فتختلف الشاشتان على الرسالة نفسها.
+// الأخضر للمغادرة الفعلية وحدها؛ فلا يُقرأ «عُوينت» نجاحاً.
+export const MAIL_STATUS_TONE = {
+  SENT: 'green', FAILED: 'red', BLOCKED: 'amber', PREVIEWED: 'slate',
+  QUEUED: 'blue', SENDING: 'blue', PROCESSING: 'blue', CANCELLED: 'slate',
+};
+export const mailStatusTone = (s) => MAIL_STATUS_TONE[String(s || '').toUpperCase()] || 'slate';
+
+// أحداث سجل البريد كما تُخزَّن (enqueued/sent/failed) — تُعرض بمعناها.
+export const MAIL_EVENT_AR = {
+  enqueued: 'بانتظار الإرسال', sending: 'جارٍ الإرسال', sent: 'أُرسلت',
+  failed: 'تعذّر الإرسال', retry: 'إعادة محاولة', skipped: 'تم تجاوزها', cancelled: 'أُلغيت',
+  previewed: 'عُوينت ولم تُرسل', blocked: 'حُجبت — عنوان غير مسموح',
+};
+export const mailEventLabel = (e) => MAIL_EVENT_AR[String(e || '').toLowerCase()] || 'حدث بريد';
+
+// ── أعطال المنصة، بالعربية ──
+// القاعدة القاطعة: **نصُّ العطب الخام وأثرُه لا يبلغان الشاشة أبداً.** والحارس الفعلي هنا
+// ليس فاحص المعجم (يقرأ النصوص الثابتة وحدها فلا يرى قيمةً محقونة) بل مسحُ ما بعد النشر:
+// يقرأ **النصّ المعروض** بحثاً عن كلماتٍ محظورة، فأولُ «Cannot read properties of undefined»
+// يُحمّر النشرة. ولذلك يُترجَم كلُّ عطبٍ إلى عبارةٍ عربية من جدول، وما لا يُعرف يسقط إلى
+// عبارةٍ عامة — لا إلى قيمته الخام. نفس عرف `workKindLabel`.
+const FAULT_AR = {
+  TypeError: 'قيمة غير متوقَّعة أثناء العرض',
+  ReferenceError: 'استدعاء لشيء غير موجود',
+  RangeError: 'قيمة خارج المدى المسموح',
+  SyntaxError: 'صيغة غير مقروءة في البيانات',
+  '23505': 'محاولة تكرار سجل موجود',
+  '23503': 'ارتباط بسجل غير موجود',
+  '23502': 'حقل مطلوب تُرك فارغاً',
+  '42P01': 'جدول مفقود — ترحيلة لم تُطبَّق',
+  '57P01': 'تعذّر الوصول إلى قاعدة البيانات',
+  ECONNREFUSED: 'تعذّر الوصول إلى قاعدة البيانات',
+  ETIMEDOUT: 'انقضت المهلة قبل الاستجابة',
+  ENOTFOUND: 'تعذّر العثور على الخادم المطلوب',
+};
+export const faultLabel = (row) => FAULT_AR[String(row?.err_code || '')]
+  || FAULT_AR[String(row?.err_kind || '')] || 'عطل غير مصنَّف';
+
+// موضعُ العطب: مسارٌ مقنَّع أو اسمُ مهمّة — ويُترجَم اسمُ المهمّة لا يُعرض كما هو.
+const FAULT_JOB_AR = {
+  fireDueSchedules: 'إطلاق التقارير المجدولة',
+  sweepApprovalMail: 'بريد الاعتمادات',
+  processQueue: 'إرسال البريد المنتظِر',
+  purgeExpiredCodes: 'كنس رموز الدخول',
+  purgeExpiredSessions: 'كنس الجلسات',
+  purgeFaults: 'كنس سجل الأعطال',
+  errorDigest: 'تنبيه الأعطال',
+  unhandledRejection: 'عملية غير مكتملة',
+};
+export const faultSurfaceLabel = (row) => FAULT_JOB_AR[String(row?.source || '')]
+  || (row?.kind === 'http' ? String(row?.source || 'صفحة غير معروفة') : 'موضع غير معروف');
+
+// نوعُ العطب بلغةٍ تقول أين وقع لا ما اسمه التقني.
+export const FAULT_KIND_AR = { http: 'أثناء طلب من المستخدم', job: 'مهمّة تعمل في الخلفية', rejection: 'عملية لم تكتمل' };
+export const faultKindLabel = (k) => FAULT_KIND_AR[String(k || '')] || 'غير محدَّد';
+
 // مصطلحات محظورة في أي نص يظهر للمستخدم (تُفحص آلياً في scripts/check-glossary.mjs).
 // حرّاس الفحص يتجاهلون أسماء المنتجات المسموحة (Excel) والكود غير المعروض.
 export const BANNED_UI_TERMS = [
@@ -166,4 +758,8 @@ export const BANNED_UI_TERMS = [
   'JSON', 'SQL', 'Database', 'DB ', 'Backend', 'Frontend', 'Cache',
   'null', 'undefined', 'NaN', '[object', 'ID:', 'UUID', 'Timestamp',
   'سكيما', 'كيوري', 'انتيتي', 'باك اند', 'فرونت اند',
+  // مصطلحات البريد والتشغيل التي كانت تتسرّب إلى عناوين الأقسام والشارات
+  'Outbox', 'Inbox', 'Sandbox', 'SMTP', 'Endpoint', 'Payload', 'Token', 'Enum', 'Boolean',
+  // قيم مخزَّنة كانت تُطبع خاماً بدل معناها (حالة المشروع، حالة العنصر)
+  'RAG', 'RED', 'AMBER', 'GREEN', 'IN_PROGRESS', 'ON_HOLD', 'NOT_STARTED', 'TODO', 'DONE',
 ];

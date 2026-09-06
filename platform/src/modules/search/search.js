@@ -1,22 +1,15 @@
 // البحث الشامل («لوحة الأوامر» Ctrl/Cmd+K) — يعيد استخدام دوال العرض المُصرَّحة لكل نطاق
 // (listOpportunities/listProjects/listClients/staffingRoster) فيرث نطاقها الآمن حرفياً؛ لا منطق
-// تفويض جديد هنا. تُستبعد فئة كاملة إن كان المستخدم لا يملك حتى صلاحية فتح صفحتها — نفس شروط
-// PAGE_ACCESS في web/nav.js حرفياً (مكرَّرة هنا عمداً: web/nav.js يستورد من core لا العكس، فلا
-// يجوز لملف modules/ استيراد من web/ دون قلب اتجاه الطبقات؛ أي تعديل هناك يُطبَّق هنا أيضاً).
+// تفويض جديد هنا. تُستبعد فئة كاملة إن كان المستخدم لا يملك حتى صلاحية فتح صفحتها — بالشروط
+// نفسها التي يفتح بها الحارس الصفحة، مقروءةً من مصدرها الواحد في core لا منسوخةً هنا: النسخة
+// كانت تتطلب تعديلاً موازياً عند كل تغيير، وأول سهو فيها يُظهر في البحث ما لا تفتحه الصفحة.
 import { all } from '../../core/db/index.js';
-import { can } from '../../core/rbac/index.js';
+import { PAGE_ACCESS } from '../../core/policy/pages.js';
 import { listOpportunities } from '../crm/opportunities.js';
 import { listProjects } from '../pmo/projects.js';
 import { listClients } from '../clients/clients.js';
 import { staffingRoster } from '../org/org.js';
 import { fmtSar } from '../../core/util/ids.js';
-
-const PAGE_ACCESS = {
-  opportunities: (u) => can(u, 'read', 'opportunity'),
-  projects: (u) => can(u, 'read', 'project'),
-  clients: (u) => can(u, 'read', 'client') || u.scope === 'company',
-  team: (u) => can(u, 'read', 'employee'),
-};
 
 const CAP = 6;
 const norm = (s) => String(s || '').toLowerCase();

@@ -1,14 +1,28 @@
-// صفحة الفرصة — قصة القرار الكاملة: من هي، أين تقف، ما الخطوة التالية، من يعمل عليها،
-// كيف تحركت بين المراحل، وما آخر تواصل معها. (contracts §1: /app/opportunity/:id)
-// أخطاء الصلاحية/عدم الوجود تصعد من الخدمة وتُعرض صفحة عربية عبر errors.js تلقائياً.
+// صفحة الفرصة — قصة القرار الكاملة بترتيب القراءة أولاً: شريط إجراءات، لقطة تعريف، الخطوة
+// التالية ومسار المراحل، ثم تبويبات (نظرة عامة · نشاط · مستندات · فريق · سجل) كلها مرسومة
+// من الخادم. (contracts §1: /app/opportunity/:id — أخطاء الصلاحية/عدم الوجود تصعد من الخدمة
+// وتُعرض صفحة عربية عبر errors.js تلقائياً.)
+//
+// لماذا تبويبات لا عمودان ونموذج مفتوح: تسعُ فتحاتٍ من عشرٍ للصفحة قراءةٌ لا تحرير — «أين
+// تقف الفرصة وما الجديد؟» — وكان نموذج التحكم المفتوح يزاحم الجواب ويُطيل الصفحة حتى لا
+// يُرى سجل التواصل. صار التحرير نافذةً تُفتح بزرّ «تعديل» (قالب opp-edit-tpl خامل حتى
+// يُستدعى)، وبقيت حقول النموذج ومعرّفاتُه كما هي حرفاً — موضعُ الشاشة تغيّر لا الشاشة.
 import { layout, card, pill, tr } from '../layout.js';
 import { icon } from '../icons.js';
-import { fmtSar } from '../../core/util/ids.js';
-import { get } from '../../core/db/index.js';
-import { opportunityDetail, ROT_THRESHOLDS } from '../../modules/crm/opportunities.js';
+import { fmtSar, toSar } from '../../core/util/ids.js';
+import { get, all } from '../../core/db/index.js';
+import { DELIVERY_SECTOR_SQL } from '../../core/org/kind.js';
+import { opportunityDetail, ROT_THRESHOLDS, opportunityDepartments } from '../../modules/crm/opportunities.js';
 import { TEAM_ROLE_LABELS } from '../../modules/crm/oppteam.js';
 import { esc, pct } from './_shared.js';
-import { G } from '../i18n/glossary.js';
+import {
+  G, ENGAGEMENT_TYPE_AR, ENGAGEMENT_TYPE_TIP, engagementTypeLabel,
+  SOLICITATION_TYPE_AR, SOLICITATION_TYPE_TIP, solicitationTypeLabel,
+  OPP_DOC_KIND_AR, oppDocKindLabel,
+} from '../i18n/glossary.js';
+import { splitGross, VAT_RATE_PCT } from '../../modules/finance/vat.js';
+import { pickablePeople } from '../../modules/org/people.js';
+import { dayWord } from '../../core/i18n/plural.js';
 import { stageTip } from './crm.js';
 
 const ACT_KIND_LABELS = {
@@ -16,12 +30,43 @@ const ACT_KIND_LABELS = {
   visit: 'زيارة', proposal: 'عرض', update: 'تحديث', other: 'أخرى',
 };
 const SOURCE_LABELS = { manual: 'إدخال يدوي', legacy: 'منقولة من النظام السابق', import: 'استيراد Excel', app: 'المنصة' };
+// أفعال سجل التدقيق بلسانٍ عربي — وما لم يُعرَّف يُعرض كما سُجِّل (السجل للمدير العام وحده أصلاً).
+const AUDIT_ACTION_AR = { create: 'إنشاء', update: 'تعديل', delete: 'حذف', approve: 'اعتماد' };
 
 const secHead = (t, extra = '') => `<div style="padding:.8rem 1rem;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:.6rem">
   <div style="font-weight:800;font-size:13.5px">${t}</div>${extra}</div>`;
 const emptySec = (ic, t, s) => `<div class="empty-state" style="padding:1.4rem .8rem">${icon(ic)}<div class="t">${t}</div><div class="s">${s}</div></div>`;
+const kv = (k, v) => `<div class="kv-row"><span class="k">${k}</span><span class="v">${v}</span></div>`;
+// حجم الملف بوحدة تُقرأ — أرقام غربية كسائر المنصة: «1.2 م.ب» أو «640 ك.ب».
+const fmtBytes = (n) => (!n ? '' : n >= 1048576 ? `${(n / 1048576).toFixed(1)} م.ب` : `${Math.max(1, Math.round(n / 1024))} ك.ب`);
 
-export async function opportunityDetailPage(user, oppId) {
+// التبويبات: المفتاح ثابت في الرابط (?tab=) والعنوان عربي — وما ليس من القائمة يعود «نظرة عامة».
+const TAB_DEFS = [
+  ['overview', 'نظرة عامة'],
+  ['activity', 'النشاط والتواصل'],
+  ['docs', 'المستندات والروابط'],
+  ['team', 'الفريق والملكية'],
+  ['history', 'السجل'],
+];
+
+// أنماط خاصة بالصفحة: مسار المراحل (نقاط على خط) — وما عداه من طبقة التصميم العامة في
+// layout.js بلا تكرار.
+const PAGE_STYLE = `<style>
+/* المسار يُقرأ كما يُقرأ النص: أول مرحلة يميناً — خصائص منطقية فلا قاعدة ثانية للاتجاه.
+   المرحلة الحالية تتّسع لسطرها الثاني («في هذه المرحلة منذ…») بدل قصّه بثلاث نقاط. */
+.opp-rail{display:flex;align-items:flex-start;overflow-x:auto;padding:.2rem 0 .15rem}
+.opp-rail-it{flex:1 1 0;min-width:72px;position:relative;text-align:center;padding:17px .2rem 0}
+.opp-rail-it.cur{flex:1.6 1 0;min-width:160px}
+.opp-rail-it::before{content:'';position:absolute;top:5px;inset-inline:0;height:2px;background:var(--line)}
+.opp-rail-it:first-child::before{inset-inline-start:50%}
+.opp-rail-it:last-child::before{inset-inline-end:50%}
+.opp-rail-dot{position:absolute;top:0;inset-inline-start:50%;transform:translateX(50%);width:12px;height:12px;border-radius:50%;background:#fff;border:2px solid #cbd5e1;box-sizing:border-box}
+.opp-rail-lb{font-size:10.5px;font-weight:700;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.opp-rail-it.cur .opp-rail-lb{color:var(--ink2);font-weight:800}
+.opp-rail-sub{font-size:10px;color:var(--faint);margin-top:.1rem;line-height:1.6}
+</style>`;
+
+export async function opportunityDetailPage(user, oppId, opts = {}) {
   const d = await opportunityDetail(user, oppId); // notFound/forbidden → صفحة خطأ عربية
   const o = d.opp;
   const st = d.stages.find((s) => s.id === o.stage_id) || {};
@@ -29,72 +74,430 @@ export async function opportunityDetailPage(user, oppId) {
   const stById = Object.fromEntries(d.stages.map((s) => [s.id, s]));
   const stName = (sid) => (stById[sid] || {}).name_ar || sid || '—';
   const isOpen = !st.is_won && !st.is_lost;
+  // الإدارات المشاركة — تُقرأ دائماً لا للتحرير وحده: من يقرأ الفرصة يحتاج أن يعرف من يعمل
+  // عليها. وتُقرأ **قبل الترويسة** لأن الترويسة تعرضها — والتصريح بعد الاستعمال يسقط الصفحة.
+  const partners = await opportunityDepartments(o.id);
+  const partnerIds = new Set(partners.map((x) => x.department_id));
   const th = ROT_THRESHOLDS[o.stage_id];
   const age = d.stage_age_days;
+  // التبويب الابتدائي من الرابط (?tab=) — وما ليس من القائمة يعود «نظرة عامة» بلا خطأ.
+  const tab = TAB_DEFS.some(([k]) => k === opts.tab) ? String(opts.tab) : 'overview';
 
-  // ── الترويسة: هوية الفرصة + موقعها + قيمتها ──
+  // ── شارة العمر: «مضى» تُقال صراحةً — «٢٥ يوماً» وحدها تُقرأ عمراً أو مهلةً أو موعداً ──
+  // ولا تُطبع «لا أيام» أبداً: عمرُ صفرِ أيامٍ لا شارة له (قاعدة المالك نفسها في شاشة الفرص).
   const ageTone = d.rot ? 'background:#fee2e2;color:#dc2626' : th && age != null && age > th / 2 ? 'background:#fef3c7;color:#b45309' : 'background:#f1f5f9;color:#64748b';
-  const agePill = (isOpen && age != null)
-    ? `<span class="pill tnum" style="${ageTone}" title="${esc(d.rot ? 'فرصة متوقفة — حرّكها أو حدّث خطوتها التالية' : G.stageAge(age))}">${icon('clock')} منذ ${age} يوماً</span>` : '';
-  const header = card(`<div style="padding:1rem 1.15rem;display:flex;gap:1rem;flex-wrap:wrap;align-items:flex-start">
-    <div style="flex:1;min-width:260px">
-      <div style="font-size:11px;color:var(--muted);font-weight:700">${G.opportunity} · <span class="tnum">${esc(o.code || '—')}</span></div>
-      <h2 style="font-size:18px;margin:.25rem 0 .55rem">${esc(o.title_ar)}</h2>
-      <div style="display:flex;gap:.4rem;flex-wrap:wrap;align-items:center">
-        <span class="pill" data-tip="${esc(stageTip(st.id ? st : { name_ar: o.stage_id }))}" tabindex="0" style="background:${st.color || '#cbd5e1'}22;color:var(--ink2);cursor:help"><span style="width:8px;height:8px;border-radius:50%;background:${st.color || '#cbd5e1'}"></span>${esc(st.name_ar || o.stage_id)}</span>
-        ${agePill}
-        ${o.priority ? pill(tr(o.priority), o.priority === 'P0' ? 'red' : o.priority === 'P1' ? 'amber' : 'slate') : ''}
-      </div>
-      <div style="margin-top:.7rem;display:flex;gap:1.1rem;flex-wrap:wrap;font-size:var(--fs-body);color:var(--muted)">
-        <span style="display:inline-flex;align-items:center;gap:.3rem">${icon('building')}${o.client_id ? `<a href="/app/client/${o.client_id}" style="color:var(--brand);font-weight:700">${esc(d.client || 'العميل')}</a>` : 'بدون عميل'}</span>
-        ${sectorName ? `<span style="display:inline-flex;align-items:center;gap:.3rem">${icon('sector')}${esc(sectorName)}</span>` : ''}
-        <span style="display:inline-flex;align-items:center;gap:.3rem">${icon('flag')}المسؤول: <b style="color:var(--ink2)">${esc(d.owner || '—')}</b></span>
-      </div>
-    </div>
-    <div style="flex:0 0 auto;text-align:left">
-      <div style="font-size:11px;color:var(--muted);font-weight:700">${G.raw}</div>
-      <div class="metric tnum" style="font-size:1.5rem">${fmtSar(o.value_halalas)}</div>
-      <div style="font-size:var(--fs-meta);color:var(--brand2);font-weight:800" class="tnum">${G.weighted} ${fmtSar(d.weighted_halalas)} <span style="color:var(--faint);font-weight:600">(${pct(o.win_pct)})</span></div>
-    </div>
-  </div>`);
+  const agePill = (isOpen && age != null && age > 0)
+    ? `<span class="pill tnum" style="${ageTone}" title="${esc(d.rot ? 'فرصة متوقفة — حرّكها أو حدّث خطوتها التالية' : G.stageAge(age))}">${icon('clock')} مضى ${dayWord(age)}</span>` : '';
+  const lastAct = d.activities.length ? String(d.activities[0].at || '').slice(0, 10) : '';
 
-  // ── شريط الإجراء: الخطوة التالية + نقل المرحلة ──
+  // ── لقطة التعريف: هوية الفرصة + موقعها، وتحتها شريط أرقامها الخمسة ──────────
+  // الأرقام صفٌّ واحد لا عمود جانبي: القيمة والمرجّحة والاحتمال والعمر وآخر نشاط تُقرأ معاً
+  // في نظرة، ولا يُقصّ رقمٌ في عمودٍ ضيق (درسُ «437590» والمبلغ ثمانون مليوناً).
+  const statCell = (label, val) => `<div style="min-width:0">
+    <div style="font-size:10.5px;color:var(--muted);font-weight:800">${label}</div>
+    <div style="margin-top:.15rem">${val}</div></div>`;
+  const dash = '<span style="color:var(--faint);font-size:var(--fs-ui)">—</span>';
+  const statStrip = `<div style="display:flex;gap:1.5rem;flex-wrap:wrap;align-items:flex-start;border-top:1px solid var(--line);padding:.8rem 1.15rem">
+    ${statCell(G.raw, `<b class="tnum" style="font-size:var(--fs-num-md);letter-spacing:-.02em">${fmtSar(o.value_halalas)}</b>`)}
+        ${statCell('احتمال الفوز', `<b class="tnum" style="font-size:var(--fs-num-sm)">${pct(o.win_pct)}</b>`)}
+    ${statCell('عمر المرحلة', agePill || (isOpen && age === 0 ? '<span style="color:var(--muted);font-size:var(--fs-ui)">أقل من يوم</span>' : dash))}
+    ${statCell('آخر نشاط', lastAct ? `<b class="tnum" style="font-size:var(--fs-num-sm)">${esc(lastAct)}</b>` : dash)}
+  </div>`;
+  const header = card(`<div style="padding:1rem 1.15rem">
+    <div style="font-size:11px;color:var(--muted);font-weight:700">${G.opportunity} · <bdi class="tnum">${esc(o.code || '—')}</bdi></div>
+    <h2 style="font-size:18px;margin:.25rem 0 .55rem">${esc(o.title_ar)}</h2>
+    <div style="display:flex;gap:.4rem;flex-wrap:wrap;align-items:center">
+      <span class="pill" data-tip="${esc(stageTip(st.id ? st : { name_ar: o.stage_id }))}" tabindex="0" style="background:${st.color || '#cbd5e1'}22;color:var(--ink2);cursor:help"><span style="width:8px;height:8px;border-radius:50%;background:${st.color || '#cbd5e1'}"></span>${esc(st.name_ar || o.stage_id)}</span>
+      ${o.priority ? pill(tr(o.priority), o.priority === 'P0' ? 'red' : o.priority === 'P1' ? 'amber' : 'slate') : ''}
+      ${o.engagement_type === 'FRAMEWORK'
+    ? `<span class="pill" style="background:#f3e8ff;color:#6b21a8" title="${esc(ENGAGEMENT_TYPE_TIP.FRAMEWORK)}">${esc(ENGAGEMENT_TYPE_AR.FRAMEWORK)}</span>` : ''}
+      ${o.solicitation_type
+    ? `<span class="pill" style="background:#eef1f7;color:#475569" title="${esc(SOLICITATION_TYPE_TIP[o.solicitation_type] || '')}">${esc(SOLICITATION_TYPE_AR[o.solicitation_type])}</span>` : ''}
+    </div>
+    <div style="margin-top:.7rem;display:flex;gap:1.1rem;flex-wrap:wrap;font-size:var(--fs-body);color:var(--muted)">
+      <span style="display:inline-flex;align-items:center;gap:.3rem">${icon('building')}${o.client_id ? `<a href="/app/client/${o.client_id}" style="color:var(--brand);font-weight:700">${esc(d.client || 'العميل')}</a>` : 'بدون عميل'}</span>
+      ${sectorName ? `<span style="display:inline-flex;align-items:center;gap:.3rem">${icon('sector')}${esc(sectorName)}${d.department ? ` <span style="color:var(--faint)">›</span> ${esc(d.department)}` : ''}</span>` : ''}
+      ${partners.length ? `<span style="display:inline-flex;align-items:center;gap:.3rem;flex-wrap:wrap"
+        title="إدارات تعمل على هذه الفرصة معكم — والقيمة محسوبة على الإدارة المسؤولة وحدها">
+        ${icon('users')}معها: ${partners.map((x) => `<span class="pill" style="background:#eef2ff;color:#4338ca">${esc(x.name_ar)}</span>`).join('')}</span>` : ''}
+      <span style="display:inline-flex;align-items:center;gap:.3rem">${icon('flag')}المسؤول: <b style="color:var(--ink2)">${esc(d.owner || '—')}</b></span>
+    </div>
+  </div>${statStrip}`);
+
+  // ── شريط الإجراءات: كل ما يُفعل بالفرصة في صفٍّ واحد أعلى الصفحة ─────────────
+  // «تعديل» يفتح نافذة التحكم (القالب أدناه)، وزرّا التواصل والمستند ينقلان إلى تبويبهما —
+  // فالإجراء يبدأ من مكانٍ واحد مهما كان التبويب المفتوح. والسحب أقصى اليسار بلونه التحذيري:
+  // يظهر لمن يملك الحذف **أو لمن أنشأها** (المنشئ يصحّح إدخاله ولو لم يملك التحرير)، والعاقبة
+  // تُعرض قبل التنفيذ — النقر يجلب الموانع وما سيُسحب تبعاً من الخادم، والسبب يُسجَّل في الأثر.
+  const toolbar = `<div class="toolbar" style="margin-bottom:0">
+    ${d.canEdit ? `<button class="btn btn-primary" data-action="opp-edit-open">${icon('edit')} تعديل</button>` : ''}
+    ${d.canEdit ? `<button class="btn" data-action="stage-open">${icon('trend')} نقل المرحلة</button>` : ''}
+    <button class="btn" data-action="opp-tab" data-tab="activity">${icon('inbox')} تسجيل تواصل</button>
+    <button class="btn" data-action="opp-tab" data-tab="docs">${icon('upload')} إضافة مستند</button>
+    ${d.canEdit ? `<button class="btn" data-action="team-modal-open">${icon('users')} إدارة الفريق</button>` : ''}
+    <span class="spacer"></span>
+    ${d.canDelete ? `<button class="btn" data-action="opp-remove" data-id="${esc(o.id)}"
+      style="color:#b91c1c;border-color:#fecaca"
+      title="سحب الفرصة يزيلها من كل القوائم مع ما يتبعها — وسجل مراحلها يبقى في الأثر. الفرصة التي خسرناها تُنقل إلى «مفقودة» ولا تُسحب.">سحب الفرصة…</button>` : ''}
+  </div>`;
+
+  // ── الخطوة التالية + مسار المراحل: صفّ القرار ───────────────────────────────
   const naValue = (o.next_action && String(o.next_action).trim())
     ? `<span ${d.canEdit ? `class="editable" data-action="na-edit" data-id="${o.id}" data-value="${esc(o.next_action)}" role="button" tabindex="0" title="انقر لتعديل الخطوة التالية"` : ''} style="font-size:13.5px;font-weight:700;color:var(--ink2)">${esc(o.next_action)}</span>`
     : (d.canEdit
       ? `<span class="editable" data-action="na-edit" data-id="${o.id}" data-value="" role="button" tabindex="0" style="font-size:var(--fs-ui);color:var(--red);font-weight:700">● ${G.noNextAction} — انقر لإضافتها</span>`
       : `<span style="font-size:var(--fs-ui);color:var(--muted)">${G.noNextAction}</span>`);
-  const actionBar = card(`<div style="padding:.85rem 1.15rem;display:flex;gap:1rem;align-items:center;flex-wrap:wrap">
-    <div style="flex:1;min-width:240px">
-      <div style="font-size:11px;font-weight:800;color:var(--muted);margin-bottom:.2rem">${G.nextAction}</div>
-      ${naValue}
-    </div>
-    ${d.canEdit ? `<button class="btn btn-primary" data-action="stage-open">${icon('trend')} نقل المرحلة</button>` : ''}
+  const naCard = card(`<div style="padding:.85rem 1.15rem">
+    <div style="font-size:11px;font-weight:800;color:var(--muted);margin-bottom:.2rem">${G.nextAction}</div>
+    ${naValue}
   </div>`);
+  // المسار من d.stages كما جاءت مرتّبةً (sort_order) — الفائزة والمفقودة والمؤجلة بنودُ ذيلٍ
+  // كما هي في القائمة، لا مراحل مخترعة. الحالية وحدها معبّأة بلونها وتحتها عمرها.
+  const railSubTxt = age == null ? ''
+    : age > 0 ? `في هذه المرحلة منذ <span class="tnum">${dayWord(age)}</span>` : 'انتقلت إليها اليوم';
+  const railItem = (s) => {
+    const cur = s.id === o.stage_id;
+    const c = esc(s.color || '') || 'var(--brand2)';
+    return `<div class="opp-rail-it${cur ? ' cur' : ''}">
+      <span class="opp-rail-dot"${cur ? ` style="background:${c};border-color:${c}"` : ''}></span>
+      <div class="opp-rail-lb" title="${esc(s.name_ar)}">${esc(s.name_ar)}</div>
+      ${cur && railSubTxt ? `<div class="opp-rail-sub">${railSubTxt}</div>` : ''}
+    </div>`;
+  };
+  const railCard = card(`<div style="padding:.85rem 1rem .55rem">
+    <div style="font-size:11px;font-weight:800;color:var(--muted);margin-bottom:.5rem">مسار المراحل</div>
+    <div class="opp-rail">${d.stages.map(railItem).join('')}</div>
+  </div>`);
+  const naRailRow = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:.9rem;align-items:stretch">${naCard}${railCard}</div>`;
 
-  // ── فريق الفرصة ──
+  // ── التحكم بالفرصة ─────────────────────────────────────────────────────────
+  // «في فرص مسكّنة على إدارة الابتكار وأبغى أنقلها على الذكاء… لازم في الواجهة شي يساعدني لما
+  // أضغط على الفرصة عشان أتحكّم بكل عملياتها: نقل قطاع، نقل إدارة، أو تغيير المبلغ».
+  //
+  // وما كان في هذه الصفحة قبلَها إلا حقلان: الخطوة التالية، والمرحلة. أما القيمة والقطاع
+  // والإدارة والمسؤول والجهة والسنة فتُكتب مرةً عند الإنشاء ثم لا يمسّها شيء في المنتج كله —
+  // فتصحيح رقمٍ واحد يعني فتح القاعدة من خلف الشاشة. **والإدارة أثقلها**: صار الترشيح بها
+  // قائماً على شاشة الفرص، فيصل المالك إلى فرصةٍ عبر إدارتها ثم لا يجد فيها باباً يغيّرها.
+  //
+  // والإدارات كلها تُقرأ لا إدارات القطاع الحالي وحدها: نقل القطاع يُبدّل قائمة الإدارات في
+  // نفس اللحظة، ولو قُرئت إدارات القطاع القديم وحدها لصار على المالك أن يحفظ القطاع ويعيد
+  // فتح الصفحة ثم يحفظ الإدارة — خطوتان لقرار واحد. والخادم يدقّق النسبة على أي حال.
+  const sectorOptions = d.canEdit
+    ? await all(`SELECT id, name_ar FROM sector WHERE active = 1 AND deleted_at IS NULL AND ${DELIVERY_SECTOR_SQL} ORDER BY name_ar`) : [];
+  const deptOptions = d.canEdit
+    ? await all('SELECT id, name_ar, sector_id FROM department WHERE active = 1 AND deleted_at IS NULL ORDER BY name_ar') : [];
+  const clientOptions = d.canEdit
+    ? await all('SELECT id, name_ar FROM client WHERE deleted_at IS NULL ORDER BY name_ar LIMIT 300') : [];
+  const userOptions = d.canEdit ? await pickablePeople({ limit: 200, viewer: user }) : [];
+  // ── المبلغ بضريبة وبدون ──────────────────────────────────────────────────────
+  // «وكم المبلغ بضريبة وبدون ضريبة» — والقاعدة موجودة في المنصة ومكتوبة في موضعٍ واحد
+  // (`modules/finance/vat.js`): المبلغ المسجَّل على أي مستندٍ تجاري **إجمالي** — أي ما تدفعه
+  // الجهة فعلاً — والصافي يُشتقّ منه، وهو وحده ما يُقارَن بالمستهدفات لأنها صافيةٌ أصلاً.
+  //
+  // فلا عمودَ ضريبةٍ جديد على الفرصة ولا خيارَ «شامل/غير شامل»: الفرصةُ نفسُها تصير عقداً ثم
+  // فاتورةً ثم تحصيلاً، ولو اختلف تفسير رقمها هنا عن تفسيره هناك لاختلف الرقم على نفسه في
+  // رحلته. المعروض اشتقاقٌ من القاعدة الواحدة، والشاشة تقول صراحةً أيُّ رقمٍ أيّ.
+  const money = splitGross(o.value_halalas || 0);
+  const vatNote = `<div style="display:flex;gap:1.1rem;flex-wrap:wrap;align-items:baseline;margin-top:.8rem;padding:.6rem .75rem;background:var(--bg2,#f8fafc);border-radius:8px">
+    <div><div style="font-size:10px;color:var(--muted);font-weight:800">المبلغ شاملاً الضريبة</div>
+      <b class="tnum" style="font-size:13.5px">${fmtSar(money.gross_halalas)}</b></div>
+    <div><div style="font-size:10px;color:var(--muted);font-weight:800">بدون ضريبة</div>
+      <b class="tnum" style="font-size:13.5px;color:var(--brand)">${fmtSar(money.net_halalas)}</b></div>
+    <div><div style="font-size:10px;color:var(--muted);font-weight:800">الضريبة (${VAT_RATE_PCT}٪)</div>
+      <span class="tnum" style="font-size:12.5px;color:var(--muted)">${fmtSar(money.vat_halalas)}</span></div>
+    <div style="font-size:10.5px;color:var(--faint);flex:1;min-width:160px;line-height:1.6">
+      المبلغ المُدخَل شاملٌ الضريبة — وهو ما تدفعه الجهة. و«بدون ضريبة» هو ما يُحتسب إيراداً للشركة ويُقارن بالمستهدف.</div>
+  </div>`;
+  // خانة المبلغ تأخذ عمودين: رقمُ ثمانيةِ خانات مع قائمةِ الضريبة بجانبه لا يسعان عموداً
+  // واحداً، فيُقَصّ الرقم بصرياً — رأى المالك «437590» ومبلغُه ثمانون مليوناً. ورقمٌ لا يُقرأ
+  // رقمٌ لا يُوثَق به، ويُغري بإعادة كتابته فوق الصحيح.
+  const fld = (label, control, hint = '', span = 1) => `<div style="min-width:0${span > 1 ? `;grid-column:span ${span}` : ''}">
+    <label style="display:block;font-size:10.5px;font-weight:800;color:var(--muted);margin-bottom:.2rem">${label}</label>
+    ${control}${hint ? `<div style="font-size:10px;color:var(--faint);margin-top:.15rem">${hint}</div>` : ''}</div>`;
+  const opt = (v, label, sel, extra = '') => `<option value="${esc(v)}"${sel ? ' selected' : ''}${extra}>${esc(label)}</option>`;
+  // حقول النسبة تُقفَل لمحرِّر الشراكة (لا تُخفى): إخفاؤها يجعل الشاشة ترسل قيمةً فارغة فتمسح
+  // الإدارة عند الحفظ (الشاشة ترسل كل الحقول)، وتحرمه رؤيةَ من تُحسب عليه الفرصة. القفلُ مرئيٌّ
+  // بتلميحٍ يقول لماذا، والخادم يحجزها أيضاً (ADR-0006) — لا شاشةٌ وحدها.
+  const lockAttribution = d.canEdit && !d.canEditAttribution;
+  const lockAttrs = lockAttribution
+    ? ' disabled title="قرارُ الإدارة المسؤولة — اطلب منها تغيير الإدارة أو القطاع أو المشارِكات"' : '';
+  const controlCard = !d.canEdit ? '' : card(`${secHead('التحكم بالفرصة', `<span style="font-size:11px;color:var(--muted)">${lockAttribution ? 'إدارتك مشاركة — تعدّل كل شيء عدا نسبة الفرصة' : 'كل شيء يُعدَّل من هنا'}</span>`)}
+    <div style="padding:.85rem 1rem 1rem">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.7rem .6rem">
+        ${fld('اسم الفرصة', `<input id="oc-title" class="input" style="width:100%;font-size:12.5px" value="${esc(o.title_ar || '')}" maxlength="200">`)}
+        ${/* الجهة باحثٌ لا قائمة (v5.30 — «العميل أبحث عنه أو أكتب اسم عميل جديد إذا مو
+              موجود ويضاف»): ثلاثمئة جهةٍ في select لا يُبحث فيها. الحقيقة تبقى في المخفيّ
+              `oc-client` بمعرّفه المثبَّت (الحفظ والاختبارات يقرآنه)، وخانة البحث تعرض الاسم
+              وتُرشِّح من clientsList المحقونة أدناه (pages/opps.js — نفس باحث نافذة الإضافة).
+              والاسم غير الموجود يُعرض سطرَ «إضافة … جهةً جديدة» فيملأ `oc-client-new` ويرسله
+              الحفظ new_client_name — والخادم يعيد استعمال المطابق أو يسجّل جهةً جديدة. */ ''}
+        ${fld('الجهة', `<div id="oc-client-pick" style="position:relative">
+          <input class="input" id="oc-client-q" style="width:100%;font-size:12.5px" autocomplete="off"
+            placeholder="ابحث باسم الجهة…" aria-label="ابحث عن الجهة أو اكتب اسم جهة جديدة"
+            value="${esc(o.client_id ? (d.client || '') : '')}">
+          <input type="hidden" id="oc-client" value="${esc(o.client_id || '')}">
+          <input type="hidden" id="oc-client-new" value="">
+          <div id="oc-client-badge" class="san-cl-badge" hidden>
+            <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">ستُسجَّل جهةً جديدة: <b id="oc-client-badge-name"></b></span>
+            <button type="button" class="btn btn-ghost btn-sm" data-action="client-new-cancel" data-prefix="oc" style="flex:0 0 auto">إلغاء</button>
+          </div>
+          <div id="oc-client-list" class="san-cl-list" hidden role="listbox" aria-label="نتائج البحث في الجهات"></div>
+        </div>`, 'اكتب للبحث — ومسحُ الخانة يعني «بلا جهة»')}
+        ${fld('القطاع', `<select id="oc-sector" class="input" style="width:100%;font-size:12.5px"${lockAttrs}>
+          ${sectorOptions.map((s) => opt(s.id, s.name_ar, o.sector_id === s.id)).join('')}</select>`)}
+        ${fld('الإدارة', `<select id="oc-dept" class="input" style="width:100%;font-size:12.5px"${lockAttrs}>
+          ${opt('', 'بلا إدارة', !o.department_id)}${deptOptions.map((x) => opt(x.id, x.name_ar, o.department_id === x.id, ` data-sector="${esc(x.sector_id || '')}"`)).join('')}</select>`,
+    lockAttribution ? 'المسؤولة — قرارُها لإدارتها' : 'المسؤولة — عليها تُحسب')}
+        ${/* «ممكن الفرصة تتسكّن على أكثر من إدارة… خلّي مكان التسجيل ممكن أحطّ أكثر من إدارة
+              أو قطاع يشتغل على الفرصة» — والمسؤولة تبقى واحدة (المال لا يتجزأ فلا تُحسب الفرصة
+              مرتين)، وهؤلاء من يعملون عليها ويجدونها في قوائم إداراتهم. والقطاع يأتي معهم:
+              الإدارة تسكن قطاعها، فاختيارُ إدارةٍ من قطاعٍ آخر يُشرك القطاعين معاً. */ ''}
+        ${/* منسدلة بصناديق اختيار لا select متعدداً (ملاحظة المالك: «ما أبغى أختار بسلكت
+              وCtrl») — الحقيقة تبقى في select الخفي بمعرّفه المثبَّت `oc-partners` (الحفظ
+              والاختبارات يقرآنه)، والصناديق تُزامنه (pages/opps.js). */ ''}
+        ${fld('إدارات مشاركة', `<select id="oc-partners" multiple hidden aria-hidden="true"${lockAttrs}>
+          ${deptOptions.filter((x) => x.id !== o.department_id)
+    .map((x) => opt(x.id, x.name_ar, partnerIds.has(x.id))).join('')}</select>
+          <div id="oc-partners-pick" style="position:relative">
+            <button type="button" class="input" data-action="partners-toggle" aria-haspopup="listbox" aria-expanded="false"
+              style="width:100%;font-size:12.5px;text-align:start;display:flex;justify-content:space-between;align-items:center;gap:.4rem;cursor:pointer"${lockAttrs}>
+              <span id="oc-partners-label" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(() => {
+    const names = deptOptions.filter((x) => x.id !== o.department_id && partnerIds.has(x.id)).map((x) => x.name_ar);
+    return names.length ? esc(names.join('، ')) : 'بلا إدارات مشاركة';
+  })()}</span><span aria-hidden="true" style="color:var(--muted);flex:0 0 auto">▾</span></button>
+            <div id="oc-partners-menu" hidden role="listbox" aria-label="الإدارات المشاركة"
+              style="position:absolute;inset-inline:0;top:calc(100% + 4px);z-index:70;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 16px 40px rgba(15,23,42,.18);max-height:220px;overflow:auto;padding:.35rem">
+              ${deptOptions.filter((x) => x.id !== o.department_id)
+    .map((x) => `<label style="display:flex;gap:.5rem;align-items:center;padding:.4rem .55rem;border-radius:8px;cursor:pointer;font-size:12.5px">
+                <input type="checkbox" data-partner-opt value="${esc(x.id)}"${partnerIds.has(x.id) ? ' checked' : ''}${lockAttribution ? ' disabled' : ''}> ${esc(x.name_ar)}</label>`).join('')
+    || '<div style="padding:.5rem .55rem;font-size:12px;color:var(--faint)">لا إدارات أخرى معرّفة — تُضاف الإدارات من الهيكل التنظيمي.</div>'}
+            </div>
+          </div>`,
+    lockAttribution ? 'قرارُ الإدارة المسؤولة' : 'افتح القائمة وعلّم أكثر من إدارة — تراها إداراتهم في قوائمها', 2)}
+        ${fld('المسؤول', `<select id="oc-owner" class="input" style="width:100%;font-size:12.5px">
+          ${opt('', 'بلا مسؤول', !o.owner_user_id)}${
+  /* المالك الحالي يظهر مختاراً ولو كان خارج قائمة المنتقى (منتقي الأشخاص يخفي بعض
+     الحسابات عن غير مدير النظام) — وإلا سقط الاختيار إلى «بلا مسؤول» ومسح الحفظُ
+     المالكَ بصمت وأخرج الفرصة من نطاق محرِّرها. */
+  (o.owner_user_id && !userOptions.some((u) => u.id === o.owner_user_id)
+    ? opt(o.owner_user_id, d.owner || 'المسؤول الحالي', true) : '')
+}${userOptions.map((u) => opt(u.id, u.name, o.owner_user_id === u.id)).join('')}</select>`)}
+        ${fld('المبلغ بالريال', `<div style="display:flex;gap:.3rem;flex-wrap:wrap">
+          <input id="oc-value" class="input tnum" type="number" min="0" step="1000" style="flex:1 1 130px;min-width:130px;font-size:12.5px" value="${toSar(o.value_halalas)}">
+          <select id="oc-vat" class="input" style="flex:0 0 auto;width:auto;font-size:11.5px" aria-label="هل المبلغ المكتوب شامل الضريبة"
+            title="اكتب الرقم كما اقتبسته الجهة — والمنصة تحسب الوجه الآخر. المحفوظ دائماً هو الشامل.">
+            <option value="1" selected>شامل الضريبة</option>
+            <option value="0">بدون ضريبة</option>
+          </select></div>`, '<span id="oc-value-hint"></span>', 2)}
+        ${fld('احتمال الفوز ٪', `<input id="oc-win" class="input tnum" type="number" min="0" max="100" style="width:100%;font-size:12.5px" value="${o.win_pct == null ? '' : Number(o.win_pct)}">`)}
+        ${fld('سنة البيع', `<input id="oc-year" class="input tnum" type="number" min="2000" max="2100" style="width:100%;font-size:12.5px" value="${o.year || ''}">`)}
+        ${fld('الأولوية', `<select id="oc-priority" class="input" style="width:100%;font-size:12.5px">
+          ${opt('', 'بلا أولوية', !o.priority)}${['P0', 'P1', 'P2', 'P3'].map((p) => opt(p, tr(p), o.priority === p)).join('')}</select>`)}
+        ${fld('نوع الارتباط', `<select id="oc-engagement" class="input" style="width:100%;font-size:12.5px"
+          title="${esc(Object.values(ENGAGEMENT_TYPE_TIP).join(' · '))}">
+          ${opt('', 'لم يُحدَّد', !o.engagement_type)}${Object.entries(ENGAGEMENT_TYPE_AR).map(([v, l]) => opt(v, l, o.engagement_type === v)).join('')}</select>`,
+    o.engagement_type === 'FRAMEWORK' ? 'قيمتها سقف لا التزام' : '')}
+        ${fld('نوع الطرح', `<select id="oc-solicitation" class="input" style="width:100%;font-size:12.5px"
+          title="${esc(Object.values(SOLICITATION_TYPE_TIP).join(' · '))}">
+          ${opt('', 'لم يُحدَّد', !o.solicitation_type)}${Object.entries(SOLICITATION_TYPE_AR).map(([v, l]) => opt(v, l, o.solicitation_type === v)).join('')}</select>`,
+    o.solicitation_type ? esc(SOLICITATION_TYPE_TIP[o.solicitation_type] || '') : '')}
+        ${/* «إذا كانت مؤهلة أو ليدز، برضو حطّ مكان نكتب فيه موقع تسليمها» — والخانة مفتوحة في كل
+              مرحلة لا في المرحلتين وحدهما: حقلٌ يظهر ثم يختفي بتغيّر المرحلة يُفقِد ما كُتب فيه من
+              عين قارئه بعد أن اتُّخذ القرار عليه. وهي **نصّ حرّ**: الجواب جهةُ استلامٍ أو مدينةُ
+              تنفيذٍ أو «عن بُعد»، وقائمةٌ مغلقة تُجبر المُدخِل على أقرب خطأ. */ ''}
+        ${fld('موقع التسليم', `<input id="oc-location" class="input" style="width:100%;font-size:12.5px"
+          value="${esc(o.delivery_location || '')}" maxlength="160"
+          placeholder="مثال: منصة اعتماد · الرياض — مقرّ الجهة · عن بُعد">`,
+    'أين تُسلَّم أو تُنفَّذ — يُكتب مبكراً لأنه يحكم السفر والتسعير والتسكين', 2)}
+      </div>
+      ${vatNote}
+      <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-top:.85rem;padding-top:.7rem;border-top:1px dashed var(--line)">
+        <button class="btn btn-primary btn-sm" data-action="opp-control-save" data-id="${esc(o.id)}">حفظ التعديلات</button>
+        <span style="font-size:11px;color:var(--muted)">نقل القطاع يرفع الإدارة القديمة — اختر إدارة القطاع الجديد ثم احفظ.</span>
+      </div>
+    </div>`);
+
+  // ── نظرة عامة: أربع بطاقات تجيب أسئلة القراءة الأربعة ───────────────────────
+  // ما هي؟ (الملخص) · بكم؟ (التجاري) · من أي صنف؟ (التصنيف) · على من تُحسب؟ (الملكية).
+  const summaryCard = card(`${secHead('ملخص الفرصة')}
+    <div style="padding:.6rem 1rem .8rem">
+      ${o.notes
+    ? `<div style="font-size:var(--fs-body);color:var(--ink2);white-space:pre-wrap;line-height:1.9">${esc(o.notes)}</div>`
+    : '<div style="font-size:var(--fs-body);color:var(--faint);padding:.2rem 0">لا ملاحظات مكتوبة على هذه الفرصة.</div>'}
+      <div style="margin-top:.35rem">
+        ${kv('المصدر', esc(SOURCE_LABELS[o.source] || o.source || '—'))}
+        ${kv('أُنشئت', `<span class="tnum">${esc((o.created_at || '').slice(0, 10) || '—')}</span>`)}
+      </div>
+    </div>`);
+  // التجاري يعيد عرض اشتقاق الضريبة نفسه المعروض في نافذة التعديل (vatNote) — قراءةً هنا
+  // وقرب خانة الإدخال هناك، والمصدر واحد فلا يختلف الرقم على نفسه.
+  const commercialCard = card(`${secHead('التجاري')}
+    <div style="padding:.2rem 1rem .8rem">
+      ${vatNote}
+      <div style="margin-top:.35rem">
+        ${kv('احتمال الفوز', `<span class="tnum">${pct(o.win_pct)}</span>`)}
+                ${kv('سنة البيع', o.year ? `<span class="tnum">${o.year}</span>` : 'غير مؤكدة — أكملها من بيانات الفرصة لإدراجها في مبيعات السنة')}
+      </div>
+    </div>`);
+  const classificationCard = card(`${secHead('التصنيف')}
+    <div style="padding:.3rem 1rem .8rem">
+      ${kv('الأولوية', o.priority ? esc(tr(o.priority)) : '—')}
+      ${kv('نوع الارتباط', `<span title="${esc(ENGAGEMENT_TYPE_TIP[o.engagement_type] || '')}">${esc(engagementTypeLabel(o.engagement_type))}</span>`)}
+      ${kv('نوع الطرح', `<span title="${esc(SOLICITATION_TYPE_TIP[o.solicitation_type] || '')}">${esc(solicitationTypeLabel(o.solicitation_type))}</span>`)}
+      ${kv('موقع التسليم', o.delivery_location ? esc(o.delivery_location) : '<span style="color:var(--faint)">لم يُحدَّد</span>')}
+      ${kv('الرمز', `<bdi class="tnum">${esc(o.code || '—')}</bdi>`)}
+    </div>`);
+  // صفوف الملكية تُرسم مرتين (نظرة عامة + تبويب الفريق) من بانٍ واحد — عنوانُ المالك وحده يختلف.
+  const ownRows = (ownerLabel) => `
+      ${kv(ownerLabel, `<b>${esc(d.owner || '—')}</b>`)}
+      ${kv('القطاع', sectorName ? esc(sectorName) : '—')}
+      ${kv('الإدارة المسؤولة', d.department ? esc(d.department) : '<span style="color:var(--faint)">بلا إدارة</span>')}
+      <div style="padding:.55rem 0">
+        <div style="font-size:var(--fs-ui);color:var(--muted);margin-bottom:.35rem">الإدارات المشاركة</div>
+        <div style="display:flex;gap:.35rem;flex-wrap:wrap">${partners.length
+    ? partners.map((x) => `<span class="pill" style="background:#eef2ff;color:#4338ca">${esc(x.name_ar)}</span>`).join('')
+    : '<span style="font-size:var(--fs-body);color:var(--faint)">لا إدارات مشاركة — الفرصة على إدارتها وحدها</span>'}</div>
+      </div>`;
+  const ownershipCard = card(`${secHead('الملكية')}
+    <div style="padding:.3rem 1rem .55rem">${ownRows('المسؤول')}</div>`);
+
+  // ── المشروع الناتج ──
+  // صفحة الفرصة لم تكن تذكر مشروعها إطلاقاً، رغم أن الرابط (`project.source_opp_id`) موجود في
+  // المخطط ومعروض في جدول الفرص. فمن يفتح فرصة فائزة لا يعرف أوصلت إلى مشروع أم لا — وهو أول
+  // سؤال يُسأل عن فرصة رُبحت. البطاقة تظهر للمحسومة فوزاً فقط: مفتوحةٌ لا مشروع لها بعدُ بطبيعتها.
+  const wonPrj = st.is_won
+    ? await get('SELECT id, name_ar, status FROM project WHERE source_opp_id = ? AND deleted_at IS NULL', [o.id])
+    : null;
+  const PRJ_STATUS = { IN_PROGRESS: ['قيد التنفيذ', 'blue'], ON_HOLD: ['متوقّف مؤقتاً', 'amber'], COMPLETED: ['مكتمل', 'green'], NOT_STARTED: ['لم يبدأ', 'slate'], CANCELLED: ['ملغى', 'slate'] };
+  const projectCard = !st.is_won ? '' : card(`${secHead('المشروع الناتج')}
+    <div style="padding:.8rem 1rem">${wonPrj
+    ? (() => { const L = PRJ_STATUS[wonPrj.status] || [wonPrj.status, 'slate'];
+      return `<a href="/app/project/${esc(wonPrj.id)}" style="font-weight:800;color:var(--brand);font-size:13.5px">${esc(wonPrj.name_ar)}</a>
+        <div style="margin-top:.4rem">${pill(L[0], L[1])} <a class="btn btn-sm" href="/app/project/${esc(wonPrj.id)}#project-setup">استكمال المشروع</a></div>`; })()
+    : (d.canEdit
+      ? `<div style="font-size:12.5px;color:var(--muted);line-height:1.8;margin-bottom:.6rem">فرصة فائزة بلا مشروع بعد. أنشئه من هنا فيرث عميلها ويُربط بها.</div>
+         <button class="btn btn-primary" data-action="opp-make-project" data-opp="${esc(o.id)}" data-name="${esc(o.title_ar || '')}" data-sector="${esc(o.sector_id || '')}">أنشئ المشروع</button>`
+      : emptySec('projects', 'لم يُنشأ مشروع بعد', 'إنشاء المشاريع يتطلب صلاحية إدارة أو تشغيل'))}</div>`);
+
+  // ── سجل التواصل (تبويب النشاط) ──
+  const actRow = (a) => `<div style="display:flex;gap:.6rem;padding:.5rem 0;border-bottom:1px dashed var(--line);font-size:var(--fs-body);align-items:flex-start">
+    <span class="pill" style="background:#eef1f7;color:#475569;flex:0 0 auto">${ACT_KIND_LABELS[a.kind] || esc(a.kind || 'أخرى')}</span>
+    <div style="flex:1;min-width:0">
+      <div style="font-weight:700;color:var(--ink2)">${esc(a.title)}</div>
+      ${a.detail ? `<div style="font-size:var(--fs-meta);color:var(--muted);white-space:pre-wrap">${esc(a.detail)}</div>` : ''}
+      <div style="font-size:var(--fs-micro);color:var(--faint);margin-top:.1rem">${esc(a.actor || '—')} · <span class="tnum">${esc((a.at || '').slice(0, 10))}</span></div>
+    </div></div>`;
+  // «لازم يكون في مكان أحدّث فيه الفرص وأكتب ملاحظات… عشان تُدوَّن مع الفرصة» — والنموذج كان
+  // سطراً واحداً بلا متّسع، بينما الجدول يحمل عمود `detail` منذ أول يوم ولا شيء يكتب فيه.
+  // فمن أراد تدوين خلاصة اجتماعٍ أو ملاحظةٍ على العرض حشرها في العنوان أو تركها خارج المنصة.
+  const addActForm = d.canEdit ? `<div style="margin-top:.75rem">
+      <div style="display:flex;gap:.45rem;flex-wrap:wrap">
+        <select id="act-kind" class="input" style="width:110px" aria-label="نوع التحديث">
+          ${['call', 'meeting', 'email', 'note', 'update'].map((k) => `<option value="${k}">${ACT_KIND_LABELS[k]}</option>`).join('')}</select>
+        <input id="act-title" class="input" style="flex:1;min-width:170px" placeholder="ماذا حدث؟ مثال: اتصال متابعة بعد تسليم العرض" aria-label="عنوان التحديث">
+      </div>
+      <textarea id="act-detail" class="input" rows="2" style="width:100%;margin-top:.4rem;font-size:12.5px"
+        placeholder="ملاحظات (اختياري) — خلاصة الاجتماع، ملاحظات الجهة على العرض، ما اتُّفق عليه…" aria-label="ملاحظات التحديث"></textarea>
+      <div style="display:flex;justify-content:flex-end;margin-top:.4rem">
+        <button class="btn" data-action="act-add">${icon('plus')} تسجيل التحديث</button>
+      </div>
+    </div>` : '';
+  const activityCard = card(`${secHead(G.activities, `<span style="font-size:11px;color:var(--muted)">آخر ${d.activities.length}</span>`)}
+    <div style="padding:.4rem 1rem .9rem">
+      ${d.activities.map(actRow).join('') || emptySec('inbox', 'لا تواصل مسجَّل بعد', 'سجِّل الاتصالات والاجتماعات هنا ليبقى تاريخ العلاقة كاملاً أمام الفريق.')}
+      ${addActForm}
+    </div>`);
+
+  // ── مستندات الفرصة وروابطها (تبويب المستندات) ───────────────────────────────
+  // «حط مكان أرفع فيه لنك الفرصة أو الملفات المتعلقة، وأيضاً مكان التكنكل بروبوزل، وأيضاً حط
+  // لنك الفايننشال بروبوزل». وجدول المستندات يحمل عمود الفرصة منذ الترحيلة ٠٠٥ ولم يُوصَل قط.
+  //
+  // **ملفات وروابط، ولكلٍّ حقيقته**: الملف المرفوع بايتاتُه في المنصة (له زر تنزيل)، والرابط
+  // يبقى رابطاً إلى حيث يسكن الملف — والشاشة تقول ذلك صراحةً، فمن ظنّ أنه رفع نسخةً وهو وضع
+  // رابطاً سيبحث عنها يوم يحتاجها ولا يجدها. التمييز من الخدمة نفسها (has_file — وجود بايتات).
+  const docs = await all(`SELECT id, name, kind, url, note, uploaded_by, created_at, size_bytes,
+       EXISTS (SELECT 1 FROM document_blob b WHERE b.document_id = document.id) AS has_file
+     FROM document WHERE opportunity_id = ? AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 100`, [o.id]);
+  const docRow = (x) => `<div style="display:flex;align-items:center;gap:.5rem;padding:.45rem 0;border-bottom:1px dashed var(--line)">
+    <span class="pill" style="background:#eef1f7;color:#475569;flex:0 0 auto">${esc(oppDocKindLabel(x.kind))}</span>
+    <div style="flex:1;min-width:0">
+      <div style="font-size:var(--fs-ui);font-weight:700;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(x.name)}</div>
+      ${x.note ? `<div style="font-size:11px;color:var(--muted)">${esc(x.note)}</div>` : ''}
+      <div style="font-size:var(--fs-micro);color:var(--faint)">${esc(x.uploaded_by || '—')} · <span class="tnum">${esc((x.created_at || '').slice(0, 10))}</span>${x.size_bytes ? ` · <span class="tnum">${fmtBytes(x.size_bytes)}</span>` : ''}</div>
+    </div>
+    ${x.url ? `<a class="btn btn-sm" href="${esc(x.url)}" target="_blank" rel="noopener noreferrer"
+      style="flex:0 0 auto;text-decoration:none">فتح ↗</a>` : ''}
+    ${d.canEdit ? `<button class="btn btn-ghost btn-sm" data-action="opp-doc-del" data-id="${esc(x.id)}" title="إزالة" aria-label="إزالة ${esc(x.name)}">✕</button>` : ''}
+  </div>`;
+  // لا رفع ملفات — بقرار المالك (2026-08-11): «خلّيه بالرابط أفضل، ما أبغى أحفظ ملفات حالياً
+  // في المنصة». القدرة الخلفية (document_blob وخدمتها) خاملة مختبَرة إن عاد القرار؛ الشاشة
+  // والمسارات روابط فقط.
+  const addDocForm = d.canEdit ? `<div style="margin-top:.7rem">
+      <div style="display:flex;gap:.45rem;flex-wrap:wrap">
+        <select id="doc-kind" class="input" style="width:130px" aria-label="نوع المستند">
+          ${Object.entries(OPP_DOC_KIND_AR).map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join('')}</select>
+        <input id="doc-name" class="input" style="flex:1;min-width:150px" placeholder="اسم المستند — مثال: العرض الفني v2" aria-label="اسم المستند">
+      </div>
+      <input id="doc-url" class="input" style="width:100%;margin-top:.4rem;font-size:12.5px" dir="ltr"
+        placeholder="https://…  رابط الملف على درايف أو شيربوينت أو بوابة اعتماد" aria-label="رابط المستند">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:.5rem;margin-top:.4rem;flex-wrap:wrap">
+        <span style="font-size:10.5px;color:var(--faint)">المنصة تحفظ الرابط لا نسخةً من الملف — أبقِ الملف في مكانه واربطه هنا.</span>
+        <button class="btn" data-action="opp-doc-add" data-id="${esc(o.id)}">${icon('plus')} إضافة</button>
+      </div>
+    </div>` : '';
+  const filesCard = card(`${secHead('مستندات الفرصة', `<span class="tnum" style="font-size:11px;color:var(--muted)">${docs.length}</span>`)}
+    <div style="padding:.6rem 1rem .8rem">
+      ${docs.map(docRow).join('') || emptySec('upload', 'لا مستندات بعد',
+    d.canEdit ? 'اربط هنا إعلان المنافسة وكراسة الشروط والعرض الفني والعرض المالي — فيجدها الفريق في مكان واحد.'
+      : 'لم تُربط مستندات بهذه الفرصة بعد.')}
+    </div>`);
+  const linksCard = !d.canEdit ? '' : card(`${secHead('الروابط الخارجية')}
+    <div style="padding:.2rem 1rem .8rem">${addDocForm}</div>`);
+
+  // ── فريق الفرصة (تبويب الفريق) ──
   const memberRow = (m) => `<div style="display:flex;align-items:center;gap:.6rem;padding:.5rem 0;border-bottom:1px dashed var(--line)">
     <span class="kav" style="width:30px;height:30px;font-size:11px;flex:0 0 auto">${esc((m.name_ar || '؟').trim().charAt(0))}</span>
     <div style="flex:1;min-width:0"><div style="font-size:var(--fs-ui);font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m.name_ar)}</div>
       <div style="font-size:11px;color:var(--muted)">${esc(m.job_title || '—')}</div></div>
     ${pill(TEAM_ROLE_LABELS[m.role_in_group] || esc(m.role_in_group || 'عضو'), m.role_in_group === 'lead' ? 'blue' : m.role_in_group === 'sponsor' ? 'violet' : 'slate')}
+    ${m.status === 'PENDING' ? `<span class="pill" style="background:#fef3c7;color:#b45309;flex:0 0 auto"
+      title="طُلب تأكيد مديره أنه يعمل على هذه الفرصة — لا يُحتسب في تحميله قبل التأكيد">بانتظار تأكيد مديره</span>` : ''}
     ${m.allocation_pct != null ? `<span class="tnum" style="font-size:11px;color:var(--muted);flex:0 0 auto">${Math.round(m.allocation_pct)}%</span>` : ''}
     ${d.canEdit ? `<button class="btn btn-ghost btn-sm" data-action="team-remove" data-id="${m.membership_id}" title="إزالة من الفريق" aria-label="إزالة ${esc(m.name_ar)}">✕</button>` : ''}
   </div>`;
+  // ── ضمّ عضو: بحثٌ بالاسم عبر الشركة كلها ────────────────────────────────────
+  // «مدير أي إدارة يقدر يسكّن ناس موجودين في إدارة مختلفة — ولازم البحث بالاسم». وقائمةٌ
+  // منسدلة بمئات الاسم لا يُبحث فيها؛ فالحقل مكتوبٌ فيه ويُرشِّح المتصفّح مع كل حرف
+  // (`datalist` أصلية — بلا مكتبة ولا نداءٍ لكل ضغطة). والاسم يظهر معه إدارتُه وقطاعه، فمن
+  // يضمّ شخصاً من إدارة أخرى يعرف من أين يأخذه. (النموذج في قالب opp-team-tpl — تفتحه نافذة
+  // «إدارة الفريق»/«إضافة عضو».)
   const addMemberForm = d.canEdit ? `<div style="display:flex;gap:.45rem;margin-top:.75rem;flex-wrap:wrap">
-      <select id="team-emp" data-roster class="input" style="flex:2;min-width:150px" aria-label="اختيار موظف"><option value="">جارٍ تحميل الأسماء…</option></select>
+      <input id="team-emp-q" list="team-roster" class="input" style="flex:2;min-width:170px"
+        placeholder="ابحث بالاسم… من أي إدارة" aria-label="ابحث عن موظف بالاسم" autocomplete="off">
+      <datalist id="team-roster"></datalist>
+      <input type="hidden" id="team-emp">
       <select id="team-role" class="input" style="flex:1;min-width:90px" aria-label="الدور في الفريق">
         ${['member', 'lead', 'reviewer', 'sponsor'].map((r) => `<option value="${r}">${TEAM_ROLE_LABELS[r]}</option>`).join('')}</select>
       <input id="team-pct" class="input" type="number" min="1" max="100" placeholder="٪" title="نسبة التخصيص (اختياري)" aria-label="نسبة التخصيص" style="width:64px">
       <button class="btn" data-action="team-add">${icon('userplus')} ${G.add}</button>
     </div>` : '';
-  const teamCard = card(`${secHead(G.oppTeam, `<span style="font-size:11px;color:var(--muted)">${d.team.length} عضو</span>`)}
+  // طلبات الضمّ المعلَّقة تُعرض مع الفريق لا في شاشة أخرى: من طلب يرى مصير طلبه حيث طلبه،
+  // وبنفس شارة «بانتظار تأكيد مديره» التي على العضو — حالةٌ واحدة بلفظٍ واحد.
+  const pendingRow = (r) => `<div style="display:flex;align-items:center;gap:.6rem;padding:.45rem 0;border-bottom:1px dashed var(--line);font-size:var(--fs-body)">
+    <div style="flex:1;min-width:0">طلب ضمّ <b>${esc(r.employee_name)}</b> — بانتظار ${esc(r.approver_name || 'موافقة المدير')} منذ <span class="tnum">${esc((r.created_at || '').slice(0, 10))}</span></div>
+    <span class="pill" style="background:#fef3c7;color:#b45309;flex:0 0 auto">بانتظار تأكيد مديره</span>
+  </div>`;
+  const teamCard = card(`${secHead(G.oppTeam, `<span style="display:inline-flex;align-items:center;gap:.5rem">
+      <span style="font-size:11px;color:var(--muted)"><span class="tnum">${d.team.length}</span> عضو</span>
+      ${d.canEdit ? `<button class="btn btn-sm" data-action="team-modal-open">${icon('userplus')} إضافة عضو</button>` : ''}</span>`)}
     <div style="padding:.5rem 1rem .9rem">
       ${d.team.map(memberRow).join('') || emptySec('team', 'لا فريق مُكلَّف بعد', d.canEdit ? 'أضف قائد الفرصة وأعضاءها لتوضيح من يعمل عليها.' : 'لم يُكلَّف أحد بهذه الفرصة حتى الآن.')}
-      ${addMemberForm}
+      ${d.pendingRequests.length ? `<div style="margin-top:.8rem">
+        <div style="font-size:11px;font-weight:800;color:var(--muted);margin-bottom:.2rem">طلبات ضمّ قيد الانتظار</div>
+        ${d.pendingRequests.map(pendingRow).join('')}</div>` : ''}
     </div>`);
 
-  // ── سجل المراحل ──
+  // ── سجل المراحل (تبويب السجل) ──
   const histRow = (h) => `<div style="display:flex;gap:.6rem;padding:.5rem 0;border-bottom:1px dashed var(--line);font-size:var(--fs-body);align-items:flex-start">
     <span style="width:8px;height:8px;border-radius:50%;margin-top:.4rem;flex:0 0 auto;background:${(stById[h.to_stage_id] || {}).color || '#cbd5e1'}"></span>
     <div style="flex:1;min-width:0">
@@ -105,56 +508,85 @@ export async function opportunityDetailPage(user, oppId) {
   const historyCard = card(`${secHead('سجل المراحل')}
     <div style="padding:.4rem 1rem .8rem">${d.history.map(histRow).join('')
       || emptySec('history', 'لا تحركات بعد', 'ستظهر هنا كل نقلة مرحلة: من أين إلى أين، بواسطة من، ولماذا.')}</div>`);
-
-  // ── سجل التواصل ──
-  const actRow = (a) => `<div style="display:flex;gap:.6rem;padding:.5rem 0;border-bottom:1px dashed var(--line);font-size:var(--fs-body);align-items:flex-start">
+  // التواصل باختصار: نفس الأنشطة سطراً سطراً بلا تفاصيلها — فالسجل يُقرأ زمناً، والتفصيل في تبويبه.
+  const compactActRow = (a) => `<div style="display:flex;gap:.5rem;align-items:center;padding:.4rem 0;border-bottom:1px dashed var(--line);font-size:var(--fs-body)">
     <span class="pill" style="background:#eef1f7;color:#475569;flex:0 0 auto">${ACT_KIND_LABELS[a.kind] || esc(a.kind || 'أخرى')}</span>
-    <div style="flex:1;min-width:0">
-      <div style="font-weight:700;color:var(--ink2)">${esc(a.title)}</div>
-      ${a.detail ? `<div style="font-size:var(--fs-meta);color:var(--muted);white-space:pre-wrap">${esc(a.detail)}</div>` : ''}
-      <div style="font-size:var(--fs-micro);color:var(--faint);margin-top:.1rem">${esc(a.actor || '—')} · <span class="tnum">${esc((a.at || '').slice(0, 10))}</span></div>
-    </div></div>`;
-  const addActForm = d.canEdit ? `<div style="display:flex;gap:.45rem;margin-top:.75rem;flex-wrap:wrap">
-      <select id="act-kind" class="input" style="width:110px" aria-label="نوع التواصل">
-        ${['call', 'meeting', 'email', 'note'].map((k) => `<option value="${k}">${ACT_KIND_LABELS[k]}</option>`).join('')}</select>
-      <input id="act-title" class="input" style="flex:1;min-width:170px" placeholder="ماذا حدث؟ مثال: اتصال متابعة بعد تسليم العرض" aria-label="عنوان النشاط">
-      <button class="btn" data-action="act-add">${icon('plus')} تسجيل</button>
-    </div>` : '';
-  const activityCard = card(`${secHead(G.activities, `<span style="font-size:11px;color:var(--muted)">آخر ${d.activities.length}</span>`)}
-    <div style="padding:.4rem 1rem .9rem">
-      ${d.activities.map(actRow).join('') || emptySec('inbox', 'لا تواصل مسجَّل بعد', 'سجِّل الاتصالات والاجتماعات هنا ليبقى تاريخ العلاقة كاملاً أمام الفريق.')}
-      ${addActForm}
-    </div>`);
+    <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.title)}</span>
+    <span class="tnum" style="flex:0 0 auto;font-size:var(--fs-micro);color:var(--faint)">${esc((a.at || '').slice(0, 10))}</span>
+  </div>`;
+  const recentCard = !d.activities.length ? '' : card(`${secHead('آخر التواصل', `<span class="tnum" style="font-size:11px;color:var(--muted)">${d.activities.length}</span>`)}
+    <div style="padding:.4rem 1rem .7rem">${d.activities.map(compactActRow).join('')}</div>`);
+  // سجل التدقيق: يصل مملوءاً للمدير العام وحده (الخدمة تعيده فارغاً لغيره) — فالقسم يغيب بغيابه.
+  // detail_json لا يُعرض: تفصيلة تقنية، والسطر يقول التاريخ ومن وماذا.
+  const auditRow = (r) => `<div style="display:flex;gap:.7rem;align-items:baseline;padding:.4rem 0;border-bottom:1px dashed var(--line);font-size:var(--fs-body)">
+    <span class="tnum" style="flex:0 0 auto;color:var(--faint)">${esc((r.at || '').slice(0, 10))}</span>
+    <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)">${esc(r.username || '—')}</span>
+    <b style="flex:0 0 auto">${AUDIT_ACTION_AR[r.action] || esc(r.action || '—')}</b>
+  </div>`;
+  const auditCard = !d.auditTrail.length ? '' : card(`${secHead('سجل التدقيق', `<span style="font-size:11px;color:var(--muted)">آخر <span class="tnum">${d.auditTrail.length}</span></span>`)}
+    <div style="padding:.4rem 1rem .7rem">${d.auditTrail.map(auditRow).join('')}</div>`);
 
-  // ── تفاصيل ──
-  const kv = (k, v) => `<div class="kv-row"><span class="k">${k}</span><span class="v">${v}</span></div>`;
-  const detailsCard = card(`${secHead(G.details)}
-    <div style="padding:.3rem 1rem .8rem">
-      ${kv('الرمز', `<span class="tnum">${esc(o.code || '—')}</span>`)}
-      ${kv('المصدر', esc(SOURCE_LABELS[o.source] || o.source || '—'))}
-      ${kv('الأولوية', o.priority ? esc(tr(o.priority)) : '—')}
-      ${kv('السنة', `<span class="tnum">${o.year || '—'}</span>`)}
-      ${kv('أُنشئت', `<span class="tnum">${esc((o.created_at || '').slice(0, 10) || '—')}</span>`)}
-      ${o.notes ? kv('ملاحظات', `<span style="white-space:pre-wrap;font-weight:500">${esc(o.notes)}</span>`) : ''}
-    </div>`);
+  // ── التبويبات والألواح: كلها مرسومة من الخادم، والتبديل إظهارٌ وإخفاء لا جلب ──
+  const tabsBar = `<div class="seg" role="tablist" aria-label="أقسام الفرصة" style="align-self:flex-start">
+    ${TAB_DEFS.map(([k, l]) => `<button type="button" role="tab" data-action="opp-tab" data-tab="${k}" aria-selected="${tab === k ? 'true' : 'false'}" class="${tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+  const panelSec = (k, label, inner) => `<section id="opp-panel-${k}" role="tabpanel" aria-label="${label}"${tab === k ? '' : ' hidden'}>${inner}</section>`;
+  const grid = (inner, min = 300) => `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(${min}px,1fr));gap:.9rem;align-items:start">${inner}</div>`;
+  const panels = [
+    panelSec('overview', 'نظرة عامة', grid(`${summaryCard}${commercialCard}${classificationCard}${ownershipCard}${projectCard}`)),
+    panelSec('activity', 'النشاط والتواصل', activityCard),
+    panelSec('docs', 'المستندات والروابط', grid(`${filesCard}${linksCard}`, 320)),
+    panelSec('team', 'الفريق والملكية', grid(`${card(`${secHead('المالك والإدارات')}<div style="padding:.3rem 1rem .55rem">${ownRows('المالك الحالي')}</div>`)}${teamCard}`, 320)),
+    panelSec('history', 'السجل', `${grid(`${historyCard}${recentCard}`)}${auditCard ? `<div style="margin-top:.9rem">${auditCard}</div>` : ''}`),
+  ].join('');
 
-  const body = `
-    <div style="display:flex;flex-direction:column;gap:.9rem">
+  // قالبان خاملان يفتحهما زرّا «تعديل» و«إدارة الفريق»/«إضافة عضو» — المحتوى نفسه الذي كان
+  // مفتوحاً على الصفحة، بمعرّفاته وأزراره، محفوظاً من الخادم لا مبنيّاً في المتصفح.
+  const editTpl = controlCard ? `<template id="opp-edit-tpl">${controlCard}</template>` : '';
+  const teamTpl = addMemberForm ? `<template id="opp-team-tpl">${addMemberForm}</template>` : '';
+
+  // «لازم مكان يخلّيني أرجع للصفحة بعد ما أدخل على الفرصة وتفاصيلها» — وصفحةُ المشروع فيها
+  // رابط رجوعٍ منذ بنائها، وصفحةُ الفرصة بلا واحد: يدخل المستخدم من قائمة الفرص ثم لا يجد
+  // طريقاً إليها إلا زرّ المتصفّح — وهو يُفقد الترشيح والسنة والقطاع الذي وصل بها.
+  // حالةُ القائمة كما وصلت (`?from=`) تُعاد كما هي — ولا يُبنى منها إلا استعلامٌ نظيف: قيمةٌ
+  // تصل من الرابط لا تُدرَج في عنوانٍ بلا تدقيق، فالعنوان يُعاد بناؤه من مُرشِّحاتٍ معروفة وحدها.
+  const backTo = (() => {
+    const raw = String(opts.from || '');
+    if (!raw) return '';
+    const src = new URLSearchParams(raw);
+    const out = new URLSearchParams();
+    for (const k of ['sector', 'dept', 'year', 'sol', 'q', 'view']) {
+      const v = src.get(k);
+      if (v && v.length <= 64) out.set(k, v);
+    }
+    const q = out.toString();
+    return q ? '?' + q : '';
+  })();
+
+  const body = `${PAGE_STYLE}
+    <a href="/app/opportunities${backTo}" style="font-size:12px;color:var(--muted)">← ${G.opportunities || 'الفرص'}</a>
+    <div style="display:flex;flex-direction:column;gap:.9rem;margin-top:.6rem">
+      ${toolbar}
       ${header}
-      ${actionBar}
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:.9rem;align-items:start">
-        <div style="display:flex;flex-direction:column;gap:.9rem;min-width:0">${activityCard}${historyCard}</div>
-        <div style="display:flex;flex-direction:column;gap:.9rem;min-width:0">${teamCard}${detailsCard}</div>
-      </div>
+      ${naRailRow}
+      ${tabsBar}
+      ${panels}
     </div>
+    ${editTpl}
+    ${teamTpl}
     <script>window.__SANAD=Object.assign(window.__SANAD||{},{
       oppId:${JSON.stringify(o.id)},
       currentStage:${JSON.stringify(o.stage_id)},
+      oppSector:${JSON.stringify(o.sector_id || '')},
+      oppTab:${JSON.stringify(tab)},
       stages:${JSON.stringify(d.stages.map((s) => ({ id: s.id, name_ar: s.name_ar, color: s.color }))).replace(/</g, '\\u003c')},
-      canEditOpp:${d.canEdit ? 'true' : 'false'}
+      clientsList:${JSON.stringify(clientOptions.map((c) => ({ id: c.id, name_ar: c.name_ar }))).replace(/</g, '\\u003c')},
+      canEditOpp:${d.canEdit ? 'true' : 'false'},
+      canDeleteOpp:${d.canDelete ? 'true' : 'false'},
+      isWon:${st.is_won ? 'true' : 'false'},
+      wonProject:${JSON.stringify(wonPrj ? { id: wonPrj.id, name_ar: wonPrj.name_ar, status: wonPrj.status } : null).replace(/</g, '\\u003c')}
     });</script>`;
   return layout({
-    user, active: 'opportunities', title: esc(o.title_ar), subtitle: 'قصة القرار · الفرص والمبيعات', body,
+    user, active: 'opportunities', title: o.title_ar, subtitle: 'قصة القرار · الفرص والمبيعات', body,
     scripts: ['/static/pages/opps.js'],
   });
 }

@@ -2,15 +2,9 @@ import { Router } from 'express';
 import { login, logout, changePassword } from '../core/auth/service.js';
 import { config } from '../core/config.js';
 import { badRequest, unauthorized } from '../core/http/errors.js';
+import { setSessionCookie, clearSessionCookie } from '../core/http/session-cookie.js';
 
 export const authRouter = Router();
-
-function setSessionCookie(res, sid) {
-  res.cookie(config.sessionCookie, sid, {
-    httpOnly: true, sameSite: 'lax', secure: config.env === 'production',
-    maxAge: config.sessionTtlHours * 3600000, path: '/',
-  });
-}
 
 authRouter.post('/login', async (req, res, next) => {
   try {
@@ -31,7 +25,7 @@ authRouter.post('/login', async (req, res, next) => {
 authRouter.post('/logout', async (req, res, next) => {
   try {
     await logout(req.cookies?.[config.sessionCookie]);
-    res.clearCookie(config.sessionCookie, { path: '/' });
+    clearSessionCookie(res);
     res.json({ ok: true });
   } catch (e) { next(e); }
 });
@@ -46,9 +40,10 @@ authRouter.get('/me', (req, res, next) => {
 authRouter.post('/change-password', async (req, res, next) => {
   try {
     if (!req.ctx?.user) return next(unauthorized());
-    const { newPassword } = req.body || {};
+    const { currentPassword, newPassword } = req.body || {};
     if (!newPassword || String(newPassword).length < 8) return next(badRequest('كلمة المرور يجب أن تكون 8 أحرف على الأقل'));
-    await changePassword(req.ctx.user.id, newPassword);
+    const currentSessionId = req.cookies?.[config.sessionCookie] || null;
+    await changePassword({ user: req.ctx.user, ip: req.ip }, { currentPassword, newPassword, currentSessionId });
     res.json({ ok: true });
   } catch (e) { next(e); }
 });

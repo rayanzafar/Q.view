@@ -1,0 +1,644 @@
+{
+  "nodes": [
+    {
+      "id": "journey:client",
+      "kind": "journey",
+      "label": "العملاء",
+      "detail": "توحيد هوية الجهة وعلاقاتها وفرصها. اختلاف الهوية الموثقة يمنع الدمج بالتشابه.",
+      "sources": [
+        "src/modules/clients/clients.js"
+      ],
+      "status": "قائم في الكود؛ النشر الجديد غير متحقق"
+    },
+    {
+      "id": "journey:opportunity",
+      "kind": "journey",
+      "label": "الفرص والمبيعات",
+      "detail": "مالك وعميل ومرحلة وقيمة وسنة بيع؛ الفوز يعكس البيع ولا يحدد فترة الإيراد.",
+      "sources": [],
+      "status": "قائم في الكود؛ النشر الجديد غير متحقق"
+    },
+    {
+      "id": "journey:project",
+      "kind": "journey",
+      "label": "المشاريع",
+      "detail": "مشروع مسؤول عنه مدير، يرتبط بالفرصة والمخرجات والمهام والموارد.",
+      "sources": [],
+      "status": "قائم في الكود؛ النشر الجديد غير متحقق"
+    },
+    {
+      "id": "journey:delivery",
+      "kind": "journey",
+      "label": "المخرجات والإنجاز",
+      "detail": "لكل مخرج حالة ودليل وفترة مستقلة؛ تاريخ الإدخال ليس فترة إنجاز.",
+      "sources": [],
+      "status": "قائم في الكود؛ النشر الجديد غير متحقق"
+    },
+    {
+      "id": "journey:revenue",
+      "kind": "journey",
+      "label": "الإيراد والفترة",
+      "detail": "سنة البيع 2025 لا تمنع إيراد 2026. المبلغ والفترة والضريبة تعود للمصدر؛ التاريخ القديم يحتاج مطابقة.",
+      "sources": [],
+      "status": "قائم في الكود؛ النشر الجديد غير متحقق"
+    },
+    {
+      "id": "journey:person",
+      "kind": "journey",
+      "label": "ملف الشخص",
+      "detail": "الموظف ومديره والموارد البشرية يقرؤون الأعمال والمشاريع والفرص والمهام والطاقة وفق نطاقهم؛ الرواتب لا تتبع صلاحية قراءة الأعمال.",
+      "sources": [],
+      "status": "قائم في الكود؛ النشر الجديد غير متحقق"
+    },
+    {
+      "id": "journey:tasks",
+      "kind": "journey",
+      "label": "المهام والعمل اليومي",
+      "detail": "صاحب المهمة يعرف ما المطلوب ومتى وما العائق والخطوة التالية؛ السياق غير المخول بلا رابط كاشف.",
+      "sources": [],
+      "status": "قائم في الكود؛ النشر الجديد غير متحقق"
+    },
+    {
+      "id": "journey:allocation",
+      "kind": "journey",
+      "label": "التسكين والاحتياج",
+      "detail": "المورد والشهر والجهة والنسبة، من الشخص أو المشروع أو مصفوفة الشهور؛ المعاينة قبل الطلب والاعتماد.",
+      "sources": [],
+      "status": "قائم في الكود؛ النشر الجديد غير متحقق"
+    },
+    {
+      "id": "journey:approval",
+      "kind": "journey",
+      "label": "الاعتمادات",
+      "detail": "طلب موجه إلى مسؤول محدد، مع حالة مفهومة وأثر. إعادة توجيه طلب قديم وتعديل جهة المهمة فجوات تحتاج إصلاحًا.",
+      "sources": [],
+      "status": "قائم في الكود؛ النشر الجديد غير متحقق"
+    },
+    {
+      "id": "journey:report",
+      "kind": "journey",
+      "label": "الأداء والتقارير",
+      "detail": "القراءات التشغيلية مرتبطة بفترتها ومصدرها؛ التقرير الأسبوعي يشرح التغير والقرارات ويتجمع إلى فترات أطول.",
+      "sources": [
+        "src/core/reports/engine.js"
+      ],
+      "status": "قائم في الكود؛ النشر الجديد غير متحقق"
+    },
+    {
+      "id": "journey:quality",
+      "kind": "journey",
+      "label": "جودة البيانات",
+      "detail": "فصل نقص البيانات عن خلل الوظيفة والمنطق والعرض؛ معاينة تصحيح ثم أثر وتراجع، دون تخمين التاريخ أو هوية التجريبي.",
+      "sources": [],
+      "status": "قائم في الكود؛ النشر الجديد غير متحقق"
+    },
+    {
+      "id": "journey:assistant",
+      "kind": "journey",
+      "label": "مساعد سند",
+      "detail": "أدوات داخلية بصلاحيات المستخدم، قراءة ومعاينة ثم تنفيذ مؤكد. الموصل الخارجي غير مكتمل.",
+      "sources": [
+        "src/modules/ai/team-tools.js"
+      ],
+      "status": "قائم في الكود؛ النشر الجديد غير متحقق"
+    },
+    {
+      "id": "journey:events",
+      "kind": "journey",
+      "label": "الفعاليات",
+      "detail": "سجل مستقل للقاءات والبطاقات؛ لا تحويل خفي إلى العملاء أو الفرص.",
+      "sources": [],
+      "status": "قائم في الكود؛ النشر الجديد غير متحقق"
+    },
+    {
+      "id": "metric:sale",
+      "kind": "metric",
+      "label": "سنة البيع",
+      "detail": "قيمة البيع ضمن سنة الفرصة؛ ليست سنة الفاتورة أو الإنجاز.",
+      "sources": [
+        "src/modules/finance/finance.js"
+      ],
+      "status": "قائم في الكود؛ النشر الجديد غير متحقق"
+    },
+    {
+      "id": "metric:period",
+      "kind": "metric",
+      "label": "فترة الإيراد",
+      "detail": "سنة وشهر موثقان، وإلا حدث إنجاز صالح؛ لا استنتاج من الاسم أو created_at.",
+      "sources": [
+        "src/modules/finance/revenue-period.js"
+      ],
+      "status": "قائم في الكود؛ النشر الجديد غير متحقق"
+    },
+    {
+      "id": "metric:capacity",
+      "kind": "metric",
+      "label": "تفسير 300%",
+      "detail": "قد تكون جمع نسب ثلاثة أشهر، أو تجاوزًا متزامنًا في شهر واحد. نسبة الفترة موزونة بالطاقة؛ لا قص تلقائي عند 100%.",
+      "sources": [
+        "src/modules/team/capacity-model.js"
+      ],
+      "status": "قائم في الكود؛ النشر الجديد غير متحقق"
+    },
+    {
+      "id": "metric:load",
+      "kind": "metric",
+      "label": "ضغط العمل والتكلفة",
+      "detail": "التخصيص المخطط وحمل المهام وتغطية التكلفة مؤشرات مختلفة؛ نقص التكلفة لا يُعرض صفرًا أو تغطية مكتملة.",
+      "sources": [
+        "src/modules/team/analysis.js"
+      ],
+      "status": "قائم في الكود؛ النشر الجديد غير متحقق"
+    },
+    {
+      "id": "work:request",
+      "kind": "workflow",
+      "label": "متطلب وقبول",
+      "detail": "هدف المستخدم ومعيار نجاح قابل للاختبار؛ قرار جوهري يعود للمالك.",
+      "sources": [
+        "docs/BLUEPRINT.md"
+      ],
+      "status": "مسار العمل المعتمد"
+    },
+    {
+      "id": "work:implementation",
+      "kind": "workflow",
+      "label": "تنفيذ دفعة مترابطة",
+      "detail": "منطق وخدمة وصلاحية وواجهة وبيانات وأثر؛ مسؤول تنفيذ واحد لكل تغيير.",
+      "sources": [
+        "../AGENTS.md"
+      ],
+      "status": "مسار العمل المعتمد"
+    },
+    {
+      "id": "work:tests",
+      "kind": "workflow",
+      "label": "اختبارات ومراجعة",
+      "detail": "اختبارات الانحدار والنطاق والمصدر ثم PostgreSQL والرحلة البصرية؛ نجاح HTTP لا يثبت التصميم.",
+      "sources": [
+        "docs/delivery-waves/v5.76-qa.md"
+      ],
+      "status": "مسار العمل المعتمد"
+    },
+    {
+      "id": "work:trial",
+      "kind": "workflow",
+      "label": "تجربة المالك",
+      "detail": "نسخة تجريبية واختبار المهام الواقعية وحالات الخطأ والهاتف قبل قبول الإنتاج.",
+      "sources": [
+        "docs/BLUEPRINT.md"
+      ],
+      "status": "مسار العمل المعتمد"
+    },
+    {
+      "id": "work:release",
+      "kind": "workflow",
+      "label": "نسخ احتياطي وإصدار",
+      "detail": "المسار الوحيد SANAD_RELEASE=1 npm run deploy. لا نشر مباشر ولا كتابة على الإنتاج القديم.",
+      "sources": [
+        "docs/guides/DEPLOY-PIPELINE.md"
+      ],
+      "status": "مسار العمل المعتمد"
+    },
+    {
+      "id": "work:verify",
+      "kind": "workflow",
+      "label": "تحقق بعد النشر",
+      "detail": "مطابقة معرّف النشرة، الجاهزية، السجلات والمسح والأدلة ثم تحديث حالة الدفعة.",
+      "sources": [
+        "scripts/deploy.mjs"
+      ],
+      "status": "مسار العمل المعتمد"
+    },
+    {
+      "id": "tool:chatgpt",
+      "kind": "tool",
+      "label": "ChatGPT والمالك",
+      "detail": "تحديد الهدف ومراجعة منطق الأعمال وقبول التجربة.",
+      "sources": [
+        "docs/BLUEPRINT.md",
+        "docs/team-resources/AI-TOOLS.md"
+      ],
+      "status": "متاح"
+    },
+    {
+      "id": "tool:codex",
+      "kind": "tool",
+      "label": "Codex",
+      "detail": "تنفيذ الكود والفحص والتوثيق داخل المستودع.",
+      "sources": [
+        "docs/BLUEPRINT.md",
+        "docs/team-resources/AI-TOOLS.md"
+      ],
+      "status": "متاح محليًا"
+    },
+    {
+      "id": "tool:github",
+      "kind": "tool",
+      "label": "GitHub",
+      "detail": "مرجع الكود وCI؛ آخر محاولة رفع فشلت لغياب مصادقة التنفيذ.",
+      "sources": [
+        "docs/BLUEPRINT.md",
+        "docs/team-resources/AI-TOOLS.md"
+      ],
+      "status": "محجوب بالمصادقة"
+    },
+    {
+      "id": "tool:railway",
+      "kind": "tool",
+      "label": "Railway",
+      "detail": "التشغيل على وجهة staging المحددة؛ آخر فحص اتصال أعاد 403/1010.",
+      "sources": [
+        "docs/BLUEPRINT.md",
+        "docs/team-resources/AI-TOOLS.md"
+      ],
+      "status": "اتصال غير متحقق"
+    },
+    {
+      "id": "tool:mcp",
+      "kind": "tool",
+      "label": "GPT / Claude عبر MCP",
+      "detail": "أدوات المنتج الداخلية قائمة؛ النقل البعيد وOAuth وربط المستخدم والعميل غير منفذة.",
+      "sources": [
+        "docs/BLUEPRINT.md",
+        "docs/team-resources/AI-TOOLS.md"
+      ],
+      "status": "غير منفذ خارجيًا"
+    },
+    {
+      "id": "tool:claude",
+      "kind": "tool",
+      "label": "Claude Code",
+      "detail": "مراجع إضافي اختياري عبر Git؛ لا كتابة متزامنة على ملفات المنفذ، ولا اتصال مفترض.",
+      "sources": [
+        "docs/BLUEPRINT.md",
+        "docs/team-resources/AI-TOOLS.md"
+      ],
+      "status": "غير متحقق"
+    },
+    {
+      "id": "journey:targets",
+      "kind": "journey",
+      "label": "مستهدفات القطاع",
+      "detail": "مبيعات وإيراد بحسب القطاع والسنة، سجل تعديل مع السبب ورقم مراجعة؛ القيم القديمة دون سنة محفوظة للمراجعة والتوزيع الشهري غير قابل للتحرير بهذه الدفعة.",
+      "status": "منفذ محليًا غير منشور",
+      "sources": [
+        "src/modules/org/sector-targets.js",
+        "src/web/views/sector-targets.js",
+        "migrations/043_budget_revision.sql"
+      ]
+    }
+  ],
+  "edges": [
+    [
+      "journey:client",
+      "module:clients",
+      "تنفيذ في الوحدة"
+    ],
+    [
+      "journey:client",
+      "table:client",
+      "سجل مرتبط بالرحلة"
+    ],
+    [
+      "journey:opportunity",
+      "module:crm",
+      "تنفيذ في الوحدة"
+    ],
+    [
+      "journey:opportunity",
+      "table:opportunity",
+      "سجل مرتبط بالرحلة"
+    ],
+    [
+      "journey:project",
+      "module:pmo",
+      "تنفيذ في الوحدة"
+    ],
+    [
+      "journey:project",
+      "table:project",
+      "سجل مرتبط بالرحلة"
+    ],
+    [
+      "journey:delivery",
+      "module:pmo",
+      "تنفيذ في الوحدة"
+    ],
+    [
+      "journey:delivery",
+      "table:deliverable",
+      "سجل مرتبط بالرحلة"
+    ],
+    [
+      "journey:revenue",
+      "module:finance",
+      "تنفيذ في الوحدة"
+    ],
+    [
+      "journey:revenue",
+      "table:revenue_line",
+      "سجل مرتبط بالرحلة"
+    ],
+    [
+      "journey:person",
+      "module:team",
+      "تنفيذ في الوحدة"
+    ],
+    [
+      "journey:person",
+      "table:employee",
+      "سجل مرتبط بالرحلة"
+    ],
+    [
+      "journey:tasks",
+      "module:pmo",
+      "تنفيذ في الوحدة"
+    ],
+    [
+      "journey:tasks",
+      "table:task",
+      "سجل مرتبط بالرحلة"
+    ],
+    [
+      "journey:allocation",
+      "module:team",
+      "تنفيذ في الوحدة"
+    ],
+    [
+      "journey:allocation",
+      "table:allocation",
+      "سجل مرتبط بالرحلة"
+    ],
+    [
+      "journey:approval",
+      "module:workflow",
+      "تنفيذ في الوحدة"
+    ],
+    [
+      "journey:approval",
+      "table:approval_request",
+      "سجل مرتبط بالرحلة"
+    ],
+    [
+      "journey:report",
+      "module:home",
+      "تنفيذ في الوحدة"
+    ],
+    [
+      "journey:report",
+      "table:report_definition",
+      "سجل مرتبط بالرحلة"
+    ],
+    [
+      "journey:quality",
+      "module:io",
+      "تنفيذ في الوحدة"
+    ],
+    [
+      "journey:quality",
+      "table:import_run",
+      "سجل مرتبط بالرحلة"
+    ],
+    [
+      "journey:assistant",
+      "module:ai",
+      "تنفيذ في الوحدة"
+    ],
+    [
+      "journey:events",
+      "module:events",
+      "تنفيذ في الوحدة"
+    ],
+    [
+      "journey:events",
+      "table:event",
+      "سجل مرتبط بالرحلة"
+    ],
+    [
+      "journey:client",
+      "journey:opportunity",
+      "فرص الجهة"
+    ],
+    [
+      "journey:opportunity",
+      "journey:project",
+      "تحويل الفوز إلى مشروع"
+    ],
+    [
+      "journey:project",
+      "journey:delivery",
+      "تنفيذ وتسليم"
+    ],
+    [
+      "journey:delivery",
+      "journey:revenue",
+      "فترة ومبلغ المصدر"
+    ],
+    [
+      "journey:revenue",
+      "journey:report",
+      "مؤشرات الفترة"
+    ],
+    [
+      "journey:person",
+      "journey:allocation",
+      "طاقة المورد"
+    ],
+    [
+      "journey:allocation",
+      "journey:project",
+      "تخصيص للعمل"
+    ],
+    [
+      "journey:allocation",
+      "journey:opportunity",
+      "جهد قبل البيع"
+    ],
+    [
+      "journey:person",
+      "journey:tasks",
+      "عمل الشخص"
+    ],
+    [
+      "journey:tasks",
+      "journey:project",
+      "سياق المهمة"
+    ],
+    [
+      "journey:allocation",
+      "journey:approval",
+      "طلب يحتاج اعتمادًا"
+    ],
+    [
+      "journey:approval",
+      "journey:allocation",
+      "تأكيد أو رد"
+    ],
+    [
+      "journey:quality",
+      "journey:revenue",
+      "كشف ومطابقة"
+    ],
+    [
+      "journey:assistant",
+      "journey:person",
+      "قراءة مخولة"
+    ],
+    [
+      "journey:assistant",
+      "journey:allocation",
+      "معاينة طلب"
+    ],
+    [
+      "journey:report",
+      "journey:tasks",
+      "متابعة القرار"
+    ],
+    [
+      "metric:sale",
+      "journey:opportunity",
+      "يفسر المؤشر"
+    ],
+    [
+      "metric:sale",
+      "file:src/modules/finance/finance.js",
+      "مصدر الحساب"
+    ],
+    [
+      "metric:period",
+      "journey:revenue",
+      "يفسر المؤشر"
+    ],
+    [
+      "metric:period",
+      "file:src/modules/finance/revenue-period.js",
+      "مصدر الحساب"
+    ],
+    [
+      "metric:capacity",
+      "journey:allocation",
+      "يفسر المؤشر"
+    ],
+    [
+      "metric:capacity",
+      "file:src/modules/team/capacity-model.js",
+      "مصدر الحساب"
+    ],
+    [
+      "metric:load",
+      "journey:person",
+      "يفسر المؤشر"
+    ],
+    [
+      "metric:load",
+      "file:src/modules/team/analysis.js",
+      "مصدر الحساب"
+    ],
+    [
+      "work:request",
+      "work:implementation",
+      "بوابة قبل الانتقال"
+    ],
+    [
+      "work:implementation",
+      "work:tests",
+      "بوابة قبل الانتقال"
+    ],
+    [
+      "work:tests",
+      "work:trial",
+      "بوابة قبل الانتقال"
+    ],
+    [
+      "work:trial",
+      "work:release",
+      "بوابة قبل الانتقال"
+    ],
+    [
+      "work:release",
+      "work:verify",
+      "بوابة قبل الانتقال"
+    ],
+    [
+      "work:verify",
+      "work:request",
+      "النتائج تغذي الدفعة التالية"
+    ],
+    [
+      "tool:chatgpt",
+      "tool:codex",
+      "أهداف وقرارات"
+    ],
+    [
+      "tool:codex",
+      "tool:github",
+      "تغييرات واختبارات"
+    ],
+    [
+      "tool:github",
+      "tool:railway",
+      "مصدر الإصدار المقبول"
+    ],
+    [
+      "tool:claude",
+      "tool:github",
+      "مراجعة اختيارية"
+    ],
+    [
+      "tool:mcp",
+      "journey:assistant",
+      "يستدعي الخدمات المخولة"
+    ],
+    [
+      "tool:github",
+      "work:tests",
+      "CI بعد الربط"
+    ],
+    [
+      "tool:railway",
+      "work:release",
+      "وجهة الإصدار"
+    ],
+    [
+      "issue:KI-102",
+      "journey:revenue",
+      "فجوة معلنة"
+    ],
+    [
+      "issue:KI-103",
+      "journey:revenue",
+      "فجوة معلنة"
+    ],
+    [
+      "issue:KI-104",
+      "journey:quality",
+      "فجوة معلنة"
+    ],
+    [
+      "issue:KI-079",
+      "journey:tasks",
+      "فجوة معلنة"
+    ],
+    [
+      "issue:KI-035",
+      "journey:approval",
+      "فجوة معلنة"
+    ],
+    [
+      "journey:targets",
+      "table:budget",
+      "قيم السنة ورقم المراجعة"
+    ],
+    [
+      "journey:targets",
+      "page:sector-targets",
+      "إدارة مستهدفات السنة"
+    ],
+    [
+      "journey:targets",
+      "file:src/core/reports/metrics.js",
+      "المحقق مقابل مستهدف السنة"
+    ]
+  ]
+}

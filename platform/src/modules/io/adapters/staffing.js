@@ -91,10 +91,27 @@ export default {
       LEFT JOIN employee e ON e.id = a.employee_id
       LEFT JOIN project p ON p.id = a.project_id
       WHERE ${where.join(' AND ')} ORDER BY e.name_ar, p.name_ar`, params);
+    // اسمُ المشروع في التصدير صفٌّ لا رقم — يُقصّ على نطاق قراءة القارئ للمشاريع (v5.9): نطاقُ
+    // «التسكين» يتراجع إلى القطاع لمدير الإدارة (لا عمودَ إدارةٍ له)، فكان يُصدَّر عبره اسمُ مشروع
+    // إدارةٍ شقيقةٍ لا يراه في القائمة ولا في الكشف — نفسُ الباب الخلفي المغلق في كشف `org.js`.
+    // الحِملُ (الأشهر) يبقى رقماً للجميع، واسمُ مشروعٍ خارج نطاقه يُطوى إلى «—».
+    let visibleProjects = null; // null = لا قصّ (نطاقٌ شركيّ)
+    const pids = [...new Set(rows.map((a) => a.project_id).filter(Boolean))];
+    if (pids.length) {
+      const pf = scopeFilter(user, 'project', 'read',
+        { deptCol: 'department_id', sectorCol: 'sector_id', ownerCol: 'owner_user_id', memberCol: 'id' });
+      if (pf.clause !== '1=1') {
+        visibleProjects = new Set((await all(
+          `SELECT id FROM project WHERE deleted_at IS NULL AND id IN (${pids.map(() => '?').join(',')}) AND (${pf.clause})`,
+          [...pids, ...pf.params])).map((r) => r.id));
+      }
+    }
+    const inReach = (pid) => !pid || visibleProjects === null || visibleProjects.has(pid);
     return rows.map((a) => {
       const months = monthsOf(a.monthly_json);
       const out = {
-        employee: a.emp_name || a.person_name_ar, project: a.proj_code || a.proj_name || a.project_name,
+        employee: a.emp_name || a.person_name_ar,
+        project: inReach(a.project_id) ? (a.proj_code || a.proj_name || a.project_name) : '—',
         year: a.year, type: a.type,
       };
       months.forEach((v, i) => { out[`m${i + 1}`] = v > 0 ? Math.round(v * 1000) / 10 : null; });
@@ -106,7 +123,7 @@ export default {
     const existing = await get(
       'SELECT * FROM allocation WHERE employee_id = ? AND project_id = ? AND year = ? AND deleted_at IS NULL ORDER BY created_at LIMIT 1',
       [mapped.employee, mapped.project, mapped.year]);
-    const project = await get('SELECT id, sector_id, name_ar FROM project WHERE id = ?', [mapped.project]);
+    const project = await get('SELECT id, sector_id, department_id, owner_user_id, name_ar FROM project WHERE id = ?', [mapped.project]);
     if (!existing) return { action: 'create', existing: null, changes: [], project };
     const changes = [];
     if (!sameMonths(monthsOf(existing.monthly_json), mapped._months)) changes.push('months');
@@ -115,7 +132,13 @@ export default {
   },
 
   rowTarget(mapped, resolved, user) {
-    return { sector_id: resolved?.project?.sector_id || user.sector_id || null };
+    // الهدف يحمل إدارة المشروع ومالكه (لا القطاع وحده) كي يفحص المحرّك نطاقَي «الإدارة» و«خاصتي»
+    // على صفّ التسكين — دفاعٌ في العمق فوق إعادة الحراسة داخل assignEmployee / setAllocation.
+    return {
+      sector_id: resolved?.project?.sector_id || user.sector_id || null,
+      department_id: resolved?.project?.department_id ?? null,
+      owner_user_id: resolved?.project?.owner_user_id ?? null,
+    };
   },
   rowLabel(mapped, lookups) {
     const emp = lookups?.employee?.rows?.find((e) => e.id === mapped.employee);
@@ -126,16 +149,23 @@ export default {
     const months = mapped._months;
     const range = uniformRange(months) || { pct: 100, fromMonth: 1, toMonth: 12 };
     if (resolved.action === 'create') {
-      const staffing = await assignEmployee(ctx, mapped.project, {
+      // السنة تمرّ إلى الخدمة نفسها لا تُرقَّع بعدها: إسقاطُها كان يُنشئ كل تسكين على سنة
+      // اليوم ثم يرقّعه — والرقعة كانت تلتقط **أقدم** تسكينٍ للشخص على المشروع لا أحدثَه
+      // (projectStaffing يرتّب بالإنشاء والالتقاط كان بأول نتيجة)، فتفسد سنواتُ الأزواج
+      // متعددة السنين ويصطدم صفُّ السنة الحالية بمانع التكرار (KI-092، دفتر SAP 2026-08-30).
+      await assignEmployee(ctx, mapped.project, {
         employeeId: mapped.employee, type: mapped.type || 'member',
         pct: range.pct, fromMonth: range.fromMonth, toMonth: range.toMonth,
+        year: mapped.year,
       });
-      const allocId = staffing.assigned.find((a) => a.employee_id === mapped.employee)?.id;
-      // استكمال المخطط الدقيق/السنة (الخدمة أنجزت الصلاحيات والتدقيق ومنع التكرار)
-      const after0 = await get('SELECT * FROM allocation WHERE id = ?', [allocId]);
+      // التسكين المنشأ يُلتقط بمفتاحه الفريد (المشروع×الموظف×السنة) — الخدمة تضمن وحدانيته
+      const after0 = await get(
+        'SELECT * FROM allocation WHERE project_id = ? AND employee_id = ? AND year = ? AND deleted_at IS NULL',
+        [mapped.project, mapped.employee, mapped.year]);
+      const allocId = after0.id;
+      // استكمال المخطط الشهري الدقيق (الخدمة أنجزت الصلاحيات والتدقيق ومنع التكرار)
       const exact = { };
       if (!sameMonths(monthsOf(after0.monthly_json), months)) exact.monthly_json = JSON.stringify(toMj(months));
-      if (Number(after0.year) !== Number(mapped.year)) exact.year = mapped.year;
       if (Object.keys(exact).length) await update('allocation', allocId, exact);
       const after = await get('SELECT * FROM allocation WHERE id = ?', [allocId]);
       return { resource: 'allocation', resourceId: allocId, before: null, after };
@@ -164,7 +194,10 @@ export default {
     const b = row.before;
     if (!b) return;
     await guardedAllocation(ctx, row.resource_id);
-    await update('allocation', row.resource_id, { monthly_json: b.monthly_json, type: b.type, year: b.year, updated_at: nowIso() });
+    // جدول التسكين بلا عمود updated_at (001_init.sql + 007) — تُرقَّع الأعمدة الحقيقية فقط،
+    // وإلا بنى مساعد update جملة SET على عمود غير موجود ففشل التراجع على السائقَين معاً.
+    // زمن التراجع محفوظ في سطر التدقيق أدناه.
+    await update('allocation', row.resource_id, { monthly_json: b.monthly_json, type: b.type, year: b.year });
     await audit(ctx, { action: 'update', resource: 'allocation', resourceId: row.resource_id, sectorId: b.sector_id, detail: { undoImport: true } });
   },
 };

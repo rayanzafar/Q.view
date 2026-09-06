@@ -32,3 +32,14 @@ test('security headers: كل صفحة أخرى تبقى محجوبة بالكا�
     assert.match(h['Content-Security-Policy-Report-Only'], /frame-ancestors 'none'/);
   }
 });
+
+// قارئ البطاقات داخل المتصفّح (ADR-0014): عاملٌ من أصلنا يشغّل WebAssembly. الترويسة اليوم
+// Report-Only، لكن المخالفة تُسجَّل خطأً في وحدة التحكم — وفحوص المتصفّح تعدّ ذلك سقوطاً.
+// والتوجيهان يُكتبان الآن كي لا يكسر التحويلُ إلى enforcing القارئَ بصمت في نشرةٍ لاحقة.
+test('security headers: سياسة المحتوى تسمح لقارئ البطاقات بعاملٍ من أصلنا وبتشغيل WebAssembly', () => {
+  const h = callWith('/app/event/ev1');
+  assert.match(h['Content-Security-Policy-Report-Only'], /script-src [^;]*'wasm-unsafe-eval'/,
+    "script-src بلا 'wasm-unsafe-eval' — نواة القراءة لا تُنشأ داخل العامل");
+  assert.match(h['Content-Security-Policy-Report-Only'], /worker-src 'self'/,
+    "worker-src 'self' غائب — المتصفّح يرفض عامل القراءة القادم من أصلنا");
+});

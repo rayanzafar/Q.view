@@ -5,13 +5,24 @@
 // Scoping model: `client` rows carry no sector_id. A client is visible to a sector-scoped user
 // when the client has ANY footprint (opportunity / project / contract) in that user's sector —
 // computed with EXISTS subqueries so the DB enforces the boundary, not the app.
-import { all, get, insert, update } from '../../core/db/index.js';
+import { all, get, insert, update, run, tx } from '../../core/db/index.js';
+import { netSql } from '../finance/vat.js';
+import { effectiveProgress } from '../pmo/progress.js';
 import { can, effectiveScope } from '../../core/rbac/index.js';
 import { scopeFilter } from '../../core/rbac/scope.js';
 import { audit } from '../../core/audit/index.js';
 import { id, nowIso, fmtSar } from '../../core/util/ids.js';
 import { badRequest, forbidden, notFound } from '../../core/http/errors.js';
 import { config } from '../../core/config.js';
+import { DELIVERY_SECTOR_SQL } from '../../core/org/kind.js';
+import { matchEntity, entityCount } from '../../core/org/entity-registry.js';
+// قاعدة نسبة الفاتورة إلى عميل — معرّفة مرة واحدة في وحدة المالية (صاحبة الفاتورة) ومستوردة هنا،
+// حتى لا تختلف إجابة «لمن هذه الفاتورة؟» بين قائمة العملاء وصفحة العميل وشاشة المالية.
+import { INVOICE_CLIENT_COL, INVOICE_CLIENT_JOIN } from '../finance/finance.js';
+import { loadReadableOpportunity } from '../crm/opp-access.js';
+
+const INV_CID = INVOICE_CLIENT_COL();   // COALESCE(i.client_id, p.client_id)
+const INV_JOIN = INVOICE_CLIENT_JOIN(); // LEFT JOIN project p … AND p.deleted_at IS NULL
 
 export const CLIENT_TYPES = ['حكومي', 'خاص', 'شبه حكومي', 'داخلي'];
 export const ACTIVITY_KINDS = ['call', 'meeting', 'email', 'note', 'visit', 'proposal', 'update', 'other'];
@@ -81,7 +92,7 @@ const maxAt = (...vals) => vals.filter(Boolean).map(String).sort().pop() || null
 
 // Per-client "last touch" dates from every real dated record class (logged activity + derived
 // business events). Returns Map(client_id → ISO/date string). No fabrication: null dates drop out.
-async function lastTouchByClient() {
+export async function lastTouchByClient() {
   const out = new Map();
   const feed = (rows) => { for (const r of rows) if (r.cid && r.at) out.set(r.cid, maxAt(out.get(r.cid), r.at)); };
   feed(await all(`SELECT client_id cid, MAX(at) at FROM crm_activity WHERE deleted_at IS NULL AND client_id IS NOT NULL GROUP BY client_id`));
@@ -90,14 +101,14 @@ async function lastTouchByClient() {
   feed(await all(`SELECT client_id cid, MAX(COALESCE(signed_at, start_date)) at FROM contract
      WHERE deleted_at IS NULL AND client_id IS NOT NULL GROUP BY client_id`));
   // legacy invoices carry project_id only — resolve the client through the project when unset
-  feed(await all(`SELECT COALESCE(i.client_id, p.client_id) cid, MAX(i.issue_date) at
-     FROM invoice i LEFT JOIN project p ON p.id = i.project_id
+  feed(await all(`SELECT ${INV_CID} cid, MAX(i.issue_date) at
+     FROM invoice i ${INV_JOIN}
      WHERE i.deleted_at IS NULL AND i.issue_date IS NOT NULL AND i.status NOT IN ('DRAFT','CANCELLED')
-       AND COALESCE(i.client_id, p.client_id) IS NOT NULL GROUP BY COALESCE(i.client_id, p.client_id)`));
-  feed(await all(`SELECT COALESCE(i.client_id, p.client_id) cid, MAX(l.collected_at) at
-     FROM collection l JOIN invoice i ON i.id = l.invoice_id LEFT JOIN project p ON p.id = i.project_id
+       AND ${INV_CID} IS NOT NULL GROUP BY ${INV_CID}`));
+  feed(await all(`SELECT ${INV_CID} cid, MAX(l.collected_at) at
+     FROM collection l JOIN invoice i ON i.id = l.invoice_id ${INV_JOIN}
      WHERE i.deleted_at IS NULL AND l.collected_at IS NOT NULL
-       AND COALESCE(i.client_id, p.client_id) IS NOT NULL GROUP BY COALESCE(i.client_id, p.client_id)`));
+       AND ${INV_CID} IS NOT NULL GROUP BY ${INV_CID}`));
   feed(await all(`SELECT client_id cid, MAX(start_date) at FROM project
      WHERE deleted_at IS NULL AND client_id IS NOT NULL AND start_date IS NOT NULL GROUP BY client_id`));
   return out;
@@ -134,10 +145,10 @@ export async function listClients(user, filters = {}) {
   if (!clients.length) return [];
 
   const fy = config.fiscalYear;
-  const revRows = await all(`SELECT p.client_id cid, COALESCE(SUM(r.amount_halalas),0) v FROM revenue_line r
+  const revRows = await all(`SELECT p.client_id cid, COALESCE(SUM(${netSql('r.amount_halalas', 'r.net_amount_halalas')}),0) v FROM revenue_line r
      JOIN project p ON p.id = r.project_id WHERE r.year = ? AND p.client_id IS NOT NULL AND p.deleted_at IS NULL GROUP BY p.client_id`, [fy]);
   // إيراد السنة الماضية لكل عميل — يغذي مؤشر «نمو الإيراد» في الشريط التحليلي
-  const prevRevRows = await all(`SELECT p.client_id cid, COALESCE(SUM(r.amount_halalas),0) v FROM revenue_line r
+  const prevRevRows = await all(`SELECT p.client_id cid, COALESCE(SUM(${netSql('r.amount_halalas', 'r.net_amount_halalas')}),0) v FROM revenue_line r
      JOIN project p ON p.id = r.project_id WHERE r.year = ? AND p.client_id IS NOT NULL AND p.deleted_at IS NULL GROUP BY p.client_id`, [fy - 1]);
   // الفرص المفتوحة: العدد + الإجمالي + المرجّح (قيمة × احتمال الفوز) — نفس تعريف clientOverview
   const pipeRows = await all(`SELECT o.client_id cid, COUNT(*) n, COALESCE(SUM(o.value_halalas),0) v,
@@ -160,13 +171,13 @@ export async function listClients(user, filters = {}) {
   // المستحق: فاتورة بفاتورة بنفس قواعد clientOverview بالضبط (سقف التحصيل عند قيمة الفاتورة،
   // لا سالب، عميل الفاتورة أو عميل مشروعها للفواتير القديمة) حتى يطابق الرقم صفحة العميل 360.
   const today = nowIso().slice(0, 10);
-  const invRows = await all(`SELECT COALESCE(i.client_id, p.client_id) cid, i.id iid, i.amount_halalas amt,
+  const invRows = await all(`SELECT ${INV_CID} cid, i.id iid, i.amount_halalas amt,
        i.status st, i.due_date dd, COALESCE(SUM(l.amount_halalas),0) col
      FROM invoice i
-     LEFT JOIN project p ON p.id = i.project_id AND p.deleted_at IS NULL
+     ${INV_JOIN}
      LEFT JOIN collection l ON l.invoice_id = i.id
-     WHERE i.deleted_at IS NULL AND i.status NOT IN ('DRAFT','CANCELLED') AND COALESCE(i.client_id, p.client_id) IS NOT NULL
-     GROUP BY COALESCE(i.client_id, p.client_id), i.id, i.amount_halalas, i.status, i.due_date`);
+     WHERE i.deleted_at IS NULL AND i.status NOT IN ('DRAFT','CANCELLED') AND ${INV_CID} IS NOT NULL
+     GROUP BY ${INV_CID}, i.id, i.amount_halalas, i.status, i.due_date`);
   const ar = new Map();
   for (const r of invRows) {
     const out = Math.max(0, (r.amt || 0) - Math.min(r.col || 0, r.amt || 0));
@@ -180,7 +191,12 @@ export async function listClients(user, filters = {}) {
   const secRows = await all(`SELECT client_id cid, sector_id sid FROM opportunity WHERE deleted_at IS NULL AND client_id IS NOT NULL AND sector_id IS NOT NULL
      UNION SELECT client_id cid, sector_id sid FROM project WHERE deleted_at IS NULL AND client_id IS NOT NULL AND sector_id IS NOT NULL
      UNION SELECT client_id cid, sector_id sid FROM contract WHERE deleted_at IS NULL AND client_id IS NOT NULL AND sector_id IS NOT NULL`);
-  const secMeta = new Map((await all('SELECT id, name_ar, sort_order FROM sector WHERE deleted_at IS NULL'))
+  // شارات «القطاعات» على صف العميل = قطاعات تسليم فقط. وحدة المساندة ليست قطاعاً يتعامل معه
+  // العميل، وظهورها في الشارات يقرأها المسؤول قطاعاً خامساً. الصف المنسوب إلى وحدة مساندة
+  // يسقط من الشارات وحدها — لا من أرقام العميل (خط الفرص والعقود والمستحق تُحسب من صفوفها
+  // كاملة أعلاه)، والسطر التالي يُسقط أصلاً كل معرّف قطاع لا نعرفه.
+  const secMeta = new Map((await all(
+    `SELECT id, name_ar, sort_order FROM sector WHERE deleted_at IS NULL AND ${DELIVERY_SECTOR_SQL}`))
     .map((s) => [s.id, s]));
   const secBy = new Map();
   for (const r of secRows) {
@@ -263,7 +279,12 @@ export async function listClients(user, filters = {}) {
 //   • fy_win_rate  = فرص السنة المالية المحسومة (يستثني المستورد) = عدّاد «مكسوبة سنة FY» في عمود اللوحة.
 // استعلام تجميعي واحد خفيف (لا استعلام لكل صف). لا صلاحية = لا صفوف ⇒ قيم صفرية ونِسَب فارغة.
 export async function salesWinRate(user, fy = config.fiscalYear) {
-  const f = scopeFilter(user, 'opportunity', 'read');
+  // نفس خيارات قائمة الفرص، مؤهَّلةً باسم الجدول لأن الاستعلام يضمّ `stage` — فالنسبة تُحسب
+  // على نفس الصفوف التي تعرضها اللوحة والقائمة لنفس المستخدم، وإلا افترق الرقمان بلا سبب ظاهر.
+  const f = scopeFilter(user, 'opportunity', 'read',
+    { sectorCol: 'opportunity.sector_id', ownerCol: 'opportunity.owner_user_id',
+      grantCol: 'opportunity.department_id', memberCol: 'opportunity.id',
+      deptCol: 'opportunity.department_id' });
   const r = await get(`SELECT
       COALESCE(SUM(CASE WHEN stage.is_won = 1 AND COALESCE(opportunity.exclude_from_sales,0) = 0 AND opportunity.year = ? THEN 1 ELSE 0 END),0) fy_won,
       COALESCE(SUM(CASE WHEN stage.is_lost = 1 AND opportunity.year = ? THEN 1 ELSE 0 END),0) fy_lost,
@@ -292,7 +313,7 @@ export async function clientOverview(user, clientId) {
 
   const contacts = await all('SELECT id, name, title, email, phone, created_at FROM contact WHERE client_id = ? AND deleted_at IS NULL ORDER BY created_at', [clientId]);
 
-  // opportunities split open/won/lost
+  // opportunities split open/won/lost — البصمة كاملةً، تغذّي **المجاميع** وحدها (أدناه)
   const opps = await all(`SELECT o.id, o.code, o.title_ar, o.value_halalas, o.win_pct, o.stage_id, o.stage_changed_at,
        o.next_action, o.sector_id, o.year, s.name_ar stage_name_ar, COALESCE(s.is_won,0) is_won, COALESCE(s.is_lost,0) is_lost
      FROM opportunity o LEFT JOIN stage s ON s.id = o.stage_id
@@ -302,23 +323,64 @@ export async function clientOverview(user, clientId) {
   const lost = opps.filter((o) => o.is_lost);
   const decided = won.length + lost.length;
   const win_rate = decided ? Math.round((won.length / decided) * 100) : 0;
+  // حدود «الأرقام لا الأشخاص» داخل صفحة العميل (نفس حدود مركز القيادة — sector-feed-scope):
+  // مؤشرات العميل ومجاميعه — خط الفرص المفتوح والمرجّح وتقسيمة القطاعات ونسبة الفوز — تُحسب من
+  // بصمته كاملةً: مجاميع بلا عناوين. أما **صفوف** الفرص المفتوحة — عنوانها وقيمتها واحتمالها
+  // وخطوتها التالية — فتفاصيل صفقةٍ قبل ترسيتها، تُقصّ على نطاق قائمة الفرص نفسه (نفس خيارات
+  // listOpportunities مؤهَّلةً بـ`o.`): صفٌّ لا يفتحه القارئ لا يُعرَض له. المكسوبة والمخسورة
+  // بعد الحسم علنيةٌ داخل النطاق كما كانت.
+  let openRows = open;
+  const of_ = scopeFilter(user, 'opportunity', 'read',
+    { sectorCol: 'o.sector_id', ownerCol: 'o.owner_user_id', projectCol: 'o.id',
+      grantCol: 'o.department_id', memberCol: 'o.id', deptCol: 'o.department_id' });
+  if (of_.clause !== '1=1') {
+    const visible = new Set((await all(`SELECT o.id FROM opportunity o
+       WHERE o.client_id = ? AND o.deleted_at IS NULL AND ${of_.clause}`,
+    [clientId, ...of_.params])).map((r) => r.id));
+    openRows = open.filter((o) => visible.has(o.id));
+  }
 
-  const projects = await all(`SELECT id, code, name_ar, status, rag, progress_pct, start_date, end_date, sector_id,
+  const projects = await all(`SELECT id, code, name_ar, status, rag, progress_pct, start_date, end_date, sector_id, department_id, owner_user_id,
        COALESCE(NULLIF(contract_value_halalas,0), NULLIF(budget_halalas,0), NULLIF(po_value_halalas,0), NULLIF(revenue_halalas,0), 0) value_halalas
      FROM project WHERE client_id = ? AND deleted_at IS NULL ORDER BY (status = 'IN_PROGRESS') DESC, start_date DESC`, [clientId]);
+  // ── صفوف المشاريع: أرقامٌ للجميع، أسماءٌ لأهلها ───────────────────────────────
+  // نفس حدّ الفرص أعلاه على صفحة العميل (v5.9، نظير سطر «الأرقام لا الأشخاص»): **مجاميع**
+  // القطاع (عدد المشاريع وقيمتها والجارية منها) تبقى من البصمة كاملةً — أرقامٌ لا أشخاص —
+  // أما **صفوف** المشاريع بأسمائها وحالاتها فتُقصّ على نطاق قائمة المشاريع نفسه (deptCol +
+  // يتيم القطاع): مشروعُ إدارةٍ أخرى لا يُعرَض اسمُه لمدير إدارةٍ لا يقودها، كما لا يظهر في
+  // قائمته ولا يُفتح صفّياً. `visibleProject` = null ⟵ نطاقٌ شركيّ (الكلّ ظاهر بلا استعلام).
+  const pf = scopeFilter(user, 'project', 'read',
+    { deptCol: 'department_id', sectorCol: 'sector_id', ownerCol: 'owner_user_id', memberCol: 'id' });
+  let visibleProjectIds = null;
+  if (pf.clause !== '1=1') {
+    visibleProjectIds = new Set((await all(
+      `SELECT id FROM project WHERE client_id = ? AND deleted_at IS NULL AND ${pf.clause}`,
+      [clientId, ...pf.params])).map((r) => r.id));
+  }
+  const projectVisible = (p) => visibleProjectIds === null || visibleProjectIds.has(p.id);
+  // نسبة الإنجاز من مصدرها الواحد لا من العمود المخزَّن: كانت الشاشة تطبع `progress_pct` خاماً،
+  // فمشروعٌ اعتُمدت مخرجاته كلها يُقرأ مئةً في صفحته و٥٨٪ هنا — رقمان في اجتماع واحد.
+  const progMap = await effectiveProgress(projects);
+  for (const p of projects) p.progress_effective_pct = progMap.get(p.id)?.pct ?? 0;
 
   const contracts = await all(`SELECT t.id, t.code, t.value_halalas, t.status, t.signed_at, t.start_date, t.end_date,
        t.project_id, p.name_ar project_name_ar
      FROM contract t LEFT JOIN project p ON p.id = t.project_id
      WHERE t.client_id = ? AND t.deleted_at IS NULL ORDER BY t.value_halalas DESC`, [clientId]);
+  // اسمُ المشروع على العقد صفٌّ لا رقم — يُقصّ على نطاق القارئ كبقيّة صفوف المشاريع (v5.9): العقدُ
+  // وقيمتُه يبقيان (رقمٌ للجميع)، أما اسمُ مشروعٍ من إدارةٍ (أو قطاعٍ) خارج نطاقه فيُطوى — فلا يُعرَض
+  // اسمُه هنا كما لا يظهر في قائمته ولا يُفتح صفّياً. الطيُّ آمنٌ: العرض يُخفي الاسم الفارغ أصلاً.
+  for (const t of contracts) {
+    if (visibleProjectIds !== null && t.project_id && !visibleProjectIds.has(t.project_id)) t.project_name_ar = null;
+  }
 
   // invoices + collections → summary (open AR = outstanding; overdue = outstanding past due date).
   // Legacy invoices are linked by project only — count those attached via the client's projects too.
   const invoices = await all(`SELECT i.id, i.code, i.amount_halalas, i.status, i.issue_date, i.due_date,
        (SELECT COALESCE(SUM(l.amount_halalas),0) FROM collection l WHERE l.invoice_id = i.id) collected_halalas
-     FROM invoice i WHERE i.deleted_at IS NULL AND i.status NOT IN ('DRAFT','CANCELLED')
-       AND (i.client_id = ? OR (i.client_id IS NULL AND i.project_id IN (SELECT id FROM project WHERE client_id = ? AND deleted_at IS NULL)))
-     ORDER BY i.issue_date DESC`, [clientId, clientId]);
+     FROM invoice i ${INV_JOIN}
+     WHERE i.deleted_at IS NULL AND i.status NOT IN ('DRAFT','CANCELLED') AND ${INV_CID} = ?
+     ORDER BY i.issue_date DESC`, [clientId]);
   let invoiced = 0, collected = 0, outstanding = 0, overdue = 0;
   for (const i of invoices) {
     const col = Math.min(i.collected_halalas || 0, i.amount_halalas || 0);
@@ -330,7 +392,7 @@ export async function clientOverview(user, clientId) {
   }
 
   // revenue: FY + lifetime + YoY + per-project FY breakdown (drill-down)
-  const yoy = await all(`SELECT r.year, COALESCE(SUM(r.amount_halalas),0) revenue_halalas FROM revenue_line r
+  const yoy = await all(`SELECT r.year, COALESCE(SUM(${netSql('r.amount_halalas', 'r.net_amount_halalas')}),0) revenue_halalas FROM revenue_line r
      JOIN project p ON p.id = r.project_id WHERE p.client_id = ? AND p.deleted_at IS NULL AND r.year IS NOT NULL
      GROUP BY r.year ORDER BY r.year`, [clientId]);
   const fyRevenue = Math.round(yoy.find((y) => y.year === fy)?.revenue_halalas || 0);
@@ -338,7 +400,7 @@ export async function clientOverview(user, clientId) {
   const fyRevenueByProject = await all(`SELECT p.id, p.name_ar, COALESCE(SUM(r.amount_halalas),0) revenue_halalas
      FROM revenue_line r JOIN project p ON p.id = r.project_id
      WHERE p.client_id = ? AND p.deleted_at IS NULL AND r.year = ? GROUP BY p.id, p.name_ar ORDER BY revenue_halalas DESC`, [clientId, fy]);
-  const companyFy = (await get('SELECT COALESCE(SUM(amount_halalas),0) v FROM revenue_line WHERE year = ?', [fy]))?.v || 0;
+  const companyFy = (await get(`SELECT COALESCE(SUM(${netSql('amount_halalas', 'net_amount_halalas')}),0) v FROM revenue_line WHERE year = ?`, [fy]))?.v || 0;
   const concentration_pct = companyFy > 0 ? Math.round((fyRevenue / companyFy) * 1000) / 10 : 0;
 
   const documents = await all(`SELECT id, name, kind, url, note, size_bytes, uploaded_by, created_at
@@ -367,14 +429,15 @@ export async function clientOverview(user, clientId) {
     if (i.issue_date) derived.push({ kind: 'invoice_issued', at: i.issue_date, source: 'derived',
       title: `إصدار فاتورة${i.code ? ' ' + i.code : ''}`, detail: `بقيمة ${fmtSar(i.amount_halalas)}` });
   }
-  for (const l of await all(`SELECT l.amount_halalas, l.collected_at FROM collection l JOIN invoice i ON i.id = l.invoice_id
-       WHERE i.deleted_at IS NULL AND l.collected_at IS NOT NULL
-         AND (i.client_id = ? OR (i.client_id IS NULL AND i.project_id IN (SELECT id FROM project WHERE client_id = ? AND deleted_at IS NULL)))
-       ORDER BY l.collected_at DESC LIMIT 50`, [clientId, clientId])) {
+  for (const l of await all(`SELECT l.amount_halalas, l.collected_at FROM collection l
+       JOIN invoice i ON i.id = l.invoice_id ${INV_JOIN}
+       WHERE i.deleted_at IS NULL AND l.collected_at IS NOT NULL AND ${INV_CID} = ?
+       ORDER BY l.collected_at DESC LIMIT 50`, [clientId])) {
     derived.push({ kind: 'collection', at: l.collected_at, source: 'derived', title: 'تحصيل دفعة', detail: `بقيمة ${fmtSar(l.amount_halalas)}` });
   }
   for (const p of projects) {
-    if (p.start_date) derived.push({ kind: 'project_started', at: p.start_date, source: 'derived',
+    // اسمُ المشروع في خطّ النشاط صفٌّ لا رقم — يُقصّ على نطاق القارئ كبقيّة الصفوف.
+    if (p.start_date && projectVisible(p)) derived.push({ kind: 'project_started', at: p.start_date, source: 'derived',
       title: `بدء مشروع «${p.name_ar}»`, detail: null });
   }
   const activities = [...logged, ...derived]
@@ -386,9 +449,61 @@ export async function clientOverview(user, clientId) {
   const weighted = Math.round(open.reduce((a, o) => a + (o.value_halalas || 0) * ((o.win_pct || 0) / 100), 0));
   const activeProjects = projects.filter((p) => p.status === 'IN_PROGRESS').length;
 
+  // ── الجهة واحدة، والعمل عليها موزَّع على قطاعاتنا ──────────────────────────
+  // قرار المالك: الجهة لا تُقسَم إلى عميلين لأن قطاعين يخدمانها — تبقى عميلاً واحداً
+  // **ويظهر التقسيم هنا**، داخل صفحتها. فرقٌ جوهري: الأول يكسر هوية العميل ويقسم تركّزه
+  // وأعمار ديونه نصفين، والثاني يجيب سؤال «مَن منّا يشتغل معهم وعلى ماذا» بلا كسر شيء.
+  //
+  // القطاع يُقرأ من صف العمل نفسه (`sector_id` على الفرصة والمشروع)، لا من صف العميل:
+  // العميل لا يملك قطاعاً — القطاع صفةُ العمل لا صفةُ الجهة.
+  const sectorNames = new Map((await all(
+    'SELECT id, name_ar FROM sector WHERE deleted_at IS NULL')).map((s) => [s.id, s.name_ar]));
+  const bySectorMap = new Map();
+  const bucket = (sid) => {
+    const key = sid || '';
+    if (!bySectorMap.has(key)) {
+      bySectorMap.set(key, {
+        sector_id: sid || null,
+        // «بلا قطاع» حالة حقيقية في البيانات وتُسمّى، لا تُخفى ولا تُلحق بقطاع بالتخمين.
+        name_ar: sid ? (sectorNames.get(sid) || 'قطاع غير معروف') : 'بلا قطاع مسجَّل',
+        open_opps: 0, open_value_halalas: 0, weighted_halalas: 0,
+        won_opps: 0, lost_opps: 0,
+        projects: 0, active_projects: 0, project_value_halalas: 0,
+        project_names: [],
+      });
+    }
+    return bySectorMap.get(key);
+  };
+  for (const o of opps) {
+    const b = bucket(o.sector_id);
+    if (o.is_won) b.won_opps++;
+    else if (o.is_lost) b.lost_opps++;
+    else {
+      b.open_opps++;
+      b.open_value_halalas += o.value_halalas || 0;
+      b.weighted_halalas += Math.round((o.value_halalas || 0) * ((o.win_pct || 0) / 100));
+    }
+  }
+  for (const p of projects) {
+    const b = bucket(p.sector_id);
+    b.projects++;
+    if (p.status === 'IN_PROGRESS') b.active_projects++;
+    b.project_value_halalas += p.value_halalas || 0;
+    // أسماء المشاريع الجارية أولاً — «أيش شغّال معهم» سؤال عن الحاضر لا عن الأرشيف. والاسمُ
+    // صفٌّ لا رقم: يُقصّ على نطاق القارئ، فيبقى العدّ والقيمة كاملَين والأسماءُ لأهلها (v5.9).
+    if (projectVisible(p)) b.project_names.push({ id: p.id, name_ar: p.name_ar, status: p.status, rag: p.rag,
+      progress_effective_pct: p.progress_effective_pct, active: p.status === 'IN_PROGRESS' });
+  }
+  const by_sector = [...bySectorMap.values()]
+    .map((b) => ({ ...b, project_names: b.project_names.sort((x, y) => (y.active ? 1 : 0) - (x.active ? 1 : 0)) }))
+    .sort((a, b) => (b.active_projects - a.active_projects)
+      || (b.project_value_halalas - a.project_value_halalas)
+      || (b.open_value_halalas - a.open_value_halalas));
+
   return {
     client,
     contacts,
+    by_sector,
     kpis: {
       fy_revenue_halalas: fyRevenue,
       lifetime_revenue_halalas: lifetime,
@@ -400,8 +515,8 @@ export async function clientOverview(user, clientId) {
       relationship: relationshipOf(last_activity_at, open.length),
     },
     activities,
-    opportunities: { open, won, lost, win_rate },
-    projects,
+    opportunities: { open: openRows, won, lost, win_rate },
+    projects: projects.filter(projectVisible),
     contracts,
     invoices_summary: {
       invoiced: Math.round(invoiced), collected: Math.round(collected),
@@ -412,7 +527,8 @@ export async function clientOverview(user, clientId) {
     concentration_pct,
     // additive extensions (contract allows extending, not contradicting): drill-down detail rows
     invoices,
-    fy_revenue_by_project: fyRevenueByProject,
+    // تفصيل إيراد السنة بحسب المشروع صفوفٌ بأسماء المشاريع — تُقصّ على نطاق القارئ كبقيّتها.
+    fy_revenue_by_project: fyRevenueByProject.filter((r) => visibleProjectIds === null || visibleProjectIds.has(r.id)),
     fiscal_year: fy,
   };
 }
@@ -448,6 +564,209 @@ export async function createClient(ctx, data = {}) {
   });
   await audit(ctx, { action: 'create', resource: 'client', resourceId: cid, detail: { name_ar: name, type: data.type || null } });
   return await get('SELECT * FROM client WHERE id = ?', [cid]);
+}
+
+// ── هوية الجهة: التكرار الذي لا يُمسَك بالمطابقة الحرفية ─────────────────────
+// `findDuplicate` أعلاه يمسك الاسم **المطابق** بعد التطبيع، ولا يمسك ما وقع فعلاً: الجهة
+// الواحدة مسجَّلة مرتين باسمين متقاربين، وانقسامها يتبع قطاع EVC المنفِّذ — «وزارة الاقتصاد
+// والتخطيط» على قطاع الحلول و«… - الديوان العام» على قطاع الاستشارات، وهما وزارة واحدة.
+// وأثره ليس تجميلياً: تركّز العميل وأعمار ديونه وخط فرصه وعمر علاقته تُقسَم نصفين، فيقرأ
+// المالك جهتين متوسطتين مكان جهة كبيرة واحدة، ويُقيَّم كل قطاع كأنه يخدم عميلاً مستقلاً.
+//
+// كلمات لا تميّز جهةً عن أخرى: تُحذف لبناء **بصمة** الاسم فقط، ولا تُحذف من العرض أبداً.
+const ENTITY_STOPWORDS = new Set(['ال', 'و', 'في', 'من', 'على', 'الوطني', 'الوطنيه', 'السعودي',
+  'السعوديه', 'العربيه', 'المملكه', 'العامه', 'العام', 'الديوان', 'بمنطقه', 'منطقه']);
+export function entityTokens(name) {
+  return normalizeName(name).split(' ').filter((w) => w && !ENTITY_STOPWORDS.has(w));
+}
+
+// درجتان لا واحدة، لأن الفرق بينهما هو الفرق بين قرارٍ آليّ وقرارٍ بشري:
+//   • `contained` — كلمات أحد الاسمين مجموعةٌ جزئية من الآخر («وزارة س» ⊂ «وزارة س - الديوان
+//     العام»). لاحقةٌ أُضيفت لتمييز جهة عن نفسها، وهي الحالة الغالبة في بياناتنا.
+//   • `overlap` — تقاطع عالٍ بلا احتواء. **ليس دليلاً**: «أمانة منطقة الرياض» و«أمانة منطقة
+//     الجوف» يتقاطعان بقوة وهما جهتان مختلفتان قطعاً. يُعرَض للمراجعة ولا يُدمَج تلقائياً.
+export function similarityOf(a, b) {
+  const ma = matchEntity(a); const mb = matchEntity(b);
+  // A trusted registry identity outranks lexical overlap (e.g. two different funds).
+  if (ma?.confidence === 'مؤكَّد' && mb?.confidence === 'مؤكَّد'
+      && ma.entity.id !== mb.entity.id) return null;
+  const ta = entityTokens(a); const tb = entityTokens(b);
+  if (!ta.length || !tb.length) return null;
+  const sa = new Set(ta); const sb = new Set(tb);
+  const shared = [...sa].filter((w) => sb.has(w));
+  // Institution words carry no identity. Dropping «الوطني» used to make the
+  // national development fund a subset of every specialised development fund.
+  const generic = new Set(['جامعه', 'الملك', 'صندوق', 'التنميه', 'تنميه', 'هيئه', 'الهيئه', 'وزاره', 'شركه', 'امانه']);
+  if (!shared.some((w) => !generic.has(w))) return null;
+  const inter = shared.length;
+  if (!inter) return null;
+  const contained = inter === Math.min(sa.size, sb.size);
+  const overlap = inter / Math.max(sa.size, sb.size);
+  if (contained) return { kind: 'contained', overlap, shared: inter };
+  if (overlap >= 0.6 && inter >= 2) return { kind: 'overlap', overlap, shared: inter };
+  return null;
+}
+
+// ── مطابقة الأسماء على المرجع الرسمي ────────────────────────────────────────
+// المرجع يمسك ما تعجز عنه مقارنة النصوص: لا رابط لغوي بين «هدف» و«صندوق تنمية الموارد
+// البشرية»، ولا بين «سدايا» واسمها الرسمي — والمرجع يعرف أنهما واحد. فجهتان تتّفقان على
+// **نفس السجل الرسمي** تكرارٌ قاطع مهما اختلف نصّاهما، وهو أقوى دليل من تشابه الكلمات.
+export async function clientNameReview(user) {
+  // الاسم المُعتمَد يخرج من المراجعة كلياً: بلا هذا الشرط تعود المنصة إلى **نفس الاقتراح
+  // المرفوض** كلما فُتحت الشاشة — و«أرامكو السعودية» تُقترَح «شركة الزيت العربية السعودية»
+  // أبداً. واقتراحٌ مرفوض يتكرّر ليس ضجيجاً فحسب: من يراه عشر مرات يضغطه في الحادية عشرة.
+  const where = ['c.deleted_at IS NULL', 'c.merged_into_client_id IS NULL', 'c.name_confirmed_at IS NULL'];
+  const params = [];
+  const sc = clientScopeClause(user, 'read');
+  if (!sc) throw forbidden();
+  if (sc.clause !== '1=1') { where.push(sc.clause); params.push(...sc.params); }
+  const rows = await all(`SELECT c.id, c.name_ar, c.code FROM client c
+    WHERE ${where.join(' AND ')} ORDER BY c.name_ar`, params);
+
+  const rename = []; const review = []; const unknown = [];
+  const byEntity = new Map();
+  for (const c of rows) {
+    const m = matchEntity(c.name_ar);
+    if (!m) { unknown.push(c); continue; }
+    if (m.confidence === 'مؤكَّد') {
+      const k = m.entity.id;
+      (byEntity.get(k) || byEntity.set(k, []).get(k)).push({ client: c, match: m });
+      // المطابق حرفاً بحرف لا يُقترح عليه شيء — هو الصواب أصلاً.
+      if (!m.exact) rename.push({ client: c, official_name: m.official_name, abbr: m.abbr, reason_ar: m.reason_ar });
+    } else {
+      review.push({ client: c, official_name: m.official_name, abbr: m.abbr, reason_ar: m.reason_ar });
+    }
+  }
+  // تكرار قاطع: صفّان مختلفان يشيران بيقين إلى جهة رسمية واحدة.
+  const collisions = [...byEntity.values()].filter((g) => g.length > 1)
+    .map((g) => ({ official_name: g[0].match.official_name, abbr: g[0].match.abbr,
+      members: g.map((x) => ({ id: x.client.id, name_ar: x.client.name_ar, reason_ar: x.match.reason_ar })) }));
+
+  return { total: rows.length, registry_size: entityCount(), collisions, rename, review, unknown };
+}
+
+// اعتماد اسم الجهة كما هو: قرارٌ بشري يُسكِت الاقتراح ولا يُغيّر شيئاً في البيانات.
+// ويبقى قابلاً للرفع، فالمسمّى قد يتغيّر فعلاً ولا يصحّ أن يُقفَل الباب إلى الأبد.
+export async function confirmClientName(ctx, clientId, { confirmed = true } = {}) {
+  const user = ctx.user;
+  if (!can(user, 'update', 'client')) throw forbidden();
+  const row = await getVisibleClient(user, clientId, 'update');
+  const at = confirmed ? nowIso() : null;
+  await update('client', clientId, {
+    name_confirmed_at: at, name_confirmed_by: confirmed ? user.id : null, updated_at: nowIso(),
+  });
+  await audit(ctx, { action: 'update', resource: 'client', resourceId: clientId,
+    detail: { name_confirmed: confirmed, name_ar: row.name_ar } });
+  return await get('SELECT * FROM client WHERE id = ?', [clientId]);
+}
+
+// الجهات المشتبه بتكرارها — تُستدعى من فحص صحة البيانات ومن شاشة العملاء.
+// تقرأ الجهات غير المحذوفة وغير المدموجة فقط: الجهة المدموجة سبق أن حُسم أمرها.
+// النطاق يُطبَّق بنفس شرط قائمة العملاء: من لا يرى جهةً لا يُخبَر بوجودها في قائمة تكرار.
+export async function likelyDuplicateClients(user = null) {
+  const where = ['c.deleted_at IS NULL', 'c.merged_into_client_id IS NULL'];
+  const params = [];
+  if (user) {
+    const sc = clientScopeClause(user, 'read');
+    if (!sc) throw forbidden();
+    if (sc.clause !== '1=1') { where.push(sc.clause); params.push(...sc.params); }
+  }
+  const rows = await all(`SELECT c.id, c.code, c.name_ar, c.name_en FROM client c
+    WHERE ${where.join(' AND ')} ORDER BY c.name_ar`, params);
+  const pairs = [];
+  for (let i = 0; i < rows.length; i++) {
+    for (let j = i + 1; j < rows.length; j++) {
+      const sim = similarityOf(rows[i].name_ar, rows[j].name_ar);
+      if (sim) pairs.push({ ...sim, a: rows[i], b: rows[j] });
+    }
+  }
+  // الاحتواء أولاً: هو الأقرب إلى تكرار حقيقي، والأعلى تقاطعاً داخل كل درجة.
+  pairs.sort((x, y) => (x.kind === y.kind ? y.overlap - x.overlap : (x.kind === 'contained' ? -1 : 1)));
+  return pairs;
+}
+
+// الجداول التي تحمل الجهة. كل واحد منها يُنقَل عند الدمج — وإغفال واحد يعني عملاً يتيماً
+// يشير إلى صفٍّ محذوف، فالقائمة مشتقّة من المخطط لا من الذاكرة، ويحرسها اختبار.
+export const CLIENT_OWNED_TABLES = ['contact', 'opportunity', 'project', 'contract', 'invoice', 'crm_activity', 'document'];
+
+// دمج جهتين فأكثر في واحدة. عملية واحدة ذرّية: إمّا انتقل كل شيء أو لم ينتقل شيء.
+export async function mergeClients(ctx, { keepId, mergeIds = [], keepName = null } = {}) {
+  const user = ctx.user;
+  // الدمج يفوق التعديل أثراً — يُخفي جهةً ويعيد نسبة مالها — فيلزمه منح الحذف أيضاً.
+  if (!can(user, 'update', 'client') || !can(user, 'delete', 'client')) {
+    throw forbidden('دمج الجهات يحتاج صلاحية تعديل الجهات وحذفها.');
+  }
+  const ids = [...new Set((Array.isArray(mergeIds) ? mergeIds : [mergeIds]).filter(Boolean))];
+  if (!keepId) throw badRequest('حدّد الجهة التي تبقى.');
+  if (!ids.length) throw badRequest('حدّد جهةً واحدة على الأقل لدمجها.');
+  if (ids.includes(keepId)) throw badRequest('لا يمكن دمج الجهة في نفسها — الجهة الباقية غير الجهة المدموجة.');
+
+  const keep = await get('SELECT * FROM client WHERE id = ? AND deleted_at IS NULL', [keepId]);
+  if (!keep) throw notFound('الجهة الباقية غير موجودة.');
+  const losers = [];
+  for (const cid of ids) {
+    const row = await get('SELECT * FROM client WHERE id = ? AND deleted_at IS NULL', [cid]);
+    if (!row) throw notFound(`الجهة المطلوب دمجها غير موجودة: ${cid}`);
+    if (row.merged_into_client_id) throw badRequest(`«${row.name_ar}» مدموجة أصلاً — لا تُدمَج مرتين.`);
+    losers.push(row);
+  }
+  // النطاق يُفحص على الطرفين: من لا يرى جهةً لا ينقل عملها ولا يخفيها.
+  await getVisibleClient(user, keepId, 'update');
+  for (const l of losers) await getVisibleClient(user, l.id, 'update');
+
+  const moved = {};
+  const at = nowIso();
+  await tx(async () => {
+    const ph = losers.map(() => '?').join(',');
+    const lids = losers.map((l) => l.id);
+    for (const table of CLIENT_OWNED_TABLES) {
+      const before = await all(`SELECT id FROM ${table} WHERE client_id IN (${ph})`, lids);
+      if (!before.length) continue;
+      await run(`UPDATE ${table} SET client_id = ? WHERE client_id IN (${ph})`, [keepId, ...lids]);
+      moved[table] = before.length;
+    }
+    // الاسم الباقي قرار المالك لا اشتقاق: قد يكون أطول الاسمين أو أقصرهما أو غيرهما.
+    if (keepName && keepName.trim() && keepName.trim() !== keep.name_ar) {
+      await update('client', keepId, { name_ar: keepName.trim(), updated_at: at });
+    }
+    for (const l of losers) {
+      await update('client', l.id, {
+        merged_into_client_id: keepId, active: 0, deleted_at: at, updated_at: at,
+      });
+    }
+  });
+
+  for (const l of losers) {
+    await audit(ctx, { action: 'delete', resource: 'client', resourceId: l.id,
+      detail: { merged_into: keepId, merged_into_name: keepName || keep.name_ar, name_ar: l.name_ar, moved } });
+  }
+  await audit(ctx, { action: 'update', resource: 'client', resourceId: keepId,
+    detail: { merged_from: losers.map((l) => ({ id: l.id, name_ar: l.name_ar })), moved, renamed_to: keepName || null } });
+
+  return {
+    keep: await get('SELECT * FROM client WHERE id = ?', [keepId]),
+    merged: losers.map((l) => ({ id: l.id, name_ar: l.name_ar })),
+    moved,
+  };
+}
+
+// فكّ الدمج — الدمج قرار كبير، ومن يملك اتخاذه يملك التراجع عنه. لا يعيد نسبة العمل
+// تلقائياً (فقد اختلط بعمل الجهة الباقية ولا سبيل لتمييزه)، بل يعيد الجهة ظاهرةً فارغة
+// ويقول ذلك صراحةً — فالوعد الكاذب بالاسترجاع أسوأ من الإقرار بحدوده.
+export async function unmergeClient(ctx, clientId) {
+  const user = ctx.user;
+  const row = await get('SELECT * FROM client WHERE id = ?', [clientId]);
+  if (!row) throw notFound('الجهة غير موجودة.');
+  if (!row.merged_into_client_id) throw badRequest('هذه الجهة غير مدموجة — لا شيء يُفَكّ.');
+  // النطاق يُفحص على الجهة الباقية (المدموج فيها) لا بمجرد وجود المنح: فحصٌ بلا هدف كان يمرّ لمن
+  // يملك تعديل الجهات في أي نطاق فيفكّ دمجاً لا يخصّه. الجهة المدموجة محذوفةٌ ظاهرياً فلا تراها
+  // getVisibleClient، لكن مِلكَ فكّ الدمج كمِلكِ الدمج (getVisibleClient على الطرفين قبله) —
+  // تعديلٌ على الجهة التي ابتلعت الدمج، وهي ظاهرةٌ يُفحص نطاقها كما يُفحص في كل باب.
+  await getVisibleClient(user, row.merged_into_client_id, 'update');
+  await update('client', clientId, { merged_into_client_id: null, active: 1, deleted_at: null, updated_at: nowIso() });
+  await audit(ctx, { action: 'update', resource: 'client', resourceId: clientId,
+    detail: { unmerged_from: row.merged_into_client_id, note: 'أُعيدت الجهة ظاهرة؛ العمل المنقول يبقى على الجهة الباقية' } });
+  return await get('SELECT * FROM client WHERE id = ?', [clientId]);
 }
 
 export async function updateClient(ctx, clientId, data = {}) {
@@ -548,9 +867,9 @@ export async function logActivity(ctx, data = {}) {
 
   let clientId = data.client_id || null, sectorId = null;
   if (data.opportunity_id) {
-    const opp = await get('SELECT * FROM opportunity WHERE id = ? AND deleted_at IS NULL', [data.opportunity_id]);
-    if (!opp) throw notFound('الفرصة غير موجودة');
-    if (!can(user, 'read', 'opportunity', opp)) throw forbidden();
+    // بابُ القراءة الواحد (v5.2): الإدارات المشاركة تلحق عبر loadReadableOpportunity —
+    // من تُفتح له صفحةُ الفرصة يُسجِّل نشاطاً عليها، بلا فحصٍ ثانٍ أضيقَ من الأول.
+    const opp = await loadReadableOpportunity(user, data.opportunity_id);
     clientId = clientId || opp.client_id;
     sectorId = opp.sector_id || sectorId;
   }
@@ -584,9 +903,8 @@ export async function listActivities(user, filters = {}) {
   const params = [];
   let scopedByFilter = false;
   if (filters.opportunity_id) {
-    const opp = await get('SELECT * FROM opportunity WHERE id = ? AND deleted_at IS NULL', [filters.opportunity_id]);
-    if (!opp) throw notFound('الفرصة غير موجودة');
-    if (!can(user, 'read', 'opportunity', opp)) throw forbidden();
+    // نفس باب القراءة الواحد: من يرى الفرصة يرشِّح نشاطها (شاملاً الإدارات المشاركة).
+    await loadReadableOpportunity(user, filters.opportunity_id);
     where.push('a.opportunity_id = ?'); params.push(filters.opportunity_id); scopedByFilter = true;
   }
   if (filters.project_id) {

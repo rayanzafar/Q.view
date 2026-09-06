@@ -1,30 +1,45 @@
-// مركز القيادة (v4) — صفحة قائد القطاع كقصة قرار من أعلى لأسفل:
-// (1) عدسة الفترة يوم/أسبوع/شهر/ربع → (2) «ما تغيّر» سجلات حقيقية مؤرّخة → (3) يحتاج انتباهك الآن
-// → (4) الإيقاع مقابل الخطة (مقياس الشريط = المستهدف فقط) → (5) قمع الفرص وأعمارها
-// → (6) التحصيل والمستخلص المتأخر → (7) صحة المشاريع → (8) الطاقة → (9) العملاء
-// → (10) القرارات والاعتمادات → (11) المقارنات والتقارير. كل رقم يفتح تفصيلاً؛ لا أرقام بلا مصدر.
-import { layout, card, pill, tr } from '../layout.js';
+// مركز القيادة (v5) — شاشة قائد القطاع على قاعدة «إشارة ← سياق ← تفصيل»:
+// المركز يجيب في ثوانٍ: هل نحن على المسار؟ أين الفجوة الآن؟ هل خط الفرص يكفي وأين يقف؟
+// هل لدى الفريق سعة؟ ما صحة المشاريع؟ من أهم العملاء قراراً؟ وما الذي تغيّر في نافذتي؟
+// وكل ما بعد ذلك — تحقيق، تعديل، اعتماد — يفتح صفحته الأصلية ولا يُنسخ هنا.
+// استثناءٌ مقصود (v5.35، بطلب قائد القطاع عبر المالك): **قسم الأفراد يُفصَّل في مكانه** — الضغط
+// على شخصٍ في «طاقة الفريق» يفتح نافذته هنا (حِمله، مشاريعه، مهامه) ولا ينقل القارئ إلى لوحة
+// التسكين؛ والروابط إلى صفحته الكاملة ولوحة التسكين أفعالٌ ثانوية داخل النافذة.
+// لا رقم بلا مصدر مسجَّل، ولا نصّ مولَّد بالتخمين: جملة الملخص تُركَّب بقواعد معلنة من الأرقام نفسها.
+import { layout, card, pill, tr, figBullet, figStacked100, figBars, figColumns, figRing, figDonut, figLine, figCombo, figHeat, figTreemap, figSpark, figGaugeHalf } from '../layout.js';
+import { netSql } from '../../modules/finance/vat.js';
 import { icon } from '../icons.js';
 import { fmtSar } from '../../core/util/ids.js';
 import { all, get } from '../../core/db/index.js';
-import { sectorDashboard, sectorStaffing, sectorClients, sectorWins, quarterlyRevenue, quarterlyBookings, pipelineCoverage, monthlyRevenue, revenueForecast, pipelineAging, yearElapsedPct } from '../../core/reports/metrics.js';
+import { sectorDashboard, sectorStaffing, sectorWins, quarterlyRevenue, quarterlyBookings, pipelineCoverage, monthlyRevenue, revenueOutlook, revenueScope, outlookFromMonths, winsByMonth, windowFigures, windowRevenue, yearElapsedPct, targetToDate, paceDelta, grossMargin, sectorCosts, WEIGHTED_OPEN, availableYears } from '../../core/reports/metrics.js';
+import { monthlyRevenueTargets } from '../../modules/org/sector-targets.js';
 import { attentionFeed, RESOURCE_AR } from '../../core/reports/attention.js';
-import { changesSince, sinceForWindow } from '../../core/reports/changes.js';
+import { changesSince, periodBounds, lastChangeAt } from '../../core/reports/changes.js';
+import { completenessScore } from '../../core/reports/completeness.js';
+import { DLV_YEAR_SQL, dlvYearSqlFor } from '../../modules/finance/recognition.js';
 import { arAging } from '../../modules/finance/finance.js';
-import { can } from '../../core/rbac/index.js';
+import { mySectorTasks } from '../../modules/pmo/tasks.js';
+import { myProjectsInSector, nextMilestones, projectYearClause } from '../../modules/pmo/projects.js';
+import { effectiveProgress } from '../../modules/pmo/progress.js';
+import { myOpportunitiesInSector, ROT_THRESHOLDS } from '../../modules/crm/opportunities.js';
+import { sectorIdentity } from '../../modules/org/org.js';
+import { sectorTeamDetail, UTIL_BANDS, allocationPeriod } from '../../modules/pmo/capacity.js';
+import { relationshipOf, lastTouchByClient } from '../../modules/clients/clients.js';
+import { can, effectiveScope, canSeeSensitive } from '../../core/rbac/index.js';
+import { scopeFilter } from '../../core/rbac/scope.js';
+import { SCOPE_RANK } from '../../core/rbac/matrix.js';
 import { config } from '../../core/config.js';
+import { DELIVERY_SECTOR_SQL } from '../../core/org/kind.js';
 import { G } from '../i18n/glossary.js';
-import { monthLabel, monthLabelDual, quarterLabel, nowDot, currentMonthIndex, MONTHS_AR } from '../../core/i18n/time.js';
+import { monthLabel, quarterLabel, nowDot, currentMonthIndex, MONTHS_AR, MONTHS_EN3, QUARTERS_AR } from '../../core/i18n/time.js';
 import { countAr, dayWord } from '../../core/i18n/plural.js';
-import { esc, ddWrap, attain, ddRows, paceCard, sarShort } from './_shared.js';
+import { esc, ddWrap, attain, ddRows, sarShort } from './_shared.js';
 
-const TONE = { brand: 'var(--brand)', green: 'var(--green)', amber: 'var(--amber)', red: 'var(--red)' };
-
-// عدسة الفترة: قيمة ?win + نص الصدى في عناوين الأقسام
-const WINS = [
-  ['day', 'اليوم', 'منذ أمس'], ['week', 'الأسبوع', 'منذ أسبوع'],
-  ['month', 'الشهر', 'منذ شهر'], ['quarter', 'الربع', 'منذ ربع سنة'],
-];
+// الفترة التقويمية (?p=y | q1..q4 | m1..m12) — تحلّ محل النافذة المتدحرجة على الصفحة كلها:
+// «الشهر» المتدحرج كان يعني آخر ثلاثين يوماً، و«الربع» أربعة أشهر متقاطعة، وهو ما لا يفهمه
+// القارئ من التسمية. ومرشِّحٌ واحد للفترة أوضح من اثنين، فتغذية «ما تغيّر» تتبعه أيضاً.
+const periodLabel = (kind, index) => (kind === 'y' ? 'السنة كاملة' : kind === 'q' ? QUARTERS_AR[index - 1] : MONTHS_AR[index - 1]);
+const periodEcho = (kind, index, year) => (kind === 'y' ? `خلال ${year}` : kind === 'q' ? `في ${QUARTERS_AR[index - 1]} ${year}` : `في ${MONTHS_AR[index - 1]} ${year}`);
 
 // أيقونة ولون كل نوع في «ما تغيّر»
 const CHG_IC = { stage: 'trend', invoice: 'money', collection: 'check', activity: 'mail', created: 'plus' };
@@ -33,98 +48,906 @@ const CHG_TONE = {
   collection: ['#dcfce7', 'var(--green)'], activity: ['#f1f5f9', 'var(--muted)'],
   created: ['#ede9fe', 'var(--brand2)'],
 };
+// فئات «ما تغيّر» — تُشتقّ من نوع السجل نفسه لا من نصّه. الفئات الست ثابتة بقرار المالك
+// (v5.22)، وفئتا «المشاريع» و«الفريق» تعرضان حالة فراغ مدمجة إلى أن يسجّل النظام أحداثاً
+// مؤرّخة لهما — الشارة وعدٌ بالمكان، والسجلات لا تُختلق. والفرصة الجديدة فرصٌ لا «سجل جديد».
+const CHG_CAT = { stage: 'opp', invoice: 'fin', collection: 'fin', activity: 'client', created: 'opp' };
+// حدّة كل نوع — قاعدة معلنة لا تقدير: الحسم (فوز/خسارة) عالٍ، حركة المرحلة والفاتورة وسط،
+// والتحصيل والتواصل والسجل الجديد أخبار هادئة.
+const CHG_SEV = (it) => (it.won || it.lost) ? ['عالية', '#fee2e2', '#991b1b']
+  : (it.kind === 'stage' || it.kind === 'invoice') ? ['متوسطة', '#fef3c7', '#92400e']
+  : ['منخفضة', '#f1f5f9', '#566173'];
 
-const CSS = `<style>
-.sec-grid{display:grid;gap:var(--gap);margin-bottom:var(--gap);grid-template-columns:1.35fr 1fr}
-.sec-grid.even{grid-template-columns:1fr 1fr}
-@media(max-width:980px){.sec-grid,.sec-grid.even{grid-template-columns:1fr}}
-.sec-col{display:flex;flex-direction:column;gap:var(--gap);min-width:0}
-.card-head{padding:var(--pad-card-h);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
+const CARD_HEAD_CSS = `.card-head{padding:var(--pad-card-h);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
 .card-head .t{font-weight:800;font-size:var(--fs-title)}
-.card-head .aux{margin-inline-start:auto;display:flex;gap:.35rem;align-items:center}
-.chg{display:flex;align-items:center;gap:.6rem;padding:.4rem .55rem;border-radius:10px;border:1px solid transparent;border-inline-start:3px solid transparent}
+.card-head .aux{margin-inline-start:auto;display:flex;gap:.35rem;align-items:center}`;
+
+// مقياس المحور (عرضٌ لا عتبة): الطيف يمتدّ إلى 125% كي يظهر من تجاوز الطاقة داخل الإطار.
+const AXIS_MAX = 125;
+const axisPct = (v) => (Math.min(AXIS_MAX, Math.max(0, v)) / AXIS_MAX * 100).toFixed(1);
+
+// ── سمة الشاشة (نموذج المالك الكثيف): أرضية باردة فاتحة وبطاقات بيضاء وعائلة كحلي/نيلي/بنفسجي ──
+// تُحقن في <head> بعد أنماط المنصة فتفوز بترتيب التسلسل لا بالتخصيص — متغيراتٌ فقط، لا محدّدات.
+// اللوحة اجتازت فاحص dataviz (تباين ≥3:1 على الأبيض وفرق CVD كافٍ بترتيب الخانات هذا؛
+// لا يجاور البنفسجيُ الكحليَ في رسم واحد — زوجهما وحده يسقط في عمى الألوان).
+const SECTOR_THEME = `<style>body[data-page="sector"]{
+  --bg:#f7f9fc; --surface:#fff;
+  --ink:#101733; --ink2:#1c2447; --muted:#5d6785; --faint:#8b93ad;
+  --line:#e4e9f4; --line2:#edf1f8;
+  --r:16px; --r-sm:12px;
+  --sh-sm:0 1px 2px rgba(28,36,71,.04),0 2px 6px rgba(28,36,71,.05);
+  --sh:0 4px 12px rgba(28,36,71,.06),0 16px 32px rgba(45,85,168,.10);
+  --track:#edf1f8; --tick:#97a1c0;
+  --acc-navy:#2d55a8; --acc-indigo:#6b93ea; --acc-violet:#834798;
+  --acc-teal:#2f9e8f; --acc-amber:#a16207;
+  --ord-1:#22366b; --ord-2:#2d55a8; --ord-3:#4a76d0; --ord-4:#6f93e4; --ord-5:#8fabec;
+  --dk-s:#16224e; --dk-sky:#7ab3f9; --dk-violet:#a78bfa; --dk-teal:#4ec9a8;
+  --fs-val-lg:28px; --fs-val-md:20px;
+}</style>`;
+const CSS = `<style>
+/* عدسة الفترة روابط لا أزرار (حالتها في الرابط) — تلبس زيّ .seg نفسه */
+.seg a{font-size:12px;font-weight:700;color:var(--muted);padding:.35rem .7rem;border-radius:8px;display:flex;align-items:center;gap:.35rem;transition:background .18s,color .18s}
+/* مُنتقي الفترة: سنةٌ وأربعةُ أرباعٍ واثنا عشر شهراً — والقادمة موسومةٌ «توقع» في المُنتقي نفسه */
+.tabs{gap:2px;padding:3px;position:sticky;top:0;z-index:20;background:var(--bg);box-shadow:0 6px 12px -10px rgba(28,36,71,.35)}
+.tabs button{font-size:12.5px;font-weight:800;color:var(--muted);padding:.45rem .95rem;border-radius:9px;border:none;background:none;font-family:inherit;cursor:pointer;white-space:nowrap}
+.tabs button.on{background:var(--surface);color:var(--ink2);box-shadow:var(--sh-sm)}
+.tabs button:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.tabpanel{display:grid;gap:1rem}
+.tabpanel[hidden]{display:none}
+@media(max-width:900px){.tabs{overflow-x:auto;max-width:100%}}
+/* مُنتقيا الإدارة والعميل + رقائق المرشِّحات النشطة وسطرُ ما يُستبعَد */
+.fmenu summary{white-space:nowrap}
+.fitem{display:block;padding:.35rem .6rem;border-radius:8px;font-size:12px;color:var(--ink2);text-decoration:none;white-space:nowrap}
+.fitem:hover{background:var(--bg)}
+.fitem.on{background:var(--acc-soft,#eaf0fc);color:var(--brand);font-weight:800}
+.fnote{font-size:var(--fs-micro);color:var(--muted);background:var(--st-warn-soft);border:1px solid var(--line);border-radius:10px;padding:.35rem .7rem;margin-top:.35rem;display:flex;gap:.4rem;align-items:center;flex-wrap:wrap}
+.nofilt{font-size:9.5px;font-weight:700;color:var(--muted);background:var(--track);border-radius:999px;padding:.05rem .5rem;white-space:nowrap}
+.psel{display:flex;gap:.4rem;align-items:center;flex-wrap:wrap}
+.psel .seg{padding:2px}
+.psel .pmon a{padding:.35rem .45rem;font-size:11px}
+.psel a.fut{color:var(--faint)}
+.psel a.fut{opacity:.75}
+.futnote{font-size:var(--fs-micro);color:#92400e;background:var(--st-warn-soft);border-radius:999px;padding:.15rem .6rem;font-weight:700}
+.psel a.on.fut{color:var(--ink2)}
+@media(max-width:900px){.psel .pmon{overflow-x:auto;max-width:100%}}
+.seg a.on{background:#fff;color:var(--ink2);box-shadow:var(--sh-sm)}
+/* ═══ كابينة v5.39 (نماذج المالك): لوحة داكنة، أقسام مرقّمة، رسوم غنية ═══ */
+.card.pad{padding:.8rem 1rem;display:block}
+.secn{display:flex;align-items:baseline;gap:.6rem;margin-bottom:.7rem;flex-wrap:wrap}
+.secn .n{width:26px;height:26px;border-radius:50%;background:#101733;color:#fff;font-size:12.5px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;flex:none;align-self:center}
+.secn h2{font-size:16px;font-weight:800;color:var(--ink2);margin:0}
+.secn .s{font-size:var(--fs-body);color:var(--muted)}
+.secn .upd{font-size:var(--fs-body);color:var(--muted);display:inline-flex;gap:.35rem;align-items:center}
+/* (١) خمس بطاقات مؤشرات — نموذج المالك: قيمة كبيرة ورسمٌ ودلتا في بطاقة بيضاء ناعمة الظل */
+.kpi5{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:.8rem}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:.5rem .8rem .45rem;display:grid;gap:3px;align-content:start;text-align:start;font-family:inherit;cursor:pointer;box-shadow:var(--sh-sm);transition:box-shadow .18s;min-width:0}
+.kpi:hover{box-shadow:var(--sh)}
+.kpi:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.ke{font-size:11.5px;font-weight:700;color:var(--muted);display:flex;gap:.3rem;align-items:center;flex-wrap:wrap;min-width:0}
+.ks{margin-inline-start:auto;font-size:9.5px;color:var(--muted);font-weight:700;background:var(--track);border-radius:999px;padding:.05rem .45rem;flex:none;white-space:nowrap}
+.kv{font-size:26px;font-weight:800;color:var(--ink2);line-height:1.1;letter-spacing:-.01em}
+.kb{font-size:11.5px;color:var(--muted);line-height:1.55}
+.kc{font-size:10px;color:var(--muted);line-height:1.5}
+.kd{font-size:11px;display:flex}
+.kviz{display:flex;gap:.6rem;align-items:center;min-width:0;margin-top:2px}
+.kviz>.ringw{flex:none}
+.kviz>div{flex:1;min-width:0}
+/* عدّاد الإشغال وحده في خليته — يتوسّطها كبيراً بدل ركنٍ صغير وفراغ (ملاحظة أ. حسين) */
+.gviz{flex:1;display:flex;justify-content:center;padding:.2rem 0}
+/* (١-ب) «المال في القطاع» — سطرٌ مضغوط فوق الفصول كلها: الإيراد والمفوتر والتكاليف والهامش.
+   خلاياه أزرارٌ تفتح تفصيلها (كبطاقات المؤشرات)، وشريطٌ رفيع على حافة كل خلية يقول معناها:
+   كحليٌّ للإيراد، أخضرُ مزرقّ للمفوتر، عنبريٌّ للتكلفة، وأحمرُ للهامش السالب وحده. */
+.money-band{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-sm);box-shadow:var(--sh-sm);padding:.45rem .8rem .5rem}
+.mhead{display:flex;gap:.45rem;align-items:baseline;flex-wrap:wrap;margin-bottom:.3rem}
+.mhead h2.me{margin:0;font-size:11.5px;font-weight:800;color:var(--muted)}
+.mhead .mp{font-size:var(--fs-micro);color:var(--muted);font-weight:700}
+.mhead .icb{font-size:9.5px;font-weight:700;color:var(--muted);background:var(--track);border-radius:999px;padding:.05rem .45rem}
+/* عدد الخلايا يتبع بوابات القارئ لا رقماً ثابتاً: أربعٌ للقائد، وثلاثٌ لمدير الإدارة (بلا
+   مفوتر)، واثنتان لمن يقرأ الفواتير وحدها — وعمودٌ رابعٌ فارغٌ عند حافة السطر يُقرأ خليةً
+   سقطت لا مساحةً لا تلزم. فيُمرَّر العدد على الوسم ويُقسَّم السطر عليه. */
+.mcells{display:grid;grid-template-columns:repeat(var(--n,4),minmax(0,1fr));gap:.5rem}
+.mcell{background:none;border:none;border-inline-start:3px solid var(--_mc,var(--line));border-radius:var(--r-sm);padding:.15rem .55rem;display:grid;gap:1px;align-content:start;text-align:start;font-family:inherit;cursor:pointer;min-width:0;transition:background .18s}
+.mcell:hover{background:var(--bg)}
+.mcell:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.mcell .ml{font-size:11px;font-weight:700;color:var(--muted);display:flex;gap:.3rem;align-items:center;flex-wrap:wrap;min-width:0}
+.mcell .mv{font-size:var(--fs-val-md);font-weight:800;color:var(--ink2);line-height:1.2;letter-spacing:-.01em}
+/* «لم يُسجَّل» هو **قيمة** الخلية حين تخلو الفترة، لا زخرفةً حولها — فبرتبة النصّ الخافت
+   المقروء (--muted) لا الأخفت (--faint، ٣:١ على الأبيض وهو دون حدّ التباين). */
+.mcell .mv.mz{font-size:13px;font-weight:700;color:var(--muted);line-height:1.5}
+.mcell .ms{font-size:10.5px;color:var(--muted);line-height:1.5;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* سطرُ السبب جملةٌ لا رقم: يلتفّ في سطرين عند الضيق ولا يُبتر بثلاث نقاط — نصفُ الجملة
+   («لا تكاليف مسجَّلة —…») يُقرأ حكماً غير الذي تقوله تمامها. */
+.mcell .ms.msw{white-space:normal;overflow:visible;text-overflow:clip;line-height:1.45}
+.mcell .ms .mz{color:var(--muted)}
+@media(max-width:1100px){.mcells{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:640px){.mcells{grid-template-columns:minmax(0,1fr)}}
+/* (٢) شريط القراءة الداكن — البقعة البنفسجية والرقم الأحمر الفاتح موروثان من لوحة v5.39 */
+.exec-band{background:linear-gradient(135deg,#101733,#16224e 55%,#2b1a55);border-radius:18px;padding:.8rem 1rem;color:#eef2fb;position:relative;overflow:hidden}
+.exec-band::before{content:'';position:absolute;inset:-40% -20% auto auto;width:420px;height:420px;border-radius:50%;background:radial-gradient(closest-side,rgba(131,71,152,.35),transparent)}
+.exec-band>*{position:relative}
+.exec-band .secn .n{background:rgba(255,255,255,.16)}
+.exec-band .secn h2{color:#fff}
+.exec-band .secn .s{color:rgba(255,255,255,.65)}
+.xb-attn{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:999px;padding:.28rem .8rem;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;display:inline-flex;gap:.35rem;align-items:center;flex:none}
+.xb-attn:hover{background:rgba(255,255,255,.18)}
+.xb-attn:focus-visible{outline:2px solid #fff;outline-offset:2px}
+.xb-attn svg{width:13px;height:13px;color:#ff9d9d}
+.xb-attn b{color:#ff9d9d}
+/* علامة «قيمة تقديرية/خلاصة محسوبة» — حمراء صغيرة بتلميح، شرط أ. حسين */
+.wmark{color:#ff8f8f;display:inline-flex;vertical-align:middle;cursor:help}
+.wmark svg{width:13px;height:13px}
+.card .wmark,.kpi .wmark{color:var(--st-bad)}
+.xb-sum{display:flex;gap:.5rem;align-items:center;font-size:var(--fs-body);font-weight:700;color:#fff;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:.42rem .7rem;flex-wrap:wrap}
+.xb-sum>svg{width:15px;height:15px;color:#a78bfa;flex:none}
+.ins{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.6rem;margin-top:.6rem}
+@media(max-width:900px){.ins{grid-template-columns:1fr}}
+.ic1{background:rgba(255,255,255,.9);color:var(--ink);border-radius:12px;padding:.6rem .75rem;min-width:0}
+.ic1 .icb{display:inline-block;font-size:9.5px;font-weight:700;color:var(--muted);background:var(--track);border-radius:999px;padding:.05rem .45rem;vertical-align:middle;margin-inline-start:.3rem}
+.ic1 .ih{font-size:var(--fs-body);font-weight:800;color:var(--brand);margin-bottom:.15rem}
+.ic1 .ib{font-size:var(--fs-body);color:var(--ink2);line-height:1.6;margin-bottom:.3rem}
+.ic1 .fig-leg{margin-top:.2rem}
+/* رحلة القيمة */
+.vj{display:flex;align-items:stretch;gap:.15rem;flex-wrap:wrap;margin-top:.7rem}
+.vjn{display:grid;justify-items:center;gap:2px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:.5rem .8rem;min-width:86px}
+.vjn i{width:26px;height:26px;border-radius:50%;background:rgba(255,255,255,.12);display:inline-flex;align-items:center;justify-content:center}
+.vjn i svg{width:14px;height:14px;color:#cdd8f2}
+.vjn b{font-size:var(--fs-num-sm);color:#fff}
+.vjn>span{font-size:var(--fs-meta);color:rgba(255,255,255,.7);font-weight:700}
+.vjn.leak{border-color:#ffb4a3;background:rgba(255,143,143,.12)}
+.vja{display:grid;justify-items:center;align-content:center;color:rgba(255,255,255,.55);font-size:14px;min-width:34px}
+.vja small{font-size:10px;font-weight:800;color:rgba(255,255,255,.75)}
+.vjw{margin-top:.5rem;display:flex;gap:.45rem;align-items:center;font-size:var(--fs-body);font-weight:700;color:#ffd9a3;flex-wrap:wrap}
+.vjw svg{width:14px;height:14px;flex:none}
+/* النسخة الفاتحة من الرحلة (قسم ٥) — أيقونات سداسية كنموذج المالك، بسلّم الرتب نفسه */
+.vj-light .vjn{background:var(--bg);border-color:var(--line)}
+.vj-light .vjn b{color:var(--ink2)}
+.vj-light .vjn>span{color:var(--muted)}
+.vj-light .vjn i{width:36px;height:32px;border-radius:0;clip-path:polygon(25% 0,75% 0,100% 50%,75% 100%,25% 100%,0 50%);background:var(--ord-3)}
+.vj-light .vjn i svg{color:#fff}
+.vj-light .vjn:nth-child(1) i{background:var(--ord-1)}
+.vj-light .vjn:nth-child(3) i{background:var(--ord-2)}
+.vj-light .vjn:nth-child(5) i{background:var(--ord-3)}
+.vj-light .vjn:nth-child(7) i{background:var(--ord-4)}
+.vj-light .vjn:nth-child(9) i{background:var(--ord-4)}
+.vj-light .vjn:nth-child(11) i{background:var(--ord-5)}
+.vj-light .vjn.leak{border-color:var(--st-bad);background:var(--st-bad-soft)}
+.vj-light .vjn.leak i{background:var(--st-bad)}
+.vj-light .vjn.off{opacity:.75;border-style:dashed}
+.vj-light .vjn.off i{background:var(--track)}
+.vj-light .vjn.off i svg{color:var(--faint)}
+.vjoff{font-size:9.5px;color:var(--muted);max-width:110px;text-align:center;line-height:1.4}
+.vj-light .vja{color:var(--muted)}
+.vj-light .vja small{color:var(--ink2)}
+.vj-light .vjw{color:var(--st-warn)}
+/* محطة الرحلة زرٌّ يفتح تفصيلها — نفس هيئة الشارة الساكنة، بمؤشرٍ وتركيزٍ مرئيين */
+button.vjn{font-family:inherit;font-size:inherit;cursor:pointer}
+button.vjn:hover{box-shadow:var(--sh-sm)}
+button.vjn:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.pch-btn{font-family:inherit;background:none;border:none;padding:0;cursor:pointer;text-align:inherit}
+.pch-btn:hover .l{color:var(--brand)}
+.pch-btn:focus-visible{outline:2px solid var(--brand);outline-offset:2px;border-radius:6px}
+/* أقسام ٣–٩ */
+.legend-r{display:flex;gap:1rem;align-items:center;font-size:var(--fs-body);color:var(--muted);flex-wrap:wrap;margin-top:.35rem}
+.legend-r i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-inline-end:.3rem;vertical-align:middle}
+.leg-chips{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin:.1rem 0 .5rem}
+.lgc{display:inline-flex;gap:.4rem;align-items:center;background:var(--bg);border:1px solid var(--line);border-radius:999px;padding:.22rem .7rem;font-size:var(--fs-body);color:var(--muted)}
+.lgc b{color:var(--ink2)}
+.lgc i{display:inline-block;width:10px;height:10px;border-radius:3px}
+.lgc .dashline{display:inline-block;width:14px;height:0;border-top:2.5px dashed var(--acc-violet);border-radius:0}
+.pulses{display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;margin-top:.6rem;border-top:1px dashed var(--line);padding-top:.55rem}
+.pch{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:.4rem .7rem;display:grid;gap:1px;min-width:130px}
+.pch .l{font-size:var(--fs-micro);color:var(--muted);font-weight:700}
+.pch b{font-size:var(--fs-num-sm);color:var(--ink2)}
+.pch .c{font-size:var(--fs-micro);color:var(--muted)}
+.ph{font-size:var(--fs-body);color:var(--muted);margin-inline-start:auto}
+.sh{font-size:var(--fs-body);font-weight:800;color:var(--ink2);margin-bottom:.4rem;display:flex;gap:.35rem;align-items:center;flex-wrap:wrap}
+.com3{display:grid;grid-template-columns:1.1fr 1fr 1.2fr;gap:1.1rem}
+.comfoot{display:flex;gap:1rem;font-size:var(--fs-body);color:var(--muted);margin-top:.5rem;flex-wrap:wrap;align-items:center}
+.trap{display:grid;gap:4px}
+.trp{display:grid;grid-template-columns:minmax(60px,84px) 1fr 58px;gap:8px;align-items:center;border:none;background:none;padding:.1rem .15rem;font-family:inherit;text-align:start;cursor:pointer;border-radius:7px;width:100%}
+.trp:hover{background:var(--bg)}
+.trp:focus-visible{outline:2px solid var(--brand);outline-offset:1px}
+.trp .tn{font-size:var(--fs-body);color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.trp .tt{height:22px;display:flex;justify-content:center}
+.trp .tt i{height:100%;border-radius:5px;display:flex;align-items:center;justify-content:center;min-width:30px;transition:width .3s}
+.trp .tt i b{color:#fff;font-size:11.5px}
+.trp .tv{font-size:var(--fs-body);font-weight:800;color:var(--ink2);text-align:start}
+.ops3{display:grid;grid-template-columns:auto 1.3fr .8fr;gap:1.2rem;align-items:start}
+.ops3.two{grid-template-columns:auto 1fr}
+.ops3.two .ops-stats{grid-template-columns:repeat(auto-fit,minmax(160px,max-content))}
+/* سطرُ نقصٍ هادئ: يقول ما ينقص وأين يُدخَل، بلا صندوقٍ أجوف ولا رسمٍ فارغ */
+.gapline{font-size:var(--fs-micro);color:var(--muted);padding:.45rem .2rem;border-top:1px dashed var(--line);margin-top:.4rem}
+.gapline a{color:var(--brand);font-weight:700}
+.ops-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:.5rem;align-content:start}
+.prj-tbl{width:100%;border-collapse:collapse;font-size:var(--fs-body)}
+.prj-tbl th{font-size:var(--fs-micro);color:var(--muted);font-weight:700;text-align:start;padding:.3rem .5rem;border-bottom:1px solid var(--line);white-space:nowrap}
+.prj-tbl td{padding:.45rem .5rem;border-bottom:1px dashed var(--line);vertical-align:middle}
+.prj-tbl tr:last-child td{border-bottom:none}
+.prj-tbl tr:hover td{background:#fbfcfe}
+.prj-tbl td a{color:var(--ink2);font-weight:700}
+.prj-tbl .dotc{display:inline-block;vertical-align:middle;margin-inline-end:.25rem}
+.ptrk{display:inline-block;vertical-align:middle;width:72px;height:6px;border-radius:999px;background:var(--track);overflow:hidden;margin-inline-end:.3rem}
+.ptrk i{display:block;height:100%;border-radius:999px}
+.conc-panel{display:grid;gap:.5rem;align-content:start}
+.cp-hero{font-size:var(--fs-title);font-weight:800;color:var(--ink2)}
+.opsd{display:grid;gap:.4rem;justify-items:center}
+.hr3{display:grid;grid-template-columns:1.15fr 1.15fr .7fr;gap:1.2rem;align-items:start}
+.com3>div,.ops3>div,.hr3>div,.out3>div{min-width:0}
+.out3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1.1rem}
+.out3.c1{grid-template-columns:minmax(0,1fr)}
+.out3.c2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.outg{margin-bottom:.5rem;border-inline-start:2px solid var(--line);padding-inline-start:.75rem;position:relative}
+.outg .msr{position:relative}
+.outg .msr .d{position:relative}
+.outg .msr .d::before{content:'';position:absolute;inset-inline-start:-1.05rem;top:50%;transform:translateY(-50%);width:9px;height:9px;border-radius:50%;background:#101733;border:2px solid var(--surface);box-shadow:0 0 0 1px var(--line)}
+.og{display:inline-block;font-size:var(--fs-micro);font-weight:800;color:var(--brand);background:var(--st-neut-soft);border-radius:999px;padding:.05rem .6rem;margin-bottom:.2rem}
+.msr{display:flex;gap:.5rem;align-items:baseline;padding:.32rem 0;border-bottom:1px dashed var(--line2);font-size:var(--fs-body);min-width:0}
+.msr:last-child{border-bottom:none}
+.msr a{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink2)}
+.msr b{font-weight:800}
+.msr span{color:var(--muted)}
+.msr .d{flex:none;color:var(--muted);font-weight:700}
+.msr .im{font-size:var(--fs-meta)}
+.dotc{width:9px;height:9px;border-radius:50%;flex:none;align-self:center}
+.foot-strip{display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;padding:.55rem 1rem;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--muted);font-size:11.5px;font-weight:700}
+.fs-compl{display:inline-flex;gap:.45rem;align-items:center;background:none;border:none;font-family:inherit;font-size:11.5px;font-weight:700;color:var(--muted);cursor:pointer;padding:.2rem .3rem;border-radius:8px}
+.fs-compl:hover{background:var(--bg)}
+.fs-compl:focus-visible{outline:2px solid var(--brand);outline-offset:1px}
+.fs-compl b{color:var(--ink2)}
+.pmeter{display:inline-block;width:110px;height:6px;border-radius:999px;background:var(--track);overflow:hidden;vertical-align:middle}
+.pmeter i{display:block;height:100%;border-radius:999px;background:var(--acc-navy)}
+@media(max-width:1100px){.ins{grid-template-columns:1fr}.com3{grid-template-columns:1fr}.ops3{grid-template-columns:1fr}.hr3{grid-template-columns:1fr}.out3{grid-template-columns:1fr}.kpi5{grid-template-columns:repeat(2,minmax(0,1fr))}.kpi5>.kpi:first-child{grid-column:span 2}}
+@media(max-width:640px){.vjn{min-width:70px;padding:.4rem .5rem}.secn .upd{display:none}
+.kpi5{gap:.6rem}.kv{font-size:24px}
+.fig-svg text{font-size:15px}
+/* الرسم المركّب عرضُه 960 وحدة فتنكمش حروفه إلى النصف تقريباً على 390 — رفعٌ يعوّض الانكماش */
+.fig-svg text.m-tight,.fig-svg .mk-l{font-size:21px}}
+/* رؤوس البطاقات وصفوف «افعل اليوم» ودرج التحليل */
+.g12>div>.card{display:flex;flex-direction:column;min-width:0;height:100%}
+/* بطاقة الطاقة بلا سقف ارتفاع: القوائم جزء من البطاقة لا ما بعدها (تسرّب الأسماء عند المالك) */
+/* وسقفُ بطاقتَي «ماذا أفعل اليوم؟» أخفضُ في فصلٍ يُراد له شاشة — وهما تمرّران داخلياً فلا يُخفى بند */
+.card.h-c{max-height:340px}
+.card .cbody{overflow-y:auto;flex:1;min-height:0}
+.hgrp{display:grid;gap:2px;min-width:0}
+.card-head .eyebrow,.eyebrow{font-size:var(--fs-body);color:var(--muted);font-weight:700}
+.card-head .hgrp .t{font-size:var(--fs-title);font-weight:800;color:var(--ink2);line-height:1.45}
+.chead-x{display:grid;gap:2px;margin-bottom:.45rem}
+.chead-x .tt{font-size:var(--fs-title);font-weight:800;color:var(--ink2)}
+.act-r{display:grid;grid-template-columns:28px 1fr auto;align-items:center;gap:.6rem;padding:.55rem .2rem;border-bottom:1px dashed var(--line)}
+.act-r:last-child{border-bottom:none}
+.act-r .rank{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;flex:none;justify-self:center}
+.act-r .tx{min-width:0}
+.act-r .tx .h{font-size:var(--fs-body);font-weight:800;color:var(--ink2);display:block;line-height:1.5}
+.act-r .tx .s{font-size:var(--fs-body);color:var(--muted);display:block}
+.act-r .go{justify-self:start}
+.act-r .go svg{width:13px;height:13px}
+@media(max-width:640px){.act-r{grid-template-columns:28px 1fr}.act-r .go{grid-column:2;justify-self:start;min-height:40px}
+.chg-cat,.seg a,.seg button,.rmenu summary,.cap-li-btn,.fs-compl,.xb-attn{min-height:40px;display:inline-flex;align-items:center}
+.kd .sig{min-width:0}
+.card-foot a,.card-foot button{min-height:40px;display:inline-flex;align-items:center}}
+.rmenu{position:relative}
+.rmenu summary{list-style:none;cursor:pointer}
+.rmenu summary::-webkit-details-marker{display:none}
+.rmenu .rmenu-b{position:absolute;inset-inline-end:0;top:calc(100% + 6px);background:var(--surface);border:1px solid var(--line);border-radius:10px;box-shadow:var(--sh);padding:.5rem;display:grid;gap:.35rem;z-index:30;min-width:200px}
+.x-drawer{background:var(--surface);border:1px solid var(--line);border-radius:var(--r)}
+.x-drawer>summary{cursor:pointer;padding:.7rem 1rem;font-weight:800;color:var(--ink2);font-size:var(--fs-title);list-style:none;display:flex;gap:.5rem;align-items:center}
+.x-drawer>summary::-webkit-details-marker{display:none}
+.x-drawer>summary::before{content:'▾';color:var(--muted);font-size:11px;transition:transform .15s}
+.x-drawer:not([open])>summary::before{transform:rotate(90deg)}
+@keyframes growW{from{width:0}}
+.fig-b .fl,.fig-r .tr i,.bar>span{animation:growW .7s ease-out both}
+@media (prefers-reduced-motion:reduce){.fig-b .fl,.fig-r .tr i,.bar>span{animation:none;transition:none}}
+${CARD_HEAD_CSS}
+.empty-mini{padding:.6rem 1rem;font-size:var(--fs-meta);color:var(--muted);display:flex;gap:.45rem;align-items:center}
+.empty-mini svg{width:14px;height:14px;color:var(--faint);flex:none}
+.card-foot{margin-top:auto;padding:.45rem 1rem .55rem;border-top:1px solid var(--line)}
+.card-foot a,.card-foot button{font-size:var(--fs-meta);font-weight:700;color:var(--brand);background:none;border:none;font-family:inherit;cursor:pointer;padding:0;display:inline-flex;gap:.3rem;align-items:center}
+/* «ما تغيّر» — كالمرجع: أيقونة ثم نص وسطر فرعي، شارة حدّة، والزمن النسبي على الطرف */
+.chg{display:flex;align-items:flex-start;gap:.55rem;padding:.45rem .55rem;border-radius:10px;border:1px solid transparent;border-inline-start:3px solid transparent}
 .chg:hover{background:#fbfcfe;border-color:var(--line)}
-.chg .ic{width:26px;height:26px;border-radius:8px;flex:none;display:flex;align-items:center;justify-content:center}
+.chg .ic{width:28px;height:28px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;margin-top:.1rem}
 .chg .ic svg{width:14px;height:14px}
 .chg .tx{flex:1;min-width:0}
 .chg .h{display:block;font-size:var(--fs-body);font-weight:700;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .chg .s{display:block;font-size:var(--fs-micro);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.chg .meta{flex:none;text-align:left}
-.chg .amt{display:block;font-size:var(--fs-body);font-weight:800;color:var(--ink2)}
-.chg .d{display:block;font-size:10px;color:var(--faint)}
+.chg .meta{flex:none;text-align:left;display:flex;flex-direction:column;align-items:flex-end;gap:.15rem}
+.chg .amt{font-size:var(--fs-meta);font-weight:800;color:var(--ink2)}
+.chg .d{font-size:10px;color:var(--muted)}
 .chg.won{border-inline-start-color:var(--green);background:#f0fdf4}
 .chg.lost{border-inline-start-color:var(--red);background:#fef2f2}
-/* على الضيّق: عناوين الانتباه تلتف بدل قصّ أول أرقام المبلغ (قصّ «600,000» إلى «00,000» مضلل) */
-@media(max-width:640px){.attn .tx .h{white-space:normal;overflow:visible;line-height:1.5}}
-.fnl-lbl{font-size:var(--fs-meta);display:flex;justify-content:center;gap:.45rem;align-items:baseline;margin-bottom:.18rem}
-.fnl-bar{height:16px;border-radius:8px;margin:0 auto;opacity:.92}
-.fnl-conv{text-align:center;font-size:10px;color:var(--faint);line-height:1.6;padding:.1rem 0}
+.chg[hidden]{display:none}
+.chg-cats{padding:.45rem .8rem;display:flex;gap:.3rem;flex-wrap:wrap;border-bottom:1px dashed var(--line)}
+.chg-cat{border:1px solid var(--line);background:#fff;color:var(--muted);font-family:inherit;font-weight:700;font-size:var(--fs-micro);padding:.22rem .6rem;border-radius:999px;cursor:pointer}
+.chg-cat.on{background:var(--brand);border-color:transparent;color:#fff}
+/* طيف قدرة الفريق — محور أرقام يقرأ يساراً كالأرقام نفسها */
+.cap-axis{position:relative;height:74px;margin:.4rem 0 .1rem}
+.cap-band{position:absolute;inset-inline:0;top:30px;height:12px;border-radius:999px;overflow:hidden;
+  background:linear-gradient(to right,#fdf6e3 0%,#fdf6e3 ${axisPct(UTIL_BANDS.FREE_BELOW)}%,#d6f2e1 ${axisPct(UTIL_BANDS.FREE_BELOW)}%,#d6f2e1 ${axisPct(UTIL_BANDS.OVER_ABOVE)}%,#fecaca ${axisPct(UTIL_BANDS.OVER_ABOVE)}%,#fecaca 100%)}
+/* ازدحام: فوق ستة عشر شخصاً ثلاثة صفوف بدل اثنين، والمحور أطول — ومن تحت المؤشر يعلو عند المرور */
+.cap-axis.dense{height:104px}
+.cap-axis.dense .cap-band{top:46px}
+.cap-axis.dense .cap-av{top:6px}
+.cap-axis.dense .cap-av.r2{top:36px}
+.cap-axis.dense .cap-av.r3{top:66px}
+.cap-av:hover,.cap-av:focus-visible{z-index:3;transform:translateX(-50%) scale(1.15)}
+.cap-dept{display:grid;grid-template-columns:1fr auto auto auto;gap:.6rem;align-items:center;padding:.5rem .35rem;border-bottom:1px dashed var(--line);border-radius:7px;cursor:pointer;font-size:var(--fs-body)}
+.cap-dept:hover{background:var(--bg,#f1f5f9)}
+.cap-dept:focus-visible{outline:2px solid var(--brand);outline-offset:1px}
+.cap-dept .n{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700}
+.cap-dept small{color:var(--muted);font-size:var(--fs-micro);white-space:nowrap}
+@media(max-width:640px){.cap-dept{grid-template-columns:1fr auto auto;min-height:40px}.cap-dept small:nth-of-type(2){display:none}.dd-row.cap-li-btn{min-height:40px}.cap-plus{min-height:40px}}
+.cap-av{position:absolute;top:14px;width:26px;height:26px;border-radius:50%;border:2px solid #fff;box-shadow:var(--sh-sm);
+  background:var(--brand-grad);color:#fff;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;
+  transform:translateX(-50%);cursor:pointer;padding:0;font-family:inherit;transition:left .25s ease}
+.cap-av::after{content:'';position:absolute;inset:-8px}
+.cap-av.r2{top:44px}
+.cap-av.over{background:linear-gradient(120deg,#b91c1c,#dc2626)}
+.cap-av.free{background:linear-gradient(120deg,#8b93ad,#a6adc2)}
+.cap-av.under{background:linear-gradient(120deg,#a16207,#ca8a04)}
+.cap-ticks{position:relative;height:14px;font-size:9.5px;color:var(--muted)}
+.cap-ticks span{position:absolute;transform:translateX(-50%)}
+.cap-lists{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:.7rem;border-top:1px dashed var(--line);padding-top:.5rem}
+.cap-lists>div{min-width:0}
+@media(max-width:640px){.cap-lists{grid-template-columns:1fr}}
+.cap-lists .h{font-size:var(--fs-micro);font-weight:800;color:var(--muted);margin-bottom:.15rem}
+.cap-li{display:flex;justify-content:space-between;gap:.5rem;font-size:var(--fs-meta);padding:.14rem 0}
+/* صفوف تُفتح: مؤشّر وخلفية عند المرور والتركيز — والعلامة ⊕ تقول «هذا يُفتح» كبقية الصفحة */
+.cap-li-btn{cursor:pointer;border-radius:7px;padding:.14rem .35rem;margin:0 -.35rem}
+.cap-li-btn:hover{background:var(--bg,#f1f5f9)}
+.dd-row.cap-li-btn{padding:.5rem .35rem}
+@media(max-width:640px){.cap-li-btn{padding:.45rem .35rem}}
+.cap-li-btn:focus-visible{outline:2px solid var(--brand);outline-offset:1px}
+.tipdot{color:var(--muted);display:inline-flex;vertical-align:middle;position:relative}
+.tipdot svg{width:13px;height:13px}
+/* رقعة نقرٍ غير مرئية حول مثيري التلميح (نمط .cap-av::after) — ١٣px هدفٌ لا يُلمس */
+.tipdot::after,.wmark::after{content:'';position:absolute;inset:-10px}
+.wmark{position:relative}
+/* نافذة الشخص: ثلاث إحصاءات وشريط اثني عشر شهراً — خطةٌ صرفة بألوان عتبات التسكين */
+.cap-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.5rem;margin:.3rem 0 .2rem}
+.cap-stat{background:#f8fafc;border:1px solid var(--line);border-radius:10px;padding:.45rem .6rem;min-width:0}
+.cap-stat .l{display:block;font-size:var(--fs-micro);color:var(--muted);font-weight:700}
+.cap-stat b{font-size:var(--fs-num-sm);font-weight:800}
+.cap-stat small{display:block;font-size:10px;color:var(--muted)}
+.cap-strip{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:3px;margin:.2rem 0 .4rem}
+.cap-strip .cs{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:2px;height:46px;border-radius:6px;padding:2px 1px 0;background:#f8fafc}
+.cap-strip .cs i{display:block;width:100%;max-width:18px;border-radius:3px 3px 0 0;min-height:2px}
+.cap-strip .cs b{font-size:9.5px;color:var(--muted);font-weight:700;line-height:1}
+.cap-strip .cs.cur{outline:2px solid var(--brand);outline-offset:-2px}
+@media(max-width:640px){.cap-stats{grid-template-columns:1fr 1fr}.cap-stat:last-child:nth-child(odd){grid-column:1/-1}}
+/* أهم العملاء — جدول مدمج: عميل، إيراد، مفتوح، حصة، حالة، إشارة */
+.cl-tbl{width:100%;border-collapse:collapse;font-size:var(--fs-body)}
+.cl-tbl th{font-size:var(--fs-micro);color:var(--muted);font-weight:700;text-align:start;padding:.3rem .5rem;border-bottom:1px solid var(--line);white-space:nowrap}
+.cl-tbl td{padding:.42rem .5rem;border-bottom:1px dashed var(--line);vertical-align:middle}
+.cl-tbl tr:last-child td{border-bottom:none}
+.cl-tbl tr:hover td{background:#fbfcfe}
+.cl-av{display:inline-flex;width:26px;height:26px;border-radius:50%;background:linear-gradient(120deg,#eef2fb,#f3eefb);color:var(--brand);font-weight:800;font-size:11px;align-items:center;justify-content:center;flex:none}
+.cl-nm{display:flex;gap:.5rem;align-items:center;min-width:0}
+.cl-nm a{color:var(--ink2);font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cl-sig{display:inline-flex;align-items:center;gap:.3rem;font-size:10px;font-weight:800;padding:.12rem .5rem;border-radius:999px;white-space:nowrap}
 </style>`;
 
+// ── من يرى أي وجه من الصفحة؟ ─────────────────────────────────────────────────
+// مركز القيادة مبني من سبعة موارد: المشاريع والفرص والعملاء والعقود والفواتير وبنود الإيراد
+// والموظفين. من يقرأ أياً منها على مستوى **القطاع فأوسع** يقود القطاع أو يخدمه على مستواه،
+// فالشاشة شاشته كما هي. ومن نطاقه أضيق — مشاريعه التي يعمل عليها، أو ما يخصّه وحده — لا شأن
+// له بمستهدفات القطاع ولا بخط فرصه: يرى قطاعه من موقعه هو («قطاعي»).
+//
+// القرار **مشتق من الصلاحيات لا من قائمة أدوار**: دور جديد لا يحتاج تعديل هذا الملف، وتضييق
+// نطاق دور قائم يغيّر شاشته في اللحظة نفسها. وملاحظة دقيقة تفسد الفحص إن غابت: can(user,
+// 'read', X) بلا صف هدف يعيد «صحيح» لمجرد وجود المنح مهما ضاق نطاقه — فهو يجيب «هل يقرأ؟»
+// لا «إلى أين يصل؟». السؤال هنا نطاقي، وeffectiveScope وحده يجيبه.
+// و«التقارير والمؤشرات» بين الموارد: الشاشة في أصلها تقريرُ قطاعٍ ولوحةُ مؤشراته، فمن يُمنح
+// قراءتهما على مستوى القطاع فقد مُنح هذه الشاشة بعينها. غيابهما عن القائمة كان يُسقط مدير
+// الإدارة — وقد صار منحُه للتقارير والمؤشرات قطاعياً بقرار المالك — إلى الوجه الشخصي «قطاعي»:
+// يدخل من باب دُعي إليه فيجد شاشةً لا ربح فيها ولا إيراد ولا مستهدف. لا دور آخر يتغيّر بهذا:
+// من كان منحه للتقارير أضيق من القطاع كان ساقطاً أصلاً ويبقى، ومن كان أوسع كان داخلاً بمورد آخر.
+const COMMAND_RESOURCES = ['project', 'opportunity', 'client', 'contract', 'invoice', 'revenue_line', 'employee',
+  'report', 'kpi'];
+const scopeRank = (s) => SCOPE_RANK[s] || 0;
+
+export function sectorViewMode(user) {
+  let widest = null;
+  for (const r of COMMAND_RESOURCES) {
+    const s = user ? effectiveScope(user, 'read', r) : null;
+    if (scopeRank(s) > scopeRank(widest)) widest = s;
+  }
+  return { scope: widest, mode: scopeRank(widest) >= SCOPE_RANK.sector ? 'command' : 'personal' };
+}
+
 export async function sectorPage(user, opts = {}) {
+  if (sectorViewMode(user).mode === 'personal') return await mySectorPage(user, opts);
   const year = Number(opts.year) || config.fiscalYear;
   const now = new Date();
   const today = now.toISOString().slice(0, 10);
-  const win = WINS.some((w) => w[0] === opts.win) ? opts.win : 'week';
-  const winEcho = WINS.find((w) => w[0] === win)[2];
-  const allSectors = await all('SELECT id, name_ar, color FROM sector WHERE active = 1 AND deleted_at IS NULL ORDER BY sort_order');
+  const period = periodBounds(opts.p, year, now);
+  const win = `${period.kind}${period.kind === 'y' ? '' : period.index}`;   // قيمة الرابط
+  // محوّل القطاع: قطاعات التسليم وحدها — الأربعة لا خامس لها. وحدة المساندة لا مركز قيادة
+  // تجاري لها (بلا هدف ولا خط فرص)، ووضعها في المحوّل يجعلها قطاعاً في عين كل من يستعمله.
+  // ملاحظة: القائمة تحكم أيضاً ما يُقبل من ?sector= — فطلب وحدة مساندة يعود إلى قطاع المستخدم.
+  const [allSectors, yearsAll] = await Promise.all([
+    all(`SELECT id, name_ar, color FROM sector
+     WHERE active = 1 AND deleted_at IS NULL AND ${DELIVERY_SECTOR_SQL} ORDER BY sort_order`),
+    availableYears(),
+  ]);
   const requested = opts.sector && allSectors.some((s) => s.id === opts.sector) ? opts.sector : null;
+  // لا قطاع افتراضي مكتوب في الكود. كان السطران يسقطان إلى «SOLUTIONS» نصاً، فمستخدمٌ بلا قطاع
+  // — عضو وحدة مساندة، أو حساب لم يُربط بقطاع بعد — يفتح الصفحة فيرى **مركز قيادة قطاع الحلول
+  // كاملاً**: إيراده وخطّ فرصه ومستهدفاته ومشاريعه. والحارس على مسار الواجهة البرمجية لا يمرّ به
+  // هذا المسار أصلاً. والفراغ هنا ليس خطأً يحتاج قيمة بديلة — هو حالة مصمَّمة أسفل مباشرة.
   const sectorId = user.scope === 'company'
-    ? (requested || user.sector_id || allSectors[0]?.id || 'SOLUTIONS')
-    : (user.sector_id || 'SOLUTIONS');
+    ? (requested || user.sector_id || allSectors[0]?.id || null)
+    : (user.sector_id || null);
 
-  const sd = await sectorDashboard(user, sectorId, { year });
+  const sd = sectorId ? await sectorDashboard(user, sectorId, { year }) : null;
   if (!sd) return layout({ user, active: 'sector', title: G.commandCenter, body: `<div class="empty-state"><div class="t">لا يوجد قطاع مرتبط بحسابك</div><div class="s">اطلب من مدير النظام ربطك بقطاع لعرض مركز قيادته.</div></div>` });
 
+  // ── مرشِّحا الإدارة والعميل (طلب المالك ٦) ─────────────────────────────────────────────
+  // الإدارة **المسؤولة** هي المرجع: تعليق ترحيلة 034 صريح — الجمع على كل إدارةٍ مشارِكة يحسب
+  // المشروع الواحد مرتين. و«بلا إدارة» خيارٌ صريح لأن أكثر من نصف المشاريع بلا إدارة مسجَّلة،
+  // فترشيحٌ صامت كان سيُخفيها ويترك القارئ يحار لماذا لا تُجمَع الأرقام إلى القطاع.
+  const NO_DEPT = 'none';
+  const sectorDepts = await all(`SELECT id, name_ar FROM department
+     WHERE sector_id = ? AND deleted_at IS NULL ORDER BY name_ar`, [sectorId]);
+  const deptSel = opts.dept === NO_DEPT ? NO_DEPT
+    : (opts.dept && sectorDepts.some((d) => d.id === opts.dept) ? String(opts.dept) : null);
+  // العميل: يُتحقَّق منه من عملاء لهم أثرٌ في هذا القطاع (فرصةٌ أو مشروع) — لا من كل العملاء
+  const sectorClientRows = await all(`SELECT DISTINCT c.id, c.name_ar FROM client c
+     WHERE c.deleted_at IS NULL AND (
+       EXISTS(SELECT 1 FROM opportunity o WHERE o.client_id = c.id AND o.sector_id = ? AND o.deleted_at IS NULL)
+       OR EXISTS(SELECT 1 FROM project pr WHERE pr.client_id = c.id AND pr.sector_id = ? AND pr.deleted_at IS NULL))
+     ORDER BY c.name_ar`, [sectorId, sectorId]);
+  const clientSel = opts.client && sectorClientRows.some((c) => c.id === opts.client) ? String(opts.client) : null;
+  const deptSql = (col) => (deptSel === NO_DEPT ? ` AND ${col} IS NULL`
+    : deptSel ? ` AND ${col} = ?` : '');
+  const deptArg = deptSel && deptSel !== NO_DEPT ? [deptSel] : [];
+  const clientSql = (col) => (clientSel ? ` AND ${col} = ?` : '');
+  const clientArg = clientSel ? [clientSel] : [];
+  // نطاق الترشيح الواحد الذي تمرّره الصفحة لدوال المقاييس (بنود الإيراد والفواتير عبر مشروعها)
+  const fscope = { dept: deptSel, client: clientSel };
+  const filtered = !!(deptSel || clientSel);
+  // كم يُستبعَد لعدم وجود إدارة مسجَّلة له؟ يُقال صراحةً حين يُرشَّح — أكثر من نصف المشاريع
+  // بلا إدارة، فترشيحٌ صامت يُخفيها ويترك القارئ يحار لماذا لا تُجمَع الأرقام إلى القطاع.
+  const deptGap = sectorDepts.length ? await get(`SELECT
+      (SELECT COUNT(*) FROM project p WHERE p.sector_id = ? AND p.deleted_at IS NULL AND p.department_id IS NULL) prj,
+      (SELECT COUNT(*) FROM opportunity o JOIN stage st ON st.id = o.stage_id
+        WHERE o.sector_id = ? AND o.deleted_at IS NULL AND st.is_won = 0 AND st.is_lost = 0
+          AND o.department_id IS NULL) opp`, [sectorId, sectorId]) : null;
+  // فصول الصفحة تُعرَّف مبكراً: كل رابطٍ في الصفحة (مرشِّح أو فترة) يحمل الفصل الحالي، وإلا
+  // أعادك تبديلُ مرشِّحٍ إلى الفصل الأول وضاع موضعك.
+  const TAB_DEFS = [
+    ['pulse', 'الإيقاع'],
+    ['com', 'التجاري'],
+    ['ops', 'التشغيلي'],
+    ['cli', G.clients],
+    ['hr', 'البشري'],
+    ['next', 'القادم'],
+  ];
+  const tabSel = TAB_DEFS.some(([k]) => k === opts.tab) ? String(opts.tab) : 'pulse';
+  // pos='below' لما يقع أعلى الشاشة: التلميح فوق مُطلِقه يُقصّ عند حافة النافذة فيتراكب مع الرقم
+  const estMark = (tip, pos = '') => `<span class="wmark" data-tip="${esc(tip)}"${pos ? ` data-tip-pos="${pos}"` : ''} tabindex="0" role="img" aria-label="قيمة تقديرية — ${esc(tip)}">${icon('risk')}</span>`;
+  const noteMark = (tip, pos = '') => `<span class="tipdot" data-tip="${esc(tip)}"${pos ? ` data-tip-pos="${pos}"` : ''} tabindex="0" role="img" aria-label="${esc(tip)}">${icon('info')}</span>`;
   const canInvoices = can(user, 'read', 'invoice');
   const canContracts = can(user, 'read', 'contract');
-  const [chg, attn, fc, monthly, qRev, qBook, aging, cover, staff, clients, wins] = await Promise.all([
-    changesSince(user, sectorId, sinceForWindow(win, now)),
+  const canMargin = canSeeSensitive(user, 'margin');
+  // بوابة الكلفة تُقرأ مرّةً واحدة في الصفحة: يقرؤها شريط «المال في القطاع» أعلى الشاشة وصفُّ
+  // طلبات الاعتماد أسفلها. كانت تُعلَن مرتين في ملفٍ واحد، وتكرارُ بوابةٍ أمنية في موضعين
+  // بابُ افتراقهما يوماً — فتُشدّ إحداهما وتبقى الأخرى مفتوحة.
+  const canCost = canSeeSensitive(user, 'cost');
+  // أسماء الأفراد وأحمالهم لمن يقرأ الموظفين — البقية يرون مجاميع الفريق بلا أسماء، كما
+  // تُحجب بطاقة التحصيل عمّن لا يقرأ الفواتير. والأسماء من كشف التسكين (نطاق الأشخاص) لا من
+  // مجاميع القطاع — KI-068.
+  const canPeople = can(user, 'read', 'employee');
+  const canOpps = can(user, 'read', 'opportunity');
+  // حدود النافذة من قاعدةٍ واحدة (windowBounds): داخل السنة المعروضة دائماً — الجارية حتى
+  // اليوم، والماضية ترسو على آخرها (كان الانقلاب since>until يصفّر الرقائق صمتاً)، والقادمة
+  // فارغة معلنة. والنافذة السابقة المكافئة [since-len, since) للدلتا — تُطوى إن خرجت من السنة.
+  const { sinceIso, untilIso } = period;
+  const winLen = Math.max(0, Date.parse(untilIso) - Date.parse(sinceIso));
+  // الفترة السابقة المكافئة: الشهر/الربع الذي قبله داخل السنة نفسها — للمقارنة الصادقة
+  const prevP = period.kind === 'm' && period.index > 1 ? `m${period.index - 1}`
+    : period.kind === 'q' && period.index > 1 ? `q${period.index - 1}` : null;
+  const prevB = prevP ? periodBounds(prevP, year, now) : null;
+  const prevSinceIso = prevB?.sinceIso, prevOk = !!prevB && !period.isFuture;
+  const [chg, attn, fr, monthly, qRev, qBook, cover, staff, wins, team] = await Promise.all([
+    changesSince(user, sectorId, sinceIso, untilIso),
     attentionFeed(user, sectorId, { year, today }),
-    revenueForecast(sectorId, year),
+    revenueOutlook(sectorId, year, now),
     monthlyRevenue(sectorId, year),
-    quarterlyRevenue(sectorId, year),
-    quarterlyBookings(sectorId, year),
-    pipelineAging(sectorId, today),
+    quarterlyRevenue(sectorId, year, fscope),
+    quarterlyBookings(sectorId, year, fscope),
     pipelineCoverage(sectorId, year),
     sectorStaffing(sectorId, year),
-    sectorClients(sectorId),
     sectorWins(sectorId, year),
+    canPeople ? sectorTeamDetail(user, { sector: sectorId, year, todayDate: today }) : null,
   ]);
-  const pipe = await all(`SELECT st.id, st.name_ar, st.color, COUNT(*) AS "count", COALESCE(SUM(o.value_halalas),0) value_halalas,
-      COALESCE(SUM(o.value_halalas * o.win_pct / 100.0),0) weighted
-     FROM opportunity o JOIN stage st ON st.id = o.stage_id
-     WHERE st.is_won = 0 AND st.is_lost = 0 AND o.deleted_at IS NULL AND o.sector_id = ?
-     GROUP BY st.id, st.name_ar, st.color, st.sort_order ORDER BY st.sort_order`, [sectorId]);
-  const activeC = canContracts ? await get(`SELECT COUNT(*) n, COALESCE(SUM(value_halalas),0) v FROM contract
-     WHERE sector_id = ? AND deleted_at IS NULL AND status = 'ACTIVE'`, [sectorId]) : null;
+  const margin = canMargin ? await grossMargin(sectorId, year) : null;
+  // ── بيانات الكابينة (v5.39 — نماذج المالك المرجعية): كلها من سجلات حيّة مؤرَّخة ──
+  const [winf, winfPrev, wrev, wbm, compl, lastUpd, vjContracted, vjDelivered, vjAccepted, vjInvoiced, vjCollected, msWindow, msUpcoming, topRisks] = await Promise.all([
+    // أرقام النافذة من مصدرٍ واحد يغذي شريط المؤشرات ورقائق النبض معاً — لا رقمان لشيء واحد
+    windowFigures(user, sectorId, sinceIso, untilIso, fscope),
+    prevOk ? windowFigures(user, sectorId, prevB.sinceIso, prevB.untilIso, fscope) : null,
+    period.kind !== 'y' ? windowRevenue(sectorId, year, sinceIso, untilIso, fscope) : null,
+    winsByMonth(sectorId, { untilIso }),
+    completenessScore(user, sectorId, { year }),
+    lastChangeAt(sectorId),
+    // رحلة القيمة: المتعاقد (نشط أو موقّع هذه السنة) ← المحقق ← المسلَّم ← المقبول ← المفوتر ← المحصَّل
+    get(`SELECT COALESCE(SUM(c.value_halalas),0) v FROM contract c LEFT JOIN project p ON p.id = c.project_id
+       WHERE c.sector_id = ? AND c.deleted_at IS NULL
+       AND (c.status IN ('ACTIVE','COMPLETED') OR substr(COALESCE(c.signed_at, c.start_date, c.created_at),1,4) = ?)${deptSql('p.department_id')}${clientSql('COALESCE(c.client_id, p.client_id)')}`,
+    [sectorId, String(year), ...deptArg, ...clientArg]),
+    get(`SELECT COALESCE(SUM(d.amount_halalas),0) v FROM deliverable d LEFT JOIN project p ON p.id = d.project_id
+       WHERE d.sector_id = ? AND d.deleted_at IS NULL AND ${dlvYearSqlFor('d')} = ?
+       AND d.status IN ('DELIVERED','ACCEPTED','INVOICED','PAID')${deptSql('p.department_id')}${clientSql('p.client_id')}`,
+    [sectorId, year, ...deptArg, ...clientArg]),
+    get(`SELECT COALESCE(SUM(d.amount_halalas),0) v FROM deliverable d LEFT JOIN project p ON p.id = d.project_id
+       WHERE d.sector_id = ? AND d.deleted_at IS NULL AND ${dlvYearSqlFor('d')} = ?
+       AND d.status IN ('ACCEPTED','INVOICED','PAID')${deptSql('p.department_id')}${clientSql('p.client_id')}`,
+    [sectorId, year, ...deptArg, ...clientArg]),
+    canInvoices ? get(`SELECT COALESCE(SUM(i.amount_halalas),0) v FROM invoice i LEFT JOIN project p ON p.id = i.project_id
+       WHERE COALESCE(i.sector_id, p.sector_id) = ? AND i.deleted_at IS NULL AND i.status NOT IN ('DRAFT','CANCELLED')
+         AND substr(COALESCE(i.issue_date, i.created_at),1,4) = ?${deptSql('p.department_id')}${clientSql('COALESCE(i.client_id, p.client_id)')}`,
+    [sectorId, String(year), ...deptArg, ...clientArg]) : null,
+    canInvoices ? get(`SELECT COALESCE(SUM(col.amount_halalas),0) v FROM collection col
+       JOIN invoice i ON i.id = col.invoice_id LEFT JOIN project p ON p.id = i.project_id
+       WHERE COALESCE(i.sector_id, p.sector_id) = ? AND i.deleted_at IS NULL
+         AND substr(COALESCE(col.collected_at, col.created_at),1,4) = ?${deptSql('p.department_id')}${clientSql('COALESCE(i.client_id, p.client_id)')}`,
+    [sectorId, String(year), ...deptArg, ...clientArg]) : null,
+    // التزام المعالم في الأسابيع الثمانية الماضية: المستحق منها وما تحقق (MET)
+    all(`SELECT m.due_date, m.status FROM milestone m JOIN project p ON p.id = m.project_id
+       WHERE p.sector_id = ? AND m.deleted_at IS NULL AND p.deleted_at IS NULL
+         AND m.due_date IS NOT NULL AND substr(m.due_date,1,10) >= ? AND substr(m.due_date,1,10) < ?${deptSql('p.department_id')}${clientSql('p.client_id')}`,
+    [sectorId, new Date(Date.parse(today) - 56 * 86400000).toISOString().slice(0, 10), today, ...deptArg, ...clientArg]),
+    all(`SELECT m.name_ar, m.due_date, m.status, p.name_ar project, p.id pid FROM milestone m JOIN project p ON p.id = m.project_id
+       WHERE p.sector_id = ? AND m.deleted_at IS NULL AND p.deleted_at IS NULL AND m.status = 'PENDING'
+         AND m.due_date IS NOT NULL AND substr(m.due_date,1,10) >= ? AND substr(m.due_date,1,10) <= ?${deptSql('p.department_id')}${clientSql('p.client_id')}
+       ORDER BY m.due_date LIMIT 9`, [sectorId, today, new Date(Date.parse(today) + 90 * 86400000).toISOString().slice(0, 10), ...deptArg, ...clientArg]),
+    all(`SELECT r.title, r.probability, r.impact, p.name_ar project, p.id pid FROM risk r LEFT JOIN project p ON p.id = r.project_id
+       WHERE r.sector_id = ? AND r.deleted_at IS NULL AND r.status != 'CLOSED'${deptSql('p.department_id')}${clientSql('p.client_id')}
+       ORDER BY CASE r.probability WHEN 'high' THEN 0 WHEN 'med' THEN 1 WHEN 'medium' THEN 1 ELSE 2 END LIMIT 4`,
+    [sectorId, ...deptArg, ...clientArg]),
+  ]);
+
+  // ── (v5.71) «المال في القطاع»: الإيراد والمفوتر والتكاليف في سطرٍ واحد ─────────────────
+  // طلب المالك (2026-09-02): «في الداشبورد الأساسية نحتاج يكون معروض الإيراد والمفوتر
+  // والتكاليف بشكل واضح على كل القطاع». الأرقام الثلاثة موجودة في الصفحة اليوم لكنها متفرّقة:
+  // الإيراد في بطاقةٍ أعلى، والمفوتر محطةٌ داخل «رحلة القيمة» تحت لسانٍ آخر، والتكلفة والهامش
+  // سطرٌ صغير أسفل رسم الأرباع. الشريط يجمعها في سطرٍ واحد فوق الفصول كلها.
+  //
+  // وهو **قطاعيٌّ دائماً** ولو رُشِّحت إدارةٌ أو عميل: الفاتورة تُنسب لإدارةٍ عبر مشروعها وكثيرٌ
+  // منها بلا مشروع، وبنودُ التكلفة والمصروفات لا تحمل إدارةً ولا عميلاً أصلاً — فجمعُها تحت
+  // ترشيحٍ يُخرج رقماً ناقصاً يُقرأ كأنه كامل. فتُعاد قراءة أرقامه بلا مرشِّح عند الترشيح،
+  // وتقول شارةُ «القطاع كله» ذلك للقارئ صراحةً بدل أن يخمّنه.
+  const MB_ALL = { dept: null, client: null };
+  const mbWin = (filtered && canInvoices && period.kind !== 'y')
+    ? await windowFigures(user, sectorId, sinceIso, untilIso, MB_ALL) : winf;
+  const mbWrev = period.kind === 'y' ? null
+    : (filtered ? await windowRevenue(sectorId, year, sinceIso, untilIso, MB_ALL) : wrev);
+  const [mbInvYear, mbColYear] = (filtered && canInvoices) ? await Promise.all([
+    get(`SELECT COALESCE(SUM(i.amount_halalas),0) v FROM invoice i LEFT JOIN project p ON p.id = i.project_id
+       WHERE COALESCE(i.sector_id, p.sector_id) = ? AND i.deleted_at IS NULL AND i.status NOT IN ('DRAFT','CANCELLED')
+         AND substr(COALESCE(i.issue_date, i.created_at),1,4) = ?`, [sectorId, String(year)]),
+    get(`SELECT COALESCE(SUM(col.amount_halalas),0) v FROM collection col
+       JOIN invoice i ON i.id = col.invoice_id LEFT JOIN project p ON p.id = i.project_id
+       WHERE COALESCE(i.sector_id, p.sector_id) = ? AND i.deleted_at IS NULL
+         AND substr(COALESCE(col.collected_at, col.created_at),1,4) = ?`, [sectorId, String(year)]),
+  ]) : [vjInvoiced, vjCollected];
+  // التكاليف: بنود التكلفة المسجَّلة + المصروفات المعتمدة أو المدفوعة (صافية) — بأشهر الفترة
+  // المختارة وحدها، أو السنة كاملةً حين تكون الفترة سنة. وطلبُ المصروف قيد الاعتماد ليس تكلفة.
+  const mbCosts = canCost
+    ? await sectorCosts(sectorId, year, { months: period.kind === 'y' ? null : period.months }) : null;
+  // أرقام الشريط جاهزةً: تقرؤها خليّةُ الشريط ونافذتا التفصيل من مصدرٍ واحد — لا رقمان لشيء واحد.
+  const mbRev = period.kind === 'y' ? sd.revenue_halalas : (mbWrev ? mbWrev.v : null);
+  const mbInvoiced = period.kind === 'y' ? (mbInvYear?.v || 0) : (mbWin.invoiced?.v || 0);
+  const mbCollected = period.kind === 'y' ? (mbColYear?.v || 0) : (mbWin.collected?.v || 0);
+  const mbCost = mbCosts?.cost_halalas || 0;
+  const mbProfit = mbRev == null ? null : mbRev - mbCost;
+  const mbPct = mbRev ? Math.round((mbProfit / mbRev) * 100) : null;
+  // نافذتا التفصيل الجديدتان: الفواتير الصادرة حسب الحالة وأحدثها، والتكاليف حسب النوع والشهر.
+  const [mbInvByStatus, mbInvRecent] = canInvoices ? await Promise.all([
+    all(`SELECT i.status status, COUNT(*) n, COALESCE(SUM(i.amount_halalas),0) v
+       FROM invoice i LEFT JOIN project p ON p.id = i.project_id
+       WHERE COALESCE(i.sector_id, p.sector_id) = ? AND i.deleted_at IS NULL AND i.status NOT IN ('DRAFT','CANCELLED')
+         AND substr(COALESCE(i.issue_date, i.created_at),1,4) = ?
+       GROUP BY i.status`, [sectorId, String(year)]),
+    all(`SELECT i.code code, i.amount_halalas amount_halalas, i.status status,
+         substr(COALESCE(i.issue_date, i.created_at),1,10) d, c.name_ar client, p.name_ar project
+       FROM invoice i LEFT JOIN project p ON p.id = i.project_id
+       LEFT JOIN client c ON c.id = COALESCE(i.client_id, p.client_id)
+       WHERE COALESCE(i.sector_id, p.sector_id) = ? AND i.deleted_at IS NULL AND i.status NOT IN ('DRAFT','CANCELLED')
+         AND substr(COALESCE(i.issue_date, i.created_at),1,4) = ?
+       ORDER BY COALESCE(i.issue_date, i.created_at) DESC LIMIT 12`, [sectorId, String(year)]),
+  ]) : [[], []];
+
+  // توافق الأسماء مع بقية الصفحة: fc.forecast هو أساس النطاق، والرقائق من أرقام النافذة نفسها.
+  // التوقع من الإيراد نفسه بالوتيرة المُثبَتة (لا من قيمة الصفقات) — والخط المرجّح انتقل إلى
+  // إطار المبيعات حيث ينتمي. سنةٌ منقضية أو لم يمضِ منها شهر: لا رقم توقّعٍ يُعرض.
+  const fc = { forecast: fr.base, actual: fr.actual };
+  const pulseWins = winf.wins, pulseInv = winf.invoiced, pulseCol = winf.collected;
+
+  // ── السلسلة المرشَّحة بإدارة/عميل + بيانات السنة القادمة — تُجلب عند الحاجة وحدها ──
+  // rsc: بنود الإيراد عبر مشروعها (غير المنسوب يُفصَح عنه)؛ basisMonthly: أشهر سنة الأساس
+  // لنافذة تفصيل توقّع السنة القادمة؛ nextSched: صفقات الخط المُسنَدة للسنة القادمة؛
+  // salesScoped: المكسوب سنوياً تحت الترشيح (إسناد سنة الفرصة — رقم بقية الشاشات).
+  const [rsc, basisMonthly, nextSched, salesScoped] = await Promise.all([
+    filtered ? revenueScope(sectorId, year, fscope) : null,
+    fr.nextYear ? monthlyRevenue(sectorId, fr.basisYear) : null,
+    fr.nextYear && canOpps ? get(`SELECT COUNT(*) n, COALESCE(SUM(o.value_halalas),0) raw, ${WEIGHTED_OPEN} weighted
+       FROM opportunity o JOIN stage st ON st.id = o.stage_id
+       WHERE o.sector_id = ? AND o.year = ? AND st.is_won = 0 AND st.is_lost = 0
+         AND o.stage_id != 'ON_HOLD' AND o.exclude_from_sales = 0 AND o.deleted_at IS NULL`, [sectorId, year]) : null,
+    filtered ? get(`SELECT COUNT(*) n, COALESCE(SUM(o.value_halalas),0) v
+       FROM opportunity o JOIN stage st ON st.id = o.stage_id
+       WHERE o.sector_id = ? AND o.year = ? AND st.is_won = 1 AND o.exclude_from_sales = 0
+         AND o.deleted_at IS NULL${deptSql('o.department_id')}${clientSql('o.client_id')}`,
+    [sectorId, year, ...deptArg, ...clientArg]) : null,
+  ]);
+  // السلسلة التي يقرأها رسم الإيقاع وبطاقات الإيراد: المرشَّحة إن رُشِّح وإلا سلسلة القطاع.
+  // تحت الترشيح لا هدف يُقارَن به (الأهداف قطاعية) — فتحلّ «الحصة من إيراد القطاع» محلّه.
+  const rs = filtered ? rsc.months : monthly;
+  const rsTotal = filtered ? rsc.total : sd.revenue_halalas;
+  const rsShare = filtered && sd.revenue_halalas ? Math.round(((rsc.total || 0) / sd.revenue_halalas) * 100) : null;
+  const rsOutlook = filtered ? outlookFromMonths(rs, year, now) : null;
+  const rsCum = rs.reduce((acc, v) => { acc.push((acc[acc.length - 1] || 0) + v); return acc; }, []);
+  const futureYr = year > now.getUTCFullYear();
+
+  // مراحل القمع من جدول المراحل الحقيقي — لا أسماء مكتوبة في الكود.
+  // ── حدّ «الأرقام لا الأشخاص» (قرار قائم، v5.2) ──────────────────────────────
+  // قمع المراحل أرقامٌ مجمَّعة — عدٌّ ومجاميع بلا عنوان فرصة ولا عميل — فيبقى **قطاعياً عمداً**
+  // لكل من فُتح له مركز القيادة: قراءة صحة الخط الجماعية لا تكشف سرّ صفقة أحد. أما البنود
+  // المسمّاة (حركات «ما تغيّر» وفرص «يحتاج انتباهك») فتتبع نطاق قائمة الفرص نفسه — القصّ هناك
+  // في core/reports/{changes,attention}.js لا هنا.
+  // ومن جدول المراحل يساراً: المرحلة الفارغة تظهر بصفرها ولا تختفي — وإلا قفز سهم الانتقال
+  // فوقها فقارن مرحلتين غير متجاورتين.
+  const pipe = await all(`SELECT st.id, st.name_ar, st.color, COUNT(o.id) AS "count", COALESCE(SUM(o.value_halalas),0) value_halalas,
+      ${WEIGHTED_OPEN} weighted
+     FROM stage st LEFT JOIN opportunity o ON o.stage_id = st.id AND o.deleted_at IS NULL AND o.sector_id = ?${deptSql('o.department_id')}${clientSql('o.client_id')}
+     WHERE st.is_won = 0 AND st.is_lost = 0
+     GROUP BY st.id, st.name_ar, st.color, st.sort_order ORDER BY st.sort_order`, [sectorId, ...deptArg, ...clientArg]);
+  // صفوف الفرص المفتوحة نفسها — تخدم متوسط العمر والمتوقفة وأعلى القيم وترشيح المرحلة،
+  // فلا تُحسب الأرقام مرتين من استعلامين قد يفترقان.
+  const openRows = await all(`SELECT o.id, o.title_ar, o.value_halalas, o.win_pct, o.stage_id, o.client_id,
+      COALESCE(substr(o.stage_changed_at,1,10), substr(o.created_at,1,10)) since, c.name_ar client
+     FROM opportunity o JOIN stage st ON st.id = o.stage_id LEFT JOIN client c ON c.id = o.client_id
+     WHERE st.is_won = 0 AND st.is_lost = 0 AND o.deleted_at IS NULL AND o.sector_id = ?${deptSql('o.department_id')}${clientSql('o.client_id')}`,
+  [sectorId, ...deptArg, ...clientArg]);
+  const activeC = canContracts ? await get(`SELECT COUNT(*) n, COALESCE(SUM(c.value_halalas),0) v
+     FROM contract c LEFT JOIN project p ON p.id = c.project_id
+     WHERE c.sector_id = ? AND c.deleted_at IS NULL AND c.status = 'ACTIVE'${deptSql('p.department_id')}${clientSql('COALESCE(c.client_id, p.client_id)')}`,
+  [sectorId, ...deptArg, ...clientArg]) : null;
   const secContracts = canContracts ? await all(`SELECT c.id, c.code, c.value_halalas, c.status, c.start_date, cl.name_ar client,
      (SELECT COALESCE(SUM(i.amount_halalas),0) FROM invoice i WHERE i.contract_id = c.id AND i.status != 'DRAFT' AND i.deleted_at IS NULL) invoiced
-     FROM contract c LEFT JOIN client cl ON cl.id = c.client_id
-     WHERE c.sector_id = ? AND c.deleted_at IS NULL ORDER BY c.value_halalas DESC LIMIT 10`, [sectorId]) : [];
+     FROM contract c LEFT JOIN client cl ON cl.id = c.client_id LEFT JOIN project p ON p.id = c.project_id
+     WHERE c.sector_id = ? AND c.deleted_at IS NULL${deptSql('p.department_id')}${clientSql('COALESCE(c.client_id, p.client_id)')}
+     ORDER BY c.value_halalas DESC LIMIT 10`, [sectorId, ...deptArg, ...clientArg]) : [];
   const revByProject = await all(`SELECT p.id, p.name_ar, p.status, p.rag, p.progress_pct,
        COALESCE(NULLIF(p.contract_value_halalas,0), NULLIF(p.budget_halalas,0), NULLIF(p.po_value_halalas,0)) cv,
        CASE WHEN COALESCE(p.contract_value_halalas,0)>0 THEN 'عقد' WHEN COALESCE(p.budget_halalas,0)>0 THEN 'ميزانية'
             WHEN COALESCE(p.po_value_halalas,0)>0 THEN 'أمر شراء' ELSE NULL END cvbasis,
-       COALESCE(SUM(rl.amount_halalas),0) rev
+       COALESCE(SUM(${netSql('rl.amount_halalas', 'rl.net_amount_halalas')}),0) rev
      FROM revenue_line rl LEFT JOIN project p ON p.id = rl.project_id
-     WHERE rl.sector_id = ? AND rl.year = ? GROUP BY p.id, p.name_ar, p.status, p.rag, p.progress_pct, p.contract_value_halalas, p.budget_halalas, p.po_value_halalas
-     ORDER BY rev DESC LIMIT 12`, [sectorId, year]);
+     WHERE rl.sector_id = ? AND rl.year = ?${deptSql('p.department_id')}${clientSql('p.client_id')}
+     GROUP BY p.id, p.name_ar, p.status, p.rag, p.progress_pct, p.contract_value_halalas, p.budget_halalas, p.po_value_halalas
+     ORDER BY rev DESC LIMIT 12`, [sectorId, year, ...deptArg, ...clientArg]);
+  // إيراد كل عميل في هذا القطاع وهذه السنة — عبر مشروع البند (بند بلا مشروع لا يُنسب لعميل).
+  const revByClient = await all(`SELECT p.client_id cid, COALESCE(SUM(${netSql('rl.amount_halalas', 'rl.net_amount_halalas')}),0) rev
+     FROM revenue_line rl JOIN project p ON p.id = rl.project_id
+     WHERE rl.sector_id = ? AND rl.year = ? AND p.client_id IS NOT NULL${deptSql('p.department_id')}${clientSql('p.client_id')} GROUP BY p.client_id`,
+  [sectorId, year, ...deptArg, ...clientArg]);
+  // وما بعد الترسية علنيٌّ داخل القطاع بالقرار نفسه («الأرقام لا الأشخاص»): السرّية تخصّ
+  // الفرصة **قبل** ترسيتها، وصفقات السنة المكسوبة إنجاز قطاعٍ يُعرض لأهله كلهم — فتبقى قطاعية.
   const secWon = await all(`SELECT o.title_ar, o.value_halalas, c.name_ar client FROM opportunity o
      JOIN stage st ON st.id = o.stage_id LEFT JOIN client c ON c.id = o.client_id
-     WHERE o.sector_id = ? AND o.year = ? AND st.is_won = 1 AND o.exclude_from_sales = 0 AND o.deleted_at IS NULL
-     ORDER BY o.value_halalas DESC LIMIT 8`, [sectorId, year]);
-  const recentDecisions = await all(`SELECT d.title, d.decided_by, substr(d.decided_at,1,10) dat, p.name_ar project
-     FROM decision d LEFT JOIN project p ON p.id = d.project_id
-     WHERE (p.sector_id = ? OR d.project_id IS NULL) AND d.deleted_at IS NULL ORDER BY d.decided_at DESC LIMIT 5`, [sectorId]);
+     WHERE o.sector_id = ? AND o.year = ? AND st.is_won = 1 AND o.exclude_from_sales = 0 AND o.deleted_at IS NULL${deptSql('o.department_id')}${clientSql('o.client_id')}
+     ORDER BY o.value_halalas DESC LIMIT 8`, [sectorId, year, ...deptArg, ...clientArg]);
+  // القرار بلا مشروعٍ صفٌّ شركيّ لا قطاع له — وعرضه في كل مركز قطاع يُسرّب عناوين قرارات
+  // القطاعات الأخرى لقارئٍ نطاقه قطاعه وحده. قرارات القطاع = قرارات مشاريعه.
+  const recentDecisions = await all(`SELECT d.title, d.decided_by, substr(d.decided_at,1,10) dat, p.name_ar project, p.id pid
+     FROM decision d JOIN project p ON p.id = d.project_id
+     WHERE p.sector_id = ? AND d.deleted_at IS NULL${deptSql('p.department_id')}${clientSql('p.client_id')}
+     ORDER BY d.decided_at DESC LIMIT 5`, [sectorId, ...deptArg, ...clientArg]);
   const pendingApprovals = await all(`SELECT ar.resource, ar.amount_halalas, ar.created_at FROM approval_request ar
      WHERE ar.sector_id = ? AND ar.status = 'PENDING' ORDER BY ar.created_at DESC LIMIT 6`, [sectorId]);
+  // كل عدٍّ للمشاريع في هذا المركز بعدسة السنة المعروضة — قاعدة «مشروع السنة» الواحدة
+  // (projectYearClause، نفس مرشّح صفحة المشاريع حرفاً): كانت هذه الاستعلامات عمياء عن السنة
+  // فعرضت نافذة «على المسار 2026» مشاريعَ قديمة بلا تواريخ ولا إيراد (الجيوبارك، تجربة عسير…)
+  // لا تعرضها صفحة المشاريع لنفس السنة — وقرّر المالك: «الموجود في صفحة المشاريع هو الصحيح».
+  const pyc = projectYearClause(year, 'p.');
+  const pycBare = projectYearClause(year);
+  // صحة المشاريع تحت الترشيح: عدّ rag مقصوصاً بالإدارة المسؤولة/العميل — يغذّي الدونات
+  // والوسيلة و«يحتاج نظراً»، وإلا عرضت الدونات 2/5 قطاعياً فوق جدولٍ مرشَّح يقول 1/3.
+  const ragScoped = filtered ? await all(`SELECT rag, COUNT(*) n FROM project
+     WHERE sector_id = ? AND deleted_at IS NULL AND status = 'IN_PROGRESS' AND ${pycBare.clause}${deptSql('department_id')}${clientSql('client_id')}
+     GROUP BY rag`, [sectorId, ...pycBare.params, ...deptArg, ...clientArg]) : null;
+  const ragView = ragScoped ? Object.fromEntries(ragScoped.map((r) => [r.rag, r.n])) : sd.rag;
+  ragView.UNKNOWN = Object.entries(ragView).filter(([k]) => !['GREEN', 'AMBER', 'RED', 'UNKNOWN'].includes(k)).reduce((n, [, v]) => n + Number(v || 0), 0);
+  // نسبة الفوز في ذيل القمع — تحت الترشيح تُحسب من فرص الترشيح نفسها (كانت قطاعية فتظهر
+  // 50% فوق قمعٍ نسبتُه الحقيقية 100%)، وبمقامٍ مطبوع وحارس العيّنة الصغيرة.
+  const winsScoped = filtered ? await get(`SELECT
+      SUM(CASE WHEN st.is_won = 1 THEN 1 ELSE 0 END) won,
+      SUM(CASE WHEN st.is_lost = 1 THEN 1 ELSE 0 END) lost
+    FROM opportunity o JOIN stage st ON st.id = o.stage_id
+    WHERE o.sector_id = ? AND o.year = ? AND o.deleted_at IS NULL${deptSql('o.department_id')}${clientSql('o.client_id')}`,
+  [sectorId, year, ...deptArg, ...clientArg]) : null;
+  // المشاريع التي تحتاج نظر القائد — الحمراء أولاً، ومع كلٍّ أبرزُ خطرٍ مفتوح إن سُجِّل.
+  const needProjects = await all(`SELECT p.id, p.name_ar, p.rag,
+      (SELECT COUNT(*) FROM risk r WHERE r.project_id = p.id AND r.status != 'CLOSED' AND r.deleted_at IS NULL) risks,
+      (SELECT r2.title FROM risk r2 WHERE r2.project_id = p.id AND r2.status != 'CLOSED' AND r2.deleted_at IS NULL
+        ORDER BY CASE r2.probability WHEN 'high' THEN 0 WHEN 'med' THEN 1 WHEN 'medium' THEN 1 ELSE 2 END LIMIT 1) top_risk
+     FROM project p WHERE p.sector_id = ? AND p.deleted_at IS NULL AND p.status = 'IN_PROGRESS' AND p.rag IN ('RED','AMBER')
+       AND ${pyc.clause}${deptSql('p.department_id')}${clientSql('p.client_id')}
+     ORDER BY CASE p.rag WHEN 'RED' THEN 0 ELSE 1 END, p.name_ar LIMIT 6`, [sectorId, ...pyc.params, ...deptArg, ...clientArg]);
+  const healthLists = {};
+  for (const rag of ['GREEN', 'AMBER', 'RED', 'UNKNOWN']) {
+    healthLists[rag] = (ragView[rag]) ? await all(`SELECT id, name_ar, progress_pct, end_date FROM project
+       WHERE sector_id = ? AND deleted_at IS NULL AND status = 'IN_PROGRESS' AND ${rag === 'UNKNOWN' ? "(rag IS NULL OR rag NOT IN ('GREEN','AMBER','RED'))" : 'rag = ?'} AND ${pycBare.clause}${deptSql('department_id')}${clientSql('client_id')}
+       ORDER BY name_ar LIMIT 30`, [sectorId, ...(rag === 'UNKNOWN' ? [] : [rag]), ...pycBare.params, ...deptArg, ...clientArg]) : [];
+  }
+  // نسبة الإنجاز من مصدرها الواحد (المخرجات الموزونة) لا من العمود المخزَّن — قاعدة «رقم واحد
+  // حقيقة واحدة»، والحارس البنيوي يسقط أي شاشة تخالفها.
+  const progMapH = await effectiveProgress([...healthLists.GREEN, ...healthLists.AMBER, ...healthLists.RED, ...healthLists.UNKNOWN]);
 
-  // ── (1) عدسة الفترة — حالة واحدة تقود «ما تغيّر» وصدى عناوينه ──
-  const lens = `<div class="seg" role="group" aria-label="عدسة الفترة">${WINS.map(([k, l]) =>
-    `<button type="button" class="${k === win ? 'on' : ''}" onclick="const p=new URLSearchParams(location.search);p.set('win','${k}');location.search=p.toString()">${l}</button>`).join('')}</div>`;
+  // ── اختيار مرحلة من القمع (?stage=) — تصفية خادمية، حالة في الرابط لا في الذاكرة ──
+  // «معلّقة» (قرار تأجيل) خارج مسار القمع كله: أشرطته ورأسه وأعماره وأعلى فرصه — وإلا قال
+  // الرأس 150 والأشرطة 100 وحسب القارئ الفرق فرصة ضائعة. وتُرفض تصفيةً أيضاً.
+  const openFlow = openRows.filter((o) => o.stage_id !== 'ON_HOLD');
+  const selStage = pipe.find((s) => s.id === String(opts.stage || '') && s.id !== 'ON_HOLD') || null;
+  const scoped = selStage ? openFlow.filter((o) => o.stage_id === selStage.id) : openFlow;
+  const qs = (over = {}) => {
+    const p = new URLSearchParams();
+    p.set('year', String(year)); p.set('p', win);
+    if (deptSel) p.set('dept', deptSel);
+    if (clientSel) p.set('client', clientSel);
+    if (tabSel) p.set('tab', tabSel);
+    if (user.scope === 'company' && sectorId) p.set('sector', sectorId);
+    if (selStage) p.set('stage', selStage.id);
+    for (const [k, v] of Object.entries(over)) { if (v == null) p.delete(k); else p.set(k, String(v)); }
+    return '/app/sector?' + p.toString();
+  };
 
-  // ── (2) «ما تغيّر» — سجلات حقيقية مؤرّخة فقط ──
+  const ageDays = (d) => (d ? Math.max(0, Math.floor((Date.parse(today) - Date.parse(d)) / 86400000)) : 0);
+  const avgAge = scoped.length ? Math.round(scoped.reduce((a, o) => a + ageDays(o.since), 0) / scoped.length) : 0;
+  const stalledRows = scoped.filter((o) => ageDays(o.since) > (ROT_THRESHOLDS[o.stage_id] ?? Infinity));
+  // حِزم أعمار الفرص — تُحسب مبكراً لأن نوافذ تفصيلها تُبنى مع بقية النوافذ أعلى الملف
+  const AGE_B = [['0-30', 'حتى شهر', 0, 30], ['31-60', 'شهر إلى شهرين', 31, 60], ['61-90', 'شهران إلى ثلاثة', 61, 90], ['90+', 'أكثر من ثلاثة', 91, 99999]];
+  const ages = AGE_B.map(([k, l, lo, hi]) => { const rows = openFlow.filter((o) => { const d = ageDays(o.since); return d >= lo && d <= hi; }); return { k, l, n: rows.length, v: rows.reduce((a, o) => a + (o.value_halalas || 0), 0) }; });
+  // «أعلى ٣ فرص» بندٌ مسمّى (عنوان + عميل) لا رقمٌ مجمَّع — فيتبع نطاق قائمة الفرص نفسه
+  // (سياسة «الأرقام لا الأشخاص» v5.2، بنفس خيارات القصّ في core/reports/changes.js حرفياً):
+  // مدير الإدارة يقرأ أسماء فرص إداراته، وقائد القطاع قطاعه. المتوسطات والأعمار تبقى مجاميع.
+  const fOpp = scopeFilter(user, 'opportunity', 'read',
+    { sectorCol: 'o.sector_id', ownerCol: 'o.owner_user_id', projectCol: 'o.id',
+      grantCol: 'o.department_id', memberCol: 'o.id', deptCol: 'o.department_id' });
+  // فرص كل مرحلة المسماة لنوافذ تفصيل القمع — بنفس قصّ قائمة الفرص (سياسة «الأرقام لا
+  // الأشخاص» v5.2): المجاميع على رأس النافذة قطاعية، والأسماء بنطاق القارئ وحده.
+  const ddOppRows = await all(`SELECT o.id, o.title_ar, o.value_halalas, o.stage_id, c.name_ar client,
+      COALESCE(substr(o.stage_changed_at,1,10), substr(o.created_at,1,10)) since
+     FROM opportunity o JOIN stage st ON st.id = o.stage_id LEFT JOIN client c ON c.id = o.client_id
+     WHERE st.is_won = 0 AND st.is_lost = 0 AND o.stage_id != 'ON_HOLD' AND o.deleted_at IS NULL
+       AND o.sector_id = ? AND ${fOpp.clause}${deptSql('o.department_id')}${clientSql('o.client_id')}
+     ORDER BY o.value_halalas DESC`, [sectorId, ...fOpp.params, ...deptArg, ...clientArg]);
+
+  const elapsed = yearElapsedPct(now, year);
+  const nowM = currentMonthIndex(year);
+
+  // لا شريط ملخصٍ سرديّ — بقرار المالك (v5.22): الأرقام تتحدث من الشريط مباشرة،
+  // وشرائح الإيقاع على البطلين تحمل «متقدم/متأخر بكذا نقطة» بلا جملة إنشائية فوقها.
+  const attainRev = sd.target_revenue_halalas ? Math.round((sd.revenue_halalas / sd.target_revenue_halalas) * 100) : null;
+  const dRev = paceDelta(sd.revenue_halalas, sd.target_revenue_halalas, now, year);
+
+  // مجاميع القمع تُحسب هنا (قبل الشريط) لأن شريط التغطية الصغير في الخلية يرسمها:
+  // قيمة كل مرحلة مفتوحة — بيانات القمع نفسها، لا سلسلة زمنية مُختلَقة للتغطية.
+  const funnelStages = pipe.filter((st) => st.id !== 'ON_HOLD');
+  const onHoldStage = pipe.find((st) => st.id === 'ON_HOLD');
+  const maxV = Math.max(1, ...funnelStages.map((s) => s.value_halalas));
+  const openTotalV = funnelStages.reduce((a, s) => a + s.value_halalas, 0);
+  const openTotalC = funnelStages.reduce((a, s) => a + s.count, 0);
+
+  // ── (١) شريط المؤشرات — ستة لا غير بترتيب المالك: الإيراد، المبيعات، التغطية،
+  // صحة التنفيذ، قدرة الفريق، يحتاج تدخلاً. البقية في بطاقاتها التفصيلية لا هنا. ──
+  const attainSales = sd.target_sales_halalas ? Math.round((sd.sales_halalas / sd.target_sales_halalas) * 100) : null;
+  const dSales = paceDelta(sd.sales_halalas, sd.target_sales_halalas, now, year);
+  const ragActive = (ragView.GREEN || 0) + (ragView.AMBER || 0) + (ragView.RED || 0) + (ragView.UNKNOWN || 0);
+  const needsN = (ragView.AMBER || 0) + (ragView.RED || 0);
+  const ptWord = (n) => { const a = Math.abs(n); return a === 1 ? 'بنقطة واحدة' : a === 2 ? 'بنقطتين' : a <= 10 ? `بـ${a} نقاط` : `بـ${a} نقطة`; };
+  // شارة الحكم: رمزٌ وكلمة معاً — واللون لغير السليم وحده (قاعدة «الرمادي أولاً»، ADR-0011).
+  // نصّها HTML جاهز الهروب لدى المستدعي (كاتفاق labelHtml) — النصوص الحيّة تمرّ بـesc() هناك.
+  const sig = (tone, glyph, text) => `<span class="sig ${tone}"><span class="g" aria-hidden="true">${glyph}</span><span>${text}</span></span>`;
+  const paceSig = (d) => d == null ? ''
+    : d >= 3 ? sig('ok', '▲', `متقدمٌ ${ptWord(d)} عن المسار الزمني`)
+      : d <= -3 ? sig('warn', '▼', `متأخرٌ ${ptWord(d)} عن المسار الزمني`)
+        : sig('ok', '✓', 'على المسار الزمني');
+  // ── (٣) عدسة الفترة — تسكن رأس بطاقة «ما تغيّر» نفسها (المرجع)، وهي روابط تعيد التحميل ──
+  // كل فترةٍ تقويمية بحالتها: الماضية والجارية تُقرأ من المُسجَّل، والقادمة تُعلَّم «متوقع»
+  // في المُنتقي نفسه كي لا يظنّ القارئ أنه ينظر إلى محقَّق. لا سنةٌ قادمة (لا أساس لها).
+  const pOpt = (k, label) => {
+    const b = periodBounds(k, year, now);
+    const on = k === win;
+    return `<a class="${on ? 'on' : ''}${b.isFuture ? ' fut' : ''}" style="text-decoration:none" href="${qs({ p: k })}"${on ? ' aria-current="true"' : ''}${b.isFuture ? ' title="فترة قادمة — تُعرض بالمتوقع لا بالمحقق"' : ''}>${label}</a>`;
+  };
+  const fchip = (label, href, on, title = '') => `<a class="chip${on ? ' on' : ''}" style="text-decoration:none" href="${href}"${title ? ` title="${esc(title)}"` : ''}>${esc(label)}${on ? ' <span aria-hidden="true">✕</span>' : ''}</a>`;
+  const deptPick = sectorDepts.length ? `<details class="rmenu fmenu"><summary class="btn btn-sm">${deptSel ? (deptSel === NO_DEPT ? 'بلا إدارة' : esc(sectorDepts.find((d) => d.id === deptSel)?.name_ar || 'الإدارة')) : 'الإدارة'} ▾</summary>
+      <div class="rmenu-b">
+        <a class="fitem${!deptSel ? ' on' : ''}" href="${qs({ dept: null })}">كل الإدارات</a>
+        ${sectorDepts.map((d) => `<a class="fitem${deptSel === d.id ? ' on' : ''}" href="${qs({ dept: d.id })}">${esc(d.name_ar)}</a>`).join('')}
+        <a class="fitem${deptSel === NO_DEPT ? ' on' : ''}" href="${qs({ dept: NO_DEPT })}" title="سجلات لم تُسنَد إلى إدارة بعد">بلا إدارة${deptGap ? ` (${deptGap.prj + deptGap.opp})` : ''}</a>
+      </div></details>` : '';
+  // منتقي السنة مع بقية المرشِّحات (ملاحظة أ. حسين 2026-08-25: «لا أرى منتقي السنة في أي
+  // مكان» — كان في رأس الصفحة البعيد وبقي هناك أيضاً؛ رحلةُ سنةٍ → أشهرها وأرباعها تُدار من
+  // موضعٍ واحد). الروابط تحمل بقية الحالة (الفصل والمرشِّحات) كسائر روابط الصفحة.
+  const yearPick = `<details class="rmenu fmenu"><summary class="btn btn-sm">سنة ${year}${year > config.fiscalYear ? ' — قادمة' : ''} ▾</summary>
+      <div class="rmenu-b">
+        ${yearsAll.map((y) => `<a class="fitem${y === year ? ' on' : ''}" href="${qs({ year: y })}"${y > config.fiscalYear ? ' title="سنة قادمة — تُعرض بالمتوقع لا بالمحقق"' : ''}>سنة ${y}${y > config.fiscalYear ? ' — قادمة' : ''}</a>`).join('')}
+      </div></details>`;
+  const clientPick = sectorClientRows.length ? `<details class="rmenu fmenu"><summary class="btn btn-sm">${clientSel ? esc(sectorClientRows.find((c) => c.id === clientSel)?.name_ar || G.clients) : G.clients} ▾</summary>
+      <div class="rmenu-b" style="max-height:320px;overflow-y:auto">
+        <a class="fitem${!clientSel ? ' on' : ''}" href="${qs({ client: null })}">كل العملاء</a>
+        ${sectorClientRows.slice(0, 40).map((c) => `<a class="fitem${clientSel === c.id ? ' on' : ''}" href="${qs({ client: c.id })}">${esc(c.name_ar)}</a>`).join('')}
+      </div></details>` : '';
+  const activeChips = [
+    deptSel ? fchip(deptSel === NO_DEPT ? 'بلا إدارة' : (sectorDepts.find((d) => d.id === deptSel)?.name_ar || ''), qs({ dept: null }), true, 'إزالة ترشيح الإدارة') : '',
+    clientSel ? fchip(sectorClientRows.find((c) => c.id === clientSel)?.name_ar || '', qs({ client: null }), true, 'إزالة ترشيح العميل') : '',
+  ].filter(Boolean).join('');
+  const filterNotes = [];
+  if (deptSel && deptSel !== NO_DEPT && deptGap && (deptGap.prj || deptGap.opp)) {
+    filterNotes.push(`<div class="fnote">${noteMark('الأرقام المالية تُجمع على الإدارة المسؤولة وحدها — ولو جُمعت على كل إدارةٍ مشارِكة لحُسب المشروع الواحد مرتين')} ترشيحٌ بالإدارة: ${countAr(deptGap.prj, { one: 'مشروع واحد', two: 'مشروعان', few: 'مشاريع', many: 'مشروعاً' })} و${countAr(deptGap.opp, { one: 'فرصة مفتوحة واحدة', two: 'فرصتان مفتوحتان', few: 'فرص مفتوحة', many: 'فرصة مفتوحة' })} بلا إدارة مسجَّلة — لا تظهر هنا</div>`);
+  }
+  if (filtered && rsc && rsc.unattributed > 0) {
+    filterNotes.push(`<div class="fnote">${noteMark('بند إيرادٍ قديم بلا مشروعٍ مسجَّل لا يُعرف لأي إدارةٍ أو عميلٍ ينتمي — يبقى في أرقام القطاع غير المرشَّحة')} ${sarShort(rsc.unattributed)} من إيراد ${year} غير منسوبٍ لمشروع — لا يظهر تحت هذا الترشيح</div>`);
+  }
+  const filterNote = filterNotes.join('');
+  const lens = `<div class="psel">
+    <div class="seg" role="group" aria-label="الفترة">${pOpt('y', 'السنة')}</div>
+    <div class="seg" role="group" aria-label="الأرباع">${[1, 2, 3, 4].map((q) => pOpt(`q${q}`, `ر${q}`)).join('')}</div>
+    <div class="seg pmon" role="group" aria-label="الأشهر">${MONTHS_AR.map((m, i) => pOpt(`m${i + 1}`, monthLabel(i, 'tight'))).join('')}</div>
+    ${period.isFuture ? '<span class="futnote">فترة قادمة — بالمتوقع لا بالمحقق</span>' : ''}
+  </div>`;
+  const stageChip = selStage ? `<a class="chip on" href="${qs({ stage: null })}" title="إلغاء تصفية المرحلة">
+      المرحلة: ${esc(selStage.name_ar)} <span aria-hidden="true">✕</span></a>
+    <span style="font-size:var(--fs-micro);color:var(--muted)">أرقام القمع وأعلى الفرص وأعمارها مصفّاة بهذه المرحلة</span>` : '';
+  // شريط الأدوات الواحد (ADR-0011): القطاع (للشركة) · نافذة التغيّر · تصفية المرحلة ·
+  // انقضاء السنة · قائمة التقارير — لا أداة تحكم عامة داخل بطاقة بعد اليوم.
+  const switcher = user.scope === 'company' ? `<span class="lbl" style="font-size:var(--fs-body);color:var(--muted);font-weight:700">القطاع:</span>
+    ${allSectors.map((s) => `<a href="/app/sector?year=${year}&sector=${esc(s.id)}&p=${win}" class="chip ${s.id === sectorId ? 'on' : ''}"><span class="dot" style="background:${esc(s.color || '#244A99')}"></span>${esc(s.name_ar)}</a>`).join('')}
+    <a class="btn btn-sm" href="/app/ceo?year=${year}&sector=${esc(sectorId)}">لوحة القيادة</a>
+    <span style="flex:0 0 100%;height:0" aria-hidden="true"></span>` : '';
+
+  // ═══ كابينة v5.39 — على نماذج المالك المرجعية (2026-08-24): لوحة داكنة نابضة، أقسام
+  // مرقّمة، رسوم داخل البطاقات، ونافذة فترةٍ تسري على أرقام «ماذا حدث». القيم المرجّحة
+  // والخلاصات المحسوبة تحمل علامةً وتلميحاً يقولان أساسها — شرط أ. حسين الصريح. ═══
+  const toolbar = `<div class="toolbar" style="row-gap:.4rem">
+    ${switcher || ''}
+    <span style="font-size:var(--fs-body);color:var(--muted);font-weight:700">السنة:</span>
+    ${yearPick}
+    <span style="font-size:var(--fs-body);color:var(--muted);font-weight:700">الفترة: <span class="tipdot" data-tip="اختر السنة أو ربعاً أو شهراً بعينه. التدفقات (الإيراد والمكسوب والمفوتر والمحصَّل وما تغيّر) تُعاد لهذه الفترة، والأرصدة اللحظية (خط الفرص، الإشغال، صحة التنفيذ) لا تتأثر بها وتحمل وسمها. والفترة القادمة تُعرض بالمتوقع لا بالمحقق." tabindex="0" role="img" aria-label="اختر السنة أو ربعاً أو شهراً — التدفقات تُعاد للفترة والأرصدة اللحظية لا تتأثر">${icon('info')}</span></span>
+    ${lens}
+    ${deptPick}
+    ${clientPick}
+    ${activeChips}
+    ${stageChip}
+    <span class="spacer"></span>
+    <span class="pill" style="background:#fdf6e3;color:#8a6d1a;gap:.4rem">${nowDot('')} ${G.yearElapsed(elapsed)}</span>
+    <details class="rmenu"><summary class="btn btn-sm">التقارير ▾</summary>
+      <div class="rmenu-b">
+        <button class="btn btn-sm" data-action="report-preview" data-report="sector_weekly_status">حالة القطاع الأسبوعية</button>
+        <button class="btn btn-sm" data-action="report-preview" data-report="monthly_sector_performance">أداء القطاع الشهري</button>
+        <button class="btn btn-sm" data-action="report-send" data-report="sector_weekly_status">أرسله لي الآن</button>
+        <a class="btn btn-primary btn-sm" href="/app/reports">جدولة التقارير</a>
+      </div></details>
+  </div>`;
+
+  // ── (٤) قمع الفرص — عرض المرحلة ∝ قيمتها (أو عددها بالمبدّل)، والنقر يرشّح ──
+  // صفّ القمة «إجمالي الفرص» مجموعُ ما تحته لا رقمٌ جديد — ثم كل مرحلة شريطاً أفقياً يضيق.
+  // العرض نسبيٌّ **إلى الإجمالي نفسه** (القمة 100%): مقياسٌ واحد لكل الأشرطة فالنسب بينها
+  // صادقة — لا أرضية تجميلية تجعل 5% تبدو ثلث 100%. والرقم مطبوع على كل شريط، وضِيقُ
+  // الشريط الصغير يحرسه min-width في CSS لا تحريفُ المقياس.
+  // النقر يفتح نافذة تفصيل المرحلة (فرصها وقيمها وأزرار التصفية) — لا ترشيحاً صامتاً لا يُرى
+  // أثره. ونسبة «الانتقال» حُذفت: سجل المراحل شبه فارغ (أغلب الفرص استوردت بمرحلتها) فأي
+  // معدل عبور منه كذبة إحصائية — تعود النسبة حين يتراكم سجل انتقالات حقيقي.
+  // القمع بلغة الرسم الواحدة (figBars): لونٌ واحد، العدُّ والقيمة معاً، وكل صفٍّ يفتح تفصيله —
+  // لا مبدّل عرضٍ بعد اليوم (كلا الرقمين مطبوع). صفّ القمة مجموع ما تحته على مقياسٍ واحد.
+  const stalledV = stalledRows.reduce((a, o) => a + (o.value_halalas || 0), 0);
+  const oppsHref = `/app/opportunities?year=${year}${user.scope === 'company' ? '&sector=' + esc(sectorId) : ''}${deptSel && deptSel !== NO_DEPT ? '&dept=' + esc(deptSel) : ''}`;
+
+  // ── (٥) «ما تغيّر» — سجلات مؤرّخة منسَّقة، بفئات وحدّة، خمسة أولاً والبقية بنقرة ──
   const relDay = (at) => {
     const d = Math.floor((Date.parse(today) - Date.parse(String(at).slice(0, 10))) / 86400000);
     if (!Number.isFinite(d) || d < 0) return String(at).slice(0, 10);
@@ -134,163 +957,354 @@ export async function sectorPage(user, opts = {}) {
     if (d <= 10) return `قبل ${d} أيام`;
     return String(at).slice(0, 10);
   };
-  // شارات الأنواع — النوعان الماليان يظهران فقط لمن يقرأ الفواتير (لا «فواتير 0» مضللة لغيرهم)
-  const chipDefs = [['stage', 'حركات مراحل'], ['invoice', 'فواتير'], ['collection', 'تحصيل'], ['activity', 'تواصل'], ['created', 'سجلات جديدة']]
-    .filter(([k]) => canInvoices || (k !== 'invoice' && k !== 'collection'));
-  const chgChips = chipDefs.map(([k, l]) => `<span class="pill" style="${chg.counts[k] ? 'background:#eef2fb;color:var(--brand)' : 'background:#f1f5f9;color:var(--faint)'}">${l} <b class="tnum">${chg.counts[k]}</b></span>`).join('');
-  const chgRows = chg.items.map((it) => {
+  // فئاتٌ فيها بيانات فقط (v5.38 — عدل قرار v5.22 بإذن إعادة البناء): شريحة فئةٍ فارغة زرٌّ
+  // يقود إلى لا شيء. تعود الفئة يوم يسجَّل لها حدثٌ مؤرَّخ.
+  const catDefs = [['all', 'الكل'], ['opp', 'الفرص'], ['prj', G.projects], ['client', G.clients], ['team', 'الفريق'], ['fin', 'المالية']];
+  const catsPresent = new Set(chg.items.map((it) => CHG_CAT[it.kind] || 'new'));
+  const chgCats = catDefs.filter(([k]) => k === 'all' || catsPresent.has(k))
+    .map(([k, l]) => `<button type="button" class="chg-cat${k === 'all' ? ' on' : ''}" aria-pressed="${k === 'all'}" data-action="chg-cat" data-cat="${k}">${l}</button>`).join('');
+  const SHOW_CHG = 5;
+  const chgRows = chg.items.map((it, i) => {
     const [bg, fg] = it.won ? ['#dcfce7', 'var(--green)'] : it.lost ? ['#fee2e2', 'var(--red)'] : (CHG_TONE[it.kind] || CHG_TONE.activity);
-    return `<a class="chg${it.won ? ' won' : ''}${it.lost ? ' lost' : ''}" href="${esc(it.href)}">
+    const [sevL, sevBg, sevFg] = CHG_SEV(it);
+    return `<a class="chg${it.won ? ' won' : ''}${it.lost ? ' lost' : ''}" href="${esc(it.href)}" data-cat="${CHG_CAT[it.kind] || 'new'}"${i >= SHOW_CHG ? ' data-extra hidden' : ''}>
       <span class="ic" style="background:${bg};color:${fg}">${icon(CHG_IC[it.kind] || 'history')}</span>
-      <span class="tx"><span class="h">${esc(it.title)}</span>${it.sub ? `<span class="s">${esc(it.sub)}</span>` : ''}</span>
+      <span class="tx"><span class="h">${esc(it.title)}${it.code ? ` <bdi style="color:var(--faint);font-size:var(--fs-micro)">${esc(it.code)}</bdi>` : ''}</span>${it.sub ? `<span class="s">${esc(it.sub)}</span>` : ''}</span>
+      <span class="pill" style="background:${sevBg};color:${sevFg};flex:none">${sevL}</span>
       <span class="meta">${it.amount_halalas ? `<span class="amt tnum">${fmtSar(it.amount_halalas)}</span>` : ''}<span class="d tnum">${relDay(it.at)}</span></span>
     </a>`;
   }).join('');
+  // صدى النافذة «منذ أسبوع/منذ شهر…» لا «هذا الأسبوع/هذا الشهر»: النافذة متدحرجة بعدد أيام
+  // (changes.js) لا فترة تقويمية — وعنوانٌ تقويمي فوق صفوفٍ مؤرَّخة خارج فترته يناقض نفسه.
+  const winEcho = periodEcho(period.kind, period.index, year);
   const changesCard = card(`
-    <div class="card-head"><span class="t">${G.whatChanged} ${winEcho}</span>
-      <span class="aux" style="font-size:var(--fs-micro);color:var(--faint)">سجلات مؤرّخة فقط — لا تقدير</span></div>
-    <div style="padding:.5rem .8rem;display:flex;gap:.3rem;flex-wrap:wrap;border-bottom:1px dashed var(--line)">${chgChips}</div>
-    <div style="padding:.45rem .5rem;display:flex;flex-direction:column;gap:2px;max-height:430px;overflow-y:auto">
-      ${chgRows || `<div class="empty-state" style="padding:1.2rem 1rem">${icon('history')}<div class="t">لا تغييرات مسجلة خلال هذه الفترة</div><div class="s">وسّع العدسة أعلاه إلى الشهر أو الربع لرؤية حركة أقدم</div></div>`}
-    </div>`);
-
-  // ── (3) يحتاج انتباهك الآن ──
-  const toneBg = { brand: 'rgba(36,74,153,.1)', green: '#dcfce7', amber: '#fef3c7', red: '#fee2e2' };
-  const attnItems = attn.map((a) => `
-    <div class="attn">
-      <span class="ic" style="background:${toneBg[a.tone] || '#f1f5f9'};color:${TONE[a.tone] || 'var(--ink2)'}">${icon(a.icon)}</span>
-      <span class="tx"><span class="h">${esc(a.title)}</span>${a.sub ? `<div class="s">${esc(a.sub)}</div>` : ''}</span>
-      ${a.dd ? `<button class="btn btn-sm go" onclick="Sanad.openDD('${a.dd}')">${esc(a.action)}</button>`
-        : `<a class="btn btn-sm go" href="${a.href}${a.href.includes('?') ? '&' : '?'}year=${year}${user.scope === 'company' ? '&sector=' + sectorId : ''}">${esc(a.action)}</a>`}
-    </div>`).join('');
-  const attnCard = card(`
-    <div class="card-head">
-      <span class="t">${G.attention}</span>
-      ${attn.length ? `<span class="pill" style="background:#fee2e2;color:#991b1b">${attn.length}</span>` : ''}
-      <span class="aux" style="font-size:var(--fs-micro);color:var(--faint)">مرتبة حسب أثر القرار</span>
+    <div class="card-head"><span class="hgrp"><span class="eyebrow">${G.whatChanged}</span>
+      <span class="t">${chg.items.length ? `${countAr(chg.items.length, { one: 'تغيير واحد', two: 'تغييران', few: 'تغييرات', many: 'تغييراً' })} ${winEcho}` : `لا تغييرات ${winEcho}`}</span></span></div>
+    ${chg.items.length ? `<div class="chg-cats">${chgCats}</div>` : ''}
+    <div id="chg-list" class="cbody" style="padding:.45rem .5rem;display:flex;flex-direction:column;gap:2px">
+      ${chgRows || `<div class="empty-mini">${icon('history')} لا تغييرات مسجَّلة خلال هذه الفترة — وسّع النافذة إلى الشهر أو الربع من شريط الأدوات</div>`}
     </div>
-    <div style="padding:.6rem .7rem;display:flex;flex-direction:column;gap:.45rem">
-      ${attnItems || `<div class="alert ok" style="justify-content:center">${icon('approvals')} ${G.nothingNeedsYou} — ${G.allGood}</div>`}
-    </div>`);
+    ${chg.items.length > SHOW_CHG ? `<div class="card-foot"><button type="button" data-action="chg-more">عرض كل التغييرات (<span class="tnum">${chg.items.length}</span>) <span aria-hidden="true">←</span></button></div>` : ''}`, 'h-c');
 
-  // ── (4) الإيقاع مقابل الخطة — مقياس الشريط = المستهدف السنوي فقط (لا تشويه بالمتوقع) ──
-  const elapsed = yearElapsedPct(now, year);
-  const mMax = Math.max(1, ...monthly);
-  const nowM = currentMonthIndex(year);
-  const monthlyBars = `<div class="mtrack" style="gap:4px">${monthly.map((v, i) => `
-    <div style="display:flex;flex-direction:column;align-items:center;gap:2px;min-width:0" title="${monthLabel(i)}: ${fmtSar(v)}">
-      <div style="height:9px;display:flex;align-items:center">${i === nowM ? nowDot() : ''}</div>
-      <div style="width:100%;border-radius:4px 4px 0 0;background:${i === nowM ? 'var(--brand2)' : 'var(--brand)'};opacity:${v ? 1 : .18};height:${Math.max(3, Math.round((v / mMax) * 46))}px"></div>
-      <span style="font-size:8.5px;color:var(--faint);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${monthLabelDual(i)}</span>
-    </div>`).join('')}</div>`;
-  const paceSection = card(`
-    <div class="card-head"><span class="t">الإيقاع مقابل الخطة</span>
-      <span class="aux" style="font-size:var(--fs-micro);color:var(--faint)" data-tip="مقياس الشريط هو المستهدف السنوي: 100% = الهدف. النقطة الذهبية = أين يجب أن نكون اليوم">كيف يُقرأ؟ ⓘ</span></div>
-    <div style="padding:var(--pad-card-b);display:grid;gap:.55rem">
-      ${paceCard({ label: `${G.revenue} ${year}`, actual: sd.revenue_halalas, target: sd.target_revenue_halalas, forecast: fc.forecast, weightedOpen: fc.weightedOpen, today: now, year, color: 'var(--green)', dd: 'secrev' })}
-      ${paceCard({ label: `${G.sales} ${year}`, actual: sd.sales_halalas, target: sd.target_sales_halalas, today: now, year, color: 'var(--brand2)', dd: 'secwins' })}
-      <div style="display:flex;justify-content:center">
-        <span class="pill" style="background:#fdf6e3;color:#8a6d1a;gap:.4rem">${nowDot('')} ${G.yearElapsed(elapsed)}</span>
-      </div>
-      <div style="padding:.5rem .7rem .4rem;border:1px solid var(--line);border-radius:12px;background:#fff">
-        <div style="font-size:var(--fs-micro);color:var(--muted);font-weight:700;margin-bottom:.35rem">${G.revenue} الشهري ${year} — توزيع، لا مقارنة بهدف</div>
-        ${monthlyBars}
-      </div>
-    </div>`);
-
-  // ── (5) قمع الفرص: عرض كل مرحلة ∝ قيمتها + نسبة الانتقال بين المراحل (من الأعداد الحالية) ──
-  const openTotal = pipe.reduce((a, b) => a + b.value_halalas, 0);
-  const weightedTotal = Math.round(pipe.reduce((a, b) => a + b.weighted, 0));
-  // «معلّقة» قرار تأجيل لا مرحلة بيع — تخرج من مسار القمع وتُعرض جانباً كي لا يقرأ
-  // «93% تنتقل» نحو التعليق وكأنه تقدم
-  const funnelStages = pipe.filter((st) => st.id !== 'ON_HOLD');
-  const onHoldStage = pipe.find((st) => st.id === 'ON_HOLD');
-  const maxPipe = Math.max(1, ...funnelStages.map((s) => s.value_halalas));
-  const funnelRows = funnelStages.map((s, i) => {
-    const w = Math.max(12, Math.round((s.value_halalas / maxPipe) * 100));
-    const next = funnelStages[i + 1];
-    const conv = next && s.count > 0 ? Math.round((next.count / s.count) * 100) : null;
-    return `<div title="${esc(s.name_ar)}: ${s.count} فرصة بقيمة ${fmtSar(s.value_halalas)}">
-      <div class="fnl-lbl">
-        <span style="font-weight:700">${esc(s.name_ar)}</span>
-        <b class="tnum">${s.count}</b>
-        <span class="tnum" style="color:var(--muted);font-size:var(--fs-micro)">${sarShort(s.value_halalas)}</span>
-      </div>
-      <div class="fnl-bar" style="width:${w}%;background:${s.color || 'var(--brand)'}"></div>
-    </div>
-    ${conv != null ? `<div class="fnl-conv">↓ <b class="tnum">${conv}%</b> تنتقل</div>` : ''}`;
+  // ── يحتاج تدخلك الآن — ستة كحد أقصى بأثر القرار؛ فئات .act-* (لا .attn — تتصادم مع layout.js) ──
+  const rankTone = (t) => t === 'red' ? ['var(--st-bad-soft)', 'var(--st-bad)'] : t === 'amber' ? ['var(--st-warn-soft)', 'var(--st-warn)'] : ['var(--st-neut-soft)', 'var(--st-neut)'];
+  const attnItems = attn.slice(0, 6).map((a, i) => {
+    const [rb, rf] = rankTone(a.tone);
+    return `
+    <div class="act-r">
+      <span class="rank tnum" style="background:${rb};color:${rf}">${i + 1}</span>
+      <span class="tx"><span class="h">${esc(a.title)}</span>${a.sub ? `<span class="s">${esc(a.sub)}</span>` : ''}</span>
+      ${a.dd ? `<button class="btn btn-sm go" data-action="open-dd" data-dd="${esc(a.dd)}">${icon(a.icon)} ${esc(a.action)}</button>`
+      : `<a class="btn btn-sm go" href="${a.href}${a.href.includes('?') ? '&' : '?'}year=${year}${user.scope === 'company' ? '&sector=' + esc(sectorId) : ''}">${icon(a.icon)} ${esc(a.action)}</a>`}
+    </div>`;
   }).join('');
-  const agingMax = Math.max(1, ...aging.map((b) => b.v));
-  const agingRows = aging.map((b, i) => `<div style="display:flex;align-items:center;gap:.5rem;font-size:var(--fs-meta);padding:.2rem 0">
-      <span style="flex:0 0 96px;color:var(--muted)">${b.label}</span>
-      <div class="bar" style="flex:1"><span style="width:${Math.round((b.v / agingMax) * 100)}%;background:${i >= 2 ? 'var(--amber)' : 'var(--brand)'}"></span></div>
-      <span class="tnum" style="flex:none;font-weight:700">${b.n}</span>
-      <span class="tnum" style="flex:none;color:var(--muted);font-size:var(--fs-micro)">${fmtSar(b.v)}</span>
-    </div>`).join('');
-  const funnelCard = card(`
-    <div class="card-head">
-      <span class="t">${G.funnel}</span>
-      <span class="aux"><a class="btn btn-sm" href="/app/opportunities?year=${year}${user.scope === 'company' ? '&sector=' + sectorId : ''}">اللوحة الكاملة</a></span></div>
-    <div style="padding:.6rem 1rem;display:grid;grid-template-columns:repeat(4,1fr);gap:.5rem;border-bottom:1px dashed var(--line)">
-      <div><div style="font-size:10px;color:var(--muted)">${G.raw}</div><div class="tnum" style="font-weight:800;font-size:var(--fs-num-sm)">${fmtSar(openTotal)}</div></div>
-      <div data-tip="مجموع (قيمة الفرصة × ${G.probability}) لكل الفرص المفتوحة"><div style="font-size:10px;color:var(--muted)">${G.weighted} ⓘ</div><div class="tnum" style="font-weight:800;font-size:var(--fs-num-sm);color:var(--brand)">${fmtSar(weightedTotal)}</div></div>
-      <div data-tip="المكسوبة ÷ المحسومة (فوز + خسارة) لسنة ${year} — التاريخي مستثنى"><div style="font-size:10px;color:var(--muted)">${G.winRate} ${year} ⓘ</div><div class="tnum" style="font-weight:800;font-size:var(--fs-num-sm);color:var(--green)">${wins.winRate}%</div></div>
-      <div data-tip="${G.raw} من الفرص المفتوحة ÷ المتبقي من هدف المبيعات — أقل من ×1 يعني الحاجة لفرص جديدة"><div style="font-size:10px;color:var(--muted)">التغطية ⓘ</div><div class="tnum" style="font-weight:800;font-size:var(--fs-num-sm);color:${(cover?.coverage ?? 1) < 1 ? 'var(--amber)' : 'var(--ink2)'}">${cover?.coverage != null ? '×' + cover.coverage : '—'}</div></div>
+  const attnCard = card(`
+    <div class="card-head" id="act">
+      <span class="hgrp"><span class="eyebrow">${G.attention} <span class="tipdot" data-tip="بنود من سجلات القطاع الحية مرتبة حسب أثر القرار: اعتمادات معلقة، مستحقات متأخرة، فرص متوقفة أو بلا خطوة، مخرجات لم تُفوتر، تجاوز طاقة" tabindex="0" role="img" aria-label="بنود من سجلات القطاع الحية مرتبة حسب أثر القرار: اعتمادات معلقة، مستحقات متأخرة، فرص متوقفة أو بلا خطوة، مخرجات لم تُفوتر، تجاوز طاقة">${icon('info')}</span></span>
+      <span class="t">${attn.length ? `${countAr(Math.min(attn.length, 6), { one: 'أمر واحد يحتاج تدخلك الآن', two: 'أمران يحتاجان تدخلك الآن', few: 'أمور تحتاج تدخلك الآن', many: 'أمراً يحتاج تدخلك الآن' })}` : `${G.nothingNeedsYou} — ${G.allGood}`}</span></span></div>
+    <div class="cbody" style="padding:.15rem .8rem .5rem;display:flex;flex-direction:column">
+      ${attnItems || `<div class="alert ok" style="justify-content:center;margin:.5rem 0">${icon('approvals')} ${G.nothingNeedsYou} — ${G.allGood}</div>`}
     </div>
-    <div style="padding:.6rem 1rem .5rem">${funnelRows || `<div class="empty-state" style="padding:1rem"><div class="s">${G.emptyList}</div></div>`}
-      ${onHoldStage && onHoldStage.count ? `<div style="font-size:var(--fs-micro);color:var(--muted);border-top:1px dashed var(--line);padding-top:.4rem;margin-top:.2rem">خارج القمع: <b class="tnum">${countAr(onHoldStage.count, { one: 'فرصة واحدة معلّقة', two: 'فرصتان معلّقتان', few: 'فرص معلّقة', many: 'فرصة معلّقة' })}</b> بقيمة <b class="tnum">${sarShort(onHoldStage.value_halalas)}</b> — بقرار تأجيل يُراجع دورياً</div>` : ''}</div>
-    <div style="padding:.5rem 1rem .6rem;border-top:1px dashed var(--line)">
-      <div style="font-size:var(--fs-micro);font-weight:700;color:var(--muted);margin-bottom:.2rem">عمر الفرص في مرحلتها الحالية</div>${agingRows}
-    </div>`);
+    <div class="card-foot"><a href="/app/approvals">عرض ${G.decisions} والاعتمادات <span aria-hidden="true">←</span></a></div>`, 'h-c');
 
-  // ── (6) التحصيل — يظهر فقط لمن يقرأ الفواتير (لا تسريب مالي لبقية الأدوار) ──
+  // ── (٧) قدرة الفريق — طيف حِمل حقيقي من تسكين الشهر، بعتبات المنصة نفسها (70/110) ──
+  // العتبات ليست من المرجع البصري بل من الكود القائم: <70 سعة متاحة، 70–110 ضمن النطاق،
+  // >110 فوق الطاقة — وهي نفسها في لوحة التسكين وتنبيه «فوق الطاقة». عتبة جديدة هنا كانت
+  // ستجعل الشاشتين تحكمان على الشخص نفسه حكمين مختلفين.
+  // الطبقة المسمّاة (الصور الرمزية والقائمتان والنوافذ) من كشف التسكين حين يقرأ القارئ
+  // الموظفين — خطةً صرفة (`planNow`)؛ ومن لا يقرؤهم يرى مجاميع `sectorStaffing` بلا أسماء.
+  const nowMonth = staff.currentMonth;                       // 0 حين تكون السنة غير الجارية
+  // أساسٌ واحد للفريق على الصفحة كلها: من يقرأ الموظفين يقرأ كشف التسكين (خطةً صرفة بنطاقه)،
+  // ومن لا يقرؤهم يقرأ مجاميع القطاع — فلا يحمل الشريطُ رقماً وبطاقةُ الطاقة رقماً آخر.
+  const bandLoad = team ? team.avgNow : (nowMonth ? (staff.teamCurrent ?? staff.teamUtil) : staff.teamUtil);
+  const teamSize = team ? team.people.length : staff.headcount;
+  const emps = team
+    ? team.people.map((p) => ({ id: p.id, name: p.name_ar, job: p.job_title, projects: p.projects.length,
+      months: p.months, utilization: p.annual, current: p.planNow }))
+    : (staff.employees || []);
+  // سنةٌ غير جارية لا «شهر حالي» لها: current يعود صفراً للجميع، فبِناء العدّادات عليه كان
+  // سيقول «الكل بلا تسكين» عن سنةٍ اشتغلوا فيها. الوضع السنوي يقرأ متوسط السنة بدلاً منه.
+  const loadOf = (e) => (nowMonth ? e.current : e.utilization);
+  const teamLoad = bandLoad;
+  const capWindows = [['now', 'هذا الشهر'], ['next', 'الشهر القادم'], ['q', 'الأشهر الثلاثة القادمة']];
+  const winVal = (e, w) => {
+    if (!nowMonth) return e.utilization;
+    if (w === 'now') return e.current;
+    if (w === 'next') return nowMonth < 12 ? e.months[nowMonth] : 0;
+    const span = e.months.slice(nowMonth, nowMonth + 3);
+    return span.length ? Math.round(span.reduce((a, b) => a + b, 0) / span.length) : 0;
+  };
+  const { FREE_BELOW, OVER_ABOVE } = UTIL_BANDS;
+  const capPos = (v) => Number(axisPct(v));
+  const overNow = emps.filter((e) => loadOf(e) > OVER_ABOVE);
+  const freeNow = emps.filter((e) => loadOf(e) === 0);
+  const midNow = emps.filter((e) => loadOf(e) > 0 && loadOf(e) <= OVER_ABOVE);
+  // يُرسَم الجميع حتى ستين (الأكثر حِملاً أولاً)، وبعدها «+N آخرون» يفتح نافذة الفريق — لا قصٌّ صامت.
+  const CAP_AVATARS = 60;
+  const dense = emps.length > 16;
+  // مروحةُ المتساوين: أربعة عشر شخصاً على حِمل صفر يقعون كلهم عند left:0% فيتراكمون تماماً —
+  // ثلاث دوائر ظاهرة مكان أربعة عشر، وأحد عشر منهم لا يُنقَرون رغم أن التعليق يَعِد بذلك.
+  // كلُّ من شارك غيرَه الموضعَ والصفَّ يُزاح خطوةً ثابتة، والإزاحة محفوظة في data-fan كي
+  // يعيدها التبديل بين النوافذ في المتصفح بالحساب نفسه.
+  const FAN_STEP = 2.4;
+  const fanSeen = new Map();
+  const fanOf = (pos, row) => {
+    const key = `${Math.round(pos)}|${row}`;
+    const n = fanSeen.get(key) || 0;
+    fanSeen.set(key, n + 1);
+    return n * FAN_STEP;
+  };
+  const capAv = (canPeople ? emps.slice(0, CAP_AVATARS) : []).map((e, i) => {
+    const vNow = winVal(e, nowMonth ? 'now' : 'q'), vNext = winVal(e, 'next'), vQ = winVal(e, 'q');
+    const load = loadOf(e);
+    const cls = load > OVER_ABOVE ? ' over' : load === 0 ? ' free' : load < FREE_BELOW ? ' under' : '';
+    const row = dense ? ['', ' r2', ' r3'][i % 3] : (i % 2 ? ' r2' : '');
+    const basePos = capPos(vNow);
+    const fan = fanOf(basePos, row);
+    return `<button type="button" class="cap-av${row}${cls}" data-fan="${fan.toFixed(1)}" style="left:${Math.min(100, basePos + fan).toFixed(1)}%"
+      data-action="cap-person" data-emp="${esc(e.id || '')}" data-name="${esc(e.name)}" data-job="${esc(e.job || '')}" data-projects="${e.projects}"
+      data-now="${vNow}" data-next="${vNext}" data-q="${vQ}"
+      title="${esc(e.name)}${e.job ? ' · ' + esc(e.job) : ''} — الحِمل ${nowMonth ? vNow : e.utilization}% · ${countAr(e.projects, { one: 'مشروع واحد', two: 'مشروعان', few: 'مشاريع', many: 'مشروعاً' })}"
+      aria-label="${esc(e.name)} — الحِمل ${nowMonth ? vNow : e.utilization}% — التفصيل">${esc(String(e.name || '؟').trim().charAt(0))}</button>`;
+  }).join('');
+  // صفوف القائمتين أزرار تفتح نافذة الشخص نفسها — لا نصّ جامد بجوار صورةٍ تُفتح.
+  const capList = (rows, valFn) => rows.slice(0, 5).map((e) => `<div class="cap-li${e.id ? ' cap-li-btn' : ''}"${e.id ? ` role="button" tabindex="0" data-action="cap-person" data-emp="${esc(e.id)}" aria-label="${esc(e.name)} — الحِمل ${valFn(e)}% — التفصيل"` : ''}>
+      <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(e.name)}${e.job ? ` <span style="color:var(--faint);font-size:var(--fs-micro)">· ${esc(e.job)}</span>` : ''}</span>
+      <b class="tnum" style="flex:none">${valFn(e)}%${e.id ? ' <span style="color:var(--faint)" aria-hidden="true">⊕</span>' : ''}</b></div>`).join('')
+    || '<div style="font-size:var(--fs-meta);color:var(--muted)">لا أحد ضمن هذه الفئة في هذه النافذة</div>';
+  const staffingHref = `/app/staffing?year=${year}${user.scope === 'company' ? '&sector=' + esc(sectorId) : ''}`;
+  // مُسكَّنون على أعمال القطاع من خارج كشف القارئ (قطاعٌ آخر، أو إدارةٌ خارج نطاقه): العدّ
+  // يُقال ولا يُخفى — وإلا قرأ القائد «١٧ في الفريق» هنا و«٢٤» في تقريره ولم يعرف لماذا.
+  const outsideRoster = team ? team.outsideRoster : 0;
+  const outsideLine = (n) => n === 1 ? 'وشخصٌ آخر مُسكَّن على أعمال القطاع من خارج نطاقك — يظهر في صفحة مشروعه'
+    : n === 2 ? 'وشخصان آخران مُسكَّنان على أعمال القطاع من خارج نطاقك — يظهران في صفحات مشاريعهما'
+      : `و<b class="tnum">${n}</b> ${n <= 10 ? 'آخرين مُسكَّنين' : 'شخصاً آخر مُسكَّنين'} على أعمال القطاع من خارج نطاقك — يظهرون في صفحات مشاريعهم`;
+  // الشهر القادم من الأرقام الحاضرة: من يتفرّغ ومن يتجاوز — قرار توزيعٍ قبل أن يقع.
+  const nextHint = (() => {
+    if (!nowMonth || nowMonth >= 12 || !emps.length) return '';
+    const freeing = emps.filter((e) => loadOf(e) > 0 && winVal(e, 'next') === 0).length;
+    const overNext = emps.filter((e) => winVal(e, 'next') > OVER_ABOVE).length;
+    if (!freeing && !overNext) return '';
+    const parts = [];
+    if (freeing) parts.push(`بلا تسكين <b class="tnum">${freeing}</b>`);
+    if (overNext) parts.push(`يتجاوز الطاقة <b class="tnum" style="color:var(--red)">${overNext}</b>`);
+    return `<div style="font-size:var(--fs-micro);color:var(--muted);padding:0 0 .3rem">الشهر القادم (${monthLabel(nowMonth)}): ${parts.join(' · ')}</div>`;
+  })();
+  const capEmptyState = !emps.length;
+  const capInsight = capEmptyState ? (team ? 'لا موظفين ضمن نطاقك في هذا القطاع' : `لا تسكين مسجَّلاً لسنة ${year}`)
+    : overNow.length ? `${countAr(overNow.length, { one: 'موظف واحد فوق الطاقة', two: 'موظفان فوق الطاقة', few: 'موظفين فوق الطاقة', many: 'موظفاً فوق الطاقة' })} من أصل ${teamSize}`
+      : freeNow.length ? `${countAr(freeNow.length, { one: 'موظف واحد بلا تسكين', two: 'موظفان بلا تسكين', few: 'موظفين بلا تسكين', many: 'موظفاً بلا تسكين' })} من أصل ${teamSize}`
+        : `الفريق ضمن الطاقة — ${countAr(teamSize, { one: 'موظف واحد', two: 'موظفان', few: 'موظفين', many: 'موظفاً' })}`;
+  const capCard = card(`
+    <div class="card-head">
+      <span class="hgrp"><span class="eyebrow">طاقة الفريق · <b class="tnum">${teamSize}</b> ${team ? 'ضمن نطاقك' : 'في الفريق'} <span class="tipdot" data-tip="${nowMonth ? `النافذة: هذا الشهر (${monthLabel(nowMonth - 1)}) — والنوافذ القادمة ضمن تسكين ${year} وحدها` : 'النافذة: متوسط السنة'} · الأرقام من خطة التسكين الشهرية لا ساعات العمل" tabindex="0" role="img" aria-label="${nowMonth ? `النافذة: هذا الشهر (${monthLabel(nowMonth - 1)}) — والنوافذ القادمة ضمن تسكين ${year} وحدها` : 'النافذة: متوسط السنة'} · الأرقام من خطة التسكين الشهرية لا ساعات العمل">${icon('info')}</span></span>
+      <span class="t">${capInsight}</span></span>
+      <span class="aux">
+        ${nowMonth && canPeople && !capEmptyState ? `<div class="seg" role="group" aria-label="نافذة الحِمل">${capWindows.map(([k, l], i) =>
+    `<button type="button" class="${i === 0 ? 'on' : ''}" aria-pressed="${i === 0}" data-action="cap-win" data-w="${k}">${l}</button>`).join('')}</div>` : ''}</span></div>
+    ${capEmptyState ? `<div class="empty-state" style="flex:1">
+      <div class="t">${team ? 'لا موظفين ضمن نطاقك في هذا القطاع' : `لا تسكين مسجَّلاً لسنة ${year}`}</div>
+      <div class="s">${team ? 'يُضاف الموظفون من صفحة الفريق، ويُسكَّنون من لوحة التسكين.' : 'يُسجَّل التسكين من لوحة التسكين فتظهر الطاقة هنا.'}</div>
+    </div>` : `
+    <div class="cbody-top" style="padding:.35rem 1rem 0">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:.6rem;margin-bottom:.3rem">
+        <span style="font-size:var(--fs-body);color:var(--muted);font-weight:700">متوسط ${G.utilization}</span>
+        <b class="tnum" style="font-size:var(--fs-val-sm);color:${teamLoad > OVER_ABOVE ? 'var(--st-bad)' : 'var(--ink2)'}">${teamLoad}%</b></div>
+      ${figStacked100([
+    { v: midNow.length, color: 'var(--st-good)', label: `ضمن الطاقة: ${midNow.length}`, dd: canPeople && midNow.length ? 'cap-band-mid' : '' },
+    { v: freeNow.length, color: '#c6cdd9', label: `${nowMonth ? G.onBench : 'بلا تسكين'}: ${freeNow.length}`, dd: canPeople && freeNow.length ? 'cap-band-free' : '' },
+    { v: overNow.length, color: 'var(--st-bad)', label: `${G.overloaded}: ${overNow.length}`, dd: canPeople && overNow.length ? 'cap-band-over' : '' },
+  ], { ariaLabel: `ضمن الطاقة ${midNow.length} · ${nowMonth ? G.onBench : 'بلا تسكين طوال السنة'} ${freeNow.length} · ${G.overloaded} ${overNow.length}` })}
+      <div class="fig-leg" style="margin-top:.35rem">
+        ${[['mid', 'var(--st-good)', 'ضمن الطاقة', midNow.length], ['free', '#c6cdd9', nowMonth ? G.onBench : 'بلا تسكين طوال السنة', freeNow.length],
+    ['over', 'var(--st-bad)', G.overloaded, overNow.length]].map(([k, c, l, n]) => canPeople
+    ? `<button type="button" class="r" role="button" data-action="open-dd" data-dd="cap-band-${k}" aria-label="${l}: ${countAr(n, { one: 'شخص واحد', two: 'شخصان', few: 'أشخاص', many: 'شخصاً', zero: 'لا أحد' })} — اعرض التفصيل"><span class="d" style="background:${c}"></span><span class="n">${l}</span><b class="tnum"${k === 'over' && n ? ' style="color:var(--st-bad)"' : ''}>${n}</b></button>`
+    : `<span class="r"><span class="d" style="background:${c}"></span><span class="n">${l}</span><b class="tnum">${n}</b></span>`).join('')}
+      </div>
+    </div>
+    <div style="padding:0 1rem">
+      <div class="cap-axis${dense ? ' dense' : ''}" dir="ltr" data-staffing="${staffingHref}" data-free="${FREE_BELOW}" data-over="${OVER_ABOVE}" data-axis-max="${AXIS_MAX}">
+        <div class="cap-band" role="img" aria-label="طيف الحِمل: حتى ${FREE_BELOW}% سعة متاحة، من ${FREE_BELOW} إلى ${OVER_ABOVE} ضمن الطاقة، وفوق ${OVER_ABOVE} تجاوز للطاقة"></div>
+        ${capAv || `<div dir="rtl" style="position:absolute;inset-inline:0;top:18px;text-align:center;font-size:var(--fs-micro);color:var(--muted)">أسماء الأفراد وأحمالهم تظهر لمن يملك صلاحية عرض الفريق</div>`}
+      </div>
+      <div class="cap-ticks" dir="ltr">
+        <span style="left:0%">0%</span><span style="left:${capPos(FREE_BELOW)}%">${FREE_BELOW}%</span><span style="left:${capPos(OVER_ABOVE)}%">${OVER_ABOVE}%</span>
+      </div>
+      ${canPeople && emps.length > CAP_AVATARS ? `<div style="text-align:center;padding:.1rem 0 .2rem"><button type="button" class="btn btn-ghost btn-sm cap-plus" data-action="open-dd" data-dd="seccap">${emps.length - CAP_AVATARS === 1 ? 'وشخصٌ آخر' : emps.length - CAP_AVATARS === 2 ? 'وشخصان آخران' : `و<span class="tnum">${emps.length - CAP_AVATARS}</span> آخرون`} <span aria-hidden="true">⊕</span></button></div>` : ''}
+      <div id="cap-caption" data-tail="الحدود من قواعد التسكين نفسها: ${FREE_BELOW}% و${OVER_ABOVE}%${canPeople ? ' · اضغط على أي شخص لعرض التفصيل' : ''}" style="font-size:var(--fs-micro);color:var(--muted);padding:.15rem 0 .25rem">${nowMonth ? `النافذة: هذا الشهر (${monthLabel(nowMonth - 1)}) — والنوافذ القادمة ضمن تسكين ${year} وحدها` : 'النافذة: متوسط السنة'} · الحدود من قواعد التسكين نفسها: ${FREE_BELOW}% و${OVER_ABOVE}%${canPeople ? ' · اضغط على أي شخص لعرض التفصيل' : ''}</div>
+      ${nextHint}
+      ${outsideRoster ? `<div style="font-size:var(--fs-micro);color:var(--muted);padding:0 0 .3rem">${outsideLine(outsideRoster)}</div>` : ''}
+    </div>
+    ${canPeople ? `<div class="cap-lists" style="padding:.4rem 1rem .55rem;flex:1">
+      <div><div class="h">متاحون للعمل — الأقل حِملاً</div>${capList([...emps].filter((e) => loadOf(e) < FREE_BELOW).sort((a, b) => loadOf(a) - loadOf(b)), loadOf)}</div>
+      <div><div class="h">يحتاجون إعادة توزيع — تجاوزوا الطاقة</div>${capList([...overNow].sort((a, b) => loadOf(b) - loadOf(a)), loadOf)}</div>
+    </div>` : '<div style="flex:1"></div>'}`}
+    <div class="card-foot"><a href="${staffingHref}">لوحة التسكين الكاملة <span aria-hidden="true">←</span></a></div>`);
+
+  // ── صحة المشاريع — شريط تركيبةٍ واحد بدل الدونات (الطول لا الزاوية)، وأبرز ما يحتاج نظراً ──
+  const HEALTH = [['GREEN', G.hOnTrack, 'var(--st-good)'], ['AMBER', G.hAtRisk, 'var(--st-warn)'], ['RED', G.hCritical, 'var(--st-bad)'], ['UNKNOWN', 'غير مقيّم', 'var(--faint)']];
+  const healthRows = HEALTH.map(([k, l, c]) => `<button type="button" class="r" role="button" data-action="open-dd" data-dd="sec-health-${k}" ${!(ragView[k]) ? 'disabled style="opacity:.45;cursor:default"' : ''} aria-label="${l}: ${ragView[k] || 0} — التفصيل">
+      <span class="d" style="background:${c}"></span><span class="n">${l}</span>
+      <b class="tnum">${ragView[k] || 0}</b>
+      <span class="m tnum">${ragActive ? Math.round(((ragView[k] || 0) / ragActive) * 100) : 0}%</span>
+    </button>`).join('');
+
+  // ── التحليل الموسّع (الدرج): الإيراد عبر السنة بلغة الأعمدة الواحدة + الفجوة والمتوقع
+  // والهامش — «الأداء مقابل الخطة» صار عنوان شريط المؤشرات، وأشرطته في البطاقات نفسها. ──
+  const tToDate = targetToDate(sd.target_revenue_halalas, now, year);
+  const ytdGap = sd.target_revenue_halalas ? sd.revenue_halalas - tToDate : null;
+  const qRevN = (qRev || []).map((r) => (typeof r === 'number' ? r : r.revenue_halalas || 0));
+  const qBookN = (qBook || []).map((r) => (typeof r === 'number' ? r : r.sales_halalas || 0));
+  const nowQ = year === now.getUTCFullYear() ? Math.floor(now.getUTCMonth() / 3) : -1;
+  const qDelta = nowQ > 0 && qRevN[nowQ - 1] ? Math.round(((qRevN[nowQ] - qRevN[nowQ - 1]) / qRevN[nowQ - 1]) * 100) : null;
+  const gapPct = ytdGap != null && tToDate ? Math.round((ytdGap / tToDate) * 100) : null;
+  const fcPct = (sd.target_revenue_halalas && fc.forecast != null) ? Math.round(((fc.forecast - sd.target_revenue_halalas) / sd.target_revenue_halalas) * 100) : null;
+  const signed = (v) => `<span class="tnum" dir="ltr">${v >= 0 ? '+' : '−'}${sarShort(Math.abs(v))}</span>`;
+  // ── (١١) أهم العملاء — خمسة، وبإشارة قرار واحدة لكل عميل لا سجلّ علاقات كامل ──
+  // الترتيب يُبنى على **كل** عملاء القطاع: عدّ الفرص والمشاريع والقيمة المفتوحة لكل عميل بلا
+  // سقف صفوف، ثم يُدمج مع إيراده — وإلا سقط صاحبُ أعلى إيرادٍ لأن قائمةً محدودةً بخط الفرص
+  // قصّته قبل أن يراه الترتيب.
+  const oppAgg = await all(`SELECT o.client_id cid, COUNT(*) n,
+       COALESCE(SUM(CASE WHEN st.is_won = 0 AND st.is_lost = 0 THEN o.value_halalas ELSE 0 END),0) open_v,
+       COALESCE(SUM(CASE WHEN st.is_won = 0 AND st.is_lost = 0 THEN 1 ELSE 0 END),0) open_n
+     FROM opportunity o JOIN stage st ON st.id = o.stage_id
+     WHERE o.sector_id = ? AND o.deleted_at IS NULL AND o.client_id IS NOT NULL${deptSql('o.department_id')}${clientSql('o.client_id')} GROUP BY o.client_id`,
+  [sectorId, ...deptArg, ...clientArg]);
+  // عدّ مشاريع كل عميل بعدسة السنة أيضاً — عمود «المشاريع» في جدول العملاء يجاور إيراد
+  // السنة، فخلطُ كل التاريخ فيه يناقض جارَه في نفس الصف.
+  const prjAgg = await all(`SELECT client_id cid, COUNT(*) n FROM project
+     WHERE sector_id = ? AND deleted_at IS NULL AND client_id IS NOT NULL AND ${pycBare.clause}${deptSql('department_id')}${clientSql('client_id')}
+     GROUP BY client_id`, [sectorId, ...pycBare.params, ...deptArg, ...clientArg]);
+  const revByCid = Object.fromEntries(revByClient.map((r) => [r.cid, r.rev]));
+  const stalledCids = new Set(stalledRows.map((o) => o.client_id).filter(Boolean));
+  const redProjClients = new Set((await all(`SELECT DISTINCT client_id FROM project
+     WHERE sector_id = ? AND deleted_at IS NULL AND status = 'IN_PROGRESS' AND rag = 'RED' AND client_id IS NOT NULL
+       AND ${pycBare.clause}${deptSql('department_id')}${clientSql('client_id')}`,
+  [sectorId, ...pycBare.params, ...deptArg, ...clientArg])).map((r) => r.client_id));
+  // إشارة كل عميل بأولوية معلنة: تحصيل متأخر (لمن يقرأ الفواتير) ← فرصة متوقفة ← مشروع في خطر.
+  let overdueCids = new Set();
+  if (canInvoices) {
+    overdueCids = new Set((await all(`SELECT DISTINCT i.client_id cid FROM invoice i LEFT JOIN project p ON p.id = i.project_id
+       WHERE COALESCE(i.sector_id, p.sector_id) = ? AND i.deleted_at IS NULL AND i.client_id IS NOT NULL
+         AND (i.status = 'OVERDUE' OR (i.status IN ('ISSUED','PARTIALLY_PAID') AND i.due_date IS NOT NULL AND substr(i.due_date,1,10) < ?))${deptSql('p.department_id')}${clientSql('COALESCE(i.client_id, p.client_id)')}`,
+    [sectorId, today, ...deptArg, ...clientArg])).map((r) => r.cid));
+  }
+  const oppBy = Object.fromEntries(oppAgg.map((r) => [r.cid, r]));
+  const prjBy = Object.fromEntries(prjAgg.map((r) => [r.cid, r.n]));
+  const allCids = [...new Set([...revByClient.map((r) => r.cid), ...oppAgg.map((r) => r.cid), ...prjAgg.map((r) => r.cid)])];
+  const cNames = allCids.length ? Object.fromEntries((await all(
+    `SELECT id, name_ar FROM client WHERE deleted_at IS NULL AND id IN (${allCids.map(() => '?').join(',')})`, allCids))
+    .map((r) => [r.id, r.name_ar])) : {};
+  // حالة العلاقة بنفس قاعدة صفحة العملاء حرفياً (relationshipOf + آخر لمسة من كل السجلات
+  // المؤرّخة) — لا عمود مخزَّن ولا قاعدة موازية، فلا يرى القائد حالةً تخالف شاشة العملاء.
+  const lastTouch = allCids.length ? await lastTouchByClient() : new Map();
+  const topClients = allCids
+    .filter((id) => cNames[id])
+    .map((id) => ({ id, name_ar: cNames[id], rev: revByCid[id] || 0,
+      opps: oppBy[id]?.n || 0, pipeline_halalas: oppBy[id]?.open_v || 0, projects: prjBy[id] || 0 }))
+    .sort((a, b) => (b.rev - a.rev) || (b.pipeline_halalas - a.pipeline_halalas))
+    .slice(0, 5);
+  const clientSignal = (c) => {
+    if (overdueCids.has(c.id)) return sig('bad', '▲', 'تحصيل متأخر');
+    if (stalledCids.has(c.id)) return sig('warn', '▲', 'فرصة متوقفة');
+    if (redProjClients.has(c.id)) return sig('bad', '▲', 'مشروع في خطر');
+    return '';
+  };
+  const secRevTotal = filtered ? (rsTotal || 0) : (sd.revenue_halalas || 0);
+  const clientRows = topClients.map((c) => {
+    const share = secRevTotal && c.rev ? Math.round((c.rev / secRevTotal) * 100) : null;
+    const rel = relationshipOf(lastTouch.get(c.id), oppBy[c.id]?.open_n || 0);
+    return `<tr>
+      <td><span class="cl-nm"><span class="cl-av" aria-hidden="true">${esc(String(c.name_ar || '؟').trim().charAt(0))}</span><a href="/app/client/${esc(c.id)}" title="${esc(c.name_ar)}">${esc(c.name_ar)}</a></span></td>
+      <td class="tnum" style="font-weight:800">${c.rev ? sarShort(c.rev) : '—'}</td>
+      <td class="tnum">${share != null ? `${share}%` : '<span style="color:var(--faint)" aria-hidden="true">—</span>'}</td>
+      <td class="tnum" title="الفرص ${c.opps} · المشاريع ${c.projects}">${c.pipeline_halalas ? sarShort(c.pipeline_halalas) : '—'}</td>
+      <td>${clientSignal(c) || `<span style="color:var(--muted);font-size:var(--fs-body)">${rel}</span>`}</td>
+    </tr>`;
+  }).join('');
+  // جملة التركّز لا تُقال إلا حين يوجد ثلاثة فعلاً — وهي الآن عنوان البطاقة نفسه، ومعها
+  // شريط تركيبةٍ واحد بدل بطاقة الدونات المستقلة (اندماج «مخاطر التركّز»).
+  const top3 = topClients.filter((c) => c.rev > 0).slice(0, 3);
+  const concPct = secRevTotal && top3.length === 3 ? Math.round((top3.reduce((a, c) => a + c.rev, 0) / secRevTotal) * 100) : null;
+  const concColors = ['var(--brand)', 'var(--brand2)', '#5b8def'];
+  const clientsCard = card(`
+    <div class="card-head"><span class="hgrp"><span class="eyebrow">أهم ${G.clients} · مرتَّبون حسب إيراد ${year}${concPct != null ? ` <span class="tipdot" data-tip="مجموع إيراد أكبر ثلاثة عملاء ÷ إيراد القطاع المحقق لهذه السنة" tabindex="0" role="img" aria-label="مجموع إيراد أكبر ثلاثة عملاء ÷ إيراد القطاع المحقق لهذه السنة">${icon('info')}</span>` : ''}</span>
+      <span class="t">${concPct != null ? `أكبر ثلاثة عملاء يمثلون <span class="tnum">${concPct}%</span> من الإيراد${concPct >= 60 ? ' — تركّز مرتفع' : ''}` : topClients.length ? `${countAr(topClients.length, { one: 'عميل واحد يقود النشاط', two: 'عميلان يقودان النشاط', few: 'عملاء يقودون النشاط', many: 'عميلاً يقودون النشاط' })}` : G.emptyList}</span></span></div>
+    ${concPct != null ? `<div style="padding:.15rem 1rem 0">${figStacked100([
+    ...top3.map((c, i) => ({ v: c.rev, color: concColors[i], label: `${c.name_ar} — ${sarShort(c.rev)}` })),
+    { v: Math.max(0, secRevTotal - top3.reduce((a, c) => a + c.rev, 0)), color: '#e8ecf5', label: 'بقية العملاء' },
+  ], { mini: true, ariaLabel: `${top3.map((c) => `${c.name_ar} ${Math.round((c.rev / secRevTotal) * 100)}%`).join(' · ')}` })}</div>` : ''}
+    <div class="cbody" style="padding:.15rem .5rem .3rem;overflow-x:auto" tabindex="0" role="region" aria-label="جدول أهم العملاء">
+      ${clientRows ? `<table class="cl-tbl">
+        <thead><tr><th>العميل</th><th>الإيراد ${year}</th><th>الحصة</th><th>المفتوح من فرصه</th><th>الإشارة</th></tr></thead>
+        <tbody>${clientRows}</tbody></table>` : `<div class="empty-state" style="padding:1rem"><div class="s">${G.emptyList}</div></div>`}
+    </div>
+    <div class="card-foot"><a href="/app/clients">عرض جميع العملاء <span aria-hidden="true">←</span></a></div>`);
+
+  // ── (١٢) التحصيل — يظهر فقط لمن يقرأ الفواتير (لا تسريب مالي لبقية الأدوار) ──
   let collectCard = '', collectDD = '';
   if (canInvoices) {
-    const buckets = await arAging(user, year, { sector: sectorId });
+    const buckets = await arAging(user, year, { sector: sectorId, dept: deptSel, client: clientSel });
     const odRaw = await all(`SELECT i.id, i.code, i.amount_halalas, i.retention_halalas, i.due_date, cl.name_ar client, p.name_ar project,
         (SELECT COALESCE(SUM(col.amount_halalas),0) FROM collection col WHERE col.invoice_id = i.id) collected
       FROM invoice i LEFT JOIN project p ON p.id = i.project_id LEFT JOIN client cl ON cl.id = i.client_id
       WHERE COALESCE(i.sector_id, p.sector_id) = ? AND i.deleted_at IS NULL
         AND i.status IN ('ISSUED','PARTIALLY_PAID','OVERDUE')
-        AND (i.status = 'OVERDUE' OR (i.due_date IS NOT NULL AND substr(i.due_date,1,10) < ?))
-      ORDER BY i.due_date LIMIT 12`, [sectorId, today]);
+        AND (i.status = 'OVERDUE' OR (i.due_date IS NOT NULL AND substr(i.due_date,1,10) < ?))${deptSql('p.department_id')}${clientSql('COALESCE(i.client_id, p.client_id)')}
+      ORDER BY i.due_date LIMIT 12`, [sectorId, today, ...deptArg, ...clientArg]);
     const odRows = odRaw.map((r) => ({
       ...r,
       out: Math.max(0, (r.amount_halalas || 0) - (r.retention_halalas || 0) - (r.collected || 0)),
       days: r.due_date ? Math.max(0, Math.floor((Date.parse(today) - Date.parse(String(r.due_date).slice(0, 10))) / 86400000)) : null,
     })).filter((r) => r.out > 0);
+    // «لا متأخر» و«التحصيل منضبط» كانتا تُقالان بلا أساس: شرط التأخر لا يتحقق أصلاً حين تكون
+    // تواريخ الاستحقاق فارغة، والانضباط لا يُشهَد به وما حُصِّل صفر. نقيس الحقيقتين ثم نتكلم.
+    const dueFacts = await get(`SELECT COUNT(*) n,
+        SUM(CASE WHEN i.due_date IS NULL THEN 1 ELSE 0 END) no_due
+      FROM invoice i LEFT JOIN project p ON p.id = i.project_id
+      WHERE COALESCE(i.sector_id, p.sector_id) = ? AND i.deleted_at IS NULL
+        AND i.status IN ('ISSUED','PARTIALLY_PAID','OVERDUE')${deptSql('p.department_id')}${clientSql('COALESCE(i.client_id, p.client_id)')}`,
+  [sectorId, ...deptArg, ...clientArg]);
+    const openInv = dueFacts?.n || 0, noDue = dueFacts?.no_due || 0;
+    const blindToLate = openInv > 0 && noDue === openInv;   // لا تاريخ استحقاق واحد ⇒ التأخر غير قابل للقياس
+    const nothingCollected = !(vjCollected?.v);
     const BUCKETS = [['0-30', 'حتى شهر من الإصدار'], ['31-60', 'شهر إلى شهرين'], ['61-90', 'شهران إلى ثلاثة'], ['90+', 'أكثر من ثلاثة أشهر']];
     const arTotal = BUCKETS.reduce((a, [k]) => a + (buckets[k] || 0), 0);
     const bMax = Math.max(1, ...BUCKETS.map(([k]) => buckets[k] || 0));
-    const bucketRows = BUCKETS.map(([k, l], i) => `<div style="display:flex;align-items:center;gap:.5rem;font-size:var(--fs-meta);padding:.2rem 0">
-        <span style="flex:0 0 128px;color:var(--muted)">${l}</span>
-        <div class="bar" style="flex:1"><span style="width:${Math.round(((buckets[k] || 0) / bMax) * 100)}%;background:${i >= 2 ? 'var(--red)' : i === 1 ? 'var(--amber)' : 'var(--brand)'}"></span></div>
-        <span class="tnum" style="flex:none;font-weight:700;font-size:var(--fs-micro)">${fmtSar(buckets[k] || 0)}</span>
-      </div>`).join('');
-    const lateRows = odRows.slice(0, 3).map((r) => `<div class="cardclick" role="button" tabindex="0" onclick="Sanad.openDD('seccollect')" style="display:flex;justify-content:space-between;gap:.6rem;align-items:baseline;padding:.32rem 0;border-bottom:1px dashed var(--line);font-size:var(--fs-body)">
+    const bucketRows = figBars(BUCKETS.map(([k, l], i) => ({
+      label: l, value: buckets[k] || 0, count: '',
+      fill: i === 3 ? (blindToLate ? 'var(--st-warn)' : 'var(--st-bad)') : null,
+    })), { fmt: sarShort, max: bMax });
+    const lateRows = odRows.slice(0, 3).map((r) => `<div class="cardclick" role="button" tabindex="0" data-action="open-dd" data-dd="seccollect" style="display:flex;justify-content:space-between;gap:.6rem;align-items:baseline;padding:.32rem 0;border-bottom:1px dashed var(--line);font-size:var(--fs-body)">
         <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.client || r.project || 'فاتورة')}${r.code ? ` <span style="color:var(--faint);font-size:var(--fs-micro)"><bdi>${esc(r.code)}</bdi></span>` : ''}</span>
         <span style="flex:none;display:flex;gap:.5rem;align-items:baseline">
           <b class="tnum">${fmtSar(r.out)}</b>
-          ${r.days != null ? `<span class="pill" style="background:#fee2e2;color:#991b1b">متأخر <b class="tnum">${r.days}</b> ${r.days >= 3 && r.days <= 10 ? 'أيام' : 'يوماً'}</span>` : ''}
+          ${r.days ? `<span class="pill" style="background:#fee2e2;color:#991b1b">متأخر ${dayWord(r.days)}</span>` : r.days === 0 ? '<span class="pill" style="background:#fef3c7;color:#92400e">استحق اليوم</span>' : ''}
         </span>
       </div>`).join('');
+    const odTotal = odRows.reduce((a, b) => a + b.out, 0);
     collectCard = card(`
       <div class="card-head">
-        <span class="t">التحصيل</span>
-        <span class="aux"><a class="btn btn-sm" href="/app/finance?year=${year}">المالية والعقود</a></span></div>
+        <span class="hgrp"><span class="eyebrow">التحصيل والمطالبات</span>
+        <span class="t">${odRows.length ? `مستحقات متأخرة <span class="tnum">${fmtSar(odTotal)}</span> على ${countAr(odRows.length, { one: 'فاتورة واحدة', two: 'فاتورتين', few: 'فواتير', many: 'فاتورة' })}`
+    : arTotal ? `مستحقات قائمة <span class="tnum">${fmtSar(arTotal)}</span>${blindToLate ? ' — بلا تواريخ استحقاق مسجَّلة' : ' — لا متأخر منها'}` : 'لا مستحقات قائمة'}</span></span></div>
       ${arTotal || odRows.length ? `
-      <div class="cardclick" role="button" tabindex="0" onclick="Sanad.openDD('seccollect')" style="padding:.55rem 1rem;display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px dashed var(--line)">
-        <span style="font-size:var(--fs-micro);color:var(--muted)">${G.outstanding} للقطاع · ${year} <span style="color:var(--faint)">⊕</span></span>
+      <div class="cardclick" role="button" tabindex="0" data-action="open-dd" data-dd="seccollect" style="padding:.55rem 1rem;display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px dashed var(--line)">
+        <span style="font-size:var(--fs-micro);color:var(--muted)">${G.outstanding} للقطاع · ${year}${nothingCollected ? ' · لا تحصيل مسجَّل' : ''} <span style="color:var(--faint)" aria-hidden="true">⊕</span></span>
         <b class="tnum" style="font-size:var(--fs-num-sm);color:${arTotal ? 'var(--amber)' : 'var(--ink2)'}">${fmtSar(arTotal)}</b></div>
       <div style="padding:.45rem 1rem .3rem">
-        <div style="font-size:var(--fs-micro);font-weight:700;color:var(--muted);margin-bottom:.15rem">أعمار المستحقات منذ إصدار الفاتورة</div>${bucketRows}
+        <div style="font-size:var(--fs-body);font-weight:700;color:var(--muted);margin-bottom:.15rem">أعمار المستحقات منذ إصدار الفاتورة</div>${bucketRows}
+        ${blindToLate ? `<div style="font-size:var(--fs-micro);color:var(--muted);padding-top:.25rem">الأعمار من تاريخ الإصدار — والتأخر عن السداد يحتاج تاريخ استحقاق، ولم يُسجَّل لأيٍّ من ${countAr(openInv, { one: 'الفاتورة القائمة', two: 'الفاتورتين القائمتين', few: 'الفواتير القائمة', many: 'الفاتورة القائمة' })}</div>` : ''}
       </div>
       <div style="padding:.35rem 1rem .6rem">
         <div style="font-size:var(--fs-micro);font-weight:700;color:var(--muted)">${G.lateClaim}${odRows.length > 3 ? ` — الأكثر تأخراً (3 من ${odRows.length})` : ''}</div>
-        ${lateRows || `<div style="font-size:var(--fs-meta);color:var(--faint);padding:.3rem 0">لا فواتير متأخرة السداد — التحصيل منضبط</div>`}
-        ${odRows.length > 3 ? `<button class="btn btn-ghost btn-sm" onclick="Sanad.openDD('seccollect')" style="margin-top:.2rem">+${odRows.length - 3} أخرى — الكل ⊕</button>` : ''}
+        ${lateRows || `<div style="font-size:var(--fs-meta);color:var(--faint);padding:.3rem 0">${
+  nothingCollected ? `لم يُسجَّل تحصيل بعد — القيمة القائمة كلها بانتظار التحصيل`
+    : blindToLate ? 'تعذّر قياس التأخر — لا تواريخ استحقاق مسجَّلة'
+      : 'لا فواتير متأخرة السداد'}</div>`}
+        ${odRows.length > 3 ? `<button class="btn btn-ghost btn-sm" data-action="open-dd" data-dd="seccollect" style="margin-top:.2rem"><span class="tnum" dir="ltr">+${odRows.length - 3}</span> أخرى — الكل <span aria-hidden="true">⊕</span></button>` : ''}
       </div>`
-      : `<div class="empty-state" style="padding:1.2rem 1rem">${icon('money')}<div class="t">لا مستحقات قائمة لهذا القطاع · ${year}</div><div class="s">كل الفواتير الصادرة لهذه السنة حُصّلت، أو لم تصدر فواتير بعد</div></div>`}`);
+    : `<div class="empty-state" style="padding:1.2rem 1rem">${icon('money')}<div class="t">لا مستحقات قائمة لهذا القطاع · ${year}</div><div class="s">كل الفواتير الصادرة لهذه السنة حُصّلت، أو لم تصدر فواتير بعد</div></div>`}`);
     collectDD = ddWrap('seccollect', `${G.lateClaim} — ${esc(sd.sector.name_ar)}`, `فواتير قائمة تجاوزت تاريخ استحقاقها · حتى ${today}`, `
       <div class="dd-kpi"><span class="v tnum" style="color:var(--amber)">${fmtSar(odRows.reduce((a, b) => a + b.out, 0))}</span><span style="font-size:12px;color:var(--muted)">${odRows.length ? `على ${countAr(odRows.length, { one: 'فاتورة واحدة', two: 'فاتورتين', few: 'فواتير', many: 'فاتورة' })}` : 'لا فواتير متأخرة'}</span></div>
       <div class="dd-sec">حسب تاريخ الاستحقاق</div>
@@ -299,70 +1313,33 @@ export async function sectorPage(user, opts = {}) {
           <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.client || r.project || 'فاتورة')}${r.code ? ` <span style="color:var(--faint);font-size:10.5px"><bdi>${esc(r.code)}</bdi></span>` : ''}</span>
           <b class="tnum" style="flex:none">${fmtSar(r.out)}</b></div>
         <div style="display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted)">
-          <span>يستحق ${r.due_date ? String(r.due_date).slice(0, 10) : '—'}</span>${r.days != null ? `<span class="tnum" style="color:var(--red);font-weight:800">متأخر ${dayWord(r.days)}</span>` : ''}</div>
+          <span>يستحق ${r.due_date ? String(r.due_date).slice(0, 10) : '—'}</span>${r.days ? `<span class="tnum" style="color:var(--red);font-weight:800">متأخر ${dayWord(r.days)}</span>` : r.days === 0 ? '<span style="color:var(--amber);font-weight:800">استحق اليوم</span>' : ''}</div>
       </div>`))}</div>`);
   }
 
-  // ── (7) صحة المشاريع والانحرافات ──
-  const ragColor = { GREEN: 'var(--green)', AMBER: 'var(--amber)', RED: 'var(--red)' };
-  const projRows = revByProject.filter((r) => r.id).slice(0, 8).map((r) => {
-    const pcv = r.cv ? Math.round((r.rev / r.cv) * 100) : null;
-    return `<a href="/app/project/${r.id}" style="display:block;padding:.42rem 0;border-bottom:1px dashed var(--line)">
-      <div style="display:flex;justify-content:space-between;gap:.7rem;font-size:var(--fs-body);align-items:center">
-        <span style="display:flex;align-items:center;gap:.45rem;min-width:0"><span style="width:8px;height:8px;border-radius:50%;background:${ragColor[r.rag] || 'var(--faint)'};flex:none"></span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.name_ar)}</span></span>
-        <b class="tnum" style="flex:none">${fmtSar(r.rev)}</b></div>
-      <div style="display:flex;justify-content:space-between;font-size:var(--fs-micro);color:var(--muted);margin-top:.12rem">
-        <span>${tr(r.status)}${pcv != null ? '' : ' · بلا قيمة مسجلة'}</span>${pcv != null ? `<span class="tnum">حقّق ${pcv}% من قيمته</span>` : ''}</div>
-      ${pcv != null ? `<div class="bar" style="margin-top:.2rem;height:4px"><span style="width:${Math.min(100, pcv)}%;background:var(--green)"></span></div>` : ''}
-    </a>`;
-  }).join('') || `<div class="empty-state" style="padding:1rem"><div class="s">لا مشاريع مولّدة للإيراد هذه السنة حتى الآن</div></div>`;
-  const ragPills = [['GREEN', G.hOnTrack, 'green'], ['AMBER', G.hAtRisk, 'amber'], ['RED', G.hCritical, 'red']]
-    .filter(([k]) => sd.rag[k]).map(([k, l, c]) => pill(`${l} ${sd.rag[k]}`, c)).join('');
-  const projectsCard = card(`
-    <div class="card-head">
-      <span class="t">صحة ${G.projects}</span>
-      <span class="aux">
-        ${ragPills}
-        ${sd.openRisks ? pill(`${G.risks} ${sd.openRisks}`, 'red') : ''}
-        <a class="btn btn-sm" href="/app/projects?year=${year}${user.scope === 'company' ? '&sector=' + sectorId : ''}">الكل</a>
-      </span></div>
-    <div style="padding:.45rem 1rem .6rem">${projRows}</div>`);
-
-  // ── (8) الطاقة (ملخص يقود إلى مساحة التسكين) ──
-  const over = (staff.employees || []).filter((e) => e.current > 110);
-  const bench = (staff.employees || []).filter((e) => e.current === 0);
-  const capCard = card(`
-    <div class="card-head">
-      <span class="t">${G.capacity}</span>
-      <span class="aux"><a class="btn btn-sm" href="/app/staffing?year=${year}${user.scope === 'company' ? '&sector=' + sectorId : ''}">مساحة التسكين</a></span></div>
-    <div style="padding:var(--pad-card-b);display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem">
-      <div><div style="font-size:10px;color:var(--muted)">${G.utilization} الآن</div><div class="tnum" style="font-weight:800;font-size:var(--fs-num-sm);color:${(staff.teamCurrent ?? 0) > 100 ? 'var(--red)' : 'var(--ink2)'}">${staff.teamCurrent ?? staff.teamUtil}%</div><div style="font-size:9.5px;color:var(--faint)">سنوياً ${staff.teamUtil}% · ${countAr(staff.headcount, { one: 'موظف واحد', two: 'موظفان', few: 'موظفين', many: 'موظفاً' })}</div></div>
-      <div><div style="font-size:10px;color:var(--muted)">${G.overloaded}</div><div class="tnum" style="font-weight:800;font-size:var(--fs-num-sm);color:${over.length ? 'var(--red)' : 'var(--ink2)'}">${over.length}</div>${over.length ? `<div style="font-size:9.5px;color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(over.slice(0, 2).map((e) => e.name).join('، '))}</div>` : ''}</div>
-      <div><div style="font-size:10px;color:var(--muted)">${G.onBench}</div><div class="tnum" style="font-weight:800;font-size:var(--fs-num-sm);color:${bench.length ? 'var(--amber)' : 'var(--ink2)'}">${bench.length}</div>${bench.length ? `<div style="font-size:9.5px;color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(bench.slice(0, 2).map((e) => e.name).join('، '))}</div>` : ''}</div>
-    </div>`);
-
-  // ── (9) العملاء ──
-  const clientRows = clients.slice(0, 8).map((c) => `<tr style="border-bottom:1px solid var(--line)">
-    <td style="padding:var(--pad-cell);font-size:var(--fs-body)">${esc(c.name_ar)}</td>
-    <td style="padding:var(--pad-cell);text-align:center;font-size:12px" class="tnum">${c.opps}</td>
-    <td style="padding:var(--pad-cell);text-align:center;font-size:12px" class="tnum">${c.projects}</td>
-    <td style="padding:var(--pad-cell);text-align:left;font-size:12px;font-weight:700" class="tnum">${fmtSar(c.pipeline_halalas)}</td></tr>`).join('')
-    || `<tr><td colspan="4"><div class="empty-state" style="padding:1rem"><div class="s">${G.emptyList}</div></div></td></tr>`;
-  const th = (t) => `<th style="padding:var(--pad-cell);font-size:var(--fs-micro);color:var(--muted);font-weight:700;text-align:${t.a || 'right'}">${t.t}</th>`;
-  const clientsCard = card(`
-    <div class="card-head"><span class="t">${G.clients}</span></div>
-    <div class="tblwrap"><table style="width:100%;border-collapse:collapse"><thead><tr>${th({ t: G.client })}${th({ t: 'فرص', a: 'center' })}${th({ t: 'مشاريع', a: 'center' })}${th({ t: G.pipeline, a: 'left' })}</tr></thead><tbody>${clientRows}</tbody></table></div>`);
-
-  // ── (10) القرارات والاعتمادات ──
+  // ── (١٣) العقود + القرارات والاعتمادات — حضور ثانوي في أسفل الصفحة، لا يُحذف ──
+  const contractsCard = canContracts ? card(`<div class="cardclick" role="button" tabindex="0" data-action="open-dd" data-dd="seccontracts" style="padding:.7rem 1rem">
+    <div style="display:flex;justify-content:space-between;align-items:baseline">
+      <span style="font-size:var(--fs-body);font-weight:700">العقود النشطة <span style="color:var(--faint)" aria-hidden="true">⊕</span></span>
+      <b class="tnum" style="font-size:var(--fs-num-sm)">${fmtSar(activeC.v)}</b></div>
+    <div style="font-size:var(--fs-micro);color:var(--muted);margin-top:.15rem">${countAr(activeC.n, { one: 'عقد نشط واحد', two: 'عقدان نشطان', few: 'عقود نشطة', many: 'عقداً نشطاً' })} · موقّع ${year}: ${sd.contracts_count} (${fmtSar(sd.contracts_halalas)})</div>
+  </div>`, 'card-h') : '';
   const decRows = recentDecisions.map((d) => `<div style="padding:.35rem 0;border-bottom:1px dashed var(--line);font-size:12px">
-      <div style="font-weight:700">${esc(d.title)}</div>
+      <div style="font-weight:700">${d.pid ? `<a href="/app/project/${esc(d.pid)}" style="color:var(--ink2)">${esc(d.title)}</a>` : esc(d.title)}</div>
       <div style="font-size:var(--fs-micro);color:var(--muted)">${esc(d.project || '')}${d.decided_by ? ' · ' + esc(d.decided_by) : ''}${d.dat ? ' · ' + d.dat : ''}</div>
     </div>`).join('') || `<div style="font-size:var(--fs-meta);color:var(--faint);padding:.35rem 0">لا قرارات مسجلة بعد — تُسجَّل القرارات من صفحة المشروع</div>`;
+  // مبلغ المصروف حقلٌ مختوم ببوابة الكلفة (redact على مسارات الواجهة البرمجية) — فلا يُطبع
+  // هنا لمن لا يملكها؛ يبقى اسم الطلب ويُحجب رقمه وحده (البوابة تُقرأ أعلى الصفحة مرّةً واحدة).
   const apRows = pendingApprovals.map((a) => `<div style="display:flex;justify-content:space-between;gap:.6rem;padding:.3rem 0;border-bottom:1px dashed var(--line);font-size:12px">
-      <span>${esc(RESOURCE_AR[a.resource] || tr(a.resource) || 'طلب')}</span>
-      <b class="tnum" style="flex:none">${a.amount_halalas ? fmtSar(a.amount_halalas) : ''}</b>
+      <span><a href="/app/approvals" style="color:var(--ink2)">${esc(RESOURCE_AR[a.resource] || tr(a.resource) || 'طلب')}</a></span>
+      <b class="tnum" style="flex:none">${a.amount_halalas && (a.resource !== 'expense' || canCost) ? fmtSar(a.amount_halalas) : ''}</b>
     </div>`).join('') || `<div style="font-size:var(--fs-meta);color:var(--faint);padding:.3rem 0">لا طلبات معلقة</div>`;
-  const decisionsCard = card(`
+  const decisionsCard = (!pendingApprovals.length && !recentDecisions.length)
+    ? card(`<div class="empty-mini" style="justify-content:space-between">
+        <span style="display:flex;gap:.45rem;align-items:center">${icon('approvals')} ${G.decisions} والاعتمادات: لا طلبات معلقة ولا قرارات حديثة في القطاع</span>
+        <a href="/app/approvals" style="color:var(--brand);font-weight:700;flex:none">${G.needsDecision} <span aria-hidden="true">←</span></a>
+      </div>`)
+    : card(`
     <div class="card-head">
       <span class="t">${G.decisions} والاعتمادات</span>
       <span class="aux"><a class="btn btn-sm" href="/app/approvals">${G.needsDecision}</a></span></div>
@@ -371,46 +1348,363 @@ export async function sectorPage(user, opts = {}) {
       <div style="font-size:var(--fs-micro);font-weight:700;color:var(--muted);margin-top:.5rem">آخر القرارات</div>${decRows}
     </div>`);
 
-  // ── (11) المقارنات والتقارير — أرباع بأسمائها الكاملة، يُقرأ زمنياً كما يُقرأ النص (RTL) ──
-  const qRevN = (qRev || []).map((r) => (typeof r === 'number' ? r : r.revenue_halalas || 0));
-  const qBookN = (qBook || []).map((r) => (typeof r === 'number' ? r : r.sales_halalas || 0));
-  const qMax = Math.max(1, ...qRevN, ...qBookN);
-  const nowQ = year === now.getUTCFullYear() ? Math.floor(now.getUTCMonth() / 3) : -1;
-  const qBars = `<div style="display:grid;grid-template-columns:repeat(4,1fr);direction:rtl;gap:.5rem">${[0, 1, 2, 3].map((i) => `
-    <div style="display:flex;flex-direction:column;align-items:center;gap:3px">
-      <div style="height:9px;display:flex;align-items:center">${i === nowQ ? nowDot('الربع الحالي') : ''}</div>
-      <div style="display:flex;gap:3px;align-items:flex-end;height:52px">
-        <div title="${G.revenue}: ${fmtSar(qRevN[i])}" style="width:14px;border-radius:3px 3px 0 0;background:var(--green);height:${Math.max(3, Math.round((qRevN[i] / qMax) * 48))}px"></div>
-        <div title="${G.bookings}: ${fmtSar(qBookN[i])}" style="width:14px;border-radius:3px 3px 0 0;background:var(--brand2);height:${Math.max(3, Math.round((qBookN[i] / qMax) * 48))}px"></div>
-      </div><span style="font-size:9.5px;color:var(--faint);white-space:nowrap">${quarterLabel(i)}</span></div>`).join('')}</div>`;
-  const qDelta = nowQ > 0 && qRevN[nowQ - 1] ? Math.round(((qRevN[nowQ] - qRevN[nowQ - 1]) / qRevN[nowQ - 1]) * 100) : null;
-  const reportsCard = card(`
-    <div class="card-head"><span class="t">المقارنات والتقارير</span></div>
-    <div style="padding:var(--pad-card-b)">
-      ${qBars}
-      <div style="display:flex;gap:.8rem;font-size:10px;color:var(--muted);justify-content:center;margin-top:.3rem">
-        <span><span style="display:inline-block;width:8px;height:8px;background:var(--green);border-radius:2px"></span> ${G.revenue}</span>
-        <span><span style="display:inline-block;width:8px;height:8px;background:var(--brand2);border-radius:2px"></span> ${G.bookings}</span></div>
-      ${qDelta != null ? `<div style="font-size:var(--fs-meta);color:var(--muted);margin-top:.4rem">إيراد الربع الحالي ${qDelta >= 0 ? 'أعلى' : 'أدنى'} من الربع السابق بنسبة <b class="tnum" style="color:${qDelta >= 0 ? 'var(--green)' : 'var(--red)'}">${Math.abs(qDelta)}%</b></div>` : ''}
-      <div style="display:flex;gap:.5rem;margin-top:.6rem;flex-wrap:wrap">
-        <button class="btn btn-sm" onclick="Sanad.previewReport('sector_weekly_status')">التقرير الأسبوعي</button>
-        <button class="btn btn-sm" onclick="Sanad.previewReport('monthly_sector_performance')">التقرير الشهري</button>
-        <button class="btn btn-sm" onclick="Sanad.testSend('sector_weekly_status')">أرسله لي الآن</button>
-        <a class="btn btn-sm" href="/app/reports">جدولة دورية</a>
-      </div>
-    </div>`);
-
-  // ── العقود (بطاقة موجزة تفتح التفصيل) — لمن يقرأ العقود فقط ──
-  const contractsCard = canContracts ? card(`<div class="cardclick" role="button" tabindex="0" onclick="Sanad.openDD('seccontracts')" style="padding:.7rem 1rem">
-    <div style="display:flex;justify-content:space-between;align-items:baseline">
-      <span style="font-size:var(--fs-body);font-weight:700">العقود النشطة <span style="color:var(--faint)">⊕</span></span>
-      <b class="tnum" style="font-size:var(--fs-num-sm)">${fmtSar(activeC.v)}</b></div>
-    <div style="font-size:var(--fs-micro);color:var(--muted);margin-top:.15rem">${countAr(activeC.n, { one: 'عقد نشط واحد', two: 'عقدان نشطان', few: 'عقود نشطة', many: 'عقداً نشطاً' })} · موقّع ${year}: ${sd.contracts_count} (${fmtSar(sd.contracts_halalas)})</div>
-  </div>`, 'card-h') : '';
-
-  // ── drill-down templates ──
+  // ── قوالب التفصيل (drill-down) — تُحسب على الخادم بنفس نطاق الصفحة فلا يتسرب محجوب ──
   const lateDlv = (attn.find((a) => a.dd === 'att-late-dlv')?.ddRowsData) || [];
+  const HEALTH_DD_SUB = { UNKNOWN: 'مشاريع لم يُسجل تقييم صحتها بعد', GREEN: 'مشاريع قيد التنفيذ على المسار', AMBER: 'مشاريع في خطر تحتاج متابعة قبل أن تتعثر', RED: 'مشاريع حرجة — الأولى بوقت القائد' };
+  const healthDD = HEALTH.map(([k, l, c]) => ddWrap(`sec-health-${k}`, `${l} — ${esc(sd.sector.name_ar)}`, HEALTH_DD_SUB[k], `
+    <div class="dd-kpi"><span class="v tnum" style="color:${c}">${ragView[k] || 0}</span><span style="font-size:12px;color:var(--muted)">من ${countAr(ragActive, { one: 'مشروع قيد التنفيذ', two: 'مشروعين قيد التنفيذ', few: 'مشاريع قيد التنفيذ', many: 'مشروعاً قيد التنفيذ' })}</span></div>
+    <div>${ddRows(healthLists[k].map((p) => `<div class="dd-row">
+      <span><a href="/app/project/${esc(p.id)}" style="color:var(--ink2);font-weight:700">${esc(p.name_ar)}</a></span>
+      <b class="tnum">${progMapH.get(p.id)?.pct ?? Math.max(0, Math.min(100, Math.round(p.progress_pct || 0)))}%</b></div>`))}</div>
+    <div style="display:flex;justify-content:flex-start"><a class="btn btn-sm" href="/app/projects?year=${year}${user.scope === 'company' ? '&sector=' + esc(sectorId) : ''}">عرض جميع المشاريع</a></div>`)).join('');
+  // نوافذ تفصيل القمع: للإجمالي ولكل مرحلة — أرقام الرأس قطاعية، والأسماء بنطاق القارئ،
+  // وزرّا «تصفية الشاشة» و«صفحة الفرص» داخل النافذة فلا نقرة بلا أثر مرئي.
+  const oppsPageHref = `/app/opportunities?year=${year}${user.scope === 'company' ? '&sector=' + esc(sectorId) : ''}${deptSel && deptSel !== NO_DEPT ? '&dept=' + esc(deptSel) : ''}`;
+  const fnlDDOne = (key, name, count, value, rows, stageId) => {
+    const ages = openFlow.filter((o) => !stageId || o.stage_id === stageId);
+    const avg = ages.length ? Math.round(ages.reduce((t, o) => t + ageDays(o.since), 0) / ages.length) : 0;
+    const stalled = ages.filter((o) => ageDays(o.since) > (ROT_THRESHOLDS[o.stage_id] ?? Infinity)).length;
+    const isOn = selStage && stageId && selStage.id === stageId;
+    return ddWrap(key, stageId ? `مرحلة ${esc(name)}` : 'كل الفرص المفتوحة', `${esc(sd.sector.name_ar)} · أسماء الفرص أدناه بنطاقك في قائمة الفرص`, `
+    <div class="dd-kpi"><span class="v tnum" style="color:var(--brand2)">${fmtSar(value)}</span><span style="font-size:12px;color:var(--muted)">${countAr(count, { one: 'فرصة واحدة', two: 'فرصتان', few: 'فرص', many: 'فرصة', zero: 'لا فرص' })}</span></div>
+    <div style="display:flex;gap:1rem;font-size:12px;color:var(--muted);flex-wrap:wrap">
+      <span>متوسط العمر في المرحلة <b class="tnum">${avg ? dayWord(avg) : 'أقل من يوم'}</b></span>
+      <span>متوقفة — تجاوزت المدة المعتادة <b class="tnum" style="color:${stalled ? 'var(--amber)' : 'var(--ink2)'}">${stalled}</b></span>
+    </div>
+    <div class="dd-sec">${rows.length ? `أعلى الفرص قيمةً${rows.length < count ? ` (${rows.length} من ${count})` : ''}` : 'لا فرص ضمن نطاق قراءتك في هذه المرحلة'}</div>
+    <div>${ddRows(rows.map((o) => `<div class="dd-row">
+      <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><a href="/app/opportunity/${esc(o.id)}" style="color:var(--ink2);font-weight:700">${esc(o.title_ar)}</a>${o.client ? ` <span style="color:var(--faint);font-size:10.5px">· ${esc(o.client)}</span>` : ''}</span>
+      <b class="tnum" style="flex:none">${o.value_halalas ? fmtSar(o.value_halalas) : '—'}</b></div>`))}</div>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+      ${stageId ? `<a class="btn btn-primary btn-sm" href="${qs({ stage: isOn ? null : stageId })}">${isOn ? 'إلغاء تصفية الشاشة' : 'تصفية بهذه المرحلة'}</a>` : ''}
+      <a class="btn btn-sm" href="${oppsPageHref}">فتح صفحة الفرص</a>
+    </div>`);
+  };
+  const funnelDD = [
+    fnlDDOne('fnl-ALL', '', openTotalC, openTotalV, ddOppRows.slice(0, 8), null),
+    ...funnelStages.map((st) => fnlDDOne(`fnl-${st.id}`, st.name_ar, st.count, st.value_halalas,
+      ddOppRows.filter((o) => o.stage_id === st.id).slice(0, 8), st.id)),
+  ].join('');
+  // ── نافذة الشخص (v5.35): حِمله المخطَّط، ومشاريعه، وفرصه، ومهامه — بنطاق القارئ من الخدمة ──
+  // الأرقام خطةُ تسكينٍ لا ساعات، والجملة تقولها في كل نافذة؛ وحِمل الفرص المبدئي سطرٌ مستقل.
+  const deptNameOf = new Map((team?.departments || []).map((d) => [d.id, d.name_ar]));
+  const loadPill = (v) => v > OVER_ABOVE ? `<span class="pill" style="background:#fee2e2;color:#991b1b">${G.overloaded}</span>`
+    : v === 0 ? `<span class="pill" style="background:#ede9fe;color:#5b21b6">${G.onBench}</span>`
+      : v < FREE_BELOW ? `<span class="pill" style="background:#dcfce7;color:#166534">${G.underused}</span>`
+        : `<span class="pill" style="background:#dcfce7;color:#166534">ضمن الطاقة</span>`;
+  // دلالةٌ لونية واحدة للتسكين في الصفحة كلها: صفرٌ رمادي (بلا تسكين — ليس إنجازاً)، ودون
+  // العتبة كهرماني (سعة متاحة)، وضمنها أخضر، وفوقها أحمر. كانت الأربعة عشر بلا عملٍ يظهرون
+  // بأقوى أخضر في الشاشة والثلاثةُ العاملون بالكحلي — أي عكس الحقيقة للقارئ الماسح.
+  const bandColor = (v) => v > OVER_ABOVE ? 'var(--red)' : v === 0 ? 'var(--faint)' : v < FREE_BELOW ? '#a16207' : 'var(--green)';
+  const capStrip = (months) => `<div class="cap-strip" dir="ltr" role="img" aria-label="حِمل الأشهر: ${months.map((v, i) => `${MONTHS_AR[i]} ${v}%`).join('، ')}">${months.map((v, i) => `
+    <span class="cs${nowMonth === i + 1 ? ' cur' : ''}" title="${MONTHS_AR[i]}: ${v}%"><i style="height:${Math.min(100, Math.round(v / 150 * 100))}%;background:${bandColor(v)}"></i><b class="tnum">${i + 1}</b></span>`).join('')}</div>`;
+  const capEmpDD = (p) => {
+    const live = !!nowMonth;
+    const headline = live ? p.planNow : p.annual;
+    const sub = [p.job_title, p.department_id ? deptNameOf.get(p.department_id) : null, p.capacity_pct && p.capacity_pct !== 100 ? `${G.capacity} ${p.capacity_pct}%` : null]
+      .filter(Boolean).map(esc).join(' · ');
+    const stat = (l, v, extra = '') => `<div class="cap-stat"><span class="l">${l}</span><b class="tnum" style="color:${bandColor(v)}">${v}%</b>${extra}</div>`;
+    // ديسمبر: «الشهر القادم» خارج خطة السنة — لا صفرٌ يقرأه القائد «بلا تسكين».
+    const nextStat = nowMonth >= 12
+      ? `<div class="cap-stat"><span class="l">الشهر القادم</span><b>—</b><small>خارج خطة السنة</small></div>`
+      : stat('الشهر القادم', p.next);
+    const stats = live ? [nextStat, stat('متوسط الأشهر الثلاثة القادمة', p.q3), stat('متوسط السنة', p.annual)]
+      : [stat('الذروة', p.peak), `<div class="cap-stat"><span class="l">${G.monthsStaffed}</span><b class="tnum">${p.staffedMonths}</b></div>`];
+    const deltaLine = live && p.monthDelta
+      ? `<div style="font-size:var(--fs-meta);color:var(--muted)"><b class="tnum" dir="ltr" style="color:${p.monthDelta > 0 ? 'var(--ink2)' : 'var(--green)'}">${p.monthDelta > 0 ? '+' : '−'}${Math.abs(p.monthDelta)}</b> ${countAr(Math.abs(p.monthDelta), { one: 'نقطة واحدة', two: 'نقطتان', few: 'نقاط', many: 'نقطة' })} عن الشهر الماضي</div>` : '';
+    const projRows = p.projects.slice(0, 8).map((pr) => {
+      const period = allocationPeriod(JSON.stringify(pr.months), year);
+      const v = live ? Math.round((Number(pr.months[nowMonth]) || 0) * 100) : period.avgPct;
+      const name = pr.projectId ? `<a href="/app/project/${esc(pr.projectId)}" style="color:var(--ink2);font-weight:700">${esc(pr.name)}</a>` : `<span style="font-weight:700">${esc(pr.name)}</span>`;
+      const tags = [pr.type === 'lead' ? '<span class="pill" style="background:#dbeafe;color:#1e3a8a">قائد</span>' : '', pr.bucket ? '<span class="pill" style="background:#f1f5f9;color:#475569">عمل داخلي</span>' : ''].join(' ');
+      return `<div class="dd-row"><span>${name} ${tags} <span style="color:var(--muted);font-size:10.5px">· ${esc(period.label)}</span></span><b class="tnum">${v}%</b></div>`;
+    });
+    const moreProj = p.projects.length > 8 ? `<div style="font-size:var(--fs-micro);color:var(--muted)">و${countAr(p.projects.length - 8, { one: 'بند واحد آخر', two: 'بندان آخران', few: 'بنود أخرى', many: 'بنداً آخر' })} في لوحة التسكين</div>` : '';
+    const oppRows = p.opportunities.map((o) => `<div class="dd-row"><span>${o.opportunityId ? `<a href="/app/opportunity/${esc(o.opportunityId)}" style="color:var(--ink2);font-weight:700">${esc(o.name)}</a>` : esc(o.name)} <span class="pill" style="background:#fef3c7;color:#92400e">${G.opportunity}</span></span><b class="tnum">${o.pct}%</b></div>`);
+    const t = p.tasks;
+    const tasksBlock = !t
+      ? `<div style="font-size:var(--fs-meta);color:var(--muted)">${p.tasksState === 'no_account' ? 'لا حساب دخول مرتبط — فلا مهام تُعرض' : 'المهام تظهر لمن يملك صلاحية عرض مهام الفريق'}</div>`
+      : `<div style="display:flex;gap:1rem;font-size:var(--fs-meta);color:var(--muted);flex-wrap:wrap">
+          <span>مفتوحة <b class="tnum" style="color:var(--ink2)">${t.open}</b></span>
+          <span>متأخرة <b class="tnum" style="color:${t.late ? 'var(--red)' : 'var(--ink2)'}">${t.late}</b></span>
+          <span>مُعطَّلة <b class="tnum" style="color:${t.blocked ? 'var(--amber)' : 'var(--ink2)'}">${t.blocked}</b></span></div>
+         ${t.top.length ? `<div>${t.top.map((k) => `<div class="dd-row"><span>${esc(k.title)} ${k.late ? '<span class="pill" style="background:#fee2e2;color:#991b1b">متأخرة</span>' : ''}${k.blocked ? ' <span class="pill" style="background:#fef3c7;color:#92400e">مُعطَّلة</span>' : ''}</span><b class="tnum" style="font-weight:600;color:var(--muted)">${k.due ? esc(k.due) : '—'}</b></div>`).join('')}</div>`
+    : (t.open ? '<div style="font-size:var(--fs-micro);color:var(--muted)">العدّ فقط — عناوين المهام تظهر لمن يحقّ له فتح الصفحة الكاملة</div>' : '')}`;
+    const footer = [
+      p.userId && p.dossierOk ? `<a class="btn btn-primary btn-sm" href="/app/person/${esc(p.userId)}">الصفحة الكاملة</a>` : '',
+      `<a class="btn btn-sm" href="${staffingHref}&emp=${esc(p.id)}">لوحة التسكين</a>`,
+    ].join('');
+    return ddWrap(`cap-emp-${esc(p.id)}`, esc(p.name_ar), sub || esc(sd.sector.name_ar), `
+    <div class="dd-kpi"><span class="v tnum" style="color:${bandColor(headline)}">${headline}%</span><span style="font-size:12px;color:var(--muted)">${live ? `${G.utilization} هذا الشهر (${monthLabel(nowMonth - 1)})` : `${G.utilization} — متوسط ${year}`}</span>${loadPill(headline)}</div>
+    ${deltaLine}
+    ${live && p.oppLoadPct ? `<div style="font-size:var(--fs-meta);color:var(--muted)"><b class="tnum" dir="ltr">+${p.oppLoadPct}%</b> حِمل مبدئي من فرص مفتوحة — يُحتسب على هذا الشهر فقط (المجموع <b class="tnum">${p.currentUtil}%</b>)</div>` : ''}
+    <div class="cap-stats">${stats.join('')}</div>
+    ${capStrip(p.months)}
+    <div class="dd-sec">المشاريع والبنود · ${year}</div>
+    <div>${projRows.length ? projRows.join('') : `<div style="color:var(--faint);font-size:12px">لا بنود تسكين في ${year} — يُسكَّن من لوحة التسكين</div>`}${moreProj}</div>
+    ${oppRows.length ? `<div class="dd-sec">الفرص المفتوحة</div><div>${oppRows.join('')}</div>` : ''}
+    <div class="dd-sec">المهام المفتوحة</div>
+    ${tasksBlock}
+    <div style="font-size:10.5px;color:var(--muted);margin-top:.4rem">الأرقام من خطة التسكين الشهرية — وليست ساعات عمل فعلية.</div>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.2rem">${footer}</div>`);
+  };
+  const capEmpDDs = team ? team.people.map(capEmpDD).join('') : '';
+  // ── نافذة الفريق (v5.36): القطاع ← إداراته القائمة ← أفراد كل إدارة ← نافذة الشخص ──
+  // الإدارات كما هي في الهيكل — لا تُنشأ هنا ولا تُفترض؛ و«بلا إدارة» سلّةٌ مسمّاة. أعمدة الإدارة
+  // أعدادٌ وإشغال فحسب — لا إيراد ولا حكم «إدارة متعثّرة» (القرار D14 مفتوح).
+  const personRow = (e) => `<div class="dd-row cap-li-btn" role="button" tabindex="0" data-action="cap-person" data-emp="${esc(e.id)}" aria-label="${esc(e.name)} — الحِمل ${loadOf(e)}% — التفصيل">
+      <span>${esc(e.name)}${e.job ? ` <span style="color:var(--muted);font-size:10.5px">· ${esc(e.job)}</span>` : ''} <span style="color:var(--faint)" aria-hidden="true">⊕</span></span>
+      <b class="tnum" style="color:${loadOf(e) > OVER_ABOVE ? 'var(--red)' : loadOf(e) === 0 ? 'var(--brand2)' : 'var(--ink2)'}">${loadOf(e)}%</b></div>`;
+  const empById = new Map(emps.map((e) => [e.id, e]));
+  const deptRows = (team?.departments || []).map((d) => `<div class="cap-dept" role="button" tabindex="0" data-action="open-dd" data-dd="cap-dept-${esc(d.id || 'none')}" aria-label="${esc(d.name_ar)} — ${countAr(d.headcount, { one: 'موظف واحد', two: 'موظفان', few: 'موظفين', many: 'موظفاً' })} — متوسط ${G.utilization} ${d.avgNow}% — اعرض التفصيل">
+      <span class="n">${esc(d.name_ar)} <span style="color:var(--faint)" aria-hidden="true">⊕</span></span>
+      <small>${countAr(d.headcount, { one: 'موظف واحد', two: 'موظفان', few: 'موظفين', many: 'موظفاً' })}</small>
+      <small>${nowMonth ? 'بلا تسكين' : 'بلا تسكين في السنة'} <b class="tnum">${d.free}</b> · ${G.overloaded} <b class="tnum" style="color:${d.over ? 'var(--red)' : 'inherit'}">${d.over}</b></small>
+      <b class="tnum" style="color:${d.avgNow > OVER_ABOVE ? 'var(--red)' : 'var(--ink2)'}">${d.avgNow}%</b></div>`).join('');
+  const basisLine = '<div style="font-size:10.5px;color:var(--muted);margin-top:.4rem">الأرقام من خطة التسكين الشهرية — وليست ساعات عمل فعلية.</div>';
+  const teamDD = ddWrap('seccap', `طاقة الفريق — ${esc(sd.sector.name_ar)}`, `${nowMonth ? `${G.utilization} هذا الشهر (${monthLabel(nowMonth - 1)})` : `متوسط إشغال ${year}`} · ${canPeople ? 'بالإدارات ثم بالأفراد' : 'مجاميع القطاع'}`, `
+    <div class="dd-kpi"><span class="v tnum" style="color:${teamLoad > OVER_ABOVE ? 'var(--red)' : 'var(--ink2)'}">${teamLoad}%</span><span style="font-size:12px;color:var(--muted)">متوسط ${G.utilization} · ${countAr(teamSize, { one: 'موظف واحد', two: 'موظفان', few: 'موظفين', many: 'موظفاً' })}${team ? ' ضمن نطاقك' : ''}</span></div>
+    <div style="display:flex;gap:1rem;font-size:12px;color:var(--muted);flex-wrap:wrap">
+      <span>ضمن الطاقة <b class="tnum" style="color:var(--ink2)">${midNow.length}</b></span>
+      <span>${nowMonth ? 'بلا تسكين الآن' : 'بلا تسكين في السنة'} <b class="tnum" style="color:var(--ink2)">${freeNow.length}</b></span>
+      <span>${G.overloaded} <b class="tnum" style="color:${overNow.length ? 'var(--red)' : 'var(--ink2)'}">${overNow.length}</b></span></div>
+    ${canPeople ? `
+    <div class="dd-sec">حسب الإدارة</div>
+    <div>${deptRows || '<div style="color:var(--muted);font-size:12px">لا إدارات ضمن نطاقك في هذا القطاع</div>'}</div>
+    <div class="dd-sec">كل الأفراد — الأكثر حِملاً أولاً</div>
+    <div>${ddRows([...emps].sort((a, b) => loadOf(b) - loadOf(a)).map(personRow))}</div>
+    ${outsideRoster ? `<div style="font-size:var(--fs-micro);color:var(--muted);margin-top:.3rem">${outsideLine(outsideRoster)}</div>` : ''}
+    ${basisLine}
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.2rem"><a class="btn btn-sm" href="${staffingHref}">لوحة التسكين الكاملة</a></div>`
+    : `<div style="font-size:var(--fs-meta);color:var(--muted);margin-top:.4rem">أسماء الأفراد وأحمالهم تظهر لمن يملك صلاحية عرض الفريق.</div>${basisLine}`}`);
+  const deptDDs = (team?.departments || []).map((d) => {
+    const members = d.ids.map((id) => empById.get(id)).filter(Boolean).sort((a, b) => loadOf(b) - loadOf(a));
+    return ddWrap(`cap-dept-${esc(d.id || 'none')}`, esc(d.name_ar), `${esc(sd.sector.name_ar)} · ${nowMonth ? `${G.utilization} هذا الشهر` : `متوسط إشغال ${year}`}`, `
+    <div class="dd-kpi"><span class="v tnum" style="color:${d.avgNow > OVER_ABOVE ? 'var(--red)' : 'var(--ink2)'}">${d.avgNow}%</span><span style="font-size:12px;color:var(--muted)">متوسط ${G.utilization} · ${countAr(d.headcount, { one: 'موظف واحد', two: 'موظفان', few: 'موظفين', many: 'موظفاً' })}${nowMonth ? ` · متوسط السنة <b class="tnum">${d.avgAnnual}%</b>` : ''}</span></div>
+    <div style="display:flex;gap:1rem;font-size:12px;color:var(--muted);flex-wrap:wrap">
+      <span>${nowMonth ? 'بلا تسكين الآن' : 'بلا تسكين في السنة'} <b class="tnum" style="color:var(--ink2)">${d.free}</b></span>
+      <span>${G.overloaded} <b class="tnum" style="color:${d.over ? 'var(--red)' : 'var(--ink2)'}">${d.over}</b></span></div>
+    <div class="dd-sec">الأفراد</div>
+    <div>${members.length ? members.map(personRow).join('') : '<div style="color:var(--muted);font-size:12px">لا موظفين في هذه الإدارة ضمن نطاقك</div>'}</div>
+    ${basisLine}
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.2rem"><button type="button" class="btn btn-sm" data-action="open-dd" data-dd="seccap">كل الفريق</button></div>`);
+  }).join('');
+  const bandDDs = !canPeople ? '' : [
+    ['mid', 'ضمن الطاقة', midNow, `مُسكَّنون حتى ${OVER_ABOVE}% من الطاقة — ومنهم من لديه ${G.underused} (أقل من ${FREE_BELOW}%)`],
+    ['free', nowMonth ? G.onBench : 'بلا تسكين طوال السنة', freeNow, nowMonth ? `لا بند تسكين في ${monthLabel(nowMonth - 1)}` : `لا شهر مُسكَّن واحد في ${year}`],
+    ['over', G.overloaded, overNow, `فوق ${OVER_ABOVE}% من الطاقة`],
+  ].map(([k, l, rows, sub]) => ddWrap(`cap-band-${k}`, l, `${esc(sd.sector.name_ar)} · ${sub}`, `
+    <div class="dd-kpi"><span class="v tnum" style="color:${k === 'over' ? 'var(--red)' : k === 'free' ? 'var(--brand2)' : 'var(--green)'}">${rows.length}</span><span style="font-size:12px;color:var(--muted)">${countAr(rows.length, { one: 'شخص واحد', two: 'شخصان', few: 'أشخاص', many: 'شخصاً', zero: 'لا أحد' })} ضمن نطاقك</span></div>
+    <div>${rows.length ? [...rows].sort((a, b) => loadOf(b) - loadOf(a)).map(personRow).join('') : '<div style="color:var(--muted);font-size:12px">لا أحد ضمن هذه الفئة في هذه النافذة</div>'}</div>
+    ${basisLine}
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.2rem"><button type="button" class="btn btn-sm" data-action="open-dd" data-dd="seccap">كل الفريق</button></div>`)).join('');
+  // ── تغطية خط الفرص: المعادلة مكشوفة بأطرافها، ثم القمع وصفحة الفرص ──
+  const coverDD = ddWrap('seccover', 'تغطية خط الفرص', `${esc(sd.sector.name_ar)} · ${year}`, `
+    <div class="dd-kpi"><span class="v tnum" style="color:${(cover?.coverage ?? 1) < 1 ? 'var(--amber)' : 'var(--ink2)'}">${cover?.coverage != null ? `×${cover.coverage}` : '—'}</span><span style="font-size:12px;color:var(--muted)">${cover?.coverage != null ? 'المفتوح ÷ المتبقي من هدف المبيعات' : 'لا متبقٍّ من هدف المبيعات — الهدف محقَّق أو غير مسجَّل'}</span></div>
+    <div>
+      <div class="dd-row"><span>القيمة المفتوحة في خط الفرص</span><b class="tnum">${fmtSar(cover?.open_halalas || 0)}</b></div>
+      <div class="dd-row"><span>المتبقي من هدف المبيعات ${year}</span><b class="tnum">${fmtSar(cover?.remaining_target_halalas || 0)}</b></div>
+      <div class="dd-row"><span>المفتوح مرجّحاً باحتمال الفوز <span style="color:var(--muted);font-size:10.5px">· للاستئناس لا للحكم</span></span><b class="tnum">${fmtSar(cover?.weighted_halalas || 0)}</b></div>
+    </div>
+    <div style="font-size:var(--fs-micro);color:var(--muted);margin-top:.3rem">×1 فأكثر يعني أن ما في الخط يغطي المتبقي من الهدف لو كُسب كله — وما تحت ×1 فجوةٌ تحتاج فرصاً جديدة.</div>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.4rem">
+      <button type="button" class="btn btn-primary btn-sm" data-action="open-dd" data-dd="fnl-ALL">تفصيل القمع</button>
+      ${canOpps ? `<a class="btn btn-sm" href="${oppsPageHref}">فتح صفحة الفرص</a>` : ''}
+    </div>`);
+  // ── المتوقفة: الفرص التي تجاوزت المدة المعتادة لمرحلتها — أسماؤها بنطاق القارئ ──
+  const stalledIds = new Set(stalledRows.map((o) => o.id));
+  const stalledNamed = ddOppRows.filter((o) => stalledIds.has(o.id));
+  const stalledAge = new Map(stalledRows.map((o) => [o.id, ageDays(o.since)]));
+  const stalledShown = stalledNamed.slice(0, 12);
+  const stalledDD = ddWrap('fnl-stalled', 'فرص متوقفة تحتاج متابعة', `${esc(sd.sector.name_ar)} · تجاوزت المدة المعتادة لمرحلتها`, `
+    <div class="dd-kpi"><span class="v tnum" style="color:${stalledRows.length ? 'var(--amber)' : 'var(--ink2)'}">${stalledRows.length}</span><span style="font-size:12px;color:var(--muted)">بقيمة ${fmtSar(stalledRows.reduce((a, o) => a + (o.value_halalas || 0), 0))}</span></div>
+    <div class="dd-sec">${!stalledShown.length ? 'لا فرص متوقفة ضمن نطاق قراءتك'
+    : stalledShown.length === stalledRows.length ? 'الفرص'
+      : stalledNamed.length === stalledRows.length ? `الفرص (الأعلى ${stalledShown.length} قيمةً من ${stalledRows.length})`
+        : stalledShown.length === stalledNamed.length ? `الفرص (${stalledShown.length} من ${stalledRows.length} ضمن نطاق قراءتك)`
+          : `الفرص (الأعلى ${stalledShown.length} قيمةً من ${stalledNamed.length} ضمن نطاق قراءتك — الإجمالي ${stalledRows.length})`}</div>
+    <div>${ddRows(stalledShown.map((o) => `<div class="dd-row">
+      <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><a href="/app/opportunity/${esc(o.id)}" style="color:var(--ink2);font-weight:700">${esc(o.title_ar)}</a>${o.client ? ` <span style="color:var(--muted);font-size:10.5px">· ${esc(o.client)}</span>` : ''} <span style="color:var(--amber);font-size:10.5px">· ${dayWord(stalledAge.get(o.id) || 0)} في المرحلة</span></span>
+      <b class="tnum" style="flex:none">${o.value_halalas ? fmtSar(o.value_halalas) : '—'}</b></div>`))}</div>
+    ${canOpps ? `<div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.4rem"><a class="btn btn-sm" href="${oppsPageHref}">فتح صفحة الفرص</a></div>` : ''}`);
+  const rosterIds = new Set((team?.people || []).map((p) => p.id));
+  // نافذة بند «فوق الطاقة» في «يحتاج تدخلك»: الأسماء من الخدمة (محجوبة لمن لا يقرأ الموظفين)،
+  // والصفّ يفتح نافذة صاحبه إن كان في الكشف.
+  const overRows = (attn.find((a) => a.dd === 'att-overload')?.ddRowsData) || [];
+  const overloadDD = ddWrap('att-overload', `${G.overloaded} هذا الشهر`, `${esc(sd.sector.name_ar)} · من خطة تسكين ${MONTHS_AR[Number(today.slice(5, 7)) - 1] || ''}`, `
+    <div>${overRows.length ? overRows.map((x) => rosterIds.has(x.employee_id)
+    ? `<div class="dd-row cap-li-btn" role="button" tabindex="0" data-action="cap-person" data-emp="${esc(x.employee_id)}"><span style="font-weight:700">${esc(x.name)} <span style="color:var(--faint)" aria-hidden="true">⊕</span></span><b class="tnum" style="color:var(--red)">${x.pct}%</b></div>`
+    : `<div class="dd-row"><span style="font-weight:700">${esc(x.name)}</span><b class="tnum" style="color:var(--red)">${x.pct}%</b></div>`).join('')
+    : `<div style="color:var(--muted);font-size:12px">${canPeople ? 'لا أحد تجاوز الطاقة ضمن نطاقك' : 'أسماء الأفراد تظهر لمن يملك صلاحية عرض الفريق'}</div>`}</div>
+    <div style="font-size:10.5px;color:var(--muted);margin-top:.4rem">الأرقام من خطة التسكين الشهرية — وليست ساعات عمل فعلية.</div>
+    ${canPeople ? `<div style="display:flex;gap:.5rem;flex-wrap:wrap"><a class="btn btn-sm" href="${staffingHref}">لوحة التسكين</a></div>` : ''}`);
+  const complDD = compl.score != null ? ddWrap('completeness', 'اكتمال البيانات', `${esc(sd.sector.name_ar)} · نِسَبُ اكتمالٍ معلنة (كم اكتمل من كم) — والدرجة متوسطها الموزون`, `
+    <div class="dd-kpi"><span class="v tnum">${compl.score}%</span><span style="font-size:12px;color:var(--muted)">كلما اكتملت البيانات صدقت أرقام هذه الصفحة</span></div>
+    ${compl.items.map((it) => `<div class="dd-row"><span>${esc(it.label)} <span class="tipdot" data-tip="${esc(it.hint)}" tabindex="0" role="img" aria-label="${esc(it.hint)}">${icon('info')}</span></span>
+      <span style="display:inline-flex;gap:.5rem;align-items:center"><span class="pmeter"><i style="width:${it.pct}%"></i></span>
+      <b class="tnum">${it.num} من ${it.den}</b>
+      <a class="btn btn-ghost btn-sm" href="${esc(it.href)}">أكمِلها</a></span></div>`).join('')}`) : '';
+  const monthWord = (n) => countAr(n, { one: 'شهر واحد', two: 'شهران', few: 'أشهر', many: 'شهراً' });
+  // ── نافذة التوقع: الحساب مكشوفاً، لا رقمٌ يُؤخذ على عهدة الشاشة ────────────────────────
+  // البطاقة كانت تفتح «الإيراد حسب المشروع» — نافذةٌ لا علاقة لها بالتوقع (ملاحظة المالك).
+  // وهذه تعرض الأساس والحدَّين وصيغةَ كلٍّ منها، والأشهرَ المسجَّلة التي بُنيت عليها الوتيرة،
+  // ورسماً تفاعلياً يقول قيمة كل شهر بالتحويم — «كي نفهم الحساب» (طلب أ. حسين).
+  const fcDD = (() => {
+    if (fr.nextYear && fr.tooEarly) {
+      return ddWrap('secfc', G.forecast, `${esc(sd.sector.name_ar)} · ${year}`, `
+        <div class="empty-mini">${icon('clock')} لا وتيرة مسجَّلة في ${fr.basisYear} بعدُ تُمدّ إلى ${year} — يبدأ التوقع حين يكتمل شهرٌ من سنة الأساس.</div>`);
+    }
+    if (fr.nextYear) {
+      const bSeen = (basisMonthly || []).slice(0, fr.monthsSeen);
+      const bRows = bSeen.map((v, i) => ({ label: MONTHS_AR[i], value: v, count: '', fill: v === fr.maxMonth ? 'var(--st-good)' : v === fr.minMonth ? 'var(--st-warn)' : 'var(--acc-navy)' }));
+      return ddWrap('secfc', G.forecast, `${esc(sd.sector.name_ar)} · ${year} · امتداد وتيرة ${fr.basisYear}`, `
+        <div class="dd-kpi"><span class="v tnum">${sarShort(fr.base)}</span><span style="font-size:12px;color:var(--muted)">لا سجلّ لسنة ${year} — الأساس امتدادُ وتيرة ${fr.basisYear} المسجَّلة</span></div>
+        <div class="dd-sec">الصيغ الثلاث — كلها من إيراد ${fr.basisYear} المُسجَّل وحده</div>
+        <div class="dd-row"><span>المتحفّظ — لو تكرّر <b>أبطأ</b> شهرٍ مسجَّل اثني عشر شهراً</span>
+          <span><b class="tnum">${sarShort(fr.low)}</b> <small style="color:var(--muted)">= ${sarShort(fr.minMonth)} × 12</small></span></div>
+        <div class="dd-row"><span>الأساس — لو استمرت وتيرة ${fr.basisYear} نفسها</span>
+          <span><b class="tnum">${sarShort(fr.base)}</b> <small style="color:var(--muted)">= ${sarShort(fr.avgMonth)} × 12</small></span></div>
+        <div class="dd-row"><span>المتفائل — لو تكرّر <b>أفضل</b> شهرٍ مسجَّل اثني عشر شهراً</span>
+          <span><b class="tnum">${sarShort(fr.high)}</b> <small style="color:var(--muted)">= ${sarShort(fr.maxMonth)} × 12</small></span></div>
+        ${nextSched && nextSched.n ? `<div class="dd-sec">المُسنَد لسنة ${year} في خط الفرص</div>
+        <div class="dd-row"><span>${countAr(nextSched.n, { one: 'فرصة مفتوحة واحدة مُسنَدة لهذه السنة', two: 'فرصتان مفتوحتان مُسنَدتان لهذه السنة', few: 'فرص مفتوحة مُسنَدة لهذه السنة', many: 'فرصة مفتوحة مُسنَدة لهذه السنة' })}</span>
+          <span><b class="tnum">${sarShort(Math.round(nextSched.weighted))}</b> <small style="color:var(--muted)">مرجّحاً من ${sarShort(nextSched.raw)}</small></span></div>` : ''}
+        <div class="dd-sec">أشهر ${fr.basisYear} التي قِيست عليها الوتيرة (${monthWord(fr.monthsSeen)})</div>
+        ${figBars(bRows, { fmt: sarShort })}
+        <div style="font-size:var(--fs-micro);color:var(--muted);padding:.5rem 0 0;line-height:1.8">
+          امتدادُ وتيرةٍ لا تنبؤ: يفترض أن السنة القادمة تشبه الجارية شهراً بشهر، بلا موسميةٍ ولا
+          صفقاتٍ جديدة — وكلما أُسنِدت صفقاتٌ لسنة ${year} ظهر مجدولُها هنا بجانبه.
+        </div>`);
+    }
+    if (fr.tooEarly) {
+      return ddWrap('secfc', G.forecast, `${esc(sd.sector.name_ar)} · ${year}`, `
+        <div class="empty-mini">${icon('clock')} مبكرٌ على التوقع — لم يكتمل شهرٌ من السنة بعد، ولا وتيرة تُقاس عليها.</div>`);
+    }
+    if (fr.closed) {
+      return ddWrap('secfc', G.forecast, `${esc(sd.sector.name_ar)} · ${year}`, `
+        <div class="dd-kpi"><span class="v tnum">${sarShort(fr.actual)}</span><span style="font-size:12px;color:var(--muted)">السنة انتهت — هذا محقّقها لا توقّعاً</span></div>`);
+    }
+    const seen = monthly.slice(0, fr.monthsSeen);
+    const rows = seen.map((v, i) => ({ label: MONTHS_AR[i], value: v, count: '', fill: v === fr.maxMonth ? 'var(--st-good)' : v === fr.minMonth ? 'var(--st-warn)' : 'var(--acc-navy)' }));
+    return ddWrap('secfc', G.forecast, `${esc(sd.sector.name_ar)} · ${year} · الحساب مكشوفاً`, `
+      <div class="dd-kpi"><span class="v tnum">${sarShort(fr.base)}</span><span style="font-size:12px;color:var(--muted)">الأساس — لو استمرت الوتيرة نفسها</span>
+        ${fcPct != null ? `<span class="pill" style="background:${fcPct >= 0 ? 'var(--st-good-soft)' : 'var(--st-warn-soft)'};color:${fcPct >= 0 ? 'var(--st-good)' : '#92400e'}"><span class="tnum" dir="ltr">${fcPct >= 0 ? '+' : '−'}${Math.abs(fcPct)}%</span> عن ${G.target}</span>` : ''}</div>
+      <div class="dd-sec">الصيغ الثلاث — كلها من الإيراد المُسجَّل وحده</div>
+      <div class="dd-row"><span>المتحفّظ — لو تكرّر <b>أبطأ</b> شهر مسجَّل</span>
+        <span><b class="tnum">${sarShort(fr.low)}</b> <small style="color:var(--muted)">= ${sarShort(fr.actual)} + ${sarShort(fr.minMonth)} × ${monthWord(fr.remainingMonths)}</small></span></div>
+      <div class="dd-row"><span>الأساس — لو استمرت الوتيرة</span>
+        <span><b class="tnum">${sarShort(fr.base)}</b> <small style="color:var(--muted)">= ${sarShort(fr.actual)} ÷ ${fr.elapsedPct}% من السنة</small></span></div>
+      <div class="dd-row"><span>المتفائل — لو تكرّر <b>أفضل</b> شهر مسجَّل</span>
+        <span><b class="tnum">${sarShort(fr.high)}</b> <small style="color:var(--muted)">= ${sarShort(fr.actual)} + ${sarShort(fr.maxMonth)} × ${monthWord(fr.remainingMonths)}</small></span></div>
+      <div class="dd-sec">الأشهر المسجَّلة التي قِيست عليها الوتيرة (${monthWord(fr.monthsSeen)})</div>
+      ${figBars(rows, { fmt: sarShort })}
+      <div class="dd-row"><span>أبطأ شهر</span><b class="tnum">${sarShort(fr.minMonth)}</b></div>
+      <div class="dd-row"><span>أفضل شهر</span><b class="tnum">${sarShort(fr.maxMonth)}</b></div>
+      <div class="dd-row"><span>متوسط الشهر</span><b class="tnum">${sarShort(Math.round(fr.actual / Math.max(1, fr.monthsSeen)))}</b></div>
+      <div style="font-size:var(--fs-micro);color:var(--muted);padding:.5rem 0 0;line-height:1.8">
+        لا تدخل قيمةُ الفرص هذا الحساب إطلاقاً: قيمة الفرصة قيمةٌ تعاقدية قد تمتدّ سنوات، والإيراد
+        لا يُعترف به إلا عند تسليم المخرَج أو قبوله. وتوزيع الأشهر يتبع تواريخ القبول أو التسجيل
+        في المنصة لا تواريخ تنفيذ العمل، فيصدق كلما اكتملت تواريخ المخرجات.
+      </div>`);
+  })();
+  // نافذة المخرجات لمحطتي مسلَّم/مقبول: أعلى المخرجات المعترَف بها هذه السنة، بحالتها
+  const dlvTop = await all(`SELECT d.name_ar, d.amount_halalas, d.status, p.name_ar project
+     FROM deliverable d LEFT JOIN project p ON p.id = d.project_id
+     WHERE d.sector_id = ? AND d.deleted_at IS NULL AND ${dlvYearSqlFor('d')} = ?
+       AND d.status IN ('DELIVERED','ACCEPTED','INVOICED','PAID')${deptSql('p.department_id')}${clientSql('p.client_id')}
+     ORDER BY d.amount_halalas DESC LIMIT 10`, [sectorId, year, ...deptArg, ...clientArg]);
+  const DLV_ST_AR = { DELIVERED: 'مسلَّم', ACCEPTED: 'مقبول', INVOICED: 'فُوتر', PAID: 'مدفوع' };
+  const secdlvDD = ddWrap('secdlv', `${G.deliverables} · ${year}`, `${esc(sd.sector.name_ar)} · المسلَّم والمقبول${filtered ? ' — تحت الترشيح' : ''}`, `
+    <div class="dd-kpi"><span class="v tnum">${sarShort(vjDelivered?.v || 0)}</span><span style="font-size:12px;color:var(--muted)">قيمة المسلَّم — والمقبول منها ${sarShort(vjAccepted?.v || 0)}</span></div>
+    ${dlvTop.length ? `<div class="dd-sec">أعلى المخرجات قيمةً</div>
+    <div>${ddRows(dlvTop.map((d) => `<div class="dd-row"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.name_ar)}${d.project ? ` <span style="color:var(--faint);font-size:10.5px">· ${esc(d.project)}</span>` : ''} <span class="pill" style="background:var(--st-neut-soft);color:var(--muted)">${DLV_ST_AR[d.status] || esc(tr(d.status))}</span></span><b class="tnum" style="flex:none">${fmtSar(d.amount_halalas || 0)}</b></div>`))}</div>` : `<div class="empty-mini">${icon('info')} لا مخرجات معترفاً بها هذه السنة${filtered ? ' تحت هذا الترشيح' : ''}</div>`}`);
+  // نوافذ حِزم الأعمار: رأسها المجموع القطاعي، وأسماؤها بنطاق القارئ (نفس قاعدة نوافذ المراحل)
+  const ageDDs = AGE_B.map(([k, l, lo, hi]) => {
+    const b = ages.find((x) => x.k === k);
+    const rows = ddOppRows.filter((o) => { const d = ageDays(o.since); return d >= lo && d <= hi; })
+      .sort((a, x) => (x.value_halalas || 0) - (a.value_halalas || 0)).slice(0, 12);
+    return ddWrap(`fnl-age-${k}`, `عمر الفرص: ${l}`, `${esc(sd.sector.name_ar)} · في مرحلتها منذ ${lo === 0 ? 'أقل من' : lo} ${hi > 9000 ? 'يوماً فأكثر' : `إلى ${hi} يوماً`}`, `
+      <div class="dd-kpi"><span class="v tnum">${sarShort(b?.v || 0)}</span><span style="font-size:12px;color:var(--muted)">${countAr(b?.n || 0, { one: 'فرصة مفتوحة واحدة', two: 'فرصتان مفتوحتان', few: 'فرص مفتوحة', many: 'فرصة مفتوحة', zero: 'لا فرص في هذه الحزمة' })}</span></div>
+      ${rows.length ? `<div class="dd-sec">الفرص المسماة — بنطاق حسابك</div>
+      <div>${ddRows(rows.map((o) => `<div class="dd-row"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><a href="/app/opportunity/${esc(o.id)}" style="color:var(--ink2)">${esc(o.title_ar)}</a><span style="color:var(--faint);font-size:10.5px"> · ${esc(o.client || '—')} · ${dayWord(ageDays(o.since))}</span></span><b class="tnum" style="flex:none">${fmtSar(o.value_halalas || 0)}</b></div>`))}</div>` : (b?.n ? `<div class="empty-mini">${icon('info')} فرص هذه الحزمة خارج نطاق حسابك المسمّى — المجموع أعلاه قطاعي</div>` : '')}`);
+  }).join('');
+  // ── (v5.71) نافذتا شريط «المال في القطاع» ─────────────────────────────────────────────
+  // «الفواتير الصادرة»: ما طُولب به العميل فعلاً هذه السنة — **مع الضريبة** بلفظ المعجم (هو ما
+  // يُدفع)، عدا المسودّات (لم تُرسَل) والملغاة (سُحبت). والحالة تُعرض بمعناها العربي لا برمزها،
+  // مؤنّثةً لأن الموصوف «فاتورة». و«متأخرة السداد» بتمامها كما في المعجم (G.overdue): «متأخرة»
+  // وحدها تُقرأ تأخّراً في التسليم لا في الدفع.
+  const INV_ST_AR = { ISSUED: 'صادرة', PARTIALLY_PAID: 'محصَّلة جزئياً', PAID: 'محصَّلة', OVERDUE: 'متأخرة السداد' };
+  const INV_ST_ORDER = ['ISSUED', 'PARTIALLY_PAID', 'PAID', 'OVERDUE'];
+  const mbEcho = period.kind === 'y' ? `سنة ${year}` : `${periodLabel(period.kind, period.index)} ${year}`;
+  // صيغتان لاسم الفترة: `mbEcho` اسمٌ يُعطَف («سنة ٢٠٢٦»، «مارس ٢٠٢٦») يصلح عنواناً وبعد فاصلة،
+  // و`mbWhen` ظرفٌ بحرفه («خلال ٢٠٢٦»، «في مارس ٢٠٢٦») يصلح داخل جملةٍ تامة. وخلطُهما يُخرج
+  // «لا تكاليف مسجَّلة مارس ٢٠٢٦» — جملةً ناقصة الحرف.
+  const mbWhen = periodEcho(period.kind, period.index, year);
+  const mbMonths = period.kind === 'y' ? null : new Set(period.months);
+  const secinvDD = !canInvoices ? '' : (() => {
+    const tot = mbInvByStatus.reduce((a, r) => a + (r.v || 0), 0);
+    const cnt = mbInvByStatus.reduce((a, r) => a + (r.n || 0), 0);
+    const rows = [...mbInvByStatus].sort((a, b) => {
+      const ia = INV_ST_ORDER.indexOf(a.status), ib = INV_ST_ORDER.indexOf(b.status);
+      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+    });
+    return ddWrap('secinv', `الفواتير الصادرة · ${year}`, `${esc(sd.sector.name_ar)} · ${G.withVat}`, `
+      <div class="dd-kpi"><span class="v tnum">${fmtSar(tot)}</span><span style="font-size:12px;color:var(--muted)">${countAr(cnt, { one: 'فاتورة واحدة صادرة', two: 'فاتورتان صادرتان', few: 'فواتير صادرة', many: 'فاتورة صادرة', zero: 'لا فواتير صادرة هذه السنة' })} · ${G.collected} ${mbColYear?.v ? fmtSar(mbColYear.v) : 'لم يُسجَّل'}</span></div>
+      ${rows.length ? `<div class="dd-sec">حسب الحالة</div>
+      <div>${ddRows(rows.map((r) => `<div class="dd-row"><span>${esc(INV_ST_AR[r.status] || tr(r.status) || 'حالة غير مسجَّلة')} <span style="color:var(--faint);font-size:10.5px">${countAr(r.n || 0, { one: 'فاتورة واحدة', two: 'فاتورتان', few: 'فواتير', many: 'فاتورة' })}</span></span><b class="tnum">${fmtSar(r.v || 0)}</b></div>`))}</div>` : ''}
+      ${mbInvRecent.length ? `<div class="dd-sec">أحدث الفواتير</div>
+      <div>${ddRows(mbInvRecent.map((r) => `<div style="padding:.4rem 0;border-bottom:1px dashed var(--line)">
+        <div style="display:flex;justify-content:space-between;gap:.7rem;font-size:12.5px;align-items:baseline">
+          <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.client || r.project || 'فاتورة')}${r.code ? ` <span style="color:var(--faint);font-size:10.5px"><bdi>${esc(r.code)}</bdi></span>` : ''}</span>
+          <b class="tnum" style="flex:none">${fmtSar(r.amount_halalas || 0)}</b></div>
+        <div style="display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted)">
+          <span class="tnum" dir="ltr">${esc(r.d || '')}</span><span>${esc(INV_ST_AR[r.status] || tr(r.status) || '')}</span></div>
+      </div>`))}</div>`
+    : `<div class="empty-mini">${icon('info')} لا فواتير صادرة لهذا القطاع في ${year} — الفواتير تصل من الترحيل أو من المالية، والمسودّات والملغاة لا تُعدّ صادرة</div>`}`);
+  })();
+  // «التكاليف والهامش»: بنودُ التكلفة المسجَّلة والمصروفاتُ المعتمدة أو المدفوعة — والطلبُ الذي
+  // ما زال ينتظر اعتماداً ليس تكلفةً بعد. وأعمدةُ الأشهر للسنة كاملةً ولو ضاقت الفترة، كي يُقرأ
+  // موضعُ الفترة من السنة لا شهرُها وحده معلَّقاً في الهواء.
+  const seccostDD = !canCost ? '' : (() => {
+    const typeRow = (t) => `<div class="dd-row"><span>${esc(t.type || 'غير مصنَّف')}</span><b class="tnum">${fmtSar(t.amount_halalas || 0)}</b></div>`;
+    const cl = mbCosts.by_type.cost_lines, ex = mbCosts.by_type.expenses;
+    return ddWrap('seccost', `التكاليف والهامش · ${year}`, `${esc(sd.sector.name_ar)} · بنود التكلفة والمصروفات المعتمدة`, `
+      <div class="dd-kpi">${mbCost ? `<span class="v tnum" style="color:var(--acc-amber)">${fmtSar(mbCost)}</span>`
+    : '<span class="v" style="font-size:15px;font-weight:700;color:var(--muted)">لم تُسجَّل</span>'}<span style="font-size:12px;color:var(--muted)">تكلفة ${esc(mbEcho)} · بنود التكلفة ${mbCosts.cost_lines_halalas ? fmtSar(mbCosts.cost_lines_halalas) : 'لم تُسجَّل'} · مصروفات معتمدة ${mbCosts.expenses_halalas ? fmtSar(mbCosts.expenses_halalas) : 'لم تُسجَّل'}</span></div>
+      ${cl.length ? `<div class="dd-sec">بنود التكلفة حسب النوع</div><div>${ddRows(cl.map(typeRow))}</div>` : ''}
+      ${ex.length ? `<div class="dd-sec">المصروفات المعتمدة حسب النوع</div><div>${ddRows(ex.map(typeRow))}</div>` : ''}
+      ${!cl.length && !ex.length ? `<div class="empty-mini">${icon('info')} لا تكاليف مسجَّلة ${esc(mbWhen)} — تُسجَّل بنود التكلفة من المالية، والمصروف يُحتسب بعد اعتماده</div>` : ''}
+      ${/* أشهرُ السنة بأسمائها العربية في صفوفٍ أفقية: العمودُ الرأسي لا يتّسع لاثني عشر اسماً
+           عربياً في نافذةٍ عرضها ٥٢٠ بكسل، وبديلُه الوحيد اختصارٌ لاتيني (Jan…Dec) في شاشةٍ
+           عربية — وأسماءُ الأشهر تُقرأ في الصفوف كما تُقرأ في نافذة التوقّع بالضبط.
+           والشهرُ الخالي يُقال «—» لا «٠»: لا نُثبت صفراً لم يحسبه أحد. */''}
+      <div class="dd-sec">حسب الشهر — السنة كاملة${mbMonths ? '، وأشهر الفترة مميّزة' : ''}</div>
+      ${figBars(mbCosts.by_month.map((v, i) => ({
+    label: MONTHS_AR[i], value: v, count: '',
+    fill: (!mbMonths || mbMonths.has(i + 1)) ? 'var(--acc-amber)' : null,
+  })), { fmt: (v) => (v ? sarShort(v) : '—') })}
+      ${/* سطرُ الهامش يُكشف حسابُه حين يكتمل طرفاه وحدهما: بلا إيرادٍ لا مقسومَ عليه، وبلا تكلفةٍ
+           مسجَّلةٍ تصير المعادلة «الإيراد − ٠ = الإيراد (100%)» — رقمُ ربحٍ كاملٍ صنعه غيابُ
+           الإدخال. فيُقال الحال بجملةٍ واحدة بدل معادلةٍ طرفُها فارغ. */''}
+      ${canMargin ? `<div style="font-size:var(--fs-body);color:var(--muted);padding-top:.6rem;line-height:1.9">${!mbRev
+    ? `لا إيراد مسجَّلاً ${esc(mbWhen)} — فلا هامش يُحسب عليه`
+    : !mbCost ? 'لا هامش يُحسب قبل تسجيل التكاليف'
+      : `${G.netRevenue} <b class="tnum">${fmtSar(mbRev)}</b> − التكاليف <b class="tnum">${fmtSar(mbCost)}</b> = <b class="tnum" style="color:${mbProfit < 0 ? 'var(--st-bad)' : 'var(--ink2)'}">${fmtSar(mbProfit)}</b> (<span class="tnum"><bdi dir="ltr">${mbPct}%</bdi></span>) — ${esc(mbEcho)}`}</div>` : ''}`);
+  })();
   const DD = `
+  ${secinvDD}
+  ${seccostDD}
+  ${secdlvDD}
+  ${ageDDs}
+  ${fcDD}
+  ${complDD}
+  ${capEmpDDs}
+  ${overloadDD}
+  ${teamDD}
+  ${deptDDs}
+  ${bandDDs}
+  ${coverDD}
+  ${stalledDD}
   ${ddWrap('secrev', `${G.revenue} حسب المشروع · ${year}`, `${esc(sd.sector.name_ar)} · المحقق مقابل قيمة كل مشروع`, `
     <div class="dd-kpi"><span class="v tnum" style="color:var(--green)">${fmtSar(sd.revenue_halalas)}</span><span style="font-size:12px;color:var(--muted)">إجمالي المحقق ${year} · ${G.forecast}: ${fmtSar(fc.forecast)}</span></div>
     ${attain(sd.revenue_halalas, sd.target_revenue_halalas, 'var(--green)')}
@@ -418,7 +1712,7 @@ export async function sectorPage(user, opts = {}) {
     <div>${ddRows(revByProject.map((r) => { const pcv = r.cv ? Math.round((r.rev / r.cv) * 100) : null; return `
       <div style="padding:.4rem 0;border-bottom:1px dashed var(--line)">
         <div style="display:flex;justify-content:space-between;gap:.7rem;font-size:12.5px;align-items:baseline">
-          <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.id ? esc(r.name_ar) : 'إيراد غير مرتبط بمشروع'}</span>
+          <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.id ? `<a href="/app/project/${esc(r.id)}" style="color:var(--ink2)">${esc(r.name_ar)}</a>` : 'إيراد غير مرتبط بمشروع'}</span>
           <b class="tnum" style="flex:none">${fmtSar(r.rev)}</b></div>
         <div style="display:flex;justify-content:space-between;gap:.7rem;font-size:10.5px;color:var(--muted)">
           <span>${r.cv ? 'قيمة المشروع (' + (r.cvbasis || '') + ') ' + fmtSar(r.cv) : 'بلا قيمة مسجلة'}</span>${pcv != null ? `<span class="tnum" style="font-weight:800">حقّق ${pcv}%</span>` : ''}</div>
@@ -430,45 +1724,1012 @@ export async function sectorPage(user, opts = {}) {
     <div>${ddRows(secContracts.map((c) => { const ip = c.value_halalas ? Math.min(100, Math.round(((c.invoiced || 0) / c.value_halalas) * 100)) : 0; return `
       <div style="padding:.4rem 0;border-bottom:1px dashed var(--line)">
         <div style="display:flex;justify-content:space-between;gap:.7rem;font-size:12.5px;align-items:baseline">
-          <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><a href="/app/contract/${c.id}" style="color:var(--brand)">${esc(c.client || c.code || 'عقد')}</a>${c.code ? ` <span style="color:var(--faint);font-size:10.5px"><bdi>${esc(c.code)}</bdi></span>` : ''}</span>
+          <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span style="color:var(--ink2)">${esc(c.client || c.code || 'عقد')}</span>${c.code ? ` <span style="color:var(--faint);font-size:10.5px"><bdi>${esc(c.code)}</bdi></span>` : ''}</span>
           <b class="tnum" style="flex:none">${fmtSar(c.value_halalas)}</b></div>
         <div style="display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted)"><span>${tr(c.status)}${c.start_date ? ' · ' + String(c.start_date).slice(0, 10) : ''}</span><span class="tnum">فُوتر ${ip}%</span></div>
         <div class="bar" style="margin-top:.25rem;height:5px"><span style="width:${ip}%;background:var(--blue)"></span></div>
       </div>`; }))}</div>`) : ''}
-  ${ddWrap('secwins', `${G.sales} والفوز · ${year}`, `${esc(sd.sector.name_ar)} · مقابل هدف المبيعات`, `
-    <div class="dd-kpi"><span class="v tnum" style="color:var(--brand2)">${fmtSar(sd.sales_halalas)}</span><span style="font-size:12px;color:var(--muted)">${countAr(wins.won, { one: 'صفقة واحدة مكسوبة', two: 'صفقتان مكسوبتان', few: 'صفقات مكسوبة', many: 'صفقة مكسوبة' })} · ${G.winRate} ${wins.winRate}%</span></div>
-    ${attain(sd.sales_halalas, sd.target_sales_halalas, 'var(--brand2)')}
+  ${ddWrap('secwins', `${G.sales} والفوز · ${year}`, `${esc(sd.sector.name_ar)}${filtered ? ' · تحت الترشيح' : ' · مقابل هدف المبيعات'}`, `
+    <div class="dd-kpi"><span class="v tnum" style="color:var(--brand2)">${fmtSar(filtered && salesScoped ? salesScoped.v : sd.sales_halalas)}</span><span style="font-size:12px;color:var(--muted)">${countAr(filtered && salesScoped ? salesScoped.n : wins.won, { one: 'صفقة واحدة مكسوبة', two: 'صفقتان مكسوبتان', few: 'صفقات مكسوبة', many: 'صفقة مكسوبة', zero: 'لا صفقات مكسوبة' })}${filtered ? '' : ` · ${G.winRate} ${wins.winRate}%`}</span></div>
+    ${filtered ? '' : attain(sd.sales_halalas, sd.target_sales_halalas, 'var(--brand2)')}
     <div class="dd-sec">الصفقات المكسوبة</div>
     <div>${ddRows(secWon.map((d) => `<div class="dd-row"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.title_ar)}<span style="color:var(--faint);font-size:10.5px"> · ${esc(d.client || '—')}</span></span><b class="tnum" style="flex:none">${fmtSar(d.value_halalas)}</b></div>`))}</div>`)}
-  ${ddWrap('att-late-dlv', 'مخرجات تحتاج متابعة', `${esc(sd.sector.name_ar)} · أشهر سابقة لم تصل للفوترة`, `
+  ${ddWrap('att-late-dlv', 'مخرجات تحتاج متابعة', `${esc(sd.sector.name_ar)} · مخرجات من أشهر سابقة لم تصل إلى الفوترة`, `
     <div>${ddRows(lateDlv.map((d) => `<div class="dd-row"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.project || '')} · ${esc(d.name_ar)} <span style="color:var(--faint);font-size:10.5px">${MONTHS_AR[(d.month - 1) % 12] || ''}</span></span><b class="tnum" style="flex:none">${fmtSar(d.amount_halalas || 0)}</b></div>`))}</div>`)}
-  ${collectDD}`;
+  ${healthDD}
+  ${collectDD}
+  ${funnelDD}`;
 
-  const switcher = user.scope === 'company' ? `<div class="chips" style="margin-bottom:.6rem"><span class="lbl">القطاع:</span>
-    ${allSectors.map((s) => `<a href="/app/sector?year=${year}&sector=${s.id}&win=${win}" class="chip ${s.id === sectorId ? 'on' : ''}"><span class="dot" style="background:${s.color || '#244A99'}"></span>${esc(s.name_ar)}</a>`).join('')}
-    <a class="btn btn-sm" style="margin-inline-start:.3rem" href="/app/ceo?year=${year}&sector=${sectorId}">لوحة القيادة</a>
-  </div>` : '';
+  const winName = periodLabel(period.kind, period.index);
+  const winEcho2 = winEcho;
+  const prevTrend = (sd.trend || []).find((t) => t.year === year - 1) || null;
+  const yoyPct = prevTrend?.revenue_halalas ? Math.round(((sd.revenue_halalas - prevTrend.revenue_halalas) / prevTrend.revenue_halalas) * 100) : null;
+  const yoySales = prevTrend?.sales_halalas ? Math.round(((sd.sales_halalas - prevTrend.sales_halalas) / prevTrend.sales_halalas) * 100) : null;
 
-  const finCol = [collectCard, contractsCard].filter(Boolean).join('');
-  const row2 = finCol
-    ? `<div class="sec-grid even"><div class="sec-col">${finCol}</div><div class="sec-col">${projectsCard}</div></div>`
-    : `<div class="sec-grid" style="grid-template-columns:1fr"><div class="sec-col">${projectsCard}</div></div>`;
+  const cumMonthly = monthly.reduce((acc, v) => { acc.push((acc[acc.length - 1] || 0) + v); return acc; }, []);
+  const wq = cover?.weighted_halalas || 0;
+
+  // ── (١) خمس بطاقات مؤشرات على نموذج المالك: قيمة ورسم ودلتا في كل بطاقة — والألسنة
+  // تعيد حساب التدفقات فيها فعلاً (شكوى المالك «الألسنة لا تؤثر فيما تحتها مباشرة»). ──
+  const isWinMode = period.kind !== 'y';
+  const prevPct = (cur, prev) => (prev && prev > 0 ? Math.round(((cur - prev) / prev) * 100) : null);
+  const deltaChip = (pct) => pct == null ? ''
+    : sig(pct >= 0 ? 'ok' : 'warn', pct >= 0 ? '▲' : '▼', `<span class="tnum" dir="ltr">${pct >= 0 ? '+' : '−'}${Math.abs(pct)}%</span> عن النافذة السابقة المكافئة`);
+  const scopeTag = (t) => `<span class="ks">${t}</span>`;
+  const kpiCard = ({ eye, val, valTitle = '', sub = '', sub2 = '', viz = '', delta = '', dd = '', mark = '', scope = '', aria = '' }) => `
+    <button type="button" class="kpi"${dd ? ` data-action="open-dd" data-dd="${esc(dd)}"` : ''} aria-label="${esc(aria || `${eye}: ${String(val).replace(/<[^>]*>/g, '')} — التفصيل`)}">
+      <span class="ke">${eye}${mark}${scope ? scopeTag(scope) : ''}</span>
+      ${val !== '' ? `<span class="kv tnum"${valTitle ? ` title="${esc(valTitle)}"` : ''}>${val}</span>` : ''}
+      ${sub ? `<span class="kb">${sub}</span>` : ''}
+      ${viz ? `<span class="kviz">${viz}</span>` : ''}
+      ${sub2 ? `<span class="kc">${sub2}</span>` : ''}
+      ${delta ? `<span class="kd">${delta}</span>` : ''}
+    </button>`;
+
+  // بطاقة الإيراد: سنةً كاملة قيمتها السنوية، ونافذةَ شهرٍ/ربعٍ مجموعُ الأشهر المتقاطعة
+  // (بنود الإيراد شهرية — الأساس معلن على العلامة)، وأسبوعاً/يوماً لا غرام إيراد يومي أصلاً.
+  // وسنةً قادمة «لا سجلّ بعد» والمتوقعُ في سطرها الثاني معلَّماً — لا خلط محققٍ بمتوقعٍ في خانة.
+  // وتحت ترشيح إدارة/عميل: المنسوب وحده وحصتُه من القطاع — لا حلقة هدفٍ (الأهداف قطاعية).
+  const revTarget = sd.target_revenue_halalas || 0;
+  const pMonthsN = period.kind === 'y' ? 12 : period.months.length;
+  const expShare = futureYr && fr.base ? Math.round(fr.base * pMonthsN / 12) : null;
+  const kpiRevenue = (futureYr && !sd.revenue_halalas)
+    ? kpiCard({ eye: `${G.revenue} المحقق`, val: '—', sub: `سنة قادمة — لا سجلّ لسنة ${year} بعد`,
+      mark: expShare != null ? estMark(`المتوقع امتدادُ وتيرة ${fr.basisYear} موزَّعاً بالتساوي على الأشهر (الأساس ÷ 12 × أشهر الفترة) — قاعدة معلنة لا موسمية فيها`, 'below') : '',
+      sub2: expShare != null ? `المتوقع ${period.kind === 'y' ? 'للسنة' : `في ${periodLabel(period.kind, period.index)}`}: ${sarShort(expShare)}` : '',
+      dd: 'secrev' })
+    : (!isWinMode && filtered)
+      ? kpiCard({ eye: `${G.revenue} المحقق`, val: rsTotal ? sarShort(rsTotal) : '—', valTitle: rsTotal ? fmtSar(rsTotal) : '',
+        sub: rsTotal ? (rsShare != null ? `حصة من إيراد القطاع <b class="tnum">${rsShare}%</b> (${sarShort(sd.revenue_halalas)})` : '') : 'لا إيراد منسوباً تحت هذا الترشيح',
+        mark: noteMark('الإيراد يُنسَب لإدارة/عميل عبر مشروع بنده — وغير المنسوب معلَنٌ تحت شريط المرشِّحات'),
+        viz: rsTotal ? figSpark(rsCum, { color: 'var(--acc-navy)', ariaLabel: `الإيراد التراكمي المرشَّح شهراً بشهر حتى ${sarShort(rsTotal)}` }) : '', dd: 'secrev' })
+      : !isWinMode
+    ? kpiCard({ eye: `${G.revenue} المحقق`, val: sarShort(sd.revenue_halalas), valTitle: fmtSar(sd.revenue_halalas),
+      sub: revTarget ? `من ${G.target} <b class="tnum">${sarShort(revTarget)}</b>${yoyPct != null ? ` · <span class="tnum" dir="ltr">${yoyPct >= 0 ? '+' : '−'}${Math.abs(yoyPct)}%</span> عن ${year - 1}` : ''}` : 'لا هدف مسجّل لهذه السنة',
+      viz: `${attainRev != null ? figRing(attainRev, { size: 48, sw: 7, color: 'var(--acc-navy)' }) : ''}${figSpark(cumMonthly, { color: 'var(--acc-navy)', ariaLabel: `الإيراد التراكمي شهراً بشهر حتى ${sarShort(sd.revenue_halalas)}` })}`,
+      delta: paceSig(dRev), dd: 'secrev' })
+    : (wrev
+      ? kpiCard({ eye: `${G.revenue} المحقق`, val: wrev.v ? sarShort(wrev.v) : '—',
+        sub: `${winEcho2} · ${countAr(wrev.months.length, { one: 'شهر واحد متقاطع', two: 'شهران متقاطعان', few: 'أشهر متقاطعة', many: 'شهراً متقاطعاً' })} مع النافذة`,
+        mark: noteMark('بنود الإيراد مسجّلة بالشهر — الرقم مجموع الأشهر المتقاطعة مع النافذة، وليس قصّاً يومياً'),
+        sub2: filtered ? (rsShare != null ? `تحت الترشيح — سنة ${year}: ${sarShort(rsTotal)} (${rsShare}% من القطاع)` : 'تحت الترشيح') : (attainRev != null ? `سنة ${year}: ${attainRev}% من ${G.target}` : 'لا هدف مسجّل لهذه السنة'),
+        viz: figSpark(rs, { color: 'var(--acc-navy)', ariaLabel: 'الإيراد الشهري عبر السنة' }), dd: 'secrev' })
+      : kpiCard({ eye: `${G.revenue} المحقق`, val: '—', sub: 'الإيراد يُسجَّل شهرياً — اختر نافذة الشهر أو أوسع',
+        sub2: attainRev != null ? `سنة ${year}: ${attainRev}% من ${G.target}` : 'لا هدف مسجّل لهذه السنة', dd: 'secrev' }));
+
+  // بطاقة المبيعات: سنةً كاملة بإسناد سنة الفرصة (رقم بقية الشاشات)، ونافذةً بتاريخ الفوز الفعلي
+  // — الأساسان مختلفان والتلميح يقولهما. ونسبة الفوز في النافذة بمقامها المطبوع.
+  const winRateLine = winf.decided.rate == null ? ''
+    : (winf.decided.won + winf.decided.lost) < 3
+      ? `عيّنة صغيرة (${countAr(winf.decided.won + winf.decided.lost, { one: 'فرصة واحدة حُسمت', two: 'فرصتان حُسمتا', few: 'فرص حُسمت', many: 'فرصة حُسمت' })})`
+      : `${G.winRate} ${winf.decided.rate}% من ${countAr(winf.decided.won + winf.decided.lost, { one: 'فرصة حُسمت', two: 'فرصتين حُسمتا', few: 'فرص حُسمت', many: 'فرصة حُسمت' })}`;
+  const kpiSales = (futureYr && !isWinMode)
+    ? (sd.sales_halalas
+      ? kpiCard({ eye: G.sales, val: sarShort(sd.sales_halalas), valTitle: fmtSar(sd.sales_halalas),
+        sub: `صفقات مُسنَدة مسبقاً لسنة ${year} — بإسناد سنة الفرصة`,
+        sub2: 'لا فوز وقع في هذه السنة بعد — الرقم ما جُدول لها', dd: 'secwins' })
+      : kpiCard({ eye: G.sales, val: '—', sub: `لا مبيعات مُسنَدة لسنة ${year} بعد`,
+        sub2: nextSched?.n ? `في الخط المرجّح لهذه السنة: ${sarShort(Math.round(nextSched.weighted))} من ${countAr(nextSched.n, { one: 'فرصة مفتوحة واحدة', two: 'فرصتين مفتوحتين', few: 'فرص مفتوحة', many: 'فرصة مفتوحة' })}` : '',
+        dd: 'secwins' }))
+    : (!isWinMode && filtered)
+      ? kpiCard({ eye: G.sales, val: salesScoped?.n ? sarShort(salesScoped.v) : '—',
+        sub: salesScoped?.n
+          ? `${countAr(salesScoped.n, { one: 'صفقة واحدة مكسوبة', two: 'صفقتان مكسوبتان', few: 'صفقات مكسوبة', many: 'صفقة مكسوبة' })}${sd.sales_halalas ? ` · حصة من مبيعات القطاع <b class="tnum">${Math.round((salesScoped.v / sd.sales_halalas) * 100)}%</b>` : ''}`
+          : 'لا صفقات مكسوبة تحت هذا الترشيح',
+        sub2: 'بإسناد سنة الفرصة — لا حلقة هدفٍ تحت الترشيح: أهداف المبيعات قطاعية',
+        dd: 'secwins' })
+      : !isWinMode
+    ? kpiCard({ eye: G.sales, val: sarShort(sd.sales_halalas), valTitle: fmtSar(sd.sales_halalas),
+      sub: sd.target_sales_halalas ? `من ${G.target} <b class="tnum">${sarShort(sd.target_sales_halalas)}</b>${yoySales != null ? ` · <span class="tnum" dir="ltr">${yoySales >= 0 ? '+' : '−'}${Math.abs(yoySales)}%</span> عن ${year - 1}` : ''}` : 'لا هدف مسجّل لهذه السنة',
+      viz: `${attainSales != null ? figRing(attainSales, { size: 48, sw: 7, color: 'var(--acc-indigo)' }) : ''}${figSpark(wbm.slots.map((x) => x.v), { color: 'var(--acc-indigo)', ariaLabel: 'قيمة الفرص المكسوبة شهرياً في آخر اثني عشر شهراً' })}`,
+      sub2: 'المكسوب شهرياً · آخر 12 شهراً بتاريخ الفوز',
+      delta: paceSig(dSales), dd: 'secwins' })
+    : kpiCard({ eye: G.sales, val: winf.wins.n ? sarShort(winf.wins.v) : '—',
+      sub: winf.wins.n ? `${countAr(winf.wins.n, { one: 'فرصة مكسوبة واحدة', two: 'فرصتان مكسوبتان', few: 'فرص مكسوبة', many: 'فرصة مكسوبة' })} ${winEcho2}` : `لا فرص مكسوبة ${winEcho2}`,
+      sub2: [winRateLine, 'بتاريخ الفوز الفعلي — وقد يختلف عن الرقم السنوي المحسوب بسنة الفرصة'].filter(Boolean).join(' · '),
+      viz: figSpark(wbm.slots.map((x) => x.v), { color: 'var(--acc-indigo)', ariaLabel: 'قيمة الفرص المكسوبة شهرياً في آخر اثني عشر شهراً' }),
+      delta: deltaChip(prevPct(winf.wins.v, winfPrev?.wins?.v)), dd: 'secwins' });
+
+  // بطاقة التوقع: سنويةٌ بطبيعتها — النطاق من الصيغ الثلاث المعلنة على العلامة الحمراء (قرار
+  // أ. حسين 2026-08-24: «نطاق التوقع» لا «الثقة» — لا إحصاء وراءه، سيناريوهات من سجلات حقيقية).
+  const fcScope = filtered ? 'القطاع كله · لا يتأثر بالفترة' : 'لا يتأثر بالفترة';
+  const kpiForecast = fr.nextYear
+    ? (fr.tooEarly
+      ? kpiCard({ eye: G.forecast, val: '—', sub: `لا وتيرة مسجَّلة في ${fr.basisYear} بعدُ تُمدّ إلى ${year}`,
+        scope: fcScope, dd: 'secfc' })
+      : kpiCard({ eye: G.forecast, val: sarShort(fr.base), valTitle: fmtSar(fr.base),
+        mark: estMark(`امتداد وتيرة ${fr.basisYear}: متوسط الشهر المسجَّل ${sarShort(fr.avgMonth)} × 12 — لا سجلّ لسنة ${year} بعد. اضغط البطاقة لتفصيل الحساب`, 'below'),
+        sub: `النطاق <b class="tnum" dir="ltr">${sarShort(fr.low)}–${sarShort(fr.high)}</b> · امتداد وتيرة ${fr.basisYear}`,
+        sub2: nextSched?.n ? `مبيعات مجدولة لسنة ${year}: ${sarShort(Math.round(nextSched.weighted))} مرجّحاً من ${countAr(nextSched.n, { one: 'فرصة واحدة', two: 'فرصتين', few: 'فرص', many: 'فرصة' })}` : `لا صفقات مُسنَدة لسنة ${year} في الخط بعد`,
+        scope: fcScope, dd: 'secfc' }))
+    : fr.tooEarly
+    ? kpiCard({ eye: G.forecast, val: '—', sub: 'مبكرٌ على التوقع — لم يكتمل شهرٌ من السنة بعد',
+      sub2: attainRev != null ? `المحقق ${sarShort(fr.actual)} من ${G.target}` : '', scope: fcScope, dd: 'secfc' })
+    : fr.closed
+      ? kpiCard({ eye: G.forecast, val: sarShort(fr.actual), valTitle: fmtSar(fr.actual),
+        sub: 'السنة انتهت — الرقم محقّقها لا توقّعاً', scope: fcScope, dd: 'secfc' })
+      : kpiCard({ eye: G.forecast, val: sarShort(fr.base), valTitle: fmtSar(fr.base),
+        mark: estMark('تقديرٌ من وتيرة الإيراد المُسجَّل وحده — اضغط البطاقة لتفصيل الحساب', 'below'),
+        sub: `النطاق <b class="tnum" dir="ltr">${sarShort(fr.low)}–${sarShort(fr.high)}</b>${fcPct != null ? ` · <span class="tnum" dir="ltr">${fcPct >= 0 ? '+' : '−'}${Math.abs(fcPct)}%</span> عن الهدف` : ''}`,
+        sub2: `على وتيرة ${sarShort(Math.round(fr.actual / Math.max(1, fr.monthsSeen)))} شهرياً خلال ${monthWord(fr.monthsSeen)} مضت`,
+        viz: figSpark(cumMonthly, { color: 'var(--acc-teal)', ariaLabel: 'مسار الإيراد التراكمي الذي تُقاس عليه الوتيرة' }),
+        scope: fcScope, dd: 'secfc' });
+
+  // بطاقة الخط المرجّح: رصيدٌ لحظي لا يتأثر بالفترة — والشرارة مرسّى الفوز الشهري الحقيقي
+  // (لا سجل تاريخي لقيمة الخط نفسه — فلا نختلقه).
+  const wqScoped = filtered ? Math.round(funnelStages.reduce((a, st) => a + (Number(st.weighted) || 0), 0)) : null;
+  const kpiPipeline = filtered
+    ? kpiCard({ eye: 'خط الفرص المرجّح', val: wqScoped ? sarShort(wqScoped) : '—',
+      mark: estMark('قيمة تقديرية: مجموع الفرص المفتوحة المطابقة للترشيح مرجّحاً باحتمال الفوز — ليست التزاماً ولا رقماً محاسبياً'),
+      sub: wqScoped ? 'المفتوح المطابق للترشيح مرجّحاً باحتمال الفوز' : 'لا فرص مفتوحة تحت هذا الترشيح',
+      sub2: 'لا هدف مبيعات لإدارةٍ أو عميل — فلا نسبة تغطية تحت الترشيح',
+      scope: 'لا يتأثر بالفترة', dd: 'seccover' })
+    : kpiCard({ eye: 'خط الفرص المرجّح', val: wq ? sarShort(wq) : '—',
+    mark: estMark('قيمة تقديرية: مجموع الفرص المفتوحة مرجّحاً باحتمال الفوز لكل فرصة — ليست التزاماً ولا رقماً محاسبياً'),
+    sub: cover?.coverage != null ? `تغطية ×<b class="tnum">${cover.coverage}</b> من المتبقي من هدف المبيعات` : 'لا هدف مبيعات للتغطية',
+    viz: figSpark(wbm.slots.map((x) => x.v), { color: 'var(--acc-violet)', ariaLabel: 'المكسوب شهرياً — لا سجل تاريخي لقيمة الخط فيُعرض المرسّى الفعلي' }),
+    sub2: 'المكسوب شهرياً — لا سجل تاريخي لقيمة الخط',
+    scope: 'لا يتأثر بالفترة', dd: 'seccover' });
+
+  // بطاقة الإشغال: نصف عدّاد على سقف محور التسكين نفسه — والحدود من قواعده لا أرقاماً مكتوبة.
+  const kpiCap = kpiCard({ eye: 'إشغال الفريق', val: '',
+    aria: `إشغال الفريق: ${bandLoad}% — ${midNow.length} ضمن الطاقة و${overNow.length} فوقها — التفصيل`,
+    sub: `${countAr(teamSize, { one: 'موظف واحد', two: 'موظفان', few: 'موظفين', many: 'موظفاً' })} · ${G.utilization} المخطَّط`,
+    viz: `<span class="gviz">${figGaugeHalf(bandLoad, { size: 150, sw: 14, max: AXIS_MAX, color: bandLoad > OVER_ABOVE ? 'var(--st-bad)' : 'var(--acc-navy)', sub: 'من الطاقة' })}</span>`,
+    sub2: `${midNow.length} ضمن الطاقة · ${overNow.length} تجاوز · ${freeNow.length} بلا تسكين`,
+    scope: filtered ? 'القطاع كله · لحظي' : 'لا يتأثر بالفترة', dd: 'seccap' });
+
+  const kpiBand = `
+  <section id="kpi-band" aria-label="نبض القطاع">
+    <div class="secn"><span class="n tnum">1</span><h2>نبض القطاع</h2><span class="s">الأداء مقابل الخطة · ${year}</span>
+      <span class="spacer"></span><span class="upd">${lastUpd ? `آخر تحديث: <span class="tnum" dir="ltr">${esc(String(lastUpd).slice(0, 10))} ${esc(String(lastUpd).slice(11, 16))}</span>` : 'لا تحديثات مسجَّلة بعد'} ${nowDot('')}</span></div>
+    <div class="kpi5">${kpiRevenue}${kpiSales}${kpiForecast}${kpiPipeline}${kpiCap}</div>
+  </section>`;
+
+  // ── (١-ب) شريط «المال في القطاع» — ثلاثةُ أرقامٍ يطلبها المالك في سطرٍ واحد ─────────────
+  // يُبنى لمن يقرأ الفواتير أو الكلفة وحده: من لا يقرأ واحدةً منهما لا يبقى في الشريط إلا
+  // الإيراد، وبطاقةُ الإيراد أعلاه تقوله أصلاً — فسطرٌ يعيد رقماً واحداً زحمةٌ لا فائدة.
+  // وقيمةٌ صفرية تُقال «لم يُسجَّل» لا «٠ ر.س.»: الفرق بين «حسبناه فكان صفراً» و«لم يُدخَل بعد»
+  // فرقٌ يبني عليه القائد قراراً (قاعدة المنصة منذ v5.47).
+  const mbNum = (v, color = '') => v
+    ? `<span class="mv tnum"${color ? ` style="color:${color}"` : ''} title="${esc(fmtSar(v))}">${sarShort(v)}</span>`
+    : '<span class="mv mz">لم يُسجَّل</span>';
+  // ومؤنَّثةً حيث الموصوف مؤنّث: «بنود التكلفة **لم تُسجَّل**» لا «لم يُسجَّل» — الجمعُ غير
+  // العاقل يُعامَل معاملة المفردة المؤنثة، وهو ما تقوله نافذة التكاليف عن البندين نفسيهما.
+  const mbSmall = (v, fem = false) => (v ? `<b class="tnum">${sarShort(v)}</b>`
+    : `<span class="mz">${fem ? 'لم تُسجَّل' : 'لم يُسجَّل'}</span>`);
+  // `subw`: سطرٌ ثانٍ **جملةٌ** لا رقم — يلتفّ ولا يُبتر. السطرُ الافتراضي رقمٌ قصير يكفيه سطرٌ
+  // واحد بثلاث نقاطٍ عند الضيق، أما جملةُ السبب («لا تكاليف مسجَّلة — يُحسب الهامش بعد تسجيلها»)
+  // فبترُها يُخرج نصفَ معنى.
+  const mbCell = ({ eye, mark = '', val, sub = '', subw = false, dd, aria, tone }) => `
+    <button type="button" class="mcell" style="--_mc:${tone}" data-action="open-dd" data-dd="${esc(dd)}" aria-label="${esc(aria)}">
+      <span class="ml">${eye}${mark}</span>${val}${sub ? `<span class="ms${subw ? ' msw' : ''}">${sub}</span>` : ''}
+    </button>`;
+  const mbSay = (v) => (v ? sarShort(v) : 'لم يُسجَّل');
+  const mbRevCell = mbCell({
+    eye: `${G.revenue} المحقق`,
+    mark: noteMark(`${G.withoutVat} — من بنود الإيراد المسجَّلة بالشهر`, 'below'),
+    val: mbRev == null ? '<span class="mv mz">—</span>' : mbNum(mbRev),
+    sub: mbRev == null ? 'الإيراد يُسجَّل شهرياً — اختر نافذة الشهر أو أوسع'
+      : (period.kind === 'y' ? '' : `سنة ${year}: ${mbSmall(sd.revenue_halalas)}`),
+    dd: 'secrev', tone: 'var(--acc-navy)',
+    aria: `${G.revenue} المحقق ${mbEcho}: ${mbRev == null ? 'غير متاح' : mbSay(mbRev)} — التفصيل`,
+  });
+  // فترةٌ لم تُصدَر فيها فاتورةٌ وقد حُصِّل فيها مالٌ: «المفوتر: لم يُسجَّل» فوق «المحصَّل 1.0M»
+  // يُقرأ جزءاً من عنوانٍ غائب — فمن أين جاء المحصَّل إن لم يُفوتر شيء؟ الجواب أن الطرفين
+  // بتاريخين مختلفين: المفوتر بتاريخ الإصدار والمحصَّل بتاريخ التحصيل، والمال المحصَّل هنا
+  // لفواتير أُصدرت قبل الفترة. فيُقال ذلك في السطر نفسه بدل أن يُخمَّن.
+  const mbColOnly = !mbInvoiced && mbCollected > 0;
+  const mbInvSub = mbColOnly
+    ? `${G.collected} ${mbSmall(mbCollected)} — لفواتير سابقة، بتاريخ التحصيل`
+    : `${G.collected} ${mbSmall(mbCollected)}`;
+  const mbInvCell = !canInvoices ? '' : mbCell({
+    eye: G.invoiced,
+    mark: noteMark(`${G.withVat} — تُحسب بتاريخ الإصدار، عدا المسودّات والملغاة. والمحصَّل يُحسب بتاريخ التحصيل`, 'below'),
+    val: mbNum(mbInvoiced),
+    sub: mbInvSub,
+    subw: mbColOnly,
+    dd: 'secinv', tone: 'var(--acc-teal)',
+    aria: `${G.invoiced} ${mbEcho}: ${mbSay(mbInvoiced)} · ${G.collected} ${mbSay(mbCollected)}${mbColOnly ? ' لفواتير سابقة، بتاريخ التحصيل' : ''} — التفصيل`,
+  });
+  const mbCostCell = !canCost ? '' : mbCell({
+    eye: 'التكاليف',
+    mark: noteMark(`بنود التكلفة المسجَّلة + المصروفات المعتمدة أو المدفوعة ${G.withoutVat} — لا تشمل طلبات المصروف قيد الاعتماد`, 'below'),
+    val: mbNum(mbCost),
+    sub: `بنود التكلفة ${mbSmall(mbCosts.cost_lines_halalas, true)} · مصروفات معتمدة ${mbSmall(mbCosts.expenses_halalas, true)}`,
+    dd: 'seccost', tone: 'var(--acc-amber)',
+    aria: `التكاليف ${mbEcho}: ${mbSay(mbCost)} — التفصيل`,
+  });
+  // الهامش يلزمه طرفاه: الإيراد والتكلفة. فبوابتا «الهامش» و«الكلفة» تُشترطان معاً — وإلا صار
+  // الرقمُ بابَ استنتاجٍ للتكلفة المحجوبة (الإيراد معروضٌ فوقه، والطرح يردّها).
+  // ويلزمه طرفاه **رقماً** أيضاً لا بوابةً فقط: فترةٌ فيها إيرادٌ ولم تُسجَّل تكلفتها بعد تُخرج
+  // «100% — ربحاً»، وهي دعوى ربحٍ كاملٍ صنعها غيابُ الإدخال لا الأداء. فالتكلفة الخالية تُقال
+  // كما يُقال الإيراد الخالي: «—» وسببها تحتها، ولا نسبةَ تُطبع حتى يُسجَّل الطرفان.
+  const mbMarginOn = mbPct != null && mbCost > 0;
+  const mbMarginWhy = mbPct == null ? 'لا إيراد في هذه الفترة'
+    : 'لا تكاليف مسجَّلة — يُحسب الهامش بعد تسجيلها';
+  const mbMarginCell = !(canMargin && canCost) ? '' : mbCell({
+    eye: `${G.margin} الإجمالي`,
+    mark: noteMark(`${G.netRevenue} ناقص التكاليف في الفترة نفسها — نسبةً من الإيراد`, 'below'),
+    // النسبة تُقرأ يساراً («84%» لا «%84») لكن الاتجاه على عازلٍ داخلها لا على الخليّة نفسها:
+    // `.mcell` شبكةٌ، ووضعُ dir على عنصرها يقلب حافةَ بدايته إلى اليسار فينزلق الرقم خارج
+    // الشاشة الضيّقة ويُقرأ صفراً. فالعازل (bdi) يحمي ترتيب الرقم بلا أن يمسّ موضع الخليّة.
+    val: !mbMarginOn ? '<span class="mv mz">—</span>'
+      : `<span class="mv tnum" style="color:${mbPct < 0 ? 'var(--st-bad)' : 'var(--ink2)'}"><bdi dir="ltr">${mbPct}%</bdi></span>`,
+    sub: !mbMarginOn ? mbMarginWhy
+      : (mbProfit >= 0 ? `<b class="tnum">${sarShort(mbProfit)}</b> ربحاً` : `<b class="tnum">${sarShort(-mbProfit)}</b> خسارة`),
+    subw: !mbMarginOn,
+    dd: 'seccost', tone: mbMarginOn && mbPct < 0 ? 'var(--st-bad)' : 'var(--acc-navy)',
+    aria: `${G.margin} الإجمالي ${mbEcho}: ${mbMarginOn ? `${mbPct}%` : mbMarginWhy} — التفصيل`,
+  });
+  // عنوانُ الشريط عنوانٌ حقيقي (h2) لا نصٌّ مُصغَّر: جارتاه «نبض القطاع» و«قراءة سند التنفيذية»
+  // عنوانان من الرتبة نفسها، ومن يتنقّل بالعناوين (قارئ الشاشة) كان يقفز فوق أرقام المال الأربعة.
+  // وهيئتُه لم تتغيّر — الحجمُ والوزنُ واللون في `.mhead h2.me`.
+  const mbCells = [mbRevCell, mbInvCell, mbCostCell, mbMarginCell].filter(Boolean);
+  const moneyBand = !(canInvoices || canCost) ? '' : `
+  <section id="money-band" aria-label="المال في القطاع">
+    <div class="mhead"><h2 class="me">المال في القطاع</h2><span class="mp">${esc(mbEcho)}</span>${filtered ? '<span class="icb">القطاع كله</span>' : ''}</div>
+    <div class="mcells" style="--n:${mbCells.length}">${mbCells.join('')}</div>
+  </section>`;
+
+  // ── الخلاصة التحليلية: جملة واحدة بقواعد معلنة — وعلامةٌ تقول إنها محسوبة ──
+  const paceWord = dRev == null ? '' : dRev >= 3 ? `متقدمٌ ${ptWord(dRev)}` : dRev <= -3 ? `متأخرٌ ${ptWord(Math.abs(dRev))}` : 'على المسار الزمني';
+  // سنةٌ قادمة لا مسار زمنياً لها ولا مقارنة سنوية: «0% من المستهدف» و«−100% عن السنة الماضية»
+  // لسنةٍ لم تبدأ قراءتان موهمتان — فتُقال الحقيقة: لا سجلّ بعد، والتوقع بامتداده المعلَن.
+  const summaryLine = [
+    futureYr ? `سنةٌ قادمة — لا سجلّ لسنة ${year} بعد${fr.base ? `، والتوقع بامتداد وتيرة ${fr.basisYear}: ${sarShort(fr.base)}` : ''}`
+      : attainRev != null ? `الإيراد ${paceWord} (${attainRev}% من المستهدف)` : null,
+    stalledRows.length ? `أكبر رافعة: تحريك ${countAr(stalledRows.length, { one: 'فرصة متوقفة', two: 'فرصتين متوقفتين', few: 'فرص متوقفة', many: 'فرصة متوقفة' })} بقيمة ${sarShort(stalledV)}` : null,
+    freeNow.length ? `وأكبر قيد: ${countAr(freeNow.length, { one: 'موظف بلا تسكين', two: 'موظفان بلا تسكين', few: 'موظفين بلا تسكين', many: 'موظفاً بلا تسكين' })}` : overNow.length ? `وأكبر قيد: ${countAr(overNow.length, { one: 'موظف فوق الطاقة', two: 'موظفان فوق الطاقة', few: 'موظفين فوق الطاقة', many: 'موظفاً فوق الطاقة' })}` : null,
+  ].filter(Boolean).join('؛ ') || 'لا بيانات كافية لخلاصةٍ بعد';
+
+  // ── قراءة سند التنفيذية: ثلاث بطاقات مضيئة برسومها — كل جملةٍ من قاعدة معلنة ──
+  const demandFte = Array.from({ length: 12 }, (_, i) => Math.round((staff.employees || []).reduce((a, e) => a + (e.months[i] || 0), 0)) / 100);
+  const capFte = teamSize;
+  const futureIdx = demandFte.map((v, i) => ({ v, i })).filter((x) => nowMonth && x.i >= nowMonth - 1);
+  const worstGap = futureIdx.length ? futureIdx.reduce((a, x) => (capFte - x.v > capFte - a.v ? x : a), futureIdx[0]) : null;
+  const gapFte = worstGap ? Math.round((capFte - worstGap.v) * 10) / 10 : null;
+  const concAfterPipe = (() => {
+    const openTot = Object.values(oppBy).reduce((a, r) => a + (r.open_v || 0), 0);
+    const top3open = top3.reduce((a, c) => a + (oppBy[c.id]?.open_v || 0), 0);
+    const denom = secRevTotal + openTot;
+    return denom && top3.length === 3 ? Math.round(((top3.reduce((a, c) => a + c.rev, 0) + top3open) / denom) * 100) : null;
+  })();
+  // خط المسار الزمني للهدف: من التوزيع الدوري **المعتمد** للقطاع (KI-110 — تراكمي مستهدف الإيراد الشهري)؛
+  // وبلا توزيع معتمد لا خط: القسمة المتساوية على الشهور افتراضٌ لا قرار للشركة، فلا يُرسم باسمها.
+  const planMonths = revTarget ? await monthlyRevenueTargets(sectorId, year) : null;
+  const paceLine = planMonths ? planMonths.reduce((acc, v) => { acc.push((acc[acc.length - 1] || 0) + v); return acc; }, []) : null;
+  const largestPct = secRevTotal && top3.length ? Math.round((top3[0].rev / secRevTotal) * 100) : null;
+  // ── بطاقات القراءة الثلاث — عادت برسومها إلى الشريط البنفسجي (طلب أ. حسين ٥،
+  // 2026-08-25: «أعيدوا الشريط الكبير بكل رسومه»): بطاقة الإيقاع من السلسلة المرشَّحة نفسها
+  // فتتحرك مع المرشِّحات، والتركّز والطاقة قراءتان بنيويتان للقطاع كله وتقولان ذلك بشارة. ──
+  const insightPace = `
+      <div class="ic1">
+        <div class="ih">الإيقاع والتوقع${filtered ? ' <span class="icb">تحت الترشيح</span>' : ''}</div>
+        <div class="ib">${futureYr
+    ? `سنةٌ قادمة — لا سجلّ بعد${fr.base ? `، والتوقع بامتداد وتيرة ${fr.basisYear} <b class="tnum">${sarShort(fr.base)}</b>` : ''}`
+    : filtered
+    ? (rsTotal ? `<b class="tnum">${sarShort(rsTotal)}</b> تحت الترشيح${rsShare != null ? ` — <b class="tnum">${rsShare}%</b> من إيراد القطاع` : ''}${rsOutlook?.base ? `، والتوقع بوتيرته <b class="tnum">${sarShort(rsOutlook.base)}</b>` : ''}` : 'لا إيراد منسوباً تحت هذا الترشيح')
+    : (attainRev != null ? `الإيراد ${paceWord}، ${fc.forecast != null ? `والتوقع بالوتيرة <b class="tnum">${sarShort(fc.forecast)}</b>${fcPct != null ? ` = <b class="tnum" dir="ltr">${100 + fcPct}%</b> من المستهدف` : ''}` : 'ولا توقّع بعد'}${yoyPct != null ? ` · <span dir="ltr">${yoyPct >= 0 ? '+' : '−'}${Math.abs(yoyPct)}%</span> مقارنة بـ${year - 1}` : ''}` : 'لا مستهدف مسجَّلاً لهذه السنة')}</div>
+        ${futureYr ? '' : figLine([
+    { points: rsCum, color: 'var(--acc-navy)', area: true, name: 'التراكمي' },
+    ...(!filtered && paceLine ? [{ points: paceLine, color: 'var(--tick)', dash: true, dots: false, name: 'المسار الزمني للهدف' }] : []),
+  ], { labels: MONTHS_AR, now: nowM + 1, h: 64, fmt: sarShort, axisDir: 'ltr', hover: true })}
+      </div>`;
+  const insightConc = `
+      <div class="ic1">
+        <div class="ih">تركّز الإيراد${filtered ? ' <span class="icb">القطاع كله</span>' : ''}</div>
+        <div class="ib">${concPct != null ? `<b class="tnum">${concPct}%</b> من الإيراد لدى أكبر ثلاثة عملاء${concAfterPipe != null ? ` — وبعد خط الفرص <b class="tnum">${concAfterPipe}%</b>` : ''}${concPct >= 60 ? ' · تركّز مرتفع' : ''}` : 'لا يوجد ثلاثة عملاء بإيراد بعد'}</div>
+        ${concPct != null ? figBars([
+    { label: `أكبر عميل (${top3[0].name_ar})`, value: largestPct, count: '', fill: 'var(--acc-navy)' },
+    { label: 'أكبر ثلاثة عملاء', value: concPct, count: '', fill: 'var(--acc-indigo)' },
+    ...(concAfterPipe != null ? [{ label: 'أكبر ثلاثة مع الخط المرجّح', value: concAfterPipe, count: '', fill: 'var(--acc-teal)' }] : []),
+  ], { fmt: (v) => `${v}%`, max: 100 }) : ''}
+      </div>`;
+  const insightCap = `
+      <div class="ic1">
+        <div class="ih">الطاقة القادمة${filtered ? ' <span class="icb">القطاع كله</span>' : ''}</div>
+        <div class="ib">${gapFte != null && nowMonth ? (gapFte > 0 ? `سعة غير مستغلة تبلغ <b class="tnum">${gapFte}</b> من مكافئ التفرغ في ${monthLabel(worstGap.i)} — ${countAr(freeNow.length, { one: 'موظف بلا تسكين الآن', two: 'موظفان بلا تسكين الآن', few: 'موظفين بلا تسكين الآن', many: 'موظفاً بلا تسكين الآن', zero: 'لا أحد بلا تسكين الآن' })}` : `طلبٌ يفوق الطاقة بـ<b class="tnum">${Math.abs(gapFte)}</b> من مكافئ التفرغ في ${monthLabel(worstGap.i)}`) : 'لا خطة تسكين لأشهر قادمة'}</div>
+        ${figLine([
+    { points: demandFte.map((v) => Math.round(v * 100) / 100), color: 'var(--acc-indigo)', name: 'المخطَّط له' },
+    { points: Array.from({ length: 12 }, () => capFte), color: 'var(--muted)', dash: true, dots: false, name: 'الطاقة' },
+  ], { labels: MONTHS_AR, now: nowM + 1, h: 64, fmt: (v) => `${v} من مكافئ التفرغ`, axisDir: 'ltr', hover: true,
+    marks: gapFte != null && gapFte < 0 && worstGap ? [{ i: worstGap.i, label: `فجوة ${Math.abs(gapFte)} من مكافئ التفرغ في ${monthLabel(worstGap.i)}`, color: 'var(--st-bad)' }] : [] })}
+      </div>`;
+  const insightCards = `<div class="ins">${insightPace}${insightConc}${insightCap}</div>`;
+
+  // ── رحلة القيمة داخل اللوحة الداكنة: من التعاقد إلى التحصيل بنسب التسرب ──
+  // محطةٌ صفرية جدولُها فارغ «لم تُسجَّل» لا «تسرب −100%»: قطاعٌ بلا عقود مسجَّلة أو تحصيلٍ لم
+  // يبدأ لا يُتَّهم بتسريب ما لم يُقِده أحد. النسب والتسرب الأكبر بين المحطات المسجَّلة وحدها،
+  // والمقارنة بآخر محطةٍ غير صفرية (لا قسمة على صفرٍ توهم بقفزة).
+  const VJ_EMPTY = { 'متعاقد': 'لا عقود مسجَّلة لهذا القطاع', 'محصَّل': 'لا تحصيل مسجَّلاً بعد' };
+  const vj = [
+    { k: 'متعاقد', v: vjContracted?.v || 0, ic: 'contracts' },
+    { k: 'المحقق', v: (filtered ? rsTotal : sd.revenue_halalas) || 0, ic: 'projects' },
+    { k: 'مسلَّم', v: vjDelivered?.v || 0, ic: 'check' },
+    { k: 'مقبول', v: vjAccepted?.v || 0, ic: 'approvals' },
+    ...(canInvoices ? [{ k: 'مفوتر', v: vjInvoiced?.v || 0, ic: 'money' }, { k: 'محصَّل', v: vjCollected?.v || 0, ic: 'money' }] : []),
+  ];
+  let vjWorst = null, vjPrev = null;
+  const vjSteps = vj.map((st) => {
+    const empty = !st.v;
+    const drop = !empty && vjPrev != null && vjPrev > 0 ? Math.round(((st.v - vjPrev) / vjPrev) * 100) : null;
+    if (drop != null && drop < 0 && (!vjWorst || drop < vjWorst.drop)) vjWorst = { name: st.k, drop, loss: vjPrev - st.v };
+    if (!empty) vjPrev = st.v;
+    return { ...st, drop, empty };
+  });
+  // كل محطةٍ تفتح تفصيلها القائم (كانت الرحلة role="img" صمّاء والنوافذ خلفها مبنية أصلاً)
+  const VJ_DD = { 'متعاقد': canContracts ? 'seccontracts' : '', 'المحقق': 'secrev', 'مسلَّم': 'secdlv',
+    'مقبول': 'secdlv', 'مفوتر': canInvoices ? 'seccollect' : '', 'محصَّل': canInvoices ? 'seccollect' : '' };
+  const journey = `
+    <div class="vj" role="group" aria-label="رحلة القيمة — كل محطة تفتح تفصيلها">
+      ${vjSteps.map((st, i) => {
+    const dd = !st.empty && VJ_DD[st.k] ? VJ_DD[st.k] : '';
+    const inner = `<i aria-hidden="true">${icon(st.ic)}</i><b class="tnum">${st.empty ? '—' : sarShort(st.v)}</b><span>${st.k}</span>${st.empty ? `<small class="vjoff">${esc(VJ_EMPTY[st.k] || 'لم يُسجَّل')}</small>` : ''}`;
+    const cls = `vjn${vjWorst && vjWorst.name === st.k ? ' leak' : ''}${st.empty ? ' off' : ''}`;
+    return `
+        ${i ? `<span class="vja" aria-hidden="true">←<small class="tnum" dir="ltr">${st.drop == null ? (st.empty ? '' : '') : `${st.drop > 0 ? '+' : ''}${st.drop}%`}</small></span>` : ''}
+        ${dd ? `<button type="button" class="${cls}" data-action="open-dd" data-dd="${dd}" aria-label="${esc(st.k)}: ${st.empty ? 'لم يُسجَّل' : esc(sarShort(st.v))} — التفصيل">${inner}</button>`
+    : `<span class="${cls}"${st.empty ? ` title="${esc(VJ_EMPTY[st.k] || 'لم يُسجَّل بعد')}"` : ''}>${inner}</span>`}`;
+  }).join('')}
+    </div>
+    ${vjWorst ? `<div class="vjw">${icon('risk')} أكبر تسرب عند «${vjWorst.name}»: <b class="tnum" dir="ltr">${vjWorst.drop}%</b> (<b class="tnum">${sarShort(vjWorst.loss)}</b>) ${estMark('النسب بين مجاميع سجلات السنة المسجَّلة فعلاً (عقود، إيراد، مخرجات، فواتير، تحصيل) — محطةٌ جدولُها فارغ خارج الحساب، وليست النسب تتبعاً لكل ريال بعينه')}</div>` : ''}`;
+
+  const attnChip = `<button type="button" class="xb-attn" data-action="act-jump" aria-label="${G.attention}: ${attn.length} — الانتقال إلى القائمة">${icon('risk')} ${G.attention} <b class="tnum">${attn.length}</b></button>`;
+  const execBand = `
+  <section class="exec-band" aria-label="قراءة سند التنفيذية">
+    <div class="secn"><span class="n tnum">2</span><h2>قراءة سند التنفيذية</h2><span class="s">ثلاث قراءات محسوبة بقواعد معلنة — لا تقييم بشري</span></div>
+    <div class="xb-sum">${icon('trend')} <span>${summaryLine}.</span> ${noteMark('خلاصة مركَّبة بقواعد معلنة من أرقام هذه الصفحة — ليست تقييماً بشرياً', 'below')} <span class="spacer"></span> ${attnChip}</div>
+    ${insightCards}
+  </section>`;
+
+  // ── رأس قسمٍ مرقّم كنماذج المالك ──
+  // الرقم واحدٌ لكل فصلٍ بترتيب فصوله (3..8) — الترقيم القديم 3..9 وُضع لصفحةٍ واحدة طويلة،
+  // ومع الألسنة صار قسمٌ ثانٍ داخل فصلٍ (رحلة القيمة «5») يغيب تحت الطيّ فيُقرأ التسلسل
+  // مثقوباً (ملاحظة أ. حسين 2026-08-25). القسم الثاني داخل الفصل يحمل عنوانه بلا رقم.
+  const secn = (n, t, aux = '') => `<div class="secn">${n ? `<span class="n tnum">${n}</span>` : ''}<h2>${t}</h2>${aux ? `<span class="s">${aux}</span>` : ''}</div>`;
+
+  // ── ٣: رسم الإيقاع يُعاد تصييره فعلاً (ملاحظة أ. حسين ٤، 2026-08-25) ─────────────────
+  // فترةٌ مختارة تُقرِّب الرسم إلى أشهرها وحدها (لا إضاءةً بعد اليوم) والهدفُ حصةً بالتناسب
+  // معلَنة؛ وترشيحُ إدارة/عميل يعيد بناء السلسلة كلها (الأعمدة والتراكمي والتوقع) من البنود
+  // المنسوبة عبر مشروعها — وغير المنسوب مُفصَحٌ عنه تحت المرشِّحات، ولا خطَّ هدفٍ تحت الترشيح
+  // (الأهداف قطاعية ومقارنةُ مقصوصٍ بها تضليل — مكانها «الحصة من إيراد القطاع»). ──
+  const pulseChip = (label, row) => row == null ? '' : `<div class="pch"><span class="l">${label} ${winEcho2}</span><b class="tnum">${row.n ? sarShort(row.v) : '—'}</b><span class="c tnum">${row.n ? countAr(row.n, { one: 'سجل واحد', two: 'سجلان', few: 'سجلات', many: 'سجلاً' }) : 'لا سجلات'}</span></div>`;
+  const zoomed = period.kind !== 'y';
+  const zoomIdx = zoomed ? period.months.map((m) => m - 1) : rs.map((_, i) => i);
+  const zBars = zoomIdx.map((i) => rs[i] || 0);
+  const zSum = zBars.reduce((a, v) => a + v, 0);
+  const zLabels = zoomIdx.map((i) => MONTHS_AR[i]);
+  const zTight = zoomIdx.map((i) => MONTHS_EN3[i]);
+  // التراكمي داخل النطاق المعروض، مقصوصاً عند آخر شهرٍ بدأ — لا خطَّ على شهورٍ لم تأتِ
+  const lastDoneIdx = year < now.getUTCFullYear() ? 11 : futureYr ? -1 : nowM;
+  const zCumAll = zBars.reduce((acc, v) => { acc.push((acc[acc.length - 1] || 0) + v); return acc; }, []);
+  const zCum = zCumAll.slice(0, zoomIdx.filter((i) => i <= lastDoneIdx).length);
+  const nowPos = zoomIdx.indexOf(nowM);
+  // هدف النافذة المقرَّبة من التوزيع المعتمد (مجموع أشهرها)؛ وبلا توزيع معتمد لا هدفَ جزئياً مفترضاً.
+  const zTarget = filtered ? null
+    : zoomed ? (planMonths ? zoomIdx.reduce((a, i) => a + (planMonths[i] || 0), 0) : null) : (revTarget || null);
+  const zForecast = zoomed || futureYr ? null : ((filtered ? rsOutlook?.base : fc.forecast) || null);
+  const fcLine = zForecast && year === now.getUTCFullYear() && nowM >= 0 && rsCum[nowM] != null && nowM < 11
+    ? { points: [{ i: nowM, v: rsCum[nowM] }, { i: 11, v: zForecast }], color: 'var(--acc-violet)', endLabel: sarShort(zForecast) }
+    : null;
+  const legChip = (sw, label, val, mark = '') => `<span class="lgc">${sw}<span>${label}</span><b class="tnum">${val}</b>${mark}</span>`;
+  const comboSection = `
+  <section class="card pad">
+    ${secn(3, `${G.revenue} الفعلي${filtered ? ' تحت الترشيح' : ` مقابل ${G.target}`}${zoomed ? ` · ${winName}` : filtered ? '' : ' والتوقع'}`,
+    zoomed ? `الرسم مقصوصٌ على ${winName} — و«السنة» في المُنتقي تعيد الاثني عشر شهراً`
+      : `أعمدة الأشهر + الخط التراكمي${filtered ? ' — من البنود المنسوبة للترشيح عبر مشروعها' : ' + خط الهدف — والخط المتقطع مسارُ التوقع إلى نهاية السنة'}`)}
+    <div class="leg-chips">
+      ${legChip('<i style="background:var(--acc-indigo)"></i>', zoomed ? `المحقق في ${winName}` : 'المحقق', zSum || !futureYr ? sarShort(zoomed ? zSum : rsTotal) : '—')}
+      ${zTarget ? legChip('<i style="background:var(--tick)"></i>', zoomed ? `حصة ${winName} من الهدف` : G.target, sarShort(zTarget),
+    zoomed ? noteMark(`الهدف يوضع سنوياً — حصة الفترة = الهدف السنوي ÷ 12 × ${countAr(zoomIdx.length, { one: 'شهرها الواحد', two: 'شهراها', few: 'أشهرها', many: 'شهراً' })}`) : '') : ''}
+      ${filtered && rsShare != null ? legChip('', 'حصة من إيراد القطاع', `${rsShare}%`) : ''}
+      ${zForecast ? legChip('<i class="dashline"></i>', G.forecast, sarShort(zForecast),
+    estMark(filtered ? `تقديرٌ من وتيرة السلسلة المرشَّحة نفسها — النطاق ${sarShort(rsOutlook.low)}–${sarShort(rsOutlook.high)}` : `تقديرٌ من وتيرة الإيراد المُسجَّل — والنطاق ${sarShort(fr.low)}–${sarShort(fr.high)} بصيغه على بطاقة التوقع`)) : ''}
+      ${!filtered && qDelta != null ? (() => {
+    // الربع الجاري ناقصٌ بطبيعته، فمقارنتُه بربعٍ كامل تقول «أدنى بـ100%» وهي ليست تراجعاً.
+    // إما أن نقارن ربعاً مكتملاً بمثله، وإما أن نقول صراحةً كم مضى منه.
+    const mInQ = Math.min(3, Math.max(0, (nowM + 1) - nowQ * 3));
+    const partial = mInQ > 0 && mInQ < 3;
+    return `<span style="margin-inline-start:auto;font-size:var(--fs-body);color:var(--muted)">${partial
+      ? `الربع الحالي ${countAr(mInQ, { one: 'شهرٌ واحد منه مضى', two: 'شهران منه مضيا', few: 'أشهر منه مضت', many: 'شهراً منه مضى' })} — لا يُقارَن بربعٍ كامل بعد`
+      : `الربع الحالي ${qDelta >= 0 ? 'أعلى' : 'أدنى'} من السابق بنسبة <b class="tnum">${Math.abs(qDelta)}%</b>`}</span>`;
+  })() : ''}
+    </div>
+    ${futureYr && !zSum ? `<div class="empty-mini">${icon('clock')} سنةٌ قادمة — لا إيراد مسجَّلاً بعد، والأعمدة تبدأ حين يُسجَّل. التوقع على بطاقته أعلاه بامتداد وتيرة ${year - 1}.</div>`
+    : figCombo({ bars: zBars, cum: zCum, target: zTarget, forecast: zForecast,
+      labels: zLabels, labelsTight: zTight, now: nowPos + 1, fmt: sarShort, axisDir: 'ltr', w: 960, h: 190,
+      barColor: 'var(--acc-indigo)', nowBarColor: 'var(--acc-violet)', forecastLine: fcLine, hover: true,
+      ariaLabel: `الإيراد الشهري والتراكمي${zoomed ? ` في ${winName}` : ` مقابل مستهدف ${year}`}${filtered ? ' تحت الترشيح' : ''} — مرّر على أي شهر لقراءة قيمه (أو ركّز الرسم واستعمل الأسهم)` })}
+    <div class="pulses">
+      ${pulseChip('المكسوب', pulseWins)}
+      ${pulseChip('المفوتر', pulseInv)}
+      ${pulseChip('المحصَّل', pulseCol)}
+      <span class="ph">${winName} · ${year}${period.isCurrent && period.kind !== 'y' ? ' — حتى اليوم' : ''}${period.isFuture ? ' — فترة قادمة' : ''}</span>
+    </div>
+    <div class="comfoot">توزيع الأشهر من تواريخ قبول المخرجات أو تسجيلها في المنصة — لا من تاريخ تنفيذ العمل ${noteMark('شهر بند الإيراد من تاريخ قبول المخرَج أو تسليمه أو تسجيله (قاعدة الاعتراف بالإيراد عند التسليم) — فمنحنى الأشهر يتبع حركة التسجيل لا تنفيذ العمل، ويصدق كلما اكتملت تواريخ المخرجات')}</div>
+  </section>`;
+
+  // ── ٤: الفصل التجاري — قمعٌ متدرّج + أعمار الفرص + فقاعات قيمة×احتمال×عمر ──
+  // سلّم رتبيّ واحد للمراحل (اجتاز فاحص dataviz بوضع --ordinal): الأغمق أول المراحل، والقيم
+  // مطبوعة على كل صف فلا يُقرأ اللون وحده.
+  const ordIdx = (i, n) => Math.min(5, Math.max(1, Math.round(1 + (i / Math.max(1, n - 1)) * 4)));
+  const ordColor = (i, n) => `var(--ord-${ordIdx(i, n)})`;
+  // الطرفان الفاتحان من السلّم لا يحملان نصاً أبيض: العدّ رقمٌ يُقرأ لا زينة (تباين 2.3:1).
+  const ordInk = (i, n) => (ordIdx(i, n) >= 4 ? 'var(--ink2)' : '#fff');
+  const trapRows = funnelStages.map((st, i) => {
+    const wv = Math.max(6, Math.round((st.value_halalas / Math.max(1, openTotalV)) * 100));
+    return `<button type="button" class="trp" data-action="open-dd" data-dd="fnl-${esc(st.id)}" aria-label="مرحلة ${esc(st.name_ar)}: ${countAr(st.count, { one: 'فرصة واحدة', two: 'فرصتان', few: 'فرص', many: 'فرصة', zero: 'لا فرص' })}${st.count ? ` بقيمة ${fmtSar(st.value_halalas)}` : ''} — التفصيل">
+      <span class="tn">${esc(st.name_ar)}</span>
+      <span class="tt"><i style="width:${wv}%;background:${ordColor(i, funnelStages.length)}"><b class="tnum" style="color:${ordInk(i, funnelStages.length)}">${sarShort(st.value_halalas)}</b></i></span>
+      <span class="tv tnum">${st.count}<small style="display:block;color:var(--muted);font-size:9.5px">${openTotalV ? Math.round((st.value_halalas / openTotalV) * 100) : 0}% من القيمة</small></span>
+    </button>`;
+  }).join('');
+  const bubbles = (() => {
+    const rows = openFlow.filter((o) => o.value_halalas > 0).slice(0, 60);
+    if (!rows.length) return '';
+    const maxAge = Math.max(30, ...rows.map((o) => ageDays(o.since)));
+    const maxV = Math.max(1, ...rows.map((o) => o.value_halalas));
+    const w = 460, h = 190, padX = 26, padB = 24, padT = 10;
+    const X = (age) => padX + (age / maxAge) * (w - padX * 2);
+    const Y = (wp) => padT + (1 - Math.max(0, Math.min(100, wp)) / 100) * (h - padT - padB);
+    const R = (v) => 4 + Math.sqrt(v / maxV) * 14;
+    // مفتاح الحجم: ثلاث دوائر مرجعية بقيمها — الحجم يعني القيمة ولا يُترك للتخمين
+    const legR = [5, 10, 16];
+    const legend = legR.map((r, k) => {
+      const v = Math.pow((r - 4) / 14, 2) * maxV;
+      const cx = padX + 14 + k * 58;
+      return `<circle cx="${cx}" cy="${padT + 12}" r="${r}" fill="var(--ord-3)" opacity=".4" stroke="#fff" stroke-width="1"/>
+        <text x="${cx + r + 3}" y="${padT + 15}" text-anchor="start">${esc(sarShort(v))}</text>`;
+    }).join('');
+    // مجموعةٌ لا صورة: صار داخل الرسم روابطُ فرصٍ تُنقَر، وrole="img" يمنع العناصر التفاعلية بداخله
+    return `<svg class="fig-svg" viewBox="0 0 ${w} ${h}" role="group" aria-label="قيمة الفرصة مقابل احتمال الفوز مقابل عمر المرحلة — كل فقاعة فرصة وحجمها قيمتها · وضغطُها يفتح صفحتها" style="width:100%;height:auto">
+      <line class="axis" x1="${padX}" y1="${h - padB}" x2="${w - padX}" y2="${h - padB}"/>
+      <line class="axis" x1="${padX}" y1="${padT}" x2="${padX}" y2="${h - padB}"/>
+      <text x="${padX}" y="${h - 6}" text-anchor="start">0 يوم</text><text x="${(w / 2).toFixed(0)}" y="${h - 6}" text-anchor="middle">عمر المرحلة ←</text><text x="${w - padX}" y="${h - 6}" text-anchor="end">${dayWord(maxAge)}</text>
+      <text x="${padX + 3}" y="${padT + 6}" text-anchor="start">احتمال الفوز 100%</text>
+      ${legend}
+      ${rows.map((o) => {
+    const stName = funnelStages.find((st) => st.id === o.stage_id)?.name_ar || '';
+    const tipRows = [`القيمة=${sarShort(o.value_halalas)}`, `احتمال الفوز=${Math.round(Number(o.win_pct) || 0)}%`,
+      `عمر المرحلة=${dayWord(ageDays(o.since))}`, stName ? `المرحلة=${stName}` : ''].filter(Boolean).join('|');
+    // كل فقاعة فرصةٌ بعينها: تلميحٌ فوري بتفاصيلها ونقرةٌ تفتح صفحتها — كان <title> أصلياً
+    // بطيئاً على هدفٍ نصف قطره أربعة بكسلات، ولا سبيل منه إلى الفرصة نفسها.
+    return `<a href="/app/opportunity/${esc(o.id)}" aria-label="${esc(o.title_ar)} — ${esc(sarShort(o.value_halalas))} · احتمال ${Math.round(Number(o.win_pct) || 0)}%"><circle class="fig-hit bub" cx="${X(ageDays(o.since)).toFixed(1)}" cy="${Y(Number(o.win_pct) || 0).toFixed(1)}" r="${R(o.value_halalas).toFixed(1)}" fill="${ordColor(funnelStages.findIndex((st) => st.id === o.stage_id), funnelStages.length)}" opacity=".55" stroke="#fff" stroke-width="1" data-x="${X(ageDays(o.since)).toFixed(1)}" data-l="${esc(o.title_ar)}" data-rows="${esc(tipRows)}"></circle></a>`;
+  }).join('')}
+    </svg>`;
+  })();
+  const commercialSection = `
+  <section class="card pad">
+    ${secn(4, 'الفصل التجاري', `${G.funnel} — عرضُ الشريط قيمةُ المرحلة والعددُ بجانبه · أرصدة لحظية لا تتأثر بالفترة`)}
+    <div class="com3">
+      <div>
+        <div class="sh">${G.funnel}${selStage ? ` — مرحلة ${esc(selStage.name_ar)}` : ''}</div>
+        ${openTotalC ? `<div class="trap">${trapRows}</div>
+        <div class="comfoot"><span>${(() => {
+    const w = winsScoped ? (winsScoped.won || 0) : wins.won, l = winsScoped ? (winsScoped.lost || 0) : wins.lost;
+    const dec = w + l;
+    if (!dec) return `${G.winRate} — لا فرص حُسمت${filtered ? ' تحت الترشيح' : ''} هذه السنة`;
+    const rate = Math.round((w / dec) * 100);
+    return dec < 3 ? `${G.winRate} <b class="tnum">${rate}%</b> — عيّنة صغيرة (${countAr(dec, { one: 'فرصة واحدة حُسمت', two: 'فرصتان حُسمتا', few: 'فرص حُسمت', many: 'فرصة حُسمت' })})`
+      : `${G.winRate} <b class="tnum">${rate}%</b> من ${countAr(dec, { one: 'فرصة حُسمت', two: 'فرصتين حُسمتا', few: 'فرص حُسمت', many: 'فرصة حُسمت' })}`;
+  })()}</span><span>الإجمالي <b class="tnum">${openTotalC}</b> · <b class="tnum">${sarShort(openTotalV)}</b></span></div>` : `<div class="empty-mini">${icon('filter')} لا فرص مفتوحة الآن</div>`}
+      </div>
+      <div>
+        <div class="sh">عمر الفرص في مرحلتها</div>
+        ${figBars(ages.map((b, i) => ({ label: b.l, value: b.v, count: b.n, fill: i >= 2 ? 'var(--st-warn)' : null, dd: `fnl-age-${b.k}` })), { fmt: sarShort })}
+        <div class="comfoot"><span>متوسط عمر المرحلة <b class="tnum">${avgAge ? dayWord(avgAge) : 'أقل من يوم'}</b></span>
+        ${stalledRows.length ? `<button type="button" class="sig warn" data-action="open-dd" data-dd="fnl-stalled" style="border:none;cursor:pointer;font-family:inherit"><span class="g" aria-hidden="true">▲</span><span>${countAr(stalledRows.length, { one: 'فرصة متوقفة', two: 'فرصتان متوقفتان', few: 'فرص متوقفة', many: 'فرصة متوقفة' })}</span></button>` : sig('ok', '✓', 'لا فرص متوقفة')}</div>
+      </div>
+      <div>
+        <div class="sh">قيمة الفرصة × احتمال الفوز × العمر ${estMark('احتمال الفوز تقديرُ صاحب الفرصة — لا نموذج إحصائي وراءه')}</div>
+        ${bubbles || `<div class="empty-mini">${icon('filter')} لا فرص برسمها</div>`}
+      </div>
+    </div>
+    <div class="card-foot"><a href="${oppsHref}">عرض جميع الفرص (<span class="tnum">${openTotalC}</span>) <span aria-hidden="true">←</span></a></div>
+  </section>`;
+
+  // ── ٦: الفصل التشغيلي — دونات الصحة + التزام المعالم أسبوعياً + أبرز المشاريع ──
+  const weekBuckets = Array.from({ length: 8 }, (_, wI) => {
+    const from = Date.parse(today) - (8 - wI) * 7 * 86400000;
+    const to = from + 7 * 86400000;
+    const due = msWindow.filter((m) => { const t = Date.parse(String(m.due_date).slice(0, 10)); return t >= from && t < to; });
+    const met = due.filter((m) => m.status === 'MET').length;
+    return { due: due.length, met, pct: due.length ? Math.round((met / due.length) * 100) : null };
+  });
+  const msDueTot = weekBuckets.reduce((a, b) => a + b.due, 0);
+  const msMetTot = weekBuckets.reduce((a, b) => a + b.met, 0);
+  // جدول «تقدم المشاريع الرئيسية» (نموذج المالك): الحمراء فالصفراء أولاً ثم الأعلى إيراداً —
+  // التقدم من المخرجات الموزونة (المصدر الواحد)، والمعلم القادم من جدول المعالم إن سُجِّل
+  // («لم تُسجَّل معالم» حالةُ إدخالٍ ناقص لا عيبَ مشروع)، والتأخر من تاريخ الانتهاء مقابل اليوم.
+  const revByPid = Object.fromEntries(revByProject.map((r) => [r.id, r]));
+  const nextMsByPid = {};
+  for (const m of msUpcoming) if (!nextMsByPid[m.pid]) nextMsByPid[m.pid] = m;
+  const RAG_ORD = { RED: 0, AMBER: 1, UNKNOWN: 2, GREEN: 3 };
+  const prjRows = [...healthLists.RED.map((r) => ({ ...r, rag: 'RED' })), ...healthLists.AMBER.map((r) => ({ ...r, rag: 'AMBER' })), ...healthLists.GREEN.map((r) => ({ ...r, rag: 'GREEN' })), ...healthLists.UNKNOWN.map((r) => ({ ...r, rag: 'UNKNOWN' }))]
+    .sort((a, b) => (RAG_ORD[a.rag] - RAG_ORD[b.rag]) || ((revByPid[b.id]?.rev || 0) - (revByPid[a.id]?.rev || 0)))
+    .slice(0, 7);
+  const RAG_LBL = { UNKNOWN: ['غير مقيّم', 'var(--faint)'], GREEN: [G.hOnTrack, 'var(--st-good)'], AMBER: [G.hAtRisk, 'var(--st-warn)'], RED: [G.hCritical, 'var(--st-bad)'] };
+  const lateDaysOf = (r, prog) => r.end_date && prog < 100 && String(r.end_date).slice(0, 10) < today
+    ? Math.floor((Date.parse(today) - Date.parse(String(r.end_date).slice(0, 10))) / 86400000) : 0;
+  const lateVals = prjRows.map((r) => lateDaysOf(r, progMapH.get(r.id)?.pct ?? Math.round(r.progress_pct || 0))).filter((d) => d > 0);
+  // ── الحالة المعروضة تجمع الثلاثة: المخزَّن والإنجاز والتأخر، ترجّح الأسوأ وتقول سببه ──
+  // العمود المخزَّن `rag` لا يعرف شيئاً عن الإنجاز ولا التأخر، فظهر مشروعٌ عند 0% ومتأخرٌ خمسة
+  // وخمسين يوماً بنقطةٍ خضراء و«على المسار» — وهو أسرع ما يُفقد الثقة في لوحةٍ كاملة.
+  const effStatus = (r, prog, late) => {
+    const started = r.start_date && String(r.start_date).slice(0, 10) <= today;
+    const why = [];
+    let key = r.rag || 'UNKNOWN';
+    if (late > 30) { key = 'RED'; why.push(`متأخر ${dayWord(late)}`); }
+    else if (late > 0) { if (key === 'GREEN' || key === 'UNKNOWN') key = 'AMBER'; why.push(`متأخر ${dayWord(late)}`); }
+    if (prog === 0 && started) { if (key === 'GREEN' || key === 'UNKNOWN') key = 'AMBER'; why.push('بلا إنجاز مسجَّل'); }
+    return { key, why };
+  };
+  // «لم تُسجَّل معالم» مكرّرةً في كل صفٍّ ليست معلومة — إن خلا الجدولُ كله منها سقط العمود
+  // وقيلت الحقيقة سطراً واحداً تحته مع طريق إدخالها.
+  const anyMs = prjRows.some((r) => nextMsByPid[r.id]);
+  const prjTable = prjRows.length ? `<div class="tblwrap"><table class="prj-tbl rtbl">
+    <thead><tr><th>المشروع</th><th>الحالة</th><th>الإنجاز</th>${anyMs ? '<th>المعلم القادم</th>' : ''}<th>التأخر</th></tr></thead><tbody>
+    ${prjRows.map((r) => {
+    const prog = progMapH.get(r.id)?.pct ?? Math.max(0, Math.min(100, Math.round(r.progress_pct || 0)));
+    const ms = nextMsByPid[r.id];
+    const late = lateDaysOf(r, prog);
+    const eff = effStatus(r, prog, late);
+    const [lbl, col] = RAG_LBL[eff.key];
+    const risk = needProjects.find((np) => np.id === r.id)?.top_risk;
+    const why = [...eff.why, ...(risk ? [`أبرز خطر مفتوح: ${risk}`] : [])].join(' · ');
+    return `<tr>
+      <td data-label="المشروع"><a href="/app/project/${esc(r.id)}">${esc(r.name_ar)}</a></td>
+      <td data-label="الحالة"${why ? ` title="${esc(why)}"` : ''}><span class="dotc" style="background:${col}"></span> ${lbl}${eff.why.length ? ` <small style="color:var(--muted);font-size:9.5px">${esc(eff.why[0])}</small>` : ''}</td>
+      <td data-label="الإنجاز"><span class="ptrk"><i style="width:${prog}%;background:${col}"></i></span> <b class="tnum">${prog}%</b></td>
+      ${anyMs ? `<td data-label="المعلم القادم">${ms ? `${esc(ms.name_ar)} — <span class="tnum">${esc(String(ms.due_date).slice(0, 10))}</span>` : '<span style="color:var(--faint)">—</span>'}</td>` : ''}
+      <td data-label="التأخر">${late ? `<span style="color:var(--st-bad);font-weight:700">${dayWord(late)}</span>` : '<span style="color:var(--faint)">—</span>'}</td>
+    </tr>`;
+  }).join('')}
+  </tbody></table></div>${anyMs ? '' : `<div class="gapline">لا معالم مسجَّلة لمشاريع هذه السنة — تُسجَّل من صفحة المشروع فيظهر القادم منها هنا</div>`}` : `<div class="empty-mini">${icon('projects')} لا مشاريع في سنة ${year}</div>`;
+  const opsSection = `
+  <section class="card pad">
+    ${secn(5, 'الفصل التشغيلي', 'صحة المشاريع والتزام المعالم وتقدم المشاريع الرئيسية · أرصدة لحظية لا تتأثر بالفترة')}
+    <div class="ops3${msDueTot ? '' : ' two'}">
+      <div class="opsd">
+        <div class="sh" style="justify-content:center">صحة المشاريع</div>
+        <span class="ringw" style="width:112px;height:112px">${figDonut([
+    { v: ragView.GREEN || 0, color: 'var(--st-good)', dd: ragView.GREEN ? 'sec-health-GREEN' : '', label: `${G.hOnTrack}: ${ragView.GREEN || 0}` },
+    { v: ragView.AMBER || 0, color: 'var(--st-warn)', dd: ragView.AMBER ? 'sec-health-AMBER' : '', label: `${G.hAtRisk}: ${ragView.AMBER || 0}` },
+    { v: ragView.UNKNOWN || 0, color: 'var(--faint)', dd: ragView.UNKNOWN ? 'sec-health-UNKNOWN' : '', label: `غير مقيّم: ${ragView.UNKNOWN || 0}` },
+    { v: ragView.RED || 0, color: 'var(--st-bad)', dd: ragView.RED ? 'sec-health-RED' : '', label: `${G.hCritical}: ${ragView.RED || 0}` },
+  ], { size: 112, sw: 14 })}<span class="ringv"><b class="tnum" dir="ltr" style="font-size:1.15rem">${ragView.GREEN || 0}/${ragActive || 0}</b><small>على المسار</small></span></span>
+        <div class="fig-leg">${healthRows}</div>
+      </div>
+      ${msDueTot ? `<div>
+        <div class="sh">الالتزام بالمعالم — آخر 8 أسابيع</div>
+        ${figLine([{ points: weekBuckets.map((b) => b.pct ?? 0), color: 'var(--st-good)', name: 'التزام المعالم' }], { labels: weekBuckets.map((_, i) => `الأسبوع ${i + 1}`), h: 100, fmt: (v) => `${v}%`, axisDir: 'ltr', hover: true })}
+      </div>` : ''}
+      <div class="ops-stats">
+        ${msDueTot ? `<div class="pch"><span class="l">التزام المعالم · 8 أسابيع</span><b class="tnum">${Math.round((msMetTot / msDueTot) * 100)}%</b><span class="c">من ${countAr(msDueTot, { one: 'معلم واحد مستحق', two: 'معلمين مستحقين', few: 'معالم مستحقة', many: 'معلماً مستحقاً' })}</span></div>` : ''}
+        <div class="pch"><span class="l">${G.deliverables} المقبولة</span><b class="tnum">${vjDelivered?.v ? Math.round(((vjAccepted?.v || 0) / vjDelivered.v) * 100) : 0}%</b><span class="c">من المسلَّمة</span></div>
+        ${(() => {
+    // العدّ على الحالة المعروضة لا المخزَّنة — وإلا قالت البطاقة «صفر» وبجانبها بطاقةٌ تقول «متوسط التأخر 34 يوماً»
+    const needEff = prjRows.filter((r) => {
+      const pg = progMapH.get(r.id)?.pct ?? Math.max(0, Math.min(100, Math.round(r.progress_pct || 0)));
+      return ['RED', 'AMBER'].includes(effStatus(r, pg, lateDaysOf(r, pg)).key);
+    }).length;
+    const shown = Math.max(needsN, needEff);
+    return `<div class="pch"><span class="l">يحتاج نظراً</span><b class="tnum"${shown ? ' style="color:var(--st-bad)"' : ''}>${shown}</b><span class="c">${shown ? `بحالة ${G.hCritical} أو ${G.hAtRisk} أو متأخر` : 'لا مشاريع متعثرة'}</span></div>`;
+  })()}
+        ${lateVals.length ? `<div class="pch"><span class="l">متوسط التأخر</span><b class="tnum">${dayWord(Math.round(lateVals.reduce((a, b) => a + b, 0) / lateVals.length))}</b><span class="c">على ${countAr(lateVals.length, { one: 'مشروع متأخر', two: 'مشروعين متأخرين', few: 'مشاريع متأخرة', many: 'مشروعاً متأخراً' })}</span></div>` : ''}
+      </div>
+    </div>
+    <div class="sh" style="margin-top:.8rem">تقدم المشاريع الرئيسية</div>
+    ${prjTable}
+    <div class="card-foot"><a href="/app/projects?year=${year}${user.scope === 'company' ? '&sector=' + esc(sectorId) : ''}">عرض جميع المشاريع <span aria-hidden="true">←</span></a></div>
+  </section>`;
+
+  // ── ٧: تركيز الإيراد والعملاء — خريطة مساحية + الجدول + التحصيل ──
+  const treeColors = ['var(--ord-1)', 'var(--ord-2)', 'var(--ord-3)', 'var(--ord-4)', 'var(--ord-5)'];
+  // المقام واحدٌ مع جدول العملاء (إيراد القطاع) — كان المخطط يقسم على مجموع المعروضين وحدهم
+  // فيظهر العميل نفسه بـ74% في المخطط و73% في الجدول على بعد ثلاثين بكسلاً.
+  const treemap = topClients.filter((c) => c.rev > 0).length >= 2 ? figTreemap(topClients.filter((c) => c.rev > 0).map((c, i) => ({
+    label: c.name_ar, v: c.rev, sub: sarShort(c.rev), color: treeColors[i % treeColors.length],
+    href: c.id ? `/app/client/${esc(c.id)}` : '',
+  })), { h: 170, total: secRevTotal }) : '';
+
+  // ── ٨: الفصل البشري — خريطة حرارية إدارة×شهر + الطلب مقابل الطاقة ──
+  const heatRows = team && team.departments.length
+    ? team.departments.map((d) => ({ label: d.name_ar, dd: canPeople ? `cap-dept-${d.id || 'none'}` : '', cells: Array.from({ length: 12 }, (_, m) => {
+      const members = d.ids.map((id) => team.people.find((p) => p.id === id)).filter(Boolean);
+      return members.length ? Math.round(members.reduce((a, p) => a + (p.months[m] || 0), 0) / members.length) : null;
+    }) }))
+    : [{ label: 'القطاع', cells: Array.from({ length: 12 }, (_, m) => (staff.employees || []).length ? Math.round((staff.employees || []).reduce((a, e) => a + (e.months[m] || 0), 0) / (staff.employees || []).length) : null) }];
+  // خريطة السنة الجارية: ثلاثة أشهر قادمة بأسماء الشهور (نموذج المالك) — قرارُ التسكين قرارُ
+  // المدى القريب، والسنة كاملةً بأرقام شهورها للسنوات المطوية. الأعمدة يسارية القراءة.
+  const heat3Months = nowMonth ? [nowMonth, nowMonth + 1, nowMonth + 2].filter((m) => m <= 12) : [];
+  const heat3Rows = heat3Months.length ? heatRows.map((r) => ({ label: r.label, dd: r.dd, cells: heat3Months.map((m) => r.cells[m - 1]) })) : null;
+  // العرض حسب المسمى الوظيفي — جانب العرض وحده: احتياج الأدوار غير مسجَّل في الفرص والمشاريع
+  const rosterPeople = canPeople ? (team ? team.people : (staff.employees || [])) : [];
+  const jobCounts = Object.create(null); // مفتاحٌ حرٌّ من إدخال المستخدم: لا وراثة تبتلع «__proto__»
+  for (const pRow of rosterPeople) { const j = (pRow.job_title ?? pRow.job ?? '').trim() || 'بلا مسمى مسجّل'; jobCounts[j] = (jobCounts[j] || 0) + 1; }
+  const jobBars = Object.entries(jobCounts).sort((a, b) => b[1] - a[1]).slice(0, 6)
+    .map(([j, n]) => ({ label: j, value: n, count: '', fill: j === 'بلا مسمى مسجّل' ? 'var(--tick)' : 'var(--acc-navy)' }));
+  const heatTone = (v) => v == null ? ['var(--track)', 'var(--muted)'] : v > OVER_ABOVE ? ['var(--st-bad-soft)', 'var(--st-bad)'] : v === 0 ? ['var(--st-neut-soft)', 'var(--muted)'] : v < FREE_BELOW ? ['#fdf6e3', '#8a6d1a'] : ['var(--st-good-soft)', 'var(--st-good)'];
+  const hrSection = `
+  <section class="card pad">
+    ${secn(7, 'الفصل البشري — التسكين والموارد', `${G.utilization} المخطَّط بالإدارة والشهر، والطلب مقابل الطاقة — من خطة التسكين لا ساعات العمل`)}
+    ${filtered ? '<div class="nofilt" style="margin-bottom:.5rem">القطاع كله — خطة التسكين موردٌ قطاعي لا يُنسَب لإدارةٍ أو عميل؛ مرشِّحا الإدارة والعملاء لا يسريان على هذا الفصل</div>' : ''}
+    <div class="hr3">
+      <div>
+        <div class="sh">${G.utilization} حسب ${team && team.departments.length ? 'الإدارة' : 'القطاع'} ${heat3Rows ? 'لهذا الشهر والشهرين بعده' : 'والشهر'}</div>
+        ${heat3Rows
+    ? figHeat(heat3Rows, heat3Months.map((m) => monthLabel(m - 1)), { tone: heatTone, ltr: true })
+    : figHeat(heatRows, Array.from({ length: 12 }, (_, i) => i + 1), { tone: heatTone, ltr: true })}
+        <div class="pulses" style="border-top:none;padding-top:.35rem;margin-top:.2rem">
+          ${[['mid', 'ضمن الطاقة', midNow.length, 'style="color:var(--st-good)"'],
+    ['over', 'تجاوز', overNow.length, overNow.length ? 'style="color:var(--st-bad)"' : ''],
+    ['free', nowMonth ? G.onBench : 'بلا تسكين', freeNow.length, '']].map(([k, l, n, st]) =>
+    (canPeople && n ? `<button type="button" class="pch pch-btn" data-action="open-dd" data-dd="cap-band-${k}" aria-label="${l}: ${n} — التفصيل"><span class="l">${l}</span><b class="tnum" ${st}>${n}</b></button>`
+      : `<div class="pch"><span class="l">${l}</span><b class="tnum" ${st}>${n}</b></div>`)).join('')}
+        </div>
+      </div>
+      <div>
+        <div class="sh">الطلب المخطَّط مقابل الطاقة (مكافئ التفرغ)</div>
+        ${figLine([
+    { points: demandFte, color: 'var(--acc-indigo)', area: true, name: 'المخطَّط له' },
+    { points: Array.from({ length: 12 }, () => capFte), color: 'var(--muted)', dash: true, dots: false, name: 'الطاقة' },
+  ], { labels: MONTHS_AR, now: nowM + 1, h: 120, fmt: (v) => `${Math.round(v * 10) / 10} من مكافئ التفرغ`, axisDir: 'ltr', hover: true,
+    marks: gapFte != null && gapFte < 0 && worstGap ? [{ i: worstGap.i, label: `فجوة ${Math.abs(gapFte)} من مكافئ التفرغ في ${monthLabel(worstGap.i)}`, color: 'var(--st-bad)' }] : [] })}
+        ${gapFte != null && nowMonth ? `<div class="comfoot"><span>${gapFte > 0 ? `سعة غير مستغلة <b class="tnum">${gapFte}</b> من مكافئ التفرغ في ${monthLabel(worstGap.i)}` : `عجز <b class="tnum">${Math.abs(gapFte)}</b> من مكافئ التفرغ في ${monthLabel(worstGap.i)}`}</span></div>` : ''}
+      </div>
+      <div>
+        <div class="sh">المتاح من الفريق حسب المسمى الوظيفي</div>
+        ${!canPeople ? `<div class="empty-mini">${icon('team')} المسميات الوظيفية تظهر لمن يملك صلاحية عرض الفريق</div>`
+    : jobBars.length ? figBars(jobBars, { fmt: (v) => countAr(v, { one: 'شخص واحد', two: 'شخصان', few: 'أشخاص', many: 'شخصاً' }) })
+      : `<div class="empty-mini">${icon('team')} لا كشف أفراد ضمن نطاقك</div>`}
+        <div class="comfoot">جانب العرض فقط — احتياج الأدوار غير مسجَّل في الفرص والمشاريع بعد</div>
+      </div>
+    </div>
+  </section>`;
+
+  // ── ٩: نظرة الفترة القادمة — معالم 30/60/90 + المخاطر المفتوحة + قيود الطاقة ──
+  const horizon = (days) => msUpcoming.filter((m) => (Date.parse(String(m.due_date).slice(0, 10)) - Date.parse(today)) / 86400000 <= days);
+  const h30 = horizon(30), h60 = horizon(60).filter((m) => !h30.includes(m)), h90 = horizon(90).filter((m) => !h30.includes(m) && !h60.includes(m));
+  const msRow = (m) => `<div class="msr"><span class="d tnum">${String(m.due_date).slice(5, 10)}</span><a href="/app/project/${esc(m.pid)}"><b>${esc(m.name_ar)}</b> <span>· ${esc(m.project)}</span></a></div>`;
+  const probAr = { high: ['مرتفع', 'var(--st-bad)'], med: ['متوسط', 'var(--st-warn)'], medium: ['متوسط', 'var(--st-warn)'], low: ['منخفض', 'var(--st-neut)'] };
+  const impactAr = { high: 'مرتفع', med: 'متوسط', medium: 'متوسط', low: 'منخفض' };
+  // ── النظرة القادمة: عمودٌ بلا بياناتٍ يسقط ويُقال نقصُه سطراً واحداً، وقسمٌ خلَت أعمدته
+  // الثلاثة يسقط كله. لا صندوقَ أجوف ولا رسمٌ فارغ (قرار أ. حسين: ما لا بيانات له لا يُعرض).
+  const capRows = nowMonth ? (() => {
+    const rows = [];
+    for (let m = nowMonth - 1; m < 12; m++) {
+      const d = demandFte[m];
+      if (d > capFte) rows.push(`<div class="msr"><span class="dotc" style="background:var(--st-bad)"></span><span>${monthLabel(m)}: طلبٌ يفوق الطاقة بـ<b class="tnum">${Math.round((d - capFte) * 10) / 10}</b> من مكافئ التفرغ</span></div>`);
+      else if (capFte - d >= 2) rows.push(`<div class="msr"><span class="dotc" style="background:var(--st-neut)"></span><span>${monthLabel(m)}: سعة متاحة <b class="tnum">${Math.round((capFte - d) * 10) / 10}</b> من مكافئ التفرغ</span></div>`);
+    }
+    return rows;
+  })() : [];
+  const overloadedAhead = capRows.some((r) => r.includes('يفوق الطاقة'));
+  const outCols = [
+    msUpcoming.length ? `<div><div class="sh">الجدول الزمني القادم</div>
+      ${[['30 يوماً', h30], ['60 يوماً', h60], ['90 يوماً', h90]].map(([l, rows]) => rows.length ? `<div class="outg"><span class="og">${l}</span>${rows.slice(0, 3).map(msRow).join('')}</div>` : '').join('')}
+    </div>` : '',
+    topRisks.length ? `<div><div class="sh">${G.risks} المفتوحة</div>
+      ${topRisks.map((r) => { const [pl, pc] = probAr[r.probability] || probAr.low; return `<div class="msr"><span class="dotc" style="background:${pc}"></span><span>${r.pid ? `<a href="/app/project/${esc(r.pid)}" style="color:var(--ink2)"><b>${esc(r.title)}</b></a>` : `<b>${esc(r.title)}</b>`}${r.project ? ` <span>· ${esc(r.project)}</span>` : ''}${r.impact ? ` <span class="im">· الأثر: ${impactAr[r.impact] || esc(r.impact)}</span>` : ''}</span><span class="pill" style="background:var(--st-neut-soft);color:var(--muted);flex:none">احتمال ${pl}</span></div>`; }).join('')}
+    </div>` : '',
+    capRows.length ? `<div><div class="sh">${overloadedAhead ? 'قيود الطاقة القادمة' : 'السعة المتاحة في الأشهر القادمة'}${filtered ? ' <span class="icb">القطاع كله</span>' : ''}</div>
+      ${capRows.slice(0, 4).join('')}${capRows.length > 4 ? `<div class="gapline">و${countAr(capRows.length - 4, { one: 'شهر آخر', two: 'شهران آخران', few: 'أشهر أخرى', many: 'شهراً آخر' })} — التفصيل في <a href="/app/staffing">لوحة التسكين</a></div>` : ''}
+    </div>` : '',
+  ].filter(Boolean);
+  const outGaps = [
+    !msUpcoming.length ? 'لا معالم مستحقة في التسعين يوماً القادمة — تُسجَّل من صفحة المشروع' : '',
+    !topRisks.length ? 'لا مخاطر مفتوحة مسجَّلة — تُسجَّل من صفحة المشروع' : '',
+  ].filter(Boolean);
+  const outlookSection = outCols.length ? `
+  <section class="card pad">
+    ${secn(8, 'نظرة الفترة القادمة', `${outCols.length === 3 ? 'معالم الثلاثين والستين والتسعين يوماً، والمخاطر المفتوحة، وقيود الطاقة' : 'ما هو مسجَّل للأشهر القادمة'} · نظرة أمامية من اليوم — لا تتأثر بالفترة`)}
+    <div class="out3${outCols.length < 3 ? ` c${outCols.length}` : ''}">${outCols.join('')}</div>
+    ${outGaps.length ? `<div class="gapline">${outGaps.join(' · ')}</div>` : ''}
+  </section>` : '';
+
+  // ── الدرج: القرارات والعقود والأرباع ──
+  const drawer = `<details class="psec x-drawer"><summary>التحليل الموسّع — الأرباع · ${G.decisions} والاعتمادات · العقود</summary>
+    <div class="g12" style="padding:.4rem 1rem 1rem">
+      <div class="c8" style="min-width:0">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+          <div><div class="eyebrow" style="margin-bottom:.2rem">${G.revenue} بالأرباع</div>${figColumns(qRevN.map((v, i) => ({ v, label: quarterLabel(i) })), { now: nowQ + 1 })}</div>
+          <div><div class="eyebrow" style="margin-bottom:.2rem">${G.bookings} بالأرباع</div>${figColumns(qBookN.map((v, i) => ({ v, label: quarterLabel(i) })), { now: nowQ + 1 })}</div>
+        </div>
+        ${/* الاسم واحدٌ مع خلية الشريط أعلى الشاشة («الهامش الإجمالي») — والرقمان من `sectorCosts`
+             نفسها منذ v5.71، فاسمان لمعنىً واحد يوهمان مقياسين. وصدى «· السنة» لأن هذا السطر
+             سنويٌّ دائماً بينما خليةُ الشريط تتبع الفترة المختارة. */''}
+        ${canMargin && margin && margin.margin_pct != null ? `<div style="font-size:var(--fs-body);color:var(--muted);margin-top:.5rem">${G.margin} الإجمالي <b class="tnum" style="color:${margin.margin_pct < 0 ? 'var(--st-bad)' : 'var(--ink2)'}">${margin.margin_pct}%</b> من الإيراد · سنة ${year}</div>` : ''}
+      </div>
+      <div class="c4" style="min-width:0;display:grid;gap:.8rem;align-content:start">
+        ${decisionsCard}
+        ${contractsCard}
+      </div>
+    </div>
+  </details>`;
+
+  // ── تكوين الصفحة: الكابينة المرقّمة ──
+  // ── فصولٌ بألسنة: شاشةٌ واحدة بلا تمرير (طلب المالك «avoid scroll, keep it all in one page») ──
+  // الصفحة كانت 4628 بكسل ≈ خمس شاشات. المثبَّت أعلى الشاشة: المرشِّحات وبطاقات المؤشرات وسطر
+  // قراءة سند وشريط الألسنة (~294 بكسل)، ويبقى للفصل المختار ~546 — فصلٌ واحد في كل مرة.
+  // كل الفصول مُصيَّرة في الصفحة ويُخفى غير المختار بـhidden (لا جلبَ ولا انتظار عند التبديل)،
+  // واللسان في الرابط `?tab=` فيبقى بعد التحديث ويُشارَك برابطه — نمط تفصيل الفرصة نفسه.
+  const TABS = TAB_DEFS;
+  const tab = tabSel;
+  const tabsBar = `<div class="seg tabs" role="tablist" aria-label="فصول مركز القطاع">${TABS.map(([k, l], i) => `
+    <button type="button" role="tab" id="sec-tab-${k}" data-action="sec-tab" data-tab="${k}"
+      aria-selected="${tab === k}" aria-controls="sec-panel-${k}" tabindex="${tab === k ? '0' : '-1'}"
+      class="${tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+  const panel = (k, label, inner) => `<section id="sec-panel-${k}" role="tabpanel" aria-labelledby="sec-tab-${k}"
+    class="tabpanel"${tab === k ? '' : ' hidden'}>${inner}</section>`;
 
   const body = `${CSS}
-    ${switcher}
-    <div class="toolbar" style="margin-bottom:var(--gap)">
-      ${lens}
-      <span style="font-size:var(--fs-micro);color:var(--muted)">عدسة الفترة — تضبط نافذة «${G.whatChanged}»</span>
+    <div class="dash">
+    ${toolbar}
+    ${filterNote}
+    ${can(user, 'read', 'budget', { sector_id: sectorId }) ? `<div class="alert info"><a href="/app/sector-targets?year=${year}&amp;sector=${encodeURIComponent(sectorId)}">مستهدفات القطاع</a> · راجع مستهدفات السنة وسجل تعديلاتها.</div>` : ''}
+    ${can(user, 'read', 'revenue_line') ? `<div class="alert info">الإيراد حسب فترة المخرجات، والمبيعات حسب سنة الفوز. <a href="/app/revenue-review?year=${year}&amp;sector=${encodeURIComponent(sectorId)}">راجع جودة الإيراد</a></div>` : ''}
+    ${kpiBand}
+    ${moneyBand}
+    ${execBand}
+    ${tabsBar}
+    ${panel('pulse', 'الإيقاع', `
+      ${comboSection}
+      <section class="card pad">
+        <div class="secn"><h2>ماذا أفعل اليوم؟</h2></div>
+        <div class="g12">
+          <div class="c7" style="min-width:0">${attnCard}</div>
+          <div class="c5" style="min-width:0">${changesCard}</div>
+        </div>
+      </section>`)}
+    ${panel('com', 'التجاري', `
+      ${commercialSection}
+      <section class="card pad">
+        ${secn(null, 'رحلة القيمة — من التعاقد إلى التحصيل', `مجاميع سجلات السنة كاملةً${filtered ? ' تحت الترشيح — كل محطةٍ عبر مشروع سجلها' : ''}، والنسب بين كل محطتين · لا تتأثر بالفترة`)}
+        <div class="vj-light">${journey}</div>
+      </section>`)}
+    ${panel('ops', 'التشغيلي', opsSection)}
+    ${panel('cli', G.clients, `
+      <section class="card pad">
+        ${secn(6, canInvoices ? 'تركيز الإيراد والعملاء والتحصيل' : 'تركيز الإيراد والعملاء', `مرتَّبون حسب إيراد ${year} كاملةً — لا يتأثر بالفترة`)}
+        ${!treemap ? `<div class="empty-mini" style="margin-bottom:1rem">${icon('info')} لا يُرسم توزيع العملاء بعد — يلزم عميلان على الأقل بإيراد مسجَّل هذه السنة${filtered ? ' تحت هذا الترشيح' : ''}</div>` : ''}
+        ${treemap ? `<div class="g12" style="margin-bottom:1rem">
+          <div class="c7" style="min-width:0">${treemap}</div>
+          <div class="c5 conc-panel" style="min-width:0">
+            <div class="cp-hero">${concPct != null ? `أكبر ثلاثة عملاء = <b class="tnum">${concPct}%</b> من الإيراد${concPct >= 60 ? ' <span class="pill" style="background:var(--st-warn-soft);color:#92400e">تركّز مرتفع</span>' : ''}` : 'لا يوجد ثلاثة عملاء بإيراد بعد'}</div>
+            ${concPct != null ? figBars([
+    { label: 'الإيراد الحالي', value: concPct, count: '', fill: 'var(--acc-navy)' },
+    ...(concAfterPipe != null ? [{ label: 'مع الخط المرجّح', value: concAfterPipe, count: '', fill: 'var(--acc-indigo)' }] : []),
+  ], { fmt: (v) => `${v}%`, max: 100 }) : ''}
+            ${concAfterPipe != null ? `<div class="comfoot">حصة أكبر ثلاثة عملاء لو أُضيف خط الفرص المفتوح مرجّحاً ${estMark('قيمة تقديرية: (إيراد أكبر ثلاثة + فرصهم المفتوحة مرجّحة) ÷ (إيراد القطاع + كل المفتوح مرجّحاً) — ليست التزاماً')}</div>` : ''}
+          </div>
+        </div>` : ''}
+        <div class="g12">
+          <div class="${canInvoices && collectCard ? 'c7' : 'c12'}" style="min-width:0">${clientsCard}</div>
+          ${canInvoices && collectCard ? `<div class="c5" style="min-width:0">${collectCard}</div>` : ''}
+        </div>
+      </section>`)}
+    ${panel('hr', 'البشري', `
+      ${hrSection}
+      <section class="card pad" style="padding:0;border:none;background:none;box-shadow:none">
+        <div class="g12">
+          <div class="c12" style="min-width:0">${capCard}</div>
+        </div>
+      </section>`)}
+    ${panel('next', 'القادم', `
+      ${outlookSection}
+      ${drawer}`)}
+    <div class="foot-strip">
+      <span>بيانات سند</span>
+      <span>·</span>
+      <span>${lastUpd ? `آخر تحديث <b class="tnum" dir="ltr">${esc(String(lastUpd).slice(0, 10))} ${esc(String(lastUpd).slice(11, 16))}</b>` : 'لا تحديثات مسجَّلة بعد'}</span>
+      ${compl.score != null ? `<span>·</span>
+      <button type="button" class="fs-compl" data-action="open-dd" data-dd="completeness" aria-label="اكتمال البيانات ${compl.score}% — التفصيل">
+        اكتمال البيانات <b class="tnum">${compl.score}%</b>
+        <span class="pmeter" aria-hidden="true"><i style="width:${compl.score}%"></i></span>
+        ${noteMark('درجة مركّبة: متوسط موزون لنِسَب اكتمالٍ معلنة (كم اكتمل من كم) — تفصيلها بالنقر')}
+      </button>` : ''}
     </div>
-    <div class="sec-grid">
-      <div class="sec-col">${changesCard}${paceSection}</div>
-      <div class="sec-col">${attnCard}${funnelCard}</div>
-    </div>
-    ${row2}
-    <div class="sec-grid even">
-      <div class="sec-col">${capCard}${decisionsCard}</div>
-      <div class="sec-col">${clientsCard}${reportsCard}</div>
     </div>
     ${DD}`;
-  return layout({ user, active: 'sector', title: `مركز قيادة ${esc(sd.sector.name_ar)}`, subtitle: `ما تغيّر، ما يحتاجك، وأين نقف مقابل الخطة · ${year}`, body, year });
+  return layout({ user, active: 'sector', title: `مركز قيادة ${sd.sector.name_ar}`,
+    subtitle: `الوضع، ثم السبب، ثم ${G.nextAction} · ${year}`, body, year,
+    extraHead: SECTOR_THEME,
+    scripts: ['/static/pages/sector.js'] });
+}
+// ═══════════════════════════════════════════════════════════════════════════════
+// «قطاعي» — وجه الصفحة لمن يعمل **داخل** القطاع لا لمن يقوده
+// ═══════════════════════════════════════════════════════════════════════════════
+// ثلاثة أسئلة لا رابع لها: ما المطلوب مني؟ على أي مشاريع أنا؟ وأين أقف ومن يقودني؟
+// وما لا يظهر هنا مقصود بحذفه: لا مستهدفات ولا نسب تحقق ولا خط فرص القطاع ولا تحصيل ولا
+// أعمار مستحقات ولا تركّز عملاء ولا طاقة القطاع ولا كلفة ولا هامش — أرقام قرارٍ لا يملكه
+// من يقرأ هذه الشاشة، وعرضها عليه إشغال بما لا يستطيع تغييره.
+const MY_CSS = `<style>
+${CARD_HEAD_CSS}
+.my-grid{display:grid;gap:var(--gap);grid-template-columns:1.1fr .9fr}
+@media(max-width:980px){.my-grid{grid-template-columns:1fr}}
+.my-col{display:flex;flex-direction:column;gap:var(--gap);min-width:0}
+.my-id{display:flex;align-items:center;gap:.7rem;padding:.75rem 1rem;flex-wrap:wrap}
+.my-id .sdot{width:11px;height:11px;border-radius:50%;flex:none}
+.my-id .nm{font-weight:800;font-size:var(--fs-title);color:var(--ink2)}
+.my-id .ld{font-size:var(--fs-micro);color:var(--muted)}
+.mw-list{padding:.35rem 1rem .6rem;display:flex;flex-direction:column}
+.mw-row{display:flex;gap:.6rem;align-items:flex-start;padding:.5rem 0;border-bottom:1px dashed var(--line)}
+.mw-row:last-child{border-bottom:none}
+.mw-row .pin{width:7px;height:7px;border-radius:50%;flex:none;margin-top:.42rem}
+.mw-main{flex:1;min-width:0}
+.mw-t{font-size:var(--fs-body);font-weight:700;color:var(--ink2);line-height:1.5;overflow-wrap:anywhere}
+.mw-m{display:flex;gap:.1rem .7rem;flex-wrap:wrap;align-items:center;font-size:var(--fs-micro);color:var(--muted);margin-top:.1rem}
+.mw-m a{color:var(--brand)}
+.mw-side{flex:none;display:flex;align-items:center;gap:.35rem;text-align:end}
+.mw-more{font-size:var(--fs-micro);color:var(--faint);padding-top:.45rem}
+</style>`;
+
+const RAG_TONE = { GREEN: 'var(--green)', AMBER: 'var(--amber)', RED: 'var(--red)' };
+
+async function mySectorPage(user, opts = {}) {
+  const year = Number(opts.year) || config.fiscalYear;
+  const sectorId = user?.sector_id || null;
+  const sec = sectorId ? await sectorIdentity(sectorId) : null;
+  // الحساب غير مربوط بقطاع: حالة مصمَّمة بخطوة تالية حقيقية، لا لوحة فارغة ولا قطاع بديل.
+  if (!sec) {
+    return layout({ user, active: 'sector', title: 'قطاعي', subtitle: 'أين تقف وما المطلوب منك',
+      body: `<div class="card"><div class="empty-state">${icon('sector')}
+        <div class="t">لا يوجد قطاع مرتبط بحسابك</div>
+        <div class="s">اطلب من مدير النظام ربط حسابك بقطاعك، وستظهر هنا مهامك ومشاريعك فيه.</div>
+        <a class="btn btn-primary" href="/app/tasks">العودة إلى مهامي</a></div></div>`, year });
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+  const todayMs = Date.parse(today + 'T00:00:00Z');
+  const canProjects = can(user, 'read', 'project');
+  const canOpps = can(user, 'read', 'opportunity');
+
+  const [tasks, mine, opps] = await Promise.all([
+    mySectorTasks(user, sectorId, { limit: 50 }),
+    myProjectsInSector(user, sectorId),
+    myOpportunitiesInSector(user, sectorId),
+  ]);
+  const shownP = mine.slice(0, 8);
+  // نسبة الإنجاز من مصدرها الواحد — لا من العمود المخزَّن (انظر modules/pmo/progress.js).
+  const progMapS = await effectiveProgress(shownP);
+  const ms = Object.fromEntries((await nextMilestones(shownP.map((p) => p.id))).map((m) => [m.project_id, m]));
+
+  // ── (1) هوية القطاع: أين أقف ومن يقودني ──
+  const leadLine = sec.lead_name
+    ? `يقود القطاع ${esc(sec.lead_name)}`
+    : 'لم يُسجَّل قائد لهذا القطاع بعد';
+  const idCard = card(`<div class="my-id">
+    <span class="sdot" style="background:${esc(sec.color) || 'var(--brand)'}"></span>
+    <div style="flex:1;min-width:0"><div class="nm">${esc(sec.name_ar)}</div><div class="ld">${leadLine}</div></div>
+    <span class="pill" style="background:#eef2fb;color:var(--brand)">قطاعك</span>
+  </div>`);
+
+  // ── (2) مهامي في هذا القطاع — الأقرب موعداً أولاً ──
+  const dnum = (d) => Math.round((Date.parse(String(d).slice(0, 10) + 'T00:00:00Z') - todayMs) / 86400000);
+  const dayMonth = (d) => {
+    const t = new Date(String(d).slice(0, 10) + 'T00:00:00Z');
+    return Number.isNaN(t.getTime()) ? '' : `<span class="tnum">${t.getUTCDate()}</span> ${MONTHS_AR[t.getUTCMonth()]}`;
+  };
+  const dueOf = (due) => {
+    if (!due) return { text: 'بلا موعد', color: 'var(--faint)', pin: 'var(--line)' };
+    const n = dnum(due);
+    if (!Number.isFinite(n)) return { text: 'بلا موعد', color: 'var(--faint)', pin: 'var(--line)' };
+    if (n < 0) return { text: `متأخرة ${dayWord(-n)}`, color: 'var(--red)', pin: 'var(--red)', bold: true };
+    if (n === 0) return { text: 'تستحق اليوم', color: 'var(--amber)', pin: 'var(--amber)', bold: true };
+    if (n === 1) return { text: 'غداً', color: 'var(--amber)', pin: 'var(--amber)' };
+    if (n <= 7) return { text: `خلال ${dayWord(n)}`, color: 'var(--muted)', pin: 'var(--brand)' };
+    return { text: dayMonth(due), color: 'var(--muted)', pin: '#cbd5e1' };
+  };
+  const SHOW_T = 8;
+  const taskRows = tasks.slice(0, SHOW_T).map((t) => {
+    const d = dueOf(t.due_date);
+    const ctx = t.project_name
+      ? (canProjects ? `<a href="/app/project/${t.project_id}">${esc(t.project_name)}</a>` : esc(t.project_name))
+      : '';
+    return `<div class="mw-row">
+      <span class="pin" style="background:${d.pin}"></span>
+      <div class="mw-main">
+        <div class="mw-t">${esc(t.title)}</div>
+        <div class="mw-m">
+          <span style="color:${d.color}${d.bold ? ';font-weight:700' : ''}">${d.text}</span>
+          ${ctx}
+          ${t.status === 'BLOCKED' && t.blocked_reason ? `<span style="color:var(--red)">معلّقة: ${esc(t.blocked_reason)}</span>` : ''}
+        </div>
+      </div>
+      <div class="mw-side">${t.priority === 'P0' ? pill('حرجة', 'red') : t.priority === 'P1' ? pill('عالية', 'amber') : ''}</div>
+    </div>`;
+  }).join('');
+  const overdueN = tasks.filter((t) => t.due_date && dnum(t.due_date) < 0).length;
+  const tasksCard = tasks.length ? card(`
+    <div class="card-head">
+      <span class="t">مهامي في هذا القطاع</span>
+      <span class="pill" style="background:#eef2fb;color:var(--brand)"><b class="tnum">${tasks.length}</b></span>
+      ${overdueN ? pill(`متأخرة <b class="tnum">${overdueN}</b>`, 'red') : ''}
+      <span class="aux"><a class="btn btn-sm" href="/app/tasks">كل مهامي</a></span>
+    </div>
+    <div class="mw-list">${taskRows}
+      ${tasks.length > SHOW_T ? `<div class="mw-more">و${countAr(tasks.length - SHOW_T, { one: 'مهمة أخرى', two: 'مهمتان أخريان', few: 'مهام أخرى', many: 'مهمة أخرى' })} — تظهر كلها في «مهامي»</div>` : ''}
+    </div>`) : '';
+
+  // ── (3) مشاريعي: ما أنا مُسكَّن عليه فعلاً، لا كل مشاريع القطاع ──
+  const projRows = shownP.map((p) => {
+    const prog = progMapS.get(p.id)?.pct ?? Math.max(0, Math.min(100, Math.round(p.progress_pct || 0)));
+    const nx = ms[p.id];
+    return `<div class="mw-row">
+      <span class="pin" style="background:${RAG_TONE[p.rag] || '#cbd5e1'}"></span>
+      <div class="mw-main">
+        <div class="mw-t"><a href="/app/project/${p.id}">${esc(p.name_ar)}</a></div>
+        <div class="mw-m"><span>${esc(tr(p.status) || '')}</span>${nx ? `<span>${G.nextAction}: ${esc(nx.title)}${nx.due_date ? ` · ${dayMonth(nx.due_date)}` : ''}</span>` : ''}</div>
+        <div class="bar" style="margin-top:.3rem;height:5px"><span style="width:${prog}%;background:var(--brand)"></span></div>
+      </div>
+      <div class="mw-side"><span class="tnum" style="font-weight:800;font-size:var(--fs-body)">${prog}%</span></div>
+    </div>`;
+  }).join('');
+  const projectsCard = mine.length ? card(`
+    <div class="card-head">
+      <span class="t">مشاريعي في هذا القطاع</span>
+      <span class="pill" style="background:#eef2fb;color:var(--brand)"><b class="tnum">${mine.length}</b></span>
+      <span class="aux"><a class="btn btn-sm" href="/app/projects">كل مشاريعي</a></span>
+    </div>
+    <div class="mw-list">${projRows}
+      ${mine.length > shownP.length ? `<div class="mw-more">و${countAr(mine.length - shownP.length, { one: 'مشروع آخر', two: 'مشروعان آخران', few: 'مشاريع أخرى', many: 'مشروعاً آخر' })}</div>` : ''}
+    </div>`) : '';
+
+  // ── (4) فرصي — لمن يقرأ الفرص وحده (الاستشاري نعم، الموظف لا) ──
+  const SHOW_O = 6;
+  const oppRows = opps.slice(0, SHOW_O).map((o) => `<div class="mw-row">
+      <span class="pin" style="background:${esc(o.stage_color) || 'var(--brand2)'}"></span>
+      <div class="mw-main">
+        <div class="mw-t"><a href="/app/opportunity/${o.id}">${esc(o.title_ar)}</a></div>
+        <div class="mw-m">
+          ${o.stage_name ? `<span>${esc(o.stage_name)}</span>` : ''}
+          ${o.client_name ? `<span>${esc(o.client_name)}</span>` : ''}
+          <span style="${o.no_next_action ? 'color:var(--amber);font-weight:700' : ''}">${o.no_next_action ? G.noNextAction : esc(o.next_action)}</span>
+        </div>
+      </div>
+      <div class="mw-side">${o.value_halalas
+      ? `<span class="tnum" style="font-weight:800;font-size:var(--fs-body)">${fmtSar(o.value_halalas)}</span>`
+      : '<span style="font-size:var(--fs-micro);color:var(--faint)">لم تُسعَّر بعد</span>'}</div>
+    </div>`).join('');
+  const oppsCard = opps.length ? card(`
+    <div class="card-head">
+      <span class="t">${G.myOpportunities} في هذا القطاع</span>
+      <span class="pill" style="background:#f3e8ff;color:var(--brand2)"><b class="tnum">${opps.length}</b></span>
+      <span class="aux"><a class="btn btn-sm" href="/app/my-opportunities">${G.myOpportunities}</a></span>
+    </div>
+    <div class="mw-list">${oppRows}
+      ${opps.length > SHOW_O ? `<div class="mw-more">و${countAr(opps.length - SHOW_O, { one: 'فرصة أخرى', two: 'فرصتان أخريان', few: 'فرص أخرى', many: 'فرصة أخرى' })}</div>` : ''}
+    </div>`) : '';
+
+  // ── الحالة المصمَّمة: لا عمل بعد ⟵ ماذا أفعل الآن، ومن أسأل ──
+  const nothing = !tasksCard && !projectsCard && !oppsCard;
+  const emptyCard = card(`<div class="empty-state">${icon('tasks')}
+    <div class="t">لا عمل مسجَّل لك في ${esc(sec.name_ar)} بعد</div>
+    <div class="s">حين تُسنَد إليك مهمة أو تُسكَّن على مشروع${canOpps ? ' أو تُسنَد إليك فرصة' : ''} ستظهر هنا.
+      ${sec.lead_name ? `وللسؤال عن عملك في القطاع تواصل مع ${esc(sec.lead_name)}.` : ''}</div>
+    <a class="btn btn-primary" href="/app/tasks">أضِف مهمة</a></div>`);
+
+  // التوزيع يتبع ما لدى الشخص فعلاً: بطاقة واحدة تأخذ العرض كاملاً بدل عمود مليء وآخر فارغ
+  // (استشاري له فرص بلا مهام كان يرى نصف الشاشة بياضاً). الأولوية ثابتة: مهامي ثم مشاريعي ثم فرصي.
+  const cards = [tasksCard, projectsCard, oppsCard].filter(Boolean);
+  const grid = cards.length === 1
+    ? `<div class="my-grid" style="grid-template-columns:1fr;margin-top:var(--gap)"><div class="my-col">${cards[0]}</div></div>`
+    : `<div class="my-grid" style="margin-top:var(--gap)">
+      <div class="my-col">${cards[0]}</div>
+      <div class="my-col">${cards.slice(1).join('')}</div>
+    </div>`;
+  const body = `${MY_CSS}
+    ${idCard}
+    ${nothing ? `<div style="margin-top:var(--gap)">${emptyCard}</div>` : grid}`;
+
+  const bits = [
+    tasks.length ? countAr(tasks.length, { one: 'مهمة مفتوحة', two: 'مهمتان مفتوحتان', few: 'مهام مفتوحة', many: 'مهمة مفتوحة' }) : '',
+    mine.length ? countAr(mine.length, { one: 'مشروع واحد', two: 'مشروعان', few: 'مشاريع', many: 'مشروعاً' }) : '',
+    opps.length ? countAr(opps.length, { one: 'فرصة واحدة', two: 'فرصتان', few: 'فرص', many: 'فرصة' }) : '',
+  ].filter(Boolean);
+  return layout({ user, active: 'sector', title: 'قطاعي',
+    subtitle: `${sec.name_ar} · ${bits.length ? bits.join(' · ') : 'ما يخصّك أنت في هذا القطاع'}`,
+    body, year });
 }

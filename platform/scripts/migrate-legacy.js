@@ -22,7 +22,28 @@ const roleMap = { admin: 'admin', sector_manager: 'sector_lead', sector_lead: 's
   bd_manager: 'bd_manager', consultant: 'consultant', viewer: 'viewer', USER: 'employee', user: 'employee' };
 const scopeFor = (role) => role === 'admin' ? 'company' : (role === 'sector_lead' || role === 'ceo_office') ? 'sector' : 'own';
 
+// حارس تدمير: هذا السكربت يفرغ 50+ جدولاً (المهام، التسكين، العضويات، سجل الوقت) قبل إعادة
+// التحميل. تشغيله مرة واحدة بالخطأ على بيئة حيّة يمحو كل عمل المستخدمين بلا رجعة. لذلك يرفض
+// العمل ما لم تُعلَن النية صراحةً — ومع قاعدة Postgres (staging/prod) يلزم أيضاً تأكيد نسخة احتياطية.
+function assertDestructiveAllowed() {
+  const armed = process.env.SANAD_ALLOW_LEGACY_WIPE === '1';
+  if (!armed) {
+    throw new Error(
+      'migrate-legacy يفرغ جداول البيانات قبل إعادة التحميل ولم يُصرَّح به.\n'
+      + 'إن كنت متأكداً: SANAD_ALLOW_LEGACY_WIPE=1'
+      + (config.databaseUrl ? ' SANAD_BACKUP_CONFIRMED=<اسم-ملف-النسخة-الاحتياطية>' : '')
+    );
+  }
+  if (config.databaseUrl && !process.env.SANAD_BACKUP_CONFIRMED) {
+    throw new Error(
+      'قاعدة بيانات خارجية مكتشَفة (staging/prod): يلزم نسخة احتياطية مؤكدة قبل الإفراغ.\n'
+      + 'شغّل scripts/pg-backup.sh ثم مرّر SANAD_BACKUP_CONFIRMED=<اسم-ملف-النسخة>'
+    );
+  }
+}
+
 export async function migrateLegacy() {
+  assertDestructiveAllowed();
   const SNAP = JSON.parse(readFileSync(pick('legacy-state'), 'utf8'));
   const USERS = JSON.parse(readFileSync(pick('legacy-users'), 'utf8')).users || [];
   const report = { source: {}, target: {}, financial: {}, notes: [] };

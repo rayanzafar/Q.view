@@ -1,5 +1,9 @@
 // Inline SVG line icons (24px, stroke-based) — no external requests. Consistent 1.75 stroke.
 const P = {
+  // تلميح معلومة: دائرة i — بديل محرف ⓘ الذي لا تحمله خطوط المنصة (v5.38)
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 8h.01"/><path d="M11 12h1v4h1.5"/>',
+  // «صفحتي»: شروقٌ لا منزل — الصفحة بدايةُ يومٍ لا مسكن، وشكلها يميّزها عن كل أيقونة أخرى.
+  home: '<path d="M3 18h18"/><path d="M7.5 18a4.5 4.5 0 019 0"/><path d="M12 4.5v2.5M5.4 7.4l1.8 1.8M18.6 7.4l-1.8 1.8M2.5 13.5h2M19.5 13.5h2"/>',
   ceo: '<path d="M3 3v18h18"/><path d="M7 14l3-3 3 2 5-6"/>',
   portfolio: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
   sector: '<path d="M3 9l9-6 9 6"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/>',
@@ -20,6 +24,7 @@ const P = {
   risk: '<path d="M12 3l9 16H3z"/><path d="M12 9v4M12 16v.5"/>',
   check: '<circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/>',
   search: '<circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/>',
+  filter: '<path d="M3 5h18l-7 8v5l-4 2v-7z"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
   kanban: '<rect x="3" y="3" width="5" height="14" rx="1"/><rect x="10" y="3" width="5" height="10" rx="1"/><rect x="17" y="3" width="4" height="17" rx="1"/>',
   list: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
@@ -36,6 +41,7 @@ const P = {
   inbox: '<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5 4h14l3 8v6a2 2 0 01-2 2H4a2 2 0 01-2-2v-6z"/>',
   download: '<path d="M12 3v12m0 0l4-4m-4 4l-4-4"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/>',
   mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>',
+  megaphone: '<path d="M21 11L3 6v12l18-4v-3z"/><path d="M12.4 16.8a3 3 0 105.8-1.6"/>',
 };
 export function icon(name, cls = '') {
   const body = P[name] || P.tasks;

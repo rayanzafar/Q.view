@@ -5,8 +5,17 @@ import { availableYears } from '../core/reports/metrics.js';
 import { config } from '../core/config.js';
 import { NAV_ITEMS, pageAllowed } from './nav.js';
 import { MONTHS_AR, MONTHS_EN3 } from '../core/i18n/time.js';
+import { TASK_STATUS_AR, TASK_PRIORITY_AR } from '../core/i18n/task-vocab.js';
+import { esc } from './views/_shared.js';
+import { asset } from './assets.js';
 
-const GROUPS = { company: 'قيادة الشركة', work: 'العمل اليومي', manage: 'الإدارة', admin: 'النظام' };
+const GROUPS = { me: 'البداية', company: 'قيادة الشركة', work: 'العمل اليومي', manage: 'الإدارة', admin: 'النظام' };
+
+// رمز الجولة الإرشادية (بوصلة) — بنفس مقاس ورسم بقية الرموز (18px، سماكة 1.75).
+const TOUR_ICON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2.1 5-5 2.1 2.1-5z"/></svg>';
+
+// رابط «بلاغ أو اقتراح» — نموذج خارجي يفتح في تبويب جديد.
+const FEEDBACK_FORM_URL = 'https://forms.cloud.microsoft/Pages/ResponsePage.aspx?id=qrmw-eAlzEW_FKvHGlf2TNo4rAmkrtNHo1L4effPMOFUN1VHUlpXNTI2MDBRUUJJVzFXQzNWUDZRMiQlQCN0PWcu';
 
 // الإظهار في القائمة = نفس دالة السماح بفتح الصفحة (nav.js) — لا انفصال ممكن بينهما.
 export function navFor(user) { return NAV_ITEMS.filter((n) => n.live !== false && pageAllowed(user, n.key)); }
@@ -30,6 +39,11 @@ const STYLE = `
   --fs-micro:10.5px; --fs-meta:11.5px; --fs-body:12.5px; --fs-ui:13px; --fs-title:14px; --fs-page:16px;
   --fs-num-sm:15px; --fs-num-md:1.35rem; --fs-num-lg:1.9rem;
   --pad-card-h:.85rem 1rem; --pad-card-b:.7rem 1rem; --pad-cell:.45rem .7rem; --gap:.9rem;
+  /* لوحة القيادة (v5.38 · ADR-0011): أحجام قيم ثلاثة، رموز حالة دلالية، مسار/علامة الرسم */
+  --fs-val-lg:30px; --fs-val-md:22px; --fs-val-sm:16px;
+  --st-good:#047857; --st-warn:#d97706; --st-bad:#b91c1c; --st-neut:#64748b;
+  --st-good-soft:#e1f3e9; --st-warn-soft:#fdf0e0; --st-bad-soft:#fbe9e9; --st-neut-soft:#eef1f5;
+  --track:#eef1f7; --tick:#98a2b3;
 }
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font-family:'IBM Plex Sans Arabic','Segoe UI',Tahoma,system-ui,-apple-system,sans-serif;line-height:1.7;-webkit-font-smoothing:antialiased}
@@ -49,6 +63,119 @@ a{text-decoration:none;color:inherit}
 .metric{font-size:1.9rem;font-weight:800;letter-spacing:-.02em;line-height:1.1}
 .bar{height:6px;background:#eef1f7;border-radius:999px;overflow:hidden}
 .bar>span{display:block;height:100%;border-radius:999px}
+/* ── لبنات لوحة القيادة (v5.38 · ADR-0011): شبكة 12، طبقات بسؤالها، بطاقة مؤشر، شارة حكم، لغة رسم واحدة ── */
+.dash{max-width:1400px;margin-inline:auto;display:grid;gap:1rem}
+.g12{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:1rem}
+.c4{grid-column:span 4}.c5{grid-column:span 5}.c7{grid-column:span 7}.c8{grid-column:span 8}.c12{grid-column:span 12}
+.tier{display:flex;align-items:baseline;gap:.6rem;margin-top:.2rem}
+.tier .q{font-size:var(--fs-page);font-weight:800;color:var(--ink2)}
+.tier .s{font-size:var(--fs-body);color:var(--muted)}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--sh-sm);padding:.9rem 1rem;display:grid;gap:.34rem;align-content:start;cursor:pointer;position:relative;text-align:start;font-family:inherit;transition:box-shadow .15s}
+.tile:hover{box-shadow:var(--sh)}
+.tile:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.tile .eye{font-size:var(--fs-body);color:var(--muted);font-weight:700}
+.tile .val{font-size:var(--fs-val-lg);font-weight:800;color:var(--ink2);line-height:1.15;letter-spacing:-.01em}
+.tile .unit{font-size:var(--fs-body);color:var(--muted)}
+.tile .chev{position:absolute;inset-inline-end:.7rem;top:.75rem;color:var(--line);font-size:12px}
+.tile:hover .chev{color:var(--muted)}
+.sig{display:inline-flex;align-items:center;gap:.35rem;font-size:var(--fs-body);font-weight:700;color:var(--ink2);border-radius:999px;padding:.08rem .6rem;background:var(--st-neut-soft);width:fit-content;max-width:100%}
+.sig .g{font-size:10px;flex:none}
+.sig>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sig.ok{background:var(--st-good-soft)} .sig.ok .g{color:var(--st-good)}
+.sig.warn{background:var(--st-warn-soft);color:#92400e} .sig.warn .g{color:var(--st-warn)}
+.sig.bad{background:var(--st-bad-soft);color:var(--st-bad)}
+.fig-b{display:grid;gap:3px}
+.fig-b .tr{position:relative;height:6px;border-radius:4px;background:var(--track)}
+.fig-b .fl{position:absolute;inset-block:0;inset-inline-start:0;border-radius:inherit;background:var(--brand)}
+.fig-b .tk{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--tick)}
+.fig-s{display:flex;height:10px;border-radius:5px;overflow:hidden;gap:2px}
+.fig-s.mini{height:6px;margin-top:2px}
+.fig-s i{display:block;height:100%}
+.fig-bars{display:grid;gap:7px}
+.fig-r{display:grid;grid-template-columns:minmax(72px,96px) 1fr 34px 64px;gap:8px;align-items:center;font-size:var(--fs-body);border:none;background:none;padding:.1rem .2rem;font-family:inherit;text-align:start;width:100%}
+.fig-r .l{color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fig-r .tr{height:12px;border-radius:3px;background:var(--track);position:relative}
+.fig-r .tr i{position:absolute;inset-block:0;inset-inline-start:0;background:var(--brand);border-radius:inherit;opacity:.92}
+.fig-r .c{color:var(--muted);text-align:start}
+.fig-r .v{font-weight:800;color:var(--ink2);text-align:start;white-space:nowrap}
+.fig-r.total .l{font-weight:800}
+.fig-r[role=button]{cursor:pointer;border-radius:6px}
+.fig-r[role=button]:hover{background:var(--bg)}
+.fig-r[role=button]:focus-visible{outline:2px solid var(--brand);outline-offset:1px}
+.fig-leg{display:grid;gap:4px;margin-top:.5rem;font-size:var(--fs-body)}
+.fig-leg .r{display:flex;align-items:center;gap:.5rem;border:none;background:none;padding:.12rem .25rem;font-family:inherit;font-size:inherit;text-align:start;border-radius:6px;width:100%;color:var(--ink2)}
+.fig-leg .r[role=button]{cursor:pointer}
+.fig-leg .r[role=button]:hover{background:var(--bg)}
+.fig-leg .r[role=button]:focus-visible{outline:2px solid var(--brand);outline-offset:1px}
+.fig-leg .d{width:8px;height:8px;border-radius:2px;flex:none}
+.fig-leg .n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fig-leg b{font-weight:800;color:var(--ink2)}
+.fig-leg .m{color:var(--muted)}
+.fig-cols{display:flex;align-items:flex-end;gap:4px;height:96px;direction:ltr;justify-content:flex-end}
+.fig-cols .cc{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;justify-content:flex-end;height:100%;min-width:0}
+.fig-cols .cc i{width:70%;max-width:22px;background:var(--brand);border-radius:3px 3px 0 0;display:block;opacity:.85;min-height:2px}
+.fig-cols .cc.now i{background:var(--brand2);opacity:1}
+.fig-cols .cc b{font-size:var(--fs-micro);color:var(--muted);font-weight:700}
+@media(max-width:1280px){.g12 .c4{grid-column:span 6}}
+@media(max-width:980px){.g12 .c4,.g12 .c5,.g12 .c7,.g12 .c8{grid-column:span 12}}
+@media(max-width:640px){.fig-r{grid-template-columns:minmax(56px,auto) 1fr auto auto;gap:6px}.fig-r .v{font-size:var(--fs-body)}
+.fig-r[role=button],.fig-leg .r[role=button],.tile,.trp{min-height:40px}}
+/* ── عودة الرسوم الدائرية بقرار المالك (v5.39، نماذجه المرجعية 2026-08-24) — تعديل ADR-0011 ── */
+.ringw{position:relative;display:inline-flex;align-items:center;justify-content:center;flex:none}
+.ringv{position:absolute;font-size:13px;font-weight:800;color:var(--ink2);text-align:center;line-height:1.15}
+.ringv small{display:block;font-size:9px;color:var(--muted);font-weight:700}
+@keyframes ringIn{from{stroke-dashoffset:var(--c0)}}
+.ring-fill{animation:ringIn .8s ease-out}
+@media (prefers-reduced-motion:reduce){.ring-fill{animation:none}}
+/* رسم خطي/مركّب: نص المحاور من رموز المنصة */
+.fig-svg text{font-family:inherit;font-size:9.5px;fill:var(--muted);direction:ltr}
+.fig-svg .axis{stroke:var(--line);stroke-width:1}
+.fig-svg .mk-l{font-weight:800}
+.fig-r{border-radius:7px;transition:background .15s}
+.fig-r:hover{background:var(--bg)}
+.fig-heat .cell{transition:filter .15s}
+.fig-heat td:hover .cell{filter:brightness(.94)}
+.fig-tree .maj,.fig-tree .cellt{transition:filter .15s}
+.fig-tree .maj:hover,.fig-tree .cellt:hover{filter:brightness(1.08)}
+.fig-cols .cc{transition:opacity .15s}
+.fig-cols .cc:hover{opacity:.82}
+.fig-s .sg-live{border:none;padding:0;cursor:pointer;display:block;height:100%}
+.fig-s .sg-live:hover{filter:brightness(1.12)}
+.fig-s .sg-live:focus-visible{outline:2px solid var(--brand);outline-offset:1px}
+.arc-live{cursor:pointer}
+.arc-live:hover{filter:brightness(1.1)}
+.arc-live:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.fig-heat .rl-btn{background:none;border:none;font-family:inherit;font-size:inherit;font-weight:inherit;color:var(--brand);cursor:pointer;padding:0;text-align:start}
+.fig-heat .rl-btn:hover{text-decoration:underline}
+.fig-tree a{text-decoration:none}
+.fig-live{cursor:crosshair}
+.fig-live:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.fig-xhair{stroke:var(--ink2);stroke-width:1;stroke-dasharray:3 3;pointer-events:none}
+.fig-hit{cursor:crosshair}
+.fig-svg a .bub{transition:opacity .15s,stroke-width .15s}
+.fig-svg a:hover .bub{opacity:.85;stroke-width:2}
+.fig-tip{position:fixed;z-index:90;background:#101733;color:#fff;border-radius:10px;padding:.45rem .7rem;
+  font-size:12px;line-height:1.7;pointer-events:none;box-shadow:0 6px 20px rgba(16,23,51,.28);max-width:240px}
+.fig-tip .t{font-weight:800;display:block;margin-bottom:.1rem}
+.fig-tip .r{display:flex;gap:.6rem;justify-content:space-between}
+.fig-tip .r span{color:rgba(255,255,255,.72)}
+.fig-tip .r b{font-variant-numeric:tabular-nums;unicode-bidi:isolate}
+.gh-w{position:relative;display:inline-flex;flex:none}
+.gh-v{position:absolute;inset-inline:0;bottom:0;text-align:center;font-size:15px;font-weight:800;color:var(--ink2)}
+.gh-v small{display:block;font-size:9px;color:var(--muted);font-weight:700}
+/* خريطة حرارية: خلايا ملوّنة بعتبات معلنة، والرقم داخل الخلية */
+.fig-heat{border-collapse:collapse;width:100%;font-size:var(--fs-body)}
+.fig-heat th{font-size:var(--fs-micro);color:var(--muted);font-weight:700;padding:2px 4px;text-align:center}
+.fig-heat th.rl{text-align:start;white-space:nowrap}
+.fig-heat td{padding:0;border:2px solid var(--surface)}
+.fig-heat td .cell{display:block;text-align:center;padding:.32rem .2rem;border-radius:6px;font-weight:700;font-size:var(--fs-meta)}
+/* خريطة مساحية (تركّز العملاء): كتلة كبرى وبقية أعمدة، النسب مساحاتٍ */
+.fig-tree{display:flex;gap:3px;min-height:150px}
+.fig-tree .maj{border-radius:10px;padding:.6rem .7rem;color:#fff;display:flex;flex-direction:column;justify-content:flex-end;min-width:0}
+.fig-tree .rest{display:flex;flex-direction:column;gap:3px;min-width:0}
+.fig-tree .cellt{border-radius:8px;padding:.35rem .55rem;color:#fff;min-width:0;display:flex;flex-direction:column;justify-content:center}
+.fig-tree .nm{font-size:var(--fs-meta);font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fig-tree .vv{font-size:var(--fs-micro);opacity:.9}
 select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding:.3rem .6rem;font-size:12px;font-weight:700;color:var(--ink2)}
 
 /* ── component layer (v2 redesign) ── */
@@ -63,7 +190,11 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
 .btn-sm{padding:.32rem .6rem;font-size:var(--fs-meta);border-radius:8px}
 .toolbar{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin-bottom:1.1rem}
 .toolbar .spacer{margin-inline-start:auto}
-.input{border:1px solid var(--line);border-radius:10px;padding:.5rem .7rem;font-size:var(--fs-ui);color:var(--ink2);background:#fff;font-family:inherit}
+/* min-width:0 لازمة لا تجميلية: حقل الإدخال عنصرٌ له عرض ذاتي مُفضَّل، وحين يقع في شبكة
+   أو صفّ مرن يصير حدُّه الأدنى التلقائي ذلك العرض — فيُمدِّد العمود الذي يسكنه بدل أن ينكمش
+   فيه. وهكذا خرج نموذج جهات الاتصال في صفحة العميل ١١٤ بكسل خارج بطاقته على شاشة عريضة:
+   عمودٌ عرضه ٤١٩ حُسِب ٥٧١. الإصلاح هنا لا في الصفحة، لأن العلّة في الحقل أينما وقع. */
+.input{border:1px solid var(--line);border-radius:10px;padding:.5rem .7rem;font-size:var(--fs-ui);color:var(--ink2);background:#fff;font-family:inherit;min-width:0}
 .input:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(36,74,153,.14)}
 .search{position:relative;display:flex;align-items:center}
 .search svg{position:absolute;inset-inline-start:.6rem;width:15px;height:15px;color:var(--faint);pointer-events:none}
@@ -72,9 +203,84 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
 .seg button{border:none;background:none;cursor:pointer;font-size:12px;font-weight:700;color:var(--muted);padding:.35rem .7rem;border-radius:8px;display:flex;align-items:center;gap:.35rem}
 .seg button.on{background:#fff;color:var(--ink2);box-shadow:var(--sh-sm)}
 
+/* ── مساعد سند: الزر العائم واللوحة ───────────────────────────────────────────
+   الزر شبه شفاف كي لا يحجب أرقام الجداول، ويكتمل عند المرور أو التركيز أو الفتح.
+   اللوحة حوار جانبي: ترويسة ثابتة، سجل محادثة هو وحده ما يُمرَّر، صف مهام جاهزة،
+   ثم سطر الكتابة. كل ما يُعرض داخلها يُبنى نصاً في المتصفح (public/pages/ai.js) —
+   لا يُركَّب وسمٌ واحد من محتوى قادم من الخادم. */
+.ai-fab{position:fixed;bottom:18px;left:18px;z-index:40;width:44px;height:44px;border:none;cursor:pointer;border-radius:50%;color:#fff;
+  box-shadow:0 8px 22px -6px rgba(36,74,153,.5);background:var(--brand-grad);display:flex;align-items:center;justify-content:center;opacity:.55;transition:opacity .15s}
+.ai-fab:hover,.ai-fab:focus-visible,.ai-fab[aria-expanded="true"]{opacity:1}
+.ai-panel{position:fixed;bottom:88px;left:22px;z-index:41;width:390px;max-width:calc(100vw - 2rem);
+  height:min(580px,calc(100vh - 130px));height:min(580px,calc(100dvh - 130px));
+  display:flex;flex-direction:column;overflow:hidden;background:var(--surface);border:1px solid var(--line);
+  border-radius:var(--r);box-shadow:0 24px 60px rgba(15,23,42,.22)}
+.ai-panel[hidden]{display:none}
+.ai-head{flex:0 0 auto;display:flex;align-items:center;gap:.5rem;padding:.6rem .75rem;color:#fff;background:var(--brand-grad)}
+.ai-head .t{font-weight:800;font-size:var(--fs-ui);line-height:1.4}
+.ai-eng{display:inline-flex;align-items:center;gap:.25rem;margin-top:.1rem;padding:.05rem .45rem;border-radius:999px;
+  background:rgba(255,255,255,.18);font-size:var(--fs-micro);font-weight:700;line-height:1.6}
+.ai-x{flex:0 0 auto;border:none;background:none;cursor:pointer;color:rgba(255,255,255,.8);font-family:inherit;font-size:var(--fs-body);
+  line-height:1;padding:.3rem .4rem;border-radius:8px}
+.ai-x:hover{background:rgba(255,255,255,.16);color:#fff}
+.ai-x:focus-visible{outline:2px solid #fff;outline-offset:1px}
+.ai-log{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;background:var(--bg);
+  padding:.7rem;display:flex;flex-direction:column;gap:.5rem}
+.ai-log:focus-visible{outline:2px solid var(--brand);outline-offset:-2px}
+.ai-msg{display:flex}
+.ai-msg.me{justify-content:flex-end}
+.ai-b{max-width:88%;min-width:0;border-radius:12px;padding:.45rem .65rem;font-size:var(--fs-body);line-height:1.85;
+  word-break:break-word;overflow-wrap:anywhere}
+.ai-msg.me .ai-b{background:var(--brand);color:#fff;border-end-start-radius:4px}
+.ai-msg.ai .ai-b{background:#fff;border:1px solid var(--line);color:var(--ink2);border-end-end-radius:4px}
+.ai-b p{margin:0 0 .35rem}.ai-b p:last-child{margin-bottom:0}
+/* الإطار العام يُلغي علامات القوائم عالمياً — تُعاد هنا كي تُقرأ نقاطُ الردّ نقاطاً */
+.ai-b ul{list-style:disc}
+.ai-b ol{list-style:decimal}
+.ai-b ul,.ai-b ol{margin:.2rem 0;padding-inline-start:1.15rem}
+.ai-b li{margin:.1rem 0;padding-inline-start:.1rem}
+.ai-b li::marker{color:var(--faint)}
+.ai-b strong{font-weight:800}
+.ai-sk{display:grid;gap:.3rem;width:9rem}
+.ai-sk>span{height:9px}
+.ai-card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:.65rem .7rem;display:grid;gap:.5rem;font-size:var(--fs-body)}
+.ai-card .hd{font-weight:800;color:var(--ink2)}
+.ai-f{display:grid;gap:.2rem}
+.ai-f>label{font-size:var(--fs-micro);font-weight:800;color:var(--muted)}
+.ai-f input,.ai-f select,.ai-f textarea{width:100%;border:1px solid var(--line);border-radius:9px;padding:.4rem .55rem;
+  font-family:inherit;font-size:var(--fs-body);color:var(--ink2);background:#fff}
+.ai-f input:focus,.ai-f select:focus,.ai-f textarea:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(36,74,153,.14)}
+.ai-f .why{font-size:var(--fs-micro);color:var(--red);font-weight:700}
+.ai-acts{display:flex;gap:.4rem;flex-wrap:wrap;align-items:center}
+.ai-note{font-size:var(--fs-micro);color:var(--muted);line-height:1.8}
+.ai-prev{border:1px solid #fde68a;background:#fffbeb;border-radius:12px;padding:.65rem .7rem;display:grid;gap:.5rem;
+  font-size:var(--fs-body);color:#92400e;line-height:1.85}
+.ai-prev .hd{font-weight:800}
+.ai-chips{flex:0 0 auto;display:flex;flex-wrap:wrap;gap:.3rem;padding:.5rem .7rem;border-top:1px solid var(--line);
+  background:var(--surface);max-height:6.4rem;overflow-y:auto}
+.ai-chips[hidden]{display:none}
+.ai-chip{display:inline-flex;align-items:center;gap:.3rem;border:1px solid var(--line);background:#fff;color:var(--ink2);
+  font-family:inherit;font-size:var(--fs-meta);font-weight:700;padding:.28rem .6rem;border-radius:999px;cursor:pointer;
+  text-align:start;transition:border-color .15s,box-shadow .15s}
+.ai-chip:hover{border-color:#c9d3e8;box-shadow:var(--sh-sm)}
+.ai-chip:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.ai-chip[disabled]{opacity:.5;cursor:default;box-shadow:none}
+.ai-chip .wd{width:6px;height:6px;border-radius:50%;background:var(--amber);flex:0 0 auto}
+.ai-chip.sel{background:var(--brand);border-color:transparent;color:#fff}
+.ai-picks{display:flex;flex-wrap:wrap;gap:.3rem}
+.ai-foot{flex:0 0 auto;display:flex;gap:.4rem;align-items:center;padding:.5rem;border-top:1px solid var(--line);background:var(--surface)}
+.ai-in{flex:1 1 auto;min-width:0;border:1px solid var(--line);border-radius:10px;padding:.45rem .7rem;
+  font-family:inherit;font-size:var(--fs-ui);color:var(--ink2);background:#fff}
+.ai-in:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(36,74,153,.14)}
+.ai-send{flex:0 0 auto;border:none;cursor:pointer;color:#fff;background:var(--brand-grad);border-radius:10px;
+  padding:.45rem .8rem;font-family:inherit;font-weight:800;font-size:var(--fs-body)}
+.ai-send:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.ai-send[disabled],.ai-in[disabled]{opacity:.55;cursor:default}
+@media(max-width:440px){.ai-panel{left:10px;right:10px;width:auto;max-width:none;bottom:76px;
+  height:min(560px,calc(100vh - 104px));height:min(560px,calc(100dvh - 104px))}}
+@media (prefers-reduced-motion: reduce){.ai-fab{transition:none}}
+
 /* Kanban */
-/* الزر العائم شبه شفاف كي لا يحجب أرقام الجداول؛ يكتمل عند المرور أو التركيز */
-.ai-fab:hover,.ai-fab:focus-visible{opacity:1!important}
 .kanban{display:flex;gap:.9rem;overflow-x:auto;padding-bottom:.75rem;align-items:flex-start;scroll-snap-type:x proximity}
 .kcol{flex:0 0 300px;width:300px;background:#eef1f7;border-radius:14px;padding:.55rem;scroll-snap-align:start;max-height:calc(100vh - 240px);display:flex;flex-direction:column}
 .kcol-head{display:flex;align-items:center;gap:.5rem;padding:.35rem .5rem .55rem}
@@ -110,13 +316,27 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
 .editable:hover{background:#f1f5ff;box-shadow:inset 0 0 0 1px #dbe3f5}
 
 /* Modal */
+/* النافذة المنبثقة تسع الشاشة دائماً مهما طال محتواها — لا تتمدّد خارجها ولا يُقتطع أسفلها.
+   كانت البطاقة كلها هي ما يُمرَّر (overflow على .modal-card)، فتهرب الترويسة مع التمرير ويفقد
+   القارئ عنوان ما يقرؤه وزر الإغلاق معاً. الآن البطاقة عمود: الترويسة والذيل ثابتان، والجسم
+   وحده يُمرَّر. و100dvh لا 100vh لأن شريط المتصفح في الجوال يقتطع من vh فيخرج أسفل النافذة. */
 .modal{position:fixed;z-index:62;inset:0;display:none;align-items:center;justify-content:center;padding:1rem}
 .modal.on{display:flex}
-.modal-card{background:var(--surface);border-radius:18px;width:520px;max-width:100%;max-height:92vh;overflow-y:auto;box-shadow:0 30px 80px rgba(15,23,42,.35);animation:pop .2s ease}
+.modal-card{background:var(--surface);border-radius:18px;width:520px;max-width:100%;
+  max-height:calc(100dvh - 2rem);display:flex;flex-direction:column;overflow:hidden;
+  box-shadow:0 30px 80px rgba(15,23,42,.35);animation:pop .2s ease}
+@supports not (height:100dvh){.modal-card{max-height:calc(100vh - 2rem)}}
 @keyframes pop{from{transform:scale(.96) translateY(8px);opacity:0}to{transform:none;opacity:1}}
-.modal-head{padding:1.1rem 1.35rem;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}
-.modal-body{padding:1.25rem 1.35rem;display:grid;gap:.85rem}
-.modal-foot{padding:.9rem 1.35rem;border-top:1px solid var(--line);display:flex;gap:.6rem;justify-content:flex-start}
+.modal-head{flex:0 0 auto;padding:1.1rem 1.35rem;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}
+.modal-body{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;
+  padding:1.25rem 1.35rem;display:grid;gap:.85rem;align-content:start}
+/* عنصر الشبكة لا ينكمش دون مقاسه الطبيعي (min-width:auto ضمنيّ) — فمحتوى عريض (رسمٌ متجهي
+   له نسبة أبعاد، أو صفٌّ طويل) يوسّع العمود خارج حدود البطاقة. وحين يتّسع العمود يكبر ارتفاع
+   الرسم معه بنسبته، فيطفح على ما بعده: قياسٌ على بيانات حيّة أظهر رسماً بعرض ٦٤١ بكسل داخل
+   نافذة عرضها ٥٢٠، يركب على العنوان التالي بمقدار ١٣٨ بكسل. سطرٌ واحد يمنع الحالتين معاً. */
+.modal-body>*{min-width:0;max-width:100%}
+.modal-body svg{max-width:100%;height:auto}
+.modal-foot{flex:0 0 auto;padding:.9rem 1.35rem;border-top:1px solid var(--line);display:flex;gap:.6rem;justify-content:flex-start}
 .field{display:grid;gap:.3rem}
 .field>label{font-size:var(--fs-meta);font-weight:700;color:var(--muted)}
 .field .input,.field select,.field textarea{width:100%;border:1px solid var(--line);border-radius:10px;padding:.55rem .7rem;font-size:var(--fs-ui);font-family:inherit;background:#fff}
@@ -144,7 +364,8 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
    leading digit is never clipped by the RTL flex + Intl RLM marks. */
 .dd-row>span:first-child{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dd-row>b{flex:0 0 auto;white-space:nowrap;direction:ltr;unicode-bidi:isolate}
-.modal-card{overflow-x:hidden}
+/* الجسم هو ما يُمرَّر، فمنع التمرير الأفقي مكانه هو لا البطاقة (البطاقة مخفية التجاوز أصلاً). */
+.modal-body{overflow-x:hidden}
 .dd-kpi{display:flex;align-items:baseline;gap:.6rem;flex-wrap:wrap}
 .dd-kpi .v{font-size:1.6rem;font-weight:800;letter-spacing:-.02em}
 .dd-sec{font-weight:800;font-size:var(--fs-body);margin-top:.35rem;color:var(--ink2)}
@@ -167,6 +388,38 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
 .alert.info{background:#eff6ff;border-color:#bfdbfe;color:#1e40af}
 .tblwrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
 
+/* ── الكشف التدريجي (.psec) ─────────────────────────────────────────────────
+   قسمٌ يُفتح ويُطوى، مبنيّ على <details>/<summary> لا على جافاسكربت: يعمل قبل تحميل أي نص
+   برمجي، ويُفتح بالمسافة والإدخال من لوحة المفاتيح بحكم العنصر نفسه، ويُطبع مفتوحاً. وأي
+   بديل مصنوع بأزرار يلزمه إعادة بناء هذا كله يدوياً ويسقط منه شيء دائماً.
+   المؤشّر مكتوب بـinline-start فينقلب مع الاتجاه بلا قاعدة ثانية للعربية. */
+.psec{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--sh-sm);margin-bottom:.75rem;overflow:hidden}
+.psec>summary{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;padding:.8rem 1rem;cursor:pointer;
+  list-style:none;user-select:none;transition:background .15s}
+.psec>summary::-webkit-details-marker{display:none}
+.psec>summary:hover{background:#fafbfe}
+.psec>summary:focus-visible{outline:2px solid var(--brand);outline-offset:-2px}
+.psec>summary .psec-t{font-weight:800;font-size:13.5px;color:var(--ink2)}
+.psec>summary .psec-s{font-size:11.5px;color:var(--muted);font-weight:600}
+.psec>summary .psec-x{margin-inline-start:auto;display:flex;align-items:center;gap:.4rem}
+.psec>summary .psec-c{flex:0 0 auto;width:16px;height:16px;color:var(--faint);transition:transform .18s}
+.psec[open]>summary .psec-c{transform:rotate(-90deg)}
+.psec[open]>summary{border-bottom:1px solid var(--line)}
+.psec-b{padding:.15rem 0}
+/* شريط الإجراءات المطلوبة: صفٌّ واحد لكل ما يستحق قراراً الآن، ملوَّن بحدّته لا بزخرفته */
+.pact{display:flex;align-items:center;gap:.55rem;padding:.5rem .8rem;border-radius:10px;font-size:12.5px;
+  border:1px solid;line-height:1.6}
+.pact.red{background:#fef2f2;border-color:#fecaca;color:#991b1b}
+.pact.amber{background:#fffbeb;border-color:#fde68a;color:#92400e}
+.pact.blue{background:#eff6ff;border-color:#bfdbfe;color:#1e40af}
+.pact a{color:inherit;font-weight:800;text-decoration:underline}
+/* مقياس صغير: نسبة تُقرأ برقمها وشريطها معاً — لا شريط بلا رقم ولا رقم بلا سياق */
+.pmeter{display:flex;flex-direction:column;gap:.28rem}
+.pmeter .l{display:flex;justify-content:space-between;align-items:baseline;font-size:11.5px;color:var(--muted)}
+.pmeter .l b{font-size:13px;color:var(--ink2)}
+.pmeter .t{height:8px;border-radius:999px;background:#eef1f7;overflow:hidden}
+.pmeter .t i{display:block;height:100%;border-radius:999px}
+
 /* ── النموذج الزمني الموحد (v2.1) ──────────────────────────────────────────
    .mtrack: مسار 12 شهراً يُقرأ كما يُقرأ النص — يناير في أقصى اليمين، ديسمبر في أقصى اليسار.
    العناوين المزدوجة: .m-full عربية كاملة على الواسع، .m-tight إنجليزية Jan على الضيق
@@ -179,9 +432,17 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
    تتحوّل إلى auto-fit فتصبح عمودين حيث تتّسع؛ والأرقام الكبيرة تصغُر قليلاً. تُستثنى الرسوم
    البيانية (var(--bcols)) وشرائط الأشهر (.mtrack، صنفية) والشبكات المرنة (minmax) — بلا مساس. */
 @media (max-width:640px){
-  [style*="fr 1fr"]{grid-template-columns:1fr!important}
+  /* minmax(0,…) لا 1fr وحدها: «1fr» تعني minmax(auto,1fr)، وحدُّها الأدنى التلقائي هو
+     أصغر عرض يقبله المحتوى — فعمودٌ فيه جدولٌ عريض يتمدّد إلى عرض الجدول ولو طُويت الشبكة
+     إلى عمود واحد. وهكذا بقيت صفحة المشروع تدفع ١٣٧ بكسل خارج شاشة الجوال رغم الطيّ. */
+  [style*="fr 1fr"]{grid-template-columns:minmax(0,1fr)!important}
   [style*="grid-template-columns:repeat"]:not([style*="minmax"]){grid-template-columns:repeat(auto-fit,minmax(150px,1fr))!important}
   :root{--fs-num-lg:1.45rem;--fs-num-md:1.2rem}
+  /* شريط التبويب (.seg) عنصرٌ مرن سطري، فعرضه عرضُ محتواه — وخمسة تبويبات لا تسع ٣٩٠ بكسل،
+     فكان يدفع صفحة المشروع خارج الشاشة. يُمرَّر داخل عرضه بدل أن يُمرِّر الصفحة كلها: التبويب
+     أداةُ تنقّل، وسحبُها أهون من سحب الصفحة تحتها. */
+  .seg{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .seg button{flex:0 0 auto}
   /* جدول متجاوب (.rtbl): كل صف يصير بطاقة بعناوين الأعمدة بدل التمرير الأفقي الأعمى */
   .rtbl{min-width:0!important}
   .rtbl thead{display:none}
@@ -197,9 +458,6 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
 
 /* شريط «الإيقاع مقابل الخطة»: مقياسه المستهدف فقط (100% = الهدف السنوي)؛ التعبئة = المحقق؛
    النقطة الذهبية = أين يجب أن نكون اليوم (انقضى N% من السنة). المتوقع سطر نصي، لا شريط. */
-.pace-bar{position:relative;height:14px;background:#eef1f7;border-radius:7px}
-.pace-bar .fill{position:absolute;inset-block:2.5px;inset-inline-start:0;border-radius:5px;max-width:100%;background:var(--brand)}
-.pace-bar .now{position:absolute;top:50%;transform:translate(50%,-50%);z-index:1}
 .pace-chip{display:inline-flex;align-items:center;gap:.3rem;padding:.14rem .5rem;border-radius:999px;font-size:var(--fs-micro);font-weight:800;line-height:1.5}
 .pace-chip.up{background:#ecfdf5;color:var(--green)}
 .pace-chip.down{background:#fef2f2;color:var(--red)}
@@ -214,11 +472,24 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
 .attn .tx .s{font-size:var(--fs-meta);color:var(--muted)}
 .attn .go{flex:0 0 auto}
 
-/* تلميح معنى (شرح مصطلح/مرحلة) — CSS فقط */
+/* تلميح معنى (شرح مصطلح/مرحلة) — المحرّك في app.js يرسم .tipbox مثبَّتةً على النافذة فتفلت
+   من أسلاف قصّ الفائض ومن حوافّ النافذة (كانا يبتران الطويل أو يلفّانه فوق المحتوى).
+   ونسخة CSS الخالصة تبقى لمن عطّل JavaScript، خلف html:not(.tipjs). */
 [data-tip]{position:relative;cursor:help}
-[data-tip]:hover::after,[data-tip]:focus-visible::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 8px);inset-inline-start:50%;transform:translateX(50%);
-  background:var(--ink);color:#fff;font-size:var(--fs-meta);font-weight:600;line-height:1.7;padding:.5rem .7rem;border-radius:9px;width:max-content;max-width:260px;white-space:normal;z-index:70;box-shadow:var(--sh);pointer-events:none;text-align:right}
-[data-tip]:hover::before,[data-tip]:focus-visible::before{content:'';position:absolute;bottom:calc(100% + 2px);inset-inline-start:50%;transform:translateX(50%);border:6px solid transparent;border-top-color:var(--ink);z-index:70;pointer-events:none}
+.tipbox{position:fixed;background:var(--ink);color:#fff;font-size:var(--fs-meta);font-weight:600;line-height:1.7;
+  padding:.5rem .7rem;border-radius:9px;width:max-content;max-width:min(320px,calc(100vw - 16px));white-space:normal;
+  z-index:220;box-shadow:var(--sh);pointer-events:none;text-align:right}
+html:not(.tipjs) [data-tip]:hover::after,html:not(.tipjs) [data-tip]:focus-visible::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 8px);inset-inline-start:50%;transform:translateX(50%);
+  background:var(--ink);color:#fff;font-size:var(--fs-meta);font-weight:600;line-height:1.7;padding:.5rem .7rem;border-radius:9px;width:max-content;max-width:300px;white-space:normal;z-index:70;box-shadow:var(--sh);pointer-events:none;text-align:right}
+html:not(.tipjs) [data-tip]:hover::before,html:not(.tipjs) [data-tip]:focus-visible::before{content:'';position:absolute;bottom:calc(100% + 2px);inset-inline-start:50%;transform:translateX(50%);border:6px solid transparent;border-top-color:var(--ink);z-index:70;pointer-events:none}
+/* ── تلميحٌ ينزل بدل أن يصعد ────────────────────────────────────────────────────────────
+   التلميح يُرسم فوق مُطلِقه دائماً، فمُطلِقٌ في أعلى الصفحة (بطاقات المؤشرات) يدفعه خارج
+   حافة النافذة العليا فيُقصّ، ولا يبقى منه إلا ذيلٌ يتراكب مع الرقم — وهو ما رآه المالك
+   حرفياً: نصٌّ فوق «370.3M» غير مقروء. من يقع أعلى الشاشة يحمل data-tip-pos="below". */
+html:not(.tipjs) [data-tip][data-tip-pos="below"]:hover::after,html:not(.tipjs) [data-tip][data-tip-pos="below"]:focus-visible::after{
+  bottom:auto;top:calc(100% + 8px)}
+html:not(.tipjs) [data-tip][data-tip-pos="below"]:hover::before,html:not(.tipjs) [data-tip][data-tip-pos="below"]:focus-visible::before{
+  bottom:auto;top:calc(100% + 2px);border-top-color:transparent;border-bottom-color:var(--ink)}
 
 /* الموبايل: القائمة الجانبية تنزلق كطبقة */
 .side-toggle{display:none}
@@ -252,8 +523,28 @@ select.yr{background:#fff;border:1px solid var(--line);border-radius:8px;padding
 .cmdk-row .tx{flex:1;min-width:0}
 .cmdk-row .tx .t{font-size:13px;font-weight:700;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cmdk-row .tx .s{font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-@media(max-width:640px){.cmdk-scrim{padding-top:4vh}.hdr-search-btn span,.hdr-search-btn kbd{display:none}}
-@media(max-width:520px){.hdr-search-btn{padding:.4rem}}
+@media(max-width:640px){.cmdk-scrim{padding-top:4vh}.hdr-search-btn span,.hdr-search-btn kbd{display:none}.hdr-user-txt{display:none}}
+.hdr-bar{padding:0 1.5rem}
+@media(max-width:520px){.hdr-search-btn{padding:.4rem}.hdr-right{gap:.4rem}select.yr{padding:.3rem .35rem;font-size:11px}.hdr-bar{padding:0 .7rem}.hdr-lead{gap:.35rem}}
+/* عنوان الترويسة يتقلّص بقصٍّ أنيق (…) بدل أن يدفع الشاشة كلها إلى تمريرٍ أفقي حين تزدحم
+   الترويسة على الجوال (سنة مالية + بحث + جولة + بلاغ + جرس + هوية في ٣٩٠ بكسل). */
+.hdr-lead{min-width:0;gap:.6rem}
+.hdr-title{min-width:0}
+.hdr-title>div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* العنوان يقصّ نفسه ولا يلتفّ فوق أدوات الرأس: كان «مركز قيادة قطاع الحلول» ينكسر ثلاثة أسطر
+   على 390 فيطبع فوق أيقونات البحث والسنة والتنبيهات، ويُقصّ العنوان الفرعي في منتصف كلمته. */
+.hdr-title h1{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media(max-width:640px){.hdr-title h1{font-size:15px}.hdr-title>div{display:none}}
+/* زر الجولة الإرشادية — ضيف هادئ في الترويسة: يشرح الشاشة الحالية على الشاشة نفسها، ولا
+   ينافس أزرار الصفحة (بلا خلفية ولا إطار حتى المرور عليه). على الجوال يبقى الرمز وحده. */
+.hdr-tour-btn{display:inline-flex;align-items:center;gap:.4rem;color:var(--muted);background:none;border:none;
+  border-radius:10px;padding:.35rem .5rem;cursor:pointer;font-family:inherit;font-size:11.5px;font-weight:700}
+.hdr-tour-btn:hover{background:#eef1f7;color:var(--ink2)}
+.hdr-tour-btn:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.hdr-right{gap:1rem}
+/* على الجوال تتنحّى الأفعال الثانوية (الجولة والبلاغ) ليتّسع اسم الشاشة — كان ينكسر ثلاثة
+   أسطر فوق الأيقونات ثم يُقصّ إلى «مرك...». والبحث والسنة والتنبيهات والحساب تبقى. */
+@media(max-width:640px){.hdr-tour-btn{display:none}.hdr-right{gap:.55rem}}
 /* وميض تأكيد الوصول — يُستخدم عند القفز إلى صف من لوحة الأوامر (مثال: موظف من نتيجة البحث) */
 @keyframes hl-flash{0%,100%{background:transparent}30%{background:rgba(36,74,153,.12)}}
 .hl-flash{animation:hl-flash 1.6s ease}
@@ -273,21 +564,22 @@ export async function layout({ user, active, title, subtitle, body, year, extraH
   const showYear = ['ceo', 'portfolio', 'sector'].includes(active);
   // Preserve other query params (e.g. the owner's ?sector= filter) when switching year.
   const yearSel = showYear ? `<select class="yr" aria-label="السنة المالية" onchange="const p=new URLSearchParams(location.search);p.set('year',this.value);location.search=p.toString()">
-    ${years.map((y) => `<option value="${y}" ${String(y) === String(year || config.fiscalYear) ? 'selected' : ''}>سنة ${y}</option>`).join('')}
+    ${years.map((y) => `<option value="${y}" ${String(y) === String(year || config.fiscalYear) ? 'selected' : ''}>سنة ${y}${y > config.fiscalYear ? ' — قادمة' : ''}</option>`).join('')}
   </select>` : '';
 
   return `<!doctype html><html dir="rtl" lang="ar"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${title || 'سند'} · منصة سند EVC</title>
+<title>${esc(title || 'سند')} · منصة سند EVC</title>
 <link rel="icon" type="image/svg+xml" href="/static/brand/favicon.svg">
 <link rel="icon" type="image/png" sizes="32x32" href="/static/brand/favicon-32.png">
 <link rel="apple-touch-icon" href="/static/brand/favicon-180.png">
-<script src="/static/tailwind.js"></script>
+<script src="${asset('/static/tailwind.js')}"></script>
 <script>tailwind.config={theme:{extend:{colors:{brand:'#244A99',brand2:'#834798',ink:'#0f172a',ink2:'#1e293b',muted:'#64748b',faint:'#94a3b8',line:'#e6e9f0'}}}}
 window.__SANAD_MONTHS=${JSON.stringify(MONTHS_AR)};window.__SANAD_MONTHS_EN=${JSON.stringify(MONTHS_EN3)};</script>
 <style>${STYLE}</style>
-<link rel="stylesheet" href="/static/styles.css">${extraHead}</head>
-<body>
+<link rel="stylesheet" href="${asset('/static/styles.css')}">
+<noscript><style>button.hdr-tour-btn{display:none}</style></noscript>${extraHead}</head>
+<body data-page="${esc(active || '')}">
 <div style="display:flex;min-height:100vh">
   <aside class="side" style="width:250px;flex:0 0 250px;background:var(--side);display:flex;flex-direction:column;color:#fff">
     <div style="padding:1.15rem 1.1rem 1rem;border-bottom:1px solid rgba(255,255,255,.08)">
@@ -298,18 +590,22 @@ window.__SANAD_MONTHS=${JSON.stringify(MONTHS_AR)};window.__SANAD_MONTHS_EN=${JS
     <div style="padding:.8rem 1.1rem;border-top:1px solid rgba(255,255,255,.08);font-size:11px;color:rgba(255,255,255,.55)">السنة المالية ${config.fiscalYear} · SAR</div>
   </aside>
   <div style="flex:1;display:flex;flex-direction:column;min-width:0">
-    <header style="height:60px;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;flex:0 0 auto">
-      <div style="display:flex;align-items:center;gap:.6rem">
+    <header class="hdr-bar" style="height:60px;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;flex:0 0 auto">
+      <div class="hdr-lead" style="display:flex;align-items:center">
         <button class="side-toggle" aria-label="القائمة" onclick="document.body.classList.toggle('side-open')">${icon('menu') || '☰'}</button>
-        <div><div style="font-weight:800;font-size:var(--fs-page)">${title || ''}</div>${subtitle ? `<div style="font-size:12px;color:var(--muted)">${subtitle}</div>` : ''}</div>
+        <div class="hdr-title" title="${esc(title || '')}"><h1 style="margin:0;font-weight:800;font-size:var(--fs-page);color:var(--ink2)">${esc(title || '')}</h1>${subtitle ? `<div style="font-size:12px;color:var(--muted)">${esc(subtitle)}</div>` : ''}</div>
       </div>
-      <div style="display:flex;align-items:center;gap:1rem">
+      <div class="hdr-right" style="display:flex;align-items:center">
         ${yearSel}
         <button type="button" class="hdr-search-btn" data-action="cmdk-open" aria-label="بحث شامل">${icon('search')}<span>ابحث في كل شيء…</span><kbd>Ctrl K</kbd></button>
-        <a href="/app/tasks" title="الإشعارات" style="position:relative;color:var(--muted)">${icon('bell')}<span id="notif-badge" style="display:none;position:absolute;top:-4px;left:-4px;background:var(--red);color:#fff;font-size:9px;border-radius:99px;padding:1px 4px;font-weight:700"></span></a>
-        <div style="display:flex;align-items:center;gap:.55rem">
-          <div style="width:34px;height:34px;border-radius:50%;background:var(--brand-grad);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800">${initial}</div>
-          <div style="text-align:right"><div style="font-size:var(--fs-ui);font-weight:700">${user.name_ar || user.username}</div><div style="font-size:11px;color:var(--muted)">${roleLabel}</div></div>
+        <button type="button" class="hdr-tour-btn" data-action="tour-start" data-page="${esc(active || '')}"
+          aria-label="جولة إرشادية على هذه الشاشة" title="جولة إرشادية على هذه الشاشة">${TOUR_ICON}<span>جولة إرشادية</span></button>
+        <a class="hdr-tour-btn" href="${FEEDBACK_FORM_URL}" target="_blank" rel="noopener noreferrer"
+          aria-label="بلاغ أو اقتراح — أبلغ عن مشكلة أو اقترح تحسيناً (يفتح في تبويب جديد)" title="أبلغ عن مشكلة أو اقترح تحسيناً">${icon('megaphone')}<span>بلاغ أو اقتراح</span></a>
+        <a href="/app/home#hm-appr" title="بانتظار اعتمادك" aria-label="بانتظار اعتمادك" style="position:relative;color:var(--muted)">${icon('bell')}<span id="notif-badge" style="display:none;position:absolute;top:-4px;left:-4px;background:var(--red);color:#fff;font-size:9px;border-radius:99px;padding:1px 4px;font-weight:700"></span></a>
+        <div class="hdr-user" style="display:flex;align-items:center;gap:.55rem">
+          <div style="width:34px;height:34px;border-radius:50%;background:var(--brand-grad);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;flex:0 0 auto">${initial}</div>
+          <div class="hdr-user-txt" style="text-align:right"><div style="font-size:var(--fs-ui);font-weight:700">${esc(user.name_ar || user.username)}</div><div style="font-size:11px;color:var(--muted)">${roleLabel}</div></div>
         </div>
         <form method="post" action="/auth/logout-web"><button title="خروج" style="color:var(--muted);background:none;border:none;cursor:pointer">${icon('logout')}</button></form>
       </div>
@@ -317,18 +613,23 @@ window.__SANAD_MONTHS=${JSON.stringify(MONTHS_AR)};window.__SANAD_MONTHS_EN=${JS
     <main style="flex:1;overflow-y:auto;padding:1.15rem 1.35rem 5.5rem">${body}</main>
   </div>
 </div>
-<button onclick="Sanad.aiToggle()" title="مساعد سند الذكي" class="ai-fab" style="position:fixed;bottom:18px;left:18px;z-index:40;width:44px;height:44px;border:none;cursor:pointer;border-radius:50%;color:#fff;box-shadow:0 8px 22px -6px rgba(124,58,237,.5);background:var(--brand-grad);display:flex;align-items:center;justify-content:center;opacity:.55;transition:opacity .15s">${icon('ai')}</button>
-<div id="ai-panel" class="card" style="display:none;position:fixed;bottom:88px;left:22px;z-index:40;width:390px;max-width:calc(100vw - 2rem);height:min(580px,calc(100vh - 130px));flex-direction:column;overflow:hidden;box-shadow:var(--sh)">
-  <div style="padding:.8rem 1rem;color:#fff;display:flex;align-items:center;justify-content:space-between;background:var(--brand-grad)">
-    <div style="display:flex;align-items:center;gap:.5rem">${icon('ai')}<div><div style="font-weight:800;font-size:var(--fs-ui)">مساعد سند الذكي</div><div id="ai-mode" style="font-size:10px;color:rgba(255,255,255,.6)">…</div></div></div>
-    <button onclick="Sanad.aiToggle()" style="color:rgba(255,255,255,.7);background:none;border:none;cursor:pointer;font-size:var(--fs-page)">✕</button>
+<button type="button" id="ai-fab" class="ai-fab" data-action="ai-toggle" aria-expanded="false" aria-controls="ai-panel"
+  aria-label="مساعد سند" title="مساعد سند">${icon('ai')}</button>
+<div id="ai-panel" class="ai-panel" role="dialog" aria-labelledby="ai-title" data-who="${esc(user.username || '')}" hidden>
+  <div class="ai-head">
+    ${icon('ai')}
+    <div style="flex:1;min-width:0">
+      <div class="t" id="ai-title">مساعد سند</div>
+      <div class="ai-eng" id="ai-engine" hidden></div>
+    </div>
+    <button type="button" class="ai-x" data-action="ai-clear" aria-label="مسح المحادثة" title="مسح المحادثة">مسح</button>
+    <button type="button" class="ai-x" data-action="ai-close" aria-label="إغلاق المساعد" title="إغلاق">✕</button>
   </div>
-  <div id="ai-box" style="flex:1;overflow-y:auto;padding:.75rem;display:flex;flex-direction:column;gap:.5rem;background:var(--bg);font-size:var(--fs-ui)">
-    <div style="text-align:center;color:var(--muted);font-size:12px;line-height:1.9;padding:1rem">جرّب: «لخّص مشروع…» · «تقرير أسبوعي» · «المخاطر» · «جودة البيانات» · «أولوياتي» · «انقل الفرصة X إلى فائزة»</div>
-  </div>
-  <div style="padding:.5rem;border-top:1px solid var(--line);display:flex;gap:.5rem">
-    <input id="ai-input" onkeydown="if(event.key==='Enter')Sanad.aiSend()" placeholder="اكتب…" style="flex:1;border:1px solid var(--line);border-radius:10px;padding:.5rem .75rem;font-size:var(--fs-ui)">
-    <button onclick="Sanad.aiSend()" style="color:#fff;border:none;cursor:pointer;padding:0 .9rem;border-radius:10px;background:var(--brand-grad)">↑</button>
+  <div class="ai-log" id="ai-log" role="log" aria-live="polite" aria-label="سجل المحادثة" tabindex="0"></div>
+  <div class="ai-chips" id="ai-chips" aria-label="مهام جاهزة" role="group" hidden></div>
+  <div class="ai-foot">
+    <input class="ai-in" id="ai-input" type="text" autocomplete="off" placeholder="اكتب سؤالك…" aria-label="اكتب سؤالك للمساعد">
+    <button type="button" class="ai-send" id="ai-send" data-action="ai-send" aria-label="إرسال" title="إرسال">↑</button>
   </div>
 </div>
 <div id="scrim" class="scrim" onclick="Sanad.closeDrawer()"></div>
@@ -343,7 +644,7 @@ window.__SANAD_MONTHS=${JSON.stringify(MONTHS_AR)};window.__SANAD_MONTHS_EN=${JS
     <div id="cmdk-list" class="cmdk-list"></div>
   </div>
 </div>
-<script src="/static/app.js"></script><script src="/static/global-search.js" defer></script>${(scripts || []).map((s) => `<script src="${s}" defer></script>`).join('')}
+<script src="${asset('/static/app.js')}"></script><script src="${asset('/static/global-search.js')}" defer></script><script src="${asset('/static/pages/guide-tour.js')}" defer></script><script src="${asset('/static/pages/ai.js')}" defer></script>${(scripts || []).map((s) => `<script src="${asset(s)}" defer></script>`).join('')}
 </body></html>`;
 }
 
@@ -356,18 +657,29 @@ export const LABELS = {
   IN_PROGRESS: 'قيد التنفيذ', COMPLETED: 'مكتمل', PLANNED: 'مُخطَّط', ON_HOLD: 'متوقّف مؤقتًا', CANCELLED: 'ملغى', NOT_STARTED: 'لم يبدأ',
   // RAG
   GREEN: 'أخضر', AMBER: 'أصفر', RED: 'أحمر',
-  // task status
-  TODO: 'قيد الانتظار', BLOCKED: 'مُعطَّل', IN_REVIEW: 'قيد المراجعة', DONE: 'منجز',
-  // priority
-  P0: 'حرجة', P1: 'عالية', P2: 'متوسطة', P3: 'منخفضة',
-  // deliverable status
-  DELIVERED: 'مُسلَّم', PENDING: 'قيد الإعداد', ACCEPTED: 'مقبول', INVOICED: 'مُفوتَر', PAID: 'مدفوع',
+  // حالات المهمة وأولوياتها من مصدرها الواحد في core/i18n — تقرؤها الخدمات أيضاً (سجل
+  // التدقيق يكتب «منجز» لا «DONE»)، وملفُّ العرض هذا لا تستورده الخدمات فلا يصلح مصدراً.
+  ...TASK_STATUS_AR,
+  ...TASK_PRIORITY_AR,
+  // deliverable status — الحالات نفسها في المعجم (deliverableStatusLabel) وهو ما تستعمله
+  // الشاشات فعلاً. أُبقيت هنا الأربع المشتركة فقط، وحُذفت INVOICED وPENDING: الأولى لم تعد
+  // حالةَ مخرَج أصلاً (صارت ختماً زمنياً — ترحيلة ٠١٧)، والثانية كانت تعني «قيد الإعداد» على
+  // المخرَج و«قادم» على المعلم و«معلَّق» على طلب الاعتماد — وهذا الجدول **مسطَّح**، فمفتاح
+  // واحد بثلاثة معانٍ يطبع أحدها في موضع الآخرَين. من احتاجها فليقرأها من معجم نوعه.
+  DELIVERED: 'تم التسليم', ACCEPTED: 'تم الاعتماد', PAID: 'مدفوع',
   // invoice status
   ISSUED: 'صادر', PARTIALLY_PAID: 'مدفوع جزئيًا', OVERDUE: 'متأخر', DRAFT: 'مسودة',
   // contract status
   ACTIVE: 'نشط', CLOSED: 'مغلق', SUSPENDED: 'موقوف',
   // report/email queue + approvals
   SENT: 'أُرسل', FAILED: 'فشل', QUEUED: 'في الطابور', PROCESSING: 'قيد المعالجة',
+  // ملاحظتان لمن يضيف هنا لاحقاً:
+  //   • هذا الجدول **مسطَّح**: مفتاحٌ مكرَّر يفوز فيه الأخير صامتاً. وكانت حالتا البريد
+  //     (PREVIEWED/BLOCKED) مكتوبتين هنا فتغلب BLOCKED الخاصة بالبريد على BLOCKED الخاصة
+  //     بالمهمة أعلاه — فكل مهمة معطَّلة تُعرَض «حُجبت — عنوان غير مسموح»، وهي جملةٌ عن
+  //     رسالة بريد منعها حارس العناوين لا عن مهمةٍ متوقفة. حُذفتا من هنا.
+  //   • حالات البريد لها جدولها الخاص (mailStatusLabel في i18n/glossary.js) وهو ما تستعمله
+  //     شاشتا مركز البريد والمستخدمين فعلاً — فلا شيء فقد تسميته بالحذف.
   APPROVED: 'معتمد', REJECTED: 'مرفوض',
   // audit actions
   create: 'إنشاء', update: 'تعديل', delete: 'حذف', login: 'تسجيل دخول', logout: 'تسجيل خروج', approve: 'اعتماد', reject: 'رفض',
@@ -375,7 +687,7 @@ export const LABELS = {
 export const tr = (v) => (v == null ? v : (LABELS[v] || v));
 
 export function pill(text, color = 'slate') {
-  const c = { green: '#dcfce7|#059669', red: '#fee2e2|#b91c1c', amber: '#fef3c7|#92400e', blue: '#dbeafe|#2563eb', violet: '#ede9fe|#7c3aed', slate: '#f1f5f9|#475569' }[color] || '#f1f5f9|#475569';
+  const c = { green: '#dcfce7|#047857', red: '#fee2e2|#b91c1c', amber: '#fef3c7|#92400e', blue: '#dbeafe|#244A99', violet: '#ede9fe|#7c3aed', slate: '#f1f5f9|#475569' }[color] || '#f1f5f9|#475569';
   const [bg, fg] = c.split('|');
   return `<span class="pill" style="background:${bg};color:${fg}">${text}</span>`;
 }
@@ -406,8 +718,12 @@ export function miniBars(series, valueKey, opts = {}) {
       <text x="${(x + bw / 2).toFixed(1)}" y="${H - 7}" font-size="11" fill="${isNow ? '#a3821c' : '#94a3b8'}" font-weight="${isNow ? '800' : '400'}" text-anchor="middle">${s.year}</text>
       <text x="${(x + bw / 2).toFixed(1)}" y="${(y - 5).toFixed(1)}" font-size="11" fill="${last ? '#834798' : '#475569'}" text-anchor="middle" font-weight="800">${opts.fmt ? opts.fmt(val) : Math.round(val)}</text>`;
   }).join('');
-  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block" preserveAspectRatio="xMidYMid meet">
-    <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#244A99"/><stop offset="1" stop-color="#834798"/></linearGradient></defs>${grid}${bars}</svg>`;
+  // الرسم داخل وعاء كتلي لا عارياً: عنصرٌ متجهٌ بنسبة أبعاد موضوعٌ مباشرةً في شبكة (أو مرونة)
+  // يفرض مقاسه الطبيعي على العمود فيتمدّد خارج حاويته ويطفح على ما بعده. الوعاء يقطع هذا
+  // الطريق عند المنبع، فيصحّ الرسم في كل موضع يُستدعى منه لا في النافذة وحدها.
+  return `<div style="width:100%;min-width:0;overflow:hidden">
+    <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block" preserveAspectRatio="xMidYMid meet">
+    <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#244A99"/><stop offset="1" stop-color="#834798"/></linearGradient></defs>${grid}${bars}</svg></div>`;
 }
 
 // Horizontal comparison bars (e.g. revenue achieved per sector). items: [{label,value,color,sub}].
@@ -417,10 +733,10 @@ export function hbars(items, opts = {}) {
     const w = Math.round(((i.value || 0) / max) * 100);
     return `<div>
       <div style="display:flex;justify-content:space-between;align-items:center;font-size:var(--fs-body);margin-bottom:.28rem">
-        <span style="display:flex;align-items:center;gap:.45rem;min-width:0"><span style="width:9px;height:9px;border-radius:2px;background:${i.color || '#2563eb'};flex:none"></span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${i.label}</span></span>
+        <span style="display:flex;align-items:center;gap:.45rem;min-width:0"><span style="width:9px;height:9px;border-radius:2px;background:${esc(i.color || '#2563eb')};flex:none"></span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${i.label}</span></span>
         <span class="tnum" style="font-weight:800;color:var(--ink2);flex:none;margin-inline-start:.6rem">${opts.fmt ? opts.fmt(i.value) : i.value}${i.sub ? `<span style="font-weight:600;color:var(--muted);font-size:11px"> · ${i.sub}</span>` : ''}</span>
       </div>
-      <div style="height:10px;background:#eef1f7;border-radius:999px;overflow:hidden"><div style="width:${w}%;height:100%;background:${i.color || '#2563eb'};border-radius:999px;transition:width .5s"></div></div>
+      <div style="height:10px;background:#eef1f7;border-radius:999px;overflow:hidden"><div style="width:${w}%;height:100%;background:${esc(i.color || '#2563eb')};border-radius:999px;transition:width .5s"></div></div>
     </div>`;
   }).join('')}</div>`;
 }
@@ -437,6 +753,254 @@ export function utilStrip(months, now = 0) {
 }
 
 // Radial attainment gauge (SVG donut). pct may exceed 100 (over-target) — arc clamps, label shows true %.
+// ── لغة الرسم الواحدة (v5.38 · ADR-0011) — أسلوبٌ واحد للمفهوم الواحد عبر المنصة ──
+// «محقّق مقابل مستهدف» = مسار خطي بعلامة «أين يجب أن نكون» — لا حلقة ولا عداد.
+// pct/tick بنسب مئوية (يُقصّان 0–100)، والوصف الصوتي يُمرَّر جاهزاً بالأرقام كلماتٍ.
+export function figBullet({ pct = 0, tick = null, fill = null, ariaLabel = '' } = {}) {
+  const p = Math.max(0, Math.min(100, Math.round(Number(pct) || 0)));
+  const t = tick == null ? null : Math.max(0, Math.min(100, Math.round(Number(tick) || 0)));
+  return `<div class="fig-b" role="img"${ariaLabel ? ` aria-label="${esc(ariaLabel)}"` : ' aria-hidden="true"'}>
+    <div class="tr"><i class="fl" style="width:${p}%${fill ? `;background:${esc(fill)}` : ''}"></i>${t == null ? '' : `<i class="tk" style="inset-inline-start:${t}%"></i>`}</div></div>`;
+}
+
+// تركيبة كلٍّ = شريط مكدَّس 100% بفواصل سطحية — القطعة الصفرية لا تُرسم (الأصفار في الوصف).
+// قطعُ الشريط تقول قيمتها عند التحويم، وتفتح تفصيلها إن كان مبنياً — كان الشريط كله صامتاً
+// وأسطورتُه المجاورة وحدها تُفتح، فيبدو الرسم نفسه طريقاً مسدوداً لمن يضغطه.
+export function figStacked100(segs, { mini = false, ariaLabel = '' } = {}) {
+  const rows = (segs || []).map((x) => ({ v: Math.max(0, Number(x.v) || 0), color: x.color || 'var(--st-neut)', label: x.label || '', dd: x.dd || '' }));
+  const sum = rows.reduce((a, x) => a + x.v, 0);
+  const seg = (x) => {
+    const pct = (x.v / sum * 100).toFixed(1);
+    const tip = x.label ? `${x.label} — ${pct}%` : `${pct}%`;
+    const style = `width:${pct}%;background:${esc(x.color)}`;
+    return x.dd
+      ? `<button type="button" class="sg-live" style="${style}" data-action="open-dd" data-dd="${esc(x.dd)}" title="${esc(tip)}" aria-label="${esc(tip)} — التفصيل"></button>`
+      : `<i style="${style}" title="${esc(tip)}"></i>`;
+  };
+  const inner = sum <= 0 ? `<i style="width:100%;background:var(--track)"></i>`
+    : rows.filter((x) => x.v > 0).map(seg).join('');
+  const live = rows.some((x) => x.dd);
+  return `<div class="fig-s${mini ? ' mini' : ''}"${live ? ' role="group"' : ' role="img"'}${ariaLabel ? ` aria-label="${esc(ariaLabel)}"` : (live ? '' : ' aria-hidden="true"')}>${inner}</div>`;
+}
+
+// مقاديرُ مرتَّبة = صفوف شريطية بلونٍ واحد، العدُّ والقيمة معاً — لا مبدّل عرض.
+// صفٌّ له dd يُرسم زرّاً يفتح تفصيله في مكانه؛ labelHtml يُمرَّر مُؤمَّناً من المستدعي.
+export function figBars(rows, { fmt = (v) => String(v), max = null } = {}) {
+  const list = rows || [];
+  const top = max ?? Math.max(1, ...list.map((r) => Number(r.value) || 0));
+  return `<div class="fig-bars">${list.map((r) => {
+    const w = Math.max(0, Math.min(100, (Number(r.value) || 0) / top * 100)).toFixed(1);
+    const tag = r.dd ? 'button' : 'div';
+    const attrs = r.dd ? ` type="button" data-action="open-dd" data-dd="${esc(r.dd)}" aria-label="${esc(r.ariaLabel || '')}"` : '';
+    const tip = [r.label, r.count ? `${r.count}` : '', fmt(Number(r.value) || 0)].filter(Boolean).join(' · ');
+    return `<${tag} class="fig-r${r.total ? ' total' : ''}"${r.dd ? ' role="button"' : ''}${attrs} title="${esc(tip)}">
+      <span class="l">${r.labelHtml ?? esc(r.label || '')}</span>
+      <span class="tr"><i style="width:${w}%${r.fill ? `;background:${esc(r.fill)}` : ''}"></i></span>
+      <span class="c tnum">${esc(String(r.count ?? ''))}</span>
+      <span class="v tnum">${esc(fmt(Number(r.value) || 0))}</span>
+    </${tag}>`;
+  }).join('')}</div>`;
+}
+
+// قيمة عبر الزمن = أعمدة على محورٍ يقرأ يميناً (اتجاه القراءة = مضيّ الزمن)، والجاري مميّز.
+// cols بترتيب الزمن تصاعدياً؛ تُعكس داخلياً كي يكون الأقدم أقصى اليمين.
+export function figColumns(cols, { now = 0, ariaLabel = '', fmt = (v) => String(Math.round(v)) } = {}) {
+  const list = (cols || []).map((c, i) => ({ v: Math.max(0, Number(c.v) || 0), label: c.label ?? String(i + 1), idx: i + 1 }));
+  const top = Math.max(1, ...list.map((c) => c.v));
+  return `<div class="fig-cols" role="img"${ariaLabel ? ` aria-label="${esc(ariaLabel)}"` : ' aria-hidden="true"'}>${[...list].reverse().map((c) => `
+    <span class="cc${c.idx === now ? ' now' : ''}" title="${esc(c.label)}: ${esc(fmt(c.v))}"><i style="height:${(c.v / top * 100).toFixed(0)}%"></i><b class="tnum">${esc(String(c.label))}</b></span>`).join('')}</div>`;
+}
+
+// ── عودة الرسوم الدائرية والمركّبة بقرار المالك (v5.39 — نماذجه المرجعية 2026-08-24).
+// تعديلٌ معلَن على ADR-0011: الحلقة والدونات مسموحتان حيث «جزء من هدف/كل»، والقيم المرجّحة
+// والخلاصات المحسوبة مسموحة **بشرط علامةٍ وتلميحٍ يقولان أساسها** — لا رقم يوحي بيقينٍ ليس له.
+
+// حلقة إنجاز واحدة: النسبة قوسٌ يمتلئ، والرقم فوقها بعنصر HTML جدولي الاتجاه.
+export function figRing(p, { size = 70, sw = 10, color = 'var(--brand2)', lbl = '' } = {}) {
+  const shown = Math.max(0, Math.round(Number(p) || 0));
+  const pc = Math.min(100, shown);
+  const r = (size - sw) / 2, c = 2 * Math.PI * r;
+  const off = c * (1 - pc / 100);
+  return `<span class="ringw" style="width:${size}px;height:${size}px">
+    <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-hidden="true" style="transform:rotate(-90deg)">
+      <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="var(--track)" stroke-width="${sw}"/>
+      ${pc > 0 ? `<circle class="ring-fill" cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="${esc(color)}" stroke-width="${sw}" stroke-linecap="round" stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}" style="--c0:${c.toFixed(1)}"/>` : ''}
+    </svg><span class="ringv tnum">${shown}%${lbl ? `<small>${esc(lbl)}</small>` : ''}</span></span>`;
+}
+
+// دونات مقسومة: كل قطعة قوس بطول نسبتها — والوسط للمستدعي (يغلّفها بـ.ringw ويضع نصّه).
+export function figDonut(segs, { size = 104, sw = 13 } = {}) {
+  const total = (segs || []).reduce((a, s) => a + Math.max(0, s.v), 0) || 1;
+  const r = (size - sw) / 2, c = 2 * Math.PI * r;
+  let off = 0;
+  const arcs = (segs || []).filter((s) => s.v > 0).map((s) => {
+    const len = (s.v / total) * c;
+    // قوسٌ له تفصيلٌ يفتحه: كان الرسم كله طريقاً مسدوداً وصفُّ الأسطورة وحده يفتح النافذة
+    const act = s.dd ? ` class="arc-live" role="button" tabindex="0" data-action="open-dd" data-dd="${esc(s.dd)}" aria-label="${esc(s.label || '')}"` : '';
+    const el = `<circle${act} cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="${esc(s.color)}" stroke-width="${sw}" stroke-dasharray="${len.toFixed(1)} ${c.toFixed(1)}" stroke-dashoffset="${(-off).toFixed(1)}">${s.label ? `<title>${esc(s.label)}</title>` : ''}</circle>`;
+    off += len;
+    return el;
+  }).join('');
+  const live = (segs || []).some((x) => x.dd);
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"${live ? ' role="group"' : ' aria-hidden="true"'} style="transform:rotate(-90deg)">
+    <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="var(--track)" stroke-width="${sw}"/>${arcs}</svg>`;
+}
+
+// رسم خطي متعدد السلاسل: المحور يقرأ يميناً افتراضاً (عرف المنصة)، وaxisDir:'ltr' يقلبه —
+// استثناء شاشة مركز القيادة بقرار المالك على نموذجه المرجعي (2026-08-24، ADR-0011).
+// marks: شروح رأسية [{i,label,color}] — خطٌّ متقطع عند نقطةٍ ونصُّه فوقه (فجوة طاقة ونحوها).
+export function figLine(seriesList, { labels = [], now = 0, w = 480, h = 130, fmt = (v) => String(v), ariaLabel = '', axisDir = 'rtl', marks = [], hover = false } = {}) {
+  const list = (seriesList || []).filter((sr) => (sr.points || []).length);
+  if (!list.length) return '';
+  const n = Math.max(...list.map((sr) => sr.points.length));
+  const top = Math.max(1, ...list.flatMap((sr) => sr.points.map((v) => Number(v) || 0)));
+  const padX = 6, padT = 8, padB = 18;
+  const X = (i) => padX + ((axisDir === 'ltr' ? i : n - 1 - i) / Math.max(1, n - 1)) * (w - padX * 2);
+  const Y = (v) => padT + (1 - (Math.max(0, Number(v) || 0) / top)) * (h - padT - padB);
+  const paths = list.map((sr) => {
+    const pts = sr.points.map((v, i) => `${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(' ');
+    const col = esc(sr.color || 'var(--brand)');
+    const area = sr.area ? `<polygon points="${pts} ${X(sr.points.length - 1).toFixed(1)},${(h - padB).toFixed(1)} ${X(0).toFixed(1)},${(h - padB).toFixed(1)}" fill="${col}" opacity=".08"/>` : '';
+    const dots = sr.dots === false ? '' : sr.points.map((v, i) => `<circle cx="${X(i).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="${i + 1 === now ? 4 : 2.5}" fill="${i + 1 === now ? 'var(--gold)' : col}"><title>${esc(labels[i] ?? i + 1)}: ${esc(fmt(sr.points[i]))}${sr.name ? ` — ${esc(sr.name)}` : ''}</title></circle>`).join('');
+    return `${area}<polyline points="${pts}" fill="none" stroke="${col}" stroke-width="2"${sr.dash ? ' stroke-dasharray="5 4"' : ''} stroke-linejoin="round" stroke-linecap="round"/>${dots}`;
+  }).join('');
+  // عنوانا الطرفين يُثبَّتان داخل الإطار: text-anchor=middle عند الحافة يقصّ نصف الرقم.
+  const tickX = (i) => Math.min(Math.max(X(i), padX + 8), w - padX - 8);
+  const ticks = labels.length ? labels.map((l, i) => `<text x="${tickX(i).toFixed(1)}" y="${h - 4}" text-anchor="middle">${esc(String(l))}</text>`).join('') : '';
+  const marksEl = (marks || []).filter((m) => m && m.i >= 0 && m.i < n).map((m) => {
+    const x = X(m.i), col = esc(m.color || 'var(--st-bad)');
+    const tx = Math.min(Math.max(x, padX + 40), w - padX - 40); // النص داخل الإطار مهما طرُف الخط
+    return `<line x1="${x.toFixed(1)}" y1="${padT}" x2="${x.toFixed(1)}" y2="${h - padB}" stroke="${col}" stroke-width="1.5" stroke-dasharray="4 3"/>
+      <text class="mk-l" x="${tx.toFixed(1)}" y="${padT + 2}" dominant-baseline="hanging" text-anchor="middle" fill="${col}">${esc(String(m.label || ''))}</text>`;
+  }).join('');
+  const hitW = (w - padX * 2) / Math.max(1, n);
+  const hits = hover ? `<g class="fig-hits">${Array.from({ length: n }, (_, i) => {
+    const rows = list.map((sr) => `${sr.name || 'القيمة'}=${fmt(sr.points[i])}`).join('|');
+    return `<rect class="fig-hit" x="${(X(i) - hitW / 2).toFixed(1)}" y="${padT}" width="${hitW.toFixed(1)}" height="${(h - padT - padB).toFixed(1)}" fill="transparent" data-i="${i}" data-x="${X(i).toFixed(1)}" data-l="${esc(String(labels[i] ?? i + 1))}" data-rows="${esc(rows)}"></rect>`;
+  }).join('')}</g>` : '';
+  const xhair = hover ? `<line class="fig-xhair" x1="0" y1="${padT}" x2="0" y2="${h - padB}" opacity="0"/>` : '';
+  return `<svg class="fig-svg${hover ? ' fig-live' : ''}" viewBox="0 0 ${w} ${h}" role="img"${ariaLabel ? ` aria-label="${esc(ariaLabel)}"` : ' aria-hidden="true"'}${hover && ariaLabel ? ' tabindex="0"' : ''} style="width:100%;height:auto">
+    <line class="axis" x1="${padX}" y1="${h - padB}" x2="${w - padX}" y2="${h - padB}"/>${paths}${marksEl}${ticks}${xhair}${hits}</svg>`;
+}
+
+// شرارة مساحية صغيرة: خطٌّ واحد بتعبئة متدرّجة ونقطة نهاية — لا محاور ولا أرقام، للاتجاه وحده.
+// المحور يساري القراءة افتراضاً (زمنٌ في بطاقة مؤشر على نموذج المالك). معرّف التدرّج من عدّاد
+// الوحدة — ترتيب التصيير ثابت في المنصة (ملاحظة render-parity) فلا تصادم.
+let _sparkSeq = 0;
+export function figSpark(points, { w = 120, h = 36, color = 'var(--brand)', axisDir = 'ltr', ariaLabel = '' } = {}) {
+  const pts = (points || []).map((v) => Math.max(0, Number(v) || 0));
+  if (pts.length < 2) return '';
+  const gid = 'spkGrad' + (++_sparkSeq);
+  const top = Math.max(1, ...pts);
+  const pad = 3;
+  const X = (i) => pad + ((axisDir === 'ltr' ? i : pts.length - 1 - i) / (pts.length - 1)) * (w - pad * 2);
+  const Y = (v) => pad + (1 - v / top) * (h - pad * 2);
+  const line = pts.map((v, i) => `${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(' ');
+  const lastI = axisDir === 'ltr' ? pts.length - 1 : 0;
+  const endX = axisDir === 'ltr' ? X(pts.length - 1) : X(0);
+  return `<div style="min-width:0;overflow:hidden"><svg class="fig-svg" viewBox="0 0 ${w} ${h}" role="img"${ariaLabel ? ` aria-label="${esc(ariaLabel)}"` : ' aria-hidden="true"'} style="width:100%;height:auto;display:block">
+    <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${esc(color)}" stop-opacity=".18"/><stop offset="1" stop-color="${esc(color)}" stop-opacity="0"/></linearGradient></defs>
+    <polygon points="${line} ${endX.toFixed(1)},${(h - pad).toFixed(1)} ${X(axisDir === 'ltr' ? 0 : pts.length - 1).toFixed(1)},${(h - pad).toFixed(1)}" fill="url(#${gid})"/>
+    <polyline points="${line}" fill="none" stroke="${esc(color)}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    <circle cx="${X(lastI).toFixed(1)}" cy="${Y(pts[lastI]).toFixed(1)}" r="3" fill="${esc(color)}" stroke="#fff" stroke-width="1.5"/></svg></div>`;
+}
+
+// رسم مركّب (الفعلي مقابل المستهدف والتوقع): أعمدة شهرية + خط تراكمي + خط هدفٍ متقطع +
+// نقطة التوقع في آخر السنة — محور يميني القراءة، وكل عمودٍ ونقطةٍ بعنوان تحويم.
+export function figCombo({ bars = [], cum = [], target = null, forecast = null, labels = [], labelsTight = null, now = 0, fmt = (v) => String(v), ariaLabel = '', axisDir = 'rtl', w = 560, h = 170, forecastLine = null, barColor = null, nowBarColor = null, hi = null, hover = false } = {}) {
+  const n = Math.max(bars.length, cum.length);
+  if (!n) return '';
+  // المقياس على الفعلي والهدف — توقعٌ شاذّ الحجم (يتجاوز الهدف بأضعاف) يُثبَّت عند حافة
+  // الرسم بقيمته الدقيقة في التحويم، ولا يُسمح له بسحق الأعمدة والخط.
+  const fcLinePts = (forecastLine && forecastLine.points || []).map((p) => ({ i: p.i, v: Math.max(0, Number(p.v) || 0) }));
+  // الحارس كان يُبطل نفسه: ضمّ نقاط خط التوقع إلى الأساس، فيصير الشاذُّ هو المقياس وتُسحق
+  // الأعمدة (1.8% من الارتفاع) وخط الهدف معها. الأساس من الفعلي والهدف وحدهما، والتوقع يُقصّ.
+  const topBase = Math.max(1, ...bars, ...cum, target || 0);
+  const top = forecast && forecast <= topBase * 1.5 ? Math.max(topBase, forecast) : topBase;
+  const fcShown = forecast ? Math.min(forecast, top) : null;
+  const padX = 8, padT = 14, padB = 20, bw = Math.min(22, (w - padX * 2) / n * .55);
+  const X = (i) => padX + ((axisDir === 'ltr' ? i : n - 1 - i) / Math.max(1, n - 1)) * (w - padX * 2 - bw) + bw / 2;
+  const Y = (v) => padT + (1 - (Math.max(0, v) / top)) * (h - padT - padB);
+  const barsEl = bars.map((v, i) => `<rect x="${(X(i) - bw / 2).toFixed(1)}" y="${Y(v).toFixed(1)}" width="${bw.toFixed(1)}" height="${(h - padB - Y(v)).toFixed(1)}" rx="3" fill="${i + 1 === now ? (nowBarColor || 'var(--brand2)') : (barColor || 'var(--brand)')}" opacity="${hi && hi.length ? (hi.includes(i + 1) ? '.9' : '.25') : (v ? '.85' : '.2')}"><title>${esc(String(labels[i] ?? i + 1))}: ${esc(fmt(v))}</title></rect>`).join('');
+  const cumPts = cum.map((v, i) => `${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(' ');
+  const cumEl = cum.length ? `<polyline points="${cumPts}" fill="none" stroke="var(--ink2)" stroke-width="2" stroke-linejoin="round"/>${cum.map((v, i) => `<circle cx="${X(i).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="${i + 1 === now ? 4 : 2.5}" fill="${i + 1 === now ? 'var(--gold)' : 'var(--ink2)'}"><title>${esc(String(labels[i] ?? i + 1))} تراكمياً: ${esc(fmt(v))}</title></circle>`).join('')}` : '';
+  const targetEl = target ? `<line x1="${padX}" y1="${Y(target).toFixed(1)}" x2="${w - padX}" y2="${Y(target).toFixed(1)}" stroke="var(--tick)" stroke-width="1.5" stroke-dasharray="6 5"/><text x="${(w - padX - 10).toFixed(1)}" y="${(Y(target) + 12).toFixed(1)}" text-anchor="end">${esc(fmt(target))}</text>` : '';
+  // خط التوقع المتقطع (من آخر شهرٍ فعلي إلى ديسمبر) يحلّ محل الدائرة حين يُمرَّر — التقطيعُ
+  // وحده يعني «إسقاط»، والقيمة النهائية معلنةٌ نصاً عند طرفه.
+  const fcLineEl = fcLinePts.length >= 2 ? (() => {
+    const col = esc((forecastLine && forecastLine.color) || 'var(--brand2)');
+    const pts = fcLinePts.map((p) => `${X(p.i).toFixed(1)},${Y(Math.min(p.v, top)).toFixed(1)}`).join(' ');
+    const last = fcLinePts[fcLinePts.length - 1];
+    const clipped = last.v > top;
+    const endTx = Math.min(Math.max(X(last.i), padX + 34), w - padX - 34);
+    return `<polyline points="${pts}" fill="none" stroke="${col}" stroke-width="2" stroke-dasharray="5 4" stroke-linejoin="round"/>
+      <circle cx="${X(last.i).toFixed(1)}" cy="${Y(Math.min(last.v, top)).toFixed(1)}" r="4" fill="none" stroke="${col}" stroke-width="2"><title>${esc(String((forecastLine && forecastLine.title) || 'المتوقع نهاية السنة'))}: ${esc(fmt(last.v))}${clipped ? ' (خارج مقياس الرسم)' : ''}</title></circle>
+      <text class="mk-l" x="${endTx.toFixed(1)}" y="${Math.max(padT + 2, Y(Math.min(last.v, top)) - 9).toFixed(1)}" text-anchor="middle" fill="${col}">${esc((forecastLine && forecastLine.endLabel) || fmt(last.v))}</text>`;
+  })() : '';
+  const fcEl = fcLineEl || (forecast ? `<circle cx="${X(n - 1).toFixed(1)}" cy="${Y(fcShown).toFixed(1)}" r="5" fill="none" stroke="var(--brand2)" stroke-width="2.5"><title>المتوقع نهاية السنة: ${esc(fmt(forecast))}${fcShown < forecast ? ' (خارج مقياس الرسم)' : ''}</title></circle>` : '');
+  // عنوانا شهرٍ مزدوجان (عربي كامل على الواسع، Jan على الضيق) حين يمرّر المستدعي labelsTight
+  const tickX = (i) => Math.min(Math.max(X(i), padX + 12), w - padX - 12);
+  const ticks = labels.map((l, i) => labelsTight
+    ? `<text class="m-full" x="${tickX(i).toFixed(1)}" y="${h - 5}" text-anchor="middle">${esc(String(l))}</text><text class="m-tight" x="${tickX(i).toFixed(1)}" y="${h - 5}" text-anchor="middle">${esc(String(labelsTight[i] ?? ''))}</text>`
+    : `<text x="${tickX(i).toFixed(1)}" y="${h - 5}" text-anchor="middle">${esc(String(l))}</text>`).join('');
+  // شرائح التقاطٍ بعرض الشهر كامل الارتفاع: الهدف يصير عشرات البكسلات لا نقطةً، والتلميح
+  // يخرج فوراً ومعه خيط تتبّع رأسي — والقيم كلها مقروءة بلوحة المفاتيح أيضاً (الأسهم).
+  const hitW = (w - padX * 2) / Math.max(1, n);
+  const hits = hover ? `<g class="fig-hits">${labels.map((l, i) => {
+    const rows = [
+      bars[i] != null ? `الشهري=${fmt(bars[i])}` : null,
+      cum[i] != null ? `التراكمي=${fmt(cum[i])}` : null,
+      target ? `المستهدف=${fmt(target)}` : null,
+      fcLinePts.length && fcLinePts[fcLinePts.length - 1].i === i ? `المتوقع=${fmt(fcLinePts[fcLinePts.length - 1].v)}` : null,
+    ].filter(Boolean).join('|');
+    return `<rect class="fig-hit" x="${(X(i) - hitW / 2).toFixed(1)}" y="${padT}" width="${hitW.toFixed(1)}" height="${(h - padT - padB).toFixed(1)}" fill="transparent" data-i="${i}" data-x="${X(i).toFixed(1)}" data-l="${esc(String(l))}" data-rows="${esc(rows)}"></rect>`;
+  }).join('')}</g>` : '';
+  const xhair = hover ? `<line class="fig-xhair" x1="0" y1="${padT}" x2="0" y2="${h - padB}" opacity="0"/>` : '';
+  return `<svg class="fig-svg${hover ? ' fig-live' : ''}" viewBox="0 0 ${w} ${h}" role="img"${ariaLabel ? ` aria-label="${esc(ariaLabel)}"` : ' aria-hidden="true"'}${hover && ariaLabel ? ' tabindex="0"' : ''} style="width:100%;height:auto">
+    <line class="axis" x1="${padX}" y1="${h - padB}" x2="${w - padX}" y2="${h - padB}"/>${barsEl}${targetEl}${cumEl}${fcEl}${ticks}${xhair}${hits}</svg>`;
+}
+
+// خريطة حرارية (صفوف × أشهر): لون الخلية بعتباتٍ يمرّرها المستدعي، والرقم داخلها.
+export function figHeat(rows, colLabels, { tone, ltr = false } = {}) {
+  const t = tone || ((v) => v == null ? ['var(--track)', 'var(--muted)'] : v > 110 ? ['var(--st-bad-soft)', 'var(--st-bad)'] : v < 70 && v > 0 ? ['#fdf6e3', '#8a6d1a'] : v === 0 ? ['var(--st-neut-soft)', 'var(--muted)'] : ['var(--st-good-soft)', 'var(--st-good)']);
+  return `<div style="overflow-x:auto"><table class="fig-heat"${ltr ? ' dir="ltr"' : ''}><thead><tr><th class="rl"></th>${colLabels.map((c) => `<th>${esc(String(c))}</th>`).join('')}</tr></thead><tbody>
+    ${rows.map((r) => `<tr><th class="rl">${r.dd ? `<button type="button" class="rl-btn" data-action="open-dd" data-dd="${esc(r.dd)}" aria-label="${esc(r.label)} — التفصيل">${esc(r.label)}</button>` : esc(r.label)}</th>${r.cells.map((v) => { const [bg, fg] = t(v); return `<td><span class="cell tnum" style="background:${bg};color:${fg}" title="${esc(r.label)}: ${v == null ? '—' : v + '%'}">${v == null ? '—' : v + '%'}</span></td>`; }).join('')}</tr>`).join('')}
+  </tbody></table></div>`;
+}
+
+// خريطة مساحية بسيطة: الأكبر كتلةً يمنى وبقيةُ الحصص عموداً — المساحة تقول الحصة.
+export function figTreemap(items, { h = 160, total: totalOpt = null } = {}) {
+  const list = (items || []).filter((x) => x.v > 0).sort((a, b) => b.v - a.v);
+  if (!list.length) return '';
+  // المقام من المستدعي حين يكون للنسبة مرجعٌ خارج المعروضين (إيراد القطاع كله مثلاً) — وإلا
+  // ظهرت الحصة نفسها برقمين مختلفين هنا وفي الجدول المجاور.
+  const total = totalOpt && totalOpt > 0 ? totalOpt : list.reduce((a, x) => a + x.v, 0);
+  const [maj, ...rest] = list;
+  const shown = list.reduce((a, x) => a + x.v, 0);
+  const majShare = Math.round((maj.v / shown) * 100);   // للتقسيم المرئي
+  const majPct = Math.round((maj.v / total) * 100);     // للنسبة المعروضة
+  const restTotal = rest.reduce((a, x) => a + x.v, 0) || 1;
+  return `<div class="fig-tree" style="min-height:${h}px" role="${list.some((x) => x.href) ? 'group' : 'img'}" aria-label="${esc(list.map((x) => `${x.label} ${Math.round((x.v / total) * 100)}%`).join(' · '))}">
+    ${maj.href ? `<a class="maj" href="${esc(maj.href)}"` : '<div class="maj"'} style="flex:${majShare} 1 0;background:${esc(maj.color || 'var(--brand)')}" title="${esc(maj.label)}: ${esc(maj.sub || '')}"><span class="nm">${esc(maj.label)}</span><span class="vv tnum">${esc(maj.sub || '')} (${majPct}%)</span>${maj.href ? '</a>' : '</div>'}
+    ${rest.length ? `<div class="rest" style="flex:${100 - majShare} 1 0">${rest.map((x) => `${x.href ? `<a class="cellt" href="${esc(x.href)}"` : '<div class="cellt"'} style="flex:${Math.max(8, Math.round((x.v / restTotal) * 100))} 1 0;background:${esc(x.color || 'var(--brand2)')}" title="${esc(x.label)}: ${esc(x.sub || '')}"><span class="nm">${esc(x.label)}</span><span class="vv tnum">${esc(x.sub || '')} (${Math.round((x.v / total) * 100)}%)</span>${x.href ? '</a>' : '</div>'}`).join('')}</div>` : ''}
+  </div>`;
+}
+
+// نصف عدّاد (بطاقة الإشغال على نموذج المالك): قوسُ 180° يمتلئ حتى سقف المحور الممرَّر من
+// قواعد التسكين — والنسبة الحقيقية مطبوعة نصاً ولو ثُبّت القوس عند سقفه. لا يمسّ gauge()
+// المستهلَك في الرئيسة ولوحة الرئيس.
+export function figGaugeHalf(pct, { size = 120, sw = 12, color = 'var(--brand)', max = 100, sub = '', ariaLabel = '' } = {}) {
+  const shown = Math.round(Number(pct) || 0);
+  const frac = Math.min(1, Math.max(0, shown / Math.max(1, max)));
+  const r = (size - sw) / 2, half = Math.PI * r;
+  const hgt = size / 2 + sw / 2 + 4;
+  return `<span class="gh-w" style="width:${size}px;height:${hgt}px" role="img"${ariaLabel ? ` aria-label="${esc(ariaLabel)}"` : ' aria-hidden="true"'}>
+    <svg width="${size}" height="${hgt}" viewBox="0 0 ${size} ${hgt}">
+      <path d="M ${sw / 2} ${size / 2 + sw / 2} A ${r} ${r} 0 0 1 ${size - sw / 2} ${size / 2 + sw / 2}" fill="none" stroke="var(--track)" stroke-width="${sw}" stroke-linecap="round"/>
+      ${frac > 0 ? `<path class="ring-fill" d="M ${sw / 2} ${size / 2 + sw / 2} A ${r} ${r} 0 0 1 ${size - sw / 2} ${size / 2 + sw / 2}" fill="none" stroke="${esc(color)}" stroke-width="${sw}" stroke-linecap="round" stroke-dasharray="${(half * frac).toFixed(1)} ${(half + 20).toFixed(1)}" style="--c0:${(half * frac).toFixed(1)}"/>` : ''}
+    </svg><span class="gh-v tnum">${shown}%${sub ? `<small>${esc(sub)}</small>` : ''}</span></span>`;
+}
+
 export function gauge(pct, opts = {}) {
   const size = opts.size || 128, sw = opts.sw || 12, r = (size - sw) / 2, C = 2 * Math.PI * r;
   const p = Math.max(0, Math.min(100, pct || 0));

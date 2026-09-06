@@ -1,0 +1,42 @@
+// ── قراءة صفّ الفرصة: بابٌ واحد يعرف الإدارات المشاركة ───────────────────────
+//
+// «ممكن الفرصة تتسكّن على أكثر من إدارة» — والمشاركة تسكن جدول `opportunity_department`، لا
+// عمودَ الصفّ. وفحصُ الصلاحية (`can`) يقرأ الهدف الذي يُناوَل له فقط: صفٌّ يُناوَل بعموده
+// وحده يُحكَم عليه بإدارته المسؤولة وحدها، فتُرَدّ مديرةُ إدارةٍ **تشارك** في الفرصة عن صفٍّ
+// تعرضه قائمتُها — وهو بعينه تناقض «يُعرَض ولا يُفتح» الذي رآه المالك، من بابٍ آخر.
+//
+// فالحكم هنا على درجتين، والثانية لا تُدفع كلفتها إلا عند الحاجة: يُفحص الصفّ كما هو (وهو ما
+// يمرّ لأغلب القرّاء — المالك والقطاع والإدارة المسؤولة)، فإن رُدّ حُمِّلت المشاركات وأُعيد
+// الفحص بها. ولا يُحمَّل الجدول لكل قراءةٍ سلفاً: استعلامٌ إضافي على كل فتح صفحةٍ ثمنُ حالةٍ
+// نادرة.
+//
+// والفعل وسيطٌ مقصود (قراءةً كان الافتراض): فريق الفرصة ومستنداتها يفحصان «تعديلاً» بنفس
+// الدرجتين — والمشاركة تفتح التعديل منذ ADR-0006 (قائمة سماح read|update في المحرّك)، ومسار
+// التحميل وإعادة الفحص واحد، ونسخُه في كل خدمة يجعلها تختلف يوم يتغيّر أحدها.
+//
+// ── عقدُ الباب (ADR-0006) ────────────────────────────────────────────────────
+// حين تنجح الدرجةُ الثانية يعود الصفُّ **محمَّلاً** بمصفوفة `partner_department_ids`:
+// وجودُها على الصفّ العائد ⇔ الوصولُ جاء بالشراكة/القيادة لا بعمود الصفّ. هذه العلامة
+// الواحدة هي ما يبني عليه `updateOpportunity` حجزَ حقول النسبة، و`opportunityDetail` رايةَ
+// `canEditAttribution`، وفحوصُ ما بعد الكتابة قراءةَ الصفّ بلا ردٍّ كاذب «خرجت عن نطاقك».
+import { all, get } from '../../core/db/index.js';
+import { can } from '../../core/rbac/index.js';
+import { forbidden, notFound } from '../../core/http/errors.js';
+
+// `deniedMsg` اختياري: رسالة المنع الخاصة بالمسار (مثل «إدارة فريق الفرصة تتطلب صلاحية تعديل
+// الفرصة») — فتوحيدُ الباب لا يمحو رسائلَ عربيةً كتبتها الخدمات لمستخدميها.
+export async function loadReadableOpportunity(user, oppId, action = 'read', deniedMsg) {
+  const row = await get('SELECT * FROM opportunity WHERE id = ? AND deleted_at IS NULL', [oppId]);
+  if (!row) throw notFound('الفرصة غير موجودة');
+  if (can(user, action, 'opportunity', row)) return row;
+  // الدرجة الثانية: المشاركات تُحمَّل على الهدف باسمٍ يعرفه المحرّك (`partner_department_ids`)
+  // ويُعاد السؤال نفسه — لا حكمٌ محلّي هنا، فالقرار يبقى في مكانه الواحد (rbac/index.js).
+  const partners = (await all(
+    'SELECT department_id FROM opportunity_department WHERE opportunity_id = ?', [oppId]
+  )).map((r) => r.department_id).filter(Boolean);
+  const enriched = { ...row, partner_department_ids: partners };
+  if (partners.length && can(user, action, 'opportunity', enriched)) {
+    return enriched;
+  }
+  throw forbidden(deniedMsg);
+}

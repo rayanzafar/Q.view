@@ -1,6 +1,7 @@
 // مركز البيانات — تصدير واستيراد سجلات العمل (الفرص، المشاريع، العملاء، الموظفون، التسكين، الإيراد).
 // الصفحة SSR بالكامل؛ معالج الاستيراد (رفع → مطابقة الأعمدة → معاينة → تأكيد) تقوده
 // /static/pages/imports.js عبر تفويض data-action — بلا أي onclick مضمّن.
+import { can } from '../../core/rbac/index.js';
 import { layout, pill } from '../layout.js';
 import { icon } from '../icons.js';
 import { G } from '../i18n/glossary.js';
@@ -109,6 +110,7 @@ export async function importsPage(user, opts = {}) {
 
   const importables = types.filter((t) => t.canImport);
   const body = `
+    ${can(user, 'read', 'revenue_line') ? '<div class="card" style="padding:1rem;margin-bottom:1rem"><b>تحقق من الإيراد قبل استخدامه في القرار</b><p>راجع الفترة والمصدر، ثم صحّح المخرج أو السطر اليدوي بمعاينة قبل الحفظ.</p><a class="btn" href="/app/revenue-review">مراجعة جودة الإيراد</a></div>' : ''}
     ${importables.length ? '' : `<div class="alert info" style="margin-bottom:1rem">${icon('check')} صلاحيتك الحالية تتيح التصدير فقط — الاستيراد يتطلب صلاحية إضافة أو تعديل على النوع.</div>`}
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:.8rem;margin-bottom:1.2rem">
       ${typeCards || `<div class="empty-state">${icon('upload')}<div class="t">لا أنواع متاحة</div><div class="s">لا تملك صلاحية تصدير أو استيراد أي نوع من البيانات بعد.</div></div>`}

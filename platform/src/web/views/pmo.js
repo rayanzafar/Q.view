@@ -4,15 +4,34 @@ import { icon } from '../icons.js';
 import { fmtSar } from '../../core/util/ids.js';
 import { all, get } from '../../core/db/index.js';
 import { projectKpis } from '../../core/reports/metrics.js';
-import { listProjects, nextMilestones } from '../../modules/pmo/projects.js';
-import { projectGovernance } from '../../modules/pmo/governance.js';
-import { myTasks } from '../../modules/pmo/tasks.js';
+import { listProjects, nextMilestones, projectKind, projectRevenue,
+  projectDocuments, projectUpdates, projectDepartments, loadReadableProject } from '../../modules/pmo/projects.js';
+import { projectProgress, portfolioProgress, effectiveProgress } from '../../modules/pmo/progress.js';
+import { projectTeamLoad, staffingCandidates } from '../../modules/pmo/capacity.js';
+import { projectGovernance, DELIVERABLE_MANUAL_STATUSES } from '../../modules/pmo/governance.js';
+import { projectMoney } from '../../modules/finance/finance.js';
+import { EXPENSE_STATUS_AR, OPEN_STATUSES, SETTLED_STATUSES } from '../../modules/finance/expenses.js';
+import { myTasks, teamTasks, personDossier } from '../../modules/pmo/tasks.js';
+import { approvedTaskSql, isPendingTask, linkedTaskApproval } from '../../modules/pmo/task-approval.js';
 import { listViews } from '../../modules/views/views.js';
-import { canSeeSensitive, redact, can } from '../../core/rbac/index.js';
-import { G } from '../i18n/glossary.js';
-import { sarShort, esc, bar, statMini, noticeCard } from './_shared.js';
-import { MONTHS_AR, MONTHS_EN3, currentMonthIndex } from '../../core/i18n/time.js';
+import { canSeeSensitive, redact, can, effectiveScope } from '../../core/rbac/index.js';
+import { departmentScope, departmentInSql } from '../../core/rbac/departments.js';
+import { DELIVERY_SECTOR_SQL } from '../../core/org/kind.js';
+import { pickablePeople, seesDemoAccounts } from '../../modules/org/people.js';
+import { G, projectKindLabel, projectKindTip } from '../i18n/glossary.js';
+import { sarShort, esc, bar, statMini, noticeCard, workLens, WORK_LENS_CSS, searchPicker, PICKER_CSS } from './_shared.js';
+import { notesPage } from './notes.js';
+import { myNotes } from '../../modules/pmo/notes.js';
+import { MONTHS_AR, MONTHS_EN3, currentMonthIndex, monthLabelDual } from '../../core/i18n/time.js';
 import { countAr, dayWord } from '../../core/i18n/plural.js';
+// ── مركز العمل اليومي (صفحة المهام) — الوارد الخاص بها وحدها، مفصولاً كي لا يختلط بوارد المحفظة ──
+import { completionTrend, addDays, teamTasksAccess, teamWorkload, isPersonalTask } from '../../modules/pmo/tasks.js';
+import { myTaskLoad, TASK_LOAD_AR, TASK_LOAD_BASIS_AR, TASK_LOAD_NOT_RATING_AR } from '../../modules/pmo/task-load.js';
+import { capacityColor } from '../../core/i18n/thresholds.js';
+import { listOpportunities } from '../../modules/crm/opportunities.js';
+import { nowDot } from '../../core/i18n/time.js';
+import { WEEKDAYS_AR, weekdayLabel, workKindLabel, deliverableStatusLabel,
+  DELIVERABLE_NEXT, TASK_CATEGORY_AR, taskCategoryLabel } from '../i18n/glossary.js';
 
 // لون لكل حالة (هوية EVC الهادئة: خط لوني رفيع + خلفية بتشبّع ~12٪). الحالة تُلوِّن أعمدة
 // الكانبان وحدّ البطاقة الأيسر؛ الصحة (RAG) تبقى في الوسم وشريط الإنجاز. الملغى رماديّ
@@ -28,6 +47,59 @@ const STATUS_UI = Object.fromEntries(PRJ_STATUS.map((s) => [s.id, s]));
 const statusUi = (id) => STATUS_UI[id] || { id, color: '#64748b', tint: '#e9edf2', ink: '#475569' };
 // ترتيب شرائح المرشّح كما يقرأها المالك: العمل الجاري أولاً ثم المعلّق فالمكتمل فما لم يبدأ فالملغى.
 const STATUS_FILTER_ORDER = ['IN_PROGRESS', 'ON_HOLD', 'COMPLETED', 'NOT_STARTED', 'CANCELLED'];
+
+// ── ضابطُ حالة المشروع: قائمةٌ تُرى قائمةً، في الصفحة وفي القائمة معاً ─────────
+// «حالة المشروع إلى الآن ما حطّيتوها — أغيّر حالة المشروع مكتمل ولا معلّق ولا قيد التشغيل»
+// (قائدة قطاع الاستشارات، 2026-09-02). والضابط كان موجوداً في ترويسة المشروع فعلاً — بل
+// استعملته مرّتين في ٢٤ أغسطس — لكنه كان **يُقرأ وسماً**: حدٌّ شفاف، وحشوةُ شارةٍ، وبلا
+// عنوانٍ يسبقه ولا سهمٍ يقول «هنا تُختار». فالبلاغ صادق وإن كان الشيء قائماً: ما لا يُرى
+// أداةً ليس أداة.
+//
+// وموضعُ التنظيف الحقيقي هو **قائمة المشاريع** لا صفحةُ كل مشروع: المشاريع القديمة تُغلق
+// دفعةً واحدة بالمرور على الصفوف، وفتحُ صفحةٍ لكل مشروعٍ ثم العودة عملٌ لا يُنجَز. فالضابط
+// نفسه — نفس المسار ونفس التحقّق — صار في خانة الحالة على الصف والبطاقة، لمن يملك تعديل
+// **ذلك الصفّ بعينه** لا لمن يملك التعديل في الجملة.
+const PRJ_STATUS_ORDER = ['NOT_STARTED', 'IN_PROGRESS', 'ON_HOLD', 'COMPLETED', 'CANCELLED'];
+const PRJ_STATUS_ACTION = 'غيّر حالة المشروع';
+// أنماطٌ محليّة (لا تُضاف إلى نسق التصميم العام): حدٌّ بلون الحالة + سهمٌ خارج <option> +
+// حشوةٌ تفتح مكانه. اللون معنى لا زينة — هو لون الحالة نفسه في الكانبان والشرائح.
+const PRJ_STATUS_CSS = `<style>
+.prj-st{position:relative;display:inline-flex;align-items:center;vertical-align:middle}
+.prj-st > select{appearance:none;-webkit-appearance:none;-moz-appearance:none;font-family:inherit;font-size:11.5px;
+  font-weight:700;line-height:1.75;border-radius:999px;cursor:pointer;max-width:140px;
+  padding-block:.2rem;padding-inline-start:.6rem;padding-inline-end:1.45rem;
+  background:var(--_stb);color:var(--_sti);border:1px solid var(--_stl)}
+.prj-st > select:hover{filter:brightness(.97)}
+.prj-st > select:focus-visible{outline:2px solid var(--brand);outline-offset:1px}
+.prj-st > .prj-st-c{position:absolute;inset-inline-end:.5rem;font-size:9px;line-height:1;color:var(--_sti);pointer-events:none}
+.prj-st-lbl{font-size:11.5px;font-weight:700;color:var(--muted)}
+.prj-st-sm > select{font-size:11px;max-width:120px;padding-inline-start:.5rem;padding-inline-end:1.3rem}
+/* الإصبعُ ليست فأرة: القائمة تجلس داخل صفٍّ/بطاقةٍ كلُّها زرُّ فتحٍ للمشروع، فلمسةٌ تُخطئ
+   الهدفَ الصغير تفتح المشروع بدل أن تفتح الخيارات. ٤٠ بكسل حدُّ اللمس على الشاشتين. */
+@media (pointer:coarse){
+  .prj-st > select{min-height:40px;padding-block:.45rem}
+  .dlv-per{min-height:40px}
+}
+</style>`;
+// شارةُ الحالة لمن يقرأ ولا يعدّل — نصٌّ واحد للجدول والبطاقة والترويسة معاً.
+const statusPill = (st) => pill(tr(st || 'IN_PROGRESS'),
+  st === 'COMPLETED' ? 'green' : st === 'ON_HOLD' ? 'amber' : st === 'CANCELLED' ? 'slate' : 'blue');
+// حالةٌ مخزَّنة خارج الخمس (مثل «مُخطَّط» من الترحيل) تُضاف إلى القائمة بدل أن تُبتلع صامتة:
+// قائمةٌ لا تحوي القيمة المحفوظة تعرض أول خياراتها فيقرأ المستخدم حالةً غير حالة مشروعه.
+function statusSelect(p, opts = {}) {
+  const cur = p.status || 'IN_PROGRESS';
+  const list = PRJ_STATUS_ORDER.includes(cur) ? PRJ_STATUS_ORDER : [cur, ...PRJ_STATUS_ORDER];
+  const ui = statusUi(cur);
+  const title = opts.tip ? `${PRJ_STATUS_ACTION} — ${opts.tip}` : PRJ_STATUS_ACTION;
+  // في القائمة تتكرّر القائمةُ على كل صفّ: اسمٌ واحد مكرّر يجعل قارئ الشاشة يسمع «غيّر حالة
+  // المشروع» عشرين مرة بلا مشروع. اسمُ المشروع يدخل التسمية هنا وحده — في الترويسة هو العنوان.
+  const label = opts.inList ? `${PRJ_STATUS_ACTION} «${p.name_ar || ''}»` : PRJ_STATUS_ACTION;
+  return `<span class="prj-st${opts.compact ? ' prj-st-sm' : ''}" draggable="false" style="--_stl:${ui.color};--_sti:${ui.ink};--_stb:${ui.tint}">`
+    + `<select data-action-change="prj-status-sel" data-id="${esc(p.id)}" data-prev="${esc(cur)}"${opts.inList ? ' data-list="1"' : ''}`
+    + ` aria-label="${esc(label)}" title="${esc(title)}">`
+    + list.map((v) => `<option value="${esc(v)}"${cur === v ? ' selected' : ''}>${esc(tr(v))}</option>`).join('')
+    + `</select><span class="prj-st-c" aria-hidden="true">▾</span></span>`;
+}
 const ragHex = { GREEN: '#059669', AMBER: '#d97706', RED: '#dc2626' };
 // حالة الصحة بمعناها لا باسم لونها التقني — «أحمر» جرجون؛ «حرج» قرار. مصدر واحد يُستخدم في
 // الكانبان والجدول وصفحة التفاصيل معاً (كانت صفحة التفاصيل تعرض اسم اللون بدل المعنى).
@@ -47,7 +119,7 @@ const HEALTH = [
 function healthOf(p, dev, lateDays) {
   if (p.rag === 'RED' || (dev != null && dev > 15) || (lateDays != null && lateDays > 30)) return HEALTH[0];
   if (p.rag === 'AMBER' || (dev != null && dev > 10) || lateDays != null || p.status === 'ON_HOLD') return HEALTH[1];
-  return HEALTH[2];
+  return p.rag === 'GREEN' ? HEALTH[2] : { k: 'unknown', label: 'غير مقيّم', color: '#64748b', rank: 3 };
 }
 
 // ── الشريط المزدوج (صرف٪ فوقه إنجاز٪) — مسار واحد ~110px: شبح الصرف بنفسجي شفاف تحت شريط
@@ -78,10 +150,15 @@ export async function projectsPage(user, opts = {}) {
   const canCost = canSeeSensitive(user, 'cost');
   const canEdit = can(user, 'update', 'project');
   const clients = Object.fromEntries((await all('SELECT id,name_ar FROM client')).map((c) => [c.id, c.name_ar]));
+  // جدول أسماء لا قائمة اختيار: يُستعمل لتسمية قطاع المشروع حين لا عميل له. يشمل كل الوحدات
+  // عمداً (حتى المحذوفة وغير النشطة، كما كان) — لأن مشروعاً مسجَّلاً على وحدة مساندة يبقى ظاهراً
+  // في الجدول، وترشيح هذا الجدول لا يمنع ظهوره بل يمحو اسمه فقط فيقرأ المسؤول سطراً بلا نسبة.
   const sectors = Object.fromEntries((await all('SELECT id,name_ar FROM sector')).map((s) => [s.id, s.name_ar]));
   const ragTone = { GREEN: 'green', AMBER: 'amber', RED: 'red' };
   // Owner lens: filter the board by sector (?sector=). Company-scope only; others already scoped.
-  const allSec = await all('SELECT id, name_ar, color FROM sector WHERE active = 1 AND deleted_at IS NULL ORDER BY sort_order');
+  // شرائح القطاع = قطاعات التسليم وحدها (هي «محوّل قطاع» بكل معنى الكلمة).
+  const allSec = await all(`SELECT id, name_ar, color FROM sector
+     WHERE active = 1 AND deleted_at IS NULL AND ${DELIVERY_SECTOR_SQL} ORDER BY sort_order`);
   const secFilter = user.scope === 'company' && opts.sector && allSec.some((s) => s.id === opts.sector) ? opts.sector : null;
   if (secFilter) rows = rows.filter((p) => p.sector_id === secFilter);
   // ── مرشّح الحالة (?status=): العدّ يُحسب قبل التصفية كي تُظهر كل شريحة عددَها ضمن نطاق
@@ -91,30 +168,71 @@ export async function projectsPage(user, opts = {}) {
   const totalCount = rows.length;
   const statusFilter = STATUS_FILTER_ORDER.includes(opts.status) ? opts.status : null;
   if (statusFilter) rows = rows.filter((p) => normStatus(p) === statusFilter);
+  // ── بوابة الصفّ لا بوابة الشاشة ──────────────────────────────────────────────
+  // `canEdit` يقول «يملك المنح في الجملة»، وهذا يقول «يملكه على هذا المشروع بعينه» — فالضابط
+  // لا يُرسَم على صفٍّ سيردّه الخادم. ومشروعُ الترحيل (بلا مالك ولا إدارة) يُحكَم بقطاعه، وهو
+  // ما يفتحه لقائد قطاعه تحديداً — وهي الحالة التي يُنظَّف فيها القديم فعلاً.
+  //
+  // وبدرجتَي الباب نفسه الذي يحكم الكتابة (pmo/project-access.js): الصفُّ كما هو أولاً، فإن
+  // رُدَّ حُمِّلت إداراتُه المشاركة وأُعيد السؤال بها. وإلا رأت مديرةُ إدارةٍ **مشارِكة** شارةً
+  // جامدة في القائمة وقائمةً في ترويسة المشروع نفسه، والخادم يقبل كتابتها في الحالتين.
+  // استعلامٌ واحد لكل ٢٠٠ صفّ مردود، لا استعلامٌ لكل صفّ.
+  const rowTarget = (p, partners) => ({ ...p, project_id: p.id, ...(partners ? { partner_department_ids: partners } : {}) });
+  const directEdit = new Map(rows.map((p) => [p.id, can(user, 'update', 'project', rowTarget(p))]));
+  const partnersOf = {};
+  const needPartners = rows.filter((p) => !directEdit.get(p.id)).map((p) => p.id);
+  for (let i = 0; i < needPartners.length; i += 200) {
+    const chunk = needPartners.slice(i, i + 200);
+    for (const r of await all(
+      `SELECT project_id, department_id FROM project_department WHERE project_id IN (${chunk.map(() => '?').join(',')})`, chunk)) {
+      if (r.department_id) (partnersOf[r.project_id] ||= []).push(r.department_id);
+    }
+  }
+  const canEditRow = (p) => directEdit.get(p.id)
+    || (partnersOf[p.id]?.length ? can(user, 'update', 'project', rowTarget(p, partnersOf[p.id])) : false);
   const savedViews = await listViews(user, 'projects');
   const userName = Object.fromEntries((await all('SELECT id, name_ar, username FROM app_user')).map((u) => [u.id, u.name_ar || u.username]));
   // The legacy source has progress_pct=0 for 37/43 projects and no contract value for 20/43 —
   // present the truth USEFULLY: derive progress from deliverable states (amount-weighted) when the
   // stored figure is 0, and fall back through PO → budget → realized revenue for the money figure.
+  // المُنجَز يُقرأ من الحالة، والمفوتر من ختمه — مصدران مستقلان بعد ترحيلة ٠١٧. وكان كلاهما
+  // يُقرأ من خانة واحدة، فيُحتسب المخرَج المفوتر منجَزاً بحكم فوترته وحدها.
   const dlv = await all(`SELECT project_id, COUNT(*) n, COALESCE(SUM(amount_halalas),0) tot,
-      SUM(CASE WHEN status IN ('DELIVERED','ACCEPTED','INVOICED','PAID') THEN 1 ELSE 0 END) dn,
-      SUM(CASE WHEN status IN ('INVOICED','PAID') THEN 1 ELSE 0 END) inv,
-      COALESCE(SUM(CASE WHEN status IN ('DELIVERED','ACCEPTED','INVOICED','PAID') THEN amount_halalas ELSE 0 END),0) done
+      SUM(CASE WHEN status IN ('DELIVERED','ACCEPTED') THEN 1 ELSE 0 END) dn,
+      SUM(CASE WHEN invoiced_at IS NOT NULL THEN 1 ELSE 0 END) inv,
+      COALESCE(SUM(CASE WHEN status IN ('DELIVERED','ACCEPTED') THEN amount_halalas ELSE 0 END),0) done
       FROM deliverable WHERE deleted_at IS NULL GROUP BY project_id`);
   const dlvBy = Object.fromEntries(dlv.map((d) => [d.project_id, d]));
-  const dprog = Object.fromEntries(dlv.map((d) => [d.project_id,
-    d.tot > 0 ? Math.round((d.done / d.tot) * 100) : (d.n ? Math.round((d.dn / d.n) * 100) : null)]));
+  // ── النسبة من مصدرها الواحد لا من استعلامٍ ثانٍ ────────────────────────────────
+  // كانت اللوحة تشتقّ نسبتها هنا بنفسها: مجموع مبالغ المخرجات **المسلَّمة أو المعتمَدة** على
+  // مجموع مبالغها. وصفحةُ المشروع تشتقّها من `projectProgress`: **المعتمَدة وحدها** بأوزانها
+  // المكتوبة إن كُتبت. فرقمان مختلفان لمشروعٍ واحد على شاشتين — وهو بالضبط الخلافُ الذي بُني
+  // ملف `progress.js` لإنهائه، ولم تعتمده اللوحة قط. الآن كلاهما من الدالة نفسها.
+  const portfolio = await portfolioProgress(rows.map((p) => p.id));
+  const dprog = Object.fromEntries([...portfolio].map(([pid, v]) => [pid, v.delivery.acceptedPct]));
+  // والقاعدة تُطبَّق من مصدرها لا تُكتب هنا ثانيةً — `effectiveProgress` هي الحكم الوحيد.
+  const effMap = await effectiveProgress(rows);
+  // نفس ترتيب الأولوية في `projectProgress` حرفاً بحرف: **المخرجات تحكم متى وُجدت**، والرقم
+  // المسجَّل مصدرٌ لمشروعٍ بلا مخرجات وحده. وكان الترتيب مقلوباً هنا وهناك معاً، فمشروعٌ اعتُمدت
+  // مخرجاته كلها بقي يُقرأ بنسبته المستوردة من المنصة القديمة — في اللوحة وفي صفحته سواء.
+  // وقاعدتان في موضعين تفترقان مع أول تعديل، فالقاعدة واحدة والموضعان يتبعانها.
   const effProg = (p) => {
-    const own = Number(p.progress_pct) || 0;
-    if (own > 0) return { v: own, derived: false };
-    const dv = p.status === 'COMPLETED' ? 100 : dprog[p.id];
-    return dv != null ? { v: dv, derived: true } : { v: 0, derived: false };
+    const e = effMap.get(p.id) || { pct: 0, source: 'stored' };
+    return { v: e.pct, derived: e.source === 'deliverables' };
   };
+  // الإيراد المحقق لكل مشروع — من بنود الإيراد باستعلامين مجمّعين لا استعلام لكل صف: كل ما
+  // سُجِّل للمشروع (عمود «الإيراد المحقق» وأساس القيمة الأخير)، وإيراد السنة المعروضة وحدها
+  // (بطاقة الملخص). خانة الإيراد على صف المشروع لا يكتبها شيء في المنتج — رقم جامد من الترحيل
+  // لا يتحرّك مهما سُجِّل إيراد جديد — فلا تُقرأ هنا بعد اليوم.
+  const revYear = year || nowY;
+  const prjIds = rows.map((p) => p.id);
+  const revAllBy = Object.fromEntries((await projectRevenue(prjIds)).map((r) => [r.project_id, r.revenue_halalas]));
+  const revYearBy = Object.fromEntries((await projectRevenue(prjIds, revYear)).map((r) => [r.project_id, r.revenue_halalas]));
   const bestVal = (p) =>
     p.contract_value_halalas ? { v: p.contract_value_halalas, l: 'عقد' } :
     p.po_value_halalas ? { v: p.po_value_halalas, l: 'أمر شراء' } :
     p.budget_halalas ? { v: p.budget_halalas, l: 'ميزانية' } :
-    p.revenue_halalas ? { v: p.revenue_halalas, l: 'إيراد محقق' } : { v: 0, l: null };
+    revAllBy[p.id] ? { v: revAllBy[p.id], l: 'إيراد محقق' } : { v: 0, l: null };
   // المفوتر لكل مشروع (استعلام مجمّع واحد) — أساس بديل لقياس الصرف عند غياب الميزانية،
   // بنفس سلّم صفحة تفاصيل المشروع: الصرف الفعلي من الميزانية ← المفوتر من قيمة العقد.
   const invBy = Object.fromEntries((await all(`SELECT project_id, COALESCE(SUM(amount_halalas),0) v FROM invoice
@@ -128,11 +246,6 @@ export async function projectsPage(user, opts = {}) {
     if (headline > 0) return { v: Math.round((invBy[p.id] || 0) / headline * 100), basis: 'المفوتر من قيمة المشروع' };
     return null;
   };
-  // إيراد السنة لكل مشروع (استعلام مجمّع واحد) — لبطاقة «الإيراد المحقق للسنة»
-  const revYear = year || nowY;
-  const revYearBy = Object.fromEntries((await all(`SELECT project_id, COALESCE(SUM(amount_halalas),0) v
-      FROM revenue_line WHERE year = ? AND project_id IS NOT NULL GROUP BY project_id`, [revYear]))
-    .map((r) => [r.project_id, r.v]));
   const nmBy = Object.fromEntries((await nextMilestones(rows.map((p) => p.id))).map((m) => [m.project_id, m]));
   // الفرصة المصدر: العمود project.source_opp_id مفتاح حقيقي في المخطط (يُملأ من الترحيل). استعلام
   // مجمّع واحد لعناوين الفرص التي انبثقت منها مشاريع هذا العرض — نُظهر الرابط فقط حين توجد الفرصة.
@@ -169,17 +282,17 @@ export async function projectsPage(user, opts = {}) {
   // ── (1) شرائح القطاع + شرائح السنوات + البحث ──
   const secChips = user.scope === 'company' ? `<div class="chips" style="margin-bottom:.5rem"><span class="lbl">القطاع:</span>
     <a href="${qs({ sector: null })}" class="chip ${secFilter ? '' : 'on'}">الكل</a>
-    ${allSec.map((s) => `<a href="${qs({ sector: s.id })}" class="chip ${secFilter === s.id ? 'on' : ''}"><span class="dot" style="background:${s.color || 'var(--brand)'}"></span>${esc(s.name_ar)}</a>`).join('')}
+    ${allSec.map((s) => `<a href="${qs({ sector: s.id })}" class="chip ${secFilter === s.id ? 'on' : ''}"><span class="dot" style="background:${esc(s.color || 'var(--brand)')}"></span>${esc(s.name_ar)}</a>`).join('')}
   </div>` : '';
   const yearPills = `<div class="chips" style="margin-bottom:.6rem"><span class="lbl">السنة:</span>
     <a href="${qs({ year: null })}" class="chip ${year ? '' : 'on'}">كل السنوات</a>
     ${yearsAvail.map((y) => `<a href="${qs({ year: y })}" class="chip ${year === y ? 'on' : ''}"><span class="tnum">${y}</span></a>`).join('')}
   </div>`;
   // ── شرائح مرشّح الحالة (?status=) — كل شريحة تحمل عددها؛ تُركّب مع القطاع والسنة والبحث ──
-  const statusChipN = (on, n) => `<span class="tnum" style="font-weight:800;color:${on ? 'rgba(255,255,255,.85)' : 'var(--faint)'}">${n}</span>`;
+  const statusChipN = (on, n, key) => `<span class="tnum" data-status-count="${key}" style="font-weight:800;color:${on ? 'rgba(255,255,255,.85)' : 'var(--faint)'}">${n}</span>`;
   const statusChips = `<div class="chips" style="margin-bottom:.6rem"><span class="lbl">الحالة:</span>
-    <a href="${qs({ status: null })}" class="chip ${statusFilter ? '' : 'on'}">الكل ${statusChipN(!statusFilter, totalCount)}</a>
-    ${STATUS_FILTER_ORDER.map((s) => { const on = statusFilter === s; return `<a href="${qs({ status: s })}" class="chip ${on ? 'on' : ''}"><span class="dot" style="background:${statusUi(s).color}"></span>${tr(s)} ${statusChipN(on, statusCount[s] || 0)}</a>`; }).join('')}
+    <a href="${qs({ status: null })}" class="chip ${statusFilter ? '' : 'on'}">الكل ${statusChipN(!statusFilter, totalCount, 'all')}</a>
+    ${STATUS_FILTER_ORDER.map((s) => { const on = statusFilter === s; return `<a href="${qs({ status: s })}" class="chip ${on ? 'on' : ''}"><span class="dot" style="background:${statusUi(s).color}"></span>${tr(s)} ${statusChipN(on, statusCount[s] || 0, s)}</a>`; }).join('')}
   </div>`;
 
   // ── (2) «يحتاج انتباهك الآن» — فقط: أحمر / صرف يسبق الإنجاز بـ10+ نقاط / تجاوز الانتهاء ──
@@ -242,7 +355,7 @@ export async function projectsPage(user, opts = {}) {
   const rowOf = (p) => {
     const { prog, burn, dev, lateDays, health } = derived[p.id];
     const bv = bestVal(p);
-    const rev = p.revenue_halalas || 0;
+    const rev = revAllBy[p.id] || 0;
     const d = dlvBy[p.id];
     const nm = nmBy[p.id];
     const pmName = p.pm_name || userName[p.owner_user_id] || '';
@@ -267,7 +380,9 @@ export async function projectsPage(user, opts = {}) {
         <a href="/app/project/${p.id}" title="${esc(p.name_ar)}" style="font-size:12.5px;font-weight:700;color:var(--ink2);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.name_ar)}</a>
         <div style="font-size:10.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(cl) || '—'}</div>
         ${srcOppTitle ? `<a href="/app/opportunity/${esc(p.source_opp_id)}" title="نشأ من الفرصة: ${esc(srcOppTitle)}" style="display:inline-flex;align-items:center;gap:.22rem;margin-top:.2rem;font-size:9.5px;font-weight:800;color:var(--brand2);background:#f3eef7;border-radius:6px;padding:.08rem .34rem;line-height:1.5;white-space:nowrap">${oppGlyph}<span>من فرصة</span></a>` : ''}</div></td>
-      <td data-label="الحالة" style="padding:.5rem .55rem;text-align:center">${pill(tr(p.status), p.status === 'COMPLETED' ? 'green' : p.status === 'ON_HOLD' ? 'amber' : p.status === 'CANCELLED' ? 'slate' : 'blue')}</td>
+      <td data-label="الحالة" style="padding:.5rem .55rem;text-align:center">${canEditRow(p)
+        ? statusSelect(p, { compact: true, inList: true, tip: `«${p.name_ar}»: الإغلاق قرارُك، ولا يتم من تلقاء نفسه` })
+        : statusPill(p.status)}</td>
       <td data-label="الصحة" style="padding:.5rem .55rem;white-space:nowrap" data-v="${health.rank}"><span style="display:inline-flex;align-items:center;gap:.35rem;font-size:12px;font-weight:700;color:${health.color}"><span style="width:9px;height:9px;border-radius:50%;background:${health.color};flex:none"></span>${health.label}</span></td>
       <td data-label="${G.spendPct}·${G.progressPct}" class="rtbl-hm" style="padding:.5rem .55rem" data-v="${prog.v}"><div style="display:flex;align-items:center;gap:.2rem">${twinBar(canCost ? (burn ? burn.v : null) : null, prog.v, twinTip)}${prog.derived ? '<span style="color:var(--faint);font-size:9.5px">⁎</span>' : ''}</div></td>
       <td data-label="المدة" class="rtbl-hm" style="padding:.5rem .55rem;font-size:11.5px;color:var(--muted)" data-v="${lateDays != null ? 100000 + lateDays : (ageMonths ?? -1)}">${durHtml}</td>
@@ -315,7 +430,10 @@ export async function projectsPage(user, opts = {}) {
     return `<div class="kcard" ${dnd} data-id="${p.id}" data-sector="${p.sector_id || ''}" data-hay="${esc(hay)}" style="--_c:${ui.color};cursor:pointer" onclick="Sanad.projOpen('${p.id}')">
       <div class="kt">${esc(p.name_ar)}</div>
       <div class="km">${cl ? `<span style="display:inline-flex;align-items:center;gap:.25rem">${icon('building')}${esc(cl)}</span>` : ''}
-        ${p.rag ? pill(RAG_LABEL[p.rag] || RAG_LABEL.GREEN, ragTone[p.rag] || 'slate') : ''}</div>
+        ${pill(RAG_LABEL[p.rag] || 'غير مقيّم', ragTone[p.rag] || 'slate')}</div>
+      ${/* عمودُ اللوح يقول الحالة لمن يقرأ؛ ومن يملك تغييرها يجدها هنا بلا سحبٍ ولا فأرة —
+           السحب وحده كان الطريق، وهو لا يعمل باللمس ولا بلوحة المفاتيح. */''}
+      ${canEditRow(p) ? `<div class="km">${statusSelect(p, { compact: true, inList: true, tip: 'الإغلاق قرارُك، ولا يتم من تلقاء نفسه' })}</div>` : ''}
       <div class="km">${(() => { const bv = bestVal(p); const e = effProg(p); return `
         ${bv.l ? `<span class="kv tnum">${fmtSar(bv.v)}</span><span style="font-size:9.5px;font-weight:700;color:var(--faint);background:#eef1f7;border-radius:6px;padding:.1rem .35rem">${bv.l}</span>`
                : '<span style="color:var(--faint);font-size:11px">بلا قيمة مسجلة</span>'}
@@ -352,7 +470,10 @@ export async function projectsPage(user, opts = {}) {
   </div></div>`;
 
   const content = !rows.length ? emptyView : (view === 'kanban' ? kanbanView : tableView);
+  // قائمة القطاعات المُسلَّمة للمتصفّح تملأ خانة «القطاع» في نافذة «مشروع جديد» — قطاعات تسليم
+  // وحدها: المشروع عمل يُنسب إلى قطاع له هدف وإيراد، لا إلى وحدة مساندة تُعير أشخاصها للمشاريع.
   const body = `
+    ${PRJ_STATUS_CSS}
     ${secChips}
     ${yearPills}
     ${statusChips}
@@ -368,192 +489,1672 @@ export async function projectsPage(user, opts = {}) {
     ${viewsBar}
     ${rows.length ? `<div style="font-size:10.5px;color:var(--faint);margin:0 0 .6rem">⁎ نسبة إنجاز محسوبة من حالة المخرجات — المنصة السابقة بلا نسبة مسجلة · شارة القيمة توضح أساسها (عقد / أمر شراء / ميزانية / إيراد محقق)</div>` : ''}
     ${content}
-    <script>window.__SANAD=Object.assign(window.__SANAD||{},{sectors:${JSON.stringify(await all('SELECT id,name_ar FROM sector WHERE active=1 ORDER BY name_ar')).replace(/</g, '\\u003c')},canEditPrj:${canEdit},viewsPage:'projects',prjSectorLocked:${JSON.stringify(user.scope === 'company' ? null : user.sector_id)}});</script>`;
+    <script>window.__SANAD=Object.assign(window.__SANAD||{},{sectors:${JSON.stringify(await all(`SELECT id,name_ar FROM sector WHERE active=1 AND ${DELIVERY_SECTOR_SQL} ORDER BY name_ar`)).replace(/</g, '\\u003c')},canEditPrj:${canEdit},viewsPage:'projects',prjSectorLocked:${JSON.stringify(user.scope === 'company' ? null : user.sector_id)},prjStatusUi:${JSON.stringify(STATUS_UI).replace(/</g, '\\u003c')},prjStatusFilter:${JSON.stringify(statusFilter || '')}});</script>`;
   return layout({ user, active: 'projects', title: 'المشاريع', subtitle: `المحفظة · ${rows.length} مشروع${statusFilter ? ` · ${tr(statusFilter)}` : ''}${year ? ` · سنة ${year}` : ''}`,
-    body, year: year || undefined, scripts: ['/static/pages/projects.js'] });
+    body, year: year || undefined, scripts: ['/static/pages/project-status.js', '/static/pages/projects.js'] });
 }
 
-// صفحة «مهامي» — طابور عمل شخصي مرتّب حسب الإلحاح (متأخرة → اليوم → الأسبوع → لاحقاً → مكتملة)
-// لا جدول مسطّح: كل قسم يظهر فقط إن كان فيه مهام، وكل مهمة صف نظيف بزر إنجاز فوري وسياق
-// المشروع/الفرصة وموعد نسبي («متأخرة ٣ أيام» / «اليوم» / «غداً»). التفاعل عبر tasks.js (تفويض).
-export async function tasksPage(user) {
-  const rows = await myTasks(user);
+// ── مركز العمل اليومي («مهامي») ───────────────────────────────────────────────
+// أُعيد بناء الشاشة كاملة بعد حكم المالك على سابقتها: قائمة مسطّحة بلا مرشّح واحد، ولا لوح،
+// ولا تقويم، و«مهام فريقي» مطويّة في أسفل الصفحة. المرجع الكامل لما بُني ولماذا في
+// docs/benchmarks.md (جولة 2026-07-27) — وهذه خلاصته التنفيذية:
+//   • **اليوم منتهٍ**: العرض الافتراضي نافذة اليوم (متأخر + مستحق اليوم + ما بدأتَه أو تعطّل)،
+//     وما بعدها عدّادات مضغوطة قابلة للنقر لا قائمة لا نهائية تُلقى على العين (تدرّج الهدف).
+//   • **التقدّم مرئي بأرقام حقيقية**: «أنجزت N من M اليوم» من `completed_at` المسجَّل، وأثر
+//     سبعة أيام من العدّ الفعلي. لا نقاط ولا سلاسل ولا أوسمة — قرار صريح مُوثَّق.
+//   • **العائق كيان أول**: يُكتب ويُوجَّه ويُعدّ، لا صف أحمر يُتجاوز بالتمرير (مبدأ التقدّم:
+//     رفعُ العوائق يسبق كل مكافأة).
+//   • **ثلاث عدسات على بيانات واحدة**: قائمة · لوح · تقويم — حالة العرض في الرابط، والمرشّح
+//     نفسه يعمل في العدسات الثلاث.
+//   • **«مهام فريقي» عدسة أولى** بسؤال «من يحتاج مساعدة» لا «من الأفضل»، ونطاقها يُشتقّ من
+//     `effectiveScope(user,'update','task')` بلا توسعة حرف واحد.
+const TASK_STATUSES = ['TODO', 'IN_PROGRESS', 'BLOCKED', 'IN_REVIEW', 'DONE'];
+const TASK_STATUS_COLOR = { TODO: '#64748b', IN_PROGRESS: '#244A99', BLOCKED: '#dc2626', IN_REVIEW: '#834798', DONE: '#047857' };
+// الأولوية إشارة صغيرة لا لافتة: اللون يرافقه دائماً اسمها (قاعدة «ليس لوناً فقط»).
+const TASK_PRIORITY = { P0: { ar: 'حرجة', tone: 'red' }, P1: { ar: 'عالية', tone: 'amber' }, P2: { ar: 'متوسطة', tone: 'slate' }, P3: { ar: 'منخفضة', tone: 'slate' } };
+const TASK_WINDOWS = ['today', 'week', 'overdue', 'nodate', 'all'];
+
+// منتقي «الجهة المرتبطة» — مصدرٌ واحد لكل شاشةٍ تربط مهمةً بمشروع أو فرصة (مهامي، لوح
+// التفاصيل، لوحة الشخص). «شخصية» خيارٌ في القائمة نفسها لا مفتاحٌ منفصل: المهمة تُنسب إلى
+// جهةٍ واحدة، و«لصاحبها وحده» جهةٌ من جهاتها — وتُحذف حيث لا معنى لها (مهمةٌ باسم غيرك لا
+// تكون شخصية). والخيار الافتراضي يسمّي أثره كاملاً: «عمل داخلي» وحدها كانت تُقرأ تصنيفاً
+// غامضاً. وحين لا مشاريع ولا فرص في نطاق القارئ يُقال ذلك نصاً — لا مجموعةٌ تختفي صامتة.
+const parentPicker = ({ idAttr, label, projects, opportunities, withPersonal = true, dataF = '' }) => searchPicker({
+  idAttr,
+  label,
+  dataF,
+  placeholder: 'ابحث بالاسم أو الرمز…',
+  lead: [
+    { value: '', name: `${G.internalWork} — بلا مشروع ولا فرصة` },
+    ...(withPersonal ? [{ value: 'me', name: `${G.personalWork} — ${G.personalOnlyYou}` }] : []),
+  ],
+  groups: [
+    { label: G.projects, items: projects.map((p) => ({ value: `p:${p.id}`, name: p.name_ar, code: p.code || '' })) },
+    { label: G.opportunities, items: opportunities.map((o) => ({ value: `o:${o.id}`, name: o.title_ar, code: o.code || '' })) },
+  ],
+  emptyNote: 'لا مشاريع ولا فرص ضمن نطاقك بعد — حين تُسكَّن على عملٍ أو يدخل نطاقك تظهر هنا',
+});
+
+export async function tasksPage(user, opts = {}) {
+  // العدسة الثالثة شاشةٌ قائمة بذاتها لا كتلةٌ داخل هذه: «احسه مره زحمه» — حكم المالك على
+  // هذه الصفحة نفسها، وقد قُلّصت الإضافة والمرشّحات خلف أزرار بسببه. فالملاحظات تُبنى في
+  // ملفها (views/notes.js) وتُقرأ من الشريط نفسه، ولا يُضاف إلى هذه الصفحة استعلامٌ ولا سطر.
+  if (opts.who === 'notes') return await notesPage(user, opts);
   const today = new Date().toISOString().slice(0, 10);
-  const todayMs = new Date(today + 'T00:00:00Z').getTime();
-  const dnum = (d) => Math.round((new Date(String(d).slice(0, 10) + 'T00:00:00Z').getTime() - todayMs) / 86400000);
+  const todayMs = Date.parse(today + 'T00:00:00Z');
+  const dnum = (d) => Math.round((Date.parse(String(d).slice(0, 10) + 'T00:00:00Z') - todayMs) / 86400000);
 
-  // سياق المهمة: اسم المشروع/الفرصة المرتبطة — بحث مجمّع واحد لكل نوع (لا استعلام لكل صف)
-  const prjIds = [...new Set(rows.map((t) => t.project_id).filter(Boolean))];
-  const oppIds = [...new Set(rows.map((t) => t.opportunity_id).filter(Boolean))];
-  const prjName = {}; const oppName = {};
-  if (prjIds.length) for (const p of await all(`SELECT id, name_ar FROM project WHERE id IN (${prjIds.map(() => '?').join(',')}) AND deleted_at IS NULL`, prjIds)) prjName[p.id] = p.name_ar;
-  if (oppIds.length) for (const o of await all(`SELECT id, title_ar FROM opportunity WHERE id IN (${oppIds.map(() => '?').join(',')}) AND deleted_at IS NULL`, oppIds)) oppName[o.id] = o.title_ar;
+  // ── العدسة والعرض والمرشّحات: كلها في الرابط، فالحالة قابلة للمشاركة والرجوع ──
+  // الرؤية من منح القراءة، والإسناد من منح التعديل — مصدرٌ واحد للفصل في الخدمة نفسها،
+  // فمن يقرأ عمل فريقه ولا يعدّله يرى اللوحة للاطّلاع بدل باب مغلق.
+  const access = teamTasksAccess(user);
+  const teamScope = access.scope;
+  const canTeam = access.canRead;
+  const canAssign = access.canWrite;
+  const who = canTeam && opts.who === 'team' ? 'team' : 'me';
+  // عدسة الفريق بلا صلاحية تعديل = عرض للاطّلاع: تُنزع أدوات الكتابة كلها بدل أن تُعرض ثم تُرفض.
+  const readOnly = who === 'team' && !canAssign;
+  const view = ['board', 'calendar'].includes(opts.view) ? opts.view : 'list';
+  const winParam = TASK_WINDOWS.includes(opts.win) ? opts.win : null;
+  const win = winParam || (view === 'list' ? 'today' : 'all');
+  const fStatus = TASK_STATUSES.includes(opts.status) ? opts.status : null;
+  const fPriority = TASK_PRIORITY[opts.priority] ? opts.priority : null;
+  const fKind = ['project', 'opportunity', 'internal', 'personal'].includes(opts.kind) ? opts.kind : null;
+  const fFlag = ['nostep', 'blocked', 'noparent'].includes(opts.flag) ? opts.flag : null;
+  const fq = String(opts.q || '').trim().slice(0, 80);
+  const fAssignee = who === 'team' && opts.assignee ? String(opts.assignee).slice(0, 64) : null;
 
-  // تصنيف حسب الإلحاح
-  const openT = rows.filter((t) => t.status !== 'DONE');
-  const done = rows.filter((t) => t.status === 'DONE');
+  // شهر التقويم (?m=YYYY-MM) — يُحسب في JS ويُربَط كنص، لا دوال تواريخ في الاستعلام
+  const mParam = /^\d{4}-(0[1-9]|1[0-2])$/.test(String(opts.m || '')) ? String(opts.m) : today.slice(0, 7);
+  const calY = Number(mParam.slice(0, 4)); const calM = Number(mParam.slice(5, 7)) - 1;
+  const monthStart = `${mParam}-01`;
+  const monthDays = new Date(Date.UTC(calY, calM + 1, 0)).getUTCDate();
+  const monthEnd = `${mParam}-${String(monthDays).padStart(2, '0')}`;
+  const shiftMonth = (n) => { const d = new Date(Date.UTC(calY, calM + n, 1)); return d.toISOString().slice(0, 7); };
+
+  // ── قراءة واحدة تخدم العدسات الثلاث: كل المفتوح + المنجَز القريب، والنافذة تُطبَّق للعرض ──
+  const baseFilters = {
+    status: fStatus, priority: fPriority, kind: fKind, flag: fFlag, q: fq || null,
+    todayDate: today, doneSince: view === 'calendar' ? monthStart : addDays(today, -14), limit: 500,
+  };
+  let flat = []; let board = [];
+  if (who === 'team') {
+    board = await teamTasks(user, { ...baseFilters, assignee: fAssignee, includeDone: true });
+    flat = board.flatMap((b) => b.tasks);
+  } else {
+    flat = await myTasks(user, baseFilters);
+  }
+  flat = flat.filter((t) => t.status !== 'CANCELLED');
+  // ما كتبتُه وينتظر الاعتماد باسم غيري: قسمٌ مستقل خارج كل عدّادٍ ولوحٍ وتقويم — ليس عملي
+  // أنا بل قراري المعلَّق (KI-041 سابقاً: كان لا يُرى في أي مكان حتى يُحسم فيحسبه صاحبه ضاع).
+  const pendingMine = who === 'me' ? flat.filter((t) => isPendingTask(t) && t.assignee_user_id !== user.id) : [];
+  if (pendingMine.length) {
+    const pendingIds = new Set(pendingMine.map((t) => t.id));
+    flat = flat.filter((t) => !pendingIds.has(t.id));
+  }
+
+  // ── التصنيف حسب الإلحاح (مجموعات لا تتقاطع: كل مهمة في نطاق واحد) ──
+  const isDone = (t) => t.status === 'DONE';
+  const openT = flat.filter((t) => !isDone(t));
+  const doneRows = flat.filter(isDone);
   const overdue = openT.filter((t) => t.due_date && dnum(t.due_date) < 0);
   const dueToday = openT.filter((t) => t.due_date && dnum(t.due_date) === 0);
-  const thisWeek = openT.filter((t) => t.due_date && dnum(t.due_date) >= 1 && dnum(t.due_date) <= 7);
-  const later = openT.filter((t) => !t.due_date || dnum(t.due_date) > 7);
-  const blocked = openT.filter((t) => t.status === 'BLOCKED').length;
+  const started = openT.filter((t) => (!t.due_date || dnum(t.due_date) > 0) && ['IN_PROGRESS', 'BLOCKED'].includes(t.status));
+  const todayBand = [...overdue, ...dueToday, ...started];
+  const todayIds = new Set(todayBand.map((t) => t.id));
+  const weekBand = openT.filter((t) => !todayIds.has(t.id) && t.due_date && dnum(t.due_date) >= 1 && dnum(t.due_date) <= 7);
+  const laterBand = openT.filter((t) => !todayIds.has(t.id) && t.due_date && dnum(t.due_date) > 7);
+  const nodateBand = openT.filter((t) => !todayIds.has(t.id) && !t.due_date);
+  const blockedCount = openT.filter((t) => t.status === 'BLOCKED' || t.blocked_reason).length;
+  const noStepCount = openT.filter((t) => !String(t.next_step || '').trim()).length;
+  const doneTodayList = doneRows.filter((t) => String(t.completed_at || '').slice(0, 10) === today);
 
-  const prRank = { P0: 0, P1: 1, P2: 2, P3: 3 };
-  const sortT = (arr) => arr.slice().sort((a, b) =>
-    (prRank[a.priority] ?? 9) - (prRank[b.priority] ?? 9)
-    || (a.due_date ? a.due_date.slice(0, 10) : '9999').localeCompare(b.due_date ? b.due_date.slice(0, 10) : '9999')
-    || String(a.title).localeCompare(String(b.title), 'ar'));
+  // ── نافذة العرض ──
+  const weekIds = new Set(weekBand.map((t) => t.id));
+  const overdueIds = new Set(overdue.map((t) => t.id));
+  const inWindow = (t) => {
+    if (win === 'all') return true;
+    if (win === 'today') return todayIds.has(t.id) || (isDone(t) && String(t.completed_at || '').slice(0, 10) === today);
+    if (win === 'week') return todayIds.has(t.id) || weekIds.has(t.id);
+    if (win === 'overdue') return overdueIds.has(t.id);
+    if (win === 'nodate') return !t.due_date;
+    return true;
+  };
+  const visible = flat.filter(inWindow);
+  const visIds = new Set(visible.map((t) => t.id));
 
-  const strip = `<div class="statgrid" style="display:flex;gap:.7rem;flex-wrap:wrap;margin-bottom:1rem">
-    ${statMini('متأخرة', overdue.length, 'تجاوزت موعدها', overdue.length ? 'bad' : '')}
-    ${statMini('تستحق اليوم', dueToday.length, 'موعدها اليوم', dueToday.length ? 'warn' : '')}
-    ${statMini('هذا الأسبوع', thisWeek.length, 'خلال 7 أيام', 'brand')}
-    ${statMini('مفتوحة', openT.length, blocked ? `منها ${blocked} معلّقة` : 'قيد العمل')}
-    ${statMini('أُنجزت', done.length, 'مكتملة', done.length ? 'good' : '')}</div>`;
+  // ── قوائم الاختيار (نطاق صحيح من الخدمات نفسها، لا استعلام مواز) ──
+  const prjOptions = (await listProjects(user)).slice(0, 200);
+  // «الفرص» في المنتقي بمدى الخادم نفسه لا ببوابةٍ أوسع منه: `listOpportunities` تفشل مغلقةً
+  // وتُدخل عضوية التسكين — فمن سُكِّن على فرصةٍ يربط مهمته بها كما يقبل الخادم تماماً (KI-040
+  // سابقاً: كانت البوابة العامة تحجب المجموعة كلها عمّن قَبِله الخادم). و`canReadOpp` تبقى
+  // بوابةَ لوحة «الفرص اللي عليّ» المالية وحدها.
+  const canReadOpp = can(user, 'read', 'opportunity');
+  const allOpps = await listOpportunities(user, {}, { today });
+  const oppOptions = allOpps.slice(0, 200);
+  let people = [];
+  if (canAssign) {
+    if (teamScope === 'company') {
+      people = await pickablePeople({ viewer: user });
+    } else if (teamScope === 'department') {
+      // قائمة من يجوز إسناد المهمة إليهم = أهل **كل إدارة يقودها**، لا إدارة انتمائه وحدها:
+      // كان مديرُ إدارتين لا يجد اسم موظفٍ يقوده في القائمة فلا يستطيع إسناد مهمة له.
+      // وكان الشرط `&& user.department_id` يُسقط من لا إدارة له إلى **قائمة القطاع كلها**
+      // (فرع `else` أدناه) — وعدٌ بإسنادٍ يردّه الخادم عند الحفظ. الفراغ الآن فراغ.
+      const inDeps = departmentInSql('e.department_id', departmentScope(user));
+      people = await all(`SELECT u.id, COALESCE(u.name_ar, u.username) AS "name" FROM app_user u
+        JOIN employee e ON e.id = u.employee_id AND e.deleted_at IS NULL
+        WHERE u.active=1 AND u.deleted_at IS NULL
+          ${seesDemoAccounts(user) ? '' : "AND COALESCE(u.username,'') NOT LIKE 'demo.%'"}
+          AND ${inDeps.clause} ORDER BY u.name_ar, u.username LIMIT 300`, inDeps.params);
+    } else if (user.sector_id) {
+      people = await pickablePeople({ sectorId: user.sector_id, viewer: user });
+    }
+  }
+  const depts = await all(`SELECT id, name_ar FROM department WHERE active=1 AND deleted_at IS NULL
+    ${user.scope === 'company' ? '' : 'AND sector_id = ?'} ORDER BY name_ar LIMIT 200`, user.scope === 'company' ? [] : [user.sector_id || '']);
 
-  const quickAdd = `<div class="card" style="padding:.85rem 1rem;margin-bottom:1.15rem">
-    <div style="display:flex;gap:.55rem;align-items:center;flex-wrap:wrap">
-      <input id="qa-title" class="input" placeholder="أضِف مهمة جديدة…" aria-label="عنوان المهمة" style="flex:1;min-width:190px">
-      <select id="qa-priority" class="input" aria-label="الأولوية" style="width:auto"><option value="P2">أولوية متوسطة</option><option value="P0">حرجة</option><option value="P1">عالية</option><option value="P3">منخفضة</option></select>
-      <label style="display:flex;align-items:center;gap:.35rem;font-size:11.5px;color:var(--muted);white-space:nowrap">الموعد
-        <input id="qa-due" type="date" class="input" dir="ltr" style="width:auto"></label>
-      <button class="btn btn-primary" data-action="task-add">${icon('plus')} إضافة</button>
-    </div></div>`;
+  // ── الروابط: كل شريحة تحافظ على بقية المعاملات ──
+  const qp = (over = {}) => {
+    const cur = {
+      who: who === 'team' ? 'team' : null, view: view !== 'list' ? view : null, win: winParam,
+      status: fStatus, priority: fPriority, kind: fKind, flag: fFlag, q: fq || null,
+      assignee: fAssignee, m: mParam !== today.slice(0, 7) ? mParam : null, ...over,
+    };
+    const p = new URLSearchParams();
+    for (const [k, v] of Object.entries(cur)) if (v != null && v !== '') p.set(k, String(v));
+    const s = p.toString();
+    return '/app/tasks' + (s ? `?${s}` : '');
+  };
+  const hasFilter = !!(fStatus || fPriority || fKind || fFlag || fq || fAssignee || winParam);
 
+  // ── لبنات العرض ──
   const dueLabel = (t) => {
-    if (!t.due_date) return { text: 'بلا موعد', color: 'var(--faint)', bold: false };
+    if (!t.due_date) return { text: G.noDueDate, color: 'var(--muted)', bold: false };
     const n = dnum(t.due_date);
     if (n < 0) return { text: `متأخرة ${dayWord(-n)}`, color: 'var(--red)', bold: true };
-    if (n === 0) return { text: 'تستحق اليوم', color: 'var(--amber)', bold: true };
-    if (n === 1) return { text: 'غداً', color: 'var(--amber)', bold: false };
+    if (n === 0) return { text: 'تستحق اليوم', color: '#a16207', bold: true };
+    if (n === 1) return { text: 'غداً', color: '#a16207', bold: false };
     if (n <= 7) return { text: `خلال ${dayWord(n)}`, color: 'var(--muted)', bold: false };
     const d = new Date(String(t.due_date).slice(0, 10) + 'T00:00:00Z');
     return { text: `<span class="tnum">${d.getUTCDate()}</span> ${MONTHS_AR[d.getUTCMonth()]}`, color: 'var(--muted)', bold: false };
   };
-  const prPill = (p) => p === 'P0' ? pill('حرجة', 'red') : p === 'P1' ? pill('عالية', 'amber') : '';
-  const ctxOf = (t) => t.project_id && prjName[t.project_id]
-    ? `<a href="/app/project/${t.project_id}" class="tk-ctx">${icon('projects')} ${esc(prjName[t.project_id])}</a>`
-    : t.opportunity_id && oppName[t.opportunity_id]
-      ? `<a href="/app/opportunity/${t.opportunity_id}" class="tk-ctx">${icon('opportunity')} ${esc(oppName[t.opportunity_id])}</a>` : '';
+  // ورديفُ `dueLabel` للمنجَز. الموعد يقول متى **كان** يجب أن تنتهي، وهو سؤالٌ ماتَ لحظةَ
+  // إنجازها: لوحُ المهام كان يطبع «متأخرة N يوماً» على المنجَز ويكبر الرقم كل يوم إلى الأبد،
+  // فتُقرأ المهمة المنجَزة تأنيباً دائماً (KI-075). والتاريخ محفوظٌ أصلاً في `completed_at`.
+  // القريب نسبيّ («أُنجزت أمس») لأنه يُقرأ بلا حساب، والبعيد بتاريخه لأن «منذ ٤٠ يوماً» لا يفيد.
+  const doneLabel = (t) => {
+    const green = 'var(--green)';
+    if (!t.completed_at) return { text: 'أُنجزت', color: green, bold: true, title: 'بلا تاريخ إنجاز مسجَّل' };
+    const n = -dnum(t.completed_at);                       // موجبٌ = مضى منذ الإنجاز
+    if (n <= 0) return { text: 'أُنجزت اليوم', color: green, bold: true, title: '' };
+    if (n === 1) return { text: 'أُنجزت أمس', color: green, bold: true, title: '' };
+    if (n <= 7) return { text: `أُنجزت منذ ${dayWord(n)}`, color: green, bold: false, title: '' };
+    return { text: `أُنجزت ${provDate(t.completed_at)}`, color: green, bold: false, title: '' };
+  };
+  const parentOf = (t) => {
+    if (t.project_id && t.project_name) return { href: `/app/project/${encodeURIComponent(t.project_id)}`, ic: 'projects', label: esc(t.project_name), kind: 'مشروع' };
+    if (t.opportunity_id && t.opportunity_name) return { href: `/app/opportunity/${encodeURIComponent(t.opportunity_id)}`, ic: 'opportunity', label: esc(t.opportunity_name), kind: G.opportunity };
+    if (t.project_id || t.opportunity_id) return { href: null, ic: 'projects', label: 'جهة خارج نطاقك', kind: '' };
+    return null;
+  };
+  const parentChip = (t) => {
+    // الشخصية تُعلَّم صراحةً في كل صفّ ولوحٍ وبطاقة: الوعد بالخصوصية لا يُوفى بحجبها عن
+    // الآخرين وحده، بل بأن يعرف صاحبها **وهو ينظر إليها** أنها لا تُقرأ خارج حسابه.
+    if (isPersonalTask(t)) {
+      return `<span class="tk-parent tk-personal" title="${G.personalOnlyYou}">◆ ${G.personalWork}</span>`;
+    }
+    const p = parentOf(t);
+    if (!p) return `<span class="tk-parent tk-parent-none">${icon('clock')} ${workKindLabel(t.work_kind) === 'مشروع' ? G.noParentLink : workKindLabel(t.work_kind)}</span>`;
+    return p.href
+      ? `<a class="tk-parent" href="${p.href}" title="${p.kind}: ${p.label}">${icon(p.ic)} ${p.label}</a>`
+      : `<span class="tk-parent tk-parent-none">${icon(p.ic)} ${p.label}</span>`;
+  };
+  // تاريخ الاعتماد يُقرأ نثراً بعرف الشاشة نفسها («في 11 أغسطس») لا رقماً تقنياً خاماً.
+  const provDate = (iso) => {
+    const s = String(iso || '').slice(0, 10);
+    if (!s) return '';
+    return `في ${Number(s.slice(8, 10))} ${MONTHS_AR[Number(s.slice(5, 7)) - 1] || ''}`;
+  };
+  // بيانات الصف تُحمَل على الحاوية نفسها فيقرأها المحرِّر واللوح والتقويم من مصدر واحد.
+  const dataAttrs = (t) => `data-task="${esc(t.id)}" data-title="${esc(t.title)}" data-status="${esc(t.status || 'TODO')}"
+    data-priority="${esc(t.priority || 'P2')}" data-due="${esc(String(t.due_date || '').slice(0, 10))}"
+    data-progress="${Math.max(0, Math.min(100, Math.round(Number(t.progress_pct) || 0)))}"
+    data-next="${esc(t.next_step || '')}" data-blocked="${esc(t.blocked_reason || '')}"
+    data-util="${t.utilization_pct == null ? '' : Number(t.utilization_pct)}"
+    data-project="${esc(t.project_id || '')}" data-opp="${esc(t.opportunity_id || '')}"
+    data-parent-name="${esc(t.project_name || t.opportunity_name || '')}"
+    data-kind="${esc(t.work_kind || '')}" data-category="${esc(t.category || '')}"
+    data-creator="${esc(t.created_by || '')}" data-creator-name="${esc(t.creator_name || '')}"
+    data-approver-name="${esc(t.approver_name || '')}" data-approved-at="${esc(provDate(t.approved_at))}"
+    data-assignee="${esc(t.assignee_user_id || '')}" data-dept="${esc(t.department_id || '')}"
+    data-desc="${esc(t.description || '')}"`;
+  const progChip = (t) => {
+    const p = Math.max(0, Math.min(100, Math.round(Number(t.progress_pct) || 0)));
+    if (p <= 0) return readOnly ? `<span style="color:var(--muted)">${G.noProgressYet}</span>`
+      : `<button type="button" class="tk-link" data-action="task-open" data-focus="progress">${G.noProgressYet}</button>`;
+    return `<span class="tk-prog" title="${G.taskProgress}"><span class="tk-progbar"><span style="width:${p}%"></span></span><span class="tnum">${p}%</span></span>`;
+  };
+  const stepChip = (t) => (String(t.next_step || '').trim()
+    ? `<span class="tk-step" title="${G.nextStep}">${icon('flag')} ${esc(t.next_step)}</span>`
+    : (readOnly ? `<span style="color:var(--muted)">${G.noNextAction}</span>`
+      : `<button type="button" class="tk-link" data-action="task-open" data-focus="next">${G.setNextStep}</button>`));
+  const blockBand = (t) => {
+    if (t.status !== 'BLOCKED' && !t.blocked_reason) return '';
+    const why = String(t.blocked_reason || '').trim();
+    return `<div class="tk-block">${icon('risk')}<span>${why ? esc(why) : 'مُعطَّلة بلا سبب مكتوب — اكتبه ليصل إلى من يرفعه'}</span>
+      ${readOnly ? '' : `<button type="button" class="tk-link" data-action="task-open" data-focus="blocked">${why ? 'تحديث العائق' : G.setBlocker}</button>`}</div>`;
+  };
 
+  // لكل عنصر تحكّم في الصفّ اسمٌ ومعرّف مشتقّان من معرّف المهمة — وليست زينة. المتصفّح يحفظ
+  // قيم عناصر النماذج ويعيدها بعد إعادة التحميل، وما لا اسم له يُعاد **بموضعه**: تُنجَز مهمة
+  // فينتقل صفّها إلى درج «أنجزتها» في آخر القائمة، فتنزلق كل قيمةٍ بعده صفّاً واحداً وتحطّ
+  // «منجز» على جارتها — وهي في نطاقها لم تتغيّر. ومن حاول إنجاز تلك الجارة لم يستطع: قائمتها
+  // تعرض «منجز» أصلاً فلا يقع تغيير. الاسم يجعل الاستعادة تعود إلى صفّها هي لا إلى من يليه.
   const taskRow = (t) => {
-    const isDone = t.status === 'DONE';
-    const dl = dueLabel(t);
-    const ctx = ctxOf(t);
-    return `<div class="tk-row" data-task="${t.id}">
-      <button class="tk-check${isDone ? ' done' : ''}" ${isDone ? 'disabled' : `data-action="task-done" data-id="${t.id}"`} aria-label="${isDone ? 'مهمة منجزة' : 'وضع كمنجزة'}" title="${isDone ? 'منجزة' : 'وضع كمنجزة'}">${isDone ? '✓' : ''}</button>
+    const done = isDone(t);
+    const dl = done ? doneLabel(t) : dueLabel(t);
+    const pr = TASK_PRIORITY[t.priority] || TASK_PRIORITY.P2;
+    return `<div class="tk-row${done ? ' is-done' : ''}" ${dataAttrs(t)}>
+      ${readOnly ? '' : `<input type="checkbox" class="tk-sel" id="tk-sel-${esc(t.id)}" name="tk-sel-${esc(t.id)}"
+        autocomplete="off" value="${esc(t.id)}" aria-label="تحديد المهمة للتغيير الجماعي">`}
+      <button type="button" class="tk-check${done ? ' done' : ''}" ${readOnly ? 'disabled' : `data-action="${done ? 'task-reopen' : 'task-done'}"`}
+        aria-label="${done ? (readOnly ? 'مهمة منجزة' : 'إعادة فتح المهمة') : 'وضع كمنجزة'}" title="${done ? (readOnly ? 'منجزة' : 'إعادة فتح المهمة') : readOnly ? 'عرض للاطّلاع' : 'وضع كمنجزة'}">${done ? '✓' : ''}</button>
       <div class="tk-body">
-        <div class="tk-title"${isDone ? ' style="text-decoration:line-through;color:var(--faint);font-weight:500"' : ''}>${esc(t.title)}</div>
+        <div class="tk-title">${esc(t.title)}</div>
         <div class="tk-meta">
-          ${!isDone ? `<span style="color:${dl.color}${dl.bold ? ';font-weight:700' : ''}">${dl.text}</span>` : ''}
-          ${ctx}
-          ${t.status === 'BLOCKED' && t.blocked_reason ? `<span style="color:var(--red)">⚠ ${esc(t.blocked_reason)}</span>` : ''}
+          <span style="color:${dl.color}${dl.bold ? ';font-weight:700' : ''}"${dl.title ? ` title="${esc(dl.title)}"` : ''}>${dl.text}</span>
+          ${parentChip(t)}
+          ${t.category ? `<span class="tk-cat-chip" title="تصنيف المهمة">${esc(taskCategoryLabel(t.category))}</span>` : ''}
+          ${isPendingTask(t) ? `<span class="tk-await" title="${t.created_by === t.assignee_user_id ? G.awaitApprovalHint : G.awaitApprovalAssignedHint}">${G.awaitApproval}</span>` : ''}
+          ${who === 'team' ? `<span class="tk-who">${icon('team')} ${esc(t.assignee_name || t.assignee_username || G.unassigned)}</span>` : ''}
+          ${who !== 'team' && t.created_by !== user.id && t.creator_name && t.created_by && t.created_by !== t.assignee_user_id
+            ? `<span class="tk-who" title="أسندها إليك ${esc(t.creator_name)}">${icon('team')} أسندها ${esc(t.creator_name)}</span>` : ''}
+          ${who !== 'team' && t.created_by === user.id && t.assignee_user_id !== user.id
+            ? `<span class="tk-who" title="مُسندة إلى ${esc(t.assignee_name || t.assignee_username || '')}">${icon('team')} باسم ${esc(t.assignee_name || t.assignee_username || G.unassigned)}</span>` : ''}
+          ${t.department_name ? `<span class="tk-who">${esc(t.department_name)}</span>` : ''}
         </div>
+        ${done ? '' : `<div class="tk-meta tk-meta2">${progChip(t)}${stepChip(t)}</div>`}
+        ${done ? '' : blockBand(t)}
       </div>
       <div class="tk-side">
-        ${!isDone ? prPill(t.priority) : ''}
-        <select class="tk-status" data-action="task-status" data-id="${t.id}" aria-label="تغيير حالة المهمة">
-          ${['TODO', 'IN_PROGRESS', 'BLOCKED', 'IN_REVIEW', 'DONE'].map((s) => `<option value="${s}"${s === t.status ? ' selected' : ''}>${tr(s)}</option>`).join('')}
+        ${done ? '' : `<span class="pill" style="background:${pr.tone === 'red' ? '#fee2e2' : pr.tone === 'amber' ? '#fef3c7' : '#f1f5f9'};color:${pr.tone === 'red' ? '#b91c1c' : pr.tone === 'amber' ? '#92400e' : '#475569'}">${pr.ar}</span>`}
+        ${readOnly ? `<span class="pill" style="background:#f1f5f9;color:#475569">${tr(t.status)}</span>`
+          : `<select class="tk-status" id="tk-st-${esc(t.id)}" name="tk-st-${esc(t.id)}" autocomplete="off"
+            data-action="task-status" aria-label="حالة المهمة">
+          ${TASK_STATUSES.map((s) => `<option value="${s}"${s === t.status ? ' selected' : ''}>${tr(s)}</option>`).join('')}
         </select>
+        <button type="button" class="btn btn-ghost btn-sm" data-action="task-open">${G.details}</button>`}
       </div></div>`;
   };
 
-  const section = (title, items, accent) => items.length ? `<div class="tk-sec">
-    <div class="tk-sec-head"><span class="tk-dot" style="background:${accent}"></span><span class="tk-sec-title">${title}</span><span class="tk-sec-count tnum">${items.length}</span></div>
-    <div class="tk-list">${sortT(items).map(taskRow).join('')}</div></div>` : '';
+  const section = (title, items, accent, hint) => (items.length ? `<section class="tk-sec">
+    <div class="tk-sec-head"><span class="tk-dot" style="background:${accent}"></span><span class="tk-sec-title">${title}</span>
+      <span class="tk-sec-count tnum">${items.length}</span>
+      ${hint ? `<span class="tk-sec-hint">${hint}</span>` : ''}</div>
+    <div class="tk-list">${items.map(taskRow).join('')}</div></section>` : '');
 
-  const openSections = section('متأخرة', overdue, 'var(--red)')
-    + section('تستحق اليوم', dueToday, 'var(--amber)')
-    + section('هذا الأسبوع', thisWeek, 'var(--brand)')
-    + section('لاحقاً', later, '#94a3b8');
+  // ── ١) رأس اليوم: تقدّم حقيقي + أثر سبعة أيام (عدسة «مهامي» وحدها) ──
+  const trend = who === 'me' ? await completionTrend(user, { days: 7, today }) : [];
+  // حِمل المهام: نداءٌ واحد، وللعدسة «مهامي» وحدها — لوحةُ الفريق تقرؤه من تجميعها القائم.
+  const myLoad = who === 'me' ? await myTaskLoad(user) : null;
+  const weekDone = trend.reduce((a, d) => a + d.done, 0);
+  const plate = todayBand.length + doneTodayList.length;
+  const donePct = plate ? Math.round((doneTodayList.length / plate) * 100) : 0;
+  const trendMax = Math.max(1, ...trend.map((d) => d.done));
+  const dObj = new Date(today + 'T00:00:00Z');
+  const dateLine = `${weekdayLabel(dObj.getUTCDay())} <span class="tnum">${dObj.getUTCDate()}</span> ${MONTHS_AR[dObj.getUTCMonth()]} <span class="tnum">${dObj.getUTCFullYear()}</span>`;
+  const trendStrip = trend.length ? `<div class="wc-trend" role="img" aria-label="ما أُنجز في كل يوم من آخر سبعة أيام">
+    ${trend.map((d) => {
+      const dd = new Date(d.day + 'T00:00:00Z');
+      const isToday = d.day === today;
+      const h = d.done ? Math.max(6, Math.round((d.done / trendMax) * 34)) : 3;
+      return `<div class="wc-tcell${isToday ? ' on' : ''}" title="${weekdayLabel(dd.getUTCDay())} ${dd.getUTCDate()} ${MONTHS_AR[dd.getUTCMonth()]} — أنجزت ${d.done}">
+        <span class="wc-tbar" style="height:${h}px;background:${d.done ? 'var(--brand)' : '#dfe4ee'}"></span>
+        <span class="wc-tnum tnum">${dd.getUTCDate()}</span>
+        ${isToday ? nowDot('اليوم') : ''}</div>`;
+    }).join('')}</div>` : '';
+  // ── حِمل المهام على رأس «مهامي» ──
+  // مقياسٌ ثالث باسمه الخاص، لا يُجمع مع الإشغال المخطَّط ولا مع القابل للفوترة — وسطرُ
+  // أساسه يقول ذلك في العنوان المنبثق. و«بلا نسبة مقدَّرة» معلَنٌ دائماً: بدونه يقرأ الجميع
+  // صفراً في اليوم الأول ويبدو الرقم كذباً هادئاً.
+  const loadBlock = myLoad && (myLoad.open || myLoad.pct) ? `<div class="wc-load" title="${esc(TASK_LOAD_BASIS_AR)}">
+      <div class="wc-day-h" style="margin-top:.7rem">${TASK_LOAD_AR}</div>
+      <div class="wc-bar" role="img" aria-label="${TASK_LOAD_AR} ${myLoad.pct} بالمئة"><span style="width:${Math.min(100, myLoad.pct)}%;background:${capacityColor(myLoad.pct)}"></span></div>
+      <div class="wc-day-num"><b class="tnum">${myLoad.pct}</b>٪ من طاقتك على <b class="tnum">${myLoad.open}</b> ${countAr(myLoad.open, { one: 'مهمة مفتوحة', two: 'مهمتين مفتوحتين', few: 'مهام مفتوحة', many: 'مهمة مفتوحة', zero: 'مهمة' })}${
+        myLoad.unsized ? ` · <b class="tnum">${myLoad.unsized}</b> بلا نسبة مقدَّرة — قدِّرها من محرِّر المهمة` : ''}</div>
+    </div>` : '';
 
-  const doneSorted = done.slice().sort((a, b) => String(b.completed_at || b.updated_at || '').localeCompare(String(a.completed_at || a.updated_at || '')));
-  const DONE_CAP = 25;
-  const doneBlock = done.length ? `<details class="tk-done"${openT.length ? '' : ' open'}>
-    <summary class="tk-sec-head"><span class="tk-dot" style="background:var(--green)"></span><span class="tk-sec-title">مكتملة</span><span class="tk-sec-count tnum">${done.length}</span><span style="margin-inline-start:auto;font-size:11px;color:var(--faint)">إظهار / إخفاء</span></summary>
-    <div class="tk-list" style="margin-top:.3rem">${doneSorted.slice(0, DONE_CAP).map(taskRow).join('')}</div>
-    ${done.length > DONE_CAP ? `<div style="font-size:11px;color:var(--faint);padding:.5rem .2rem">و${countAr(done.length - DONE_CAP, { one: 'مهمة أخرى منجزة', two: 'مهمتان أخريان', few: 'مهام أخرى', many: 'مهمة أخرى' })}</div>` : ''}
-  </details>` : '';
+  const dayCard = who === 'me' ? `<section class="card wc-day">
+    <div class="wc-day-l">
+      <div class="wc-day-h">${G.dayPlan}</div>
+      <div class="wc-day-date">${dateLine}</div>
+      ${plate ? `
+        <div class="wc-bar" role="img" aria-label="أنجزت ${doneTodayList.length} من ${plate} على طاولة اليوم"><span style="width:${donePct}%"></span></div>
+        <div class="wc-day-num"><b class="tnum">${doneTodayList.length}</b> من <b class="tnum">${plate}</b> ${todayBand.length === 0 ? '· يومك مُغلق ✓' : `· بقيت <b class="tnum">${todayBand.length}</b>`}</div>`
+        : `<div class="wc-day-empty">${G.nothingScheduled} — ${weekBand.length ? `لديك <b class="tnum">${weekBand.length}</b> خلال الأسبوع` : 'ابدأ بإضافة مهمة من الشريط أدناه'}
+            <a class="tk-link" href="${qp({ win: weekBand.length ? 'week' : 'all', view: null })}">${weekBand.length ? G.winWeek : G.winAll}</a></div>`}
+      ${loadBlock}
+    </div>
+    <div class="wc-day-r">
+      <div class="wc-day-h">${G.doneThisWeek}</div>
+      <div class="wc-day-week"><b class="tnum">${weekDone}</b> ${countAr(weekDone, { one: 'مهمة', two: 'مهمتان', few: 'مهام', many: 'مهمة', zero: 'مهمة' })}</div>
+      ${trendStrip}
+      ${weekDone === 0 ? '<div class="wc-day-note">لا إنجاز مسجَّل في آخر سبعة أيام — أول مهمة تُنجزها تظهر هنا.</div>' : ''}
+    </div>
+  </section>` : '';
 
-  const listArea = openT.length
-    ? openSections + doneBlock
-    : (done.length
-      ? `<div class="card" style="text-align:center;padding:1.8rem 1rem;margin-bottom:1rem"><div style="font-size:22px">🎉</div><div style="font-weight:800;color:var(--ink2);margin-top:.3rem">أنجزت كل مهامك</div><div style="font-size:12px;color:var(--muted);margin-top:.25rem">لا مهام مفتوحة الآن — أضِف واحدة من الأعلى متى شئت.</div></div>${doneBlock}`
-      : `<div class="card" style="text-align:center;padding:2.6rem 1rem"><div style="font-size:26px;color:var(--brand)">${icon('tasks')}</div><div style="font-weight:800;color:var(--ink2);margin-top:.5rem">لا مهام بعد</div><div style="font-size:12.5px;color:var(--muted);margin-top:.3rem;line-height:1.8">أضِف أول مهمة من الشريط أعلاه — ستظهر هنا مرتّبةً حسب الأقرب موعداً،<br>والأكثر إلحاحاً في الأعلى دائماً.</div></div>`);
+  // ── ٢) عدّادات التركيز: كل واحدة مرشّح لا زينة ──
+  const statLink = (label, n, sub, tone, href) => `<a class="wc-stat${n ? ` t-${tone}` : ''}" href="${href}">
+    <span class="wc-stat-l">${label}</span><span class="wc-stat-n tnum">${n}</span><span class="wc-stat-s">${sub}</span></a>`;
+  const stats = `<div class="wc-stats">
+    ${statLink(G.winOverdue, overdue.length, overdue.length ? 'ابدأ بها أو امنحها موعداً' : 'لا شيء متأخر', 'bad', qp({ win: 'overdue', view: 'list', flag: null }))}
+    ${statLink('تستحق اليوم', dueToday.length, dueToday.length ? 'موعدها اليوم' : 'لا شيء يستحق اليوم', 'warn', qp({ win: 'today', view: 'list', flag: null }))}
+    ${statLink('مُعطَّلة', blockedCount, blockedCount ? 'تحتاج من يرفع العائق' : G.noBlocker, 'bad', qp({ win: 'all', flag: 'blocked', view: 'list' }))}
+    ${statLink(G.noNextAction, noStepCount, noStepCount ? 'حدّد خطوة واضحة لكل مهمة' : 'لكل مهمة خطوتها', 'warn', qp({ win: 'all', flag: 'nostep', view: 'list' }))}
+  </div>`;
+
+  // ── ٣) العدسة + العرض + المرشّحات ──
+  // الشريط من مصدره الواحد (views/_shared.js) كي لا تتباعد شاشتا المهام والملاحظات — ورابط
+  // كل عدسة يحافظ على بقية معاملات هذه الشاشة كما كان حرفياً، إلا الملاحظات فلا معنى لعرضٍ
+  // ولا نافذةٍ زمنية فيها.
+  const lensHref = (key) => (key === 'notes' ? '/app/tasks?who=notes'
+    : key === 'team' ? qp({ who: 'team' }) : qp({ who: null, assignee: null }));
+  const lens = workLens({ userId: user.id, who, canTeam, openCount: openT.length, href: lensHref });
+  const viewSeg = `<div class="wc-seg" role="group" aria-label="طريقة العرض">
+    <a class="${view === 'list' ? 'on' : ''}" href="${qp({ view: null })}">${icon('list')} ${G.viewList}</a>
+    <a class="${view === 'board' ? 'on' : ''}" href="${qp({ view: 'board' })}">${icon('kanban')} ${G.viewBoard}</a>
+    <a class="${view === 'calendar' ? 'on' : ''}" href="${qp({ view: 'calendar' })}">${icon('clock')} ${G.viewCalendar}</a>
+  </div>`;
+  const chip = (label, on, href, n) => `<a class="chip${on ? ' on' : ''}" href="${href}">${label}${n != null ? ` <span class="tnum">${n}</span>` : ''}</a>`;
+  const winChips = `<div class="chips">
+    <span class="lbl">${G.window}</span>
+    ${chip(G.winToday, win === 'today', qp({ win: 'today' }), todayBand.length)}
+    ${chip(G.winWeek, win === 'week', qp({ win: 'week' }), todayBand.length + weekBand.length)}
+    ${chip(G.winOverdue, win === 'overdue', qp({ win: 'overdue' }), overdue.length)}
+    ${chip(G.noDueDate, win === 'nodate', qp({ win: 'nodate' }), nodateBand.length)}
+    ${chip(G.winAll, win === 'all', qp({ win: 'all' }), openT.length)}
+  </div>`;
+  // المرشّحات الأحد عشر كانت شريطاً مفتوحاً دائماً فوق كل شاشة — ستّة أشرطة تسبق أول مهمة.
+  // تُطوى الآن خلف زرٍّ يحمل عدد المفعَّل منها، وتُفتح تلقائياً متى كان أحدها مفعَّلاً فلا
+  // تختفي حالةٌ سارية عن عين صاحبها. (بلسان المالك: «احسه مره زحمه».)
+  const activeFilters = [fStatus, fPriority, fKind].filter(Boolean).length;
+  const moreChips = `<details class="wc-filters"${activeFilters ? ' open' : ''}>
+    <summary>${icon('filter')} ${G.filter}${activeFilters ? ` <span class="wc-fn tnum">${activeFilters}</span>` : ''}</summary>
+    <div class="chips">
+      ${TASK_STATUSES.map((s) => chip(tr(s), fStatus === s, qp({ status: fStatus === s ? null : s }))).join('')}
+      ${Object.entries(TASK_PRIORITY).slice(0, 2).map(([k, v]) => chip(v.ar, fPriority === k, qp({ priority: fPriority === k ? null : k }))).join('')}
+      ${chip('على مشروع', fKind === 'project', qp({ kind: fKind === 'project' ? null : 'project' }))}
+      ${chip('على فرصة', fKind === 'opportunity', qp({ kind: fKind === 'opportunity' ? null : 'opportunity' }))}
+      ${chip(G.internalWork, fKind === 'internal', qp({ kind: fKind === 'internal' ? null : 'internal' }))}
+      ${who === 'me' ? chip(G.personalTasks, fKind === 'personal', qp({ kind: fKind === 'personal' ? null : 'personal' })) : ''}
+      ${hasFilter ? `<a class="chip" href="/app/tasks${who === 'team' ? '?who=team' : ''}">مسح المرشحات</a>` : ''}
+    </div>
+  </details>`;
+  const hidden = (k, v) => (v ? `<input type="hidden" name="${k}" value="${esc(v)}">` : '');
+  const searchForm = `<form method="get" action="/app/tasks" class="wc-search">
+    ${hidden('who', who === 'team' ? 'team' : '')}${hidden('view', view !== 'list' ? view : '')}${hidden('win', winParam || '')}
+    ${hidden('status', fStatus)}${hidden('priority', fPriority)}${hidden('kind', fKind)}${hidden('flag', fFlag)}${hidden('assignee', fAssignee)}
+    <div class="search">${icon('search')}<input class="input" type="search" name="q" value="${esc(fq)}" placeholder="ابحث في عناوين المهام…" aria-label="بحث في عناوين المهام"></div>
+    <button class="btn btn-sm" type="submit">${G.search}</button>
+  </form>`;
+
+  // ── ٤) الإضافة السريعة: عنوان + جهة + مسؤول + موعد + أولوية في بطاقة واحدة ──
+  // تصنيف المهمة: قائمة جاهزة من المعجم + «أخرى…» تفتح حقلاً حراً صغيراً. القيمة الجاهزة
+  // تُخزَّن بمفتاحها (فتُعرض من المعجم أينما قُرئت)، والحرة تُخزَّن كما كُتبت.
+  const categorySelect = (idAttr, dataF = '') => `<select id="${idAttr}" name="${idAttr}" autocomplete="off" class="input tk-cat"${dataF ? ` data-f="${dataF}"` : ''} aria-label="تصنيف المهمة">
+      <option value="">التصنيف (اختياري)</option>
+      ${Object.entries(TASK_CATEGORY_AR).map(([k, v]) => `<option value="${esc(k)}">${esc(v)}</option>`).join('')}
+      <option value="__other">أخرى…</option>
+    </select><input id="${idAttr}-other" name="${idAttr}-other" autocomplete="off" class="input tk-cat-other"${dataF ? ` data-f="${dataF}-other"` : ''} hidden
+      maxlength="60" placeholder="اكتب التصنيف بكلمتين" aria-label="تصنيف آخر للمهمة">`;
+  // الإضافة كانت بطاقةً مفتوحةً دائماً بخمسة حقول فوق كل قائمة — حتى حين لا يريد أحدٌ إضافة
+  // شيئاً. صارت زرّاً يفتحها، والحقول كما هي بمعرّفاتها فلا يتغيّر شيء تحت جافاسكربت الصفحة.
+  // (بلسان المالك: «طريقه اضافه المهام … احسه سيءه».)
+  const quickAdd = readOnly ? '' : `<details class="card wc-add">
+    <summary class="wc-add-sum">${icon('plus')} مهمة جديدة</summary>
+    <div class="wc-add-row">
+      <input id="qa-title" name="qa-title" autocomplete="off" class="input" placeholder="ما الذي ستنجزه؟ اكتبه هنا…" aria-label="عنوان المهمة">
+      <button class="btn btn-primary" data-action="task-add">${G.add}</button>
+    </div>
+    <div class="wc-add-row2">
+      ${parentPicker({ idAttr: 'qa-parent', label: G.parentLink, projects: prjOptions, opportunities: oppOptions })}
+      ${categorySelect('qa-category')}
+      ${canAssign && people.length ? `<select id="qa-assignee" name="qa-assignee" autocomplete="off" class="input" aria-label="${G.assignee}">
+        <option value="">${G.assignee}: أنا</option>
+        ${people.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select>` : ''}
+      <input id="qa-due" name="qa-due" autocomplete="off" type="date" class="input" dir="ltr" aria-label="تاريخ الاستحقاق" title="تاريخ الاستحقاق">
+      <select id="qa-priority" name="qa-priority" autocomplete="off" class="input" aria-label="${G.priority}">
+        <option value="P2">${TASK_PRIORITY.P2.ar}</option><option value="P0">${TASK_PRIORITY.P0.ar}</option>
+        <option value="P1">${TASK_PRIORITY.P1.ar}</option><option value="P3">${TASK_PRIORITY.P3.ar}</option>
+      </select>
+      <input id="qa-util" name="qa-util" autocomplete="off" type="number" min="1" max="100" step="1" class="input" style="max-width:9.5rem"
+        placeholder="الحجم ٪" aria-label="حجم المهمة نسبة من طاقتك" title="حجم المهمة: كم تأخذ من طاقتك حتى تُنجز — من ١ إلى ١٠٠. اتركه فارغاً إن لم تُقدِّره بعد.">
+      <input id="qa-next" name="qa-next" autocomplete="off" class="input wc-add-next" placeholder="${G.nextStep} (اختياري)" aria-label="${G.nextStep}">
+    </div>
+  </details>`;
+
+  // ── ٥) عرض القائمة ──
+  const vis = (arr) => arr.filter((t) => visIds.has(t.id));
+  const doneVisible = doneRows.filter((t) => visIds.has(t.id))
+    .sort((a, b) => String(b.completed_at || '').localeCompare(String(a.completed_at || ''))).slice(0, 25);
+  const emptyList = () => {
+    if (openT.length === 0 && doneRows.length === 0) {
+      return `<div class="card"><div class="empty-state">${icon('tasks')}
+        <div class="t">لا مهام ${who === 'team' ? 'على فريقك الآن' : 'باسمك بعد'}</div>
+        <div class="s">${who === 'team' ? 'لا مهمة مفتوحة على أحد ضمن نطاقك. حين يُسنَد عمل لأحدهم سيظهر هنا مرتّباً بالأكثر تأخراً.' : 'اكتب أول مهمة في الشريط أعلاه — ستظهر هنا مرتّبةً بالأقرب موعداً، والأكثر إلحاحاً في الأعلى.'}</div>
+        ${who === 'team' ? `<a class="btn" href="${qp({ who: null })}">${G.myWork}</a>` : ''}</div></div>`;
+    }
+    if (win === 'today' && todayBand.length === 0) {
+      return `<div class="card"><div class="empty-state">${icon('check')}
+        <div class="t">${G.dayClear}</div>
+        <div class="s">${doneTodayList.length ? `أنجزت اليوم ${countAr(doneTodayList.length, { one: 'مهمة واحدة', two: 'مهمتين', few: 'مهام', many: 'مهمة' })}. ` : ''}لا شيء متأخر ولا مستحق اليوم${weekBand.length ? ` — و${countAr(weekBand.length, { one: 'مهمة واحدة', two: 'مهمتان', few: 'مهام', many: 'مهمة' })} خلال الأسبوع.` : '.'}</div>
+        <a class="btn" href="${qp({ win: weekBand.length ? 'week' : 'all' })}">${weekBand.length ? G.winWeek : G.winAll}</a></div></div>`;
+    }
+    return `<div class="card"><div class="empty-state">${icon('search')}
+      <div class="t">لا مهمة تطابق هذه المرشحات</div>
+      <div class="s">جرّب توسيع النافذة الزمنية أو مسح المرشحات لترى بقية عملك.</div>
+      <a class="btn" href="/app/tasks${who === 'team' ? '?who=team' : ''}">مسح المرشحات</a></div>`;
+  };
+  const listBody = (vis(todayBand).length + vis(weekBand).length + vis(laterBand).length + vis(nodateBand).length + doneVisible.length + pendingMine.length) === 0
+    ? emptyList()
+    : section(`${G.winToday} — طاولتك الآن`, vis(todayBand), 'var(--brand)', 'المتأخر والمستحق اليوم وما بدأتَه فعلاً')
+      + section(G.winWeek, vis(weekBand), '#a16207', '')
+      + section(G.winLater, vis(laterBand), '#64748b', '')
+      + section(G.noDueDate, vis(nodateBand), '#64748b', 'امنحها موعداً أو أغلقها — القائمة الميتة تخفي المهم')
+      + section('بانتظار الاعتماد', pendingMine, '#92400e', 'أسندتَها وتنتظر اعتماد مديرك — لا تدخل عدّادات يومك')
+      + (doneVisible.length ? `<details class="tk-fold"${vis(todayBand).length ? '' : ' open'}>
+          <summary class="tk-sec-head"><span class="tk-dot" style="background:var(--green)"></span>
+            <span class="tk-sec-title">أنجزتها مؤخراً</span>
+            <span class="tk-sec-count tnum">${doneVisible.length}</span>
+            <span class="tk-sec-hint">إظهار / إخفاء</span></summary>
+          <div class="tk-list" style="margin-top:.35rem">${doneVisible.map(taskRow).join('')}</div></details>` : '');
+  // شريط «ما بعد اليوم»: المتراكم مُعترَف به لا مُلقى — عدّادات مضغوطة لا قائمة مسرودة
+  const beyond = (win === 'today' && (weekBand.length || laterBand.length || nodateBand.length))
+    ? `<div class="wc-beyond">بعد اليوم:
+        ${weekBand.length ? `<a href="${qp({ win: 'week' })}">${G.winWeek} <b class="tnum">${weekBand.length}</b></a>` : ''}
+        ${laterBand.length ? `<a href="${qp({ win: 'all' })}">${G.winLater} <b class="tnum">${laterBand.length}</b></a>` : ''}
+        ${nodateBand.length ? `<a href="${qp({ win: 'nodate' })}">${G.noDueDate} <b class="tnum">${nodateBand.length}</b></a>` : ''}
+      </div>` : '';
+
+  // ── ٦) عرض اللوح ──
+  const boardCard = (t) => {
+    const dl = isDone(t) ? doneLabel(t) : dueLabel(t);
+    const pr = TASK_PRIORITY[t.priority] || TASK_PRIORITY.P2;
+    const p = Math.max(0, Math.min(100, Math.round(Number(t.progress_pct) || 0)));
+    return `<article class="kcard tk-card" draggable="${readOnly ? 'false' : 'true'}" ${dataAttrs(t)} style="--_c:${TASK_STATUS_COLOR[t.status] || '#cbd5e1'}${readOnly ? ';cursor:default' : ''}">
+      ${readOnly ? `<div class="tk-card-t">${esc(t.title)}</div>` : `<button type="button" class="tk-card-t" data-action="task-open">${esc(t.title)}</button>`}
+      <div class="km">
+        <span style="color:${dl.color}${dl.bold ? ';font-weight:700' : ''}"${dl.title ? ` title="${esc(dl.title)}"` : ''}>${dl.text}</span>
+        <span class="pill" style="background:${pr.tone === 'red' ? '#fee2e2' : pr.tone === 'amber' ? '#fef3c7' : '#f1f5f9'};color:${pr.tone === 'red' ? '#b91c1c' : pr.tone === 'amber' ? '#92400e' : '#475569'}">${pr.ar}</span>
+      </div>
+      <div class="km">${parentChip(t)}${who === 'team' ? `<span class="tk-who">${esc(t.assignee_name || t.assignee_username || G.unassigned)}</span>` : ''}</div>
+      ${p > 0 ? `<div class="tk-progbar" style="margin-top:.4rem"><span style="width:${p}%"></span></div>` : ''}
+      ${t.blocked_reason ? `<div class="tk-card-block">${esc(t.blocked_reason)}</div>` : ''}
+    </article>`;
+  };
+  const boardView = `<div class="kanban" id="tk-board" tabindex="0" role="region" aria-label="لوح المهام حسب الحالة — اسحب البطاقة إلى عمود آخر لتغيير حالتها">
+    ${TASK_STATUSES.map((s) => {
+      const items = visible.filter((t) => (t.status || 'TODO') === s);
+      return `<div class="kcol" data-status="${s}">
+        <div class="kcol-head"><span class="kcol-dot" style="background:${TASK_STATUS_COLOR[s]}"></span>
+          <span class="t">${tr(s)}</span><span class="n tnum">${items.length}</span></div>
+        <div class="kcol-body">${items.length ? items.map(boardCard).join('')
+          : '<div class="tk-kempty">لا مهام في هذه الحالة</div>'}</div></div>`;
+    }).join('')}</div>
+    <div class="wc-hint">${readOnly ? 'عرض للاطّلاع: تعديل مهام فريقك يتطلب صلاحية إدارية على المهام.' : 'اسحب أي بطاقة إلى عمود آخر لتغيير حالتها — أو افتح تفاصيلها بالنقر على عنوانها.'}</div>`;
+
+  // ── ٧) عرض التقويم — أول تقويم في المنصة، بالنموذج الزمني الموحد ──
+  const monthTasks = flat.filter((t) => t.due_date && String(t.due_date).slice(0, 10) >= monthStart && String(t.due_date).slice(0, 10) <= monthEnd);
+  const byDay = {};
+  for (const t of monthTasks) (byDay[String(t.due_date).slice(0, 10)] ||= []).push(t);
+  const doneByDay = {};
+  for (const t of doneRows) { const d = String(t.completed_at || '').slice(0, 10); if (d >= monthStart && d <= monthEnd) doneByDay[d] = (doneByDay[d] || 0) + 1; }
+  const firstDow = new Date(monthStart + 'T00:00:00Z').getUTCDay();
+  const cells = [];
+  for (let i = 0; i < firstDow; i++) cells.push('<div class="cal-cell cal-blank" aria-hidden="true"></div>');
+  for (let d = 1; d <= monthDays; d++) {
+    const iso = `${mParam}-${String(d).padStart(2, '0')}`;
+    const items = (byDay[iso] || []).filter((t) => !isDone(t));
+    const doneN = doneByDay[iso] || 0;
+    const isToday = iso === today;
+    const late = iso < today;
+    const chips = items.slice(0, 2).map((t) => {
+      const c = t.status === 'BLOCKED' ? '#dc2626' : late ? '#dc2626' : TASK_STATUS_COLOR[t.status] || '#64748b';
+      return readOnly
+        ? `<span class="cal-chip" style="--_c:${c};cursor:default" title="${esc(t.title)}">${esc(t.title)}</span>`
+        : `<button type="button" class="cal-chip" data-action="task-open" ${dataAttrs(t)} style="--_c:${c}" title="${esc(t.title)}">${esc(t.title)}</button>`;
+    }).join('');
+    const dots = items.slice(0, 4).map((t) => `<span class="cal-dot" style="background:${t.status === 'BLOCKED' || late ? '#dc2626' : TASK_STATUS_COLOR[t.status] || '#64748b'}"></span>`).join('');
+    cells.push(`<div class="cal-cell${isToday ? ' on' : ''}">
+      <div class="cal-d"><span class="tnum">${d}</span>${isToday ? nowDot('اليوم') : ''}</div>
+      <div class="cal-items">${chips}${items.length > 2 ? `<span class="cal-more">و<span class="tnum">${items.length - 2}</span> غيرها</span>` : ''}</div>
+      <div class="cal-dots" aria-hidden="true">${dots}</div>
+      ${doneN ? `<div class="cal-done">✓ <span class="tnum">${doneN}</span></div>` : ''}</div>`);
+  }
+  while (cells.length % 7) cells.push('<div class="cal-cell cal-blank" aria-hidden="true"></div>');
+  const calNoDate = nodateBand.slice(0, 12);
+  const calendarView = `<section class="card cal">
+    <div class="cal-head">
+      <a class="btn btn-sm" href="${qp({ m: shiftMonth(-1) })}" aria-label="الشهر السابق: ${MONTHS_AR[(calM + 11) % 12]}">${MONTHS_AR[(calM + 11) % 12]}</a>
+      <div class="cal-title">${MONTHS_AR[calM]} <span class="tnum">${calY}</span></div>
+      <a class="btn btn-sm" href="${qp({ m: shiftMonth(1) })}" aria-label="الشهر التالي: ${MONTHS_AR[(calM + 1) % 12]}">${MONTHS_AR[(calM + 1) % 12]}</a>
+    </div>
+    <div class="cal-grid cal-dow">${WEEKDAYS_AR.map((w) => `<div>${w}</div>`).join('')}</div>
+    <div class="cal-grid cal-days">${cells.join('')}</div>
+    ${monthTasks.length === 0 ? `<div class="empty-state" style="padding:1.4rem 1rem">
+      <div class="t">لا مهمة لها موعد في هذا الشهر</div>
+      <div class="s">المهام بلا موعد لا تظهر على الشبكة — امنحها موعداً لتدخل تقويمك.</div></div>` : ''}
+    <div class="cal-legend">
+      <span><span class="cal-dot" style="background:#dc2626"></span> متأخرة أو مُعطَّلة</span>
+      <span><span class="cal-dot" style="background:#244A99"></span> قيد التنفيذ</span>
+      <span><span class="cal-dot" style="background:#64748b"></span> بانتظار البدء</span>
+      <span>✓ ما أُنجز في ذلك اليوم</span>
+    </div>
+  </section>
+  ${calNoDate.length ? `<section class="card wc-tray">
+    <div class="wc-tray-h">${G.noDueDate} <span class="tnum">${nodateBand.length}</span></div>
+    <div class="wc-tray-s">لا تظهر على الشبكة لأنها بلا تاريخ — افتح المهمة وامنحها موعداً فتدخل تقويمك.</div>
+    <div class="tk-list">${calNoDate.map(taskRow).join('')}</div></section>` : ''}`;
+
+  // ── ٨) لوحة الفريق: «من يحتاج مساعدة» لا «من الأفضل» ──
+  // ── لوحة الفريق: الناس مرتَّبون بإداراتهم، وكل شخص بصورته الكاملة ──
+  // كانت البطاقة تعرض المهام وحدها، فيبدو من لا مهمة عليه فارغاً وهو يقود ثلاث فرص ومسكَّن
+  // على مشروعين. والتجميع بالإدارة لأن المدير يدير إدارةً — وسؤاله اليومي «ما حال هذه
+  // الإدارة» لا «من أكثر الناس تأخّراً في الشركة كلها».
+  // سنة التسكين تُشتقّ من اليوم نفسه — الصفحة لا تحمل مُرشِّح سنة، فلا مصدر آخر لها.
+  // ولا يُستدعى تجميع الأشخاص إلا للعرض الذي يعرضه: كان يُحسب في اللوح والتقويم أيضاً
+  // ثم يُرمى — أثقل استعلام في الصفحة يُدفع ثمنه بلا أن يُقرأ.
+  const wl = who === 'team' && view === 'list'
+    ? await teamWorkload(user, { year: Number(today.slice(0, 4)), todayDate: today }) : null;
+  const personCard = (p) => {
+    const t = p.tasks;
+    const chips = [
+      t.overdue ? `<span class="wp-chip bad">${countAr(t.overdue, { one: 'مهمة متأخرة', two: 'مهمتان متأخرتان', few: 'مهام متأخرة', many: 'مهمة متأخرة' })}</span>` : '',
+      t.blocked ? `<span class="wp-chip warn">${countAr(t.blocked, { one: 'مهمة مُعطَّلة', two: 'مهمتان مُعطَّلتان', few: 'مهام مُعطَّلة', many: 'مهمة مُعطَّلة' })}</span>` : '',
+      t.noStep ? `<span class="wp-chip mute">${countAr(t.noStep, { one: 'بلا خطوة تالية', two: 'بلا خطوة تالية', few: 'بلا خطوة تالية', many: 'بلا خطوة تالية' })}</span>` : '',
+    ].filter(Boolean).join('');
+    const initial = esc(String(p.name || '؟').trim().charAt(0));
+    // القصّ بالحروف كان يبتر الاسم في منتصف كلمته بلا علامة («مشروع المدن الذكية (مص») فيُقرأ
+    // عطلاً لا اختصاراً. القصّ الآن بالعرض مع نقاط الحذف، والاسم كاملاً في التلميح.
+    // «لما يطلع مثلاً سجى عندها مهمة، أنا كمدير مو عارف ولا باين» — والمهام كانت الشيء الوحيد
+    // على هذه البطاقة يُعرض رقماً مجرَّداً بينما المشاريع والفرص بأسمائها. فصارت بأسمائها معها،
+    // والمتأخّرة والمعطَّلة معلَّمتان: المدير يقرأ «على ماذا يعمل ومَن يحتاجه» في سطرٍ واحد.
+    const taskLine = p.tasks.list && p.tasks.list.length
+      ? `<div class="wp-line"><span class="wp-k">المهام</span><span class="wp-v">${
+        p.tasks.list.slice(0, 3).map((x) => `<a class="wp-tag${x.late ? ' late' : x.blocked ? ' blk' : ''}"
+          href="/app/tasks?who=team&q=${encodeURIComponent(x.title || '')}" title="${esc(x.title || '')}${x.late ? ' — متأخرة' : x.blocked ? ' — مُعطَّلة' : ''}">${esc(x.title || 'مهمة بلا عنوان')}</a>`).join('')
+      }${p.tasks.open > 3 ? `<span class="wp-more tnum">+${p.tasks.open - 3}</span>` : ''}</span></div>`
+      : '';
+    const projLine = p.projects.length
+      ? `<div class="wp-line"><span class="wp-k">المشاريع</span><span class="wp-v">${p.projects.slice(0, 3).map((x) => `<a class="wp-tag" href="/app/project/${encodeURIComponent(x.id)}" title="${esc(x.name)}">${esc(x.name)}</a>`).join('')}${p.projects.length > 3 ? `<span class="wp-more tnum">+${p.projects.length - 3}</span>` : ''}</span></div>`
+      : '';
+    // «مو المبالغ اللي شغال عليها من فرص انما اسماء الفرص» — بلسان المالك. البطاقة كانت تقول
+    // «٢» و«٣٬٧٥٠٬٠٠٠ ر.س.» ولا تقول **على ماذا** يعمل: حجمٌ بلا مضمون، والمدير يسأل المضمون.
+    // فصارت الأسماء هي السطر، والقيمة الإجمالية أثراً صغيراً في آخره لمن يملك قراءة الفرص.
+    const oppLine = p.opportunities.open
+      ? `<div class="wp-line"><span class="wp-k">الفرص</span><span class="wp-v">${
+        (p.opportunities.list || []).slice(0, 3).map((x) => `<a class="wp-tag" href="/app/opportunity/${encodeURIComponent(x.id)}" title="${esc(x.name)}">${esc(x.name)}</a>`).join('')
+      }${p.opportunities.open > 3 ? `<span class="wp-more tnum">+${p.opportunities.open - 3}</span>` : ''}${
+        canReadOpp && p.opportunities.valueHalalas ? `<span class="wp-money tnum">${fmtSar(p.opportunities.valueHalalas)}</span>` : ''
+      }</span></div>`
+      : '';
+    // ── حِمل المهام على بطاقة الشخص ──
+    // «الإشغال يُعرض لموظفيك بناءً على الحساب الذي ننفّذه» — بلسان المالك. والرقم هنا يجيب
+    // «من يحتاج مساعدة»، لا «من يستحق تقييماً»: سطرُ «مقياس سعة لا تقييم» جزءٌ من العرض لا
+    // زينةٌ فيه (صنو نصِّ تقرير القوى العاملة). ويُعرض للقارئ بلا صلاحية تعديلٍ أيضاً.
+    const L = p.taskLoad || { pct: 0, unsized: 0, open: 0 };
+    const loadLine = (L.open || L.pct) ? `<div class="wp-line" title="${esc(TASK_LOAD_BASIS_AR)} — ${TASK_LOAD_NOT_RATING_AR}">
+      <span class="wp-k">${TASK_LOAD_AR}</span>
+      <span class="wp-v"><span class="wc-bar" style="display:inline-block;width:76px;vertical-align:middle"><span style="width:${Math.min(100, L.pct)}%;background:${capacityColor(L.pct)}"></span></span>
+        <b class="tnum">${L.pct}</b>٪${L.unsized ? ` <span class="wp-more tnum">${L.unsized} بلا تقدير</span>` : ''}</span></div>` : '';
+    return `<div class="wp${p.attention ? ' hot' : ''}${p.idle ? ' idle' : ''}">
+      <div class="wp-h">
+        <span class="wp-av" aria-hidden="true">${initial}</span>
+        <span class="wp-id"><a class="wp-n" href="/app/person/${encodeURIComponent(p.userId)}">${esc(p.name)}</a>
+          ${p.jobTitle ? `<span class="wp-job">${esc(p.jobTitle)}</span>` : ''}</span>
+        <a class="wp-count tnum${t.open ? '' : ' zero'}" href="${qp({ assignee: p.userId })}" title="عرض مهامه في هذه اللوحة">${t.open}</a>
+      </div>
+      ${chips ? `<div class="wp-chips">${chips}</div>` : ''}
+      ${loadLine}
+      ${taskLine}${projLine}${oppLine}
+      ${p.idle ? '<div class="wp-idle">بلا عمل مسجَّل</div>' : ''}
+    </div>`;
+  };
+  // سبب وقوع الشخص خارج الإدارات يُقال **مرة واحدة** في ترويسة المجموعة لا على كل بطاقة: كان
+  // السطر نفسه يتكرّر على خمس عشرة بطاقة فيصير هو نصّ الشاشة، ويُقرأ عطلاً متكرراً لا حالةً واحدة.
+  const depBlock = (d) => {
+    const unlinked = d.people.filter((p) => !p.linked).length;
+    const why = !d.id && unlinked
+      ? `<div class="wd-why">${countAr(unlinked, { one: 'حساب', two: 'حسابان', few: 'حسابات', many: 'حساباً' })} غير مربوط بسجل موظف — لا تُعرف إدارته ولا تسكينه. الربط من شاشة المستخدمين والصلاحيات.</div>`
+      : '';
+    return `<section class="wd">
+    <div class="wd-h">
+      <span class="wd-n">${esc(d.name)}</span>
+      <span class="wd-m">${countAr(d.people.length, { one: 'شخص', two: 'شخصان', few: 'أشخاص', many: 'شخصاً' })}
+        · <span class="tnum">${d.tasks}</span> مهمة مفتوحة${d.opps ? ` · <span class="tnum">${d.opps}</span> فرصة` : ''}</span>
+      ${d.attention ? `<span class="wd-flag tnum">${d.attention} تحتاج نظرك</span>` : '<span class="wd-ok">لا شيء عالق</span>'}
+    </div>
+    ${why}
+    <div class="wd-grid">${d.people.map(personCard).join('')}</div>
+  </section>`;
+  };
+
+  // ── عملٌ بلا صاحب ──
+  // اللوحة مبنيّة على الأشخاص، فما لا شخص له كان يغيب عنها كلياً بينما يظهر في القائمة تحته
+  // في الشاشة نفسها. وهذا أسوأ اتجاه للخطأ: العمل المهمَل — بلا مُسنَد إليه، أو على من غادر —
+  // هو أشدّ ما يحتاج نظر المدير وأقلّ ما يظهر له. يُصدَّر الآن **فوق** الإدارات لا تحتها.
+  const orph = wl && wl.orphans ? wl.orphans : null;
+  const orphanStrip = orph && orph.total ? `<div class="wd-orphan">
+    <div class="wd-orphan-h">
+      <span class="wd-orphan-t">عملٌ بلا صاحب</span>
+      <span class="wd-orphan-n tnum">${orph.total}</span>
+      ${orph.overdue ? `<span class="wd-flag tnum">${orph.overdue} متأخرة</span>` : ''}
+    </div>
+    <div class="wd-orphan-b">
+      ${orph.unassigned ? `<span class="wd-orphan-i">${countAr(orph.unassigned, { one: 'مهمة', two: 'مهمتان', few: 'مهام', many: 'مهمة' })} بلا مسؤول —
+        <a href="${qp({ who: 'team', view: null, win: 'all' })}">أسنِدها من القائمة أدناه</a></span>` : ''}
+      ${orph.inactive ? `<span class="wd-orphan-i">${countAr(orph.inactive, { one: 'مهمة', two: 'مهمتان', few: 'مهام', many: 'مهمة' })}
+        على ${orph.people.length === 1 ? 'حسابٍ معطَّل' : 'حسابات معطَّلة'}${orph.people.length ? ` (${orph.people.slice(0, 3).map((x) => esc(x.name)).join('، ')}${orph.people.length > 3 ? ' وغيرهم' : ''})` : ''}
+        — أعِد إسنادها فصاحبها لم يعد يدخل</span>` : ''}
+    </div>
+  </div>` : '';
+
+  const teamBoard = who === 'team' ? (wl && (wl.departments.length || (orph && orph.total)) ? `
+    <div class="tk-sec-head"><span class="tk-dot" style="background:var(--brand2)"></span>
+      <span class="tk-sec-title">الفريق حسب الإدارة</span>
+      <span class="tk-sec-hint">الأكثر احتياجاً للنظر أولاً — لا مقارنة بين الأشخاص</span></div>
+    ${orphanStrip}${wl.departments.map(depBlock).join('')}`
+    : `<div class="card"><div class="empty-state">${icon('team')}
+        <div class="t">لا أحد ضمن نطاقك بعد</div>
+        <div class="s">لا حسابات نشطة في نطاقك الآن. تُضاف الحسابات وتُربط بالموظفين من شاشة المستخدمين والصلاحيات.</div></div></div>`) : '';
+
+  // شريطُ خلاصةٍ يحلّ محل لوح الأشخاص في اللوح والتقويم. لماذا لا يُخفى تماماً: القارئ يفقد
+  // اتجاهه («أين فريقي؟») بثمن سطرٍ واحد. ولماذا لا يبقى اللوح: كان يُكدَّس فوق الكانبان فلا
+  // يحلّ العرضُ محلّ الصفحة أبداً — وهو بلاغ المالك حرفياً. الأرقام من المعدود سلفاً، بلا استعلام.
+  const teamStrip = who === 'team' ? `<div class="wc-beyond">
+    فريقك: <b class="tnum">${openT.length}</b> ${countAr(openT.length, { one: 'مهمة مفتوحة', two: 'مهمتان مفتوحتان', few: 'مهام مفتوحة', many: 'مهمة مفتوحة' })}${overdue.length ? ` · <b class="tnum">${overdue.length}</b> متأخرة` : ''}${blockedCount ? ` · <b class="tnum">${blockedCount}</b> مُعطَّلة` : ''}
+    — <a href="${qp({ view: null })}">لوح الفريق حسب الإدارة في عرض القائمة</a>
+  </div>` : '';
+
+  // ── ٩) «الفرص اللي عليّ» — من خدمة الفرص نفسها، لا استعلام مواز ──
+  const myOpps = who === 'me' && canReadOpp ? allOpps.filter((o) => o.owner_user_id === user.id) : [];
+  let oppsBlock = '';
+  if (who === 'me' && canReadOpp) {
+    const stages = await all('SELECT id, name_ar, color, is_won, is_lost FROM stage ORDER BY sort_order');
+    const stById = Object.fromEntries(stages.map((s) => [s.id, s]));
+    const openOpps = myOpps.filter((o) => { const s = stById[o.stage_id]; return s && !s.is_won && !s.is_lost; });
+    const clientName = Object.fromEntries((await all('SELECT id, name_ar FROM client')).map((c) => [c.id, c.name_ar]));
+    const shown = openOpps.slice().sort((a, b) => (Number(b.rot) - Number(a.rot)) || ((b.value_halalas || 0) - (a.value_halalas || 0))).slice(0, 5);
+    oppsBlock = `<section class="card wc-opps">
+      <div class="wc-opps-h">
+        <div><div class="wc-opps-t">${G.myOpenOpportunities}</div>
+          <div class="wc-opps-s">${openOpps.length ? 'الفرص المفتوحة المسجَّلة باسمك — المتوقفة أولاً' : 'لا فرصة مفتوحة مسجَّلة باسمك الآن'}</div></div>
+        <a class="btn btn-sm" href="/app/my-opportunities">كل فرصي</a>
+      </div>
+      ${shown.length ? `<div class="wc-opps-list">${shown.map((o) => `<a class="wc-opp" href="/app/opportunity/${encodeURIComponent(o.id)}">
+        <span class="wc-opp-t">${esc(o.title_ar)}<span class="wc-opp-c">${esc(clientName[o.client_id] || 'بدون عميل')}</span></span>
+        <span class="wc-opp-m">
+          <span class="pill" style="background:${esc(stById[o.stage_id]?.color || '#cbd5e1')}22;color:var(--ink2)">${esc(stById[o.stage_id]?.name_ar || '')}</span>
+          ${o.rot ? '<span style="color:#a16207;font-weight:700">متوقفة</span>' : ''}
+          ${o.no_next_action ? `<span style="color:var(--red);font-weight:700">${G.noNextAction}</span>` : ''}
+        </span>
+        <span class="wc-opp-v tnum">${fmtSar(o.value_halalas)}</span></a>`).join('')}</div>`
+      : `<div class="empty-state" style="padding:1.3rem 1rem">
+          <div class="t">لا فرص باسمك بعد</div>
+          <div class="s">حين تُسنَد إليك فرصة كمالك ستظهر هنا بجانب مهامك، ومعها خطوتها التالية.</div>
+          <a class="btn" href="/app/opportunities">${G.opportunities}</a></div>`}
+    </section>`;
+  }
+
+  // ── ٩ب) ملاحظاتي — في نفس صفحة مهامي لا في عدسةٍ ثالثة ──────────────────────
+  // «ملاحظاتي أبغاها تطلع في نفس صفحة المهام الخاصة بيّ» — بلسان المالك. والعدسة الثالثة تبقى
+  // (فهي مكان الكتابة والبحث والقائمة الكاملة)، لكن الملاحظة تُقرأ مع اليوم لا بعد نقرةٍ ثانية:
+  // من يكتب ملاحظةً عن اجتماعٍ يريدها أمامه وهو ينظر إلى مهامه، لا في صفحةٍ يتذكّر أن يفتحها.
+  // وأحدثُ خمسٍ يكفي هنا — المُثبَّتة أولاً — والباقي خلف «كل ملاحظاتي».
+  let notesBlock = '';
+  if (who === 'me') {
+    const myNoteRows = await myNotes(user, { limit: 5 });
+    notesBlock = `<section class="card wc-notes">
+      <div class="wc-opps-h">
+        <div><div class="wc-opps-t">${G.myNotes}</div>
+          <div class="wc-opps-s">${myNoteRows.length ? 'أحدث ما كتبته — المثبَّت أولاً' : 'لا ملاحظة بعد'}</div></div>
+        <a class="btn btn-sm" href="/app/tasks?who=notes">كل ملاحظاتي</a>
+      </div>
+      ${myNoteRows.length ? `<div class="wc-opps-list">${myNoteRows.map((n) => `<a class="wc-opp"
+        href="/app/tasks?who=notes&amp;open=${encodeURIComponent(n.id)}">
+        <span class="wc-opp-t">${n.pinned ? '📌 ' : ''}${esc(n.subject || 'ملاحظة بلا موضوع')}
+          <span class="wc-opp-c">${esc(String(n.body || '').slice(0, 90))}</span></span>
+        <span class="wc-opp-m"><span class="pp-due">${esc(String(n.note_date || n.created_at || '').slice(0, 10))}</span></span>
+      </a>`).join('')}</div>`
+    : `<div class="empty-state" style="padding:1.3rem 1rem">
+        <div class="t">لا ملاحظة بعد</div>
+        <div class="s">اكتب موضوعاً وما تحته — محضر اجتماع، أو ما لا تريد أن تنساه اليوم.</div>
+        <div style="margin-top:.6rem"><a class="btn btn-primary btn-sm" href="/app/tasks?who=notes">اكتب ملاحظة</a></div>
+      </div>`}
+    </section>`;
+  }
+
+  // ── ١٠) شريط التغيير الجماعي + محرِّر المهمة (قالب واحد يُستنسخ) ──
+  const bulkBar = readOnly ? '' : `<div class="wc-bulk" id="tk-bulk" hidden>
+    <span class="wc-bulk-n"><b class="tnum" id="tk-bulk-n">0</b> ${G.bulkSelected}</span>
+    <select id="bk-status" name="bk-status" autocomplete="off" class="input" aria-label="تغيير الحالة">
+      <option value="">${G.taskStatus}…</option>
+      ${TASK_STATUSES.filter((s) => s !== 'BLOCKED').map((s) => `<option value="${s}">${tr(s)}</option>`).join('')}
+    </select>
+    <select id="bk-priority" name="bk-priority" autocomplete="off" class="input" aria-label="تغيير الأولوية">
+      <option value="">${G.priority}…</option>
+      ${Object.entries(TASK_PRIORITY).map(([k, v]) => `<option value="${k}">${v.ar}</option>`).join('')}
+    </select>
+    <input id="bk-due" name="bk-due" autocomplete="off" type="date" class="input" dir="ltr" aria-label="تغيير تاريخ الاستحقاق" title="تغيير تاريخ الاستحقاق">
+    ${canAssign && people.length ? `<select id="bk-assignee" name="bk-assignee" autocomplete="off" class="input" aria-label="تغيير المسؤول">
+      <option value="">${G.assignee}…</option>${people.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select>` : ''}
+    <button class="btn btn-primary btn-sm" data-action="task-bulk">${G.bulkApply}</button>
+    <button class="btn btn-sm" data-action="task-bulk-clear">${G.bulkClear}</button>
+    <span class="wc-bulk-note">التعطيل يحتاج سبباً مكتوباً — غيّره من تفاصيل المهمة</span>
+  </div>`;
+  const editorTpl = readOnly ? '' : `<template id="tk-editor">
+    <div class="drawer-head">
+      <div style="flex:1;min-width:0"><div style="font-size:11px;color:var(--muted);font-weight:700">${G.task}</div>
+        <h3 style="font-size:16px;margin-top:.2rem" data-f="heading"></h3></div>
+      <button type="button" class="btn btn-ghost btn-sm" data-action="task-close" aria-label="إغلاق">✕</button>
+    </div>
+    <div class="drawer-body">
+      <div class="wc-prov" data-f="provenance" hidden>
+        <span data-f="prov-creator" hidden>أسندها <b data-f="prov-creator-name"></b></span>
+        <span data-f="prov-approver" hidden>اعتمدها <b data-f="prov-approver-name"></b> <span class="tnum" data-f="prov-approved-at"></span></span>
+      </div>
+      <div class="field"><label for="tf-title">عنوان المهمة</label><input id="tf-title" class="input" data-f="title"></div>
+      <div class="grid2">
+        <div class="field"><label for="tf-status">${G.taskStatus}</label>
+          <select id="tf-status" data-f="status">${TASK_STATUSES.map((s) => `<option value="${s}">${tr(s)}</option>`).join('')}</select></div>
+        <div class="field"><label for="tf-priority">${G.priority}</label>
+          <select id="tf-priority" data-f="priority">${Object.entries(TASK_PRIORITY).map(([k, v]) => `<option value="${k}">${v.ar}</option>`).join('')}</select></div>
+      </div>
+      <div class="grid2">
+        <div class="field"><label for="tf-due">${G.dueDate}</label><input id="tf-due" type="date" dir="ltr" data-f="due"></div>
+        <div class="field"><label for="tf-progress">${G.taskProgress} <b class="tnum" data-f="progress-out">0%</b></label>
+          <input id="tf-progress" type="range" min="0" max="100" step="5" data-f="progress"></div>
+      </div>
+      <div class="field"><label for="tf-util">حجم المهمة — كم تأخذ من طاقة صاحبها</label>
+        <input id="tf-util" class="input" type="number" min="1" max="100" step="1" dir="ltr" data-f="util"
+          placeholder="من ١ إلى ١٠٠ — اتركه فارغاً إن لم تُقدِّره بعد">
+        <div class="hint">مجموع نِسَب مهامه المفتوحة هو «حِمل المهام». مقياس مستقل عن الإشغال المخطَّط في التسكين — لا يُجمع معه.</div></div>
+      <div class="field"><label for="tf-next">${G.nextStep}</label>
+        <input id="tf-next" class="input" data-f="next" placeholder="ما الفعل التالي المحدَّد الذي يحرّك هذه المهمة؟"></div>
+      <div class="field"><label for="tf-blocked">${G.blocker}</label>
+        <input id="tf-blocked" class="input" data-f="blocked" placeholder="ما الذي يوقفها ومَن يستطيع رفعه؟">
+        <div class="wc-fieldnote">اختيار «مُعطَّلة» يتطلب سبباً مكتوباً — بلا سبب لا تصل إلى أحد.</div></div>
+      <div class="field"><label for="tf-parent">${G.parentLink}</label>${parentPicker({ idAttr: 'tf-parent', label: G.parentLink, projects: prjOptions, opportunities: oppOptions, dataF: 'parent' })}</div>
+      <div class="field"><label for="tf-category">تصنيف المهمة</label>${categorySelect('tf-category', 'category')}</div>
+      ${canAssign && people.length ? `<div class="field"><label for="tf-assignee">${G.assignee}</label>
+        <select id="tf-assignee" data-f="assignee"><option value="">${G.unassigned}</option>${people.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select></div>` : ''}
+      ${depts.length ? `<div class="field"><label for="tf-dept">الإدارة المسؤولة</label>
+        <select id="tf-dept" data-f="dept"><option value="">غير محدَّدة</option>${depts.map((d) => `<option value="${esc(d.id)}">${esc(d.name_ar)}</option>`).join('')}</select></div>` : ''}
+      <div class="wc-fieldnote" data-f="error" hidden></div>
+    </div>
+    <div class="drawer-foot">
+      <button type="button" class="btn btn-primary" data-action="task-save">${G.save}</button>
+      <button type="button" class="btn" data-action="task-close">${G.cancel}</button>
+      <button type="button" class="btn btn-ghost tk-del" data-action="task-delete" data-f="delete" hidden>${G.delete}</button>
+    </div>
+  </template>`;
 
   const styles = `<style>
-    .tk-sec{margin-bottom:1.15rem}
-    .tk-sec-head{display:flex;align-items:center;gap:.5rem;margin:0 0 .4rem;padding:0 .15rem}
-    .tk-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+    .wc-day{display:flex;gap:1.2rem;flex-wrap:wrap;padding:.9rem 1.05rem;margin-bottom:.9rem;align-items:stretch}
+    .wc-day-l{flex:1 1 260px;min-width:0}
+    .wc-day-r{flex:0 1 260px;min-width:0;border-inline-start:1px solid var(--line);padding-inline-start:1.1rem}
+    .wc-day-h{font-size:11px;font-weight:800;color:var(--muted);letter-spacing:.02em}
+    .wc-day-date{font-size:15px;font-weight:800;color:var(--ink2);margin:.15rem 0 .55rem}
+    .wc-bar{height:9px;background:#eef1f7;border-radius:999px;overflow:hidden;max-width:340px}
+    .wc-bar>span{display:block;height:100%;border-radius:999px;background:var(--brand);transition:width .4s}
+    .wc-day-num{font-size:12.5px;color:var(--muted);margin-top:.35rem}
+    .wc-day-num b{color:var(--ink2);font-size:14px}
+    .wc-day-empty{font-size:12.5px;color:var(--muted);line-height:1.9}
+    .wc-day-week{font-size:13px;color:var(--muted);margin:.15rem 0 .4rem}
+    .wc-day-week b{font-size:1.35rem;color:var(--ink2);font-weight:800}
+    .wc-day-note{font-size:11px;color:var(--muted);margin-top:.35rem;line-height:1.7}
+    .wc-trend{display:grid;grid-template-columns:repeat(7,1fr);direction:rtl;gap:4px;align-items:end;height:56px}
+    .wc-tcell{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:2px;position:relative}
+    .wc-tbar{display:block;width:100%;max-width:22px;border-radius:3px}
+    .wc-tnum{font-size:9.5px;color:var(--muted)}
+    .wc-tcell.on .wc-tnum{color:var(--ink2);font-weight:800}
+    .wc-tcell .now-dot{position:absolute;top:-2px}
+    .wc-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:.6rem;margin-bottom:.9rem}
+    .wc-stat{display:block;background:#fff;border:1px solid var(--line);border-radius:12px;padding:.55rem .8rem;transition:border-color .15s,box-shadow .15s}
+    .wc-stat:hover{border-color:#c9d3e8;box-shadow:var(--sh-sm)}
+    .wc-stat-l{display:block;font-size:11px;font-weight:700;color:var(--muted)}
+    .wc-stat-n{display:block;font-size:1.3rem;font-weight:800;color:var(--ink2);line-height:1.25}
+    .wc-stat-s{display:block;font-size:10.5px;color:var(--muted)}
+    .wc-stat.t-bad .wc-stat-n{color:var(--red)}
+    .wc-stat.t-warn .wc-stat-n{color:#a16207}
+    ${WORK_LENS_CSS}
+    ${PICKER_CSS}
+    .wc-seg{display:inline-flex;background:#eef1f7;border-radius:10px;padding:3px;gap:2px}
+    .wc-seg a{display:inline-flex;align-items:center;gap:.35rem;font-size:12px;font-weight:700;color:var(--muted);padding:.35rem .7rem;border-radius:8px}
+    .wc-seg a.on{background:#fff;color:var(--ink2);box-shadow:var(--sh-sm)}
+    .wc-seg svg{width:14px;height:14px}
+    .wc-bartop{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin-bottom:.7rem}
+    .wc-search{display:flex;gap:.4rem;align-items:center;margin-inline-start:auto}
+    .wc-search .search input{min-width:180px}
+    /* الإضافة خلف زرّ: مغلقة لا تشغل إلا سطراً، ومفتوحة هي البطاقة نفسها بحقولها كما كانت. */
+    .wc-add{padding:0;margin-bottom:1rem}
+    .wc-add[open]{padding:.75rem .9rem;display:flex;flex-direction:column;gap:.5rem}
+    .wc-add-sum{cursor:pointer;list-style:none;padding:.6rem .9rem;font-size:12.5px;font-weight:800;
+      color:var(--brand);display:flex;align-items:center;gap:.4rem}
+    .wc-add-sum::-webkit-details-marker{display:none}
+    .wc-add-sum:hover{background:#f7f9fd}
+    .wc-add[open] .wc-add-sum{padding:0 0 .1rem;color:var(--ink2)}
+    .wc-add-sum:focus-visible{outline:2px solid var(--brand);outline-offset:-2px;border-radius:12px}
+    /* المرشّحات خلف زرّ يحمل عدد المفعَّل — سطرٌ واحد بدل شريطٍ من إحدى عشرة رقاقة. */
+    /* النافذة الزمنية والمرشّحات على سطرٍ واحد: كانا شريطين متتاليين بعنوانين. */
+    .wc-barfilters{display:flex;align-items:flex-start;gap:.6rem;flex-wrap:wrap;margin-bottom:.7rem}
+    .wc-barfilters>.chips{margin:0;flex:1 1 auto}
+    .wc-filters{margin-bottom:0}
+    .wc-filters>summary{cursor:pointer;list-style:none;display:inline-flex;align-items:center;gap:.4rem;
+      font-size:12px;font-weight:700;color:var(--muted);background:var(--surface);
+      border:1px solid var(--line);border-radius:9px;padding:.32rem .7rem}
+    .wc-filters>summary::-webkit-details-marker{display:none}
+    .wc-filters>summary:hover{border-color:#c9d3e8;color:var(--ink2)}
+    .wc-filters>summary:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+    .wc-filters[open]>summary{color:var(--ink2);border-color:#c9d3e8}
+    .wc-filters .chips{margin-top:.5rem}
+    .wc-fn{background:var(--brand);color:#fff;border-radius:999px;padding:0 .38rem;font-weight:800;font-size:10.5px}
+    .wc-add-row{display:flex;gap:.5rem;align-items:center}
+    .wc-add-row #qa-title{flex:1;min-width:0}
+    .wc-add-row2{display:flex;gap:.45rem;flex-wrap:wrap;align-items:center}
+    .wc-add-row2 .input{font-size:12px;padding:.4rem .55rem;max-width:100%}
+    .wc-add-row2 select{max-width:190px;min-width:0}
+    .wc-add-next{flex:1;min-width:150px}
+    .tk-sec{margin-bottom:1.05rem}
+    .tk-sec-head{display:flex;align-items:center;gap:.5rem;margin:0 0 .4rem;padding:0 .15rem;flex-wrap:wrap}
+    .tk-dot{width:8px;height:8px;border-radius:50%;flex:none}
     .tk-sec-title{font-weight:800;font-size:12.5px;color:var(--ink2)}
     .tk-sec-count{font-size:11px;color:var(--muted);background:#f1f5f9;border-radius:20px;padding:.05rem .5rem;font-weight:700;min-width:20px;text-align:center}
+    .tk-sec-hint{font-size:10.5px;color:var(--muted);margin-inline-start:auto}
     .tk-list{background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden}
-    .tk-row{display:flex;gap:.7rem;align-items:flex-start;padding:.7rem .85rem;border-bottom:1px solid var(--line);transition:background .12s}
+    .tk-row{display:flex;gap:.6rem;align-items:flex-start;padding:.65rem .8rem;border-bottom:1px solid var(--line);transition:background .12s;flex-wrap:wrap}
     .tk-row:last-child{border-bottom:none}
     .tk-row:hover{background:#f8fafc}
-    .tk-check{flex-shrink:0;width:20px;height:20px;margin-top:1px;border:2px solid #cbd5e1;border-radius:50%;background:#fff;color:#fff;font-size:11px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;transition:all .12s}
+    .tk-row.sel{background:#eef4ff}
+    .tk-sel{flex:none;margin-top:3px;width:15px;height:15px;accent-color:var(--brand);cursor:pointer;opacity:.45}
+    .tk-row:hover .tk-sel,.tk-sel:checked,.tk-sel:focus-visible{opacity:1}
+    .tk-check{flex:none;width:20px;height:20px;margin-top:1px;border:2px solid #a8b3c4;border-radius:50%;background:#fff;color:#fff;font-size:11px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;transition:all .12s}
     .tk-check:hover:not(.done){border-color:var(--green);background:#f0fdf4}
     .tk-check.done{border-color:var(--green);background:var(--green);cursor:default}
-    .tk-body{flex:1;min-width:0}
-    .tk-title{font-weight:600;font-size:13px;color:var(--ink2);line-height:1.5;word-break:break-word}
-    .tk-meta{display:flex;gap:.35rem .9rem;flex-wrap:wrap;align-items:center;margin-top:.2rem;font-size:11px;color:var(--muted)}
-    .tk-ctx{color:var(--muted);text-decoration:none;display:inline-flex;align-items:center;gap:.2rem;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .tk-ctx:hover{color:var(--brand)}
-    .tk-ctx svg{width:12px;height:12px;opacity:.7}
-    .tk-side{display:flex;gap:.45rem;align-items:center;flex-shrink:0}
-    .tk-status{font-size:11.5px;border:1px solid var(--line);border-radius:8px;padding:.22rem .4rem;background:#fff;color:var(--ink2);cursor:pointer}
-    .tk-done{margin-top:.2rem}
-    .tk-done>summary{cursor:pointer;list-style:none}
-    .tk-done>summary::-webkit-details-marker{display:none}
-    @media(max-width:640px){.tk-side{flex-direction:column;align-items:flex-end;gap:.3rem}.tk-ctx{max-width:150px}}
+    .tk-body{flex:1 1 240px;min-width:0}
+    .tk-title{font-weight:600;font-size:13px;color:var(--ink2);line-height:1.55;word-break:break-word}
+    .tk-row.is-done .tk-title{text-decoration:line-through;color:var(--muted);font-weight:500}
+    .tk-meta{display:flex;gap:.3rem .8rem;flex-wrap:wrap;align-items:center;margin-top:.2rem;font-size:11px;color:var(--muted)}
+    .tk-meta2{margin-top:.3rem}
+    .tk-parent{color:var(--muted);display:inline-flex;align-items:center;gap:.25rem;max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    a.tk-parent:hover{color:var(--brand)}
+    .tk-parent svg{width:12px;height:12px;opacity:.75;flex:none}
+    .tk-parent-none{color:var(--muted);font-style:normal}
+    /* علامةُ الخصوصية هادئة لا صارخة: لونٌ يميّزها عن بقية الوسوم ويرافقه اسمُها دائماً
+       (قاعدة «ليس لوناً فقط») — فمن لا يميّز الألوان يقرأ «مهمة شخصية» كما يقرؤها غيره. */
+    .tk-personal{color:#8a6d2f;background:#fdf8ec;border:1px solid #eadfc2;border-radius:7px;
+      padding:.02rem .4rem;font-weight:700;max-width:none}
+    /* وسمُ الانتظار كذلك: اسمٌ صريح مع لونه، يُقرأ كاملاً ولا يُخمَّن من درجة لون. وهو الوسم
+       الوحيد الذي يقول إن الصفّ ليس عملاً قائماً بعد.
+       ولا يُكتب نصّ الوسم هنا حرفياً: التعليق يُشحن مع الصفحة، فيجد أيُّ فحصٍ نصّي (مسحُ
+       الأدوار، أو تحقّقٌ بعد نشر) الكلمةَ في كل صفحة ويحسبها وسماً مرسوماً. وقعتُ في ذلك
+       بنفسي: قرأتُ «الوسم ظاهر» على صفحةٍ لا وسم فيها. النصّ في المعجم وحده. */
+    .tk-await{color:#92400e;background:#fef3c7;border:1px solid #fde68a;border-radius:7px;
+      padding:.02rem .4rem;font-weight:700;max-width:none}
+    .tk-who{display:inline-flex;align-items:center;gap:.25rem;color:var(--muted)}
+    .tk-who svg{width:12px;height:12px;opacity:.75}
+    .wc-prov{display:flex;gap:.8rem;flex-wrap:wrap;font-size:11px;color:var(--muted);
+      padding:.45rem .6rem;background:var(--bg);border:1px solid var(--line);border-radius:8px;margin-bottom:.7rem}
+    .wc-prov[hidden]{display:none}
+    .wc-prov b{font-weight:700;color:var(--ink)}
+    .tk-prog{display:inline-flex;align-items:center;gap:.35rem;color:var(--muted);font-weight:700}
+    .tk-progbar{display:block;width:70px;height:6px;background:#eef1f7;border-radius:999px;overflow:hidden;flex:none}
+    .tk-progbar>span{display:block;height:100%;background:var(--brand);border-radius:999px}
+    .tk-step{display:inline-flex;align-items:center;gap:.25rem;color:var(--muted);max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .tk-step svg{width:11px;height:11px;opacity:.8;flex:none}
+    .tk-link{background:none;border:none;padding:0;font:inherit;font-size:11px;color:var(--muted);cursor:pointer;
+      text-decoration:underline;text-decoration-style:dotted;text-underline-offset:3px}
+    .tk-link:hover,.tk-link:focus-visible{color:var(--brand);text-decoration-style:solid}
+    .tk-block{display:flex;align-items:center;gap:.4rem;margin-top:.35rem;padding:.3rem .5rem;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;font-size:11px;color:#991b1b}
+    .tk-block svg{width:13px;height:13px;flex:none}
+    .tk-block span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .tk-block .tk-link{color:#991b1b}
+    .tk-side{display:flex;gap:.4rem;align-items:center;flex:none;margin-inline-start:auto}
+    .tk-status{font-size:11.5px;border:1px solid var(--line);border-radius:8px;padding:.22rem .4rem;background:#fff;color:var(--ink2);cursor:pointer;font-family:inherit}
+    .tk-fold>summary{cursor:pointer;list-style:none}
+    .tk-fold>summary::-webkit-details-marker{display:none}
+    .wc-beyond{display:flex;gap:.8rem;flex-wrap:wrap;font-size:11.5px;color:var(--muted);padding:.5rem .2rem 1rem}
+    .wc-beyond a{color:var(--brand);font-weight:700}
+    .wc-hint{font-size:11px;color:var(--muted);margin-top:.5rem}
+    .tk-kempty{font-size:11.5px;color:var(--muted);text-align:center;padding:1rem .5rem}
+    .tk-card-t{background:none;border:none;padding:0;font:inherit;text-align:start;font-weight:700;font-size:12.5px;color:var(--ink2);line-height:1.45;cursor:pointer;display:block;width:100%}
+    .tk-card-t:hover{color:var(--brand)}
+    .tk-card-block{margin-top:.4rem;font-size:10.5px;color:#991b1b;background:#fef2f2;border-radius:6px;padding:.2rem .4rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .cal{padding:.8rem .9rem;margin-bottom:.9rem}
+    .cal-head{display:flex;align-items:center;justify-content:space-between;gap:.6rem;margin-bottom:.7rem;flex-wrap:wrap}
+    .cal-title{font-weight:800;font-size:15px;color:var(--ink2)}
+    .cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));direction:rtl;gap:4px}
+    .cal-dow>div{font-size:10.5px;font-weight:800;color:var(--muted);text-align:center;padding:.2rem 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .cal-cell{min-height:76px;border:1px solid var(--line);border-radius:9px;padding:.28rem .3rem;background:#fff;display:flex;flex-direction:column;gap:2px;min-width:0}
+    .cal-cell.cal-blank{background:#fafbfd;border-style:dashed}
+    .cal-cell.on{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold)}
+    .cal-d{display:flex;align-items:center;justify-content:space-between;gap:2px;font-size:11px;font-weight:700;color:var(--ink2)}
+    .cal-items{display:flex;flex-direction:column;gap:2px;min-width:0}
+    .cal-chip{display:block;width:100%;text-align:start;font:inherit;font-size:10.5px;line-height:1.45;color:var(--ink2);background:#f4f6fb;border:none;border-inline-start:2.5px solid var(--_c,#64748b);border-radius:4px;padding:.1rem .25rem;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .cal-chip:hover{background:#e8edf8}
+    .cal-more{font-size:9px;color:var(--muted)}
+    .cal-dots{display:none;gap:2px;flex-wrap:wrap}
+    .cal-dot{display:inline-block;width:6px;height:6px;border-radius:50%;flex:none}
+    .cal-done{font-size:9.5px;color:var(--green);font-weight:700;margin-top:auto}
+    .cal-legend{display:flex;gap:.8rem;flex-wrap:wrap;font-size:10.5px;color:var(--muted);margin-top:.6rem;align-items:center}
+    .cal-legend span{display:inline-flex;align-items:center;gap:.25rem}
+    .wc-tray{padding:.8rem .9rem;margin-bottom:.9rem}
+    .wc-tray-h{font-weight:800;font-size:12.5px;color:var(--ink2)}
+    .wc-tray-s{font-size:11px;color:var(--muted);margin:.15rem 0 .5rem}
+    .wc-team{margin-bottom:1rem}
+    /* ── بطاقات الأشخاص المجمَّعة تنظيمياً ──
+       العنوان التنظيمي خفيف يفصل ولا يزاحم، والبطاقة تحمل الصورة الكاملة للشخص: مهامه
+       ومشاريعه وفرصه. الهدوء مقصود — لا لون إلا حيث يوجد ما يستدعي النظر.
+       تنبيه: هذه الأنماط تُشحَن داخل كل نسخة من الصفحة بما فيها نسخة الموظف، فلا يُكتب هنا
+       نصٌّ يطابق عنواناً محجوباً عنه — الاختبار يتحقّق من الحجب بمطابقة نصّية. */
+    .wd{margin-top:1rem}
+    .wd-h{display:flex;align-items:baseline;gap:.6rem;flex-wrap:wrap;padding:0 .15rem .45rem}
+    .wd-n{font-weight:800;font-size:13.5px;color:var(--ink2)}
+    .wd-m{font-size:var(--fs-micro);color:var(--muted)}
+    /* الشارة تلي بيانات الإدارة ولا تُنفى إلى الحافة المقابلة: الهامش التلقائي كان يقذفها إلى
+       أقصى يسار صفٍّ بعرض الشاشة، فتُقرأ معلَّقةً بلا صاحب — و«لا شيء عالق» عن إدارةٍ اسمُها على
+       بُعد ألف بكسل ليست جملةً بل لغز. */
+    .wd-flag{font-size:var(--fs-micro);font-weight:800;color:var(--red);
+      background:#fef2f2;border:1px solid #fecaca;border-radius:999px;padding:.1rem .5rem}
+    .wd-ok{font-size:var(--fs-micro);font-weight:700;color:var(--green)}
+    .wd-why{font-size:var(--fs-micro);color:var(--muted);background:var(--bg);border:1px solid var(--line);
+      border-radius:9px;padding:.35rem .6rem;margin:0 .15rem .5rem}
+    /* شريط «عملٌ بلا صاحب» فوق الإدارات: نبرةٌ تنبيهية لا خطأ — حالةُ إسنادٍ ناقصة تُعالَج. */
+    .wd-orphan{background:linear-gradient(180deg,#fffbeb,#fff 60%);border:1px solid #fde68a;
+      border-radius:14px;padding:.6rem .85rem;margin-bottom:.7rem}
+    .wd-orphan-h{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
+    .wd-orphan-t{font-weight:800;font-size:13px;color:#92400e}
+    .wd-orphan-n{font-weight:800;font-size:13px;color:#92400e;background:#fef3c7;border-radius:999px;padding:.02rem .5rem}
+    .wd-orphan-b{display:flex;flex-direction:column;gap:.2rem;margin-top:.3rem}
+    .wd-orphan-i{font-size:var(--fs-micro);color:var(--muted);line-height:1.8}
+    .wd-orphan-i a{color:var(--brand);font-weight:700}
+    .wd-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(268px,1fr));gap:.6rem}
+    .wp{background:#fff;border:1px solid var(--line);border-radius:14px;padding:.7rem .8rem;
+      display:flex;flex-direction:column;gap:.42rem;transition:border-color .15s,box-shadow .15s}
+    .wp:hover{border-color:#c9d3e8;box-shadow:0 6px 18px -12px rgba(16,32,70,.4)}
+    .wp.hot{border-color:#fecaca;background:linear-gradient(180deg,#fffafa,#fff 42%)}
+    .wp.idle{background:linear-gradient(180deg,#fcfcfd,#fff 42%)}
+    .wp-h{display:flex;align-items:center;gap:.5rem}
+    .wp-av{width:30px;height:30px;flex:none;border-radius:9px;display:grid;place-items:center;
+      font-weight:800;font-size:13px;color:#fff;background:var(--brand-grad)}
+    .wp-id{display:flex;flex-direction:column;min-width:0;flex:1}
+    .wp-n{font-weight:800;font-size:12.5px;color:var(--ink2);text-decoration:none;
+      overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .wp-n:hover{color:var(--brand)}
+    .wp-job{font-size:var(--fs-micro);color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .wp-count{flex:none;min-width:26px;text-align:center;font-weight:800;font-size:13px;color:var(--ink2);
+      background:var(--bg);border-radius:8px;padding:.15rem .35rem;text-decoration:none}
+    .wp-count:hover{background:#eef2fb;color:var(--brand)}
+    /* صفرٌ بوزن الأرقام الحقيقية يجعل أثقل شيء على بطاقةٍ خالية هو خلوّها — يخفت ولا يختفي. */
+    .wp-count.zero{color:var(--faint);background:transparent;font-weight:700}
+    .wp-chips{display:flex;flex-wrap:wrap;gap:.28rem}
+    .wp-chip{font-size:var(--fs-micro);font-weight:700;border-radius:7px;padding:.08rem .4rem}
+    .wp-chip.bad{color:#b91c1c;background:#fef2f2}
+    .wp-chip.warn{color:#a16207;background:#fefce8}
+    .wp-chip.mute{color:var(--muted);background:var(--bg);font-weight:400}
+    .wp-line{display:flex;align-items:baseline;gap:.4rem;font-size:var(--fs-micro)}
+    .wp-k{flex:none;color:var(--faint);min-width:42px}
+    .wp-v{display:flex;flex-wrap:wrap;gap:.25rem;align-items:baseline;min-width:0}
+    /* min-width:0 لازمة: عنصر المرونة لا ينكمش دون مقاس محتواه افتراضياً، فتفيض نقاطُ الحذف
+       بلا أن تعمل — وهو ما جعل اسم المشروع الطويل يمتدّ خارج البطاقة بدل أن يُقصّ. */
+    .wp-tag{font-size:var(--fs-micro);color:var(--ink2);background:var(--bg);border-radius:6px;
+      padding:.06rem .38rem;text-decoration:none;min-width:0;max-width:100%;
+      overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .wp-tag:hover{background:#eef2fb;color:var(--brand)}
+    /* المتأخّرة والمعطَّلة تُقرآن من لون البلاطة نفسها — لا شارة ثانية تُطيل السطر */
+    .wp-tag.late{background:#fef2f2;color:#b91c1c;font-weight:700}
+    .wp-tag.blk{background:#fffbeb;color:#b45309;font-weight:700}
+    .wp-more{color:var(--faint)}
+    .wp-num{font-weight:800;color:var(--ink2)}
+    /* القيمة أثرٌ لا عنوان: تبقى مقروءةً لمن يحتاجها ولا تسبق اسم الفرصة إلى العين. */
+    .wp-money{color:var(--faint);font-size:var(--fs-micro);white-space:nowrap}
+    .wp-idle{font-size:var(--fs-micro);color:var(--faint);line-height:1.7}
+    @media(max-width:640px){.wd-grid{grid-template-columns:1fr}}
+    .wc-team-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:.6rem;margin-top:.45rem}
+    .wc-person{display:block;background:#fff;border:1px solid var(--line);border-radius:12px;padding:.6rem .75rem;transition:border-color .15s,box-shadow .15s}
+    .wc-person:hover{border-color:#c9d3e8;box-shadow:var(--sh-sm)}
+    .wc-person.hot{border-color:#fecaca}
+    .wc-person-h{display:flex;align-items:center;justify-content:space-between;gap:.5rem}
+    .wc-person-n{font-weight:800;font-size:12.5px;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .wc-person-f{display:flex;gap:.5rem;flex-wrap:wrap;font-size:10.5px;margin-top:.25rem}
+    .wc-opps{padding:.8rem .9rem;margin-bottom:.9rem}
+    .wc-opps-h{display:flex;align-items:flex-start;justify-content:space-between;gap:.6rem;flex-wrap:wrap}
+    .wc-opps-t{font-weight:800;font-size:13px;color:var(--ink2)}
+    .wc-opps-s{font-size:11px;color:var(--muted)}
+    .wc-opps-list{margin-top:.5rem;border-top:1px solid var(--line)}
+    .wc-opp{display:flex;align-items:center;gap:.6rem;padding:.45rem 0;border-bottom:1px dashed var(--line);flex-wrap:wrap}
+    .wc-opp:last-child{border-bottom:none}
+    .wc-opp-t{flex:1 1 190px;min-width:0;font-size:12.5px;font-weight:700;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .wc-opp-c{display:block;font-size:10.5px;font-weight:400;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .wc-opp-m{display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;font-size:10.5px}
+    /* القيمة تلي الاسم ولا تنافسه: نفس القاعدة المطبَّقة على بطاقة الشخص وصفحته. */
+    .wc-opp-v{flex:none;font-size:11px;color:var(--faint);margin-inline-start:auto}
+    .wc-bulk{position:fixed;bottom:14px;left:76px;right:14px;z-index:45;display:flex;align-items:center;gap:.45rem;flex-wrap:wrap;
+      background:var(--ink);color:#fff;border-radius:14px;padding:.55rem .8rem;box-shadow:0 14px 40px rgba(15,23,42,.35)}
+    .wc-bulk[hidden]{display:none}
+    .wc-bulk-n{font-size:12px;font-weight:700}
+    .wc-bulk .input{font-size:11.5px;padding:.3rem .5rem;background:#fff;color:var(--ink2);border:none;max-width:150px;min-width:0}
+    .wc-bulk-note{font-size:10px;color:rgba(255,255,255,.6);margin-inline-start:auto}
+    .wc-fieldnote{font-size:10.5px;color:var(--muted);line-height:1.7}
+    .wc-fieldnote[hidden]{display:none}
+    .wc-fieldnote.err{color:#991b1b;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:.4rem .55rem}
+    .tk-cat-chip{display:inline-flex;align-items:center;background:#eef2f7;color:#475569;border-radius:999px;
+      padding:.1rem .55rem;font-size:10.5px;font-weight:700;max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .tk-cat-other{margin-top:.35rem}
+    .tk-cat-other[hidden]{display:none}
+    .drawer-foot .tk-del{color:#b91c1c;margin-inline-start:auto}
+    .drawer-foot .tk-del[hidden]{display:none}
+    @media(max-width:900px){
+      .wc-stats{grid-template-columns:repeat(2,1fr)}
+      .wc-day-r{border-inline-start:none;border-top:1px solid var(--line);padding-inline-start:0;padding-top:.7rem;flex-basis:100%}
+    }
+    @media(max-width:640px){
+      .tk-side{margin-inline-start:0;flex-basis:100%;justify-content:flex-end}
+      .tk-parent,.tk-step{max-width:150px}
+      .wc-search{margin-inline-start:0;flex-basis:100%}
+      .wc-search .search input{min-width:0;width:100%}
+      .wc-search .search{flex:1}
+      .cal-cell{min-height:52px}
+      .cal-items,.cal-more{display:none}
+      .cal-dots{display:flex}
+      .cal-legend{font-size:9.5px}
+      .wc-bulk{left:12px;right:12px;bottom:72px}
+      .wc-bulk-note{display:none}
+      .wc-add-row2 select,.wc-add-row2 .input{max-width:none;flex:1 1 130px}
+    }
   </style>`;
 
-  const body = `${styles}${strip}${quickAdd}${listArea}`;
-  return layout({ user, active: 'tasks', title: 'مهامي', subtitle: openT.length ? `${countAr(openT.length, { one: 'مهمة مفتوحة', two: 'مهمتان مفتوحتان', few: 'مهام مفتوحة', many: 'مهمة مفتوحة' })}${overdue.length ? ` · ${overdue.length} متأخرة` : ''}` : 'كل المهام منجزة', body, scripts: ['/static/pages/tasks.js'] });
+  const content = view === 'board' ? boardView : view === 'calendar' ? calendarView : (listBody + beyond);
+  const body = `${styles}${dayCard}${stats}${lens}
+    <div class="wc-bartop">${viewSeg}${searchForm}</div>
+    <div class="wc-barfilters">${winChips}${moreChips}</div>
+    ${quickAdd}
+    ${readOnly ? `<div class="alert info" style="margin-bottom:.8rem">${icon('team')}<span>عرض للاطّلاع على عمل فريقك. تعديل مهام غيرك يتطلب صلاحية إدارية على المهام — اطلبها من مدير النظام.</span></div>` : ''}
+    ${who === 'team' ? (view === 'list' ? teamBoard : teamStrip) : ''}
+    ${fAssignee ? `<div class="wc-beyond">تعرض مهام شخص واحد — <a href="${qp({ assignee: null })}">أعِد كل الفريق</a></div>` : ''}
+    ${content}
+    ${oppsBlock}
+    ${notesBlock}
+    ${bulkBar}${editorTpl}
+    <script>window.__SANAD=Object.assign(window.__SANAD||{},{uid:${JSON.stringify(user.id || '').replace(/</g, '\\u003c')},canDelAnyTask:${can(user, 'delete', 'task') ? 'true' : 'false'}});</script>`;
+
+  const subtitle = who === 'team'
+    ? `${G.teamWork} · ${countAr(openT.length, { one: 'مهمة مفتوحة', two: 'مهمتان مفتوحتان', few: 'مهام مفتوحة', many: 'مهمة مفتوحة' })}${overdue.length ? ` · ${overdue.length} متأخرة` : ''}`
+    : (todayBand.length
+      ? `${countAr(todayBand.length, { one: 'مهمة على طاولتك اليوم', two: 'مهمتان على طاولتك اليوم', few: 'مهام على طاولتك اليوم', many: 'مهمة على طاولتك اليوم' })}${overdue.length ? ` · ${overdue.length} متأخرة` : ''}`
+      : (openT.length ? `لا شيء مستحق اليوم · ${countAr(openT.length, { one: 'مهمة مفتوحة', two: 'مهمتان مفتوحتان', few: 'مهام مفتوحة', many: 'مهمة مفتوحة' })}` : 'لا مهام مفتوحة'));
+
+  return layout({ user, active: 'tasks', title: who === 'team' ? G.teamWork : G.myWork, subtitle, body, scripts: ['/static/pages/picker.js', '/static/pages/tasks.js'] });
 }
 
-export async function projectDetailPage(user, projectId) {
-  const p = await get('SELECT * FROM project WHERE id = ? AND deleted_at IS NULL', [projectId]);
-  if (!p) return layout({ user, active: 'projects', title: 'المشروع', body: noticeCard('المشروع غير موجود', 'ربما حُذف المشروع أو أن الرابط غير صحيح.', '/app/projects', 'العودة للمشاريع') });
-  if (!can(user, 'read', 'project', p)) return layout({ user, active: 'projects', title: 'المشروع', body: noticeCard('لا تملك صلاحية الوصول', 'هذا المشروع خارج نطاق صلاحياتك الحالية — تواصل مع مدير النظام إن كنت تحتاج الوصول.', '/app/projects', 'العودة للمشاريع') });
+// ═══ حركة المال على المشروع ══════════════════════════════════════════════════════════════════
+// طلب المالك بلغته: «عشان يبين الكاش إن والكاش آوت والمصروفات والتسكين على المشروع ونسبتهم حسب
+// الشهر، والمصاريف إذا كانت فواتير أو الاشتراكات أو الموردين». كل رقم هنا يأتي جاهزاً من
+// `projectMoney` في وحدة المالية — الشاشة لا تجمع ضلعاً ولا تشتق كلفة ولا تقدّر ما لم يُسجَّل.
+//
+// القاعدة التي يقوم عليها كل سطر أدناه — **الغياب والتقييد والصفر ثلاث حالات لا تتشابه**:
+//   • غياب: لا تسجيل أصلاً (`recorded:false`) ⟵ «غير مُسجَّل» وجملة تقول ما الذي لم يُدخَل. لا «٠ ريال».
+//   • تقييد: مسجَّل ولا يراه الدور (`permitted:false` أو `amounts_visible:false`) ⟵ «مقيَّد» وسببه.
+//   • صفر: قياس حقيقي داخل شريط لا يُرسم أصلاً إلا حين يوجد تسجيل — شهرٌ بلا حركة في مشروع له حركة.
+const M_YEARS_MAX = 3;   // السنة المعروضة + سنتان أخريان بحركة؛ ما زاد يُذكر نصاً لا لوحاً
+const M_ROWS_MAX = 40;   // أحدث المصروفات المعروضة صفاً صفاً (التجميع حسب الوصف يغطي الباقي)
+
+const mNo = (txt) => `<span style="color:var(--faint);font-weight:700;font-size:var(--fs-meta)">${esc(txt || G.notRecorded)}</span>`;
+const mLock = (why) => `<span class="pill" style="background:#fef3c7;color:#92400e" title="${esc(why || G.restrictedAmounts)}">${G.restricted}</span>`;
+const mSar = (v, color) => `<span class="tnum" style="font-weight:800${color ? `;color:${color}` : ''}">${fmtSar(v)}</span>`;
+const mNum = (v, color) => `<span class="tnum" style="font-weight:800${color ? `;color:${color}` : ''}">${Math.round(Number(v) || 0)}</span>`;
+const mPct = (v) => `<span class="tnum" style="font-weight:800">${Math.round(Number(v) || 0)}%</span>`;
+// المبلغ: رقمٌ إن سُجِّل ورآه الدور، وإلا كلمة الغياب أو كلمة التقييد — ولا صفر مكان أيٍّ منهما.
+const mAmount = (v, { locked = false, why = '', absent = '', color = '' } = {}) =>
+  (v == null ? (locked ? mLock(why) : mNo(absent)) : mSar(v, color));
+const mRestricted = (reason) => `<div class="alert warn"><span style="font-weight:800;flex:0 0 auto">${G.restricted}</span><span>${esc(reason || G.restrictedAmounts)}</span></div>`;
+const mEmpty = (title, detail, action = '') => `<div class="empty-state" style="padding:1.15rem 1rem">${icon('inbox')}
+  <div class="t">${esc(title)}</div><div class="s">${esc(detail)}</div>${action}</div>`;
+// عنوان قسم فرعي + شرحه. الشرح يأخذ سطره كاملاً على الشاشات الضيقة (أساس مرن 200px مع
+// السماح بالالتفاف) بدل أن يُعصر في عمود بعرض كلمة فيخرج نصّه من صندوقه.
+const mHead = (title, sub) => `<div style="display:flex;align-items:baseline;gap:.5rem;flex-wrap:wrap;margin-bottom:.5rem">
+  <div style="font-weight:800;font-size:12.5px;color:var(--ink2)">${title}</div>
+  ${sub ? `<div style="font-size:10.5px;color:var(--muted);flex:1 1 200px;min-width:0">${sub}</div>` : ''}</div>`;
+const mBlock = (inner) => `<div style="padding:.85rem 1rem;border-top:1px solid var(--line)">${inner}</div>`;
+// «YYYY-MM» ⟵ «يناير 2026». ما لا شهر له يُقال عنه ذلك، ولا يُنسب إلى شهر تخميناً.
+const mYm = (key) => {
+  const g = /^(\d{4})-(\d{2})$/.exec(String(key || ''));
+  return g ? `${MONTHS_AR[Number(g[2]) - 1] || ''} <span class="tnum">${esc(g[1])}</span>` : G.undatedRows;
+};
+const mMonthYear = (month, year) => (Number.isInteger(Number(month)) && Number(month) >= 1 && Number(month) <= 12
+  ? `${MONTHS_AR[Number(month) - 1]}${Number.isInteger(Number(year)) ? ` <span class="tnum">${esc(String(year))}</span>` : ''}`
+  : G.undatedRows);
+// حالة الفاتورة بمعناها؛ وما لا تسمية له لا تُطبع قيمته المخزَّنة أبداً.
+const mInvStatus = (s) => { const t = String(tr(s) ?? ''); return /^[A-Z_]+$/.test(t) || !t ? 'حالة أخرى' : t; };
+const mSep = '<span aria-hidden="true" style="align-self:center;flex:0 0 auto;font-size:10px;font-weight:800;color:var(--faint)">ثم</span>';
+
+// شريط 12 شهراً — يناير يميناً وديسمبر يساراً (النموذج الزمني الواحد للمنصة، فئة .mtrack).
+// «نحن هنا» يُعلَّم على اسم الشهر بالذهبي لا بحلقة حول العمود: حلقةٌ حول عمودٍ ارتفاعه صفر
+// تُقرأ خطاً ذهبياً طائراً لا مؤشراً — والسابقة المتبعة في المنصة (miniBars) تلوّن التسمية.
+const mBars = (cells, { color, max }) => `<div class="mtrack" style="height:34px;gap:2px">${cells.map((c) => {
+  const v = Number(c.value) || 0;
+  const h = v <= 0 ? 2 : Math.max(3, Math.round((v / Math.max(1, max)) * 32));
+  return `<span title="${esc(c.title)}" style="height:${h}px;border-radius:3px;background:${v > 0 ? color : '#eef1f7'}"></span>`;
+}).join('')}</div>`;
+const mMonthLabels = (now = -1) => `<div class="mtrack" style="gap:2px;margin-top:.3rem">${MONTHS_AR.map((_, i) =>
+  `<span style="font-size:9px;line-height:1.3;text-align:center;overflow:hidden;color:${i === now ? '#a3821c' : 'var(--faint)'};font-weight:${i === now ? '800' : '400'}">${monthLabelDual(i)}</span>`).join('')}</div>`;
+const mTrackRow = ({ title, sub, tone, body }) => `<div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;margin-bottom:.55rem">
+  <div style="flex:0 0 130px;min-width:120px">
+    <div style="display:flex;align-items:center;gap:.35rem;font-size:11.5px;font-weight:700;color:var(--ink2)">
+      <span style="width:9px;height:9px;border-radius:3px;background:${tone};flex:none"></span>${title}</div>
+    <div style="font-size:10.5px;color:var(--muted);line-height:1.6">${sub}</div>
+  </div>
+  <div style="flex:1 1 200px;min-width:0">${body}</div></div>`;
+const mStage = (n, label, value, note) => `<div style="flex:1 1 134px;min-width:120px;border:1px solid var(--line);border-radius:12px;padding:.5rem .6rem;background:#fff">
+  <div style="font-size:9.5px;font-weight:800;color:var(--faint)">${G.moneyStage} <span class="tnum">${n}</span> من <span class="tnum">5</span></div>
+  <div style="font-size:11px;font-weight:700;color:var(--muted);margin-top:.1rem">${label}</div>
+  <div style="font-size:var(--fs-num-sm);margin-top:.1rem">${value}</div>
+  <div style="font-size:10px;color:var(--faint);line-height:1.6">${note || ''}</div></div>`;
+// سنوات أخرى فيها حركة — تُقال بدل أن تُقرأ السنةُ المعروضة فراغاً.
+const mOther = (years) => (years && years.length
+  ? `<div style="font-size:10.5px;color:var(--amber);font-weight:700;margin-top:.25rem">${G.otherYearsMovement}: <span class="tnum">${years.map((y) => esc(String(y))).join('، ')}</span></div>` : '');
+
+// ── لوح سنة واحدة: الجسر · الحركة الشهرية · الخارج النقدي · التسكين · الكلفة · ما ينقص ──
+function mYearPanel(m, { active }) {
+  const now = currentMonthIndex(m.year);            // -1 على سنة ليست الجارية: لا مؤشر «نحن هنا»
+  const b = m.bridge;
+  const yr = `<span class="tnum">${esc(String(m.year))}</span>`;
+  const billLock = b.permitted === false;
+
+  // ① الجسر: خمس مراحل متتابعة لا تُجمع — الترتيب والفواصل والملاحظة تمنع قراءتها مجموعاً.
+  const revNote = b.revenue.permitted === false ? esc(b.revenue.reason_ar || '')
+    : b.revenue.in_year_halalas != null ? `منها في ${yr}: <span class="tnum">${fmtSar(b.revenue.in_year_halalas)}</span>` : '';
+  const invNote = [b.draft_invoiced_halalas != null ? `${G.draftInvoices}: <span class="tnum">${fmtSar(b.draft_invoiced_halalas)}</span>` : '',
+    b.retention_halalas != null ? `${G.retentionHeld}: <span class="tnum">${fmtSar(b.retention_halalas)}</span>` : ''].filter(Boolean).join(' · ');
+  const stages = [
+    mStage(1, G.contracted, mAmount(b.contract_halalas, { absent: G.notRecordedF }),
+      b.client_po_halalas != null ? `${G.clientPo}: <span class="tnum">${fmtSar(b.client_po_halalas)}</span>` : 'قيمة الاتفاق مع العميل'),
+    mStage(2, G.revenueRecognised,
+      b.revenue.permitted === false ? mLock(b.revenue.reason_ar) : mAmount(b.revenue.total_halalas), revNote),
+    mStage(3, G.invoiced, mAmount(b.invoiced_halalas, { locked: billLock, why: b.reason_ar, absent: 'لا فواتير صادرة' }),
+      invNote || 'ما صدرت به فاتورة للعميل'),
+    mStage(4, G.collected, mAmount(b.collected_halalas, { locked: billLock, why: b.reason_ar, absent: 'لم يُسجَّل تحصيل', color: 'var(--green)' }),
+      'نقدٌ دخل فعلاً — وهو وحده الداخل النقدي'),
+    mStage(5, G.outstanding, mAmount(b.outstanding_halalas, { locked: billLock, why: b.reason_ar, absent: 'لا مستحق محسوب', color: 'var(--amber)' }),
+      'المفوتر ناقص المحتجز ناقص المحصَّل'),
+  ].join(mSep);
+  const statusPills = (b.by_status || []).length
+    ? `<div style="display:flex;gap:.3rem;flex-wrap:wrap;margin-top:.5rem">${b.by_status.map((s) => `<span class="pill" style="background:#f1f5f9;color:#475569"
+        title="${esc(mInvStatus(s.status))}: ${esc(fmtSar(s.amount_halalas))}">${esc(mInvStatus(s.status))} <b class="tnum">${Math.round(Number(s.count) || 0)}</b></span>`).join('')}</div>` : '';
+  // أرقام الجسر تراكمية منذ بداية المشروع (الفوترة والتحصيل لا يحملان سنةً في هذا الضلع)، ويُقال
+  // ذلك صراحةً كي لا تُقرأ داخل لوح السنة على أنها أرقام تلك السنة وحدها.
+  const bridgeBlock = mBlock(`${mHead(`${G.moneyBridge} — ${G.moneyStage}ٌ بعد أخرى`,
+    'خمس مراحل متتابعة، كلٌّ من جدولها — وأرقامها منذ بداية المشروع لا لسنة العرض')}
+    <div style="display:flex;gap:.35rem;flex-wrap:wrap;align-items:stretch">${stages}</div>
+    ${statusPills}
+    <div class="alert info" style="margin-top:.55rem;font-size:11px">${esc(b.note_ar)}</div>
+    ${billLock ? `<div style="margin-top:.5rem">${mRestricted(b.reason_ar)}</div>` : ''}`);
+
+  // ② الحركة الشهرية: المفوتر بجوار المحصَّل عمداً — الرقمان ليسا رقماً واحداً.
+  const invM = b.invoiced_monthly; const colM = m.cashIn.monthly;
+  const paid = m.cashOut.paid; const paidM = paid ? paid.monthly : null;
+  const amountsHidden = m.cashOut.permitted === true && m.cashOut.amounts_visible === false;
+  // مقياس كل صف من أعلى شهرٍ فيه، ويُكتب الرقم بجانبه. مقياسٌ واحد للصفوف الثلاثة يجعل
+  // مصروفاً بالآلاف خطاً لا يُرى بجوار فوترةٍ بالملايين، فتضيع «نسبتهم حسب الشهر» — وهي السؤال.
+  // والمقارنة بين الصفوف تبقى ممكنة بالأرقام: مجموع السنة بجانب العنوان، وكل شهر في تفصيل الأشهر.
+  const cells = (rows, key) => rows.map((r, i) => {
+    const v = Number(r[key]) || 0;
+    const unit = key === 'count' ? `${Math.round(v)} حركة` : fmtSar(v);
+    return { value: v, title: `${MONTHS_AR[i]} ${m.year}: ${v > 0 ? unit : 'لا حركة مسجّلة'}` };
+  });
+  const peakOf = (list) => Math.max(0, ...list.map((c) => c.value));
+  const peakNote = (list, key) => {
+    const p = peakOf(list);
+    return p > 0 ? `<div style="font-size:10px;color:var(--faint)">أعلى شهر: <span class="tnum">${key === 'count' ? `${Math.round(p)}` : fmtSar(p)}</span>${key === 'count' ? ' حركة' : ''}</div>` : '';
+  };
+  const invCells = invM ? cells(invM, 'amount_halalas') : [];
+  const colCells = colM ? cells(colM, 'amount_halalas') : [];
+  const paidKey = amountsHidden ? 'count' : 'amount_halalas';
+  const paidCells = paidM ? cells(paidM, paidKey) : [];
+  const invTotal = invM ? invM.reduce((a, r) => a + (Number(r.amount_halalas) || 0), 0) : null;
+  const rowInvoiced = mTrackRow({ title: G.invoiced, tone: '#834798',
+    sub: billLock ? '' : invM ? `في ${yr}: <span class="tnum">${fmtSar(invTotal)}</span>${peakNote(invCells)}` : '',
+    body: billLock ? mLock(b.reason_ar) : invM ? mBars(invCells, { color: '#834798', max: peakOf(invCells) })
+      : mNo('لا فواتير صادرة على هذا المشروع') });
+  const rowCollected = mTrackRow({ title: `${G.collected} — ${G.cashIn}`, tone: 'var(--green)',
+    sub: m.cashIn.permitted === false ? '' : m.cashIn.in_year_halalas != null
+      ? `في ${yr}: <span class="tnum">${fmtSar(m.cashIn.in_year_halalas)}</span>${peakNote(colCells)}` : '',
+    // سنةٌ بلا تحصيل في مشروعٍ له تحصيل مسجَّل تُقرأ صفراً حقيقياً — فتُذكر سنواتُ الحركة معها
+    // كي لا يُقرأ اللوحُ فارغاً، ويُعرف أن الحركة في سنة أخرى لا أن التحصيل معدوم.
+    body: m.cashIn.permitted === false ? mLock(m.cashIn.reason_ar)
+      : `${colM ? mBars(colCells, { color: 'var(--green)', max: peakOf(colCells) })
+        : mNo('لم يُسجَّل أي تحصيل على فواتير هذا المشروع')}${mOther(m.cashIn.other_years)}` });
+  const rowPaid = mTrackRow({ title: `${G.paidOut} — ${G.cashOut}`, tone: '#b45309',
+    sub: m.cashOut.permitted === false ? ''
+      : paid && paid.in_year_halalas != null ? `في ${yr}: <span class="tnum">${fmtSar(paid.in_year_halalas)}</span>${peakNote(paidCells)}`
+        : paid && amountsHidden ? `في ${yr}: <span class="tnum">${Math.round(paid.in_year_count || 0)}</span> حركة${peakNote(paidCells, 'count')}` : '',
+    body: m.cashOut.permitted === false ? mLock(m.cashOut.reason_ar)
+      : `${paidM ? mBars(paidCells, { color: '#b45309', max: peakOf(paidCells) })
+        : m.cashOut.recorded ? mNo('المسجَّل من المصروفات لم يُصرف بعد') : mNo('لا مصروفات مسجّلة على هذا المشروع')}${mOther(m.cashOut.other_years)}` });
+  const undated = [
+    m.cashIn.undated ? `تحصيلات ${G.undatedRows}: <span class="tnum">${Math.round(m.cashIn.undated.count)}</span> بمبلغ <span class="tnum">${fmtSar(m.cashIn.undated.amount_halalas)}</span>` : '',
+    paid && paid.undated ? `مصروفات مدفوعة ${G.undatedRows}: <span class="tnum">${Math.round(paid.undated.count)}</span>${paid.undated.amount_halalas != null ? ` بمبلغ <span class="tnum">${fmtSar(paid.undated.amount_halalas)}</span>` : ''}` : '',
+  ].filter(Boolean);
+  const movement = mBlock(`${mHead(`${G.monthlyMovement} في سنة ${m.year}`, 'المفوتر بجوار المحصَّل عمداً: ما صدرت به فاتورة شيء، وما دخل الحساب شيء آخر')}
+    ${rowInvoiced}${rowCollected}${rowPaid}${mMonthLabels(now)}
+    ${amountsHidden ? `<div style="font-size:10.5px;color:var(--amber);font-weight:700;margin-top:.4rem">${esc(m.cashOut.amounts_reason_ar || G.restrictedAmounts)} — أعمدة الخارج النقدي تمثل عدد الحركات لا مبالغها.</div>` : ''}
+    ${undated.length ? `<div style="font-size:10.5px;color:var(--muted);margin-top:.4rem">${undated.join(' · ')} — محسوبة في المجموع وخارج الشريط الشهري حتى يُسجَّل تاريخها.</div>` : ''}
+    <div style="font-size:10.5px;color:var(--faint);margin-top:.4rem">كل صف بمقياس أعلى شهرٍ فيه، فتُقرأ نسبة كل شهر داخل صفّه — والمقارنة بين الصفوف بالأرقام لا بارتفاع الأعمدة.</div>
+    <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-top:.55rem">
+      <button type="button" class="btn btn-sm" data-action="money-dd" data-dd="money-months-${esc(String(m.year))}">${icon('list')} ${G.monthDetails}</button>
+      <span style="font-size:10.5px;color:var(--faint)">${esc(m.cashIn.note_ar)}</span>
+    </div>`);
+
+  // نافذة تفصيل الأشهر: الأرقام الثلاثة صفاً لكل شهر (خادميّة بالكامل، بنفس صلاحية الصفحة).
+  // ما لا تسجيل له يُقال مرة واحدة أسفل الجدول بدل أن يتكرر «غير مُسجَّل» اثنتي عشرة مرة.
+  const ddMissing = [
+    !billLock && !invM ? 'المفوتر: لا فواتير صادرة مسجّلة على هذا المشروع' : '',
+    m.cashIn.permitted !== false && !colM ? 'المحصَّل: لا تحصيل مسجَّل على فواتير هذا المشروع' : '',
+    m.cashOut.permitted !== false && !paidM ? 'المدفوع: لا مصروف مدفوع مسجَّل على هذا المشروع' : '',
+  ].filter(Boolean);
+  const ddRowsHtml = MONTHS_AR.map((mn, i) => `<tr style="border-bottom:1px solid var(--line)">
+      <td style="padding:.4rem .6rem;font-size:12px">${mn}${i === now ? ` ${nowDot('الشهر الحالي')}` : ''}</td>
+      <td style="padding:.4rem .6rem;text-align:center;font-size:12px">${billLock ? mLock(b.reason_ar) : invM ? `<span class="tnum">${fmtSar(invM[i].amount_halalas)}</span>` : mNo()}</td>
+      <td style="padding:.4rem .6rem;text-align:center;font-size:12px">${m.cashIn.permitted === false ? mLock(m.cashIn.reason_ar) : colM ? `<span class="tnum">${fmtSar(colM[i].amount_halalas)}</span>` : mNo()}</td>
+      <td style="padding:.4rem .6rem;text-align:center;font-size:12px">${m.cashOut.permitted === false ? mLock(m.cashOut.reason_ar)
+    : paidM ? (paidM[i].amount_halalas != null ? `<span class="tnum">${fmtSar(paidM[i].amount_halalas)}</span>` : `<span class="tnum">${Math.round(paidM[i].count || 0)}</span> حركة`) : mNo()}</td>
+    </tr>`).join('');
+  const ddTpl = `<template id="dd-money-months-${esc(String(m.year))}">
+    <div class="modal-head"><div><div style="font-weight:800;font-size:15px">${G.monthlyMovement} — سنة ${esc(String(m.year))}</div>
+      <div style="font-size:11.5px;color:var(--muted)">${esc(m.project.name_ar)}</div></div>
+      <button type="button" class="btn btn-ghost btn-sm" data-action="money-close" aria-label="إغلاق">✕</button></div>
+    <div class="modal-body"><div class="tblwrap"><table style="width:100%;border-collapse:collapse">
+      <thead><tr style="font-size:10.5px;color:var(--muted);text-align:right">
+        <th style="padding:.35rem .6rem">الشهر</th><th style="padding:.35rem .6rem;text-align:center">${G.invoiced}</th>
+        <th style="padding:.35rem .6rem;text-align:center">${G.collected}</th><th style="padding:.35rem .6rem;text-align:center">${G.paidOut}</th></tr></thead>
+      <tbody>${ddRowsHtml}</tbody></table></div>
+      ${ddMissing.length ? `<div style="font-size:11px;color:var(--amber);font-weight:700;margin-top:.6rem;line-height:1.9">${ddMissing.join(' · ')}</div>` : ''}
+      <div style="font-size:11px;color:var(--muted);margin-top:.6rem;line-height:1.9">${esc(b.note_ar)}</div></div></template>`;
+
+  // ③ الخارج النقدي: المدفوع وحده نقد، والباقي التزامات وطلبات بجانبه لا داخله.
+  const co = m.cashOut;
+  // خانةٌ فارغةٌ داخل سجلٍ قائم ليست «غير مُسجَّل»: لا شيء في هذه الحالة اليوم، وهذه حقيقة لا غياب.
+  const coCell = (label, count, amount, color, sub) => {
+    const n = Math.round(Number(count) || 0);
+    const value = amount === undefined ? mNum(n, color)
+      : n === 0 ? mNo('لا شيء في هذه الحالة')
+        : amount != null ? mSar(amount, color) : (co.amounts_visible === false ? mLock(co.amounts_reason_ar) : mNo());
+    return `<div style="flex:1 1 132px;min-width:120px;border:1px solid var(--line);border-radius:12px;padding:.5rem .6rem">
+      <div style="font-size:11px;color:var(--muted);font-weight:700">${label}</div>
+      <div style="font-size:var(--fs-num-sm)">${value}</div>
+      <div style="font-size:10px;color:var(--faint)">${sub || (n ? `<span class="tnum">${n}</span> مصروفاً في هذه الحالة` : '')}</div></div>`;
+  };
+  const cashOutBlock = mBlock(co.permitted === false ? `${mHead(G.cashOut)}${mRestricted(co.reason_ar)}`
+    : `${mHead(G.cashOut, `${esc(co.note_ar)} الأرقام هنا منذ بداية المشروع؛ وشريط السنة أعلاه لسنة العرض.`)}
+      ${co.recorded ? `<div style="display:flex;gap:.4rem;flex-wrap:wrap">
+        ${coCell(G.paidOut, co.paid.count, co.paid.total_halalas, 'var(--ink2)', 'نقدٌ خرج فعلاً — منذ بداية المشروع')}
+        ${coCell(G.committedNotPaid, co.committed.count, co.committed.total_halalas, 'var(--amber)', 'التزام لم يخرج بعد')}
+        ${coCell(G.requestedNotApproved, co.requested.count, co.requested.total_halalas, 'var(--muted)', 'بانتظار الاعتماد')}
+        ${coCell(G.rejectedExpenses, co.rejected.count, undefined, 'var(--faint)', 'مصروفات مرفوضة — خارج الحساب')}
+      </div>
+      <div style="font-size:10.5px;color:var(--faint);margin-top:.5rem">${esc(co.sources_ar)}</div>`
+    : mEmpty(G.notRecorded + ' — لا خارج نقدي على هذا المشروع', m.expenses.empty_ar,
+      `<a href="#money-expenses" style="font-size:12px;color:var(--brand2);font-weight:700">${G.addExpense} من سجل المصروفات ↓</a>`)}`);
+
+  // ④ التسكين بالنسب الشهرية — النسبة حصة الشخص من شهر عمل كامل على هذا المشروع.
+  const st = m.staffing;
+  const shareCell = (v, mn) => {
+    const pctv = Math.max(0, Math.round(Number(v) || 0));
+    const op = pctv <= 0 ? 0 : Math.max(0.16, Math.min(1, pctv / 100));
+    return `<span title="${esc(mn)}: ${pctv}%" style="height:14px;border-radius:3px;background:${pctv > 0 ? `rgba(36,74,153,${op.toFixed(2)})` : '#eef1f7'}"></span>`;
+  };
+  // min-width لازم: في بطاقة الجوال (.rtbl) تصير الخلية صفَّ flex، وشبكةٌ خلاياها فارغة
+  // تنكمش إلى صفر فيختفي الشريط كله. المقاس الأدنى يبقيه ظاهراً في الجدول والبطاقة معاً.
+  const shareStrip = (months) => `<div class="mtrack" style="gap:2px;min-width:140px;flex:1 1 auto">${months.map((v, i) => shareCell(v, MONTHS_AR[i])).join('')}</div>`;
+  const staffRowsM = (st.people || []).map((e) => `<tr style="border-bottom:1px solid var(--line)">
+      <td data-label="الشخص" style="padding:.4rem .7rem;font-size:12.5px">${esc(e.name)}
+        <div style="font-size:10px;color:var(--muted)">${esc(e.job_title || 'المسمى غير مسجَّل')}</div></td>
+      <td data-label="${G.monthsStaffed}" style="padding:.4rem .7rem;text-align:center">${mNum(e.months_staffed)}</td>
+      <td data-label="${G.peak}" style="padding:.4rem .7rem;text-align:center">${mPct(e.peak_pct)}</td>
+      <td data-label="${G.averageShare}" style="padding:.4rem .7rem;text-align:center">${mPct(e.average_pct)}</td>
+      <td data-label="${G.yearShare}" class="rtbl-hm" style="padding:.4rem .7rem;text-align:center">${mPct(e.year_share_pct)}</td>
+      <td data-label="${G.allMonths}" style="padding:.4rem .7rem;min-width:150px">${shareStrip(e.monthly)}</td></tr>`).join('');
+  const staffingBlock = mBlock(`${mHead(`${G.staffingShare} في سنة ${m.year}`, esc(st.note_ar))}
+    ${st.recorded ? `<div class="tblwrap"><table class="rtbl" style="width:100%;border-collapse:collapse;min-width:520px">
+        <thead><tr style="font-size:10.5px;color:var(--muted);text-align:right">
+          <th style="padding:.35rem .7rem">الشخص</th><th style="padding:.35rem .7rem;text-align:center">${G.monthsStaffed}</th>
+          <th style="padding:.35rem .7rem;text-align:center">${G.peak}</th><th style="padding:.35rem .7rem;text-align:center">${G.averageShare}</th>
+          <th style="padding:.35rem .7rem;text-align:center">${G.yearShare}</th>
+          <th style="padding:.35rem .7rem;text-align:center">${G.allMonths}${mMonthLabels(now)}</th></tr></thead>
+        <tbody>${staffRowsM}</tbody></table></div>
+      <div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;margin-top:.55rem">
+        <div style="flex:0 0 130px;font-size:11.5px;font-weight:700;color:var(--ink2)">${G.monthlyTotalShare}</div>
+        <div style="flex:1 1 200px;min-width:0">${shareStrip((st.monthly_total_pct || []).map((v) => Math.min(100, v)))}
+          <div style="font-size:10px;color:var(--faint);margin-top:.2rem">${(st.monthly_total_pct || []).map((v, i) => (v > 0 ? `${MONTHS_AR[i]} <span class="tnum">${Math.round(v)}%</span>` : '')).filter(Boolean).join(' · ') || 'لا نِسَب مسجّلة في أشهر هذه السنة'}</div></div>
+      </div>
+      <div style="font-size:10.5px;color:var(--muted);margin-top:.35rem">${esc(st.total_note_ar)}</div>`
+    : mEmpty(st.empty_ar, st.other_years && st.other_years.length
+      ? `للمشروع تسكين مسجَّل في سنوات أخرى — بدّل سنة العرض أعلاه لرؤيته.`
+      : 'لم يُسكَّن أحد على هذا المشروع في أي سنة. التسكين يُسجَّل من شاشة التسكين.',
+    `<a href="/app/staffing" style="font-size:12px;color:var(--brand2);font-weight:700">فتح شاشة التسكين</a>`)}
+    ${mOther(st.other_years)}
+    <div class="alert warn" style="margin-top:.5rem;font-size:11px"><span style="font-weight:800;flex:0 0 auto">${G.staffingCostLine}</span><span>${esc(st.cost.reason_ar)}</span></div>
+    ${st.undated_count ? `<div style="font-size:10.5px;color:var(--muted);margin-top:.35rem">تسكين بلا سنة مسجَّلة: <span class="tnum">${Math.round(st.undated_count)}</span> — لا يظهر على أي شريط شهري حتى تُسجَّل سنته.</div>` : ''}`);
+
+  // ⑤ الكلفة المسجَّلة: اعترافٌ بكلفة لا حركة صرف — تبقى خارج الخارج النقدي عمداً.
+  const c = m.cost;
+  const costBlock = mBlock(c.permitted === false ? `${mHead(G.recordedCost)}${mRestricted(c.reason_ar)}`
+    : `${mHead(G.recordedCost, esc(c.note_ar))}
+      ${c.recorded ? `<div style="display:flex;gap:.4rem;flex-wrap:wrap;align-items:stretch">
+          <div style="flex:1 1 150px;min-width:130px;border:1px solid var(--line);border-radius:12px;padding:.5rem .6rem">
+            <div style="font-size:11px;color:var(--muted);font-weight:700">منذ بداية المشروع</div><div style="font-size:var(--fs-num-sm)">${mSar(c.total_halalas)}</div></div>
+          <div style="flex:1 1 150px;min-width:130px;border:1px solid var(--line);border-radius:12px;padding:.5rem .6rem">
+            <div style="font-size:11px;color:var(--muted);font-weight:700">في سنة ${esc(String(m.year))}</div><div style="font-size:var(--fs-num-sm)">${mSar(c.in_year_halalas)}</div></div>
+          ${c.project_actual_spend_halalas != null ? `<div style="flex:1 1 150px;min-width:130px;border:1px solid var(--line);border-radius:12px;padding:.5rem .6rem">
+            <div style="font-size:11px;color:var(--muted);font-weight:700">${G.actualSpendField}</div><div style="font-size:var(--fs-num-sm)">${mSar(c.project_actual_spend_halalas)}</div>
+            <div style="font-size:10px;color:var(--faint)">خانة مستقلة على صف المشروع — لا تُجمع إلى بنود الكلفة</div></div>` : ''}
+        </div>
+        ${(c.by_type || []).length ? `<div style="margin-top:.5rem;border:1px solid var(--line);border-radius:12px;padding:.15rem .7rem">
+          ${c.by_type.slice(0, 6).map((t) => `<div class="dd-row">
+            <span>${esc(t.type || 'بلا وصف مسجَّل')} · <span class="tnum">${Math.round(t.count)}</span> بند</span><b>${fmtSar(t.total_halalas)}</b></div>`).join('')}</div>` : ''}`
+    : mEmpty(c.empty_ar, 'بنود الكلفة تصل من الترحيل أو من المالية — غيابها لا يعني أن الكلفة صفر.')}`);
+
+  // ⑥ ما ينقص الصورة: يُقال صراحةً بدل أن يُقرأ صفراً
+  const gapsBlock = mBlock(`${mHead(G.whatIsMissing, 'ما لم يُسجَّل بعد — يُقال هنا كي لا يُقرأ صفراً في مكان آخر')}
+    ${(m.gaps || []).length ? `<div style="display:grid;gap:.4rem">${m.gaps.map((g) => `<div class="attn">
+        <span class="ic" style="background:#fffbeb;color:#b45309">${icon('flag')}</span>
+        <span class="tx"><span class="h">${esc(g.title_ar)}</span><span class="s">${esc(g.detail_ar)}</span></span></div>`).join('')}</div>`
+    : `<div class="alert ok">${G.pictureComplete}</div>`}`);
+
+  return `<div class="money-panel" data-money-year="${esc(String(m.year))}"${active ? '' : ' hidden'}>
+    ${bridgeBlock}${movement}${cashOutBlock}${staffingBlock}${costBlock}${gapsBlock}${ddTpl}</div>`;
+}
+
+// ── سجل المصروفات: قائمة وتجميع حسب الوصف وتسجيل وتعديل وحذف — كلٌّ خلف ما تسمح به الخدمة ──
+// السجل نفسه غير مسنَّن (يعرض كل ما سُجِّل بأي سنة)، فيُقال ذلك في عنوانه بدل أن يُظن سنوياً.
+function mExpensesBlock(m, { projectId, years, defaultYear }) {
+  const ex = m.expenses;
+  if (ex.permitted === false) return mBlock(`${mHead(G.expenseRegister)}${mRestricted(ex.reason_ar)}`);
+  const hidden = ex.amounts_visible === false;
+  const amt = (v) => (v == null ? (hidden ? mLock(m.cashOut.amounts_reason_ar) : mNo()) : mSar(v));
+  const canEdit = ex.can_add === true;      // منح الإنشاء والتعديل يسيران معاً في مصفوفة الصلاحيات
+  const canApprove = ex.can_approve === true;
+  const periodOpts = (sel) => years.flatMap((y) => MONTHS_AR.map((mn, i) => {
+    const v = `${y}-${String(i + 1).padStart(2, '0')}`;
+    return `<option value="${v}"${v === sel ? ' selected' : ''}>${mn} ${y}</option>`;
+  })).join('');
+  const nowM = new Date().getUTCMonth() + 1;
+  const defSel = `${years.includes(defaultYear) ? defaultYear : years[years.length - 1]}-${String(nowM).padStart(2, '0')}`;
+  const statusOpts = (list, sel) => list.map((s) => `<option value="${s}"${s === sel ? ' selected' : ''}>${EXPENSE_STATUS_AR[s]}</option>`).join('');
+
+  const typeRows = (ex.by_type || []).map((t) => `<tr style="border-bottom:1px solid var(--line)">
+      <td data-label="${G.expenseDesc}" style="padding:.4rem .7rem;font-size:12.5px">${esc(t.type || 'بلا وصف مسجَّل')}
+        <div style="font-size:10px;color:var(--muted)">${t.statuses.map((s) => esc(s.status_ar)).join(' · ')}</div></td>
+      <td data-label="عدد المصروفات" style="padding:.4rem .7rem;text-align:center">${mNum(t.count)}</td>
+      <td data-label="عدد الأشهر" style="padding:.4rem .7rem;text-align:center">${mNum(t.months)}</td>
+      <td data-label="من أول شهر إلى آخره" class="rtbl-hm" style="padding:.4rem .7rem;text-align:center;font-size:11.5px">${t.first_month ? `${mYm(t.first_month)}${t.last_month && t.last_month !== t.first_month ? ` ← ${mYm(t.last_month)}` : ''}` : G.undatedRows}</td>
+      <td data-label="المجموع" style="padding:.4rem .7rem;text-align:center">${amt(t.total_halalas)}</td></tr>`).join('');
+
+  const rows = (ex.rows || []).slice(0, M_ROWS_MAX);
+  const rowHtml = rows.map((r) => {
+    const settled = SETTLED_STATUSES.includes(String(r.status).toUpperCase());
+    const editable = canEdit && !settled;
+    const deletable = canEdit && !['APPROVED', 'PAID'].includes(String(r.status).toUpperCase());
+    const per = Number.isInteger(Number(r.month)) && Number.isInteger(Number(r.year))
+      ? `${r.year}-${String(r.month).padStart(2, '0')}` : '';
+    const view = `<tr data-exp-row="${esc(r.id)}" style="border-bottom:1px solid var(--line)">
+      <td data-label="${G.expenseDesc}" style="padding:.4rem .7rem;font-size:12.5px">${esc(r.type || 'بلا وصف مسجَّل')}
+        <div style="font-size:10px;color:var(--muted)">${G.expenseWho}: ${esc(r.requested_by_name || 'غير مسجَّل')}</div></td>
+      <td data-label="${G.expenseMonth}" style="padding:.4rem .7rem;text-align:center;font-size:11.5px"><span>${mMonthYear(r.month, r.year)}</span></td>
+      <td data-label="${G.expenseAmount}" style="padding:.4rem .7rem;text-align:center">${r.amount_restricted ? mLock(m.cashOut.amounts_reason_ar) : amt(r.amount_halalas)}</td>
+      <td data-label="حالة المصروف" style="padding:.4rem .7rem;text-align:center">${canApprove
+      ? `<select class="input" style="font-size:11px;padding:.2rem .3rem;width:auto" aria-label="حالة المصروف"
+            data-action-change="exp-status" data-id="${esc(r.id)}">${statusOpts(Object.keys(EXPENSE_STATUS_AR), String(r.status).toUpperCase())}</select>`
+      : pill(esc(r.status_ar), r.status === 'PAID' ? 'green' : r.status === 'APPROVED' ? 'blue' : r.status === 'REJECTED' ? 'red' : 'slate')}</td>
+      <td data-label="إجراء" style="padding:.4rem .7rem;text-align:center;white-space:nowrap">
+        <span style="display:inline-flex;gap:.25rem;align-items:center">
+        ${editable ? `<button type="button" class="btn btn-ghost btn-sm" data-action="exp-edit" data-id="${esc(r.id)}" title="${G.edit}" aria-label="${G.edit}">${icon('edit')}</button>` : ''}
+        ${deletable ? `<button type="button" class="btn btn-ghost btn-sm" data-action="exp-del" data-id="${esc(r.id)}" title="${G.delete}" aria-label="${G.delete}">✕</button>` : ''}
+        ${!editable && canEdit && settled ? `<span style="font-size:10px;color:var(--faint)">بعد الحسم لا تُعدَّل بياناته</span>` : ''}</span></td></tr>`;
+    const edit = editable ? `<tr data-exp-edit="${esc(r.id)}" hidden style="border-bottom:1px solid var(--line);background:#f8fafc">
+      <td colspan="5" style="padding:.5rem .7rem">
+        <div style="display:flex;gap:.4rem;flex-wrap:wrap;align-items:center">
+          <input class="input" data-f="type" value="${esc(r.type || '')}" aria-label="${G.expenseDesc}" style="flex:1;min-width:130px;font-size:12px">
+          <input class="input" data-f="amount" type="number" min="0" step="1" dir="ltr" value="${r.amount_halalas != null ? Math.round(r.amount_halalas) / 100 : ''}" aria-label="${G.expenseAmount}" style="width:110px;font-size:12px">
+          <select class="input" data-f="period" aria-label="${G.expenseMonth}" style="width:auto;max-width:150px;font-size:12px">${periodOpts(per)}</select>
+          <button type="button" class="btn btn-sm btn-primary" data-action="exp-save" data-id="${esc(r.id)}">${G.saveExpense}</button>
+          <button type="button" class="btn btn-sm" data-action="exp-cancel" data-id="${esc(r.id)}">${G.cancel}</button>
+        </div></td></tr>` : '';
+    return view + edit;
+  }).join('');
+
+  const addBar = ex.can_add ? `<div style="display:flex;gap:.4rem;flex-wrap:wrap;align-items:center;padding:.6rem .75rem;border-top:1px dashed var(--line);background:var(--bg)">
+      <input class="input" id="m-exp-type" list="m-exp-types" placeholder="${G.expenseDesc}…" aria-label="${G.expenseDesc}" style="flex:1;min-width:140px;font-size:12.5px">
+      <datalist id="m-exp-types">${(ex.type_suggestions || []).map((t) => `<option value="${esc(t)}"></option>`).join('')}</datalist>
+      <input class="input" id="m-exp-amount" type="number" min="0" step="1" dir="ltr" placeholder="${G.expenseAmount}" aria-label="${G.expenseAmount}" style="width:120px;font-size:12.5px">
+      <select class="input" id="m-exp-period" aria-label="${G.expenseMonth}" style="width:auto;max-width:160px;font-size:12px">${periodOpts(defSel)}</select>
+      <select class="input" id="m-exp-status" aria-label="حالة المصروف عند التسجيل" style="width:auto;font-size:12px">${statusOpts(OPEN_STATUSES, 'DRAFT')}</select>
+      <button type="button" class="btn btn-sm btn-primary" data-action="exp-add" data-project="${esc(projectId)}">${icon('plus')} ${G.addExpense}</button>
+    </div>` : '';
+
+  // العدد يُذكر حين يوجد تسجيل؛ ولا يُكتب «٠» فوق سجل فارغ — الفراغ له جملته لا رقمه.
+  return mBlock(`${mHead(`${G.expenseRegister}${ex.recorded ? ` (<span class="tnum">${Math.round(ex.count || 0)}</span>)` : ''}`,
+    `${esc(ex.note_ar)} — السجل يعرض كل ما سُجِّل في كل السنوات، والشريط الشهري أعلاه للسنة المعروضة وحدها`)}
+    <div id="money-expenses"></div>
+    ${hidden ? `<div style="margin-bottom:.5rem">${mRestricted(m.cashOut.amounts_reason_ar)}</div>` : ''}
+    ${ex.recorded ? `
+      <div style="font-size:11px;font-weight:800;color:var(--muted);margin:.2rem 0 .3rem">${G.expenseByType}</div>
+      <div class="tblwrap"><table class="rtbl" style="width:100%;border-collapse:collapse;min-width:480px">
+        <thead><tr style="font-size:10.5px;color:var(--muted);text-align:right">
+          <th style="padding:.35rem .7rem">${G.expenseDesc}</th><th style="padding:.35rem .7rem;text-align:center">عدد المصروفات</th>
+          <th style="padding:.35rem .7rem;text-align:center">عدد الأشهر</th><th style="padding:.35rem .7rem;text-align:center">من أول شهر إلى آخره</th>
+          <th style="padding:.35rem .7rem;text-align:center">المجموع</th></tr></thead><tbody>${typeRows}</tbody></table></div>
+      <div style="font-size:11px;font-weight:800;color:var(--muted);margin:.7rem 0 .3rem">أحدث المصروفات المسجّلة</div>
+      <div class="tblwrap" style="max-height:340px;overflow-y:auto"><table class="rtbl" style="width:100%;border-collapse:collapse;min-width:520px">
+        <thead><tr style="font-size:10.5px;color:var(--muted);text-align:right">
+          <th style="padding:.35rem .7rem">${G.expenseDesc}</th><th style="padding:.35rem .7rem;text-align:center">${G.expenseMonth}</th>
+          <th style="padding:.35rem .7rem;text-align:center">${G.expenseAmount}</th><th style="padding:.35rem .7rem;text-align:center">حالة المصروف</th>
+          <th style="padding:.35rem .7rem;text-align:center">إجراء</th></tr></thead><tbody>${rowHtml}</tbody></table></div>
+      ${ex.count > rows.length ? `<div style="font-size:10.5px;color:var(--faint);margin-top:.35rem">يُعرض أحدث <span class="tnum">${rows.length}</span> مصروفاً من <span class="tnum">${Math.round(ex.count)}</span> مسجَّلاً — والتجميع حسب الوصف أعلاه يشمل كل المسجَّل.</div>` : ''}
+      ${ex.undated_count ? `<div style="font-size:10.5px;color:var(--amber);font-weight:700;margin-top:.35rem">مصروفات ${G.undatedRows}: <span class="tnum">${Math.round(ex.undated_count)}</span> — لا تظهر على الشريط الشهري حتى يُسجَّل شهر صرفها.</div>` : ''}`
+    : mEmpty(G.notRecorded + ' — لا مصروفات على هذا المشروع', ex.empty_ar,
+      ex.can_add ? '<div class="s" style="color:var(--brand2);font-weight:700">سجّل أول مصروف من الشريط أدناه</div>' : '<div class="s">تسجيل المصروفات يتم من المالية أو قيادة القطاع.</div>')}
+    ${addBar}`);
+}
+
+// ── الموردون والاشتراكات والمتكرر: ما لا مسار لتسجيله يُقال صراحةً، ولا يُخترع له رقم ──
+function mGapCard(title, state, note, needs, workaround, extra = '') {
+  return `<div style="flex:1 1 260px;min-width:0;border:1px solid var(--line);border-radius:12px;padding:.65rem .75rem;background:#fff">
+    <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.35rem">
+      <span style="font-weight:800;font-size:12.5px">${title}</span>${pill(state, 'amber')}</div>
+    <div style="font-size:11px;color:var(--muted);line-height:1.9">${esc(note)}</div>
+    ${extra}
+    ${needs && needs.length ? `<div style="font-size:10.5px;font-weight:800;color:var(--ink2);margin-top:.5rem">${G.whatItNeeds}</div>
+      <ul style="margin:.2rem 0 0;padding-inline-start:1.1rem;list-style:disc;font-size:11px;color:var(--muted);line-height:1.9">
+        ${needs.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>` : ''}
+    ${workaround ? `<div class="alert info" style="margin-top:.5rem;font-size:11px"><span style="font-weight:800;flex:0 0 auto">${G.workaroundNow}</span><span>${esc(workaround)}</span></div>` : ''}</div>`;
+}
+
+function mSourcesBlock(m) {
+  const s = m.suppliers; const sub = m.subscriptions; const rec = m.recurring;
+  const supExtra = s.permitted === false ? `<div style="margin-top:.45rem">${mRestricted(s.reason_ar)}</div>`
+    : s.recorded ? `<div style="margin-top:.45rem">${(s.rows || []).slice(0, 6).map((r) => `<div class="dd-row">
+        <span>${esc(r.supplier_name || 'مورد غير مسمّى')}${r.code ? ` · ${esc(r.code)}` : ''}</span>
+        <b>${r.amount_halalas != null ? fmtSar(r.amount_halalas) : ''}</b></div>`).join('')}</div>`
+      : `<div style="font-size:11px;color:var(--faint);margin-top:.45rem">${esc(s.empty_ar)}</div>`;
+  const recBody = rec.permitted === false ? mRestricted('سجل المصروفات خارج صلاحيات دورك، ومنه يُقرأ ما تكرر.')
+    : rec.recorded ? `<div style="margin-top:.45rem">${rec.rows.map((t) => `<div class="dd-row">
+        <span>${esc(t.type || 'بلا وصف مسجَّل')} · <span class="tnum">${Math.round(t.months)}</span> أشهر · ${mYm(t.first_month)} ← ${mYm(t.last_month)}</span>
+        <b>${t.total_halalas != null ? fmtSar(t.total_halalas) : ''}</b></div>`).join('')}</div>`
+      : `<div style="font-size:11px;color:var(--faint);margin-top:.45rem">${esc(rec.empty_ar)}</div>`;
+  return mBlock(`${mHead('من أين يخرج المال: موردون · اشتراكات · متكرر', 'ما لا مسار لتسجيله في المنصة يُقال هنا صراحةً — وغيابه ليس صفراً')}
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:stretch">
+      ${mGapCard(G.suppliers, G.noWritePathYet, s.note_ar, s.needs_ar, s.workaround_ar, supExtra)}
+      ${mGapCard(G.subscriptions, G.notTrackedYet, sub.note_ar, sub.needs_ar, sub.workaround_ar)}
+      ${mGapCard(G.recurringExpenses, 'وصفٌ للمسجَّل', rec.note_ar, null, null, recBody)}
+    </div>`);
+}
+
+// ── القسم كاملاً: يُبنى على الخادم لكل سنة فيها حركة، والتبديل بينها في المتصفح بلا طلب جديد ──
+export async function projectMoneySection(user, project, opts = {}) {
+  let primary;
+  try {
+    primary = await projectMoney(user, project.id, { year: opts.year });
+  } catch (e) {
+    const why = e && e.status && e.status < 500 ? e.message : 'تعذّر تجهيز الأرقام الآن. حدّث الصفحة، وإن تكرر فأبلغ مدير النظام.';
+    return card(`<div style="padding:.85rem 1rem;border-bottom:1px solid var(--line);font-weight:800;font-size:13px">${G.moneyOnProject}</div>
+      ${mEmpty(G.moneyLoadFailed, why)}`, 'money-section');
+  }
+  const others = [...new Set([...(primary.cashIn.other_years || []), ...(primary.cashOut.other_years || []),
+    ...(primary.staffing.other_years || [])])].filter((y) => y !== primary.year).sort((a, b) => b - a);
+  const shown = others.slice(0, M_YEARS_MAX - 1);
+  const extra = [];
+  for (const y of shown) {
+    try { extra.push(await projectMoney(user, project.id, { year: y })); } catch { /* سنة تعذّرت قراءتها لا تُسقط القسم */ }
+  }
+  const panels = [primary, ...extra].sort((a, b) => b.year - a.year);
+  const chips = panels.length > 1
+    ? `<div class="chips" style="margin:0" role="group" aria-label="${G.showYear}"><span class="lbl">${G.showYear}</span>
+      ${panels.map((p) => `<button type="button" class="chip${p.year === primary.year ? ' on' : ''}" style="font-family:inherit"
+        data-action="money-year" data-year="${esc(String(p.year))}" aria-pressed="${p.year === primary.year}">سنة <span class="tnum">${esc(String(p.year))}</span></button>`).join('')}</div>`
+    : `<span class="pill" style="background:#f1f5f9;color:#475569">${G.showYear}: <span class="tnum">${esc(String(primary.year))}</span></span>`;
+  // سنوات المصروف في نموذج التسجيل: من بداية المشروع إلى نهايته، وتشمل السنة الجارية دائماً.
+  const cy = new Date().getUTCFullYear();
+  const sy = Number(String(project.start_date || '').slice(0, 4));
+  const ey = Number(String(project.end_date || '').slice(0, 4));
+  const from = Math.min(Number.isFinite(sy) && sy > 2000 ? sy : cy, cy, primary.year);
+  const to = Math.max(Number.isFinite(ey) && ey > 2000 ? ey : cy, cy, primary.year);
+  const years = []; for (let y = from; y <= to; y++) years.push(y);
+
+  return card(`<div style="padding:.85rem 1rem;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:.7rem;flex-wrap:wrap">
+      <span style="color:var(--brand);display:flex">${icon('money')}</span>
+      <div style="flex:1 1 220px;min-width:0">
+        <div style="font-weight:800;font-size:13px">${G.moneyOnProject}</div>
+        <div style="font-size:10.5px;color:var(--muted)">${G.moneyOnProjectSub}</div>
+      </div>${chips}</div>
+    ${panels.map((p) => mYearPanel(p, { active: p.year === primary.year })).join('')}
+    ${mExpensesBlock(primary, { projectId: project.id, years, defaultYear: primary.year })}
+    ${mSourcesBlock(primary)}`, 'money-section');
+}
+
+// ═══ صفحة المشروع ═══════════════════════════════════════════════════════════════════════════
+// سبعة أقسام لا أكثر، ستة منها مطوية عند الفتح.
+//
+// كانت الصفحة تفتح على ثمانية عشر بطاقة دفعةً واحدة — مخاطر ومعوقات وقرارات وطلبات تغيير
+// وخطة مقابل فعلي ولوحُ مالٍ كامل — فيقرؤها موظف الأعمال بالتمرير بحثاً عمّا يخصّه. والمُشغّل
+// اليومي يحتاج ستة أسئلة: ما حال المشروع · أين المراحل · ما المخرجات · من الفريق · ما المهام ·
+// أين المال. فتُعرض إجابتها في رأسٍ دائم، وما وراءها يُفتح عند طلبه.
+//
+// وسجلات الحوكمة **لم تُحذف**: من سجّل مخاطره لا يفقدها، لكنها نزلت إلى قسمٍ واحد مطويّ في
+// الآخر لأنها ليست عمل اليوم. الحذف كان سيكلّف بيانات، والإبقاء في الواجهة كان سيكلّف انتباهاً.
+//
+// «أهم الإجراءات المطلوبة» ليست تنبيهات عامة: كل سطر فيها حالةٌ قابلة للتصرّف الآن يقرؤها
+// المنتج من بياناته (معلم فات · مخرَج سُلِّم ولم يُعتمد · مخرَج معتمد بلا مستخلص · شخص فوق
+// طاقته · مهام متأخرة)، ومعها الرابط الذي يعالجها.
+export async function projectDetailPage(user, projectId, opts = {}) {
+  // الباب الواحد الذي يعرف الإدارات المشاركة (v5.27 — ADR-0008، نظير صفحة الفرصة حرفياً):
+  // درجتان — الصفّ كما هو (يمرّ لأغلب القرّاء)، فإن رُدَّ حُمِّلت المشاركات وأُعيد الفحص.
+  // فمديرةُ إدارةٍ **تشارك** في المشروع تفتح صفحته كما تعرضه قائمتُها (scope.js v5.27)، ويصلها
+  // الصفُّ محمَّلاً بمصفوفة `partner_department_ids` — وجودُها ⇔ الوصولُ بالشراكة، وعليها
+  // يُبنى قفل حقول النسبة أدناه. لو بقيت الصفحة على قراءة الصفّ الخام لعُرض المشروع المشترك
+  // في قائمتها ثم رُدَّت عنه حين تضغطه — عين التناقض الذي أُغلق في الفرص (ADR-0006).
+  let p;
+  try {
+    p = await loadReadableProject(user, projectId, 'read');
+  } catch (e) {
+    if (e && e.status === 404) return layout({ user, active: 'projects', title: 'المشروع', body: noticeCard('المشروع غير موجود', 'ربما حُذف المشروع أو أن الرابط غير صحيح.', '/app/projects', 'العودة للمشاريع') });
+    if (e && e.status === 403) return layout({ user, active: 'projects', title: 'المشروع', body: noticeCard('لا تملك صلاحية الوصول', 'هذا المشروع خارج نطاق صلاحياتك الحالية — تواصل مع مدير النظام إن كنت تحتاج الوصول.', '/app/projects', 'العودة للمشاريع') });
+    throw e;
+  }
   const row = redact(user, 'project', p);
   const k = await projectKpis(p.id);
   const canCost = canSeeSensitive(user, 'cost');
   const canEdit = can(user, 'update', 'project', p);
-  const tasks = await all("SELECT status, COUNT(*) n FROM task WHERE project_id=? AND deleted_at IS NULL GROUP BY status", [p.id]);
+  // حقول النسبة (الإدارة المسؤولة والمشارِكة) للمسؤولة وحدها — نفس عقد الفرص حرفياً: الصفُّ
+  // مُثرى بالمشاركات من الباب أعلاه، فوجودُها ⇔ محرِّرٌ غير مسؤول ⇒ تُقفَل تلك الحقول في
+  // الشاشة (والخادم يحجزها أيضاً في assertNoProjectAttributionChange — لا شاشةٌ وحدها).
+  const canEditAttribution = canEdit && !Array.isArray(p.partner_department_ids);
+  // ── من يرى مالَ المشروع ──────────────────────────────────────────────────────
+  // قرار مالك صريح: «مو أي موظف مسكَّن على المشروع يمديه يشوف هذي الأشياء أصلاً». وكان القسم
+  // يُعرض لكل من يقرأ المشروع — والاستشاري والموظف يقرآن مشاريعهم بحكم تسكينهم، فيرى كلٌّ منهما
+  // قيمة العقد والمفوتر والمستحق. أي أن نطاق **قراءة المشروع** كان يفتح نطاق **قراءة المال**،
+  // وهما منحان مختلفان في المصفوفة عن قصد.
+  // فالبوابة الآن منحُ المال نفسه على هذا الصف بعينه: عقدٌ أو فاتورة. ومدير المشروع يملكه بنطاق
+  // مشروعه، ومن فوقه بنطاق أوسع، والموظف المُسكَّن لا يملكه فلا يرى القسم ولا نسبة الفوترة.
+  const canMoney = can(user, 'read', 'contract', p) || can(user, 'read', 'invoice', p);
+  // وحدُّ **القسم** أوسع من حدّ **مالِ العميل**: القسم يحوي كذلك سجل المصروفات والمشتريات، وهي
+  // شغلُ دور المشتريات فعلاً. فحجبُ القسم كله على من لا يقرأ العقد أخرجَ المشتريات من عملها —
+  // توسّعٌ في الحجب لم يُطلب. فمالُ العميل خلف `canMoney`، والقسم يُعرض لمن يملك أيّ جزء منه،
+  // وكل جزءٍ داخله محروسٌ بمنحه ويقول سبب حجبه (وهو ما تفعله حمولة `projectMoney` أصلاً).
+  const canMoneyBoard = canMoney || can(user, 'read', 'expense', p) || can(user, 'read', 'purchase_order', p);
+  const today = new Date();
+  const todayStr = today.toISOString().slice(0, 10);
+
+  const tasks = await all(`SELECT status, COUNT(*) n FROM task WHERE project_id=? AND deleted_at IS NULL
+     AND ${approvedTaskSql('')} GROUP BY status`, [p.id]);
   const tmap = Object.fromEntries(tasks.map((t) => [t.status, t.n]));
-  const dlv = await all("SELECT name_ar, amount_halalas, status, month FROM deliverable WHERE project_id=? AND deleted_at IS NULL ORDER BY month LIMIT 24", [p.id]);
-  const risks = await all("SELECT title, impact, status FROM risk WHERE project_id=? AND status!='CLOSED' LIMIT 10", [p.id]);
-  const client = await get('SELECT id, name_ar FROM client WHERE id=?', [p.client_id]);
+  const client = await get('SELECT id, name_ar, type FROM client WHERE id=?', [p.client_id]);
   const owner = p.owner_user_id ? await get('SELECT name_ar, username FROM app_user WHERE id=?', [p.owner_user_id]) : null;
-  const srcOpp = p.source_opp_id ? await get('SELECT id, title_ar FROM opportunity WHERE id=? AND deleted_at IS NULL', [p.source_opp_id]) : null;
-  const contract = await get("SELECT id, code, value_halalas, status FROM contract WHERE project_id=? AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1", [p.id]);
-  // Team assigned to this project (from the allocation model), with each member's month-coverage on THIS project.
-  const staff = await all(`SELECT a.person_name_ar, a.type, a.monthly_json, e.job_title
-     FROM allocation a LEFT JOIN employee e ON e.id=a.employee_id
-     WHERE a.project_id=? AND a.deleted_at IS NULL ORDER BY (a.type='lead') DESC, a.person_name_ar`, [p.id]);
-  // Governance registers (WP17): the five project registers + write flag under the same RBAC.
-  const gov = await projectGovernance(user, p.id);
+  const sourceOpportunity = p.source_opp_id ? await get('SELECT * FROM opportunity WHERE id=? AND deleted_at IS NULL', [p.source_opp_id]) : null;
+  const srcOpp = sourceOpportunity && can(user, 'read', 'opportunity', sourceOpportunity) ? sourceOpportunity : null;
+  const contract = await get("SELECT id, code, value_halalas, status, start_date, end_date FROM contract WHERE project_id=? AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1", [p.id]);
+  // بابُ خدمة الحوكمة يحكم بعمود الصفّ وحده فيَرُدّ محرِّرَ الشراكة عن مشروعٍ فُتح له من
+  // الباب أعلاه. ومن قرأ المشروعَ قرأ توابعَه — كما تقرأ الصفحةُ مهامَه وعقدَه وفواتيرَه
+  // قراءةً مباشرة أعلاه وأدناه، وبنفس ترتيب الخدمة حرفاً. والتحرير يبقى مقفلاً
+  // (canEdit=false): أزرارُ كتابةٍ يردّها بابُ الخدمة لا تُرسَم أصلاً.
+  const gov = await projectGovernance(user, p.id).catch(async (e) => {
+    if (!(Array.isArray(p.partner_department_ids) && e && e.status === 403)) throw e;
+    const govRows = (t, order) => all(`SELECT * FROM ${t} WHERE project_id = ? AND deleted_at IS NULL ${order}`, [p.id]);
+    const [risks, issues, decisions, changes, milestones, deliverables, phaseRows2] = await Promise.all([
+      govRows('risk', "ORDER BY (status = 'CLOSED'), created_at DESC"),
+      govRows('issue', "ORDER BY (status = 'CLOSED'), opened_at DESC"),
+      govRows('decision', 'ORDER BY decided_at DESC, created_at DESC'),
+      govRows('change_request', 'ORDER BY created_at DESC'),
+      govRows('milestone', 'ORDER BY (due_date IS NULL), due_date, created_at'),
+      govRows('deliverable', 'ORDER BY (year IS NULL), year, (month IS NULL), month, created_at'),
+      govRows('project_phase', 'ORDER BY order_no, (start_date IS NULL), start_date, created_at'),
+    ]);
+    return { projectId: p.id, canEdit: false, risks, issues, decisions, changes, milestones, deliverables, phases: phaseRows2 };
+  });
   const canGov = gov.canEdit;
+  const dlv = gov.deliverables || [];
+  const phases = gov.phases || [];
+  const moneyCard = await projectMoneySection(user, p, { year: opts.year });
   const invSum = (await get(`SELECT COALESCE(SUM(amount_halalas),0) v FROM invoice
      WHERE project_id=? AND deleted_at IS NULL AND status NOT IN ('DRAFT','CANCELLED')`, [p.id])).v;
-  const users = await all(`SELECT id, COALESCE(name_ar, username) AS "name" FROM app_user
-     WHERE active=1 AND deleted_at IS NULL ORDER BY name_ar, username LIMIT 200`);
+  const users = await pickablePeople({ limit: 200, viewer: user });
   const userName = Object.fromEntries(users.map((u) => [u.id, u.name]));
+  // النسب الأربع من مصدرها الواحد — لا تُعاد حسبتها هنا ولا في أي شاشة أخرى.
+  const prog = await projectProgress(p.id, { today: todayStr });
+  const teamLoad = await projectTeamLoad(user, p.id, { year: Number(opts.year) || undefined }).catch(() => null);
+  const docsPayload = await projectDocuments(user, p.id).catch(() => ({ documents: [], canEdit: false }));
+  const updates = await projectUpdates(user, p.id, 12).catch(() => []);
+  const projectTaskRows = await all(
+    `SELECT t.id, t.title, t.status, t.priority, t.due_date, t.deliverable_id,
+            COALESCE(u.name_ar, u.username) assignee
+       FROM task t LEFT JOIN app_user u ON u.id = t.assignee_user_id
+      WHERE t.project_id = ? AND t.deleted_at IS NULL AND ${approvedTaskSql('t.')}
+      ORDER BY (t.status = 'DONE'), (t.due_date IS NULL), t.due_date LIMIT 60`, [p.id]);
 
   // ── Financials ──
   const contractVal = p.contract_value_halalas || (contract && contract.value_halalas) || 0;
   const headlineVal = contractVal || p.po_value_halalas || p.budget_halalas || 0;
   const spend = p.actual_spend_halalas || 0;
-  const revenue = p.revenue_halalas || 0;
+  const revenue = (await projectRevenue([p.id]))[0]?.revenue_halalas || 0;
   const showCost = canCost && !row._redacted_actual_spend_halalas;
   const marginPct = p.margin_pct != null ? p.margin_pct : (revenue > 0 ? Math.round((revenue - spend) / revenue * 100) : null);
   const burnPct = p.budget_halalas ? Math.round(spend / p.budget_halalas * 100) : null;
+  const kindTag = projectKind(p, { clientType: client?.type, revenueHalalas: revenue });
 
-  // ── Timeline / schedule health ──
+  // ── Timeline ──
   const sd = p.start_date ? new Date(p.start_date) : null;
   const ed = p.end_date ? new Date(p.end_date) : null;
-  const today = new Date();
   let durTxt = '—', schedulePct = null, scheduleTone = 'var(--muted)', scheduleNote = '';
   if (sd && ed && ed > sd) {
     const totalD = Math.round((ed - sd) / 86400000);
@@ -561,230 +2162,1037 @@ export async function projectDetailPage(user, projectId) {
     const remain = Math.max(0, Math.round((ed - today) / 86400000));
     schedulePct = Math.round(elapsed / totalD * 100);
     durTxt = `${dayWord(totalD)} · مضى ${elapsed} · متبقٍّ ${remain}`;
-    const prog = Math.round(p.progress_pct || 0);
-    const gap = prog - schedulePct;
+    const gap = prog.executivePct - schedulePct;
     scheduleTone = gap < -12 ? 'var(--red)' : gap < -4 ? 'var(--amber)' : 'var(--green)';
     scheduleNote = gap < -12 ? 'متأخر عن الجدول' : gap < -4 ? 'متأخر قليلاً عن الجدول' : (today > ed ? 'تجاوز تاريخ الانتهاء' : 'ضمن الجدول');
-    if (today > ed && prog < 100) { scheduleTone = 'var(--red)'; scheduleNote = 'تجاوز تاريخ الانتهاء'; }
+    if (today > ed && prog.executivePct < 100) { scheduleTone = 'var(--red)'; scheduleNote = 'تجاوز تاريخ الانتهاء'; }
   }
+  // تاريخ بدء العقد ليس تاريخ توقيعه أو البيع؛ لا نستخدم بدء المشروع بديلاً له.
+  const signYear = String(contract?.start_date || '').slice(0, 4);
 
-  const stat = (l, v, c, sub) => card(`<div style="padding:.7rem .9rem"><div style="font-size:10.5px;color:var(--muted)">${l}</div><div class="metric tnum" style="font-size:1.2rem;${c ? 'color:' + c : ''}">${v}</div>${sub ? `<div style="font-size:10px;color:var(--faint)">${sub}</div>` : ''}</div>`);
-  const ragColor = p.rag === 'RED' ? 'red' : p.rag === 'AMBER' ? 'amber' : 'green';
-  // حالة الصحة قابلة للتعديل المباشر ممن يملك تعديل المشروع (المفروض تقدر تغيّرها بنفسك، لا
-  // تنتظر حسابها فقط). ملاحظة نزاهة: قد تبقى «حرج/في خطر» رغم اختيارك «على المسار» إن كان
-  // الانحراف الفعلي (الصرف مقابل الإنجاز) أو التأخر الزمني يتجاوز الحدود — كي لا تُخفي مشكلة حقيقية.
+  const ragColor = p.rag === 'RED' ? 'red' : p.rag === 'AMBER' ? 'amber' : p.rag === 'GREEN' ? 'green' : 'slate';
   const ragTip = 'يمكنك تغييرها يدوياً في أي وقت — قد تبقى «حرج» أو «في خطر» رغم اختيارك لون أهدأ إن كان الانحراف المالي أو الزمني الفعلي كبيراً، حتى لا تُخفى مشكلة حقيقية';
   const ragBadge = canEdit
     ? `<select data-action-change="prj-rag-sel" data-id="${p.id}" aria-label="حالة صحة المشروع" title="${esc(ragTip)}"
-        style="font-size:11.5px;font-weight:700;padding:.22rem .55rem;border-radius:999px;border:1px solid transparent;cursor:pointer;background:${ragColor === 'red' ? '#fee2e2' : ragColor === 'amber' ? '#fef3c7' : '#dcfce7'};color:${ragColor === 'red' ? '#b91c1c' : ragColor === 'amber' ? '#92400e' : '#059669'}">
+        style="font-size:11.5px;font-weight:700;padding:.22rem .55rem;border-radius:999px;border:1px solid transparent;cursor:pointer;background:${ragColor === 'red' ? '#fee2e2' : ragColor === 'amber' ? '#fef3c7' : ragColor === 'green' ? '#dcfce7' : '#f1f5f9'};color:${ragColor === 'red' ? '#b91c1c' : ragColor === 'amber' ? '#92400e' : ragColor === 'green' ? '#059669' : '#475569'}">
+        <option value="" ${p.rag == null ? 'selected' : ''}>غير مقيّم</option>
         ${['GREEN', 'AMBER', 'RED'].map((v) => `<option value="${v}" ${p.rag === v ? 'selected' : ''}>${RAG_LABEL[v]}</option>`).join('')}
       </select>`
-    : `<span title="${esc(ragTip)}">${pill(RAG_LABEL[p.rag] || RAG_LABEL.GREEN, ragColor)}</span>`;
-  const dlvRows = dlv.map((d) => `<tr style="border-bottom:1px solid var(--line)"><td style="padding:.4rem .75rem;font-size:12.5px">${esc(d.name_ar)}${d.month ? `<span style="color:var(--faint);font-size:10px;margin-inline-start:.35rem">${MONTHS_AR[(d.month - 1) % 12] || ''}</span>` : ''}</td>
-    <td style="padding:.4rem .75rem;font-size:12.5px;text-align:center" class="tnum">${fmtSar(d.amount_halalas)}</td>
-    <td style="padding:.4rem .75rem;text-align:center">${pill(tr(d.status), ['PAID', 'INVOICED', 'ACCEPTED'].includes(d.status) ? 'green' : d.status === 'DELIVERED' ? 'blue' : 'slate')}</td></tr>`).join('');
-  const riskRows = risks.map((r) => `<tr style="border-bottom:1px solid var(--line)"><td style="padding:.4rem .75rem;font-size:12.5px">${esc(r.title)}</td>
-    <td style="padding:.4rem .75rem;text-align:center">${pill(tr(r.impact) || '—', r.impact === 'high' ? 'red' : r.impact === 'medium' ? 'amber' : 'slate')}</td></tr>`).join('');
-  // شريط تذكير بالأشهر فوق أعمدة التغطية — بلا هذا الشريط يظهر صف مربعات ملوّنة بلا معنى (لا يُعرف
-  // أيها يناير وأيها ديسمبر إلا بتمرير الفأرة فوق كل مربع)؛ عمود ضيّق فاختصارات إنجليزية Jan..Dec
-  // حسب قاعدة النموذج الزمني الموحّد (لا اختصارات عربية في الشبكات الضيقة أبداً).
-  const monthTicks = `<div class="mtrack" style="gap:2px;margin-top:.2rem">${MONTHS_EN3.map((m) => `<span style="font-size:7.5px;font-weight:400;color:var(--faint);text-align:center;line-height:1">${m}</span>`).join('')}</div>`;
-  // staffing rows: parse each member's monthly_json into a 12-cell coverage strip on this project
-  const staffRows = staff.map((s) => {
-    let mj = {}; try { mj = JSON.parse(s.monthly_json || '{}'); } catch { mj = {}; }
-    const months = Array.from({ length: 12 }, (_, i) => Math.round((Number(mj[i + 1]) || 0) * 100));
-    return `<tr style="border-bottom:1px solid var(--line)">
-      <td style="padding:.4rem .75rem;font-size:12.5px">${esc(s.person_name_ar || '—')}<div style="font-size:10px;color:var(--muted)">${esc(s.job_title || '')}</div></td>
-      <td style="padding:.4rem .75rem;text-align:center">${pill(s.type === 'lead' ? 'قائد' : 'عضو', s.type === 'lead' ? 'blue' : 'slate')}</td>
-      <td style="padding:.4rem .75rem;width:160px">${utilStrip(months, currentMonthIndex(p.year || new Date().getUTCFullYear()) + 1)}</td></tr>`;
-  }).join('');
+    : `<span title="${esc(ragTip)}">${pill(RAG_LABEL[p.rag] || 'غير مقيّم', ragColor)}</span>`;
 
-  const financeCard = card(`<div style="padding:.85rem 1rem;border-bottom:1px solid var(--line);font-weight:800;font-size:13px">المالية</div>
-    <div style="padding:.5rem 1rem">
-      ${[['قيمة العقد', fmtSar(headlineVal), 'var(--ink2)'],
-    ['الإيراد المُثبت', fmtSar(revenue), 'var(--green)'],
-    ['الصرف الفعلي', showCost ? fmtSar(spend) : '••• محجوب', showCost ? 'var(--ink2)' : 'var(--faint)'],
-    ['الهامش', marginPct != null && showCost ? marginPct + '%' : (marginPct != null && !canCost ? '••• محجوب' : '—'), (marginPct != null && marginPct < 10) ? 'var(--red)' : 'var(--ink2)']]
-    .map(([l, v, c]) => `<div style="display:flex;justify-content:space-between;align-items:center;padding:.3rem 0;border-bottom:1px dashed var(--line)"><span style="font-size:12px;color:var(--muted)">${l}</span><span class="tnum" style="font-weight:800;font-size:13px;color:${c}">${v}</span></div>`).join('')}
-      ${showCost && burnPct != null ? `<div style="margin-top:.55rem"><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted)"><span>استهلاك الميزانية</span><span class="tnum">${burnPct}%</span></div>${bar(burnPct, burnPct > 90 ? '#dc2626' : burnPct > 70 ? '#d97706' : '#059669')}</div>` : ''}
-      ${contract ? `<a href="/app/contract/${contract.id}" style="display:block;margin-top:.6rem;font-size:12px;color:var(--brand2);text-decoration:none">↳ فتح العقد ${esc(contract.code || '')} · ${fmtSar(contract.value_halalas)}</a>` : ''}
-    </div>`);
+  // ── حالة المشروع: قائمة تُغيَّر لا شارةٌ تُقرأ ────────────────────────────────
+  // «لازم في المشاريع تخلّي المشاريع المنتهية والقائمة والمعلّقة والملغاة تكون موجودة، وأقدر
+  // أحطّ إنّ هذا المشروع تمّ الانتهاء منه ويصير يبيّن إنه أُغلق».
+  //
+  // الحالات الخمس موجودة في المنصة منذ أولها — أعمدة اللوحة مبنيّة عليها والخدمة تقبلها
+  // وتدقّقها — ولم يكن في الواجهة **موضعٌ واحد يكتبها**. فالمشروع يُولَد «قيد التنفيذ» ويبقى
+  // كذلك إلى الأبد مهما انتهى، وشارةُ الحالة في الترويسة نصٌّ يُقرأ لا قرارٌ يُتَّخذ.
+  //
+  // وحالة المشروع **ليست نسبة إنجازه**: قد تُعتمَد المخرجات كلها ويبقى المشروع قائماً (دعمٌ
+  // متّفق عليه، أو مخرَجٌ إضافي قادم) — «حتى لو صرفنا كل المخرجات بس هو قائم برضو ممكن».
+  // لذلك لا يُغلق المشروع تلقائياً باكتمال مخرجاته أبداً؛ الإغلاق قرارُ مديره وحده، ومن هنا.
+  const statusTip = 'حالة المشروع قرارُك أنت ولا تتغيّر وحدها: اكتمال المخرجات كلها لا يُغلق المشروع — '
+    + 'قد تكتمل ويبقى قائماً. اختر «مكتمل» حين ينتهي فعلاً.';
+  // والقارئ بلا ضابطٍ يقرأ الوصف نفسه، فلا يُؤمَر بما لا سبيل له إليه («اختر مكتمل» وهو لا يملك
+  // الاختيار) — يُخبَر من يقرّرها وأنها لا تتغيّر وحدها، وهذا كل ما يعنيه.
+  const statusReadTip = 'حالة المشروع يقرّرها مدير المشروع ولا تتغيّر وحدها باكتمال المخرجات.';
+  // وكانت هنا قائمةٌ بحدٍّ **شفاف** وحشوةِ شارةٍ وبلا عنوانٍ ولا سهم — فقُرئت وسماً يُقرأ لا
+  // قراراً يُتَّخذ، وقيل فيها «ما حطّيتوها» وهي قائمة. الآن: عنوانٌ «الحالة:» يسبقها، وحدٌّ
+  // بلون الحالة يُرى، وسهمٌ خارج <option> يقول إنها تُفتح.
+  const statusBadge = canEdit
+    ? `<span style="display:inline-flex;align-items:center;gap:.35rem">
+        <span class="prj-st-lbl">الحالة:</span>${statusSelect(p, { tip: statusTip })}</span>`
+    : `<span style="display:inline-flex;align-items:center;gap:.35rem" title="${esc(statusReadTip)}">
+        <span class="prj-st-lbl">الحالة:</span>${statusPill(p.status)}</span>`;
 
-  const timelineCard = card(`<div style="padding:.85rem 1rem;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center">
-      <div style="font-weight:800;font-size:13px">الجدول الزمني</div>${schedulePct != null ? `<span style="font-size:11px;font-weight:700;color:${scheduleTone}">${scheduleNote}</span>` : ''}</div>
-    <div style="padding:.85rem 1rem">
-      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted)"><span>${p.start_date || '—'}</span><span>${p.end_date || '—'}</span></div>
-      <div style="position:relative;height:10px;background:var(--surface2, #f1f5f9);border-radius:6px;margin:.45rem 0;overflow:hidden">
-        <div style="position:absolute;inset-inline-start:0;top:0;height:100%;width:${Math.min(100, Math.round(p.progress_pct || 0))}%;background:linear-gradient(90deg,var(--brand),var(--brand2))"></div>
-        ${schedulePct != null ? `<div title="موضع اليوم على الجدول" style="position:absolute;top:-2px;height:14px;width:2px;background:#0f172a;inset-inline-start:${schedulePct}%"></div>` : ''}
+  // ── قسمٌ قابل للطيّ ──────────────────────────────────────────────────────────
+  const sec = (key, title, { sub = '', badge = '', open = false, body: inner = '' }) => `
+    <details class="psec" data-sec="${key}"${open ? ' open' : ''}>
+      <summary>
+        <svg class="psec-c" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+        <span class="psec-t">${title}</span>${sub ? `<span class="psec-s">${sub}</span>` : ''}
+        <span class="psec-x">${badge}</span>
+      </summary>
+      <div class="psec-b">${inner}</div>
+    </details>`;
+  const cnt = (n, tone) => `<span class="pill ${n ? (tone || 'blue') : 'slate'}" style="${n ? '' : 'opacity:.6'}"><span class="tnum">${n}</span></span>`;
+
+  // ── الرأس الدائم: النسب الأربع ───────────────────────────────────────────────
+  // أربعة أرقام مستقلة المصدر، كلٌّ منها يجيب سؤالاً مختلفاً — وكانت ثلاثة منها تُقرأ من خانة
+  // واحدة على المخرَج فتتحرّك معاً وتكذب معاً.
+  const meter = (label, value, sub, color, tip) => `
+    <div class="card" style="padding:.7rem .85rem"${tip ? ` title="${esc(tip)}"` : ''}>
+      <div class="pmeter">
+        <div class="l"><span>${label}</span><b class="tnum">${value == null ? '—' : value + '%'}</b></div>
+        <div class="t"><i style="width:${Math.max(0, Math.min(100, Number(value) || 0))}%;background:${color}"></i></div>
+        <div style="font-size:10.5px;color:var(--faint)">${sub}</div>
       </div>
-      <div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:var(--muted)">الإنجاز <b class="tnum" style="color:var(--ink2)">${Math.round(p.progress_pct || 0)}%</b></span><span style="color:var(--muted)">${schedulePct != null ? `الزمن المنقضي <b class="tnum">${schedulePct}%</b>` : ''}</span></div>
-      <div style="font-size:11px;color:var(--faint);margin-top:.4rem">${durTxt}</div>
-      <div style="display:flex;gap:1.2rem;margin-top:.65rem;padding-top:.55rem;border-top:1px solid var(--line);font-size:11.5px">
-        <div><span style="color:var(--muted)">مدير المشروع</span><div style="font-weight:700">${esc(p.pm_name || owner?.name_ar || owner?.username || '—')}</div></div>
-        ${srcOpp ? `<div><span style="color:var(--muted)">الفرصة المصدر</span><div><a href="/app/opportunity/${esc(srcOpp.id)}" style="color:var(--brand2);text-decoration:none;font-weight:700">${esc(srcOpp.title_ar).slice(0, 26)}</a></div></div>` : ''}
-      </div>
-    </div>`);
+    </div>`;
+  const schedTone = { red: '#dc2626', amber: '#d97706', green: '#059669', slate: '#94a3b8' }[prog.schedule.tone];
+  const headMeters = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.65rem;margin-bottom:.85rem">
+    ${meter('الإنجاز التنفيذي', prog.executivePct, prog.delivery.total
+    ? `${prog.delivery.accepted} من ${prog.delivery.total} مخرَجاً معتمَداً${prog.delivery.awaitingAcceptance ? ` · ${prog.delivery.awaitingAcceptance}% سُلِّم وينتظر الاعتماد` : ''}`
+    : 'لا مخرجات مسجَّلة بعد', '#244A99', 'يرتفع باعتماد المخرجات بأوزانها — التسليم وحده لا يرفعه')}
+    ${meter('المعالم المحققة', prog.schedule.metPct, prog.schedule.note, schedTone, 'حالة الجدول من المعالم المسجَّلة لا من مرور الزمن')}
+    ${/* نسبة الفوترة لمن يملك مالَ المشروع وحده. ولا نسبةَ تحصيل هنا إطلاقاً: التحصيل شأن
+         الإدارة المالية لا شأن إدارة المشروع (قرار مالك) — وقياسُه في صفحة المشروع يُحمّل مديرَه
+         تأخّرَ سدادٍ لا يملك منه شيئاً. والمستحق يُعرض رقماً داخل القسم لمن يراه، بلا نسبة. */''}
+    ${canMoney ? meter('نسبة الفوترة', prog.money.billedPct, prog.delivery.invoiced
+    ? `${fmtSar(prog.money.invoicedAmt)} من ${fmtSar(prog.money.contractValue)}`
+    : 'لم تُربط فوترة هذا المشروع بمخرجاته', '#834798',
+  'المفوتر من قيمة العقد — لا علاقة له باعتماد المخرَج. ويبقى فارغاً ما لم يحمل مخرَجٌ واحد ختم فوترة، فالصفر هنا يُقرأ «لم نطالب» وهو غير «لم نسجّل الربط»') : ''}
+  </div>`;
 
-  // ── خطة مقابل فعلي: burn vs delivery — two bars + Arabic deviation narrative when |Δ|>10 ──
-  const progPct = Math.round(p.progress_pct || 0);
-  let burnV = null, burnBasis = '';
-  if (showCost && p.budget_halalas > 0) { burnV = Math.round(spend / p.budget_halalas * 100); burnBasis = 'الصرف الفعلي من الميزانية'; }
-  else if (headlineVal > 0) { burnV = Math.round(invSum / headlineVal * 100); burnBasis = 'المفوتر من قيمة العقد'; }
-  let devTone = 'var(--green)', devNote = 'الصرف والإنجاز متوازنان';
-  if (burnV != null) {
-    const dev = burnV - progPct;
-    if (dev > 10) { devTone = 'var(--red)'; devNote = `الصرف يسبق الإنجاز بـ${dev} ${dev >= 3 && dev <= 10 ? 'نقاط' : 'نقطة'} — راجع نطاق العمل`; }
-    else if (dev < -10) { devTone = 'var(--amber)'; devNote = `الإنجاز يسبق الصرف بـ${-dev} ${-dev >= 3 && -dev <= 10 ? 'نقاط' : 'نقطة'} — تحقق من الفوترة في موعدها`; }
+  // ── أهم الإجراءات المطلوبة ───────────────────────────────────────────────────
+  const acts = [];
+  if (prog.schedule.overdue.length) {
+    acts.push(['red', 'flag', `${countAr(prog.schedule.overdue.length, { one: 'معلم واحد', two: 'معلمان', few: 'معالم', many: 'معلماً' })} فات استحقاقه ولم يُحقَّق`,
+      prog.schedule.overdue.slice(0, 2).map((m) => m.name_ar).join(' · '), '#sec-phases', 'افتح المعالم']);
   }
-  const pvaCard = card(`<div style="padding:.85rem 1rem;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:.6rem">
-      <div style="font-weight:800;font-size:13px">${G.planVsActual}</div>
-      ${burnV != null ? `<span style="font-size:11px;font-weight:700;color:${devTone}">${devNote}</span>` : ''}</div>
-    <div style="padding:.85rem 1rem">
-      ${burnV == null ? `<div class="empty-state" style="padding:1rem"><div class="t">لا أساس مالي للقياس بعد</div><div class="s">سجِّل ميزانية أو قيمة عقد للمشروع كي يُقارن الصرف بالإنجاز.</div></div>` : `
-      <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted)"><span>${burnBasis}</span><b class="tnum" style="color:${burnV > 100 ? 'var(--red)' : 'var(--ink2)'}">${burnV}%</b></div>
-      ${bar(Math.min(100, burnV), burnV > progPct + 10 ? '#dc2626' : '#834798')}
-      <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);margin-top:.55rem"><span>${G.progress}</span><b class="tnum">${progPct}%</b></div>
-      ${bar(progPct, '#244A99')}
-      <div style="font-size:10.5px;color:var(--faint);margin-top:.55rem">${G.burnVsDelivery}: الشريط الأول ${burnBasis} والثاني نسبة الإنجاز — التباعد فوق 10 نقاط يستدعي قراراً.</div>`}
-    </div>`);
+  const awaiting = dlv.filter((d) => d.status === 'DELIVERED');
+  if (awaiting.length) {
+    acts.push(['amber', 'projects', `${countAr(awaiting.length, { one: 'مخرَج واحد', two: 'مخرَجان', few: 'مخرجات', many: 'مخرَجاً' })} سُلِّم وينتظر الاعتماد`,
+      awaiting.slice(0, 2).map((d) => d.name_ar).join(' · '), '#sec-deliverables', 'افتح المخرجات']);
+  }
+  const billable = dlv.filter((d) => ['DELIVERED', 'ACCEPTED'].includes(d.status) && !d.invoiced_at && d.amount_halalas > 0);
+  // بمبلغه — فلا يُعرض إلا لمن يملك مال المشروع. وإلا صار سطرُ «إجراء مطلوب» بابَ تسريبٍ خلفياً
+  // بعد أن أُغلق البابُ الأمامي.
+  if (billable.length && canMoney) {
+    acts.push(['blue', 'finance', `${countAr(billable.length, { one: 'مخرَج واحد', two: 'مخرَجان', few: 'مخرجات', many: 'مخرَجاً' })} جاهز للمستخلص (${fmtSar(prog.money.uninvoicedReady)})`,
+      'سُلِّم ولم يصدر به مستخلص بعد', '#sec-money', 'افتح صورة المال']);
+  }
+  const over = (teamLoad?.team || []).filter((t) => t.over);
+  if (over.length) {
+    acts.push(['red', 'users', `${countAr(over.length, { one: 'عضو واحد', two: 'عضوان', few: 'أعضاء', many: 'عضواً' })} فوق طاقته هذا الشهر`,
+      // «٦٠٪» وحدها لا تقول إن ثمة تجاوزاً لمن طاقته خمسون — فيُقال مقدارُ التجاوز نفسه.
+      over.slice(0, 2).map((t) => `${t.name} تجاوز بـ${t.overBy}%`).join(' · '), '#sec-team', 'راجِع التسكين']);
+  }
+  if (k.lateTasks) {
+    acts.push(['amber', 'tasks', `${countAr(k.lateTasks, { one: 'مهمة واحدة متأخرة', two: 'مهمتان متأخرتان', few: 'مهام متأخرة', many: 'مهمة متأخرة' })}`,
+      'فات موعدها ولم تُنجَز', '#sec-tasks', 'افتح المهام']);
+  }
+  const actsBlock = acts.length ? `<div style="display:grid;gap:.4rem;margin-bottom:.85rem">
+    ${acts.map(([tone, ic, title, sub, href, cta]) => `<div class="pact ${tone}">
+      <span style="flex:0 0 auto;display:flex">${icon(ic)}</span>
+      <span style="flex:1 1 auto"><b>${title}</b>${sub ? ` — ${esc(sub)}` : ''}</span>
+      <a href="${href}" style="flex:0 0 auto">${cta}</a></div>`).join('')}
+  </div>` : `<div class="pact blue" style="margin-bottom:.85rem">
+      <span style="flex:0 0 auto;display:flex">${icon('check')}</span>
+      <span>لا شيء يستدعي قراراً الآن — المعالم في مواعيدها والمخرجات والمهام بلا تأخّر.</span></div>`;
 
-  // ── governance tab strip (WP17): server renders ALL panels; the page script only switches ──
-  const trg = (v) => ({ OPEN: 'مفتوح', MITIGATING: 'قيد المعالجة', CLOSED: 'مغلق', REQUESTED: 'قيد الطلب',
-    APPROVED: 'معتمد', REJECTED: 'مرفوض', PENDING: 'قادم', MET: 'محقق', MISSED: 'لم يُحقَّق',
-    low: 'منخفض', med: 'متوسط', medium: 'متوسط', high: 'مرتفع' }[v] || v || '—');
-  const lvlPill = (v) => v ? pill(trg(v), v === 'high' ? 'red' : (v === 'med' || v === 'medium') ? 'amber' : 'slate') : '<span style="color:var(--faint)">—</span>';
-  const stPill = (v, map) => pill(trg(v), map[v] || 'slate');
-  const dStr = today.toISOString().slice(0, 10);
-  const soonStr = new Date(today.getTime() + 30 * 86400000).toISOString().slice(0, 10);
-  const thG = (t, w) => `<th style="padding:.4rem .75rem;font-size:10.5px;color:var(--muted);font-weight:700;text-align:right;${w ? 'width:' + w : ''}">${t}</th>`;
-  const tdG = (c, extra = '') => `<td style="padding:.45rem .75rem;font-size:12.5px;${extra}">${c}</td>`;
-  const delBtn = (kind, id) => canGov ? `<button class="btn btn-ghost btn-sm" data-action="gov-del" data-kind="${kind}" data-id="${id}" title="${G.delete}" aria-label="${G.delete}">✕</button>` : '';
-  const emptyPanel = (msg, cta) => `<div class="empty-state">${icon('inbox')}<div class="t">${msg}</div>${canGov ? `<div class="s">${cta}</div>` : ''}</div>`;
-  const govField = (id, ph, type = 'text') => `<input class="input" id="${id}" type="${type}" placeholder="${ph}" style="font-size:12px;padding:.4rem .55rem">`;
-  const lvlSelect = (id, label) => `<select id="${id}" class="input" aria-label="${label}" style="font-size:12px;padding:.4rem .45rem"><option value="">${label}</option><option value="low">منخفض</option><option value="med">متوسط</option><option value="high">مرتفع</option></select>`;
-  const ownerSelect = (id) => `<select id="${id}" class="input" aria-label="المالك" style="font-size:12px;padding:.4rem .45rem;max-width:150px"><option value="">— المالك —</option>${users.map((u) => `<option value="${u.id}">${esc(u.name)}</option>`).join('')}</select>`;
-  const addBar = (kind, fields) => canGov ? `<div style="display:flex;gap:.45rem;flex-wrap:wrap;align-items:center;padding:.6rem .75rem;border-top:1px solid var(--line);background:var(--bg)">
-      ${fields}<button class="btn btn-primary btn-sm" data-action="gov-add" data-kind="${kind}">${G.add}</button></div>` : '';
+  // ── ١) نظرة عامة ─────────────────────────────────────────────────────────────
+  const fact = (label, value, extra = '') => `<div style="min-width:130px">
+    <div style="font-size:10.5px;color:var(--muted)">${label}</div>
+    <div style="font-weight:700;font-size:12.5px;color:var(--ink2)">${value}</div>${extra}</div>`;
+  // ── هوية المشروع: مديره وإدارته وجهته ──────────────────────────────────────
+  // ثلاثة حقول كانت تُكتب مرة عند الإنشاء ثم **لا يمسّها شيء في المنتج كله**، فأي تصحيح لها
+  // يعني فتح القاعدة يدوياً — وهو ما طلب المالك إنهاءه: «كل شي متعلق بالمشروع يقدر يتحكم فيه
+  // من الواجهة عشان نستعمل المنصة بلا تدخّل من خلف الشاشة».
+  //
+  // وأثقلها «مدير المشروع»: نطاق «مشروع» في محرّك الصلاحيات يُشتقّ من هذا العمود نفسه، فمشروعٌ
+  // بلا مالكٍ مسجَّل لا مديرَ له في نظر النظام مهما كان الواقع — ومنحُ مدير المشروع الكامل
+  // يبقى معلَّقاً بلا مشروعٍ واحد. وتعيينه من هنا هو ما يُفعِّل الدور فعلاً.
+  const projDept = p.department_id
+    ? await get('SELECT id, name_ar FROM department WHERE id = ? AND deleted_at IS NULL', [p.department_id]) : null;
+  const deptOptions = p.sector_id
+    ? await all('SELECT id, name_ar FROM department WHERE sector_id = ? AND active = 1 AND deleted_at IS NULL ORDER BY name_ar', [p.sector_id])
+    : [];
+  // الإدارات المشاركة (v5.27) — تُقرأ دائماً لا للتحرير وحده: من يقرأ المشروع يحتاج أن يعرف
+  // من يعمل عليه معه. العرض قراءةً في بطاقة التعريف، والتحرير في شريط التعديل أدناه.
+  const projPartners = await projectDepartments(p.id);
+  const partnerIdSet = new Set(projPartners.map((x) => x.department_id));
+  // خيارات المشارِكات = إدارات قطاع المشروع عدا المسؤولة الحالية (القيد المعلن: المشاركة داخل
+  // قطاع المشروع — لا تُضاف عابرةٌ للقطاعات من هنا). ومشارِكةٌ قائمةٌ من خارج هذه القائمة
+  // (نُسخت من فرصةٍ عابرة للقطاعات أو إدارةٍ أُوقفت) تُعرض كما هي كي لا يمسحها حفظٌ بريء
+  // بصمت — فالحمولة تُرسَل مجموعةً كاملة، وما غاب عن الشاشة غاب عن المحفوظ.
+  const partnerChoices = [
+    ...deptOptions.filter((d) => d.id !== p.department_id),
+    ...projPartners.filter((x) => x.department_id !== p.department_id
+      && !deptOptions.some((d) => d.id === x.department_id))
+      .map((x) => ({ id: x.department_id, name_ar: x.name_ar })),
+  ];
+  const clientOptions = canEdit
+    ? await all('SELECT id, name_ar FROM client WHERE deleted_at IS NULL ORDER BY name_ar LIMIT 300') : [];
+  // ── شريط التعديل: كل ما يُغيَّر في المشروع من مكانٍ واحد ──────────────────────
+  // «لازم في طريقة لتعديل المشروع: قيمته أو مدّته أو أو أو». وكانت ثلاثة حقول تُعدَّل من هنا
+  // (المدير والإدارة والجهة) وبقيةُ المشروع مكتوبةً عند إنشائه لا تُمَسّ — فتصحيحُ اسمٍ أو
+  // قيمةِ عقدٍ أو تاريخِ انتهاء يعني فتح القاعدة من خلف الشاشة، وهو ما طلب المالك إنهاءه.
+  //
+  // والقيمة خلف بوابة المال (`canMoney`) لا خلف صلاحية التعديل وحدها: من يُدير مشروعاً ولا يقرأ
+  // عقده لا يُفترض به أن يكتب رقمه — والحقلُ المعروض يُغري بالكتابة فيه.
+  const idField = (label, inner, hint = '') => `<div style="display:flex;flex-direction:column;gap:.2rem;min-width:0">
+    <label style="font-size:10px;font-weight:800;color:var(--muted)">${label}</label>${inner}
+    ${hint ? `<span style="font-size:9.5px;color:var(--faint)">${hint}</span>` : ''}</div>`;
+  // حقول النسبة تُقفَل لمحرِّر الشراكة (لا تُخفى) — نفس قرار صفحة الفرصة حرفاً: إخفاؤها يجعل
+  // الشاشة ترسل قيمةً فارغة فتمسح الإدارةَ عند الحفظ، وتحرمه رؤيةَ من يُحسب عليه المشروع.
+  // القفلُ مرئيٌّ بتلميحٍ يقول لماذا، والخادم يحجزها أيضاً (ADR-0008) — لا شاشةٌ وحدها.
+  const lockAttribution = canEdit && !canEditAttribution;
+  const lockAttrs = lockAttribution
+    ? ' disabled title="قرارُ الإدارة المسؤولة — اطلب منها تغيير الإدارة أو المشارِكات"' : '';
+  const identityBar = canEdit ? `<style>
+  /* منسدلة المشارِكات تنسدل تحت حدود قسمها (psec يقصّ بحوافّه المدوّرة) — تُرفَع القصّةُ
+     وهي مفتوحة فقط، فتبقى الحواف مقصوصةً في كل الأحوال الأخرى. */
+  .psec:has(#prj-partners-menu:not([hidden])){overflow:visible}
+  </style><div style="padding:.7rem 0 .2rem;margin-bottom:.6rem;border-top:1px dashed var(--line)">
+    <div style="font-size:10.5px;font-weight:800;color:var(--muted);margin-bottom:.5rem">تعديل بيانات المشروع${lockAttribution ? ` <span style="font-weight:600;color:var(--faint)">— إدارتك مشاركة: تعدّل كل شيء عدا نسبة المشروع</span>` : ''}</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.55rem">
+      ${idField('اسم المشروع', `<input id="prj-name" class="input" style="font-size:12px" value="${esc(p.name_ar || '')}" maxlength="200">`)}
+      ${idField('رمز المشروع', `<input id="prj-code" class="input" style="font-size:12px" value="${esc(p.code || '')}" maxlength="60" placeholder="اختياري">`)}
+      ${idField('الكود المالي', `<input id="prj-fincode" class="input" style="font-size:12px" value="${esc(p.financial_code || '')}" maxlength="40" placeholder="اختياري">`, 'يُحمَّل عليه توزيع تكلفة الشهر في الإقفال والتصحيح')}
+      ${idField('مدير المشروع', `<select id="prj-owner" class="input" style="font-size:12px">
+        <option value="">بلا مدير مسجَّل</option>
+        ${users.map((u) => `<option value="${esc(u.id)}"${p.owner_user_id === u.id ? ' selected' : ''}>${esc(u.name)}</option>`).join('')}
+      </select>`)}
+      ${idField('الإدارة المسؤولة', `<select id="prj-dept" class="input" style="font-size:12px"${lockAttrs}>
+        <option value="">بلا إدارة</option>
+        ${deptOptions.map((d) => `<option value="${esc(d.id)}"${p.department_id === d.id ? ' selected' : ''}>${esc(d.name_ar)}</option>`).join('')}
+      </select>`, lockAttribution ? 'قرارُ الإدارة المسؤولة' : 'تُحدِّد لمن تُحسب إيرادات المشروع آخر السنة')}
+      ${/* «هذان المشروعان مشتركان بين إدارتين… لازم في المشاريع تطلع» — والمسؤولة تبقى واحدة
+            (المال لا يتجزأ فلا يُحسب المشروع مرتين)، وهؤلاء من يعملون عليه ويجدونه في قوائم
+            إداراتهم. منسدلة بصناديق اختيار لا select متعدداً (ملاحظة المالك: «ما أبغى أختار
+            بسلكت وCtrl») — الحقيقة تبقى في select الخفي بمعرّفه المثبَّت `prj-partners`
+            (الحفظ والاختبارات يقرآنه)، والصناديق تُزامنه (pages/project-governance.js). */ ''}
+      ${idField('إدارات مشاركة', `<select id="prj-partners" multiple hidden aria-hidden="true"${lockAttrs}>
+        ${partnerChoices.map((d) => `<option value="${esc(d.id)}"${partnerIdSet.has(d.id) ? ' selected' : ''}>${esc(d.name_ar)}</option>`).join('')}</select>
+        <div id="prj-partners-pick" style="position:relative">
+          <button type="button" class="input" data-action="partners-toggle" aria-haspopup="listbox" aria-expanded="false"
+            style="width:100%;font-size:12px;text-align:start;display:flex;justify-content:space-between;align-items:center;gap:.4rem;cursor:pointer"${lockAttrs}>
+            <span id="prj-partners-label" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(() => {
+    const names = partnerChoices.filter((d) => partnerIdSet.has(d.id)).map((d) => d.name_ar);
+    return names.length ? esc(names.join('، ')) : 'بلا إدارات مشاركة';
+  })()}</span><span aria-hidden="true" style="color:var(--muted);flex:0 0 auto">▾</span></button>
+          <div id="prj-partners-menu" hidden role="listbox" aria-label="الإدارات المشاركة"
+            style="position:absolute;inset-inline:0;top:calc(100% + 4px);z-index:70;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 16px 40px rgba(15,23,42,.18);max-height:220px;overflow:auto;padding:.35rem">
+            ${partnerChoices.map((d) => `<label style="display:flex;gap:.5rem;align-items:center;padding:.4rem .55rem;border-radius:8px;cursor:pointer;font-size:12px">
+              <input type="checkbox" data-partner-opt value="${esc(d.id)}"${partnerIdSet.has(d.id) ? ' checked' : ''}${lockAttribution ? ' disabled' : ''}> ${esc(d.name_ar)}</label>`).join('')
+    || '<div style="padding:.5rem .55rem;font-size:12px;color:var(--faint)">لا إدارات أخرى معرّفة — تُضاف الإدارات من الهيكل التنظيمي.</div>'}
+          </div>
+        </div>`,
+    lockAttribution ? 'قرارُ الإدارة المسؤولة' : 'افتح القائمة وعلّم أكثر من إدارة — تراها إداراتهم في قوائمها')}
+      ${idField('الجهة', `<select id="prj-client" class="input" style="font-size:12px">
+        <option value="">بلا جهة</option>
+        ${clientOptions.map((c) => `<option value="${esc(c.id)}"${p.client_id === c.id ? ' selected' : ''}>${esc(c.name_ar)}</option>`).join('')}
+      </select>`)}
+      ${canMoney ? idField('قيمة العقد (ر.س.)',
+    `<input id="prj-value" class="input tnum" style="font-size:12px" type="number" min="0" step="0.01" value="${p.contract_value_halalas == null ? '' : p.contract_value_halalas / 100}" placeholder="لم تؤكد بعد">`,
+    'أدخل القيمة المؤكدة من العقد؛ ترك الحقل فارغاً يحفظ القيمة الحالية') : ''}
+      ${idField('تاريخ البدء', `<input id="prj-start" class="input" style="font-size:12px" type="date" value="${esc(p.start_date || '')}">`)}
+      ${idField('تاريخ الانتهاء', `<input id="prj-end" class="input" style="font-size:12px" type="date" value="${esc(p.end_date || '')}">`, 'التاريخان معاً يرسمان المدّة')}
+    </div>
+    <div style="display:flex;gap:.5rem;align-items:center;margin-top:.6rem">
+      <button class="btn btn-sm btn-primary" data-action="prj-identity-save" data-id="${esc(p.id)}">حفظ التعديلات</button>
+      ${srcOpp ? `<span style="font-size:10px;color:var(--faint)">التعديل هنا ينعكس على الفرصة المرتبطة حين تكون سجلّاً لهذا المشروع</span>` : ''}
+    </div>
+  </div>` : '';
 
-  const msRows = gov.milestones.map((m) => {
-    const overdueMs = m.status === 'PENDING' && m.due_date && m.due_date < dStr;
-    const upcoming = m.status === 'PENDING' && m.due_date && m.due_date >= dStr && m.due_date <= soonStr;
-    return `<tr style="border-bottom:1px solid var(--line);${overdueMs ? 'background:#fef2f2' : upcoming ? 'background:#fffbeb' : ''}">
-      ${tdG(esc(m.name_ar) + (upcoming ? ' ' + pill('قريب', 'amber') : '') + (overdueMs ? ' ' + pill('متأخر', 'red') : ''))}
-      ${tdG(`<span class="tnum">${m.due_date || '—'}</span>`, 'text-align:center')}
-      ${tdG(stPill(m.status, { PENDING: 'blue', MET: 'green', MISSED: 'red' }), 'text-align:center')}
-      ${canGov ? tdG(`<div style="display:flex;gap:.25rem;justify-content:center">${m.status !== 'MET' ? `<button class="btn btn-sm" data-action="gov-status" data-kind="milestone" data-id="${m.id}" data-status="MET">محقق</button>` : ''}
-        ${m.status !== 'MISSED' ? `<button class="btn btn-sm" data-action="gov-status" data-kind="milestone" data-id="${m.id}" data-status="MISSED">لم يُحقَّق</button>` : ''}${delBtn('milestone', m.id)}</div>`, 'text-align:center') : ''}
+  const overviewBody = `<div style="padding:.85rem 1rem">
+    <div style="display:flex;gap:1.4rem;flex-wrap:wrap;margin-bottom:.9rem">
+      ${fact('العميل', client ? `<a href="/app/client/${esc(client.id)}" style="color:var(--brand2);text-decoration:none">${esc(client.name_ar)}</a>` : `<span style="color:var(--faint)">${G.notRecorded}</span>`)}
+      ${fact('مدير المشروع', esc(p.pm_name || owner?.name_ar || owner?.username || '—'))}
+      ${fact('حالة المشروع', tr(p.status))}
+      ${/* قيمة العقد رقمُ مالٍ ولو كانت في «نظرة عامة»: حجبُ القسم وحده يترك الرقم في الرأس،
+           وهو أظهرُ موضعٍ في الصفحة. وأظهره التصييرُ لكل دور لا المصفوفة — فالمصفوفة تعرف من
+           يملك المنح، والصفحة وحدها تعرف أين طُبع الرقم. */''}
+      ${canMoney ? fact('قيمة العقد', p.contract_value_halalas != null || contract?.value_halalas != null ? `<span class="tnum">${fmtSar(p.contract_value_halalas ?? contract.value_halalas)}</span>` : `<span style="color:var(--faint)">${G.notRecorded}</span>`) : ''}
+      ${fact('المدة', durTxt === '—' ? `<span style="color:var(--faint)">${G.notRecorded}</span>` : `<span style="font-size:11.5px">${durTxt}</span>`)}
+      ${signYear ? fact('سنة بدء العقد', `<span class="tnum">${esc(signYear)}</span>`,
+    '<div style="font-size:10px;color:var(--faint)">من تاريخ بدء العقد المسجّل — ليست سنة البيع</div>') : ''}
+      ${srcOpp ? fact('الفرصة المصدر', `<a href="/app/opportunity/${esc(srcOpp.id)}" style="color:var(--brand2);text-decoration:none">${esc(String(srcOpp.title_ar).slice(0, 28))}</a>`) : ''}
+      ${fact('الإدارة', projDept ? esc(projDept.name_ar) : `<span style="color:var(--faint)">غير مُسنَد</span>`)}
+      ${/* المشاركات قراءةً بجوار المسؤولة — لمن يقرأ ولا يعدّل. مشروعٌ بلا شراكة لا يطبع
+            سطراً فارغاً: غيابُ البند أصدقُ من بندٍ يقول «لا شيء». (صيغة chip صفحةِ الفرصة.) */ ''}
+      ${projPartners.length ? fact('إدارات مشاركة', `<span style="display:inline-flex;gap:.35rem;flex-wrap:wrap"
+        title="إدارات تعمل على هذا المشروع معكم — والقيمة محسوبة على الإدارة المسؤولة وحدها">${projPartners.map((x) => `<span class="pill" style="background:#eef2ff;color:#4338ca">${esc(x.name_ar)}</span>`).join('')}</span>`) : ''}
+    </div>
+    ${identityBar}
+    <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted)"><span class="tnum">${esc(p.start_date || '—')}</span><span class="tnum">${esc(p.end_date || '—')}</span></div>
+    <div style="position:relative;height:10px;background:#eef1f7;border-radius:6px;margin:.4rem 0;overflow:hidden">
+      <div style="position:absolute;inset-inline-start:0;top:0;height:100%;width:${Math.min(100, prog.executivePct)}%;background:linear-gradient(90deg,var(--brand),var(--brand2))"></div>
+      ${schedulePct != null ? `<div title="موضع اليوم على الجدول" style="position:absolute;top:-2px;height:14px;width:2px;background:#0f172a;inset-inline-start:${schedulePct}%"></div>` : ''}
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:11px">
+      <span style="color:var(--muted)">الإنجاز <b class="tnum" style="color:var(--ink2)">${prog.executivePct}%</b></span>
+      ${schedulePct != null ? `<span style="color:${scheduleTone};font-weight:700">${scheduleNote}</span>` : ''}
+      ${schedulePct != null ? `<span style="color:var(--muted)">الزمن المنقضي <b class="tnum">${schedulePct}%</b></span>` : ''}
+    </div>
+  </div>`;
+
+  // ── ٢) المراحل والمعالم ──────────────────────────────────────────────────────
+  const PHASE_TONE = { DONE: 'green', IN_PROGRESS: 'blue', NOT_STARTED: 'slate' };
+  const PHASE_AR = { DONE: 'مكتملة', IN_PROGRESS: 'جارية', NOT_STARTED: 'لم تبدأ' };
+  const msByPhase = (id) => gov.milestones.filter((m) => m.phase_id === id);
+  const dlvByPhase = (id) => dlv.filter((d) => d.phase_id === id);
+  const phaseRows = phases.map((ph) => {
+    const pd = dlvByPhase(ph.id);
+    const done = pd.filter((d) => d.status === 'ACCEPTED').length;
+    const pm = msByPhase(ph.id);
+    const pctDone = pd.length ? Math.round((done / pd.length) * 100) : null;
+    return `<tr style="border-bottom:1px solid var(--line)">
+      <td style="padding:.5rem .75rem;font-size:12.5px"><b>${esc(ph.name_ar)}</b>
+        <div style="font-size:10px;color:var(--muted)">${ph.start_date || ph.end_date ? `<span class="tnum">${esc(ph.start_date || '—')} ← ${esc(ph.end_date || '—')}</span>` : 'بلا تواريخ'} · ${pd.length} مخرَجاً · ${pm.length} معلماً</div></td>
+      <td style="padding:.5rem .75rem;text-align:center">${pill(PHASE_AR[ph.status] || PHASE_AR.NOT_STARTED, PHASE_TONE[ph.status] || 'slate')}</td>
+      <td style="padding:.5rem .75rem;width:130px">${pctDone == null ? '<span style="color:var(--faint);font-size:11px">لا مخرجات</span>' : `<div class="pmeter"><div class="l"><span>معتمَد</span><b class="tnum">${pctDone}%</b></div><div class="t"><i style="width:${pctDone}%;background:#244A99"></i></div></div>`}</td>
+      ${canGov ? `<td style="padding:.5rem .75rem;text-align:center;white-space:nowrap">
+        <select class="input" style="font-size:11px;padding:.2rem .35rem;width:auto" aria-label="حالة المرحلة"
+          data-action-change="gov-status-sel" data-kind="phase" data-id="${esc(ph.id)}">
+          ${['NOT_STARTED', 'IN_PROGRESS', 'DONE'].map((s) => `<option value="${s}"${s === ph.status ? ' selected' : ''}>${PHASE_AR[s]}</option>`).join('')}
+        </select>
+        <button class="btn btn-ghost btn-sm" data-action="gov-del" data-kind="phase" data-id="${esc(ph.id)}" aria-label="حذف المرحلة" title="حذف المرحلة">✕</button></td>` : ''}
     </tr>`;
   }).join('');
-  const msPanel = `${gov.milestones.length ? `<table style="width:100%;border-collapse:collapse"><thead><tr>${thG('المعلم')}${thG('الاستحقاق', '110px')}${thG('الحالة', '90px')}${canGov ? thG('إجراء', '190px') : ''}</tr></thead><tbody>${msRows}</tbody></table>`
-    : emptyPanel('لا معالم مسجّلة بعد', 'أضِف أول معلم من الشريط أدناه — المعالم القادمة خلال 30 يوماً تُميَّز تلقائياً.')}
-    ${addBar('milestone', `${govField('g-mls-name', 'اسم المعلم…')}${govField('g-mls-due', '', 'date')}`)}`;
+  const phaseAdd = canGov ? `<div style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;padding:.55rem .9rem;border-top:1px dashed var(--line)">
+    <input id="g-phs-name" class="input" placeholder="اسم المرحلة…" aria-label="اسم المرحلة" style="flex:1;min-width:150px;font-size:12.5px">
+    <input id="g-phs-start" class="input" type="date" dir="ltr" aria-label="بداية المرحلة" title="بداية المرحلة" style="width:auto;font-size:12px">
+    <input id="g-phs-end" class="input" type="date" dir="ltr" aria-label="نهاية المرحلة" title="نهاية المرحلة" style="width:auto;font-size:12px">
+    <button class="btn btn-sm btn-primary" data-action="gov-add" data-kind="phase">${icon('plus')} ${G.add}</button>
+  </div>` : '';
+  const msRows = gov.milestones.map((m) => {
+    const late = m.status === 'PENDING' && m.due_date && m.due_date < todayStr;
+    const soon = prog.schedule.upcoming.some((u) => u.id === m.id);
+    const ph = phases.find((x) => x.id === m.phase_id);
+    return `<tr style="border-bottom:1px solid var(--line);${late ? 'background:#fef2f2' : soon ? 'background:#fffbeb' : ''}">
+      <td style="padding:.45rem .75rem;font-size:12.5px">${esc(m.name_ar)}${soon ? ' ' + pill('قريب', 'amber') : ''}${late ? ' ' + pill('متأخر', 'red') : ''}
+        ${ph ? `<div style="font-size:10px;color:var(--muted)">${esc(ph.name_ar)}</div>` : ''}</td>
+      <td style="padding:.45rem .75rem;text-align:center"><span class="tnum">${esc(m.due_date || '—')}</span></td>
+      <td style="padding:.45rem .75rem;text-align:center">${pill({ PENDING: 'قادم', MET: 'محقق', MISSED: 'لم يُحقَّق' }[m.status] || 'قادم', m.status === 'MET' ? 'green' : m.status === 'MISSED' ? 'red' : 'blue')}</td>
+      ${canGov ? `<td style="padding:.45rem .75rem;text-align:center;white-space:nowrap">
+        ${m.status !== 'MET' ? `<button class="btn btn-sm" data-action="gov-status" data-kind="milestone" data-id="${esc(m.id)}" data-status="MET">محقق</button>` : ''}
+        ${m.status !== 'MISSED' ? `<button class="btn btn-sm" data-action="gov-status" data-kind="milestone" data-id="${esc(m.id)}" data-status="MISSED">لم يُحقَّق</button>` : ''}
+        <button class="btn btn-ghost btn-sm" data-action="gov-del" data-kind="milestone" data-id="${esc(m.id)}" aria-label="حذف المعلم" title="حذف المعلم">✕</button></td>` : ''}
+    </tr>`;
+  }).join('');
+  const msAdd = canGov ? `<div style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;padding:.55rem .9rem;border-top:1px dashed var(--line)">
+    <input id="g-mls-name" class="input" placeholder="اسم المعلم…" aria-label="اسم المعلم" style="flex:1;min-width:150px;font-size:12.5px">
+    <input id="g-mls-due" class="input" type="date" dir="ltr" aria-label="تاريخ الاستحقاق" title="تاريخ الاستحقاق" style="width:auto;font-size:12px">
+    ${phases.length ? `<select id="g-mls-phase" class="input" aria-label="المرحلة" style="width:auto;max-width:160px;font-size:12px">
+      <option value="">بلا مرحلة</option>${phases.map((x) => `<option value="${esc(x.id)}">${esc(x.name_ar)}</option>`).join('')}</select>` : ''}
+    <button class="btn btn-sm btn-primary" data-action="gov-add" data-kind="milestone">${icon('plus')} ${G.add}</button>
+  </div>` : '';
+  const phasesBody = `
+    <div style="padding:.6rem .9rem .2rem;font-weight:800;font-size:12px;color:var(--muted)">المراحل</div>
+    <div class="tblwrap">${phases.length ? `<table style="width:100%;border-collapse:collapse"><tbody>${phaseRows}</tbody></table>`
+    : `<div class="empty-state" style="padding:1.2rem 1rem"><div class="t">لا مراحل مسجَّلة</div><div class="s">${canGov ? 'المرحلة تجمع مخرجاتها ومعالمها تحت تواريخ واحدة — أضِف أولها من الشريط أدناه.' : 'لم تُسجَّل مراحل بعد.'}</div></div>`}</div>
+    ${phaseAdd}
+    <div style="padding:.6rem .9rem .2rem;border-top:1px solid var(--line);font-weight:800;font-size:12px;color:var(--muted)">المعالم الرئيسية</div>
+    <div class="tblwrap">${gov.milestones.length ? `<table style="width:100%;border-collapse:collapse"><tbody>${msRows}</tbody></table>`
+    : `<div class="empty-state" style="padding:1.2rem 1rem"><div class="t">لا معالم مسجَّلة</div><div class="s">${canGov ? 'المعلم تاريخٌ مُلزم يُقاس به الجدول — والمعالم القادمة خلال ٣٠ يوماً تُميَّز تلقائياً.' : 'لم تُسجَّل معالم بعد.'}</div></div>`}</div>
+    ${msAdd}`;
 
-  const rkRows = gov.risks.map((r) => `<tr style="border-bottom:1px solid var(--line)">
+  // ── ٣) المخرجات ──────────────────────────────────────────────────────────────
+  const dlvTone = (s) => (s === 'ACCEPTED' ? 'green' : s === 'DELIVERED' ? 'blue' : s === 'IN_PROGRESS' ? 'amber' : s === 'REJECTED' ? 'red' : 'slate');
+  // قيمة المخرَج لمن يعمل عليه لا لقارئ المال وحده: «لازم يتبيّن في جدول المخرجات قيمة
+  // المخرَج وحالته… كله يتم العمل عليه من مدير المشروع ومدير الإدارة والقطاع اللي لهم
+  // صلاحية» (المالك، 2026-08-16). فمن يملك تحريك حالة المخرَج (canGov) يرى قيمته وأثرها
+  // الإيرادي — والموظف المسكَّن قراءةً يبقى على الوزن وحده (قرار «مو أي موظف مسكَّن يشوف»
+  // باقٍ على قسم مال المشروع كاملاً).
+  const canDlvMoney = canMoney || canGov;
+  // سطر الإيراد المشتقّ من كل مخرَج — ليقول الجدول صراحةً «إيراده مسجَّل في القطاع» بدل أن
+  // يبقى الاعتراف محرّكاً صامتاً يشكّ المالك في عمله. المعرّف مشتق (rl_dlv_…) والعلاقة
+  // واحد-لواحد، فالخريطة قراءة مباشرة لا اجتهاد.
+  // «لازم كل إيراد يكون مربوطاً بشكل كامل» (v5.32): يُقرأ سجل إيراد المشروع كله — المربوط
+  // بمخرَجه والمستورد اليتيم معاً — فيُقال الاثنان بمجموعيهما، ويُعرض اليتيم بأدوات ربطه.
+  const projRevLines = await all(
+    `SELECT id, deliverable_id, month, year, amount_halalas, label FROM revenue_line
+      WHERE project_id = ? ORDER BY year, month`, [p.id]);
+  const dlvRevRows = projRevLines.filter((r) => r.deliverable_id);
+  const orphanRevLines = projRevLines.filter((r) => !r.deliverable_id && !String(r.id).startsWith('rl_dlv_'));
+  const dlvRevBy = Object.fromEntries(dlvRevRows.map((r) => [r.deliverable_id, r]));
+  const dlvRevSum = dlvRevRows.reduce((a, r) => a + (Number(r.amount_halalas) || 0), 0);
+  const orphanRevSum = orphanRevLines.reduce((a, r) => a + (Number(r.amount_halalas) || 0), 0);
+  // المخرجات المؤهلة للربط: مُسلَّم/معتمَد بلا قيمة — نفس شرطَي الخادم حرفاً.
+  const attachTargets = dlv.filter((d) => ['DELIVERED', 'ACCEPTED'].includes(d.status) && !Number(d.amount_halalas));
+  const RECOGNIZED = new Set(['DELIVERED', 'ACCEPTED']);
+  const dlvRevChip = (d) => {
+    if (!canDlvMoney) return '';
+    const rl = dlvRevBy[d.id];
+    if (rl) return `<div style="font-size:10px;color:var(--green);font-weight:700" title="قرارك القائم: الإيراد يتبع التسليم لا الفاتورة — سطرُ إيرادٍ باسم هذا المخرَج محسوب في إيراد القطاع، ويُحدَّث ويُمحى مع حالته تلقائياً">✓ إيراده مسجَّل في القطاع${rl.month ? ` · ${MONTHS_AR[(rl.month - 1) % 12] || ''} <span class="tnum">${rl.year || ''}</span>` : ''}</div>`;
+    if (RECOGNIZED.has(d.status) && !Number(d.amount_halalas)) {
+      return `<div style="font-size:10px;color:var(--amber,#b45309);font-weight:700" title="الاعتراف بالإيراد يحتاج قيمةً متفقاً عليها — اكتبها في خانة القيمة وسيُسجَّل تلقائياً">بلا قيمة — لن يُسجَّل إيراده حتى تُحدَّد</div>`;
+    }
+    return '';
+  };
+  const dlvYears = (() => {
+    const ys = new Set();
+    const sy = Number(String(p.start_date || '').slice(0, 4)); const ey = Number(String(p.end_date || '').slice(0, 4));
+    const cy = today.getUTCFullYear();
+    const from = Number.isFinite(sy) && sy > 2000 ? sy : cy;
+    const to = Number.isFinite(ey) && ey > 2000 ? ey : cy + 1;
+    for (let y = Math.min(from, cy); y <= Math.max(to, cy); y++) ys.add(y);
+    return [...ys].sort();
+  })();
+  // ── شهر الاستحقاق يُصحَّح من صفّ المخرَج (v5.72) ───────────────────────────────
+  // كان الشهر يُختار مرةً واحدة لحظة الإضافة ولا سبيل إلى تغييره بعدها — فبقيت مئات المخرجات
+  // بلا شهر، وإيرادُها يؤرَّخ بيوم تسليمها لا بشهر استحقاقه، فتخرج سنةٌ كاملة بأرقامٍ لا تشبه
+  // الواقع (بلاغ قائدة قطاع الاستشارات، 2026-09-02). والقائمة واحدة للإضافة وللصفّ: مولِّدٌ
+  // واحد لا نسخة ثانية تشيخ. وسنةُ المخرَج المخزَّنة تُضاف إن كانت خارج مدى المشروع، وإلا
+  // ظهر صفٌّ له شهرٌ محفوظ وكأنه «بلا شهر».
+  const periodOptions = (cur) => {
+    const cy = Number(String(cur || '').slice(0, 4));
+    const years = Number.isFinite(cy) && cy > 2000 && !dlvYears.includes(cy) ? [...dlvYears, cy].sort() : dlvYears;
+    return `<option value=""${cur ? '' : ' selected'}>${G.monthUnset}</option>`
+      + years.flatMap((y) => MONTHS_AR.map((mn, i) => {
+        const v = `${y}-${String(i + 1).padStart(2, '0')}`;
+        return `<option value="${v}"${v === cur ? ' selected' : ''}>${mn} ${y}</option>`;
+      })).join('');
+  };
+  const dlvPeriodOf = (d) => (d.year && d.month ? `${d.year}-${String(d.month).padStart(2, '0')}` : '');
+  const dlvPeriodSel = (d) => {
+    const cur = dlvPeriodOf(d);
+    return `<select class="input dlv-per" aria-label="${G.deliverableMonth} للمخرَج ${esc(d.name_ar)}"
+        title="شهر استحقاق المخرَج — إيرادُه يُحسب في هذا الشهر، وتغييرُه يحرّك إيرادَه معه. و«${G.monthUnset}» يؤرِّخه بيوم تسليمه."
+        style="width:104px;font-size:11px;padding:.15rem .3rem;margin-top:.25rem${cur ? '' : ';color:var(--muted)'}"
+        data-action-change="dlv-period" data-id="${esc(d.id)}" data-prev="${cur}"${RECOGNIZED.has(d.status) ? ' data-recognized="1"' : ''}>${periodOptions(cur)}</select>`;
+  };
+  // مخرجاتٌ بلا شهرٍ مخزَّن — بالشرط نفسه الذي يقرؤه الاعتراف (سنةٌ وشهرٌ معاً وإلا فيوم التسليم).
+  const dlvNoMonth = dlv.filter((d) => !dlvPeriodOf(d)).length;
+  const dlvRows = dlv.map((d) => {
+    const next = DELIVERABLE_NEXT[d.status];
+    const due = d.due_date ? `<span class="tnum">${esc(String(d.due_date).slice(0, 10))}</span>`
+      : d.month ? `${MONTHS_AR[(d.month - 1) % 12] || ''}${d.year ? ` <span class="tnum">${d.year}</span>` : ''}` : G.monthUnset;
+    const w = prog.delivery.weights.get(d.id);
+    const stamp = d.status_at
+      ? `${d.status_by && userName[d.status_by] ? esc(userName[d.status_by]) + ' · ' : ''}<span class="tnum">${esc(String(d.status_at).slice(0, 10))}</span>`
+      : '';
+    return `<tr style="border-bottom:1px solid var(--line)">
+      <td style="padding:.45rem .75rem;font-size:12.5px">${esc(d.name_ar)}
+        <div style="font-size:10px;color:var(--muted)">${due}${d.owner_user_id && userName[d.owner_user_id] ? ` · ${esc(userName[d.owner_user_id])}` : ''}${stamp ? ` · آخر تغيير: ${stamp}` : ''}</div></td>
+      ${/* قيمة المخرَج لمن يعمل عليه (canDlvMoney = مال المشروع أو صلاحية حوكمته): اسمه
+           وحالته وموعده عملُ الفريق، وقيمتُه قرارُ من يحرّك حالته — «لازم يتبيّن في الجدول
+           قيمة المخرَج». ولمن يملك الحوكمة تُكتب القيمة من الخانة نفسها وتُحفظ عند الخروج،
+           والاعترافُ الإيرادي يلحقها تلقائياً. الموظف المسكَّن قراءةً يبقى على الوزن وحده. */''}
+      ${canDlvMoney ? `<td style="padding:.45rem .75rem;text-align:center;white-space:nowrap;font-size:12px">
+        ${canGov ? `<input class="input tnum" type="number" min="0" step="1" dir="ltr" value="${d.amount_halalas == null ? '' : Math.round(d.amount_halalas / 100)}"
+            placeholder="${G.amountUnset}" aria-label="قيمة المخرَج بالريال" title="قيمة المخرَج بالريال شاملةً الضريبة — تُحفظ عند الخروج من الخانة، والإيراد يتبعها تلقائياً"
+            style="width:104px;font-size:12px;padding:.2rem .35rem;text-align:center" data-action-blur="dlv-amount" data-id="${esc(d.id)}" data-prev="${d.amount_halalas == null ? '' : Math.round(d.amount_halalas / 100)}">
+          <div>${dlvPeriodSel(d)}</div>`
+    : (d.amount_halalas == null ? `<span style="color:var(--muted);font-size:11px">${G.amountUnset}</span>` : `<span class="tnum">${fmtSar(d.amount_halalas)}</span>`)}
+        ${w != null ? `<div style="font-size:10px;color:var(--faint)">وزن <span class="tnum">${Math.round(w)}%</span></div>` : ''}
+        ${dlvRevChip(d)}</td>`
+    : `<td style="padding:.45rem .75rem;text-align:center;white-space:nowrap;font-size:12px">${w != null ? `<span style="color:var(--faint);font-size:10.5px">وزن <span class="tnum">${Math.round(w)}%</span></span>` : '<span style="color:var(--faint)">—</span>'}</td>`}
+      <td style="padding:.45rem .75rem;text-align:center;white-space:nowrap">${pill(deliverableStatusLabel(d.status), dlvTone(d.status))}</td>
+      ${canGov ? `<td style="padding:.45rem .75rem;text-align:center;white-space:nowrap">
+        <div style="display:inline-flex;gap:.3rem;align-items:center">
+          ${next ? `<button class="btn btn-sm" data-action="gov-status" data-kind="deliverable" data-id="${esc(d.id)}" data-status="${next.to}">${next.ar}</button>` : ''}
+          <select class="input" style="font-size:11px;padding:.2rem .35rem;width:auto" aria-label="حالة المخرج"
+            data-action-change="gov-status-sel" data-kind="deliverable" data-id="${esc(d.id)}">
+            ${DELIVERABLE_MANUAL_STATUSES.map((s) => `<option value="${s}"${s === d.status ? ' selected' : ''}>${deliverableStatusLabel(s)}</option>`).join('')}
+          </select>
+          ${d.invoiced_at ? `<span style="font-size:10.5px;color:var(--muted)" title="صدر بهذا المخرَج مستخلص — حالته وقيمته تبقيان بيدك، والحذف وحده ممنوع لأن فاتورةً صادرة تشير إليه">${G.financeOwned}</span>`
+    : `<button class="btn btn-ghost btn-sm" data-action="gov-del" data-kind="deliverable" data-id="${esc(d.id)}" aria-label="حذف المخرج" title="حذف المخرج">✕</button>`}
+        </div></td>` : ''}
+    </tr>`;
+  }).join('');
+  const dlvAddBar = canGov ? `<div style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;padding:.55rem .9rem;border-top:1px dashed var(--line)">
+    <input id="g-dlv-name" class="input" placeholder="${G.deliverableName}…" aria-label="${G.deliverableName}" style="flex:1;min-width:140px;font-size:12.5px">
+    <select id="g-dlv-period" class="input" aria-label="${G.deliverableMonth}" style="width:auto;font-size:12px;max-width:150px">
+      ${periodOptions('')}
+    </select>
+    <input id="g-dlv-amount" class="input" type="number" min="0" step="1" dir="ltr" placeholder="${G.deliverableAmount}" aria-label="${G.deliverableAmount} بالريال" style="width:110px;font-size:12.5px">
+    ${phases.length ? `<select id="g-dlv-phase" class="input" aria-label="المرحلة" style="width:auto;max-width:150px;font-size:12px">
+      <option value="">بلا مرحلة</option>${phases.map((x) => `<option value="${esc(x.id)}">${esc(x.name_ar)}</option>`).join('')}</select>` : ''}
+    <select id="g-dlv-owner" class="input" aria-label="المسؤول" style="width:auto;max-width:150px;font-size:12px">
+      <option value="">بلا مسؤول</option>${users.map((u) => `<option value="${esc(u.id)}">${esc(u.name)}</option>`).join('')}</select>
+    <button class="btn btn-sm btn-primary" data-action="gov-add" data-kind="deliverable">${icon('plus')} ${G.add}</button>
+  </div>` : '';
+  // ── إضافة المخرجات دفعةً واحدة: تُلصَق كما هي ويقرؤها الذكاء ─────────────────
+  // «وأرفق مثلاً المخرجات وخلّي الذكاء يسوّيها ويستخرج المعلومات زي ما هو مكتوب». وجدولُ مخرجات
+  // عقدٍ حقيقي فيه عشرة صفوف أو عشرون — إدخالها صفّاً صفّاً من الشريط أعلاه عشرون دورة كتابة،
+  // فتُترك في ملفٍ خارج المنصة وتبقى نسبة الإنجاز بلا مادة تُحسب منها.
+  //
+  // والخطوتان مقصودتان: ما يستخرجه الذكاء **يُعرَض للمراجعة** قبل أن يُحفظ، فلا يدخل السجلَّ
+  // سطرٌ لم يقرأه إنسان ثم تُبنى عليه نسبةُ إنجازٍ تُقرأ حقيقةً في لوحة المالك.
+  const dlvIntake = canGov ? `<details class="psec" data-sec="dlv-intake" style="border-top:1px dashed var(--line)">
+    <summary><svg class="psec-c" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+      <span class="psec-t">أضف المخرجات دفعة واحدة</span><span class="psec-s">الصق الجدول كما هو ويقرؤه المساعد</span></summary>
+    <div class="psec-b" style="padding:.7rem .9rem">
+      <div class="field" style="margin-bottom:.5rem">
+        <label style="font-size:11px;font-weight:700;color:var(--muted)">الصق نصّ المخرجات — أو ارفع ملفاً نصياً</label>
+        <textarea id="dlvx-text" class="input" rows="5" style="font-size:12.5px"
+          placeholder="مثال: مخرج ١ — تقرير الوضع الراهن — 120000 — 2026-03
+كل مخرَج في سطر: اسمه، ومبلغه إن وُجد، وشهر استحقاقه إن حُدِّد."></textarea>
+      </div>
+      <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+        <input type="file" id="dlvx-file" accept=".txt,.md,.csv,text/plain" style="font-size:11.5px;max-width:190px">
+        <button class="btn btn-sm btn-primary" data-action="dlvx-parse" data-id="${esc(p.id)}">اقرأ المخرجات</button>
+        <span id="dlvx-mode" style="font-size:11px;color:var(--muted)"></span>
+      </div>
+      <div id="dlvx-review" style="display:none;margin-top:.7rem">
+        <div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:.3rem">راجِع قبل الحفظ (<span id="dlvx-n" class="tnum">0</span>) — أزِل ما لا يلزم</div>
+        <div id="dlvx-list" style="max-height:230px;overflow-y:auto;border:1px solid var(--line);border-radius:10px;padding:.4rem"></div>
+        <div style="display:flex;gap:.5rem;margin-top:.6rem">
+          <button class="btn btn-sm btn-primary" data-action="dlvx-save" data-id="${esc(p.id)}">أضِف المخرجات</button>
+          <button class="btn btn-sm" data-action="dlvx-cancel">إلغاء</button>
+        </div>
+      </div>
+    </div>
+  </details>` : '';
+  const dlvBody = `
+    <div style="padding:.5rem .9rem;font-size:11px;color:var(--muted);line-height:1.8">
+      ${/* «ما يكون في مسار مالي خلاص» (المالك، 2026-08-16): لا إحالة إلى «المالية» — الحالة
+           والقيمة بيد أصحاب الصلاحية هنا، والمُسلَّم/المعتمَد ذو القيمة يُحسب إيراداً للقطاع
+           تلقائياً. الفوترة والتحصيل ختمان لاحقان يظهران في العدّ ولا يقفلان شيئاً. */''}
+      ${canGov ? 'الحالة والقيمة بيدك من هذا الجدول — والمُسلَّم أو المعتمَد ذو القيمة يُحسب إيراداً للقطاع تلقائياً. الفوترة والتحصيل ختمان لاحقان لا يمسّان حالة العمل.'
+    : 'للقراءة فقط بدورك الحالي — مدير المشروع هو من يحرّك حالات المخرجات.'}
+      ${prog.delivery.total ? `<b class="tnum">${prog.delivery.accepted}</b> معتمَد · <b class="tnum">${prog.delivery.delivered}</b> مُسلَّم · <b class="tnum">${prog.delivery.invoiced}</b> مفوتر · <b class="tnum">${prog.delivery.collected}</b> محصَّل` : ''}
+      ${canDlvMoney && dlvRevSum ? ` · المسجَّل إيراداً للقطاع من هذا المشروع: <b class="tnum" style="color:var(--green)">${fmtSar(dlvRevSum)}</b>` : ''}
+    </div>
+    ${/* الإيراد اليتيم يُقال ويُربط من مكانه (v5.32): «مشروع عليه إيرادات بس ما هي مكتوبة
+         في المخرجات أو في أي مكان ثاني — ما ينفع». لكل سطرٍ مستورد بلا مخرَج: ربطٌ بمخرَجٍ
+         مؤهل (مُسلَّم/معتمَد بلا قيمة — يتبنّى قيمته فلا يُعدّ المال مرتين) أو تحويلٌ
+         لمخرَجٍ معتمَد بقرارٍ مؤكَّد يقول أثره على نسبة الإنجاز. */''}
+    ${canDlvMoney && orphanRevLines.length ? `<div style="margin:.35rem .9rem .6rem;padding:.6rem .75rem;background:#fffbeb;border:1px solid #fde68a;border-radius:10px">
+      <div style="font-size:11.5px;font-weight:800;color:#92400e;margin-bottom:.35rem">إيراد مسجَّل على المشروع غير مربوط بأي مخرَج: <span class="tnum">${fmtSar(orphanRevSum)}</span> في ${orphanRevLines.length === 1 ? 'سطر واحد' : orphanRevLines.length === 2 ? 'سطرين' : `<span class="tnum">${orphanRevLines.length}</span> أسطر`} — اربطه ليكتمل الحساب</div>
+      ${orphanRevLines.map((l) => `<div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;padding:.35rem 0;border-top:1px dashed #fde68a;font-size:12px">
+        <span style="flex:1;min-width:180px">${esc(String(l.label || 'إيراد مسجَّل').slice(0, 60))}
+          <span style="color:var(--muted);font-size:10.5px">· ${l.month ? `${MONTHS_AR[(l.month - 1) % 12] || ''} ` : ''}<span class="tnum">${l.year || ''}</span></span>
+          <b class="tnum" style="margin-inline-start:.4rem">${fmtSar(l.amount_halalas)}</b></span>
+        ${canGov ? (attachTargets.length ? `<select class="input" id="rvl-${esc(l.id)}" aria-label="المخرَج الذي يُربط به" style="width:auto;max-width:220px;font-size:11.5px;padding:.2rem .35rem">
+            ${attachTargets.map((d) => `<option value="${esc(d.id)}">${esc(String(d.name_ar).slice(0, 40))}</option>`).join('')}</select>
+          <button class="btn btn-sm" data-action="rev-attach" data-project="${esc(p.id)}" data-line="${esc(l.id)}" title="يتبنّى المخرَجُ المختار قيمةَ السطر ويحلّ سطرُه المشتق محلّه — المجموع لا يتغيّر">اربطه بالمخرَج</button>`
+    : `<span style="font-size:10.5px;color:#92400e">لا مخرَج مؤهلاً للربط — سجِّل مخرجات المشروع (مُسلَّمة أو معتمَدة بلا قيمة) ثم اربطه، أو حوِّله:</span>`)
+          + `<button class="btn btn-ghost btn-sm" data-action="rev-convert" data-project="${esc(p.id)}" data-line="${esc(l.id)}" data-name="${esc(String(l.label || '').slice(0, 40))}" title="يُنشأ مخرَجٌ معتمَد باسم السطر وقيمته وشهره — سترتفع نسبة الإنجاز المشتقة">حوِّله مخرَجاً</button>` : ''}
+      </div>`).join('')}
+    </div>` : ''}
+    ${canDlvMoney && dlvNoMonth ? `<div style="margin:.35rem .9rem .55rem;padding:.5rem .7rem;background:var(--bg);border:1px solid var(--line);border-radius:10px;font-size:11.5px;color:var(--ink2)">
+      ${countAr(dlvNoMonth, { one: 'مخرَجٌ واحد', two: 'مخرَجان', few: 'مخرَجات', many: 'مخرَجاً' })} بلا شهر استحقاق — والإيراد يؤرَّخ بيوم التسليم
+      ${canGov ? '<span style="color:var(--muted)">· اختر الشهر من خانته في صفّ المخرَج</span>' : ''}
+    </div>` : ''}
+    <div class="tblwrap">${dlv.length ? `<table style="width:100%;border-collapse:collapse;min-width:${canGov ? 620 : 420}px">
+      <thead><tr style="font-size:10.5px;color:var(--muted);text-align:right">
+        ${/* عمود «المالية» أُزيل بقرار المالك: «موضوع الفواتير خلاص ألغِه». وحالة المخرَج الظاهرة
+             في صفّه صارت **حالةَ عمله وحدها** — لا حالتان متجاورتان تتنازعان على معنى «أين وصل
+             هذا المخرَج». والفوترة والتحصيل لم يُحذفا من المنتج: مجموعهما في سطر الخلاصة أعلى
+             الجدول، والتنبيه «صدر بهذا المخرَج مستخلص» يبقى في خانة الإجراء حيث يلزم فعلاً —
+             قبل الحذف. */''}
+        <th style="padding:.35rem .75rem">المخرَج</th><th style="padding:.35rem .75rem;text-align:center">${canDlvMoney ? 'القيمة' : 'الوزن'}</th>
+        <th style="padding:.35rem .75rem;text-align:center">حالة المخرَج</th>
+        ${canGov ? '<th style="padding:.35rem .75rem;text-align:center">إجراء</th>' : ''}</tr></thead>
+      <tbody>${dlvRows}</tbody></table>`
+    : `<div class="empty-state" style="padding:1.4rem 1rem"><div class="t">لا مخرجات مسجَّلة على هذا المشروع</div>
+        <div class="s">${canGov ? 'المخرَج هو ما يُسلَّم للعميل ويُبنى عليه المستخلص — أضِف أول مخرَج من الشريط أدناه.' : 'لم يُسجَّل أي مخرَج بعد. مدير المشروع هو من يضيفها.'}</div></div>`}</div>
+    ${dlvAddBar}${dlvIntake}`;
+
+  // ── ٤) الفريق والتسكين ───────────────────────────────────────────────────────
+  const monthTicks = `<div class="mtrack" style="gap:2px;margin-top:.2rem">${MONTHS_EN3.map((m) => `<span style="font-size:7.5px;font-weight:400;color:var(--faint);text-align:center;line-height:1">${m}</span>`).join('')}</div>`;
+  const team = teamLoad?.team || [];
+  const teamRows = team.map((t) => `<tr style="border-bottom:1px solid var(--line);${t.over ? 'background:#fef2f2' : ''}">
+    <td style="padding:.45rem .75rem;font-size:12.5px">${t.userId
+    ? `<a href="/app/person/${encodeURIComponent(t.userId)}" style="color:var(--ink2);text-decoration:none">${esc(t.name)}</a>`
+    : esc(t.name)}
+      <div style="font-size:10px;color:var(--muted)">${esc(t.job_title || '')}</div></td>
+    <td data-label="الدور" style="padding:.45rem .75rem;text-align:center">${pill(t.role, t.isLead ? 'blue' : 'slate')}</td>
+    <td data-label="فترة التسكين" style="padding:.45rem .75rem;text-align:center;font-size:11.5px">${esc(t.period.label)}</td>
+    <td data-label="على هذا المشروع" style="padding:.45rem .75rem;text-align:center"><b class="tnum">${t.onThisPct}%</b></td>
+    <td data-label="مجموع تسكينه" style="padding:.45rem .75rem;text-align:center">
+      <b class="tnum" style="color:${t.over ? 'var(--red)' : 'var(--ink2)'}">${t.totalPct}%</b>
+      <div style="font-size:10px;color:var(--faint)">من طاقة <span class="tnum">${t.capacityPct}%</span></div>
+      ${t.over ? `<div style="font-size:10px;color:var(--red);font-weight:800">تجاوز بـ<span class="tnum">${t.overBy}%</span></div>` : ''}</td>
+    <td data-label="مهامه" style="padding:.45rem .75rem;text-align:center;font-size:11.5px">
+      <span class="tnum">${t.openTasks}</span> مفتوحة${t.lateTasks ? ` · <b class="tnum" style="color:var(--red)">${t.lateTasks}</b> متأخرة` : ''}</td>
+    <td data-label="التغطية الشهرية" style="padding:.45rem .75rem;width:160px">${utilStrip(t.months, currentMonthIndex(teamLoad?.year || today.getUTCFullYear()) + 1)}</td>
+  </tr>`).join('');
+  // «من المتاح» يُعرض عند التسكين لا في قائمة دائمة: القرار لحظي، والقائمة الدائمة زحام.
+  const cands = (await staffingCandidates(user, p.id, { year: Number(opts.year) || undefined }).catch(() => null));
+  const freeList = cands ? cands.candidates.filter((c) => !c.over).slice(0, 6) : [];
+  const teamBody = `
+    <div style="padding:.5rem .9rem;font-size:11px;color:var(--muted)">
+      ${team.length ? `المُسكَّن هذا الشهر <b class="tnum">${teamLoad.fteNow}</b> شخصاً بدوام كامل${teamLoad.overloaded ? ` · <b style="color:var(--red)">${teamLoad.overloaded}</b> فوق طاقته` : ''} · شهر ${esc(teamLoad.monthLabel)}` : 'لا تسكين بعد'}
+      ${canEdit ? `<button class="btn btn-sm" style="float:inline-end;font-size:11px;padding:.25rem .6rem" onclick="Sanad.projOpen('${p.id}')">${icon('users')} إدارة التسكين</button>` : ''}
+    </div>
+    <div class="tblwrap">${team.length ? `<table class="rtbl" style="width:100%;border-collapse:collapse;min-width:640px">
+      <thead><tr style="font-size:10.5px;color:var(--muted);text-align:right">
+        <th style="padding:.35rem .75rem">الموظف</th><th style="padding:.35rem .75rem;text-align:center">الدور</th>
+        <th style="padding:.35rem .75rem;text-align:center">فترة التسكين</th><th style="padding:.35rem .75rem;text-align:center">على هذا المشروع</th>
+        <th style="padding:.35rem .75rem;text-align:center">مجموع تسكينه</th><th style="padding:.35rem .75rem;text-align:center">مهامه</th>
+        <th style="padding:.35rem .75rem .15rem;width:160px;text-align:center">التغطية الشهرية${monthTicks}</th></tr></thead>
+      <tbody>${teamRows}</tbody></table>`
+    : `<div class="empty-state" style="padding:1.4rem 1rem"><div class="t">لا فريق مُسكَّن على هذا المشروع</div>
+        <div class="s">${canEdit ? 'التسكين يقول من يعمل عليه وبأي نسبة وفي أي أشهر — ابدأ من «إدارة التسكين».' : 'لم يُسكَّن أحد بعد.'}</div></div>`}</div>
+    ${freeList.length ? `<div style="padding:.6rem .9rem;border-top:1px dashed var(--line)">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:.35rem">الأقل تحميلاً الآن — إن احتجت عضواً إضافياً</div>
+      <div style="display:flex;gap:.4rem;flex-wrap:wrap">${freeList.map((c) => `<span class="pill slate" title="${esc(c.job_title || '')} · مهام مفتوحة ${c.openTasks}${c.lateTasks ? ` · متأخرة ${c.lateTasks}` : ''}">${esc(c.name_ar)} <span class="tnum">${c.assignedPct}%</span></span>`).join('')}</div>
+    </div>` : ''}`;
+
+  // ── ٥) المهام ────────────────────────────────────────────────────────────────
+  const dlvName = Object.fromEntries(dlv.map((d) => [d.id, d.name_ar]));
+  const taskRows = projectTaskRows.map((t) => {
+    const late = t.status !== 'DONE' && t.due_date && String(t.due_date).slice(0, 10) < todayStr;
+    return `<tr style="border-bottom:1px solid var(--line);${t.status === 'DONE' ? 'opacity:.6' : late ? 'background:#fef2f2' : ''}">
+      <td style="padding:.45rem .75rem;font-size:12.5px">${esc(t.title)}
+        ${t.deliverable_id && dlvName[t.deliverable_id] ? `<div style="font-size:10px;color:var(--muted)">${esc(dlvName[t.deliverable_id])}</div>` : ''}</td>
+      <td style="padding:.45rem .75rem;text-align:center;font-size:11.5px">${esc(t.assignee || '—')}</td>
+      <td style="padding:.45rem .75rem;text-align:center"><span class="tnum">${esc(String(t.due_date || '—').slice(0, 10))}</span>${late ? ' ' + pill('متأخرة', 'red') : ''}</td>
+      <td style="padding:.45rem .75rem;text-align:center">${pill(tr(t.priority), t.priority === 'P0' ? 'red' : t.priority === 'P1' ? 'amber' : 'slate')}</td>
+      <td style="padding:.45rem .75rem;text-align:center">${pill(tr(t.status), t.status === 'DONE' ? 'green' : t.status === 'BLOCKED' ? 'red' : 'slate')}</td>
+    </tr>`;
+  }).join('');
+  const tasksBody = `
+    <div style="padding:.5rem .9rem;display:flex;gap:.4rem;flex-wrap:wrap">
+      ${['TODO', 'IN_PROGRESS', 'BLOCKED', 'IN_REVIEW', 'DONE'].map((s) => pill(`${tr(s)}: ${tmap[s] || 0}`, s === 'DONE' ? 'green' : s === 'BLOCKED' ? 'red' : 'slate')).join(' ')}
+      ${k.lateTasks ? pill(`متأخرة: ${k.lateTasks}`, 'red') : ''}
+    </div>
+    <div class="tblwrap" style="max-height:340px;overflow-y:auto">${projectTaskRows.length ? `<table style="width:100%;border-collapse:collapse;min-width:520px">
+      <thead><tr style="font-size:10.5px;color:var(--muted);text-align:right;position:sticky;top:0;background:var(--surface)">
+        <th style="padding:.35rem .75rem">المهمة</th><th style="padding:.35rem .75rem;text-align:center">المسؤول</th>
+        <th style="padding:.35rem .75rem;text-align:center">الموعد</th><th style="padding:.35rem .75rem;text-align:center">الأولوية</th>
+        <th style="padding:.35rem .75rem;text-align:center">الحالة</th></tr></thead><tbody>${taskRows}</tbody></table>`
+    : `<div class="empty-state" style="padding:1.4rem 1rem"><div class="t">لا مهام على هذا المشروع</div>
+        <div class="s">أضِف أول مهمة من الشريط أدناه — وتظهر في «${G.myWork}» لدى من أُسنِدت إليه.</div></div>`}</div>
+    <div style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;padding:.6rem .9rem;border-top:1px dashed var(--line)">
+      <input id="prj-task-title" class="input" placeholder="أضِف مهمة على هذا المشروع…" aria-label="عنوان المهمة" style="flex:1;min-width:150px;font-size:12.5px">
+      <select id="prj-task-priority" class="input" aria-label="${G.priority}" style="width:auto;font-size:12.5px"><option value="P2">متوسطة</option><option value="P0">حرجة</option><option value="P1">عالية</option><option value="P3">منخفضة</option></select>
+      <input id="prj-task-due" type="date" dir="ltr" class="input" aria-label="تاريخ الاستحقاق" title="تاريخ الاستحقاق" style="width:auto;font-size:12.5px">
+      ${dlv.length ? `<select id="prj-task-dlv" class="input" aria-label="المخرَج المرتبط" style="width:auto;max-width:160px;font-size:12.5px">
+        <option value="">بلا مخرَج</option>${dlv.map((d) => `<option value="${esc(d.id)}">${esc(d.name_ar)}</option>`).join('')}</select>` : ''}
+      ${users.length ? `<select id="prj-task-assignee" class="input" aria-label="${G.assignee}" style="width:auto;max-width:150px;font-size:12.5px">
+        <option value="">${G.assignee}: أنا</option>${users.map((u) => `<option value="${esc(u.id)}">${esc(u.name)}</option>`).join('')}</select>` : ''}
+      <button class="btn btn-sm btn-primary" data-action="prj-task-add" data-project="${p.id}">${icon('plus')} ${G.add}</button>
+    </div>`;
+
+  // ── ٦) العقد والمالية ────────────────────────────────────────────────────────
+  // الصفر ليس غياباً: «٠ ر.س.» تُقرأ اتفاقاً على لا شيء، والحقيقة أن شيئاً لم يُسجَّل بعد.
+  // والفرق بينهما هو الفرق بين مشروعٍ بلا مطالبات ومشروعٍ لم يُدخل أحدٌ أرقامه — والأول قرار
+  // والثاني عُطل. فالمبلغ غير المسجَّل يُكتب بلفظه، ولا يُطبع رقمٌ لم يقله أحد.
+  const amt = (v, color) => (Number(v) > 0
+    ? { v: fmtSar(v), c: color }
+    : { v: G.notRecorded, c: 'var(--faint)' });
+  const moneyBody = `
+    ${canMoney ? `<div style="padding:.6rem 1rem">
+      ${/* المفوتر والمستحق على العميل أُزيلا بقرار المالك: «موضوع الفواتير والمالية خلاص ألغِه».
+           والإيراد بقي لأنه صار يتبع **التسليم** لا الفاتورة — فهو رقمُ عملٍ لا رقمُ مطالبة،
+           ويرتفع بمجرد اعتماد المخرَج بلا أن تمرّ به المالية. */''}
+      ${[['قيمة المشروع', amt(headlineVal, 'var(--ink2)')],
+    ['الإيراد المُثبت', amt(revenue, 'var(--green)')],
+    ['الصرف الفعلي', showCost ? amt(spend, 'var(--ink2)') : { v: '••• محجوب', c: 'var(--faint)' }],
+    ['الهامش', marginPct != null && showCost ? { v: marginPct + '%', c: marginPct < 10 ? 'var(--red)' : 'var(--ink2)' }
+      : (marginPct != null && !canCost ? { v: '••• محجوب', c: 'var(--faint)' } : { v: G.notRecorded, c: 'var(--faint)' })]]
+    .map(([l, o]) => [l, o.v, o.c])
+    .map(([l, v, c]) => `<div style="display:flex;justify-content:space-between;align-items:center;padding:.3rem 0;border-bottom:1px dashed var(--line)"><span style="font-size:12px;color:var(--muted)">${l}</span><span class="tnum" style="font-weight:800;font-size:13px;color:${c}">${v}</span></div>`).join('')}
+      ${showCost && burnPct != null ? `<div style="margin-top:.55rem"><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted)"><span>استهلاك الميزانية</span><span class="tnum">${burnPct}%</span></div>${bar(burnPct, burnPct > 90 ? '#dc2626' : burnPct > 70 ? '#d97706' : '#059669')}</div>` : ''}
+      ${/* دعوةُ «أصدِر المستخلص» ورابطُ شاشة العقد أُزيلا مع إلغاء المالية: زرٌّ يقود إلى شاشةٍ
+           مُغلقة أسوأ من غياب الزر. وقيمة العقد نفسها تبقى معروضة أعلاه — هي قيمة المشروع. */''}
+    </div>` : ''}
+    ${/* لوحُ المال الشهري الكامل خلف طيّة ثانية: هو أطول جزء في الصفحة كلها (شهور وموردون
+         وحالات فارغة مشروحة)، وفتحُه مع القسم يبتلع كل ما بعده فيعود التمرير الأعمى الذي
+         بُنيت الطيّات لإلغائه. الأرقام السبعة أعلاه تجيب السؤال اليومي، وهذا للتحليل. */''}
+    <details class="psec" data-sec="money-board" style="margin:.5rem .8rem .7rem;box-shadow:none">
+      <summary>
+        <svg class="psec-c" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+        <span class="psec-t">حركة المال شهراً بشهر</span>
+        <span class="psec-s">الداخل والخارج والمصروفات والتسكين</span>
+      </summary>
+      <div class="psec-b" id="money">${moneyCard}</div>
+    </details>`;
+
+  // ── ٧) الملفات والتحديثات ────────────────────────────────────────────────────
+  const DOC_AR = { contract: 'عقد', proposal: 'عرض', report: 'تقرير', letter: 'خطاب', other: 'أخرى' };
+  const canDoc = docsPayload.canEdit;
+  const docRows = (docsPayload.documents || []).map((d) => `<div class="dd-row" style="align-items:center">
+    <span>${d.url ? `<a href="${esc(d.url)}" target="_blank" rel="noopener noreferrer" style="color:var(--brand2);text-decoration:none;font-weight:700">${esc(d.name)}</a>` : `<b>${esc(d.name)}</b>`}
+      <span class="pill slate" style="margin-inline-start:.35rem">${DOC_AR[d.kind] || DOC_AR.other}</span>
+      <div style="font-size:10.5px;color:var(--muted)">${esc(d.uploaded_by || '—')} · <span class="tnum">${esc(String(d.created_at || '').slice(0, 10))}</span>${d.note ? ` · ${esc(d.note)}` : ''}</div></span>
+    <b>${canDoc ? `<button class="btn btn-ghost btn-sm" data-action="doc-del" data-id="${esc(d.id)}" aria-label="حذف المستند" title="حذف المستند">✕</button>` : ''}</b></div>`).join('');
+  const updateRows = updates.map((u) => `<div style="display:flex;gap:.6rem;padding:.35rem 0;border-bottom:1px dashed var(--line);font-size:12px;align-items:baseline">
+    <span class="tnum" style="flex:0 0 auto;font-size:10.5px;color:var(--faint);min-width:96px">${esc(String(u.at || '').slice(0, 16).replace('T', ' '))}</span>
+    <span style="flex:1 1 auto;color:var(--ink2)">${esc([u.action, u.resource].filter(Boolean).join(' '))}${u.detail ? ` — ${esc(u.detail)}` : ''}</span>
+    <span style="flex:0 0 auto;font-size:10.5px;color:var(--muted)">${esc(u.actor || '')}</span></div>`).join('');
+  const filesBody = `
+    <div style="padding:.6rem .9rem .2rem;font-weight:800;font-size:12px;color:var(--muted)">الوثائق الرئيسية</div>
+    ${docRows ? `<div style="padding:.15rem .9rem">${docRows}</div>`
+    : `<div class="empty-state" style="padding:1.2rem 1rem"><div class="t">لا وثائق مرتبطة بهذا المشروع</div>
+        <div class="s">${canDoc ? 'سجّل اسم الوثيقة ورابطها — الملف يبقى في مكانه والمنصة تدلّ عليه.' : 'لم تُسجَّل وثائق بعد.'}</div></div>`}
+    ${canDoc ? `<div style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;padding:.55rem .9rem;border-top:1px dashed var(--line)">
+      <input id="g-doc-name" class="input" placeholder="اسم الوثيقة…" aria-label="اسم الوثيقة" style="flex:1;min-width:140px;font-size:12.5px">
+      <select id="g-doc-kind" class="input" aria-label="نوع الوثيقة" style="width:auto;font-size:12px">
+        ${Object.entries(DOC_AR).map(([kk, v]) => `<option value="${kk}"${kk === 'other' ? ' selected' : ''}>${v}</option>`).join('')}</select>
+      <input id="g-doc-url" class="input" type="url" dir="ltr" placeholder="https://…" aria-label="رابط الوثيقة" style="flex:1;min-width:150px;font-size:12.5px">
+      <button class="btn btn-sm btn-primary" data-action="doc-add">${icon('plus')} ${G.add}</button>
+    </div>` : ''}
+    <div style="padding:.6rem .9rem .2rem;border-top:1px solid var(--line);font-weight:800;font-size:12px;color:var(--muted)">آخر التحديثات</div>
+    ${updateRows ? `<div style="padding:.15rem .9rem .7rem">${updateRows}</div>`
+    : `<div class="empty-state" style="padding:1.2rem 1rem"><div class="t">لا تحديثات بعد</div><div class="s">كل تغيير على المشروع ومخرجاته ومهامه يظهر هنا بوقته وصاحبه.</div></div>`}`;
+
+  // ── ٨) سجلات إضافية (المخاطر · المعوقات · القرارات · طلبات التغيير) ──────────
+  // مطويّة وفي الآخر: من سجّلها لا يفقدها، ومن لا يستعملها لا تزاحمه. ولا شيء هنا شرطٌ
+  // لعمل المنصة — كلها اختيارية بالكامل.
+  const trg = (v) => ({ OPEN: 'مفتوح', MITIGATING: 'قيد المعالجة', CLOSED: 'مغلق', REQUESTED: 'قيد الطلب',
+    APPROVED: 'معتمد', REJECTED: 'مرفوض', low: 'منخفض', med: 'متوسط', medium: 'متوسط', high: 'مرتفع' }[v] || v || '—');
+  const lvlPill = (v) => (v ? pill(trg(v), v === 'high' ? 'red' : (v === 'med' || v === 'medium') ? 'amber' : 'slate') : '<span style="color:var(--faint)">—</span>');
+  const delBtn = (kind, rid) => (canGov ? `<button class="btn btn-ghost btn-sm" data-action="gov-del" data-kind="${kind}" data-id="${rid}" title="${G.delete}" aria-label="${G.delete}">✕</button>` : '');
+  const govField = (fid, ph, type = 'text') => `<input class="input" id="${fid}" type="${type}" placeholder="${ph}" style="font-size:12px;padding:.4rem .55rem">`;
+  const lvlSelect = (fid, label) => `<select id="${fid}" class="input" aria-label="${label}" style="font-size:12px;padding:.4rem .45rem"><option value="">${label}</option><option value="low">منخفض</option><option value="med">متوسط</option><option value="high">مرتفع</option></select>`;
+  const ownerSelect = (fid) => `<select id="${fid}" class="input" aria-label="المالك" style="font-size:12px;padding:.4rem .45rem;max-width:150px"><option value="">— المالك —</option>${users.map((u) => `<option value="${u.id}">${esc(u.name)}</option>`).join('')}</select>`;
+  const addBar = (kind, fields) => (canGov ? `<div style="display:flex;gap:.45rem;flex-wrap:wrap;align-items:center;padding:.6rem .75rem;border-top:1px solid var(--line);background:var(--bg)">
+      ${fields}<button class="btn btn-primary btn-sm" data-action="gov-add" data-kind="${kind}">${G.add}</button></div>` : '');
+  const thG = (t, w) => `<th style="padding:.4rem .75rem;font-size:10.5px;color:var(--muted);font-weight:700;text-align:right;${w ? 'width:' + w : ''}">${t}</th>`;
+  const tdG = (c, extra = '') => `<td style="padding:.45rem .75rem;font-size:12.5px;${extra}">${c}</td>`;
+  const emptyPanel = (msg, cta) => `<div class="empty-state">${icon('inbox')}<div class="t">${msg}</div>${canGov ? `<div class="s">${cta}</div>` : ''}</div>`;
+  const openIss = gov.issues.filter((i) => i.status !== 'CLOSED');
+  const rkPanel = `${gov.risks.length ? `<table style="width:100%;border-collapse:collapse"><thead><tr>${thG('الخطر')}${thG('الاحتمال', '80px')}${thG('الأثر', '80px')}${thG('التعرض', '80px')}${thG('المالك', '110px')}${thG('الحالة', '110px')}${canGov ? thG('', '46px') : ''}</tr></thead><tbody>${gov.risks.map((r) => `<tr style="border-bottom:1px solid var(--line)">
       ${tdG(esc(r.title) + (r.mitigation ? `<div style="font-size:10.5px;color:var(--muted)">التخفيف: ${esc(r.mitigation)}</div>` : ''))}
       ${tdG(lvlPill(r.probability), 'text-align:center')}${tdG(lvlPill(r.impact), 'text-align:center')}
       ${tdG(r.exposure ? pill(esc(r.exposure), r.exposure === 'مرتفع' ? 'red' : r.exposure === 'متوسط' ? 'amber' : 'slate') : '<span style="color:var(--faint)">—</span>', 'text-align:center')}
       ${tdG(esc(userName[r.owner_user_id] || '—'), 'text-align:center;font-size:11.5px')}
       ${tdG(canGov ? `<select class="input" data-action-change="gov-status-sel" data-kind="risk" data-id="${r.id}" aria-label="حالة الخطر" style="font-size:11.5px;padding:.25rem .4rem">
           ${['OPEN', 'MITIGATING', 'CLOSED'].map((s) => `<option value="${s}" ${s === r.status ? 'selected' : ''}>${trg(s)}</option>`).join('')}</select>`
-    : stPill(r.status, { OPEN: 'amber', MITIGATING: 'blue', CLOSED: 'green' }), 'text-align:center')}
-      ${canGov ? tdG(delBtn('risk', r.id), 'text-align:center') : ''}
-    </tr>`).join('');
-  const rkPanel = `${gov.risks.length ? `<table style="width:100%;border-collapse:collapse"><thead><tr>${thG('الخطر')}${thG('الاحتمال', '80px')}${thG('الأثر', '80px')}${thG('التعرض', '80px')}${thG('المالك', '110px')}${thG('الحالة', '110px')}${canGov ? thG('', '46px') : ''}</tr></thead><tbody>${rkRows}</tbody></table>`
+    : pill(trg(r.status), r.status === 'OPEN' ? 'amber' : r.status === 'MITIGATING' ? 'blue' : 'green'), 'text-align:center')}
+      ${canGov ? tdG(delBtn('risk', r.id), 'text-align:center') : ''}</tr>`).join('')}</tbody></table>`
     : emptyPanel('لا مخاطر مسجّلة بعد', 'سجِّل المخاطر مبكراً مع احتمالها وأثرها — التعرض يُحسب تلقائياً.')}
     ${addBar('risk', `${govField('g-rsk-title', 'عنوان الخطر…')}${lvlSelect('g-rsk-prob', 'الاحتمال')}${lvlSelect('g-rsk-impact', 'الأثر')}${govField('g-rsk-mit', 'خطة التخفيف…')}${ownerSelect('g-rsk-owner')}`)}`;
-
-  const openIss = gov.issues.filter((i) => i.status !== 'CLOSED'), closedIss = gov.issues.filter((i) => i.status === 'CLOSED');
-  const issRow = (i) => `<tr style="border-bottom:1px solid var(--line);${i.status === 'CLOSED' ? 'opacity:.65' : ''}">
+  const issPanel = `${gov.issues.length ? `<table style="width:100%;border-collapse:collapse"><thead><tr>${thG('المعوق')}${thG('الشدة', '80px')}${thG('المالك', '110px')}${thG('الحالة', '80px')}${canGov ? thG('إجراء', '130px') : ''}</tr></thead><tbody>${gov.issues.map((i) => `<tr style="border-bottom:1px solid var(--line);${i.status === 'CLOSED' ? 'opacity:.65' : ''}">
       ${tdG(esc(i.title))}${tdG(lvlPill(i.severity), 'text-align:center')}
       ${tdG(esc(userName[i.owner_user_id] || '—'), 'text-align:center;font-size:11.5px')}
-      ${tdG(stPill(i.status, { OPEN: 'red', CLOSED: 'green' }), 'text-align:center')}
-      ${tdG(`<span class="tnum" style="font-size:11px;color:var(--muted)">${(i.opened_at || '').slice(0, 10)}</span>`, 'text-align:center')}
-      ${canGov ? tdG(`<div style="display:flex;gap:.25rem;justify-content:center"><button class="btn btn-sm" data-action="gov-status" data-kind="issue" data-id="${i.id}" data-status="${i.status === 'CLOSED' ? 'OPEN' : 'CLOSED'}">${i.status === 'CLOSED' ? 'إعادة فتح' : 'إغلاق'}</button>${delBtn('issue', i.id)}</div>`, 'text-align:center') : ''}
-    </tr>`;
-  const issPanel = `${gov.issues.length ? `<div style="padding:.5rem .75rem;font-size:11px;color:var(--muted)">مفتوحة <b class="tnum">${openIss.length}</b> · مغلقة <b class="tnum">${closedIss.length}</b></div>
-    <table style="width:100%;border-collapse:collapse"><thead><tr>${thG('المعوق')}${thG('الشدة', '80px')}${thG('المالك', '110px')}${thG('الحالة', '80px')}${thG('فُتح في', '95px')}${canGov ? thG('إجراء', '130px') : ''}</tr></thead><tbody>${[...openIss, ...closedIss].map(issRow).join('')}</tbody></table>`
+      ${tdG(pill(trg(i.status), i.status === 'CLOSED' ? 'green' : 'red'), 'text-align:center')}
+      ${canGov ? tdG(`<button class="btn btn-sm" data-action="gov-status" data-kind="issue" data-id="${i.id}" data-status="${i.status === 'CLOSED' ? 'OPEN' : 'CLOSED'}">${i.status === 'CLOSED' ? 'إعادة فتح' : 'إغلاق'}</button>${delBtn('issue', i.id)}`, 'text-align:center') : ''}</tr>`).join('')}</tbody></table>`
     : emptyPanel('لا معوقات مسجّلة', 'سجِّل ما يعطّل التقدم فعلياً الآن ليُتابَع حتى الإغلاق.')}
     ${addBar('issue', `${govField('g-iss-title', 'وصف المعوق…')}${lvlSelect('g-iss-sev', 'الشدة')}${ownerSelect('g-iss-owner')}`)}`;
-
-  const decRows = gov.decisions.map((d) => `<div class="dd-row" style="align-items:flex-start">
+  const decPanel = `${gov.decisions.length ? `<div style="padding:.35rem .9rem">${gov.decisions.map((d) => `<div class="dd-row" style="align-items:flex-start">
       <span><b style="font-size:12.5px">${esc(d.title)}</b>${d.detail ? `<div style="font-size:11.5px;color:var(--muted)">${esc(d.detail)}</div>` : ''}
-        <div style="font-size:10.5px;color:var(--faint)">قرَّر: ${esc(d.decided_by || '—')} · <span class="tnum">${(d.decided_at || '').slice(0, 10) || '—'}</span></div></span>
-      <b>${delBtn('decision', d.id)}</b></div>`).join('');
-  const decPanel = `${gov.decisions.length ? `<div style="padding:.35rem .9rem">${decRows}</div>`
+        <div style="font-size:10.5px;color:var(--faint)">قرَّر: ${esc(d.decided_by || '—')} · <span class="tnum">${esc(String(d.decided_at || '').slice(0, 10) || '—')}</span></div></span>
+      <b>${delBtn('decision', d.id)}</b></div>`).join('')}</div>`
     : emptyPanel('لا قرارات موثقة بعد', 'وثِّق قرارات اللجان والاجتماعات هنا لتبقى مرجعاً مُلزِماً.')}
     ${addBar('decision', `${govField('g-dec-title', 'نص القرار…')}${govField('g-dec-detail', 'التفاصيل (اختياري)…')}${govField('g-dec-by', 'مَن قرَّر…')}${govField('g-dec-at', '', 'date')}`)}`;
-
-  const chgRows = gov.changes.map((c) => `<tr style="border-bottom:1px solid var(--line)">
+  const chgPanel = `${gov.changes.length ? `<table style="width:100%;border-collapse:collapse"><thead><tr>${thG('طلب التغيير')}${thG('الحالة', '95px')}${canGov ? thG('إجراء', '170px') : ''}</tr></thead><tbody>${gov.changes.map((c) => `<tr style="border-bottom:1px solid var(--line)">
       ${tdG(esc(c.title) + (c.impact ? `<div style="font-size:10.5px;color:var(--muted)">الأثر: ${esc(c.impact)}</div>` : ''))}
-      ${tdG(stPill(c.status, { REQUESTED: 'amber', APPROVED: 'green', REJECTED: 'slate' }), 'text-align:center')}
-      ${canGov ? tdG(`<div style="display:flex;gap:.25rem;justify-content:center">${c.status === 'REQUESTED' ? `<button class="btn btn-sm" data-action="gov-status" data-kind="change" data-id="${c.id}" data-status="APPROVED">اعتماد</button>
-        <button class="btn btn-sm" data-action="gov-status" data-kind="change" data-id="${c.id}" data-status="REJECTED">رفض</button>` : ''}${delBtn('change', c.id)}</div>`, 'text-align:center') : ''}
-    </tr>`).join('');
-  const chgPanel = `${gov.changes.length ? `<table style="width:100%;border-collapse:collapse"><thead><tr>${thG('طلب التغيير')}${thG('الحالة', '95px')}${canGov ? thG('إجراء', '170px') : ''}</tr></thead><tbody>${chgRows}</tbody></table>`
+      ${tdG(pill(trg(c.status), c.status === 'REQUESTED' ? 'amber' : c.status === 'APPROVED' ? 'green' : 'slate'), 'text-align:center')}
+      ${canGov ? tdG(`${c.status === 'REQUESTED' ? `<button class="btn btn-sm" data-action="gov-status" data-kind="change" data-id="${c.id}" data-status="APPROVED">اعتماد</button>
+        <button class="btn btn-sm" data-action="gov-status" data-kind="change" data-id="${c.id}" data-status="REJECTED">رفض</button>` : ''}${delBtn('change', c.id)}`, 'text-align:center') : ''}</tr>`).join('')}</tbody></table>`
     : emptyPanel('لا طلبات تغيير', 'أي توسّع في النطاق يبدأ هنا: سجِّل الطلب وأثره ثم قرار الاعتماد أو الرفض.')}
     ${addBar('change', `${govField('g-chg-title', 'عنوان التغيير…')}${govField('g-chg-impact', 'أثره على النطاق/الوقت/الكلفة…')}`)}`;
-
-  const TABS = [
-    ['milestones', G.milestones, gov.milestones.length, msPanel],
-    ['risks', G.risks, gov.risks.length, rkPanel],
+  const REG_TABS = [
+    ['risks', G.risks, gov.risks.filter((r) => r.status !== 'CLOSED').length, rkPanel],
     ['issues', G.issues, openIss.length, issPanel],
     ['decisions', G.decisions, gov.decisions.length, decPanel],
     ['changes', G.changes, gov.changes.filter((c) => c.status === 'REQUESTED').length, chgPanel],
   ];
-  const govCard = card(`
-    <div style="padding:.6rem .9rem;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:.7rem;flex-wrap:wrap">
-      <span style="font-weight:800;font-size:13px">حوكمة المشروع</span>
-      <div class="seg" role="tablist" aria-label="سجلات الحوكمة">${TABS.map(([k, l, n], i) => `<button role="tab" aria-selected="${i === 0}" class="${i === 0 ? 'on' : ''}" data-action="gov-tab" data-tab="${k}">${l} <span class="tnum" style="font-weight:800;color:${n ? 'var(--brand2)' : 'var(--faint)'}">${n}</span></button>`).join('')}</div>
+  const registersBody = `
+    <div style="padding:.6rem .9rem;display:flex;align-items:center;gap:.7rem;flex-wrap:wrap;border-bottom:1px solid var(--line)">
+      <div class="seg" role="tablist" aria-label="سجلات إضافية">${REG_TABS.map(([kk, l, n], i) => `<button role="tab" aria-selected="${i === 0}" class="${i === 0 ? 'on' : ''}" data-action="gov-tab" data-tab="${kk}">${l} <span class="tnum" style="font-weight:800;color:${n ? 'var(--brand2)' : 'var(--faint)'}">${n}</span></button>`).join('')}</div>
       <div class="spacer"></div>
       ${canGov ? pill('لديك صلاحية التحرير', 'green') : pill('عرض فقط', 'slate')}
     </div>
-    ${TABS.map(([k, , , panel], i) => `<div class="gov-panel" data-panel="${k}" ${i === 0 ? '' : 'hidden'}><div class="tblwrap">${panel}</div></div>`).join('')}`);
+    ${REG_TABS.map(([kk, , , panel], i) => `<div class="gov-panel" data-panel="${kk}" ${i === 0 ? '' : 'hidden'}><div class="tblwrap">${panel}</div></div>`).join('')}`;
+
+  const regCount = gov.risks.filter((r) => r.status !== 'CLOSED').length + openIss.length
+    + gov.decisions.length + gov.changes.filter((c) => c.status === 'REQUESTED').length;
+
+  // Checklist reads saved evidence only. It is not a launch approval or an execution percentage.
+  const setupItems = [
+    ['الجهة والقطاع والمدير', !!(p.client_id && p.sector_id && p.owner_user_id), 'overview'],
+    ['تواريخ التنفيذ', !!(p.start_date && p.end_date), 'overview'],
+    ...(canMoney ? [['قيمة العقد المؤكدة', p.contract_value_halalas != null, 'overview']] : []),
+    ['المخرجات وفتراتها', dlv.length > 0 && dlv.every((d) => d.year && d.month), 'deliverables'],
+    ['خطة العمل', phases.length > 0 || gov.milestones.length > 0, 'phases'],
+    ['الفريق والتسكين', team.length > 0, 'team'],
+  ];
+  const setupPanel = `<section id="project-setup" class="card" style="padding:1rem;margin-bottom:1rem">
+    <h3 style="margin:0 0 .5rem">استكمال المشروع</h3>
+    <p style="font-size:12px;color:var(--muted);line-height:1.8">راجع البيانات المحفوظة وأكمل كل قسم ثم احفظه؛ يمكنك العودة لاحقاً إلى المشروع نفسه. وجود البيانات لا يعني اعتمادها أو بدء التنفيذ، وهذه القائمة ليست نسبة إنجاز.</p>
+    ${srcOpp ? `<p style="font-size:12px">المصدر: <a href="/app/opportunity/${esc(srcOpp.id)}">${esc(srcOpp.title_ar)}</a>${canMoney ? ` · قيمة البيع المسجّلة: <span class="tnum">${fmtSar(srcOpp.value_halalas || 0)}</span> — ليست تأكيداً لقيمة العقد` : ''}</p>
+    ${srcOpp.year == null ? `<p style="font-size:12px;color:var(--amber)">سنة البيع غير مؤكدة؛ لا يمكن نسبته إلى مبيعات سنة محددة. <a href="/app/opportunity/${esc(srcOpp.id)}">راجع سنة البيع</a></p>` : ''}` : ''}
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.5rem">${setupItems.map(([label, present, section]) => `<a class="btn" href="#sec-${section}" data-action="project-setup-open" data-section="${section}" style="justify-content:space-between;text-align:start;white-space:normal">${label}<span style="color:var(--muted);font-size:11px">${present ? 'مسجّل — راجعه' : 'يحتاج استكمالاً'}</span></a>`).join('')}</div>
+    ${!canEdit ? '<p style="font-size:12px;color:var(--muted)">عرض فقط؛ استكمال بيانات المشروع يتطلب مسؤولاً لديه صلاحية التعديل.</p>' : ''}
+  </section>`;
+  const progressEvidence = prog.evidence?.warnings?.length ? `<div class="card" style="padding:.7rem 1rem;margin-bottom:1rem"><strong>أساس القياس يحتاج مراجعة</strong><ul>${prog.evidence.warnings.map((w) => `<li>${esc(w.message)}</li>`).join('')}</ul></div>` : '';
 
   const body = `
+    ${PRJ_STATUS_CSS}
     <a href="/app/projects" style="font-size:12px;color:var(--muted)">← المشاريع</a>
     <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin:.6rem 0 1rem">
-      <h2 style="font-size:18px;margin:0">${esc(p.name_ar)}</h2>${pill(tr(p.status), p.status === 'COMPLETED' ? 'green' : p.status === 'ON_HOLD' ? 'amber' : 'blue')}${ragBadge}
-      ${p.kind ? pill(p.kind === 'external' ? 'خارجي' : 'داخلي', 'slate') : ''}
+      <h2 style="font-size:18px;margin:0">${esc(p.name_ar)}</h2>${statusBadge}${ragBadge}
+      <span title="${esc(projectKindTip(kindTag))}">${pill(esc(projectKindLabel(kindTag.key)), 'slate')}</span>
       <span style="font-size:12px;color:var(--muted)">${client ? esc(client.name_ar) : ''} · ${esc(p.code || '')}${p.financial_code ? ' · مالي ' + esc(p.financial_code) : ''}</span>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:.65rem;margin-bottom:1rem">
-      ${stat('الإنجاز', Math.round(p.progress_pct || 0) + '%')}
-      ${stat('إنجاز المهام', k.taskCompletionRate + '%', '', `${tmap.DONE || 0}/${k.totalTasks}`)}
-      ${stat('مهام متأخرة', k.lateTasks, k.lateTasks ? 'var(--red)' : '')}
-      ${stat('قبول المخرجات', k.deliverableAcceptanceRate + '%', '', `${dlv.length} مخرج`)}
-      ${stat('الفريق المُسكَّن', staff.length, '', staff.length ? 'موظف' : 'لا تسكين')}
-      ${stat('المخاطر', risks.length, risks.length ? 'var(--amber)' : '', 'مفتوحة')}
+    ${setupPanel}
+    ${headMeters}
+    ${progressEvidence}
+    ${actsBlock}
+    <div id="sec-overview">${sec('overview', 'نظرة عامة', { open: true, body: overviewBody })}</div>
+    <div id="sec-phases">${sec('phases', 'المراحل والمعالم', { sub: prog.schedule.note, badge: cnt(phases.length + gov.milestones.length, prog.schedule.tone === 'red' ? 'red' : 'blue'), body: phasesBody })}</div>
+    <div id="sec-deliverables">${sec('deliverables', G.deliverables, { sub: prog.delivery.total ? `${prog.delivery.accepted} معتمَد من ${prog.delivery.total}` : '', badge: cnt(dlv.length), body: dlvBody })}</div>
+    <div id="sec-team">${sec('team', 'الفريق والتسكين', { sub: teamLoad?.overloaded ? `${teamLoad.overloaded} فوق طاقته` : '', badge: cnt(team.length, teamLoad?.overloaded ? 'red' : 'blue'), body: teamBody })}</div>
+    <div id="sec-tasks">${sec('tasks', 'المهام', { sub: k.lateTasks ? `${k.lateTasks} متأخرة` : '', badge: cnt(k.totalTasks, k.lateTasks ? 'red' : 'blue'), body: tasksBody })}</div>
+    ${canMoneyBoard ? `<div id="sec-money">${sec('money', canMoney ? 'قيمة المشروع وإيراده' : 'المصروفات والمشتريات', { sub: '', body: moneyBody })}</div>` : ''}
+    <div id="sec-files">${sec('files', 'الملفات والتحديثات', { badge: cnt((docsPayload.documents || []).length), body: filesBody })}</div>
+    <div id="sec-registers">${sec('registers', 'سجلات إضافية', { sub: 'مخاطر · معوقات · قرارات · طلبات تغيير — اختيارية بالكامل', badge: cnt(regCount, 'amber'), body: registersBody })}</div>
+    <script>window.__SANAD=Object.assign(window.__SANAD||{},{gov:{projectId:${JSON.stringify(p.id).replace(/</g, '\\u003c')},canEdit:${canGov}},
+      money:{projectId:${JSON.stringify(p.id).replace(/</g, '\\u003c')}}});</script>`;
+  return layout({ user, active: 'projects', title: p.name_ar, subtitle: 'تفاصيل المشروع', body,
+    scripts: ['/static/pages/project-status.js', '/static/pages/project-governance.js', '/static/pages/project-money.js'] });
+}
+
+// ═══ صفحة الشخص ══════════════════════════════════════════════════════════════════════════════
+// «ما اقدر اشوف او اضغط على الموظف يطلعلي تفاصيله وصفحته» — بلسان المالك. الأسماء في لوحة
+// الفريق كانت روابط إلى مُرشِّح، فينقر المدير الاسم فتعود لوحة المهام نفسها مرشَّحةً بشخص —
+// لا صفحةً تجيب «ما حال هذا الشخص»: مهامه بمواعيدها، وفرصه **بأسمائها**، ومشاريعه، وما يعلق.
+//
+// الصفحة قراءةٌ خالصة: لا تكتب شيئاً، وكل تحرير يعود من حيث يُحرَّر (المهمة من لوحة المهام،
+// والفرصة من صفحتها). فلا سطح كتابةٍ ثالث يتباعد عن قواعده.
+export async function personPage(user, personId) {
+  const d = await personDossier(user, personId);
+  const p = d.person;
+  const initial = esc(String(p.name || '؟').trim().charAt(0));
+  const dnum = (day) => Math.round((Date.parse(String(day).slice(0, 10) + 'T00:00:00Z')
+    - Date.parse(d.today + 'T00:00:00Z')) / 86400000);
+  const canReadOpp = can(user, 'read', 'opportunity');
+
+  const due = (t) => {
+    // المنجَزة تُقرأ بتاريخ إنجازها لا بموعدٍ فات: هذه الشاشة كانت تعرض «متأخرة N يوماً» على
+    // المنجَز أيضاً (KI-075) لأن الفرع الوحيد كان على الموعد. نفس عرف لوح «مهامي».
+    if (t.status === 'DONE') {
+      if (!t.completed_at) return '<span class="pp-due" title="بلا تاريخ إنجاز مسجَّل">أُنجزت</span>';
+      const k = -dnum(t.completed_at);
+      if (k <= 0) return '<span class="pp-due">أُنجزت اليوم</span>';
+      if (k === 1) return '<span class="pp-due">أُنجزت أمس</span>';
+      if (k <= 7) return `<span class="pp-due">أُنجزت منذ ${dayWord(k)}</span>`;
+      const c = String(t.completed_at).slice(0, 10);
+      return `<span class="pp-due">أُنجزت في <span class="tnum">${Number(c.slice(8, 10))}</span> ${MONTHS_AR[Number(c.slice(5, 7)) - 1] || ''}</span>`;
+    }
+    if (!t.due_date) return `<span class="pp-due none">${G.noDueDate}</span>`;
+    const n = dnum(t.due_date);
+    if (n < 0) return `<span class="pp-due late">متأخرة ${countAr(-n, { one: 'يوماً', two: 'يومين', few: 'أيام', many: 'يوماً' })}</span>`;
+    if (n === 0) return '<span class="pp-due now">اليوم</span>';
+    return `<span class="pp-due">خلال ${countAr(n, { one: 'يوم', two: 'يومين', few: 'أيام', many: 'يوماً' })}</span>`;
+  };
+  const parentOf = (t) => (t.project_id
+    ? `<a class="pp-tag" href="/app/project/${encodeURIComponent(t.project_id)}">${esc(t.project_name || 'مشروع')}</a>`
+    : t.opportunity_id
+      ? `<a class="pp-tag" href="/app/opportunity/${encodeURIComponent(t.opportunity_id)}">${esc(t.opportunity_name || 'فرصة')}</a>`
+      : `<span class="pp-tag mute">${G.internalWork}</span>`);
+
+  const openTasks = d.tasks.filter((t) => t.status !== 'DONE');
+  const doneTasks = d.tasks.filter((t) => t.status === 'DONE').slice(0, 10);
+  const taskRow = (t) => `<div class="pp-row${t.status === 'BLOCKED' || t.blocked_reason ? ' blocked' : ''}">
+    <div class="pp-row-h">
+      <span class="pp-t">${esc(t.title || 'مهمة بلا عنوان')}</span>
+      ${isPendingTask(t) ? `<span class="pill" style="background:#fef3c7;color:#92400e" title="${G.awaitApprovalAssignedHint}">بانتظار اعتماد المدير</span>` : ''}
+      <span class="pill">${esc(tr(t.status))}</span>
+      ${due(t)}
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:.9rem;margin-bottom:.9rem">
-      ${timelineCard}
-      ${financeCard}
+    <div class="pp-row-m">
+      ${parentOf(t)}
+      ${String(t.next_step || '').trim()
+    ? `<span class="pp-step">${G.nextStep}: ${esc(t.next_step)}</span>`
+    : '<span class="pp-step warn">بلا خطوة تالية</span>'}
+      ${String(t.blocked_reason || '').trim() ? `<span class="pp-step bad">${G.blocker}: ${esc(t.blocked_reason)}</span>` : ''}
     </div>
-    <div style="margin-bottom:.9rem">${pvaCard}</div>
-    <div style="display:grid;grid-template-columns:1.15fr 1fr;gap:.9rem;margin-bottom:.9rem">
-      ${card(`<div style="padding:.85rem 1rem;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center">
-        <div style="font-weight:800;font-size:13px">التسكين — فريق المشروع (${staff.length})</div>
-        ${canEdit ? `<button class="btn btn-sm" style="font-size:11px;padding:.25rem .6rem" onclick="Sanad.projOpen('${p.id}')">${icon('users')} إدارة التسكين</button>` : ''}</div>
-        <table style="width:100%;border-collapse:collapse"><thead><tr style="font-size:10.5px;color:var(--muted);text-align:right"><th style="padding:.35rem .75rem">الموظف</th><th style="padding:.35rem .75rem;text-align:center">الدور</th><th style="padding:.35rem .75rem .15rem;width:160px;text-align:center">التغطية الشهرية${monthTicks}</th></tr></thead>
-        <tbody>${staffRows || '<tr><td colspan="3" style="padding:1rem;color:var(--muted);font-size:12.5px">لا يوجد فريق مُسكَّن على هذا المشروع بعد' + (canEdit ? ' — استخدم «إدارة التسكين»' : '') + '</td></tr>'}</tbody></table>`)}
-      ${card(`<div style="padding:.85rem 1rem;border-bottom:1px solid var(--line);font-weight:800;font-size:13px">المخرجات (${dlv.length})</div>
-        <div style="max-height:260px;overflow-y:auto"><table style="width:100%;border-collapse:collapse"><tbody>${dlvRows || '<tr><td style="padding:1rem;color:var(--muted);font-size:12.5px">لا مخرجات</td></tr>'}</tbody></table></div>`)}
+  </div>`;
+
+  const openOpps = d.opportunities.filter((o) => !o.is_won && !o.is_lost);
+  // الاسم هو العنوان، والقيمة سطرٌ ثانٍ باهت. طلب المالك صريح: ما يهمّ **على ماذا** يعمل الشخص
+  // لا كم يبلغ ما يعمل عليه — والرقم الضخم بجانب الاسم يسرق النظر إليه أولاً بحكم وزنه.
+  const oppRow = (o) => `<a class="pp-row pp-link" href="/app/opportunity/${encodeURIComponent(o.id)}">
+    <div class="pp-row-h">
+      <span class="pp-t">${esc(o.title_ar)}</span>
+      ${o.stage_name ? `<span class="pill">${esc(o.stage_name)}</span>` : ''}
+      ${/* صلته بالفرصة تُقال لا تُخمَّن: «صاحبها» غير «مسكَّن عليها» في قراءة المدير — الأول
+            يُسأل عن حالها، والثاني يُسأل عن جزئه منها. ولا تُعلَّم الملكية بشارة: هي الأصل. */ ''}
+      ${o.relation === 'member' ? `<span class="pill" style="background:#eef2ff;color:#4338ca"
+        title="مسكَّن على هذه الفرصة${o.role_in_group === 'lead' ? ' قائداً لفريقها' : ''} — وصاحبها غيره">مسكَّن${o.role_in_group === 'lead' ? ' · قائد' : ''}</span>` : ''}
+      ${o.pending ? `<span class="pill" style="background:#fef3c7;color:#b45309"
+        title="طُلب تأكيد مديره أنه يعمل على هذه الفرصة — لا يُحتسب في عدّ فرصه قبل التأكيد">بانتظار تأكيد مديره</span>` : ''}
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:.9rem;margin-bottom:.9rem">
-      ${card(`<div style="padding:.85rem 1rem"><div style="font-weight:800;font-size:13px;margin-bottom:.5rem">توزيع المهام (${k.totalTasks})</div>
-        <div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:.7rem">${['TODO', 'IN_PROGRESS', 'BLOCKED', 'IN_REVIEW', 'DONE'].map((s) => pill(`${tr(s)}: ${tmap[s] || 0}`, s === 'DONE' ? 'green' : s === 'BLOCKED' ? 'red' : 'slate')).join(' ')}</div>
-        <div style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;padding-top:.6rem;border-top:1px dashed var(--line)">
-          <input id="prj-task-title" class="input" placeholder="أضِف مهمة على هذا المشروع…" aria-label="عنوان المهمة" style="flex:1;min-width:150px;font-size:12.5px">
-          <select id="prj-task-priority" class="input" aria-label="الأولوية" style="width:auto;font-size:12.5px"><option value="P2">متوسطة</option><option value="P0">حرجة</option><option value="P1">عالية</option><option value="P3">منخفضة</option></select>
-          <button class="btn btn-sm btn-primary" data-action="prj-task-add" data-project="${p.id}">${icon('plus')} إضافة</button>
-        </div></div>`)}
-      ${card(`<div style="padding:.85rem 1rem;border-bottom:1px solid var(--line);font-weight:800;font-size:13px">المخاطر المفتوحة (${risks.length})</div>
-        <table style="width:100%;border-collapse:collapse"><tbody>${riskRows || '<tr><td style="padding:1rem;color:var(--muted);font-size:12.5px">لا مخاطر مفتوحة</td></tr>'}</tbody></table>`)}
+    <div class="pp-row-m">
+      <span class="pp-tag mute">${esc(o.client_name || 'بدون جهة')}</span>
+      ${String(o.next_action || '').trim()
+    ? `<span class="pp-step">${G.nextStep}: ${esc(o.next_action)}</span>`
+    : '<span class="pp-step warn">بلا خطوة تالية</span>'}
+      ${canReadOpp ? `<span class="pp-money tnum">${fmtSar(o.value_halalas)}</span>` : ''}
     </div>
-    ${govCard}
-    <script>window.__SANAD=Object.assign(window.__SANAD||{},{gov:{projectId:${JSON.stringify(p.id)},canEdit:${canGov}}});</script>`;
-  return layout({ user, active: 'projects', title: esc(p.name_ar), subtitle: 'تفاصيل المشروع', body,
-    scripts: ['/static/pages/project-governance.js'] });
+  </a>`;
+
+  const sec = (title, hint, inner, empty) => `<section class="pp-sec">
+    <div class="pp-sec-h"><h2 class="pp-sec-t">${title}</h2><span class="pp-sec-s">${hint}</span></div>
+    ${inner || `<div class="card"><div class="empty-state" style="padding:1.2rem 1rem"><div class="s">${empty}</div></div></div>`}
+  </section>`;
+
+  const stat = (n, label, tone) => `<div class="pp-stat${tone ? ' ' + tone : ''}">
+    <div class="pp-stat-n tnum">${n}</div><div class="pp-stat-l">${label}</div></div>`;
+
+  const actionBar = await personActions(user, d);
+
+  const body = `<style>
+    ${PICKER_CSS}
+    /* مقاس قراءة لا عرض شاشة: بلا حدٍّ يمتد الصفّ على ١٤٤٠ بكسل فيقع العنوان في أقصى اليمين
+       وموعده في أقصى اليسار وبينهما فراغٌ تقفز العين فوقه — نفس عطل صفوف الشجرة. */
+    .pp-wrap{max-width:1020px;margin-inline:auto}
+    .pp-head{display:flex;align-items:center;gap:.9rem;flex-wrap:wrap;padding:1rem 1.1rem;margin-bottom:1rem}
+    .pp-av{width:54px;height:54px;flex:none;border-radius:16px;display:grid;place-items:center;
+      font-size:22px;font-weight:800;color:#fff;background:var(--brand-grad)}
+    .pp-id{flex:1 1 220px;min-width:0}
+    .pp-n{font-size:1.15rem;font-weight:800;color:var(--ink2)}
+    .pp-meta{font-size:var(--fs-meta);color:var(--muted);margin-top:.2rem;display:flex;gap:.5rem;flex-wrap:wrap}
+    .pp-meta .sep{color:var(--faint)}
+    .pp-warn{font-size:var(--fs-micro);color:#92400e;background:#fef3c7;border-radius:8px;padding:.2rem .55rem}
+    .pp-stats{display:flex;gap:.5rem;flex-wrap:wrap}
+    .pp-stat{min-width:78px;text-align:center;background:var(--bg);border:1px solid var(--line);
+      border-radius:12px;padding:.45rem .6rem}
+    .pp-stat-n{font-size:1.25rem;font-weight:800;color:var(--ink2);line-height:1.2}
+    .pp-stat-l{font-size:var(--fs-micro);color:var(--muted)}
+    .pp-stat.bad{background:#fef2f2;border-color:#fecaca}.pp-stat.bad .pp-stat-n{color:var(--red)}
+    .pp-stat.warn{background:#fefce8;border-color:#fde68a}.pp-stat.warn .pp-stat-n{color:#a16207}
+    .pp-tabs{display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:.5rem}
+    .pp-panel{border-top:1px dashed var(--line);padding-top:.6rem;margin-top:.2rem}
+    .pp-panel-h{font-size:var(--fs-micro);font-weight:800;color:var(--muted);margin-bottom:.4rem}
+    .pp-form{display:flex;gap:.4rem;flex-wrap:wrap;align-items:center}
+    .pp-form .input{flex:1 1 160px;min-width:130px;font-size:12.5px}
+    .pp-hint{font-size:var(--fs-micro);color:var(--faint);margin-top:.35rem;line-height:1.6}
+    .pp-glist{display:flex;flex-direction:column;gap:.35rem;margin-top:.6rem}
+    .pp-grow{display:flex;align-items:center;gap:.45rem;flex-wrap:wrap;background:var(--bg);
+      border:1px solid var(--line);border-radius:10px;padding:.35rem .6rem;font-size:var(--fs-micro)}
+    .pp-sec{margin-bottom:1.1rem}
+    .pp-sec-h{display:flex;align-items:baseline;gap:.6rem;flex-wrap:wrap;margin:0 .1rem .5rem}
+    .pp-sec-t{font-size:var(--fs-title);font-weight:800;color:var(--ink2)}
+    .pp-sec-s{font-size:var(--fs-meta);color:var(--muted)}
+    .pp-list{display:flex;flex-direction:column;gap:.4rem}
+    .pp-row{display:flex;flex-direction:column;gap:.3rem;background:#fff;border:1px solid var(--line);
+      border-radius:12px;padding:.6rem .8rem;text-decoration:none}
+    .pp-row.blocked{border-color:#fecaca;background:linear-gradient(180deg,#fffafa,#fff 45%)}
+    a.pp-link:hover{border-color:#c9d3e8;box-shadow:0 6px 18px -12px rgba(16,32,70,.4)}
+    .pp-row-h{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
+    /* العنوان لا يتمدّد ليدفع حالته وموعده إلى الطرف المقابل — يبقيان جواره. (flex:0 1) */
+    .pp-t{font-weight:700;font-size:var(--fs-body);color:var(--ink2);flex:0 1 auto;min-width:0;max-width:100%;
+      overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .pp-money{color:var(--faint);white-space:nowrap;margin-inline-start:auto;flex:none}
+    .pp-due{font-size:var(--fs-micro);color:var(--muted);white-space:nowrap}
+    .pp-due.late{color:var(--red);font-weight:800}
+    .pp-due.now{color:#a16207;font-weight:800}
+    .pp-due.none{color:var(--faint)}
+    .pp-row-m{display:flex;align-items:center;gap:.45rem;flex-wrap:wrap;font-size:var(--fs-micro);color:var(--muted)}
+    .pp-tag{background:var(--bg);border-radius:6px;padding:.06rem .4rem;color:var(--ink2);text-decoration:none;
+      max-width:100%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .pp-tag.mute{color:var(--muted)}
+    a.pp-tag:hover{background:#eef2fb;color:var(--brand)}
+    .pp-step{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .pp-step.warn{color:#a16207}
+    .pp-step.bad{color:var(--red)}
+    @media(max-width:640px){.pp-av{width:44px;height:44px;font-size:18px}}
+  </style>
+  <div class="pp-wrap">
+  ${card(`<div class="pp-head">
+    <span class="pp-av" aria-hidden="true">${initial}</span>
+    <span class="pp-id">
+      <div class="pp-n">${esc(p.name)}</div>
+      <div class="pp-meta">
+        ${p.jobTitle ? `<span>${esc(p.jobTitle)}</span><span class="sep">·</span>` : ''}
+        <span>${esc(p.departmentName || 'بلا إدارة')}</span>
+        ${p.sectorName ? `<span class="sep">·</span><span>${esc(p.sectorName)}</span>` : ''}
+        ${!p.active ? '<span class="pp-warn">حسابه معطَّل — لا يستطيع الدخول</span>' : ''}
+        ${!p.linked ? '<span class="pp-warn">غير مربوط بسجل موظف — لا تظهر إدارته ولا تسكينه</span>' : ''}
+      </div>
+    </span>
+    <span class="pp-stats">
+      ${stat(d.stats.open, 'مهمة مفتوحة')}
+      ${stat(d.stats.overdue, 'متأخرة', d.stats.overdue ? 'bad' : '')}
+      ${stat(d.stats.blocked, 'مُعطَّلة', d.stats.blocked ? 'warn' : '')}
+      ${stat(d.stats.openOpportunities, 'فرصة مفتوحة')}
+      ${stat(d.stats.projects, 'مشروع')}
+    </span>
+  </div>`)}
+
+  ${actionBar}
+
+  ${sec('المهام المفتوحة', openTasks.length ? 'الأكثر إلحاحاً أولاً' : '',
+    openTasks.length ? `<div class="pp-list">${openTasks.map(taskRow).join('')}</div>` : '',
+    d.self ? 'لا مهمة مفتوحة باسمك الآن.' : 'لا مهمة مفتوحة باسمه الآن.')}
+
+  ${canReadOpp ? sec('الفرص', openOpps.length ? 'المفتوحة أولاً، والأكبر قيمةً في الأعلى' : '',
+    openOpps.length ? `<div class="pp-list">${openOpps.map(oppRow).join('')}</div>` : '',
+    'لا فرصة مفتوحة مسجَّلة باسمه.') : ''}
+
+  ${sec(`المشاريع — سنة ${d.year}`, d.projects.length ? 'التسكين المسجَّل لهذه السنة' : '',
+    d.projects.length ? `<div class="pp-list">${d.projects.map((x) => `<a class="pp-row pp-link" href="/app/project/${encodeURIComponent(x.id)}">
+      <div class="pp-row-h"><span class="pp-t">${esc(x.name_ar)}</span>
+        <span class="pill">${esc(tr(x.status || ''))}</span></div>
+      <div class="pp-row-m"><span class="pp-tag mute">${esc(x.type === 'lead' ? 'قائد' : x.type === 'advisor' ? 'مستشار' : 'عضو الفريق')}</span></div>
+    </a>`).join('')}</div>` : '',
+    p.linked ? 'لا تسكين مسجَّل له على أي مشروع هذه السنة.'
+      : 'التسكين يُقرأ من سجل الموظف، وحسابه غير مربوط بسجل — الربط من شاشة المستخدمين والصلاحيات.')}
+
+  ${doneTasks.length ? sec('أُنجز مؤخراً', `آخر ${countAr(doneTasks.length, { one: 'مهمة', two: 'مهمتين', few: 'مهام', many: 'مهمة' })}`,
+    `<div class="pp-list">${doneTasks.map(taskRow).join('')}</div>`, '') : ''}
+  </div>`;
+
+  return layout({
+    user, active: 'tasks', title: p.name,
+    subtitle: `${p.jobTitle ? p.jobTitle + ' · ' : ''}${p.departmentName || 'بلا إدارة'} — مهامه وفرصه ومشاريعه`,
+    body,
+    scripts: ['/static/pages/picker.js', '/static/pages/person.js'],
+  });
+}
+
+// إجراءات الشخص مشتركة بين ملف المورد وملف الحساب غير المرتبط.
+export async function personActions(user, d, { staffingHref = null } = {}) {
+  const p = d.person;
+  // خيارات ربط المهمة بجهةٍ — بمدى **القارئ** (المُسنِد) لا المُسنَد إليه: الخادم يفحص وصول
+  // كاتب المهمة (`assertMayLink`)، فالقائمة تعرض ما سيقبله بالضبط. وتُبنى فقط لمن يملك الإسناد.
+  const prjOptions = d.canAssignTask ? (await listProjects(user)).slice(0, 200) : [];
+  const oppOptions = d.canAssignTask ? (await listOpportunities(user, {}, { today: d.today })).slice(0, 200) : [];
+  const linkApproval = d.canAssignTask ? await linkedTaskApproval(user) : { needsApproval: false };
+  // ── لوحة المدير على شخصٍ واحد ───────────────────────────────────────────────
+  // «أقدر أضيف أو أسوّي أي أكشن أنا كمدير للموظف لما أضغط عليه — حتى في إضافة المهام».
+  // وكل لوحةٍ هنا تُعرض **فقط** إن كان فعلها مقبولاً فعلاً (القرار في الخدمة لا في الشاشة)،
+  // فلا يُعرض زرٌّ ليُرَدّ. ومن لا يملك شيئاً منها لا يرى الشريط أصلاً — لا شريطاً فارغاً.
+  const panel = (key, title, inner) => `<section class="pp-panel" data-panel="${key}" hidden>
+    <div class="pp-panel-h">${title}</div>${inner}</section>`;
+  const tabs = [
+    d.canAssignTask ? ['task', 'أضف مهمة'] : null,
+    d.canStaff ? ['staff', 'سكّنه على مشروع'] : null,
+    d.grantChoices.length ? ['grant', 'صلاحياته'] : null,
+  ].filter(Boolean);
+  const grantRow = (g) => `<div class="pp-grow" data-grant="${esc(g.id)}">
+    <span class="pp-t">${esc(g.label)} — ${esc(g.department_name)}</span>
+    ${g.granted_by_name ? `<span class="pp-tag mute">منحها ${esc(g.granted_by_name)}</span>` : ''}
+    ${g.note ? `<span class="pp-tag mute">${esc(g.note)}</span>` : ''}
+    ${d.grantChoices.length ? `<button class="btn btn-ghost btn-sm" data-action="grant-revoke"
+      data-id="${esc(g.id)}" style="color:var(--red)">ارفعها</button>` : ''}</div>`;
+  const actionBar = !tabs.length && !d.grants.length ? '' : `<section class="pp-sec">
+    <div class="pp-sec-h"><h2 class="pp-sec-t">إدارته</h2>
+      <span class="pp-sec-s">ما تستطيع فعله لهذا الشخص بحكم إدارتك له</span></div>
+    <div class="card" style="padding:.7rem .85rem">
+      ${tabs.length ? `<div class="pp-tabs">${tabs.map(([k, t]) =>
+    `<button class="btn btn-sm" data-action="pp-tab" data-tab="${k}">${t}</button>`).join('')}</div>` : ''}
+      ${d.canAssignTask ? panel('task', 'مهمة جديدة باسمه', `
+        <div class="pp-form">
+          <input id="pp-task-title" class="input" maxlength="200" placeholder="ماذا تريد منه بالضبط">
+          ${parentPicker({ idAttr: 'pp-task-parent', label: G.parentLink, projects: prjOptions, opportunities: oppOptions, withPersonal: false })}
+          <input id="pp-task-due" class="input" type="date" aria-label="الموعد">
+          <button class="btn btn-primary btn-sm" data-action="pp-task-add"
+            data-user="${esc(p.userId)}">أضف المهمة</button>
+        </div>
+        <div class="pp-hint">${linkApproval.needsApproval
+    ? 'العمل الداخلي يصل إلى قائمته فوراً؛ والمرتبط بمشروع أو فرصة يُضاف إلى قائمته بعد اعتماد مديرك.'
+    : 'تصل إلى قائمته فوراً، ويراها في «مهامي».'}</div>`) : ''}
+      ${d.canStaff ? panel('staff', 'تسكين على مشروع', staffingHref
+    ? `<p class="pp-hint">اختر الفترة ونوع التسكين، وراجع الطاقة والتعارضات قبل الاعتماد.</p><a class="btn btn-primary" href="${esc(staffingHref)}">افتح طلب التسكين</a>` : `
+        <div class="pp-form">
+          <select id="pp-staff-prj" class="input">${d.staffProjects
+    .map((x) => `<option value="${esc(x.id)}">${esc(x.name_ar)}</option>`).join('')}</select>
+          <input id="pp-staff-pct" class="input tnum" type="number" min="1" max="100" value="50"
+            aria-label="نسبة وقته">
+          <button class="btn btn-primary btn-sm" data-action="pp-staff-add"
+            data-emp="${esc(d.employeeId || '')}">سكّنه</button>
+        </div>
+        <div class="pp-hint">النسبة حصّة وقته من الشهر — تُقرأ في لوحة التسكين وتُحسب في حِمله.</div>`) : ''}
+      ${d.grantChoices.length ? panel('grant', 'صلاحية إضافية على إدارة', `
+        <div class="pp-form">
+          <select id="pp-grant-perm" class="input">${d.grantChoices
+    .map((x, i) => `<option value="${esc(x.resource)}:${esc(x.action)}"${i ? '' : ' selected'}>${esc(x.label)}</option>`).join('')}</select>
+          <select id="pp-grant-dept" class="input">${d.grantChoices[0].departments
+    .map((x) => `<option value="${esc(x.id)}">${esc(x.name_ar)}${x.sector_name ? ' · ' + esc(x.sector_name) : ''}</option>`).join('')}</select>
+          <input id="pp-grant-note" class="input" maxlength="200" placeholder="السبب (اختياري)">
+          <button class="btn btn-primary btn-sm" data-action="pp-grant-add"
+            data-user="${esc(p.userId)}">امنحها</button>
+        </div>
+        <div class="pp-hint" id="pp-grant-hint">${esc(d.grantChoices[0].effect)} ولا تمنح إلا إدارةً تبلغها أنت.</div>
+        <script type="application/json" id="pp-grant-data">${
+  JSON.stringify(d.grantChoices.map((x) => ({ key: x.resource + ':' + x.action, effect: x.effect,
+    departments: x.departments.map((dd) => ({ id: dd.id, name: dd.name_ar + (dd.sector_name ? ' · ' + dd.sector_name : '') }) ) })))
+    .replace(/</g, '\\u003c')}</script>`) : ''}
+      ${d.grants.length ? `<div class="pp-glist">${d.grants.map(grantRow).join('')}</div>`
+    : '<div class="pp-hint">لا صلاحية إضافية على أي إدارة — يرى ما يمنحه دوره وما سُكِّن عليه.</div>'}
+    </div>
+  </section>`;
+
+  return `<style>${PICKER_CSS}</style>${actionBar}`;
 }

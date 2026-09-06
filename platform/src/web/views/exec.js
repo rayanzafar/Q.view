@@ -1,11 +1,13 @@
 // Executive pages: CEO command dashboard + portfolio health.
 import { layout, card, pill, miniBars, gauge, hbars } from '../layout.js';
+import { netSql } from '../../modules/finance/vat.js';
 import { fmtSar } from '../../core/util/ids.js';
 import { all, get } from '../../core/db/index.js';
 import { companyOverview, multiYearTrend, winRate,
   quarterlyRevenue, quarterlyBookings, backlog, pipelineCoverage, bookToBill, grossMargin } from '../../core/reports/metrics.js';
 import { config } from '../../core/config.js';
 import { listProjects } from '../../modules/pmo/projects.js';
+import { effectiveProgress } from '../../modules/pmo/progress.js';
 import { sarShort, pct, esc, ddWrap, attain, ddRows } from './_shared.js';
 import { quarterLabel, yearElapsedPct, MONTHS_AR } from '../../core/i18n/time.js';
 import { countAr } from '../../core/i18n/plural.js';
@@ -41,7 +43,7 @@ export async function ceoPage(user, opts = {}) {
     : ov.pipeline_halalas;
   // ── Drill-down datasets (KPI popups). Same filter as the page; embedded as inert <template>s. ──
   const spO = sec ? 'AND o.sector_id = ?' : '';
-  const revLines = await all(`SELECT rl.amount_halalas, rl.month, rl.label, p.name_ar project, s.name_ar sector
+  const revLines = await all(`SELECT ${netSql('rl.amount_halalas', 'rl.net_amount_halalas')} amount_halalas, rl.month, rl.label, p.name_ar project, s.name_ar sector
      FROM revenue_line rl LEFT JOIN project p ON p.id=rl.project_id LEFT JOIN sector s ON s.id=rl.sector_id
      WHERE rl.year=? ${sec ? 'AND rl.sector_id = ?' : ''} ORDER BY rl.amount_halalas DESC LIMIT 8`, sec ? [year, sec] : [year]);
   const wonDeals = await all(`SELECT o.title_ar, o.value_halalas, c.name_ar client, s.name_ar sector
@@ -76,8 +78,8 @@ export async function ceoPage(user, opts = {}) {
       <div style="flex:1"><b>تنبيه استراتيجي — التعاقد إلى الإيراد ×${b2b.ratio}</b>
       <div style="font-size:12px;opacity:.9">التعاقدات الجديدة (${fmtSar(b2b.bookings_halalas)}) أقل من الإيراد المحقق (${fmtSar(b2b.revenue_halalas)}) لعام ${year} — الشركة تستهلك الأعمال المتعاقدة أسرع من تعويضها. يلزم تكثيف تطوير الأعمال.</div></div>
     </div>` : '';
-  const revPct = t.target_revenue ? t.revenue / t.target_revenue * 100 : 0;
-  const salesPct = t.target_sales ? t.sales / t.target_sales * 100 : 0;
+  const revPct = t.target_revenue ? t.revenue / t.target_revenue * 100 : null;
+  const salesPct = t.target_sales ? t.sales / t.target_sales * 100 : null;
   // Hero KPI block — clickable: opens the matching drill-down popup (keyboard accessible).
   // شارة الإيقاع (D3): مقارنة نسبة التحقق بنسبة السنة المنقضية — للسنة الجارية فقط
   const heroPace = (actual, target) => {
@@ -92,11 +94,11 @@ export async function ceoPage(user, opts = {}) {
     <div class="hclick" role="button" tabindex="0" aria-label="${label} — انقر للتفاصيل"
       onclick="Sanad.openDD('${dd}')" onkeydown="if(event.key==='Enter'||event.key===' ')Sanad.openDD('${dd}')"
       style="display:flex;align-items:center;gap:1.15rem;flex:1;min-width:290px;padding:.5rem .65rem;margin:-.5rem -.65rem">
-      <div style="flex:0 0 auto">${gauge(p, { color, size: 118, sw: 11, center: pct(p), centerSize: 25, sub: 'من الهدف' })}</div>
+      <div style="flex:0 0 auto">${p == null ? '<span style="color:#cbd5e1">لا نسبة تحقق</span>' : gauge(p, { color, size: 118, sw: 11, center: pct(p), centerSize: 25, sub: 'من الهدف' })}</div>
       <div style="min-width:0">
         <div style="color:rgba(255,255,255,.72);font-size:var(--fs-body);font-weight:600">${label}</div>
         <div class="metric tnum" style="color:#fff;margin-top:.2rem;font-size:1.85rem">${fmtSar(val)}</div>
-        <div style="color:rgba(255,255,255,.55);font-size:var(--fs-meta)" class="tnum">الهدف ${fmtSar(target)}</div>
+        <div style="color:rgba(255,255,255,.55);font-size:var(--fs-meta)" class="tnum">${target == null ? 'المستهدف غير مكتمل لهذه السنة' : `الهدف ${fmtSar(target)}`}</div>
         <div style="margin-top:.45rem;display:flex;align-items:center;gap:.6rem;flex-wrap:wrap">${extra || ''}<span class="dd-hint">⊕ التفاصيل</span></div>
       </div>
     </div>`;
@@ -107,10 +109,10 @@ export async function ceoPage(user, opts = {}) {
     const gm = ov.canSeeMargin ? marginBySector[s.id] : undefined;
     const active = sec === s.id;
     return card(`
-    <div style="padding:.8rem .9rem${active ? ';box-shadow:inset 0 0 0 2px ' + (s.color || 'var(--brand)') + ';border-radius:var(--r)' : ''}">
+    <div style="padding:.8rem .9rem${active ? ';box-shadow:inset 0 0 0 2px ' + esc(s.color || 'var(--brand)') + ';border-radius:var(--r)' : ''}">
       <div style="display:flex;align-items:center;justify-content:space-between">
         <div style="display:flex;align-items:center;gap:.5rem">
-          <span style="width:9px;height:9px;border-radius:3px;background:${s.color || 'var(--brand)'}"></span>
+          <span style="width:9px;height:9px;border-radius:3px;background:${esc(s.color || 'var(--brand)')}"></span>
           <div><div style="font-weight:800;font-size:var(--fs-title)">${esc(s.name_ar)}</div><div style="font-size:var(--fs-micro);color:var(--muted)">${esc(s.name_en || '')}</div></div>
         </div>
         ${s.placeholder ? pill('بانتظار التفعيل', 'amber') : pill(`${s.opp_count} فرصة`, 'blue')}
@@ -121,7 +123,7 @@ export async function ceoPage(user, opts = {}) {
           <div class="bar" style="margin-top:.35rem"><span style="width:${Math.min(100, s.revenue_pct)}%;background:var(--green)"></span></div></div>
         <div><div style="font-size:11px;color:var(--muted)">المبيعات · ${pct(s.sales_pct)}</div>
           <div style="font-weight:800" class="tnum">${fmtSar(s.sales_halalas)}</div>
-          <div class="bar" style="margin-top:.35rem"><span style="width:${Math.min(100, s.sales_pct)}%;background:${s.color || 'var(--brand)'}"></span></div></div>
+          <div class="bar" style="margin-top:.35rem"><span style="width:${Math.min(100, s.sales_pct)}%;background:${esc(s.color || 'var(--brand)')}"></span></div></div>
       </div>
       <div style="margin-top:.7rem;padding-top:.6rem;border-top:1px solid var(--line);font-size:11px;color:var(--muted);display:flex;justify-content:space-between">
         <span>عقود ${year}: <b class="tnum" style="color:var(--ink2)">${fmtSar(s.contracts_halalas)}</b> (${s.contracts_count})</span>
@@ -130,8 +132,8 @@ export async function ceoPage(user, opts = {}) {
       <div style="margin-top:.55rem;display:flex;gap:.4rem">
         ${active
           ? `<a class="btn btn-sm" href="/app/ceo?year=${year}">إلغاء التصفية</a>`
-          : `<a class="btn btn-sm" href="/app/ceo?year=${year}&sector=${s.id}">تصفية اللوحة</a>`}
-        <a class="btn btn-sm btn-ghost" href="/app/sector?year=${year}&sector=${s.id}">مركز القطاع ←</a>
+          : `<a class="btn btn-sm" href="/app/ceo?year=${year}&sector=${esc(s.id)}">تصفية اللوحة</a>`}
+        <a class="btn btn-sm btn-ghost" href="/app/sector?year=${year}&sector=${esc(s.id)}">مركز القطاع ←</a>
       </div>
     </div>`, 'card-h');
   }).join('');
@@ -143,8 +145,8 @@ export async function ceoPage(user, opts = {}) {
   // ── Sector filter chips (the owner's per-sector lens) ──
   const chips = `<div class="chips"><span class="lbl">عرض:</span>
     <a href="/app/ceo?year=${year}" class="chip ${sec ? '' : 'on'}">الشركة كاملة</a>
-    ${ov.sectors.map((s) => `<a href="/app/ceo?year=${year}&sector=${s.id}" class="chip ${sec === s.id ? 'on' : ''}"><span class="dot" style="background:${s.color || 'var(--brand)'}"></span>${esc(s.name_ar)}</a>`).join('')}
-    ${sec ? `<a class="btn btn-sm" style="margin-inline-start:.3rem" href="/app/sector?year=${year}&sector=${sec}">فتح مركز القطاع ←</a>` : ''}
+    ${ov.sectors.map((s) => `<a href="/app/ceo?year=${year}&sector=${esc(s.id)}" class="chip ${sec === s.id ? 'on' : ''}"><span class="dot" style="background:${esc(s.color || 'var(--brand)')}"></span>${esc(s.name_ar)}</a>`).join('')}
+    ${sec ? `<a class="btn btn-sm" style="margin-inline-start:.3rem" href="/app/sector?year=${year}&sector=${esc(sec)}">فتح مركز القطاع ←</a>` : ''}
   </div>`;
 
   // ── Drill-down popup datasets → templates (shared ddWrap/attain/ddRows at module scope) ──
@@ -182,8 +184,8 @@ export async function ceoPage(user, opts = {}) {
     <div class="dd-kpi"><span class="v tnum" style="color:var(--blue)">${fmtSar(pipelineVal)}</span><span style="font-size:12px;color:var(--muted)">القيمة المرجّحة ${fmtSar(cov.weighted_halalas)} · تغطية ${cov.coverage != null ? cov.coverage + '×' : '—'}</span></div>
     <div class="dd-sec">حسب المرحلة</div>
     <div>${ddRows(pipeStages.map((s) => `<div style="padding:.32rem 0">
-      <div style="display:flex;align-items:center;gap:.5rem;font-size:var(--fs-body)"><span style="width:9px;height:9px;border-radius:3px;background:${s.color || '#64748b'};flex:none"></span><span style="flex:1">${esc(s.name_ar)}</span><span class="tnum" style="font-weight:800">${s.n}</span><span class="tnum" style="color:var(--muted);font-size:11px">${fmtSar(s.v)}</span></div>
-      <div class="bar" style="margin-top:.22rem"><span style="width:${Math.round((s.v / maxStage) * 100)}%;background:${s.color || '#64748b'}"></span></div></div>`))}</div>`)}
+      <div style="display:flex;align-items:center;gap:.5rem;font-size:var(--fs-body)"><span style="width:9px;height:9px;border-radius:3px;background:${esc(s.color || '#64748b')};flex:none"></span><span style="flex:1">${esc(s.name_ar)}</span><span class="tnum" style="font-weight:800">${s.n}</span><span class="tnum" style="color:var(--muted);font-size:11px">${fmtSar(s.v)}</span></div>
+      <div class="bar" style="margin-top:.22rem"><span style="width:${Math.round((s.v / maxStage) * 100)}%;background:${esc(s.color || '#64748b')}"></span></div></div>`))}</div>`)}
   ${ddWrap('winrate', `نسبة الفوز · ${year}`, scopeLabel, `
     <div class="dd-kpi"><span class="v tnum" style="color:var(--green)">${pct(wr.rate)}</span><span style="font-size:12px;color:var(--muted)">فوز ${wr.won} · خسارة ${wr.lost}</span></div>
     <div class="bar" style="height:8px"><span style="width:${Math.min(100, wr.rate || 0)}%;background:var(--green)"></span></div>
@@ -195,7 +197,7 @@ export async function ceoPage(user, opts = {}) {
     <div>${ddRows(topContracts.map((c) => `<div class="dd-row"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.client || c.code || 'عقد')}<span style="color:var(--faint);font-size:var(--fs-micro)">${c.code ? ' · ' + esc(c.code) : ''}${!sec && c.sector ? ' · ' + esc(c.sector) : ''}</span></span><b class="tnum" style="flex:none">${fmtSar(c.value_halalas)}</b></div>`))}</div>`)}
   ${ov.canSeeMargin ? ddWrap('margin', `هامش الربح الإجمالي · ${year}`, 'حسب القطاعات · بيانات حساسة (مالية/قيادة فقط)', `
     ${avgMargin != null ? `<div class="dd-kpi"><span class="v tnum" style="color:${avgMargin >= 20 ? 'var(--green)' : avgMargin >= 10 ? 'var(--amber)' : 'var(--red)'}">${avgMargin}%</span><span style="font-size:12px;color:var(--muted)">متوسط الهامش عبر القطاعات</span></div>` : ''}
-    <div>${ddRows(margins.map((m) => `<div class="dd-row"><span style="display:flex;align-items:center;gap:.45rem;min-width:0"><span style="width:9px;height:9px;border-radius:2px;background:${m.color || 'var(--brand)'};flex:none"></span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m.name_ar)}</span></span><b class="tnum" style="flex:none;color:${m.margin == null ? 'var(--faint)' : m.margin >= 20 ? 'var(--green)' : m.margin >= 10 ? 'var(--amber)' : 'var(--red)'}">${m.margin == null ? '—' : m.margin + '%'}</b></div>`))}</div>`) : ''}`;
+    <div>${ddRows(margins.map((m) => `<div class="dd-row"><span style="display:flex;align-items:center;gap:.45rem;min-width:0"><span style="width:9px;height:9px;border-radius:2px;background:${esc(m.color || 'var(--brand)')};flex:none"></span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m.name_ar)}</span></span><b class="tnum" style="flex:none;color:${m.margin == null ? 'var(--faint)' : m.margin >= 20 ? 'var(--green)' : m.margin >= 10 ? 'var(--amber)' : 'var(--red)'}">${m.margin == null ? '—' : m.margin + '%'}</b></div>`))}</div>`) : ''}`;
   const body = `
     ${chips}
     ${riskBanner}
@@ -217,8 +219,8 @@ export async function ceoPage(user, opts = {}) {
         ${hm('خط الفرص المفتوح', fmtSar(pipelineVal), 'مرجّح ' + fmtSar(cov.weighted_halalas), 'pipeline')}
         ${hm('نسبة الفوز', pct(wr.rate), `فوز ${wr.won} · خسارة ${wr.lost}`, 'winrate')}
         ${hm('الأعمال المتعاقدة', fmtSar(bk.backlog_halalas), 'قيمة متعاقدة لم تتحول لإيراد بعد', 'backlog')}
-        ${hm('تحقيق الإيراد', pct(revPct), 'من ' + fmtSar(t.target_revenue), 'revenue')}
-        ${hm('تحقيق المبيعات', pct(salesPct), 'من ' + fmtSar(t.target_sales), 'sales')}
+        ${hm('تحقيق الإيراد', revPct == null ? 'غير متاح' : pct(revPct), t.target_revenue == null ? 'المستهدف غير مكتمل' : 'من ' + fmtSar(t.target_revenue), 'revenue')}
+        ${hm('تحقيق المبيعات', salesPct == null ? 'غير متاح' : pct(salesPct), t.target_sales == null ? 'المستهدف غير مكتمل' : 'من ' + fmtSar(t.target_sales), 'sales')}
         ${avgMargin != null ? hm('متوسط هامش الربح', avgMargin + '%', 'حسب القطاعات', 'margin') : ''}
       </div>
     </div>
@@ -239,23 +241,28 @@ export async function ceoPage(user, opts = {}) {
         ${miniBars(qSeries(qBook, 'sales_halalas'), 'v', qOpts(year))}</div>`)}
     </div>
     ${ddTemplates}`;
-  return layout({ user, active: 'ceo', title: `لوحة القيادة${sec ? ' — ' + esc(secObj.name_ar) : ''}`,
-    subtitle: `نظرة تنفيذية · ${esc(scopeLabel)} · السنة المالية ${year}`, body, year });
+  return layout({ user, active: 'ceo', title: `لوحة القيادة${sec ? ' — ' + secObj.name_ar : ''}`,
+    subtitle: `نظرة تنفيذية · ${scopeLabel} · السنة المالية ${year}`, body, year });
 }
 
 export async function portfolioPage(user) {
   const rows = await listProjects(user);
+  // نسبة الإنجاز من مصدرها الواحد: كانت اللوحة تجمع `progress_pct` المخزَّن — فمعدَّلُ إنجاز
+  // الشركة كلّه يُبنى على أرقامٍ مستوردة لا تتحرّك مهما اعتُمدت مخرجات، وهو رقمٌ يُقرأ في
+  // مجلس الإدارة. (انظر modules/pmo/progress.js — القاعدة واحدة لكل الشاشات.)
+  const progMap = await effectiveProgress(rows);
+  for (const p of rows) p.progress_effective_pct = progMap.get(p.id)?.pct ?? 0;
   const sectorNames = Object.fromEntries((await all('SELECT id,name_ar FROM sector')).map((s) => [s.id, s.name_ar]));
   const val = (p) => p.contract_value_halalas || p.budget_halalas || 0;
   const isActive = (p) => p.status !== 'COMPLETED' && p.status !== 'CANCELLED';
-  const ragC = { GREEN: 0, AMBER: 0, RED: 0 };
-  for (const p of rows) if (isActive(p)) ragC[p.rag] = (ragC[p.rag] || 0) + 1;
+  const ragC = { GREEN: 0, AMBER: 0, RED: 0, UNKNOWN: 0 };
+  for (const p of rows) if (isActive(p)) { const key = ['GREEN', 'AMBER', 'RED'].includes(p.rag) ? p.rag : 'UNKNOWN'; ragC[key]++; }
   const totalVal = rows.reduce((a, p) => a + val(p), 0);
   const active = rows.filter(isActive);
   const completed = rows.filter((p) => p.status === 'COMPLETED').length;
-  const avgProg = active.length ? Math.round(active.reduce((a, p) => a + (p.progress_pct || 0), 0) / active.length) : 0;
+  const avgProg = active.length ? Math.round(active.reduce((a, p) => a + (p.progress_effective_pct || 0), 0) / active.length) : 0;
   const ragTone = { GREEN: 'green', AMBER: 'amber', RED: 'red' };
-  const ragHexP = { GREEN: '#059669', AMBER: '#d97706', RED: '#dc2626' };
+  const ragHexP = { UNKNOWN: '#94a3b8', GREEN: '#059669', AMBER: '#d97706', RED: '#dc2626' };
 
   const bySector = {};
   for (const p of rows) (bySector[p.sector_id] ||= []).push(p);
@@ -265,9 +272,9 @@ export async function portfolioPage(user) {
   const groups = sectorEntries.map(([sid, ps]) => {
     const sVal = ps.reduce((a, p) => a + val(p), 0);
     const sActive = ps.filter(isActive);
-    const sAvg = sActive.length ? Math.round(sActive.reduce((a, p) => a + (p.progress_pct || 0), 0) / sActive.length) : 0;
-    const sRag = { GREEN: 0, AMBER: 0, RED: 0 }; for (const p of sActive) sRag[p.rag] = (sRag[p.rag] || 0) + 1;
-    const ragDots = ['GREEN', 'AMBER', 'RED'].filter((r) => sRag[r]).map((r) => `<span style="display:inline-flex;align-items:center;gap:.2rem;font-size:11px"><span style="width:8px;height:8px;border-radius:99px;background:${ragHexP[r]}"></span><span class="tnum">${sRag[r]}</span></span>`).join('<span style="color:var(--faint);margin:0 .15rem"></span>');
+    const sAvg = sActive.length ? Math.round(sActive.reduce((a, p) => a + (p.progress_effective_pct || 0), 0) / sActive.length) : 0;
+    const sRag = { GREEN: 0, AMBER: 0, RED: 0, UNKNOWN: 0 }; for (const p of sActive) { const key = ['GREEN', 'AMBER', 'RED'].includes(p.rag) ? p.rag : 'UNKNOWN'; sRag[key]++; }
+    const ragDots = ['GREEN', 'AMBER', 'RED', 'UNKNOWN'].filter((r) => sRag[r]).map((r) => `<span style="display:inline-flex;align-items:center;gap:.2rem;font-size:11px"><span style="width:8px;height:8px;border-radius:99px;background:${ragHexP[r]}"></span><span class="tnum">${sRag[r]}</span>${r === 'UNKNOWN' ? ' غير مقيّم' : ''}</span>`).join('<span style="color:var(--faint);margin:0 .15rem"></span>');
     const top = ps.slice().sort((a, b) => val(b) - val(a)).slice(0, 7);
     return card(`<div style="padding:.85rem 1rem;border-bottom:1px solid var(--line)">
         <div style="display:flex;justify-content:space-between;align-items:center"><div style="font-weight:800;font-size:13.5px">${esc(sectorNames[sid] || sid || '—')}</div><span class="tnum" style="font-size:var(--fs-body);font-weight:800">${fmtSar(sVal)}</span></div>
@@ -277,17 +284,18 @@ export async function portfolioPage(user) {
         <span style="width:8px;height:8px;border-radius:99px;flex:none;background:${ragHexP[p.rag] || '#94a3b8'}"></span>
         <a href="/app/project/${p.id}" style="flex:1;color:var(--ink2);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.name_ar)}</a>
         <span class="tnum" style="color:var(--faint);font-size:var(--fs-micro);flex:none">${sarShort(val(p))}</span>
-        <span class="tnum" style="color:var(--muted);font-size:11px;width:34px;text-align:left;flex:none">${pct(p.progress_pct)}</span></div>`).join('')}
+        <span class="tnum" style="color:var(--muted);font-size:11px;width:34px;text-align:left;flex:none">${pct(p.progress_effective_pct)}</span></div>`).join('')}
         ${ps.length > 7 ? `<div style="padding:.3rem .5rem;font-size:11px;color:var(--faint)">+${ps.length - 7} مشروع آخر</div>` : ''}</div>`);
   }).join('');
 
   const kpi = (l, v, sub, tone) => card(`<div style="padding:.75rem .95rem"><div style="font-size:11px;color:var(--muted)">${l}</div><div class="metric tnum" style="font-size:1.35rem;${tone ? 'color:' + tone : ''}">${v}</div>${sub ? `<div style="font-size:var(--fs-micro);color:var(--faint)">${sub}</div>` : ''}</div>`);
   const body = `
-    <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:.7rem;margin-bottom:1rem">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.7rem;margin-bottom:1rem">
       ${kpi('إجمالي المشاريع', rows.length, `${active.length} قائم · ${completed} مكتمل`)}
       ${kpi('قيمة المحفظة', fmtSar(totalVal), 'قيمة العقود')}
       ${kpi(G.hOnTrack + ' (أخضر)', ragC.GREEN, 'ضمن المسار', 'var(--green)')}
       ${kpi(G.hAtRisk + ' (أصفر)', ragC.AMBER, 'تحتاج متابعة', 'var(--amber)')}
+      ${kpi('غير مقيّم', ragC.UNKNOWN, 'يحتاج تقييمًا موثقًا', 'var(--muted)')}
       ${kpi(G.hCritical + ' (أحمر)', ragC.RED, 'تدخّل عاجل', ragC.RED ? 'var(--red)' : '')}
       ${kpi('متوسط الإنجاز', avgProg + '%', 'للمشاريع القائمة')}
     </div>

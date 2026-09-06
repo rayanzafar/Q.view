@@ -1,18 +1,23 @@
 // CRM pages (v2.1): opportunity pipeline with saved views + rot/next-action discipline,
 // and the personal pipeline (فرصي) run as a priority work queue (stalled → no-next-step → on-track).
-// Patterns: benchmarks §1 (stage dictionary popovers via stageInfo, default win % → weighted value,
+// Patterns: benchmarks §1 (stage dictionary popovers via stageInfo, default win % per stage,
 // rot as a first-class visual state, next-action selling). Page JS: /static/pages/opps.js.
 import { layout, card, pill } from '../layout.js';
 import { icon } from '../icons.js';
 import { fmtSar } from '../../core/util/ids.js';
 import { all } from '../../core/db/index.js';
 import { config } from '../../core/config.js';
-import { listOpportunities, ROT_THRESHOLDS } from '../../modules/crm/opportunities.js';
+import { listOpportunities, ROT_THRESHOLDS, NO_DEPARTMENT } from '../../modules/crm/opportunities.js';
 import { stageInfo } from '../../core/i18n/stages.js';
 import { listViews } from '../../modules/views/views.js';
 import { can } from '../../core/rbac/index.js';
+import { DELIVERY_SECTOR_SQL } from '../../core/org/kind.js';
+import { pickablePeople } from '../../modules/org/people.js';
 import { sarShort, pct, esc, statMini, ddWrap, ddRows } from './_shared.js';
-import { G } from '../i18n/glossary.js';
+import { G, SOLICITATION_TYPE_AR } from '../i18n/glossary.js';
+
+// «لم يُحدَّد» كلمةٌ محجوزة لا نوعُ طرح — كما «بلا إدارة». الترشيح في الذاكرة فلا تعبر للخدمة.
+const NONE_SOL = 'none';
 import { countAr, dayWord } from '../../core/i18n/plural.js';
 
 // معنى كل مرحلة + معيار الدخول إليها — يظهر كتلميح على رأس العمود (نمط Lightning Path).
@@ -31,7 +36,6 @@ export function stageTip(s) {
 }
 
 const STALLED_HINT = 'فرصة متوقفة — حرّكها أو حدّث خطوتها التالية';
-const weightedOf = (o) => (o.value_halalas || 0) * ((o.win_pct || 0) / 100);
 
 // ── نظام ألوان المراحل ──────────────────────────────────────────────────────
 // كل مرحلة بلونها الحقيقي من قاعدة البيانات (stage.color) ويُستعمل بوضوح: شريط علوي
@@ -48,16 +52,28 @@ function stageColor(s) {
 // خلفية خفيفة من لون المرحلة (شفافية بصيغة hex من رقمين: 1f≈12% · 24≈14%).
 const tint = (color, aa) => `${color}${aa || '1f'}`;
 
-// شارة عمر المرحلة: تتدرج (هادئ → كهرماني > نصف العتبة → أحمر > العتبة).
-// compact: نسخة البطاقة النحيفة — بلا أيقونة وبحشوة أصغر كي يتسع السطر الثاني كاملاً.
+// ── شارة عمر المرحلة: لا تظهر قبل أن تعني شيئاً ──────────────────────────────
+// «المفروض ما يطلع «لا أيام» — لازم بعد ٢٠ يوم من الفرصة يذكر كم مضى عنها» — بلسان المالك.
+// وبعد تصفير العدّاد صارت كل بطاقة تحمل «لا أيام»: شارةٌ على كل شيء لا تميّز شيئاً، وتزاحم
+// ما يستحق النظر في سطرٍ ضيّق أصلاً.
+//
+// فالشارة تظهر في حالتين لا غير:
+//   • مضى عليها **عشرون يوماً فأكثر** — عتبة المالك.
+//   • أو تجاوزت عتبة توقّف مرحلتها ولو كانت أقلّ من ذلك (ترشيح يتوقّف عند ١٤) — وإخفاؤها
+//     حينئذٍ يطفئ علامةً حمراء صحيحة، وهو أسوأ من إظهار «لا أيام».
+// وما دون ذلك: لا شارة أصلاً — البطاقة الفتيّة تُقرأ من خلوّها.
+export const AGE_VISIBLE_DAYS = 20;
 function ageChip(o, compact = false) {
   const n = o.stage_age_days;
   if (n == null) return '';
+  const rotting = ROT_THRESHOLDS[o.stage_id] && n > ROT_THRESHOLDS[o.stage_id];
+  if (n < AGE_VISIBLE_DAYS && !rotting) return '';
   const th = ROT_THRESHOLDS[o.stage_id];
   const tone = th && n > th ? 'red' : th && n > th / 2 ? 'amber' : 'slate';
   const c = { red: 'background:#fee2e2;color:#b91c1c', amber: 'background:#fef3c7;color:#92400e', slate: 'background:#f1f5f9;color:#475569' }[tone];
   const title = th && n > th ? STALLED_HINT : G.stageAge(n);
-  return `<span class="pill tnum" style="${c}${compact ? ';padding:.12rem .38rem' : ''}" title="${esc(title)}">${compact ? '' : icon('clock') + ' '}${dayWord(n)}</span>`;
+  // «مضى» تُقال صراحةً: «٢٥ يوماً» وحدها تُقرأ عمراً أو مهلةً أو موعداً — والفرق قرار.
+  return `<span class="pill tnum" style="${c}${compact ? ';padding:.12rem .38rem' : ''}" title="${esc(title)}">${compact ? '' : icon('clock') + ' '}مضى ${dayWord(n)}</span>`;
 }
 // كهرماني لا أحمر: «بلا خطوة» تنبيه انضباط واسع الانتشار، والأحمر محجوز للمتوقفة فعلاً
 const naChip = (compact = false) => `<span class="pill" style="background:#fef3c7;color:#92400e${compact ? ';padding:.12rem .38rem' : ''}" title="كل فرصة مفتوحة تحتاج خطوة تالية مؤرّخة — أضفها من صفحة الفرصة">${compact ? '' : '● '}${G.noNextAction}</span>`;
@@ -73,20 +89,80 @@ function stageInfoTpl(s) {
 
 export async function opportunitiesPage(user, opts = {}) {
   const sectorFilter = opts.sector || '';
+  // مُرشِّح الإدارة يعمل داخل قطاعٍ محدَّد وحده: الإدارات تتكرّر أسماؤها بين القطاعات، وشريحةٌ
+  // بلا قطاعها تقول «الابتكار» ولا تقول ابتكارَ أي قطاع. فإن رُفع القطاع سقط معه.
+  const deptFilter = sectorFilter ? String(opts.dept || '') : '';
   const fiscalYear = config.fiscalYear;
-  const allRows = await listOpportunities(user, sectorFilter ? { sector: sectorFilter } : {});
+  // قراءتان مقصودتان: الأولى بالقطاع وحده — منها تُحسب أعداد شرائح الإدارات فتبقى ثابتة أياً
+  // كانت الإدارة المختارة (عدّادٌ يتغيّر مع الاختيار لا يُقارَن به شيء). والثانية هي المعروضة.
+  const allSectorRows = sectorFilter ? await listOpportunities(user, { sector: sectorFilter }) : [];
+  const allRows = deptFilter
+    ? await listOpportunities(user, { sector: sectorFilter, department: deptFilter })
+    : (sectorFilter ? allSectorRows : await listOpportunities(user, {}));
   // السنة عاملُ تصفيةٍ علويّ (بدل حشرها داخل أعمدة الحسم كما كان): الافتراضي السنة المالية
   // الحالية، و«الكل» يعرض كل السنوات معاً (بما فيها فرص بلا سنة مسجّلة). قائمة السنوات من كل الفرص.
   const years = [...new Set(allRows.map((o) => o.year).filter(Boolean))].sort((a, b) => b - a);
-  const yearFilter = opts.year === 'all' ? 'all' : (opts.year ? Number(opts.year) : fiscalYear);
-  const rows = yearFilter === 'all' ? allRows : allRows.filter((o) => o.year === yearFilter);
+  const yearFilter = opts.year === 'all' ? 'all' : (Number(opts.year) || fiscalYear);
+  // ── نوع الطرح: استطلاع سوق · طلب عرض · طلب سعر · تكليف مباشر · منافسة عامة ──
+  // «لازم يكون في فلتر إذا هي RFI أو RFP من صفحة الفرص» — والفرق ليس تصنيفاً بل نضجاً:
+  // استطلاعُ سوقٍ ليس فرصةً ناضجة، وخلطُه بطلبات العروض في رقمٍ واحد يضخّم خطّ الفرص بما لم
+  // يُطرَح بعد. و«لم يُحدَّد» مُرشِّحٌ قائم كما في «بلا إدارة»: غيرُ المصنَّف هو ما يجب أن يُرى
+  // ليُصنَّف. والترشيح في الذاكرة — الصفوف مقروءةٌ أصلاً وعددها محدود.
+  const solFilter = opts.sol === NONE_SOL ? NONE_SOL : (SOLICITATION_TYPE_AR[opts.sol] ? opts.sol : '');
+  const yearRows = yearFilter === 'all' ? allRows : allRows.filter((o) => o.year === yearFilter);
+  const rows = !solFilter ? yearRows
+    : yearRows.filter((o) => (solFilter === NONE_SOL ? !o.solicitation_type : o.solicitation_type === solFilter));
+
+  // عنوانُ القائمة بمُرشِّحاتها. يُعرَّف هنا — فوق أول صفٍّ يُرسَم — لأن صفوف الجدول تحمله.
+  // تبديل القطاع يُسقط الإدارة معه: إدارةُ قطاعٍ لا تعني شيئاً تحت قطاعٍ آخر، وبقاؤها في
+  // العنوان يُنتج شاشةً فارغة بلا سبب ظاهر.
+  const navHref = ({ sector = sectorFilter, year = yearFilter, dept = deptFilter, sol = solFilter } = {}) => {
+    const p = new URLSearchParams();
+    if (sector) p.set('sector', sector);
+    if (sector && sector === sectorFilter && dept) p.set('dept', dept);
+    if (year !== fiscalYear) p.set('year', year === 'all' ? 'all' : String(year));
+    if (sol) p.set('sol', sol);
+    const q = p.toString();
+    return '/app/opportunities' + (q ? '?' + q : '');
+  };
+  // ── الرجوع يعود إلى **ما كنتَ تنظر إليه** ──────────────────────────────────
+  // «إذا رجعت للخانة اللي قبلها يحتاج يرجّعني محل ما وقفت وبنفس الفلتر». وزرّ المتصفّح وحده
+  // لا يكفي: من فتح الفرصة من بحثٍ أو رابطٍ مباشر لا تاريخَ له يعود إليه.
+  const backQs = (() => {
+    const q = navHref({}).split('?')[1];
+    return q ? `?from=${encodeURIComponent(q)}` : '';
+  })();
+
   const stages = await all('SELECT id,name_ar,color,default_win_pct,sort_order,is_won,is_lost FROM stage ORDER BY sort_order');
   const clients = Object.fromEntries((await all('SELECT id,name_ar FROM client')).map((c) => [c.id, c.name_ar]));
   const users = Object.fromEntries((await all('SELECT id,name_ar,username FROM app_user')).map((u) => [u.id, u.name_ar || u.username]));
-  const sectors = await all('SELECT id,name_ar FROM sector WHERE active=1 ORDER BY name_ar');
+  // قطاعات التسليم وحدها: هذه القائمة تخدم ثلاثة أشياء كلها «قطاع» بالمعنى التجاري — شرائح
+  // تصفية خط الفرص، وخانة القطاع في نافذة «فرصة جديدة»، ووجهات نقل الفرصة بين القطاعات.
+  // الفرصة إيراد قادم، ووحدة المساندة بلا خط فرص ولا هدف مبيعات، فنقل فرصة إليها يُخرجها من
+  // مقارنة القطاعات ومن مستهدف الشركة بلا أي رسالة تفسّر الاختفاء (والخدمة ترفضه أيضاً).
+  const sectors = await all(`SELECT id,name_ar FROM sector WHERE active=1 AND ${DELIVERY_SECTOR_SQL} ORDER BY name_ar`);
+  // إدارات القطاع المختار — تُقرأ فقط حين يُختار قطاع، فالشريحة لا تُبنى بلا سياقها.
+  const departments = sectorFilter
+    ? await all('SELECT id,name_ar FROM department WHERE sector_id=? AND active=1 AND deleted_at IS NULL ORDER BY name_ar', [sectorFilter])
+    : [];
   const savedViews = await listViews(user, 'opportunities');
   const canCreate = can(user, 'create', 'opportunity');
   const canEdit = can(user, 'update', 'opportunity');
+  // عدّة نافذتي «فرصة جديدة» والتعديل (v5.30 — «لازم من الإضافة أحط أهم المعلومات كاملة»):
+  // جهاتٌ حيّة للباحث (لا المحذوفة ولا الموقوفة — خريطة العرض أعلاه تبقى شاملة للتاريخ)،
+  // ومسؤولون بنفس بانِي صفحة الفرصة، وكل الإدارات النشطة لتقييد القائمة بقطاع الاختيار.
+  // وقطاعُ المُدخِل وإدارتُه يُحقنان (userSector/userDept) ليكونا الاختيارَ الافتراضي في
+  // النافذة إن كانا من قوائمها — أغلبُ من يُدخل فرصةً يُدخلها لقطاعه وإدارته.
+  const pickerClients = (canCreate || canEdit)
+    ? await all('SELECT id, name_ar FROM client WHERE deleted_at IS NULL AND active = 1 ORDER BY name_ar')
+    : [];
+  const ownerOptions = (canCreate || canEdit) ? await pickablePeople({ limit: 200, viewer: user }) : [];
+  const allDepartments = (canCreate || canEdit)
+    ? await all('SELECT id, name_ar, sector_id FROM department WHERE active = 1 AND deleted_at IS NULL ORDER BY name_ar')
+    : [];
+  // السحب: صلاحية الحذف تفتح كل البطاقات، ومَن أنشأ فرصةً يسحب فرصته هو ولو لم يملكها —
+  // القرار يُحسم على كل بطاقة أدناه (`candel`)، والخادم يعيد الحسم عند التنفيذ.
+  const canDeleteAny = can(user, 'delete', 'opportunity');
   // مرحلتا الحسم (فائزة/خاسرة) — تُستدعيان من قائمة إجراءات البطاقة «نقل إلى فائزة/مفقودة».
   const wonStage = stages.find((s) => s.is_won) || null;
   const lostStage = stages.find((s) => s.is_lost) || null;
@@ -109,10 +185,17 @@ export async function opportunitiesPage(user, opts = {}) {
       projByOpp[p.source_opp_id] = p;
   }
   const wonProjectCount = Object.keys(projByOpp).length;
+  // الخلية كانت تعرض «— لم يُنشأ مشروع بعد» كنصٍّ ميت: لا مسار في المنتج كله يربط فرصةً فائزة
+  // بمشروعها، فكل فرصة تُربح داخل سند تبقى بهذا النص أبداً. صارت إجراءً: من يملك إنشاء المشاريع
+  // يُنشئ المشروع من الفرصة نفسها فيُكتب الرابط ويُورَث العميل — بلا نسخ قيمة ولا عميل ثانٍ.
+  const canMakeProject = can(user, 'create', 'project');
   const prjCell = (o) => { const pr = projByOpp[o.id]; const L = pr ? (PRJ_LABEL[pr.status] || [pr.status, 'slate']) : null;
-    return `<td style="padding:.55rem .7rem;font-size:12px">${pr ? `<a href="/app/project/${pr.id}" style="font-weight:700;color:var(--brand)">${esc(pr.name_ar)}</a> ${pill(L[0], L[1])}` : '<span style="color:var(--faint)">— لم يُنشأ مشروع بعد</span>'}</td>`; };
+    if (pr) return `<td style="padding:.55rem .7rem;font-size:12px"><a href="/app/project/${esc(pr.id)}" style="font-weight:700;color:var(--brand)">${esc(pr.name_ar)}</a> ${pill(L[0], L[1])}</td>`;
+    if (!canMakeProject) return '<td style="padding:.55rem .7rem;font-size:12px"><span style="color:var(--faint)">لم يُنشأ مشروع بعد</span></td>';
+    return `<td style="padding:.55rem .7rem;font-size:12px"><button class="btn btn-ghost" style="font-size:11.5px;padding:.25rem .6rem"
+      data-action="opp-make-project" data-opp="${esc(o.id)}" data-name="${esc(o.title_ar || '')}" data-sector="${esc(o.sector_id || '')}"
+      >أنشئ المشروع</button></td>`; };
   const total = open.reduce((a, o) => a + (o.value_halalas || 0), 0);
-  const weighted = Math.round(open.reduce((a, o) => a + weightedOf(o), 0));
   const decided = wonAll.length + lostAll.length;
   const winRate = decided ? Math.round((wonAll.length / decided) * 100) : 0;
 
@@ -129,7 +212,7 @@ export async function opportunitiesPage(user, opts = {}) {
     const sumV = list.reduce((a, o) => a + (o.value_halalas || 0), 0);
     const backHref = '/app/opportunities' + (sectorFilter ? '?sector=' + encodeURIComponent(sectorFilter) : '');
     const listRows = list.map((o) => `<tr style="border-bottom:1px solid var(--line)">
-        <td style="padding:.55rem .7rem;min-width:200px"><a href="/app/opportunity/${o.id}" title="${esc(o.title_ar)}" style="font-size:12.5px;font-weight:700;color:var(--ink2)">${esc(o.title_ar)}</a></td>
+        <td style="padding:.55rem .7rem;min-width:200px"><a href="/app/opportunity/${o.id}${backQs}" title="${esc(o.title_ar)}" style="font-size:12.5px;font-weight:700;color:var(--ink2)">${esc(o.title_ar)}</a></td>
         <td style="padding:.55rem .7rem;font-size:12px;color:var(--muted)">${esc(clients[o.client_id] || '—')}</td>
         <td class="tnum" style="padding:.55rem .7rem;text-align:left;font-weight:800;font-size:12.5px;white-space:nowrap">${fmtSar(o.value_halalas)}</td>
         ${tblStageRow.is_won ? prjCell(o) : ''}
@@ -143,7 +226,7 @@ export async function opportunitiesPage(user, opts = {}) {
         <span style="font-size:11.5px;color:var(--muted)">الفرص التاريخية لا تدخل في مؤشرات المبيعات</span>
       </div>
       ${card(`<div style="padding:.8rem 1rem;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:.55rem;flex-wrap:wrap">
-        <span class="kcol-dot" style="background:${tblStageRow.color || '#cbd5e1'};width:10px;height:10px;border-radius:50%"></span>
+        <span class="kcol-dot" style="background:${esc(tblStageRow.color || '#cbd5e1')};width:10px;height:10px;border-radius:50%"></span>
         <div style="font-weight:800;font-size:13.5px">كل الفرص في مرحلة «${esc(tblStageRow.name_ar)}»</div>
         <span style="font-size:11.5px;color:var(--muted)"><span class="tnum" style="font-weight:800">${list.length}</span> فرصة بقيمة <span class="tnum" style="font-weight:800">${fmtSar(sumV)}</span></span></div>
       ${list.length ? `<div class="tblwrap"><table style="width:100%;border-collapse:collapse;min-width:680px">
@@ -157,7 +240,7 @@ export async function opportunitiesPage(user, opts = {}) {
         <a class="btn" href="${backHref}">عودة إلى اللوحة</a></div>`}`)}`;
     return layout({
       user, active: 'opportunities', title: 'الفرص والمبيعات',
-      subtitle: `مرحلة «${esc(tblStageRow.name_ar)}» · ${list.length} فرصة`, body,
+      subtitle: `مرحلة «${tblStageRow.name_ar}» · ${list.length} فرصة`, body,
       scripts: ['/static/pages/opps.js'],
     });
   }
@@ -176,14 +259,18 @@ export async function opportunitiesPage(user, opts = {}) {
     const rot = openRow && o.rot;
     // الحدّ الجانبي للبطاقة = لون المرحلة (أو الأحمر إن كانت متوقفة) — أوضح إشارة لونية على مستوى البطاقة.
     const accent = rot ? 'var(--red)' : stageColor(st);
-    const showMenu = openRow && canEdit; // زرّ الإجراءات «⋯»: فائزة/مفقودة/نقل قطاع — للمحرّرين فقط
+    // `created_by` يصل مع `SELECT *` في الخدمة — عليه يُحسم سحبُ المنشئ لفرصته
+    const candel = canDeleteAny || o.created_by === user.id;
+    // زرّ الإجراءات «⋯»: نقل (فائزة/مفقودة/قطاع) للمحرّرين، وسحبٌ لمن يملك حذفها أو أنشأها
+    const showMenu = openRow && (canEdit || candel);
+    const menuTitle = canEdit ? 'إجراءات الفرصة (نقل · سحب)' : 'سحب الفرصة';
     const menuBtn = showMenu
-      ? `<button data-action="opp-menu" data-id="${o.id}" data-title="${esc(o.title_ar)}" data-sector="${o.sector_id || ''}" class="kmenu-btn" aria-label="إجراءات الفرصة" title="نقل الفرصة (فائزة · مفقودة · قطاع آخر)" style="position:absolute;top:.26rem;inset-inline-end:.3rem;width:20px;height:20px;border:none;background:transparent;color:var(--faint);cursor:pointer;border-radius:6px;font-size:16px;line-height:1;padding:0;display:inline-flex;align-items:center;justify-content:center;z-index:2">⋯</button>`
+      ? `<button data-action="opp-menu" data-id="${o.id}" data-title="${esc(o.title_ar)}" data-sector="${o.sector_id || ''}"${candel ? ' data-candel="1"' : ''} class="kmenu-btn" aria-label="إجراءات الفرصة" title="${menuTitle}" style="position:absolute;top:.26rem;inset-inline-end:.3rem;width:20px;height:20px;border:none;background:transparent;color:var(--faint);cursor:pointer;border-radius:6px;font-size:16px;line-height:1;padding:0;display:inline-flex;align-items:center;justify-content:center;z-index:2">⋯</button>`
       : '';
-    return `<div class="kcard" ${dnd} data-action="open-opp" data-id="${o.id}" data-sector="${o.sector_id || ''}" data-hay="${esc(hay).replace(/"/g, '')}" style="--_c:${accent};cursor:pointer;padding:.5rem .6rem;position:relative" role="link" tabindex="0" aria-label="فتح الفرصة ${esc(o.title_ar)}">
+    return `<div class="kcard" ${dnd} data-action="opp-preview" data-id="${o.id}" data-sector="${o.sector_id || ''}" data-hay="${esc(hay).replace(/"/g, '')}" style="--_c:${accent};cursor:pointer;padding:.5rem .6rem;position:relative">
       ${menuBtn}
       <div style="${showMenu ? 'padding-inline-end:18px' : ''}">
-        <div style="font-weight:700;font-size:12.5px;color:var(--ink2);line-height:1.4;word-break:break-word">${esc(o.title_ar)}</div>
+        <div data-action="opp-preview" data-id="${o.id}" role="button" tabindex="0" aria-label="معاينة سريعة: ${esc(o.title_ar)}" style="font-weight:700;font-size:12.5px;color:var(--ink2);line-height:1.4;word-break:break-word">${esc(o.title_ar)}</div>
         ${cl ? `<div style="font-size:10.5px;color:var(--muted);line-height:1.4;margin-top:.1rem;word-break:break-word">${esc(cl)}</div>` : ''}
       </div>
       <div style="display:flex;align-items:center;gap:.35rem;margin-top:.3rem;flex-wrap:wrap;font-size:11px;color:var(--muted);${ow ? 'padding-inline-end:20px' : ''}">
@@ -192,6 +279,7 @@ export async function opportunitiesPage(user, opts = {}) {
         ${openRow ? ageChip(o, true) : ''}
         ${openRow && o.no_next_action ? naChip(true) : ''}
       </div>
+      ${o.last_activity_at ? `<div style="margin-top:.2rem;font-size:10px;color:var(--faint)">آخر نشاط <span class="tnum">${esc(String(o.last_activity_at).slice(0, 10))}</span></div>` : ''}
       ${st.is_won && projByOpp[o.id] ? `<div style="margin-top:.35rem;padding-top:.3rem;border-top:1px solid var(--line);font-size:10px;color:var(--muted);word-break:break-word">▸ المشروع: <a href="/app/project/${projByOpp[o.id].id}" style="color:var(--brand);font-weight:700">${esc(projByOpp[o.id].name_ar)}</a></div>` : ''}
       ${ow ? `<span class="kav" title="مالك الفرصة: ${esc(ow)}" style="width:17px;height:17px;font-size:8.5px;position:absolute;inset-inline-end:.45rem;bottom:.45rem">${esc((ow || '؟').trim().charAt(0))}</span>` : ''}
     </div>`;
@@ -206,7 +294,6 @@ export async function opportunitiesPage(user, opts = {}) {
     const c = stageColor(s); // لون المرحلة: شريط علوي + رأس مُظلَّل + حدّ البطاقات الجانبي
     const drop = canEdit ? 'ondragover="Sanad.kOver(event)" ondragleave="Sanad.kLeave(event)" ondrop="Sanad.kDrop(event)"' : '';
     const colTotal = items.reduce((a, o) => a + (o.value_halalas || 0), 0);
-    const colWeighted = Math.round(items.reduce((a, o) => a + weightedOf(o), 0));
     return `<div class="kcol" data-stage="${s.id}" ${drop} style="box-shadow:inset 0 3px 0 0 ${c}">
       <div class="kcol-head" style="background:${tint(c, '24')};border-radius:10px">
         <span class="kcol-dot" style="background:${c};width:10px;height:10px"></span>
@@ -214,23 +301,39 @@ export async function opportunitiesPage(user, opts = {}) {
         <button data-action="stage-info" data-stage="${s.id}" aria-label="شرح المرحلة" title="شرح المرحلة" style="width:16px;height:16px;border-radius:50%;border:1px solid var(--line);background:#fff;color:var(--muted);font-size:10px;font-weight:800;line-height:1;cursor:pointer;padding:0;flex:none;display:inline-flex;align-items:center;justify-content:center">؟</button>
         <span class="n" data-count>${items.length}</span>
         <span class="v tnum" data-total>${sarShort(colTotal)}</span></div>
-      ${isDecided ? '' : `<div style="padding:0 .55rem .5rem;font-size:10.5px;color:var(--muted)">${G.weighted}: <span class="tnum" style="font-weight:800" data-weighted>${sarShort(colWeighted)}</span></div>`}
       <div class="kcol-body">${items.map(opCard).join('') || colEmpty(s)}</div>
     </div>`;
   };
   const columns = stages.map((s) => renderColumn(s, byStage[s.id] || [])).join('');
 
   // ── التصفية العلوية: القطاع + السنة (بدل حشر السنة داخل الأعمدة) — كل شريحة تحفظ الأخرى ──
-  const navHref = ({ sector = sectorFilter, year = yearFilter } = {}) => {
-    const p = new URLSearchParams();
-    if (sector) p.set('sector', sector);
-    if (year !== fiscalYear) p.set('year', year === 'all' ? 'all' : String(year));
-    const q = p.toString();
-    return '/app/opportunities' + (q ? '?' + q : '');
-  };
+  // تبديل القطاع يُسقط الإدارة معه — إدارةُ قطاعٍ لا تعني شيئاً تحت قطاعٍ آخر، وبقاؤها في
+  // العنوان يُنتج شاشةً فارغة بلا سبب ظاهر.
+  const solCount = new Map();
+  for (const o of allRows) {
+    const k = o.solicitation_type || NONE_SOL;
+    solCount.set(k, (solCount.get(k) || 0) + 1);
+  }
+  const solChip = (v, label, n, on) => `<a class="chip ${on ? 'on' : ''}" href="${navHref({ sol: v })}">${esc(label)}${n != null ? ` <span class="tnum" style="opacity:.65">${n}</span>` : ''}</a>`;
+  const solChips = solCount.size > 1 ? `<div class="chips" style="margin-bottom:.55rem"><span class="lbl">نوع الطرح</span>
+    ${solChip('', G.all, allRows.length, !solFilter)}
+    ${Object.entries(SOLICITATION_TYPE_AR).filter(([v]) => solCount.get(v)).map(([v, l]) => solChip(v, l, solCount.get(v), solFilter === v)).join('')}
+    ${solCount.get(NONE_SOL) ? solChip(NONE_SOL, 'لم يُحدَّد', solCount.get(NONE_SOL), solFilter === NONE_SOL) : ''}</div>` : '';
   const sectorChips = `<div class="chips" style="margin-bottom:.55rem"><span class="lbl">${G.filter}</span>
     <a class="chip ${!sectorFilter ? 'on' : ''}" href="${navHref({ sector: '' })}">كل القطاعات</a>
     ${sectors.map((s) => `<a class="chip ${sectorFilter === s.id ? 'on' : ''}" href="${navHref({ sector: s.id })}"><span class="dot" style="background:var(--brand)"></span>${esc(s.name_ar)}</a>`).join('')}</div>`;
+  // ── شريحة الإدارات ──
+  // «ممكن أفلتر بالإدارات اللي تحت قطاع الحلول… عشان نهاية السنة نعرف كل إدارة كم دخّلت.»
+  // والعدد بجانب كل إدارة ليس زينة: هو ما يجعل الشريحة أداةَ فرزٍ لا مجرّد مُرشِّح — تُقرأ منها
+  // الحصص قبل الضغط. و«بلا إدارة» شريحةٌ صريحة لأن غير المُسنَد هو ما يحتاج العمل، وإخفاؤه
+  // يجعل مجموع الإدارات أقلّ من مجموع القطاع بلا تفسير.
+  const deptCount = new Map();
+  for (const o of allSectorRows) deptCount.set(o.department_id || NO_DEPARTMENT, (deptCount.get(o.department_id || NO_DEPARTMENT) || 0) + 1);
+  const deptChip = (key, label, n, on) => `<a class="chip ${on ? 'on' : ''}" href="${navHref({ dept: key })}">${esc(label)}${n ? ` <span class="tnum" style="color:var(--faint);font-weight:700">${n}</span>` : ''}</a>`;
+  const deptChips = sectorFilter && (departments.length || deptCount.get(NO_DEPARTMENT)) ? `<div class="chips" style="margin-bottom:.55rem"><span class="lbl">الإدارة</span>
+    ${deptChip('', 'كل الإدارات', allSectorRows.length, !deptFilter)}
+    ${departments.map((d) => deptChip(d.id, d.name_ar, deptCount.get(d.id) || 0, deptFilter === d.id)).join('')}
+    ${deptCount.get(NO_DEPARTMENT) ? deptChip(NO_DEPARTMENT, 'بلا إدارة', deptCount.get(NO_DEPARTMENT), deptFilter === NO_DEPARTMENT) : ''}</div>` : '';
   const yearChips = `<div class="chips" style="margin-bottom:.6rem"><span class="lbl">السنة</span>
     <a class="chip ${yearFilter === 'all' ? 'on' : ''}" href="${navHref({ year: 'all' })}">${G.all}</a>
     ${years.map((y) => `<a class="chip ${yearFilter === y ? 'on' : ''}" href="${navHref({ year: y })}"><span class="tnum">${y}</span></a>`).join('')}</div>`;
@@ -258,13 +361,12 @@ export async function opportunitiesPage(user, opts = {}) {
       <div style="font-size:10.5px;color:var(--faint)">${sub}</div></div>`;
   const strip = `<div style="display:flex;gap:.7rem;flex-wrap:wrap;margin-bottom:1rem">
     ${tile('raw', G.raw, fmtSar(total), countAr(open.length, { one: 'فرصة واحدة قيد المتابعة', two: 'فرصتان قيد المتابعة', few: 'فرص قيد المتابعة', many: 'فرصة قيد المتابعة' }))}
-    ${tile('weighted', G.weighted, fmtSar(weighted), 'القيمة × احتمال الفوز', 'var(--brand2)')}
     ${tile('winrate', `نسبة الفوز · ${yearFilter === 'all' ? 'كل السنوات' : `<span class="tnum">${yearFilter}</span>`}`, winRate + '%', `${wonAll.length} ${G.won} · ${lostAll.length} ${G.lost}`, winRate >= 50 ? 'var(--green)' : '')}
     ${tile('stalled', 'فرص متوقفة', stalled.length, stalled.length ? 'تجاوزت مدة مرحلتها — تحتاج تحريكاً' : 'لا فرص متجاوزة لمدتها', stalled.length ? 'var(--amber)' : 'var(--green)')}
   </div>`;
 
   // drill-downs (server-rendered inert templates; same scope as the page)
-  const oppRowDD = (o, val) => `<a class="dd-row" href="/app/opportunity/${o.id}" style="color:inherit">
+  const oppRowDD = (o, val) => `<a class="dd-row" href="/app/opportunity/${o.id}${backQs}" style="color:inherit">
     <span>${esc(o.title_ar)}${clients[o.client_id] ? ` · ${esc(clients[o.client_id])}` : ''}</span><b class="tnum">${val}</b></a>`;
   const topN = (arr, n) => arr.slice(0, n);
   const more = (arr, n) => (arr.length > n ? `<div style="font-size:11px;color:var(--faint);padding-top:.4rem">و${arr.length - n} فرصة أخرى…</div>` : '');
@@ -272,9 +374,6 @@ export async function opportunitiesPage(user, opts = {}) {
   const dds = [
     ddWrap('raw', G.raw, `${open.length} فرصة مفتوحة بقيمة ${fmtSar(total)}`,
       ddRows(topN(byVal, 30).map((o) => oppRowDD(o, fmtSar(o.value_halalas)))) + more(byVal, 30)),
-    ddWrap('weighted', G.weighted, `الإجمالي المرجّح ${fmtSar(weighted)} — كل فرصة بقيمتها × احتمالها`,
-      ddRows(topN(byVal.slice().sort((a, b) => weightedOf(b) - weightedOf(a)), 30)
-        .map((o) => oppRowDD(o, `${fmtSar(Math.round(weightedOf(o)))} <span style="color:var(--faint);font-weight:600">(${pct(o.win_pct)})</span>`))) + more(byVal, 30)),
     ddWrap('winrate', 'نسبة الفوز', `${winRate}% من ${decided} فرصة محسومة`,
       ddRows([
         ...topN(wonAll, 15).map((o) => oppRowDD(o, `${pill(G.won, 'green')} <span class="tnum">${fmtSar(o.value_halalas)}</span>`)),
@@ -301,13 +400,15 @@ export async function opportunitiesPage(user, opts = {}) {
     const openRow = isOpen(o);
     const age = o.stage_age_days;
     const updated = o.updated_at || o.created_at;
-    return `<tr class="border-b border-line" data-action="open-opp" data-id="${o.id}" data-hay="${esc(`${o.title_ar} ${clients[o.client_id] || ''}`.toLowerCase()).replace(/"/g, '')}" data-sector="${o.sector_id || ''}" style="cursor:pointer">
+    return `<tr class="border-b border-line" data-action="opp-preview" data-id="${o.id}" data-hay="${esc(`${o.title_ar} ${clients[o.client_id] || ''}`.toLowerCase()).replace(/"/g, '')}" data-sector="${o.sector_id || ''}" style="cursor:pointer">
       <td data-label="العنوان" class="py-2.5 px-3 text-[13px]">${esc(o.title_ar)}</td>
       <td data-label="العميل" class="px-3 text-[12px]" data-v="${esc(clients[o.client_id] || '')}">${esc(clients[o.client_id] || '—')}</td>
       <td data-label="${G.stage}" class="px-3" data-v="${st.sort_order ?? 0}">${pill(esc(st.name_ar || o.stage_id), 'blue')}</td>
       <td data-label="العمر في المرحلة" class="px-3 text-[12px]" data-v="${age ?? -1}">${openRow ? (ageChip(o) || '<span style="color:var(--faint)">—</span>') : '<span class="text-faint">—</span>'}</td>
       <td data-label="القيمة" class="px-3 text-[13px] tnum" data-v="${o.value_halalas || 0}">${fmtSar(o.value_halalas)}</td>
       <td data-label="${G.probability}" class="px-3 text-[12px] text-muted tnum" data-v="${o.win_pct || 0}">${pct(o.win_pct)}</td>
+      <td data-label="المالك" class="px-3 text-[12px]" data-v="${esc(users[o.owner_user_id] || '')}">${esc(users[o.owner_user_id] || '—')}</td>
+      <td data-label="آخر نشاط" class="px-3 text-[12px]" data-v="${esc(o.last_activity_at || '')}">${dateCell(o.last_activity_at)}</td>
       <td data-label="تاريخ الإنشاء" class="px-3 text-[12px]" data-v="${esc(o.created_at || '')}">${dateCell(o.created_at)}</td>
       <td data-label="آخر تحديث" class="px-3 text-[12px]" data-v="${esc(updated || '')}">${dateCell(updated)}</td>
       <td data-label="${G.nextAction}" class="px-3 text-[11.5px] text-muted">${o.no_next_action ? (openRow ? naChip() : '—') : esc(o.next_action)}</td></tr>`;
@@ -321,9 +422,9 @@ export async function opportunitiesPage(user, opts = {}) {
         ${canCreate ? `<button class="btn btn-primary" data-action="opp-add">${icon('plus')} فرصة جديدة</button>` : ''}</div></div>`
     : `<div id="opp-kanban" class="kanban" tabindex="0" role="region" aria-label="لوحة الفرص">${columns}</div>
       <div id="opp-table" class="card" style="display:none;overflow-x:auto">
-        <table class="rtbl w-full" style="min-width:980px"><thead><tr class="text-[11px] text-muted text-right">
+        <table class="rtbl w-full" style="min-width:1140px"><thead><tr class="text-[11px] text-muted text-right">
           ${oth('العنوان')}${oth('العميل')}${oth(G.stage)}${oth('العمر في المرحلة', 'اضغط للترتيب — الأخطر (الأطول ركوداً) أولاً')}
-          ${oth('القيمة')}${oth(G.probability)}${oth('تاريخ الإنشاء')}${oth('آخر تحديث')}${oth(G.nextAction)}</tr></thead>
+          ${oth('القيمة')}${oth(G.probability)}${oth('المالك')}${oth('آخر نشاط', 'آخر تواصل مسجَّل على الفرصة')}${oth('تاريخ الإنشاء')}${oth('آخر تحديث')}${oth(G.nextAction)}</tr></thead>
         <tbody>${tableRows}</tbody></table></div>`;
 
   const body = `
@@ -336,6 +437,8 @@ export async function opportunitiesPage(user, opts = {}) {
     </div>
     ${viewsBar}
     ${sectorChips}
+    ${deptChips}
+    ${solChips}
     ${yearChips}
     ${strip}
     <style>.kmenu-btn{opacity:.45;transition:opacity .15s,background .15s,color .15s}.kcard:hover .kmenu-btn,.kmenu-btn:focus-visible{opacity:1}.kmenu-btn:hover{background:#eef1f7;color:var(--ink2)}</style>
@@ -345,16 +448,23 @@ export async function opportunitiesPage(user, opts = {}) {
     <script>window.__SANAD=Object.assign(window.__SANAD||{},{
       stages:${JSON.stringify(stages.map((s) => ({ id: s.id, name_ar: s.name_ar, color: s.color }))).replace(/</g, '\\u003c')},
       sectors:${JSON.stringify(sectors.map((s) => ({ id: s.id, name_ar: s.name_ar }))).replace(/</g, '\\u003c')},
+      clientsList:${JSON.stringify(pickerClients.map((c) => ({ id: c.id, name_ar: c.name_ar }))).replace(/</g, '\\u003c')},
+      owners:${JSON.stringify(ownerOptions.map((u) => ({ id: u.id, name: u.name }))).replace(/</g, '\\u003c')},
+      allDepartments:${JSON.stringify(allDepartments.map((d) => ({ id: d.id, name_ar: d.name_ar, sector_id: d.sector_id }))).replace(/</g, '\\u003c')},
       moveSectors:${JSON.stringify(moveTargets.map((s) => ({ id: s.id, name_ar: s.name_ar }))).replace(/</g, '\\u003c')},
       wonStage:${JSON.stringify(wonStage ? wonStage.id : null)},
       lostStage:${JSON.stringify(lostStage ? lostStage.id : null)},
       canCreateOpp:${canCreate ? 'true' : 'false'},
       canEditOpp:${canEdit ? 'true' : 'false'},
+      canDeleteAny:${canDeleteAny ? 'true' : 'false'},
+      uid:${JSON.stringify(user.id || '')},
+      userSector:${JSON.stringify(user.sector_id || '')},
+      userDept:${JSON.stringify(user.department_id || '')},
       viewsPage:'opportunities'
     });</script>`;
   return layout({
     user, active: 'opportunities', title: 'الفرص والمبيعات',
-    subtitle: `${yearFilter === 'all' ? 'كل السنوات' : `سنة ${yearFilter}`} · ${rows.length} فرصة · ${G.weighted} ${fmtSar(weighted)}`, body,
+    subtitle: `${yearFilter === 'all' ? 'كل السنوات' : `سنة ${yearFilter}`} · ${rows.length} فرصة · القيمة الإجمالية ${fmtSar(total)}`, body,
     scripts: ['/static/pages/opps.js'],
   });
 }
@@ -363,7 +473,23 @@ export async function opportunitiesPage(user, opts = {}) {
 export async function myOpportunitiesPage(user, opts = {}) {
   const year = Number(opts.year) || config.fiscalYear;
   const scoped = await listOpportunities(user);
-  const rows = scoped.filter((o) => o.owner_user_id === user.id);
+  // «في فرصي يطلع لها الفرص اللي هي شغالة عليها» — والعمل ملكيةٌ **أو** تسكين. وكان الشرط
+  // الملكية وحدها، فمن يعمل على فرص غيره — وهو حال فريق التسليم كله — يفتح «فرصي» فيجدها فارغة.
+  //
+  // والصلاحية الشخصية على إدارة **لا تدخل هنا** عمداً: «سجى ترى كل فرص الابتكار» في شاشة
+  // «الفرص»، أما «فرصي» فتبقى ما تعمل عليه هي. ولو دخلت لصارت الشاشتان واحدة، وضاع الفرق الذي
+  // طلبه المالك بنصّه.
+  const mine = user.opportunityIds || new Set();
+  const rows = scoped.filter((o) => o.owner_user_id === user.id || mine.has(o.id));
+  // المشاركاتُ دفعةً واحدة كي يتّسق تعديلُ السطر مع صفحة الفرصة (ADR-0006): مديرُ إدارةٍ مشاركة
+  // يحرّر الخطوة التالية من السطر كما يحرّرها من الصفحة — بلا هذا يُعرَض الزرّ ثم يُرَدّ عند الحفظ.
+  const partnersByOpp = {};
+  if (rows.length) {
+    for (const r of await all(`SELECT opportunity_id, department_id FROM opportunity_department
+        WHERE opportunity_id IN (${rows.map(() => '?').join(',')})`, rows.map((o) => o.id))) {
+      (partnersByOpp[r.opportunity_id] ||= []).push(r.department_id);
+    }
+  }
   const stages = await all('SELECT id,name_ar,color,default_win_pct,sort_order,is_won,is_lost FROM stage ORDER BY sort_order');
   const stById = Object.fromEntries(stages.map((s) => [s.id, s]));
   const clients = Object.fromEntries((await all('SELECT id,name_ar FROM client')).map((c) => [c.id, c.name_ar]));
@@ -381,12 +507,11 @@ export async function myOpportunitiesPage(user, opts = {}) {
   const onTrack = open.filter((o) => !o.rot && o.stage_id !== 'ON_HOLD' && !noAction(o));
   const naAll = open.filter((o) => o.no_next_action).length;
   const total = open.reduce((a, o) => a + (o.value_halalas || 0), 0);
-  const weighted = Math.round(open.reduce((a, o) => a + weightedOf(o), 0));
   const hasTeams = open.some((o) => teamCounts[o.id]);
 
   const stagePill = (o) => {
     const st = stById[o.stage_id] || {};
-    return `<span class="pill" style="background:${st.color || '#cbd5e1'}22;color:var(--ink2)"><span style="width:7px;height:7px;border-radius:50%;background:${st.color || '#cbd5e1'}"></span>${esc(st.name_ar || o.stage_id)}</span>`;
+    return `<span class="pill" style="background:${esc(st.color || '#cbd5e1')}22;color:var(--ink2)"><span style="width:7px;height:7px;border-radius:50%;background:${esc(st.color || '#cbd5e1')}"></span>${esc(st.name_ar || o.stage_id)}</span>`;
   };
   const headRow = `<thead><tr style="font-size:10.5px;color:var(--muted);text-align:right">
       <th style="padding:.45rem .7rem;font-weight:700">الفرصة</th>
@@ -397,7 +522,8 @@ export async function myOpportunitiesPage(user, opts = {}) {
       <th style="padding:.45rem .7rem;font-weight:700;text-align:left">القيمة</th></tr></thead>`;
 
   const rowHtml = (o, accent) => {
-    const rowEdit = can(user, 'update', 'opportunity', o);
+    const rowEdit = can(user, 'update', 'opportunity',
+      partnersByOpp[o.id] ? { ...o, partner_department_ids: partnersByOpp[o.id] } : o);
     const team = teamCounts[o.id] || 0;
     const naCell = rowEdit
       ? `<span class="editable" data-action="na-edit" data-id="${o.id}" data-value="${esc(o.next_action || '')}" role="button" tabindex="0" title="انقر لتعديل الخطوة التالية" style="font-size:12px;${o.no_next_action ? 'color:var(--red);font-weight:700' : ''}">${o.no_next_action ? '● أضف الخطوة التالية' : esc(o.next_action)}</span>`
@@ -411,7 +537,7 @@ export async function myOpportunitiesPage(user, opts = {}) {
       ${hasTeams ? `<td style="padding:.55rem .7rem;text-align:center">${team ? `<span class="pill tnum" style="background:#eef1f7;color:#475569" title="${team} في فريق الفرصة">${icon('team')} ${team}</span>` : '<span style="color:var(--faint)">—</span>'}</td>` : ''}
       <td style="padding:.55rem .7rem;min-width:170px">${naCell}</td>
       <td class="tnum" style="padding:.55rem .7rem;text-align:left;font-weight:800;font-size:12.5px;white-space:nowrap">${fmtSar(o.value_halalas)}
-        <div style="font-weight:600;font-size:10px;color:var(--muted)">مرجّح ${fmtSar(Math.round(weightedOf(o)))}</div></td>
+</td>
     </tr>`;
   };
 
@@ -437,7 +563,7 @@ export async function myOpportunitiesPage(user, opts = {}) {
         <a class="btn" href="/app/opportunities">تصفّح كل الفرص</a></div></div>`
     : `
     <div style="display:flex;gap:.7rem;flex-wrap:wrap;margin-bottom:1rem">
-      ${statMini('قيمتي المفتوحة', fmtSar(total), `${countAr(open.length, { one: 'فرصة واحدة', two: 'فرصتان', few: 'فرص', many: 'فرصة' })} · ${G.weighted} ${fmtSar(weighted)}`, 'brand')}
+      ${statMini('قيمتي المفتوحة', fmtSar(total), `${countAr(open.length, { one: 'فرصة واحدة', two: 'فرصتان', few: 'فرص', many: 'فرصة' })} مفتوحة`, 'brand')}
       ${statMini('متوقفة', stalled.length, stalled.length ? 'تجاوزت مدة مرحلتها — ابدأ بها' : 'لا شيء متوقف', stalled.length ? 'warn' : 'good')}
       ${statMini(G.noNextAction, naAll, naAll ? (naAll > noStepRows.length ? `منها ${naAll - noStepRows.length} ضمن المتوقفة — حدّد خطوة لكل فرصة` : 'حدّد خطوة مؤرّخة لكل فرصة') : 'لكل فرصة خطوة واضحة', naAll ? 'bad' : 'good')}
     </div>
@@ -455,7 +581,7 @@ export async function myOpportunitiesPage(user, opts = {}) {
         'مؤجلة بقرار من العميل أو منا — ليست «على المسار» ولا متوقفة إهمالاً؛ تُراجع دورياً.', onHoldRows) : '')}`;
   return layout({
     user, active: 'my-opportunities', title: 'فرصي',
-    subtitle: `قائمة عملي حسب الأولوية · ${esc(user.name_ar || user.username || '')} · ${year}`, body,
+    subtitle: `قائمة عملي حسب الأولوية · ${user.name_ar || user.username || ''} · ${year}`, body,
     scripts: ['/static/pages/opps.js'],
   });
 }

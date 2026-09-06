@@ -4,6 +4,13 @@ data/*.db-wal
 data/*.db-shm
 data/backups
 data/outbox
+data/migration-reconciliation.json
 .git
 *.log
 docs/evidence
+# secrets — must never bake into an image layer on any build path (COPY . . copies the context).
+# NB: seed/*.demo.json is intentionally NOT excluded — the Dockerfile COPY needs it for the staging
+# seed (railway up filters via .railwayignore first; production ignores it via SANAD_SEED_DEMO=0).
+.env
+seed/*.snapshot.json
+seed/*.backfill.json

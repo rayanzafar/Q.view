@@ -17,3 +17,6 @@ seed/*.demo.json
 # secrets — never commit
 .env
 seed/*.backfill.json
+
+# معرّف النشرة — يكتبه scripts/deploy.mjs قبل كل رفع ويُشحَن مع الصورة، ولا يُلتزَم
+.build-id

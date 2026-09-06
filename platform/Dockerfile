@@ -5,7 +5,10 @@ WORKDIR /app
 ENV NODE_ENV=production
 
 COPY package.json package-lock.json* ./
-RUN npm ci --omit=dev || npm install --omit=dev
+# No `|| npm install` fallback: on lockfile drift `npm install` silently resolves DIFFERENT versions
+# and rewrites the lock — defeating the reproducible-build guarantee exactly in the production image.
+# A failing `npm ci` must fail the build so the lockfile gets fixed, not bypassed.
+RUN npm ci --omit=dev
 
 COPY . .
 
