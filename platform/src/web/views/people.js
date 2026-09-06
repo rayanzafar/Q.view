@@ -108,7 +108,7 @@ export async function teamPage(user, opts = {}) {
     const l = links[e.id] || null;
     const label = l ? esc(l.name_ar || l.username || 'حساب مربوط') : '';
     const badge = l
-      ? `<span class="pill" style="background:#dcfce7;color:#059669" title="مربوط بحساب ${label}">✓ ${label}</span>`
+      ? `<span class="pill" style="background:#dcfce7;color:#166534" title="مربوط بحساب ${label}">✓ ${label}</span>`
       : `<span class="pill" style="background:#fef3c7;color:#92400e" title="لا يملك حساب دخول — لن تصله المهام ولا الإشعارات">بلا حساب</span>`;
     const btn = !canLink ? ''
       : l ? `<button class="btn btn-sm btn-ghost" data-action="emp-unlink" data-emp="${e.id}" style="color:var(--muted)">فك الربط</button>`
