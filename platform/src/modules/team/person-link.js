@@ -14,7 +14,15 @@ export async function personProfileLink(user, personId, opts = {}) {
     await personDossier(user, personId);
     return null;
   }
-  for (const row of rows) await loadReadableResource(user, row.id);
+  // التحويل إلى ملف المورد **بعد التحقق من الصلاحية** (ADR-0017 §1): ملفٌ لا يفتحه القارئ — خارج
+  // نطاقه، أو موظف تجريبي محجوب عن غير مدير النظام — لا يُحال إليه فيقع على «غير موجود»؛ بل يبقى
+  // الرابط على صفحة الحساب المحدودة ببوابتها القائمة (personDossier)، كما كان قبل التوحيد.
+  for (const row of rows) {
+    try { await loadReadableResource(user, row.id); } catch (e) {
+      if (e?.status === 403 || e?.status === 404) { await personDossier(user, personId); return null; }
+      throw e;
+    }
+  }
   if (rows.length !== 1) throw badRequest('الحساب مرتبط بأكثر من موظف — صحّح الربط من المستخدمين والصلاحيات');
   const q = new URLSearchParams();
   for (const key of ['year', 'month', 'tab']) {

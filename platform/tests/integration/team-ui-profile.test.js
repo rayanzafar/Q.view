@@ -309,3 +309,16 @@ test('regression: old person links resolve to the resource profile and preserve 
   assert.ok(!html.includes('id="pp-staff-pct"'), 'التسكين يمر بمعاينة الطاقة واعتماد الفترة');
   assertClean(html, 'إدارة الملف');
 });
+
+// v5.79: رابط الشخص لا يحيل إلى ملفٍ لا يفتحه القارئ — موظف عرضٍ (حسابه demo.*) محجوب عن غير مدير
+// النظام منذ v5.76 كان يُحال إليه فيقع القارئ على «غير موجود»؛ الآن يبقى على صفحة الحساب المحدودة.
+test('regression: person link falls back to the account page when the profile is hidden from the reader (demo employee), admin still redirects', async () => {
+  await db.insert('app_user', { id: 'demo.qa', username: 'demo.qa', name_ar: 'حساب عرض', role_id: 'consultant', sector_id: 'SOL', scope: 'own', active: 1, created_at: T });
+  await db.insert('employee', { id: 'e_demo', user_id: 'demo.qa', name_ar: 'موظف عرض', sector_id: 'SOL', department_id: null, job_title: 'استشاري', active: 1, created_at: T });
+  await db.update('app_user', 'demo.qa', { employee_id: 'e_demo' });
+  const { personProfileLink } = await import('../../src/modules/team/person-link.js');
+  const lead = await sess('u_lead');
+  await assert.rejects(async () => page(lead, 'e_demo', {}), (e) => e.status === 404 || e.status === 403, 'ملف موظف العرض محجوب عن قائد القطاع');
+  assert.equal(await personProfileLink(lead, 'demo.qa'), null, 'لا تحويل إلى ملفٍ محجوب — تبقى صفحة الحساب');
+  assert.equal(await personProfileLink(await sess('u_admin'), 'demo.qa'), '/app/team/resources/e_demo', 'مدير النظام يرى حسابات العرض فيُحال');
+});

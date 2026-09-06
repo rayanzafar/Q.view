@@ -16,7 +16,7 @@
 // الاستعمال: SANAD_RELEASE=1 npm run deploy [-- --skip-gates --allow-dirty --no-sweep]
 // الدليل الكامل: docs/guides/DEPLOY-PIPELINE.md
 import { spawnSync } from 'node:child_process';
-import { readFileSync, existsSync, readdirSync, writeFileSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync, writeFileSync, mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { resolve, join } from 'node:path';
 import { deploymentTagOf } from '../src/core/http/build-id.js';
@@ -117,16 +117,91 @@ if (args.has('--skip-gates')) {
   // الخدمة تُسمّى صراحةً في نداء الحقن — بلا الاعتماد على حال الربط. (حقنُ بيئةٍ لا نشرٌ.)
   const bk = run('railway', ['run', '--service', 'Postgres', '--', 'sh', '-c', inner], { capture: true });
   const out = (bk.stdout || '') + (bk.stderr || '');
+  let backupFile = null;
   if (bk.status !== 0 || !/✓ backup:/.test(out)) {
     // بعض إصدارات الطرفية لا تدعم service على run — جرّب على حال الربط الحالي إن كان القاعدة.
     const bk2 = run('railway', ['run', 'sh', '-c', inner], { capture: true });
     const out2 = (bk2.stdout || '') + (bk2.stderr || '');
-    if (bk2.status !== 0 || !/✓ backup:/.test(out2)) fail(`النسخة الاحتياطية فشلت:\n${out}\n${out2}`);
-    console.log(out2.trim().split('\n').pop());
+    if (bk2.status !== 0 || !/✓ backup:/.test(out2)) {
+      // الطريق الثاني — نسخة **حقيقية** لا تخطٍّ: منفذ القاعدة (العام والداخلي) غير مبلوغ من بيئة
+      // التطوير (الوكيل يمرّر HTTPS وحده)، فيأخذ الخطُّ النسخة المنطقية من داخل التطبيق نفسه عبر
+      // `/api/backup/dump` (جلسة مدير نظام + رمز النسخة من متغيّرات الخدمة)، ويتحقق من العدادات
+      // جدولاً جدولاً مقابل `/api/backup/counts`. وسيلة الاستعادة: scripts/restore-dump.mjs (مختبرة).
+      console.log('ℹ pg_dump لم يبلغ القاعدة — الطريق الثاني: النسخة المنطقية عبر مسار التطبيق');
+      backupFile = await appLevelBackup();
+      if (!backupFile) fail(`النسخة الاحتياطية فشلت:\n${out}\n${out2}`);
+    } else console.log(out2.trim().split('\n').pop());
   } else {
     console.log(out.trim().split('\n').pop());
   }
+  // جرد الترحيلات على البيئة (KI-111): ما طُبّق فعلاً من نسختها مقابل المستودع، وأي معلَّقةٍ تحمل
+  // تعديل بيانات تُعلَن هنا قبل الرفع — الإقلاع يطبّق المعلَّق كله، فالمراجعة تسبقه لا تلحقه.
+  if (backupFile) {
+    try {
+      const { inventoryFromDump, formatInventory } = await import('./migration-inventory.mjs');
+      const inv = await inventoryFromDump(backupFile, join(ROOT, 'migrations'));
+      console.log(formatInventory(inv));
+      if (Object.keys(inv.dml).length && !args.has('--accept-pending-dml')) {
+        fail('ترحيلة معلَّقة تحمل تعديل بيانات — راجعها سجلاً سجلاً ثم أعد النشر بـ --accept-pending-dml (قرار واعٍ مسجَّل في مخرجات النشر)');
+      }
+    } catch (e) { if (String(e?.message || '').includes('تعديل بيانات')) throw e; console.log(`⚠ تعذّر جرد الترحيلات من النسخة: ${e?.message || e}`); }
+  } else {
+    console.log('ℹ الجرد من نسخة pg_dump غير مدعوم هنا — راجع schema_migration يدوياً قبل الرفع (KI-111)');
+  }
 }
+
+/**
+ * النسخة المنطقية عبر مسار التطبيق: تسجيل دخول مدير النظام (نموذج الويب بحارس CSRF)، ثم العدادات،
+ * ثم التنزيل سطراً سطراً إلى data/backups (خارج git)، ثم مطابقة العدادات. يعيد مسار الملف أو null.
+ * الأسرار تُقرأ وقت التشغيل من متغيّرات خدمة التطبيق ولا تُطبع.
+ */
+async function appLevelBackup() {
+  const vr = run('railway', ['variables', '--service', APP_SERVICE_ID, '--json'], { capture: true });
+  let vars = {};
+  try { vars = JSON.parse(vr.stdout || '{}'); } catch { vars = {}; }
+  if (!vars.SANAD_ADMIN_PASS || !vars.SANAD_BACKUP_TOKEN) {
+    const vr2 = run('railway', ['variables', '--service', 'sanad-staging', '--json'], { capture: true });
+    try { vars = JSON.parse(vr2.stdout || '{}'); } catch { vars = {}; }
+  }
+  if (!vars.SANAD_ADMIN_PASS || !vars.SANAD_BACKUP_TOKEN) { console.log('✗ متغيّرا مدير النظام ورمز النسخة غير متاحين من الخدمة'); return null; }
+  const jar = new Map();
+  const cookieHeader = () => [...jar].map(([k, v]) => `${k}=${v}`).join('; ');
+  const absorb = (r) => { for (const l of r.headers.getSetCookie?.() || []) { const [k, v] = l.split(';')[0].split('='); if (k && v) jar.set(k.trim(), v.trim()); } };
+  try {
+    const seed = await fetch(`${STAGING_URL}/login`, { signal: AbortSignal.timeout(20000) }); absorb(seed); await seed.text();
+    const login = await fetch(`${STAGING_URL}/auth/login-web`, { method: 'POST', redirect: 'manual', signal: AbortSignal.timeout(20000),
+      headers: { 'content-type': 'application/x-www-form-urlencoded', cookie: cookieHeader() },
+      body: new URLSearchParams({ username: vars.SANAD_ADMIN_USER || 'sysadmin', password: vars.SANAD_ADMIN_PASS, _csrf: jar.get('sanad_csrf') || '' }) });
+    absorb(login); await login.text();
+    if (!jar.get('sanad_sid')) { console.log('✗ تعذّر تسجيل دخول مدير النظام لأخذ النسخة'); return null; }
+    const H = { cookie: cookieHeader(), 'x-backup-token': vars.SANAD_BACKUP_TOKEN };
+    const cr = await fetch(`${STAGING_URL}/api/backup/counts`, { headers: H, signal: AbortSignal.timeout(60000) });
+    if (!cr.ok) { console.log(`✗ عدادات النسخة: HTTP ${cr.status}`); return null; }
+    const counts = (await cr.json()).counts || {};
+    const dr = await fetch(`${STAGING_URL}/api/backup/dump`, { headers: H, signal: AbortSignal.timeout(600000) });
+    if (!dr.ok) { console.log(`✗ تنزيل النسخة: HTTP ${dr.status}`); return null; }
+    const buf = Buffer.from(await dr.arrayBuffer());
+    const dir = join(ROOT, 'data/backups');
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    const file = join(dir, `app-${headShaShort()}-${new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14)}.ndjson`);
+    writeFileSync(file, buf);
+    // المطابقة: الترويسة، ثم عدد صفوف كل جدول في الملف مقابل عدادات الخادم قبل التنزيل
+    const lines = buf.toString('utf8').split('\n').filter(Boolean);
+    const head = JSON.parse(lines[0] || '{}');
+    if (head._meta !== 'sanad-backup') { console.log('✗ النسخة بلا ترويسة سند'); return null; }
+    const seen = {}; let cur = null;
+    for (const l of lines.slice(1)) {
+      if (l.startsWith('{"_table":')) { cur = JSON.parse(l)._table; seen[cur] = 0; continue; }
+      if (cur) seen[cur]++;
+    }
+    const mism = Object.keys(counts).filter((t) => (seen[t] ?? -1) !== counts[t]);
+    if (mism.length) { console.log(`✗ عدادات النسخة لا تطابق الخادم: ${mism.slice(0, 8).join('، ')}`); return null; }
+    const rows = Object.values(seen).reduce((a, b) => a + b, 0);
+    console.log(`✓ backup: app-level ${file} (${buf.length} bytes، ${Object.keys(seen).length} جدولاً، ${rows} صفاً — العدادات مطابقة)`);
+    return file;
+  } catch (e) { console.log(`✗ النسخة المنطقية: ${e?.message || e}`); return null; }
+}
+function headShaShort() { return (run('git', ['rev-parse', '--short=12', 'HEAD'], { capture: true }).stdout || '').trim() || 'nogit'; }
 
 // ── ٤) النشر — الخدمة بمعرّفها الفريد، لا بالاسم ولا بحال الربط ────────────────
 log(`٤/٧ النشر إلى خدمة التطبيق ${APP_SERVICE_ID}`);

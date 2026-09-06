@@ -1,18 +1,18 @@
 {
   "version": 1,
-  "sourceDigest": "388037637def41c64cea0e1defb3f0dc6784fa10819ccbba9f04339cc1fcefce",
-  "sourceFiles": 614,
+  "sourceDigest": "c70660076f16ad38af2f26d3fec3f580e640508ff600a5e490d5bb7fee73a2bc",
+  "sourceFiles": 617,
   "counts": {
     "code": 234,
-    "test": 285,
-    "automation": 49,
+    "test": 286,
+    "automation": 51,
     "module": 18,
     "route": 270,
     "page": 24,
     "table": 97,
     "role": 18,
     "permission": 9,
-    "issue": 75,
+    "issue": 74,
     "journey": 14,
     "metric": 4,
     "workflow": 6,
@@ -2402,6 +2402,15 @@
       "detail": "tests/integration/audit-detail-render.test.js",
       "sources": [
         "tests/integration/audit-detail-render.test.js"
+      ]
+    },
+    {
+      "id": "file:tests/integration/backup-restore-dump.test.js",
+      "kind": "test",
+      "label": "backup-restore-dump.test.js",
+      "detail": "tests/integration/backup-restore-dump.test.js",
+      "sources": [
+        "tests/integration/backup-restore-dump.test.js"
       ]
     },
     {
@@ -5042,6 +5051,15 @@
       ]
     },
     {
+      "id": "file:scripts/migration-inventory.mjs",
+      "kind": "automation",
+      "label": "migration-inventory.mjs",
+      "detail": "scripts/migration-inventory.mjs",
+      "sources": [
+        "scripts/migration-inventory.mjs"
+      ]
+    },
+    {
       "id": "file:scripts/purge-demo.mjs",
       "kind": "automation",
       "label": "purge-demo.mjs",
@@ -5093,6 +5111,15 @@
       "detail": "scripts/reset.js",
       "sources": [
         "scripts/reset.js"
+      ]
+    },
+    {
+      "id": "file:scripts/restore-dump.mjs",
+      "kind": "automation",
+      "label": "restore-dump.mjs",
+      "detail": "scripts/restore-dump.mjs",
+      "sources": [
+        "scripts/restore-dump.mjs"
       ]
     },
     {
@@ -19883,16 +19910,6 @@
       ]
     },
     {
-      "id": "issue:KI-111",
-      "kind": "issue",
-      "label": "KI-111 · ops/migration-inventory",
-      "detail": "Live applied migration inventory unavailable. Older immutable migrations contain business DML including revenue cleanup; removing historic boot scripts does not guarantee unapplied legacy migrations are harmless.",
-      "status": "open",
-      "sources": [
-        "docs/KNOWN-ISSUES.md"
-      ]
-    },
-    {
       "id": "issue:KI-112",
       "kind": "issue",
       "label": "KI-112 · crm/cancellation",
@@ -31865,6 +31882,27 @@
       "kind": "source"
     },
     {
+      "from": "file:tests/integration/backup-restore-dump.test.js",
+      "to": "file:src/core/db/index.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/backup-restore-dump.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/backup-restore-dump.test.js",
+      "to": "file:src/core/backup/dump.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/backup-restore-dump.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/backup-restore-dump.test.js",
+      "to": "file:scripts/migration-inventory.mjs",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/backup-restore-dump.test.js",
+      "kind": "source"
+    },
+    {
       "from": "file:tests/integration/capacity-phases.test.js",
       "to": "file:src/core/db/index.js",
       "label": "استيراد صريح",
@@ -40384,6 +40422,13 @@
       "kind": "source"
     },
     {
+      "from": "file:scripts/deploy.mjs",
+      "to": "file:scripts/migration-inventory.mjs",
+      "label": "استيراد صريح",
+      "evidence": "scripts/deploy.mjs",
+      "kind": "source"
+    },
+    {
       "from": "file:scripts/derive-finance.js",
       "to": "file:src/core/db/index.js",
       "label": "استيراد صريح",
@@ -40654,6 +40699,20 @@
       "to": "file:scripts/unify-clients.js",
       "label": "استيراد صريح",
       "evidence": "scripts/reset.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:scripts/restore-dump.mjs",
+      "to": "file:src/core/db/index.js",
+      "label": "استيراد صريح",
+      "evidence": "scripts/restore-dump.mjs",
+      "kind": "source"
+    },
+    {
+      "from": "file:scripts/restore-dump.mjs",
+      "to": "file:src/core/config.js",
+      "label": "استيراد صريح",
+      "evidence": "scripts/restore-dump.mjs",
       "kind": "source"
     },
     {
@@ -46695,6 +46754,41 @@
       "to": "table:audit_log",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
       "evidence": "tests/integration/audit-detail-render.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/backup-restore-dump.test.js",
+      "to": "table:schema_migration",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/backup-restore-dump.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/backup-restore-dump.test.js",
+      "to": "table:project",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/backup-restore-dump.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/backup-restore-dump.test.js",
+      "to": "table:client",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/backup-restore-dump.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/backup-restore-dump.test.js",
+      "to": "table:role_permission",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/backup-restore-dump.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/backup-restore-dump.test.js",
+      "to": "table:sector",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/backup-restore-dump.test.js",
       "kind": "text-reference"
     },
     {
@@ -57247,6 +57341,13 @@
       "kind": "text-reference"
     },
     {
+      "from": "file:scripts/restore-dump.mjs",
+      "to": "table:schema_migration",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/restore-dump.mjs",
+      "kind": "text-reference"
+    },
+    {
       "from": "file:scripts/scenarios.mjs",
       "to": "table:stage",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
@@ -62023,13 +62124,6 @@
     {
       "from": "issue:KI-110",
       "to": "file:src/web/views/sector-targets.js",
-      "label": "يشير السجل إلى",
-      "evidence": "docs/KNOWN-ISSUES.md",
-      "kind": "reported"
-    },
-    {
-      "from": "issue:KI-111",
-      "to": "file:scripts/migrate.js",
       "label": "يشير السجل إلى",
       "evidence": "docs/KNOWN-ISSUES.md",
       "kind": "reported"

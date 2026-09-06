@@ -45,17 +45,21 @@ export default async function tasksFlowSpec({ browser, base, t }) {
     if (href) {
       const res = await open(page, base, href);
       check('صفحة الشخص تُفتح', res && res.status() === 200, `HTTP ${res?.status()}`);
+      // منذ v5.75 (ADR-0017): الحساب المرتبط بموظفٍ يفتحه القارئ يُحال إلى ملف المورد الموحد بتبويباته؛
+      // وغير المرتبط — أو من لا يُفتح ملفه للقارئ — يبقى على صفحة الحساب المحدودة بعدّاداتها.
+      const unified = /\/app\/team\/resources\//.test(page.url());
       const seen = await page.evaluate(() => {
         const txt = document.body.innerText || '';
         return {
-          tasks: txt.includes('المهام المفتوحة'),
-          projects: txt.includes('المشاريع'),
+          tasks: txt.includes('المهام المفتوحة') || txt.includes('حِمل المهام'),
+          projects: txt.includes('المشاريع') || txt.includes('العمل المرتبط'),
           stats: document.querySelectorAll('.pp-stat').length,
+          tabs: document.querySelectorAll('[role="tab"]').length,
         };
       });
-      check('صفحة الشخص تعرض مهامه', seen.tasks, JSON.stringify(seen));
-      check('وتعرض مشاريعه', seen.projects, JSON.stringify(seen));
-      check('ومعها عدّادات حالته', seen.stats >= 4, `عدّادات=${seen.stats}`);
+      check(unified ? 'الرابط يحيل إلى ملف المورد الموحد بتبويباته' : 'صفحة الشخص تعرض مهامه', unified ? seen.tabs >= 3 : seen.tasks, JSON.stringify(seen));
+      check('وتعرض مشاريعه/عمله المرتبط', seen.projects, JSON.stringify(seen));
+      check(unified ? 'ملف المورد يعرض حِمل المهام' : 'ومعها عدّادات حالته', unified ? seen.tasks : seen.stats >= 4, unified ? JSON.stringify(seen) : `عدّادات=${seen.stats}`);
     }
 
     // الفرصة **باسمها** لا بعددها. والفحص لا يفترض أن أول شخص على اللوحة يملك فرصة — يبحث

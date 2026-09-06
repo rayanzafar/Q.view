@@ -117,7 +117,11 @@ export default async function teamJourneysSpec({ browser, base, t, platformRoot 
   const R5 = await mkRes('خارجي', { name_ar: 'ليلى الزهراني', job_title: 'مستشارة خارجية', resource_type: 'external', capacity_pct: 50, hire_date: '2026-02-01', vendor_name: 'شركة الاستشارات المتحدة' });
   const R6 = await mkRes('شريك', { name_ar: 'تركي الشهري', job_title: 'شريك تنفيذ', resource_type: 'partner', capacity_pct: 100, hire_date: '2026-03-01', vendor_name: 'شركاء التقنية', end_date: `${Y + 1}-12-31` });
   const R4_NAME = 'عبدالله المطيري'; const R5_NAME = 'ليلى الزهراني'; const R6_NAME = 'تركي الشهري';
-  for (const eid of ['FX-EMP-1', 'FX-EMP-2']) {
+  // مورد الرحلة ٣ يُنشأ هنا لا يُستعار من بذرة الاختبار: سيناريو «رحلة الشخص» (delivery-wave) يربط
+  // FX-EMP-2 بحساب عرضٍ فيُحجب عن غير مدير النظام (v5.76) — والرحلات لا تتقاسم موظفاً واحداً.
+  const R7 = await mkRes('داخلي', { name_ar: 'وائل باعامر', job_title: 'مستشار أول', resource_type: 'internal', capacity_pct: 100, hire_date: '2026-01-01' });
+  const R7_NAME = 'وائل باعامر';
+  for (const eid of ['FX-EMP-1']) {
     const r = await api(lead, 'PATCH', `/team/resources/${eid}`, { department_id: depId });
     check(`تهيئة · ${eid} نُقل إلى الإدارة`, r.status === 200 && (r.json?.resource?.department_id || r.json?.department_id) === depId, `HTTP ${r.status} ${errMsg(r)}`);
   }
@@ -243,7 +247,7 @@ export default async function teamJourneysSpec({ browser, base, t, platformRoot 
       manager: document.querySelector('.tm-org-lh .tm-card-s')?.textContent || '',
     }));
     check('J2 · S11 الإدارة المختارة من الرابط معلَّمة في الشجرة وقائمتها تحمل مواردها', res?.status() === 200 && org.on === DEPT_NAME && org.title === DEPT_NAME
-      && org.rows.includes('FX-EMP-1') && org.rows.includes('FX-EMP-2') && org.rows.includes(R4), JSON.stringify(org));
+      && org.rows.includes('FX-EMP-1') && org.rows.includes(R7) && org.rows.includes(R4), JSON.stringify(org));
     check('J2 · S11 القائمة تسمّي مدير الإدارة', /المسؤول: /.test(org.manager) && org.manager.includes(deptmgr?.name_ar || 'مدير إدارة'), org.manager.slice(0, 120));
     await pageCheck(s, 'J2 · S11');
     await shot(s, 'j2-01-org');
@@ -282,7 +286,7 @@ export default async function teamJourneysSpec({ browser, base, t, platformRoot 
   let pmReqId = null;
   {
     const pm = await as('demo.pm'); const { page } = pm;
-    const deep = `/app/team/planning?new=1&employee=FX-EMP-2&target=project:${PRJ2}&from=${next1}&to=${next1}`;
+    const deep = `/app/team/planning?new=1&employee=${R7}&target=project:${PRJ2}&from=${next1}&to=${next1}`;
     const res = await open(page, base, deep);
     const st = res?.status();
     if (st === 200) await page.waitForSelector('#pl-drawer.open', { timeout: 5000 }).catch(() => {});
@@ -293,7 +297,7 @@ export default async function teamJourneysSpec({ browser, base, t, platformRoot 
     if (st === 200) await pageCheck(pm, 'J3 · S14 لمدير المشروع');
 
     // الخدمة نفسها التي يناديها الدرج — بجلسة مدير المشروع: الطلب يصير معلَّقاً عند مدير الإدارة.
-    const r = await submitAs(pm, { kind: 'new', employeeId: 'FX-EMP-2', target: { kind: 'project', id: PRJ2 }, from: next1, to: next1, pct: 20, allocStatus: 'confirmed' }, `e2e-j3-pm-${Date.now()}`);
+    const r = await submitAs(pm, { kind: 'new', employeeId: R7, target: { kind: 'project', id: PRJ2 }, from: next1, to: next1, pct: 20, allocStatus: 'confirmed' }, `e2e-j3-pm-${Date.now()}`);
     const rq = r.json?.requests?.[0] || null;
     pmReqId = rq?.id || null;
     check('J3 · طلب مدير المشروع (عبر الخدمة) يصير «بانتظار القرار» موجَّهاً إلى مدير الإدارة', r.status === 200 && rq?.status === 'pending' && rq?.reviewer?.id === deptmgr?.id,
@@ -347,11 +351,11 @@ export default async function teamJourneysSpec({ browser, base, t, platformRoot 
   {
     const s = lead; const { page } = s;
     const cells = await matrixCells(s, next1, next1);
-    const c = cells['FX-EMP-2']?.[next1] || null;
-    const dom = await page.evaluate((k) => {
-      const cell = document.querySelector(`.tm-mx .cell[data-emp="FX-EMP-2"][data-month="${k}"]`);
+    const c = cells[R7]?.[next1] || null;
+    const dom = await page.evaluate(([k, emp]) => {
+      const cell = document.querySelector(`.tm-mx .cell[data-emp="${emp}"][data-month="${k}"]`);
       return { pend: cell ? cell.querySelectorAll('.li.pend').length : -1, chip: cell?.querySelector('.tm-pct')?.textContent.trim() || '', text: cell?.innerText || '' };
-    }, next1);
+    }, [next1, R7]);
     check('J3 · S13 خلية المورد تعرض طبقة «بانتظار الاعتماد» بلا مسّ المؤكد', !!c && c.confirmedPct === 0 && c.items.some((it) => it.status === 'pending' && it.targetId === PRJ2 && it.pct === 20)
       && dom.pend >= 1 && dom.chip === '0%' && /بانتظار الاعتماد/.test(dom.text), JSON.stringify({ c, dom: { ...dom, text: dom.text.slice(0, 80) } }));
     await pageCheck(s, 'J3 · S13 قبل الاعتماد');
@@ -375,7 +379,7 @@ export default async function teamJourneysSpec({ browser, base, t, platformRoot 
       title: document.querySelector('#rq-panel .tm-card-t')?.textContent.trim() || '', status: document.querySelector('#rq-panel .tm-card-s .pill')?.textContent.trim() || '',
       approve: document.querySelector('#rq-panel [data-action="rq-approve"]')?.textContent.trim() || '', body: document.getElementById('rq-panel')?.innerText || '',
     }));
-    check('J3 · S16 لوحة الطلب تعرض المورد والوجهة والأثر وزر «اعتماد»', /خالد العتيبي/.test(panel.title) && panel.status === 'بانتظار الاعتماد' && panel.approve === 'اعتماد'
+    check('J3 · S16 لوحة الطلب تعرض المورد والوجهة والأثر وزر «اعتماد»', panel.title.includes(R7_NAME) && panel.status === 'بانتظار الاعتماد' && panel.approve === 'اعتماد'
       && panel.body.includes(PRJ2_NAME) && /الأثر بعد الاعتماد/.test(panel.body), JSON.stringify({ ...panel, body: panel.body.slice(0, 120) }));
     await pageCheck(dm, 'J3 · S16 الطلب');
     await shot(dm, 'j3-07-request-panel');
@@ -391,7 +395,7 @@ export default async function teamJourneysSpec({ browser, base, t, platformRoot 
   {
     const s = lead;
     const cells = await matrixCells(s, next1, next1);
-    const c = cells['FX-EMP-2']?.[next1] || null;
+    const c = cells[R7]?.[next1] || null;
     check('J3 · S13 بعد الاعتماد: المؤكد للمورد في الشهر صار 20% والطبقة المعلَّقة زالت', !!c && c.confirmedPct === 20 && c.pendingPct === 0
       && c.items.some((it) => it.status === 'confirmed' && it.targetId === PRJ2 && it.pct === 20), JSON.stringify(c));
     await pageCheck(s, 'J3 · S13 بعد الاعتماد');
