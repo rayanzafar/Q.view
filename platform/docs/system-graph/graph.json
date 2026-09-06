@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "sourceDigest": "c70660076f16ad38af2f26d3fec3f580e640508ff600a5e490d5bb7fee73a2bc",
+  "sourceDigest": "8f8862c19c35ec301051eb7a2eaa5e4028c1062d2debc216edccf1edc91e83f8",
   "sourceFiles": 617,
   "counts": {
     "code": 234,
@@ -36707,6 +36707,13 @@
     {
       "from": "file:tests/integration/team-ui-profile.test.js",
       "to": "file:src/core/i18n/time.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/team-ui-profile.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/team-ui-profile.test.js",
+      "to": "file:src/modules/team/person-link.js",
       "label": "استيراد صريح",
       "evidence": "tests/integration/team-ui-profile.test.js",
       "kind": "source"
