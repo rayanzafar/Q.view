@@ -42,6 +42,40 @@ export function weighDeliverables(rows = []) {
   return out;
 }
 
+// Evidence describes the existing weighting rule; it never rewrites a stored plan.
+function weightingEvidence(live) {
+  const explicitCount = live.filter((d) => Number.isFinite(Number(d.weight)) && Number(d.weight) > 0).length;
+  const basis = !live.length ? 'none' : explicitCount === live.length ? 'explicit'
+    : live.some((d) => N(d.amount_halalas) > 0) ? 'amount' : 'equal';
+  return { basis, partialExplicitWeights: explicitCount > 0 && explicitCount < live.length,
+    unvaluedCount: live.filter((d) => d.amount_halalas == null || d.amount_halalas === '').length,
+    zeroWeightCount: basis === 'amount' ? live.filter((d) => N(d.amount_halalas) === 0).length : 0 };
+}
+
+// Facts and review notices are distinct from policy: keep current percentages until
+// the owner reviews each project's basis, including completed projects with gaps.
+export function progressEvidence(project = {}, delivery = deliveryProgress()) {
+  const warnings = [];
+  const warn = (code, message) => warnings.push({ code, message });
+  const weighting = delivery.weighting || weightingEvidence([]);
+  if (project.status === 'COMPLETED' && delivery.total > delivery.accepted)
+    warn('COMPLETED_WITH_UNACCEPTED_OUTPUTS', 'المشروع مسجل مكتملًا، وبعض مخرجاته لم تعتمد بعد؛ راجع الحالة والمخرجات قبل اعتماد النسبة.');
+  if (project.status === 'COMPLETED' && !delivery.total)
+    warn('COMPLETED_WITHOUT_OUTPUTS', 'نسبة الإنجاز مستندة إلى حالة المشروع المكتمل؛ لا توجد مخرجات مسجلة للتحقق منها.');
+  if (project.status !== 'COMPLETED' && !delivery.total && !N(project.progress_pct))
+    warn('NO_PROGRESS_EVIDENCE', 'لا توجد مخرجات أو نسبة موثقة يمكن التحقق منها؛ الصفر المسجل قد يكون قيمة ابتدائية.');
+  if (weighting.partialExplicitWeights)
+    warn('PARTIAL_EXPLICIT_WEIGHTS', 'أوزان بعض المخرجات غير مكتملة؛ الحساب الحالي لا يستخدم الأوزان الجزئية، ويحتاج أساس القياس إلى مراجعة.');
+  if (weighting.unvaluedCount)
+    warn('UNVALUED_DELIVERABLES', 'توجد مخرجات بلا قيمة مسجلة؛ راجعها قبل اعتماد أساس قياس الإنجاز.');
+  if (weighting.zeroWeightCount)
+    warn('ZERO_WEIGHT_DELIVERABLES', 'توجد مخرجات لا تؤثر في النسبة الحالية لأن الحساب مشتق من القيم المالية؛ راجع أوزانها.');
+  if (weighting.basis === 'equal')
+    warn('EQUAL_WEIGHT_FALLBACK', 'الحساب الحالي يساوي بين المخرجات لغياب الأوزان والقيم؛ هذا ليس تأكيدًا لاعتماد خطة متساوية.');
+  return { warnings, weighting, storedPct: N(project.progress_pct) > 0 ? N(project.progress_pct) : null,
+    acceptedPct: delivery.acceptedPct };
+}
+
 // الإنجاز التنفيذي وما حوله، من صفوف المخرجات كما هي (دالة صرفة — تُختبر بلا قاعدة بيانات).
 export function deliveryProgress(rows = []) {
   const live = rows.filter((d) => d && !d.deleted_at);
@@ -61,6 +95,7 @@ export function deliveryProgress(rows = []) {
     deliveredPct: live.length ? deliveredPct : null,
     awaitingAcceptance: Math.max(0, deliveredPct - acceptedPct),
     weights: w,
+    weighting: weightingEvidence(live),
   };
 }
 
@@ -71,14 +106,22 @@ export function scheduleHealth(milestones = [], today = nowIso().slice(0, 10)) {
   const soon = new Date(Date.parse(today + 'T00:00:00Z') + 30 * 86400000).toISOString().slice(0, 10);
   const met = live.filter((m) => m.status === 'MET');
   const missed = live.filter((m) => m.status === 'MISSED');
-  const overdue = live.filter((m) => m.status === 'PENDING' && m.due_date && m.due_date < today);
-  const upcoming = live.filter((m) => m.status === 'PENDING' && m.due_date && m.due_date >= today && m.due_date <= soon);
-  const tone = (missed.length || overdue.length) ? 'red' : upcoming.length ? 'amber' : live.length ? 'green' : 'slate';
-  const note = missed.length ? `${missed.length} معلماً لم يُحقَّق`
+  const validDate = (value) => {
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const time = Date.parse(value + 'T00:00:00Z');
+    return Number.isFinite(time) && new Date(time).toISOString().slice(0, 10) === value;
+  };
+  const undated = live.filter((m) => m.status === 'PENDING' && !validDate(m.due_date));
+  const overdue = live.filter((m) => m.status === 'PENDING' && validDate(m.due_date) && m.due_date < today);
+  const upcoming = live.filter((m) => m.status === 'PENDING' && validDate(m.due_date) && m.due_date >= today && m.due_date <= soon);
+  const tone = (missed.length || overdue.length) ? 'red' : upcoming.length ? 'amber' : undated.length ? 'slate' : live.length ? 'green' : 'slate';
+  const baseNote = missed.length ? `${missed.length} معلماً لم يُحقَّق`
     : overdue.length ? `${overdue.length} معلماً فات استحقاقه`
       : upcoming.length ? `${upcoming.length} معلماً خلال ٣٠ يوماً`
-        : live.length ? 'المعالم في مواعيدها' : 'لا معالم مسجّلة بعد';
-  return { total: live.length, met: met.length, missed: missed.length, overdue, upcoming, tone, note,
+        : undated.length ? 'لا يمكن تقييم الجدول قبل استكمال تواريخ المعالم'
+          : live.length ? 'المعالم في مواعيدها' : 'لا معالم مسجّلة بعد';
+  const note = undated.length ? `${baseNote} · ${undated.length} معالم تحتاج تاريخًا صحيحًا` : baseNote;
+  return { total: live.length, met: met.length, missed: missed.length, overdue, upcoming, undated, tone, note,
     metPct: pct(met.length, live.length) };
 }
 
@@ -120,6 +163,7 @@ export async function projectProgress(projectId, { today = nowIso().slice(0, 10)
 
   return {
     projectId,
+    evidence: progressEvidence(project || {}, delivery),
     executivePct: executive,
     executiveSource: project?.status === 'COMPLETED' ? 'status'
       : (derived != null ? 'deliverables' : (stored > 0 ? 'stored' : 'none')),

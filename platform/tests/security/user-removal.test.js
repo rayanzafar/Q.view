@@ -142,7 +142,8 @@ test('البريد يصير قابلاً لإعادة الاستعمال بعد 
   const dead = await db.get('SELECT email FROM app_user WHERE id = ?', ['u_rm_mail']);
   assert.equal(dead.email, null, 'العنوان بقي محجوزاً على صفٍّ محذوف');
   const a = await db.get(
-    "SELECT detail_json FROM audit_log WHERE resource = 'app_user' AND action = 'delete' ORDER BY at DESC LIMIT 1");
+    "SELECT detail_json FROM audit_log WHERE resource = 'app_user' AND action = 'delete' AND resource_id = ? ORDER BY at DESC LIMIT 1",
+    ['u_rm_mail']);
   assert.match(String(a.detail_json), /reuse\.rm@evc\.sa/, 'العنوان المحرَّر لم يُحفظ في الأثر');
 
   const r = await identity.inviteUser(ctxOf(adminUser), {

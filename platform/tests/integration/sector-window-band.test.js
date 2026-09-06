@@ -30,6 +30,7 @@ const ADMIN = { id: 'u_admin', username: 'admin', role_id: 'admin', scope: 'comp
 before(async () => {
   await insert('sector', { id: 'SOL', name_ar: 'قطاع الحلول', kind: 'delivery', active: 1,
     target_revenue_halalas: 100_000_000, target_sales_halalas: 100_000_000, created_at: T });
+  await insert('budget', { id: 'SOL-annual', sector_id: 'SOL', fiscal_year: YEAR, target_revenue_halalas: 100_000_000, target_sales_halalas: 100_000_000, created_at: T });
   await insert('app_user', { id: 'u_admin', username: 'admin', role_id: 'admin', scope: 'company',
     sector_id: 'SOL', active: 1, created_at: T });
   await insert('stage', { id: 'LEAD', name_ar: 'ترشيح', default_win_pct: 10, sort_order: 1, is_won: 0, is_lost: 0 });

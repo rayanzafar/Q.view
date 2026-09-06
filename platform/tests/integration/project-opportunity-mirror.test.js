@@ -48,7 +48,7 @@ before(async () => {
 after(async () => { await db.close(); rmSync(dir, { recursive: true, force: true }); });
 
 // ── ① الفرصة تبلغ الفوز ⟵ مشروعٌ بقيمتها ────────────────────────────────────
-test('الفوز يُولّد المشروع بقيمته وجهته وإدارته — «على طول ينعكس بقيمته وكل شيء»', async () => {
+test('الفوز يربط مشروعاً بجهته وإدارته دون اعتماد قيمة العقد أو الصحة تلقائياً', async () => {
   const o = await opps.createOpportunity(CTX, { title_ar: 'خدمات مدارة', sector_id: 'INN', department_id: 'D_INN',
     client_id: 'CL', value_sar: 3_000_000, stage_id: 'LEAD' });
   const moved = await opps.moveStage(CTX, o.id, 'WON');
@@ -59,14 +59,16 @@ test('الفوز يُولّد المشروع بقيمته وجهته وإدار�
   assert.equal(p.sector_id, 'INN');
   assert.equal(p.department_id, 'D_INN', 'الإدارة تُورَث — بها تُحسب إيرادات آخر السنة');
   assert.equal(p.client_id, 'CL');
-  assert.equal(p.contract_value_halalas, 3_000_000 * 100, 'وقيمتها — فلا يظهر المشروع بصفر يوم فوزه');
+  assert.equal(p.contract_value_halalas, null, 'قيمة البيع لا تتحول إلى عقد بلا تأكيد');
+  assert.equal(p.rag, null);
+  assert.equal((await db.get('SELECT value_halalas FROM opportunity WHERE id = ?', [o.id])).value_halalas, 3_000_000 * 100);
   assert.equal(p.status, 'NOT_STARTED', 'ويبدأ «لم يبدأ» — بقية معلوماته تُكتب من صفحته');
 });
 
 test('والفوز مرتين لا يُولّد مشروعين — ازدواج المشروع ازدواجٌ للقيمة في المحفظة', async () => {
   const o = await opps.createOpportunity(CTX, { title_ar: 'فرصة تتكرّر', sector_id: 'SOL', value_sar: 1000, stage_id: 'LEAD' });
   await opps.moveStage(CTX, o.id, 'WON');
-  await opps.moveStage(CTX, o.id, 'LEAD', 'أُغلقت بالخطأ');
+  await assert.rejects(() => opps.moveStage(CTX, o.id, 'LEAD', 'أُغلقت بالخطأ'), /لم يُحذف أي سجل/);
   await opps.moveStage(CTX, o.id, 'WON');
   const n = await db.all('SELECT id FROM project WHERE source_opp_id = ? AND deleted_at IS NULL', [o.id]);
   assert.equal(n.length, 1, 'مشروعٌ واحد مهما تكرّر النقل');
@@ -83,7 +85,8 @@ test('كل مشروع يُنشأ تُولَد له فرصة مكسوبة — «�
   assert.equal(o.value_halalas, 750_000 * 100);
   assert.equal(o.client_id, 'CL');
   assert.equal(o.source, 'project', 'معلَّمة بمصدرها — بها يُعرف اتجاه الحقيقة');
-  assert.equal(o.year, 2026, 'وسنتها سنة بدء المشروع لا سنة الخادم');
+  assert.equal(o.year, null, 'لا تُستنتج سنة البيع من التنفيذ');
+  assert.equal(o.exclude_from_sales, 1);
   const hist = await db.get('SELECT to_stage_id FROM opportunity_stage_history WHERE opportunity_id = ?', [o.id]);
   assert.equal(hist.to_stage_id, 'WON', 'وسجلّ المراحل يقول متى سُجِّل الفوز');
 });
@@ -168,14 +171,14 @@ test('الاستدراك يربط المشروع بفرصته القائمة ب�
   assert.equal(afterN, before, 'ولم تُنشأ فرصة له — الربط لا الإنشاء');
 });
 
-test('ومشروعُ سنةٍ ماضية بلا فرصة يُسجَّل في سنته ويُعلَّم تاريخياً — فلا يتحرّك رقمٌ أُعلن', async () => {
+test('المشروع التاريخي بلا سنة بيع يبقى غير منسوب إلى سنة ومستبعداً من المبيعات', async () => {
   await db.insert('project', { id: 'P_OLD', name_ar: 'عملٌ قديم لا شبيه له', sector_id: 'SOL',
     status: 'COMPLETED', contract_value_halalas: 500_000_00, start_date: '2024-02-01', created_at: T });
   const r = await backfill.backfillProjectOpportunities({ force: true, now: new Date('2026-03-01T00:00:00Z') });
-  assert.ok(r.created.some((x) => x.project === 'عملٌ قديم لا شبيه له' && x.year === 2024 && x.historic));
+  assert.ok(r.created.some((x) => x.project === 'عملٌ قديم لا شبيه له' && x.year === null && x.historic));
   const oid = (await db.get('SELECT source_opp_id FROM project WHERE id = ?', ['P_OLD'])).source_opp_id;
   const o = await db.get('SELECT year, exclude_from_sales, value_halalas FROM opportunity WHERE id = ?', [oid]);
-  assert.equal(Number(o.year), 2024, 'في سنته');
+  assert.equal(o.year, null, 'السنة غير معروفة؛ لا نستنتجها من التنفيذ');
   assert.equal(Number(o.exclude_from_sales), 1, 'ومعلَّمة «تاريخي» كما تُعلَّم الفرص المستوردة');
   assert.equal(o.value_halalas, 500_000_00, 'وبقيمة مشروعها');
 });
@@ -213,4 +216,60 @@ test('صفحة المشروع تعرض شريط التعديل الكامل وب
   assert.match(html, /data-action="prj-identity-save"/);
   assert.match(html, /أضف المخرجات دفعة واحدة/);
   assert.match(html, /data-action="dlvx-parse"/);
+});
+
+
+test('استكمال المشروع يحفظ البيانات والفرصة المصدر ويظل قابلاً للاستئناف', async () => {
+  const { projectDetailPage } = await import('../../src/web/views/pmo.js');
+  const o = await opps.createOpportunity(CTX, { title_ar: 'مصدر البيع المحفوظ', sector_id: 'SOL', client_id: 'CL', value_sar: 54321, year: 2025, stage_id: 'LEAD' });
+  const won = await opps.moveStage(CTX, o.id, 'WON');
+  const original = await db.get('SELECT * FROM opportunity WHERE id = ?', [o.id]);
+  let html = await projectDetailPage(ADMIN, won.project_id);
+  assert.match(html, /id="project-setup"/);
+  assert.match(html, /قيمة البيع المسجّلة/);
+  assert.ok(html.includes((await import('../../src/core/util/ids.js')).fmtSar(5432100)));
+  const setup = html.match(/<section id="project-setup"[\s\S]*?<\/section>/)[0];
+  assert.match(setup, /مسجّل — راجعه/);
+  assert.match(setup, /يحتاج استكمالاً/);
+  assert.match(setup, /ليست نسبة إنجاز/);
+  assert.equal((setup.match(/data-action="project-setup-open"/g) || []).length, 6);
+  assert.match(html, /ليست تأكيداً لقيمة العقد/);
+  assert.match(html, /غير مقيّم/);
+  assert.match(html, /id="prj-value"[^>]+value=""/);
+  await projects.updateProject(CTX, won.project_id, { start_date: '2026-01-01', end_date: '2026-12-31', contract_value_sar: 55000 });
+  html = await projectDetailPage(ADMIN, won.project_id);
+  assert.match(html, /value="2026-01-01"/);
+  assert.match(html, /value="55000"/);
+  assert.deepEqual(await db.get('SELECT * FROM opportunity WHERE id = ?', [o.id]), original);
+  await sync.ensureProjectForWonOpportunity(CTX, original);
+  const rows = await db.all('SELECT * FROM project WHERE source_opp_id = ? AND deleted_at IS NULL', [o.id]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].contract_value_halalas, 5500000);
+  assert.equal(rows[0].start_date, '2026-01-01');
+  await projects.updateProject(CTX, won.project_id, { rag: 'AMBER' });
+  await projects.updateProject(CTX, won.project_id, { rag: null });
+  assert.equal((await db.get('SELECT rag FROM project WHERE id = ?', [won.project_id])).rag, null);
+});
+
+test('تأكيد سنة البيع يصلح المرآة الجديدة دون تغيير سنة التنفيذ أو الاستبعاد التاريخي', async () => {
+  const p = await projects.createProject(CTX, { name_ar: 'سنة مستقلة', sector_id: 'SOL', start_date: '2026-01-01' });
+  const link = await db.get('SELECT source_opp_id FROM project WHERE id = ?', [p.id]);
+  const before = await db.get('SELECT * FROM opportunity WHERE id = ?', [link.source_opp_id]);
+  assert.equal(before.year, null);
+  assert.equal(before.exclude_from_sales, 1);
+  const html = await (await import('../../src/web/views/pmo.js')).projectDetailPage(ADMIN, p.id);
+  assert.match(html, /سنة البيع غير مؤكدة/);
+  await assert.rejects(() => opps.updateOpportunity(CTX, link.source_opp_id, { year: 0 }), /السنة غير صحيحة/);
+  await opps.updateOpportunity(CTX, link.source_opp_id, { year: 2025 });
+  const after = await db.get('SELECT * FROM opportunity WHERE id = ?', [link.source_opp_id]);
+  assert.equal(after.year, 2025);
+  assert.equal(after.exclude_from_sales, 0);
+  assert.equal((await db.get('SELECT start_date FROM project WHERE id = ?', [p.id])).start_date, '2026-01-01');
+  await db.update('opportunity', link.source_opp_id, { exclude_from_sales: 1 });
+  await opps.updateOpportunity(CTX, link.source_opp_id, { year: 2024 });
+  assert.equal((await db.get('SELECT exclude_from_sales FROM opportunity WHERE id = ?', [link.source_opp_id])).exclude_from_sales, 1);
+  const explicit = await projects.createProject(CTX, { name_ar: 'بيع مؤكد', sector_id: 'SOL', sale_year: 2025, start_date: '2026-02-01' });
+  const e = await db.get('SELECT o.year,o.exclude_from_sales FROM opportunity o JOIN project p ON p.source_opp_id=o.id WHERE p.id=?', [explicit.id]);
+  assert.equal(e.year, 2025); assert.equal(e.exclude_from_sales, 0);
+  await assert.rejects(() => projects.createProject(CTX, { name_ar: 'سنة خاطئة', sector_id: 'SOL', sale_year: 'wrong' }), /سنة البيع غير صحيحة/);
 });

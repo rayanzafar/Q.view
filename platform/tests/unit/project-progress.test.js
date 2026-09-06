@@ -107,3 +107,71 @@ test('نسبة الفوترة فراغ لا صفر حين لا ختم فوترة
   const withStamp = deliveryProgress([{ ...rows[0], invoiced_at: '2026-01-01' }, rows[1]]);
   assert.equal(withStamp.invoiced, 1);
 });
+
+test('معلم معلّق بلا تاريخ أو بتاريخ غير صالح لا يثبت سلامة الجدول', () => {
+  const r = scheduleHealth([
+    { id: 'missing', status: 'PENDING' },
+    { id: 'invalid', status: 'PENDING', due_date: '2026-02-30' },
+    { id: 'future', status: 'PENDING', due_date: '2026-12-01' },
+  ], '2026-06-15');
+  assert.equal(r.tone, 'slate');
+  assert.deepEqual(r.undated.map((m) => m.id), ['missing', 'invalid']);
+  assert.equal(r.overdue.length, 0);
+  assert.match(r.note, /لا يمكن تقييم/);
+  assert.doesNotMatch(r.note, /المعالم في مواعيدها/);
+});
+
+test('نقص التواريخ لا يخفي تأخرًا معلومًا أو استحقاقًا قريبًا', () => {
+  const unknown = { id: 'missing', status: 'PENDING' };
+  const overdue = scheduleHealth([unknown, { id: 'late', status: 'PENDING', due_date: '2026-05-01' }], '2026-06-15');
+  assert.equal(overdue.tone, 'red');
+  assert.equal(overdue.overdue.length, 1);
+  assert.match(overdue.note, /تحتاج تاريخًا/);
+  const soon = scheduleHealth([unknown, { id: 'soon', status: 'PENDING', due_date: '2026-07-01' }], '2026-06-15');
+  assert.equal(soon.tone, 'amber');
+  assert.equal(soon.undated.length, 1);
+  const met = scheduleHealth([{ id: 'met', status: 'MET' }, { ...unknown, deleted_at: '2026-01-01' }], '2026-06-15');
+  assert.equal(met.tone, 'green');
+  assert.equal(met.undated.length, 0);
+});
+
+test('دليل الإنجاز يكشف اختلاف الاكتمال والاعتماد دون تعديل الحالات أو الحساب', async () => {
+  const { progressEvidence } = await import('../../src/modules/pmo/progress.js');
+  const rows = [D('a', 'ACCEPTED', 60), D('b', 'DRAFT', 40)];
+  const project = { status: 'COMPLETED', progress_pct: 12 };
+  const before = structuredClone({ rows, project });
+  const d = deliveryProgress(rows);
+  const evidence = progressEvidence(project, d);
+  assert.equal(evidence.acceptedPct, 60);
+  assert.equal(evidence.storedPct, 12);
+  assert.ok(evidence.warnings.some((w) => w.code === 'COMPLETED_WITH_UNACCEPTED_OUTPUTS'));
+  assert.deepEqual({ rows, project }, before);
+});
+
+test('الأوزان الجزئية والقيم الغائبة ظاهرة كفجوات مستقلة عن النسبة', async () => {
+  const { progressEvidence } = await import('../../src/modules/pmo/progress.js');
+  const d = deliveryProgress([D('a', 'ACCEPTED', 100, { weight: 70 }), D('b', 'DRAFT'), D('c', 'DRAFT', 0)]);
+  assert.equal(d.acceptedPct, 100, 'يحافظ الفحص على الصيغة الحالية إلى أن يعتمد المالك تغييرها');
+  const e = progressEvidence({ status: 'IN_PROGRESS' }, d);
+  assert.deepEqual(e.weighting, { basis: 'amount', partialExplicitWeights: true, unvaluedCount: 1, zeroWeightCount: 2 });
+  assert.deepEqual(e.warnings.map((w) => w.code), ['PARTIAL_EXPLICIT_WEIGHTS', 'UNVALUED_DELIVERABLES', 'ZERO_WEIGHT_DELIVERABLES']);
+});
+
+test('الخطة الصريحة لا تتهم مخرجًا مجانيًا بأنه مستبعد من القياس', async () => {
+  const { progressEvidence } = await import('../../src/modules/pmo/progress.js');
+  const d = deliveryProgress([D('a', 'ACCEPTED', 100, { weight: 60 }), D('b', 'DRAFT', 0, { weight: 40 })]);
+  assert.equal(d.acceptedPct, 60);
+  const e = progressEvidence({}, d);
+  assert.equal(e.weighting.basis, 'explicit');
+  assert.equal(e.weighting.zeroWeightCount, 0);
+  assert.equal(e.warnings.length, 0);
+});
+
+test('غياب المخرجات والتساوي الافتراضي لا يقدمان كخطة معتمدة', async () => {
+  const { progressEvidence } = await import('../../src/modules/pmo/progress.js');
+  assert.equal(progressEvidence({ status: 'IN_PROGRESS', progress_pct: 0 }).warnings[0].code, 'NO_PROGRESS_EVIDENCE');
+  assert.equal(progressEvidence({ status: 'COMPLETED' }).warnings[0].code, 'COMPLETED_WITHOUT_OUTPUTS');
+  assert.equal(progressEvidence({ status: 'IN_PROGRESS', progress_pct: 40 }).warnings.length, 0);
+  const d = deliveryProgress([D('a', 'DRAFT', 0), D('b', 'DRAFT', 0)]);
+  assert.equal(progressEvidence({}, d).warnings[0].code, 'EQUAL_WEIGHT_FALLBACK');
+});

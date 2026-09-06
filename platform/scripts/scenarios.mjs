@@ -335,10 +335,20 @@ async function seedScenarioData({ C, db, D, dataset, rec, remember, seedMod }) {
   for (const s of dataset.sectors) {
     const r = await C.req('demo.admin', '/api/org/sectors', { method: 'POST', body: {
       id: s.id, name_ar: s.name_ar, name_en: s.name_en, color: s.color, kind: s.kind,
-      target_sales_sar: s.target_sales_sar, target_revenue_sar: s.target_revenue_sar,
-      target_margin_pct: s.target_margin_pct, sort_order: s.sort_order } });
+      sort_order: s.sort_order } });
     t.status(r, 200, `إنشاء ${s.name_ar}`);
+    if (r.status !== 200 || r.json?.id !== s.id) throw new Error(`تعذّر إنشاء قطاع التجربة ${s.id}: ${r.text}`);
     ids.sector[s.id] = s.id; remember('sector', s.id);
+    if (s.kind === 'delivery') {
+      const target = await C.req('demo.admin', `/api/org/sectors/${s.id}/targets`, { method: 'PUT', body: {
+        year: dataset.year, revision: 0, reason: D.tag('مستهدفات سيناريو اصطناعي'),
+        target_sales_sar: s.target_sales_sar, target_revenue_sar: s.target_revenue_sar,
+      } });
+      t.status(target, 200, `تحديد مستهدف ${s.name_ar} لسنة ${dataset.year}`);
+      if (target.status !== 200 || !target.json?.budget?.id) throw new Error(`تعذّر إنشاء مستهدف التجربة ${s.id}: ${target.text}`);
+      remember('budget', target.json.budget.id);
+      t.eq(target.json.budget.fiscal_year, dataset.year, 'المستهدف محفوظ بسنة محددة');
+    }
   }
 
   // إدارتا العرض + ربط حسابَي «مدير إدارة» و«مدير مباشر» بسجلَي موظف — بدونها يبقى نطاق
@@ -1008,19 +1018,19 @@ scenario('defects', 'حراسة ما عولج: كل عيب مثبَّت سابق
     'ولا يكتب فيها: التعديل يبقى على منح التعديل وحده');
 
   // ⑧ [عولج — كان SCN-D8] الفرصة المكسوبة كانت تعود إلى الترشيح بضغطة واحدة **والمبيعات
-  // المعلنة تتغيّر بها** بلا سبب ولا أثر. صار التراجع يستوجب سبباً مكتوباً ويُسجَّل بقيمته.
+  // المعلنة تتغيّر بها** بلا سبب ولا أثر. وبعد ربطه بمشروع صار التراجع التلقائي ممنوعاً لحفظ السجلين.
   const back = await C.req('demo.bd', `/api/opportunities/${ids.opp.sol_a}/stage`, { method: 'POST', body: { stage: 'WON' } });
   t.status(back, 200, 'التقدّم إلى الفوز مفتوح كما كان');
   const bare = await C.req('demo.bd', `/api/opportunities/${ids.opp.sol_a}/stage`, { method: 'POST', body: { stage: 'LEAD' } });
   t.status(bare, 400, 'والتراجع بلا سبب مكتوب مردود');
   const withReason = await C.req('demo.bd', `/api/opportunities/${ids.opp.sol_a}/stage`,
     { method: 'POST', body: { stage: 'LEAD', note: 'العميل ألغى الترسية' } });
-  t.status(withReason, 200, 'وبسببٍ مكتوب يمرّ');
-  const revAudit = await db.get(
-    "SELECT detail_json FROM audit_log WHERE resource = 'opportunity' AND resource_id = ? AND action = 'update' ORDER BY at DESC LIMIT 1",
-    [ids.opp.sol_a]);
-  t.ok(revAudit && JSON.parse(revAudit.detail_json).won_reversal === true,
-    'ويُسجَّل التراجع حدثاً مميَّزاً لا تغيير مرحلة عادياً');
+  t.status(withReason, 400, 'والسبب المكتوب لا يلغي مشروعاً مرتبطاً تلقائياً');
+  t.says(withReason, /الفرصة مرتبطة بمشروع/, 'يوجّه إلى مراجعة الربط دون حذف');
+  t.eq((await db.get('SELECT stage_id FROM opportunity WHERE id = ?', [ids.opp.sol_a]))?.stage_id,
+    'WON', 'الفرصة بقيت مكسوبة بعد رفض التراجع');
+  t.ok(!!await db.get('SELECT id FROM project WHERE source_opp_id = ? AND deleted_at IS NULL', [ids.opp.sol_a]),
+    'المشروع المرتبط بقي محفوظاً');
   for (const h of await db.all('SELECT id FROM opportunity_stage_history WHERE opportunity_id = ?', [ids.opp.sol_a])) {
     remember('opportunity_stage_history', h.id);
   }
@@ -1253,7 +1263,7 @@ scenario('ai-governance', 'المساعد: محرّك محلي، ولا كتاب
   remember('ai_activity_log', withReason.json?.applyToken);
   const blocked = await C.req('demo.bd', '/api/ai/apply', { method: 'POST', body: { applyToken: withReason.json?.applyToken } });
   t.status(blocked, 400, 'وحتى بسببٍ مكتوب: لا تراجع عن فوزٍ نشأ عنه مشروع');
-  t.says(blocked, /نشأ عنها مشروع/, 'والرسالة تدلّ على المشروع');
+  t.says(blocked, /الفرصة مرتبطة بمشروع/, 'والرسالة تدلّ على المشروع');
 
   // ⑦ الكتابة الموسَّعة: مهمة تُنشأ وتُغيَّر حالتها عبر خدمة المهام بقواعدها
   const tp = await C.req('demo.employee', '/api/ai/preview', { method: 'POST',

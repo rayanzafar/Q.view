@@ -3,6 +3,7 @@
 // يُركَّب داخل apiRouter بسطر واحد من جلسة التكامل، بعد requireAuth().
 import { Router } from 'express';
 import * as org from './org.js';
+import { sectorTargets, saveSectorTargets } from './sector-targets.js';
 import * as orgQuality from './org-quality.js';
 
 export const orgRouter = Router();
@@ -31,3 +32,7 @@ orgRouter.delete('/employees/:id/link', h((req) => org.unlinkUserFromEmployee(re
 // نفس المسارين ضمن مساحة org (اتساقاً مع بقية مسارات الهيكل) — نفس الخدمة تماماً
 orgRouter.post('/org/employees/:id/link', h((req) => org.linkUserToEmployee(req.ctx, linkBody(req))));
 orgRouter.delete('/org/employees/:id/link', h((req) => org.unlinkUserFromEmployee(req.ctx, { employeeId: req.params.id })));
+
+// Annual targets: services enforce sector scope and revision checks.
+orgRouter.get('/org/sectors/:id/targets', h((req) => sectorTargets(req.ctx.user, { sector: req.params.id, year: req.query.year })));
+orgRouter.put('/org/sectors/:id/targets', h((req) => saveSectorTargets(req.ctx, req.params.id, req.body || {})));

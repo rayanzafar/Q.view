@@ -119,7 +119,7 @@ const HEALTH = [
 function healthOf(p, dev, lateDays) {
   if (p.rag === 'RED' || (dev != null && dev > 15) || (lateDays != null && lateDays > 30)) return HEALTH[0];
   if (p.rag === 'AMBER' || (dev != null && dev > 10) || lateDays != null || p.status === 'ON_HOLD') return HEALTH[1];
-  return HEALTH[2];
+  return p.rag === 'GREEN' ? HEALTH[2] : { k: 'unknown', label: 'غير مقيّم', color: '#64748b', rank: 3 };
 }
 
 // ── الشريط المزدوج (صرف٪ فوقه إنجاز٪) — مسار واحد ~110px: شبح الصرف بنفسجي شفاف تحت شريط
@@ -430,7 +430,7 @@ export async function projectsPage(user, opts = {}) {
     return `<div class="kcard" ${dnd} data-id="${p.id}" data-sector="${p.sector_id || ''}" data-hay="${esc(hay)}" style="--_c:${ui.color};cursor:pointer" onclick="Sanad.projOpen('${p.id}')">
       <div class="kt">${esc(p.name_ar)}</div>
       <div class="km">${cl ? `<span style="display:inline-flex;align-items:center;gap:.25rem">${icon('building')}${esc(cl)}</span>` : ''}
-        ${p.rag ? pill(RAG_LABEL[p.rag] || RAG_LABEL.GREEN, ragTone[p.rag] || 'slate') : ''}</div>
+        ${pill(RAG_LABEL[p.rag] || 'غير مقيّم', ragTone[p.rag] || 'slate')}</div>
       ${/* عمودُ اللوح يقول الحالة لمن يقرأ؛ ومن يملك تغييرها يجدها هنا بلا سحبٍ ولا فأرة —
            السحب وحده كان الطريق، وهو لا يعمل باللمس ولا بلوحة المفاتيح. */''}
       ${canEditRow(p) ? `<div class="km">${statusSelect(p, { compact: true, inList: true, tip: 'الإغلاق قرارُك، ولا يتم من تلقاء نفسه' })}</div>` : ''}
@@ -2101,7 +2101,8 @@ export async function projectDetailPage(user, projectId, opts = {}) {
   const tmap = Object.fromEntries(tasks.map((t) => [t.status, t.n]));
   const client = await get('SELECT id, name_ar, type FROM client WHERE id=?', [p.client_id]);
   const owner = p.owner_user_id ? await get('SELECT name_ar, username FROM app_user WHERE id=?', [p.owner_user_id]) : null;
-  const srcOpp = p.source_opp_id ? await get('SELECT id, title_ar FROM opportunity WHERE id=? AND deleted_at IS NULL', [p.source_opp_id]) : null;
+  const sourceOpportunity = p.source_opp_id ? await get('SELECT * FROM opportunity WHERE id=? AND deleted_at IS NULL', [p.source_opp_id]) : null;
+  const srcOpp = sourceOpportunity && can(user, 'read', 'opportunity', sourceOpportunity) ? sourceOpportunity : null;
   const contract = await get("SELECT id, code, value_halalas, status, start_date, end_date FROM contract WHERE project_id=? AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1", [p.id]);
   // بابُ خدمة الحوكمة يحكم بعمود الصفّ وحده فيَرُدّ محرِّرَ الشراكة عن مشروعٍ فُتح له من
   // الباب أعلاه. ومن قرأ المشروعَ قرأ توابعَه — كما تقرأ الصفحةُ مهامَه وعقدَه وفواتيرَه
@@ -2166,19 +2167,18 @@ export async function projectDetailPage(user, projectId, opts = {}) {
     scheduleNote = gap < -12 ? 'متأخر عن الجدول' : gap < -4 ? 'متأخر قليلاً عن الجدول' : (today > ed ? 'تجاوز تاريخ الانتهاء' : 'ضمن الجدول');
     if (today > ed && prog.executivePct < 100) { scheduleTone = 'var(--red)'; scheduleNote = 'تجاوز تاريخ الانتهاء'; }
   }
-  // سنة التوقيع معلومة مستقلة لا تُصنِّف المشروع: عقدٌ وُقِّع في سنة وتنفيذُه يمتد إلى ما
-  // بعدها، وتصنيفُه بسنة توقيعه وحدها يُخرج مشروعاً نشطاً من قائمة سنته الجارية. التصنيف
-  // بتقاطع المدة مع السنة (في خدمة المشاريع)، والتوقيع يُذكر خبراً لا مرشِّحاً.
-  const signYear = String(contract?.start_date || p.start_date || '').slice(0, 4);
+  // تاريخ بدء العقد ليس تاريخ توقيعه أو البيع؛ لا نستخدم بدء المشروع بديلاً له.
+  const signYear = String(contract?.start_date || '').slice(0, 4);
 
-  const ragColor = p.rag === 'RED' ? 'red' : p.rag === 'AMBER' ? 'amber' : 'green';
+  const ragColor = p.rag === 'RED' ? 'red' : p.rag === 'AMBER' ? 'amber' : p.rag === 'GREEN' ? 'green' : 'slate';
   const ragTip = 'يمكنك تغييرها يدوياً في أي وقت — قد تبقى «حرج» أو «في خطر» رغم اختيارك لون أهدأ إن كان الانحراف المالي أو الزمني الفعلي كبيراً، حتى لا تُخفى مشكلة حقيقية';
   const ragBadge = canEdit
     ? `<select data-action-change="prj-rag-sel" data-id="${p.id}" aria-label="حالة صحة المشروع" title="${esc(ragTip)}"
-        style="font-size:11.5px;font-weight:700;padding:.22rem .55rem;border-radius:999px;border:1px solid transparent;cursor:pointer;background:${ragColor === 'red' ? '#fee2e2' : ragColor === 'amber' ? '#fef3c7' : '#dcfce7'};color:${ragColor === 'red' ? '#b91c1c' : ragColor === 'amber' ? '#92400e' : '#059669'}">
+        style="font-size:11.5px;font-weight:700;padding:.22rem .55rem;border-radius:999px;border:1px solid transparent;cursor:pointer;background:${ragColor === 'red' ? '#fee2e2' : ragColor === 'amber' ? '#fef3c7' : ragColor === 'green' ? '#dcfce7' : '#f1f5f9'};color:${ragColor === 'red' ? '#b91c1c' : ragColor === 'amber' ? '#92400e' : ragColor === 'green' ? '#059669' : '#475569'}">
+        <option value="" ${p.rag == null ? 'selected' : ''}>غير مقيّم</option>
         ${['GREEN', 'AMBER', 'RED'].map((v) => `<option value="${v}" ${p.rag === v ? 'selected' : ''}>${RAG_LABEL[v]}</option>`).join('')}
       </select>`
-    : `<span title="${esc(ragTip)}">${pill(RAG_LABEL[p.rag] || RAG_LABEL.GREEN, ragColor)}</span>`;
+    : `<span title="${esc(ragTip)}">${pill(RAG_LABEL[p.rag] || 'غير مقيّم', ragColor)}</span>`;
 
   // ── حالة المشروع: قائمة تُغيَّر لا شارةٌ تُقرأ ────────────────────────────────
   // «لازم في المشاريع تخلّي المشاريع المنتهية والقائمة والمعلّقة والملغاة تكون موجودة، وأقدر
@@ -2374,8 +2374,8 @@ export async function projectDetailPage(user, projectId, opts = {}) {
         ${clientOptions.map((c) => `<option value="${esc(c.id)}"${p.client_id === c.id ? ' selected' : ''}>${esc(c.name_ar)}</option>`).join('')}
       </select>`)}
       ${canMoney ? idField('قيمة العقد (ر.س.)',
-    `<input id="prj-value" class="input tnum" style="font-size:12px" type="number" min="0" step="1" value="${Math.round((p.contract_value_halalas || 0) / 100)}">`,
-    'ما وُقِّع فعلاً — يُصحَّح هنا متى تغيّر') : ''}
+    `<input id="prj-value" class="input tnum" style="font-size:12px" type="number" min="0" step="0.01" value="${p.contract_value_halalas == null ? '' : p.contract_value_halalas / 100}" placeholder="لم تؤكد بعد">`,
+    'أدخل القيمة المؤكدة من العقد؛ ترك الحقل فارغاً يحفظ القيمة الحالية') : ''}
       ${idField('تاريخ البدء', `<input id="prj-start" class="input" style="font-size:12px" type="date" value="${esc(p.start_date || '')}">`)}
       ${idField('تاريخ الانتهاء', `<input id="prj-end" class="input" style="font-size:12px" type="date" value="${esc(p.end_date || '')}">`, 'التاريخان معاً يرسمان المدّة')}
     </div>
@@ -2393,10 +2393,10 @@ export async function projectDetailPage(user, projectId, opts = {}) {
       ${/* قيمة العقد رقمُ مالٍ ولو كانت في «نظرة عامة»: حجبُ القسم وحده يترك الرقم في الرأس،
            وهو أظهرُ موضعٍ في الصفحة. وأظهره التصييرُ لكل دور لا المصفوفة — فالمصفوفة تعرف من
            يملك المنح، والصفحة وحدها تعرف أين طُبع الرقم. */''}
-      ${canMoney ? fact('قيمة العقد', headlineVal ? `<span class="tnum">${fmtSar(headlineVal)}</span>` : `<span style="color:var(--faint)">${G.notRecorded}</span>`) : ''}
+      ${canMoney ? fact('قيمة العقد', p.contract_value_halalas != null || contract?.value_halalas != null ? `<span class="tnum">${fmtSar(p.contract_value_halalas ?? contract.value_halalas)}</span>` : `<span style="color:var(--faint)">${G.notRecorded}</span>`) : ''}
       ${fact('المدة', durTxt === '—' ? `<span style="color:var(--faint)">${G.notRecorded}</span>` : `<span style="font-size:11.5px">${durTxt}</span>`)}
-      ${signYear ? fact('سنة التوقيع', `<span class="tnum">${esc(signYear)}</span>`,
-    '<div style="font-size:10px;color:var(--faint)">خبرٌ عن العقد — لا يُصنَّف بها المشروع</div>') : ''}
+      ${signYear ? fact('سنة بدء العقد', `<span class="tnum">${esc(signYear)}</span>`,
+    '<div style="font-size:10px;color:var(--faint)">من تاريخ بدء العقد المسجّل — ليست سنة البيع</div>') : ''}
       ${srcOpp ? fact('الفرصة المصدر', `<a href="/app/opportunity/${esc(srcOpp.id)}" style="color:var(--brand2);text-decoration:none">${esc(String(srcOpp.title_ar).slice(0, 28))}</a>`) : ''}
       ${fact('الإدارة', projDept ? esc(projDept.name_ar) : `<span style="color:var(--faint)">غير مُسنَد</span>`)}
       ${/* المشاركات قراءةً بجوار المسؤولة — لمن يقرأ ولا يعدّل. مشروعٌ بلا شراكة لا يطبع
@@ -2876,6 +2876,25 @@ export async function projectDetailPage(user, projectId, opts = {}) {
   const regCount = gov.risks.filter((r) => r.status !== 'CLOSED').length + openIss.length
     + gov.decisions.length + gov.changes.filter((c) => c.status === 'REQUESTED').length;
 
+  // Checklist reads saved evidence only. It is not a launch approval or an execution percentage.
+  const setupItems = [
+    ['الجهة والقطاع والمدير', !!(p.client_id && p.sector_id && p.owner_user_id), 'overview'],
+    ['تواريخ التنفيذ', !!(p.start_date && p.end_date), 'overview'],
+    ...(canMoney ? [['قيمة العقد المؤكدة', p.contract_value_halalas != null, 'overview']] : []),
+    ['المخرجات وفتراتها', dlv.length > 0 && dlv.every((d) => d.year && d.month), 'deliverables'],
+    ['خطة العمل', phases.length > 0 || gov.milestones.length > 0, 'phases'],
+    ['الفريق والتسكين', team.length > 0, 'team'],
+  ];
+  const setupPanel = `<section id="project-setup" class="card" style="padding:1rem;margin-bottom:1rem">
+    <h3 style="margin:0 0 .5rem">استكمال المشروع</h3>
+    <p style="font-size:12px;color:var(--muted);line-height:1.8">راجع البيانات المحفوظة وأكمل كل قسم ثم احفظه؛ يمكنك العودة لاحقاً إلى المشروع نفسه. وجود البيانات لا يعني اعتمادها أو بدء التنفيذ، وهذه القائمة ليست نسبة إنجاز.</p>
+    ${srcOpp ? `<p style="font-size:12px">المصدر: <a href="/app/opportunity/${esc(srcOpp.id)}">${esc(srcOpp.title_ar)}</a>${canMoney ? ` · قيمة البيع المسجّلة: <span class="tnum">${fmtSar(srcOpp.value_halalas || 0)}</span> — ليست تأكيداً لقيمة العقد` : ''}</p>
+    ${srcOpp.year == null ? `<p style="font-size:12px;color:var(--amber)">سنة البيع غير مؤكدة؛ لا يمكن نسبته إلى مبيعات سنة محددة. <a href="/app/opportunity/${esc(srcOpp.id)}">راجع سنة البيع</a></p>` : ''}` : ''}
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.5rem">${setupItems.map(([label, present, section]) => `<a class="btn" href="#sec-${section}" data-action="project-setup-open" data-section="${section}" style="justify-content:space-between;text-align:start;white-space:normal">${label}<span style="color:var(--muted);font-size:11px">${present ? 'مسجّل — راجعه' : 'يحتاج استكمالاً'}</span></a>`).join('')}</div>
+    ${!canEdit ? '<p style="font-size:12px;color:var(--muted)">عرض فقط؛ استكمال بيانات المشروع يتطلب مسؤولاً لديه صلاحية التعديل.</p>' : ''}
+  </section>`;
+  const progressEvidence = prog.evidence?.warnings?.length ? `<div class="card" style="padding:.7rem 1rem;margin-bottom:1rem"><strong>أساس القياس يحتاج مراجعة</strong><ul>${prog.evidence.warnings.map((w) => `<li>${esc(w.message)}</li>`).join('')}</ul></div>` : '';
+
   const body = `
     ${PRJ_STATUS_CSS}
     <a href="/app/projects" style="font-size:12px;color:var(--muted)">← المشاريع</a>
@@ -2884,7 +2903,9 @@ export async function projectDetailPage(user, projectId, opts = {}) {
       <span title="${esc(projectKindTip(kindTag))}">${pill(esc(projectKindLabel(kindTag.key)), 'slate')}</span>
       <span style="font-size:12px;color:var(--muted)">${client ? esc(client.name_ar) : ''} · ${esc(p.code || '')}${p.financial_code ? ' · مالي ' + esc(p.financial_code) : ''}</span>
     </div>
+    ${setupPanel}
     ${headMeters}
+    ${progressEvidence}
     ${actsBlock}
     <div id="sec-overview">${sec('overview', 'نظرة عامة', { open: true, body: overviewBody })}</div>
     <div id="sec-phases">${sec('phases', 'المراحل والمعالم', { sub: prog.schedule.note, badge: cnt(phases.length + gov.milestones.length, prog.schedule.tone === 'red' ? 'red' : 'blue'), body: phasesBody })}</div>

@@ -221,6 +221,7 @@ test('رابط «بلاغ أو اقتراح» في ترويسة كل صفحة �
 // الأشكال الخمسة يُسقط الاختبار صراحةً بدل أن يمرّ بلا فحص.
 const PAGE_FN = {
   'revenue-review': P.revenueReviewPage,
+  'sector-targets': P.sectorTargetsPage,
   home: P.homePage,
   ceo: P.ceoPage, portfolio: P.portfolioPage, sector: P.sectorPage, opportunities: P.opportunitiesPage,
   'my-opportunities': P.myOpportunitiesPage, projects: P.projectsPage, tasks: P.tasksPage,

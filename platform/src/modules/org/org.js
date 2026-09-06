@@ -143,7 +143,12 @@ function normTargetHalalas(v) {
   if (!Number.isFinite(h) || h < 0) throw badRequest('اكتب المستهدف بالريال رقماً موجباً');
   return h;
 }
+function rejectLegacyTargets(data) {
+  if (['target_sales_sar', 'target_revenue_sar', 'target_margin_pct'].some((k) => k in data && data[k] !== '' && data[k] != null && Number(data[k]) !== 0))
+    throw badRequest('حدّد السنة من صفحة مستهدفات القطاع؛ لا يمكن حفظ مستهدف بلا سنة');
+}
 export async function createSector(ctx, data) {
+  rejectLegacyTargets(data);
   requireAdminSectors(ctx.user);
   if (!data.id || !data.name_ar) throw badRequest('المعرّف والاسم مطلوبان');
   if (!SECTOR_ID_RE.test(String(data.id))) throw badRequest('المعرّف يقبل الحروف والأرقام والشرطة فقط');
@@ -158,6 +163,8 @@ export async function createSector(ctx, data) {
   return await get('SELECT * FROM sector WHERE id = ?', [data.id]);
 }
 export async function updateSector(ctx, sectorId, data) {
+  if (['target_sales_sar', 'target_revenue_sar', 'target_margin_pct'].some((k) => k in data))
+    throw badRequest('عدّل المستهدف من صفحة مستهدفات القطاع بعد تحديد السنة');
   requireAdminSectors(ctx.user);
   const s = await get('SELECT * FROM sector WHERE id = ?', [sectorId]);
   if (!s) throw notFound('القطاع غير موجود');

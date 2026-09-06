@@ -14,6 +14,8 @@ import { approvedTaskSql } from '../../modules/pmo/task-approval.js';
 // قاعدة «مشروع السنة» الواحدة — نفس مرشّح صفحة المشاريع حرفاً (قرار المالك 2026-08-16).
 import { projectYearClause } from '../../modules/pmo/projects.js';
 
+import { annualSectorTarget } from '../../modules/org/sector-targets.js';
+
 const FY = () => config.fiscalYear;
 
 // ── الإيراد هنا **صافٍ** بعد فصل الضريبة (ترحيلة ٠١٩) ───────────────────────────────────────
@@ -30,6 +32,7 @@ export async function availableYears() {
   const rows = await all(`SELECT DISTINCT y FROM (
       SELECT year y FROM revenue_line WHERE year IS NOT NULL
       UNION SELECT year FROM opportunity WHERE year IS NOT NULL
+      UNION SELECT fiscal_year FROM budget
       UNION SELECT CAST(substr(start_date,1,4) AS INTEGER) FROM contract WHERE start_date IS NOT NULL
     ) WHERE y IS NOT NULL ORDER BY y DESC`);
   const years = new Set(rows.map((r) => r.y));
@@ -72,21 +75,24 @@ export async function companyOverview(user, opts = {}) {
       AND ${DELIVERY_SECTOR_SQL} ORDER BY sort_order`);
   const perSector = await Promise.all(sectors.map(async (s) => {
     const f = await sectorYearFigures(s.id, year);
+    const annual = await annualSectorTarget(s.id, year);
+    const target = annual.budget;
     const oppCount = (await get('SELECT COUNT(*) n FROM opportunity WHERE sector_id = ? AND deleted_at IS NULL', [s.id])).n;
     return {
       id: s.id, name_ar: s.name_ar, name_en: s.name_en, color: s.color, placeholder: !!s.is_placeholder,
-      revenue_halalas: f.revenue_halalas, target_revenue_halalas: s.target_revenue_halalas,
-      sales_halalas: f.sales_halalas, target_sales_halalas: s.target_sales_halalas,
+      revenue_halalas: f.revenue_halalas, target_revenue_halalas: target?.target_revenue_halalas ?? null,
+      sales_halalas: f.sales_halalas, target_sales_halalas: target?.target_sales_halalas ?? null,
       contracts_halalas: f.contracts_halalas, contracts_net_halalas: f.contracts_net_halalas,
       contracts_count: f.contracts_count,
-      revenue_pct: s.target_revenue_halalas ? Math.round((f.revenue_halalas / s.target_revenue_halalas) * 100) : 0,
-      sales_pct: s.target_sales_halalas ? Math.round((f.sales_halalas / s.target_sales_halalas) * 100) : 0,
+      target_status: annual.status,
+      revenue_pct: target?.target_revenue_halalas ? Math.round((f.revenue_halalas / target.target_revenue_halalas) * 100) : null,
+      sales_pct: target?.target_sales_halalas ? Math.round((f.sales_halalas / target.target_sales_halalas) * 100) : null,
       opp_count: oppCount,
     };
   }));
   const totals = perSector.reduce((a, s) => ({
-    revenue: a.revenue + s.revenue_halalas, target_revenue: a.target_revenue + s.target_revenue_halalas,
-    sales: a.sales + s.sales_halalas, target_sales: a.target_sales + s.target_sales_halalas,
+    revenue: a.revenue + s.revenue_halalas, target_revenue: a.target_revenue == null || s.target_revenue_halalas == null ? null : a.target_revenue + s.target_revenue_halalas,
+    sales: a.sales + s.sales_halalas, target_sales: a.target_sales == null || s.target_sales_halalas == null ? null : a.target_sales + s.target_sales_halalas,
   }), { revenue: 0, target_revenue: 0, sales: 0, target_sales: 0 });
   // Open pipeline (not year-bound): value of non-closed opportunities
   const pipeline = (await get(`SELECT COALESCE(SUM(o.value_halalas),0) v FROM opportunity o JOIN stage st ON st.id=o.stage_id
@@ -134,8 +140,9 @@ export async function sectorDashboard(user, sectorId, opts = {}) {
   const s = await get('SELECT * FROM sector WHERE id = ?', [sectorId]);
   if (!s) return null;
   const support = isSupportUnit(s);
-  const targetRevenue = support ? null : s.target_revenue_halalas;
-  const targetSales = support ? null : s.target_sales_halalas;
+  const annual = await annualSectorTarget(sectorId, year);
+  const targetRevenue = support ? null : annual.budget?.target_revenue_halalas ?? null;
+  const targetSales = support ? null : annual.budget?.target_sales_halalas ?? null;
   const f = await sectorYearFigures(sectorId, year);
   // عدّ المشاريع بعدسة السنة نفسها التي تعرضها اللوحة — قاعدة «مشروع السنة» الواحدة
   // (projectYearClause): كانت العدسة عمياء عن السنة فعرضت «صحة التنفيذ 2026» مشاريعَ
@@ -151,6 +158,8 @@ export async function sectorDashboard(user, sectorId, opts = {}) {
     rag: Object.fromEntries(rag.map((r) => [r.rag, r.n])),
     revenue_halalas: f.revenue_halalas, target_revenue_halalas: targetRevenue,
     sales_halalas: f.sales_halalas, target_sales_halalas: targetSales,
+    target_status: support ? 'not_applicable' : annual.status,
+    target_margin_pct: support ? null : annual.budget?.target_margin_pct ?? null,
     contracts_halalas: f.contracts_halalas, contracts_net_halalas: f.contracts_net_halalas,
     contracts_count: f.contracts_count,
     deliverables: Object.fromEntries(deliverables.map((r) => [r.status, r.n])),
@@ -300,9 +309,10 @@ export async function pipelineCoverage(sectorId, year) {
   // مستهدف المبيعات مجموع قطاعات التسليم وحدها: وحدة المساندة لا تُقاس بالمبيعات أصلاً، فأي
   // رقم مسجَّل عليها سهواً كان سيتضخّم به مستهدف الشركة كله وتنخفض به «تغطية خط الفرص».
   // الشرط مطبَّق في الحالتين (الشركة كلها وقطاع بعينه) كي لا يفترق حكم الرقمين على الوحدة نفسها.
-  const target = (await get(`SELECT COALESCE(SUM(target_sales_halalas),0) v FROM sector
-     WHERE active=1 AND deleted_at IS NULL AND ${DELIVERY_SECTOR_SQL} ${sectorId ? 'AND id = ?' : ''}`,
-    sectorId ? [sectorId] : [])).v;
+  const targetSectors = await all(`SELECT id FROM sector WHERE active=1 AND deleted_at IS NULL AND ${DELIVERY_SECTOR_SQL} ${sectorId ? 'AND id = ?' : ''}`, sectorId ? [sectorId] : []);
+  const annualTargets = await Promise.all(targetSectors.map((s) => annualSectorTarget(s.id, year)));
+  const target = annualTargets.length && annualTargets.every((t) => t.budget?.target_sales_halalas != null)
+    ? annualTargets.reduce((sum, t) => sum + t.budget.target_sales_halalas, 0) : null;
   const soldRow = await get(`SELECT COALESCE(SUM(o.value_halalas),0) v FROM opportunity o JOIN stage st ON st.id=o.stage_id
      WHERE st.is_won=1 AND o.exclude_from_sales=0 AND o.year=? ${sectorId ? 'AND o.sector_id=?' : ''} AND o.deleted_at IS NULL`,
     [year, ...(sectorId ? [sectorId] : [])]);
@@ -316,7 +326,7 @@ export async function pipelineCoverage(sectorId, year) {
        AND (o.year = ? OR o.year IS NULL)
        ${sectorId ? 'AND o.sector_id=?' : ''} AND o.deleted_at IS NULL`,
     [year, ...(sectorId ? [sectorId] : [])]);
-  const remaining = Math.max(0, target - soldRow.v);
+  const remaining = target == null ? null : Math.max(0, target - soldRow.v);
   const weighted = Math.round(openRow.weighted);
   return { open_halalas: openRow.raw, weighted_halalas: weighted,
     remaining_target_halalas: remaining, coverage: remaining ? +(weighted / remaining).toFixed(1) : null };

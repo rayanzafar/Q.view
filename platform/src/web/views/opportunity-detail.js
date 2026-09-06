@@ -290,7 +290,7 @@ export async function opportunityDetailPage(user, oppId, opts = {}) {
             <option value="0">بدون ضريبة</option>
           </select></div>`, '<span id="oc-value-hint"></span>', 2)}
         ${fld('احتمال الفوز ٪', `<input id="oc-win" class="input tnum" type="number" min="0" max="100" style="width:100%;font-size:12.5px" value="${o.win_pct == null ? '' : Number(o.win_pct)}">`)}
-        ${fld('السنة', `<input id="oc-year" class="input tnum" type="number" min="2000" max="2100" style="width:100%;font-size:12.5px" value="${o.year || ''}">`)}
+        ${fld('سنة البيع', `<input id="oc-year" class="input tnum" type="number" min="2000" max="2100" style="width:100%;font-size:12.5px" value="${o.year || ''}">`)}
         ${fld('الأولوية', `<select id="oc-priority" class="input" style="width:100%;font-size:12.5px">
           ${opt('', 'بلا أولوية', !o.priority)}${['P0', 'P1', 'P2', 'P3'].map((p) => opt(p, tr(p), o.priority === p)).join('')}</select>`)}
         ${fld('نوع الارتباط', `<select id="oc-engagement" class="input" style="width:100%;font-size:12.5px"
@@ -336,7 +336,7 @@ export async function opportunityDetailPage(user, oppId, opts = {}) {
       ${vatNote}
       <div style="margin-top:.35rem">
         ${kv('احتمال الفوز', `<span class="tnum">${pct(o.win_pct)}</span>`)}
-                ${kv('السنة', `<span class="tnum">${o.year || '—'}</span>`)}
+                ${kv('سنة البيع', o.year ? `<span class="tnum">${o.year}</span>` : 'غير مؤكدة — أكملها من بيانات الفرصة لإدراجها في مبيعات السنة')}
       </div>
     </div>`);
   const classificationCard = card(`${secHead('التصنيف')}
@@ -373,7 +373,7 @@ export async function opportunityDetailPage(user, oppId, opts = {}) {
     <div style="padding:.8rem 1rem">${wonPrj
     ? (() => { const L = PRJ_STATUS[wonPrj.status] || [wonPrj.status, 'slate'];
       return `<a href="/app/project/${esc(wonPrj.id)}" style="font-weight:800;color:var(--brand);font-size:13.5px">${esc(wonPrj.name_ar)}</a>
-        <div style="margin-top:.4rem">${pill(L[0], L[1])}</div>`; })()
+        <div style="margin-top:.4rem">${pill(L[0], L[1])} <a class="btn btn-sm" href="/app/project/${esc(wonPrj.id)}#project-setup">استكمال المشروع</a></div>`; })()
     : (d.canEdit
       ? `<div style="font-size:12.5px;color:var(--muted);line-height:1.8;margin-bottom:.6rem">فرصة فائزة بلا مشروع بعد. أنشئه من هنا فيرث عميلها ويُربط بها.</div>
          <button class="btn btn-primary" data-action="opp-make-project" data-opp="${esc(o.id)}" data-name="${esc(o.title_ar || '')}" data-sector="${esc(o.sector_id || '')}">أنشئ المشروع</button>`

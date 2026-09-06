@@ -78,8 +78,8 @@ export async function ceoPage(user, opts = {}) {
       <div style="flex:1"><b>تنبيه استراتيجي — التعاقد إلى الإيراد ×${b2b.ratio}</b>
       <div style="font-size:12px;opacity:.9">التعاقدات الجديدة (${fmtSar(b2b.bookings_halalas)}) أقل من الإيراد المحقق (${fmtSar(b2b.revenue_halalas)}) لعام ${year} — الشركة تستهلك الأعمال المتعاقدة أسرع من تعويضها. يلزم تكثيف تطوير الأعمال.</div></div>
     </div>` : '';
-  const revPct = t.target_revenue ? t.revenue / t.target_revenue * 100 : 0;
-  const salesPct = t.target_sales ? t.sales / t.target_sales * 100 : 0;
+  const revPct = t.target_revenue ? t.revenue / t.target_revenue * 100 : null;
+  const salesPct = t.target_sales ? t.sales / t.target_sales * 100 : null;
   // Hero KPI block — clickable: opens the matching drill-down popup (keyboard accessible).
   // شارة الإيقاع (D3): مقارنة نسبة التحقق بنسبة السنة المنقضية — للسنة الجارية فقط
   const heroPace = (actual, target) => {
@@ -94,11 +94,11 @@ export async function ceoPage(user, opts = {}) {
     <div class="hclick" role="button" tabindex="0" aria-label="${label} — انقر للتفاصيل"
       onclick="Sanad.openDD('${dd}')" onkeydown="if(event.key==='Enter'||event.key===' ')Sanad.openDD('${dd}')"
       style="display:flex;align-items:center;gap:1.15rem;flex:1;min-width:290px;padding:.5rem .65rem;margin:-.5rem -.65rem">
-      <div style="flex:0 0 auto">${gauge(p, { color, size: 118, sw: 11, center: pct(p), centerSize: 25, sub: 'من الهدف' })}</div>
+      <div style="flex:0 0 auto">${p == null ? '<span style="color:#cbd5e1">لا نسبة تحقق</span>' : gauge(p, { color, size: 118, sw: 11, center: pct(p), centerSize: 25, sub: 'من الهدف' })}</div>
       <div style="min-width:0">
         <div style="color:rgba(255,255,255,.72);font-size:var(--fs-body);font-weight:600">${label}</div>
         <div class="metric tnum" style="color:#fff;margin-top:.2rem;font-size:1.85rem">${fmtSar(val)}</div>
-        <div style="color:rgba(255,255,255,.55);font-size:var(--fs-meta)" class="tnum">الهدف ${fmtSar(target)}</div>
+        <div style="color:rgba(255,255,255,.55);font-size:var(--fs-meta)" class="tnum">${target == null ? 'المستهدف غير مكتمل لهذه السنة' : `الهدف ${fmtSar(target)}`}</div>
         <div style="margin-top:.45rem;display:flex;align-items:center;gap:.6rem;flex-wrap:wrap">${extra || ''}<span class="dd-hint">⊕ التفاصيل</span></div>
       </div>
     </div>`;
@@ -219,8 +219,8 @@ export async function ceoPage(user, opts = {}) {
         ${hm('خط الفرص المفتوح', fmtSar(pipelineVal), 'مرجّح ' + fmtSar(cov.weighted_halalas), 'pipeline')}
         ${hm('نسبة الفوز', pct(wr.rate), `فوز ${wr.won} · خسارة ${wr.lost}`, 'winrate')}
         ${hm('الأعمال المتعاقدة', fmtSar(bk.backlog_halalas), 'قيمة متعاقدة لم تتحول لإيراد بعد', 'backlog')}
-        ${hm('تحقيق الإيراد', pct(revPct), 'من ' + fmtSar(t.target_revenue), 'revenue')}
-        ${hm('تحقيق المبيعات', pct(salesPct), 'من ' + fmtSar(t.target_sales), 'sales')}
+        ${hm('تحقيق الإيراد', revPct == null ? 'غير متاح' : pct(revPct), t.target_revenue == null ? 'المستهدف غير مكتمل' : 'من ' + fmtSar(t.target_revenue), 'revenue')}
+        ${hm('تحقيق المبيعات', salesPct == null ? 'غير متاح' : pct(salesPct), t.target_sales == null ? 'المستهدف غير مكتمل' : 'من ' + fmtSar(t.target_sales), 'sales')}
         ${avgMargin != null ? hm('متوسط هامش الربح', avgMargin + '%', 'حسب القطاعات', 'margin') : ''}
       </div>
     </div>
@@ -255,14 +255,14 @@ export async function portfolioPage(user) {
   const sectorNames = Object.fromEntries((await all('SELECT id,name_ar FROM sector')).map((s) => [s.id, s.name_ar]));
   const val = (p) => p.contract_value_halalas || p.budget_halalas || 0;
   const isActive = (p) => p.status !== 'COMPLETED' && p.status !== 'CANCELLED';
-  const ragC = { GREEN: 0, AMBER: 0, RED: 0 };
-  for (const p of rows) if (isActive(p)) ragC[p.rag] = (ragC[p.rag] || 0) + 1;
+  const ragC = { GREEN: 0, AMBER: 0, RED: 0, UNKNOWN: 0 };
+  for (const p of rows) if (isActive(p)) { const key = ['GREEN', 'AMBER', 'RED'].includes(p.rag) ? p.rag : 'UNKNOWN'; ragC[key]++; }
   const totalVal = rows.reduce((a, p) => a + val(p), 0);
   const active = rows.filter(isActive);
   const completed = rows.filter((p) => p.status === 'COMPLETED').length;
   const avgProg = active.length ? Math.round(active.reduce((a, p) => a + (p.progress_effective_pct || 0), 0) / active.length) : 0;
   const ragTone = { GREEN: 'green', AMBER: 'amber', RED: 'red' };
-  const ragHexP = { GREEN: '#059669', AMBER: '#d97706', RED: '#dc2626' };
+  const ragHexP = { UNKNOWN: '#94a3b8', GREEN: '#059669', AMBER: '#d97706', RED: '#dc2626' };
 
   const bySector = {};
   for (const p of rows) (bySector[p.sector_id] ||= []).push(p);
@@ -273,8 +273,8 @@ export async function portfolioPage(user) {
     const sVal = ps.reduce((a, p) => a + val(p), 0);
     const sActive = ps.filter(isActive);
     const sAvg = sActive.length ? Math.round(sActive.reduce((a, p) => a + (p.progress_effective_pct || 0), 0) / sActive.length) : 0;
-    const sRag = { GREEN: 0, AMBER: 0, RED: 0 }; for (const p of sActive) sRag[p.rag] = (sRag[p.rag] || 0) + 1;
-    const ragDots = ['GREEN', 'AMBER', 'RED'].filter((r) => sRag[r]).map((r) => `<span style="display:inline-flex;align-items:center;gap:.2rem;font-size:11px"><span style="width:8px;height:8px;border-radius:99px;background:${ragHexP[r]}"></span><span class="tnum">${sRag[r]}</span></span>`).join('<span style="color:var(--faint);margin:0 .15rem"></span>');
+    const sRag = { GREEN: 0, AMBER: 0, RED: 0, UNKNOWN: 0 }; for (const p of sActive) { const key = ['GREEN', 'AMBER', 'RED'].includes(p.rag) ? p.rag : 'UNKNOWN'; sRag[key]++; }
+    const ragDots = ['GREEN', 'AMBER', 'RED', 'UNKNOWN'].filter((r) => sRag[r]).map((r) => `<span style="display:inline-flex;align-items:center;gap:.2rem;font-size:11px"><span style="width:8px;height:8px;border-radius:99px;background:${ragHexP[r]}"></span><span class="tnum">${sRag[r]}</span>${r === 'UNKNOWN' ? ' غير مقيّم' : ''}</span>`).join('<span style="color:var(--faint);margin:0 .15rem"></span>');
     const top = ps.slice().sort((a, b) => val(b) - val(a)).slice(0, 7);
     return card(`<div style="padding:.85rem 1rem;border-bottom:1px solid var(--line)">
         <div style="display:flex;justify-content:space-between;align-items:center"><div style="font-weight:800;font-size:13.5px">${esc(sectorNames[sid] || sid || '—')}</div><span class="tnum" style="font-size:var(--fs-body);font-weight:800">${fmtSar(sVal)}</span></div>
@@ -290,11 +290,12 @@ export async function portfolioPage(user) {
 
   const kpi = (l, v, sub, tone) => card(`<div style="padding:.75rem .95rem"><div style="font-size:11px;color:var(--muted)">${l}</div><div class="metric tnum" style="font-size:1.35rem;${tone ? 'color:' + tone : ''}">${v}</div>${sub ? `<div style="font-size:var(--fs-micro);color:var(--faint)">${sub}</div>` : ''}</div>`);
   const body = `
-    <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:.7rem;margin-bottom:1rem">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.7rem;margin-bottom:1rem">
       ${kpi('إجمالي المشاريع', rows.length, `${active.length} قائم · ${completed} مكتمل`)}
       ${kpi('قيمة المحفظة', fmtSar(totalVal), 'قيمة العقود')}
       ${kpi(G.hOnTrack + ' (أخضر)', ragC.GREEN, 'ضمن المسار', 'var(--green)')}
       ${kpi(G.hAtRisk + ' (أصفر)', ragC.AMBER, 'تحتاج متابعة', 'var(--amber)')}
+      ${kpi('غير مقيّم', ragC.UNKNOWN, 'يحتاج تقييمًا موثقًا', 'var(--muted)')}
       ${kpi(G.hCritical + ' (أحمر)', ragC.RED, 'تدخّل عاجل', ragC.RED ? 'var(--red)' : '')}
       ${kpi('متوسط الإنجاز', avgProg + '%', 'للمشاريع القائمة')}
     </div>

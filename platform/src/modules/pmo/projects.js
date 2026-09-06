@@ -196,6 +196,7 @@ export async function getProject(user, pid) {
 }
 
 export async function createProject(ctx, data) {
+  if (data.sale_year != null && (!Number.isInteger(Number(data.sale_year)) || Number(data.sale_year) < 2000 || Number(data.sale_year) > 2100)) throw badRequest('سنة البيع غير صحيحة — راجع السنة قبل الحفظ');
   const user = ctx.user;
   const sectorId = data.sector_id || user.sector_id;
   // منحةُ الإنشاء الشخصية تُحكَم بإدارة الصفّ المولود لا بالقطاع (ADR-0009 — نظير باب الفرص
@@ -241,7 +242,7 @@ export async function createProject(ctx, data) {
       source_opp_id: data.source_opp_id || null, created_at: now, created_by: user.id,
     });
     await audit(ctx, { action: 'create', resource: 'project', resourceId: pid, sectorId });
-    await ensureOpportunityForProject(ctx, await get('SELECT * FROM project WHERE id = ?', [pid]));
+    await ensureOpportunityForProject(ctx, await get('SELECT * FROM project WHERE id = ?', [pid]), { year: data.sale_year });
   });
   // نفس حارس باب الفرص: الصفُّ كما وُلد قد لا تبلغه قراءةُ منشئه (نطاق «مشروع» يُبنى عند فتح
   // الجلسة فلا يعرف مولوداً بعدها) — فيُعاد تأكيدٌ مختصر بدل رسالة منعٍ على عملٍ تمّ فعلاً.
@@ -309,7 +310,7 @@ export async function updateProject(ctx, pid, data) {
   const STATUSES = ['NOT_STARTED', 'PLANNED', 'IN_PROGRESS', 'ON_HOLD', 'COMPLETED', 'CANCELLED'];
   const RAGS = ['GREEN', 'AMBER', 'RED'];
   if ('status' in data && !STATUSES.includes(data.status)) throw badRequest('حالة المشروع غير صحيحة');
-  if ('rag' in data && !RAGS.includes(data.rag)) throw badRequest('حالة المشروع غير صحيحة — اخترها من القائمة');
+  if ('rag' in data && data.rag !== null && !RAGS.includes(data.rag)) throw badRequest('حالة المشروع غير صحيحة — اخترها من القائمة');
   if ('progress_pct' in data) { const n = Number(data.progress_pct); if (!Number.isFinite(n) || n < 0 || n > 100) throw badRequest('نسبة الإنجاز يجب أن تكون بين 0 و100'); }
   const patch = {};
   // ── مدير المشروع ──

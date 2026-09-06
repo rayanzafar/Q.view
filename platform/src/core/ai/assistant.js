@@ -208,8 +208,8 @@ async function weeklyReportDraft(user) {
   }
   const data = await buildReport('weekly_exec_brief', user, {});
   const facts = [
-    `الإيراد المحقق ${fmtSar(data.totals.revenue)} من ${fmtSar(data.totals.target_revenue)}`,
-    `المبيعات ${fmtSar(data.totals.sales)} من ${fmtSar(data.totals.target_sales)}`,
+    `الإيراد المحقق ${fmtSar(data.totals.revenue)} من ${(data.totals.target_revenue == null ? 'مستهدف غير مكتمل لهذه السنة' : fmtSar(data.totals.target_revenue))}`,
+    `المبيعات ${fmtSar(data.totals.sales)} من ${(data.totals.target_sales == null ? 'مستهدف غير مكتمل لهذه السنة' : fmtSar(data.totals.target_sales))}`,
     `خط الفرص ${fmtSar(data.pipeline_halalas)}`,
     data.achievements.length ? `إنجازات: ${data.achievements.join('، ')}` : '',
     data.risks.length ? `مخاطر: ${data.risks.join('، ')}` : '',

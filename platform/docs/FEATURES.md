@@ -26,6 +26,7 @@ One row per key in the `PAGES` map (`src/web/routes.js`). Gate = `PAGE_ACCESS` (
 | `reports` | التقارير والبريد | Period reports (week/month/quarter, 6 lenses) with snapshots/compare/issue/print + email schedule CRUD + test-send | `can(u,'read','report')` | src/web/views/govern.js (`reportsPage`) | pages/reports-period.js | live |
 | `org` | الهيكل التنظيمي | Org tree (sector→department→unit→employee), org-health card, unassigned-work panel, bulk assign/move sub-screens | admin OR `can(u,'create','sector')` OR `can(u,'read','employee')` | src/web/views/org.js | pages/org-tree.js | live |
 | `finance` | قسم ملغى | Page and contract-detail UI deleted; old URLs return 410 and a project link; no reactivation flow | authenticated tombstone | src/web/routes.js | — | retired by owner |
+| `sector-targets` | مستهدفات القطاع | Annual sales/revenue editor, scoped sector/year chooser, legacy evidence, revision history and stale-write protection | read/create/update budget + sector row scope | src/web/views/sector-targets.js | pages/sector-targets.js | local v5.78 |
 | `revenue-review` | مراجعة جودة الإيراد | Read-only period/source/amount diagnostics, scoped year filter and pagination; linked from imports and sector | read revenue_line + row scope | src/web/views/revenue-review.js | — | local v5.75 |
 | `mail` | مركز البريد | Mail center: outbox preview, queue, delivery log, both channels' readiness (primary + fallback), and an admin-only per-channel test send (v5.50 — POST /api/mail/test; recipient is the caller's own account email, never a request field) | role in admin, ceo_office | src/web/views/mail.js | pages/mail.js + admin-only «سياسة بريد الاعتمادات» card (reminder toggle + interval + new-mail cooldown, v5.18) | live |
 | `clients` | العملاء | Relationship list (نشطة/فاترة/خاملة), aggregates, revenue-concentration drill-down | `can(u,'read','client') \|\| seesCompanyPerformance(u)` | src/web/views/clients.js | pages/clients.js | live |
@@ -57,7 +58,7 @@ All `/api/*` routers hang off `apiRouter` (`src/modules/api.routes.js`, behind `
 | notesRouter | GET/POST `/notes`, PATCH/DELETE `/notes/:id` | src/modules/pmo/notes.js (notes.routes.js) | Personal notebook, ownership-only guard (migration 023) |
 | ioRouter | GET `/io/types`, GET `/io/export/:type`, POST `/io/import/:type/upload` (raw 15mb, `x-file-name`), `/preview`, `/apply`, GET `/io/runs(/:id)`, POST `/io/runs/:id/undo` | src/modules/io/engine.js + src/modules/io/adapters/*.js (io.routes.js) | 6 adapters (clients/employees/opportunities/projects/staffing/revenues); 7-day undo; replace mode admin-only |
 | employeesRouter | POST `/employees`, PATCH `/employees/:id`, DELETE `/employees/:id` | src/modules/org/org.js (employees.routes.js) | Alias surface for employee CRUD; delete = soft, HR/admin |
-| orgRouter | GET `/org/identity-links`, GET `/org/health`, POST/DELETE `/employees/:id/link` (+ `/org/employees/:id/link` aliases) | src/modules/org/org.js, src/modules/org/org-quality.js (org.routes.js) | user↔employee link writes both columns in one tx |
+| orgRouter | GET/PUT `/org/sectors/:id/targets` (annual revision-checked targets), GET `/org/identity-links`, GET `/org/health`, POST/DELETE `/employees/:id/link` (+ `/org/employees/:id/link` aliases) | src/modules/org/org.js, src/modules/org/org-quality.js (org.routes.js) | user↔employee link writes both columns in one tx |
 | attributionRouter | GET `/org/rollup`, GET `/org/unassigned`, PATCH `/org/attribution`, PATCH `/org/attribution/bulk` | src/modules/org/attribution.js (attribution.routes.js) | Department attribution of project/opportunity/allocation rows |
 | backupRouter | GET `/api/backup/counts`, GET `/api/backup/dump` | src/core/backup/dump.js (src/modules/backup.routes.js) | Gated by `x-backup-token` = `SANAD_BACKUP_TOKEN`; NDJSON logical row dump, not a pg_dump replacement |
 | guideRouter | GET `/guide`, GET `/guide/tour/:page` | src/modules/guide/guide.js (guide.routes.js) | Content filtered by `PAGE_ACCESS` |
@@ -119,6 +120,8 @@ One row per file in `migrations/` (applied in order by `scripts/migrate.js`, rec
 | 039 | 039_event_blob_title.sql | `event_blob.title` — visitor-facing caption for kiosk QR images (`kind = 'qr'`); card photos (`kind = 'card'`) leave it NULL. One column, not a second table: same in-DB-bytes decision (033) and same `(kind, ref_id)` reference, only a caption differs. Plain `ALTER TABLE … ADD COLUMN` (no `IF NOT EXISTS` — SQLite lacks it; the `schema_migration` ledger + migrate.js's single transaction guarantee one application), no Latin `?` | «الفعاليات» E2 — card photos + kiosk QR |
 | 040 | 040_event_meetings.sql | Event meetings: `event_meeting` (title, `meeting_date` + `start_time`/`end_time` as **Riyadh wall-clock text** — string comparison only, deliberately not the silently-UTC `send_time` semantics — optional `join_url`/location/note, creator denormalised, soft delete) + `event_meeting_attendee` (user_id **without FK** + copied `user_name`, hard-deleted on removal; unique `(meeting_id, user_id)`), 4 indexes incl. cross-event conflict lookups. FKs stay inside the module (`event`, `event_meeting`) per the 038 isolation rule | «الاجتماعات» tab inside events (v5.62, HJ decision 2026-08-30) |
 | 042 | 042_team_resources.sql | Team & resources module (ADR-0016): `employee.resource_type/vendor_name/engagement_ref`, `capacity_version`, `allocation.status/billable`, `allocation_request`, `resource_capability`, `resource_need`, `cost_period`/`cost_share`/`cost_correction`, `sector.cost_center`, `analysis_case` — additive, no backfill | team & resources (S01–S25) |
+| 043 | 043_budget_revision.sql | Adds budget.revision and sector/year index; preserves every budget and legacy sector value; no period backfill | annual sector targets |
+
 | 041 | 041_event_card_photos.sql | Card photos become a list: drops the unique `ux_evb_ref (kind, ref_id)` for a plain `ix_evb_ref (kind, ref_id, created_at)` — one `event_blob` row per photo, cover = the oldest (`ORDER BY created_at ASC, id ASC LIMIT 1`) computed in the service and never stored (no `is_cover`/`sort_order` column, no second table); QR rows are unaffected (their `ref_id` is their own id, unique by primary key); the service's `INSERT … ON CONFLICT (kind, ref_id)` becomes a plain insert (Postgres 42P10 without the index). No ALTER, no Latin `?`, both statements re-runnable | many photos per captured card — v5.67 |
 
 ## Modules
@@ -216,3 +219,16 @@ Offline graph in `docs/system-graph/index.html` links journeys, source files, te
 routes, schema, default grants and recorded gaps. Maintained by `npm run graph` and CI freshness
 check. This is a development artifact, not a new authenticated product page. Task date validation
 also rejects impossible calendar days on create/update instead of accepting JavaScript rollover.
+
+
+## v5.78 — project setup, annual targets and preservation
+
+New wins create one NOT_STARTED project with unassessed health and unconfirmed contract value;
+source opportunity amount remains visible where authorized. Project setup checklist links six
+existing saved sections; it is not readiness approval or progress. Manual project mirror sales
+year is explicit or unresolved/excluded until confirmed. Won reversal never auto-deletes a project.
+Progress evidence flags incomplete weights and acceptance discrepancies without rewriting existing
+percentages. Pending milestones with unknown dates cannot yield a green schedule assessment.
+Annual targets reuse budget and protect revisions, scope, duplicates, null values and prior years.
+Boot no longer runs demo or historical business repairs; technical schema/security bootstrap stays.
+Existing historic migrations still require applied-migration inventory before release.

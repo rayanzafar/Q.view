@@ -1,19 +1,19 @@
 {
   "version": 1,
-  "sourceDigest": "386033ab3297e523fccb4cc12142f909be16c7e8cdacbf94915767dc30183e94",
-  "sourceFiles": 606,
+  "sourceDigest": "388037637def41c64cea0e1defb3f0dc6784fa10819ccbba9f04339cc1fcefce",
+  "sourceFiles": 614,
   "counts": {
-    "code": 231,
-    "test": 281,
+    "code": 234,
+    "test": 285,
     "automation": 49,
     "module": 18,
-    "route": 268,
-    "page": 23,
+    "route": 270,
+    "page": 24,
     "table": 97,
     "role": 18,
     "permission": 9,
-    "issue": 74,
-    "journey": 13,
+    "issue": 75,
+    "journey": 14,
     "metric": 4,
     "workflow": 6,
     "tool": 6
@@ -1055,6 +1055,15 @@
       ]
     },
     {
+      "id": "file:src/modules/org/sector-targets.js",
+      "kind": "code",
+      "label": "sector-targets.js",
+      "detail": "src/modules/org/sector-targets.js",
+      "sources": [
+        "src/modules/org/sector-targets.js"
+      ]
+    },
+    {
       "id": "file:src/modules/org/staffing-gaps.js",
       "kind": "code",
       "label": "staffing-gaps.js",
@@ -1667,6 +1676,15 @@
       ]
     },
     {
+      "id": "file:src/web/public/pages/sector-targets.js",
+      "kind": "code",
+      "label": "sector-targets.js",
+      "detail": "src/web/public/pages/sector-targets.js",
+      "sources": [
+        "src/web/public/pages/sector-targets.js"
+      ]
+    },
+    {
       "id": "file:src/web/public/pages/sector.js",
       "kind": "code",
       "label": "sector.js",
@@ -2006,6 +2024,15 @@
       "detail": "src/web/views/revenue-review.js",
       "sources": [
         "src/web/views/revenue-review.js"
+      ]
+    },
+    {
+      "id": "file:src/web/views/sector-targets.js",
+      "kind": "code",
+      "label": "sector-targets.js",
+      "detail": "src/web/views/sector-targets.js",
+      "sources": [
+        "src/web/views/sector-targets.js"
       ]
     },
     {
@@ -3305,6 +3332,24 @@
       ]
     },
     {
+      "id": "file:tests/integration/sector-targets-http.test.js",
+      "kind": "test",
+      "label": "sector-targets-http.test.js",
+      "detail": "tests/integration/sector-targets-http.test.js",
+      "sources": [
+        "tests/integration/sector-targets-http.test.js"
+      ]
+    },
+    {
+      "id": "file:tests/integration/sector-targets.test.js",
+      "kind": "test",
+      "label": "sector-targets.test.js",
+      "detail": "tests/integration/sector-targets.test.js",
+      "sources": [
+        "tests/integration/sector-targets.test.js"
+      ]
+    },
+    {
       "id": "file:tests/integration/sector-team-detail.test.js",
       "kind": "test",
       "label": "sector-team-detail.test.js",
@@ -3602,6 +3647,15 @@
       ]
     },
     {
+      "id": "file:tests/integration/unknown-health-surfaces.test.js",
+      "kind": "test",
+      "label": "unknown-health-surfaces.test.js",
+      "detail": "tests/integration/unknown-health-surfaces.test.js",
+      "sources": [
+        "tests/integration/unknown-health-surfaces.test.js"
+      ]
+    },
+    {
       "id": "file:tests/integration/utilization-may2026.test.js",
       "kind": "test",
       "label": "utilization-may2026.test.js",
@@ -3698,6 +3752,15 @@
       "detail": "tests/security/bd-project-management.test.js",
       "sources": [
         "tests/security/bd-project-management.test.js"
+      ]
+    },
+    {
+      "id": "file:tests/security/boot-preservation.test.js",
+      "kind": "test",
+      "label": "boot-preservation.test.js",
+      "detail": "tests/security/boot-preservation.test.js",
+      "sources": [
+        "tests/security/boot-preservation.test.js"
       ]
     },
     {
@@ -5256,6 +5319,7 @@
         "src/modules/org/org.js",
         "src/modules/org/org.routes.js",
         "src/modules/org/people.js",
+        "src/modules/org/sector-targets.js",
         "src/modules/org/staffing-gaps.js",
         "src/modules/org/staffing-settle.js"
       ]
@@ -7314,7 +7378,7 @@
       "path": "/employees/:id"
     },
     {
-      "id": "route:src/modules/org/org.routes.js:694:/org/identity-links",
+      "id": "route:src/modules/org/org.routes.js:766:/org/identity-links",
       "kind": "route",
       "label": "GET /org/identity-links",
       "detail": "تصريح مسار محلي في orgRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -7325,7 +7389,7 @@
       "path": "/org/identity-links"
     },
     {
-      "id": "route:src/modules/org/org.routes.js:1378:/org/health",
+      "id": "route:src/modules/org/org.routes.js:1450:/org/health",
       "kind": "route",
       "label": "GET /org/health",
       "detail": "تصريح مسار محلي في orgRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -7336,7 +7400,7 @@
       "path": "/org/health"
     },
     {
-      "id": "route:src/modules/org/org.routes.js:1699:/employees/:id/link",
+      "id": "route:src/modules/org/org.routes.js:1771:/employees/:id/link",
       "kind": "route",
       "label": "POST /employees/:id/link",
       "detail": "تصريح مسار محلي في orgRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -7347,7 +7411,7 @@
       "path": "/employees/:id/link"
     },
     {
-      "id": "route:src/modules/org/org.routes.js:1798:/employees/:id/link",
+      "id": "route:src/modules/org/org.routes.js:1870:/employees/:id/link",
       "kind": "route",
       "label": "DELETE /employees/:id/link",
       "detail": "تصريح مسار محلي في orgRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -7358,7 +7422,7 @@
       "path": "/employees/:id/link"
     },
     {
-      "id": "route:src/modules/org/org.routes.js:2001:/org/employees/:id/link",
+      "id": "route:src/modules/org/org.routes.js:2073:/org/employees/:id/link",
       "kind": "route",
       "label": "POST /org/employees/:id/link",
       "detail": "تصريح مسار محلي في orgRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -7369,7 +7433,7 @@
       "path": "/org/employees/:id/link"
     },
     {
-      "id": "route:src/modules/org/org.routes.js:2104:/org/employees/:id/link",
+      "id": "route:src/modules/org/org.routes.js:2176:/org/employees/:id/link",
       "kind": "route",
       "label": "DELETE /org/employees/:id/link",
       "detail": "تصريح مسار محلي في orgRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -7378,6 +7442,28 @@
       ],
       "method": "DELETE",
       "path": "/org/employees/:id/link"
+    },
+    {
+      "id": "route:src/modules/org/org.routes.js:2372:/org/sectors/:id/targets",
+      "kind": "route",
+      "label": "GET /org/sectors/:id/targets",
+      "detail": "تصريح مسار محلي في orgRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
+      "sources": [
+        "src/modules/org/org.routes.js"
+      ],
+      "method": "GET",
+      "path": "/org/sectors/:id/targets"
+    },
+    {
+      "id": "route:src/modules/org/org.routes.js:2505:/org/sectors/:id/targets",
+      "kind": "route",
+      "label": "PUT /org/sectors/:id/targets",
+      "detail": "تصريح مسار محلي في orgRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
+      "sources": [
+        "src/modules/org/org.routes.js"
+      ],
+      "method": "PUT",
+      "path": "/org/sectors/:id/targets"
     },
     {
       "id": "route:src/modules/pmo/governance.routes.js:780:/projects/:id/governance",
@@ -8117,7 +8203,7 @@
       "path": "/"
     },
     {
-      "id": "route:src/web/routes.js:12895:/app/mail/preview/:file",
+      "id": "route:src/web/routes.js:12936:/app/mail/preview/:file",
       "kind": "route",
       "label": "GET /app/mail/preview/:file",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -8128,7 +8214,7 @@
       "path": "/app/mail/preview/:file"
     },
     {
-      "id": "route:src/web/routes.js:14710:/app/finance",
+      "id": "route:src/web/routes.js:14751:/app/finance",
       "kind": "route",
       "label": "GET /app/finance",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -8139,7 +8225,7 @@
       "path": "/app/finance"
     },
     {
-      "id": "route:src/web/routes.js:14710:/app/contract/:id",
+      "id": "route:src/web/routes.js:14751:/app/contract/:id",
       "kind": "route",
       "label": "GET /app/contract/:id",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -8150,7 +8236,7 @@
       "path": "/app/contract/:id"
     },
     {
-      "id": "route:src/web/routes.js:15541:/app/project/:id",
+      "id": "route:src/web/routes.js:15582:/app/project/:id",
       "kind": "route",
       "label": "GET /app/project/:id",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -8161,7 +8247,7 @@
       "path": "/app/project/:id"
     },
     {
-      "id": "route:src/web/routes.js:15760:/app/opportunity/:id",
+      "id": "route:src/web/routes.js:15801:/app/opportunity/:id",
       "kind": "route",
       "label": "GET /app/opportunity/:id",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -8172,7 +8258,7 @@
       "path": "/app/opportunity/:id"
     },
     {
-      "id": "route:src/web/routes.js:16173:/app/client/:id",
+      "id": "route:src/web/routes.js:16214:/app/client/:id",
       "kind": "route",
       "label": "GET /app/client/:id",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -8183,7 +8269,7 @@
       "path": "/app/client/:id"
     },
     {
-      "id": "route:src/web/routes.js:16371:/app/event/:id",
+      "id": "route:src/web/routes.js:16412:/app/event/:id",
       "kind": "route",
       "label": "GET /app/event/:id",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -8194,7 +8280,7 @@
       "path": "/app/event/:id"
     },
     {
-      "id": "route:src/web/routes.js:16866:/app/person/:id",
+      "id": "route:src/web/routes.js:16907:/app/person/:id",
       "kind": "route",
       "label": "GET /app/person/:id",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -8205,7 +8291,7 @@
       "path": "/app/person/:id"
     },
     {
-      "id": "route:src/web/routes.js:18282:/app/team/:section",
+      "id": "route:src/web/routes.js:18323:/app/team/:section",
       "kind": "route",
       "label": "GET /app/team/:section",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -8216,7 +8302,7 @@
       "path": "/app/team/:section"
     },
     {
-      "id": "route:src/web/routes.js:18934:/app/team/:section/:id",
+      "id": "route:src/web/routes.js:18975:/app/team/:section/:id",
       "kind": "route",
       "label": "GET /app/team/:section/:id",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -8227,7 +8313,7 @@
       "path": "/app/team/:section/:id"
     },
     {
-      "id": "route:src/web/routes.js:19323:/app/:page",
+      "id": "route:src/web/routes.js:19364:/app/:page",
       "kind": "route",
       "label": "GET /app/:page",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -8238,7 +8324,7 @@
       "path": "/app/:page"
     },
     {
-      "id": "route:src/web/routes.js:19708:/app/reports/preview/:key",
+      "id": "route:src/web/routes.js:19749:/app/reports/preview/:key",
       "kind": "route",
       "label": "GET /app/reports/preview/:key",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -8249,7 +8335,7 @@
       "path": "/app/reports/preview/:key"
     },
     {
-      "id": "route:src/web/routes.js:20085:/app/reports/test-send/:key",
+      "id": "route:src/web/routes.js:20126:/app/reports/test-send/:key",
       "kind": "route",
       "label": "POST /app/reports/test-send/:key",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -8260,7 +8346,7 @@
       "path": "/app/reports/test-send/:key"
     },
     {
-      "id": "route:src/web/routes.js:20415:/app/reports/schedule",
+      "id": "route:src/web/routes.js:20456:/app/reports/schedule",
       "kind": "route",
       "label": "POST /app/reports/schedule",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -8271,7 +8357,7 @@
       "path": "/app/reports/schedule"
     },
     {
-      "id": "route:src/web/routes.js:20753:/app/reports/schedule/:id/active",
+      "id": "route:src/web/routes.js:20794:/app/reports/schedule/:id/active",
       "kind": "route",
       "label": "POST /app/reports/schedule/:id/active",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -8282,7 +8368,7 @@
       "path": "/app/reports/schedule/:id/active"
     },
     {
-      "id": "route:src/web/routes.js:20967:/app/reports/schedule/:id",
+      "id": "route:src/web/routes.js:21008:/app/reports/schedule/:id",
       "kind": "route",
       "label": "DELETE /app/reports/schedule/:id",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -8313,6 +8399,17 @@
         "src/core/policy/pages.js"
       ],
       "handler": "revenueReviewPage"
+    },
+    {
+      "id": "page:sector-targets",
+      "kind": "page",
+      "label": "/app/sector-targets",
+      "detail": "واجهة مسجلة في PAGES. حارس الصفحة لا يغني عن نطاق السجل والحقول.",
+      "sources": [
+        "src/web/routes.js",
+        "src/core/policy/pages.js"
+      ],
+      "handler": "sectorTargetsPage"
     },
     {
       "id": "page:ceo",
@@ -9605,7 +9702,8 @@
       "detail": "جدول من مخطط SQLite جديد بعد تطبيق الترحيلات؛ لا بيانات شركة.",
       "sources": [
         "migrations/001_init.sql",
-        "migrations/019_vat_split.sql"
+        "migrations/019_vat_split.sql",
+        "migrations/043_budget_revision.sql"
       ],
       "columns": [
         {
@@ -9666,6 +9764,12 @@
           "name": "updated_at",
           "type": "TEXT",
           "required": false,
+          "primary": false
+        },
+        {
+          "name": "revision",
+          "type": "INTEGER",
+          "required": true,
           "primary": false
         }
       ]
@@ -19759,30 +19863,40 @@
       ]
     },
     {
-      "id": "issue:KI-106",
+      "id": "issue:KI-109",
       "kind": "issue",
-      "label": "KI-106 · crm/handoff",
-      "detail": "Won opportunity creates a project with GREEN health before delivery assessment; opportunity amount is also copied into contract value without an explicit confirmation step. Source defaults are confirmed; live records have not been assessed.",
+      "label": "KI-109 · pmo/progress-policy",
+      "detail": "Existing completed→100, partial-weight fallback and linear time-vs-progress thresholds remain policy assumptions. v5.78 adds evidence notices, not silent recalculation of existing project percentages.",
+      "status": "owner-decision",
+      "sources": [
+        "docs/KNOWN-ISSUES.md"
+      ]
+    },
+    {
+      "id": "issue:KI-110",
+      "kind": "issue",
+      "label": "KI-110 · org/target-period-plan",
+      "detail": "Annual target editing is implemented; existing monthly plans are preserved with a warning but monthly/quarterly plan editing and effective-dated historical report snapshots are not implemented in this wave.",
       "status": "open",
       "sources": [
         "docs/KNOWN-ISSUES.md"
       ]
     },
     {
-      "id": "issue:KI-107",
+      "id": "issue:KI-111",
       "kind": "issue",
-      "label": "KI-107 · crm/sales-year",
-      "detail": "Reverse project-to-opportunity mirror derives sales year from project start/creation in mirrorYear; delivery start does not establish year of sale.",
+      "label": "KI-111 · ops/migration-inventory",
+      "detail": "Live applied migration inventory unavailable. Older immutable migrations contain business DML including revenue cleanup; removing historic boot scripts does not guarantee unapplied legacy migrations are harmless.",
       "status": "open",
       "sources": [
         "docs/KNOWN-ISSUES.md"
       ]
     },
     {
-      "id": "issue:KI-108",
+      "id": "issue:KI-112",
       "kind": "issue",
-      "label": "KI-108 · sector/targets",
-      "detail": "Leadership, sectorDashboard and pipelineCoverage read targets on sector while filtering actuals by year. Changing the sector target can change historical-year comparisons; an existing budget table does not make those readers period-specific.",
+      "label": "KI-112 · crm/cancellation",
+      "detail": "Won reversal now refuses linked-project auto-deletion. A reviewed cancellation/unlink journey that preserves both records and reconciles sales is not yet implemented.",
       "status": "open",
       "sources": [
         "docs/KNOWN-ISSUES.md"
@@ -20773,6 +20887,18 @@
         "docs/team-resources/AI-TOOLS.md"
       ],
       "status": "غير متحقق"
+    },
+    {
+      "id": "journey:targets",
+      "kind": "journey",
+      "label": "مستهدفات القطاع",
+      "detail": "مبيعات وإيراد بحسب القطاع والسنة، سجل تعديل مع السبب ورقم مراجعة؛ القيم القديمة دون سنة محفوظة للمراجعة والتوزيع الشهري غير قابل للتحرير بهذه الدفعة.",
+      "status": "منفذ محليًا غير منشور",
+      "sources": [
+        "src/modules/org/sector-targets.js",
+        "src/web/views/sector-targets.js",
+        "migrations/043_budget_revision.sql"
+      ]
     }
   ],
   "edges": [
@@ -21117,6 +21243,13 @@
       "to": "file:src/modules/org/people.js",
       "label": "يحتوي",
       "evidence": "src/modules/org/people.js",
+      "kind": "source"
+    },
+    {
+      "from": "module:org",
+      "to": "file:src/modules/org/sector-targets.js",
+      "label": "يحتوي",
+      "evidence": "src/modules/org/sector-targets.js",
       "kind": "source"
     },
     {
@@ -22410,6 +22543,13 @@
     {
       "from": "file:src/core/reports/metrics.js",
       "to": "file:src/modules/pmo/projects.js",
+      "label": "استيراد صريح",
+      "evidence": "src/core/reports/metrics.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/core/reports/metrics.js",
+      "to": "file:src/modules/org/sector-targets.js",
       "label": "استيراد صريح",
       "evidence": "src/core/reports/metrics.js",
       "kind": "source"
@@ -26014,6 +26154,13 @@
     },
     {
       "from": "file:src/modules/org/org.routes.js",
+      "to": "file:src/modules/org/sector-targets.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/org/org.routes.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/org/org.routes.js",
       "to": "file:src/modules/org/org-quality.js",
       "label": "استيراد صريح",
       "evidence": "src/modules/org/org.routes.js",
@@ -26021,42 +26168,56 @@
     },
     {
       "from": "file:src/modules/org/org.routes.js",
-      "to": "route:src/modules/org/org.routes.js:694:/org/identity-links",
+      "to": "route:src/modules/org/org.routes.js:766:/org/identity-links",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/org/org.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/org/org.routes.js",
-      "to": "route:src/modules/org/org.routes.js:1378:/org/health",
+      "to": "route:src/modules/org/org.routes.js:1450:/org/health",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/org/org.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/org/org.routes.js",
-      "to": "route:src/modules/org/org.routes.js:1699:/employees/:id/link",
+      "to": "route:src/modules/org/org.routes.js:1771:/employees/:id/link",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/org/org.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/org/org.routes.js",
-      "to": "route:src/modules/org/org.routes.js:1798:/employees/:id/link",
+      "to": "route:src/modules/org/org.routes.js:1870:/employees/:id/link",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/org/org.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/org/org.routes.js",
-      "to": "route:src/modules/org/org.routes.js:2001:/org/employees/:id/link",
+      "to": "route:src/modules/org/org.routes.js:2073:/org/employees/:id/link",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/org/org.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/org/org.routes.js",
-      "to": "route:src/modules/org/org.routes.js:2104:/org/employees/:id/link",
+      "to": "route:src/modules/org/org.routes.js:2176:/org/employees/:id/link",
+      "label": "يصرح بالمسار",
+      "evidence": "src/modules/org/org.routes.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/org/org.routes.js",
+      "to": "route:src/modules/org/org.routes.js:2372:/org/sectors/:id/targets",
+      "label": "يصرح بالمسار",
+      "evidence": "src/modules/org/org.routes.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/org/org.routes.js",
+      "to": "route:src/modules/org/org.routes.js:2505:/org/sectors/:id/targets",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/org/org.routes.js",
       "kind": "source"
@@ -26066,6 +26227,48 @@
       "to": "file:src/core/db/index.js",
       "label": "استيراد صريح",
       "evidence": "src/modules/org/people.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/org/sector-targets.js",
+      "to": "file:src/core/db/index.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/org/sector-targets.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/org/sector-targets.js",
+      "to": "file:src/core/rbac/index.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/org/sector-targets.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/org/sector-targets.js",
+      "to": "file:src/core/audit/index.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/org/sector-targets.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/org/sector-targets.js",
+      "to": "file:src/core/util/ids.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/org/sector-targets.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/org/sector-targets.js",
+      "to": "file:src/core/http/errors.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/org/sector-targets.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/org/sector-targets.js",
+      "to": "file:src/core/org/kind.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/org/sector-targets.js",
       "kind": "source"
     },
     {
@@ -28470,6 +28673,13 @@
       "kind": "source"
     },
     {
+      "from": "file:src/web/pages.js",
+      "to": "file:src/web/views/sector-targets.js",
+      "label": "استيراد صريح",
+      "evidence": "src/web/pages.js",
+      "kind": "source"
+    },
+    {
       "from": "file:src/web/routes.js",
       "to": "file:src/modules/team/person-link.js",
       "label": "استيراد صريح",
@@ -28590,112 +28800,112 @@
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:12895:/app/mail/preview/:file",
+      "to": "route:src/web/routes.js:12936:/app/mail/preview/:file",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:14710:/app/finance",
+      "to": "route:src/web/routes.js:14751:/app/finance",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:14710:/app/contract/:id",
+      "to": "route:src/web/routes.js:14751:/app/contract/:id",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:15541:/app/project/:id",
+      "to": "route:src/web/routes.js:15582:/app/project/:id",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:15760:/app/opportunity/:id",
+      "to": "route:src/web/routes.js:15801:/app/opportunity/:id",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:16173:/app/client/:id",
+      "to": "route:src/web/routes.js:16214:/app/client/:id",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:16371:/app/event/:id",
+      "to": "route:src/web/routes.js:16412:/app/event/:id",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:16866:/app/person/:id",
+      "to": "route:src/web/routes.js:16907:/app/person/:id",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:18282:/app/team/:section",
+      "to": "route:src/web/routes.js:18323:/app/team/:section",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:18934:/app/team/:section/:id",
+      "to": "route:src/web/routes.js:18975:/app/team/:section/:id",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:19323:/app/:page",
+      "to": "route:src/web/routes.js:19364:/app/:page",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:19708:/app/reports/preview/:key",
+      "to": "route:src/web/routes.js:19749:/app/reports/preview/:key",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:20085:/app/reports/test-send/:key",
+      "to": "route:src/web/routes.js:20126:/app/reports/test-send/:key",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:20415:/app/reports/schedule",
+      "to": "route:src/web/routes.js:20456:/app/reports/schedule",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:20753:/app/reports/schedule/:id/active",
+      "to": "route:src/web/routes.js:20794:/app/reports/schedule/:id/active",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:20967:/app/reports/schedule/:id",
+      "to": "route:src/web/routes.js:21008:/app/reports/schedule/:id",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
@@ -30000,6 +30210,41 @@
       "to": "file:src/modules/finance/revenue-review.js",
       "label": "استيراد صريح",
       "evidence": "src/web/views/revenue-review.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/web/views/sector-targets.js",
+      "to": "file:src/web/layout.js",
+      "label": "استيراد صريح",
+      "evidence": "src/web/views/sector-targets.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/web/views/sector-targets.js",
+      "to": "file:src/web/views/_shared.js",
+      "label": "استيراد صريح",
+      "evidence": "src/web/views/sector-targets.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/web/views/sector-targets.js",
+      "to": "file:src/core/util/ids.js",
+      "label": "استيراد صريح",
+      "evidence": "src/web/views/sector-targets.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/web/views/sector-targets.js",
+      "to": "file:src/modules/org/sector-targets.js",
+      "label": "استيراد صريح",
+      "evidence": "src/web/views/sector-targets.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/web/views/sector-targets.js",
+      "to": "file:src/core/config.js",
+      "label": "استيراد صريح",
+      "evidence": "src/web/views/sector-targets.js",
       "kind": "source"
     },
     {
@@ -34476,6 +34721,27 @@
       "kind": "source"
     },
     {
+      "from": "file:tests/integration/project-opportunity-mirror.test.js",
+      "to": "file:src/web/views/pmo.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/project-opportunity-mirror.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/project-opportunity-mirror.test.js",
+      "to": "file:src/core/util/ids.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/project-opportunity-mirror.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/project-opportunity-mirror.test.js",
+      "to": "file:src/web/views/pmo.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/project-opportunity-mirror.test.js",
+      "kind": "source"
+    },
+    {
       "from": "file:tests/integration/project-partners.test.js",
       "to": "file:src/core/db/index.js",
       "label": "استيراد صريح",
@@ -35103,6 +35369,76 @@
       "to": "file:src/modules/crm/opportunities.js",
       "label": "استيراد صريح",
       "evidence": "tests/integration/sector-role-view.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/sector-targets-http.test.js",
+      "to": "file:scripts/lib/qa-instance.mjs",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/sector-targets-http.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/sector-targets-http.test.js",
+      "to": "file:src/core/db/index.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/sector-targets-http.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/sector-targets-http.test.js",
+      "to": "file:src/server.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/sector-targets-http.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/sector-targets-http.test.js",
+      "to": "file:scripts/seed.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/sector-targets-http.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/sector-targets.test.js",
+      "to": "file:src/core/db/index.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/sector-targets.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/sector-targets.test.js",
+      "to": "file:src/core/rbac/index.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/sector-targets.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/sector-targets.test.js",
+      "to": "file:src/modules/org/sector-targets.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/sector-targets.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/sector-targets.test.js",
+      "to": "file:src/core/reports/metrics.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/sector-targets.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/sector-targets.test.js",
+      "to": "file:src/web/views/sector-targets.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/sector-targets.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/sector-targets.test.js",
+      "to": "file:src/modules/org/org.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/sector-targets.test.js",
       "kind": "source"
     },
     {
@@ -36391,6 +36727,34 @@
       "to": "file:src/web/views/team/resources.js",
       "label": "استيراد صريح",
       "evidence": "tests/integration/team-ui-resources.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/unknown-health-surfaces.test.js",
+      "to": "file:src/core/db/index.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/unknown-health-surfaces.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/unknown-health-surfaces.test.js",
+      "to": "file:src/core/rbac/index.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/unknown-health-surfaces.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/unknown-health-surfaces.test.js",
+      "to": "file:src/web/views/sector.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/unknown-health-surfaces.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/unknown-health-surfaces.test.js",
+      "to": "file:src/web/views/exec.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/unknown-health-surfaces.test.js",
       "kind": "source"
     },
     {
@@ -39488,6 +39852,34 @@
       "kind": "source"
     },
     {
+      "from": "file:tests/unit/project-progress.test.js",
+      "to": "file:src/modules/pmo/progress.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/unit/project-progress.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/unit/project-progress.test.js",
+      "to": "file:src/modules/pmo/progress.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/unit/project-progress.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/unit/project-progress.test.js",
+      "to": "file:src/modules/pmo/progress.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/unit/project-progress.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/unit/project-progress.test.js",
+      "to": "file:src/modules/pmo/progress.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/unit/project-progress.test.js",
+      "kind": "source"
+    },
+    {
       "from": "file:tests/unit/report-approval-names.test.js",
       "to": "file:src/core/db/index.js",
       "label": "استيراد صريح",
@@ -40661,6 +41053,20 @@
       "to": "file:src/web/views/revenue-review.js",
       "label": "دالة العرض",
       "evidence": "src/web/views/revenue-review.js",
+      "kind": "source"
+    },
+    {
+      "from": "page:sector-targets",
+      "to": "file:src/core/policy/pages.js",
+      "label": "سياسة فتح الصفحة",
+      "evidence": "src/web/routes.js",
+      "kind": "source"
+    },
+    {
+      "from": "page:sector-targets",
+      "to": "file:src/web/views/sector-targets.js",
+      "label": "دالة العرض",
+      "evidence": "src/web/views/sector-targets.js",
       "kind": "source"
     },
     {
@@ -42674,6 +43080,13 @@
     },
     {
       "from": "file:src/core/reports/metrics.js",
+      "to": "table:budget",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "src/core/reports/metrics.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:src/core/reports/metrics.js",
       "to": "table:contract",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
       "evidence": "src/core/reports/metrics.js",
@@ -44077,6 +44490,27 @@
       "to": "table:employee",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
       "evidence": "src/modules/org/people.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:src/modules/org/sector-targets.js",
+      "to": "table:budget",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "src/modules/org/sector-targets.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:src/modules/org/sector-targets.js",
+      "to": "table:sector",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "src/modules/org/sector-targets.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:src/modules/org/sector-targets.js",
+      "to": "table:audit_log",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "src/modules/org/sector-targets.js",
       "kind": "text-reference"
     },
     {
@@ -49702,14 +50136,14 @@
     },
     {
       "from": "file:tests/integration/progress-follows-deliverables.test.js",
-      "to": "table:sector",
+      "to": "table:project",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
       "evidence": "tests/integration/progress-follows-deliverables.test.js",
       "kind": "text-reference"
     },
     {
       "from": "file:tests/integration/progress-follows-deliverables.test.js",
-      "to": "table:project",
+      "to": "table:sector",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
       "evidence": "tests/integration/progress-follows-deliverables.test.js",
       "kind": "text-reference"
@@ -51150,6 +51584,34 @@
       "kind": "text-reference"
     },
     {
+      "from": "file:tests/integration/sector-targets-http.test.js",
+      "to": "table:budget",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/sector-targets-http.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/sector-targets-http.test.js",
+      "to": "table:sector",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/sector-targets-http.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/sector-targets.test.js",
+      "to": "table:sector",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/sector-targets.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/sector-targets.test.js",
+      "to": "table:budget",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/sector-targets.test.js",
+      "kind": "text-reference"
+    },
+    {
       "from": "file:tests/integration/sector-team-detail.test.js",
       "to": "table:role_permission",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
@@ -51320,6 +51782,13 @@
     {
       "from": "file:tests/integration/sector-window-band.test.js",
       "to": "table:sector",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/sector-window-band.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/sector-window-band.test.js",
+      "to": "table:budget",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
       "evidence": "tests/integration/sector-window-band.test.js",
       "kind": "text-reference"
@@ -51670,6 +52139,13 @@
     {
       "from": "file:tests/integration/support-unit-surfaces.test.js",
       "to": "table:opportunity",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/support-unit-surfaces.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/support-unit-surfaces.test.js",
+      "to": "table:budget",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
       "evidence": "tests/integration/support-unit-surfaces.test.js",
       "kind": "text-reference"
@@ -52956,6 +53432,27 @@
       "kind": "text-reference"
     },
     {
+      "from": "file:tests/integration/unknown-health-surfaces.test.js",
+      "to": "table:project",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/unknown-health-surfaces.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/unknown-health-surfaces.test.js",
+      "to": "table:budget",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/unknown-health-surfaces.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/unknown-health-surfaces.test.js",
+      "to": "table:sector",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/unknown-health-surfaces.test.js",
+      "kind": "text-reference"
+    },
+    {
       "from": "file:tests/integration/utilization-may2026.test.js",
       "to": "table:allocation",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
@@ -53000,6 +53497,13 @@
     {
       "from": "file:tests/integration/vat-basis.test.js",
       "to": "table:sector",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/vat-basis.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/vat-basis.test.js",
+      "to": "table:budget",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
       "evidence": "tests/integration/vat-basis.test.js",
       "kind": "text-reference"
@@ -53237,6 +53741,13 @@
     },
     {
       "from": "file:tests/security/ai-write-gates.test.js",
+      "to": "table:project",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/security/ai-write-gates.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/security/ai-write-gates.test.js",
       "to": "table:opportunity",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
       "evidence": "tests/security/ai-write-gates.test.js",
@@ -53287,13 +53798,6 @@
     {
       "from": "file:tests/security/ai-write-gates.test.js",
       "to": "table:stage",
-      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
-      "evidence": "tests/security/ai-write-gates.test.js",
-      "kind": "text-reference"
-    },
-    {
-      "from": "file:tests/security/ai-write-gates.test.js",
-      "to": "table:project",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
       "evidence": "tests/security/ai-write-gates.test.js",
       "kind": "text-reference"
@@ -53371,6 +53875,13 @@
     {
       "from": "file:tests/security/department-leadership.test.js",
       "to": "table:sector",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/security/department-leadership.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/security/department-leadership.test.js",
+      "to": "table:budget",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
       "evidence": "tests/security/department-leadership.test.js",
       "kind": "text-reference"
@@ -55785,6 +56296,13 @@
     },
     {
       "from": "file:tests/unit/revenue-outlook.test.js",
+      "to": "table:budget",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/unit/revenue-outlook.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/unit/revenue-outlook.test.js",
       "to": "table:stage",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
       "evidence": "tests/unit/revenue-outlook.test.js",
@@ -56821,13 +57339,6 @@
     },
     {
       "from": "file:scripts/scenarios.mjs",
-      "to": "table:audit_log",
-      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
-      "evidence": "scripts/scenarios.mjs",
-      "kind": "text-reference"
-    },
-    {
-      "from": "file:scripts/scenarios.mjs",
       "to": "table:opportunity",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
       "evidence": "scripts/scenarios.mjs",
@@ -56836,6 +57347,13 @@
     {
       "from": "file:scripts/scenarios.mjs",
       "to": "table:ai_activity_log",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/scenarios.mjs",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/scenarios.mjs",
+      "to": "table:audit_log",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
       "evidence": "scripts/scenarios.mjs",
       "kind": "text-reference"
@@ -61482,29 +62000,43 @@
       "kind": "grant"
     },
     {
-      "from": "issue:KI-106",
-      "to": "file:src/modules/crm/opp-project-sync.js",
+      "from": "issue:KI-109",
+      "to": "file:src/modules/pmo/progress.js",
       "label": "يشير السجل إلى",
       "evidence": "docs/KNOWN-ISSUES.md",
       "kind": "reported"
     },
     {
-      "from": "issue:KI-107",
-      "to": "file:src/modules/crm/opp-project-sync.js",
+      "from": "issue:KI-109",
+      "to": "file:src/web/views/pmo.js",
       "label": "يشير السجل إلى",
       "evidence": "docs/KNOWN-ISSUES.md",
       "kind": "reported"
     },
     {
-      "from": "issue:KI-108",
-      "to": "file:src/core/reports/metrics.js",
+      "from": "issue:KI-110",
+      "to": "file:src/modules/org/sector-targets.js",
       "label": "يشير السجل إلى",
       "evidence": "docs/KNOWN-ISSUES.md",
       "kind": "reported"
     },
     {
-      "from": "issue:KI-108",
-      "to": "file:src/modules/org/org.js",
+      "from": "issue:KI-110",
+      "to": "file:src/web/views/sector-targets.js",
+      "label": "يشير السجل إلى",
+      "evidence": "docs/KNOWN-ISSUES.md",
+      "kind": "reported"
+    },
+    {
+      "from": "issue:KI-111",
+      "to": "file:scripts/migrate.js",
+      "label": "يشير السجل إلى",
+      "evidence": "docs/KNOWN-ISSUES.md",
+      "kind": "reported"
+    },
+    {
+      "from": "issue:KI-112",
+      "to": "file:src/modules/crm/opportunities.js",
       "label": "يشير السجل إلى",
       "evidence": "docs/KNOWN-ISSUES.md",
       "kind": "reported"
@@ -62731,6 +63263,27 @@
       "from": "issue:KI-035",
       "to": "journey:approval",
       "label": "فجوة معلنة",
+      "evidence": "docs/system-graph/model.json",
+      "kind": "reviewed"
+    },
+    {
+      "from": "journey:targets",
+      "to": "table:budget",
+      "label": "قيم السنة ورقم المراجعة",
+      "evidence": "docs/system-graph/model.json",
+      "kind": "reviewed"
+    },
+    {
+      "from": "journey:targets",
+      "to": "page:sector-targets",
+      "label": "إدارة مستهدفات السنة",
+      "evidence": "docs/system-graph/model.json",
+      "kind": "reviewed"
+    },
+    {
+      "from": "journey:targets",
+      "to": "file:src/core/reports/metrics.js",
+      "label": "المحقق مقابل مستهدف السنة",
       "evidence": "docs/system-graph/model.json",
       "kind": "reviewed"
     }

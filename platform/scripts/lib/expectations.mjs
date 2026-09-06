@@ -54,7 +54,7 @@ export const ROLES = [
 // بوابتها بوابة «الفريق» إلا «الإقفال الشهري» فبوابته منح الإقفال.
 export const PAGES = ['home', 'ceo', 'portfolio', 'sector', 'opportunities', 'my-opportunities', 'projects',
   'clients', 'events', 'tasks', 'timesheet', 'approvals', 'team', 'staffing', 'imports', 'users', 'audit', 'reports', 'org', 'finance', 'mail', 'ops',
-  'guide', 'revenue-review',
+  'guide', 'revenue-review', 'sector-targets',
   'team/resources', 'team/org', 'team/people', 'team/work', 'team/planning', 'team/requests', 'team/analysis', 'team/needs', 'team/close'];
 
 // Roles whose service guards admit them to the people/org surfaces: staffingRoster() and orgTree()

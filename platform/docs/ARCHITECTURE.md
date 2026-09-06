@@ -187,3 +187,16 @@ It never reads production rows. Text references are distinguished from enforced 
 and reviewed business edges. Source fingerprints are checked in CI; this does not prove runtime
 permissions, complete test coverage or deployed connectivity. No graph database or new runtime
 service was added.
+
+
+## Annual targets and project handoff — v5.78
+
+Annual target reads use budget by sector_id + fiscal_year; missing/duplicate records remain
+unknown/conflicted. Migration043 adds revision without moving legacy targets. Scoped services
+perform atomic compare-and-set and audit before/after/reason. The UI exposes annual sales/revenue
+only; sensitive cost assumptions are not returned. Monthly plans remain untouched.
+New project mirrors preserve explicit commercial year or unresolved state; no delivery-date inference.
+Setup is a projection of persisted sections, not a second state machine or readiness approval.
+Normal boot runs migrations and technical RBAC/admin bootstrap only; historic business/demo scripts
+are retained for separately reviewed use, never invoked automatically. Pending legacy migration
+DML remains a release gate requiring actual inventory; no deployed migration was modified.

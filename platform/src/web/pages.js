@@ -20,3 +20,5 @@ export * from './views/events.js';
 export * from './views/team/index.js';
 
 export * from './views/revenue-review.js';
+
+export * from './views/sector-targets.js';

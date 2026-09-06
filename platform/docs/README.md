@@ -31,3 +31,7 @@ The code is the source of truth; these documents are its ledger. Four of them fo
 ## The contract, in one paragraph
 
 A change is not done when the code works; it is done when the ledger matches. Page/route/migration/module ⇒ FEATURES row, same commit. Structural change ⇒ ARCHITECTURE, same commit; irreversible decision ⇒ new ADR. Defect found ⇒ KNOWN-ISSUES row now; defect fixed ⇒ row deleted + regression test + CHANGELOG entry. Notable change ⇒ CHANGELOG entry with monotonic version and deploy marker. Security-relevant merge ⇒ SECURITY-REPORT update. `npm run quality` runs `scripts/check-docs.mjs` and turns drift into a red build — do not weaken the gate; update the doc.
+
+
+دفعة v5.78: `delivery-waves/v5.78-qa.md` لأدلة الاختبار وحدود التجربة، و
+`adr/ADR-0018-annual-targets-project-setup.md` لقرار المستهدفات والاستكمال وحفظ البيانات.

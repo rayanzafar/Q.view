@@ -97,7 +97,7 @@ Object.assign(window.Sanad, {
     const id = document.getElementById('sec-id').value.trim();
     const name_ar = document.getElementById('sec-ar').value.trim();
     if (!id || !name_ar) return toast('المعرّف والاسم مطلوبان', true);
-    try { await api('/org/sectors', 'POST', { id: id.toUpperCase(), name_ar, target_sales_sar: Number(document.getElementById('sec-tgt').value) || 0 }); toast('أُضيف القطاع ✓'); location.reload(); }
+    try { await api('/org/sectors', 'POST', { id: id.toUpperCase(), name_ar }); toast('أُضيف القطاع ✓'); location.reload(); }
     catch (e) { toast(e.message, true); }
   },
   async addDept(sectorId) {
@@ -360,7 +360,7 @@ Object.assign(window.Sanad, {
           <h3 style="font-size:17px;margin-top:.25rem">${this.esc(p.name_ar)}</h3>
           <div style="margin-top:.55rem;display:flex;gap:.4rem;flex-wrap:wrap">
             <span class="pill" style="background:#dbeafe;color:var(--brand)">${this.esc(this.lbl(p.status))}</span>
-            ${p.rag ? `<span class="pill" style="background:${ragHex[p.rag]}22;color:${ragHex[p.rag]}">${this.esc(this.lbl(p.rag))}</span>` : ''}</div>
+            ${ragHex[p.rag] ? `<span class="pill" style="background:${ragHex[p.rag]}22;color:${ragHex[p.rag]}">${this.esc(this.lbl(p.rag))}</span>` : '<span class="pill" style="background:#f1f5f9;color:#64748b">غير مقيّم</span>'}</div>
         </div><button class="btn btn-ghost" onclick="Sanad.closeDrawer()">✕</button></div>
         <div class="drawer-body">
           <div class="kv-row"><span class="k">الإنجاز</span><span class="v tnum">${Math.round(p.progress_effective_pct ?? p.progress_pct ?? 0)}%</span></div>

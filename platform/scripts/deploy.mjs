@@ -13,7 +13,7 @@
 //     الخدمة لا من آخر لقطة).
 //   • نسخة احتياطية قبل كل نشر — لا عند الترحيلات وحدها.
 //
-// الاستعمال: SANAD_RELEASE=1 npm run deploy [-- --skip-gates --no-backup --allow-dirty --no-sweep]
+// الاستعمال: SANAD_RELEASE=1 npm run deploy [-- --skip-gates --allow-dirty --no-sweep]
 // الدليل الكامل: docs/guides/DEPLOY-PIPELINE.md
 import { spawnSync } from 'node:child_process';
 import { readFileSync, existsSync, readdirSync, writeFileSync } from 'node:fs';
@@ -48,6 +48,10 @@ const run = (cmd, argv, opts = {}) => {
 // ── ١) الشروط المسبقة ─────────────────────────────────────────────────────────
 log('١/٧ الشروط المسبقة');
 if (process.env.SANAD_RELEASE !== '1') fail('النشر جلسةُ إطلاقٍ واعية: SANAD_RELEASE=1 مطلوب');
+// Reject before any subprocess: a release without a verified backup is never allowed.
+if (args.has('--no-backup')) fail('لا يمكن تجاوز النسخة الاحتياطية؛ كل إصدار يتطلب نسخة ناجحة قبل النشر');
+// No preview implementation exists here. Never silently treat this flag as a real release.
+if (args.has('--dry-run')) fail('المعاينة غير متاحة في أمر النشر؛ لم يُنفّذ أي إجراء');
 if (!existsSync(join(ROOT, 'railway.json')) || !existsSync(join(ROOT, 'scripts/boot.sh'))) {
   fail(`يجب التشغيل من platform/ — المسار الحالي: ${ROOT}`);
 }
@@ -83,9 +87,7 @@ if (args.has('--skip-gates')) {
 }
 
 // ── ٣) النسخة الاحتياطية (قبل كل نشر — لا عند الترحيلات وحدها) ─────────────────
-if (args.has('--no-backup')) {
-  console.log('⚠ تخطّي النسخة الاحتياطية بطلبك الصريح — راجع حادثة 2026-08-11 قبل أن تندم');
-} else {
+{
   log('٣/٧ نسخة احتياطية من قاعدة staging');
   // pg_dump: من المسار، أو PG_BIN، أو استخراجُ pg18 في scratchpad جلسةٍ سابقة.
   let pgBin = '';
@@ -103,7 +105,7 @@ if (args.has('--no-backup')) {
         });
       } catch { return []; }
     })()].filter(Boolean).filter((p) => existsSync(join(p, 'pg_dump')));
-    if (!cand.length) fail('pg_dump غير متاح — ثبّته أو مرّر PG_BIN=<مجلد ثنائيات postgres>، أو (بوعيٍ كامل) --no-backup');
+    if (!cand.length) fail('pg_dump غير متاح — ثبّته أو مرّر PG_BIN=<مجلد ثنائيات postgres>');
     pgBin = cand[0];
     console.log(`ℹ pg_dump من: ${pgBin}`);
   }

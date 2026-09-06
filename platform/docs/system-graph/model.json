@@ -275,6 +275,18 @@
         "docs/team-resources/AI-TOOLS.md"
       ],
       "status": "غير متحقق"
+    },
+    {
+      "id": "journey:targets",
+      "kind": "journey",
+      "label": "مستهدفات القطاع",
+      "detail": "مبيعات وإيراد بحسب القطاع والسنة، سجل تعديل مع السبب ورقم مراجعة؛ القيم القديمة دون سنة محفوظة للمراجعة والتوزيع الشهري غير قابل للتحرير بهذه الدفعة.",
+      "status": "منفذ محليًا غير منشور",
+      "sources": [
+        "src/modules/org/sector-targets.js",
+        "src/web/views/sector-targets.js",
+        "migrations/043_budget_revision.sql"
+      ]
     }
   ],
   "edges": [
@@ -612,6 +624,21 @@
       "issue:KI-035",
       "journey:approval",
       "فجوة معلنة"
+    ],
+    [
+      "journey:targets",
+      "table:budget",
+      "قيم السنة ورقم المراجعة"
+    ],
+    [
+      "journey:targets",
+      "page:sector-targets",
+      "إدارة مستهدفات السنة"
+    ],
+    [
+      "journey:targets",
+      "file:src/core/reports/metrics.js",
+      "المحقق مقابل مستهدف السنة"
     ]
   ]
 }

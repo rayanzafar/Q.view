@@ -43,6 +43,7 @@ export const PAGE_ACCESS = {
   // وضعُ منحٍ هنا يكون شرطاً على قراءة بياناته نفسه — أي منع الموظف من رؤية عمله هو.
   home: () => true,
   'revenue-review': (u) => can(u, 'read', 'revenue_line'),
+  'sector-targets': (u) => can(u, 'read', 'budget'),
   ceo: (u) => seesCompanyPerformance(u),
   portfolio: (u) => seesCompanyPerformance(u),
   sector: (u) => can(u, 'read', 'project') || can(u, 'read', 'opportunity'),

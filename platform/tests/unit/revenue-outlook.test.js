@@ -28,6 +28,7 @@ const MID = new Date('2026-07-02T00:00:00Z');
 before(async () => {
   await insert('sector', { id: 'S1', name_ar: 'قطاع أ', kind: 'delivery', active: 1, sort_order: 1,
     target_revenue_halalas: 24_000_000, target_sales_halalas: 40_000_000, created_at: T });
+  await insert('budget', { id: 'S1-2026', sector_id: 'S1', fiscal_year: 2026, target_revenue_halalas: 24_000_000, target_sales_halalas: 40_000_000, created_at: T });
   await insert('stage', { id: 'LEAD', name_ar: 'ترشيح', default_win_pct: 10, sort_order: 1, is_won: 0, is_lost: 0 });
   await insert('stage', { id: 'WON', name_ar: 'مكسوبة', default_win_pct: 100, sort_order: 5, is_won: 1, is_lost: 0 });
   await insert('stage', { id: 'ON_HOLD', name_ar: 'معلّقة', sort_order: 9, is_won: 0, is_lost: 0 });

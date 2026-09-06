@@ -63,3 +63,20 @@ test('أمر النشر مسجَّل في package.json — الطريق الوا
   const pkg = JSON.parse(read('package.json'));
   assert.equal(pkg.scripts.deploy, 'node scripts/deploy.mjs');
 });
+
+test('خط النشر يرفض تجاوز النسخة الاحتياطية والمعاينة غير المنفذة قبل أي إجراء', () => {
+  const txt = read('scripts/deploy.mjs');
+  const firstCommand = txt.indexOf("const dirty = run('git'");
+  for (const flag of ['--no-backup', '--dry-run']) {
+    const rejection = `if (args.has('${flag}')) fail(`;
+    assert.ok(txt.indexOf(rejection) > 0 && txt.indexOf(rejection) < firstCommand,
+      `${flag} لا يُرفض قبل أول أمر`);
+  }
+  assert.doesNotMatch(txt, /if\s*\(args\.has\('--no-backup'\)\)\s*\{/, 'عاد فرع تجاوز النسخة الاحتياطية');
+  assert.doesNotMatch(txt, /تخطّي النسخة الاحتياطية/, 'ما زال النشر يعرض تخطي النسخة');
+  const backup = txt.indexOf('const bk = run(');
+  const backupFailure = txt.indexOf("fail(`النسخة الاحتياطية فشلت:");
+  const upload = txt.indexOf('const up = run(');
+  assert.ok(backup > 0 && backupFailure > backup && upload > backupFailure,
+    'يجب التحقق من النسخة ووقف الإخفاق قبل الرفع');
+});
