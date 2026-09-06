@@ -12,8 +12,11 @@ export const PLATFORM = resolve(dirname(fileURLToPath(import.meta.url)), '..', '
 // The seed pipeline for a throwaway instance. seed.js writes the 16 demo personas; seed-fixture
 // adds deterministic business data (fixed FX- ids) so pages render non-empty. Optional scenario
 // data (story-shaped, purge-registered) is appended when `scenarios` is true.
-export function buildDb(dbPath, { scenarios = false } = {}) {
-  const steps = ['scripts/migrate.js', 'scripts/seed-rbac.js', 'scripts/seed.js', 'scripts/lib/seed-fixture.mjs'];
+export function buildDb(dbPath, { scenarios = false, fixture = true } = {}) {
+  const steps = ['scripts/migrate.js', 'scripts/seed-rbac.js', 'scripts/seed.js'];
+  // بيانات العرض الثابتة (المعرّفات FX-) اختيارية: نسخة العرض تبني بياناتها بنفسها عبر
+  // الخدمات، وأي صفٍّ ثابت هنا يظهر في اللقطات وليس منها.
+  if (fixture) steps.push('scripts/lib/seed-fixture.mjs');
   if (scenarios) steps.push('scripts/seed-scenarios.mjs');
   for (const s of steps) {
     const r = spawnSync(process.execPath, ['--experimental-sqlite', s], {

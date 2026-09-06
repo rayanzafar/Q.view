@@ -188,7 +188,7 @@ class Probe {
 // فيرمي استثناءً غير ملتقَط (assert(!this.paused)) يُسقط التشغيل كله. الأمر توقيتي: يظهر في
 // الفحص الآلي دون المحلي. الاستهلاك **داخل الدالة** يجعل التسريب مستحيلاً بنيوياً، لا معتمداً
 // على انتباه كل موضع نداء.
-function makeClient(base) {
+export function makeClient(base) {
   const cookies = new Map();
   const req = async (as, path, { method = 'GET', body, headers = {} } = {}) => {
     const jar = as ? cookies.get(as) : null;
