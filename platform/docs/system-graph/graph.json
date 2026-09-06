@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "sourceDigest": "3342b5da2899585709db68e05f6add9dc227454edab140895cb3ec95ff9e3e9e",
+  "sourceDigest": "06848749efd05d3b5449d405ea4d05ebed5ba2600bbff8b93eaebfd8e8096d0a",
   "sourceFiles": 617,
   "counts": {
     "code": 234,
@@ -19925,8 +19925,8 @@
       "id": "issue:KI-110",
       "kind": "issue",
       "label": "KI-110 · org/target-period-plan",
-      "detail": "Annual target editing is implemented; existing monthly plans are preserved with a warning but monthly/quarterly plan editing and effective-dated historical report snapshots are not implemented in this wave.",
-      "status": "open",
+      "detail": "Approved 12-month distribution editing landed in v5.80 (sums must equal the annual targets, reason + revision + audit; reports read the approved plan only, never an assumed equal split). Still not implemented: effective-dated historical report snapshots (a report re-run for a past month uses today's approved plan, not the plan approved at that time).",
+      "status": "open (owner decision)",
       "sources": [
         "docs/KNOWN-ISSUES.md"
       ]
@@ -62171,7 +62171,7 @@
     },
     {
       "from": "issue:KI-110",
-      "to": "file:src/web/views/sector-targets.js",
+      "to": "file:src/web/views/sector.js",
       "label": "يشير السجل إلى",
       "evidence": "docs/KNOWN-ISSUES.md",
       "kind": "reported"
