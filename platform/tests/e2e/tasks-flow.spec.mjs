@@ -97,6 +97,8 @@ export default async function tasksFlowSpec({ browser, base, t }) {
       // بلا موعد عمداً — وهي بالضبط الحالة التي كانت تختفي بعد الإضافة.
       const title = 'مهمة فحص التدفّق ' + (await page.evaluate(() => document.title.length + '' + window.performance.now().toFixed(0)));
       await page.fill('#qa-title', title);
+      // ونسبةُ الإشغال مطلوبةٌ على مهمتك أنت منذ v5.84 — يملؤها القارئ الحقيقي، فيملؤها الحارس
+      await page.fill('#qa-util', '25');
       await page.click('[data-action="task-add"]');
       await page.waitForLoadState('networkidle').catch(() => {});
       await page.waitForTimeout(1200);
@@ -218,7 +220,8 @@ export default async function tasksFlowSpec({ browser, base, t }) {
       for (const n of ['ألف', 'باء', 'جيم']) {
         const r = await fetch('/api/tasks/quick', {
           method: 'POST', headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ title: 'حارس الاستعادة ' + n + ' ' + Date.now(), due_date: today, priority: 'P2' }),
+          // `utilization_pct` مطلوبةٌ على المهمة التي يكتبها المرء لنفسه منذ v5.84
+          body: JSON.stringify({ title: 'حارس الاستعادة ' + n + ' ' + Date.now(), due_date: today, priority: 'P2', utilization_pct: 10 }),
         });
         if (r.ok) out.push((await r.json()).id);
       }

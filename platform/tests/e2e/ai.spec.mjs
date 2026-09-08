@@ -406,6 +406,9 @@ export default async function aiSpec({ browser, base, t }) {
       await page.waitForSelector('#ai-log .ai-card input', { timeout: 8000 });
       const title = 'مهمة من فحص المساعد';
       await page.fill('#ai-log .ai-card input[type=text]', title);
+      // ونسبةُ الإشغال حقلٌ مطلوبٌ في نموذج المساعد منذ v5.84 (المهمة مُسنَدة إلى صاحب الطلب
+      // نفسه)، والمعاينة تردّها إن خلت — فيملؤها الحارس كما يملؤها صاحب الطلب.
+      await page.fill('#ai-log .ai-card input[type=number]', '20');
       await page.click('#ai-log [data-action="ai-form-submit"]');
       await page.waitForSelector('#ai-log .ai-prev', { timeout: 8000 });
       const summary = await page.evaluate(() => document.querySelector('#ai-log .ai-prev').innerText);
@@ -443,6 +446,8 @@ export default async function aiSpec({ browser, base, t }) {
       await page.click('#ai-chips .ai-chip[data-intent="create_task"]');
       await page.waitForSelector('#ai-log .ai-card input[type=text]', { timeout: 8000 });
       await page.locator('#ai-log .ai-card input[type=text]').last().fill(title);
+      // نسبة الإشغال حقلٌ مطلوب منذ v5.84 — المعاينة تردّ النموذج بدونها
+      await page.locator('#ai-log .ai-card input[type=number]').last().fill('20');
       await page.locator('#ai-log [data-action="ai-form-submit"]').last().click();
       await page.waitForSelector('#ai-log .ai-prev', { timeout: 8000 });
     };
