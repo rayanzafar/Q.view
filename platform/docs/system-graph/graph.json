@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "sourceDigest": "c9a73b7aba3e45d66d2e047100b194f082a9765e4c905c3e35c58c25b1ed0c6c",
+  "sourceDigest": "dc734cedeb7d8a50e2d7bb5a18d128e685ee567bafc60f983524fa741840c0d9",
   "sourceFiles": 627,
   "counts": {
     "code": 241,
@@ -12,7 +12,7 @@
     "table": 100,
     "role": 18,
     "permission": 9,
-    "issue": 70,
+    "issue": 71,
     "journey": 14,
     "metric": 4,
     "workflow": 6,
@@ -7477,7 +7477,7 @@
       "path": "/oauth/register"
     },
     {
-      "id": "route:src/modules/mcp/mcp.routes.js:10183:/oauth/token",
+      "id": "route:src/modules/mcp/mcp.routes.js:10926:/oauth/token",
       "kind": "route",
       "label": "OPTIONS /oauth/token",
       "detail": "تصريح مسار محلي في mcpRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -7488,7 +7488,7 @@
       "path": "/oauth/token"
     },
     {
-      "id": "route:src/modules/mcp/mcp.routes.js:10229:/oauth/token",
+      "id": "route:src/modules/mcp/mcp.routes.js:10972:/oauth/token",
       "kind": "route",
       "label": "POST /oauth/token",
       "detail": "تصريح مسار محلي في mcpRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -7499,7 +7499,7 @@
       "path": "/oauth/token"
     },
     {
-      "id": "route:src/modules/mcp/mcp.routes.js:11050:/oauth/revoke",
+      "id": "route:src/modules/mcp/mcp.routes.js:11950:/oauth/revoke",
       "kind": "route",
       "label": "OPTIONS /oauth/revoke",
       "detail": "تصريح مسار محلي في mcpRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -7510,7 +7510,7 @@
       "path": "/oauth/revoke"
     },
     {
-      "id": "route:src/modules/mcp/mcp.routes.js:11097:/oauth/revoke",
+      "id": "route:src/modules/mcp/mcp.routes.js:11997:/oauth/revoke",
       "kind": "route",
       "label": "POST /oauth/revoke",
       "detail": "تصريح مسار محلي في mcpRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -7521,7 +7521,7 @@
       "path": "/oauth/revoke"
     },
     {
-      "id": "route:src/modules/mcp/mcp.routes.js:11428:/mcp",
+      "id": "route:src/modules/mcp/mcp.routes.js:12328:/mcp",
       "kind": "route",
       "label": "OPTIONS /mcp",
       "detail": "تصريح مسار محلي في mcpRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -7532,7 +7532,7 @@
       "path": "/mcp"
     },
     {
-      "id": "route:src/modules/mcp/mcp.routes.js:11465:/mcp",
+      "id": "route:src/modules/mcp/mcp.routes.js:12365:/mcp",
       "kind": "route",
       "label": "GET /mcp",
       "detail": "تصريح مسار محلي في mcpRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -7543,7 +7543,7 @@
       "path": "/mcp"
     },
     {
-      "id": "route:src/modules/mcp/mcp.routes.js:11813:/mcp",
+      "id": "route:src/modules/mcp/mcp.routes.js:12713:/mcp",
       "kind": "route",
       "label": "DELETE /mcp",
       "detail": "تصريح مسار محلي في mcpRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -7554,7 +7554,7 @@
       "path": "/mcp"
     },
     {
-      "id": "route:src/modules/mcp/mcp.routes.js:11886:/mcp",
+      "id": "route:src/modules/mcp/mcp.routes.js:12786:/mcp",
       "kind": "route",
       "label": "POST /mcp",
       "detail": "تصريح مسار محلي في mcpRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -20339,6 +20339,16 @@
       ]
     },
     {
+      "id": "issue:KI-113",
+      "kind": "issue",
+      "label": "KI-113 · mcp/admin-visibility",
+      "detail": "لا نافذة لمدير النظام يرى فيها روابط المساعد القائمة على مستوى الشركة أو يقطع رابطاً لموظفٍ بعينه. المتاح اليوم: الموظف يرى روابطه ويقطعها من صفحته، و«إنهاء الجلسات» يقطع كل روابط الحساب (v5.81)، والأثر مكتوب في سجل التدقيق. الناقص هو **العرض** المجمَّع لا القدرة على القطع. وكذلك لا عمر مطلق للربط: التجديد بتدوير يمدّده ما دام مستعملاً.",
+      "status": "open",
+      "sources": [
+        "docs/KNOWN-ISSUES.md"
+      ]
+    },
+    {
       "id": "issue:KI-109",
       "kind": "issue",
       "label": "KI-109 · pmo/progress-policy",
@@ -22198,6 +22208,13 @@
     },
     {
       "from": "file:src/core/auth/service.js",
+      "to": "file:src/modules/mcp/oauth.js",
+      "label": "استيراد صريح",
+      "evidence": "src/core/auth/service.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/core/auth/service.js",
       "to": "file:src/core/audit/index.js",
       "label": "استيراد صريح",
       "evidence": "src/core/auth/service.js",
@@ -22409,6 +22426,13 @@
     {
       "from": "file:src/core/jobs/scheduler.js",
       "to": "file:src/core/auth/service.js",
+      "label": "استيراد صريح",
+      "evidence": "src/core/jobs/scheduler.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/core/jobs/scheduler.js",
+      "to": "file:src/modules/mcp/oauth.js",
       "label": "استيراد صريح",
       "evidence": "src/core/jobs/scheduler.js",
       "kind": "source"
@@ -25796,6 +25820,13 @@
     },
     {
       "from": "file:src/modules/identity/identity.js",
+      "to": "file:src/modules/mcp/oauth.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/identity/identity.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/identity/identity.js",
       "to": "file:src/core/audit/index.js",
       "label": "استيراد صريح",
       "evidence": "src/modules/identity/identity.js",
@@ -26552,56 +26583,56 @@
     },
     {
       "from": "file:src/modules/mcp/mcp.routes.js",
-      "to": "route:src/modules/mcp/mcp.routes.js:10183:/oauth/token",
+      "to": "route:src/modules/mcp/mcp.routes.js:10926:/oauth/token",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/mcp/mcp.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/mcp/mcp.routes.js",
-      "to": "route:src/modules/mcp/mcp.routes.js:10229:/oauth/token",
+      "to": "route:src/modules/mcp/mcp.routes.js:10972:/oauth/token",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/mcp/mcp.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/mcp/mcp.routes.js",
-      "to": "route:src/modules/mcp/mcp.routes.js:11050:/oauth/revoke",
+      "to": "route:src/modules/mcp/mcp.routes.js:11950:/oauth/revoke",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/mcp/mcp.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/mcp/mcp.routes.js",
-      "to": "route:src/modules/mcp/mcp.routes.js:11097:/oauth/revoke",
+      "to": "route:src/modules/mcp/mcp.routes.js:11997:/oauth/revoke",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/mcp/mcp.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/mcp/mcp.routes.js",
-      "to": "route:src/modules/mcp/mcp.routes.js:11428:/mcp",
+      "to": "route:src/modules/mcp/mcp.routes.js:12328:/mcp",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/mcp/mcp.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/mcp/mcp.routes.js",
-      "to": "route:src/modules/mcp/mcp.routes.js:11465:/mcp",
+      "to": "route:src/modules/mcp/mcp.routes.js:12365:/mcp",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/mcp/mcp.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/mcp/mcp.routes.js",
-      "to": "route:src/modules/mcp/mcp.routes.js:11813:/mcp",
+      "to": "route:src/modules/mcp/mcp.routes.js:12713:/mcp",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/mcp/mcp.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/mcp/mcp.routes.js",
-      "to": "route:src/modules/mcp/mcp.routes.js:11886:/mcp",
+      "to": "route:src/modules/mcp/mcp.routes.js:12786:/mcp",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/mcp/mcp.routes.js",
       "kind": "source"
@@ -26644,6 +26675,13 @@
     {
       "from": "file:src/modules/mcp/oauth.js",
       "to": "file:src/core/http/errors.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/mcp/oauth.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/mcp/oauth.js",
+      "to": "file:src/core/obs/log.js",
       "label": "استيراد صريح",
       "evidence": "src/modules/mcp/oauth.js",
       "kind": "source"
@@ -38759,6 +38797,34 @@
       "kind": "source"
     },
     {
+      "from": "file:tests/security/mcp-boundaries.test.js",
+      "to": "file:src/modules/identity/identity.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/security/mcp-boundaries.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/security/mcp-boundaries.test.js",
+      "to": "file:src/core/http/context.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/security/mcp-boundaries.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/security/mcp-boundaries.test.js",
+      "to": "file:src/core/auth/service.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/security/mcp-boundaries.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/security/mcp-boundaries.test.js",
+      "to": "file:src/modules/mcp/oauth.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/security/mcp-boundaries.test.js",
+      "kind": "source"
+    },
+    {
       "from": "file:tests/security/ocr-engine-vendored.test.js",
       "to": "file:src/core/db/index.js",
       "label": "استيراد صريح",
@@ -44377,6 +44443,20 @@
       "to": "table:opportunity",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
       "evidence": "src/modules/ai/apply.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:src/modules/ai/guide-tools.js",
+      "to": "table:sector",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "src/modules/ai/guide-tools.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:src/modules/ai/guide-tools.js",
+      "to": "table:department",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "src/modules/ai/guide-tools.js",
       "kind": "text-reference"
     },
     {
@@ -55525,6 +55605,27 @@
     },
     {
       "from": "file:tests/security/mcp-boundaries.test.js",
+      "to": "table:audit_log",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/security/mcp-boundaries.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/security/mcp-boundaries.test.js",
+      "to": "table:mcp_auth_code",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/security/mcp-boundaries.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/security/mcp-boundaries.test.js",
+      "to": "table:session",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/security/mcp-boundaries.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/security/mcp-boundaries.test.js",
       "to": "table:sector",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
       "evidence": "tests/security/mcp-boundaries.test.js",
@@ -55547,13 +55648,6 @@
     {
       "from": "file:tests/security/mcp-boundaries.test.js",
       "to": "table:employee",
-      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
-      "evidence": "tests/security/mcp-boundaries.test.js",
-      "kind": "text-reference"
-    },
-    {
-      "from": "file:tests/security/mcp-boundaries.test.js",
-      "to": "table:session",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
       "evidence": "tests/security/mcp-boundaries.test.js",
       "kind": "text-reference"
@@ -63131,6 +63225,20 @@
       "label": "update @ department",
       "evidence": "src/core/rbac/matrix.js",
       "kind": "grant"
+    },
+    {
+      "from": "issue:KI-113",
+      "to": "file:src/modules/identity/identity.js",
+      "label": "يشير السجل إلى",
+      "evidence": "docs/KNOWN-ISSUES.md",
+      "kind": "reported"
+    },
+    {
+      "from": "issue:KI-113",
+      "to": "file:src/modules/mcp/mcp.api.routes.js",
+      "label": "يشير السجل إلى",
+      "evidence": "docs/KNOWN-ISSUES.md",
+      "kind": "reported"
     },
     {
       "from": "issue:KI-109",

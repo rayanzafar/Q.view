@@ -3,6 +3,7 @@ import { all, run } from '../db/index.js';
 import { processQueue, enqueueReport, nextRunAt } from '../reports/engine.js';
 import { purgeExpiredCodes } from '../auth/otp.js';
 import { purgeExpiredSessions } from '../auth/service.js';
+import { purgeExpiredMcp } from '../../modules/mcp/oauth.js';
 import { sweepApprovalMail } from '../../modules/workflow/approval-notify.js';
 // أثرُ الاستدعاء كان يُرمى في كل هذه الحمايات — أكبرُ ضياعِ معلومةٍ في المستودع.
 import { logError, logInfo, trimStack } from '../obs/log.js';
@@ -62,6 +63,12 @@ async function tickBody() {
       const { removed } = await purgeFaults();
       if (removed) logInfo('faults_purged', { removed });
     } catch (e) { logError('job_failed', { job: 'purgeFaults', err_msg: String(e?.message || e).slice(0, 300) }); }
+    // وجداول ربط المساعد: تسجيل العميل مفتوح بلا حساب، فهو أول ما يُملأ من الخارج. ورمز الإذن
+    // يعيش خمس دقائق ويبقى صفّه أبداً بغير هذا السطر.
+    try {
+      const purged = await purgeExpiredMcp();
+      if (purged.codes || purged.tokens || purged.clients) logInfo('mcp_purged', purged);
+    } catch (e) { logError('job_failed', { job: 'purgeExpiredMcp', err_msg: String(e?.message || e).slice(0, 300) }); }
   }
 }
 let lastPurge = 0;

@@ -37,9 +37,14 @@ const CAP_AR = {
 
 const base = (tool) => ({ tool, as_of: nowIso() });
 
+// جدولان لا غير، بأسمائهما الصريحة: لا اسم جدولٍ يأتي من وسيطٍ مهما بدا ثابتاً اليوم.
+const NAME_QUERY = {
+  sector: 'SELECT name_ar FROM sector WHERE id = ?',
+  department: 'SELECT name_ar FROM department WHERE id = ?',
+};
 async function nameOf(table, rowId) {
-  if (!rowId) return null;
-  const r = await get(`SELECT name_ar FROM ${table} WHERE id = ?`, [rowId]);
+  if (!rowId || !NAME_QUERY[table]) return null;
+  const r = await get(NAME_QUERY[table], [rowId]);
   return r?.name_ar || null;
 }
 
@@ -128,7 +133,12 @@ async function runExplainTerm(ctx, input = {}) {
   if (q.length < 2) throw badRequest('اكتب المصطلح المطلوب شرحه (حرفان فأكثر)');
   const norm = (s) => String(s || '').replace(/[ً-ْ]/g, '').replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').toLowerCase();
   const needle = norm(q);
+  // بحدود قدرات القارئ: مصطلحا التكلفة والهامش محجوبان في شاشة «دليلي» عمّن لا يقرؤهما،
+  // فلا يفتحهما له المساعد من الباب الخلفي. نفس مرشِّح `termsForPages`.
+  const caps = capsOf(ctx.user);
+  const visible = ([, t]) => !t.cap || caps[t.cap];
   const hits = Object.entries(C.TERMS)
+    .filter(visible)
     .filter(([k, t]) => norm(t.term_ar).includes(needle) || needle.includes(norm(t.term_ar)) || k.toLowerCase() === needle)
     .slice(0, 8)
     .map(([, t]) => ({ term_ar: t.term_ar, meaning_ar: t.meaning_ar }));

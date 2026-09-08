@@ -96,12 +96,20 @@ export const otpVerifyLimiter = bucketLimiter({ capacity: 20, refillPerSec: 1 / 
 // نقطة البروتوكول: المفتاح الرمز نفسه لا العنوان — نافذتا مساعدٍ خلف عنوانٍ واحد لا تستنفد
 // إحداهما الأخرى، ورمزٌ واحدٌ مسروق لا يُغرق المنصة من عناوين كثيرة. ونأخذ بادئة بصمة الرمز
 // لا الرمز: مفاتيح الخريطة تعيش في الذاكرة، فلا يُحفظ فيها سرٌّ كامل.
+// **العنوان جزء من المفتاح دائماً**، والرمز يضيف تمييزاً فوقه لا بديلاً عنه. المفتاح يُشتق قبل
+// التحقق من الرمز بالضرورة (الحدّ يسبق العمل)، فلو كان الرمز وحده لصنع كل رمزٍ مزوَّر دلواً
+// جديداً — أي لا حدّ أصلاً على من لا يملك حساباً، ونموّاً بلا سقف في خريطة الدلاء.
 const mcpKey = (req) => {
   const h = String(req.get('authorization') || '');
   if (!/^Bearer\s+/i.test(h)) return `M:${req.ip}`;
-  return `M:${createHash('sha256').update(h.replace(/^Bearer\s+/i, '').trim()).digest('hex').slice(0, 24)}`;
+  return `M:${req.ip}:${createHash('sha256').update(h.replace(/^Bearer\s+/i, '').trim()).digest('hex').slice(0, 16)}`;
 };
 export const mcpLimiter = bucketLimiter({ capacity: 120, refillPerSec: 2, keyFn: mcpKey });
+// ودلوٌ ثانٍ بالعنوان وحده فوقه — كدلوَي رمز الدخول، وللسبب نفسه: مفتاح الدلو الأول يدخل فيه
+// الرمز، والرمز يُشتق قبل التحقق منه بالضرورة. فمن يرسل رمزاً مختلَقاً جديداً في كل طلب يصنع
+// دلواً جديداً في كل مرة ولا يصطدم بشيء. هذا الدلو لا يعرف الرموز أصلاً: عنوانٌ واحد، سقفٌ واحد.
+// والسعة تتّسع لمكتبٍ كامل خلف عنوان واحد (٣٠٠ ثم ٥ في الثانية)، ولا تتّسع لإغراق.
+export const mcpIpLimiter = bucketLimiter({ capacity: 300, refillPerSec: 5, keyFn: (req) => `MI:${req.ip}` });
 // مسارات الإذن والتبديل: أضيق من نقطة البروتوكول — الربط فعلٌ نادر بطبعه (مرة لكل موظف، ثم
 // تجديدٌ كل ثماني ساعات). والسقف يتّسع ليومِ التفعيل الأول حين يربط الفريق كله من عنوان المكتب
 // نفسه (أربعة طلبات لكل موظف)، ولا يتّسع لتخمينٍ آلي. والحماية الحقيقية ليست هنا على أي حال:
@@ -117,7 +125,9 @@ export const oauthLimiter = bucketLimiter({ capacity: 120, refillPerSec: 1 / 2, 
  * على ردٍّ واحد، مصدره عنوان عودة **مسجَّل ومطابَق حرفياً** لا نصٌّ من الطلب.
  */
 export function allowFormActionTo(res, origin) {
-  if (!origin) return;
+  // الأصل يُستوفى في ترويسة أمنية، فلا يدخلها إلا شكلٌ معروف: مخطط ومضيف ومنفذ لا غير.
+  // (محلّل العناوين يمرّر محارف مثل `;` و`,` في اسم المضيف، وهي فواصل موجّهات في السياسة.)
+  if (!origin || !/^https?:\/\/[a-z0-9.\-]+(:\d{1,5})?$/i.test(origin)) return;
   for (const name of ['Content-Security-Policy', 'Content-Security-Policy-Report-Only']) {
     const value = res.getHeader(name);
     if (typeof value === 'string' && value.includes("form-action 'self'")) {

@@ -119,12 +119,19 @@ async function consentPage(req, res, client, q) {
     code_challenge: q.code_challenge, code_challenge_method: q.code_challenge_method || 'S256',
     resource: q.resource || '', scope: q.scope || '',
   }).map(([k, v]) => `<input type="hidden" name="${esc(k)}" value="${esc(v)}">`).join('');
+  // **الوجهة تُعرض، والاسم يُنسب إلى قائله.** التسجيل مفتوح لأي عميل، والاسم نصٌّ يكتبه المسجِّل
+  // نفسه — فعرضُه وحده يجعل «سند — أكمل تفعيل حسابك» يبدو رسالةً من المنصة. الحقيقة الوحيدة
+  // التي تميّز مساعداً من آخر هي **إلى أين تذهب القراءات**، فتُعرض في صدر الشاشة لا في حقلٍ مخفي.
+  let host = '';
+  try { host = new URL(String(q.redirect_uri)).host; } catch { host = ''; }
   const body = `<div style="display:grid;gap:1rem;max-width:640px;margin:auto">
     <div class="card" style="padding:1.5rem">
       <h2>الإذن بربط مساعد ذكي بحسابك</h2>
-      <p>يطلب «<strong>${esc(client.name_ar)}</strong>» أن يقرأ سنداً <strong>باسمك أنت</strong>.</p>
+      <p>يطلب برنامجٌ يسمّي نفسه «<strong>${esc(client.name_ar)}</strong>» أن يقرأ سنداً <strong>باسمك أنت</strong>.</p>
+      <div class="alert warning"><strong>ستذهب قراءاتك إلى: <span style="font-family:ui-monospace,monospace">${esc(host || 'عنوان غير معروف')}</span></strong><br>
+        هذا هو ما يميّز مساعداً من آخر. الاسم أعلاه كتبه البرنامج عن نفسه ولم تتحقق منه سند. إن لم يكن هذا العنوان عنوان مساعدك الذي تعرفه، فارفض.</div>
       <div class="alert info">ما يستطيعه بعد إذنك: يقرأ ما تقرؤه على شاشاتك ولا شيء غيره — بصلاحياتك ونطاقك أنت. ولا يرى الرواتب ولا قيم العقود في قراءات الفريق والموارد. وأي تغيير يبقى بخطوتين: معاينة تعرضها عليك ثم تأكيد منك، والموافقات المؤسسية تبقى كما هي.</div>
-      <div class="alert warning">لا تأذن لمساعد لا تعرف مصدره. يمكنك قطع الربط في أي وقت من صفحة «ربط المساعد الذكي»، ويُسجَّل الإذن والقطع باسمك.</div>
+      <div class="alert warning">لا تأذن لمساعد لا تعرف مصدره، ولا لطلبٍ وصلك في رسالة. يمكنك قطع الربط في أي وقت من صفحة «ربط المساعد الذكي»، ويُسجَّل الإذن والقطع باسمك.</div>
       <form method="post" action="${esc(AUTHORIZE_PATH)}" style="display:flex;gap:.75rem;flex-wrap:wrap;margin-top:1rem">
         <input type="hidden" name="_csrf" value="${esc(req.csrfToken || '')}">${hidden}
         <button class="btn btn-primary" type="submit" name="decision" value="allow">أذن بالربط</button>
@@ -202,6 +209,9 @@ const tokenFail = (res, e) => {
 mcpRouter.options('/oauth/token', openCors);
 mcpRouter.post('/oauth/token', openCors, async (req, res) => {
   const b = req.body || {};
+  // ردٌّ يحمل رمزاً لا يُخزَّن في وسيطٍ ولا في العميل (RFC 6749 §5.1).
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Pragma', 'no-cache');
   try {
     const grant = String(b.grant_type || '');
     if (grant === 'authorization_code') {

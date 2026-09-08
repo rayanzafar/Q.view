@@ -50,17 +50,33 @@ async function registerClient(name = 'كلود', uris = [REDIRECT]) {
   });
   return r.json.client_id;
 }
+// كل حالة تدخل بنفسها: جلسةٌ جديدة لكل مسار إذن. حالةٌ تُنهي جلسات حسابٍ (وهذا عملها) كانت
+// تُسقط الحالات التي بعدها لو تشاركت معها جلسةً واحدة — والاعتماد على أثر حالةٍ أخرى عيبٌ في
+// الاختبار لا في المنتج.
+let sessionSeq = 0;
+async function loginAs(uid) {
+  const sid = `s_${uid}_${++sessionSeq}`;
+  await db.insert('session', { id: sid, user_id: uid, created_at: nowIsoTest(), expires_at: new Date(Date.now() + 864e5).toISOString() });
+  return sid;
+}
+const nowIsoTest = () => new Date().toISOString();
+
 /** يمشي حتى رمز الإذن ويعيده مع مفتاح تحققه — كي تُجرَّب عليه محاولات التبديل الفاسدة. */
 async function codeFor(uid, clientId, { redirect = REDIRECT } = {}) {
+  const sid = await loginAs(uid);
   const v = verifier();
   const q = form({ response_type: 'code', client_id: clientId, redirect_uri: redirect, code_challenge: challengeOf(v), code_challenge_method: 'S256' });
-  const page = await req(`/oauth/authorize?${q}`, { headers: { cookie: `sanad_sid=s_${uid}` } });
+  const page = await req(`/oauth/authorize?${q}`, { headers: { cookie: `sanad_sid=${sid}` } });
+  if (page.status !== 200) throw new Error(`شاشة الإذن لم تُعرض لـ${uid}: ${page.status} → ${page.location || ''}`);
   const csrf = /sanad_csrf=([^;]+)/.exec(page.headers.get('set-cookie') || '')?.[1] || /name="_csrf" value="([^"]+)"/.exec(page.text)?.[1];
   const decided = await req('/oauth/authorize', {
     method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded', cookie: `sanad_sid=s_${uid}; sanad_csrf=${csrf}` },
+    headers: { 'content-type': 'application/x-www-form-urlencoded', cookie: `sanad_sid=${sid}; sanad_csrf=${csrf}` },
     body: form({ decision: 'allow', client_id: clientId, redirect_uri: redirect, code_challenge: challengeOf(v), code_challenge_method: 'S256', _csrf: csrf }),
   });
+  if (decided.status !== 302 || !decided.location) {
+    throw new Error(`الإذن لم يُعِد التوجيه: ${decided.status} ${String(decided.text || '').slice(0, 120)}`);
+  }
   return { code: new URL(decided.location).searchParams.get('code'), verifier: v };
 }
 async function tokenFor(uid, clientId) {
@@ -210,4 +226,117 @@ test('شاشة الإذن تسمح بالإرسال إلى أصل المساعد
   const ordinary = await req('/app/tasks', { headers: { cookie: 'sanad_sid=s_u_admin' } });
   const csp2 = ordinary.headers.get('content-security-policy') || ordinary.headers.get('content-security-policy-report-only') || '';
   assert.match(csp2, /form-action 'self'(;|$)/, 'لا اتساع يتسرّب إلى بقية الصفحات');
+});
+
+// ── ما كشفته المراجعة الأمنية للسطح نفسه (v5.81) — كل بند بإصلاحه وحارسه ────────────────────
+
+test('الدفعة الواحدة لها سقف — فلا يصير الطلب الواحد آلة تضخيم', async () => {
+  const clientId = await registerClient();
+  const token = await tokenFor('u_admin', clientId);
+  const batch = Array.from({ length: 64 }, (_, i) => ({ jsonrpc: '2.0', id: i, method: 'tools/call', params: { name: 'sanad_whoami', arguments: {} } }));
+  const r = await req('/mcp', { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` }, body: JSON.stringify(batch) });
+  assert.equal(r.status, 200);
+  assert.ok(r.json.error, 'الدفعة الكبيرة تُردّ بخطأ واحد لا تُنفَّذ');
+  assert.match(r.json.error.message, /دفعات/);
+
+  const ok32 = Array.from({ length: 32 }, (_, i) => ({ jsonrpc: '2.0', id: i, method: 'ping' }));
+  const r2 = await req('/mcp', { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` }, body: JSON.stringify(ok32) });
+  assert.equal(r2.json.length, 32, 'وما دون السقف يمرّ كاملاً');
+});
+
+test('إنهاء الجلسات وتغيير كلمة المرور يقطعان روابط المساعد — إجراء الجهاز الضائع يقطع أوسع الأبواب', async () => {
+  const clientId = await registerClient();
+  const token = await tokenFor('u_emp', clientId);
+  assert.equal((await rpc(token, 'tools/list', {})).status, 200);
+
+  const identity = await import('../../src/modules/identity/identity.js');
+  const admin = await (await import('../../src/core/http/context.js')).resolveUser('s_u_admin');
+  const out = await identity.revokeSessions({ user: admin, ip: '1' }, 'u_emp');
+  assert.ok(out.assistantLinksRevoked >= 1, 'الإجراء يعلن كم رابطاً قطع');
+  assert.equal((await rpc(token, 'tools/list', {})).status, 401, 'ولا يعمل الرمز بعده');
+
+  // الإجراء أنهى جلسة المتصفح أيضاً (وهذا المقصود منه) — والموظف يدخل من جديد قبل أن يأذن ثانيةً.
+  const t2 = await tokenFor('u_emp', clientId);
+  assert.equal((await rpc(t2, 'tools/list', {})).status, 200);
+  const auth = await import('../../src/core/auth/service.js');
+  await auth.changePassword({ user: { id: 'u_emp' }, ip: '1' }, 'u_emp', null, 'Sanad@2026!new', null);
+  assert.equal((await rpc(t2, 'tools/list', {})).status, 401, 'وتغيير كلمة المرور كذلك');
+});
+
+test('كل إصدار وإبطال يترك أثراً باسم صاحبه — وإعادة الاستعمال تُكتب ولا تمرّ صامتة', async () => {
+  const clientId = await registerClient();
+  const { code, verifier: v } = await codeFor('u_admin', clientId);
+  const body = form({ grant_type: 'authorization_code', code, client_id: clientId, code_verifier: v, redirect_uri: REDIRECT });
+  await req('/oauth/token', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body });
+  const issued = await db.get("SELECT * FROM audit_log WHERE action = 'issue' AND resource = 'mcp_token' ORDER BY at DESC");
+  assert.ok(issued && issued.user_id === 'u_admin', 'الإصدار مسجَّل باسم صاحب الرمز');
+
+  await req('/oauth/token', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body });  // إعادة استعمال
+  const reuse = await db.get("SELECT * FROM audit_log WHERE action = 'revoke' AND resource = 'mcp_token' ORDER BY at DESC");
+  assert.ok(reuse, 'كشف إعادة الاستعمال يترك أثراً');
+  assert.match(String(reuse.detail_json), /reuse_detected/);
+});
+
+test('ردّ المنح لا يُخزَّن، وعنوان عودة ضخم يُرفض قبل أن يُكتب صفّ', async () => {
+  const clientId = await registerClient();
+  const { code, verifier: v } = await codeFor('u_admin', clientId);
+  const r = await req('/oauth/token', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: form({ grant_type: 'authorization_code', code, client_id: clientId, code_verifier: v, redirect_uri: REDIRECT }) });
+  assert.equal(r.headers.get('cache-control'), 'no-store');
+
+  const before = Number((await db.get('SELECT COUNT(*) n FROM mcp_client')).n);
+  const huge = await req('/oauth/register', { method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ client_name: 'ضخم', redirect_uris: ['https://a.example/' + 'A'.repeat(120000)] }) });
+  assert.equal(huge.status, 400, 'عنوان أطول من المسموح يُرفض');
+  assert.equal(Number((await db.get('SELECT COUNT(*) n FROM mcp_client')).n), before, 'ولا يُكتب صفّ');
+});
+
+test('المعجم يحترم حدود القراءة: التكلفة والهامش لا يُشرحان لمن لا يقرؤهما', async () => {
+  const clientId = await registerClient();
+  const emp = await tokenFor('u_emp', clientId);
+  const out = (await rpc(emp, 'tools/call', { name: 'sanad_explain_term', arguments: { term: 'الهامش' } })).json.result;
+  assert.equal(out.structuredContent.matches.length, 0, 'الموظف لا يجد شرح الهامش');
+  const admin = await tokenFor('u_admin', clientId);
+  const forAdmin = (await rpc(admin, 'tools/call', { name: 'sanad_explain_term', arguments: { term: 'الهامش' } })).json.result;
+  assert.ok(forAdmin.structuredContent.matches.length >= 1, 'ومدير النظام يجده');
+});
+
+test('شاشة الإذن تعرض وجهة القراءات وتنسب الاسم إلى قائله', async () => {
+  const clientId = await registerClient('سند — أكمل تفعيل حسابك');   // اسمٌ ينتحل المنصة عمداً
+  const v = verifier();
+  const q = form({ response_type: 'code', client_id: clientId, redirect_uri: REDIRECT, code_challenge: challengeOf(v), code_challenge_method: 'S256' });
+  const sid = await loginAs('u_emp');
+  const page = await req(`/oauth/authorize?${q}`, { headers: { cookie: `sanad_sid=${sid}` } });
+  assert.match(page.text, /127\.0\.0\.1:33419/, 'الوجهة معروضة للموظف');
+  assert.match(page.text, /كتبه البرنامج عن نفسه ولم تتحقق منه سند/, 'والاسم منسوب إلى قائله');
+});
+
+test('الكنس يزيل ما انتهى ولا يمسّ ربطاً قائماً ولا سطر تدقيق', async () => {
+  const OA = await import('../../src/modules/mcp/oauth.js');
+  const live = await registerClient('ربط قائم');
+  const token = await tokenFor('u_admin', live);
+  const stale = await registerClient('عميل لم يُكمل');
+  await db.run('UPDATE mcp_client SET created_at = ? WHERE id = ?', ['2020-01-01T00:00:00.000Z', stale]);
+  await db.run("UPDATE mcp_auth_code SET expires_at = '2020-01-01T00:00:00.000Z'");
+  const auditBefore = Number((await db.get('SELECT COUNT(*) n FROM audit_log')).n);
+
+  const out = await OA.purgeExpiredMcp();
+  assert.ok(out.codes >= 1, 'رموز الإذن المنتهية تُكنس');
+  assert.ok(out.clients >= 1, 'وعميلٌ سجّل ولم يربط قط');
+  assert.equal((await rpc(token, 'tools/list', {})).status, 200, 'والربط القائم يبقى يعمل');
+  assert.ok(await db.get('SELECT id FROM mcp_client WHERE id = ?', [live]), 'وعميله باقٍ');
+  assert.equal(Number((await db.get('SELECT COUNT(*) n FROM audit_log')).n), auditBefore, 'ولا يُمسّ سطر تدقيق');
+});
+
+// يبقى هذا الفحص آخر الملف عمداً: يستهلك حصّة العنوان بالكامل، فتشغيله قبل غيره يُسقط ما بعده
+// على ٤٢٩ فيبدو عطلاً وهو الحدّ يعمل.
+test('حدّ المعدل لا يُتجاوز برمزٍ مزوَّر: العنوان يبقى في مفتاح الدلو', async () => {
+  // كان المفتاح يُشتق من الترويسة وحدها، فكل رمز مختلَق يصنع دلواً جديداً — أي لا حدّ على من
+  // لا يملك حساباً، ونموّ بلا سقف في خريطة الدلاء.
+  let refused = 0;
+  for (let i = 0; i < 340; i++) {
+    const r = await rpc('sanad_a_' + randomBytes(24).toString('base64url'), 'tools/list', {});
+    if (r.status === 429) refused++;
+  }
+  assert.ok(refused > 0, 'رموز مزوَّرة متتالية من عنوان واحد تصطدم بالحدّ');
 });

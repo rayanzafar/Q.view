@@ -9,7 +9,7 @@ import { seedRbac } from '../scripts/seed-rbac.js';
 import { stopScheduler } from './core/jobs/scheduler.js';
 import { attachContext } from './core/http/context.js';
 import { csrf } from './core/http/csrf.js';
-import { securityHeaders, loginLimiter, apiLimiter, otpEmailLimiter, otpIpLimiter, otpVerifyLimiter, mcpLimiter, oauthLimiter } from './core/http/security.js';
+import { securityHeaders, loginLimiter, apiLimiter, otpEmailLimiter, otpIpLimiter, otpVerifyLimiter, mcpLimiter, mcpIpLimiter, oauthLimiter } from './core/http/security.js';
 import { errorHandler } from './core/http/errors.js';
 import { announcedBuildId } from './core/http/build-id.js';
 import { logError, writeFatalSync, trimStack } from './core/obs/log.js';
@@ -91,7 +91,7 @@ export async function createApp() {
   app.use('/auth/otp/request-web', otpEmailLimiter, otpIpLimiter);
   app.use('/auth/otp/verify-web', otpVerifyLimiter);
   app.use('/api', apiLimiter);
-  app.use('/mcp', mcpLimiter);
+  app.use('/mcp', mcpIpLimiter, mcpLimiter);
   app.use('/oauth', oauthLimiter);
 
   app.use('/auth', authRouter);

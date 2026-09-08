@@ -10,6 +10,7 @@
 //  · التعطيل يُبطل الجلسات القائمة فوراً — تعطيلٌ يترك الجلسة حيّةً حتى انتهائها ليس تعطيلاً.
 import { all, get, run, insert, tx } from '../../core/db/index.js';
 import { can } from '../../core/rbac/index.js';
+import { revokeAllForUser } from '../mcp/oauth.js';
 import { audit } from '../../core/audit/index.js';
 import { badRequest, forbidden, notFound } from '../../core/http/errors.js';
 import { id, nowIso } from '../../core/util/ids.js';
@@ -409,9 +410,11 @@ export async function revokeSessions(ctx, userId) {
   const u = await loadUser(userId);
   const r = await run('UPDATE session SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL', [nowIso(), u.id]);
   await run('UPDATE login_code SET consumed_at = ? WHERE user_id = ? AND consumed_at IS NULL', [nowIso(), u.id]);
+  // وروابط المساعد معها: الرمز نيابةٌ عن هذا الحساب، وإجراءُ الجهاز الضائع لا يترك أوسع بابٍ مفتوحاً.
+  const { revoked: links } = await revokeAllForUser(u.id, 'session_revoke');
   await audit(ctx, {
     action: 'update', resource: 'app_user', resourceId: u.id,
-    detail: `إنهاء جلسات ${u.name_ar || u.username} (${Number(r.changes || 0)})`,
+    detail: `إنهاء جلسات ${u.name_ar || u.username} (${Number(r.changes || 0)}) وقطع روابط المساعد (${links})`,
   });
-  return { ok: true, sessionsRevoked: Number(r.changes || 0) };
+  return { ok: true, sessionsRevoked: Number(r.changes || 0), assistantLinksRevoked: links };
 }

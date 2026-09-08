@@ -16,6 +16,7 @@ import { audit } from '../../core/audit/index.js';
 import { config } from '../../core/config.js';
 import { resolveUserFromSession } from '../../core/http/context.js';
 import { badRequest, notFound } from '../../core/http/errors.js';
+import { logError } from '../../core/obs/log.js';
 
 // ── الأعمار: قصيرةٌ حيث يكون السرّ في الطريق، وأطول حيث يكون في خزانة العميل ──────────────
 export const CODE_TTL_MS = 5 * 60 * 1000;              // رمز التفويض: دقائق يقطعها إعادة التوجيه
@@ -48,7 +49,12 @@ export async function registerClient({ name, redirectUris, ip = null }) {
   const uris = Array.isArray(redirectUris) ? redirectUris.map((u) => String(u || '').trim()).filter(Boolean) : [];
   if (!uris.length) throw badRequest('عنوان العودة مطلوب لتسجيل المساعد');
   if (uris.length > 8) throw badRequest('عناوين العودة أكثر من المسموح');
-  for (const u of uris) if (!redirectAllowed(u)) throw badRequest('عنوان العودة غير مقبول — يلزم عنوان مؤمَّن أو عنوان على جهازك');
+  for (const u of uris) {
+    // الطول قبل الشكل: التسجيل مفتوح بلا حساب، وعنوانٌ بلا سقف طول يجعل صفَّ العميل الواحد
+    // ميغابايتاً يكتبه أي أحد. خمسمئة وإثنا عشر محرفاً أوسع من أي عنوان عودة حقيقي.
+    if (u.length > 512) throw badRequest('عنوان العودة أطول من المسموح');
+    if (!redirectAllowed(u)) throw badRequest('عنوان العودة غير مقبول — يلزم عنوان مؤمَّن أو عنوان على جهازك');
+  }
   const clientId = id('mcpc');
   const row = {
     id: clientId,
@@ -107,7 +113,7 @@ export async function issueAuthCode(ctx, { clientId, redirectUri, codeChallenge,
   return code;
 }
 
-async function issuePair(clientId, userId, ip) {
+async function issuePair(clientId, userId, ip, reason = 'authorize') {
   const access = secret('sanad_a_');
   const refresh = secret('sanad_r_');
   const now = nowIso();
@@ -117,7 +123,10 @@ async function issuePair(clientId, userId, ip) {
       created_at: now, expires_at: plus(ttl), last_used_at: null, revoked_at: null, revoked_by: null,
     });
   }
-  void ip;
+  // الأثر على الإصدار نفسه لا على الإذن وحده: بين الإذن والإصدار خطوةٌ يملكها العميل، ومن بدّل
+  // رمز إذنٍ مسروق لا يترك بغير هذا السطر شيئاً باسم أحد. الفاعل هو صاحب الرمز (لا جلسة هنا).
+  await audit({ user: { id: userId }, ip }, { action: 'issue', resource: 'mcp_token', resourceId: clientId,
+    detail: { reason, kinds: ['access', 'refresh'] } });
   return { access_token: access, refresh_token: refresh, expires_in: Math.floor(ACCESS_TTL_MS / 1000) };
 }
 
@@ -135,6 +144,15 @@ const pkceOk = (verifier, challenge) => {
   return computed.length === stored.length && timingSafeEqual(computed, stored);
 };
 
+  const reuseDetected = async (row, kind) => {
+    // أوضح إشارةٍ على تسريبٍ في هذا التصميم. كانت تُبطل الربط كله بصمت — بلا سطر أثر ولا سطر
+    // سجل — فلا يعلم بها أحد. الآن تُكتب في الاثنين باسم صاحب الرمز.
+    await revokeLive(row.client_id, row.user_id, 'reuse');
+    logError('mcp_token_reuse', { kind, client_id: row.client_id, user_id: row.user_id });
+    await audit({ user: { id: row.user_id }, ip: null }, { action: 'revoke', resource: 'mcp_token',
+      resourceId: row.client_id, detail: { reason: 'reuse_detected', kind } });
+  };
+
 /** تبديل رمز التفويض برمزَي وصول وتجديد. الرمز لمرة واحدة؛ وإعادة استعماله تُبطل ما صدر عنه. */
 export async function exchangeAuthCode({ code, clientId, codeVerifier, redirectUri, ip = null }) {
   const client = await getClient(clientId);
@@ -142,7 +160,7 @@ export async function exchangeAuthCode({ code, clientId, codeVerifier, redirectU
   const row = await get('SELECT * FROM mcp_auth_code WHERE id = ?', [sha256(String(code || ''))]);
   if (!row || row.client_id !== client.id) throw badRequest('الإذن غير صالح — أعد الربط من جديد');
   if (row.used_at) {                                  // إعادة استعمال: نفترض التسريب ونغلق الباب كله
-    await revokeLive(row.client_id, row.user_id, 'reuse');
+    await reuseDetected(row, 'auth_code');
     throw badRequest('الإذن استُعمل من قبل — أُلغي الربط، أعد الربط من جديد');
   }
   if (expired(row.expires_at)) throw badRequest('انتهت مهلة الإذن — أعد الربط من جديد');
@@ -151,7 +169,7 @@ export async function exchangeAuthCode({ code, clientId, codeVerifier, redirectU
   return await tx(async () => {
     const claim = await run('UPDATE mcp_auth_code SET used_at = ? WHERE id = ? AND used_at IS NULL', [nowIso(), row.id]);
     if (claim.changes !== 1) throw badRequest('الإذن استُعمل من قبل — أعد الربط من جديد');
-    return await issuePair(row.client_id, row.user_id, ip);
+    return await issuePair(row.client_id, row.user_id, ip, 'authorize');
   });
 }
 
@@ -169,7 +187,7 @@ export async function refreshTokens({ refreshToken, clientId, ip = null }) {
   const row = await get('SELECT * FROM mcp_token WHERE token_hash = ? AND kind = ?', [sha256(String(refreshToken || '')), 'refresh']);
   if (!row || row.client_id !== client.id) throw badRequest('رمز التجديد غير صالح — أعد الربط من جديد');
   if (row.revoked_at) {
-    await revokeLive(row.client_id, row.user_id, 'reuse');
+    await reuseDetected(row, 'refresh_token');
     throw badRequest('رمز التجديد مستعمل سابقاً — أُلغي الربط، أعد الربط من جديد');
   }
   if (expired(row.expires_at)) throw badRequest('انتهت صلاحية الربط — أعد الربط من جديد');
@@ -177,7 +195,7 @@ export async function refreshTokens({ refreshToken, clientId, ip = null }) {
     const claim = await run('UPDATE mcp_token SET revoked_at = ?, revoked_by = ? WHERE id = ? AND revoked_at IS NULL',
       [nowIso(), 'rotated', row.id]);
     if (claim.changes !== 1) throw badRequest('رمز التجديد مستعمل سابقاً — أعد الربط من جديد');
-    return await issuePair(row.client_id, row.user_id, ip);
+    return await issuePair(row.client_id, row.user_id, ip, 'refresh');
   });
 }
 
@@ -242,5 +260,49 @@ export async function revokeRawToken(rawToken) {
   const row = await get('SELECT * FROM mcp_token WHERE token_hash = ?', [sha256(value)]);
   if (!row) return { revoked: false };
   await revokeLive(row.client_id, row.user_id, 'client');
+  await audit({ user: { id: row.user_id }, ip: null }, { action: 'revoke', resource: 'mcp_client',
+    resourceId: row.client_id, detail: { by: 'client' } });
   return { revoked: true };
+}
+
+/**
+ * قطع كل روابط المساعد لحسابٍ واحد — يُستدعى من إجراءات الهوية لا من مسار المساعد.
+ *
+ * السبب أن هذا الباب موجود أصلاً: «إنهاء الجلسات» إجراءُ الجهاز الضائع والشكِّ في التسريب،
+ * وتغييرُ كلمة المرور نظيره بيد صاحبه. وكان كلاهما يقطع الجلسات ويترك رمز المساعد يعمل ثماني
+ * ساعات — أي أن الإجراء المخصَّص للسرقة لا يقطع أوسع الأبواب. الرمز نائبٌ عن الحساب، فما يُنهي
+ * جلساته يُنهي نيابته.
+ */
+export async function revokeAllForUser(userId, by = 'session_revoke') {
+  if (!userId) return { revoked: 0 };
+  const r = await run('UPDATE mcp_token SET revoked_at = ?, revoked_by = ? WHERE user_id = ? AND revoked_at IS NULL',
+    [nowIso(), by, userId]);
+  return { revoked: Number(r.changes || 0) };
+}
+
+/**
+ * كنس ما انتهى عمره من جداول الربط — مع كنسة الساعة، لا في مسار طلبٍ.
+ *
+ * ثلاثة جداول تنمو بلا سقف بغيره: رمز إذنٍ يعيش خمس دقائق ويبقى صفّه أبداً، ورموزٌ منتهية
+ * أو مُبطلة لا يقرؤها أحد بعد شهرها، وعميلٌ سجّل نفسه ولم يُكمل الربط قط (التسجيل مفتوح بلا
+ * حساب — فهو أول ما يُملأ من الخارج).
+ *
+ * وما يبقى عمداً: الرموز المُبطلة **حديثاً** (نافذة الاحتفاظ) كي يبقى «مَن قطع ولماذا» مقروءاً
+ * بعد الحادثة مباشرةً، وسطور التدقيق نفسها — تلك لا تُكنس أبداً.
+ */
+export async function purgeExpiredMcp({ keepRevokedDays = 30, keepIdleClientDays = 7 } = {}) {
+  const now = Date.now();
+  const iso = (ms) => new Date(now - ms).toISOString();
+  const day = 24 * 60 * 60 * 1000;
+  const codes = await run('DELETE FROM mcp_auth_code WHERE expires_at < ?', [new Date(now).toISOString()]);
+  const tokens = await run('DELETE FROM mcp_token WHERE expires_at < ? OR (revoked_at IS NOT NULL AND revoked_at < ?)',
+    [new Date(now).toISOString(), iso(keepRevokedDays * day)]);
+  // عميلٌ بلا رمزٍ قط ولا إذنٍ قائم ومضى على تسجيله أسبوع: تسجيلٌ لم يصر ربطاً.
+  const clients = await run(
+    `DELETE FROM mcp_client WHERE created_at < ?
+       AND id NOT IN (SELECT client_id FROM mcp_token)
+       AND id NOT IN (SELECT client_id FROM mcp_auth_code)`,
+    [iso(keepIdleClientDays * day)]
+  );
+  return { codes: Number(codes.changes || 0), tokens: Number(tokens.changes || 0), clients: Number(clients.changes || 0) };
 }

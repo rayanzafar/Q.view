@@ -112,10 +112,16 @@ export async function handleMessage(ctx, msg) {
   }
 }
 
+// سقف الدفعة الواحدة. بلا سقفٍ يصير الطلب الواحد آلة تضخيم: جسمٌ بحجم الحدّ المسموح يحمل
+// آلاف النداءات، فتُنفَّذ كلها في طلبٍ واحد وتُكتب آلاف الأسطر في سجل النشاط — بينما كل حدود
+// المعدل تعدّ **طلباً واحداً**. اثنان وثلاثون تكفي لأي عميل حقيقي (العملاء يرسلون واحداً غالباً).
+export const MAX_BATCH = 32;
+
 /** دفعة أو رسالة واحدة — الشكل الذي يقبله النقل. يعيد `null` حين لا ردّ (إشعارات فقط). */
 export async function handleRpc(ctx, body) {
   if (Array.isArray(body)) {
     if (!body.length) return jsonRpcError(null, -32600, 'طلب غير صالح');
+    if (body.length > MAX_BATCH) return jsonRpcError(null, -32600, `الدفعة الواحدة أكثر من ${MAX_BATCH} طلباً — أرسلها على دفعات`);
     const out = [];
     for (const m of body) {
       const r = await handleMessage(ctx, m);

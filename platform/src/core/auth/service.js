@@ -3,6 +3,7 @@ import { get, run, insert } from '../db/index.js';
 import { config } from '../config.js';
 import { id, nowIso } from '../util/ids.js';
 import { verifyPassword, hashPassword } from './password.js';
+import { revokeAllForUser } from '../../modules/mcp/oauth.js';
 import { audit } from '../audit/index.js';
 import { badRequest, unauthorized } from '../http/errors.js';
 
@@ -142,5 +143,9 @@ export async function changePassword(ctx, { currentPassword, newPassword, curren
     [hashPassword(newPassword), now, userId]);
   await run('UPDATE session SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL AND id <> ?',
     [now, userId, currentSessionId || '']);
-  await audit(ctx, { action: 'change_password', resource: 'app_user', resourceId: userId });
+  // وروابط المساعد كذلك: من غيّر كلمة مروره لأنه يشكّ في تسريبها لا ينفعه إنهاء الجلسات وحدها
+  // بينما رمزُ نيابةٍ عن حسابه ما زال يقرأ. تُعاد بإذنٍ جديد منه في دقيقة.
+  const { revoked: links } = await revokeAllForUser(userId, 'password_change');
+  await audit(ctx, { action: 'change_password', resource: 'app_user', resourceId: userId,
+    detail: links ? { assistant_links_revoked: links } : undefined });
 }
