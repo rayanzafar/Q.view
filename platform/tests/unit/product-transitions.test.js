@@ -39,7 +39,7 @@ const optsFor = (to) => (
 async function freshItem(status = 'NEW') {
   const it = await intake.createManual(ctx(ADMIN), PRODUCT, {
     type: 'bug', title: 'شاشةٌ لا تفتح', description: 'وصفٌ كافٍ', sector_id: 'SOL',
-    reporter_name: 'موظفٌ ما', urgency: 'delays',
+    where_text: 'شاشة المهام', reporter_name: 'موظفٌ ما', urgency: 'delays',
   });
   if (status !== 'NEW') {
     await db.update('product_item', it.id, { status, status_before_info: null, decline_reason: null, duplicate_of_id: null, resolved_version_id: null });

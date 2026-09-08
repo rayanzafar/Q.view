@@ -39,6 +39,9 @@ export const hashIp = (ip) => (ip
 /** رمزُ صفحة المتابعة: مئةٌ وثمانية وعشرون بتاً — الصفحةُ تُفتح بلا حساب فلا تُخمَّن بالعدّ. */
 export const newTrackingToken = () => randomBytes(16).toString('base64url');
 
+/** عنوانُ صفحة المتابعة كاملاً — يُوضع في ردّ الإرسال كي تعرضه النافذة لصاحب البلاغ. */
+export const trackingUrl = (token) => `${String(config.platformUrl || '').replace(/\/$/, '')}/p/t/${token}`;
+
 const normalizeType = (v) => (ITEM_TYPES.includes(v) ? v : 'bug');
 const normalizeUrgency = (v) => (ITEM_URGENCIES.includes(v) ? v : null);
 
@@ -70,7 +73,13 @@ export async function submitSanadFeedback(ctx, body = {}) {
   if (!product) throw notFound('استقبال البلاغات غير مهيَّأ بعد — أبلغ مدير النظام');
   if (!ctx?.user?.id) throw badRequest('يلزم تسجيل الدخول لإرسال البلاغ');
   const blame = await blameOf(ctx.user);
-  return await insertItem(ctx, product, {
+  // ورمزُ المتابعة يُكتب لبلاغ المنصة كما يُكتب لبلاغ الرابط العام (KI-126). قبله كان صاحبُ
+  // البلاغ من داخل سند أعمى الطريق كلَّه: `/app/dev-center` تردّه لأنه ليس في فريق المنتج،
+  // و`GET /api/products/items/:id` تقول «غير موجود» عن بلاغه هو، وبريدُه لا يصله إلا في ثلاث
+  // حالات — ولا رابطَ فيه يفتح شيئاً. والرمزُ يفتح `/p/t/<الرمز>` بلا حساب: الصفحة نفسها التي
+  // يفتحها المُبلِّغ الخارجي، وهي تقرأ الرمز وحده فلا تحتاج تغييراً ليعمل عليها بلاغ المنصة.
+  const trackingToken = newTrackingToken();
+  const item = await insertItem(ctx, product, {
     source: 'sanad',
     type: normalizeType(body.type),
     title: body.title,
@@ -83,7 +92,9 @@ export async function submitSanadFeedback(ctx, body = {}) {
     reporter_email: (await get('SELECT email FROM app_user WHERE id = ?', [ctx.user.id]))?.email || null,
     sector_id: blame.sector_id,
     department_id: blame.department_id,
+    tracking_token: trackingToken,
   });
+  return { ...item, tracking_url: trackingUrl(trackingToken) };
 }
 
 // ── ② من رابط الاستقبال العام ────────────────────────────────────────────────
@@ -168,6 +179,10 @@ export async function createManual(ctx, productId, body = {}) {
   if (!sectorId) throw badRequest('اختر القطاع الذي يقع عليه أثر هذا البلاغ');
   const sector = await get('SELECT id FROM sector WHERE id = ?', [sectorId]);
   if (!sector) throw badRequest('القطاع المختار غير موجود');
+  // و«أين حدث» **مطلوب** كالقطاع: النافذتان الأخريان تملآنه من الشاشة التي فُتحتا منها، وهذا
+  // الباب وحده يكتبه إنسانٌ لم يرَ الشاشة — فبلا موضعٍ مكتوبٍ يبقى البلاغُ سؤالاً لا عملاً.
+  const whereText = trim(body.where_text, 300);
+  if (!whereText) throw badRequest('اكتب أين حدث');
   if (body.tenant_id) {
     const t = await get('SELECT id FROM product_tenant WHERE id = ? AND product_id = ?', [body.tenant_id, productId]);
     if (!t) throw badRequest('الجهة المختارة ليست من هذا المنتج');
@@ -190,7 +205,7 @@ export async function createManual(ctx, productId, body = {}) {
     type: normalizeType(body.type),
     title: body.title,
     description: body.description,
-    where_text: trim(body.where_text, 300),
+    where_text: whereText,
     urgency: normalizeUrgency(body.urgency),
     lang: 'ar',
     reporter_user_id: reporterUserId || null,

@@ -7,9 +7,9 @@
 // تقرّر الصلاحية لا هذا الملف.
 //
 // أربع قواعد يقوم عليها الملف:
-//  ① `allow` بوابة عرضٍ فقط: «عضوٌ في منتجٍ واحدٍ على الأقل، أو مدير النظام». صلاحية **مدير
-//     المنتج** لا تُفحص هنا لأنها لكل منتجٍ على حدة — تُفحص داخل `run` على منتج العنصر نفسه
-//     (`assertManager`)، فلا يقرّر حسابٌ عضوٌ في منتجٍ مصيرَ عنصرٍ في منتجٍ آخر.
+//  ① `allow` بوابة عرضٍ فقط: «عضوٌ في منتجٍ واحدٍ على الأقل، أو مدير النظام» — وأدواتُ
+//     الاعتماد والرفض «مديرُ منتجٍ واحدٍ على الأقل». والقرارُ نفسه يُفحص حيث يقع: داخل `run`
+//     على منتج العنصر بعينه (`assertManager`)، فلا يقرّر مديرُ منتجٍ مصيرَ عنصرٍ في منتجٍ آخر.
 //  ② كل تغييرٍ يمسّ حال العنصر مرحلتان: أداة معاينة تعرض ما سيتغيّر وتعطي رمزاً صالحاً ربع
 //     ساعة لمرة واحدة، ثم أداة تنفيذٍ **تقبل ذلك الرمز وحده** وتزلجه داخل المعاملة نفسها.
 //     الإضافات غير الخطرة (تعليق، صورة) خطوة واحدة: لا تغيّر حالاً ولا تُنشئ مهمة.
@@ -418,7 +418,7 @@ async function runPreviewCreateItem(ctx, raw) {
     type: enumOf(input.type, 'النوع', TYPE_KEYS, { required: true }),
     title: text(input.title, 'العنوان', { required: true, max: 200 }),
     description: text(input.description, 'الوصف', { required: true, max: 8000 }),
-    where_text: text(input.whereText, 'أين حدث', { max: 300 }),
+    where_text: text(input.whereText, 'أين حدث', { required: true, max: 300 }),
     urgency: enumOf(input.urgency, 'الإلحاح', URGENCY_KEYS, { required: true }),
     // «نيابةً عن» ليست تجميلاً: البلاغ يُنسب لصاحبه وقطاعه، والقطاع مطلوبٌ كي تُقرأ التقارير بالقطاعات.
     reporter_user_id: text(input.reporterUserId, 'من أبلغ', { max: 80 }),
@@ -484,6 +484,14 @@ async function runUploadImage(ctx, raw) {
 // ── البوابة: عضوٌ في منتجٍ واحد على الأقل، أو مدير النظام ───────────────────────────────────
 const DENY_AR = 'مركز التطوير خارج صلاحيتك — يعمل عليه أعضاء فرق المنتجات. اطلب ضمّك من مدير المنتج.';
 const allowMember = (user) => !!user && (user.role_id === 'admin' || (user.productMemberships?.size ?? 0) > 0);
+
+// ── والاعتمادُ والرفض: من يدير منتجاً واحداً على الأقل ─────────────────────────────────────
+// القاعدة ① تبقى كما هي: **القرار** يُفحص على منتج البلاغ نفسه داخل `run` (`assertManager`).
+// وهذه بوابةُ العرض وحدها، وكانت تعرض «اعتمد» و«ارفض» لكل عضو — فيقرأ المطوِّرُ في قائمته
+// أداةً لا يملكها، ويكتشف ذلك بعد أن ينادَيها. ومن لا يدير منتجاً واحداً لا يعتمد شيئاً بحال،
+// فحجبُها عنه صدقٌ في القائمة لا تضييقُ صلاحية.
+const MANAGER_DENY_AR = 'الاعتماد والرفض لمديري المنتجات — اطلب من مدير المنتج أن يقرّر.';
+const allowProductManager = (user) => !!user && (user.role_id === 'admin' || (user.productManagerIds?.size ?? 0) > 0);
 
 const ITEM_ID = S.str('رقم البلاغ الداخلي كما يعيده «قائمة البلاغات»', { maxLength: 80 });
 const TOKEN_INPUT = obj({ previewToken: S.str('رمز المعاينة كما أعادته أداة المعاينة', { maxLength: 80 }) }, ['previewToken']);
@@ -563,26 +571,26 @@ export const DEV_CENTER_TOOLS = Object.freeze([
     input: obj({ itemId: ITEM_ID, assigneeUserId: S.str('حساب من يُسنَد إليه العمل — من فريق المنتج', { maxLength: 80 }),
       estHours: num('الساعات المقدَّرة إن أردت تعديلها عند الاعتماد', { minimum: 0, maximum: 2000 }) }, ['itemId', 'assigneeUserId']),
     output_ar: 'أثر الاعتماد قبل وقوعه ورمز معاينة صالح ربع ساعة لمرة واحدة',
-    allow: allowMember, deny_ar: DENY_AR, run: runPreviewApprove,
+    allow: allowProductManager, deny_ar: MANAGER_DENY_AR, run: runPreviewApprove,
   },
   {
     name: 'sanad_dc_apply_approve', label_ar: 'تنفيذ اعتماد بلاغ', kind: 'write',
     description_ar: 'يعتمد البلاغ الذي عاينته ويفتح عمله المسنَد. يقبل رمز المعاينة وحده، ويعيد الخدمة فحص أنك مدير هذا المنتج.',
     input: TOKEN_INPUT, output_ar: 'حال البلاغ بعد الاعتماد والعمل الذي فُتح له',
-    allow: allowMember, deny_ar: DENY_AR, run: runApplyApprove,
+    allow: allowProductManager, deny_ar: MANAGER_DENY_AR, run: runApplyApprove,
   },
   {
     name: 'sanad_dc_preview_decline', label_ar: 'معاينة رفض بلاغ', kind: 'preview',
     description_ar: 'يعرض رفض البلاغ بسببه، وينبّه أن السبب يصل إلى من أبلغ كما كُتب. **الرفض لمديري هذا المنتج وحدهم.** لا يكتب شيئاً.',
     input: obj({ itemId: ITEM_ID, reason: S.str('سبب الرفض — يصل إلى من أبلغ كما تكتبه', { maxLength: 2000 }) }, ['itemId', 'reason']),
     output_ar: 'السبب كما سيصل، وتنبيهه، ورمز معاينة صالح ربع ساعة لمرة واحدة',
-    allow: allowMember, deny_ar: DENY_AR, run: runPreviewDecline,
+    allow: allowProductManager, deny_ar: MANAGER_DENY_AR, run: runPreviewDecline,
   },
   {
     name: 'sanad_dc_apply_decline', label_ar: 'تنفيذ رفض بلاغ', kind: 'write',
     description_ar: 'يرفض البلاغ الذي عاينته ويرسل سببه إلى من أبلغ. يقبل رمز المعاينة وحده.',
     input: TOKEN_INPUT, output_ar: 'حال البلاغ بعد الرفض ورابطه',
-    allow: allowMember, deny_ar: DENY_AR, run: runApplyDecline,
+    allow: allowProductManager, deny_ar: MANAGER_DENY_AR, run: runApplyDecline,
   },
   {
     name: 'sanad_dc_preview_create_item', label_ar: 'معاينة تسجيل بلاغ نيابةً', kind: 'preview',
@@ -594,7 +602,7 @@ export const DEV_CENTER_TOOLS = Object.freeze([
       urgency: en('أثره على عمل من أبلغ', URGENCY_KEYS),
       reporterUserId: S.str('حساب من أبلغ في سند', { maxLength: 80 }), reporterName: S.str('اسم من أبلغ إن لم يكن له حساب', { maxLength: 120 }),
       sectorId: S.str('قطاع من أبلغ — مطلوب', { maxLength: 80 }),
-    }, ['productId', 'type', 'title', 'description', 'urgency', 'sectorId']),
+    }, ['productId', 'type', 'title', 'description', 'whereText', 'urgency', 'sectorId']),
     output_ar: 'البلاغ كما سيُسجَّل ورمز معاينة صالح ربع ساعة لمرة واحدة',
     allow: allowMember, deny_ar: DENY_AR, run: runPreviewCreateItem,
   },

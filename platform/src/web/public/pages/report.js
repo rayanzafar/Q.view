@@ -220,19 +220,37 @@
       urgency: chosen('rp-urg'),
     }).then(function (j) {
       var item = j.item || j;
+      // الصورةُ التي تسقط لا تُبتلع: كانت كلُّ صورةٍ تُرفض تُلقى صامتةً ويُعلَن النجاح كاملاً،
+      // فيظنّ المُبلِّغ لقطتَه وصلت ويقرأ الفريقُ بلاغاً بلا الصورة التي كُتب لأجلها.
+      var lost = 0;
       var ups = shots.map(function (f) {
         return postBytes('/products/items/' + encodeURIComponent(item.id) + '/images', f, { 'x-image-kind': 'report' })
-          .catch(function () { return null; });
+          .catch(function () { lost++; return null; });
       });
-      return Promise.all(ups).then(function () { return item; });
-    }).then(function (item) {
+      var track = j.tracking_url || item.tracking_url || '';
+      return Promise.all(ups).then(function () { return { item: item, lost: lost, track: track }; });
+    }).then(function (r) {
+      var item = r.item;
       var box = $('rp-body');
       var foot = document.querySelector('#modal .modal-foot');
       if (box) {
         box.className = 'rp-ok';
-        box.innerHTML = '<div style="font-size:14px;font-weight:800;color:#1e293b">'
+        // ما يُقال هنا هو ما يقع فعلاً: البريد يصل عند الدراسة والحل والرفض، لا «عند كل خطوة».
+        var lines = '<div style="font-size:14px;font-weight:800;color:#1e293b">'
           + esc(form.success || 'وصلنا بلاغك — رقمه') + ' <span class="k">' + esc(item.item_key || '') + '</span></div>'
-          + '<div style="font-size:12.5px;color:#64748b;margin-top:.4rem;line-height:1.9">يصلك بريد عند كل خطوة.</div>';
+          + '<div style="font-size:12.5px;color:#64748b;margin-top:.4rem;line-height:1.9">'
+          + 'يصلك بريد حين يُدرَس بلاغك أو يُحلّ أو يُرفض.</div>';
+        if (r.lost) {
+          lines += '<div style="font-size:12.5px;color:#92400e;background:#fef3c7;border-radius:9px;'
+            + 'padding:.5rem .7rem;margin-top:.6rem;line-height:1.9">'
+            + 'وصل بلاغك لكن الصورة لم تُرفع — اذكر ما فيها في ردٍّ لاحق أو أرسلها للفريق.</div>';
+        }
+        // رمزُ المتابعة يأتي من الخادم متى كان للبلاغ صفحةُ متابعة — ولا يُركَّب هنا عنوانٌ بالظنّ.
+        if (r.track) {
+          lines += '<div style="margin-top:.7rem"><a class="btn btn-sm" href="' + esc(r.track) + '">'
+            + 'تابع بلاغك من هنا</a></div>';
+        }
+        box.innerHTML = lines;
       }
       if (foot) foot.innerHTML = '<button type="button" class="btn btn-primary" data-action="modal-close">تمام</button>';
       shots = [];

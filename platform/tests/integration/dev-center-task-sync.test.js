@@ -61,7 +61,7 @@ after(async () => { await db.close(); rmSync(dir, { recursive: true, force: true
 test('الاعتماد يُولّد مهمةً تحمل مفتاح البند وساعاته ومشروعَ جهته', async () => {
   const it = await intake.createManual(ctx(), PRODUCT, {
     type: 'bug', title: 'لا تُحفظ البيانات', description: 'تفصيل', sector_id: 'SOL',
-    tenant_id: TENANT, reporter_name: 'موظف الجهة', urgency: 'blocks',
+    where_text: 'شاشة الحفظ', tenant_id: TENANT, reporter_name: 'موظف الجهة', urgency: 'blocks',
   });
   ITEM = it.id;
   await items.triageItem(ctx(), ITEM, { size: 'M', priority: 'high', est_hours: 6.5, dev_description: 'إصلاحُ الحفظ' });
@@ -82,7 +82,7 @@ test('الاعتماد يُولّد مهمةً تحمل مفتاح البند و
 
 test('المُسنَد إليه لا بدّ أن يكون من فريق المنتج', async () => {
   await db.insert('app_user', { id: 'u_out', username: 'out', name_ar: 'من خارج الفريق', role_id: 'employee', scope: 'own', sector_id: 'SOL', active: 1, created_at: T });
-  const it = await intake.createManual(ctx(), PRODUCT, { type: 'bug', title: 'بلاغٌ ثانٍ', sector_id: 'SOL', reporter_name: 'موظف' });
+  const it = await intake.createManual(ctx(), PRODUCT, { type: 'bug', title: 'بلاغٌ ثانٍ', where_text: 'شاشة المهام', sector_id: 'SOL', reporter_name: 'موظف' });
   await items.setStatus(ctx(), it.id, 'TRIAGED');
   await items.setStatus(ctx(), it.id, 'AWAITING_APPROVAL');
   await assert.rejects(() => items.approveItem(ctx(), it.id, { assignee_user_id: 'u_out' }), (e) => e.status === 400);
@@ -148,7 +148,7 @@ test('المهلة الزمنية تحكي القصة كاملةً بأسماء 
 // المزامنة على «مديري المنتج» كان يُسقطها صامتةً في أكثر الحالات شيوعاً: مطوِّرٌ يُلغي مهمةَ
 // نفسه، وقائدُ قطاعٍ يُنجز مهمةَ فريقه ولا عضويةَ له في المنتج.
 test('المطوِّر يُلغي مهمةَ نفسه ⇒ بلاغُه يعود «معتمداً» وإن لم يكن مديرَ منتج', async () => {
-  const it = await intake.createManual(ctx(), PRODUCT, { type: 'bug', title: 'بلاغُ المطوِّر', sector_id: 'SOL', reporter_name: 'موظف' });
+  const it = await intake.createManual(ctx(), PRODUCT, { type: 'bug', title: 'بلاغُ المطوِّر', where_text: 'شاشة المهام', sector_id: 'SOL', reporter_name: 'موظف' });
   await items.setStatus(ctx(), it.id, 'TRIAGED');
   await items.setStatus(ctx(), it.id, 'AWAITING_APPROVAL');
   await items.approveItem(ctx(), it.id, { assignee_user_id: 'u_dev' });
@@ -164,7 +164,7 @@ test('المطوِّر يُلغي مهمةَ نفسه ⇒ بلاغُه يعود 
 test('من ليس من فريق المنتج يُنجز المهمة ⇒ البلاغ يُحلّ', async () => {
   await db.insert('app_user', { id: 'u_lead', username: 'lead', name_ar: 'قائد القطاع', email: 'lead@evc.sa', role_id: 'sector_lead', scope: 'sector', sector_id: 'SOL', active: 1, created_at: T });
   const lead = { id: 'u_lead', username: 'lead', name_ar: 'قائد القطاع', role_id: 'sector_lead', scope: 'sector', sector_id: 'SOL' };
-  const it = await intake.createManual(ctx(), PRODUCT, { type: 'bug', title: 'بلاغٌ يُنجزه غيرُ الفريق', sector_id: 'SOL', reporter_name: 'موظف' });
+  const it = await intake.createManual(ctx(), PRODUCT, { type: 'bug', title: 'بلاغٌ يُنجزه غيرُ الفريق', where_text: 'شاشة المهام', sector_id: 'SOL', reporter_name: 'موظف' });
   await items.setStatus(ctx(), it.id, 'TRIAGED');
   await items.setStatus(ctx(), it.id, 'AWAITING_APPROVAL');
   await items.approveItem(ctx(), it.id, { assignee_user_id: 'u_dev' });
@@ -178,7 +178,7 @@ test('من ليس من فريق المنتج يُنجز المهمة ⇒ الب�
 
 // ── بلاغٌ يُرفض ثم يُعتمد ثانيةً: الجسرُ الحيّ واحد، والأحدثُ هو المقصود ──────────────────
 test('إعادةُ الاعتماد بعد رفضٍ تُنشئ مهمةً ثانية، والقديمةُ الملغاة لا تُقلب إلى «منجزة»', async () => {
-  const it = await intake.createManual(ctx(), PRODUCT, { type: 'bug', title: 'بلاغٌ رُفض ثم أُعيد', sector_id: 'SOL', reporter_name: 'موظف' });
+  const it = await intake.createManual(ctx(), PRODUCT, { type: 'bug', title: 'بلاغٌ رُفض ثم أُعيد', where_text: 'شاشة المهام', sector_id: 'SOL', reporter_name: 'موظف' });
   await items.setStatus(ctx(), it.id, 'TRIAGED');
   await items.setStatus(ctx(), it.id, 'AWAITING_APPROVAL');
   await items.approveItem(ctx(), it.id, { assignee_user_id: 'u_dev' });
@@ -218,7 +218,7 @@ test('مستشارٌ يدير المنتج: يعتمد ويُسنِد إلى ز�
   await products.addMember(ctx(), PRODUCT, { user_id: 'u_pm', role: 'manager' });
   await products.addMember(ctx(), PRODUCT, { user_id: 'u_dev2', role: 'developer' });
 
-  const it = await intake.createManual(ctx(), PRODUCT, { type: 'bug', title: 'بلاغٌ يعتمده مستشار', sector_id: 'SOL', reporter_name: 'موظف' });
+  const it = await intake.createManual(ctx(), PRODUCT, { type: 'bug', title: 'بلاغٌ يعتمده مستشار', where_text: 'شاشة المهام', sector_id: 'SOL', reporter_name: 'موظف' });
   await items.setStatus(ctx(PM), it.id, 'TRIAGED');
   await items.setStatus(ctx(PM), it.id, 'AWAITING_APPROVAL');
   await items.approveItem(ctx(PM), it.id, { assignee_user_id: 'u_dev2' });
@@ -236,8 +236,28 @@ test('مستشارٌ يدير المنتج: يعتمد ويُسنِد إلى ز�
   assert.match(trace.detail_json || '', /u_dev2/);
 });
 
+// ── KI-115: مديرٌ يعتمد بلاغاً يتولّاه بنفسه ─────────────────────────────────────────────────
+// مهمةُ البلاغ تُكتب **بهوية من ستُسنَد إليه**، فحين يُسنِد المديرُ البلاغ إلى نفسه يصير كاتبُ
+// المهمة هو صاحبَها — وقاعدةُ v5.84 «نسبة الإشغال مطلوبة على مهمتك» تُلقى داخل معاملة الاعتماد
+// فيسقط الاعتمادُ كلُّه لا المهمةُ وحدها. والمهمةُ هنا تؤلّفها المنصة لا صاحبُها (لم يُسأل عن
+// نسبةٍ أصلاً)، فتمرّ بـ`sizeOptional` ويقدّر نسبتَه من صفّها لاحقاً.
+test('مديرُ المنتج يعتمد بلاغاً ويتولّاه بنفسه: الاعتماد يقع، والمهمة تُكتب بلا نسبة إشغال', async () => {
+  const it = await intake.createManual(ctx(), PRODUCT, { type: 'bug', title: 'بلاغٌ يتولّاه مديره', where_text: 'شاشة المهام', sector_id: 'SOL', reporter_name: 'موظف' });
+  await items.setStatus(ctx(PM), it.id, 'TRIAGED');
+  await items.setStatus(ctx(PM), it.id, 'AWAITING_APPROVAL');
+  await items.approveItem(ctx(PM), it.id, { assignee_user_id: 'u_pm' });
+
+  assert.equal((await db.get('SELECT status FROM product_item WHERE id = ?', [it.id])).status, 'APPROVED',
+    'سقط الاعتماد كلُّه لأن مهمةَ المعتمِد نفسه طُلبت لها نسبةُ إشغال');
+  const link = await db.get('SELECT task_id FROM product_item_task WHERE item_id = ? AND unlinked_at IS NULL', [it.id]);
+  assert.ok(link, 'اعتمادٌ بلا مهمة — والاثنان لا ينفصلان');
+  const t = await db.get('SELECT * FROM task WHERE id = ?', [link.task_id]);
+  assert.equal(t.assignee_user_id, 'u_pm');
+  assert.equal(t.utilization_pct, null, 'كُتبت نسبةٌ لم يقلها أحد');
+});
+
 test('ومستشارٌ يدير المنتج يُغلق بلاغاً مهمتُه لغيره ⇒ المهمة تُنجَز باسمه — بصفَّي أثرٍ لا أكثر', async () => {
-  const it = await intake.createManual(ctx(), PRODUCT, { type: 'bug', title: 'بلاغٌ يُغلقه مستشار', sector_id: 'SOL', reporter_name: 'موظف' });
+  const it = await intake.createManual(ctx(), PRODUCT, { type: 'bug', title: 'بلاغٌ يُغلقه مستشار', where_text: 'شاشة المهام', sector_id: 'SOL', reporter_name: 'موظف' });
   await items.setStatus(ctx(), it.id, 'TRIAGED');
   await items.setStatus(ctx(), it.id, 'AWAITING_APPROVAL');
   await items.approveItem(ctx(), it.id, { assignee_user_id: 'u_dev' });   // مديرُ النظام يعتمد ويُسنِد إلى غيره
@@ -255,7 +275,7 @@ test('ومستشارٌ يدير المنتج يُغلق بلاغاً مهمتُ�
 });
 
 test('ورفضُه يُلغي المهمة ويمحو ختمَ إنجازها', async () => {
-  const it = await intake.createManual(ctx(), PRODUCT, { type: 'bug', title: 'بلاغٌ يرفضه مستشار', sector_id: 'SOL', reporter_name: 'موظف' });
+  const it = await intake.createManual(ctx(), PRODUCT, { type: 'bug', title: 'بلاغٌ يرفضه مستشار', where_text: 'شاشة المهام', sector_id: 'SOL', reporter_name: 'موظف' });
   await items.setStatus(ctx(), it.id, 'TRIAGED');
   await items.setStatus(ctx(), it.id, 'AWAITING_APPROVAL');
   await items.approveItem(ctx(), it.id, { assignee_user_id: 'u_dev' });
@@ -274,7 +294,7 @@ test('ورفضُه يُلغي المهمة ويمحو ختمَ إنجازها', 
 
 // ── ورايةُ «بلا وسم إصدار» لا تُرفع إلا من داخل الخادم ────────────────────────────────────
 test('«تم الحل» بلا وسمٍ يُردّ ولو سُمّي المفتاح نصّاً في الخيارات', async () => {
-  const it = await intake.createManual(ctx(), PRODUCT, { type: 'bug', title: 'بلاغٌ بلا وسم', sector_id: 'SOL', reporter_name: 'موظف' });
+  const it = await intake.createManual(ctx(), PRODUCT, { type: 'bug', title: 'بلاغٌ بلا وسم', where_text: 'شاشة المهام', sector_id: 'SOL', reporter_name: 'موظف' });
   await items.setStatus(ctx(), it.id, 'TRIAGED');
   await items.setStatus(ctx(), it.id, 'AWAITING_APPROVAL');
   await items.approveItem(ctx(), it.id, { assignee_user_id: 'u_dev' });

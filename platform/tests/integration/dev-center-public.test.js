@@ -11,7 +11,7 @@
 //      والسادسُ في النافذة يُردّ ٤٢٩.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -119,6 +119,50 @@ test('«lang=en» يقلب الصفحة إلى الإنجليزية واتجاه
   assert.match(r.text, /\?lang=ar/);
 });
 
+test('الفخُّ يُخفى بالقصّ لا بالإزاحة — فلا تمريرَ أفقياً على الصفحة العربية', async () => {
+  const r = await req(`/p/${TOKEN}`);
+  assert.equal(r.status, 200);
+  const css = (r.text.match(/<style[\s\S]*?<\/style>/) || [''])[0];
+  assert.ok(!/-9999/.test(css), 'إزاحةُ العشرة آلاف بكسل ما زالت في الأنماط — تُفتح بها صفحةُ تمريرٍ أفقي في الاتجاه العربي');
+  assert.match(css, /\.hp\{[^}]*clip-path:inset\(50%\)/, 'الفخّ لا يُقصّ');
+  // ما زال في المستند (تراه الآلة)، وخارج ترتيب التنقّل وعن عين الإنسان.
+  assert.match(r.text, /name="company_website"/);
+  assert.match(r.text, /tabindex="-1"/);
+  assert.match(r.text, /autocomplete="off"/);
+  assert.match(r.text, /class="hp" aria-hidden="true"/);
+});
+
+// ── KI-121: الصفحة الإنجليزية إنجليزيةٌ كلها ─────────────────────────────────
+test('«lang=en»: النوعُ والإلحاح واسمُ المنتج بالإنجليزية — ولا حرفَ عربيٍّ في خياراتها', async () => {
+  const r = await req(`/p/${TOKEN}?lang=en`);
+  assert.equal(r.status, 200);
+  assert.match(r.text, /Problem/);
+  assert.match(r.text, /Suggestion/);
+  assert.match(r.text, /Blocks my work/);
+  assert.match(r.text, /Slows my work/);
+  assert.match(r.text, /Improvement, not blocking/);
+  assert.match(r.text, /Atlas/, 'اسمُ المنتج الإنجليزي لم يصل الصفحة');
+  const shown = r.text.replace(/<script[\s\S]*?<\/script>/g, ' ').replace(/<style[\s\S]*?<\/style>/g, ' ').replace(/<[^>]*>/g, ' ');
+  assert.ok(!/عُطل|اقتراح|يعطّل عملي|يؤخّر عملي|تحسين لا يعطّل/.test(shown), `نصٌّ عربي في صفحةٍ إنجليزية: ${shown.slice(0, 200)}`);
+});
+
+test('العربية لم تتغيّر بحرف: «عُطل» و«يعطّل عملي» في مكانهما', async () => {
+  const r = await req(`/p/${TOKEN}`);
+  assert.match(r.text, /عُطل/);
+  assert.match(r.text, /اقتراح/);
+  assert.match(r.text, /يعطّل عملي/);
+  assert.match(r.text, /يؤخّر عملي/);
+  assert.match(r.text, /تحسين لا يعطّل/);
+});
+
+test('صفحةُ «لم يعد يستقبل» تُقال بالإنجليزية حين تُطلب بها', async () => {
+  const r = await req('/p/no-such-token-at-all?lang=en');
+  assert.equal(r.status, 404);
+  assert.match(r.text, /dir="ltr"/);
+  assert.match(r.text, /no longer accepting reports/);
+  assert.ok(!/لم يعد يستقبل/.test(r.text), 'الصفحة الإنجليزية تحمل نصّاً عربياً');
+});
+
 test('فتحُ النموذج يُعدّ زيارة', async () => {
   const before = await n('SELECT visits AS n FROM product_link WHERE token = ?', [TOKEN]);
   await req(`/p/${TOKEN}`);
@@ -218,6 +262,24 @@ test('صفحة المتابعة تُظهر ما يخصّ من أبلغ ولا ت
   assert.ok(!/\bNEW\b|\bRESOLVED\b/.test(page.text.replace(/<script[\s\S]*?<\/script>/g, ' ')), 'قيمةٌ خام في صفحة المتابعة');
 });
 
+test('صفحةُ المتابعة بالإنجليزية: المحطّات والنوع والإلحاح بالإنجليزية لا بالعربية', async () => {
+  const sub = await req(`/p/${TOKEN}/submit`, {
+    method: 'POST', ip: '10.0.2.1',
+    body: { type: 'bug', title: 'English tracking', description: 'Nothing loads', urgency: 'blocks', reporter_name: 'Sara' },
+  });
+  const page = await req(`${sub.json.tracking_url.split('?')[0]}?lang=en`);
+  assert.equal(page.status, 200);
+  assert.match(page.text, /dir="ltr"/);
+  assert.match(page.text, /Under review/, 'المحطّات ما زالت عربية في صفحةٍ إنجليزية');
+  assert.match(page.text, /In progress/);
+  assert.match(page.text, /Problem/);
+  assert.match(page.text, /Blocks my work/);
+  const shown = page.text.replace(/<script[\s\S]*?<\/script>/g, ' ').replace(/<style[\s\S]*?<\/style>/g, ' ').replace(/<[^>]*>/g, ' ');
+  assert.ok(!/جديد|قيد الدراسة|قيد التنفيذ|عُطل|يعطّل عملي/.test(shown), `نصٌّ عربي في صفحة متابعةٍ إنجليزية: ${shown.slice(0, 200)}`);
+  // ولا قيمةَ خامٌّ في الإنجليزية أيضاً.
+  assert.ok(!/\bNEW\b|\bIN_PROGRESS\b|\bbug\b/.test(shown), 'قيمةٌ مخزَّنة خام في الصفحة الإنجليزية');
+});
+
 test('رقمُ متابعةٍ مجهول: نفس صفحة «لم نجد» دائماً', async () => {
   const a = await req('/p/t/no-such-tracking-token');
   const b = await req('/p/t/another-nonexistent');
@@ -261,4 +323,20 @@ test('السادس داخل النافذة يُردّ ٤٢٩ برسالةٍ عر
   const before = await itemRows();
   await send('بعد الحد');
   assert.equal(await itemRows(), before, 'بلاغٌ كُتب بعد أن أُغلق الباب');
+});
+
+
+// ── ⑥ الشعار موجودٌ فعلاً على القرص ──────────────────────────────────────────
+// الصفحةُ العامة هي أولُ ما يراه من لا حساب له — عميلٌ أو زائر — وكانت تطلب
+// `/static/brand/logo.svg` وهو ملفٌّ لا وجود له في `src/web/public/brand`، فيظهر شعارٌ مكسور
+// في ترويسة كل صفحةٍ عامة. صفحةُ الدخول تستعمل `logo-color.svg` وهو الموجود.
+test('كل صورةِ علامةٍ تطلبها الصفحة العامة موجودةٌ في مجلد العلامة', async () => {
+  const html = (await req(`/p/${TOKEN}`)).text;
+  const refs = [...html.matchAll(/\/static\/brand\/([A-Za-z0-9._-]+)/g)].map((m) => m[1]);
+  assert.ok(refs.length >= 2, 'الصفحة العامة بلا شعارٍ ولا أيقونة');
+  assert.ok(refs.includes('logo-color.svg'), 'الصفحة العامة لا تستعمل شعار صفحة الدخول نفسه');
+  assert.ok(!refs.includes('logo.svg'), 'ما زال الشعار المكسور «logo.svg» مطلوباً');
+  for (const f of new Set(refs)) {
+    assert.ok(existsSync(join(ROOT, 'src/web/public/brand', f)), `ملفُ علامةٍ مفقود: ${f}`);
+  }
 });

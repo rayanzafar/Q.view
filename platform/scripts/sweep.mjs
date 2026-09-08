@@ -18,7 +18,7 @@
 import './lib/throwaway-rbac-db.mjs'; // MUST be first: defaults SANAD_DB before any app module snapshots config
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { ROLES, PAGES, DEMO_PW, API_PROBES, AI_CHAT_PROBES, pageExpected, expectedStatus, loadPageAccess } from './lib/expectations.mjs';
+import { ROLES, PAGES, DEMO_PW, API_PROBES, AI_CHAT_PROBES, pageExpected, expectedStatus, statusOk, loadPageAccess } from './lib/expectations.mjs';
 import { BANNED_UI_TERMS } from '../src/web/i18n/glossary.js';
 
 // ── args ──────────────────────────────────────────────────────────────────────
@@ -166,12 +166,14 @@ for (const { username, role } of roles) {
 
   for (const page of PAGES) {
     const path = `/app/${page}`;
-    const want = pageExpected(role, page, pageAccess).status;
+    // توقّعُ الصفحة قد يقبل ردَّين حين تحكم البوابةَ حالةُ بيانات لا دور (`alsoOk`).
+    const exp = pageExpected(role, page, pageAccess);
+    const want = exp.alsoOk?.length ? [exp.status, ...exp.alsoOk].join(' أو ') : exp.status;
     const { res, ms, text } = await hit(path, { jar });
     R.pagesN++; R.ms.push(ms); timings.push(ms);
     const row = { role: username, path, status: res.status, want, ms: Math.round(ms) };
     report.requests.push(row);
-    if (res.status !== want) {
+    if (!statusOk(exp, res.status)) {
       report.deviations.push({ role: username, path, kind: 'status', detail: `expected ${want}, got ${res.status}` });
       continue;
     }

@@ -79,11 +79,11 @@ before(async () => {
   TOKEN = (await products.createLink(CTX(MGR), PROD.id, { tenant_id: tenant.id, identity_mode: 'optional' })).token;
 
   ITEM = await intake.createManual(CTX(MGR), PROD.id, {
-    type: 'bug', title: 'بلاغٌ بصور', description: 'وصفٌ كافٍ', urgency: 'delays',
+    type: 'bug', title: 'بلاغٌ بصور', description: 'وصفٌ كافٍ', where_text: 'شاشة الصور', urgency: 'delays',
     sector_id: 'SOL', reporter_name: 'مبلِّغ',
   });
   OTHER_ITEM = await intake.createManual(CTX(OTHERMGR), OTHER.id, {
-    type: 'bug', title: 'بلاغُ منتجٍ آخر', description: 'وصفٌ كافٍ', urgency: 'delays',
+    type: 'bug', title: 'بلاغُ منتجٍ آخر', description: 'وصفٌ كافٍ', where_text: 'شاشة أوريون', urgency: 'delays',
     sector_id: 'SOL', reporter_name: 'غريب',
   });
 
@@ -137,7 +137,7 @@ test('ما تجاوز ثمانية ميغابايت يُقطع ولا يُخزَ
 // ── ③ السقف ──────────────────────────────────────────────────────────────────
 test('السادسة تُردّ: خمسُ صورٍ للبلاغ سقفاً', async () => {
   const item = await intake.createManual(CTX(MGR), PROD.id, {
-    type: 'bug', title: 'بلاغُ السقف', description: 'وصفٌ كافٍ', urgency: 'delays',
+    type: 'bug', title: 'بلاغُ السقف', description: 'وصفٌ كافٍ', where_text: 'شاشة السقف', urgency: 'delays',
     sector_id: 'SOL', reporter_name: 'مبلِّغ',
   });
   for (let i = 0; i < 5; i++) {

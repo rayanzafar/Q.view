@@ -52,9 +52,14 @@ export const ROLES = [
 // هنا هو ما يُخضِعها للمسح الحيّ ولفحص التسرّب: صفحة الهبوط لكل مستخدم أولى الصفحات بالفحص.
 // أقسام «الفريق والموارد» (ADR-0016) بمفاتيحها في سياسة الصفحات `team/<section>` — تُفحص كصفحات:
 // بوابتها بوابة «الفريق» إلا «الإقفال الشهري» فبوابته منح الإقفال.
+// «مركز التطوير» داخل القائمة، وبوابتها ليست دوراً في الشركة بل عضويةٌ في فريق منتج
+// (`PAGE_ACCESS['dev-center']`: مدير النظام أو عضوٌ في منتج). والعضوية حالةُ بيانات لا حالةُ
+// دور: تُمنح وتُسحب من شاشة المنتج، فأيُّ توقّعٍ يقطع بـ٤٠٣ لغير مدير النظام يُحمِّر المسح
+// لحظةَ ضمّ شخصيةٍ تجريبية إلى فريق منتج — وهو عملٌ مشروع لا عطل. فالتوقّع هنا ٢٠٠ لمدير
+// النظام قطعاً، ولمن سواه ٤٠٣ **أو** ٢٠٠ (`alsoOk`) لأن الحالتين صحيحتان.
 export const PAGES = ['home', 'ceo', 'portfolio', 'sector', 'opportunities', 'my-opportunities', 'projects',
   'clients', 'events', 'tasks', 'timesheet', 'approvals', 'team', 'staffing', 'imports', 'users', 'audit', 'reports', 'org', 'finance', 'mail', 'ops',
-  'guide', 'revenue-review', 'sector-targets', 'assistant-link',
+  'guide', 'revenue-review', 'sector-targets', 'assistant-link', 'dev-center',
   'team/resources', 'team/org', 'team/people', 'team/work', 'team/planning', 'team/requests', 'team/analysis', 'team/needs', 'team/close'];
 
 // Roles whose service guards admit them to the people/org surfaces: staffingRoster() and orgTree()
@@ -74,6 +79,11 @@ const ORG_READERS = new Set(['admin', 'ceo_office', 'sector_lead', 'hr',
 // exports PAGE_ACCESS, loadPageAccess() returns it and expectations flip to strict 200/403.
 export function pageExpected(role, page, pageAccess = null) {
   if (page === 'finance') return { status: 410, soft: false };
+  // قبل اشتقاق الصلاحية من الدور: بوابة «مركز التطوير» عضويةُ منتج لا دور، ولا يعرفها
+  // الاشتقاق من الشيفرة (`productMemberships` تُحمَّل مع الحساب من القاعدة). فالردَّان صحيحان.
+  if (page === 'dev-center') {
+    return role === 'admin' ? { status: 200, soft: false } : { status: 403, soft: false, alsoOk: [200] };
+  }
   if (pageAccess) {
     const allowed = pageAllowed(role, page, pageAccess);
     if (allowed === null) return { status: 200, soft: true }; // unknown shape — stay soft
@@ -171,10 +181,21 @@ export const API_PROBES = [
   { method: 'POST', path: '/api/tasks/quick', body: {}, expect: 400 },     // every role may create own tasks
   { method: 'POST', path: '/api/timesheets', body: {}, expect: 400 },      // every role logs own time
   { method: 'POST', path: '/api/approvals', body: {}, expect: 400 },       // unknown workflow key → validation
+  // ── مركز التطوير: القائمة، والباب العام ────────────────────────────────────
+  // قائمةُ منتجاتي مفتوحةٌ لكل مسجَّل عمداً وتُصفّى بالعضوية في الخدمة (`listMyProducts`)، فغيرُ
+  // العضو يستقبل قائمةً فارغة لا رفضاً — نفس مبدأ بقية القوائم أعلاه: ٢٠٠ بمحتوىً مُقيَّد ليس تسرّباً.
+  { method: 'GET', path: '/api/products', expect: 200 },
+  // الباب العام تحت `/p`: رمزٌ مختلق يجب أن يُردّ بصفحة «لم يعد يستقبل» نفسِها التي يُردّ بها
+  // رابطٌ أُوقف ورابطٌ انتهى أجله — ٤٠٤ في الثلاث بلا حرفٍ يفرّق (لئلا يصير تجريبُ الروابط
+  // عدّاً لعملاء الشركة). ولا جلسةَ تلزمه، لكنه يُطلَب هنا كي يبقى تحت عين المسح بعد كل نشرة.
+  { method: 'GET', path: '/p/not-a-real-token', expect: 404 },
   // ── المساعد ────────────────────────────────────────────────────────────────
   // الحالة مفتوحة لكل مسجَّل: تقول «المحرّك محلي» وتعيد بطاقات الاقتراح **مُرشَّحة بمنح الدور**
   // (فلا تُعرض بطاقة لعملٍ يردّه الخادم). لا كتابة فيها ولا رقم عمل، فهي آمنة على أي بيئة.
   { method: 'GET', path: '/api/ai/status', expect: 200 },
+  // قائمةُ أدوات المساعد مُرشَّحة بمنح الدور فتفتح لكل مسجَّل ولو عادت قصيرة — وأدواتُ «مركز
+  // التطوير» تُسجَّل فيها، فسقوطُ تسجيلها يُرى هنا لا في شكوى مستخدم.
+  { method: 'GET', path: '/api/ai/tools', expect: 200 },
   // سجل نشاط المساعد جزء من سجل التدقيق: بوابته `can(read audit)` — وهي منح مدير النظام
   // (شامل) ومكتب الرئيس التنفيذي (audit @company) وحدهما في مصفوفة المنح.
   { method: 'GET', path: '/api/ai/activity', expect: { default: 403, admin: 200, ceo_office: 200 } },
@@ -240,4 +261,10 @@ export const FIXTURE_PROBES = [
 
 export function expectedStatus(expect, role) {
   return typeof expect === 'number' ? expect : (expect[role] ?? expect.default);
+}
+
+// هل الردُّ المرصود مقبول؟ توقّعٌ فيه `alsoOk` يعني «حالتان صحيحتان»، لا «توقّعٌ متساهل»:
+// تُستعمل حيث تحكم البوابةَ حالةُ بيانات (عضوية) لا دورٌ ثابت، فيصحّ الردّان معاً.
+export function statusOk(exp, actual) {
+  return actual === exp.status || (exp.alsoOk || []).includes(actual);
 }

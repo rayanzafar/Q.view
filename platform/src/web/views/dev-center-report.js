@@ -4,23 +4,30 @@
 // كل المرشِّحات تُقرأ من عنوان الصفحة، فما يُطبع هو ما كان معروضاً حرفاً بحرف — ومن أرسل
 // الرابط لغيره أرسل القائمة نفسها لا قائمةً أخرى.
 //
-// العقد مع وحدة المنتجات: getProduct / listItems / itemStats / itemImages وحدها.
+// العقد مع وحدة المنتجات: getProduct / listTenants / listVersions / listItems / itemStats /
+// itemImages وحدها.
 import { esc } from './_shared.js';
 import { asset } from '../assets.js';
 import { G } from '../i18n/glossary.js';
 import { all } from '../../core/db/index.js';
-import { getProduct } from '../../modules/products/products.js';
+import { getProduct, listTenants, listVersions } from '../../modules/products/products.js';
 import { listItems, itemStats, itemImages } from '../../modules/products/items.js';
 
+// ── قيم مخزَّنة تُستعمل مفاتيحَ ترشيح فقط؛ اسمها العربي يأتي من المعجم دائماً ─────────────
+// وأسماءُ المرشِّحات هنا هي أسماءُ حقول `listItems` نفسِها (`tenant_id`/`sector_id`/`version_id`)
+// كما على الشاشة — فما في العنوان يمرّ إلى الخدمة بلا ترجمةِ أسماءٍ في المنتصف.
 const STATUS_KEYS = ['NEW', 'TRIAGED', 'AWAITING_APPROVAL', 'APPROVED', 'IN_PROGRESS', 'RESOLVED', 'NEEDS_INFO', 'DECLINED', 'DUPLICATE'];
 const TYPE_KEYS = ['bug', 'suggestion'];
 const URGENCY_KEYS = ['blocks', 'delays', 'improve'];
+const PRIORITY_KEYS = ['low', 'medium', 'high', 'critical'];
+const SOURCE_KEYS = ['sanad', 'link', 'manual', 'agent'];
 const LIMIT = 300;
 
 const statusLabel = (v) => G.itemStatusAr[String(v || '')] || G.notSet;
 const typeLabel = (v) => G.itemTypeAr[String(v || '')] || G.notSet;
 const urgencyLabel = (v) => G.itemUrgencyAr[String(v || '')] || G.notSet;
 const priorityLabel = (v) => G.itemPriorityAr[String(v || '')] || G.notSet;
+const sourceLabel = (v) => G.itemSourceAr[String(v || '')] || G.notSet;
 const day = (iso) => (/^\d{4}-\d{2}-\d{2}/.test(String(iso || '')) ? String(iso).slice(0, 10) : G.notSet);
 
 const CSS = `
@@ -32,7 +39,9 @@ body{margin:0;background:#f6f7fb;color:#1e293b;font-family:'IBM Plex Sans Arabic
 .top .sub{font-size:12px;color:#64748b;margin-top:4px}
 .tools{display:flex;gap:8px}
 .tools button,.tools a{font:inherit;font-size:12px;font-weight:700;border:1px solid #cbd5e1;background:#fff;color:#244A99;border-radius:9px;padding:7px 14px;cursor:pointer;text-decoration:none}
-.filters{margin-top:10px;font-size:11.5px;color:#64748b}
+.filters{margin-top:10px;font-size:11.5px;color:#64748b;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.filters b{font-weight:800;color:#475569}
+.fchip{background:#fff;border:1px solid #cbd5e1;border-radius:999px;padding:2px 10px;font-weight:700;color:#334155}
 .sum{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin:14px 0}
 .sum div{background:#fff;border:1px solid #e6e9f0;border-radius:10px;padding:9px 11px}
 .sum b{display:block;font-size:17px;font-weight:800}
@@ -58,33 +67,59 @@ body{margin:0;background:#f6f7fb;color:#1e293b;font-family:'IBM Plex Sans Arabic
 
 export async function devCenterReportPage(user, productId, opts = {}) {
   const product = await getProduct(user, productId);
+  // القوائمُ الثلاث تُقرأ أولاً لأنها **حَكَمُ** مرشِّحات المعرِّفات: الجهةُ والإصدار والقطاع
+  // تُقبل إن كانت في قائمة هذا المنتج وحدها — فلا يمرّ معرِّفٌ مُحرَّرٌ في العنوان إلى الخدمة،
+  // ولا تُطبع قيمةٌ خام في شارةٍ لأن كل شارةٍ تُسمّى من القائمة التي قُبلت منها.
+  const [tenantList, versionList, sectorRows] = await Promise.all([
+    listTenants(user, product.id),
+    listVersions(user, product.id),
+    all('SELECT id, name_ar FROM sector WHERE deleted_at IS NULL'),
+  ]);
+  const sectors = new Map(sectorRows.map((r) => [r.id, r.name_ar]));
+  const tenants = new Map(tenantList.map((t) => [t.id, t.name]));
+  const versions = new Map(versionList.map((v) => [v.id, v.label]));
+  const oneOf = (map, v) => (map.has(String(v || '')) ? String(v) : '');
   const cur = {
     status: STATUS_KEYS.includes(opts.status) ? opts.status : '',
     type: TYPE_KEYS.includes(opts.type) ? opts.type : '',
+    priority: PRIORITY_KEYS.includes(opts.priority) ? opts.priority : '',
     urgency: URGENCY_KEYS.includes(opts.urgency) ? opts.urgency : '',
+    source: SOURCE_KEYS.includes(opts.source) ? opts.source : '',
+    tenant_id: oneOf(tenants, opts.tenant_id),
+    sector_id: oneOf(sectors, opts.sector_id),
+    version_id: oneOf(versions, opts.version_id),
     from: /^\d{4}-\d{2}-\d{2}$/.test(String(opts.from || '')) ? String(opts.from) : '',
     to: /^\d{4}-\d{2}-\d{2}$/.test(String(opts.to || '')) ? String(opts.to) : '',
     q: String(opts.q || '').trim().slice(0, 80),
   };
-  const [rows, s, sectorRows] = await Promise.all([
+  const [rows, s] = await Promise.all([
     listItems(user, product.id, { ...cur, limit: LIMIT }),
     itemStats(user, product.id, cur),
-    all('SELECT id, name_ar FROM sector WHERE deleted_at IS NULL'),
   ]);
-  const sectors = new Map(sectorRows.map((r) => [r.id, r.name_ar]));
   // صور «قبل/بعد» تُقرأ لكل بندٍ على حدة (بلا بايتات — بياناتُها وحدها) لأن الورقة تعرضها
   // جنباً إلى جنب: هي الدليل الذي يُقرأ خارج المنصة، لا زينةٌ تُحذف عند الطباعة.
   const shots = await Promise.all(rows.map((r) => itemImages(r.id)));
   rows.forEach((r, i) => { r.images = shots[i]; });
 
+  // شاراتُ ما هو مُطبَّق: بكلماتها العربية لا بقيمها المخزَّنة، والمعرِّفُ يُسمّى باسم صاحبه
+  // (جهةٌ، قطاعٌ، إصدار). ومن قرأ الورقة عرف على أي اختيارٍ بُنيت قبل أن يقرأ رقماً واحداً.
+  // و«من أين وصل» تُقرأ وحدها بلا اسم حقلٍ فوقها لأن كلمتها جملةٌ تامّة («من رابط الاستقبال»).
   const applied = [
     cur.status ? `${G.statusWord}: ${statusLabel(cur.status)}` : '',
     cur.type ? `${G.itemType}: ${typeLabel(cur.type)}` : '',
+    cur.priority ? `${G.priority}: ${priorityLabel(cur.priority)}` : '',
     cur.urgency ? `${G.urgency}: ${urgencyLabel(cur.urgency)}` : '',
+    cur.source ? sourceLabel(cur.source) : '',
+    cur.tenant_id ? `${G.tenant}: ${tenants.get(cur.tenant_id) || G.notSet}` : '',
+    cur.sector_id ? String(sectors.get(cur.sector_id) || G.notSet) : '',
+    cur.version_id ? `${G.versionTag}: ${versions.get(cur.version_id) || G.notSet}` : '',
     cur.from ? `${G.fromDate}: ${cur.from}` : '',
     cur.to ? `${G.toDate}: ${cur.to}` : '',
     cur.q ? `${G.searchWord}: ${cur.q}` : '',
-  ].filter(Boolean).join(' · ') || G.noFilters;
+  ].filter(Boolean);
+  const chips = applied.length
+    ? applied.map((t) => `<span class="fchip">${esc(t)}</span>`).join('')
+    : `<span class="fchip">${esc(G.noFilters)}</span>`;
 
   const sum = `<div class="sum">
     <div><b class="tnum">${esc(String(s.total || 0))}</b><span>${esc(G.itemsTotal)}</span></div>
@@ -137,7 +172,7 @@ export async function devCenterReportPage(user, productId, opts = {}) {
       <a href="/app/dev-center/${esc(encodeURIComponent(product.id))}">${esc(G.backToScreen)}</a>
     </div>
   </div>
-  <div class="filters">${esc(G.appliedFilters)}: ${esc(applied)}</div>
+  <div class="filters"><b>${esc(G.appliedFilters)}</b>${chips}</div>
   ${sum}
   ${cards}
 </div>

@@ -93,8 +93,14 @@ export async function resolveUserFromSession(s) {
   // بقي الجواب في الخدمة وحدها لاحتاجت كل صفحةٍ قراءةً ثانية. قراءةٌ واحدة مفهرسة على
   // `product_member(user_id)` تُغذّي الجواب في كل سطح — وهي كلفةُ طلبٍ واحد على كل صفحة،
   // فتبقى استعلاماً واحداً بلا ضمٍّ ولا ترتيب.
-  const productMemberships = new Set((await all(
-    'SELECT product_id FROM product_member WHERE user_id = ? AND active = 1', [u.id])).map((r) => r.product_id));
+  //
+  // والدورُ يُقرأ مع العضوية في القراءة نفسها (`role` عمودٌ في الصفّ الذي نقرؤه أصلاً): سطحُ
+  // المساعد كان يعرض «اعتمد» و«ارفض» لكل عضو — والمطوِّرُ يُردّ عندها من الخدمة بعد أن قُدِّمت
+  // له أداةٌ لا يملكها. ومجموعةُ «ما يديره» تجيب سؤال العرض بلا استعلامٍ ثانٍ ولا حلقة.
+  const memberRows = await all(
+    'SELECT product_id, role FROM product_member WHERE user_id = ? AND active = 1', [u.id]);
+  const productMemberships = new Set(memberRows.map((r) => r.product_id));
+  const productManagerIds = new Set(memberRows.filter((r) => r.role === 'manager').map((r) => r.product_id));
   return {
     id: u.id,
     username: u.username,
@@ -111,6 +117,7 @@ export async function resolveUserFromSession(s) {
     name_en: u.name_en,
     projectIds,
     productMemberships,
+    productManagerIds,
     teamIds: new Set(),
   };
 }

@@ -61,7 +61,10 @@ async function up() {
   const child = spawn(process.execPath, ['--experimental-sqlite', 'src/server.js'], {
     cwd: PLATFORM, detached: true, stdio: ['ignore', 'ignore', 'ignore'],
     // explicit air-gap: SQLite temp DB, loopback, dev mode. No DATABASE_URL / AI_ENGINE / MAIL_TRANSPORT.
-    env: { ...process.env, SANAD_DB: dbPath, PORT: String(port), HOST: '127.0.0.1', NODE_ENV: 'development', DATABASE_URL: '' },
+    // PLATFORM_URL = عنوان هذه النسخة نفسها: الروابط المطلقة (رابط متابعة البلاغ في نموذج
+    // «أبلغ»، وروابط الاستقبال العامة) تُبنى منه — وبلا ضبطه تشير إلى المنفذ 4000 الافتراضي
+    // أي إلى نسخةٍ أخرى أو إلى لا شيء، فتُفحص على نسخةٍ قابلة للرمي روابطُ ليست لها.
+    env: { ...process.env, SANAD_DB: dbPath, PORT: String(port), HOST: '127.0.0.1', NODE_ENV: 'development', DATABASE_URL: '', PLATFORM_URL: base },
   });
   child.unref();
   try { await waitReady(base, child); }

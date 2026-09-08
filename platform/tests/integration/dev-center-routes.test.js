@@ -51,6 +51,22 @@ async function http(path, { as = 'mgr', method = 'GET', body } = {}) {
   return { status: r.status, headers: r.headers, buf, json };
 }
 
+// أصغرُ صورةٍ صحيحة: بكسلٌ واحدٌ بصيغة PNG — توقيعُها في أول ثمانِ بايتات.
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
+// رفعُ صورةٍ بايتاتٍ خاماً — النوع في ترويسةٍ لا في المسار، كما يرفعها المتصفّح.
+async function postImage(path, { as, kind = 'report' }) {
+  const r = await fetch(base + path, {
+    method: 'POST', redirect: 'manual', body: PNG,
+    headers: { cookie: `sanad_sid=sess_${as}; sanad_csrf=t`, 'content-type': 'image/png', 'x-image-kind': kind },
+  });
+  const text = await r.text();
+  let json = null; try { json = JSON.parse(text); } catch { /* لا حمولة */ }
+  return { status: r.status, json, text };
+}
+const errorOf = (r) => String(r.json?.error?.message || r.json?.message || '');
+const reportImages = async (itemId) => Number((await db.get(
+  "SELECT COUNT(*) AS n FROM product_item_image WHERE item_id = ? AND kind = 'report'", [itemId])).n);
+
 before(async () => {
   db = await import('../../src/core/db/index.js');
   const rbac = await import('../../src/core/rbac/index.js');
@@ -74,15 +90,15 @@ before(async () => {
 
   ITEM = await intake.createManual(CTX(MGR), PROD.id, {
     type: 'bug', title: 'الشاشة تتوقف عند الحفظ', description: 'حاولت الحفظ فلم يحدث شيء',
-    urgency: 'blocks', sector_id: 'SOL', reporter_name: 'عميلٌ من أطلس',
+    where_text: 'شاشة الحفظ', urgency: 'blocks', sector_id: 'SOL', reporter_name: 'عميلٌ من أطلس',
   });
   await intake.createManual(CTX(MGR), PROD.id, {
     type: 'suggestion', title: 'زرٌّ للطباعة في التقرير', description: 'لو كان هناك زرُّ طباعة',
-    urgency: 'improve', sector_id: 'SOL', reporter_name: 'زميل',
+    where_text: 'شاشة التقارير', urgency: 'improve', sector_id: 'SOL', reporter_name: 'زميل',
   });
   OTHER_ITEM = await intake.createManual(CTX(ADMIN), OTHER.id, {
     type: 'bug', title: 'بلاغُ منتجٍ آخر', description: 'لا يخصّ فريق أطلس',
-    urgency: 'delays', sector_id: 'SOL', reporter_name: 'غريب',
+    where_text: 'شاشة أوريون', urgency: 'delays', sector_id: 'SOL', reporter_name: 'غريب',
   });
 
   const { createApp } = await import('../../src/server.js');
@@ -237,7 +253,7 @@ test('تعريف نموذج الإبلاغ يصف نفسه بالعربية بل
 // وسمٍ فيبقى «متى وصلني الحل» بلا جواب، وبلاغٌ يُغلَق ومهمتُه تبقى في قائمة مطوِّرٍ إلى الأبد.
 test('راياتُ الخيارات الداخلية لا تُرفع من جسم الطلب — والمزامنة تقع رغمها', async () => {
   const fresh = await intake.createManual(CTX(MGR), PROD.id, {
-    type: 'bug', title: 'بلاغُ الرايات', description: 'تفصيل', urgency: 'delays',
+    type: 'bug', title: 'بلاغُ الرايات', description: 'تفصيل', where_text: 'شاشة الرايات', urgency: 'delays',
     sector_id: 'SOL', reporter_name: 'عميل',
   });
   await items.setStatus(CTX(MGR), fresh.id, 'TRIAGED');
@@ -256,4 +272,113 @@ test('راياتُ الخيارات الداخلية لا تُرفع من جسم
   assert.equal((await db.get('SELECT status FROM product_item WHERE id = ?', [fresh.id])).status, 'DECLINED');
   assert.equal((await db.get('SELECT status FROM task WHERE id = ?', [task])).status, 'CANCELLED',
     'رايةُ «بلا مزامنة» من جسم الطلب تركت مهمةً مفتوحةً لبلاغٍ مرفوض');
+});
+
+
+// ── KI-117: صورةُ من أبلغ تصل ولو لم يكن في فريق المنتج ──────────────────────
+// جمهورُ زرّ «أبلغ» كلُّه من خارج فريق سند، والنافذة تَعِد «حتى خمس صور» ثم ترفعها على هذا
+// المسار — وكان `assertMember` يردّها بـ٤٠٤ فيبتلعها المتصفّح ويُعلن النجاح كاملاً. البابُ
+// الآن لصاحب البلاغ نفسه وحده، على صور «البلاغ» وحدها، وما دام البند «جديداً» وفي يومه.
+test('صاحبُ البلاغ يرفع صورَه وهو خارج الفريق — وعلى بلاغِ غيره «غير موجود»', async () => {
+  const own = await intake.createManual(CTX(MGR), PROD.id, {
+    type: 'bug', title: 'بلاغُ من ليس في الفريق', description: 'وصفٌ كافٍ', where_text: 'شاشة الفرص',
+    urgency: 'delays', sector_id: 'SOL', reporter_user_id: OUT.id,
+  });
+  const up = await postImage(`/api/products/items/${own.id}/images`, { as: 'out' });
+  assert.equal(up.status, 200, `صورةُ صاحب البلاغ رُدّت بـ${up.status}: ${up.text}`);
+  assert.equal(up.json.mime, 'image/png');
+  assert.equal(await reportImages(own.id), 1, 'رُدَّ ٢٠٠ ولم يُكتب صفُّ صورة');
+
+  // ولا يفتح البابُ شيئاً آخر: البند نفسه يبقى «غير موجود» لمن ليس في الفريق.
+  const read = await http(`/api/products/items/${own.id}`, { as: 'out' });
+  assert.equal(read.status, 404, 'بابُ الصورة فتح قراءةَ البند لغير العضو');
+
+  // بلاغُ غيره: «غير موجود» لا «ممنوع» — والفرقُ بين الردَّين يعدّ بلاغات الشركة.
+  const before = await reportImages(ITEM.id);
+  const foreign = await postImage(`/api/products/items/${ITEM.id}/images`, { as: 'out' });
+  assert.equal(foreign.status, 404, 'رفع صورةً على بلاغٍ ليس بلاغَه');
+  assert.equal(await reportImages(ITEM.id), before, 'كُتب صفُّ صورةٍ على بلاغِ غيره');
+});
+
+test('«قبل» و«بعد» وثيقةُ فريقٍ: صاحبُ البلاغ يُردّ عنهما بجملةٍ عربية', async () => {
+  const own = await intake.createManual(CTX(MGR), PROD.id, {
+    type: 'bug', title: 'بلاغُ صورِ العمل', description: 'وصفٌ كافٍ', where_text: 'شاشة المهام',
+    urgency: 'delays', sector_id: 'SOL', reporter_user_id: OUT.id,
+  });
+  const r = await postImage(`/api/products/items/${own.id}/images`, { as: 'out', kind: 'before' });
+  assert.equal(r.status, 403, 'صاحبُ البلاغ أضاف صورةَ «قبل» — وهي وثيقةُ من نفّذ');
+  assert.match(errorOf(r), /[؀-ۿ]/, 'الرفض بجملة عربية');
+  assert.ok(!/[A-Za-z]{4}/.test(errorOf(r)), `مصطلحٌ تقنيّ في رسالة الرفض: ${errorOf(r)}`);
+  assert.equal(Number((await db.get('SELECT COUNT(*) AS n FROM product_item_image WHERE item_id = ?', [own.id])).n), 0);
+});
+
+test('سقفُ الخمس يبقى على صاحب البلاغ، والسادسة تُردّ', async () => {
+  const own = await intake.createManual(CTX(MGR), PROD.id, {
+    type: 'bug', title: 'بلاغُ السقف من خارج الفريق', description: 'وصفٌ كافٍ', where_text: 'شاشة السقف',
+    urgency: 'delays', sector_id: 'SOL', reporter_user_id: OUT.id,
+  });
+  for (let i = 0; i < 5; i++) {
+    const r = await postImage(`/api/products/items/${own.id}/images`, { as: 'out' });
+    assert.equal(r.status, 200, `الصورة ${i + 1} رُدّت وهي دون السقف: ${r.text}`);
+  }
+  const sixth = await postImage(`/api/products/items/${own.id}/images`, { as: 'out' });
+  assert.equal(sixth.status, 400, 'قُبلت صورةٌ سادسة');
+  assert.equal(await reportImages(own.id), 5);
+  // والأثرُ يُكتب كما يُكتب لعضو الفريق: سطرٌ في مهلة البند لكل صورة.
+  const events = await db.all("SELECT * FROM product_item_event WHERE item_id = ? AND kind = 'image'", [own.id]);
+  assert.equal(events.length, 5, 'صورةٌ وصلت بلا سطرٍ في مهلة البند');
+  assert.ok(events.every((e) => e.actor_user_id === OUT.id));
+});
+
+test('البابُ يُغلق حين يبدأ الفريق: بلاغٌ غادر «جديد» لا يقبل صورةً من صاحبه', async () => {
+  const own = await intake.createManual(CTX(MGR), PROD.id, {
+    type: 'bug', title: 'بلاغٌ بدأ فيه الفريق', description: 'وصفٌ كافٍ', where_text: 'شاشة الحفظ',
+    urgency: 'delays', sector_id: 'SOL', reporter_user_id: OUT.id,
+  });
+  await items.setStatus(CTX(MGR), own.id, 'TRIAGED');
+  const r = await postImage(`/api/products/items/${own.id}/images`, { as: 'out' });
+  assert.equal(r.status, 403);
+  assert.match(errorOf(r), /[؀-ۿ]/);
+  assert.equal(await reportImages(own.id), 0);
+});
+
+// ── KI-126: بلاغُ المنصة يُتابَع كما يُتابَع بلاغُ الرابط العام ─────────────────
+test('«أبلغ» يعيد رمزَ متابعةٍ ورابطه، والصفحةُ تفتح به، والبريدُ يحمله', async () => {
+  await products.createProduct(CTX(ADMIN), {
+    key: 'sanad', name_ar: 'سند', kind: 'internal', item_prefix: 'SND', manager_user_id: ADMIN.id });
+  await db.update('app_user', OUT.id, { email: 'out@example.com' });
+
+  const sent = await http('/api/products/feedback', { as: 'out', method: 'POST', body: {
+    type: 'bug', title: 'الحفظ لا يستجيب', description: 'ضغطت الحفظ فلم يحدث شيء', where_text: 'شاشة المهام', urgency: 'delays' } });
+  assert.equal(sent.status, 200, JSON.stringify(sent.json));
+  const token = sent.json.tracking_token;
+  assert.ok(token, 'بلاغُ المنصة خرج بلا رمز متابعة');
+  assert.ok(String(sent.json.tracking_url || '').endsWith(`/p/t/${token}`), `الرابط: ${sent.json.tracking_url}`);
+  assert.equal((await db.get('SELECT tracking_token FROM product_item WHERE id = ?', [sent.json.id])).tracking_token, token);
+
+  // والصفحةُ العامة تُفتح بالرمز وحده — بلا حساب، وبلا تغييرٍ في مسارها.
+  const page = await http(`/p/t/${token}`, { as: null });
+  assert.equal(page.status, 200, 'صفحةُ المتابعة لم تفتح لبلاغ المنصة');
+  assert.match(page.buf.toString('utf8'), /الحفظ لا يستجيب/);
+
+  const mailsWith = async (tag) => (await db.all(
+    'SELECT q.html AS html FROM email_queue q JOIN email_log l ON l.queue_id = q.id WHERE l.detail = ?', [tag]))
+    .map((m) => String(m.html || ''));
+
+  await items.setStatus(CTX(ADMIN), sent.json.id, 'NEEDS_INFO', { question: 'في أي شاشة حدث هذا؟' });
+  assert.ok((await mailsWith('product_item_needs_info')).some((h) => h.includes(`/p/t/${token}`)),
+    'بريدُ «نحتاج توضيحاً» وصل بلا رابط متابعة');
+
+  await items.setStatus(CTX(ADMIN), sent.json.id, 'DECLINED', { reason: 'سلوكٌ مقصود لا عُطل' });
+  assert.ok((await mailsWith('product_item_declined')).some((h) => h.includes(`/p/t/${token}`)),
+    'بريدُ الاعتذار وصل بلا رابط متابعة');
+});
+
+// ── «أين حدث» في التسجيل بالنيابة ────────────────────────────────────────────
+test('التسجيلُ بالنيابة بلا «أين حدث» يُردّ بجملةٍ عربية تطلبه', async () => {
+  const r = await http(`/api/products/${PROD.id}/items`, { as: 'mgr', method: 'POST', body: {
+    type: 'bug', title: 'بلاغٌ بلا موضع', description: 'وصفٌ كافٍ', urgency: 'delays',
+    sector_id: 'SOL', reporter_name: 'موظف' } });
+  assert.equal(r.status, 400);
+  assert.match(errorOf(r), /أين حدث/);
 });

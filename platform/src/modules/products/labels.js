@@ -23,6 +23,25 @@ export const ITEM_STATUS = Object.freeze({
 export const ITEM_STATUSES = Object.freeze(Object.keys(ITEM_STATUS));
 export const itemStatusLabel = (v) => ITEM_STATUS[v] || 'غير محدد';
 
+// ── الوجه الإنجليزي للقيم التي يراها **ضيفٌ من خارج الشركة** ─────────────────
+// استثناءٌ واحدٌ معلن على قاعدة «هذا الملف عربي»: صفحةُ الاستقبال العامة تُفتح بالإنجليزية
+// (`/p/<token>?lang=en`)، وكانت تعرض خياراتها ومحطّاتها بالعربية لقارئٍ لا يقرؤها (KI-121).
+// والترجمة تسكن هنا لا هناك للسبب الذي وُضع له هذا الملف: القيمة المخزَّنة اسمُها من مكانٍ
+// واحد، فإن أُضيفت حالةٌ جديدة انكشف من نسي ترجمتها في اللحظة نفسها — بالعربية والإنجليزية معاً.
+// وهذه الخرائط **لا تدخل شاشات الموظفين**: لسانُ المنصة الداخلي عربيٌّ وحده.
+export const ITEM_STATUS_EN = Object.freeze({
+  NEW: 'New',
+  TRIAGED: 'Under review',
+  AWAITING_APPROVAL: 'Awaiting approval',
+  APPROVED: 'Approved',
+  DECLINED: 'Declined',
+  IN_PROGRESS: 'In progress',
+  RESOLVED: 'Resolved',
+  NEEDS_INFO: 'Needs clarification',
+  DUPLICATE: 'Duplicate',
+});
+export const itemStatusLabelEn = (v) => ITEM_STATUS_EN[v] || 'Not set';
+
 // حالاتٌ انتهى عندها البند فلا يُنتظر منه شيء — تُستعمل في العدّادات والتقارير.
 export const CLOSED_STATUSES = Object.freeze(['RESOLVED', 'DECLINED', 'DUPLICATE']);
 export const isClosedStatus = (v) => CLOSED_STATUSES.includes(v);
@@ -31,6 +50,8 @@ export const isClosedStatus = (v) => CLOSED_STATUSES.includes(v);
 export const ITEM_TYPE = Object.freeze({ bug: 'عُطل', suggestion: 'اقتراح' });
 export const ITEM_TYPES = Object.freeze(Object.keys(ITEM_TYPE));
 export const itemTypeLabel = (v) => ITEM_TYPE[v] || 'غير محدد';
+export const ITEM_TYPE_EN = Object.freeze({ bug: 'Problem', suggestion: 'Suggestion' });
+export const itemTypeLabelEn = (v) => ITEM_TYPE_EN[v] || 'Not set';
 
 // ── الإلحاح بلسان صاحب البلاغ لا بلسان المطوِّر ──────────────────────────────
 // «عاجل / متوسط / منخفض» تعني للناس أشياء مختلفة، وأثرُ العطل على عمل صاحبه معنىً واحد.
@@ -41,6 +62,12 @@ export const ITEM_URGENCY = Object.freeze({
 });
 export const ITEM_URGENCIES = Object.freeze(Object.keys(ITEM_URGENCY));
 export const itemUrgencyLabel = (v) => ITEM_URGENCY[v] || 'غير محدد';
+export const ITEM_URGENCY_EN = Object.freeze({
+  blocks: 'Blocks my work',
+  delays: 'Slows my work',
+  improve: 'Improvement, not blocking',
+});
+export const itemUrgencyLabelEn = (v) => ITEM_URGENCY_EN[v] || 'Not set';
 
 // ── تقدير المطوِّر: الحجم والأولوية ──────────────────────────────────────────
 export const ITEM_SIZE = Object.freeze({ S: 'صغير', M: 'متوسط', L: 'كبير' });

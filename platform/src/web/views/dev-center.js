@@ -16,6 +16,7 @@ import { icon } from '../icons.js';
 import { G } from '../i18n/glossary.js';
 import { all } from '../../core/db/index.js';
 import { config } from '../../core/config.js';
+import { ROLE_LABELS } from '../../core/rbac/matrix.js';
 import {
   getProduct, listMyProducts, listMembers, listTenants, listLinks, listVersions,
 } from '../../modules/products/products.js';
@@ -29,6 +30,9 @@ const LIST_LIMIT = 200;
 const STATUS_KEYS = ['NEW', 'TRIAGED', 'AWAITING_APPROVAL', 'APPROVED', 'IN_PROGRESS', 'RESOLVED', 'NEEDS_INFO', 'DECLINED', 'DUPLICATE'];
 const TYPE_KEYS = ['bug', 'suggestion'];
 const URGENCY_KEYS = ['blocks', 'delays', 'improve'];
+const PRIORITY_KEYS = ['low', 'medium', 'high', 'critical'];
+const SOURCE_KEYS = ['sanad', 'link', 'manual', 'agent'];
+const IDENTITY_KEYS = ['anonymous_only', 'optional', 'required'];
 const STATUS_TONE = {
   NEW: 'blue', TRIAGED: 'slate', AWAITING_APPROVAL: 'amber', APPROVED: 'green',
   IN_PROGRESS: 'blue', RESOLVED: 'green', NEEDS_INFO: 'amber', DECLINED: 'red', DUPLICATE: 'slate',
@@ -39,8 +43,26 @@ const statusLabel = (v) => G.itemStatusAr[String(v || '')] || G.notSet;
 const typeLabel = (v) => G.itemTypeAr[String(v || '')] || G.notSet;
 const urgencyLabel = (v) => G.itemUrgencyAr[String(v || '')] || G.notSet;
 const priorityLabel = (v) => G.itemPriorityAr[String(v || '')] || G.notSet;
-const roleLabel = (v) => G.productRoleAr[String(v || '')] || G.notSet;
+// دورُ صاحب الحساب على المنتج: عضويةٌ في فريقه، أو مدير النظام الذي يمرّ فوق الجميع بحكم
+// منحه الشامل — و«غير محدد» كانت تُقال له وهو أوسعهم صلاحيةً (بلاغُ الجودة KI).
+const roleLabel = (v) => (String(v || '') === 'admin'
+  ? ROLE_LABELS.admin.ar
+  : G.productRoleAr[String(v || '')] || G.notSet);
 const kindLabel = (v) => G.productKindAr[String(v || '')] || G.notSet;
+const identityLabel = (v) => G.identityModeAr[String(v || '')] || G.notSet;
+const sourceLabel = (v) => G.itemSourceAr[String(v || '')] || G.notSet;
+
+// الكلماتُ العربية للقيم المخزَّنة تُسلَّم للمتصفّح من المعجم نفسه — فلا تُكتب نسخةٌ ثانية منها
+// في ملفّ الصفحة، ولا يظهر رمزٌ خام في أي نموذجٍ يُركَّب عند النقر. وتُكتب في **الشاشتين**:
+// قائمةُ المنتجات فيها نموذج «منتج جديد»، وكان يعرض `external`/`internal` خامّين بلا هذا المقطع.
+const labelsScript = () => {
+  const json = JSON.stringify({
+    status: G.itemStatusAr, type: G.itemTypeAr, urgency: G.itemUrgencyAr,
+    size: G.itemSizeAr, priority: G.itemPriorityAr, source: G.itemSourceAr, role: G.productRoleAr,
+    kind: G.productKindAr, identity: G.identityModeAr,
+  }).replace(/</g, '\\u003c');
+  return `<script type="application/json" id="dc-labels">${json}</script>`;
+};
 
 const statusPill = (v) => pill(esc(statusLabel(v)), STATUS_TONE[String(v || '')] || 'slate');
 const urgencyPill = (v) => pill(esc(urgencyLabel(v)), URGENCY_TONE[String(v || '')] || 'slate');
@@ -125,10 +147,40 @@ const CSS = `<style>
 .dc-empty svg{width:34px;height:34px;color:var(--faint)}
 .dc-empty .t{font-size:14.5px;font-weight:800;color:var(--ink2);margin-top:.5rem}
 .dc-empty .s{font-size:12.5px;color:var(--muted);margin-top:.35rem;line-height:1.9}
+.modal-card label.f{display:block;font-size:11.5px;font-weight:800;color:var(--ink2);margin:0 0 .25rem}
 @media(max-width:720px){.dc-tbl th.h-opt,.dc-tbl td.c-opt{display:none}}
 </style>`;
 
 const emptyState = (ic, t, s, extra = '') => `<div class="dc-empty">${icon(ic)}<div class="t">${esc(t)}</div><div class="s">${esc(s)}</div>${extra}</div>`;
+
+// ── نماذجُ الإعدادات تُرسَم في الخادم وتُستنسخ في المتصفّح ──────────────────────────────
+// كانت الجهةُ تُنشأ بسؤالٍ واحدٍ حرّ (`window.prompt`) فيبقى عميلُها ومشروعُها فارغين أبداً —
+// و`project_id` هو ما تقرأه مزامنةُ المهام لتربط مهمة البند بمشروع الجهة. والحقولُ هنا لا في
+// ملفّ المتصفّح كي تُقرأ نصوصُها من المعجم ويحرسها فاحصُ المصطلحات كبقية نصوص الشاشة.
+const fieldRow = (id2, label, control, hint = '') => `<div><label class="f" for="${id2}">${esc(label)}</label>${control}
+  ${hint ? `<div style="font-size:11.5px;color:var(--muted);margin-top:.25rem;line-height:1.8">${esc(hint)}</div>` : ''}</div>`;
+
+const tenantTpl = () => `<template id="dc-tpl-tenant">
+  ${fieldRow('dc-tn-name', 'اسم الجهة', '<input class="input" id="dc-tn-name" maxlength="120">')}
+  ${fieldRow('dc-tn-client', 'العميل', '<select class="input" id="dc-tn-client"><option value="">بلا عميل — اسمٌ حرّ</option></select>',
+    'اختيار العميل يربط بلاغات هذه الجهة بملفّه، ويترك النصّ الحرّ لمن لا ملفَّ له بعد.')}
+  ${fieldRow('dc-tn-project', 'المشروع', '<select class="input" id="dc-tn-project"><option value="">بلا مشروع</option></select>',
+    'مهامُ بلاغات هذه الجهة تُفتح على هذا المشروع — واتركه فارغاً إن لم يكن لها مشروعٌ قائم.')}
+  <div><label class="f" for="dc-tn-internal"><input type="checkbox" id="dc-tn-internal"> ${esc(G.internalUse)}</label></div>
+</template>`;
+
+const langOpts = (cur = 'ar') => `<option value="ar"${cur === 'en' ? '' : ' selected'}>العربية</option>`
+  + `<option value="en"${cur === 'en' ? ' selected' : ''}>الإنجليزية</option>`;
+
+const linkTpl = () => `<template id="dc-tpl-link">
+  ${fieldRow('dc-lk-mode', 'كيف يعرّف صاحب البلاغ بنفسه',
+    `<select class="input" id="dc-lk-mode">${IDENTITY_KEYS.map((k) => `<option value="${esc(k)}"${k === 'optional' ? ' selected' : ''}>${esc(identityLabel(k))}</option>`).join('')}</select>`)}
+  ${fieldRow('dc-lk-lang', 'لغة الصفحة الافتراضية', `<select class="input" id="dc-lk-lang">${langOpts('ar')}</select>`)}
+  ${fieldRow('dc-lk-intro-ar', 'تمهيدٌ عربي يقرؤه الزائر', '<textarea class="input" id="dc-lk-intro-ar" rows="2" maxlength="1000"></textarea>')}
+  ${fieldRow('dc-lk-intro-en', 'تمهيدٌ إنجليزي يقرؤه الزائر', '<textarea class="input" id="dc-lk-intro-en" rows="2" maxlength="1000"></textarea>')}
+  ${fieldRow('dc-lk-expires', 'تاريخ انتهاء الرابط', '<input class="input" id="dc-lk-expires" type="date">',
+    'بعد هذا التاريخ لا يُستقبل من الرابط بلاغ — واتركه فارغاً ليبقى مفتوحاً.')}
+</template>`;
 
 // ═══════════════════════════════════════════════════════════════════════
 // ١) قائمة المنتجات
@@ -169,7 +221,7 @@ export async function devCenterPage(user) {
 
   if (!rows.length) {
     const body = `${CSS}<div class="dc">${card(emptyState('list', G.noProductsYet,
-    isAdmin ? G.noProductsAdminHint : G.noProductsMemberHint, newBtn))}</div>`;
+    isAdmin ? G.noProductsAdminHint : G.noProductsMemberHint, newBtn))}${labelsScript()}</div>`;
     return layout({ user, active: 'dev-center', title: G.devCenter, subtitle: G.devCenterSubtitle, body, scripts: PAGE_SCRIPT });
   }
 
@@ -190,7 +242,7 @@ export async function devCenterPage(user) {
     ${band}
     <div style="display:flex;align-items:center;justify-content:space-between;gap:.6rem;flex-wrap:wrap;margin-bottom:.7rem">
       <div style="font-size:12.5px;color:var(--muted);font-weight:700">${esc(G.devCenterLead)}</div>${newBtn}</div>
-    <div class="dc-grid">${cards}</div></div>`;
+    <div class="dc-grid">${cards}</div>${labelsScript()}</div>`;
   return layout({ user, active: 'dev-center', title: G.devCenter, subtitle: G.devCenterSubtitle, body, scripts: PAGE_SCRIPT });
 }
 
@@ -204,10 +256,22 @@ export async function devCenterProductPage(user, productId, opts = {}) {
   const showTenants = product.kind !== 'internal';
   const tab = TABS.includes(opts.tab) ? opts.tab : 'items';
 
+  // أسماءُ المرشِّحات هي أسماءُ حقول الخدمة نفسها (`tenant_id`/`sector_id`/`version_id`) — فما
+  // في العنوان يمرّ إلى `listItems` كما هو بلا ترجمةِ أسماءٍ في المنتصف.
+  const [tenantList, versionList] = await Promise.all([
+    showTenants ? listTenants(user, product.id) : Promise.resolve([]),
+    listVersions(user, product.id),
+  ]);
+  const oneOf = (list, v) => (list.includes(String(v || '')) ? String(v) : '');
   const cur = {
     status: STATUS_KEYS.includes(opts.status) ? opts.status : '',
     type: TYPE_KEYS.includes(opts.type) ? opts.type : '',
+    priority: PRIORITY_KEYS.includes(opts.priority) ? opts.priority : '',
     urgency: URGENCY_KEYS.includes(opts.urgency) ? opts.urgency : '',
+    source: SOURCE_KEYS.includes(opts.source) ? opts.source : '',
+    tenant_id: oneOf(tenantList.map((t) => t.id), opts.tenant_id),
+    version_id: oneOf(versionList.map((v) => v.id), opts.version_id),
+    sector_id: String(opts.sector_id || '').trim().slice(0, 64),
     from: /^\d{4}-\d{2}-\d{2}$/.test(String(opts.from || '')) ? String(opts.from) : '',
     to: /^\d{4}-\d{2}-\d{2}$/.test(String(opts.to || '')) ? String(opts.to) : '',
     q: String(opts.q || '').trim().slice(0, 80),
@@ -217,7 +281,9 @@ export async function devCenterProductPage(user, productId, opts = {}) {
     const parts = Object.keys(m).filter((k) => m[k]).map((k) => `${k}=${encodeURIComponent(m[k])}`);
     return parts.length ? `?${parts.join('&')}` : '';
   };
-  const tabHref = (t) => `/app/dev-center/${encodeURIComponent(product.id)}${t === 'items' ? qs() : `?tab=${t}`}`;
+  // تبويبٌ يُنقر لا يُسقط ما على الشاشة: المرشِّحات كلها تعبر معه — وإلا كان زرُّ الطباعة في
+  // تبويب التقارير يطبع «كل ما وصل» بينما القارئ ينظر إلى اختيارٍ ضيّق (بلاغُ الجودة KI).
+  const tabHref = (t) => `/app/dev-center/${encodeURIComponent(product.id)}${qs({ tab: t === 'items' ? '' : t })}`;
 
   const header = card(`<div style="padding:1rem 1.15rem">
     <div style="font-size:11px;color:var(--muted);font-weight:700"><a href="/app/dev-center" style="color:var(--brand)">${esc(G.devCenter)}</a></div>
@@ -240,17 +306,16 @@ export async function devCenterProductPage(user, productId, opts = {}) {
 
   const sectors = await sectorNames();
   let panel = '';
-  if (tab === 'settings' && mayManage) panel = await settingsPanel(user, product, showTenants);
-  else if (tab === 'reports') panel = await reportsPanel(user, product, cur, qs);
+  if (tab === 'settings' && mayManage) panel = await settingsPanel(user, product, showTenants, versionList);
+  // المطوِّر الذي يبلغ `?tab=settings` كان يُردّ إلى «العناصر» بلا كلمة، فيظنّ الرابط معطوباً.
+  // الرسالة تقول له لماذا — وهو يعرف المنتج أصلاً فلا يُكشف بها شيء.
+  else if (tab === 'settings') {
+    panel = card(emptyState('users', 'الإعدادات لمديري المنتج',
+      'فريقُ المنتج وجهاتُه وروابطُه وإصداراته يضبطها مدير المنتج ومدير النظام — واطلبها منهما متى احتجتها.',
+      `<div style="margin-top:.7rem"><a class="btn btn-sm" href="${esc(tabHref('items'))}">${esc(G.items)}</a></div>`));
+  } else if (tab === 'reports') panel = await reportsPanel(user, product, cur, qs, sectors, tenantList, versionList);
   else panel = await itemsPanel(user, product, cur, qs, sectors);
 
-  // الكلمات العربية للقيم المخزَّنة تُسلَّم للمتصفّح من المعجم نفسه — فلا تُكتب نسخةٌ ثانية
-  // منها في ملفّ الصفحة، ولا يظهر رمزٌ خام في لوحة البلاغ إن أُضيفت حالةٌ جديدة غداً.
-  const labels = JSON.stringify({
-    status: G.itemStatusAr, type: G.itemTypeAr, urgency: G.itemUrgencyAr,
-    size: G.itemSizeAr, priority: G.itemPriorityAr, source: G.itemSourceAr, role: G.productRoleAr,
-    kind: G.productKindAr,
-  }).replace(/</g, '\\u003c');
   // القطاعات تُسلَّم للمتصفّح قائمةً يُختار منها: من يسجّل عن غيره يختار قطاعاً موجوداً
   // بالاسم، ولا يكتب نصاً حرّاً تردّه الخدمة.
   const sectorsJson = JSON.stringify([...sectors.entries()].map(([id, name]) => ({ id, name })))
@@ -259,7 +324,7 @@ export async function devCenterProductPage(user, productId, opts = {}) {
   // ويصله بريدُ كل خطوة — ويُكتب اسمُه حرّاً متى لم يكن له حساب. أسماءٌ ومعرّفاتٌ لا غير.
   const peopleJson = JSON.stringify(await platformPeople()).replace(/</g, '\\u003c');
   const body = `${CSS}<div class="dc" data-product="${esc(product.id)}" data-role="${esc(role || '')}">${header}${tabs}${panel}
-    <script type="application/json" id="dc-labels">${labels}</script>
+    ${labelsScript()}
     <script type="application/json" id="dc-sectors">${sectorsJson}</script>
     <script type="application/json" id="dc-users">${peopleJson}</script></div>`;
   return layout({ user, active: 'dev-center', title: product.name_ar || G.devCenter, subtitle: G.devCenterSubtitle, body, scripts: PAGE_SCRIPT });
@@ -278,9 +343,8 @@ async function itemsPanel(user, product, cur, qs, sectors) {
     ${TYPE_KEYS.map((t) => chip('type', typeLabel(t), t)).join('')}
     ${URGENCY_KEYS.map((u) => chip('urgency', urgencyLabel(u), u)).join('')}
     <form method="get" action="">
-      ${cur.status ? `<input type="hidden" name="status" value="${esc(cur.status)}">` : ''}
-      ${cur.type ? `<input type="hidden" name="type" value="${esc(cur.type)}">` : ''}
-      ${cur.urgency ? `<input type="hidden" name="urgency" value="${esc(cur.urgency)}">` : ''}
+      ${['status', 'type', 'priority', 'urgency', 'source', 'tenant_id', 'version_id', 'sector_id']
+    .map((k) => (cur[k] ? `<input type="hidden" name="${esc(k)}" value="${esc(cur[k])}">` : '')).join('')}
       <input class="input" id="dc-from" type="date" name="from" value="${esc(cur.from)}" aria-label="${esc(G.fromDate)}">
       <input class="input" id="dc-to" type="date" name="to" value="${esc(cur.to)}" aria-label="${esc(G.toDate)}">
       <input class="input" id="dc-q" type="search" name="q" value="${esc(cur.q)}" maxlength="80" placeholder="${esc(G.searchInItems)}" aria-label="${esc(G.searchInItems)}">
@@ -319,9 +383,42 @@ async function itemsPanel(user, product, cur, qs, sectors) {
 }
 
 // ── تبويب التقارير ─────────────────────────────────────────────────────
-async function reportsPanel(user, product, cur, qs) {
+// المرشِّحاتُ هنا هي نفسُها التي فوق جدول العناصر، بنفس الشارات ونفس المدى الزمني — فما يُطبع
+// وما يُصدَّر هو ما على الشاشة حرفاً بحرف، ولا يُحرَّر عنوانٌ يدوياً ليصل تقريرٌ مصفّى.
+async function reportsPanel(user, product, cur, qs, sectors, tenantList, versionList) {
   const s = await itemStats(user, product.id, cur);
-  const printHref = `/app/dev-center/${encodeURIComponent(product.id)}/report${qs()}`;
+  const query = qs();                       // بلا `tab` — صفحةُ الطباعة والتصدير لا يعرفانه
+  const printHref = `/app/dev-center/${encodeURIComponent(product.id)}/report${query}`;
+  const excelHref = `/api/products/${encodeURIComponent(product.id)}/items/export.xlsx${query}`;
+  const rqs = (over = {}) => qs({ tab: 'reports', ...over });
+  const chip = (key, label, val) => `<a class="chip ${cur[key] === val ? 'on' : ''}" href="${esc(rqs({ [key]: cur[key] === val ? '' : val }))}">${esc(label)}</a>`;
+  const hidden = (k) => (cur[k] ? `<input type="hidden" name="${esc(k)}" value="${esc(cur[k])}">` : '');
+
+  const filters = `<div class="dc-filters">
+    ${chip('status', G.all, '')}
+    ${STATUS_KEYS.map((k) => chip('status', statusLabel(k), k)).join('')}
+  </div>
+  <div class="dc-filters">
+    ${TYPE_KEYS.map((t) => chip('type', typeLabel(t), t)).join('')}
+    ${URGENCY_KEYS.map((u) => chip('urgency', urgencyLabel(u), u)).join('')}
+    ${PRIORITY_KEYS.map((p) => chip('priority', priorityLabel(p), p)).join('')}
+    ${SOURCE_KEYS.map((k) => chip('source', sourceLabel(k), k)).join('')}
+  </div>
+  ${tenantList.length ? `<div class="dc-filters">${tenantList.map((t) => chip('tenant_id', t.name || G.notSet, t.id)).join('')}</div>` : ''}
+  ${versionList.length ? `<div class="dc-filters">${versionList.map((v) => chip('version_id', v.label || G.notSet, v.id)).join('')}</div>` : ''}
+  <div class="dc-filters">
+    ${[...sectors.entries()].map(([id2, name]) => chip('sector_id', name, id2)).join('')}
+    <form method="get" action="">
+      <input type="hidden" name="tab" value="reports">
+      ${['status', 'type', 'priority', 'urgency', 'source', 'tenant_id', 'version_id', 'sector_id'].map(hidden).join('')}
+      <input class="input" id="dc-from" type="date" name="from" value="${esc(cur.from)}" aria-label="${esc(G.fromDate)}">
+      <input class="input" id="dc-to" type="date" name="to" value="${esc(cur.to)}" aria-label="${esc(G.toDate)}">
+      <input class="input" id="dc-q" type="search" name="q" value="${esc(cur.q)}" maxlength="80" placeholder="${esc(G.searchInItems)}" aria-label="${esc(G.searchInItems)}">
+      <button type="submit" class="btn btn-sm">${esc(G.apply)}</button>
+      <a class="btn btn-ghost btn-sm" href="?tab=reports">${esc(G.clearFilters)}</a>
+    </form>
+  </div>`;
+
   const stats = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.6rem">
     ${statMini(G.itemsTotal, String(s.total || 0))}
     ${statMini(G.itemsOpen, String(s.open || 0))}
@@ -331,9 +428,13 @@ async function reportsPanel(user, product, cur, qs) {
   </div>`;
   const byStatus = STATUS_KEYS.map((k) => `<div class="dc-row"><span class="g">${esc(statusLabel(k))}</span><b class="tnum">${esc(String(s.byStatus[k] || 0))}</b></div>`).join('');
   return card(`<div style="padding:.2rem 0">
+    ${filters}
     <div style="display:flex;align-items:center;justify-content:space-between;gap:.6rem;flex-wrap:wrap;margin-bottom:.8rem">
       <div style="font-size:12.5px;color:var(--muted);font-weight:700">${esc(G.reportLead)}</div>
-      <a class="btn btn-primary btn-sm" href="${esc(printHref)}">${icon('printer') || ''} ${esc(G.openPrintable)}</a>
+      <div style="display:flex;gap:.4rem;flex-wrap:wrap">
+        <a class="btn btn-primary btn-sm" href="${esc(printHref)}">${icon('printer') || ''} ${esc(G.openPrintable)}</a>
+        <a class="btn btn-sm" href="${esc(excelHref)}">${icon('download')} ${esc('حمّل الجدول')}</a>
+      </div>
     </div>
     ${stats}
     <div class="dc-sec"><h3>${esc(G.byStatus)}</h3><div class="dc-rows">${byStatus}</div></div>
@@ -341,8 +442,9 @@ async function reportsPanel(user, product, cur, qs) {
 }
 
 // ── تبويب الإعدادات ────────────────────────────────────────────────────
-async function settingsPanel(user, product, showTenants) {
-  const [members, versions] = await Promise.all([listMembers(user, product.id), listVersions(user, product.id)]);
+async function settingsPanel(user, product, showTenants, versionList) {
+  const members = await listMembers(user, product.id);
+  const versions = versionList || await listVersions(user, product.id);
   // من يُضاف إلى الفريق يُختار من قائمة الأشخاص لا يُكتب اسمُ دخوله: الاسم المكتوب يخطئ،
   // والاختيار لا يخطئ. القائمة تُقرأ هنا لأن مديرَ المنتج وحده يرى هذا التبويب.
   const inTeam = new Set(members.map((m) => m.user_id));
@@ -368,9 +470,17 @@ async function settingsPanel(user, product, showTenants) {
     const tRows = tenants.length ? tenants.map((t) => {
       const ls = (byTenant.get(t.id) || []).map((l) => `<div class="dc-row" style="background:#f8fafc">
         <span class="g"><span class="dc-link">${esc(linkUrl(l))}</span>
-          <div class="m">${esc(G.visits)} ${num(l.visits)} · ${esc(G.submissions)} ${num(l.submissions)}</div></span>
+          <div class="m">${esc(identityLabel(l.identity_mode))} · ${esc(G.visits)} ${num(l.visits)} · ${esc(G.submissions)} ${num(l.submissions)}${
+  l.expires_on ? ` · ${esc('ينتهي')} <span class="tnum">${esc(l.expires_on)}</span>` : ''}</div></span>
         ${Number(l.enabled) ? '' : pill(esc(G.linkDisabled), 'slate')}
-        <button type="button" class="btn btn-sm" data-action="dc-copy-link" data-link="${esc(linkUrl(l))}">${esc(G.copyLink)}</button></div>`).join('');
+        <button type="button" class="btn btn-sm" data-action="dc-copy-link" data-link="${esc(linkUrl(l))}">${esc(G.copyLink)}</button>
+        <button type="button" class="btn btn-sm" data-action="dc-link-edit" data-link-id="${esc(l.id)}"
+          data-mode="${esc(l.identity_mode || '')}" data-lang="${esc(l.default_lang || '')}"
+          data-intro-ar="${esc(l.intro_ar || '')}" data-intro-en="${esc(l.intro_en || '')}"
+          data-expires="${esc(l.expires_on || '')}">${esc('عدِّل')}</button>
+        <button type="button" class="btn btn-sm" data-action="dc-link-toggle" data-link-id="${esc(l.id)}"
+          data-on="${Number(l.enabled) ? '1' : '0'}">${esc(Number(l.enabled) ? 'أوقِف' : 'فعِّل')}</button>
+        <button type="button" class="btn btn-sm" data-action="dc-link-rotate" data-link-id="${esc(l.id)}">${esc('أعد التوليد')}</button></div>`).join('');
       return `<div class="dc-sec" style="border-top:0;padding-top:0;margin-top:.6rem">
         <div class="dc-row"><span class="g">${esc(t.name || G.notSet)}</span>
           <span class="m">${esc(Number(t.internal) ? G.internalUse : G.externalTenant)}</span>
@@ -379,7 +489,7 @@ async function settingsPanel(user, product, showTenants) {
     }).join('') : `<div class="m">${esc(G.noTenantsYet)}</div>`;
     tenantsSec = `<div class="dc-sec"><h3>${esc(G.tenants)} · ${esc(G.publicLinks)}</h3>
       <div style="margin-bottom:.5rem"><button type="button" class="btn btn-sm" data-action="dc-tenant-new">${icon('plus')} ${esc(G.newTenant)}</button></div>
-      ${tRows}</div>`;
+      ${tRows}${tenantTpl()}${linkTpl()}</div>`;
   }
 
   const versionRows = versions.length
@@ -397,9 +507,17 @@ async function settingsPanel(user, product, showTenants) {
       <div style="margin-bottom:.5rem"><button type="button" class="btn btn-sm" data-action="dc-version-new">${icon('plus')} ${esc(G.newVersion)}</button></div>
       <div class="dc-rows">${versionRows}</div></div>
     <div class="dc-sec"><h3>${esc(G.branding)}</h3>
-      <div class="dc-row"><span class="g">${esc(G.brandColor)}</span>
+      ${fieldRow('dc-pr-name', 'اسم المنتج', `<input class="input" id="dc-pr-name" maxlength="120" value="${esc(product.name_ar || '')}">`)}
+      ${fieldRow('dc-pr-name-en', 'اسمه بالإنجليزية', `<input class="input" id="dc-pr-name-en" maxlength="120" value="${esc(product.name_en || '')}">`,
+    'يظهر في صفحة الاستقبال حين يفتحها الزائر بالإنجليزية — وبدونه يقرأ اسماً عربياً في صفحةٍ إنجليزية.')}
+      ${fieldRow('dc-pr-desc', 'وصفٌ مختصر', `<textarea class="input" id="dc-pr-desc" rows="2" maxlength="2000">${esc(product.description || '')}</textarea>`)}
+      <div class="dc-row" style="margin-top:.5rem"><span class="g">${esc(G.brandColor)}</span>
         <input class="input" type="color" id="dc-brand-color" value="${esc(product.brand_color || '#244A99')}" aria-label="${esc(G.brandColor)}" style="width:64px;padding:2px">
-        <button type="button" class="btn btn-sm" data-action="dc-brand-save">${esc(G.save)}</button></div>
+      </div>
+      <div class="dc-row" style="margin-top:.4rem"><span class="g">${esc('شعار المنتج')}</span>
+        <input class="input" type="file" id="dc-logo-file" accept="image/*" aria-label="${esc('شعار المنتج')}" style="max-width:220px">
+        <button type="button" class="btn btn-sm" data-action="dc-logo-save">${esc('ارفع الشعار')}</button></div>
+      <div style="margin-top:.6rem"><button type="button" class="btn btn-primary btn-sm" data-action="dc-product-save">${esc(G.save)}</button></div>
       <div class="m" style="margin-top:.4rem">${esc(G.brandingHint)}</div></div>
   </div>`);
 }

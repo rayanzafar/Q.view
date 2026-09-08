@@ -27,7 +27,7 @@ const ctx = () => ({ user: ADMIN, ip: '1.1.1.1' });
 let SANAD, OTHER;
 
 const addItem = (productId, title) => intake.createManual(ctx(), productId, {
-  type: 'bug', title, description: 'وصف', sector_id: 'SOL', reporter_name: 'موظف',
+  type: 'bug', title, description: 'وصف', where_text: 'شاشة', sector_id: 'SOL', reporter_name: 'موظف',
 });
 
 before(async () => {

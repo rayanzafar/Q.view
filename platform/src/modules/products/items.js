@@ -15,7 +15,7 @@
 
 import { all, get, insert, update, run, tx } from '../../core/db/index.js';
 import { id, nowIso } from '../../core/util/ids.js';
-import { badRequest, notFound } from '../../core/http/errors.js';
+import { badRequest, forbidden, notFound } from '../../core/http/errors.js';
 import { createHash } from 'node:crypto';
 import { notify } from '../notifications/notify.js';
 import { assertMember, assertManager, isTeamMember, teamMembers, productRole, actorLabel, pAudit, timeline } from './access.js';
@@ -547,15 +547,48 @@ export const listComments = async (user, itemId, { visibility } = {}) => {
 
 export const IMAGE_MAX_BYTES = 8 * 1024 * 1024;
 export const REPORT_IMAGE_MAX = 5;
+// نافذةُ صاحب البلاغ: يومٌ من كتابته. اللقطةُ تُرفع بعد الإرسال بثوانٍ (النافذة تكتب البند ثم
+// ترفع صورَه)، واليومُ سعةٌ لمن انقطع اتصاله أو أعاد المحاولة من هاتفه — لا بابٌ يبقى مفتوحاً.
+export const REPORTER_IMAGE_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * بابُ إضافة الصورة. عضوُ الفريق يمرّ كما يمرّ في كل مسارٍ آخر — و**صاحبُ البلاغ نفسه** يمرّ
+ * إلى صور بلاغه وحدها.
+ *
+ * والسبب أن جمهور زرّ «أبلغ» كلَّه من خارج فريق سند: النافذة تَعِد «حتى خمس صور»، ثم تُلقى كلُّ
+ * صورةٍ لأن `assertMember` يردّ غيرَ العضو بـ«غير موجود» — فيقرأ الفريقُ بلاغاً بلا اللقطة التي
+ * كُتب لأجلها (KI-117). وهذا البابُ أضيقُ ما يكفي: صورةُ **بلاغٍ** لا «قبل» ولا «بعد» (تلك
+ * وثيقةُ عملٍ يكتبها من نفّذ)، وعلى بندٍ **ما زال «جديداً»** لم يبدأ الفريق فيه، وخلال يومٍ من
+ * كتابته، وتحت السقف نفسه: خمسُ صورٍ لا أكثر. وما عدا ذلك يبقى للفريق كما كان.
+ *
+ * والردُّ على من ليس صاحبَه ولا عضواً «غير موجود» لا «ممنوع» — القاعدة ② في `access.js`: الفرق
+ * بين الردَّين يجعل تجربةَ المعرّفات عدّاً لبلاغات الشركة.
+ */
+async function loadItemForImageAdd(user, itemId, kind) {
+  const item = await get('SELECT * FROM product_item WHERE id = ? AND deleted_at IS NULL', [itemId]);
+  if (!item) throw notFound('البلاغ غير موجود');
+  const product = await get('SELECT * FROM product WHERE id = ?', [item.product_id]);
+  if (!product) throw notFound('البلاغ غير موجود');
+  const role = await productRole(user, item.product_id);
+  if (role) return { item, product, role };
+  if (!user?.id || item.reporter_user_id !== user.id) throw notFound('البلاغ غير موجود');
+  if (kind !== 'report') throw forbidden('صور «قبل» و«بعد» يضيفها فريق المنتج — أرفق صورةَ بلاغك');
+  if (item.status !== 'NEW') throw forbidden('بدأ الفريق في بلاغك — أرسل ما ينقص في ردٍّ على بريد بلاغك');
+  if (Date.parse(item.created_at) + REPORTER_IMAGE_WINDOW_MS < Date.now()) {
+    throw forbidden('مضى على بلاغك أكثر من يوم — أرسل الصورة في ردٍّ على بريد بلاغك');
+  }
+  return { item, product, role: null };
+}
 
 /**
  * تُقبل الصورة ببايتاتها لا بامتداد اسمها: `sniffImageMime` يقرأ توقيعها في أوائل بايتاتها
  * (نفس حارس «الفعاليات»)، فملفٌّ سُمّي صورةً وليس صورةً يُردّ قبل أن يُكتب حرفٌ منه.
  */
 export async function addImage(ctx, itemId, bytes, { kind = 'report', caption } = {}) {
-  const { item } = await loadItem(ctx.user, itemId);
-  const { sniffImageMime } = await import('../events/events.js');
+  // النوعُ يُفحص قبل الباب: هو الذي يقرّر أيَّ بابٍ يُفتح لصاحب البلاغ.
   if (!['report', 'before', 'after'].includes(kind)) throw badRequest('نوع الصورة غير معروف — صورة بلاغ أو قبل أو بعد');
+  const { item } = await loadItemForImageAdd(ctx.user, itemId, kind);
+  const { sniffImageMime } = await import('../events/events.js');
   if (!Buffer.isBuffer(bytes) || !bytes.length) throw badRequest('الصورة فارغة — أعد الاختيار');
   if (bytes.length > IMAGE_MAX_BYTES) throw badRequest('الصورة أكبر من اللازم — اجعلها دون ثمانية ميغابايت');
   const mime = sniffImageMime(bytes);

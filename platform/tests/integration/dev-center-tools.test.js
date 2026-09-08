@@ -136,6 +136,24 @@ test('① القائمة عضوية: عضو الفريق يرى أدوات ال�
   assert.equal(outNames.filter((n) => n.startsWith('sanad_dc_')).length, 0, 'من ليس عضواً لا يرى أدوات المركز أصلاً');
 });
 
+// ── والقائمة تصدق في **ما يملكه** القارئ لا في ما تملكه الميزة ─────────────────────────────
+// «اعتمد» و«ارفض» كانتا تُعرضان لكل عضو، والمطوِّرُ يكتشف أنه لا يملكهما بعد أن ينادَيهما.
+// أربعُ أدواتٍ (معاينةُ الاعتماد وتنفيذه، ومعاينةُ الرفض وتنفيذه) صارت لمن يدير منتجاً واحداً
+// على الأقل — والقرارُ نفسه يبقى مفحوصاً على منتج البلاغ بعينه داخل الأداة.
+test('① ب — قائمةُ المطوِّر بلا «اعتمد» و«ارفض»، وقائمةُ المدير كاملة', async () => {
+  const dcOf = (json) => (json.tools || []).map((t) => t.name).filter((n) => n.startsWith('sanad_dc_'));
+  const dev = dcOf((await api('u_dev', '/api/ai/tools')).json);
+  assert.equal(dev.length, 12, `أدواتُ المطوِّر: ${dev.join('، ')}`);
+  assert.equal(dev.filter((n) => /_approve|_decline/.test(n)).length, 0, 'قائمةُ المطوِّر تَعِده بقرارٍ لا يملكه');
+
+  const mgr = dcOf((await api('u_mgr', '/api/ai/tools')).json);
+  assert.equal(mgr.length, 16, `أدواتُ مدير المنتج: ${mgr.join('، ')}`);
+  for (const n of ['sanad_dc_preview_approve', 'sanad_dc_apply_approve',
+    'sanad_dc_preview_decline', 'sanad_dc_apply_decline']) {
+    assert.ok(mgr.includes(n), `أداةُ القرار تظهر لمدير المنتج: ${n}`);
+  }
+});
+
 test('② الاعتماد لمدير المنتج وحده: المطوِّر يُردّ قبل أي كتابة، والمدير يُعاين', async () => {
   const before = await db.get('SELECT status FROM product_item WHERE id = ?', [itemId]);
   const denied = await api('u_dev', '/api/ai/tools/sanad_dc_preview_approve', {
@@ -197,6 +215,7 @@ test('⑤ قائمة الأدوات عبر الربط: القراءات تظهر
   const listed = await rpc(devToken, 'tools/list', {});
   const names = (listed.json?.result?.tools || []).map((t) => t.name);
   for (const n of ['sanad_dc_list_items', 'sanad_dc_get_item']) assert.ok(names.includes(n), `القراءة تظهر: ${n}`);
+  assert.ok(!names.includes('sanad_dc_preview_approve'), 'الاعتماد يُعرض على المطوِّر عبر الربط أيضاً');
 
   // الاعتماد دورٌ لكل منتج على حدة، والقائمة لكل حساب: فالمنع يقع عند النداء لا عند العرض.
   const denied = await callTool(devToken, 'sanad_dc_preview_approve', { itemId, assigneeUserId: 'u_dev' });

@@ -16,7 +16,10 @@
 // وكلُّ ما يأتي من الطلب أو القاعدة يمرّ بـ`esc()` بلا استثناء: النصّ الذي يكتبه مُبلِّغٌ مجهول
 // يُعاد عرضه له في صفحة المتابعة، فهو أخطر نصٍّ في المنصة كلها.
 import { esc } from './_shared.js';
-import { itemStatusLabel, itemTypeLabel, itemUrgencyLabel, ITEM_TYPE, ITEM_URGENCY } from '../../modules/products/labels.js';
+import {
+  itemStatusLabel, itemTypeLabel, itemUrgencyLabel, ITEM_TYPE, ITEM_URGENCY,
+  itemStatusLabelEn, itemTypeLabelEn, itemUrgencyLabelEn,
+} from '../../modules/products/labels.js';
 
 // ── جدولا النصّ ───────────────────────────────────────────────────────────────
 // عربيٌّ أولاً لأنه الأصل، وإنجليزيٌّ مرآته. أي مفتاحٍ يُضاف هنا يُضاف هناك — والصفحة تسقط
@@ -111,6 +114,12 @@ const EN = {
 
 const pick = (lang) => (lang === 'en' ? EN : AR);
 
+// أسماء القيم المخزَّنة بلغة الصفحة — من `labels.js` وحده في اللغتين: صفحةٌ إنجليزية كاملة
+// كانت تعرض «عُطل» و«يعطّل عملي» و«قيد الدراسة» لقارئٍ لا يقرؤها (KI-121).
+const labelers = (lang) => (lang === 'en'
+  ? { type: itemTypeLabelEn, urgency: itemUrgencyLabelEn, status: itemStatusLabelEn }
+  : { type: itemTypeLabel, urgency: itemUrgencyLabel, status: itemStatusLabel });
+
 // اسم المنتج بلغة الصفحة، وبالعربية إن لم يكن له اسمٌ إنجليزي.
 const productName = (p, lang) => (lang === 'en' ? (p?.name_en || p?.name_ar) : p?.name_ar) || '';
 
@@ -143,7 +152,10 @@ input:focus,textarea:focus{outline:2px solid var(--brand);outline-offset:1px;bor
 .opt{flex:1 1 160px;border:1px solid #d8dee9;border-radius:10px;padding:.7rem .85rem;cursor:pointer;background:#fff;font-size:14px}
 .opt input{margin-inline-end:.5rem}
 .opt:has(input:checked){border-color:var(--brand);box-shadow:inset 0 0 0 1px var(--brand);background:#f8fafc}
-.hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+/* فخُّ الآلات يُخفى بالقصّ لا بالإزاحة: إزاحةٌ إلى اليسار داخل مستندٍ من اليمين إلى اليسار
+   لا تُقصّ بل يُفتح لها عشرة آلاف بكسل من التمرير الأفقي فينزلق النموذج خارج شاشة الجوال
+   (KI-120). والقصُّ يُبقي الحقل في المستند — تراه الآلة ولا يراه إنسان ولا يبلغه ترتيب التنقّل. */
+.hp{position:absolute;width:1px;height:1px;margin:-1px;padding:0;border:0;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap}
 .btn{margin-top:1.75rem;width:100%;border:0;border-radius:10px;background:var(--brand);color:#fff;font:inherit;font-weight:800;font-size:15px;padding:.85rem;cursor:pointer}
 .btn[disabled]{opacity:.6;cursor:default}
 .msg{margin-top:1rem;padding:.7rem .9rem;border-radius:10px;font-size:14px;display:none}
@@ -175,7 +187,7 @@ function frame({ t, title, brandColor, logoUrl, coName, body, script = '' }) {
 <body><div class="wrap">
 <div class="top">
   <div class="marks">
-    <img src="/static/brand/logo.svg" alt="${esc(t.brandLine)}">
+    <img src="/static/brand/logo-color.svg" alt="${esc(t.brandLine)}">
     ${logoUrl ? `<span class="sep"></span><img src="${esc(logoUrl)}" alt="${esc(coName)}">` : ''}
     <div class="co">${esc(t.brandLine)}</div>
   </div>
@@ -226,6 +238,7 @@ const radios = (name, map, labeler, checked) => Object.keys(map).map((k) => `<la
  */
 export function intakePage({ product, link, lang = 'ar', imageLimit = 5 } = {}) {
   const t = pick(lang);
+  const L = labelers(lang);
   const name = productName(product, lang);
   const intro = lang === 'en' ? (link?.intro_en || link?.intro_ar) : (link?.intro_ar || link?.intro_en);
   const body = `<div class="card">
@@ -235,7 +248,7 @@ ${intro ? `<div class="intro">${esc(intro)}</div>` : ''}
 <form id="rf" novalidate>
   <div class="hp" aria-hidden="true"><label>${esc(t.brandLine)}<input type="text" name="company_website" tabindex="-1" autocomplete="off"></label></div>
   <label>${esc(t.kindLabel)}</label>
-  <div class="opts">${radios('type', ITEM_TYPE, itemTypeLabel, 'bug')}</div>
+  <div class="opts">${radios('type', ITEM_TYPE, L.type, 'bug')}</div>
   <label for="f-title">${esc(t.titleLabel)}</label>
   <input type="text" id="f-title" name="title" maxlength="200" required placeholder="${esc(t.titlePlaceholder)}">
   <label for="f-desc">${esc(t.descLabel)}</label>
@@ -243,7 +256,7 @@ ${intro ? `<div class="intro">${esc(intro)}</div>` : ''}
   <label for="f-where">${esc(t.whereLabel)}</label>
   <input type="text" id="f-where" name="where_text" maxlength="200" placeholder="${esc(t.wherePlaceholder)}">
   <label>${esc(t.urgencyLabel)}</label>
-  <div class="opts">${radios('urgency', ITEM_URGENCY, itemUrgencyLabel, 'delays')}</div>
+  <div class="opts">${radios('urgency', ITEM_URGENCY, L.urgency, 'delays')}</div>
   ${identityFields(t, link?.identity_mode)}
   <label for="f-img">${esc(t.imagesLabel)}<span class="hint">${esc(t.imagesHint)}</span></label>
   <input type="file" id="f-img" accept="image/*" multiple>
@@ -304,10 +317,11 @@ const STEP_OF = { NEW: 0, NEEDS_INFO: 0, TRIAGED: 1, AWAITING_APPROVAL: 1, DUPLI
  */
 export function trackingPage({ product, item, comments = [], lang = 'ar', replySent = false } = {}) {
   const t = pick(lang);
+  const L = labelers(lang);
   const name = productName(product, lang);
   const at = STEP_OF[item?.status] ?? 0;
   const canReply = item?.status === 'NEEDS_INFO';
-  const steps = STEPS.map((s, i) => `<li class="${i < at ? 'on' : ''}${i === at ? ' now' : ''}">${esc(itemStatusLabel(s))}</li>`).join('');
+  const steps = STEPS.map((s, i) => `<li class="${i < at ? 'on' : ''}${i === at ? ' now' : ''}">${esc(L.status(s))}</li>`).join('');
   const thread = comments.length
     ? `<ul class="thread">${comments.map((c) => `<li class="${c.from_reporter ? 'mine' : ''}">
         <div class="who">${esc(c.from_reporter ? t.you : t.team)} · ${esc(String(c.created_at || '').slice(0, 10))}</div>
@@ -327,7 +341,7 @@ export function trackingPage({ product, item, comments = [], lang = 'ar', replyS
 <h2>${esc(t.trackStatus)}</h2>
 <ul class="steps">${steps}</ul>
 <div class="intro"><strong>${esc(item?.title || '')}</strong>
-${esc(itemTypeLabel(item?.type))} · ${esc(itemUrgencyLabel(item?.urgency))} · ${esc(itemStatusLabel(item?.status))}</div>
+${esc(L.type(item?.type))} · ${esc(L.urgency(item?.urgency))} · ${esc(L.status(item?.status))}</div>
 <h2>${esc(t.trackThread)}</h2>
 ${thread}
 ${replyBox}
