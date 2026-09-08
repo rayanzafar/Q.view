@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "sourceDigest": "c764464ccf22d8b99ba9c6aa9f9af4178ea52d692c2b1e7743ca786a86eb577b",
+  "sourceDigest": "5f5ed6c51118b04753aaca78f0feb6f5907451f729434f4df569d4de86844e7d",
   "sourceFiles": 660,
   "counts": {
     "code": 258,
@@ -56652,6 +56652,13 @@
     },
     {
       "from": "file:tests/integration/sector-money-band.test.js",
+      "to": "table:contract",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/sector-money-band.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/sector-money-band.test.js",
       "to": "table:revenue_line",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
       "evidence": "tests/integration/sector-money-band.test.js",
@@ -56667,6 +56674,13 @@
     {
       "from": "file:tests/integration/sector-money-band.test.js",
       "to": "table:collection",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/sector-money-band.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/sector-money-band.test.js",
+      "to": "table:deliverable",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
       "evidence": "tests/integration/sector-money-band.test.js",
       "kind": "text-reference"
@@ -60426,6 +60440,13 @@
     {
       "from": "file:tests/security/sector-money-band-rbac.test.js",
       "to": "table:project",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/security/sector-money-band-rbac.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/security/sector-money-band-rbac.test.js",
+      "to": "table:contract",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
       "evidence": "tests/security/sector-money-band-rbac.test.js",
       "kind": "text-reference"
