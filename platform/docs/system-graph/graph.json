@@ -1,11 +1,11 @@
 {
   "version": 1,
-  "sourceDigest": "dc734cedeb7d8a50e2d7bb5a18d128e685ee567bafc60f983524fa741840c0d9",
-  "sourceFiles": 627,
+  "sourceDigest": "a7bed0cf74164013d69a724cc3f06f31c9171045698bf6c017b770ef02605e1d",
+  "sourceFiles": 633,
   "counts": {
     "code": 241,
-    "test": 288,
-    "automation": 51,
+    "test": 289,
+    "automation": 56,
     "module": 19,
     "route": 284,
     "page": 25,
@@ -4790,6 +4790,15 @@
       ]
     },
     {
+      "id": "file:tests/unit/unbilled-delivered.test.js",
+      "kind": "test",
+      "label": "unbilled-delivered.test.js",
+      "detail": "tests/unit/unbilled-delivered.test.js",
+      "sources": [
+        "tests/unit/unbilled-delivered.test.js"
+      ]
+    },
+    {
       "id": "file:tests/unit/vat.test.js",
       "kind": "test",
       "label": "vat.test.js",
@@ -5096,6 +5105,15 @@
       ]
     },
     {
+      "id": "file:scripts/lib/seed-showcase.mjs",
+      "kind": "automation",
+      "label": "seed-showcase.mjs",
+      "detail": "scripts/lib/seed-showcase.mjs",
+      "sources": [
+        "scripts/lib/seed-showcase.mjs"
+      ]
+    },
+    {
       "id": "file:scripts/lib/throwaway-rbac-db.mjs",
       "kind": "automation",
       "label": "throwaway-rbac-db.mjs",
@@ -5264,6 +5282,42 @@
       "detail": "scripts/seed.js",
       "sources": [
         "scripts/seed.js"
+      ]
+    },
+    {
+      "id": "file:scripts/showcase-build.mjs",
+      "kind": "automation",
+      "label": "showcase-build.mjs",
+      "detail": "scripts/showcase-build.mjs",
+      "sources": [
+        "scripts/showcase-build.mjs"
+      ]
+    },
+    {
+      "id": "file:scripts/showcase-capture.mjs",
+      "kind": "automation",
+      "label": "showcase-capture.mjs",
+      "detail": "scripts/showcase-capture.mjs",
+      "sources": [
+        "scripts/showcase-capture.mjs"
+      ]
+    },
+    {
+      "id": "file:scripts/showcase-up.mjs",
+      "kind": "automation",
+      "label": "showcase-up.mjs",
+      "detail": "scripts/showcase-up.mjs",
+      "sources": [
+        "scripts/showcase-up.mjs"
+      ]
+    },
+    {
+      "id": "file:scripts/showcase-verify.mjs",
+      "kind": "automation",
+      "label": "showcase-verify.mjs",
+      "detail": "scripts/showcase-verify.mjs",
+      "sources": [
+        "scripts/showcase-verify.mjs"
       ]
     },
     {
@@ -20802,7 +20856,7 @@
       "id": "issue:KI-095",
       "kind": "issue",
       "label": "KI-095 · tooling/sweep",
-      "detail": "**`scripts/sweep.mjs` reports 4 false deviations on every clean local boot.** `AI_CHAT_PROBES` was never extended when the two isolated CEO-Office roles landed (v5.61), so `office_coordinator`/`office_member` fall through to `default`: «ما المخاطر البارزة» expects 200 but the roles correctly get 403 (they hold no project/risk read grant), and «أنشئ مهمة متابعة العقد» expects 403 but they correctly get 200 (`task.create` is granted — `src/core/rbac/matrix.js:340-355`). The product is right and the expectation table is stale, yet the post-deploy gate a release is supposed to trust comes back red — the exact way a team learns to ignore a failing check. Invisible on staging only because those personas aren't seeded there (KI-028). Reproduced 2026-09-02: `node scripts/qa-up.mjs --scenarios` then `node scripts/sweep.mjs <base>` → «✗ 4 deviation(s)» with 18/18 roles otherwise green (0 leaks, 0 jargon).",
+      "detail": "**`scripts/sweep.mjs` reports 4 false deviations on every clean local boot.** `AI_CHAT_PROBES` was never extended when the two isolated CEO-Office roles landed (v5.61), so `office_coordinator`/`office_member` fall through to `default`: «ما المخاطر البارزة» expects 200 but the roles correctly get 403 (they hold no project/risk read grant), and «أنشئ مهمة متابعة العقد» expects 403 but they correctly get 200 (`task.create` is granted — `src/core/rbac/matrix.js:340-355`). The product is right and the expectation table is stale, yet the post-deploy gate a release is supposed to trust comes back red — the exact way a team learns to ignore a failing check. Invisible on staging only because those personas aren't seeded there (KI-028). Reproduced 2026-09-02: `node scripts/qa-up.mjs --scenarios` then `node scripts/sweep.mjs <base>` → «✗ 4 deviation(s)» with 18/18 roles otherwise green (0 leaks, 0 jargon); re-observed 2026-09-06 while capturing showcase screenshots.",
       "status": "open",
       "sources": [
         "docs/KNOWN-ISSUES.md"
@@ -20812,7 +20866,7 @@
       "id": "issue:KI-096",
       "kind": "issue",
       "label": "KI-096 · web/govern",
-      "detail": "**`/app/audit` prints raw English enums, machine timestamps and internal identifiers in «ماذا جرى».** `readDetail` renders any `detail_json` key missing from `DETAIL_KEY_AR` as its bare value (`src/web/views/govern.js:275-295,301`), and `status`/`rag`/`updated_at`/`updated_by` are all missing — so a project-status change reads «`ON_HOLD · 2026-09-02T13:33:16.067Z · u_PMd9FFh-WKH3`» instead of «الحالة: متوقّف مؤقتًا». Banned-jargon violation (CLAUDE.md rule 6) on an admin-visible screen, and **`scripts/sweep.mjs` flags it**: a clean local boot sweeps green, but after five status changes the same sweep returns «[jargon] demo.admin /app/audit — \"ON_HOLD\" visible» — i.e. the post-deploy release gate goes red the first time anyone uses the status control. Pre-existing (the header select could already write these rows), but v5.73 makes bulk status cleanup from the projects list the intended flow, so the frequency changes from rare to routine. Reproduced 2026-09-02 on a local QA instance: as `demo.sectorlead` change any project's status twice, then open `/app/audit` as `demo.admin` — 29 of the 200 listed rows showed raw enums.",
+      "detail": "**`/app/audit` prints raw English enums, machine timestamps and internal identifiers in «ماذا جرى».** `readDetail` renders any `detail_json` key missing from `DETAIL_KEY_AR` as its bare value (`src/web/views/govern.js:275-295,301`), and `status`/`rag`/`updated_at`/`updated_by` are all missing — so a project-status change reads «`ON_HOLD · 2026-09-02T13:33:16.067Z · u_PMd9FFh-WKH3`» instead of «الحالة: متوقّف مؤقتًا». Banned-jargon violation (CLAUDE.md rule 6) on an admin-visible screen, and **`scripts/sweep.mjs` flags it**: a clean local boot sweeps green, but after five status changes the same sweep returns «[jargon] demo.admin /app/audit — \"ON_HOLD\" visible» — i.e. the post-deploy release gate goes red the first time anyone uses the status control. Pre-existing (the header select could already write these rows), but v5.73 makes bulk status cleanup from the projects list the intended flow, so the frequency changes from rare to routine. Reproduced 2026-09-02 on a local QA instance: as `demo.sectorlead` change any project's status twice, then open `/app/audit` as `demo.admin` — 29 of the 200 listed rows showed raw enums. **The same page also offers no filter by action or by resource** — the only narrowing is the free-text search box, so an admin looking for «من غيّر حالة مشروع» has to eyeball 200 mixed rows. Re-observed 2026-09-06 while capturing showcase screenshots (the `audit` shot in the showcase wall is this page).",
       "status": "open",
       "sources": [
         "docs/KNOWN-ISSUES.md"
@@ -23028,6 +23082,13 @@
     {
       "from": "file:src/core/reports/metrics.js",
       "to": "file:src/modules/pmo/projects.js",
+      "label": "استيراد صريح",
+      "evidence": "src/core/reports/metrics.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/core/reports/metrics.js",
+      "to": "file:src/modules/finance/recognition.js",
       "label": "استيراد صريح",
       "evidence": "src/core/reports/metrics.js",
       "kind": "source"
@@ -41009,6 +41070,27 @@
       "kind": "source"
     },
     {
+      "from": "file:tests/unit/unbilled-delivered.test.js",
+      "to": "file:src/core/db/index.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/unit/unbilled-delivered.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/unit/unbilled-delivered.test.js",
+      "to": "file:src/core/rbac/index.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/unit/unbilled-delivered.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/unit/unbilled-delivered.test.js",
+      "to": "file:src/core/reports/metrics.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/unit/unbilled-delivered.test.js",
+      "kind": "source"
+    },
+    {
       "from": "file:tests/unit/vat.test.js",
       "to": "file:src/modules/finance/vat.js",
       "label": "استيراد صريح",
@@ -41461,6 +41543,34 @@
       "to": "file:scripts/lib/seed-fixture.mjs",
       "label": "استيراد صريح",
       "evidence": "scripts/lib/seed-fixture.mjs",
+      "kind": "source"
+    },
+    {
+      "from": "file:scripts/lib/seed-showcase.mjs",
+      "to": "file:scripts/scenarios.mjs",
+      "label": "استيراد صريح",
+      "evidence": "scripts/lib/seed-showcase.mjs",
+      "kind": "source"
+    },
+    {
+      "from": "file:scripts/lib/seed-showcase.mjs",
+      "to": "file:scripts/seed.js",
+      "label": "استيراد صريح",
+      "evidence": "scripts/lib/seed-showcase.mjs",
+      "kind": "source"
+    },
+    {
+      "from": "file:scripts/lib/seed-showcase.mjs",
+      "to": "file:src/core/db/index.js",
+      "label": "استيراد صريح",
+      "evidence": "scripts/lib/seed-showcase.mjs",
+      "kind": "source"
+    },
+    {
+      "from": "file:scripts/lib/seed-showcase.mjs",
+      "to": "file:src/core/util/ids.js",
+      "label": "استيراد صريح",
+      "evidence": "scripts/lib/seed-showcase.mjs",
       "kind": "source"
     },
     {
@@ -41951,6 +42061,48 @@
       "to": "file:src/core/db/index.js",
       "label": "استيراد صريح",
       "evidence": "scripts/seed.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:scripts/showcase-capture.mjs",
+      "to": "file:scripts/e2e.mjs",
+      "label": "استيراد صريح",
+      "evidence": "scripts/showcase-capture.mjs",
+      "kind": "source"
+    },
+    {
+      "from": "file:scripts/showcase-capture.mjs",
+      "to": "file:scripts/lib/expectations.mjs",
+      "label": "استيراد صريح",
+      "evidence": "scripts/showcase-capture.mjs",
+      "kind": "source"
+    },
+    {
+      "from": "file:scripts/showcase-up.mjs",
+      "to": "file:scripts/lib/qa-instance.mjs",
+      "label": "استيراد صريح",
+      "evidence": "scripts/showcase-up.mjs",
+      "kind": "source"
+    },
+    {
+      "from": "file:scripts/showcase-up.mjs",
+      "to": "file:scripts/lib/seed-showcase.mjs",
+      "label": "استيراد صريح",
+      "evidence": "scripts/showcase-up.mjs",
+      "kind": "source"
+    },
+    {
+      "from": "file:scripts/showcase-verify.mjs",
+      "to": "file:scripts/e2e.mjs",
+      "label": "استيراد صريح",
+      "evidence": "scripts/showcase-verify.mjs",
+      "kind": "source"
+    },
+    {
+      "from": "file:scripts/showcase-verify.mjs",
+      "to": "file:scripts/check-glossary.mjs",
+      "label": "استيراد صريح",
+      "evidence": "scripts/showcase-verify.mjs",
       "kind": "source"
     },
     {
@@ -44210,6 +44362,13 @@
     {
       "from": "file:src/core/reports/metrics.js",
       "to": "table:expense",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "src/core/reports/metrics.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:src/core/reports/metrics.js",
+      "to": "table:invoice_line",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
       "evidence": "src/core/reports/metrics.js",
       "kind": "text-reference"
@@ -47171,6 +47330,13 @@
     {
       "from": "file:src/web/views/sector.js",
       "to": "table:approval_request",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "src/web/views/sector.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:src/web/views/sector.js",
+      "to": "table:invoice_line",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
       "evidence": "src/web/views/sector.js",
       "kind": "text-reference"
@@ -57620,6 +57786,55 @@
       "kind": "text-reference"
     },
     {
+      "from": "file:tests/unit/unbilled-delivered.test.js",
+      "to": "table:deliverable",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/unit/unbilled-delivered.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/unit/unbilled-delivered.test.js",
+      "to": "table:sector",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/unit/unbilled-delivered.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/unit/unbilled-delivered.test.js",
+      "to": "table:project",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/unit/unbilled-delivered.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/unit/unbilled-delivered.test.js",
+      "to": "table:invoice",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/unit/unbilled-delivered.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/unit/unbilled-delivered.test.js",
+      "to": "table:invoice_line",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/unit/unbilled-delivered.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/unit/unbilled-delivered.test.js",
+      "to": "table:contract",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/unit/unbilled-delivered.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/unit/unbilled-delivered.test.js",
+      "to": "table:revenue_line",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/unit/unbilled-delivered.test.js",
+      "kind": "text-reference"
+    },
+    {
       "from": "file:tests/unit/window-metrics.test.js",
       "to": "table:sector",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
@@ -58198,6 +58413,69 @@
       "to": "table:approval_request",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
       "evidence": "scripts/lib/seed-fixture.mjs",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/lib/seed-showcase.mjs",
+      "to": "table:stage",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/lib/seed-showcase.mjs",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/lib/seed-showcase.mjs",
+      "to": "table:app_user",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/lib/seed-showcase.mjs",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/lib/seed-showcase.mjs",
+      "to": "table:deliverable",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/lib/seed-showcase.mjs",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/lib/seed-showcase.mjs",
+      "to": "table:allocation",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/lib/seed-showcase.mjs",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/lib/seed-showcase.mjs",
+      "to": "table:approval_request",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/lib/seed-showcase.mjs",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/lib/seed-showcase.mjs",
+      "to": "table:opportunity",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/lib/seed-showcase.mjs",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/lib/seed-showcase.mjs",
+      "to": "table:opportunity_stage_history",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/lib/seed-showcase.mjs",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/lib/seed-showcase.mjs",
+      "to": "table:crm_activity",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/lib/seed-showcase.mjs",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/lib/seed-showcase.mjs",
+      "to": "table:invoice",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/lib/seed-showcase.mjs",
       "kind": "text-reference"
     },
     {
