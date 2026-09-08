@@ -13,6 +13,8 @@ import { DELIVERY_SECTOR_SQL, isSupportUnit } from '../org/kind.js';
 import { approvedTaskSql } from '../../modules/pmo/task-approval.js';
 // قاعدة «مشروع السنة» الواحدة — نفس مرشّح صفحة المشاريع حرفاً (قرار المالك 2026-08-16).
 import { projectYearClause } from '../../modules/pmo/projects.js';
+// سنة المخرَج وشهره بقاعدةٍ واحدة مع الاعتراف بالإيراد — لا نسخة ثانية منها هنا.
+import { dlvYearSqlFor, dlvMonthSqlFor } from '../../modules/finance/recognition.js';
 
 const FY = () => config.fiscalYear;
 
@@ -283,12 +285,17 @@ export async function winRateByYear(sectorId, nYears = 5) {
 // طرحُ صافٍ من إجمالي كان يترك في «المتبقي» ضريبةَ العقود كلها ويعرضها عملاً لم يُنجَز بعد —
 // وهو رقمٌ يُقرأ التزاماً تعاقدياً ويُبنى عليه توظيف. والإجمالي مذكور بجانبه لمن يريد قيمة
 // العقود كما وُقّعت مع العميل.
-export async function backlog(sectorId) {
+// و`statuses` حالاتُ العقود الداخلة في «المتعاقد عليه» — الافتراض حالتان: الموقَّع الجاري
+// والمسودّة (عقدٌ في الطريق). ومن أراد التزاماً موقَّعاً وحده مرّر ['ACTIVE'] فتسقط المسودّات،
+// وحالاتها تُربط ربطاً لا تُلصق في نصّ الاستعلام.
+export async function backlog(sectorId, { statuses = ['ACTIVE', 'DRAFT'] } = {}) {
+  const st = [...new Set((statuses || []).map((x) => String(x)).filter(Boolean))];
+  if (!st.length) return { contracted_halalas: 0, contracted_gross_halalas: 0, recognized_halalas: 0, backlog_halalas: 0 };
   const c = await get(`SELECT COALESCE(SUM(value_halalas),0) gross,
        COALESCE(SUM(COALESCE(net_value_halalas, CAST(COALESCE(value_halalas, 0) AS BIGINT) * 100 / 115)), 0) net
      FROM contract
-     WHERE status IN ('ACTIVE','DRAFT') ${sectorId ? 'AND sector_id = ?' : ''} AND deleted_at IS NULL`,
-  sectorId ? [sectorId] : []);
+     WHERE status IN (${st.map(() => '?').join(',')}) ${sectorId ? 'AND sector_id = ?' : ''} AND deleted_at IS NULL`,
+  sectorId ? [...st, sectorId] : st);
   const recognized = (await get(`SELECT ${NET_REVENUE} v FROM revenue_line
      WHERE 1=1 ${sectorId ? 'AND sector_id = ?' : ''}`, sectorId ? [sectorId] : [])).v;
   return { contracted_halalas: c.net, contracted_gross_halalas: c.gross, recognized_halalas: recognized,
@@ -394,6 +401,74 @@ export async function sectorCosts(sectorId, year, { months = null } = {}) {
     by_type: { cost_lines: byType(clT), expenses: byType(exT) },
     by_month,
   };
+}
+
+// ── المسلَّم غير المفوتَر — عملٌ خرج من عندنا ولم تُفتح له فاتورة ────────────────────────────
+// المخرَج المسلَّم أو المعتمَد اعترافٌ بإيراد (recognition.js)، والفوترة خطوةٌ إدارية تليه. فما
+// اعتُرف به ولم يُفوتَر بعدُ هو صفُّ العمل المنتظر على طاولة المالية — وهذا الرقم يعرضه.
+// «مفوتَر» عند أحد أمرين: ختمُ `invoiced_at` على المخرَج نفسه، أو سطرُ فاتورةٍ يشير إليه في
+// فاتورةٍ حيّة (غير محذوفة وغير ملغاة). والفاتورة الملغاة أو المحذوفة لا تُخرج المخرَج من الصفّ:
+// إلغاؤها إعادةٌ له إلى الانتظار لا إخراجٌ منه.
+// المبلغ إجمالي كما هو مسجَّل على المخرَج (قيمة التعاقد شاملةً الضريبة) — فهذا ما يُفوتَر به
+// العميل. ويعود صافيه معه (`unbilled_net_halalas`) بقاعدة الفصل نفسها التي يقرأ بها الإيراد
+// المتحقّق أعلاه (المخرَج بلا عمودِ صافٍ فلا بديل مخزَّن يُقدَّم عليها): من قارن الرقمين في شاشةٍ
+// واحدة يقارن صافياً بصافٍ، فلا تظهر خمسة عشر بالمئة من الضريبة عملاً منتظراً على الطاولة.
+// `months` كما في sectorCosts: مصفوفة أرقام أشهر (١..١٢) أو null للسنة كلها، ونافذةٌ بلا شهرٍ
+// صالح = لا شيء. والسنة والشهر يُقرآن بسلسلة recognition.js لا بالعمودين العاريين: أغلب
+// المخرجات المستوردة بلا year/month، فالعمود العاري كان يُسقطها كلها.
+// و`linked_count` حارسُ التغطية: عدد مخرجات النطاق التي لها ربطٌ بفوترةٍ أصلاً (ختمٌ أو سطر
+// فاتورة). صفرُه يعني أن الفوترة غير موصولة بالمخرجات في هذا القطاع — لا أن كل شيء متأخر —
+// فتقول الشاشة ذلك بدل أن تعرض رقماً يبدو ديناً وهو نقص ربط.
+// و`sectorId` فارغاً = الشركة كلها (كما في sectorCosts).
+export async function unbilledDelivered(sectorId, year, { months = null } = {}) {
+  const mList = months == null ? null
+    : [...new Set(months.map((m) => Number(m)).filter((m) => Number.isInteger(m) && m >= 1 && m <= 12))].sort((a, b) => a - b);
+  if (mList && !mList.length) return { unbilled_halalas: 0, unbilled_net_halalas: 0, count: 0, linked_count: 0 }; // نافذة بلا أشهر صالحة = لا شيء
+  const mClause = mList ? ` AND ${dlvMonthSqlFor('d')} IN (${mList.map(() => '?').join(',')})` : '';
+  const mArgs = mList || [];
+  const secC = sectorId ? 'AND COALESCE(d.sector_id, p.sector_id) = ?' : '';
+  const secP = sectorId ? [sectorId] : [];
+  const linkedSql = `(d.invoiced_at IS NOT NULL OR EXISTS (SELECT 1 FROM invoice_line il
+        JOIN invoice i ON i.id = il.invoice_id
+        WHERE il.deliverable_id = d.id AND i.deleted_at IS NULL AND i.status <> 'CANCELLED'))`;
+  const scope = `FROM deliverable d LEFT JOIN project p ON p.id = d.project_id
+     WHERE d.deleted_at IS NULL ${secC}
+       AND ${dlvYearSqlFor('d')} = ?${mClause}`;
+  const args = [...secP, year, ...mArgs];
+  const [u, l] = await Promise.all([
+    get(`SELECT COALESCE(SUM(COALESCE(d.amount_halalas,0)),0) v, COUNT(*) n,
+         COALESCE(SUM(CAST(COALESCE(d.amount_halalas,0) AS BIGINT) * 100 / 115), 0) nv
+       ${scope}
+       AND d.status IN ('DELIVERED','ACCEPTED') AND COALESCE(d.amount_halalas,0) > 0
+       AND NOT ${linkedSql}`, args),
+    get(`SELECT COUNT(*) n ${scope} AND ${linkedSql}`, args),
+  ]);
+  return { unbilled_halalas: u?.v || 0, unbilled_net_halalas: u?.nv || 0, count: u?.n || 0, linked_count: l?.n || 0 };
+}
+
+// ── المفوتَر في السنة (أو في أشهرٍ منها) — الطرف المقابل لـ«المسلَّم غير المفوتَر» ────────────
+// الفاتورة تُحسب مفوتَرةً متى صدرت: المسودّة ورقةٌ لم تخرج بعد، والملغاة سُحبت، والمحذوفة سقطت
+// من الدفاتر — وما عداها (صادرة أو مسدَّدة جزئياً أو مسدَّدة أو متأخرة) فاتورةٌ قائمة على العميل.
+// وتاريخها تاريخُ إصدارها إن سُجِّل وإلا تاريخُ إنشائها، مقروءاً نصّاً بـ`substr` كما تقرؤه صفحة
+// القطاع حرفاً — والسنة تُربط نصّاً لأن الطرف الآخر نصّ.
+// و`invoiced_net_halalas` صافٍ بالقاعدة الواحدة (المخزَّن إن سُجِّل وإلا اشتقاق ١٠٠/١١٥)، فيُقارن
+// بالإيراد المتحقّق وبالمنتظر صافياً بصافٍ؛ والإجمالي معه لمن يريد ما على العميل بضريبته.
+// و`sectorId` فارغاً = الشركة كلها (كما في sectorCosts)، وقطاعُ الفاتورة قطاعُ مشروعها إن لم يُسجَّل.
+export async function invoicedNet(sectorId, year, { months = null } = {}) {
+  const mList = months == null ? null
+    : [...new Set(months.map((m) => Number(m)).filter((m) => Number.isInteger(m) && m >= 1 && m <= 12))].sort((a, b) => a - b);
+  if (mList && !mList.length) return { invoiced_net_halalas: 0, invoiced_halalas: 0, count: 0 }; // نافذة بلا أشهر صالحة = لا شيء
+  const stamp = 'COALESCE(i.issue_date, i.created_at)';
+  const mClause = mList ? ` AND CAST(substr(${stamp},6,2) AS INTEGER) IN (${mList.map(() => '?').join(',')})` : '';
+  const secC = sectorId ? 'AND COALESCE(i.sector_id, p.sector_id) = ?' : '';
+  const r = await get(`SELECT
+       COALESCE(SUM(COALESCE(i.net_amount_halalas, CAST(COALESCE(i.amount_halalas,0) AS BIGINT) * 100 / 115)),0) nv,
+       COALESCE(SUM(COALESCE(i.amount_halalas,0)),0) v, COUNT(*) n
+     FROM invoice i LEFT JOIN project p ON p.id = i.project_id
+     WHERE i.deleted_at IS NULL AND i.status NOT IN ('DRAFT','CANCELLED') ${secC}
+       AND substr(${stamp},1,4) = ?${mClause}`,
+  [...(sectorId ? [sectorId] : []), String(year), ...(mList || [])]);
+  return { invoiced_net_halalas: r?.nv || 0, invoiced_halalas: r?.v || 0, count: r?.n || 0 };
 }
 
 // Gross Margin % for a sector/year = (revenue − cost − approved expense) ÷ revenue. SENSITIVE.

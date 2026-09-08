@@ -47,6 +47,15 @@ export const DLV_YEAR_SQL =
 // النسخة المؤهَّلة باسمٍ مستعار — لاستعلامٍ يضمّ project (created_at موجود في الجدولين فيلتبس العاري)
 export const dlvYearSqlFor = (a) =>
   `COALESCE(${a}.year, CAST(substr(COALESCE(${a}.accepted_at, ${a}.delivered_at, ${a}.status_at, ${a}.created_at),1,4) AS INTEGER))`;
+// وشهرُ المخرَج بالسلسلة نفسها — الشهر المخزَّن إن سُجِّله مدير المشروع وإلا شهرُ حدثه (القبول
+// ثم التسليم ثم آخر تغيير حالة ثم الإنشاء)، حرفاً كترحيلة 020 وكـ periodOf أعلاه. أي نافذة
+// أشهرٍ تُرشِّح المخرجات بها لا بعمود month العاري: العمود فارغ على أغلب الصفوف المستوردة فكان
+// يُسقطها كلها من كل شهر. و`substr(...,6,2)` تعمل على المحرّكين معاً.
+export const DLV_MONTH_SQL =
+  "COALESCE(month, CAST(substr(COALESCE(accepted_at, delivered_at, status_at, created_at),6,2) AS INTEGER))";
+// النسخة المؤهَّلة باسمٍ مستعار — لاستعلامٍ يضمّ project (created_at موجود في الجدولين فيلتبس العاري)
+export const dlvMonthSqlFor = (a) =>
+  `COALESCE(${a}.month, CAST(substr(COALESCE(${a}.accepted_at, ${a}.delivered_at, ${a}.status_at, ${a}.created_at),6,2) AS INTEGER))`;
 
 function periodOf(d) {
   if (d.year && d.month) return { year: Number(d.year), month: Number(d.month) };

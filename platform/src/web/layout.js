@@ -989,7 +989,9 @@ export function figTreemap(items, { h = 160, total: totalOpt = null } = {}) {
 // نصف عدّاد (بطاقة الإشغال على نموذج المالك): قوسُ 180° يمتلئ حتى سقف المحور الممرَّر من
 // قواعد التسكين — والنسبة الحقيقية مطبوعة نصاً ولو ثُبّت القوس عند سقفه. لا يمسّ gauge()
 // المستهلَك في الرئيسة ولوحة الرئيس.
-export function figGaugeHalf(pct, { size = 120, sw = 12, color = 'var(--brand)', max = 100, sub = '', ariaLabel = '' } = {}) {
+// `center`: نصٌّ يحلّ محلّ النسبة في قلب العدّاد حين تكون النسبة مكتوبةً فوقه أصلاً — رقمان
+// متطابقان في خليّةٍ واحدة يُقرآن مقياسين. والافتراض بلا `center` هو النسبة كما كان.
+export function figGaugeHalf(pct, { size = 120, sw = 12, color = 'var(--brand)', max = 100, sub = '', center = '', ariaLabel = '' } = {}) {
   const shown = Math.round(Number(pct) || 0);
   const frac = Math.min(1, Math.max(0, shown / Math.max(1, max)));
   const r = (size - sw) / 2, half = Math.PI * r;
@@ -998,7 +1000,7 @@ export function figGaugeHalf(pct, { size = 120, sw = 12, color = 'var(--brand)',
     <svg width="${size}" height="${hgt}" viewBox="0 0 ${size} ${hgt}">
       <path d="M ${sw / 2} ${size / 2 + sw / 2} A ${r} ${r} 0 0 1 ${size - sw / 2} ${size / 2 + sw / 2}" fill="none" stroke="var(--track)" stroke-width="${sw}" stroke-linecap="round"/>
       ${frac > 0 ? `<path class="ring-fill" d="M ${sw / 2} ${size / 2 + sw / 2} A ${r} ${r} 0 0 1 ${size - sw / 2} ${size / 2 + sw / 2}" fill="none" stroke="${esc(color)}" stroke-width="${sw}" stroke-linecap="round" stroke-dasharray="${(half * frac).toFixed(1)} ${(half + 20).toFixed(1)}" style="--c0:${(half * frac).toFixed(1)}"/>` : ''}
-    </svg><span class="gh-v tnum">${shown}%${sub ? `<small>${esc(sub)}</small>` : ''}</span></span>`;
+    </svg><span class="gh-v tnum">${center ? esc(center) : `${shown}%`}${sub ? `<small>${esc(sub)}</small>` : ''}</span></span>`;
 }
 
 export function gauge(pct, opts = {}) {
