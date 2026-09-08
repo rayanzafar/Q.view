@@ -51,7 +51,7 @@ export default async function tasksFlowSpec({ browser, base, t }) {
       const seen = await page.evaluate(() => {
         const txt = document.body.innerText || '';
         return {
-          tasks: txt.includes('المهام المفتوحة') || txt.includes('حِمل المهام'),
+          tasks: txt.includes('المهام المفتوحة') || txt.includes('نسبة الإشغال'),
           projects: txt.includes('المشاريع') || txt.includes('العمل المرتبط'),
           stats: document.querySelectorAll('.pp-stat').length,
           tabs: document.querySelectorAll('[role="tab"]').length,
@@ -59,7 +59,7 @@ export default async function tasksFlowSpec({ browser, base, t }) {
       });
       check(unified ? 'الرابط يحيل إلى ملف المورد الموحد بتبويباته' : 'صفحة الشخص تعرض مهامه', unified ? seen.tabs >= 3 : seen.tasks, JSON.stringify(seen));
       check('وتعرض مشاريعه/عمله المرتبط', seen.projects, JSON.stringify(seen));
-      check(unified ? 'ملف المورد يعرض حِمل المهام' : 'ومعها عدّادات حالته', unified ? seen.tasks : seen.stats >= 4, unified ? JSON.stringify(seen) : `عدّادات=${seen.stats}`);
+      check(unified ? 'ملف المورد يعرض نسبة الإشغال' : 'ومعها عدّادات حالته', unified ? seen.tasks : seen.stats >= 4, unified ? JSON.stringify(seen) : `عدّادات=${seen.stats}`);
     }
 
     // الفرصة **باسمها** لا بعددها. والفحص لا يفترض أن أول شخص على اللوحة يملك فرصة — يبحث

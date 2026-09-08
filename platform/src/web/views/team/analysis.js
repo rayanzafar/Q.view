@@ -2,7 +2,7 @@
 //
 // «الإشارة سؤالٌ يُطرح على المدير مع أدلته، لا حكمٌ على الموظف» (الموجّه §7.2). الصفحتان
 // تعرضان ما تعيده خدمة `modules/team/analysis.js` حرفاً: ثلاثة أرقام لا تُخلط (التسكين المؤكد،
-// القابل للفوترة بالمقام نفسه، وحِمل المهام بمستواه وأساسه)، والتغطية المالية للفرد «غير متاحة»
+// القابل للفوترة بالمقام نفسه، ونسبة الإشغال من المهام بمستواها وأساسها)، والتغطية المالية للفرد «غير متاحة»
 // دائماً (C8 في EXECUTION-LOG) — تُقال بسببها ولا تُخترع لها أرقام. لا ترتيب أداء بين الأفراد:
 // الصفوف بترتيب الاسم كما تعيدها الخدمة. لا كتابة هنا: المتابعة والإغلاق من عميل الصفحة
 // (public/pages/team-analysis.js) عبر /api/team/analysis/… والخدمة هي البوابة.
@@ -103,7 +103,7 @@ const UNSIZED_WORDS = { one: 'واحدة بلا نسبة مقدَّرة', two: '
 function loadDetail(r) {
   const load = r.taskLoad || {};
   if (!r.userId) return 'لا حساب دخول مرتبط';
-  if (!N(load.open)) return 'لا مهام مفتوحة';
+  if (!N(load.open)) return 'لا مهام جارية تُحسب';
   return `${N(load.pct)}% من ${countAr(N(load.open), TASK_WORDS)}${N(load.unsized) ? `، ${countAr(N(load.unsized), UNSIZED_WORDS)}` : ''}`;
 }
 const loadCell = (r) => {
@@ -164,7 +164,7 @@ export async function analysisPage(user, opts = {}) {
       <div style="text-align:center;padding-bottom:1rem"><a class="btn btn-sm" href="${esc(clearHref)}">عرض الكل</a></div>`;
   } else {
     table = `<div class="tblwrap"><table class="tm-tbl keep-all tm-an-tbl">
-      <thead><tr><th>المورد</th><th>التسكين المؤكد</th><th>${G.billableOfCapacity}</th><th>${G.taskLoad}</th><th>${G.authorizedCoverage}</th><th>${G.reviewSignal}</th><th></th></tr></thead>
+      <thead><tr><th>المورد</th><th>التسكين المؤكد</th><th>${G.billableOfCapacity}</th><th>${G.taskLoad} من المهام</th><th>${G.authorizedCoverage}</th><th>${G.reviewSignal}</th><th></th></tr></thead>
       <tbody>${rows.map((r) => utilRow(r, period)).join('')}</tbody></table></div>
       <div class="tm-pager"><span>${countAr(rows.length, { one: 'مورد واحد', two: 'موردان', few: 'موارد', many: 'مورداً' })} من ${num(counts.resources)} في ${esc(period.label_ar)} · بترتيب الاسم — لا ترتيب أداء بين الأفراد</span></div>`;
   }
@@ -194,7 +194,7 @@ export async function analysisPage(user, opts = {}) {
 
   return teamLayout({
     user, path: 'analysis', section: 'utilization', title: G.pathAnalysis,
-    subtitle: `${period.label_ar} · اقرأ التسكين وحِمل المهام والتغطية كلاً على حدة`,
+    subtitle: `${period.label_ar} · اقرأ التسكين ونسبة الإشغال من المهام والتغطية كلاً على حدة`,
     crumbs: [{ label: G.utilizationTab, href: base }],
     body, scripts: ['/static/pages/team-analysis.js'], year: opts.year,
   });
@@ -202,7 +202,7 @@ export async function analysisPage(user, opts = {}) {
 
 // ── S18: فحص الحالة وإجراء المتابعة ────────────────────────────────────────────────────
 const FOLLOWUP_ACTIONS = [
-  'مراجعة حِمل المهام مع مدير المشروع',
+  'مراجعة نسبة الإشغال من المهام مع مدير المشروع',
   'تحديث التسكين ليعكس العمل الفعلي',
   'تأكيد الاحتياج الفعلي قبل تغيير التسكين',
   'استكمال بيانات المورد وطاقته',
@@ -271,7 +271,7 @@ export async function analysisCasePage(user, employeeId, opts = {}) {
   const facts = `<div class="tm-kpis">
     <div class="tm-kpi"><div class="l">التسكين المؤكد</div><div class="v">${out ? esc(G.outOfEngagement) : num(`${N(figures.confirmedPct)}%`)}</div><div class="s">${out ? 'الشهر خارج فترة الارتباط' : 'من طاقته التعاقدية المسجلة'}</div></div>
     <div class="tm-kpi"><div class="l">${G.billableOfCapacity}</div><div class="v">${out ? '—' : num(`${N(figures.billablePct)}%`)}</div><div class="s">من الطاقة — المقام نفسه</div></div>
-    <div class="tm-kpi"><div class="l">${G.taskLoad}</div><div class="v">${esc(taskLoad?.level === 'unmeasured' ? G.unmeasured : (taskLoad?.level_ar || '—'))}</div><div class="s tnum">${esc(loadDetail({ taskLoad, userId: resource.userId }))}</div></div>
+    <div class="tm-kpi"><div class="l">${G.taskLoad} من المهام</div><div class="v">${esc(taskLoad?.level === 'unmeasured' ? G.unmeasured : (taskLoad?.level_ar || '—'))}</div><div class="s tnum">${esc(loadDetail({ taskLoad, userId: resource.userId }))}</div></div>
     <div class="tm-kpi"><div class="l">التغطية المالية</div><div class="v" style="color:var(--muted)">${esc(coverage?.state_ar || G.unavailable)}</div><div class="s">${esc(coverage?.note_ar || '')}</div></div>
   </div>`;
 

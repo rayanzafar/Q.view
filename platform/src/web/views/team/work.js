@@ -226,7 +226,7 @@ function resourceItem(r, period) {
       <div class="tm-work-bh"><b>المهام</b> <span class="m">${countTnum(r.taskCount, TASKS)}${N(r.lateCount) ? ` · <span class="tnum">${N(r.lateCount)}</span> متأخرة` : ''}</span></div>
       ${(r.tasks || []).length ? tasksTable(r.tasks, { showWork: true, year: period.year })
     : noTasks(r.hasAccount
-      ? `${esc(G.noTasksRecorded)} لهذا المورد في المنصة — وليس ذلك دليلاً على انخفاض حِمل المهام.`
+      ? `${esc(G.noTasksRecorded)} لهذا المورد في المنصة — وليس ذلك دليلاً على انخفاض نسبة الإشغال من المهام.`
       : `${esc(G.noAccountNoTasks)} — المهام تُسند إلى حسابات الدخول، فاربط حسابه من نموذج المورد إن كان له حساب.`)}
       <div class="tm-work-acts">
         <a class="btn btn-sm" href="${esc(profileHref(res.employeeId))}">${esc(G.openFullProfile)}</a>

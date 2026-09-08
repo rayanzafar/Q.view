@@ -234,7 +234,7 @@ function tentativePctOf(months = []) {
   return cap > 0 ? Math.round((ten / cap) * 100) : null;
 }
 
-// ── حِمل المهام: من `task-load.js` وحده، والقاعدة تُقال في `basis_ar` ─────────────────────────
+// ── نسبة الإشغال من المهام: من `task-load.js` وحده، والقاعدة تُقال في `basis_ar` ─────────────────────────
 async function taskLoadOf(userId) {
   if (!userId) return { level: 'unmeasured', level_ar: TASK_LEVEL_AR.unmeasured, pct: 0, unsized: 0, open: 0, linked: false, basis_ar: NO_ACCOUNT_AR };
   const r = (await taskLoadFor([userId])).get(userId) || { pct: 0, unsized: 0, open: 0 };

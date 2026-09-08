@@ -814,7 +814,7 @@ export async function tasksPage(user, opts = {}) {
 
   // ── ١) رأس اليوم: تقدّم حقيقي + أثر سبعة أيام (عدسة «مهامي» وحدها) ──
   const trend = who === 'me' ? await completionTrend(user, { days: 7, today }) : [];
-  // حِمل المهام: نداءٌ واحد، وللعدسة «مهامي» وحدها — لوحةُ الفريق تقرؤه من تجميعها القائم.
+  // نسبة الإشغال: نداءٌ واحد، وللعدسة «مهامي» وحدها — لوحةُ الفريق تقرؤه من تجميعها القائم.
   const myLoad = who === 'me' ? await myTaskLoad(user) : null;
   const weekDone = trend.reduce((a, d) => a + d.done, 0);
   const plate = todayBand.length + doneTodayList.length;
@@ -832,7 +832,7 @@ export async function tasksPage(user, opts = {}) {
         <span class="wc-tnum tnum">${dd.getUTCDate()}</span>
         ${isToday ? nowDot('اليوم') : ''}</div>`;
     }).join('')}</div>` : '';
-  // ── حِمل المهام على رأس «مهامي» ──
+  // ── نسبة الإشغال على رأس «مهامي» ──
   // مقياسٌ ثالث باسمه الخاص، لا يُجمع مع الإشغال المخطَّط ولا مع القابل للفوترة — وسطرُ
   // أساسه يقول ذلك في العنوان المنبثق. وما بلا نسبة يُقال **مرةً واحدة** في لافتةٍ تحته
   // تسرده بضغطة: كان عدداً في ذيل السطر لا يفتح شيئاً، فيقرأ صاحبُه عتاباً بلا طريق إليه.
@@ -1126,7 +1126,7 @@ export async function tasksPage(user, opts = {}) {
         canReadOpp && p.opportunities.valueHalalas ? `<span class="wp-money tnum">${fmtSar(p.opportunities.valueHalalas)}</span>` : ''
       }</span></div>`
       : '';
-    // ── حِمل المهام على بطاقة الشخص ──
+    // ── نسبة الإشغال على بطاقة الشخص ──
     // «الإشغال يُعرض لموظفيك بناءً على الحساب الذي ننفّذه» — بلسان المالك. والرقم هنا يجيب
     // «من يحتاج مساعدة»، لا «من يستحق تقييماً»: سطرُ «مقياس سعة لا تقييم» جزءٌ من العرض لا
     // زينةٌ فيه (صنو نصِّ تقرير القوى العاملة). ويُعرض للقارئ بلا صلاحية تعديلٍ أيضاً.

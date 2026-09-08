@@ -116,7 +116,7 @@ export const G = {
   openFullProfile: 'فتح الملف الكامل',
   availableOfCapacity: 'المتاح من طاقته',
   engagementStatus: 'حالة الارتباط',
-  taskLoad: 'حِمل المهام',
+  taskLoad: 'نسبة الإشغال',
   confirmedAlloc: 'مؤكد',
   tentativeAlloc: 'مبدئي',
   pendingDecision: 'بانتظار الاعتماد',

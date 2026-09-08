@@ -31,7 +31,7 @@ export default async function ({ browser, base, t, platformRoot }) {
     t.pass('Team tasks opens the canonical employee profile');
 
     await page.getByRole('tab', { name: 'المهام', exact: false }).click();
-    assert.ok(await page.getByText('حِمل المهام', { exact: false }).count());
+    assert.ok(await page.getByText('نسبة الإشغال', { exact: false }).count());
     await page.screenshot({ path: join(shots, 'person-tasks.png'), fullPage: true });
     await page.getByRole('tab', { name: 'إدارة الملف', exact: true }).click();
     await page.getByRole('button', { name: 'أضف مهمة', exact: true }).click();

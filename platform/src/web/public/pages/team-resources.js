@@ -162,7 +162,7 @@
         + '<div><div class="l">المتاح</div><div class="v tnum">' + Math.round(N(f.availablePct)) + '%</div><div class="tm-bar" aria-hidden="true"><i class="c-int" style="width:' + W(f.availablePct) + '%"></i></div></div>'
         + (N(f.tentativePct) > 0 ? '<div><div class="l">مبدئي (لا يُخصم)</div><div class="v tnum">' + Math.round(N(f.tentativePct)) + '%</div><div class="tm-bar" aria-hidden="true"><i class="c-tent" style="width:' + W(f.tentativePct) + '%"></i></div></div>' : '')
         + '</div>';
-    const load = '<div class="tm-pv-load"><span>حِمل المهام: <b>' + esc(tl.level_ar || 'غير مقاس') + '</b>'
+    const load = '<div class="tm-pv-load"><span>نسبة الإشغال من المهام: <b>' + esc(tl.level_ar || 'غير مقاس') + '</b>'
       + (tl.open ? ' <span class="tnum" style="color:var(--muted)">(' + Math.round(N(tl.pct)) + '% من ' + N(tl.open) + (N(tl.open) === 1 ? ' مهمة' : ' مهام') + (N(tl.unsized) ? '، ' + N(tl.unsized) + ' بلا نسبة' : '') + ')</span>' : '') + '</span>'
       + (tl.basis_ar ? '<span class="tm-note">' + esc(tl.basis_ar) + '</span>' : '') + '</div>';
 

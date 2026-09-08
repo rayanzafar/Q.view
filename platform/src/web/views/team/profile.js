@@ -206,7 +206,7 @@ function overviewHtml(p, { link }) {
     ${tile('capacity', esc(G.baseCapacity), pctHtml(nominal), `يعادل ${fteHtml(nominal)} من الدوام الكامل`)}
     ${tile('confirmed', esc(G.confirmedAllocation), out ? DASH : pctHtml(f.confirmedPct), out ? esc(G.outOfEngagement) : `${esc(G.ofHisCapacity)} · ${bandPill(f.band, f.band_ar)}`)}
     ${tile('available', esc(G.availableNow), out ? DASH : pctHtml(f.availablePct), out ? esc(G.outOfEngagement) : 'من طاقته التعاقدية المسجلة بعد المؤكد')}
-    ${tile('tasks', esc(G.taskLoad), esc(tl.level_ar || G.unmeasured), tl.linked
+    ${tile('tasks', esc(G.taskLoad + ' من المهام'), esc(tl.level_ar || G.unmeasured), tl.linked
     ? `<span class="tnum">${esc(tasksWord(tl.open))}</span>${N(tl.unsized) ? ` · <span class="tnum">${esc(unsizedWord(tl.unsized))}</span>` : ''}`
     : 'لا حساب دخول مرتبط — لا مهام تُقاس')}
   </div>`;
@@ -348,7 +348,7 @@ function tasksHtml(p, { payload, today }) {
   payload.openHref = openHref;
   payload.tasksReadOnly = true;
   const tl = t.taskLoad || p.taskLoad || {};
-  const loadLine = `<div class="tm-note" style="margin-bottom:.8rem">${icon('info')} ${esc(G.taskLoad)}: <b>${esc(tl.level_ar || G.unmeasured)}</b> — ${esc(tl.basis_ar || '')}</div>`;
+  const loadLine = `<div class="tm-note" style="margin-bottom:.8rem">${icon('info')} ${esc(G.taskLoad + ' من المهام')}: <b>${esc(tl.level_ar || G.unmeasured)}</b> — ${esc(tl.basis_ar || '')}</div>`;
 
   if (!t.linked) {
     return `<div class="tm-card tm-profile-sec"><div class="tm-card-b">${emptyState(G.noAccountNoTasks, t.note_ar || 'المهام تُسند إلى حسابات الدخول، وهذا المورد بلا حساب مرتبط.')}
@@ -359,7 +359,7 @@ function tasksHtml(p, { payload, today }) {
   }
   const tasks = t.tasks || [];
   if (!tasks.length) {
-    return `<div class="tm-card tm-profile-sec"><div class="tm-card-b">${loadLine}${emptyState(G.noTasksRecorded, 'لا مهمة مسنَدة إلى حسابه — وهذا غير انخفاض حِمل المهام: العبء يُقاس من النسب المكتوبة على المهام لا من عددها.')}
+    return `<div class="tm-card tm-profile-sec"><div class="tm-card-b">${loadLine}${emptyState(G.noTasksRecorded, 'لا مهمة مسنَدة إلى حسابه — وهذا غير انخفاض نسبة الإشغال: العبء يُقاس من النسب المكتوبة على المهام لا من عددها.')}
       ${openHref ? `<div style="text-align:center;margin-top:-1rem;padding-bottom:1rem"><a class="btn btn-sm" href="${esc(openHref)}">${esc(p.rights.self ? G.myTasksAndDossier : G.tasksAndDossier)}</a></div>` : ''}</div></div>`;
   }
   const open = tasks.filter((x) => x.status !== 'DONE');

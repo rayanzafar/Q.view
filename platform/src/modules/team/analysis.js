@@ -1,7 +1,7 @@
 // ── تحليل الاستخدام وفحص الحالة والمتابعة — S17/S18 (وحدة الفريق والموارد) ────────────────
 //
 // «الإشارة ليست حكماً بل سؤالاً يُطرح على المدير مع أدلته» — الموجّه §7.2. الجدول يقرأ لكل
-// مورد ثلاثة أرقام لا تُخلط: التسكين المؤكد (من capacity-model عبر capacity-read)، وحِمل المهام
+// مورد ثلاثة أرقام لا تُخلط: التسكين المؤكد (من capacity-model عبر capacity-read)، ونسبة الإشغال
 // (pmo/task-load.js — المقياس D21 المستقل)، والتغطية المالية للفرد — وهي **غير متاحة** في هذه
 // النسخة (C8 في EXECUTION-LOG: لا منهج معتمداً من المالية) فتُقال كذلك ولا تُخترع لها بيانات.
 //
@@ -39,10 +39,10 @@ export const SIGNAL_KEYS = Object.keys(SIGNALS);
 
 // قواعد الإشارات كما تُقال للقارئ — نصٌّ واحد يُعرض في التعريفات ويُكتب على كل صف.
 export const SIGNAL_RULE_AR = Object.freeze({
-  high_alloc_low_load: 'تسكين مؤكد 90% فأكثر مع حِمل مهام منخفض',
-  low_alloc_high_load: 'تسكين مؤكد 40% فأقل مع حِمل مهام مرتفع',
+  high_alloc_low_load: 'تسكين مؤكد 90% فأكثر مع نسبة إشغال منخفضة من المهام',
+  low_alloc_high_load: 'تسكين مؤكد 40% فأقل مع نسبة إشغال مرتفعة من المهام',
   internal_high: 'العمل الداخلي 60% فأكثر من التسكين المؤكد',
-  high_load_pressure: 'حِمل مهام مرتفع مع تسكين مؤكد 70% فأكثر',
+  high_load_pressure: 'نسبة إشغال مرتفعة من المهام مع تسكين مؤكد 70% فأكثر',
   data_missing: 'الشهر خارج فترة الارتباط أو بلا طاقة مسجلة',
   capacity_freeing: 'التسكين ينتهي خلال 60 يوماً ولا تسكين بعده',
   check_upcoming: 'طلب تسكين معلَّق في الشهر القادم',
@@ -50,7 +50,7 @@ export const SIGNAL_RULE_AR = Object.freeze({
 });
 
 export const TASK_LOAD_LEVEL_AR = Object.freeze({ low: 'منخفض', medium: 'متوسط', high: 'مرتفع', unmeasured: 'غير مقاس' });
-export const LOAD_LEVEL_RULE_AR = 'مستويات حِمل المهام: أقل من 40 منخفض، حتى 100 متوسط، فوق 100 مرتفع؛ وما بلا أي نسبة مقدَّرة = غير مقاس.';
+export const LOAD_LEVEL_RULE_AR = 'مستويات نسبة الإشغال من المهام: أقل من 40 منخفض، حتى 100 متوسط، فوق 100 مرتفع؛ وما بلا أي نسبة مقدَّرة = غير مقاس.';
 export const COVERAGE_UNAVAILABLE = Object.freeze({
   state: 'unavailable', state_ar: 'غير متاحة',
   note_ar: 'لا يوجد منهج معتمد من المالية لتغطية الفرد في هذه النسخة — تُقرأ تغطية المشروع والقطاع من الإيراد المحقق لمن يقرأ المال',
@@ -68,7 +68,7 @@ const QUESTIONS_AR = Object.freeze({
   none: ['هل ثمة التزام غير مسجَّل على المنصة؟', 'هل الخطة تعكس ما يُنجَز فعلاً؟'],
 });
 
-// ── حِمل المهام بمستوياته — القاعدة تُقال في basis_ar ─────────────────────────────────────
+// ── نسبة الإشغال من المهام بمستوياتها — القاعدة تُقال في basis_ar ─────────────────────────────────────
 export function taskLoadLevel(load, { hasAccount = true } = {}) {
   if (!hasAccount) {
     return { level: 'unmeasured', level_ar: TASK_LOAD_LEVEL_AR.unmeasured, pct: 0, unsized: 0, open: 0,
@@ -80,7 +80,7 @@ export function taskLoadLevel(load, { hasAccount = true } = {}) {
   else if (pct < 40) level = 'low';
   else if (pct <= 100) level = 'medium';
   else level = 'high';
-  const detail = open === 0 ? 'لا مهام مفتوحة مسنَدة إليه.'
+  const detail = open === 0 ? 'لا مهام جارية تُحسب مسنَدة إليه.'
     : `${pct}% من ${open} ${open === 1 ? 'مهمة مفتوحة' : 'مهام مفتوحة'}${unsized ? `، منها ${unsized} بلا نسبة مقدَّرة` : ''}.`;
   return { level, level_ar: TASK_LOAD_LEVEL_AR[level], pct, unsized, open,
     basis_ar: `${TASK_LOAD_BASIS_AR} ${detail} ${LOAD_LEVEL_RULE_AR}` };
@@ -134,10 +134,10 @@ export function signalFor({ f0, next = [], load, emp }) {
   const lvl = load?.level || 'unmeasured';
   const internalPct = f0.items.filter((it) => it.kind === 'bucket' && it.status === 'confirmed').reduce((a, it) => a + N(it.pct), 0);
   const internalShare = c > 0 ? Math.round((internalPct / c) * 100) : 0;
-  if (c >= 90 && lvl === 'low') return say('high_alloc_low_load', `مؤكد ${c}% وحِمل المهام ${N(load?.pct)}%`);
-  if (c <= 40 && lvl === 'high') return say('low_alloc_high_load', `مؤكد ${c}% وحِمل المهام ${N(load?.pct)}%`);
+  if (c >= 90 && lvl === 'low') return say('high_alloc_low_load', `مؤكد ${c}% ونسبة الإشغال ${N(load?.pct)}%`);
+  if (c <= 40 && lvl === 'high') return say('low_alloc_high_load', `مؤكد ${c}% ونسبة الإشغال ${N(load?.pct)}%`);
   if (c > 0 && internalShare >= 60) return say('internal_high', `العمل الداخلي ${internalPct}% من ${c}% (${internalShare}%)`);
-  if (lvl === 'high' && c >= 70) return say('high_load_pressure', `حِمل المهام ${N(load?.pct)}% مع تسكين ${c}%`);
+  if (lvl === 'high' && c >= 70) return say('high_load_pressure', `نسبة الإشغال ${N(load?.pct)}% مع تسكين ${c}%`);
   // نهاية التسكين: آخر شهرٍ فيه مؤكدٌ داخل الأفق، وما بعده صفرٌ حتى آخر الأفق.
   const series = [f0, ...next];
   let last = -1;
@@ -222,7 +222,7 @@ async function scopedEmployees(user, period, { department, sector } = {}) {
       WHERE ${where.join(' AND ')} ORDER BY e.name_ar`, params);
 }
 
-/** S17 — جدول الاستخدام لشهرٍ: التسكين المؤكد، القابل للفوترة، حِمل المهام، التغطية (غير متاحة)، الإشارة. */
+/** S17 — جدول الاستخدام لشهرٍ: التسكين المؤكد، القابل للفوترة، نسبة الإشغال من المهام، التغطية (غير متاحة)، الإشارة. */
 export async function utilizationTable(user, { year, month, department, signal, sector } = {}) {
   if (!canReadResources(user)) throw forbidden('تحليل الاستخدام يتطلب صلاحية عرض الفريق — اطلبها من مدير النظام');
   const period = parsePeriod({ year, month });
@@ -246,7 +246,7 @@ export async function utilizationTable(user, { year, month, department, signal, 
       ...SIGNAL_KEYS.map((k) => `${SIGNALS[k]}: ${SIGNAL_RULE_AR[k]}.`),
       'الإشارة سؤال يُفحص مع أدلته، لا حكم.',
     ],
-    basis_ar: 'الأرقام من الطاقة التعاقدية المسجلة والتسكين المؤكد للشهر، وحِمل المهام من النسب المقدَّرة على المهام المفتوحة. الإشارة الأولى المنطبقة بترتيب القواعد.',
+    basis_ar: 'الأرقام من الطاقة التعاقدية المسجلة والتسكين المؤكد للشهر، ونسبة الإشغال من المهام محسوبةٌ من النسب المقدَّرة على المهام الجارية التي تُحسب. الإشارة الأولى المنطبقة بترتيب القواعد.',
     asOf: nowIso(),
   };
 }
@@ -286,7 +286,7 @@ function buildEvidence(row, period) {
   const items = f0.items.filter((it) => it.status === 'confirmed').map((it) => `${it.label} ${it.pct}%`).join(' · ');
   const ev = [
     { title_ar: 'التسكين المؤكد', value_ar: f0.state === 'out' ? 'خارج فترة الارتباط' : `${row.confirmedPct}% من طاقته${items ? ' — ' + items : ' — بلا تسكين'}`, source: planning, asOf },
-    { title_ar: 'حِمل المهام', value_ar: `${row.taskLoad.level_ar}${row.taskLoad.open ? ` (${row.taskLoad.pct}% من ${row.taskLoad.open} مهام، ${row.taskLoad.unsized} بلا نسبة)` : ' (لا مهام مفتوحة)'}`,
+    { title_ar: 'نسبة الإشغال من المهام', value_ar: `${row.taskLoad.level_ar}${row.taskLoad.open ? ` (${row.taskLoad.pct}% من ${row.taskLoad.open} مهام، ${row.taskLoad.unsized} بلا نسبة)` : ' (لا مهام جارية تُحسب)'}`,
       source: { label_ar: 'مهام الشخص', href: row.userId ? `/app/person/${row.userId}?tab=tasks` : null }, asOf },
     { title_ar: 'العمل الداخلي', value_ar: f0.state === 'out' ? '—' : `${row.internalPct}%${row.confirmedPct ? ` (${Math.round((row.internalPct / row.confirmedPct) * 100)}% من المؤكد)` : ''}`, source: planning, asOf },
     { title_ar: 'الأشهر القادمة', value_ar: row.upcoming.map((u) => `${MONTHS_AR[Number(u.key.slice(5, 7)) - 1]} ${u.state === 'out' ? 'خارج الارتباط' : `${u.confirmedPct}%`}${u.pendingPct ? ` (طلب معلَّق ${u.pendingPct}%)` : ''}`).join(' · '), source: planning, asOf },

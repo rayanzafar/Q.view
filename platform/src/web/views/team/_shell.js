@@ -20,7 +20,7 @@ export const PATHS = Object.freeze({
   work: { key: 'work', label: G.pathWork, href: '/app/team/work', icon: 'tasks',
     blurb: 'نظرة الفريق عبر المهام والمشاريع والمنتجات والفرص — وكل مهمة تُعدّ مرة واحدة.' },
   analysis: { key: 'analysis', label: G.pathAnalysis, href: '/app/team/analysis', icon: 'trend',
-    blurb: 'حلّل الاستخدام وحِمل المهام والتغطية، وخطّط الاحتياجات القادمة.' },
+    blurb: 'حلّل الاستخدام ونسبة الإشغال من المهام والتغطية، وخطّط الاحتياجات القادمة.' },
 });
 
 // تبويبات كل مسار — الترتيب كما في الصور (من اليمين).
