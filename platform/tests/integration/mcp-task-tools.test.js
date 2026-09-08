@@ -12,6 +12,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
+// تقويم الأداة هو تقويم الرياض لا تقويم غرينتش — والتثبيت هنا لا في `Date` مباشرةً.
+import { riyadhDate } from '../../src/core/i18n/time.js';
 
 const dir = mkdtempSync(join(tmpdir(), 'sanad-mcp-tasks-'));
 process.env.SANAD_DB = join(dir, 't.db');
@@ -27,8 +29,12 @@ const { TASK_TOOLS } = await import('../../src/modules/ai/tasks-tools.js');
 registerTools(TASK_TOOLS);
 
 const T = '2026-01-05T00:00:00Z';
-const today = new Date().toISOString().slice(0, 10);
-const past = new Date(Date.now() - 5 * 86400000).toISOString().slice(0, 10);
+// «اليوم» في هذا الملف هو يومُ الرياض بعينه، لأن الأداة تقيس التأخّر بيوم الناس هنا
+// (`riyadhDate`) لا بيوم غرينتش. ولو بُنيت المواعيد على UTC لانقلب الحكم كلَّ ليلة بين
+// التاسعة ومنتصف الليل: يومُ الرياض يكون قد تقدّم، فتصير المهمةُ «المستحقة اليوم» متأخرةً
+// عند الأداة وهي في نظر الملف مستحقّةٌ بعد — وهذا ما أسقط الفحص فعلاً عند الساعة ٢٢:٣١.
+const today = riyadhDate();
+const past = riyadhDate(new Date(Date.now() - 5 * 86400000));
 // عضوية المشروع تأتي مع المستخدم المحلول كما تأتي في الجلسة الحقيقية — بدونها يردّ الربطُ
 // بالمشروع بحقّ («خارج نطاقك»)، وهو سلوكٌ سليم لا عيب فيه.
 const U = (id, role, scope) => ({ id, username: id, name_ar: 'مستخدم ' + id, role_id: role, sector_id: 'SOL', scope, projectIds: new Set(['P1']), teamIds: new Set() });
@@ -80,6 +86,9 @@ test('العدسات وعدّاداتها، والغلاف بترقيمه', asyn
   const out = await runTool(ctxOf(ME), 'sanad_list_tasks', {});
   envelopeOk(out, 'sanad_list_tasks');
   assert.equal(out.who, 'me');
+  // التقويمان واحد: يومُ الغلاف هو اليوم الذي بُنيت عليه مواعيد هذا الملف. لو افترقا لانقلبت
+  // كلُّ عدسةٍ زمنيةٍ أدناه بلا سببٍ ظاهر، فيُقال ذلك هنا صراحةً بدل أن يُقرأ من رقمٍ مضلِّل.
+  assert.equal(out.today, today, 'يومُ الأداة هو يومُ الملف — تقويم الرياض في الاثنين');
   assert.ok(out.partial && out.partial.page === 1 && Number.isInteger(out.partial.total), 'الترقيم كامل بعدد كلي');
   assert.equal(out.partial.total, 4, 'مهامي الأربع');
   assert.equal(out.counters.overdue.count, 1, 'متأخرة واحدة');

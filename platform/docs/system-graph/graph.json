@@ -1,18 +1,18 @@
 {
   "version": 1,
-  "sourceDigest": "d1e1dfbcec4714a194cf0c04b2ac9907c4e52fab4c1dc77cbbf1001179b254df",
-  "sourceFiles": 670,
+  "sourceDigest": "94d7ab40bc7a13c7df53a5372b0fefc103807ff6854ede8ab89fb21809f382d1",
+  "sourceFiles": 668,
   "counts": {
     "code": 263,
     "test": 300,
-    "automation": 59,
+    "automation": 57,
     "module": 20,
     "route": 333,
     "page": 26,
     "table": 110,
     "role": 18,
     "permission": 9,
-    "issue": 75,
+    "issue": 76,
     "journey": 14,
     "metric": 4,
     "workflow": 6,
@@ -5132,15 +5132,6 @@
       ]
     },
     {
-      "id": "file:scripts/add-tasks-on-behalf.mjs",
-      "kind": "automation",
-      "label": "add-tasks-on-behalf.mjs",
-      "detail": "scripts/add-tasks-on-behalf.mjs",
-      "sources": [
-        "scripts/add-tasks-on-behalf.mjs"
-      ]
-    },
-    {
       "id": "file:scripts/apply-bd-project-grants-v534.mjs",
       "kind": "automation",
       "label": "apply-bd-project-grants-v534.mjs",
@@ -5642,15 +5633,6 @@
       "detail": "scripts/sweep.mjs",
       "sources": [
         "scripts/sweep.mjs"
-      ]
-    },
-    {
-      "id": "file:scripts/transcript-to-md.mjs",
-      "kind": "automation",
-      "label": "transcript-to-md.mjs",
-      "detail": "scripts/transcript-to-md.mjs",
-      "sources": [
-        "scripts/transcript-to-md.mjs"
       ]
     },
     {
@@ -22228,6 +22210,16 @@
       ]
     },
     {
+      "id": "issue:KI-124",
+      "kind": "issue",
+      "label": "KI-124 · ai/task-tools",
+      "detail": "**عدسة «المتأخرة» في أداة المساعد `sanad_list_tasks` تعدّ مهمة مستحقّة اليوم متأخرة.** اختبار `tests/integration/mcp-task-tools.test.js:79` («العدسات وعدّاداتها، والغلاف بترقيمه») يتوقّع مهمةً واحدة متأخرة (موعدها قبل اليوم بخمسة أيام) فيصله ثلاث — مهمتان موعدهما اليوم نفسه تُحسبان معه، على الأرجح لأن الشرط `due_date <= today` بدل `due_date < today`. أُعيد إنتاجه على فرع origin وحده في شجرة عمل مؤقتة، بمعزل عن أي دمج — العيب في التزام v5.86 نفسه («أدوات المساعد تكتمل») لا في دمجه هنا.",
+      "status": "open",
+      "sources": [
+        "docs/KNOWN-ISSUES.md"
+      ]
+    },
+    {
       "id": "issue:KI-123",
       "kind": "issue",
       "label": "KI-123 · tooling/sweep",
@@ -37850,6 +37842,13 @@
     },
     {
       "from": "file:tests/integration/mcp-task-tools.test.js",
+      "to": "file:src/core/i18n/time.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/mcp-task-tools.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/mcp-task-tools.test.js",
       "to": "file:src/core/db/index.js",
       "label": "استيراد صريح",
       "evidence": "tests/integration/mcp-task-tools.test.js",
@@ -44888,41 +44887,6 @@
       "to": "file:src/modules/io/xlsx.js",
       "label": "استيراد صريح",
       "evidence": "tests/unit/xlsx.test.js",
-      "kind": "source"
-    },
-    {
-      "from": "file:scripts/add-tasks-on-behalf.mjs",
-      "to": "file:src/core/db/index.js",
-      "label": "استيراد صريح",
-      "evidence": "scripts/add-tasks-on-behalf.mjs",
-      "kind": "source"
-    },
-    {
-      "from": "file:scripts/add-tasks-on-behalf.mjs",
-      "to": "file:src/core/db/index.js",
-      "label": "استيراد صريح",
-      "evidence": "scripts/add-tasks-on-behalf.mjs",
-      "kind": "source"
-    },
-    {
-      "from": "file:scripts/add-tasks-on-behalf.mjs",
-      "to": "file:src/core/audit/index.js",
-      "label": "استيراد صريح",
-      "evidence": "scripts/add-tasks-on-behalf.mjs",
-      "kind": "source"
-    },
-    {
-      "from": "file:scripts/add-tasks-on-behalf.mjs",
-      "to": "file:src/core/rbac/index.js",
-      "label": "استيراد صريح",
-      "evidence": "scripts/add-tasks-on-behalf.mjs",
-      "kind": "source"
-    },
-    {
-      "from": "file:scripts/add-tasks-on-behalf.mjs",
-      "to": "file:src/modules/pmo/tasks.js",
-      "label": "استيراد صريح",
-      "evidence": "scripts/add-tasks-on-behalf.mjs",
       "kind": "source"
     },
     {
@@ -62727,13 +62691,6 @@
       "kind": "text-reference"
     },
     {
-      "from": "file:scripts/add-tasks-on-behalf.mjs",
-      "to": "table:app_user",
-      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
-      "evidence": "scripts/add-tasks-on-behalf.mjs",
-      "kind": "text-reference"
-    },
-    {
       "from": "file:scripts/apply-bd-project-grants-v534.mjs",
       "to": "table:app_user",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
@@ -68388,6 +68345,20 @@
       "label": "update @ department",
       "evidence": "src/core/rbac/matrix.js",
       "kind": "grant"
+    },
+    {
+      "from": "issue:KI-124",
+      "to": "file:src/modules/ai/tasks-tools.js",
+      "label": "يشير السجل إلى",
+      "evidence": "docs/KNOWN-ISSUES.md",
+      "kind": "reported"
+    },
+    {
+      "from": "issue:KI-124",
+      "to": "file:tests/integration/mcp-task-tools.test.js",
+      "label": "يشير السجل إلى",
+      "evidence": "docs/KNOWN-ISSUES.md",
+      "kind": "reported"
     },
     {
       "from": "issue:KI-123",
