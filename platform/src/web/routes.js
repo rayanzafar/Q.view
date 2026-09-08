@@ -86,6 +86,10 @@ const nextCookieOpts = { httpOnly: true, sameSite: 'lax', secure: config.env ===
 // يُنزل الموظفَ بعد دخوله على مستندٍ عارٍ بلا قائمةٍ ولا طريق رجوع.
 function safeDestination(raw) {
   const v = String(raw || '');
+  // وشاشة الإذن بربط المساعد وجهةٌ داخلية ثانية مقبولة: من ضغط «ربط» في مساعده قبل دخوله
+  // يُرسَل إلى الدخول، ولولا قبولها هنا لهبط على صفحته الأولى وضاع طلب الإذن بلا رسالة.
+  // تمرّ بحرّاس هذا الملف نفسها (بلا `//` ولا `..`)، والمسار محدَّد لا بادئة مفتوحة.
+  if (v.startsWith('/oauth/authorize?') && !v.includes('\\') && !v.includes('..')) return v;
   if (!v.startsWith('/app/') || v.startsWith('//') || v.includes('\\')) return null;
   // و`..` مرفوضة كذلك: `/app/..//evil.example` يمرّ بالفحوص أعلاه، ويحلّه المتصفّح المطابق
   // للمواصفة إلى مسارٍ من أصلنا (فلا تحويلة مفتوحة) — لكن أي وسيطٍ يُسوّي المسار ثم يُعيد
@@ -221,6 +225,7 @@ const PAGES = {
   home: P.homePage,
   'revenue-review': P.revenueReviewPage,
   'sector-targets': P.sectorTargetsPage,
+  'assistant-link': P.assistantLinkPage,
   ceo: P.ceoPage, portfolio: P.portfolioPage, sector: P.sectorPage, opportunities: P.opportunitiesPage,
   'my-opportunities': P.myOpportunitiesPage,
   projects: P.projectsPage, tasks: P.tasksPage, timesheet: P.timesheetPage, approvals: P.approvalsPage,

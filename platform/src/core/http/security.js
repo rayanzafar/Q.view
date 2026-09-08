@@ -3,6 +3,7 @@
 // enforcing قرار إصدار لاحق بعد اكتمال الانتقال إلى data-action (انظر docs/SECURITY-REPORT.md).
 // وتوجيها 'wasm-unsafe-eval' وworker-src 'self' لقارئ البطاقات داخل المتصفّح (عاملٌ من أصلنا
 // يشغّل WebAssembly) — يُكتبان اليوم كي لا يكسر التحويلُ إلى enforcing القارئَ بصمت غداً (ADR-0014).
+import { createHash } from 'node:crypto';
 import { config } from '../config.js';
 
 // مسارا معاينة داخليان فقط يُضمَّنان فعلياً بـ<iframe> من نفس المنصة (معاينة التقرير في صفحة
@@ -90,3 +91,37 @@ export const otpIpLimiter = bucketLimiter({ capacity: 15, refillPerSec: 1 / 20, 
 // والحدّ هنا طبقةٌ ثانية فوق سقف المحاولات الخمس المحفور في الرمز نفسه (ذاك يحرق الرمز، وهذا
 // يبطّئ من يجرّب رموزاً متتالية) — فيسعُه أن يكون أوسع دون أن يُضعِف الحماية.
 export const otpVerifyLimiter = bucketLimiter({ capacity: 20, refillPerSec: 1 / 3, keyFn: (req) => `OV:${req.ip}`, redirectTo: '/login?e=2' });
+
+// ── ربط المساعد الخارجي ───────────────────────────────────────────────────────────────────
+// نقطة البروتوكول: المفتاح الرمز نفسه لا العنوان — نافذتا مساعدٍ خلف عنوانٍ واحد لا تستنفد
+// إحداهما الأخرى، ورمزٌ واحدٌ مسروق لا يُغرق المنصة من عناوين كثيرة. ونأخذ بادئة بصمة الرمز
+// لا الرمز: مفاتيح الخريطة تعيش في الذاكرة، فلا يُحفظ فيها سرٌّ كامل.
+const mcpKey = (req) => {
+  const h = String(req.get('authorization') || '');
+  if (!/^Bearer\s+/i.test(h)) return `M:${req.ip}`;
+  return `M:${createHash('sha256').update(h.replace(/^Bearer\s+/i, '').trim()).digest('hex').slice(0, 24)}`;
+};
+export const mcpLimiter = bucketLimiter({ capacity: 120, refillPerSec: 2, keyFn: mcpKey });
+// مسارات الإذن والتبديل: أضيق من نقطة البروتوكول — الربط فعلٌ نادر بطبعه (مرة لكل موظف، ثم
+// تجديدٌ كل ثماني ساعات). والسقف يتّسع ليومِ التفعيل الأول حين يربط الفريق كله من عنوان المكتب
+// نفسه (أربعة طلبات لكل موظف)، ولا يتّسع لتخمينٍ آلي. والحماية الحقيقية ليست هنا على أي حال:
+// من لا يملك مفتاح التحقق أو رمز التجديد لا ينفعه الإلحاح.
+export const oauthLimiter = bucketLimiter({ capacity: 120, refillPerSec: 1 / 2, keyFn: (req) => `OA:${req.ip}` });
+
+/**
+ * يسمح لنموذجٍ واحد بأن يُرسِل إلى أصلٍ خارجي مسمّى — لشاشة الإذن بربط المساعد وحدها.
+ *
+ * السبب: `form-action 'self'` تُطبَّق في المتصفحات على **وجهة التحويل بعد الإرسال** أيضاً،
+ * وشاشة الإذن تُحوِّل بطبيعتها إلى عنوان عودة المساعد. والسياسة اليوم في وضع الإبلاغ فلا يظهر
+ * الأثر؛ ويوم تُحوَّل إلى إلزام ينكسر الربط كله بصمت. فيُكتب الاستثناء الآن ضيّقاً: أصلٌ واحد،
+ * على ردٍّ واحد، مصدره عنوان عودة **مسجَّل ومطابَق حرفياً** لا نصٌّ من الطلب.
+ */
+export function allowFormActionTo(res, origin) {
+  if (!origin) return;
+  for (const name of ['Content-Security-Policy', 'Content-Security-Policy-Report-Only']) {
+    const value = res.getHeader(name);
+    if (typeof value === 'string' && value.includes("form-action 'self'")) {
+      res.setHeader(name, value.replace("form-action 'self'", `form-action 'self' ${origin}`));
+    }
+  }
+}

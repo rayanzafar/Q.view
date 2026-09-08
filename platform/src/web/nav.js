@@ -35,6 +35,7 @@ export const NAV_ITEMS = [
   // من القائمة وحده لا يكفي، فالبوابة في policy/pages.js مغلقة كذلك.
   { key: 'approvals', ar: 'الاعتمادات', ic: 'approvals', group: 'work' },
   { key: 'guide', ar: 'دليلي', ic: 'list', group: 'work' },
+  { key: 'assistant-link', ar: 'ربط المساعد', ic: 'ai', group: 'work' },
   { key: 'team', ar: 'الفريق', ic: 'team', group: 'manage' },
   { key: 'staffing', ar: 'التسكين', ic: 'clock', group: 'manage' },
   { key: 'imports', ar: 'البيانات', ic: 'upload', group: 'manage' },

@@ -9,7 +9,7 @@ import { seedRbac } from '../scripts/seed-rbac.js';
 import { stopScheduler } from './core/jobs/scheduler.js';
 import { attachContext } from './core/http/context.js';
 import { csrf } from './core/http/csrf.js';
-import { securityHeaders, loginLimiter, apiLimiter, otpEmailLimiter, otpIpLimiter, otpVerifyLimiter } from './core/http/security.js';
+import { securityHeaders, loginLimiter, apiLimiter, otpEmailLimiter, otpIpLimiter, otpVerifyLimiter, mcpLimiter, oauthLimiter } from './core/http/security.js';
 import { errorHandler } from './core/http/errors.js';
 import { announcedBuildId } from './core/http/build-id.js';
 import { logError, writeFatalSync, trimStack } from './core/obs/log.js';
@@ -18,6 +18,7 @@ import { captureRejection } from './core/obs/capture.js';
 import { authRouter } from './modules/auth.routes.js';
 import { apiRouter } from './modules/api.routes.js';
 import { aiRouter } from './modules/ai.routes.js';
+import { mcpRouter } from './modules/mcp/mcp.routes.js';
 import { webRouter } from './web/routes.js';
 import { startScheduler } from './core/jobs/scheduler.js';
 
@@ -90,10 +91,15 @@ export async function createApp() {
   app.use('/auth/otp/request-web', otpEmailLimiter, otpIpLimiter);
   app.use('/auth/otp/verify-web', otpVerifyLimiter);
   app.use('/api', apiLimiter);
+  app.use('/mcp', mcpLimiter);
+  app.use('/oauth', oauthLimiter);
 
   app.use('/auth', authRouter);
   app.use('/api', apiRouter);
   app.use('/api/ai', aiRouter);
+  // ربط المساعد الخارجي: على الجذر لأن وثائق الاكتشاف عناوينها ثابتة بالمواصفة، وقبل صفحات
+  // المنتج كي لا يبتلع مسارُ صفحةٍ عاماً نقطةَ بروتوكولٍ يناديها برنامج.
+  app.use('/', mcpRouter);
   app.use('/', webRouter);
   app.use(errorHandler());
   return app;

@@ -189,6 +189,22 @@ permissions, complete test coverage or deployed connectivity. No graph database 
 service was added.
 
 
+
+## ربط المساعد الخارجي — v5.81
+
+طبقةٌ ثالثة تدخل بها الطلبات إلى المنصة، بجوار الصفحات والواجهة الداخلية: **بروتوكول المساعد
+(MCP)** على `POST /mcp` داخل عملية سند نفسها، مركَّباً على الجذر (`app.use('/', mcpRouter)`) لأن
+وثائق الاكتشاف عناوينُها ثابتة بالمواصفة تحت `/.well-known/`.
+
+- **الهوية:** OAuth 2.1 + PKCE، وسند هو خادم التفويض. الرمز مربوط بمستخدم واحد (`user_id` إلزامي
+  في `mcp_token`)، ويُحلّ في كل نداء بـ`resolveUserFromSession` — **نفس** بانِي المستخدم الذي
+  تستعمله الجلسة. فلا طريق ثانٍ لبناء الصلاحيات ولا انحراف ممكن بين البابين.
+- **الطبقة لا تقرّر:** `src/modules/mcp/server.js` ترجمةٌ خالصة إلى `runTool` — البوابة والخدمة
+  والسجل حيث هي. وأدوات المعرفة بالمنصة تقرأ خدمة الدليل نفسها التي تبني شاشة «دليلي».
+- **ما لا يُقبل هناك:** كعكة جلسة (الرمز في الترويسة وحده)، وحمولة كتابةٍ خام (رمز معاينة وحده)،
+  ورمزٌ طُلب لخادمٍ آخر (`resource` يُقارن بعنوان هذا الخادم).
+- المخطط: `mcp_client` · `mcp_auth_code` · `mcp_token` (ترحيلة 044). التفصيل والقرار: ADR-0019.
+
 ## Annual targets and project handoff — v5.78
 
 Annual target reads use budget by sector_id + fiscal_year; missing/duplicate records remain

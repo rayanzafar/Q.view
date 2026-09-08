@@ -22,3 +22,5 @@ export * from './views/team/index.js';
 export * from './views/revenue-review.js';
 
 export * from './views/sector-targets.js';
+
+export * from './views/assistant-link.js';

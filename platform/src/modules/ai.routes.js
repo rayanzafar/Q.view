@@ -24,12 +24,16 @@ import { requireAuth } from '../core/http/context.js';
 import { ask, aiStatus, optionsFor, proposePreview, registerIntents } from '../core/ai/assistant.js';
 import { listActivity } from '../core/ai/store.js';
 import { applyChange } from './ai/apply.js';
-import { listTools, runTool } from './ai/team-tools.js';
+import { listTools, runTool, registerTools } from './ai/team-tools.js';
 import { TEAM_INTENTS } from './ai/team-intents.js';
+import { GUIDE_TOOLS } from './ai/guide-tools.js';
 
 // نوايا وحدة «الفريق والموارد» تُسجَّل هنا مرةً واحدة: `core/ai` لا يستورد `modules`، والوحدة
 // تأتي إليه عند التركيب — فتظهر في بطاقات الاقتراح بمنحها وتُصنَّف قبل الأنماط العامة.
 registerIntents(TEAM_INTENTS);
+// وأدوات معرفة المنصة (الدليل والمعجم والهوية) تُسجَّل هنا كذلك: سطحٌ واحد لأدوات المساعد
+// داخل المنصة وخارجها، ببوابةٍ واحدة وسجلٍّ واحد.
+registerTools(GUIDE_TOOLS);
 
 export const aiRouter = Router();
 aiRouter.use(requireAuth());

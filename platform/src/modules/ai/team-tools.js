@@ -938,18 +938,32 @@ export const TEAM_TOOLS = [
 ];
 export const TOOL_BY_NAME = Object.fromEntries(TEAM_TOOLS.map((t) => [t.name, t]));
 
+// ── أدوات تُسجَّل من وحدةٍ أخرى ────────────────────────────────────────────────────────────
+// نظير `registerIntents` في المساعد: وحدةٌ تملك أدواتها تأتي بها عند التركيب، فتمرّ بنفس
+// البوابة ونفس السجل ونفس المسار — بدل سطحٍ ثانٍ له قائمةٌ ثانية وتدقيقٌ ثانٍ يشيخان وحدهما.
+// (`TEAM_TOOLS` و`TOOL_BY_NAME` يبقيان جدول §13 وحده كما وُثِّق — الإضافات منفصلة عنه.)
+const EXTRA_TOOLS = [];
+export function registerTools(tools) {
+  for (const t of tools || []) {
+    if (!t?.name || TOOL_BY_NAME[t.name] || EXTRA_TOOLS.some((x) => x.name === t.name)) continue;
+    EXTRA_TOOLS.push(t);
+  }
+}
+const allTools = () => [...TEAM_TOOLS, ...EXTRA_TOOLS];
+const toolNamed = (name) => allTools().find((t) => t.name === name) || null;
+
 const safeAllow = (tool, user) => { try { return !!tool.allow(user); } catch { return false; } };
 
 /** العقد الآلي: الأدوات المتاحة لهذا الحساب — ما يُعرض هو ما يُنفَّذ (والبوابة تُفحص ثانيةً عند التشغيل). */
 export function listTools(user) {
-  return TEAM_TOOLS.filter((t) => safeAllow(t, user))
+  return allTools().filter((t) => safeAllow(t, user))
     .map(({ name, label_ar, kind, description_ar, input, output_ar }) => ({ name, label_ar, kind, description_ar, input, output_ar }));
 }
 
 /** تشغيل أداة باسمها: البوابة ثم الخدمة ثم السجل بنتيجته — والخطأ يصعد بنصّه العربي كما هو. */
 export async function runTool(ctx, name, input) {
   const user = ctx?.user;
-  const tool = TOOL_BY_NAME[String(name || '').trim()];
+  const tool = toolNamed(String(name || '').trim());
   if (!tool) throw notFound('لا أداة بهذا الاسم — اطلب قائمة الأدوات المتاحة لك أولاً');
   const sectorId = user?.sector_id || null;
   if (!safeAllow(tool, user)) {
