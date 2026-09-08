@@ -33,7 +33,7 @@ import { config } from '../../core/config.js';
 import { DELIVERY_SECTOR_SQL } from '../../core/org/kind.js';
 import { G } from '../i18n/glossary.js';
 import { monthLabel, quarterLabel, nowDot, currentMonthIndex, MONTHS_AR, MONTHS_EN3, QUARTERS_AR } from '../../core/i18n/time.js';
-import { countAr, dayWord } from '../../core/i18n/plural.js';
+import { countAr, countedAr, dayWord } from '../../core/i18n/plural.js';
 import { esc, ddWrap, attain, ddRows, sarShort } from './_shared.js';
 
 // الفترة التقويمية (?p=y | q1..q4 | m1..m12) — تحلّ محل النافذة المتدحرجة على الصفحة كلها:
@@ -1431,7 +1431,7 @@ export async function sectorPage(user, opts = {}) {
     const stats = live ? [nextStat, stat('متوسط الأشهر الثلاثة القادمة', p.q3), stat('متوسط السنة', p.annual)]
       : [stat('الذروة', p.peak), `<div class="cap-stat"><span class="l">${G.monthsStaffed}</span><b class="tnum">${p.staffedMonths}</b></div>`];
     const deltaLine = live && p.monthDelta
-      ? `<div style="font-size:var(--fs-meta);color:var(--muted)"><b class="tnum" dir="ltr" style="color:${p.monthDelta > 0 ? 'var(--ink2)' : 'var(--green)'}">${p.monthDelta > 0 ? '+' : '−'}${Math.abs(p.monthDelta)}</b> ${countAr(Math.abs(p.monthDelta), { one: 'نقطة واحدة', two: 'نقطتان', few: 'نقاط', many: 'نقطة' })} عن الشهر الماضي</div>` : '';
+      ? `<div style="font-size:var(--fs-meta);color:var(--muted)"><b class="tnum" dir="ltr" style="color:${p.monthDelta > 0 ? 'var(--ink2)' : 'var(--green)'}">${p.monthDelta > 0 ? '+' : '−'}${Math.abs(p.monthDelta)}</b> ${countedAr(Math.abs(p.monthDelta), { one: 'نقطة', two: 'نقطتان', few: 'نقاط', many: 'نقطة' })} عن الشهر الماضي</div>` : '';
     const projRows = p.projects.slice(0, 8).map((pr) => {
       const period = allocationPeriod(JSON.stringify(pr.months), year);
       const v = live ? Math.round((Number(pr.months[nowMonth]) || 0) * 100) : period.avgPct;

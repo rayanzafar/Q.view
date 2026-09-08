@@ -199,6 +199,24 @@ test('S06 — المهام من خدمة المهام القائمة: مفتوح
   assertClean(html, 'المهام'); assertClean(noacc, 'مهام بلا حساب'); assertClean(zero, 'مهام صفر'); assertClean(hr, 'مهام الموارد البشرية');
 });
 
+// من له صفُّ موردٍ مسجَّل يُحوَّل إلى هذه الشاشة بدل ملف الشخص، فلزم أن يقرأ فيها الرقمَ الذي
+// يقرؤه صاحبُه في «مهامي» — لا درجةً وحدها («مرتفع») لا تقول كم.
+test('S06 — نسبة الإشغال من المهام: الدرجةُ ومعها رقمُها في اللبنة وفي سطر تبويب المهام', async () => {
+  const lead = await sess('u_lead');
+  const load = (await R.resourceProfile(lead, 'e_res', {})).taskLoad;
+  assert.ok(load && load.linked && load.pct > 0, 'المورد بلا نسبة إشغال محسوبة — الفحص بلا معنى');
+  const over = await page(lead, 'e_res', {});
+  const tile = over.match(/data-kpi="tasks"[\s\S]*?<div class="s">/)[0];
+  assert.ok(tile.includes(load.level_ar), `درجة الإشغال «${load.level_ar}» غائبة عن اللبنة`);
+  assert.ok(tile.includes(`<b class="tnum">${load.pct}</b>٪`), 'اللبنة تقول الدرجة بلا رقمها');
+  const tasks = await page(lead, 'e_res', { tab: 'tasks' });
+  const line = tasks.match(/نسبة الإشغال من المهام: <b>([^<]+)<\/b> — <b class="tnum">(\d+)<\/b>٪/);
+  assert.ok(line, 'سطر تبويب المهام لا يضع الرقم بجوار الدرجة');
+  assert.equal(line[1], load.level_ar);
+  assert.equal(Number(line[2]), load.pct);
+  assertClean(over, 'لبنة نسبة الإشغال'); assertClean(tasks, 'سطر نسبة الإشغال');
+});
+
 // ── S07 ──────────────────────────────────────────────────────────────────────
 test('S07 — القدرات: مستوياتٌ نصية وشواهد ومصدر المراجعة، والإضافة لمن يملكها، بلا نجوم ولا درجة عامة', async () => {
   const lead = await sess('u_lead');

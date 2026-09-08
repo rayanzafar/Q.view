@@ -252,6 +252,20 @@ test('الإضافة السريعة تحمل الجهة والمسؤول وال�
   assert.ok(!empHtml.includes('id="qa-assignee"'), 'من لا يملك الإسناد لا يُعرض له اختيار المسؤول');
 });
 
+// العدد والمعدود: `countAr` تُدرج الرقم بنفسها في ٣ فأكثر، فلو سبقها رقمٌ بارز قرأ صاحبُ
+// الشاشة «على ٧ ٧ مهام مفتوحة». الفحص يحرس الرأس كله: لا رقمَ يُقال مرتين متتاليتين.
+test('عدُّ المهام يُقال مرةً واحدة في رأس «مهامي» — «على ٨ مهام مفتوحة» لا «٨ ٨»', async () => {
+  const html = mainOf(await tasksPage(emp, {}));
+  const m = html.match(/من طاقتك على <b class="tnum">(\d+)<\/b> ([^<]+)/);
+  assert.ok(m, 'سطر نسبة الإشغال غائب عن رأس «مهامي»');
+  assert.ok(Number(m[1]) >= 3, `الفحص يلزمه عددٌ في فرع ٣ فأكثر، والعدد ${m[1]}`);
+  assert.equal(m[2].trim(), Number(m[1]) <= 10 ? 'مهام مفتوحة' : 'مهمة مفتوحة', 'صيغة المعدود بعد الرقم غير سليمة أو تحمل الرقم ثانيةً');
+  const card = html.slice(html.indexOf('class="card wc-day"'));
+  const dayText = card.slice(0, card.indexOf('</section>')).replace(/<[^>]+>/g, ' ');
+  const dup = dayText.match(/(\d+)\s+\1(?![\d٪%])/);
+  assert.ok(!dup, `رقمٌ قيل مرتين متتاليتين في بطاقة اليوم: «${dup && dup[0]}»`);
+});
+
 test('حالة الفراغ مصمَّمة: يوم مُغلق يقول ما بقي وأين يذهب القارئ', async () => {
   const lonely = U('w_lonely', 'consultant', 'S1', 'own');
   await insert('app_user', { id: 'w_lonely', username: 'w_lonely', name_ar: 'وحيد', role_id: 'consultant', sector_id: 'S1', scope: 'own', active: 1, created_at: TS });

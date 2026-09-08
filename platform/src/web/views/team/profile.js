@@ -197,6 +197,15 @@ export async function resourceProfilePage(user, employeeId, opts = {}) {
 }
 
 // ═══ S04 — النظرة العامة ═══════════════════════════════════════════════════════════════════════
+// ── الدرجةُ ومعها رقمُها ─────────────────────────────────────────────────────
+// «مرتفع» وحدها لا تقول كم: من يُحوَّل إلى ملف الفريق (وهو كل من له صفُّ موردٍ مسجَّل) كان
+// يقرأ الكلمة بلا الرقم الذي يقرؤه صاحبُه في «مهامي». فالرقمُ يُقال بجوارها من الحقل نفسه
+// (`taskLoad.pct`) لا من حسابٍ ثانٍ — والرقمُ داخل `tnum` كي لا ينقلب في السطر العربي.
+// و«غير مقاس» بلا رقم بقصد: صفرٌ بجوارها يناقضها (مهامُّ جاريةٌ كلُّها بلا نسبة مكتوبة).
+const loadPctHtml = (tl, { unsized = false } = {}) => (tl && tl.linked && tl.level !== 'unmeasured'
+  ? ` — <b class="tnum">${N(tl.pct)}</b>٪${unsized && N(tl.unsized) ? ` (<b class="tnum">${N(tl.unsized)}</b> بلا نسبة)` : ''}`
+  : '');
+
 function overviewHtml(p, { link }) {
   const r = p.resource; const f = p.figures; const out = !f || f.state === 'out';
   const tl = p.taskLoad || {};
@@ -206,7 +215,7 @@ function overviewHtml(p, { link }) {
     ${tile('capacity', esc(G.baseCapacity), pctHtml(nominal), `يعادل ${fteHtml(nominal)} من الدوام الكامل`)}
     ${tile('confirmed', esc(G.confirmedAllocation), out ? DASH : pctHtml(f.confirmedPct), out ? esc(G.outOfEngagement) : `${esc(G.ofHisCapacity)} · ${bandPill(f.band, f.band_ar)}`)}
     ${tile('available', esc(G.availableNow), out ? DASH : pctHtml(f.availablePct), out ? esc(G.outOfEngagement) : 'من طاقته التعاقدية المسجلة بعد المؤكد')}
-    ${tile('tasks', esc(G.taskLoad + ' من المهام'), esc(tl.level_ar || G.unmeasured), tl.linked
+    ${tile('tasks', esc(G.taskLoad + ' من المهام'), `${esc(tl.level_ar || G.unmeasured)}${loadPctHtml(tl)}`, tl.linked
     ? `<span class="tnum">${esc(tasksWord(tl.open))}</span>${N(tl.unsized) ? ` · <span class="tnum">${esc(unsizedWord(tl.unsized))}</span>` : ''}`
     : 'لا حساب دخول مرتبط — لا مهام تُقاس')}
   </div>`;
@@ -348,7 +357,7 @@ function tasksHtml(p, { payload, today }) {
   payload.openHref = openHref;
   payload.tasksReadOnly = true;
   const tl = t.taskLoad || p.taskLoad || {};
-  const loadLine = `<div class="tm-note" style="margin-bottom:.8rem">${icon('info')} ${esc(G.taskLoad + ' من المهام')}: <b>${esc(tl.level_ar || G.unmeasured)}</b> — ${esc(tl.basis_ar || '')}</div>`;
+  const loadLine = `<div class="tm-note" style="margin-bottom:.8rem">${icon('info')} ${esc(G.taskLoad + ' من المهام')}: <b>${esc(tl.level_ar || G.unmeasured)}</b>${loadPctHtml(tl, { unsized: true })} — ${esc(tl.basis_ar || '')}</div>`;
 
   if (!t.linked) {
     return `<div class="tm-card tm-profile-sec"><div class="tm-card-b">${emptyState(G.noAccountNoTasks, t.note_ar || 'المهام تُسند إلى حسابات الدخول، وهذا المورد بلا حساب مرتبط.')}

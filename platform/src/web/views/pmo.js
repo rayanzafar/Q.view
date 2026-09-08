@@ -23,7 +23,7 @@ import { sarShort, esc, bar, statMini, noticeCard, workLens, WORK_LENS_CSS, sear
 import { notesPage } from './notes.js';
 import { myNotes } from '../../modules/pmo/notes.js';
 import { MONTHS_AR, MONTHS_EN3, currentMonthIndex, monthLabelDual } from '../../core/i18n/time.js';
-import { countAr, dayWord } from '../../core/i18n/plural.js';
+import { countAr, countedAr, dayWord } from '../../core/i18n/plural.js';
 // ── مركز العمل اليومي (صفحة المهام) — الوارد الخاص بها وحدها، مفصولاً كي لا يختلط بوارد المحفظة ──
 import { completionTrend, addDays, teamTasksAccess, teamWorkload, isPersonalTask } from '../../modules/pmo/tasks.js';
 import { myTaskLoad, taskLoadFor, TASK_LOAD_AR, TASK_LOAD_BASIS_AR, TASK_LOAD_NOT_RATING_AR } from '../../modules/pmo/task-load.js';
@@ -836,10 +836,12 @@ export async function tasksPage(user, opts = {}) {
   // مقياسٌ ثالث باسمه الخاص، لا يُجمع مع الإشغال المخطَّط ولا مع القابل للفوترة — وسطرُ
   // أساسه يقول ذلك في العنوان المنبثق. وما بلا نسبة يُقال **مرةً واحدة** في لافتةٍ تحته
   // تسرده بضغطة: كان عدداً في ذيل السطر لا يفتح شيئاً، فيقرأ صاحبُه عتاباً بلا طريق إليه.
+  // والعددُ يُكتب مرةً واحدة: الرقمُ بارزٌ هنا، و`countedAr` تعطي صيغةَ المعدود وحدها — فـ`countAr`
+  // تكتب الرقم بنفسها في ٣ فأكثر، فكانت الشاشة تقول «على ٧ ٧ مهام مفتوحة».
   const loadBlock = myLoad && (myLoad.open || myLoad.pct) ? `<div class="wc-load" title="${esc(TASK_LOAD_BASIS_AR)}">
       <div class="wc-day-h" style="margin-top:.7rem">${TASK_LOAD_AR}</div>
       <div class="wc-bar" role="img" aria-label="${TASK_LOAD_AR} ${myLoad.pct} بالمئة"><span style="width:${Math.min(100, myLoad.pct)}%;background:${capacityColor(myLoad.pct)}"></span></div>
-      <div class="wc-day-num"><b class="tnum">${myLoad.pct}</b>٪ من طاقتك على <b class="tnum">${myLoad.open}</b> ${countAr(myLoad.open, { one: 'مهمة مفتوحة', two: 'مهمتين مفتوحتين', few: 'مهام مفتوحة', many: 'مهمة مفتوحة', zero: 'مهمة' })}</div>
+      <div class="wc-day-num"><b class="tnum">${myLoad.pct}</b>٪ من طاقتك على <b class="tnum">${myLoad.open}</b> ${countedAr(myLoad.open, { one: 'مهمة مفتوحة', two: 'مهمتين مفتوحتين', few: 'مهام مفتوحة', many: 'مهمة مفتوحة' })}</div>
     </div>` : '';
 
   // ── لافتةُ «بلا نسبة»: العتابُ ومعه طريقُه ──
@@ -863,7 +865,7 @@ export async function tasksPage(user, opts = {}) {
     </div>
     <div class="wc-day-r">
       <div class="wc-day-h">${G.doneThisWeek}</div>
-      <div class="wc-day-week"><b class="tnum">${weekDone}</b> ${countAr(weekDone, { one: 'مهمة', two: 'مهمتان', few: 'مهام', many: 'مهمة', zero: 'مهمة' })}</div>
+      <div class="wc-day-week"><b class="tnum">${weekDone}</b> ${countedAr(weekDone, { one: 'مهمة', two: 'مهمتان', few: 'مهام', many: 'مهمة' })}</div>
       ${trendStrip}
       ${weekDone === 0 ? '<div class="wc-day-note">لا إنجاز مسجَّل في آخر سبعة أيام — أول مهمة تُنجزها تظهر هنا.</div>' : ''}
     </div>
@@ -1200,7 +1202,7 @@ export async function tasksPage(user, opts = {}) {
   // اتجاهه («أين فريقي؟») بثمن سطرٍ واحد. ولماذا لا يبقى اللوح: كان يُكدَّس فوق الكانبان فلا
   // يحلّ العرضُ محلّ الصفحة أبداً — وهو بلاغ المالك حرفياً. الأرقام من المعدود سلفاً، بلا استعلام.
   const teamStrip = who === 'team' ? `<div class="wc-beyond">
-    فريقك: <b class="tnum">${openT.length}</b> ${countAr(openT.length, { one: 'مهمة مفتوحة', two: 'مهمتان مفتوحتان', few: 'مهام مفتوحة', many: 'مهمة مفتوحة' })}${overdue.length ? ` · <b class="tnum">${overdue.length}</b> متأخرة` : ''}${blockedCount ? ` · <b class="tnum">${blockedCount}</b> مُعطَّلة` : ''}
+    فريقك: <b class="tnum">${openT.length}</b> ${countedAr(openT.length, { one: 'مهمة مفتوحة', two: 'مهمتان مفتوحتان', few: 'مهام مفتوحة', many: 'مهمة مفتوحة' })}${overdue.length ? ` · <b class="tnum">${overdue.length}</b> متأخرة` : ''}${blockedCount ? ` · <b class="tnum">${blockedCount}</b> مُعطَّلة` : ''}
     — <a href="${qp({ view: null })}">لوح الفريق حسب الإدارة في عرض القائمة</a>
   </div>` : '';
 
