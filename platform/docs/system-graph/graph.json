@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "sourceDigest": "0258dc4093876f919e6a21d459b881ab83c072da062007c9d2b40d74bedaae4c",
+  "sourceDigest": "35894cbaa0048e691f76ab0ff1ca27fbc1b26b2ef4a7599c1e800bc6d12671d5",
   "sourceFiles": 660,
   "counts": {
     "code": 258,
@@ -12,7 +12,7 @@
     "table": 110,
     "role": 18,
     "permission": 9,
-    "issue": 74,
+    "issue": 75,
     "journey": 14,
     "metric": 4,
     "workflow": 6,
@@ -22130,6 +22130,16 @@
           "action": "update",
           "scope": "department"
         }
+      ]
+    },
+    {
+      "id": "issue:KI-117",
+      "kind": "issue",
+      "label": "KI-117 · sector/targets",
+      "detail": "**مستهدفات القطاعات الأربعة لا تظهر على أي لوحة**: `sectorDashboard` صارت تقرأ المستهدف من جدول `budget` وحده (`annual.budget?.target_revenue_halalas ?? null`)، وكانت تقرؤه من عمود القطاع القديم. وعلى بيئة التجربة **لا صفَّ موازنة لسنة 2026 لأي قطاع**، بينما القيم محفوظةٌ في `sector.target_*` بلا سنة: الحلول 40م/32م · الاستشارات 30م/24م · المشاريع الاستراتيجية 50م/40م · SAP 35م/28م (مبيعات/إيراد). فكل بطاقات «الإيراد المحقق» و«المبيعات» تقول «لا هدف مسجّل لهذه السنة»، وتسقط معها حلقةُ التحقيق ورقاقةُ المسار الزمني وتغطيةُ خط الفرص. **ليس عطلاً في الشيفرة**: صفحة «مستهدفات القطاع» تعلن القيم القديمة تحت «قيم قديمة تحتاج تحديد السنة» وتقول صراحةً إنها لا تُنسخ تلقائياً — فالمستهدف يُحدَّد للسنة بقرارٍ وسببٍ وسجل.",
+      "status": "owner-decision",
+      "sources": [
+        "docs/KNOWN-ISSUES.md"
       ]
     },
     {
@@ -67548,6 +67558,13 @@
       "label": "update @ department",
       "evidence": "src/core/rbac/matrix.js",
       "kind": "grant"
+    },
+    {
+      "from": "issue:KI-117",
+      "to": "file:src/core/reports/metrics.js",
+      "label": "يشير السجل إلى",
+      "evidence": "docs/KNOWN-ISSUES.md",
+      "kind": "reported"
     },
     {
       "from": "issue:KI-116",
