@@ -1,10 +1,10 @@
 {
   "version": 1,
-  "sourceDigest": "4ae4e3b6f84b88224e9782412debd7f4232586f9a8f6602251dd6ddf53801636",
-  "sourceFiles": 662,
+  "sourceDigest": "c872a26cb4a4c3e1a0a67c63a87f6c279a0745baf4dde19496fd361e53f59154",
+  "sourceFiles": 663,
   "counts": {
     "code": 258,
-    "test": 297,
+    "test": 298,
     "automation": 59,
     "module": 20,
     "route": 333,
@@ -4751,6 +4751,15 @@
       "detail": "tests/unit/glossary-terms.test.js",
       "sources": [
         "tests/unit/glossary-terms.test.js"
+      ]
+    },
+    {
+      "id": "file:tests/unit/historic-opps-in-sales.test.js",
+      "kind": "test",
+      "label": "historic-opps-in-sales.test.js",
+      "detail": "tests/unit/historic-opps-in-sales.test.js",
+      "sources": [
+        "tests/unit/historic-opps-in-sales.test.js"
       ]
     },
     {
@@ -43817,6 +43826,27 @@
       "kind": "source"
     },
     {
+      "from": "file:tests/unit/historic-opps-in-sales.test.js",
+      "to": "file:src/core/db/index.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/unit/historic-opps-in-sales.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/unit/historic-opps-in-sales.test.js",
+      "to": "file:src/core/rbac/index.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/unit/historic-opps-in-sales.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/unit/historic-opps-in-sales.test.js",
+      "to": "file:src/core/reports/metrics.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/unit/historic-opps-in-sales.test.js",
+      "kind": "source"
+    },
+    {
       "from": "file:tests/unit/import-engine.test.js",
       "to": "file:src/core/db/index.js",
       "label": "استيراد صريح",
@@ -52387,6 +52417,20 @@
     {
       "from": "file:tests/integration/dev-center-routes.test.js",
       "to": "table:audit_log",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/dev-center-routes.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/dev-center-routes.test.js",
+      "to": "table:product_item_task",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/dev-center-routes.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/dev-center-routes.test.js",
+      "to": "table:task",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
       "evidence": "tests/integration/dev-center-routes.test.js",
       "kind": "text-reference"
@@ -61461,6 +61505,27 @@
       "to": "table:collection",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
       "evidence": "tests/unit/finance-scope-consistency.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/unit/historic-opps-in-sales.test.js",
+      "to": "table:sector",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/unit/historic-opps-in-sales.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/unit/historic-opps-in-sales.test.js",
+      "to": "table:stage",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/unit/historic-opps-in-sales.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/unit/historic-opps-in-sales.test.js",
+      "to": "table:opportunity",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/unit/historic-opps-in-sales.test.js",
       "kind": "text-reference"
     },
     {
