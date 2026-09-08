@@ -115,8 +115,17 @@ test('حساب البوابة الخارجية لا يُنشئ مهمة ولا �
     (e) => e.status === 403 && /مدير النظام/.test(e.message));
 });
 
+// والمساعد ليس باباً خلفياً حول شرط النسبة: المهمة تُسنَد إلى صاحب الطلب نفسه، فلو قُبلت
+// هنا بلا نسبة لصار «اطلبها من المساعد» طريقَ من لا يريد أن يقدّر.
+test('ومعاينةُ مهمةٍ بلا نسبة إشغال تُردّ بالعربية — لا باب خلفي حول الشرط', async () => {
+  await assert.rejects(() => preview(USERS.emp, 'task_create', { title: 'مهمة بلا نسبة' }),
+    (e) => e.status === 400 && /نسبة الإشغال مطلوبة على مهمتك/.test(e.message));
+  await assert.rejects(() => preview(USERS.emp, 'task_create', { title: 'مهمة بنسبة خارج المدى', utilPct: 140 }),
+    (e) => e.status === 400 && /نسبة الإشغال مطلوبة على مهمتك/.test(e.message));
+});
+
 test('المهمة المُنشأة بالمساعد تُسنَد إلى صاحبها هو، ولا تُدفع إلى قائمة غيره', async () => {
-  const p = await preview(USERS.emp, 'task_create', { title: 'مهمة صنعها المساعد', priority: 'P1' });
+  const p = await preview(USERS.emp, 'task_create', { title: 'مهمة صنعها المساعد', priority: 'P1', utilPct: 10 });
   const out = await applyChange(ctx(USERS.emp), p.applyToken);
   const row = await db.get('SELECT * FROM task WHERE id = ?', [out.resourceId]);
   assert.equal(row.assignee_user_id, USERS.emp.id, 'المُسنَد إليه هو صاحب الطلب دائماً');
@@ -130,7 +139,7 @@ test('مهمة شخص آخر لا تُعايَن ولا تُغيَّر حالت�
 
 // ── دورة حياة المعاينة ────────────────────────────────────────────────────────
 test('المزلاج: المعاينة تُستعمل مرة واحدة بالضبط', async () => {
-  const p = await preview(USERS.emp, 'task_create', { title: 'مهمة المزلاج' });
+  const p = await preview(USERS.emp, 'task_create', { title: 'مهمة المزلاج', utilPct: 10 });
   const first = await store.claimPreview(USERS.emp, p.applyToken);
   assert.equal(first.ok, true);
   const second = await store.claimPreview(USERS.emp, p.applyToken);
@@ -140,7 +149,7 @@ test('المزلاج: المعاينة تُستعمل مرة واحدة بالض
 });
 
 test('معاينة غيرك لا تُفتح ولا تُقرأ ولو عرفت رمزها', async () => {
-  const p = await preview(USERS.emp, 'task_create', { title: 'مهمة خاصة' });
+  const p = await preview(USERS.emp, 'task_create', { title: 'مهمة خاصة', utilPct: 10 });
   assert.equal((await store.claimPreview(USERS.lead, p.applyToken)).reason, 'missing');
   assert.equal(await store.readPreview(USERS.lead, p.applyToken), null);
   await assert.rejects(() => applyChange(ctx(USERS.lead), p.applyToken), (e) => /لا أجد هذه المعاينة/.test(e.message));
@@ -149,7 +158,7 @@ test('معاينة غيرك لا تُفتح ولا تُقرأ ولو عرفت ر
 });
 
 test('المعاينة المنتهية لا تُطبَّق، والرسالة تقول لماذا وماذا يفعل', async () => {
-  const p = await preview(USERS.emp, 'task_create', { title: 'مهمة منتهية الصلاحية' });
+  const p = await preview(USERS.emp, 'task_create', { title: 'مهمة منتهية الصلاحية', utilPct: 10 });
   await db.run('UPDATE ai_activity_log SET expires_at = ? WHERE id = ?', ['2020-01-01T00:00:00.000Z', p.applyToken]);
   await assert.rejects(() => applyChange(ctx(USERS.emp), p.applyToken),
     (e) => e.status === 400 && /انتهت صلاحية المعاينة/.test(e.message) && /اطلبها من جديد/.test(e.message));
@@ -161,7 +170,7 @@ test('رمز مختلق أو فارغ: رفض واضح بلا انهيار', asy
 });
 
 test('كل معاينة تُكتب في السجل بصاحبها ومهلتها، ومن أكّدها يُكتب عند التطبيق', async () => {
-  const p = await preview(USERS.emp, 'task_create', { title: 'مهمة للسجل' });
+  const p = await preview(USERS.emp, 'task_create', { title: 'مهمة للسجل', utilPct: 10 });
   const before = await db.get('SELECT user_id, expires_at, applied, approved_by, outcome FROM ai_activity_log WHERE id = ?', [p.applyToken]);
   assert.equal(before.user_id, USERS.emp.id);
   assert.ok(before.expires_at > new Date().toISOString(), 'مهلة مستقبلية');

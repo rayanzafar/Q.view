@@ -66,7 +66,7 @@ after(() => rmSync(dir, { recursive: true, force: true }));
 // ═══ ① الطلب الموجَّه يُقرأ باسمه — لا مبلغ صفري ولا خطوة دور ═══════════════════
 
 test('طلب اعتماد المهمة يظهر للمدير باسمه ورافعِه ووسم «بانتظارك»', async () => {
-  const t = await tasks.quickAddTask(ctx(EMP), { title: 'إعداد خطة الاختبار', project_id: 'PRJ' });
+  const t = await tasks.quickAddTask(ctx(EMP), { title: 'إعداد خطة الاختبار', project_id: 'PRJ', utilization_pct: 10 });
   assert.equal(t.approval_state, 'PENDING', 'العيّنة بلا طلبٍ معلَّق — الفحص لا يقيس شيئاً');
   const pending = await engine.myDirectApprovals(MGR);
   assert.equal(pending.filter((a) => a.resource === 'task').length, 1, 'الطلب لم يصل إلى المدير');

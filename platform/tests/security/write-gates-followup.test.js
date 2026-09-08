@@ -48,14 +48,14 @@ after(async () => { await db.close(); wipe(); });
 
 test('حساب بوابة العميل لا يُنشئ مهمة — كان يُنشئها في أي قطاع', async () => {
   await assert.rejects(
-    async () => tasks.quickAddTask(ctx(external), { title: 'مهمة من عميل', sector_id: 'S2' }),
+    async () => tasks.quickAddTask(ctx(external), { title: 'مهمة من عميل', sector_id: 'S2', utilization_pct: 10 }),
     (e) => e.status === 403,
   );
   assert.equal((await db.get('SELECT COUNT(*) n FROM task')).n, 0, 'ولا صف يُكتب');
 });
 
 test('الموظف يُنشئ مهمته في قطاعه — البوابة لا تكسر المسار المشروع', async () => {
-  const t = await tasks.quickAddTask(ctx(employee), { title: 'مهمتي' });
+  const t = await tasks.quickAddTask(ctx(employee), { title: 'مهمتي', utilization_pct: 10 });
   assert.ok(t.id);
   assert.equal(t.sector_id, 'S1');
   assert.equal(t.assignee_user_id, employee.id, 'المُسنَد إليه هو المنشئ افتراضاً');
@@ -64,7 +64,7 @@ test('الموظف يُنشئ مهمته في قطاعه — البوابة لا
 test('من نطاقه «خاصتي» لا يزرع مهمة في لوحة قطاع آخر — القطاع يُثبَّت على قطاعه', async () => {
   // الرفض ليس الإصلاح الصحيح هنا: منح «خاصتي» يمرّ على «المهمة لي» بصرف النظر عن القطاع
   // المكتوب في الطلب، فالفحص وحده لا يمنع الزرع. التثبيت يُبقي المسار المشروع يعمل ويسدّ الزرع.
-  const t = await tasks.quickAddTask(ctx(employee), { title: 'مهمة موجَّهة لقطاع آخر', sector_id: 'S2' });
+  const t = await tasks.quickAddTask(ctx(employee), { title: 'مهمة موجَّهة لقطاع آخر', sector_id: 'S2', utilization_pct: 10 });
   assert.equal(t.sector_id, 'S1', 'القطاع المطلوب أُهمل وثُبِّت قطاع صاحبها');
   const a = await db.get("SELECT sector_id FROM audit_log WHERE resource = 'task' AND resource_id = ?", [t.id]);
   assert.equal(a.sector_id, 'S1', 'وسجل التدقيق يحمل القطاع المثبَّت لا المطلوب');

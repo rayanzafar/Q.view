@@ -911,7 +911,9 @@ export async function tasksPage(user, opts = {}) {
   // الإضافة كانت بطاقةً مفتوحةً دائماً بخمسة حقول فوق كل قائمة — حتى حين لا يريد أحدٌ إضافة
   // شيئاً. صارت زرّاً يفتحها، والحقول كما هي بمعرّفاتها فلا يتغيّر شيء تحت جافاسكربت الصفحة.
   // (بلسان المالك: «طريقه اضافه المهام … احسه سيءه».)
-  const quickAdd = readOnly ? '' : `<details class="card wc-add">
+  // ومعرّف صاحب الجلسة على الوسم: شرطُ «النسبة مطلوبة على مهمتك أنت» يقع في الخادم، والشاشة
+  // تحتاج أن تعرف «أنت» كي تقول الرسالة نفسها قبل الرحلة — لا كي تحكم مكانه.
+  const quickAdd = readOnly ? '' : `<details class="card wc-add" data-me="${esc(user.id)}">
     <summary class="wc-add-sum">${icon('plus')} مهمة جديدة</summary>
     <div class="wc-add-row">
       <input id="qa-title" name="qa-title" autocomplete="off" class="input" placeholder="ما الذي ستنجزه؟ اكتبه هنا…" aria-label="عنوان المهمة">
@@ -1253,7 +1255,7 @@ export async function tasksPage(user, opts = {}) {
     <button class="btn btn-sm" data-action="task-bulk-clear">${G.bulkClear}</button>
     <span class="wc-bulk-note">التعطيل يحتاج سبباً مكتوباً — غيّره من تفاصيل المهمة</span>
   </div>`;
-  const editorTpl = readOnly ? '' : `<template id="tk-editor">
+  const editorTpl = readOnly ? '' : `<template id="tk-editor" data-me="${esc(user.id)}">
     <div class="drawer-head">
       <div style="flex:1;min-width:0"><div style="font-size:11px;color:var(--muted);font-weight:700">${G.task}</div>
         <h3 style="font-size:16px;margin-top:.2rem" data-f="heading"></h3></div>

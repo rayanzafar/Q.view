@@ -308,7 +308,7 @@ function smallTalk(user) {
 // وما ليس حقلاً في هذا النموذج يُهمَل — والقيمة تُقبل نصاً أو رقماً فقط، وتُعاد التحقق منها
 // كلها وقت المعاينة على كل حال.
 const FORM_FIELDS = {
-  task_create: ['title', 'projectId', 'dueDate', 'priority'],
+  task_create: ['title', 'projectId', 'dueDate', 'priority', 'utilPct'],
   task_status: ['taskId', 'status', 'blockedReason'],
   opp_stage: ['oppId', 'stage', 'note'],
 };
@@ -347,6 +347,10 @@ function denialFor(intent) {
 // يكون المستخدم قد أكّد المعاينة. الشرط ينقل الطلب إلى ما قبل التأكيد: يُطلب السبب في النموذج
 // فلا يُردّ صاحبه بعد موافقته. ومصدر الشرط هنا هو مصدر القاعدة نفسه — لا نسخة ثانية في المتصفح
 // تتعفّن حين تتغيّر القاعدة.
+// نصُّ الطلب واحدٌ هنا وفي خدمة المهام: المساعد يُسنِد المهمة إلى صاحب الطلب نفسه، فشرطُه
+// شرطُ الإضافة السريعة حرفاً — ولو اختلف النصّان لقرأ الرجلُ سببين لمنعٍ واحد.
+const SIZE_REQUIRED_AR = 'نسبة الإشغال مطلوبة على مهمتك — من ١ إلى ١٠٠';
+
 const WHEN_BLOCKED = { field: 'status', equals: 'BLOCKED' };
 // شرط سبب التراجع عن الفوز: فرصةٌ **حالها مكسوب** (راية على صفّها في القائمة، لا مطابقة اسم
 // مرحلة) ومرحلةٌ جديدة ليست مرحلة فوز — وهي حرفياً قاعدة `moveStage`. مراحل الفوز تُقرأ من
@@ -374,6 +378,10 @@ async function buildForm(user, type, text, given) {
           { name: 'dueDate', label_ar: 'تاريخ الاستحقاق', kind: 'date', required: false, value: given.dueDate || null },
           { name: 'priority', label_ar: 'الأهمية', kind: 'select', required: false,
             options_kind: 'priority', value: given.priority || 'P2' },
+          // النسبة مطلوبةٌ هنا كما هي مطلوبة في الإضافة السريعة: المهمة تُسنَد إلى صاحب الطلب
+          // نفسه، وبابٌ يقبل ما يردّه الآخر يجعل الشرط زينة.
+          { name: 'utilPct', label_ar: 'نسبة الإشغال ٪', kind: 'number', required: true,
+            value: given.utilPct || null, help_ar: 'كم تأخذ هذه المهمة من طاقتك — من ١ إلى ١٠٠.' },
         ],
       },
     };
@@ -677,13 +685,17 @@ async function buildPreview(user, type, f) {
     const priority = PRIORITY_AR[f.priority] ? String(f.priority) : 'P2';
     const dueDate = f.dueDate ? String(f.dueDate).slice(0, 10) : null;
     if (dueDate && !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) throw badRequest('التاريخ يُكتب هكذا: سنة-شهر-يوم');
+    // والنسبة تُتحقَّق **وقت المعاينة** لا وقت التطبيق: المعاينة هي ما يقرؤه صاحب الطلب قبل
+    // أن يؤكّد، فردُّها هناك يصحّحها في مكانها بدل أن يسقط التأكيد بعد قراءته.
+    const utilPct = Number(String(f.utilPct == null ? '' : f.utilPct).trim());
+    if (!Number.isInteger(utilPct) || utilPct < 1 || utilPct > 100) throw badRequest(SIZE_REQUIRED_AR);
     return {
       intent: 'create_task', sectorId: project?.sector_id || user.sector_id || null,
       preview: { type, title, projectId: project?.id || null, projectName: project?.name_ar || null,
-        priority, dueDate,
+        priority, dueDate, utilPct,
         summary: `إنشاء مهمة «${title}» بأهمية ${PRIORITY_AR[priority]}`
           + `${project ? ` على مشروع «${project.name_ar}»` : ' كعمل داخلي'}`
-          + `${dueDate ? ` تستحق ${dueDate}` : ' بلا موعد استحقاق'} ومُسنَدة إليك.` },
+          + `${dueDate ? ` تستحق ${dueDate}` : ' بلا موعد استحقاق'} ومُسنَدة إليك، وتأخذ ${utilPct}٪ من طاقتك.` },
     };
   }
   if (type === 'task_status') {

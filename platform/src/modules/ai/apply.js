@@ -52,7 +52,7 @@ async function performChange(ctx, p) {
   if (p.type === 'task_create') {
     const row = await quickAddTask(ctx, {
       title: p.title, project_id: p.projectId || null, priority: p.priority || 'P2',
-      due_date: p.dueDate || null,
+      due_date: p.dueDate || null, utilization_pct: p.utilPct,
     });
     // ومهمةٌ على مشروع قد تعود معلَّقة بانتظار مدير صاحبها: يقولها المساعد صراحةً بدل
     // «تم تطبيق التغيير ✓» وحدها — فمن أنشأها من هنا يبحث عنها في المشروع ولا يجدها.

@@ -68,7 +68,7 @@ after(() => rmSync(dir, { recursive: true, force: true }));
 const mainOf = (html) => html.slice(html.indexOf('<main'), html.indexOf('</main>'));
 
 test('بطاقة المعتمِد: البند باسمه وطالبه وأزرار القرار — ومعالجها معالج شاشة الاعتمادات نفسه', async () => {
-  await tasks.quickAddTask(ctx(EMP), { title: 'مهمة سرية للاعتماد', project_id: 'PRJ' });
+  await tasks.quickAddTask(ctx(EMP), { title: 'مهمة سرية للاعتماد', project_id: 'PRJ', utilization_pct: 10 });
   const html = await homePage(MGR, {});
   const main = mainOf(html);
   assert.ok(main.includes('بانتظار اعتمادك'), 'البطاقة غائبة');
@@ -97,7 +97,7 @@ test('ولا أثر لِما ينتظر غيرَك: عنوان البند لا �
 });
 
 test('KI-035: معتمِدٌ دورُه لا يفتح شاشة الاعتمادات يرى طلبه على «صفحتي» ويحسمه منها', async () => {
-  const t = await tasks.quickAddTask(ctx(EMP2), { title: 'مهمة إدارة مدير المشاريع', project_id: 'PRJ' });
+  const t = await tasks.quickAddTask(ctx(EMP2), { title: 'مهمة إدارة مدير المشاريع', project_id: 'PRJ', utilization_pct: 10 });
   assert.equal(t.approval_state, 'PENDING');
 
   const html = mainOf(await homePage(PM, {}));

@@ -425,7 +425,8 @@ async function seedScenarioData({ C, db, D, dataset, rec, remember, seedMod }) {
   for (const k of dataset.tasks) {
     const r = await C.req(k.creator, '/api/tasks/quick', { method: 'POST', body: {
       title: k.title, project_id: ids.project[k.project], assignee_user_id: ids.user[k.assignee],
-      priority: k.priority, due_date: k.due_date, sector_id: dataset.projects.find((p) => p.key === k.project)?.sector } });
+      priority: k.priority, due_date: k.due_date, utilization_pct: k.utilization_pct || 10,
+      sector_id: dataset.projects.find((p) => p.key === k.project)?.sector } });
     t.status(r, 200, `إنشاء ${k.title}`);
     ids.task[k.key] = r.json?.id; remember('task', r.json?.id);
   }
@@ -629,7 +630,7 @@ scenario('tasks', 'المهام: إنشاء وإسناد وتعطيل وإنجا
 
   // زرع مهمة في قطاع غيره: نطاق «خاصتي» يُثبِّت القطاع على قطاع صاحبه بدل رفض الطلب.
   const planted = await C.req('demo.employee', '/api/tasks/quick', { method: 'POST',
-    body: { title: D.tag('مهمة شخصية'), sector_id: 'CONSULTING' } });
+    body: { title: D.tag('مهمة شخصية'), sector_id: 'CONSULTING', utilization_pct: 10 } });
   t.status(planted, 200, 'الموظف ينشئ مهمة لنفسه');
   remember('task', planted.json?.id);
   t.eq(planted.json?.sector_id, 'SOLUTIONS', 'قطاع المهمة ثُبِّت على قطاع صاحبها لا على ما أرسله');
@@ -1267,7 +1268,7 @@ scenario('ai-governance', 'المساعد: محرّك محلي، ولا كتاب
 
   // ⑦ الكتابة الموسَّعة: مهمة تُنشأ وتُغيَّر حالتها عبر خدمة المهام بقواعدها
   const tp = await C.req('demo.employee', '/api/ai/preview', { method: 'POST',
-    body: { type: 'task_create', fields: { title: D.tag('مهمة من المساعد'), priority: 'P1' } } });
+    body: { type: 'task_create', fields: { title: D.tag('مهمة من المساعد'), priority: 'P1', utilPct: 10 } } });
   t.status(tp, 200, 'الموظف يعاين إنشاء مهمة لنفسه');
   remember('ai_activity_log', tp.json?.applyToken);
   const tApplied = await C.req('demo.employee', '/api/ai/apply', { method: 'POST', body: { applyToken: tp.json?.applyToken } });

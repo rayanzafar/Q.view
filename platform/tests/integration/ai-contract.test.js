@@ -83,7 +83,7 @@ const fieldOf = (form, name) => (form?.fields || []).find((f) => f.name === name
 // ── ① لحظة انتهاء المعاينة تُعاد مع الرمز ─────────────────────────────────────
 test('المعاينة تُعيد لحظة انتهائها كما حُفظت — فتُقال للمستخدم بوقتٍ حقيقي', async () => {
   const prev = await req('demo.employee', '/api/ai/preview', {
-    method: 'POST', body: { type: 'task_create', fields: { title: 'مهمة لفحص المهلة' } } });
+    method: 'POST', body: { type: 'task_create', fields: { title: 'مهمة لفحص المهلة', utilPct: 10 } } });
   assert.equal(prev.status, 200);
   assert.equal(typeof prev.json.expires_at, 'string', 'لحظة الانتهاء جزء من الردّ لا من التخمين');
   const at = Date.parse(prev.json.expires_at);
@@ -97,7 +97,7 @@ test('المعاينة تُعيد لحظة انتهائها كما حُفظت �
 
 test('المعاينة المنتهية: ما تعرضه اللوحة هو ما يفرضه الخادم عند التأكيد', async () => {
   const prev = await req('demo.employee', '/api/ai/preview', {
-    method: 'POST', body: { type: 'task_create', fields: { title: 'مهمة تنتهي مهلتها' } } });
+    method: 'POST', body: { type: 'task_create', fields: { title: 'مهمة تنتهي مهلتها', utilPct: 10 } } });
   await db.run('UPDATE ai_activity_log SET expires_at = ? WHERE id = ?', ['2020-01-01T00:00:00.000Z', prev.json.previewId]);
   const late = await req('demo.employee', '/api/ai/apply', { method: 'POST', body: { previewId: prev.json.previewId } });
   assert.equal(late.status, 400);

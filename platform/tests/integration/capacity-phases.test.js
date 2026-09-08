@@ -150,8 +150,8 @@ test('المهمة تُربط بمخرَجها — ومخرَج مشروعٍ آ�
   const tasks = await import('../../src/modules/pmo/tasks.js');
   const mine = await gov.createItem(ctx(lead), 'CP1', 'deliverable', { name_ar: 'مخرَج للمهمة' });
   const other = await gov.createItem(ctx(lead), 'CP2', 'deliverable', { name_ar: 'مخرَج جار' });
-  const t = await tasks.quickAddTask(ctx(lead), { title: 'مهمة مرتبطة', project_id: 'CP1', deliverable_id: mine.id });
+  const t = await tasks.quickAddTask(ctx(lead), { title: 'مهمة مرتبطة', project_id: 'CP1', deliverable_id: mine.id, utilization_pct: 10 });
   assert.equal(t.deliverable_id, mine.id);
-  await assert.rejects(() => tasks.quickAddTask(ctx(lead), { title: 'مهمة مغلوطة', project_id: 'CP1', deliverable_id: other.id }),
+  await assert.rejects(() => tasks.quickAddTask(ctx(lead), { title: 'مهمة مغلوطة', project_id: 'CP1', deliverable_id: other.id, utilization_pct: 10 }),
     /من مشروع آخر/, 'الربط عبر المشاريع يُفسد كل تجميع لاحق بصمت');
 });

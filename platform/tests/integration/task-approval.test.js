@@ -76,7 +76,7 @@ after(() => rmSync(dir, { recursive: true, force: true }));
 // ═══ ① متى يُنتظَر الاعتماد ومتى لا ═══════════════════════════════════════════
 
 test('مهمة الموظف على مشروع تُكتب معلَّقة ويصل الطلب إلى مدير إدارته', async () => {
-  const t = await tasks.quickAddTask(ctx(EMP), { title: 'إعداد خطة الاختبار', project_id: 'PRJ' });
+  const t = await tasks.quickAddTask(ctx(EMP), { title: 'إعداد خطة الاختبار', project_id: 'PRJ', utilization_pct: 10 });
   assert.equal(t.approval_state, 'PENDING', 'أُضيفت بلا اعتماد');
   assert.equal(t.status, 'TODO', 'تغيّرت حالة العمل — والانتظار ليس حالة عمل');
   const q = await engine.myDirectApprovals(MGR);
@@ -86,33 +86,33 @@ test('مهمة الموظف على مشروع تُكتب معلَّقة ويصل
 });
 
 test('ومهمة على فرصة كذلك — الشرط «مشروع أو فرصة» لا المشروع وحده', async () => {
-  const t = await tasks.quickAddTask(ctx(EMP), { title: 'تجهيز العرض الفني', opportunity_id: 'OPP' });
+  const t = await tasks.quickAddTask(ctx(EMP), { title: 'تجهيز العرض الفني', opportunity_id: 'OPP', utilization_pct: 10 });
   assert.equal(t.approval_state, 'PENDING');
 });
 
 test('ومهمة بلا جهة مرتبطة تُضاف فوراً — عملُه الداخلي دفترُه', async () => {
-  const t = await tasks.quickAddTask(ctx(EMP), { title: 'ترتيب ملفاتي' });
+  const t = await tasks.quickAddTask(ctx(EMP), { title: 'ترتيب ملفاتي', utilization_pct: 10 });
   assert.equal(t.approval_state, null, 'عُلّق عملٌ داخلي لا يخصّ أحداً');
   const p = await tasks.quickAddTask(ctx(EMP), { title: 'موعد شخصي', work_kind: 'personal' });
   assert.equal(p.approval_state, null, 'عُلّقت مهمة شخصية — وهي دفتر صاحبها وحده');
 });
 
 test('ومهمة المدير نفسه تُضاف فوراً — لا يستأذن نفسه', async () => {
-  const t = await tasks.quickAddTask(ctx(MGR), { title: 'مراجعة الخطة', project_id: 'PRJ' });
+  const t = await tasks.quickAddTask(ctx(MGR), { title: 'مراجعة الخطة', project_id: 'PRJ', utilization_pct: 10 });
   assert.equal(t.approval_state, null);
 });
 
 test('ومَن لا مديرَ مسجَّلاً له تُضاف مهمته — فلا تُعلَّق بانتظار من لا وجود له', async () => {
   const LONE = { id: 'u_lone', username: 'lone', role_id: 'employee', scope: 'own', sector_id: 'SOL',
     employee_id: 'e_lone', projectIds: new Set(['PRJ']) };
-  const t = await tasks.quickAddTask(ctx(LONE), { title: 'مهمة يتيمة', project_id: 'PRJ' });
+  const t = await tasks.quickAddTask(ctx(LONE), { title: 'مهمة يتيمة', project_id: 'PRJ', utilization_pct: 10 });
   assert.equal(t.approval_state, null, 'عُلّقت مهمةٌ لا معتمِد لها — انتظارٌ لا ينتهي');
 });
 
 // ═══ ② المعلَّقة لا تُقرأ إلا عند كاتبها ═══════════════════════════════════════
 
 test('المعلَّقة تظهر لكاتبها في «مهامي» — ولا تظهر لمن أُسنِدت إليه ولا في لوحة المدير', async () => {
-  const t = await tasks.quickAddTask(ctx(EMP), { title: 'مهمة معلَّقة للقراءة', project_id: 'PRJ' });
+  const t = await tasks.quickAddTask(ctx(EMP), { title: 'مهمة معلَّقة للقراءة', project_id: 'PRJ', utilization_pct: 10 });
   const mine = await tasks.myTasks(EMP, {});
   assert.ok(mine.some((x) => x.id === t.id), 'اختفت من قائمة كاتبها فيحسبها ضاعت');
 
@@ -132,7 +132,7 @@ test('المعلَّقة تظهر لكاتبها في «مهامي» — ولا 
 
 test('ولا تدخل عدّادات المشروع — فلا يُقاس تقدّمٌ بعملٍ لم يُعتمد', async () => {
   const before = await metrics.projectKpis('PRJ');
-  const t = await tasks.quickAddTask(ctx(EMP), { title: 'مهمة لا تُعدّ', project_id: 'PRJ' });
+  const t = await tasks.quickAddTask(ctx(EMP), { title: 'مهمة لا تُعدّ', project_id: 'PRJ', utilization_pct: 10 });
   const after = await metrics.projectKpis('PRJ');
   assert.equal(after.totalTasks, before.totalTasks, 'ارتفع عدّاد مهام المشروع بمهمة معلَّقة');
   await db.update('task', t.id, { deleted_at: new Date().toISOString() });
@@ -143,7 +143,7 @@ test('ولا تُعدّ في تقرير الفترة — المستند يُرس
   const periods = await import('../../src/core/reports/periods.js');
   const opts = { period: 'month', lens: 'project', targetId: 'PRJ', anchor: new Date('2026-08-05T00:00:00Z') };
   const before = await periods.buildPeriodReport(ADMIN, opts);
-  const t = await tasks.quickAddTask(ctx(EMP), { title: 'مهمة خارج التقرير', project_id: 'PRJ' });
+  const t = await tasks.quickAddTask(ctx(EMP), { title: 'مهمة خارج التقرير', project_id: 'PRJ', utilization_pct: 10 });
   const after = await periods.buildPeriodReport(ADMIN, opts);
   const count = (r) => JSON.stringify(r).split('مهمة خارج التقرير').length - 1;
   assert.equal(count(after), 0, 'ظهرت مهمة معلَّقة في تقرير الفترة');
@@ -154,14 +154,14 @@ test('ولا تُعدّ في تقرير الفترة — المستند يُرس
 });
 
 test('ولا يُسجَّل عليها وقت — ساعاتٌ على عملٍ لم يُضَف بعد', async () => {
-  const t = await tasks.quickAddTask(ctx(EMP), { title: 'مهمة بلا ساعات', project_id: 'PRJ' });
+  const t = await tasks.quickAddTask(ctx(EMP), { title: 'مهمة بلا ساعات', project_id: 'PRJ', utilization_pct: 10 });
   await assert.rejects(
     () => timesheets.addEntry(ctx(EMP), { task_id: t.id, hours: 3, entry_date: '2026-08-05' }),
     /بانتظار اعتماد/, 'سُجِّل وقت على مهمة معلَّقة');
 });
 
 test('ولا يكتب فيها غيرُ كاتبها — ولو اتّسع نطاقه', async () => {
-  const t = await tasks.quickAddTask(ctx(EMP), { title: 'مهمة محجوبة عن التعديل', project_id: 'PRJ' });
+  const t = await tasks.quickAddTask(ctx(EMP), { title: 'مهمة محجوبة عن التعديل', project_id: 'PRJ', utilization_pct: 10 });
   await assert.rejects(() => tasks.updateTask(ctx(ADMIN), t.id, { title: 'عنوان آخر' }),
     /غير موجودة/, 'كُتب في مهمة معلَّقة من خارج كاتبها');
   // وكاتبها يصحّحها قبل أن ينظر فيها مديره — الردّ يُصلَّح لا يُعاد من الصفر.
@@ -173,7 +173,7 @@ test('ولا يكتب فيها غيرُ كاتبها — ولو اتّسع نط�
 // ═══ ③ القرار: اعتماد يُضيف، وردٌّ يُزيل ═══════════════════════════════════════
 
 test('اعتماد المدير يُضيفها في حينها — فتصير عملاً قائماً في كل شاشة', async () => {
-  const t = await tasks.quickAddTask(ctx(EMP), { title: 'مهمة ستُعتمَد', project_id: 'PRJ' });
+  const t = await tasks.quickAddTask(ctx(EMP), { title: 'مهمة ستُعتمَد', project_id: 'PRJ', utilization_pct: 10 });
   const req = (await engine.myDirectApprovals(MGR)).find((a) => a.resource_id === t.id);
   assert.ok(req, 'لم يصل الطلب');
   await engine.actOnApproval(ctx(MGR), req.id, 'approve');
@@ -190,7 +190,7 @@ test('اعتماد المدير يُضيفها في حينها — فتصير ع
 });
 
 test('واسم المعتمِد يُقرأ في قائمة صاحبها — ولا معتمِد لِما لم يُعتمَد', async () => {
-  const t = await tasks.quickAddTask(ctx(EMP), { title: 'مهمة يظهر معتمِدها', project_id: 'PRJ' });
+  const t = await tasks.quickAddTask(ctx(EMP), { title: 'مهمة يظهر معتمِدها', project_id: 'PRJ', utilization_pct: 10 });
   const req = (await engine.myDirectApprovals(MGR)).find((a) => a.resource_id === t.id);
   await engine.actOnApproval(ctx(MGR), req.id, 'approve');
 
@@ -199,14 +199,14 @@ test('واسم المعتمِد يُقرأ في قائمة صاحبها — ول
   assert.equal(mine.creator_name, 'سجى لشكر', 'لم يصل اسم كاتب المهمة');
 
   // عملٌ داخلي لم يحتج اعتماداً: عموداه فارغان — وهذا معناهما الصحيح.
-  const internal = await tasks.quickAddTask(ctx(EMP), { title: 'عمل داخلي بلا معتمِد' });
+  const internal = await tasks.quickAddTask(ctx(EMP), { title: 'عمل داخلي بلا معتمِد', utilization_pct: 10 });
   const irow = await taskRow(internal.id);
   assert.equal(irow.approved_by, null);
   assert.equal(irow.approved_at, null);
 });
 
 test('وردُّها يُزيلها — فلا تبقى معلَّقة إلى الأبد ولا تُقرأ عند أحد', async () => {
-  const t = await tasks.quickAddTask(ctx(EMP), { title: 'مهمة سترُدّ', project_id: 'PRJ' });
+  const t = await tasks.quickAddTask(ctx(EMP), { title: 'مهمة سترُدّ', project_id: 'PRJ', utilization_pct: 10 });
   const req = (await engine.myDirectApprovals(MGR)).find((a) => a.resource_id === t.id);
   await engine.actOnApproval(ctx(MGR), req.id, 'reject', 'ليست من عمل هذا المشروع');
 
@@ -218,7 +218,7 @@ test('وردُّها يُزيلها — فلا تبقى معلَّقة إلى ا
 });
 
 test('ولا يعتمد المرءُ مهمته بنفسه — فصلُ المهام يسري على هذا الباب كما على غيره', async () => {
-  const t = await tasks.quickAddTask(ctx(EMP), { title: 'مهمة لا تُعتمَد ذاتياً', project_id: 'PRJ' });
+  const t = await tasks.quickAddTask(ctx(EMP), { title: 'مهمة لا تُعتمَد ذاتياً', project_id: 'PRJ', utilization_pct: 10 });
   const req = await db.get("SELECT * FROM approval_request WHERE resource_id = ? AND status = 'PENDING'", [t.id]);
   await assert.rejects(() => engine.actOnApproval(ctx(EMP), req.id, 'approve'),
     /لا تعتمد طلباً رفعتَه بنفسك/, 'اعتمد الموظفُ مهمته بنفسه');
@@ -227,7 +227,7 @@ test('ولا يعتمد المرءُ مهمته بنفسه — فصلُ المه
 // ═══ الطلب يُقرأ باسمه لا بمعرّفه ═════════════════════════════════════════════
 
 test('شاشة الاعتمادات تعرض عنوان المهمة ومشروعها لا معرّفها', async () => {
-  const t = await tasks.quickAddTask(ctx(EMP), { title: 'إعداد محضر التسليم', project_id: 'PRJ' });
+  const t = await tasks.quickAddTask(ctx(EMP), { title: 'إعداد محضر التسليم', project_id: 'PRJ', utilization_pct: 10 });
   const { approvalTargets } = await import('../../src/modules/workflow/targets.js');
   const map = await approvalTargets(await engine.myDirectApprovals(MGR));
   const label = map.get(t.id);
@@ -250,7 +250,7 @@ test('كل صفٍّ قائم قبل الميزة يبقى بلا انتظار �
 });
 
 test('ومن ليس معتمِدَ الطلب يُردّ باسم النوع الصحيح: «اعتماد» للمهمة لا «تأكيد تسكين»', async () => {
-  const t = await tasks.quickAddTask(ctx(EMP), { title: 'مهمة يعتمدها مديرها وحده', project_id: 'PRJ' });
+  const t = await tasks.quickAddTask(ctx(EMP), { title: 'مهمة يعتمدها مديرها وحده', project_id: 'PRJ', utilization_pct: 10 });
   const req = await db.get("SELECT * FROM approval_request WHERE resource_id = ? AND status = 'PENDING'", [t.id]);
   const OTHER = { id: 'u_lone', username: 'lone', role_id: 'employee', scope: 'own', sector_id: 'SOL', employee_id: 'e_lone' };
   await assert.rejects(() => engine.actOnApproval(ctx(OTHER), req.id, 'approve'),

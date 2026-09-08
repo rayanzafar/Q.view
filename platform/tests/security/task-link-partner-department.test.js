@@ -62,7 +62,7 @@ after(() => rmSync(dir, { recursive: true, force: true }));
 // ═══ مدير الإدارة المشارِكة يربط مهمته بفرصة الشراكة — إنشاءً وتعديلاً ═══════════
 
 test('أيوب (المشارِكة) يضيف مهمةً مربوطةً بفرصة الشراكة — لا «هذه الفرصة خارج نطاقك»', async () => {
-  const res = await tasks.quickAddTask(ctx(AYOUB), { title: 'تجهيز عرض إدارة الحشود', opportunity_id: OPP });
+  const res = await tasks.quickAddTask(ctx(AYOUB), { title: 'تجهيز عرض إدارة الحشود', opportunity_id: OPP, utilization_pct: 10 });
   assert.ok(res && res.id, 'الإضافة رُدّت عن المشارِكة');
   const row = await db.get('SELECT opportunity_id, work_kind FROM task WHERE id = ?', [res.id]);
   assert.equal(row.opportunity_id, OPP, 'المهمة لم تُربط بالفرصة');
@@ -70,7 +70,7 @@ test('أيوب (المشارِكة) يضيف مهمةً مربوطةً بفرص�
 });
 
 test('وأيوب يعيد ربط مهمةٍ داخلية بفرصة الشراكة من باب التعديل — الحارس نفسه في المسارين', async () => {
-  const created = await tasks.quickAddTask(ctx(AYOUB), { title: 'مهمة داخلية تُصحَّح جهتها' });
+  const created = await tasks.quickAddTask(ctx(AYOUB), { title: 'مهمة داخلية تُصحَّح جهتها', utilization_pct: 10 });
   await tasks.updateTask(ctx(AYOUB), created.id, { opportunity_id: OPP });
   const row = await db.get('SELECT opportunity_id FROM task WHERE id = ?', [created.id]);
   assert.equal(row.opportunity_id, OPP, 'إعادة الربط رُدّت عن المشارِكة');
@@ -79,7 +79,7 @@ test('وأيوب يعيد ربط مهمةٍ داخلية بفرصة الشراك
 // ═══ والمشروع المشترك (ADR-0008) من بابه الواحد كذلك ═══════════════════════════
 
 test('وأيوب يربط مهمةً بمشروع الشراكة — فرع المشروع من بابه الواحد كذلك', async () => {
-  const res = await tasks.quickAddTask(ctx(AYOUB), { title: 'خطة تشغيل النقل', project_id: PRJ });
+  const res = await tasks.quickAddTask(ctx(AYOUB), { title: 'خطة تشغيل النقل', project_id: PRJ, utilization_pct: 10 });
   const row = await db.get('SELECT project_id, work_kind FROM task WHERE id = ?', [res.id]);
   assert.equal(row.project_id, PRJ, 'المهمة لم تُربط بالمشروع المشترك');
   assert.equal(row.work_kind, 'project');
@@ -89,11 +89,11 @@ test('وأيوب يربط مهمةً بمشروع الشراكة — فرع ال
 
 test('ومديرٌ لا إدارةَ له في الجهتين يُرَدّ عن الربط — فتحُ الشراكة ليس فتحاً للجميع', async () => {
   await assert.rejects(
-    () => tasks.quickAddTask(ctx(GHAREEB), { title: 'تسلُّل', opportunity_id: OPP }),
+    () => tasks.quickAddTask(ctx(GHAREEB), { title: 'تسلُّل', opportunity_id: OPP, utilization_pct: 10 }),
     (e) => e.status === 403 && /خارج نطاقك/.test(e.message),
     'ربطُ فرصةٍ لا شأن له بها مرّ');
   await assert.rejects(
-    () => tasks.quickAddTask(ctx(GHAREEB), { title: 'تسلُّل', project_id: PRJ }),
+    () => tasks.quickAddTask(ctx(GHAREEB), { title: 'تسلُّل', project_id: PRJ, utilization_pct: 10 }),
     (e) => e.status === 403 && /خارج نطاقك/.test(e.message),
     'ربطُ مشروعٍ لا شأن له به مرّ');
   assert.equal(await db.get("SELECT id FROM task WHERE title = 'تسلُّل'"), undefined);
@@ -101,6 +101,6 @@ test('ومديرٌ لا إدارةَ له في الجهتين يُرَدّ عن 
 
 test('وفرصةٌ غير موجودة تُرَدّ برسالة المنتقي الإرشادية لا برسالة الباب العامة', async () => {
   await assert.rejects(
-    () => tasks.quickAddTask(ctx(AYOUB), { title: 'على فرصةٍ ذهبت', opportunity_id: 'OPP_GONE' }),
+    () => tasks.quickAddTask(ctx(AYOUB), { title: 'على فرصةٍ ذهبت', opportunity_id: 'OPP_GONE', utilization_pct: 10 }),
     (e) => e.status === 400 && /اخترها من القائمة/.test(e.message));
 });

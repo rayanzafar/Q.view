@@ -48,13 +48,13 @@ before(async () => {
   await insert('stage', { id: 'LEAD', name_ar: 'مبدئية', default_win_pct: 10, sort_order: 1, color: '#94a3b8', is_won: 0, is_lost: 0 });
   await insert('opportunity', { id: 'WO1', title_ar: 'فرصة الحلول', sector_id: 'S1', owner_user_id: 'w_emp', stage_id: 'LEAD', year: 2026, created_at: TS });
 
-  tOverdue = await T.quickAddTask(ctx(emp), { title: 'مهمة متأخرة عليّ', due_date: day(-3), priority: 'P0', project_id: 'WP1' });
-  tToday = await T.quickAddTask(ctx(emp), { title: 'مهمة اليوم', due_date: today, opportunity_id: 'WO1', next_step: 'اتصال بالعميل صباحاً' });
-  tLater = await T.quickAddTask(ctx(emp), { title: 'مهمة بعد أسبوعين', due_date: day(14) });
-  tNoDate = await T.quickAddTask(ctx(emp), { title: 'مهمة بلا موعد' });
+  tOverdue = await T.quickAddTask(ctx(emp), { title: 'مهمة متأخرة عليّ', due_date: day(-3), priority: 'P0', project_id: 'WP1', utilization_pct: 10 });
+  tToday = await T.quickAddTask(ctx(emp), { title: 'مهمة اليوم', due_date: today, opportunity_id: 'WO1', next_step: 'اتصال بالعميل صباحاً', utilization_pct: 10 });
+  tLater = await T.quickAddTask(ctx(emp), { title: 'مهمة بعد أسبوعين', due_date: day(14), utilization_pct: 10 });
+  tNoDate = await T.quickAddTask(ctx(emp), { title: 'مهمة بلا موعد', utilization_pct: 10 });
   await T.updateTask(ctx(emp), tOverdue.id, { progress_pct: 40 });
   // مهمة على شخص من قطاع آخر — لا يجوز أن تظهر في لوحة قائد قطاع الحلول
-  await T.quickAddTask(ctx(other), { title: 'مهمة قطاع آخر سرية' });
+  await T.quickAddTask(ctx(other), { title: 'مهمة قطاع آخر سرية', utilization_pct: 10 });
 });
 after(async () => { await close(); rmSync(dir, { recursive: true, force: true }); });
 
@@ -98,7 +98,7 @@ test('سياق المهمة يأتي مع الصف: اسم المشروع واس
 
 // ── الخدمة: الحرّاس الجديدة ──────────────────────────────────────────────────
 test('إعادة ربط المهمة بمشروعها صارت ممكنة — وكانت مستحيلة بعد الإنشاء', async () => {
-  const t = await T.quickAddTask(ctx(emp), { title: 'مهمة تُعاد ربطها' });
+  const t = await T.quickAddTask(ctx(emp), { title: 'مهمة تُعاد ربطها', utilization_pct: 10 });
   const linked = await T.updateTask(ctx(emp), t.id, { project_id: 'WP1' });
   assert.equal(linked.project_id, 'WP1');
   assert.equal(linked.work_kind, 'project');
@@ -111,13 +111,13 @@ test('إعادة ربط المهمة بمشروعها صارت ممكنة — و
 });
 
 test('الربط بمشروع خارج النطاق مرفوض برسالة عربية — لا تلويث لوحة قطاع آخر', async () => {
-  const t = await T.quickAddTask(ctx(emp), { title: 'محاولة ربط بعيدة' });
+  const t = await T.quickAddTask(ctx(emp), { title: 'محاولة ربط بعيدة', utilization_pct: 10 });
   await assert.rejects(() => T.updateTask(ctx(emp), t.id, { project_id: 'WP2' }), (e) => e.code === 'forbidden');
   await assert.rejects(() => T.updateTask(ctx(emp), t.id, { project_id: 'WP_GHOST' }), /غير موجود/);
 });
 
 test('«مُعطَّلة» تتطلب سبباً مكتوباً، ويزول السبب بزوال التعطيل', async () => {
-  const t = await T.quickAddTask(ctx(emp), { title: 'مهمة تتعطل' });
+  const t = await T.quickAddTask(ctx(emp), { title: 'مهمة تتعطل', utilization_pct: 10 });
   await assert.rejects(() => T.updateTask(ctx(emp), t.id, { status: 'BLOCKED' }), /سبب التعطيل/);
   const blocked = await T.updateTask(ctx(emp), t.id, { status: 'BLOCKED', blocked_reason: 'بانتظار بيانات العميل' });
   assert.equal(blocked.blocked_reason, 'بانتظار بيانات العميل');
@@ -126,14 +126,14 @@ test('«مُعطَّلة» تتطلب سبباً مكتوباً، ويزول ا�
 });
 
 test('الخطوة التالية تُحفظ وتُمحى بالفراغ', async () => {
-  const t = await T.quickAddTask(ctx(emp), { title: 'مهمة بخطوة', next_step: 'إرسال المسودة' });
+  const t = await T.quickAddTask(ctx(emp), { title: 'مهمة بخطوة', next_step: 'إرسال المسودة', utilization_pct: 10 });
   assert.equal(t.next_step, 'إرسال المسودة');
   const cleared = await T.updateTask(ctx(emp), t.id, { next_step: '   ' });
   assert.equal(cleared.next_step, null);
 });
 
 test('إعادة فتح مهمة منجَزة تمحو ختم الإنجاز فلا تُحسب في إنجاز اليوم', async () => {
-  const t = await T.quickAddTask(ctx(emp), { title: 'مهمة تُعاد' });
+  const t = await T.quickAddTask(ctx(emp), { title: 'مهمة تُعاد', utilization_pct: 10 });
   const done = await T.updateTask(ctx(emp), t.id, { status: 'DONE' });
   assert.ok(done.completed_at);
   const reopened = await T.updateTask(ctx(emp), t.id, { status: 'TODO' });
@@ -141,7 +141,7 @@ test('إعادة فتح مهمة منجَزة تمحو ختم الإنجاز ف�
 });
 
 test('أثر الأيام يعدّ ما أُنجز فعلاً — لا سلاسل ولا نقاط', async () => {
-  const t = await T.quickAddTask(ctx(emp), { title: 'مهمة للعدّ' });
+  const t = await T.quickAddTask(ctx(emp), { title: 'مهمة للعدّ', utilization_pct: 10 });
   await T.updateTask(ctx(emp), t.id, { status: 'DONE' });
   const trend = await T.completionTrend(emp, { days: 7, today });
   assert.equal(trend.length, 7);
@@ -152,8 +152,8 @@ test('أثر الأيام يعدّ ما أُنجز فعلاً — لا سلاس�
 });
 
 test('التحديث الجماعي يقبل الربط الأبوي والخطوة التالية عبر نفس فحص التعديل', async () => {
-  const a = await T.quickAddTask(ctx(emp), { title: 'جماعي أ' });
-  const b = await T.quickAddTask(ctx(emp), { title: 'جماعي ب' });
+  const a = await T.quickAddTask(ctx(emp), { title: 'جماعي أ', utilization_pct: 10 });
+  const b = await T.quickAddTask(ctx(emp), { title: 'جماعي ب', utilization_pct: 10 });
   const r = await T.bulkUpdateTasks(ctx(emp), [a.id, b.id], { project_id: 'WP1', next_step: 'مراجعة مشتركة' });
   assert.equal(r.updated, 2);
   assert.equal((await get('SELECT project_id, next_step FROM task WHERE id = ?', [a.id])).project_id, 'WP1');
@@ -282,7 +282,7 @@ test('المدير المباشر يفتح لوحة فريقه بمنح القر
   await insert('app_user', { id: 'w_member', username: 'w_member', name_ar: 'عضو الإدارة', role_id: 'employee',
     sector_id: 'S1', scope: 'own', employee_id: 'EMPX', active: 1, created_at: TS });
   const member = U('w_member', 'employee', 'S1', 'own');
-  await T.quickAddTask(ctx(member), { title: 'مهمة عضو الإدارة', due_date: today });
+  await T.quickAddTask(ctx(member), { title: 'مهمة عضو الإدارة', due_date: today, utilization_pct: 10 });
 
   const lm = U('w_lm', 'line_manager', 'S1', 'own');
   lm.department_id = 'DEP1';
@@ -350,10 +350,10 @@ test('لوح المحرِّر يحمل موضع «اعتمدها فلان» — 
 // ── حراسة المدخلات في الخادم لا الشاشة وحدها (KI-044 + KI-047) ────────────────
 test('تاريخٌ بغير صيغة القاعدة يُردّ برسالة عربية — لا يُخزَّن فيصنع مهمةً شبحاً', async () => {
   for (const bad of ['2026-8-15', '08/15/2026', 'غداً إن شاء الله', '2026-13-40']) {
-    await assert.rejects(() => T.quickAddTask(ctx(emp), { title: 'مهمة بتاريخ معطوب', due_date: bad }),
+    await assert.rejects(() => T.quickAddTask(ctx(emp), { title: 'مهمة بتاريخ معطوب', due_date: bad, utilization_pct: 10 }),
       /بصيغة غير مقروءة/, `قُبل التاريخ «${bad}»`);
   }
-  const ok = await T.quickAddTask(ctx(emp), { title: 'مهمة بتاريخ سليم', due_date: '2026-08-15' });
+  const ok = await T.quickAddTask(ctx(emp), { title: 'مهمة بتاريخ سليم', due_date: '2026-08-15', utilization_pct: 10 });
   assert.equal(ok.due_date, '2026-08-15');
   await assert.rejects(() => T.updateTask(ctx(emp), ok.id, { due_date: '15-08-2026' }), /بصيغة غير مقروءة/);
   const cleared = await T.updateTask(ctx(emp), ok.id, { due_date: '' });
@@ -361,8 +361,8 @@ test('تاريخٌ بغير صيغة القاعدة يُردّ برسالة عر
 });
 
 test('وعنوان المهمة مسقوف في الخادم — ألف حرفٍ لا تدخل من الباب المباشر', async () => {
-  await assert.rejects(() => T.quickAddTask(ctx(emp), { title: 'م'.repeat(201) }), /أطول من اللازم/);
-  const t = await T.quickAddTask(ctx(emp), { title: 'م'.repeat(200) });
+  await assert.rejects(() => T.quickAddTask(ctx(emp), { title: 'م'.repeat(201), utilization_pct: 10 }), /أطول من اللازم/);
+  const t = await T.quickAddTask(ctx(emp), { title: 'م'.repeat(200), utilization_pct: 10 });
   assert.equal(t.title.length, 200);
   await assert.rejects(() => T.updateTask(ctx(emp), t.id, { title: 'م'.repeat(300) }), /أطول من اللازم/);
 });
@@ -416,7 +416,7 @@ test('منتقي الجهة قائمةٌ خلفيّة بمعرّفها المع�
 // نفسها: القائمة تطبع تاريخاً خاماً، واللوح يطبع تأنيباً، والتقويم وحده يصدق.
 test('KI-075: مهمة منجَزة متأخرة الموعد لا تُوسم «متأخرة» — لا في القائمة ولا في اللوح', async () => {
   // موعدها مضى بأيام ثم أُنجزت اليوم: أسوأ حالة — الموعد يقول «متأخرة» والحقيقة أنها انتهت.
-  const done = await T.quickAddTask(ctx(emp), { title: 'مهمة أُنجزت بعد موعدها', due_date: day(-9), project_id: 'WP1' });
+  const done = await T.quickAddTask(ctx(emp), { title: 'مهمة أُنجزت بعد موعدها', due_date: day(-9), project_id: 'WP1', utilization_pct: 10 });
   await T.updateTask(ctx(emp), done.id, { status: 'DONE' });
 
   const row = (html) => {
@@ -444,7 +444,7 @@ test('KI-075: مهمة منجَزة متأخرة الموعد لا تُوسم «
 // (الحدّ نفسه غير مُعلَن للمستخدم — KI-078.) وفرعُ «أُنجزت بلا تاريخ» في الوسم يبقى حارساً
 // لصفحة الشخص، فهي تقرأ مهام الشخص بلا هذه النافذة.
 test('KI-075/078: منجَزةٌ بلا ختم إنجاز تسقط من الصفحة كلها — لا تُوسم متأخرة', async () => {
-  const t2 = await T.quickAddTask(ctx(emp), { title: 'منجزة بلا ختم', due_date: day(-5), project_id: 'WP1' });
+  const t2 = await T.quickAddTask(ctx(emp), { title: 'منجزة بلا ختم', due_date: day(-5), project_id: 'WP1', utilization_pct: 10 });
   await T.updateTask(ctx(emp), t2.id, { status: 'DONE' });
   await update('task', t2.id, { completed_at: null });          // صفٌّ قديم كُتب قبل وجود الختم
   for (const view of ['list', 'board']) {
@@ -480,9 +480,9 @@ test('KI-076: في عرض اللوح يحلّ شريط الخلاصة محل ل�
 
 test('task dates reject impossible calendar days on create and update without changing the task', async () => {
   for (const invalid of ['2026-02-30', '2025-02-29', '2026-04-31']) {
-    await assert.rejects(T.quickAddTask(ctx(emp), { title: 'تاريخ غير صالح', due_date: invalid }), /التاريخ|تاريخ/);
+    await assert.rejects(T.quickAddTask(ctx(emp), { title: 'تاريخ غير صالح', due_date: invalid, utilization_pct: 10 }), /التاريخ|تاريخ/);
   }
-  const valid = await T.quickAddTask(ctx(emp), { title: 'موعد كبيس صالح', due_date: '2028-02-29' });
+  const valid = await T.quickAddTask(ctx(emp), { title: 'موعد كبيس صالح', due_date: '2028-02-29', utilization_pct: 10 });
   assert.equal(valid.due_date, '2028-02-29');
   await assert.rejects(T.updateTask(ctx(emp), valid.id, { due_date: '2026-02-30', title: 'يجب ألا يتغير' }), /التاريخ|تاريخ/);
   await assert.rejects(T.updateTask(ctx(emp), valid.id, { start_date: '2026-04-31' }), /التاريخ|تاريخ/);

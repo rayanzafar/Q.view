@@ -60,7 +60,7 @@ after(() => rmSync(dir, { recursive: true, force: true }));
 // ═══ ① إعادة الفتح ═══════════════════════════════════════════════════════════
 
 test('إعادة فتح مهمة منجزة تمحو ختم الإنجاز وتعيدها إلى بانتظار البدء', async () => {
-  const t = await tasks.quickAddTask(ctx(EMP), { title: 'مهمة ستُنجز ثم تُفتح' });
+  const t = await tasks.quickAddTask(ctx(EMP), { title: 'مهمة ستُنجز ثم تُفتح', utilization_pct: 10 });
   const done = await tasks.updateTask(ctx(EMP), t.id, { status: 'DONE' });
   assert.ok(done.completed_at, 'الإنجاز بلا ختم');
   assert.equal(Number(done.progress_pct), 100);
@@ -72,7 +72,7 @@ test('إعادة فتح مهمة منجزة تمحو ختم الإنجاز وت�
 // ═══ ② الحذف: من يملكه ومن لا ═════════════════════════════════════════════════
 
 test('كاتب المهمة يحذفها حذفاً ناعماً — والأثر مسجَّل في التدقيق باسمها', async () => {
-  const t = await tasks.quickAddTask(ctx(EMP), { title: 'مهمة سيحذفها كاتبها' });
+  const t = await tasks.quickAddTask(ctx(EMP), { title: 'مهمة سيحذفها كاتبها', utilization_pct: 10 });
   const r = await tasks.deleteTask(ctx(EMP), t.id);
   assert.deepEqual(r, { ok: true });
   const row = await taskRow(t.id);
@@ -105,7 +105,7 @@ test('والشخصية لغير صاحبها «غير موجودة» — لا ي
 });
 
 test('حذف المعلَّقة يُلغي طلبَ اعتمادها — فلا يقرّر المدير في عدم', async () => {
-  const t = await tasks.quickAddTask(ctx(EMP), { title: 'مهمة معلَّقة ستُحذف', project_id: 'PRJ' });
+  const t = await tasks.quickAddTask(ctx(EMP), { title: 'مهمة معلَّقة ستُحذف', project_id: 'PRJ', utilization_pct: 10 });
   assert.equal(t.approval_state, 'PENDING');
   const queued = (await engine.myDirectApprovals(MGR)).filter((a) => a.resource_id === t.id);
   assert.equal(queued.length, 1, 'لم يصل الطلب إلى المدير أصلاً');
@@ -120,7 +120,7 @@ test('حذف المعلَّقة يُلغي طلبَ اعتمادها — فلا 
 });
 
 test('والمعلَّقة لغير كاتبها «غير موجودة» حتى في باب الحذف — إلا لمدير النظام', async () => {
-  const t = await tasks.quickAddTask(ctx(EMP), { title: 'معلَّقة محجوبة عن الحذف', project_id: 'PRJ' });
+  const t = await tasks.quickAddTask(ctx(EMP), { title: 'معلَّقة محجوبة عن الحذف', project_id: 'PRJ', utilization_pct: 10 });
   assert.equal(t.approval_state, 'PENDING');
   await assert.rejects(() => tasks.deleteTask(ctx(LEAD), t.id), /غير موجودة/,
     'كُشف وجودُ معلَّقةٍ لمن لا يقرؤها في أي قائمة');
@@ -129,17 +129,17 @@ test('والمعلَّقة لغير كاتبها «غير موجودة» حتى 
 });
 
 test('وصاحب الصلاحية الإدارية على القطاع يحذف ما لم يكتبه — ومدير النظام كذلك', async () => {
-  const a = await tasks.quickAddTask(ctx(EMP), { title: 'مهمة يحذفها قائد القطاع' });
+  const a = await tasks.quickAddTask(ctx(EMP), { title: 'مهمة يحذفها قائد القطاع', utilization_pct: 10 });
   await tasks.deleteTask(ctx(LEAD), a.id);
   assert.ok((await taskRow(a.id)).deleted_at, 'منح الحذف القطاعي لم يصل إلى مهمة قطاعه');
 
-  const b = await tasks.quickAddTask(ctx(EMP), { title: 'مهمة يحذفها مدير النظام' });
+  const b = await tasks.quickAddTask(ctx(EMP), { title: 'مهمة يحذفها مدير النظام', utilization_pct: 10 });
   await tasks.deleteTask(ctx(ADMIN), b.id);
   assert.ok((await taskRow(b.id)).deleted_at);
 });
 
 test('ومهمة محذوفة أو معرّف لا وجود له: «غير موجودة» — لا فرق بين البابين', async () => {
-  const t = await tasks.quickAddTask(ctx(EMP), { title: 'تُحذف مرتين' });
+  const t = await tasks.quickAddTask(ctx(EMP), { title: 'تُحذف مرتين', utilization_pct: 10 });
   await tasks.deleteTask(ctx(EMP), t.id);
   await assert.rejects(() => tasks.deleteTask(ctx(EMP), t.id), /غير موجودة/);
   await assert.rejects(() => tasks.deleteTask(ctx(EMP), 'tsk_no_such'), /غير موجودة/);

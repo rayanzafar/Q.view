@@ -77,14 +77,14 @@ test('ولا صفَّ كاذباً باقياً في الجدول كله', async
 });
 
 test('الإضافة السريعة بلا جهة تكتب «داخلياً» من اليوم — لا يتجدّد ما صحّحته الترحيلة', async () => {
-  const t = await tasks.quickAddTask(ctx(EMP), { title: 'مراجعة البريد' });
+  const t = await tasks.quickAddTask(ctx(EMP), { title: 'مراجعة البريد', utilization_pct: 10 });
   assert.equal(t.work_kind, 'internal', 'عاد الافتراضي الأعمى «مشروع» على مهمةٍ بلا مشروع');
   assert.equal(t.project_id, null);
   assert.equal(t.opportunity_id, null);
 });
 
 test('والجهة الصريحة تبقى سيدة القرار: مشروعٌ مشروع، وشخصيةٌ شخصية', async () => {
-  const p = await tasks.quickAddTask(ctx(EMP), { title: 'مهمة على مشروع', project_id: 'PRJ' });
+  const p = await tasks.quickAddTask(ctx(EMP), { title: 'مهمة على مشروع', project_id: 'PRJ', utilization_pct: 10 });
   assert.equal(p.work_kind, 'project');
   const me = await tasks.quickAddTask(ctx(EMP), { title: 'مذكرة خاصة', work_kind: 'personal' });
   assert.equal(me.work_kind, 'personal');

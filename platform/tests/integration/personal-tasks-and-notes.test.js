@@ -56,7 +56,7 @@ before(async () => {
   // مهمتان لنفس الشخص: واحدة شخصية وواحدة عمل. وجودُ الثانية شرطٌ لصحّة الفحص كله — بدونها
   // قد يمرّ الحجب لأن المدير لا يرى شيئاً أصلاً لا لأن الشخصية محجوبة عنه وحدها.
   PERSONAL_ID = (await tasks.quickAddTask(CTX_ME, { title: PERSONAL_TITLE, work_kind: 'personal', due_date: TODAY })).id;
-  WORK_ID = (await tasks.quickAddTask(CTX_ME, { title: WORK_TITLE, due_date: TODAY })).id;
+  WORK_ID = (await tasks.quickAddTask(CTX_ME, { title: WORK_TITLE, due_date: TODAY, utilization_pct: 10 })).id;
 });
 after(() => rmSync(dir, { recursive: true, force: true }));
 

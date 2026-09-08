@@ -302,6 +302,16 @@ const utilPctOrNull = (v) => {
   return n === 0 ? null : n;
 };
 
+// ── والنسبةُ مطلوبةٌ على مهمتك أنت ────────────────────────────────────────────
+// قرار المالك ٢٠٢٦-٠٩-٠٨: من يكتب مهمةً على نفسه يعرف حجمها ساعتَها، وسؤالُه عنها لاحقاً
+// لا يقع. أمّا المهمةُ التي يُسنِدها مديرٌ إلى غيره فتُقبل بلا نسبة: المدير يعرف العمل ولا
+// يعرف كم يأخذ من طاقة صاحبه — والصفُّ يقول «بلا نسبة» حتى يقدّرها صاحبُها. والشخصيةُ خارج
+// المقياس أصلاً، فلا يُسأل عنها أحد.
+const SIZE_REQUIRED_AR = 'نسبة الإشغال مطلوبة على مهمتك — من ١ إلى ١٠٠';
+const requireOwnSize = (pct, { assignee, actorId, isPersonal }) => {
+  if (pct == null && assignee === actorId && !isPersonal) throw badRequest(SIZE_REQUIRED_AR);
+};
+
 // العنوان مطلوبٌ ومسقوف في الخادم لا في الشاشة وحدها: بلا سقفٍ هنا كان نصُّ آلافِ الأحرف
 // يدخل من الباب المباشر فيتضخم الصفُّ والبطاقة والرسالة معاً (KI-047 سابقاً).
 const TITLE_MAX = 200;
@@ -323,7 +333,13 @@ const normalizeCategory = (v) => {
 };
 
 // Quick Add — minimal fields, instant. Defaults assignee to self.
-export async function quickAddTask(ctx, data) {
+//
+// و`opts` **وسيطٌ ثالث لا حقلٌ في الطلب**: مسار الويب يمرّر جسم الطلب كما وصل، فأي رايةٍ
+// داخله يستطيع كلُّ متصفّح رفعَها — والشرط الذي يُرفع بطلبٍ ليس شرطاً. ولا يبلغه إلا من
+// ينادي الخدمة من داخل الخادم. و`sizeOptional` لمهمةٍ **تؤلّفها المنصة** لا يكتبها صاحبها
+// (متابعة حالة فريق مثلاً): لم يُسأل عن نسبتها أحد، فتُكتب «بلا نسبة» ويُنبَّه صاحبها إليها
+// في صفّها وفي شريط مهامه — لا أن تُخترَع لها نسبة ولا أن يُمنع إنشاؤها.
+export async function quickAddTask(ctx, data, opts = {}) {
   const user = ctx.user;
   const title = titleOf(data.title);
   const assignee = data.assignee_user_id || user.id;
@@ -350,6 +366,10 @@ export async function quickAddTask(ctx, data) {
     throw forbidden('إنشاء المهام خارج نطاقك — اختر قطاعاً ضمن صلاحيتك أو اطلب التفعيل من مدير النظام');
   await assertMayAssign(user, assignee); // الفحص يحمل قطاع المُسنَد إليه لا معرّفه وحده
   await assertMayLink(user, data);       // والرابط الأبوي يشير إلى ما يصل إليه فعلاً
+  // والنسبةُ **بعد** بوابات الصلاحية لا قبلها: من لا يملك إنشاء المهام أصلاً (حساب البوابة
+  // الخارجية مثلاً) جوابُه «خارج نطاقك» لا «أكمل حقلاً» — نقصُ الحقل جوابٌ عن سؤالٍ لن يُسأل.
+  const utilPct = utilPctOrNull(data.utilization_pct);
+  if (!opts.sizeOptional) requireOwnSize(utilPct, { assignee, actorId: user.id, isPersonal });
   const parent = normalizeParent({}, data);
   const projectId = parent.project_id ?? (data.project_id || null);
   // ربط المهمة بمخرَجها — «هذه المهمة جزء من تسليم هذا المخرَج». العمود قائم في البنية منذ
@@ -392,7 +412,7 @@ export async function quickAddTask(ctx, data) {
       approval_state: approval.needsApproval ? TASK_PENDING : null,
       start_date: dateOrNull(data.start_date, 'تاريخ البدء'), due_date: dateOrNull(data.due_date, 'تاريخ الاستحقاق'),
       estimate_hours: data.estimate_hours ?? null, recurring: data.recurring || null,
-      utilization_pct: utilPctOrNull(data.utilization_pct),
+      utilization_pct: utilPct,
       next_step: blankToNull(data.next_step),
       created_at: now, created_by: user.id,
     });
@@ -417,7 +437,10 @@ export async function quickAddTask(ctx, data) {
       await notify(assignee, {
         kind: 'task',
         title: 'مهمة جديدة أُسندت إليك',
-        body: `${title} — أسندها ${user.name_ar || user.username || 'مديرك'}`,
+        // والخبرُ يحمل الطلب: مهمةٌ وصلت بلا نسبة لا يعرف حجمَها إلا صاحبُها، فيُطلب منه
+        // تقديرُها في الخبر نفسه لا في شاشةٍ يزورها متى تذكّر.
+        body: `${title} — أسندها ${user.name_ar || user.username || 'مديرك'}`
+          + (utilPct == null ? ' — حدِّد نسبة إشغالها من مهامك' : ''),
         ref_resource: 'task', ref_id: tid,
       });
     }
@@ -625,7 +648,14 @@ export async function updateTask(ctx, taskId, data) {
   if ('next_step' in patch) patch.next_step = blankToNull(patch.next_step);
   if ('blocked_reason' in patch) patch.blocked_reason = blankToNull(patch.blocked_reason);
   if ('progress_pct' in patch) patch.progress_pct = Math.max(0, Math.min(100, Math.round(Number(patch.progress_pct) || 0)));
-  if ('utilization_pct' in patch) patch.utilization_pct = utilPctOrNull(patch.utilization_pct);
+  if ('utilization_pct' in patch) {
+    patch.utilization_pct = utilPctOrNull(patch.utilization_pct);
+    // وتفريغُ النسبة على مهمةٍ صارت مهمتَك يُردّ كما يُردّ إنشاؤها بلا نسبة — البابان واحد،
+    // وإلا لكان المحرِّرُ طريقاً مفتوحاً حول الشرط. والحكمُ على ما ستؤول إليه: من ينقلها
+    // إلى غيره في الحفظة نفسها لا يُسأل عن نسبةٍ لن تكون له.
+    const nextAssignee = 'assignee_user_id' in patch ? patch.assignee_user_id : row.assignee_user_id;
+    requireOwnSize(patch.utilization_pct, { assignee: nextAssignee, actorId: user.id, isPersonal: willBePersonal });
+  }
   // الجهة والنوع تُكتب **بعد** قائمة الحقول المسموحة لا قبلها: الشخصية تُسقط القطاع والإدارة،
   // فلو سبقتها القائمة لأعادت كتابة الإدارة من الطلب فوقها.
   Object.assign(patch, parent);
@@ -657,10 +687,12 @@ export async function updateTask(ctx, taskId, data) {
   // مُسنِد (KI-080)، والنصُّ هو نصُّ مسار الإنشاء نفسه فلا يختلف الخبر باختلاف الباب.
   if ('assignee_user_id' in patch && patch.assignee_user_id && patch.assignee_user_id !== row.assignee_user_id
       && patch.assignee_user_id !== user.id) {
+    const nowPct = 'utilization_pct' in patch ? patch.utilization_pct : row.utilization_pct;
     await notify(patch.assignee_user_id, {
       kind: 'task',
       title: 'مهمة أُسندت إليك',
-      body: `${'title' in patch ? patch.title : row.title} — أسندها ${user.name_ar || user.username || 'مديرك'}`,
+      body: `${'title' in patch ? patch.title : row.title} — أسندها ${user.name_ar || user.username || 'مديرك'}`
+        + (nowPct == null ? ' — حدِّد نسبة إشغالها من مهامك' : ''),
       ref_resource: 'task', ref_id: taskId,
     });
   }

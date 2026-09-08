@@ -356,10 +356,13 @@ export async function createFollowup(ctx, employeeId, { year, month, action_ar, 
     `فحص الحالة: /app/team/analysis/case/${emp.id}?year=${period.year}&month=${period.month}`].filter(Boolean).join('\n');
   const result = await tx(async () => {
     // المهمة أولاً بحارسها هي (صلاحية الإنشاء والإسناد في tasks.js) — من لا يملك إسنادها لا يفتح حالة.
+    // ومتابعةٌ يؤلّفها فحصُ الحالة ليست مهمةً كتبها صاحبها في شريط الإضافة: لم تُسأل نسبتُها
+    // في أي شاشة، فتُقبل بلا نسبة (`sizeOptional`) وتظهر «بلا نسبة» في مهام صاحبها حتى
+    // يقدّرها — والمنعُ هنا كان سيُغلق فتحَ الحالات كلَّها على من يفتحها لنفسه.
     const task = await quickAddTask(ctx, {
       title, description, work_kind: 'internal', assignee_user_id: owner, due_date: due,
       sector_id: emp.sector_id || undefined, department_id: emp.department_id || null, category: 'followup', priority: 'P2',
-    });
+    }, { sizeOptional: true });
     const now = nowIso();
     if (existing) {
       await update('analysis_case', existing.id, { status: 'open', task_id: task.id, owner_user_id: owner, due_date: due,

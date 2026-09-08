@@ -31,33 +31,33 @@ before(async () => {
 after(() => rmSync(dir, { recursive: true, force: true }));
 
 test('الإضافة السريعة تخزّن مفتاح التصنيف الجاهز كما هو', async () => {
-  const t = await tasks.quickAddTask(ctx(EMP), { title: 'اجتماع المتابعة الأسبوعي', category: 'meeting_internal' });
+  const t = await tasks.quickAddTask(ctx(EMP), { title: 'اجتماع المتابعة الأسبوعي', category: 'meeting_internal', utilization_pct: 10 });
   assert.equal(t.category, 'meeting_internal');
 });
 
 test('وبلا تصنيف — أو بفراغٍ أو بمسافات — يبقى العمود فارغاً لا نصاً فارغاً', async () => {
-  const a = await tasks.quickAddTask(ctx(EMP), { title: 'مهمة بلا تصنيف' });
+  const a = await tasks.quickAddTask(ctx(EMP), { title: 'مهمة بلا تصنيف', utilization_pct: 10 });
   assert.equal(a.category, null);
-  const b = await tasks.quickAddTask(ctx(EMP), { title: 'مهمة بتصنيف فارغ', category: '' });
+  const b = await tasks.quickAddTask(ctx(EMP), { title: 'مهمة بتصنيف فارغ', category: '', utilization_pct: 10 });
   assert.equal(b.category, null);
-  const c = await tasks.quickAddTask(ctx(EMP), { title: 'مهمة بمسافات', category: '   ' });
+  const c = await tasks.quickAddTask(ctx(EMP), { title: 'مهمة بمسافات', category: '   ', utilization_pct: 10 });
   assert.equal(c.category, null);
 });
 
 test('التصنيف الحر يُخزَّن كما كُتب — مقصوصَ الأطراف', async () => {
-  const t = await tasks.quickAddTask(ctx(EMP), { title: 'زيارة ميدانية', category: '  زيارة ميدانية  ' });
+  const t = await tasks.quickAddTask(ctx(EMP), { title: 'زيارة ميدانية', category: '  زيارة ميدانية  ', utilization_pct: 10 });
   assert.equal(t.category, 'زيارة ميدانية');
 });
 
 test('والطويل يُقصّ عند ستين حرفاً — الوسم وسم لا فقرة', async () => {
   const long = 'م'.repeat(90);
-  const t = await tasks.quickAddTask(ctx(EMP), { title: 'مهمة بوسم طويل', category: long });
+  const t = await tasks.quickAddTask(ctx(EMP), { title: 'مهمة بوسم طويل', category: long, utilization_pct: 10 });
   assert.equal(t.category.length, 60);
   assert.equal(t.category, 'م'.repeat(60));
 });
 
 test('التعديل يقبل التصنيف بنفس القاعدة: كتابةً ومسحاً وقصاً', async () => {
-  const t = await tasks.quickAddTask(ctx(EMP), { title: 'مهمة تتغيّر' });
+  const t = await tasks.quickAddTask(ctx(EMP), { title: 'مهمة تتغيّر', utilization_pct: 10 });
   const w = await tasks.updateTask(ctx(EMP), t.id, { category: 'report' });
   assert.equal(w.category, 'report');
   const free = await tasks.updateTask(ctx(EMP), t.id, { category: '  ورشة عمل  ' });
@@ -69,7 +69,7 @@ test('التعديل يقبل التصنيف بنفس القاعدة: كتابة
 });
 
 test('وتعديلٌ لا يذكر التصنيف لا يمسّه', async () => {
-  const t = await tasks.quickAddTask(ctx(EMP), { title: 'مهمة موسومة', category: 'followup' });
+  const t = await tasks.quickAddTask(ctx(EMP), { title: 'مهمة موسومة', category: 'followup', utilization_pct: 10 });
   const w = await tasks.updateTask(ctx(EMP), t.id, { title: 'مهمة موسومة — عنوان جديد' });
   assert.equal(w.category, 'followup', 'ضاع التصنيف في تعديلٍ لم يذكره');
 });

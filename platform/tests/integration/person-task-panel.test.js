@@ -153,7 +153,7 @@ test('والمعلَّقة يصل خبرُها لصاحبها لحظة الاع�
 
   // ومن كتب مهمته لنفسه واعتُمدت: يخطره المحرّك «اعتُمد طلبك» — لا خبر «أُسندت إليك» مكرر.
   const own = await tasks.quickAddTask(ctx({ ...EMP, opportunityIds: new Set(['OPP']) }),
-    { title: 'مهمة كاتبها صاحبها', opportunity_id: 'OPP' });
+    { title: 'مهمة كاتبها صاحبها', opportunity_id: 'OPP', utilization_pct: 10 });
   const req2 = (await engine.myDirectApprovals(MID)).find((a) => a.resource_id === own.id);
   await engine.actOnApproval(ctx(MID), req2.id, 'approve');
   const dup = await db.all(

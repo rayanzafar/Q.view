@@ -31,6 +31,12 @@
   var $$ = function (sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); };
   var val = function (id) { var el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; };
 
+  // نصُّ الطلب هو نصُّ الخادم حرفاً: الشرط يقع هناك، وهذه نسخةٌ تُقصّر الطريق إلى الرسالة
+  // نفسها بلا رحلةٍ ولا حقلٍ يُفقَد مكانه. ومعرّف صاحب الجلسة يُقرأ من الوسم (`data-me`)
+  // لا يُخمَّن — «مهمتك أنت» سؤالٌ عن الهوية لا عن خلوّ قائمة.
+  var SIZE_REQUIRED_AR = 'نسبة الإشغال مطلوبة على مهمتك — من ١ إلى ١٠٠';
+  var meOf = function (el) { return el ? String(el.dataset.me || '') : ''; };
+
   // «p:معرّف» مشروع · «o:معرّف» فرصة · «me» مهمة شخصية · فارغ = عمل داخلي.
   // نوعُ العمل يُرسَل صراحةً في الحالتين الأخيرتين: بدونه يقرأ الخادم «بلا جهة» فيكتب «داخلي»
   // على الحالتين معاً — فتنقلب المهمة الشخصية عملاً للشركة بمجرد فتح تفاصيلها وحفظها،
@@ -75,6 +81,16 @@
   async function quickAdd(btn) {
     var title = val('qa-title');
     if (!title) { toast('اكتب عنوان المهمة أولاً — ما الذي ستنجزه؟', true); var t = document.getElementById('qa-title'); if (t) t.focus(); return; }
+    // النسبة مطلوبة على مهمتك أنت — والمهمةُ التي تُسنَد إلى زميل تُقبل بلا نسبة ليقدّرها هو،
+    // والشخصيةُ خارج المقياس أصلاً. القائمة الفارغة تعني «أنا»، واختيارُ اسمك صراحةً كذلك.
+    var addBox = document.querySelector('.wc-add');
+    var asgSel = document.getElementById('qa-assignee');
+    var toSelf = !asgSel || !asgSel.value || asgSel.value === meOf(addBox);
+    if (toSelf && !val('qa-util') && parentPatch(val('qa-parent')).work_kind !== 'personal') {
+      toast(SIZE_REQUIRED_AR, true);
+      var u = document.getElementById('qa-util'); if (u) u.focus();
+      return;
+    }
     var body = {
       title: title,
       priority: val('qa-priority') || 'P2',
@@ -119,12 +135,14 @@
 
   // ── محرِّر المهمة (لوح جانبي) ──
   var editing = null;   // معرّف المهمة المفتوحة
+  var editingRow = null; // صفُّها كما هو في الصفحة — منه تُقرأ حالتها قبل التعديل
   function fillEditor(row, focus, presetStatus) {
     var tpl = document.getElementById('tk-editor');
     if (!tpl || !window.Sanad || !window.Sanad.openDrawer) { toast('تعذّر فتح تفاصيل المهمة — حدّث الصفحة', true); return; }
     window.Sanad.openDrawer(tpl.innerHTML);
     var d = document.getElementById('drawer');
     editing = row.dataset.task;
+    editingRow = row;
     var head = $('[data-f="heading"]', d);
     if (head) head.textContent = row.dataset.title || '';
     var set = function (f, v) { var el = $('[data-f="' + f + '"]', d); if (el) el.value = v == null ? '' : v; return el; };
@@ -192,7 +210,7 @@
     var el = $(target, d);
     if (el) { el.focus(); if (el.select) try { el.select(); } catch (x) { /* range inputs لا تُحدَّد */ } }
   }
-  function closeEditor() { editing = null; if (window.Sanad && window.Sanad.closeDrawer) window.Sanad.closeDrawer(); }
+  function closeEditor() { editing = null; editingRow = null; if (window.Sanad && window.Sanad.closeDrawer) window.Sanad.closeDrawer(); }
 
   async function saveEditor(btn) {
     var d = document.getElementById('drawer');
@@ -225,6 +243,18 @@
     if (dv) patch.department_id = dv.value || null;
     var cv = $('[data-f="category"]', d);
     if (cv) patch.category = categoryValue(cv, $('[data-f="category-other"]', d));
+    // وتفريغُ النسبة على مهمتك أنت يُردّ كما يُردّ إنشاؤها بلا نسبة — المحرِّر ليس طريقاً حول
+    // الشرط. والوجهةُ هي ما ستؤول إليه المهمة: من ينقلها إلى زميلٍ في الحفظة نفسها لا يُسأل.
+    var me = meOf(document.getElementById('tk-editor'));
+    var nextAsg = ('assignee_user_id' in patch)
+      ? String(patch.assignee_user_id || '')
+      : (editingRow ? String(editingRow.dataset.assignee || '') : '');
+    var willBePersonal = pv ? pv.value === 'me' : !!(editingRow && editingRow.dataset.kind === 'personal');
+    if (patch.utilization_pct == null && me && nextAsg === me && !willBePersonal) {
+      toast(SIZE_REQUIRED_AR, true);
+      var uf = $('[data-f="util"]', d); if (uf) uf.focus();
+      return;
+    }
     if (!patch.title) { toast('عنوان المهمة مطلوب', true); return; }
     var err = $('[data-f="error"]', d);
     if (err) { err.hidden = true; err.classList.remove('err'); }

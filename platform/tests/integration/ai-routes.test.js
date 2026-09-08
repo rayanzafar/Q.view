@@ -118,7 +118,8 @@ test('نية الكتابة من نص حر تعيد نموذجاً لا تخمي
   assert.equal(r.status, 200);
   assert.equal(r.json.form?.type, 'task_create');
   const names = r.json.form.fields.map((f) => f.name);
-  assert.deepEqual(names, ['title', 'projectId', 'dueDate', 'priority']);
+  assert.deepEqual(names, ['title', 'projectId', 'dueDate', 'priority', 'utilPct'], 'نسبة الإشغال حقلٌ مطلوب في نموذج المهمة');
+  assert.equal(r.json.form.fields.find((f) => f.name === 'utilPct').required, true);
   assert.ok(r.json.form.fields.find((f) => f.name === 'projectId').options_kind === 'project');
 });
 
@@ -217,7 +218,7 @@ test('قواعد الخدمة تصعد كما هي: التراجع عن الفو
 
 test('إنشاء مهمة عبر المساعد يمرّ بخدمة المهام: يُدقَّق ويُثبَّت قطاعه', async () => {
   const prev = await req('demo.employee', '/api/ai/preview', {
-    method: 'POST', body: { type: 'task_create', fields: { title: 'مهمة من المساعد', priority: 'P1', dueDate: '2026-09-01' } } });
+    method: 'POST', body: { type: 'task_create', fields: { title: 'مهمة من المساعد', priority: 'P1', dueDate: '2026-09-01', utilPct: 15 } } });
   assert.equal(prev.status, 200);
   assert.match(prev.json.preview.summary, /مهمة من المساعد/);
   assert.ok(!/P1/.test(prev.json.preview.summary), 'الأهمية بالمعنى لا بالرمز: ' + prev.json.preview.summary);

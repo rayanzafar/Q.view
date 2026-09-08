@@ -118,7 +118,7 @@ const reqTitles = ['إعداد خطة الاختبار', 'تجهيز العرض 
 
 test('كنسة ليلية أولى: رسالة واحدة مجمَّعة فوراً — وتختم الطلبات وتقيّد الحال', async () => {
   for (const title of reqTitles) {
-    await tasks.quickAddTask(ctx(EMP), { title, project_id: 'PRJ' });
+    await tasks.quickAddTask(ctx(EMP), { title, project_id: 'PRJ', utilization_pct: 10 });
   }
   await db.run("UPDATE approval_request SET created_at = ? WHERE assignee_user_id = 'u_mgr'", ['2026-08-11T04:00:00Z']);
 
@@ -146,7 +146,7 @@ test('كنسة تالية بلا جديد: صمتٌ رغم التهدئة الص
 });
 
 test('طلبٌ ثالث يصل: رسالةٌ فورية تسرد الثلاثة كلها — الجديدُ يفتح والقائمةُ كاملة', async () => {
-  await tasks.quickAddTask(ctx(EMP), { title: 'مراجعة العقد النهائي', project_id: 'PRJ' });
+  await tasks.quickAddTask(ctx(EMP), { title: 'مراجعة العقد النهائي', project_id: 'PRJ', utilization_pct: 10 });
   const res = await sweepApprovalMail(at('2026-08-11T21:00:00Z'));
   assert.equal(res.enqueued, 1);
   const q = await db.all('SELECT * FROM email_queue ORDER BY created_at');
@@ -174,7 +174,7 @@ test('وبتفعيل التذكير (سياسة محقونة): تذكيرٌ وا
 
 test('ختم الإخطار حَكَمُ التزامن: من ظفر بالتحديث المشروط مرةً لا يظفر به ثانية', async () => {
   await tasks.quickAddTask(ctx({ ...EMP, id: 'u_gemp', username: 'gemp', employee_id: 'e_gemp', projectIds: new Set(['PRJ']) }),
-    { title: 'مهمة لمدير بلا بريد', project_id: 'PRJ' });
+    { title: 'مهمة لمدير بلا بريد', project_id: 'PRJ', utilization_pct: 10 });
   const req = await db.get("SELECT * FROM approval_request WHERE assignee_user_id = 'u_ghost' AND status = 'PENDING'");
   const claim = () => db.run(
     'UPDATE approval_request SET notified_at = ? WHERE id IN (?) AND notified_at IS NULL',

@@ -59,7 +59,7 @@ test('ثغرة مُصلَحة: قائد القطاع لا يُسند خارج ق
 
 // ── الثغرة ٢: إعادة الإسناد عبر التعديل ──
 test('ثغرة مُصلَحة: ملكية المهمة لا تخوّل دفعها إلى قائمة شخص آخر', async () => {
-  const mine = await T.quickAddTask(ctx(emp), { title: 'مهمتي' });
+  const mine = await T.quickAddTask(ctx(emp), { title: 'مهمتي', utilization_pct: 10 });
   // تعديل محتواها مسموح (ملكية)
   const edited = await T.updateTask(ctx(emp), mine.id, { title: 'مهمتي بعد التعديل', status: 'DOING' });
   assert.equal(edited.title, 'مهمتي بعد التعديل');
@@ -86,7 +86,7 @@ test('ثغرة مُصلَحة: مهام مشروع محذوف ناعماً لا 
 test('مهام فريقي: المدير يرى من يعمل على ماذا مجمَّعاً بالشخص، والأكثر تأخراً أولاً', async () => {
   const late = await T.quickAddTask(ctx(lead), { title: 'مهمة متأخرة', assignee_user_id: 'u_emp' });
   await update('task', late.id, { due_date: '2020-01-01' });
-  await T.quickAddTask(ctx(lead), { title: 'مهمة قائد القطاع نفسه' });
+  await T.quickAddTask(ctx(lead), { title: 'مهمة قائد القطاع نفسه', utilization_pct: 10 });
 
   const board = await T.teamTasks(lead);
   assert.ok(board.length >= 1, 'يرجع تجميعاً بالأشخاص');
@@ -104,14 +104,14 @@ test('مهام فريقي محجوبة عن الموظف العادي', async ()
 
 // ── ميزة: التحديث الجماعي ──
 test('التحديث الجماعي ينفّذ عبر فحص التعديل نفسه — لا مسار مختصر يتجاوز الصلاحية', async () => {
-  const a = await T.quickAddTask(ctx(emp), { title: 'جماعي ١' });
-  const b = await T.quickAddTask(ctx(emp), { title: 'جماعي ٢' });
+  const a = await T.quickAddTask(ctx(emp), { title: 'جماعي ١', utilization_pct: 10 });
+  const b = await T.quickAddTask(ctx(emp), { title: 'جماعي ٢', utilization_pct: 10 });
   const res = await T.bulkUpdateTasks(ctx(emp), [a.id, b.id], { priority: 'P0' });
   assert.equal(res.updated, 2);
   assert.equal((await get('SELECT priority FROM task WHERE id = ?', [a.id])).priority, 'P0');
 
   // مهمة شخص آخر داخل الدفعة تفشل وحدها ولا تُسقط الباقي
-  const foreign = await T.quickAddTask(ctx(lead), { title: 'مهمة قائد القطاع', assignee_user_id: 'u_lead' });
+  const foreign = await T.quickAddTask(ctx(lead), { title: 'مهمة قائد القطاع', assignee_user_id: 'u_lead', utilization_pct: 10 });
   const mixed = await T.bulkUpdateTasks(ctx(emp), [a.id, foreign.id], { priority: 'P1' });
   assert.equal(mixed.updated, 1, 'المسموح فقط يُحدَّث');
   assert.equal(mixed.failed.length, 1, 'والممنوع يُبلَّغ عنه بسببه');
@@ -124,7 +124,7 @@ test('التحديث الجماعي يرفض دفعة فارغة أو بلا ت�
 });
 
 test('إنجاز المهمة يضبط نسبة الإنجاز ووقت الإنجاز تلقائياً', async () => {
-  const t = await T.quickAddTask(ctx(emp), { title: 'للإنجاز' });
+  const t = await T.quickAddTask(ctx(emp), { title: 'للإنجاز', utilization_pct: 10 });
   const done = await T.updateTask(ctx(emp), t.id, { status: 'DONE' });
   assert.equal(done.status, 'DONE');
   assert.equal(done.progress_pct, 100);
