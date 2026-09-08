@@ -24,3 +24,6 @@ export * from './views/revenue-review.js';
 export * from './views/sector-targets.js';
 
 export * from './views/assistant-link.js';
+
+export * from './views/dev-center.js';
+export * from './views/dev-center-report.js';

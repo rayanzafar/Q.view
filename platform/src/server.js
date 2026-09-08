@@ -19,6 +19,7 @@ import { authRouter } from './modules/auth.routes.js';
 import { apiRouter } from './modules/api.routes.js';
 import { aiRouter } from './modules/ai.routes.js';
 import { mcpRouter } from './modules/mcp/mcp.routes.js';
+import { publicRouter } from './modules/products/public.routes.js';
 import { webRouter } from './web/routes.js';
 import { startScheduler } from './core/jobs/scheduler.js';
 
@@ -100,6 +101,10 @@ export async function createApp() {
   // ربط المساعد الخارجي: على الجذر لأن وثائق الاكتشاف عناوينها ثابتة بالمواصفة، وقبل صفحات
   // المنتج كي لا يبتلع مسارُ صفحةٍ عاماً نقطةَ بروتوكولٍ يناديها برنامج.
   app.use('/', mcpRouter);
+  // روابط الاستقبال العامة لـ«مركز التطوير»: الباب الوحيد في المنصة الذي يدخله من لا حساب له.
+  // بعد `attachContext` لأن رابط الجهة الداخلية يُعاد صاحبه إلى الدخول إن لم تكن له جلسة —
+  // فيلزم أن يُعرف هل معه جلسة؛ وقبل موجّه الصفحات كي لا يبتلعه مسارُ صفحةٍ عام.
+  app.use('/p', publicRouter);
   app.use('/', webRouter);
   app.use(errorHandler());
   return app;

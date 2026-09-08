@@ -59,6 +59,9 @@ export const PAGE_ACCESS = {
   // وحدها، فتدخل منه المشتريات: قائمة عملاء فارغة (لا منح لها) وفوقها إيراد الشركة كاملاً.
   clients: (u) => can(u, 'read', 'client') || seesCompanyPerformance(u),
   events: (u) => can(u, 'read', 'event'),
+  // «مركز التطوير» لا يُفتح بدورٍ في الشركة بل بعضويةٍ في منتج: المجموعة تُحمَّل مع الحساب
+  // (core/http/context.js) قراءةً واحدة مفهرسة. ومدير النظام يرى كل المنتجات بحكم دوره.
+  'dev-center': (u) => u.role_id === 'admin' || u.productMemberships?.size > 0,
   tasks: () => true,
   // مُزالة بطلب المالك — لا تظهر في القائمة ولا تُفتح بالعنوان المباشر.
   timesheet: () => false,

@@ -44,6 +44,9 @@ import { teamNeedsRouter } from './team/team-needs.routes.js';
 import { teamAnalysisRouter } from './team/team-analysis.routes.js';
 import { teamCloseRouter } from './team/team-close.routes.js';
 import { mcpApiRouter } from './mcp/mcp.api.routes.js';
+// «مركز التطوير» (ADR-0020) — المنتجات وفرقها وبلاغاتها. الباب عضويةُ فريق المنتج لا دورُ
+// الشركة، ولذلك يُفحص داخل الخدمة لكل صفٍّ على حدة لا عند نقطة التركيب هذه.
+import { productsRouter } from './products/products.routes.js';
 
 export const apiRouter = Router();
 apiRouter.use(requireAuth());
@@ -69,6 +72,7 @@ apiRouter.use(teamAllocationsRouter);
 apiRouter.use(teamNeedsRouter);
 apiRouter.use(teamAnalysisRouter);
 apiRouter.use(teamCloseRouter);
+apiRouter.use(productsRouter);
 // روابط المساعد الخارجي بحساب صاحبها (العرض والقطع) — الربط نفسه يبدأ من شاشة الإذن على الجذر.
 apiRouter.use('/mcp', mcpApiRouter);
 const h = (fn) => async (req, res, next) => { try { const r = await fn(req, res); if (r !== undefined) res.json(r); } catch (e) { next(e); } };

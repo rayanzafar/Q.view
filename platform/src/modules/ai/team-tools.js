@@ -971,7 +971,7 @@ export async function runTool(ctx, name, input) {
     throw forbidden(tool.deny_ar || GENERIC_DENY_AR);
   }
   try {
-    const out = await tool.run({ user, ip: ctx?.ip || null }, input);
+    const out = await tool.run({ user, ip: ctx?.ip || null, mcpClient: ctx?.mcpClient || null }, input);
     const outcome = tool.kind === 'write' ? OUTCOME.APPLIED : tool.kind === 'preview' ? OUTCOME.PREVIEW : OUTCOME.OK;
     await logAsk(user, { intent: `tool:${tool.name}`, outcome, prompt: `tool:${tool.name}`, sectorId });
     return out;

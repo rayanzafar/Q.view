@@ -235,6 +235,7 @@ const PAGES = {
   mail: P.mailPage, clients: P.clientsPage, imports: P.importsPage,
   guide: P.guidePage,
   events: P.eventsPage,
+  'dev-center': P.devCenterPage,
 };
 
 // معاينة رسالة من صندوق المعاينة — بنفس صلاحية صفحة مركز البريد
@@ -254,6 +255,8 @@ function deny(res) {
   return res.status(403).send(`<!doctype html><html dir="rtl" lang="ar"><meta charset="utf-8"><body style="font-family:'IBM Plex Sans Arabic','Segoe UI',sans-serif;background:#f6f7fb;display:grid;place-items:center;min-height:100vh;margin:0"><div style="background:#fff;border:1px solid #e6e9f0;border-radius:16px;padding:2rem 2.4rem;text-align:center;max-width:380px"><div style="font-size:15px;font-weight:800;color:#1e293b;margin-bottom:.4rem">هذه الصفحة خارج صلاحياتك</div><div style="font-size:12.5px;color:#64748b;line-height:1.9">دورك الحالي لا يشمل هذا القسم. إن كنت تحتاجه فاطلب تفعيله من مدير النظام.</div><a href="/app/tasks" style="display:inline-block;margin-top:1rem;background:#244A99;color:#fff;border-radius:10px;padding:.5rem 1.1rem;font-size:12.5px;font-weight:700;text-decoration:none">العودة إلى مهامي</a></div></body></html>`);
 }
 const guardDetail = (kind) => (req, res, next) => (DETAIL_ACCESS[kind]?.(req.ctx.user) ? next() : deny(res));
+// حارس صفحات التفاصيل التي بوابتها بوابة صفحتها الأم نفسها بمفتاحها في خريطة الصلاحيات.
+const guardPage = (key) => (req, res, next) => (pageAllowed(req.ctx.user, key) ? next() : deny(res));
 
 // Retired by the owner: explicit tombstones, never a permission/reenablement prompt.
 webRouter.get(['/app/finance', '/app/contract/:id'], requireWeb, (req, res) => {
@@ -276,6 +279,16 @@ webRouter.get('/app/client/:id', requireWeb, guardDetail('client'), async (req, 
 });
 webRouter.get('/app/event/:id', requireWeb, guardDetail('event'), async (req, res, next) => {
   try { res.send(await P.eventDetailPage(req.ctx.user, req.params.id, { ...req.query })); } catch (e) { next(e); }
+});
+// شاشة المنتج وتقريره المطبوع: بوابتهما بوابة «مركز التطوير» نفسها (عضوية في منتجٍ ما)، ثم
+// الخدمة وحدها تقرّر هذا المنتج بعينه — ترمي «غير موجود» لمن ليس عضواً فيه، فلا يُستدلّ
+// بالرفض على وجوده. الترتيب مقصود: المسار الأطول (report) قبل الأقصر ليس شرطاً هنا لاختلاف
+// طول القطع، لكن كليهما مسجَّل قبل `/app/:page` كبقية صفحات التفاصيل.
+webRouter.get('/app/dev-center/:productId', requireWeb, guardPage('dev-center'), async (req, res, next) => {
+  try { res.send(await P.devCenterProductPage(req.ctx.user, req.params.productId, { ...req.query })); } catch (e) { next(e); }
+});
+webRouter.get('/app/dev-center/:productId/report', requireWeb, guardPage('dev-center'), async (req, res, next) => {
+  try { res.send(await P.devCenterReportPage(req.ctx.user, req.params.productId, { ...req.query })); } catch (e) { next(e); }
 });
 // صفحة الشخص: بلا guardDetail عمداً — بوابتها ليست «هل يرى هذا النوع من التفاصيل» بل «هل هذا
 // الشخص داخل نطاقك»، وهو سؤالٌ لا يُجاب إلا بعد قراءة صفّه. فالخدمة (personDossier) هي البوابة

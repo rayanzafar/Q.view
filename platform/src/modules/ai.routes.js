@@ -27,6 +27,7 @@ import { applyChange } from './ai/apply.js';
 import { listTools, runTool, registerTools } from './ai/team-tools.js';
 import { TEAM_INTENTS } from './ai/team-intents.js';
 import { GUIDE_TOOLS } from './ai/guide-tools.js';
+import { DEV_CENTER_TOOLS } from './products/tools.js';
 
 // نوايا وحدة «الفريق والموارد» تُسجَّل هنا مرةً واحدة: `core/ai` لا يستورد `modules`، والوحدة
 // تأتي إليه عند التركيب — فتظهر في بطاقات الاقتراح بمنحها وتُصنَّف قبل الأنماط العامة.
@@ -34,6 +35,10 @@ registerIntents(TEAM_INTENTS);
 // وأدوات معرفة المنصة (الدليل والمعجم والهوية) تُسجَّل هنا كذلك: سطحٌ واحد لأدوات المساعد
 // داخل المنصة وخارجها، ببوابةٍ واحدة وسجلٍّ واحد.
 registerTools(GUIDE_TOOLS);
+// وأدوات «مركز التطوير» كذلك: جلسة كلود التي تعمل على سند تعمل بحساب صاحبها لا بمفتاح خدمة
+// (ADR-0019)، فتمرّ ببوابة السجل نفسها وتُسجَّل في سجل النشاط نفسه — والعضوية في المنتج تقرّر
+// ما يُعرض منها، ودور «مدير المنتج» يُفحص داخل كل أداةٍ على منتج البلاغ نفسه.
+registerTools(DEV_CENTER_TOOLS);
 
 export const aiRouter = Router();
 aiRouter.use(requireAuth());

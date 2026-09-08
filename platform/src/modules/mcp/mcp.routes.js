@@ -258,7 +258,7 @@ mcpRouter.post('/mcp', openCors, async (req, res, next) => {
       challenge(res, true);
       return res.status(401).json({ error: 'invalid_token', error_description: 'انتهى الربط أو أُلغي — أعد الربط من حسابك في سند' });
     }
-    const ctx = { user: auth.user, ip: req.ip };
+    const ctx = { user: auth.user, ip: req.ip, mcpClient: auth.client };
     const out = await handleRpc(ctx, req.body);
     if (out === null) return res.status(202).end();     // إشعارات فقط: لا ردّ في البروتوكول
     res.json(out);

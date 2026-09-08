@@ -14,9 +14,6 @@ const GROUPS = { me: 'البداية', company: 'قيادة الشركة', work:
 // رمز الجولة الإرشادية (بوصلة) — بنفس مقاس ورسم بقية الرموز (18px، سماكة 1.75).
 const TOUR_ICON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2.1 5-5 2.1 2.1-5z"/></svg>';
 
-// رابط «بلاغ أو اقتراح» — نموذج خارجي يفتح في تبويب جديد.
-const FEEDBACK_FORM_URL = 'https://forms.cloud.microsoft/Pages/ResponsePage.aspx?id=qrmw-eAlzEW_FKvHGlf2TNo4rAmkrtNHo1L4effPMOFUN1VHUlpXNTI2MDBRUUJJVzFXQzNWUDZRMiQlQCN0PWcu';
-
 // الإظهار في القائمة = نفس دالة السماح بفتح الصفحة (nav.js) — لا انفصال ممكن بينهما.
 export function navFor(user) { return NAV_ITEMS.filter((n) => n.live !== false && pageAllowed(user, n.key)); }
 
@@ -600,8 +597,8 @@ window.__SANAD_MONTHS=${JSON.stringify(MONTHS_AR)};window.__SANAD_MONTHS_EN=${JS
         <button type="button" class="hdr-search-btn" data-action="cmdk-open" aria-label="بحث شامل">${icon('search')}<span>ابحث في كل شيء…</span><kbd>Ctrl K</kbd></button>
         <button type="button" class="hdr-tour-btn" data-action="tour-start" data-page="${esc(active || '')}"
           aria-label="جولة إرشادية على هذه الشاشة" title="جولة إرشادية على هذه الشاشة">${TOUR_ICON}<span>جولة إرشادية</span></button>
-        <a class="hdr-tour-btn" href="${FEEDBACK_FORM_URL}" target="_blank" rel="noopener noreferrer"
-          aria-label="بلاغ أو اقتراح — أبلغ عن مشكلة أو اقترح تحسيناً (يفتح في تبويب جديد)" title="أبلغ عن مشكلة أو اقترح تحسيناً">${icon('megaphone')}<span>بلاغ أو اقتراح</span></a>
+        <button type="button" class="hdr-tour-btn" data-action="report-open" data-page-title="${esc(title || '')}"
+          aria-label="بلاغ أو اقتراح — أبلغ عن مشكلة أو اقترح تحسيناً" title="أبلغ عن مشكلة أو اقترح تحسيناً">${icon('megaphone')}<span>بلاغ أو اقتراح</span></button>
         <a href="/app/home#hm-appr" title="بانتظار اعتمادك" aria-label="بانتظار اعتمادك" style="position:relative;color:var(--muted)">${icon('bell')}<span id="notif-badge" style="display:none;position:absolute;top:-4px;left:-4px;background:var(--red);color:#fff;font-size:9px;border-radius:99px;padding:1px 4px;font-weight:700"></span></a>
         <div class="hdr-user" style="display:flex;align-items:center;gap:.55rem">
           <div style="width:34px;height:34px;border-radius:50%;background:var(--brand-grad);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;flex:0 0 auto">${initial}</div>
@@ -644,7 +641,7 @@ window.__SANAD_MONTHS=${JSON.stringify(MONTHS_AR)};window.__SANAD_MONTHS_EN=${JS
     <div id="cmdk-list" class="cmdk-list"></div>
   </div>
 </div>
-<script src="${asset('/static/app.js')}"></script><script src="${asset('/static/global-search.js')}" defer></script><script src="${asset('/static/pages/guide-tour.js')}" defer></script><script src="${asset('/static/pages/ai.js')}" defer></script>${(scripts || []).map((s) => `<script src="${asset(s)}" defer></script>`).join('')}
+<script src="${asset('/static/app.js')}"></script><script src="${asset('/static/global-search.js')}" defer></script><script src="${asset('/static/pages/guide-tour.js')}" defer></script><script src="${asset('/static/pages/ai.js')}" defer></script><script src="${asset('/static/pages/report.js')}" defer></script>${(scripts || []).map((s) => `<script src="${asset(s)}" defer></script>`).join('')}
 </body></html>`;
 }
 

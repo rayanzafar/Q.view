@@ -87,6 +87,14 @@ export async function resolveUserFromSession(s) {
       WHERE group_kind = 'opportunity' AND employee_id = ? AND deleted_at IS NULL
         AND COALESCE(status, 'ACTIVE') != 'PENDING'`,
     [u.employee_id])).map((r) => r.group_id) : []);
+  // ── منتجاتُه في «مركز التطوير» ───────────────────────────────────────────────
+  // العضويةُ في منتجٍ ليست دوراً في مصفوفة الشركة (ترحيلة ٠٤٥): هي صفٌّ في `product_member`.
+  // وبوابةُ الصفحة نفسها تسأل «هل هو عضوٌ في منتجٍ واحدٍ على الأقل» قبل أن تُظهر المدخل، فلو
+  // بقي الجواب في الخدمة وحدها لاحتاجت كل صفحةٍ قراءةً ثانية. قراءةٌ واحدة مفهرسة على
+  // `product_member(user_id)` تُغذّي الجواب في كل سطح — وهي كلفةُ طلبٍ واحد على كل صفحة،
+  // فتبقى استعلاماً واحداً بلا ضمٍّ ولا ترتيب.
+  const productMemberships = new Set((await all(
+    'SELECT product_id FROM product_member WHERE user_id = ? AND active = 1', [u.id])).map((r) => r.product_id));
   return {
     id: u.id,
     username: u.username,
@@ -102,6 +110,7 @@ export async function resolveUserFromSession(s) {
     name_ar: u.name_ar,
     name_en: u.name_en,
     projectIds,
+    productMemberships,
     teamIds: new Set(),
   };
 }

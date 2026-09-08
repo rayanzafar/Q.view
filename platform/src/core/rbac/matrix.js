@@ -26,7 +26,11 @@ const crud = (resources, scope, actions = ['read', 'create', 'update']) =>
 const read = (resources, scope) => resources.map((r) => ({ resource: r, action: 'read', scope }));
 
 export const ROLE_GRANTS = {
-  admin: [{ resource: '*', action: 'admin', scope: 'company' }], // wildcard — full access + all sensitive
+  // «مركز التطوير» (ترحيلة ٠٤٥): العضويةُ في المنتج جدولٌ لا دورُ شركة، فلا منحَ لأحدٍ غير مدير
+  // النظام هنا — وسطرُ `product` صريحٌ رغم شمول النجمة كي يجد قارئ المصفوفة جواب «من يُنشئ
+  // منتجاً ويؤرشفه» مكتوباً لا مستنبطاً.
+  admin: [{ resource: '*', action: 'admin', scope: 'company' }, // wildcard — full access + all sensitive
+    { resource: 'product', action: 'admin', scope: 'company' }],
 
   ceo_office: [
     ...read(['sector', 'department', 'employee', ...OPERATIONAL, 'contract', 'invoice', 'collection',
