@@ -657,7 +657,7 @@ export async function sectorPage(user, opts = {}) {
   const mbDelta = invn ? ((mbRev || 0) - mbInvNet) : null;
   const mbGapOn = mbDelta != null && ((mbRev || 0) > 0 || mbInvNet > 0);
   const mbGapAhead = mbGapOn && mbDelta < 0; // فُوتر قبل الإنجاز
-  const mbGapLabel = mbGapAhead ? 'مفوتر قبل الإنجاز' : 'منجَز لم يُفوتر';
+  const mbGapLabel = mbGapAhead ? 'المفوتر قبل الإنجاز' : 'منجَز لم يُفوتر';
   const mbGapVal = mbDelta == null ? 0 : Math.abs(mbDelta);
   // نسبةُ المقياس: الفجوةُ من الإيراد حين يسبق الإنجازُ الفوترة، وحصةُ المفوتر التي أُنجزت
   // حين تسبق الفوترةُ الإنجاز — في الحالتين نسبةٌ لها معنى، لا الرقمُ ذاته مقسوماً على نفسه.
@@ -1704,7 +1704,7 @@ export async function sectorPage(user, opts = {}) {
     const cl = mbCosts.by_type.cost_lines, ex = mbCosts.by_type.expenses;
     return ddWrap('seccost', `التكاليف والهامش · ${year}`, `${esc(sd.sector.name_ar)} · بنود التكلفة والمصروفات المعتمدة`, `
       <div class="dd-kpi">${mbCost ? `<span class="v tnum" style="color:var(--acc-amber)">${fmtSar(mbCost)}</span>`
-    : '<span class="v" style="font-size:15px;font-weight:700;color:var(--muted)">لم تُسجَّل</span>'}<span style="font-size:12px;color:var(--muted)">تكلفة ${esc(mbEcho)} · بنود التكلفة ${mbCosts.cost_lines_halalas ? fmtSar(mbCosts.cost_lines_halalas) : 'لم تُسجَّل'} · مصروفات معتمدة ${mbCosts.expenses_halalas ? fmtSar(mbCosts.expenses_halalas) : 'لم تُسجَّل'}</span></div>
+    : '<span class="v" style="font-size:15px;font-weight:700;color:var(--muted)">لم تُسجَّل</span>'}<span style="font-size:12px;color:var(--muted)">تكلفة ${esc(mbEcho)}</span></div>
       ${/* مكوّنا التكلفة صفّان صريحان قبل تفصيل الأنواع: خليةُ الشريط تعرض تركيبتهما شريطاً
            مكدَّساً بلا أرقام، والنافذة هي موضع الرقم. */''}
       <div class="dd-sec">مكوّنا التكلفة</div>
@@ -1740,12 +1740,12 @@ export async function sectorPage(user, opts = {}) {
       <div class="dd-kpi">${mbGapOn ? `<span class="v tnum" style="color:${mbGapAhead ? 'var(--acc-amber)' : 'var(--acc-teal)'}">${fmtSar(mbGapVal)}</span>`
     : '<span class="v" style="font-size:15px;font-weight:700;color:var(--muted)">لم يُسجَّل</span>'}<span style="font-size:12px;color:var(--muted)">${mbGapOn ? `${esc(mbGapLabel)} ${esc(mbEcho)}` : `لا إيراد ولا فواتير ${esc(mbWhen)}`}</span></div>
       <div class="dd-sec">طرفا الفارق — ${G.withoutVat}</div>
-      <div class="dd-row"><span>تحقق إيراداً</span><b class="tnum">${mbRev ? fmtSar(mbRev) : 'لم يُسجَّل'}</b></div>
-      <div class="dd-row"><span>صدر من فواتير</span><b class="tnum">${mbInvNet ? fmtSar(mbInvNet) : 'لم يُسجَّل'}</b></div>
-      <div class="dd-sec">مخرجات مسلَّمة بلا فاتورة مرتبطة${unbN ? ` · ${countAr(unbN, { one: 'مخرَج واحد', two: 'مخرَجان', few: 'مخرجات', many: 'مخرَجاً' })}` : ''}</div>
-      ${unb && !unb.linked_count ? `<div class="empty-mini" style="margin-bottom:.4rem">${icon('info')} لم تُربط أي فاتورة بمخرجٍ في هذا القطاع بعد — فالقائمة أدناه كل ما سُلِّم أو قُبل، لا ما تأخّرت فوترته وحده. وتصدق حين تُربط الفواتير بمخرجاتها.</div>` : ''}
-      ${unbRows.length ? `<div>${ddRows(unbRows.map((d) => `<div class="dd-row"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.name_ar || 'مخرَج')}${d.project ? ` <span style="color:var(--faint);font-size:10.5px">· ${esc(d.project)}</span>` : ''} <span class="pill" style="background:var(--st-neut-soft);color:var(--muted)">${DLV_ST_AR[d.status] || esc(tr(d.status))}</span></span><b class="tnum" style="flex:none">${fmtSar(d.amount_halalas || 0)}</b></div>`))}</div>`
-    : `<div class="empty-mini">${icon('info')} لا مخرجات مسلَّمة أو مقبولة بلا فاتورة ${esc(mbWhen)} — كل ما أُنجز رُبط بفاتورته، أو لم تُربط الفواتير بمخرجاتها في هذا القطاع بعد</div>`}`);
+      <div class="dd-row"><span>الإيراد المحقق</span><b class="tnum">${mbRev ? fmtSar(mbRev) : 'لم يُسجَّل'}</b></div>
+      <div class="dd-row"><span>الفواتير الصادرة</span><b class="tnum">${mbInvNet ? fmtSar(mbInvNet) : 'لم يُسجَّل'}</b></div>
+      <div class="dd-sec">مخرجات مسلَّمة بلا فاتورة${unbN ? ` · ${countAr(unbN, { one: 'مخرَج واحد', two: 'مخرَجان', few: 'مخرجات', many: 'مخرَجاً' })}` : ''} — للاسترشاد، لا تُجمع إلى الرقم أعلاه</div>
+      ${unb && !unb.linked_count ? `<div class="empty-mini" style="margin-bottom:.4rem">${icon('info')} لم تُربط أي فاتورة بمخرجٍ في هذا القطاع بعد — فالقائمة أدناه كل ما سُلِّم أو قُبل، لا ما تأخّرت فوترته وحده. اربط الفواتير بمخرجاتها لتدقّ القائمة.</div>` : ''}
+      ${unbRows.length ? `<div>${ddRows(unbRows.map((d) => `<div class="dd-row"><span style="flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.name_ar || 'مخرَج')}${d.project ? ` <span style="color:var(--muted);font-size:10.5px">· ${esc(d.project)}</span>` : ''}</span><span class="pill" style="flex:0 0 auto;background:var(--st-neut-soft);color:var(--muted)">${DLV_ST_AR[d.status] || esc(tr(d.status))}</span><b class="tnum" style="flex:none">${fmtSar(d.amount_halalas || 0)}</b></div>`))}</div>`
+    : `<div class="empty-mini">${icon('info')} ${unb && !unb.linked_count ? `لا مخرجات مسلَّمة أو مقبولة ${esc(mbWhen)}` : `كل ما سُلِّم أو قُبل ${esc(mbWhen)} مرتبط بفاتورة`}</div>`}`);
   })();
   const DD = `
   ${secinvDD}
@@ -1950,53 +1950,69 @@ export async function sectorPage(user, opts = {}) {
   // وكم ربحنا مما حقّقناه؟ ولكلٍّ مقياسٌ يقول موضع رقمه من مرجعه — لا رقمٌ عارٍ.
   // وقيمةٌ صفرية تُقال «لم يُسجَّل» لا «٠ ر.س.»: الفرق بين «حسبناه فكان صفراً» و«لم يُدخَل بعد»
   // فرقٌ يبني عليه القائد قراراً (قاعدة المنصة منذ v5.47).
+  // وعازلُ الاتجاه (bdi) على الرقم المختصر نفسه: قيمةٌ سالبةٌ تبدأ بإشارة الطرح، وبلا عازلٍ
+  // تُدفع الإشارةُ إلى آخر الرقم في سياقٍ عربي فتُقرأ «١٢ ألف−» أو تُقرأ موجبةً أصلاً.
   const mbNum = (v, color = '') => v
-    ? `<span class="mv tnum"${color ? ` style="color:${color}"` : ''} title="${esc(fmtSar(v))}">${sarShort(v)}</span>`
+    ? `<span class="mv tnum"${color ? ` style="color:${color}"` : ''} title="${esc(fmtSar(v))}"><bdi dir="ltr">${sarShort(v)}</bdi></span>`
     : '<span class="mv mz">لم يُسجَّل</span>';
   // ومؤنَّثةً حيث الموصوف مؤنّث: «بنود التكلفة **لم تُسجَّل**» لا «لم يُسجَّل» — الجمعُ غير
   // العاقل يُعامَل معاملة المفردة المؤنثة، وهو ما تقوله نافذة التكاليف عن البندين نفسيهما.
-  const mbSmall = (v, fem = false) => (v ? `<b class="tnum">${sarShort(v)}</b>`
+  const mbSmall = (v, fem = false) => (v ? `<b class="tnum"><bdi dir="ltr">${sarShort(v)}</bdi></b>`
     : `<span class="mz">${fem ? 'لم تُسجَّل' : 'لم يُسجَّل'}</span>`);
   const mbSay = (v) => (v ? sarShort(v) : 'لم يُسجَّل');
   // نسبةُ المقياس تُقصّ بين صفرٍ ومئة: رقمٌ تجاوز مرجعه يملأ الشريط ولا يخرج عنه، والنصُّ
   // المجاور يقول قيمته الحقيقية.
   const mbPctOf = (v, base) => Math.max(0, Math.min(100, Math.round(((Number(v) || 0) / base) * 100)));
+  // الخليّةُ عنصرٌ بدور زرّ لا وسمُ <button>: مقاييسُها (الشريط والعدّاد وأسطورةُ التكلفة) تُبنى
+  // في المكوّن المشترك عناصرَ كتلةٍ (div)، ووضعُها داخل زرٍّ حقيقي بناءٌ غيرُ صالح يُصلحه
+  // المتصفّح بإخراجها من الزرّ فتنكسر الخليّة. ولوحةُ المفاتيح لا تُفقد: مستمعُ الصفحة في
+  // public/pages/sector.js يشغّل Enter والمسافة على كل [role="button"] له data-action.
   const mbCell = ({ eye, mark = '', val, meter = '', sub = '', extra = '', dd, aria }) => `
-    <button type="button" class="mcell" data-action="open-dd" data-dd="${esc(dd)}" aria-label="${esc(aria)}">
+    <div class="mcell" role="button" tabindex="0" data-action="open-dd" data-dd="${esc(dd)}" aria-label="${esc(aria)}">
       <span class="ml">${eye}${mark}</span>${val}${meter ? `<span class="mm">${meter}</span>` : ''}${sub ? `<span class="ms">${sub}</span>` : ''}${extra ? `<span class="mx">${extra}</span>` : ''}
-    </button>`;
+    </div>`;
   // (١) المتبقي من العقود — التزامٌ قائمٌ لم يتحوّل إيراداً بعد. تراكميٌّ لا يتبع الفترة، ولذلك
   // يقوله سطرُه صراحةً: قارئٌ يبدّل الشهر ولا يتغيّر الرقم يحسبه عطلاً إن لم يُقَل له لماذا.
   const bkOn = !!bk && bk.contracted_halalas > 0;
   const bkPct = bkOn ? mbPctOf(bk.recognized_halalas, bk.contracted_halalas) : null;
+  // ومرجعُ النسبة قيمةُ التعاقد الصافية نفسها التي قُسم عليها الرقم: كان السطر يعرض الإجمالي
+  // (بالضريبة) والمقياسُ يقسم على الصافي — رقمان لمرجعٍ واحد، ونسبةٌ لا تُطابق ما تحتها.
+  const bkSubTxt = bkOn ? `تحقق ${bkPct}% من قيمة تعاقد ${sarShort(bk.contracted_halalas)} · رصيد تراكمي` : '';
   const mbBacklogCell = !(canContracts && bk) ? '' : mbCell({
     eye: 'المتبقي من العقود',
     mark: noteMark('قيمة العقود النشطة ناقص ما تحقق منها إيراداً — رصيد تراكمي لا يتبع الفترة', 'below'),
-    val: bkOn ? mbNum(bk.backlog_halalas) : '<span class="mv mz">لا عقود مسجَّلة</span>',
+    val: bkOn ? mbNum(bk.backlog_halalas) : '<span class="mv mz">لا عقود نشطة</span>',
     meter: bkOn ? figBullet({ pct: bkPct, ariaLabel: `تحقق ${bkPct}% من ${sarShort(bk.contracted_halalas)} متعاقد` }) : '',
-    sub: bkOn ? `تحقق <b class="tnum">${bkPct}%</b> · من ${sarShort(bk.contracted_gross_halalas)} متعاقد · تراكمي`
-      : 'لا عقود نشطة لهذا القطاع — رصيد تراكمي لا يتبع الفترة',
+    // النسبةُ داخل عازلِ اتجاهٍ كنسبةِ الهامش: «84%» لا «%84» في سطرٍ عربي.
+    sub: bkOn ? `تحقق <b class="tnum"><bdi dir="ltr">${bkPct}%</bdi></b> من قيمة تعاقد ${sarShort(bk.contracted_halalas)} · رصيد تراكمي` : '',
     dd: 'seccontracts',
-    aria: `المتبقي من العقود: ${bkOn ? mbSay(bk.backlog_halalas) : 'لا عقود مسجَّلة'} — التفصيل`,
+    // اسمُ الخليّة يستبدل شجرتَها كاملةً، فيقول كلَّ ما تقوله الشاشة: الرقم بالكامل ثم سطرُه.
+    aria: `المتبقي من العقود: ${bkOn ? fmtSar(bk.backlog_halalas) : 'لا عقود نشطة'}${bkSubTxt ? ` — ${bkSubTxt}` : ''} — التفصيل`,
   });
   // (٢) الفجوة بين الإنجاز والفوترة — بفارق المجموعين لا بربط المخرجات بالفواتير: الربط ناقصٌ
   // في أغلب القطاعات الحيّة، وقياسٌ يقوم عليه يُخرج صفراً يُقرأ «كل شيء مفوتر» وهو نقصُ إدخال.
   // والطرفان صافيان: الإيرادُ صافٍ بقاعدته، والمفوتر يُصفّى بالقاعدة نفسها — وإلا ظهرت خمسةَ
   // عشرَ بالمئة من الضريبة فجوةً في العمل. وسالبُ الفارق حالةٌ أخرى باسمها: فُوتر قبل الإنجاز.
+  // والخانةُ الخالية تُقال بلفظ المنصّة نفسه («لم يُسجَّل») ويشرحه سطرُها تحته — لا جملةٌ طويلة
+  // في موضع الرقم تكسر ارتفاع الخلايا الثلاث وتُقرأ قيمةً.
+  const mbGapSubTxt = !mbGapOn ? 'لا إيراد ولا فواتير في هذه الفترة'
+    : mbGapAhead
+      ? `أُنجز ${mbGapDone == null ? '—' : `${mbGapDone}%`} من ${sarShort(mbInvNet)} مفوترة`
+      : (mbRev ? `من إيراد محقق قدره ${sarShort(mbRev)}` : 'لا إيراد في هذه الفترة');
   const mbUnbilledCell = !(canInvoices && invn) ? '' : mbCell({
     eye: mbGapLabel,
     mark: noteMark(`الفرق بين ما تحقق إيراداً وما صدر من فواتير في الفترة نفسها، ${G.withoutVat}`, 'below'),
-    val: !mbGapOn ? '<span class="mv mz">لا إيراد ولا فواتير في هذه الفترة</span>' : mbNum(mbGapVal),
+    val: !mbGapOn ? '<span class="mv mz">لم يُسجَّل</span>' : mbNum(mbGapVal),
     meter: !mbGapOn ? ''
       : mbGapAhead
         ? (mbGapDone == null ? '' : figBullet({ pct: mbGapDone, fill: 'var(--acc-teal)', ariaLabel: `أُنجز ${mbGapDone}% مما فُوتر ${mbEcho}` }))
         : (mbRev ? figBullet({ pct: mbPctOf(mbGapVal, mbRev), fill: 'var(--acc-teal)', ariaLabel: `${mbPctOf(mbGapVal, mbRev)}% من ${sarShort(mbRev)} محققاً ${mbEcho}` }) : ''),
-    sub: !mbGapOn ? ''
+    sub: !mbGapOn ? mbGapSubTxt
       : mbGapAhead
-        ? `أُنجز ${mbGapDone == null ? '—' : `<b class="tnum">${mbGapDone}%</b>`} مما فُوتر (${sarShort(mbInvNet)})`
-        : (mbRev ? `من ${sarShort(mbRev)} محقق` : 'لا إيراد في هذه الفترة'),
+        ? `أُنجز ${mbGapDone == null ? '—' : `<b class="tnum"><bdi dir="ltr">${mbGapDone}%</bdi></b>`} من ${sarShort(mbInvNet)} مفوترة`
+        : (mbRev ? `من إيراد محقق قدره ${sarShort(mbRev)}` : 'لا إيراد في هذه الفترة'),
     dd: 'secunbilled',
-    aria: `${mbGapLabel} ${mbEcho}: ${mbGapOn ? mbSay(mbGapVal) : 'لا إيراد ولا فواتير في هذه الفترة'} — التفصيل`,
+    aria: `${mbGapLabel} ${mbEcho}: ${mbGapOn ? fmtSar(mbGapVal) : 'لم يُسجَّل'} — ${mbGapSubTxt} — التفصيل`,
   });
   // (٣) الهامش يلزمه طرفاه: الإيراد والتكلفة. فبوابتا «الهامش» و«الكلفة» تُشترطان معاً — وإلا صار
   // الرقمُ بابَ استنتاجٍ للتكلفة المحجوبة (الإيراد معروضٌ فوقه، والطرح يردّها).
@@ -2010,7 +2026,7 @@ export async function sectorPage(user, opts = {}) {
   const marginTone = mbPct >= 20 ? 'var(--st-good)' : mbPct >= 10 ? 'var(--acc-amber)' : 'var(--st-bad)';
   const mbCostSegs = [
     { v: mbCosts?.cost_lines_halalas || 0, color: 'var(--acc-amber)', label: 'بنود التكلفة' },
-    { v: mbCosts?.expenses_halalas || 0, color: 'var(--acc-indigo)', label: 'مصروفات' },
+    { v: mbCosts?.expenses_halalas || 0, color: 'var(--acc-indigo)', label: 'مصروفات معتمدة' },
   ];
   // تركيبةُ التكلفة شريطٌ صامتٌ لا زرّ: قطعةٌ تفتح نافذةً داخل زرِّ الخليّة تُخرج زرّاً في زرّ.
   // وشريطٌ بلا أسطورة شريطٌ ملوَّنٌ لا يقول شيئاً: تحته سطرُ نقطتين بلونيهما ورقمَيهما. وعائلةٌ
@@ -2035,10 +2051,13 @@ export async function sectorPage(user, opts = {}) {
     meter: !mbMarginOn ? '' : figGaugeHalf(mbPct, { size: 96, sw: 10, color: marginTone,
       center: sarShort(Math.abs(mbProfit)), sub: mbProfit >= 0 ? 'ربح' : 'خسارة',
       ariaLabel: `${G.margin} الإجمالي ${mbPct}% من الإيراد ${mbEcho} — ${mbProfit >= 0 ? 'ربح' : 'خسارة'} ${sarShort(Math.abs(mbProfit))}` }),
-    sub: !mbMarginOn ? mbMarginWhy : `بعد تكاليف ${mbSmall(mbCost)}`,
+    sub: !mbMarginOn ? mbMarginWhy : `بعد التكاليف ${mbSmall(mbCost)}`,
     extra: mbMarginOn ? mbCostSplit : '',
     dd: 'seccost',
-    aria: `${G.margin} الإجمالي ${mbEcho}: ${mbMarginOn ? `${mbPct}%` : mbMarginWhy} — التفصيل`,
+    // ورقمُ الربح في قلب العدّاد جزءٌ مما تراه العين، فيقوله الاسمُ أيضاً: الاسمُ يستبدل الشجرة.
+    aria: `${G.margin} الإجمالي ${mbEcho}: ${mbMarginOn
+      ? `${mbPct}% — ${mbProfit >= 0 ? 'ربح' : 'خسارة'} ${fmtSar(Math.abs(mbProfit))} — بعد التكاليف ${fmtSar(mbCost)}`
+      : mbMarginWhy} — التفصيل`,
   });
   // عنوانُ البطاقة عنوانٌ حقيقي مرقَّم كجاراتها («نبض القطاع» ١، و«قراءة سند التنفيذية» ٣):
   // من يتنقّل بالعناوين كان يقفز فوق أرقام المال كلها حين كانت نصّاً مُصغَّراً بلا رقم فصل.
@@ -2048,6 +2067,10 @@ export async function sectorPage(user, opts = {}) {
     <div class="secn"><span class="n tnum">2</span><h2 id="mb-h">المال في القطاع</h2><span class="s">${esc(mbEcho)}</span>${filtered ? '<span class="icb">القطاع كله</span>' : ''}</div>
     <div class="mcells" style="--n:${mbCells.length}">${mbCells.join('')}</div>
   </section>`;
+  // وترقيمُ الفصول يتبع ما يراه القارئ لا ما كُتب في المصدر: «المال في القطاع» فصلٌ محجوبٌ عمّن
+  // لا صلاحيةَ له بالعقود ولا الفواتير ولا التكاليف، ورقمُه ثابتاً يترك ثقباً في تسلسله (١ ثم ٣).
+  // فيزيح ما بعده درجةً حين يغيب — ويقرأ الجميعُ ١، ٢، ٣… متّصلةً.
+  const secOff = moneyBand ? 0 : -1;
 
   // ── الخلاصة التحليلية: جملة واحدة بقواعد معلنة — وعلامةٌ تقول إنها محسوبة ──
   const paceWord = dRev == null ? '' : dRev >= 3 ? `متقدمٌ ${ptWord(dRev)}` : dRev <= -3 ? `متأخرٌ ${ptWord(Math.abs(dRev))}` : 'على المسار الزمني';
@@ -2155,7 +2178,7 @@ export async function sectorPage(user, opts = {}) {
   const attnChip = `<button type="button" class="xb-attn" data-action="act-jump" aria-label="${G.attention}: ${attn.length} — الانتقال إلى القائمة">${icon('risk')} ${G.attention} <b class="tnum">${attn.length}</b></button>`;
   const execBand = `
   <section class="exec-band" aria-label="قراءة سند التنفيذية">
-    <div class="secn"><span class="n tnum">3</span><h2>قراءة سند التنفيذية</h2><span class="s">ثلاث قراءات محسوبة بقواعد معلنة — لا تقييم بشري</span></div>
+    <div class="secn"><span class="n tnum">${3 + secOff}</span><h2>قراءة سند التنفيذية</h2><span class="s">ثلاث قراءات محسوبة بقواعد معلنة — لا تقييم بشري</span></div>
     <div class="xb-sum">${icon('trend')} <span>${summaryLine}.</span> ${noteMark('خلاصة مركَّبة بقواعد معلنة من أرقام هذه الصفحة — ليست تقييماً بشرياً', 'below')} <span class="spacer"></span> ${attnChip}</div>
     ${insightCards}
   </section>`;
@@ -2164,6 +2187,8 @@ export async function sectorPage(user, opts = {}) {
   // الرقم واحدٌ لكل فصلٍ بترتيب فصوله (4..9) — بعد أن صارت «المال في القطاع» فصلاً مرقَّماً (٢)،
   // ومع الألسنة صار قسمٌ ثانٍ داخل فصلٍ (رحلة القيمة «6») يغيب تحت الطيّ فيُقرأ التسلسل
   // مثقوباً (ملاحظة أ. حسين 2026-08-25). القسم الثاني داخل الفصل يحمل عنوانه بلا رقم.
+  // والأرقام المكتوبة هنا أرقامُ القارئ الكامل الصلاحية، و`secOff` يزيحها درجةً لمن حُجبت عنه
+  // بطاقة المال — فلا يبقى الترقيم معلَّقاً على رقمٍ لا يراه أحد.
   const secn = (n, t, aux = '') => `<div class="secn">${n ? `<span class="n tnum">${n}</span>` : ''}<h2>${t}</h2>${aux ? `<span class="s">${aux}</span>` : ''}</div>`;
 
   // ── ٤: رسم الإيقاع يُعاد تصييره فعلاً (ملاحظة أ. حسين ٤، 2026-08-25) ─────────────────
@@ -2193,7 +2218,7 @@ export async function sectorPage(user, opts = {}) {
   const legChip = (sw, label, val, mark = '') => `<span class="lgc">${sw}<span>${label}</span><b class="tnum">${val}</b>${mark}</span>`;
   const comboSection = `
   <section class="card pad">
-    ${secn(4, `${G.revenue} الفعلي${filtered ? ' تحت الترشيح' : ` مقابل ${G.target}`}${zoomed ? ` · ${winName}` : filtered ? '' : ' والتوقع'}`,
+    ${secn(4 + secOff, `${G.revenue} الفعلي${filtered ? ' تحت الترشيح' : ` مقابل ${G.target}`}${zoomed ? ` · ${winName}` : filtered ? '' : ' والتوقع'}`,
     zoomed ? `الرسم مقصوصٌ على ${winName} — و«السنة» في المُنتقي تعيد الاثني عشر شهراً`
       : `أعمدة الأشهر + الخط التراكمي${filtered ? ' — من البنود المنسوبة للترشيح عبر مشروعها' : ' + خط الهدف — والخط المتقطع مسارُ التوقع إلى نهاية السنة'}`)}
     <div class="leg-chips">
@@ -2278,7 +2303,7 @@ export async function sectorPage(user, opts = {}) {
   })();
   const commercialSection = `
   <section class="card pad">
-    ${secn(5, 'الفصل التجاري', `${G.funnel} — عرضُ الشريط قيمةُ المرحلة والعددُ بجانبه · أرصدة لحظية لا تتأثر بالفترة`)}
+    ${secn(5 + secOff, 'الفصل التجاري', `${G.funnel} — عرضُ الشريط قيمةُ المرحلة والعددُ بجانبه · أرصدة لحظية لا تتأثر بالفترة`)}
     <div class="com3">
       <div>
         <div class="sh">${G.funnel}${selStage ? ` — مرحلة ${esc(selStage.name_ar)}` : ''}</div>
@@ -2366,7 +2391,7 @@ export async function sectorPage(user, opts = {}) {
   </tbody></table></div>${anyMs ? '' : `<div class="gapline">لا معالم مسجَّلة لمشاريع هذه السنة — تُسجَّل من صفحة المشروع فيظهر القادم منها هنا</div>`}` : `<div class="empty-mini">${icon('projects')} لا مشاريع في سنة ${year}</div>`;
   const opsSection = `
   <section class="card pad">
-    ${secn(6, 'الفصل التشغيلي', 'صحة المشاريع والتزام المعالم وتقدم المشاريع الرئيسية · أرصدة لحظية لا تتأثر بالفترة')}
+    ${secn(6 + secOff, 'الفصل التشغيلي', 'صحة المشاريع والتزام المعالم وتقدم المشاريع الرئيسية · أرصدة لحظية لا تتأثر بالفترة')}
     <div class="ops3${msDueTot ? '' : ' two'}">
       <div class="opsd">
         <div class="sh" style="justify-content:center">صحة المشاريع</div>
@@ -2431,7 +2456,7 @@ export async function sectorPage(user, opts = {}) {
   const heatTone = (v) => v == null ? ['var(--track)', 'var(--muted)'] : v > OVER_ABOVE ? ['var(--st-bad-soft)', 'var(--st-bad)'] : v === 0 ? ['var(--st-neut-soft)', 'var(--muted)'] : v < FREE_BELOW ? ['#fdf6e3', '#8a6d1a'] : ['var(--st-good-soft)', 'var(--st-good)'];
   const hrSection = `
   <section class="card pad">
-    ${secn(8, 'الفصل البشري — التسكين والموارد', `${G.utilization} المخطَّط بالإدارة والشهر، والطلب مقابل الطاقة — من خطة التسكين لا ساعات العمل`)}
+    ${secn(8 + secOff, 'الفصل البشري — التسكين والموارد', `${G.utilization} المخطَّط بالإدارة والشهر، والطلب مقابل الطاقة — من خطة التسكين لا ساعات العمل`)}
     ${filtered ? '<div class="nofilt" style="margin-bottom:.5rem">القطاع كله — خطة التسكين موردٌ قطاعي لا يُنسَب لإدارةٍ أو عميل؛ مرشِّحا الإدارة والعملاء لا يسريان على هذا الفصل</div>' : ''}
     <div class="hr3">
       <div>
@@ -2501,7 +2526,7 @@ export async function sectorPage(user, opts = {}) {
   ].filter(Boolean);
   const outlookSection = outCols.length ? `
   <section class="card pad">
-    ${secn(9, 'نظرة الفترة القادمة', `${outCols.length === 3 ? 'معالم الثلاثين والستين والتسعين يوماً، والمخاطر المفتوحة، وقيود الطاقة' : 'ما هو مسجَّل للأشهر القادمة'} · نظرة أمامية من اليوم — لا تتأثر بالفترة`)}
+    ${secn(9 + secOff, 'نظرة الفترة القادمة', `${outCols.length === 3 ? 'معالم الثلاثين والستين والتسعين يوماً، والمخاطر المفتوحة، وقيود الطاقة' : 'ما هو مسجَّل للأشهر القادمة'} · نظرة أمامية من اليوم — لا تتأثر بالفترة`)}
     <div class="out3${outCols.length < 3 ? ` c${outCols.length}` : ''}">${outCols.join('')}</div>
     ${outGaps.length ? `<div class="gapline">${outGaps.join(' · ')}</div>` : ''}
   </section>` : '';
@@ -2565,7 +2590,7 @@ export async function sectorPage(user, opts = {}) {
     ${panel('ops', 'التشغيلي', opsSection)}
     ${panel('cli', G.clients, `
       <section class="card pad">
-        ${secn(7, canInvoices ? 'تركيز الإيراد والعملاء والتحصيل' : 'تركيز الإيراد والعملاء', `مرتَّبون حسب إيراد ${year} كاملةً — لا يتأثر بالفترة`)}
+        ${secn(7 + secOff, canInvoices ? 'تركيز الإيراد والعملاء والتحصيل' : 'تركيز الإيراد والعملاء', `مرتَّبون حسب إيراد ${year} كاملةً — لا يتأثر بالفترة`)}
         ${!treemap ? `<div class="empty-mini" style="margin-bottom:1rem">${icon('info')} لا يُرسم توزيع العملاء بعد — يلزم عميلان على الأقل بإيراد مسجَّل هذه السنة${filtered ? ' تحت هذا الترشيح' : ''}</div>` : ''}
         ${treemap ? `<div class="g12" style="margin-bottom:1rem">
           <div class="c7" style="min-width:0">${treemap}</div>
