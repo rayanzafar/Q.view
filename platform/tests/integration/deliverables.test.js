@@ -126,7 +126,7 @@ test('المخرج المفوتر تبقى حالته حالته — الفوت�
   assert.equal(re.status, 'DELIVERED');
   assert.ok(re.invoiced_at, 'وختم الفوترة باقٍ — لا تُفكّ فاتورة صادرة من شاشة مشروع');
   // لكن الحذف ممنوع: يترك سطر فاتورة يشير إلى لا شيء.
-  await assert.rejects(() => gov.deleteItem(ctx(lead), 'deliverable', d.id), /ألغِ الفاتورة أولاً/);
+  await assert.rejects(() => gov.deleteItem(ctx(lead), 'deliverable', d.id), /تسوية الارتباط التاريخي/);
   const renamed = await gov.updateItem(ctx(lead), 'deliverable', d.id, { name_ar: 'مخرج مفوتر (اسم مصحَّح)' });
   assert.equal(renamed.name_ar, 'مخرج مفوتر (اسم مصحَّح)');
 });

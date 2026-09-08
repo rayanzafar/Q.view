@@ -37,6 +37,13 @@ import { reportsRouter } from './reports.routes.js';
 import { moneyRouter } from './finance/money.routes.js';
 import { identityRouter } from './identity/identity.routes.js';
 import { eventsRouter } from './events/events.routes.js';
+// وحدة الفريق والموارد (ADR-0016) — خمسة موجّهات تحت `/team/...`
+import { teamResourcesRouter } from './team/team-resources.routes.js';
+import { teamAllocationsRouter } from './team/team-allocations.routes.js';
+import { teamNeedsRouter } from './team/team-needs.routes.js';
+import { teamAnalysisRouter } from './team/team-analysis.routes.js';
+import { teamCloseRouter } from './team/team-close.routes.js';
+import { mcpApiRouter } from './mcp/mcp.api.routes.js';
 
 export const apiRouter = Router();
 apiRouter.use(requireAuth());
@@ -57,6 +64,13 @@ apiRouter.use(reportsRouter);
 apiRouter.use(moneyRouter);
 apiRouter.use(identityRouter);
 apiRouter.use(eventsRouter);
+apiRouter.use(teamResourcesRouter);
+apiRouter.use(teamAllocationsRouter);
+apiRouter.use(teamNeedsRouter);
+apiRouter.use(teamAnalysisRouter);
+apiRouter.use(teamCloseRouter);
+// روابط المساعد الخارجي بحساب صاحبها (العرض والقطع) — الربط نفسه يبدأ من شاشة الإذن على الجذر.
+apiRouter.use('/mcp', mcpApiRouter);
 const h = (fn) => async (req, res, next) => { try { const r = await fn(req, res); if (r !== undefined) res.json(r); } catch (e) { next(e); } };
 
 // ── Opportunities / CRM ──
@@ -66,6 +80,8 @@ apiRouter.get('/opportunities/:id', h((req) => opps.getOpportunity(req.ctx.user,
 apiRouter.get('/opportunities/:id/detail', h((req) => opps.opportunityDetail(req.ctx.user, req.params.id)));
 apiRouter.patch('/opportunities/:id', h((req) => opps.updateOpportunity(req.ctx, req.params.id, req.body)));
 apiRouter.post('/opportunities/:id/stage', h((req) => opps.moveStage(req.ctx, req.params.id, req.body.stage, req.body.note)));
+// التراجع المراجَع عن فوزٍ له مشروع (KI-112): قرار المشروع + السبب، بلا حذف لأي سجل
+apiRouter.post('/opportunities/:id/reversal', h((req) => opps.reviewedWonReversal(req.ctx, req.params.id, req.body || {})));
 apiRouter.post('/opportunities/:id/sector', h((req) => opps.moveSector(req.ctx, req.params.id, req.body.sector, req.body.note)));
 apiRouter.get('/pipeline', h((req) => opps.pipelineSummary(req.ctx.user)));
 
@@ -174,8 +190,8 @@ apiRouter.get('/finance/summary', h((req) => finance.financeSummary(req.ctx.user
 apiRouter.get('/finance/by-pm', h((req) => finance.financeByPM(req.ctx.user, Number(req.query.year) || undefined)));
 apiRouter.get('/finance/by-contract', h((req) => finance.financeByContract(req.ctx.user)));
 apiRouter.get('/finance/contracts/:id', h((req) => finance.contractDetail(req.ctx.user, req.params.id)));
-apiRouter.post('/finance/progress-claim', h((req) => finance.createProgressClaim(req.ctx, req.body)));
-apiRouter.post('/finance/collections', h((req) => finance.recordCollection(req.ctx, req.body)));
+apiRouter.post('/finance/progress-claim', (req, res) => res.status(410).json({ error: { code: 'gone', message: 'أُلغي مسار الفوترة والتحصيل من المنصة' } }));
+apiRouter.post('/finance/collections', (req, res) => res.status(410).json({ error: { code: 'gone', message: 'أُلغي مسار الفوترة والتحصيل من المنصة' } }));
 
 // ── Metrics / dashboards ──
 // QH-2: مقاييس الشركة/القطاع أرقام قيادية — ليست لكل مستخدم مسجَّل

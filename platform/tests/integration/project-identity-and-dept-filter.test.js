@@ -58,6 +58,20 @@ before(async () => {
 
 after(() => rmSync(dir, { recursive: true, force: true }));
 
+// الكود المالي: كانت شاشة الإقفال ترفض التصحيح بـ«سجّل كوده المالي في صفحة المشروع» ولا حقل يكتبه.
+test('الكود المالي للمشروع يُكتب من مسار التعديل والإنشاء: يُشذَّب ويُتحقق منه ويُنزع بالفراغ، وبأثر', async () => {
+  await projects.updateProject(ctx, 'p1', { financial_code: '  SOL-2026-017 ' });
+  assert.equal((await db.get('SELECT financial_code FROM project WHERE id = ?', ['p1'])).financial_code, 'SOL-2026-017');
+  await assert.rejects(() => projects.updateProject(ctx, 'p1', { financial_code: 'x; drop' }), /حروفاً وأرقاماً/);
+  assert.equal((await db.get('SELECT financial_code FROM project WHERE id = ?', ['p1'])).financial_code, 'SOL-2026-017', 'الرفض لا يمسّ القيمة');
+  const audits = await db.all("SELECT detail_json FROM audit_log WHERE action='update' AND resource='project' AND resource_id='p1'");
+  assert.ok(audits.some((a) => String(a.detail_json || '').includes('financial_code')), 'الكتابة بأثر يذكر الحقل');
+  await projects.updateProject(ctx, 'p1', { financial_code: '' });
+  assert.equal((await db.get('SELECT financial_code FROM project WHERE id = ?', ['p1'])).financial_code, null);
+  const created = await projects.createProject(ctx, { name_ar: 'مشروع بكود مالي', sector_id: 'SOL', financial_code: ' CONS-9 ' });
+  assert.equal((await db.get('SELECT financial_code FROM project WHERE id = ?', [created.id])).financial_code, 'CONS-9');
+});
+
 // ── مدير المشروع: الحقل الذي يُفعِّل الدور ──
 test('تعيين مدير المشروع من الواجهة — وهو ما لم يكن في المنتج طريقٌ إليه', async () => {
   const before = await db.get("SELECT owner_user_id FROM project WHERE id='p1'");

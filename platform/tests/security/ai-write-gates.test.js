@@ -68,10 +68,12 @@ const preview = (u, type, fields) => proposePreview(ctx(u), { type, fields });
 
 // ── قواعد الخدمة تُورَث حرفياً ────────────────────────────────────────────────
 test('التراجع عن فوزٍ أنتج مشروعاً مردود برسالة الخدمة نفسها — لا مسار موازٍ', async () => {
+  const linkedBefore = await db.get('SELECT * FROM project WHERE source_opp_id = ?', ['O_WON_PRJ']);
   const p = await preview(USERS.lead, 'opp_stage', { oppId: 'O_WON_PRJ', stage: 'LEAD', note: 'سبب مكتوب' });
   await assert.rejects(() => applyChange(ctx(USERS.lead), p.applyToken),
-    (e) => e.status === 400 && /نشأ عنها مشروع/.test(e.message));
+    (e) => e.status === 400 && /مرتبطة بمشروع[\s\S]*لم يُحذف أي سجل/.test(e.message));
   assert.equal((await db.get('SELECT stage_id FROM opportunity WHERE id = ?', ['O_WON_PRJ'])).stage_id, 'WON');
+  assert.deepEqual(await db.get('SELECT * FROM project WHERE source_opp_id = ?', ['O_WON_PRJ']), linkedBefore);
 });
 
 test('المرحلة المجهولة تُرَدّ وقت المعاينة — لا تُكتب في الصف كما وصلت', async () => {

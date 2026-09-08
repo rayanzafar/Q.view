@@ -103,7 +103,7 @@ test('الطلب يبدأ عند أول خطوة منطبقة — ويُغلق �
 test('التراجع عن الفوز يستوجب سبباً مكتوباً — ويُسجَّل بقيمته في التدقيق', async () => {
   await db.insert('opportunity', { id: 'OPP1', title_ar: 'فرصة', sector_id: 'S1', stage_id: 'LEAD',
     value_halalas: 250000000, year: 2026, created_at: T });
-  await O.moveStage(ctx(admin), 'OPP1', 'WON');
+  await db.update('opportunity', 'OPP1', { stage_id: 'WON' });
 
   await assert.rejects(() => O.moveStage(ctx(admin), 'OPP1', 'LEAD'), /اكتب سبب التراجع/,
     'كانت تعود بضغطة واحدة والمبيعات المعلنة تتغيّر بلا أثر');
@@ -139,17 +139,16 @@ test('فرصة أنتجت مشروعاً فيه عمل لا يُتراجَع ع�
   assert.equal(prj.name_ar, 'فرصة ٣', 'باسم فرصته حتى يُعاد تسميته من صفحته');
   await db.insert('deliverable', { id: 'D9', project_id: prj.id, name_ar: 'مخرَج أول', status: 'DRAFT', created_at: T });
   await assert.rejects(() => O.moveStage(ctx(admin), 'OPP3', 'LEAD', 'سبب مكتوب'),
-    /نشأ عنها مشروع «فرصة ٣»[\s\S]*عمل مسجَّل/, 'التراجع يناقض عملاً قائماً — والسبب المكتوب لا يكفي هنا');
+    /مرتبطة بمشروع «فرصة ٣»[\s\S]*لم يُحذف أي سجل/, 'التراجع يناقض عملاً قائماً — والسبب المكتوب لا يكفي هنا');
 });
 
-test('وبذرةُ مشروعٍ لم يُمسّ تُطوى مع التراجع — وإلا صار كل فوزٍ بالخطأ بلا رجعة', async () => {
+test('حتى المشروع الجديد محفوظ عند محاولة التراجع عن الفوز', async () => {
   await db.insert('opportunity', { id: 'OPP4', title_ar: 'فرصة ٤', sector_id: 'S1', stage_id: 'LEAD',
     value_halalas: 400000, year: 2026, created_at: T });
   await O.moveStage(ctx(admin), 'OPP4', 'WON');
   const seed = await db.get('SELECT id FROM project WHERE source_opp_id = ? AND deleted_at IS NULL', ['OPP4']);
   assert.ok(seed, 'وُلد المشروع مع الفوز');
-  await O.moveStage(ctx(admin), 'OPP4', 'LEAD', 'أُغلقت بالخطأ');
-  assert.equal((await db.get('SELECT stage_id FROM opportunity WHERE id = ?', ['OPP4'])).stage_id, 'LEAD');
-  assert.equal(await db.get('SELECT id FROM project WHERE id = ? AND deleted_at IS NULL', [seed.id]), undefined,
-    'والبذرة طُويت — فلا يبقى في المحفظة مشروعٌ لفوزٍ رُجع عنه');
+  await assert.rejects(() => O.moveStage(ctx(admin), 'OPP4', 'LEAD', 'أُغلقت بالخطأ'), /لم يُحذف أي سجل/);
+  assert.equal((await db.get('SELECT stage_id FROM opportunity WHERE id = ?', ['OPP4'])).stage_id, 'WON');
+  assert.ok(await db.get('SELECT id FROM project WHERE id = ? AND deleted_at IS NULL', [seed.id]));
 });

@@ -77,6 +77,9 @@ test('والمكتمل مئةٌ مهما قيل — حالته أصرحُ من �
   const r = await progress.projectProgress('p_done', { today: '2026-08-01' });
   assert.equal(r.executivePct, 100);
   assert.equal(r.executiveSource, 'status');
+  assert.equal(r.evidence.warnings[0].code, 'COMPLETED_WITHOUT_OUTPUTS');
+  assert.equal(r.evidence.storedPct, 12);
+  assert.equal((await db.get('SELECT progress_pct FROM project WHERE id = ?', ['p_done'])).progress_pct, 12);
 });
 
 // ── الحدّ الذي يمنع عودة العيب من الباب الآخر ──

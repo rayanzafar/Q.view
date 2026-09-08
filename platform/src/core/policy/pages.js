@@ -5,6 +5,7 @@
 // يُنتج وعداً بشاشة يردّها النظام. المصدر هنا واحد، فلا انعكاس ولا نسخة ثانية.
 // لا تستورد هذه الوحدة إلا من `core` كي تبقى صالحة لكل الطبقات.
 import { can, effectiveScope } from '../rbac/index.js';
+import { departmentScope } from '../rbac/departments.js';
 
 const IO_TYPES_READ = ['opportunity', 'project', 'client', 'employee', 'allocation', 'revenue'];
 
@@ -41,6 +42,11 @@ export const PAGE_ACCESS = {
   // استعلام خلفها مقيَّد بمعرّفه هو (مهامه، فرصه التي يملكها، مشاريع تسكينه ومخرجاتها).
   // وضعُ منحٍ هنا يكون شرطاً على قراءة بياناته نفسه — أي منع الموظف من رؤية عمله هو.
   home: () => true,
+  // ربط المساعد بحساب صاحبه: مفتوحة لكل من يدخل — كل ما فيها يخصّ حسابه هو (رابطه وروابطه
+  // القائمة وقطعها)، ولا تقرأ ولا تكتب سجلَّ أحدٍ غيره.
+  'assistant-link': () => true,
+  'revenue-review': (u) => can(u, 'read', 'revenue_line'),
+  'sector-targets': (u) => can(u, 'read', 'budget'),
   ceo: (u) => seesCompanyPerformance(u),
   portfolio: (u) => seesCompanyPerformance(u),
   sector: (u) => can(u, 'read', 'project') || can(u, 'read', 'opportunity'),
@@ -62,19 +68,30 @@ export const PAGE_ACCESS = {
   // «المالية» كان في هذه القائمة، وقد أُلغي الدور (قرار مالك). واعتمادُ ما كان يعتمده — المصروف
   // والفاتورة فوق حدّ المبلغ — صار إلى مكتب الرئيس التنفيذي، وهو في القائمة أصلاً.
   approvals: (u) => ['admin', 'sector_lead', 'department_manager', 'line_manager', 'approver', 'ceo_office'].includes(u.role_id),
-  // شاشةُ مالية **الشركة**: أرقامٌ مجمَّعة عبر القطاعات والعملاء كلهم. فبوابتها نطاقٌ واسع لا
-  // مجرّد وجود منح — ومدير المشروع صار يقرأ عقد مشاريعه وفواتيرها بنطاق «مشروع» (قرار مالك: هو
-  // من يدير مالية مشروعه ولا فريق مالية يفعلها عنه). ولو بقيت البوابة «أي منح» لانفتحت له
-  // محفظةُ الشركة كاملةً بسبب منحٍ على مشروعه وحده — توسّعٌ لم يُطلب ولا يُقصد.
-  // ── مُزالة بطلب المالك ──
-  // «موضوع الفواتير والمالية خلاص ألغِه» — والقرار أقدم من هذه الجولة: «الإدارة المالية ما لها
-  // علاقة من المنصة»، ثم «ما رح أخلّي المالية يستعملوا المنصة» حين صار الإيراد يتبع التسليم.
-  // فالمستخلص والتحصيل والذمم لا تُدار من هنا، وشاشةٌ تَعِد بإدارتها تُغري بإدخالٍ لا يكتمل.
-  //
-  // **والبيانات باقية كما هي** — الإخفاء قرارُ واجهة لا محوُ سجل: العقود والفواتير المستوردة
-  // في مواضعها، والإيراد يُقرأ منها في كل شاشة. وإعادةُ الشاشة يوماً سطرٌ واحد.
+  // Tombstone for older navigation clients. The page and its workflows are retired.
   finance: () => false,
   team: (u) => can(u, 'read', 'employee'),
+  // أقسام «الفريق والموارد» (ADR-0016) — `/app/team/<section>`: بوابة القوائم هي بوابة «الفريق»
+  // نفسها، إلا «الإقفال الشهري» فبوابته منح الإقفال (قراءةً أو اعتماداً) — لا الموظف ولا الموارد
+  // البشرية. المفاتيح بالشرطة المائلة كي تُشتقّ منها توقعات المسح الحيّ ومصفوفة الصلاحيات كما
+  // تُشتقّ لبقية الصفحات، ويقرأها موجّه الأقسام بالمفتاح نفسه — مصدرٌ واحد لا نسختان.
+  'team/resources': (u) => can(u, 'read', 'employee'),
+  'team/org': (u) => can(u, 'read', 'employee'),
+  'team/people': (u) => can(u, 'read', 'employee'),
+  'team/work': (u) => can(u, 'read', 'employee'),
+  // التخطيط (S13/S14) لمن يقرأ الفريق **أو** يملك «طلب تسكين»/كتابة التسكين بلا قراءة الموظفين
+  // (مدير المشروع بنطاق «مشروع»): الخدمة تقبل طلبه بسياج قطاعه (allocations.requestGate) وتعرض
+  // له مصفوفة قطاعه أسماءً وطاقةً (access.canPlanResources) — فلا تُغلق الصفحة دونه.
+  'team/planning': (u) => can(u, 'read', 'employee') || can(u, 'create', 'allocation_request') || can(u, 'create', 'allocation') || can(u, 'update', 'allocation'),
+  // طلبات التسكين: كلٌّ يرى طلباته هو (الخدمة تقصّ القائمة على النطاق) — كـ«صفحتي».
+  'team/requests': () => true,
+  'team/analysis': (u) => can(u, 'read', 'employee'),
+  // الاحتياجات لمن يقرأ «الاحتياج» (مدير المشروع على مشاريعه ولو لم يقرأ الموظفين).
+  'team/needs': (u) => can(u, 'read', 'resource_need'),
+  // الإقفال: منح الإقفال قراءةً أو اعتماداً؛ ومنحُ «إدارة» بلا إدارةٍ مُدارة لا يفتح شيئاً
+  // (الخدمة ترفضه بالرسالة نفسها — البوابة والخدمة على قولٍ واحد).
+  'team/close': (u) => u.role_id === 'admin' || can(u, 'approve', 'cost_close')
+    || (can(u, 'read', 'cost_close') && (u.scope !== 'department' || departmentScope(u).length > 0)),
   staffing: (u) => can(u, 'read', 'employee'),
   imports: (u) => u.role_id === 'admin' || ['client', 'employee', 'opportunity', 'project', 'allocation', 'revenue_line'].some((r) => can(u, 'read', r) || can(u, 'create', r) || can(u, 'update', r)),
   reports: (u) => can(u, 'read', 'report'),

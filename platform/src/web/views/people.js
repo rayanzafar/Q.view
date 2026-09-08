@@ -108,7 +108,7 @@ export async function teamPage(user, opts = {}) {
     const l = links[e.id] || null;
     const label = l ? esc(l.name_ar || l.username || 'حساب مربوط') : '';
     const badge = l
-      ? `<span class="pill" style="background:#dcfce7;color:#059669" title="مربوط بحساب ${label}">✓ ${label}</span>`
+      ? `<span class="pill" style="background:#dcfce7;color:#166534" title="مربوط بحساب ${label}">✓ ${label}</span>`
       : `<span class="pill" style="background:#fef3c7;color:#92400e" title="لا يملك حساب دخول — لن تصله المهام ولا الإشعارات">بلا حساب</span>`;
     const btn = !canLink ? ''
       : l ? `<button class="btn btn-sm btn-ghost" data-action="emp-unlink" data-emp="${e.id}" style="color:var(--muted)">فك الربط</button>`
@@ -242,7 +242,6 @@ export async function orgPage(user) {
       <div style="display:flex;gap:.5rem;flex-wrap:wrap">
         <input id="sec-id" placeholder="المعرّف (EN, مثل FINTECH)" style="border:1px solid var(--line);border-radius:8px;padding:.4rem .7rem;font-size:13px;width:200px">
         <input id="sec-ar" placeholder="اسم القطاع (عربي)" style="border:1px solid var(--line);border-radius:8px;padding:.4rem .7rem;font-size:13px;flex:1">
-        <input id="sec-tgt" type="number" placeholder="مستهدف المبيعات (ر.س.)" style="border:1px solid var(--line);border-radius:8px;padding:.4rem .7rem;font-size:13px;width:200px">
         <button onclick="Sanad.addSector()" style="color:#fff;border:none;cursor:pointer;padding:0 1rem;border-radius:8px;font-size:13px;background:var(--brand-grad)">+ قطاع</button>
       </div>
       <div style="font-size:11px;color:var(--muted);margin-top:.5rem">الهيكل مرن بالكامل — تُضاف القطاعات/الإدارات من هنا دون تعديل الكود.</div></div>`)}

@@ -92,10 +92,13 @@ export async function financeSummary(user, year = FY()) {
   const c = f.clause, p = f.params;
   // Bookings and revenue must respect the caller's scope too, else a sector user sees company-wide
   // bookings/revenue against their sector-only AR — an inconsistent (and over-broad) bridge.
-  const companyScope = c.trim() === '1=1';
-  const bkP = companyScope ? [year] : [year, user.sector_id];
+  const bookingsScope = scopeFilter(user, 'opportunity', 'read', {
+    sectorCol: 'o.sector_id', ownerCol: 'o.owner_user_id', deptCol: 'o.department_id',
+    grantCol: 'o.department_id', memberCol: 'o.id',
+  });
   const bookings = (await get(`SELECT COALESCE(SUM(o.value_halalas),0) v FROM opportunity o JOIN stage st ON st.id=o.stage_id
-     WHERE st.is_won=1 AND o.exclude_from_sales=0 AND o.year=? AND o.deleted_at IS NULL${companyScope ? '' : ' AND o.sector_id = ?'}`, bkP)).v;
+     WHERE st.is_won=1 AND o.exclude_from_sales=0 AND o.year=? AND o.deleted_at IS NULL
+       AND (${bookingsScope.clause})`, [year, ...bookingsScope.params])).v;
   const revenue = await scopedRevenue(user, year); // نفس المصدر الذي يستعمله dso — لا نسختان
   // المفوتر: **إجمالي** (مطالبة على العميل) ومعه صافيه وضريبته. نسبة التحصيل تُقاس بين إجماليَّين
   // (محصَّل ÷ مفوتر) لأن الاثنين حركةُ مالٍ مع العميل، لا اعترافٌ بإيراد.
@@ -106,7 +109,8 @@ export async function financeSummary(user, year = FY()) {
   const col = await get(`SELECT COALESCE(SUM(col.amount_halalas),0) gross,
        ${netSum('col.amount_halalas', 'col.net_amount_halalas')} net,
        ${vatSum('col.amount_halalas', 'col.net_amount_halalas')} vat
-     FROM collection col JOIN invoice i ON i.id=col.invoice_id WHERE ${c} AND ${YEAR_PRED('i.')}`, [...p, year]);
+     FROM collection col JOIN invoice i ON i.id=col.invoice_id
+     WHERE ${c} AND i.deleted_at IS NULL AND i.status != 'DRAFT' AND ${YEAR_PRED('i.')}`, [...p, year]);
   const invoices = await all(`SELECT i.* FROM invoice i WHERE ${c} AND i.deleted_at IS NULL AND i.status IN ('ISSUED','PARTIALLY_PAID','OVERDUE') AND ${YEAR_PRED('i.')}`, [...p, year]);
   let ar = 0;
   for (const inv2 of invoices) ar += await outstanding(inv2);
@@ -213,6 +217,8 @@ export async function financeByContract(user) {
   // Qualify the scope column to the aliased contract table (project also exposes sector_id → ambiguous otherwise).
   // Contracts have no owner column; if a role ever reads at 'own' scope, resolve ownership via the linked project.
   const f = scopeFilter(user, 'contract', 'read', { sectorCol: 'c.sector_id', ownerCol: 'p.owner_user_id' });
+  const fi = scopeFilter(user, 'invoice', 'read');
+  const fc = scopeFilter(user, 'invoice', 'read', { sectorCol: 'i.sector_id', ownerCol: 'i.owner_user_id', projectCol: 'i.project_id' });
   const contracts = await all(`SELECT c.*, cl.name_ar client_name, p.name_ar project_name, p.owner_user_id
      FROM contract c LEFT JOIN client cl ON cl.id=c.client_id LEFT JOIN project p ON p.id=c.project_id
      WHERE ${f.clause} AND c.deleted_at IS NULL ORDER BY c.value_halalas DESC LIMIT 200`, f.params);
@@ -222,9 +228,11 @@ export async function financeByContract(user) {
   const rows = await Promise.all(contracts.map(async (c) => {
     const i = await get(`SELECT COALESCE(SUM(amount_halalas),0) gross,
          ${netSum('amount_halalas', 'net_amount_halalas')} net
-       FROM invoice WHERE contract_id=? AND status!='DRAFT' AND deleted_at IS NULL`, [c.id]);
+       FROM invoice WHERE contract_id=? AND ${fi.clause} AND status!='DRAFT' AND deleted_at IS NULL`, [c.id, ...fi.params]);
     const invoiced = i.gross;
-    const collected = (await get('SELECT COALESCE(SUM(col.amount_halalas),0) v FROM collection col JOIN invoice i ON i.id=col.invoice_id WHERE i.contract_id=?', [c.id])).v;
+    const collected = (await get(`SELECT COALESCE(SUM(col.amount_halalas),0) v
+      FROM collection col JOIN invoice i ON i.id=col.invoice_id
+      WHERE i.contract_id=? AND ${fc.clause} AND i.deleted_at IS NULL AND i.status!='DRAFT'`, [c.id, ...fc.params])).v;
     const value = c.value_halalas || 0;
     const valueNet = c.net_value_halalas ?? splitGross(value).net_halalas;
     return { ...c, invoiced_halalas: invoiced, invoiced_net_halalas: i.net, collected_halalas: collected,
@@ -236,13 +244,12 @@ export async function financeByContract(user) {
   }));
   // Reconciliation: invoices not tied to any contract must still appear, else the by-contract
   // total silently understates financeSummary.invoiced. Surface them as one explicit bucket.
-  const fi = scopeFilter(user, 'invoice', 'read'); // unaliased, single-table invoice query
   const un = await get(`SELECT COALESCE(SUM(amount_halalas),0) inv,
        ${netSum('amount_halalas', 'net_amount_halalas')} "invNet", COUNT(*) n FROM invoice
      WHERE ${fi.clause} AND contract_id IS NULL AND status!='DRAFT' AND deleted_at IS NULL`, fi.params);
   if (un.inv > 0) {
     const unCollected = (await get(`SELECT COALESCE(SUM(col.amount_halalas),0) v FROM collection col JOIN invoice i ON i.id=col.invoice_id
-       WHERE i.contract_id IS NULL`, [])).v;
+       WHERE i.contract_id IS NULL AND ${fc.clause} AND i.deleted_at IS NULL AND i.status!='DRAFT'`, fc.params)).v;
     rows.push({ id: null, code: '—', client_name: '—', project_name: 'فواتير غير مرتبطة بعقد', unassigned: true,
       value_halalas: 0, net_value_halalas: 0, vat_halalas: 0,
       invoiced_halalas: un.inv, invoiced_net_halalas: un.invNet, collected_halalas: unCollected,

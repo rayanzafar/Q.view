@@ -71,8 +71,9 @@ export async function previewPurge(batch) {
   return { batch, total: items.reduce((a, x) => a + x.n, 0), items };
 }
 
-// المحو. الترتيب: الأحدث إدراجاً أولاً — ما أُنشئ أخيراً يعتمد غالباً على ما قبله، فمحوُه أولاً
-// يتجنّب كسر المفاتيح الأجنبية بلا خريطة اعتماد يدوية تتقادم مع أول جدول جديد.
+// المحو يبدأ بالأحدث، لكن الوقت والمعرّف العشوائي لا يحددان ترتيب الاعتماد عند تساوي
+// الأختام. يُعاد فقط ما تعذّر من القائمة المسجّلة حتى لا يتحقق تقدّم؛ لا تعطيل للمفاتيح
+// الأجنبية ولا توسيع للقائمة إلى صفوف غير مسجّلة.
 //
 // والحذف **صلب** لا ناعم: بيانات العرض لا تاريخ لها يُصان، وتركُها بعلامة حذف يُبقيها في كل
 // استعلامٍ نسي شرط deleted_at — وهو ما يُنتج «مسحتُها ومازالت تظهر».
@@ -87,20 +88,28 @@ export async function purgeBatch(batch, opts = {}) {
   if (opts.dryRun) return { batch, purged: 0, wouldPurge: rows.length, failed: [] };
 
   const now = nowIso();
-  const failed = [];
+  let failed = [];
   let purged = 0;
   // كل صف في محاولته: سقوط واحد لا يُسقط الدفعة كلها — البيانات التجريبية تُمحى بأفضل جهد،
   // والباقي يُقال صراحةً. (وهذا عكس النقل: هناك الذرّية تحمي اتساق الهيكل، وهنا لا شيء يُكسَر.)
-  for (const r of rows) {
-    try {
-      await tx(async () => {
-        await run(`DELETE FROM ${r.table_name} WHERE id = ?`, [r.row_id]);
-        await run('UPDATE demo_record SET purged_at = ? WHERE id = ?', [now, r.id]);
-      });
-      purged++;
-    } catch (e) {
-      failed.push({ table: r.table_name, rowId: r.row_id, label: r.label, reason: e && e.message });
+  let pending = rows;
+  while (pending.length) {
+    const remaining = []; failed = [];
+    for (const r of pending) {
+      try {
+        assertSeedable(r.table_name);
+        await tx(async () => {
+          await run(`DELETE FROM ${r.table_name} WHERE id = ?`, [r.row_id]);
+          await run('UPDATE demo_record SET purged_at = ? WHERE id = ?', [now, r.id]);
+        });
+        purged++;
+      } catch (e) {
+        remaining.push(r);
+        failed.push({ table: r.table_name, rowId: r.row_id, label: r.label, reason: e && e.message });
+      }
     }
+    if (remaining.length === pending.length) break;
+    pending = remaining;
   }
   return { batch, purged, failed };
 }

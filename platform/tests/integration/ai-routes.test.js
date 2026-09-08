@@ -17,7 +17,7 @@ const cookies = {};
 const wipe = () => { for (const s of ['', '-wal', '-shm']) rmSync(TEST_DB + s, { force: true }); };
 
 const USERS = ['demo.admin', 'demo.pm', 'demo.bd', 'demo.employee', 'demo.procurement',
-  'demo.sectorlead', 'demo.consultant'];
+  'demo.sectorlead', 'demo.consultant', 'demo.officecoord', 'demo.officemember'];
 
 before(async () => {
   wipe();
@@ -120,6 +120,18 @@ test('نية الكتابة من نص حر تعيد نموذجاً لا تخمي
   const names = r.json.form.fields.map((f) => f.name);
   assert.deepEqual(names, ['title', 'projectId', 'dueDate', 'priority']);
   assert.ok(r.json.form.fields.find((f) => f.name === 'projectId').options_kind === 'project');
+});
+
+test('مساعدو المكتب: نموذج مهمة مسموح بلا تنفيذ، ومخاطر المشاريع محجوبة', async () => {
+  const beforeTasks = Number((await db.get('SELECT COUNT(*) n FROM task')).n);
+  for (const u of ['demo.officecoord', 'demo.officemember']) {
+    assert.equal((await chat(u, 'ما المخاطر البارزة')).status, 403);
+    const r = await chat(u, 'أنشئ مهمة متابعة العقد');
+    assert.equal(r.status, 200);
+    assert.equal(r.json.form?.type, 'task_create');
+    assert.ok(!r.json.applyToken && !r.json.previewId);
+  }
+  assert.equal(Number((await db.get('SELECT COUNT(*) n FROM task')).n), beforeTasks);
 });
 
 // ── الخيارات: كل معرّف يظهر للواجهة صادر من الخادم ومُرشَّح بالنطاق ───────────

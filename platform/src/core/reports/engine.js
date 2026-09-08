@@ -64,17 +64,16 @@ export async function buildReport(reportKey, user, opts = {}) {
       `SELECT id FROM sector WHERE active=1 AND deleted_at IS NULL AND ${DELIVERY_SECTOR_SQL}
         ORDER BY sort_order LIMIT 1`) || {}).id;
     const sd = sid ? await sectorDashboard(user, sid, { year: opts.year }) : null;
-    if (!sd) return { sectorName: '—', period: `${monthName()} ${opts.year || FY()}`, revenue_halalas: 0, target_revenue_halalas: 0,
-      sales_halalas: 0, target_sales_halalas: 0, margin_pct: null, target_margin_pct: 0, revenue_yoy: null, book_to_bill: null, rag: 'GREEN', projects: [] };
+    if (!sd) return { sectorName: '—', period: `${monthName()} ${opts.year || FY()}`, revenue_halalas: 0, target_revenue_halalas: null,
+      sales_halalas: 0, target_sales_halalas: null, margin_pct: null, target_margin_pct: null, revenue_yoy: null, book_to_bill: null, rag: 'GREEN', projects: [] };
     const gm = canSeeMargin(user) ? await grossMargin(sid, opts.year || FY()) : { margin_pct: null };
     const b2b = await bookToBill(sid, opts.year || FY());
     const trend = await multiYearTrend(sid, 2);
     const revYoy = trend.length >= 2 && trend[0].revenue_halalas ? Math.round((trend[1].revenue_halalas - trend[0].revenue_halalas) / trend[0].revenue_halalas * 100) : null;
-    const sec = await get('SELECT * FROM sector WHERE id = ?', [sid]) || {};
     return { sectorName: sd?.sector?.name_ar || '', period: `${monthName()} ${opts.year || FY()}`,
       revenue_halalas: sd.revenue_halalas, target_revenue_halalas: sd.target_revenue_halalas,
       sales_halalas: sd.sales_halalas, target_sales_halalas: sd.target_sales_halalas,
-      margin_pct: gm.margin_pct, target_margin_pct: sec.target_margin_pct || 0,
+      margin_pct: gm.margin_pct, target_margin_pct: sd.target_margin_pct,
       revenue_yoy: revYoy, book_to_bill: b2b.ratio, rag: sd.rag,
       projects: await withEffectiveProgress(
         await all("SELECT id, name_ar, rag, status, progress_pct FROM project WHERE sector_id=? AND deleted_at IS NULL AND status='IN_PROGRESS' ORDER BY rag DESC, contract_value_halalas DESC LIMIT 10", [sid])) };

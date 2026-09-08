@@ -11,7 +11,8 @@ import { netSql } from '../../modules/finance/vat.js';
 import { icon } from '../icons.js';
 import { fmtSar } from '../../core/util/ids.js';
 import { all, get } from '../../core/db/index.js';
-import { sectorDashboard, sectorStaffing, sectorWins, quarterlyRevenue, quarterlyBookings, pipelineCoverage, monthlyRevenue, revenueOutlook, revenueScope, outlookFromMonths, winsByMonth, windowFigures, windowRevenue, yearElapsedPct, targetToDate, paceDelta, sectorCosts, backlog, unbilledDelivered, invoicedNet, WEIGHTED_OPEN, availableYears } from '../../core/reports/metrics.js';
+import { sectorDashboard, sectorStaffing, sectorWins, quarterlyRevenue, quarterlyBookings, pipelineCoverage, monthlyRevenue, revenueOutlook, revenueScope, outlookFromMonths, winsByMonth, windowFigures, windowRevenue, yearElapsedPct, targetToDate, paceDelta, grossMargin, sectorCosts, backlog, unbilledDelivered, invoicedNet, WEIGHTED_OPEN, availableYears } from '../../core/reports/metrics.js';
+import { monthlyRevenueTargets } from '../../modules/org/sector-targets.js';
 import { attentionFeed, RESOURCE_AR } from '../../core/reports/attention.js';
 import { changesSince, periodBounds, lastChangeAt } from '../../core/reports/changes.js';
 import { completenessScore } from '../../core/reports/completeness.js';
@@ -777,6 +778,7 @@ export async function sectorPage(user, opts = {}) {
      WHERE sector_id = ? AND deleted_at IS NULL AND status = 'IN_PROGRESS' AND ${pycBare.clause}${deptSql('department_id')}${clientSql('client_id')}
      GROUP BY rag`, [sectorId, ...pycBare.params, ...deptArg, ...clientArg]) : null;
   const ragView = ragScoped ? Object.fromEntries(ragScoped.map((r) => [r.rag, r.n])) : sd.rag;
+  ragView.UNKNOWN = Object.entries(ragView).filter(([k]) => !['GREEN', 'AMBER', 'RED', 'UNKNOWN'].includes(k)).reduce((n, [, v]) => n + Number(v || 0), 0);
   // نسبة الفوز في ذيل القمع — تحت الترشيح تُحسب من فرص الترشيح نفسها (كانت قطاعية فتظهر
   // 50% فوق قمعٍ نسبتُه الحقيقية 100%)، وبمقامٍ مطبوع وحارس العيّنة الصغيرة.
   const winsScoped = filtered ? await get(`SELECT
@@ -794,14 +796,14 @@ export async function sectorPage(user, opts = {}) {
        AND ${pyc.clause}${deptSql('p.department_id')}${clientSql('p.client_id')}
      ORDER BY CASE p.rag WHEN 'RED' THEN 0 ELSE 1 END, p.name_ar LIMIT 6`, [sectorId, ...pyc.params, ...deptArg, ...clientArg]);
   const healthLists = {};
-  for (const rag of ['GREEN', 'AMBER', 'RED']) {
+  for (const rag of ['GREEN', 'AMBER', 'RED', 'UNKNOWN']) {
     healthLists[rag] = (ragView[rag]) ? await all(`SELECT id, name_ar, progress_pct, end_date FROM project
-       WHERE sector_id = ? AND deleted_at IS NULL AND status = 'IN_PROGRESS' AND rag = ? AND ${pycBare.clause}${deptSql('department_id')}${clientSql('client_id')}
-       ORDER BY name_ar LIMIT 30`, [sectorId, rag, ...pycBare.params, ...deptArg, ...clientArg]) : [];
+       WHERE sector_id = ? AND deleted_at IS NULL AND status = 'IN_PROGRESS' AND ${rag === 'UNKNOWN' ? "(rag IS NULL OR rag NOT IN ('GREEN','AMBER','RED'))" : 'rag = ?'} AND ${pycBare.clause}${deptSql('department_id')}${clientSql('client_id')}
+       ORDER BY name_ar LIMIT 30`, [sectorId, ...(rag === 'UNKNOWN' ? [] : [rag]), ...pycBare.params, ...deptArg, ...clientArg]) : [];
   }
   // نسبة الإنجاز من مصدرها الواحد (المخرجات الموزونة) لا من العمود المخزَّن — قاعدة «رقم واحد
   // حقيقة واحدة»، والحارس البنيوي يسقط أي شاشة تخالفها.
-  const progMapH = await effectiveProgress([...healthLists.GREEN, ...healthLists.AMBER, ...healthLists.RED]);
+  const progMapH = await effectiveProgress([...healthLists.GREEN, ...healthLists.AMBER, ...healthLists.RED, ...healthLists.UNKNOWN]);
 
   // ── اختيار مرحلة من القمع (?stage=) — تصفية خادمية، حالة في الرابط لا في الذاكرة ──
   // «معلّقة» (قرار تأجيل) خارج مسار القمع كله: أشرطته ورأسه وأعماره وأعلى فرصه — وإلا قال
@@ -862,7 +864,7 @@ export async function sectorPage(user, opts = {}) {
   // صحة التنفيذ، قدرة الفريق، يحتاج تدخلاً. البقية في بطاقاتها التفصيلية لا هنا. ──
   const attainSales = sd.target_sales_halalas ? Math.round((sd.sales_halalas / sd.target_sales_halalas) * 100) : null;
   const dSales = paceDelta(sd.sales_halalas, sd.target_sales_halalas, now, year);
-  const ragActive = (ragView.GREEN || 0) + (ragView.AMBER || 0) + (ragView.RED || 0);
+  const ragActive = (ragView.GREEN || 0) + (ragView.AMBER || 0) + (ragView.RED || 0) + (ragView.UNKNOWN || 0);
   const needsN = (ragView.AMBER || 0) + (ragView.RED || 0);
   const ptWord = (n) => { const a = Math.abs(n); return a === 1 ? 'بنقطة واحدة' : a === 2 ? 'بنقطتين' : a <= 10 ? `بـ${a} نقاط` : `بـ${a} نقطة`; };
   // شارة الحكم: رمزٌ وكلمة معاً — واللون لغير السليم وحده (قاعدة «الرمادي أولاً»، ADR-0011).
@@ -1159,7 +1161,7 @@ export async function sectorPage(user, opts = {}) {
     <div class="card-foot"><a href="${staffingHref}">لوحة التسكين الكاملة <span aria-hidden="true">←</span></a></div>`);
 
   // ── صحة المشاريع — شريط تركيبةٍ واحد بدل الدونات (الطول لا الزاوية)، وأبرز ما يحتاج نظراً ──
-  const HEALTH = [['GREEN', G.hOnTrack, 'var(--st-good)'], ['AMBER', G.hAtRisk, 'var(--st-warn)'], ['RED', G.hCritical, 'var(--st-bad)']];
+  const HEALTH = [['GREEN', G.hOnTrack, 'var(--st-good)'], ['AMBER', G.hAtRisk, 'var(--st-warn)'], ['RED', G.hCritical, 'var(--st-bad)'], ['UNKNOWN', 'غير مقيّم', 'var(--faint)']];
   const healthRows = HEALTH.map(([k, l, c]) => `<button type="button" class="r" role="button" data-action="open-dd" data-dd="sec-health-${k}" ${!(ragView[k]) ? 'disabled style="opacity:.45;cursor:default"' : ''} aria-label="${l}: ${ragView[k] || 0} — التفصيل">
       <span class="d" style="background:${c}"></span><span class="n">${l}</span>
       <b class="tnum">${ragView[k] || 0}</b>
@@ -1367,9 +1369,9 @@ export async function sectorPage(user, opts = {}) {
 
   // ── قوالب التفصيل (drill-down) — تُحسب على الخادم بنفس نطاق الصفحة فلا يتسرب محجوب ──
   const lateDlv = (attn.find((a) => a.dd === 'att-late-dlv')?.ddRowsData) || [];
-  const HEALTH_DD_SUB = { GREEN: 'مشاريع قيد التنفيذ على المسار', AMBER: 'مشاريع في خطر تحتاج متابعة قبل أن تتعثر', RED: 'مشاريع حرجة — الأولى بوقت القائد' };
+  const HEALTH_DD_SUB = { UNKNOWN: 'مشاريع لم يُسجل تقييم صحتها بعد', GREEN: 'مشاريع قيد التنفيذ على المسار', AMBER: 'مشاريع في خطر تحتاج متابعة قبل أن تتعثر', RED: 'مشاريع حرجة — الأولى بوقت القائد' };
   const healthDD = HEALTH.map(([k, l, c]) => ddWrap(`sec-health-${k}`, `${l} — ${esc(sd.sector.name_ar)}`, HEALTH_DD_SUB[k], `
-    <div class="dd-kpi"><span class="v tnum" style="color:${c}">${sd.rag[k] || 0}</span><span style="font-size:12px;color:var(--muted)">من ${countAr(ragActive, { one: 'مشروع قيد التنفيذ', two: 'مشروعين قيد التنفيذ', few: 'مشاريع قيد التنفيذ', many: 'مشروعاً قيد التنفيذ' })}</span></div>
+    <div class="dd-kpi"><span class="v tnum" style="color:${c}">${ragView[k] || 0}</span><span style="font-size:12px;color:var(--muted)">من ${countAr(ragActive, { one: 'مشروع قيد التنفيذ', two: 'مشروعين قيد التنفيذ', few: 'مشاريع قيد التنفيذ', many: 'مشروعاً قيد التنفيذ' })}</span></div>
     <div>${ddRows(healthLists[k].map((p) => `<div class="dd-row">
       <span><a href="/app/project/${esc(p.id)}" style="color:var(--ink2);font-weight:700">${esc(p.name_ar)}</a></span>
       <b class="tnum">${progMapH.get(p.id)?.pct ?? Math.max(0, Math.min(100, Math.round(p.progress_pct || 0)))}%</b></div>`))}</div>
@@ -2067,8 +2069,10 @@ export async function sectorPage(user, opts = {}) {
     const denom = secRevTotal + openTot;
     return denom && top3.length === 3 ? Math.round(((top3.reduce((a, c) => a + c.rev, 0) + top3open) / denom) * 100) : null;
   })();
-  // خط المسار الزمني للهدف: قسمة الهدف السنوي بالتساوي على الشهور — قاعدة معلنة لا منحنى مختلق.
-  const paceLine = revTarget ? monthly.map((_, i) => Math.round(revTarget * (i + 1) / 12)) : null;
+  // خط المسار الزمني للهدف: من التوزيع الدوري **المعتمد** للقطاع (KI-110 — تراكمي مستهدف الإيراد الشهري)؛
+  // وبلا توزيع معتمد لا خط: القسمة المتساوية على الشهور افتراضٌ لا قرار للشركة، فلا يُرسم باسمها.
+  const planMonths = revTarget ? await monthlyRevenueTargets(sectorId, year) : null;
+  const paceLine = planMonths ? planMonths.reduce((acc, v) => { acc.push((acc[acc.length - 1] || 0) + v); return acc; }, []) : null;
   const largestPct = secRevTotal && top3.length ? Math.round((top3[0].rev / secRevTotal) * 100) : null;
   // ── بطاقات القراءة الثلاث — عادت برسومها إلى الشريط البنفسجي (طلب أ. حسين ٥،
   // 2026-08-25: «أعيدوا الشريط الكبير بكل رسومه»): بطاقة الإيقاع من السلسلة المرشَّحة نفسها
@@ -2176,8 +2180,9 @@ export async function sectorPage(user, opts = {}) {
   const zCumAll = zBars.reduce((acc, v) => { acc.push((acc[acc.length - 1] || 0) + v); return acc; }, []);
   const zCum = zCumAll.slice(0, zoomIdx.filter((i) => i <= lastDoneIdx).length);
   const nowPos = zoomIdx.indexOf(nowM);
+  // هدف النافذة المقرَّبة من التوزيع المعتمد (مجموع أشهرها)؛ وبلا توزيع معتمد لا هدفَ جزئياً مفترضاً.
   const zTarget = filtered ? null
-    : zoomed ? (revTarget ? Math.round(revTarget * zoomIdx.length / 12) : null) : (revTarget || null);
+    : zoomed ? (planMonths ? zoomIdx.reduce((a, i) => a + (planMonths[i] || 0), 0) : null) : (revTarget || null);
   const zForecast = zoomed || futureYr ? null : ((filtered ? rsOutlook?.base : fc.forecast) || null);
   const fcLine = zForecast && year === now.getUTCFullYear() && nowM >= 0 && rsCum[nowM] != null && nowM < 11
     ? { points: [{ i: nowM, v: rsCum[nowM] }, { i: 11, v: zForecast }], color: 'var(--acc-violet)', endLabel: sarShort(zForecast) }
@@ -2314,11 +2319,11 @@ export async function sectorPage(user, opts = {}) {
   const revByPid = Object.fromEntries(revByProject.map((r) => [r.id, r]));
   const nextMsByPid = {};
   for (const m of msUpcoming) if (!nextMsByPid[m.pid]) nextMsByPid[m.pid] = m;
-  const RAG_ORD = { RED: 0, AMBER: 1, GREEN: 2 };
-  const prjRows = [...healthLists.RED.map((r) => ({ ...r, rag: 'RED' })), ...healthLists.AMBER.map((r) => ({ ...r, rag: 'AMBER' })), ...healthLists.GREEN.map((r) => ({ ...r, rag: 'GREEN' }))]
+  const RAG_ORD = { RED: 0, AMBER: 1, UNKNOWN: 2, GREEN: 3 };
+  const prjRows = [...healthLists.RED.map((r) => ({ ...r, rag: 'RED' })), ...healthLists.AMBER.map((r) => ({ ...r, rag: 'AMBER' })), ...healthLists.GREEN.map((r) => ({ ...r, rag: 'GREEN' })), ...healthLists.UNKNOWN.map((r) => ({ ...r, rag: 'UNKNOWN' }))]
     .sort((a, b) => (RAG_ORD[a.rag] - RAG_ORD[b.rag]) || ((revByPid[b.id]?.rev || 0) - (revByPid[a.id]?.rev || 0)))
     .slice(0, 7);
-  const RAG_LBL = { GREEN: [G.hOnTrack, 'var(--st-good)'], AMBER: [G.hAtRisk, 'var(--st-warn)'], RED: [G.hCritical, 'var(--st-bad)'] };
+  const RAG_LBL = { UNKNOWN: ['غير مقيّم', 'var(--faint)'], GREEN: [G.hOnTrack, 'var(--st-good)'], AMBER: [G.hAtRisk, 'var(--st-warn)'], RED: [G.hCritical, 'var(--st-bad)'] };
   const lateDaysOf = (r, prog) => r.end_date && prog < 100 && String(r.end_date).slice(0, 10) < today
     ? Math.floor((Date.parse(today) - Date.parse(String(r.end_date).slice(0, 10))) / 86400000) : 0;
   const lateVals = prjRows.map((r) => lateDaysOf(r, progMapH.get(r.id)?.pct ?? Math.round(r.progress_pct || 0))).filter((d) => d > 0);
@@ -2328,10 +2333,10 @@ export async function sectorPage(user, opts = {}) {
   const effStatus = (r, prog, late) => {
     const started = r.start_date && String(r.start_date).slice(0, 10) <= today;
     const why = [];
-    let key = r.rag || 'GREEN';
+    let key = r.rag || 'UNKNOWN';
     if (late > 30) { key = 'RED'; why.push(`متأخر ${dayWord(late)}`); }
-    else if (late > 0) { if (key === 'GREEN') key = 'AMBER'; why.push(`متأخر ${dayWord(late)}`); }
-    if (prog === 0 && started) { if (key === 'GREEN') key = 'AMBER'; why.push('بلا إنجاز مسجَّل'); }
+    else if (late > 0) { if (key === 'GREEN' || key === 'UNKNOWN') key = 'AMBER'; why.push(`متأخر ${dayWord(late)}`); }
+    if (prog === 0 && started) { if (key === 'GREEN' || key === 'UNKNOWN') key = 'AMBER'; why.push('بلا إنجاز مسجَّل'); }
     return { key, why };
   };
   // «لم تُسجَّل معالم» مكرّرةً في كل صفٍّ ليست معلومة — إن خلا الجدولُ كله منها سقط العمود
@@ -2365,6 +2370,7 @@ export async function sectorPage(user, opts = {}) {
         <span class="ringw" style="width:112px;height:112px">${figDonut([
     { v: ragView.GREEN || 0, color: 'var(--st-good)', dd: ragView.GREEN ? 'sec-health-GREEN' : '', label: `${G.hOnTrack}: ${ragView.GREEN || 0}` },
     { v: ragView.AMBER || 0, color: 'var(--st-warn)', dd: ragView.AMBER ? 'sec-health-AMBER' : '', label: `${G.hAtRisk}: ${ragView.AMBER || 0}` },
+    { v: ragView.UNKNOWN || 0, color: 'var(--faint)', dd: ragView.UNKNOWN ? 'sec-health-UNKNOWN' : '', label: `غير مقيّم: ${ragView.UNKNOWN || 0}` },
     { v: ragView.RED || 0, color: 'var(--st-bad)', dd: ragView.RED ? 'sec-health-RED' : '', label: `${G.hCritical}: ${ragView.RED || 0}` },
   ], { size: 112, sw: 14 })}<span class="ringv"><b class="tnum" dir="ltr" style="font-size:1.15rem">${ragView.GREEN || 0}/${ragActive || 0}</b><small>على المسار</small></span></span>
         <div class="fig-leg">${healthRows}</div>
@@ -2380,7 +2386,7 @@ export async function sectorPage(user, opts = {}) {
     // العدّ على الحالة المعروضة لا المخزَّنة — وإلا قالت البطاقة «صفر» وبجانبها بطاقةٌ تقول «متوسط التأخر 34 يوماً»
     const needEff = prjRows.filter((r) => {
       const pg = progMapH.get(r.id)?.pct ?? Math.max(0, Math.min(100, Math.round(r.progress_pct || 0)));
-      return effStatus(r, pg, lateDaysOf(r, pg)).key !== 'GREEN';
+      return ['RED', 'AMBER'].includes(effStatus(r, pg, lateDaysOf(r, pg)).key);
     }).length;
     const shown = Math.max(needsN, needEff);
     return `<div class="pch"><span class="l">يحتاج نظراً</span><b class="tnum"${shown ? ' style="color:var(--st-bad)"' : ''}>${shown}</b><span class="c">${shown ? `بحالة ${G.hCritical} أو ${G.hAtRisk} أو متأخر` : 'لا مشاريع متعثرة'}</span></div>`;
@@ -2532,6 +2538,8 @@ export async function sectorPage(user, opts = {}) {
     <div class="dash">
     ${toolbar}
     ${filterNote}
+    ${can(user, 'read', 'budget', { sector_id: sectorId }) ? `<div class="alert info"><a href="/app/sector-targets?year=${year}&amp;sector=${encodeURIComponent(sectorId)}">مستهدفات القطاع</a> · راجع مستهدفات السنة وسجل تعديلاتها.</div>` : ''}
+    ${can(user, 'read', 'revenue_line') ? `<div class="alert info">الإيراد حسب فترة المخرجات، والمبيعات حسب سنة الفوز. <a href="/app/revenue-review?year=${year}&amp;sector=${encodeURIComponent(sectorId)}">راجع جودة الإيراد</a></div>` : ''}
     ${kpiBand}
     ${moneyBand}
     ${execBand}

@@ -1,5 +1,6 @@
 // SSR page routes + web-form auth handlers + report preview.
 import { Router } from 'express';
+import { personProfileLink } from '../modules/team/person-link.js';
 import { login, logout } from '../core/auth/service.js';
 import { requestCode, verifyCode, normalizeEmail, REASON as OTP_REASON } from '../core/auth/otp.js';
 import { config } from '../core/config.js';
@@ -85,6 +86,10 @@ const nextCookieOpts = { httpOnly: true, sameSite: 'lax', secure: config.env ===
 // يُنزل الموظفَ بعد دخوله على مستندٍ عارٍ بلا قائمةٍ ولا طريق رجوع.
 function safeDestination(raw) {
   const v = String(raw || '');
+  // وشاشة الإذن بربط المساعد وجهةٌ داخلية ثانية مقبولة: من ضغط «ربط» في مساعده قبل دخوله
+  // يُرسَل إلى الدخول، ولولا قبولها هنا لهبط على صفحته الأولى وضاع طلب الإذن بلا رسالة.
+  // تمرّ بحرّاس هذا الملف نفسها (بلا `//` ولا `..`)، والمسار محدَّد لا بادئة مفتوحة.
+  if (v.startsWith('/oauth/authorize?') && !v.includes('\\') && !v.includes('..')) return v;
   if (!v.startsWith('/app/') || v.startsWith('//') || v.includes('\\')) return null;
   // و`..` مرفوضة كذلك: `/app/..//evil.example` يمرّ بالفحوص أعلاه، ويحلّه المتصفّح المطابق
   // للمواصفة إلى مسارٍ من أصلنا (فلا تحويلة مفتوحة) — لكن أي وسيطٍ يُسوّي المسار ثم يُعيد
@@ -218,11 +223,16 @@ webRouter.get('/', (req, res) => (req.ctx?.user
 
 const PAGES = {
   home: P.homePage,
+  'revenue-review': P.revenueReviewPage,
+  'sector-targets': P.sectorTargetsPage,
+  'assistant-link': P.assistantLinkPage,
   ceo: P.ceoPage, portfolio: P.portfolioPage, sector: P.sectorPage, opportunities: P.opportunitiesPage,
   'my-opportunities': P.myOpportunitiesPage,
   projects: P.projectsPage, tasks: P.tasksPage, timesheet: P.timesheetPage, approvals: P.approvalsPage,
-  team: P.teamPage, staffing: P.staffingPage, users: P.usersPage, audit: P.auditPage, ops: P.opsPage, reports: P.reportsPage, org: P.orgTreePage,
-  finance: P.financePage, mail: P.mailPage, clients: P.clientsPage, imports: P.importsPage,
+  // «الفريق» صار بوابةً بأربعة مسارات (ADR-0016)؛ شاشة الموظفين وحسابات الدخول القائمة تحت
+  // `/app/team/people` (تبويب «حسابات الدخول») — لم تُمحَ ولم يتغيّر عقدها.
+  team: P.teamGatewayPage, staffing: P.staffingPage, users: P.usersPage, audit: P.auditPage, ops: P.opsPage, reports: P.reportsPage, org: P.orgTreePage,
+  mail: P.mailPage, clients: P.clientsPage, imports: P.importsPage,
   guide: P.guidePage,
   events: P.eventsPage,
 };
@@ -245,8 +255,9 @@ function deny(res) {
 }
 const guardDetail = (kind) => (req, res, next) => (DETAIL_ACCESS[kind]?.(req.ctx.user) ? next() : deny(res));
 
-webRouter.get('/app/contract/:id', requireWeb, guardDetail('contract'), async (req, res, next) => {
-  try { res.send(await P.contractDetailPage(req.ctx.user, req.params.id)); } catch (e) { next(e); }
+// Retired by the owner: explicit tombstones, never a permission/reenablement prompt.
+webRouter.get(['/app/finance', '/app/contract/:id'], requireWeb, (req, res) => {
+  res.status(410).send('<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>القسم ملغى — سند</title><main style="font-family:system-ui;max-width:560px;margin:15vh auto;padding:24px"><h1>أُلغي قسم المالية</h1><p>تجد قيمة المشروع وإيراده وفترات مخرجاته داخل المشاريع ومركز القطاع.</p><a href="/app/projects">افتح المشاريع</a></main></html>');
 });
 // الاستعلام يُمرَّر كما تفعل صفحات القوائم (`/app/:page` أدناه) — فسنة «حركة المال» تصير
 // قابلة للمشاركة برابط. وبدونه كانت الصفحة تُبنى بلا استعلام أصلاً، فالمبدِّل يعمل داخل
@@ -270,7 +281,43 @@ webRouter.get('/app/event/:id', requireWeb, guardDetail('event'), async (req, re
 // الشخص داخل نطاقك»، وهو سؤالٌ لا يُجاب إلا بعد قراءة صفّه. فالخدمة (personDossier) هي البوابة
 // وحدها، وترمي رفضاً عربياً واضحاً — ويُفتح ملفُ صاحب الحساب نفسه دائماً بلا أي منح إداري.
 webRouter.get('/app/person/:id', requireWeb, async (req, res, next) => {
-  try { res.send(await P.personPage(req.ctx.user, req.params.id)); } catch (e) { next(e); }
+  try {
+    const href = await personProfileLink(req.ctx.user, req.params.id, req.query);
+    if (href) return res.redirect(href);
+    res.send(await P.personPage(req.ctx.user, req.params.id));
+  } catch (e) { next(e); }
+});
+
+// ── وحدة الفريق والموارد (ADR-0016): /app/team/:section و /app/team/:section/:id ──────────
+// بوابة القوائم هي بوابة «الفريق» نفسها (قراءة الموظف)، و«الإقفال الشهري» فوقها بوابة الإقفال
+// (مكتب الرئيس التنفيذي/المدير العام/قائد القطاع/مدير الإدارة — لا الموظف ولا الموارد البشرية).
+// أما صفحات التفاصيل فبوابتها الخدمة وحدها كصفحة الشخص: ملفُ المورد يُفتح لصاحبه دائماً ولو لم
+// يملك قراءة الموظفين عموماً، والخدمة ترمي رفضاً عربياً لمن هو خارج النطاق.
+const TEAM_SECTIONS = {
+  resources: P.resourcesPage, org: P.teamOrgPage, people: P.teamPage, work: P.teamWorkPage,
+  planning: P.planningPage, requests: P.requestsPage, analysis: P.analysisPage, needs: P.needsPage, close: P.closePage,
+};
+const TEAM_DETAILS = {
+  resources: P.resourceProfilePage, requests: P.requestDetailPage, analysis: P.analysisCasePage,
+  needs: P.needCandidatesPage, close: P.closeResourcePage,
+};
+// بوابة القسم تُقرأ من سياسة الصفحات بمفتاح `team/<section>` (core/policy/pages.js) — نفس المصدر
+// الذي تشتقّ منه مصفوفة الصلاحيات والمسح الحيّ توقعاتهما.
+const sectionAllowed = (user, section) => pageAllowed(user, `team/${section}`);
+webRouter.get('/app/team/:section', requireWeb, async (req, res, next) => {
+  const fn = TEAM_SECTIONS[req.params.section];
+  if (!fn) return res.redirect('/app/team');
+  if (!sectionAllowed(req.ctx.user, req.params.section)) return deny(res);
+  // `_crossSite` يُكتب هنا لا من الاستعلام: صفحة الإقفال تُنشئ المسودة عند الفتح لمن يراجعها، ولا
+  // تفعل ذلك لطلبٍ وصل من موقعٍ آخر بجلسة القارئ (Sec-Fetch-Site: cross-site).
+  const crossSite = String(req.get('sec-fetch-site') || '').toLowerCase() === 'cross-site';
+  try { res.send(await fn(req.ctx.user, { ...req.query, _crossSite: crossSite, _ip: req.ctx.ip || null })); } catch (e) { next(e); }
+});
+webRouter.get('/app/team/:section/:id', requireWeb, async (req, res, next) => {
+  const fn = TEAM_DETAILS[req.params.section];
+  if (!fn) return res.redirect('/app/team');
+  if (req.params.section !== 'resources' && !sectionAllowed(req.ctx.user, req.params.section)) return deny(res);
+  try { res.send(await fn(req.ctx.user, req.params.id, { ...req.query })); } catch (e) { next(e); }
 });
 
 webRouter.get('/app/:page', requireWeb, async (req, res, next) => {

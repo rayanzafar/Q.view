@@ -24,7 +24,9 @@
     "backup": "node --experimental-sqlite scripts/backup.js",
     "deploy": "node scripts/deploy.mjs",
     "showcase": "node scripts/showcase-build.mjs",
-    "showcase:verify": "node scripts/showcase-verify.mjs"
+    "showcase:verify": "node scripts/showcase-verify.mjs",
+    "graph": "node scripts/build-system-graph.mjs",
+    "graph:check": "node scripts/build-system-graph.mjs --check"
   },
   "dependencies": {
     "cookie-parser": "^1.4.7",

@@ -435,6 +435,7 @@ export async function orgTreePage(user, opts = {}) {
           <div class="ot-main"><span class="ot-kind">إدارة</span><span class="ot-name">${esc(d.name_ar)}</span></div>
           <div class="ot-meta">${editable ? managerPicker(d) : leadLine(names.get(d.manager_user_id))} · ${depWork(d, editable) || countChip(d.employees, noun(d.employees, EMP))}${actions}</div>
         </summary>
+
         ${inner}
       </details>
     </li>`;
@@ -466,6 +467,7 @@ export async function orgTreePage(user, opts = {}) {
           </div>
           <div class="ot-meta">${leadLine(names.get(s.lead_user_id))} · ${countChip(s.employees, noun(s.employees, EMP))} · ${countChip(deps.length, noun(deps.length, DEP))}</div>
         </summary>
+        ${can(user, 'read', 'budget', { sector_id: s.id }) ? `<div style="padding:.6rem 1rem"><a href="/app/sector-targets?sector=${encodeURIComponent(s.id)}&amp;year=${year}">مستهدفات القطاع</a></div>` : ''}
         ${inner}
       </details>
     </li>`;

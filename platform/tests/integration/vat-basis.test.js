@@ -43,6 +43,7 @@ const ODD = 10000;           // ١٠٠٫٠٠ ر.س. — صافيه ٨٦٩٥ وض
 before(async () => {
   await db.insert('sector', { id: 'VS', name_ar: 'قطاع', kind: 'delivery', active: 1, created_at: T,
     target_revenue_halalas: 100000000, sort_order: 1 });
+  await db.insert('budget', { id: 'VS-annual', sector_id: 'VS', fiscal_year: YEAR, target_revenue_halalas: 100000000, created_at: T });
   await db.insert('client', { id: 'VC', name_ar: 'عميل', active: 1, created_at: T });
   await db.insert('project', { id: 'VP', name_ar: 'مشروع', sector_id: 'VS', client_id: 'VC',
     status: 'IN_PROGRESS', created_at: T });

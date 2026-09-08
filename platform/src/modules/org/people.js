@@ -36,19 +36,21 @@ export const seesDemoAccounts = (user) => !!user && user.role_id === 'admin';
 /**
  * نفس الحكم على **الموظفين** لا الحسابات.
  *
- * وموظفو العرض لا يحملون اسم دخول، لكن كلاً منهم **مربوطٌ بحساب عرض**: البذرة تُنشئ «ريم
- * الدوسري (تجريبي)» وتربطها بـ`demo.deptmgr`. فالعلامة واحدة والوصول إليها بخطوةٍ واحدة —
- * ولا نعود إلى مطابقة الاسم التي رفضتها الترحيلة ٠١٥.
+ * الهوية التجريبية تثبت بحساب عرض مرتبط أو بقيد موظف نشط في سجل البيانات التجريبية.
+ * يشمل السجل الموظف غير المرتبط بحساب. الاسم وحده ليس دليلًا؛ السجلات التاريخية غير
+ * المصنفة تحتاج مطابقة مصدر قبل تصنيفها أو حذفها.
  *
  * والربط يُقرأ من الجهتين (`app_user.employee_id` و`employee.user_id`) لأن المنتج يكتب
  * الاثنين، فاختيار جهةٍ واحدة يترك الباب الآخر مفتوحاً.
  *
  * @param {string} alias — اسم جدول الموظف في الاستعلام (مثل `e` أو `employee`).
  */
-export const notDemoEmployeeSql = (alias = 'employee') => `NOT EXISTS (
+export const notDemoEmployeeSql = (alias = 'employee') => `(NOT EXISTS (
   SELECT 1 FROM app_user au
    WHERE (au.employee_id = ${alias}.id OR au.id = ${alias}.user_id)
-     AND COALESCE(au.username,'') LIKE 'demo.%')`;
+     AND COALESCE(au.username,'') LIKE 'demo.%')
+  AND NOT EXISTS (SELECT 1 FROM demo_record dr
+    WHERE dr.table_name = 'employee' AND dr.row_id = ${alias}.id AND dr.purged_at IS NULL))`;
 
 /**
  * الأشخاص الذين يصحّ إسناد عملٍ إليهم: حسابات نشطة غير محذوفة وليست حسابَ عرض.
@@ -73,7 +75,12 @@ export async function namesByIds(ids = []) {
 
 export async function pickablePeople(opts = {}) {
   const where = ['active = 1', 'deleted_at IS NULL'];
-  if (!seesDemoAccounts(opts.viewer)) where.push(NOT_DEMO);
+  if (!seesDemoAccounts(opts.viewer)) {
+    where.push(NOT_DEMO);
+    where.push(`NOT EXISTS (SELECT 1 FROM employee pe
+      JOIN demo_record dr ON dr.table_name = 'employee' AND dr.row_id = pe.id AND dr.purged_at IS NULL
+      WHERE pe.id = app_user.employee_id OR pe.user_id = app_user.id)`);
+  }
   const params = [];
   if (opts.sectorId) { where.push('sector_id = ?'); params.push(opts.sectorId); }
   const limit = Number.isInteger(opts.limit) && opts.limit > 0 ? Math.min(opts.limit, 500) : 300;

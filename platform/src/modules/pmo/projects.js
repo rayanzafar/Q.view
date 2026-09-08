@@ -196,6 +196,7 @@ export async function getProject(user, pid) {
 }
 
 export async function createProject(ctx, data) {
+  if (data.sale_year != null && (!Number.isInteger(Number(data.sale_year)) || Number(data.sale_year) < 2000 || Number(data.sale_year) > 2100)) throw badRequest('سنة البيع غير صحيحة — راجع السنة قبل الحفظ');
   const user = ctx.user;
   const sectorId = data.sector_id || user.sector_id;
   // منحةُ الإنشاء الشخصية تُحكَم بإدارة الصفّ المولود لا بالقطاع (ADR-0009 — نظير باب الفرص
@@ -232,6 +233,7 @@ export async function createProject(ctx, data) {
   await tx(async () => {
     await insert('project', {
       id: pid, code: data.code || null, name_ar: data.name_ar, sector_id: sectorId,
+      financial_code: String(data.financial_code ?? '').trim().slice(0, 40) || null,
       department_id: departmentId,
       client_id: data.client_id || null, owner_user_id: data.owner_user_id || user.id,
       status: data.status || 'IN_PROGRESS', rag: data.rag || 'GREEN', kind: data.kind || 'external',
@@ -240,7 +242,7 @@ export async function createProject(ctx, data) {
       source_opp_id: data.source_opp_id || null, created_at: now, created_by: user.id,
     });
     await audit(ctx, { action: 'create', resource: 'project', resourceId: pid, sectorId });
-    await ensureOpportunityForProject(ctx, await get('SELECT * FROM project WHERE id = ?', [pid]));
+    await ensureOpportunityForProject(ctx, await get('SELECT * FROM project WHERE id = ?', [pid]), { year: data.sale_year });
   });
   // نفس حارس باب الفرص: الصفُّ كما وُلد قد لا تبلغه قراءةُ منشئه (نطاق «مشروع» يُبنى عند فتح
   // الجلسة فلا يعرف مولوداً بعدها) — فيُعاد تأكيدٌ مختصر بدل رسالة منعٍ على عملٍ تمّ فعلاً.
@@ -308,7 +310,7 @@ export async function updateProject(ctx, pid, data) {
   const STATUSES = ['NOT_STARTED', 'PLANNED', 'IN_PROGRESS', 'ON_HOLD', 'COMPLETED', 'CANCELLED'];
   const RAGS = ['GREEN', 'AMBER', 'RED'];
   if ('status' in data && !STATUSES.includes(data.status)) throw badRequest('حالة المشروع غير صحيحة');
-  if ('rag' in data && !RAGS.includes(data.rag)) throw badRequest('حالة المشروع غير صحيحة — اخترها من القائمة');
+  if ('rag' in data && data.rag !== null && !RAGS.includes(data.rag)) throw badRequest('حالة المشروع غير صحيحة — اخترها من القائمة');
   if ('progress_pct' in data) { const n = Number(data.progress_pct); if (!Number.isFinite(n) || n < 0 || n > 100) throw badRequest('نسبة الإنجاز يجب أن تكون بين 0 و100'); }
   const patch = {};
   // ── مدير المشروع ──
@@ -352,6 +354,14 @@ export async function updateProject(ctx, pid, data) {
   if ('code' in data) {
     const c = String(data.code ?? '').trim().slice(0, 60);
     patch.code = c || null;
+  }
+  // ── الكود المالي ── كانت شاشة الإقفال ترفض التصحيح بـ«سجّل كوده المالي في صفحة المشروع» ولا
+  // حقل في المنتج يكتبه: العمود يُقرأ في الإقفال والتصحيح والتصدير ولا يُكتب في موضعٍ واحد. يُفتح
+  // هنا لمن يعدّل المشروع (مديره فمن فوقه) — حروف وأرقام وشرطات بحدٍّ معقول، والفراغ ينزعه.
+  if ('financial_code' in data) {
+    const f = String(data.financial_code ?? '').trim().slice(0, 40);
+    if (f && !/^[\p{L}\p{N}][\p{L}\p{N} _./-]*$/u.test(f)) throw badRequest('الكود المالي يُكتب حروفاً وأرقاماً وشرطات فقط');
+    patch.financial_code = f || null;
   }
   if ('name_ar' in data && !String(data.name_ar ?? '').trim()) throw badRequest('اسم المشروع مطلوب');
   for (const k of ['name_ar', 'status', 'rag', 'progress_pct', 'start_date', 'end_date', 'pm_name']) {

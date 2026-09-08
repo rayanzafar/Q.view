@@ -154,7 +154,7 @@ test('وكل نقلة مكتوبة في سجل التدقيق — من نقل و
   const oid = await mkOpp();
   await opps.updateOpportunity(CTX, oid, { department_id: 'D_AI' });
   const a = await db.get(
-    `SELECT * FROM audit_log WHERE resource = 'opportunity' AND resource_id = ?
+    `SELECT * FROM audit_log WHERE resource = 'opportunity' AND action = 'update' AND resource_id = ?
       ORDER BY at DESC LIMIT 1`, [oid]);
   assert.ok(a, 'لا أثر إطلاقاً لنقل الإدارة');
   assert.equal(a.user_id, 'u_admin');

@@ -26,7 +26,7 @@ before(async () => {
     d('D-acc', { accepted_at: '2026-04-01T00:00:00.000Z' }),                // قبول 2026
     d('D-dlv', { delivered_at: '2026-05-01T00:00:00.000Z' }),               // تسليم 2026
     d('D-status', { status_at: '2026-06-01T00:00:00.000Z' }),               // حالة 2026
-    d('D-created', {}),                                                      // إنشاء 2025 فقط ⇒ 2025
+    d('D-created', {}),                                                      // إنشاء 2025 فقط ⇒ فترة غير موثقة
     d('D-stored-wins', { year: 2025, accepted_at: '2026-07-01T00:00:00.000Z' }), // المخزَّنة تغلب الحدث
   ]);
 });
@@ -36,7 +36,8 @@ test('التعبير يُرجع سنة كل صف على سلّم الأسبقي�
   const y26 = await get(`SELECT COUNT(*) n FROM deliverable WHERE ${DLV_YEAR_SQL} = 2026`);
   const y25 = await get(`SELECT COUNT(*) n FROM deliverable WHERE ${DLV_YEAR_SQL} = 2025`);
   assert.equal(y26.n, 4); // year + accepted + delivered + status
-  assert.equal(y25.n, 2); // created-only + stored-2025 (المخزَّنة تغلب حدث 2026)
+  assert.equal(y25.n, 1); // explicit 2025 only; import timestamp is not financial evidence
+  assert.equal((await get(`SELECT ${DLV_YEAR_SQL} y FROM deliverable WHERE id = 'D-created'`)).y, null);
 });
 
 test('المجموع بالتعبير يلتقط الصفوف التي كان year العاري يُسقطها', async () => {

@@ -66,12 +66,10 @@ export function projectHeadlineValue(p) {
   return Number(p.contract_value_halalas) || Number(p.po_value_halalas) || Number(p.budget_halalas) || 0;
 }
 
-// سنة الفرصة: سنة بدء المشروع إن عُرفت، وإلا سنة إنشائه، وإلا السنة الجارية. والسنة ليست
-// تفصيلاً — كل تقارير المبيعات ترشّح بها، فمرآةُ مشروعٍ بدأ ٢٠٢٤ تُحسب في ٢٠٢٤ لا في اليوم.
-export function mirrorYear(p, now = new Date()) {
-  const src = String(p.start_date || p.created_at || '').slice(0, 4);
-  const y = Number(src);
-  return Number.isInteger(y) && y >= 2000 && y <= 2100 ? y : now.getUTCFullYear();
+// سنة البيع حقيقة مستقلة عن التنفيذ والإنشاء. الغياب يبقى غياباً حتى يؤكده المستخدم.
+export function mirrorYear(p) {
+  const y = Number(p.sale_year);
+  return Number.isInteger(y) && y >= 2000 && y <= 2100 ? y : null;
 }
 
 // ── مشروعٌ لكل فرصة مكسوبة ───────────────────────────────────────────────────
@@ -95,12 +93,10 @@ export async function ensureProjectForWonOpportunity(ctx, opp) {
     department_id: opp.department_id || null,
     client_id: opp.client_id || null,
     owner_user_id: opp.owner_user_id || ctx.user?.id || null,
-    // «على طول ينعكس بقيمته»: قيمة الفرصة تُكتب قيمةً ابتدائية للمشروع كي لا يظهر المشروع
-    // الجديد بصفر في المحفظة يوم فوزه. وهي **قابلة للتصحيح من صفحة المشروع** حين يُوقَّع العقد
-    // برقمٍ آخر — ولذلك بُني شريط «تعديل بيانات المشروع» في نفس هذه الدفعة.
-    contract_value_halalas: Number(opp.value_halalas) || 0,
+    // قيمة البيع محفوظة في الفرصة المصدر؛ لا تصبح قيمة عقد مؤكدة بمجرد الفوز.
+    contract_value_halalas: null,
     // لم يبدأ: المشروع وُلد للتوّ ولا تواريخ له ولا فريق. وحالتُه قرارُ مديره من صفحته.
-    status: 'NOT_STARTED', rag: 'GREEN', kind: 'external',
+    status: 'NOT_STARTED', rag: null, kind: 'external',
     source_opp_id: opp.id,
     created_at: now, created_by: ctx.user?.id || null,
   });
@@ -114,9 +110,8 @@ export async function ensureProjectForWonOpportunity(ctx, opp) {
 }
 
 // ── فرصةٌ مكسوبة لكل مشروع ───────────────────────────────────────────────────
-// يُستدعى من إنشاء المشروع (اليدوي ومن العقد) ومن سكربت الاستدراك. `opts.year` و`opts.historic`
-// للاستدراك وحده: مشروعٌ بدأ في سنةٍ ماضية يُسجَّل فوزه في سنته ويُعلَّم «تاريخي» فلا يتحرّك به
-// رقم مبيعاتٍ أُعلن من قبل — «تاريخي» علامةٌ قائمة في المنصة (`exclude_from_sales`) لا اختراع.
+// يُستدعى من إنشاء المشروع. opts.year سنة بيع أكدها المستخدم؛ الغياب يبقى بلا سنة
+// ومستبعداً من المبيعات إلى حين المراجعة. opts.historic يحفظ الاستبعاد التاريخي الصريح.
 export async function ensureOpportunityForProject(ctx, project, opts = {}) {
   if (project.source_opp_id) {
     const linked = await get('SELECT id FROM opportunity WHERE id = ? AND deleted_at IS NULL', [project.source_opp_id]);
@@ -129,6 +124,7 @@ export async function ensureOpportunityForProject(ctx, project, opts = {}) {
   const oid = id('opp');
   const now = nowIso();
   const value = projectHeadlineValue(project);
+  const saleYear = mirrorYear({ sale_year: opts.year });
   await insert('opportunity', {
     id: oid, title_ar: project.name_ar,
     client_id: project.client_id || null,
@@ -137,10 +133,10 @@ export async function ensureOpportunityForProject(ctx, project, opts = {}) {
     owner_user_id: project.owner_user_id || ctx.user?.id || null,
     stage_id: won.id, win_pct: won.default_win_pct ?? 100,
     value_halalas: value,
-    year: opts.year || mirrorYear(project),
+    year: saleYear,
     source: MIRROR_SOURCE,
-    exclude_from_sales: opts.historic ? 1 : 0,
-    stage_changed_at: project.start_date || project.created_at || now,
+    exclude_from_sales: opts.historic || saleYear == null ? 1 : 0,
+    stage_changed_at: now,
     created_at: now, created_by: ctx.user?.id || null,
   });
   await insert('opportunity_stage_history', {

@@ -91,6 +91,7 @@ before(async () => {
     target_margin_pct: 25, created_at: T });
   await db.insert('sector', { id: 'S2', name_ar: 'قطاع الاستشارات (فحص)', kind: 'delivery', active: 1,
     sort_order: 2, target_revenue_halalas: 500000000, target_sales_halalas: 600000000, created_at: T });
+  await db.insert('budget', { id: 'S1-annual', sector_id: 'S1', fiscal_year: YEAR, target_revenue_halalas: 900000000, target_sales_halalas: 1200000000, target_margin_pct: 25, created_at: T });
   await db.insert('revenue_line', { id: 'rev_1', sector_id: 'S1', amount_halalas: 640000000,
     month: 3, year: YEAR, label: 'إيراد محقق', auto: 0, created_at: T });
 

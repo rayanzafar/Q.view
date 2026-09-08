@@ -93,6 +93,20 @@ function applyTaskFilters(where, params, f, today, pfx = 't.') {
 
 const clampLimit = (n, def = 500) => Math.max(1, Math.min(500, Number(n) || def));
 
+// Context names and links must obey the same scope as their destination pages.
+// Keep the task itself visible to its assignee; a denied parent is a labelled, unlinked context.
+function parentJoins(user) {
+  const scope = (resource, alias) => scopeFilter(user, resource, 'read', {
+    sectorCol: `${alias}.sector_id`, ownerCol: `${alias}.owner_user_id`,
+    deptCol: `${alias}.department_id`, grantCol: `${alias}.department_id`,
+    memberCol: `${alias}.id`, projectCol: `${alias}.id`,
+  });
+  const p = scope('project', 'p'); const o = scope('opportunity', 'o');
+  return { sql: `LEFT JOIN project p ON p.id = t.project_id AND p.deleted_at IS NULL AND (${p.clause})
+    LEFT JOIN opportunity o ON o.id = t.opportunity_id AND o.deleted_at IS NULL AND (${o.clause})`,
+    params: [...p.params, ...o.params] };
+}
+
 // "My tasks" — always own; managers can pass a projectId they can access.
 // يعود بسياق المهمة معها (اسم المشروع/الفرصة/الإدارة) باستعلام واحد لا باستعلام لكل صف —
 // الصفحة كانت تجمع الأسماء بنفسها بعد القراءة، فتكرّرت المعرفة في مكانين.
@@ -110,19 +124,19 @@ export async function myTasks(user, filters = {}) {
   const vis = ownOrApprovedTaskSql('t.', user.id);
   where.push(vis.clause); params.push(...vis.params);
   applyTaskFilters(where, params, filters, today);
+  const parents = parentJoins(user);
   return await all(`SELECT t.*, p.name_ar AS project_name, o.title_ar AS opportunity_name,
       d.name_ar AS department_name, u.name_ar AS assignee_name, u.username AS assignee_username,
       COALESCE(uc.name_ar, uc.username) AS creator_name, COALESCE(ua.name_ar, ua.username) AS approver_name
     FROM task t
-    LEFT JOIN project p ON p.id = t.project_id AND p.deleted_at IS NULL
-    LEFT JOIN opportunity o ON o.id = t.opportunity_id AND o.deleted_at IS NULL
+    ${parents.sql}
     LEFT JOIN department d ON d.id = t.department_id AND d.deleted_at IS NULL
     LEFT JOIN app_user u ON u.id = t.assignee_user_id
     LEFT JOIN app_user uc ON uc.id = t.created_by
     LEFT JOIN app_user ua ON ua.id = t.approved_by
     WHERE ${where.join(' AND ')}
     ORDER BY ${prioritySql('t')}, t.due_date
-    LIMIT ${clampLimit(filters.limit)}`, params);
+    LIMIT ${clampLimit(filters.limit)}`, [...parents.params, ...params]);
 }
 
 // «مهامي في هذا القطاع» — مهام الشخص نفسه داخل قطاع بعينه، الأقرب موعداً أولاً ثم الأعلى أولوية.
@@ -137,16 +151,17 @@ export async function mySectorTasks(user, sectorId, opts = {}) {
   const params = [user.id, sectorId, sectorId];
   if (!opts.includeDone) where.push("t.status NOT IN ('DONE', 'CANCELLED')");
   const limit = Math.max(1, Math.min(200, Number(opts.limit) || 50));
+  const parents = parentJoins(user);
   return await all(
     `SELECT t.id, t.title, t.status, t.priority, t.due_date, t.blocked_reason,
             t.project_id, t.opportunity_id, p.name_ar AS project_name
        FROM task t
-       LEFT JOIN project p ON p.id = t.project_id AND p.deleted_at IS NULL
+       ${parents.sql}
       WHERE ${where.join(' AND ')}
       ORDER BY COALESCE(substr(t.due_date, 1, 10), '9999-12-31'),
                CASE t.priority WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 ELSE 3 END,
                t.created_at
-      LIMIT ${limit}`, params);
+      LIMIT ${limit}`, [...parents.params, ...params]);
 }
 
 // «أثر الأيام» — عدد ما أُنجز فعلاً كل يوم خلال آخر N يوماً، من `completed_at` المسجَّل وحده.
@@ -184,9 +199,13 @@ export async function projectTasks(user, projectId) {
 // أي مستخدم في الشركة كلها. نحلّ قطاعه من حسابه ونمرّره صراحةً.
 async function assertMayAssign(user, assigneeId) {
   if (!assigneeId || assigneeId === user.id) return;
-  const target = await get('SELECT id, sector_id FROM app_user WHERE id = ? AND deleted_at IS NULL AND active = 1', [assigneeId]);
+  // إدارةُ المُسنَد إليه تدخل الهدف: منحُ «إدارة» بلا مفتاح الإدارة كان يمرّ من `can()` فيُسند مدير
+  // إدارةٍ مهمةً لأي موظف في قطاعه — الهدف الآن يحمل إدارة صاحب الحساب (من سجل موظفه) فيُقارَن بها.
+  const target = await get(`SELECT u.id, u.sector_id, e.department_id FROM app_user u
+      LEFT JOIN employee e ON e.id = u.employee_id AND e.deleted_at IS NULL
+      WHERE u.id = ? AND u.deleted_at IS NULL AND u.active = 1`, [assigneeId]);
   if (!target) throw badRequest('المستخدم المُسنَد إليه غير موجود');
-  if (!can(user, 'update', 'task', { sector_id: target.sector_id, assignee_user_id: assigneeId, user_id: assigneeId }))
+  if (!can(user, 'update', 'task', { sector_id: target.sector_id, department_id: target.department_id || null, assignee_user_id: assigneeId, user_id: assigneeId }))
     throw forbidden('إسناد مهمة لشخص آخر يتطلب صلاحية إدارية على قطاعه');
 }
 
@@ -263,7 +282,8 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const dateOrNull = (v, label) => {
   if (v == null || String(v).trim() === '') return null;
   const s = String(v).trim();
-  if (!DATE_RE.test(s) || Number.isNaN(Date.parse(s + 'T00:00:00Z'))) {
+  if (!DATE_RE.test(s) || Number.isNaN(Date.parse(s + 'T00:00:00Z'))
+      || new Date(s + 'T00:00:00Z').toISOString().slice(0, 10) !== s) {
     throw badRequest(`${label} بصيغة غير مقروءة — اختره من منتقي التاريخ`);
   }
   return s;
@@ -470,20 +490,20 @@ export async function teamTasks(user, filters = {}) {
   const today = String(filters.todayDate || nowIso().slice(0, 10)).slice(0, 10);
   if (filters.overdue) { where.push('t.due_date IS NOT NULL AND substr(t.due_date,1,10) < ?'); params.push(today); }
   applyTaskFilters(where, params, filters, today);
+  const parents = parentJoins(user);
   const rows = await all(`SELECT t.*, u.name_ar assignee_name, u.username assignee_username,
        p.name_ar project_name, o.title_ar opportunity_name, d.name_ar department_name,
        COALESCE(uc.name_ar, uc.username) creator_name, COALESCE(ua.name_ar, ua.username) approver_name
      FROM task t
      LEFT JOIN app_user u ON u.id = t.assignee_user_id
      LEFT JOIN employee emp ON emp.id = u.employee_id AND emp.deleted_at IS NULL
-     LEFT JOIN project p ON p.id = t.project_id AND p.deleted_at IS NULL
-     LEFT JOIN opportunity o ON o.id = t.opportunity_id AND o.deleted_at IS NULL
+     ${parents.sql}
      LEFT JOIN department d ON d.id = t.department_id AND d.deleted_at IS NULL
      LEFT JOIN app_user uc ON uc.id = t.created_by
      LEFT JOIN app_user ua ON ua.id = t.approved_by
      WHERE ${where.join(' AND ')}
      ORDER BY ${prioritySql('t')}, t.due_date
-     LIMIT ${clampLimit(filters.limit)}`, params);
+     LIMIT ${clampLimit(filters.limit)}`, [...parents.params, ...params]);
   // تجميع حسب الشخص: هذا سؤال المدير الحقيقي «من يعمل على ماذا» لا قائمة مسطّحة.
   const byPerson = new Map();
   for (const r of rows) {

@@ -238,6 +238,7 @@ export const PURGE_ORDER = [
   'opportunity_stage_history', 'opportunity_sector', 'pricing_line', 'proposal', 'opportunity',
   'program', 'portfolio',
   'contact', 'client',
+  'budget', // annual target belongs to sector; remove disposable child first
   'employee', 'position', 'team', 'org_unit', 'department', 'sector',
   'session', 'login_history',
 ];

@@ -8,7 +8,9 @@ import { inDepartmentScope } from './departments.js';
 // (can/redact/scopeReaches/…) stay SYNCHRONOUS even though the DB layer is async.
 let _cache = null;
 export async function initRbac() {
-  const rows = await all('SELECT role_id, resource, action, scope FROM role_permission');
+  // A restored/stale database must not resurrect the explicitly retired finance role.
+  // Identity writes already accept only the canonical role list; this closes runtime reads.
+  const rows = await all("SELECT role_id, resource, action, scope FROM role_permission WHERE role_id <> 'finance'");
   const map = {};
   for (const g of rows) {
     (map[g.role_id] ||= []).push(g);

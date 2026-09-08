@@ -41,7 +41,17 @@ const LABEL_SQL = {
                      CAST(NULL AS TEXT) parent2
                 FROM timesheet_period tp LEFT JOIN app_user u ON u.id = tp.user_id
                WHERE tp.id IN (%IN%)`,
+  // طلب التسكين (ADR-0016): اسم المورد، وجهةُ العمل مشروعاً باسمه أو بنداً داخلياً بمفتاحه
+  // (يُعرَّب أدناه — المفتاح لا يصل الشاشة).
+  allocation_request: `SELECT r.id, e.name_ar label, COALESCE(p.name_ar, r.target_id) parent,
+                              CAST(NULL AS TEXT) parent2
+                         FROM allocation_request r
+                         LEFT JOIN employee e ON e.id = r.employee_id
+                         LEFT JOIN project p ON p.id = r.target_id AND r.target_kind = 'project' AND p.deleted_at IS NULL
+                        WHERE r.id IN (%IN%)`,
 };
+// مفاتيح بنود العمل الداخلي (bd/product/pmo) تُعرَّب هنا — نفس المعجم الذي يسمّيها في الشاشات.
+const BUCKET_AR = { bd: 'تطوير أعمال', product: 'تطوير منتجات', pmo: 'إدارة مشاريع' };
 
 /**
  * أسماءُ ما تنتظره من طلبات، بمفتاح `resource_id`.
@@ -67,7 +77,8 @@ export async function approvalTargets(rows) {
       const label = String(row.label || '').trim();
       if (!label) continue;                   // بلا اسمٍ حقيقي لا نخترع اسماً — الصف يبقى بلا وسم
       // حجم المهمة يركب الصفَّ نفسه — الاعتماد قرارٌ واحد على المهمة وحجمها معاً، لا سكّتان.
-      out.set(String(row.id), { label, parent: row.parent || row.parent2 || null,
+      const parentRaw = row.parent || row.parent2 || null;
+      out.set(String(row.id), { label, parent: parentRaw && BUCKET_AR[parentRaw] ? BUCKET_AR[parentRaw] : parentRaw,
         utilPct: row.utilization_pct == null ? null : Number(row.utilization_pct) });
     }
   }

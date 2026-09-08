@@ -57,9 +57,9 @@ test('البنود بأسمائها وبسطها ومقامها، والدرجة
   assert.deepEqual([by.prj_deliverables.num, by.prj_deliverables.den], [1, 2]);
   assert.deepEqual([by.dlv_dates.num, by.dlv_dates.den, by.dlv_dates.pct], [1, 1, 100]);
   assert.deepEqual([by.emp_job_title.num, by.emp_job_title.den], [1, 2]);
-  assert.deepEqual([by.inv_due.num, by.inv_due.den, by.inv_due.pct], [0, 1, 0]);
+  assert.ok(!('inv_due' in by), 'لا يطلب اكتمال شاشة فوترة ملغاة');
   // الوزن: أربعة عالية(8)×50 + مؤرّخة(4)×100 + ثلاثة متوسطة(4)×50 + فاتورة(1)×0
-  const wSum = 8 * 3 + 4 * 4 + 1;
+  const wSum = 8 * 3 + 4 * 4;
   const wAcc = 8 * 50 * 3 + 4 * 100 + 4 * 50 * 3;
   assert.equal(r.score, Math.round(wAcc / wSum));
   for (const it of r.items) {

@@ -27,7 +27,10 @@ export const ROLES = [
   { username: 'demo.consultant', role: 'consultant', scope: 'own', sector_id: 'SOLUTIONS' },
   { username: 'demo.employee', role: 'employee', scope: 'own', sector_id: 'SOLUTIONS' },
   { username: 'demo.viewer', role: 'viewer', scope: 'sector', sector_id: 'SOLUTIONS' },
-  { username: 'demo.deptmgr', role: 'department_manager', scope: 'department', sector_id: 'SOLUTIONS' },
+  // مدير الإدارة التجريبي يقود إدارةً مبذورة فعلاً (seed.js: «إدارة تحول الأعمال» بمعرّفٍ مولَّد)؛
+  // شروط الصفحات تسأل «هل له إدارة؟» (departmentScope) لا عن معرّفها — فيُمرَّر معرّفٌ رمزي.
+  // بدونه كانت الأداة تتوقع ٤٠٣ على شاشة الإقفال وتُعلن انحرافاً كاذباً على ٢٠٠ الصحيحة.
+  { username: 'demo.deptmgr', role: 'department_manager', scope: 'department', sector_id: 'SOLUTIONS', department_id: 'seeded-department' },
   { username: 'demo.linemgr', role: 'line_manager', scope: 'team', sector_id: 'SOLUTIONS' },
   { username: 'demo.bdhead', role: 'bd_head', scope: 'company', sector_id: null },
   { username: 'demo.ops', role: 'operations', scope: 'sector', sector_id: 'SOLUTIONS' },
@@ -47,9 +50,12 @@ export const ROLES = [
 // الذي أصاب «دليلي»: صفحة مشحونة خارج كل بوابة جودة. حارسها هو حارس «الفريق» نفسه.
 // «صفحتي» مفتوحة للجميع كـ«دليلي» — بلا بوابة لأن كل بياناتها مقيَّدة بصاحب الحساب. ووجودها
 // هنا هو ما يُخضِعها للمسح الحيّ ولفحص التسرّب: صفحة الهبوط لكل مستخدم أولى الصفحات بالفحص.
+// أقسام «الفريق والموارد» (ADR-0016) بمفاتيحها في سياسة الصفحات `team/<section>` — تُفحص كصفحات:
+// بوابتها بوابة «الفريق» إلا «الإقفال الشهري» فبوابته منح الإقفال.
 export const PAGES = ['home', 'ceo', 'portfolio', 'sector', 'opportunities', 'my-opportunities', 'projects',
   'clients', 'events', 'tasks', 'timesheet', 'approvals', 'team', 'staffing', 'imports', 'users', 'audit', 'reports', 'org', 'finance', 'mail', 'ops',
-  'guide'];
+  'guide', 'revenue-review', 'sector-targets', 'assistant-link',
+  'team/resources', 'team/org', 'team/people', 'team/work', 'team/planning', 'team/requests', 'team/analysis', 'team/needs', 'team/close'];
 
 // Roles whose service guards admit them to the people/org surfaces: staffingRoster() and orgTree()
 // both open on `role==='admin' || can(read employee)` (orgTree also on `can(create sector)`), so the
@@ -67,6 +73,7 @@ const ORG_READERS = new Set(['admin', 'ceo_office', 'sector_lead', 'hr',
 // access map yet — that is the documented 'PENDING nav-guard' gap. Once src/web/nav.js exists and
 // exports PAGE_ACCESS, loadPageAccess() returns it and expectations flip to strict 200/403.
 export function pageExpected(role, page, pageAccess = null) {
+  if (page === 'finance') return { status: 410, soft: false };
   if (pageAccess) {
     const allowed = pageAllowed(role, page, pageAccess);
     if (allowed === null) return { status: 200, soft: true }; // unknown shape — stay soft
@@ -89,7 +96,7 @@ function pageAllowed(role, page, pageAccess) {
     // فابتلع الالتقاط الرمية وأعلن ٢٠٠ لقائد قطاع تردّه المنصة ٤٠٣ — فسقط الفحص الحيّ على عطلٍ
     // في الأداة لا في المنتج. الأداة التي تفشل مفتوحةً أسوأ من غياب الأداة: تُخفي الحقيقة وتُطمئن.
     try {
-      return !!rule({ role_id: role, scope: p?.scope || 'own', sector_id: p?.sector_id ?? null });
+      return !!rule({ role_id: role, scope: p?.scope || 'own', sector_id: p?.sector_id ?? null, department_id: p?.department_id ?? null });
     } catch (e) {
       throw new Error(`تعذّر تقييم شرط فتح صفحة «${page}» للدور «${role}»: ${e.message}\n`
         + 'الأداة لا تفترض السماح عند العجز — حمِّل منح الصلاحيات قبل اشتقاق التوقعات.');
@@ -193,14 +200,14 @@ export const API_PROBES = [
 // `deny` يعني أن الردّ المتوقَّع رفضٌ ٤٠٣ لهذه الأدوار (بوابة أرقام الشركة).
 export const AI_CHAT_PROBES = [
   { message: 'ما أولوياتي اليوم', expect: 200 },                      // مهام صاحب الطلب — لكل دور
-  { message: 'ما المخاطر البارزة', expect: { default: 200, hr: 403, line_manager: 403, approver: 403 } },
+  { message: 'ما المخاطر البارزة', expect: { default: 200, hr: 403, line_manager: 403, approver: 403, office_member: 403, office_coordinator: 403 } },
   { message: 'افحص جودة البيانات', expect: 200 },                     // يردّ ولو بـ«لا شيء ضمن صلاحيتك»
   // نية كتابة من نص حر: تعيد **نموذجاً** لمن يملك منح الإنشاء، وتُرَدّ ٤٠٣ لمن لا يملكه.
   // مدير الإدارة انضمّ إلى مالكي منح الإنشاء بقرار المالك («التعديل والتسكين بدءاً من مدير
   // المشروع واللي فوقه»)، فصار المساعد يعيد له نموذجاً بدل رفضٍ — والنية نفسها والبوابة نفسها.
   { message: 'أنشئ مهمة متابعة العقد',
     expect: { default: 403, admin: 200, sector_lead: 200, department_manager: 200, project_manager: 200,
-      consultant: 200, employee: 200, bd_head: 200, operations: 200 } },
+      consultant: 200, employee: 200, bd_head: 200, operations: 200, office_member: 200, office_coordinator: 200 } },
   // نفس بوابة /api/metrics/company حرفياً — وهذا هو أصل العطل الذي أُغلق.
   { message: 'اكتب الموجز التنفيذي الأسبوعي',
     expect: { default: 403, admin: 200, ceo_office: 200, hr: 200, bd_head: 200 } },
@@ -228,7 +235,7 @@ export const FIXTURE_PROBES = [
   { method: 'GET', path: '/api/finance/contracts/FX-CON-1', expect: { default: 403, admin: 200, ceo_office: 200, sector_lead: 200, bd_head: 200, project_manager: 200 } },
   // Row-level write probe on a real invoice: authorized roles fall through to amount validation.
   // bd_head is READ-ONLY on money (matrix.js: «المال … قراءة فقط») → must stay 403 here.
-  { method: 'POST', path: '/api/finance/collections', body: { invoiceId: 'FX-INV-2' }, expect: { default: 403, admin: 400, ceo_office: 400, sector_lead: 400 } },
+  { method: 'POST', path: '/api/finance/collections', body: { invoiceId: 'FX-INV-2' }, expect: 410 },
 ];
 
 export function expectedStatus(expect, role) {

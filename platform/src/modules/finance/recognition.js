@@ -25,6 +25,7 @@ import { get, run, insert, update } from '../../core/db/index.js';
 import { nowIso } from '../../core/util/ids.js';
 import { audit } from '../../core/audit/index.js';
 import { splitGross } from './vat.js';
+import { recognitionPeriod } from './revenue-period.js';
 
 /** الحالتان اللتان تعنيان أن العمل أُنجز وخرج — وما عداهما لا يُعترف به. */
 export const RECOGNIZING_STATUSES = ['DELIVERED', 'ACCEPTED'];
@@ -35,16 +36,10 @@ export const revenueLineIdFor = (deliverableId) => 'rl_dlv_' + deliverableId;
 const isRecognized = (d) =>
   RECOGNIZING_STATUSES.includes(String(d?.status)) && Number(d?.amount_halalas || 0) > 0;
 
-// شهر الاعتراف: شهر استحقاق المخرَج إن حدّده مدير المشروع، وإلا شهرُ الحدث نفسه (القبول ثم
-// التسليم ثم آخر تغيير حالة). وترتيبٌ آخر كان سيضع إيراد مخرَجٍ سُلِّم في يوليو داخل شهر تعديلِ
-// اسمه في أغسطس — فيتنقّل الإيراد بين الشهور بلا عمل.
-// توأم periodOf في SQL — سنةُ المخرَج المخزَّنة إن سُجِّلت وإلا سنةُ حدثه (القبول ثم التسليم ثم
-// آخر تغيير حالة ثم الإنشاء)، حرفاً كترحيلة 020 التي بُني عليها إيراد التسليم. رشّح «مخرجات
-// السنة» بها لا بعمود year العاري: العمود فارغ على أغلب الصفوف المستوردة فكان يُسقطها كلها.
-// (periodOf أعلاه يستشير updated_at أيضاً كملاذ أخير قبل الإنشاء — فرقٌ موثَّق في فحص الوحدة.)
+// سنة المخرج الصريحة مستقلة عن سنة البيع. تاريخ الإنشاء أو الاستيراد ليس تاريخ إنجاز.
+// الحساب التفصيلي يتحقق من الشهر والسنة معًا عبر recognitionPeriod قبل أي كتابة.
 export const DLV_YEAR_SQL =
-  "COALESCE(year, CAST(substr(COALESCE(accepted_at, delivered_at, status_at, created_at),1,4) AS INTEGER))";
-// النسخة المؤهَّلة باسمٍ مستعار — لاستعلامٍ يضمّ project (created_at موجود في الجدولين فيلتبس العاري)
+  "COALESCE(year, CAST(substr(COALESCE(accepted_at, delivered_at, status_at),1,4) AS INTEGER))";
 export const dlvYearSqlFor = (a) =>
   `COALESCE(${a}.year, CAST(substr(COALESCE(${a}.accepted_at, ${a}.delivered_at, ${a}.status_at, ${a}.created_at),1,4) AS INTEGER))`;
 // وشهرُ المخرَج بالسلسلة نفسها — الشهر المخزَّن إن سُجِّله مدير المشروع وإلا شهرُ حدثه (القبول
@@ -84,7 +79,7 @@ export async function syncDeliverableRevenue(ctx, deliverable, project = null) {
     return 'removed';
   }
 
-  const { year, month } = periodOf(deliverable);
+  const { year, month } = recognitionPeriod(deliverable);
   const money = splitGross(deliverable.amount_halalas);
   const sectorId = deliverable.sector_id || project?.sector_id || null;
   const fields = {

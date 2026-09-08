@@ -27,12 +27,16 @@ before(async () => {
   db = await import('../../src/core/db/index.js');
   const { migrate } = await import('../../scripts/migrate.js');
   const { seedRbac } = await import('../../scripts/seed-rbac.js');
-  const { seed } = await import('../../scripts/seed.js');
+  const { seed, seedDemoOrg } = await import('../../scripts/seed.js');
   const { seedFixture } = await import('../../scripts/lib/seed-fixture.mjs');
   await migrate();
   await seedRbac();
   await seed();
   await seedFixture();
+  // إدارات العرض تُبذر بعد القطاع (seed.js يتخطّاها بصمت إن لم يوجد) — كما على staging تماماً:
+  // مدير الإدارة التجريبي يقود «إدارة تحول الأعمال»، وبدونها كانت المصفوفة تختبر حساباً بلا إدارة
+  // لا وجود له في البيئة الحيّة (فتُقرأ ٤٠٣ على شاشة الإقفال «صحيحة» وهي ليست كذلك).
+  await seedDemoOrg();
   EXP = await import('../../scripts/lib/expectations.mjs');
   pageAccess = await EXP.loadPageAccess();
 
@@ -94,7 +98,7 @@ test('anonymous: pages redirect to /login, APIs return 401', async () => {
 });
 
 // ── page matrix: every role × every page in the PAGES map ─────────────────────
-test('page matrix: exact status per role for all 15 pages', async () => {
+test('page matrix: exact status per role for every registered QA page', async () => {
   const mode = pageAccess ? 'STRICT (nav.js PAGE_ACCESS detected)' : 'PENDING nav-guard (no src/web/nav.js — asserting current 200-for-all-authed behavior)';
   console.log(`    page-authz mode: ${mode}`);
   let pending = 0;
@@ -155,7 +159,8 @@ test('sensitive: salary reaches ADMIN ONLY — sealed from every other role over
   const adminRoster = await req('demo.admin', '/api/org/roster');
   assert.equal(adminRoster.status, 200);
   assert.match(adminRoster.text, /"salary_halalas":\s*[1-9]/, 'مدير النظام يستقبل الراتب');
-  assert.match((await req('demo.admin', '/app/team')).text, /emp-sal/, 'صفحة الفريق تعرض عمود الراتب لمدير النظام');
+  // شاشة الموظفين (عمود الراتب) صارت تبويب «حسابات الدخول» تحت البوابة: /app/team/people (ADR-0016).
+  assert.match((await req('demo.admin', '/app/team/people')).text, /emp-sal/, 'صفحة الموظفين تعرض عمود الراتب لمدير النظام');
 
   // كان هنا سطران يثبتان أن `demo.bd` يُردّ ٤٠٣ عن الكشف — وهي **حقيقةٌ عن الحال لا قاعدة عن
   // الراتب**: مدير تطوير الأعمال كان بلا منح قراءة موظف إطلاقاً. وقد نال «قراءة موظف @قطاع»
@@ -168,7 +173,7 @@ test('sensitive: salary reaches ADMIN ONLY — sealed from every other role over
   for (const who of ['demo.hr', 'demo.sectorlead', 'demo.ceo', 'demo.bd']) {
     const roster = (await req(who, '/api/org/roster')).text;
     assert.doesNotMatch(roster, /"salary_halalas":\s*[1-9]/, `${who} يجب ألا يستقبل الراتب`);
-    const page = await req(who, '/app/team');
+    const page = await req(who, '/app/team/people');
     if (page.status === 200) {
       const html = page.text;
       assert.doesNotMatch(html, /emp-sal/, `${who} يجب ألا يرى عمود الراتب`);
@@ -193,4 +198,18 @@ test('IDOR: out-of-sector single-row reads are 403, not silently redacted', asyn
   const admin = await req('demo.admin', '/api/opportunities/FX-OPP-CONS');
   assert.equal(admin.status, 200);
   assert.equal(JSON.parse(admin.text).id, 'FX-OPP-CONS');
+});
+
+// The account URL used by team-task links must resolve to the actual resource, with its period.
+test('person journey over HTTP opens the canonical resource and preserves period with row permissions', async () => {
+  const person = await db.get("SELECT id, employee_id FROM app_user WHERE username='demo.deptmgr'");
+  assert.ok(person.employee_id, 'QA identity must be linked before checking the journey');
+  const old = await req('demo.admin', `/app/person/${person.id}?year=2025&month=12`);
+  assert.equal(old.status, 302);
+  assert.equal(old.headers.get('location'), `/app/team/resources/${person.employee_id}?year=2025&month=12`);
+  const profile = await req('demo.admin', old.headers.get('location'));
+  assert.equal(profile.status, 200);
+  assert.ok(profile.text.includes('إدارة الملف'));
+  const denied = await req('demo.employee', `/app/person/${person.id}?year=2025&month=12`);
+  assert.equal(denied.status, 403);
 });

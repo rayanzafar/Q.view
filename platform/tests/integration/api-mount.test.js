@@ -76,6 +76,14 @@ const MOUNTED = [
   ['GET', '/api/approvals/pending-count', 'عدّاد الاعتمادات المنتظرة (شارة الجرس)'],
   ['POST', '/api/mail/approval-policy', 'سياسة بريد الاعتمادات'],
   ['GET', '/api/events', 'الفعاليات'],
+  // وحدة الفريق والموارد (ADR-0016): خمسة موجّهات تحت /api/team — كل واحد بمسارٍ يخصّه.
+  ['GET', '/api/team/resources', 'سجل الموارد'],
+  ['GET', '/api/team/planning', 'مصفوفة التسكين'],
+  ['GET', '/api/team/allocations/requests', 'طلبات التسكين'],
+  ['GET', '/api/team/needs', 'الاحتياجات القادمة'],
+  ['GET', '/api/team/analysis?year=2026&month=6', 'تحليل الاستخدام'],
+  ['GET', '/api/team/work?year=2026&month=6', 'العمل والالتزامات'],
+  ['GET', '/api/team/close?sector=S1&year=2026&month=6', 'الإقفال الشهري'],
 ];
 
 for (const [method, path, label] of MOUNTED) {

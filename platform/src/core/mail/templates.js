@@ -79,8 +79,8 @@ export function weeklyExecBrief(data) {
   const body = [
     section('الملخص التنفيذي',
       `<table role="presentation" width="100%" cellspacing="8"><tr>
-        ${kpiRow('الإيراد المحقق', fmtSar(t.revenue), `المستهدف ${fmtSar(t.target_revenue)}`)}
-        ${kpiRow('المبيعات المحققة', fmtSar(t.sales), `المستهدف ${fmtSar(t.target_sales)}`)}
+        ${kpiRow('الإيراد المحقق', fmtSar(t.revenue), `المستهدف ${(t.target_revenue == null ? 'غير مكتمل لهذه السنة' : fmtSar(t.target_revenue))}`)}
+        ${kpiRow('المبيعات المحققة', fmtSar(t.sales), `المستهدف ${(t.target_sales == null ? 'غير مكتمل لهذه السنة' : fmtSar(t.target_sales))}`)}
         ${kpiRow('خط الفرص', fmtSar(data.pipeline_halalas), `${data.oppCount || ''} فرصة`)}
       </tr></table>`),
     section('أبرز الصفقات المكتسبة (السنة الحالية)', dealRows(data.topDeals, false)),
@@ -119,9 +119,9 @@ export function monthlySectorPerformance(data) {
   const body = [
     section(`الأداء الشهري — ${esc(data.sectorName)} · ${data.period}`,
       `<table role="presentation" width="100%" cellspacing="8"><tr>
-        ${row('الإيراد', fmtSar(data.revenue_halalas), `الهدف ${fmtSar(data.target_revenue_halalas)}`)}
-        ${row('التعاقدات', fmtSar(data.sales_halalas), `الهدف ${fmtSar(data.target_sales_halalas)}`)}
-        ${row('الهامش الإجمالي', data.margin_pct != null ? data.margin_pct + '%' : '—', `الهدف ${data.target_margin_pct || 0}%`)}
+        ${row('الإيراد', fmtSar(data.revenue_halalas), `الهدف ${(data.target_revenue_halalas == null ? 'غير محدد لهذه السنة' : fmtSar(data.target_revenue_halalas))}`)}
+        ${row('التعاقدات', fmtSar(data.sales_halalas), `الهدف ${(data.target_sales_halalas == null ? 'غير محدد لهذه السنة' : fmtSar(data.target_sales_halalas))}`)}
+        ${row('الهامش الإجمالي', data.margin_pct != null ? data.margin_pct + '%' : '—', data.target_margin_pct == null ? 'الهدف غير محدد لهذه السنة' : `الهدف ${data.target_margin_pct}%`)}
       </tr><tr>
         ${row('النمو السنوي (إيراد)', (data.revenue_yoy != null ? data.revenue_yoy + '%' : '—'), 'مقابل السنة السابقة')}
         ${row('التعاقد إلى الإيراد', data.book_to_bill != null ? data.book_to_bill + '×' : '—', 'حجوزات/إيراد')}

@@ -67,6 +67,9 @@ before(async () => {
     sort_order: 2, target_sales_halalas: TGT.SOLUTIONS, target_revenue_halalas: 40_000_000, created_at: T });
   await insert('sector', { id: 'CONSULTING', name_ar: 'قطاع الاستشارات', kind: 'delivery', active: 1,
     sort_order: 3, target_sales_halalas: TGT.CONSULTING, target_revenue_halalas: 10_000_000, created_at: T });
+  // Explicit annual fixture plans: unperiodized sector fields are no longer KPI targets.
+  for (const [sector_id, revenue] of [['SHARED', 5_000_000], ['SOLUTIONS', 40_000_000], ['CONSULTING', 10_000_000]])
+    await insert('budget', { id: 'annual-' + sector_id, sector_id, fiscal_year: YEAR, target_sales_halalas: TGT[sector_id], target_revenue_halalas: revenue, created_at: T });
   await insert('department', { id: 'D_SMART', sector_id: 'SOLUTIONS', name_ar: 'إدارة المدن الذكية', active: 1, created_at: T });
 
   for (const u of [admin, sharedLead]) {
@@ -147,7 +150,7 @@ test('مستهدف المبيعات على مستوى الشركة يجمع قط
 
 test('طلب التغطية لوحدة مساندة بعينها: لا هدف ⟵ لا نسبة موهومة', async () => {
   const cov = await metrics.pipelineCoverage('SHARED', YEAR);
-  assert.equal(cov.remaining_target_halalas, 0, 'وحدة المساندة لا تُقاس بمستهدف مبيعات');
+  assert.equal(cov.remaining_target_halalas, null, 'وحدة المساندة لا تُقاس بمستهدف مبيعات');
   assert.equal(cov.coverage, null, 'ولا تُعرض لها نسبة تغطية');
 });
 

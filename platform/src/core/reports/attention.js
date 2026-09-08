@@ -45,7 +45,7 @@ export async function attentionFeed(user, sectorId, { year, today } = {}) {
       ORDER BY i.due_date LIMIT 12`, [sectorId, t]) : [];
   if (od.length) {
     const sum = od.reduce((a, b) => a + (b.amount_halalas || 0), 0);
-    items.push({ rank: 2, tone: 'red', icon: 'money', href: '/app/finance',
+    items.push({ rank: 2, tone: 'red', icon: 'money', href: `/app/sector?sector=${encodeURIComponent(sectorId)}&tab=clients`,
       title: `مستحقات متأخرة بقيمة ${fmtSar(sum)} على ${countAr(od.length, { one: 'فاتورة واحدة', two: 'فاتورتين', few: 'فواتير', many: 'فاتورة' })}`,
       sub: od.slice(0, 2).map((i) => i.client || i.code || '').filter(Boolean).join(' · '),
       action: 'تابع التحصيل' });

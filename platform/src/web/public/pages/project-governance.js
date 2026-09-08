@@ -136,14 +136,15 @@
       body.name_ar = String(name).trim();
     }
     const code = pick('prj-code'); if (code !== undefined) body.code = code || '';
+    const fin = pick('prj-fincode'); if (fin !== undefined) body.financial_code = fin || '';
     const start = pick('prj-start'); if (start !== undefined) body.start_date = start || null;
     const end = pick('prj-end'); if (end !== undefined) body.end_date = end || null;
     if (body.start_date && body.end_date && body.end_date < body.start_date) {
       return toast('تاريخ الانتهاء قبل تاريخ البدء — راجع التاريخين', true);
     }
     const value = pick('prj-value');
-    if (value !== undefined) {
-      const n = Number(value || 0);
+    if (value !== undefined && value !== null) {
+      const n = Number(value);
       if (!isFinite(n) || n < 0) return toast('قيمة العقد تُكتب رقماً بالريال', true);
       body.contract_value_sar = n;
     }
@@ -307,6 +308,12 @@
     if (a === 'gov-status') return void govStatus(el.dataset.kind, el.dataset.id, el.dataset.status);
     if (a === 'gov-del') return void govDel(el.dataset.kind, el.dataset.id);
     if (a === 'prj-task-add') return void prjTaskAdd(el.dataset.project);
+    if (a === 'project-setup-open') {
+      const section = document.getElementById('sec-' + el.dataset.section);
+      const panel = section && section.querySelector('details');
+      if (panel) panel.open = true;
+      return;
+    }
     if (a === 'prj-identity-save') return void prjIdentity(el.dataset.id);
     if (a === 'doc-add') return void docAdd();
     if (a === 'doc-del') return void docDel(el.dataset.id);
@@ -324,7 +331,7 @@
     const dp = ev.target.closest('[data-action-change="dlv-period"]');
     if (dp) return void dlvPeriodSave(dp);
     const rg = ev.target.closest('[data-action-change="prj-rag-sel"]');
-    if (rg) return void prjRag(rg.dataset.id, rg.value);
+    if (rg) return void prjRag(rg.dataset.id, rg.value || null);
   });
   // Enter inside an add-bar field submits that bar
   document.addEventListener('keydown', (ev) => {

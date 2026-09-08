@@ -518,14 +518,32 @@
     var opts = (s.stages || []).map(function (st) {
       return '<option value="' + esc(st.id) + '"' + (st.id === s.currentStage ? ' selected' : '') + '>' + esc(st.name_ar) + '</option>';
     }).join('');
+    // فرصة فائزة لها مشروع: التراجع عنها قرارٌ على الطرفين (KI-112) — يُعرض قرار المشروع والسبب هنا
+    // بدل رسالة رفضٍ بعد النقر، ولا يُحذف سجل. بلا مشروع يبقى نقل المرحلة العادي بسببه.
+    var reversal = s.isWon && s.wonProject
+      ? '<div class="field" id="mv-reversal" hidden><div class="alert info" style="margin:.2rem 0 .5rem">الفرصة فائزة ولها مشروع «' + esc(s.wonProject.name_ar) + '». العودة إلى مرحلة غير فائزة تُخرج مبلغها من مبيعات سنتها؛ قرّر مصير المشروع — لا يُحذف شيء.</div>' +
+        '<label><input type="radio" name="mv-prj" value="keep" checked> إبقاء المشروع عملاً مستقلاً (تُولَد له فرصة خاصة بسنة بيع غير مؤكدة — مستبعدة من المبيعات حتى تُؤكَّد)</label><br>' +
+        '<label><input type="radio" name="mv-prj" value="cancel"> إلغاء المشروع (يبقى سجله بتاريخه، حالته «ملغى»)</label></div>'
+      : '';
     window.Sanad.openModal(
       '<div class="modal-head"><h3 style="font-size:16px">نقل المرحلة</h3>' +
       '<button class="btn btn-ghost" data-action="modal-close">✕</button></div>' +
-      '<div class="modal-body"><div class="field"><label>المرحلة الجديدة</label><select id="mv-stage">' + opts + '</select></div>' +
-      '<div class="field"><label>سبب النقل (اختياري — يُحفظ في سجل المراحل)</label>' +
+      '<div class="modal-body"><div class="field"><label>المرحلة الجديدة</label><select id="mv-stage">' + opts + '</select></div>' + reversal +
+      '<div class="field"><label id="mv-note-label">سبب النقل (اختياري — يُحفظ في سجل المراحل)</label>' +
       '<textarea id="mv-note" class="input" rows="2" placeholder="مثال: العميل أكّد الميزانية وطلب العرض المالي"></textarea></div></div>' +
       '<div class="modal-foot"><button class="btn btn-primary" data-action="stage-confirm">نقل</button>' +
       '<button class="btn" data-action="modal-close">إلغاء</button></div>');
+    if (reversal) {
+      var sel = document.getElementById('mv-stage');
+      var sync = function () {
+        var target = (s.stages || []).find(function (st) { return st.id === sel.value; });
+        var leavingWon = sel.value !== s.currentStage;
+        document.getElementById('mv-reversal').hidden = !leavingWon;
+        document.getElementById('mv-note-label').textContent = leavingWon ? 'سبب التراجع (مطلوب — يُحفظ في سجل الفرصة والمشروع)' : 'سبب النقل (اختياري — يُحفظ في سجل المراحل)';
+        void target;
+      };
+      sel.addEventListener('change', sync); sync();
+    }
   }
   async function stageConfirm() {
     var s = S();
@@ -533,7 +551,15 @@
     var note = (document.getElementById('mv-note') || { value: '' }).value.trim();
     if (!stage) return;
     if (stage === s.currentStage) { window.Sanad.closeModal(); return; }
+    var reversalBox = document.getElementById('mv-reversal');
     try {
+      if (reversalBox && !reversalBox.hidden) {
+        if (note.length < 3) return toast('اكتب سبب التراجع قبل الحفظ', true);
+        var choice = (document.querySelector('input[name="mv-prj"]:checked') || { value: 'keep' }).value;
+        await api('/opportunities/' + s.oppId + '/reversal', 'POST', { to_stage: stage, project_action: choice, reason: note });
+        window.Sanad.closeModal(); toast(choice === 'cancel' ? 'تراجع مسجَّل — المشروع ملغى وسجله باقٍ ✓' : 'تراجع مسجَّل — المشروع باقٍ مستقلاً ✓');
+        setTimeout(function () { location.reload(); }, 450); return;
+      }
       await api('/opportunities/' + s.oppId + '/stage', 'POST', { stage: stage, note: note || null });
       window.Sanad.closeModal(); toast('نُقلت المرحلة ✓'); setTimeout(function () { location.reload(); }, 450);
     } catch (err) { toast(err.message, true); }

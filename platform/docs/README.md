@@ -6,6 +6,9 @@ The code is the source of truth; these documents are its ledger. Four of them fo
 
 | File | What it is | When it must change |
 |---|---|---|
+| `delivery-waves/` | Per-wave acceptance, QA evidence, blockers and owner trial steps. | Every delivery wave. |
+| `system-graph/` | Interactive source/schema/business graph, with explicit limits and a source freshness check. | Regenerate after source, test, migration, issue-registry or graph model changes. |
+| `BLUEPRINT.md` | Active delivery wave, tool roles, owner decisions and acceptance criteria. | Every scope/acceptance or delivery change. |
 | `README.md` | This map + the maintenance contract. | When a doc is added/retired or a rule changes. |
 | `ARCHITECTURE.md` | System map: runtime, layers, data flow, deploy topology. | Same commit as any structural change (new layer, driver, boot step, cross-module contract). |
 | `FEATURES.md` | Feature registry: every page (`## Pages`, keys in backticks), every migration (`| NNN ` rows), every `src/modules/<name>`, with routes/APIs. | **Same commit** as any new/renamed page, route, migration, or module. The gate enforces presence; you keep the row's content truthful. |
@@ -20,7 +23,7 @@ The code is the source of truth; these documents are its ledger. Four of them fo
 | `meetings/` | Stakeholder sessions: one dated folder each, holding the clean transcript + a register of every request with its verdict. `meetings/README.md` carries the convention. | New folder per session whose requests need tracking; a row's verdict is refreshed when the code that decides it changes. |
 | `plans/` | Pre-approval feature plans (Arabic): one dated folder per planning wave (first: `plans/2026-08-25-owner-notes/` — owner notes → evidenced plans + executive brief). On owner approval a package graduates to a build-wave folder on the `opportunities-redesign/` pattern (three files: implementation-map, decision-log, qa-report — rule in `meetings/README.md`); a declined package keeps its plan as the record of the refusal. | New folder per planning wave; a plan doc is updated until its package graduates or is declined. |
 | `adr/ADR-000*.md` | Architecture Decision Records (monolith/SSR, data conventions, DB driver). | New ADR for every **irreversible or structural** decision; existing ADRs are amended with status notes, never rewritten. |
-| `guides/` | Runbooks: **`DEPLOY-PIPELINE.md` (THE deploy path — start here)**, `GO-LIVE.md`, `DEPLOYMENT.md`, `ROLLBACK.md`, `BACKUP-RESTORE-DRILL.md`, `ADMIN-and-USER.md`, `MAIL-CHANNELS.md` (the two mail channels + their secrets), `PROD-STAGING-SPLIT.md` (splitting the single environment, safely). | When the procedure they describe changes (env vars, boot steps, drill results). |
+| `guides/` | Runbooks: **`DEPLOY-PIPELINE.md` (THE deploy path — start here)**, `GO-LIVE.md`, `DEPLOYMENT.md`, `ROLLBACK.md`, `BACKUP-RESTORE-DRILL.md`, `ADMIN-and-USER.md`, `MAIL-CHANNELS.md` (the two mail channels + their secrets), `PROD-STAGING-SPLIT.md` (splitting the single environment, safely), `MCP-CONNECT.md` (ربط المساعد الذكي بحساب الموظف — للفريق ولمن يشغّل المنصة). | When the procedure they describe changes (env vars, boot steps, drill results). |
 | `specs/07-contracts-delivery2.md` | The **frozen delivery contract**: routes, API shapes, DDL. | Extending is fine; contradicting is not (see `/CLAUDE.md`). |
 | `specs/01–06, 00, 08` | Original analysis/specs — **frozen historical reference**. Known stale in places (e.g. `*_sar NUMERIC` vs implemented `*_halalas INTEGER`). | Never — on any divergence, **code + ADRs win** (declared in `specs/README.md`). |
 | `evidence/` | Screenshot evidence packs per deploy/lane (Playwright). | Appended by `scripts/evidence.mjs` at each verified deploy; never edited by hand. |
@@ -28,3 +31,7 @@ The code is the source of truth; these documents are its ledger. Four of them fo
 ## The contract, in one paragraph
 
 A change is not done when the code works; it is done when the ledger matches. Page/route/migration/module ⇒ FEATURES row, same commit. Structural change ⇒ ARCHITECTURE, same commit; irreversible decision ⇒ new ADR. Defect found ⇒ KNOWN-ISSUES row now; defect fixed ⇒ row deleted + regression test + CHANGELOG entry. Notable change ⇒ CHANGELOG entry with monotonic version and deploy marker. Security-relevant merge ⇒ SECURITY-REPORT update. `npm run quality` runs `scripts/check-docs.mjs` and turns drift into a red build — do not weaken the gate; update the doc.
+
+
+دفعة v5.78: `delivery-waves/v5.78-qa.md` لأدلة الاختبار وحدود التجربة، و
+`adr/ADR-0018-annual-targets-project-setup.md` لقرار المستهدفات والاستكمال وحفظ البيانات، و`adr/ADR-0019-mcp-assistant-link.md` لقرار ربط المساعد الخارجي بهوية الموظف نفسه.
