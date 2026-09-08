@@ -28,6 +28,10 @@ import { listTools, runTool, registerTools } from './ai/team-tools.js';
 import { TEAM_INTENTS } from './ai/team-intents.js';
 import { GUIDE_TOOLS } from './ai/guide-tools.js';
 import { DEV_CENTER_TOOLS } from './products/tools.js';
+import { TASK_TOOLS } from './ai/tasks-tools.js';
+import { CRM_TOOLS } from './ai/crm-tools.js';
+import { PMO_TOOLS } from './ai/pmo-tools.js';
+import { WORKFLOW_TOOLS } from './ai/workflow-tools.js';
 
 // نوايا وحدة «الفريق والموارد» تُسجَّل هنا مرةً واحدة: `core/ai` لا يستورد `modules`، والوحدة
 // تأتي إليه عند التركيب — فتظهر في بطاقات الاقتراح بمنحها وتُصنَّف قبل الأنماط العامة.
@@ -39,6 +43,12 @@ registerTools(GUIDE_TOOLS);
 // (ADR-0019)، فتمرّ ببوابة السجل نفسها وتُسجَّل في سجل النشاط نفسه — والعضوية في المنتج تقرّر
 // ما يُعرض منها، ودور «مدير المنتج» يُفحص داخل كل أداةٍ على منتج البلاغ نفسه.
 registerTools(DEV_CENTER_TOOLS);
+// وأدوات المحاور اليومية — المهام والفرص والمشاريع والاعتمادات والعملاء — تُسجَّل هنا كذلك.
+// كلها تنادي خدمات الشاشات نفسها وتمرّ ببواباتها، فلا سطح ثانٍ للبيانات ولا صلاحية ثانية.
+registerTools(TASK_TOOLS);
+registerTools(CRM_TOOLS);
+registerTools(PMO_TOOLS);
+registerTools(WORKFLOW_TOOLS);
 
 export const aiRouter = Router();
 aiRouter.use(requireAuth());

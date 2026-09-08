@@ -1,10 +1,10 @@
 {
   "version": 1,
-  "sourceDigest": "2c20694d6a26270daf6c1bbf18e3b2ba8160ddf9d62c862893f2c402f57aa3bd",
-  "sourceFiles": 660,
+  "sourceDigest": "b8baa688eed50a47e128d55bbc3bf443f9a926108d35c55ee89ee5c2e9a654ed",
+  "sourceFiles": 667,
   "counts": {
-    "code": 258,
-    "test": 297,
+    "code": 263,
+    "test": 299,
     "automation": 57,
     "module": 20,
     "route": 333,
@@ -605,12 +605,39 @@
       ]
     },
     {
+      "id": "file:src/modules/ai/crm-tools.js",
+      "kind": "code",
+      "label": "crm-tools.js",
+      "detail": "src/modules/ai/crm-tools.js",
+      "sources": [
+        "src/modules/ai/crm-tools.js"
+      ]
+    },
+    {
       "id": "file:src/modules/ai/guide-tools.js",
       "kind": "code",
       "label": "guide-tools.js",
       "detail": "src/modules/ai/guide-tools.js",
       "sources": [
         "src/modules/ai/guide-tools.js"
+      ]
+    },
+    {
+      "id": "file:src/modules/ai/pmo-tools.js",
+      "kind": "code",
+      "label": "pmo-tools.js",
+      "detail": "src/modules/ai/pmo-tools.js",
+      "sources": [
+        "src/modules/ai/pmo-tools.js"
+      ]
+    },
+    {
+      "id": "file:src/modules/ai/tasks-tools.js",
+      "kind": "code",
+      "label": "tasks-tools.js",
+      "detail": "src/modules/ai/tasks-tools.js",
+      "sources": [
+        "src/modules/ai/tasks-tools.js"
       ]
     },
     {
@@ -629,6 +656,24 @@
       "detail": "src/modules/ai/team-tools.js",
       "sources": [
         "src/modules/ai/team-tools.js"
+      ]
+    },
+    {
+      "id": "file:src/modules/ai/tool-kit.js",
+      "kind": "code",
+      "label": "tool-kit.js",
+      "detail": "src/modules/ai/tool-kit.js",
+      "sources": [
+        "src/modules/ai/tool-kit.js"
+      ]
+    },
+    {
+      "id": "file:src/modules/ai/workflow-tools.js",
+      "kind": "code",
+      "label": "workflow-tools.js",
+      "detail": "src/modules/ai/workflow-tools.js",
+      "sources": [
+        "src/modules/ai/workflow-tools.js"
       ]
     },
     {
@@ -3023,6 +3068,24 @@
       "detail": "tests/integration/mcp-connect.test.js",
       "sources": [
         "tests/integration/mcp-connect.test.js"
+      ]
+    },
+    {
+      "id": "file:tests/integration/mcp-domain-tools.test.js",
+      "kind": "test",
+      "label": "mcp-domain-tools.test.js",
+      "detail": "tests/integration/mcp-domain-tools.test.js",
+      "sources": [
+        "tests/integration/mcp-domain-tools.test.js"
+      ]
+    },
+    {
+      "id": "file:tests/integration/mcp-task-tools.test.js",
+      "kind": "test",
+      "label": "mcp-task-tools.test.js",
+      "detail": "tests/integration/mcp-task-tools.test.js",
+      "sources": [
+        "tests/integration/mcp-task-tools.test.js"
       ]
     },
     {
@@ -5579,9 +5642,14 @@
       "detail": "وحدة برمجية موجودة؛ وجودها لا يثبت اكتمال وظائفها.",
       "sources": [
         "src/modules/ai/apply.js",
+        "src/modules/ai/crm-tools.js",
         "src/modules/ai/guide-tools.js",
+        "src/modules/ai/pmo-tools.js",
+        "src/modules/ai/tasks-tools.js",
         "src/modules/ai/team-intents.js",
-        "src/modules/ai/team-tools.js"
+        "src/modules/ai/team-tools.js",
+        "src/modules/ai/tool-kit.js",
+        "src/modules/ai/workflow-tools.js"
       ]
     },
     {
@@ -5837,7 +5905,7 @@
       ]
     },
     {
-      "id": "route:src/modules/ai.routes.js:3010:/status",
+      "id": "route:src/modules/ai.routes.js:3505:/status",
       "kind": "route",
       "label": "GET /status",
       "detail": "تصريح مسار محلي في aiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -5848,7 +5916,7 @@
       "path": "/status"
     },
     {
-      "id": "route:src/modules/ai.routes.js:3078:/chat",
+      "id": "route:src/modules/ai.routes.js:3573:/chat",
       "kind": "route",
       "label": "POST /chat",
       "detail": "تصريح مسار محلي في aiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -5859,7 +5927,7 @@
       "path": "/chat"
     },
     {
-      "id": "route:src/modules/ai.routes.js:3170:/options/:kind",
+      "id": "route:src/modules/ai.routes.js:3665:/options/:kind",
       "kind": "route",
       "label": "GET /options/:kind",
       "detail": "تصريح مسار محلي في aiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -5870,7 +5938,7 @@
       "path": "/options/:kind"
     },
     {
-      "id": "route:src/modules/ai.routes.js:3363:/preview",
+      "id": "route:src/modules/ai.routes.js:3858:/preview",
       "kind": "route",
       "label": "POST /preview",
       "detail": "تصريح مسار محلي في aiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -5881,7 +5949,7 @@
       "path": "/preview"
     },
     {
-      "id": "route:src/modules/ai.routes.js:3534:/apply",
+      "id": "route:src/modules/ai.routes.js:4029:/apply",
       "kind": "route",
       "label": "POST /apply",
       "detail": "تصريح مسار محلي في aiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -5892,7 +5960,7 @@
       "path": "/apply"
     },
     {
-      "id": "route:src/modules/ai.routes.js:3638:/activity",
+      "id": "route:src/modules/ai.routes.js:4133:/activity",
       "kind": "route",
       "label": "GET /activity",
       "detail": "تصريح مسار محلي في aiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -5903,7 +5971,7 @@
       "path": "/activity"
     },
     {
-      "id": "route:src/modules/ai.routes.js:4023:/tools",
+      "id": "route:src/modules/ai.routes.js:4518:/tools",
       "kind": "route",
       "label": "GET /tools",
       "detail": "تصريح مسار محلي في aiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -5914,7 +5982,7 @@
       "path": "/tools"
     },
     {
-      "id": "route:src/modules/ai.routes.js:4097:/tools/:name",
+      "id": "route:src/modules/ai.routes.js:4592:/tools/:name",
       "kind": "route",
       "label": "POST /tools/:name",
       "detail": "تصريح مسار محلي في aiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -23181,9 +23249,30 @@
     },
     {
       "from": "module:ai",
+      "to": "file:src/modules/ai/crm-tools.js",
+      "label": "يحتوي",
+      "evidence": "src/modules/ai/crm-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "module:ai",
       "to": "file:src/modules/ai/guide-tools.js",
       "label": "يحتوي",
       "evidence": "src/modules/ai/guide-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "module:ai",
+      "to": "file:src/modules/ai/pmo-tools.js",
+      "label": "يحتوي",
+      "evidence": "src/modules/ai/pmo-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "module:ai",
+      "to": "file:src/modules/ai/tasks-tools.js",
+      "label": "يحتوي",
+      "evidence": "src/modules/ai/tasks-tools.js",
       "kind": "source"
     },
     {
@@ -23198,6 +23287,20 @@
       "to": "file:src/modules/ai/team-tools.js",
       "label": "يحتوي",
       "evidence": "src/modules/ai/team-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "module:ai",
+      "to": "file:src/modules/ai/tool-kit.js",
+      "label": "يحتوي",
+      "evidence": "src/modules/ai/tool-kit.js",
+      "kind": "source"
+    },
+    {
+      "from": "module:ai",
+      "to": "file:src/modules/ai/workflow-tools.js",
+      "label": "يحتوي",
+      "evidence": "src/modules/ai/workflow-tools.js",
       "kind": "source"
     },
     {
@@ -25197,56 +25300,84 @@
     },
     {
       "from": "file:src/modules/ai.routes.js",
-      "to": "route:src/modules/ai.routes.js:3010:/status",
+      "to": "file:src/modules/ai/tasks-tools.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai.routes.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai.routes.js",
+      "to": "file:src/modules/ai/crm-tools.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai.routes.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai.routes.js",
+      "to": "file:src/modules/ai/pmo-tools.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai.routes.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai.routes.js",
+      "to": "file:src/modules/ai/workflow-tools.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai.routes.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai.routes.js",
+      "to": "route:src/modules/ai.routes.js:3505:/status",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/ai.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/ai.routes.js",
-      "to": "route:src/modules/ai.routes.js:3078:/chat",
+      "to": "route:src/modules/ai.routes.js:3573:/chat",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/ai.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/ai.routes.js",
-      "to": "route:src/modules/ai.routes.js:3170:/options/:kind",
+      "to": "route:src/modules/ai.routes.js:3665:/options/:kind",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/ai.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/ai.routes.js",
-      "to": "route:src/modules/ai.routes.js:3363:/preview",
+      "to": "route:src/modules/ai.routes.js:3858:/preview",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/ai.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/ai.routes.js",
-      "to": "route:src/modules/ai.routes.js:3534:/apply",
+      "to": "route:src/modules/ai.routes.js:4029:/apply",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/ai.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/ai.routes.js",
-      "to": "route:src/modules/ai.routes.js:3638:/activity",
+      "to": "route:src/modules/ai.routes.js:4133:/activity",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/ai.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/ai.routes.js",
-      "to": "route:src/modules/ai.routes.js:4023:/tools",
+      "to": "route:src/modules/ai.routes.js:4518:/tools",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/ai.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/ai.routes.js",
-      "to": "route:src/modules/ai.routes.js:4097:/tools/:name",
+      "to": "route:src/modules/ai.routes.js:4592:/tools/:name",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/ai.routes.js",
       "kind": "source"
@@ -25294,6 +25425,69 @@
       "kind": "source"
     },
     {
+      "from": "file:src/modules/ai/crm-tools.js",
+      "to": "file:src/core/db/index.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/crm-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/crm-tools.js",
+      "to": "file:src/core/audit/index.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/crm-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/crm-tools.js",
+      "to": "file:src/core/http/errors.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/crm-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/crm-tools.js",
+      "to": "file:src/core/rbac/index.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/crm-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/crm-tools.js",
+      "to": "file:src/core/ai/store.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/crm-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/crm-tools.js",
+      "to": "file:src/core/i18n/time.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/crm-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/crm-tools.js",
+      "to": "file:src/modules/crm/opportunities.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/crm-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/crm-tools.js",
+      "to": "file:src/modules/pmo/task-approval.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/crm-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/crm-tools.js",
+      "to": "file:src/modules/ai/tool-kit.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/crm-tools.js",
+      "kind": "source"
+    },
+    {
       "from": "file:src/modules/ai/guide-tools.js",
       "to": "file:src/core/db/index.js",
       "label": "استيراد صريح",
@@ -25333,6 +25527,111 @@
       "to": "file:src/core/util/ids.js",
       "label": "استيراد صريح",
       "evidence": "src/modules/ai/guide-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/pmo-tools.js",
+      "to": "file:src/core/db/index.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/pmo-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/pmo-tools.js",
+      "to": "file:src/core/http/errors.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/pmo-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/pmo-tools.js",
+      "to": "file:src/core/rbac/index.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/pmo-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/pmo-tools.js",
+      "to": "file:src/core/i18n/time.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/pmo-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/pmo-tools.js",
+      "to": "file:src/modules/pmo/projects.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/pmo-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/pmo-tools.js",
+      "to": "file:src/modules/ai/tool-kit.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/pmo-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/pmo-tools.js",
+      "to": "file:src/modules/pmo/progress.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/pmo-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/tasks-tools.js",
+      "to": "file:src/core/db/index.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/tasks-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/tasks-tools.js",
+      "to": "file:src/core/audit/index.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/tasks-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/tasks-tools.js",
+      "to": "file:src/core/http/errors.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/tasks-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/tasks-tools.js",
+      "to": "file:src/core/rbac/index.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/tasks-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/tasks-tools.js",
+      "to": "file:src/core/ai/store.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/tasks-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/tasks-tools.js",
+      "to": "file:src/core/i18n/time.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/tasks-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/tasks-tools.js",
+      "to": "file:src/modules/pmo/tasks.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/tasks-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/tasks-tools.js",
+      "to": "file:src/modules/ai/tool-kit.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/tasks-tools.js",
       "kind": "source"
     },
     {
@@ -25508,6 +25807,104 @@
       "to": "file:src/modules/team/access.js",
       "label": "استيراد صريح",
       "evidence": "src/modules/ai/team-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/tool-kit.js",
+      "to": "file:src/core/http/errors.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/tool-kit.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/tool-kit.js",
+      "to": "file:src/core/util/ids.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/tool-kit.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/tool-kit.js",
+      "to": "file:src/core/i18n/time.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/tool-kit.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/tool-kit.js",
+      "to": "file:src/core/ai/store.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/tool-kit.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/workflow-tools.js",
+      "to": "file:src/core/db/index.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/workflow-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/workflow-tools.js",
+      "to": "file:src/core/audit/index.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/workflow-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/workflow-tools.js",
+      "to": "file:src/core/http/errors.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/workflow-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/workflow-tools.js",
+      "to": "file:src/core/rbac/index.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/workflow-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/workflow-tools.js",
+      "to": "file:src/core/ai/store.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/workflow-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/workflow-tools.js",
+      "to": "file:src/core/i18n/time.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/workflow-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/workflow-tools.js",
+      "to": "file:src/modules/workflow/inbox.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/workflow-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/workflow-tools.js",
+      "to": "file:src/modules/workflow/engine.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/workflow-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/workflow-tools.js",
+      "to": "file:src/modules/clients/clients.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/workflow-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/workflow-tools.js",
+      "to": "file:src/modules/ai/tool-kit.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/workflow-tools.js",
       "kind": "source"
     },
     {
@@ -37376,6 +37773,76 @@
       "kind": "source"
     },
     {
+      "from": "file:tests/integration/mcp-domain-tools.test.js",
+      "to": "file:src/core/db/index.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/mcp-domain-tools.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/mcp-domain-tools.test.js",
+      "to": "file:src/core/rbac/index.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/mcp-domain-tools.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/mcp-domain-tools.test.js",
+      "to": "file:src/modules/ai/team-tools.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/mcp-domain-tools.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/mcp-domain-tools.test.js",
+      "to": "file:src/modules/ai/crm-tools.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/mcp-domain-tools.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/mcp-domain-tools.test.js",
+      "to": "file:src/modules/ai/pmo-tools.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/mcp-domain-tools.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/mcp-domain-tools.test.js",
+      "to": "file:src/modules/ai/workflow-tools.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/mcp-domain-tools.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/mcp-task-tools.test.js",
+      "to": "file:src/core/db/index.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/mcp-task-tools.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/mcp-task-tools.test.js",
+      "to": "file:src/core/rbac/index.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/mcp-task-tools.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/mcp-task-tools.test.js",
+      "to": "file:src/modules/ai/team-tools.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/mcp-task-tools.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/mcp-task-tools.test.js",
+      "to": "file:src/modules/ai/tasks-tools.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/mcp-task-tools.test.js",
+      "kind": "source"
+    },
+    {
       "from": "file:tests/integration/migration-017.test.js",
       "to": "file:src/core/db/index.js",
       "label": "استيراد صريح",
@@ -47988,6 +48455,41 @@
       "kind": "text-reference"
     },
     {
+      "from": "file:src/modules/ai/crm-tools.js",
+      "to": "table:stage",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "src/modules/ai/crm-tools.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:src/modules/ai/crm-tools.js",
+      "to": "table:app_user",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "src/modules/ai/crm-tools.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:src/modules/ai/crm-tools.js",
+      "to": "table:client",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "src/modules/ai/crm-tools.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:src/modules/ai/crm-tools.js",
+      "to": "table:task",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "src/modules/ai/crm-tools.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:src/modules/ai/crm-tools.js",
+      "to": "table:opportunity",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "src/modules/ai/crm-tools.js",
+      "kind": "text-reference"
+    },
+    {
       "from": "file:src/modules/ai/guide-tools.js",
       "to": "table:sector",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
@@ -47999,6 +48501,69 @@
       "to": "table:department",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
       "evidence": "src/modules/ai/guide-tools.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:src/modules/ai/pmo-tools.js",
+      "to": "table:milestone",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "src/modules/ai/pmo-tools.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:src/modules/ai/pmo-tools.js",
+      "to": "table:allocation",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "src/modules/ai/pmo-tools.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:src/modules/ai/pmo-tools.js",
+      "to": "table:invoice",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "src/modules/ai/pmo-tools.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:src/modules/ai/pmo-tools.js",
+      "to": "table:invoice_line",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "src/modules/ai/pmo-tools.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:src/modules/ai/pmo-tools.js",
+      "to": "table:deliverable",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "src/modules/ai/pmo-tools.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:src/modules/ai/tasks-tools.js",
+      "to": "table:project",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "src/modules/ai/tasks-tools.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:src/modules/ai/tasks-tools.js",
+      "to": "table:opportunity",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "src/modules/ai/tasks-tools.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:src/modules/ai/tasks-tools.js",
+      "to": "table:app_user",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "src/modules/ai/tasks-tools.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:src/modules/ai/tasks-tools.js",
+      "to": "table:task",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "src/modules/ai/tasks-tools.js",
       "kind": "text-reference"
     },
     {
@@ -48020,6 +48585,20 @@
       "to": "table:employee",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
       "evidence": "src/modules/ai/team-tools.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:src/modules/ai/workflow-tools.js",
+      "to": "table:approval_request",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "src/modules/ai/workflow-tools.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:src/modules/ai/workflow-tools.js",
+      "to": "table:client",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "src/modules/ai/workflow-tools.js",
       "kind": "text-reference"
     },
     {
@@ -53627,6 +54206,111 @@
       "to": "table:session",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
       "evidence": "tests/integration/mcp-connect.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/mcp-domain-tools.test.js",
+      "to": "table:opportunity",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/mcp-domain-tools.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/mcp-domain-tools.test.js",
+      "to": "table:sector",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/mcp-domain-tools.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/mcp-domain-tools.test.js",
+      "to": "table:app_user",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/mcp-domain-tools.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/mcp-domain-tools.test.js",
+      "to": "table:client",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/mcp-domain-tools.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/mcp-domain-tools.test.js",
+      "to": "table:stage",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/mcp-domain-tools.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/mcp-domain-tools.test.js",
+      "to": "table:project",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/mcp-domain-tools.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/mcp-domain-tools.test.js",
+      "to": "table:milestone",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/mcp-domain-tools.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/mcp-domain-tools.test.js",
+      "to": "table:revenue_line",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/mcp-domain-tools.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/mcp-domain-tools.test.js",
+      "to": "table:crm_activity",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/mcp-domain-tools.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/mcp-task-tools.test.js",
+      "to": "table:task",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/mcp-task-tools.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/mcp-task-tools.test.js",
+      "to": "table:ai_activity_log",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/mcp-task-tools.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/mcp-task-tools.test.js",
+      "to": "table:sector",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/mcp-task-tools.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/mcp-task-tools.test.js",
+      "to": "table:app_user",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/mcp-task-tools.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/mcp-task-tools.test.js",
+      "to": "table:client",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/mcp-task-tools.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/mcp-task-tools.test.js",
+      "to": "table:project",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/mcp-task-tools.test.js",
       "kind": "text-reference"
     },
     {
