@@ -241,8 +241,9 @@ export async function departmentRollup(user, opts = {}) {
   // الحسم يُفصَل هنا ولا يُجمَع: قيمة واحدة تخلط المكسوبة بالخاسرة بالمفتوحة لا تُقارَن بأي رقم آخر
   // في المنصّة، ومديرٌ يضعها بجانب «مبيعات القطاع» يقرأ فرقاً ليس فرقاً. لذلك:
   //   المفتوحة = لا فائزة ولا خاسرة (خط الأنابيب، ومنه المرجّح وحده يعني شيئاً).
-  //   المكسوبة = نفس شرط المبيعات في تقارير الشركة حرفاً بحرف: مرحلة فائزة + exclude_from_sales = 0
-  //              + سنة الفرصة = السنة المطلوبة (والسنة المجهولة لا تدخل المبيعات هناك، فلا تدخل هنا).
+  //   المكسوبة = نفس شرط المبيعات في تقارير الشركة حرفاً بحرف: مرحلة فائزة + سنة الفرصة = السنة
+  //              المطلوبة (والسنة المجهولة لا تدخل المبيعات هناك، فلا تدخل هنا). والفرصة الموسومة
+  //              «تاريخي» تُحتسب كغيرها بقرار المالك ٢٠٢٦-٠٩-٠٨ — الوسم تمييزٌ لا استبعاد.
   //   الخاسرة = مرحلة خاسرة (وغير فائزة، فمرحلة موسومة بالاثنين — خطأ بيانات — تُحسب مكسوبة مرة واحدة
   //             فقط كي تبقى الدلاء غير متداخلة).
   // LEFT JOIN لا INNER: فرصة بلا مرحلة معروفة يجب أن تبقى في الإجمالي والعدد، لا أن تختفي بصمت.
@@ -253,8 +254,8 @@ export async function departmentRollup(user, opts = {}) {
             COALESCE(SUM(CASE WHEN st.is_won = 0 AND st.is_lost = 0 THEN o.value_halalas ELSE 0 END), 0) AS open_v,
             COALESCE(SUM(CASE WHEN st.is_won = 0 AND st.is_lost = 0
                               THEN o.value_halalas * COALESCE(o.win_pct, 0) / 100.0 ELSE 0 END), 0) AS open_w,
-            COALESCE(SUM(CASE WHEN st.is_won = 1 AND o.exclude_from_sales = 0 AND o.year = ? THEN 1 ELSE 0 END), 0) AS won_n,
-            COALESCE(SUM(CASE WHEN st.is_won = 1 AND o.exclude_from_sales = 0 AND o.year = ?
+            COALESCE(SUM(CASE WHEN st.is_won = 1 AND o.year = ? THEN 1 ELSE 0 END), 0) AS won_n,
+            COALESCE(SUM(CASE WHEN st.is_won = 1 AND o.year = ?
                               THEN o.value_halalas ELSE 0 END), 0) AS won_v,
             COALESCE(SUM(CASE WHEN st.is_lost = 1 AND st.is_won = 0 THEN 1 ELSE 0 END), 0) AS lost_n,
             COALESCE(SUM(CASE WHEN st.is_lost = 1 AND st.is_won = 0 THEN o.value_halalas ELSE 0 END), 0) AS lost_v

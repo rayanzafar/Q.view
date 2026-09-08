@@ -375,7 +375,7 @@ async function sectorRisks(sectorId) {
 async function topWonDeals() {
   return (await all(`SELECT o.title_ar, o.value_halalas, c.name_ar client FROM opportunity o
     JOIN stage st ON st.id=o.stage_id LEFT JOIN client c ON c.id=o.client_id
-    WHERE st.is_won=1 AND o.exclude_from_sales=0 AND o.year=? AND o.deleted_at IS NULL
+    WHERE st.is_won=1 AND o.year=? AND o.deleted_at IS NULL
     ORDER BY o.value_halalas DESC LIMIT 5`, [FY()])).map((d) => ({
     title: d.title_ar, client: d.client || '—', value_halalas: d.value_halalas }));
 }

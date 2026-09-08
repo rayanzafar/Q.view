@@ -193,14 +193,14 @@ export async function clientsPage(user, opts = {}) {
     ? `<div class="tnum" style="font-weight:800;font-size:12.5px;color:var(--ink2)">${sarShort(r.open_pipeline_halalas)}</div>
        <div class="tnum" style="font-size:10px;color:var(--muted)">${oppCountAr(r.open_opps)} · مرجّح ${sarShort(r.weighted_pipeline_halalas)}</div>`
     : dash);
-  // الفوز · الخسارة: مضغوط — «N فوز» أخضر · «M خسارة» + المستورد التاريخي سطر خافت
+  // الفوز · الخسارة: مضغوط — «N فوز» أخضر · «M خسارة»، والمستورد التاريخي سطر خافت يقول كم منها
   const wlCell = (r) => {
     const seg = [];
     if (r.won_count) seg.push(`<span style="color:var(--green);font-weight:800" class="tnum">${r.won_count} فوز</span>`);
     if (r.lost_count) seg.push(`<span style="color:var(--muted);font-weight:700" class="tnum">${r.lost_count} خسارة</span>`);
     if (!seg.length && !r.hist_won_count) return dash;
     const main = seg.length ? `<div style="font-size:11.5px">${seg.join('<span style="color:var(--faint)"> · </span>')}</div>` : '';
-    return `${main}${r.hist_won_count ? `<div class="tnum" style="color:var(--faint);font-size:10px">+${r.hist_won_count} تاريخي</div>` : ''}`;
+    return `${main}${r.hist_won_count ? `<div class="tnum" style="color:var(--faint);font-size:10px">منها ${r.hist_won_count} تاريخي</div>` : ''}`;
   };
   // المال: إيراد السنة (رئيسي) + المستحق سطر أحمر عند التأخر (طُوي عمود «المستحق» هنا — «قيمة العقود» أُسقط لخلوّه)
   const moneyCell = (r) => {

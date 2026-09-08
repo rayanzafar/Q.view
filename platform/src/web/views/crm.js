@@ -223,7 +223,7 @@ export async function opportunitiesPage(user, opts = {}) {
       <div class="toolbar">
         <a class="btn" href="${backHref}">${icon('kanban')} عودة إلى اللوحة</a>
         <div class="spacer"></div>
-        <span style="font-size:11.5px;color:var(--muted)">الفرص التاريخية لا تدخل في مؤشرات المبيعات</span>
+        <span style="font-size:11.5px;color:var(--muted)">الفرص التاريخية تُحتسب ضمن مبيعات سنتها — والشارة للتمييز وحده</span>
       </div>
       ${card(`<div style="padding:.8rem 1rem;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:.55rem;flex-wrap:wrap">
         <span class="kcol-dot" style="background:${esc(tblStageRow.color || '#cbd5e1')};width:10px;height:10px;border-radius:50%"></span>

@@ -48,7 +48,7 @@ export async function ceoPage(user, opts = {}) {
      WHERE rl.year=? ${sec ? 'AND rl.sector_id = ?' : ''} ORDER BY rl.amount_halalas DESC LIMIT 8`, sec ? [year, sec] : [year]);
   const wonDeals = await all(`SELECT o.title_ar, o.value_halalas, c.name_ar client, s.name_ar sector
      FROM opportunity o JOIN stage st ON st.id=o.stage_id LEFT JOIN client c ON c.id=o.client_id LEFT JOIN sector s ON s.id=o.sector_id
-     WHERE st.is_won=1 AND o.exclude_from_sales=0 AND o.year=? AND o.deleted_at IS NULL ${spO}
+     WHERE st.is_won=1 AND o.year=? AND o.deleted_at IS NULL ${spO}
      ORDER BY o.value_halalas DESC LIMIT 8`, sec ? [year, sec] : [year]);
   const pipeStages = await all(`SELECT st.id, st.name_ar, st.color, COUNT(*) n, COALESCE(SUM(o.value_halalas),0) v
      FROM opportunity o JOIN stage st ON st.id=o.stage_id
@@ -60,9 +60,9 @@ export async function ceoPage(user, opts = {}) {
   // Bookings reconciliation: the annual figure (won in THIS fiscal year, vs the annual target) vs the
   // cumulative book (all won deals ever — what the legacy platform showed as one headline number).
   const bookAll = (await get(`SELECT COALESCE(SUM(o.value_halalas),0) v, COUNT(*) n FROM opportunity o JOIN stage st ON st.id=o.stage_id
-     WHERE st.is_won=1 AND o.exclude_from_sales=0 AND o.deleted_at IS NULL ${spO}`, sec ? [sec] : []));
+     WHERE st.is_won=1 AND o.deleted_at IS NULL ${spO}`, sec ? [sec] : []));
   const bookByYear = await all(`SELECT o.year, COALESCE(SUM(o.value_halalas),0) v, COUNT(*) n FROM opportunity o JOIN stage st ON st.id=o.stage_id
-     WHERE st.is_won=1 AND o.exclude_from_sales=0 AND o.deleted_at IS NULL ${spO} GROUP BY o.year ORDER BY o.year`, sec ? [sec] : []);
+     WHERE st.is_won=1 AND o.deleted_at IS NULL ${spO} GROUP BY o.year ORDER BY o.year`, sec ? [sec] : []);
   const margins = ov.canSeeMargin
     ? await Promise.all(ov.sectors.map(async (s) => ({ id: s.id, name_ar: s.name_ar, color: s.color, margin: (await grossMargin(s.id, year)).margin_pct })))
     : [];

@@ -43,7 +43,7 @@ before(async () => {
     year: 2026, stage_id: 'LEAD', value_halalas: 270_000_000, win_pct: 30, exclude_from_sales: 0, created_at: T });
   await insert('opportunity', { id: 'O-hold', title_ar: 'معلّقة', sector_id: 'S1', year: 2026,
     stage_id: 'ON_HOLD', value_halalas: 80_000_000, win_pct: 40, exclude_from_sales: 0, created_at: T });
-  await insert('opportunity', { id: 'O-excl', title_ar: 'مستبعدة من المبيعات', sector_id: 'S1', year: 2026,
+  await insert('opportunity', { id: 'O-excl', title_ar: 'موسومة «تاريخي»', sector_id: 'S1', year: 2026,
     stage_id: 'LEAD', value_halalas: 50_000_000, win_pct: 50, exclude_from_sales: 1, created_at: T });
   await insert('opportunity', { id: 'W-1', title_ar: 'مكسوبة', sector_id: 'S1', year: 2026,
     stage_id: 'WON', value_halalas: 10_000_000, win_pct: 100, exclude_from_sales: 0, created_at: T });
@@ -125,12 +125,12 @@ test('outlookFromMonths: رياضيات revenueOutlook نفسها على سلس�
   assert.equal(outlookFromMonths(Array(12).fill(0), 2027, new Date('2027-01-05T00:00:00Z')).tooEarly, true);
 });
 
-test('تغطية خط الفرص: مرجّحة، بلا معلّقة، وبلا المستبعد من المبيعات', async () => {
+test('تغطية خط الفرص: مرجّحة، بلا معلّقة، والموسوم «تاريخي» داخلها', async () => {
   const c = await pipelineCoverage('S1', 2026);
-  // المفتوح المؤهَّل: الفرصة الضخمة وحدها (المعلّقة والمستبعدة خارج) ⇒ 270M×30% = 81M
-  assert.equal(c.weighted_halalas, 81_000_000);
-  assert.equal(c.open_halalas, 270_000_000);
+  // المفتوح المؤهَّل: الضخمة والموسومة «تاريخي» (المعلّقة وحدها خارج) ⇒ 270M×30% + 50M×50% = 106M
+  assert.equal(c.weighted_halalas, 106_000_000);
+  assert.equal(c.open_halalas, 320_000_000);
   // المتبقي من هدف المبيعات = 40M − 10M مكسوبة = 30M ⇒ التغطية بالمرجّح لا بالخام
   assert.equal(c.remaining_target_halalas, 30_000_000);
-  assert.equal(c.coverage, 2.7);
+  assert.equal(c.coverage, 3.5);
 });

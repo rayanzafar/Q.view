@@ -97,7 +97,7 @@ export async function financeSummary(user, year = FY()) {
     grantCol: 'o.department_id', memberCol: 'o.id',
   });
   const bookings = (await get(`SELECT COALESCE(SUM(o.value_halalas),0) v FROM opportunity o JOIN stage st ON st.id=o.stage_id
-     WHERE st.is_won=1 AND o.exclude_from_sales=0 AND o.year=? AND o.deleted_at IS NULL
+     WHERE st.is_won=1 AND o.year=? AND o.deleted_at IS NULL
        AND (${bookingsScope.clause})`, [year, ...bookingsScope.params])).v;
   const revenue = await scopedRevenue(user, year); // نفس المصدر الذي يستعمله dso — لا نسختان
   // المفوتر: **إجمالي** (مطالبة على العميل) ومعه صافيه وضريبته. نسبة التحصيل تُقاس بين إجماليَّين

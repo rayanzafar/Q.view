@@ -118,7 +118,7 @@ export async function lastTouchByClient() {
 // listClients(user, {query, type, sort, sector}) → client cols + the per-client decision
 // aggregates (contract fields kept; the rest are additive extensions):
 //   open_pipeline_halalas / weighted_pipeline_halalas / open_opps — الفرص المفتوحة وقيمتها والمرجّح
-//   won_count / won_value_halalas / hist_won_count / lost_count — سجل الفوز والخسارة (التاريخي على حدة)
+//   won_count / won_value_halalas / hist_won_count / lost_count — سجل الفوز والخسارة (التاريخي داخلَه ومعدودٌ منه)
 //   contracts_count / contracts_value_halalas — العقود
 //   open_ar_halalas / overdue_ar_halalas — المستحق (نفس منطق clientOverview حتى تتطابق الأرقام)
 //   fy_revenue_halalas / prev_fy_revenue_halalas / active_projects
@@ -157,10 +157,11 @@ export async function listClients(user, filters = {}) {
      WHERE o.deleted_at IS NULL AND o.client_id IS NOT NULL AND COALESCE(s.is_won,0) = 0 AND COALESCE(s.is_lost,0) = 0 GROUP BY o.client_id`);
   const prjRows = await all(`SELECT client_id cid, COUNT(*) n FROM project
      WHERE deleted_at IS NULL AND client_id IS NOT NULL AND status = 'IN_PROGRESS' GROUP BY client_id`);
-  // الفوز/الخسارة: الفوز المحتسب يستثني المستورد التاريخي (exclude_from_sales=1) ويعدّه على حدة
+  // الفوز/الخسارة: المستورد التاريخي داخلٌ في الفوز المحتسب (قرار المالك ٢٠٢٦-٠٩-٠٨)، ويُعدّ
+  // إلى جانبه عدداً مستقلاً (hist_n) ليُقال «منها N تاريخي» لا ليُطرح منه
   const wlRows = await all(`SELECT o.client_id cid,
-       SUM(CASE WHEN s.is_won = 1 AND COALESCE(o.exclude_from_sales,0) = 0 THEN 1 ELSE 0 END) won_n,
-       COALESCE(SUM(CASE WHEN s.is_won = 1 AND COALESCE(o.exclude_from_sales,0) = 0 THEN o.value_halalas ELSE 0 END),0) won_v,
+       SUM(CASE WHEN s.is_won = 1 THEN 1 ELSE 0 END) won_n,
+       COALESCE(SUM(CASE WHEN s.is_won = 1 THEN o.value_halalas ELSE 0 END),0) won_v,
        SUM(CASE WHEN s.is_won = 1 AND COALESCE(o.exclude_from_sales,0) = 1 THEN 1 ELSE 0 END) hist_n,
        SUM(CASE WHEN s.is_lost = 1 THEN 1 ELSE 0 END) lost_n
      FROM opportunity o JOIN stage s ON s.id = o.stage_id
@@ -286,7 +287,7 @@ export async function salesWinRate(user, fy = config.fiscalYear) {
       grantCol: 'opportunity.department_id', memberCol: 'opportunity.id',
       deptCol: 'opportunity.department_id' });
   const r = await get(`SELECT
-      COALESCE(SUM(CASE WHEN stage.is_won = 1 AND COALESCE(opportunity.exclude_from_sales,0) = 0 AND opportunity.year = ? THEN 1 ELSE 0 END),0) fy_won,
+      COALESCE(SUM(CASE WHEN stage.is_won = 1 AND opportunity.year = ? THEN 1 ELSE 0 END),0) fy_won,
       COALESCE(SUM(CASE WHEN stage.is_lost = 1 AND opportunity.year = ? THEN 1 ELSE 0 END),0) fy_lost,
       COALESCE(SUM(CASE WHEN stage.is_won = 1 THEN 1 ELSE 0 END),0) hist_won,
       COALESCE(SUM(CASE WHEN stage.is_lost = 1 THEN 1 ELSE 0 END),0) hist_lost

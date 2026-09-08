@@ -110,8 +110,9 @@ export async function ensureProjectForWonOpportunity(ctx, opp) {
 }
 
 // ── فرصةٌ مكسوبة لكل مشروع ───────────────────────────────────────────────────
-// يُستدعى من إنشاء المشروع. opts.year سنة بيع أكدها المستخدم؛ الغياب يبقى بلا سنة
-// ومستبعداً من المبيعات إلى حين المراجعة. opts.historic يحفظ الاستبعاد التاريخي الصريح.
+// يُستدعى من إنشاء المشروع. opts.year سنة بيع أكدها المستخدم؛ والغياب يبقى بلا سنة، فلا يدخل
+// مبيعات سنةٍ بعينها حتى تُراجَع سنته — لغياب السنة وحده. و`exclude_from_sales` وسمُ «تاريخي»
+// للتمييز في الشاشات فقط، ولا يُخرِج الفرصة من المبيعات (قرار المالك ٢٠٢٦-٠٩-٠٨).
 export async function ensureOpportunityForProject(ctx, project, opts = {}) {
   if (project.source_opp_id) {
     const linked = await get('SELECT id FROM opportunity WHERE id = ? AND deleted_at IS NULL', [project.source_opp_id]);

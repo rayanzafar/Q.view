@@ -454,7 +454,7 @@ async function contributionsSection(user, sc, period) {
       anyBase = true;
       const won = await get(`SELECT COUNT(*) n, COALESCE(SUM(o.value_halalas),0) v
         FROM opportunity o JOIN stage st ON st.id = o.stage_id
-        WHERE o.deleted_at IS NULL AND st.is_won = 1 AND o.exclude_from_sales = 0
+        WHERE o.deleted_at IS NULL AND st.is_won = 1
           AND o.stage_changed_at IS NOT NULL
           AND substr(o.stage_changed_at,1,10) BETWEEN ? AND ? AND ${ow.where}`,
       [period.from, period.to, ...ow.params]);
@@ -463,7 +463,7 @@ async function contributionsSection(user, sc, period) {
       if (N(won?.n)) {
         const list = await all(`SELECT o.title_ar, o.value_halalas, c.name_ar client
           FROM opportunity o JOIN stage st ON st.id = o.stage_id LEFT JOIN client c ON c.id = o.client_id
-          WHERE o.deleted_at IS NULL AND st.is_won = 1 AND o.exclude_from_sales = 0
+          WHERE o.deleted_at IS NULL AND st.is_won = 1
             AND o.stage_changed_at IS NOT NULL
             AND substr(o.stage_changed_at,1,10) BETWEEN ? AND ? AND ${ow.where}
           ORDER BY o.value_halalas DESC LIMIT 5`, [period.from, period.to, ...ow.params]);

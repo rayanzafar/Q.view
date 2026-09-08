@@ -45,7 +45,7 @@ const apiGet = async (path) => {
 const salesOfSector = async (sectorId, year) => (await get(
   `SELECT COALESCE(SUM(o.value_halalas),0) v FROM opportunity o
      JOIN stage st ON st.id = o.stage_id
-    WHERE o.sector_id = ? AND o.year = ? AND st.is_won = 1 AND o.exclude_from_sales = 0 AND o.deleted_at IS NULL`,
+    WHERE o.sector_id = ? AND o.year = ? AND st.is_won = 1 AND o.deleted_at IS NULL`,
   [sectorId, year])).v;
 
 const bucketsOf = (r) => [...r.departments, r.unassigned, r.orphaned];
@@ -73,7 +73,7 @@ before(async () => {
   await opp('OS_OPEN', 'D_SMART', 'LEAD', 4000000, 50, 2026);
   await opp('OS_WON', 'D_SMART', 'WON', 10000000, 100, 2026);
   await opp('OS_LOST', 'D_SMART', 'LOST', 7000000, 0, 2026);
-  await opp('OS_WON_EXCL', 'D_SMART', 'WON', 2500000, 100, 2026, { exclude_from_sales: 1 });  // مستبعدة بعلم
+  await opp('OS_WON_EXCL', 'D_SMART', 'WON', 2500000, 100, 2026, { exclude_from_sales: 1 });  // موسومة «تاريخي» ⟵ تُحتسب
   await opp('OS_WON_NOYEAR', 'D_SMART', 'WON', 1100000, 100, null);      // مكسوبة بلا سنة ⟵ خارج المبيعات
   await opp('OS_NOSTAGE', 'D_SMART', null, 300000, null, 2026);          // بلا مرحلة ⟵ لا تختفي ولا تُحسب فوزاً
   await opp('OS_OLD_WON', 'D_SMART', 'WON', 9000000, 100, 2025);         // سنة أخرى
@@ -118,16 +118,16 @@ test('قيمة فرص الإدارة تعود مفصولة: مفتوحة ومك�
   assert.equal(smart.opportunity_open_value_halalas, 4000000, 'المفتوح وحده: لا فائزة ولا خاسرة');
   assert.equal(smart.opportunity_open_weighted_halalas, 2000000, '4,000,000 × 50% — المرجّح للمفتوح فقط');
 
-  assert.equal(smart.opportunities_won, 1);
-  assert.equal(smart.opportunity_won_value_halalas, 10000000,
-    'المكسوب وحده: المستبعدة من المبيعات وبلا سنة والخاسرة خارجه');
+  assert.equal(smart.opportunities_won, 2);
+  assert.equal(smart.opportunity_won_value_halalas, 12500000,
+    'المكسوب وحده ومعه الموسومة «تاريخي»: بلا سنة والخاسرة خارجه');
 
   assert.equal(smart.opportunities_lost, 1);
   assert.equal(smart.opportunity_lost_value_halalas, 7000000);
 
-  // البقية: مكسوبة مستبعدة بعلم + مكسوبة بلا سنة + بلا مرحلة — تُعرَض ولا تُحسب فوزاً
-  assert.equal(smart.opportunities_other, 3);
-  assert.equal(smart.opportunity_other_value_halalas, 3900000, '2,500,000 + 1,100,000 + 300,000');
+  // البقية: مكسوبة بلا سنة + بلا مرحلة — تُعرَض ولا تُحسب فوزاً
+  assert.equal(smart.opportunities_other, 2);
+  assert.equal(smart.opportunity_other_value_halalas, 1400000, '1,100,000 + 300,000');
 
   const ai = r.departments.find((d) => d.id === 'D_AI');
   assert.equal(ai.opportunity_open_value_halalas, 1000000);
@@ -140,7 +140,7 @@ test('«مكسوبة» الإدارات تُصالح «مبيعات القطاع
   const year = 2026;
   const r = await attr.departmentRollup(admin, { sectorId: 'SOLUTIONS', year });
   const sales = await salesOfSector('SOLUTIONS', year);
-  assert.equal(sales, 15000000, 'مرجع المبيعات: 10,000,000 (مُسندة) + 5,000,000 (غير مُسندة)');
+  assert.equal(sales, 17500000, 'مرجع المبيعات: 10,000,000 + 2,500,000 موسومة «تاريخي» (مُسندة) + 5,000,000 (غير مُسندة)');
   assert.equal(r.totals.opportunity_won_value_halalas, sales,
     'مجموع مكسوب الإدارات + غير المُسند + الشاذ = مبيعات القطاع');
 
@@ -183,13 +183,13 @@ test('سنة الفرصة تُحترم كما تحترمها المبيعات: �
 
   // OS_WON_NOYEAR تظهر في كل سنة (كي لا يختفي عمل بسبب حقل ناقص) لكنها لا تُحسب فوزاً في أيٍّ منها
   assert.ok(smart26.opportunities_other >= 1 && smart25.opportunities_other >= 1, 'المكسوبة بلا سنة تُعرض في الدلو المحايد');
-  assert.equal(smart26.opportunity_won_value_halalas, 10000000, 'ولا تُضاف إلى فوز 2026');
+  assert.equal(smart26.opportunity_won_value_halalas, 12500000, 'ولا تُضاف إلى فوز 2026');
 });
 
 test('الفرص المحذوفة وفرص القطاعات الأخرى خارج كل الدلاء الجديدة', async () => {
   const r = await attr.departmentRollup(admin, { sectorId: 'SOLUTIONS', year: 2026 });
   assert.equal(r.totals.opportunities, 10, 'المحذوفة وفرصة القطاع الآخر غير معدودتين');
-  assert.equal(r.totals.opportunity_won_value_halalas, 15000000, 'ولا قيمتاهما داخل المكسوب');
+  assert.equal(r.totals.opportunity_won_value_halalas, 17500000, 'ولا قيمتاهما داخل المكسوب');
   const st = await attr.departmentRollup(admin, { sectorId: 'STRATEGIC', year: 2026 });
   assert.equal(st.unassigned.opportunity_won_value_halalas, 12000000, 'كل قطاع يرى فوزه هو');
 });
@@ -215,11 +215,11 @@ test('حقول شاشة الهيكل القائمة باقية بأسمائها 
 test('المسار /org/rollup يُخرج الحقول الجديدة كما تُخرجها الخدمة', async () => {
   const res = await apiGet('/org/rollup?sector=SOLUTIONS&year=2026');
   assert.equal(res.status, 200);
-  assert.equal(res.body.totals.opportunity_won_value_halalas, 15000000);
+  assert.equal(res.body.totals.opportunity_won_value_halalas, 17500000);
   assert.equal(res.body.totals.opportunity_open_value_halalas, 7000000);
   assert.equal(res.body.totals.opportunity_lost_value_halalas, 7800000);
   assert.equal(res.body.totals.opportunity_value_halalas, 33700000, 'والإجمالي القديم ما زال في الحمولة');
   const smart = res.body.departments.find((d) => d.id === 'D_SMART');
-  assert.equal(smart.opportunity_won_value_halalas, 10000000);
+  assert.equal(smart.opportunity_won_value_halalas, 12500000);
   assert.equal(smart.name_ar, 'إدارة المدن الذكية');
 });

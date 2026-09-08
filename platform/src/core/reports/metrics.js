@@ -48,10 +48,10 @@ export async function availableYears() {
 // ── per-sector figures for a single year ──
 async function sectorYearFigures(sectorId, year) {
   const revenue = (await get(`SELECT ${NET_REVENUE} v FROM revenue_line WHERE sector_id = ? AND year = ?`, [sectorId, year])).v;
-  // Sales = value of WON opportunities booked in that year (excluding flagged-out)
+  // Sales = value of WON opportunities booked in that year (historic-flagged ones included: the flag is a label only)
   const sales = (await get(`SELECT COALESCE(SUM(o.value_halalas),0) v FROM opportunity o
       JOIN stage st ON st.id = o.stage_id
-      WHERE o.sector_id = ? AND o.year = ? AND st.is_won = 1 AND o.exclude_from_sales = 0 AND o.deleted_at IS NULL`,
+      WHERE o.sector_id = ? AND o.year = ? AND st.is_won = 1 AND o.deleted_at IS NULL`,
     [sectorId, year])).v;
   // قيمة العقود الموقّعة **إجمالية**: هي ما وقّعه العميل ويُطالَب به. وصافيها بجانبها لأنها
   // تُعرض في الشاشة نفسها التي فيها الإيراد الصافي، فلولاه قُرئ الفارق بينهما تناقضاً.
@@ -116,7 +116,7 @@ export async function multiYearTrend(sectorId, nYears = 5) {
   return Promise.all(years.map(async (y) => {
     const revenue = (await get(`SELECT ${NET_REVENUE} v FROM revenue_line WHERE year = ? ${secClause}`, [y, ...secP])).v;
     const sales = (await get(`SELECT COALESCE(SUM(o.value_halalas),0) v FROM opportunity o JOIN stage st ON st.id=o.stage_id
-        WHERE o.year = ? AND st.is_won=1 AND o.exclude_from_sales=0 AND o.deleted_at IS NULL ${sectorId ? 'AND o.sector_id = ?' : ''}`, [y, ...secP])).v;
+        WHERE o.year = ? AND st.is_won=1 AND o.deleted_at IS NULL ${sectorId ? 'AND o.sector_id = ?' : ''}`, [y, ...secP])).v;
     const contracts = (await get(`SELECT COALESCE(SUM(value_halalas),0) v FROM contract
         WHERE CAST(substr(start_date,1,4) AS INTEGER) = ? ${secClause} AND deleted_at IS NULL`, [y, ...secP])).v;
     return { year: y, revenue_halalas: revenue, sales_halalas: sales, contracts_halalas: contracts };
@@ -260,7 +260,7 @@ export async function sectorClients(sectorId) {
 // Win/loss for a sector in a year.
 export async function sectorWins(sectorId, year) {
   const w = await get(`SELECT COUNT(*) n, COALESCE(SUM(o.value_halalas),0) v FROM opportunity o JOIN stage st ON st.id=o.stage_id
-     WHERE o.sector_id=? AND o.year=? AND st.is_won=1 AND o.exclude_from_sales=0 AND o.deleted_at IS NULL`, [sectorId, year]);
+     WHERE o.sector_id=? AND o.year=? AND st.is_won=1 AND o.deleted_at IS NULL`, [sectorId, year]);
   const l = await get(`SELECT COUNT(*) n FROM opportunity o JOIN stage st ON st.id=o.stage_id
      WHERE o.sector_id=? AND o.year=? AND st.is_lost=1 AND o.deleted_at IS NULL`, [sectorId, year]);
   return { won: w.n, wonValue_halalas: w.v, lost: l.n, winRate: (w.n + l.n) ? Math.round(w.n / (w.n + l.n) * 100) : 0 };
@@ -271,7 +271,7 @@ export async function quarterlyBookings(sectorId, year, scope = {}) {
   const sc = projectScopeSql('o', scope);
   const rows = await all(`SELECT CAST(substr(o.stage_changed_at,6,2) AS INTEGER) m, COALESCE(SUM(o.value_halalas),0) v
      FROM opportunity o JOIN stage st ON st.id=o.stage_id
-     WHERE st.is_won=1 AND o.exclude_from_sales=0 AND o.year=? AND o.deleted_at IS NULL AND o.stage_changed_at IS NOT NULL
+     WHERE st.is_won=1 AND o.year=? AND o.deleted_at IS NULL AND o.stage_changed_at IS NOT NULL
      ${sectorId ? 'AND o.sector_id = ?' : ''}${sc.clause} GROUP BY m`, [year, ...(sectorId ? [sectorId] : []), ...sc.args]);
   const byM = Object.fromEntries(rows.map((r) => [r.m, r.v]));
   const q = [0, 0, 0, 0];
@@ -321,7 +321,7 @@ export async function pipelineCoverage(sectorId, year) {
   const target = annualTargets.length && annualTargets.every((t) => t.budget?.target_sales_halalas != null)
     ? annualTargets.reduce((sum, t) => sum + t.budget.target_sales_halalas, 0) : null;
   const soldRow = await get(`SELECT COALESCE(SUM(o.value_halalas),0) v FROM opportunity o JOIN stage st ON st.id=o.stage_id
-     WHERE st.is_won=1 AND o.exclude_from_sales=0 AND o.year=? ${sectorId ? 'AND o.sector_id=?' : ''} AND o.deleted_at IS NULL`,
+     WHERE st.is_won=1 AND o.year=? ${sectorId ? 'AND o.sector_id=?' : ''} AND o.deleted_at IS NULL`,
     [year, ...(sectorId ? [sectorId] : [])]);
   // الطرف المفتوح كان بلا سنةٍ وبلا استبعادٍ وبمعلّقةٍ داخله، ثم تُقسَم قيمتُه **الخام** على
   // المتبقي بينما البطاقة تعرض **المرجّح** فوقها — رقمان لا يتطابقان فوق بعضهما. التعريف الآن
@@ -329,7 +329,7 @@ export async function pipelineCoverage(sectorId, year) {
   const openRow = await get(`SELECT COALESCE(SUM(o.value_halalas),0) raw,
        ${WEIGHTED_OPEN} weighted
      FROM opportunity o JOIN stage st ON st.id=o.stage_id
-     WHERE st.is_won=0 AND st.is_lost=0 AND o.stage_id != 'ON_HOLD' AND o.exclude_from_sales=0
+     WHERE st.is_won=0 AND st.is_lost=0 AND o.stage_id != 'ON_HOLD'
        AND (o.year = ? OR o.year IS NULL)
        ${sectorId ? 'AND o.sector_id=?' : ''} AND o.deleted_at IS NULL`,
     [year, ...(sectorId ? [sectorId] : [])]);
@@ -346,7 +346,7 @@ export async function pipelineCoverage(sectorId, year) {
 // ينقصها: هي مؤشر اتجاه لا رقم محاسبي، ويصير دقيقاً حين تُقاس التعاقدات من جدول العقود.
 export async function bookToBill(sectorId, year) {
   const bookings = (await get(`SELECT COALESCE(SUM(o.value_halalas),0) v FROM opportunity o JOIN stage st ON st.id=o.stage_id
-     WHERE st.is_won=1 AND o.exclude_from_sales=0 AND o.year=? ${sectorId ? 'AND o.sector_id=?' : ''} AND o.deleted_at IS NULL`,
+     WHERE st.is_won=1 AND o.year=? ${sectorId ? 'AND o.sector_id=?' : ''} AND o.deleted_at IS NULL`,
     [year, ...(sectorId ? [sectorId] : [])])).v;
   const revenue = (await get(`SELECT ${NET_REVENUE} v FROM revenue_line WHERE year=? ${sectorId ? 'AND sector_id=?' : ''}`,
     [year, ...(sectorId ? [sectorId] : [])])).v;
@@ -546,7 +546,7 @@ export async function winsByMonth(sectorId, { untilIso, months = 12 } = {}) {
   const sinceIso = `${slots[0].ym}-01`;
   const rows = await all(`SELECT substr(o.stage_changed_at,1,7) ym, COUNT(*) n, COALESCE(SUM(o.value_halalas),0) v
      FROM opportunity o JOIN stage st ON st.id = o.stage_id
-     WHERE st.is_won = 1 AND o.exclude_from_sales = 0 AND o.deleted_at IS NULL AND o.stage_changed_at IS NOT NULL
+     WHERE st.is_won = 1 AND o.deleted_at IS NULL AND o.stage_changed_at IS NOT NULL
        AND substr(o.stage_changed_at,1,10) >= ? AND substr(o.stage_changed_at,1,10) < ?
        ${sectorId ? 'AND o.sector_id = ?' : ''}
      GROUP BY substr(o.stage_changed_at,1,7)`, [sinceIso, u, ...(sectorId ? [sectorId] : [])]);
@@ -565,8 +565,8 @@ export async function windowFigures(user, sectorId, sinceIso, untilIso, scope = 
   const psc = invoiceScopeSql(scope);
   const [w, inv, col] = await Promise.all([
     get(`SELECT
-        SUM(CASE WHEN st.is_won = 1 AND o.exclude_from_sales = 0 THEN 1 ELSE 0 END) won_n,
-        COALESCE(SUM(CASE WHEN st.is_won = 1 AND o.exclude_from_sales = 0 THEN o.value_halalas ELSE 0 END),0) won_v,
+        SUM(CASE WHEN st.is_won = 1 THEN 1 ELSE 0 END) won_n,
+        COALESCE(SUM(CASE WHEN st.is_won = 1 THEN o.value_halalas ELSE 0 END),0) won_v,
         SUM(CASE WHEN st.is_lost = 1 THEN 1 ELSE 0 END) lost_n
       FROM opportunity o JOIN stage st ON st.id = o.stage_id
       WHERE o.sector_id = ? AND o.deleted_at IS NULL AND o.stage_changed_at IS NOT NULL

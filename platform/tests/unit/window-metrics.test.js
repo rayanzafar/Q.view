@@ -33,7 +33,7 @@ before(async () => {
   await opp('W-aug2', { stage_changed_at: '2026-08-20T10:00:00.000Z', value_halalas: 2_000_000 });
   await opp('W-sep25', { stage_changed_at: '2025-09-15T10:00:00.000Z', year: 2025 });
   await opp('W-out', { stage_changed_at: '2025-08-20T10:00:00.000Z', year: 2025 });          // قبل النافذة
-  await opp('W-excl', { stage_changed_at: '2026-08-06T10:00:00.000Z', exclude_from_sales: 1 }); // مستبعد من المبيعات
+  await opp('W-excl', { stage_changed_at: '2026-08-06T10:00:00.000Z', exclude_from_sales: 1 }); // موسوم «تاريخي» — ويُحتسب
   await opp('W-s2', { stage_changed_at: '2026-08-07T10:00:00.000Z', sector_id: 'S2' });       // قطاع آخر
   await opp('L-aug', { stage_id: 'LOST', stage_changed_at: '2026-08-10T10:00:00.000Z' });     // خسارة في النافذة
   await opp('O-open', { stage_id: 'LEAD', stage_changed_at: '2026-08-03T10:00:00.000Z' });    // مفتوحة — لا تُحسب
@@ -51,22 +51,22 @@ after(async () => { await close(); rmSync(dir, { recursive: true, force: true })
 const LEAD = { id: 'u-lead', role_id: 'sector_lead', sector_id: 'S1', scope: 'sector' };
 const VIEWER = { id: 'u-view', role_id: 'viewer', sector_id: 'S1', scope: 'sector' };
 
-test('winsByMonth: اثنا عشر شقّاً متتابعاً يعبر حدود السنة، بلا مستبعدٍ ولا قطاعٍ آخر', async () => {
+test('winsByMonth: اثنا عشر شقّاً متتابعاً يعبر حدود السنة — الموسوم «تاريخي» داخلٌ والقطاع الآخر خارج', async () => {
   const r = await winsByMonth('S1', { untilIso: '2026-09-01' });
   assert.equal(r.slots.length, 12);
   assert.equal(r.sinceIso, '2025-09-01');
   assert.equal(r.slots[0].ym, '2025-09'); // أقدم شقّ
   assert.equal(r.slots[11].ym, '2026-08'); // أحدث شقّ
   assert.equal(r.slots[0].n, 1);            // فوز سبتمبر 2025 داخل السلسلة
-  assert.equal(r.slots[11].n, 2);           // فوزا أغسطس (المستبعد والقطاع الآخر خارجها)
-  assert.equal(r.slots[11].v, 3_000_000);
-  assert.equal(r.slots.reduce((a, s) => a + s.n, 0), 3); // W-out قبل النافذة لا يظهر
+  assert.equal(r.slots[11].n, 3);           // فوزا أغسطس ومعهما الموسوم «تاريخي» (والقطاع الآخر خارجها)
+  assert.equal(r.slots[11].v, 4_000_000);
+  assert.equal(r.slots.reduce((a, s) => a + s.n, 0), 4); // W-out قبل النافذة لا يظهر
 });
 
 test('windowFigures: المكسوب والمحسوم معاً، والمالية لمن يقرؤها', async () => {
   const r = await windowFigures(LEAD, 'S1', '2026-08-01', '2026-09-01');
-  assert.deepEqual(r.wins, { n: 2, v: 3_000_000 });
-  assert.deepEqual(r.decided, { won: 2, lost: 1, rate: 67 });
+  assert.deepEqual(r.wins, { n: 3, v: 4_000_000 });
+  assert.deepEqual(r.decided, { won: 3, lost: 1, rate: 75 });
   assert.deepEqual(r.invoiced, { n: 1, v: 300_000 });   // فاتورة يوليو خارج النافذة
   assert.deepEqual(r.collected, { n: 1, v: 150_000 });
 });
@@ -81,7 +81,7 @@ test('windowFigures: من لا يقرأ الفواتير يستلم null للم�
   const r = await windowFigures(VIEWER, 'S1', '2026-08-01', '2026-09-01');
   assert.equal(r.invoiced, null);
   assert.equal(r.collected, null);
-  assert.deepEqual(r.wins, { n: 2, v: 3_000_000 }); // ويرى المبيعات
+  assert.deepEqual(r.wins, { n: 3, v: 4_000_000 }); // ويرى المبيعات
 });
 
 test('windowRevenue: مجموع الأشهر المتقاطعة مع النافذة، والفارغة صفر بأشهر مسمّاة', async () => {

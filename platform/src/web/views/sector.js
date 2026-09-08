@@ -694,10 +694,10 @@ export async function sectorPage(user, opts = {}) {
     fr.nextYear && canOpps ? get(`SELECT COUNT(*) n, COALESCE(SUM(o.value_halalas),0) raw, ${WEIGHTED_OPEN} weighted
        FROM opportunity o JOIN stage st ON st.id = o.stage_id
        WHERE o.sector_id = ? AND o.year = ? AND st.is_won = 0 AND st.is_lost = 0
-         AND o.stage_id != 'ON_HOLD' AND o.exclude_from_sales = 0 AND o.deleted_at IS NULL`, [sectorId, year]) : null,
+         AND o.stage_id != 'ON_HOLD' AND o.deleted_at IS NULL`, [sectorId, year]) : null,
     filtered ? get(`SELECT COUNT(*) n, COALESCE(SUM(o.value_halalas),0) v
        FROM opportunity o JOIN stage st ON st.id = o.stage_id
-       WHERE o.sector_id = ? AND o.year = ? AND st.is_won = 1 AND o.exclude_from_sales = 0
+       WHERE o.sector_id = ? AND o.year = ? AND st.is_won = 1
          AND o.deleted_at IS NULL${deptSql('o.department_id')}${clientSql('o.client_id')}`,
     [sectorId, year, ...deptArg, ...clientArg]) : null,
   ]);
@@ -757,7 +757,7 @@ export async function sectorPage(user, opts = {}) {
   // الفرصة **قبل** ترسيتها، وصفقات السنة المكسوبة إنجاز قطاعٍ يُعرض لأهله كلهم — فتبقى قطاعية.
   const secWon = await all(`SELECT o.title_ar, o.value_halalas, c.name_ar client FROM opportunity o
      JOIN stage st ON st.id = o.stage_id LEFT JOIN client c ON c.id = o.client_id
-     WHERE o.sector_id = ? AND o.year = ? AND st.is_won = 1 AND o.exclude_from_sales = 0 AND o.deleted_at IS NULL${deptSql('o.department_id')}${clientSql('o.client_id')}
+     WHERE o.sector_id = ? AND o.year = ? AND st.is_won = 1 AND o.deleted_at IS NULL${deptSql('o.department_id')}${clientSql('o.client_id')}
      ORDER BY o.value_halalas DESC LIMIT 8`, [sectorId, year, ...deptArg, ...clientArg]);
   // القرار بلا مشروعٍ صفٌّ شركيّ لا قطاع له — وعرضه في كل مركز قطاع يُسرّب عناوين قرارات
   // القطاعات الأخرى لقارئٍ نطاقه قطاعه وحده. قرارات القطاع = قرارات مشاريعه.
