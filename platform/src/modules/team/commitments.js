@@ -5,14 +5,15 @@
 //
 // قواعد العدّ ثابتة (T23): المهمة تُعدّ **مرةً واحدة** — لها مسؤولٌ واحد وجهةٌ واحدة، فتسكن
 // صفَّ عملها وحده في وجه «العمل» وصفَّ مسؤولها وحده في وجه «المورد». ولا مهامَّ شخصية ولا
-// معلَّقةً بانتظار الاعتماد (`openLoadSql` — الشرط الواحد الذي يقرؤه مقياس الحِمل نفسه).
+// معلَّقةً بانتظار الاعتماد (`openTaskSql` — شرط قراءة المهام الجارية، والمعطَّلة منها تُعرض:
+// عائقٌ لا يُرى لا يرفعه أحد، وإن كان لا يدخل جمع «نسبة الإشغال»).
 // التسكين من capacity-model عبر capacity-read (مؤكد/مبدئي منفصلان)، ولا مال في أي حقل.
 import { all } from '../../core/db/index.js';
 import { nowIso } from '../../core/util/ids.js';
 import { badRequest, forbidden } from '../../core/http/errors.js';
 import { MONTHS_AR } from '../../core/i18n/time.js';
 import { taskStatusLabel, taskPriorityLabel } from '../../core/i18n/task-vocab.js';
-import { openLoadSql } from '../pmo/task-load.js';
+import { openTaskSql } from '../pmo/task-load.js';
 import { canReadResources, resourceScopeSql } from './access.js';
 import { figuresFor } from './capacity-read.js';
 import { monthKey } from './capacity-model.js';
@@ -108,7 +109,7 @@ export async function teamCommitments(user, { year, month, department, by = 'wor
   // المهام الجارية المسنَدة إلى أهل الكشف — صفٌّ واحد لكل مهمة، بلا شخصية ولا معلَّقة.
   const tasks = uids.length ? await all(`SELECT t.id, t.title, t.assignee_user_id, t.project_id, t.opportunity_id, t.work_kind,
          t.due_date, t.status, t.blocked_reason, t.priority, t.utilization_pct, t.next_step
-       FROM task t WHERE ${openLoadSql('t.')} AND t.assignee_user_id IN (${ph(uids)})
+       FROM task t WHERE ${openTaskSql('t.')} AND t.assignee_user_id IN (${ph(uids)})
        ORDER BY CASE WHEN t.due_date IS NULL THEN 1 ELSE 0 END, t.due_date, t.title`, uids) : [];
   // أسماء الأعمال التي لم تصل عبر التسكين (مهمة على مشروعٍ لا تسكين عليه هذا الشهر، أو على فرصة).
   const pids = [...new Set(tasks.map((t) => t.project_id).filter((p) => p && !ctx.projects.has(p)))];

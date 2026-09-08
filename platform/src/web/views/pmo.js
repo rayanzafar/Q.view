@@ -1107,7 +1107,7 @@ export async function tasksPage(user, opts = {}) {
     const loadLine = (L.open || L.pct) ? `<div class="wp-line" title="${esc(TASK_LOAD_BASIS_AR)} — ${TASK_LOAD_NOT_RATING_AR}">
       <span class="wp-k">${TASK_LOAD_AR}</span>
       <span class="wp-v"><span class="wc-bar" style="display:inline-block;width:76px;vertical-align:middle"><span style="width:${Math.min(100, L.pct)}%;background:${capacityColor(L.pct)}"></span></span>
-        <b class="tnum">${L.pct}</b>٪${L.unsized ? ` <span class="wp-more tnum">${L.unsized} بلا تقدير</span>` : ''}</span></div>` : '';
+        <b class="tnum">${L.pct}</b>٪${L.unsized ? ` <span class="wp-more tnum">${L.unsized} بلا نسبة</span>` : ''}</span></div>` : '';
     return `<div class="wp${p.attention ? ' hot' : ''}${p.idle ? ' idle' : ''}">
       <div class="wp-h">
         <span class="wp-av" aria-hidden="true">${initial}</span>

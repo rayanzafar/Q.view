@@ -25,6 +25,7 @@ import { inDepartmentScope } from '../../core/rbac/departments.js';
 import { loadReadableProject } from './project-access.js';
 import { teamTasksAccess, notPersonalSql } from './tasks.js';
 import { approvedTaskSql } from './task-approval.js';
+import { countsForLoadSql } from './task-load.js';
 
 const N = (v) => Number(v) || 0;
 
@@ -212,7 +213,11 @@ async function teamTaskLoad(employeeIds, today, topN = 3) {
   const ph = ids.map(() => '?').join(',');
   // الجسر بمفتاح صفحة الشخص نفسه (`app_user.employee_id`) لا بعمود الموظف — فما يُعدّ هنا هو ما
   // تفتحه «الصفحة الكاملة» حرفاً. والسقف ثلاثة آلاف مهمة مفتوحة للكشف كله — بعده يُعدّ الباقون صفراً.
-  const rows = await all(`SELECT e.id employee_id, t.id, t.title, t.due_date, t.status, t.blocked_reason
+  // و«نسبة الإشغال من المهام» تُحسب من الصفوف نفسها لا باستعلامٍ ثانٍ: العمود `counts_load`
+  // يحمل شرطَ المقياس من مصدره الواحد (`task-load.js`)، فالجمعُ في الذاكرة لا يخترع تعريفاً
+  // ثانياً — ولو نُسخ الشرطُ هنا لتباعد الرقمُ عن «مهامي» بلا أن ينبّه أحد.
+  const rows = await all(`SELECT e.id employee_id, t.id, t.title, t.due_date, t.status, t.blocked_reason,
+       t.utilization_pct, CASE WHEN ${countsForLoadSql('t.')} THEN 1 ELSE 0 END counts_load
      FROM employee e JOIN app_user u ON u.employee_id = e.id AND u.deleted_at IS NULL
      JOIN task t ON t.assignee_user_id = u.id
     WHERE e.id IN (${ph}) AND t.deleted_at IS NULL
@@ -220,11 +225,15 @@ async function teamTaskLoad(employeeIds, today, topN = 3) {
     ORDER BY e.id, CASE WHEN t.due_date IS NULL THEN 1 ELSE 0 END, t.due_date
     LIMIT 3000`, ids);
   for (const r of rows) {
-    if (!out.has(r.employee_id)) out.set(r.employee_id, { open: 0, late: 0, blocked: 0, top: [] });
+    if (!out.has(r.employee_id)) out.set(r.employee_id, { open: 0, late: 0, blocked: 0, top: [], load: { pct: 0, unsized: 0, open: 0 } });
     const t = out.get(r.employee_id);
     const late = !!(r.due_date && String(r.due_date).slice(0, 10) < today);
     const blocked = r.status === 'BLOCKED' || !!String(r.blocked_reason || '').trim();
     t.open += 1; if (late) t.late += 1; if (blocked) t.blocked += 1;
+    if (Number(r.counts_load)) {
+      t.load.open += 1;
+      if (r.utilization_pct == null) t.load.unsized += 1; else t.load.pct += Number(r.utilization_pct) || 0;
+    }
     t.top.push({ id: r.id, title: r.title || '—', due: r.due_date ? String(r.due_date).slice(0, 10) : null, late, blocked });
   }
   for (const t of out.values()) {
@@ -295,7 +304,7 @@ export async function sectorTeamDetail(user, opts = {}) {
     // المهام عن زميلٍ مسمّى سجلٌّ لا رقم: تُقرأ لمن يقرأ مهام الفريق (نفس باب «مهام فريقي»)؛ ومن بلا
     // حساب لا مهام له أصلاً. والحالة مسمّاة في `tasksState` كي تقولها النافذة لا أن تُصفّر.
     const tasksState = !userId ? 'no_account' : !access.scope ? 'no_scope' : 'ok';
-    const t = tasksState === 'ok' ? (tasks.get(e.id) || { open: 0, late: 0, blocked: 0, top: [] }) : null;
+    const t = tasksState === 'ok' ? (tasks.get(e.id) || { open: 0, late: 0, blocked: 0, top: [], load: { pct: 0, unsized: 0, open: 0 } }) : null;
     return {
       id: e.id, userId, dossierOk: ok, name_ar: e.name_ar, job_title: e.job_title || '',
       department_id: e.department_id || null, active: e.active, capacity_pct: e.capacity_pct ?? null,
@@ -309,7 +318,7 @@ export async function sectorTeamDetail(user, opts = {}) {
       opportunities: e.opportunities.map((o) => ({ opportunityId: o.opportunityId, name: o.name, pct: o.pct })),
       // عناوين المهام سجلّات لا أرقام: تُعرض لمن يحقّ له فتح ملف صاحبها فحسب؛ العدّ يبقى.
       tasksState,
-      tasks: t ? { open: t.open, late: t.late, blocked: t.blocked, top: ok ? t.top : [] } : null,
+      tasks: t ? { open: t.open, late: t.late, blocked: t.blocked, top: ok ? t.top : [], load: t.load } : null,
     };
   });
   const loadOf = (p) => (nowM ? p.planNow : p.annual);

@@ -92,7 +92,7 @@ test('والصفر يُقرأ «لم يُقدَّر» لا «صفرُ حِمل»
 
 test('والنسبة خارج ١..١٠٠ تُردّ بالعربية، والكسرُ كذلك', async () => {
   for (const bad of [101, -5, 12.5, 'كثير']) {
-    await assert.rejects(() => add(bad), (e) => /حجم المهمة نسبة/.test(String(e.message)), `قُبلت ${bad}`);
+    await assert.rejects(() => add(bad), (e) => /نسبة الإشغال من ١ إلى ١٠٠/.test(String(e.message)), `قُبلت ${bad}`);
   }
 });
 
@@ -112,10 +112,11 @@ test('والحِمل يُقرأ لمجموعةٍ في نداءٍ واحد', asyn
   assert.equal(m.get('u_lا_وجود'), undefined, 'اختُرع صفٌّ لحسابٍ بلا مهام');
 });
 
-// اسمٌ ثالث لا يصطدم بالاثنين القائمين، وسطرُ أساسٍ يقوله في كل عرض.
-test('والاسم «حِمل المهام» وسطرُ أساسه يصرّحان بأنه لا يُجمع مع الإشغالَين', () => {
-  assert.equal(load.TASK_LOAD_AR, 'حِمل المهام');
-  assert.doesNotMatch(load.TASK_LOAD_AR, /إشغال/, 'سُمّي إشغالاً — ثلاثة أرقام باسم واحد للشخص الواحد');
+// الاسم اختاره المالك «نسبة الإشغال» (٢٠٢٦-٠٩-٠٨) — وهو اسمٌ يشترك مع أخوَيه، فثمنُه أن
+// يحمل كلُّ عرضٍ سطرَ أساسه «من المهام» وتصريحَه بأنه لا يُجمع معهما.
+test('والاسم «نسبة الإشغال» وسطرُ أساسه يقول «من المهام» ولا يُجمع مع الإشغالَين', () => {
+  assert.equal(load.TASK_LOAD_AR, 'نسبة الإشغال');
+  assert.match(load.TASK_LOAD_BASIS_AR, /من المهام/, 'سطرُ الأساس لا يقول من أين جاء الرقم');
   assert.match(load.TASK_LOAD_BASIS_AR, /لا يُجمع معهما/);
 });
 
@@ -164,4 +165,38 @@ test('وحفظٌ بلا تغييرٍ فعلي لا يترك سطراً', async (
   const rows = await db.all(`SELECT detail_json FROM audit_log WHERE resource = 'task' AND action = 'update' AND resource_id = ?`, [t.id]);
   assert.ok(rows.every((r) => !r.detail_json || r.detail_json === 'null'), 'وُصف تغييرٌ لم يقع');
   assert.ok(n0 >= 0);
+});
+
+// ── التعطيل يُفرِغ ويعود ──────────────────────────────────────────────────────
+// قرار المالك ٢٠٢٦-٠٩-٠٨: من ينتظر غيره لا تُستهلك طاقتُه بانتظاره. والعودةُ صامتة: لا
+// إعادة اعتماد ولا سؤال — المهمةُ تعود إلى الجمع بمجرّد أن تعود تجري.
+test('والمعطَّلة تسقط من الجمع وتعود بزوال التعطيل', async () => {
+  const u = { ...EMP, id: 'u_blk' };
+  await db.insert('app_user', { id: 'u_blk', username: 'blk', name_ar: 'معطَّل', role_id: 'employee',
+    scope: 'own', sector_id: 'SOL', active: 1, created_at: T });
+  const t = await tasks.quickAddTask(ctx(u), { title: 'مهمة تتعطّل', utilization_pct: 40 });
+  await tasks.quickAddTask(ctx(u), { title: 'مهمة تجري', utilization_pct: 10 });
+  assert.equal((await load.myTaskLoad(u)).pct, 50);
+  await tasks.updateTask(ctx(u), t.id, { status: 'BLOCKED', blocked_reason: 'ينتظر ردّ العميل' });
+  const blocked = await load.myTaskLoad(u);
+  assert.equal(blocked.pct, 10, 'بقيت المعطَّلة تستهلك طاقة صاحبها وهو ينتظر غيره');
+  assert.equal(blocked.open, 1, 'عُدّت المعطَّلة في المهام الجارية');
+  await tasks.updateTask(ctx(u), t.id, { status: 'IN_PROGRESS' });
+  const back = await load.myTaskLoad(u);
+  assert.equal(back.pct, 50, 'لم تعد المهمة إلى الجمع بزوال تعطيلها');
+  assert.equal(back.open, 2);
+});
+
+// والحالاتُ الثلاث كلُّها «جارية» — التمييز بينها تنظيمٌ لا إعفاء من الحساب.
+test('وجاريةٌ ومراجعةٌ ومنتظرةٌ كلُّها تُحسب', async () => {
+  const u = { ...EMP, id: 'u_sts' };
+  await db.insert('app_user', { id: 'u_sts', username: 'sts', name_ar: 'ثلاثُ حالات', role_id: 'employee',
+    scope: 'own', sector_id: 'SOL', active: 1, created_at: T });
+  for (const [st, pct] of [['TODO', 5], ['IN_PROGRESS', 15], ['IN_REVIEW', 25]]) {
+    const t = await tasks.quickAddTask(ctx(u), { title: `مهمة ${st === 'TODO' ? 'منتظرة' : st === 'IN_PROGRESS' ? 'جارية' : 'مراجعة'}`, utilization_pct: pct });
+    if (st !== 'TODO') await tasks.updateTask(ctx(u), t.id, { status: st });
+  }
+  const l = await load.myTaskLoad(u);
+  assert.equal(l.pct, 45, 'سقطت إحدى الحالات الجارية من الجمع');
+  assert.equal(l.open, 3);
 });

@@ -96,8 +96,9 @@ before(async () => {
   await task('t_a_pending', 'u_a', { title: 'مهمة تنتظر اعتماداً', pct: 90, approval: 'PENDING' });       // لا تُعدّ ولا تُعرض
   await task('t_a_done', 'u_a', { title: 'مهمة منجزة', pct: 90, status: 'DONE' });                         // لا تُعدّ
   await task('t_b1', 'u_b', { title: 'تجهيز البيانات', pct: 50, due: `${YEAR}-10-05` });
+  // معطَّلة: تُعرض في العوائق والالتزام القادم، ولا تدخل جمع «نسبة الإشغال» (قرار المالك ٢٠٢٦-٠٩-٠٨).
   await task('t_b2', 'u_b', { title: 'تنظيف البيانات', pct: 50, status: 'BLOCKED', blocked: 'بانتظار صلاحية الوصول', due: `${YEAR}-10-12` });
-  await task('t_b3', 'u_b', { title: 'توثيق المخطط', pct: 30, kind: 'internal', project: null });
+  await task('t_b3', 'u_b', { title: 'توثيق المخطط', pct: 80, kind: 'internal', project: null });
   await task('t_c1', 'u_c', { title: 'مهمة بلا نسبة ١' });
   await task('t_c2', 'u_c', { title: 'مهمة بلا نسبة ٢', due: `${YEAR}-11-02` });
   await task('t_d1', 'u_d', { title: 'تطوير اللوحة', pct: 60 });

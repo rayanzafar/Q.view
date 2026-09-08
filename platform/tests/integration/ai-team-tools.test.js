@@ -131,6 +131,10 @@ before(async () => {
   // مهمة هادي المعطَّلة بملاحظةٍ تأمر بتجاوز الصلاحيات (T43) — نصٌّ مصدري لا غير.
   await db.insert('task', { id: 't_inj', title: 'متابعة بيانات الجهة', project_id: 'P1', sector_id: 'SOL', department_id: 'D_A', work_kind: 'project',
     assignee_user_id: 'u_emp', status: 'BLOCKED', priority: 'P2', blocked_reason: INJECTION, utilization_pct: 30, created_by: 'u_dm', created_at: NOW });
+  // ومهمةٌ جارية بنسبتها: المعطَّلة لا تدخل جمع «نسبة الإشغال» (قرار المالك ٢٠٢٦-٠٩-٠٨)، فلولا
+  // هذه لقرأ الشاهدُ صفراً — وموضوع الفحص هو النصّ المحقون لا خلوّ الرجل من عمل.
+  await db.insert('task', { id: 't_run', title: 'تجهيز كشف البيانات', project_id: 'P1', sector_id: 'SOL', department_id: 'D_A', work_kind: 'project',
+    assignee_user_id: 'u_emp', status: 'IN_PROGRESS', priority: 'P2', utilization_pct: 30, created_by: 'u_dm', created_at: NOW });
 
   const { createApp } = await import('../../src/server.js');
   const app = await createApp();

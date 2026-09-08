@@ -23,7 +23,7 @@ import { workBucketLabel, auditActionLabel } from '../../web/i18n/glossary.js';
 import { createEmployee, updateEmployee, orgTree, normName } from '../org/org.js';
 import { namesByIds } from '../org/people.js';
 import { WORK_BUCKETS } from '../pmo/projects.js';
-import { taskLoadFor, openLoadSql, TASK_LOAD_BASIS_AR } from '../pmo/task-load.js';
+import { taskLoadFor, openTaskSql, TASK_LOAD_BASIS_AR } from '../pmo/task-load.js';
 import { personDossier, teamTasksAccess } from '../pmo/tasks.js';
 import { isPendingTask } from '../pmo/task-approval.js';
 import {
@@ -244,14 +244,14 @@ async function taskLoadOf(userId) {
 }
 
 // ── القادم: مهام الحساب المرتبط (الجارية بتعريف الحِمل الواحد) + معالم المشاريع المسكَّن عليها ──
-// شرط «الجارية» من `openLoadSql` (task-load.js) وهو يضمّ حاجزَي قراءة المهام كليهما:
+// شرط «الجارية» من `openTaskSql` (task-load.js) وهو يضمّ حاجزَي قراءة المهام كليهما:
 // `approvedTaskSql` (لا مهمة تنتظر اعتماداً) و`notPersonalSql` (لا مهمة شخصية تخرج من حساب
 // صاحبها) — فلا يُعرض هنا عملٌ لم يوافق عليه أحد ولا دفترُ أحد.
 async function upcomingFor(emp, userId, { days = null, limit = 5, today = riyadhDate() } = {}) {
   const horizon = days ? addDays(today, days) : null;
   const out = [];
   if (userId) {
-    const tw = [openLoadSql('t.'), 't.assignee_user_id = ?', 't.due_date IS NOT NULL', 'substr(t.due_date,1,10) >= ?'];
+    const tw = [openTaskSql('t.'), 't.assignee_user_id = ?', 't.due_date IS NOT NULL', 'substr(t.due_date,1,10) >= ?'];
     const tp = [userId, today];
     if (horizon) { tw.push('substr(t.due_date,1,10) <= ?'); tp.push(horizon); }
     for (const t of await all(`SELECT t.id, t.title, t.due_date, t.status, t.priority, t.project_id, t.opportunity_id,

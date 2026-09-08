@@ -44,9 +44,9 @@ export async function approvalsPage(user) {
     const sub = isTask ? 'اعتماد مهمة' : resourceLabel(a.resource);
     const requester = isTask ? (reqNames.get(String(a.requested_by || '')) || '') : '';
     const requesterLine = requester ? ` · طلبها ${esc(requester)}` : '';
-    // حجم المهمة مادةُ القرار لا زينة: «اعتمدها» تعني «اعتمد أن يأخذ عشرة بالمئة من طاقته
-    // لها». والفراغ يُقال صراحةً كي لا يبدو القرار أعلمَ مما هو.
-    const sizeLine = isTask ? ` · ${t && t.utilPct != null ? `الحجم ${t.utilPct}٪ من طاقته` : 'بلا نسبة مقدَّرة'}` : '';
+    // نسبة إشغال المهمة مادةُ القرار لا زينة: «اعتمدها» تعني «اعتمد أن يأخذ عشرة بالمئة من
+    // طاقته لها». والفراغ يُقال صراحةً كي لا يبدو القرار أعلمَ مما هو.
+    const sizeLine = isTask ? ` · ${t && t.utilPct != null ? `الإشغال ${t.utilPct}٪ من طاقته` : 'بلا نسبة'}` : '';
     const amount = Number(a.amount_halalas) || 0;
     return `<tr class="border-b border-line">
     <td class="py-2.5 px-3 text-[13px]">${esc(a.workflow_name || '')}</td>

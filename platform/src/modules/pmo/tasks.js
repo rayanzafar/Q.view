@@ -297,7 +297,7 @@ const utilPctOrNull = (v) => {
   if (v == null || String(v).trim() === '') return null;
   const n = Number(v);
   if (!Number.isFinite(n) || Math.round(n) !== n || n < 0 || n > 100) {
-    throw badRequest('حجم المهمة نسبة من ١ إلى ١٠٠ — أو اتركه فارغاً حتى تُقدِّره');
+    throw badRequest('نسبة الإشغال من ١ إلى ١٠٠ — أو اتركها فارغة حتى تُقدِّرها');
   }
   return n === 0 ? null : n;
 };
@@ -864,9 +864,11 @@ export async function teamWorkload(user, filters = {}) {
         blocked: Number(t.blocked || 0), noStep: Number(t.no_step || 0),
         list: byUidTN.get(p.id) || [],
       },
-      // «حِمل المهام» من الأعمدة نفسها — مقياسٌ ثالث باسمه، لا يُجمع مع الإشغال المخطَّط
-      // ولا مع القابل للفوترة، ويحمل عدّاد «بلا نسبة مقدَّرة» كي لا يكذب الرقم في بداياته.
-      taskLoad: shapeLoad({ ...t, open_count: t.total }),
+      // «نسبة الإشغال من المهام» من الأعمدة نفسها — مقياسٌ ثالث بسطر أساسه، لا يُجمع مع
+      // الإشغال المخطَّط ولا مع القابل للفوترة، ويحمل عدّاد «بلا نسبة» كي لا يكذب الرقم في
+      // بداياته. وعددُه (`open`) أضيقُ من `tasks.open` عمداً: البطاقة تعرض المفتوح كله ومنه
+      // المعطَّل، والمقياسُ يُسقط المعطَّل — والأعمدة تحرس شرطَها بنفسها فلا يختلفان بالغفلة.
+      taskLoad: shapeLoad(t),
       opportunities: {
         open: Number(o.total || 0), valueHalalas: Number(o.value_halalas || 0),
         list: byUidON.get(p.id) || [],
