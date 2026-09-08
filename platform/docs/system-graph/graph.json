@@ -1,11 +1,11 @@
 {
   "version": 1,
-  "sourceDigest": "c872a26cb4a4c3e1a0a67c63a87f6c279a0745baf4dde19496fd361e53f59154",
-  "sourceFiles": 663,
+  "sourceDigest": "c764464ccf22d8b99ba9c6aa9f9af4178ea52d692c2b1e7743ca786a86eb577b",
+  "sourceFiles": 660,
   "counts": {
     "code": 258,
-    "test": 298,
-    "automation": 59,
+    "test": 297,
+    "automation": 57,
     "module": 20,
     "route": 333,
     "page": 26,
@@ -4754,15 +4754,6 @@
       ]
     },
     {
-      "id": "file:tests/unit/historic-opps-in-sales.test.js",
-      "kind": "test",
-      "label": "historic-opps-in-sales.test.js",
-      "detail": "tests/unit/historic-opps-in-sales.test.js",
-      "sources": [
-        "tests/unit/historic-opps-in-sales.test.js"
-      ]
-    },
-    {
       "id": "file:tests/unit/import-engine.test.js",
       "kind": "test",
       "label": "import-engine.test.js",
@@ -5066,15 +5057,6 @@
       "detail": "tests/unit/xlsx.test.js",
       "sources": [
         "tests/unit/xlsx.test.js"
-      ]
-    },
-    {
-      "id": "file:scripts/add-tasks-on-behalf.mjs",
-      "kind": "automation",
-      "label": "add-tasks-on-behalf.mjs",
-      "detail": "scripts/add-tasks-on-behalf.mjs",
-      "sources": [
-        "scripts/add-tasks-on-behalf.mjs"
       ]
     },
     {
@@ -5579,15 +5561,6 @@
       "detail": "scripts/sweep.mjs",
       "sources": [
         "scripts/sweep.mjs"
-      ]
-    },
-    {
-      "id": "file:scripts/transcript-to-md.mjs",
-      "kind": "automation",
-      "label": "transcript-to-md.mjs",
-      "detail": "scripts/transcript-to-md.mjs",
-      "sources": [
-        "scripts/transcript-to-md.mjs"
       ]
     },
     {
@@ -43826,27 +43799,6 @@
       "kind": "source"
     },
     {
-      "from": "file:tests/unit/historic-opps-in-sales.test.js",
-      "to": "file:src/core/db/index.js",
-      "label": "استيراد صريح",
-      "evidence": "tests/unit/historic-opps-in-sales.test.js",
-      "kind": "source"
-    },
-    {
-      "from": "file:tests/unit/historic-opps-in-sales.test.js",
-      "to": "file:src/core/rbac/index.js",
-      "label": "استيراد صريح",
-      "evidence": "tests/unit/historic-opps-in-sales.test.js",
-      "kind": "source"
-    },
-    {
-      "from": "file:tests/unit/historic-opps-in-sales.test.js",
-      "to": "file:src/core/reports/metrics.js",
-      "label": "استيراد صريح",
-      "evidence": "tests/unit/historic-opps-in-sales.test.js",
-      "kind": "source"
-    },
-    {
       "from": "file:tests/unit/import-engine.test.js",
       "to": "file:src/core/db/index.js",
       "label": "استيراد صريح",
@@ -44404,41 +44356,6 @@
       "to": "file:src/modules/io/xlsx.js",
       "label": "استيراد صريح",
       "evidence": "tests/unit/xlsx.test.js",
-      "kind": "source"
-    },
-    {
-      "from": "file:scripts/add-tasks-on-behalf.mjs",
-      "to": "file:src/core/db/index.js",
-      "label": "استيراد صريح",
-      "evidence": "scripts/add-tasks-on-behalf.mjs",
-      "kind": "source"
-    },
-    {
-      "from": "file:scripts/add-tasks-on-behalf.mjs",
-      "to": "file:src/core/db/index.js",
-      "label": "استيراد صريح",
-      "evidence": "scripts/add-tasks-on-behalf.mjs",
-      "kind": "source"
-    },
-    {
-      "from": "file:scripts/add-tasks-on-behalf.mjs",
-      "to": "file:src/core/audit/index.js",
-      "label": "استيراد صريح",
-      "evidence": "scripts/add-tasks-on-behalf.mjs",
-      "kind": "source"
-    },
-    {
-      "from": "file:scripts/add-tasks-on-behalf.mjs",
-      "to": "file:src/core/rbac/index.js",
-      "label": "استيراد صريح",
-      "evidence": "scripts/add-tasks-on-behalf.mjs",
-      "kind": "source"
-    },
-    {
-      "from": "file:scripts/add-tasks-on-behalf.mjs",
-      "to": "file:src/modules/pmo/tasks.js",
-      "label": "استيراد صريح",
-      "evidence": "scripts/add-tasks-on-behalf.mjs",
       "kind": "source"
     },
     {
@@ -61508,27 +61425,6 @@
       "kind": "text-reference"
     },
     {
-      "from": "file:tests/unit/historic-opps-in-sales.test.js",
-      "to": "table:sector",
-      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
-      "evidence": "tests/unit/historic-opps-in-sales.test.js",
-      "kind": "text-reference"
-    },
-    {
-      "from": "file:tests/unit/historic-opps-in-sales.test.js",
-      "to": "table:stage",
-      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
-      "evidence": "tests/unit/historic-opps-in-sales.test.js",
-      "kind": "text-reference"
-    },
-    {
-      "from": "file:tests/unit/historic-opps-in-sales.test.js",
-      "to": "table:opportunity",
-      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
-      "evidence": "tests/unit/historic-opps-in-sales.test.js",
-      "kind": "text-reference"
-    },
-    {
       "from": "file:tests/unit/import-engine.test.js",
       "to": "table:client",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
@@ -61974,13 +61870,6 @@
       "to": "table:revenue_line",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
       "evidence": "tests/unit/window-metrics.test.js",
-      "kind": "text-reference"
-    },
-    {
-      "from": "file:scripts/add-tasks-on-behalf.mjs",
-      "to": "table:app_user",
-      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
-      "evidence": "scripts/add-tasks-on-behalf.mjs",
       "kind": "text-reference"
     },
     {
