@@ -24,6 +24,7 @@ import { effectiveProgress } from '../../modules/pmo/progress.js';
 import { myOpportunitiesInSector, ROT_THRESHOLDS } from '../../modules/crm/opportunities.js';
 import { sectorIdentity } from '../../modules/org/org.js';
 import { sectorTeamDetail, UTIL_BANDS, allocationPeriod } from '../../modules/pmo/capacity.js';
+import { TASK_LOAD_BASIS_AR } from '../../modules/pmo/task-load.js';
 import { relationshipOf, lastTouchByClient } from '../../modules/clients/clients.js';
 import { can, effectiveScope, canSeeSensitive } from '../../core/rbac/index.js';
 import { scopeFilter } from '../../core/rbac/scope.js';
@@ -1447,6 +1448,8 @@ export async function sectorPage(user, opts = {}) {
           <span>مفتوحة <b class="tnum" style="color:var(--ink2)">${t.open}</b></span>
           <span>متأخرة <b class="tnum" style="color:${t.late ? 'var(--red)' : 'var(--ink2)'}">${t.late}</b></span>
           <span>مُعطَّلة <b class="tnum" style="color:${t.blocked ? 'var(--amber)' : 'var(--ink2)'}">${t.blocked}</b></span></div>
+         ${t.load ? `<div style="font-size:var(--fs-meta);color:var(--muted)" title="${esc(TASK_LOAD_BASIS_AR)}">نسبة الإشغال من المهام: <b class="tnum" style="color:var(--ink2)">${t.load.pct}</b>٪${
+           t.load.unsized ? ` <span style="color:var(--faint)">(<b class="tnum">${t.load.unsized}</b> بلا نسبة)</span>` : ''}</div>` : ''}
          ${t.top.length ? `<div>${t.top.map((k) => `<div class="dd-row"><span>${esc(k.title)} ${k.late ? '<span class="pill" style="background:#fee2e2;color:#991b1b">متأخرة</span>' : ''}${k.blocked ? ' <span class="pill" style="background:#fef3c7;color:#92400e">مُعطَّلة</span>' : ''}</span><b class="tnum" style="font-weight:600;color:var(--muted)">${k.due ? esc(k.due) : '—'}</b></div>`).join('')}</div>`
     : (t.open ? '<div style="font-size:var(--fs-micro);color:var(--muted)">العدّ فقط — عناوين المهام تظهر لمن يحقّ له فتح الصفحة الكاملة</div>' : '')}`;
     const footer = [
@@ -1464,7 +1467,7 @@ export async function sectorPage(user, opts = {}) {
     ${oppRows.length ? `<div class="dd-sec">الفرص المفتوحة</div><div>${oppRows.join('')}</div>` : ''}
     <div class="dd-sec">المهام المفتوحة</div>
     ${tasksBlock}
-    <div style="font-size:10.5px;color:var(--muted);margin-top:.4rem">الأرقام من خطة التسكين الشهرية — وليست ساعات عمل فعلية.</div>
+    <div style="font-size:10.5px;color:var(--muted);margin-top:.4rem">الأرقام من خطة التسكين الشهرية — وليست ساعات عمل فعلية، ولا تُجمع مع نسبة الإشغال من المهام.</div>
     <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.2rem">${footer}</div>`);
   };
   const capEmpDDs = team ? team.people.map(capEmpDD).join('') : '';

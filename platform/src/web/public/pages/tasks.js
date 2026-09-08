@@ -37,6 +37,19 @@
   var SIZE_REQUIRED_AR = 'نسبة الإشغال مطلوبة على مهمتك — من ١ إلى ١٠٠';
   var meOf = function (el) { return el ? String(el.dataset.me || '') : ''; };
 
+  // ── تجاوزُ زميلك المئة: يُقال ولا يُمنع ──
+  // «كم على طاولته الآن» مكتوبٌ على خياره في القائمة (`data-load`)، فتُقال نتيجةُ الإسناد
+  // قبل وقوعه. وهو **تنبيهٌ لا حاجز**: الإسناد فوق المئة قرارُ مديرٍ يعرف ظرفه، والشاشة
+  // تُخبر ولا تحكم — ولذلك يمضي الحفظ بعده كما هو ولا يُنتظر تأكيد.
+  var OVER_AR = 'سيتجاوز إشغاله ١٠٠٪ بهذه المهمة';
+  function warnIfOverloads(sel, util) {
+    if (!sel) return;
+    var opt = sel.options && sel.selectedIndex >= 0 ? sel.options[sel.selectedIndex] : null;
+    if (!opt || !opt.value || !opt.dataset) return;
+    var sum = (Number(opt.dataset.load) || 0) + (Number(util) || 0);
+    if (sum > 100) toast(OVER_AR);
+  }
+
   // «p:معرّف» مشروع · «o:معرّف» فرصة · «me» مهمة شخصية · فارغ = عمل داخلي.
   // نوعُ العمل يُرسَل صراحةً في الحالتين الأخيرتين: بدونه يقرأ الخادم «بلا جهة» فيكتب «داخلي»
   // على الحالتين معاً — فتنقلب المهمة الشخصية عملاً للشركة بمجرد فتح تفاصيلها وحفظها،
@@ -110,6 +123,8 @@
     var who = val('qa-assignee');
     // المهمة الشخصية لصاحبها وحده — يردّها الخادم لو أُسندت لغيره، فلا تُرسَل أصلاً.
     if (who && p.work_kind !== 'personal') body.assignee_user_id = who;
+    // المهمة الشخصية لا مسؤولَ لها غير صاحبها، ومهمتُك أنت طاولتُك تعرفها.
+    if (body.assignee_user_id && body.assignee_user_id !== meOf(addBox)) warnIfOverloads(asgSel, body.utilization_pct);
     if (btn) btn.disabled = true;
     try {
       // «أُضيفت» تعني أُضيفت: المهمة المرتبطة بمشروع أو فرصة قد تعود معلَّقة بانتظار المدير،
@@ -255,6 +270,10 @@
       var uf = $('[data-f="util"]', d); if (uf) uf.focus();
       return;
     }
+    // وفي المحرِّر يُقال التحذير عند **نقل** المهمة إلى زميل: من بقيت باسمه نسبتُها محسوبةٌ
+    // في رقمه أصلاً، فقولُ «سيتجاوز» عن مهمةٍ تعدّها القائمة مرّتين عتابٌ على غير سبب.
+    var wasAsg = editingRow ? String(editingRow.dataset.assignee || '') : '';
+    if (nextAsg && nextAsg !== me && nextAsg !== wasAsg) warnIfOverloads(av, patch.utilization_pct);
     if (!patch.title) { toast('عنوان المهمة مطلوب', true); return; }
     var err = $('[data-f="error"]', d);
     if (err) { err.hidden = true; err.classList.remove('err'); }

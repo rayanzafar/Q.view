@@ -246,3 +246,24 @@ test('وتفريغ النسبة على مهمتك من المحرِّر يُرد
   const renamed = await tasks.updateTask(ctx(EMP), m.id, { title: 'عنوان جديد' });
   assert.equal(renamed.utilization_pct, null);
 });
+
+// ── رقمٌ واحد على كل شاشة (قرار المالك ٢٠٢٦-٠٩-٠٨، سطحان جديدان) ─────────────
+// ملفُّ الشخص كان يجمع من صفوفه هو، وصفوفُه تضمّ الشخصيةَ لصاحبها والمعلَّقةَ لكاتبها — فكان
+// الرقمُ يختلف باختلاف من يفتح الملف، وهو أسوأ من ألّا يُعرض. المصدر واحد: `taskLoadFor`.
+test('وملف الشخص يقرأ الرقم نفسه الذي يقرأه صاحبه', async () => {
+  const mine = await load.myTaskLoad(EMP);
+  const d = await tasks.personDossier(EMP, 'u_emp');
+  assert.deepEqual(d.taskLoad, mine, 'اختلف رقمُ ملف الشخص عن رقم صاحبه في «مهامي»');
+  // ومديرُه يقرأ الرقم نفسه — لا نسخةً أضيق لأن الشخصية محجوبةٌ عنه.
+  const asMgr = await tasks.personDossier(MGR, 'u_emp');
+  assert.deepEqual(asMgr.taskLoad, mine, 'قرأ المديرُ رقماً آخر عن الشخص نفسه');
+});
+
+test('وتفصيل فريق القطاع يقرأ الرقم نفسه', async () => {
+  const { sectorTeamDetail } = await import('../../src/modules/pmo/capacity.js');
+  const detail = await sectorTeamDetail(MGR, { sector: 'SOL' });
+  const person = detail.people.find((x) => x.userId === 'u_emp');
+  assert.ok(person, 'لم يظهر الشخص في تفصيل فريق القطاع');
+  const one = (await load.taskLoadFor(['u_emp'])).get('u_emp');
+  assert.deepEqual(person.tasks.load, one, 'اختلف رقمُ نافذة القطاع عن رقم الخدمة');
+});

@@ -26,7 +26,7 @@ import { MONTHS_AR, MONTHS_EN3, currentMonthIndex, monthLabelDual } from '../../
 import { countAr, dayWord } from '../../core/i18n/plural.js';
 // ── مركز العمل اليومي (صفحة المهام) — الوارد الخاص بها وحدها، مفصولاً كي لا يختلط بوارد المحفظة ──
 import { completionTrend, addDays, teamTasksAccess, teamWorkload, isPersonalTask } from '../../modules/pmo/tasks.js';
-import { myTaskLoad, TASK_LOAD_AR, TASK_LOAD_BASIS_AR, TASK_LOAD_NOT_RATING_AR } from '../../modules/pmo/task-load.js';
+import { myTaskLoad, taskLoadFor, TASK_LOAD_AR, TASK_LOAD_BASIS_AR, TASK_LOAD_NOT_RATING_AR } from '../../modules/pmo/task-load.js';
 import { capacityColor } from '../../core/i18n/thresholds.js';
 import { listOpportunities } from '../../modules/crm/opportunities.js';
 import { nowDot } from '../../core/i18n/time.js';
@@ -560,7 +560,7 @@ export async function tasksPage(user, opts = {}) {
   const fStatus = TASK_STATUSES.includes(opts.status) ? opts.status : null;
   const fPriority = TASK_PRIORITY[opts.priority] ? opts.priority : null;
   const fKind = ['project', 'opportunity', 'internal', 'personal'].includes(opts.kind) ? opts.kind : null;
-  const fFlag = ['nostep', 'blocked', 'noparent'].includes(opts.flag) ? opts.flag : null;
+  const fFlag = ['nostep', 'blocked', 'noparent', 'nosize'].includes(opts.flag) ? opts.flag : null;
   const fq = String(opts.q || '').trim().slice(0, 80);
   const fAssignee = who === 'team' && opts.assignee ? String(opts.assignee).slice(0, 64) : null;
 
@@ -651,6 +651,16 @@ export async function tasksPage(user, opts = {}) {
       people = await pickablePeople({ sectorId: user.sector_id, viewer: user });
     }
   }
+  // ── نسبةُ إشغال من يجوز الإسناد إليه، على خياره في القائمة ──
+  // «كم على طاولته الآن» سؤالٌ يُسأل **قبل** الإسناد لا بعده — وثلاث قوائم في هذه الشاشة
+  // (الإضافة السريعة، والشريط الجماعي، والمحرِّر) تُبنى من نداءٍ واحد وخيارٍ واحد، فلا تختلف
+  // ثلاثتها على رقمٍ واحد ولا يُستعلَم ثلاثاً. ورقمُه سقفٌ للنظر لا حاجزٌ يمنع: الإسناد
+  // فوق المئة ممكن، والشاشة تقوله قبل الحفظ لا بعده.
+  const peopleLoad = people.length ? await taskLoadFor(people.map((x) => x.id)) : new Map();
+  const personOpt = (x) => {
+    const pct = (peopleLoad.get(x.id) || { pct: 0 }).pct;
+    return `<option value="${esc(x.id)}" data-load="${pct}">${esc(x.name)} — ${pct}٪</option>`;
+  };
   const depts = await all(`SELECT id, name_ar FROM department WHERE active=1 AND deleted_at IS NULL
     ${user.scope === 'company' ? '' : 'AND sector_id = ?'} ORDER BY name_ar LIMIT 200`, user.scope === 'company' ? [] : [user.sector_id || '']);
 
@@ -729,6 +739,13 @@ export async function tasksPage(user, opts = {}) {
     data-approver-name="${esc(t.approver_name || '')}" data-approved-at="${esc(provDate(t.approved_at))}"
     data-assignee="${esc(t.assignee_user_id || '')}" data-dept="${esc(t.department_id || '')}"
     data-desc="${esc(t.description || '')}"`;
+  // «بلا نسبة» على الصفّ نفسه — وعلى المعدودة وحدها: المنجَزةُ والملغاةُ والمعطَّلةُ والشخصيةُ
+  // والمعلَّقةُ اعتمادُها خارج المقياس أصلاً، فعتابُها عليها لومٌ على غير ذنب. والشرطُ صنو
+  // `countsForLoadSql` في الخادم كلمةً بكلمة، فلا يُعلَّم صفٌّ لا يُعدّ ولا يُترك صفٌّ يُعدّ.
+  const countsForLoad = (t) => !isDone(t) && t.status !== 'CANCELLED' && t.status !== 'BLOCKED'
+    && !isPersonalTask(t) && !isPendingTask(t);
+  const sizeChip = (t) => (countsForLoad(t) && t.utilization_pct == null
+    ? `<span class="tk-nosize" title="حدِّدها من محرِّر المهمة">بلا نسبة</span>` : '');
   const progChip = (t) => {
     const p = Math.max(0, Math.min(100, Math.round(Number(t.progress_pct) || 0)));
     if (p <= 0) return readOnly ? `<span style="color:var(--muted)">${G.noProgressYet}</span>`
@@ -767,6 +784,7 @@ export async function tasksPage(user, opts = {}) {
           ${parentChip(t)}
           ${t.category ? `<span class="tk-cat-chip" title="تصنيف المهمة">${esc(taskCategoryLabel(t.category))}</span>` : ''}
           ${isPendingTask(t) ? `<span class="tk-await" title="${t.created_by === t.assignee_user_id ? G.awaitApprovalHint : G.awaitApprovalAssignedHint}">${G.awaitApproval}</span>` : ''}
+          ${sizeChip(t)}
           ${who === 'team' ? `<span class="tk-who">${icon('team')} ${esc(t.assignee_name || t.assignee_username || G.unassigned)}</span>` : ''}
           ${who !== 'team' && t.created_by !== user.id && t.creator_name && t.created_by && t.created_by !== t.assignee_user_id
             ? `<span class="tk-who" title="أسندها إليك ${esc(t.creator_name)}">${icon('team')} أسندها ${esc(t.creator_name)}</span>` : ''}
@@ -816,14 +834,21 @@ export async function tasksPage(user, opts = {}) {
     }).join('')}</div>` : '';
   // ── حِمل المهام على رأس «مهامي» ──
   // مقياسٌ ثالث باسمه الخاص، لا يُجمع مع الإشغال المخطَّط ولا مع القابل للفوترة — وسطرُ
-  // أساسه يقول ذلك في العنوان المنبثق. و«بلا نسبة مقدَّرة» معلَنٌ دائماً: بدونه يقرأ الجميع
-  // صفراً في اليوم الأول ويبدو الرقم كذباً هادئاً.
+  // أساسه يقول ذلك في العنوان المنبثق. وما بلا نسبة يُقال **مرةً واحدة** في لافتةٍ تحته
+  // تسرده بضغطة: كان عدداً في ذيل السطر لا يفتح شيئاً، فيقرأ صاحبُه عتاباً بلا طريق إليه.
   const loadBlock = myLoad && (myLoad.open || myLoad.pct) ? `<div class="wc-load" title="${esc(TASK_LOAD_BASIS_AR)}">
       <div class="wc-day-h" style="margin-top:.7rem">${TASK_LOAD_AR}</div>
       <div class="wc-bar" role="img" aria-label="${TASK_LOAD_AR} ${myLoad.pct} بالمئة"><span style="width:${Math.min(100, myLoad.pct)}%;background:${capacityColor(myLoad.pct)}"></span></div>
-      <div class="wc-day-num"><b class="tnum">${myLoad.pct}</b>٪ من طاقتك على <b class="tnum">${myLoad.open}</b> ${countAr(myLoad.open, { one: 'مهمة مفتوحة', two: 'مهمتين مفتوحتين', few: 'مهام مفتوحة', many: 'مهمة مفتوحة', zero: 'مهمة' })}${
-        myLoad.unsized ? ` · <b class="tnum">${myLoad.unsized}</b> بلا نسبة مقدَّرة — قدِّرها من محرِّر المهمة` : ''}</div>
+      <div class="wc-day-num"><b class="tnum">${myLoad.pct}</b>٪ من طاقتك على <b class="tnum">${myLoad.open}</b> ${countAr(myLoad.open, { one: 'مهمة مفتوحة', two: 'مهمتين مفتوحتين', few: 'مهام مفتوحة', many: 'مهمة مفتوحة', zero: 'مهمة' })}</div>
     </div>` : '';
+
+  // ── لافتةُ «بلا نسبة»: العتابُ ومعه طريقُه ──
+  // الرقمُ وحده لا يُصلح شيئاً — والرابط يسرد المهامَّ المعنيّة بعينها (نافذةُ «الكل» لأن ما
+  // ينقص نسبتُه ليس بالضرورة مستحقاً اليوم، وعرضُ القائمة لأن التحرير يبدأ من صفٍّ لا بطاقة).
+  const noSizeBanner = myLoad && myLoad.unsized ? `<div class="alert warn" style="margin-bottom:.9rem">${icon('risk')}
+    <div><b class="tnum">${myLoad.unsized}</b> من مهامك الجارية بلا نسبة إشغال — حدِّدها من محرِّر المهمة
+      <a href="${qp({ flag: 'nosize', win: 'all', view: 'list' })}" style="font-weight:700">اعرضها</a></div>
+  </div>` : '';
 
   const dayCard = who === 'me' ? `<section class="card wc-day">
     <div class="wc-day-l">
@@ -924,14 +949,14 @@ export async function tasksPage(user, opts = {}) {
       ${categorySelect('qa-category')}
       ${canAssign && people.length ? `<select id="qa-assignee" name="qa-assignee" autocomplete="off" class="input" aria-label="${G.assignee}">
         <option value="">${G.assignee}: أنا</option>
-        ${people.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select>` : ''}
+        ${people.map(personOpt).join('')}</select>` : ''}
       <input id="qa-due" name="qa-due" autocomplete="off" type="date" class="input" dir="ltr" aria-label="تاريخ الاستحقاق" title="تاريخ الاستحقاق">
       <select id="qa-priority" name="qa-priority" autocomplete="off" class="input" aria-label="${G.priority}">
         <option value="P2">${TASK_PRIORITY.P2.ar}</option><option value="P0">${TASK_PRIORITY.P0.ar}</option>
         <option value="P1">${TASK_PRIORITY.P1.ar}</option><option value="P3">${TASK_PRIORITY.P3.ar}</option>
       </select>
       <input id="qa-util" name="qa-util" autocomplete="off" type="number" min="1" max="100" step="1" class="input" style="max-width:9.5rem"
-        placeholder="الحجم ٪" aria-label="حجم المهمة نسبة من طاقتك" title="حجم المهمة: كم تأخذ من طاقتك حتى تُنجز — من ١ إلى ١٠٠. اتركه فارغاً إن لم تُقدِّره بعد.">
+        placeholder="نسبة الإشغال ٪" aria-label="نسبة الإشغال من طاقتك" title="نسبة الإشغال: كم تأخذ من طاقتك حتى تُنجز — من ١ إلى ١٠٠.">
       <input id="qa-next" name="qa-next" autocomplete="off" class="input wc-add-next" placeholder="${G.nextStep} (اختياري)" aria-label="${G.nextStep}">
     </div>
   </details>`;
@@ -990,7 +1015,7 @@ export async function tasksPage(user, opts = {}) {
         <span style="color:${dl.color}${dl.bold ? ';font-weight:700' : ''}"${dl.title ? ` title="${esc(dl.title)}"` : ''}>${dl.text}</span>
         <span class="pill" style="background:${pr.tone === 'red' ? '#fee2e2' : pr.tone === 'amber' ? '#fef3c7' : '#f1f5f9'};color:${pr.tone === 'red' ? '#b91c1c' : pr.tone === 'amber' ? '#92400e' : '#475569'}">${pr.ar}</span>
       </div>
-      <div class="km">${parentChip(t)}${who === 'team' ? `<span class="tk-who">${esc(t.assignee_name || t.assignee_username || G.unassigned)}</span>` : ''}</div>
+      <div class="km">${parentChip(t)}${sizeChip(t)}${who === 'team' ? `<span class="tk-who">${esc(t.assignee_name || t.assignee_username || G.unassigned)}</span>` : ''}</div>
       ${p > 0 ? `<div class="tk-progbar" style="margin-top:.4rem"><span style="width:${p}%"></span></div>` : ''}
       ${t.blocked_reason ? `<div class="tk-card-block">${esc(t.blocked_reason)}</div>` : ''}
     </article>`;
@@ -1250,7 +1275,7 @@ export async function tasksPage(user, opts = {}) {
     </select>
     <input id="bk-due" name="bk-due" autocomplete="off" type="date" class="input" dir="ltr" aria-label="تغيير تاريخ الاستحقاق" title="تغيير تاريخ الاستحقاق">
     ${canAssign && people.length ? `<select id="bk-assignee" name="bk-assignee" autocomplete="off" class="input" aria-label="تغيير المسؤول">
-      <option value="">${G.assignee}…</option>${people.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select>` : ''}
+      <option value="">${G.assignee}…</option>${people.map(personOpt).join('')}</select>` : ''}
     <button class="btn btn-primary btn-sm" data-action="task-bulk">${G.bulkApply}</button>
     <button class="btn btn-sm" data-action="task-bulk-clear">${G.bulkClear}</button>
     <span class="wc-bulk-note">التعطيل يحتاج سبباً مكتوباً — غيّره من تفاصيل المهمة</span>
@@ -1278,10 +1303,10 @@ export async function tasksPage(user, opts = {}) {
         <div class="field"><label for="tf-progress">${G.taskProgress} <b class="tnum" data-f="progress-out">0%</b></label>
           <input id="tf-progress" type="range" min="0" max="100" step="5" data-f="progress"></div>
       </div>
-      <div class="field"><label for="tf-util">حجم المهمة — كم تأخذ من طاقة صاحبها</label>
+      <div class="field"><label for="tf-util">نسبة الإشغال — كم تأخذ من طاقة صاحبها</label>
         <input id="tf-util" class="input" type="number" min="1" max="100" step="1" dir="ltr" data-f="util"
           placeholder="من ١ إلى ١٠٠ — اتركه فارغاً إن لم تُقدِّره بعد">
-        <div class="hint">مجموع نِسَب مهامه المفتوحة هو «حِمل المهام». مقياس مستقل عن الإشغال المخطَّط في التسكين — لا يُجمع معه.</div></div>
+        <div class="hint">مجموع النِّسب على مهامه الجارية هو «نسبة الإشغال من المهام». مقياس مستقل عن الإشغال المخطَّط في التسكين — لا يُجمع معه.</div></div>
       <div class="field"><label for="tf-next">${G.nextStep}</label>
         <input id="tf-next" class="input" data-f="next" placeholder="ما الفعل التالي المحدَّد الذي يحرّك هذه المهمة؟"></div>
       <div class="field"><label for="tf-blocked">${G.blocker}</label>
@@ -1290,7 +1315,7 @@ export async function tasksPage(user, opts = {}) {
       <div class="field"><label for="tf-parent">${G.parentLink}</label>${parentPicker({ idAttr: 'tf-parent', label: G.parentLink, projects: prjOptions, opportunities: oppOptions, dataF: 'parent' })}</div>
       <div class="field"><label for="tf-category">تصنيف المهمة</label>${categorySelect('tf-category', 'category')}</div>
       ${canAssign && people.length ? `<div class="field"><label for="tf-assignee">${G.assignee}</label>
-        <select id="tf-assignee" data-f="assignee"><option value="">${G.unassigned}</option>${people.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select></div>` : ''}
+        <select id="tf-assignee" data-f="assignee"><option value="">${G.unassigned}</option>${people.map(personOpt).join('')}</select></div>` : ''}
       ${depts.length ? `<div class="field"><label for="tf-dept">الإدارة المسؤولة</label>
         <select id="tf-dept" data-f="dept"><option value="">غير محدَّدة</option>${depts.map((d) => `<option value="${esc(d.id)}">${esc(d.name_ar)}</option>`).join('')}</select></div>` : ''}
       <div class="wc-fieldnote" data-f="error" hidden></div>
@@ -1404,6 +1429,8 @@ export async function tasksPage(user, opts = {}) {
        بنفسي: قرأتُ «الوسم ظاهر» على صفحةٍ لا وسم فيها. النصّ في المعجم وحده. */
     .tk-await{color:#92400e;background:#fef3c7;border:1px solid #fde68a;border-radius:7px;
       padding:.02rem .4rem;font-weight:700;max-width:none}
+    .tk-nosize{color:#92400e;background:#fffbeb;border:1px dashed #fcd34d;border-radius:7px;
+      padding:.02rem .4rem;font-weight:700;max-width:none;cursor:help}
     .tk-who{display:inline-flex;align-items:center;gap:.25rem;color:var(--muted)}
     .tk-who svg{width:12px;height:12px;opacity:.75}
     .wc-prov{display:flex;gap:.8rem;flex-wrap:wrap;font-size:11px;color:var(--muted);
@@ -1578,7 +1605,7 @@ export async function tasksPage(user, opts = {}) {
   </style>`;
 
   const content = view === 'board' ? boardView : view === 'calendar' ? calendarView : (listBody + beyond);
-  const body = `${styles}${dayCard}${stats}${lens}
+  const body = `${styles}${dayCard}${noSizeBanner}${stats}${lens}
     <div class="wc-bartop">${viewSeg}${searchForm}</div>
     <div class="wc-barfilters">${winChips}${moreChips}</div>
     ${quickAdd}
@@ -3011,6 +3038,21 @@ export async function personPage(user, personId) {
   const stat = (n, label, tone) => `<div class="pp-stat${tone ? ' ' + tone : ''}">
     <div class="pp-stat-n tnum">${n}</div><div class="pp-stat-l">${label}</div></div>`;
 
+  // ── نسبةُ الإشغال من المهام على ملف الشخص ──
+  // الرقمُ هو رقمُ صاحبه في «مهامي» حرفاً بحرف — من الخدمة نفسها لا من جمع صفوف هذه الصفحة
+  // (صفوفُها تضمّ الشخصيةَ لصاحبها والمعلَّقةَ لكاتبها، فلو جُمعت هنا لاختلف الرقمُ باختلاف
+  // من يفتح الملف). و«من مهام العمل» تحته لأن اللبنة المجاورة «مهمة مفتوحة» تعدّ الشخصيةَ
+  // والمعطَّلةَ ولا يعدّهما المقياس — فرقٌ يُقال قبل أن يُسأل عنه.
+  const L = d.taskLoad || { pct: 0, unsized: 0, open: 0 };
+  const loadTile = `<div class="pp-stat" title="${esc(TASK_LOAD_BASIS_AR)} — ${TASK_LOAD_NOT_RATING_AR}">
+    <div class="pp-stat-n tnum">${L.pct}٪</div>
+    <div class="pp-stat-l">${TASK_LOAD_AR}</div>
+    <div class="pp-stat-s">من مهام العمل</div>
+    <div class="pp-load" role="img" aria-label="${TASK_LOAD_AR} من المهام ${L.pct} بالمئة"><span style="width:${Math.min(100, L.pct)}%;background:${capacityColor(L.pct)}"></span></div>
+  </div>`;
+  const loadBasis = `<div class="pp-basis">${esc(TASK_LOAD_BASIS_AR)}${
+    L.unsized ? ` · <b class="tnum">${L.unsized}</b> ${d.self ? 'من مهامك بلا نسبة' : 'بلا نسبة'}` : ''}</div>`;
+
   const actionBar = await personActions(user, d);
 
   const body = `<style>
@@ -3031,6 +3073,10 @@ export async function personPage(user, personId) {
       border-radius:12px;padding:.45rem .6rem}
     .pp-stat-n{font-size:1.25rem;font-weight:800;color:var(--ink2);line-height:1.2}
     .pp-stat-l{font-size:var(--fs-micro);color:var(--muted)}
+    .pp-stat-s{font-size:9.5px;color:var(--faint);margin-top:.05rem}
+    .pp-load{height:5px;background:#eef1f7;border-radius:999px;overflow:hidden;margin-top:.32rem}
+    .pp-load>span{display:block;height:100%;border-radius:999px}
+    .pp-basis{font-size:var(--fs-micro);color:var(--muted);line-height:1.75;margin-top:.55rem}
     .pp-stat.bad{background:#fef2f2;border-color:#fecaca}.pp-stat.bad .pp-stat-n{color:var(--red)}
     .pp-stat.warn{background:#fefce8;border-color:#fde68a}.pp-stat.warn .pp-stat-n{color:#a16207}
     .pp-tabs{display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:.5rem}
@@ -3084,13 +3130,15 @@ export async function personPage(user, personId) {
       </div>
     </span>
     <span class="pp-stats">
+      ${loadTile}
       ${stat(d.stats.open, 'مهمة مفتوحة')}
       ${stat(d.stats.overdue, 'متأخرة', d.stats.overdue ? 'bad' : '')}
       ${stat(d.stats.blocked, 'مُعطَّلة', d.stats.blocked ? 'warn' : '')}
       ${stat(d.stats.openOpportunities, 'فرصة مفتوحة')}
       ${stat(d.stats.projects, 'مشروع')}
     </span>
-  </div>`)}
+  </div>
+  ${loadBasis}`)}
 
   ${actionBar}
 

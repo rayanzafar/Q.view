@@ -13,7 +13,7 @@ import { taskApproval, approvedTaskSql, ownOrApprovedTaskSql, myWorkOrMyPendingS
   PERSONAL_WORK_KIND, isPersonalTask, notPersonalSql } from './task-approval.js';
 import { loadReadableOpportunity } from '../crm/opp-access.js';
 import { loadReadableProject } from './project-access.js';
-import { loadSumsSql, shapeLoad } from './task-load.js';
+import { countsForLoadSql, loadSumsSql, shapeLoad, taskLoadFor } from './task-load.js';
 import { taskStatusLabel, taskPriorityLabel, TASK_FIELD_AR } from '../../core/i18n/task-vocab.js';
 
 // ترتيب الإلحاح المشترك بين كل استعلامات المهام — مصدر واحد فلا يختلف ترتيب القائمة عن اللوح.
@@ -74,6 +74,9 @@ function applyTaskFilters(where, params, f, today, pfx = 't.') {
   else if (f.flag === 'blocked') where.push(`${p}status = 'BLOCKED'`);
   // و«بلا جهة مرتبطة» عتابٌ على نقصٍ في الربط: المهمة الشخصية ليست ناقصةَ ربطٍ بل مقصودةٌ هكذا.
   else if (f.flag === 'noparent') where.push(`${p}project_id IS NULL AND ${p}opportunity_id IS NULL AND ${notPersonalSql(p)}`);
+  // و«بلا نسبة» هو ما ينقص نسبةَ الإشغال بعينه: شرطُ العدّ من مصدره الواحد (`task-load.js`)
+  // لا منسوخاً هنا، وإلا سرد الرابطُ مهامَّ لا يعدّها المقياس فيقرأ صاحبُه عتاباً لا يخصّه.
+  else if (f.flag === 'nosize') where.push(`${p}utilization_pct IS NULL AND ${countsForLoadSql(p)} AND ${notPersonalSql(p)}`);
   // النافذة الزمنية
   const w = f.window;
   if (w === 'overdue') { where.push(`${p}due_date IS NOT NULL AND substr(${p}due_date,1,10) < ?`); params.push(today); }
@@ -683,6 +686,9 @@ export async function updateTask(ctx, taskId, data) {
   patch.updated_at = nowIso(); patch.updated_by = user.id;
   await update('task', taskId, patch);
   await audit(ctx, { action: 'update', resource: 'task', resourceId: taskId, detail: changed ? { changed } : undefined });
+  // ومركزُ التطوير يعلم: مهمةٌ وُلدت من بلاغٍ تُنجَز فيُغلَق بلاغُها (الاستيراد ديناميّ كسراً لدورة الاستيراد، والخطّاف لا يرمي).
+  try { const m = await import('../products/task-hook.js'); await m.onTaskStatusChanged(ctx, taskId, row.status, data.status); }
+  catch (e) { (await import('../../core/obs/log.js')).logError('product_task_hook', { err_msg: String(e?.message || e).slice(0, 200) }); }
   // ومن أُسنِدت إليه يعلم أنها أُسنِدت إليه — كانت تظهر في قائمته صامتةً بلا خبرٍ ولا اسم
   // مُسنِد (KI-080)، والنصُّ هو نصُّ مسار الإنشاء نفسه فلا يختلف الخبر باختلاف الباب.
   if ('assignee_user_id' in patch && patch.assignee_user_id && patch.assignee_user_id !== row.assignee_user_id
@@ -1182,6 +1188,9 @@ export async function personDossier(reader, personUserId) {
       linked: !!p.employee_id, departmentName: p.department_name || null,
       sectorName: p.sector_name || null, lastLoginAt: p.last_login_at || null,
     },
+    // نسبةُ الإشغال من مصدرها الواحد لا من جمع صفوف هذه الصفحة: صفوفُها تضمّ الشخصيةَ
+    // لصاحبها والمعلَّقةَ لكاتبها، فجمعُها هنا يجعل الرقمَ يختلف باختلاف من يفتح الملف.
+    taskLoad: (await taskLoadFor([uid])).get(uid) || { pct: 0, unsized: 0, open: 0 },
     tasks, opportunities, projects, stats, today, year,
   };
 }

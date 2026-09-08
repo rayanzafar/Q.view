@@ -491,3 +491,43 @@ test('task dates reject impossible calendar days on create and update without ch
   assert.equal(after.due_date, valid.due_date);
   assert.equal(after.start_date, valid.start_date);
 });
+
+// ── «بلا نسبة إشغال»: العتابُ ومعه طريقُه (قرار المالك ٢٠٢٦-٠٩-٠٨) ────────────
+// ما يُسنده مديرٌ يُقبل بلا نسبة، فيلزم أن يعرف صاحبُه ما ينقصه **وأين هو**: لافتةٌ تقول
+// العدد، ورابطٌ يسرد المعنيّة بعينها. ولا تبقى اللافتة بعد أن يُقدِّرها — عتابٌ لا يزول
+// بالفعل يُعلَّم عليه القارئ فيتوقف عن قراءته. وصاحبُ هذا الفحص حسابٌ مستقل: اللافتة عن
+// **كل** ما بلا نسبة، فلا يُخلط رقمُه برقم من سبقه في هذا الملف.
+const sized = U('w_size', 'consultant', 'S1', 'own');
+
+test('لافتةُ «بلا نسبة إشغال» تظهر بمهمة أسندها المدير، وتزول بتحديد النسبة', async () => {
+  await insert('app_user', { id: 'w_size', username: 'w_size', name_ar: 'صاحب التقدير', role_id: 'consultant', sector_id: 'S1', scope: 'own', active: 1, created_at: TS });
+  await T.quickAddTask(ctx(sized), { title: 'مهمة مقدَّرة عليّ', utilization_pct: 30 });
+  const t = await T.quickAddTask(ctx(lead), { title: 'مهمة من المديرة بلا نسبة', assignee_user_id: 'w_size' });
+  assert.equal(t.utilization_pct, null, 'رُفضت مهمةُ المدير بلا نسبة — والباب مفتوح له وحده');
+  const html = mainOf(await tasksPage(sized, {}));
+  assert.ok(html.includes('بلا نسبة إشغال'), 'لا لافتة تُعلم صاحبها بما ينقص مهامه');
+  assert.ok(html.includes('flag=nosize'), 'اللافتة بلا طريق إلى المهام المعنيّة');
+  assert.ok(html.includes('اعرضها'), 'لا رابط يسرد ما ينقصه');
+
+  await T.updateTask(ctx(sized), t.id, { utilization_pct: 20 });
+  const after = mainOf(await tasksPage(sized, {}));
+  assert.ok(!after.includes('بلا نسبة إشغال'), 'بقيت اللافتة بعد أن قُدِّرت كل مهمة');
+});
+
+test('مرشّح «بلا نسبة» يسرد ما يُعدّ في المقياس بلا نسبة — لا كل مهمة', async () => {
+  const bare = await T.quickAddTask(ctx(lead), { title: 'مهمة تنتظر تقدير صاحبها', assignee_user_id: 'w_size' });
+  const html = mainOf(await tasksPage(sized, { flag: 'nosize', win: 'all' }));
+  assert.ok(html.includes('مهمة تنتظر تقدير صاحبها'), 'غابت المهمة بلا نسبة عن مرشّحها');
+  assert.ok(!html.includes('مهمة مقدَّرة عليّ'), 'سُردت مهمةٌ لها نسبة في مرشّح «بلا نسبة»');
+  assert.ok(html.includes('بلا نسبة'), 'الصفُّ نفسه لا يقول ما ينقصه');
+  await T.updateTask(ctx(sized), bare.id, { status: 'DONE' });
+  const done = mainOf(await tasksPage(sized, { flag: 'nosize', win: 'all' }));
+  assert.ok(!done.includes('مهمة تنتظر تقدير صاحبها'), 'بقيت المنجَزة في مرشّح ما يُعدّ في المقياس');
+});
+
+// ومن يُسنِد يرى ما على طاولة الرجل قبل أن يزيد عليها — على الخيار نفسه لا في شاشةٍ أخرى.
+test('قائمةُ المسؤول تحمل نسبة إشغال كل واحد', async () => {
+  const html = mainOf(await tasksPage(lead, { win: 'all' }));
+  assert.ok(/<option value="w_emp" data-load="\d+">/.test(html), 'خيارُ المسؤول بلا نسبته');
+  assert.ok(/— \d+٪<\/option>/.test(html), 'الاسم بلا رقمٍ مقروء بجانبه');
+});
