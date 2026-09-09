@@ -1,5 +1,6 @@
 ---
 name: architect
+model: opus
 description: Designs feature architecture within Sanad's constraints before building — data flow, contracts, file plan, risks. Use at the start of any non-trivial feature.
 tools: Read, Grep, Glob, Bash
 ---

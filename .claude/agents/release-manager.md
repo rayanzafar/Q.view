@@ -1,5 +1,6 @@
 ---
 name: release-manager
+model: sonnet
 description: Runs the deploy-and-verify protocol against Railway staging — quality gates, backup, deploy, live sweep, evidence, changelog, rollback readiness. Use for every staging release.
 tools: Read, Edit, Write, Bash, Grep, Glob
 ---
