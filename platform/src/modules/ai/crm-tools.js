@@ -37,7 +37,7 @@ const scopeArOf = (user) => {
 };
 
 async function stagesMap() {
-  const rows = await all('SELECT id, name_ar, default_win_pct, sort_order, is_won, is_lost FROM stage ORDER BY sort_order');
+  const rows = await all('SELECT id, name_ar, default_win_pct, sort_order, is_won, is_lost FROM stage WHERE deleted_at IS NULL ORDER BY sort_order');
   return { rows, by: Object.fromEntries(rows.map((s) => [s.id, s])) };
 }
 

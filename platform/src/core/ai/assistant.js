@@ -356,7 +356,7 @@ const WHEN_BLOCKED = { field: 'status', equals: 'BLOCKED' };
 // مرحلة) ومرحلةٌ جديدة ليست مرحلة فوز — وهي حرفياً قاعدة `moveStage`. مراحل الفوز تُقرأ من
 // تعريف المراحل لا تُكتب رمزاً هنا: لو أضاف المشغّل مرحلة فوز ثانية بقي الشرط صادقاً.
 async function reversalReasonWhen() {
-  const won = (await all('SELECT id FROM stage WHERE is_won = 1 ORDER BY sort_order')).map((s) => s.id);
+  const won = (await all('SELECT id FROM stage WHERE is_won = 1 AND deleted_at IS NULL ORDER BY sort_order')).map((s) => s.id);
   const notWon = won.length === 1 ? { field: 'stage', not_equals: won[0] } : { field: 'stage', not_in: won };
   return { all: [{ field: 'oppId', flag: 'won' }, notWon] };
 }
@@ -574,7 +574,7 @@ export async function optionsFor(user, kind) {
   }
   if (kind === 'stage') {
     if (!can(user, 'update', 'opportunity')) throw forbidden('تعديل الفرص خارج صلاحيتك');
-    const rows = await all('SELECT id, name_ar FROM stage ORDER BY sort_order');
+    const rows = await all('SELECT id, name_ar FROM stage WHERE deleted_at IS NULL AND archived_at IS NULL ORDER BY sort_order');
     return { kind, options: rows.map((s) => ({ id: s.id, label_ar: s.name_ar })) };
   }
   if (kind === 'project') {

@@ -33,6 +33,8 @@ export const ROLES = [
   { username: 'demo.deptmgr', role: 'department_manager', scope: 'department', sector_id: 'SOLUTIONS', department_id: 'seeded-department' },
   { username: 'demo.linemgr', role: 'line_manager', scope: 'team', sector_id: 'SOLUTIONS' },
   { username: 'demo.bdhead', role: 'bd_head', scope: 'company', sector_id: null },
+  // فريق تطوير الأعمال: نطاق شركة بلا قطاع — يعمل على فرص القطاعات كلها (قرار المالك ٢٠٢٦-٠٩-٠٩).
+  { username: 'demo.bdteam', role: 'bd_team', scope: 'company', sector_id: null },
   { username: 'demo.ops', role: 'operations', scope: 'sector', sector_id: 'SOLUTIONS' },
   { username: 'demo.procurement', role: 'procurement', scope: 'company', sector_id: null },
   { username: 'demo.approver', role: 'approver', scope: 'sector', sector_id: 'SOLUTIONS' },
@@ -70,7 +72,7 @@ export const PAGES = ['home', 'ceo', 'portfolio', 'sector', 'opportunities', 'my
 // و`bd_manager` انضمّ إليها حين نال «قراءة موظف @قطاع» (matrix.js): كان يسكّن الناس على فرصه
 // ولا يرى كشفهم ولا يفتح ملف أحدهم. والخلية هنا مشتقّة من المنح لا من ردٍّ مرصود.
 const ORG_READERS = new Set(['admin', 'ceo_office', 'sector_lead', 'hr',
-  'department_manager', 'line_manager', 'bd_head', 'bd_manager']);
+  'department_manager', 'line_manager', 'bd_head', 'bd_team', 'bd_manager']);
 
 // ── page-level expectation ─────────────────────────────────────────────────────
 // CURRENT behavior: every authenticated role gets 200 on every page EXCEPT team/org, whose page
@@ -155,7 +157,7 @@ export const API_PROBES = [
   // قيادية بلا قرار من أحد، فيفتح إيراد كل قطاع ومبيعاته ومستهدفاته وهو بلا منح تقرير أو مؤشر.
   // الحارس صار `seesCompanyPerformance` (core/policy/pages.js): منحٌ قيادي **مع** نافذة شركية،
   // ومصدره واحد يشترك فيه هذا المسار وشاشتا القيادة والمحفظة والقائمة الجانبية والدليل والبحث.
-  { method: 'GET', path: '/api/metrics/company', expect: { default: 403, admin: 200, ceo_office: 200, hr: 200, bd_head: 200 } },
+  { method: 'GET', path: '/api/metrics/company', expect: { default: 403, admin: 200, ceo_office: 200, hr: 200, bd_head: 200, bd_team: 200 } },
   // sector metrics: company scope OR membership of that sector. demo.external has neither.
   { method: 'GET', path: '/api/metrics/sector/SOLUTIONS', expect: { default: 200, external: 403, office_member: 403, office_coordinator: 403 } },
   { method: 'GET', path: '/api/tasks/mine', expect: 200 },                 // own-scoped
@@ -168,7 +170,7 @@ export const API_PROBES = [
   // ٤٠٠ لا ٤٠٣ لمن يملك المنح: الحمولة فارغة فيردّها التحقّق («عنوان الفرصة مطلوب») بعد اجتياز
   // البوابة — فالرمز هنا يفصل «مسموح له وحمولته ناقصة» عن «ممنوع». ومدير الإدارة انتقل إلى
   // الأولى بقرار المالك: «لازم في طريقة أقدر أضيف الفرص والحالة تبعها… حسب الإدارة».
-  { method: 'POST', path: '/api/opportunities', body: {}, expect: { default: 403, admin: 400, sector_lead: 400, department_manager: 400, bd_manager: 400, bd_head: 400 } },
+  { method: 'POST', path: '/api/opportunities', body: {}, expect: { default: 403, admin: 400, sector_lead: 400, department_manager: 400, bd_manager: 400, bd_head: 400, bd_team: 400 } },
   // employee create exists only for admin / sector_lead (@sector) / hr (@company) — none of the
   // seven new roles holds it (bd_head reads the roster, it does not write it).
   { method: 'POST', path: '/api/org/employees', body: {}, expect: { default: 403, admin: 400, sector_lead: 400, hr: 400 } },
@@ -210,7 +212,7 @@ export const API_PROBES = [
   // وكان بلا منح قراءةٍ على الفرصة إطلاقاً، فتغيب الخانة كلها عن شاشته لا تظهر فارغة.
   { method: 'GET', path: '/api/ai/options/opportunity',
     expect: { default: 403, admin: 200, ceo_office: 200, sector_lead: 200, bd_manager: 200,
-      bd_head: 200, viewer: 200, consultant: 200, department_manager: 200 } },
+      bd_head: 200, bd_team: 200, viewer: 200, consultant: 200, department_manager: 200 } },
   // معاينة بحمولة فارغة: النوع يُرَدّ قبل أي فحص صلاحية وقبل أي كتابة — فلا صفَّ سجلٍ يُكتب،
   // والمسبار آمن على بيئة حيّة. (الدردشة تكتب سطر سجل، فمسبارها في مسار المسح وحده وبعلَم صريح.)
   { method: 'POST', path: '/api/ai/preview', body: {}, expect: 400 },
@@ -245,8 +247,11 @@ function rosterExpect() {
 export const FIXTURE_PROBES = [
   // IDOR: a CONSULTING-sector opportunity must be invisible to SOLUTIONS-scoped and own-scoped roles.
   // bd_head reads opportunity at COMPANY scope by design (support unit across all four sectors).
+  // bd_team likewise, by owner decision 2026-09-09: the BD team owns business development for EVERY
+  // sector, so a CONSULTING opportunity is squarely in scope. This 200 is the acceptance criterion
+  // «كل عضو يستطيع الوصول إلى فرص جميع القطاعات» expressed as a probe — not a leak.
   // approver holds `approve opportunity` but no `read` — approve does not imply read → 403.
-  { method: 'GET', path: '/api/opportunities/FX-OPP-CONS', expect: { default: 403, admin: 200, ceo_office: 200, bd_head: 200 } },
+  { method: 'GET', path: '/api/opportunities/FX-OPP-CONS', expect: { default: 403, admin: 200, ceo_office: 200, bd_head: 200, bd_team: 200 } },
   // Contract detail: company invoice/contract readers + the owning sector's lead only.
   // bd_head reads contract @company; external reads INVOICE @own but no contract grant → 403.
   // مدير المشروع ٢٠٠ **لأن `FX-CON-1` عقدُ `FX-PRJ-1` وهو مشروعٌ يملكه** (انظر seed-fixture):

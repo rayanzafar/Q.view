@@ -438,8 +438,12 @@ export async function moveStage(ctx, oppId, toStage, note) {
   const user = ctx.user;
   // نقلُ المرحلة عملٌ على الفرصة لا نسبةٌ لها — مفتوحٌ لمحرِّر الشراكة (ADR-0006). الباب الواحد.
   const row = await loadReadableOpportunity(user, oppId, 'update', 'نقل مرحلة الفرصة يتطلب صلاحية تعديلها');
-  const stage = await get('SELECT * FROM stage WHERE id = ?', [toStage]);
-  if (!stage) throw badRequest('مرحلة غير معروفة');
+  // الوجهةُ حيّةٌ غيرُ مؤرشفة: منذ صارت المراحل تُدار من الشاشة (ترحيلة ٠٤٦) صار ممكناً أن
+  // تُحذف مرحلةٌ أو تُؤرشف بينما نافذةُ أحدهم مفتوحة على قائمةٍ قديمة — فيُنقل إلى عمودٍ لا
+  // يُعرض، وتختفي الفرصة من اللوحة بلا سبب ظاهر. الردُّ يقول أيَّ الحالتين ليُعاد التحميل.
+  const stage = await get('SELECT * FROM stage WHERE id = ? AND deleted_at IS NULL', [toStage]);
+  if (!stage) throw badRequest('مرحلة غير معروفة أو محذوفة — أعد تحميل اللوحة لترى المراحل الحالية.');
+  if (stage.archived_at) throw badRequest(`«${stage.name_ar}» مرحلةٌ مؤرشفة لا تستقبل فرصاً — أعِد تفعيلها أو اختر غيرها.`);
 
   // التراجع عن الفوز: كانت الفرصة المكسوبة تُعاد إلى الترشيح بضغطة واحدة بلا قيد ولا أثر —
   // **والمبيعات المعلنة تتغيّر بها**. رقمٌ قرأه المالك أمس يصير غيره اليوم ولا شيء يقول لماذا.
@@ -543,7 +547,7 @@ export async function opportunityDetail(user, oppId, opts = {}) {
   const history = await all(`SELECT h.to_stage_id, h.from_stage_id, h.changed_at, h.note, u.name_ar owner_name, u.username
      FROM opportunity_stage_history h LEFT JOIN app_user u ON u.id=h.changed_by
      WHERE h.opportunity_id=? ORDER BY h.changed_at DESC LIMIT 25`, [oppId]);
-  const stages = await all('SELECT id, name_ar, color, default_win_pct, sort_order, is_won, is_lost FROM stage ORDER BY sort_order');
+  const stages = await all('SELECT id, name_ar, color, default_win_pct, sort_order, is_won, is_lost FROM stage WHERE deleted_at IS NULL ORDER BY sort_order');
   const team = await getTeam(user, oppId);
   const activities = await all(
     `SELECT a.id, a.kind, a.at, a.title, a.detail, a.source,
@@ -585,7 +589,7 @@ export async function myOpportunitiesInSector(user, sectorId, opts = {}) {
   if (!sectorId || !can(user, 'read', 'opportunity')) return [];
   const rows = await listOpportunities(user, { sector: sectorId }, opts);
   if (!rows.length) return [];
-  const stages = Object.fromEntries((await all('SELECT id, name_ar, color, is_won, is_lost FROM stage'))
+  const stages = Object.fromEntries((await all('SELECT id, name_ar, color, is_won, is_lost FROM stage WHERE deleted_at IS NULL'))
     .map((s) => [s.id, s]));
   const clients = Object.fromEntries((await all('SELECT id, name_ar FROM client WHERE deleted_at IS NULL'))
     .map((c) => [c.id, c.name_ar]));
@@ -608,7 +612,7 @@ export async function pipelineSummary(user) {
   const rows = await all(
     `SELECT stage_id, COUNT(*) n, COALESCE(SUM(value_halalas),0) val
      FROM opportunity WHERE ${f.clause} AND deleted_at IS NULL GROUP BY stage_id`, f.params);
-  const stages = await all('SELECT * FROM stage ORDER BY sort_order');
+  const stages = await all('SELECT * FROM stage WHERE deleted_at IS NULL AND archived_at IS NULL ORDER BY sort_order');
   const byStage = Object.fromEntries(rows.map((r) => [r.stage_id, r]));
   return stages.map((s) => ({
     stage: s.id, name_ar: s.name_ar, color: s.color,

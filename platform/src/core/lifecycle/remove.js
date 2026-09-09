@@ -334,3 +334,67 @@ export async function removeRecord(ctx, kind, id, opts = {}) {
   });
   return { ok: true, id, name, cascaded, note: extra };
 }
+
+// ── الرجوع: الوعد الذي في رأس هذا الملف («والرجوع نقرةٌ») صار شيفرةً ─────────────────
+//
+// الحذفُ ناعمٌ منذ اليوم الأول، فالصفّ باقٍ وما ينقص إلا رفعُ الختم. والدقّة كلها في **أيّ**
+// ختمٍ يُرفع: حلقةُ الحذف تختم الأصلَ وتابعَه باللحظة نفسها (`stamp` واحد)، فالاستعادة تُقيَّد
+// بتلك اللحظة بعينها. ولولا ذلك لأحيت عمليةُ رجوعٍ واحدة مهمةً كان صاحبها قد حذفها قبل شهر —
+// أي أن «التراجع» يصير إدخالاً لبياناتٍ لم يطلبها أحد.
+const restoreDeniedAr = (cfg) => `استعادة ${cfg.label} تتطلب صلاحية حذفها — من يملك السحب يملك الرجوع عنه.`;
+
+export async function restoreRecord(ctx, kind, id) {
+  const cfg = REMOVABLE[kind];
+  if (!cfg) throw badRequest('نوعٌ غير معروف للاستعادة');
+  const row = await get(`SELECT * FROM ${cfg.table} WHERE id = ? AND deleted_at IS NOT NULL`, [id]);
+  if (!row) throw notFound(`${cfg.label} ${cfg.fem ? 'غير محذوفة' : 'غير محذوف'} — لا شيء يُستعاد.`);
+  // نوعٌ حذفُه فعل ما لا يُرَدّ (تحريرُ بريدٍ صار لحسابٍ آخر، وقطعُ جلسات) لا يُدّعى رجوعُه:
+  // رفعُ الختم وحده يُعيد صفّاً ناقصاً يبدو سليماً. تُقال الحقيقة بدل استعادةٍ نصفية.
+  if (cfg.finalize) {
+    throw badRequest(`${cfg.label} لا ${cfg.fem ? 'تُستعاد' : 'يُستعاد'} من هنا: حذفُ${cfg.fem ? 'ها' : 'ه'} حرّر البريد وقطع الجلسات، `
+      + 'وهي خطواتٌ لا تُرَدّ برفع الحذف. أنشئ الحساب من جديد بالبريد نفسه.');
+  }
+  const allowed = can(ctx.user, 'delete', cfg.resource, row) || (cfg.ownDelete && cfg.ownDelete(ctx.user, row));
+  if (!allowed) throw forbidden(restoreDeniedAr(cfg));
+
+  const name = row[cfg.nameCol] || row.username || id;
+  const stamp = row.deleted_at;
+  const restored = {};
+  const notRestorable = [];
+  await tx(async () => {
+    for (const c of cfg.cascade) {
+      const shape = await shapeOf(c.table, c.col);
+      if (!shape.hasCol) continue;
+      // ما حُذف محواً (`hard`) لا يعود: صفُّ الربط ذهب من الجدول ولا ختمَ يُرفع عنه. يُقال
+      // صراحةً في نتيجة الاستعادة كي لا يظنّ صاحبها أن كل شيء رجع.
+      if (c.hard) { notRestorable.push(c.ar); continue; }
+      if (!shape.soft) continue;
+      const cond = c.where ? ` AND (${c.where})` : '';
+      const r = await run(
+        `UPDATE ${c.table} SET deleted_at = NULL WHERE ${c.col} = ? AND deleted_at = ?${cond}`, [id, stamp]);
+      if (Number(r.changes || 0)) restored[c.ar] = Number(r.changes);
+    }
+    await run(`UPDATE ${cfg.table} SET deleted_at = NULL WHERE id = ?`, [id]);
+    const tail = Object.entries(restored).map(([k, n]) => `${n} ${k}`).join('، ');
+    await audit(ctx, {
+      action: 'restore', resource: cfg.resource, resourceId: id, sectorId: row.sector_id || null,
+      detail: `استعادة ${cfg.label} «${name}»${tail ? ` ومعها ${tail}` : ''}`
+        + (notRestorable.length ? ` — لم ${cfg.fem ? 'تعد' : 'يعد'}: ${notRestorable.join('، ')}` : ''),
+    });
+  });
+  return { ok: true, id, name, restored, notRestorable };
+}
+
+/** المحذوفُ من نوعٍ ما، أحدثَ فأقدم — «سلة» يقرؤها من يملك حذف ذلك النوع. */
+export async function listRemoved(ctx, kind, { limit = 50 } = {}) {
+  const cfg = REMOVABLE[kind];
+  if (!cfg) throw badRequest('نوعٌ غير معروف');
+  if (!can(ctx.user, 'delete', cfg.resource)) throw forbidden(restoreDeniedAr(cfg));
+  const n = Math.min(Math.max(Number(limit) || 50, 1), 200);
+  const sectorCol = (await shapeOf(cfg.table, 'sector_id')).hasCol ? ', sector_id' : '';
+  const rows = await all(
+    `SELECT id, ${cfg.nameCol} AS name, deleted_at${sectorCol} FROM ${cfg.table}
+      WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC LIMIT ${n}`);
+  // القصُّ النطاقي على الصفوف: من يحذف في قطاعه لا يرى سلّة الشركة.
+  return rows.filter((r) => can(ctx.user, 'delete', cfg.resource, r));
+}

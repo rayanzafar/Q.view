@@ -20,6 +20,10 @@ export const SENSITIVE_FIELDS = {
 const OPERATIONAL = ['client', 'contact', 'opportunity', 'proposal', 'project', 'task',
   'milestone', 'deliverable', 'risk', 'issue', 'service', 'allocation'];
 
+// سطحُ تطوير الأعمال: ما يملك فريقُه حذفَه واستعادته. مفصولٌ عن OPERATIONAL عمداً — فذاك
+// يضمّ المشروع والمخرج والمعلَم، وحذفُها قرارٌ لا يخصّ مسار البيع.
+const BD_SURFACE = ['opportunity', 'client', 'contact', 'proposal'];
+
 // helper builders
 const crud = (resources, scope, actions = ['read', 'create', 'update']) =>
   resources.flatMap((r) => actions.map((a) => ({ resource: r, action: a, scope })));
@@ -279,14 +283,56 @@ export const ROLE_GRANTS = {
   //   • **لا منح راتب بأي شكل**: الراتب مختوم لمدير النظام وحده بقرار مالك سابق حتى يتم التكامل
   //     مع Odoo. الختم لا يُفتح لدور جديد مهما اتسعت مسؤوليته — والاختبار يحرس ذلك.
   //   • لا إدارة نظام: لا إنشاء قطاع ولا حذفه ولا أي منح شامل — بنية الشركة قرار مدير النظام.
+  // تحديثُ قرارٍ سابق (المالك، ٢٠٢٦-٠٩-٠٩): «عرض وإضافة وتعديل وحذف وأرشفة واستعادة الفرص
+  // والـLeads على مستوى الشركة، بما فيها القديمة والمستوردة والمسندة لمستخدمين آخرين». فسقط
+  // قيدُ «بلا حذف» أعلاه على **سطح تطوير الأعمال وحده**: الفرصة والجهة وجهة الاتصال والعرض.
+  // ولم يسقط على المشاريع والمخرجات — إزالةُ مشروعٍ قائم تبقى لصاحب القطاع ولمدير النظام كما
+  // كانت. والحذف هنا منطقيٌّ لا فيزيائي، ومانعُ «فرصةٌ صارت مشروعاً» قائمٌ في remove.js فلا
+  // يقطع منحُ الحذف نسبَ مشروعٍ إلى مصدره.
   bd_head: [
-    ...crud(OPERATIONAL, 'company'),                       // قراءة + إنشاء + تعديل (لا حذف)
+    ...crud(OPERATIONAL, 'company'),                       // قراءة + إنشاء + تعديل
+    ...crud(BD_SURFACE, 'company', ['delete']),            // وحذفٌ منطقي على سطح تطوير الأعمال وحده
     ...crud(['pricing_line'], 'company'),                  // تسعير العروض جزء أصيل من عمله
     ...read(['sector', 'department', 'employee'], 'company'), // مورد الشركة كاملاً أمامه للتسكين
     ...read(['contract', 'invoice', 'collection', 'budget', 'revenue_line', 'report', 'kpi'], 'company'),
     { resource: 'report', action: 'export', scope: 'company' },
     { resource: 'margin', action: 'read', scope: 'company' },
     { resource: 'cost', action: 'read', scope: 'company' },
+    // الاستيراد والتصدير على الفرص: أداةُ عمله اليومية في نقل قوائم الـLeads.
+    { resource: 'opportunity', action: 'export', scope: 'company' },
+    { resource: 'opportunity', action: 'import', scope: 'company' },
+    // إدارةُ لوحات الفرص ومراحلها ووسومها — يملكها من يقود المسار لا مدير النظام.
+    { resource: 'crm_board', action: 'admin', scope: 'company' },
+    ...crud(['crm_board'], 'company', ['read', 'create', 'update', 'delete']),
+  ],
+
+  // ── فريق تطوير الأعمال — نطاق شركة، بدورٍ مستقلٍّ عن «مدير تطوير الأعمال» ─────────
+  // قرار المالك ٢٠٢٦-٠٩-٠٩: «هذا الفريق مسؤول عن تطوير الأعمال لجميع قطاعات الشركة وإداراتها؛
+  // لا تقيّد وصوله بالقطاع المرتبط بحسابه، أو بالفرص المسندة إليه، أو بالسجلات التي أنشأها».
+  //
+  // ولماذا دورٌ جديد لا توسيعُ `bd_manager`: ذلك الدور يحمله اليوم أشخاصٌ في الاستشارات وSAP
+  // بنطاق قطاعهم أو فرصهم. ورفعُ الدور نفسه إلى «شركة» كان يمنحهم وصولاً لم يطلبه أحد —
+  // والمالك اشترط: «حافظ على صلاحيات بقية الأدوار، ولا تمنحها وصولاً إضافياً بسبب هذا التعديل».
+  // فالدور ينفصل بدل أن يتضخّم، والإسناد يبقى إسناد دورٍ لا شرطَ بريدٍ في الشيفرة.
+  //
+  // وحدوده معلنة: لا راتب، ولا اعتماد مالي أو تعاقدي، ولا إعدادات أمنية، ولا هامش ولا كلفة —
+  // «صلاحيات شاملة لتطوير الأعمال، وليست صلاحية مدير نظام عامة» بنصّ الطلب.
+  bd_team: [
+    ...crud(BD_SURFACE, 'company', ['read', 'create', 'update', 'delete']),
+    ...crud(['pricing_line', 'service'], 'company', ['read', 'create', 'update']),
+    // المهامُّ والعروضُ والمرفقاتُ المرتبطة بالفرص — عملُهم اليومي عليها لا قراءتُها.
+    ...crud(['task'], 'company', ['read', 'create', 'update']),
+    // المشروعُ قراءةً: يحتاجونه ليروا مصير الفرصة الفائزة، ولا يديرونه.
+    ...read(['project'], 'company'),
+    // ومورد الشركة قراءةً كي تُعاد الفرصةُ إلى مسؤولٍ في قطاعٍ آخر — وهو عينُ «إعادة الإسناد».
+    ...read(['sector', 'department', 'employee'], 'company'),
+    ...read(['report', 'kpi'], 'company'),
+    { resource: 'report', action: 'export', scope: 'company' },
+    { resource: 'opportunity', action: 'export', scope: 'company' },
+    { resource: 'opportunity', action: 'import', scope: 'company' },
+    { resource: 'crm_board', action: 'admin', scope: 'company' },
+    ...crud(['crm_board'], 'company', ['read', 'create', 'update', 'delete']),
+    // (الفعالياتُ وسجلُّ الوقت لا تُكتبان هنا: حلقتان في آخر الملف تُلحقانهما بكل دور.)
   ],
 
   // ── «المالية» دورٌ مُلغى — لا يُعاد ────────────────────────────────────────────
@@ -461,6 +507,7 @@ export const ROLE_LABELS = {
   line_manager: { ar: 'مدير مباشر', en: 'Line Manager' },
   project_manager: { ar: 'مدير مشروع', en: 'Project Manager' },
   bd_manager: { ar: 'مدير تطوير الأعمال', en: 'BD Manager' },
+  bd_team: { ar: 'فريق تطوير الأعمال', en: 'Business Development Team' },
   bd_head: { ar: 'رئيس تطوير الأعمال', en: 'Head of Business Development' },
   procurement: { ar: 'المشتريات', en: 'Procurement' },
   hr: { ar: 'الموارد البشرية', en: 'HR' },

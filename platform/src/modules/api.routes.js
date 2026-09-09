@@ -20,6 +20,7 @@ import * as finance from './finance/finance.js';
 import * as metrics from '../core/reports/metrics.js';
 import * as intake from './intake/intake.js';
 import { oppteamRouter } from './crm/oppteam.routes.js';
+import { boardsRouter } from './crm/boards.routes.js';
 import { oppdocsRouter } from './crm/oppdocs.routes.js';
 import { viewsRouter } from './views/views.routes.js';
 import { clientsRouter } from './clients/clients.routes.js';
@@ -51,6 +52,7 @@ import { productsRouter } from './products/products.routes.js';
 export const apiRouter = Router();
 apiRouter.use(requireAuth());
 apiRouter.use(oppteamRouter);
+apiRouter.use(boardsRouter);
 apiRouter.use(oppdocsRouter);
 apiRouter.use(viewsRouter);
 apiRouter.use(clientsRouter);
@@ -134,6 +136,12 @@ apiRouter.get('/opportunities/:id/removal-check', h(async (req) => {
   return remove.removalPreview('opportunity', req.params.id, req.ctx);
 }));
 apiRouter.delete('/opportunities/:id', h((req) => remove.removeRecord(req.ctx, 'opportunity', req.params.id, { reason: (req.body || {}).reason })));
+// ── سلّة المحذوف والرجوع عنه ────────────────────────────────────────────────
+// الحذف كان ناعماً منذ البداية والصفُّ باقٍ، ولم يكن للرجوع بابٌ في المنتج: من سحب فرصةً
+// بالخطأ لم يجد إلا مدير النظام يفتح القاعدة. صار البابُ في المسار نفسه وبالصلاحية نفسها —
+// من يملك السحب يملك الرجوع عنه، ولا منحَ جديداً يُخترع لذلك.
+apiRouter.get('/removed/:kind', h((req) => remove.listRemoved(req.ctx, req.params.kind, { limit: req.query.limit })));
+apiRouter.post('/removed/:kind/:id/restore', h((req) => remove.restoreRecord(req.ctx, req.params.kind, req.params.id)));
 apiRouter.delete('/projects/staff/:allocId', h((req) => projects.unassignEmployee(req.ctx, req.params.allocId)));
 apiRouter.patch('/projects/staff/:allocId', h((req) => projects.setAllocation(req.ctx, req.params.allocId, req.body)));
 apiRouter.get('/projects/:id/tasks', h((req) => tasks.projectTasks(req.ctx.user, req.params.id)));

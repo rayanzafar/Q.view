@@ -1210,7 +1210,7 @@ export async function tasksPage(user, opts = {}) {
   const myOpps = who === 'me' && canReadOpp ? allOpps.filter((o) => o.owner_user_id === user.id) : [];
   let oppsBlock = '';
   if (who === 'me' && canReadOpp) {
-    const stages = await all('SELECT id, name_ar, color, is_won, is_lost FROM stage ORDER BY sort_order');
+    const stages = await all('SELECT id, name_ar, color, is_won, is_lost FROM stage WHERE deleted_at IS NULL ORDER BY sort_order');
     const stById = Object.fromEntries(stages.map((s) => [s.id, s]));
     const openOpps = myOpps.filter((o) => { const s = stById[o.stage_id]; return s && !s.is_won && !s.is_lost; });
     const clientName = Object.fromEntries((await all('SELECT id, name_ar FROM client')).map((c) => [c.id, c.name_ar]));
