@@ -1,14 +1,14 @@
 {
   "version": 1,
-  "sourceDigest": "3b8ba2da69bfe8f9bfb395387ffac176a050fd65bfd875506965b4ba53efc164",
-  "sourceFiles": 675,
+  "sourceDigest": "63e5a5aca2931c777a0aee76cfbfc53265d4d562bed80804155f37bf0c1ffb5f",
+  "sourceFiles": 678,
   "counts": {
-    "code": 265,
-    "test": 302,
+    "code": 267,
+    "test": 303,
     "automation": 59,
     "module": 20,
     "route": 348,
-    "page": 26,
+    "page": 27,
     "table": 113,
     "role": 19,
     "permission": 9,
@@ -1748,6 +1748,15 @@
       ]
     },
     {
+      "id": "file:src/web/public/pages/crm-board-settings.js",
+      "kind": "code",
+      "label": "crm-board-settings.js",
+      "detail": "src/web/public/pages/crm-board-settings.js",
+      "sources": [
+        "src/web/public/pages/crm-board-settings.js"
+      ]
+    },
+    {
       "id": "file:src/web/public/pages/dev-center.js",
       "kind": "code",
       "label": "dev-center.js",
@@ -2132,6 +2141,15 @@
       "detail": "src/web/views/clients.js",
       "sources": [
         "src/web/views/clients.js"
+      ]
+    },
+    {
+      "id": "file:src/web/views/crm-board-settings.js",
+      "kind": "code",
+      "label": "crm-board-settings.js",
+      "detail": "src/web/views/crm-board-settings.js",
+      "sources": [
+        "src/web/views/crm-board-settings.js"
       ]
     },
     {
@@ -2753,6 +2771,15 @@
       "detail": "tests/integration/consulting-reconcile.test.js",
       "sources": [
         "tests/integration/consulting-reconcile.test.js"
+      ]
+    },
+    {
+      "id": "file:tests/integration/crm-board-settings-page.test.js",
+      "kind": "test",
+      "label": "crm-board-settings-page.test.js",
+      "detail": "tests/integration/crm-board-settings-page.test.js",
+      "sources": [
+        "tests/integration/crm-board-settings-page.test.js"
       ]
     },
     {
@@ -9600,7 +9627,7 @@
       "path": "/"
     },
     {
-      "id": "route:src/web/routes.js:13368:/app/mail/preview/:file",
+      "id": "route:src/web/routes.js:13509:/app/mail/preview/:file",
       "kind": "route",
       "label": "GET /app/mail/preview/:file",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -9611,7 +9638,7 @@
       "path": "/app/mail/preview/:file"
     },
     {
-      "id": "route:src/web/routes.js:15374:/app/finance",
+      "id": "route:src/web/routes.js:15515:/app/finance",
       "kind": "route",
       "label": "GET /app/finance",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -9622,7 +9649,7 @@
       "path": "/app/finance"
     },
     {
-      "id": "route:src/web/routes.js:15374:/app/contract/:id",
+      "id": "route:src/web/routes.js:15515:/app/contract/:id",
       "kind": "route",
       "label": "GET /app/contract/:id",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -9633,7 +9660,7 @@
       "path": "/app/contract/:id"
     },
     {
-      "id": "route:src/web/routes.js:16205:/app/project/:id",
+      "id": "route:src/web/routes.js:16346:/app/project/:id",
       "kind": "route",
       "label": "GET /app/project/:id",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -9644,7 +9671,7 @@
       "path": "/app/project/:id"
     },
     {
-      "id": "route:src/web/routes.js:16424:/app/opportunity/:id",
+      "id": "route:src/web/routes.js:16565:/app/opportunity/:id",
       "kind": "route",
       "label": "GET /app/opportunity/:id",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -9655,7 +9682,7 @@
       "path": "/app/opportunity/:id"
     },
     {
-      "id": "route:src/web/routes.js:16837:/app/client/:id",
+      "id": "route:src/web/routes.js:16978:/app/client/:id",
       "kind": "route",
       "label": "GET /app/client/:id",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -9666,7 +9693,7 @@
       "path": "/app/client/:id"
     },
     {
-      "id": "route:src/web/routes.js:17035:/app/event/:id",
+      "id": "route:src/web/routes.js:17176:/app/event/:id",
       "kind": "route",
       "label": "GET /app/event/:id",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -9677,7 +9704,7 @@
       "path": "/app/event/:id"
     },
     {
-      "id": "route:src/web/routes.js:17592:/app/dev-center/:productId",
+      "id": "route:src/web/routes.js:17733:/app/dev-center/:productId",
       "kind": "route",
       "label": "GET /app/dev-center/:productId",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -9688,7 +9715,7 @@
       "path": "/app/dev-center/:productId"
     },
     {
-      "id": "route:src/web/routes.js:17832:/app/dev-center/:productId/report",
+      "id": "route:src/web/routes.js:17973:/app/dev-center/:productId/report",
       "kind": "route",
       "label": "GET /app/dev-center/:productId/report",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -9699,7 +9726,7 @@
       "path": "/app/dev-center/:productId/report"
     },
     {
-      "id": "route:src/web/routes.js:18360:/app/person/:id",
+      "id": "route:src/web/routes.js:18501:/app/person/:id",
       "kind": "route",
       "label": "GET /app/person/:id",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -9710,7 +9737,7 @@
       "path": "/app/person/:id"
     },
     {
-      "id": "route:src/web/routes.js:19776:/app/team/:section",
+      "id": "route:src/web/routes.js:19917:/app/team/:section",
       "kind": "route",
       "label": "GET /app/team/:section",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -9721,7 +9748,7 @@
       "path": "/app/team/:section"
     },
     {
-      "id": "route:src/web/routes.js:20428:/app/team/:section/:id",
+      "id": "route:src/web/routes.js:20569:/app/team/:section/:id",
       "kind": "route",
       "label": "GET /app/team/:section/:id",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -9732,7 +9759,7 @@
       "path": "/app/team/:section/:id"
     },
     {
-      "id": "route:src/web/routes.js:20817:/app/:page",
+      "id": "route:src/web/routes.js:20958:/app/:page",
       "kind": "route",
       "label": "GET /app/:page",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -9743,7 +9770,7 @@
       "path": "/app/:page"
     },
     {
-      "id": "route:src/web/routes.js:21202:/app/reports/preview/:key",
+      "id": "route:src/web/routes.js:21343:/app/reports/preview/:key",
       "kind": "route",
       "label": "GET /app/reports/preview/:key",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -9754,7 +9781,7 @@
       "path": "/app/reports/preview/:key"
     },
     {
-      "id": "route:src/web/routes.js:21579:/app/reports/test-send/:key",
+      "id": "route:src/web/routes.js:21720:/app/reports/test-send/:key",
       "kind": "route",
       "label": "POST /app/reports/test-send/:key",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -9765,7 +9792,7 @@
       "path": "/app/reports/test-send/:key"
     },
     {
-      "id": "route:src/web/routes.js:21909:/app/reports/schedule",
+      "id": "route:src/web/routes.js:22050:/app/reports/schedule",
       "kind": "route",
       "label": "POST /app/reports/schedule",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -9776,7 +9803,7 @@
       "path": "/app/reports/schedule"
     },
     {
-      "id": "route:src/web/routes.js:22247:/app/reports/schedule/:id/active",
+      "id": "route:src/web/routes.js:22388:/app/reports/schedule/:id/active",
       "kind": "route",
       "label": "POST /app/reports/schedule/:id/active",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -9787,7 +9814,7 @@
       "path": "/app/reports/schedule/:id/active"
     },
     {
-      "id": "route:src/web/routes.js:22461:/app/reports/schedule/:id",
+      "id": "route:src/web/routes.js:22602:/app/reports/schedule/:id",
       "kind": "route",
       "label": "DELETE /app/reports/schedule/:id",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -9895,6 +9922,17 @@
         "src/core/policy/pages.js"
       ],
       "handler": "myOpportunitiesPage"
+    },
+    {
+      "id": "page:crm-board-settings",
+      "kind": "page",
+      "label": "/app/crm-board-settings",
+      "detail": "واجهة مسجلة في PAGES. حارس الصفحة لا يغني عن نطاق السجل والحقول.",
+      "sources": [
+        "src/web/routes.js",
+        "src/core/policy/pages.js"
+      ],
+      "handler": "crmBoardSettingsPage"
     },
     {
       "id": "page:projects",
@@ -33561,6 +33599,13 @@
     },
     {
       "from": "file:src/web/pages.js",
+      "to": "file:src/web/views/crm-board-settings.js",
+      "label": "استيراد صريح",
+      "evidence": "src/web/pages.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/web/pages.js",
       "to": "file:src/web/views/pmo.js",
       "label": "استيراد صريح",
       "evidence": "src/web/pages.js",
@@ -33813,126 +33858,126 @@
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:13368:/app/mail/preview/:file",
+      "to": "route:src/web/routes.js:13509:/app/mail/preview/:file",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:15374:/app/finance",
+      "to": "route:src/web/routes.js:15515:/app/finance",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:15374:/app/contract/:id",
+      "to": "route:src/web/routes.js:15515:/app/contract/:id",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:16205:/app/project/:id",
+      "to": "route:src/web/routes.js:16346:/app/project/:id",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:16424:/app/opportunity/:id",
+      "to": "route:src/web/routes.js:16565:/app/opportunity/:id",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:16837:/app/client/:id",
+      "to": "route:src/web/routes.js:16978:/app/client/:id",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:17035:/app/event/:id",
+      "to": "route:src/web/routes.js:17176:/app/event/:id",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:17592:/app/dev-center/:productId",
+      "to": "route:src/web/routes.js:17733:/app/dev-center/:productId",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:17832:/app/dev-center/:productId/report",
+      "to": "route:src/web/routes.js:17973:/app/dev-center/:productId/report",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:18360:/app/person/:id",
+      "to": "route:src/web/routes.js:18501:/app/person/:id",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:19776:/app/team/:section",
+      "to": "route:src/web/routes.js:19917:/app/team/:section",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:20428:/app/team/:section/:id",
+      "to": "route:src/web/routes.js:20569:/app/team/:section/:id",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:20817:/app/:page",
+      "to": "route:src/web/routes.js:20958:/app/:page",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:21202:/app/reports/preview/:key",
+      "to": "route:src/web/routes.js:21343:/app/reports/preview/:key",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:21579:/app/reports/test-send/:key",
+      "to": "route:src/web/routes.js:21720:/app/reports/test-send/:key",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:21909:/app/reports/schedule",
+      "to": "route:src/web/routes.js:22050:/app/reports/schedule",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:22247:/app/reports/schedule/:id/active",
+      "to": "route:src/web/routes.js:22388:/app/reports/schedule/:id/active",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:22461:/app/reports/schedule/:id",
+      "to": "route:src/web/routes.js:22602:/app/reports/schedule/:id",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
@@ -34075,6 +34120,41 @@
       "to": "file:src/web/views/_shared.js",
       "label": "استيراد صريح",
       "evidence": "src/web/views/clients.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/web/views/crm-board-settings.js",
+      "to": "file:src/web/layout.js",
+      "label": "استيراد صريح",
+      "evidence": "src/web/views/crm-board-settings.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/web/views/crm-board-settings.js",
+      "to": "file:src/web/views/_shared.js",
+      "label": "استيراد صريح",
+      "evidence": "src/web/views/crm-board-settings.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/web/views/crm-board-settings.js",
+      "to": "file:src/web/icons.js",
+      "label": "استيراد صريح",
+      "evidence": "src/web/views/crm-board-settings.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/web/views/crm-board-settings.js",
+      "to": "file:src/core/config.js",
+      "label": "استيراد صريح",
+      "evidence": "src/web/views/crm-board-settings.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/web/views/crm-board-settings.js",
+      "to": "file:src/modules/crm/boards.js",
+      "label": "استيراد صريح",
+      "evidence": "src/web/views/crm-board-settings.js",
       "kind": "source"
     },
     {
@@ -37379,6 +37459,48 @@
       "to": "file:scripts/apply-consulting.mjs",
       "label": "استيراد صريح",
       "evidence": "tests/integration/consulting-reconcile.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/crm-board-settings-page.test.js",
+      "to": "file:scripts/check-glossary.mjs",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/crm-board-settings-page.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/crm-board-settings-page.test.js",
+      "to": "file:src/core/db/index.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/crm-board-settings-page.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/crm-board-settings-page.test.js",
+      "to": "file:src/core/rbac/index.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/crm-board-settings-page.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/crm-board-settings-page.test.js",
+      "to": "file:src/web/pages.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/crm-board-settings-page.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/crm-board-settings-page.test.js",
+      "to": "file:src/core/policy/pages.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/crm-board-settings-page.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/crm-board-settings-page.test.js",
+      "to": "file:src/modules/crm/boards.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/crm-board-settings-page.test.js",
       "kind": "source"
     },
     {
@@ -47098,6 +47220,20 @@
       "kind": "source"
     },
     {
+      "from": "page:crm-board-settings",
+      "to": "file:src/core/policy/pages.js",
+      "label": "سياسة فتح الصفحة",
+      "evidence": "src/web/routes.js",
+      "kind": "source"
+    },
+    {
+      "from": "page:crm-board-settings",
+      "to": "file:src/web/views/crm-board-settings.js",
+      "label": "دالة العرض",
+      "evidence": "src/web/views/crm-board-settings.js",
+      "kind": "source"
+    },
+    {
       "from": "page:projects",
       "to": "file:src/core/policy/pages.js",
       "label": "سياسة فتح الصفحة",
@@ -53878,6 +54014,41 @@
       "to": "table:cost_line",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
       "evidence": "tests/integration/consulting-reconcile.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/crm-board-settings-page.test.js",
+      "to": "table:sector",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/crm-board-settings-page.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/crm-board-settings-page.test.js",
+      "to": "table:app_user",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/crm-board-settings-page.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/crm-board-settings-page.test.js",
+      "to": "table:client",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/crm-board-settings-page.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/crm-board-settings-page.test.js",
+      "to": "table:stage",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/crm-board-settings-page.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/crm-board-settings-page.test.js",
+      "to": "table:opportunity",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/crm-board-settings-page.test.js",
       "kind": "text-reference"
     },
     {
@@ -64364,6 +64535,13 @@
       "to": "table:collection",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
       "evidence": "scripts/derive-finance.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/lib/expectations.mjs",
+      "to": "table:crm_board",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/lib/expectations.mjs",
       "kind": "text-reference"
     },
     {

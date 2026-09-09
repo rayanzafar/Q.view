@@ -59,7 +59,9 @@ export const ROLES = [
 // دور: تُمنح وتُسحب من شاشة المنتج، فأيُّ توقّعٍ يقطع بـ٤٠٣ لغير مدير النظام يُحمِّر المسح
 // لحظةَ ضمّ شخصيةٍ تجريبية إلى فريق منتج — وهو عملٌ مشروع لا عطل. فالتوقّع هنا ٢٠٠ لمدير
 // النظام قطعاً، ولمن سواه ٤٠٣ **أو** ٢٠٠ (`alsoOk`) لأن الحالتين صحيحتان.
-export const PAGES = ['home', 'ceo', 'portfolio', 'sector', 'opportunities', 'my-opportunities', 'projects',
+// «إعدادات لوحة الفرص» شاشة تعديلٍ بوابتها منح إدارة اللوحات (`update crm_board`) — تُفحص
+// كبقية الصفحات كي لا تُشحن شاشةُ ضبطٍ خارج المسح الحيّ ومصفوفة الصلاحيات.
+export const PAGES = ['home', 'ceo', 'portfolio', 'sector', 'opportunities', 'my-opportunities', 'crm-board-settings', 'projects',
   'clients', 'events', 'tasks', 'timesheet', 'approvals', 'team', 'staffing', 'imports', 'users', 'audit', 'reports', 'org', 'finance', 'mail', 'ops',
   'guide', 'revenue-review', 'sector-targets', 'assistant-link', 'dev-center',
   'team/resources', 'team/org', 'team/people', 'team/work', 'team/planning', 'team/requests', 'team/analysis', 'team/needs', 'team/close'];
