@@ -192,7 +192,7 @@ test('حقول الإسناد تُردّ صراحةً ولا تُهمَل بصم
   // المعاينة بصفٍّ واحد للعنوان، فيؤكّدها صاحبها ظانّاً أنه نقل القطاع معه.
   await assert.rejects(() => runTool(ctxOf(LEAD), 'sanad_preview_opportunity_update',
     { opportunityId: 'O1', title: 'عنوان جديد', sectorId: 'OTH', departmentId: 'D1', ownerUserId: EMP.id }),
-  (e) => { assert.match(e.message, /قطاع الفرصة/); assert.match(e.message, /صفحة الفرصة/, 'يقول أين تُدار'); return true; });
+  (e) => { assert.match(e.message, /تعديلُ قطاع الفرصة/); assert.match(e.message, /صفحة الفرصة/, 'يقول أين تُدار'); return true; });
   // والمرحلة تُردّ إلى معاينتها هي لا إلى الشاشة
   await assert.rejects(() => runTool(ctxOf(LEAD), 'sanad_preview_opportunity_update', { opportunityId: 'O1', stage: 'WON' }),
     (e) => { assert.match(e.message, /sanad_preview_stage_change/); return true; });
