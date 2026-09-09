@@ -35,7 +35,17 @@ if (!base) { console.error('usage: sweep.mjs BASE_URL [--roles=a,b] [--json out.
 const roleFilter = opt('roles')?.split(',').map((r) => (r.startsWith('demo.') ? r : 'demo.' + r));
 const jsonOut = opt('json');
 const budget = Number(opt('budget')) || null;
-const roles = ROLES.filter((r) => !roleFilter || roleFilter.includes(r.username));
+// ── المسح بحسابٍ حقيقي حين لا شخصيات تجريبية ─────────────────────────────────
+// بيئةٌ أُزيلت منها حسابات `demo.*` (قرار المالك ٢٠٢٦-٠٩-٠٩) لا يبقى فيها من يسجّل الدخول،
+// فيصير المسح فارغاً — والفارغ يُردّ. `--as <username> --as-role <role>` يمسح بحسابٍ قائم،
+// وكلمتُه تأتي من البيئة (`SANAD_SWEEP_PASS`) لا من سطر الأوامر كي لا تُكتب في سجلّ الصدفة.
+const asUser = opt('as');
+const asRole = opt('as-role') || 'admin';
+const asPass = process.env.SANAD_SWEEP_PASS || '';
+if (asUser && !asPass) { console.error('‎--as‎ يحتاج كلمة المرور في المتغيّر SANAD_SWEEP_PASS'); process.exit(2); }
+const roles = asUser
+  ? [{ username: asUser, role: asRole, scope: 'company', sector_id: null }]
+  : ROLES.filter((r) => !roleFilter || roleFilter.includes(r.username));
 if (!roles.length) { console.error('no roles matched --roles filter'); process.exit(2); }
 
 // ── المساعد: قراءةٌ دائماً، ومحادثةٌ بإذن ──────────────────────────────────────
@@ -43,6 +53,9 @@ if (!roles.length) { console.error('no roles matched --roles filter'); process.e
 // وهي كتابة حقيقية في قاعدة حيّة. لذلك تُشغَّل تلقائياً على قاعدة محلية وحدها، وعلى قاعدة
 // بعيدة لا تعمل إلا بعلَم صريح، ويُطبع سبب إطفائها كي لا يبدو المسح أشمل مما هو.
 const LOCAL_BASE = /^https?:\/\/(127\.0\.0\.1|localhost|0\.0\.0\.0|\[::1\])(:|\/|$)/i.test(base);
+// شخصياتٌ تجريبية قد تكون أُزيلت من البيئة بقرار (٢٠٢٦-٠٩-٠٩) — انظر موضع الاستعمال أدناه.
+const allowMissingRoles = argv.includes('--allow-missing-roles');
+const skippedRoles = [];
 const aiChat = argv.includes('--ai-chat') || (LOCAL_BASE && !argv.includes('--no-ai-chat'));
 
 // ── scanners ──────────────────────────────────────────────────────────────────
@@ -114,7 +127,7 @@ async function loginWeb(username, attempt = 0) {
   if (seed.res.status === 403 && /not in allowlist|egress/i.test(seed.text || ''))
     throw new Error(`الوكيل حجب ${base} — أعد التشغيل بـ NODE_USE_ENV_PROXY=1 (وNODE_EXTRA_CA_CERTS للشهادة). ليست مشكلة في المنصة.`);
   const jar = jarFrom(seed.res);
-  const form = new URLSearchParams({ username, password: DEMO_PW, _csrf: jar.sanad_csrf || '' });
+  const form = new URLSearchParams({ username, password: username === asUser ? asPass : DEMO_PW, _csrf: jar.sanad_csrf || '' });
   const { res } = await hit('/auth/login-web', {
     method: 'POST', jar, body: form.toString(),
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
@@ -159,6 +172,21 @@ for (const { username, role } of roles) {
   const R = (perRole[username] = { pagesOk: 0, pagesN: 0, apisOk: 0, apisN: 0, aiOk: 0, aiN: 0, leaks: 0, jargon: 0, ms: [] });
   let jar;
   try { jar = await loginWeb(username); } catch (e) {
+    // ── شخصيةٌ تجريبية غائبة عن البيئة ليست عطلاً ──────────────────────────────────
+    // بأمر المالك (٢٠٢٦-٠٩-٠٩) أُزيلت حسابات `demo.*` من بيئة التجربة. وقبل ذلك كان فشلُ
+    // الدخول انحرافاً يُحمِّر النشر — وهو صحيحٌ حين يُفترض وجود الحساب، وخطأٌ حين قُرّر ألا
+    // يوجد. فالتمييز صار صريحاً بعلَمٍ يُمرَّر: `--allow-missing-roles` يحوّل تعذُّرَ الدخول
+    // إلى تخطٍّ مُعلَن، ويبقى كلُّ ما سواه انحرافاً.
+    //
+    // وما لا يُتنازل عنه: أن يُمسح أحدٌ فعلاً. مسحٌ لم يدخل فيه حساب واحد لا يُثبت شيئاً عن
+    // النشرة، فيُردّ في آخر الملف مهما كان العلَم — الفحصُ الفارغ أخطرُ من الفحص الأحمر.
+    if (allowMissingRoles) {
+      skippedRoles.push(username);
+      report.warnings.push({ role: username, kind: 'role-absent', detail: 'الحساب غير موجود على هذه البيئة — تُخطّى شخصيته' });
+      console.log(`  ⏭ ${username}: غير موجود على هذه البيئة — تُخطّى`);
+      delete perRole[username];
+      continue;
+    }
     report.deviations.push({ role: username, path: '/auth/login-web', kind: 'login', detail: e.message });
     console.error(`✗ ${username}: ${e.message}`);
     continue;
@@ -289,6 +317,16 @@ console.log(`\noverall: ${report.summary.requests} requests · P50 ${report.summ
 for (const w of report.warnings) console.log(`⚠ known-gap ${w.role} ${w.path} — ${w.detail}`);
 if (budget && report.summary.p95_ms > budget) {
   report.deviations.push({ role: '*', path: '*', kind: 'timing', detail: `P95 ${report.summary.p95_ms}ms exceeds budget ${budget}ms` });
+}
+if (skippedRoles.length) {
+  console.log(`\n⏭ تُخطِّيت ${skippedRoles.length} شخصية غير موجودة على هذه البيئة: ${skippedRoles.join('، ')}`);
+  console.log('  تغطيةُ الأدوار الكاملة محروسةٌ في CI على قاعدةٍ مبذورة (tests/security/permissions-matrix.test.js)،');
+  console.log('  وهذا المسحُ الحيّ يُثبت أن النشرة تخدم كل صفحة ومسبار بلا تسرّب للحسابات الموجودة فعلاً.');
+}
+// مسحٌ لم يدخل فيه حسابٌ واحد لا يُثبت شيئاً عن النشرة — يُردّ صراحةً مهما كانت الأعلام.
+if (!Object.keys(perRole).length) {
+  report.deviations.push({ role: '*', path: '/auth/login-web', kind: 'login',
+    detail: 'لم يدخل أي حساب — المسح لم يفحص شيئاً، فلا يُقبل دليلاً على سلامة النشرة' });
 }
 if (report.deviations.length) {
   console.error(`\n✗ ${report.deviations.length} deviation(s):`);

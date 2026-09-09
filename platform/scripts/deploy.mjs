@@ -155,14 +155,25 @@ if (args.has('--skip-gates')) {
  * ثم التنزيل سطراً سطراً إلى data/backups (خارج git)، ثم مطابقة العدادات. يعيد مسار الملف أو null.
  * الأسرار تُقرأ وقت التشغيل من متغيّرات خدمة التطبيق ولا تُطبع.
  */
-async function appLevelBackup() {
-  const vr = run('railway', ['variables', '--service', APP_SERVICE_ID, '--json'], { capture: true });
-  let vars = {};
-  try { vars = JSON.parse(vr.stdout || '{}'); } catch { vars = {}; }
+/**
+ * متغيّرات خدمة التطبيق (حسابُ مدير النظام ورمزُ النسخة) — تُقرأ وقت التشغيل ولا تُطبع.
+ * تُستعمل في موضعين: النسخة الاحتياطية، والمسحُ الحيّ بحسابٍ حقيقي بعد إزالة الشخصيات
+ * التجريبية. استخراجُها هنا يمنع نسختين من منطق القراءة تفترقان.
+ */
+let _stagingVars;
+function readStagingVars() {
+  if (_stagingVars !== undefined) return _stagingVars;
+  const parse = (r) => { try { return JSON.parse(r.stdout || '{}'); } catch { return {}; } };
+  let vars = parse(run('railway', ['variables', '--service', APP_SERVICE_ID, '--json'], { capture: true }));
   if (!vars.SANAD_ADMIN_PASS || !vars.SANAD_BACKUP_TOKEN) {
-    const vr2 = run('railway', ['variables', '--service', 'sanad-staging', '--json'], { capture: true });
-    try { vars = JSON.parse(vr2.stdout || '{}'); } catch { vars = {}; }
+    vars = parse(run('railway', ['variables', '--service', 'sanad-staging', '--json'], { capture: true }));
   }
+  _stagingVars = vars;
+  return vars;
+}
+
+async function appLevelBackup() {
+  const vars = readStagingVars();
   if (!vars.SANAD_ADMIN_PASS || !vars.SANAD_BACKUP_TOKEN) { console.log('✗ متغيّرا مدير النظام ورمز النسخة غير متاحين من الخدمة'); return null; }
   const jar = new Map();
   const cookieHeader = () => [...jar].map(([k, v]) => `${k}=${v}`).join('; ');
@@ -269,7 +280,26 @@ if (args.has('--no-sweep')) {
   console.log('⚠ تخطّي المسح الحي بطلبك الصريح');
 } else {
   log('٧/٧ المسح الحي');
-  const sw = run('node', ['scripts/sweep.mjs', STAGING_URL, `--roles=${SEEDED_ROLES}`]);
+  // ── بيئةٌ بلا شخصيات تجريبية ──────────────────────────────────────────────────
+  // أُزيلت حسابات `demo.*` من بيئة التجربة بقرار المالك (٢٠٢٦-٠٩-٠٩)، فلم يبقَ من يسجّل
+  // الدخول للمسح — والمسحُ الفارغ يُردّ (وهو صواب: فحصٌ لم يفحص شيئاً ليس دليلاً).
+  //
+  // فالمسح يجري بحساب مدير النظام القائم: يفحص **كل صفحة وكل مسبار** على النشرة الحيّة —
+  // الحالة والتسرّب والمصطلح التقني والزمن — وهو ما يُثبت أن البناء يخدم ما وُعد به. وما
+  // يفقده هو مصفوفةُ الأدوار (أيُّ دورٍ يُمنع من أيّ صفحة)، وتلك محروسةٌ في CI على قاعدةٍ
+  // مبذورة بكل الشخصيات (tests/security/permissions-matrix.test.js) — فلا تغطيةَ ضاعت،
+  // بل انتقلت إلى المكان الذي تُبذر فيه الشخصيات أصلاً.
+  //
+  // وإن عادت الشخصيات إلى البيئة يوماً، احذف `--as` فيعود المسح إلى الأدوار السبعة.
+  const creds = readStagingVars();   // نفس المتغيّرات المستعملة في النسخة الاحتياطية
+  const sweepArgs = creds?.SANAD_ADMIN_PASS
+    ? [STAGING_URL, '--as', creds.SANAD_ADMIN_USER || 'sysadmin', '--as-role', 'admin']
+    : [STAGING_URL, `--roles=${SEEDED_ROLES}`, '--allow-missing-roles'];
+  if (!creds?.SANAD_ADMIN_PASS) {
+    console.log('  ⚠ تعذّر قراءة حساب مدير النظام — المسح بالشخصيات التجريبية إن وُجدت');
+  }
+  const sw = run('node', ['scripts/sweep.mjs', ...sweepArgs],
+    { env: { ...process.env, SANAD_SWEEP_PASS: creds?.SANAD_ADMIN_PASS || '' } });
   if (sw.status !== 0) fail('المسح الحي رصد انحرافاً — راجع مخرجاته أعلاه');
 }
 
