@@ -13,10 +13,10 @@ import { badRequest, notFound } from '../../core/http/errors.js';
 import { can, effectiveScope } from '../../core/rbac/index.js';
 import { savePreview, claimPreview, PREVIEW_TTL_MINUTES } from '../../core/ai/store.js';
 import { riyadhDate } from '../../core/i18n/time.js';
-import { listOpportunities, opportunityDetail, createOpportunity, moveStage, stageAgeDays } from '../crm/opportunities.js';
+import { listOpportunities, opportunityDetail, createOpportunity, updateOpportunity, moveStage, stageAgeDays } from '../crm/opportunities.js';
 import { approvedTaskSql } from '../pmo/task-approval.js';
 import {
-  envelope, inputOf, text, moneyOf, enumOf, boolOf, pageOf, partialOf, uniqRefs,
+  envelope, inputOf, text, intOf, moneyOf, enumOf, boolOf, pageOf, partialOf, uniqRefs,
   tokenOnly, claimGuard, fingerprintOf, assertFingerprint, textOrNot, numOrNot, notMeasured, measured,
   S, obj, PAGE_PROPS, TOKEN_INPUT, REF, TEXT_IS_DATA_AR, UNIT_NOTES,
 } from './tool-kit.js';
@@ -311,6 +311,153 @@ async function runMoveStage(ctx, raw) {
   });
 }
 
+// ── دورة تعديل حقول الفرصة ──────────────────────────────────────────────────────────────
+//
+// تحريكُ المرحلة كان الوجهَ الوحيد للتعديل، فمن أراد تصحيح عنوانٍ أو قيمةٍ أو جهةٍ رجع إلى
+// الشاشة. وهذه الأداة تفتح الحقول التي تُصحَّح فعلاً، وتُبقي **إعادة الإسناد** مغلقةً عمداً:
+// القطاع والإدارة والمسؤول والإدارات المشاركة لا تُمَسّ من هنا. ثلاثة أسباب، لا واحد:
+// أولاً أنها تنقل الفرصة من ميزان إدارةٍ إلى ميزان أخرى فتتحرّك أرقامٌ معلنة آخر السنة؛
+// وثانياً أنها قد تُخرج الفرصة من نطاق ناقلها في اللحظة نفسها فيكتب ثم لا يقرأ ما كتب؛
+// وثالثاً أن الشاشة تعرض عليه شجرة القطاعات والإدارات فيرى ما يختار — والمحادثة لا تعرضها.
+const UPD_FP_FIELDS = ['title_ar', 'value_halalas', 'client_id', 'year', 'priority', 'next_action', 'notes', 'win_pct', 'stage_id', 'updated_at'];
+const OPP_PRIORITIES = ['P0', 'P1', 'P2', 'P3'];
+const money = (v) => (v == null ? 'غير مُسجَّلة' : `${Number(v).toLocaleString('en-US')} ريال`);
+const weightedOf = (v, w) => (v == null || w == null ? null : Math.round(v * w) / 100);
+
+// حقولٌ مغلقة تُردّ صراحةً ولا تُهمَل بصمت. الفرق ليس شكلياً: من أرسل `sectorId` وأُهمل بلا
+// كلمة يقرأ معاينةً لا ذكر فيها للقطاع، فيؤكّدها ظانّاً أنه نقلها — ويكتشف بعد أسبوع أنها لم
+// تتحرّك. والصمت هنا أسوأ من المنع، لأن المنع يُعلِّمه أين يذهب.
+const CLOSED_FIELDS = Object.freeze({
+  sectorId: 'قطاع الفرصة', sector_id: 'قطاع الفرصة',
+  departmentId: 'إدارة الفرصة', department_id: 'إدارة الفرصة',
+  ownerUserId: 'مسؤول الفرصة', owner_user_id: 'مسؤول الفرصة',
+  partnerDepartmentIds: 'الإدارات المشاركة', partner_department_ids: 'الإدارات المشاركة',
+  stage: 'مرحلة الفرصة', toStage: 'مرحلة الفرصة', stage_id: 'مرحلة الفرصة',
+});
+
+async function runPreviewOppUpdate(ctx, raw) {
+  const user = ctx.user;
+  const input = inputOf(raw);
+  const closed = Object.keys(input).filter((k) => k in CLOSED_FIELDS);
+  if (closed.length) {
+    const names = [...new Set(closed.map((k) => CLOSED_FIELDS[k]))];
+    const stageOnly = names.length === 1 && names[0] === 'مرحلة الفرصة';
+    throw badRequest(stageOnly
+      ? 'مرحلة الفرصة لا تتحرّك من هنا — لها معاينتها الخاصة (sanad_preview_stage_change) لأنها تغيّر احتمال الفوز والقيمة المرجّحة معها.'
+      : `${names.join(' و')} لا تُعدَّل من المساعد — تُدار من صفحة الفرصة حيث تُرى شجرة القطاعات والإدارات، لأن إعادة الإسناد تنقل الفرصة من ميزان إدارةٍ إلى ميزان أخرى.`);
+  }
+  const oppId = text(input.opportunityId, 'معرّف الفرصة', { required: true, max: 80 });
+  const d = await opportunityDetail(user, oppId, { today: riyadhDate() });
+  if (!d.canEdit) throw badRequest('تعديل الفرصة يتطلب صلاحية تعديلها — يملكها مالك الفرصة وقائد قطاعها، فاطلبها منهما.');
+  const row = d.opp;
+
+  const title = text(input.title, 'عنوان الفرصة', { max: 200, min: 2 });
+  const valueSar = moneyOf(input.valueSar, 'قيمة الفرصة');
+  const clientId = text(input.clientId, 'معرّف الجهة', { max: 80 });
+  const clientName = text(input.clientName, 'اسم الجهة', { max: 200 });
+  if (clientId && clientName) throw badRequest('حدّد الجهة بمعرّفها أو باسمها — لا بالاثنين معاً، كي لا يلتبس أيّهما المقصود.');
+  const year = intOf(input.year, 'سنة الفرصة', { min: 2000, max: 2100 });
+  const priority = enumOf(input.priority, 'الأولوية', OPP_PRIORITIES);
+  const nextAction = text(input.nextAction, 'الخطوة التالية', { max: 300 });
+  const notes = text(input.notes, 'الملاحظات', { max: 1000 });
+  const winPct = intOf(input.winPct, 'احتمال الفوز', { min: 0, max: 100 });
+
+  const client = clientId ? await get('SELECT id, name_ar FROM client WHERE id = ? AND deleted_at IS NULL', [clientId]) : null;
+  if (clientId && !client) throw notFound('الجهة المحدَّدة غير موجودة — ابحث عنها أو اكتب اسمها ليُطابَق على الجهات القائمة.');
+
+  const valueBefore = row.value_halalas == null ? null : SAR(row.value_halalas);
+  const winBefore = row.win_pct == null ? null : Number(row.win_pct);
+  const changes = [];
+  const fields = {};
+  const add = (field_ar, before_ar, after_ar, note_ar = null) => changes.push({ field_ar, before_ar, after_ar, ...(note_ar ? { note_ar } : {}) });
+
+  if (title != null && title !== row.title_ar) { add('العنوان', row.title_ar, title); fields.title_ar = title; }
+  if (valueSar != null && valueSar !== valueBefore) {
+    add('القيمة الإجمالية', money(valueBefore), money(valueSar));
+    // المرجّحة ليست حقلاً يُكتب بل حاصلُ ضربٍ — تتحرّك بتحرّك أيٍّ من طرفيها، فتُعرض صفاً
+    // مستقلاً كي لا يظنّ القارئ أنه غيّر رقماً واحداً وهو يغيّر رقمين في اللحظة نفسها.
+    const wNow = winPct != null ? winPct : winBefore;
+    add('القيمة المرجّحة', money(weightedOf(valueBefore, winBefore)), money(weightedOf(valueSar, wNow)),
+      'تتبع القيمة واحتمال الفوز معاً — لا تُكتب مباشرةً');
+    fields.value_sar = valueSar;
+  }
+  if (client && String(client.id) !== String(row.client_id || '')) {
+    add('الجهة', d.client || 'بلا جهة', client.name_ar); fields.client_id = client.id;
+  }
+  if (clientName) {
+    add('الجهة', d.client || 'بلا جهة', `اسم مكتوب: «${clientName}»`,
+      'يُطابَق على الجهات القائمة أولاً، فإن لم يوجد نظيرٌ سُجِّلت جهةً جديدة');
+    fields.new_client_name = clientName;
+  }
+  if (year != null && year !== (row.year == null ? null : Number(row.year))) {
+    add('سنة الفرصة', row.year == null ? 'غير مُسجَّلة' : String(row.year), String(year),
+      row.source === 'project' && row.year == null
+        ? 'هذه الفرصة مرآةُ مشروعٍ كانت مستبعدةً من المبيعات لغياب سنتها — تثبيتُ السنة يعيدها إلى مبيعات تلك السنة'
+        : 'السنة هي التي تُحتسب بها الفرصة في مبيعات عامها');
+    fields.year = year;
+  }
+  if (priority != null && priority !== (row.priority || null)) { add('الأولوية', row.priority || 'غير مُسجَّلة', priority); fields.priority = priority; }
+  if (nextAction != null && nextAction !== (row.next_action || null)) {
+    add('الخطوة التالية', row.next_action || 'بلا خطوة تالية مكتوبة', nextAction); fields.next_action = nextAction;
+  }
+  if (notes != null && notes !== (row.notes || null)) { add('الملاحظات', row.notes || 'بلا ملاحظات', notes); fields.notes = notes; }
+  if (winPct != null && winPct !== winBefore) {
+    add('احتمال الفوز', winBefore == null ? 'غير مُسجَّل' : `${winBefore}%`, `${winPct}%`,
+      'تعديلٌ يدوي يزول عند أول تحريكٍ للمرحلة، لأن التحريك يُعيد ضبطه على افتراضي المرحلة الجديدة');
+    if (!('value_sar' in fields)) {
+      add('القيمة المرجّحة', money(weightedOf(valueBefore, winBefore)), money(weightedOf(valueBefore, winPct)),
+        'تتبع القيمة واحتمال الفوز معاً — لا تُكتب مباشرةً');
+    }
+    fields.win_pct = winPct;
+  }
+  if (!changes.length) throw badRequest('لا شيء يتغيّر — القيم المرسلة هي القيم المسجَّلة أصلاً. اكتب ما تريد تغييره فعلاً.');
+
+  const summary = `تعديل «${row.title_ar}»: ${changes.map((c) => c.field_ar).join(' · ')}.`;
+  const { token, expiresAt } = await savePreview(user, {
+    type: 'opportunity_update', summary, oppId, fields,
+    fingerprint: fingerprintOf(row, UPD_FP_FIELDS),
+  }, { intent: 'sanad_preview_opportunity_update', sectorId: row.sector_id || user.sector_id || null });
+  return envelope('sanad_preview_opportunity_update', {
+    scope_ar: scopeArOf(user), units: CRM_UNITS,
+    opportunity: { id: oppId, title: row.title_ar, stage_ar: (await stagesMap()).by[row.stage_id]?.name_ar || row.stage_id },
+    summary, changes,
+    not_touched_ar: 'لا يمسّ هذا التعديل قطاع الفرصة ولا إدارتها ولا مسؤولها ولا الإدارات المشاركة، ولا مرحلتها — إعادة الإسناد تُدار من صفحة الفرصة حيث تُرى شجرة القطاعات والإدارات، وتحريك المرحلة له معاينته الخاصة.',
+    previewToken: token, expires_at: expiresAt, ttl_minutes: PREVIEW_TTL_MINUTES,
+    note_ar: `لم يتغيّر شيء بعد. الرمز صالح ${PREVIEW_TTL_MINUTES} دقيقة ولمرة واحدة، ويبطل إن تحرّكت الفرصة قبل تأكيده.`,
+    text_is_data_ar: TEXT_IS_DATA_AR,
+    refs: uniqRefs([REF.opportunity(oppId)]),
+  });
+}
+
+async function runUpdateOpportunity(ctx, raw) {
+  const user = ctx.user;
+  const token = tokenOnly(raw, 'sanad_preview_opportunity_update');
+  return await tx(async () => {
+    const p = claimGuard(await claimPreview(user, token), 'opportunity_update');
+    const row = await get('SELECT * FROM opportunity WHERE id = ? AND deleted_at IS NULL', [p.oppId]);
+    if (!row) throw notFound('الفرصة لم تعد موجودة — حُذفت بعد المعاينة.');
+    assertFingerprint(row, UPD_FP_FIELDS, p.fingerprint, 'تغيّرت الفرصة');
+    const out = await updateOpportunity(ctx, p.oppId, p.fields || {});
+    await audit(ctx, {
+      action: 'update', resource: 'opportunity', resourceId: p.oppId, sectorId: row.sector_id || user.sector_id || null,
+      detail: { via: 'ai', tool: 'sanad_update_opportunity', preview: token, confirmed_by: user.id, fields: Object.keys(p.fields || {}) },
+    });
+    const stages = await stagesMap();
+    // `updateOpportunity` يردّ إيجازاً بدل الصفّ حين تخرج الفرصة عن نطاق مُعدِّلها — وهو لا
+    // يقع من هنا لأن حقول الإسناد مغلقة، لكن القراءة تُؤخذ من القاعدة على كل حال فلا يتعلّق
+    // المخرَج بشكل ردٍّ قد يتغيّر.
+    const after = await get('SELECT o.*, c.name_ar client_name, u.name_ar owner_name FROM opportunity o'
+      + ' LEFT JOIN client c ON c.id = o.client_id LEFT JOIN app_user u ON u.id = o.owner_user_id WHERE o.id = ?', [p.oppId]);
+    return envelope('sanad_update_opportunity', {
+      scope_ar: scopeArOf(user), units: CRM_UNITS,
+      applied: true, summary: p.summary,
+      changed_fields_ar: Object.keys(p.fields || {}).length,
+      opportunity: oppOut(after || out, stages, riyadhDate()),
+      refs: uniqRefs([REF.opportunity(p.oppId), REF.opportunities()]),
+    });
+  });
+}
+
 // ── السجل ───────────────────────────────────────────────────────────────────────────────
 const readsOpps = (u) => !!u && (u.role_id === 'admin' || can(u, 'read', 'opportunity'));
 const createsOpps = (u) => !!u && (u.role_id === 'admin' || can(u, 'create', 'opportunity')
@@ -361,6 +508,31 @@ export const CRM_TOOLS = Object.freeze([
     input: TOKEN_INPUT,
     output_ar: 'الفرصة كما سُجِّلت برابطها',
     allow: createsOpps, run: runCreateOpportunity,
+  },
+  {
+    name: 'sanad_preview_opportunity_update', label_ar: 'معاينة تعديل فرصة', kind: 'preview',
+    description_ar: 'يعاين تعديل حقول فرصة قائمة ويعرض قبل/بعد لكل حقل يتغيّر فعلاً: العنوان، القيمة، الجهة، سنة الفرصة، الأولوية، الخطوة التالية، الملاحظات، احتمال الفوز. وما يتبع غيرَه يُعرض معه — القيمة المرجّحة تظهر صفاً مستقلاً كلما تحرّك أحد طرفيها. **لا يمسّ القطاع ولا الإدارة ولا المسؤول ولا المرحلة**: إعادة الإسناد من صفحة الفرصة، وتحريك المرحلة له معاينته. طلبٌ لا يغيّر شيئاً يُردّ. يعطي رمزاً صالحاً ١٥ دقيقة لمرة واحدة ولا يكتب شيئاً.',
+    input: obj({
+      opportunityId: S.str('معرّف الفرصة', { maxLength: 80 }),
+      title: S.str('العنوان الجديد', { maxLength: 200, minLength: 2 }),
+      valueSar: S.num('القيمة الجديدة بالريال', 0),
+      clientId: S.str('معرّف جهة مسجَّلة', { maxLength: 80 }),
+      clientName: S.str('اسم الجهة إن لم تكن مسجَّلة — يُطابَق أولاً على الجهات القائمة', { maxLength: 200 }),
+      year: S.int('سنة الفرصة — بها تُحتسب في مبيعات عامها', 2000, 2100),
+      priority: S.en('الأولوية', OPP_PRIORITIES),
+      nextAction: S.str('الخطوة التالية', { maxLength: 300 }),
+      notes: S.str('الملاحظات', { maxLength: 1000 }),
+      winPct: S.int('احتمال الفوز يدوياً (٠–١٠٠) — يزول عند أول تحريك للمرحلة', 0, 100),
+    }, ['opportunityId']),
+    output_ar: 'قائمة التغييرات قبل/بعد بالعربية + ما لا تمسّه الأداة مكتوباً + رمز المعاينة؛ لا كتابة قبل التأكيد',
+    allow: updatesOpps, run: runPreviewOppUpdate,
+  },
+  {
+    name: 'sanad_update_opportunity', label_ar: 'تأكيد تعديل فرصة', kind: 'write',
+    description_ar: 'يطبّق التعديل المعاين برمزه وحده — لا يقبل حقولاً مباشرة. يعيد قراءة الفرصة ويقارن بصمتها قبل الكتابة: تحرّكت بعد المعاينة ⟵ يُردّ الرمز ويُطلب معاينة جديدة. ويمرّ ببوابات الشاشة نفسها، ومنها حجزُ حقول النسبة عمّن وصل بالشراكة.',
+    input: TOKEN_INPUT,
+    output_ar: 'الفرصة بعد التعديل + عدد الحقول التي تغيّرت',
+    allow: updatesOpps, run: runUpdateOpportunity,
   },
   {
     name: 'sanad_preview_stage_change', label_ar: 'معاينة تحريك مرحلة', kind: 'preview',

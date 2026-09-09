@@ -149,6 +149,67 @@ test('فرصة خارج النطاق تُردّ بجملة عربية', async ()
     (e) => { assert.ok(/[؀-ۿ]/.test(e.message), 'الرسالة عربية'); return true; });
 });
 
+// ── تعديل حقول الفرصة ───────────────────────────────────────────────────────────────────
+test('تعديل الفرصة: قبل/بعد لما يتغيّر وحده، والمرجّحة تظهر تابعةً لا مكتوبة', async () => {
+  const pv = await runTool(ctxOf(LEAD), 'sanad_preview_opportunity_update',
+    { opportunityId: 'O_BARE', title: 'فرصة التحول الرقمي', valueSar: 200000, priority: 'P1' });
+  envelopeOk(pv, 'sanad_preview_opportunity_update');
+  const f = pv.changes.map((c) => c.field_ar);
+  assert.deepEqual(f, ['العنوان', 'القيمة الإجمالية', 'القيمة المرجّحة', 'الأولوية'], 'الحقول المتغيّرة وحدها، والمرجّحة تابعةٌ للقيمة');
+  const w = pv.changes.find((c) => c.field_ar === 'القيمة المرجّحة');
+  assert.match(w.note_ar, /لا تُكتب مباشرةً/, 'المرجّحة معلَنٌ أنها حاصلُ ضربٍ لا حقلٌ يُكتب');
+  assert.match(pv.not_touched_ar, /القطاع|الإدارة/, 'ما لا تمسّه الأداة مكتوبٌ لا مسكوتٌ عنه');
+  // المعاينة لا تكتب
+  assert.equal((await get('SELECT title_ar FROM opportunity WHERE id = ?', ['O_BARE'])).title_ar, 'فرصة بلا قيمة');
+
+  const out = await runTool(ctxOf(LEAD), 'sanad_update_opportunity', { previewToken: pv.previewToken });
+  assert.equal(out.applied, true);
+  const row = await get('SELECT title_ar, value_halalas, priority FROM opportunity WHERE id = ?', ['O_BARE']);
+  assert.equal(row.title_ar, 'فرصة التحول الرقمي');
+  assert.equal(Number(row.value_halalas), 200000_00, 'القيمة بالهللات');
+  assert.equal(row.priority, 'P1');
+  // الرمز لمرة واحدة
+  await assert.rejects(() => runTool(ctxOf(LEAD), 'sanad_update_opportunity', { previewToken: pv.previewToken }),
+    (e) => { assert.ok(/[؀-ۿ]/.test(e.message)); return true; });
+});
+
+test('تعديلٌ لا يغيّر شيئاً يُردّ، ولا يُصنع له رمز', async () => {
+  const row = await get('SELECT title_ar, value_halalas FROM opportunity WHERE id = ?', ['O1']);
+  await assert.rejects(() => runTool(ctxOf(LEAD), 'sanad_preview_opportunity_update',
+    { opportunityId: 'O1', title: row.title_ar, valueSar: Number(row.value_halalas) / 100 }),
+  (e) => { assert.match(e.message, /لا شيء يتغيّر/); return true; });
+});
+
+test('احتمال الفوز يدوياً يقول إنه يزول عند تحريك المرحلة', async () => {
+  const pv = await runTool(ctxOf(LEAD), 'sanad_preview_opportunity_update', { opportunityId: 'O1', winPct: 75 });
+  const win = pv.changes.find((c) => c.field_ar === 'احتمال الفوز');
+  assert.match(win.note_ar, /يزول عند أول تحريك/, 'العاقبة مقولة قبل الموافقة لا بعدها');
+  assert.ok(pv.changes.some((c) => c.field_ar === 'القيمة المرجّحة'), 'والمرجّحة تتحرّك معه');
+});
+
+test('حقول الإسناد تُردّ صراحةً ولا تُهمَل بصمت — ولو صحبها حقلٌ شرعيّ', async () => {
+  // الحالة الخطرة: حقلٌ يتغيّر فعلاً (العنوان) يصحبه إسنادٌ مهرَّب. لولا الردّ الصريح لمرّت
+  // المعاينة بصفٍّ واحد للعنوان، فيؤكّدها صاحبها ظانّاً أنه نقل القطاع معه.
+  await assert.rejects(() => runTool(ctxOf(LEAD), 'sanad_preview_opportunity_update',
+    { opportunityId: 'O1', title: 'عنوان جديد', sectorId: 'OTH', departmentId: 'D1', ownerUserId: EMP.id }),
+  (e) => { assert.match(e.message, /قطاع الفرصة/); assert.match(e.message, /صفحة الفرصة/, 'يقول أين تُدار'); return true; });
+  // والمرحلة تُردّ إلى معاينتها هي لا إلى الشاشة
+  await assert.rejects(() => runTool(ctxOf(LEAD), 'sanad_preview_opportunity_update', { opportunityId: 'O1', stage: 'WON' }),
+    (e) => { assert.match(e.message, /sanad_preview_stage_change/); return true; });
+  await assert.rejects(() => runTool(ctxOf(LEAD), 'sanad_preview_opportunity_update',
+    { opportunityId: 'O1', clientId: 'C1', clientName: 'جهة أخرى' }),
+  (e) => { assert.match(e.message, /لا بالاثنين معاً/); return true; });
+});
+
+test('رمز التعديل يبطل إن تحرّكت الفرصة، وفرصةُ غيرك تُردّ', async () => {
+  const pv = await runTool(ctxOf(LEAD), 'sanad_preview_opportunity_update', { opportunityId: 'O1', notes: 'ملاحظة جديدة' });
+  await run('UPDATE opportunity SET title_ar = ?, updated_at = ? WHERE id = ?', ['عنوان تحرّك', new Date().toISOString(), 'O1']);
+  await assert.rejects(() => runTool(ctxOf(LEAD), 'sanad_update_opportunity', { previewToken: pv.previewToken }),
+    (e) => { assert.match(e.message, /تغيّرت الفرصة بعد المعاينة/); return true; });
+  await assert.rejects(() => runTool(ctxOf(LEAD), 'sanad_preview_opportunity_update', { opportunityId: 'O_OTHER', title: 'محاولة' }),
+    (e) => { assert.ok(/[؀-ۿ]/.test(e.message), 'الرسالة عربية'); return true; });
+});
+
 // ── المشاريع ────────────────────────────────────────────────────────────────────────────
 test('قائمة المشاريع: الفجوة بين الصرف والإنجاز، والمعلَم القادم', async () => {
   const out = await runTool(ctxOf(LEAD), 'sanad_list_projects', {});
