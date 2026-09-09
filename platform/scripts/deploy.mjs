@@ -40,6 +40,9 @@ const fail = (m) => {
   • البيانات: docs/guides/ROLLBACK.md + النسخة في data/backups/ + أرشيف PITR`);
   process.exit(1);
 };
+// ذاكرةُ متغيّرات الخدمة: تُعلَن هنا لا عند الدالة — الدوالُّ تُرفع و`let` لا، و`appLevelBackup`
+// يُنادى في أعلى الملف قبل سطر التعريف. (أسقط النشرَ فعلاً قبل أن يمسّ البيئة.)
+let _stagingVars;
 const run = (cmd, argv, opts = {}) => {
   const r = spawnSync(cmd, argv, { cwd: ROOT, stdio: opts.capture ? 'pipe' : 'inherit', encoding: 'utf8', env: process.env, ...opts });
   return r;
@@ -160,7 +163,6 @@ if (args.has('--skip-gates')) {
  * تُستعمل في موضعين: النسخة الاحتياطية، والمسحُ الحيّ بحسابٍ حقيقي بعد إزالة الشخصيات
  * التجريبية. استخراجُها هنا يمنع نسختين من منطق القراءة تفترقان.
  */
-let _stagingVars;
 function readStagingVars() {
   if (_stagingVars !== undefined) return _stagingVars;
   const parse = (r) => { try { return JSON.parse(r.stdout || '{}'); } catch { return {}; } };
