@@ -1,13 +1,13 @@
 {
   "version": 1,
-  "sourceDigest": "1f8c593181483c8e01034a786f8de011edb63a9238fd4fd9ffc12d2df8c41c10",
-  "sourceFiles": 678,
+  "sourceDigest": "bdc39a404f48f55f7ab460d239ab7a5b53c26ccc487e63ea8e97670caeaf9b3f",
+  "sourceFiles": 679,
   "counts": {
     "code": 267,
-    "test": 303,
+    "test": 304,
     "automation": 59,
     "module": 20,
-    "route": 348,
+    "route": 349,
     "page": 27,
     "table": 113,
     "role": 19,
@@ -3590,6 +3590,15 @@
       "detail": "tests/integration/qa-instance.test.js",
       "sources": [
         "tests/integration/qa-instance.test.js"
+      ]
+    },
+    {
+      "id": "file:tests/integration/reassign-user-work.test.js",
+      "kind": "test",
+      "label": "reassign-user-work.test.js",
+      "detail": "tests/integration/reassign-user-work.test.js",
+      "sources": [
+        "tests/integration/reassign-user-work.test.js"
       ]
     },
     {
@@ -7922,7 +7931,18 @@
       "path": "/identity/users/:id/removal-check"
     },
     {
-      "id": "route:src/modules/identity/identity.routes.js:1672:/identity/users/:id",
+      "id": "route:src/modules/identity/identity.routes.js:1752:/identity/users/:id/reassign-work",
+      "kind": "route",
+      "label": "POST /identity/users/:id/reassign-work",
+      "detail": "تصريح مسار محلي في identityRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
+      "sources": [
+        "src/modules/identity/identity.routes.js"
+      ],
+      "method": "POST",
+      "path": "/identity/users/:id/reassign-work"
+    },
+    {
+      "id": "route:src/modules/identity/identity.routes.js:1900:/identity/users/:id",
       "kind": "route",
       "label": "DELETE /identity/users/:id",
       "detail": "تصريح مسار محلي في identityRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -7933,7 +7953,7 @@
       "path": "/identity/users/:id"
     },
     {
-      "id": "route:src/modules/identity/identity.routes.js:2059:/identity/grants/options",
+      "id": "route:src/modules/identity/identity.routes.js:2287:/identity/grants/options",
       "kind": "route",
       "label": "GET /identity/grants/options",
       "detail": "تصريح مسار محلي في identityRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -7944,7 +7964,7 @@
       "path": "/identity/grants/options"
     },
     {
-      "id": "route:src/modules/identity/identity.routes.js:2302:/identity/grants/:userId",
+      "id": "route:src/modules/identity/identity.routes.js:2530:/identity/grants/:userId",
       "kind": "route",
       "label": "GET /identity/grants/:userId",
       "detail": "تصريح مسار محلي في identityRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -7955,7 +7975,7 @@
       "path": "/identity/grants/:userId"
     },
     {
-      "id": "route:src/modules/identity/identity.routes.js:2418:/identity/grants",
+      "id": "route:src/modules/identity/identity.routes.js:2646:/identity/grants",
       "kind": "route",
       "label": "POST /identity/grants",
       "detail": "تصريح مسار محلي في identityRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -7966,7 +7986,7 @@
       "path": "/identity/grants"
     },
     {
-      "id": "route:src/modules/identity/identity.routes.js:2520:/identity/grants/:id",
+      "id": "route:src/modules/identity/identity.routes.js:2748:/identity/grants/:id",
       "kind": "route",
       "label": "DELETE /identity/grants/:id",
       "detail": "تصريح مسار محلي في identityRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -29245,6 +29265,13 @@
     },
     {
       "from": "file:src/modules/identity/identity.js",
+      "to": "file:src/modules/pmo/task-approval.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/identity/identity.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/identity/identity.js",
       "to": "file:src/core/rbac/matrix.js",
       "label": "استيراد صريح",
       "evidence": "src/modules/identity/identity.js",
@@ -29322,35 +29349,42 @@
     },
     {
       "from": "file:src/modules/identity/identity.routes.js",
-      "to": "route:src/modules/identity/identity.routes.js:1672:/identity/users/:id",
+      "to": "route:src/modules/identity/identity.routes.js:1752:/identity/users/:id/reassign-work",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/identity/identity.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/identity/identity.routes.js",
-      "to": "route:src/modules/identity/identity.routes.js:2059:/identity/grants/options",
+      "to": "route:src/modules/identity/identity.routes.js:1900:/identity/users/:id",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/identity/identity.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/identity/identity.routes.js",
-      "to": "route:src/modules/identity/identity.routes.js:2302:/identity/grants/:userId",
+      "to": "route:src/modules/identity/identity.routes.js:2287:/identity/grants/options",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/identity/identity.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/identity/identity.routes.js",
-      "to": "route:src/modules/identity/identity.routes.js:2418:/identity/grants",
+      "to": "route:src/modules/identity/identity.routes.js:2530:/identity/grants/:userId",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/identity/identity.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/identity/identity.routes.js",
-      "to": "route:src/modules/identity/identity.routes.js:2520:/identity/grants/:id",
+      "to": "route:src/modules/identity/identity.routes.js:2646:/identity/grants",
+      "label": "يصرح بالمسار",
+      "evidence": "src/modules/identity/identity.routes.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/identity/identity.routes.js",
+      "to": "route:src/modules/identity/identity.routes.js:2748:/identity/grants/:id",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/identity/identity.routes.js",
       "kind": "source"
@@ -40570,6 +40604,34 @@
       "kind": "source"
     },
     {
+      "from": "file:tests/integration/reassign-user-work.test.js",
+      "to": "file:src/core/db/index.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/reassign-user-work.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/reassign-user-work.test.js",
+      "to": "file:src/core/rbac/index.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/reassign-user-work.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/reassign-user-work.test.js",
+      "to": "file:src/modules/identity/identity.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/reassign-user-work.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/reassign-user-work.test.js",
+      "to": "file:src/core/lifecycle/remove.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/reassign-user-work.test.js",
+      "kind": "source"
+    },
+    {
       "from": "file:tests/integration/report-periods-routes.test.js",
       "to": "file:src/core/db/index.js",
       "label": "استيراد صريح",
@@ -50580,6 +50642,41 @@
       "kind": "text-reference"
     },
     {
+      "from": "file:src/modules/identity/identity.js",
+      "to": "table:task",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "src/modules/identity/identity.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:src/modules/identity/identity.js",
+      "to": "table:project",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "src/modules/identity/identity.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:src/modules/identity/identity.js",
+      "to": "table:opportunity",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "src/modules/identity/identity.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:src/modules/identity/identity.js",
+      "to": "table:approval_request",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "src/modules/identity/identity.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:src/modules/identity/identity.js",
+      "to": "table:department",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "src/modules/identity/identity.js",
+      "kind": "text-reference"
+    },
+    {
       "from": "file:src/modules/intake/intake.js",
       "to": "table:project",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
@@ -58088,6 +58185,69 @@
       "to": "table:opportunity",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
       "evidence": "tests/integration/qa-instance.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/reassign-user-work.test.js",
+      "to": "table:sector",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/reassign-user-work.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/reassign-user-work.test.js",
+      "to": "table:opportunity",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/reassign-user-work.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/reassign-user-work.test.js",
+      "to": "table:project",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/reassign-user-work.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/reassign-user-work.test.js",
+      "to": "table:task",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/reassign-user-work.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/reassign-user-work.test.js",
+      "to": "table:department",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/reassign-user-work.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/reassign-user-work.test.js",
+      "to": "table:audit_log",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/reassign-user-work.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/reassign-user-work.test.js",
+      "to": "table:app_user",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/reassign-user-work.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/reassign-user-work.test.js",
+      "to": "table:client",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/reassign-user-work.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/reassign-user-work.test.js",
+      "to": "table:stage",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/reassign-user-work.test.js",
       "kind": "text-reference"
     },
     {
