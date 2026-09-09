@@ -1,11 +1,11 @@
 {
   "version": 1,
-  "sourceDigest": "94d7ab40bc7a13c7df53a5372b0fefc103807ff6854ede8ab89fb21809f382d1",
-  "sourceFiles": 668,
+  "sourceDigest": "1d8909a4324a291697a15cb83a348c11fca1db1dfa1da66f65d915892ff866e8",
+  "sourceFiles": 670,
   "counts": {
     "code": 263,
     "test": 300,
-    "automation": 57,
+    "automation": 59,
     "module": 20,
     "route": 333,
     "page": 26,
@@ -5132,6 +5132,15 @@
       ]
     },
     {
+      "id": "file:scripts/add-tasks-on-behalf.mjs",
+      "kind": "automation",
+      "label": "add-tasks-on-behalf.mjs",
+      "detail": "scripts/add-tasks-on-behalf.mjs",
+      "sources": [
+        "scripts/add-tasks-on-behalf.mjs"
+      ]
+    },
+    {
       "id": "file:scripts/apply-bd-project-grants-v534.mjs",
       "kind": "automation",
       "label": "apply-bd-project-grants-v534.mjs",
@@ -5633,6 +5642,15 @@
       "detail": "scripts/sweep.mjs",
       "sources": [
         "scripts/sweep.mjs"
+      ]
+    },
+    {
+      "id": "file:scripts/transcript-to-md.mjs",
+      "kind": "automation",
+      "label": "transcript-to-md.mjs",
+      "detail": "scripts/transcript-to-md.mjs",
+      "sources": [
+        "scripts/transcript-to-md.mjs"
       ]
     },
     {
@@ -44890,6 +44908,41 @@
       "kind": "source"
     },
     {
+      "from": "file:scripts/add-tasks-on-behalf.mjs",
+      "to": "file:src/core/db/index.js",
+      "label": "استيراد صريح",
+      "evidence": "scripts/add-tasks-on-behalf.mjs",
+      "kind": "source"
+    },
+    {
+      "from": "file:scripts/add-tasks-on-behalf.mjs",
+      "to": "file:src/core/db/index.js",
+      "label": "استيراد صريح",
+      "evidence": "scripts/add-tasks-on-behalf.mjs",
+      "kind": "source"
+    },
+    {
+      "from": "file:scripts/add-tasks-on-behalf.mjs",
+      "to": "file:src/core/audit/index.js",
+      "label": "استيراد صريح",
+      "evidence": "scripts/add-tasks-on-behalf.mjs",
+      "kind": "source"
+    },
+    {
+      "from": "file:scripts/add-tasks-on-behalf.mjs",
+      "to": "file:src/core/rbac/index.js",
+      "label": "استيراد صريح",
+      "evidence": "scripts/add-tasks-on-behalf.mjs",
+      "kind": "source"
+    },
+    {
+      "from": "file:scripts/add-tasks-on-behalf.mjs",
+      "to": "file:src/modules/pmo/tasks.js",
+      "label": "استيراد صريح",
+      "evidence": "scripts/add-tasks-on-behalf.mjs",
+      "kind": "source"
+    },
+    {
       "from": "file:scripts/apply-consulting.mjs",
       "to": "file:scripts/reconcile-consulting.mjs",
       "label": "استيراد صريح",
@@ -62688,6 +62741,13 @@
       "to": "table:revenue_line",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
       "evidence": "tests/unit/window-metrics.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/add-tasks-on-behalf.mjs",
+      "to": "table:app_user",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/add-tasks-on-behalf.mjs",
       "kind": "text-reference"
     },
     {
