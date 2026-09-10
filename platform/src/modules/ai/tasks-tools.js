@@ -199,9 +199,17 @@ async function runPreviewTaskCreate(ctx, raw) {
     status_ar: STATUS_AR.TODO,
   };
   const summary = `إنشاء مهمة «${f.title}» بأولوية ${PRIORITY_AR[f.priority]} ${willBe.linked_work_ar}، مُسنَدة إلى ${willBe.assignee_ar}، ${willBe.due_ar}.`;
-  const { token, expiresAt } = await savePreview(user, { type: 'task_create', summary, fields: f }, {
-    intent: 'sanad_preview_task_create', sectorId: user.sector_id || null,
-  });
+  const { token, expiresAt } = await savePreview(user, {
+    type: 'task_create', summary, fields: f, subject_ar: `مهمة جديدة: «${f.title}»`,
+    display: [
+      { field_ar: 'عنوان المهمة', after_ar: f.title },
+      { field_ar: 'العمل المرتبط', after_ar: willBe.linked_work_ar },
+      { field_ar: 'المسؤول', after_ar: willBe.assignee_ar },
+      { field_ar: 'موعد الاستحقاق', after_ar: willBe.due_ar },
+      { field_ar: 'الأولوية', after_ar: PRIORITY_AR[f.priority] },
+      { field_ar: 'الحالة عند الإنشاء', after_ar: STATUS_AR.TODO },
+    ],
+  }, { intent: 'sanad_preview_task_create', sectorId: user.sector_id || null });
   return envelope('sanad_preview_task_create', {
     scope_ar: scopeArOf(user, 'me'), units: TASK_UNITS,
     summary, will_be: willBe,
@@ -286,7 +294,8 @@ async function runPreviewTaskUpdate(ctx, raw) {
   if (!changes.length) throw badRequest('لا فرق بين ما طلبتَه وما هو مسجَّل الآن — لا شيء يتغيّر.');
   const summary = `تحديث «${row.title}»: ${changes.map((c) => `${c.field_ar} من ${c.before_ar} إلى ${c.after_ar}`).join('، ')}.`;
   const { token, expiresAt } = await savePreview(user, {
-    type: 'task_update', summary, taskId: row.id, patch, fingerprint: fingerprintOf(row, FP_FIELDS),
+    type: 'task_update', summary, taskId: row.id, patch, display: changes,
+    subject_ar: `المهمة «${row.title}»`, fingerprint: fingerprintOf(row, FP_FIELDS),
   }, { intent: 'sanad_preview_task_update', sectorId: row.sector_id || user.sector_id || null });
   return envelope('sanad_preview_task_update', {
     scope_ar: scopeArOf(user, 'me'), units: TASK_UNITS,

@@ -99,6 +99,14 @@ async function runPreviewApprovalDecision(ctx, raw) {
   const summary = `${decision === 'approve' ? 'اعتماد' : 'رفض'} «${row.kindLabel || 'طلب اعتماد'}» على «${row.label || row.resource_id}» المرفوع من ${row.requesterName || 'غير معروف'}${comment ? ` — ${comment}` : ''}.`;
   const { token, expiresAt } = await savePreview(user, {
     type: 'approval_decision', summary, requestId, decision, comment: comment || null,
+    subject_ar: `طلب اعتماد: ${row.kindLabel || 'طلب'} على «${row.label || row.resource_id}»`,
+    display: [
+      { field_ar: 'الطلب', after_ar: `${row.kindLabel || 'طلب اعتماد'} على «${row.label || row.resource_id}»` },
+      { field_ar: 'رفعه', after_ar: row.requesterName || 'غير معروف' },
+      { field_ar: 'قرارك', before_ar: 'بانتظار قرارك', after_ar: decision === 'approve' ? 'اعتماد' : 'رفض' },
+      { field_ar: 'أثر القرار', after_ar: effect },
+      ...(comment ? [{ field_ar: 'تعليقك', after_ar: comment }] : []),
+    ],
     // حالة الطلب جزءٌ من المعاينة: حُسم بعدها ⟵ الرمز يبطل بجملةٍ تقول ذلك.
     status: row.status,
   }, { intent: 'sanad_preview_approval_decision', sectorId: row.sector_id || user.sector_id || null });
@@ -208,6 +216,13 @@ async function runPreviewContactLog(ctx, raw) {
   const summary = `تسجيل ${KIND_AR[kind]}: «${title}»${client ? ` مع «${client.name_ar}»` : ''}.`;
   const { token, expiresAt } = await savePreview(user, {
     type: 'contact_log', summary, fields: { client_id: clientId || null, opportunity_id: opportunityId || null, project_id: projectId || null, kind, title, detail: detail || null },
+    subject_ar: client ? `الجهة «${client.name_ar}»` : 'سجل التواصل',
+    display: [
+      { field_ar: 'نوع التواصل', after_ar: KIND_AR[kind] },
+      { field_ar: 'السطر المسجَّل', after_ar: title },
+      { field_ar: 'مرتبط بـ', after_ar: client ? `جهة «${client.name_ar}»` : opportunityId ? 'فرصة' : 'مشروع' },
+      ...(detail ? [{ field_ar: 'التفصيل', after_ar: detail }] : []),
+    ],
   }, { intent: 'sanad_preview_contact_log', sectorId: user.sector_id || null });
   return envelope('sanad_preview_contact_log', {
     scope_ar: 'نطاق الكتابة: جهةٌ أو فرصةٌ أو مشروعٌ يفتحه حسابك',

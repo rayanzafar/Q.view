@@ -14,9 +14,17 @@ import { id, nowIso } from '../util/ids.js';
 import { forbidden } from '../http/errors.js';
 
 export const PREVIEW_TTL_MINUTES = 15;
+// مهلةُ التأكيد أطول من مهلة المعاينة عمداً: المعاينة يقرؤها المساعد في ثانيته، أما التأكيد
+// فينتظر إنساناً قد يكون في اجتماع. وطولُها لا يُرخي الحراسة: أداةُ التنفيذ تعيد قراءة السجل
+// وتقارن بصمته قبل الكتابة، فما تحرّك بعد المعاينة يُردّ ويُطلب من جديد مهما كانت المهلة.
+export const CONFIRM_TTL_MINUTES = 60;
 
-// نتائج القرار المسجَّلة (رموز داخلية لا تُعرض لأحد): مُجاب · مرفوض · معاينة · مطبَّقة.
-export const OUTCOME = { OK: 'ok', DENIED: 'denied', PREVIEW: 'preview', APPLIED: 'applied', EMPTY: 'empty' };
+// نتائج القرار المسجَّلة (رموز داخلية لا تُعرض لأحد): مُجاب · مرفوض · معاينة · بانتظار صاحبه ·
+// مؤكَّدة منه · مطبَّقة · مردودة.
+export const OUTCOME = {
+  OK: 'ok', DENIED: 'denied', PREVIEW: 'preview', APPLIED: 'applied', EMPTY: 'empty',
+  AWAITING: 'awaiting', CONFIRMED: 'confirmed', REJECTED: 'rejected',
+};
 
 const plusMinutes = (minutes) => new Date(Date.now() + minutes * 60000).toISOString();
 
@@ -57,20 +65,120 @@ export async function readPreview(user, token) {
 export async function claimPreview(user, token) {
   if (!token) return { ok: false, reason: 'missing' };
   const now = nowIso();
+  // شرطُ «ليست بانتظار صاحبها» في المزلاج نفسه لا في البوابة وحدها. البوابة تردّ النداء القادم
+  // من مساعدٍ خارجي، وهذا يردّ الكتابة أيّاً كان الطريق إليها — فلو نُسي حارسٌ يوماً في مسارٍ
+  // جديد، بقي الطلبُ المنتظِر غيرَ قابل للكتابة حتى يؤكّده صاحبه بيده.
   const r = await run(
     `UPDATE ai_activity_log SET applied = 1, applied_at = ?, approved_by = ?, outcome = ?
-      WHERE id = ? AND user_id = ? AND applied = 0 AND expires_at > ?`,
-    [now, user.id, OUTCOME.APPLIED, String(token), user.id, now]);
+      WHERE id = ? AND user_id = ? AND applied = 0 AND expires_at > ?
+        AND (outcome IS NULL OR outcome <> ?)`,
+    [now, user.id, OUTCOME.APPLIED, String(token), user.id, now, OUTCOME.AWAITING]);
   if (Number(r.changes) === 1) {
     const row = await get('SELECT preview_json, sector_id, intent FROM ai_activity_log WHERE id = ?', [String(token)]);
     return { ok: true, preview: JSON.parse(row.preview_json), sectorId: row.sector_id, intent: row.intent };
   }
   // لماذا لم يُظفَر بها: التشخيص بعد المحاولة لا قبلها، فلا سباق بين الفحص والتحديث.
-  const row = await get('SELECT user_id, applied, expires_at FROM ai_activity_log WHERE id = ?', [String(token)]);
+  const row = await get('SELECT user_id, applied, expires_at, outcome FROM ai_activity_log WHERE id = ?', [String(token)]);
   if (!row || row.user_id !== user.id) return { ok: false, reason: 'missing' };
   if (Number(row.applied) === 1) return { ok: false, reason: 'applied' };
+  if (row.outcome === OUTCOME.AWAITING) return { ok: false, reason: 'awaiting' };
+  if (row.outcome === OUTCOME.REJECTED) return { ok: false, reason: 'rejected' };
   if (!row.expires_at || row.expires_at <= now) return { ok: false, reason: 'expired' };
   return { ok: false, reason: 'missing' };
+}
+
+// ── طلبٌ ينتظر صاحبه ──────────────────────────────────────────────────────────────────────
+// ثلاث حركات على الصفّ نفسه، كلٌّ منها تحديثٌ مشروط واحد يُحصى: يُؤجَّل، ثم يُؤكَّد أو يُرفض.
+// لا فحصَ قبل التحديث في أيٍّ منها — الشرط في `WHERE` هو الحارس، فطلبان متزامنان لا يفوزان معاً.
+
+/** معاينةٌ نادى مساعدٌ خارجي تنفيذها: تُعلَّق بانتظار صاحبها، وتُمدَّد مهلتها ليجد وقتاً يقرأ فيه. */
+export async function deferToConfirmation(user, token, { applyTool, client = null } = {}) {
+  if (!token) return { ok: false, reason: 'no_token' };
+  const now = nowIso();
+  const expiresAt = plusMinutes(CONFIRM_TTL_MINUTES);
+  const r = await run(
+    `UPDATE ai_activity_log SET outcome = ?, expires_at = ?, apply_tool = ?, asked_by_client = ?, asked_by_client_id = ?
+      WHERE id = ? AND user_id = ? AND applied = 0 AND expires_at > ? AND outcome = ?`,
+    [OUTCOME.AWAITING, expiresAt, String(applyTool || ''),
+      client?.name_ar ? String(client.name_ar).slice(0, 120) : null, client?.id || null,
+      String(token), user.id, now, OUTCOME.PREVIEW]);
+  if (Number(r.changes) === 1) return { ok: true, expiresAt };
+  const row = await get('SELECT user_id, applied, expires_at, outcome FROM ai_activity_log WHERE id = ?', [String(token)]);
+  if (!row || row.user_id !== user.id) return { ok: false, reason: 'missing' };
+  if (Number(row.applied) === 1) return { ok: false, reason: 'applied' };
+  if (row.outcome === OUTCOME.AWAITING) return { ok: false, reason: 'awaiting', expiresAt: row.expires_at };
+  if (row.outcome === OUTCOME.REJECTED) return { ok: false, reason: 'rejected' };
+  if (row.outcome === OUTCOME.CONFIRMED) return { ok: false, reason: 'confirmed' };
+  if (!row.expires_at || row.expires_at <= now) return { ok: false, reason: 'expired' };
+  return { ok: false, reason: 'missing' };
+}
+
+/** ضغطةُ صاحب الحساب داخل سند: الطلبُ يصير مؤكَّداً فتُسمح كتابته — والكتابة نفسها بعدها. */
+export async function confirmPending(user, token) {
+  if (!token) return { ok: false, reason: 'missing' };
+  const now = nowIso();
+  const r = await run(
+    `UPDATE ai_activity_log SET outcome = ?, decided_at = ?, approved_by = ?
+      WHERE id = ? AND user_id = ? AND applied = 0 AND expires_at > ? AND outcome = ?`,
+    [OUTCOME.CONFIRMED, now, user.id, String(token), user.id, now, OUTCOME.AWAITING]);
+  if (Number(r.changes) !== 1) return { ok: false, ...(await pendingReason(user, token, now)) };
+  const row = await get('SELECT apply_tool, preview_json, asked_by_client, asked_by_client_id FROM ai_activity_log WHERE id = ?', [String(token)]);
+  return {
+    ok: true, applyTool: row?.apply_tool || null,
+    preview: row?.preview_json ? JSON.parse(row.preview_json) : null,
+    // هويّةُ من طلب تعود مع الإفراج: الكتابةُ تقع بضغطة الإنسان، والأثرُ يبقى ناسباً الطلبَ
+    // إلى مساعده — «طلبه المساعد، وأذن به صاحبُ الحساب» لا نصفَ الجملة.
+    client: row?.asked_by_client_id || row?.asked_by_client
+      ? { id: row.asked_by_client_id || null, name_ar: row.asked_by_client || null } : null,
+  };
+}
+
+/** رفضُه: قرارٌ مؤرَّخ لا فراغ. وتُحرق المهلة معه فلا يبقى للرمز طريقٌ إلى الكتابة. */
+export async function rejectPending(user, token) {
+  if (!token) return { ok: false, reason: 'missing' };
+  const now = nowIso();
+  const r = await run(
+    `UPDATE ai_activity_log SET outcome = ?, decided_at = ?, expires_at = ?
+      WHERE id = ? AND user_id = ? AND applied = 0 AND expires_at > ? AND outcome = ?`,
+    [OUTCOME.REJECTED, now, now, String(token), user.id, now, OUTCOME.AWAITING]);
+  if (Number(r.changes) !== 1) return { ok: false, ...(await pendingReason(user, token, now)) };
+  return { ok: true };
+}
+
+async function pendingReason(user, token, now) {
+  const row = await get('SELECT user_id, applied, expires_at, outcome FROM ai_activity_log WHERE id = ?', [String(token)]);
+  if (!row || row.user_id !== user.id) return { reason: 'missing' };
+  if (Number(row.applied) === 1) return { reason: 'applied' };
+  if (row.outcome === OUTCOME.REJECTED) return { reason: 'rejected' };
+  if (!row.expires_at || row.expires_at <= now) return { reason: 'expired' };
+  return { reason: 'missing' };
+}
+
+/** ما ينتظر هذا الشخص الآن — لصفحته وحده، بترتيب الأحدث أولاً. المنتهية مهلتها لا تُعرض. */
+export async function listAwaiting(user) {
+  const now = nowIso();
+  const rows = await all(
+    `SELECT id, at, intent, preview_json, expires_at, apply_tool, asked_by_client, asked_by_client_id
+       FROM ai_activity_log
+      WHERE user_id = ? AND outcome = ? AND applied = 0 AND expires_at > ? AND preview_json IS NOT NULL
+      ORDER BY at DESC
+      LIMIT 25`, [user.id, OUTCOME.AWAITING, now]);
+  return rows.map((r) => ({
+    token: r.id, at: r.at, intent: r.intent || null,
+    expiresAt: r.expires_at, applyTool: r.apply_tool || null,
+    askedByClient: r.asked_by_client || null, askedByClientId: r.asked_by_client_id || null,
+    preview: r.preview_json ? JSON.parse(r.preview_json) : null,
+  }));
+}
+
+/** عدّادُ الشارة في القائمة الجانبية — سؤالٌ واحد لا يجرّ معه نصوص المعاينات. */
+export async function countAwaiting(user) {
+  if (!user?.id) return 0;
+  const row = await get(
+    `SELECT COUNT(*) AS n FROM ai_activity_log
+      WHERE user_id = ? AND outcome = ? AND applied = 0 AND expires_at > ? AND preview_json IS NOT NULL`,
+    [user.id, OUTCOME.AWAITING, nowIso()]);
+  return Number(row?.n || 0);
 }
 
 // «نشاط المساعد» — بوابته منح قراءة التدقيق، ونطاقه نطاق صاحبه، ونص المعاينة لمدير النظام وحده.

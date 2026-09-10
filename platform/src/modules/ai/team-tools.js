@@ -22,9 +22,10 @@ import { audit } from '../../core/audit/index.js';
 import { nowIso } from '../../core/util/ids.js';
 import { badRequest, forbidden, notFound } from '../../core/http/errors.js';
 import { can } from '../../core/rbac/index.js';
-import { savePreview, claimPreview, logAsk, OUTCOME, PREVIEW_TTL_MINUTES } from '../../core/ai/store.js';
+import { savePreview, claimPreview, logAsk, deferToConfirmation, OUTCOME, PREVIEW_TTL_MINUTES } from '../../core/ai/store.js';
 import { riyadhDate, MONTHS_AR } from '../../core/i18n/time.js';
 import { globalSearch } from '../search/search.js';
+import { notify } from '../notifications/notify.js';
 import { namesByIds } from '../org/people.js';
 import { listResources, resourceProfile, linkedWork, resourceTasks } from '../team/resources.js';
 import { planningMatrix, previewChange, submitRequest, BASIS_AR as ALLOC_BASIS_AR, ALLOC_STATUS_AR } from '../team/allocations.js';
@@ -604,6 +605,17 @@ async function runPreviewAllocation(ctx, raw) {
     type: 'allocation_request', summary, change: pv.change, rawChange: change, fingerprints: pv.fingerprints,
     directApply: pv.directApply, reviewers: pv.reviewers.map((r) => ({ userId: r.userId, name: r.name })),
     employeeIds: pv.perResource.map((r) => r.employeeId),
+    subject_ar: `تسكين: ${names.join('، ')}`,
+    // الأشهرُ الممسوسة وحدها: الجدول كلُّه أربعٌ وعشرون شهراً، وما لم يتحرّك منها ليس قراراً يُقرأ.
+    display: [
+      ...pv.perResource.flatMap((r) => (r.months || []).filter((m) => m.touched).map((m) => ({
+        field_ar: `${r.name} — ${m.label_ar}`,
+        before_ar: `${m.before ?? 0}% من طاقته`, after_ar: `${m.after ?? 0}% من طاقته`,
+        ...(m.conflict ? { note_ar: 'يتجاوز طاقته في هذا الشهر — يُعرض ولا يُمنع' } : {}),
+      }))),
+      { field_ar: 'ما يحدث عند التأكيد', after_ar: common.outcome_ar },
+      ...warnings_ar.map((w) => ({ field_ar: 'تنبيه', after_ar: w })),
+    ],
   }, { intent: 'sanad_preview_allocation_change', sectorId: firstEmp?.sector_id || user.sector_id || null });
   return base('sanad_preview_allocation_change', user, { ...common, previewToken: token, expires_at: expiresAt, ttl_minutes: PREVIEW_TTL_MINUTES,
     note_ar: `المعاينة صالحة ${PREVIEW_TTL_MINUTES} دقيقة ولمرة واحدة؛ لا يُكتب شيء قبل تأكيدها برمزها عبر sanad_create_allocation_request` });
@@ -672,6 +684,16 @@ async function runPreviewFollowup(ctx, raw) {
   const emp = await get('SELECT sector_id FROM employee WHERE id = ?', [employeeId]);
   const { token, expiresAt } = await savePreview(user, {
     type: 'followup', summary, employeeId, data: { year, month, action_ar, ownerUserId, dueDate, note, signal: sig },
+    subject_ar: `متابعة على «${c.resource.name_ar}»`,
+    display: [
+      { field_ar: 'الإجراء', after_ar: action_ar },
+      { field_ar: 'المورد', after_ar: c.resource.name_ar },
+      { field_ar: 'الإشارة', after_ar: SIGNALS[sig] },
+      { field_ar: 'الفترة', after_ar: c.period.label_ar },
+      { field_ar: 'صاحب المتابعة', after_ar: ownerName },
+      { field_ar: 'موعد الاستحقاق', after_ar: dueDate || 'بلا موعد' },
+      ...(note ? [{ field_ar: 'الملاحظة', after_ar: note }] : []),
+    ],
   }, { intent: 'sanad_preview_followup', sectorId: emp?.sector_id || null });
   return base('sanad_preview_followup', user, {
     previewToken: token, expires_at: expiresAt, ttl_minutes: PREVIEW_TTL_MINUTES, summary_ar: summary,
@@ -960,6 +982,32 @@ export function listTools(user) {
     .map(({ name, label_ar, kind, description_ar, input, output_ar }) => ({ name, label_ar, kind, description_ar, input, output_ar }));
 }
 
+// ── حارسُ التأكيد: ما يغيّر سجلاً قادماً من مساعدٍ خارجي يقف حتى يؤكّده صاحبه داخل سند ──────
+//
+// **موضعُ الحارس هو معناه.** لو وُضع في كل أداة تنفيذ لصار قاعدةً تُنسى عند إضافة الأداة القادمة؛
+// وهو هنا في المعبر الوحيد، فكلُّ أداةٍ تمرّ به اليوم وغداً بلا سطرٍ يُكتب فيها.
+//
+// ومن يمرّ بلا وقوف: أداةٌ تقرأ (لا تغيّر شيئاً)، وأداةٌ تعاين (لا تكتب شيئاً)، وأداةُ إضافةٍ
+// لا تحمل رمز معاينة — التعليق على بلاغ ورفع صورة عليه: إضافةٌ إلى سجلٍ قائم لا تغيّر حاله ولا
+// رقماً فيه. وشرطُ الوقوف مقروءٌ من الأداة نفسها لا من قائمةِ أسماءٍ إلى جانبها: **أداةُ كتابةٍ
+// تشترط رمز معاينة**. فأيُّ أداة تغيير جديدة تولد محروسةً، ولا يحرسها أحد أن يتذكّر.
+//
+// ويقف الواصلُ من نافذة مساعدٍ خارجي وحده (`mcpClient`). أما الضغطةُ داخل سند فصاحبها أمام
+// الشاشة يقرأ ما يفعله — وهي نفسها الضغطةُ التي تُفرج عن الطلب المنتظِر.
+const needsHumanConfirm = (tool) => tool?.kind === 'write'
+  && Array.isArray(tool?.input?.required) && tool.input.required.includes('previewToken');
+
+const CONFIRM_HINT = 'افتح سند ← «تغييرات تنتظر تأكيدك»، اقرأ التفصيل، ثم اضغط «أؤكّد التنفيذ» أو «أرفض».';
+const AWAIT_MESSAGE = {
+  no_token: 'هذه الأداة تقبل رمز المعاينة وحده ولا تقبل بيانات مباشرة — اطلب المعاينة أولاً، واعرض قبل/بعد على صاحب الحساب، ثم نادِ التنفيذ برمزها.',
+  fresh: `**لم يُنفَّذ شيء بعد.** طلبُ التغيير مسجَّل وينتظر تأكيد صاحب الحساب داخل سند نفسها.\n${CONFIRM_HINT}\nقل له ذلك صراحةً، ولا تقل إن التغيير تمّ.`,
+  awaiting: `**لم يُنفَّذ شيء بعد.** هذا الطلب ما يزال معلَّقاً بانتظار تأكيد صاحب الحساب داخل سند — لا تُعِد إرساله.\n${CONFIRM_HINT}`,
+  rejected: 'رفض صاحبُ الحساب هذا التغيير داخل سند، فلم يُكتب شيء. اسأله عمّا يريده بدلاً منه قبل أي محاولة جديدة.',
+  expired: 'انتهت مهلةُ هذا الطلب قبل أن يؤكّده صاحبه، فلم يُكتب شيء. اعرض المعاينة عليه من جديد إن كان ما يزال يريدها.',
+  applied: 'هذا الطلب طُبِّق من قبل — لا تكرّره. افتح السجل للاطّلاع، أو اطلب معاينة جديدة إن أردت تغييراً آخر.',
+  missing: 'لا أجد هذه المعاينة — اطلب معاينة جديدة، واعرضها على صاحب الحساب قبل أن تنادي التنفيذ.',
+};
+
 /** تشغيل أداة باسمها: البوابة ثم الخدمة ثم السجل بنتيجته — والخطأ يصعد بنصّه العربي كما هو. */
 export async function runTool(ctx, name, input) {
   const user = ctx?.user;
@@ -970,8 +1018,30 @@ export async function runTool(ctx, name, input) {
     await logAsk(user, { intent: `tool:${tool.name}`, outcome: OUTCOME.DENIED, sectorId });
     throw forbidden(tool.deny_ar || GENERIC_DENY_AR);
   }
+  // `humanConfirmed` تضعه صفحةُ التأكيد وحدها بعد الضغطة، ويبقى `mcpClient` معها كي يقول الأثر
+  // من طلب. فالعلامتان تجيبان سؤالين مختلفين: من أين جاء الطلب، وهل أذن به إنسانٌ بعد.
+  if (ctx?.mcpClient && !ctx.humanConfirmed && needsHumanConfirm(tool)) {
+    const held = await deferToConfirmation(user, input?.previewToken, {
+      applyTool: tool.name, client: ctx.mcpClient,
+    });
+    // «مؤكَّد» وحدها تمرّ: صاحبُ الحساب ضغط داخل سند قبل قليل. وما عداها يقف برسالته.
+    if (held.ok) {
+      await logAsk(user, { intent: `tool:${tool.name}`, outcome: OUTCOME.AWAITING, sectorId });
+      // إشعارٌ يقول إن شيئاً ينتظره: الطلبُ وصل من نافذةٍ أخرى، وقد لا تكون سند مفتوحةً أمامه
+      // أصلاً. وفشلُ الإشعار لا يُسقط الحراسة — الطلبُ معلَّقٌ على كل حال.
+      try {
+        await notify(user.id, {
+          kind: 'warn', title: 'تغيير ينتظر تأكيدك',
+          body: `${tool.label_ar}${ctx.mcpClient?.name_ar ? ` — طلبه «${ctx.mcpClient.name_ar}»` : ''}. لن يُنفَّذ حتى تقرأه وتؤكّده.`,
+          ref_resource: 'ai_change', ref_id: String(input?.previewToken || ''),
+        });
+      } catch { /* الإشعار زينةُ الطريق لا الطريق */ }
+      throw badRequest(AWAIT_MESSAGE.fresh);
+    }
+    if (held.reason !== 'confirmed') throw badRequest(AWAIT_MESSAGE[held.reason] || AWAIT_MESSAGE.missing);
+  }
   try {
-    const out = await tool.run({ user, ip: ctx?.ip || null, mcpClient: ctx?.mcpClient || null }, input);
+    const out = await tool.run({ user, ip: ctx?.ip || null, mcpClient: ctx?.mcpClient || null, humanConfirmed: ctx?.humanConfirmed || false }, input);
     const outcome = tool.kind === 'write' ? OUTCOME.APPLIED : tool.kind === 'preview' ? OUTCOME.PREVIEW : OUTCOME.OK;
     await logAsk(user, { intent: `tool:${tool.name}`, outcome, prompt: `tool:${tool.name}`, sectorId });
     return out;

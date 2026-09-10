@@ -1,14 +1,14 @@
 {
   "version": 1,
-  "sourceDigest": "17b3a31a393d2216f3037296ea4e69b50cb071a7840ccbd7c4402274f00aa8a0",
-  "sourceFiles": 679,
+  "sourceDigest": "378d0c285fe10f73696d1715f76aa0bf04921245fd9584a8e83cd9c27275691b",
+  "sourceFiles": 684,
   "counts": {
-    "code": 267,
-    "test": 304,
+    "code": 270,
+    "test": 305,
     "automation": 59,
     "module": 20,
-    "route": 349,
-    "page": 27,
+    "route": 352,
+    "page": 28,
     "table": 113,
     "role": 19,
     "permission": 9,
@@ -602,6 +602,15 @@
       "detail": "src/modules/ai/apply.js",
       "sources": [
         "src/modules/ai/apply.js"
+      ]
+    },
+    {
+      "id": "file:src/modules/ai/confirmations.js",
+      "kind": "code",
+      "label": "confirmations.js",
+      "detail": "src/modules/ai/confirmations.js",
+      "sources": [
+        "src/modules/ai/confirmations.js"
       ]
     },
     {
@@ -1712,6 +1721,15 @@
       ]
     },
     {
+      "id": "file:src/web/public/pages/ai-changes.js",
+      "kind": "code",
+      "label": "ai-changes.js",
+      "detail": "src/web/public/pages/ai-changes.js",
+      "sources": [
+        "src/web/public/pages/ai-changes.js"
+      ]
+    },
+    {
       "id": "file:src/web/public/pages/ai.js",
       "kind": "code",
       "label": "ai.js",
@@ -2114,6 +2132,15 @@
       "detail": "src/web/views/_shared.js",
       "sources": [
         "src/web/views/_shared.js"
+      ]
+    },
+    {
+      "id": "file:src/web/views/ai-changes.js",
+      "kind": "code",
+      "label": "ai-changes.js",
+      "detail": "src/web/views/ai-changes.js",
+      "sources": [
+        "src/web/views/ai-changes.js"
       ]
     },
     {
@@ -2645,6 +2672,15 @@
       "detail": "tests/integration/activation-defects.test.js",
       "sources": [
         "tests/integration/activation-defects.test.js"
+      ]
+    },
+    {
+      "id": "file:tests/integration/ai-confirm-gate.test.js",
+      "kind": "test",
+      "label": "ai-confirm-gate.test.js",
+      "detail": "tests/integration/ai-confirm-gate.test.js",
+      "sources": [
+        "tests/integration/ai-confirm-gate.test.js"
       ]
     },
     {
@@ -5741,6 +5777,7 @@
       "detail": "وحدة برمجية موجودة؛ وجودها لا يثبت اكتمال وظائفها.",
       "sources": [
         "src/modules/ai/apply.js",
+        "src/modules/ai/confirmations.js",
         "src/modules/ai/crm-tools.js",
         "src/modules/ai/guide-tools.js",
         "src/modules/ai/pmo-tools.js",
@@ -6006,7 +6043,7 @@
       ]
     },
     {
-      "id": "route:src/modules/ai.routes.js:3505:/status",
+      "id": "route:src/modules/ai.routes.js:3588:/status",
       "kind": "route",
       "label": "GET /status",
       "detail": "تصريح مسار محلي في aiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6017,7 +6054,7 @@
       "path": "/status"
     },
     {
-      "id": "route:src/modules/ai.routes.js:3573:/chat",
+      "id": "route:src/modules/ai.routes.js:3656:/chat",
       "kind": "route",
       "label": "POST /chat",
       "detail": "تصريح مسار محلي في aiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6028,7 +6065,7 @@
       "path": "/chat"
     },
     {
-      "id": "route:src/modules/ai.routes.js:3665:/options/:kind",
+      "id": "route:src/modules/ai.routes.js:3748:/options/:kind",
       "kind": "route",
       "label": "GET /options/:kind",
       "detail": "تصريح مسار محلي في aiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6039,7 +6076,7 @@
       "path": "/options/:kind"
     },
     {
-      "id": "route:src/modules/ai.routes.js:3858:/preview",
+      "id": "route:src/modules/ai.routes.js:3941:/preview",
       "kind": "route",
       "label": "POST /preview",
       "detail": "تصريح مسار محلي في aiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6050,7 +6087,7 @@
       "path": "/preview"
     },
     {
-      "id": "route:src/modules/ai.routes.js:4029:/apply",
+      "id": "route:src/modules/ai.routes.js:4112:/apply",
       "kind": "route",
       "label": "POST /apply",
       "detail": "تصريح مسار محلي في aiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6061,7 +6098,7 @@
       "path": "/apply"
     },
     {
-      "id": "route:src/modules/ai.routes.js:4133:/activity",
+      "id": "route:src/modules/ai.routes.js:4216:/activity",
       "kind": "route",
       "label": "GET /activity",
       "detail": "تصريح مسار محلي في aiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6072,7 +6109,7 @@
       "path": "/activity"
     },
     {
-      "id": "route:src/modules/ai.routes.js:4518:/tools",
+      "id": "route:src/modules/ai.routes.js:4601:/tools",
       "kind": "route",
       "label": "GET /tools",
       "detail": "تصريح مسار محلي في aiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6083,7 +6120,7 @@
       "path": "/tools"
     },
     {
-      "id": "route:src/modules/ai.routes.js:4592:/tools/:name",
+      "id": "route:src/modules/ai.routes.js:4675:/tools/:name",
       "kind": "route",
       "label": "POST /tools/:name",
       "detail": "تصريح مسار محلي في aiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6092,6 +6129,39 @@
       ],
       "method": "POST",
       "path": "/tools/:name"
+    },
+    {
+      "id": "route:src/modules/ai.routes.js:5034:/pending",
+      "kind": "route",
+      "label": "GET /pending",
+      "detail": "تصريح مسار محلي في aiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
+      "sources": [
+        "src/modules/ai.routes.js"
+      ],
+      "method": "GET",
+      "path": "/pending"
+    },
+    {
+      "id": "route:src/modules/ai.routes.js:5124:/pending/:token/confirm",
+      "kind": "route",
+      "label": "POST /pending/:token/confirm",
+      "detail": "تصريح مسار محلي في aiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
+      "sources": [
+        "src/modules/ai.routes.js"
+      ],
+      "method": "POST",
+      "path": "/pending/:token/confirm"
+    },
+    {
+      "id": "route:src/modules/ai.routes.js:5234:/pending/:token/reject",
+      "kind": "route",
+      "label": "POST /pending/:token/reject",
+      "detail": "تصريح مسار محلي في aiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
+      "sources": [
+        "src/modules/ai.routes.js"
+      ],
+      "method": "POST",
+      "path": "/pending/:token/reject"
     },
     {
       "id": "route:src/modules/api.routes.js:3966:/opportunities",
@@ -9647,7 +9717,7 @@
       "path": "/"
     },
     {
-      "id": "route:src/web/routes.js:13509:/app/mail/preview/:file",
+      "id": "route:src/web/routes.js:13542:/app/mail/preview/:file",
       "kind": "route",
       "label": "GET /app/mail/preview/:file",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -9658,7 +9728,7 @@
       "path": "/app/mail/preview/:file"
     },
     {
-      "id": "route:src/web/routes.js:15515:/app/finance",
+      "id": "route:src/web/routes.js:15548:/app/finance",
       "kind": "route",
       "label": "GET /app/finance",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -9669,7 +9739,7 @@
       "path": "/app/finance"
     },
     {
-      "id": "route:src/web/routes.js:15515:/app/contract/:id",
+      "id": "route:src/web/routes.js:15548:/app/contract/:id",
       "kind": "route",
       "label": "GET /app/contract/:id",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -9680,7 +9750,7 @@
       "path": "/app/contract/:id"
     },
     {
-      "id": "route:src/web/routes.js:16346:/app/project/:id",
+      "id": "route:src/web/routes.js:16379:/app/project/:id",
       "kind": "route",
       "label": "GET /app/project/:id",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -9691,7 +9761,7 @@
       "path": "/app/project/:id"
     },
     {
-      "id": "route:src/web/routes.js:16565:/app/opportunity/:id",
+      "id": "route:src/web/routes.js:16598:/app/opportunity/:id",
       "kind": "route",
       "label": "GET /app/opportunity/:id",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -9702,7 +9772,7 @@
       "path": "/app/opportunity/:id"
     },
     {
-      "id": "route:src/web/routes.js:16978:/app/client/:id",
+      "id": "route:src/web/routes.js:17011:/app/client/:id",
       "kind": "route",
       "label": "GET /app/client/:id",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -9713,7 +9783,7 @@
       "path": "/app/client/:id"
     },
     {
-      "id": "route:src/web/routes.js:17176:/app/event/:id",
+      "id": "route:src/web/routes.js:17209:/app/event/:id",
       "kind": "route",
       "label": "GET /app/event/:id",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -9724,7 +9794,7 @@
       "path": "/app/event/:id"
     },
     {
-      "id": "route:src/web/routes.js:17733:/app/dev-center/:productId",
+      "id": "route:src/web/routes.js:17766:/app/dev-center/:productId",
       "kind": "route",
       "label": "GET /app/dev-center/:productId",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -9735,7 +9805,7 @@
       "path": "/app/dev-center/:productId"
     },
     {
-      "id": "route:src/web/routes.js:17973:/app/dev-center/:productId/report",
+      "id": "route:src/web/routes.js:18006:/app/dev-center/:productId/report",
       "kind": "route",
       "label": "GET /app/dev-center/:productId/report",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -9746,7 +9816,7 @@
       "path": "/app/dev-center/:productId/report"
     },
     {
-      "id": "route:src/web/routes.js:18501:/app/person/:id",
+      "id": "route:src/web/routes.js:18534:/app/person/:id",
       "kind": "route",
       "label": "GET /app/person/:id",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -9757,7 +9827,7 @@
       "path": "/app/person/:id"
     },
     {
-      "id": "route:src/web/routes.js:19917:/app/team/:section",
+      "id": "route:src/web/routes.js:19950:/app/team/:section",
       "kind": "route",
       "label": "GET /app/team/:section",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -9768,7 +9838,7 @@
       "path": "/app/team/:section"
     },
     {
-      "id": "route:src/web/routes.js:20569:/app/team/:section/:id",
+      "id": "route:src/web/routes.js:20602:/app/team/:section/:id",
       "kind": "route",
       "label": "GET /app/team/:section/:id",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -9779,7 +9849,7 @@
       "path": "/app/team/:section/:id"
     },
     {
-      "id": "route:src/web/routes.js:20958:/app/:page",
+      "id": "route:src/web/routes.js:20991:/app/:page",
       "kind": "route",
       "label": "GET /app/:page",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -9790,7 +9860,7 @@
       "path": "/app/:page"
     },
     {
-      "id": "route:src/web/routes.js:21343:/app/reports/preview/:key",
+      "id": "route:src/web/routes.js:21376:/app/reports/preview/:key",
       "kind": "route",
       "label": "GET /app/reports/preview/:key",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -9801,7 +9871,7 @@
       "path": "/app/reports/preview/:key"
     },
     {
-      "id": "route:src/web/routes.js:21720:/app/reports/test-send/:key",
+      "id": "route:src/web/routes.js:21753:/app/reports/test-send/:key",
       "kind": "route",
       "label": "POST /app/reports/test-send/:key",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -9812,7 +9882,7 @@
       "path": "/app/reports/test-send/:key"
     },
     {
-      "id": "route:src/web/routes.js:22050:/app/reports/schedule",
+      "id": "route:src/web/routes.js:22083:/app/reports/schedule",
       "kind": "route",
       "label": "POST /app/reports/schedule",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -9823,7 +9893,7 @@
       "path": "/app/reports/schedule"
     },
     {
-      "id": "route:src/web/routes.js:22388:/app/reports/schedule/:id/active",
+      "id": "route:src/web/routes.js:22421:/app/reports/schedule/:id/active",
       "kind": "route",
       "label": "POST /app/reports/schedule/:id/active",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -9834,7 +9904,7 @@
       "path": "/app/reports/schedule/:id/active"
     },
     {
-      "id": "route:src/web/routes.js:22602:/app/reports/schedule/:id",
+      "id": "route:src/web/routes.js:22635:/app/reports/schedule/:id",
       "kind": "route",
       "label": "DELETE /app/reports/schedule/:id",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -9887,6 +9957,17 @@
         "src/core/policy/pages.js"
       ],
       "handler": "assistantLinkPage"
+    },
+    {
+      "id": "page:ai-changes",
+      "kind": "page",
+      "label": "/app/ai-changes",
+      "detail": "واجهة مسجلة في PAGES. حارس الصفحة لا يغني عن نطاق السجل والحقول.",
+      "sources": [
+        "src/web/routes.js",
+        "src/core/policy/pages.js"
+      ],
+      "handler": "aiChangesPage"
     },
     {
       "id": "page:ceo",
@@ -10207,7 +10288,8 @@
       "detail": "جدول من مخطط SQLite جديد بعد تطبيق الترحيلات؛ لا بيانات شركة.",
       "sources": [
         "migrations/001_init.sql",
-        "migrations/013_ai_preview_lifecycle.sql"
+        "migrations/013_ai_preview_lifecycle.sql",
+        "migrations/047_ai_confirmations.sql"
       ],
       "columns": [
         {
@@ -10278,6 +10360,30 @@
         },
         {
           "name": "outcome",
+          "type": "TEXT",
+          "required": false,
+          "primary": false
+        },
+        {
+          "name": "apply_tool",
+          "type": "TEXT",
+          "required": false,
+          "primary": false
+        },
+        {
+          "name": "asked_by_client",
+          "type": "TEXT",
+          "required": false,
+          "primary": false
+        },
+        {
+          "name": "asked_by_client_id",
+          "type": "TEXT",
+          "required": false,
+          "primary": false
+        },
+        {
+          "name": "decided_at",
           "type": "TEXT",
           "required": false,
           "primary": false
@@ -24113,6 +24219,13 @@
     },
     {
       "from": "module:ai",
+      "to": "file:src/modules/ai/confirmations.js",
+      "label": "يحتوي",
+      "evidence": "src/modules/ai/confirmations.js",
+      "kind": "source"
+    },
+    {
+      "from": "module:ai",
       "to": "file:src/modules/ai/crm-tools.js",
       "label": "يحتوي",
       "evidence": "src/modules/ai/crm-tools.js",
@@ -26150,6 +26263,13 @@
     },
     {
       "from": "file:src/modules/ai.routes.js",
+      "to": "file:src/modules/ai/confirmations.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai.routes.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai.routes.js",
       "to": "file:src/modules/ai/team-tools.js",
       "label": "استيراد صريح",
       "evidence": "src/modules/ai.routes.js",
@@ -26206,56 +26326,77 @@
     },
     {
       "from": "file:src/modules/ai.routes.js",
-      "to": "route:src/modules/ai.routes.js:3505:/status",
+      "to": "route:src/modules/ai.routes.js:3588:/status",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/ai.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/ai.routes.js",
-      "to": "route:src/modules/ai.routes.js:3573:/chat",
+      "to": "route:src/modules/ai.routes.js:3656:/chat",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/ai.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/ai.routes.js",
-      "to": "route:src/modules/ai.routes.js:3665:/options/:kind",
+      "to": "route:src/modules/ai.routes.js:3748:/options/:kind",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/ai.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/ai.routes.js",
-      "to": "route:src/modules/ai.routes.js:3858:/preview",
+      "to": "route:src/modules/ai.routes.js:3941:/preview",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/ai.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/ai.routes.js",
-      "to": "route:src/modules/ai.routes.js:4029:/apply",
+      "to": "route:src/modules/ai.routes.js:4112:/apply",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/ai.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/ai.routes.js",
-      "to": "route:src/modules/ai.routes.js:4133:/activity",
+      "to": "route:src/modules/ai.routes.js:4216:/activity",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/ai.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/ai.routes.js",
-      "to": "route:src/modules/ai.routes.js:4518:/tools",
+      "to": "route:src/modules/ai.routes.js:4601:/tools",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/ai.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/ai.routes.js",
-      "to": "route:src/modules/ai.routes.js:4592:/tools/:name",
+      "to": "route:src/modules/ai.routes.js:4675:/tools/:name",
+      "label": "يصرح بالمسار",
+      "evidence": "src/modules/ai.routes.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai.routes.js",
+      "to": "route:src/modules/ai.routes.js:5034:/pending",
+      "label": "يصرح بالمسار",
+      "evidence": "src/modules/ai.routes.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai.routes.js",
+      "to": "route:src/modules/ai.routes.js:5124:/pending/:token/confirm",
+      "label": "يصرح بالمسار",
+      "evidence": "src/modules/ai.routes.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai.routes.js",
+      "to": "route:src/modules/ai.routes.js:5234:/pending/:token/reject",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/ai.routes.js",
       "kind": "source"
@@ -26300,6 +26441,41 @@
       "to": "file:src/modules/pmo/tasks.js",
       "label": "استيراد صريح",
       "evidence": "src/modules/ai/apply.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/confirmations.js",
+      "to": "file:src/core/db/index.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/confirmations.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/confirmations.js",
+      "to": "file:src/core/audit/index.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/confirmations.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/confirmations.js",
+      "to": "file:src/core/http/errors.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/confirmations.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/confirmations.js",
+      "to": "file:src/core/ai/store.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/confirmations.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/confirmations.js",
+      "to": "file:src/modules/ai/team-tools.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/confirmations.js",
       "kind": "source"
     },
     {
@@ -26620,6 +26796,13 @@
     {
       "from": "file:src/modules/ai/team-tools.js",
       "to": "file:src/modules/search/search.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/team-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/team-tools.js",
+      "to": "file:src/modules/notifications/notify.js",
       "label": "استيراد صريح",
       "evidence": "src/modules/ai/team-tools.js",
       "kind": "source"
@@ -33759,6 +33942,13 @@
     },
     {
       "from": "file:src/web/pages.js",
+      "to": "file:src/web/views/ai-changes.js",
+      "label": "استيراد صريح",
+      "evidence": "src/web/pages.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/web/pages.js",
       "to": "file:src/web/views/dev-center.js",
       "label": "استيراد صريح",
       "evidence": "src/web/pages.js",
@@ -33892,126 +34082,126 @@
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:13509:/app/mail/preview/:file",
+      "to": "route:src/web/routes.js:13542:/app/mail/preview/:file",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:15515:/app/finance",
+      "to": "route:src/web/routes.js:15548:/app/finance",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:15515:/app/contract/:id",
+      "to": "route:src/web/routes.js:15548:/app/contract/:id",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:16346:/app/project/:id",
+      "to": "route:src/web/routes.js:16379:/app/project/:id",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:16565:/app/opportunity/:id",
+      "to": "route:src/web/routes.js:16598:/app/opportunity/:id",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:16978:/app/client/:id",
+      "to": "route:src/web/routes.js:17011:/app/client/:id",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:17176:/app/event/:id",
+      "to": "route:src/web/routes.js:17209:/app/event/:id",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:17733:/app/dev-center/:productId",
+      "to": "route:src/web/routes.js:17766:/app/dev-center/:productId",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:17973:/app/dev-center/:productId/report",
+      "to": "route:src/web/routes.js:18006:/app/dev-center/:productId/report",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:18501:/app/person/:id",
+      "to": "route:src/web/routes.js:18534:/app/person/:id",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:19917:/app/team/:section",
+      "to": "route:src/web/routes.js:19950:/app/team/:section",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:20569:/app/team/:section/:id",
+      "to": "route:src/web/routes.js:20602:/app/team/:section/:id",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:20958:/app/:page",
+      "to": "route:src/web/routes.js:20991:/app/:page",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:21343:/app/reports/preview/:key",
+      "to": "route:src/web/routes.js:21376:/app/reports/preview/:key",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:21720:/app/reports/test-send/:key",
+      "to": "route:src/web/routes.js:21753:/app/reports/test-send/:key",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:22050:/app/reports/schedule",
+      "to": "route:src/web/routes.js:22083:/app/reports/schedule",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:22388:/app/reports/schedule/:id/active",
+      "to": "route:src/web/routes.js:22421:/app/reports/schedule/:id/active",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:22602:/app/reports/schedule/:id",
+      "to": "route:src/web/routes.js:22635:/app/reports/schedule/:id",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
@@ -34042,6 +34232,34 @@
       "to": "file:src/web/i18n/glossary.js",
       "label": "استيراد صريح",
       "evidence": "src/web/views/_shared.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/web/views/ai-changes.js",
+      "to": "file:src/web/layout.js",
+      "label": "استيراد صريح",
+      "evidence": "src/web/views/ai-changes.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/web/views/ai-changes.js",
+      "to": "file:src/web/views/_shared.js",
+      "label": "استيراد صريح",
+      "evidence": "src/web/views/ai-changes.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/web/views/ai-changes.js",
+      "to": "file:src/modules/ai/confirmations.js",
+      "label": "استيراد صريح",
+      "evidence": "src/web/views/ai-changes.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/web/views/ai-changes.js",
+      "to": "file:src/core/i18n/time.js",
+      "label": "استيراد صريح",
+      "evidence": "src/web/views/ai-changes.js",
       "kind": "source"
     },
     {
@@ -36898,6 +37116,62 @@
       "to": "file:src/modules/crm/opportunities.js",
       "label": "استيراد صريح",
       "evidence": "tests/integration/activation-defects.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/ai-confirm-gate.test.js",
+      "to": "file:src/core/db/index.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/ai-confirm-gate.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/ai-confirm-gate.test.js",
+      "to": "file:src/core/rbac/index.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/ai-confirm-gate.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/ai-confirm-gate.test.js",
+      "to": "file:src/modules/ai/team-tools.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/ai-confirm-gate.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/ai-confirm-gate.test.js",
+      "to": "file:src/modules/ai/crm-tools.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/ai-confirm-gate.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/ai-confirm-gate.test.js",
+      "to": "file:src/modules/ai/tasks-tools.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/ai-confirm-gate.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/ai-confirm-gate.test.js",
+      "to": "file:src/modules/ai/workflow-tools.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/ai-confirm-gate.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/ai-confirm-gate.test.js",
+      "to": "file:src/modules/ai/confirmations.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/ai-confirm-gate.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/ai-confirm-gate.test.js",
+      "to": "file:src/modules/products/tools.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/ai-confirm-gate.test.js",
       "kind": "source"
     },
     {
@@ -47212,6 +47486,20 @@
       "kind": "source"
     },
     {
+      "from": "page:ai-changes",
+      "to": "file:src/core/policy/pages.js",
+      "label": "سياسة فتح الصفحة",
+      "evidence": "src/web/routes.js",
+      "kind": "source"
+    },
+    {
+      "from": "page:ai-changes",
+      "to": "file:src/web/views/ai-changes.js",
+      "label": "دالة العرض",
+      "evidence": "src/web/views/ai-changes.js",
+      "kind": "source"
+    },
+    {
       "from": "page:ceo",
       "to": "file:src/core/policy/pages.js",
       "label": "سياسة فتح الصفحة",
@@ -53362,6 +53650,48 @@
       "to": "table:deliverable",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
       "evidence": "tests/integration/activation-defects.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/ai-confirm-gate.test.js",
+      "to": "table:opportunity",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/ai-confirm-gate.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/ai-confirm-gate.test.js",
+      "to": "table:audit_log",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/ai-confirm-gate.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/ai-confirm-gate.test.js",
+      "to": "table:sector",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/ai-confirm-gate.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/ai-confirm-gate.test.js",
+      "to": "table:app_user",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/ai-confirm-gate.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/ai-confirm-gate.test.js",
+      "to": "table:client",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/ai-confirm-gate.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/ai-confirm-gate.test.js",
+      "to": "table:stage",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/ai-confirm-gate.test.js",
       "kind": "text-reference"
     },
     {

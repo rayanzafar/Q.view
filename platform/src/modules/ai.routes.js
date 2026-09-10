@@ -24,6 +24,7 @@ import { requireAuth } from '../core/http/context.js';
 import { ask, aiStatus, optionsFor, proposePreview, registerIntents } from '../core/ai/assistant.js';
 import { listActivity } from '../core/ai/store.js';
 import { applyChange } from './ai/apply.js';
+import { listAwaiting, confirmChange, rejectChange } from './ai/confirmations.js';
 import { listTools, runTool, registerTools } from './ai/team-tools.js';
 import { TEAM_INTENTS } from './ai/team-intents.js';
 import { GUIDE_TOOLS } from './ai/guide-tools.js';
@@ -76,3 +77,10 @@ aiRouter.get('/activity', h((req) => listActivity(req.ctx.user, { limit: req.que
 // الكتابة برمز معاينةٍ صادرٍ من أداة المعاينة وحده — نفس انضباط /preview ⟵ /apply أعلاه.
 aiRouter.get('/tools', h((req) => ({ tools: listTools(req.ctx.user) })));
 aiRouter.post('/tools/:name', h((req) => runTool(req.ctx, String(req.params.name || ''), req.body || {})));
+
+// ── تغييرات المساعد المنتظِرة: يقرؤها صاحبها في سند ثم يؤكّد أو يرفض ───────────────────────
+// المساعدُ الخارجي لا يكتب بنداء أداة؛ طلبه يقف هنا حتى تقع الضغطة. والقراران فعلان مؤرَّخان
+// باسم صاحب الحساب في سجل التدقيق، لا حالتان تتبدّلان بصمت.
+aiRouter.get('/pending', h(async (req) => ({ rows: await listAwaiting(req.ctx.user) })));
+aiRouter.post('/pending/:token/confirm', h((req) => confirmChange(req.ctx, String(req.params.token || ''))));
+aiRouter.post('/pending/:token/reject', h((req) => rejectChange(req.ctx, String(req.params.token || ''))));

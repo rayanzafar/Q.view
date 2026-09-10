@@ -177,8 +177,21 @@ test('③ معاينة ثم تأكيد عبر الربط: البلاغ يتغي�
   const token = pv?.structuredContent?.previewToken;
   assert.ok(token, 'المعاينة عبر الربط تعطي رمزاً');
 
-  const applied = await callTool(mgrToken, 'sanad_dc_apply_approve', { previewToken: token });
-  assert.equal(applied?.isError, false, `التنفيذ نجح: ${applied?.content?.[0]?.text || ''}`);
+  // نداءُ التنفيذ عبر الربط لا يكتب: يقف الطلب في «تغييرات تنتظر تأكيدك» حتى يضغط صاحبُ الحساب.
+  const wasStatus = (await db.get('SELECT status FROM product_item WHERE id = ?', [itemId])).status;
+  const held = await callTool(mgrToken, 'sanad_dc_apply_approve', { previewToken: token });
+  assert.equal(held?.isError, true, 'التنفيذ من نافذة المساعد يقف بانتظار صاحبه');
+  assert.match(held?.content?.[0]?.text || '', /لم يُنفَّذ شيء بعد/);
+  assert.equal((await db.get('SELECT status FROM product_item WHERE id = ?', [itemId])).status, wasStatus,
+    'ولم يتغيّر البلاغ بنداء الأداة');
+
+  // ثم يفتح صاحبُ الحساب سند بجلسته هو ويضغط — بالمسار الذي تمشيه الصفحة نفسها.
+  const pending = await api('u_mgr', '/api/ai/pending');
+  assert.equal(pending.status, 200);
+  assert.equal(pending.json.rows.length, 1, 'الطلب ينتظر صاحبه');
+  assert.equal(pending.json.rows[0].askedByClient, 'كلود', 'ومكتوبٌ من طلبه');
+  const applied = await api('u_mgr', `/api/ai/pending/${pending.json.rows[0].token}/confirm`, { method: 'POST' });
+  assert.equal(applied.status, 200, `الضغطة داخل سند نفّذت: ${applied.text}`);
   const row = await db.get('SELECT status FROM product_item WHERE id = ?', [itemId]);
   assert.equal(row.status, 'APPROVED', 'البلاغ صار معتمداً فعلاً');
 

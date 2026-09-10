@@ -200,6 +200,14 @@ async function runPreviewOppCreate(ctx, raw) {
   const { token, expiresAt } = await savePreview(user, {
     type: 'opportunity_create', summary,
     fields: { title_ar: title, client_id: clientId || null, client_name: clientName || null, value_sar: valueSar, stage_id: stageId, win_pct: win },
+    display: [
+      { field_ar: 'عنوان الفرصة', after_ar: title },
+      { field_ar: 'الجهة', after_ar: willBe.client_ar },
+      { field_ar: 'المرحلة', after_ar: st.name_ar },
+      { field_ar: 'القيمة', after_ar: `${valueSar.toLocaleString('en-US')} ريال` },
+      { field_ar: 'احتمال الفوز', after_ar: win == null ? 'غير مُسجَّل' : `${win}%`, note_ar: 'افتراضي هذه المرحلة' },
+      { field_ar: 'مسؤول الفرصة', after_ar: 'أنت' },
+    ],
   }, { intent: 'sanad_preview_opportunity_create', sectorId: user.sector_id || null });
   return envelope('sanad_preview_opportunity_create', {
     scope_ar: scopeArOf(user), units: CRM_UNITS,
@@ -271,7 +279,8 @@ async function runPreviewStageChange(ctx, raw) {
   ];
   const summary = `نقل «${d.opp.title_ar}» من «${from?.name_ar || 'بلا مرحلة'}» إلى «${to.name_ar}»${note ? ` — السبب: ${note}` : ''}.`;
   const { token, expiresAt } = await savePreview(user, {
-    type: 'opportunity_stage', summary, oppId, toStage, note: note || null,
+    type: 'opportunity_stage', summary, oppId, toStage, note: note || null, display: changes,
+    subject_ar: `الفرصة «${d.opp.title_ar}»`,
     fingerprint: fingerprintOf(d.opp, FP_FIELDS),
   }, { intent: 'sanad_preview_stage_change', sectorId: d.opp.sector_id || user.sector_id || null });
   return envelope('sanad_preview_stage_change', {
@@ -416,7 +425,8 @@ async function runPreviewOppUpdate(ctx, raw) {
 
   const summary = `تعديل «${row.title_ar}»: ${changes.map((c) => c.field_ar).join(' · ')}.`;
   const { token, expiresAt } = await savePreview(user, {
-    type: 'opportunity_update', summary, oppId, fields,
+    type: 'opportunity_update', summary, oppId, fields, display: changes,
+    subject_ar: `الفرصة «${row.title_ar}»`,
     fingerprint: fingerprintOf(row, UPD_FP_FIELDS),
   }, { intent: 'sanad_preview_opportunity_update', sectorId: row.sector_id || user.sector_id || null });
   return envelope('sanad_preview_opportunity_update', {
