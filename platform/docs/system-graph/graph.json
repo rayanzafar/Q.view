@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "sourceDigest": "378d0c285fe10f73696d1715f76aa0bf04921245fd9584a8e83cd9c27275691b",
+  "sourceDigest": "112ab0132a733cbec45617ab95ddf5a0d5f5c4e2660baab2124c74ad794e72ab",
   "sourceFiles": 684,
   "counts": {
     "code": 270,
@@ -12,7 +12,7 @@
     "table": 113,
     "role": 19,
     "permission": 9,
-    "issue": 76,
+    "issue": 77,
     "journey": 14,
     "metric": 4,
     "workflow": 6,
@@ -23158,6 +23158,16 @@
           "action": "update",
           "scope": "department"
         }
+      ]
+    },
+    {
+      "id": "issue:KI-125",
+      "kind": "issue",
+      "label": "KI-125 · tooling/sweep",
+      "detail": "**مسحُ المصطلحات لا يفرّق بين نصّ الواجهة وبيانات المستخدم.** `scripts/sweep.mjs` يقرأ نصّ الصفحة كاملاً، فعنوانُ مهمةٍ كتبه موظف بكلمة إنجليزية (مثل «طباعة ملف المنتجات والمنهجيات — Sandbox موحد») يُرصد انحرافاً على `/app/audit` و`/app/team/work` كأنه نصُّ منتج. الحارس نفسه صحيح ولا يُضعَّف: المطلوب أن يستثني المناطق التي تعرض بيانات مصدرية لا نصّ واجهة. انكشف في نشرة v5.91 (2026-09-10) — انحرافان، كلاهما على المحتوى نفسه.",
+      "status": "open",
+      "sources": [
+        "docs/KNOWN-ISSUES.md"
       ]
     },
     {
@@ -70703,6 +70713,13 @@
       "label": "update @ department",
       "evidence": "src/core/rbac/matrix.js",
       "kind": "grant"
+    },
+    {
+      "from": "issue:KI-125",
+      "to": "file:scripts/sweep.mjs",
+      "label": "يشير السجل إلى",
+      "evidence": "docs/KNOWN-ISSUES.md",
+      "kind": "reported"
     },
     {
       "from": "issue:KI-124",
