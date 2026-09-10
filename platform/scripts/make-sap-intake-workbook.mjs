@@ -10,6 +10,15 @@
 //                                                                   ← يفكّ الدفترَ المعبأ إلى ملفات استيراد
 //                                                                     (ورقة واحدة لكل ملف — المحرك يقرأ الورقة الأولى فقط)
 //
+// ويصلح الدفتر لأي قطاع لا لـSAP وحده:
+//   --sector=<اسم القطاع>        ← الاسم العربي كما هو على المنصة (الافتراضي «قطاع SAP»)
+//   --departments=<أ،ب>          ← إدارات القطاع في القائمة المنسدلة (الافتراضي إدارتا قطاع SAP)
+//   --reviewer=<اسم>             ← من يراجع الدفتر قبل الإرسال (الافتراضي مع قطاع SAP: د. نواف الشنبري)
+//   --reviewer-verb=<فعل>        ← «ويُراجع» أو «وتُراجع» بحسب المراجِع (الافتراضي «ويُراجع»)
+//   --prefill=<صفوف.json>        ← نسخة معبأة بما هو مسجَّل على المنصة اليوم
+//                                  (يبنيه scripts/export-sector-intake.mjs — مفتاح لكل ورقة:
+//                                   clients / opportunities / projects / employees / staffing)
+//
 // لماذا يُكتب ملف Excel يدوياً هنا بدل مكتبة النسخ المورَّدة؟ لأن النسخة المجتمعية من المكتبة
 // لا تكتب التنسيقات ولا القوائم المنسدلة ولا تثبيت الصفوف — وهذه هي جوهر «سهل التعبئة».
 // فالملف يُبنى أجزاءً (XML داخل ZIP) بترتيب العناصر الذي يفرضه المعيار، ويُفحص بإعادة قراءته
@@ -23,7 +32,7 @@
 //   • أسماء المراحل هي أسماء المنصة الحية (ليدز/مؤهلة/تقييم العميل/خسارة/معلّقة) — و«فائزة»
 //     غائبة عمداً: ما رسا يُكتب في «المشاريع» وحدها، والمنصة تنشئ فرصته المكسوبة بنفسها.
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { join, basename } from 'node:path';
+import { join, basename, resolve } from 'node:path';
 import { deflateRawSync, inflateRawSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import * as XLSX from '../vendor/xlsx/xlsx.mjs';
@@ -33,8 +42,14 @@ import { normalizeText } from '../src/modules/io/parse.js';
 // ─────────────────────────────────────────────────────────────────────────────
 // §1 الإعدادات — القيم الحية المنسوخة من منصة سند (2026-08-27)
 // ─────────────────────────────────────────────────────────────────────────────
-const SECTOR_NAME = 'قطاع SAP';
+// اسم القطاع وإداراته ومراجعه: قيمٌ تتبع خيارات سطر الأمر، وافتراضها قطاع SAP حرفاً بحرف
+// (فبناء دفتر SAP بلا خيارات يعطي الملف نفسه بايتاً ببايت كما كان قبل التعميم).
+const DEFAULT_SECTOR_NAME = 'قطاع SAP';
+let SECTOR_NAME = DEFAULT_SECTOR_NAME;
 const DEPARTMENTS = ['ادارة مشاريع', 'تطوير اعمال']; // حرفياً كما أُنشئت على المنصة
+let REVIEWER = 'د. نواف الشنبري';      // يُذكر في «من يعبّئ ماذا؟»
+let REVIEWER_SHORT = 'د. نواف';
+let REVIEWER_VERB = 'ويُراجع';         // فعل المراجعة مؤنَّثاً أو مذكَّراً بحسب المراجِع (--reviewer-verb)
 const STAGES = ['ليدز', 'مؤهلة', 'تقييم العميل', 'خسارة', 'معلّقة']; // أسماء المراحل الحية — بلا «فائزة» عمداً
 const PROJECT_STATUS = ['لم يبدأ', 'مُخطَّط', 'قيد التنفيذ', 'متوقّف مؤقتًا', 'مكتمل', 'ملغى'];
 const RAG = ['أخضر', 'أصفر', 'أحمر'];
@@ -77,8 +92,10 @@ const CLIENTS_LIVE = [
 
 const DATA_ROWS = 200;               // صفوف جاهزة (منسّقة وبقوائمها) بعد صف المثال
 const EXAMPLE_ROW = 2;               // صف المثال الرمادي
-const LAST_ROW = EXAMPLE_ROW + DATA_ROWS; // 202
-const EXAMPLE_PREFIX = 'مثال: ';     // بادئة الخلية الأولى في صف المثال — بها يُسقطه --split
+// آخر صف في أوراق التعبئة. الدفتر الفارغ يقف عند 202 كما كان؛ والدفتر المعبأ يمتد بعدد الصفوف
+// المعبأة كي تبقى بعدها 200 صفٍّ فارغ جاهز (نفس مساحة الإضافة التي يجدها الفريق في الفارغ).
+let LAST_ROW = EXAMPLE_ROW + DATA_ROWS; // 202
+export const EXAMPLE_PREFIX = 'مثال: ';     // بادئة الخلية الأولى في صف المثال — بها يُسقطه --split
 
 const COLORS = {
   header: 'FF244A99',   // أزرق المنصة — عمود اختياري
@@ -239,7 +256,7 @@ function stylesXml() {
 // ─────────────────────────────────────────────────────────────────────────────
 // §5 الأجزاء الثابتة
 // ─────────────────────────────────────────────────────────────────────────────
-const SHEET_ORDER = ['التعليمات', 'العملاء', 'الفرص', 'المشاريع', 'الموظفون', 'التسكين', 'قوائم'];
+export const SHEET_ORDER = ['التعليمات', 'العملاء', 'الفرص', 'المشاريع', 'الموظفون', 'التسكين', 'قوائم'];
 function contentTypesXml() {
   const sheets = SHEET_ORDER.map((_, i) =>
     `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('');
@@ -340,16 +357,23 @@ function listMeta() {
   });
   return meta;
 }
-const LIST_META = listMeta();
+// الفهرس يُعاد حسابه قبل كل بناء: طول الأوراق (LAST_ROW) وقيم القوائم قد يتغيّران مع الملء المسبق.
+let LIST_META = listMeta();
 const listRef = (key) => {
   const m = LIST_META.get(key);
   return `'قوائم'!$${m.col}$${m.first}:$${m.col}$${m.last}`;
 };
+// خانة «بيان الملء المسبق» على ورقة «قوائم» المخفية: عدد الصفوف المعبأة لكل ورقة، يكتبها البناء
+// ويقرأها --verify فيتأكد أن ما وصل الفريقَ يطابق ما خرج من المنصة عدداً.
+const MANIFEST_HEADER = 'بيان الملء المسبق';
+const MANIFEST_COL = () => colLetter(LISTS.length + 1);
+let PREFILL_MANIFEST = null;         // 'العملاء=2؛ الفرص=14' — أو null في الدفتر الفارغ
 
 function buildListsSheetXml() {
   const rows = [];
   const maxLast = Math.max(...[...LIST_META.values()].map((m) => m.last));
   const hdr = { r: 1, ht: 22, cells: LISTS.map((l, i) => cellXml(`${colLetter(i + 1)}1`, S.LIST_HDR, l.header)) };
+  if (PREFILL_MANIFEST) hdr.cells.push(cellXml(`${MANIFEST_COL()}1`, S.LIST_HDR, MANIFEST_HEADER));
   rows.push(hdr);
   for (let r = 2; r <= maxLast; r++) {
     const cells = [];
@@ -367,19 +391,21 @@ function buildListsSheetXml() {
         }
       }
     });
+    if (PREFILL_MANIFEST && r === 2) cells.push(cellXml(`${MANIFEST_COL()}2`, S.DEFAULT, PREFILL_MANIFEST));
     if (cells.length) rows.push({ r, cells });
   }
+  const lastCol = colLetter(LISTS.length + (PREFILL_MANIFEST ? 1 : 0));
   return worksheetXml({
     tabColor: COLORS.tabGray,
-    dimension: `A1:${colLetter(LISTS.length)}${maxLast}`,
-    cols: LISTS.map(() => 26),
+    dimension: `A1:${lastCol}${maxLast}`,
+    cols: PREFILL_MANIFEST ? [...LISTS.map(() => 26), 60] : LISTS.map(() => 26),
     rows,
   });
 }
 
 // أوراق التعبئة — الترويسات المستورَدة مطابقة حرفياً لعناوين المحوّلات (labelAr).
 // captured: عمود يُجمع الآن ويُطبَّق يدوياً/بالإسناد لاحقاً — لا يستورده المحرك.
-const SHEETS = [
+export const SHEETS = [
   {
     name: 'العملاء', adapter: 'clients', injectSector: false,
     columns: [
@@ -512,7 +538,7 @@ const KIND_STYLES = {
   textfmt: { data: S.DATA_TEXTFMT, ex: S.EX_TEXTFMT },
 };
 
-function buildDataSheetXml(spec, { demoRows = null } = {}) {
+function buildDataSheetXml(spec, { dataRows = null } = {}) {
   const n = spec.columns.length;
   const rows = [];
   rows.push({
@@ -529,8 +555,8 @@ function buildDataSheetXml(spec, { demoRows = null } = {}) {
       return cellXml(`${colLetter(i + 1)}${EXAMPLE_ROW}`, KIND_STYLES[c.kind].ex, val === '' ? null : val);
     }),
   });
-  // صفوف تجريبية (وضع --demo) ثم صفوف فارغة جاهزة حتى LAST_ROW
-  const demo = demoRows || [];
+  // الصفوف المعبأة (تجريبية مع --demo أو حقيقية مع --prefill) ثم صفوف فارغة جاهزة حتى LAST_ROW
+  const demo = dataRows || [];
   for (let r = EXAMPLE_ROW + 1; r <= LAST_ROW; r++) {
     const d = demo[r - EXAMPLE_ROW - 1];
     rows.push({
@@ -558,12 +584,17 @@ function buildDataSheetXml(spec, { demoRows = null } = {}) {
 }
 
 // ورقة «التعليمات» — الغلاف
-function buildInstructionsSheetXml() {
+function buildInstructionsSheetXml({ prefilled = false } = {}) {
   const lines = [];
   const push = (a, b, sA, sB, ht) => lines.push({ a, b, sA, sB, ht });
-  push(null, 'دفتر بيانات قطاع SAP — منصة سند', S.DEFAULT, S.TITLE, 30);
+  push(null, `دفتر بيانات ${SECTOR_NAME} — منصة سند`, S.DEFAULT, S.TITLE, 30);
   push(null, null);
-  push(null, 'أهلاً بكم. هذا الدفتر هو الخطوة الأولى لقطاع SAP على المنصة: تُجمَع فيه بياناتكم مرة واحدة، ثم تظهر في شاشات المنصة — الفرص والمشاريع والفريق — من غير إدخال يدوي بعد اليوم.', S.DEFAULT, S.BODY, 32);
+  push(null, `أهلاً بكم. هذا الدفتر هو الخطوة الأولى ل${SECTOR_NAME} على المنصة: تُجمَع فيه بياناتكم مرة واحدة، ثم تظهر في شاشات المنصة — الفرص والمشاريع والفريق — من غير إدخال يدوي بعد اليوم.`, S.DEFAULT, S.BODY, 32);
+  // الدفتر المعبأ يصل الفريقَ وفيه ما هو مسجَّل اليوم — فيُقال ذلك صراحةً، وإلا ظنّه الفريق فارغاً
+  // فأعاد كتابة ما هو مكتوب، أو ظنّ المكتوب نهائياً فلم يصحّحه.
+  if (prefilled) {
+    push(null, 'وقد عبّأنا لكم فيه ما هو مسجَّل على المنصة اليوم: راجعوا كل سطر، صحّحوا ما يحتاج تصحيحاً، أكملوا الخانات الفارغة، وأضيفوا في الصفوف التالية ما لم يُسجَّل بعد. والسطر الذي تتركونه كما هو نفهم منه أنه صحيح كما هو.', S.DEFAULT, S.BODY, 32);
+  }
   push(null, null);
   push(null, 'أوراق الدفتر', S.DEFAULT, S.SUBHEAD);
   push(null, '1. العملاء — كل جهة تتعاملون معها، الحالية والمستهدفة.', S.DEFAULT, S.BODY);
@@ -586,15 +617,15 @@ function buildInstructionsSheetXml() {
   push('لاحقاً', 'العمود الرمادي معلومة تُجمَع الآن وتُفعَّل على المنصة لاحقاً: الإدارة، مدير الإدارة، المتابع، البريد.', S.HEADER_CAP, S.BODY, 32);
   push(null, null);
   push(null, 'من يعبّئ ماذا؟', S.DEFAULT, S.SUBHEAD);
-  push(null, 'كل إدارة تعبّئ صفوفها، وعمود «الإدارة» يحدد تبعية كل سجل: «ادارة مشاريع» أو «تطوير اعمال».', S.DEFAULT, S.BODY);
+  push(null, `كل إدارة تعبّئ صفوفها، وعمود «الإدارة» يحدد تبعية كل سجل: ${DEPARTMENTS.map((d) => `«${d}»`).join(' أو ')}.`, S.DEFAULT, S.BODY);
   push(null, 'في ورقة «الموظفون» علّموا «نعم» أمام مدير كل إدارة واكتبوا بريده الإلكتروني ليُفتَح له حساب على المنصة — وكذلك بريد كل زميل يحتاج الدخول.', S.DEFAULT, S.BODY, 32);
-  push(null, 'ويُراجع د. نواف الدفتر كاملاً قبل الإرسال.', S.DEFAULT, S.BODY);
+  push(null, `${REVIEWER_VERB} ${REVIEWER_SHORT} الدفتر كاملاً قبل الإرسال.`, S.DEFAULT, S.BODY);
   push(null, null);
   push(null, 'ملاحظات أخيرة', S.DEFAULT, S.SUBHEAD);
   push(null, '• الرواتب لا تُطلب في هذا الدفتر.', S.DEFAULT, S.BODY);
   push(null, '• الإيراد الشهري المحقق يُسجَّل لاحقاً مع الإدارة المالية — لا مكان له هنا.', S.DEFAULT, S.BODY);
   push(null, '• لا تنتظروا الكمال: أرسلوا ما اكتمل، وما ينقص يُستكمل لاحقاً أو من المنصة مباشرة.', S.DEFAULT, S.BODY);
-  push(null, '• لأي سؤال: د. نواف الشنبري، أو فريق منصة سند.', S.DEFAULT, S.BODY);
+  push(null, `• لأي سؤال: ${REVIEWER}، أو فريق منصة سند.`, S.DEFAULT, S.BODY);
   const rows = lines.map((l, i) => ({
     r: i + 1, ht: l.ht || (l.b || l.a ? 22 : 10),
     cells: [
@@ -614,10 +645,59 @@ function buildInstructionsSheetXml() {
 // ─────────────────────────────────────────────────────────────────────────────
 // §8 تجميع الدفتر
 // ─────────────────────────────────────────────────────────────────────────────
-function buildWorkbook({ demo = false } = {}) {
+// مفتاح الورقة في ملف الملء المسبق: اسم المحوّل (clients/opportunities/projects/employees/staffing)
+// — ويُقبل اسم الورقة العربي أيضاً تسهيلاً.
+export const sheetKey = (spec) => spec.adapter;
+function rowsForSheet(prefill, spec) {
+  if (!prefill) return null;
+  const rows = prefill[sheetKey(spec)] ?? prefill[spec.name];
+  if (rows == null) return [];
+  if (!Array.isArray(rows)) throw new Error(`ورقة «${spec.name}»: الصفوف يجب أن تكون قائمة صفوف`);
+  return rows.map((r, i) => {
+    if (!Array.isArray(r)) throw new Error(`ورقة «${spec.name}» الصف ${i + 1}: الصف يجب أن يكون قائمة خانات بترتيب الأعمدة`);
+    if (r.length > spec.columns.length) throw new Error(`ورقة «${spec.name}» الصف ${i + 1}: خانات أكثر من أعمدة الورقة (${spec.columns.length})`);
+    return spec.columns.map((c, ci) => {
+      const v = r[ci];
+      if (v == null || v === '') return '';
+      if (typeof v === 'number') return Number.isFinite(v) ? v : '';
+      return String(v);
+    });
+  });
+}
+// القوائم المنسدلة الصارمة تُوسَّع بقيم الملء المسبق: قيمةٌ حقيقية على المنصة خارج القائمة كانت
+// ستُرفض في وجه من يحرّر الخانة (أسماء المراحل والإدارات تختلف بين قطاع وقطاع).
+function widenStrictLists(prefill) {
+  if (!prefill) return;
+  for (const spec of SHEETS) {
+    const rows = rowsForSheet(prefill, spec);
+    if (!rows.length) continue;
+    spec.columns.forEach((c, ci) => {
+      if (!c.list || !c.list.strict) return;
+      const list = LISTS.find((l) => l.key === c.list.key);
+      if (!list) return;
+      for (const r of rows) {
+        const v = r[ci];
+        if (v === '' || v == null) continue;
+        if (!list.values.some((x) => String(x) === String(v))) list.values.push(v);
+      }
+    });
+  }
+}
+function buildWorkbook({ demo = false, prefill = null } = {}) {
+  widenStrictLists(prefill);
+  const filled = new Map(SHEETS.map((sp) => [sp, prefill ? rowsForSheet(prefill, sp) : (demo ? sp.demo : null)]));
+  if (prefill) {
+    const maxRows = Math.max(0, ...[...filled.values()].map((r) => (r ? r.length : 0)));
+    LAST_ROW = EXAMPLE_ROW + DATA_ROWS + maxRows;
+    PREFILL_MANIFEST = SHEETS.map((sp) => `${sp.name}=${filled.get(sp).length}`).join('؛ ');
+  } else {
+    LAST_ROW = EXAMPLE_ROW + DATA_ROWS;
+    PREFILL_MANIFEST = null;
+  }
+  LIST_META = listMeta();
   const sheetXmls = [
-    buildInstructionsSheetXml(),
-    ...SHEETS.map((s) => buildDataSheetXml(s, { demoRows: demo ? s.demo : null })),
+    buildInstructionsSheetXml({ prefilled: !!prefill }),
+    ...SHEETS.map((s) => buildDataSheetXml(s, { dataRows: filled.get(s) })),
     buildListsSheetXml(),
   ];
   const entries = [
@@ -736,6 +816,28 @@ function verifyWorkbook(filePath) {
       `${spec.name}: صف المثال لا يبدأ بـ«مثال: »`);
   }
 
+  // 3ب) الملء المسبق: عدد صفوف كل ورقة = ما أعلنه «بيان الملء المسبق» على ورقة «قوائم» المخفية
+  const listsWs = wb.Sheets['قوائم'];
+  const manifestCell = listsWs ? listsWs[`${MANIFEST_COL()}2`] : null;
+  const manifest = manifestCell ? String(manifestCell.v ?? '') : '';
+  if (manifest) {
+    const declared = new Map(manifest.split('؛').map((p) => {
+      const [k, v] = p.split('=');
+      return [String(k || '').trim(), Number(v)];
+    }));
+    for (const spec of SHEETS) {
+      const aoa = XLSX.utils.sheet_to_json(wb.Sheets[spec.name], { header: 1, raw: false, defval: '', blankrows: false });
+      const actual = aoa.slice(1).filter((r) => {
+        const cells = spec.columns.map((_, i) => String(r[i] ?? '').trim());
+        if (!cells.some((c) => c !== '')) return false;
+        return !cells[0].startsWith(EXAMPLE_PREFIX.trim());
+      }).length;
+      const want = declared.get(spec.name);
+      ok(Number.isFinite(want) && want === actual,
+        `${spec.name}: الصفوف المعبأة ${actual} والمعلن ${want ?? '—'}`);
+    }
+  }
+
   // 4) محاكاة التفكيك: ترويسات ملف الاستيراد المفكك تصل المحرك سليمة عبر قارئه الفعلي
   for (const spec of SHEETS) {
     const importable = spec.columns.filter((c) => !c.captured).map((c) => c.header);
@@ -774,26 +876,77 @@ function verifyWorkbook(filePath) {
     for (const f of fails) console.error('  - ' + f);
     process.exit(1);
   }
-  console.log(`✔ الفحص سليم — فحوص ناجحة: ${checks} (${SHEET_ORDER.length} أوراق، ${parts.size} جزءاً)`);
+  console.log(`✔ الفحص سليم — فحوص ناجحة: ${checks} (${SHEET_ORDER.length} أوراق، ${parts.size} جزءاً)${manifest ? ` — ملء مسبق: ${manifest}` : ''}`);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // §11 التشغيل
 // ─────────────────────────────────────────────────────────────────────────────
+// صفوف المثال تسمّي SAP صراحةً (اسم منتج، مسمّى وظيفي، إدارة من إدارات قطاع SAP) — وهي في
+// دفتر قطاعٍ آخر نصٌّ غريب، وخانةُ «الإدارة» فيها تخالف قائمة إدارات ذلك القطاع فيرفضها إكسل.
+// فتُستبدل الخانات التي تسمّي SAP وحدها بأمثلةٍ محايدة (جهة حكومية، عمل حوكمة/تنظيم، استشاري)،
+// وتبقى نصوص قطاع SAP حرفاً بحرف حين لا يُمرَّر --sector فيخرج دفتره بايتاً ببايت كما كان.
+const deptLike = (re) => DEPARTMENTS.find((d) => re.test(d)) || DEPARTMENTS[0] || '';
+// مفردات «الدور» في دفتر قطاعٍ آخر هي مفردات المنصة نفسها (ROLE_AR في modules/team/resources.js):
+// ما يُكتب هنا يعود من الاستيراد إلى مفتاحه المخزَّن فيدور دورةً كاملة بلا تغيّر قيمة.
+const PLATFORM_ROLES = ['عضو فريق', 'قائد الفريق', 'مدير المشروع', 'مراجع', 'معتمِد', 'مالك'];
+function retargetExamplesToSector() {
+  const pmoDept = deptLike(/مشاريع/);
+  const bdDept = deptLike(/تطوير/);
+  const projectExample = 'إعادة تصميم الهيكل التنظيمي لجهة حكومية';
+  const sheet = (name) => SHEETS.find((sp) => sp.name === name);
+  const set = (name, idx, val) => { sheet(name).example[idx] = val; };
+  set('الفرص', 0, 'بناء إطار حوكمة وسياسات لجهة حكومية');
+  set('الفرص', 2, bdDept);
+  set('الفرص', 7, REVIEWER);
+  set('المشاريع', 0, projectExample);
+  set('المشاريع', 2, pmoDept);
+  set('الموظفون', 2, 'استشاري أول');
+  set('الموظفون', 3, pmoDept);
+  set('التسكين', 1, projectExample);
+  set('التسكين', 3, PLATFORM_ROLES[1]);
+  PROJECT_ROLES.splice(0, PROJECT_ROLES.length, ...PLATFORM_ROLES);
+}
+
+function applySectorArgs(args) {
+  if (args.sector && args.sector !== true) SECTOR_NAME = String(args.sector).trim();
+  if (args.departments && args.departments !== true) {
+    const deps = String(args.departments).split(/[,،]/).map((d) => d.trim()).filter(Boolean);
+    if (deps.length) DEPARTMENTS.splice(0, DEPARTMENTS.length, ...deps);
+  }
+  if (args['reviewer-verb'] && args['reviewer-verb'] !== true) REVIEWER_VERB = String(args['reviewer-verb']).trim();
+  if (args.reviewer && args.reviewer !== true) { REVIEWER = String(args.reviewer).trim(); REVIEWER_SHORT = REVIEWER; }
+  else if (SECTOR_NAME !== DEFAULT_SECTOR_NAME) { REVIEWER = 'قائد القطاع'; REVIEWER_SHORT = 'قائد القطاع'; }
+  if (SECTOR_NAME !== DEFAULT_SECTOR_NAME) retargetExamplesToSector();
+}
+const fileSlug = () => SECTOR_NAME.replace(/\s+/g, '-');
+
 function main() {
   const args = Object.fromEntries(process.argv.slice(2).map((a) => {
     const m = a.match(/^--([^=]+)(?:=(.*))?$/); return m ? [m[1], m[2] ?? true] : [a, true];
   }));
   if (args.verify) { verifyWorkbook(String(args.verify)); return; }
+  applySectorArgs(args);
   if (args.split) {
-    splitWorkbook(String(args.split), String(args.outdir || 'استيراد-قطاع-SAP'));
+    splitWorkbook(String(args.split), String(args.outdir || `استيراد-${fileSlug()}`));
     return;
   }
   const demo = !!args.demo;
-  const out = String(args.demo || args.out || 'دفتر-بيانات-قطاع-SAP.xlsx');
-  const buf = buildWorkbook({ demo });
+  let prefill = null;
+  if (args.prefill && args.prefill !== true) {
+    prefill = JSON.parse(readFileSync(String(args.prefill), 'utf8'));
+    const known = new Set(SHEETS.flatMap((sp) => [sheetKey(sp), sp.name]));
+    const strays = Object.keys(prefill).filter((k) => !known.has(k));
+    if (strays.length) throw new Error(`مفاتيح لا تقابل أوراق الدفتر: ${strays.join('، ')}`);
+  }
+  const out = String(args.demo || args.out
+    || (prefill ? `دفتر-بيانات-${fileSlug()}-المعبأ.xlsx` : `دفتر-بيانات-${fileSlug()}.xlsx`));
+  const buf = buildWorkbook({ demo, prefill });
   writeFileSync(out, buf);
-  console.log(`✔ بُني ${out} (${(buf.length / 1024).toFixed(0)} ك.ب)${demo ? ' — بصفوف تجريبية' : ''}`);
-  console.log(`  الأوراق: ${SHEET_ORDER.join('، ')} — الصفوف الجاهزة في كل ورقة: ${DATA_ROWS}`);
+  const filledNote = prefill ? ` — معبأ ببيانات المنصة (${PREFILL_MANIFEST})` : (demo ? ' — بصفوف تجريبية' : '');
+  console.log(`✔ بُني ${out} (${(buf.length / 1024).toFixed(0)} ك.ب)${filledNote}`);
+  console.log(`  الأوراق: ${SHEET_ORDER.join('، ')} — الصفوف الفارغة الجاهزة في كل ورقة: ${DATA_ROWS}`);
 }
-main();
+// يُستورَد من scripts/export-sector-intake.mjs لقراءة مواصفة الأوراق — فلا يُشغَّل البناء إلا
+// عند استدعاء الملف مباشرةً من سطر الأمر.
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();

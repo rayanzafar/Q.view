@@ -9,7 +9,24 @@ import { audit } from '../../../core/audit/index.js';
 import { nowIso } from '../../../core/util/ids.js';
 import { forbidden, notFound } from '../../../core/http/errors.js';
 import { assignEmployee, setAllocation } from '../../pmo/projects.js';
+import { ROLE_AR } from '../../team/resources.js';
+import { normalizeText } from '../parse.js';
 import { MONTHS_AR } from '../../../core/i18n/time.js';
+
+// «الدور» في الملف كلمةٌ عربية، وفي القاعدة مفتاحٌ إنجليزي (member/lead/pm/…). والعمود ليس
+// قائمةً مغلقة: سجلاتٌ حيةٌ تحمل نصاً حراً كتبه الفريق في دفتر البيانات («استشاري رئيسي»،
+// «قائد المشروع»)، فالمطابقة **إضافيةٌ لا حاصرة** — ما طابق مفردات المنصة عاد مفتاحه، وما لم
+// يطابق بقي كما كُتب بلا خطأ. المفردات مصدرها واحد: ROLE_AR (modules/team/resources.js) وهي
+// نفسها التي تعرضها شاشات الفريق، فلا تُكتب هنا ثانيةً ولا تفترق عنها.
+const ROLE_KEY_BY_LABEL = new Map(Object.entries(ROLE_AR)
+  .flatMap(([k, ar]) => [[normalizeText(k), k], [normalizeText(ar), k]]));
+export const roleKeyOf = (raw) => {
+  const s = String(raw == null ? '' : raw).trim();
+  if (!s) return null;
+  return ROLE_KEY_BY_LABEL.get(normalizeText(s)) || s;
+};
+// التصدير يكتب الكلمة العربية لا المفتاح: خانةٌ يقرؤها الفريق ويقبلها المستورِد فتعود كما كانت.
+export const roleLabelOf = (v) => (v == null || v === '' ? '' : (ROLE_AR[String(v).toLowerCase()] || String(v)));
 
 const monthsOf = (json) => {
   let mj = {}; try { mj = JSON.parse(json || '{}'); } catch { mj = {}; }
@@ -74,6 +91,8 @@ export default {
 
   normalizeRow(ctx, mapped) {
     mapped.year = mapped.year || new Date().getUTCFullYear();
+    // «عضو فريق» → member قبل المقارنة والحفظ، وإلا صُنّف كل صفٍّ مصدَّرٍ تحديثاً بلا تغيير حقيقي
+    if (mapped.type != null) mapped.type = roleKeyOf(mapped.type);
     mapped._months = plannedMonths(mapped);
     return mapped;
   },
@@ -112,7 +131,7 @@ export default {
       const out = {
         employee: a.emp_name || a.person_name_ar,
         project: inReach(a.project_id) ? (a.proj_code || a.proj_name || a.project_name) : '—',
-        year: a.year, type: a.type,
+        year: a.year, type: roleLabelOf(a.type),
       };
       months.forEach((v, i) => { out[`m${i + 1}`] = v > 0 ? Math.round(v * 1000) / 10 : null; });
       return out;
