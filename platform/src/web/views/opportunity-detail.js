@@ -309,6 +309,17 @@ export async function opportunityDetailPage(user, oppId, opts = {}) {
           value="${esc(o.delivery_location || '')}" maxlength="160"
           placeholder="مثال: منصة اعتماد · الرياض — مقرّ الجهة · عن بُعد">`,
     'أين تُسلَّم أو تُنفَّذ — يُكتب مبكراً لأنه يحكم السفر والتسعير والتسكين', 2)}
+        ${/* حقول المنافسة الثابتة (الترحيلة 048): ما تسأله كل منافسة — رقمها وموعدها ومدتها
+              وشركاؤها. مفتوحةٌ في كل مرحلة كموقع التسليم، والفراغ فيها «لم يُحدَّد» لا صفر. */ ''}
+        ${fld('رقم المنافسة', `<input id="oc-tender" class="input tnum" style="width:100%;font-size:12.5px"
+          value="${esc(o.tender_no || '')}" maxlength="60" placeholder="مرجع المنافسة لدى الجهة">`, 'كما في كراسة الشروط أو منصة الطرح')}
+        ${fld('موعد تقديم العرض', `<input id="oc-due" class="input tnum" type="date" style="width:100%;font-size:12.5px" value="${esc(o.submission_due || '')}">`)}
+        ${fld('تاريخ تقديم العرض', `<input id="oc-submitted" class="input tnum" type="date" style="width:100%;font-size:12.5px" value="${esc(o.submitted_on || '')}">`, 'يبقى فارغاً حتى يُقدَّم')}
+        ${fld('مدة التنفيذ بالأشهر', `<input id="oc-duration" class="input tnum" type="number" min="1" max="240" step="1" style="width:100%;font-size:12.5px"
+          value="${o.duration_months == null ? '' : Number(o.duration_months)}" placeholder="مثل 24">`)}
+        ${fld('شركاء التحالف', `<input id="oc-consortium" class="input" style="width:100%;font-size:12.5px"
+          value="${esc(o.consortium_partners || '')}" maxlength="300" placeholder="مثال: رؤية الخبراء + شريك التنفيذ">`,
+    'يبقى فارغاً إن كانت الشركة وحدها', 2)}
       </div>
       ${vatNote}
       <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-top:.85rem;padding-top:.7rem;border-top:1px dashed var(--line)">
@@ -346,6 +357,43 @@ export async function opportunityDetailPage(user, oppId, opts = {}) {
       ${kv('نوع الطرح', `<span title="${esc(SOLICITATION_TYPE_TIP[o.solicitation_type] || '')}">${esc(solicitationTypeLabel(o.solicitation_type))}</span>`)}
       ${kv('موقع التسليم', o.delivery_location ? esc(o.delivery_location) : '<span style="color:var(--faint)">لم يُحدَّد</span>')}
       ${kv('الرمز', `<bdi class="tnum">${esc(o.code || '—')}</bdi>`)}
+    </div>`);
+  // ── المنافسة: الثابت الذي تسأله كل منافسة (الترحيلة 048) ─────────────────────
+  // الفراغ يُقال «لم يُحدَّد» بلفظه — والتاريخ الذي لم يقع بعد «لم يُقدَّم بعد» لا فراغاً.
+  const notSet = (t = 'لم يُحدَّد') => `<span style="color:var(--faint)">${t}</span>`;
+  const dayCell = (v) => (v ? `<span class="tnum">${esc(v)}</span>` : notSet());
+  const monthsAr = (n) => (n === 1 ? 'شهر واحد' : n === 2 ? 'شهران' : n <= 10 ? `<span class="tnum">${n}</span> أشهر` : `<span class="tnum">${n}</span> شهراً`);
+  const tenderCard = card(`${secHead('المنافسة')}
+    <div style="padding:.3rem 1rem .8rem">
+      ${kv('رقم المنافسة', o.tender_no ? `<bdi class="tnum">${esc(o.tender_no)}</bdi>` : notSet())}
+      ${kv('موعد تقديم العرض', dayCell(o.submission_due))}
+      ${kv('تاريخ تقديم العرض', o.submitted_on ? dayCell(o.submitted_on) : notSet('لم يُقدَّم بعد'))}
+      ${kv('مدة التنفيذ', o.duration_months == null ? notSet('لم تُحدَّد') : monthsAr(Number(o.duration_months)))}
+      ${kv('شركاء التحالف', o.consortium_partners ? esc(o.consortium_partners) : notSet('الشركة وحدها — لا تحالف مسجَّل'))}
+    </div>`);
+  // ── حقول إضافية: ما تسأله هذه المنافسة وحدها — اسمٌ وقيمة (opportunity_field) ─────
+  // للمحرِّر صفوفٌ تُكتب في مكانها (حفظ/حذف) وسطرُ إضافة؛ ولغيره قراءةٌ صِرف.
+  const fieldGrid = 'display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr) auto;gap:.4rem;align-items:center;padding:.35rem 0;border-bottom:1px dashed var(--line)';
+  const fieldRow = (f) => (d.canEdit
+    ? `<div class="opp-field" data-field-id="${esc(f.id)}" style="${fieldGrid}">
+        <input class="input" data-field-name value="${esc(f.name_ar)}" maxlength="60" aria-label="اسم الحقل" style="font-size:12.5px;min-width:0">
+        <input class="input" data-field-value value="${esc(f.value_text || '')}" maxlength="500" aria-label="قيمة الحقل" style="font-size:12.5px;min-width:0">
+        <span style="display:flex;gap:.25rem;flex:0 0 auto">
+          <button type="button" class="btn btn-sm" data-action="opp-field-save" data-id="${esc(f.id)}">حفظ</button>
+          <button type="button" class="btn btn-ghost btn-sm" data-action="opp-field-remove" data-id="${esc(f.id)}" data-name="${esc(f.name_ar)}">حذف</button>
+        </span>
+      </div>`
+    : kv(esc(f.name_ar), f.value_text ? esc(f.value_text) : notSet('بلا قيمة')));
+  const addFieldRow = !d.canEdit ? '' : `<div class="opp-field" data-field-id="" style="${fieldGrid};border-bottom:0;margin-top:.35rem">
+        <input class="input" data-field-name placeholder="اسم الحقل — مثل «رقم الضمان»" maxlength="60" aria-label="اسم حقل جديد" style="font-size:12.5px;min-width:0">
+        <input class="input" data-field-value placeholder="القيمة" maxlength="500" aria-label="قيمة الحقل الجديد" style="font-size:12.5px;min-width:0">
+        <button type="button" class="btn btn-primary btn-sm" data-action="opp-field-save" data-id="" style="flex:0 0 auto">إضافة</button>
+      </div>`;
+  const fieldsCard = card(`${secHead('حقول إضافية', `<span style="font-size:11px;color:var(--muted)">${d.fields.length ? `<span class="tnum">${d.fields.length}</span>` : 'خاصة بهذه الفرصة'}</span>`)}
+    <div style="padding:.3rem 1rem .8rem">
+      ${d.fields.map(fieldRow).join('') || (d.canEdit ? '' : '<div style="font-size:var(--fs-body);color:var(--faint);padding:.3rem 0">لا حقول إضافية على هذه الفرصة.</div>')}
+      ${addFieldRow}
+      ${d.canEdit ? '<div style="font-size:10.5px;color:var(--faint);margin-top:.45rem;line-height:1.6">ما تسأله هذه المنافسة وحدها — اسمٌ وقيمة. والثابتُ لكل المنافسات (الرقم والموعد والمدة والشركاء) في بطاقة «المنافسة» ونافذة التعديل.</div>' : ''}
     </div>`);
   // صفوف الملكية تُرسم مرتين (نظرة عامة + تبويب الفريق) من بانٍ واحد — عنوانُ المالك وحده يختلف.
   const ownRows = (ownerLabel) => `
@@ -532,7 +580,7 @@ export async function opportunityDetailPage(user, oppId, opts = {}) {
   const panelSec = (k, label, inner) => `<section id="opp-panel-${k}" role="tabpanel" aria-label="${label}"${tab === k ? '' : ' hidden'}>${inner}</section>`;
   const grid = (inner, min = 300) => `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(${min}px,1fr));gap:.9rem;align-items:start">${inner}</div>`;
   const panels = [
-    panelSec('overview', 'نظرة عامة', grid(`${summaryCard}${commercialCard}${classificationCard}${ownershipCard}${projectCard}`)),
+    panelSec('overview', 'نظرة عامة', grid(`${summaryCard}${commercialCard}${classificationCard}${tenderCard}${fieldsCard}${ownershipCard}${projectCard}`)),
     panelSec('activity', 'النشاط والتواصل', activityCard),
     panelSec('docs', 'المستندات والروابط', grid(`${filesCard}${linksCard}`, 320)),
     panelSec('team', 'الفريق والملكية', grid(`${card(`${secHead('المالك والإدارات')}<div style="padding:.3rem 1rem .55rem">${ownRows('المالك الحالي')}</div>`)}${teamCard}`, 320)),

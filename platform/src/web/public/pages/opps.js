@@ -589,6 +589,32 @@
     } catch (err) { toast(err.message, true); }
   }
 
+  // ── الحقول الحرّة على الفرصة (الترحيلة 048): اسمٌ وقيمة تُكتب في مكانها ──
+  // الصفّ الجديد بلا معرّف (إضافة)، والقائم بمعرّفه (حفظ). والخادم يحسم التفرّد والصلاحية.
+  async function oppFieldSave(btn) {
+    var wrap = btn.closest('.opp-field'); if (!wrap) return;
+    var nameEl = wrap.querySelector('[data-field-name]'); var valEl = wrap.querySelector('[data-field-value]');
+    var name = ((nameEl || {}).value || '').trim(); var value = ((valEl || {}).value || '').trim();
+    if (!name) { toast('اكتب اسم الحقل أولاً — مثل «رقم الضمان»', true); if (nameEl) nameEl.focus(); return; }
+    var body = { name_ar: name, value_text: value };
+    if (btn.dataset.id) body.id = btn.dataset.id;
+    btn.disabled = true;
+    try {
+      await api('/opportunities/' + encodeURIComponent(S().oppId || '') + '/fields', 'POST', body);
+      toast(btn.dataset.id ? 'حُفظ الحقل ✓' : 'أُضيف الحقل ✓'); setTimeout(function () { location.reload(); }, 450);
+    } catch (err) { btn.disabled = false; toast(err.message, true); }
+  }
+  // حذفٌ بضغطتين لا بنافذة: الأولى تحوّل الزرّ إلى «تأكيد الحذف» والثانية تنفّذ — كما في «بلا جهة».
+  async function oppFieldRemove(btn) {
+    if (!btn.dataset.id) return;
+    if (btn.dataset.sure !== '1') { btn.dataset.sure = '1'; btn.textContent = 'تأكيد الحذف'; btn.style.color = '#b91c1c'; return; }
+    btn.disabled = true;
+    try {
+      await api('/opportunities/fields/' + encodeURIComponent(btn.dataset.id), 'DELETE');
+      toast('حُذف الحقل ✓'); setTimeout(function () { location.reload(); }, 450);
+    } catch (err) { btn.disabled = false; toast(err.message, true); }
+  }
+
   // ── التحكم بالفرصة: القطاع والإدارة والمسؤول والجهة والقيمة والسنة في حفظةٍ واحدة ──
   // حفظةٌ واحدة لا حفظةٌ لكل حقل: نقل القطاع واختيار إدارته الجديدة قرارٌ واحد، وتقسيمه على
   // نداءين يترك الفرصة بين النداءين في قطاعٍ جديد بإدارةٍ من القطاع القديم — وهو بالضبط
@@ -606,6 +632,12 @@
       // الفراغ يُرسَل نصّاً فارغاً لا يُحذف من الحمولة: حذفُه يجعل «مسحتُ الموقع» و«لم أمسّه»
       // طلباً واحداً، فلا يُمحى ما كُتب خطأً أبداً. والخادم يترجم الفراغ إلى «لم يُحدَّد».
       delivery_location: ctlVal('oc-location') || '',
+      // حقول المنافسة الثابتة (الترحيلة 048) بالقاعدة نفسها: الفراغ يُرسَل فراغاً فيُمسح فعلاً.
+      tender_no: ctlVal('oc-tender') || '',
+      submission_due: ctlVal('oc-due') || '',
+      submitted_on: ctlVal('oc-submitted') || '',
+      duration_months: ctlVal('oc-duration') || '',
+      consortium_partners: ctlVal('oc-consortium') || '',
       // الإدارات المشاركة تُرسَل **كمجموعة كاملة** لا كإضافةٍ واحدة: ما في الشاشة هو الحقيقة
       // الجديدة، فرفعُ إدارةٍ يكون بإلغاء تحديدها لا بزرّ حذفٍ ثانٍ. ومصفوفةٌ فارغة تعني
       // «لا مشارك» — ولذلك تُرسَل دائماً ولا تُحذف من الحمولة عند الفراغ.
@@ -1134,6 +1166,8 @@
       if (act === 'opp-move-sector') { oppSectorModal(actEl.dataset.id, actEl.dataset.sector || ''); return; }
       if (act === 'opp-sector-confirm') { oppSectorConfirm(actEl.dataset.id); return; }
       if (act === 'opp-control-save') { oppControlSave(actEl.dataset.id); return; }
+      if (act === 'opp-field-save') { oppFieldSave(actEl); return; }
+      if (act === 'opp-field-remove') { oppFieldRemove(actEl); return; }
       if (act === 'opp-doc-add') { oppDocAdd(actEl.dataset.id); return; }
       if (act === 'opp-doc-del') { oppDocDel(actEl.dataset.id); return; }
       return;

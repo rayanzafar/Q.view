@@ -1,15 +1,15 @@
 {
   "version": 1,
-  "sourceDigest": "f9aefbf1a68f514b7d8407446d6a040f46f021052816026a3fcf79ea80215128",
-  "sourceFiles": 688,
+  "sourceDigest": "ed6857371fa04b7f2c1f040c146d5d7fc87c71df0ba9dd56a4ef55c140bbb269",
+  "sourceFiles": 692,
   "counts": {
-    "code": 271,
-    "test": 308,
+    "code": 273,
+    "test": 309,
     "automation": 59,
     "module": 20,
-    "route": 349,
+    "route": 352,
     "page": 27,
-    "table": 113,
+    "table": 114,
     "role": 19,
     "permission": 9,
     "issue": 77,
@@ -800,6 +800,24 @@
       "detail": "src/modules/crm/oppdocs.routes.js",
       "sources": [
         "src/modules/crm/oppdocs.routes.js"
+      ]
+    },
+    {
+      "id": "file:src/modules/crm/oppfields.js",
+      "kind": "code",
+      "label": "oppfields.js",
+      "detail": "src/modules/crm/oppfields.js",
+      "sources": [
+        "src/modules/crm/oppfields.js"
+      ]
+    },
+    {
+      "id": "file:src/modules/crm/oppfields.routes.js",
+      "kind": "code",
+      "label": "oppfields.routes.js",
+      "detail": "src/modules/crm/oppfields.routes.js",
+      "sources": [
+        "src/modules/crm/oppfields.routes.js"
       ]
     },
     {
@@ -3422,6 +3440,15 @@
       ]
     },
     {
+      "id": "file:tests/integration/opportunity-tender-fields.test.js",
+      "kind": "test",
+      "label": "opportunity-tender-fields.test.js",
+      "detail": "tests/integration/opportunity-tender-fields.test.js",
+      "sources": [
+        "tests/integration/opportunity-tender-fields.test.js"
+      ]
+    },
+    {
       "id": "file:tests/integration/opps-filters-and-clock.test.js",
       "kind": "test",
       "label": "opps-filters-and-clock.test.js",
@@ -5848,6 +5875,8 @@
         "src/modules/crm/opp-project-sync.js",
         "src/modules/crm/oppdocs.js",
         "src/modules/crm/oppdocs.routes.js",
+        "src/modules/crm/oppfields.js",
+        "src/modules/crm/oppfields.routes.js",
         "src/modules/crm/opportunities.js",
         "src/modules/crm/oppteam.js",
         "src/modules/crm/oppteam.routes.js"
@@ -6170,7 +6199,7 @@
       "path": "/tools/:name"
     },
     {
-      "id": "route:src/modules/api.routes.js:3966:/opportunities",
+      "id": "route:src/modules/api.routes.js:4059:/opportunities",
       "kind": "route",
       "label": "GET /opportunities",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6181,7 +6210,7 @@
       "path": "/opportunities"
     },
     {
-      "id": "route:src/modules/api.routes.js:4060:/opportunities",
+      "id": "route:src/modules/api.routes.js:4153:/opportunities",
       "kind": "route",
       "label": "POST /opportunities",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6192,7 +6221,7 @@
       "path": "/opportunities"
     },
     {
-      "id": "route:src/modules/api.routes.js:4149:/opportunities/:id",
+      "id": "route:src/modules/api.routes.js:4242:/opportunities/:id",
       "kind": "route",
       "label": "GET /opportunities/:id",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6203,7 +6232,7 @@
       "path": "/opportunities/:id"
     },
     {
-      "id": "route:src/modules/api.routes.js:4248:/opportunities/:id/detail",
+      "id": "route:src/modules/api.routes.js:4341:/opportunities/:id/detail",
       "kind": "route",
       "label": "GET /opportunities/:id/detail",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6214,7 +6243,7 @@
       "path": "/opportunities/:id/detail"
     },
     {
-      "id": "route:src/modules/api.routes.js:4357:/opportunities/:id",
+      "id": "route:src/modules/api.routes.js:4450:/opportunities/:id",
       "kind": "route",
       "label": "PATCH /opportunities/:id",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6225,7 +6254,7 @@
       "path": "/opportunities/:id"
     },
     {
-      "id": "route:src/modules/api.routes.js:4466:/opportunities/:id/stage",
+      "id": "route:src/modules/api.routes.js:4559:/opportunities/:id/stage",
       "kind": "route",
       "label": "POST /opportunities/:id/stage",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6236,7 +6265,7 @@
       "path": "/opportunities/:id/stage"
     },
     {
-      "id": "route:src/modules/api.routes.js:4678:/opportunities/:id/reversal",
+      "id": "route:src/modules/api.routes.js:4771:/opportunities/:id/reversal",
       "kind": "route",
       "label": "POST /opportunities/:id/reversal",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6247,7 +6276,7 @@
       "path": "/opportunities/:id/reversal"
     },
     {
-      "id": "route:src/modules/api.routes.js:4803:/opportunities/:id/sector",
+      "id": "route:src/modules/api.routes.js:4896:/opportunities/:id/sector",
       "kind": "route",
       "label": "POST /opportunities/:id/sector",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6258,7 +6287,7 @@
       "path": "/opportunities/:id/sector"
     },
     {
-      "id": "route:src/modules/api.routes.js:4933:/pipeline",
+      "id": "route:src/modules/api.routes.js:5026:/pipeline",
       "kind": "route",
       "label": "GET /pipeline",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6269,7 +6298,7 @@
       "path": "/pipeline"
     },
     {
-      "id": "route:src/modules/api.routes.js:5028:/projects",
+      "id": "route:src/modules/api.routes.js:5121:/projects",
       "kind": "route",
       "label": "GET /projects",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6280,7 +6309,7 @@
       "path": "/projects"
     },
     {
-      "id": "route:src/modules/api.routes.js:5116:/projects",
+      "id": "route:src/modules/api.routes.js:5209:/projects",
       "kind": "route",
       "label": "POST /projects",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6291,7 +6320,7 @@
       "path": "/projects"
     },
     {
-      "id": "route:src/modules/api.routes.js:5200:/projects/:id",
+      "id": "route:src/modules/api.routes.js:5293:/projects/:id",
       "kind": "route",
       "label": "GET /projects/:id",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6302,7 +6331,7 @@
       "path": "/projects/:id"
     },
     {
-      "id": "route:src/modules/api.routes.js:5294:/projects/:id",
+      "id": "route:src/modules/api.routes.js:5387:/projects/:id",
       "kind": "route",
       "label": "PATCH /projects/:id",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6313,7 +6342,7 @@
       "path": "/projects/:id"
     },
     {
-      "id": "route:src/modules/api.routes.js:5398:/intake/parse",
+      "id": "route:src/modules/api.routes.js:5491:/intake/parse",
       "kind": "route",
       "label": "POST /intake/parse",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6324,7 +6353,7 @@
       "path": "/intake/parse"
     },
     {
-      "id": "route:src/modules/api.routes.js:5501:/intake/create",
+      "id": "route:src/modules/api.routes.js:5594:/intake/create",
       "kind": "route",
       "label": "POST /intake/create",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6335,7 +6364,7 @@
       "path": "/intake/create"
     },
     {
-      "id": "route:src/modules/api.routes.js:5678:/projects/:id/deliverables/parse",
+      "id": "route:src/modules/api.routes.js:5771:/projects/:id/deliverables/parse",
       "kind": "route",
       "label": "POST /projects/:id/deliverables/parse",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6346,7 +6375,7 @@
       "path": "/projects/:id/deliverables/parse"
     },
     {
-      "id": "route:src/modules/api.routes.js:5813:/projects/:id/deliverables/bulk",
+      "id": "route:src/modules/api.routes.js:5906:/projects/:id/deliverables/bulk",
       "kind": "route",
       "label": "POST /projects/:id/deliverables/bulk",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6357,7 +6386,7 @@
       "path": "/projects/:id/deliverables/bulk"
     },
     {
-      "id": "route:src/modules/api.routes.js:5955:/projects/:id/staffing",
+      "id": "route:src/modules/api.routes.js:6048:/projects/:id/staffing",
       "kind": "route",
       "label": "GET /projects/:id/staffing",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6368,7 +6397,7 @@
       "path": "/projects/:id/staffing"
     },
     {
-      "id": "route:src/modules/api.routes.js:6154:/projects/:id/candidates",
+      "id": "route:src/modules/api.routes.js:6247:/projects/:id/candidates",
       "kind": "route",
       "label": "GET /projects/:id/candidates",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6379,7 +6408,7 @@
       "path": "/projects/:id/candidates"
     },
     {
-      "id": "route:src/modules/api.routes.js:6278:/projects/:id/team-load",
+      "id": "route:src/modules/api.routes.js:6371:/projects/:id/team-load",
       "kind": "route",
       "label": "GET /projects/:id/team-load",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6390,7 +6419,7 @@
       "path": "/projects/:id/team-load"
     },
     {
-      "id": "route:src/modules/api.routes.js:6461:/projects/:id/progress",
+      "id": "route:src/modules/api.routes.js:6554:/projects/:id/progress",
       "kind": "route",
       "label": "GET /projects/:id/progress",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6401,7 +6430,7 @@
       "path": "/projects/:id/progress"
     },
     {
-      "id": "route:src/modules/api.routes.js:6654:/projects/:id/documents",
+      "id": "route:src/modules/api.routes.js:6747:/projects/:id/documents",
       "kind": "route",
       "label": "GET /projects/:id/documents",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6412,7 +6441,7 @@
       "path": "/projects/:id/documents"
     },
     {
-      "id": "route:src/modules/api.routes.js:6764:/projects/:id/documents",
+      "id": "route:src/modules/api.routes.js:6857:/projects/:id/documents",
       "kind": "route",
       "label": "POST /projects/:id/documents",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6423,7 +6452,7 @@
       "path": "/projects/:id/documents"
     },
     {
-      "id": "route:src/modules/api.routes.js:6888:/projects/documents/:docId",
+      "id": "route:src/modules/api.routes.js:6981:/projects/documents/:docId",
       "kind": "route",
       "label": "DELETE /projects/documents/:docId",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6434,7 +6463,7 @@
       "path": "/projects/documents/:docId"
     },
     {
-      "id": "route:src/modules/api.routes.js:7007:/projects/:id/updates",
+      "id": "route:src/modules/api.routes.js:7100:/projects/:id/updates",
       "kind": "route",
       "label": "GET /projects/:id/updates",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6445,7 +6474,7 @@
       "path": "/projects/:id/updates"
     },
     {
-      "id": "route:src/modules/api.routes.js:7130:/projects/:id/staff",
+      "id": "route:src/modules/api.routes.js:7223:/projects/:id/staff",
       "kind": "route",
       "label": "POST /projects/:id/staff",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6456,7 +6485,7 @@
       "path": "/projects/:id/staff"
     },
     {
-      "id": "route:src/modules/api.routes.js:7338:/staffing/internal",
+      "id": "route:src/modules/api.routes.js:7431:/staffing/internal",
       "kind": "route",
       "label": "POST /staffing/internal",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6467,7 +6496,7 @@
       "path": "/staffing/internal"
     },
     {
-      "id": "route:src/modules/api.routes.js:7534:/staffing/bulk",
+      "id": "route:src/modules/api.routes.js:7627:/staffing/bulk",
       "kind": "route",
       "label": "POST /staffing/bulk",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6478,7 +6507,7 @@
       "path": "/staffing/bulk"
     },
     {
-      "id": "route:src/modules/api.routes.js:8168:/projects/:id/removal-check",
+      "id": "route:src/modules/api.routes.js:8261:/projects/:id/removal-check",
       "kind": "route",
       "label": "GET /projects/:id/removal-check",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6489,7 +6518,7 @@
       "path": "/projects/:id/removal-check"
     },
     {
-      "id": "route:src/modules/api.routes.js:8392:/projects/:id",
+      "id": "route:src/modules/api.routes.js:8485:/projects/:id",
       "kind": "route",
       "label": "DELETE /projects/:id",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6500,7 +6529,7 @@
       "path": "/projects/:id"
     },
     {
-      "id": "route:src/modules/api.routes.js:8532:/opportunities/:id/removal-check",
+      "id": "route:src/modules/api.routes.js:8625:/opportunities/:id/removal-check",
       "kind": "route",
       "label": "GET /opportunities/:id/removal-check",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6511,7 +6540,7 @@
       "path": "/opportunities/:id/removal-check"
     },
     {
-      "id": "route:src/modules/api.routes.js:8765:/opportunities/:id",
+      "id": "route:src/modules/api.routes.js:8858:/opportunities/:id",
       "kind": "route",
       "label": "DELETE /opportunities/:id",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6522,7 +6551,7 @@
       "path": "/opportunities/:id"
     },
     {
-      "id": "route:src/modules/api.routes.js:9239:/removed/:kind",
+      "id": "route:src/modules/api.routes.js:9332:/removed/:kind",
       "kind": "route",
       "label": "GET /removed/:kind",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6533,7 +6562,7 @@
       "path": "/removed/:kind"
     },
     {
-      "id": "route:src/modules/api.routes.js:9358:/removed/:kind/:id/restore",
+      "id": "route:src/modules/api.routes.js:9451:/removed/:kind/:id/restore",
       "kind": "route",
       "label": "POST /removed/:kind/:id/restore",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6544,7 +6573,7 @@
       "path": "/removed/:kind/:id/restore"
     },
     {
-      "id": "route:src/modules/api.routes.js:9479:/projects/staff/:allocId",
+      "id": "route:src/modules/api.routes.js:9572:/projects/staff/:allocId",
       "kind": "route",
       "label": "DELETE /projects/staff/:allocId",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6555,7 +6584,7 @@
       "path": "/projects/staff/:allocId"
     },
     {
-      "id": "route:src/modules/api.routes.js:9593:/projects/staff/:allocId",
+      "id": "route:src/modules/api.routes.js:9686:/projects/staff/:allocId",
       "kind": "route",
       "label": "PATCH /projects/staff/:allocId",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6566,7 +6595,7 @@
       "path": "/projects/staff/:allocId"
     },
     {
-      "id": "route:src/modules/api.routes.js:9713:/projects/:id/tasks",
+      "id": "route:src/modules/api.routes.js:9806:/projects/:id/tasks",
       "kind": "route",
       "label": "GET /projects/:id/tasks",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6577,7 +6606,7 @@
       "path": "/projects/:id/tasks"
     },
     {
-      "id": "route:src/modules/api.routes.js:9812:/projects/:id/kpis",
+      "id": "route:src/modules/api.routes.js:9905:/projects/:id/kpis",
       "kind": "route",
       "label": "GET /projects/:id/kpis",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6588,7 +6617,7 @@
       "path": "/projects/:id/kpis"
     },
     {
-      "id": "route:src/modules/api.routes.js:10012:/tasks/mine",
+      "id": "route:src/modules/api.routes.js:10105:/tasks/mine",
       "kind": "route",
       "label": "GET /tasks/mine",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6599,7 +6628,7 @@
       "path": "/tasks/mine"
     },
     {
-      "id": "route:src/modules/api.routes.js:10094:/tasks/quick",
+      "id": "route:src/modules/api.routes.js:10187:/tasks/quick",
       "kind": "route",
       "label": "POST /tasks/quick",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6610,7 +6639,7 @@
       "path": "/tasks/quick"
     },
     {
-      "id": "route:src/modules/api.routes.js:10177:/tasks/team",
+      "id": "route:src/modules/api.routes.js:10270:/tasks/team",
       "kind": "route",
       "label": "GET /tasks/team",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6621,7 +6650,7 @@
       "path": "/tasks/team"
     },
     {
-      "id": "route:src/modules/api.routes.js:10268:/tasks/bulk",
+      "id": "route:src/modules/api.routes.js:10361:/tasks/bulk",
       "kind": "route",
       "label": "PATCH /tasks/bulk",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6632,7 +6661,7 @@
       "path": "/tasks/bulk"
     },
     {
-      "id": "route:src/modules/api.routes.js:10396:/tasks/:id",
+      "id": "route:src/modules/api.routes.js:10489:/tasks/:id",
       "kind": "route",
       "label": "PATCH /tasks/:id",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6643,7 +6672,7 @@
       "path": "/tasks/:id"
     },
     {
-      "id": "route:src/modules/api.routes.js:10491:/tasks/:id",
+      "id": "route:src/modules/api.routes.js:10584:/tasks/:id",
       "kind": "route",
       "label": "DELETE /tasks/:id",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6654,7 +6683,7 @@
       "path": "/tasks/:id"
     },
     {
-      "id": "route:src/modules/api.routes.js:10598:/timesheets/mine",
+      "id": "route:src/modules/api.routes.js:10691:/timesheets/mine",
       "kind": "route",
       "label": "GET /timesheets/mine",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6665,7 +6694,7 @@
       "path": "/timesheets/mine"
     },
     {
-      "id": "route:src/modules/api.routes.js:10684:/timesheets",
+      "id": "route:src/modules/api.routes.js:10777:/timesheets",
       "kind": "route",
       "label": "POST /timesheets",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6676,7 +6705,7 @@
       "path": "/timesheets"
     },
     {
-      "id": "route:src/modules/api.routes.js:10759:/timesheets/submit",
+      "id": "route:src/modules/api.routes.js:10852:/timesheets/submit",
       "kind": "route",
       "label": "POST /timesheets/submit",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6687,7 +6716,7 @@
       "path": "/timesheets/submit"
     },
     {
-      "id": "route:src/modules/api.routes.js:10845:/timesheets/:id/approve",
+      "id": "route:src/modules/api.routes.js:10938:/timesheets/:id/approve",
       "kind": "route",
       "label": "POST /timesheets/:id/approve",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6698,7 +6727,7 @@
       "path": "/timesheets/:id/approve"
     },
     {
-      "id": "route:src/modules/api.routes.js:10990:/approvals/queue",
+      "id": "route:src/modules/api.routes.js:11083:/approvals/queue",
       "kind": "route",
       "label": "GET /approvals/queue",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6709,7 +6738,7 @@
       "path": "/approvals/queue"
     },
     {
-      "id": "route:src/modules/api.routes.js:11243:/approvals/pending-count",
+      "id": "route:src/modules/api.routes.js:11336:/approvals/pending-count",
       "kind": "route",
       "label": "GET /approvals/pending-count",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6720,7 +6749,7 @@
       "path": "/approvals/pending-count"
     },
     {
-      "id": "route:src/modules/api.routes.js:11438:/mail/approval-policy",
+      "id": "route:src/modules/api.routes.js:11531:/mail/approval-policy",
       "kind": "route",
       "label": "POST /mail/approval-policy",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6731,7 +6760,7 @@
       "path": "/mail/approval-policy"
     },
     {
-      "id": "route:src/modules/api.routes.js:11634:/mail/test",
+      "id": "route:src/modules/api.routes.js:11727:/mail/test",
       "kind": "route",
       "label": "POST /mail/test",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6742,7 +6771,7 @@
       "path": "/mail/test"
     },
     {
-      "id": "route:src/modules/api.routes.js:11789:/ops/fault/:fp/mute",
+      "id": "route:src/modules/api.routes.js:11882:/ops/fault/:fp/mute",
       "kind": "route",
       "label": "POST /ops/fault/:fp/mute",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6753,7 +6782,7 @@
       "path": "/ops/fault/:fp/mute"
     },
     {
-      "id": "route:src/modules/api.routes.js:11895:/approvals",
+      "id": "route:src/modules/api.routes.js:11988:/approvals",
       "kind": "route",
       "label": "POST /approvals",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6764,7 +6793,7 @@
       "path": "/approvals"
     },
     {
-      "id": "route:src/modules/api.routes.js:11978:/approvals/:id/act",
+      "id": "route:src/modules/api.routes.js:12071:/approvals/:id/act",
       "kind": "route",
       "label": "POST /approvals/:id/act",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6775,7 +6804,7 @@
       "path": "/approvals/:id/act"
     },
     {
-      "id": "route:src/modules/api.routes.js:12129:/notifications",
+      "id": "route:src/modules/api.routes.js:12222:/notifications",
       "kind": "route",
       "label": "GET /notifications",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6786,7 +6815,7 @@
       "path": "/notifications"
     },
     {
-      "id": "route:src/modules/api.routes.js:12237:/notifications/:id/read",
+      "id": "route:src/modules/api.routes.js:12330:/notifications/:id/read",
       "kind": "route",
       "label": "POST /notifications/:id/read",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6797,7 +6826,7 @@
       "path": "/notifications/:id/read"
     },
     {
-      "id": "route:src/modules/api.routes.js:12429:/org/tree",
+      "id": "route:src/modules/api.routes.js:12522:/org/tree",
       "kind": "route",
       "label": "GET /org/tree",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6808,7 +6837,7 @@
       "path": "/org/tree"
     },
     {
-      "id": "route:src/modules/api.routes.js:12496:/org/sectors",
+      "id": "route:src/modules/api.routes.js:12589:/org/sectors",
       "kind": "route",
       "label": "POST /org/sectors",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6819,7 +6848,7 @@
       "path": "/org/sectors"
     },
     {
-      "id": "route:src/modules/api.routes.js:12577:/org/sectors/:id",
+      "id": "route:src/modules/api.routes.js:12670:/org/sectors/:id",
       "kind": "route",
       "label": "PATCH /org/sectors/:id",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6830,7 +6859,7 @@
       "path": "/org/sectors/:id"
     },
     {
-      "id": "route:src/modules/api.routes.js:12678:/org/departments",
+      "id": "route:src/modules/api.routes.js:12771:/org/departments",
       "kind": "route",
       "label": "POST /org/departments",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6841,7 +6870,7 @@
       "path": "/org/departments"
     },
     {
-      "id": "route:src/modules/api.routes.js:12767:/org/departments/:id",
+      "id": "route:src/modules/api.routes.js:12860:/org/departments/:id",
       "kind": "route",
       "label": "PATCH /org/departments/:id",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6852,7 +6881,7 @@
       "path": "/org/departments/:id"
     },
     {
-      "id": "route:src/modules/api.routes.js:12876:/org/departments/:id",
+      "id": "route:src/modules/api.routes.js:12969:/org/departments/:id",
       "kind": "route",
       "label": "DELETE /org/departments/:id",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6863,7 +6892,7 @@
       "path": "/org/departments/:id"
     },
     {
-      "id": "route:src/modules/api.routes.js:12976:/org/units",
+      "id": "route:src/modules/api.routes.js:13069:/org/units",
       "kind": "route",
       "label": "POST /org/units",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6874,7 +6903,7 @@
       "path": "/org/units"
     },
     {
-      "id": "route:src/modules/api.routes.js:13053:/org/roster",
+      "id": "route:src/modules/api.routes.js:13146:/org/roster",
       "kind": "route",
       "label": "GET /org/roster",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6885,7 +6914,7 @@
       "path": "/org/roster"
     },
     {
-      "id": "route:src/modules/api.routes.js:13215:/org/employees",
+      "id": "route:src/modules/api.routes.js:13308:/org/employees",
       "kind": "route",
       "label": "POST /org/employees",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6896,7 +6925,7 @@
       "path": "/org/employees"
     },
     {
-      "id": "route:src/modules/api.routes.js:13300:/org/employees/:id",
+      "id": "route:src/modules/api.routes.js:13393:/org/employees/:id",
       "kind": "route",
       "label": "PATCH /org/employees/:id",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6907,7 +6936,7 @@
       "path": "/org/employees/:id"
     },
     {
-      "id": "route:src/modules/api.routes.js:13405:/org/employees/:id/move",
+      "id": "route:src/modules/api.routes.js:13498:/org/employees/:id/move",
       "kind": "route",
       "label": "PATCH /org/employees/:id/move",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6918,7 +6947,7 @@
       "path": "/org/employees/:id/move"
     },
     {
-      "id": "route:src/modules/api.routes.js:13598:/org/employees/move",
+      "id": "route:src/modules/api.routes.js:13691:/org/employees/move",
       "kind": "route",
       "label": "POST /org/employees/move",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6929,7 +6958,7 @@
       "path": "/org/employees/move"
     },
     {
-      "id": "route:src/modules/api.routes.js:13760:/finance/summary",
+      "id": "route:src/modules/api.routes.js:13853:/finance/summary",
       "kind": "route",
       "label": "GET /finance/summary",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6940,7 +6969,7 @@
       "path": "/finance/summary"
     },
     {
-      "id": "route:src/modules/api.routes.js:13882:/finance/by-pm",
+      "id": "route:src/modules/api.routes.js:13975:/finance/by-pm",
       "kind": "route",
       "label": "GET /finance/by-pm",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6951,7 +6980,7 @@
       "path": "/finance/by-pm"
     },
     {
-      "id": "route:src/modules/api.routes.js:13999:/finance/by-contract",
+      "id": "route:src/modules/api.routes.js:14092:/finance/by-contract",
       "kind": "route",
       "label": "GET /finance/by-contract",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6962,7 +6991,7 @@
       "path": "/finance/by-contract"
     },
     {
-      "id": "route:src/modules/api.routes.js:14091:/finance/contracts/:id",
+      "id": "route:src/modules/api.routes.js:14184:/finance/contracts/:id",
       "kind": "route",
       "label": "GET /finance/contracts/:id",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6973,7 +7002,7 @@
       "path": "/finance/contracts/:id"
     },
     {
-      "id": "route:src/modules/api.routes.js:14197:/finance/progress-claim",
+      "id": "route:src/modules/api.routes.js:14290:/finance/progress-claim",
       "kind": "route",
       "label": "POST /finance/progress-claim",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6984,7 +7013,7 @@
       "path": "/finance/progress-claim"
     },
     {
-      "id": "route:src/modules/api.routes.js:14355:/finance/collections",
+      "id": "route:src/modules/api.routes.js:14448:/finance/collections",
       "kind": "route",
       "label": "POST /finance/collections",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6995,7 +7024,7 @@
       "path": "/finance/collections"
     },
     {
-      "id": "route:src/modules/api.routes.js:15130:/metrics/company",
+      "id": "route:src/modules/api.routes.js:15223:/metrics/company",
       "kind": "route",
       "label": "GET /metrics/company",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -7006,7 +7035,7 @@
       "path": "/metrics/company"
     },
     {
-      "id": "route:src/modules/api.routes.js:15469:/metrics/sector/:id",
+      "id": "route:src/modules/api.routes.js:15562:/metrics/sector/:id",
       "kind": "route",
       "label": "GET /metrics/sector/:id",
       "detail": "تصريح مسار محلي في apiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -7422,6 +7451,39 @@
       ],
       "method": "DELETE",
       "path": "/opportunities/documents/:docId"
+    },
+    {
+      "id": "route:src/modules/crm/oppfields.routes.js:448:/opportunities/:id/fields",
+      "kind": "route",
+      "label": "GET /opportunities/:id/fields",
+      "detail": "تصريح مسار محلي في oppfieldsRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
+      "sources": [
+        "src/modules/crm/oppfields.routes.js"
+      ],
+      "method": "GET",
+      "path": "/opportunities/:id/fields"
+    },
+    {
+      "id": "route:src/modules/crm/oppfields.routes.js:666:/opportunities/:id/fields",
+      "kind": "route",
+      "label": "POST /opportunities/:id/fields",
+      "detail": "تصريح مسار محلي في oppfieldsRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
+      "sources": [
+        "src/modules/crm/oppfields.routes.js"
+      ],
+      "method": "POST",
+      "path": "/opportunities/:id/fields"
+    },
+    {
+      "id": "route:src/modules/crm/oppfields.routes.js:800:/opportunities/fields/:fieldId",
+      "kind": "route",
+      "label": "DELETE /opportunities/fields/:fieldId",
+      "detail": "تصريح مسار محلي في oppfieldsRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
+      "sources": [
+        "src/modules/crm/oppfields.routes.js"
+      ],
+      "method": "DELETE",
+      "path": "/opportunities/fields/:fieldId"
     },
     {
       "id": "route:src/modules/crm/oppteam.routes.js:459:/opportunities/:id/team/roster",
@@ -10838,7 +10900,8 @@
         "migrations/034_project_departments.sql",
         "migrations/044_mcp_connect.sql",
         "migrations/045_dev_center.sql",
-        "migrations/046_crm_board.sql"
+        "migrations/046_crm_board.sql",
+        "migrations/048_opportunity_tender_fields.sql"
       ],
       "columns": [
         {
@@ -15286,7 +15349,8 @@
         "migrations/025_user_department_grants.sql",
         "migrations/026_opportunity_departments.sql",
         "migrations/042_team_resources.sql",
-        "migrations/046_crm_board.sql"
+        "migrations/046_crm_board.sql",
+        "migrations/048_opportunity_tender_fields.sql"
       ],
       "columns": [
         {
@@ -15438,6 +15502,36 @@
           "type": "TEXT",
           "required": false,
           "primary": false
+        },
+        {
+          "name": "tender_no",
+          "type": "TEXT",
+          "required": false,
+          "primary": false
+        },
+        {
+          "name": "submission_due",
+          "type": "TEXT",
+          "required": false,
+          "primary": false
+        },
+        {
+          "name": "submitted_on",
+          "type": "TEXT",
+          "required": false,
+          "primary": false
+        },
+        {
+          "name": "duration_months",
+          "type": "INTEGER",
+          "required": false,
+          "primary": false
+        },
+        {
+          "name": "consortium_partners",
+          "type": "TEXT",
+          "required": false,
+          "primary": false
         }
       ]
     },
@@ -15471,6 +15565,77 @@
         },
         {
           "name": "created_by",
+          "type": "TEXT",
+          "required": false,
+          "primary": false
+        }
+      ]
+    },
+    {
+      "id": "table:opportunity_field",
+      "kind": "table",
+      "label": "opportunity_field",
+      "detail": "جدول من مخطط SQLite جديد بعد تطبيق الترحيلات؛ لا بيانات شركة.",
+      "sources": [
+        "migrations/048_opportunity_tender_fields.sql"
+      ],
+      "columns": [
+        {
+          "name": "id",
+          "type": "TEXT",
+          "required": false,
+          "primary": true
+        },
+        {
+          "name": "opportunity_id",
+          "type": "TEXT",
+          "required": true,
+          "primary": false
+        },
+        {
+          "name": "name_ar",
+          "type": "TEXT",
+          "required": true,
+          "primary": false
+        },
+        {
+          "name": "value_text",
+          "type": "TEXT",
+          "required": false,
+          "primary": false
+        },
+        {
+          "name": "sort_order",
+          "type": "INTEGER",
+          "required": true,
+          "primary": false
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "required": true,
+          "primary": false
+        },
+        {
+          "name": "created_by",
+          "type": "TEXT",
+          "required": false,
+          "primary": false
+        },
+        {
+          "name": "updated_at",
+          "type": "TEXT",
+          "required": false,
+          "primary": false
+        },
+        {
+          "name": "updated_by",
+          "type": "TEXT",
+          "required": false,
+          "primary": false
+        },
+        {
+          "name": "deleted_at",
           "type": "TEXT",
           "required": false,
           "primary": false
@@ -24357,6 +24522,20 @@
     },
     {
       "from": "module:crm",
+      "to": "file:src/modules/crm/oppfields.js",
+      "label": "يحتوي",
+      "evidence": "src/modules/crm/oppfields.js",
+      "kind": "source"
+    },
+    {
+      "from": "module:crm",
+      "to": "file:src/modules/crm/oppfields.routes.js",
+      "label": "يحتوي",
+      "evidence": "src/modules/crm/oppfields.routes.js",
+      "kind": "source"
+    },
+    {
+      "from": "module:crm",
       "to": "file:src/modules/crm/opportunities.js",
       "label": "يحتوي",
       "evidence": "src/modules/crm/opportunities.js",
@@ -26555,7 +26734,35 @@
     },
     {
       "from": "file:src/modules/ai/crm-tools.js",
+      "to": "file:src/core/util/ids.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/crm-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/crm-tools.js",
       "to": "file:src/modules/crm/opportunities.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/crm-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/crm-tools.js",
+      "to": "file:src/modules/crm/oppfields.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/crm-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/crm-tools.js",
+      "to": "file:src/modules/finance/vat.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/crm-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/crm-tools.js",
+      "to": "file:src/web/i18n/glossary.js",
       "label": "استيراد صريح",
       "evidence": "src/modules/ai/crm-tools.js",
       "kind": "source"
@@ -27241,6 +27448,13 @@
     },
     {
       "from": "file:src/modules/api.routes.js",
+      "to": "file:src/modules/crm/oppfields.routes.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/api.routes.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/api.routes.js",
       "to": "file:src/modules/views/views.routes.js",
       "label": "استيراد صريح",
       "evidence": "src/modules/api.routes.js",
@@ -27402,539 +27616,539 @@
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:3966:/opportunities",
+      "to": "route:src/modules/api.routes.js:4059:/opportunities",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:4060:/opportunities",
+      "to": "route:src/modules/api.routes.js:4153:/opportunities",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:4149:/opportunities/:id",
+      "to": "route:src/modules/api.routes.js:4242:/opportunities/:id",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:4248:/opportunities/:id/detail",
+      "to": "route:src/modules/api.routes.js:4341:/opportunities/:id/detail",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:4357:/opportunities/:id",
+      "to": "route:src/modules/api.routes.js:4450:/opportunities/:id",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:4466:/opportunities/:id/stage",
+      "to": "route:src/modules/api.routes.js:4559:/opportunities/:id/stage",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:4678:/opportunities/:id/reversal",
+      "to": "route:src/modules/api.routes.js:4771:/opportunities/:id/reversal",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:4803:/opportunities/:id/sector",
+      "to": "route:src/modules/api.routes.js:4896:/opportunities/:id/sector",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:4933:/pipeline",
+      "to": "route:src/modules/api.routes.js:5026:/pipeline",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:5028:/projects",
+      "to": "route:src/modules/api.routes.js:5121:/projects",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:5116:/projects",
+      "to": "route:src/modules/api.routes.js:5209:/projects",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:5200:/projects/:id",
+      "to": "route:src/modules/api.routes.js:5293:/projects/:id",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:5294:/projects/:id",
+      "to": "route:src/modules/api.routes.js:5387:/projects/:id",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:5398:/intake/parse",
+      "to": "route:src/modules/api.routes.js:5491:/intake/parse",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:5501:/intake/create",
+      "to": "route:src/modules/api.routes.js:5594:/intake/create",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:5678:/projects/:id/deliverables/parse",
+      "to": "route:src/modules/api.routes.js:5771:/projects/:id/deliverables/parse",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:5813:/projects/:id/deliverables/bulk",
+      "to": "route:src/modules/api.routes.js:5906:/projects/:id/deliverables/bulk",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:5955:/projects/:id/staffing",
+      "to": "route:src/modules/api.routes.js:6048:/projects/:id/staffing",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:6154:/projects/:id/candidates",
+      "to": "route:src/modules/api.routes.js:6247:/projects/:id/candidates",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:6278:/projects/:id/team-load",
+      "to": "route:src/modules/api.routes.js:6371:/projects/:id/team-load",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:6461:/projects/:id/progress",
+      "to": "route:src/modules/api.routes.js:6554:/projects/:id/progress",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:6654:/projects/:id/documents",
+      "to": "route:src/modules/api.routes.js:6747:/projects/:id/documents",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:6764:/projects/:id/documents",
+      "to": "route:src/modules/api.routes.js:6857:/projects/:id/documents",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:6888:/projects/documents/:docId",
+      "to": "route:src/modules/api.routes.js:6981:/projects/documents/:docId",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:7007:/projects/:id/updates",
+      "to": "route:src/modules/api.routes.js:7100:/projects/:id/updates",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:7130:/projects/:id/staff",
+      "to": "route:src/modules/api.routes.js:7223:/projects/:id/staff",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:7338:/staffing/internal",
+      "to": "route:src/modules/api.routes.js:7431:/staffing/internal",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:7534:/staffing/bulk",
+      "to": "route:src/modules/api.routes.js:7627:/staffing/bulk",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:8168:/projects/:id/removal-check",
+      "to": "route:src/modules/api.routes.js:8261:/projects/:id/removal-check",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:8392:/projects/:id",
+      "to": "route:src/modules/api.routes.js:8485:/projects/:id",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:8532:/opportunities/:id/removal-check",
+      "to": "route:src/modules/api.routes.js:8625:/opportunities/:id/removal-check",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:8765:/opportunities/:id",
+      "to": "route:src/modules/api.routes.js:8858:/opportunities/:id",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:9239:/removed/:kind",
+      "to": "route:src/modules/api.routes.js:9332:/removed/:kind",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:9358:/removed/:kind/:id/restore",
+      "to": "route:src/modules/api.routes.js:9451:/removed/:kind/:id/restore",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:9479:/projects/staff/:allocId",
+      "to": "route:src/modules/api.routes.js:9572:/projects/staff/:allocId",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:9593:/projects/staff/:allocId",
+      "to": "route:src/modules/api.routes.js:9686:/projects/staff/:allocId",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:9713:/projects/:id/tasks",
+      "to": "route:src/modules/api.routes.js:9806:/projects/:id/tasks",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:9812:/projects/:id/kpis",
+      "to": "route:src/modules/api.routes.js:9905:/projects/:id/kpis",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:10012:/tasks/mine",
+      "to": "route:src/modules/api.routes.js:10105:/tasks/mine",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:10094:/tasks/quick",
+      "to": "route:src/modules/api.routes.js:10187:/tasks/quick",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:10177:/tasks/team",
+      "to": "route:src/modules/api.routes.js:10270:/tasks/team",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:10268:/tasks/bulk",
+      "to": "route:src/modules/api.routes.js:10361:/tasks/bulk",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:10396:/tasks/:id",
+      "to": "route:src/modules/api.routes.js:10489:/tasks/:id",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:10491:/tasks/:id",
+      "to": "route:src/modules/api.routes.js:10584:/tasks/:id",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:10598:/timesheets/mine",
+      "to": "route:src/modules/api.routes.js:10691:/timesheets/mine",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:10684:/timesheets",
+      "to": "route:src/modules/api.routes.js:10777:/timesheets",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:10759:/timesheets/submit",
+      "to": "route:src/modules/api.routes.js:10852:/timesheets/submit",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:10845:/timesheets/:id/approve",
+      "to": "route:src/modules/api.routes.js:10938:/timesheets/:id/approve",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:10990:/approvals/queue",
+      "to": "route:src/modules/api.routes.js:11083:/approvals/queue",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:11243:/approvals/pending-count",
+      "to": "route:src/modules/api.routes.js:11336:/approvals/pending-count",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:11438:/mail/approval-policy",
+      "to": "route:src/modules/api.routes.js:11531:/mail/approval-policy",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:11634:/mail/test",
+      "to": "route:src/modules/api.routes.js:11727:/mail/test",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:11789:/ops/fault/:fp/mute",
+      "to": "route:src/modules/api.routes.js:11882:/ops/fault/:fp/mute",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:11895:/approvals",
+      "to": "route:src/modules/api.routes.js:11988:/approvals",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:11978:/approvals/:id/act",
+      "to": "route:src/modules/api.routes.js:12071:/approvals/:id/act",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:12129:/notifications",
+      "to": "route:src/modules/api.routes.js:12222:/notifications",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:12237:/notifications/:id/read",
+      "to": "route:src/modules/api.routes.js:12330:/notifications/:id/read",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:12429:/org/tree",
+      "to": "route:src/modules/api.routes.js:12522:/org/tree",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:12496:/org/sectors",
+      "to": "route:src/modules/api.routes.js:12589:/org/sectors",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:12577:/org/sectors/:id",
+      "to": "route:src/modules/api.routes.js:12670:/org/sectors/:id",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:12678:/org/departments",
+      "to": "route:src/modules/api.routes.js:12771:/org/departments",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:12767:/org/departments/:id",
+      "to": "route:src/modules/api.routes.js:12860:/org/departments/:id",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:12876:/org/departments/:id",
+      "to": "route:src/modules/api.routes.js:12969:/org/departments/:id",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:12976:/org/units",
+      "to": "route:src/modules/api.routes.js:13069:/org/units",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:13053:/org/roster",
+      "to": "route:src/modules/api.routes.js:13146:/org/roster",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:13215:/org/employees",
+      "to": "route:src/modules/api.routes.js:13308:/org/employees",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:13300:/org/employees/:id",
+      "to": "route:src/modules/api.routes.js:13393:/org/employees/:id",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:13405:/org/employees/:id/move",
+      "to": "route:src/modules/api.routes.js:13498:/org/employees/:id/move",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:13598:/org/employees/move",
+      "to": "route:src/modules/api.routes.js:13691:/org/employees/move",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:13760:/finance/summary",
+      "to": "route:src/modules/api.routes.js:13853:/finance/summary",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:13882:/finance/by-pm",
+      "to": "route:src/modules/api.routes.js:13975:/finance/by-pm",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:13999:/finance/by-contract",
+      "to": "route:src/modules/api.routes.js:14092:/finance/by-contract",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:14091:/finance/contracts/:id",
+      "to": "route:src/modules/api.routes.js:14184:/finance/contracts/:id",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:14197:/finance/progress-claim",
+      "to": "route:src/modules/api.routes.js:14290:/finance/progress-claim",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:14355:/finance/collections",
+      "to": "route:src/modules/api.routes.js:14448:/finance/collections",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:15130:/metrics/company",
+      "to": "route:src/modules/api.routes.js:15223:/metrics/company",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/api.routes.js",
-      "to": "route:src/modules/api.routes.js:15469:/metrics/sector/:id",
+      "to": "route:src/modules/api.routes.js:15562:/metrics/sector/:id",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/api.routes.js",
       "kind": "source"
@@ -28479,6 +28693,69 @@
       "kind": "source"
     },
     {
+      "from": "file:src/modules/crm/oppfields.js",
+      "to": "file:src/core/db/index.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/crm/oppfields.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/crm/oppfields.js",
+      "to": "file:src/core/audit/index.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/crm/oppfields.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/crm/oppfields.js",
+      "to": "file:src/core/http/errors.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/crm/oppfields.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/crm/oppfields.js",
+      "to": "file:src/core/util/ids.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/crm/oppfields.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/crm/oppfields.js",
+      "to": "file:src/modules/crm/opp-access.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/crm/oppfields.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/crm/oppfields.routes.js",
+      "to": "file:src/modules/crm/oppfields.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/crm/oppfields.routes.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/crm/oppfields.routes.js",
+      "to": "route:src/modules/crm/oppfields.routes.js:448:/opportunities/:id/fields",
+      "label": "يصرح بالمسار",
+      "evidence": "src/modules/crm/oppfields.routes.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/crm/oppfields.routes.js",
+      "to": "route:src/modules/crm/oppfields.routes.js:666:/opportunities/:id/fields",
+      "label": "يصرح بالمسار",
+      "evidence": "src/modules/crm/oppfields.routes.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/crm/oppfields.routes.js",
+      "to": "route:src/modules/crm/oppfields.routes.js:800:/opportunities/fields/:fieldId",
+      "label": "يصرح بالمسار",
+      "evidence": "src/modules/crm/oppfields.routes.js",
+      "kind": "source"
+    },
+    {
       "from": "file:src/modules/crm/opportunities.js",
       "to": "file:src/core/db/index.js",
       "label": "استيراد صريح",
@@ -28544,6 +28821,13 @@
     {
       "from": "file:src/modules/crm/opportunities.js",
       "to": "file:src/modules/crm/opp-access.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/crm/opportunities.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/crm/opportunities.js",
+      "to": "file:src/modules/crm/oppfields.js",
       "label": "استيراد صريح",
       "evidence": "src/modules/crm/opportunities.js",
       "kind": "source"
@@ -40106,6 +40390,62 @@
       "kind": "source"
     },
     {
+      "from": "file:tests/integration/opportunity-tender-fields.test.js",
+      "to": "file:src/core/db/index.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/opportunity-tender-fields.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/opportunity-tender-fields.test.js",
+      "to": "file:src/core/rbac/index.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/opportunity-tender-fields.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/opportunity-tender-fields.test.js",
+      "to": "file:src/modules/crm/opportunities.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/opportunity-tender-fields.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/opportunity-tender-fields.test.js",
+      "to": "file:src/modules/crm/oppfields.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/opportunity-tender-fields.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/opportunity-tender-fields.test.js",
+      "to": "file:src/web/pages.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/opportunity-tender-fields.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/opportunity-tender-fields.test.js",
+      "to": "file:src/core/lifecycle/remove.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/opportunity-tender-fields.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/opportunity-tender-fields.test.js",
+      "to": "file:src/modules/ai/team-tools.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/opportunity-tender-fields.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/opportunity-tender-fields.test.js",
+      "to": "file:src/modules/ai/crm-tools.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/opportunity-tender-fields.test.js",
+      "kind": "source"
+    },
+    {
       "from": "file:tests/integration/opps-filters-and-clock.test.js",
       "to": "file:src/core/db/index.js",
       "label": "استيراد صريح",
@@ -48716,6 +49056,27 @@
       "kind": "foreign-key"
     },
     {
+      "from": "table:opportunity_field",
+      "to": "table:app_user",
+      "label": "updated_by → id",
+      "evidence": "مفتاح أجنبي فعلي في مخطط الترحيلات",
+      "kind": "foreign-key"
+    },
+    {
+      "from": "table:opportunity_field",
+      "to": "table:app_user",
+      "label": "created_by → id",
+      "evidence": "مفتاح أجنبي فعلي في مخطط الترحيلات",
+      "kind": "foreign-key"
+    },
+    {
+      "from": "table:opportunity_field",
+      "to": "table:opportunity",
+      "label": "opportunity_id → id",
+      "evidence": "مفتاح أجنبي فعلي في مخطط الترحيلات",
+      "kind": "foreign-key"
+    },
+    {
       "from": "table:opportunity_sector",
       "to": "table:sector",
       "label": "sector_id → id",
@@ -50313,6 +50674,20 @@
     },
     {
       "from": "file:src/modules/ai/crm-tools.js",
+      "to": "table:department",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "src/modules/ai/crm-tools.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:src/modules/ai/crm-tools.js",
+      "to": "table:sector",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "src/modules/ai/crm-tools.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:src/modules/ai/crm-tools.js",
       "to": "table:opportunity",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
       "evidence": "src/modules/ai/crm-tools.js",
@@ -50624,6 +50999,13 @@
       "to": "table:document",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
       "evidence": "src/modules/crm/oppdocs.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:src/modules/crm/oppfields.js",
+      "to": "table:opportunity_field",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "src/modules/crm/oppfields.js",
       "kind": "text-reference"
     },
     {
@@ -57505,6 +57887,62 @@
       "to": "table:time_entry",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
       "evidence": "tests/integration/opportunity-removal-cascade.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/opportunity-tender-fields.test.js",
+      "to": "table:opportunity_field",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/opportunity-tender-fields.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/opportunity-tender-fields.test.js",
+      "to": "table:ai_activity_log",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/opportunity-tender-fields.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/opportunity-tender-fields.test.js",
+      "to": "table:opportunity",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/opportunity-tender-fields.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/opportunity-tender-fields.test.js",
+      "to": "table:sector",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/opportunity-tender-fields.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/opportunity-tender-fields.test.js",
+      "to": "table:department",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/opportunity-tender-fields.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/opportunity-tender-fields.test.js",
+      "to": "table:stage",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/opportunity-tender-fields.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/opportunity-tender-fields.test.js",
+      "to": "table:app_user",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/opportunity-tender-fields.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/opportunity-tender-fields.test.js",
+      "to": "table:client",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/opportunity-tender-fields.test.js",
       "kind": "text-reference"
     },
     {

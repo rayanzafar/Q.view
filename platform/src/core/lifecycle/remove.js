@@ -156,6 +156,8 @@ export const REMOVABLE = {
       { table: 'opportunity_department', col: 'opportunity_id', ar: 'إسناد إدارة مشاركة', hard: true },
       { table: 'crm_activity', col: 'opportunity_id', ar: 'نشاط' },
       { table: 'proposal', col: 'opportunity_id', ar: 'عرض' },
+      // الحقول الحرّة (الترحيلة 048) تُطوى مع فرصتها وتعود معها — حذفٌ ناعم كغيرها
+      { table: 'opportunity_field', col: 'opportunity_id', ar: 'حقل إضافي' },
     ],
   },
   task: {

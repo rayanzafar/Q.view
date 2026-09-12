@@ -230,12 +230,15 @@ export const AI_CHAT_PROBES = [
   // نية كتابة من نص حر: تعيد **نموذجاً** لمن يملك منح الإنشاء، وتُرَدّ ٤٠٣ لمن لا يملكه.
   // مدير الإدارة انضمّ إلى مالكي منح الإنشاء بقرار المالك («التعديل والتسكين بدءاً من مدير
   // المشروع واللي فوقه»)، فصار المساعد يعيد له نموذجاً بدل رفضٍ — والنية نفسها والبوابة نفسها.
+  // وفريق تطوير الأعمال (bd_team) انضمّ بنطاق شركة بقرار المالك (٢٠٢٦-٠٩-٠٩، v5.89) — يحمل منح
+  // الكتابة نفسها التي يحملها رئيسه، فيعيد له المساعد النموذج كما يعيده لـbd_head.
   { message: 'أنشئ مهمة متابعة العقد',
     expect: { default: 403, admin: 200, sector_lead: 200, department_manager: 200, project_manager: 200,
-      consultant: 200, employee: 200, bd_head: 200, operations: 200, office_member: 200, office_coordinator: 200 } },
-  // نفس بوابة /api/metrics/company حرفياً — وهذا هو أصل العطل الذي أُغلق.
+      consultant: 200, employee: 200, bd_head: 200, bd_team: 200, operations: 200, office_member: 200, office_coordinator: 200 } },
+  // نفس بوابة /api/metrics/company حرفياً — وهذا هو أصل العطل الذي أُغلق. (وbd_team يقرأ
+  // /api/metrics/company أعلاه، فالموجز له بالبوابة نفسها.)
   { message: 'اكتب الموجز التنفيذي الأسبوعي',
-    expect: { default: 403, admin: 200, ceo_office: 200, hr: 200, bd_head: 200 } },
+    expect: { default: 403, admin: 200, ceo_office: 200, hr: 200, bd_head: 200, bd_team: 200 } },
 ];
 
 function rosterExpect() {

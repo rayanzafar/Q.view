@@ -13,10 +13,17 @@ import { badRequest, notFound } from '../../core/http/errors.js';
 import { can, effectiveScope } from '../../core/rbac/index.js';
 import { savePreview, claimPreview, PREVIEW_TTL_MINUTES } from '../../core/ai/store.js';
 import { riyadhDate } from '../../core/i18n/time.js';
-import { listOpportunities, opportunityDetail, createOpportunity, updateOpportunity, moveStage, stageAgeDays } from '../crm/opportunities.js';
+import { toHalalas } from '../../core/util/ids.js';
+import {
+  listOpportunities, opportunityDetail, createOpportunity, updateOpportunity, moveStage, stageAgeDays,
+  ENGAGEMENT_TYPES, SOLICITATION_TYPES,
+} from '../crm/opportunities.js';
+import { applyOpportunityFields, listOpportunityFields } from '../crm/oppfields.js';
+import { grossOfNet } from '../finance/vat.js';
+import { engagementTypeLabel, solicitationTypeLabel } from '../../web/i18n/glossary.js';
 import { approvedTaskSql } from '../pmo/task-approval.js';
 import {
-  envelope, inputOf, text, intOf, moneyOf, enumOf, boolOf, pageOf, partialOf, uniqRefs,
+  envelope, inputOf, text, intOf, moneyOf, enumOf, boolOf, dayOf, pageOf, partialOf, uniqRefs,
   tokenOnly, claimGuard, fingerprintOf, assertFingerprint, textOrNot, numOrNot, notMeasured, measured,
   S, obj, PAGE_PROPS, TOKEN_INPUT, REF, TEXT_IS_DATA_AR, UNIT_NOTES,
 } from './tool-kit.js';
@@ -63,8 +70,89 @@ function oppOut(r, stages, today) {
     // غيابُه صراحةً بدل أن يُشتقّ من تاريخٍ آخر فيُقرأ موعداً وهو تخمين.
     expected_close: notMeasured('تاريخ الإغلاق المتوقع لا تسجّله المنصة على الفرصة في هذه النسخة'),
     is_won: !!st?.is_won, is_lost: !!st?.is_lost,
+    // ── ما كان على الفرصة ولا تراه المحادثة (H-1): الصفة التجارية والرمز ─────────────────
+    code: r.code || null,
+    engagement_type: r.engagement_type || null, engagement_type_ar: engagementTypeLabel(r.engagement_type),
+    solicitation_type: r.solicitation_type || null, solicitation_type_ar: solicitationTypeLabel(r.solicitation_type),
+    delivery_location: textOrNot(r.delivery_location, 'موقع التسليم لم يُحدَّد بعد'),
+    // ── حقول المنافسة الثابتة (الترحيلة 048) — الغائب يُقال غائباً ─────────────────────
+    tender: {
+      tender_no: textOrNot(r.tender_no, 'رقم المنافسة غير مُسجَّل'),
+      submission_due: textOrNot(r.submission_due, 'موعد تقديم العرض غير مُسجَّل'),
+      submitted_on: textOrNot(r.submitted_on, 'لم يُسجَّل تقديم العرض بعد'),
+      duration_months: numOrNot(r.duration_months == null ? null : Number(r.duration_months), 'شهر', 'مدة التنفيذ غير مُسجَّلة'),
+      consortium_partners: textOrNot(r.consortium_partners, 'لا تحالف مسجَّل — الشركة وحدها ما لم يُكتب غير ذلك'),
+    },
   };
 }
+
+// ── حقول المنافسة والصفة التجارية: مواصفةٌ واحدة تقرأ المدخل وتعرض الصفّ ──────────────────
+// كلُّ حقلٍ باسمه في المدخل (بالإنجليزية الصغيرة كسائر المدخلات) وعمودِه في الخدمة وتسميته العربية
+// وطريقة عرضه. تُستعمل في التسجيل والتعديل معاً فلا يفترق الاثنان على حقل.
+const monthsAr = (n) => (n === 1 ? 'شهر واحد' : n === 2 ? 'شهران' : n <= 10 ? `${n} أشهر` : `${n} شهراً`);
+const TENDER_SPEC = Object.freeze([
+  { key: 'tenderNo', col: 'tender_no', ar: 'رقم المنافسة', parse: (v) => text(v, 'رقم المنافسة', { max: 60 }), show: (v) => String(v) },
+  { key: 'submissionDue', col: 'submission_due', ar: 'موعد تقديم العرض', parse: (v) => dayOf(v, 'موعد تقديم العرض'), show: (v) => String(v) },
+  { key: 'submittedOn', col: 'submitted_on', ar: 'تاريخ تقديم العرض', parse: (v) => dayOf(v, 'تاريخ تقديم العرض'), show: (v) => String(v) },
+  { key: 'durationMonths', col: 'duration_months', ar: 'مدة التنفيذ', parse: (v) => intOf(v, 'مدة التنفيذ بالأشهر', { min: 1, max: 240 }), show: (v) => monthsAr(Number(v)) },
+  { key: 'consortiumPartners', col: 'consortium_partners', ar: 'شركاء التحالف', parse: (v) => text(v, 'شركاء التحالف', { max: 300 }), show: (v) => String(v) },
+  { key: 'engagementType', col: 'engagement_type', ar: 'نوع الارتباط', parse: (v) => enumOf(v, 'نوع الارتباط', ENGAGEMENT_TYPES), show: (v) => engagementTypeLabel(v) },
+  { key: 'solicitationType', col: 'solicitation_type', ar: 'نوع الطرح', parse: (v) => enumOf(v, 'نوع الطرح', SOLICITATION_TYPES), show: (v) => solicitationTypeLabel(v) },
+  { key: 'deliveryLocation', col: 'delivery_location', ar: 'موقع التسليم', parse: (v) => text(v, 'موقع التسليم', { max: 160 }), show: (v) => String(v) },
+]);
+const TENDER_KEYS = TENDER_SPEC.map((s) => s.key);
+const TENDER_INPUT = Object.freeze({
+  tenderNo: S.str('رقم المنافسة أو مرجعها لدى الجهة', { maxLength: 60 }),
+  submissionDue: S.str('موعد تقديم العرض — يوم بصيغة سنة-شهر-يوم', { maxLength: 10 }),
+  submittedOn: S.str('تاريخ تقديم العرض فعلاً — يوم بصيغة سنة-شهر-يوم؛ يُترك حتى يُقدَّم', { maxLength: 10 }),
+  durationMonths: S.int('مدة التنفيذ بالأشهر', 1, 240),
+  consortiumPartners: S.str('شركاء التحالف — نصّ؛ يُترك إن كانت الشركة وحدها', { maxLength: 300 }),
+  engagementType: S.en('نوع الارتباط: PROJECT عمل محدَّد · FRAMEWORK اتفاقية إطارية (قيمتها سقف لا التزام)', ENGAGEMENT_TYPES),
+  solicitationType: S.en('نوع الطرح: RFI استطلاع سوق · RFP طلب عرض · RFQ طلب سعر · DIRECT_AWARD تكليف مباشر · TENDER منافسة عامة', SOLICITATION_TYPES),
+  deliveryLocation: S.str('موقع التسليم أو التنفيذ — نصّ حرّ: جهةُ استلام أو مدينة أو «عن بُعد»', { maxLength: 160 }),
+  valueVatIncluded: S.bool('هل القيمة المكتوبة شاملة الضريبة؟ الافتراضي نعم؛ وإن كانت قبل الضريبة تُسجَّل شاملةً بعد إضافتها — المخزَّن دائماً هو الشامل'),
+  customFields: S.arr('حقول إضافية خاصة بهذه المنافسة: اسمٌ وقيمة لكلٍّ (قيمةٌ فارغة تحذف الحقل عند التعديل)',
+    obj({ name: S.str('اسم الحقل — مثل «رقم الضمان»', { maxLength: 60 }), value: S.str('القيمة', { maxLength: 500 }) }, ['name']), 20),
+});
+// المدخل ⟵ [{ spec, value }] لما أُرسل فعلاً (الفارغ يُهمَل — والمسح له `clearFields` صراحةً).
+function tenderInputsOf(input) {
+  const out = [];
+  for (const spec of TENDER_SPEC) {
+    if (!(spec.key in input)) continue;
+    const v = spec.parse(input[spec.key]);
+    if (v != null) out.push({ spec, value: v });
+  }
+  return out;
+}
+function clearFieldsOf(v) {
+  if (v == null) return [];
+  if (!Array.isArray(v)) throw badRequest('الحقول التي تُمسح تُرسَل قائمةً بأسمائها');
+  return [...new Set(v.map((k) => enumOf(k, 'الحقل الذي يُمسح', TENDER_KEYS, { required: true })))].map((k) => TENDER_SPEC.find((s) => s.key === k));
+}
+function customFieldsOf(v) {
+  if (v == null) return [];
+  if (!Array.isArray(v)) throw badRequest('الحقول الإضافية تُرسَل قائمةً: لكلٍّ اسمه وقيمته');
+  if (v.length > 20) throw badRequest('حتى 20 حقلاً إضافياً في الطلب الواحد');
+  const seen = new Set();
+  return v.map((it) => {
+    const name = text(it?.name, 'اسم الحقل الإضافي', { required: true, max: 60 });
+    const value = text(it?.value, `قيمة «${name}»`, { max: 500 });
+    if (seen.has(name)) throw badRequest(`الحقل الإضافي «${name}» مكرَّر في الطلب`);
+    seen.add(name);
+    return { name, value };
+  });
+}
+// القيمة كما اقتُبست: شاملةً (الافتراضي) أو قبل الضريبة فتُحوَّل هنا إلى الشامل كما تفعل الشاشة —
+// والمعاينة تقول الرقمين كي لا يؤكّد أحدٌ قيمةً غير التي ستُكتب.
+function grossValueOf(valueSar, vatIncluded) {
+  if (valueSar == null) return { gross: null, note: null };
+  if (vatIncluded === false) {
+    const gross = SAR(grossOfNet(toHalalas(valueSar)));
+    return { gross, note: `كُتبت قبل الضريبة (${valueSar.toLocaleString('en-US')} ريال) وتُسجَّل شاملةً: ${gross.toLocaleString('en-US')} ريال` };
+  }
+  return { gross: valueSar, note: null };
+}
+const customFieldsOut = (rows) => rows.map((f) => ({ id: f.id, name: f.name_ar, value: f.value_text ?? null }));
 
 // ── sanad_list_opportunities ────────────────────────────────────────────────────────────
 async function runListOpportunities(ctx, raw) {
@@ -143,6 +231,8 @@ async function runGetOpportunity(ctx, raw) {
       win_pct_source_ar: win == null ? 'غير مُسجَّل'
         : (winFromStage != null && win === Number(winFromStage) ? `افتراضي المرحلة «${st.name_ar}» (${winFromStage}%)` : 'تعديل يدوي على الفرصة — يختلف عن افتراضي مرحلتها'),
       notes: textOrNot(d.opp.notes, 'بلا ملاحظات مسجَّلة'),
+      // الحقول الحرّة: ما سألته هذه المنافسة وحدها — اسمٌ وقيمة (الترحيلة 048)
+      custom_fields: customFieldsOut(d.fields || []),
     },
     team: (d.team || []).map((m) => ({ userId: m.user_id || m.userId || null, name: m.name_ar || m.name || null, role_ar: m.role_ar || m.role || null })),
     next_action: {
@@ -186,27 +276,48 @@ async function runPreviewOppCreate(ctx, raw) {
   const client = clientId ? await get('SELECT id, name_ar FROM client WHERE id = ? AND deleted_at IS NULL', [clientId]) : null;
   if (clientId && !client) throw notFound('العميل المحدَّد غير موجود — ابحث عنه أو اكتب اسمه ليُسجَّل جهةً جديدة.');
   const win = st?.default_win_pct ?? null;
+  // ── ما كان يسقط عند التسجيل (تدقيق 12 سبتمبر، H-1): الثابت والحرّ والصفة التجارية والإدارة ──
+  const vatIncluded = input.valueVatIncluded == null ? null : boolOf(input.valueVatIncluded);
+  const { gross: valueGross, note: vatNote } = grossValueOf(valueSar, vatIncluded);
+  const tender = tenderInputsOf(input);
+  const custom = customFieldsOf(input.customFields).filter((c) => c.value != null);
+  const departmentId = text(input.departmentId, 'معرّف الإدارة', { max: 80 });
+  const dept = departmentId ? await get('SELECT id, name_ar, sector_id FROM department WHERE id = ?', [departmentId]) : null;
+  if (departmentId && !dept) throw notFound('الإدارة المحدَّدة غير موجودة — اطلبها من الهيكل التنظيمي بمعرّفها، أو اترك الحقل فتُنسب الفرصة إلى قطاعك بلا إدارة.');
+  // الإدارة تسكن قطاعها: تسميتُها تسمّي القطاع معها، والخدمة تحكم في منحة الإنشاء على الزوج كاملاً.
+  const deptSector = dept ? await get('SELECT id, name_ar FROM sector WHERE id = ?', [dept.sector_id]) : null;
+  const deptLabel = dept ? `${dept.name_ar} (${deptSector?.name_ar || dept.sector_id})` : null;
   const willBe = {
     title,
     client_ar: client ? `جهة مسجَّلة: ${client.name_ar}` : `اسم مكتوب: «${clientName}» — يُطابَق على الجهات القائمة، فإن لم يوجد سُجِّل جهةً جديدة`,
     stage: stageId, stage_ar: st.name_ar,
-    value_sar: measured(valueSar, 'ريال سعودي'),
+    value_sar: measured(valueGross, 'ريال سعودي — شاملةً الضريبة'),
     win_pct: numOrNot(win, 'نسبة مئوية — افتراضي هذه المرحلة', 'المرحلة بلا احتمال افتراضي'),
-    weighted_sar: win == null ? notMeasured('لا قيمة مرجّحة بلا احتمال') : measured(Math.round(valueSar * win) / 100, 'ريال سعودي'),
+    weighted_sar: win == null ? notMeasured('لا قيمة مرجّحة بلا احتمال') : measured(Math.round(valueGross * win) / 100, 'ريال سعودي'),
     expected_close: notMeasured('تاريخ الإغلاق المتوقع لا تسجّله المنصة على الفرصة في هذه النسخة'),
     owner_ar: 'أنت (يمكن تغييره من الشاشة)',
+    department_ar: dept ? deptLabel : 'بلا إدارة — تُنسب إلى قطاعك',
+    tender_ar: Object.fromEntries(tender.map(({ spec, value }) => [spec.col, spec.show(value)])),
+    custom_fields: custom.map((c) => ({ name: c.name, value: c.value })),
   };
-  const summary = `تسجيل فرصة «${title}» في مرحلة «${st.name_ar}» بقيمة ${valueSar.toLocaleString('en-US')} ريال، واحتمال الفوز الافتراضي لهذه المرحلة ${win == null ? 'غير مُسجَّل' : win + '%'}.`;
+  const summary = `تسجيل فرصة «${title}» في مرحلة «${st.name_ar}» بقيمة ${valueGross.toLocaleString('en-US')} ريال، واحتمال الفوز الافتراضي لهذه المرحلة ${win == null ? 'غير مُسجَّل' : win + '%'}${tender.length ? `، مع ${tender.length} من حقول المنافسة` : ''}${custom.length ? ` و${custom.length} حقل إضافي` : ''}.`;
+  const extra = Object.fromEntries(tender.map(({ spec, value }) => [spec.col, value]));
+  if (dept) { extra.department_id = dept.id; extra.sector_id = dept.sector_id; }
+  if (vatIncluded === false) extra.value_vat_included = false;
   const { token, expiresAt } = await savePreview(user, {
     type: 'opportunity_create', summary,
-    fields: { title_ar: title, client_id: clientId || null, client_name: clientName || null, value_sar: valueSar, stage_id: stageId, win_pct: win },
+    fields: { title_ar: title, client_id: clientId || null, client_name: clientName || null, value_sar: valueSar, stage_id: stageId, win_pct: win, extra },
+    customFields: custom,
     display: [
       { field_ar: 'عنوان الفرصة', after_ar: title },
       { field_ar: 'الجهة', after_ar: willBe.client_ar },
       { field_ar: 'المرحلة', after_ar: st.name_ar },
-      { field_ar: 'القيمة', after_ar: `${valueSar.toLocaleString('en-US')} ريال` },
+      { field_ar: 'القيمة', after_ar: `${valueGross.toLocaleString('en-US')} ريال`, ...(vatNote ? { note_ar: vatNote } : {}) },
       { field_ar: 'احتمال الفوز', after_ar: win == null ? 'غير مُسجَّل' : `${win}%`, note_ar: 'افتراضي هذه المرحلة' },
       { field_ar: 'مسؤول الفرصة', after_ar: 'أنت' },
+      ...(dept ? [{ field_ar: 'الإدارة المسؤولة', after_ar: deptLabel }] : []),
+      ...tender.map(({ spec, value }) => ({ field_ar: spec.ar, after_ar: spec.show(value) })),
+      ...custom.map((c) => ({ field_ar: `حقل إضافي «${c.name}»`, after_ar: c.value })),
     ],
   }, { intent: 'sanad_preview_opportunity_create', sectorId: user.sector_id || null });
   return envelope('sanad_preview_opportunity_create', {
@@ -231,16 +342,20 @@ async function runCreateOpportunity(ctx, raw) {
     const row = await createOpportunity(ctx, {
       title_ar: f.title_ar, client_id: f.client_id || undefined, new_client_name: f.client_name || undefined,
       value_sar: f.value_sar, stage_id: f.stage_id, win_pct: f.win_pct ?? null,
+      // حقول المنافسة والصفة التجارية والإدارة وراية الضريبة — كما عُرضت في المعاينة حرفاً
+      ...(f.extra || {}),
     });
+    // الحقول الحرّة بخدمتها هي، في المعاملة نفسها — إمّا الفرصة بحقولها أو لا شيء
+    const custom = Array.isArray(p.customFields) && p.customFields.length ? await applyOpportunityFields(ctx, row.id, p.customFields) : null;
     await audit(ctx, {
       action: 'create', resource: 'opportunity', resourceId: row.id, sectorId: row.sector_id || user.sector_id || null,
-      detail: { via: 'ai', tool: 'sanad_create_opportunity', preview: token, confirmed_by: user.id, title: row.title_ar },
+      detail: { via: 'ai', tool: 'sanad_create_opportunity', preview: token, confirmed_by: user.id, title: row.title_ar, custom_fields: custom?.set || [] },
     });
     const stages = await stagesMap();
     return envelope('sanad_create_opportunity', {
       scope_ar: scopeArOf(user), units: CRM_UNITS,
       applied: true, summary: p.summary,
-      opportunity: oppOut(row, stages, riyadhDate()),
+      opportunity: { ...oppOut(row, stages, riyadhDate()), custom_fields: customFieldsOut(await listOpportunityFields(row.id)) },
       refs: uniqRefs([REF.opportunity(row.id), REF.opportunities()]),
     });
   });
@@ -328,7 +443,8 @@ async function runMoveStage(ctx, raw) {
 // أولاً أنها تنقل الفرصة من ميزان إدارةٍ إلى ميزان أخرى فتتحرّك أرقامٌ معلنة آخر السنة؛
 // وثانياً أنها قد تُخرج الفرصة من نطاق ناقلها في اللحظة نفسها فيكتب ثم لا يقرأ ما كتب؛
 // وثالثاً أن الشاشة تعرض عليه شجرة القطاعات والإدارات فيرى ما يختار — والمحادثة لا تعرضها.
-const UPD_FP_FIELDS = ['title_ar', 'value_halalas', 'client_id', 'year', 'priority', 'next_action', 'notes', 'win_pct', 'stage_id', 'updated_at'];
+const UPD_FP_FIELDS = ['title_ar', 'value_halalas', 'client_id', 'year', 'priority', 'next_action', 'notes', 'win_pct', 'stage_id', 'updated_at',
+  'engagement_type', 'solicitation_type', 'delivery_location', 'tender_no', 'submission_due', 'submitted_on', 'duration_months', 'consortium_partners'];
 const OPP_PRIORITIES = ['P0', 'P1', 'P2', 'P3'];
 const money = (v) => (v == null ? 'غير مُسجَّلة' : `${Number(v).toLocaleString('en-US')} ريال`);
 const weightedOf = (v, w) => (v == null || w == null ? null : Math.round(v * w) / 100);
@@ -372,6 +488,15 @@ async function runPreviewOppUpdate(ctx, raw) {
   const nextAction = text(input.nextAction, 'الخطوة التالية', { max: 300 });
   const notes = text(input.notes, 'الملاحظات', { max: 1000 });
   const winPct = intOf(input.winPct, 'احتمال الفوز', { min: 0, max: 100 });
+  // حقول المنافسة والصفة التجارية (الترحيلة 048) والحقول الحرّة والمسح الصريح وراية الضريبة
+  const vatIncluded = input.valueVatIncluded == null ? null : boolOf(input.valueVatIncluded);
+  const { gross: valueGross, note: vatNote } = grossValueOf(valueSar, vatIncluded);
+  const tender = tenderInputsOf(input);
+  const clears = clearFieldsOf(input.clearFields);
+  const custom = customFieldsOf(input.customFields);
+  for (const { spec } of tender) {
+    if (clears.includes(spec)) throw badRequest(`«${spec.ar}» أُرسل بقيمةٍ وطُلب مسحُه في الطلب نفسه — قرّر أحدهما.`);
+  }
 
   const client = clientId ? await get('SELECT id, name_ar FROM client WHERE id = ? AND deleted_at IS NULL', [clientId]) : null;
   if (clientId && !client) throw notFound('الجهة المحدَّدة غير موجودة — ابحث عنها أو اكتب اسمها ليُطابَق على الجهات القائمة.');
@@ -383,14 +508,39 @@ async function runPreviewOppUpdate(ctx, raw) {
   const add = (field_ar, before_ar, after_ar, note_ar = null) => changes.push({ field_ar, before_ar, after_ar, ...(note_ar ? { note_ar } : {}) });
 
   if (title != null && title !== row.title_ar) { add('العنوان', row.title_ar, title); fields.title_ar = title; }
-  if (valueSar != null && valueSar !== valueBefore) {
-    add('القيمة الإجمالية', money(valueBefore), money(valueSar));
+  if (valueGross != null && valueGross !== valueBefore) {
+    add('القيمة الإجمالية', money(valueBefore), money(valueGross), vatNote);
     // المرجّحة ليست حقلاً يُكتب بل حاصلُ ضربٍ — تتحرّك بتحرّك أيٍّ من طرفيها، فتُعرض صفاً
     // مستقلاً كي لا يظنّ القارئ أنه غيّر رقماً واحداً وهو يغيّر رقمين في اللحظة نفسها.
     const wNow = winPct != null ? winPct : winBefore;
-    add('القيمة المرجّحة', money(weightedOf(valueBefore, winBefore)), money(weightedOf(valueSar, wNow)),
+    add('القيمة المرجّحة', money(weightedOf(valueBefore, winBefore)), money(weightedOf(valueGross, wNow)),
       'تتبع القيمة واحتمال الفوز معاً — لا تُكتب مباشرةً');
-    fields.value_sar = valueSar;
+    fields.value_sar = valueGross;
+  }
+  // ── الثابت: صفٌّ لكل حقلٍ يتغيّر فعلاً، والمسح صفٌّ يقول ما كان ─────────────────────
+  for (const { spec, value } of tender) {
+    const before = row[spec.col] ?? null;
+    if (before != null && String(before) === String(value)) continue;
+    add(spec.ar, before == null ? 'لم يُحدَّد' : spec.show(before), spec.show(value)); fields[spec.col] = value;
+  }
+  for (const spec of clears) {
+    const before = row[spec.col] ?? null;
+    if (before == null) continue;                                   // فارغٌ أصلاً — لا شيء يُمسح
+    add(spec.ar, spec.show(before), 'يُمسح — لم يُحدَّد'); fields[spec.col] = '';
+  }
+  // ── الحرّ: القائم يُقارَن بقيمته، والجديد يُقال جديداً، والفارغ حذفٌ يُقال حذفاً ─────────
+  const customChanges = [];
+  if (custom.length) {
+    const byName = new Map((await listOpportunityFields(oppId)).map((f) => [f.name_ar, f]));
+    for (const c of custom) {
+      const ex = byName.get(c.name);
+      if (c.value == null) {
+        if (!ex) continue;
+        add(`حقل إضافي «${c.name}»`, ex.value_text || 'بلا قيمة', 'يُحذف'); customChanges.push(c); continue;
+      }
+      if (ex && String(ex.value_text || '') === c.value) continue;
+      add(`حقل إضافي «${c.name}»`, ex ? (ex.value_text || 'بلا قيمة') : 'غير موجود — يُضاف', c.value); customChanges.push(c);
+    }
   }
   if (client && String(client.id) !== String(row.client_id || '')) {
     add('الجهة', d.client || 'بلا جهة', client.name_ar); fields.client_id = client.id;
@@ -425,7 +575,7 @@ async function runPreviewOppUpdate(ctx, raw) {
 
   const summary = `تعديل «${row.title_ar}»: ${changes.map((c) => c.field_ar).join(' · ')}.`;
   const { token, expiresAt } = await savePreview(user, {
-    type: 'opportunity_update', summary, oppId, fields, display: changes,
+    type: 'opportunity_update', summary, oppId, fields, customFields: customChanges, display: changes,
     subject_ar: `الفرصة «${row.title_ar}»`,
     fingerprint: fingerprintOf(row, UPD_FP_FIELDS),
   }, { intent: 'sanad_preview_opportunity_update', sectorId: row.sector_id || user.sector_id || null });
@@ -449,10 +599,15 @@ async function runUpdateOpportunity(ctx, raw) {
     const row = await get('SELECT * FROM opportunity WHERE id = ? AND deleted_at IS NULL', [p.oppId]);
     if (!row) throw notFound('الفرصة لم تعد موجودة — حُذفت بعد المعاينة.');
     assertFingerprint(row, UPD_FP_FIELDS, p.fingerprint, 'تغيّرت الفرصة');
-    const out = await updateOpportunity(ctx, p.oppId, p.fields || {});
+    const fieldKeys = Object.keys(p.fields || {});
+    const customFields = Array.isArray(p.customFields) ? p.customFields : [];
+    // حقولُ الفرصة بخدمتها، والحقولُ الحرّة بخدمتها — في المعاملة نفسها. وطلبٌ كلُّه حقولٌ حرّة لا
+    // يمرّ بتعديل الفرصة أصلاً كي لا يُكتب تعديلٌ فارغ ولا يُسجَّل أثرٌ بلا حقل.
+    const out = fieldKeys.length ? await updateOpportunity(ctx, p.oppId, p.fields) : null;
+    const custom = customFields.length ? await applyOpportunityFields(ctx, p.oppId, customFields) : null;
     await audit(ctx, {
       action: 'update', resource: 'opportunity', resourceId: p.oppId, sectorId: row.sector_id || user.sector_id || null,
-      detail: { via: 'ai', tool: 'sanad_update_opportunity', preview: token, confirmed_by: user.id, fields: Object.keys(p.fields || {}) },
+      detail: { via: 'ai', tool: 'sanad_update_opportunity', preview: token, confirmed_by: user.id, fields: fieldKeys, custom_fields: custom ? { set: custom.set, removed: custom.removed } : undefined },
     });
     const stages = await stagesMap();
     // `updateOpportunity` يردّ إيجازاً بدل الصفّ حين تخرج الفرصة عن نطاق مُعدِّلها — وهو لا
@@ -463,8 +618,8 @@ async function runUpdateOpportunity(ctx, raw) {
     return envelope('sanad_update_opportunity', {
       scope_ar: scopeArOf(user), units: CRM_UNITS,
       applied: true, summary: p.summary,
-      changed_fields_ar: Object.keys(p.fields || {}).length,
-      opportunity: oppOut(after || out, stages, riyadhDate()),
+      changed_fields_ar: fieldKeys.length + customFields.length,
+      opportunity: { ...oppOut(after || out, stages, riyadhDate()), custom_fields: customFieldsOut(await listOpportunityFields(p.oppId)) },
       refs: uniqRefs([REF.opportunity(p.oppId), REF.opportunities()]),
     });
   });
@@ -496,22 +651,24 @@ export const CRM_TOOLS = Object.freeze([
   },
   {
     name: 'sanad_get_opportunity', label_ar: 'تفاصيل فرصة', kind: 'read',
-    description_ar: 'فرصة واحدة كاملة: العميل والإدارة والمرحلة، واحتمال الفوز **ومصدره** (افتراضي المرحلة أم تعديل يدوي عليها)، والقيمة والقيمة المرجّحة، والفريق العامل عليها، والخطوة التالية بمسؤولها وموعدها، وسجل انتقال مراحلها بمن حرّكها وسببه، وسجل التواصل، والمهام المرتبطة بها.',
+    description_ar: 'فرصة واحدة كاملة: العميل والإدارة والمرحلة، واحتمال الفوز **ومصدره** (افتراضي المرحلة أم تعديل يدوي عليها)، والقيمة والقيمة المرجّحة، وحقول المنافسة (رقمها وموعد تقديم العرض وتاريخه ومدة التنفيذ وشركاء التحالف)، ونوع الارتباط ونوع الطرح وموقع التسليم والرمز، والحقول الإضافية الخاصة بها، والفريق العامل عليها، والخطوة التالية بمسؤولها وموعدها، وسجل انتقال مراحلها بمن حرّكها وسببه، وسجل التواصل، والمهام المرتبطة بها.',
     input: obj({ opportunityId: S.str('معرّف الفرصة', { maxLength: 80 }) }, ['opportunityId']),
     output_ar: 'فرصة واحدة بسجلّيها (المراحل والتواصل) ومهامها؛ الحقل بلا قيمة يقول «غير مُسجَّل»',
     allow: readsOpps, run: runGetOpportunity,
   },
   {
     name: 'sanad_preview_opportunity_create', label_ar: 'معاينة تسجيل فرصة', kind: 'preview',
-    description_ar: 'يعاين فرصة قبل تسجيلها: يتحقق من العميل (معرّفاً مسجَّلاً أو اسماً يُطابَق على الجهات القائمة فإن لم يوجد سُجِّل جهةً جديدة) ومن القيمة وتاريخ الإغلاق، ويعلن **احتمال الفوز الافتراضي للمرحلة المختارة** والقيمة المرجّحة الناتجة عنه، ويعطي رمزاً صالحاً ١٥ دقيقة لمرة واحدة. لا يكتب شيئاً.',
+    description_ar: 'يعاين فرصة قبل تسجيلها: يتحقق من العميل (معرّفاً مسجَّلاً أو اسماً يُطابَق على الجهات القائمة فإن لم يوجد سُجِّل جهةً جديدة) ومن القيمة، ويعلن **احتمال الفوز الافتراضي للمرحلة المختارة** والقيمة المرجّحة الناتجة عنه. ويقبل ما تسأله المنافسة: رقمها وموعد تقديم العرض وتاريخه ومدة التنفيذ وشركاء التحالف، ونوع الارتباط والطرح وموقع التسليم، والإدارة المسؤولة بمعرّفها، وحقولاً إضافية خاصة بها — كلُّ حقلٍ صفٌّ في المعاينة. القيمة تُقرأ شاملةً الضريبة ما لم يُقَل غير ذلك. يعطي رمزاً صالحاً ١٥ دقيقة لمرة واحدة. لا يكتب شيئاً.',
     input: obj({
       title: S.str('عنوان الفرصة', { maxLength: 200, minLength: 2 }),
       clientId: S.str('معرّف عميل مسجَّل', { maxLength: 80 }),
       clientName: S.str('اسم العميل إن لم يكن مسجَّلاً — يُطابَق أولاً على الجهات القائمة', { maxLength: 200 }),
       valueSar: S.num('قيمة الفرصة بالريال', 0),
       stage: S.str('المرحلة — الافتراضي: الترشيح', { maxLength: 40 }),
+      departmentId: S.str('معرّف الإدارة المسؤولة داخل قطاعك — يُقبل عند الإنشاء وحده؛ نقلُها لاحقاً من صفحة الفرصة', { maxLength: 80 }),
+      ...TENDER_INPUT,
     }, ['title', 'valueSar']),
-    output_ar: 'الفرصة كما ستُسجَّل + احتمال الفوز الافتراضي للمرحلة + القيمة المرجّحة + رمز المعاينة',
+    output_ar: 'الفرصة كما ستُسجَّل (بحقول المنافسة والإدارة والحقول الإضافية) + احتمال الفوز الافتراضي للمرحلة + القيمة المرجّحة + رمز المعاينة',
     allow: createsOpps, run: runPreviewOppCreate,
   },
   {
@@ -523,7 +680,7 @@ export const CRM_TOOLS = Object.freeze([
   },
   {
     name: 'sanad_preview_opportunity_update', label_ar: 'معاينة تعديل فرصة', kind: 'preview',
-    description_ar: 'يعاين تعديل حقول فرصة قائمة ويعرض قبل/بعد لكل حقل يتغيّر فعلاً: العنوان، القيمة، الجهة، سنة الفرصة، الأولوية، الخطوة التالية، الملاحظات، احتمال الفوز. وما يتبع غيرَه يُعرض معه — القيمة المرجّحة تظهر صفاً مستقلاً كلما تحرّك أحد طرفيها. **لا يمسّ القطاع ولا الإدارة ولا المسؤول ولا المرحلة**: إعادة الإسناد من صفحة الفرصة، وتحريك المرحلة له معاينته. طلبٌ لا يغيّر شيئاً يُردّ. يعطي رمزاً صالحاً ١٥ دقيقة لمرة واحدة ولا يكتب شيئاً.',
+    description_ar: 'يعاين تعديل حقول فرصة قائمة ويعرض قبل/بعد لكل حقل يتغيّر فعلاً: العنوان، القيمة، الجهة، سنة الفرصة، الأولوية، الخطوة التالية، الملاحظات، احتمال الفوز، وحقول المنافسة (رقمها وموعد تقديم العرض وتاريخه ومدة التنفيذ وشركاء التحالف)، ونوع الارتباط والطرح وموقع التسليم، والحقول الإضافية الخاصة بها (اسم وقيمة؛ القيمة الفارغة تحذف الحقل). والمسح الصريح لحقلٍ عبر clearFields. وما يتبع غيرَه يُعرض معه — القيمة المرجّحة تظهر صفاً مستقلاً كلما تحرّك أحد طرفيها. **لا يمسّ القطاع ولا الإدارة ولا المسؤول ولا المرحلة**: إعادة الإسناد من صفحة الفرصة، وتحريك المرحلة له معاينته. طلبٌ لا يغيّر شيئاً يُردّ. يعطي رمزاً صالحاً ١٥ دقيقة لمرة واحدة ولا يكتب شيئاً.',
     input: obj({
       opportunityId: S.str('معرّف الفرصة', { maxLength: 80 }),
       title: S.str('العنوان الجديد', { maxLength: 200, minLength: 2 }),
@@ -535,8 +692,10 @@ export const CRM_TOOLS = Object.freeze([
       nextAction: S.str('الخطوة التالية', { maxLength: 300 }),
       notes: S.str('الملاحظات', { maxLength: 1000 }),
       winPct: S.int('احتمال الفوز يدوياً (٠–١٠٠) — يزول عند أول تحريك للمرحلة', 0, 100),
+      ...TENDER_INPUT,
+      clearFields: S.arr('حقول تُمسح صراحةً فتصير «لم يُحدَّد»', S.en('الحقل', TENDER_KEYS), 8),
     }, ['opportunityId']),
-    output_ar: 'قائمة التغييرات قبل/بعد بالعربية + ما لا تمسّه الأداة مكتوباً + رمز المعاينة؛ لا كتابة قبل التأكيد',
+    output_ar: 'قائمة التغييرات قبل/بعد بالعربية (بحقول المنافسة والحقول الإضافية) + ما لا تمسّه الأداة مكتوباً + رمز المعاينة؛ لا كتابة قبل التأكيد',
     allow: updatesOpps, run: runPreviewOppUpdate,
   },
   {

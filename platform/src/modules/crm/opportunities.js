@@ -10,6 +10,7 @@ import { isSupportUnit } from '../../core/org/kind.js';
 import { grossOfNet } from '../finance/vat.js';
 import { getTeam, pendingTeamApprovals } from './oppteam.js';
 import { loadReadableOpportunity } from './opp-access.js';
+import { listOpportunityFields } from './oppfields.js';
 import { ensureProjectForWonOpportunity } from './opp-project-sync.js';
 
 // Stage-rot thresholds (benchmarks §1 — Pipedrive rotting): an OPEN opportunity sitting in a stage
@@ -211,7 +212,7 @@ export async function createOpportunity(ctx, data) {
     priority: data.priority || null, year: data.year || new Date().getUTCFullYear(),
     source: data.source || 'manual', next_action: data.next_action || null, notes: data.notes || null,
     exclude_from_sales: data.exclude_from_sales ? 1 : 0, stage_changed_at: now,
-    ...commercialPatch(data, {}),
+    ...tenderPatch(data, commercialPatch(data, {})),
     created_at: now, created_by: user.id,
   });
   if ('partner_department_ids' in data) {
@@ -272,6 +273,46 @@ function valueHalalasFrom(data) {
 export const DELIVERY_LOCATION_MAX = 160;
 export const ENGAGEMENT_TYPES = ['PROJECT', 'FRAMEWORK'];
 export const SOLICITATION_TYPES = ['RFI', 'RFP', 'RFQ', 'DIRECT_AWARD', 'TENDER'];
+
+// ── حقول المنافسة الثابتة (الترحيلة 048، ADR-0024) ───────────────────────────────
+// «ثابتة مشتركة + حرّة لكل منافسة» — والثابتُ هنا: رقم المنافسة، وموعد تقديم العرض، وتاريخ
+// تقديمه، ومدة التنفيذ بالأشهر، وشركاء التحالف. تُقرأ وتُكتب من الشاشة والمحادثة بالقاعدة
+// نفسها التي تحكم موقع التسليم: الفراغ يُخزَّن فراغاً (لا نصّاً فارغاً)، وما لم يُرسَل لا يُمَسّ،
+// والنصّ يُقصّ عند حدّه، أما التاريخ والمدة فيُردّان بجملةٍ إن لم يكونا يوماً أو عدداً — رقمٌ خاطئ
+// في موعد التقديم أسوأ من فراغ.
+export const TENDER_NO_MAX = 60;
+export const CONSORTIUM_MAX = 300;
+export const DURATION_MONTHS_MAX = 240;
+const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+function dayOrNull(v, label) {
+  const s = String(v ?? '').trim();
+  if (!s) return null;
+  const t = Date.parse(`${s}T00:00:00Z`);
+  if (!DAY_RE.test(s) || Number.isNaN(t) || new Date(t).toISOString().slice(0, 10) !== s) {
+    throw badRequest(`${label} يُكتب يوماً بصيغة سنة-شهر-يوم — مثل 2026-10-15`);
+  }
+  return s;
+}
+function tenderPatch(data, patch) {
+  if ('tender_no' in data) patch.tender_no = String(data.tender_no ?? '').replace(/\s+/g, ' ').trim().slice(0, TENDER_NO_MAX) || null;
+  if ('submission_due' in data) patch.submission_due = dayOrNull(data.submission_due, 'موعد تقديم العرض');
+  if ('submitted_on' in data) patch.submitted_on = dayOrNull(data.submitted_on, 'تاريخ تقديم العرض');
+  if ('duration_months' in data) {
+    const raw = data.duration_months;
+    if (raw == null || String(raw).trim() === '') patch.duration_months = null;
+    else {
+      const n = Number(raw);
+      if (!Number.isInteger(n) || n < 1 || n > DURATION_MONTHS_MAX) {
+        throw badRequest(`مدة التنفيذ تُكتب بالأشهر عدداً صحيحاً من 1 إلى ${DURATION_MONTHS_MAX} — مثل 24`);
+      }
+      patch.duration_months = n;
+    }
+  }
+  if ('consortium_partners' in data) {
+    patch.consortium_partners = String(data.consortium_partners ?? '').replace(/\s+/g, ' ').trim().slice(0, CONSORTIUM_MAX) || null;
+  }
+  return patch;
+}
 function commercialPatch(data, patch) {
   if ('delivery_location' in data) {
     const v = String(data.delivery_location ?? '').trim().slice(0, DELIVERY_LOCATION_MAX);
@@ -341,6 +382,7 @@ export async function updateOpportunity(ctx, oppId, data) {
   }
   if ('value_sar' in data) patch.value_halalas = valueHalalasFrom(data);
   commercialPatch(data, patch);
+  tenderPatch(data, patch);
   if ('year' in data) {
     const y = Number(data.year);
     if (!Number.isInteger(y) || y < 2000 || y > 2100) throw badRequest('السنة غير صحيحة — اكتب سنةً بأربعة أرقام');
@@ -568,6 +610,8 @@ export async function opportunityDetail(user, oppId, opts = {}) {
   const flags = withDiscipline(opp, today);
   // طلبات ضمّ الفريق المعلَّقة — رؤية الطالب لمصير طلبه (v5.24)، من سجل الموافقات القائم.
   const pendingRequests = await pendingTeamApprovals(user, oppId);
+  // الحقول الحرّة (الترحيلة 048): ما سألته هذه المنافسة وحدها — تُقرأ مع فرصتها بلا نداءٍ ثانٍ.
+  const fields = await listOpportunityFields(oppId);
   // سجل التدقيق لمن يقرأ صفحة التدقيق أصلاً (المدير العام) — بوابة pages.js نفسها، صفر توسعة.
   const auditTrail = user.role_id === 'admin' ? await all(
     `SELECT at, username, action, detail_json FROM audit_log
@@ -575,7 +619,7 @@ export async function opportunityDetail(user, oppId, opts = {}) {
   return {
     opp, client, department, owner: ownerRow ? (ownerRow.name_ar || ownerRow.username) : null,
     history, stages, team, activities, canEdit, canEditAttribution, canDelete,
-    pendingRequests, auditTrail,
+    pendingRequests, auditTrail, fields,
     stage_age_days: flags.stage_age_days, rot: flags.rot, no_next_action: flags.no_next_action,
     weighted_halalas: Math.round((opp.value_halalas || 0) * ((opp.win_pct || 0) / 100)),
   };
