@@ -17,7 +17,7 @@
 // تُرجع صفاً واحداً، فلا GROUP BY في الملف كله).
 //
 // المخرَج: { "clients": [[خانة, …], …], "opportunities": […], "oppteam": […], "projects": […],
-//            "phases": […], "deliverables": […], "employees": […], "employeetargets": […],
+//            "deliverables": […], "employees": […], "employeetargets": […],
 //            "staffing": […], "costlines": […] }
 // وترتيب الخانات في كل صف = ترتيب أعمدة الورقة في المولّد حرفاً بحرف — تُقرأ المواصفة منه
 // مباشرةً (import) كي لا يفترق الملفان أبداً.
@@ -40,7 +40,7 @@ import { TEAM_ROLE_LABELS } from '../src/modules/crm/oppteam.js';
 import {
   workBucketLabel, DELIVERABLE_STATUS_AR, ENGAGEMENT_TYPE_AR, SOLICITATION_TYPE_AR,
 } from '../src/web/i18n/glossary.js';
-import { SHEETS, sheetKey, setWithCosts, isRequired, isCalc } from './make-sap-intake-workbook.mjs';
+import { SHEETS, sheetKey, setWithCosts, isRequired, isCalc, isHelper } from './make-sap-intake-workbook.mjs';
 
 // حالة المشروع ومؤشر صحته: التسميات العربية تُقرأ من محوّل المشاريع نفسه لا تُكتب هنا ثانيةً،
 // فما نكتبه في الدفتر هو حرفياً ما سيقبله المحوّل حين يعود الدفتر.
@@ -48,8 +48,6 @@ const enumOf = (key) => projectsAdapter.columns.find((c) => c.key === key).enum;
 const STATUS_LABEL = (v) => (v ? enumLabel(enumOf('status'), v) : '');
 const RAG_LABEL = (v) => (v ? enumLabel(enumOf('rag'), v) : '');
 
-// حالة المرحلة: ثلاث حالات في project_phase (017) وثلاث كلمات في قائمة الورقة — بصيغة المؤنث.
-const PHASE_STATUS_AR = { NOT_STARTED: 'لم تبدأ', IN_PROGRESS: 'قيد التنفيذ', DONE: 'مكتملة' };
 
 const VAT_RATE = 1.15;              // النسبة نفسها المكتوبة في صيغة المولّد
 const money = (halalas) => {
@@ -250,43 +248,26 @@ async function projectRows(sectorId) {
   return out;
 }
 
-async function phaseRows(sectorId) {
-  const rows = await all(`
-    SELECT f.name_ar, f.order_no, f.start_date, f.end_date, f.status, p.name_ar proj_name
-    FROM project_phase f
-    JOIN project p ON p.id = f.project_id
-    WHERE p.sector_id = ? AND f.deleted_at IS NULL AND p.deleted_at IS NULL
-    ORDER BY p.name_ar, f.order_no, f.name_ar`, [sectorId]);
-  return rows.map((f) => ({
-    'المشروع': txt(f.proj_name),
-    'اسم المرحلة': txt(f.name_ar),
-    'الترتيب': num(f.order_no),
-    'البداية': day(f.start_date),
-    'النهاية': day(f.end_date),
-    'الحالة': PHASE_STATUS_AR[String(f.status || '').toUpperCase()] || '',
-  }));
-}
-
 async function deliverableRows(sectorId) {
   // صفٌّ لكل (مخرَج × فاتورته). المخرَج الذي فُوتر على فاتورتين يعود هنا صفَّين، والورقة تحمل
   // سطراً واحداً لكل مخرَج — فتُطوى الفواتير على أقدمها تاريخَ إصدار، ويُذكر المطوي في الملخّص
   // كي لا يظن الفريق أن فاتورةً ضاعت. (الربط عبر invoice_line كما تكتبه خدمة المالية نفسها.)
+  // والترتيب مجموعاتٌ تُقرأ: المشروع، ثم معلمه، ثم شهر الاستحقاق — فتصل الورقةُ الفريقَ كتلاً.
   const rows = await all(`
     SELECT d.id, d.name_ar, d.amount_halalas, d.month, d.year, d.due_date, d.status,
            d.delivered_at, d.accepted_at, d.notes, d.invoiced_at, d.collected_at,
-           d.phase_name_ar,
-           p.name_ar proj_name, f.name_ar phase_name,
+           p.name_ar proj_name, m.name_ar milestone_name,
            u.name_ar owner_name, u.username owner_username,
            i.id invoice_id, i.code invoice_code, i.issue_date issue_date,
            (SELECT MIN(k.collected_at) FROM collection k WHERE k.invoice_id = i.id) collected_first
     FROM deliverable d
     JOIN project p ON p.id = d.project_id
-    LEFT JOIN project_phase f ON f.id = d.phase_id AND f.deleted_at IS NULL
+    LEFT JOIN milestone m ON m.id = d.milestone_id AND m.deleted_at IS NULL
     LEFT JOIN app_user u ON u.id = d.owner_user_id AND u.deleted_at IS NULL
     LEFT JOIN invoice_line il ON il.deliverable_id = d.id
     LEFT JOIN invoice i ON i.id = il.invoice_id AND i.deleted_at IS NULL
     WHERE p.sector_id = ? AND d.deleted_at IS NULL AND p.deleted_at IS NULL
-    ORDER BY p.name_ar, d.year, d.month, d.name_ar`, [sectorId]);
+    ORDER BY p.name_ar, COALESCE(m.name_ar, ''), d.year, d.month, d.name_ar`, [sectorId]);
 
   const byDeliverable = new Map();
   let collapsed = 0;
@@ -305,9 +286,10 @@ async function deliverableRows(sectorId) {
     const invoiced = !!d.invoice_id || !!d.invoiced_at;
     const collectedAt = d.collected_first || d.collected_at;
     return {
+      // الأصل يُكتب صريحاً في كل سطرٍ معبأ: السحب راحةُ من يكتب بيده، لا اختصارٌ لما نكتبه نحن
       'المشروع': txt(d.proj_name),
-      'اسم المخرج أو البند': txt(d.name_ar),
-      'المرحلة': txt(d.phase_name || d.phase_name_ar),
+      'المعلم': txt(d.milestone_name),
+      'المخرج': txt(d.name_ar),
       'المبلغ بدون ضريبة': netMoney(d.amount_halalas),
       // الشهر والسنة كما هما مخزَّنان — وبهما يُحسب الإيراد لا بتاريخ الفاتورة ولا التحصيل
       'شهر الاستحقاق': num(d.month),
@@ -479,7 +461,6 @@ const READERS = {
   opportunities: opportunityRows,
   oppteam: oppteamRows,
   projects: projectRows,
-  phases: phaseRows,
   deliverables: deliverableRows,
   employees: employeeRows,
   employeetargets: targetRows,
@@ -510,7 +491,7 @@ async function main() {
     // الترتيب من المولّد لا من هنا: أي عمود يُضاف هناك يظهر هنا فارغاً بدل أن ينزلق الصف.
     // والعمود المحسوب يبقى فارغاً دائماً — المولّد يكتب فيه صيغته.
     data[key] = objRows.map((r) => spec.columns.map((c) => {
-      const v = isCalc(c) ? '' : r[c.header];
+      const v = (isCalc(c) || isHelper(c)) ? '' : r[c.header];
       return v == null ? '' : v;
     }));
     const unknown = objRows.length
@@ -528,7 +509,8 @@ async function main() {
     const reqIdx = spec.columns.map((c, i) => (isRequired(c) ? i : -1)).filter((i) => i >= 0);
     const missing = rows.filter((r) => reqIdx.some((i) => r[i] === '' || r[i] == null)).length;
     const blanks = spec.columns.map((c, i) => {
-      if (isCalc(c)) return null;   // الخانة المحسوبة فارغةٌ بالتصميم، لا نقصاً في البيانات
+      // الخانة المحسوبة وخانة السحب فارغتان بالتصميم — لا نقصاً في البيانات
+      if (isCalc(c) || isHelper(c)) return null;
       const n = rows.filter((r) => r[i] === '' || r[i] == null).length;
       return n ? `${c.header}: ${n}` : null;
     }).filter(Boolean);

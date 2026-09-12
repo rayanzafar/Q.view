@@ -19,7 +19,7 @@
 //   --required=basic             ← يخفّف الإلزام: لا يبقى ذهبياً إلا ما لا قيام للسجل بدونه
 //   --prefill=<صفوف.json>        ← نسخة معبأة بما هو مسجَّل على المنصة اليوم
 //                                  (يبنيه scripts/export-sector-intake.mjs — مفتاح لكل ورقة باسم
-//                                   محوّلها: clients / opportunities / oppteam / projects / phases /
+//                                   محوّلها: clients / opportunities / oppteam / projects /
 //                                   deliverables / employees / employeetargets / staffing / costlines)
 //
 // لماذا يُكتب ملف Excel يدوياً هنا بدل مكتبة النسخ المورَّدة؟ لأن النسخة المجتمعية من المكتبة
@@ -78,8 +78,6 @@ const YES_ONLY = ['نعم'];
 const YES_NO = ['نعم', 'لا'];
 // حالات المخرَج كما تنطقها المنصة (DELIVERABLE_STATUS_AR في src/web/i18n/glossary.js)
 const DELIVERABLE_STATUS = ['مسودة', 'جارٍ العمل', 'تم التسليم', 'تم الاعتماد', 'مُعاد للتعديل'];
-// حالات المرحلة (project_phase.status: NOT_STARTED / IN_PROGRESS / DONE) — بصيغة المؤنث
-const PHASE_STATUS = ['لم تبدأ', 'قيد التنفيذ', 'مكتملة'];
 // أدوار فريق الفرصة — لا أدوار المشروع: الفرصة يقودها واحد ويشارك فيها غيره ويراعيها قائد
 const TEAM_ROLES = ['قائد', 'عضو', 'مراجع', 'راعٍ'];
 // أنواع التكلفة كما في جدول cost_line (migrations/001_init.sql)
@@ -134,6 +132,7 @@ const COLORS = {
   captured: 'FF64748B', // رمادي مزرق — يُجمع الآن ويُطبَّق على المنصة لاحقاً
   calc: 'FF0F766E',     // فيروزي — خانة محسوبة لا يُكتب فيها
   calcBg: 'FFE6F4F1',   // فيروزي فاتح لخلايا العمود المحسوب
+  groupBg: 'FFF7F9FC',  // رمادي لبني شفيف — يفصل مجموعة الأصل عن التي تليها في الورقة المعبأة
   exampleBg: 'FFF3F4F6',
   exampleFg: 'FF79828F',
   border: 'FFD1D5DB',
@@ -252,6 +251,8 @@ const S = {
   DATA_MONEY: 6, EX_MONEY: 7, DATA_TEXTFMT: 8, EX_TEXTFMT: 9, DATA_INT: 10, EX_INT: 11,
   TITLE: 12, BODY: 13, SUBHEAD: 14, LIST_HDR: 15,
   HEADER_CALC: 16, DATA_CALC: 17, EX_CALC: 18,
+  // خلايا الصف في المجموعة الثانية من كل زوج مجموعات — خلفيةٌ شفيفة تفصل الكتل
+  DATA_TEXT_ALT: 19, DATA_MONEY_ALT: 20, DATA_INT_ALT: 21, DATA_TEXTFMT_ALT: 22,
 };
 function stylesXml() {
   const font = (extra) => `<font><sz val="${extra.sz || 11}"/>${extra.b ? '<b/>' : ''}${extra.i ? '<i/>' : ''}${extra.color ? `<color rgb="${extra.color}"/>` : ''}<name val="Calibri"/></font>`;
@@ -273,16 +274,16 @@ function stylesXml() {
     font({ sz: 16, b: 1, color: COLORS.title }),// 3 عنوان التعليمات
     font({ b: 1, color: COLORS.dark }),         // 4 عناوين فرعية
   ].join('')}</fonts>
-<fills count="9">${['<fill><patternFill patternType="none"/></fill>',
+<fills count="10">${['<fill><patternFill patternType="none"/></fill>',
     '<fill><patternFill patternType="gray125"/></fill>',
     fill(COLORS.header), fill(COLORS.required), fill(COLORS.exampleBg),
     fill(COLORS.listHdrBg), fill(COLORS.captured),
-    fill(COLORS.calc), fill(COLORS.calcBg),
+    fill(COLORS.calc), fill(COLORS.calcBg), fill(COLORS.groupBg),
   ].join('')}</fills>
 <borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border>
 <border><left style="thin"><color rgb="${COLORS.border}"/></left><right style="thin"><color rgb="${COLORS.border}"/></right><top style="thin"><color rgb="${COLORS.border}"/></top><bottom style="thin"><color rgb="${COLORS.border}"/></bottom><diagonal/></border></borders>
 <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
-<cellXfs count="19">${[
+<cellXfs count="23">${[
     xf({}),                                        // 0
     xf({ b: 1, align: vmid }),                     // 1 DATA_TEXT
     xf({ f: 1, fl: 2, b: 1, align: center }),      // 2 HEADER
@@ -302,6 +303,10 @@ function stylesXml() {
     xf({ f: 1, fl: 7, b: 1, align: center }),      // 16 HEADER_CALC — ترويسة فيروزية
     xf({ fl: 8, b: 1, n: 164, align: vmid }),      // 17 DATA_CALC — خانة محسوبة
     xf({ f: 2, fl: 8, b: 1, n: 164, align: vmid }),// 18 EX_CALC
+    xf({ fl: 9, b: 1, align: vmid }),               // 19 DATA_TEXT_ALT
+    xf({ fl: 9, b: 1, n: 164, align: vmid }),       // 20 DATA_MONEY_ALT
+    xf({ fl: 9, b: 1, n: 1, align: vmid }),         // 21 DATA_INT_ALT
+    xf({ fl: 9, b: 1, n: 49, align: vmid }),        // 22 DATA_TEXTFMT_ALT
   ].join('')}</cellXfs>
 <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
 </styleSheet>`;
@@ -362,7 +367,11 @@ function cellXml(ref, s, val) {
 }
 function worksheetXml({ tabColor, dimension, freeze = false, selected = false, cols = [], rows = [], validations = [] }) {
   const colsXml = cols.length
-    ? `<cols>${cols.map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join('')}</cols>` : '';
+    ? `<cols>${cols.map((c, i) => {
+      const w = typeof c === 'object' ? c.w : c;
+      const hidden = typeof c === 'object' && c.hidden ? ' hidden="1"' : '';
+      return `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"${hidden}/>`;
+    }).join('')}</cols>` : '';
   const rowsXml = rows.map(({ r, ht, cells }) =>
     `<row r="${r}"${ht ? ` ht="${ht}" customHeight="1"` : ''}>${cells.join('')}</row>`).join('');
   const dv = validations.length
@@ -405,7 +414,6 @@ const LISTS = [
   { key: 'employees', header: 'الموظفون', values: [], mirror: { sheet: 'الموظفون', col: 'A' } },
   { key: 'projects', header: 'المشاريع', values: [], mirror: { sheet: 'المشاريع', col: 'A' } },
   { key: 'deliverableStatus', header: 'حالة المخرج', values: DELIVERABLE_STATUS },
-  { key: 'phaseStatus', header: 'حالة المرحلة', values: PHASE_STATUS },
   { key: 'yesNo', header: 'نعم أو لا', values: YES_NO },
   { key: 'teamRoles', header: 'دور عضو الفرصة', values: TEAM_ROLES },
   { key: 'costTypes', header: 'نوع التكلفة', values: COST_TYPES },
@@ -413,7 +421,6 @@ const LISTS = [
   { key: 'engagement', header: 'نوع الارتباط', values: ENGAGEMENT_TYPES },
   { key: 'solicitation', header: 'طريقة الطرح', values: SOLICITATION_TYPES },
   { key: 'opportunities', header: 'الفرص', values: [], mirror: { sheet: 'الفرص', col: 'A' } },
-  { key: 'phases', header: 'مراحل المشاريع', values: [], mirror: { sheet: 'مراحل المشروع', col: 'B' } },
 ];
 function listMeta() {
   const meta = new Map();
@@ -532,6 +539,21 @@ function buildListsSheetXml() {
 //                 باسمٍ («القيمة مع الضريبة») ويعرفه المحوّل باسمٍ آخر («القيمة (ريال)»)، فيصل
 //                 المحرك اليومَ بلا انتظار محوّل جديد. و--verify يشترط أن تكون labelAr في محوّله.
 //   list          { key, strict } القائمة المنسدلة ومدى صرامتها
+//   helper        عمود آلةٍ لا عمود بيانات: مخفيٌّ في آخر الورقة، صيغته تسحب الأصل من السطر
+//                 الذي فوقه متى تُرك فارغاً. لا يخرج في ملف الاستيراد ولا يُطلب له محوّل.
+//
+// ── سحب الأصل إلى الأسطر التالية ──────────────────────────────────────────────
+// الورقة الابن (المخرجات، التسكين، التكاليف، فريق الفرصة) تُكتب مجموعاتٍ: أصلٌ واحد وتحته
+// بنوده. فيُكتب الأصل مرة على أول سطر من المجموعة، وتُترك خانته فارغة في الأسطر التالية.
+// وفي الدفتر عمودٌ مخفيٌّ يحمل الأصل المعتمد لكل سطر بصيغة «إن فرغت فخذ ما فوقك»، وفي
+// ‏--split يُحسب الأصلُ نفسه في جافاسكربت فلا يعتمد ملفُّ الاستيراد على حساب إكسل أصلاً.
+const carryHelperHeader = (parent, feminine) => `${parent} (المعتمد${feminine ? 'ة' : ''})`;
+const CARRY_HELPER = (parent, feminine = false) => ({
+  header: carryHelperHeader(parent, feminine),
+  width: 40, kind: 'text', helper: true, carryFrom: parent,
+  title: carryHelperHeader(parent, feminine),
+  hint: 'عمود مخفيٌّ يحسبه الدفتر وحده — لا يُكتب فيه ولا يُحذف.',
+});
 export const ALL_SHEETS = [
   {
     name: 'العملاء', adapter: 'clients', injectSector: false,
@@ -599,17 +621,18 @@ export const ALL_SHEETS = [
     ],
   },
   {
-    name: 'فريق الفرصة', adapter: 'oppteam', injectSector: false,
+    name: 'فريق الفرصة', adapter: 'oppteam', injectSector: false, carryDown: 'الفرصة',
     desc: 'من يعمل على كل فرصة ودوره فيها',
     columns: [
       { header: 'الفرصة', width: 46, kind: 'text', req: 'always', capturedUntil: 'oppteam', list: { key: 'opportunities', strict: false },
-        title: 'الفرصة', hint: 'اختر عنوان الفرصة من القائمة — كما كتبتموه في ورقة «الفرص» حرفياً.' },
+        title: 'الفرصة', hint: 'اختر عنوان الفرصة من القائمة مرة واحدة على أول سطر، واترك الخانة فارغة في أسطرها التالية — تُفهم تلقائياً.' },
       { header: 'الموظف', width: 30, kind: 'text', req: 'always', capturedUntil: 'oppteam', list: { key: 'employees', strict: false },
         title: 'الموظف', hint: 'اختر الاسم من القائمة — كما في ورقة «الموظفون».' },
       { header: 'الدور', width: 16, kind: 'text', req: 'strict', capturedUntil: 'oppteam', list: { key: 'teamRoles', strict: true },
         title: 'الدور', hint: 'قائد الفرصة واحد، والبقية أعضاء أو مراجعون أو راعٍ.' },
       { header: 'نسبة التخصيص %', width: 15, kind: 'int', capturedUntil: 'oppteam',
         title: 'نسبة التخصيص', hint: 'كم من وقته يعطي هذه الفرصة — رقم من 0 إلى 100.' },
+      CARRY_HELPER('الفرصة', true),
     ],
     example: ['تطبيق نظام SAP S/4HANA لجهة حكومية', 'محمد أحمد الشهري', 'قائد', 60],
     demo: [
@@ -662,38 +685,15 @@ export const ALL_SHEETS = [
     ],
   },
   {
-    name: 'مراحل المشروع', adapter: 'phases', injectSector: false,
-    desc: 'مراحل تنفيذ كل مشروع بتواريخها',
-    columns: [
-      { header: 'المشروع', width: 46, kind: 'text', req: 'always', capturedUntil: 'phases', list: { key: 'projects', strict: false },
-        title: 'المشروع', hint: 'اختر المشروع من القائمة — كما في ورقة «المشاريع» حرفياً.' },
-      { header: 'اسم المرحلة', width: 30, kind: 'text', req: 'always', capturedUntil: 'phases',
-        title: 'اسم المرحلة', hint: 'اسم المرحلة كما في خطة المشروع.' },
-      { header: 'الترتيب', width: 10, kind: 'int', req: 'strict', capturedUntil: 'phases',
-        title: 'الترتيب', hint: 'رقم تسلسل المرحلة داخل المشروع: 1، 2، 3…' },
-      { header: 'البداية', width: 14, kind: 'textfmt', capturedUntil: 'phases',
-        title: 'بداية المرحلة', hint: 'اكتب: 2026-02-01.' },
-      { header: 'النهاية', width: 14, kind: 'textfmt', capturedUntil: 'phases',
-        title: 'نهاية المرحلة', hint: 'اكتب: 2026-04-30.' },
-      { header: 'الحالة', width: 15, kind: 'text', capturedUntil: 'phases', list: { key: 'phaseStatus', strict: true },
-        title: 'حالة المرحلة', hint: 'لم تبدأ، قيد التنفيذ، أو مكتملة.' },
-    ],
-    example: ['تشغيل ودعم نظام SAP لجهة حكومية', 'التحليل والتشخيص', 1, '2026-02-01', '2026-04-30', 'مكتملة'],
-    demo: [
-      ['تشغيل ودعم نظام SAP لوزارة الطاقة', 'التحليل والتشخيص', 1, '2026-02-01', '2026-04-30', 'مكتملة'],
-      ['تشغيل ودعم نظام SAP لوزارة الطاقة', 'البناء والتهيئة', 2, '2026-05-01', '2026-10-31', 'قيد التنفيذ'],
-    ],
-  },
-  {
-    name: 'المخرجات والبنود', adapter: 'deliverables', injectSector: false,
-    desc: 'بنود العقد ومخرجاته، وما فُوتِر منها وما حُصِّل',
+    name: 'المخرجات', adapter: 'deliverables', injectSector: false, carryDown: 'المشروع',
+    desc: 'مخرجات كل مشروع وبنوده تحت معالمه، وما فُوتِر منها وما حُصِّل',
     columns: [
       { header: 'المشروع', width: 40, kind: 'text', req: 'always', capturedUntil: 'deliverables', list: { key: 'projects', strict: false },
-        title: 'المشروع', hint: 'اختر المشروع من القائمة — كما في ورقة «المشاريع» حرفياً.' },
-      { header: 'اسم المخرج أو البند', width: 36, kind: 'text', req: 'always', capturedUntil: 'deliverables',
-        title: 'اسم المخرج أو البند', hint: 'اسم البند كما في جدول الكميات أو خطة المخرجات.' },
-      { header: 'المرحلة', width: 24, kind: 'text', capturedUntil: 'deliverables', list: { key: 'phases', strict: false },
-        title: 'المرحلة', hint: 'اختياري — المرحلة التي ينتمي إليها البند، كما كتبتموها في ورقة «مراحل المشروع».' },
+        title: 'المشروع', hint: 'اختر المشروع من القائمة مرة واحدة على أول سطر، واترك الخانة فارغة في أسطره التالية — تُفهم تلقائياً.' },
+      { header: 'المعلم', width: 26, kind: 'text', capturedUntil: 'deliverables',
+        title: 'المعلم', hint: 'اكتب اسم المعلم نفسه على كل بندٍ يتبعه، واتركه فارغاً إن لم يكن للبند معلم.' },
+      { header: 'المخرج', width: 36, kind: 'text', req: 'always', capturedUntil: 'deliverables',
+        title: 'المخرج', hint: 'اسم البند كما في جدول الكميات أو خطة المخرجات.' },
       { header: 'المبلغ بدون ضريبة', width: 18, kind: 'money', req: 'always', capturedUntil: 'deliverables', skipOnSplit: true,
         title: 'المبلغ بدون ضريبة', hint: 'قيمة البند قبل الضريبة، أرقاماً فقط. وخانة «مع الضريبة» تُحسب وحدها.' },
       { header: 'المبلغ مع الضريبة', width: 18, kind: 'money', capturedUntil: 'deliverables',
@@ -725,15 +725,20 @@ export const ALL_SHEETS = [
         title: 'المسؤول', hint: 'اختياري — من يتولى هذا البند من الفريق.' },
       { header: 'ملاحظة', width: 28, kind: 'text', capturedUntil: 'deliverables',
         title: 'ملاحظة', hint: 'أي تفصيل يخص البند.' },
+      CARRY_HELPER('المشروع'),
     ],
-    example: ['تشغيل ودعم نظام SAP لجهة حكومية', 'تقرير الوضع الراهن', 'التحليل والتشخيص', 250000, null,
+    example: ['تشغيل ودعم نظام SAP لجهة حكومية', 'التحليل والتشخيص', 'تقرير الوضع الراهن', 250000, null,
       4, 2026, '2026-04-30', 'تم الاعتماد', '2026-04-25', '2026-04-30', 'نعم', 'INV-2026-014', '2026-05-03',
       'نعم', '2026-06-10', 'محمد أحمد الشهري', ''],
+    // ثلاثة بنود تحت مشروع واحد: الأول يحمل اسم المشروع، والتاليان يتركانه فارغاً فيُسحب إليهما.
+    // والمعلم مكتوبٌ نفسه على البندين الأولين، والثالث بلا معلم — وكلاهما مقبول.
     demo: [
-      ['تشغيل ودعم نظام SAP لوزارة الطاقة', 'تقرير الوضع الراهن', 'التحليل والتشخيص', 250000, null,
+      ['تشغيل ودعم نظام SAP لوزارة الطاقة', 'التحليل والتشخيص', 'تقرير الوضع الراهن', 250000, null,
         4, 2026, '2026-04-30', 'تم الاعتماد', '2026-04-25', '2026-04-30', 'نعم', 'INV-2026-014', '2026-05-03',
         'نعم', '2026-06-10', 'محمد أحمد الشهري', ''],
-      ['تشغيل ودعم نظام SAP لوزارة الطاقة', 'تهيئة البيئة الأساسية', 'البناء والتهيئة', 600000, null,
+      ['', 'التحليل والتشخيص', 'ورشة المتطلبات وتثبيت النطاق', 120000, null,
+        5, 2026, '2026-05-31', 'تم التسليم', '2026-05-20', '', 'لا', '', '', 'لا', '', 'محمد أحمد الشهري', ''],
+      ['', '', 'تهيئة البيئة الأساسية', 600000, null,
         8, 2026, '2026-08-31', 'جارٍ العمل', '', '', 'لا', '', '', 'لا', '', 'سارة خالد القحطاني', ''],
     ],
   },
@@ -786,13 +791,13 @@ export const ALL_SHEETS = [
     ],
   },
   {
-    name: 'التسكين', adapter: 'staffing', injectSector: false,
+    name: 'التسكين', adapter: 'staffing', injectSector: false, carryDown: 'المشروع',
     desc: 'من يعمل على أي مشروع وبأي نسبة من وقته',
     columns: [
       { header: 'الموظف', width: 30, kind: 'text', req: 'always', list: { key: 'employees', strict: false },
         title: 'الموظف', hint: 'اختر الاسم من القائمة — كما كتبته في ورقة «الموظفون» حرفياً.' },
       { header: 'المشروع', width: 46, kind: 'text', req: 'always', list: { key: 'projects', strict: false },
-        title: 'المشروع', hint: 'اختر المشروع من القائمة — كما في ورقة «المشاريع» حرفياً.' },
+        title: 'المشروع', hint: 'اختر المشروع من القائمة مرة واحدة على أول سطر، واترك الخانة فارغة في أسطره التالية — تُفهم تلقائياً.' },
       { header: 'السنة', width: 10, kind: 'int', req: 'strict', title: 'السنة', hint: 'اتركها فارغة إن كانت 2026.' },
       { header: 'الدور', width: 20, kind: 'text', list: { key: 'roles', strict: false },
         title: 'الدور', hint: 'دوره في هذا المشروع.' },
@@ -802,6 +807,7 @@ export const ALL_SHEETS = [
         title: 'إلى شهر', hint: 'رقم الشهر الأخير للتكليف.' },
       { header: 'الإشغال (%)', width: 13, kind: 'int', req: 'strict',
         title: 'الإشغال', hint: 'نسبة وقت الموظف على هذا المشروع — رقم من 0 إلى 100.' },
+      CARRY_HELPER('المشروع'),
     ],
     example: ['محمد أحمد الشهري', 'تشغيل ودعم نظام SAP لجهة حكومية', 2026, 'قائد المشروع', 2, 12, 75],
     demo: [
@@ -809,13 +815,13 @@ export const ALL_SHEETS = [
     ],
   },
   {
-    name: 'التكاليف', adapter: 'costlines', injectSector: true, optional: true,
+    name: 'التكاليف', adapter: 'costlines', injectSector: true, optional: true, carryDown: 'المشروع',
     tabColor: COLORS.tabRed,
     note: 'سرّية: لقائد القطاع وحده.',
     desc: 'تكاليف تنفيذ المشاريع — ورقة سرّية',
     columns: [
       { header: 'المشروع', width: 46, kind: 'text', req: 'always', capturedUntil: 'costlines', list: { key: 'projects', strict: false },
-        title: 'المشروع', hint: 'اختر المشروع من القائمة — كما في ورقة «المشاريع» حرفياً.' },
+        title: 'المشروع', hint: 'اختر المشروع من القائمة مرة واحدة على أول سطر، واترك الخانة فارغة في أسطره التالية — تُفهم تلقائياً.' },
       { header: 'نوع التكلفة', width: 16, kind: 'text', req: 'always', capturedUntil: 'costlines', list: { key: 'costTypes', strict: true },
         title: 'نوع التكلفة', hint: 'رواتب، تعاقد باطني، أو أخرى.' },
       { header: 'المبلغ (ريال)', width: 16, kind: 'money', req: 'always', capturedUntil: 'costlines',
@@ -826,6 +832,7 @@ export const ALL_SHEETS = [
         title: 'السنة', hint: 'سنة التكلفة.' },
       { header: 'المصدر', width: 24, kind: 'text', capturedUntil: 'costlines',
         title: 'المصدر', hint: 'اختياري — من أين جاء الرقم: كشف الرواتب، عقد المورّد…' },
+      CARRY_HELPER('المشروع'),
     ],
     example: ['تشغيل ودعم نظام SAP لجهة حكومية', 'رواتب', 180000, 3, 2026, 'كشف الرواتب'],
     demo: [
@@ -848,21 +855,31 @@ setWithCosts(false);
 export const isRequired = (c) => c.req === 'always' || (c.req === 'strict' && REQUIRED_LEVEL === 'strict');
 export const isCalc = (c) => !!c.calc;
 export const isGrey = (c) => !!c.captured || !!c.capturedUntil;
+export const isHelper = (c) => !!c.helper;
 // أعمدة ملف الاستيراد: يسقط العمود الصافي (المحرك يأخذ «مع الضريبة») وتسقط مدة المشروع
-// (رقمٌ مشتق للقراءة لا يُخزَّن).
+// (رقمٌ مشتق للقراءة لا يُخزَّن) ويسقط عمود الآلة المخفي (سحب الأصل يُحسب في جافاسكربت).
 export const splitColumns = (spec) =>
-  spec.columns.filter((c) => !c.skipOnSplit && !(c.calc && c.calc.op === 'months'));
+  spec.columns.filter((c) => !c.skipOnSplit && !isHelper(c) && !(c.calc && c.calc.op === 'months'));
 
 // أنواع الأعمدة التي تُقرأ بقيمتها المخزَّنة لا بنصها المعروض (§التفكيك)
 const NUMERIC_KINDS = new Set(['money', 'int']);
 const KIND_STYLES = {
-  text: { data: S.DATA_TEXT, ex: S.EX_TEXT },
-  money: { data: S.DATA_MONEY, ex: S.EX_MONEY },
-  int: { data: S.DATA_INT, ex: S.EX_INT },
-  textfmt: { data: S.DATA_TEXTFMT, ex: S.EX_TEXTFMT },
+  text: { data: S.DATA_TEXT, ex: S.EX_TEXT, alt: S.DATA_TEXT_ALT },
+  money: { data: S.DATA_MONEY, ex: S.EX_MONEY, alt: S.DATA_MONEY_ALT },
+  int: { data: S.DATA_INT, ex: S.EX_INT, alt: S.DATA_INT_ALT },
+  textfmt: { data: S.DATA_TEXTFMT, ex: S.EX_TEXTFMT, alt: S.DATA_TEXTFMT_ALT },
 };
 const headerStyle = (c) => (isCalc(c) ? S.HEADER_CALC
-  : (isRequired(c) ? S.HEADER_REQ : (isGrey(c) ? S.HEADER_CAP : S.HEADER)));
+  : (isRequired(c) ? S.HEADER_REQ : ((isGrey(c) || isHelper(c)) ? S.HEADER_CAP : S.HEADER)));
+// صيغة عمود السحب: أول سطرٍ يأخذ خانة الأصل كما هي، وما بعده يأخذ ما فوقه إن فرغت خانته
+function carryFormula(spec, col, row) {
+  const i = spec.columns.findIndex((c) => c.header === col.carryFrom);
+  if (i < 0) throw new Error(`ورقة «${spec.name}»: عمود السحب يشير إلى «${col.carryFrom}» وليس في الورقة`);
+  const src = `${colLetter(i + 1)}${row}`;
+  const hi = spec.columns.indexOf(col);
+  const above = `${colLetter(hi + 1)}${row - 1}`;
+  return { f: row <= EXAMPLE_ROW ? src : `IF(${src}="",${above},${src})` };
+}
 
 // صيغة الخانة المحسوبة لصفٍّ بعينه — تُترك فارغة ما دام مصدرها فارغاً كي لا يقرأ الفريق أصفاراً
 function calcFormula(spec, col, row) {
@@ -894,20 +911,36 @@ function buildDataSheetXml(spec, { dataRows = null } = {}) {
     r: EXAMPLE_ROW,
     cells: spec.columns.map((c, i) => {
       if (isCalc(c)) return cellXml(`${colLetter(i + 1)}${EXAMPLE_ROW}`, S.EX_CALC, calcFormula(spec, c, EXAMPLE_ROW));
+      if (isHelper(c)) return cellXml(`${colLetter(i + 1)}${EXAMPLE_ROW}`, S.EX_TEXT, carryFormula(spec, c, EXAMPLE_ROW));
       const v = spec.example[i];
       const val = i === 0 && v ? EXAMPLE_PREFIX + v : v;
       return cellXml(`${colLetter(i + 1)}${EXAMPLE_ROW}`, KIND_STYLES[c.kind].ex, (val === '' || val == null) ? null : val);
     }),
   });
+  // تظليل المجموعات: على الورقة التي يُسحب فيها الأصل، تتبدّل خلفية الصفوف كلما تبدّل الأصل
+  // فتُقرأ كتلاً لا سطوراً متشابهة. والدفتر الفارغ لا مجموعات فيه تُعرف — فلا تظليل فيه.
+  const parity = [];
+  if (dataRows && dataRows.length && spec.carryDown) {
+    const pi = spec.columns.findIndex((c) => c.header === spec.carryDown);
+    let last = null; let g = 0;
+    dataRows.forEach((d, i) => {
+      const v = String((d && d[pi]) ?? '').trim();
+      if (v !== '' && v !== last) { if (last !== null) g++; last = v; }
+      parity[i] = g % 2;
+    });
+  }
   // الصفوف المعبأة (تجريبية مع --demo أو حقيقية مع --prefill) ثم صفوف فارغة جاهزة حتى LAST_ROW
   const demo = dataRows || [];
   for (let r = EXAMPLE_ROW + 1; r <= LAST_ROW; r++) {
     const d = demo[r - EXAMPLE_ROW - 1];
+    const alt = parity[r - EXAMPLE_ROW - 1] === 1;
     rows.push({
       r,
       cells: spec.columns.map((c, i) => {
         if (isCalc(c)) return cellXml(`${colLetter(i + 1)}${r}`, S.DATA_CALC, calcFormula(spec, c, r));
-        return cellXml(`${colLetter(i + 1)}${r}`, KIND_STYLES[c.kind].data,
+        if (isHelper(c)) return cellXml(`${colLetter(i + 1)}${r}`, S.DATA_TEXT, carryFormula(spec, c, r));
+        const ks = KIND_STYLES[c.kind];
+        return cellXml(`${colLetter(i + 1)}${r}`, alt ? ks.alt : ks.data,
           d ? (d[i] === '' ? null : d[i]) : null);
       }),
     });
@@ -926,7 +959,7 @@ function buildDataSheetXml(spec, { dataRows = null } = {}) {
     tabColor: spec.tabColor || COLORS.header,
     dimension: `A1:${colLetter(n)}${LAST_ROW}`,
     freeze: true,
-    cols: spec.columns.map((c) => c.width),
+    cols: spec.columns.map((c) => (isHelper(c) ? { w: c.width, hidden: true } : c.width)),
     rows, validations,
   });
 }
@@ -958,6 +991,8 @@ function buildInstructionsSheetXml({ prefilled = false } = {}) {
   para('• العمل الواحد يُكتب مرة واحدة فقط: ما زال عرضاً أو متابعةً ← ورقة «الفرص»، وما رسا عليكم أو جارٍ تنفيذه أو اكتمل ← ورقة «المشاريع». لا يُكتب في الورقتين معاً أبداً.');
   para('• التواريخ بصيغة 2026-01-31 أو 31/01/2026، والنسب أرقام من 0 إلى 100 بلا علامة %.');
   para('• لا تُترك خانة ذهبية فارغة. وإن جهلتم قيمتها فاكتبوا في «ملاحظات» أنها غير معروفة بدل تركها بلا أثر.');
+  para('• في أوراق المخرجات والتسكين والتكاليف وفريق الفرصة: اختر المشروع (أو الفرصة) مرة واحدة على أول سطر، واترك الخانة فارغة في الأسطر التالية التابعة له — تُفهم تلقائياً.');
+  para('• وعمود «المعلم» في ورقة «المخرجات»: اكتب اسم المعلم نفسه على كل بندٍ يتبعه، واتركه فارغاً إن لم يكن للبند معلم.');
 
   head('قاعدة المبالغ');
   para('• كل المبالغ بالريال السعودي، أرقاماً فقط من غير كلمة «ريال».');
@@ -967,12 +1002,12 @@ function buildInstructionsSheetXml({ prefilled = false } = {}) {
   head('قاعدتا التاريخ');
   para('• المبيعات تُحسب بتاريخ توقيع العقد.');
   para('• الإيراد يُحسب بشهر المخرج — لا شهر الفاتورة ولا شهر التحصيل.');
-  para('• لذلك لا يُتركان فارغين: «تاريخ توقيع العقد» في ورقة «المشاريع»، و«شهر الاستحقاق» في ورقة «المخرجات والبنود».');
+  para('• لذلك لا يُتركان فارغين: «تاريخ توقيع العقد» في ورقة «المشاريع»، و«شهر الاستحقاق» في ورقة «المخرجات».');
 
   head('القوائم المنسدلة');
   para('• في كل خانة لها سهم افتحوا القائمة واختاروا — الكتابة اليدوية تصنع اسمين لشيء واحد.');
   para('• في عمود «العميل» اختاروا الاسم إن وجدتموه، ولا تكتبوا اسماً بصياغة مختلفة لجهة موجودة. الجهة الجديدة فعلاً تُضاف أولاً في ورقة «العملاء».');
-  para('• أسماء الموظفين والمشاريع والفرص والمراحل تظهر في القوائم بعد كتابتها في أوراقها — اكتبوها أولاً ثم اختاروها في بقية الأوراق.');
+  para('• أسماء الموظفين والمشاريع والفرص تظهر في القوائم بعد كتابتها في أوراقها — اكتبوها أولاً ثم اختاروها في بقية الأوراق.');
 
   head('صف المثال');
   para('• الصف الرمادي أول كل ورقة مثالٌ للتوضيح — اكتبوا بياناتكم مكانه أو احذفوه قبل إعادة الدفتر.');
@@ -981,11 +1016,11 @@ function buildInstructionsSheetXml({ prefilled = false } = {}) {
   push('إلزامي', 'العمود الذهبي إلزامي — لا يُترك فارغاً.', S.HEADER_REQ, S.BODY);
   push('اختياري', 'العمود الأزرق اختياري — والقليل الصحيح خير من الكثير الناقص.', S.HEADER, S.BODY);
   push('محسوب', 'العمود الفيروزي محسوب تلقائياً لا يُكتب فيه — يملأ نفسه من الخانة التي بجانبه.', S.HEADER_CALC, S.BODY);
-  push('لاحقاً', 'العمود الرمادي معلومة تُجمَع الآن وتظهر على المنصة في التحديث القادم: الإدارة، مدير الإدارة، البريد، تاريخ الإغلاق المتوقع، ومخرجات المشاريع.', S.HEADER_CAP, S.BODY, 32);
+  push('لاحقاً', 'العمود الرمادي معلومة تُجمَع الآن وتظهر على المنصة في التحديث القادم: الإدارة، مدير الإدارة، البريد، تاريخ الإغلاق المتوقع، ومخرجات المشاريع ومعالمها.', S.HEADER_CAP, S.BODY, 32);
 
   head('من يعبّئ ماذا؟');
   para(`كل إدارة تعبّئ صفوفها، وعمود «الإدارة» يحدد تبعية كل سجل: ${DEPARTMENTS.map((d) => `«${d}»`).join(' أو ')}.`);
-  para('ورقة «المخرجات والبنود» يعبّئها مدير كل مشروع — فهو من يعرف بنود عقده وتواريخ تسليمها وفوترتها.');
+  para('ورقة «المخرجات» يعبّئها مدير كل مشروع — فهو من يعرف معالم عقده وبنودها وتواريخ تسليمها وفوترتها.');
   if (WITH_COSTS) para('وورقة «التكاليف» يعبّئها قائد القطاع وحده، وهي سرّية لا تُتداول خارج هذا الدفتر.');
   para('في ورقة «الموظفون» علّموا «نعم» أمام مدير كل إدارة واكتبوا بريده الإلكتروني ليُفتَح له حساب على المنصة — وكذلك بريد كل زميل يحتاج الدخول.');
   para(`${REVIEWER_VERB} ${REVIEWER_SHORT} الدفتر كاملاً قبل الإرسال.`);
@@ -1026,8 +1061,8 @@ function rowsForSheet(prefill, spec) {
     if (!Array.isArray(r)) throw new Error(`ورقة «${spec.name}» الصف ${i + 1}: الصف يجب أن يكون قائمة خانات بترتيب الأعمدة`);
     if (r.length > spec.columns.length) throw new Error(`ورقة «${spec.name}» الصف ${i + 1}: خانات أكثر من أعمدة الورقة (${spec.columns.length})`);
     return spec.columns.map((c, ci) => {
-      // الخانة المحسوبة تبقى صيغةً مهما جاء في الملء المسبق: المصدِّر يكتب الصافي وحده.
-      if (isCalc(c)) return '';
+      // الخانة المحسوبة وخانة السحب تبقيان صيغةً مهما جاء في الملء المسبق.
+      if (isCalc(c) || isHelper(c)) return '';
       const v = r[ci];
       if (v == null || v === '') return '';
       if (typeof v === 'number') return Number.isFinite(v) ? v : '';
@@ -1086,8 +1121,8 @@ function buildWorkbook({ demo = false, prefill = null } = {}) {
 // §9 تفكيك الدفتر المعبأ إلى ملفات استيراد — ورقة واحدة في كل ملف (المحرك يقرأ الأولى فقط)
 // ─────────────────────────────────────────────────────────────────────────────
 // ترتيب الاستيراد على المنصة: المرجع قبل المُشير إليه دائماً.
-const IMPORT_ORDER = ['العملاء', 'الموظفون', 'الفرص', 'فريق الفرصة', 'المشاريع', 'مراحل المشروع',
-  'المخرجات والبنود', 'التسكين', 'مستهدفات الموظفين', 'التكاليف'];
+const IMPORT_ORDER = ['العملاء', 'الموظفون', 'الفرص', 'فريق الفرصة', 'المشاريع',
+  'المخرجات', 'التسكين', 'مستهدفات الموظفين', 'التكاليف'];
 
 /**
  * يقرأ الدفتر المعبأ ويحوّل كل ورقةٍ إلى جدول ملف الاستيراد — بلا كتابة على القرص،
@@ -1116,17 +1151,31 @@ function splitSheets(filePath) {
         // String(number) بلا فواصل ولا تقريب — أدقّ ما يمكن تمريره لبقية الأنبوب
         return typeof v === 'number' && Number.isFinite(v) ? String(v) : cell;
       });
-    }).filter((r, ri) => ri === 0 || r.some((c) => String(c ?? '').trim() !== ''));
-    if (!aoa.length) { out.push({ spec, headers: [], rows: [], dropped: 0, source: [] }); continue; }
+    });
+    if (!aoa.length) { out.push({ spec, headers: [], rows: [], dropped: 0, source: [], errors: [] }); continue; }
     const fileHeaders = aoa[0].map((h) => String(h ?? '').trim());
     let dropped = 0;
-    const body = aoa.slice(1)
-      .map((r) => fileHeaders.map((_, i) => String(r[i] ?? '').trim()))
-      .filter((r) => {
-        if (!r.some((c) => c !== '')) return false;
-        if (r[0].startsWith(EXAMPLE_PREFIX.trim())) { dropped++; return false; }
-        return true;
-      });
+    // سحب الأصل: الأصل يُكتب مرة على أول سطر من المجموعة، وما تحته يرثه. يُحسب هنا في
+    // جافاسكربت لا بصيغة الورقة — فملف الاستيراد يحمل الأصل صريحاً في كل سطر، سواء فتح
+    // الفريقُ الدفترَ بإكسل فحسب العمود المخفي أم لم يفتحه. والسطر الفارغ تماماً يقطع السحب.
+    const parentIdx = spec.carryDown ? fileHeaders.indexOf(spec.carryDown) : -1;
+    const errors = [];
+    let carried = '';
+    const body = [];
+    aoa.slice(1).forEach((raw, i) => {
+      const r = fileHeaders.map((_, ci) => String(raw[ci] ?? '').trim());
+      if (!r.some((c) => c !== '')) { carried = ''; return; }
+      if (r[0].startsWith(EXAMPLE_PREFIX.trim())) { dropped++; return; }
+      if (parentIdx >= 0) {
+        if (r[parentIdx] !== '') carried = r[parentIdx];
+        else if (carried !== '') r[parentIdx] = carried;
+        else {
+          errors.push(`ورقة «${spec.name}» السطر ${i + 2}: خانة «${spec.carryDown}» فارغة ولا سطر قبلها يحملها`
+            + ' — اكتب القيمة في أول سطر من المجموعة.');
+        }
+      }
+      body.push(r);
+    });
     const idxOf = (header) => spec.columns.findIndex((c) => c.header === header);
     const kept = new Set(splitColumns(spec));
     const keep = spec.columns.map((c, i) => ({ c, i })).filter(({ c }) => kept.has(c));
@@ -1144,13 +1193,20 @@ function splitSheets(filePath) {
       return r[i];
     }));
     if (spec.injectSector) { headers.push('القطاع'); rows.forEach((r) => r.push(SECTOR_NAME)); }
-    out.push({ spec, headers, rows, dropped, source: body, fileHeaders });
+    out.push({ spec, headers, rows, dropped, source: body, fileHeaders, errors });
   }
   return out;
 }
 
 function splitWorkbook(filePath, outdir) {
   const sheets = splitSheets(filePath);
+  // سطرٌ بلا أصلٍ يُسحب إليه لا يُكتب في ملف الاستيراد ناقصاً — يُوقف التفكيك ويُقال أين الخلل
+  const carryErrors = sheets.flatMap((s) => s.errors || []);
+  if (carryErrors.length) {
+    console.error(`✗ لم يكتمل التفكيك — ${carryErrors.length} سطراً بلا أصل:`);
+    for (const e of carryErrors) console.error('  - ' + e);
+    process.exit(1);
+  }
   mkdirSync(outdir, { recursive: true });
   // ملف الإسناد: الحقائق التي لا محوّل لها أصلاً — تُطبَّق بيدٍ بعد الاستيراد
   const attribution = [['الورقة', 'الاسم', 'مدير الإدارة؟', 'البريد الإلكتروني', 'تاريخ الإغلاق المتوقع']];
@@ -1244,6 +1300,17 @@ function verifyWorkbook(filePath, args = {}) {
       `${spec.name}: مرجع قائمة منسدلة خارج ورقة قوائم`);
     const sqrefs = [...xml.matchAll(/sqref="([A-Z]+)\d+:[A-Z]+\d+"/g)].map((m) => m[1]);
     ok(new Set(sqrefs).size === sqrefs.length, `${spec.name}: نطاقا تحقق متداخلان`);
+    // عمود السحب المخفي: مخفيٌّ فعلاً في <cols>، وخاناته صيغٌ من أول صفٍّ إلى آخره
+    spec.columns.forEach((c, ci) => {
+      if (!isHelper(c)) return;
+      const L = colLetter(ci + 1);
+      ok(new RegExp(`<col min="${ci + 1}" max="${ci + 1}"[^>]*hidden="1"`).test(xml),
+        `${spec.name}/«${c.header}»: عمود السحب غير مخفي`);
+      for (const r of [EXAMPLE_ROW, EXAMPLE_ROW + 1, LAST_ROW]) {
+        ok(new RegExp(`<c r="${L}${r}"[^>]*>(<f>[^<]*</f>)`).test(xml),
+          `${spec.name}/«${c.header}»: الخانة ${L}${r} ليست صيغة سحب`);
+      }
+    });
     // الخانات المحسوبة صيغٌ فعلاً، في صف المثال وفي أول صف بيانات وفي آخر صف
     spec.columns.forEach((c, ci) => {
       if (!isCalc(c)) return;
@@ -1307,7 +1374,14 @@ function verifyWorkbook(filePath, args = {}) {
   ok(vatGross(1234567.89) === 1419753.07, `الحساب: 1234567.89 × ${VAT_RATE} = ${vatGross(1234567.89)} والمتوقع 1419753.07`);
   const split = splitSheets(filePath);
   ok(split.length === SHEETS.length, `التفكيك أنتج ${split.length} ورقة والمتوقع ${SHEETS.length}`);
-  for (const { spec, headers, rows, source } of split) {
+  for (const { spec, headers, rows, source, errors } of split) {
+    ok(!errors.length, `${spec.name}: سحب الأصل فشل — ${errors[0] || ''}`);
+    // كل سطرٍ في ورقةٍ لها أصلٌ يُسحب يخرج وفي خانة أصله قيمة صريحة
+    if (spec.carryDown) {
+      const pi = headers.indexOf(spec.carryDown);
+      ok(pi >= 0 && rows.every((r) => String(r[pi] ?? '').trim() !== ''),
+        `${spec.name}: سطرٌ خرج بلا «${spec.carryDown}»`);
+    }
     const columns = headers.map((h, i) => ({ key: `c${i}`, labelAr: h }));
     const { buffer } = buildExport({ columns, rows: [], format: 'xlsx', sheetName: spec.name });
     const parsed = parseWorkbook(buffer, 'x.xlsx');
@@ -1340,13 +1414,15 @@ function verifyWorkbook(filePath, args = {}) {
   for (const spec of SHEETS) {
     const src = adapterLabels(spec.adapter);
     if (!src) {
-      ok(spec.columns.every((c) => c.capturedUntil || c.captured),
+      ok(spec.columns.every((c) => c.capturedUntil || c.captured || isHelper(c)),
         `${spec.name}: لا محوّل «${spec.adapter}» بعد، فكل أعمدتها يجب أن تكون رمادية`);
-      spec.columns.forEach((c) => grey.push(`${spec.name}/${c.header}`));
+      spec.columns.filter((c) => !isHelper(c)).forEach((c) => grey.push(`${spec.name}/${c.header}`));
       continue;
     }
     const { labels, all } = src;
     for (const c of spec.columns) {
+      // عمود السحب المخفي آلةٌ في الورقة لا حقيقةٌ تُستورد — لا يُطلب له labelAr ولا يُفحص تشابكه
+      if (isHelper(c)) continue;
       if (c.capturedUntil) {
         grey.push(`${spec.name}/${c.header}`);
         ok(c.capturedUntil === spec.adapter,
@@ -1418,8 +1494,7 @@ function retargetExamplesToSector() {
   set('التسكين', 'المشروع', projectExample);
   set('التسكين', 'الدور', PLATFORM_ROLES[1]);
   set('فريق الفرصة', 'الفرصة', oppTitle);
-  set('مراحل المشروع', 'المشروع', projectExample);
-  set('المخرجات والبنود', 'المشروع', projectExample);
+  set('المخرجات', 'المشروع', projectExample);
   set('التكاليف', 'المشروع', projectExample);
   PROJECT_ROLES.splice(0, PROJECT_ROLES.length, ...PLATFORM_ROLES);
 }
