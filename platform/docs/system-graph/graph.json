@@ -1,10 +1,10 @@
 {
   "version": 1,
-  "sourceDigest": "ed6857371fa04b7f2c1f040c146d5d7fc87c71df0ba9dd56a4ef55c140bbb269",
-  "sourceFiles": 692,
+  "sourceDigest": "acb9f92cf6e646d382458fa30f354bd878d252a73703c864442986b3a95ece20",
+  "sourceFiles": 697,
   "counts": {
-    "code": 273,
-    "test": 309,
+    "code": 275,
+    "test": 312,
     "automation": 59,
     "module": 20,
     "route": 352,
@@ -224,6 +224,15 @@
       "detail": "src/core/http/session-cookie.js",
       "sources": [
         "src/core/http/session-cookie.js"
+      ]
+    },
+    {
+      "id": "file:src/core/i18n/arabic.js",
+      "kind": "code",
+      "label": "arabic.js",
+      "detail": "src/core/i18n/arabic.js",
+      "sources": [
+        "src/core/i18n/arabic.js"
       ]
     },
     {
@@ -602,6 +611,15 @@
       "detail": "src/modules/ai/apply.js",
       "sources": [
         "src/modules/ai/apply.js"
+      ]
+    },
+    {
+      "id": "file:src/modules/ai/batch-tools.js",
+      "kind": "code",
+      "label": "batch-tools.js",
+      "detail": "src/modules/ai/batch-tools.js",
+      "sources": [
+        "src/modules/ai/batch-tools.js"
       ]
     },
     {
@@ -2774,6 +2792,15 @@
       ]
     },
     {
+      "id": "file:tests/integration/batch-tools.test.js",
+      "kind": "test",
+      "label": "batch-tools.test.js",
+      "detail": "tests/integration/batch-tools.test.js",
+      "sources": [
+        "tests/integration/batch-tools.test.js"
+      ]
+    },
+    {
       "id": "file:tests/integration/capacity-phases.test.js",
       "kind": "test",
       "label": "capacity-phases.test.js",
@@ -3770,6 +3797,15 @@
       "detail": "tests/integration/scenario-harness.test.js",
       "sources": [
         "tests/integration/scenario-harness.test.js"
+      ]
+    },
+    {
+      "id": "file:tests/integration/search-arabic.test.js",
+      "kind": "test",
+      "label": "search-arabic.test.js",
+      "detail": "tests/integration/search-arabic.test.js",
+      "sources": [
+        "tests/integration/search-arabic.test.js"
       ]
     },
     {
@@ -4853,6 +4889,15 @@
       ]
     },
     {
+      "id": "file:tests/unit/arabic-normalize.test.js",
+      "kind": "test",
+      "label": "arabic-normalize.test.js",
+      "detail": "tests/unit/arabic-normalize.test.js",
+      "sources": [
+        "tests/unit/arabic-normalize.test.js"
+      ]
+    },
+    {
       "id": "file:tests/unit/attention-invoice-sector.test.js",
       "kind": "test",
       "label": "attention-invoice-sector.test.js",
@@ -5840,6 +5885,7 @@
       "detail": "وحدة برمجية موجودة؛ وجودها لا يثبت اكتمال وظائفها.",
       "sources": [
         "src/modules/ai/apply.js",
+        "src/modules/ai/batch-tools.js",
         "src/modules/ai/confirm-tools.js",
         "src/modules/ai/confirmations.js",
         "src/modules/ai/crm-tools.js",
@@ -6111,7 +6157,7 @@
       ]
     },
     {
-      "id": "route:src/modules/ai.routes.js:4005:/status",
+      "id": "route:src/modules/ai.routes.js:4248:/status",
       "kind": "route",
       "label": "GET /status",
       "detail": "تصريح مسار محلي في aiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6122,7 +6168,7 @@
       "path": "/status"
     },
     {
-      "id": "route:src/modules/ai.routes.js:4073:/chat",
+      "id": "route:src/modules/ai.routes.js:4316:/chat",
       "kind": "route",
       "label": "POST /chat",
       "detail": "تصريح مسار محلي في aiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6133,7 +6179,7 @@
       "path": "/chat"
     },
     {
-      "id": "route:src/modules/ai.routes.js:4165:/options/:kind",
+      "id": "route:src/modules/ai.routes.js:4408:/options/:kind",
       "kind": "route",
       "label": "GET /options/:kind",
       "detail": "تصريح مسار محلي في aiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6144,7 +6190,7 @@
       "path": "/options/:kind"
     },
     {
-      "id": "route:src/modules/ai.routes.js:4358:/preview",
+      "id": "route:src/modules/ai.routes.js:4601:/preview",
       "kind": "route",
       "label": "POST /preview",
       "detail": "تصريح مسار محلي في aiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6155,7 +6201,7 @@
       "path": "/preview"
     },
     {
-      "id": "route:src/modules/ai.routes.js:4529:/apply",
+      "id": "route:src/modules/ai.routes.js:4772:/apply",
       "kind": "route",
       "label": "POST /apply",
       "detail": "تصريح مسار محلي في aiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6166,7 +6212,7 @@
       "path": "/apply"
     },
     {
-      "id": "route:src/modules/ai.routes.js:4633:/activity",
+      "id": "route:src/modules/ai.routes.js:4876:/activity",
       "kind": "route",
       "label": "GET /activity",
       "detail": "تصريح مسار محلي في aiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6177,7 +6223,7 @@
       "path": "/activity"
     },
     {
-      "id": "route:src/modules/ai.routes.js:5018:/tools",
+      "id": "route:src/modules/ai.routes.js:5261:/tools",
       "kind": "route",
       "label": "GET /tools",
       "detail": "تصريح مسار محلي في aiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6188,7 +6234,7 @@
       "path": "/tools"
     },
     {
-      "id": "route:src/modules/ai.routes.js:5092:/tools/:name",
+      "id": "route:src/modules/ai.routes.js:5335:/tools/:name",
       "kind": "route",
       "label": "POST /tools/:name",
       "detail": "تصريح مسار محلي في aiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -24389,6 +24435,13 @@
     },
     {
       "from": "module:ai",
+      "to": "file:src/modules/ai/batch-tools.js",
+      "label": "يحتوي",
+      "evidence": "src/modules/ai/batch-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "module:ai",
       "to": "file:src/modules/ai/confirm-tools.js",
       "label": "يحتوي",
       "evidence": "src/modules/ai/confirm-tools.js",
@@ -26538,56 +26591,63 @@
     },
     {
       "from": "file:src/modules/ai.routes.js",
-      "to": "route:src/modules/ai.routes.js:4005:/status",
+      "to": "file:src/modules/ai/batch-tools.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai.routes.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai.routes.js",
+      "to": "route:src/modules/ai.routes.js:4248:/status",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/ai.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/ai.routes.js",
-      "to": "route:src/modules/ai.routes.js:4073:/chat",
+      "to": "route:src/modules/ai.routes.js:4316:/chat",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/ai.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/ai.routes.js",
-      "to": "route:src/modules/ai.routes.js:4165:/options/:kind",
+      "to": "route:src/modules/ai.routes.js:4408:/options/:kind",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/ai.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/ai.routes.js",
-      "to": "route:src/modules/ai.routes.js:4358:/preview",
+      "to": "route:src/modules/ai.routes.js:4601:/preview",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/ai.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/ai.routes.js",
-      "to": "route:src/modules/ai.routes.js:4529:/apply",
+      "to": "route:src/modules/ai.routes.js:4772:/apply",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/ai.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/ai.routes.js",
-      "to": "route:src/modules/ai.routes.js:4633:/activity",
+      "to": "route:src/modules/ai.routes.js:4876:/activity",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/ai.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/ai.routes.js",
-      "to": "route:src/modules/ai.routes.js:5018:/tools",
+      "to": "route:src/modules/ai.routes.js:5261:/tools",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/ai.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/ai.routes.js",
-      "to": "route:src/modules/ai.routes.js:5092:/tools/:name",
+      "to": "route:src/modules/ai.routes.js:5335:/tools/:name",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/ai.routes.js",
       "kind": "source"
@@ -26632,6 +26692,48 @@
       "to": "file:src/modules/pmo/tasks.js",
       "label": "استيراد صريح",
       "evidence": "src/modules/ai/apply.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/batch-tools.js",
+      "to": "file:src/core/db/index.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/batch-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/batch-tools.js",
+      "to": "file:src/core/audit/index.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/batch-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/batch-tools.js",
+      "to": "file:src/core/http/errors.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/batch-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/batch-tools.js",
+      "to": "file:src/core/ai/store.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/batch-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/batch-tools.js",
+      "to": "file:src/modules/ai/team-tools.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/batch-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/batch-tools.js",
+      "to": "file:src/modules/ai/tool-kit.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/batch-tools.js",
       "kind": "source"
     },
     {
@@ -32543,6 +32645,13 @@
       "kind": "source"
     },
     {
+      "from": "file:src/modules/search/search.js",
+      "to": "file:src/core/i18n/arabic.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/search/search.js",
+      "kind": "source"
+    },
+    {
       "from": "file:src/modules/search/search.routes.js",
       "to": "file:src/modules/search/search.js",
       "label": "استيراد صريح",
@@ -33273,6 +33382,13 @@
     {
       "from": "file:src/modules/team/resources.js",
       "to": "file:src/core/i18n/time.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/team/resources.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/team/resources.js",
+      "to": "file:src/core/i18n/arabic.js",
       "label": "استيراد صريح",
       "evidence": "src/modules/team/resources.js",
       "kind": "source"
@@ -37842,6 +37958,62 @@
       "kind": "source"
     },
     {
+      "from": "file:tests/integration/batch-tools.test.js",
+      "to": "file:src/core/db/index.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/batch-tools.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/batch-tools.test.js",
+      "to": "file:src/core/rbac/index.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/batch-tools.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/batch-tools.test.js",
+      "to": "file:src/modules/ai/team-tools.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/batch-tools.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/batch-tools.test.js",
+      "to": "file:src/modules/ai/tasks-tools.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/batch-tools.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/batch-tools.test.js",
+      "to": "file:src/modules/ai/crm-tools.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/batch-tools.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/batch-tools.test.js",
+      "to": "file:src/modules/ai/confirm-tools.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/batch-tools.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/batch-tools.test.js",
+      "to": "file:src/modules/ai/batch-tools.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/batch-tools.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/batch-tools.test.js",
+      "to": "file:src/modules/pmo/tasks.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/batch-tools.test.js",
+      "kind": "source"
+    },
+    {
       "from": "file:tests/integration/capacity-phases.test.js",
       "to": "file:src/core/db/index.js",
       "label": "استيراد صريح",
@@ -41731,6 +41903,34 @@
       "to": "file:scripts/scenarios.mjs",
       "label": "استيراد صريح",
       "evidence": "tests/integration/scenario-harness.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/search-arabic.test.js",
+      "to": "file:src/core/db/index.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/search-arabic.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/search-arabic.test.js",
+      "to": "file:src/core/rbac/index.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/search-arabic.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/search-arabic.test.js",
+      "to": "file:src/modules/search/search.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/search-arabic.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/search-arabic.test.js",
+      "to": "file:src/modules/team/resources.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/search-arabic.test.js",
       "kind": "source"
     },
     {
@@ -46071,6 +46271,13 @@
       "to": "file:src/modules/workflow/approval-notify.js",
       "label": "استيراد صريح",
       "evidence": "tests/unit/approval-notify.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/unit/arabic-normalize.test.js",
+      "to": "file:src/core/i18n/arabic.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/unit/arabic-normalize.test.js",
       "kind": "source"
     },
     {
@@ -54558,6 +54765,62 @@
       "kind": "text-reference"
     },
     {
+      "from": "file:tests/integration/batch-tools.test.js",
+      "to": "table:ai_activity_log",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/batch-tools.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/batch-tools.test.js",
+      "to": "table:task",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/batch-tools.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/batch-tools.test.js",
+      "to": "table:opportunity",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/batch-tools.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/batch-tools.test.js",
+      "to": "table:audit_log",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/batch-tools.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/batch-tools.test.js",
+      "to": "table:sector",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/batch-tools.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/batch-tools.test.js",
+      "to": "table:app_user",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/batch-tools.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/batch-tools.test.js",
+      "to": "table:client",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/batch-tools.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/batch-tools.test.js",
+      "to": "table:stage",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/batch-tools.test.js",
+      "kind": "text-reference"
+    },
+    {
       "from": "file:tests/integration/capacity-phases.test.js",
       "to": "table:sector",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
@@ -59777,6 +60040,48 @@
       "to": "table:sector",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
       "evidence": "tests/integration/scenario-harness.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/search-arabic.test.js",
+      "to": "table:sector",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/search-arabic.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/search-arabic.test.js",
+      "to": "table:app_user",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/search-arabic.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/search-arabic.test.js",
+      "to": "table:client",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/search-arabic.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/search-arabic.test.js",
+      "to": "table:stage",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/search-arabic.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/search-arabic.test.js",
+      "to": "table:opportunity",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/search-arabic.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/search-arabic.test.js",
+      "to": "table:employee",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/search-arabic.test.js",
       "kind": "text-reference"
     },
     {

@@ -988,7 +988,8 @@ export function registerTools(tools) {
   }
 }
 const allTools = () => [...TEAM_TOOLS, ...EXTRA_TOOLS];
-const toolNamed = (name) => allTools().find((t) => t.name === name) || null;
+// مُصدَّرة للدفعة الواحدة (batch-tools.js): تتحقّق من أزواج المعاينة/التنفيذ في السجل نفسه.
+export const toolNamed = (name) => allTools().find((t) => t.name === name) || null;
 
 const safeAllow = (tool, user) => { try { return !!tool.allow(user); } catch { return false; } };
 

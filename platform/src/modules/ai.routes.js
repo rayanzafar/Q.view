@@ -34,6 +34,7 @@ import { PMO_TOOLS } from './ai/pmo-tools.js';
 import { WORKFLOW_TOOLS } from './ai/workflow-tools.js';
 import { CONFIRM_TOOLS } from './ai/confirm-tools.js';
 import { RECORD_TOOLS } from './ai/records-tools.js';
+import { BATCH_TOOLS } from './ai/batch-tools.js';
 
 // نوايا وحدة «الفريق والموارد» تُسجَّل هنا مرةً واحدة: `core/ai` لا يستورد `modules`، والوحدة
 // تأتي إليه عند التركيب — فتظهر في بطاقات الاقتراح بمنحها وتُصنَّف قبل الأنماط العامة.
@@ -57,6 +58,9 @@ registerTools(CONFIRM_TOOLS);
 // وأدواتُ السجلّ من المحادثة: حذفٌ ناعم بمحرّك الحذف القائم، وعدُّ النواقص بتعريفات الشاشة،
 // وتعبئةُ حقلٍ على عدة سجلات بمعاينة واحدة — كلُّ كتابةٍ منها تقف لبطاقة التأكيد.
 registerTools(RECORD_TOOLS);
+// والدفعةُ الواحدة: عدة معاينات تحت رمزٍ واحد وبطاقة تأكيدٍ واحدة، تُنفَّذ كلها أو لا شيء —
+// تُسجَّل آخِراً لأنها تفحص أزواج المعاينة/التنفيذ على السجل المكتمل.
+registerTools(BATCH_TOOLS);
 
 export const aiRouter = Router();
 aiRouter.use(requireAuth());

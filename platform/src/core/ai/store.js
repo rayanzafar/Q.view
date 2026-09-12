@@ -59,6 +59,16 @@ export async function readPreview(user, token) {
   return { row, preview: JSON.parse(row.preview_json) };
 }
 
+// تمديدُ مهلة معاينةٍ ما زالت معاينةً (لم تُطبَّق ولم تُوقَف ولم تُرفض): تستعمله الدفعة الواحدة
+// كي لا تسقط معايناتُها الفرعية (ربع ساعة) قبل أن يقرأ صاحبُ الحساب بطاقتها (ساعة) — والحراسة
+// باقية: كلُّ فرعٍ يعيد قراءة سجله ويقارن بصمته لحظة الكتابة مهما طالت المهلة.
+export async function extendPreview(user, token, minutes) {
+  const r = await run(
+    `UPDATE ai_activity_log SET expires_at = ? WHERE id = ? AND user_id = ? AND applied = 0 AND outcome = ? AND expires_at > ?`,
+    [plusMinutes(minutes), String(token), user.id, OUTCOME.PREVIEW, nowIso()]);
+  return Number(r.changes) === 1;
+}
+
 // المزلاج: تحديثٌ مشروط واحد يقرّر كل شيء. `changes === 1` تعني «هذا الطلب هو من ظفر بها».
 // يُستدعى **داخل معاملة** مع الكتابة نفسها: فشل الخدمة يُرجع المزلاج فتبقى المعاينة قابلة
 // للتصحيح والتأكيد ثانيةً بدل أن تُحرق بلا كتابة.

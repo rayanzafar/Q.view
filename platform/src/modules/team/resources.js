@@ -18,6 +18,7 @@ import { id, nowIso } from '../../core/util/ids.js';
 import { badRequest, forbidden, notFound } from '../../core/http/errors.js';
 import { inDepartmentScope } from '../../core/rbac/departments.js';
 import { riyadhDate, MONTHS_AR } from '../../core/i18n/time.js';
+import { bestScore, searchTokens } from '../../core/i18n/arabic.js';
 import { taskStatusLabel, taskPriorityLabel } from '../../core/i18n/task-vocab.js';
 import { workBucketLabel, auditActionLabel } from '../../web/i18n/glossary.js';
 import { createEmployee, updateEmployee, orgTree, normName } from '../org/org.js';
@@ -307,27 +308,40 @@ export async function listResources(user, opts = {}) {
     const c = engagementClause(String(opts.status).trim().toLowerCase(), 'e', today, addDays(today, ENDING_HORIZON_DAYS));
     where.push(c.clause); params.push(...c.params);
   }
-  // البحث: الاسم أو المسمّى أو مهارةٌ مسجَّلة (resource_capability kind=skill) — لا تصفية بعد القراءة.
-  const term = String(opts.q || '').trim().replace(/[%_]/g, ' ').replace(/\s+/g, ' ').toLowerCase();
-  if (term) {
-    const like = `%${term}%`;
-    where.push(`(LOWER(e.name_ar) LIKE ? OR LOWER(COALESCE(e.name_en,'')) LIKE ? OR LOWER(COALESCE(e.job_title,'')) LIKE ?
-      OR EXISTS (SELECT 1 FROM resource_capability rc WHERE rc.employee_id = e.id AND rc.deleted_at IS NULL AND rc.kind = 'skill' AND LOWER(rc.name_ar) LIKE ?))`);
-    params.push(like, like, like, like);
-  }
+  // البحث: الاسم أو المسمّى أو مهارةٌ مسجَّلة (resource_capability kind=skill). المطابقة عربيةٌ
+  // متسامحة في الذاكرة (core/i18n/arabic.js) لا LIKE في القاعدة: همزةٌ أو تاءٌ مربوطة أو تشكيلٌ لا
+  // يخفي مورداً، ولا دالةَ تطبيعٍ محمولة بين المحرّكين. الصفوف ضمن النطاق مئاتٌ لا آلاف، فتُقرأ
+  // كلها بشروط النطاق والمرشّحات ثم تُصفّى وتُرقَّم هنا — والعدّاد من الصفوف المطابقة فعلاً (C5).
+  const term = String(opts.q || '').trim().replace(/\s+/g, ' ');
   const whereSql = where.join(' AND ');
-  // العدّاد بنفس الشرط حرفاً — فالترقيم «1–6 من 6» من العدّ الفعلي لا من الصورة (C5).
-  const total = N((await get(`SELECT COUNT(*) n FROM employee e WHERE ${whereSql}`, params))?.n);
   const pageSize = Math.min(Math.max(Number.parseInt(opts.pageSize, 10) || 25, 1), 200);
   const page = Math.max(Number.parseInt(opts.page, 10) || 1, 1);
-  const rows = await all(`SELECT e.id, e.name_ar, e.name_en, e.job_title, e.employment_type, e.resource_type, e.vendor_name, e.engagement_ref,
+  const scoped = await all(`SELECT e.id, e.name_ar, e.name_en, e.job_title, e.employment_type, e.resource_type, e.vendor_name, e.engagement_ref,
          e.sector_id, e.department_id, e.hire_date, e.end_date, e.active, e.status, e.capacity_pct, e.user_id,
          s.name_ar sector_name, d.name_ar department_name, ${USER_ID_SQL('e')} linked_user_id
        FROM employee e
        LEFT JOIN sector s ON s.id = e.sector_id
        LEFT JOIN department d ON d.id = e.department_id
       WHERE ${whereSql}
-      ORDER BY e.name_ar, e.id LIMIT ? OFFSET ?`, [...params, pageSize, (page - 1) * pageSize]);
+      ORDER BY e.name_ar, e.id`, params);
+  let matched = scoped;
+  if (term && searchTokens(term).length) {
+    const skills = new Map();
+    if (scoped.length) {
+      const ids = scoped.map((e) => e.id);
+      for (const r of await all(`SELECT employee_id, name_ar FROM resource_capability
+          WHERE kind = 'skill' AND deleted_at IS NULL AND employee_id IN (${ids.map(() => '?').join(',')})`, ids)) {
+        (skills.get(r.employee_id) || skills.set(r.employee_id, []).get(r.employee_id)).push(r.name_ar);
+      }
+    }
+    matched = scoped
+      .map((e, i) => ({ e, i, s: bestScore([e.name_ar, e.name_en, e.job_title, ...(skills.get(e.id) || [])], term) }))
+      .filter((x) => x.s > 0)
+      .sort((a, b) => b.s - a.s || a.i - b.i)
+      .map((x) => x.e);
+  }
+  const total = matched.length;
+  const rows = matched.slice((page - 1) * pageSize, page * pageSize);
   const { figures } = await figuresFor(rows.map((r) => r.id), from, to);
   const out = rows.map((e) => {
     const f = figures.get(e.id);
@@ -1029,9 +1043,12 @@ export async function orgResources(user, opts = {}) {
       manager_user_id: dep.manager_user_id || null, manager_name: dep.manager_user_id ? (await namesByIds([dep.manager_user_id])).get(dep.manager_user_id) || null : null };
     const scope = resourceScopeSql(user, 'e');
     const where = [scope.clause, 'e.department_id = ?']; const params = [...scope.params, dep.id];
-    const term = String(opts.q || '').trim().replace(/[%_]/g, ' ').replace(/\s+/g, ' ').toLowerCase();
-    if (term) { where.push(`(LOWER(e.name_ar) LIKE ? OR LOWER(COALESCE(e.job_title,'')) LIKE ?)`); params.push(`%${term}%`, `%${term}%`); }
-    const emps = await all(`SELECT e.*, ${USER_ID_SQL('e')} linked_user_id FROM employee e WHERE ${where.join(' AND ')} ORDER BY e.name_ar, e.id`, params);
+    // المطابقة العربية المتسامحة نفسها التي في سجل الموارد — في الذاكرة على أهل الإدارة (عشرات).
+    const term = String(opts.q || '').trim().replace(/\s+/g, ' ');
+    const scopedEmps = await all(`SELECT e.*, ${USER_ID_SQL('e')} linked_user_id FROM employee e WHERE ${where.join(' AND ')} ORDER BY e.name_ar, e.id`, params);
+    const emps = term && searchTokens(term).length
+      ? scopedEmps.filter((e) => bestScore([e.name_ar, e.name_en, e.job_title], term) > 0)
+      : scopedEmps;
     const { ctx, figures } = await figuresFor(emps.map((e) => e.id), nowKey, nowKey);
     resources = emps.map((e) => {
       const m = figures.get(e.id)?.months?.[0] || null;
