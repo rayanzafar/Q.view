@@ -1,8 +1,10 @@
-// ── حارسُ التأكيد: لا يكتب مساعدٌ خارجي في سند حتى يضغط صاحبُ الحساب داخلها ────────────────
+// ── حارسُ التأكيد: لا يكتب مساعدٌ خارجي في سند حتى يضغط صاحبُ الحساب في بطاقته ────────────
 // ما تحرسه:
-//   ١) نداءُ أداة التنفيذ من مساعدٍ خارجي **لا يكتب شيئاً** — يقف الطلب وينتظر صاحبه.
-//   ٢) الطلبُ المنتظِر يظهر لصاحبه بتفصيله (قبل/بعد)، ولصاحبه وحده.
-//   ٣) ضغطةُ «أؤكّد» هي التي تكتب فعلاً — وضغطةُ «أرفض» تُغلق الطلب بلا كتابة.
+//   ١) نداءُ أداة التنفيذ من مساعدٍ خارجي **لا يكتب شيئاً** — يعود بحالةٍ مبنيّة «بانتظار التأكيد»
+//      فيها معرّف الطلب وتفصيله، لا بنص خطأ.
+//   ٢) الطلبُ يظهر لصاحبه في «طلباتي» بحاله، ولصاحبه وحده.
+//   ٣) الضغطة من البطاقة (أداتا التأكيد/الرفض) هي التي تكتب أو تُغلق — وأداتا البطاقة لا تُنادَيان
+//      إلا عبر طريق المساعد، ولا تظهران في سطح سند الداخلي.
 //   ٤) إعادةُ النداء لا تلتفّ على الحارس، والمزلاج نفسه يردّ الطلب المنتظِر أيّاً كان الطريق.
 //   ٥) القاعدةُ تُقرأ من الأداة لا من قائمة أسماء: كلُّ أداة كتابةٍ تشترط رمز معاينة محروسةٌ.
 import { test, before, after } from 'node:test';
@@ -24,8 +26,9 @@ const { runTool, registerTools, listTools } = await import('../../src/modules/ai
 const { CRM_TOOLS } = await import('../../src/modules/ai/crm-tools.js');
 const { TASK_TOOLS } = await import('../../src/modules/ai/tasks-tools.js');
 const { WORKFLOW_TOOLS } = await import('../../src/modules/ai/workflow-tools.js');
-registerTools(CRM_TOOLS); registerTools(TASK_TOOLS); registerTools(WORKFLOW_TOOLS);
-const { listAwaiting, confirmChange, rejectChange } = await import('../../src/modules/ai/confirmations.js');
+const { CONFIRM_TOOLS } = await import('../../src/modules/ai/confirm-tools.js');
+registerTools(CRM_TOOLS); registerTools(TASK_TOOLS); registerTools(WORKFLOW_TOOLS); registerTools(CONFIRM_TOOLS);
+const { confirmChange } = await import('../../src/modules/ai/confirmations.js');
 
 const T = '2026-03-01T00:00:00Z';
 const LEAD = { id: 'u_lead', username: 'u_lead', name_ar: 'قائد القطاع', role_id: 'sector_lead', sector_id: 'SOL', scope: 'sector', projectIds: new Set(), teamIds: new Set() };
@@ -50,61 +53,73 @@ after(async () => { await close(); rmSync(dir, { recursive: true, force: true })
 const previewMove = async (to = 'PROPOSAL') =>
   (await runTool(viaAssistant(LEAD), 'sanad_preview_stage_change', { opportunityId: 'O1', toStage: to })).previewToken;
 const stageOf = async () => (await get('SELECT stage_id FROM opportunity WHERE id = ?', ['O1'])).stage_id;
+const myChanges = async (u, state) => (await runTool(viaAssistant(u), 'sanad_list_my_changes', state ? { state } : {})).changes;
 
-test('نداءُ التنفيذ من مساعدٍ خارجي لا يكتب شيئاً — يقف الطلب وينتظر صاحبه', async () => {
+let held;
+test('نداءُ التنفيذ من مساعدٍ خارجي لا يكتب — يعود بحالةٍ مبنيّة لا بنص خطأ', async () => {
   const token = await previewMove();
-  await assert.rejects(() => runTool(viaAssistant(LEAD), 'sanad_move_opportunity_stage', { previewToken: token }),
-    (e) => {
-      assert.match(e.message, /لم يُنفَّذ شيء بعد/);
-      assert.match(e.message, /تغييرات تنتظر تأكيدك/, 'الرسالة تدلّ على مكان القرار لا على عطل');
-      return true;
-    });
+  held = await runTool(viaAssistant(LEAD), 'sanad_move_opportunity_stage', { previewToken: token });
+  assert.equal(held.executed, false);
+  assert.equal(held.awaiting_confirmation, true);
+  assert.equal(held.already_pending, false);
+  assert.equal(held.change_id, token, 'معرّف الطلب هو رمز المعاينة نفسه');
+  assert.ok(held.expires_at, 'ومهلته معلنة');
+  assert.match(held.note_ar, /لم يُنفَّذ شيء بعد/);
+  const fields = held.display.map((d) => d.field_ar);
+  assert.ok(fields.includes('المرحلة') && fields.includes('احتمال الفوز'), 'قبل/بعد في الحالة نفسها لترسمه البطاقة: ' + fields.join(' · '));
   assert.equal(await stageOf(), 'LEAD', 'المرحلة لم تتحرّك — وهذا هو المقصود');
 });
 
-test('الطلبُ المنتظِر يظهر لصاحبه بتفصيله، ولصاحبه وحده', async () => {
-  const rows = await listAwaiting(LEAD);
-  assert.equal(rows.length, 1);
-  const r = rows[0];
-  assert.equal(r.applyTool, 'sanad_move_opportunity_stage');
-  assert.equal(r.askedByClient, 'مساعد التجربة', 'من طلبه مكتوبٌ في الطلب');
-  const fields = (r.preview.display || []).map((d) => d.field_ar);
-  assert.ok(fields.includes('المرحلة') && fields.includes('احتمال الفوز'),
-    'التفصيل محفوظٌ مع الطلب لا في ردٍّ عابر: ' + fields.join(' · '));
-  const move = r.preview.display.find((d) => d.field_ar === 'المرحلة');
-  assert.equal(move.before_ar, 'ترشيح'); assert.equal(move.after_ar, 'عرض مقدَّم');
-  assert.deepEqual(await listAwaiting(OTHER), [], 'طلبُ شخصٍ لا يراه غيره');
+test('«طلباتي» تعرض الطلب بحاله لصاحبه وحده', async () => {
+  const mine = await myChanges(LEAD);
+  assert.equal(mine.length, 1);
+  assert.equal(mine[0].change_id, held.change_id);
+  assert.equal(mine[0].state, 'awaiting');
+  assert.equal(mine[0].state_ar, 'بانتظار تأكيدك');
+  assert.equal(mine[0].asked_by_ar, 'مساعد التجربة', 'من طلبه مكتوبٌ في الطلب');
+  assert.deepEqual(await myChanges(OTHER), [], 'طلبُ شخصٍ لا يراه غيره');
 });
 
 test('إعادةُ النداء لا تلتفّ على الحارس — ولا يؤكّده أحدٌ غير صاحبه', async () => {
-  const token = (await listAwaiting(LEAD))[0].token;
-  await assert.rejects(() => runTool(viaAssistant(LEAD), 'sanad_move_opportunity_stage', { previewToken: token }),
-    (e) => { assert.match(e.message, /ما يزال معلَّقاً/); return true; });
-  await assert.rejects(() => confirmChange(inSanad(OTHER), token),
+  const again = await runTool(viaAssistant(LEAD), 'sanad_move_opportunity_stage', { previewToken: held.change_id });
+  assert.equal(again.executed, false);
+  assert.equal(again.already_pending, true, 'الطلب نفسه ما يزال ينتظر — لا طلبٌ ثانٍ');
+  await assert.rejects(() => runTool(viaAssistant(OTHER), 'sanad_confirm_change', { changeId: held.change_id }),
     (e) => { assert.match(e.message, /لا أجد هذا الطلب/); return true; });
   assert.equal(await stageOf(), 'LEAD');
 });
 
-test('ضغطةُ «أؤكّد» داخل سند هي التي تكتب فعلاً', async () => {
-  const token = (await listAwaiting(LEAD))[0].token;
-  const out = await confirmChange(inSanad(LEAD), token);
-  assert.equal(out.ok, true);
-  assert.equal(await stageOf(), 'PROPOSAL', 'الكتابة وقعت بالضغطة لا بنداء الأداة');
-  assert.deepEqual(await listAwaiting(LEAD), [], 'وخرج الطلب من قائمة الانتظار');
-  const audit = await get("SELECT action, detail_json FROM audit_log WHERE resource = 'ai_change' ORDER BY at DESC LIMIT 1");
-  assert.equal(audit.action, 'confirm');
-  assert.match(String(audit.detail_json), /تغييرات تنتظر تأكيدك/, 'سطرُ تدقيقٍ يقول من أين جاء القرار');
+test('أداتا البطاقة لا تُنادَيان إلا عبر طريق المساعد، ولا تظهران في سطح سند الداخلي', async () => {
+  await assert.rejects(() => runTool(inSanad(LEAD), 'sanad_confirm_change', { changeId: held.change_id }),
+    (e) => { assert.equal(e.status, 403); assert.match(e.message, /بطاقة التأكيد/); return true; });
+  const web = listTools(LEAD).map((t) => t.name);
+  assert.ok(!web.includes('sanad_confirm_change') && !web.includes('sanad_reject_change'), 'مخفيتان عن سطح سند');
+  const mcp = listTools(LEAD, { surface: 'mcp' });
+  assert.ok(mcp.find((t) => t.name === 'sanad_confirm_change')?.app_only === true, 'ومعلَنتان لمضيف المساعد كأداتي واجهة');
+  assert.equal(await stageOf(), 'LEAD');
 });
 
-test('ضغطةُ «أرفض» تُغلق الطلب بلا كتابة، والرمزُ يموت معها', async () => {
-  const token = await previewMove('LEAD');
-  await assert.rejects(() => runTool(viaAssistant(LEAD), 'sanad_move_opportunity_stage', { previewToken: token }));
-  assert.equal((await listAwaiting(LEAD)).length, 1);
+test('ضغطةُ «نفّذ» من البطاقة هي التي تكتب فعلاً', async () => {
+  const out = await runTool(viaAssistant(LEAD), 'sanad_confirm_change', { changeId: held.change_id });
+  assert.equal(out.executed, true);
+  assert.match(out.message_ar, /نُفِّذ/);
+  assert.equal(await stageOf(), 'PROPOSAL', 'الكتابة وقعت بالضغطة لا بنداء أداة التنفيذ');
+  assert.deepEqual(await myChanges(LEAD, 'awaiting'), [], 'وخرج من المنتظِر');
+  assert.equal((await myChanges(LEAD))[0].state, 'applied', 'وصار «نُفِّذ» في طلباتي');
+  const audit = await get("SELECT action, detail_json FROM audit_log WHERE resource = 'ai_change' ORDER BY at DESC LIMIT 1");
+  assert.equal(audit.action, 'confirm');
+  assert.match(String(audit.detail_json), /بطاقة التأكيد/, 'سطرُ تدقيقٍ يقول من أين جاء القرار');
+});
 
-  const r = await rejectChange(inSanad(LEAD), token);
-  assert.equal(r.ok, true);
+test('ضغطةُ «ارفض» تُغلق الطلب بلا كتابة، والرمزُ يموت معها', async () => {
+  const token = await previewMove('LEAD');
+  const h = await runTool(viaAssistant(LEAD), 'sanad_move_opportunity_stage', { previewToken: token });
+  assert.equal(h.awaiting_confirmation, true);
+
+  const r = await runTool(viaAssistant(LEAD), 'sanad_reject_change', { changeId: token });
+  assert.equal(r.rejected, true);
   assert.equal(await stageOf(), 'PROPOSAL', 'لم يُكتب شيء');
-  assert.deepEqual(await listAwaiting(LEAD), []);
+  assert.equal((await myChanges(LEAD)).find((x) => x.change_id === token).state, 'rejected');
   // والرمزُ المرفوض لا يُحيا بنداءٍ جديد — لا من نافذة المساعد ولا من داخل سند.
   await assert.rejects(() => runTool(viaAssistant(LEAD), 'sanad_move_opportunity_stage', { previewToken: token }),
     (e) => { assert.match(e.message, /رفض صاحبُ الحساب/); return true; });
@@ -114,7 +129,7 @@ test('ضغطةُ «أرفض» تُغلق الطلب بلا كتابة، والر
 });
 
 test('القاعدةُ عامّة: كلُّ أداة كتابةٍ تشترط رمز معاينة محروسةٌ بالتأكيد', async () => {
-  const tools = listTools(LEAD).filter((t) => t.kind === 'write' && (t.input?.required || []).includes('previewToken'));
+  const tools = listTools(LEAD, { surface: 'mcp' }).filter((t) => t.kind === 'write' && (t.input?.required || []).includes('previewToken'));
   assert.ok(tools.length >= 5, 'العيّنة معتبرة: ' + tools.length);
   for (const t of tools) {
     // لا معاينة صالحة هنا؛ يكفي أن الحارس يسبق الأداة فيردّ برسالته هو لا برسالة الأداة.
@@ -124,8 +139,6 @@ test('القاعدةُ عامّة: كلُّ أداة كتابةٍ تشترط ر�
 });
 
 test('الإضافةُ التي لا تغيّر حال سجل تمرّ بلا وقوف — القاعدة مرسومة لا عامّة', async () => {
-  // «تعليق على بلاغ» و«صورة» أداتا كتابةٍ بلا رمز معاينة: إضافةٌ إلى سجلٍّ قائم لا تغيّر حاله.
-  // نتحقّق من التصنيف نفسه (لا من تنفيذها): الحارس يقرأ اشتراط الرمز، وهما لا تشترطانه.
   const { DEV_CENTER_TOOLS } = await import('../../src/modules/products/tools.js');
   const byName = Object.fromEntries(DEV_CENTER_TOOLS.map((t) => [t.name, t]));
   for (const name of ['sanad_dc_add_comment', 'sanad_dc_upload_image']) {

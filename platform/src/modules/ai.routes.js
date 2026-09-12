@@ -24,7 +24,6 @@ import { requireAuth } from '../core/http/context.js';
 import { ask, aiStatus, optionsFor, proposePreview, registerIntents } from '../core/ai/assistant.js';
 import { listActivity } from '../core/ai/store.js';
 import { applyChange } from './ai/apply.js';
-import { listAwaiting, confirmChange, rejectChange } from './ai/confirmations.js';
 import { listTools, runTool, registerTools } from './ai/team-tools.js';
 import { TEAM_INTENTS } from './ai/team-intents.js';
 import { GUIDE_TOOLS } from './ai/guide-tools.js';
@@ -33,6 +32,7 @@ import { TASK_TOOLS } from './ai/tasks-tools.js';
 import { CRM_TOOLS } from './ai/crm-tools.js';
 import { PMO_TOOLS } from './ai/pmo-tools.js';
 import { WORKFLOW_TOOLS } from './ai/workflow-tools.js';
+import { CONFIRM_TOOLS } from './ai/confirm-tools.js';
 
 // نوايا وحدة «الفريق والموارد» تُسجَّل هنا مرةً واحدة: `core/ai` لا يستورد `modules`، والوحدة
 // تأتي إليه عند التركيب — فتظهر في بطاقات الاقتراح بمنحها وتُصنَّف قبل الأنماط العامة.
@@ -50,6 +50,9 @@ registerTools(TASK_TOOLS);
 registerTools(CRM_TOOLS);
 registerTools(PMO_TOOLS);
 registerTools(WORKFLOW_TOOLS);
+// وأدواتُ بطاقة التأكيد: اثنتان تُنادَيان من البطاقة داخل المحادثة وحدها (app_only)، وقراءةٌ
+// تعرض لصاحب الحساب أين انتهى كل طلب طلبه مساعده — ADR-0023.
+registerTools(CONFIRM_TOOLS);
 
 export const aiRouter = Router();
 aiRouter.use(requireAuth());
@@ -78,9 +81,3 @@ aiRouter.get('/activity', h((req) => listActivity(req.ctx.user, { limit: req.que
 aiRouter.get('/tools', h((req) => ({ tools: listTools(req.ctx.user) })));
 aiRouter.post('/tools/:name', h((req) => runTool(req.ctx, String(req.params.name || ''), req.body || {})));
 
-// ── تغييرات المساعد المنتظِرة: يقرؤها صاحبها في سند ثم يؤكّد أو يرفض ───────────────────────
-// المساعدُ الخارجي لا يكتب بنداء أداة؛ طلبه يقف هنا حتى تقع الضغطة. والقراران فعلان مؤرَّخان
-// باسم صاحب الحساب في سجل التدقيق، لا حالتان تتبدّلان بصمت.
-aiRouter.get('/pending', h(async (req) => ({ rows: await listAwaiting(req.ctx.user) })));
-aiRouter.post('/pending/:token/confirm', h((req) => confirmChange(req.ctx, String(req.params.token || ''))));
-aiRouter.post('/pending/:token/reject', h((req) => rejectChange(req.ctx, String(req.params.token || ''))));

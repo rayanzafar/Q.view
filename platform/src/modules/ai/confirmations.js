@@ -1,7 +1,8 @@
-// تأكيدُ تغييرات المساعد داخل سند — الضغطةُ التي تكتب.
+// تأكيدُ تغييرات المساعد — الضغطةُ التي تكتب.
 //
 // الحارسُ في `runTool` يوقف كلَّ تغييرٍ قادمٍ من مساعدٍ خارجي ويُسجّله طلباً ينتظر. وهذا الملف
-// هو الطرفُ الآخر: صاحبُ الحساب يفتح صفحته، يقرأ قبل/بعد بتفصيله، فيؤكّد أو يرفض.
+// هو الطرفُ الآخر: صاحبُ الحساب يقرأ قبل/بعد في بطاقة التأكيد داخل المحادثة (ADR-0023)، فيضغط
+// «نفّذ» أو «ارفض»، والزرّان يصلان هنا عبر أداتي البطاقة (`confirm-tools.js`).
 //
 // وقرارُ التصميم الذي يجعل هذا آمناً: **التأكيد والكتابة معاملةٌ واحدة**. فلو ردّت الخدمةُ
 // الكتابةَ لسببٍ مشروع — وأشهرُه أن السجل تحرّك بعد المعاينة فبصمتُه لم تعد تطابقها — رجع
@@ -18,7 +19,7 @@ import { confirmPending, rejectPending, listAwaiting, countAwaiting } from '../.
 import { runTool } from './team-tools.js';
 
 const DECIDE_MESSAGE = {
-  missing: 'لا أجد هذا الطلب — لعلّه بُتَّ فيه من نافذة أخرى. حدّث الصفحة لترى ما ينتظرك الآن.',
+  missing: 'لا أجد هذا الطلب — لعلّه بُتَّ فيه من قبل أو ليس لك. اطلب «طلباتي المنتظرة» لترى ما ينتظرك الآن.',
   applied: 'هذا الطلب نُفِّذ من قبل. افتح السجل للاطّلاع على ما تغيّر.',
   rejected: 'هذا الطلب مرفوض من قبل، فلم يُكتب شيء.',
   expired: 'انتهت مهلةُ هذا الطلب قبل أن تبتّ فيه، فلم يُكتب شيء. اطلب من مساعدك عرضه من جديد إن كنت ما تزال تريده.',
@@ -28,7 +29,7 @@ export { listAwaiting, countAwaiting };
 
 /** «أؤكّد التنفيذ»: يُفرَج عن الطلب ثم يُنفَّذ بأداته — وفشلُ الكتابة يُرجعه إلى الانتظار. */
 export async function confirmChange(ctx, token) {
-  if (!token) throw badRequest('لا طلب لتأكيده — حدّث الصفحة لترى ما ينتظرك.');
+  if (!token) throw badRequest('لا طلب لتأكيده — اطلب «طلباتي المنتظرة» لترى ما ينتظرك.');
   return await tx(async () => {
     const c = await confirmPending(ctx.user, token);
     if (!c.ok) throw badRequest(DECIDE_MESSAGE[c.reason] || DECIDE_MESSAGE.missing);
@@ -41,7 +42,7 @@ export async function confirmChange(ctx, token) {
     await audit(ctx, {
       action: 'confirm', resource: 'ai_change', resourceId: token,
       sectorId: ctx.user?.sector_id || null,
-      detail: { via: 'صفحة تغييرات تنتظر تأكيدك', tool: c.applyTool, summary: c.preview?.summary || null },
+      detail: { via: 'بطاقة التأكيد داخل المحادثة', tool: c.applyTool, summary: c.preview?.summary || null },
     });
     return { ok: true, summary: c.preview?.summary || null, result: out };
   });
@@ -49,12 +50,12 @@ export async function confirmChange(ctx, token) {
 
 /** «أرفض»: قرارٌ مؤرَّخ باسمه، والرمزُ يُحرق فلا يبقى له طريقٌ إلى الكتابة. */
 export async function rejectChange(ctx, token) {
-  if (!token) throw badRequest('لا طلب لرفضه — حدّث الصفحة لترى ما ينتظرك.');
+  if (!token) throw badRequest('لا طلب لرفضه — اطلب «طلباتي المنتظرة» لترى ما ينتظرك.');
   const r = await rejectPending(ctx.user, token);
   if (!r.ok) throw badRequest(DECIDE_MESSAGE[r.reason] || DECIDE_MESSAGE.missing);
   await audit(ctx, {
     action: 'reject', resource: 'ai_change', resourceId: token,
-    sectorId: ctx.user?.sector_id || null, detail: { via: 'صفحة تغييرات تنتظر تأكيدك' },
+    sectorId: ctx.user?.sector_id || null, detail: { via: 'بطاقة التأكيد داخل المحادثة' },
   });
   return { ok: true };
 }

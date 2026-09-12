@@ -11,9 +11,23 @@
 //   ② النتيجة تُرسل نصاً مقروءاً **ومعها** بنيتها، فالمساعد الذي لا يقرأ البنية يقرأ النص.
 //   ③ التعريف بالمنصة يُرسل في `instructions` عند بدء الجلسة: حدودها وواجباتها في جملة واحدة،
 //      فلا يبدأ المساعد بتخمين ما هي سند ولا بادّعاء ما لا تقيسه.
-import { listTools, runTool } from '../ai/team-tools.js';
+import { listTools, runTool, needsHumanConfirm } from '../ai/team-tools.js';
 import { HttpError } from '../../core/http/errors.js';
 import { logError } from '../../core/obs/log.js';
+import { CONFIRM_APP_URI, CONFIRM_APP_MIME, CONFIRM_APP_HTML } from './confirm-app.js';
+
+// ── موارد الواجهة (MCP Apps، ADR-0023) ──
+// موردٌ واحد اليوم: بطاقةُ تأكيد التغيير. المضيفُ يقرؤه بـresources/read ويرسمه في إطارٍ معزول
+// حين تعود أداةُ تنفيذٍ بحالة «بانتظار التأكيد». لا شبكة ولا مصادر خارجية، فلا نطاقات في السياسة.
+const UI_RESOURCES = Object.freeze([
+  {
+    uri: CONFIRM_APP_URI, name: 'بطاقة تأكيد التغيير', mimeType: CONFIRM_APP_MIME,
+    description: 'تعرض قبل/بعد لتغييرٍ طلبه المساعد، وزرّي «نفّذ» و«ارفض» لصاحب الحساب — الكتابة تقع بضغطته وحده.',
+    _meta: { ui: { prefersBorder: true } },
+    html: () => CONFIRM_APP_HTML,
+  },
+]);
+const GATED_NOTE_AR = 'تنبيه: نداءُ هذه الأداة لا يكتب مباشرةً — يوقف الطلب ويعيد حالةً مبنيّة «بانتظار التأكيد» (executed=false, awaiting_confirmation=true, change_id)، وتظهر لصاحب الحساب بطاقةُ تأكيدٍ داخل المحادثة فيها قبل/بعد وزرّا «نفّذ» و«ارفض». لا تقل إن التغيير تمّ حتى تصلك رسالةُ التنفيذ من البطاقة.';
 
 export const SERVER_NAME = 'sanad';
 // نُصدر النسخ التي نعرف عقدها. عميلٌ يطلب نسخةً أحدث نجيبه بأحدث ما نعرف، فيقرر هو المتابعة.
@@ -30,7 +44,8 @@ const INSTRUCTIONS_AR = [
   'التغيير مرحلتان: أداة معاينة تعرض قبل/بعد وتعطي رمزاً قصير العمر، ثم أداة تنفيذٍ تقبل ذلك الرمز وحده.',
   'أنت مستشارٌ لا منفِّذ أوامر. قبل أي معاينةِ تغيير: قل لصاحب الحساب بلغته ماذا فهمتَ من طلبه، وعدّد ما ستفعله بالضبط سجلاً سجلاً وحقلاً حقلاً، واسأله عمّا هو محتمَلٌ لوجهين — أي سجلٍ بعينه، وأي قيمة، وهل يشمل غيره. لا تكمل على تخمين، ولا تفترض أن الاسم المتقارب هو المقصود.',
   'وبعد المعاينة: اعرض قبل/بعد كاملاً بالعربية، وقل ما يتبع التغيير من أثر، ثم انتظر جوابه. الصمتُ ليس موافقة، و«نعم» على سؤالٍ آخر ليست موافقةً على هذا.',
-  'ونداءُ أداة التنفيذ لا يكتب شيئاً بنفسه: يوقف الطلبَ في صفحة «تغييرات تنتظر تأكيدك» داخل سند حتى يقرأه صاحبُ الحساب هناك ويضغط بيده. فقل له ذلك صراحةً، ولا تقل إن التغيير تمّ قبل أن يخبرك هو أنه أكّده.',
+  'ونداءُ أداة التنفيذ لا يكتب شيئاً بنفسه: يعيد حالةً مبنيّة «بانتظار التأكيد» وتظهر لصاحب الحساب بطاقةُ تأكيدٍ داخل المحادثة فيها قبل/بعد وزرّا «نفّذ» و«ارفض». الكتابةُ تقع بضغطته هو. فقل له ذلك صراحةً، ولا تقل إن التغيير تمّ حتى تصلك رسالةُ التنفيذ من البطاقة أو تقرأها في «طلباتي المنتظرة».',
+  'المعرّفات: للشخص الواحد معرّفُ موظف ومعرّفُ حساب، والبحث يعيدهما معاً، وأدوات الإسناد والتسكين تقبل أيّهما.',
 ].join(' ');
 
 const jsonRpcError = (msgId, code, message) => ({ jsonrpc: '2.0', id: msgId ?? null, error: { code, message } });
@@ -38,11 +53,17 @@ const jsonRpcResult = (msgId, result) => ({ jsonrpc: '2.0', id: msgId, result })
 
 /** أداة سند ⟵ شكل الأداة في البروتوكول. الوصف العربي كما هو: هو ما يقرؤه المساعد ليختار. */
 function toMcpTool(t) {
+  const gated = needsHumanConfirm(t);
+  // ربطُ الأداة بواجهتها: أداةُ تنفيذٍ محروسة تعود بحالة «بانتظار التأكيد» فتُرسم بطاقةُ التأكيد
+  // من نتيجتها؛ وأداتا البطاقة (app_only) تُعلَنان للواجهة وحدها فيحجبهما المضيف عن النموذج.
+  const meta = gated ? { ui: { resourceUri: CONFIRM_APP_URI, visibility: ['model', 'app'] } }
+    : t.app_only ? { ui: { visibility: ['app'] } } : null;
   return {
     name: t.name,
     title: t.label_ar,
-    description: `${t.description_ar}\nالناتج: ${t.output_ar}`,
+    description: `${t.description_ar}${gated ? `\n${GATED_NOTE_AR}` : ''}\nالناتج: ${t.output_ar}`,
     inputSchema: t.input && t.input.type === 'object' ? t.input : { type: 'object', properties: {} },
+    ...(meta ? { _meta: meta } : {}),
     annotations: {
       title: t.label_ar,
       readOnlyHint: t.kind === 'read',
@@ -76,7 +97,12 @@ export async function handleMessage(ctx, msg) {
       const asked = String(params?.protocolVersion || '');
       return jsonRpcResult(msgId, {
         protocolVersion: PROTOCOL_VERSIONS.includes(asked) ? asked : LATEST_PROTOCOL,
-        capabilities: { tools: { listChanged: false } },
+        capabilities: {
+          tools: { listChanged: false },
+          resources: { listChanged: false, subscribe: false },
+          // إعلانُ دعم واجهات المحادثة (MCP Apps): موردُ بطاقة التأكيد يُرسم داخل المحادثة.
+          extensions: { 'io.modelcontextprotocol/ui': { mimeTypes: [CONFIRM_APP_MIME] } },
+        },
         serverInfo: { name: SERVER_NAME, title: 'سند — نظام تشغيل الأعمال', version: '1.0.0' },
         instructions: INSTRUCTIONS_AR,
       });
@@ -87,7 +113,7 @@ export async function handleMessage(ctx, msg) {
     case 'ping':
       return isNotification ? null : jsonRpcResult(msgId, {});
     case 'tools/list':
-      return jsonRpcResult(msgId, { tools: listTools(ctx.user).map(toMcpTool) });
+      return jsonRpcResult(msgId, { tools: listTools(ctx.user, { surface: 'mcp' }).map(toMcpTool) });
     case 'tools/call': {
       const name = String(params?.name || '');
       const args = params?.arguments && typeof params.arguments === 'object' ? params.arguments : {};
@@ -110,7 +136,15 @@ export async function handleMessage(ctx, msg) {
     // نعلن قدرة الأدوات وحدها، ونجيب على الاستعلامين الآخرين بقائمتين فارغتين بدل خطأ:
     // بعض العملاء يسألان عنهما عند البدء، والخطأ هناك يظهر للموظف عطلاً وهو ليس عطلاً.
     case 'resources/list':
-      return jsonRpcResult(msgId, { resources: [] });
+      return jsonRpcResult(msgId, { resources: UI_RESOURCES.map(({ uri, name, mimeType, description, _meta }) => ({ uri, name, mimeType, description, _meta })) });
+    case 'resources/read': {
+      const uri = String(params?.uri || '');
+      const r = UI_RESOURCES.find((x) => x.uri === uri);
+      if (!r) return jsonRpcError(msgId, -32002, 'لا مورد بهذا العنوان');
+      return jsonRpcResult(msgId, { contents: [{ uri: r.uri, mimeType: r.mimeType, text: r.html(), _meta: r._meta }] });
+    }
+    case 'resources/templates/list':
+      return jsonRpcResult(msgId, { resourceTemplates: [] });
     case 'prompts/list':
       return jsonRpcResult(msgId, { prompts: [] });
     default:

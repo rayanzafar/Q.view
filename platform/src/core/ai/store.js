@@ -102,11 +102,17 @@ export async function deferToConfirmation(user, token, { applyTool, client = nul
     [OUTCOME.AWAITING, expiresAt, String(applyTool || ''),
       client?.name_ar ? String(client.name_ar).slice(0, 120) : null, client?.id || null,
       String(token), user.id, now, OUTCOME.PREVIEW]);
-  if (Number(r.changes) === 1) return { ok: true, expiresAt };
-  const row = await get('SELECT user_id, applied, expires_at, outcome FROM ai_activity_log WHERE id = ?', [String(token)]);
+  // المعاينةُ تعود مع الإيقاف: بطاقةُ التأكيد تُرسم منها (قبل/بعد وملخّصها)، فلا تُقرأ ثانيةً.
+  if (Number(r.changes) === 1) {
+    const saved = await get('SELECT preview_json FROM ai_activity_log WHERE id = ?', [String(token)]);
+    return { ok: true, expiresAt, preview: saved?.preview_json ? JSON.parse(saved.preview_json) : null };
+  }
+  const row = await get('SELECT user_id, applied, expires_at, outcome, preview_json FROM ai_activity_log WHERE id = ?', [String(token)]);
   if (!row || row.user_id !== user.id) return { ok: false, reason: 'missing' };
   if (Number(row.applied) === 1) return { ok: false, reason: 'applied' };
-  if (row.outcome === OUTCOME.AWAITING) return { ok: false, reason: 'awaiting', expiresAt: row.expires_at };
+  if (row.outcome === OUTCOME.AWAITING) {
+    return { ok: false, reason: 'awaiting', expiresAt: row.expires_at, preview: row.preview_json ? JSON.parse(row.preview_json) : null };
+  }
   if (row.outcome === OUTCOME.REJECTED) return { ok: false, reason: 'rejected' };
   if (row.outcome === OUTCOME.CONFIRMED) return { ok: false, reason: 'confirmed' };
   if (!row.expires_at || row.expires_at <= now) return { ok: false, reason: 'expired' };
@@ -169,6 +175,46 @@ export async function listAwaiting(user) {
     askedByClient: r.asked_by_client || null, askedByClientId: r.asked_by_client_id || null,
     preview: r.preview_json ? JSON.parse(r.preview_json) : null,
   }));
+}
+
+// حالُ الطلب كما يُقال لصاحبه — لا رمز داخلي يُعرض. «منتهٍ» يُشتقّ من المهلة لا من عمودٍ يُكتب.
+export const CHANGE_STATE_AR = Object.freeze({
+  awaiting: 'بانتظار تأكيدك', confirmed: 'مؤكَّد — قيد التنفيذ', applied: 'نُفِّذ',
+  rejected: 'رفضتَه', expired: 'انتهت مهلته ولم يُنفَّذ',
+});
+const stateOf = (r, now) => {
+  if (Number(r.applied) === 1 || r.outcome === OUTCOME.APPLIED) return 'applied';
+  if (r.outcome === OUTCOME.REJECTED) return 'rejected';
+  if (r.outcome === OUTCOME.CONFIRMED) return 'confirmed';
+  if (r.outcome === OUTCOME.AWAITING) return (!r.expires_at || r.expires_at <= now) ? 'expired' : 'awaiting';
+  return null;
+};
+
+/**
+ * طلباتُ صاحب الحساب كلُّها بحالها — لا المنتظِرة وحدها. هذا جوابُ «ماذا حدث لما طلبتُه؟» بعد
+ * خمسة عشر طلباً: كلُّ طلبٍ يُقرأ أين انتهى (منتظر/مؤكَّد/نُفِّذ/مرفوض/منتهٍ) ومتى بُتَّ فيه.
+ * رؤيةٌ بلا صلاحية قرار: القرارُ نفسه من بطاقة التأكيد لا من هنا.
+ */
+export async function listMyChanges(user, { limit = 25, state = null } = {}) {
+  const now = nowIso();
+  const n = Math.max(1, Math.min(100, Number(limit) || 25));
+  const rows = await all(
+    `SELECT id, at, intent, preview_json, expires_at, applied, applied_at, decided_at, outcome, apply_tool, asked_by_client
+       FROM ai_activity_log
+      WHERE user_id = ? AND preview_json IS NOT NULL AND outcome IN (?, ?, ?, ?)
+      ORDER BY at DESC
+      LIMIT ${n}`, [user.id, OUTCOME.AWAITING, OUTCOME.CONFIRMED, OUTCOME.APPLIED, OUTCOME.REJECTED]);
+  return rows.map((r) => {
+    const preview = r.preview_json ? JSON.parse(r.preview_json) : null;
+    const st = stateOf(r, now);
+    return {
+      change_id: r.id, at: r.at, state: st, state_ar: CHANGE_STATE_AR[st] || st,
+      decided_at: r.decided_at || r.applied_at || null, expires_at: r.expires_at || null,
+      apply_tool: r.apply_tool || null, asked_by_ar: r.asked_by_client || null,
+      summary_ar: preview?.summary || null, subject_ar: preview?.subject_ar || null,
+      display: Array.isArray(preview?.display) ? preview.display : [],
+    };
+  }).filter((x) => x.state && (!state || x.state === state));
 }
 
 /** عدّادُ الشارة في القائمة الجانبية — سؤالٌ واحد لا يجرّ معه نصوص المعاينات. */

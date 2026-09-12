@@ -177,21 +177,19 @@ test('③ معاينة ثم تأكيد عبر الربط: البلاغ يتغي�
   const token = pv?.structuredContent?.previewToken;
   assert.ok(token, 'المعاينة عبر الربط تعطي رمزاً');
 
-  // نداءُ التنفيذ عبر الربط لا يكتب: يقف الطلب في «تغييرات تنتظر تأكيدك» حتى يضغط صاحبُ الحساب.
+  // نداءُ التنفيذ عبر الربط لا يكتب: يعود بحالةٍ مبنيّة «بانتظار التأكيد» تُرسم منها بطاقةُ التأكيد.
   const wasStatus = (await db.get('SELECT status FROM product_item WHERE id = ?', [itemId])).status;
   const held = await callTool(mgrToken, 'sanad_dc_apply_approve', { previewToken: token });
-  assert.equal(held?.isError, true, 'التنفيذ من نافذة المساعد يقف بانتظار صاحبه');
-  assert.match(held?.content?.[0]?.text || '', /لم يُنفَّذ شيء بعد/);
+  assert.equal(held?.isError, false, 'الوقفة حالةٌ لا خطأ');
+  assert.equal(held?.structuredContent?.awaiting_confirmation, true, 'بانتظار صاحبه');
+  assert.equal(held?.structuredContent?.executed, false);
   assert.equal((await db.get('SELECT status FROM product_item WHERE id = ?', [itemId])).status, wasStatus,
     'ولم يتغيّر البلاغ بنداء الأداة');
 
-  // ثم يفتح صاحبُ الحساب سند بجلسته هو ويضغط — بالمسار الذي تمشيه الصفحة نفسها.
-  const pending = await api('u_mgr', '/api/ai/pending');
-  assert.equal(pending.status, 200);
-  assert.equal(pending.json.rows.length, 1, 'الطلب ينتظر صاحبه');
-  assert.equal(pending.json.rows[0].askedByClient, 'كلود', 'ومكتوبٌ من طلبه');
-  const applied = await api('u_mgr', `/api/ai/pending/${pending.json.rows[0].token}/confirm`, { method: 'POST' });
-  assert.equal(applied.status, 200, `الضغطة داخل سند نفّذت: ${applied.text}`);
+  // ثم يضغط صاحبُ الحساب «نفّذ» في البطاقة — فتصل الضغطة عبر أداة البطاقة بالطريق نفسه.
+  const applied = await callTool(mgrToken, 'sanad_confirm_change', { changeId: held.structuredContent.change_id });
+  assert.equal(applied?.isError, false, `الضغطة نفّذت: ${applied?.content?.[0]?.text || ''}`);
+  assert.equal(applied?.structuredContent?.executed, true);
   const row = await db.get('SELECT status FROM product_item WHERE id = ?', [itemId]);
   assert.equal(row.status, 'APPROVED', 'البلاغ صار معتمداً فعلاً');
 

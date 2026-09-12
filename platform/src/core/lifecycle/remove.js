@@ -158,6 +158,26 @@ export const REMOVABLE = {
       { table: 'proposal', col: 'opportunity_id', ar: 'عرض' },
     ],
   },
+  task: {
+    table: 'task',
+    label: 'المهمة',
+    fem: true,            // «المهمة» مؤنّثة
+    nameCol: 'title',
+    resource: 'task',
+    // ── المهمة تُحذف بيد صاحبها أو من يملك تعديلها ──
+    // مهمةٌ تجريبية عنوانها «d» لا تستحق أن تبقى في القوائم إلى الأبد لأن الطريق الوحيد كان
+    // «إلغاء». والحذف ناعمٌ يُستعاد كغيره. أما ما ارتبط بمهمةٍ من أثر — ساعات عمل مسجَّلة عليها —
+    // فيمنع حذفها كما يمنع المالُ حذفَ المشروع: الأثرُ المعتمَد لا يُطوى بحذف حامله.
+    ownDelete: (user, row) => !!user?.id && (row.created_by === user.id || row.assignee_user_id === user.id),
+    blockers: [
+      { table: 'time_entry', col: 'task_id',
+        ar: (n) => countAr(n, 'ساعة عمل مسجَّلة واحدة', 'ساعتا عمل مسجَّلتان', 'ساعة عمل مسجَّلة') },
+    ],
+    // ما يتبع المهمة يُطوى معها في المعاملة نفسها: جسرُ مركز التطوير (صفٌّ واحد بمفتاحٍ فريد)
+    cascade: [
+      { table: 'product_item_task', col: 'task_id', ar: 'ربط بلاغ', hard: true },
+    ],
+  },
   user: {
     table: 'app_user',
     label: 'الحساب',

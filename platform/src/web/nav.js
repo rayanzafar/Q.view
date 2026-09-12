@@ -39,9 +39,6 @@ export const NAV_ITEMS = [
   { key: 'approvals', ar: 'الاعتمادات', ic: 'approvals', group: 'work' },
   { key: 'guide', ar: 'دليلي', ic: 'list', group: 'work' },
   { key: 'assistant-link', ar: 'ربط المساعد', ic: 'ai', group: 'work' },
-  // «تغييرات المساعد» جارةُ «ربط المساعد» عمداً: من ربط مساعده يجد هنا ما يطلبه، فلا يبحث عن
-  // شاشةٍ بعيدة حين يصله إشعارٌ بأن تغييراً ينتظر.
-  { key: 'ai-changes', ar: 'تغييرات المساعد', ic: 'ai', group: 'work' },
   // «مركز التطوير»: يظهر لمدير النظام ولأعضاء أي منتج — العضوية في جدول المنتج لا دورٌ في الشركة.
   { key: 'dev-center', ar: 'مركز التطوير', ic: 'megaphone', group: 'work' },
   { key: 'team', ar: 'الفريق', ic: 'team', group: 'manage' },

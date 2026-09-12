@@ -226,7 +226,6 @@ const PAGES = {
   'revenue-review': P.revenueReviewPage,
   'sector-targets': P.sectorTargetsPage,
   'assistant-link': P.assistantLinkPage,
-  'ai-changes': P.aiChangesPage,
   ceo: P.ceoPage, portfolio: P.portfolioPage, sector: P.sectorPage, opportunities: P.opportunitiesPage,
   'my-opportunities': P.myOpportunitiesPage,
   // إعدادات لوحة الفرص: المراحل والتصنيفات يديرها فريق تطوير الأعمال بلا مطوِّر ولا ترحيلة.

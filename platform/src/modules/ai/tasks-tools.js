@@ -15,6 +15,7 @@ import { can, effectiveScope } from '../../core/rbac/index.js';
 import { savePreview, claimPreview, PREVIEW_TTL_MINUTES } from '../../core/ai/store.js';
 import { riyadhDate } from '../../core/i18n/time.js';
 import { myTasks, teamTasks, teamTasksAccess, quickAddTask, updateTask } from '../pmo/tasks.js';
+import { resolvePerson } from '../org/people.js';
 import {
   envelope, inputOf, text, dayOf, intOf, enumOf, boolOf, pageOf, partialOf, uniqRefs,
   tokenOnly, claimGuard, fingerprintOf, assertFingerprint, textOrNot, numOrNot, notMeasured,
@@ -169,9 +170,22 @@ function createFieldsOf(input) {
   };
 }
 
+// ── المسؤول بأي معرّف ──
+// البحثُ يعيد معرّف الموظف، والمهمةُ تُسند إلى معرّف الحساب — والاثنان للشخص نفسه. فالأداة تقبل
+// أيّهما وتحلّه من الجسر القائم في القاعدة، ولا تردّ «غير موجود» على اسمٍ يقرؤه السائل أمامه.
+// وموظفٌ بلا حسابٍ فعّال يُقال ذلك عنه صراحةً: لا تُسند مهمةٌ إلى من لا يستطيع فتحها.
+async function assigneeUserIdOf(anyId, user) {
+  if (!anyId || anyId === user.id) return user.id;
+  const p = await resolvePerson(anyId);
+  if (!p) throw notFound('المسؤول المختار غير موجود — ابحث عنه بالاسم أولاً ثم استعمل معرّفه كما عاد من البحث');
+  if (!p.userId) throw badRequest(`«${p.name_ar || anyId}» مسجَّلٌ مورداً بلا حسابٍ فعّال في سند — لا تُسند إليه مهمة حتى يُنشأ حسابه`);
+  return p.userId;
+}
+
 async function runPreviewTaskCreate(ctx, raw) {
   const user = ctx.user;
   const f = createFieldsOf(inputOf(raw));
+  f.assignee_user_id = await assigneeUserIdOf(f.assignee_user_id, user);
   const assignee = f.assignee_user_id || user.id;
   const forSelf = assignee === user.id;
   // النسبة مطلوبة على مهمتك أنت (قرار المالك ٢٠٢٦-٠٩-٠٨) — والمعاينة تردّها هنا لا عند التنفيذ،
@@ -248,13 +262,36 @@ async function runCreateTask(ctx, raw) {
 // ── دورة التحديث: قبل/بعد لكل حقل يتغيّر، والرمز يبطل إن تحرّكت المهمة ─────────────────────
 const FP_FIELDS = ['status', 'priority', 'due_date', 'next_step', 'blocked_reason', 'assignee_user_id', 'utilization_pct', 'updated_at'];
 const UPDATABLE = Object.freeze({
+  title: { ar: 'العنوان', label: (v) => (v || 'بلا عنوان') },
   status: { ar: 'الحالة', label: (v) => STATUS_AR[v] || v },
   priority: { ar: 'الأولوية', label: (v) => PRIORITY_AR[v] || v },
   due_date: { ar: 'موعد الاستحقاق', label: (v) => (v ? String(v).slice(0, 10) : 'بلا موعد') },
   next_step: { ar: 'الخطوة التالية', label: (v) => (v || 'بلا خطوة تالية') },
   blocked_reason: { ar: 'سبب التوقف', label: (v) => (v || 'بلا سبب') },
   utilization_pct: { ar: 'نسبة الإشغال', label: (v) => (v == null ? 'بلا نسبة' : `${v}%`) },
+  // المسؤول والجهة المرتبطة يُسمَّيان لا يُرقَّمان: قبل/بعد يُقرأان اسمَين، والاسم يُحلّ قبل العرض.
+  assignee_user_id: { ar: 'المسؤول', label: (v) => (v || 'بلا مسؤول'), named: true },
+  work_link: { ar: 'العمل المرتبط', label: (v) => (v || 'عمل داخلي'), named: true },
 });
+
+// اسمُ الشخص أو الجهة لعرضه في قبل/بعد — وما لا يُحَلّ يُعرض بمعرّفه لا بفراغ.
+async function personLabel(userId) {
+  if (!userId) return 'بلا مسؤول';
+  const p = await resolvePerson(userId);
+  return p?.name_ar || String(userId);
+}
+async function workLinkLabel(row) {
+  if (row.work_kind === 'personal') return 'مهمة شخصية';
+  if (row.project_id) {
+    const p = await get('SELECT name_ar FROM project WHERE id = ?', [row.project_id]);
+    return `مشروع «${p?.name_ar || row.project_id}»`;
+  }
+  if (row.opportunity_id) {
+    const o = await get('SELECT title_ar FROM opportunity WHERE id = ?', [row.opportunity_id]);
+    return `فرصة «${o?.title_ar || row.opportunity_id}»`;
+  }
+  return 'عمل داخلي';
+}
 
 async function readableTask(user, taskId) {
   const row = await get('SELECT * FROM task WHERE id = ? AND deleted_at IS NULL', [taskId]);
@@ -275,22 +312,52 @@ async function runPreviewTaskUpdate(ctx, raw) {
   const taskId = text(input.taskId, 'معرّف المهمة', { required: true, max: 80 });
   const row = await readableTask(user, taskId);
   const patch = {};
+  if ('title' in input) patch.title = text(input.title, 'العنوان', { required: true, max: 200, min: 2 });
+  // المسؤول بأي معرّف (موظف أو حساب) — والبوابة الفعلية على الوجهة في الخدمة نفسها عند التنفيذ.
+  if ('assigneeUserId' in input) patch.assignee_user_id = await assigneeUserIdOf(text(input.assigneeUserId, 'معرّف المسؤول', { max: 80 }), user);
+  // الربط: مشروع أو فرصة أو عمل داخلي — المفاتيح هي مفاتيح الخدمة (normalizeParent) حرفاً.
+  if ('linkKind' in input || 'projectId' in input || 'opportunityId' in input) {
+    const link = enumOf(input.linkKind, 'نوع الجهة المرتبطة', ['project', 'opportunity', 'internal'],
+      { def: input.projectId ? 'project' : input.opportunityId ? 'opportunity' : 'internal' });
+    const projectId = text(input.projectId, 'معرّف المشروع', { max: 80 });
+    const opportunityId = text(input.opportunityId, 'معرّف الفرصة', { max: 80 });
+    if (link === 'project' && !projectId) throw badRequest('اخترتَ الربط بمشروع — فحدّد معرّف المشروع');
+    if (link === 'opportunity' && !opportunityId) throw badRequest('اخترتَ الربط بفرصة — فحدّد معرّف الفرصة');
+    if (link === 'project') { patch.project_id = projectId; patch.opportunity_id = null; patch.work_kind = 'project'; }
+    else if (link === 'opportunity') { patch.opportunity_id = opportunityId; patch.project_id = null; patch.work_kind = 'opportunity'; }
+    else { patch.project_id = null; patch.opportunity_id = null; patch.work_kind = 'internal'; }
+    const parent = patch.project_id
+      ? await get('SELECT id FROM project WHERE id = ? AND deleted_at IS NULL', [patch.project_id])
+      : patch.opportunity_id ? await get('SELECT id FROM opportunity WHERE id = ? AND deleted_at IS NULL', [patch.opportunity_id]) : { id: null };
+    if (!parent) throw notFound('الجهة المرتبطة غير موجودة — اختر مشروعاً أو فرصة من قائمتك');
+  }
   if ('status' in input) patch.status = enumOf(input.status, 'الحالة', STATUSES, { required: true });
   if ('priority' in input) patch.priority = enumOf(input.priority, 'الأولوية', PRIORITIES, { required: true });
   if ('dueDate' in input) patch.due_date = input.dueDate === null || input.dueDate === '' ? null : dayOf(input.dueDate, 'موعد الاستحقاق');
   if ('nextStep' in input) patch.next_step = text(input.nextStep, 'الخطوة التالية', { max: 300 });
   if ('blockedReason' in input) patch.blocked_reason = text(input.blockedReason, 'سبب التوقف', { max: 300 });
   if ('utilizationPct' in input) patch.utilization_pct = input.utilizationPct === null || input.utilizationPct === '' ? null : intOf(input.utilizationPct, 'نسبة الإشغال', { min: 1, max: 100 });
-  if (!Object.keys(patch).length) throw badRequest('حدّد ما تريد تغييره: الحالة أو الأولوية أو الموعد أو الخطوة التالية أو سبب التوقف أو نسبة الإشغال.');
+  if (!Object.keys(patch).length) throw badRequest('حدّد ما تريد تغييره: العنوان أو المسؤول أو العمل المرتبط أو الحالة أو الأولوية أو الموعد أو الخطوة التالية أو سبب التوقف أو نسبة الإشغال.');
   // «متوقفة» بلا سبب مكتوب حالةٌ لا تقول شيئاً لمن يقرؤها بعد أسبوع.
   const nextStatus = 'status' in patch ? patch.status : row.status;
   const nextBlocked = 'blocked_reason' in patch ? patch.blocked_reason : row.blocked_reason;
   if (nextStatus === 'BLOCKED' && !String(nextBlocked || '').trim()) {
     throw badRequest('المهمة المتوقفة يلزمها سبب مكتوب — اكتب ما يعطّلها ليعرف من يقرؤها ماذا يرفع.');
   }
-  const changes = Object.entries(patch)
-    .filter(([k, v]) => (row[k] ?? null) !== (v ?? null))
-    .map(([k, v]) => ({ field: k, field_ar: UPDATABLE[k].ar, before_ar: UPDATABLE[k].label(row[k]), after_ar: UPDATABLE[k].label(v) }));
+  const changes = [];
+  for (const [k, v] of Object.entries(patch)) {
+    if (k === 'project_id' || k === 'opportunity_id' || k === 'work_kind') continue;   // تُعرض صفّاً واحداً أدناه
+    if ((row[k] ?? null) === (v ?? null)) continue;
+    const before = k === 'assignee_user_id' ? await personLabel(row[k]) : UPDATABLE[k].label(row[k]);
+    const after = k === 'assignee_user_id' ? await personLabel(v) : UPDATABLE[k].label(v);
+    changes.push({ field: k, field_ar: UPDATABLE[k].ar, before_ar: before, after_ar: after });
+  }
+  if ('work_kind' in patch) {
+    const before = await workLinkLabel(row);
+    const after = await workLinkLabel({ ...row, ...patch });
+    if (before !== after) changes.push({ field: 'work_link', field_ar: UPDATABLE.work_link.ar, before_ar: before, after_ar: after });
+    else { delete patch.project_id; delete patch.opportunity_id; delete patch.work_kind; }
+  }
   if (!changes.length) throw badRequest('لا فرق بين ما طلبتَه وما هو مسجَّل الآن — لا شيء يتغيّر.');
   const summary = `تحديث «${row.title}»: ${changes.map((c) => `${c.field_ar} من ${c.before_ar} إلى ${c.after_ar}`).join('، ')}.`;
   const { token, expiresAt } = await savePreview(user, {
@@ -359,7 +426,7 @@ export const TASK_TOOLS = Object.freeze([
       opportunityId: S.str('معرّف الفرصة (حين يكون الربط بفرصة)', { maxLength: 80 }),
       dueDate: S.day('موعد الاستحقاق (اختياري)'),
       priority: S.en('الأولوية — الافتراضي: متوسطة', PRIORITIES),
-      assigneeUserId: S.str('معرّف المسؤول — الافتراضي: أنت', { maxLength: 80 }),
+      assigneeUserId: S.str('المسؤول — معرّف موظفه أو حسابه كما عاد من البحث؛ الافتراضي: أنت', { maxLength: 80 }),
       nextStep: S.str('الخطوة التالية', { maxLength: 300 }),
       utilizationPct: S.int('نسبة الإشغال من طاقة صاحبها (١–١٠٠)', 1, 100),
     }, ['title']),
@@ -375,9 +442,14 @@ export const TASK_TOOLS = Object.freeze([
   },
   {
     name: 'sanad_preview_task_update', label_ar: 'معاينة تحديث مهمة', kind: 'preview',
-    description_ar: 'يعاين تغييراً على مهمة قائمة ويعرض قبل/بعد لكل حقل يتغيّر فعلاً (الحالة، الأولوية، الموعد، الخطوة التالية، سبب التوقف، نسبة الإشغال)، ويعطي رمزاً صالحاً ١٥ دقيقة لمرة واحدة يبطل إن تحرّكت المهمة قبل تأكيده. طلبٌ لا يغيّر شيئاً يُردّ. و«متوقفة» بلا سبب مكتوب تُردّ.',
+    description_ar: 'يعاين تغييراً على مهمة قائمة ويعرض قبل/بعد لكل حقل يتغيّر فعلاً: العنوان، المسؤول (نقلها إلى زميل — بمعرّف موظفه أو حسابه)، العمل المرتبط (مشروع أو فرصة أو عمل داخلي)، الحالة، الأولوية، الموعد، الخطوة التالية، سبب التوقف، نسبة الإشغال. يعطي رمزاً صالحاً ١٥ دقيقة لمرة واحدة يبطل إن تحرّكت المهمة قبل تأكيده. طلبٌ لا يغيّر شيئاً يُردّ. و«متوقفة» بلا سبب مكتوب تُردّ. والتنفيذ برمزه لا يكتب مباشرةً — يقف لتأكيد صاحب الحساب.',
     input: obj({
       taskId: S.str('معرّف المهمة', { maxLength: 80 }),
+      title: S.str('العنوان الجديد', { maxLength: 200, minLength: 2 }),
+      assigneeUserId: S.str('المسؤول الجديد — معرّف موظفه أو حسابه كما عاد من البحث', { maxLength: 80 }),
+      linkKind: S.en('العمل المرتبط الجديد: مشروع أو فرصة أو عمل داخلي', ['project', 'opportunity', 'internal']),
+      projectId: S.str('معرّف المشروع (حين يكون الربط بمشروع)', { maxLength: 80 }),
+      opportunityId: S.str('معرّف الفرصة (حين يكون الربط بفرصة)', { maxLength: 80 }),
       status: S.en('الحالة الجديدة', STATUSES), priority: S.en('الأولوية الجديدة', PRIORITIES),
       dueDate: S.str('الموعد الجديد بصيغة سنة-شهر-يوم، أو فارغاً لإزالته', { maxLength: 10 }),
       nextStep: S.str('الخطوة التالية', { maxLength: 300 }),
