@@ -33,6 +33,7 @@ import { CRM_TOOLS } from './ai/crm-tools.js';
 import { PMO_TOOLS } from './ai/pmo-tools.js';
 import { WORKFLOW_TOOLS } from './ai/workflow-tools.js';
 import { CONFIRM_TOOLS } from './ai/confirm-tools.js';
+import { RECORD_TOOLS } from './ai/records-tools.js';
 
 // نوايا وحدة «الفريق والموارد» تُسجَّل هنا مرةً واحدة: `core/ai` لا يستورد `modules`، والوحدة
 // تأتي إليه عند التركيب — فتظهر في بطاقات الاقتراح بمنحها وتُصنَّف قبل الأنماط العامة.
@@ -53,6 +54,9 @@ registerTools(WORKFLOW_TOOLS);
 // وأدواتُ بطاقة التأكيد: اثنتان تُنادَيان من البطاقة داخل المحادثة وحدها (app_only)، وقراءةٌ
 // تعرض لصاحب الحساب أين انتهى كل طلب طلبه مساعده — ADR-0023.
 registerTools(CONFIRM_TOOLS);
+// وأدواتُ السجلّ من المحادثة: حذفٌ ناعم بمحرّك الحذف القائم، وعدُّ النواقص بتعريفات الشاشة،
+// وتعبئةُ حقلٍ على عدة سجلات بمعاينة واحدة — كلُّ كتابةٍ منها تقف لبطاقة التأكيد.
+registerTools(RECORD_TOOLS);
 
 export const aiRouter = Router();
 aiRouter.use(requireAuth());

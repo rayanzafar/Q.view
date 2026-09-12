@@ -1,10 +1,10 @@
 {
   "version": 1,
-  "sourceDigest": "f3a65f1e97d17a8fcf85bd60a8621c90cf38274ef43b607cbb0c4be3e51bf6e7",
-  "sourceFiles": 686,
+  "sourceDigest": "f9aefbf1a68f514b7d8407446d6a040f46f021052816026a3fcf79ea80215128",
+  "sourceFiles": 688,
   "counts": {
-    "code": 270,
-    "test": 307,
+    "code": 271,
+    "test": 308,
     "automation": 59,
     "module": 20,
     "route": 349,
@@ -647,6 +647,15 @@
       "detail": "src/modules/ai/pmo-tools.js",
       "sources": [
         "src/modules/ai/pmo-tools.js"
+      ]
+    },
+    {
+      "id": "file:src/modules/ai/records-tools.js",
+      "kind": "code",
+      "label": "records-tools.js",
+      "detail": "src/modules/ai/records-tools.js",
+      "sources": [
+        "src/modules/ai/records-tools.js"
       ]
     },
     {
@@ -3656,6 +3665,15 @@
       ]
     },
     {
+      "id": "file:tests/integration/records-tools.test.js",
+      "kind": "test",
+      "label": "records-tools.test.js",
+      "detail": "tests/integration/records-tools.test.js",
+      "sources": [
+        "tests/integration/records-tools.test.js"
+      ]
+    },
+    {
       "id": "file:tests/integration/report-periods-routes.test.js",
       "kind": "test",
       "label": "report-periods-routes.test.js",
@@ -5800,6 +5818,7 @@
         "src/modules/ai/crm-tools.js",
         "src/modules/ai/guide-tools.js",
         "src/modules/ai/pmo-tools.js",
+        "src/modules/ai/records-tools.js",
         "src/modules/ai/tasks-tools.js",
         "src/modules/ai/team-intents.js",
         "src/modules/ai/team-tools.js",
@@ -6063,7 +6082,7 @@
       ]
     },
     {
-      "id": "route:src/modules/ai.routes.js:3746:/status",
+      "id": "route:src/modules/ai.routes.js:4005:/status",
       "kind": "route",
       "label": "GET /status",
       "detail": "تصريح مسار محلي في aiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6074,7 +6093,7 @@
       "path": "/status"
     },
     {
-      "id": "route:src/modules/ai.routes.js:3814:/chat",
+      "id": "route:src/modules/ai.routes.js:4073:/chat",
       "kind": "route",
       "label": "POST /chat",
       "detail": "تصريح مسار محلي في aiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6085,7 +6104,7 @@
       "path": "/chat"
     },
     {
-      "id": "route:src/modules/ai.routes.js:3906:/options/:kind",
+      "id": "route:src/modules/ai.routes.js:4165:/options/:kind",
       "kind": "route",
       "label": "GET /options/:kind",
       "detail": "تصريح مسار محلي في aiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6096,7 +6115,7 @@
       "path": "/options/:kind"
     },
     {
-      "id": "route:src/modules/ai.routes.js:4099:/preview",
+      "id": "route:src/modules/ai.routes.js:4358:/preview",
       "kind": "route",
       "label": "POST /preview",
       "detail": "تصريح مسار محلي في aiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6107,7 +6126,7 @@
       "path": "/preview"
     },
     {
-      "id": "route:src/modules/ai.routes.js:4270:/apply",
+      "id": "route:src/modules/ai.routes.js:4529:/apply",
       "kind": "route",
       "label": "POST /apply",
       "detail": "تصريح مسار محلي في aiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6118,7 +6137,7 @@
       "path": "/apply"
     },
     {
-      "id": "route:src/modules/ai.routes.js:4374:/activity",
+      "id": "route:src/modules/ai.routes.js:4633:/activity",
       "kind": "route",
       "label": "GET /activity",
       "detail": "تصريح مسار محلي في aiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6129,7 +6148,7 @@
       "path": "/activity"
     },
     {
-      "id": "route:src/modules/ai.routes.js:4759:/tools",
+      "id": "route:src/modules/ai.routes.js:5018:/tools",
       "kind": "route",
       "label": "GET /tools",
       "detail": "تصريح مسار محلي في aiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6140,7 +6159,7 @@
       "path": "/tools"
     },
     {
-      "id": "route:src/modules/ai.routes.js:4833:/tools/:name",
+      "id": "route:src/modules/ai.routes.js:5092:/tools/:name",
       "kind": "route",
       "label": "POST /tools/:name",
       "detail": "تصريح مسار محلي في aiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -24240,6 +24259,13 @@
     },
     {
       "from": "module:ai",
+      "to": "file:src/modules/ai/records-tools.js",
+      "label": "يحتوي",
+      "evidence": "src/modules/ai/records-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "module:ai",
       "to": "file:src/modules/ai/tasks-tools.js",
       "label": "يحتوي",
       "evidence": "src/modules/ai/tasks-tools.js",
@@ -26326,56 +26352,63 @@
     },
     {
       "from": "file:src/modules/ai.routes.js",
-      "to": "route:src/modules/ai.routes.js:3746:/status",
+      "to": "file:src/modules/ai/records-tools.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai.routes.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai.routes.js",
+      "to": "route:src/modules/ai.routes.js:4005:/status",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/ai.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/ai.routes.js",
-      "to": "route:src/modules/ai.routes.js:3814:/chat",
+      "to": "route:src/modules/ai.routes.js:4073:/chat",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/ai.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/ai.routes.js",
-      "to": "route:src/modules/ai.routes.js:3906:/options/:kind",
+      "to": "route:src/modules/ai.routes.js:4165:/options/:kind",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/ai.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/ai.routes.js",
-      "to": "route:src/modules/ai.routes.js:4099:/preview",
+      "to": "route:src/modules/ai.routes.js:4358:/preview",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/ai.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/ai.routes.js",
-      "to": "route:src/modules/ai.routes.js:4270:/apply",
+      "to": "route:src/modules/ai.routes.js:4529:/apply",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/ai.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/ai.routes.js",
-      "to": "route:src/modules/ai.routes.js:4374:/activity",
+      "to": "route:src/modules/ai.routes.js:4633:/activity",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/ai.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/ai.routes.js",
-      "to": "route:src/modules/ai.routes.js:4759:/tools",
+      "to": "route:src/modules/ai.routes.js:5018:/tools",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/ai.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/ai.routes.js",
-      "to": "route:src/modules/ai.routes.js:4833:/tools/:name",
+      "to": "route:src/modules/ai.routes.js:5092:/tools/:name",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/ai.routes.js",
       "kind": "source"
@@ -26633,6 +26666,83 @@
       "kind": "source"
     },
     {
+      "from": "file:src/modules/ai/records-tools.js",
+      "to": "file:src/core/db/index.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/records-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/records-tools.js",
+      "to": "file:src/core/audit/index.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/records-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/records-tools.js",
+      "to": "file:src/core/http/errors.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/records-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/records-tools.js",
+      "to": "file:src/core/ai/store.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/records-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/records-tools.js",
+      "to": "file:src/core/i18n/time.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/records-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/records-tools.js",
+      "to": "file:src/core/lifecycle/remove.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/records-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/records-tools.js",
+      "to": "file:src/modules/crm/opportunities.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/records-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/records-tools.js",
+      "to": "file:src/modules/crm/opp-access.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/records-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/records-tools.js",
+      "to": "file:src/modules/pmo/tasks.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/records-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/records-tools.js",
+      "to": "file:src/modules/ai/tasks-tools.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/records-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/records-tools.js",
+      "to": "file:src/modules/ai/tool-kit.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/records-tools.js",
+      "kind": "source"
+    },
+    {
       "from": "file:src/modules/ai/tasks-tools.js",
       "to": "file:src/core/db/index.js",
       "label": "استيراد صريح",
@@ -26677,6 +26787,13 @@
     {
       "from": "file:src/modules/ai/tasks-tools.js",
       "to": "file:src/modules/pmo/tasks.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/tasks-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/tasks-tools.js",
+      "to": "file:src/modules/pmo/task-approval.js",
       "label": "استيراد صريح",
       "evidence": "src/modules/ai/tasks-tools.js",
       "kind": "source"
@@ -40948,6 +41065,41 @@
       "kind": "source"
     },
     {
+      "from": "file:tests/integration/records-tools.test.js",
+      "to": "file:src/core/db/index.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/records-tools.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/records-tools.test.js",
+      "to": "file:src/core/rbac/index.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/records-tools.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/records-tools.test.js",
+      "to": "file:src/modules/ai/team-tools.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/records-tools.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/records-tools.test.js",
+      "to": "file:src/modules/ai/records-tools.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/records-tools.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/records-tools.test.js",
+      "to": "file:src/modules/ai/confirm-tools.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/records-tools.test.js",
+      "kind": "source"
+    },
+    {
       "from": "file:tests/integration/report-periods-routes.test.js",
       "to": "file:src/core/db/index.js",
       "label": "استيراد صريح",
@@ -50216,6 +50368,13 @@
       "kind": "text-reference"
     },
     {
+      "from": "file:src/modules/ai/records-tools.js",
+      "to": "table:stage",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "src/modules/ai/records-tools.js",
+      "kind": "text-reference"
+    },
+    {
       "from": "file:src/modules/ai/tasks-tools.js",
       "to": "table:project",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
@@ -58676,6 +58835,55 @@
       "to": "table:stage",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
       "evidence": "tests/integration/reassign-user-work.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/records-tools.test.js",
+      "to": "table:task",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/records-tools.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/records-tools.test.js",
+      "to": "table:opportunity",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/records-tools.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/records-tools.test.js",
+      "to": "table:sector",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/records-tools.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/records-tools.test.js",
+      "to": "table:app_user",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/records-tools.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/records-tools.test.js",
+      "to": "table:client",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/records-tools.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/records-tools.test.js",
+      "to": "table:stage",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/records-tools.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/records-tools.test.js",
+      "to": "table:time_entry",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/records-tools.test.js",
       "kind": "text-reference"
     },
     {

@@ -291,17 +291,23 @@ export async function removalPreview(kind, id, ctx = null) {
  * حذفٌ ناعم محروس. يرمي رسالةً عربية تسمّي المانع بعدده، أو يحذف الأصل وتابعه معاً.
  * @returns {{ok:true, id:string, cascaded:Record<string,number>}}
  */
+// من يملك الحذف: الصلاحية الإدارية **أو** ملكية الإنشاء إن فتحها النوع (`ownDelete`) — من أنشأ
+// السجل يصحّح إدخاله بنفسه. قاعدةٌ واحدة يقرؤها الحذف والاستعادة **ومعاينةُ الحذف من المحادثة**:
+// فمن لا يملك الحذف لا يُقرأ له اسمُ السجل ولا ما يُطوى معه في معاينةٍ لن تُنفَّذ له أصلاً.
+export function canRemove(user, kind, row) {
+  const cfg = REMOVABLE[kind];
+  if (!cfg || !row) return false;
+  return can(user, 'delete', cfg.resource, row) || !!(cfg.ownDelete && cfg.ownDelete(user, row));
+}
+export const removeDeniedAr = (kind) => REMOVABLE[kind]?.denyAr || `حذف ${REMOVABLE[kind]?.label || 'السجل'} يتطلب صلاحية إدارية على قطاعه`;
+
 export async function removeRecord(ctx, kind, id, opts = {}) {
   const cfg = REMOVABLE[kind];
   if (!cfg) throw badRequest('نوعٌ غير معروف للحذف');
   const row = await get(`SELECT * FROM ${cfg.table} WHERE id = ? AND deleted_at IS NULL`, [id]);
   if (!row) throw notFound(`${cfg.label} ${cfg.fem ? 'غير موجودة أو محذوفة سابقاً' : 'غير موجود أو محذوف سابقاً'}`);
-  // الصلاحية الإدارية **أو** ملكية الإنشاء إن فتحها النوع (`ownDelete`): من أنشأ السجل يصحّح
-  // إدخاله بنفسه. والموانع أدناه تسري على الطريقين بلا فرق — الملكية لا تُعطّل الحراسة.
-  const allowed = can(ctx.user, 'delete', cfg.resource, row) || (cfg.ownDelete && cfg.ownDelete(ctx.user, row));
-  if (!allowed) {
-    throw forbidden(cfg.denyAr || `حذف ${cfg.label} يتطلب صلاحية إدارية على قطاعه`);
-  }
+  // والموانع أدناه تسري على طريقَي الإذن بلا فرق — الملكية لا تُعطّل الحراسة.
+  if (!canRemove(ctx.user, kind, row)) throw forbidden(removeDeniedAr(kind));
 
   const name = row[cfg.nameCol] || row.username || id;
   const blockers = await removalBlockers(kind, id, ctx);
@@ -374,8 +380,7 @@ export async function restoreRecord(ctx, kind, id) {
     throw badRequest(`${cfg.label} لا ${cfg.fem ? 'تُستعاد' : 'يُستعاد'} من هنا: حذفُ${cfg.fem ? 'ها' : 'ه'} حرّر البريد وقطع الجلسات، `
       + 'وهي خطواتٌ لا تُرَدّ برفع الحذف. أنشئ الحساب من جديد بالبريد نفسه.');
   }
-  const allowed = can(ctx.user, 'delete', cfg.resource, row) || (cfg.ownDelete && cfg.ownDelete(ctx.user, row));
-  if (!allowed) throw forbidden(restoreDeniedAr(cfg));
+  if (!canRemove(ctx.user, kind, row)) throw forbidden(restoreDeniedAr(cfg));
 
   const name = row[cfg.nameCol] || row.username || id;
   const stamp = row.deleted_at;

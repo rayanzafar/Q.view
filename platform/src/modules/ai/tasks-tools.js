@@ -15,6 +15,7 @@ import { can, effectiveScope } from '../../core/rbac/index.js';
 import { savePreview, claimPreview, PREVIEW_TTL_MINUTES } from '../../core/ai/store.js';
 import { riyadhDate } from '../../core/i18n/time.js';
 import { myTasks, teamTasks, teamTasksAccess, quickAddTask, updateTask } from '../pmo/tasks.js';
+import { isPersonalTask, isPendingTask } from '../pmo/task-approval.js';
 import { resolvePerson } from '../org/people.js';
 import {
   envelope, inputOf, text, dayOf, intOf, enumOf, boolOf, pageOf, partialOf, uniqRefs,
@@ -293,10 +294,16 @@ async function workLinkLabel(row) {
   return 'عمل داخلي';
 }
 
-async function readableTask(user, taskId) {
+// بابُ المهمة الواحد لكل معاينةٍ تعدّلها — هنا وفي أدوات السجلّ (التعبئة دفعةً): القاعدة نفسها
+// التي يحكم بها `updateTask` قبل أن يكتب حرفاً، مقدَّمةً إلى لحظة المعاينة كي لا يُقرأ عنوانُ
+// مهمةٍ ولا قيمُها لمن لن تُكتب له أصلاً. والمهمة الشخصية والمعلَّقة «غير موجودة» لغير صاحبها
+// لا «خارج نطاقك» — الثانية إقرارٌ بما وُعد بألّا يُقال.
+export async function readableTask(user, taskId) {
   const row = await get('SELECT * FROM task WHERE id = ? AND deleted_at IS NULL', [taskId]);
   if (!row) throw notFound('المهمة غير موجودة');
   const isOwn = row.assignee_user_id === user.id || row.created_by === user.id;
+  if (isPersonalTask(row) && !isOwn) throw notFound('المهمة غير موجودة');
+  if (isPendingTask(row) && row.created_by !== user.id) throw notFound('المهمة غير موجودة');
   if (!isOwn && !can(user, 'update', 'task', row)) {
     const scope = effectiveScope(user, 'update', 'task');
     throw notFound(scope && scope !== 'own'
