@@ -1,0 +1,147 @@
+// ── مرشِّحا الإدارة والعميل: يقصّان ما يقبل القصّ، ويُعلنان ما لا يقبله ────────────────────
+// القاعدة التي يحرسها هذا الفحص: **لا ترشيحَ صامتٌ ناقص**. أكثرُ من نصف مشاريع القطاع على
+// البيانات الحيّة بلا إدارة مسجَّلة، فترشيحٌ بالإدارة يُخفيها بلا قولٍ يترك القارئ يحار لماذا
+// لا تُجمَع الأرقام إلى القطاع. ولهذا: خيارُ «بلا إدارة» صريح، وعدُّ المستبعَد معلن، والفصل
+// البشري — الذي لا يقبل القصّ بالعميل أصلاً — يحمل وسمه بدل أن يبدو مقصوصاً.
+import { test, before, after } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { execFileSync } from 'node:child_process';
+
+const dir = mkdtempSync(join(tmpdir(), 'sanad-filt-'));
+process.env.SANAD_DB = join(dir, 't.db');
+const ROOT = new URL('../..', import.meta.url).pathname;
+for (const s of ['scripts/migrate.js', 'scripts/seed-rbac.js']) {
+  execFileSync(process.execPath, ['--experimental-sqlite', join(ROOT, s)], { env: process.env, stdio: 'ignore' });
+}
+const { insert, close } = await import('../../src/core/db/index.js');
+await (await import('../../src/core/rbac/index.js')).initRbac();
+const { sectorPage } = await import('../../src/web/views/sector.js');
+
+const T = '2026-01-05T00:00:00Z';
+const YEAR = new Date().getUTCFullYear();
+const ADMIN = { id: 'u_admin', username: 'admin', role_id: 'admin', scope: 'company', sector_id: 'SOL',
+  projectIds: new Set(), teamIds: new Set() };
+
+before(async () => {
+  await insert('sector', { id: 'SOL', name_ar: 'قطاع الحلول', kind: 'delivery', active: 1,
+    target_revenue_halalas: 100_000_000, target_sales_halalas: 100_000_000, created_at: T });
+  await insert('app_user', { id: 'u_admin', username: 'admin', role_id: 'admin', scope: 'company',
+    sector_id: 'SOL', active: 1, created_at: T });
+  await insert('department', { id: 'D_AI', name_ar: 'إدارة الذكاء الاصطناعي', sector_id: 'SOL', created_at: T });
+  await insert('department', { id: 'D_CITY', name_ar: 'إدارة المدن الذكية', sector_id: 'SOL', created_at: T });
+  await insert('stage', { id: 'LEAD', name_ar: 'ترشيح', default_win_pct: 10, sort_order: 1, is_won: 0, is_lost: 0 });
+  await insert('client', { id: 'CL_A', name_ar: 'جهة ألف', created_at: T });
+  await insert('client', { id: 'CL_B', name_ar: 'جهة باء', created_at: T });
+  const opp = (id, extra) => insert('opportunity', { id, title_ar: id, sector_id: 'SOL', year: YEAR,
+    stage_id: 'LEAD', value_halalas: 1_000_000, win_pct: 50, exclude_from_sales: 0, created_at: T, ...extra });
+  await opp('O_AI_A', { department_id: 'D_AI', client_id: 'CL_A', title_ar: 'فرصة الذكاء ألف', value_halalas: 7_000_000 });
+  await opp('O_CITY_B', { department_id: 'D_CITY', client_id: 'CL_B', title_ar: 'فرصة المدن باء', value_halalas: 3_000_000 });
+  await opp('O_ORPHAN', { client_id: 'CL_A', title_ar: 'فرصة بلا إدارة', value_halalas: 5_000_000 });  // بلا إدارة
+  await insert('project', { id: 'P_ORPHAN', name_ar: 'مشروع بلا إدارة', sector_id: 'SOL', status: 'IN_PROGRESS',
+    rag: 'GREEN', start_date: `${YEAR}-02-01`, client_id: 'CL_A', created_at: T });
+  // بنود إيراد لفحص إعادة تصيير رسم الإيقاع تحت الترشيح: بندٌ منسوب لمشروع إدارة الذكاء
+  // (4M صافياً في فبراير) وبندٌ قديم بلا مشروع (2M في مارس) لا سبيل لنسبته — يُفصَح عنه.
+  await insert('project', { id: 'P_AI', name_ar: 'مشروع الذكاء', sector_id: 'SOL', status: 'IN_PROGRESS',
+    rag: 'GREEN', start_date: `${YEAR}-01-15`, department_id: 'D_AI', client_id: 'CL_A', created_at: T });
+  await insert('revenue_line', { id: 'RL_AI', sector_id: 'SOL', project_id: 'P_AI', year: YEAR, month: 2,
+    amount_halalas: 4_600_000_00, net_amount_halalas: 4_000_000_00, created_at: T });
+  await insert('revenue_line', { id: 'RL_LEGACY', sector_id: 'SOL', year: YEAR, month: 3,
+    amount_halalas: 2_300_000_00, net_amount_halalas: 2_000_000_00, created_at: T });
+});
+after(async () => { await close(); rmSync(dir, { recursive: true, force: true }); });
+
+const opensSection = (html) => html.slice(html.indexOf('id="sec-panel-com"'), html.indexOf('id="sec-panel-ops"'));
+
+test('بلا ترشيح: كل الفرص حاضرة', async () => {
+  const h = opensSection(await sectorPage(ADMIN, { year: String(YEAR), tab: 'com' }));
+  for (const t of ['فرصة الذكاء ألف', 'فرصة المدن باء', 'فرصة بلا إدارة']) {
+    assert.ok(h.includes(t), `${t} غائبة بلا ترشيح`);
+  }
+});
+
+test('ترشيحٌ بإدارة: فرصُها وحدها — ولا تتسرّب فرص الإدارة الأخرى', async () => {
+  const h = opensSection(await sectorPage(ADMIN, { year: String(YEAR), tab: 'com', dept: 'D_AI' }));
+  assert.ok(h.includes('فرصة الذكاء ألف'), 'فرصة الإدارة المختارة حاضرة');
+  assert.ok(!h.includes('فرصة المدن باء'), 'فرصة إدارة أخرى تسرّبت');
+  assert.ok(!h.includes('فرصة بلا إدارة'), 'فرصة بلا إدارة تسرّبت إلى ترشيح إدارة');
+});
+
+test('«بلا إدارة» خيارٌ صريح يعرض ما لم يُسنَد', async () => {
+  const h = opensSection(await sectorPage(ADMIN, { year: String(YEAR), tab: 'com', dept: 'none' }));
+  assert.ok(h.includes('فرصة بلا إدارة'), 'ما لا إدارة له يظهر تحت «بلا إدارة»');
+  assert.ok(!h.includes('فرصة الذكاء ألف'), 'فرصةٌ لها إدارة تسرّبت');
+});
+
+test('عند الترشيح بإدارة يُقال كم استُبعِد لعدم وجود إدارة — لا إخفاء صامت', async () => {
+  const full = await sectorPage(ADMIN, { year: String(YEAR), tab: 'com', dept: 'D_AI' });
+  assert.ok(full.includes('بلا إدارة مسجَّلة'), 'سطر ما يُستبعَد غائب');
+  assert.ok(/مشروع واحد|مشروعان|مشاريع/.test(full), 'عدّ المشاريع المستبعَدة غائب');
+  // وبلا ترشيح لا يظهر السطر (لا ضجيج حين لا يُخفى شيء)
+  const none = await sectorPage(ADMIN, { year: String(YEAR), tab: 'com' });
+  assert.ok(!none.includes('بلا إدارة مسجَّلة — لا تظهر هنا'), 'سطر الاستبعاد يظهر بلا ترشيح');
+});
+
+test('ترشيحٌ بعميل يقصّ فرصه — والفصل البشري يُعلن أنه لا يُقصّ به', async () => {
+  const h = await sectorPage(ADMIN, { year: String(YEAR), tab: 'com', client: 'CL_B' });
+  const com = opensSection(h);
+  assert.ok(com.includes('فرصة المدن باء'), 'فرصة العميل المختار حاضرة');
+  assert.ok(!com.includes('فرصة الذكاء ألف'), 'فرصة عميلٍ آخر تسرّبت');
+  // الشارة صارت تغطي المرشِّحَين معاً وتسمّي سببها (v5.46)
+  assert.ok(h.includes('خطة التسكين موردٌ قطاعي'), 'الفصل البشري لا يحمل شارة «القطاع كله» تحت ترشيح العميل');
+  const hd = await sectorPage(ADMIN, { year: String(YEAR), tab: 'hr', dept: 'D_AI' });
+  assert.ok(hd.includes('خطة التسكين موردٌ قطاعي'), 'الشارة غائبة تحت ترشيح الإدارة');
+});
+
+const comboSvg = (html) => {
+  const m = html.match(/<svg class="fig-svg[^"]*"[^>]*aria-label="الإيراد الشهري والتراكمي[^"]*"[\s\S]*?<\/svg>/);
+  assert.ok(m, 'رسم الإيقاع موجود');
+  return m[0];
+};
+
+test('رسم الإيقاع يُعاد تصييره بالترشيح: سلسلة الإدارة وحدها، وغير المنسوب مُفصَحٌ عنه', async () => {
+  // بلا ترشيح: فبراير 4M (منسوب) ومارس 2M (بلا مشروع) كلاهما على الرسم، ولا سطر إفصاح
+  const plain = await sectorPage(ADMIN, { year: String(YEAR) });
+  const pv = comboSvg(plain);
+  assert.ok(pv.includes('فبراير: 4.0M'), 'بند فبراير على رسم القطاع');
+  assert.ok(pv.includes('مارس: 2.0M'), 'البند غير المنسوب على رسم القطاع (لا ترشيح يقصّه)');
+  assert.ok(!plain.includes('غير منسوبٍ لمشروع'), 'لا إفصاح بلا ترشيح — لا ضجيج');
+  // ترشيح الإدارة: المنسوب وحده على الرسم، والمُسقَط معلَن بقيمته
+  const dept = await sectorPage(ADMIN, { year: String(YEAR), dept: 'D_AI' });
+  const dv = comboSvg(dept);
+  assert.ok(dv.includes('فبراير: 4.0M'), 'بند الإدارة باقٍ تحت ترشيحها');
+  assert.ok(dv.includes('مارس: 0'), 'غير المنسوب سقط من السلسلة المرشَّحة');
+  assert.ok(dept.includes('غير منسوبٍ لمشروع'), 'سطر الإفصاح عن غير المنسوب غائب');
+  assert.ok(dept.includes('2.0M'), 'قيمة غير المنسوب معلنة');
+  assert.ok(!dv.includes('المستهدف='), 'لا خطَّ هدفٍ تحت الترشيح — الأهداف قطاعية');
+  assert.ok(dept.includes('حصة من إيراد القطاع'), 'حصة الترشيح من إيراد القطاع معلنة');
+  // ترشيح العميل يمرّ من مشروع البند أيضاً
+  const cl = await sectorPage(ADMIN, { year: String(YEAR), client: 'CL_A' });
+  assert.ok(comboSvg(cl).includes('فبراير: 4.0M'), 'بند عميل المشروع باقٍ تحت ترشيح عميله');
+});
+
+test('الفصول الأخرى تتحرك مع الترشيح: الرحلة والصحة ونسبة الفوز وجدول العملاء (تدقيق 2026-08-25)', async () => {
+  const plain = await sectorPage(ADMIN, { year: String(YEAR) });
+  const dept = await sectorPage(ADMIN, { year: String(YEAR), dept: 'D_AI' });
+  const panel = (h, k, nx) => h.slice(h.indexOf(`id="sec-panel-${k}"`), h.indexOf(`id="sec-panel-${nx}"`));
+  // رحلة القيمة: محطة «المحقق» من السلسلة المرشَّحة (4M المنسوبة) لا رقم القطاع (6M)
+  const comD = panel(dept, 'com', 'ops'), comP = panel(plain, 'com', 'ops');
+  assert.ok(comP.includes('6.0M'), 'محطة المحقق القطاعية 6M غائبة');
+  assert.ok(comD.includes('4.0M') && !comD.includes('6.0M'), 'محطة المحقق لم تُقصّ بالترشيح');
+  // صحة المشاريع: الدونات والحلقة من العدّ المرشَّح (1/1) لا القطاعي (2/2)
+  assert.ok(panel(plain, 'ops', 'cli').includes('>2/2<'), 'حلقة الصحة القطاعية 2/2 غائبة');
+  assert.ok(panel(dept, 'ops', 'cli').includes('>1/1<'), 'حلقة الصحة لم تُقصّ بالترشيح');
+  // نسبة الفوز في ذيل القمع تحت الترشيح من فرص الترشيح لا القطاع
+  assert.ok(comD.includes('لا فرص حُسمت تحت الترشيح'), 'ذيل القمع بقي رقماً قطاعياً تحت الترشيح');
+  // جدول العملاء: عميل إدارةٍ أخرى لا يتسرب
+  assert.ok(!panel(dept, 'cli', 'hr').includes('جهة باء'), 'عميل إدارةٍ أخرى تسرّب إلى جدول العملاء المرشَّح');
+});
+
+test('مرشِّحٌ مجهول يسقط بلا خطأ ولا قصٍّ عشوائي', async () => {
+  const bad = await sectorPage(ADMIN, { year: String(YEAR), tab: 'com', dept: '../etc', client: 'nope' });
+  const plain = await sectorPage(ADMIN, { year: String(YEAR), tab: 'com' });
+  const norm = (x) => x.replace(/spkGrad\d+/g, 'g');
+  assert.equal(norm(opensSection(bad)), norm(opensSection(plain)), 'المجهول = بلا ترشيح');
+});

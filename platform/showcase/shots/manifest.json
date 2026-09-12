@@ -1,0 +1,496 @@
+{
+  "generatedAt": "2026-09-06T14:52:11.192Z",
+  "base": "http://127.0.0.1:4700",
+  "shots": [
+    {
+      "id": "login-otp",
+      "file": "login-otp.webp",
+      "w": 2160,
+      "h": 1350,
+      "bytes": 26546,
+      "route": "/login",
+      "role": null,
+      "viewport": "desktop"
+    },
+    {
+      "id": "home",
+      "file": "home.webp",
+      "w": 2160,
+      "h": 1350,
+      "bytes": 95450,
+      "route": "/app/home",
+      "role": "demo.sectorlead",
+      "viewport": "desktop"
+    },
+    {
+      "id": "ceo-dashboard",
+      "file": "ceo-dashboard.webp",
+      "w": 2160,
+      "h": 1350,
+      "bytes": 108012,
+      "route": "/app/ceo",
+      "role": "demo.ceo",
+      "viewport": "desktop"
+    },
+    {
+      "id": "ceo-forecast",
+      "file": "ceo-forecast.webp",
+      "w": 1292,
+      "h": 328,
+      "bytes": 24778,
+      "route": "/app/ceo",
+      "role": "demo.ceo",
+      "viewport": "element"
+    },
+    {
+      "id": "ceo-drill",
+      "file": "ceo-drill.webp",
+      "w": 2160,
+      "h": 1350,
+      "bytes": 100432,
+      "route": "/app/ceo",
+      "role": "demo.ceo",
+      "viewport": "desktop"
+    },
+    {
+      "id": "portfolio",
+      "file": "portfolio.webp",
+      "w": 2160,
+      "h": 1350,
+      "bytes": 86960,
+      "route": "/app/portfolio",
+      "role": "demo.ceo",
+      "viewport": "desktop"
+    },
+    {
+      "id": "sector-pulse",
+      "file": "sector-pulse.webp",
+      "w": 2160,
+      "h": 2700,
+      "bytes": 205132,
+      "route": "/app/sector?sector=SOLUTIONS&tab=pulse",
+      "role": "demo.ceo",
+      "viewport": "tall"
+    },
+    {
+      "id": "sector-com",
+      "file": "sector-com.webp",
+      "w": 2160,
+      "h": 2700,
+      "bytes": 173816,
+      "route": "/app/sector?sector=SOLUTIONS&tab=com",
+      "role": "demo.ceo",
+      "viewport": "tall"
+    },
+    {
+      "id": "sector-ops",
+      "file": "sector-ops.webp",
+      "w": 2160,
+      "h": 2700,
+      "bytes": 184328,
+      "route": "/app/sector?sector=SOLUTIONS&tab=ops",
+      "role": "demo.ceo",
+      "viewport": "tall"
+    },
+    {
+      "id": "sector-hr",
+      "file": "sector-hr.webp",
+      "w": 2160,
+      "h": 2700,
+      "bytes": 198650,
+      "route": "/app/sector?sector=SOLUTIONS&tab=hr",
+      "role": "demo.ceo",
+      "viewport": "tall"
+    },
+    {
+      "id": "opps-kanban",
+      "file": "opps-kanban.webp",
+      "w": 2160,
+      "h": 1725,
+      "bytes": 171914,
+      "route": "/app/opportunities",
+      "role": "demo.bdhead",
+      "viewport": "tall"
+    },
+    {
+      "id": "opps-table",
+      "file": "opps-table.webp",
+      "w": 2160,
+      "h": 1725,
+      "bytes": 124116,
+      "route": "/app/opportunities",
+      "role": "demo.bdhead",
+      "viewport": "tall"
+    },
+    {
+      "id": "opps-preview",
+      "file": "opps-preview.webp",
+      "w": 2160,
+      "h": 1350,
+      "bytes": 46960,
+      "route": "/app/opportunities",
+      "role": "demo.bdhead",
+      "viewport": "desktop"
+    },
+    {
+      "id": "opp-detail",
+      "file": "opp-detail.webp",
+      "w": 2160,
+      "h": 1755,
+      "bytes": 87836,
+      "route": "/app/opportunity/opp_rhG7XoR0_Ejf",
+      "role": "demo.bdhead",
+      "viewport": "tall"
+    },
+    {
+      "id": "opp-activity",
+      "file": "opp-activity.webp",
+      "w": 2160,
+      "h": 1350,
+      "bytes": 70352,
+      "route": "/app/opportunity/opp_rhG7XoR0_Ejf?tab=activity",
+      "role": "demo.bdhead",
+      "viewport": "desktop"
+    },
+    {
+      "id": "projects-table",
+      "file": "projects-table.webp",
+      "w": 2160,
+      "h": 2700,
+      "bytes": 237228,
+      "route": "/app/projects",
+      "role": "demo.ceo",
+      "viewport": "tall"
+    },
+    {
+      "id": "projects-kanban",
+      "file": "projects-kanban.webp",
+      "w": 2160,
+      "h": 2625,
+      "bytes": 220400,
+      "route": "/app/projects?view=kanban",
+      "role": "demo.ceo",
+      "viewport": "tall"
+    },
+    {
+      "id": "project-detail",
+      "file": "project-detail.webp",
+      "w": 2160,
+      "h": 2100,
+      "bytes": 109400,
+      "route": "/app/project/prj_A7pDvlaq8Las",
+      "role": "demo.admin",
+      "viewport": "tall"
+    },
+    {
+      "id": "project-deliverables",
+      "file": "project-deliverables.webp",
+      "w": 1292,
+      "h": 1127,
+      "bytes": 47976,
+      "route": "/app/project/prj_A7pDvlaq8Las",
+      "role": "demo.admin",
+      "viewport": "element"
+    },
+    {
+      "id": "tasks-list",
+      "file": "tasks-list.webp",
+      "w": 2160,
+      "h": 1350,
+      "bytes": 74000,
+      "route": "/app/tasks?win=all",
+      "role": "demo.consultant",
+      "viewport": "desktop"
+    },
+    {
+      "id": "tasks-board",
+      "file": "tasks-board.webp",
+      "w": 2160,
+      "h": 1350,
+      "bytes": 81670,
+      "route": "/app/tasks?view=board",
+      "role": "demo.consultant",
+      "viewport": "desktop"
+    },
+    {
+      "id": "tasks-calendar",
+      "file": "tasks-calendar.webp",
+      "w": 2160,
+      "h": 1350,
+      "bytes": 83780,
+      "route": "/app/tasks?view=calendar&who=team",
+      "role": "demo.linemgr",
+      "viewport": "desktop"
+    },
+    {
+      "id": "task-drawer",
+      "file": "task-drawer.webp",
+      "w": 2160,
+      "h": 1350,
+      "bytes": 50198,
+      "route": "/app/tasks?win=all",
+      "role": "demo.consultant",
+      "viewport": "desktop"
+    },
+    {
+      "id": "workload-gauge",
+      "file": "workload-gauge.webp",
+      "w": 222,
+      "h": 242,
+      "bytes": 3986,
+      "route": "/app/home",
+      "role": "demo.consultant",
+      "viewport": "element"
+    },
+    {
+      "id": "approvals",
+      "file": "approvals.webp",
+      "w": 2160,
+      "h": 1350,
+      "bytes": 106836,
+      "route": "/app/approvals",
+      "role": "demo.sectorlead",
+      "viewport": "desktop"
+    },
+    {
+      "id": "staffing-grid",
+      "file": "staffing-grid.webp",
+      "w": 2160,
+      "h": 1650,
+      "bytes": 165186,
+      "route": "/app/staffing",
+      "role": "demo.hr",
+      "viewport": "tall"
+    },
+    {
+      "id": "team-roster",
+      "file": "team-roster.webp",
+      "w": 2160,
+      "h": 1350,
+      "bytes": 86816,
+      "route": "/app/team",
+      "role": "demo.hr",
+      "viewport": "desktop"
+    },
+    {
+      "id": "timesheet",
+      "file": "timesheet.webp",
+      "w": 1620,
+      "h": 1013,
+      "bytes": 78374,
+      "route": "/app/sector?sector=SOLUTIONS&tab=hr",
+      "role": "demo.ceo",
+      "viewport": "desktop"
+    },
+    {
+      "id": "events-capture",
+      "file": "events-capture.webp",
+      "w": 1620,
+      "h": 1013,
+      "bytes": 32860,
+      "route": "/app/event/evt_RSfVsfMMznyk?tab=capture",
+      "role": "demo.admin",
+      "viewport": "desktop"
+    },
+    {
+      "id": "event-contacts",
+      "file": "event-contacts.webp",
+      "w": 1620,
+      "h": 1013,
+      "bytes": 57770,
+      "route": "/app/event/evt_RSfVsfMMznyk?tab=contacts",
+      "role": "demo.admin",
+      "viewport": "desktop"
+    },
+    {
+      "id": "event-meetings",
+      "file": "event-meetings.webp",
+      "w": 1620,
+      "h": 1013,
+      "bytes": 55686,
+      "route": "/app/event/evt_RSfVsfMMznyk?tab=meetings",
+      "role": "demo.admin",
+      "viewport": "desktop"
+    },
+    {
+      "id": "clients",
+      "file": "clients.webp",
+      "w": 1620,
+      "h": 1013,
+      "bytes": 66738,
+      "route": "/app/clients",
+      "role": "demo.admin",
+      "viewport": "desktop"
+    },
+    {
+      "id": "client-360",
+      "file": "client-360.webp",
+      "w": 1620,
+      "h": 1013,
+      "bytes": 62094,
+      "route": "/app/client/cli_ig3igK5ctlI4",
+      "role": "demo.admin",
+      "viewport": "desktop"
+    },
+    {
+      "id": "finance",
+      "file": "finance.webp",
+      "w": 1620,
+      "h": 1294,
+      "bytes": 68026,
+      "route": "/app/project/prj_A7pDvlaq8Las",
+      "role": "demo.admin",
+      "viewport": "tall"
+    },
+    {
+      "id": "contract-detail",
+      "file": "contract-detail.webp",
+      "w": 1292,
+      "h": 3327,
+      "bytes": 169736,
+      "route": "/app/project/prj_A7pDvlaq8Las",
+      "role": "demo.admin",
+      "viewport": "element"
+    },
+    {
+      "id": "reports",
+      "file": "reports.webp",
+      "w": 1620,
+      "h": 1013,
+      "bytes": 83832,
+      "route": "/app/reports",
+      "role": "demo.admin",
+      "viewport": "desktop"
+    },
+    {
+      "id": "mail",
+      "file": "mail.webp",
+      "w": 1620,
+      "h": 1013,
+      "bytes": 64158,
+      "route": "/app/mail",
+      "role": "demo.admin",
+      "viewport": "desktop"
+    },
+    {
+      "id": "org-tree",
+      "file": "org-tree.webp",
+      "w": 1620,
+      "h": 1013,
+      "bytes": 49670,
+      "route": "/app/org",
+      "role": "demo.admin",
+      "viewport": "desktop"
+    },
+    {
+      "id": "users-grants",
+      "file": "users-grants.webp",
+      "w": 1620,
+      "h": 1013,
+      "bytes": 66140,
+      "route": "/app/users",
+      "role": "demo.admin",
+      "viewport": "desktop"
+    },
+    {
+      "id": "audit",
+      "file": "audit.webp",
+      "w": 1620,
+      "h": 1013,
+      "bytes": 58720,
+      "route": "/app/audit",
+      "role": "demo.admin",
+      "viewport": "desktop"
+    },
+    {
+      "id": "ops-health",
+      "file": "ops-health.webp",
+      "w": 1620,
+      "h": 1013,
+      "bytes": 25986,
+      "route": "/app/ops",
+      "role": "demo.admin",
+      "viewport": "desktop"
+    },
+    {
+      "id": "imports",
+      "file": "imports.webp",
+      "w": 1620,
+      "h": 1013,
+      "bytes": 36546,
+      "route": "/app/imports",
+      "role": "demo.admin",
+      "viewport": "desktop"
+    },
+    {
+      "id": "guide",
+      "file": "guide.webp",
+      "w": 1620,
+      "h": 1013,
+      "bytes": 71716,
+      "route": "/app/guide",
+      "role": "demo.admin",
+      "viewport": "desktop"
+    },
+    {
+      "id": "m-home",
+      "file": "m-home.webp",
+      "w": 439,
+      "h": 950,
+      "bytes": 16700,
+      "route": "/app/home",
+      "role": "demo.sectorlead",
+      "viewport": "mobile"
+    },
+    {
+      "id": "m-tasks",
+      "file": "m-tasks.webp",
+      "w": 439,
+      "h": 950,
+      "bytes": 16060,
+      "route": "/app/tasks",
+      "role": "demo.consultant",
+      "viewport": "mobile"
+    },
+    {
+      "id": "m-opps",
+      "file": "m-opps.webp",
+      "w": 439,
+      "h": 950,
+      "bytes": 24872,
+      "route": "/app/opportunities",
+      "role": "demo.bdhead",
+      "viewport": "mobile"
+    },
+    {
+      "id": "m-sector",
+      "file": "m-sector.webp",
+      "w": 439,
+      "h": 950,
+      "bytes": 24922,
+      "route": "/app/sector",
+      "role": "demo.sectorlead",
+      "viewport": "mobile"
+    },
+    {
+      "id": "m-approvals",
+      "file": "m-approvals.webp",
+      "w": 439,
+      "h": 950,
+      "bytes": 16346,
+      "route": "/app/approvals",
+      "role": "demo.sectorlead",
+      "viewport": "mobile"
+    },
+    {
+      "id": "m-events",
+      "file": "m-events.webp",
+      "w": 439,
+      "h": 950,
+      "bytes": 14842,
+      "route": "/app/events",
+      "role": "demo.admin",
+      "viewport": "mobile"
+    }
+  ]
+}

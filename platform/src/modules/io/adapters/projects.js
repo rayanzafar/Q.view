@@ -54,9 +54,12 @@ export default {
   },
 
   async fetchRows(user, filters = {}) {
-    const f = scopeFilter(user, 'project', 'read', { ownerCol: 'owner_user_id' });
-    const scopeClause = (f.clause === '1=1' || f.clause === '1=0') ? f.clause : `p.${f.clause}`;
-    const where = [scopeClause, 'p.deleted_at IS NULL'];
+    // كل الأعمدة مؤهَّلة باسم كنية الجدول (`p.`) داخل الخيارات — لا بلصق `p.` على الشرط كاملاً:
+    // شرطُ نطاق «الإدارة» صار مركّباً (إدارةٌ في المجموعة **أو** يتيمُ القطاع)، ولصقُ الكنية
+    // على أوّله وحده يكسر بقيّته. و`deptCol` يُقصّ التصدير على إدارة القارئ + أيتام قطاعه (v5.9).
+    const f = scopeFilter(user, 'project', 'read',
+      { deptCol: 'p.department_id', sectorCol: 'p.sector_id', ownerCol: 'p.owner_user_id', projectCol: 'p.id', memberCol: 'p.id' });
+    const where = [f.clause, 'p.deleted_at IS NULL'];
     const params = [...f.params];
     if (filters.sector) { where.push('p.sector_id = ?'); params.push(filters.sector); }
     if (filters.status) { where.push('p.status = ?'); params.push(filters.status); }
@@ -93,7 +96,13 @@ export default {
   },
 
   rowTarget(mapped, resolved, user) {
-    return { sector_id: mapped.sector || resolved?.existing?.sector_id || user.sector_id || null };
+    // الهدف يحمل الإدارة والمالك (لا القطاع وحده) كي يفحص محرّك الصلاحيات الصفَّ بنطاق «الإدارة»
+    // و«خاصتي» أيضاً — دفاعٌ في العمق فوق إعادة الحراسة داخل خدمة المشاريع نفسها.
+    return {
+      sector_id: mapped.sector || resolved?.existing?.sector_id || user.sector_id || null,
+      department_id: resolved?.existing?.department_id ?? null,
+      owner_user_id: resolved?.existing?.owner_user_id ?? null,
+    };
   },
   rowLabel(mapped) { return mapped.name_ar || mapped.code || ''; },
 

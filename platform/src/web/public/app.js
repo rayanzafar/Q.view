@@ -1,12 +1,41 @@
 // Minimal client layer — progressive enhancement over SSR pages. Calls the JSON API.
+
+// جلسةٌ انتهت والصفحة ما زالت مفتوحة: **تُعاد الصفحة إلى نفسها** لا إلى عنوانٍ نبنيه هنا.
+// إعادةُ التحميل تمرّ على حارس الخادم، وهو يعرف الوجهة من مسار الطلب ويحفظها ويقول السبب —
+// فلا نحمل الوجهة في العنوان، ولا نفتح لغريبٍ بابَ زرعِ وجهةٍ برابطٍ يُرسله إلى موظف.
+// والوعد المُعلَّق (`Promise` لا يُحلّ) يمنع المُنادي من عرض خطأٍ بينما الصفحة تغادر.
+const sessionEnded = () => { location.reload(); return new Promise(() => {}); };
+
 const api = async (path, method = 'GET', body) => {
   const r = await fetch('/api' + path, {
     method, credentials: 'include',
-    headers: body ? { 'Content-Type': 'application/json' } : {},
+    headers: Object.assign({ 'X-Requested-With': 'fetch' }, body ? { 'Content-Type': 'application/json' } : {}),
     body: body ? JSON.stringify(body) : undefined,
   });
+  // جلسةٌ انتهت والصفحة ما زالت مفتوحة: كانت ترتدّ رسالةَ خطأ في فقاعة عند كل ضغطة زرّ،
+  // والشاشة تبدو داخلةً وهي ليست كذلك — فيُعاد الضغط ويُعاد الخطأ بلا مخرج. الآن تُقال
+  // الرسالة مرةً واحدة على شاشة الدخول، والوجهة محفوظةٌ فيعود إلى صفحته بعد دخوله.
+  if (r.status === 401) return sessionEnded();
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j.error?.message || ('خطأ ' + r.status));
+  return j;
+};
+// مسارات `/app/...` التي تُنادى بالجلب لا بالتصفّح. تُفصَل عن `api()` لأن بادئتها ليست
+// `/api`، ويجمعهما شرطٌ واحد: **يُفحص الردّ قبل قراءة حقوله**.
+//
+// وهذا ما كان ناقصاً وصار خطراً بردّ ٤٠١ الجديد: قبله كانت الجلسة المنتهية تُحوَّل إلى صفحة
+// دخولٍ HTML فينكسر `.json()` ويقع النداء في `catch` — خطأٌ غامض لكنه خطأ. والآن يُردّ
+// `{error:…}` سليماً فينجح التحليل، فيقرأ المُنادي حقلاً غير موجود ويعلن **نجاحاً كاذباً**
+// («أُدرج ✓ (undefined)») — ومعه مصطلح محظور في وجه المستخدم.
+const webJson = async (path, { method = 'GET', body } = {}) => {
+  const r = await fetch(path, {
+    method, credentials: 'include',
+    headers: Object.assign({ 'X-Requested-With': 'fetch' }, body ? { 'Content-Type': 'application/json' } : {}),
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (r.status === 401) return sessionEnded();
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || j.error) throw new Error(j.error?.message || ('خطأ ' + r.status));
   return j;
 };
 const toast = (msg, bad) => {
@@ -21,11 +50,13 @@ window.Sanad = {
     const title = document.getElementById('qa-title').value.trim();
     if (!title) return toast('أدخل عنوان المهمة', true);
     try {
-      await api('/tasks/quick', 'POST', {
+      const added = await api('/tasks/quick', 'POST', {
         title, priority: document.getElementById('qa-priority').value,
         due_date: document.getElementById('qa-due').value || null,
       });
-      toast('أُضيفت المهمة ✓'); location.reload();
+      toast(added && added.approval_state === 'PENDING'
+        ? 'أُرسلت إلى مديرك للاعتماد — تظهر في عملك بعد اعتمادها' : 'أُضيفت المهمة ✓');
+      location.reload();
     } catch (e) { toast(e.message, true); }
   },
   async setTaskStatus(id, status) {
@@ -54,75 +85,25 @@ window.Sanad = {
     el.innerHTML = `<div class="bg-white border border-line rounded-xl overflow-hidden"><iframe src="/app/reports/preview/${key}" style="width:100%;height:620px;border:0"></iframe></div>`;
   },
   async testSend(key) {
-    try { const r = await fetch('/app/reports/test-send/' + key, { method: 'POST', credentials: 'include' }).then((x) => x.json()); toast('أُدرج في طابور المعاينة ✓ (' + r.queued + ')'); }
+    try { const r = await webJson('/app/reports/test-send/' + key, { method: 'POST' }); toast('أُدرج في طابور المعاينة ✓ (' + r.queued + ')'); }
     catch (e) { toast(e.message, true); }
   },
 };
 
-// ── AI assistant ──
+// مساعد سند انتقل بكامله إلى public/pages/ai.js — كان يركّب ردّ الخادم كوسوم (innerHTML)
+// فيصير اسمُ مشروعٍ خبيثٌ تنفيذاً في متصفح كل من يسأل عنه. الواجهة الجديدة تبني نصاً لا وسوماً.
 Object.assign(window.Sanad, {
-  _aiPending: null,
-  aiToggle() {
-    const p = document.getElementById('ai-panel');
-    const open = p.style.display === 'none' || !p.style.display;
-    p.style.display = open ? 'flex' : 'none';
-    if (open) {
-      fetch('/api/ai/status', { credentials: 'include' }).then((r) => r.json()).then((s) => {
-        document.getElementById('ai-mode').textContent = s.mode === 'local' ? 'محلي (بلا مفتاح)' : 'مزوّد: ' + s.mode;
-      }).catch(() => {});
-      document.getElementById('ai-input').focus();
-    }
-  },
-  _aiPush(role, html) {
-    const box = document.getElementById('ai-box');
-    const d = document.createElement('div');
-    d.className = role === 'user' ? 'text-left' : '';
-    d.innerHTML = `<div class="inline-block max-w-[85%] rounded-xl px-3 py-2 ${role === 'user' ? 'bg-blue-600 text-white' : 'bg-white border border-line'}" style="white-space:pre-wrap">${html}</div>`;
-    box.appendChild(d); box.scrollTop = box.scrollHeight;
-  },
-  async aiSend() {
-    const inp = document.getElementById('ai-input'); const msg = inp.value.trim(); if (!msg) return;
-    inp.value = ''; this._aiPush('user', msg);
-    try {
-      const r = await api('/ai/chat', 'POST', { message: msg });
-      this._aiPush('ai', r.reply || '…');
-      if (r.applyToken) {
-        this._aiPending = r.applyToken;
-        const box = document.getElementById('ai-box');
-        const d = document.createElement('div');
-        d.innerHTML = `<button onclick="Sanad.aiApply()" class="text-[12px] text-white px-3 py-1.5 rounded-lg" style="background:#059669">تأكيد التطبيق</button>`;
-        box.appendChild(d); box.scrollTop = box.scrollHeight;
-      }
-    } catch (e) { this._aiPush('ai', '⚠ ' + e.message); }
-  },
-  async aiApply() {
-    if (!this._aiPending) return;
-    try { const r = await api('/ai/apply', 'POST', { applyToken: this._aiPending }); this._aiPush('ai', r.reply); this._aiPending = null; }
-    catch (e) { this._aiPush('ai', '⚠ ' + e.message); }
-  },
   async addSector() {
     const id = document.getElementById('sec-id').value.trim();
     const name_ar = document.getElementById('sec-ar').value.trim();
     if (!id || !name_ar) return toast('المعرّف والاسم مطلوبان', true);
-    try { await api('/org/sectors', 'POST', { id: id.toUpperCase(), name_ar, target_sales_sar: Number(document.getElementById('sec-tgt').value) || 0 }); toast('أُضيف القطاع ✓'); location.reload(); }
+    try { await api('/org/sectors', 'POST', { id: id.toUpperCase(), name_ar }); toast('أُضيف القطاع ✓'); location.reload(); }
     catch (e) { toast(e.message, true); }
   },
   async addDept(sectorId) {
     const el = document.getElementById('dep-' + sectorId); const name_ar = el.value.trim();
     if (!name_ar) return toast('اسم الإدارة مطلوب', true);
     try { await api('/org/departments', 'POST', { sector_id: sectorId, name_ar }); toast('أُضيفت الإدارة ✓'); location.reload(); }
-    catch (e) { toast(e.message, true); }
-  },
-  async progressClaim(contractId) {
-    const period = prompt('فترة المستخلص (مثال: يونيو 2026)؟', '');
-    if (period === null) return;
-    try { const r = await api('/finance/progress-claim', 'POST', { contractId, periodLabel: period }); toast('صدر المستخلص ✓ بقيمة ' + Math.round((r.amount_halalas || 0) / 100).toLocaleString() + ' ر.س.'); location.reload(); }
-    catch (e) { toast(e.message, true); }
-  },
-  async recordCollection(invoiceId, maxSar) {
-    const amt = prompt('مبلغ التحصيل (ر.س.)؟', String(maxSar || ''));
-    if (amt === null) return;
-    try { await api('/finance/collections', 'POST', { invoiceId, amountSar: Number(amt) }); toast('سُجّل التحصيل ✓'); location.reload(); }
     catch (e) { toast(e.message, true); }
   },
   async addSchedule() {
@@ -133,9 +114,7 @@ Object.assign(window.Sanad, {
       sendTime: document.getElementById('sch-time').value,
     };
     try {
-      const r = await fetch('/app/reports/schedule', { method: 'POST', credentials: 'include',
-        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then((x) => x.json());
-      if (r.error) throw new Error(r.error.message);
+      await webJson('/app/reports/schedule', { method: 'POST', body });
       toast('تمت الجدولة ✓'); location.reload();
     } catch (e) { toast(e.message, true); }
   },
@@ -381,11 +360,11 @@ Object.assign(window.Sanad, {
           <h3 style="font-size:17px;margin-top:.25rem">${this.esc(p.name_ar)}</h3>
           <div style="margin-top:.55rem;display:flex;gap:.4rem;flex-wrap:wrap">
             <span class="pill" style="background:#dbeafe;color:var(--brand)">${this.esc(this.lbl(p.status))}</span>
-            ${p.rag ? `<span class="pill" style="background:${ragHex[p.rag]}22;color:${ragHex[p.rag]}">${this.esc(this.lbl(p.rag))}</span>` : ''}</div>
+            ${ragHex[p.rag] ? `<span class="pill" style="background:${ragHex[p.rag]}22;color:${ragHex[p.rag]}">${this.esc(this.lbl(p.rag))}</span>` : '<span class="pill" style="background:#f1f5f9;color:#64748b">غير مقيّم</span>'}</div>
         </div><button class="btn btn-ghost" onclick="Sanad.closeDrawer()">✕</button></div>
         <div class="drawer-body">
-          <div class="kv-row"><span class="k">الإنجاز</span><span class="v tnum">${Math.round(p.progress_pct || 0)}%</span></div>
-          <div class="bar" style="margin:.15rem 0 .85rem"><span style="width:${Math.min(100, p.progress_pct || 0)}%;background:${ragHex[p.rag] || 'var(--brand)'}"></span></div>
+          <div class="kv-row"><span class="k">الإنجاز</span><span class="v tnum">${Math.round(p.progress_effective_pct ?? p.progress_pct ?? 0)}%</span></div>
+          <div class="bar" style="margin:.15rem 0 .85rem"><span style="width:${Math.min(100, p.progress_effective_pct ?? p.progress_pct ?? 0)}%;background:${ragHex[p.rag] || 'var(--brand)'}"></span></div>
           <div class="kv-row"><span class="k">قيمة العقد</span><span class="v tnum">${money(p.contract_value_halalas)}</span></div>
           <div class="kv-row"><span class="k">الصرف الفعلي</span><span class="v tnum">${p._redacted_actual_spend_halalas ? '<span style="color:var(--faint)">محجوب</span>' : money(p.actual_spend_halalas)}</span></div>
           <div style="margin-top:1.15rem"><div style="font-size:12px;font-weight:800;color:var(--muted);margin-bottom:.35rem;display:flex;align-items:center;gap:.4rem">${icon2('userplus')} الفريق المُسكَّن <span style="color:var(--faint);font-weight:600">(${(staff.assigned || []).length})</span></div>
@@ -453,7 +432,7 @@ Object.assign(window.Sanad, {
       const box = document.getElementById('im-deliv'); document.getElementById('im-deliv-n').textContent = this._deliv.length;
       box.innerHTML = this._deliv.map((x) => `<div style="display:flex;justify-content:space-between;gap:.5rem;padding:.25rem 0;border-bottom:1px dashed var(--line)"><span>${this.esc(x.name_ar)}</span><span class="tnum" style="color:var(--muted)">${x.amount_sar ? this.fmtSar(x.amount_sar * 100) : '—'}</span></div>`).join('') || '<span style="color:var(--faint)">لا مخرجات مستخرجة</span>';
       document.getElementById('im-deliv-wrap').style.display = this._deliv.length ? '' : 'none';
-      document.getElementById('im-mode').textContent = (d._mode === 'local' ? '⚙ استخراج محلي' : '✨ استخراج ذكي (' + d._mode + ')') + (d._note ? ' — راجِع الحقول' : '');
+      document.getElementById('im-mode').textContent = (d._mode === 'local' ? '⚙ استخراج محلي' : '✨ استخراج ذكي') + (d._note ? ' — راجِع الحقول' : '');
       toast('تمت التعبئة — راجع الحقول قبل الإنشاء ✓');
     } catch (e) { toast(e.message, true); }
     finally { btn.disabled = false; btn.innerHTML = orig; }
@@ -481,10 +460,22 @@ function icon2(n) { const P = {
 }; return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-2px">${P[n] || ''}</svg>`; }
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { window.Sanad.closeDrawer(); window.Sanad.closeModal(); } });
 
-// notification badge
-fetch('/api/notifications?unread=1', { credentials: 'include' }).then((r) => r.ok ? r.json() : []).then((n) => {
+// شارة الجرس — عدّ الاعتمادات المنتظرة فعلاً لا صفوفَ إشعاراتٍ لا تُقرأ ولا تُصفَّر:
+// كانت الشارة تعدّ إشعارات «غير مقروءة» لا قارئ لها ولا مسارَ تصفير، فتتضخم إلى «9+» وتبقى —
+// والجرس يقود إلى شاشةٍ تُخفي ما جاء الإشعار من أجله. الآن العددُ حيٌّ من مصدر القرار نفسه
+// (يهبط بمجرد الحسم) والجرس يقود إلى بطاقة «بانتظار اعتمادك» في «صفحتي».
+fetch('/api/approvals/pending-count', { credentials: 'include' }).then((r) => r.ok ? r.json() : { n: 0 }).then((c) => {
   const b = document.getElementById('notif-badge');
-  if (b && n.length) { b.textContent = n.length + ' إشعار'; b.classList.remove('hidden'); }
+  const n = (c && Number(c.n)) || 0;
+  // الشارة تُخفى بنمطٍ داخلي (display:none)، فإزالة صنفٍ لا تحمله لا تُظهرها — يُرفع النمط نفسه.
+  // ومحتواها العددُ وحده (دائرةٌ 9px لا تتسع لكلمة)، مع وصفٍ مقروء للقارئ الصوتي.
+  if (b && n) {
+    b.textContent = n > 9 ? '9+' : String(n);
+    // اسمٌ مسموع كامل للقارئ الصوتي — لا رقمٌ عارٍ بلا معدود.
+    const word = n === 1 ? 'طلبٌ واحد' : n === 2 ? 'طلبان' : n <= 10 ? n + ' طلبات' : n + ' طلباً';
+    b.setAttribute('aria-label', word + ' بانتظار اعتمادك');
+    b.style.display = '';
+  }
 }).catch(() => {});
 
 // Inject CSRF token (from readable cookie) into state-changing web forms.
@@ -504,3 +495,63 @@ function injectCsrf() {
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', injectCsrf);
 else injectCsrf();
+
+// ── تلميحات [data-tip]: محرّكٌ يحترم حواف النافذة (إصلاح عيب عرض، 2026-08-25) ──────────
+// التلميح النقي بـCSS يُرسم داخل تدفّق مُطلِقه: سلفٌ بقصّ الفائض يبتره (شريط القراءة الداكن)،
+// وحافة النافذة تقصّ طويلَه أو تلفّه فوق المحتوى فلا يُقرأ — والعيب ظهر في مواضع كثيرة لا
+// موضعٍ يُرقَّع. المحرّك يرسم فقاعةً واحدة مثبَّتة على النافذة نفسها فتفلت من كل قصّ، ويحبسها
+// داخل حدود النافذة، ويقلبها أعلى/أسفل حسب المساحة — وdata-tip-pos="below" يبقى تفضيلاً
+// محترماً. CSS القديم يبقى لمن عطّل JavaScript، مُبوَّباً خلف html:not(.tipjs).
+(function () {
+  try {
+    document.documentElement.classList.add('tipjs');
+    var tbox = null, curTrig = null;
+    function tEl() {
+      if (!tbox) {
+        tbox = document.createElement('div');
+        tbox.className = 'tipbox';
+        tbox.setAttribute('role', 'tooltip');
+        tbox.hidden = true;
+        document.body.appendChild(tbox);
+      }
+      return tbox;
+    }
+    function tShow(trig) {
+      var txt = trig.getAttribute('data-tip');
+      if (!txt) return;
+      curTrig = trig;
+      var b = tEl();
+      b.textContent = txt;
+      b.hidden = false;
+      b.style.left = '0px'; b.style.top = '-9999px';       // قياس قبل التموضع
+      var r = trig.getBoundingClientRect();
+      var w = b.offsetWidth, h = b.offsetHeight, pad = 8;
+      var x = Math.min(Math.max(pad, r.left + r.width / 2 - w / 2), window.innerWidth - w - pad);
+      var below = trig.getAttribute('data-tip-pos') === 'below';
+      var y = below ? r.bottom + 8 : r.top - h - 8;
+      if (!below && y < pad) y = r.bottom + 8;                              // لا مساحة فوق ⇒ ينزل
+      if (below && y + h > window.innerHeight - pad) y = r.top - h - 8;     // ولا تحت ⇒ يصعد
+      y = Math.min(Math.max(pad, y), window.innerHeight - h - pad);         // وفي كل حال: داخل النافذة
+      b.style.left = x + 'px';
+      b.style.top = y + 'px';
+    }
+    function tHide() { if (tbox) tbox.hidden = true; curTrig = null; }
+    document.addEventListener('mouseenter', function (e) {
+      var t = e.target && e.target.closest ? e.target.closest('[data-tip]') : null;
+      if (t) tShow(t);
+    }, true);
+    document.addEventListener('mouseleave', function (e) {
+      if (curTrig && e.target === curTrig) tHide();
+    }, true);
+    document.addEventListener('focusin', function (e) {
+      var t = e.target && e.target.closest ? e.target.closest('[data-tip]') : null;
+      if (t) tShow(t); else if (curTrig) tHide();
+    });
+    document.addEventListener('focusout', function (e) {
+      if (curTrig && e.target === curTrig) tHide();
+    });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') tHide(); });
+    window.addEventListener('scroll', tHide, true);
+    window.addEventListener('resize', tHide);
+  } catch (e) { /* التلميح عونُ قراءة — لا يُسقط الصفحة */ }
+})();

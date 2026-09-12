@@ -1,0 +1,5082 @@
+{
+  "_meta": {
+    "name": "مرجع الجهات السعودية",
+    "count": 354,
+    "renames": 13,
+    "generated_from": "Saudi_Entities_Master_2026.xlsx",
+    "owner_corrections": [
+      {
+        "entity": "مجموعة السعودية",
+        "change": "نُزع «الخطوط السعودية» من أسمائها البديلة",
+        "reason": "شركة الطيران تابعة للكيان القابض ولا تساويه — والخلط بينهما أعاد تسمية عميل خطأً على البيئة الحيّة",
+        "before": [
+          "الخطوط السعودية",
+          "الخطوط السعودية",
+          "المؤسسة العامة للخطوط الجوية العربية السعودية"
+        ]
+      },
+      {
+        "entity": "SDAIA",
+        "change": "الاسم الرسمي: «الهيئة السعودية للبيانات والذكاء الاصطناعي» ⟵ «الهيئة العامة للذكاء الاصطناعي والبيانات»",
+        "reason": "قرار المالك المباشر — والاسم القديم يبقى اسماً بديلاً فيصل من يكتبه إلى الجهة نفسها ولا يُنشئ سجلاً ثانياً"
+      },
+      {
+        "entity": "الأمن العام",
+        "change": "أُضيفت جهةً جديدة (ent_352) بالاسم «الأمن العام» كما هو — لا موسَّعاً إلى «المديرية العامة للأمن العام»، والموسَّع مسجَّل اسماً بديلاً فقط",
+        "reason": "الجهة غائبة عن الملف المستورَد كلياً، وسجل العميل الذي يحملها عليه ٢٧٠ مليون ريال من العمل. «الأمن العام» هو الاسم المستعمل في التعاملات فهو الاسم الرسمي هنا. وغيابها هو الذي جعل جولة المطابقة الأولى ترشّح لها «الهيئة الوطنية للأمن السيبراني» — لا مقابل في المرجع فتُلتقط أقرب اسم فيه كلمة «الأمن»."
+      },
+      {
+        "entity": "الرئاسة العامة لشؤون الحرمين الشريفين",
+        "change": "أُضيفت جهةً ثالثة مستقلة (ent_353) — لا اسماً بديلاً لـ«الهيئة العامة للعناية بشؤون المسجد الحرام والمسجد النبوي» [GPH, ent_146] ولا لـ«رئاسة الشؤون الدينية بالمسجد الحرام والمسجد النبوي» [PRH, ent_147]، وبلا أي ربط بينها",
+        "reason": "ثلاث جهات متمايزة، لكلٍّ منها عملها وتعاقداتها ومن يوقّع عنها. ربطها باسم بديل مشترك كان سيجمع عملاء مختلفين في سجل واحد ويخلط أعمالهم وفواتيرهم — ودمج سجلّي عميل لا رجعة فيه عملياً. قرار المالك: تبقى الثلاث مستقلة بلا ربط."
+      },
+      {
+        "entity": "مركز مشاريع البنية التحتية بمنطقة الرياض",
+        "change": "أُضيفت جهةً جديدة (ent_354)، والاسم المختصر «مركز مشاريع البنية التحتية» مسجَّل اسماً بديلاً لا جهةً ثانية",
+        "reason": "كان الصفّان مُبقيين منفصلين في v3.4 عمداً لاحتمال أن يكون الثاني فرعاً إقليمياً مستقلاً — والفرق ١٢٫٣ مليون ريال فلم يُخمَّن. حسمه المالك نصاً: جهة واحدة اسمها اسم الرياض. وتسجيلها في المرجع يمنع انقسامها ثانيةً، إذ لا رابط نصّي بين المختصر والكامل يمنع إنشاء سجل جديد بالمختصر."
+      }
+    ],
+    "corrections_note": "تصحيحات المالك على الملف المستورَد — تُحفَظ هنا بأسبابها كي لا تُنسى ولا تُعاد."
+  },
+  "renames": [
+    {
+      "former": "هيئة الاتصالات وتقنية المعلومات",
+      "current": "هيئة الاتصالات والفضاء والتقنية",
+      "change": "تعديل مسمى",
+      "abbr": "CST"
+    },
+    {
+      "former": "وزارة الشؤون البلدية والقروية والإسكان",
+      "current": "وزارة البلديات والإسكان",
+      "change": "تعديل مسمى",
+      "abbr": "MOMAH"
+    },
+    {
+      "former": "المؤسسة العامة للحبوب",
+      "current": "الهيئة العامة للأمن الغذائي",
+      "change": "تحويل مؤسسة إلى هيئة",
+      "abbr": "GFSA"
+    },
+    {
+      "former": "المؤسسة العامة لتحلية المياه المالحة",
+      "current": "الهيئة السعودية للمياه",
+      "change": "تحويل مؤسسة إلى هيئة",
+      "abbr": "SWA"
+    },
+    {
+      "former": "هيئة تنظيم المياه والكهرباء",
+      "current": "الهيئة السعودية لتنظيم الكهرباء",
+      "change": "تعديل مسمى ونطاق اختصاص",
+      "abbr": "SERA"
+    },
+    {
+      "former": "الرئاسة العامة لشؤون المسجد الحرام والمسجد النبوي",
+      "current": "الهيئة العامة للعناية بشؤون المسجد الحرام والمسجد النبوي",
+      "change": "نقل الجانب الخدمي والتشغيلي",
+      "abbr": "GPH"
+    },
+    {
+      "former": "الرئاسة العامة لشؤون المسجد الحرام والمسجد النبوي",
+      "current": "رئاسة الشؤون الدينية بالمسجد الحرام والمسجد النبوي",
+      "change": "فصل الجانب الديني في جهة مستقلة",
+      "abbr": "PRH"
+    },
+    {
+      "former": "الهيئة العامة للإعلام المرئي والمسموع",
+      "current": "الهيئة العامة لتنظيم الإعلام",
+      "change": "تعديل مسمى وتوسيع الاختصاص",
+      "abbr": "Gmedia"
+    },
+    {
+      "former": "المؤسسة العامة للخطوط الجوية العربية السعودية",
+      "current": "مجموعة السعودية",
+      "change": "تحول إلى مجموعة شركات",
+      "abbr": "Saudia"
+    },
+    {
+      "former": "مجلس الغرف التجارية الصناعية السعودية",
+      "current": "اتحاد الغرف السعودية",
+      "change": "تعديل المسمى المؤسسي",
+      "abbr": "FSC"
+    },
+    {
+      "former": "المركز الوطني للتنافسية",
+      "current": "المركز السعودي للتنافسية والأعمال",
+      "change": "دمج",
+      "abbr": "SCBC"
+    },
+    {
+      "former": "المركز السعودي للأعمال الاقتصادية",
+      "current": "المركز السعودي للتنافسية والأعمال",
+      "change": "دمج",
+      "abbr": "SCBC"
+    },
+    {
+      "former": "برنامج تحقيق التوازن المالي",
+      "current": "برنامج الاستدامة المالية",
+      "change": "تعديل مسمى البرنامج",
+      "abbr": "FSP"
+    }
+  ],
+  "entities": [
+    {
+      "id": "ent_001",
+      "official_name": "وزارة الدفاع",
+      "short_name": "الدفاع",
+      "abbr": "MOD",
+      "kind": "وزارة",
+      "sector": "الحكومة والإدارة العامة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الدفاع"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_002",
+      "official_name": "وزارة الداخلية",
+      "short_name": "الداخلية",
+      "abbr": "MOI",
+      "kind": "وزارة",
+      "sector": "الحكومة والإدارة العامة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الداخلية"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_003",
+      "official_name": "وزارة الحرس الوطني",
+      "short_name": "الحرس الوطني",
+      "abbr": "MNG",
+      "kind": "وزارة",
+      "sector": "الحكومة والإدارة العامة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الحرس الوطني"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_004",
+      "official_name": "وزارة الخارجية",
+      "short_name": "الخارجية",
+      "abbr": "MOFA",
+      "kind": "وزارة",
+      "sector": "الحكومة والإدارة العامة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الخارجية"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_005",
+      "official_name": "وزارة العدل",
+      "short_name": "العدل",
+      "abbr": "MOJ",
+      "kind": "وزارة",
+      "sector": "الحكومة والإدارة العامة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "العدل"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_006",
+      "official_name": "وزارة المالية",
+      "short_name": "المالية",
+      "abbr": "MOF",
+      "kind": "وزارة",
+      "sector": "الحكومة والإدارة العامة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "المالية"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_007",
+      "official_name": "وزارة الاقتصاد والتخطيط",
+      "short_name": "الاقتصاد والتخطيط",
+      "abbr": "MEP",
+      "kind": "وزارة",
+      "sector": "الحكومة والإدارة العامة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الاقتصاد والتخطيط"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_008",
+      "official_name": "وزارة الموارد البشرية والتنمية الاجتماعية",
+      "short_name": "الموارد البشرية",
+      "abbr": "HRSD",
+      "kind": "وزارة",
+      "sector": "الحكومة والإدارة العامة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الموارد البشرية"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_009",
+      "official_name": "وزارة البلديات والإسكان",
+      "short_name": "البلديات والإسكان",
+      "abbr": "MOMAH",
+      "kind": "وزارة",
+      "sector": "الحكومة والإدارة العامة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "البلديات والإسكان",
+        "وزارة الشؤون البلدية والقروية والإسكان"
+      ],
+      "source": "https://momah.gov.sa/ar/about"
+    },
+    {
+      "id": "ent_010",
+      "official_name": "وزارة التعليم",
+      "short_name": "التعليم",
+      "abbr": "MOE",
+      "kind": "وزارة",
+      "sector": "الحكومة والإدارة العامة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "التعليم"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_011",
+      "official_name": "وزارة الصحة",
+      "short_name": "الصحة",
+      "abbr": "MOH",
+      "kind": "وزارة",
+      "sector": "الحكومة والإدارة العامة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الصحة"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_012",
+      "official_name": "وزارة الثقافة",
+      "short_name": "الثقافة",
+      "abbr": "MOC",
+      "kind": "وزارة",
+      "sector": "الحكومة والإدارة العامة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الثقافة"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_013",
+      "official_name": "وزارة الإعلام",
+      "short_name": "الإعلام",
+      "abbr": "MOM",
+      "kind": "وزارة",
+      "sector": "الحكومة والإدارة العامة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الإعلام"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_014",
+      "official_name": "وزارة الرياضة",
+      "short_name": "الرياضة",
+      "abbr": "MOS",
+      "kind": "وزارة",
+      "sector": "الحكومة والإدارة العامة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الرياضة"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_015",
+      "official_name": "وزارة السياحة",
+      "short_name": "السياحة",
+      "abbr": "MT",
+      "kind": "وزارة",
+      "sector": "الحكومة والإدارة العامة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "السياحة"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_016",
+      "official_name": "وزارة الحج والعمرة",
+      "short_name": "الحج والعمرة",
+      "abbr": "MOHU",
+      "kind": "وزارة",
+      "sector": "الحكومة والإدارة العامة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الحج والعمرة"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_017",
+      "official_name": "وزارة الشؤون الإسلامية والدعوة والإرشاد",
+      "short_name": "الشؤون الإسلامية",
+      "abbr": "MOIA",
+      "kind": "وزارة",
+      "sector": "الحكومة والإدارة العامة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الشؤون الإسلامية"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_018",
+      "official_name": "وزارة التجارة",
+      "short_name": "التجارة",
+      "abbr": "MC",
+      "kind": "وزارة",
+      "sector": "الحكومة والإدارة العامة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "التجارة"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_019",
+      "official_name": "وزارة الاستثمار",
+      "short_name": "الاستثمار",
+      "abbr": "MISA",
+      "kind": "وزارة",
+      "sector": "الحكومة والإدارة العامة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الاستثمار"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_020",
+      "official_name": "وزارة الصناعة والثروة المعدنية",
+      "short_name": "الصناعة والثروة المعدنية",
+      "abbr": "MIM",
+      "kind": "وزارة",
+      "sector": "الحكومة والإدارة العامة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الصناعة والثروة المعدنية"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_021",
+      "official_name": "وزارة الطاقة",
+      "short_name": "الطاقة",
+      "abbr": "MOE",
+      "kind": "وزارة",
+      "sector": "الحكومة والإدارة العامة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الطاقة"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_022",
+      "official_name": "وزارة البيئة والمياه والزراعة",
+      "short_name": "البيئة والمياه والزراعة",
+      "abbr": "MEWA",
+      "kind": "وزارة",
+      "sector": "الحكومة والإدارة العامة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "البيئة والمياه والزراعة"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_023",
+      "official_name": "وزارة النقل والخدمات اللوجستية",
+      "short_name": "النقل والخدمات اللوجستية",
+      "abbr": "MOTLS",
+      "kind": "وزارة",
+      "sector": "الحكومة والإدارة العامة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "النقل والخدمات اللوجستية"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_024",
+      "official_name": "وزارة الاتصالات وتقنية المعلومات",
+      "short_name": "وزارة الاتصالات",
+      "abbr": "MCIT",
+      "kind": "وزارة",
+      "sector": "الحكومة والإدارة العامة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "وزارة الاتصالات"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_025",
+      "official_name": "الديوان الملكي",
+      "short_name": "الديوان",
+      "abbr": "—",
+      "kind": "جهاز سيادي / مجلس",
+      "sector": "القيادة والحوكمة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الديوان"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_026",
+      "official_name": "الأمانة العامة لمجلس الوزراء",
+      "short_name": "أمانة مجلس الوزراء",
+      "abbr": "GSCM",
+      "kind": "جهاز سيادي / مجلس",
+      "sector": "القيادة والحوكمة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "أمانة مجلس الوزراء"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_027",
+      "official_name": "مجلس الوزراء",
+      "short_name": "—",
+      "abbr": "—",
+      "kind": "جهاز سيادي / مجلس",
+      "sector": "القيادة والحوكمة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "—"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_028",
+      "official_name": "مجلس الشورى",
+      "short_name": "الشورى",
+      "abbr": "—",
+      "kind": "جهاز سيادي / مجلس",
+      "sector": "القيادة والحوكمة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الشورى"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_029",
+      "official_name": "هيئة البيعة",
+      "short_name": "—",
+      "abbr": "—",
+      "kind": "جهاز سيادي / مجلس",
+      "sector": "القيادة والحوكمة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "—"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_030",
+      "official_name": "هيئة الخبراء بمجلس الوزراء",
+      "short_name": "هيئة الخبراء",
+      "abbr": "BOE",
+      "kind": "جهاز سيادي / مجلس",
+      "sector": "القيادة والحوكمة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "هيئة الخبراء"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_031",
+      "official_name": "مجلس الشؤون السياسية والأمنية",
+      "short_name": "—",
+      "abbr": "CPSA",
+      "kind": "جهاز سيادي / مجلس",
+      "sector": "القيادة والحوكمة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "—"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_032",
+      "official_name": "مجلس الشؤون الاقتصادية والتنمية",
+      "short_name": "—",
+      "abbr": "CEDA",
+      "kind": "جهاز سيادي / مجلس",
+      "sector": "القيادة والحوكمة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "—"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_033",
+      "official_name": "مجلس الخدمة العسكرية",
+      "short_name": "—",
+      "abbr": "—",
+      "kind": "جهاز سيادي / مجلس",
+      "sector": "القيادة والحوكمة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "—"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_034",
+      "official_name": "المراسم الملكية",
+      "short_name": "—",
+      "abbr": "—",
+      "kind": "جهاز سيادي / مجلس",
+      "sector": "القيادة والحوكمة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "—"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_035",
+      "official_name": "الشؤون الخاصة لخادم الحرمين الشريفين",
+      "short_name": "—",
+      "abbr": "—",
+      "kind": "جهاز سيادي / مجلس",
+      "sector": "القيادة والحوكمة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "—"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_036",
+      "official_name": "الشؤون الخاصة لسمو ولي العهد",
+      "short_name": "—",
+      "abbr": "—",
+      "kind": "جهاز سيادي / مجلس",
+      "sector": "القيادة والحوكمة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "—"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_037",
+      "official_name": "رئاسة الاستخبارات العامة",
+      "short_name": "الاستخبارات العامة",
+      "abbr": "GIP",
+      "kind": "جهاز سيادي / مجلس",
+      "sector": "القيادة والحوكمة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الاستخبارات العامة"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_038",
+      "official_name": "رئاسة الحرس الملكي",
+      "short_name": "الحرس الملكي",
+      "abbr": "SRG",
+      "kind": "جهاز سيادي / مجلس",
+      "sector": "القيادة والحوكمة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الحرس الملكي"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_039",
+      "official_name": "النيابة العامة",
+      "short_name": "—",
+      "abbr": "PP",
+      "kind": "جهة قضائية / رقابية",
+      "sector": "العدالة والرقابة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "—"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_040",
+      "official_name": "المجلس الأعلى للقضاء",
+      "short_name": "—",
+      "abbr": "SJC",
+      "kind": "جهة قضائية / رقابية",
+      "sector": "العدالة والرقابة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "—"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_041",
+      "official_name": "ديوان المظالم",
+      "short_name": "القضاء الإداري",
+      "abbr": "BOG",
+      "kind": "جهة قضائية / رقابية",
+      "sector": "العدالة والرقابة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "القضاء الإداري"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_042",
+      "official_name": "الديوان العام للمحاسبة",
+      "short_name": "ديوان المحاسبة",
+      "abbr": "GCA",
+      "kind": "جهة قضائية / رقابية",
+      "sector": "العدالة والرقابة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "ديوان المحاسبة"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_043",
+      "official_name": "هيئة الرقابة ومكافحة الفساد",
+      "short_name": "نزاهة",
+      "abbr": "Nazaha",
+      "kind": "جهة قضائية / رقابية",
+      "sector": "العدالة والرقابة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "نزاهة"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_044",
+      "official_name": "هيئة حقوق الإنسان",
+      "short_name": "حقوق الإنسان",
+      "abbr": "HRC",
+      "kind": "جهة قضائية / رقابية",
+      "sector": "العدالة والرقابة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "حقوق الإنسان"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_045",
+      "official_name": "الهيئة السعودية للمحامين",
+      "short_name": "هيئة المحامين",
+      "abbr": "SBA",
+      "kind": "جهة قضائية / رقابية",
+      "sector": "العدالة والرقابة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "هيئة المحامين"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_046",
+      "official_name": "الهيئة العامة للذكاء الاصطناعي والبيانات",
+      "short_name": "سدايا",
+      "abbr": "SDAIA",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "الرقمنة والبيانات والابتكار",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "سدايا",
+        "الهيئة السعودية للبيانات والذكاء الاصطناعي"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_047",
+      "official_name": "هيئة الحكومة الرقمية",
+      "short_name": "الحكومة الرقمية",
+      "abbr": "DGA",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "الرقمنة والبيانات والابتكار",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الحكومة الرقمية"
+      ],
+      "source": "https://dga.gov.sa/"
+    },
+    {
+      "id": "ent_048",
+      "official_name": "الهيئة الوطنية للأمن السيبراني",
+      "short_name": "الأمن السيبراني",
+      "abbr": "NCA",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "الرقمنة والبيانات والابتكار",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الأمن السيبراني"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_049",
+      "official_name": "هيئة الاتصالات والفضاء والتقنية",
+      "short_name": "هيئة الاتصالات",
+      "abbr": "CST",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "الرقمنة والبيانات والابتكار",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "هيئة الاتصالات",
+        "هيئة الاتصالات وتقنية المعلومات"
+      ],
+      "source": "https://my.gov.sa/ar/agencies/17567"
+    },
+    {
+      "id": "ent_050",
+      "official_name": "وكالة الفضاء السعودية",
+      "short_name": "وكالة الفضاء",
+      "abbr": "SSA",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "الرقمنة والبيانات والابتكار",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "وكالة الفضاء"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_051",
+      "official_name": "هيئة تنمية البحث والتطوير والابتكار",
+      "short_name": "هيئة البحث والتطوير والابتكار",
+      "abbr": "RDIA",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "الرقمنة والبيانات والابتكار",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "هيئة البحث والتطوير والابتكار"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_052",
+      "official_name": "مدينة الملك عبدالعزيز للعلوم والتقنية",
+      "short_name": "كاكست",
+      "abbr": "KACST",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "الرقمنة والبيانات والابتكار",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "كاكست"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_053",
+      "official_name": "مدينة الملك عبدالله للطاقة الذرية والمتجددة",
+      "short_name": "كاكاري",
+      "abbr": "KACARE",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "الرقمنة والبيانات والابتكار",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "كاكاري"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_054",
+      "official_name": "المركز الوطني للذكاء الاصطناعي",
+      "short_name": "الذكاء الاصطناعي",
+      "abbr": "NCAI",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "الرقمنة والبيانات والابتكار",
+      "scope": "وطني",
+      "status": "تابع لجهة",
+      "aliases": [
+        "الذكاء الاصطناعي"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_055",
+      "official_name": "مركز المعلومات الوطني",
+      "short_name": "مركز المعلومات",
+      "abbr": "NIC",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "الرقمنة والبيانات والابتكار",
+      "scope": "وطني",
+      "status": "تابع لجهة",
+      "aliases": [
+        "مركز المعلومات"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_056",
+      "official_name": "مكتب إدارة البيانات الوطنية",
+      "short_name": "مكتب البيانات",
+      "abbr": "NDMO",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "الرقمنة والبيانات والابتكار",
+      "scope": "وطني",
+      "status": "تابع لجهة",
+      "aliases": [
+        "مكتب البيانات"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_057",
+      "official_name": "البرنامج الوطني لتنمية قطاع تقنية المعلومات",
+      "short_name": "نتب",
+      "abbr": "NTDP",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "الرقمنة والبيانات والابتكار",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "نتب"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_058",
+      "official_name": "البنك المركزي السعودي",
+      "short_name": "ساما",
+      "abbr": "SAMA",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "الاقتصاد والمال والأعمال",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "ساما"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_059",
+      "official_name": "هيئة السوق المالية",
+      "short_name": "السوق المالية",
+      "abbr": "CMA",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "الاقتصاد والمال والأعمال",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "السوق المالية"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_060",
+      "official_name": "هيئة الزكاة والضريبة والجمارك",
+      "short_name": "زاتكا",
+      "abbr": "ZATCA",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "الاقتصاد والمال والأعمال",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "زاتكا"
+      ],
+      "source": "https://zatca.gov.sa/"
+    },
+    {
+      "id": "ent_061",
+      "official_name": "هيئة التأمين",
+      "short_name": "التأمين",
+      "abbr": "IA",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "الاقتصاد والمال والأعمال",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "التأمين"
+      ],
+      "source": "https://www.ia.gov.sa/ar/home"
+    },
+    {
+      "id": "ent_062",
+      "official_name": "الهيئة العامة للإحصاء",
+      "short_name": "الإحصاء",
+      "abbr": "GASTAT",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "الاقتصاد والمال والأعمال",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الإحصاء"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_063",
+      "official_name": "الهيئة العامة للمنافسة",
+      "short_name": "المنافسة",
+      "abbr": "GAC",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "الاقتصاد والمال والأعمال",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "المنافسة"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_064",
+      "official_name": "الهيئة العامة للتجارة الخارجية",
+      "short_name": "التجارة الخارجية",
+      "abbr": "GAFT",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "الاقتصاد والمال والأعمال",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "التجارة الخارجية"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_065",
+      "official_name": "الهيئة السعودية للملكية الفكرية",
+      "short_name": "الملكية الفكرية",
+      "abbr": "SAIP",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "الاقتصاد والمال والأعمال",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الملكية الفكرية"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_066",
+      "official_name": "الهيئة العامة للمنشآت الصغيرة والمتوسطة",
+      "short_name": "منشآت",
+      "abbr": "Monsha'at",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "الاقتصاد والمال والأعمال",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "منشآت"
+      ],
+      "source": "https://monshaat.gov.sa/ar"
+    },
+    {
+      "id": "ent_067",
+      "official_name": "هيئة تنمية الصادرات السعودية",
+      "short_name": "الصادرات السعودية",
+      "abbr": "SEDA",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "الاقتصاد والمال والأعمال",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الصادرات السعودية"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_068",
+      "official_name": "هيئة المحتوى المحلي والمشتريات الحكومية",
+      "short_name": "المحتوى المحلي",
+      "abbr": "LCGPA",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "الاقتصاد والمال والأعمال",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "المحتوى المحلي"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_069",
+      "official_name": "هيئة كفاءة الإنفاق والمشروعات الحكومية",
+      "short_name": "إكسبرو",
+      "abbr": "EXPRO",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "الاقتصاد والمال والأعمال",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "إكسبرو"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_070",
+      "official_name": "الهيئة العامة لعقارات الدولة",
+      "short_name": "عقارات الدولة",
+      "abbr": "SPGA",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "الاقتصاد والمال والأعمال",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "عقارات الدولة"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_071",
+      "official_name": "الهيئة العامة للعقار",
+      "short_name": "العقار",
+      "abbr": "REGA",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "الاقتصاد والمال والأعمال",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "العقار"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_072",
+      "official_name": "الهيئة العامة للمساحة والمعلومات الجيومكانية",
+      "short_name": "جيومكانية",
+      "abbr": "GEOSA",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "الاقتصاد والمال والأعمال",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "جيومكانية"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_073",
+      "official_name": "الهيئة السعودية للمواصفات والمقاييس والجودة",
+      "short_name": "المواصفات السعودية",
+      "abbr": "SASO",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "الاقتصاد والمال والأعمال",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "المواصفات السعودية"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_074",
+      "official_name": "الهيئة السعودية للمقيمين المعتمدين",
+      "short_name": "تقييم",
+      "abbr": "TAQEEM",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "الاقتصاد والمال والأعمال",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "تقييم"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_075",
+      "official_name": "المركز السعودي للتنافسية والأعمال",
+      "short_name": "التنافسية والأعمال",
+      "abbr": "SCBC",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "الاقتصاد والمال والأعمال",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "التنافسية والأعمال",
+        "المركز الوطني للتنافسية",
+        "المركز السعودي للأعمال الاقتصادية"
+      ],
+      "source": "https://www.uqn.gov.sa/decisions-and-regulations/council-of-ministers-decisions/4000591"
+    },
+    {
+      "id": "ent_076",
+      "official_name": "مركز الإقامة المميزة",
+      "short_name": "الإقامة المميزة",
+      "abbr": "PRC",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "الاقتصاد والمال والأعمال",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الإقامة المميزة"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_077",
+      "official_name": "المركز الوطني للتخصيص",
+      "short_name": "التخصيص والشراكة",
+      "abbr": "NCP",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "الاقتصاد والمال والأعمال",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "التخصيص والشراكة"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_078",
+      "official_name": "المركز الوطني لإدارة الدين",
+      "short_name": "إدارة الدين",
+      "abbr": "NDMC",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "الاقتصاد والمال والأعمال",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "إدارة الدين"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_079",
+      "official_name": "مركز تنمية الإيرادات غير النفطية",
+      "short_name": "الإيرادات غير النفطية",
+      "abbr": "NTRC",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "الاقتصاد والمال والأعمال",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الإيرادات غير النفطية"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_080",
+      "official_name": "المركز الوطني لنظم الموارد الحكومية",
+      "short_name": "نظم الموارد الحكومية",
+      "abbr": "NCGR",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "الاقتصاد والمال والأعمال",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "نظم الموارد الحكومية"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_081",
+      "official_name": "المركز السعودي للاعتماد",
+      "short_name": "الاعتماد السعودي",
+      "abbr": "SAAC",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "الاقتصاد والمال والأعمال",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الاعتماد السعودي"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_082",
+      "official_name": "المركز السعودي للتحكيم التجاري",
+      "short_name": "التحكيم التجاري",
+      "abbr": "SCCA",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "الاقتصاد والمال والأعمال",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "التحكيم التجاري"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_083",
+      "official_name": "اتحاد الغرف السعودية",
+      "short_name": "اتحاد الغرف",
+      "abbr": "FSC",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "الاقتصاد والمال والأعمال",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "اتحاد الغرف",
+        "مجلس الغرف التجارية الصناعية السعودية"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_084",
+      "official_name": "الهيئة السعودية للمدن الصناعية ومناطق التقنية",
+      "short_name": "مدن",
+      "abbr": "MODON",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "الصناعة والطاقة والدفاع",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "مدن"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_085",
+      "official_name": "الهيئة الملكية للجبيل وينبع",
+      "short_name": "الهيئة الملكية",
+      "abbr": "RCJY",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "الصناعة والطاقة والدفاع",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الهيئة الملكية"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_086",
+      "official_name": "الهيئة العامة للصناعات العسكرية",
+      "short_name": "الصناعات العسكرية",
+      "abbr": "GAMI",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "الصناعة والطاقة والدفاع",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الصناعات العسكرية"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_087",
+      "official_name": "الهيئة العامة للتطوير الدفاعي",
+      "short_name": "التطوير الدفاعي",
+      "abbr": "GADD",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "الصناعة والطاقة والدفاع",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "التطوير الدفاعي"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_088",
+      "official_name": "هيئة المساحة الجيولوجية السعودية",
+      "short_name": "المساحة الجيولوجية",
+      "abbr": "SGS",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "الصناعة والطاقة والدفاع",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "المساحة الجيولوجية"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_089",
+      "official_name": "هيئة الرقابة النووية والإشعاعية",
+      "short_name": "الرقابة النووية",
+      "abbr": "NRRC",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "الصناعة والطاقة والدفاع",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الرقابة النووية"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_090",
+      "official_name": "الهيئة السعودية لتنظيم الكهرباء",
+      "short_name": "سيرا",
+      "abbr": "SERA",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "الصناعة والطاقة والدفاع",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "سيرا",
+        "هيئة تنظيم المياه والكهرباء"
+      ],
+      "source": "https://www.sera.gov.sa/"
+    },
+    {
+      "id": "ent_091",
+      "official_name": "الهيئة السعودية للمياه",
+      "short_name": "المياه",
+      "abbr": "SWA",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "الصناعة والطاقة والدفاع",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "المياه",
+        "المؤسسة العامة لتحلية المياه المالحة"
+      ],
+      "source": "https://www.swa.gov.sa/ar/news/1"
+    },
+    {
+      "id": "ent_092",
+      "official_name": "المركز الوطني للتنمية الصناعية",
+      "short_name": "التنمية الصناعية",
+      "abbr": "NIDC",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "الصناعة والطاقة والدفاع",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "التنمية الصناعية"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_093",
+      "official_name": "الهيئة العامة للطيران المدني",
+      "short_name": "الطيران المدني",
+      "abbr": "GACA",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "النقل والخدمات اللوجستية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الطيران المدني"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_094",
+      "official_name": "الهيئة العامة للنقل",
+      "short_name": "النقل",
+      "abbr": "TGA",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "النقل والخدمات اللوجستية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "النقل"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_095",
+      "official_name": "الهيئة العامة للطرق",
+      "short_name": "هيئة الطرق",
+      "abbr": "RGA",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "النقل والخدمات اللوجستية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "هيئة الطرق"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_096",
+      "official_name": "الهيئة العامة للموانئ",
+      "short_name": "موانئ",
+      "abbr": "MAWANI",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "النقل والخدمات اللوجستية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "موانئ"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_097",
+      "official_name": "الهيئة السعودية للبحر الأحمر",
+      "short_name": "البحر الأحمر",
+      "abbr": "SRSA",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "النقل والخدمات اللوجستية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "البحر الأحمر"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_098",
+      "official_name": "الهيئة السعودية للسياحة",
+      "short_name": "روح السعودية",
+      "abbr": "STA",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "السياحة والترفيه والإعلام والرياضة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "روح السعودية"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_099",
+      "official_name": "الهيئة العامة للترفيه",
+      "short_name": "الترفيه",
+      "abbr": "GEA",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "السياحة والترفيه والإعلام والرياضة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الترفيه"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_100",
+      "official_name": "الهيئة العامة للمعارض والمؤتمرات",
+      "short_name": "المعارض والمؤتمرات",
+      "abbr": "SCEGA",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "السياحة والترفيه والإعلام والرياضة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "المعارض والمؤتمرات"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_101",
+      "official_name": "الهيئة العامة لتنظيم الإعلام",
+      "short_name": "تنظيم الإعلام",
+      "abbr": "Gmedia",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "السياحة والترفيه والإعلام والرياضة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "تنظيم الإعلام",
+        "الهيئة العامة للإعلام المرئي والمسموع"
+      ],
+      "source": "https://gmedia.gov.sa/"
+    },
+    {
+      "id": "ent_102",
+      "official_name": "هيئة الإذاعة والتلفزيون",
+      "short_name": "هيئة الإذاعة والتلفزيون",
+      "abbr": "SBA",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "السياحة والترفيه والإعلام والرياضة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_103",
+      "official_name": "وكالة الأنباء السعودية",
+      "short_name": "واس",
+      "abbr": "SPA",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "السياحة والترفيه والإعلام والرياضة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "واس"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_104",
+      "official_name": "اللجنة الأولمبية والبارالمبية السعودية",
+      "short_name": "اللجنة الأولمبية",
+      "abbr": "SOPC",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "السياحة والترفيه والإعلام والرياضة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "اللجنة الأولمبية"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_105",
+      "official_name": "الاتحاد السعودي للرياضة للجميع",
+      "short_name": "الرياضة للجميع",
+      "abbr": "SFA",
+      "kind": "هيئة تنظيمية / وطنية",
+      "sector": "السياحة والترفيه والإعلام والرياضة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الرياضة للجميع"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_106",
+      "official_name": "الهيئة العامة للغذاء والدواء",
+      "short_name": "الغذاء والدواء",
+      "abbr": "SFDA",
+      "kind": "هيئة / مجلس",
+      "sector": "الصحة والحماية الاجتماعية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الغذاء والدواء"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_107",
+      "official_name": "الهيئة السعودية للتخصصات الصحية",
+      "short_name": "التخصصات الصحية",
+      "abbr": "SCFHS",
+      "kind": "هيئة / مجلس",
+      "sector": "الصحة والحماية الاجتماعية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "التخصصات الصحية"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_108",
+      "official_name": "هيئة الصحة العامة",
+      "short_name": "وقاية",
+      "abbr": "PHA",
+      "kind": "هيئة / مجلس",
+      "sector": "الصحة والحماية الاجتماعية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "وقاية"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_109",
+      "official_name": "هيئة الهلال الأحمر السعودي",
+      "short_name": "الهلال الأحمر",
+      "abbr": "SRCA",
+      "kind": "هيئة / مجلس",
+      "sector": "الصحة والحماية الاجتماعية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الهلال الأحمر"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_110",
+      "official_name": "المجلس الصحي السعودي",
+      "short_name": "المجلس الصحي",
+      "abbr": "SHC",
+      "kind": "هيئة / مجلس",
+      "sector": "الصحة والحماية الاجتماعية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "المجلس الصحي"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_111",
+      "official_name": "مجلس الضمان الصحي",
+      "short_name": "الضمان الصحي",
+      "abbr": "CHI",
+      "kind": "هيئة / مجلس",
+      "sector": "الصحة والحماية الاجتماعية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الضمان الصحي"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_112",
+      "official_name": "مجلس شؤون الأسرة",
+      "short_name": "شؤون الأسرة",
+      "abbr": "FAC",
+      "kind": "هيئة / مجلس",
+      "sector": "الصحة والحماية الاجتماعية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "شؤون الأسرة"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_113",
+      "official_name": "هيئة رعاية الأشخاص ذوي الإعاقة",
+      "short_name": "هيئة الإعاقة",
+      "abbr": "APD",
+      "kind": "هيئة / مجلس",
+      "sector": "الصحة والحماية الاجتماعية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "هيئة الإعاقة"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_114",
+      "official_name": "المركز الوطني لتنمية القطاع غير الربحي",
+      "short_name": "القطاع غير الربحي",
+      "abbr": "NCNP",
+      "kind": "هيئة / مجلس",
+      "sector": "الصحة والحماية الاجتماعية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "القطاع غير الربحي"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_115",
+      "official_name": "المركز الوطني للوقاية من الآفات النباتية والأمراض الحيوانية ومكافحتها",
+      "short_name": "وقاء",
+      "abbr": "WEQAA",
+      "kind": "هيئة / مجلس",
+      "sector": "الصحة والحماية الاجتماعية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "وقاء"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_116",
+      "official_name": "المركز الوطني لتعزيز الصحة النفسية",
+      "short_name": "تعزيز الصحة النفسية",
+      "abbr": "NCMH",
+      "kind": "هيئة / مجلس",
+      "sector": "الصحة والحماية الاجتماعية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "تعزيز الصحة النفسية"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_117",
+      "official_name": "المركز السعودي لسلامة المرضى",
+      "short_name": "سلامة المرضى",
+      "abbr": "SPSC",
+      "kind": "هيئة / مجلس",
+      "sector": "الصحة والحماية الاجتماعية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "سلامة المرضى"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_118",
+      "official_name": "المركز السعودي لزراعة الأعضاء",
+      "short_name": "زراعة الأعضاء",
+      "abbr": "SCOT",
+      "kind": "هيئة / مجلس",
+      "sector": "الصحة والحماية الاجتماعية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "زراعة الأعضاء"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_119",
+      "official_name": "مركز التأمين الصحي الوطني",
+      "short_name": "التأمين الصحي الوطني",
+      "abbr": "NHIC",
+      "kind": "هيئة / مجلس",
+      "sector": "الصحة والحماية الاجتماعية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "التأمين الصحي الوطني"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_120",
+      "official_name": "المركز الوطني للأرصاد",
+      "short_name": "الأرصاد",
+      "abbr": "NCM",
+      "kind": "هيئة / مركز",
+      "sector": "البيئة والمياه والزراعة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الأرصاد"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_121",
+      "official_name": "المركز الوطني لتنمية الحياة الفطرية",
+      "short_name": "الحياة الفطرية",
+      "abbr": "NCW",
+      "kind": "هيئة / مركز",
+      "sector": "البيئة والمياه والزراعة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الحياة الفطرية"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_122",
+      "official_name": "المركز الوطني لتنمية الغطاء النباتي ومكافحة التصحر",
+      "short_name": "الغطاء النباتي",
+      "abbr": "NCVC",
+      "kind": "هيئة / مركز",
+      "sector": "البيئة والمياه والزراعة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الغطاء النباتي"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_123",
+      "official_name": "المركز الوطني للرقابة على الالتزام البيئي",
+      "short_name": "الالتزام البيئي",
+      "abbr": "NCEC",
+      "kind": "هيئة / مركز",
+      "sector": "البيئة والمياه والزراعة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الالتزام البيئي"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_124",
+      "official_name": "المركز الوطني لإدارة النفايات",
+      "short_name": "موان",
+      "abbr": "MWAN",
+      "kind": "هيئة / مركز",
+      "sector": "البيئة والمياه والزراعة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "موان"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_125",
+      "official_name": "المركز الوطني لكفاءة وترشيد المياه",
+      "short_name": "مائي",
+      "abbr": "MAEE",
+      "kind": "هيئة / مركز",
+      "sector": "البيئة والمياه والزراعة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "مائي"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_126",
+      "official_name": "المركز الوطني للنخيل والتمور",
+      "short_name": "المركز الوطني للنخيل والتمور",
+      "abbr": "NCPD",
+      "kind": "هيئة / مركز",
+      "sector": "البيئة والمياه والزراعة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_127",
+      "official_name": "المؤسسة العامة للري",
+      "short_name": "الري",
+      "abbr": "SIO",
+      "kind": "هيئة / مركز",
+      "sector": "البيئة والمياه والزراعة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الري"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_128",
+      "official_name": "الهيئة العامة للأمن الغذائي",
+      "short_name": "الأمن الغذائي",
+      "abbr": "GFSA",
+      "kind": "هيئة / مركز",
+      "sector": "البيئة والمياه والزراعة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الأمن الغذائي",
+        "المؤسسة العامة للحبوب"
+      ],
+      "source": "https://www.gfsa.gov.sa/about-gfsa"
+    },
+    {
+      "id": "ent_129",
+      "official_name": "صندوق البيئة",
+      "short_name": "صندوق البيئة",
+      "abbr": "EF",
+      "kind": "هيئة / مركز",
+      "sector": "البيئة والمياه والزراعة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_130",
+      "official_name": "هيئة الأدب والنشر والترجمة",
+      "short_name": "الأدب والنشر والترجمة",
+      "abbr": "LPTC",
+      "kind": "هيئة ثقافية",
+      "sector": "الثقافة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الأدب والنشر والترجمة"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_131",
+      "official_name": "هيئة الأزياء",
+      "short_name": "الأزياء",
+      "abbr": "FC",
+      "kind": "هيئة ثقافية",
+      "sector": "الثقافة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الأزياء"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_132",
+      "official_name": "هيئة الأفلام",
+      "short_name": "الأفلام",
+      "abbr": "Film Commission",
+      "kind": "هيئة ثقافية",
+      "sector": "الثقافة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الأفلام"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_133",
+      "official_name": "هيئة التراث",
+      "short_name": "التراث",
+      "abbr": "HC",
+      "kind": "هيئة ثقافية",
+      "sector": "الثقافة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "التراث"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_134",
+      "official_name": "هيئة فنون العمارة والتصميم",
+      "short_name": "العمارة والتصميم",
+      "abbr": "ADC",
+      "kind": "هيئة ثقافية",
+      "sector": "الثقافة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "العمارة والتصميم"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_135",
+      "official_name": "هيئة الفنون البصرية",
+      "short_name": "الفنون البصرية",
+      "abbr": "VAC",
+      "kind": "هيئة ثقافية",
+      "sector": "الثقافة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الفنون البصرية"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_136",
+      "official_name": "هيئة المتاحف",
+      "short_name": "المتاحف",
+      "abbr": "MC",
+      "kind": "هيئة ثقافية",
+      "sector": "الثقافة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "المتاحف"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_137",
+      "official_name": "هيئة الموسيقى",
+      "short_name": "الموسيقى",
+      "abbr": "Music Commission",
+      "kind": "هيئة ثقافية",
+      "sector": "الثقافة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الموسيقى"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_138",
+      "official_name": "هيئة المسرح والفنون الأدائية",
+      "short_name": "المسرح والفنون الأدائية",
+      "abbr": "TPAC",
+      "kind": "هيئة ثقافية",
+      "sector": "الثقافة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "المسرح والفنون الأدائية"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_139",
+      "official_name": "هيئة المكتبات",
+      "short_name": "المكتبات",
+      "abbr": "LC",
+      "kind": "هيئة ثقافية",
+      "sector": "الثقافة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "المكتبات"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_140",
+      "official_name": "هيئة فنون الطهي",
+      "short_name": "فنون الطهي",
+      "abbr": "CAC",
+      "kind": "هيئة ثقافية",
+      "sector": "الثقافة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "فنون الطهي"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_141",
+      "official_name": "المعهد الملكي للفنون التقليدية",
+      "short_name": "وِرث",
+      "abbr": "Wrth",
+      "kind": "هيئة ثقافية",
+      "sector": "الثقافة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "وِرث"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_142",
+      "official_name": "مؤسسة بينالي الدرعية",
+      "short_name": "بينالي الدرعية",
+      "abbr": "DBF",
+      "kind": "هيئة ثقافية",
+      "sector": "الثقافة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "بينالي الدرعية"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_143",
+      "official_name": "دارة الملك عبدالعزيز",
+      "short_name": "الدارة",
+      "abbr": "Darah",
+      "kind": "هيئة ثقافية",
+      "sector": "الثقافة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الدارة"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_144",
+      "official_name": "مكتبة الملك فهد الوطنية",
+      "short_name": "مكتبة الملك فهد",
+      "abbr": "KFNL",
+      "kind": "هيئة ثقافية",
+      "sector": "الثقافة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "مكتبة الملك فهد"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_145",
+      "official_name": "مكتبة الملك عبدالعزيز العامة",
+      "short_name": "مكتبة الملك عبدالعزيز",
+      "abbr": "KAPL",
+      "kind": "هيئة ثقافية",
+      "sector": "الثقافة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "مكتبة الملك عبدالعزيز"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_146",
+      "official_name": "الهيئة العامة للعناية بشؤون المسجد الحرام والمسجد النبوي",
+      "short_name": "هيئة العناية بالحرمين",
+      "abbr": "GPH",
+      "kind": "هيئة / رئاسة",
+      "sector": "الشؤون الدينية والأوقاف",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "هيئة العناية بالحرمين",
+        "الرئاسة العامة لشؤون المسجد الحرام والمسجد النبوي"
+      ],
+      "source": "https://alharamain.gov.sa/public/?site=ar"
+    },
+    {
+      "id": "ent_147",
+      "official_name": "رئاسة الشؤون الدينية بالمسجد الحرام والمسجد النبوي",
+      "short_name": "رئاسة الشؤون الدينية",
+      "abbr": "PRH",
+      "kind": "هيئة / رئاسة",
+      "sector": "الشؤون الدينية والأوقاف",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "رئاسة الشؤون الدينية",
+        "الرئاسة العامة لشؤون المسجد الحرام والمسجد النبوي"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_148",
+      "official_name": "الرئاسة العامة للبحوث العلمية والإفتاء",
+      "short_name": "الإفتاء",
+      "abbr": "GPI",
+      "kind": "هيئة / رئاسة",
+      "sector": "الشؤون الدينية والأوقاف",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الإفتاء"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_149",
+      "official_name": "الرئاسة العامة لهيئة الأمر بالمعروف والنهي عن المنكر",
+      "short_name": "الهيئة",
+      "abbr": "CPVPV",
+      "kind": "هيئة / رئاسة",
+      "sector": "الشؤون الدينية والأوقاف",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الهيئة"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_150",
+      "official_name": "هيئة كبار العلماء",
+      "short_name": "كبار العلماء",
+      "abbr": "CSS",
+      "kind": "هيئة / رئاسة",
+      "sector": "الشؤون الدينية والأوقاف",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "كبار العلماء"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_151",
+      "official_name": "الهيئة العامة للأوقاف",
+      "short_name": "الأوقاف",
+      "abbr": "GAA",
+      "kind": "هيئة / رئاسة",
+      "sector": "الشؤون الدينية والأوقاف",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الأوقاف"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_152",
+      "official_name": "مجمع الملك فهد لطباعة المصحف الشريف",
+      "short_name": "مجمع الملك فهد",
+      "abbr": "KFGQPC",
+      "kind": "هيئة / رئاسة",
+      "sector": "الشؤون الدينية والأوقاف",
+      "scope": "وطني",
+      "status": "تابع لجهة",
+      "aliases": [
+        "مجمع الملك فهد"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_153",
+      "official_name": "هيئة تقويم التعليم والتدريب",
+      "short_name": "تقويم",
+      "abbr": "ETEC",
+      "kind": "هيئة / مؤسسة تعليمية",
+      "sector": "التعليم والتدريب",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "تقويم"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_154",
+      "official_name": "المركز الوطني للقياس",
+      "short_name": "قياس",
+      "abbr": "Qiyas",
+      "kind": "هيئة / مؤسسة تعليمية",
+      "sector": "التعليم والتدريب",
+      "scope": "وطني",
+      "status": "تابع لجهة",
+      "aliases": [
+        "قياس"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_155",
+      "official_name": "المركز الوطني للتعليم الإلكتروني",
+      "short_name": "التعليم الإلكتروني",
+      "abbr": "NELC",
+      "kind": "هيئة / مؤسسة تعليمية",
+      "sector": "التعليم والتدريب",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "التعليم الإلكتروني"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_156",
+      "official_name": "المركز الوطني للتطوير المهني التعليمي",
+      "short_name": "التطوير المهني التعليمي",
+      "abbr": "NCEPD",
+      "kind": "هيئة / مؤسسة تعليمية",
+      "sector": "التعليم والتدريب",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "التطوير المهني التعليمي"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_157",
+      "official_name": "المؤسسة العامة للتدريب التقني والمهني",
+      "short_name": "التدريب التقني",
+      "abbr": "TVTC",
+      "kind": "هيئة / مؤسسة تعليمية",
+      "sector": "التعليم والتدريب",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "التدريب التقني"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_158",
+      "official_name": "معهد الإدارة العامة",
+      "short_name": "الإدارة العامة",
+      "abbr": "IPA",
+      "kind": "هيئة / مؤسسة تعليمية",
+      "sector": "التعليم والتدريب",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الإدارة العامة"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_159",
+      "official_name": "معهد الأمير سعود الفيصل للدراسات الدبلوماسية",
+      "short_name": "معهد الدراسات الدبلوماسية",
+      "abbr": "IDS",
+      "kind": "هيئة / مؤسسة تعليمية",
+      "sector": "التعليم والتدريب",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "معهد الدراسات الدبلوماسية"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_160",
+      "official_name": "مؤسسة الملك عبدالعزيز ورجاله للموهبة والإبداع",
+      "short_name": "موهبة",
+      "abbr": "Mawhiba",
+      "kind": "هيئة / مؤسسة تعليمية",
+      "sector": "التعليم والتدريب",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "موهبة"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_161",
+      "official_name": "مؤسسة البريد السعودي",
+      "short_name": "سبل",
+      "abbr": "SPL",
+      "kind": "مؤسسة / مركز وطني",
+      "sector": "الإدارة والخدمات العامة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "سبل"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_162",
+      "official_name": "المؤسسة العامة للتأمينات الاجتماعية",
+      "short_name": "التأمينات",
+      "abbr": "GOSI",
+      "kind": "مؤسسة / مركز وطني",
+      "sector": "الإدارة والخدمات العامة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "التأمينات"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_163",
+      "official_name": "المركز الوطني للوثائق والمحفوظات",
+      "short_name": "الوثائق والمحفوظات",
+      "abbr": "NCAR",
+      "kind": "مؤسسة / مركز وطني",
+      "sector": "الإدارة والخدمات العامة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الوثائق والمحفوظات"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_164",
+      "official_name": "مركز دعم اتخاذ القرار",
+      "short_name": "دعم القرار",
+      "abbr": "DSC",
+      "kind": "مؤسسة / مركز وطني",
+      "sector": "الإدارة والخدمات العامة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "دعم القرار"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_165",
+      "official_name": "المركز الوطني لقياس أداء الأجهزة العامة",
+      "short_name": "أداء",
+      "abbr": "Adaa",
+      "kind": "مؤسسة / مركز وطني",
+      "sector": "الإدارة والخدمات العامة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "أداء"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_166",
+      "official_name": "مركز برنامج التحول الوطني",
+      "short_name": "التحول الوطني",
+      "abbr": "NTP",
+      "kind": "مؤسسة / مركز وطني",
+      "sector": "الإدارة والخدمات العامة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "التحول الوطني"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_167",
+      "official_name": "المركز الوطني للفعاليات",
+      "short_name": "الفعاليات",
+      "abbr": "NEC",
+      "kind": "مؤسسة / مركز وطني",
+      "sector": "الإدارة والخدمات العامة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الفعاليات"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_168",
+      "official_name": "مركز دعم هيئات التطوير",
+      "short_name": "دعم هيئات التطوير",
+      "abbr": "DASC",
+      "kind": "مؤسسة / مركز وطني",
+      "sector": "الإدارة والخدمات العامة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "دعم هيئات التطوير"
+      ],
+      "source": "https://www.dasc.gov.sa/"
+    },
+    {
+      "id": "ent_169",
+      "official_name": "مركز الملك سلمان للإغاثة والأعمال الإنسانية",
+      "short_name": "مركز الملك سلمان للإغاثة",
+      "abbr": "KSrelief",
+      "kind": "مؤسسة / مركز وطني",
+      "sector": "الإدارة والخدمات العامة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "مركز الملك سلمان للإغاثة"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_170",
+      "official_name": "مركز الملك عبدالعزيز للتواصل الحضاري",
+      "short_name": "التواصل الحضاري",
+      "abbr": "KACND",
+      "kind": "مؤسسة / مركز وطني",
+      "sector": "الإدارة والخدمات العامة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "التواصل الحضاري"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_171",
+      "official_name": "مركز الملك عبدالله للدراسات والبحوث البترولية",
+      "short_name": "كابسارك",
+      "abbr": "KAPSARC",
+      "kind": "مؤسسة / مركز وطني",
+      "sector": "الإدارة والخدمات العامة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "كابسارك"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_172",
+      "official_name": "مركز الملك سلمان لأبحاث الإعاقة",
+      "short_name": "أبحاث الإعاقة",
+      "abbr": "KSCDR",
+      "kind": "مؤسسة / مركز وطني",
+      "sector": "الإدارة والخدمات العامة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "أبحاث الإعاقة"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_173",
+      "official_name": "المركز الوطني للتفتيش والرقابة",
+      "short_name": "التفتيش والرقابة",
+      "abbr": "NCIC",
+      "kind": "مؤسسة / مركز وطني",
+      "sector": "الإدارة والخدمات العامة",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "التفتيش والرقابة"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_174",
+      "official_name": "صندوق الاستثمارات العامة",
+      "short_name": "الصندوق السيادي",
+      "abbr": "PIF",
+      "kind": "صندوق / بنك تنموي",
+      "sector": "التمويل والتنمية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الصندوق السيادي"
+      ],
+      "source": "https://www.pif.gov.sa/ar/"
+    },
+    {
+      "id": "ent_175",
+      "official_name": "صندوق التنمية الوطني",
+      "short_name": "صندوق التنمية",
+      "abbr": "NDF",
+      "kind": "صندوق / بنك تنموي",
+      "sector": "التمويل والتنمية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "صندوق التنمية"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_176",
+      "official_name": "صندوق تنمية الموارد البشرية",
+      "short_name": "هدف",
+      "abbr": "HRDF",
+      "kind": "صندوق / بنك تنموي",
+      "sector": "التمويل والتنمية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "هدف"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_177",
+      "official_name": "صندوق التنمية العقارية",
+      "short_name": "الصندوق العقاري",
+      "abbr": "REDF",
+      "kind": "صندوق / بنك تنموي",
+      "sector": "التمويل والتنمية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الصندوق العقاري"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_178",
+      "official_name": "صندوق التنمية الزراعية",
+      "short_name": "الصندوق الزراعي",
+      "abbr": "ADF",
+      "kind": "صندوق / بنك تنموي",
+      "sector": "التمويل والتنمية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الصندوق الزراعي"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_179",
+      "official_name": "صندوق التنمية الصناعية السعودي",
+      "short_name": "الصندوق الصناعي",
+      "abbr": "SIDF",
+      "kind": "صندوق / بنك تنموي",
+      "sector": "التمويل والتنمية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الصندوق الصناعي"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_180",
+      "official_name": "الصندوق السعودي للتنمية",
+      "short_name": "الصندوق السعودي",
+      "abbr": "SFD",
+      "kind": "صندوق / بنك تنموي",
+      "sector": "التمويل والتنمية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الصندوق السعودي"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_181",
+      "official_name": "صندوق التنمية السياحي",
+      "short_name": "الصندوق السياحي",
+      "abbr": "TDF",
+      "kind": "صندوق / بنك تنموي",
+      "sector": "التمويل والتنمية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الصندوق السياحي"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_182",
+      "official_name": "صندوق التنمية الثقافي",
+      "short_name": "الصندوق الثقافي",
+      "abbr": "CDF",
+      "kind": "صندوق / بنك تنموي",
+      "sector": "التمويل والتنمية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الصندوق الثقافي"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_183",
+      "official_name": "صندوق البنية التحتية الوطني",
+      "short_name": "صندوق البنية التحتية",
+      "abbr": "Infra",
+      "kind": "صندوق / بنك تنموي",
+      "sector": "التمويل والتنمية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "صندوق البنية التحتية"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_184",
+      "official_name": "صندوق الفعاليات الاستثماري",
+      "short_name": "صندوق الفعاليات",
+      "abbr": "EIF",
+      "kind": "صندوق / بنك تنموي",
+      "sector": "التمويل والتنمية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "صندوق الفعاليات"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_185",
+      "official_name": "بنك التنمية الاجتماعية",
+      "short_name": "بنك التنمية",
+      "abbr": "SDB",
+      "kind": "صندوق / بنك تنموي",
+      "sector": "التمويل والتنمية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "بنك التنمية"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_186",
+      "official_name": "بنك المنشآت الصغيرة والمتوسطة",
+      "short_name": "بنك المنشآت",
+      "abbr": "SME Bank",
+      "kind": "صندوق / بنك تنموي",
+      "sector": "التمويل والتنمية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "بنك المنشآت"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_187",
+      "official_name": "بنك التصدير والاستيراد السعودي",
+      "short_name": "بنك التصدير والاستيراد",
+      "abbr": "Saudi EXIM",
+      "kind": "صندوق / بنك تنموي",
+      "sector": "التمويل والتنمية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "بنك التصدير والاستيراد"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_188",
+      "official_name": "صندوق النفقة",
+      "short_name": "النفقة",
+      "abbr": "Nafaqah",
+      "kind": "صندوق / بنك تنموي",
+      "sector": "التمويل والتنمية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "النفقة"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_189",
+      "official_name": "صندوق الشهداء والمصابين والأسرى والمفقودين",
+      "short_name": "صندوق الشهداء",
+      "abbr": "—",
+      "kind": "صندوق / بنك تنموي",
+      "sector": "التمويل والتنمية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "صندوق الشهداء"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_190",
+      "official_name": "مجلس التجارة الإلكترونية",
+      "short_name": "التجارة الإلكترونية",
+      "abbr": "E-Commerce Council",
+      "kind": "مجلس / اتحاد",
+      "sector": "مجالس وطنية ومهنية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "التجارة الإلكترونية"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_191",
+      "official_name": "مجلس التنمية السياحي",
+      "short_name": "التنمية السياحية",
+      "abbr": "TDC",
+      "kind": "مجلس / اتحاد",
+      "sector": "مجالس وطنية ومهنية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "التنمية السياحية"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_192",
+      "official_name": "مجلس شؤون الجامعات",
+      "short_name": "شؤون الجامعات",
+      "abbr": "CUA",
+      "kind": "مجلس / اتحاد",
+      "sector": "مجالس وطنية ومهنية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "شؤون الجامعات"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_193",
+      "official_name": "الهيئة السعودية للمهندسين",
+      "short_name": "هيئة المهندسين",
+      "abbr": "SCE",
+      "kind": "مجلس / اتحاد",
+      "sector": "مجالس وطنية ومهنية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "هيئة المهندسين"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_194",
+      "official_name": "الهيئة السعودية للمراجعين والمحاسبين",
+      "short_name": "سوكبا",
+      "abbr": "SOCPA",
+      "kind": "مجلس / اتحاد",
+      "sector": "مجالس وطنية ومهنية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "سوكبا"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_195",
+      "official_name": "الهيئة السعودية للمقاولين",
+      "short_name": "هيئة المقاولين",
+      "abbr": "SCA",
+      "kind": "مجلس / اتحاد",
+      "sector": "مجالس وطنية ومهنية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "هيئة المقاولين"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_196",
+      "official_name": "الهيئة الملكية لمدينة الرياض",
+      "short_name": "الهيئة الملكية للرياض",
+      "abbr": "RCRC",
+      "kind": "هيئة ملكية / تطوير",
+      "sector": "تطوير المناطق والوجهات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الهيئة الملكية للرياض"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_197",
+      "official_name": "الهيئة الملكية لمدينة مكة المكرمة والمشاعر المقدسة",
+      "short_name": "هيئة مكة والمشاعر",
+      "abbr": "RCMC",
+      "kind": "هيئة ملكية / تطوير",
+      "sector": "تطوير المناطق والوجهات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "هيئة مكة والمشاعر"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_198",
+      "official_name": "الهيئة الملكية لمحافظة العلا",
+      "short_name": "العلا",
+      "abbr": "RCU",
+      "kind": "هيئة ملكية / تطوير",
+      "sector": "تطوير المناطق والوجهات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "العلا"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_199",
+      "official_name": "هيئة تطوير بوابة الدرعية",
+      "short_name": "بوابة الدرعية",
+      "abbr": "DGDA",
+      "kind": "هيئة ملكية / تطوير",
+      "sector": "تطوير المناطق والوجهات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "بوابة الدرعية"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_200",
+      "official_name": "هيئة تطوير منطقة مكة المكرمة",
+      "short_name": "تطوير مكة",
+      "abbr": "MRDA",
+      "kind": "هيئة ملكية / تطوير",
+      "sector": "تطوير المناطق والوجهات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "تطوير مكة"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_201",
+      "official_name": "هيئة تطوير منطقة المدينة المنورة",
+      "short_name": "تطوير المدينة",
+      "abbr": "MDA",
+      "kind": "هيئة ملكية / تطوير",
+      "sector": "تطوير المناطق والوجهات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "تطوير المدينة"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_202",
+      "official_name": "هيئة تطوير المنطقة الشرقية",
+      "short_name": "تطوير الشرقية",
+      "abbr": "EPDA",
+      "kind": "هيئة ملكية / تطوير",
+      "sector": "تطوير المناطق والوجهات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "تطوير الشرقية"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_203",
+      "official_name": "هيئة تطوير منطقة عسير",
+      "short_name": "تطوير عسير",
+      "abbr": "ASDA",
+      "kind": "هيئة ملكية / تطوير",
+      "sector": "تطوير المناطق والوجهات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "تطوير عسير"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_204",
+      "official_name": "هيئة تطوير منطقة حائل",
+      "short_name": "تطوير حائل",
+      "abbr": "HRDA",
+      "kind": "هيئة ملكية / تطوير",
+      "sector": "تطوير المناطق والوجهات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "تطوير حائل"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_205",
+      "official_name": "هيئة تطوير محافظة جدة",
+      "short_name": "تطوير جدة",
+      "abbr": "JDA",
+      "kind": "هيئة ملكية / تطوير",
+      "sector": "تطوير المناطق والوجهات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "تطوير جدة"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_206",
+      "official_name": "هيئة تطوير محافظة الطائف",
+      "short_name": "تطوير الطائف",
+      "abbr": "TDA",
+      "kind": "هيئة ملكية / تطوير",
+      "sector": "تطوير المناطق والوجهات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "تطوير الطائف"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_207",
+      "official_name": "هيئة تطوير ينبع وأملج والوجه وضباء",
+      "short_name": "تطوير ساحل الشمال الغربي",
+      "abbr": "YUWDDA",
+      "kind": "هيئة ملكية / تطوير",
+      "sector": "تطوير المناطق والوجهات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "تطوير ساحل الشمال الغربي"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_208",
+      "official_name": "هيئة تطوير الأحساء",
+      "short_name": "تطوير الأحساء",
+      "abbr": "ADA",
+      "kind": "هيئة ملكية / تطوير",
+      "sector": "تطوير المناطق والوجهات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "تطوير الأحساء"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_209",
+      "official_name": "مؤسسة المسار الرياضي",
+      "short_name": "المسار الرياضي",
+      "abbr": "SBF",
+      "kind": "هيئة ملكية / تطوير",
+      "sector": "تطوير المناطق والوجهات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "المسار الرياضي"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_210",
+      "official_name": "مؤسسة حديقة الملك سلمان",
+      "short_name": "حديقة الملك سلمان",
+      "abbr": "KSPF",
+      "kind": "هيئة ملكية / تطوير",
+      "sector": "تطوير المناطق والوجهات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "حديقة الملك سلمان"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_211",
+      "official_name": "هيئة تطوير محمية الملك سلمان بن عبدالعزيز الملكية",
+      "short_name": "محمية الملك سلمان",
+      "abbr": "KSRNR",
+      "kind": "هيئة ملكية / تطوير",
+      "sector": "تطوير المناطق والوجهات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "محمية الملك سلمان"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_212",
+      "official_name": "هيئة تطوير محمية الإمام عبدالعزيز بن محمد الملكية",
+      "short_name": "محمية الإمام عبدالعزيز",
+      "abbr": "IARDA",
+      "kind": "هيئة ملكية / تطوير",
+      "sector": "تطوير المناطق والوجهات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "محمية الإمام عبدالعزيز"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_213",
+      "official_name": "هيئة تطوير محمية الإمام تركي بن عبدالله الملكية",
+      "short_name": "محمية الإمام تركي",
+      "abbr": "ITBA",
+      "kind": "هيئة ملكية / تطوير",
+      "sector": "تطوير المناطق والوجهات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "محمية الإمام تركي"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_214",
+      "official_name": "هيئة تطوير محمية الملك عبدالعزيز الملكية",
+      "short_name": "محمية الملك عبدالعزيز",
+      "abbr": "KARNR",
+      "kind": "هيئة ملكية / تطوير",
+      "sector": "تطوير المناطق والوجهات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "محمية الملك عبدالعزيز"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_215",
+      "official_name": "هيئة تطوير محمية الأمير محمد بن سلمان الملكية",
+      "short_name": "محمية الأمير محمد بن سلمان",
+      "abbr": "PMBSR",
+      "kind": "هيئة ملكية / تطوير",
+      "sector": "تطوير المناطق والوجهات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "محمية الأمير محمد بن سلمان"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_216",
+      "official_name": "هيئة تطوير محمية الملك خالد الملكية",
+      "short_name": "محمية الملك خالد",
+      "abbr": "KKRNR",
+      "kind": "هيئة ملكية / تطوير",
+      "sector": "تطوير المناطق والوجهات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "محمية الملك خالد"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_217",
+      "official_name": "إمارة منطقة الرياض",
+      "short_name": "إمارة الرياض",
+      "abbr": "—",
+      "kind": "إمارة منطقة",
+      "sector": "الإدارة المحلية",
+      "scope": "مناطقي",
+      "status": "حالي",
+      "aliases": [
+        "إمارة الرياض"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_218",
+      "official_name": "إمارة منطقة مكة المكرمة",
+      "short_name": "إمارة مكة",
+      "abbr": "—",
+      "kind": "إمارة منطقة",
+      "sector": "الإدارة المحلية",
+      "scope": "مناطقي",
+      "status": "حالي",
+      "aliases": [
+        "إمارة مكة"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_219",
+      "official_name": "إمارة منطقة المدينة المنورة",
+      "short_name": "إمارة المدينة",
+      "abbr": "—",
+      "kind": "إمارة منطقة",
+      "sector": "الإدارة المحلية",
+      "scope": "مناطقي",
+      "status": "حالي",
+      "aliases": [
+        "إمارة المدينة"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_220",
+      "official_name": "إمارة المنطقة الشرقية",
+      "short_name": "إمارة الشرقية",
+      "abbr": "—",
+      "kind": "إمارة منطقة",
+      "sector": "الإدارة المحلية",
+      "scope": "مناطقي",
+      "status": "حالي",
+      "aliases": [
+        "إمارة الشرقية"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_221",
+      "official_name": "إمارة منطقة القصيم",
+      "short_name": "إمارة القصيم",
+      "abbr": "—",
+      "kind": "إمارة منطقة",
+      "sector": "الإدارة المحلية",
+      "scope": "مناطقي",
+      "status": "حالي",
+      "aliases": [
+        "إمارة القصيم"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_222",
+      "official_name": "إمارة منطقة عسير",
+      "short_name": "إمارة عسير",
+      "abbr": "—",
+      "kind": "إمارة منطقة",
+      "sector": "الإدارة المحلية",
+      "scope": "مناطقي",
+      "status": "حالي",
+      "aliases": [
+        "إمارة عسير"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_223",
+      "official_name": "إمارة منطقة تبوك",
+      "short_name": "إمارة تبوك",
+      "abbr": "—",
+      "kind": "إمارة منطقة",
+      "sector": "الإدارة المحلية",
+      "scope": "مناطقي",
+      "status": "حالي",
+      "aliases": [
+        "إمارة تبوك"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_224",
+      "official_name": "إمارة منطقة حائل",
+      "short_name": "إمارة حائل",
+      "abbr": "—",
+      "kind": "إمارة منطقة",
+      "sector": "الإدارة المحلية",
+      "scope": "مناطقي",
+      "status": "حالي",
+      "aliases": [
+        "إمارة حائل"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_225",
+      "official_name": "إمارة منطقة الحدود الشمالية",
+      "short_name": "إمارة الحدود الشمالية",
+      "abbr": "—",
+      "kind": "إمارة منطقة",
+      "sector": "الإدارة المحلية",
+      "scope": "مناطقي",
+      "status": "حالي",
+      "aliases": [
+        "إمارة الحدود الشمالية"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_226",
+      "official_name": "إمارة منطقة جازان",
+      "short_name": "إمارة جازان",
+      "abbr": "—",
+      "kind": "إمارة منطقة",
+      "sector": "الإدارة المحلية",
+      "scope": "مناطقي",
+      "status": "حالي",
+      "aliases": [
+        "إمارة جازان"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_227",
+      "official_name": "إمارة منطقة نجران",
+      "short_name": "إمارة نجران",
+      "abbr": "—",
+      "kind": "إمارة منطقة",
+      "sector": "الإدارة المحلية",
+      "scope": "مناطقي",
+      "status": "حالي",
+      "aliases": [
+        "إمارة نجران"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_228",
+      "official_name": "إمارة منطقة الباحة",
+      "short_name": "إمارة الباحة",
+      "abbr": "—",
+      "kind": "إمارة منطقة",
+      "sector": "الإدارة المحلية",
+      "scope": "مناطقي",
+      "status": "حالي",
+      "aliases": [
+        "إمارة الباحة"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_229",
+      "official_name": "إمارة منطقة الجوف",
+      "short_name": "إمارة الجوف",
+      "abbr": "—",
+      "kind": "إمارة منطقة",
+      "sector": "الإدارة المحلية",
+      "scope": "مناطقي",
+      "status": "حالي",
+      "aliases": [
+        "إمارة الجوف"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_230",
+      "official_name": "أمانة منطقة الرياض",
+      "short_name": "أمانة الرياض",
+      "abbr": "—",
+      "kind": "أمانة",
+      "sector": "البلديات والإدارة المحلية",
+      "scope": "محلي",
+      "status": "حالي",
+      "aliases": [
+        "أمانة الرياض"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_231",
+      "official_name": "أمانة العاصمة المقدسة",
+      "short_name": "أمانة مكة",
+      "abbr": "HMM",
+      "kind": "أمانة",
+      "sector": "البلديات والإدارة المحلية",
+      "scope": "محلي",
+      "status": "حالي",
+      "aliases": [
+        "أمانة مكة"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_232",
+      "official_name": "أمانة منطقة المدينة المنورة",
+      "short_name": "أمانة المدينة",
+      "abbr": "—",
+      "kind": "أمانة",
+      "sector": "البلديات والإدارة المحلية",
+      "scope": "محلي",
+      "status": "حالي",
+      "aliases": [
+        "أمانة المدينة"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_233",
+      "official_name": "أمانة المنطقة الشرقية",
+      "short_name": "أمانة الشرقية",
+      "abbr": "—",
+      "kind": "أمانة",
+      "sector": "البلديات والإدارة المحلية",
+      "scope": "محلي",
+      "status": "حالي",
+      "aliases": [
+        "أمانة الشرقية"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_234",
+      "official_name": "أمانة محافظة جدة",
+      "short_name": "أمانة جدة",
+      "abbr": "—",
+      "kind": "أمانة",
+      "sector": "البلديات والإدارة المحلية",
+      "scope": "محلي",
+      "status": "حالي",
+      "aliases": [
+        "أمانة جدة"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_235",
+      "official_name": "أمانة محافظة الطائف",
+      "short_name": "أمانة الطائف",
+      "abbr": "—",
+      "kind": "أمانة",
+      "sector": "البلديات والإدارة المحلية",
+      "scope": "محلي",
+      "status": "حالي",
+      "aliases": [
+        "أمانة الطائف"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_236",
+      "official_name": "أمانة منطقة القصيم",
+      "short_name": "أمانة القصيم",
+      "abbr": "—",
+      "kind": "أمانة",
+      "sector": "البلديات والإدارة المحلية",
+      "scope": "محلي",
+      "status": "حالي",
+      "aliases": [
+        "أمانة القصيم"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_237",
+      "official_name": "أمانة منطقة عسير",
+      "short_name": "أمانة عسير",
+      "abbr": "—",
+      "kind": "أمانة",
+      "sector": "البلديات والإدارة المحلية",
+      "scope": "محلي",
+      "status": "حالي",
+      "aliases": [
+        "أمانة عسير"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_238",
+      "official_name": "أمانة منطقة تبوك",
+      "short_name": "أمانة تبوك",
+      "abbr": "—",
+      "kind": "أمانة",
+      "sector": "البلديات والإدارة المحلية",
+      "scope": "محلي",
+      "status": "حالي",
+      "aliases": [
+        "أمانة تبوك"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_239",
+      "official_name": "أمانة منطقة حائل",
+      "short_name": "أمانة حائل",
+      "abbr": "—",
+      "kind": "أمانة",
+      "sector": "البلديات والإدارة المحلية",
+      "scope": "محلي",
+      "status": "حالي",
+      "aliases": [
+        "أمانة حائل"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_240",
+      "official_name": "أمانة منطقة الحدود الشمالية",
+      "short_name": "أمانة الحدود الشمالية",
+      "abbr": "—",
+      "kind": "أمانة",
+      "sector": "البلديات والإدارة المحلية",
+      "scope": "محلي",
+      "status": "حالي",
+      "aliases": [
+        "أمانة الحدود الشمالية"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_241",
+      "official_name": "أمانة منطقة جازان",
+      "short_name": "أمانة جازان",
+      "abbr": "—",
+      "kind": "أمانة",
+      "sector": "البلديات والإدارة المحلية",
+      "scope": "محلي",
+      "status": "حالي",
+      "aliases": [
+        "أمانة جازان"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_242",
+      "official_name": "أمانة منطقة نجران",
+      "short_name": "أمانة نجران",
+      "abbr": "—",
+      "kind": "أمانة",
+      "sector": "البلديات والإدارة المحلية",
+      "scope": "محلي",
+      "status": "حالي",
+      "aliases": [
+        "أمانة نجران"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_243",
+      "official_name": "أمانة منطقة الباحة",
+      "short_name": "أمانة الباحة",
+      "abbr": "—",
+      "kind": "أمانة",
+      "sector": "البلديات والإدارة المحلية",
+      "scope": "محلي",
+      "status": "حالي",
+      "aliases": [
+        "أمانة الباحة"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_244",
+      "official_name": "أمانة منطقة الجوف",
+      "short_name": "أمانة الجوف",
+      "abbr": "—",
+      "kind": "أمانة",
+      "sector": "البلديات والإدارة المحلية",
+      "scope": "محلي",
+      "status": "حالي",
+      "aliases": [
+        "أمانة الجوف"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_245",
+      "official_name": "أمانة الأحساء",
+      "short_name": "أمانة الأحساء",
+      "abbr": "—",
+      "kind": "أمانة",
+      "sector": "البلديات والإدارة المحلية",
+      "scope": "محلي",
+      "status": "حالي",
+      "aliases": [],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_246",
+      "official_name": "أمانة محافظة حفر الباطن",
+      "short_name": "أمانة حفر الباطن",
+      "abbr": "—",
+      "kind": "أمانة",
+      "sector": "البلديات والإدارة المحلية",
+      "scope": "محلي",
+      "status": "حالي",
+      "aliases": [
+        "أمانة حفر الباطن"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_247",
+      "official_name": "الجامعة الإسلامية بالمدينة المنورة",
+      "short_name": "الجامعة الإسلامية",
+      "abbr": "IU",
+      "kind": "جامعة حكومية / عامة",
+      "sector": "التعليم العالي",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الجامعة الإسلامية"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_248",
+      "official_name": "جامعة أم القرى",
+      "short_name": "أم القرى",
+      "abbr": "UQU",
+      "kind": "جامعة حكومية / عامة",
+      "sector": "التعليم العالي",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "أم القرى"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_249",
+      "official_name": "جامعة الإمام محمد بن سعود الإسلامية",
+      "short_name": "جامعة الإمام",
+      "abbr": "IMSIU",
+      "kind": "جامعة حكومية / عامة",
+      "sector": "التعليم العالي",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "جامعة الإمام"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_250",
+      "official_name": "جامعة الملك سعود",
+      "short_name": "الملك سعود",
+      "abbr": "KSU",
+      "kind": "جامعة حكومية / عامة",
+      "sector": "التعليم العالي",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الملك سعود"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_251",
+      "official_name": "جامعة الملك عبدالعزيز",
+      "short_name": "الملك عبدالعزيز",
+      "abbr": "KAU",
+      "kind": "جامعة حكومية / عامة",
+      "sector": "التعليم العالي",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الملك عبدالعزيز"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_252",
+      "official_name": "جامعة الملك فهد للبترول والمعادن",
+      "short_name": "جامعة البترول",
+      "abbr": "KFUPM",
+      "kind": "جامعة حكومية / عامة",
+      "sector": "التعليم العالي",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "جامعة البترول"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_253",
+      "official_name": "جامعة الملك فيصل",
+      "short_name": "الملك فيصل",
+      "abbr": "KFU",
+      "kind": "جامعة حكومية / عامة",
+      "sector": "التعليم العالي",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الملك فيصل"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_254",
+      "official_name": "جامعة الملك خالد",
+      "short_name": "الملك خالد",
+      "abbr": "KKU",
+      "kind": "جامعة حكومية / عامة",
+      "sector": "التعليم العالي",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الملك خالد"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_255",
+      "official_name": "جامعة القصيم",
+      "short_name": "القصيم",
+      "abbr": "QU",
+      "kind": "جامعة حكومية / عامة",
+      "sector": "التعليم العالي",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "القصيم"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_256",
+      "official_name": "جامعة طيبة",
+      "short_name": "طيبة",
+      "abbr": "TaibahU",
+      "kind": "جامعة حكومية / عامة",
+      "sector": "التعليم العالي",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "طيبة"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_257",
+      "official_name": "جامعة الطائف",
+      "short_name": "الطائف",
+      "abbr": "TU",
+      "kind": "جامعة حكومية / عامة",
+      "sector": "التعليم العالي",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الطائف"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_258",
+      "official_name": "جامعة جازان",
+      "short_name": "جازان",
+      "abbr": "JazanU",
+      "kind": "جامعة حكومية / عامة",
+      "sector": "التعليم العالي",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "جازان"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_259",
+      "official_name": "جامعة حائل",
+      "short_name": "حائل",
+      "abbr": "UOH",
+      "kind": "جامعة حكومية / عامة",
+      "sector": "التعليم العالي",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "حائل"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_260",
+      "official_name": "جامعة الجوف",
+      "short_name": "الجوف",
+      "abbr": "JU",
+      "kind": "جامعة حكومية / عامة",
+      "sector": "التعليم العالي",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الجوف"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_261",
+      "official_name": "جامعة الباحة",
+      "short_name": "الباحة",
+      "abbr": "BU",
+      "kind": "جامعة حكومية / عامة",
+      "sector": "التعليم العالي",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الباحة"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_262",
+      "official_name": "جامعة تبوك",
+      "short_name": "تبوك",
+      "abbr": "UT",
+      "kind": "جامعة حكومية / عامة",
+      "sector": "التعليم العالي",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "تبوك"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_263",
+      "official_name": "جامعة نجران",
+      "short_name": "نجران",
+      "abbr": "NU",
+      "kind": "جامعة حكومية / عامة",
+      "sector": "التعليم العالي",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "نجران"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_264",
+      "official_name": "جامعة الحدود الشمالية",
+      "short_name": "الحدود الشمالية",
+      "abbr": "NBU",
+      "kind": "جامعة حكومية / عامة",
+      "sector": "التعليم العالي",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الحدود الشمالية"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_265",
+      "official_name": "جامعة الأميرة نورة بنت عبدالرحمن",
+      "short_name": "جامعة نورة",
+      "abbr": "PNU",
+      "kind": "جامعة حكومية / عامة",
+      "sector": "التعليم العالي",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "جامعة نورة"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_266",
+      "official_name": "جامعة شقراء",
+      "short_name": "شقراء",
+      "abbr": "SU",
+      "kind": "جامعة حكومية / عامة",
+      "sector": "التعليم العالي",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "شقراء"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_267",
+      "official_name": "جامعة المجمعة",
+      "short_name": "المجمعة",
+      "abbr": "MU",
+      "kind": "جامعة حكومية / عامة",
+      "sector": "التعليم العالي",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "المجمعة"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_268",
+      "official_name": "الجامعة السعودية الإلكترونية",
+      "short_name": "الإلكترونية",
+      "abbr": "SEU",
+      "kind": "جامعة حكومية / عامة",
+      "sector": "التعليم العالي",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الإلكترونية"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_269",
+      "official_name": "جامعة جدة",
+      "short_name": "جدة",
+      "abbr": "UJ",
+      "kind": "جامعة حكومية / عامة",
+      "sector": "التعليم العالي",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "جدة"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_270",
+      "official_name": "جامعة بيشة",
+      "short_name": "بيشة",
+      "abbr": "UB",
+      "kind": "جامعة حكومية / عامة",
+      "sector": "التعليم العالي",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "بيشة"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_271",
+      "official_name": "جامعة حفر الباطن",
+      "short_name": "حفر الباطن",
+      "abbr": "UHB",
+      "kind": "جامعة حكومية / عامة",
+      "sector": "التعليم العالي",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "حفر الباطن"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_272",
+      "official_name": "جامعة الأمير سطام بن عبدالعزيز",
+      "short_name": "الأمير سطام",
+      "abbr": "PSAU",
+      "kind": "جامعة حكومية / عامة",
+      "sector": "التعليم العالي",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الأمير سطام"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_273",
+      "official_name": "جامعة الإمام عبدالرحمن بن فيصل",
+      "short_name": "الإمام عبدالرحمن",
+      "abbr": "IAU",
+      "kind": "جامعة حكومية / عامة",
+      "sector": "التعليم العالي",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الإمام عبدالرحمن"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_274",
+      "official_name": "جامعة الملك سعود بن عبدالعزيز للعلوم الصحية",
+      "short_name": "العلوم الصحية",
+      "abbr": "KSAU-HS",
+      "kind": "جامعة حكومية / عامة",
+      "sector": "التعليم العالي",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "العلوم الصحية"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_275",
+      "official_name": "جامعة الملك عبدالله للعلوم والتقنية",
+      "short_name": "كاوست",
+      "abbr": "KAUST",
+      "kind": "جامعة حكومية / عامة",
+      "sector": "التعليم العالي",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "كاوست"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_276",
+      "official_name": "برنامج التحول الوطني",
+      "short_name": "التحول الوطني",
+      "abbr": "NTP",
+      "kind": "برنامج رؤية",
+      "sector": "برامج تحقيق الرؤية",
+      "scope": "وطني",
+      "status": "برنامج",
+      "aliases": [
+        "التحول الوطني"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_277",
+      "official_name": "برنامج تطوير القطاع المالي",
+      "short_name": "تطوير القطاع المالي",
+      "abbr": "FSDP",
+      "kind": "برنامج رؤية",
+      "sector": "برامج تحقيق الرؤية",
+      "scope": "وطني",
+      "status": "برنامج",
+      "aliases": [
+        "تطوير القطاع المالي"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_278",
+      "official_name": "برنامج تنمية القدرات البشرية",
+      "short_name": "تنمية القدرات البشرية",
+      "abbr": "HCDP",
+      "kind": "برنامج رؤية",
+      "sector": "برامج تحقيق الرؤية",
+      "scope": "وطني",
+      "status": "برنامج",
+      "aliases": [
+        "تنمية القدرات البشرية"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_279",
+      "official_name": "برنامج تطوير الصناعة الوطنية والخدمات اللوجستية",
+      "short_name": "ندلب",
+      "abbr": "NIDLP",
+      "kind": "برنامج رؤية",
+      "sector": "برامج تحقيق الرؤية",
+      "scope": "وطني",
+      "status": "برنامج",
+      "aliases": [
+        "ندلب"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_280",
+      "official_name": "برنامج خدمة ضيوف الرحمن",
+      "short_name": "ضيوف الرحمن",
+      "abbr": "PEP",
+      "kind": "برنامج رؤية",
+      "sector": "برامج تحقيق الرؤية",
+      "scope": "وطني",
+      "status": "برنامج",
+      "aliases": [
+        "ضيوف الرحمن"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_281",
+      "official_name": "برنامج جودة الحياة",
+      "short_name": "جودة الحياة",
+      "abbr": "QOL",
+      "kind": "برنامج رؤية",
+      "sector": "برامج تحقيق الرؤية",
+      "scope": "وطني",
+      "status": "برنامج",
+      "aliases": [
+        "جودة الحياة"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_282",
+      "official_name": "برنامج الإسكان",
+      "short_name": "الإسكان",
+      "abbr": "Housing Program",
+      "kind": "برنامج رؤية",
+      "sector": "برامج تحقيق الرؤية",
+      "scope": "وطني",
+      "status": "برنامج",
+      "aliases": [
+        "الإسكان"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_283",
+      "official_name": "برنامج التخصيص",
+      "short_name": "التخصيص",
+      "abbr": "Privatization Program",
+      "kind": "برنامج رؤية",
+      "sector": "برامج تحقيق الرؤية",
+      "scope": "وطني",
+      "status": "برنامج",
+      "aliases": [
+        "التخصيص"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_284",
+      "official_name": "برنامج تحول القطاع الصحي",
+      "short_name": "تحول القطاع الصحي",
+      "abbr": "HSTP",
+      "kind": "برنامج رؤية",
+      "sector": "برامج تحقيق الرؤية",
+      "scope": "وطني",
+      "status": "برنامج",
+      "aliases": [
+        "تحول القطاع الصحي"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_285",
+      "official_name": "برنامج الاستدامة المالية",
+      "short_name": "الاستدامة المالية",
+      "abbr": "FSP",
+      "kind": "برنامج رؤية",
+      "sector": "برامج تحقيق الرؤية",
+      "scope": "وطني",
+      "status": "برنامج",
+      "aliases": [
+        "الاستدامة المالية",
+        "برنامج تحقيق التوازن المالي"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_286",
+      "official_name": "برنامج صندوق الاستثمارات العامة",
+      "short_name": "برنامج الصندوق",
+      "abbr": "PIF Program",
+      "kind": "برنامج رؤية",
+      "sector": "برامج تحقيق الرؤية",
+      "scope": "وطني",
+      "status": "برنامج",
+      "aliases": [
+        "برنامج الصندوق"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_287",
+      "official_name": "شركة الزيت العربية السعودية",
+      "short_name": "أرامكو السعودية",
+      "abbr": "Saudi Aramco",
+      "kind": "شركة حكومية / شبه حكومية",
+      "sector": "الطاقة والصناعة والاتصالات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "أرامكو السعودية"
+      ],
+      "source": "https://www.aramco.com/ar"
+    },
+    {
+      "id": "ent_288",
+      "official_name": "الشركة السعودية للكهرباء",
+      "short_name": "السعودية للكهرباء",
+      "abbr": "SEC",
+      "kind": "شركة حكومية / شبه حكومية",
+      "sector": "الطاقة والصناعة والاتصالات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "السعودية للكهرباء"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_289",
+      "official_name": "شركة التعدين العربية السعودية",
+      "short_name": "معادن",
+      "abbr": "Ma'aden",
+      "kind": "شركة حكومية / شبه حكومية",
+      "sector": "الطاقة والصناعة والاتصالات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "معادن"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_290",
+      "official_name": "مجموعة إس تي سي",
+      "short_name": "stc",
+      "abbr": "stc",
+      "kind": "شركة حكومية / شبه حكومية",
+      "sector": "الطاقة والصناعة والاتصالات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "stc"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_291",
+      "official_name": "شركة علم",
+      "short_name": "علم",
+      "abbr": "Elm",
+      "kind": "شركة حكومية / شبه حكومية",
+      "sector": "الطاقة والصناعة والاتصالات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "علم"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_292",
+      "official_name": "الشركة السعودية للصناعات العسكرية",
+      "short_name": "سامي",
+      "abbr": "SAMI",
+      "kind": "شركة حكومية / شبه حكومية",
+      "sector": "الطاقة والصناعة والاتصالات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "سامي"
+      ],
+      "source": "https://www.pif.gov.sa/ar/our-investments/our-portfolio/"
+    },
+    {
+      "id": "ent_293",
+      "official_name": "الشركة السعودية لتقنية المعلومات",
+      "short_name": "سايت",
+      "abbr": "SITE",
+      "kind": "شركة حكومية / شبه حكومية",
+      "sector": "الطاقة والصناعة والاتصالات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "سايت"
+      ],
+      "source": "https://www.pif.gov.sa/ar/our-investments/our-portfolio/"
+    },
+    {
+      "id": "ent_294",
+      "official_name": "الشركة السعودية لخدمات التعدين",
+      "short_name": "إسناد",
+      "abbr": "ESNAD",
+      "kind": "شركة حكومية / شبه حكومية",
+      "sector": "الطاقة والصناعة والاتصالات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "إسناد"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_295",
+      "official_name": "شركة دوسر",
+      "short_name": "دسر",
+      "abbr": "Dussur",
+      "kind": "شركة حكومية / شبه حكومية",
+      "sector": "الطاقة والصناعة والاتصالات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "دسر"
+      ],
+      "source": "https://www.pif.gov.sa/ar/our-investments/our-portfolio/"
+    },
+    {
+      "id": "ent_296",
+      "official_name": "شركة آلات",
+      "short_name": "آلات",
+      "abbr": "Alat",
+      "kind": "شركة حكومية / شبه حكومية",
+      "sector": "الطاقة والصناعة والاتصالات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "آلات"
+      ],
+      "source": "https://www.pif.gov.sa/ar/our-investments/our-portfolio/"
+    },
+    {
+      "id": "ent_297",
+      "official_name": "شركة هيومين",
+      "short_name": "هيومين",
+      "abbr": "HUMAIN",
+      "kind": "شركة حكومية / شبه حكومية",
+      "sector": "الطاقة والصناعة والاتصالات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "هيومين"
+      ],
+      "source": "https://www.pif.gov.sa/ar/our-investments/our-portfolio/"
+    },
+    {
+      "id": "ent_298",
+      "official_name": "الشركة السعودية للذكاء الاصطناعي",
+      "short_name": "سكاي",
+      "abbr": "SCAI",
+      "kind": "شركة حكومية / شبه حكومية",
+      "sector": "الطاقة والصناعة والاتصالات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "سكاي"
+      ],
+      "source": "https://www.pif.gov.sa/ar/our-investments/our-portfolio/"
+    },
+    {
+      "id": "ent_299",
+      "official_name": "مجموعة نيو للفضاء",
+      "short_name": "نيو سبيس",
+      "abbr": "NSG",
+      "kind": "شركة حكومية / شبه حكومية",
+      "sector": "الطاقة والصناعة والاتصالات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "نيو سبيس"
+      ],
+      "source": "https://www.pif.gov.sa/ar/our-investments/our-portfolio/"
+    },
+    {
+      "id": "ent_300",
+      "official_name": "شركة لايفيرا",
+      "short_name": "لايفيرا",
+      "abbr": "Lifera",
+      "kind": "شركة حكومية / شبه حكومية",
+      "sector": "الطاقة والصناعة والاتصالات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "لايفيرا"
+      ],
+      "source": "https://www.pif.gov.sa/ar/our-investments/our-portfolio/"
+    },
+    {
+      "id": "ent_301",
+      "official_name": "شركة المنتجات الحلال للتنمية",
+      "short_name": "المنتجات الحلال",
+      "abbr": "HPDC",
+      "kind": "شركة حكومية / شبه حكومية",
+      "sector": "الطاقة والصناعة والاتصالات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "المنتجات الحلال"
+      ],
+      "source": "https://www.pif.gov.sa/ar/our-investments/our-portfolio/"
+    },
+    {
+      "id": "ent_302",
+      "official_name": "شركة المياه الوطنية",
+      "short_name": "المياه الوطنية",
+      "abbr": "NWC",
+      "kind": "شركة حكومية / شبه حكومية",
+      "sector": "المياه والنقل والخدمات اللوجستية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "المياه الوطنية"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_303",
+      "official_name": "الشركة السعودية لشراكات المياه",
+      "short_name": "شراكات المياه",
+      "abbr": "SWPC",
+      "kind": "شركة حكومية / شبه حكومية",
+      "sector": "المياه والنقل والخدمات اللوجستية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "شراكات المياه"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_304",
+      "official_name": "الشركة السعودية لشراء الطاقة",
+      "short_name": "المشتري الرئيس",
+      "abbr": "SPPC",
+      "kind": "شركة حكومية / شبه حكومية",
+      "sector": "المياه والنقل والخدمات اللوجستية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "المشتري الرئيس"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_305",
+      "official_name": "الشركة الوطنية لخدمات كفاءة الطاقة",
+      "short_name": "ترشيد",
+      "abbr": "Tarshid",
+      "kind": "شركة حكومية / شبه حكومية",
+      "sector": "المياه والنقل والخدمات اللوجستية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "ترشيد"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_306",
+      "official_name": "شركة الخطوط الحديدية السعودية",
+      "short_name": "سار",
+      "abbr": "SAR",
+      "kind": "شركة حكومية / شبه حكومية",
+      "sector": "المياه والنقل والخدمات اللوجستية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "سار"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_307",
+      "official_name": "مجموعة السعودية",
+      "short_name": null,
+      "abbr": "Saudia",
+      "kind": "شركة حكومية / شبه حكومية",
+      "sector": "المياه والنقل والخدمات اللوجستية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "المؤسسة العامة للخطوط الجوية العربية السعودية"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_308",
+      "official_name": "شركة مطارات القابضة",
+      "short_name": "مطارات القابضة",
+      "abbr": "MATARAT",
+      "kind": "شركة حكومية / شبه حكومية",
+      "sector": "المياه والنقل والخدمات اللوجستية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "مطارات القابضة"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_309",
+      "official_name": "شركة مطارات الرياض",
+      "short_name": "مطارات الرياض",
+      "abbr": "RAC",
+      "kind": "شركة حكومية / شبه حكومية",
+      "sector": "المياه والنقل والخدمات اللوجستية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "مطارات الرياض"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_310",
+      "official_name": "شركة مطارات جدة",
+      "short_name": "مطارات جدة",
+      "abbr": "JEDCO",
+      "kind": "شركة حكومية / شبه حكومية",
+      "sector": "المياه والنقل والخدمات اللوجستية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "مطارات جدة"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_311",
+      "official_name": "شركة مطارات الدمام",
+      "short_name": "مطارات الدمام",
+      "abbr": "DACO",
+      "kind": "شركة حكومية / شبه حكومية",
+      "sector": "المياه والنقل والخدمات اللوجستية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "مطارات الدمام"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_312",
+      "official_name": "تجمع مطارات الثاني",
+      "short_name": "مطارات الثاني",
+      "abbr": "Cluster2",
+      "kind": "شركة حكومية / شبه حكومية",
+      "sector": "المياه والنقل والخدمات اللوجستية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "مطارات الثاني"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_313",
+      "official_name": "طيران الرياض",
+      "short_name": "طيران الرياض",
+      "abbr": "Riyadh Air",
+      "kind": "شركة حكومية / شبه حكومية",
+      "sector": "المياه والنقل والخدمات اللوجستية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [],
+      "source": "https://www.pif.gov.sa/ar/our-investments/our-portfolio/"
+    },
+    {
+      "id": "ent_314",
+      "official_name": "شركة تأجير الطائرات",
+      "short_name": "أفيليس",
+      "abbr": "AviLease",
+      "kind": "شركة حكومية / شبه حكومية",
+      "sector": "المياه والنقل والخدمات اللوجستية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "أفيليس"
+      ],
+      "source": "https://www.pif.gov.sa/ar/our-investments/our-portfolio/"
+    },
+    {
+      "id": "ent_315",
+      "official_name": "شركة الطائرات المروحية",
+      "short_name": "ذا هليكوبتر كومباني",
+      "abbr": "THC",
+      "kind": "شركة حكومية / شبه حكومية",
+      "sector": "المياه والنقل والخدمات اللوجستية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "ذا هليكوبتر كومباني"
+      ],
+      "source": "https://www.pif.gov.sa/ar/our-investments/our-portfolio/"
+    },
+    {
+      "id": "ent_316",
+      "official_name": "الشركة الوطنية السعودية للنقل البحري",
+      "short_name": "البحري",
+      "abbr": "Bahri",
+      "kind": "شركة حكومية / شبه حكومية",
+      "sector": "المياه والنقل والخدمات اللوجستية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "البحري"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_317",
+      "official_name": "شركة كروز السعودية",
+      "short_name": "كروز السعودية",
+      "abbr": "Cruise Saudi",
+      "kind": "شركة حكومية / شبه حكومية",
+      "sector": "المياه والنقل والخدمات اللوجستية",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "كروز السعودية"
+      ],
+      "source": "https://www.pif.gov.sa/ar/our-investments/our-portfolio/"
+    },
+    {
+      "id": "ent_318",
+      "official_name": "الشركة الوطنية للإسكان",
+      "short_name": "الوطنية للإسكان",
+      "abbr": "NHC",
+      "kind": "شركة حكومية / شبه حكومية",
+      "sector": "الإسكان والصحة والمشتريات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الوطنية للإسكان"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_319",
+      "official_name": "شركة الصحة القابضة",
+      "short_name": "الصحة القابضة",
+      "abbr": "HHC",
+      "kind": "شركة حكومية / شبه حكومية",
+      "sector": "الإسكان والصحة والمشتريات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الصحة القابضة"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_320",
+      "official_name": "الشركة الوطنية للشراء الموحد للأدوية والأجهزة والمستلزمات الطبية",
+      "short_name": "نوبكو",
+      "abbr": "NUPCO",
+      "kind": "شركة حكومية / شبه حكومية",
+      "sector": "الإسكان والصحة والمشتريات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "نوبكو"
+      ],
+      "source": "https://www.pif.gov.sa/ar/our-investments/our-portfolio/"
+    },
+    {
+      "id": "ent_321",
+      "official_name": "الشركة الوطنية للضمان الصحي",
+      "short_name": "ضمان",
+      "abbr": "Daman",
+      "kind": "شركة حكومية / شبه حكومية",
+      "sector": "الإسكان والصحة والمشتريات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "ضمان"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_322",
+      "official_name": "الشركة السعودية لإعادة التمويل العقاري",
+      "short_name": "إعادة التمويل العقاري",
+      "abbr": "SRC",
+      "kind": "شركة حكومية / شبه حكومية",
+      "sector": "الإسكان والصحة والمشتريات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "إعادة التمويل العقاري"
+      ],
+      "source": "https://www.pif.gov.sa/ar/our-investments/our-portfolio/"
+    },
+    {
+      "id": "ent_323",
+      "official_name": "شركة نيوم",
+      "short_name": "نيوم",
+      "abbr": "NEOM",
+      "kind": "شركة محفظة صندوق الاستثمارات",
+      "sector": "المشاريع الكبرى والوجهات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "نيوم"
+      ],
+      "source": "https://www.pif.gov.sa/ar/our-investments/our-portfolio/"
+    },
+    {
+      "id": "ent_324",
+      "official_name": "شركة البحر الأحمر الدولية",
+      "short_name": "البحر الأحمر",
+      "abbr": "RSG",
+      "kind": "شركة محفظة صندوق الاستثمارات",
+      "sector": "المشاريع الكبرى والوجهات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "البحر الأحمر"
+      ],
+      "source": "https://www.pif.gov.sa/ar/our-investments/our-portfolio/"
+    },
+    {
+      "id": "ent_325",
+      "official_name": "شركة القدية للاستثمار",
+      "short_name": "القدية",
+      "abbr": "QIC",
+      "kind": "شركة محفظة صندوق الاستثمارات",
+      "sector": "المشاريع الكبرى والوجهات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "القدية"
+      ],
+      "source": "https://www.pif.gov.sa/ar/our-investments/our-portfolio/"
+    },
+    {
+      "id": "ent_326",
+      "official_name": "شركة الدرعية",
+      "short_name": "الدرعية",
+      "abbr": "Diriyah Company",
+      "kind": "شركة محفظة صندوق الاستثمارات",
+      "sector": "المشاريع الكبرى والوجهات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "الدرعية"
+      ],
+      "source": "https://www.pif.gov.sa/ar/our-investments/our-portfolio/"
+    },
+    {
+      "id": "ent_327",
+      "official_name": "مجموعة روشن",
+      "short_name": "روشن",
+      "abbr": "ROSHN",
+      "kind": "شركة محفظة صندوق الاستثمارات",
+      "sector": "المشاريع الكبرى والوجهات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "روشن"
+      ],
+      "source": "https://www.pif.gov.sa/ar/our-investments/our-portfolio/"
+    },
+    {
+      "id": "ent_328",
+      "official_name": "شركة تطوير المربع الجديد",
+      "short_name": "المربع الجديد",
+      "abbr": "New Murabba",
+      "kind": "شركة محفظة صندوق الاستثمارات",
+      "sector": "المشاريع الكبرى والوجهات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "المربع الجديد"
+      ],
+      "source": "https://www.pif.gov.sa/ar/our-investments/our-portfolio/"
+    },
+    {
+      "id": "ent_329",
+      "official_name": "شركة السودة للتطوير",
+      "short_name": "السودة",
+      "abbr": "Soudah Development",
+      "kind": "شركة محفظة صندوق الاستثمارات",
+      "sector": "المشاريع الكبرى والوجهات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "السودة"
+      ],
+      "source": "https://www.pif.gov.sa/ar/our-investments/our-portfolio/"
+    },
+    {
+      "id": "ent_330",
+      "official_name": "شركة وسط جدة للتطوير",
+      "short_name": "وسط جدة",
+      "abbr": "JCDC",
+      "kind": "شركة محفظة صندوق الاستثمارات",
+      "sector": "المشاريع الكبرى والوجهات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "وسط جدة"
+      ],
+      "source": "https://www.pif.gov.sa/ar/our-investments/our-portfolio/"
+    },
+    {
+      "id": "ent_331",
+      "official_name": "شركة رؤى المدينة القابضة",
+      "short_name": "رؤى المدينة",
+      "abbr": "Rua Al Madinah",
+      "kind": "شركة محفظة صندوق الاستثمارات",
+      "sector": "المشاريع الكبرى والوجهات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "رؤى المدينة"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_332",
+      "official_name": "شركة أم القرى للتنمية والإعمار",
+      "short_name": "وجهة مسار",
+      "abbr": "Umm Al Qura / Masar",
+      "kind": "شركة محفظة صندوق الاستثمارات",
+      "sector": "المشاريع الكبرى والوجهات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "وجهة مسار"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_333",
+      "official_name": "شركة كدانة للتنمية والتطوير",
+      "short_name": "كدانة",
+      "abbr": "KIDANA",
+      "kind": "شركة محفظة صندوق الاستثمارات",
+      "sector": "المشاريع الكبرى والوجهات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "كدانة"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_334",
+      "official_name": "شركة مشاريع الترفيه السعودية",
+      "short_name": "سفن",
+      "abbr": "SEVEN",
+      "kind": "شركة محفظة صندوق الاستثمارات",
+      "sector": "المشاريع الكبرى والوجهات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "سفن"
+      ],
+      "source": "https://www.pif.gov.sa/ar/our-investments/our-portfolio/"
+    },
+    {
+      "id": "ent_335",
+      "official_name": "شركة السعودية للاستثمار السياحي",
+      "short_name": "أسفار",
+      "abbr": "ASFAR",
+      "kind": "شركة محفظة صندوق الاستثمارات",
+      "sector": "المشاريع الكبرى والوجهات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "أسفار"
+      ],
+      "source": "https://www.pif.gov.sa/ar/our-investments/our-portfolio/"
+    },
+    {
+      "id": "ent_336",
+      "official_name": "شركة دان",
+      "short_name": "دان",
+      "abbr": "Dan Company",
+      "kind": "شركة محفظة صندوق الاستثمارات",
+      "sector": "المشاريع الكبرى والوجهات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "دان"
+      ],
+      "source": "https://www.pif.gov.sa/ar/our-investments/our-portfolio/"
+    },
+    {
+      "id": "ent_337",
+      "official_name": "شركة أديرا للضيافة",
+      "short_name": "أديرا",
+      "abbr": "Adeera",
+      "kind": "شركة محفظة صندوق الاستثمارات",
+      "sector": "المشاريع الكبرى والوجهات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "أديرا"
+      ],
+      "source": "https://www.pif.gov.sa/ar/our-investments/our-portfolio/"
+    },
+    {
+      "id": "ent_338",
+      "official_name": "مجموعة بوتيك",
+      "short_name": "بوتيك",
+      "abbr": "Boutique Group",
+      "kind": "شركة محفظة صندوق الاستثمارات",
+      "sector": "المشاريع الكبرى والوجهات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "بوتيك"
+      ],
+      "source": "https://www.pif.gov.sa/ar/our-investments/our-portfolio/"
+    },
+    {
+      "id": "ent_339",
+      "official_name": "شركة تطوير البلد",
+      "short_name": "البلد",
+      "abbr": "Al Balad Development",
+      "kind": "شركة محفظة صندوق الاستثمارات",
+      "sector": "المشاريع الكبرى والوجهات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "البلد"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_340",
+      "official_name": "شركة تطوير منطقة جبل عمر",
+      "short_name": "جبل عمر",
+      "abbr": "JODC",
+      "kind": "شركة محفظة صندوق الاستثمارات",
+      "sector": "المشاريع الكبرى والوجهات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "جبل عمر"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_341",
+      "official_name": "شركة مركز الملك عبدالله المالي للإدارة والتطوير",
+      "short_name": "كافد",
+      "abbr": "KAFD DMC",
+      "kind": "شركة محفظة صندوق الاستثمارات",
+      "sector": "المشاريع الكبرى والوجهات",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "كافد"
+      ],
+      "source": "https://www.pif.gov.sa/ar/our-investments/our-portfolio/"
+    },
+    {
+      "id": "ent_342",
+      "official_name": "الشركة السعودية الاستثمارية لإعادة التدوير",
+      "short_name": "سرك",
+      "abbr": "SIRC",
+      "kind": "شركة محفظة صندوق الاستثمارات",
+      "sector": "الاستثمار والاقتصاد الجديد",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "سرك"
+      ],
+      "source": "https://www.pif.gov.sa/ar/our-investments/our-portfolio/"
+    },
+    {
+      "id": "ent_343",
+      "official_name": "الشركة السعودية للاستثمار الزراعي والإنتاج الحيواني",
+      "short_name": "سالك",
+      "abbr": "SALIC",
+      "kind": "شركة محفظة صندوق الاستثمارات",
+      "sector": "الاستثمار والاقتصاد الجديد",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "سالك"
+      ],
+      "source": "https://www.pif.gov.sa/ar/our-investments/our-portfolio/"
+    },
+    {
+      "id": "ent_344",
+      "official_name": "شركة القهوة السعودية",
+      "short_name": "القهوة السعودية",
+      "abbr": "Saudi Coffee Company",
+      "kind": "شركة محفظة صندوق الاستثمارات",
+      "sector": "الاستثمار والاقتصاد الجديد",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "القهوة السعودية"
+      ],
+      "source": "https://www.pif.gov.sa/ar/our-investments/our-portfolio/"
+    },
+    {
+      "id": "ent_345",
+      "official_name": "شركة تسارع لاستثمارات التنقل",
+      "short_name": "تسارع",
+      "abbr": "Tasaru",
+      "kind": "شركة محفظة صندوق الاستثمارات",
+      "sector": "الاستثمار والاقتصاد الجديد",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "تسارع"
+      ],
+      "source": "https://www.pif.gov.sa/ar/our-investments/our-portfolio/"
+    },
+    {
+      "id": "ent_346",
+      "official_name": "شركة سير",
+      "short_name": "سير",
+      "abbr": "Ceer",
+      "kind": "شركة محفظة صندوق الاستثمارات",
+      "sector": "الاستثمار والاقتصاد الجديد",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "سير"
+      ],
+      "source": "https://www.pif.gov.sa/ar/our-investments/our-portfolio/"
+    },
+    {
+      "id": "ent_347",
+      "official_name": "شركة البنية التحتية للمركبات الكهربائية",
+      "short_name": "إيفك",
+      "abbr": "EVIQ",
+      "kind": "شركة محفظة صندوق الاستثمارات",
+      "sector": "الاستثمار والاقتصاد الجديد",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "إيفك"
+      ],
+      "source": "https://www.pif.gov.sa/ar/our-investments/our-portfolio/"
+    },
+    {
+      "id": "ent_348",
+      "official_name": "مجموعة سافي للألعاب الإلكترونية",
+      "short_name": "سافي",
+      "abbr": "Savvy Games Group",
+      "kind": "شركة محفظة صندوق الاستثمارات",
+      "sector": "الاستثمار والاقتصاد الجديد",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "سافي"
+      ],
+      "source": "https://www.pif.gov.sa/ar/our-investments/our-portfolio/savvy-games-group/"
+    },
+    {
+      "id": "ent_349",
+      "official_name": "شركة قولف السعودية",
+      "short_name": "قولف السعودية",
+      "abbr": "Golf Saudi",
+      "kind": "شركة محفظة صندوق الاستثمارات",
+      "sector": "الاستثمار والاقتصاد الجديد",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "قولف السعودية"
+      ],
+      "source": "https://www.pif.gov.sa/ar/our-investments/our-portfolio/"
+    },
+    {
+      "id": "ent_350",
+      "official_name": "الشركة الوطنية للخدمات الأمنية",
+      "short_name": "سيف",
+      "abbr": "SAFE",
+      "kind": "شركة محفظة صندوق الاستثمارات",
+      "sector": "الاستثمار والاقتصاد الجديد",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "سيف"
+      ],
+      "source": "https://www.pif.gov.sa/ar/our-investments/our-portfolio/"
+    },
+    {
+      "id": "ent_351",
+      "official_name": "الشركة السعودية للتحكم التقني والأمني الشامل",
+      "short_name": "تحكم",
+      "abbr": "Tahakom",
+      "kind": "شركة محفظة صندوق الاستثمارات",
+      "sector": "الاستثمار والاقتصاد الجديد",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "تحكم"
+      ],
+      "source": "https://my.gov.sa/ar/agencies"
+    },
+    {
+      "id": "ent_352",
+      "official_name": "الأمن العام",
+      "short_name": "الأمن العام",
+      "abbr": "—",
+      "kind": "جهاز سيادي / مجلس",
+      "sector": "الحكومة والإدارة العامة",
+      "scope": "وطني",
+      "status": "تابع لجهة",
+      "aliases": [
+        "المديرية العامة للأمن العام"
+      ],
+      "source": "قرار المالك — الاسم المستعمل في التعاملات"
+    },
+    {
+      "id": "ent_353",
+      "official_name": "الرئاسة العامة لشؤون الحرمين الشريفين",
+      "short_name": "—",
+      "abbr": "—",
+      "kind": "هيئة / رئاسة",
+      "sector": "الشؤون الدينية والأوقاف",
+      "scope": "وطني",
+      "status": "حالي",
+      "aliases": [
+        "—"
+      ],
+      "source": "قرار المالك — جهة ثالثة مستقلة"
+    },
+    {
+      "id": "ent_354",
+      "official_name": "مركز مشاريع البنية التحتية بمنطقة الرياض",
+      "short_name": "مركز مشاريع البنية التحتية",
+      "abbr": "—",
+      "kind": "مركز / جهة تنفيذية",
+      "sector": "البلديات والإسكان والنقل",
+      "scope": "إقليمي",
+      "status": "حالي",
+      "aliases": [
+        "مركز مشاريع البنية التحتية"
+      ],
+      "source": "قرار المالك — «هم اسمهم كذا»"
+    }
+  ]
+}

@@ -17,3 +17,14 @@ seed/*.demo.json
 # secrets — never commit
 .env
 seed/*.backfill.json
+
+# معرّف النشرة — يكتبه scripts/deploy.mjs قبل كل رفع ويُشحَن مع الصورة، ولا يُلتزَم
+.build-id
+
+# صفحة العرض «منصة سند» — المخرجات والوسائط المؤقتة (اللقطات النهائية في showcase/shots تُلتزَم)
+showcase/dist/
+showcase/shots/raw/
+showcase/verify/
+showcase/src/fonts/
+showcase/src/brand/
+showcase-instance.json

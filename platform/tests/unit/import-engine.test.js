@@ -244,14 +244,17 @@ test('undo: rejected after the 7-day window expires', async () => {
 });
 
 // ── الحساسية والنطاق ──
-test('sensitive: salary column exists for hr/admin and sector_lead (owner-granted), hidden from bd', () => {
+test('sensitive: عمود الراتب في التصدير لمدير النظام فقط — محجوب عن كل دور آخر حتى تكامل Odoo', () => {
   const a = engine.ADAPTERS.employees;
-  const hrCols = engine.visibleColumns(U('hr', null, 'company'), a).map((c) => c.key);
-  const leadCols = engine.visibleColumns(U('sector_lead', 'S1', 'sector'), a).map((c) => c.key);
-  const bdCols = engine.visibleColumns(U('bd_manager', 'S1', 'sector'), a).map((c) => c.key);
-  assert.ok(hrCols.includes('salary'));
-  assert.ok(leadCols.includes('salary'), 'قائد القطاع يرى عمود الراتب الآن (قرار صريح من المالك)');
-  assert.ok(!bdCols.includes('salary'), 'مدير تطوير الأعمال لا يزال بلا صلاحية الراتب');
+  const adminCols = engine.visibleColumns(U('admin', null, 'company'), a).map((c) => c.key);
+  assert.ok(adminCols.includes('salary'), 'مدير النظام يصدّر عمود الراتب');
+  for (const [role, sector, scope] of [
+    ['hr', null, 'company'], ['sector_lead', 'S1', 'sector'],
+    ['ceo_office', null, 'company'], ['bd_manager', 'S1', 'sector'], ['ceo_office', null, 'company'],
+  ]) {
+    const cols = engine.visibleColumns(U(role, sector, scope), a).map((c) => c.key);
+    assert.ok(!cols.includes('salary'), `${role} يجب ألا يصدّر عمود الراتب`);
+  }
 });
 
 test('row scope: sector_lead importing an employee into another sector gets a row error, not a silent skip', async () => {
@@ -264,6 +267,36 @@ test('row scope: sector_lead importing an employee into another sector gets a ro
   assert.equal(pv.counts.create, 1);
   assert.equal(pv.counts.error, 1);
   assert.match(pv.errors[0].message, /خارج نطاق صلاحيتك/);
+});
+
+test('KI-092: استيراد تسكينٍ متعدد السنين لنفس (الموظف×المشروع) — كل صفٍّ يسكن سنته ولا يفسد غيرها', async () => {
+  // ثلاثة صفوف لنفس الزوج والسنةُ الحالية في **وسطها** عمداً: قبل الإصلاح كان كل إنشاء يقع
+  // على سنة اليوم ثم «يُرقَّع» أقدمُ تسكينٍ للزوج — فتفسد السنوات ويصطدم أحد الصفوف بمانع التكرار.
+  const a = engine.ADAPTERS.staffing;
+  const now = ids.nowIso();
+  const Y = new Date().getUTCFullYear();
+  await db.insert('project', {
+    id: 'P_KI092', code: 'PRJ-KI092', name_ar: 'مشروع سنوات التسكين', sector_id: 'S1',
+    status: 'IN_PROGRESS', rag: 'GREEN', created_at: now,
+  });
+  const c = ctx(U('sector_lead', 'S1', 'sector'));
+  const rows = [
+    { employee: 'موظف الاختبار', project: 'مشروع سنوات التسكين', year: Y + 1, from_month: 1, to_month: 6, pct: 50 },
+    { employee: 'موظف الاختبار', project: 'مشروع سنوات التسكين', year: Y, from_month: 1, to_month: 12, pct: 80 },
+    { employee: 'موظف الاختبار', project: 'مشروع سنوات التسكين', year: Y - 1, from_month: 7, to_month: 12, pct: 30 },
+  ];
+  const { up, pv } = await uploadRows(c, a, rows, { mode: 'add', fileName: 'ki092.xlsx' });
+  assert.equal(pv.counts.error, 0, JSON.stringify(pv.errors));
+  assert.equal(pv.counts.create, 3);
+  const ap = await engine.apply(c, 'staffing', { runId: up.runId, confirmToken: pv.confirmToken });
+  assert.equal(ap.errors, 0, 'التنفيذ بلا أخطاء صفوف');
+  assert.equal(ap.created, 3);
+  const allocs = await db.all(
+    'SELECT year, monthly_json FROM allocation WHERE project_id = ? AND deleted_at IS NULL ORDER BY year',
+    ['P_KI092']);
+  assert.deepEqual(allocs.map((r) => Number(r.year)), [Y - 1, Y, Y + 1], 'ثلاث سنوات صحيحة بلا تكرار ولا ضياع');
+  const monthsCount = allocs.map((r) => Object.keys(JSON.parse(r.monthly_json)).length);
+  assert.deepEqual(monthsCount, [6, 12, 6], 'المخطط الشهري لكل سنة كما في ملفها');
 });
 
 // ── قاعدة الذهاب-الإياب لكل محوّل: تصدير → إعادة استيراد (إضافة وتحديث) = تجاهل 100% ──

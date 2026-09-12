@@ -38,7 +38,11 @@ test('HR creates an employee with hire date + fields, and it is audited', async 
   assert.equal(emp.job_title, 'مستشار أول');
   assert.equal(emp.sector_id, 'S1');
   assert.equal(emp.hire_date, '2024-03-01', 'hire date persisted as ISO text');
-  assert.equal(emp.salary_halalas, 2200000, 'salary stored in halalas');
+  // ختم الراتب: لا دور يملك منح الراتب إطلاقاً — ولا حتى الموارد البشرية — ومدير النظام وحده
+  // يمرّ بمنحه الشامل (قرار المالك حتى التكامل مع Odoo). وتعديل الراتب ونقله مختومان أصلاً،
+  // فكان **الإنشاء** الباب الوحيد المفتوح: من لا يرى الراتب كان **يحدّده**، ثم لا يقرأ ما كتب.
+  // هذا التأكيد كان يوثّق الثغرة لا السلوك الصحيح؛ صار يحرس الختم من جانب الكتابة أيضاً.
+  assert.equal(emp.salary_halalas, null, 'الموارد البشرية لا تحدّد الراتب — الختم يشمل الكتابة لا القراءة فقط');
   assert.equal(emp.active, 1);
 
   const aud = await lastAudit('create', emp.id);
@@ -135,4 +139,28 @@ test('validation: missing name and a malformed hire date are rejected in Arabic'
 test('deleting an unknown employee is a clear not-found', async () => {
   const hr = U('hr', null, 'company');
   await assert.rejects(() => org.softDeleteEmployee(ctx(hr), 'emp_does_not_exist'), /غير موجود/);
+});
+
+// ── ختم الراتب من جانب الكتابة، وتصدير الموظفين بنطاق الإدارة ────────────────
+// عيبان أظهرتهما حزمة السيناريوهات بالتنفيذ لا بالقراءة.
+
+test('مدير النظام وحده يحدّد الراتب — والفراغ يبقى فراغاً لا صفراً', async () => {
+  const admin = U('admin', null, 'company');
+  const withPay = await org.createEmployee(ctx(admin), { name_ar: 'سارة القحطاني', sector_id: 'S1', salary_sar: 18000 });
+  assert.equal(withPay.salary_halalas, 1800000, 'مدير النظام يكتب الراتب');
+
+  const noPay = await org.createEmployee(ctx(admin), { name_ar: 'خالد الشمري', sector_id: 'S1' });
+  assert.equal(noPay.salary_halalas, null,
+    'بلا راتب مُدخَل ⟵ فراغ لا صفر: «لم يُدخَل» و«بلا أجر» لا يجوز أن يصيرا شيئاً واحداً');
+
+  const zero = await org.createEmployee(ctx(admin), { name_ar: 'نورة العنزي', sector_id: 'S1', salary_sar: 0 });
+  assert.equal(zero.salary_halalas, 0, 'والصفر المُدخَل صراحةً يبقى صفراً — قياسٌ لا غياب');
+});
+
+test('من لا يرى الراتب لا يكتبه — ولو أرسله في الطلب', async () => {
+  const lead = U('sector_lead', 'S1', 'sector');
+  const emp = await org.createEmployee(ctx(lead), { name_ar: 'ماجد الدوسري', sector_id: 'S1', salary_sar: 12345 });
+  assert.equal(emp.salary_halalas, null, 'قائد القطاع أرسل راتباً فلم يُكتب');
+  const row = await db.get('SELECT salary_halalas FROM employee WHERE id = ?', [emp.id]);
+  assert.equal(row.salary_halalas, null, 'ولا في الصف المخزَّن — لا في الرد وحده');
 });

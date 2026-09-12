@@ -1,0 +1,269 @@
+// نسبة الإشغال من المهام — مجموعُ النِّسب على المهام الجارية، ومصفوفةُ ما يدخل الجمع وما لا يدخله.
+//
+// «إذا وضعتُ نسبة المهمة ٥٠٪ وأخذت أسبوعاً، فنصفُ طاقتي مشغولٌ بقية الأسبوع حتى تنتهي؛
+// وستُّ مهامَّ بنِسَب ١٠+١٠+١٠+١٠+١٠+٥٠ تُظهر الشهر كله ١٠٠٪» — بلسان المالك. وهذا الملف
+// يُثبت مثالَه حرفياً، ثم يُثبت الحدود التي تجعل الرقم صادقاً:
+//   ① المنجَزة والملغاة تُفرَغ، والمعلَّقة اعتمادُها لا تستهلك قبل أن تُعتمد.
+//   ② والشخصية خارجه في كل الشاشات — حتى على رأس صاحبها، وإلا اختلف الرقمُ الواحد بين
+//      «مهامي» و«مهام فريقي» لأنها محجوبةٌ عن المدير وعداً.
+//   ③ **والمتأخرة المفتوحة تظلّ تستهلك** — ولو أُسقطت لبدا الغارقُ في التأخير أكثرَ الناس فراغاً.
+//   ④ وما لم يُقدَّر يُعدّ ولا يُجمع: صفرٌ مخترَع يجعل المُثقَل يقرأ فارغاً.
+import { test, before, after } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { execFileSync } from 'node:child_process';
+
+const dir = mkdtempSync(join(tmpdir(), 'sanad-taskload-'));
+process.env.SANAD_DB = join(dir, 't.db');
+const ROOT = new URL('../..', import.meta.url).pathname;
+for (const s of ['scripts/migrate.js', 'scripts/seed-rbac.js']) {
+  execFileSync(process.execPath, ['--experimental-sqlite', join(ROOT, s)], { env: process.env, stdio: 'ignore' });
+}
+
+let db, tasks, load;
+const T = new Date().toISOString();
+const EMP = { id: 'u_emp', username: 'emp', name_ar: 'سجى لشكر', role_id: 'employee', scope: 'own',
+  sector_id: 'SOL', employee_id: 'e_emp' };
+// مديرٌ بنطاق القطاع — يُسنِد إلى أهل قطاعه، وهو مصدرُ المهام «بلا نسبة» في هذا الملف.
+const MGR = { id: 'u_mgr', username: 'mgr', name_ar: 'مديرة القطاع', role_id: 'sector_lead', scope: 'sector',
+  sector_id: 'SOL' };
+const ctx = (u) => ({ user: u, ip: '1.1.1.1' });
+
+before(async () => {
+  db = await import('../../src/core/db/index.js');
+  await (await import('../../src/core/rbac/index.js')).initRbac();
+  tasks = await import('../../src/modules/pmo/tasks.js');
+  load = await import('../../src/modules/pmo/task-load.js');
+  await db.insert('sector', { id: 'SOL', name_ar: 'قطاع الحلول', created_at: T });
+  // الربط ذو اتجاهين (`app_user.employee_id` و`employee.user_id`)، فيُكتب على مرحلتين.
+  await db.insert('employee', { id: 'e_emp', name_ar: 'سجى لشكر', sector_id: 'SOL', created_at: T });
+  await db.insert('app_user', { id: 'u_emp', username: 'emp', name_ar: 'سجى لشكر', role_id: 'employee',
+    scope: 'own', sector_id: 'SOL', employee_id: 'e_emp', active: 1, created_at: T });
+  await db.update('employee', 'e_emp', { user_id: 'u_emp' });
+  await db.insert('app_user', { id: 'u_mgr', username: 'mgr', name_ar: 'مديرة القطاع', role_id: 'sector_lead',
+    scope: 'sector', sector_id: 'SOL', active: 1, created_at: T });
+});
+after(() => rmSync(dir, { recursive: true, force: true }));
+
+const add = (pct, extra = {}) => tasks.quickAddTask(ctx(EMP), { title: `مهمة ${pct ?? 'بلا'}`, utilization_pct: pct, ...extra });
+// ومهمةٌ يُسنِدها مديرٌ إلى موظفه: تُقبل بلا نسبة — المدير يعرف العمل ولا يعرف كم يأخذ من
+// طاقة صاحبه، فيُقدِّرها صاحبُها. وهذا هو الباب الوحيد لمهمةٍ «بلا نسبة» بعد قرار ٢٠٢٦-٠٩-٠٨.
+const addByMgr = (pct, extra = {}) => tasks.quickAddTask(ctx(MGR),
+  { title: `مهمة من المدير ${pct ?? 'بلا'}`, assignee_user_id: EMP.id, utilization_pct: pct, ...extra });
+
+test('مثالُ المالك حرفياً: ١٠+١٠+١٠+١٠+١٠+٥٠ تُظهر الشخص على ١٠٠٪', async () => {
+  for (const p of [10, 10, 10, 10, 10, 50]) await add(p);
+  const l = await load.myTaskLoad(EMP);
+  assert.equal(l.pct, 100, 'المجموع ليس مئة');
+  assert.equal(l.open, 6);
+  assert.equal(l.unsized, 0);
+});
+
+test('والمنجَزة تُفرِغ حِملها، والملغاة كذلك — الحِمل للجاري لا للمنتهي', async () => {
+  const t = await add(30);
+  assert.equal((await load.myTaskLoad(EMP)).pct, 130);
+  await tasks.updateTask(ctx(EMP), t.id, { status: 'DONE' });
+  assert.equal((await load.myTaskLoad(EMP)).pct, 100, 'بقيت المنجَزة تستهلك');
+  const c = await add(25);
+  await tasks.updateTask(ctx(EMP), c.id, { status: 'CANCELLED' });
+  assert.equal((await load.myTaskLoad(EMP)).pct, 100, 'بقيت الملغاة تستهلك');
+});
+
+test('والمهمة الشخصية خارج المقياس — حتى على رأس صاحبها', async () => {
+  await add(40, { work_kind: 'personal' });
+  assert.equal((await load.myTaskLoad(EMP)).pct, 100, 'دخلت الشخصية الحِمل — واختلف الرقم بين شاشتين');
+});
+
+// القاعدة الجوهرية: لا شرطَ تاريخ استحقاق البتة.
+test('والمتأخرة المفتوحة تظلّ تستهلك حتى تُغلق — التأخرُ لا يُفرِّغ الجدول', async () => {
+  await add(20, { due_date: '2020-01-01' });
+  const l = await load.myTaskLoad(EMP);
+  assert.equal(l.pct, 120, 'أُسقطت المتأخرة فبدا المُثقَل فارغاً');
+});
+
+// الباب الوحيد لمهمةٍ بلا نسبة: إسنادُ المدير. وهي تُعدّ ولا تُجمع.
+test('وما لم تُقدَّر نسبتُه يُعدّ ولا يُجمع — ورقمُه معلَن لا مُخفى', async () => {
+  const before = await load.myTaskLoad(EMP);
+  await addByMgr(null);
+  await addByMgr(undefined);
+  const after = await load.myTaskLoad(EMP);
+  assert.equal(after.pct, before.pct, 'حُسبت مهمةٌ بلا نسبة');
+  assert.equal(after.unsized, before.unsized + 2, 'لم تُعدّ غير المقدَّرة — فالرقم يكذب صامتاً');
+  assert.equal(after.open, before.open + 2);
+});
+
+test('والصفر يُقرأ «لم يُقدَّر» لا «صفرُ حِمل» — مهمةٌ قائمة لا تستهلك شيئاً تناقض', async () => {
+  const t = await addByMgr(0);
+  const row = await db.get('SELECT utilization_pct FROM task WHERE id = ?', [t.id]);
+  assert.equal(row.utilization_pct, null);
+});
+
+test('والنسبة خارج ١..١٠٠ تُردّ بالعربية، والكسرُ كذلك', async () => {
+  for (const bad of [101, -5, 12.5, 'كثير']) {
+    await assert.rejects(() => add(bad), (e) => /نسبة الإشغال من ١ إلى ١٠٠/.test(String(e.message)), `قُبلت ${bad}`);
+  }
+});
+
+// المجموع يتجاوز المئة بحقّ — وهي إشارةُ «فوق الطاقة» نفسها، لا خطأ يُقصّ.
+test('ومجموعُ الشخص يتجاوز المئة ولا يُقصّ عندها', async () => {
+  const fresh = { ...EMP, id: 'u_over' };
+  await db.insert('app_user', { id: 'u_over', username: 'over', name_ar: 'مثقَل', role_id: 'employee',
+    scope: 'own', sector_id: 'SOL', active: 1, created_at: T });
+  for (const p of [90, 80]) await tasks.quickAddTask(ctx(fresh), { title: `ثقيلة ${p}`, utilization_pct: p });
+  assert.equal((await load.myTaskLoad(fresh)).pct, 170, 'قُصّ المجموع عند مئة فاختفت إشارة تجاوز الطاقة');
+});
+
+test('والحِمل يُقرأ لمجموعةٍ في نداءٍ واحد', async () => {
+  const m = await load.taskLoadFor(['u_emp', 'u_over', 'u_lا_وجود']);
+  assert.equal(m.get('u_over').pct, 170);
+  assert.equal(m.get('u_emp').pct, 120);
+  assert.equal(m.get('u_lا_وجود'), undefined, 'اختُرع صفٌّ لحسابٍ بلا مهام');
+});
+
+// الاسم اختاره المالك «نسبة الإشغال» (٢٠٢٦-٠٩-٠٨) — وهو اسمٌ يشترك مع أخوَيه، فثمنُه أن
+// يحمل كلُّ عرضٍ سطرَ أساسه «من المهام» وتصريحَه بأنه لا يُجمع معهما.
+test('والاسم «نسبة الإشغال» وسطرُ أساسه يقول «من المهام» ولا يُجمع مع الإشغالَين', () => {
+  assert.equal(load.TASK_LOAD_AR, 'نسبة الإشغال');
+  assert.match(load.TASK_LOAD_BASIS_AR, /من المهام/, 'سطرُ الأساس لا يقول من أين جاء الرقم');
+  assert.match(load.TASK_LOAD_BASIS_AR, /لا يُجمع معهما/);
+});
+
+// ── الأثر يقول ماذا تغيّر (KI-080) ────────────────────────────────────────────
+// النسبة تُعدَّل بعد الاعتماد بلا اعتمادٍ ثانٍ — وهو قرارٌ مقصود لكبح الاحتكاك. وثمنُه أن
+// يكون التغيير **مقتفىً**: بلا فرقٍ مسجَّل تصير النسبةُ المعتمَدة قابلةً للرفع بلا شاهد.
+test('تعديلُ النسبة بعد الاعتماد يترك أثراً يقول القديم والجديد', async () => {
+  const t = await add(10);
+  await tasks.updateTask(ctx(EMP), t.id, { utilization_pct: 50 });
+  const a = await db.get(`SELECT detail_json FROM audit_log WHERE resource = 'task' AND action = 'update'
+     AND resource_id = ? ORDER BY at DESC`, [t.id]);
+  assert.ok(a, 'تعديلٌ بلا أثر في التدقيق');
+  assert.match(String(a.detail_json), /حجم المهمة/, 'الأثر لا يسمّي الحقل');
+  assert.match(String(a.detail_json), /10٪/, 'الأثر بلا القيمة القديمة');
+  assert.match(String(a.detail_json), /50٪/, 'الأثر بلا القيمة الجديدة');
+});
+
+// وقيمةُ الحالة تُكتب عربيةً من مصدرها: الخام تُطبع في شاشة التدقيق كما هي، و«DONE»
+// مصطلحٌ يرصده فاحصُ المعجم ومسحُ ما بعد النشر.
+test('ووصفُ الأثر عربيٌّ بلا رمزٍ إنجليزي', async () => {
+  const t = await add(15);
+  await tasks.updateTask(ctx(EMP), t.id, { status: 'DONE' });
+  const a = await db.get(`SELECT detail_json FROM audit_log WHERE resource = 'task' AND action = 'update'
+     AND resource_id = ? ORDER BY at DESC`, [t.id]);
+  assert.match(String(a.detail_json), /الحالة: من قيد الانتظار إلى منجز/);
+  assert.doesNotMatch(String(a.detail_json), /DONE|TODO|IN_PROGRESS/, 'رمزٌ إنجليزي في وصفٍ يُعرض على شاشة');
+});
+
+test('وختمُ الإنجاز يحمل صاحبه، وإعادةُ الفتح تمحوه', async () => {
+  const t = await add(12);
+  await tasks.updateTask(ctx(EMP), t.id, { status: 'DONE' });
+  let row = await db.get('SELECT completed_at, completed_by FROM task WHERE id = ?', [t.id]);
+  assert.ok(row.completed_at, 'لا ختم إنجاز');
+  assert.equal(row.completed_by, 'u_emp', 'مَن أغلقها مجهول — والمهمة تمرّ باعتماد');
+  await tasks.updateTask(ctx(EMP), t.id, { status: 'TODO' });
+  row = await db.get('SELECT completed_at, completed_by FROM task WHERE id = ?', [t.id]);
+  assert.equal(row.completed_at, null);
+  assert.equal(row.completed_by, null, 'بقي مُغلِقٌ على مهمةٍ أُعيد فتحها');
+});
+
+// وتعديلٌ لا يغيّر شيئاً لا يكتب أثراً — سجلٌّ يمتلئ بسطورٍ فارغة لا يُقرأ.
+test('وحفظٌ بلا تغييرٍ فعلي لا يترك سطراً', async () => {
+  const t = await add(20);
+  const n0 = (await db.all(`SELECT id FROM audit_log WHERE resource = 'task' AND resource_id = ?`, [t.id])).length;
+  await tasks.updateTask(ctx(EMP), t.id, { utilization_pct: 20, title: t.title });
+  const rows = await db.all(`SELECT detail_json FROM audit_log WHERE resource = 'task' AND action = 'update' AND resource_id = ?`, [t.id]);
+  assert.ok(rows.every((r) => !r.detail_json || r.detail_json === 'null'), 'وُصف تغييرٌ لم يقع');
+  assert.ok(n0 >= 0);
+});
+
+// ── التعطيل يُفرِغ ويعود ──────────────────────────────────────────────────────
+// قرار المالك ٢٠٢٦-٠٩-٠٨: من ينتظر غيره لا تُستهلك طاقتُه بانتظاره. والعودةُ صامتة: لا
+// إعادة اعتماد ولا سؤال — المهمةُ تعود إلى الجمع بمجرّد أن تعود تجري.
+test('والمعطَّلة تسقط من الجمع وتعود بزوال التعطيل', async () => {
+  const u = { ...EMP, id: 'u_blk' };
+  await db.insert('app_user', { id: 'u_blk', username: 'blk', name_ar: 'معطَّل', role_id: 'employee',
+    scope: 'own', sector_id: 'SOL', active: 1, created_at: T });
+  const t = await tasks.quickAddTask(ctx(u), { title: 'مهمة تتعطّل', utilization_pct: 40 });
+  await tasks.quickAddTask(ctx(u), { title: 'مهمة تجري', utilization_pct: 10 });
+  assert.equal((await load.myTaskLoad(u)).pct, 50);
+  await tasks.updateTask(ctx(u), t.id, { status: 'BLOCKED', blocked_reason: 'ينتظر ردّ العميل' });
+  const blocked = await load.myTaskLoad(u);
+  assert.equal(blocked.pct, 10, 'بقيت المعطَّلة تستهلك طاقة صاحبها وهو ينتظر غيره');
+  assert.equal(blocked.open, 1, 'عُدّت المعطَّلة في المهام الجارية');
+  await tasks.updateTask(ctx(u), t.id, { status: 'IN_PROGRESS' });
+  const back = await load.myTaskLoad(u);
+  assert.equal(back.pct, 50, 'لم تعد المهمة إلى الجمع بزوال تعطيلها');
+  assert.equal(back.open, 2);
+});
+
+// والحالاتُ الثلاث كلُّها «جارية» — التمييز بينها تنظيمٌ لا إعفاء من الحساب.
+test('وجاريةٌ ومراجعةٌ ومنتظرةٌ كلُّها تُحسب', async () => {
+  const u = { ...EMP, id: 'u_sts' };
+  await db.insert('app_user', { id: 'u_sts', username: 'sts', name_ar: 'ثلاثُ حالات', role_id: 'employee',
+    scope: 'own', sector_id: 'SOL', active: 1, created_at: T });
+  for (const [st, pct] of [['TODO', 5], ['IN_PROGRESS', 15], ['IN_REVIEW', 25]]) {
+    const t = await tasks.quickAddTask(ctx(u), { title: `مهمة ${st === 'TODO' ? 'منتظرة' : st === 'IN_PROGRESS' ? 'جارية' : 'مراجعة'}`, utilization_pct: pct });
+    if (st !== 'TODO') await tasks.updateTask(ctx(u), t.id, { status: st });
+  }
+  const l = await load.myTaskLoad(u);
+  assert.equal(l.pct, 45, 'سقطت إحدى الحالات الجارية من الجمع');
+  assert.equal(l.open, 3);
+});
+
+// ── والنسبة مطلوبة على مهمتك أنت (قرار المالك ٢٠٢٦-٠٩-٠٨) ────────────────────
+test('ومهمتك على نفسك بلا نسبة تُردّ بالعربية', async () => {
+  await assert.rejects(() => add(null), (e) => /نسبة الإشغال مطلوبة على مهمتك/.test(String(e.message)),
+    'قُبلت مهمةٌ كتبها صاحبها على نفسه بلا نسبة');
+  await assert.rejects(() => add(0), (e) => /نسبة الإشغال مطلوبة على مهمتك/.test(String(e.message)),
+    'الصفرُ «لم يُقدَّر» فيُردّ كما يُردّ الفراغ');
+  // والشخصيةُ خارج المقياس أصلاً، فلا يُسأل عنها صاحبُها.
+  const own = await tasks.quickAddTask(ctx(EMP), { title: 'دفتري الخاص', work_kind: 'personal' });
+  assert.equal(own.utilization_pct, null);
+});
+
+test('ومهمةٌ أسندها مديرك تُقبل بلا نسبة وتُعدّ بلا نسبة', async () => {
+  const before = await load.myTaskLoad(EMP);
+  const t = await addByMgr(null);
+  assert.equal(t.utilization_pct, null);
+  assert.equal(t.assignee_user_id, 'u_emp');
+  const after = await load.myTaskLoad(EMP);
+  assert.equal(after.pct, before.pct);
+  assert.equal(after.unsized, before.unsized + 1, 'مهمةُ المدير بلا نسبة لا تُعلَن — فلا يعرف صاحبها ما ينقصه');
+});
+
+test('وتفريغ النسبة على مهمتك من المحرِّر يُردّ', async () => {
+  const t = await add(25);
+  await assert.rejects(() => tasks.updateTask(ctx(EMP), t.id, { utilization_pct: null }),
+    (e) => /نسبة الإشغال مطلوبة على مهمتك/.test(String(e.message)), 'المحرِّر بابٌ حول الشرط');
+  await assert.rejects(() => tasks.updateTask(ctx(EMP), t.id, { utilization_pct: '' }),
+    (e) => /نسبة الإشغال مطلوبة على مهمتك/.test(String(e.message)));
+  // والتعديل الذي لا يمسّ النسبة يمرّ كما كان — الشرط على الحقل لا على كل حفظة.
+  const kept = await tasks.updateTask(ctx(EMP), t.id, { status: 'IN_PROGRESS' });
+  assert.equal(kept.utilization_pct, 25);
+  // ومهمةٌ بلا نسبة أسندها مديرُك تبقى كما هي حتى تمسّها أنت: تعديل عنوانها لا يُردّ.
+  const m = await addByMgr(null);
+  const renamed = await tasks.updateTask(ctx(EMP), m.id, { title: 'عنوان جديد' });
+  assert.equal(renamed.utilization_pct, null);
+});
+
+// ── رقمٌ واحد على كل شاشة (قرار المالك ٢٠٢٦-٠٩-٠٨، سطحان جديدان) ─────────────
+// ملفُّ الشخص كان يجمع من صفوفه هو، وصفوفُه تضمّ الشخصيةَ لصاحبها والمعلَّقةَ لكاتبها — فكان
+// الرقمُ يختلف باختلاف من يفتح الملف، وهو أسوأ من ألّا يُعرض. المصدر واحد: `taskLoadFor`.
+test('وملف الشخص يقرأ الرقم نفسه الذي يقرأه صاحبه', async () => {
+  const mine = await load.myTaskLoad(EMP);
+  const d = await tasks.personDossier(EMP, 'u_emp');
+  assert.deepEqual(d.taskLoad, mine, 'اختلف رقمُ ملف الشخص عن رقم صاحبه في «مهامي»');
+  // ومديرُه يقرأ الرقم نفسه — لا نسخةً أضيق لأن الشخصية محجوبةٌ عنه.
+  const asMgr = await tasks.personDossier(MGR, 'u_emp');
+  assert.deepEqual(asMgr.taskLoad, mine, 'قرأ المديرُ رقماً آخر عن الشخص نفسه');
+});
+
+test('وتفصيل فريق القطاع يقرأ الرقم نفسه', async () => {
+  const { sectorTeamDetail } = await import('../../src/modules/pmo/capacity.js');
+  const detail = await sectorTeamDetail(MGR, { sector: 'SOL' });
+  const person = detail.people.find((x) => x.userId === 'u_emp');
+  assert.ok(person, 'لم يظهر الشخص في تفصيل فريق القطاع');
+  const one = (await load.taskLoadFor(['u_emp'])).get('u_emp');
+  assert.deepEqual(person.tasks.load, one, 'اختلف رقمُ نافذة القطاع عن رقم الخدمة');
+});

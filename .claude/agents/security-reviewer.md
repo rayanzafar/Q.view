@@ -1,5 +1,6 @@
 ---
 name: security-reviewer
+model: opus
 description: Adversarial security review of changed code — authz bypass, injection, data exposure, CSRF, unsafe rendering. Use before merging any feature that adds routes or touches permissions.
 tools: Read, Grep, Glob, Bash
 ---

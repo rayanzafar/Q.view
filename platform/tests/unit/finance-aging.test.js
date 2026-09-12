@@ -37,7 +37,7 @@ before(async () => {
 });
 after(async () => { await close(); rmSync(dir, { recursive: true, force: true }); });
 
-const FIN = { id: 'u-fin', role_id: 'finance', scope: 'company' };
+const FIN = { id: 'u-fin', role_id: 'ceo_office', scope: 'company' };
 // حول رأس السنة قد تتوزع تواريخ الإصدار على سنتين ماليتين — نجمع السلال عبر السنوات المعنية
 // حتى يبقى الاختبار حتمياً في أي يوم تشغيل (الأعمار 10/45/100 تقع دائماً في سلال متمايزة).
 const YEARS = [...new Set([daysAgo(10), daysAgo(45), daysAgo(100)].map((d) => Number(d.slice(0, 4))))];

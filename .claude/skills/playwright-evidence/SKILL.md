@@ -12,8 +12,8 @@ import { chromium } from 'playwright';
 const b = await chromium.launch();            // finds /opt/pw-browsers automatically
 const pg = await b.newPage({ viewport: { width: 1440, height: 900 } }); // or 390×844 mobile
 await pg.goto(BASE + '/login');
-await pg.fill('[name=username]', 'demo.ceo'); // demo accounts: demo.{ceo,admin,sectorlead,pm,bd,finance,hr,consultant,employee,viewer}
-await pg.fill('[name=password]', DEMO_PW);    // password from seed-staging.js (do not hardcode elsewhere)
+await pg.fill('[name=username]', 'demo.ceo'); // 16 accounts: demo.{admin,ceo,sectorlead,bd,pm,hr,consultant,employee,viewer,deptmgr,linemgr,bdhead,ops,procurement,approver,external}
+await pg.fill('[name=password]', DEMO_PW);    // DEMO_PW from scripts/seed.js (do not hardcode elsewhere)
 await pg.click('button[type=submit]');
 await pg.waitForURL('**/app/**');
 ```

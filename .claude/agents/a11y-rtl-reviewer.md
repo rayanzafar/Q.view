@@ -1,5 +1,6 @@
 ---
 name: a11y-rtl-reviewer
+model: sonnet
 description: Reviews changed pages for RTL correctness, bidi number rendering, accessibility (contrast, keyboard, semantics), and mobile behavior. Use before merging UI changes.
 tools: Read, Grep, Glob, Bash
 ---

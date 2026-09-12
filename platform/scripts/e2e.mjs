@@ -10,11 +10,11 @@
 // Browser resolution (sandbox has no downloads): /opt/pw-browsers/chromium-1194 first, then any
 // chromium-*/chrome-linux/chrome under PLAYWRIGHT_BROWSERS_PATH (or /opt/pw-browsers).
 import { mkdtempSync, rmSync, readdirSync, existsSync } from 'node:fs';
-import { spawn, spawnSync } from 'node:child_process';
-import { createServer } from 'node:net';
+import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, resolve, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { buildDb, freePort, waitReady } from './lib/qa-instance.mjs';
 
 const PLATFORM = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const only = process.argv.slice(2).filter((a) => !a.startsWith('--'));
@@ -33,29 +33,8 @@ export function chromiumPath() {
   return null; // let Playwright resolve its own bundled browser (CI path after `playwright install`)
 }
 
-// ── seeded temp DB + server ───────────────────────────────────────────────────
-function buildDb(dbPath) {
-  const steps = ['scripts/migrate.js', 'scripts/seed-rbac.js', 'scripts/seed.js', 'scripts/lib/seed-fixture.mjs'];
-  for (const s of steps) {
-    const r = spawnSync(process.execPath, ['--experimental-sqlite', s], {
-      cwd: PLATFORM, env: { ...process.env, SANAD_DB: dbPath }, encoding: 'utf8',
-    });
-    if (r.status !== 0) { console.error(`✗ ${s}\n${(r.stderr || r.stdout || '').split('\n').slice(-10).join('\n')}`); process.exit(1); }
-  }
-}
-const freePort = () => new Promise((res, rej) => {
-  const s = createServer(); s.on('error', rej);
-  s.listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => res(p)); });
-});
-async function waitReady(base, child, ms = 20000) {
-  const t0 = Date.now();
-  while (Date.now() - t0 < ms) {
-    if (child.exitCode !== null) throw new Error(`server exited early (code ${child.exitCode})`);
-    try { const r = await fetch(base + '/ready', { signal: AbortSignal.timeout(1500) }); if (r.ok) return; } catch { /* retry */ }
-    await new Promise((r) => setTimeout(r, 250));
-  }
-  throw new Error('server did not become ready in time');
-}
+// seeded temp DB + free port + /ready polling live in scripts/lib/qa-instance.mjs (shared with
+// scripts/qa-up.mjs) so the two entry points build an instance identically.
 
 // ── mini reporter ─────────────────────────────────────────────────────────────
 function reporter() {
@@ -72,7 +51,7 @@ if (isMain) {
   const work = mkdtempSync(join(tmpdir(), 'sanad-e2e-'));
   const dbPath = join(work, 'sanad.db');
   console.log(`building seeded DB → ${dbPath}`);
-  buildDb(dbPath);
+  try { buildDb(dbPath); } catch (e) { console.error(`✗ ${e.message}`); process.exit(1); }
 
   const port = await freePort();
   const base = `http://127.0.0.1:${port}`;

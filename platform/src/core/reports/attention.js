@@ -2,16 +2,19 @@
 // كل بند جملة عربية واحدة + إجراء سياقي واحد. مصادرها سجلات حقيقية فقط.
 import { all } from '../db/index.js';
 import { can } from '../rbac/index.js';
-import { myApprovalQueue } from '../../modules/workflow/engine.js';
+import { scopeFilter } from '../rbac/scope.js';
+import { pendingApprovalsFor, DIRECT_KIND_AR } from '../../modules/workflow/inbox.js';
 import { fmtSar } from '../util/ids.js';
 import { ROT_THRESHOLDS } from '../../modules/crm/opportunities.js';
+import { peopleScope } from '../../modules/org/org.js';
 import { countAr } from '../i18n/plural.js';
 
 // عتبات ركود المرحلة (أيام) — نفس مصدر لوحة الفرص حرفياً: المرحلة بلا عتبة لا تركد
 // (كي يتطابق عدد «المتوقفة» هنا مع عدّاد اللوحة تماماً — لا رقمين مختلفين لنفس المؤشر)
 const STAGE_ROT_DAYS = ROT_THRESHOLDS;
 
-// أسماء موارد الاعتمادات بالعربية — لا يظهر اسم مورد تقني للمستخدم أبداً
+// أسماء موارد الاعتمادات بالعربية — لا يظهر اسم مورد تقني للمستخدم أبداً.
+// (الموجَّه بالشخص يأخذ اسمه من مصدره الواحد `DIRECT_KIND_AR` لا من نسخة هنا.)
 export const RESOURCE_AR = { opportunity: 'فرصة', proposal: 'عرض', expense: 'مصروف',
   deliverable: 'مخرَج', timesheet: 'سجل وقت', invoice: 'فاتورة', project: 'مشروع', contract: 'عقد' };
 
@@ -21,33 +24,44 @@ export async function attentionFeed(user, sectorId, { year, today } = {}) {
   const m = Number(t.slice(5, 7));
   const items = [];
 
-  // 1) قرارات بانتظارك (موافقات على دورك)
+  // 1) قرارات بانتظارك — بدورك وبعينك معاً: كان البند يقرأ طابور الأدوار وحده، وكلُّ الحجم
+  // الحيّ (اعتماد المهام وتأكيد التسكين) موجَّهٌ بالشخص — فكان «يحتاج انتباهك» أعمى عنه.
   try {
-    const q = await myApprovalQueue(user);
+    const q = await pendingApprovalsFor(user);
     if (q.length) items.push({ rank: 1, tone: 'brand', icon: 'approvals', dd: null, href: '/app/approvals',
       title: `${countAr(q.length, { one: 'طلب اعتماد واحد', two: 'طلبا اعتماد', few: 'طلبات اعتماد', many: 'طلب اعتماد' })} بانتظار قرارك`,
-      sub: q.slice(0, 2).map((r) => RESOURCE_AR[r.resource] || 'طلب').join(' · '),
+      sub: q.slice(0, 2).map((r) => DIRECT_KIND_AR[r.resource] || RESOURCE_AR[r.resource] || 'طلب').join(' · '),
       action: 'راجِع واعتمد' });
   } catch { /* قائمة الاعتمادات ليست لكل الأدوار */ }
 
   // 2) فواتير متأخرة السداد (نقد القطاع) — أرقام مالية: تظهر فقط لمن يقرأ الفواتير
+  // قطاع الفاتورة = قطاعها إن حُدِّد، وإلا قطاع مشروعها. فواتير قديمة كثيرة لا تحمل القطاع مباشرة،
+  // فالمقارنة على العمود وحده كانت تُسقطها من هنا بينما تظهر في تحصيل القطاع وفي «ما تغيّر» —
+  // وهذا هو أسوأ ما يمكن أن يحدث للتنبيه الذي وُجد ليمنع الفوات. نفس تعبير الشاشتين حرفياً.
   const od = can(user, 'read', 'invoice') ? await all(`SELECT i.id, i.code, i.amount_halalas, i.due_date, c.name_ar client
-      FROM invoice i LEFT JOIN client c ON c.id = i.client_id
-      WHERE i.sector_id = ? AND i.deleted_at IS NULL
+      FROM invoice i LEFT JOIN project p ON p.id = i.project_id LEFT JOIN client c ON c.id = i.client_id
+      WHERE COALESCE(i.sector_id, p.sector_id) = ? AND i.deleted_at IS NULL
         AND (i.status = 'OVERDUE' OR (i.status IN ('ISSUED','PARTIALLY_PAID') AND i.due_date IS NOT NULL AND substr(i.due_date,1,10) < ?))
       ORDER BY i.due_date LIMIT 12`, [sectorId, t]) : [];
   if (od.length) {
     const sum = od.reduce((a, b) => a + (b.amount_halalas || 0), 0);
-    items.push({ rank: 2, tone: 'red', icon: 'money', href: '/app/finance',
+    items.push({ rank: 2, tone: 'red', icon: 'money', href: `/app/sector?sector=${encodeURIComponent(sectorId)}&tab=clients`,
       title: `مستحقات متأخرة بقيمة ${fmtSar(sum)} على ${countAr(od.length, { one: 'فاتورة واحدة', two: 'فاتورتين', few: 'فواتير', many: 'فاتورة' })}`,
       sub: od.slice(0, 2).map((i) => i.client || i.code || '').filter(Boolean).join(' · '),
       action: 'تابع التحصيل' });
   }
 
   // 3) فرص متوقفة (تجاوزت عمر مرحلتها) أو بلا خطوة تالية
+  // البندان يسمّيان الفرص بعناوينها وقيمها — تفاصيل صفقاتٍ قبل الترسية، فيُقصّان على نطاق
+  // قائمة الفرص نفسه (نفس خيارات listOpportunities حرفاً، مؤهَّلةً بـ`o.`): كل يُنبَّه على
+  // ما يقرؤه في قائمته — لا على فرص زملائه التي تحجبها عنه القائمة نفسها.
+  const of = scopeFilter(user, 'opportunity', 'read',
+    { sectorCol: 'o.sector_id', ownerCol: 'o.owner_user_id', projectCol: 'o.id',
+      grantCol: 'o.department_id', memberCol: 'o.id', deptCol: 'o.department_id' });
   const open = await all(`SELECT o.id, o.title_ar, o.value_halalas, o.next_action, o.stage_changed_at, o.created_at, st.id stage_id, st.name_ar stage
       FROM opportunity o JOIN stage st ON st.id = o.stage_id
-      WHERE o.sector_id = ? AND o.deleted_at IS NULL AND st.is_won = 0 AND st.is_lost = 0`, [sectorId]);
+      WHERE o.sector_id = ? AND o.deleted_at IS NULL AND st.is_won = 0 AND st.is_lost = 0 AND ${of.clause}`,
+  [sectorId, ...of.params]);
   const ageDays = (iso) => iso ? Math.floor((Date.parse(t) - Date.parse(String(iso).slice(0, 10))) / 86400000) : 0;
   const stalled = open.filter((o) => ageDays(o.stage_changed_at || o.created_at) > (STAGE_ROT_DAYS[o.stage_id] || STAGE_ROT_DAYS.default));
   if (stalled.length) {
@@ -65,7 +79,7 @@ export async function attentionFeed(user, sectorId, { year, today } = {}) {
   const late = await all(`SELECT d.name_ar, d.amount_halalas, d.month, p.name_ar project
       FROM deliverable d LEFT JOIN project p ON p.id = d.project_id
       WHERE d.sector_id = ? AND d.deleted_at IS NULL AND d.year = ?
-        AND d.month < ? AND d.status IN ('PENDING','DELIVERED')
+        AND d.month < ? AND d.invoiced_at IS NULL AND d.status IN ('DRAFT','IN_PROGRESS','DELIVERED','REJECTED')
       ORDER BY d.month LIMIT 12`, [sectorId, y, m]);
   if (late.length) {
     const lv = late.reduce((a, b) => a + (b.amount_halalas || 0), 0);
@@ -76,19 +90,28 @@ export async function attentionFeed(user, sectorId, { year, today } = {}) {
   }
 
   // 5) أشخاص فوق الطاقة الآن
-  const allocs = await all(`SELECT a.employee_id, e.name_ar, a.monthly_json FROM allocation a
-      JOIN employee e ON e.id = a.employee_id
+  const allocs = await all(`SELECT a.employee_id, e.name_ar, e.sector_id emp_sector, e.department_id, a.monthly_json FROM allocation a
+      JOIN employee e ON e.id = a.employee_id AND e.deleted_at IS NULL
       WHERE a.sector_id = ? AND a.deleted_at IS NULL AND a.year = ? AND a.employee_id IS NOT NULL`, [sectorId, y]);
   const loadNow = {};
   for (const a of allocs) {
     let mj = {}; try { mj = JSON.parse(a.monthly_json || '{}'); } catch { mj = {}; }
-    loadNow[a.employee_id] = { name: a.name_ar, v: (loadNow[a.employee_id]?.v || 0) + (Number(mj[m]) || 0) };
+    loadNow[a.employee_id] = { employee_id: a.employee_id, name: a.name_ar, sector: a.emp_sector, department: a.department_id,
+      v: (loadNow[a.employee_id]?.v || 0) + (Number(mj[m]) || 0) };
   }
-  const over = Object.values(loadNow).filter((x) => x.v > 1.1);
-  if (over.length) items.push({ rank: 6, tone: 'red', icon: 'team', href: '/app/staffing',
+  // الأسماء لمن يقرأ الموظفين — وبنطاق الأشخاص نفسه الذي يحكم كشف التسكين وبطاقة «طاقة الفريق»
+  // (KI-068): قارئُ إدارةٍ يرى إدارته، وقارئُ قطاعٍ كشفَ قطاعه. ومن لا يقرأ الموظفين يرى العدّ
+  // القطاعي بلا أسماء. والبند يفتح تفصيله في الصفحة لا لوحة التسكين (التي تُردّ لمن لا يقرؤهم).
+  const namesOk = can(user, 'read', 'employee');
+  const ps = namesOk ? peopleScope(user, sectorId) : null;
+  const inReach = (x) => !ps || (!ps.blind && (!ps.sector || x.sector === ps.sector)
+    && (!ps.departments.length || ps.departments.includes(x.department)));
+  const over = Object.values(loadNow).filter((x) => x.v > 1.1 && inReach(x)).sort((a, b) => b.v - a.v)
+    .map((x) => ({ employee_id: x.employee_id, name: x.name, pct: Math.round(x.v * 100) }));
+  if (over.length) items.push({ rank: 6, tone: 'red', icon: 'team', dd: 'att-overload',
     title: `${countAr(over.length, { one: 'موظف واحد محمّل فوق طاقته', two: 'موظفان فوق الطاقة', few: 'موظفين فوق الطاقة', many: 'موظفاً فوق الطاقة' })} هذا الشهر`,
-    sub: over.slice(0, 3).map((x) => `${x.name} ${Math.round(x.v * 100)}%`).join(' · '),
-    action: 'أعد توزيع التسكين' });
+    sub: namesOk ? over.slice(0, 3).map((x) => `${x.name} ${x.pct}%`).join(' · ') : 'أسماء الأفراد تظهر لمن يملك صلاحية عرض الفريق',
+    action: 'أعد توزيع التسكين', ddRowsData: namesOk ? over : [] });
 
   // 6) مخاطر عالية مفتوحة
   const risks = await all(`SELECT r.title, p.name_ar project FROM risk r LEFT JOIN project p ON p.id = r.project_id

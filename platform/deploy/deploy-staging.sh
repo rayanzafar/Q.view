@@ -21,9 +21,13 @@ fi
 cd "$APP_DIR/platform"
 
 # 2) install deps (Node 22+ required for built-in node:sqlite)
-npm ci --omit=dev || npm install --omit=dev
+# No `|| npm install` fallback: lockfile drift must fail here, not silently resolve other versions.
+npm ci --omit=dev
 
-# 3) seed the demo DB the FIRST time only (never overwrites an existing db)
+# 3) apply schema migrations on every deploy (new numbered files are additive; safe to re-run)
+node --experimental-sqlite scripts/migrate.js
+
+# 4) seed the demo DB the FIRST time only (never overwrites an existing db)
 if [ ! -f data/sanad.db ]; then
   echo "▶ seeding demo data (first run)"
   npm run seed
