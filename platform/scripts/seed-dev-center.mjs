@@ -28,9 +28,9 @@ const PRODUCT = {
 // الفريق الأول — أربعتُهم مديرو منتج (ومديرُ المنتج يملك ما يملكه المطوِّر ويزيد الاعتماد).
 const TEAM = [
   { email: 'hussien.aljifri@evc.sa', name: 'حسين الجفري', role: 'manager' },
-  { email: null, name: 'ريان ظفر', role: 'manager' },
-  { email: null, name: 'جاكوب سيد', role: 'manager' },
-  { email: null, name: 'إسحاق سيد', role: 'manager' },
+  { email: 'rayn@evc.sa', name: 'ريان ظفر', role: 'manager' },
+  { email: 'jacob.sayid@evc.sa', name: 'يعقوب سيد', role: 'manager' },
+  { email: 'isaac.sayid@evc.sa', name: 'إسحاق سيد', role: 'manager' },
 ];
 
 const log = (...a) => console.log(...a);
