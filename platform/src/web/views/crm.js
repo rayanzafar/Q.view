@@ -133,7 +133,7 @@ export async function opportunitiesPage(user, opts = {}) {
     return q ? `?from=${encodeURIComponent(q)}` : '';
   })();
 
-  const stages = await all('SELECT id,name_ar,color,default_win_pct,sort_order,is_won,is_lost FROM stage ORDER BY sort_order');
+  const stages = await all('SELECT id,name_ar,color,default_win_pct,sort_order,is_won,is_lost FROM stage WHERE deleted_at IS NULL AND archived_at IS NULL ORDER BY sort_order');
   const clients = Object.fromEntries((await all('SELECT id,name_ar FROM client')).map((c) => [c.id, c.name_ar]));
   const users = Object.fromEntries((await all('SELECT id,name_ar,username FROM app_user')).map((u) => [u.id, u.name_ar || u.username]));
   // قطاعات التسليم وحدها: هذه القائمة تخدم ثلاثة أشياء كلها «قطاع» بالمعنى التجاري — شرائح
@@ -490,7 +490,7 @@ export async function myOpportunitiesPage(user, opts = {}) {
       (partnersByOpp[r.opportunity_id] ||= []).push(r.department_id);
     }
   }
-  const stages = await all('SELECT id,name_ar,color,default_win_pct,sort_order,is_won,is_lost FROM stage ORDER BY sort_order');
+  const stages = await all('SELECT id,name_ar,color,default_win_pct,sort_order,is_won,is_lost FROM stage WHERE deleted_at IS NULL AND archived_at IS NULL ORDER BY sort_order');
   const stById = Object.fromEntries(stages.map((s) => [s.id, s]));
   const clients = Object.fromEntries((await all('SELECT id,name_ar FROM client')).map((c) => [c.id, c.name_ar]));
   // فريق الفرصة: عدّ الأعضاء باستعلام مجمّع واحد (نفس جدول العضويات الذي تعرضه صفحة الفرصة)

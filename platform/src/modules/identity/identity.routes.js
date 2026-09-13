@@ -21,6 +21,8 @@ identityRouter.post('/identity/users/:id/revoke-sessions', h((req) => identity.r
 // الحذف ومعه فحصُ موانعه قبله — على نمط `/removal-check` للمشروع: تُعرض العاقبة قبل الضغط،
 // لا تُقال بعد الرفض. والسبب النصّي يُمرَّر ليُسجَّل في سطر التدقيق.
 identityRouter.get('/identity/users/:id/removal-check', h((req) => identity.userRemovalCheck(req.ctx, req.params.id)));
+// تسليمُ عمل المغادر قبل حذفه — الفعلُ الذي كانت رسالةُ المنع تطلبه بلا وسيلة.
+identityRouter.post('/identity/users/:id/reassign-work', h((req) => identity.reassignUserWork(req.ctx, req.params.id, (req.body || {}).toUserId)));
 identityRouter.delete('/identity/users/:id', h((req) => identity.removeUser(req.ctx, req.params.id, { reason: (req.body || {}).reason })));
 
 // ── الصلاحيات الشخصية على إدارة ──────────────────────────────────────────────

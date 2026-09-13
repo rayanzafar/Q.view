@@ -88,3 +88,38 @@ export async function pickablePeople(opts = {}) {
     `SELECT id, COALESCE(name_ar, username) AS "name" FROM app_user
       WHERE ${where.join(' AND ')} ORDER BY name_ar, username LIMIT ${limit}`, params);
 }
+
+// ── هويةُ الشخص من أي معرّف ───────────────────────────────────────────────────────────────
+//
+// للشخص الواحد في سند معرّفان: معرّفُ الموظف (سجل الموارد والتسكين) ومعرّفُ الحساب (الدخول
+// والمهام والملكية). وهما مربوطان في القاعدة من الجهتين (`employee.user_id` و`app_user.employee_id`)
+// لكن ما من بابٍ كان يكشف الربط: البحثُ يعيد الأول، والإسنادُ يريد الثاني، فيقف المساعد — ومن
+// خلفه الموظف — أمام «المستخدم غير موجود» وهو يقرأ اسمه أمامه.
+//
+// هذه الدالة هي الجسر: تقبل أيّ المعرّفين وتعيد الاثنين معاً، فلا تسأل أداةٌ سائلَها أن يعرف
+// أيَّ معرّفٍ تريد. والمحذوف والمعطَّل لا يُحَلّ — هويةٌ لا تُسند إليها المهام لا تُعاد كأنها حيّة.
+export async function resolvePerson(anyId) {
+  const id = String(anyId || '').trim();
+  if (!id) return null;
+  const row = await all(
+    `SELECT e.id AS employee_id, e.name_ar AS employee_name,
+            COALESCE(u.id, u2.id) AS user_id, COALESCE(u.name_ar, u2.name_ar, u.username, u2.username) AS user_name
+       FROM employee e
+       LEFT JOIN app_user u  ON u.id = e.user_id AND u.deleted_at IS NULL AND u.active = 1
+       LEFT JOIN app_user u2 ON u2.employee_id = e.id AND u2.deleted_at IS NULL AND u2.active = 1
+      WHERE e.id = ? AND e.deleted_at IS NULL
+     UNION ALL
+     SELECT COALESCE(e3.id, e4.id) AS employee_id, COALESCE(e3.name_ar, e4.name_ar) AS employee_name,
+            u3.id AS user_id, COALESCE(u3.name_ar, u3.username) AS user_name
+       FROM app_user u3
+       LEFT JOIN employee e3 ON e3.id = u3.employee_id AND e3.deleted_at IS NULL
+       LEFT JOIN employee e4 ON e4.user_id = u3.id AND e4.deleted_at IS NULL
+      WHERE u3.id = ? AND u3.deleted_at IS NULL AND u3.active = 1`, [id, id]);
+  const r = row[0];
+  if (!r) return null;
+  return {
+    employeeId: r.employee_id || null,
+    userId: r.user_id || null,
+    name_ar: r.employee_name || r.user_name || null,
+  };
+}

@@ -85,8 +85,9 @@ after(async () => {
   for (const s of ['', '-wal', '-shm']) rmSync(TEST_DB + s, { force: true });
 });
 
-test('الأدوار السبعة معرَّفة في seed.js — لا تعريفات مُخترعة في سكربت ثانٍ', () => {
-  assert.equal(MISSING_ROLE_ACCOUNTS.length, 7);
+test('الأدوار الثمانية معرَّفة في seed.js — لا تعريفات مُخترعة في سكربت ثانٍ', () => {
+  // صارت ثمانيةً بإضافة «فريق تطوير الأعمال» (قرار المالك ٢٠٢٦-٠٩-٠٩).
+  assert.equal(MISSING_ROLE_ACCOUNTS.length, 8);
   for (const u of MISSING_ROLE_ACCOUNTS)
     assert.ok(DEMO_USERS.some((d) => d.u === u), `${u} غير معرَّف في DEMO_USERS`);
 });
@@ -213,7 +214,7 @@ test('إعادة التشغيل آمنة: بلا تكرار وبلا مساس ب
   const emps = (await db.get('SELECT COUNT(*) n FROM employee')).n;
   const r = await seedRoles({ apply: true, log: () => {} });
   assert.equal(r.created.length, 0, 'أُنشئ حساب ثانٍ لنفس الشخص');
-  assert.equal(r.updated.length, 7);
+  assert.equal(r.updated.length, 8);
   assert.equal(await countUsers(), users);
   assert.equal((await db.get('SELECT COUNT(*) n FROM department')).n, deps, 'إدارة مكرَّرة');
   assert.equal((await db.get('SELECT COUNT(*) n FROM employee')).n, emps, 'موظف مكرَّر');

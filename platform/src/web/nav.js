@@ -26,6 +26,9 @@ export const NAV_ITEMS = [
   { key: 'sector', ar: 'مركز القطاع', ic: 'sector', group: 'work' },
   { key: 'opportunities', ar: 'الفرص', ic: 'opportunity', group: 'work' },
   { key: 'my-opportunities', ar: 'فرصي', ic: 'flag', group: 'work' },
+  // «إعدادات لوحة الفرص» في مجموعة الإدارة: شاشةُ ضبطٍ يفتحها فريق تطوير الأعمال ورئيسه
+  // ومدير النظام وحدهم (بوابتها منح إدارة اللوحات)، فلا تزاحم شاشات العمل اليومي.
+  { key: 'crm-board-settings', ar: 'إعدادات لوحة الفرص', ic: 'kanban', group: 'manage' },
   { key: 'projects', ar: 'المشاريع', ic: 'projects', group: 'work' },
   { key: 'clients', ar: 'العملاء', ic: 'client', group: 'work' },
   { key: 'events', ar: 'الفعاليات', ic: 'megaphone', group: 'work' },

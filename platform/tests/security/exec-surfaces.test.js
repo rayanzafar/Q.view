@@ -28,12 +28,12 @@ process.env.SANAD_DB = TEST_DB;
 //   admin (منح شامل) · ceo_office · hr · bd_head → report/kpi بنطاق «شركة». (ودور «المالية» مُلغى.)
 //   sector_lead · bd_manager · operations · viewer → بنطاق «قطاع» فقط.
 //   project_manager → بنطاق «مشروع». والبقية بلا منح تقرير أو مؤشر إطلاقاً.
-const LEADERSHIP = ['admin', 'ceo_office', 'hr', 'bd_head'];
+const LEADERSHIP = ['admin', 'ceo_office', 'hr', 'bd_head', 'bd_team'];
 // شاشة العملاء تفتح أيضاً لمن يملك منح قراءة «العميل» مهما ضاق نطاقه (قائمته تُرشَّح بنطاقه).
 // `department_manager` أُضيف بقرارٍ من المالك: مدير الإدارة يقرأ الفرص، والفرصةُ بلا عميلها
 // نصفُ معلومة — فمنحُ «العميل» يلزمها. ولا يفتح له أسطح القيادة: لا تقرير ولا مؤشر في منحه.
 // و«المالية» خارج القائمة: الدور مُلغى (الترحيلة ٠١٨).
-const CLIENT_READERS = ['admin', 'ceo_office', 'sector_lead', 'bd_manager', 'bd_head', 'viewer', 'department_manager'];
+const CLIENT_READERS = ['admin', 'ceo_office', 'sector_lead', 'bd_manager', 'bd_head', 'bd_team', 'viewer', 'department_manager'];
 
 const expectExec = (role) => LEADERSHIP.includes(role);
 const expectClients = (role) => CLIENT_READERS.includes(role) || LEADERSHIP.includes(role);
@@ -104,9 +104,9 @@ const shapeOf = (role) => {
 // ── الجدول: قرار كل دور من الستة عشر ──────────────────────────────────────────
 // كانت سبعة عشر، وأُلغي دور «المالية» بقرار مالك (الترحيلة ٠١٨). والعدد مكتوب صريحاً عن قصد:
 // إضافةُ دورٍ أو حذفُه قرارُ صلاحيات لا تفصيلَ تنفيذ، فيسقط الفحص حتى يُقرَّ العدد الجديد بيدٍ.
-test('الجدول يغطي الأدوار الستة عشر كلها — لا دور بلا قرار معلن', () => {
+test('الجدول يغطي الأدوار التسعة عشر كلها — لا دور بلا قرار معلن', () => {
   const roles = Object.keys(ROLE_GRANTS);
-  assert.equal(roles.length, 18, 'عدد الأدوار في المصفوفة');
+  assert.equal(roles.length, 19, 'عدد الأدوار في المصفوفة');
   assert.equal(roles.includes('finance'), false, 'ودور «المالية» مُلغى — إعادتُه تُعيده إلى القاعدة');
   for (const r of roles) assert.ok(EXP.ROLES.some((x) => x.role === r), `${r} بلا حساب تجريبي فلا يُفحص`);
   for (const r of [...LEADERSHIP, ...CLIENT_READERS]) assert.ok(roles.includes(r), `${r} ليس دوراً في المصفوفة`);

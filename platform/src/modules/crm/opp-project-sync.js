@@ -52,7 +52,7 @@ export const MIRROR_SOURCE = 'project';
 // و«WON» معرّفٌ في البذرة الحالية لا قانونٌ في المنتج. وترتيب الفرز يجعل الاختيار قاطعاً لو
 // وُجدت أكثر من مرحلة مكسوبة يوماً.
 export async function wonStage() {
-  return await get('SELECT id, default_win_pct FROM stage WHERE is_won = 1 ORDER BY sort_order, id LIMIT 1');
+  return await get('SELECT id, default_win_pct FROM stage WHERE is_won = 1 AND deleted_at IS NULL ORDER BY sort_order, id LIMIT 1');
 }
 
 export async function projectOfOpportunity(oppId) {

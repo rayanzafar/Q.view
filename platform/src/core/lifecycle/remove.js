@@ -156,6 +156,28 @@ export const REMOVABLE = {
       { table: 'opportunity_department', col: 'opportunity_id', ar: 'إسناد إدارة مشاركة', hard: true },
       { table: 'crm_activity', col: 'opportunity_id', ar: 'نشاط' },
       { table: 'proposal', col: 'opportunity_id', ar: 'عرض' },
+      // الحقول الحرّة (الترحيلة 048) تُطوى مع فرصتها وتعود معها — حذفٌ ناعم كغيرها
+      { table: 'opportunity_field', col: 'opportunity_id', ar: 'حقل إضافي' },
+    ],
+  },
+  task: {
+    table: 'task',
+    label: 'المهمة',
+    fem: true,            // «المهمة» مؤنّثة
+    nameCol: 'title',
+    resource: 'task',
+    // ── المهمة تُحذف بيد صاحبها أو من يملك تعديلها ──
+    // مهمةٌ تجريبية عنوانها «d» لا تستحق أن تبقى في القوائم إلى الأبد لأن الطريق الوحيد كان
+    // «إلغاء». والحذف ناعمٌ يُستعاد كغيره. أما ما ارتبط بمهمةٍ من أثر — ساعات عمل مسجَّلة عليها —
+    // فيمنع حذفها كما يمنع المالُ حذفَ المشروع: الأثرُ المعتمَد لا يُطوى بحذف حامله.
+    ownDelete: (user, row) => !!user?.id && (row.created_by === user.id || row.assignee_user_id === user.id),
+    blockers: [
+      { table: 'time_entry', col: 'task_id',
+        ar: (n) => countAr(n, 'ساعة عمل مسجَّلة واحدة', 'ساعتا عمل مسجَّلتان', 'ساعة عمل مسجَّلة') },
+    ],
+    // ما يتبع المهمة يُطوى معها في المعاملة نفسها: جسرُ مركز التطوير (صفٌّ واحد بمفتاحٍ فريد)
+    cascade: [
+      { table: 'product_item_task', col: 'task_id', ar: 'ربط بلاغ', hard: true },
     ],
   },
   user: {
@@ -271,17 +293,23 @@ export async function removalPreview(kind, id, ctx = null) {
  * حذفٌ ناعم محروس. يرمي رسالةً عربية تسمّي المانع بعدده، أو يحذف الأصل وتابعه معاً.
  * @returns {{ok:true, id:string, cascaded:Record<string,number>}}
  */
+// من يملك الحذف: الصلاحية الإدارية **أو** ملكية الإنشاء إن فتحها النوع (`ownDelete`) — من أنشأ
+// السجل يصحّح إدخاله بنفسه. قاعدةٌ واحدة يقرؤها الحذف والاستعادة **ومعاينةُ الحذف من المحادثة**:
+// فمن لا يملك الحذف لا يُقرأ له اسمُ السجل ولا ما يُطوى معه في معاينةٍ لن تُنفَّذ له أصلاً.
+export function canRemove(user, kind, row) {
+  const cfg = REMOVABLE[kind];
+  if (!cfg || !row) return false;
+  return can(user, 'delete', cfg.resource, row) || !!(cfg.ownDelete && cfg.ownDelete(user, row));
+}
+export const removeDeniedAr = (kind) => REMOVABLE[kind]?.denyAr || `حذف ${REMOVABLE[kind]?.label || 'السجل'} يتطلب صلاحية إدارية على قطاعه`;
+
 export async function removeRecord(ctx, kind, id, opts = {}) {
   const cfg = REMOVABLE[kind];
   if (!cfg) throw badRequest('نوعٌ غير معروف للحذف');
   const row = await get(`SELECT * FROM ${cfg.table} WHERE id = ? AND deleted_at IS NULL`, [id]);
   if (!row) throw notFound(`${cfg.label} ${cfg.fem ? 'غير موجودة أو محذوفة سابقاً' : 'غير موجود أو محذوف سابقاً'}`);
-  // الصلاحية الإدارية **أو** ملكية الإنشاء إن فتحها النوع (`ownDelete`): من أنشأ السجل يصحّح
-  // إدخاله بنفسه. والموانع أدناه تسري على الطريقين بلا فرق — الملكية لا تُعطّل الحراسة.
-  const allowed = can(ctx.user, 'delete', cfg.resource, row) || (cfg.ownDelete && cfg.ownDelete(ctx.user, row));
-  if (!allowed) {
-    throw forbidden(cfg.denyAr || `حذف ${cfg.label} يتطلب صلاحية إدارية على قطاعه`);
-  }
+  // والموانع أدناه تسري على طريقَي الإذن بلا فرق — الملكية لا تُعطّل الحراسة.
+  if (!canRemove(ctx.user, kind, row)) throw forbidden(removeDeniedAr(kind));
 
   const name = row[cfg.nameCol] || row.username || id;
   const blockers = await removalBlockers(kind, id, ctx);
@@ -333,4 +361,67 @@ export async function removeRecord(ctx, kind, id, opts = {}) {
     });
   });
   return { ok: true, id, name, cascaded, note: extra };
+}
+
+// ── الرجوع: الوعد الذي في رأس هذا الملف («والرجوع نقرةٌ») صار شيفرةً ─────────────────
+//
+// الحذفُ ناعمٌ منذ اليوم الأول، فالصفّ باقٍ وما ينقص إلا رفعُ الختم. والدقّة كلها في **أيّ**
+// ختمٍ يُرفع: حلقةُ الحذف تختم الأصلَ وتابعَه باللحظة نفسها (`stamp` واحد)، فالاستعادة تُقيَّد
+// بتلك اللحظة بعينها. ولولا ذلك لأحيت عمليةُ رجوعٍ واحدة مهمةً كان صاحبها قد حذفها قبل شهر —
+// أي أن «التراجع» يصير إدخالاً لبياناتٍ لم يطلبها أحد.
+const restoreDeniedAr = (cfg) => `استعادة ${cfg.label} تتطلب صلاحية حذفها — من يملك السحب يملك الرجوع عنه.`;
+
+export async function restoreRecord(ctx, kind, id) {
+  const cfg = REMOVABLE[kind];
+  if (!cfg) throw badRequest('نوعٌ غير معروف للاستعادة');
+  const row = await get(`SELECT * FROM ${cfg.table} WHERE id = ? AND deleted_at IS NOT NULL`, [id]);
+  if (!row) throw notFound(`${cfg.label} ${cfg.fem ? 'غير محذوفة' : 'غير محذوف'} — لا شيء يُستعاد.`);
+  // نوعٌ حذفُه فعل ما لا يُرَدّ (تحريرُ بريدٍ صار لحسابٍ آخر، وقطعُ جلسات) لا يُدّعى رجوعُه:
+  // رفعُ الختم وحده يُعيد صفّاً ناقصاً يبدو سليماً. تُقال الحقيقة بدل استعادةٍ نصفية.
+  if (cfg.finalize) {
+    throw badRequest(`${cfg.label} لا ${cfg.fem ? 'تُستعاد' : 'يُستعاد'} من هنا: حذفُ${cfg.fem ? 'ها' : 'ه'} حرّر البريد وقطع الجلسات، `
+      + 'وهي خطواتٌ لا تُرَدّ برفع الحذف. أنشئ الحساب من جديد بالبريد نفسه.');
+  }
+  if (!canRemove(ctx.user, kind, row)) throw forbidden(restoreDeniedAr(cfg));
+
+  const name = row[cfg.nameCol] || row.username || id;
+  const stamp = row.deleted_at;
+  const restored = {};
+  const notRestorable = [];
+  await tx(async () => {
+    for (const c of cfg.cascade) {
+      const shape = await shapeOf(c.table, c.col);
+      if (!shape.hasCol) continue;
+      // ما حُذف محواً (`hard`) لا يعود: صفُّ الربط ذهب من الجدول ولا ختمَ يُرفع عنه. يُقال
+      // صراحةً في نتيجة الاستعادة كي لا يظنّ صاحبها أن كل شيء رجع.
+      if (c.hard) { notRestorable.push(c.ar); continue; }
+      if (!shape.soft) continue;
+      const cond = c.where ? ` AND (${c.where})` : '';
+      const r = await run(
+        `UPDATE ${c.table} SET deleted_at = NULL WHERE ${c.col} = ? AND deleted_at = ?${cond}`, [id, stamp]);
+      if (Number(r.changes || 0)) restored[c.ar] = Number(r.changes);
+    }
+    await run(`UPDATE ${cfg.table} SET deleted_at = NULL WHERE id = ?`, [id]);
+    const tail = Object.entries(restored).map(([k, n]) => `${n} ${k}`).join('، ');
+    await audit(ctx, {
+      action: 'restore', resource: cfg.resource, resourceId: id, sectorId: row.sector_id || null,
+      detail: `استعادة ${cfg.label} «${name}»${tail ? ` ومعها ${tail}` : ''}`
+        + (notRestorable.length ? ` — لم ${cfg.fem ? 'تعد' : 'يعد'}: ${notRestorable.join('، ')}` : ''),
+    });
+  });
+  return { ok: true, id, name, restored, notRestorable };
+}
+
+/** المحذوفُ من نوعٍ ما، أحدثَ فأقدم — «سلة» يقرؤها من يملك حذف ذلك النوع. */
+export async function listRemoved(ctx, kind, { limit = 50 } = {}) {
+  const cfg = REMOVABLE[kind];
+  if (!cfg) throw badRequest('نوعٌ غير معروف');
+  if (!can(ctx.user, 'delete', cfg.resource)) throw forbidden(restoreDeniedAr(cfg));
+  const n = Math.min(Math.max(Number(limit) || 50, 1), 200);
+  const sectorCol = (await shapeOf(cfg.table, 'sector_id')).hasCol ? ', sector_id' : '';
+  const rows = await all(
+    `SELECT id, ${cfg.nameCol} AS name, deleted_at${sectorCol} FROM ${cfg.table}
+      WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC LIMIT ${n}`);
+  // القصُّ النطاقي على الصفوف: من يحذف في قطاعه لا يرى سلّة الشركة.
+  return rows.filter((r) => can(ctx.user, 'delete', cfg.resource, r));
 }

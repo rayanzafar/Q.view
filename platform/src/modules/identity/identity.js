@@ -18,6 +18,7 @@ import { requestCode, PURPOSE, normalizeEmail } from '../../core/auth/otp.js';
 import { mailBlockedFor } from '../../core/mail/transport.js';
 import { refreshAccountEmails } from '../../core/mail/accounts.js';
 import { removeRecord, removalBlockers } from '../../core/lifecycle/remove.js';
+import { notPersonalSql } from '../pmo/task-approval.js';
 import { ROLE_LABELS } from '../../core/rbac/matrix.js';
 
 // صلاحية إدارة الهوية = صلاحية مدير النظام. تُفحص في الخدمة لا في الصفحة وحدها: الصفحة
@@ -396,6 +397,66 @@ export async function userRemovalCheck(ctx, userId) {
     consequence: 'يختفي الحساب من كل القوائم، وتُقطع جلساته، ويصير بريده متاحاً لحساب جديد. '
       + 'وسجل التدقيق وسجل دخوله يبقيان كما هما.',
   };
+}
+
+// ── تسليمُ عمل المغادر ────────────────────────────────────────────────────────
+//
+// رسالةُ منعِ الحذف تقول منذ اليوم الأول: «انقل عمله إلى زميل أو أغلق ما بقي باسمه ثم احذفه».
+// ولم يكن في المنتج بابٌ لذلك: مدير النظام لا يرى مهامَّ شخصٍ آخر أصلاً (`teamTasks` تُعيد
+// مجاميع لا صفوفاً، و«مهامي» لصاحبها وحده)، فيقف أمام رسالةٍ تطلب منه فعلاً لا يملك وسيلته.
+// انكشف ذلك عند تنظيف الحسابات (٢٠٢٦-٠٩-٠٩) حين امتنع حذفُ حسابين بسبب ثلاث مهامّ لا تُرى.
+//
+// وقاعدتان تحكمان النقل:
+//
+// ١) **العملُ ينتقل، والخاصُّ يُغلق.** المهمة الشخصية دفترُ صاحبها — نقلُها إلى زميل يضع
+//    ملاحظاتٍ خاصة في قائمة شخصٍ لم يكتبها. فتُلغى بسببٍ مكتوب بدل أن تُسلَّم.
+//
+// ٢) **كلُّ ما يمنع الحذف يُعالَج في معاملةٍ واحدة**، فلا يبقى الحساب نصفَ مُفرَّغ: مهامُّه
+//    ومشاريعُه وفرصُه وطلباتُ اعتماده وقيادتُه لقطاعٍ أو إدارة — القائمةُ هي عينُ موانع
+//    `REMOVABLE.user` كي لا تفترقا فيمتنع الحذف بعد «نقلٍ ناجح».
+export async function reassignUserWork(ctx, fromUserId, toUserId) {
+  requireIdentityAdmin(ctx.user, 'تسليم عمل الحسابات');
+  const from = await loadUser(fromUserId);
+  const to = await loadUser(toUserId);
+  if (from.id === to.id) throw badRequest('اختر زميلاً غير صاحب الحساب — لا يُسلَّم العمل لصاحبه.');
+  if (!Number(to.active) || to.deleted_at) throw badRequest('الحساب المستلِم موقوف أو محذوف — اختر حساباً قائماً.');
+
+  const stamp = nowIso();
+  const moved = {};
+  const bump = (k, n) => { if (Number(n)) moved[k] = (moved[k] || 0) + Number(n); };
+  await tx(async () => {
+    // المهامُّ المفتوحة: ما يخصّ العمل ينتقل، والشخصيُّ يُلغى.
+    const openTask = "status NOT IN ('DONE', 'CANCELLED')";
+    bump('مهمة', (await run(
+      `UPDATE task SET assignee_user_id = ?, updated_at = ?, updated_by = ?
+        WHERE assignee_user_id = ? AND ${openTask} AND deleted_at IS NULL AND ${notPersonalSql('')}`,
+      [to.id, stamp, ctx.user.id, from.id])).changes);
+    bump('مهمة شخصية أُلغيت', (await run(
+      `UPDATE task SET status = 'CANCELLED', updated_at = ?, updated_by = ?
+        WHERE assignee_user_id = ? AND ${openTask} AND deleted_at IS NULL AND NOT ${notPersonalSql('')}`,
+      [stamp, ctx.user.id, from.id])).changes);
+    bump('مشروع', (await run(
+      `UPDATE project SET owner_user_id = ?, updated_at = ?, updated_by = ?
+        WHERE owner_user_id = ? AND COALESCE(status,'') NOT IN ('COMPLETED','CANCELLED') AND deleted_at IS NULL`,
+      [to.id, stamp, ctx.user.id, from.id])).changes);
+    bump('فرصة', (await run(
+      'UPDATE opportunity SET owner_user_id = ?, updated_at = ?, updated_by = ? WHERE owner_user_id = ? AND deleted_at IS NULL',
+      [to.id, stamp, ctx.user.id, from.id])).changes);
+    bump('طلب اعتماد', (await run(
+      "UPDATE approval_request SET requested_by = ? WHERE requested_by = ? AND status = 'PENDING'",
+      [to.id, from.id])).changes);
+    bump('قطاع يقوده', (await run(
+      'UPDATE sector SET lead_user_id = ? WHERE lead_user_id = ?', [to.id, from.id])).changes);
+    bump('إدارة يديرها', (await run(
+      'UPDATE department SET manager_user_id = ? WHERE manager_user_id = ?', [to.id, from.id])).changes);
+
+    const tail = Object.entries(moved).map(([k, n]) => `${n} ${k}`).join('، ') || 'لا شيء (الحساب فارغ أصلاً)';
+    await audit(ctx, {
+      action: 'update', resource: 'app_user', resourceId: from.id, sectorId: from.sector_id || null,
+      detail: `تسليم عمل «${from.name_ar || from.username}» إلى «${to.name_ar || to.username}»: ${tail}`,
+    });
+  });
+  return { ok: true, from: from.id, to: to.id, moved, blockers: await removalBlockers('user', from.id, ctx) };
 }
 
 export async function removeUser(ctx, userId, opts = {}) {

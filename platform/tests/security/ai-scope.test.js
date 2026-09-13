@@ -41,6 +41,8 @@ const PERSONAS = {
   hr: ['company', null], consultant: ['own', 'SOL'], employee: ['own', 'SOL'], viewer: ['sector', 'SOL'],
   department_manager: ['department', 'SOL'], line_manager: ['team', 'SOL'], bd_head: ['company', null],
   operations: ['sector', 'SOL'], procurement: ['company', null], approver: ['sector', 'SOL'],
+  // فريق تطوير الأعمال: نطاق شركة بلا قطاع — يعمل على القطاعات كلها (قرار المالك ٢٠٢٦-٠٩-٠٩).
+  bd_team: ['company', null],
   external: ['own', null],
   office_coordinator: ['own', null], office_member: ['own', null],
 };

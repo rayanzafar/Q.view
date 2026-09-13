@@ -35,7 +35,7 @@ import { DEMO_USERS, DEMO_PW, DEMO_ORG_SECTOR, DEMO_DEPARTMENTS, seedDemoOrg } f
 // الأدوار السبعة التي لا حساب لها على البيئة الحيّة — مكتوبة صراحةً لا مشتقّة، كي لا يتسلّل
 // حساب ثامن إلى نطاق هذا السكربت بتعديلٍ في مكان آخر.
 export const MISSING_ROLE_ACCOUNTS = [
-  'demo.deptmgr', 'demo.linemgr', 'demo.bdhead', 'demo.ops',
+  'demo.deptmgr', 'demo.linemgr', 'demo.bdhead', 'demo.bdteam', 'demo.ops',
   'demo.procurement', 'demo.approver', 'demo.external',
 ];
 

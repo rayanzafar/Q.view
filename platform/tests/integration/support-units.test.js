@@ -397,8 +397,44 @@ test('رئيس تطوير الأعمال لا ينشئ قطاعاً ولا يح�
   assert.equal(await get('SELECT id FROM sector WHERE id = ?', ['NOPE']), undefined);
   const matrix = await import('../../src/core/rbac/matrix.js');
   assert.equal(matrix.ROLE_GRANTS.bd_head.some((g) => g.resource === '*'), false, 'لا منح شامل');
-  assert.equal(matrix.ROLE_GRANTS.bd_head.some((g) => g.action === 'delete'), false, 'لا حذف لأي مورد');
+  // كان هنا «لا حذف لأي مورد». نسخه المالك بقرارٍ لاحق (٢٠٢٦-٠٩-٠٩): «عرض وإضافة وتعديل
+  // **وحذف** وأرشفة واستعادة الفرص والـLeads على مستوى الشركة». فالقيد لم يسقط بل ضاق:
+  // الحذفُ على سطح تطوير الأعمال وحده، والمشروعُ والمخرجُ والمعلَمُ والتسكينُ خارجه كما كانت —
+  // إزالةُ عملٍ قائم تبقى لصاحب القطاع ولمدير النظام.
+  const deletable = new Set(matrix.ROLE_GRANTS.bd_head.filter((g) => g.action === 'delete').map((g) => g.resource));
+  // و`crm_board` معها: حذفُ مرحلةٍ أو تصنيفٍ إعدادُ لوحةٍ لا إزالةُ سجلِّ عمل — ومحروسٌ بذاته
+  // (لا تُحذف مرحلةٌ فيها فرص بلا وجهة، ولا آخرُ مرحلةٍ فائزة).
+  assert.deepEqual([...deletable].sort(), ['client', 'contact', 'crm_board', 'opportunity', 'proposal'],
+    'الحذف على سطح تطوير الأعمال وإعداد لوحاته وحدهما');
+  for (const r of ['project', 'milestone', 'deliverable', 'allocation', 'sector', 'employee', 'task']) {
+    assert.equal(rbac.can(bdHead, 'delete', r), false, `لا حذف على ${r} — إزالة العمل القائم ليست قرار تطوير الأعمال`);
+  }
   assert.ok(matrix.ROLE_LABELS.bd_head.ar, 'للدور اسم عربي يظهر في الواجهة');
+});
+
+// ── فريق تطوير الأعمال: نطاق الشركة كاملاً على سطح البيع، وحدوده معلنة ──────────────────
+// قرار المالك ٢٠٢٦-٠٩-٠٩: الفريق مسؤول عن تطوير الأعمال لجميع القطاعات، ولا يُقيَّد بقطاع
+// حسابه ولا بالفرص المسندة إليه. ودورٌ مستقل عن `bd_manager` كي لا يتوسّع نطاق حامليه الآخرين.
+test('فريق تطوير الأعمال: الشركة كلها على سطح البيع، وبلا راتب ولا اعتماد ولا منح شامل', async () => {
+  const matrix = await import('../../src/core/rbac/matrix.js');
+  const bdTeam = { id: 'u_bdteam', username: 'demo.bdteam', role_id: 'bd_team', scope: 'company', sector_id: null, projectIds: new Set(), teamIds: new Set() };
+  for (const [action, resource] of [['read', 'opportunity'], ['create', 'opportunity'], ['update', 'opportunity'],
+    ['delete', 'opportunity'], ['read', 'client'], ['delete', 'client'], ['update', 'crm_board'], ['read', 'employee']]) {
+    assert.equal(rbac.can(bdTeam, action, resource), true, `${action} على ${resource} مفتوح للفريق`);
+  }
+  // النطاق شركة لا قطاع — وهي عين شكوى المالك: «لا تقيّد وصوله بالقطاع المرتبط بحسابه».
+  assert.equal(rbac.effectiveScope(bdTeam, 'read', 'opportunity'), 'company');
+  assert.equal(rbac.effectiveScope(bdTeam, 'update', 'opportunity'), 'company');
+  // والحدود: لا راتب، ولا اعتماد، ولا هامش ولا كلفة، ولا منح شامل، ولا حذف مشروع.
+  assert.equal(matrix.ROLE_GRANTS.bd_team.some((g) => g.resource === '*'), false, 'لا منح شامل');
+  assert.equal(matrix.ROLE_GRANTS.bd_team.some((g) => g.resource === 'salary'), false, 'لا منح راتب');
+  assert.equal(matrix.ROLE_GRANTS.bd_team.some((g) => g.action === 'approve'), false, 'لا اعتماد');
+  for (const r of ['margin', 'cost']) assert.equal(rbac.can(bdTeam, 'read', r), false, `لا يقرأ ${r}`);
+  for (const r of ['project', 'deliverable', 'employee', 'sector']) {
+    assert.equal(rbac.can(bdTeam, 'delete', r), false, `لا حذف على ${r}`);
+  }
+  assert.equal(rbac.can(bdTeam, 'update', 'project'), false, 'لا يعدّل المشاريع — يقرؤها ليرى مصير الفرصة');
+  assert.ok(matrix.ROLE_LABELS.bd_team.ar, 'للدور اسم عربي يظهر في الواجهة');
 });
 
 test('رئيس تطوير الأعمال يقرأ المال والهامش والكلفة على مستوى الشركة ولا يكتب المال', async () => {

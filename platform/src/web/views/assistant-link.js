@@ -8,9 +8,9 @@
 import { layout } from '../layout.js';
 import { esc } from './_shared.js';
 import { listConnections, issuer } from '../../modules/mcp/oauth.js';
-import { nowDot } from '../../core/i18n/time.js';
+import { riyadhStamp } from '../../core/i18n/time.js';
 
-const when = (iso) => (iso ? nowDot(iso) : 'لم يُستعمل بعد');
+const when = (iso) => riyadhStamp(iso, 'لم يُستعمل بعد');
 
 export async function assistantLinkPage(user) {
   let rows = [];

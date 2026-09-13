@@ -22,6 +22,20 @@ export function riyadhDate(date = new Date()) {
 }
 
 export const MONTHS_AR = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+
+/**
+ * لحظةٌ تُقرأ: «١٠ سبتمبر ٢٠٢٦ · ١١:٢٥» بتوقيت الرياض. نصٌّ خالص بلا وسوم — فمن يعرضه يهرّبه
+ * كبقيّة النصّ، ولا يظهر للقارئ وسمٌ مكتوبٌ بحروفه. والتوقيت توقيتُ الناس هنا لا غرينتش:
+ * موعدٌ يقول «الحادية عشرة» ثم يقع في الثامنة يفقد معناه عند من يقرؤه.
+ */
+export const riyadhStamp = (iso, fallback = 'غير مُسجَّل') => {
+  if (!iso) return fallback;
+  const t = new Date(iso);
+  if (Number.isNaN(t.getTime())) return fallback;
+  const d = new Date(t.getTime() + RIYADH_OFFSET_HOURS * 3600000);
+  const two = (n) => String(n).padStart(2, '0');
+  return `${d.getUTCDate()} ${MONTHS_AR[d.getUTCMonth()]} ${d.getUTCFullYear()} · ${two(d.getUTCHours())}:${two(d.getUTCMinutes())}`;
+};
 export const MONTHS_EN3 = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 // أيام الأسبوع من الأحد (getDay صفري) — لا من الاثنين: أسبوع العمل في السعودية يبدأ الأحد
 // وينتهي الخميس، وأي شبكة تقويم تبدأ بالاثنين تضع عطلة الجمعة والسبت في منتصف الصفّ.

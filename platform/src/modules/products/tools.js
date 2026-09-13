@@ -266,8 +266,11 @@ async function runListComments(ctx, raw) {
 }
 
 // ── المعاينات ─────────────────────────────────────────────────────────────────────────────
-async function previewOf(ctx, { intent, type, summary, data, sectorId, extra = {} }) {
-  const { token, expiresAt } = await savePreview(ctx.user, { type, summary, ...data }, { intent, sectorId: sectorId || null });
+// `display` صفوفُ «قبل/بعد» التي يقرؤها صاحب الحساب في صفحة «تغييرات تنتظر تأكيدك» — تُحفَظ مع
+// المعاينة لأن ما يُعرض على المساعد في `extra` لا يُحفظ، وصاحبُ القرار يقرأ بعد حينٍ لا الآن.
+async function previewOf(ctx, { intent, type, summary, data, sectorId, display = [], subject_ar = null, extra = {} }) {
+  const { token, expiresAt } = await savePreview(ctx.user,
+    { type, summary, display, ...(subject_ar ? { subject_ar } : {}), ...data }, { intent, sectorId: sectorId || null });
   return { ...base(intent), previewToken: token, expires_at: expiresAt, ttl_minutes: PREVIEW_TTL_MINUTES,
     summary_ar: summary, note_ar: PREVIEW_NOTE_AR, ...extra };
 }
@@ -293,6 +296,14 @@ async function runPreviewTriage(ctx, raw) {
   const summary = `دراسة «${item.item_key}: ${item.title}» — ${parts.join('، ')}${becomes}`;
   return await previewOf(ctx, { intent: 'sanad_dc_preview_triage', type: 'dc_triage', summary,
     data: { itemId: item.id, data }, sectorId: item.sector_id,
+    subject_ar: `بلاغ ${item.item_key}: ${item.title}`,
+    display: [
+      { field_ar: 'الحال', before_ar: statusAr(L, item.status), after_ar: statusAr(L, item.status === 'NEW' ? 'TRIAGED' : item.status) },
+      ...(data.size ? [{ field_ar: 'الحجم', before_ar: sizeAr(L, item.size), after_ar: sizeAr(L, data.size) }] : []),
+      ...(data.priority ? [{ field_ar: 'الأولوية', before_ar: priorityAr(L, item.priority), after_ar: priorityAr(L, data.priority) }] : []),
+      ...(data.est_hours != null ? [{ field_ar: 'الساعات المقدَّرة', before_ar: String(item.est_hours ?? 'غير مقدَّرة'), after_ar: String(data.est_hours) }] : []),
+      ...(data.dev_description ? [{ field_ar: 'وصف المطوِّر', after_ar: data.dev_description }] : []),
+    ],
     extra: {
       before_ar: { status_ar: statusAr(L, item.status), size_ar: sizeAr(L, item.size), priority_ar: priorityAr(L, item.priority), est_hours: item.est_hours ?? null },
       after_ar: { status_ar: statusAr(L, item.status === 'NEW' ? 'TRIAGED' : item.status), size_ar: sizeAr(L, data.size || item.size), priority_ar: priorityAr(L, data.priority || item.priority), est_hours: data.est_hours ?? item.est_hours ?? null },
@@ -329,6 +340,12 @@ async function runPreviewStatus(ctx, raw) {
   const summary = `«${item.item_key}: ${item.title}» من «${statusAr(L, item.status)}» إلى «${statusAr(L, to)}»`;
   return await previewOf(ctx, { intent: 'sanad_dc_preview_status', type: 'dc_status', summary,
     data: { itemId: item.id, to, opts }, sectorId: item.sector_id,
+    subject_ar: `بلاغ ${item.item_key}: ${item.title}`,
+    display: [
+      { field_ar: 'الحال', before_ar: statusAr(L, item.status), after_ar: statusAr(L, to) },
+      ...(opts.reason ? [{ field_ar: 'السبب', after_ar: opts.reason }] : []),
+      ...(opts.question ? [{ field_ar: 'سؤال التوضيح', after_ar: opts.question, note_ar: 'يصل إلى من أبلغ كما تكتبه' }] : []),
+    ],
     extra: { before_ar: statusAr(L, item.status), after_ar: statusAr(L, to), refs: [itemRef(item)] } });
 }
 
@@ -362,6 +379,13 @@ async function runPreviewApprove(ctx, raw) {
   return await previewOf(ctx, { intent: 'sanad_dc_preview_approve', type: 'dc_approve', summary,
     data: { itemId: item.id, opts: { assignee_user_id: assignee, ...(estHours == null ? {} : { est_hours: estHours }) } },
     sectorId: item.sector_id,
+    subject_ar: `بلاغ ${item.item_key}: ${item.title}`,
+    display: [
+      { field_ar: 'الحال', before_ar: statusAr(L, item.status), after_ar: statusAr(L, 'APPROVED') },
+      { field_ar: 'يُسنَد إلى', after_ar: who.name_ar || who.username },
+      { field_ar: 'الساعات المقدَّرة', after_ar: hours == null ? 'غير مقدَّرة' : String(hours) },
+      { field_ar: 'ما يحدث عند التأكيد', after_ar: 'يُفتح عملٌ مسنَد في «مهامي» ويصل خبره إلى من أُسنِد إليه' },
+    ],
     extra: { before_ar: statusAr(L, item.status), after_ar: statusAr(L, 'APPROVED'),
       assignee_ar: who.name_ar || who.username, est_hours: hours,
       outcome_ar: 'عند التأكيد يُعتمد البلاغ ويُفتح عمله المسنَد ويصل خبره إلى من أُسنِد إليه',
@@ -393,6 +417,11 @@ async function runPreviewDecline(ctx, raw) {
   const summary = `رفض «${item.item_key}: ${item.title}» بسبب: ${reason}`;
   return await previewOf(ctx, { intent: 'sanad_dc_preview_decline', type: 'dc_decline', summary,
     data: { itemId: item.id, reason }, sectorId: item.sector_id,
+    subject_ar: `بلاغ ${item.item_key}: ${item.title}`,
+    display: [
+      { field_ar: 'الحال', before_ar: statusAr(L, item.status), after_ar: statusAr(L, 'DECLINED') },
+      { field_ar: 'سبب الرفض', after_ar: reason, note_ar: 'يصل إلى من أبلغ كما هو مكتوب هنا' },
+    ],
     extra: { before_ar: statusAr(L, item.status), after_ar: statusAr(L, 'DECLINED'),
       warning_ar: 'سبب الرفض يصل إلى من أبلغ كما تكتبه — اكتبه له لا عنه',
       refs: [itemRef(item)] } });
@@ -429,6 +458,15 @@ async function runPreviewCreateItem(ctx, raw) {
   const summary = `${typeAr(L, body.type)} جديد على «${product.name_ar}» باسم ${body.reporter_name || body.reporter_user_id}: ${body.title}`;
   return await previewOf(ctx, { intent: 'sanad_dc_preview_create_item', type: 'dc_create_item', summary,
     data: { productId, body }, sectorId: body.sector_id,
+    subject_ar: `بلاغ جديد على «${product.name_ar}»`,
+    display: [
+      { field_ar: 'النوع', after_ar: typeAr(L, body.type) },
+      { field_ar: 'العنوان', after_ar: body.title },
+      { field_ar: 'باسم', after_ar: body.reporter_name || body.reporter_user_id },
+      { field_ar: 'أين حدث', after_ar: body.where_text },
+      { field_ar: 'الإلحاح', after_ar: urgencyAr(L, body.urgency) },
+      { field_ar: 'الحال عند التسجيل', after_ar: statusAr(L, 'NEW') },
+    ],
     extra: { after_ar: statusAr(L, 'NEW'), urgency_ar: urgencyAr(L, body.urgency),
       outcome_ar: 'عند التأكيد يُسجَّل البلاغ باسم من أبلغ ويصل خبره إلى فريق المنتج',
       refs: [{ kind: 'page', id: 'dev-center', href: `/app/dev-center/${productId}` }] } });
