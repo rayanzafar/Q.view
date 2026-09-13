@@ -1,11 +1,11 @@
 {
   "version": 1,
-  "sourceDigest": "129dbc3c4a050303c5d5a5991dacf15fe8320b47048c3f0ff2ab0bd50e57e820",
-  "sourceFiles": 697,
+  "sourceDigest": "c743da3080246d72fe7485ba877c3ee770ff6b4a0daa774f4e8d466e2614e254",
+  "sourceFiles": 698,
   "counts": {
     "code": 275,
     "test": 312,
-    "automation": 59,
+    "automation": 60,
     "module": 20,
     "route": 352,
     "page": 27,
@@ -5552,6 +5552,15 @@
       "detail": "scripts/evidence.mjs",
       "sources": [
         "scripts/evidence.mjs"
+      ]
+    },
+    {
+      "id": "file:scripts/export-sector-intake.mjs",
+      "kind": "automation",
+      "label": "export-sector-intake.mjs",
+      "detail": "scripts/export-sector-intake.mjs",
+      "sources": [
+        "scripts/export-sector-intake.mjs"
       ]
     },
     {
@@ -30406,6 +30415,20 @@
     },
     {
       "from": "file:src/modules/io/adapters/staffing.js",
+      "to": "file:src/modules/team/resources.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/io/adapters/staffing.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/io/adapters/staffing.js",
+      "to": "file:src/modules/io/parse.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/io/adapters/staffing.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/io/adapters/staffing.js",
       "to": "file:src/core/i18n/time.js",
       "label": "استيراد صريح",
       "evidence": "src/modules/io/adapters/staffing.js",
@@ -47468,6 +47491,62 @@
       "to": "file:scripts/lib/expectations.mjs",
       "label": "استيراد صريح",
       "evidence": "scripts/evidence.mjs",
+      "kind": "source"
+    },
+    {
+      "from": "file:scripts/export-sector-intake.mjs",
+      "to": "file:src/core/db/index.js",
+      "label": "استيراد صريح",
+      "evidence": "scripts/export-sector-intake.mjs",
+      "kind": "source"
+    },
+    {
+      "from": "file:scripts/export-sector-intake.mjs",
+      "to": "file:src/core/util/ids.js",
+      "label": "استيراد صريح",
+      "evidence": "scripts/export-sector-intake.mjs",
+      "kind": "source"
+    },
+    {
+      "from": "file:scripts/export-sector-intake.mjs",
+      "to": "file:src/modules/io/parse.js",
+      "label": "استيراد صريح",
+      "evidence": "scripts/export-sector-intake.mjs",
+      "kind": "source"
+    },
+    {
+      "from": "file:scripts/export-sector-intake.mjs",
+      "to": "file:src/modules/io/adapters/projects.js",
+      "label": "استيراد صريح",
+      "evidence": "scripts/export-sector-intake.mjs",
+      "kind": "source"
+    },
+    {
+      "from": "file:scripts/export-sector-intake.mjs",
+      "to": "file:src/modules/io/adapters/staffing.js",
+      "label": "استيراد صريح",
+      "evidence": "scripts/export-sector-intake.mjs",
+      "kind": "source"
+    },
+    {
+      "from": "file:scripts/export-sector-intake.mjs",
+      "to": "file:src/modules/crm/oppteam.js",
+      "label": "استيراد صريح",
+      "evidence": "scripts/export-sector-intake.mjs",
+      "kind": "source"
+    },
+    {
+      "from": "file:scripts/export-sector-intake.mjs",
+      "to": "file:src/web/i18n/glossary.js",
+      "label": "استيراد صريح",
+      "evidence": "scripts/export-sector-intake.mjs",
+      "kind": "source"
+    },
+    {
+      "from": "file:scripts/export-sector-intake.mjs",
+      "to": "file:scripts/make-sap-intake-workbook.mjs",
+      "label": "استيراد صريح",
+      "evidence": "scripts/export-sector-intake.mjs",
       "kind": "source"
     },
     {
@@ -66074,6 +66153,132 @@
       "to": "table:collection",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
       "evidence": "scripts/derive-finance.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/export-sector-intake.mjs",
+      "to": "table:sector",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/export-sector-intake.mjs",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/export-sector-intake.mjs",
+      "to": "table:client",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/export-sector-intake.mjs",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/export-sector-intake.mjs",
+      "to": "table:opportunity",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/export-sector-intake.mjs",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/export-sector-intake.mjs",
+      "to": "table:project",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/export-sector-intake.mjs",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/export-sector-intake.mjs",
+      "to": "table:contact",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/export-sector-intake.mjs",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/export-sector-intake.mjs",
+      "to": "table:stage",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/export-sector-intake.mjs",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/export-sector-intake.mjs",
+      "to": "table:app_user",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/export-sector-intake.mjs",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/export-sector-intake.mjs",
+      "to": "table:department",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/export-sector-intake.mjs",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/export-sector-intake.mjs",
+      "to": "table:membership",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/export-sector-intake.mjs",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/export-sector-intake.mjs",
+      "to": "table:employee",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/export-sector-intake.mjs",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/export-sector-intake.mjs",
+      "to": "table:contract",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/export-sector-intake.mjs",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/export-sector-intake.mjs",
+      "to": "table:collection",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/export-sector-intake.mjs",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/export-sector-intake.mjs",
+      "to": "table:deliverable",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/export-sector-intake.mjs",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/export-sector-intake.mjs",
+      "to": "table:milestone",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/export-sector-intake.mjs",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/export-sector-intake.mjs",
+      "to": "table:invoice_line",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/export-sector-intake.mjs",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/export-sector-intake.mjs",
+      "to": "table:invoice",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/export-sector-intake.mjs",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/export-sector-intake.mjs",
+      "to": "table:allocation",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/export-sector-intake.mjs",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/export-sector-intake.mjs",
+      "to": "table:cost_line",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/export-sector-intake.mjs",
       "kind": "text-reference"
     },
     {
