@@ -16,10 +16,13 @@
 // الاستعمال: SANAD_RELEASE=1 npm run deploy [-- --skip-gates --allow-dirty --no-sweep]
 // الدليل الكامل: docs/guides/DEPLOY-PIPELINE.md
 import { spawnSync } from 'node:child_process';
-import { readFileSync, existsSync, readdirSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { resolve, join } from 'node:path';
 import { deploymentTagOf } from '../src/core/http/build-id.js';
+// النسخة المنطقية عبر مسار التطبيق ومتغيّرات الخدمة — مستخرَجتان إلى مكتبةٍ كي تُؤخذ النسخة
+// خارج النشر أيضاً (قبل عمليات البيانات). السلوك هنا كما كان حرفاً: scripts/lib/app-backup.mjs
+import { appLevelBackup, readStagingVars } from './lib/app-backup.mjs';
 
 const PROJECT_ID = '892124c7-a66e-4ac7-bd7d-e4827b3e5f40';   // sanad-staging (المشروع)
 const ENV_ID = 'd654abc4-b261-476b-a11a-b1df477a55b9';       // production (بيئة staging الوحيدة)
@@ -40,9 +43,6 @@ const fail = (m) => {
   • البيانات: docs/guides/ROLLBACK.md + النسخة في data/backups/ + أرشيف PITR`);
   process.exit(1);
 };
-// ذاكرةُ متغيّرات الخدمة: تُعلَن هنا لا عند الدالة — الدوالُّ تُرفع و`let` لا، و`appLevelBackup`
-// يُنادى في أعلى الملف قبل سطر التعريف. (أسقط النشرَ فعلاً قبل أن يمسّ البيئة.)
-let _stagingVars;
 const run = (cmd, argv, opts = {}) => {
   const r = spawnSync(cmd, argv, { cwd: ROOT, stdio: opts.capture ? 'pipe' : 'inherit', encoding: 'utf8', env: process.env, ...opts });
   return r;
@@ -131,7 +131,14 @@ if (args.has('--skip-gates')) {
       // `/api/backup/dump` (جلسة مدير نظام + رمز النسخة من متغيّرات الخدمة)، ويتحقق من العدادات
       // جدولاً جدولاً مقابل `/api/backup/counts`. وسيلة الاستعادة: scripts/restore-dump.mjs (مختبرة).
       console.log('ℹ pg_dump لم يبلغ القاعدة — الطريق الثاني: النسخة المنطقية عبر مسار التطبيق');
-      backupFile = await appLevelBackup();
+      const bv = readStagingVars({ appServiceId: APP_SERVICE_ID });
+      backupFile = await appLevelBackup({
+        baseUrl: STAGING_URL,
+        user: bv.SANAD_ADMIN_USER || 'sysadmin',
+        pass: bv.SANAD_ADMIN_PASS,
+        token: bv.SANAD_BACKUP_TOKEN,
+        outDir: join(ROOT, 'data/backups'),
+      });
       if (!backupFile) fail(`النسخة الاحتياطية فشلت:\n${out}\n${out2}`);
     } else console.log(out2.trim().split('\n').pop());
   } else {
@@ -152,77 +159,6 @@ if (args.has('--skip-gates')) {
     console.log('ℹ الجرد من نسخة pg_dump غير مدعوم هنا — راجع schema_migration يدوياً قبل الرفع (KI-111)');
   }
 }
-
-/**
- * النسخة المنطقية عبر مسار التطبيق: تسجيل دخول مدير النظام (نموذج الويب بحارس CSRF)، ثم العدادات،
- * ثم التنزيل سطراً سطراً إلى data/backups (خارج git)، ثم مطابقة العدادات. يعيد مسار الملف أو null.
- * الأسرار تُقرأ وقت التشغيل من متغيّرات خدمة التطبيق ولا تُطبع.
- */
-/**
- * متغيّرات خدمة التطبيق (حسابُ مدير النظام ورمزُ النسخة) — تُقرأ وقت التشغيل ولا تُطبع.
- * تُستعمل في موضعين: النسخة الاحتياطية، والمسحُ الحيّ بحسابٍ حقيقي بعد إزالة الشخصيات
- * التجريبية. استخراجُها هنا يمنع نسختين من منطق القراءة تفترقان.
- */
-function readStagingVars() {
-  if (_stagingVars !== undefined) return _stagingVars;
-  const parse = (r) => { try { return JSON.parse(r.stdout || '{}'); } catch { return {}; } };
-  let vars = parse(run('railway', ['variables', '--service', APP_SERVICE_ID, '--json'], { capture: true }));
-  if (!vars.SANAD_ADMIN_PASS || !vars.SANAD_BACKUP_TOKEN) {
-    vars = parse(run('railway', ['variables', '--service', 'sanad-staging', '--json'], { capture: true }));
-  }
-  _stagingVars = vars;
-  return vars;
-}
-
-async function appLevelBackup() {
-  const vars = readStagingVars();
-  if (!vars.SANAD_ADMIN_PASS || !vars.SANAD_BACKUP_TOKEN) { console.log('✗ متغيّرا مدير النظام ورمز النسخة غير متاحين من الخدمة'); return null; }
-  const jar = new Map();
-  const cookieHeader = () => [...jar].map(([k, v]) => `${k}=${v}`).join('; ');
-  const absorb = (r) => { for (const l of r.headers.getSetCookie?.() || []) { const [k, v] = l.split(';')[0].split('='); if (k && v) jar.set(k.trim(), v.trim()); } };
-  try {
-    const seed = await fetch(`${STAGING_URL}/login`, { signal: AbortSignal.timeout(20000) }); absorb(seed); await seed.text();
-    const login = await fetch(`${STAGING_URL}/auth/login-web`, { method: 'POST', redirect: 'manual', signal: AbortSignal.timeout(20000),
-      headers: { 'content-type': 'application/x-www-form-urlencoded', cookie: cookieHeader() },
-      body: new URLSearchParams({ username: vars.SANAD_ADMIN_USER || 'sysadmin', password: vars.SANAD_ADMIN_PASS, _csrf: jar.get('sanad_csrf') || '' }) });
-    absorb(login); await login.text();
-    if (!jar.get('sanad_sid')) { console.log('✗ تعذّر تسجيل دخول مدير النظام لأخذ النسخة'); return null; }
-    const H = { cookie: cookieHeader(), 'x-backup-token': vars.SANAD_BACKUP_TOKEN };
-    const cr = await fetch(`${STAGING_URL}/api/backup/counts`, { headers: H, signal: AbortSignal.timeout(60000) });
-    if (!cr.ok) { console.log(`✗ عدادات النسخة: HTTP ${cr.status}`); return null; }
-    const counts = (await cr.json()).counts || {};
-    const dr = await fetch(`${STAGING_URL}/api/backup/dump`, { headers: H, signal: AbortSignal.timeout(600000) });
-    if (!dr.ok) { console.log(`✗ تنزيل النسخة: HTTP ${dr.status}`); return null; }
-    const buf = Buffer.from(await dr.arrayBuffer());
-    const dir = join(ROOT, 'data/backups');
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-    const file = join(dir, `app-${headShaShort()}-${new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14)}.ndjson`);
-    writeFileSync(file, buf);
-    // المطابقة على مستويين: (١) كل جدول في الملف يحمل عدد صفوفه المعلَن وقت الأخذ ويجب أن يساوي ما وصل
-    // فعلاً (اكتمال البث)؛ (٢) عدادات الخادم قبل التنزيل تساوي ما في الملف — إلا سجل التدقيق، فهو
-    // يُلحَق فقط، وطلبا العدادات والنسخة نفساهما يكتبان فيه سطراً لكلٍّ منهما، فيُقبل نموّه بهذا القدر لا أكثر.
-    const lines = buf.toString('utf8').split('\n').filter(Boolean);
-    const head = JSON.parse(lines[0] || '{}');
-    if (head._meta !== 'sanad-backup') { console.log('✗ النسخة بلا ترويسة سند'); return null; }
-    const seen = {}; const declared = {}; let cur = null;
-    for (const l of lines.slice(1)) {
-      if (l.startsWith('{"_table":')) { const m = JSON.parse(l); cur = m._table; seen[cur] = 0; declared[cur] = Number(m._rows) || 0; continue; }
-      if (cur) seen[cur]++;
-    }
-    const cut = Object.keys(declared).filter((t) => seen[t] !== declared[t]);
-    if (cut.length) { console.log(`✗ النسخة ناقصة — صفوف أقل من المعلَن في: ${cut.slice(0, 8).join('، ')}`); return null; }
-    const APPEND_ONLY_SLACK = { audit_log: 4 };
-    const mism = Object.keys(counts).filter((t) => {
-      const got = seen[t] ?? -1; const slack = APPEND_ONLY_SLACK[t] || 0;
-      return got < counts[t] || got > counts[t] + slack;
-    });
-    if (mism.length) { console.log(`✗ عدادات النسخة لا تطابق الخادم: ${mism.slice(0, 8).join('، ')}`); return null; }
-    const rows = Object.values(seen).reduce((a, b) => a + b, 0);
-    console.log(`✓ backup: app-level ${file} (${buf.length} bytes، ${Object.keys(seen).length} جدولاً، ${rows} صفاً — العدادات مطابقة)`);
-    return file;
-  } catch (e) { console.log(`✗ النسخة المنطقية: ${e?.message || e}`); return null; }
-}
-function headShaShort() { return (run('git', ['rev-parse', '--short=12', 'HEAD'], { capture: true }).stdout || '').trim() || 'nogit'; }
 
 // ── ٤) النشر — الخدمة بمعرّفها الفريد، لا بالاسم ولا بحال الربط ────────────────
 log(`٤/٧ النشر إلى خدمة التطبيق ${APP_SERVICE_ID}`);
@@ -293,7 +229,7 @@ if (args.has('--no-sweep')) {
   // بل انتقلت إلى المكان الذي تُبذر فيه الشخصيات أصلاً.
   //
   // وإن عادت الشخصيات إلى البيئة يوماً، احذف `--as` فيعود المسح إلى الأدوار السبعة.
-  const creds = readStagingVars();   // نفس المتغيّرات المستعملة في النسخة الاحتياطية
+  const creds = readStagingVars({ appServiceId: APP_SERVICE_ID });   // نفس المتغيّرات المستعملة في النسخة الاحتياطية
   const sweepArgs = creds?.SANAD_ADMIN_PASS
     ? [STAGING_URL, '--as', creds.SANAD_ADMIN_USER || 'sysadmin', '--as-role', 'admin']
     : [STAGING_URL, `--roles=${SEEDED_ROLES}`, '--allow-missing-roles'];
