@@ -74,6 +74,26 @@ const ragAr = (k) => (k ? firstLabel(RAG_LABELS, k) : '—');
 const dlvStatusAr = (k) => (k ? (DELIVERABLE_STATUS_AR[k] || k) : '—');
 const roleAr = (k) => (k ? (ROLE_LABELS[k] || k) : '—');
 
+// الحِملُ المسجَّل على المنصة كما يُقرأ من خريطة الأشهر: نسبةٌ من طاقة الشهر ومدىً من شهرٍ إلى
+// شهر. ولو اختلفت النسبةُ شهراً بشهر رُدَّت أعلاها مع بيانِ أنها متفاوتة، كي لا يُقارَن رقمٌ
+// واحدٌ بما ليس واحداً.
+function liveLoadOf(a) {
+  let mj = a?.monthly_json;
+  if (typeof mj === 'string') { try { mj = JSON.parse(mj || '{}'); } catch { mj = {}; } }
+  if (!mj || typeof mj !== 'object') mj = {};
+  const months = Object.entries(mj)
+    .map(([m, v]) => [Number(m), Number(v)])
+    .filter(([m, v]) => Number.isInteger(m) && m >= 1 && m <= 12 && Number.isFinite(v) && v > 0)
+    .sort((x, y) => x[0] - y[0]);
+  const pcts = [...new Set(months.map(([, v]) => Math.round(v * 100)))];
+  return {
+    pct: pcts.length ? Math.max(...pcts) : null,
+    pct_varies: pcts.length > 1,
+    fromMonth: months.length ? months[0][0] : (a?.month_start ?? null),
+    toMonth: months.length ? months[months.length - 1][0] : (a?.month_end ?? null),
+  };
+}
+
 // أسماءُ الحقول كما يقرؤها صاحب العمل — لا يظهر اسمُ عمودٍ مخزَّن في تقرير.
 const FIELD_AR = {
   name_ar: 'الاسم', name_en: 'الاسم الإنجليزي', status: 'الحالة', rag: 'مؤشر الصحة',
@@ -337,7 +357,7 @@ class Plan {
     this.reported_only = {
       invoiced_without_date: [], collected_without_invoice: [], example_residue: [],
       accounts_csv: [], unparsable: [], ambiguous_dates: [], period_incomplete: [],
-      allocations_already_live: [],
+      allocations_already_live: [], allocation_role_differs: [],
     };
     this.totals = { counts: {}, revenue_delta_by_year: {}, revenue_by_year: {} };
   }
@@ -795,13 +815,30 @@ export function buildPlan(wb, live, { sector, year, file, projectMap = null, emp
     const from = Math.max(1, Math.min(12, Math.round(numberOf(r.cells['من شهر']) ?? 1)));
     const to = Math.max(from, Math.min(12, Math.round(numberOf(r.cells['إلى شهر']) ?? 12)));
     const pct = Math.max(0, Math.min(150, Math.round(numberOf(r.cells['الإشغال (%)']) ?? 100)));
-    const key = `${e.id || e.ref}|${p.id || p.ref}|${y}|${type}`;
+    // المنصةُ لا تحفظ للشخص إلا تسكيناً واحداً على المشروع في السنة مهما اختلفت الصفة، فالمفتاحُ
+    // هنا بالشخص والمشروع والسنة وحدها — لا بالصفة. وبغير ذلك يُخطَّط سطرٌ ثانٍ ترفضه المنصة.
+    const key = `${e.id || e.ref}|${p.id || p.ref}|${y}`;
     if (seen.has(key)) { sCounts.skipped += 1; continue; }
     seen.add(key);
-    const already = e.id && p.id && live.allocations.some((a) => a.employee_id === e.id && a.project_id === p.id
-      && Number(a.year) === y && String(a.type || '') === type);
-    if (already) {
-      plan.reported_only.allocations_already_live.push({ employee: e.name, project: p.name, year: y, type, type_ar: roleAr(type) });
+    const liveAlloc = (e.id && p.id)
+      ? live.allocations.find((a) => a.employee_id === e.id && a.project_id === p.id && Number(a.year) === y)
+      : null;
+    if (liveAlloc) {
+      // قائمٌ على المنصة. فإن اختلفت الصفةُ بقيت صفةُ المنصة كما هي بقرار المالك، ويُذكر الفرق
+      // ولا يُكتب. وإن اتّفقت فهو المسجَّلُ أصلاً كما كان — ويُذكر معه فرقُ الحِمل إن وُجد.
+      const liveType = String(liveAlloc.type || '') || null;
+      const load = liveLoadOf(liveAlloc);
+      const entry = {
+        employee: e.name, project: p.name, year: y,
+        live_role: liveType, workbook_role: type,
+        live_role_ar: roleAr(liveType), workbook_role_ar: roleAr(type),
+        pct_live: load.pct, pct_workbook: pct, pct_live_varies: load.pct_varies,
+        months_live: (load.fromMonth != null && load.toMonth != null) ? `${load.fromMonth}–${load.toMonth}` : null,
+        months_workbook: `${from}–${to}`,
+        load_differs: load.pct !== pct || load.fromMonth !== from || load.toMonth !== to,
+      };
+      if (liveType !== type) plan.reported_only.allocation_role_differs.push(entry);
+      else plan.reported_only.allocations_already_live.push({ ...entry, type, type_ar: roleAr(type) });
       sCounts.skipped += 1;
       continue;
     }
@@ -1054,7 +1091,11 @@ export function renderReport(plan, { live }) {
   }
   if (ro.allocations_already_live.length) {
     p();
-    p(`ومسجَّلٌ أصلاً (لن يُكرَّر): ${intFmt(ro.allocations_already_live.length)} تسكيناً.`);
+    p(`ومسجَّلٌ أصلاً بنفس الصفة (لن يُكرَّر): ${intFmt(ro.allocations_already_live.length)} تسكيناً.`);
+  }
+  if (ro.allocation_role_differs.length) {
+    p();
+    p(`وقائمٌ بصفةٍ غير التي في الدفتر: ${intFmt(ro.allocation_role_differs.length)} تسكيناً — تفصيلُها في بابٍ مستقل أدناه، وصفةُ المنصة باقيةٌ كما هي.`);
   }
   if (plan.clients.length || plan.phases.length) {
     p();
@@ -1091,6 +1132,34 @@ export function renderReport(plan, { live }) {
   head('محصَّل بلا فاتورة');
   if (!ro.collected_without_invoice.length) p('لا شيء.');
   else for (const r of ro.collected_without_invoice) p(`- ${r.name} — «${r.project}» · ${num2(r.amount_sar)} ريال · التاريخ المكتوب: ${r.date || 'لا تاريخ'}`);
+
+  head('تسكينٌ قائمٌ بصفةٍ مختلفة — تُرك كما هو على المنصة');
+  p('المنصةُ تحفظ للشخص تسكيناً واحداً على المشروع في السنة الواحدة. وحيث كُتبت في الدفتر صفةٌ غير');
+  p('الصفة المسجَّلة، أُبقيت صفةُ المنصة كما هي بقرارِ المالك، ولم يُكتب من هذه السطور شيء:');
+  p();
+  if (!ro.allocation_role_differs.length) p('لا شيء.');
+  else {
+    const loadCell = (pct, months, varies) => (pct == null ? '—'
+      : `${intFmt(pct)}%${varies ? ' (متفاوتة بالشهور)' : ''}${months ? ` · الشهور ${months}` : ''}`);
+    p('| الزميل | المشروع | السنة | صفتُه على المنصة | صفتُه في الدفتر | حِملُه على المنصة | حِملُه في الدفتر |');
+    p('| --- | --- | --- | --- | --- | --- | --- |');
+    for (const r of ro.allocation_role_differs.slice(0, MAX_LIST)) {
+      p(`| ${cell(r.employee)} | ${cell(r.project)} | ${cell(r.year)} | ${cell(r.live_role_ar)} | ${cell(r.workbook_role_ar)}`
+        + ` | ${loadCell(r.pct_live, r.months_live, r.pct_live_varies)} | ${loadCell(r.pct_workbook, r.months_workbook, false)} |`);
+    }
+    if (ro.allocation_role_differs.length > MAX_LIST) {
+      p(`| … | وبقيّتها في ملف الخطة | ${intFmt(ro.allocation_role_differs.length - MAX_LIST)} | | | | |`);
+    }
+    const loadOff = ro.allocation_role_differs.filter((r) => r.load_differs).length;
+    p();
+    if (loadOff) p(`ومنها ${intFmt(loadOff)} يختلف حِملُها أو مدى شهورها عمّا في الدفتر كذلك — ذُكر ولم يُكتب.`);
+    p('فمن أراد تغيير الصفة أو الحِمل فمن صفحة المشروع مباشرةً، لا من هذا المسار.');
+  }
+  const loadOnlyOff = ro.allocations_already_live.filter((r) => r.load_differs).length;
+  if (loadOnlyOff) {
+    p();
+    p(`وفي المسجَّل أصلاً بنفس الصفة ${intFmt(loadOnlyOff)} تسكيناً يختلف حِملُه أو مدى شهوره عمّا في الدفتر — ذُكر ولم يُكتب.`);
+  }
 
   head('بقايا صف المثال');
   p('الصف الأول من كل ورقة كان مثالاً يُكتب فوقه. وما بقي من خاناته عُومل فارغاً ولم يُكتب:');
