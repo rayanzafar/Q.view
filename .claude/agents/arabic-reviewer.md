@@ -1,5 +1,6 @@
 ---
 name: arabic-reviewer
+model: sonnet
 description: Reviews all user-facing Arabic copy for clarity, consistency with the glossary, and executive tone. Use before merging any UI/email/report change.
 tools: Read, Grep, Glob, Bash
 ---

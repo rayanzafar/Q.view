@@ -1,5 +1,6 @@
 ---
 name: qa-tester
+model: opus
 description: Writes and runs tests for Sanad features — unit, integration (service+API), permissions, and E2E specs. Use after a feature lands to prove it and to add regression coverage for fixed defects.
 tools: Read, Edit, Write, Bash, Grep, Glob
 ---

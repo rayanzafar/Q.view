@@ -6,12 +6,51 @@ import { can } from '../../../core/rbac/index.js';
 import { scopeFilter } from '../../../core/rbac/scope.js';
 import { audit } from '../../../core/audit/index.js';
 import { id, nowIso, toSar } from '../../../core/util/ids.js';
-import { forbidden } from '../../../core/http/errors.js';
+import { splitGross } from '../../finance/vat.js';
+import { badRequest, forbidden } from '../../../core/http/errors.js';
 
 function assertRowPermission(ctx, action, sectorId) {
   if (!can(ctx.user, action, 'revenue_line', { sector_id: sectorId })) {
     throw forbidden('تسجيل الإيراد يتطلب صلاحية مالية على هذا القطاع');
   }
+}
+
+const EDITABLE = ['sector_id', 'project_id', 'year', 'month', 'label', 'amount_halalas', 'net_amount_halalas', 'vat_halalas'];
+const derived = (r) => !!(r.auto || r.deliverable_id || r.rule_id || String(r.id || '').startsWith('rl_dlv_'));
+const changesOf = (r, m) => Object.entries({ sector: 'sector_id', project: 'project_id', year: 'year', month: 'month', label: 'label', amount: 'amount_halalas' })
+  .filter(([key, col]) => String(m[key] ?? '') !== String(r[col] ?? '')).map(([key]) => key);
+function assertManual(r) {
+  if (derived(r)) throw badRequest('هذا الإيراد يتبع مصدره — عدّل المخرج من صفحة المشروع ثم أعد التصدير');
+}
+async function checkTarget(ctx, mapped, action = 'update') {
+  assertRowPermission(ctx, action, mapped.sector);
+  if (mapped.project) {
+    const p = await get('SELECT * FROM project WHERE id = ? AND deleted_at IS NULL', [mapped.project]);
+    if (!p || !can(ctx.user, 'read', 'project', p)) throw forbidden('المشروع غير متاح ضمن صلاحيتك — اختر مشروعًا مسموحًا');
+    if (p.sector_id !== mapped.sector) throw badRequest('قطاع الإيراد لا يطابق قطاع المشروع — صحّح القطاع أو المشروع');
+  }
+}
+function fieldsOf(m, before = null) {
+  const money = splitGross(m.amount);
+  // Preserve explicitly stored tax treatments when only a date/label changes.
+  if (before && Number(before.amount_halalas) !== Number(m.amount)) {
+    const old = splitGross(before.amount_halalas);
+    if ((before.net_amount_halalas != null && Number(before.net_amount_halalas) !== old.net_halalas)
+      || (before.vat_halalas != null && Number(before.vat_halalas) !== old.vat_halalas)) {
+      throw badRequest('للسطر معالجة ضريبية خاصة — راجع أساس المبلغ قبل تغييره');
+    }
+  }
+  return { sector_id: m.sector, project_id: m.project || null, year: m.year, month: m.month,
+    label: m.label || null, amount_halalas: m.amount,
+    net_amount_halalas: before && Number(before.amount_halalas) === Number(m.amount) ? before.net_amount_halalas : money.net_halalas,
+    vat_halalas: before && Number(before.amount_halalas) === Number(m.amount) ? before.vat_halalas : money.vat_halalas };
+}
+async function resolveExisting(ctx, mapped, existing) {
+  assertRowPermission(ctx, 'update', existing.sector_id);
+  await checkTarget(ctx, mapped);
+  const changes = changesOf(existing, mapped);
+  if (changes.length) { assertManual(existing); fieldsOf(mapped, existing); }
+  return { action: changes.length ? 'update' : 'skip', existing, changes };
 }
 
 export default {
@@ -23,7 +62,7 @@ export default {
     { key: 'sector', labelAr: 'القطاع', required: true, parse: 'lookup', lookup: 'sector' },
     { key: 'year', labelAr: 'السنة', required: true, parse: 'int', min: 2000, max: 2100 },
     { key: 'month', labelAr: 'الشهر', required: true, parse: 'int', min: 1, max: 12, aliases: ['رقم الشهر'] },
-    { key: 'amount', labelAr: 'المبلغ (ريال)', required: true, parse: 'money', aliases: ['الإيراد', 'القيمة'] },
+    { key: 'amount', labelAr: 'المبلغ شامل الضريبة (ريال)', required: true, parse: 'money', aliases: ['المبلغ (ريال)', 'الإيراد', 'القيمة'] },
     { key: 'label', labelAr: 'البيان', aliases: ['الوصف', 'التفاصيل'] },
     { key: 'project', labelAr: 'المشروع', parse: 'lookup', lookup: 'project', aliases: ['اسم المشروع'] },
     // مفتاح حتمي للملفات المصدَّرة — يميّز الأسطر المشروعة المتطابقة القيم
@@ -57,8 +96,7 @@ export default {
     if (mapped.id) {
       const byId = await get('SELECT * FROM revenue_line WHERE id = ?', [String(mapped.id).trim()]);
       if (!byId) throw new Error('معرف السطر غير موجود — لا تعدّل عمود «معرف السطر» يدوياً');
-      const changes = Number(byId.amount_halalas || 0) === Number(mapped.amount || 0) ? [] : ['amount'];
-      return { action: changes.length ? 'update' : 'skip', existing: byId, changes };
+      return await resolveExisting(ctx, mapped, byId);
     }
     const existing = await get(`
       SELECT * FROM revenue_line
@@ -66,9 +104,8 @@ export default {
         AND COALESCE(label, '') = ? AND COALESCE(project_id, '') = ?
       ORDER BY created_at LIMIT 1`,
       [mapped.sector, mapped.year, mapped.month, mapped.label || '', mapped.project || '']);
-    if (!existing) return { action: 'create', existing: null, changes: [] };
-    const changes = Number(existing.amount_halalas || 0) === Number(mapped.amount || 0) ? [] : ['amount'];
-    return { action: changes.length ? 'update' : 'skip', existing, changes };
+    if (!existing) { await checkTarget(ctx, mapped, 'create'); return { action: 'create', existing: null, changes: [] }; }
+    return await resolveExisting(ctx, mapped, existing);
   },
 
   rowTarget(mapped, resolved, user) {
@@ -81,20 +118,21 @@ export default {
 
   async applyRow(ctx, mapped, resolved) {
     if (resolved.action === 'create') {
-      assertRowPermission(ctx, 'create', mapped.sector);
+      await checkTarget(ctx, mapped, 'create');
       const rid = id('rev');
       await insert('revenue_line', {
-        id: rid, project_id: mapped.project || null, sector_id: mapped.sector,
-        amount_halalas: mapped.amount, month: mapped.month, year: mapped.year,
-        label: mapped.label || null, auto: 0, created_at: nowIso(),
+        id: rid, ...fieldsOf(mapped), auto: 0, created_at: nowIso(),
       });
       await audit(ctx, { action: 'create', resource: 'revenue_line', resourceId: rid, sectorId: mapped.sector, detail: { source: 'import' } });
       const after = await get('SELECT * FROM revenue_line WHERE id = ?', [rid]);
       return { resource: 'revenue_line', resourceId: rid, before: null, after };
     }
-    const before = resolved.existing;
+    const before = await get('SELECT * FROM revenue_line WHERE id = ?', [resolved.existing.id]);
+    if (!before) throw badRequest('السطر لم يعد موجودًا — أعد المعاينة');
+    assertManual(before);
+    await checkTarget(ctx, mapped);
     assertRowPermission(ctx, 'update', before.sector_id);
-    await update('revenue_line', before.id, { amount_halalas: mapped.amount });
+    await update('revenue_line', before.id, fieldsOf(mapped, before));
     await audit(ctx, { action: 'update', resource: 'revenue_line', resourceId: before.id, sectorId: before.sector_id, detail: { source: 'import' } });
     const after = await get('SELECT * FROM revenue_line WHERE id = ?', [before.id]);
     return { resource: 'revenue_line', resourceId: before.id, before, after };
@@ -102,7 +140,11 @@ export default {
 
   async undoRow(ctx, row) {
     const cur = await get('SELECT * FROM revenue_line WHERE id = ?', [row.resource_id]);
-    if (!cur) return;
+    if (!cur) throw badRequest('السطر لم يعد موجودًا — راجع التغييرات قبل التراجع');
+    assertManual(cur);
+    if (!row.after || EDITABLE.some((k) => String(cur[k] ?? '') !== String(row.after[k] ?? ''))) {
+      throw badRequest('تغيّر السطر بعد الاستيراد — راجع التعديل الأحدث قبل التراجع');
+    }
     if (row.action === 'create') {
       assertRowPermission(ctx, 'create', cur.sector_id);
       await run('DELETE FROM revenue_line WHERE id = ?', [row.resource_id]);
@@ -112,7 +154,8 @@ export default {
     const b = row.before;
     if (!b) return;
     assertRowPermission(ctx, 'update', cur.sector_id);
-    await update('revenue_line', row.resource_id, { amount_halalas: b.amount_halalas });
+    assertRowPermission(ctx, 'update', b.sector_id);
+    await update('revenue_line', row.resource_id, Object.fromEntries(EDITABLE.map((k) => [k, b[k] ?? null])));
     await audit(ctx, { action: 'update', resource: 'revenue_line', resourceId: row.resource_id, sectorId: cur.sector_id, detail: { undoImport: true } });
   },
 };

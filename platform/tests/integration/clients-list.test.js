@@ -67,7 +67,7 @@ before(async () => {
     stage_id: 'LEAD', win_pct: 25, value_halalas: 200000, year: FY, created_at: now });
   await db.insert('opportunity', { id: 'O3', title_ar: 'فرصة ج', client_id: 'CA', sector_id: 'S1', owner_user_id: 'u_own2',
     stage_id: 'PROP', win_pct: 40, value_halalas: 50000, year: FY, created_at: now });
-  // decided: 1 real won (500k) + 1 historic won (300k, excluded) + 1 lost (120k)
+  // decided: 1 won (500k) + 1 historic-badged won (300k, counted too) + 1 lost (120k)
   await db.insert('opportunity', { id: 'O4', title_ar: 'فوز حقيقي', client_id: 'CA', sector_id: 'S1', owner_user_id: 'u_own2',
     stage_id: 'WON', win_pct: 100, value_halalas: 500000, year: FY, exclude_from_sales: 0, stage_changed_at: iso(10), created_at: now });
   await db.insert('opportunity', { id: 'O5', title_ar: 'فوز تاريخي مستورد', client_id: 'CA', sector_id: 'S1',
@@ -142,9 +142,9 @@ test('list aggregates: every new field carries the exact hand-computed number', 
   assert.equal(ca.open_opps, 3);
   assert.equal(ca.open_pipeline_halalas, 350000);
   assert.equal(ca.weighted_pipeline_halalas, 130000, '100k×60% + 200k×25% + 50k×40%');
-  // الفوز/الخسارة (التاريخي على حدة، والمحذوف لا يظهر أبداً)
-  assert.equal(ca.won_count, 1);
-  assert.equal(ca.won_value_halalas, 500000, 'excluded historic + soft-deleted never counted');
+  // الفوز/الخسارة (التاريخي داخل الجمع ومعدودٌ منه، والمحذوف لا يظهر أبداً)
+  assert.equal(ca.won_count, 2);
+  assert.equal(ca.won_value_halalas, 800000, 'historic-badged counted; soft-deleted never counted');
   assert.equal(ca.hist_won_count, 1);
   assert.equal(ca.lost_count, 1);
   // العقود
@@ -154,8 +154,11 @@ test('list aggregates: every new field carries the exact hand-computed number', 
   assert.equal(ca.open_ar_halalas, 280000, 'I1 200k + I2 80k; PAID/DRAFT/over-collected = 0');
   assert.equal(ca.overdue_ar_halalas, 200000, 'only I1 is past due');
   // الإيراد والنمو والمشاريع
-  assert.equal(ca.fy_revenue_halalas, 750000);
-  assert.equal(ca.prev_fy_revenue_halalas, 250000);
+  // الإيراد صار **صافياً من الضريبة** (الترحيلة ٠١٩، قرار مالك: «افصل الضريبة عن المبلغ»).
+  // وسطرا الإيراد هنا مُدرَجان بلا عمود صافٍ، فيُشتقّ عند القراءة: ٧٥٠٬٠٠٠ ÷ ١٫١٥ = ٦٥٢٬١٧٣
+  // و٢٥٠٬٠٠٠ ÷ ١٫١٥ = ٢١٧٬٣٩١. الرقم لم يُضعَّف بل تبدّل معناه: صار إيراد الشركة لا مطالبتها.
+  assert.equal(ca.fy_revenue_halalas, 652173);
+  assert.equal(ca.prev_fy_revenue_halalas, 217391);
   assert.equal(ca.active_projects, 1);
   // القطاعات (اتحاد فرص+مشاريع+عقود، أسماء عربية بترتيب القطاعات)
   assert.deepEqual(ca.sectors, ['قطاع الأعمال', 'قطاع التقنية', 'قطاع التطوير']);
@@ -190,7 +193,7 @@ test('list numbers MATCH the 360 page for the same client (المستحق/الم
   assert.equal(list.open_pipeline_halalas, o.kpis.open_pipeline_halalas);
   assert.equal(list.fy_revenue_halalas, o.kpis.fy_revenue_halalas);
   assert.equal(list.active_projects, o.kpis.active_projects);
-  assert.equal(list.won_count + list.hist_won_count, o.opportunities.won.length, 'list won split sums to the 360 won list');
+  assert.equal(list.won_count, o.opportunities.won.length, 'list won count matches the 360 won list (historic-badged included)');
   assert.equal(list.lost_count, o.opportunities.lost.length);
 });
 
@@ -217,7 +220,7 @@ test('/app/clients page renders the 6-column decision table with populated cells
   // الأعمدة الجديدة: الهوية (تطوي النوع+القطاعات) · العلاقة+آخر تواصل · الفرص المفتوحة · الفوز·الخسارة · مشاريع نشطة · المال (إيراد+مستحق)
   for (const needle of ['هيئة الاختبار الرقمية', 'قطاع الأعمال', 'حالة العلاقة',
     'الفرص المفتوحة', 'الفوز · الخسارة', 'مشاريع نشطة', `إيراد ${FY}`, 'العميل الأول', 'نمو الإيراد',
-    `نسبة الفوز · ${FY}`, 'تاريخي', '1 فوز', '1 خسارة', '+1 تاريخي', 'متأخر السداد'])
+    `نسبة الفوز · ${FY}`, 'تاريخي', '2 فوز', '1 خسارة', 'منها 1 تاريخي', 'متأخر السداد'])
     assert.ok(html.includes(needle), `page contains «${needle}»`);
   // أعمدة أُسقطت لخلوّها/طُويت في 360، ومؤشر الفوز صار سنوياً موحّداً مع لوحة الفرص
   for (const gone of ['مالك العلاقة', 'قيمة العقود', 'نسبة الفوز التاريخية'])

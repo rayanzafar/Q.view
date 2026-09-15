@@ -1,0 +1,20 @@
+سند sweep → https://staging.os.evcsol.com  (7 roles, 36 pages, 29 API probes; page-authz: strict-nav-guard)
+المساعد: مسبار المحادثة مطفأ — كل محادثة تكتب سطراً في سجل نشاط المساعد، والقاعدة هنا ليست محلية. شغّله بـ‎--ai-chat إن أردته.
+
+role              pages    apis     ai      leaks  jargon  p95(ms)
+demo.deptmgr      36/36    29/29    1/1     0      0       2349
+demo.linemgr      36/36    29/29    1/1     0      0       2721
+demo.bdhead       36/36    29/29    1/1     0      0       2647
+demo.ops          36/36    29/29    1/1     0      0       2286
+demo.procurement  36/36    29/29    1/1     0      0       1747
+demo.approver     36/36    29/29    1/1     0      0       2650
+demo.external     36/36    29/29    1/1     0      0       851
+
+overall: 462 requests · P50 693ms · P95 2630ms · max 4652ms
+✓ sweep clean — every status matched, no leaks, no banned jargon
+
+✓ النشر اكتمل وتحقّق. الخطوات التالية اليدوية:
+  • أدلة الشاشات: node scripts/evidence.mjs https://staging.os.evcsol.com
+  • علِّم إصدارات CHANGELOG بأنها منشورة، والتزم وادفع
+  • إن كانت الطرفية مربوطة بغير خدمة التطبيق فأعد ربطها الآن
+EXIT=0

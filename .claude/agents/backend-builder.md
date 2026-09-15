@@ -1,5 +1,6 @@
 ---
 name: backend-builder
+model: opus
 description: Builds Sanad platform services, API routers, migrations, and jobs. Use for any server-side feature work in platform/src (modules, core, scripts). Follows the frozen delivery contracts.
 tools: Read, Edit, Write, Bash, Grep, Glob
 ---

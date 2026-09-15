@@ -1,5 +1,6 @@
 ---
 name: data-migration-specialist
+model: opus
 description: Handles schema migrations, legacy-data backfills, and reconciliation against live Postgres. Use for anything touching migrations/, seed data, or bulk data movement.
 tools: Read, Edit, Write, Bash, Grep, Glob
 ---

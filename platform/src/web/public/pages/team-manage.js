@@ -84,6 +84,58 @@
     }
   }
 
+  // ── ربط الموظف بحساب دخول ──
+  // الربط يمر عبر تعديل الموظف نفسه (link_user_id) فتُطبَّق عليه صلاحية «تعديل الموظف» نفسها
+  // على الخادم، وتُكتب سطور التدقيق من الخدمة. لا قائمة حسابات هنا سوى غير المربوطة.
+  function linkHtml(id) {
+    const st = S();
+    const e = (st.emps || {})[id] || {};
+    const free = st.freeAccounts || [];
+    const opts = free.map(function (a) {
+      return '<option value="' + esc(a.id) + '">' + esc(a.label) + (a.role ? ' — ' + esc(a.role) : '') + '</option>';
+    }).join('');
+    const bodyHtml = free.length
+      ? '<div class="field"><label>حساب الدخول</label><select id="empf-acct"><option value="">— اختر حساباً —</option>' + opts + '</select></div>'
+        + '<div style="font-size:11.5px;color:var(--muted);line-height:1.7">تظهر الحسابات غير المربوطة بأي موظف فقط. بعد الربط تصل المهام والإشعارات لصاحب الحساب، وتُحتسب عضويته في المشاريع وإدارته في الصلاحيات.</div>'
+      : '<div style="font-size:12.5px;color:var(--muted);line-height:1.7">لا توجد حسابات متاحة للربط ضمن نطاقك — كل الحسابات مربوطة بموظفين. أنشئ حساباً جديداً من صفحة المستخدمين والصلاحيات ثم عُد إلى هنا.</div>';
+    return '<div class="modal-head"><div style="font-weight:800;font-size:15px">ربط ' + esc(e.name_ar || 'الموظف') + ' بحساب دخول</div>'
+      + '<button class="btn btn-ghost btn-sm" data-action="emp-close" aria-label="إغلاق">✕</button></div>'
+      + '<div class="modal-body">' + bodyHtml + '</div>'
+      + '<div class="modal-foot"><button class="btn" data-action="emp-close">إلغاء</button>'
+      + (free.length ? '<button class="btn btn-primary" data-action="emp-link-save" data-id="' + esc(id) + '">ربط الحساب</button>' : '')
+      + '</div>';
+  }
+
+  async function saveLink(id) {
+    const sel = document.getElementById('empf-acct');
+    const acct = sel ? sel.value : '';
+    if (!acct) { toast('اختر حساب الدخول أولاً', true); if (sel) sel.focus(); return; }
+    const btn = document.querySelector('[data-action="emp-link-save"]'); if (btn) btn.disabled = true;
+    try {
+      await api('/employees/' + encodeURIComponent(id), 'PATCH', { link_user_id: acct });
+      toast('رُبط الموظف بحسابه ✓');
+      closeModal();
+      setTimeout(function () { location.reload(); }, 550);
+    } catch (err) {
+      if (btn) btn.disabled = false;
+      toast(err.message, true);
+    }
+  }
+
+  async function unlink(id) {
+    const st = S();
+    const e = (st.emps || {})[id] || {};
+    const l = (st.empLinks || {})[id];
+    const name = e.name_ar || 'هذا الموظف';
+    const acct = (l && l.label) || 'حسابه';
+    if (!window.confirm('فك ربط ' + name + ' عن حساب ' + acct + '؟\nسيبقى الحساب والسجل كما هما، لكن تتوقف مهام هذا الموظف وإشعاراته عن الوصول للحساب.')) return;
+    try {
+      await api('/employees/' + encodeURIComponent(id), 'PATCH', { link_user_id: null });
+      toast('فُكّ الربط ✓');
+      setTimeout(function () { location.reload(); }, 550);
+    } catch (err) { toast(err.message, true); }
+  }
+
   async function del(id) {
     const e = (S().emps || {})[id];
     const name = (e && e.name_ar) || 'هذا الموظف';
@@ -104,6 +156,9 @@
     else if (a === 'emp-edit') { ev.preventDefault(); openForm(el.dataset.emp); }
     else if (a === 'emp-delete') { ev.preventDefault(); del(el.dataset.emp); }
     else if (a === 'emp-save') { ev.preventDefault(); save(el.dataset.id || ''); }
+    else if (a === 'emp-link') { ev.preventDefault(); openModal(linkHtml(el.dataset.emp)); }
+    else if (a === 'emp-link-save') { ev.preventDefault(); saveLink(el.dataset.id || ''); }
+    else if (a === 'emp-unlink') { ev.preventDefault(); unlink(el.dataset.emp); }
     else if (a === 'emp-close') { ev.preventDefault(); closeModal(); }
   });
   // Enter inside a form field saves; Escape closes the open modal.
