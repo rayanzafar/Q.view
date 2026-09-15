@@ -29,7 +29,12 @@ const ACT_KIND_LABELS = {
   call: 'اتصال', meeting: 'اجتماع', email: 'بريد', note: 'ملاحظة',
   visit: 'زيارة', proposal: 'عرض', update: 'تحديث', other: 'أخرى',
 };
-const SOURCE_LABELS = { manual: 'إدخال يدوي', legacy: 'منقولة من النظام السابق', import: 'استيراد Excel', app: 'المنصة' };
+// مصدرُ الفرصة يُقرأ بلسانٍ عربي — وكانت `project` تُطبع كما هي بالإنجليزية للمستخدم، وهي
+// أكثر العلامات ورودًا اليوم (كل مشروع يُنشأ تُولَد له مرآة). وما لم يُعرَّف لا يُسرَّب حرفاً:
+// علاماتُ التحميل تُكتب أحياناً من خارج المنصة (مثل `CONS_IMPORT`) فتصل إلى الشاشة كما كُتبت.
+const SOURCE_LABELS = { manual: 'إدخال يدوي', legacy: 'منقولة من النظام السابق', import: 'استيراد Excel',
+  app: 'المنصة', project: 'مرآةُ مشروع — تتبع قيمتَه', CONS_IMPORT: 'تحميل ملف قطاع الاستشارات' };
+const sourceLabel = (s) => SOURCE_LABELS[s] || (s ? 'مُحمَّلة من خارج المنصة' : '—');
 // أفعال سجل التدقيق بلسانٍ عربي — وما لم يُعرَّف يُعرض كما سُجِّل (السجل للمدير العام وحده أصلاً).
 const AUDIT_ACTION_AR = { create: 'إنشاء', update: 'تعديل', delete: 'حذف', approve: 'اعتماد' };
 
@@ -336,7 +341,7 @@ export async function opportunityDetailPage(user, oppId, opts = {}) {
     ? `<div style="font-size:var(--fs-body);color:var(--ink2);white-space:pre-wrap;line-height:1.9">${esc(o.notes)}</div>`
     : '<div style="font-size:var(--fs-body);color:var(--faint);padding:.2rem 0">لا ملاحظات مكتوبة على هذه الفرصة.</div>'}
       <div style="margin-top:.35rem">
-        ${kv('المصدر', esc(SOURCE_LABELS[o.source] || o.source || '—'))}
+        ${kv('المصدر', esc(sourceLabel(o.source)))}
         ${kv('أُنشئت', `<span class="tnum">${esc((o.created_at || '').slice(0, 10) || '—')}</span>`)}
       </div>
     </div>`);
