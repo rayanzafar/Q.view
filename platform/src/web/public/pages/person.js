@@ -1,9 +1,10 @@
-// لوحة المدير على صفحة الشخص: أضف مهمة · سكّنه على مشروع · صلاحية إضافية على إدارة.
+// لوحة المدير على صفحة الشخص: أضف مهمة · سكّنه على مشروع · بطاقة «صلاحياته» (الدور، والحِزم، والمنح والرفع).
 //
 // «أقدر أضيف أو أسوّي أي أكشن أنا كمدير للموظف لما أضغط عليه — حتى في إضافة المهام».
+// «داخل صفحة الموظف يحتاج يكون في خانة عند المدير إذا يبغى يغيّر الصلاحيات… عشان يكون سهل وبشكل سريع».
 //
 // وكل نداءٍ هنا يذهب إلى **مسار الخدمة الأصلي** لا إلى مسارٍ مختصر لهذه الشاشة: المهمة إلى
-// مسار المهام، والتسكين إلى مسار تسكين المشروع، والصلاحية إلى مسار الهوية. فالحارس والتدقيق
+// مسار المهام، والتسكين إلى مسار تسكين المشروع، والصلاحية والدور إلى مسار الهوية. فالحارس والتدقيق
 // واحدٌ أينما نُفِّذ الفعل — ولا يصير لهذه الصفحة قواعدُ تخصّها تتباعد عن قواعد أصلها.
 (function () {
   // إشعارٌ حقيقي لا وسيطٌ إلى دالة غير موجودة: كانت اللوحة تنادي دالةً لم تُعرَّف قط، فتُبتلع
@@ -20,6 +21,7 @@
     setTimeout(function () { d.remove(); }, bad ? 5200 : 2600);
   };
   var val = function (id) { var el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; };
+  var reload = function () { setTimeout(function () { location.reload(); }, 500); };
 
   async function api(path, method, body) {
     var res = await fetch('/api' + path, {
@@ -35,7 +37,7 @@
     return data;
   }
 
-  // لوحة واحدة مفتوحة في كل مرة: الثلاث مفتوحةً معاً تُطيل البطاقة حتى تختفي قائمة المهام تحتها.
+  // لوحة واحدة مفتوحة في كل مرة: اللوحات مفتوحةً معاً تُطيل البطاقة حتى تختفي قائمة المهام تحتها.
   function openTab(key) {
     var el = document.querySelector('[data-panel="' + key + '"]');
     var reopen = !!el && el.hidden;                       // مغلقة الآن ⟵ تُفتح؛ ومفتوحة ⟵ تُطوى
@@ -71,7 +73,7 @@
         // قائمة المُسنَد إليه بعد الاعتماد — لا «تظهر في عملك» كما في صيغة الإسناد الذاتي.
         toast(added && added.approval_state === 'PENDING'
           ? 'أُرسلت إلى مديرك للاعتماد — وتُضاف إلى قائمة صاحبها بعد الاعتماد' : 'أُضيفت المهمة ✓');
-        setTimeout(function () { location.reload(); }, 500);
+        reload();
       }).catch(function (err) { el.disabled = false; toast(err.message, true); });
       return;
     }
@@ -86,58 +88,98 @@
         employeeId: el.dataset.emp, type: 'member', pct: pct,
       }).then(function () {
         toast('سُكِّن على المشروع ✓');
-        setTimeout(function () { location.reload(); }, 500);
+        reload();
       }).catch(function (err) { el.disabled = false; toast(err.message, true); });
       return;
     }
 
-    if (act === 'pp-grant-add') {
-      var dept = val('pp-grant-dept');
-      if (!dept) { toast('اختر الإدارة', true); return; }
-      // الصلاحية من المنتقي لا من ثابتٍ هنا (v5.33): القائمة صارت صلاحياتٍ عدة — القراءة
-      // والإضافة والتعديل على الفرص والمشاريع — والقيمة `مورد:فعل` كما بناها الخادم.
-      var perm = (val('pp-grant-perm') || 'opportunity:read').split(':');
+    // ── بطاقة «صلاحياته» ──────────────────────────────────────────────────────
+    // الدور: نموذجٌ مطويّ يُفتح بزرّ، ويُحفظ عبر مسار تعديل الحساب نفسه (مدير النظام وحده).
+    if (act === 'pp-role-edit') {
+      var form = document.getElementById('pp-role-form');
+      if (!form) return;
+      form.hidden = !form.hidden;
+      if (!form.hidden) { var s0 = form.querySelector('select'); if (s0) s0.focus(); }
+      return;
+    }
+    if (act === 'pp-role-save') {
       el.disabled = true;
-      api('/identity/grants', 'POST', {
-        user_id: el.dataset.user, department_id: dept,
-        resource: perm[0], action: perm[1] || 'read', note: val('pp-grant-note') || null,
+      api('/identity/users/' + encodeURIComponent(el.dataset.user), 'PATCH', {
+        role_id: val('pp-role'), scope: val('pp-scope'), sector_id: val('pp-sector') || null,
       }).then(function (r) {
-        toast(r && r.already ? 'الصلاحية ممنوحة له مسبقاً' : 'مُنحت الصلاحية ✓');
-        setTimeout(function () { location.reload(); }, 500);
+        toast(r && r.unchanged ? 'لا تغيير — الدور كما هو' : 'حُفظ الدور ✓');
+        reload();
       }).catch(function (err) { el.disabled = false; toast(err.message, true); });
       return;
     }
-
-    if (act === 'grant-revoke') {
+    // الحزمة على هدفٍ (إدارة/قطاع/الشركة) بمدةٍ اختيارية: القيمة `مستوى:معرّف` كما بناها الخادم.
+    if (act === 'pp-bundle-add') {
+      var bundle = val('pp-bundle');
+      var target = val('pp-bundle-target');
+      if (!bundle) { toast('اختر الصلاحية', true); return; }
+      var sep = target.indexOf(':');
+      var level = sep < 0 ? target : target.slice(0, sep);
+      var tid = sep < 0 ? '' : target.slice(sep + 1);
+      if (!level) { toast('اختر على ماذا تُمنَح', true); return; }
+      var payload = { user_id: el.dataset.user, bundle: bundle, level: level,
+        note: val('pp-bundle-note') || null, expires_on: val('pp-bundle-until') || null };
+      if (level === 'department') payload.department_id = tid;
+      else if (level === 'sector') payload.sector_id = tid;
       el.disabled = true;
-      api('/identity/grants/' + encodeURIComponent(el.dataset.id), 'DELETE')
+      api('/identity/grants/bundles', 'POST', payload).then(function (r) {
+        toast(r && !r.created ? 'كانت ممنوحةً له على الهدف نفسه — حُدِّثت مدتها' : 'مُنحت الصلاحية ✓ وتسري من طلبه التالي');
+        reload();
+      }).catch(function (err) { el.disabled = false; toast(err.message, true); });
+      return;
+    }
+    if (act === 'grant-revoke-bundle') {
+      el.disabled = true;
+      api('/identity/grants/bundles/' + encodeURIComponent(el.dataset.id), 'DELETE')
         .then(function () {
           toast('رُفعت الصلاحية ✓');
-          setTimeout(function () { location.reload(); }, 500);
+          reload();
         }).catch(function (err) { el.disabled = false; toast(err.message, true); });
     }
   });
 
-  // تبديلُ الصلاحية يبدّل إداراتها وشرحَها: إدارات كل صلاحيةٍ محسوبة في الخادم بنفس حكم
-  // الحفظ (grantableOptions)، ومضمّنة في الصفحة — فلا نداءَ شبكةٍ لمجرد تغيير اختيار.
+  // تبديلُ الحزمة يبدّل أهدافها وشرحَها، وتبديلُ الهدف يضع اسمه في الشرح: الأهداف محسوبة في الخادم
+  // بنفس حكم الحفظ (grantableBundleOptions) ومضمّنة في الصفحة — فلا نداءَ شبكةٍ لمجرد تغيير اختيار.
+  function bundleData() {
+    var dataEl = document.getElementById('pp-bundle-data');
+    if (!dataEl) return [];
+    try { return JSON.parse(dataEl.textContent || '[]'); } catch (err) { return []; }
+  }
+  function currentBundle() {
+    var key = val('pp-bundle');
+    var list = bundleData();
+    for (var i = 0; i < list.length; i++) { if (list[i].key === key) return list[i]; }
+    return null;
+  }
+  function refreshHint() {
+    var b = currentBundle();
+    var hint = document.getElementById('pp-bundle-hint');
+    if (!b || !hint) return;
+    var v = val('pp-bundle-target');
+    var name = '';
+    for (var i = 0; i < b.targets.length; i++) { if (b.targets[i].v === v) { name = b.targets[i].short; break; } }
+    hint.textContent = String(b.effect).replace('{target}', name || 'الإدارة') + ' · التاريخ آخر يوم تسري فيه، وفراغه صلاحيةٌ بلا مدة.';
+  }
   document.addEventListener('change', function (e) {
-    if (!e.target || e.target.id !== 'pp-grant-perm') return;
-    var dataEl = document.getElementById('pp-grant-data');
-    var deptSel = document.getElementById('pp-grant-dept');
-    if (!dataEl || !deptSel) return;
-    var choices = [];
-    try { choices = JSON.parse(dataEl.textContent || '[]'); } catch (err) { choices = []; }
-    var c = null;
-    for (var i = 0; i < choices.length; i++) { if (choices[i].key === e.target.value) { c = choices[i]; break; } }
-    if (!c) return;
-    deptSel.innerHTML = '';
-    for (var j = 0; j < c.departments.length; j++) {
-      var o = document.createElement('option');
-      o.value = c.departments[j].id;
-      o.textContent = c.departments[j].name;
-      deptSel.appendChild(o);
+    if (!e.target) return;
+    if (e.target.id === 'pp-bundle') {
+      var b = currentBundle();
+      var sel = document.getElementById('pp-bundle-target');
+      if (!b || !sel) return;
+      sel.innerHTML = '';
+      for (var j = 0; j < b.targets.length; j++) {
+        var o = document.createElement('option');
+        o.value = b.targets[j].v;
+        o.textContent = b.targets[j].name;
+        sel.appendChild(o);
+      }
+      refreshHint();
+    } else if (e.target.id === 'pp-bundle-target') {
+      refreshHint();
     }
-    var hint = document.getElementById('pp-grant-hint');
-    if (hint) hint.textContent = c.effect + ' ولا تمنح إلا إدارةً تبلغها أنت.';
   });
 })();

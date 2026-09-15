@@ -31,6 +31,12 @@ identityRouter.delete('/identity/users/:id', h((req) => identity.removeUser(req.
 identityRouter.get('/identity/grants/options', h((req) => grants.grantableDepartments(req.ctx.user,
   req.query.resource || 'opportunity', req.query.action || 'read')
   .then((departments) => ({ departments, grantable: grants.GRANTABLE }))));
+// ── الحِزم على إدارةٍ أو قطاعٍ أو الشركة، وبمدة (049، ADR-0025) ────────────────
+identityRouter.get('/identity/grants/bundle-options', h((req) => grants.grantableBundleOptions(req.ctx.user)
+  .then((bundles) => ({ bundles, levels: grants.LEVEL_AR }))));
+identityRouter.get('/identity/grants/:userId/groups', h((req) => grants.listUserGrantGroups(req.ctx.user, req.params.userId)));
+identityRouter.post('/identity/grants/bundles', h((req) => grants.grantBundle(req.ctx, req.body || {})));
+identityRouter.delete('/identity/grants/bundles/:bundleId', h((req) => grants.revokeBundle(req.ctx, req.params.bundleId)));
 identityRouter.get('/identity/grants/:userId', h((req) => grants.listUserGrants(req.ctx.user, req.params.userId)));
 identityRouter.post('/identity/grants', h((req) => grants.grantDepartment(req.ctx, req.body || {})));
 identityRouter.delete('/identity/grants/:id', h((req) => grants.revokeDepartmentGrant(req.ctx, req.params.id)));

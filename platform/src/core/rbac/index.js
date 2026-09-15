@@ -77,9 +77,14 @@ function personalGrantReaches(user, action, resource, target) {
   if (!extra || !extra.length || !target) return false;
   const partnered = DEPARTMENT_REACH_ACTIONS.has(action) && Array.isArray(target.partner_department_ids)
     ? target.partner_department_ids : null;
+  // ثلاثة مستويات (049): «الشركة» تبلغ كل صف، و«القطاع» يبلغ صفوف قطاعه بعمود القطاع، و«الإدارة»
+  // (والصفوف القديمة بلا مستوى) تبلغ إدارتها المسؤولة أو المشارِكة كما كانت.
   return extra.some((g) => g.resource === resource && g.action === action
-    && ((!!target.department_id && g.department_id === target.department_id)
-      || (!!partnered && partnered.includes(g.department_id))));
+    && (g.level === 'company'
+      || (g.level === 'sector' && !!target.sector_id && g.sector_id === target.sector_id)
+      || ((!g.level || g.level === 'department')
+        && ((!!target.department_id && g.department_id === target.department_id)
+          || (!!partnered && partnered.includes(g.department_id))))));
 }
 
 // ── قيادةُ الإدارة تفتح فرصها — قراءةً وتعديلاً، لا حذفاً ولا إنشاءً ─────────

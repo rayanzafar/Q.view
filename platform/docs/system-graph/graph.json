@@ -1,13 +1,13 @@
 {
   "version": 1,
-  "sourceDigest": "c743da3080246d72fe7485ba877c3ee770ff6b4a0daa774f4e8d466e2614e254",
-  "sourceFiles": 698,
+  "sourceDigest": "739d5b1a28bcd21eeba2e4e8b7fb0a9d29394b162753517d84375b93205a2a5c",
+  "sourceFiles": 702,
   "counts": {
-    "code": 275,
-    "test": 312,
+    "code": 276,
+    "test": 314,
     "automation": 60,
     "module": 20,
-    "route": 352,
+    "route": 356,
     "page": 27,
     "table": 114,
     "role": 19,
@@ -647,6 +647,15 @@
       "detail": "src/modules/ai/crm-tools.js",
       "sources": [
         "src/modules/ai/crm-tools.js"
+      ]
+    },
+    {
+      "id": "file:src/modules/ai/grants-tools.js",
+      "kind": "code",
+      "label": "grants-tools.js",
+      "detail": "src/modules/ai/grants-tools.js",
+      "sources": [
+        "src/modules/ai/grants-tools.js"
       ]
     },
     {
@@ -3062,6 +3071,15 @@
       ]
     },
     {
+      "id": "file:tests/integration/grants-tools.test.js",
+      "kind": "test",
+      "label": "grants-tools.test.js",
+      "detail": "tests/integration/grants-tools.test.js",
+      "sources": [
+        "tests/integration/grants-tools.test.js"
+      ]
+    },
+    {
       "id": "file:tests/integration/guide-page.test.js",
       "kind": "test",
       "label": "guide-page.test.js",
@@ -4427,6 +4445,15 @@
       "detail": "tests/security/finance-role-retired.test.js",
       "sources": [
         "tests/security/finance-role-retired.test.js"
+      ]
+    },
+    {
+      "id": "file:tests/security/grant-levels.test.js",
+      "kind": "test",
+      "label": "grant-levels.test.js",
+      "detail": "tests/security/grant-levels.test.js",
+      "sources": [
+        "tests/security/grant-levels.test.js"
       ]
     },
     {
@@ -5898,6 +5925,7 @@
         "src/modules/ai/confirm-tools.js",
         "src/modules/ai/confirmations.js",
         "src/modules/ai/crm-tools.js",
+        "src/modules/ai/grants-tools.js",
         "src/modules/ai/guide-tools.js",
         "src/modules/ai/pmo-tools.js",
         "src/modules/ai/records-tools.js",
@@ -6166,7 +6194,7 @@
       ]
     },
     {
-      "id": "route:src/modules/ai.routes.js:4248:/status",
+      "id": "route:src/modules/ai.routes.js:4480:/status",
       "kind": "route",
       "label": "GET /status",
       "detail": "تصريح مسار محلي في aiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6177,7 +6205,7 @@
       "path": "/status"
     },
     {
-      "id": "route:src/modules/ai.routes.js:4316:/chat",
+      "id": "route:src/modules/ai.routes.js:4548:/chat",
       "kind": "route",
       "label": "POST /chat",
       "detail": "تصريح مسار محلي في aiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6188,7 +6216,7 @@
       "path": "/chat"
     },
     {
-      "id": "route:src/modules/ai.routes.js:4408:/options/:kind",
+      "id": "route:src/modules/ai.routes.js:4640:/options/:kind",
       "kind": "route",
       "label": "GET /options/:kind",
       "detail": "تصريح مسار محلي في aiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6199,7 +6227,7 @@
       "path": "/options/:kind"
     },
     {
-      "id": "route:src/modules/ai.routes.js:4601:/preview",
+      "id": "route:src/modules/ai.routes.js:4833:/preview",
       "kind": "route",
       "label": "POST /preview",
       "detail": "تصريح مسار محلي في aiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6210,7 +6238,7 @@
       "path": "/preview"
     },
     {
-      "id": "route:src/modules/ai.routes.js:4772:/apply",
+      "id": "route:src/modules/ai.routes.js:5004:/apply",
       "kind": "route",
       "label": "POST /apply",
       "detail": "تصريح مسار محلي في aiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6221,7 +6249,7 @@
       "path": "/apply"
     },
     {
-      "id": "route:src/modules/ai.routes.js:4876:/activity",
+      "id": "route:src/modules/ai.routes.js:5108:/activity",
       "kind": "route",
       "label": "GET /activity",
       "detail": "تصريح مسار محلي في aiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6232,7 +6260,7 @@
       "path": "/activity"
     },
     {
-      "id": "route:src/modules/ai.routes.js:5261:/tools",
+      "id": "route:src/modules/ai.routes.js:5493:/tools",
       "kind": "route",
       "label": "GET /tools",
       "detail": "تصريح مسار محلي في aiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -6243,7 +6271,7 @@
       "path": "/tools"
     },
     {
-      "id": "route:src/modules/ai.routes.js:5335:/tools/:name",
+      "id": "route:src/modules/ai.routes.js:5567:/tools/:name",
       "kind": "route",
       "label": "POST /tools/:name",
       "detail": "تصريح مسار محلي في aiRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -8157,7 +8185,51 @@
       "path": "/identity/grants/options"
     },
     {
-      "id": "route:src/modules/identity/identity.routes.js:2530:/identity/grants/:userId",
+      "id": "route:src/modules/identity/identity.routes.js:2613:/identity/grants/bundle-options",
+      "kind": "route",
+      "label": "GET /identity/grants/bundle-options",
+      "detail": "تصريح مسار محلي في identityRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
+      "sources": [
+        "src/modules/identity/identity.routes.js"
+      ],
+      "method": "GET",
+      "path": "/identity/grants/bundle-options"
+    },
+    {
+      "id": "route:src/modules/identity/identity.routes.js:2786:/identity/grants/:userId/groups",
+      "kind": "route",
+      "label": "GET /identity/grants/:userId/groups",
+      "detail": "تصريح مسار محلي في identityRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
+      "sources": [
+        "src/modules/identity/identity.routes.js"
+      ],
+      "method": "GET",
+      "path": "/identity/grants/:userId/groups"
+    },
+    {
+      "id": "route:src/modules/identity/identity.routes.js:2914:/identity/grants/bundles",
+      "kind": "route",
+      "label": "POST /identity/grants/bundles",
+      "detail": "تصريح مسار محلي في identityRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
+      "sources": [
+        "src/modules/identity/identity.routes.js"
+      ],
+      "method": "POST",
+      "path": "/identity/grants/bundles"
+    },
+    {
+      "id": "route:src/modules/identity/identity.routes.js:3020:/identity/grants/bundles/:bundleId",
+      "kind": "route",
+      "label": "DELETE /identity/grants/bundles/:bundleId",
+      "detail": "تصريح مسار محلي في identityRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
+      "sources": [
+        "src/modules/identity/identity.routes.js"
+      ],
+      "method": "DELETE",
+      "path": "/identity/grants/bundles/:bundleId"
+    },
+    {
+      "id": "route:src/modules/identity/identity.routes.js:3144:/identity/grants/:userId",
       "kind": "route",
       "label": "GET /identity/grants/:userId",
       "detail": "تصريح مسار محلي في identityRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -8168,7 +8240,7 @@
       "path": "/identity/grants/:userId"
     },
     {
-      "id": "route:src/modules/identity/identity.routes.js:2646:/identity/grants",
+      "id": "route:src/modules/identity/identity.routes.js:3260:/identity/grants",
       "kind": "route",
       "label": "POST /identity/grants",
       "detail": "تصريح مسار محلي في identityRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -8179,7 +8251,7 @@
       "path": "/identity/grants"
     },
     {
-      "id": "route:src/modules/identity/identity.routes.js:2748:/identity/grants/:id",
+      "id": "route:src/modules/identity/identity.routes.js:3362:/identity/grants/:id",
       "kind": "route",
       "label": "DELETE /identity/grants/:id",
       "detail": "تصريح مسار محلي في identityRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -10956,7 +11028,8 @@
         "migrations/044_mcp_connect.sql",
         "migrations/045_dev_center.sql",
         "migrations/046_crm_board.sql",
-        "migrations/048_opportunity_tender_fields.sql"
+        "migrations/048_opportunity_tender_fields.sql",
+        "migrations/049_user_grant_levels.sql"
       ],
       "columns": [
         {
@@ -12923,7 +12996,8 @@
         "migrations/010_task_attribution.sql",
         "migrations/025_user_department_grants.sql",
         "migrations/026_opportunity_departments.sql",
-        "migrations/034_project_departments.sql"
+        "migrations/034_project_departments.sql",
+        "migrations/049_user_grant_levels.sql"
       ],
       "columns": [
         {
@@ -18497,7 +18571,8 @@
         "migrations/005_delivery2.sql",
         "migrations/009_support_units.sql",
         "migrations/019_vat_split.sql",
-        "migrations/042_team_resources.sql"
+        "migrations/042_team_resources.sql",
+        "migrations/049_user_grant_levels.sql"
       ],
       "columns": [
         {
@@ -19446,7 +19521,8 @@
       "label": "user_department_grant",
       "detail": "جدول من مخطط SQLite جديد بعد تطبيق الترحيلات؛ لا بيانات شركة.",
       "sources": [
-        "migrations/025_user_department_grants.sql"
+        "migrations/025_user_department_grants.sql",
+        "migrations/049_user_grant_levels.sql"
       ],
       "columns": [
         {
@@ -19474,9 +19550,33 @@
           "primary": false
         },
         {
-          "name": "department_id",
+          "name": "level",
           "type": "TEXT",
           "required": true,
+          "primary": false
+        },
+        {
+          "name": "department_id",
+          "type": "TEXT",
+          "required": false,
+          "primary": false
+        },
+        {
+          "name": "sector_id",
+          "type": "TEXT",
+          "required": false,
+          "primary": false
+        },
+        {
+          "name": "bundle_key",
+          "type": "TEXT",
+          "required": false,
+          "primary": false
+        },
+        {
+          "name": "bundle_id",
+          "type": "TEXT",
+          "required": false,
           "primary": false
         },
         {
@@ -19495,6 +19595,12 @@
           "name": "created_at",
           "type": "TEXT",
           "required": true,
+          "primary": false
+        },
+        {
+          "name": "expires_at",
+          "type": "TEXT",
+          "required": false,
           "primary": false
         },
         {
@@ -24472,6 +24578,13 @@
     },
     {
       "from": "module:ai",
+      "to": "file:src/modules/ai/grants-tools.js",
+      "label": "يحتوي",
+      "evidence": "src/modules/ai/grants-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "module:ai",
       "to": "file:src/modules/ai/guide-tools.js",
       "label": "يحتوي",
       "evidence": "src/modules/ai/guide-tools.js",
@@ -26600,6 +26713,13 @@
     },
     {
       "from": "file:src/modules/ai.routes.js",
+      "to": "file:src/modules/ai/grants-tools.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai.routes.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai.routes.js",
       "to": "file:src/modules/ai/batch-tools.js",
       "label": "استيراد صريح",
       "evidence": "src/modules/ai.routes.js",
@@ -26607,56 +26727,56 @@
     },
     {
       "from": "file:src/modules/ai.routes.js",
-      "to": "route:src/modules/ai.routes.js:4248:/status",
+      "to": "route:src/modules/ai.routes.js:4480:/status",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/ai.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/ai.routes.js",
-      "to": "route:src/modules/ai.routes.js:4316:/chat",
+      "to": "route:src/modules/ai.routes.js:4548:/chat",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/ai.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/ai.routes.js",
-      "to": "route:src/modules/ai.routes.js:4408:/options/:kind",
+      "to": "route:src/modules/ai.routes.js:4640:/options/:kind",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/ai.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/ai.routes.js",
-      "to": "route:src/modules/ai.routes.js:4601:/preview",
+      "to": "route:src/modules/ai.routes.js:4833:/preview",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/ai.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/ai.routes.js",
-      "to": "route:src/modules/ai.routes.js:4772:/apply",
+      "to": "route:src/modules/ai.routes.js:5004:/apply",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/ai.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/ai.routes.js",
-      "to": "route:src/modules/ai.routes.js:4876:/activity",
+      "to": "route:src/modules/ai.routes.js:5108:/activity",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/ai.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/ai.routes.js",
-      "to": "route:src/modules/ai.routes.js:5261:/tools",
+      "to": "route:src/modules/ai.routes.js:5493:/tools",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/ai.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/ai.routes.js",
-      "to": "route:src/modules/ai.routes.js:5335:/tools/:name",
+      "to": "route:src/modules/ai.routes.js:5567:/tools/:name",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/ai.routes.js",
       "kind": "source"
@@ -26890,6 +27010,76 @@
       "to": "file:src/modules/ai/tool-kit.js",
       "label": "استيراد صريح",
       "evidence": "src/modules/ai/crm-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/grants-tools.js",
+      "to": "file:src/core/db/index.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/grants-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/grants-tools.js",
+      "to": "file:src/core/audit/index.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/grants-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/grants-tools.js",
+      "to": "file:src/core/http/errors.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/grants-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/grants-tools.js",
+      "to": "file:src/core/rbac/index.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/grants-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/grants-tools.js",
+      "to": "file:src/core/rbac/matrix.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/grants-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/grants-tools.js",
+      "to": "file:src/core/ai/store.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/grants-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/grants-tools.js",
+      "to": "file:src/core/i18n/arabic.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/grants-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/grants-tools.js",
+      "to": "file:src/modules/org/people.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/grants-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/grants-tools.js",
+      "to": "file:src/modules/identity/grants.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/grants-tools.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/ai/grants-tools.js",
+      "to": "file:src/modules/ai/tool-kit.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/ai/grants-tools.js",
       "kind": "source"
     },
     {
@@ -29883,6 +30073,13 @@
     },
     {
       "from": "file:src/modules/identity/grants.js",
+      "to": "file:src/core/i18n/time.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/identity/grants.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/identity/grants.js",
       "to": "file:src/modules/org/confirm.js",
       "label": "استيراد صريح",
       "evidence": "src/modules/identity/grants.js",
@@ -30065,21 +30262,49 @@
     },
     {
       "from": "file:src/modules/identity/identity.routes.js",
-      "to": "route:src/modules/identity/identity.routes.js:2530:/identity/grants/:userId",
+      "to": "route:src/modules/identity/identity.routes.js:2613:/identity/grants/bundle-options",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/identity/identity.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/identity/identity.routes.js",
-      "to": "route:src/modules/identity/identity.routes.js:2646:/identity/grants",
+      "to": "route:src/modules/identity/identity.routes.js:2786:/identity/grants/:userId/groups",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/identity/identity.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/identity/identity.routes.js",
-      "to": "route:src/modules/identity/identity.routes.js:2748:/identity/grants/:id",
+      "to": "route:src/modules/identity/identity.routes.js:2914:/identity/grants/bundles",
+      "label": "يصرح بالمسار",
+      "evidence": "src/modules/identity/identity.routes.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/identity/identity.routes.js",
+      "to": "route:src/modules/identity/identity.routes.js:3020:/identity/grants/bundles/:bundleId",
+      "label": "يصرح بالمسار",
+      "evidence": "src/modules/identity/identity.routes.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/identity/identity.routes.js",
+      "to": "route:src/modules/identity/identity.routes.js:3144:/identity/grants/:userId",
+      "label": "يصرح بالمسار",
+      "evidence": "src/modules/identity/identity.routes.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/identity/identity.routes.js",
+      "to": "route:src/modules/identity/identity.routes.js:3260:/identity/grants",
+      "label": "يصرح بالمسار",
+      "evidence": "src/modules/identity/identity.routes.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/identity/identity.routes.js",
+      "to": "route:src/modules/identity/identity.routes.js:3362:/identity/grants/:id",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/identity/identity.routes.js",
       "kind": "source"
@@ -36099,6 +36324,20 @@
     },
     {
       "from": "file:src/web/views/pmo.js",
+      "to": "file:src/core/rbac/matrix.js",
+      "label": "استيراد صريح",
+      "evidence": "src/web/views/pmo.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/web/views/pmo.js",
+      "to": "file:src/modules/identity/grants.js",
+      "label": "استيراد صريح",
+      "evidence": "src/web/views/pmo.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/web/views/pmo.js",
       "to": "file:src/core/rbac/departments.js",
       "label": "استيراد صريح",
       "evidence": "src/web/views/pmo.js",
@@ -39098,6 +39337,55 @@
       "to": "file:src/modules/pmo/governance.js",
       "label": "استيراد صريح",
       "evidence": "tests/integration/governance-pmo.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/grants-tools.test.js",
+      "to": "file:src/core/db/index.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/grants-tools.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/grants-tools.test.js",
+      "to": "file:src/core/rbac/index.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/grants-tools.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/grants-tools.test.js",
+      "to": "file:src/core/http/context.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/grants-tools.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/grants-tools.test.js",
+      "to": "file:src/modules/ai/team-tools.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/grants-tools.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/grants-tools.test.js",
+      "to": "file:src/modules/ai/grants-tools.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/grants-tools.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/grants-tools.test.js",
+      "to": "file:src/modules/ai/confirm-tools.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/grants-tools.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/grants-tools.test.js",
+      "to": "file:src/modules/ai/batch-tools.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/grants-tools.test.js",
       "kind": "source"
     },
     {
@@ -44439,6 +44727,48 @@
       "to": "file:src/core/util/ids.js",
       "label": "استيراد صريح",
       "evidence": "tests/security/finance-role-retired.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/security/grant-levels.test.js",
+      "to": "file:src/core/db/index.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/security/grant-levels.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/security/grant-levels.test.js",
+      "to": "file:src/core/rbac/index.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/security/grant-levels.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/security/grant-levels.test.js",
+      "to": "file:src/core/http/context.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/security/grant-levels.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/security/grant-levels.test.js",
+      "to": "file:src/modules/identity/grants.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/security/grant-levels.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/security/grant-levels.test.js",
+      "to": "file:src/modules/crm/opportunities.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/security/grant-levels.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/security/grant-levels.test.js",
+      "to": "file:src/web/pages.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/security/grant-levels.test.js",
       "kind": "source"
     },
     {
@@ -49966,6 +50296,13 @@
     },
     {
       "from": "table:user_department_grant",
+      "to": "table:sector",
+      "label": "sector_id → id",
+      "evidence": "مفتاح أجنبي فعلي في مخطط الترحيلات",
+      "kind": "foreign-key"
+    },
+    {
+      "from": "table:user_department_grant",
       "to": "table:department",
       "label": "department_id → id",
       "evidence": "مفتاح أجنبي فعلي في مخطط الترحيلات",
@@ -51723,14 +52060,14 @@
     },
     {
       "from": "file:src/modules/identity/grants.js",
-      "to": "table:app_user",
+      "to": "table:sector",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
       "evidence": "src/modules/identity/grants.js",
       "kind": "text-reference"
     },
     {
       "from": "file:src/modules/identity/grants.js",
-      "to": "table:sector",
+      "to": "table:app_user",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
       "evidence": "src/modules/identity/grants.js",
       "kind": "text-reference"
@@ -56388,6 +56725,48 @@
       "to": "table:project",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
       "evidence": "tests/integration/governance-pmo.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/grants-tools.test.js",
+      "to": "table:session",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/grants-tools.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/grants-tools.test.js",
+      "to": "table:ai_activity_log",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/grants-tools.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/grants-tools.test.js",
+      "to": "table:sector",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/grants-tools.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/grants-tools.test.js",
+      "to": "table:app_user",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/grants-tools.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/grants-tools.test.js",
+      "to": "table:department",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/grants-tools.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/grants-tools.test.js",
+      "to": "table:employee",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/grants-tools.test.js",
       "kind": "text-reference"
     },
     {
@@ -63290,6 +63669,76 @@
       "to": "table:workflow_definition",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
       "evidence": "tests/security/finance-role-retired.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/security/grant-levels.test.js",
+      "to": "table:session",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/security/grant-levels.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/security/grant-levels.test.js",
+      "to": "table:user_department_grant",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/security/grant-levels.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/security/grant-levels.test.js",
+      "to": "table:audit_log",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/security/grant-levels.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/security/grant-levels.test.js",
+      "to": "table:sector",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/security/grant-levels.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/security/grant-levels.test.js",
+      "to": "table:stage",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/security/grant-levels.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/security/grant-levels.test.js",
+      "to": "table:client",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/security/grant-levels.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/security/grant-levels.test.js",
+      "to": "table:app_user",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/security/grant-levels.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/security/grant-levels.test.js",
+      "to": "table:employee",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/security/grant-levels.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/security/grant-levels.test.js",
+      "to": "table:department",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/security/grant-levels.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/security/grant-levels.test.js",
+      "to": "table:opportunity",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/security/grant-levels.test.js",
       "kind": "text-reference"
     },
     {

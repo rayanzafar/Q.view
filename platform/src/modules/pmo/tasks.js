@@ -6,7 +6,7 @@ import { departmentScope, departmentInSql, inDepartmentScope } from '../../core/
 import { audit } from '../../core/audit/index.js';
 import { id, nowIso } from '../../core/util/ids.js';
 import { forbidden, notFound, badRequest } from '../../core/http/errors.js';
-import { listUserGrants, grantableOptions } from '../identity/grants.js';
+import { listUserGrants, grantableOptions, listUserGrantGroups, grantableBundleOptions } from '../identity/grants.js';
 import { raiseDirectApproval, TASK_WORKFLOW_KEY } from '../workflow/engine.js';
 import { notify } from '../notifications/notify.js';
 import { taskApproval, approvedTaskSql, ownOrApprovedTaskSql, myWorkOrMyPendingSql, TASK_PENDING, isPendingTask,
@@ -1004,7 +1004,7 @@ export async function personDossier(reader, personUserId) {
   const { scope, canWrite } = teamTasksAccess(reader);
   if (!self && !scope) throw forbidden('عرض ملف شخصٍ آخر يتطلب صلاحية قراءة مهام إدارة أو قطاع — اطلب تفعيلها من مدير النظام');
 
-  const p = await get(`SELECT u.id, u.username, u.name_ar, u.role_id, u.sector_id, u.active, u.last_login_at,
+  const p = await get(`SELECT u.id, u.username, u.name_ar, u.role_id, u.sector_id, u.scope, u.active, u.last_login_at,
        emp.id employee_id, emp.job_title, emp.department_id, emp.sector_id emp_sector_id,
        d.name_ar department_name, s.name_ar sector_name
      FROM app_user u
@@ -1172,6 +1172,16 @@ export async function personDossier(reader, personUserId) {
   let grants = []; let grantChoices = [];
   try { grants = await listUserGrants(reader, uid); } catch { grants = []; }
   if (!isSelf) { try { grantChoices = await grantableOptions(reader); } catch { grantChoices = []; } }
+  // ومنذ 049 (ADR-0025) تُعرض حِزماً بالعربية على إدارةٍ أو قطاعٍ أو الشركة وبمدة: المجموعات كما
+  // مُنحت معاً (وحكمُ رفعها لهذا القارئ في كل سطر)، والحِزم التي يستطيع هو منحها بأهدافها —
+  // كلاهما من الخدمة، فالبطاقة تعرض ما يُقبل فعلاً. وتغييرُ الدور من البطاقة لمدير النظام وحده
+  // (بوابة `updateUser` نفسها)، ولا يغيّر أحدٌ دورَ نفسه.
+  let grantGroups = []; let grantOptions = [];
+  try { grantGroups = await listUserGrantGroups(reader, uid); } catch { grantGroups = []; }
+  if (!isSelf) { try { grantOptions = await grantableBundleOptions(reader); } catch { grantOptions = []; } }
+  const canChangeRole = !isSelf && reader.role_id === 'admin';
+  const sectors = canChangeRole
+    ? await all('SELECT id, name_ar FROM sector WHERE deleted_at IS NULL AND active = 1 ORDER BY sort_order, name_ar') : [];
 
   return {
     self,
@@ -1181,10 +1191,15 @@ export async function personDossier(reader, personUserId) {
     staffProjects,
     grants,
     grantChoices,
+    grantGroups,
+    grantOptions,
+    canChangeRole,
+    sectors,
     employeeId: p.employee_id || null,
     person: {
       userId: p.id, name: p.name_ar || p.username || 'حساب بلا اسم', username: p.username,
-      jobTitle: p.job_title || null, roleId: p.role_id, active: Number(p.active) === 1,
+      jobTitle: p.job_title || null, roleId: p.role_id, scope: p.scope || null, sectorId: p.sector_id || null,
+      active: Number(p.active) === 1,
       linked: !!p.employee_id, departmentName: p.department_name || null,
       sectorName: p.sector_name || null, lastLoginAt: p.last_login_at || null,
     },
