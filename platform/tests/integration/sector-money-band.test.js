@@ -41,13 +41,18 @@ const U = (id, sector) => ({ id, username: id, name_ar: 'قائد ' + id, role_i
   sector_id: sector, scope: 'sector', projectIds: new Set(), teamIds: new Set() });
 const LEAD = U('u_lead', 'SOL');
 const DRY = U('u_dry', 'ZER');   // قطاعٌ بلا عقدٍ ولا إيرادٍ ولا تكلفة
+// قطاعاتُ خليّة «المتبقي» الثلاثة: شكلُ الخلل الحيّ، ثم تحقّقٌ كامل، ثم تحقّقٌ فوق التعاقد
+const MIX = U('u_mix', 'MIX');
+const FULL = U('u_full', 'FUL');
+const OVER = U('u_over', 'OVR');
 
 before(async () => {
-  for (const [id, name] of [['SOL', 'قطاع الحلول'], ['ZER', 'قطاع بلا أرقام']]) {
+  for (const [id, name] of [['SOL', 'قطاع الحلول'], ['ZER', 'قطاع بلا أرقام'],
+    ['MIX', 'قطاع العقود المختلطة'], ['FUL', 'قطاع تحقق كامل'], ['OVR', 'قطاع تحقق فوق التعاقد']]) {
     await insert('sector', { id, name_ar: name, kind: 'delivery', active: 1, sort_order: id === 'SOL' ? 1 : 2,
       target_revenue_halalas: 200_000_000, target_sales_halalas: 200_000_000, created_at: T });
   }
-  for (const u of [LEAD, DRY]) {
+  for (const u of [LEAD, DRY, MIX, FULL, OVER]) {
     await insert('app_user', { id: u.id, username: u.username, name_ar: u.name_ar, role_id: u.role_id,
       sector_id: u.sector_id, scope: u.scope, active: 1, created_at: T });
   }
@@ -119,6 +124,42 @@ before(async () => {
     amount_halalas: 500_000_00, incurred_month: 3, incurred_year: YEAR, status: 'SUBMITTED', created_at: T });
   await insert('expense', { id: 'E_REJ', project_id: 'P1', sector_id: 'SOL', type: 'سفر',
     amount_halalas: 700_000_00, incurred_month: 3, incurred_year: YEAR, status: 'REJECTED', created_at: T });
+
+  // ── (أ) شكلُ الخلل الحيّ: عقدٌ جارٍ بجانب عقدٍ منتهٍ يحمل مشروعُه إيراداً ──────────────
+  // كان إيرادُ المنتهي يُطرح من قيمة الجاري وحده، فيخرج الفارق سالباً ويُقصّ صفراً فتقول
+  // الخليّة «لم يُسجَّل» عن التزامٍ قائم، ويقول سطرُها «تحقق 100%» وهو فوق المئة أصلاً.
+  await insert('project', { id: 'PM_A', code: 'PRJ-MA', name_ar: 'مشروع العقد الجاري', sector_id: 'MIX',
+    client_id: 'C1', status: 'IN_PROGRESS', created_at: T });
+  await insert('project', { id: 'PM_C', code: 'PRJ-MC', name_ar: 'مشروع العقد المنتهي', sector_id: 'MIX',
+    client_id: 'C1', status: 'COMPLETED', created_at: T });
+  await insert('contract', { id: 'KM_ACT', code: 'CN-M1', client_id: 'C1', project_id: 'PM_A', sector_id: 'MIX',
+    value_halalas: 2_300_000_00, net_value_halalas: 2_000_000_00, status: 'ACTIVE',
+    start_date: `${YEAR}-01-01`, signed_at: `${YEAR}-01-01`, created_at: T });
+  await insert('contract', { id: 'KM_DONE', code: 'CN-M2', client_id: 'C1', project_id: 'PM_C', sector_id: 'MIX',
+    value_halalas: 3_450_000_00, net_value_halalas: 3_000_000_00, status: 'COMPLETED',
+    start_date: `${YEAR - 1}-01-01`, signed_at: `${YEAR - 1}-01-01`, created_at: T });
+  await insert('revenue_line', { id: 'RLM_A', project_id: 'PM_A', sector_id: 'MIX', year: YEAR, month: 3,
+    amount_halalas: 920_000_00, net_amount_halalas: 800_000_00, created_at: T });
+  await insert('revenue_line', { id: 'RLM_C', project_id: 'PM_C', sector_id: 'MIX', year: YEAR - 1, month: 11,
+    amount_halalas: 2_875_000_00, net_amount_halalas: 2_500_000_00, created_at: T });
+
+  // ── (ب) تحقّقٌ كامل: كلُّ المتعاقد عليه صار إيراداً — «لا متبقٍّ» لا «لم يُسجَّل» ──────
+  await insert('project', { id: 'PF1', code: 'PRJ-F', name_ar: 'مشروع مكتمل الإيراد', sector_id: 'FUL',
+    client_id: 'C1', status: 'IN_PROGRESS', created_at: T });
+  await insert('contract', { id: 'KF', code: 'CN-F', client_id: 'C1', project_id: 'PF1', sector_id: 'FUL',
+    value_halalas: 1_150_000_00, net_value_halalas: 1_000_000_00, status: 'ACTIVE',
+    start_date: `${YEAR}-01-01`, signed_at: `${YEAR}-01-01`, created_at: T });
+  await insert('revenue_line', { id: 'RLF', project_id: 'PF1', sector_id: 'FUL', year: YEAR, month: 6,
+    amount_halalas: 1_150_000_00, net_amount_halalas: 1_000_000_00, created_at: T });
+
+  // ── (ج) اعتُرف بإيرادٍ يفوق قيمة العقد: السطر يقول نسبته الحقيقية لا مئةً مقصوصة ──────
+  await insert('project', { id: 'PO1', code: 'PRJ-O', name_ar: 'مشروع تجاوز التعاقد', sector_id: 'OVR',
+    client_id: 'C1', status: 'IN_PROGRESS', created_at: T });
+  await insert('contract', { id: 'KO', code: 'CN-O', client_id: 'C1', project_id: 'PO1', sector_id: 'OVR',
+    value_halalas: 1_150_000_00, net_value_halalas: 1_000_000_00, status: 'ACTIVE',
+    start_date: `${YEAR}-01-01`, signed_at: `${YEAR}-01-01`, created_at: T });
+  await insert('revenue_line', { id: 'RLO', project_id: 'PO1', sector_id: 'OVR', year: YEAR, month: 6,
+    amount_halalas: 2_024_000_00, net_amount_halalas: 1_760_000_00, created_at: T });
 });
 after(async () => { await close(); rmSync(dir, { recursive: true, force: true }); });
 
@@ -229,6 +270,38 @@ test('الفترة لا تحرّك المتبقي من العقود — وتحر
   assert.ok(cellOf(q1, 'منجَز لم يُفوتر').includes('>140K<'), 'فارقُ الربع الأول بأشهره');
   assert.ok(cellOf(m3, 'منجَز لم يُفوتر').includes('>140K<'), 'ومارس وحده مثلُه هنا');
   assert.ok(cellOf(y, 'منجَز لم يُفوتر').includes('>435K<'), 'وفارقُ السنة بأشهرها كلها');
+});
+
+// إيرادُ عقدٍ منتهٍ كان يُطرح من قيمة العقد الجاري: القطاع كلُّه 3.3M متحققةً مقابل 2.0M
+// متعاقدةً جارية ⇒ سالبٌ يُقصّ صفراً فتقول الخليّة «لم يُسجَّل» عن 1.2M قائمة، ويقول سطرُها
+// «تحقق 100%» وهو 165% مقصوصة. هذا حرفياً ما ظهر في قطاع الاستشارات (v5.96).
+test('المتبقي من العقود: إيرادُ عقدٍ منتهٍ لا يُطرح من عقدٍ جارٍ', async () => {
+  const c = cellOf(await band(MIX, 'y'), 'المتبقي من العقود');
+  assert.ok(c.includes('>1.2M<'), 'المتبقي = 2.0M متعاقدةً جارية − 0.8M تحققت من مشروعها');
+  assert.ok(/title="[^"]*1[,٬]200[,٬]000/.test(c), 'القيمة الكاملة على التلميح');
+  assert.ok(!c.includes('لم يُسجَّل'), 'التزامٌ قائمٌ لا يُقال عنه «لم يُسجَّل»');
+  assert.ok(c.includes('تحقق <b class="tnum"><bdi dir="ltr">40%</bdi></b>'),
+    'نسبةُ ما تحقق من هذه العقود وحدها — لا مئةٌ زائفة');
+  assert.ok(c.includes('من قيمة تعاقد 2.0M'), 'مرجعُ النسبة قيمةُ العقود الجارية الصافية');
+  assert.ok(!c.includes('2.5M') && !c.includes('3.0M'), 'العقدُ المنتهي وإيرادُه خارج الطرفين');
+});
+
+test('تحقّقٌ كامل: «لا متبقٍّ» — لا «لم يُسجَّل»', async () => {
+  const c = cellOf(await band(FULL, 'y'), 'المتبقي من العقود');
+  assert.ok(c.includes('<span class="mv mz">لا متبقٍّ</span>'),
+    'حُسب فكان صفراً — غيرُ «لم يُدخَل بعد»');
+  assert.ok(!c.includes('لم يُسجَّل'), 'لفظُ الغياب محجوزٌ للبيانات الغائبة');
+  assert.ok(!c.includes('لا عقود نشطة'), 'العقدُ قائمٌ — الفراغُ في المتبقي لا في العقود');
+  assert.ok(c.includes('تحقق <b class="tnum"><bdi dir="ltr">100%</bdi></b>'), 'ومئةٌ صادقة هنا');
+  assert.ok(c.includes('من قيمة تعاقد 1.0M'), 'بمرجعها');
+});
+
+test('اعتُرف فوق قيمة التعاقد: السطر يقول نسبته الحقيقية لا مئةً مقصوصة', async () => {
+  const c = cellOf(await band(OVER, 'y'), 'المتبقي من العقود');
+  assert.ok(c.includes('<span class="mv mz">لا متبقٍّ</span>'), 'لا متبقٍّ على العقد');
+  assert.ok(c.includes('تحقق <b class="tnum"><bdi dir="ltr">176%</bdi></b>'),
+    'الرقمُ كما هو كي يُراجَع — «تحقق 100%» لا تُكتب إلا حين تصدق');
+  assert.ok(!c.includes('>100%<'), 'ولا مئةٌ مقصوصة في موضع النسبة');
 });
 
 test('قطاعٌ بلا عقودٍ نشطة يقول «لا عقود نشطة» لا صفراً', async () => {

@@ -305,8 +305,24 @@ export async function backlog(sectorId, { statuses = ['ACTIVE', 'DRAFT'] } = {})
      FROM contract
      WHERE status IN (${st.map(() => '?').join(',')}) ${sectorId ? 'AND sector_id = ?' : ''} AND deleted_at IS NULL`,
   sectorId ? [...st, sectorId] : st);
-  const recognized = (await get(`SELECT ${NET_REVENUE} v FROM revenue_line
-     WHERE 1=1 ${sectorId ? 'AND sector_id = ?' : ''}`, sectorId ? [sectorId] : [])).v;
+  // «ما تحقق **منها**» يُقرأ من مشاريع العقود المعدودة وحدها. ولا رابط بين سطر الإيراد والعقد
+  // في المخطط (لا `contract_id` في `revenue_line`)، فالوصلة الوحيدة مشروعُهما المشترك.
+  // وكان الطرح يأخذ إيراد القطاع كلَّه منذ أول يوم مقابل عقودٍ مرشَّحةٍ بحالتها: إيرادُ عقدٍ
+  // منتهٍ يُطرح من التزامٍ لم يمرّ به، فيخرج الفارق سالباً ويُقصّ إلى صفرٍ يُقرأ «لم يُسجَّل»
+  // بينما الالتزام قائم — وهو ما ظهر في قطاع الاستشارات (٣٠٫٨ مليوناً متعاقدةً ظهرت فارغة).
+  // وقراران مكتوبان لئلا يُعاد اجتهادهما:
+  //   • سطرُ إيرادٍ **بلا مشروع** يبقى في الطرح: هو إيراد القطاع نفسه غير منسوبٍ إلى مشروع،
+  //     ولا سبيل إلى نفي كونه من هذه العقود. وإسقاطه كان يضخّم «المتبقي» في كل قطاعٍ يسجّل
+  //     إيراده على مستوى القطاع لا المشروع.
+  //   • عقدٌ **بلا مشروع** يبقى في «المتعاقد عليه» كما كان: التزامٌ موقَّع لا يسقط لأن ربطه
+  //     ناقص، وما لم يثبت تحققه يبقى متبقياً — وهو التقدير المحافظ.
+  const projOfContracts = `SELECT c.project_id FROM contract c
+       WHERE c.status IN (${st.map(() => '?').join(',')}) ${sectorId ? 'AND c.sector_id = ?' : ''}
+         AND c.deleted_at IS NULL AND c.project_id IS NOT NULL`;
+  const recognized = (await get(`SELECT ${NET_REVENUE} v FROM revenue_line rl
+     WHERE (rl.project_id IS NULL OR rl.project_id IN (${projOfContracts}))
+       ${sectorId ? 'AND rl.sector_id = ?' : ''}`,
+  sectorId ? [...st, sectorId, sectorId] : [...st])).v;
   return { contracted_halalas: c.net, contracted_gross_halalas: c.gross, recognized_halalas: recognized,
     backlog_halalas: Math.max(0, c.net - recognized) };
 }

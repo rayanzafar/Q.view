@@ -1975,19 +1975,27 @@ export async function sectorPage(user, opts = {}) {
   // يقوله سطرُه صراحةً: قارئٌ يبدّل الشهر ولا يتغيّر الرقم يحسبه عطلاً إن لم يُقَل له لماذا.
   const bkOn = !!bk && bk.contracted_halalas > 0;
   const bkPct = bkOn ? mbPctOf(bk.recognized_halalas, bk.contracted_halalas) : null;
+  // ونسبةُ **السطر** غيرُ مقصوصة: المقياس يمتلئ ولا يخرج عن مرجعه، والنصُّ يقول قيمته الحقيقية.
+  // «تحقق ١٠٠٪» لا تُكتب إلا حين تصدق — عقدٌ اعتُرف بإيرادٍ يفوق قيمته يقول رقمه كما هو
+  // (١٧٦٪ مثلاً) كي يُراجَع، لا أن يُقصّ إلى مئةٍ فيبدو مكتملاً على وجهه.
+  const bkPctTrue = bkOn ? Math.max(0, Math.round((bk.recognized_halalas / bk.contracted_halalas) * 100)) : null;
   // ومرجعُ النسبة قيمةُ التعاقد الصافية نفسها التي قُسم عليها الرقم: كان السطر يعرض الإجمالي
   // (بالضريبة) والمقياسُ يقسم على الصافي — رقمان لمرجعٍ واحد، ونسبةٌ لا تُطابق ما تحتها.
-  const bkSubTxt = bkOn ? `تحقق ${bkPct}% من قيمة تعاقد ${sarShort(bk.contracted_halalas)} · رصيد تراكمي` : '';
+  const bkSubTxt = bkOn ? `تحقق ${bkPctTrue}% من قيمة تعاقد ${sarShort(bk.contracted_halalas)} · رصيد تراكمي` : '';
+  // وصفرُ المتبقي على عقودٍ قائمة خبرٌ لا فراغ: «لم يُسجَّل» تعني «لم يُدخَل بعد»، وهنا أُدخل
+  // وحُسب فكان صفراً — كلُّ المتعاقد عليه تحوّل إيراداً. فرقٌ يبني عليه القائد قراراً.
+  const bkDone = bkOn && !(bk.backlog_halalas > 0);
   const mbBacklogCell = !(canContracts && bk) ? '' : mbCell({
     eye: 'المتبقي من العقود',
     mark: noteMark('قيمة العقود النشطة ناقص ما تحقق منها إيراداً — رصيد تراكمي لا يتبع الفترة', 'below'),
-    val: bkOn ? mbNum(bk.backlog_halalas) : '<span class="mv mz">لا عقود نشطة</span>',
-    meter: bkOn ? figBullet({ pct: bkPct, ariaLabel: `تحقق ${bkPct}% من ${sarShort(bk.contracted_halalas)} متعاقد` }) : '',
+    val: !bkOn ? '<span class="mv mz">لا عقود نشطة</span>'
+      : bkDone ? '<span class="mv mz">لا متبقٍّ</span>' : mbNum(bk.backlog_halalas),
+    meter: bkOn ? figBullet({ pct: bkPct, ariaLabel: `تحقق ${bkPctTrue}% من ${sarShort(bk.contracted_halalas)} متعاقد` }) : '',
     // النسبةُ داخل عازلِ اتجاهٍ كنسبةِ الهامش: «84%» لا «%84» في سطرٍ عربي.
-    sub: bkOn ? `تحقق <b class="tnum"><bdi dir="ltr">${bkPct}%</bdi></b> من قيمة تعاقد ${sarShort(bk.contracted_halalas)} · رصيد تراكمي` : '',
+    sub: bkOn ? `تحقق <b class="tnum"><bdi dir="ltr">${bkPctTrue}%</bdi></b> من قيمة تعاقد ${sarShort(bk.contracted_halalas)} · رصيد تراكمي` : '',
     dd: 'seccontracts',
     // اسمُ الخليّة يستبدل شجرتَها كاملةً، فيقول كلَّ ما تقوله الشاشة: الرقم بالكامل ثم سطرُه.
-    aria: `المتبقي من العقود: ${bkOn ? fmtSar(bk.backlog_halalas) : 'لا عقود نشطة'}${bkSubTxt ? ` — ${bkSubTxt}` : ''} — التفصيل`,
+    aria: `المتبقي من العقود: ${!bkOn ? 'لا عقود نشطة' : bkDone ? 'لا متبقٍّ' : fmtSar(bk.backlog_halalas)}${bkSubTxt ? ` — ${bkSubTxt}` : ''} — التفصيل`,
   });
   // (٢) الفجوة بين الإنجاز والفوترة — بفارق المجموعين لا بربط المخرجات بالفواتير: الربط ناقصٌ
   // في أغلب القطاعات الحيّة، وقياسٌ يقوم عليه يُخرج صفراً يُقرأ «كل شيء مفوتر» وهو نقصُ إدخال.

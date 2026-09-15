@@ -95,6 +95,35 @@ before(async () => {
   // القطاع ب: معترفٌ به أكثر من قيمة عقده — المتبقي صفر لا سالب
   await insert('revenue_line', { id: 'RL-2', sector_id: 'S2', year: 2026, month: 3,
     amount_halalas: 575_000, net_amount_halalas: 500_000, created_at: T });
+
+  // ── القطاع ج: شكلُ الخلل الحيّ (الاستشارات) — عقدٌ جارٍ وعقدٌ منتهٍ يحمل مشروعُه إيراداً ──
+  // كان إيراد العقد المنتهي يُطرح من قيمة العقد الجاري وحده فيخرج الفارق سالباً ويُقصّ صفراً.
+  await insert('sector', { id: 'S3', name_ar: 'قطاع ج', active: 1, sort_order: 3, created_at: T });
+  await insert('project', { id: 'P3A', name_ar: 'مشروع العقد الجاري', sector_id: 'S3', created_at: T });
+  await insert('project', { id: 'P3C', name_ar: 'مشروع العقد المنتهي', sector_id: 'S3', created_at: T });
+  await insert('project', { id: 'P3X', name_ar: 'مشروع بلا عقد', sector_id: 'S3', created_at: T });
+  await insert('contract', { id: 'K3-active', code: 'CT-3A', project_id: 'P3A', sector_id: 'S3',
+    value_halalas: 2_300_000, net_value_halalas: 2_000_000, status: 'ACTIVE', created_at: T });
+  await insert('contract', { id: 'K3-done', code: 'CT-3C', project_id: 'P3C', sector_id: 'S3',
+    value_halalas: 3_450_000, net_value_halalas: 3_000_000, status: 'COMPLETED', created_at: T });
+  await insert('revenue_line', { id: 'RL-3a', sector_id: 'S3', project_id: 'P3A', year: 2026, month: 2,
+    amount_halalas: 920_000, net_amount_halalas: 800_000, created_at: T });
+  await insert('revenue_line', { id: 'RL-3c', sector_id: 'S3', project_id: 'P3C', year: 2025, month: 11,
+    amount_halalas: 2_875_000, net_amount_halalas: 2_500_000, created_at: T });
+  await insert('revenue_line', { id: 'RL-3x', sector_id: 'S3', project_id: 'P3X', year: 2026, month: 4,
+    amount_halalas: 460_000, net_amount_halalas: 400_000, created_at: T });
+  await insert('revenue_line', { id: 'RL-3n', sector_id: 'S3', project_id: null, year: 2026, month: 5,
+    amount_halalas: 115_000, net_amount_halalas: 100_000, created_at: T });
+
+  // ── القطاع د: الحالتان بلا مشروع — عقدٌ بلا مشروع وإيرادٌ بلا مشروع ──
+  await insert('sector', { id: 'S4', name_ar: 'قطاع د', active: 1, sort_order: 4, created_at: T });
+  await insert('project', { id: 'P4X', name_ar: 'مشروع قطاع د بلا عقد', sector_id: 'S4', created_at: T });
+  await insert('contract', { id: 'K4-noproj', code: 'CT-4', project_id: null, sector_id: 'S4',
+    value_halalas: 575_000, net_value_halalas: 500_000, status: 'ACTIVE', created_at: T });
+  await insert('revenue_line', { id: 'RL-4x', sector_id: 'S4', project_id: 'P4X', year: 2026, month: 3,
+    amount_halalas: 230_000, net_amount_halalas: 200_000, created_at: T });
+  await insert('revenue_line', { id: 'RL-4n', sector_id: 'S4', project_id: null, year: 2026, month: 3,
+    amount_halalas: 57_500, net_amount_halalas: 50_000, created_at: T });
 });
 after(async () => { await close(); rmSync(dir, { recursive: true, force: true }); });
 
@@ -176,6 +205,8 @@ test('المتبقي المتعاقد عليه: المعترف به فوق ال�
 });
 
 test('حالات العقود تُختار: الموقَّع وحده يُسقط المسودّة', async () => {
+  // إيرادُ القطاع أ (RL-1) مسجَّلٌ بلا مشروع، فيبقى في الطرح بعد قصر الإيراد على مشاريع
+  // العقود المعدودة — ولذلك لم يتحرّك الرقمان المثبَّتان هنا.
   const def = await backlog('S1');
   assert.equal(def.contracted_halalas, 3_000_000);       // موقَّع + مسودّة
   assert.equal(def.contracted_gross_halalas, 3_450_000);
@@ -183,6 +214,45 @@ test('حالات العقود تُختار: الموقَّع وحده يُسقط
   const active = await backlog('S1', { statuses: ['ACTIVE'] });
   assert.equal(active.contracted_halalas, 2_000_000);    // بلا المسودّة
   assert.equal(active.backlog_halalas, 2_000_000 - 1_200_000);
+});
+
+// ── انحدار: «ما تحقق **منها**» — من مشاريع العقود المعدودة وحدها ────────────────────────
+// الشكل الحيّ الذي كشف الخلل (قطاع الاستشارات): عقودٌ جارية إلى جانب عقودٍ منتهية تحمل
+// مشاريعُها إيراداً. كان الطرح يأخذ إيراد القطاع كلَّه فيخرج سالباً ويُقصّ صفراً، فتقول
+// الخليّة «لم يُسجَّل» عن التزامٍ قائم وتقول نسبتُها «تحقق 100%» وهي فوق المئة أصلاً.
+test('المتبقي: إيرادُ عقدٍ منتهٍ لا يُطرح من عقدٍ جارٍ', async () => {
+  const b = await backlog('S3', { statuses: ['ACTIVE'] });
+  assert.equal(b.contracted_halalas, 2_000_000);
+  // 800,000 من مشروع العقد الجاري + 100,000 بلا مشروع — و2,500,000 (مشروع العقد المنتهي)
+  // و400,000 (مشروع بلا عقد) خارج الطرح.
+  assert.equal(b.recognized_halalas, 900_000);
+  assert.equal(b.backlog_halalas, 1_100_000);
+  // الحارس على الخلل نفسه: مجموع إيراد القطاع كلِّه 3,800,000 — لو دخل كلُّه لصار المتبقي صفراً
+  assert.ok(b.recognized_halalas < 3_800_000, 'إيراد القطاع كلُّه ليس هو المطروح');
+  assert.ok(b.backlog_halalas > 0, 'التزامٌ قائمٌ لا يُقصّ إلى صفرٍ يُقرأ «لم يُسجَّل»');
+  assert.ok(b.recognized_halalas < b.contracted_halalas, 'ولا نسبةَ تحقّقٍ فوق المئة تُقصّ إلى مئة');
+  // والعقد المنتهي يعود بإيراده حين يُطلب: الحالةُ هي التي تحكم الطرفين معاً
+  const done = await backlog('S3', { statuses: ['ACTIVE', 'COMPLETED'] });
+  assert.equal(done.contracted_halalas, 5_000_000);
+  assert.equal(done.recognized_halalas, 800_000 + 2_500_000 + 100_000);
+  assert.equal(done.backlog_halalas, 5_000_000 - 3_400_000);
+});
+
+// نداءُ لوحة الرئيس التنفيذي بلا قطاع (exec.js) — الشركة كلها بالحالتين الافتراضيتين.
+test('المتبقي على مستوى الشركة: القاعدةُ نفسها بلا قطاع', async () => {
+  const all = await backlog(null);
+  // العقود الجارية والمسودّات: 2.0M + 1.0M + 100K (قطاع ب) + 2.0M (قطاع ج) + 500K (قطاع د)
+  assert.equal(all.contracted_halalas, 5_600_000);
+  // والمطروح: ما لا مشروع له (1.2M + 500K + 100K + 50K) + ما كان على مشروع عقدٍ معدود (800K)
+  assert.equal(all.recognized_halalas, 2_650_000);
+  assert.equal(all.backlog_halalas, 5_600_000 - 2_650_000);
+});
+
+test('المتبقي: العقدُ بلا مشروع يبقى في المتعاقد، والإيرادُ بلا مشروع يبقى في الطرح', async () => {
+  const b = await backlog('S4', { statuses: ['ACTIVE'] });
+  assert.equal(b.contracted_halalas, 500_000);           // عقدٌ بلا مشروع لا يسقط لنقص ربطه
+  assert.equal(b.recognized_halalas, 50_000);            // بلا مشروع يبقى · ومشروعُ بلا عقدٍ خارج
+  assert.equal(b.backlog_halalas, 450_000);
 });
 
 // فواتير القطاع أ سنة 2026 المحسوبة خمس: I-live (400,000 صادرة، بلا تاريخ إصدار ⇒ يناير من

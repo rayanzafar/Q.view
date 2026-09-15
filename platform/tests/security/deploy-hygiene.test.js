@@ -2,6 +2,7 @@
 //   • كل قائمة استبعاد (git/docker/railway) تُقصي .env ولقطات القاعدة وملفات backfill.
 //   • .railwayignore يستعمل نمطاً عاماً للقطات (لا اسمين محدَّدين) ويُقصي backfill.
 //   • boot.sh يجعل فشل الترحيلة قاتلاً (لا يعمل الخادم على مخطط قديم بصمت).
+//   • مطابقة النسخة المنطقية (scripts/lib/app-backup.mjs) تُقاس على عدادات الخادم، والنشر يمرّ بها.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -84,8 +85,14 @@ test('خط النشر يرفض تجاوز النسخة الاحتياطية وا
 test('النسخة المنطقية تُطابَق على اكتمال البث وعدادات الخادم — وسجل التدقيق يُقبل نموّه بقدر ما يكتبه الطلبان لا أكثر', () => {
   // نشرة 2026-09-06 توقفت عند البوابة لأن طلبَي العدادات والنسخة يكتبان سطرين في audit_log بعد أخذ
   // العدادات — فالمطابقة الحرفية على جدولٍ يُلحَق فقط تُسقط نسخةً سليمة. الفسحة محدودة ومسمّاة لجدول واحد.
-  const txt = read('scripts/deploy.mjs');
+  // منذ v5.96 صارت المطابقة في scripts/lib/app-backup.mjs كي تُستدعى خارج النشر أيضاً — فتُحرس حيث هي،
+  // ويُحرس معها أن خطّ النشر ما زال يأخذ نسخته من ذلك الملف نفسه لا من مسارٍ ثانٍ بلا مطابقة.
+  const txt = read('scripts/lib/app-backup.mjs');
   assert.match(txt, /declared\[cur\] = Number\(m\._rows\)/, 'لا تحقّق من عدد الصفوف المعلَن لكل جدول داخل الملف');
   assert.match(txt, /APPEND_ONLY_SLACK = \{ audit_log: [1-9] \}/, 'فسحة سجل التدقيق غائبة أو مفتوحة لجداول أخرى');
   assert.match(txt, /got < counts\[t\] \|\| got > counts\[t\] \+ slack/, 'المطابقة لا ترفض النقص ولا تحدّ الزيادة');
+  assert.match(txt, /const v = verifyBackup\(buf, counts\)/, 'النسخة تُكتب دون مطابقتها بعدادات الخادم');
+  const dep = read('scripts/deploy.mjs');
+  assert.match(dep, /from '\.\/lib\/app-backup\.mjs'/, 'خطّ النشر لا يأخذ نسخته من الملف المطابِق');
+  assert.match(dep, /appLevelBackup\(/, 'خطّ النشر لا يستدعي النسخة المنطقية المطابَقة');
 });
