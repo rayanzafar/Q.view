@@ -16,7 +16,6 @@ import { approvedTaskSql, isPendingTask, linkedTaskApproval } from '../../module
 import { listViews } from '../../modules/views/views.js';
 import { canSeeSensitive, redact, can, effectiveScope } from '../../core/rbac/index.js';
 import { ROLE_LABELS } from '../../core/rbac/matrix.js';
-import { effectOf } from '../../modules/identity/grants.js';
 import { departmentScope, departmentInSql } from '../../core/rbac/departments.js';
 import { DELIVERY_SECTOR_SQL } from '../../core/org/kind.js';
 import { pickablePeople, seesDemoAccounts } from '../../modules/org/people.js';
@@ -3245,7 +3244,6 @@ const dayHtml = (s) => {
 export function permissionsSection(d) {
   const p = d.person;
   const groups = d.grantGroups || [];
-  const options = d.grantOptions || [];
   const roleAr = (ROLE_LABELS[p.roleId] || {}).ar || 'بلا دور';
   const his = d.self ? 'ك' : 'ه';
   const targetLabel = (t) => `${t.name_ar}${t.sector_name ? ' · ' + t.sector_name : ''}`;
@@ -3257,23 +3255,34 @@ export function permissionsSection(d) {
     ${g.note ? `<span class="pp-tag mute">${esc(g.note)}</span>` : ''}
     ${g.revocable ? `<button class="btn btn-ghost btn-sm" data-action="grant-revoke-bundle"
       data-id="${esc(g.bundle_id)}" style="color:var(--red)">ارفعها</button>` : ''}</div>`;
-  const first = options[0] || null;
-  const firstTarget = first ? first.targets[0] : null;
-  const addForm = !first ? '' : `
-      <div class="pp-form" id="pp-bundle-form" style="margin-top:.6rem">
-        <select id="pp-bundle" class="input" aria-label="الصلاحية">${options
-    .map((b, i) => `<option value="${esc(b.key)}"${i ? '' : ' selected'}>${esc(b.label)}</option>`).join('')}</select>
-        <select id="pp-bundle-target" class="input" aria-label="على ماذا">${first.targets
+  // ── المنح باختيارٍ متعدد (v5.97) ─────────────────────────────────────────────
+  // «احسب كل الخيارات الموجودة الممكنة وخلّه اختياراً متعدداً — اطّلاع وتعديل وإضافة، أو اطّلاع…»
+  // بلسان المالك. القدراتُ واحدةً واحدة خاناتٍ مجمَّعةً (الفرص · المشاريع · الفعاليات)، والحِزم
+  // الجاهزة أزرارٌ تعلِّم خاناتها. والهدفُ تقاطعُ أهداف المختار (يُحسب في المتصفح من بيانات الخادم):
+  // خلطُ ما يُمنَح على الشركة بما يُمنَح على إدارةٍ يُقال قبل الضغطة لا بعدها.
+  const po = d.grantPairOptions || { pairs: [], presets: [] };
+  const capGroups = (() => { const m = new Map(); for (const c of po.pairs) { if (!m.has(c.group_ar)) m.set(c.group_ar, []); m.get(c.group_ar).push(c); } return [...m]; })();
+  const allTargets = (() => { const seen = new Map(); for (const c of po.pairs) for (const t of c.targets) { const v = `${t.level}:${t.id}`; if (!seen.has(v)) seen.set(v, t); } return [...seen.values()]; })();
+  const addForm = !po.pairs.length ? '' : `
+      <div id="pp-cap-form" style="margin-top:.6rem">
+        ${po.presets.length ? `<div class="pp-presets"><span class="pp-capg">جاهزة:</span>${po.presets
+    .map((b) => `<button type="button" class="btn btn-sm" data-action="pp-preset" data-pairs="${esc(b.pairs.join(','))}">${esc(b.label)}</button>`).join('')}</div>` : ''}
+        <div class="pp-capgroups">${capGroups.map(([g, cs]) => `<div class="pp-capgroup"><span class="pp-capg">${esc(g)}:</span>${cs
+    .map((c) => `<label class="pp-cap"><input type="checkbox" class="pp-cap-box" value="${esc(c.key)}"> ${esc(c.short)}</label>`).join('')}</div>`).join('')}</div>
+        <div class="pp-form" style="margin-top:.5rem">
+          <select id="pp-bundle-target" class="input" aria-label="على ماذا">${allTargets
     .map((t) => `<option value="${esc(t.level)}:${esc(t.id)}">${esc(targetLabel(t))}</option>`).join('')}</select>
-        <input id="pp-bundle-until" class="input" type="date" min="${esc(d.today)}" aria-label="حتى تاريخ" title="آخر يوم تسري فيه — اتركه فارغاً لصلاحية بلا مدة">
-        <input id="pp-bundle-note" class="input" maxlength="200" placeholder="السبب (اختياري)">
-        <button class="btn btn-primary btn-sm" data-action="pp-bundle-add" data-user="${esc(p.userId)}">امنحها</button>
-      </div>
-      <div class="pp-hint" id="pp-bundle-hint">${esc(effectOf(first, firstTarget ? firstTarget.name_ar : ''))} · التاريخ آخر يوم تسري فيه، وفراغه صلاحيةٌ بلا مدة.</div>
-      <script type="application/json" id="pp-bundle-data">${JSON.stringify(options.map((b) => ({
-    key: b.key, effect: b.effect,
-    targets: b.targets.map((t) => ({ v: `${t.level}:${t.id}`, name: targetLabel(t), short: t.short_ar || t.name_ar })),
-  }))).replace(/</g, '\\u003c')}</script>`;
+          <input id="pp-bundle-until" class="input" type="date" min="${esc(d.today)}" aria-label="حتى تاريخ" title="آخر يوم تسري فيه — اتركه فارغاً لصلاحية بلا مدة">
+          <input id="pp-bundle-note" class="input" maxlength="200" placeholder="السبب (اختياري)">
+          <button class="btn btn-primary btn-sm" data-action="pp-bundle-add" data-user="${esc(p.userId)}" disabled>امنحها</button>
+        </div>
+        <div class="pp-hint" id="pp-bundle-hint">اختر قدرةً فأكثر (أو حزمةً جاهزة)، ثم على ماذا. التاريخ آخر يوم تسري فيه، وفراغه صلاحيةٌ بلا مدة.</div>
+        <script type="application/json" id="pp-cap-data">${JSON.stringify({
+    pairs: po.pairs.map((c) => ({ key: c.key, group: c.group_ar, short: c.short, effect: c.effect,
+      targets: c.targets.map((t) => ({ v: `${t.level}:${t.id}`, name: targetLabel(t), short: t.short_ar || t.name_ar })) })),
+    presets: po.presets,
+  }).replace(/</g, '\\u003c')}</script>
+      </div>`;
   const roleForm = !d.canChangeRole ? '' : `
       <div class="pp-form" id="pp-role-form" hidden>
         <select id="pp-role" class="input" aria-label="الدور">${Object.entries(ROLE_LABELS)
@@ -3289,6 +3298,14 @@ export function permissionsSection(d) {
     .pp-role{display:flex;gap:.4rem;flex-wrap:wrap;align-items:center}
     .pp-role .pp-tag{font-size:var(--fs-micro);padding:.2rem .55rem}
     .pp-grow.expired{opacity:.62}.pp-tag.bad{color:var(--red)}
+    .pp-presets{display:flex;gap:.35rem;flex-wrap:wrap;align-items:center;margin-bottom:.45rem}
+    .pp-capgroups{display:flex;flex-direction:column;gap:.35rem}
+    .pp-capgroup{display:flex;gap:.4rem;flex-wrap:wrap;align-items:center;font-size:var(--fs-micro)}
+    .pp-capg{font-weight:800;color:var(--muted);min-width:58px}
+    .pp-cap{display:inline-flex;align-items:center;gap:.3rem;background:var(--bg);border:1px solid var(--line);
+      border-radius:999px;padding:.18rem .6rem;cursor:pointer;color:var(--ink2)}
+    .pp-cap input{margin:0;accent-color:var(--brand)}
+    .pp-cap:has(input:checked){background:#eef2ff;border-color:#c7d2fe;color:#3730a3;font-weight:700}
   </style>
   <section class="pp-sec" id="pp-perms">
     <div class="pp-sec-h"><h2 class="pp-sec-t">صلاحيات${his}</h2>

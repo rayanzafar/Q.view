@@ -198,11 +198,45 @@ test('الرفع يرفع الحزمة كلها بحدّ المنح نفسه —
   sajaBundle = (await G.grantBundle(await ctxOf('u_lead'), { user_id: 'u_saja', bundle: 'bd', level: 'sector', sector_id: 'SOL' })).bundle_id;
 });
 
+// ── ⑥ القدرات بأي مجموعة (v5.97) ──────────────────────────────────────────────
+// «احسب كل الخيارات الموجودة الممكنة وخلّه اختياراً متعدداً — اطّلاع وتعديل وإضافة، أو اطّلاع…».
+test('القدرات تُمنَح بأي مجموعة: اطّلاع وتعديل بلا إضافة — والاسم يُشتقّ منها، والخلط بين مستويين يُردّ قبل الكتابة', async () => {
+  const lead = await ctxOf('u_lead');
+  const r = await G.grantSelection(lead, { user_id: 'u_hadi', pairs: ['opportunity:read', 'opportunity:update'], level: 'department', department_id: 'D_AI', note: 'اطّلاع وتعديل فقط' });
+  assert.equal(r.created, 2); assert.equal(r.bundle, 'custom'); assert.equal(r.label, 'الفرص: اطّلاع · تعديل');
+  const hadi = await ctxOf('u_hadi');
+  const upd = await opps.updateOpportunity(hadi, 'O_AI1', { next_action: 'من هادي' });
+  assert.equal(upd.next_action, 'من هادي', 'التعديل الممنوح مردود');
+  await assert.rejects(() => opps.createOpportunity(hadi, { title_ar: 'لا إضافة', client_id: 'CL', sector_id: 'SOL', department_id: 'D_AI' }),
+    /ممنوحةٌ لك على إدارتك|خارج نطاق قطاعك|صلاحيتك/, 'أضاف فرصةً في الذكاء وهو ممنوحٌ الاطّلاع والتعديل فقط');
+  const g = (await G.listUserGrantGroups(await sess('u_admin'), 'u_hadi')).find((x) => x.bundle_id === r.bundle_id);
+  assert.equal(g.label, 'الفرص: اطّلاع · تعديل'); assert.equal(g.custom, true); assert.equal(g.pairs.length, 2);
+  // مجموعةٌ تطابق حزمةً جاهزة تحمل اسمها ومفتاحها
+  const r2 = await G.grantSelection(lead, { user_id: 'u_hadi', pairs: ['project:read', 'project:create', 'project:update'], level: 'sector', sector_id: 'SOL' });
+  assert.equal(r2.bundle, 'pm'); assert.equal(r2.label, 'إدارة المشاريع');
+  // الفعاليات على الشركة وحدها: خلطُها بالفرص على إدارةٍ يُردّ بتسمية الزوج — ولا يُكتب نصفُ المجموعة
+  const before = Number((await db.get('SELECT COUNT(*) n FROM user_department_grant WHERE user_id = ? AND deleted_at IS NULL', ['u_hadi'])).n);
+  const admin = await ctxOf('u_admin');
+  await assert.rejects(() => G.grantSelection(admin, { user_id: 'u_hadi', pairs: ['opportunity:read', 'event:create'], level: 'department', department_id: 'D_INNOV' }), /الفعاليات: إنشاء.*تُمنَح على الشركة كلها/);
+  assert.equal(Number((await db.get('SELECT COUNT(*) n FROM user_department_grant WHERE user_id = ? AND deleted_at IS NULL', ['u_hadi'])).n), before, 'كُتب نصفُ المجموعة');
+  await assert.rejects(() => G.grantSelection(lead, { user_id: 'u_hadi', pairs: ['opportunity:fly'], level: 'sector', sector_id: 'SOL' }), /ليست من القائمة/);
+  await assert.rejects(() => G.grantSelection(lead, { user_id: 'u_hadi', pairs: [], level: 'sector', sector_id: 'SOL' }), /اختر قدرةً|حزمةً/);
+  // خيارات القدرات لمدير الإدارة: الفرص والمشاريع على إدارته، ولا فعاليات — والحِزم الجاهزة ما يملك أزواجها كلها
+  const po = await G.grantablePairOptions((await ctxOf('u_dm')).user);
+  assert.deepEqual(po.pairs.map((c) => c.key).sort(), ['opportunity:create', 'opportunity:read', 'opportunity:update', 'project:read', 'project:update']);
+  assert.ok(po.pairs.every((c) => c.targets.length === 1 && c.targets[0].id === 'D_INNOV'), 'هدفٌ لا يبلغه مدير الإدارة في خياراته');
+  assert.deepEqual(po.presets.map((b) => b.key).sort(), ['bd', 'opp_read', 'project_read']);
+});
+
 // ── ⑤ البطاقة ────────────────────────────────────────────────────────────────
 test('بطاقة «صلاحياته» تعرض ما يُقبل: المنح لمن يملكه، وتغيير الدور لمدير النظام، ولا منحَ للنفس', async () => {
   const forLead = await P.personPage(await sess('u_lead'), 'u_saja');
   for (const s of ['صلاحياته', 'امنحها', 'تطوير الأعمال', 'قطاع الحلول كله', 'ارفعها', 'قطاع كامل']) assert.ok(forLead.includes(s), `قائد القطاع لا يجد «${s}»`);
   assert.ok(!forLead.includes('غيّر الدور'), 'قائد القطاع يُعرض له تغيير الدور');
+  // الاختيار المتعدد (v5.97): خانةٌ لكل قدرة يملكها، وأزرار الحِزم الجاهزة
+  for (const s of ['pp-cap-box', 'value="opportunity:read"', 'value="project:update"', 'value="event:create"', 'data-action="pp-preset"', 'الفعاليات:']) assert.ok(forLead.includes(s), `قائد القطاع لا يجد «${s}»`);
+  const forDm0 = await P.personPage(await sess('u_dm'), 'u_saja');
+  assert.ok(forDm0.includes('value="opportunity:create"') && !forDm0.includes('value="project:create"') && !forDm0.includes('value="event:create"'), 'مدير الإدارة يُعرض له ما لا يملكه أو يُحجب ما يملكه');
   const forAdmin = await P.personPage(await sess('u_admin'), 'u_saja');
   assert.ok(forAdmin.includes('غيّر الدور') && forAdmin.includes('احفظ الدور') && forAdmin.includes('id="pp-role-form"'), 'مدير النظام بلا نموذج الدور');
   const forDm = await P.personPage(await sess('u_dm'), 'u_saja');

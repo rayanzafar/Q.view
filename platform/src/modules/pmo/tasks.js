@@ -6,7 +6,7 @@ import { departmentScope, departmentInSql, inDepartmentScope } from '../../core/
 import { audit } from '../../core/audit/index.js';
 import { id, nowIso } from '../../core/util/ids.js';
 import { forbidden, notFound, badRequest } from '../../core/http/errors.js';
-import { listUserGrants, grantableOptions, listUserGrantGroups, grantableBundleOptions } from '../identity/grants.js';
+import { listUserGrants, grantableOptions, listUserGrantGroups, grantableBundleOptions, grantablePairOptions } from '../identity/grants.js';
 import { raiseDirectApproval, TASK_WORKFLOW_KEY } from '../workflow/engine.js';
 import { notify } from '../notifications/notify.js';
 import { taskApproval, approvedTaskSql, ownOrApprovedTaskSql, myWorkOrMyPendingSql, TASK_PENDING, isPendingTask,
@@ -1176,9 +1176,13 @@ export async function personDossier(reader, personUserId) {
   // مُنحت معاً (وحكمُ رفعها لهذا القارئ في كل سطر)، والحِزم التي يستطيع هو منحها بأهدافها —
   // كلاهما من الخدمة، فالبطاقة تعرض ما يُقبل فعلاً. وتغييرُ الدور من البطاقة لمدير النظام وحده
   // (بوابة `updateUser` نفسها)، ولا يغيّر أحدٌ دورَ نفسه.
-  let grantGroups = []; let grantOptions = [];
+  let grantGroups = []; let grantOptions = []; let grantPairOptions = { pairs: [], presets: [] };
   try { grantGroups = await listUserGrantGroups(reader, uid); } catch { grantGroups = []; }
-  if (!isSelf) { try { grantOptions = await grantableBundleOptions(reader); } catch { grantOptions = []; } }
+  if (!isSelf) {
+    try { grantOptions = await grantableBundleOptions(reader); } catch { grantOptions = []; }
+    // القدرات واحدةً واحدة للاختيار المتعدد (v5.97) — والحِزم فوقها اختصاراتٌ تُعلِّم الخانات.
+    try { grantPairOptions = await grantablePairOptions(reader); } catch { grantPairOptions = { pairs: [], presets: [] }; }
+  }
   const canChangeRole = !isSelf && reader.role_id === 'admin';
   const sectors = canChangeRole
     ? await all('SELECT id, name_ar FROM sector WHERE deleted_at IS NULL AND active = 1 ORDER BY sort_order, name_ar') : [];
@@ -1193,6 +1197,7 @@ export async function personDossier(reader, personUserId) {
     grantChoices,
     grantGroups,
     grantOptions,
+    grantPairOptions,
     canChangeRole,
     sectors,
     employeeId: p.employee_id || null,

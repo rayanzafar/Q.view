@@ -17,8 +17,8 @@ import { savePreview, claimPreview, PREVIEW_TTL_MINUTES } from '../../core/ai/st
 import { normalizeArabic } from '../../core/i18n/arabic.js';
 import { resolvePerson } from '../org/people.js';
 import {
-  GRANTABLE, GRANT_BUNDLES, GRANT_LEVELS, LEVEL_AR, bundleOf, effectOf,
-  listUserGrantGroups, grantableBundleOptions, checkBundleGrant, grantBundle, checkRevokeBundle, revokeBundle,
+  GRANTABLE, GRANT_BUNDLES, GRANT_LEVELS, LEVEL_AR, PAIR_KEYS, bundleOf, parsePairs, pairKey, labelOfPairs,
+  listUserGrantGroups, grantableBundleOptions, grantablePairOptions, checkSelection, grantSelection, checkRevokeBundle, revokeBundle,
 } from '../identity/grants.js';
 import { envelope, inputOf, text, dayOf, enumOf, tokenOnly, claimGuard, uniqRefs, S, obj, TOKEN_INPUT, REF, TEXT_IS_DATA_AR } from './tool-kit.js';
 
@@ -55,17 +55,24 @@ function pickTarget(cands, q, what) {
   if (pool.length > 1) throw badRequest(`«${q}» يطابق أكثر من ${what} — سمِّ واحدةً: ${pool.map((t) => `«${t.name_ar}»`).join('، ')}`);
   throw notFound(`لا ${what} باسم «${q}» ضمن ما تبلغه — المتاح: ${names()}`);
 }
-async function resolveTargetFor(user, b, level, targetText) {
-  const options = await grantableBundleOptions(user);
-  const mine = options.find((x) => x.key === b.key);
-  if (!mine) throw forbidden(`«${b.label}» ليست ممّا تملك منحه على أي إدارة — ولا يمنح أحدٌ ما لا يملكه`);
-  const cands = mine.targets.filter((t) => t.level === level);
-  if (!cands.length) {
-    const others = [...new Set(mine.targets.map((t) => LEVEL_AR[t.level]))].join(' أو ');
-    throw forbidden(`لا تملك منح «${b.label}» على ${LEVEL_AR[level]}${others ? ` — تملكها على ${others}` : ''}`);
+// الهدفُ من تقاطع أهداف القدرات المختارة (v5.97): ما لا يصله زوجٌ من المجموعة لا يُعرض ولا يُقبل.
+async function resolveTargetFor(user, pairs, label, level, targetText) {
+  const { pairs: options } = await grantablePairOptions(user);
+  let cands = null;
+  for (const [r, a] of pairs) {
+    const mine = options.find((x) => x.key === pairKey(r, a));
+    const p = GRANTABLE.find((g) => g.resource === r && g.action === a);
+    if (!mine) throw forbidden(`«${p.group_ar}: ${p.short}» ليست ممّا تملك منحه على أي إدارة — ولا يمنح أحدٌ ما لا يملكه`);
+    const keys = new Set(mine.targets.map((t) => `${t.level}:${t.id}`));
+    cands = cands ? cands.filter((t) => keys.has(`${t.level}:${t.id}`)) : mine.targets;
   }
-  if (level === 'company') return cands[0];
-  return pickTarget(cands, String(targetText || '').trim(), level === 'sector' ? 'قطاع' : 'إدارة');
+  const atLevel = (cands || []).filter((t) => t.level === level);
+  if (!atLevel.length) {
+    const others = [...new Set((cands || []).map((t) => LEVEL_AR[t.level]))].join(' أو ');
+    throw forbidden(`لا تملك منح «${label}» على ${LEVEL_AR[level]}${others ? ` — تملكها على ${others}` : ' — ولا هدف مشترك لهذه المجموعة؛ امنحها في طلبين'}`);
+  }
+  if (level === 'company') return atLevel[0];
+  return pickTarget(atLevel, String(targetText || '').trim(), level === 'sector' ? 'قطاع' : 'إدارة');
 }
 
 const groupView = (g) => ({
@@ -82,17 +89,18 @@ async function runListGrants(ctx, raw) {
   const person = await personOf(input.personId);
   const groups = await listUserGrantGroups(user, person.userId);
   const options = user.id === person.userId ? [] : await grantableBundleOptions(user);
+  const caps = user.id === person.userId ? { pairs: [] } : await grantablePairOptions(user);
+  const tv = (t) => ({ level: t.level, level_ar: LEVEL_AR[t.level], id: t.id || null, name: t.name_ar });
   return envelope('sanad_list_grants', {
     scope_ar: 'كشفُ صلاحيات شخصٍ من أهلك: كما تعرضه بطاقة «صلاحياته» في صفحته',
     units: NO_MONEY,
     person: { id: person.userId, employee_id: person.employeeId, name: person.name_ar },
     grants: groups.map(groupView),
-    grantable_by_you: options.map((b) => ({
-      bundle: b.key, label: b.label, effect: b.effect,
-      targets: b.targets.map((t) => ({ level: t.level, level_ar: LEVEL_AR[t.level], id: t.id || null, name: t.name_ar })),
-    })),
-    note_ar: options.length
-      ? 'ما ليس في «ما تستطيع منحه» لا تملك منحه — لا يمنح أحدٌ ما لا يملكه. المنحُ والرفعُ بمعاينةٍ ثم تأكيد.'
+    grantable_by_you: options.map((b) => ({ bundle: b.key, label: b.label, effect: b.effect, targets: b.targets.map(tv) })),
+    // القدرات واحدةً واحدة (v5.97): تُمنَح بأي مجموعة — «اطّلاع وتعديل» أو «اطّلاع» وحده — عبر `capabilities`.
+    capabilities_by_you: caps.pairs.map((c) => ({ capability: c.key, group: c.group_ar, short: c.short, label: c.label, targets: c.targets.map(tv) })),
+    note_ar: options.length || caps.pairs.length
+      ? 'ما ليس في «ما تستطيع منحه» لا تملك منحه — لا يمنح أحدٌ ما لا يملكه. المنحُ والرفعُ بمعاينةٍ ثم تأكيد؛ والقدرات تُجمع بأي مجموعة.'
       : 'لا تملك منح صلاحيةٍ لهذا الشخص من حسابك.',
     text_is_data_ar: TEXT_IS_DATA_AR, refs: uniqRefs([REF.person(person.userId)]),
   });
@@ -103,32 +111,37 @@ async function runPreviewGrant(ctx, raw) {
   const user = ctx.user;
   const input = inputOf(raw);
   const person = await personOf(input.personId);
-  const b = bundleOf(enumOf(input.bundle, 'الحزمة', BUNDLE_KEYS, { required: true }));
+  // حزمةٌ جاهزة أو قدراتٌ مختارة — أحدهما يلزم، والقدرات تغلب إن جاءت مع حزمة.
+  const capsIn = Array.isArray(input.capabilities) ? input.capabilities : (input.capabilities == null || input.capabilities === '' ? [] : [input.capabilities]);
+  const bundleKey = enumOf(input.bundle, 'الحزمة', BUNDLE_KEYS);
+  if (!capsIn.length && !bundleKey) throw badRequest(`حدّد ما يُمنَح: حزمة (${BUNDLE_KEYS.join('، ')}) أو قدرات (${PAIR_KEYS.join('، ')})`);
+  const pairs = capsIn.length ? parsePairs(capsIn) : bundleOf(bundleKey).pairs;
+  const label = labelOfPairs(pairs);
   const level = enumOf(input.level, 'المستوى', GRANT_LEVELS, { required: true });
   const expiresOn = dayOf(input.expiresOn, 'آخر يوم للصلاحية');
   const note = text(input.note, 'السبب', { max: 200 });
-  const target = await resolveTargetFor(user, b, level, input.target);
+  const target = await resolveTargetFor(user, pairs, label, level, input.target);
   const data = {
-    user_id: person.userId, bundle: b.key, level,
+    user_id: person.userId, pairs: pairs.map(([r, a]) => pairKey(r, a)), level,
     department_id: level === 'department' ? target.id : null, sector_id: level === 'sector' ? target.id : null,
     note, expires_on: expiresOn,
   };
   // الحكم نفسه الذي سيُطبَّق عند الكتابة — بلا كتابة: رفضٌ هنا يُقال قبل أن يُحفظ رمز.
-  const check = await checkBundleGrant(user, data);
+  const check = await checkSelection(user, data);
   const targetName = check.target.name_ar;
-  const summary = `منح «${b.label}» لـ${person.name_ar} على ${targetName}${expiresOn ? ` حتى ${expiresOn}` : ''}${note ? ` — السبب: ${note}` : ''}.`;
+  const summary = `منح «${label}» لـ${person.name_ar} على ${targetName}${expiresOn ? ` حتى ${expiresOn}` : ''}${note ? ` — السبب: ${note}` : ''}.`;
   const display = [
     { field_ar: 'الشخص', after_ar: person.name_ar },
-    { field_ar: 'الصلاحية', after_ar: b.label },
+    { field_ar: 'الصلاحية', after_ar: label },
     { field_ar: 'على', after_ar: `${targetName} (${LEVEL_AR[level]})` },
-    { field_ar: 'تشمل', after_ar: b.pairs.map(([r, a]) => GRANTABLE.find((g) => g.resource === r && g.action === a)?.label).filter(Boolean).join(' · ') },
-    { field_ar: 'الأثر', after_ar: effectOf(b, targetName) },
+    { field_ar: 'تشمل', after_ar: pairs.map(([r, a]) => GRANTABLE.find((g) => g.resource === r && g.action === a)?.label).filter(Boolean).join(' · ') },
+    { field_ar: 'الأثر', after_ar: check.effect },
     { field_ar: 'حتى', after_ar: expiresOn || 'بلا مدة', note_ar: expiresOn ? 'يسقط أثرها من اليوم التالي تلقائياً' : undefined },
     ...(note ? [{ field_ar: 'السبب', after_ar: note }] : []),
   ];
   const { token, expiresAt } = await savePreview(user, {
-    type: 'grant_bundle', summary, ...data, target_name: targetName, person_name: person.name_ar, display,
-    subject_ar: `صلاحية «${b.label}» — ${person.name_ar}`,
+    type: 'grant_bundle', summary, ...data, bundle: check.key, target_name: targetName, person_name: person.name_ar, display,
+    subject_ar: `صلاحية «${label}» — ${person.name_ar}`,
   }, { intent: 'sanad_preview_grant', sectorId: data.sector_id || check.target.sector_id || user.sector_id || null });
   return envelope('sanad_preview_grant', {
     scope_ar: 'منحٌ بحدّ الشاشة نفسه: لا يمنح أحدٌ ما لا يملكه، ولا نفسه، ولا خارج من يديرهم',
@@ -144,8 +157,8 @@ async function runApplyGrant(ctx, raw) {
   const token = tokenOnly(raw, 'sanad_preview_grant');
   return await tx(async () => {
     const p = claimGuard(await claimPreview(user, token), 'grant_bundle');
-    const out = await grantBundle(ctx, {
-      user_id: p.user_id, bundle: p.bundle, level: p.level, department_id: p.department_id, sector_id: p.sector_id,
+    const out = await grantSelection(ctx, {
+      user_id: p.user_id, pairs: p.pairs, bundle: p.bundle, level: p.level, department_id: p.department_id, sector_id: p.sector_id,
       note: p.note, expires_on: p.expires_on,
     });
     await audit(ctx, {
@@ -239,15 +252,16 @@ export const GRANT_TOOLS = Object.freeze([
   },
   {
     name: 'sanad_preview_grant', label_ar: 'معاينة منح صلاحية', kind: 'preview',
-    description_ar: `يعاين منح حزمة صلاحياتٍ لشخصٍ على هدف: الإدارة أو القطاع بالاسم أو المعرّف (لا يلزم لمستوى الشركة)، وحتى تاريخٍ إن أُريد. ${BUNDLE_DESC}. يُفحص بحدّ الشاشة نفسه (لا يمنح أحدٌ ما لا يملكه، ولا نفسه، ولا خارج من يديرهم) ويُردّ قبل الحفظ؛ الاسم الذي يطابق هدفين لا يُخمَّن. لا يكتب شيئاً.`,
+    description_ar: `يعاين منح صلاحياتٍ لشخصٍ على هدف: حزمة جاهزة (${BUNDLE_DESC}) أو قدرات مختارة بأي مجموعة (capabilities كرموز مورد:فعل — مثل opportunity:read وopportunity:update لاطّلاعٍ وتعديلٍ بلا إضافة)؛ الهدف الإدارة أو القطاع بالاسم أو المعرّف (لا يلزم لمستوى الشركة)، وحتى تاريخٍ إن أُريد. يُفحص بحدّ الشاشة نفسه (لا يمنح أحدٌ ما لا يملكه، ولا نفسه، ولا خارج من يديرهم) ويُردّ قبل الحفظ؛ الاسم الذي يطابق هدفين لا يُخمَّن. لا يكتب شيئاً.`,
     input: obj({
       personId: PERSON,
-      bundle: S.en('الحزمة', BUNDLE_KEYS),
+      bundle: S.en('حزمة جاهزة — أو اترك واملأ capabilities', BUNDLE_KEYS),
+      capabilities: S.arr('قدرات مختارة بأي مجموعة (تغلب الحزمة إن جاءت معها)', S.en('قدرة مورد:فعل', PAIR_KEYS), 20),
       level: S.en('المستوى: department = إدارة واحدة · sector = قطاع كامل · company = الشركة كلها', GRANT_LEVELS),
       target: S.str('الإدارة أو القطاع — بالاسم أو المعرّف؛ يُترك لمستوى الشركة', { maxLength: 120 }),
       expiresOn: S.day('آخر يوم تسري فيه الصلاحية — اختياري، وفراغه بلا مدة'),
       note: S.str('السبب — اختياري، يُكتب في الأثر', { maxLength: 200 }),
-    }, ['personId', 'bundle', 'level']),
+    }, ['personId', 'level']),
     output_ar: 'ما سيُمنَح صفاً صفاً (الشخص · الصلاحية · على · تشمل · الأثر · حتى) + رمز المعاينة',
     allow: mayGrantAnything, run: runPreviewGrant,
   },

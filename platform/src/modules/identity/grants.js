@@ -45,34 +45,36 @@ export const LEVEL_AR = Object.freeze({ department: 'إدارة', sector: 'قط�
 // المورد ⟵ ما يظهر للمستخدم، وأين يظهر أثره. النصّ هنا هو نصّ الشاشة: لا مصطلح يُترجَم مرتين.
 // و`levels`: المستويات التي يُوصَل بها الزوج فعلاً — الفرص والمشاريع بالإدارة أو القطاع (القوائم
 // والصفوف تقرأ العمودين)، والفعاليات على مستوى الشركة وحدها (مواردها شركيةٌ في المصفوفة).
+// `group_ar`/`short` (v5.97): ما تعرضه خانات الاختيار المتعدد — المجموعة (الفرص، المشاريع، الفعاليات)
+// والقدرة داخلها بكلمة (اطّلاع، إضافة، تعديل…). و`label`/`effect` الجملتان الكاملتان للكشف والمعاينة.
 export const GRANTABLE = [
   {
-    resource: 'opportunity', action: 'read', levels: ['department', 'sector'],
+    resource: 'opportunity', action: 'read', levels: ['department', 'sector'], group_ar: 'الفرص', short: 'اطّلاع',
     label: 'يرى كل فرص الإدارة',
     effect: 'تظهر له فرص هذه الإدارة كاملةً في شاشة «الفرص» — لا المسكَّن عليها وحده. و«فرصي» تبقى شخصية.',
   },
   {
-    resource: 'opportunity', action: 'create', levels: ['department', 'sector'],
+    resource: 'opportunity', action: 'create', levels: ['department', 'sector'], group_ar: 'الفرص', short: 'إضافة',
     label: 'يضيف فرصاً لهذه الإدارة',
     effect: 'يفتح له تسجيل فرصة جديدة تُنسب إلى هذه الإدارة — لا إلى غيرها.',
   },
   {
-    resource: 'opportunity', action: 'update', levels: ['department', 'sector'],
+    resource: 'opportunity', action: 'update', levels: ['department', 'sector'], group_ar: 'الفرص', short: 'تعديل',
     label: 'يعدّل فرص الإدارة',
     effect: 'يفتح له تعديل فرص هذه الإدارة من صفحة الفرصة — وفي المشتركة مع غيرها تبقى حقول النسبة لإدارتها المسؤولة.',
   },
   {
-    resource: 'project', action: 'read', levels: ['department', 'sector'],
+    resource: 'project', action: 'read', levels: ['department', 'sector'], group_ar: 'المشاريع', short: 'اطّلاع',
     label: 'يرى كل مشاريع الإدارة',
     effect: 'تظهر له مشاريع هذه الإدارة في شاشة «المشاريع» وتُفتح صفحاتها — بما فيها ما تشارك فيه الإدارة مع غيرها.',
   },
   {
-    resource: 'project', action: 'create', levels: ['department', 'sector'],
+    resource: 'project', action: 'create', levels: ['department', 'sector'], group_ar: 'المشاريع', short: 'إضافة',
     label: 'يضيف مشاريع لهذه الإدارة',
     effect: 'يفتح له تسجيل مشروع جديد يُنسب إلى هذه الإدارة — لا إلى غيرها.',
   },
   {
-    resource: 'project', action: 'update', levels: ['department', 'sector'],
+    resource: 'project', action: 'update', levels: ['department', 'sector'], group_ar: 'المشاريع', short: 'تعديل',
     label: 'يعدّل مشاريع الإدارة',
     effect: 'يفتح له تعديل مشاريع الإدارة ومخرجاتها وفريقها — وفي المشترك مع غيرها تبقى حقول النسبة للإدارة المسؤولة.',
   },
@@ -82,12 +84,12 @@ export const GRANTABLE = [
   // قبلها تُكتب على إدارةٍ قيداً للجدول لا للأثر. ومَن يمنحها محكومٌ بالقاعدة القائمة: قادةُ
   // القطاعات ومكتبُ الرئيس التنفيذي ومديرُ النظام يملكونها؛ مديرُ الإدارة لا يملكها فلا يمنحها.
   {
-    resource: 'event', action: 'create', levels: ['company'],
+    resource: 'event', action: 'create', levels: ['company'], group_ar: 'الفعاليات', short: 'إنشاء',
     label: 'ينشئ فعاليات (للشركة كلها)',
     effect: 'يفتح له إنشاء فعالية جديدة من شاشة «الفعاليات» باسمه — والفعاليات على مستوى الشركة لا الإدارة.',
   },
   {
-    resource: 'event', action: 'update', levels: ['company'],
+    resource: 'event', action: 'update', levels: ['company'], group_ar: 'الفعاليات', short: 'تعديل وإغلاق',
     label: 'يعدّل الفعاليات ويغلقها (للشركة كلها)',
     effect: 'يفتح له تعديل تفاصيل أي فعالية وإغلاقها بعد انتهائها — على مستوى الشركة لا الإدارة.',
   },
@@ -96,12 +98,12 @@ export const GRANTABLE = [
   // وحده (قرار حسين ٢٠٢٦-٠٩-٠١ — matrix.js وADR-0013). والصفوف القديمة بـevent:delete تبطل
   // بنفسها: `grantsForUser()` أدناه يمرّر كل صفٍّ على `isGrantable()` ويُسقط ما ليس في القائمة.
   {
-    resource: 'event_contact', action: 'delete', levels: ['company'],
+    resource: 'event_contact', action: 'delete', levels: ['company'], group_ar: 'الفعاليات', short: 'حذف بطاقات الزملاء',
     label: 'يحذف بطاقات الآخرين في الفعاليات (للشركة كلها)',
     effect: 'يفتح له حذف أي بطاقة التقطها زميل — لتنظيف المكرَّر والخاطئ أثناء المعرض وبعده.',
   },
   {
-    resource: 'event_partner', action: 'delete', levels: ['company'],
+    resource: 'event_partner', action: 'delete', levels: ['company'], group_ar: 'الفعاليات', short: 'حذف شراكات الزملاء',
     label: 'يحذف شراكات الآخرين في الفعاليات (للشركة كلها)',
     effect: 'يفتح له حذف أي شراكة سجّلها زميل في الفعالية — لتنظيف السجل قبل المراجعة.',
   },
@@ -109,6 +111,50 @@ export const GRANTABLE = [
 export const isGrantable = (resource, action) =>
   GRANTABLE.some((g) => g.resource === resource && g.action === action);
 const pairOf = (resource, action) => GRANTABLE.find((g) => g.resource === resource && g.action === action) || null;
+export const pairKey = (resource, action) => `${resource}:${action}`;
+export const PAIR_KEYS = Object.freeze(GRANTABLE.map((g) => pairKey(g.resource, g.action)));
+
+// ── القدرات مختارةً بحرّية (v5.97): «اطّلاع وتعديل وإضافة، أو اطّلاع وحده…» ──────────────
+// المدخل رموزٌ «مورد:فعل» أو أزواجٌ [مورد، فعل] أو كائنات {resource, action}؛ يُردّ الغريب بجملة،
+// ويُسقَط المكرَّر، ويلزم واحدٌ على الأقل. والاسمُ المعروض للمجموعة يُشتقّ من المجموعات والكلمات:
+// «الفرص: اطّلاع · تعديل — المشاريع: اطّلاع»، إلا إن طابقت المجموعةُ حزمةً جاهزة فاسمُها اسمُ الحزمة.
+export function parsePairs(input) {
+  const raw = Array.isArray(input) ? input : (input == null || input === '' ? [] : [input]);
+  const out = []; const seen = new Set();
+  for (const item of raw) {
+    let r = null; let a = null;
+    if (typeof item === 'string') { const i = item.indexOf(':'); r = i < 0 ? item : item.slice(0, i); a = i < 0 ? '' : item.slice(i + 1); }
+    else if (Array.isArray(item)) { [r, a] = item; }
+    else if (item && typeof item === 'object') { r = item.resource; a = item.action; }
+    r = String(r || '').trim(); a = String(a || '').trim();
+    if (!pairOf(r, a)) throw badRequest(`القدرة «${[r, a].filter(Boolean).join(':') || 'فارغة'}» ليست من القائمة — المتاح: ${PAIR_KEYS.join('، ')}`);
+    const k = pairKey(r, a);
+    if (seen.has(k)) continue;
+    seen.add(k); out.push([r, a]);
+  }
+  if (!out.length) throw badRequest('اختر قدرةً واحدة على الأقل (اطّلاع، إضافة، تعديل…)');
+  return out;
+}
+const sameSet = (a, b) => a.length === b.length && a.every((x) => b.some((y) => y[0] === x[0] && y[1] === x[1]));
+export const presetOf = (pairs) => GRANT_BUNDLES.find((b) => sameSet(b.pairs, pairs)) || null;
+/** اسمُ مجموعة قدرات: اسم الحزمة إن طابقتها، وإلا «المجموعة: قدرة · قدرة — مجموعة: قدرة». */
+export function labelOfPairs(pairs) {
+  const preset = presetOf(pairs);
+  if (preset) return preset.label;
+  const groups = new Map();
+  for (const [r, a] of pairs) {
+    const p = pairOf(r, a); if (!p) continue;
+    if (!groups.has(p.group_ar)) groups.set(p.group_ar, []);
+    groups.get(p.group_ar).push(p.short);
+  }
+  return [...groups].map(([g, shorts]) => `${g}: ${shorts.join(' · ')}`).join(' — ');
+}
+/** أثرُ مجموعةٍ حرّة: جملُ أزواجها، وللحزمة جملتُها. */
+export function effectOfPairs(pairs, targetName) {
+  const preset = presetOf(pairs);
+  if (preset) return effectOf(preset, targetName);
+  return pairs.map(([r, a]) => pairOf(r, a)?.effect || '').filter(Boolean).join(' ');
+}
 
 // ── الحِزم: ما يقوله المدير بلسانه، لا أزواج مورد/فعل ─────────────────────────
 // «أبغى أعطيها صلاحية تضيف فرص لأنها شغالة في تطوير الأعمال» — جملةٌ واحدة تعني ثلاثة أزواج.
@@ -315,9 +361,17 @@ export async function listUserGrantGroups(reader, userId) {
       });
     }
     const g = groups.get(key);
-    g.pairs.push({ id: r.id, resource: r.resource, action: r.action, label: r.label });
+    const meta = pairOf(r.resource, r.action);
+    g.pairs.push({ id: r.id, resource: r.resource, action: r.action, label: r.label, group_ar: meta?.group_ar || '', short: meta?.short || '' });
     if (r.expired) g.expired = true;
     if (g.revocable && !mayGrantTarget(reader, { level: r.level, department_id: r.department_id || null, sector_id: r.sector_id || null }, r.resource, r.action)) g.revocable = false;
+  }
+  // الاسمُ من الصفوف الفعلية لا من مفتاح الحزمة: مجموعةٌ حرّة (أو حزمةٌ رُفع بعض صفوفها) تُقرأ بما فيها.
+  for (const g of groups.values()) {
+    const pairs = g.pairs.map((p) => [p.resource, p.action]);
+    g.label = labelOfPairs(pairs);
+    g.effect = effectOfPairs(pairs, g.target_name);
+    g.custom = !presetOf(pairs);
   }
   return [...groups.values()];
 }
@@ -390,6 +444,39 @@ export async function grantableBundleOptions(granter) {
   return out;
 }
 
+/**
+ * القدراتُ واحدةً واحدة (v5.97) — للاختيار المتعدد: كل زوجٍ قابل للمنح ومعه أهدافُه التي يبلغها
+ * هذا المانح (إدارات بقطاعها، قطاعات كاملة، الشركة)، والحِزمُ الجاهزة كاختصاراتٍ تُعلِّم الخانات.
+ * الشاشةُ تقاطع أهدافَ المختار منها، فلا يُعرض هدفٌ لا يصله زوجٌ من المجموعة.
+ */
+export async function grantablePairOptions(granter) {
+  const depts = await all(`SELECT d.id, d.name_ar, d.sector_id, s.name_ar sector_name
+     FROM department d LEFT JOIN sector s ON s.id = d.sector_id AND s.deleted_at IS NULL
+    WHERE d.deleted_at IS NULL AND d.active = 1
+    ORDER BY s.sort_order, d.name_ar`);
+  const sectors = await all('SELECT id, name_ar FROM sector WHERE deleted_at IS NULL AND active = 1 ORDER BY sort_order, name_ar');
+  const pairs = [];
+  for (const g of GRANTABLE) {
+    const targets = [];
+    const ok = (target) => mayGrantTarget(granter, target, g.resource, g.action);
+    if (g.levels.includes('sector')) {
+      for (const s of sectors) if (ok({ level: 'sector', department_id: null, sector_id: s.id })) targets.push({ level: 'sector', id: s.id, name_ar: `${s.name_ar} كله`, short_ar: s.name_ar, sector_name: null });
+    }
+    if (g.levels.includes('department')) {
+      for (const d of depts) if (ok({ level: 'department', department_id: d.id, sector_id: d.sector_id })) targets.push({ level: 'department', id: d.id, name_ar: d.name_ar, short_ar: d.name_ar, sector_name: d.sector_name || null });
+    }
+    if (g.levels.includes('company') && ok({ level: 'company', department_id: null, sector_id: null })) {
+      targets.push({ level: 'company', id: '', name_ar: LEVEL_AR.company, short_ar: LEVEL_AR.company, sector_name: null });
+    }
+    if (targets.length) pairs.push({ key: pairKey(g.resource, g.action), resource: g.resource, action: g.action, group_ar: g.group_ar, short: g.short, label: g.label, effect: g.effect, levels: g.levels, targets });
+  }
+  const have = new Set(pairs.map((p) => p.key));
+  const presets = GRANT_BUNDLES
+    .filter((b) => b.pairs.every(([r, a]) => have.has(pairKey(r, a))))
+    .map((b) => ({ key: b.key, label: b.label, pairs: b.pairs.map(([r, a]) => pairKey(r, a)) }));
+  return { pairs, presets };
+}
+
 // ── المدة ─────────────────────────────────────────────────────────────────────
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 function expiresOnOf(v) {
@@ -450,55 +537,66 @@ export async function grantDepartment(ctx, data = {}) {
   return { ok: true, id: gid, already: false };
 }
 
-/**
- * منحُ حزمةٍ على هدف: كل أزواجها تُفحص أولاً (فلا يُكتب نصفُ حزمة)، ثم تُكتب الصفوف الناقصة
- * بمعرّف حزمةٍ واحد. القائمُ منها على الهدف نفسه لا يُكرَّر — يُلحق بالحزمة ويُحدَّث سببُه ومدته.
- * data: { user_id, bundle, level, department_id?, sector_id?, note?, expires_on? }
- */
-export async function grantBundle(ctx, data = {}) {
-  const granter = ctx.user;
+// ── المجموعة المطلوبة: حزمةٌ جاهزة أو قدراتٌ مختارة — والفحص واحد ─────────────────────
+// data: { user_id, bundle? | pairs?, level, department_id?, sector_id?, note?, expires_on? }
+function selectionOf(data = {}) {
+  if (data.pairs != null && !(Array.isArray(data.pairs) && data.pairs.length === 0)) return { pairs: parsePairs(data.pairs), bundle: null };
   const b = bundleOf(String(data.bundle || ''));
-  if (!b) throw badRequest(`اختر حزمةً من القائمة: ${GRANT_BUNDLES.map((x) => x.label).join('، ')}`);
+  if (!b) throw badRequest(`اختر قدرةً فأكثر، أو حزمةً من القائمة: ${GRANT_BUNDLES.map((x) => x.label).join('، ')}`);
+  return { pairs: b.pairs, bundle: b };
+}
+/** فحصُ المنح بلا كتابة — للمعاينة ولباب الكتابة نفسه: يعيد ما حُسم أو يرمي الرفض نفسه. */
+export async function checkSelection(granter, data = {}) {
+  const { pairs, bundle } = selectionOf(data);
   const targetUser = await loadTargetUser(data.user_id);
   const target = await resolveGrantTarget({ level: data.level, department_id: data.department_id, sector_id: data.sector_id });
-  if (!b.levels.includes(target.level)) throw badRequest(`«${b.label}» تُمنَح على ${b.levels.map((l) => LEVEL_AR[l]).join(' أو ')} لا على ${LEVEL_AR[target.level]}`);
-  for (const [r, a] of b.pairs) await assertMayGrant(granter, targetUser, target, r, a);
+  // مستوى الهدف يلزم كلَّ زوج: «الفعاليات» على الشركة وحدها، والفرص على إدارةٍ أو قطاع — والمجموعة
+  // التي تخلط بينهما تُردّ بتسمية الزوج، لا تُكتب نصفَها.
+  for (const [r, a] of pairs) {
+    const p = pairOf(r, a);
+    if (!p.levels.includes(target.level)) {
+      throw badRequest(`«${p.group_ar}: ${p.short}» تُمنَح على ${p.levels.map((l) => LEVEL_AR[l]).join(' أو ')} لا على ${LEVEL_AR[target.level]} — امنحها في طلبٍ مستقل`);
+    }
+  }
+  for (const [r, a] of pairs) await assertMayGrant(granter, targetUser, target, r, a);
+  const preset = bundle || presetOf(pairs);
+  return { pairs, bundle: preset, key: preset ? preset.key : 'custom', label: labelOfPairs(pairs), effect: effectOfPairs(pairs, target.name_ar), targetUser, target, expires_at: expiresOnOf(data.expires_on) };
+}
+export const checkBundleGrant = checkSelection;
+
+/**
+ * منحُ مجموعةٍ على هدف — حزمةً جاهزة أو قدراتٍ مختارة: كل أزواجها تُفحص أولاً (فلا يُكتب نصفُ مجموعة)،
+ * ثم تُكتب الصفوف الناقصة بمعرّف حزمةٍ واحد. القائمُ منها على الهدف نفسه لا يُكرَّر — يُلحق
+ * بالمجموعة ويُحدَّث سببُه ومدته. `bundle_key` مفتاحُ الحزمة إن طابقتها المجموعة، وإلا «custom».
+ */
+export async function grantSelection(ctx, data = {}) {
+  const granter = ctx.user;
+  const { pairs, key, label, targetUser, target, expires_at: expiresAt } = await checkSelection(granter, data);
   const note = String(data.note || '').trim().slice(0, 200) || null;
-  const expiresAt = expiresOnOf(data.expires_on);
   const now = nowIso();
   const bundleId = id('ugb');
   let created = 0; let already = 0;
   await tx(async () => {
-    for (const [r, a] of b.pairs) {
+    for (const [r, a] of pairs) {
       const existing = await liveRowOf(targetUser.id, r, a, target);
       if (existing) {
         already += 1;
-        await update('user_department_grant', existing.id, { bundle_key: b.key, bundle_id: bundleId, ...(note ? { note } : {}), expires_at: expiresAt });
+        await update('user_department_grant', existing.id, { bundle_key: key, bundle_id: bundleId, ...(note ? { note } : {}), expires_at: expiresAt });
         continue;
       }
       await insert('user_department_grant', {
         id: id('ugr'), user_id: targetUser.id, resource: r, action: a, level: target.level,
-        department_id: target.department_id, sector_id: target.sector_id, bundle_key: b.key, bundle_id: bundleId,
+        department_id: target.department_id, sector_id: target.sector_id, bundle_key: key, bundle_id: bundleId,
         note, granted_by: granter.id, created_at: now, expires_at: expiresAt,
       });
       created += 1;
     }
     await audit(ctx, { action: 'create', resource: 'user_grant', resourceId: bundleId, sectorId: target.sector_id || null,
-      detail: { user_id: targetUser.id, bundle: b.key, level: target.level, department_id: target.department_id, sector_id: target.sector_id, note, expires_at: expiresAt, created, already } });
+      detail: { user_id: targetUser.id, bundle: key, pairs: pairs.map(([r, a]) => pairKey(r, a)), level: target.level, department_id: target.department_id, sector_id: target.sector_id, note, expires_at: expiresAt, created, already } });
   });
-  return { ok: true, bundle_id: bundleId, bundle: b.key, label: b.label, target_name: target.name_ar, level: target.level, created, already, expires_at: expiresAt };
+  return { ok: true, bundle_id: bundleId, bundle: key, label, pairs: pairs.map(([r, a]) => pairKey(r, a)), target_name: target.name_ar, level: target.level, created, already, expires_at: expiresAt };
 }
-
-/** فحصُ المنح بلا كتابة — لمعاينة المحادثة: يعيد الهدف المحمَّل أو يرمي الرفض نفسه. */
-export async function checkBundleGrant(granter, data = {}) {
-  const b = bundleOf(String(data.bundle || ''));
-  if (!b) throw badRequest(`اختر حزمةً من القائمة: ${GRANT_BUNDLES.map((x) => x.label).join('، ')}`);
-  const targetUser = await loadTargetUser(data.user_id);
-  const target = await resolveGrantTarget({ level: data.level, department_id: data.department_id, sector_id: data.sector_id });
-  if (!b.levels.includes(target.level)) throw badRequest(`«${b.label}» تُمنَح على ${b.levels.map((l) => LEVEL_AR[l]).join(' أو ')} لا على ${LEVEL_AR[target.level]}`);
-  for (const [r, a] of b.pairs) await assertMayGrant(granter, targetUser, target, r, a);
-  return { bundle: b, targetUser, target, expires_at: expiresOnOf(data.expires_on) };
-}
+export const grantBundle = grantSelection;
 
 export async function revokeDepartmentGrant(ctx, grantId) {
   const granter = ctx.user;
@@ -523,20 +621,20 @@ export async function checkRevokeBundle(granter, bundleId) {
   const targetUser = await loadTargetUser(rows[0].user_id);
   const target = await resolveGrantTarget({ level: levelOfRow(rows[0]), department_id: rows[0].department_id, sector_id: rows[0].sector_id });
   for (const row of rows) await assertMayGrant(granter, targetUser, target, row.resource, row.action);
-  const b = rows[0].bundle_key ? bundleOf(rows[0].bundle_key) : null;
-  const label = b ? b.label : (pairOf(rows[0].resource, rows[0].action)?.label || '');
-  return { rows, targetUser, target, label, bundle: b };
+  const pairs = rows.map((row) => [row.resource, row.action]).filter(([r, a]) => pairOf(r, a));
+  const b = presetOf(pairs);
+  return { rows, targetUser, target, label: labelOfPairs(pairs), bundle: b };
 }
 
 /** رفعُ حزمةٍ كاملة بمعرّفها: كل صفوفها الحيّة، بحدّ المنح نفسه على كلٍّ منها. */
 export async function revokeBundle(ctx, bundleId) {
   const granter = ctx.user;
-  const { rows, targetUser, target } = await checkRevokeBundle(granter, bundleId);
+  const { rows, targetUser, target, label } = await checkRevokeBundle(granter, bundleId);
   const now = nowIso();
   await tx(async () => {
     for (const row of rows) await update('user_department_grant', row.id, { deleted_at: now, revoked_by: granter.id });
     await audit(ctx, { action: 'delete', resource: 'user_grant', resourceId: String(bundleId), sectorId: target.sector_id || null,
       detail: { user_id: targetUser.id, bundle: rows[0].bundle_key || null, level: target.level, department_id: target.department_id, sector_id: target.sector_id, rows: rows.length } });
   });
-  return { ok: true, revoked: rows.length, target_name: target.name_ar, label: rows[0].bundle_key ? (bundleOf(rows[0].bundle_key)?.label || '') : (pairOf(rows[0].resource, rows[0].action)?.label || '') };
+  return { ok: true, revoked: rows.length, target_name: target.name_ar, label };
 }

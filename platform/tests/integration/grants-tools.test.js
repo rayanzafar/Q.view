@@ -129,6 +129,21 @@ test('ومن نافذة المساعد: التنفيذ يقف لبطاقة ال�
   assert.ok(g[0].expires_at, 'المدة لم تُكتب');
 });
 
+test('قدراتٌ مختارة من المحادثة: اطّلاع وتعديل على المشاريع بلا إضافة — والكشف يعدّ القدرات واحدةً واحدة', async () => {
+  const lead = await ctxOf('u_lead');
+  const pv = await runTool(lead, 'sanad_preview_grant', { personId: 'u_saja', capabilities: ['project:read', 'project:update'], level: 'sector', target: 'الحلول' });
+  assert.match(pv.summary, /المشاريع: اطّلاع · تعديل.*قطاع الحلول كله/);
+  const out = await runTool(lead, 'sanad_apply_grant', { previewToken: pv.previewToken });
+  assert.equal(out.applied, true); assert.equal(out.grant.bundle, 'custom'); assert.equal(out.grant.created, 2);
+  const g = (await sess('u_saja')).departmentGrants.filter((x) => x.resource === 'project');
+  assert.deepEqual(g.map((x) => x.action).sort(), ['read', 'update']);
+  await assert.rejects(() => runTool(lead, 'sanad_preview_grant', { personId: 'u_saja', level: 'sector', target: 'الحلول' }), /حدّد ما يُمنَح/);
+  await assert.rejects(() => runTool(lead, 'sanad_preview_grant', { personId: 'u_saja', capabilities: ['event:create', 'opportunity:read'], level: 'sector', target: 'الحلول' }), /لا تملك منح|لا هدف مشترك|الشركة/);
+  const k = await runTool(lead, 'sanad_list_grants', { personId: 'u_saja' });
+  assert.ok(k.capabilities_by_you.some((c) => c.capability === 'project:update' && c.targets.some((t) => t.level === 'sector')), 'الكشف لا يعدّ القدرات');
+  assert.ok(k.grants.some((x) => x.label === 'المشاريع: اطّلاع · تعديل'), 'المجموعة الحرّة بلا اسمها المشتقّ');
+});
+
 test('الزوجان مصرَّحان في الدفعة الواحدة', () => {
   assert.equal(BATCH_PAIRS.sanad_preview_grant, 'sanad_apply_grant');
   assert.equal(BATCH_PAIRS.sanad_preview_revoke_grant, 'sanad_revoke_grant');

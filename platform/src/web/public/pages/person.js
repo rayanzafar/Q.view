@@ -112,16 +112,23 @@
       }).catch(function (err) { el.disabled = false; toast(err.message, true); });
       return;
     }
-    // الحزمة على هدفٍ (إدارة/قطاع/الشركة) بمدةٍ اختيارية: القيمة `مستوى:معرّف` كما بناها الخادم.
+    // حزمةٌ جاهزة تعلِّم خاناتها (ولا تكتب شيئاً بنفسها) — الحفظ بزرّ «امنحها» وحده.
+    if (act === 'pp-preset') {
+      var wanted = String(el.dataset.pairs || '').split(',');
+      document.querySelectorAll('.pp-cap-box').forEach(function (box) { box.checked = wanted.indexOf(box.value) >= 0; });
+      recompute();
+      return;
+    }
+    // القدرات المختارة على هدفٍ (إدارة/قطاع/الشركة) بمدةٍ اختيارية: القيمة `مستوى:معرّف` كما بناها الخادم.
     if (act === 'pp-bundle-add') {
-      var bundle = val('pp-bundle');
+      var pairs = ticked();
       var target = val('pp-bundle-target');
-      if (!bundle) { toast('اختر الصلاحية', true); return; }
+      if (!pairs.length) { toast('اختر قدرةً واحدة على الأقل', true); return; }
       var sep = target.indexOf(':');
       var level = sep < 0 ? target : target.slice(0, sep);
       var tid = sep < 0 ? '' : target.slice(sep + 1);
       if (!level) { toast('اختر على ماذا تُمنَح', true); return; }
-      var payload = { user_id: el.dataset.user, bundle: bundle, level: level,
+      var payload = { user_id: el.dataset.user, pairs: pairs, level: level,
         note: val('pp-bundle-note') || null, expires_on: val('pp-bundle-until') || null };
       if (level === 'department') payload.department_id = tid;
       else if (level === 'sector') payload.sector_id = tid;
@@ -142,44 +149,78 @@
     }
   });
 
-  // تبديلُ الحزمة يبدّل أهدافها وشرحَها، وتبديلُ الهدف يضع اسمه في الشرح: الأهداف محسوبة في الخادم
-  // بنفس حكم الحفظ (grantableBundleOptions) ومضمّنة في الصفحة — فلا نداءَ شبكةٍ لمجرد تغيير اختيار.
-  function bundleData() {
-    var dataEl = document.getElementById('pp-bundle-data');
-    if (!dataEl) return [];
-    try { return JSON.parse(dataEl.textContent || '[]'); } catch (err) { return []; }
+  // ── الاختيار المتعدد للقدرات ──────────────────────────────────────────────────
+  // القدرات وأهدافها محسوبة في الخادم بنفس حكم الحفظ (grantablePairOptions) ومضمّنة في الصفحة —
+  // فلا نداءَ شبكةٍ لمجرد تغيير اختيار. الهدفُ المعروض تقاطعُ أهداف المختار: ما لا يصله زوجٌ من
+  // المجموعة لا يُعرض، وإن لم يبقَ هدفٌ مشترك قيل السبب وعُطِّل الزرّ قبل الضغطة.
+  function capData() {
+    var dataEl = document.getElementById('pp-cap-data');
+    if (!dataEl) return { pairs: [], presets: [] };
+    try { return JSON.parse(dataEl.textContent || '{}') || { pairs: [], presets: [] }; } catch (err) { return { pairs: [], presets: [] }; }
   }
-  function currentBundle() {
-    var key = val('pp-bundle');
-    var list = bundleData();
-    for (var i = 0; i < list.length; i++) { if (list[i].key === key) return list[i]; }
-    return null;
+  function ticked() {
+    var out = [];
+    document.querySelectorAll('.pp-cap-box').forEach(function (box) { if (box.checked) out.push(box.value); });
+    return out;
   }
-  function refreshHint() {
-    var b = currentBundle();
+  function recompute() {
+    var data = capData();
+    var sel = document.getElementById('pp-bundle-target');
     var hint = document.getElementById('pp-bundle-hint');
-    if (!b || !hint) return;
-    var v = val('pp-bundle-target');
-    var name = '';
-    for (var i = 0; i < b.targets.length; i++) { if (b.targets[i].v === v) { name = b.targets[i].short; break; } }
-    hint.textContent = String(b.effect).replace('{target}', name || 'الإدارة') + ' · التاريخ آخر يوم تسري فيه، وفراغه صلاحيةٌ بلا مدة.';
+    var btn = document.querySelector('[data-action="pp-bundle-add"]');
+    if (!sel || !btn) return;
+    var keys = ticked();
+    var chosen = data.pairs.filter(function (p) { return keys.indexOf(p.key) >= 0; });
+    // التقاطع: هدفٌ يبقى إن كان في أهداف كل قدرةٍ مختارة (وبلا اختيارٍ تبقى القائمة كلها)
+    var common = [];
+    var seen = {};
+    var source = chosen.length ? chosen : data.pairs;
+    for (var i = 0; i < source.length; i++) {
+      for (var j = 0; j < source[i].targets.length; j++) {
+        var t = source[i].targets[j];
+        if (seen[t.v]) continue;
+        seen[t.v] = true;
+        var inAll = true;
+        for (var k = 0; k < chosen.length; k++) {
+          var has = false;
+          for (var m = 0; m < chosen[k].targets.length; m++) { if (chosen[k].targets[m].v === t.v) { has = true; break; } }
+          if (!has) { inAll = false; break; }
+        }
+        if (inAll) common.push(t);
+      }
+    }
+    var current = sel.value;
+    sel.innerHTML = '';
+    for (var n = 0; n < common.length; n++) {
+      var o = document.createElement('option');
+      o.value = common[n].v; o.textContent = common[n].name;
+      if (common[n].v === current) o.selected = true;
+      sel.appendChild(o);
+    }
+    var groups = [];
+    var byGroup = {};
+    for (var c = 0; c < chosen.length; c++) {
+      var g = chosen[c].group;
+      if (!byGroup[g]) { byGroup[g] = []; groups.push(g); }
+      byGroup[g].push(chosen[c].short);
+    }
+    var summary = groups.map(function (g) { return g + ': ' + byGroup[g].join(' · '); }).join(' — ');
+    if (!chosen.length) {
+      btn.disabled = true;
+      if (hint) hint.textContent = 'اختر قدرةً فأكثر (أو حزمةً جاهزة)، ثم على ماذا. التاريخ آخر يوم تسري فيه، وفراغه صلاحيةٌ بلا مدة.';
+    } else if (!common.length) {
+      btn.disabled = true;
+      if (hint) hint.textContent = 'لا هدف مشترك لهذه المجموعة: الفعاليات تُمنَح على الشركة وحدها، والفرص والمشاريع على إدارةٍ أو قطاع — امنحها في طلبين.';
+    } else {
+      btn.disabled = false;
+      var name = '';
+      for (var q = 0; q < common.length; q++) { if (common[q].v === sel.value) { name = common[q].short; break; } }
+      if (hint) hint.textContent = summary + ' — على ' + (name || 'الهدف المختار') + '. التاريخ آخر يوم تسري فيه، وفراغه صلاحيةٌ بلا مدة.';
+    }
   }
   document.addEventListener('change', function (e) {
     if (!e.target) return;
-    if (e.target.id === 'pp-bundle') {
-      var b = currentBundle();
-      var sel = document.getElementById('pp-bundle-target');
-      if (!b || !sel) return;
-      sel.innerHTML = '';
-      for (var j = 0; j < b.targets.length; j++) {
-        var o = document.createElement('option');
-        o.value = b.targets[j].v;
-        o.textContent = b.targets[j].name;
-        sel.appendChild(o);
-      }
-      refreshHint();
-    } else if (e.target.id === 'pp-bundle-target') {
-      refreshHint();
-    }
+    if ((e.target.classList && e.target.classList.contains('pp-cap-box')) || e.target.id === 'pp-bundle-target') recompute();
   });
+  recompute();
 })();

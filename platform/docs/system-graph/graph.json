@@ -1,13 +1,13 @@
 {
   "version": 1,
-  "sourceDigest": "739d5b1a28bcd21eeba2e4e8b7fb0a9d29394b162753517d84375b93205a2a5c",
+  "sourceDigest": "9f8dcd6e788aeac913ac65f3cf62fbd2d04fe931c140b7c9a01c5e0e4bd52d07",
   "sourceFiles": 702,
   "counts": {
     "code": 276,
     "test": 314,
     "automation": 60,
     "module": 20,
-    "route": 356,
+    "route": 357,
     "page": 27,
     "table": 114,
     "role": 19,
@@ -8196,7 +8196,18 @@
       "path": "/identity/grants/bundle-options"
     },
     {
-      "id": "route:src/modules/identity/identity.routes.js:2786:/identity/grants/:userId/groups",
+      "id": "route:src/modules/identity/identity.routes.js:2885:/identity/grants/pair-options",
+      "kind": "route",
+      "label": "GET /identity/grants/pair-options",
+      "detail": "تصريح مسار محلي في identityRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
+      "sources": [
+        "src/modules/identity/identity.routes.js"
+      ],
+      "method": "GET",
+      "path": "/identity/grants/pair-options"
+    },
+    {
+      "id": "route:src/modules/identity/identity.routes.js:3045:/identity/grants/:userId/groups",
       "kind": "route",
       "label": "GET /identity/grants/:userId/groups",
       "detail": "تصريح مسار محلي في identityRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -8207,7 +8218,7 @@
       "path": "/identity/grants/:userId/groups"
     },
     {
-      "id": "route:src/modules/identity/identity.routes.js:2914:/identity/grants/bundles",
+      "id": "route:src/modules/identity/identity.routes.js:3265:/identity/grants/bundles",
       "kind": "route",
       "label": "POST /identity/grants/bundles",
       "detail": "تصريح مسار محلي في identityRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -8218,7 +8229,7 @@
       "path": "/identity/grants/bundles"
     },
     {
-      "id": "route:src/modules/identity/identity.routes.js:3020:/identity/grants/bundles/:bundleId",
+      "id": "route:src/modules/identity/identity.routes.js:3374:/identity/grants/bundles/:bundleId",
       "kind": "route",
       "label": "DELETE /identity/grants/bundles/:bundleId",
       "detail": "تصريح مسار محلي في identityRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -8229,7 +8240,7 @@
       "path": "/identity/grants/bundles/:bundleId"
     },
     {
-      "id": "route:src/modules/identity/identity.routes.js:3144:/identity/grants/:userId",
+      "id": "route:src/modules/identity/identity.routes.js:3498:/identity/grants/:userId",
       "kind": "route",
       "label": "GET /identity/grants/:userId",
       "detail": "تصريح مسار محلي في identityRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -8240,7 +8251,7 @@
       "path": "/identity/grants/:userId"
     },
     {
-      "id": "route:src/modules/identity/identity.routes.js:3260:/identity/grants",
+      "id": "route:src/modules/identity/identity.routes.js:3614:/identity/grants",
       "kind": "route",
       "label": "POST /identity/grants",
       "detail": "تصريح مسار محلي في identityRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -8251,7 +8262,7 @@
       "path": "/identity/grants"
     },
     {
-      "id": "route:src/modules/identity/identity.routes.js:3362:/identity/grants/:id",
+      "id": "route:src/modules/identity/identity.routes.js:3716:/identity/grants/:id",
       "kind": "route",
       "label": "DELETE /identity/grants/:id",
       "detail": "تصريح مسار محلي في identityRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -30269,42 +30280,49 @@
     },
     {
       "from": "file:src/modules/identity/identity.routes.js",
-      "to": "route:src/modules/identity/identity.routes.js:2786:/identity/grants/:userId/groups",
+      "to": "route:src/modules/identity/identity.routes.js:2885:/identity/grants/pair-options",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/identity/identity.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/identity/identity.routes.js",
-      "to": "route:src/modules/identity/identity.routes.js:2914:/identity/grants/bundles",
+      "to": "route:src/modules/identity/identity.routes.js:3045:/identity/grants/:userId/groups",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/identity/identity.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/identity/identity.routes.js",
-      "to": "route:src/modules/identity/identity.routes.js:3020:/identity/grants/bundles/:bundleId",
+      "to": "route:src/modules/identity/identity.routes.js:3265:/identity/grants/bundles",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/identity/identity.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/identity/identity.routes.js",
-      "to": "route:src/modules/identity/identity.routes.js:3144:/identity/grants/:userId",
+      "to": "route:src/modules/identity/identity.routes.js:3374:/identity/grants/bundles/:bundleId",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/identity/identity.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/identity/identity.routes.js",
-      "to": "route:src/modules/identity/identity.routes.js:3260:/identity/grants",
+      "to": "route:src/modules/identity/identity.routes.js:3498:/identity/grants/:userId",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/identity/identity.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/identity/identity.routes.js",
-      "to": "route:src/modules/identity/identity.routes.js:3362:/identity/grants/:id",
+      "to": "route:src/modules/identity/identity.routes.js:3614:/identity/grants",
+      "label": "يصرح بالمسار",
+      "evidence": "src/modules/identity/identity.routes.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/identity/identity.routes.js",
+      "to": "route:src/modules/identity/identity.routes.js:3716:/identity/grants/:id",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/identity/identity.routes.js",
       "kind": "source"
@@ -36325,13 +36343,6 @@
     {
       "from": "file:src/web/views/pmo.js",
       "to": "file:src/core/rbac/matrix.js",
-      "label": "استيراد صريح",
-      "evidence": "src/web/views/pmo.js",
-      "kind": "source"
-    },
-    {
-      "from": "file:src/web/views/pmo.js",
-      "to": "file:src/modules/identity/grants.js",
       "label": "استيراد صريح",
       "evidence": "src/web/views/pmo.js",
       "kind": "source"

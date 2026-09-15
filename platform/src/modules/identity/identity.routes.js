@@ -34,8 +34,12 @@ identityRouter.get('/identity/grants/options', h((req) => grants.grantableDepart
 // ── الحِزم على إدارةٍ أو قطاعٍ أو الشركة، وبمدة (049، ADR-0025) ────────────────
 identityRouter.get('/identity/grants/bundle-options', h((req) => grants.grantableBundleOptions(req.ctx.user)
   .then((bundles) => ({ bundles, levels: grants.LEVEL_AR }))));
+// القدرات واحدةً واحدة بأهدافها (v5.97) — للاختيار المتعدد: اطّلاع وتعديل وإضافة، أو اطّلاع وحده…
+identityRouter.get('/identity/grants/pair-options', h((req) => grants.grantablePairOptions(req.ctx.user)
+  .then((o) => ({ ...o, levels: grants.LEVEL_AR }))));
 identityRouter.get('/identity/grants/:userId/groups', h((req) => grants.listUserGrantGroups(req.ctx.user, req.params.userId)));
-identityRouter.post('/identity/grants/bundles', h((req) => grants.grantBundle(req.ctx, req.body || {})));
+// حزمةٌ جاهزة (`bundle`) أو قدراتٌ مختارة (`pairs`: رموز «مورد:فعل») — باب واحد وفحص واحد.
+identityRouter.post('/identity/grants/bundles', h((req) => grants.grantSelection(req.ctx, req.body || {})));
 identityRouter.delete('/identity/grants/bundles/:bundleId', h((req) => grants.revokeBundle(req.ctx, req.params.bundleId)));
 identityRouter.get('/identity/grants/:userId', h((req) => grants.listUserGrants(req.ctx.user, req.params.userId)));
 identityRouter.post('/identity/grants', h((req) => grants.grantDepartment(req.ctx, req.body || {})));
