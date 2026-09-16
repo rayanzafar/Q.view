@@ -15,6 +15,7 @@ import { myTasks, teamTasks, personDossier } from '../../modules/pmo/tasks.js';
 import { approvedTaskSql, isPendingTask, linkedTaskApproval } from '../../modules/pmo/task-approval.js';
 import { listViews } from '../../modules/views/views.js';
 import { canSeeSensitive, redact, can, effectiveScope } from '../../core/rbac/index.js';
+import { ROLE_LABELS } from '../../core/rbac/matrix.js';
 import { departmentScope, departmentInSql } from '../../core/rbac/departments.js';
 import { DELIVERY_SECTOR_SQL } from '../../core/org/kind.js';
 import { pickablePeople, seesDemoAccounts } from '../../modules/org/people.js';
@@ -3190,15 +3191,8 @@ export async function personActions(user, d, { staffingHref = null } = {}) {
   const tabs = [
     d.canAssignTask ? ['task', 'أضف مهمة'] : null,
     d.canStaff ? ['staff', 'سكّنه على مشروع'] : null,
-    d.grantChoices.length ? ['grant', 'صلاحياته'] : null,
   ].filter(Boolean);
-  const grantRow = (g) => `<div class="pp-grow" data-grant="${esc(g.id)}">
-    <span class="pp-t">${esc(g.label)} — ${esc(g.department_name)}</span>
-    ${g.granted_by_name ? `<span class="pp-tag mute">منحها ${esc(g.granted_by_name)}</span>` : ''}
-    ${g.note ? `<span class="pp-tag mute">${esc(g.note)}</span>` : ''}
-    ${d.grantChoices.length ? `<button class="btn btn-ghost btn-sm" data-action="grant-revoke"
-      data-id="${esc(g.id)}" style="color:var(--red)">ارفعها</button>` : ''}</div>`;
-  const actionBar = !tabs.length && !d.grants.length ? '' : `<section class="pp-sec">
+  const actionBar = !tabs.length ? '' : `<section class="pp-sec">
     <div class="pp-sec-h"><h2 class="pp-sec-t">إدارته</h2>
       <span class="pp-sec-s">ما تستطيع فعله لهذا الشخص بحكم إدارتك له</span></div>
     <div class="card" style="padding:.7rem .85rem">
@@ -3226,25 +3220,105 @@ export async function personActions(user, d, { staffingHref = null } = {}) {
             data-emp="${esc(d.employeeId || '')}">سكّنه</button>
         </div>
         <div class="pp-hint">النسبة حصّة وقته من الشهر — تُقرأ في لوحة التسكين وتُحسب في حِمله.</div>`) : ''}
-      ${d.grantChoices.length ? panel('grant', 'صلاحية إضافية على إدارة', `
-        <div class="pp-form">
-          <select id="pp-grant-perm" class="input">${d.grantChoices
-    .map((x, i) => `<option value="${esc(x.resource)}:${esc(x.action)}"${i ? '' : ' selected'}>${esc(x.label)}</option>`).join('')}</select>
-          <select id="pp-grant-dept" class="input">${d.grantChoices[0].departments
-    .map((x) => `<option value="${esc(x.id)}">${esc(x.name_ar)}${x.sector_name ? ' · ' + esc(x.sector_name) : ''}</option>`).join('')}</select>
-          <input id="pp-grant-note" class="input" maxlength="200" placeholder="السبب (اختياري)">
-          <button class="btn btn-primary btn-sm" data-action="pp-grant-add"
-            data-user="${esc(p.userId)}">امنحها</button>
-        </div>
-        <div class="pp-hint" id="pp-grant-hint">${esc(d.grantChoices[0].effect)} ولا تمنح إلا إدارةً تبلغها أنت.</div>
-        <script type="application/json" id="pp-grant-data">${
-  JSON.stringify(d.grantChoices.map((x) => ({ key: x.resource + ':' + x.action, effect: x.effect,
-    departments: x.departments.map((dd) => ({ id: dd.id, name: dd.name_ar + (dd.sector_name ? ' · ' + dd.sector_name : '') }) ) })))
-    .replace(/</g, '\\u003c')}</script>`) : ''}
-      ${d.grants.length ? `<div class="pp-glist">${d.grants.map(grantRow).join('')}</div>`
-    : '<div class="pp-hint">لا صلاحية إضافية على أي إدارة — يرى ما يمنحه دوره وما سُكِّن عليه.</div>'}
     </div>
   </section>`;
 
-  return `<style>${PICKER_CSS}</style>${actionBar}`;
+  return `<style>${PICKER_CSS}</style>${actionBar}${permissionsSection(d)}`;
+}
+
+// ── بطاقة «صلاحياته»: الدور والنطاق، وما مُنح فوقهما حِزماً، والمنحُ والرفعُ من مكانٍ واحد ──────
+// «داخل صفحة الموظف يحتاج يكون في خانة عند المدير إذا يبغى يغيّر الصلاحيات أو عند الأدمن عشان
+// يكون سهل وبشكل سريع» — بلسان المالك (١٥ سبتمبر ٢٠٢٦، ADR-0025). ثلاثة سطور لا شاشة:
+//   • سطرُ الدور: ما يعطيه دورُه ونطاقُه — ومدير النظام وحده يغيّرهما من هنا (بوابة `updateUser`
+//     نفسها التي تحكم شاشة المستخدمين، ولا يغيّر أحدٌ دورَ نفسه).
+//   • ما مُنح فوق الدور: حِزمٌ بالعربية على إدارةٍ أو قطاعٍ كامل أو الشركة، بمدتها ومن منحها، وزرُّ
+//     «ارفعها» حيث يملك القارئ الرفع فعلاً (`revocable` من الخدمة — لا زرٌّ يُضغَط ليُرَدّ).
+//   • منحٌ جديد: الحزمة، ثم على ماذا (الأهداف التي يبلغها القارئ وحدها، من الخدمة)، وحتى متى، ولماذا.
+// وتُعرض لكل من فتح الملف — الدورُ خبرٌ يهمّ قارئه — ويُخفى منها ما لا يملكه.
+const SCOPE_AR = Object.freeze({ own: 'بياناته وحده', team: 'فريقه', department: 'إدارته', sector: 'قطاعه', company: 'الشركة كاملة' });
+const dayHtml = (s) => {
+  const k = String(s || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(k)) return esc(k);
+  return `<span class="tnum">${Number(k.slice(8, 10))}</span> ${MONTHS_AR[Number(k.slice(5, 7)) - 1] || ''} <span class="tnum">${k.slice(0, 4)}</span>`;
+};
+export function permissionsSection(d) {
+  const p = d.person;
+  const groups = d.grantGroups || [];
+  const roleAr = (ROLE_LABELS[p.roleId] || {}).ar || 'بلا دور';
+  const his = d.self ? 'ك' : 'ه';
+  const targetLabel = (t) => `${t.name_ar}${t.sector_name ? ' · ' + t.sector_name : ''}`;
+  const groupRow = (g) => `<div class="pp-grow${g.expired ? ' expired' : ''}" data-bundle="${esc(g.bundle_id)}">
+    <span class="pp-t">${esc(g.label)} — ${esc(g.target_name)}</span>
+    <span class="pp-tag mute">${esc(g.level_ar)}</span>
+    ${g.expires_at ? `<span class="pp-tag ${g.expired ? 'bad' : 'mute'}">${g.expired ? 'انتهت في' : 'حتى'} ${dayHtml(g.expires_at)}</span>` : ''}
+    ${g.granted_by_name ? `<span class="pp-tag mute">منحها ${esc(g.granted_by_name)}</span>` : ''}
+    ${g.note ? `<span class="pp-tag mute">${esc(g.note)}</span>` : ''}
+    ${g.revocable ? `<button class="btn btn-ghost btn-sm" data-action="grant-revoke-bundle"
+      data-id="${esc(g.bundle_id)}" style="color:var(--red)">ارفعها</button>` : ''}</div>`;
+  // ── المنح باختيارٍ متعدد (v5.97) ─────────────────────────────────────────────
+  // «احسب كل الخيارات الموجودة الممكنة وخلّه اختياراً متعدداً — اطّلاع وتعديل وإضافة، أو اطّلاع…»
+  // بلسان المالك. القدراتُ واحدةً واحدة خاناتٍ مجمَّعةً (الفرص · المشاريع · الفعاليات)، والحِزم
+  // الجاهزة أزرارٌ تعلِّم خاناتها. والهدفُ تقاطعُ أهداف المختار (يُحسب في المتصفح من بيانات الخادم):
+  // خلطُ ما يُمنَح على الشركة بما يُمنَح على إدارةٍ يُقال قبل الضغطة لا بعدها.
+  const po = d.grantPairOptions || { pairs: [], presets: [] };
+  const capGroups = (() => { const m = new Map(); for (const c of po.pairs) { if (!m.has(c.group_ar)) m.set(c.group_ar, []); m.get(c.group_ar).push(c); } return [...m]; })();
+  const allTargets = (() => { const seen = new Map(); for (const c of po.pairs) for (const t of c.targets) { const v = `${t.level}:${t.id}`; if (!seen.has(v)) seen.set(v, t); } return [...seen.values()]; })();
+  const addForm = !po.pairs.length ? '' : `
+      <div id="pp-cap-form" style="margin-top:.6rem">
+        ${po.presets.length ? `<div class="pp-presets"><span class="pp-capg">جاهزة:</span>${po.presets
+    .map((b) => `<button type="button" class="btn btn-sm" data-action="pp-preset" data-pairs="${esc(b.pairs.join(','))}">${esc(b.label)}</button>`).join('')}</div>` : ''}
+        <div class="pp-capgroups">${capGroups.map(([g, cs]) => `<div class="pp-capgroup"><span class="pp-capg">${esc(g)}:</span>${cs
+    .map((c) => `<label class="pp-cap"><input type="checkbox" class="pp-cap-box" value="${esc(c.key)}"> ${esc(c.short)}</label>`).join('')}</div>`).join('')}</div>
+        <div class="pp-form" style="margin-top:.5rem">
+          <select id="pp-bundle-target" class="input" aria-label="على ماذا">${allTargets
+    .map((t) => `<option value="${esc(t.level)}:${esc(t.id)}">${esc(targetLabel(t))}</option>`).join('')}</select>
+          <input id="pp-bundle-until" class="input" type="date" min="${esc(d.today)}" aria-label="حتى تاريخ" title="آخر يوم تسري فيه — اتركه فارغاً لصلاحية بلا مدة">
+          <input id="pp-bundle-note" class="input" maxlength="200" placeholder="السبب (اختياري)">
+          <button class="btn btn-primary btn-sm" data-action="pp-bundle-add" data-user="${esc(p.userId)}" disabled>امنحها</button>
+        </div>
+        <div class="pp-hint" id="pp-bundle-hint">اختر قدرةً فأكثر (أو حزمةً جاهزة)، ثم على ماذا. التاريخ آخر يوم تسري فيه، وفراغه صلاحيةٌ بلا مدة.</div>
+        <script type="application/json" id="pp-cap-data">${JSON.stringify({
+    pairs: po.pairs.map((c) => ({ key: c.key, group: c.group_ar, short: c.short, effect: c.effect,
+      targets: c.targets.map((t) => ({ v: `${t.level}:${t.id}`, name: targetLabel(t), short: t.short_ar || t.name_ar })) })),
+    presets: po.presets,
+  }).replace(/</g, '\\u003c')}</script>
+      </div>`;
+  const roleForm = !d.canChangeRole ? '' : `
+      <div class="pp-form" id="pp-role-form" hidden>
+        <select id="pp-role" class="input" aria-label="الدور">${Object.entries(ROLE_LABELS)
+    .map(([k, v]) => `<option value="${esc(k)}"${k === p.roleId ? ' selected' : ''}>${esc(v.ar)}</option>`).join('')}</select>
+        <select id="pp-scope" class="input" aria-label="يرى من البيانات">${Object.entries(SCOPE_AR)
+    .map(([k, v]) => `<option value="${esc(k)}"${k === p.scope ? ' selected' : ''}>${esc(v)}</option>`).join('')}</select>
+        <select id="pp-sector" class="input" aria-label="القطاع"><option value="">بلا قطاع</option>${(d.sectors || [])
+    .map((s) => `<option value="${esc(s.id)}"${s.id === p.sectorId ? ' selected' : ''}>${esc(s.name_ar)}</option>`).join('')}</select>
+        <button class="btn btn-primary btn-sm" data-action="pp-role-save" data-user="${esc(p.userId)}">احفظ الدور</button>
+        <div class="pp-hint" style="flex-basis:100%;margin:0">الدور يحدّد شاشاته وأفعاله، والنطاق أيَّ بيانات يرى فيها، والقطاع أين يُحسب — ويسري على طلبه التالي.</div>
+      </div>`;
+  return `<style>
+    .pp-role{display:flex;gap:.4rem;flex-wrap:wrap;align-items:center}
+    .pp-role .pp-tag{font-size:var(--fs-micro);padding:.2rem .55rem}
+    .pp-grow.expired{opacity:.62}.pp-tag.bad{color:var(--red)}
+    .pp-presets{display:flex;gap:.35rem;flex-wrap:wrap;align-items:center;margin-bottom:.45rem}
+    .pp-capgroups{display:flex;flex-direction:column;gap:.35rem}
+    .pp-capgroup{display:flex;gap:.4rem;flex-wrap:wrap;align-items:center;font-size:var(--fs-micro)}
+    .pp-capg{font-weight:800;color:var(--muted);min-width:58px}
+    .pp-cap{display:inline-flex;align-items:center;gap:.3rem;background:var(--bg);border:1px solid var(--line);
+      border-radius:999px;padding:.18rem .6rem;cursor:pointer;color:var(--ink2)}
+    .pp-cap input{margin:0;accent-color:var(--brand)}
+    .pp-cap:has(input:checked){background:#eef2ff;border-color:#c7d2fe;color:#3730a3;font-weight:700}
+  </style>
+  <section class="pp-sec" id="pp-perms">
+    <div class="pp-sec-h"><h2 class="pp-sec-t">صلاحيات${his}</h2>
+      <span class="pp-sec-s">${d.self ? 'دورك ونطاقك، وما مُنحت فوقهما' : 'دوره ونطاقه، وما مُنح فوقهما — ومن يديره يمنح ويرفع من هنا'}</span></div>
+    <div class="card" style="padding:.7rem .85rem">
+      <div class="pp-role">
+        <span class="pp-tag">الدور: <b>${esc(roleAr)}</b></span>
+        <span class="pp-tag">يرى: ${esc(SCOPE_AR[p.scope] || 'غير محدَّد')}</span>
+        <span class="pp-tag">القطاع: ${esc(p.sectorName || 'بلا قطاع')}</span>
+        ${d.canChangeRole ? '<button class="btn btn-ghost btn-sm" data-action="pp-role-edit">غيّر الدور</button>' : ''}
+      </div>${roleForm}
+      ${groups.length ? `<div class="pp-glist">${groups.map(groupRow).join('')}</div>`
+    : `<div class="pp-hint">لا صلاحية إضافية فوق دور${his} — ${d.self ? 'ترى' : 'يرى'} ما يمنحه الدور وما سُكِّن عليه.</div>`}${addForm}
+    </div>
+  </section>`;
 }

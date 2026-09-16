@@ -31,18 +31,31 @@ const GRANT_PARTNER_TABLES = {
 };
 function personalDeptClause(user, resource, action, opts = {}) {
   if (!opts.grantCol) return null;
-  const ids = [...new Set((user.departmentGrants || [])
-    .filter((g) => g.resource === resource && g.action === action)
-    .map((g) => g.department_id).filter(Boolean))];
-  if (!ids.length) return null;
-  const marks = ids.map(() => '?').join(',');
-  const parts = [`${opts.grantCol} IN (${marks})`];
-  const params = [...ids];
-  const pt = GRANT_PARTNER_TABLES[resource];
-  if (pt && opts.memberCol && (action === 'read' || action === 'update')) {
-    parts.push(`EXISTS (SELECT 1 FROM ${pt[0]} gpd
-       WHERE gpd.${pt[1]} = ${opts.memberCol} AND gpd.department_id IN (${marks}))`);
+  const mine = (user.departmentGrants || []).filter((g) => g.resource === resource && g.action === action);
+  if (!mine.length) return null;
+  // «الشركة كلها» (049) تفتح القائمة كلها — شرطٌ صادق لا «أو» تُلحق بما يشمل كل شيء.
+  if (mine.some((g) => g.level === 'company')) return { clause: '1=1', params: [] };
+  const ids = [...new Set(mine.filter((g) => !g.level || g.level === 'department').map((g) => g.department_id).filter(Boolean))];
+  const sectorIds = [...new Set(mine.filter((g) => g.level === 'sector').map((g) => g.sector_id).filter(Boolean))];
+  if (!ids.length && !sectorIds.length) return null;
+  const parts = [];
+  const params = [];
+  if (ids.length) {
+    const marks = ids.map(() => '?').join(',');
+    parts.push(`${opts.grantCol} IN (${marks})`);
     params.push(...ids);
+    const pt = GRANT_PARTNER_TABLES[resource];
+    if (pt && opts.memberCol && (action === 'read' || action === 'update')) {
+      parts.push(`EXISTS (SELECT 1 FROM ${pt[0]} gpd
+         WHERE gpd.${pt[1]} = ${opts.memberCol} AND gpd.department_id IN (${marks}))`);
+      params.push(...ids);
+    }
+  }
+  // مستوى القطاع: صفوف القطاع كلها بعمود القطاع، مشتقّاً من عمود الإدارة ليطابق جدوله وكنيته.
+  if (sectorIds.length) {
+    const sectorCol = opts.sectorCol || opts.grantCol.replace(/department_id$/, 'sector_id');
+    parts.push(`${sectorCol} IN (${sectorIds.map(() => '?').join(',')})`);
+    params.push(...sectorIds);
   }
   return { clause: parts.length === 1 ? parts[0] : `(${parts.join(' OR ')})`, params };
 }

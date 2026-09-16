@@ -39,6 +39,8 @@ export const BATCH_PAIRS = Object.freeze({
   sanad_dc_preview_approve: 'sanad_dc_apply_approve',
   sanad_dc_preview_decline: 'sanad_dc_apply_decline',
   sanad_dc_preview_create_item: 'sanad_dc_apply_create_item',
+  sanad_preview_grant: 'sanad_apply_grant',
+  sanad_preview_revoke_grant: 'sanad_revoke_grant',
 });
 export const BATCH_MIN = 2;
 export const BATCH_MAX = 10;

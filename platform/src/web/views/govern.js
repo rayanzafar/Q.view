@@ -150,6 +150,8 @@ export async function usersPage(user) {
     <td class="px-3 text-[11px] text-muted tnum" style="white-space:nowrap">${u.last_login_at ? u.last_login_at.slice(0, 10) : 'لم يدخل بعد'}</td>
     <td class="px-3" style="white-space:nowrap">
       <button class="btn btn-sm" data-action="idn-edit" data-id="${esc(u.id)}">تعديل</button>
+      ${/* الصلاحيات فوق الدور تُدار من بطاقة «صلاحياته» على صفحة الشخص (v5.96/v5.97) — رابطٌ لا نسخةٌ ثانية. */''}
+      <a class="btn btn-sm" href="/app/person/${encodeURIComponent(u.id)}" title="الصلاحيات الإضافية فوق دوره — منحاً ورفعاً واختياراً متعدداً">صلاحياته</a>
       <button class="btn btn-sm" data-action="idn-logins" data-id="${esc(u.id)}" title="سجل دخول هذا الحساب">السجل</button>
       ${u.email ? `<button class="btn btn-sm" data-action="idn-resend" data-id="${esc(u.id)}" title="${pending ? 'إعادة إرسال رمز التفعيل' : 'إرسال رمز دخول جديد'}">${pending ? 'إعادة الدعوة' : 'إرسال رمز'}</button>` : ''}
       ${isSelf

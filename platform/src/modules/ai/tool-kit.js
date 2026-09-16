@@ -66,7 +66,8 @@ export const REF = {
   client: (id) => ({ kind: 'client', id, href: `/app/clients?open=${encodeURIComponent(id)}` }),
   clients: () => ({ kind: 'clients', id: null, href: '/app/clients' }),
   approvals: () => ({ kind: 'approvals', id: null, href: '/app/approvals' }),
-  person: (id) => ({ kind: 'person', id, href: `/app/people/${encodeURIComponent(id)}` }),
+  // صفحة الشخص القائمة (`/app/person/:id` — وتحوّل بنفسها إلى ملف المورد لمن له سجلّ موظف).
+  person: (id) => ({ kind: 'person', id, href: `/app/person/${encodeURIComponent(id)}` }),
 };
 export const uniqRefs = (refs) => {
   const seen = new Set();

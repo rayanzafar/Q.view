@@ -85,12 +85,19 @@ async function assertNoForeignData(db, guarded, isSafeName) {
 // ─────────────────────────────────────────────────────────────────────────────
 // أسماء الجداول تُقرأ من ملفات الترحيل نفسها — مصدر البنية الوحيد. جدولٌ يُضاف غداً يدخل
 // الإحصاء تلقائياً، ولا قائمة يدوية تشيخ بصمت.
+// وتُطبَّق جُملُ الترحيل بترتيبها: ما أُنشئ يُضاف، وما أُسقط يُحذف، وما أُعيدت تسميته يُبدَّل — فجدولٌ
+// يُعاد بناؤه باسمٍ مؤقت ثم يحلّ محلّ القديم (الترحيلة 049) لا يترك اسماً مؤقتاً في الإحصاء.
 export function schemaTables() {
   const dir = resolve(ROOT, 'migrations');
   const names = new Set();
+  const RE = /^\s*(?:CREATE TABLE (?:IF NOT EXISTS )?([a-z_][a-z0-9_]*)\s*\(|DROP TABLE (?:IF EXISTS )?([a-z_][a-z0-9_]*)\s*;|ALTER TABLE ([a-z_][a-z0-9_]*) RENAME TO ([a-z_][a-z0-9_]*)\s*;)/gim;
   for (const f of readdirSync(dir).filter((x) => x.endsWith('.sql')).sort()) {
     const sql = readFileSync(resolve(dir, f), 'utf8');
-    for (const m of sql.matchAll(/^\s*CREATE TABLE (?:IF NOT EXISTS )?([a-z_][a-z0-9_]*)\s*\(/gim)) names.add(m[1]);
+    for (const m of sql.matchAll(RE)) {
+      if (m[1]) names.add(m[1]);
+      else if (m[2]) names.delete(m[2]);
+      else if (m[3]) { names.delete(m[3]); names.add(m[4]); }
+    }
   }
   return [...names].sort();
 }
