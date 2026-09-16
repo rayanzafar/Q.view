@@ -1,0 +1,116 @@
+
+> sanad-enterprise@1.0.0-slice.1 deploy
+> node scripts/deploy.mjs --allow-dirty
+
+
+▶ ١/٧ الشروط المسبقة
+⚠ متابعةٌ بشجرةٍ غير نظيفة (بطلبك الصريح) — ما لم يُلتزم سيُنشر أيضاً
+
+▶ ٢/٧ البوابات: المعجم والوثائق ثم الحزمة كاملة
+✓ فحص المعجم: 90 ملف واجهة + رسائل الأخطاء في 261 ملفاً — لا مصطلحات محظورة ولا قيم خام.
+✓ فحص الوثائق: 26 صفحة و45 ترحيلة و20 وحدة موثَّقة في FEATURES.md — والوثائق الأساسية الأربع حاضرة بلا مواضع مؤجَّلة.
+{"level":"info","event":"db_driver","ts":"2026-09-09T10:12:23.439Z","driver":"sqlite","file":"/home/zunix/Q.view/platform/data/test-governance.db"}
+...
+ℹ tests 2567
+ℹ suites 0
+ℹ pass 2567
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 17601.904869
+
+▶ ٣/٧ نسخة احتياطية من قاعدة staging
+ℹ pg_dump من: /tmp/claude-1000/-home-zunix-Q-view/a53f349d-6e66-45e1-9ba8-9c4ce95a7bb0/scratchpad/pg18/extract/usr/lib/postgresql/18/bin
+✓ backup: /home/zunix/Q.view/platform/data/backups/staging-20260909-101242.sql.gz (12684321 bytes)
+ℹ الجرد من نسخة pg_dump غير مدعوم هنا — راجع schema_migration يدوياً قبل الرفع (KI-111)
+
+▶ ٤/٧ النشر إلى خدمة التطبيق 6981eaef-29c1-40b1-8aca-8c606dfd44e3
+ℹ معرّف النشرة المكتوب: 6d6a4965da52-20260909101320
+Indexing...
+Uploading...
+  Build Logs: https://railway.com/project/892124c7-a66e-4ac7-bd7d-e4827b3e5f40/service/6981eaef-29c1-40b1-8aca-8c606dfd44e3?id=8648d433-1a58-4f5e-9bb3-2600a12c0a73&
+
+This session is missing Railway's agent tooling. That includes Railway skills (use-railway) and the Railway MCP server, which provides tooling for deployments, logs, status, and docs.
+Setup: `railway setup agent`
+warning: Config as Code (railway.json / railway.toml) is deprecated. Prefer Infrastructure as Code (.railway/railway.ts). Run `railway config migrate` or see https://docs.railway.com/infrastructure-as-code#migrating-from-config-as-code
+  → Migrate: `railway config migrate` — https://docs.railway.com/infrastructure-as-code#migrating-from-config-as-code
+  Existing files keep working until 2026-12-01.
+ℹ معرّف النشرة: 8648d433-1a58-4f5e-9bb3-2600a12c0a73
+
+▶ ٥/٧ انتظار /ready بالمعرّف 6d6a4965da52-20260909101320 أو الوسم dep-619a22590f8a (حتى ٧ دقائق)
+··
+✓ البيئة جاهزة بالنشرة dep-619a22590f8a (وسم النشرة — ملف .build-id لم يُشحن)
+
+▶ ٦/٧ فحص سجلّات الإقلاع
+ℹ لا سطور ترحيلة في آخر السجل (لا ترحيلات جديدة أو السجل مقصوص)
+
+▶ ٧/٧ المسح الحي
+{"level":"info","event":"db_driver","ts":"2026-09-09T10:14:10.243Z","driver":"sqlite","file":"/tmp/sanad-rbac-xPhBAt/rbac.db"}
+applied migration 001_init.sql
+applied migration 002_progress_claims.sql
+applied migration 003_load_indexes.sql
+applied migration 004_sector_order.sql
+applied migration 005_delivery2.sql
+applied migration 006_employee_hire_date.sql
+applied migration 007_org_attribution.sql
+applied migration 008_employee_end_date.sql
+applied migration 009_support_units.sql
+applied migration 010_task_attribution.sql
+applied migration 011_client_merge.sql
+applied migration 012_client_name_confirmed.sql
+applied migration 013_ai_preview_lifecycle.sql
+applied migration 014_auth_identity.sql
+applied migration 015_demo_registry.sql
+applied migration 016_user_deactivated_at.sql
+applied migration 017_delivery_money_phases.sql
+applied migration 018_retire_finance_role.sql
+applied migration 019_vat_split.sql
+applied migration 020_revenue_on_delivery.sql
+applied migration 021_opportunity_commercial.sql
+applied migration 022_staffing_confirmation.sql
+applied migration 023_personal_notes.sql
+applied migration 024_opportunity_delivery_location.sql
+applied migration 025_user_department_grants.sql
+applied migration 026_opportunity_departments.sql
+applied migration 027_allocation_work_bucket.sql
+applied migration 028_task_approval.sql
+applied migration 029_task_category.sql
+applied migration 030_task_provenance.sql
+applied migration 031_approval_mail_state.sql
+applied migration 032_app_setting_notified_at.sql
+applied migration 033_document_blob.sql
+applied migration 034_project_departments.sql
+applied migration 035_session_sliding.sql
+applied migration 036_error_event.sql
+applied migration 037_task_load.sql
+applied migration 038_events.sql
+applied migration 039_event_blob_title.sql
+applied migration 040_event_meetings.sql
+applied migration 041_event_card_photos.sql
+applied migration 042_team_resources.sql
+applied migration 043_budget_revision.sql
+applied migration 044_mcp_connect.sql
+applied migration 045_dev_center.sql
+✓ 45 migration(s) applied
+✓ RBAC roles + grants seeded
+سند sweep → https://staging.os.evcsol.com  (7 roles, 36 pages, 29 API probes; page-authz: strict-nav-guard)
+المساعد: مسبار المحادثة مطفأ — كل محادثة تكتب سطراً في سجل نشاط المساعد، والقاعدة هنا ليست محلية. شغّله بـ‎--ai-chat إن أردته.
+
+role              pages    apis     ai      leaks  jargon  p95(ms)
+demo.deptmgr      36/36    29/29    1/1     0      0       2349
+demo.linemgr      36/36    29/29    1/1     0      0       2721
+demo.bdhead       36/36    29/29    1/1     0      0       2647
+demo.ops          36/36    29/29    1/1     0      0       2286
+demo.procurement  36/36    29/29    1/1     0      0       1747
+demo.approver     36/36    29/29    1/1     0      0       2650
+demo.external     36/36    29/29    1/1     0      0       851
+
+overall: 462 requests · P50 693ms · P95 2630ms · max 4652ms
+✓ sweep clean — every status matched, no leaks, no banned jargon
+
+✓ النشر اكتمل وتحقّق. الخطوات التالية اليدوية:
+  • أدلة الشاشات: node scripts/evidence.mjs https://staging.os.evcsol.com
+  • علِّم إصدارات CHANGELOG بأنها منشورة، والتزم وادفع
+  • إن كانت الطرفية مربوطة بغير خدمة التطبيق فأعد ربطها الآن
+EXIT=0

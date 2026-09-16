@@ -1,0 +1,996 @@
+<!doctype html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>منصة سند — عرض تعريفي</title>
+<meta name="description" content="منصة سند — نظام تشغيل المؤسسة: الفرص والمشاريع والمخرجات والمال والفريق في منصة واحدة بالعربية. من تطوير رؤية الخبراء الاستشارية.">
+<link rel="stylesheet" href="styles.css" data-inline="css">
+</head>
+<body>
+
+<!-- شريط التقدّم العلوي (2px) -->
+<div class="topbar" aria-hidden="true"><i id="prog"></i></div>
+
+<!-- مسار المشاهد — أدوات المُقدِّم -->
+<nav class="rail" id="rail" aria-label="مشاهد العرض">
+  <button type="button" data-go="0" aria-label="المشهد 1 — الغلاف"></button>
+  <button type="button" data-go="1" aria-label="المشهد 2 — ثلاث مشكلات"></button>
+  <button type="button" data-go="2" aria-label="المشهد 3 — قيادة الشركة"></button>
+  <button type="button" data-go="3" aria-label="المشهد 4 — مركز القطاع"></button>
+  <button type="button" data-go="4" aria-label="المشهد 5 — الفرص"></button>
+  <button type="button" data-go="5" aria-label="المشهد 6 — المشاريع والمخرجات"></button>
+  <button type="button" data-go="6" aria-label="المشهد 7 — المهام والاعتمادات"></button>
+  <button type="button" data-go="7" aria-label="المشهد 8 — التسكين الشهري"></button>
+  <button type="button" data-go="8" aria-label="المشهد 9 — بقية المنصة"></button>
+  <button type="button" data-go="9" aria-label="المشهد 10 — الجوال"></button>
+  <button type="button" data-go="10" aria-label="المشهد 11 — الدخول برمز"></button>
+  <button type="button" data-go="11" aria-label="المشهد 12 — منتج قابل للتبنّي"></button>
+  <button type="button" data-go="12" aria-label="المشهد 13 — لنعرضه عليك"></button>
+  <span class="rail-n" aria-hidden="true"><b class="tnum" id="railNow">1</b><span>/</span><span class="tnum">13</span></span>
+</nav>
+
+<button type="button" class="keys-btn" id="keysBtn" aria-controls="keys" aria-expanded="false" aria-label="مفاتيح العرض">؟</button>
+
+<main>
+
+<!-- ══════════════════════════ 0 · الغلاف ══════════════════════════ -->
+<section class="scene" id="cover" data-scene="0">
+  <div class="stage">
+    <div class="mark" data-reveal><img src="brand/logo-white.svg" data-inline-svg alt="رؤية الخبراء الاستشارية"></div>
+    <span class="eyebrow" data-reveal style="--i:1">من تطوير رؤية الخبراء الاستشارية</span>
+
+    <h1 class="cover-title" data-reveal style="--i:2">
+      منصة سند
+      <span class="sub">نظام تشغيل المؤسسة</span>
+    </h1>
+
+    <div class="sweep" data-reveal style="--i:3" aria-hidden="true"></div>
+
+    <p class="cover-lead" data-reveal style="--i:4">
+      الفرص والمشاريع والمخرجات والمال والفريق في منصة واحدة، بالعربية،
+      ولكل دور ما يخصّه وحده.
+    </p>
+
+    <div class="facts" data-reveal style="--i:5">
+      <span class="fact">
+        <b><bdi class="tnum" data-count="22">0</bdi></b>
+        <span>شاشة عمل، لا شاشة عرض</span>
+      </span>
+      <span class="fact">
+        <b><bdi class="tnum" data-count="18">0</bdi></b>
+        <span>دوراً، كلٌّ يرى ما يخصّه</span>
+      </span>
+      <span class="fact gold">
+        <b>بياناتك</b>
+        <span>على خادمك، دون خدمات خارجية</span>
+      </span>
+    </div>
+
+    <p class="hint" data-reveal style="--i:6">
+      <span class="arrow" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M6 13l6 6 6-6"/></svg>
+      </span>
+      مرّر للأسفل — أو اضغط <kbd>?</kbd> لمفاتيح العرض
+    </p>
+  </div>
+</section>
+
+<!-- ══════════════════════════ 1 · لماذا ══════════════════════════ -->
+<section class="scene" id="why" data-scene="1">
+  <div class="stage">
+    <div class="s-head center" style="margin-block-end:clamp(1.5rem,3vh,2.6rem)">
+      <span class="eyebrow" data-reveal>الحال قبل سند</span>
+      <h2 class="s-title" data-reveal style="--i:1">ثلاث مشكلات تعرفها <span class="hl">كل شركة استشارات</span></h2>
+      <p class="s-lead" data-reveal style="--i:2">ليست مشكلة أدوات — بل صورةٌ واحدة لا تكتمل أبداً.</p>
+    </div>
+
+    <div class="trio">
+      <article class="card pcard" data-reveal style="--i:1">
+        <span class="ic" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h7v5H4zM13 6h7v5h-7zM4 13h7v5H4zM13 13h7v5h-7z"/></svg>
+        </span>
+        <h3>أرقام متفرّقة</h3>
+        <p>الفرص في ملف، والمشاريع في ملف آخر، والمال في ثالث. ويبقى السؤال في كل اجتماع: أيّ رقمٍ منها هو الصحيح؟</p>
+      </article>
+
+      <article class="card pcard" data-reveal style="--i:2">
+        <span class="ic" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5.5l3.5 2"/></svg>
+        </span>
+        <h3>قرار متأخّر</h3>
+        <p>الرقم يصل بعد أسبوعين من انتهاء الشهر، فيُتَّخذ القرار على صورةٍ قديمة — ويُصحَّح بعد فوات وقته.</p>
+      </article>
+
+      <article class="card pcard" data-reveal style="--i:3">
+        <span class="ic" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4h9a2 2 0 0 1 2 2v11M6 8h9a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2z"/></svg>
+        </span>
+        <h3>جهد مكرَّر</h3>
+        <p>التقرير نفسه يُجمَع يدوياً كل شهر من عدة مصادر، فيذهب وقت الفريق في التجميع بدل التحليل.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════ 2 · قيادة الشركة ══════════════════════════ -->
+<section class="scene" id="ceo" data-scene="2">
+  <div class="stage">
+    <div class="split">
+      <div class="col-text">
+        <span class="eyebrow" data-reveal>قيادة الشركة</span>
+        <div class="s-head">
+          <h2 class="s-title" data-reveal style="--i:1">القيادة ترى <span class="hl">الشركة كلها</span> في شاشة واحدة</h2>
+          <p class="s-lead" data-reveal style="--i:2">المستهدف والمحقق والمتوقع نهاية السنة في سطر واحد. وكل رقمٍ يُفتح حتى تصل إلى الصفّ الذي صنعه.</p>
+        </div>
+        <!-- C2: أربعة مؤشرات تعدّ تصاعدياً -->
+        <div class="fragment" data-fragment="kpi" data-reveal style="--i:3">
+      <div class="kpis">
+        <div class="kpi">
+          <span class="kpi-l">المستهدف</span>
+          <span class="kpi-v"><bdi class="tnum" data-count="48">0</bdi><i class="u">مليون ر.س</i></span>
+        </div>
+        <div class="kpi">
+          <span class="kpi-l">المحقق</span>
+          <span class="kpi-v"><bdi class="tnum" data-count="31">0</bdi><i class="u">مليون ر.س</i></span>
+          <span class="chip up">▲ <bdi class="tnum">6%</bdi> عن الوتيرة</span>
+        </div>
+        <div class="kpi">
+          <span class="kpi-l">المتوقع نهاية السنة</span>
+          <span class="kpi-v"><bdi class="tnum" data-count="47">0</bdi><i class="u">مليون ر.س</i></span>
+        </div>
+        <div class="kpi hl">
+          <span class="kpi-l">نسبة التحقق</span>
+          <span class="kpi-v"><bdi class="tnum" data-count="65">0</bdi><i class="u">%</i></span>
+        </div>
+      </div>
+    </div>
+      </div>
+
+      <div class="col-media">
+        <div class="media-row">
+          <div class="hero-wrap" data-reveal>
+            <div class="frame laptop hero" data-parallax style="--depth:26px;--maxh:44svh">
+              <span class="glow" aria-hidden="true"></span>
+              <div class="bezel"><div class="screen">
+                <img data-shot="ceo-dashboard" alt="لوحة قيادة الشركة: المستهدف والمحقق والمتوقع نهاية السنة، مع بطاقات المؤشرات وحالة المحفظة" decoding="async">
+              </div></div>
+              <div class="foot"></div>
+            </div>
+            <div class="callout card" data-reveal style="--i:3">
+              <div class="mini"><div class="screen">
+                <img data-shot="ceo-drill" alt="نافذة التفصيل: صفوف الفرص التي كوّنت الرقم المعروض في لوحة القيادة" decoding="async">
+              </div></div>
+              <p class="cap p2">كل رقم يُفتح على صفوفه</p>
+            </div>
+          </div>
+
+          <div class="media-side fill">
+            <div class="card card-pad" data-reveal style="--i:1">
+              <span class="k-line" aria-hidden="true"></span>
+              <p class="card-t" style="margin-block-start:.6rem">المتوقع نهاية السنة</p>
+              <p class="card-x">يُحتسب من وتيرة التحقق الفعلية، لا من الأمنيات.</p>
+              <!-- C2: منحنى الإيراد المتوقع (stroke-dashoffset) -->
+              <div class="fragment" data-fragment="forecast" style="margin-block-start:.7rem">
+      <div class="fc">
+        <svg class="fc-svg" viewBox="0 22 320 104" preserveAspectRatio="none" role="img"
+             aria-label="الإيراد الشهري المحقق حتى سبتمبر ثم المتوقع حتى ديسمبر، أمام خط المستهدف الشهري">
+          <defs>
+            <linearGradient id="c2-fc-area" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#4E7FE0" stop-opacity=".55"/>
+              <stop offset=".5" stop-color="#7A56C0" stop-opacity=".30"/>
+              <stop offset="1" stop-color="#834798" stop-opacity="0"/>
+            </linearGradient>
+            <linearGradient id="c2-fc-line" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0" stop-color="#7FA8FF"/>
+              <stop offset=".55" stop-color="#9CB8FF"/>
+              <stop offset="1" stop-color="#CE9BE6"/>
+            </linearGradient>
+          </defs>
+          <line class="fc-tg" x1="20" y1="59.6" x2="306" y2="59.6" vector-effect="non-scaling-stroke"/>
+          <path class="fc-area" d="M20 90.3 L46 83.0 L72 72.7 L98 77.1 L124 65.4 L150 58.1 L176 69.8 L202 52.3 L228 40.6 L228 122 L20 122 Z" fill="url(#c2-fc-area)"/>
+          <path class="fc-l" pathLength="1" d="M20 90.3 L46 83.0 L72 72.7 L98 77.1 L124 65.4 L150 58.1 L176 69.8 L202 52.3 L228 40.6" vector-effect="non-scaling-stroke"/>
+          <path class="fc-l tail" pathLength="1" d="M228 40.6 L254 45.0 L280 40.6 L306 34.8" vector-effect="non-scaling-stroke"/>
+          <rect class="fc-dot" x="224.5" y="37.1" width="7" height="7" rx="2"/>
+        </svg>
+        <div class="fc-x" dir="ltr"><span>يناير</span><span>أبريل</span><span>يوليو</span><span>ديسمبر</span></div>
+        <div class="fc-lg">
+          <span class="lg a">المحقق</span>
+          <span class="lg b">المتوقع</span>
+          <span class="lg c">المستهدف الشهري</span>
+        </div>
+      </div>
+    </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="band-row" data-reveal style="--i:2">
+          <div class="frame band" data-parallax style="--depth:14px">
+            <span class="glow" aria-hidden="true"></span>
+            <img data-shot="ceo-forecast" alt="شريط الأداء في لوحة القيادة: الإيرادات المحققة والمبيعات المتعاقدة، ونسبة كلٍّ منهما من المستهدف، وتقدّمهما عن الخطة الزمنية" decoding="async">
+          </div>
+          <p class="cap">المحقق أمام المستهدف في سطر واحد — والوتيرة إلى جانبه</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════ 3 · مركز القطاع ══════════════════════════ -->
+<section class="scene" id="sector" data-scene="3">
+  <div class="stage">
+    <div class="head-row">
+      <div class="s-head">
+        <span class="eyebrow" data-reveal>القطاعات</span>
+        <h2 class="s-title" data-reveal style="--i:1">لكل قطاع <span class="hl">مركز قيادة</span> خاص به</h2>
+      </div>
+      <p class="s-lead" data-reveal style="--i:2">قائد القطاع يرى قطاعه وحده: الإيقاع والتجاري والتشغيلي والبشري — ونسبة التحقق أمامه دائماً.</p>
+    </div>
+
+    <!-- C2: شريط تبويبات يتقدّم مع تقدّم التمرير -->
+    <div class="fragment" data-fragment="tabs" data-reveal style="--i:1;margin-block:clamp(.7rem,1.4vh,1.2rem);inline-size:100%">
+    <div class="tabs">
+      <span class="tab" style="--i:0">الإيقاع</span>
+      <span class="tab" style="--i:1">التجاري</span>
+      <span class="tab" style="--i:2">التشغيلي</span>
+      <span class="tab" style="--i:3">البشري</span>
+      <i class="tab-ind" aria-hidden="true"></i>
+    </div>
+  </div>
+
+    <div class="media-row b">
+      <div class="hero-wrap" data-reveal style="--i:2">
+        <div class="frame laptop hero" data-parallax style="--depth:24px">
+          <span class="glow" aria-hidden="true"></span>
+          <div class="bezel"><div class="screen">
+            <!-- C3: أربع لقطات لتبويبات الشاشة نفسها، تتبدّل مع التبويب المضاء أعلاه -->
+            <span class="swap" data-swap="tabs">
+              <img data-shot="sector-pulse" alt="مركز القطاع — تبويب الإيقاع: المحقق من المستهدف ونسبة التحقق وحالة المشاريع والفريق" decoding="async">
+              <img class="lay" style="--i:1" data-shot="sector-com" alt="مركز القطاع — تبويب التجاري: الفرص والقيمة المرجّحة ونسبة الفوز" decoding="async">
+              <img class="lay" style="--i:2" data-shot="sector-ops" alt="مركز القطاع — تبويب التشغيلي: المشاريع وحالتها والمخرجات المستحقة" decoding="async">
+              <img class="lay" style="--i:3" data-shot="sector-hr" alt="مركز القطاع — تبويب البشري: أعضاء القطاع وإشغالهم وسعتهم المتاحة" decoding="async">
+            </span>
+          </div></div>
+          <div class="foot"></div>
+        </div>
+        <p class="cap">الشاشة نفسها، وأربعة تبويبات تتبدّل أمامك</p>
+      </div>
+
+      <div class="media-side">
+        <div class="card card-pad" data-reveal style="--i:3">
+          <span class="k-line" aria-hidden="true"></span>
+          <p class="card-t" style="margin-block-start:.6rem">نسبة التحقق</p>
+          <!-- C2: مؤشر دائري لنسبة التحقق -->
+          <div class="fragment" data-fragment="gauge-attain" style="margin-block-start:.5rem">
+          <div class="ga">
+            <div class="ga-dial">
+              <i class="ga-ring" aria-hidden="true"></i>
+              <span class="ga-hole">
+                <b class="ga-n"><bdi class="tnum" data-count="96">0</bdi><i>%</i></b>
+                <span class="ga-l">من المستهدف</span>
+              </span>
+            </div>
+            <div class="ga-side">
+              <span class="ga-row"><i class="d a" aria-hidden="true"></i>المحقق <b class="tnum">46</b> مليون ر.س</span>
+              <span class="ga-row"><i class="d b" aria-hidden="true"></i>المستهدف <b class="tnum">48</b> مليون ر.س</span>
+              <span class="chip up">▲ <bdi class="tnum">4%</bdi> عن الشهر الماضي</span>
+            </div>
+          </div>
+        </div>
+          <p class="card-x">المحقق من المستهدف حتى اليوم، وبقية السنة أمامه.</p>
+        </div>
+
+        <div class="card card-pad" data-reveal style="--i:4">
+          <p class="card-t">أربعة تبويبات في شاشة واحدة</p>
+          <ul class="tab-legend">
+            <li><b>الإيقاع</b><span>المحقق من المستهدف، وحالة المشاريع والفريق</span></li>
+            <li><b>التجاري</b><span>الفرص والقيمة المرجّحة ونسبة الفوز</span></li>
+            <li><b>التشغيلي</b><span>المشاريع وحالتها والمخرجات المستحقة</span></li>
+            <li><b>البشري</b><span>أعضاء القطاع وإشغالهم وسعتهم المتاحة</span></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════ 4 · الفرص ══════════════════════════ -->
+<section class="scene" id="opps" data-scene="4">
+  <div class="stage">
+    <div class="head-row">
+      <div class="s-head">
+        <span class="eyebrow" data-reveal>الفرص</span>
+        <h2 class="s-title" data-reveal style="--i:1">خط الفرص يُدار <span class="hl">كلوحٍ واحد</span></h2>
+      </div>
+      <p class="s-lead" data-reveal style="--i:2">الفرصة تنتقل بين المراحل بسحبةٍ واحدة، والقيمة المرجّحة تتغيّر معها في الحال. والفرصة المتوقفة تُنادي على نفسها.</p>
+    </div>
+
+    <div class="media-row b" style="margin-block-start:clamp(.8rem,1.8vh,1.6rem)">
+      <div class="hero-wrap" data-reveal style="--i:1">
+        <div class="frame laptop hero" data-parallax style="--depth:26px">
+          <span class="glow" aria-hidden="true"></span>
+          <div class="bezel"><div class="screen">
+            <!-- C3: العرضان من الصفحة نفسها — بطاقات ثم جدول -->
+            <span class="swap fragment" data-fragment="swap" data-swap="two">
+              <img data-shot="opps-kanban" alt="لوح الفرص: خمس مراحل، وبطاقات الفرص فيها بقيمتها واحتمال فوزها ومالكها" decoding="async">
+              <img class="lay" style="--i:1" data-shot="opps-table" alt="الفرص نفسها كجدول: أعمدة القيمة والاحتمال والمرحلة والإغلاق المتوقع" decoding="async">
+            </span>
+          </div></div>
+          <div class="foot"></div>
+        </div>
+        <p class="cap">لوحٌ واحد بعرضين: بطاقات أو جدول</p>
+      </div>
+
+      <div class="media-side">
+        <div class="card card-pad" data-reveal style="--i:2">
+          <span class="k-line" aria-hidden="true"></span>
+          <p class="card-t" style="margin-block-start:.6rem">سحبةٌ واحدة تُغيّر الرقم</p>
+          <!-- C2: لوح من خمس مراحل، بطاقة تنتقل والمجاميع تُعاد -->
+          <div class="fragment" data-fragment="kanban" style="margin-block-start:.6rem">
+          <div class="kb">
+            <div class="kb-col">
+              <span class="kb-h">ترشيح</span>
+              <span class="kb-t"><b><bdi class="tnum">6.2</bdi> م</b></span>
+              <span class="kb-cards"><span class="kb-card"><b>أمانة المنطقة</b><i class="v"><bdi class="tnum">2.4</bdi> م</i></span><span class="kb-card"><b>شركة نماء</b><i class="v"><bdi class="tnum">1.9</bdi> م</i></span><span class="kb-card"><b>مجموعة الأفق</b><i class="v"><bdi class="tnum">1.9</bdi> م</i></span></span>
+            </div>
+            <div class="kb-col">
+              <span class="kb-h">مؤهلة</span>
+              <span class="kb-t"><b><bdi class="tnum">5.4</bdi> م</b></span>
+              <span class="kb-cards"><span class="kb-card"><b>هيئة التطوير</b><i class="v"><bdi class="tnum">2.8</bdi> م</i></span><span class="kb-card"><b>مصرف الوادي</b><i class="v"><bdi class="tnum">1.4</bdi> م</i></span><span class="kb-card"><b>شركة رواسي</b><i class="v"><bdi class="tnum">1.2</bdi> م</i></span></span>
+            </div>
+            <div class="kb-col">
+              <span class="kb-h">عرض مقدم</span>
+              <span class="kb-t"><span class="flip"><b class="a"><bdi class="tnum">3.1</bdi> م</b><b class="b"><bdi class="tnum">2.3</bdi> م</b></span></span>
+              <span class="kb-cards"><span class="kb-card"><b>جامعة الشمال</b><i class="v"><bdi class="tnum">1.4</bdi> م</i></span><span class="kb-card"><b>شركة تبيان</b><i class="v"><bdi class="tnum">0.9</bdi> م</i></span><span class="kb-ghost" aria-hidden="true"></span></span>
+            </div>
+            <div class="kb-col">
+              <span class="kb-h">تفاوض</span>
+              <span class="kb-t"><span class="flip"><b class="a"><bdi class="tnum">4.6</bdi> م</b><b class="b"><bdi class="tnum">5.4</bdi> م</b></span></span>
+              <span class="kb-cards"><span class="kb-card"><b>وزارة الإسكان</b><i class="v"><bdi class="tnum">3.0</bdi> م</i></span><span class="kb-card"><b>شركة معالم</b><i class="v"><bdi class="tnum">1.6</bdi> م</i></span><span class="kb-card kb-mover"><b>مجموعة سدير</b><i class="v"><bdi class="tnum">0.8</bdi> م</i></span></span>
+            </div>
+            <div class="kb-col">
+              <span class="kb-h">مكسوبة</span>
+              <span class="kb-t"><b><bdi class="tnum">7.8</bdi> م</b></span>
+              <span class="kb-cards"><span class="kb-card"><b>هيئة النقل</b><i class="v"><bdi class="tnum">4.2</bdi> م</i></span><span class="kb-card"><b>شركة إتقان</b><i class="v"><bdi class="tnum">2.3</bdi> م</i></span><span class="kb-card"><b>بلدية الخبر</b><i class="v"><bdi class="tnum">1.3</bdi> م</i></span></span>
+            </div>
+          </div>
+        </div>
+        </div>
+
+        <div class="thumbs" style="--n:2">
+          <div data-reveal style="--i:3">
+            <div class="frame laptop sm" data-parallax style="--depth:16px">
+              <div class="bezel"><div class="screen">
+                <img data-shot="opps-preview" alt="معاينة سريعة لفرصة من اللوح دون مغادرة الشاشة" decoding="async">
+              </div></div>
+            </div>
+            <p class="cap">معاينة سريعة من اللوح</p>
+          </div>
+          <div data-reveal style="--i:4">
+            <div class="frame laptop sm" data-parallax style="--depth:22px">
+              <div class="bezel"><div class="screen">
+                <img data-shot="opp-detail" alt="صفحة الفرصة: العميل والقيمة والمرحلة وفريق الفرصة والخطوة التالية" decoding="async">
+              </div></div>
+            </div>
+            <p class="cap p2">صفحة الفرصة وفريقها</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════ 5 · المشاريع والمخرجات ══════════════════════════ -->
+<section class="scene" id="projects" data-scene="5">
+  <div class="stage">
+    <div class="head-row">
+      <div class="s-head">
+        <span class="eyebrow" data-reveal>المشاريع</span>
+        <h2 class="s-title" data-reveal style="--i:1">كل مخرَج له <span class="hl">شهرٌ ومبلغٌ وحالة</span></h2>
+      </div>
+      <p class="s-lead" data-reveal style="--i:2">لكل مخرَجٍ شهر استحقاق وقيمة، فتعرف ما الذي يُسلَّم هذا الشهر وما الذي تأخّر — قبل أن يسأل العميل.</p>
+    </div>
+
+    <div class="media-row b" style="margin-block-start:clamp(.8rem,1.8vh,1.6rem)">
+      <div class="hero-wrap" data-reveal style="--i:1">
+        <div class="frame laptop hero" data-parallax style="--depth:26px">
+          <span class="glow" aria-hidden="true"></span>
+          <div class="bezel"><div class="screen">
+            <img data-shot="projects-kanban" alt="لوح المشاريع مرتّباً بحالة المشروع: على المسار، وتحت المراقبة، وخارج المسار" decoding="async">
+          </div></div>
+          <div class="foot"></div>
+        </div>
+      </div>
+
+      <div class="media-side">
+        <div class="card card-pad" data-reveal style="--i:2">
+          <span class="k-line" aria-hidden="true"></span>
+          <p class="card-t" style="margin-block-start:.6rem">اثنا عشر شهراً في سطر</p>
+          <!-- C2: شريط اثني عشر شهراً، أعمدة المخرجات تنمو من بداية السطر -->
+          <div class="fragment" data-fragment="deliverable-rail" style="margin-block-start:.6rem">
+          <div class="dv">
+            <div class="dv-mo" dir="ltr" aria-hidden="true"><span>ينا</span><span>فبر</span><span>مار</span><span>أبر</span><span>ماي</span><span>يون</span><span>يول</span><span>أغس</span><span>سبت</span><span>أكت</span><span>نوف</span><span>ديس</span></div>
+            <div class="dv-rows">
+              <div class="dv-r" style="--i:0">
+                <span class="dv-nm">دراسة الوضع الراهن</span>
+                <span class="dv-track" dir="ltr"><i class="dv-bar ok" style="--s:1;--n:2"></i></span>
+              </div>
+              <div class="dv-r" style="--i:1">
+                <span class="dv-nm">التصميم التفصيلي</span>
+                <span class="dv-track" dir="ltr"><i class="dv-bar ok" style="--s:3;--n:2"></i></span>
+              </div>
+              <div class="dv-r" style="--i:2">
+                <span class="dv-nm">نموذج التشغيل</span>
+                <span class="dv-track" dir="ltr"><i class="dv-bar dl" style="--s:5;--n:2"></i></span>
+              </div>
+              <div class="dv-r" style="--i:3">
+                <span class="dv-nm">دليل الإجراءات</span>
+                <span class="dv-track" dir="ltr"><i class="dv-bar late" style="--s:6;--n:2"></i></span>
+              </div>
+              <div class="dv-r" style="--i:4">
+                <span class="dv-nm">التدريب والتمكين</span>
+                <span class="dv-track" dir="ltr"><i class="dv-bar wip" style="--s:8;--n:3"></i></span>
+              </div>
+              <div class="dv-r" style="--i:5">
+                <span class="dv-nm">التقرير الختامي</span>
+                <span class="dv-track" dir="ltr"><i class="dv-bar wip" style="--s:11;--n:2"></i></span>
+              </div>
+            </div>
+            <div class="dv-lg">
+              <span class="lg ok">تم الاعتماد</span><span class="lg dl">مُسلَّم</span>
+              <span class="lg wip">جارٍ العمل</span><span class="lg late">متأخر</span>
+            </div>
+          </div>
+        </div>
+          <p class="card-x">قيمة ما يُسلَّم في كل شهر، وما تجاوز شهره.</p>
+        </div>
+
+        <div class="thumbs" style="--n:2">
+          <div data-reveal style="--i:3">
+            <div class="frame laptop sm" data-parallax style="--depth:16px">
+              <div class="bezel"><div class="screen">
+                <img data-shot="project-detail" alt="صفحة المشروع: نسبة الإنجاز وحالة المشروع والفريق المُسكَّن والمخرجات" decoding="async">
+              </div></div>
+            </div>
+            <p class="cap">صفحة المشروع كاملة</p>
+          </div>
+          <div data-reveal style="--i:4">
+            <div class="frame laptop sm" data-parallax style="--depth:22px">
+              <div class="bezel"><div class="screen">
+                <img data-shot="project-deliverables" alt="جدول المخرجات: اسم المخرَج وقيمته وشهر استحقاقه وحالة تسليمه" decoding="async">
+              </div></div>
+            </div>
+            <p class="cap p2">المخرجات بشهورها وقيمها</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════ 6 · المهام والاعتمادات ══════════════════════════ -->
+<section class="scene" id="tasks" data-scene="6">
+  <div class="stage">
+    <div class="split">
+      <div class="col-text">
+        <span class="eyebrow" data-reveal>العمل اليومي</span>
+        <div class="s-head">
+          <h2 class="s-title" data-reveal style="--i:1">المهمة تُسند وتُعتمد، <span class="hl">والحِمل يُقاس</span></h2>
+          <p class="s-lead" data-reveal style="--i:2">المهمة تصل إلى صاحبها بعد اعتماد مديره، وحِمل كل شخص ظاهرٌ قبل أن تُثقله.</p>
+        </div>
+        <div class="card card-pad" data-reveal style="--i:3">
+          <p class="card-t">بانتظار قرارك</p>
+          <!-- C2: صفّ اعتماد يُختَم ثم ينزلق خارجاً -->
+          <div class="fragment" data-fragment="approval-row" style="margin-block-start:.6rem">
+          <div class="apv">
+            <div class="apv-stack">
+            <div class="apv-row a">
+              <span class="apv-task">مراجعة نموذج التشغيل</span>
+              <span class="apv-meta"><span>ريم العتيبي</span><i aria-hidden="true">·</i><span class="tnum" dir="ltr">2026-09-08</span></span>
+              <span class="apv-btn"><i class="t1">اعتماد</i><i class="t2">✓ اعتُمدت</i></span>
+            </div>
+            <div class="apv-row b">
+              <span class="apv-task">إعداد دليل الإجراءات</span>
+              <span class="apv-meta"><span>ماجد السبيعي</span><i aria-hidden="true">·</i><span class="tnum" dir="ltr">2026-09-11</span></span>
+              <span class="apv-btn"><i class="t1">اعتماد</i><i class="t2">✓ اعتُمدت</i></span>
+            </div></div>
+            <p class="apv-note">القرار يصل إلى صاحب المهمة في حينه، ويُقيَّد في سجل الحركة باسمك.</p>
+          </div>
+        </div>
+        </div>
+      </div>
+
+      <div class="col-media">
+        <div class="media-row">
+          <div class="hero-wrap" data-reveal>
+            <div class="frame laptop hero" data-parallax style="--depth:26px;--maxh:52svh">
+              <span class="glow" aria-hidden="true"></span>
+              <div class="bezel"><div class="screen">
+                <img data-shot="tasks-board" alt="لوح المهام: أعمدة الحالة، وبطاقات المهام بأولويتها وموعد استحقاقها ومسؤولها" decoding="async">
+              </div></div>
+              <div class="foot"></div>
+            </div>
+            <div class="callout card" data-reveal style="--i:3">
+              <div class="mini"><div class="screen">
+                <img data-shot="task-drawer" alt="لوح المهمة الجانبي: التقدم والعائق والخطوة التالية والجهة المرتبطة" decoding="async">
+              </div></div>
+              <p class="cap p2">المهمة تُفتح جانباً دون مغادرة اللوح</p>
+            </div>
+            <!-- C3: بطاقة الحِمل من الصفحة الأولى — شارة صغيرة على طرف الإطار -->
+            <span class="shot-badge" data-reveal style="--i:4">
+              <img data-shot="workload-gauge" alt="بطاقة حِمل الشخص في صفحته الأولى: نسبة إشغاله هذا الشهر وعدد مشاريعه وتوزيع وقته على السنة" decoding="async">
+              <b class="shot-badge-t">حِملك في صفحتك</b>
+            </span>
+          </div>
+
+          <div class="media-side fill">
+            <div class="card card-pad" data-reveal style="--i:1">
+              <span class="k-line" aria-hidden="true"></span>
+              <p class="card-t" style="margin-block-start:.6rem">حِمل المهام</p>
+              <!-- C2: مؤشر نصف دائري لحِمل الشخص -->
+              <div class="fragment" data-fragment="gauge-load" style="margin-block-start:.4rem">
+              <div class="gl">
+                <div class="gl-wrap">
+                  <svg class="gl-svg" viewBox="0 0 200 112" role="img"
+                       aria-label="حِمل المهام يبلغ 118 بالمئة من الطاقة، أي تجاوز الطاقة">
+                    <defs>
+                      <linearGradient id="c2-gl" x1="0" y1="0" x2="1" y2="0">
+                        <stop offset="0" stop-color="#4E7FE0"/>
+                        <stop offset=".62" stop-color="#A362C0"/>
+                        <stop offset="1" stop-color="#F2707A"/>
+                      </linearGradient>
+                    </defs>
+                    <path class="gl-bg" d="M22 96 A78 78 0 0 1 178 96"/>
+                    <path class="gl-hot" pathLength="1" d="M22 96 A78 78 0 0 1 178 96"/>
+                    <path class="gl-val" pathLength="1" d="M22 96 A78 78 0 0 1 178 96"/>
+                    <line class="gl-tick" x1="141.1" y1="44.4" x2="152.5" y2="30.8"/>
+                  </svg>
+                  <span class="gl-c">
+                    <b class="gl-n"><bdi class="tnum" data-count="118">0</bdi><i>%</i></b>
+                    <span class="gl-l">من الطاقة</span>
+                  </span>
+                </div>
+                <span class="gl-over">تجاوز الطاقة</span>
+              </div>
+            </div>
+              <p class="card-x">حِمل الشخص من مهامه المفتوحة — قبل أن تُسند إليه مهمة جديدة.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="media-strip" style="margin-block-start:var(--gap)">
+          <div data-reveal style="--i:1">
+            <div class="frame laptop sm" data-parallax style="--depth:12px">
+              <div class="bezel"><div class="screen">
+                <img data-shot="tasks-list" alt="المهام كقائمة: النافذة الزمنية والأولوية والمسؤول والاستحقاق" decoding="async">
+              </div></div>
+            </div>
+            <p class="cap">قائمة</p>
+          </div>
+          <div data-reveal style="--i:2">
+            <div class="frame laptop sm" data-parallax style="--depth:18px">
+              <div class="bezel"><div class="screen">
+                <img data-shot="tasks-calendar" alt="تقويم مهام الفريق: شهر كامل، وكل مهمة في يوم استحقاقها" decoding="async">
+              </div></div>
+            </div>
+            <p class="cap p2">تقويم الفريق</p>
+          </div>
+          <div data-reveal style="--i:3">
+            <div class="frame laptop sm" data-parallax style="--depth:12px">
+              <div class="bezel"><div class="screen">
+                <img data-shot="approvals" alt="شاشة الاعتمادات: الطلبات المعلّقة بانتظار قرار المدير، لكلٍّ صاحبها وسببها" decoding="async">
+              </div></div>
+            </div>
+            <p class="cap g">الاعتمادات في مكان واحد</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════ 7 · التسكين ══════════════════════════ -->
+<section class="scene" id="staffing" data-scene="7">
+  <div class="stage">
+    <div class="split">
+      <div class="col-text">
+        <span class="eyebrow" data-reveal>الفريق والطاقة</span>
+        <div class="s-head">
+          <h2 class="s-title" data-reveal style="--i:1">من يعمل على ماذا، <span class="hl">شهراً بشهر</span></h2>
+          <p class="s-lead" data-reveal style="--i:2">التسكين الشهري يُظهر السعة المتاحة والذروة معاً، فتُعرَف الحاجة للتوظيف قبل أن تصير أزمة.</p>
+        </div>
+        <div class="card card-pad" data-reveal style="--i:3">
+          <p class="card-t">تجاوز الطاقة يُنادي على نفسه</p>
+          <p class="card-x" style="margin-block-start:.35rem">الخانة التي تتجاوز طاقة صاحبها تُميَّز فور ظهورها، فلا يُكتشف الضغط في آخر الشهر.</p>
+        </div>
+      </div>
+
+      <div class="col-media">
+        <!-- C2: مصفوفة حرارية 8 أشخاص × 12 شهراً -->
+        <div class="fragment" data-fragment="heatmap" data-reveal style="--i:1;margin-block-end:var(--gap)">
+        <div class="hm">
+          <p class="sr-only">مصفوفة إشغال ثمانية أشخاص على اثني عشر شهراً؛ كل خانة نسبة إشغال الشخص في ذلك الشهر. أعلاها ماجد السبيعي 122% في يونيو، وأدناها مها الزهراني 54% في يناير.</p>
+          <div class="hm-grid">
+            <span class="hm-corner" aria-hidden="true"></span>
+            <span class="hm-mo">ينا</span><span class="hm-mo">فبر</span><span class="hm-mo">مار</span><span class="hm-mo">أبر</span><span class="hm-mo">ماي</span><span class="hm-mo">يون</span><span class="hm-mo">يول</span><span class="hm-mo">أغس</span><span class="hm-mo">سبت</span><span class="hm-mo">أكت</span><span class="hm-mo">نوف</span><span class="hm-mo">ديس</span>
+            <span class="hm-nm">نورة الحربي</span><span class="hm-c lo" style="--i:0" role="img" aria-label="نورة الحربي — يناير: 58%"><bdi class="tnum">58%</bdi></span><span class="hm-c lo" style="--i:1" role="img" aria-label="نورة الحربي — فبراير: 66%"><bdi class="tnum">66%</bdi></span><span class="hm-c ok" style="--i:2" role="img" aria-label="نورة الحربي — مارس: 74%"><bdi class="tnum">74%</bdi></span><span class="hm-c ok" style="--i:3" role="img" aria-label="نورة الحربي — أبريل: 88%"><bdi class="tnum">88%</bdi></span><span class="hm-c ok" style="--i:4" role="img" aria-label="نورة الحربي — مايو: 96%"><bdi class="tnum">96%</bdi></span><span class="hm-c hi" style="--i:5" role="img" aria-label="نورة الحربي — يونيو: 104%"><bdi class="tnum">104%</bdi></span><span class="hm-c over" style="--i:6" role="img" aria-label="نورة الحربي — يوليو: 112%"><bdi class="tnum">112%</bdi></span><span class="hm-c over" style="--i:7" role="img" aria-label="نورة الحربي — أغسطس: 118%"><bdi class="tnum">118%</bdi></span><span class="hm-c ok" style="--i:8" role="img" aria-label="نورة الحربي — سبتمبر: 96%"><bdi class="tnum">96%</bdi></span><span class="hm-c ok" style="--i:9" role="img" aria-label="نورة الحربي — أكتوبر: 84%"><bdi class="tnum">84%</bdi></span><span class="hm-c ok" style="--i:10" role="img" aria-label="نورة الحربي — نوفمبر: 72%"><bdi class="tnum">72%</bdi></span><span class="hm-c lo" style="--i:11" role="img" aria-label="نورة الحربي — ديسمبر: 64%"><bdi class="tnum">64%</bdi></span>
+            <span class="hm-nm">فهد القحطاني</span><span class="hm-c ok" style="--i:1" role="img" aria-label="فهد القحطاني — يناير: 82%"><bdi class="tnum">82%</bdi></span><span class="hm-c ok" style="--i:2" role="img" aria-label="فهد القحطاني — فبراير: 90%"><bdi class="tnum">90%</bdi></span><span class="hm-c ok" style="--i:3" role="img" aria-label="فهد القحطاني — مارس: 96%"><bdi class="tnum">96%</bdi></span><span class="hm-c hi" style="--i:4" role="img" aria-label="فهد القحطاني — أبريل: 102%"><bdi class="tnum">102%</bdi></span><span class="hm-c hi" style="--i:5" role="img" aria-label="فهد القحطاني — مايو: 108%"><bdi class="tnum">108%</bdi></span><span class="hm-c ok" style="--i:6" role="img" aria-label="فهد القحطاني — يونيو: 96%"><bdi class="tnum">96%</bdi></span><span class="hm-c ok" style="--i:7" role="img" aria-label="فهد القحطاني — يوليو: 88%"><bdi class="tnum">88%</bdi></span><span class="hm-c ok" style="--i:8" role="img" aria-label="فهد القحطاني — أغسطس: 84%"><bdi class="tnum">84%</bdi></span><span class="hm-c ok" style="--i:9" role="img" aria-label="فهد القحطاني — سبتمبر: 92%"><bdi class="tnum">92%</bdi></span><span class="hm-c ok" style="--i:10" role="img" aria-label="فهد القحطاني — أكتوبر: 100%"><bdi class="tnum">100%</bdi></span><span class="hm-c ok" style="--i:11" role="img" aria-label="فهد القحطاني — نوفمبر: 96%"><bdi class="tnum">96%</bdi></span><span class="hm-c ok" style="--i:12" role="img" aria-label="فهد القحطاني — ديسمبر: 74%"><bdi class="tnum">74%</bdi></span>
+            <span class="hm-nm">ريم العتيبي</span><span class="hm-c lo" style="--i:2" role="img" aria-label="ريم العتيبي — يناير: 66%"><bdi class="tnum">66%</bdi></span><span class="hm-c ok" style="--i:3" role="img" aria-label="ريم العتيبي — فبراير: 72%"><bdi class="tnum">72%</bdi></span><span class="hm-c ok" style="--i:4" role="img" aria-label="ريم العتيبي — مارس: 86%"><bdi class="tnum">86%</bdi></span><span class="hm-c ok" style="--i:5" role="img" aria-label="ريم العتيبي — أبريل: 94%"><bdi class="tnum">94%</bdi></span><span class="hm-c ok" style="--i:6" role="img" aria-label="ريم العتيبي — مايو: 100%"><bdi class="tnum">100%</bdi></span><span class="hm-c ok" style="--i:7" role="img" aria-label="ريم العتيبي — يونيو: 98%"><bdi class="tnum">98%</bdi></span><span class="hm-c ok" style="--i:8" role="img" aria-label="ريم العتيبي — يوليو: 92%"><bdi class="tnum">92%</bdi></span><span class="hm-c ok" style="--i:9" role="img" aria-label="ريم العتيبي — أغسطس: 86%"><bdi class="tnum">86%</bdi></span><span class="hm-c ok" style="--i:10" role="img" aria-label="ريم العتيبي — سبتمبر: 78%"><bdi class="tnum">78%</bdi></span><span class="hm-c ok" style="--i:11" role="img" aria-label="ريم العتيبي — أكتوبر: 70%"><bdi class="tnum">70%</bdi></span><span class="hm-c lo" style="--i:12" role="img" aria-label="ريم العتيبي — نوفمبر: 66%"><bdi class="tnum">66%</bdi></span><span class="hm-c lo" style="--i:13" role="img" aria-label="ريم العتيبي — ديسمبر: 60%"><bdi class="tnum">60%</bdi></span>
+            <span class="hm-nm">سلطان الدوسري</span><span class="hm-c ok" style="--i:3" role="img" aria-label="سلطان الدوسري — يناير: 90%"><bdi class="tnum">90%</bdi></span><span class="hm-c ok" style="--i:4" role="img" aria-label="سلطان الدوسري — فبراير: 98%"><bdi class="tnum">98%</bdi></span><span class="hm-c hi" style="--i:5" role="img" aria-label="سلطان الدوسري — مارس: 106%"><bdi class="tnum">106%</bdi></span><span class="hm-c over" style="--i:6" role="img" aria-label="سلطان الدوسري — أبريل: 114%"><bdi class="tnum">114%</bdi></span><span class="hm-c over" style="--i:7" role="img" aria-label="سلطان الدوسري — مايو: 120%"><bdi class="tnum">120%</bdi></span><span class="hm-c over" style="--i:8" role="img" aria-label="سلطان الدوسري — يونيو: 112%"><bdi class="tnum">112%</bdi></span><span class="hm-c hi" style="--i:9" role="img" aria-label="سلطان الدوسري — يوليو: 104%"><bdi class="tnum">104%</bdi></span><span class="hm-c ok" style="--i:10" role="img" aria-label="سلطان الدوسري — أغسطس: 96%"><bdi class="tnum">96%</bdi></span><span class="hm-c ok" style="--i:11" role="img" aria-label="سلطان الدوسري — سبتمبر: 90%"><bdi class="tnum">90%</bdi></span><span class="hm-c ok" style="--i:12" role="img" aria-label="سلطان الدوسري — أكتوبر: 86%"><bdi class="tnum">86%</bdi></span><span class="hm-c ok" style="--i:13" role="img" aria-label="سلطان الدوسري — نوفمبر: 80%"><bdi class="tnum">80%</bdi></span><span class="hm-c ok" style="--i:14" role="img" aria-label="سلطان الدوسري — ديسمبر: 76%"><bdi class="tnum">76%</bdi></span>
+            <span class="hm-nm">مها الزهراني</span><span class="hm-c lo" style="--i:4" role="img" aria-label="مها الزهراني — يناير: 54%"><bdi class="tnum">54%</bdi></span><span class="hm-c lo" style="--i:5" role="img" aria-label="مها الزهراني — فبراير: 62%"><bdi class="tnum">62%</bdi></span><span class="hm-c ok" style="--i:6" role="img" aria-label="مها الزهراني — مارس: 70%"><bdi class="tnum">70%</bdi></span><span class="hm-c ok" style="--i:7" role="img" aria-label="مها الزهراني — أبريل: 78%"><bdi class="tnum">78%</bdi></span><span class="hm-c ok" style="--i:8" role="img" aria-label="مها الزهراني — مايو: 86%"><bdi class="tnum">86%</bdi></span><span class="hm-c ok" style="--i:9" role="img" aria-label="مها الزهراني — يونيو: 92%"><bdi class="tnum">92%</bdi></span><span class="hm-c ok" style="--i:10" role="img" aria-label="مها الزهراني — يوليو: 96%"><bdi class="tnum">96%</bdi></span><span class="hm-c ok" style="--i:11" role="img" aria-label="مها الزهراني — أغسطس: 100%"><bdi class="tnum">100%</bdi></span><span class="hm-c ok" style="--i:12" role="img" aria-label="مها الزهراني — سبتمبر: 94%"><bdi class="tnum">94%</bdi></span><span class="hm-c ok" style="--i:13" role="img" aria-label="مها الزهراني — أكتوبر: 88%"><bdi class="tnum">88%</bdi></span><span class="hm-c ok" style="--i:14" role="img" aria-label="مها الزهراني — نوفمبر: 80%"><bdi class="tnum">80%</bdi></span><span class="hm-c lo" style="--i:15" role="img" aria-label="مها الزهراني — ديسمبر: 68%"><bdi class="tnum">68%</bdi></span>
+            <span class="hm-nm">عبدالله الشمري</span><span class="hm-c ok" style="--i:5" role="img" aria-label="عبدالله الشمري — يناير: 76%"><bdi class="tnum">76%</bdi></span><span class="hm-c ok" style="--i:6" role="img" aria-label="عبدالله الشمري — فبراير: 84%"><bdi class="tnum">84%</bdi></span><span class="hm-c ok" style="--i:7" role="img" aria-label="عبدالله الشمري — مارس: 92%"><bdi class="tnum">92%</bdi></span><span class="hm-c ok" style="--i:8" role="img" aria-label="عبدالله الشمري — أبريل: 100%"><bdi class="tnum">100%</bdi></span><span class="hm-c hi" style="--i:9" role="img" aria-label="عبدالله الشمري — مايو: 106%"><bdi class="tnum">106%</bdi></span><span class="hm-c hi" style="--i:10" role="img" aria-label="عبدالله الشمري — يونيو: 110%"><bdi class="tnum">110%</bdi></span><span class="hm-c over" style="--i:11" role="img" aria-label="عبدالله الشمري — يوليو: 116%"><bdi class="tnum">116%</bdi></span><span class="hm-c hi" style="--i:12" role="img" aria-label="عبدالله الشمري — أغسطس: 108%"><bdi class="tnum">108%</bdi></span><span class="hm-c ok" style="--i:13" role="img" aria-label="عبدالله الشمري — سبتمبر: 98%"><bdi class="tnum">98%</bdi></span><span class="hm-c ok" style="--i:14" role="img" aria-label="عبدالله الشمري — أكتوبر: 90%"><bdi class="tnum">90%</bdi></span><span class="hm-c ok" style="--i:15" role="img" aria-label="عبدالله الشمري — نوفمبر: 84%"><bdi class="tnum">84%</bdi></span><span class="hm-c ok" style="--i:16" role="img" aria-label="عبدالله الشمري — ديسمبر: 78%"><bdi class="tnum">78%</bdi></span>
+            <span class="hm-nm">لمى الغامدي</span><span class="hm-c lo" style="--i:6" role="img" aria-label="لمى الغامدي — يناير: 62%"><bdi class="tnum">62%</bdi></span><span class="hm-c ok" style="--i:7" role="img" aria-label="لمى الغامدي — فبراير: 70%"><bdi class="tnum">70%</bdi></span><span class="hm-c ok" style="--i:8" role="img" aria-label="لمى الغامدي — مارس: 80%"><bdi class="tnum">80%</bdi></span><span class="hm-c ok" style="--i:9" role="img" aria-label="لمى الغامدي — أبريل: 88%"><bdi class="tnum">88%</bdi></span><span class="hm-c ok" style="--i:10" role="img" aria-label="لمى الغامدي — مايو: 96%"><bdi class="tnum">96%</bdi></span><span class="hm-c hi" style="--i:11" role="img" aria-label="لمى الغامدي — يونيو: 102%"><bdi class="tnum">102%</bdi></span><span class="hm-c ok" style="--i:12" role="img" aria-label="لمى الغامدي — يوليو: 98%"><bdi class="tnum">98%</bdi></span><span class="hm-c ok" style="--i:13" role="img" aria-label="لمى الغامدي — أغسطس: 90%"><bdi class="tnum">90%</bdi></span><span class="hm-c ok" style="--i:14" role="img" aria-label="لمى الغامدي — سبتمبر: 82%"><bdi class="tnum">82%</bdi></span><span class="hm-c ok" style="--i:15" role="img" aria-label="لمى الغامدي — أكتوبر: 74%"><bdi class="tnum">74%</bdi></span><span class="hm-c lo" style="--i:16" role="img" aria-label="لمى الغامدي — نوفمبر: 68%"><bdi class="tnum">68%</bdi></span><span class="hm-c lo" style="--i:17" role="img" aria-label="لمى الغامدي — ديسمبر: 62%"><bdi class="tnum">62%</bdi></span>
+            <span class="hm-nm">ماجد السبيعي</span><span class="hm-c ok" style="--i:7" role="img" aria-label="ماجد السبيعي — يناير: 88%"><bdi class="tnum">88%</bdi></span><span class="hm-c ok" style="--i:8" role="img" aria-label="ماجد السبيعي — فبراير: 96%"><bdi class="tnum">96%</bdi></span><span class="hm-c hi" style="--i:9" role="img" aria-label="ماجد السبيعي — مارس: 104%"><bdi class="tnum">104%</bdi></span><span class="hm-c hi" style="--i:10" role="img" aria-label="ماجد السبيعي — أبريل: 110%"><bdi class="tnum">110%</bdi></span><span class="hm-c over" style="--i:11" role="img" aria-label="ماجد السبيعي — مايو: 118%"><bdi class="tnum">118%</bdi></span><span class="hm-c over" style="--i:12" role="img" aria-label="ماجد السبيعي — يونيو: 122%"><bdi class="tnum">122%</bdi></span><span class="hm-c over" style="--i:13" role="img" aria-label="ماجد السبيعي — يوليو: 114%"><bdi class="tnum">114%</bdi></span><span class="hm-c hi" style="--i:14" role="img" aria-label="ماجد السبيعي — أغسطس: 102%"><bdi class="tnum">102%</bdi></span><span class="hm-c ok" style="--i:15" role="img" aria-label="ماجد السبيعي — سبتمبر: 94%"><bdi class="tnum">94%</bdi></span><span class="hm-c ok" style="--i:16" role="img" aria-label="ماجد السبيعي — أكتوبر: 88%"><bdi class="tnum">88%</bdi></span><span class="hm-c ok" style="--i:17" role="img" aria-label="ماجد السبيعي — نوفمبر: 82%"><bdi class="tnum">82%</bdi></span><span class="hm-c ok" style="--i:18" role="img" aria-label="ماجد السبيعي — ديسمبر: 74%"><bdi class="tnum">74%</bdi></span>
+          </div>
+          <div class="hm-lg">
+            <span class="lg lo">دون <bdi class="tnum">70%</bdi> — سعة متاحة</span>
+            <span class="lg ok">من <bdi class="tnum">70%</bdi> إلى <bdi class="tnum">110%</bdi> — ضمن الطاقة</span>
+            <span class="lg over">أعلى من <bdi class="tnum">110%</bdi> — تجاوز الطاقة</span>
+          </div>
+        </div>
+      </div>
+
+        <div class="media-row">
+          <div class="hero-wrap" data-reveal style="--i:2">
+            <div class="frame laptop hero" data-parallax style="--depth:24px;--maxh:40svh">
+              <span class="glow" aria-hidden="true"></span>
+              <div class="bezel"><div class="screen">
+                <img data-shot="staffing-grid" alt="شبكة التسكين الشهري: الأشخاص في الأسطر والشهور في الأعمدة، وكل خانة نسبة إشغال" decoding="async">
+              </div></div>
+              <div class="foot"></div>
+            </div>
+          </div>
+          <div class="media-side" style="align-content:center">
+            <div data-reveal style="--i:3">
+              <div class="frame laptop" data-parallax style="--depth:22px">
+                <div class="bezel"><div class="screen">
+                  <img data-shot="timesheet" alt="بطاقة الشخص في مركز القطاع: نسبة إشغاله هذا الشهر وشريط أشهر السنة ومشاريعه ومهامه المفتوحة" decoding="async">
+                </div></div>
+              </div>
+              <p class="cap p2">بطاقة الشخص: إشغاله ومشاريعه ومهامه</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════ 8 · بقية المنصة ══════════════════════════ -->
+<section class="scene" id="grid" data-scene="8">
+  <div class="stage">
+    <div class="s-head center" style="margin-block-end:clamp(.6rem,1.3vh,1.1rem)">
+      <span class="eyebrow" data-reveal>وما وراء الشاشات الستّ</span>
+      <h2 class="s-title" data-reveal style="--i:1">المنصة نفسها تحمل <span class="hl">بقية العمل</span></h2>
+      <p class="s-lead" data-reveal style="--i:2">الفعاليات والعملاء والمال والتقارير والصلاحيات وسجل الحركة — لا أدوات متفرّقة تُجمَع لاحقاً.</p>
+    </div>
+
+    <div class="grid-shots">
+      <div class="tile-wrap" data-reveal style="--i:1"><div class="tile-shot"><img data-shot="events-capture" alt="التقاط جهة في فعالية: بطاقة تُدخَل في ثوانٍ من جناح المعرض" decoding="async"><span class="cap">الفعاليات — الالتقاط</span></div></div>
+      <div class="tile-wrap" data-reveal style="--i:2"><div class="tile-shot"><img data-shot="event-contacts" alt="الجهات الملتقطة في الفعالية بأسمائها وجهاتها وحالة مراجعتها" decoding="async"><span class="cap">الجهات الملتقطة</span></div></div>
+      <div class="tile-wrap" data-reveal style="--i:3"><div class="tile-shot"><img data-shot="event-meetings" alt="اجتماعات الفعالية: مواعيدها والمدعوون عنها من الفريق" decoding="async"><span class="cap">اجتماعات الفعالية</span></div></div>
+      <div class="tile-wrap" data-reveal style="--i:4"><div class="tile-shot"><img data-shot="clients" alt="سجل العملاء: الجهات وقيمتها وحالة العلاقة وآخر تواصل" decoding="async"><span class="cap">العملاء</span></div></div>
+      <div class="tile-wrap" data-reveal style="--i:5"><div class="tile-shot"><img data-shot="client-360" alt="صفحة العميل الكاملة: فرصه ومشاريعه وسجل تواصله وقيمته" decoding="async"><span class="cap">صفحة العميل</span></div></div>
+      <div class="tile-wrap" data-reveal style="--i:2"><div class="tile-shot"><img data-shot="finance" alt="مال المشروع: قيمة المشروع والإيراد المحقق ونسبة الفوترة وحركة المال شهراً بشهر" decoding="async"><span class="cap">مال المشروع</span></div></div>
+      <div class="tile-wrap" data-reveal style="--i:3"><div class="tile-shot"><img data-shot="contract-detail" alt="من التعاقد إلى التحصيل: قيمة العقد ثم الإيراد المحقق ثم المفوتر ثم المحصَّل ثم المستحق" decoding="async"><span class="cap">من التعاقد إلى التحصيل</span></div></div>
+      <div class="tile-wrap" data-reveal style="--i:4"><div class="tile-shot"><img data-shot="reports" alt="التقارير: مقارنات القطاعات والعملاء والفترات جاهزة للتصدير" decoding="async"><span class="cap">التقارير</span></div></div>
+      <div class="tile-wrap" data-reveal style="--i:5"><div class="tile-shot"><img data-shot="mail" alt="سجل الرسائل الصادرة من المنصة وحالة وصول كلٍّ منها" decoding="async"><span class="cap">الرسائل</span></div></div>
+      <div class="tile-wrap" data-reveal style="--i:6"><div class="tile-shot"><img data-shot="org-tree" alt="الهيكل التنظيمي: القطاعات والإدارات ومن يقود كلاً منها" decoding="async"><span class="cap">الهيكل التنظيمي</span></div></div>
+      <div class="tile-wrap" data-reveal style="--i:3"><div class="tile-shot"><img data-shot="users-grants" alt="المستخدمون وصلاحياتهم: الدور والقطاع والصلاحيات الممنوحة" decoding="async"><span class="cap">المستخدمون والصلاحيات</span></div></div>
+      <div class="tile-wrap" data-reveal style="--i:4"><div class="tile-shot"><img data-shot="audit" alt="سجل الحركة: من غيّر ماذا ومتى، بترتيب زمني قابل للتصفية" decoding="async"><span class="cap">سجل الحركة</span></div></div>
+      <div class="tile-wrap" data-reveal style="--i:6"><div class="tile-shot"><img data-shot="imports" alt="استيراد البيانات من Excel: المراجعة قبل الاعتماد وإمكان التراجع" decoding="async"><span class="cap">الاستيراد والتصدير</span></div></div>
+      <div class="tile-wrap" data-reveal style="--i:7"><div class="tile-shot"><img data-shot="guide" alt="الدليل داخل المنصة: شرح كل شاشة بلغة المستخدم لا بلغة النظام" decoding="async"><span class="cap">الدليل داخل المنصة</span></div></div>
+      <div class="tile-wrap" data-reveal style="--i:5"><div class="tile-shot"><img data-shot="ops-health" alt="شاشة سلامة التشغيل: حالة المنصة والنسخ الاحتياطية والمهام المجدولة" decoding="async"><span class="cap">سلامة التشغيل</span></div></div>
+      <div class="tile-wrap" data-reveal style="--i:5"><div class="tile-shot"><img data-shot="opp-activity" alt="سجل التواصل مع العميل داخل الفرصة: الزيارات والمكالمات والرسائل بترتيبها" decoding="async"><span class="cap">سجل التواصل</span></div></div>
+      <div class="tile-wrap" data-reveal style="--i:6"><div class="tile-shot"><img data-shot="projects-table" alt="المشاريع كجدول: العميل وقيمة العقد ونسبة الإنجاز وحالة المشروع" decoding="async"><span class="cap">المشاريع كجدول</span></div></div>
+      <div class="tile-wrap" data-reveal style="--i:7"><div class="tile-shot"><img data-shot="portfolio" alt="المحفظة: كل المشاريع مجتمعة بحالتها وقيمها ومخرجاتها المستحقة" decoding="async"><span class="cap">المحفظة كاملة</span></div></div>
+      <div class="tile-wrap" data-reveal style="--i:8"><div class="tile-shot"><img data-shot="home" alt="أول شاشة بعد الدخول: ما يحتاج تدخلك الآن وخطواتك التالية" decoding="async"><span class="cap">البداية لكل مستخدم</span></div></div>
+      <div class="tile-wrap" data-reveal style="--i:6"><div class="tile-shot"><img data-shot="team-roster" alt="قائمة الفريق: الأشخاص وأدوارهم وإدارتهم وحالة جاهزيتهم" decoding="async"><span class="cap">الفريق وجاهزيته</span></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════ 9 · الجوال ══════════════════════════ -->
+<section class="scene" id="mobile" data-scene="9">
+  <div class="stage">
+    <div class="s-head center" style="margin-block-end:clamp(1.2rem,2.6vh,2rem)">
+      <span class="eyebrow" data-reveal>على الجوال</span>
+      <h2 class="s-title" data-reveal style="--i:1">يعمل على الجوال <span class="hl">كما هو</span></h2>
+      <p class="s-lead" data-reveal style="--i:2">الشاشات نفسها والصلاحيات نفسها — من جناح المعرض أو من الطريق، دون تطبيق يُثبَّت.</p>
+    </div>
+
+    <div class="phones">
+      <div class="ph" data-reveal style="--i:1">
+        <div class="frame phone" data-parallax style="--depth:22px">
+          <span class="glow" aria-hidden="true"></span>
+          <div class="bezel"><span class="notch" aria-hidden="true"></span><div class="screen">
+            <img data-shot="m-home" alt="الصفحة الأولى على الجوال: ما يحتاج تدخلك اليوم" decoding="async">
+          </div></div>
+        </div>
+        <p class="cap">البداية</p>
+      </div>
+      <div class="ph" data-reveal style="--i:2">
+        <div class="frame phone" data-parallax style="--depth:34px">
+          <span class="glow" aria-hidden="true"></span>
+          <div class="bezel"><span class="notch" aria-hidden="true"></span><div class="screen">
+            <img data-shot="m-tasks" alt="المهام على الجوال: المستحق اليوم وما تأخّر" decoding="async">
+          </div></div>
+        </div>
+        <p class="cap p2">المهام</p>
+      </div>
+      <div class="ph" data-reveal style="--i:3">
+        <div class="frame phone" data-parallax style="--depth:14px">
+          <span class="glow" aria-hidden="true"></span>
+          <div class="bezel"><span class="notch" aria-hidden="true"></span><div class="screen">
+            <img data-shot="m-opps" alt="الفرص على الجوال: البطاقة بقيمتها ومرحلتها" decoding="async">
+          </div></div>
+        </div>
+        <p class="cap">الفرص</p>
+      </div>
+      <div class="ph" data-reveal style="--i:4">
+        <div class="frame phone" data-parallax style="--depth:30px">
+          <span class="glow" aria-hidden="true"></span>
+          <div class="bezel"><span class="notch" aria-hidden="true"></span><div class="screen">
+            <img data-shot="m-sector" alt="مركز القطاع على الجوال: نسبة التحقق وحالة المشاريع" decoding="async">
+          </div></div>
+        </div>
+        <p class="cap p2">مركز القطاع</p>
+      </div>
+      <div class="ph" data-reveal style="--i:5">
+        <div class="frame phone" data-parallax style="--depth:18px">
+          <span class="glow" aria-hidden="true"></span>
+          <div class="bezel"><span class="notch" aria-hidden="true"></span><div class="screen">
+            <img data-shot="m-approvals" alt="الاعتمادات على الجوال: القرار يُتَّخذ من الجوال مباشرة" decoding="async">
+          </div></div>
+        </div>
+        <p class="cap g">الاعتمادات</p>
+      </div>
+      <div class="ph" data-reveal style="--i:6">
+        <div class="frame phone" data-parallax style="--depth:26px">
+          <span class="glow" aria-hidden="true"></span>
+          <div class="bezel"><span class="notch" aria-hidden="true"></span><div class="screen">
+            <img data-shot="m-events" alt="الفعالية على الجوال: التقاط الجهات من جناح المعرض" decoding="async">
+          </div></div>
+        </div>
+        <p class="cap">الفعاليات</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════ 10 · الدخول ══════════════════════════ -->
+<section class="scene" id="login" data-scene="10">
+  <div class="stage">
+    <div class="login-wrap">
+      <div class="col-text">
+        <span class="eyebrow" data-reveal>الدخول</span>
+        <div class="s-head">
+          <h2 class="s-title" data-reveal style="--i:1">الدخول برمزٍ <span class="hl">يصل إلى بريدك</span></h2>
+          <p class="s-lead" data-reveal style="--i:2">لا كلمة مرور تُنسى ولا تُشارَك — رمزٌ من ستّ خانات صالحٌ لدقائق معدودة.</p>
+        </div>
+        <div class="card otp-card" data-reveal style="--i:3">
+          <span class="mail">أرسلنا الرمز إلى بريدك</span>
+          <!-- C2: ستّ خانات يُكتب فيها الرمز خانةً خانة -->
+          <div class="fragment" data-fragment="otp" style="inline-size:100%">
+          <div class="otp" dir="ltr">
+            <span class="otp-b" style="--i:0"><b class="tnum">4</b></span>
+            <span class="otp-b" style="--i:1"><b class="tnum">8</b></span>
+            <span class="otp-b" style="--i:2"><b class="tnum">2</b></span>
+            <span class="otp-b" style="--i:3"><b class="tnum">9</b></span>
+            <span class="otp-b" style="--i:4"><b class="tnum">3</b></span>
+            <span class="otp-b" style="--i:5"><b class="tnum">1</b></span>
+          </div>
+        </div>
+          <p class="card-x">وبعد الدخول، لا يرى المستخدم إلا ما يخصّ دوره.</p>
+        </div>
+      </div>
+
+      <div class="col-media">
+        <div class="media-solo">
+          <div class="hero-wrap" data-reveal style="--i:1">
+            <div class="frame laptop hero" data-parallax style="--depth:24px;--maxh:52svh">
+              <span class="glow" aria-hidden="true"></span>
+              <div class="bezel"><div class="screen">
+                <img data-shot="login-otp" alt="شاشة الدخول: إدخال البريد ثم رمز من ستّ خانات" decoding="async">
+              </div></div>
+              <div class="foot"></div>
+            </div>
+            <p class="cap">شاشة الدخول</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════ 11 · قابل للتبنّي ══════════════════════════ -->
+<section class="scene" id="adopt" data-scene="11">
+  <div class="stage">
+    <div class="s-head center" style="margin-block-end:clamp(1.5rem,3vh,2.6rem)">
+      <span class="eyebrow gold" data-reveal>لماذا سند</span>
+      <h2 class="s-title" data-reveal style="--i:1">سند منتجٌ <span class="hl">قابل للتبنّي</span></h2>
+      <p class="s-lead" data-reveal style="--i:2">بُني في رؤية الخبراء الاستشارية لعملها اليومي، ويُسلَّم لأي مؤسسة تُدير مشاريع وفرقاً.</p>
+    </div>
+
+    <div class="trio">
+      <article class="card pcard" data-reveal style="--i:1">
+        <span class="num" aria-hidden="true">01</span>
+        <h3>عربيٌّ أولاً</h3>
+        <p>الاتجاه والأرقام والتقويم والرسائل عربية بالأصل، ومصطلح واحد لكل معنى في كل شاشة — لا واجهة مُعرَّبة على عجل.</p>
+      </article>
+
+      <article class="card pcard" data-reveal style="--i:2">
+        <span class="num" aria-hidden="true">02</span>
+        <h3>صلاحيات بالدور</h3>
+        <p>
+          <bdi class="tnum" data-count="18">0</bdi> دوراً، كلٌّ يرى ما يخصّه وحده.
+          والحسّاس — الرواتب والتكاليف والهوامش — محجوبٌ في مصدره لا في الشاشة.
+        </p>
+      </article>
+
+      <article class="card pcard" data-reveal style="--i:3">
+        <span class="num" aria-hidden="true">03</span>
+        <h3>بياناتك عندك</h3>
+        <p>تعمل على خادمٍ واحد دون خدمات خارجية، ونسخك الاحتياطية بيدك. وكل تغيير مُقيَّدٌ في سجل الحركة باسم صاحبه.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════ 12 · الختام ══════════════════════════ -->
+<section class="scene" id="closing" data-scene="12">
+  <div class="stage">
+    <div class="evc-mark" data-reveal><img src="brand/evc-letters-white.svg" data-inline-svg alt="EVC"></div>
+
+    <h2 class="s-title" data-reveal style="--i:1;font-size:var(--h1);color:#fff">لنعرضه عليك <span class="hl">مباشرة</span></h2>
+    <p class="s-lead" data-reveal style="--i:2;text-align:center">عرضٌ حيّ على بياناتك، في أقل من ساعة.</p>
+
+    <div class="sweep" data-reveal style="--i:3" aria-hidden="true"></div>
+
+    <div class="close-grid">
+      <div class="card qr-box" data-reveal style="--i:4">
+        <!-- C2: إطار رمز QR يُرسَم زواياه -->
+        <div class="fragment" data-fragment="qr">
+        <div class="qr">
+          <svg class="qr-svg" viewBox="0 0 100 100" role="img" aria-label="رمز يُمسح بالجوال لحجز عرضٍ حيّ">
+            <defs>
+              <linearGradient id="c2-qr" x1="1" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#7FA8FF"/>
+                <stop offset=".5" stop-color="#9CB8FF"/>
+                <stop offset="1" stop-color="#CE9BE6"/>
+              </linearGradient>
+            </defs>
+            <g class="qr-mods" fill="url(#c2-qr)">
+              <rect x="20.5" y="20.5" width="4.0" height="4.0" rx=".95" style="--i:0"/>
+              <rect x="25.4" y="20.5" width="4.0" height="4.0" rx=".95" style="--i:1"/>
+              <rect x="30.2" y="20.5" width="4.0" height="4.0" rx=".95" style="--i:2"/>
+              <rect x="39.9" y="20.5" width="4.0" height="4.0" rx=".95" style="--i:4"/>
+              <rect x="44.8" y="20.5" width="4.0" height="4.0" rx=".95" style="--i:5"/>
+              <rect x="54.4" y="20.5" width="4.0" height="4.0" rx=".95" style="--i:7"/>
+              <rect x="59.3" y="20.5" width="4.0" height="4.0" rx=".95" style="--i:8"/>
+              <rect x="69.0" y="20.5" width="4.0" height="4.0" rx=".95" style="--i:10"/>
+              <rect x="78.7" y="20.5" width="4.0" height="4.0" rx=".95" style="--i:12"/>
+              <rect x="20.5" y="25.4" width="4.0" height="4.0" rx=".95" style="--i:1"/>
+              <rect x="25.4" y="25.4" width="4.0" height="4.0" rx=".95" style="--i:2"/>
+              <rect x="39.9" y="25.4" width="4.0" height="4.0" rx=".95" style="--i:5"/>
+              <rect x="49.6" y="25.4" width="4.0" height="4.0" rx=".95" style="--i:7"/>
+              <rect x="64.2" y="25.4" width="4.0" height="4.0" rx=".95" style="--i:10"/>
+              <rect x="69.0" y="25.4" width="4.0" height="4.0" rx=".95" style="--i:11"/>
+              <rect x="73.8" y="25.4" width="4.0" height="4.0" rx=".95" style="--i:12"/>
+              <rect x="20.5" y="30.2" width="4.0" height="4.0" rx=".95" style="--i:2"/>
+              <rect x="25.4" y="30.2" width="4.0" height="4.0" rx=".95" style="--i:3"/>
+              <rect x="30.2" y="30.2" width="4.0" height="4.0" rx=".95" style="--i:4"/>
+              <rect x="35.0" y="30.2" width="4.0" height="4.0" rx=".95" style="--i:5"/>
+              <rect x="44.8" y="30.2" width="4.0" height="4.0" rx=".95" style="--i:7"/>
+              <rect x="59.3" y="30.2" width="4.0" height="4.0" rx=".95" style="--i:10"/>
+              <rect x="64.2" y="30.2" width="4.0" height="4.0" rx=".95" style="--i:11"/>
+              <rect x="73.8" y="30.2" width="4.0" height="4.0" rx=".95" style="--i:13"/>
+              <rect x="78.7" y="30.2" width="4.0" height="4.0" rx=".95" style="--i:14"/>
+              <rect x="35.0" y="35.0" width="4.0" height="4.0" rx=".95" style="--i:6"/>
+              <rect x="39.9" y="35.0" width="4.0" height="4.0" rx=".95" style="--i:7"/>
+              <rect x="59.3" y="35.0" width="4.0" height="4.0" rx=".95" style="--i:11"/>
+              <rect x="64.2" y="35.0" width="4.0" height="4.0" rx=".95" style="--i:12"/>
+              <rect x="69.0" y="35.0" width="4.0" height="4.0" rx=".95" style="--i:13"/>
+              <rect x="20.5" y="39.9" width="4.0" height="4.0" rx=".95" style="--i:4"/>
+              <rect x="39.9" y="39.9" width="4.0" height="4.0" rx=".95" style="--i:8"/>
+              <rect x="44.8" y="39.9" width="4.0" height="4.0" rx=".95" style="--i:9"/>
+              <rect x="54.4" y="39.9" width="4.0" height="4.0" rx=".95" style="--i:11"/>
+              <rect x="59.3" y="39.9" width="4.0" height="4.0" rx=".95" style="--i:12"/>
+              <rect x="69.0" y="39.9" width="4.0" height="4.0" rx=".95" style="--i:14"/>
+              <rect x="73.8" y="39.9" width="4.0" height="4.0" rx=".95" style="--i:15"/>
+              <rect x="78.7" y="39.9" width="4.0" height="4.0" rx=".95" style="--i:16"/>
+              <rect x="30.2" y="44.8" width="4.0" height="4.0" rx=".95" style="--i:7"/>
+              <rect x="49.6" y="44.8" width="4.0" height="4.0" rx=".95" style="--i:11"/>
+              <rect x="54.4" y="44.8" width="4.0" height="4.0" rx=".95" style="--i:12"/>
+              <rect x="64.2" y="44.8" width="4.0" height="4.0" rx=".95" style="--i:14"/>
+              <rect x="73.8" y="44.8" width="4.0" height="4.0" rx=".95" style="--i:16"/>
+              <rect x="78.7" y="44.8" width="4.0" height="4.0" rx=".95" style="--i:17"/>
+              <rect x="20.5" y="49.6" width="4.0" height="4.0" rx=".95" style="--i:6"/>
+              <rect x="25.4" y="49.6" width="4.0" height="4.0" rx=".95" style="--i:7"/>
+              <rect x="30.2" y="49.6" width="4.0" height="4.0" rx=".95" style="--i:8"/>
+              <rect x="39.9" y="49.6" width="4.0" height="4.0" rx=".95" style="--i:10"/>
+              <rect x="44.8" y="49.6" width="4.0" height="4.0" rx=".95" style="--i:11"/>
+              <rect x="73.8" y="49.6" width="4.0" height="4.0" rx=".95" style="--i:17"/>
+              <rect x="78.7" y="49.6" width="4.0" height="4.0" rx=".95" style="--i:18"/>
+              <rect x="20.5" y="54.4" width="4.0" height="4.0" rx=".95" style="--i:7"/>
+              <rect x="25.4" y="54.4" width="4.0" height="4.0" rx=".95" style="--i:8"/>
+              <rect x="30.2" y="54.4" width="4.0" height="4.0" rx=".95" style="--i:9"/>
+              <rect x="35.0" y="54.4" width="4.0" height="4.0" rx=".95" style="--i:10"/>
+              <rect x="39.9" y="54.4" width="4.0" height="4.0" rx=".95" style="--i:11"/>
+              <rect x="44.8" y="54.4" width="4.0" height="4.0" rx=".95" style="--i:12"/>
+              <rect x="49.6" y="54.4" width="4.0" height="4.0" rx=".95" style="--i:13"/>
+              <rect x="69.0" y="54.4" width="4.0" height="4.0" rx=".95" style="--i:17"/>
+              <rect x="78.7" y="54.4" width="4.0" height="4.0" rx=".95" style="--i:19"/>
+              <rect x="30.2" y="59.3" width="4.0" height="4.0" rx=".95" style="--i:10"/>
+              <rect x="35.0" y="59.3" width="4.0" height="4.0" rx=".95" style="--i:11"/>
+              <rect x="54.4" y="59.3" width="4.0" height="4.0" rx=".95" style="--i:15"/>
+              <rect x="64.2" y="59.3" width="4.0" height="4.0" rx=".95" style="--i:17"/>
+              <rect x="78.7" y="59.3" width="4.0" height="4.0" rx=".95" style="--i:20"/>
+              <rect x="30.2" y="64.2" width="4.0" height="4.0" rx=".95" style="--i:11"/>
+              <rect x="35.0" y="64.2" width="4.0" height="4.0" rx=".95" style="--i:12"/>
+              <rect x="49.6" y="64.2" width="4.0" height="4.0" rx=".95" style="--i:15"/>
+              <rect x="54.4" y="64.2" width="4.0" height="4.0" rx=".95" style="--i:16"/>
+              <rect x="20.5" y="69.0" width="4.0" height="4.0" rx=".95" style="--i:10"/>
+              <rect x="35.0" y="69.0" width="4.0" height="4.0" rx=".95" style="--i:13"/>
+              <rect x="49.6" y="69.0" width="4.0" height="4.0" rx=".95" style="--i:16"/>
+              <rect x="54.4" y="69.0" width="4.0" height="4.0" rx=".95" style="--i:17"/>
+              <rect x="64.2" y="69.0" width="4.0" height="4.0" rx=".95" style="--i:19"/>
+              <rect x="73.8" y="69.0" width="4.0" height="4.0" rx=".95" style="--i:21"/>
+              <rect x="30.2" y="73.8" width="4.0" height="4.0" rx=".95" style="--i:13"/>
+              <rect x="35.0" y="73.8" width="4.0" height="4.0" rx=".95" style="--i:14"/>
+              <rect x="49.6" y="73.8" width="4.0" height="4.0" rx=".95" style="--i:17"/>
+              <rect x="59.3" y="73.8" width="4.0" height="4.0" rx=".95" style="--i:19"/>
+              <rect x="64.2" y="73.8" width="4.0" height="4.0" rx=".95" style="--i:20"/>
+              <rect x="69.0" y="73.8" width="4.0" height="4.0" rx=".95" style="--i:21"/>
+              <rect x="73.8" y="73.8" width="4.0" height="4.0" rx=".95" style="--i:22"/>
+              <rect x="30.2" y="78.7" width="4.0" height="4.0" rx=".95" style="--i:14"/>
+              <rect x="35.0" y="78.7" width="4.0" height="4.0" rx=".95" style="--i:15"/>
+              <rect x="39.9" y="78.7" width="4.0" height="4.0" rx=".95" style="--i:16"/>
+              <rect x="54.4" y="78.7" width="4.0" height="4.0" rx=".95" style="--i:19"/>
+              <rect x="59.3" y="78.7" width="4.0" height="4.0" rx=".95" style="--i:20"/>
+              <rect x="69.0" y="78.7" width="4.0" height="4.0" rx=".95" style="--i:22"/>
+              <rect x="73.8" y="78.7" width="4.0" height="4.0" rx=".95" style="--i:23"/>
+              <rect x="78.7" y="78.7" width="4.0" height="4.0" rx=".95" style="--i:24"/>
+            </g>
+            <g class="qr-corners" fill="none" stroke="url(#c2-qr)" stroke-width="3.2" stroke-linecap="round">
+              <path class="qr-c" pathLength="1" d="M8 26 V14 A6 6 0 0 1 14 8 H26"/>
+              <path class="qr-c" pathLength="1" d="M74 8 H86 A6 6 0 0 1 92 14 V26"/>
+              <path class="qr-c" pathLength="1" d="M92 74 V86 A6 6 0 0 1 86 92 H74"/>
+              <path class="qr-c" pathLength="1" d="M26 92 H14 A6 6 0 0 1 8 86 V74"/>
+            </g>
+          </svg>
+        </div>
+      </div>
+        <p class="cap g" style="padding-block-start:0">امسح الرمز لحجز عرض</p>
+      </div>
+
+      <div class="card qr-box contact" data-reveal style="--i:5">
+        <span class="k-line" aria-hidden="true"></span>
+        <p class="by">من تطوير رؤية الخبراء الاستشارية</p>
+        <span class="site">evc.sa</span>
+        <p class="cap g" style="padding-block-start:0">اسأل مُقدِّم العرض عن موعد</p>
+        <!-- TODO owner: contact email/phone -->
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<!-- مفاتيح العرض — تُفتح وتُغلق بالمفتاح ؟ -->
+<aside class="keys" id="keys" hidden role="dialog" aria-modal="false" aria-labelledby="keys-h">
+  <h3 id="keys-h" tabindex="-1">مفاتيح العرض</h3>
+  <dl>
+    <dt>المشهد التالي</dt><dd><kbd>Space</kbd> <kbd>↓</kbd> <kbd>←</kbd> <kbd>PgDn</kbd></dd>
+    <dt>المشهد السابق</dt><dd><kbd>↑</kbd> <kbd>→</kbd> <kbd>PgUp</kbd></dd>
+    <dt>مشهد بعينه</dt><dd><kbd>1</kbd> … <kbd>9</kbd></dd>
+    <dt>الأول والأخير</dt><dd><kbd>Home</kbd> <kbd>End</kbd></dd>
+    <dt>إخفاء هذه اللوحة</dt><dd><kbd>?</kbd> أو <kbd>Esc</kbd></dd>
+  </dl>
+</aside>
+
+<script src="app.js" data-inline="js" defer></script>
+</body>
+</html>

@@ -1,5 +1,6 @@
 ---
 name: frontend-builder
+model: opus
 description: Builds Sanad SSR pages and page-scoped client JS (views, drill-downs, modals, kanban). Use for any UI work in platform/src/web. Arabic-first, design-system-bound.
 tools: Read, Edit, Write, Bash, Grep, Glob
 ---

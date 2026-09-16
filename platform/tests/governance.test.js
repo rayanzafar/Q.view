@@ -25,7 +25,9 @@ before(async () => {
   for (const role of ['employee', 'sector_lead', 'bd_manager', 'viewer', 'admin']) {
     await db.insert('app_user', { id: 'u_' + role, username: role, role_id: role, sector_id: 'S1', scope: role === 'admin' ? 'company' : 'own', active: 1, created_at: now });
   }
-  await db.insert('opportunity', { id: 'O1', title_ar: 'فرصة', sector_id: 'S1', stage_id: 'LEAD', value_halalas: 100000, created_at: now });
+  // O1 يملكها مدير تطوير الأعمال — فيرفعها للاعتماد أدناه: منذ قلب الرؤية (٢٠٢٦-٠٨) لا يقرأ
+  // BD إلا فرصه، ورفعُ الاعتماد يشترط قراءة الصف وتعديله.
+  await db.insert('opportunity', { id: 'O1', title_ar: 'فرصة', sector_id: 'S1', stage_id: 'LEAD', value_halalas: 100000, owner_user_id: 'u_bd_manager', created_at: now });
   ai = await import('../src/core/ai/assistant.js');
   ts = await import('../src/modules/timesheets/timesheets.js');
   wf = await import('../src/modules/workflow/engine.js');
@@ -35,30 +37,38 @@ after(async () => { await db.close(); for (const s of ['', '-wal', '-shm']) rmSy
 const U = (role, sector, scope = 'own') => ({ id: 'u_' + role, username: role, role_id: role, sector_id: sector, scope, projectIds: new Set(), teamIds: new Set() });
 const ctx = (u) => ({ user: u, ip: '127.0.0.1' });
 
-test('AI: propose_change returns a PREVIEW and does NOT write', async () => {
-  const r = await ai.ask(ctx(U('sector_lead', 'S1', 'sector')), 'انقل', { intent: 'propose_change', change: { type: 'opp_stage', oppId: 'O1', stage: 'WON' } });
-  assert.ok(r.applyToken, 'must return an apply token');
-  assert.equal((await db.get('SELECT stage_id FROM opportunity WHERE id = ?', ['O1'])).stage_id, 'LEAD', 'no write before apply');
+// المسار تغيّر بقرار تصميم معلَن: الدردشة **لا تُصدر رمز تأكيد إطلاقاً** (فلا يمكن لخطأ في
+// «فهم» جملة أن يكتب شيئاً)، والكتابة تبدأ من معاينة بحمولة مبنيّة {type, fields}، والتطبيق
+// انتقل إلى طبقة الوحدات (modules/ai/apply.js) كي يمرّ بخدمة `moveStage` بكل قواعدها بدل أن
+// يكتب في الجدول مباشرةً. الفحوص أدناه تحرس العقد الجديد؛ وتفصيلُه في tests/security/ai-*.
+test('AI: a chat turn NEVER returns an apply token and never writes', async () => {
+  const r = await ai.ask(ctx(U('sector_lead', 'S1', 'sector')), 'انقل الفرصة إلى فائزة');
+  assert.ok(!('applyToken' in r), 'chat must not hand out a write token');
+  assert.ok(r.form, 'it hands back a form to fill instead of guessing');
+  assert.equal((await db.get('SELECT stage_id FROM opportunity WHERE id = ?', ['O1'])).stage_id, 'LEAD', 'no write from chat');
 });
 
-test('AI: viewer without update permission is DENIED at propose time', async () => {
+test('AI: viewer without update permission is DENIED at preview time', async () => {
   await assert.rejects(
-    () => ai.ask(ctx(U('viewer', 'S1', 'sector')), 'x', { intent: 'propose_change', change: { type: 'opp_stage', oppId: 'O1', stage: 'WON' } }),
+    () => ai.proposePreview(ctx(U('viewer', 'S1', 'sector')), { type: 'opp_stage', fields: { oppId: 'O1', stage: 'WON' } }),
     /صلاحية|forbidden|تعديل/);
 });
 
 test('AI: apply with another user\'s token is rejected', async () => {
-  const r = await ai.ask(ctx(U('sector_lead', 'S1', 'sector')), 'انقل', { intent: 'propose_change', change: { type: 'opp_stage', oppId: 'O1', stage: 'WON' } });
-  await assert.rejects(async () => ai.applyChange(ctx(U('viewer', 'S1', 'sector')), r.applyToken), /غير صالحة/);
+  const { applyChange } = await import('../src/modules/ai/apply.js');
+  const r = await ai.proposePreview(ctx(U('sector_lead', 'S1', 'sector')), { type: 'opp_stage', fields: { oppId: 'O1', stage: 'WON' } });
+  await assert.rejects(async () => applyChange(ctx(U('viewer', 'S1', 'sector')), r.applyToken), /لا أجد هذه المعاينة/);
   assert.equal((await db.get('SELECT stage_id FROM opportunity WHERE id = ?', ['O1'])).stage_id, 'LEAD');
 });
 
-test('AI: owner applies own token → writes + audits', async () => {
+test('AI: owner applies own token → writes through the service + audits', async () => {
+  const { applyChange } = await import('../src/modules/ai/apply.js');
   const owner = U('sector_lead', 'S1', 'sector');
-  const r = await ai.ask(ctx(owner), 'انقل', { intent: 'propose_change', change: { type: 'opp_stage', oppId: 'O1', stage: 'WON' } });
-  const res = await ai.applyChange(ctx(owner), r.applyToken);
+  const r = await ai.proposePreview(ctx(owner), { type: 'opp_stage', fields: { oppId: 'O1', stage: 'WON' } });
+  const res = await applyChange(ctx(owner), r.applyToken);
   assert.match(res.reply, /تم تطبيق/);
   assert.equal((await db.get('SELECT stage_id FROM opportunity WHERE id = ?', ['O1'])).stage_id, 'WON');
+  assert.ok(await db.get("SELECT id FROM opportunity_stage_history WHERE opportunity_id='O1'"), 'stage history written by moveStage');
   assert.ok(await db.get("SELECT id FROM audit_log WHERE resource='opportunity' AND action='update'"), 'must be audited');
 });
 
@@ -93,17 +103,30 @@ test('Finance: progress claim from delivered deliverables + permission + collect
   await db.insert('contract', { id: 'CF1', code: 'CF-1', project_id: 'PF1', sector_id: 'S1', value_halalas: 1000000, status: 'ACTIVE', created_at: now });
   await db.insert('deliverable', { id: 'DF1', project_id: 'PF1', name_ar: 'مخرج 1', amount_halalas: 400000, status: 'DELIVERED', sector_id: 'S1', created_at: now });
   await db.insert('deliverable', { id: 'DF2', project_id: 'PF1', name_ar: 'مخرج 2', amount_halalas: 300000, status: 'DELIVERED', sector_id: 'S1', created_at: now });
-  const ctxF = (role) => ({ user: { id: 'u_' + role, username: role, role_id: role, sector_id: 'S1', scope: role === 'finance' ? 'company' : 'own', projectIds: new Set(['PF1']) }, ip: '127.0.0.1' });
+  const ctxF = (role) => ({ user: { id: 'u_' + role, username: role, role_id: role, sector_id: 'S1', scope: role === 'ceo_office' ? 'company' : 'own', projectIds: new Set(['PF1']) }, ip: '127.0.0.1' });
   // bd_manager cannot issue a claim
   await assert.rejects(async () => fin.createProgressClaim(ctxF('bd_manager'), { contractId: 'CF1' }), /صلاحية|forbidden/);
   // finance can — amount = sum of delivered
-  const inv = await fin.createProgressClaim(ctxF('finance'), { contractId: 'CF1', periodLabel: 'يونيو' });
+  const inv = await fin.createProgressClaim(ctxF('ceo_office'), { contractId: 'CF1', periodLabel: 'يونيو' });
   assert.equal(inv.amount_halalas, 700000);
   assert.equal(inv.status, 'ISSUED');
-  assert.equal((await db.get('SELECT status FROM deliverable WHERE id=?', ['DF1'])).status, 'INVOICED');
+  // الفوترة تختم الصف ولا تمسّ حالة العمل: كانت تكتب 'INVOICED' فوقها فيُمحى أثرُ التسليم
+  // والاعتماد، وتُقرأ الفاتورة إنجازاً في كل نسبة تُحسب من هذه الخانة.
+  const df1 = await db.get('SELECT status, invoiced_at, collected_at FROM deliverable WHERE id=?', ['DF1']);
+  assert.equal(df1.status, 'DELIVERED', 'حالة العمل كما تركها الفريق');
+  assert.ok(df1.invoiced_at, 'وختم الفوترة مسجَّل بجانبها');
+  assert.equal(df1.collected_at, null, 'ولا تحصيل بعد');
   // record a partial collection → PARTIALLY_PAID, then full → PAID
-  await fin.recordCollection(ctxF('finance'), { invoiceId: inv.id, amountSar: 3000 });
+  await fin.recordCollection(ctxF('ceo_office'), { invoiceId: inv.id, amountSar: 3000 });
   assert.equal((await db.get('SELECT status FROM invoice WHERE id=?', [inv.id])).status, 'PARTIALLY_PAID');
+  assert.equal((await db.get('SELECT collected_at FROM deliverable WHERE id=?', ['DF1'])).collected_at, null,
+    'دفعة جزئية ليست تحصيلاً للمخرَج — نسبة التحصيل تُقاس بالمخرَج المسدَّد كاملاً');
+  // ثم السداد الكامل: الفاتورة PAID، وختم التحصيل ينزل على مخرجاتها.
+  await fin.recordCollection(ctxF('ceo_office'), { invoiceId: inv.id, amountSar: 4000 });
+  assert.equal((await db.get('SELECT status FROM invoice WHERE id=?', [inv.id])).status, 'PAID');
+  const settled = await db.get('SELECT status, collected_at FROM deliverable WHERE id=?', ['DF1']);
+  assert.ok(settled.collected_at, 'وقد حُصِّل');
+  assert.equal(settled.status, 'DELIVERED', 'والتحصيل أيضاً لا يُقرأ اعتماداً');
 });
 
 test('Finance regression: sector-scoped user runs byPM/byContract/summary without ambiguous-column SQL error', async () => {

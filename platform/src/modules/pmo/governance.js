@@ -1,10 +1,12 @@
 // PMO governance depth — risks / issues / decisions / change requests / milestones per project.
 // Read = whoever may read the project; write = whoever may UPDATE the project (the project's PM
 // via project-scope grants, sector update rights, operations, admin). Every write audited.
-import { all, get, insert, update } from '../../core/db/index.js';
+import { all, get, insert, update, run, tx } from '../../core/db/index.js';
 import { can } from '../../core/rbac/index.js';
+import { syncDeliverableRevenue } from '../finance/recognition.js';
+import { loadReadableProject, projectActionAllowed } from './project-access.js';
 import { audit } from '../../core/audit/index.js';
-import { id, nowIso } from '../../core/util/ids.js';
+import { id, nowIso, toHalalas } from '../../core/util/ids.js';
 import { forbidden, notFound, badRequest } from '../../core/http/errors.js';
 
 const LEVELS = ['low', 'med', 'high'];
@@ -18,6 +20,56 @@ function exposureOf(probability, impact) {
   if (!p || !i) return null;
   const x = p * i;
   return x >= 6 ? 'مرتفع' : x >= 3 ? 'متوسط' : 'منخفض';
+}
+
+// ── المخرجات: السجل السادس، وأول مسار في المنتج كله يكتبها بعد إنشاء المشروع ───────────────
+// قبل هذه الإضافة كان جدول المخرجات يُكتب من موضعين لا ثالث لهما: نموذج استلام العقد لحظة
+// إنشاء المشروع، وتحويلها آلياً إلى «مُفوتر» عند إصدار المستخلص. فلا سبيل لأحد بعد ذلك أن
+// يضيف مخرَجاً ولا أن يقول «سُلِّم» أو «قُبل» — بينما المستخلص يُبنى على هذه الحالة بالذات
+// (finance: المؤهَّل للفوترة = مُسلَّم أو مقبول)، وتغذية «يحتاج انتباهك» تُنبِّه على مخرجات
+// شهور سابقة عالقة. أي أن المنصة كانت تطالب بعمل لا يملك أحد أداةً لإنجازه.
+//
+// **أربع حقائق مستقلة، لا خانة واحدة** (تصحيح نمذجة، ترحيلة ٠١٧):
+// كانت الخانة الواحدة تحمل دورة العمل البشرية **و**نتيجة المسار المالي معاً، فيكتب إصدارُ
+// المستخلص `INVOICED` فوق `ACCEPTED` ويُمحى أثرُ اعتماد العميل — والتحصيل يمحوها ثانية. وثلاث
+// نسب تُقرأ من هذه الخانة (الإنجاز التنفيذي · الفوترة · التحصيل) وهي لا تحمل إلا آخرَ ما حدث.
+// القاعدة المصحِّحة: **صرفُ المستخلص أو تحصيله لا يعني أن المخرَج أُنجز أو اعتُمد.**
+//   • الحالة: مسودة ← جارٍ العمل ← تم التسليم ← تم الاعتماد (ومُعاد للتعديل) — بيد الإنسان
+//     وحده، ومعها ختمُ من غيّرها ومتى. لا معايير قبول ولا مسار موافقات: يكفي أن يقولها المخوَّل.
+//   • تمت الفوترة · تم التحصيل: ختمان زمنيان على الصف نفسه، تكتبهما وحدة المالية وحدها عند
+//     إصدار المستخلص وتحصيله. ضبطُهما يدوياً يفصل الرقم عن الفاتورة فتصبح المطالبة بلا سند.
+//   • المخرَج المفوتر **تتغيّر حالته** بحرية (قد يُعاد تسليمه بعد الفوترة، وهذا واقع لا شذوذ)
+//     لكنه **لا يُحذف** — حذفه يترك سطر فاتورة صادرة يشير إلى لا شيء.
+const DLV_STATUSES = ['DRAFT', 'IN_PROGRESS', 'DELIVERED', 'ACCEPTED', 'REJECTED'];
+export const DELIVERABLE_STATUSES = DLV_STATUSES;
+// أُبقيت باسمها القديم لأن الشاشات تستوردها: كل الحالات صارت بيد الإنسان، فالقائمة واحدة.
+export const DELIVERABLE_MANUAL_STATUSES = DLV_STATUSES;
+// المخرجات التي **لم يُفرَغ منها بعد** — كل حالةٍ عدا «تم الاعتماد». مصدرٌ واحد لهذا المعنى
+// كي لا تُعاد كتابة القائمة في شاشةٍ أخرى: إعادةُ تسمية حالةٍ في 017 (PENDING ← DRAFT) تركت
+// «صفحتي» تُرشِّح على اسمٍ لا وجود له، فأسقطت كل مخرجات الموظف بصمت (KI-050).
+export const DELIVERABLE_OPEN_STATUSES = DLV_STATUSES.filter((s) => s !== 'ACCEPTED');
+
+// شهر الاستحقاق يصل كنص «YYYY-MM» من قائمة واحدة، فلا يُخمَّن شهرٌ بلا سنة ولا سنةٌ بلا شهر.
+function periodParts(period) {
+  const v = String(period == null ? '' : period).trim();
+  if (!v) return { month: null, year: null };
+  return { year: Number(v.slice(0, 4)), month: Number(v.slice(5, 7)) };
+}
+// القيمة غير المتفق عليها تُخزَّن **فراغاً** لا صفراً: الصفر رقمٌ يُجمع في المطالبات ويُقرأ
+// «بلا قيمة»، والفراغ يُعرض «غير محدَّدة» فيُطالَب به.
+function deliverableAmount(d) {
+  const raw = d.amount_sar;
+  if (raw == null || String(raw).trim() === '') return null;
+  return toHalalas(Number(raw));
+}
+
+// وزنُ المخرَج في الإنجاز التنفيذي. الفراغ مقصود ويعني «اشتقّه»: الوزن المخزَّن رقمٌ جامد
+// يشيخ كلما أُضيف مخرَج أو تغيّرت قيمة، والاشتقاق عند القراءة (من القيمة المالية، وإلا
+// بالتساوي) يبقى صادقاً بلا صيانة. فلا يُكتب إلا حين يقرّره صاحب المشروع صراحةً.
+function deliverableWeight(d) {
+  const raw = d.weight;
+  if (raw == null || String(raw).trim() === '') return null;
+  return Number(raw);
 }
 
 // One config per governed table: id prefix, allowed enums, field mapping for create/patch.
@@ -89,16 +141,130 @@ const KINDS = {
       return patch;
     },
   },
+  deliverable: {
+    table: 'deliverable', prefix: 'dlv',
+    statuses: DLV_STATUSES,
+    titleCol: 'name_ar',
+    titleError: 'اسم المخرج مطلوب',
+    withSector: true,
+    validate(d) {
+      if ('amount_sar' in d && d.amount_sar != null && String(d.amount_sar).trim() !== '') {
+        const n = Number(d.amount_sar);
+        if (!Number.isFinite(n) || n < 0) throw badRequest('قيمة المخرج تُكتب رقماً بالريال — أو تُترك فارغة إن لم تُتفق بعد');
+        if (n > 1e10) throw badRequest('قيمة المخرج أكبر من المعقول — راجع الرقم قبل الحفظ');
+      }
+      if ('weight' in d && d.weight != null && String(d.weight).trim() !== '') {
+        const w = Number(d.weight);
+        if (!Number.isFinite(w) || w < 0 || w > 100) throw badRequest('وزن المخرج نسبة بين ٠ و١٠٠ — أو يُترك فارغاً فيُشتقّ من قيمته');
+      }
+      if ('period' in d && d.period != null && String(d.period).trim() !== '') {
+        const per = String(d.period).trim();
+        if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(per)) throw badRequest('اختر شهر الاستحقاق من القائمة');
+        // وسنةٌ خارج المعقول تُردّ كما تُردّ قيمةٌ خارج المعقول: شهرُ الاستحقاق يؤرِّخ سطرَ
+        // الإيراد، فسنةٌ مثل ٢٠٩٩ تُخرج إيراداً محقّقاً من تقارير سنته كلها والمخرَج مُسلَّم.
+        // والقائمة على الشاشة محدودة أصلاً بسنوات المشروع — فهذا حدُّ الخادم لما لا يمرّ منها.
+        const y = Number(per.slice(0, 4));
+        if (y < 2000 || y > new Date().getUTCFullYear() + 5)
+          throw badRequest('سنة شهر الاستحقاق خارج المعقول — راجع السنة قبل الحفظ');
+      }
+      // الفوترة والتحصيل ختمان تكتبهما المالية عند إصدار المستخلص وتحصيله. قبولهما من هنا
+      // يفصل الرقم عن الفاتورة فتصبح نسبة الفوترة رقماً بلا مستند خلفه.
+      for (const k of ['invoiced_at', 'collected_at']) {
+        if (k in d) throw badRequest('الفوترة والتحصيل يُسجَّلان من صفحة المالية عند إصدار المستخلص وتحصيله');
+      }
+    },
+    guardDelete(row) {
+      if (row.invoiced_at || row.collected_at)
+        throw badRequest('لا يُحذف مخرَج صدر به مستخلص أو تحصيل — راجع مسؤول البيانات لتسوية الارتباط التاريخي قبل حذف المخرج');
+    },
+    // الإيراد يتبع التسليم لا الفاتورة (قرار المالك — انظر finance/recognition.js). كل كتابة على
+    // المخرَج تُوائم سطر إيراده في المعاملة نفسها: إنشاءً عند التسليم، وتحديثاً عند تغيّر المبلغ أو
+    // الشهر، ومحواً عند الرجوع بالحالة أو الحذف. وموضعُها هنا لا في المسار كي لا يوجد طريقٌ إلى
+    // تغيير حالة مخرَجٍ يتخطّى الاعتراف.
+    afterWrite: (ctx, row, project) => syncDeliverableRevenue(ctx, row, project),
+    createRow(d, ctx) {
+      const per = periodParts(d.period);
+      const st = d.status || 'DRAFT';
+      const now = nowIso();
+      return {
+        name_ar: d.name_ar || d.title, amount_halalas: deliverableAmount(d),
+        month: per.month, year: per.year, status: st, notes: d.notes || null,
+        phase_id: d.phase_id || null, owner_user_id: d.owner_user_id || null,
+        due_date: d.due_date || null, weight: deliverableWeight(d),
+        delivered_at: st === 'DELIVERED' || st === 'ACCEPTED' ? now : null,
+        accepted_at: st === 'ACCEPTED' ? now : null,
+        status_by: ctx?.user?.id || null, status_at: now,
+      };
+    },
+    patchRow(d, row, ctx) {
+      const patch = {};
+      if ('name_ar' in d || 'title' in d) patch.name_ar = d.name_ar || d.title || null;
+      if ('notes' in d) patch.notes = d.notes || null;
+      if ('amount_sar' in d) patch.amount_halalas = deliverableAmount(d);
+      if ('weight' in d) patch.weight = deliverableWeight(d);
+      if ('phase_id' in d) patch.phase_id = d.phase_id || null;
+      if ('owner_user_id' in d) patch.owner_user_id = d.owner_user_id || null;
+      if ('due_date' in d) patch.due_date = d.due_date || null;
+      if ('period' in d) { const per = periodParts(d.period); patch.month = per.month; patch.year = per.year; }
+      if ('status' in d) {
+        // تواريخ التسليم والقبول تُكتب لحظة الانتقال، لأنها ما سيحتاجه أي تقرير أو خلاف لاحق
+        // («متى سُلِّم ومتى اعتُمد»). ومعها **من غيّرها**: الاعتماد قرارُ شخص لا حدثٌ بلا صاحب،
+        // وهذا هو كل ما طُلب من «مسار الاعتماد» — اسمٌ وتاريخ، لا معايير قبول ولا موافقات.
+        const now = nowIso();
+        patch.status = d.status;
+        if (d.status === 'DELIVERED') { patch.delivered_at = row.delivered_at || now; patch.accepted_at = null; }
+        else if (d.status === 'ACCEPTED') { patch.delivered_at = row.delivered_at || now; patch.accepted_at = row.accepted_at || now; }
+        else if (d.status === 'REJECTED') { patch.accepted_at = null; }
+        else { patch.delivered_at = null; patch.accepted_at = null; } // DRAFT | IN_PROGRESS
+        patch.status_by = ctx?.user?.id || null;
+        patch.status_at = now;
+        patch.updated_at = now;
+      }
+      return patch;
+    },
+  },
+  // ── المرحلة: كيانٌ خفيف له تواريخه، تُجمع تحته المخرجات والمعالم ─────────────────
+  phase: {
+    table: 'project_phase', prefix: 'phs',
+    statuses: ['NOT_STARTED', 'IN_PROGRESS', 'DONE'],
+    titleCol: 'name_ar',
+    titleError: 'اسم المرحلة مطلوب',
+    validate(d) {
+      if (d.start_date && d.end_date && String(d.end_date) < String(d.start_date))
+        throw badRequest('تاريخ نهاية المرحلة قبل بدايتها — راجع التاريخين');
+    },
+    createRow(d) {
+      return { name_ar: d.name_ar || d.title, order_no: Number(d.order_no) || 0,
+        start_date: d.start_date || null, end_date: d.end_date || null, status: d.status || 'NOT_STARTED' };
+    },
+    patchRow(d) {
+      const patch = {};
+      if ('name_ar' in d || 'title' in d) patch.name_ar = d.name_ar || d.title || null;
+      for (const k of ['start_date', 'end_date']) if (k in d) patch[k] = d[k] || null;
+      if ('order_no' in d) patch.order_no = Number(d.order_no) || 0;
+      if ('status' in d) patch.status = d.status;
+      // ختم التعديل يُضاف **بعد** أن يثبت أن ثمة تعديلاً: إضافته دائماً تجعل الحمولة الفارغة
+      // تبدو تغييراً، فيمرّ طلبٌ لا يحمل حقلاً واحداً بدل أن يُردّ برسالة «لا تغييرات».
+      if (Object.keys(patch).length) patch.updated_at = nowIso();
+      return patch;
+    },
+  },
   milestone: {
     table: 'milestone', prefix: 'mls',
     statuses: ['PENDING', 'MET', 'MISSED'],
     titleCol: 'name_ar',
+    titleError: 'اسم المعلم مطلوب',
     validate() {},
-    createRow(d) { return { name_ar: d.name_ar || d.title, due_date: d.due_date || null, status: d.status || 'PENDING' }; },
+    createRow(d) {
+      return { name_ar: d.name_ar || d.title, due_date: d.due_date || null, status: d.status || 'PENDING',
+        phase_id: d.phase_id || null, owner_user_id: d.owner_user_id || null };
+    },
     patchRow(d) {
       const patch = {};
       if ('name_ar' in d || 'title' in d) patch.name_ar = d.name_ar || d.title || null;
       if ('due_date' in d) patch.due_date = d.due_date || null;
+      if ('phase_id' in d) patch.phase_id = d.phase_id || null;
+      if ('owner_user_id' in d) patch.owner_user_id = d.owner_user_id || null;
       if ('status' in d) patch.status = d.status;
       return patch;
     },
@@ -116,13 +282,17 @@ function kindCfg(kind) {
 // project-scoped roles (consultant/PM) while sector/company scopes stay untouched.
 const asTarget = (p) => ({ ...p, project_id: p.id });
 async function readableProject(user, projectId) {
-  const p = await get('SELECT * FROM project WHERE id = ? AND deleted_at IS NULL', [projectId]);
-  if (!p) throw notFound('المشروع غير موجود');
-  if (!can(user, 'read', 'project', asTarget(p))) throw forbidden('هذا المشروع خارج نطاق صلاحياتك');
-  return p;
+  // الباب الواحد (v5.32): الشراكة تفتح القراءة كما تفتح صفحة المشروع نفسها — لا فحص خام
+  // يردّ مديرة الإدارة الشريكة عن سجلات حوكمة مشروعٍ تعمل عليه إدارتُها.
+  return await loadReadableProject(user, projectId, 'read', 'هذا المشروع خارج نطاق صلاحياتك');
 }
-function requireWrite(user, project) {
-  if (!can(user, 'update', 'project', asTarget(project))) throw forbidden('تعديل سجلات الحوكمة يتطلب صلاحية إدارة المشروع');
+async function requireWrite(user, project) {
+  // والكتابة تتبع القراءة بعقد الشراكة نفسه (ADR-0008 + «كله يتم العمل عليه من مدير المشروع
+  // ومدير الإدارة والقطاع اللي لهم صلاحية» — المالك 2026-08-16): من يملك تعديل المشروع —
+  // مسؤوليةً أو شراكةً — يحرّك حوكمته. الفحص بدرجتَي الباب على الصف المحمَّل سلفاً.
+  if (!(await projectActionAllowed(user, 'update', project))) {
+    throw forbidden('تعديل سجلات الحوكمة يتطلب صلاحية إدارة المشروع');
+  }
 }
 async function checkOwner(d) {
   if (d.owner_user_id && !(await get('SELECT id FROM app_user WHERE id = ? AND deleted_at IS NULL', [d.owner_user_id])))
@@ -135,7 +305,20 @@ const ORDER = {
   decision: 'ORDER BY decided_at DESC, created_at DESC',
   change: 'ORDER BY created_at DESC',
   milestone: 'ORDER BY (due_date IS NULL), due_date, created_at',
+  deliverable: 'ORDER BY (year IS NULL), year, (month IS NULL), month, created_at',
+  phase: 'ORDER BY order_no, (start_date IS NULL), start_date, created_at',
 };
+
+// خريطة المسار العام ⟵ نوع السجل. تُصدَّر كي يشتقّ منها المُوجِّه مساراته بدل نسخة ثانية
+// تُنسى عند إضافة نوع جديد (وهو ما حدث فعلاً: النوع يُضاف هنا فلا يصله مسار).
+export const GOVERNANCE_PLURALS = {
+  risks: 'risk', issues: 'issue', decisions: 'decision', changes: 'change',
+  milestones: 'milestone', deliverables: 'deliverable', phases: 'phase',
+};
+
+// العنوان يُقرأ من العمود الذي يخصّ كل نوع (title أو name_ar) — لا شرط على اسم النوع.
+const titleOf = (cfg, d) => String((cfg.titleCol === 'name_ar' ? (d.name_ar ?? d.title) : d.title) ?? '').trim();
+const hasTitle = (cfg, d) => (cfg.titleCol === 'name_ar' ? ('name_ar' in d || 'title' in d) : ('title' in d));
 
 export async function listItems(user, projectId, kind) {
   const cfg = kindCfg(kind);
@@ -143,28 +326,31 @@ export async function listItems(user, projectId, kind) {
   return await all(`SELECT * FROM ${cfg.table} WHERE project_id = ? AND deleted_at IS NULL ${ORDER[kind]}`, [projectId]);
 }
 
-// Composite payload for the project page: the five registers + write flag in one call.
+// Composite payload for the project page: the governance registers + write flag in one call.
 export async function projectGovernance(user, projectId) {
   const p = await readableProject(user, projectId);
-  const [risks, issues, decisions, changes, milestones] = await Promise.all(
-    ['risk', 'issue', 'decision', 'change', 'milestone'].map((k) =>
-      all(`SELECT * FROM ${KINDS[k].table} WHERE project_id = ? AND deleted_at IS NULL ${ORDER[k]}`, [projectId])));
-  return { projectId: p.id, canEdit: can(user, 'update', 'project', asTarget(p)), risks, issues, decisions, changes, milestones };
+  const kinds = ['risk', 'issue', 'decision', 'change', 'milestone', 'deliverable', 'phase'];
+  const [risks, issues, decisions, changes, milestones, deliverables, phases] = await Promise.all(
+    kinds.map((k) => all(`SELECT * FROM ${KINDS[k].table} WHERE project_id = ? AND deleted_at IS NULL ${ORDER[k]}`, [projectId])));
+  return { projectId: p.id, canEdit: await projectActionAllowed(user, 'update', p), risks, issues, decisions, changes, milestones, deliverables, phases };
 }
 
 export async function createItem(ctx, projectId, kind, data = {}) {
   const cfg = kindCfg(kind);
   const p = await readableProject(ctx.user, projectId);
-  requireWrite(ctx.user, p);
-  const title = String((kind === 'milestone' ? (data.name_ar ?? data.title) : data.title) ?? '').trim();
-  if (!title) throw badRequest(kind === 'milestone' ? 'اسم المعلم مطلوب' : 'العنوان مطلوب');
+  await requireWrite(ctx.user, p);
+  const title = titleOf(cfg, data);
+  if (!title) throw badRequest(cfg.titleError || 'العنوان مطلوب');
   cfg.validate(data);
   if (cfg.statuses && 'status' in data && data.status && !cfg.statuses.includes(data.status)) throw badRequest('الحالة غير صحيحة');
   await checkOwner(data);
   const rid = id(cfg.prefix);
-  const row = cfg.createRow({ ...data, title, name_ar: kind === 'milestone' ? title : undefined });
-  await insert(cfg.table, { id: rid, project_id: p.id, ...(kind === 'risk' ? { sector_id: p.sector_id } : {}), ...row, created_at: nowIso() });
-  await audit(ctx, { action: 'create', resource: cfg.table, resourceId: rid, sectorId: p.sector_id, detail: { title } });
+  const row = cfg.createRow({ ...data, title, name_ar: cfg.titleCol === 'name_ar' ? title : undefined }, ctx);
+  await tx(async () => {
+    await insert(cfg.table, { id: rid, project_id: p.id, ...(kind === 'risk' || cfg.withSector ? { sector_id: p.sector_id } : {}), ...row, created_at: nowIso() });
+    await audit(ctx, { action: 'create', resource: cfg.table, resourceId: rid, sectorId: p.sector_id, detail: { title } });
+    if (cfg.afterWrite) await cfg.afterWrite(ctx, await get(`SELECT * FROM ${cfg.table} WHERE id = ?`, [rid]), p);
+  });
   return await get(`SELECT * FROM ${cfg.table} WHERE id = ?`, [rid]);
 }
 
@@ -174,7 +360,7 @@ async function writableItem(user, kind, itemId) {
   if (!row) throw notFound('السجل غير موجود');
   const p = row.project_id ? await get('SELECT * FROM project WHERE id = ? AND deleted_at IS NULL', [row.project_id]) : null;
   if (!p) throw notFound('المشروع غير موجود');
-  requireWrite(user, p); // row-level sector/PM guard (IDOR)
+  await requireWrite(user, p); // row-level sector/PM guard (IDOR)
   return { cfg, row, p };
 }
 
@@ -185,20 +371,90 @@ export async function updateItem(ctx, kind, itemId, data = {}) {
     if (!cfg.statuses) throw badRequest('هذا السجل بلا حالة قابلة للتغيير');
     if (!cfg.statuses.includes(data.status)) throw badRequest('الحالة غير صحيحة');
   }
-  if ((kind === 'milestone' ? 'name_ar' in data || 'title' in data : 'title' in data)
-      && !String((kind === 'milestone' ? (data.name_ar || data.title) : data.title) || '').trim())
-    throw badRequest(kind === 'milestone' ? 'اسم المعلم مطلوب' : 'العنوان مطلوب');
+  if (hasTitle(cfg, data) && !titleOf(cfg, data)) throw badRequest(cfg.titleError || 'العنوان مطلوب');
   await checkOwner(data);
-  const patch = cfg.patchRow(data, row);
+  const patch = cfg.patchRow(data, row, ctx);
   if (!Object.keys(patch).length) throw badRequest('لا تغييرات لتطبيقها');
-  await update(cfg.table, itemId, patch);
-  await audit(ctx, { action: 'update', resource: cfg.table, resourceId: itemId, sectorId: p.sector_id, detail: Object.keys(patch) });
+  await tx(async () => {
+    await update(cfg.table, itemId, patch);
+    await audit(ctx, { action: 'update', resource: cfg.table, resourceId: itemId, sectorId: p.sector_id, detail: Object.keys(patch) });
+    if (cfg.afterWrite) await cfg.afterWrite(ctx, await get(`SELECT * FROM ${cfg.table} WHERE id = ?`, [itemId]), p);
+  });
   return await get(`SELECT * FROM ${cfg.table} WHERE id = ?`, [itemId]);
 }
 
 export async function deleteItem(ctx, kind, itemId) {
-  const { cfg, p } = await writableItem(ctx.user, kind, itemId);
-  await update(cfg.table, itemId, { deleted_at: nowIso() });
-  await audit(ctx, { action: 'delete', resource: cfg.table, resourceId: itemId, sectorId: p.sector_id });
+  const { cfg, row, p } = await writableItem(ctx.user, kind, itemId);
+  if (cfg.guardDelete) cfg.guardDelete(row);
+  const at = nowIso();
+  await tx(async () => {
+    await update(cfg.table, itemId, { deleted_at: at });
+    await audit(ctx, { action: 'delete', resource: cfg.table, resourceId: itemId, sectorId: p.sector_id });
+    // المخرَج المحذوف لا إيراد له: يُمحى سطره في المعاملة نفسها، وإلا بقي إيرادُ عملٍ لم يعد قائماً.
+    if (cfg.afterWrite) await cfg.afterWrite(ctx, { ...row, deleted_at: at }, p);
+  });
   return { ok: true };
+}
+
+// ── كل إيرادٍ مربوط (v5.32) ──────────────────────────────────────────────────
+// «مشروع عليه إيرادات بس ما هي مكتوبة في المخرجات أو في أي مكان ثاني — ما ينفع، لازم كل
+// إيراد يكون مربوطاً بشكل كامل» — بلسان المالك (2026-08-16). سطرُ الإيراد المستورد (بلا
+// مخرَج) يُربط من صفحة المشروع بأحد بابين، وكلاهما يحفظ المجموع هللةً بهللة:
+//   • **الربط بمخرَجٍ قائم**: مخرَجٌ مُسلَّم أو معتمَد **بلا قيمة** يتبنّى قيمةَ السطر
+//     (فيتولّد سطرُه المشتق بنفس المبلغ) ويُمحى السطرُ المستورد في المعاملة نفسها. مخرَجٌ
+//     له قيمته يُرفض — ربطُه يعدّ المال مرتين. ومسودةٌ تُرفض — الإيراد المعترف به لا
+//     يُعلَّق على عملٍ لم يخرج.
+//   • **التحويل إلى مخرَج**: يُنشأ مخرَجٌ معتمَد باسم السطر وقيمته وشهره ويُمحى السطر —
+//     قرارُ صاحب الصلاحية وحده (الواجهة تقول أثره على نسبة الإنجاز قبل التأكيد).
+const isImportedOrphanLine = (l) => l && !l.deliverable_id && !String(l.id).startsWith('rl_dlv_');
+async function orphanLineOf(projectId, lineId) {
+  const line = await get('SELECT * FROM revenue_line WHERE id = ?', [lineId]);
+  if (!line || String(line.project_id || '') !== String(projectId)) throw notFound('سطر الإيراد غير موجود على هذا المشروع');
+  if (!isImportedOrphanLine(line)) throw badRequest('هذا السطر مربوطٌ بمخرَجه أصلاً — لا يحتاج ربطاً');
+  return line;
+}
+const lineSarOf = (line) => (Number(line.amount_halalas) || 0) / 100;
+const linePeriodOf = (line) => (line.year && line.month
+  ? `${line.year}-${String(line.month).padStart(2, '0')}` : '');
+
+export async function attachRevenueLine(ctx, projectId, lineId, deliverableId) {
+  const p = await readableProject(ctx.user, projectId);
+  await requireWrite(ctx.user, p);
+  const line = await orphanLineOf(projectId, lineId);
+  const dlv = await get('SELECT * FROM deliverable WHERE id = ? AND deleted_at IS NULL', [deliverableId]);
+  if (!dlv || String(dlv.project_id) !== String(projectId)) throw notFound('المخرَج غير موجود على هذا المشروع');
+  if (!['DELIVERED', 'ACCEPTED'].includes(dlv.status)) {
+    throw badRequest('اربط بمخرَجٍ مُسلَّم أو معتمَد — الإيراد المعترف به لا يُعلَّق على مسودة');
+  }
+  if (Number(dlv.amount_halalas) > 0) {
+    throw badRequest('لهذا المخرَج قيمتُه وإيرادُه المشتق — ربطُ السطر به يعدّ المال مرتين. اختر مخرَجاً بلا قيمة.');
+  }
+  return await tx(async () => {
+    // القيمة تُتبنّى عبر مسار الحوكمة نفسه (تدقيقٌ واعترافٌ تلقائي)، والشهر من السطر إن كان
+    // المخرَج بلا شهر — شهرُ الإيراد لا يُخترع.
+    const patch = { amount_sar: lineSarOf(line) };
+    if (!dlv.month && line.month) patch.period = linePeriodOf(line);
+    await updateItem(ctx, 'deliverable', deliverableId, patch);
+    await run('DELETE FROM revenue_line WHERE id = ?', [line.id]);
+    await audit(ctx, { action: 'delete', resource: 'revenue_line', resourceId: line.id, sectorId: line.sector_id || p.sector_id,
+      detail: { reason: 'رُبط بالمخرَج — حلّ محلّه سطرُه المشتق', deliverable_id: deliverableId, amount_halalas: line.amount_halalas } });
+    return { ok: true, deliverable_id: deliverableId, amount_halalas: line.amount_halalas };
+  });
+}
+
+export async function convertRevenueLine(ctx, projectId, lineId) {
+  const p = await readableProject(ctx.user, projectId);
+  await requireWrite(ctx.user, p);
+  const line = await orphanLineOf(projectId, lineId);
+  const name = String(line.label || '').trim() || `إيراد مسجَّل ${line.month || ''}${line.month ? '/' : ''}${line.year || ''}`.trim();
+  return await tx(async () => {
+    const dlv = await createItem(ctx, projectId, 'deliverable', {
+      name_ar: name, period: linePeriodOf(line), amount_sar: lineSarOf(line), status: 'ACCEPTED',
+      notes: 'أُنشئ من سطر إيرادٍ كان مسجَّلاً على المشروع بلا مخرَج — القيمة والشهر منه',
+    });
+    await run('DELETE FROM revenue_line WHERE id = ?', [line.id]);
+    await audit(ctx, { action: 'delete', resource: 'revenue_line', resourceId: line.id, sectorId: line.sector_id || p.sector_id,
+      detail: { reason: 'حُوِّل مخرَجاً معتمَداً — حلّ محلّه سطرُه المشتق', deliverable_id: dlv.id, amount_halalas: line.amount_halalas } });
+    return { ok: true, deliverable_id: dlv.id, amount_halalas: line.amount_halalas };
+  });
 }
