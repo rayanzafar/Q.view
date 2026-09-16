@@ -1,18 +1,18 @@
 {
   "version": 1,
-  "sourceDigest": "a277cdb961e3b1a3b5ce34ad8b0d6aefda2c2fcc867fc3a077a870b1d599ad8a",
-  "sourceFiles": 702,
+  "sourceDigest": "3d67e2ed5a5db7fd95e9fe2345298b26da10dc2a1a225a3593cc370b4a30fc6a",
+  "sourceFiles": 713,
   "counts": {
     "code": 276,
-    "test": 314,
-    "automation": 60,
+    "test": 319,
+    "automation": 66,
     "module": 20,
     "route": 357,
     "page": 27,
     "table": 114,
     "role": 19,
     "permission": 9,
-    "issue": 77,
+    "issue": 84,
     "journey": 14,
     "metric": 4,
     "workflow": 6,
@@ -38,8 +38,23 @@
       "reason": "خارج ملفات JavaScript المفهرسة أو مسار غير محلول"
     },
     {
+      "file": "tests/integration/invoice-statement-load.test.js",
+      "target": "vendor/xlsx/xlsx.mjs",
+      "reason": "خارج ملفات JavaScript المفهرسة أو مسار غير محلول"
+    },
+    {
+      "file": "tests/integration/workbook-apply.test.js",
+      "target": "vendor/xlsx/xlsx.mjs",
+      "reason": "خارج ملفات JavaScript المفهرسة أو مسار غير محلول"
+    },
+    {
       "file": "tests/unit/mail-fallback.test.js",
       "target": "tests/unit/smtp.js",
+      "reason": "خارج ملفات JavaScript المفهرسة أو مسار غير محلول"
+    },
+    {
+      "file": "tests/unit/workbook-reconcile.test.js",
+      "target": "vendor/xlsx/xlsx.mjs",
       "reason": "خارج ملفات JavaScript المفهرسة أو مسار غير محلول"
     },
     {
@@ -50,6 +65,16 @@
     {
       "file": "scripts/lib/qa-instance.mjs",
       "target": "scripts/lib/src/core/db/index.js",
+      "reason": "خارج ملفات JavaScript المفهرسة أو مسار غير محلول"
+    },
+    {
+      "file": "scripts/lib/workbook-read.mjs",
+      "target": "vendor/xlsx/xlsx.mjs",
+      "reason": "خارج ملفات JavaScript المفهرسة أو مسار غير محلول"
+    },
+    {
+      "file": "scripts/load-invoice-statement.mjs",
+      "target": "vendor/xlsx/xlsx.mjs",
       "reason": "خارج ملفات JavaScript المفهرسة أو مسار غير محلول"
     },
     {
@@ -3179,6 +3204,15 @@
       ]
     },
     {
+      "id": "file:tests/integration/invoice-statement-load.test.js",
+      "kind": "test",
+      "label": "invoice-statement-load.test.js",
+      "detail": "tests/integration/invoice-statement-load.test.js",
+      "sources": [
+        "tests/integration/invoice-statement-load.test.js"
+      ]
+    },
+    {
       "id": "file:tests/integration/mail-blocked-visible.test.js",
       "kind": "test",
       "label": "mail-blocked-visible.test.js",
@@ -3302,6 +3336,15 @@
       "detail": "tests/integration/migration-atomicity.test.js",
       "sources": [
         "tests/integration/migration-atomicity.test.js"
+      ]
+    },
+    {
+      "id": "file:tests/integration/mirror-source-fix.test.js",
+      "kind": "test",
+      "label": "mirror-source-fix.test.js",
+      "detail": "tests/integration/mirror-source-fix.test.js",
+      "sources": [
+        "tests/integration/mirror-source-fix.test.js"
       ]
     },
     {
@@ -4241,6 +4284,15 @@
       ]
     },
     {
+      "id": "file:tests/integration/workbook-apply.test.js",
+      "kind": "test",
+      "label": "workbook-apply.test.js",
+      "detail": "tests/integration/workbook-apply.test.js",
+      "sources": [
+        "tests/integration/workbook-apply.test.js"
+      ]
+    },
+    {
       "id": "file:tests/security-headers.test.js",
       "kind": "test",
       "label": "security-headers.test.js",
@@ -4898,6 +4950,15 @@
       ]
     },
     {
+      "id": "file:tests/unit/app-backup.test.js",
+      "kind": "test",
+      "label": "app-backup.test.js",
+      "detail": "tests/unit/app-backup.test.js",
+      "sources": [
+        "tests/unit/app-backup.test.js"
+      ]
+    },
+    {
       "id": "file:tests/unit/approval-mail-templates.test.js",
       "kind": "test",
       "label": "approval-mail-templates.test.js",
@@ -5366,6 +5427,15 @@
       ]
     },
     {
+      "id": "file:tests/unit/workbook-reconcile.test.js",
+      "kind": "test",
+      "label": "workbook-reconcile.test.js",
+      "detail": "tests/unit/workbook-reconcile.test.js",
+      "sources": [
+        "tests/unit/workbook-reconcile.test.js"
+      ]
+    },
+    {
       "id": "file:tests/unit/xlsx.test.js",
       "kind": "test",
       "label": "xlsx.test.js",
@@ -5435,6 +5505,15 @@
       "detail": "scripts/apply-utilization-may2026.js",
       "sources": [
         "scripts/apply-utilization-may2026.js"
+      ]
+    },
+    {
+      "id": "file:scripts/apply-workbook.mjs",
+      "kind": "automation",
+      "label": "apply-workbook.mjs",
+      "detail": "scripts/apply-workbook.mjs",
+      "sources": [
+        "scripts/apply-workbook.mjs"
       ]
     },
     {
@@ -5591,6 +5670,15 @@
       ]
     },
     {
+      "id": "file:scripts/fix-mirror-source.mjs",
+      "kind": "automation",
+      "label": "fix-mirror-source.mjs",
+      "detail": "scripts/fix-mirror-source.mjs",
+      "sources": [
+        "scripts/fix-mirror-source.mjs"
+      ]
+    },
+    {
       "id": "file:scripts/fix-org-links.mjs",
       "kind": "automation",
       "label": "fix-org-links.mjs",
@@ -5615,6 +5703,15 @@
       "detail": "scripts/hooks/pre-guard.mjs",
       "sources": [
         "scripts/hooks/pre-guard.mjs"
+      ]
+    },
+    {
+      "id": "file:scripts/lib/app-backup.mjs",
+      "kind": "automation",
+      "label": "app-backup.mjs",
+      "detail": "scripts/lib/app-backup.mjs",
+      "sources": [
+        "scripts/lib/app-backup.mjs"
       ]
     },
     {
@@ -5681,6 +5778,24 @@
       ]
     },
     {
+      "id": "file:scripts/lib/workbook-read.mjs",
+      "kind": "automation",
+      "label": "workbook-read.mjs",
+      "detail": "scripts/lib/workbook-read.mjs",
+      "sources": [
+        "scripts/lib/workbook-read.mjs"
+      ]
+    },
+    {
+      "id": "file:scripts/load-invoice-statement.mjs",
+      "kind": "automation",
+      "label": "load-invoice-statement.mjs",
+      "detail": "scripts/load-invoice-statement.mjs",
+      "sources": [
+        "scripts/load-invoice-statement.mjs"
+      ]
+    },
+    {
       "id": "file:scripts/make-sap-intake-workbook.mjs",
       "kind": "automation",
       "label": "make-sap-intake-workbook.mjs",
@@ -5741,6 +5856,15 @@
       "detail": "scripts/reconcile-consulting.mjs",
       "sources": [
         "scripts/reconcile-consulting.mjs"
+      ]
+    },
+    {
+      "id": "file:scripts/reconcile-workbook.mjs",
+      "kind": "automation",
+      "label": "reconcile-workbook.mjs",
+      "detail": "scripts/reconcile-workbook.mjs",
+      "sources": [
+        "scripts/reconcile-workbook.mjs"
       ]
     },
     {
@@ -23493,6 +23617,76 @@
       ]
     },
     {
+      "id": "issue:KI-132",
+      "kind": "issue",
+      "label": "KI-132 · rbac/api",
+      "detail": "**إنشاء المشروع بلا حارسٍ على الباب، فيُقبل قطاعٌ ليس قطاعَ صاحب الطلب.** الباب `apiRouter.post('/projects', …)` يمرّر الطلب إلى الخدمة مباشرةً بلا أيّ فحصِ صلاحية عليه، والفحصُ الوحيد داخل `createProject`: يأخذ القطاع من جسم الطلب (`data.sector_id \\|\\| user.sector_id`) ثم يسأل `can(user,'create','project',{ sector_id })`. وهذا السؤال لا يقارن القطاعَ أصلاً لمن كان مدى صلاحيته «المشروع»: `scopeReaches` في حالة المشروع يبحث عن معرّف المشروع، ولا معرّف لمشروعٍ لم يُنشأ بعد، فيرجع بالقبول لأيّ قطاعٍ يُكتب (والرجوعُ بالقبول مقصودٌ ومشروحٌ في موضعه كي لا يفقد أصحابُ هذا المدى الإنشاءَ والإسناد؛ فالنقص في `createProject` لا فيه). أثرُه: مدير مشروع مداه «الخاصة به» — مثل حساب `usama.abuelatta` (`usr_Wyzza5i3JNw3`) في قطاع ساب — يُنشئ بطلبٍ مباشر مشروعاً في قطاع غيره. والإدارةُ محميّة (تُردّ برسالة «الإدارة المختارة تتبع قطاعاً آخر») والقطاعُ وحده غير محميّ. ويلحقه أثران: `owner_user_id = data.owner_user_id \\|\\| user.id` فيُنسب المشروع إلى شخصٍ آخر، وإنشاءُ المشروع يولّد فرصةً مرآةً (`ensureOpportunityForProject`) فتُزرع في مسار مبيعات القطاع الغريب. وشدّتُه منخفضة: لا سبيل إلى ذلك من الشاشات (صفحة المشاريع تثبّت القطاع على قطاع المستخدم لكل مدى دون الشركة)، ويلزمه مستخدمٌ مسجَّل يتعمّد صياغة الطلب، وكلّ إنشاءٍ مُقيَّد في سجل التدقيق، ولا مشروعَ عابراً للقطاعات على بيئة التجربة اليوم. وُجد 2026-09-16.",
+      "status": "open",
+      "sources": [
+        "docs/KNOWN-ISSUES.md"
+      ]
+    },
+    {
+      "id": "issue:KI-131",
+      "kind": "issue",
+      "label": "KI-131 · data/staffing",
+      "detail": "**قطاع ساب بلا خطّة تسكين بعد أغسطس ٢٠٢٦.** كل تسكينات القطاع تقف عند الشهر الثامن — العشرة العاملون على «مشروع دعم ساعد» (هيئة الربط الكهربائي) وسائرُ صفوف القطاع؛ فمن سبتمبر فصاعداً تقرأ شاشةُ التسكين «–» لكل شخص وكل شهر، ويُقرأ القطاع كأنّه بلا ارتباطات. والسبب تحميلُ البيانات الأول (2026-08-30) الذي كتب شهراً واحداً لكل صفّ من شهر البداية إلى شهر النهاية نفسه، لا خطّةً ممتدّة.",
+      "status": "open",
+      "sources": [
+        "docs/KNOWN-ISSUES.md"
+      ]
+    },
+    {
+      "id": "issue:KI-130",
+      "kind": "issue",
+      "label": "KI-130 · tooling/mail",
+      "detail": "**دعوةُ حسابٍ أُنشئ من سكربت صيانة لا تصل صاحبها.** `inviteUser` ينشئ الحساب ورمز الدخول ثم يسلّم الرسالة إلى قناة البريد المقروءة من بيئة التشغيل؛ والسكربت الذي يُشغَّل على خدمة قاعدة البيانات يرث بيئتها، وهي بلا إعدادات بريد، فيهبط الإعداد إلى قناة «المعاينة» وتُكتب الرسالة في `data/outbox` بدل إرسالها — بينما خدمةُ التطبيق نفسها تُرسل فعلاً. أثرُه المُشاهد: حساب محمد طه أُنشئ في 2026-09-16 ولم يصله شيء.",
+      "status": "open",
+      "sources": [
+        "docs/KNOWN-ISSUES.md"
+      ]
+    },
+    {
+      "id": "issue:KI-129",
+      "kind": "issue",
+      "label": "KI-129 · pmo/clients",
+      "detail": "**لا مكان في المنصة لمدير الحساب.** لا المشروع ولا العميل يحمل حقلاً لمدير الحساب؛ الموجود على المشروع مالكُه (`owner_user_id`) واسمُ مدير المشروع نصّاً حرّاً (`pm_name`) — وكلاهما غير ما يُقصد. فطلبٌ بتسجيل ياسر محمد مديرَ حساب هيئة الربط الكهربائي لم يجد خانةً يُكتب فيها.",
+      "status": "owner-decision",
+      "sources": [
+        "docs/KNOWN-ISSUES.md"
+      ]
+    },
+    {
+      "id": "issue:KI-128",
+      "kind": "issue",
+      "label": "KI-128 · data/pmo",
+      "detail": "**«ترقية S4HANA» لهيئة الربط الكهربائي غير موجودة في المنصة.** العميل قائم (`cli_FaIcRjLN7Lv9`) وله مشروعٌ واحد فقط هو «مشروع دعم ساعد»، بينما يذكر أسامة ابو العطا أنه يدير ارتباطَ ترقية S4HANA للعميل نفسه. فإمّا أن الارتباط لم يُحمَّل أصلاً، وإمّا أنه مُسجَّل باسمٍ آخر.",
+      "status": "owner-decision",
+      "sources": [
+        "docs/KNOWN-ISSUES.md"
+      ]
+    },
+    {
+      "id": "issue:KI-127",
+      "kind": "issue",
+      "label": "KI-127 · pmo/governance",
+      "detail": "**تاريخا التسليم والاعتماد يُختمان لحظةَ الكتابة، فتاريخُ عملٍ ماضٍ يُستورَد بتاريخ اليوم.** `createItem/updateItem('deliverable')` لا يقبلان `delivered_at` ولا `accepted_at` (يرفضهما مسارُ الاستيراد صراحةً كي لا تكذب المعاينة)، وإنما يُشتقّان من الحالة وقت الحفظ: `createRow` يختم `delivered_at = nowIso()` متى وُلد المخرج مُسلَّماً أو معتمَداً. فمخرجٌ سُلِّم في ٢٠٢٤ يدخل المنصة بختمِ يوم الاستيراد، ومن يقرأ «متى سُلِّم» يقرأ يومَ إدخال البيانات. الإيراد نفسه محميٌّ (شهرُ الاستحقاق الصريح يسبق تاريخَ الحدث في `recognitionPeriod`)، لكن أعمار التسليم وتقارير الالتزام تتأثّر.",
+      "status": "open",
+      "sources": [
+        "docs/KNOWN-ISSUES.md"
+      ]
+    },
+    {
+      "id": "issue:KI-126",
+      "kind": "issue",
+      "label": "KI-126 · pmo/governance",
+      "detail": "**لا سبيل إلى ربط المخرج بمعلَمٍ من مسار الكتابة، فـ«المعلم» في دفتر التعبئة يُكتب مرحلةً لا معلَماً.** عمود `deliverable.milestone_id` قائمٌ في الترحيلة 001، و`KINDS.deliverable` في `src/modules/pmo/governance.js` لا يكتبه في `createRow` ولا يقبله في `patchRow` — فلا بابَ في المنتج كلِّه يربط مخرَجاً بمعلَم. ولذلك يكتب `scripts/reconcile-workbook.mjs` عمودَ «المعلم» مرحلةً على المشروع (`project_phase` + `phase_id`)، وهو الرابط الوحيد القائم: قريبٌ من المعنى وليس هو. والأثر أن تخطيط المعالم في الدفتر لا يصل جدول المعالم، فمن يقرأ معالم المشروع لا يرى ما كتبه الفريق.",
+      "status": "open",
+      "sources": [
+        "docs/KNOWN-ISSUES.md"
+      ]
+    },
+    {
       "id": "issue:KI-125",
       "kind": "issue",
       "label": "KI-125 · tooling/sweep",
@@ -39855,6 +40049,41 @@
       "kind": "source"
     },
     {
+      "from": "file:tests/integration/invoice-statement-load.test.js",
+      "to": "file:src/core/db/index.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/invoice-statement-load.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/invoice-statement-load.test.js",
+      "to": "file:scripts/migrate.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/invoice-statement-load.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/invoice-statement-load.test.js",
+      "to": "file:scripts/seed-rbac.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/invoice-statement-load.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/invoice-statement-load.test.js",
+      "to": "file:scripts/load-invoice-statement.mjs",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/invoice-statement-load.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/invoice-statement-load.test.js",
+      "to": "file:src/core/reports/metrics.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/invoice-statement-load.test.js",
+      "kind": "source"
+    },
+    {
       "from": "file:tests/integration/mail-blocked-visible.test.js",
       "to": "file:src/core/db/index.js",
       "label": "استيراد صريح",
@@ -40216,6 +40445,27 @@
       "to": "file:src/core/db/index.js",
       "label": "استيراد صريح",
       "evidence": "tests/integration/migration-atomicity.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/mirror-source-fix.test.js",
+      "to": "file:src/core/db/index.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/mirror-source-fix.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/mirror-source-fix.test.js",
+      "to": "file:src/core/rbac/index.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/mirror-source-fix.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/mirror-source-fix.test.js",
+      "to": "file:scripts/fix-mirror-source.mjs",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/mirror-source-fix.test.js",
       "kind": "source"
     },
     {
@@ -43957,6 +44207,13 @@
       "kind": "source"
     },
     {
+      "from": "file:tests/integration/workbook-apply.test.js",
+      "to": "file:src/core/db/index.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/workbook-apply.test.js",
+      "kind": "source"
+    },
+    {
       "from": "file:tests/security-headers.test.js",
       "to": "file:src/core/http/security.js",
       "label": "استيراد صريح",
@@ -46596,6 +46853,20 @@
       "kind": "source"
     },
     {
+      "from": "file:tests/unit/app-backup.test.js",
+      "to": "file:scripts/lib/app-backup.mjs",
+      "label": "استيراد صريح",
+      "evidence": "tests/unit/app-backup.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/unit/app-backup.test.js",
+      "to": "file:scripts/restore-dump.mjs",
+      "label": "استيراد صريح",
+      "evidence": "tests/unit/app-backup.test.js",
+      "kind": "source"
+    },
+    {
       "from": "file:tests/unit/approval-mail-templates.test.js",
       "to": "file:src/core/mail/approval-mail.js",
       "label": "استيراد صريح",
@@ -47450,6 +47721,20 @@
       "kind": "source"
     },
     {
+      "from": "file:tests/unit/workbook-reconcile.test.js",
+      "to": "file:scripts/make-sap-intake-workbook.mjs",
+      "label": "استيراد صريح",
+      "evidence": "tests/unit/workbook-reconcile.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/unit/workbook-reconcile.test.js",
+      "to": "file:scripts/lib/workbook-read.mjs",
+      "label": "استيراد صريح",
+      "evidence": "tests/unit/workbook-reconcile.test.js",
+      "kind": "source"
+    },
+    {
       "from": "file:tests/unit/xlsx.test.js",
       "to": "file:src/modules/io/xlsx.js",
       "label": "استيراد صريح",
@@ -47608,6 +47893,55 @@
       "to": "file:src/core/util/ids.js",
       "label": "استيراد صريح",
       "evidence": "scripts/apply-utilization-may2026.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:scripts/apply-workbook.mjs",
+      "to": "file:src/core/db/index.js",
+      "label": "استيراد صريح",
+      "evidence": "scripts/apply-workbook.mjs",
+      "kind": "source"
+    },
+    {
+      "from": "file:scripts/apply-workbook.mjs",
+      "to": "file:src/core/audit/index.js",
+      "label": "استيراد صريح",
+      "evidence": "scripts/apply-workbook.mjs",
+      "kind": "source"
+    },
+    {
+      "from": "file:scripts/apply-workbook.mjs",
+      "to": "file:src/core/rbac/index.js",
+      "label": "استيراد صريح",
+      "evidence": "scripts/apply-workbook.mjs",
+      "kind": "source"
+    },
+    {
+      "from": "file:scripts/apply-workbook.mjs",
+      "to": "file:src/modules/clients/clients.js",
+      "label": "استيراد صريح",
+      "evidence": "scripts/apply-workbook.mjs",
+      "kind": "source"
+    },
+    {
+      "from": "file:scripts/apply-workbook.mjs",
+      "to": "file:src/modules/pmo/projects.js",
+      "label": "استيراد صريح",
+      "evidence": "scripts/apply-workbook.mjs",
+      "kind": "source"
+    },
+    {
+      "from": "file:scripts/apply-workbook.mjs",
+      "to": "file:src/modules/pmo/governance.js",
+      "label": "استيراد صريح",
+      "evidence": "scripts/apply-workbook.mjs",
+      "kind": "source"
+    },
+    {
+      "from": "file:scripts/apply-workbook.mjs",
+      "to": "file:src/modules/org/org.js",
+      "label": "استيراد صريح",
+      "evidence": "scripts/apply-workbook.mjs",
       "kind": "source"
     },
     {
@@ -47787,6 +48121,13 @@
     },
     {
       "from": "file:scripts/deploy.mjs",
+      "to": "file:scripts/lib/app-backup.mjs",
+      "label": "استيراد صريح",
+      "evidence": "scripts/deploy.mjs",
+      "kind": "source"
+    },
+    {
+      "from": "file:scripts/deploy.mjs",
       "to": "file:scripts/migration-inventory.mjs",
       "label": "استيراد صريح",
       "evidence": "scripts/deploy.mjs",
@@ -47891,6 +48232,41 @@
       "kind": "source"
     },
     {
+      "from": "file:scripts/fix-mirror-source.mjs",
+      "to": "file:src/core/db/index.js",
+      "label": "استيراد صريح",
+      "evidence": "scripts/fix-mirror-source.mjs",
+      "kind": "source"
+    },
+    {
+      "from": "file:scripts/fix-mirror-source.mjs",
+      "to": "file:src/core/audit/index.js",
+      "label": "استيراد صريح",
+      "evidence": "scripts/fix-mirror-source.mjs",
+      "kind": "source"
+    },
+    {
+      "from": "file:scripts/fix-mirror-source.mjs",
+      "to": "file:src/core/rbac/index.js",
+      "label": "استيراد صريح",
+      "evidence": "scripts/fix-mirror-source.mjs",
+      "kind": "source"
+    },
+    {
+      "from": "file:scripts/fix-mirror-source.mjs",
+      "to": "file:src/core/util/ids.js",
+      "label": "استيراد صريح",
+      "evidence": "scripts/fix-mirror-source.mjs",
+      "kind": "source"
+    },
+    {
+      "from": "file:scripts/fix-mirror-source.mjs",
+      "to": "file:src/modules/crm/opp-project-sync.js",
+      "label": "استيراد صريح",
+      "evidence": "scripts/fix-mirror-source.mjs",
+      "kind": "source"
+    },
+    {
       "from": "file:scripts/fix-org-links.mjs",
       "to": "file:src/core/db/index.js",
       "label": "استيراد صريح",
@@ -47979,6 +48355,76 @@
       "to": "file:src/core/util/ids.js",
       "label": "استيراد صريح",
       "evidence": "scripts/lib/seed-showcase.mjs",
+      "kind": "source"
+    },
+    {
+      "from": "file:scripts/lib/workbook-read.mjs",
+      "to": "file:scripts/make-sap-intake-workbook.mjs",
+      "label": "استيراد صريح",
+      "evidence": "scripts/lib/workbook-read.mjs",
+      "kind": "source"
+    },
+    {
+      "from": "file:scripts/lib/workbook-read.mjs",
+      "to": "file:src/modules/io/xlsx.js",
+      "label": "استيراد صريح",
+      "evidence": "scripts/lib/workbook-read.mjs",
+      "kind": "source"
+    },
+    {
+      "from": "file:scripts/lib/workbook-read.mjs",
+      "to": "file:src/modules/io/parse.js",
+      "label": "استيراد صريح",
+      "evidence": "scripts/lib/workbook-read.mjs",
+      "kind": "source"
+    },
+    {
+      "from": "file:scripts/lib/workbook-read.mjs",
+      "to": "file:src/modules/finance/vat.js",
+      "label": "استيراد صريح",
+      "evidence": "scripts/lib/workbook-read.mjs",
+      "kind": "source"
+    },
+    {
+      "from": "file:scripts/lib/workbook-read.mjs",
+      "to": "file:src/web/i18n/glossary.js",
+      "label": "استيراد صريح",
+      "evidence": "scripts/lib/workbook-read.mjs",
+      "kind": "source"
+    },
+    {
+      "from": "file:scripts/load-invoice-statement.mjs",
+      "to": "file:src/core/db/index.js",
+      "label": "استيراد صريح",
+      "evidence": "scripts/load-invoice-statement.mjs",
+      "kind": "source"
+    },
+    {
+      "from": "file:scripts/load-invoice-statement.mjs",
+      "to": "file:src/core/audit/index.js",
+      "label": "استيراد صريح",
+      "evidence": "scripts/load-invoice-statement.mjs",
+      "kind": "source"
+    },
+    {
+      "from": "file:scripts/load-invoice-statement.mjs",
+      "to": "file:src/core/util/ids.js",
+      "label": "استيراد صريح",
+      "evidence": "scripts/load-invoice-statement.mjs",
+      "kind": "source"
+    },
+    {
+      "from": "file:scripts/load-invoice-statement.mjs",
+      "to": "file:src/modules/finance/vat.js",
+      "label": "استيراد صريح",
+      "evidence": "scripts/load-invoice-statement.mjs",
+      "kind": "source"
+    },
+    {
+      "from": "file:scripts/load-invoice-statement.mjs",
+      "to": "file:src/core/config.js",
+      "label": "استيراد صريح",
+      "evidence": "scripts/load-invoice-statement.mjs",
       "kind": "source"
     },
     {
@@ -48077,6 +48523,41 @@
       "to": "file:src/core/db/index.js",
       "label": "استيراد صريح",
       "evidence": "scripts/reconcile-consulting.mjs",
+      "kind": "source"
+    },
+    {
+      "from": "file:scripts/reconcile-workbook.mjs",
+      "to": "file:scripts/lib/workbook-read.mjs",
+      "label": "استيراد صريح",
+      "evidence": "scripts/reconcile-workbook.mjs",
+      "kind": "source"
+    },
+    {
+      "from": "file:scripts/reconcile-workbook.mjs",
+      "to": "file:src/modules/finance/vat.js",
+      "label": "استيراد صريح",
+      "evidence": "scripts/reconcile-workbook.mjs",
+      "kind": "source"
+    },
+    {
+      "from": "file:scripts/reconcile-workbook.mjs",
+      "to": "file:src/web/i18n/glossary.js",
+      "label": "استيراد صريح",
+      "evidence": "scripts/reconcile-workbook.mjs",
+      "kind": "source"
+    },
+    {
+      "from": "file:scripts/reconcile-workbook.mjs",
+      "to": "file:src/core/db/index.js",
+      "label": "استيراد صريح",
+      "evidence": "scripts/reconcile-workbook.mjs",
+      "kind": "source"
+    },
+    {
+      "from": "file:scripts/reconcile-workbook.mjs",
+      "to": "file:src/core/db/index.js",
+      "label": "استيراد صريح",
+      "evidence": "scripts/reconcile-workbook.mjs",
       "kind": "source"
     },
     {
@@ -57166,6 +57647,48 @@
       "kind": "text-reference"
     },
     {
+      "from": "file:tests/integration/invoice-statement-load.test.js",
+      "to": "table:invoice",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/invoice-statement-load.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/invoice-statement-load.test.js",
+      "to": "table:audit_log",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/invoice-statement-load.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/invoice-statement-load.test.js",
+      "to": "table:sector",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/invoice-statement-load.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/invoice-statement-load.test.js",
+      "to": "table:client",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/invoice-statement-load.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/invoice-statement-load.test.js",
+      "to": "table:project",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/invoice-statement-load.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/invoice-statement-load.test.js",
+      "to": "table:app_user",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/invoice-statement-load.test.js",
+      "kind": "text-reference"
+    },
+    {
       "from": "file:tests/integration/mail-blocked-visible.test.js",
       "to": "table:login_code",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
@@ -57744,6 +58267,62 @@
       "to": "table:schema_migration",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
       "evidence": "tests/integration/migration-atomicity.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/mirror-source-fix.test.js",
+      "to": "table:opportunity",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/mirror-source-fix.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/mirror-source-fix.test.js",
+      "to": "table:audit_log",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/mirror-source-fix.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/mirror-source-fix.test.js",
+      "to": "table:app_user",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/mirror-source-fix.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/mirror-source-fix.test.js",
+      "to": "table:sector",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/mirror-source-fix.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/mirror-source-fix.test.js",
+      "to": "table:client",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/mirror-source-fix.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/mirror-source-fix.test.js",
+      "to": "table:stage",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/mirror-source-fix.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/mirror-source-fix.test.js",
+      "to": "table:opportunity_stage_history",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/mirror-source-fix.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/mirror-source-fix.test.js",
+      "to": "table:project",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/mirror-source-fix.test.js",
       "kind": "text-reference"
     },
     {
@@ -62983,6 +63562,97 @@
       "kind": "text-reference"
     },
     {
+      "from": "file:tests/integration/workbook-apply.test.js",
+      "to": "table:project",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/workbook-apply.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/workbook-apply.test.js",
+      "to": "table:deliverable",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/workbook-apply.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/workbook-apply.test.js",
+      "to": "table:revenue_line",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/workbook-apply.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/workbook-apply.test.js",
+      "to": "table:invoice",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/workbook-apply.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/workbook-apply.test.js",
+      "to": "table:collection",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/workbook-apply.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/workbook-apply.test.js",
+      "to": "table:project_phase",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/workbook-apply.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/workbook-apply.test.js",
+      "to": "table:milestone",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/workbook-apply.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/workbook-apply.test.js",
+      "to": "table:allocation",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/workbook-apply.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/workbook-apply.test.js",
+      "to": "table:employee",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/workbook-apply.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/workbook-apply.test.js",
+      "to": "table:sector",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/workbook-apply.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/workbook-apply.test.js",
+      "to": "table:department",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/workbook-apply.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/workbook-apply.test.js",
+      "to": "table:client",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/workbook-apply.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/workbook-apply.test.js",
+      "to": "table:app_user",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/workbook-apply.test.js",
+      "kind": "text-reference"
+    },
+    {
       "from": "file:tests/security.test.js",
       "to": "table:employee",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
@@ -66364,6 +67034,20 @@
       "kind": "text-reference"
     },
     {
+      "from": "file:scripts/apply-workbook.mjs",
+      "to": "table:app_user",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/apply-workbook.mjs",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/apply-workbook.mjs",
+      "to": "table:audit_log",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/apply-workbook.mjs",
+      "kind": "text-reference"
+    },
+    {
       "from": "file:scripts/audit-org-links.mjs",
       "to": "table:task",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
@@ -66742,6 +67426,69 @@
       "kind": "text-reference"
     },
     {
+      "from": "file:scripts/fix-mirror-source.mjs",
+      "to": "table:app_user",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/fix-mirror-source.mjs",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/fix-mirror-source.mjs",
+      "to": "table:project",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/fix-mirror-source.mjs",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/fix-mirror-source.mjs",
+      "to": "table:opportunity",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/fix-mirror-source.mjs",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/fix-mirror-source.mjs",
+      "to": "table:stage",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/fix-mirror-source.mjs",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/fix-mirror-source.mjs",
+      "to": "table:opportunity_stage_history",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/fix-mirror-source.mjs",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/fix-mirror-source.mjs",
+      "to": "table:proposal",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/fix-mirror-source.mjs",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/fix-mirror-source.mjs",
+      "to": "table:crm_activity",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/fix-mirror-source.mjs",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/fix-mirror-source.mjs",
+      "to": "table:audit_log",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/fix-mirror-source.mjs",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/fix-mirror-source.mjs",
+      "to": "table:sector",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/fix-mirror-source.mjs",
+      "kind": "text-reference"
+    },
+    {
       "from": "file:scripts/lib/expectations.mjs",
       "to": "table:crm_board",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
@@ -66921,6 +67668,41 @@
       "to": "table:invoice",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
       "evidence": "scripts/lib/seed-showcase.mjs",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/load-invoice-statement.mjs",
+      "to": "table:sector",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/load-invoice-statement.mjs",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/load-invoice-statement.mjs",
+      "to": "table:project",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/load-invoice-statement.mjs",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/load-invoice-statement.mjs",
+      "to": "table:invoice",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/load-invoice-statement.mjs",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/load-invoice-statement.mjs",
+      "to": "table:revenue_line",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/load-invoice-statement.mjs",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/load-invoice-statement.mjs",
+      "to": "table:app_user",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/load-invoice-statement.mjs",
       "kind": "text-reference"
     },
     {
@@ -67138,6 +67920,69 @@
       "to": "table:app_user",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
       "evidence": "scripts/reconcile-consulting.mjs",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/reconcile-workbook.mjs",
+      "to": "table:project",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/reconcile-workbook.mjs",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/reconcile-workbook.mjs",
+      "to": "table:client",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/reconcile-workbook.mjs",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/reconcile-workbook.mjs",
+      "to": "table:department",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/reconcile-workbook.mjs",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/reconcile-workbook.mjs",
+      "to": "table:employee",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/reconcile-workbook.mjs",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/reconcile-workbook.mjs",
+      "to": "table:app_user",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/reconcile-workbook.mjs",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/reconcile-workbook.mjs",
+      "to": "table:deliverable",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/reconcile-workbook.mjs",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/reconcile-workbook.mjs",
+      "to": "table:project_phase",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/reconcile-workbook.mjs",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/reconcile-workbook.mjs",
+      "to": "table:allocation",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/reconcile-workbook.mjs",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:scripts/reconcile-workbook.mjs",
+      "to": "table:sector",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "scripts/reconcile-workbook.mjs",
       "kind": "text-reference"
     },
     {
@@ -72417,6 +73262,76 @@
       "label": "update @ department",
       "evidence": "src/core/rbac/matrix.js",
       "kind": "grant"
+    },
+    {
+      "from": "issue:KI-132",
+      "to": "file:src/core/rbac/index.js",
+      "label": "يشير السجل إلى",
+      "evidence": "docs/KNOWN-ISSUES.md",
+      "kind": "reported"
+    },
+    {
+      "from": "issue:KI-132",
+      "to": "file:src/modules/api.routes.js",
+      "label": "يشير السجل إلى",
+      "evidence": "docs/KNOWN-ISSUES.md",
+      "kind": "reported"
+    },
+    {
+      "from": "issue:KI-132",
+      "to": "file:src/modules/pmo/projects.js",
+      "label": "يشير السجل إلى",
+      "evidence": "docs/KNOWN-ISSUES.md",
+      "kind": "reported"
+    },
+    {
+      "from": "issue:KI-132",
+      "to": "file:src/web/views/pmo.js",
+      "label": "يشير السجل إلى",
+      "evidence": "docs/KNOWN-ISSUES.md",
+      "kind": "reported"
+    },
+    {
+      "from": "issue:KI-130",
+      "to": "file:src/core/config.js",
+      "label": "يشير السجل إلى",
+      "evidence": "docs/KNOWN-ISSUES.md",
+      "kind": "reported"
+    },
+    {
+      "from": "issue:KI-127",
+      "to": "file:src/modules/pmo/governance.js",
+      "label": "يشير السجل إلى",
+      "evidence": "docs/KNOWN-ISSUES.md",
+      "kind": "reported"
+    },
+    {
+      "from": "issue:KI-127",
+      "to": "file:scripts/apply-workbook.mjs",
+      "label": "يشير السجل إلى",
+      "evidence": "docs/KNOWN-ISSUES.md",
+      "kind": "reported"
+    },
+    {
+      "from": "issue:KI-126",
+      "to": "file:src/modules/pmo/governance.js",
+      "label": "يشير السجل إلى",
+      "evidence": "docs/KNOWN-ISSUES.md",
+      "kind": "reported"
+    },
+    {
+      "from": "issue:KI-126",
+      "to": "file:tests/integration/workbook-apply.test.js",
+      "label": "يشير السجل إلى",
+      "evidence": "docs/KNOWN-ISSUES.md",
+      "kind": "reported"
+    },
+    {
+      "from": "issue:KI-126",
+      "to": "file:scripts/reconcile-workbook.mjs",
+      "label": "يشير السجل إلى",
+      "evidence": "docs/KNOWN-ISSUES.md",
+      "kind": "reported"
     },
     {
       "from": "issue:KI-125",
