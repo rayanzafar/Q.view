@@ -39,30 +39,49 @@ export function windowBounds(win, year, now = new Date()) {
 // الحدّان هما الفترة كاملةً كما في التقويم (لا مقصوصةً عند اليوم): الاستعلامات تعيد ما سُجِّل
 // فعلاً، والشاشة هي التي تقول «حتى اليوم» للفترة الجارية و«متوقع» للقادمة. وخلطُ المحقق
 // بالمتوقع في خانةٍ واحدة ممنوع — ولهذا تُعاد الحالة مع الحدّين لا الحدّان وحدهما.
-export const PERIOD_KINDS = ['y', 'q', 'm'];
+// ألسنةُ الفترة خمسٌ: السنة، ربعٌ بعينه، شهرٌ بعينه، «منذ أول السنة حتى اليوم» (ytd)،
+// ومدى أشهرٍ متصل (m3-m8) لمن يريد «من مارس إلى أغسطس» بلا ربعٍ يطابقه. والقراءة تُعيد
+// `key` — النصّ القانوني الذي يُعاد وضعه في الرابط — فلا يُركّبه كل مستدعٍ من kind+index
+// (تركيبةٌ لا تصلح لـytd ولا للمدى أصلاً).
+export const PERIOD_KINDS = ['y', 'q', 'm', 'ytd', 'range'];
+const clampM = (n) => Math.min(12, Math.max(1, n));
 export function parsePeriod(p) {
   const v = String(p || 'y').trim().toLowerCase();
-  if (v === 'y') return { kind: 'y', index: 0 };
+  if (v === 'y') return { kind: 'y', index: 0, key: 'y', from: 1, to: 12 };
+  // «حتى تاريخه»: حدّها الأعلى لا يُعرف إلا مع `now` ⇒ to = null هنا، وperiodBounds يحسمه.
+  if (v === 'ytd') return { kind: 'ytd', index: 0, key: 'ytd', from: 1, to: null };
   const q = /^q([1-4])$/.exec(v);
-  if (q) return { kind: 'q', index: Number(q[1]) };
+  if (q) { const i = Number(q[1]); return { kind: 'q', index: i, key: `q${i}`, from: (i - 1) * 3 + 1, to: (i - 1) * 3 + 3 }; }
   const m = /^m(1[0-2]|[1-9])$/.exec(v);
-  if (m) return { kind: 'm', index: Number(m[1]) };
-  return { kind: 'y', index: 0 };           // مجهولٌ ⇒ السنة، لا خطأ في وجه القارئ
+  if (m) { const i = Number(m[1]); return { kind: 'm', index: i, key: `m${i}`, from: i, to: i }; }
+  // مدى أشهر: يُقصّ كلٌّ من طرفيه إلى 1–12، ويُقلب إن جاء معكوساً، وشهرٌ واحد يعود شهراً.
+  const r = /^m(\d{1,2})-m(\d{1,2})$/.exec(v);
+  if (r) {
+    let a = clampM(Number(r[1])), b = clampM(Number(r[2]));
+    if (a > b) [a, b] = [b, a];
+    if (a === b) return { kind: 'm', index: a, key: `m${a}`, from: a, to: a };
+    return { kind: 'range', index: 0, key: `m${a}-m${b}`, from: a, to: b };
+  }
+  return { kind: 'y', index: 0, key: 'y', from: 1, to: 12 };  // مجهولٌ ⇒ السنة، لا خطأ في وجه القارئ
 }
 export function periodBounds(p, year, now = new Date()) {
-  const { kind, index } = parsePeriod(p);
+  const { kind, index, key, from, to } = parsePeriod(p);
   const y = Number(year);
   const pad = (n) => String(n).padStart(2, '0');
-  let startM = 1, endM = 13;                 // endM حصري (13 = أول العام التالي)
-  if (kind === 'q') { startM = (index - 1) * 3 + 1; endM = startM + 3; }
-  else if (kind === 'm') { startM = index; endM = index + 1; }
+  let startM = from, endM = (to == null ? 12 : to) + 1;   // endM حصري (13 = أول العام التالي)
+  if (kind === 'ytd') {
+    // السنة الجارية: تنتهي بنهاية الشهر الجاري (اصطلاح الحدّ الأعلى نفسه الذي للشهر والربع
+    // — الفترة كاملةً كما في التقويم). سنةٌ أخرى ⇒ السنة كاملة، والحالة تقولها بنفسها.
+    const curM = y === now.getUTCFullYear() ? now.getUTCMonth() + 1 : 12;
+    startM = 1; endM = curM + 1;
+  }
   const sinceIso = `${y}-${pad(startM)}-01`;
   const untilIso = endM > 12 ? `${y + 1}-01-01` : `${y}-${pad(endM)}-01`;
   const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
     .toISOString().slice(0, 10);
   const isPast = untilIso <= today;          // انقضت كاملةً
   const isFuture = sinceIso > today;         // لم تبدأ بعد
-  return { kind, index, sinceIso, untilIso, isPast, isFuture, isCurrent: !isPast && !isFuture,
+  return { kind, index, key, sinceIso, untilIso, isPast, isFuture, isCurrent: !isPast && !isFuture,
     months: Array.from({ length: (endM > 12 ? 13 : endM) - startM }, (_, i) => startM + i) };
 }
 

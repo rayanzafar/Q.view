@@ -13,6 +13,8 @@ import { fmtSar } from '../../core/util/ids.js';
 import { all, get } from '../../core/db/index.js';
 import { sectorDashboard, sectorStaffing, sectorWins, quarterlyRevenue, quarterlyBookings, pipelineCoverage, monthlyRevenue, revenueOutlook, revenueScope, outlookFromMonths, winsByMonth, windowFigures, windowRevenue, yearElapsedPct, targetToDate, paceDelta, grossMargin, sectorCosts, backlog, unbilledDelivered, invoicedNet, WEIGHTED_OPEN, availableYears } from '../../core/reports/metrics.js';
 import { monthlyRevenueTargets } from '../../modules/org/sector-targets.js';
+import { sectorIncomeStatement, varianceTone, noteText } from '../../modules/finance/income-statement.js';
+import { plMoney, plPct } from './sector-pl-print.js';
 import { attentionFeed, RESOURCE_AR } from '../../core/reports/attention.js';
 import { changesSince, periodBounds, lastChangeAt } from '../../core/reports/changes.js';
 import { completenessScore } from '../../core/reports/completeness.js';
@@ -39,8 +41,25 @@ import { esc, ddWrap, attain, ddRows, sarShort } from './_shared.js';
 // الفترة التقويمية (?p=y | q1..q4 | m1..m12) — تحلّ محل النافذة المتدحرجة على الصفحة كلها:
 // «الشهر» المتدحرج كان يعني آخر ثلاثين يوماً، و«الربع» أربعة أشهر متقاطعة، وهو ما لا يفهمه
 // القارئ من التسمية. ومرشِّحٌ واحد للفترة أوضح من اثنين، فتغذية «ما تغيّر» تتبعه أيضاً.
-const periodLabel = (kind, index) => (kind === 'y' ? 'السنة كاملة' : kind === 'q' ? QUARTERS_AR[index - 1] : MONTHS_AR[index - 1]);
-const periodEcho = (kind, index, year) => (kind === 'y' ? `خلال ${year}` : kind === 'q' ? `في ${QUARTERS_AR[index - 1]} ${year}` : `في ${MONTHS_AR[index - 1]} ${year}`);
+// ألسنة الفترة خمس (السنة، ربع، شهر، من بداية السنة، مدى أشهر) — فالتسميتان تقرآن الحالة
+// المُحلَّلة كاملةً لا (النوع + الرقم): «من بداية السنة» و«من مارس إلى أغسطس» لا رقمَ ترتيبٍ
+// لهما أصلاً، وتركيبُ اسمهما من فهرسٍ صفريّ كان يُخرج فراغاً في وجه القارئ.
+const pFirstM = (p) => (p.months?.[0] || 1);
+const pLastM = (p) => (p.months?.[p.months.length - 1] || 12);
+// و«من بداية السنة» في سنةٍ منقضية تتّسع إلى شهورها الاثني عشر كلِّها (periodBounds) — فهي
+// السنةُ كاملةً في الأرقام، ويجب أن تكونها في الاسم أيضاً. «من بداية سنة ٢٠٢٥ حتى اليوم»
+// جملةٌ تكذب على قارئها: لا «اليوم» في سنةٍ انقضت، والفترة ليست ناقصةً أصلاً.
+const pIsWholeYear = (p) => (p.months?.length || 0) >= 12;
+const periodLabel = (p) => (p.kind === 'y' ? G.fullYear
+  : p.kind === 'q' ? QUARTERS_AR[p.index - 1]
+    : p.kind === 'm' ? MONTHS_AR[p.index - 1]
+      : p.kind === 'ytd' ? (pIsWholeYear(p) ? G.fullYear : G.ytd)
+        : `من ${MONTHS_AR[pFirstM(p) - 1]} إلى ${MONTHS_AR[pLastM(p) - 1]}`);
+const periodEcho = (p, year) => (p.kind === 'y' ? `خلال ${year}`
+  : p.kind === 'q' ? `في ${QUARTERS_AR[p.index - 1]} ${year}`
+    : p.kind === 'm' ? `في ${MONTHS_AR[p.index - 1]} ${year}`
+      : p.kind === 'ytd' ? (pIsWholeYear(p) ? `خلال ${year}` : `من بداية ${year} حتى اليوم`)
+        : `من ${MONTHS_AR[pFirstM(p) - 1]} إلى ${MONTHS_AR[pLastM(p) - 1]} ${year}`);
 
 // أيقونة ولون كل نوع في «ما تغيّر»
 const CHG_IC = { stage: 'trend', invoice: 'money', collection: 'check', activity: 'mail', created: 'plus' };
@@ -110,7 +129,14 @@ const CSS = `<style>
 .psel a.fut{opacity:.75}
 .futnote{font-size:var(--fs-micro);color:#92400e;background:var(--st-warn-soft);border-radius:999px;padding:.15rem .6rem;font-weight:700}
 .psel a.on.fut{color:var(--ink2)}
-@media(max-width:900px){.psel .pmon{overflow-x:auto;max-width:100%}}
+/* مدى الأشهر: نموذجٌ صغير بمُنتقيَين يعمل بلا نصٍّ برمجي — والحقول المخفيّة تحمل بقية الحالة */
+.prange{display:flex;gap:.3rem;align-items:center;flex-wrap:nowrap;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:.2rem .4rem}
+.prange label{font-size:11px;font-weight:700;color:var(--muted);white-space:nowrap}
+.prange select{font-family:inherit;font-size:11.5px;font-weight:700;color:var(--ink2);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:.25rem .35rem}
+.prange select:focus-visible{outline:2px solid var(--brand);outline-offset:1px}
+/* شارةُ نطاقٍ عامة (كانت محصورةً في شريط المال وبطاقات الكابينة) — تصلح لأي رأس بطاقة */
+.icb{display:inline-block;font-size:9.5px;font-weight:700;color:var(--muted);background:var(--track);border-radius:999px;padding:.05rem .45rem;vertical-align:middle}
+@media(max-width:900px){.psel .pmon{overflow-x:auto;max-width:100%}.prange{flex-wrap:wrap}}
 .seg a.on{background:#fff;color:var(--ink2);box-shadow:var(--sh-sm)}
 /* ═══ كابينة v5.39 (نماذج المالك): لوحة داكنة، أقسام مرقّمة، رسوم غنية ═══ */
 .card.pad{padding:.8rem 1rem;display:block}
@@ -424,6 +450,31 @@ ${CARD_HEAD_CSS}
 .cl-nm{display:flex;gap:.5rem;align-items:center;min-width:0}
 .cl-nm a{color:var(--ink2);font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cl-sig{display:inline-flex;align-items:center;gap:.3rem;font-size:10px;font-weight:800;padding:.12rem .5rem;border-radius:999px;white-space:nowrap}
+/* ── فصل «قائمة الدخل»: جدولٌ واحد بستة أعمدة، والكلفة بين قوسين كالقوائم المالية ── */
+.pl-head{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-bottom:.5rem}
+.pl-acts{margin-inline-start:auto;display:flex;gap:.4rem;flex-wrap:wrap}
+/* الجدول أوسع من شاشة الجوال، فيمرّر داخل غلافه وحده — والصفحة لا تمرّر أفقياً */
+.pl-wrap{min-width:0;max-width:100%}
+.pl-tbl{width:100%;border-collapse:collapse;font-size:var(--fs-body);min-width:660px}
+.pl-tbl th{font-size:var(--fs-micro);color:var(--muted);font-weight:700;text-align:start;padding:.35rem .6rem;border-bottom:1px solid var(--line);white-space:nowrap;background:var(--surface)}
+.pl-tbl td{padding:.45rem .6rem;border-bottom:1px dashed var(--line);white-space:nowrap;text-align:start;vertical-align:middle;background:var(--surface)}
+/* عمود البند يثبت عند التمرير الأفقي — نمط مصفوفة التسكين نفسه (inset-inline-start) */
+.pl-tbl .pl-item{position:sticky;inset-inline-start:0;z-index:1;white-space:normal;min-width:150px;border-inline-end:1px solid var(--line)}
+.pl-tbl th.pl-item{z-index:2}
+.pl-tbl .pl-item b{display:block;font-weight:800;color:var(--ink2)}
+.pl-tbl .pl-item span{display:block;font-size:10.5px;color:var(--muted);font-weight:600}
+.pl-tbl tr.sub td,.pl-tbl tr.res td{background:var(--bg);font-weight:800}
+.pl-tbl tr.res td{border-top:2px solid var(--acc-navy)}
+.pl-tbl tr.gp td{background:var(--track);font-weight:800}
+.pl-tbl .na{color:var(--muted);font-weight:700}
+.pl-strip td{background:var(--st-warn-soft);color:#92400e;font-size:var(--fs-micro);font-weight:700;white-space:normal}
+.pl-strip svg{width:13px;height:13px;vertical-align:middle;margin-inline-end:.25rem}
+.pl-var{display:inline-flex;gap:.25rem;align-items:center;border-radius:999px;padding:.05rem .5rem;font-weight:800;font-size:11.5px}
+.pl-var.good{background:var(--st-good-soft);color:#047857}
+.pl-var.bad{background:var(--st-bad-soft);color:#b91c1c}
+.pl-var.neutral{background:var(--track);color:var(--muted)}
+.pl-notes{margin-top:.6rem;display:grid;gap:.25rem;font-size:var(--fs-micro);color:var(--muted)}
+.pl-notes a{color:var(--brand);font-weight:700}
 </style>`;
 
 // ── من يرى أي وجه من الصفحة؟ ─────────────────────────────────────────────────
@@ -459,8 +510,14 @@ export async function sectorPage(user, opts = {}) {
   const year = Number(opts.year) || config.fiscalYear;
   const now = new Date();
   const today = now.toISOString().slice(0, 10);
-  const period = periodBounds(opts.p, year, now);
-  const win = `${period.kind}${period.kind === 'y' ? '' : period.index}`;   // قيمة الرابط
+  // مدى الأشهر يصل من مُنتقيَين اثنين في نموذجٍ عادي (من شهر / إلى شهر) فيعمل بلا نصٍّ برمجي:
+  // الصفحة تركّبهما هنا في مفتاح الفترة القانوني، ثم تحمله كلُّ روابطها بعدُ صيغةً واحدة.
+  const monthNo = (v) => { const n = Number(v); return Number.isInteger(n) && n >= 1 && n <= 12 ? n : null; };
+  const fromM = monthNo(opts.pa), toM = monthNo(opts.pb);
+  const period = periodBounds((fromM && toM) ? `m${fromM}-m${toM}` : opts.p, year, now);
+  // قيمة الرابط: المفتاح القانوني من قارئ الفترة نفسه — تركيبُه هنا من (النوع + الرقم) كان
+  // يُخرج «ytd0» و«range0» فيسقط المدى و«من بداية السنة» من كل رقاقةٍ ولسانٍ في الصفحة.
+  const win = period.key;
   // محوّل القطاع: قطاعات التسليم وحدها — الأربعة لا خامس لها. وحدة المساندة لا مركز قيادة
   // تجاري لها (بلا هدف ولا خط فرص)، ووضعها في المحوّل يجعلها قطاعاً في عين كل من يستعمله.
   // ملاحظة: القائمة تحكم أيضاً ما يُقبل من ?sector= — فطلب وحدة مساندة يعود إلى قطاع المستخدم.
@@ -502,9 +559,29 @@ export async function sectorPage(user, opts = {}) {
   const deptArg = deptSel && deptSel !== NO_DEPT ? [deptSel] : [];
   const clientSql = (col) => (clientSel ? ` AND ${col} = ?` : '');
   const clientArg = clientSel ? [clientSel] : [];
+  // ── مرشِّح المشروع (v5.98) ──────────────────────────────────────────────────────────────
+  // «كيف يقرأ القائد قطاعه من زاوية مشروعٍ بعينه؟» — بُعدٌ ثالثٌ بجوار الإدارة والعميل، وقائمتُه
+  // مشاريعُ هذا القطاع وحدها مقصوصةً بما اختير قبلها (إدارةً وعميلاً) فلا يُعرض خيارٌ يُفرغ
+  // الشاشة لحظةَ اختياره. ومعرّفٌ لا يطابق أياً منها يسقط صامتاً كسائر المرشِّحات — لا خطأ في
+  // وجه القارئ ولا قصٌّ عشوائي.
+  // وبعدسة السنة المعروضة نفسها التي تحكم كل عدٍّ للمشاريع هنا (projectYearClause — قاعدة
+  // «مشروع السنة» الواحدة): قائمةٌ عمياء عن السنة كانت تعرض مشاريع سنواتٍ ماضية لا تظهر في
+  // أي رقمٍ على الشاشة، فيختار القارئ اسماً فتفرغ الصفحة أمامه.
+  const pycList = projectYearClause(year);
+  const sectorProjects = await all(`SELECT id, name_ar FROM project
+     WHERE sector_id = ? AND deleted_at IS NULL AND ${pycList.clause}${deptSql('department_id')}${clientSql('client_id')}
+     ORDER BY name_ar`, [sectorId, ...pycList.params, ...deptArg, ...clientArg]);
+  const projSel = opts.project && sectorProjects.some((p) => p.id === opts.project) ? String(opts.project) : null;
+  const projSql = (col) => (projSel ? ` AND ${col} = ?` : '');
+  const projArg = projSel ? [projSel] : [];
   // نطاق الترشيح الواحد الذي تمرّره الصفحة لدوال المقاييس (بنود الإيراد والفواتير عبر مشروعها)
-  const fscope = { dept: deptSel, client: clientSel };
-  const filtered = !!(deptSel || clientSel);
+  const fscope = { dept: deptSel, client: clientSel, project: projSel };
+  const filtered = !!(deptSel || clientSel || projSel);
+  // شارةُ ما لا يقبل القصّ بالمشروع: الفرصة لا عمودَ مشروعٍ لها في المنصة، وخطةُ التسكين
+  // والتحصيلُ وسجلُّ «ما تغيّر» موارد قطاعية. فتبقى أرقامها كاملةً وتقول شارتُها ذلك صراحةً —
+  // رقمٌ كاملٌ موسومٌ خيرٌ من رقمٍ ناقصٍ يُقرأ كأنه مرشَّح.
+  const projBadge = projSel ? ` <span class="icb">${G.wholeSector}</span>` : '';
+  const projTag = projSel ? G.wholeSector : '';
   // كم يُستبعَد لعدم وجود إدارة مسجَّلة له؟ يُقال صراحةً حين يُرشَّح — أكثر من نصف المشاريع
   // بلا إدارة، فترشيحٌ صامت يُخفيها ويترك القارئ يحار لماذا لا تُجمَع الأرقام إلى القطاع.
   const deptGap = sectorDepts.length ? await get(`SELECT
@@ -516,6 +593,8 @@ export async function sectorPage(user, opts = {}) {
   // أعادك تبديلُ مرشِّحٍ إلى الفصل الأول وضاع موضعك.
   const TAB_DEFS = [
     ['pulse', 'الإيقاع'],
+    // «قائمة الدخل» ثانيةً لا أخيرة: سؤالُ المالك بعد «هل نحن على المسار؟» هو «وأين الربح؟».
+    ['pl', G.incomeStatement],
     ['com', 'التجاري'],
     ['ops', 'التشغيلي'],
     ['cli', G.clients],
@@ -543,9 +622,15 @@ export async function sectorPage(user, opts = {}) {
   // فارغة معلنة. والنافذة السابقة المكافئة [since-len, since) للدلتا — تُطوى إن خرجت من السنة.
   const { sinceIso, untilIso } = period;
   const winLen = Math.max(0, Date.parse(untilIso) - Date.parse(sinceIso));
-  // الفترة السابقة المكافئة: الشهر/الربع الذي قبله داخل السنة نفسها — للمقارنة الصادقة
+  // الفترة السابقة المكافئة: الشهر/الربع الذي قبله داخل السنة نفسها — للمقارنة الصادقة.
+  // ومدى الأشهر: الكتلةُ المساويةُ له طولاً الملاصقةُ له داخل سنته (م٣–م٨ ⇒ لا سابقَ لها لأن
+  // ستةً قبل مارس تخرج من السنة) — والمقارنة لا تعبر حدّ السنة أبداً. و«من بداية السنة» لا
+  // سابقَ لها بطبيعتها: نصفُ سنةٍ أمام نصفِ سنةٍ سابقةٍ مقارنةٌ لا يطلبها من اختار «حتى اليوم».
+  const rangeLen = period.months.length;
   const prevP = period.kind === 'm' && period.index > 1 ? `m${period.index - 1}`
-    : period.kind === 'q' && period.index > 1 ? `q${period.index - 1}` : null;
+    : period.kind === 'q' && period.index > 1 ? `q${period.index - 1}`
+      : period.kind === 'range' && pFirstM(period) - rangeLen >= 1
+        ? `m${pFirstM(period) - rangeLen}-m${pFirstM(period) - 1}` : null;
   const prevB = prevP ? periodBounds(prevP, year, now) : null;
   const prevSinceIso = prevB?.sinceIso, prevOk = !!prevB && !period.isFuture;
   const [chg, attn, fr, monthly, qRev, qBook, cover, staff, wins, team] = await Promise.all([
@@ -572,38 +657,38 @@ export async function sectorPage(user, opts = {}) {
     // رحلة القيمة: المتعاقد (نشط أو موقّع هذه السنة) ← المحقق ← المسلَّم ← المقبول ← المفوتر ← المحصَّل
     get(`SELECT COALESCE(SUM(c.value_halalas),0) v FROM contract c LEFT JOIN project p ON p.id = c.project_id
        WHERE c.sector_id = ? AND c.deleted_at IS NULL
-       AND (c.status IN ('ACTIVE','COMPLETED') OR substr(COALESCE(c.signed_at, c.start_date, c.created_at),1,4) = ?)${deptSql('p.department_id')}${clientSql('COALESCE(c.client_id, p.client_id)')}`,
-    [sectorId, String(year), ...deptArg, ...clientArg]),
+       AND (c.status IN ('ACTIVE','COMPLETED') OR substr(COALESCE(c.signed_at, c.start_date, c.created_at),1,4) = ?)${deptSql('p.department_id')}${clientSql('COALESCE(c.client_id, p.client_id)')}${projSql('c.project_id')}`,
+    [sectorId, String(year), ...deptArg, ...clientArg, ...projArg]),
     get(`SELECT COALESCE(SUM(d.amount_halalas),0) v FROM deliverable d LEFT JOIN project p ON p.id = d.project_id
        WHERE d.sector_id = ? AND d.deleted_at IS NULL AND ${dlvYearSqlFor('d')} = ?
-       AND d.status IN ('DELIVERED','ACCEPTED','INVOICED','PAID')${deptSql('p.department_id')}${clientSql('p.client_id')}`,
-    [sectorId, year, ...deptArg, ...clientArg]),
+       AND d.status IN ('DELIVERED','ACCEPTED','INVOICED','PAID')${deptSql('p.department_id')}${clientSql('p.client_id')}${projSql('d.project_id')}`,
+    [sectorId, year, ...deptArg, ...clientArg, ...projArg]),
     get(`SELECT COALESCE(SUM(d.amount_halalas),0) v FROM deliverable d LEFT JOIN project p ON p.id = d.project_id
        WHERE d.sector_id = ? AND d.deleted_at IS NULL AND ${dlvYearSqlFor('d')} = ?
-       AND d.status IN ('ACCEPTED','INVOICED','PAID')${deptSql('p.department_id')}${clientSql('p.client_id')}`,
-    [sectorId, year, ...deptArg, ...clientArg]),
+       AND d.status IN ('ACCEPTED','INVOICED','PAID')${deptSql('p.department_id')}${clientSql('p.client_id')}${projSql('d.project_id')}`,
+    [sectorId, year, ...deptArg, ...clientArg, ...projArg]),
     canInvoices ? get(`SELECT COALESCE(SUM(i.amount_halalas),0) v FROM invoice i LEFT JOIN project p ON p.id = i.project_id
        WHERE COALESCE(i.sector_id, p.sector_id) = ? AND i.deleted_at IS NULL AND i.status NOT IN ('DRAFT','CANCELLED')
-         AND substr(COALESCE(i.issue_date, i.created_at),1,4) = ?${deptSql('p.department_id')}${clientSql('COALESCE(i.client_id, p.client_id)')}`,
-    [sectorId, String(year), ...deptArg, ...clientArg]) : null,
+         AND substr(COALESCE(i.issue_date, i.created_at),1,4) = ?${deptSql('p.department_id')}${clientSql('COALESCE(i.client_id, p.client_id)')}${projSql('i.project_id')}`,
+    [sectorId, String(year), ...deptArg, ...clientArg, ...projArg]) : null,
     canInvoices ? get(`SELECT COALESCE(SUM(col.amount_halalas),0) v FROM collection col
        JOIN invoice i ON i.id = col.invoice_id LEFT JOIN project p ON p.id = i.project_id
        WHERE COALESCE(i.sector_id, p.sector_id) = ? AND i.deleted_at IS NULL
-         AND substr(COALESCE(col.collected_at, col.created_at),1,4) = ?${deptSql('p.department_id')}${clientSql('COALESCE(i.client_id, p.client_id)')}`,
-    [sectorId, String(year), ...deptArg, ...clientArg]) : null,
+         AND substr(COALESCE(col.collected_at, col.created_at),1,4) = ?${deptSql('p.department_id')}${clientSql('COALESCE(i.client_id, p.client_id)')}${projSql('i.project_id')}`,
+    [sectorId, String(year), ...deptArg, ...clientArg, ...projArg]) : null,
     // التزام المعالم في الأسابيع الثمانية الماضية: المستحق منها وما تحقق (MET)
     all(`SELECT m.due_date, m.status FROM milestone m JOIN project p ON p.id = m.project_id
        WHERE p.sector_id = ? AND m.deleted_at IS NULL AND p.deleted_at IS NULL
-         AND m.due_date IS NOT NULL AND substr(m.due_date,1,10) >= ? AND substr(m.due_date,1,10) < ?${deptSql('p.department_id')}${clientSql('p.client_id')}`,
-    [sectorId, new Date(Date.parse(today) - 56 * 86400000).toISOString().slice(0, 10), today, ...deptArg, ...clientArg]),
+         AND m.due_date IS NOT NULL AND substr(m.due_date,1,10) >= ? AND substr(m.due_date,1,10) < ?${deptSql('p.department_id')}${clientSql('p.client_id')}${projSql('m.project_id')}`,
+    [sectorId, new Date(Date.parse(today) - 56 * 86400000).toISOString().slice(0, 10), today, ...deptArg, ...clientArg, ...projArg]),
     all(`SELECT m.name_ar, m.due_date, m.status, p.name_ar project, p.id pid FROM milestone m JOIN project p ON p.id = m.project_id
        WHERE p.sector_id = ? AND m.deleted_at IS NULL AND p.deleted_at IS NULL AND m.status = 'PENDING'
-         AND m.due_date IS NOT NULL AND substr(m.due_date,1,10) >= ? AND substr(m.due_date,1,10) <= ?${deptSql('p.department_id')}${clientSql('p.client_id')}
-       ORDER BY m.due_date LIMIT 9`, [sectorId, today, new Date(Date.parse(today) + 90 * 86400000).toISOString().slice(0, 10), ...deptArg, ...clientArg]),
+         AND m.due_date IS NOT NULL AND substr(m.due_date,1,10) >= ? AND substr(m.due_date,1,10) <= ?${deptSql('p.department_id')}${clientSql('p.client_id')}${projSql('m.project_id')}
+       ORDER BY m.due_date LIMIT 9`, [sectorId, today, new Date(Date.parse(today) + 90 * 86400000).toISOString().slice(0, 10), ...deptArg, ...clientArg, ...projArg]),
     all(`SELECT r.title, r.probability, r.impact, p.name_ar project, p.id pid FROM risk r LEFT JOIN project p ON p.id = r.project_id
-       WHERE r.sector_id = ? AND r.deleted_at IS NULL AND r.status != 'CLOSED'${deptSql('p.department_id')}${clientSql('p.client_id')}
+       WHERE r.sector_id = ? AND r.deleted_at IS NULL AND r.status != 'CLOSED'${deptSql('p.department_id')}${clientSql('p.client_id')}${projSql('r.project_id')}
        ORDER BY CASE r.probability WHEN 'high' THEN 0 WHEN 'med' THEN 1 WHEN 'medium' THEN 1 ELSE 2 END LIMIT 4`,
-    [sectorId, ...deptArg, ...clientArg]),
+    [sectorId, ...deptArg, ...clientArg, ...projArg]),
   ]);
 
   // ── (v5.71) «المال في القطاع»: الإيراد والمفوتر والتكاليف في سطرٍ واحد ─────────────────
@@ -616,7 +701,7 @@ export async function sectorPage(user, opts = {}) {
   // منها بلا مشروع، وبنودُ التكلفة والمصروفات لا تحمل إدارةً ولا عميلاً أصلاً — فجمعُها تحت
   // ترشيحٍ يُخرج رقماً ناقصاً يُقرأ كأنه كامل. فتُعاد قراءة أرقامه بلا مرشِّح عند الترشيح،
   // وتقول شارةُ «القطاع كله» ذلك للقارئ صراحةً بدل أن يخمّنه.
-  const MB_ALL = { dept: null, client: null };
+  const MB_ALL = { dept: null, client: null, project: null };
   const mbWrev = period.kind === 'y' ? null
     : (filtered ? await windowRevenue(sectorId, year, sinceIso, untilIso, MB_ALL) : wrev);
   const [mbInvYear, mbColYear] = (filtered && canInvoices) ? await Promise.all([
@@ -732,27 +817,27 @@ export async function sectorPage(user, opts = {}) {
   [sectorId, ...deptArg, ...clientArg]);
   const activeC = canContracts ? await get(`SELECT COUNT(*) n, COALESCE(SUM(c.value_halalas),0) v
      FROM contract c LEFT JOIN project p ON p.id = c.project_id
-     WHERE c.sector_id = ? AND c.deleted_at IS NULL AND c.status = 'ACTIVE'${deptSql('p.department_id')}${clientSql('COALESCE(c.client_id, p.client_id)')}`,
-  [sectorId, ...deptArg, ...clientArg]) : null;
+     WHERE c.sector_id = ? AND c.deleted_at IS NULL AND c.status = 'ACTIVE'${deptSql('p.department_id')}${clientSql('COALESCE(c.client_id, p.client_id)')}${projSql('c.project_id')}`,
+  [sectorId, ...deptArg, ...clientArg, ...projArg]) : null;
   const secContracts = canContracts ? await all(`SELECT c.id, c.code, c.value_halalas, c.status, c.start_date, cl.name_ar client,
      (SELECT COALESCE(SUM(i.amount_halalas),0) FROM invoice i WHERE i.contract_id = c.id AND i.status != 'DRAFT' AND i.deleted_at IS NULL) invoiced
      FROM contract c LEFT JOIN client cl ON cl.id = c.client_id LEFT JOIN project p ON p.id = c.project_id
-     WHERE c.sector_id = ? AND c.deleted_at IS NULL${deptSql('p.department_id')}${clientSql('COALESCE(c.client_id, p.client_id)')}
-     ORDER BY c.value_halalas DESC LIMIT 10`, [sectorId, ...deptArg, ...clientArg]) : [];
+     WHERE c.sector_id = ? AND c.deleted_at IS NULL${deptSql('p.department_id')}${clientSql('COALESCE(c.client_id, p.client_id)')}${projSql('c.project_id')}
+     ORDER BY c.value_halalas DESC LIMIT 10`, [sectorId, ...deptArg, ...clientArg, ...projArg]) : [];
   const revByProject = await all(`SELECT p.id, p.name_ar, p.status, p.rag, p.progress_pct,
        COALESCE(NULLIF(p.contract_value_halalas,0), NULLIF(p.budget_halalas,0), NULLIF(p.po_value_halalas,0)) cv,
        CASE WHEN COALESCE(p.contract_value_halalas,0)>0 THEN 'عقد' WHEN COALESCE(p.budget_halalas,0)>0 THEN 'ميزانية'
             WHEN COALESCE(p.po_value_halalas,0)>0 THEN 'أمر شراء' ELSE NULL END cvbasis,
        COALESCE(SUM(${netSql('rl.amount_halalas', 'rl.net_amount_halalas')}),0) rev
      FROM revenue_line rl LEFT JOIN project p ON p.id = rl.project_id
-     WHERE rl.sector_id = ? AND rl.year = ?${deptSql('p.department_id')}${clientSql('p.client_id')}
+     WHERE rl.sector_id = ? AND rl.year = ?${deptSql('p.department_id')}${clientSql('p.client_id')}${projSql('rl.project_id')}
      GROUP BY p.id, p.name_ar, p.status, p.rag, p.progress_pct, p.contract_value_halalas, p.budget_halalas, p.po_value_halalas
-     ORDER BY rev DESC LIMIT 12`, [sectorId, year, ...deptArg, ...clientArg]);
+     ORDER BY rev DESC LIMIT 12`, [sectorId, year, ...deptArg, ...clientArg, ...projArg]);
   // إيراد كل عميل في هذا القطاع وهذه السنة — عبر مشروع البند (بند بلا مشروع لا يُنسب لعميل).
   const revByClient = await all(`SELECT p.client_id cid, COALESCE(SUM(${netSql('rl.amount_halalas', 'rl.net_amount_halalas')}),0) rev
      FROM revenue_line rl JOIN project p ON p.id = rl.project_id
-     WHERE rl.sector_id = ? AND rl.year = ? AND p.client_id IS NOT NULL${deptSql('p.department_id')}${clientSql('p.client_id')} GROUP BY p.client_id`,
-  [sectorId, year, ...deptArg, ...clientArg]);
+     WHERE rl.sector_id = ? AND rl.year = ? AND p.client_id IS NOT NULL${deptSql('p.department_id')}${clientSql('p.client_id')}${projSql('rl.project_id')} GROUP BY p.client_id`,
+  [sectorId, year, ...deptArg, ...clientArg, ...projArg]);
   // وما بعد الترسية علنيٌّ داخل القطاع بالقرار نفسه («الأرقام لا الأشخاص»): السرّية تخصّ
   // الفرصة **قبل** ترسيتها، وصفقات السنة المكسوبة إنجاز قطاعٍ يُعرض لأهله كلهم — فتبقى قطاعية.
   const secWon = await all(`SELECT o.title_ar, o.value_halalas, c.name_ar client FROM opportunity o
@@ -763,8 +848,8 @@ export async function sectorPage(user, opts = {}) {
   // القطاعات الأخرى لقارئٍ نطاقه قطاعه وحده. قرارات القطاع = قرارات مشاريعه.
   const recentDecisions = await all(`SELECT d.title, d.decided_by, substr(d.decided_at,1,10) dat, p.name_ar project, p.id pid
      FROM decision d JOIN project p ON p.id = d.project_id
-     WHERE p.sector_id = ? AND d.deleted_at IS NULL${deptSql('p.department_id')}${clientSql('p.client_id')}
-     ORDER BY d.decided_at DESC LIMIT 5`, [sectorId, ...deptArg, ...clientArg]);
+     WHERE p.sector_id = ? AND d.deleted_at IS NULL${deptSql('p.department_id')}${clientSql('p.client_id')}${projSql('d.project_id')}
+     ORDER BY d.decided_at DESC LIMIT 5`, [sectorId, ...deptArg, ...clientArg, ...projArg]);
   const pendingApprovals = await all(`SELECT ar.resource, ar.amount_halalas, ar.created_at FROM approval_request ar
      WHERE ar.sector_id = ? AND ar.status = 'PENDING' ORDER BY ar.created_at DESC LIMIT 6`, [sectorId]);
   // كل عدٍّ للمشاريع في هذا المركز بعدسة السنة المعروضة — قاعدة «مشروع السنة» الواحدة
@@ -776,8 +861,8 @@ export async function sectorPage(user, opts = {}) {
   // صحة المشاريع تحت الترشيح: عدّ rag مقصوصاً بالإدارة المسؤولة/العميل — يغذّي الدونات
   // والوسيلة و«يحتاج نظراً»، وإلا عرضت الدونات 2/5 قطاعياً فوق جدولٍ مرشَّح يقول 1/3.
   const ragScoped = filtered ? await all(`SELECT rag, COUNT(*) n FROM project
-     WHERE sector_id = ? AND deleted_at IS NULL AND status = 'IN_PROGRESS' AND ${pycBare.clause}${deptSql('department_id')}${clientSql('client_id')}
-     GROUP BY rag`, [sectorId, ...pycBare.params, ...deptArg, ...clientArg]) : null;
+     WHERE sector_id = ? AND deleted_at IS NULL AND status = 'IN_PROGRESS' AND ${pycBare.clause}${deptSql('department_id')}${clientSql('client_id')}${projSql('id')}
+     GROUP BY rag`, [sectorId, ...pycBare.params, ...deptArg, ...clientArg, ...projArg]) : null;
   const ragView = ragScoped ? Object.fromEntries(ragScoped.map((r) => [r.rag, r.n])) : sd.rag;
   ragView.UNKNOWN = Object.entries(ragView).filter(([k]) => !['GREEN', 'AMBER', 'RED', 'UNKNOWN'].includes(k)).reduce((n, [, v]) => n + Number(v || 0), 0);
   // نسبة الفوز في ذيل القمع — تحت الترشيح تُحسب من فرص الترشيح نفسها (كانت قطاعية فتظهر
@@ -794,13 +879,13 @@ export async function sectorPage(user, opts = {}) {
       (SELECT r2.title FROM risk r2 WHERE r2.project_id = p.id AND r2.status != 'CLOSED' AND r2.deleted_at IS NULL
         ORDER BY CASE r2.probability WHEN 'high' THEN 0 WHEN 'med' THEN 1 WHEN 'medium' THEN 1 ELSE 2 END LIMIT 1) top_risk
      FROM project p WHERE p.sector_id = ? AND p.deleted_at IS NULL AND p.status = 'IN_PROGRESS' AND p.rag IN ('RED','AMBER')
-       AND ${pyc.clause}${deptSql('p.department_id')}${clientSql('p.client_id')}
-     ORDER BY CASE p.rag WHEN 'RED' THEN 0 ELSE 1 END, p.name_ar LIMIT 6`, [sectorId, ...pyc.params, ...deptArg, ...clientArg]);
+       AND ${pyc.clause}${deptSql('p.department_id')}${clientSql('p.client_id')}${projSql('p.id')}
+     ORDER BY CASE p.rag WHEN 'RED' THEN 0 ELSE 1 END, p.name_ar LIMIT 6`, [sectorId, ...pyc.params, ...deptArg, ...clientArg, ...projArg]);
   const healthLists = {};
   for (const rag of ['GREEN', 'AMBER', 'RED', 'UNKNOWN']) {
     healthLists[rag] = (ragView[rag]) ? await all(`SELECT id, name_ar, progress_pct, end_date FROM project
-       WHERE sector_id = ? AND deleted_at IS NULL AND status = 'IN_PROGRESS' AND ${rag === 'UNKNOWN' ? "(rag IS NULL OR rag NOT IN ('GREEN','AMBER','RED'))" : 'rag = ?'} AND ${pycBare.clause}${deptSql('department_id')}${clientSql('client_id')}
-       ORDER BY name_ar LIMIT 30`, [sectorId, ...(rag === 'UNKNOWN' ? [] : [rag]), ...pycBare.params, ...deptArg, ...clientArg]) : [];
+       WHERE sector_id = ? AND deleted_at IS NULL AND status = 'IN_PROGRESS' AND ${rag === 'UNKNOWN' ? "(rag IS NULL OR rag NOT IN ('GREEN','AMBER','RED'))" : 'rag = ?'} AND ${pycBare.clause}${deptSql('department_id')}${clientSql('client_id')}${projSql('id')}
+       ORDER BY name_ar LIMIT 30`, [sectorId, ...(rag === 'UNKNOWN' ? [] : [rag]), ...pycBare.params, ...deptArg, ...clientArg, ...projArg]) : [];
   }
   // نسبة الإنجاز من مصدرها الواحد (المخرجات الموزونة) لا من العمود المخزَّن — قاعدة «رقم واحد
   // حقيقة واحدة»، والحارس البنيوي يسقط أي شاشة تخالفها.
@@ -817,6 +902,7 @@ export async function sectorPage(user, opts = {}) {
     p.set('year', String(year)); p.set('p', win);
     if (deptSel) p.set('dept', deptSel);
     if (clientSel) p.set('client', clientSel);
+    if (projSel) p.set('project', projSel);
     if (tabSel) p.set('tab', tabSel);
     if (user.scope === 'company' && sectorId) p.set('sector', sectorId);
     if (selStage) p.set('stage', selStage.id);
@@ -902,9 +988,17 @@ export async function sectorPage(user, opts = {}) {
         <a class="fitem${!clientSel ? ' on' : ''}" href="${qs({ client: null })}">كل العملاء</a>
         ${sectorClientRows.slice(0, 40).map((c) => `<a class="fitem${clientSel === c.id ? ' on' : ''}" href="${qs({ client: c.id })}">${esc(c.name_ar)}</a>`).join('')}
       </div></details>` : '';
+  // مُنتقي المشروع بجوار مُنتقيَي الإدارة والعميل — وقائمتُه مقصوصةٌ بهما (سبعون مشروعاً سقفاً
+  // للقائمة، وصفحةُ المشاريع هي الموضع الذي يُبحث فيه عمّا بعدها).
+  const projPick = sectorProjects.length ? `<details class="rmenu fmenu"><summary class="btn btn-sm">${projSel ? esc(sectorProjects.find((p) => p.id === projSel)?.name_ar || G.project) : G.project} ▾</summary>
+      <div class="rmenu-b" style="max-height:320px;overflow-y:auto">
+        <a class="fitem${!projSel ? ' on' : ''}" href="${qs({ project: null })}">${G.allProjects}</a>
+        ${sectorProjects.slice(0, 70).map((p) => `<a class="fitem${projSel === p.id ? ' on' : ''}" href="${qs({ project: p.id })}">${esc(p.name_ar)}</a>`).join('')}
+      </div></details>` : '';
   const activeChips = [
     deptSel ? fchip(deptSel === NO_DEPT ? 'بلا إدارة' : (sectorDepts.find((d) => d.id === deptSel)?.name_ar || ''), qs({ dept: null }), true, 'إزالة ترشيح الإدارة') : '',
     clientSel ? fchip(sectorClientRows.find((c) => c.id === clientSel)?.name_ar || '', qs({ client: null }), true, 'إزالة ترشيح العميل') : '',
+    projSel ? fchip(sectorProjects.find((p) => p.id === projSel)?.name_ar || '', qs({ project: null }), true, 'إزالة ترشيح المشروع') : '',
   ].filter(Boolean).join('');
   const filterNotes = [];
   if (deptSel && deptSel !== NO_DEPT && deptGap && (deptGap.prj || deptGap.opp)) {
@@ -914,10 +1008,26 @@ export async function sectorPage(user, opts = {}) {
     filterNotes.push(`<div class="fnote">${noteMark('بند إيرادٍ قديم بلا مشروعٍ مسجَّل لا يُعرف لأي إدارةٍ أو عميلٍ ينتمي — يبقى في أرقام القطاع غير المرشَّحة')} ${sarShort(rsc.unattributed)} من إيراد ${year} غير منسوبٍ لمشروع — لا يظهر تحت هذا الترشيح</div>`);
   }
   const filterNote = filterNotes.join('');
+  // ── مدى الأشهر: نموذجٌ عاديٌّ بمُنتقيَين، يعمل بلا نصٍّ برمجي ─────────────────────────────
+  // الأربعةُ أرباعٍ والاثنا عشر شهراً لا تغطّيان «من مارس إلى أغسطس»، والقائدُ يسأل عن المدى.
+  // والحقولُ المخفيّة تحمل بقية حالة الشاشة (السنة والقطاع والفصل والمرشِّحات) — وإلا أعاد
+  // اختيارُ مدى الأشهر القارئَ إلى الفصل الأول بلا مرشِّحاته.
+  const rangeKeep = { year: String(year), tab: tabSel, dept: deptSel, client: clientSel,
+    project: projSel, stage: selStage?.id || null, sector: user.scope === 'company' ? sectorId : null };
+  const mOptions = (selected) => MONTHS_AR.map((nm, i) => `<option value="${i + 1}"${(i + 1) === selected ? ' selected' : ''}>${esc(nm)}</option>`).join('');
+  const rangeForm = `<form class="prange" method="get" action="/app/sector" aria-label="${esc(G.monthRange)}">
+    ${Object.entries(rangeKeep).filter(([, v]) => v).map(([k, v]) => `<input type="hidden" name="${k}" value="${esc(String(v))}">`).join('')}
+    <label for="p-from">${G.fromMonth}</label>
+    <select id="p-from" name="pa">${mOptions(pFirstM(period))}</select>
+    <label for="p-to">${G.toMonth}</label>
+    <select id="p-to" name="pb">${mOptions(pLastM(period))}</select>
+    <button class="btn btn-sm" type="submit">${G.showRange}</button>
+  </form>`;
   const lens = `<div class="psel">
-    <div class="seg" role="group" aria-label="الفترة">${pOpt('y', 'السنة')}</div>
+    <div class="seg" role="group" aria-label="الفترة">${pOpt('y', 'السنة')}${pOpt('ytd', G.ytd)}</div>
     <div class="seg" role="group" aria-label="الأرباع">${[1, 2, 3, 4].map((q) => pOpt(`q${q}`, `ر${q}`)).join('')}</div>
     <div class="seg pmon" role="group" aria-label="الأشهر">${MONTHS_AR.map((m, i) => pOpt(`m${i + 1}`, monthLabel(i, 'tight'))).join('')}</div>
+    ${rangeForm}
     ${period.isFuture ? '<span class="futnote">فترة قادمة — بالمتوقع لا بالمحقق</span>' : ''}
   </div>`;
   const stageChip = selStage ? `<a class="chip on" href="${qs({ stage: null })}" title="إلغاء تصفية المرحلة">
@@ -937,10 +1047,11 @@ export async function sectorPage(user, opts = {}) {
     ${switcher || ''}
     <span style="font-size:var(--fs-body);color:var(--muted);font-weight:700">السنة:</span>
     ${yearPick}
-    <span style="font-size:var(--fs-body);color:var(--muted);font-weight:700">الفترة: <span class="tipdot" data-tip="اختر السنة أو ربعاً أو شهراً بعينه. التدفقات (الإيراد والمكسوب والمفوتر والمحصَّل وما تغيّر) تُعاد لهذه الفترة، والأرصدة اللحظية (خط الفرص، الإشغال، صحة التنفيذ) لا تتأثر بها وتحمل وسمها. والفترة القادمة تُعرض بالمتوقع لا بالمحقق." tabindex="0" role="img" aria-label="اختر السنة أو ربعاً أو شهراً — التدفقات تُعاد للفترة والأرصدة اللحظية لا تتأثر">${icon('info')}</span></span>
+    <span style="font-size:var(--fs-body);color:var(--muted);font-weight:700">الفترة: <span class="tipdot" data-tip="اختر السنة أو من بدايتها حتى اليوم أو ربعاً أو شهراً بعينه، أو مدى أشهرٍ متصل من المُنتقيَين. التدفقات (الإيراد والمكسوب والمفوتر والمحصَّل وما تغيّر) تُعاد لهذه الفترة، والأرصدة اللحظية (خط الفرص، الإشغال، صحة التنفيذ) لا تتأثر بها وتحمل وسمها. والفترة القادمة تُعرض بالمتوقع لا بالمحقق." tabindex="0" role="img" aria-label="اختر السنة أو من بدايتها حتى اليوم أو ربعاً أو شهراً أو مدى أشهر — التدفقات تُعاد للفترة والأرصدة اللحظية لا تتأثر">${icon('info')}</span></span>
     ${lens}
     ${deptPick}
     ${clientPick}
+    ${projPick}
     ${activeChips}
     ${stageChip}
     <span class="spacer"></span>
@@ -996,9 +1107,9 @@ export async function sectorPage(user, opts = {}) {
   }).join('');
   // صدى النافذة «منذ أسبوع/منذ شهر…» لا «هذا الأسبوع/هذا الشهر»: النافذة متدحرجة بعدد أيام
   // (changes.js) لا فترة تقويمية — وعنوانٌ تقويمي فوق صفوفٍ مؤرَّخة خارج فترته يناقض نفسه.
-  const winEcho = periodEcho(period.kind, period.index, year);
+  const winEcho = periodEcho(period, year);
   const changesCard = card(`
-    <div class="card-head"><span class="hgrp"><span class="eyebrow">${G.whatChanged}</span>
+    <div class="card-head"><span class="hgrp"><span class="eyebrow">${G.whatChanged}${projBadge}</span>
       <span class="t">${chg.items.length ? `${countAr(chg.items.length, { one: 'تغيير واحد', two: 'تغييران', few: 'تغييرات', many: 'تغييراً' })} ${winEcho}` : `لا تغييرات ${winEcho}`}</span></span></div>
     ${chg.items.length ? `<div class="chg-cats">${chgCats}</div>` : ''}
     <div id="chg-list" class="cbody" style="padding:.45rem .5rem;display:flex;flex-direction:column;gap:2px">
@@ -1020,7 +1131,7 @@ export async function sectorPage(user, opts = {}) {
   }).join('');
   const attnCard = card(`
     <div class="card-head" id="act">
-      <span class="hgrp"><span class="eyebrow">${G.attention} <span class="tipdot" data-tip="بنود من سجلات القطاع الحية مرتبة حسب أثر القرار: اعتمادات معلقة، مستحقات متأخرة، فرص متوقفة أو بلا خطوة، مخرجات لم تُفوتر، تجاوز طاقة" tabindex="0" role="img" aria-label="بنود من سجلات القطاع الحية مرتبة حسب أثر القرار: اعتمادات معلقة، مستحقات متأخرة، فرص متوقفة أو بلا خطوة، مخرجات لم تُفوتر، تجاوز طاقة">${icon('info')}</span></span>
+      <span class="hgrp"><span class="eyebrow">${G.attention}${projBadge} <span class="tipdot" data-tip="بنود من سجلات القطاع الحية مرتبة حسب أثر القرار: اعتمادات معلقة، مستحقات متأخرة، فرص متوقفة أو بلا خطوة، مخرجات لم تُفوتر، تجاوز طاقة" tabindex="0" role="img" aria-label="بنود من سجلات القطاع الحية مرتبة حسب أثر القرار: اعتمادات معلقة، مستحقات متأخرة، فرص متوقفة أو بلا خطوة، مخرجات لم تُفوتر، تجاوز طاقة">${icon('info')}</span></span>
       <span class="t">${attn.length ? `${countAr(Math.min(attn.length, 6), { one: 'أمر واحد يحتاج تدخلك الآن', two: 'أمران يحتاجان تدخلك الآن', few: 'أمور تحتاج تدخلك الآن', many: 'أمراً يحتاج تدخلك الآن' })}` : `${G.nothingNeedsYou} — ${G.allGood}`}</span></span></div>
     <div class="cbody" style="padding:.15rem .8rem .5rem;display:flex;flex-direction:column">
       ${attnItems || `<div class="alert ok" style="justify-content:center;margin:.5rem 0">${icon('approvals')} ${G.nothingNeedsYou} — ${G.allGood}</div>`}
@@ -1193,14 +1304,14 @@ export async function sectorPage(user, opts = {}) {
   // عدّ مشاريع كل عميل بعدسة السنة أيضاً — عمود «المشاريع» في جدول العملاء يجاور إيراد
   // السنة، فخلطُ كل التاريخ فيه يناقض جارَه في نفس الصف.
   const prjAgg = await all(`SELECT client_id cid, COUNT(*) n FROM project
-     WHERE sector_id = ? AND deleted_at IS NULL AND client_id IS NOT NULL AND ${pycBare.clause}${deptSql('department_id')}${clientSql('client_id')}
-     GROUP BY client_id`, [sectorId, ...pycBare.params, ...deptArg, ...clientArg]);
+     WHERE sector_id = ? AND deleted_at IS NULL AND client_id IS NOT NULL AND ${pycBare.clause}${deptSql('department_id')}${clientSql('client_id')}${projSql('id')}
+     GROUP BY client_id`, [sectorId, ...pycBare.params, ...deptArg, ...clientArg, ...projArg]);
   const revByCid = Object.fromEntries(revByClient.map((r) => [r.cid, r.rev]));
   const stalledCids = new Set(stalledRows.map((o) => o.client_id).filter(Boolean));
   const redProjClients = new Set((await all(`SELECT DISTINCT client_id FROM project
      WHERE sector_id = ? AND deleted_at IS NULL AND status = 'IN_PROGRESS' AND rag = 'RED' AND client_id IS NOT NULL
-       AND ${pycBare.clause}${deptSql('department_id')}${clientSql('client_id')}`,
-  [sectorId, ...pycBare.params, ...deptArg, ...clientArg])).map((r) => r.client_id));
+       AND ${pycBare.clause}${deptSql('department_id')}${clientSql('client_id')}${projSql('id')}`,
+  [sectorId, ...pycBare.params, ...deptArg, ...clientArg, ...projArg])).map((r) => r.client_id));
   // إشارة كل عميل بأولوية معلنة: تحصيل متأخر (لمن يقرأ الفواتير) ← فرصة متوقفة ← مشروع في خطر.
   let overdueCids = new Set();
   if (canInvoices) {
@@ -1248,7 +1359,7 @@ export async function sectorPage(user, opts = {}) {
   const concPct = secRevTotal && top3.length === 3 ? Math.round((top3.reduce((a, c) => a + c.rev, 0) / secRevTotal) * 100) : null;
   const concColors = ['var(--brand)', 'var(--brand2)', '#5b8def'];
   const clientsCard = card(`
-    <div class="card-head"><span class="hgrp"><span class="eyebrow">أهم ${G.clients} · مرتَّبون حسب إيراد ${year}${concPct != null ? ` <span class="tipdot" data-tip="مجموع إيراد أكبر ثلاثة عملاء ÷ إيراد القطاع المحقق لهذه السنة" tabindex="0" role="img" aria-label="مجموع إيراد أكبر ثلاثة عملاء ÷ إيراد القطاع المحقق لهذه السنة">${icon('info')}</span>` : ''}</span>
+    <div class="card-head"><span class="hgrp"><span class="eyebrow">أهم ${G.clients} · مرتَّبون حسب إيراد ${year}${projSel ? ' <span class="icb">المفتوح من الفرص: القطاع كله</span>' : ''}${concPct != null ? ` <span class="tipdot" data-tip="مجموع إيراد أكبر ثلاثة عملاء ÷ إيراد القطاع المحقق لهذه السنة" tabindex="0" role="img" aria-label="مجموع إيراد أكبر ثلاثة عملاء ÷ إيراد القطاع المحقق لهذه السنة">${icon('info')}</span>` : ''}</span>
       <span class="t">${concPct != null ? `أكبر ثلاثة عملاء يمثلون <span class="tnum">${concPct}%</span> من الإيراد${concPct >= 60 ? ' — تركّز مرتفع' : ''}` : topClients.length ? `${countAr(topClients.length, { one: 'عميل واحد يقود النشاط', two: 'عميلان يقودان النشاط', few: 'عملاء يقودون النشاط', many: 'عميلاً يقودون النشاط' })}` : G.emptyList}</span></span></div>
     ${concPct != null ? `<div style="padding:.15rem 1rem 0">${figStacked100([
     ...top3.map((c, i) => ({ v: c.rev, color: concColors[i], label: `${c.name_ar} — ${sarShort(c.rev)}` })),
@@ -1305,7 +1416,7 @@ export async function sectorPage(user, opts = {}) {
     const odTotal = odRows.reduce((a, b) => a + b.out, 0);
     collectCard = card(`
       <div class="card-head">
-        <span class="hgrp"><span class="eyebrow">التحصيل والمطالبات</span>
+        <span class="hgrp"><span class="eyebrow">التحصيل والمطالبات${projBadge}</span>
         <span class="t">${odRows.length ? `مستحقات متأخرة <span class="tnum">${fmtSar(odTotal)}</span> على ${countAr(odRows.length, { one: 'فاتورة واحدة', two: 'فاتورتين', few: 'فواتير', many: 'فاتورة' })}`
     : arTotal ? `مستحقات قائمة <span class="tnum">${fmtSar(arTotal)}</span>${blindToLate ? ' — بلا تواريخ استحقاق مسجَّلة' : ' — لا متأخر منها'}` : 'لا مستحقات قائمة'}</span></span></div>
       ${arTotal || odRows.length ? `
@@ -1633,8 +1744,8 @@ export async function sectorPage(user, opts = {}) {
   const dlvTop = await all(`SELECT d.name_ar, d.amount_halalas, d.status, p.name_ar project
      FROM deliverable d LEFT JOIN project p ON p.id = d.project_id
      WHERE d.sector_id = ? AND d.deleted_at IS NULL AND ${dlvYearSqlFor('d')} = ?
-       AND d.status IN ('DELIVERED','ACCEPTED','INVOICED','PAID')${deptSql('p.department_id')}${clientSql('p.client_id')}
-     ORDER BY d.amount_halalas DESC LIMIT 10`, [sectorId, year, ...deptArg, ...clientArg]);
+       AND d.status IN ('DELIVERED','ACCEPTED','INVOICED','PAID')${deptSql('p.department_id')}${clientSql('p.client_id')}${projSql('d.project_id')}
+     ORDER BY d.amount_halalas DESC LIMIT 10`, [sectorId, year, ...deptArg, ...clientArg, ...projArg]);
   const DLV_ST_AR = { DELIVERED: 'مسلَّم', ACCEPTED: 'مقبول', INVOICED: 'فُوتر', PAID: 'مدفوع' };
   const secdlvDD = ddWrap('secdlv', `${G.deliverables} · ${year}`, `${esc(sd.sector.name_ar)} · المسلَّم والمقبول${filtered ? ' — تحت الترشيح' : ''}`, `
     <div class="dd-kpi"><span class="v tnum">${sarShort(vjDelivered?.v || 0)}</span><span style="font-size:12px;color:var(--muted)">قيمة المسلَّم — والمقبول منها ${sarShort(vjAccepted?.v || 0)}</span></div>
@@ -1657,11 +1768,13 @@ export async function sectorPage(user, opts = {}) {
   // وحدها تُقرأ تأخّراً في التسليم لا في الدفع.
   const INV_ST_AR = { ISSUED: 'صادرة', PARTIALLY_PAID: 'محصَّلة جزئياً', PAID: 'محصَّلة', OVERDUE: 'متأخرة السداد' };
   const INV_ST_ORDER = ['ISSUED', 'PARTIALLY_PAID', 'PAID', 'OVERDUE'];
-  const mbEcho = period.kind === 'y' ? `سنة ${year}` : `${periodLabel(period.kind, period.index)} ${year}`;
+  const mbEcho = period.kind === 'y' ? `سنة ${year}`
+    : period.kind === 'ytd' ? (pIsWholeYear(period) ? `سنة ${year}` : `من بداية سنة ${year} حتى اليوم`)
+      : `${periodLabel(period)} ${year}`;
   // صيغتان لاسم الفترة: `mbEcho` اسمٌ يُعطَف («سنة ٢٠٢٦»، «مارس ٢٠٢٦») يصلح عنواناً وبعد فاصلة،
   // و`mbWhen` ظرفٌ بحرفه («خلال ٢٠٢٦»، «في مارس ٢٠٢٦») يصلح داخل جملةٍ تامة. وخلطُهما يُخرج
   // «لا تكاليف مسجَّلة مارس ٢٠٢٦» — جملةً ناقصة الحرف.
-  const mbWhen = periodEcho(period.kind, period.index, year);
+  const mbWhen = periodEcho(period, year);
   const mbMonths = period.kind === 'y' ? null : new Set(period.months);
   // صفوفُ نافذة «منجَز لم يُفوتر»: المسلَّم/المقبول بمبلغٍ موجب، بلا تاريخ فوترة وبلا بندِ
   // فاتورةٍ قائمةٍ يشير إليه — وبأشهر الفترة وحدها حين تضيق عن السنة.
@@ -1797,7 +1910,7 @@ export async function sectorPage(user, opts = {}) {
   ${collectDD}
   ${funnelDD}`;
 
-  const winName = periodLabel(period.kind, period.index);
+  const winName = periodLabel(period);
   const winEcho2 = winEcho;
   const prevTrend = (sd.trend || []).find((t) => t.year === year - 1) || null;
   const yoyPct = prevTrend?.revenue_halalas ? Math.round(((sd.revenue_halalas - prevTrend.revenue_halalas) / prevTrend.revenue_halalas) * 100) : null;
@@ -1833,7 +1946,7 @@ export async function sectorPage(user, opts = {}) {
   const kpiRevenue = (futureYr && !sd.revenue_halalas)
     ? kpiCard({ eye: `${G.revenue} المحقق`, val: '—', sub: `سنة قادمة — لا سجلّ لسنة ${year} بعد`,
       mark: expShare != null ? estMark(`المتوقع امتدادُ وتيرة ${fr.basisYear} موزَّعاً بالتساوي على الأشهر (الأساس ÷ 12 × أشهر الفترة) — قاعدة معلنة لا موسمية فيها`, 'below') : '',
-      sub2: expShare != null ? `المتوقع ${period.kind === 'y' ? 'للسنة' : `في ${periodLabel(period.kind, period.index)}`}: ${sarShort(expShare)}` : '',
+      sub2: expShare != null ? `المتوقع ${period.kind === 'y' ? 'للسنة' : `في ${periodLabel(period)}`}: ${sarShort(expShare)}` : '',
       dd: 'secrev' })
     : (!isWinMode && filtered)
       ? kpiCard({ eye: `${G.revenue} المحقق`, val: rsTotal ? sarShort(rsTotal) : '—', valTitle: rsTotal ? fmtSar(rsTotal) : '',
@@ -1874,16 +1987,17 @@ export async function sectorPage(user, opts = {}) {
           ? `${countAr(salesScoped.n, { one: 'صفقة واحدة مكسوبة', two: 'صفقتان مكسوبتان', few: 'صفقات مكسوبة', many: 'صفقة مكسوبة' })}${sd.sales_halalas ? ` · حصة من مبيعات القطاع <b class="tnum">${Math.round((salesScoped.v / sd.sales_halalas) * 100)}%</b>` : ''}`
           : 'لا صفقات مكسوبة تحت هذا الترشيح',
         sub2: 'بإسناد سنة الفرصة — لا حلقة هدفٍ تحت الترشيح: أهداف المبيعات قطاعية',
-        dd: 'secwins' })
+        scope: projTag, dd: 'secwins' })
       : !isWinMode
     ? kpiCard({ eye: G.sales, val: sarShort(sd.sales_halalas), valTitle: fmtSar(sd.sales_halalas),
       sub: sd.target_sales_halalas ? `من ${G.target} <b class="tnum">${sarShort(sd.target_sales_halalas)}</b>${yoySales != null ? ` · <span class="tnum" dir="ltr">${yoySales >= 0 ? '+' : '−'}${Math.abs(yoySales)}%</span> عن ${year - 1}` : ''}` : 'لا هدف مسجّل لهذه السنة',
       viz: `${attainSales != null ? figRing(attainSales, { size: 48, sw: 7, color: 'var(--acc-indigo)' }) : ''}${figSpark(wbm.slots.map((x) => x.v), { color: 'var(--acc-indigo)', ariaLabel: 'قيمة الفرص المكسوبة شهرياً في آخر اثني عشر شهراً' })}`,
       sub2: 'المكسوب شهرياً · آخر 12 شهراً بتاريخ الفوز',
-      delta: paceSig(dSales), dd: 'secwins' })
+      scope: projTag, delta: paceSig(dSales), dd: 'secwins' })
     : kpiCard({ eye: G.sales, val: winf.wins.n ? sarShort(winf.wins.v) : '—',
       sub: winf.wins.n ? `${countAr(winf.wins.n, { one: 'فرصة مكسوبة واحدة', two: 'فرصتان مكسوبتان', few: 'فرص مكسوبة', many: 'فرصة مكسوبة' })} ${winEcho2}` : `لا فرص مكسوبة ${winEcho2}`,
       sub2: [winRateLine, 'بتاريخ الفوز الفعلي — وقد يختلف عن الرقم السنوي المحسوب بسنة الفرصة'].filter(Boolean).join(' · '),
+      scope: projTag,
       viz: figSpark(wbm.slots.map((x) => x.v), { color: 'var(--acc-indigo)', ariaLabel: 'قيمة الفرص المكسوبة شهرياً في آخر اثني عشر شهراً' }),
       delta: deltaChip(prevPct(winf.wins.v, winfPrev?.wins?.v)), dd: 'secwins' });
 
@@ -1920,13 +2034,13 @@ export async function sectorPage(user, opts = {}) {
       mark: estMark('قيمة تقديرية: مجموع الفرص المفتوحة المطابقة للترشيح مرجّحاً باحتمال الفوز — ليست التزاماً ولا رقماً محاسبياً'),
       sub: wqScoped ? 'المفتوح المطابق للترشيح مرجّحاً باحتمال الفوز' : 'لا فرص مفتوحة تحت هذا الترشيح',
       sub2: 'لا هدف مبيعات لإدارةٍ أو عميل — فلا نسبة تغطية تحت الترشيح',
-      scope: 'لا يتأثر بالفترة', dd: 'seccover' })
+      scope: [projTag, 'لا يتأثر بالفترة'].filter(Boolean).join(' · '), dd: 'seccover' })
     : kpiCard({ eye: 'خط الفرص المرجّح', val: wq ? sarShort(wq) : '—',
     mark: estMark('قيمة تقديرية: مجموع الفرص المفتوحة مرجّحاً باحتمال الفوز لكل فرصة — ليست التزاماً ولا رقماً محاسبياً'),
     sub: cover?.coverage != null ? `تغطية ×<b class="tnum">${cover.coverage}</b> من المتبقي من هدف المبيعات` : 'لا هدف مبيعات للتغطية',
     viz: figSpark(wbm.slots.map((x) => x.v), { color: 'var(--acc-violet)', ariaLabel: 'المكسوب شهرياً — لا سجل تاريخي لقيمة الخط فيُعرض المرسّى الفعلي' }),
     sub2: 'المكسوب شهرياً — لا سجل تاريخي لقيمة الخط',
-    scope: 'لا يتأثر بالفترة', dd: 'seccover' });
+    scope: [projTag, 'لا يتأثر بالفترة'].filter(Boolean).join(' · '), dd: 'seccover' });
 
   // بطاقة الإشغال: نصف عدّاد على سقف محور التسكين نفسه — والحدود من قواعده لا أرقاماً مكتوبة.
   const kpiCap = kpiCard({ eye: 'إشغال الفريق', val: '',
@@ -2311,7 +2425,7 @@ export async function sectorPage(user, opts = {}) {
   })();
   const commercialSection = `
   <section class="card pad">
-    ${secn(5 + secOff, 'الفصل التجاري', `${G.funnel} — عرضُ الشريط قيمةُ المرحلة والعددُ بجانبه · أرصدة لحظية لا تتأثر بالفترة`)}
+    ${secn(5 + secOff, `الفصل التجاري${projBadge}`, `${G.funnel} — عرضُ الشريط قيمةُ المرحلة والعددُ بجانبه · أرصدة لحظية لا تتأثر بالفترة${projSel ? ' · الفرص لا تُنسَب لمشروع في المنصة فتبقى قطاعية' : ''}`)}
     <div class="com3">
       <div>
         <div class="sh">${G.funnel}${selStage ? ` — مرحلة ${esc(selStage.name_ar)}` : ''}</div>
@@ -2465,7 +2579,7 @@ export async function sectorPage(user, opts = {}) {
   const hrSection = `
   <section class="card pad">
     ${secn(8 + secOff, 'الفصل البشري — التسكين والموارد', `${G.utilization} المخطَّط بالإدارة والشهر، والطلب مقابل الطاقة — من خطة التسكين لا ساعات العمل`)}
-    ${filtered ? '<div class="nofilt" style="margin-bottom:.5rem">القطاع كله — خطة التسكين موردٌ قطاعي لا يُنسَب لإدارةٍ أو عميل؛ مرشِّحا الإدارة والعملاء لا يسريان على هذا الفصل</div>' : ''}
+    ${filtered ? '<div class="nofilt" style="margin-bottom:.5rem">القطاع كله — خطة التسكين موردٌ قطاعي لا يُنسَب لإدارةٍ أو عميلٍ أو مشروع؛ مرشِّحات الإدارة والعملاء والمشاريع لا تسري على هذا الفصل</div>' : ''}
     <div class="hr3">
       <div>
         <div class="sh">${G.utilization} حسب ${team && team.departments.length ? 'الإدارة' : 'القطاع'} ${heat3Rows ? 'لهذا الشهر والشهرين بعده' : 'والشهر'}</div>
@@ -2555,6 +2669,129 @@ export async function sectorPage(user, opts = {}) {
     </div>
   </details>`;
 
+  // ═══ فصل «قائمة الدخل» ═══════════════════════════════════════════════════════════════
+  // الجدولُ هو الجدولُ نفسه الذي في ورقة الطباعة وملفّ Excel — صيغةُ الخليّة مستوردةٌ من
+  // الورقة (`plMoney`/`plPct`) لا منسوخةً هنا، فلا تفترق شاشةٌ عن ورقةٍ في قراءة ريالٍ واحد.
+  //
+  // ثلاثُ قواعد تحكم هذا الفصل:
+  //   ١) **الحساب عند الفتح وحده**: بقية الفصول لا تدفع ثمن استعلاماتٍ لا تعرضها، فالخدمة
+  //      لا تُستدعى إلا حين يكون هذا الفصل هو المختار — ولذلك لسانُه يفتح بطلبٍ للخادم
+  //      (زرُّ إرسالٍ لنموذجٍ يحمل حالة الشاشة) لا بإخفاءٍ وإظهارٍ في المتصفح كإخوته.
+  //   ٢) **ما لم يُدخَل يُقال مرّةً واحدة**: كتلةُ كلفةٍ خاليةٌ كلُّها شريطٌ واحد فوقها، لا
+  //      تسعُ خلايا تكرّر «لم يُسجَّل» — والخليّة تبقى فارغةً معترفةً لا صفراً مدّعياً.
+  //   ٣) **الانحراف ليس لوناً ولا سهماً وحده**: اللون والسهم والإشارة والاسم البديل معاً،
+  //      فمن لا يميّز الأحمر من الأخضر يقرأ «أقل من الخطة بـ٤٠%» كما يقرؤها غيره.
+  const plStatement = tabSel === 'pl'
+    ? await sectorIncomeStatement(user, sectorId, { year, months: period.months, scope: fscope })
+    : null;
+  // مرشِّحات الشاشة كما هي في العنوان — يحملها الملفّ والورقة والنموذج، فالثلاثة صورةٌ واحدة.
+  const plParams = () => {
+    const p = new URLSearchParams();
+    p.set('year', String(year));
+    p.set('p', win);
+    if (deptSel) p.set('dept', deptSel);
+    if (clientSel) p.set('client', clientSel);
+    if (projSel) p.set('project', projSel);
+    // ومرحلةُ القمع المختارة معها: بقية روابط الشاشة تحملها (`qs` أعلاه)، وإسقاطُها هنا كان
+    // يُفرغ المرشِّح لحظةَ فتح الفصل — فيعود القارئ من لسانٍ إلى لسانٍ وقد ضاع اختياره.
+    if (selStage) p.set('stage', selStage.id);
+    if (user.scope === 'company' && sectorId) p.set('sector', sectorId);
+    return p.toString();
+  };
+  // نموذجٌ خفيّ يفتح الفصل بطلبٍ للخادم: زرُّ اللسان وزرُّ الحالة البديلة كلاهما يرسله.
+  const plForm = `<form id="pl-tab-form" method="get" action="/app/sector" hidden>
+    ${[...new URLSearchParams(plParams()).entries(), ['tab', 'pl']]
+    .map(([k, v]) => `<input type="hidden" name="${esc(k)}" value="${esc(v)}">`).join('')}
+  </form>`;
+  const plVariance = (kind, v) => {
+    if (v == null) return `<span class="na">${esc(G.notEnteredYet)}</span>`;
+    const arrow = v > 0 ? '▲' : v < 0 ? '▼' : '=';
+    const say = v > 0 ? `أعلى من الخطة بـ${Math.abs(v)}%`
+      : v < 0 ? `أقل من الخطة بـ${Math.abs(v)}%` : 'مطابق للخطة';
+    return `<span class="pl-var ${varianceTone(kind, v)}" role="img" aria-label="${esc(say)}"><span aria-hidden="true">${arrow}</span><bdi dir="ltr">${esc(`${v > 0 ? '+' : ''}${v}%`)}</bdi></span>`;
+  };
+  const PL_ROWC = { subtotal: 'sub', result: 'res' };
+  const plPanel = (() => {
+    if (!plStatement) {
+      // لسانٌ لم يُفتح بعد: حالةٌ مصمَّمة بخطوةٍ واحدة — لا لوحةٌ فارغة لمن وصلها بالأسهم.
+      return `<section class="card pad"><div class="empty-state">${icon('money')}
+        <div class="t">${esc(G.incomeStatement)}</div>
+        <div class="s">تُقرأ أرقامها عند فتح الفصل — بالفترة والمرشِّحات المختارة الآن.</div>
+        <button type="submit" form="pl-tab-form" class="btn btn-primary">اعرض ${esc(G.incomeStatement)}</button>
+      </div></section>`;
+    }
+    const rows = plStatement.rows;
+    // لا سطرَ إيرادٍ = لا قائمةَ دخلٍ لهذا القارئ. صفوفٌ محذوفةٌ أصدق من صفوفٍ فارغة، والحالةُ
+    // تقول السبب: ليست البياناتُ ناقصةً، بل الصلاحية.
+    if (!rows.some((r) => r.key === 'revenue')) {
+      return `<section class="card pad"><div class="empty-state">${icon('money')}
+        <div class="t">قائمة الدخل خارج صلاحياتك</div>
+        <div class="s">أرقام إيراد هذا القطاع وتكاليفه لا تُعرض بصلاحيتك الحالية — اطلب من مدير النظام توسيعها.</div>
+      </div></section>`;
+    }
+    const revRow = rows.find((r) => r.key === 'revenue');
+    const costRows = rows.filter((r) => r.kind === 'cost');
+    const costsAllEmpty = costRows.length > 0 && costRows.every((r) => r.state === 'not_entered');
+    const firstCostKey = costRows[0]?.key || null;
+    const trs = rows.map((r) => {
+      const strip = (costsAllEmpty && r.key === firstCostKey)
+        ? `<tr class="pl-strip"><td colspan="6">${icon('info')}${esc(G.costsNotEnteredYet)}</td></tr>` : '';
+      const cls = PL_ROWC[r.kind];
+      return `${strip}<tr${cls ? ` class="${cls}"` : ''}>
+        <td class="pl-item"><b>${esc(r.ar)}</b><span dir="ltr">${esc(r.en)}</span></td>
+        <td>${plMoney(r.fy_plan_halalas, r.kind)}</td>
+        <td>${plPct(r.attainment_pct)}</td>
+        <td>${plMoney(r.period_plan_halalas, r.kind)}</td>
+        <td>${plMoney(r.period_actual_halalas, r.kind)}</td>
+        <td>${plVariance(r.kind, r.variance_pct)}</td>
+      </tr>`;
+    }).join('');
+    // نسبةُ مجمل الربح تتبع سطرَها: إن حُذف لغياب بابَي الكلفة والهامش فلا نسبةَ تُعرض.
+    const gpShown = rows.some((r) => r.key === 'gross_profit');
+    const gp = plStatement.gross_profit_pct || {};
+    // بلا مصطلحٍ إنجليزي: ورقةُ الأعمال المتَّفق عليها لا تحمل سطر النسبة أصلاً، فلا مصطلح
+    // له يُكتب — و«Gross Profit %» كان اختراعاً لا مصدرَ له.
+    const gpRow = gpShown ? `<tr class="gp">
+      <td class="pl-item"><b>${esc(G.grossProfitPct)}</b></td>
+      <td>${plPct(gp.fy_plan)}</td><td></td>
+      <td>${plPct(gp.period_plan)}</td><td>${plPct(gp.period_actual)}</td><td></td>
+    </tr>` : '';
+    const qsPl = plParams();
+    const acts = [
+      can(user, 'export', 'report')
+        ? `<a class="btn btn-sm" href="/api/sectors/${encodeURIComponent(sectorId)}/income-statement.xlsx?${qsPl}">${esc(G.downloadExcel)}</a>` : '',
+      `<a class="btn btn-sm" href="/app/sector/income-statement?${qsPl}">${esc(G.printCopy)}</a>`,
+    ].filter(Boolean).join('');
+    // خطةُ إيرادٍ غائبة: تُقال **في ملاحظتها هي** ومعها بابُ تسجيلها — لمن يملك فتحَ صفحة
+    // المستهدفات وحده (بوابتها `read budget`). وسطرٌ ثانٍ يكرّر الجملة بلا رابطٍ ضجيج.
+    // وتحت الترشيح لا رابط: الخطةُ للقطاع كلّه، وملاحظتُها تقول ذلك لا نقصاً يُسجَّل.
+    const canBudget = can(user, 'read', 'budget', { sector_id: sectorId });
+    const planGone = revRow.fy_plan_halalas == null || revRow.period_plan_halalas == null;
+    const targetsLink = ` <a href="/app/sector-targets?year=${year}&amp;sector=${encodeURIComponent(sectorId)}">مستهدفات القطاع</a>`;
+    const notes = (plStatement.notes || []).map((k) => {
+      const t = noteText(k);
+      if (!t) return '';
+      const withLink = canBudget && planGone && !filtered && (k === 'no_target_recorded' || k === 'no_monthly_plan');
+      return `<div>${esc(t)}${withLink ? targetsLink : ''}</div>`;
+    }).filter(Boolean).join('');
+    return `<section class="card pad" style="min-width:0">
+      ${secn(null, G.incomeStatement, `${esc(periodLabel(period))} ${year} · ${esc(G.amountsInSarCostsBracketed)}`)}
+      <div class="pl-head"><span class="eyebrow">${esc(G.revenueVsSalesExplain)}</span><span class="pl-acts">${acts}</span></div>
+      <div class="tblwrap pl-wrap"><table class="pl-tbl">
+        <thead><tr>
+          <th class="pl-item">${esc(G.lineItem)}</th>
+          <th>${esc(G.fyPlan)} <span class="tnum">${year}</span></th>
+          <th>${esc(G.attainment)}</th>
+          <th>${esc(G.periodPlan)} (${esc(periodLabel(period))})</th>
+          <th>${esc(G.periodActual)}</th>
+          <th>${esc(G.deviation)}</th>
+        </tr></thead>
+        <tbody>${trs}${gpRow}</tbody>
+      </table></div>
+      <div class="pl-notes">${notes}</div>
+    </section>`;
+  })();
+
   // ── تكوين الصفحة: الكابينة المرقّمة ──
   // ── فصولٌ بألسنة: شاشةٌ واحدة بلا تمرير (طلب المالك «avoid scroll, keep it all in one page») ──
   // الصفحة كانت 4628 بكسل ≈ خمس شاشات. المثبَّت أعلى الشاشة: المرشِّحات وبطاقات المؤشرات وسطر
@@ -2563,10 +2800,18 @@ export async function sectorPage(user, opts = {}) {
   // واللسان في الرابط `?tab=` فيبقى بعد التحديث ويُشارَك برابطه — نمط تفصيل الفرصة نفسه.
   const TABS = TAB_DEFS;
   const tab = tabSel;
-  const tabsBar = `<div class="seg tabs" role="tablist" aria-label="فصول مركز القطاع">${TABS.map(([k, l], i) => `
-    <button type="button" role="tab" id="sec-tab-${k}" data-action="sec-tab" data-tab="${k}"
+  // لسانُ «قائمة الدخل» وحده يفتح بطلبٍ للخادم: محتواه لا يُصيَّر إلا حين يكون هو المختار
+  // (قاعدة «لا استعلامَ لفصلٍ لا يُعرض»)، فزرُّه زرُّ إرسالٍ لنموذجٍ يحمل الفترة والمرشِّحات —
+  // لا زرَّ إخفاءٍ وإظهار. ويبقى في شريط الألسنة بدوره وسماته كاملةً (role/aria/tabindex).
+  const tabBtn = ([k, l]) => (k === 'pl'
+    ? `<button type="submit" form="pl-tab-form" role="tab" id="sec-tab-${k}" data-tab="${k}"
       aria-selected="${tab === k}" aria-controls="sec-panel-${k}" tabindex="${tab === k ? '0' : '-1'}"
-      class="${tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+      class="${tab === k ? 'on' : ''}">${l}</button>`
+    : `<button type="button" role="tab" id="sec-tab-${k}" data-action="sec-tab" data-tab="${k}"
+      aria-selected="${tab === k}" aria-controls="sec-panel-${k}" tabindex="${tab === k ? '0' : '-1'}"
+      class="${tab === k ? 'on' : ''}">${l}</button>`);
+  const tabsBar = `${plForm}<div class="seg tabs" role="tablist" aria-label="فصول مركز القطاع">${TABS.map((t) => `
+    ${tabBtn(t)}`).join('')}</div>`;
   const panel = (k, label, inner) => `<section id="sec-panel-${k}" role="tabpanel" aria-labelledby="sec-tab-${k}"
     class="tabpanel"${tab === k ? '' : ' hidden'}>${inner}</section>`;
 
@@ -2575,7 +2820,7 @@ export async function sectorPage(user, opts = {}) {
     ${toolbar}
     ${filterNote}
     ${can(user, 'read', 'budget', { sector_id: sectorId }) ? `<div class="alert info"><a href="/app/sector-targets?year=${year}&amp;sector=${encodeURIComponent(sectorId)}">مستهدفات القطاع</a> · راجع مستهدفات السنة وسجل تعديلاتها.</div>` : ''}
-    ${can(user, 'read', 'revenue_line') ? `<div class="alert info">الإيراد حسب فترة المخرجات، والمبيعات حسب سنة الفوز. <a href="/app/revenue-review?year=${year}&amp;sector=${encodeURIComponent(sectorId)}">راجع جودة الإيراد</a></div>` : ''}
+    ${can(user, 'read', 'revenue_line') ? `<div class="alert info">${G.revenueVsSalesExplain} <a href="/app/revenue-review?year=${year}&amp;sector=${encodeURIComponent(sectorId)}">راجع جودة الإيراد</a></div>` : ''}
     ${kpiBand}
     ${moneyBand}
     ${execBand}
@@ -2589,6 +2834,7 @@ export async function sectorPage(user, opts = {}) {
           <div class="c5" style="min-width:0">${changesCard}</div>
         </div>
       </section>`)}
+    ${panel('pl', G.incomeStatement, plPanel)}
     ${panel('com', 'التجاري', `
       ${commercialSection}
       <section class="card pad">
@@ -2632,7 +2878,7 @@ export async function sectorPage(user, opts = {}) {
       <span>${lastUpd ? `آخر تحديث <b class="tnum" dir="ltr">${esc(String(lastUpd).slice(0, 10))} ${esc(String(lastUpd).slice(11, 16))}</b>` : 'لا تحديثات مسجَّلة بعد'}</span>
       ${compl.score != null ? `<span>·</span>
       <button type="button" class="fs-compl" data-action="open-dd" data-dd="completeness" aria-label="اكتمال البيانات ${compl.score}% — التفصيل">
-        اكتمال البيانات <b class="tnum">${compl.score}%</b>
+        اكتمال البيانات${projBadge} <b class="tnum">${compl.score}%</b>
         <span class="pmeter" aria-hidden="true"><i style="width:${compl.score}%"></i></span>
         ${noteMark('درجة مركّبة: متوسط موزون لنِسَب اكتمالٍ معلنة (كم اكتمل من كم) — تفصيلها بالنقر')}
       </button>` : ''}

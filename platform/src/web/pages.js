@@ -28,3 +28,5 @@ export * from './views/assistant-link.js';
 
 export * from './views/dev-center.js';
 export * from './views/dev-center-report.js';
+
+export * from './views/sector-pl-print.js';

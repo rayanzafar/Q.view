@@ -292,6 +292,21 @@ webRouter.get('/app/dev-center/:productId', requireWeb, guardPage('dev-center'),
 webRouter.get('/app/dev-center/:productId/report', requireWeb, guardPage('dev-center'), async (req, res, next) => {
   try { res.send(await P.devCenterReportPage(req.ctx.user, req.params.productId, { ...req.query })); } catch (e) { next(e); }
 });
+// قائمة دخل القطاع للطباعة: مسارٌ من قطعتين يُسجَّل قبل `/app/:page` كبقية صفحات التفاصيل،
+// وبوابته بوابة «مركز القطاع» نفسها — ثم الخدمة وحدها تقرّر هذا القطاع بعينه (وترمي رفضاً
+// عربياً لمن طلب قطاعاً خارج نطاقه)، كما تفعل بوابات الكلفة والهامش مع سطورها.
+// وحارسٌ ثانٍ فوق بوابة الصفحة: من تصرفه `/app/sector` إلى وجهها الشخصي («قطاعي») ليس من
+// قرّاء مركز القيادة أصلاً — بوابةُ الصفحة تمرّره لأنه يقرأ مشروعاً واحداً، ثم يفتحه المسار
+// على ورقةِ ربحِ قطاعٍ كامل. والرفض **قبل** أي حلٍّ للمرشِّحات: لو مرّ إلى `statementFromQuery`
+// لعادت له الورقةُ باسم إدارةٍ أو عميلٍ أو مشروعٍ لا يملك رؤيته ولو خلت أرقامُها.
+// و«لا يُخزَّن» كترويسة الملفّ: نسخةُ مالٍ لا تُترك في ذاكرة وسيطٍ ولا في قرص المتصفّح.
+webRouter.get('/app/sector/income-statement', requireWeb, guardPage('sector'), async (req, res, next) => {
+  if (P.sectorViewMode(req.ctx.user).mode !== 'command') return deny(res);
+  try {
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.send(await P.sectorPlPrintPage(req.ctx.user, { ...req.query, _ip: req.ctx.ip || null }));
+  } catch (e) { next(e); }
+});
 // صفحة الشخص: بلا guardDetail عمداً — بوابتها ليست «هل يرى هذا النوع من التفاصيل» بل «هل هذا
 // الشخص داخل نطاقك»، وهو سؤالٌ لا يُجاب إلا بعد قراءة صفّه. فالخدمة (personDossier) هي البوابة
 // وحدها، وترمي رفضاً عربياً واضحاً — ويُفتح ملفُ صاحب الحساب نفسه دائماً بلا أي منح إداري.

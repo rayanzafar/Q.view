@@ -7,14 +7,44 @@ import { periodBounds, parsePeriod } from '../../src/core/reports/changes.js';
 
 const NOW = new Date('2026-08-24T13:00:00Z');   // منتصف أغسطس 2026
 
+const YEAR_P = { kind: 'y', index: 0, key: 'y', from: 1, to: 12 };
+
 test('parsePeriod: يقبل السنة والأرباع والأشهر، والمجهول يسقط إلى السنة', () => {
-  assert.deepEqual(parsePeriod('y'), { kind: 'y', index: 0 });
-  assert.deepEqual(parsePeriod('q3'), { kind: 'q', index: 3 });
-  assert.deepEqual(parsePeriod('m12'), { kind: 'm', index: 12 });
-  assert.deepEqual(parsePeriod('m1'), { kind: 'm', index: 1 });
+  assert.deepEqual(parsePeriod('y'), YEAR_P);
+  assert.deepEqual(parsePeriod('q3'), { kind: 'q', index: 3, key: 'q3', from: 7, to: 9 });
+  assert.deepEqual(parsePeriod('m12'), { kind: 'm', index: 12, key: 'm12', from: 12, to: 12 });
+  assert.deepEqual(parsePeriod('m1'), { kind: 'm', index: 1, key: 'm1', from: 1, to: 1 });
   for (const bad of ['', null, 'q5', 'm0', 'm13', 'أغسطس', '../etc']) {
-    assert.deepEqual(parsePeriod(bad), { kind: 'y', index: 0 }, `مدخل ${bad}`);
+    assert.deepEqual(parsePeriod(bad), YEAR_P, `مدخل ${bad}`);
   }
+});
+
+test('parsePeriod: «حتى تاريخه» لسانٌ قائم بذاته، وحدّه الأعلى يُحسم مع اللحظة لا هنا', () => {
+  assert.deepEqual(parsePeriod('ytd'), { kind: 'ytd', index: 0, key: 'ytd', from: 1, to: null });
+  assert.deepEqual(parsePeriod('  YTD '), { kind: 'ytd', index: 0, key: 'ytd', from: 1, to: null });
+});
+
+test('parsePeriod: مدى الأشهر — يُقلب المعكوس، ويُقصّ الخارج، والواحد يعود شهراً', () => {
+  assert.deepEqual(parsePeriod('m3-m8'), { kind: 'range', index: 0, key: 'm3-m8', from: 3, to: 8 });
+  assert.deepEqual(parsePeriod('m8-m3'), { kind: 'range', index: 0, key: 'm3-m8', from: 3, to: 8 },
+    'معكوسٌ ⇒ يُقلب لا يُرفض');
+  assert.deepEqual(parsePeriod('m0-m20'), { kind: 'range', index: 0, key: 'm1-m12', from: 1, to: 12 },
+    'خارج 1–12 ⇒ يُقصّ على الحدّين');
+  assert.deepEqual(parsePeriod('m5-m5'), { kind: 'm', index: 5, key: 'm5', from: 5, to: 5 },
+    'مدىً بشهرٍ واحد ⇒ شهرٌ بعينه');
+  assert.deepEqual(parsePeriod('m13-m20'), { kind: 'm', index: 12, key: 'm12', from: 12, to: 12 });
+  // وما ليس مدىً صحيحاً يسقط إلى السنة كسائر المجهول
+  for (const bad of ['m3-', '-m8', 'm3-m', 'ma-mb', 'm3-m8-m9', 'm3_m8', 'm123-m4']) {
+    assert.deepEqual(parsePeriod(bad), YEAR_P, `مدخل ${bad}`);
+  }
+});
+
+test('كل فترةٍ تحمل مفتاح رابطها معها — لا يُركَّب من kind+index لدى المستدعي', () => {
+  for (const k of ['y', 'q2', 'm5', 'ytd', 'm3-m8']) {
+    assert.equal(periodBounds(k, 2026, NOW).key, k, `مفتاح ${k}`);
+  }
+  assert.equal(periodBounds('m8-m3', 2026, NOW).key, 'm3-m8', 'المفتاح قانونيٌّ لا حرفيّ');
+  assert.equal(periodBounds('أغسطس', 2026, NOW).key, 'y');
 });
 
 test('حدود الشهر تقويمية بالضبط — لا ثلاثون يوماً متدحرجة', () => {
@@ -66,4 +96,76 @@ test('حدود ديسمبر تعبر إلى العام التالي بلا خط�
   assert.equal(dec.sinceIso, '2026-12-01');
   assert.equal(dec.untilIso, '2027-01-01');
   assert.equal(dec.isFuture, true);
+});
+
+// ── «منذ أول السنة حتى تاريخه» ──────────────────────────────────────────────────────
+test('حتى تاريخه في السنة الجارية: من أول يناير إلى نهاية الشهر الجاري', () => {
+  const ytd = periodBounds('ytd', 2026, NOW);
+  assert.equal(ytd.kind, 'ytd');
+  assert.equal(ytd.sinceIso, '2026-01-01');
+  assert.equal(ytd.untilIso, '2026-09-01', 'الشهر الجاري كاملاً — اصطلاح الحدّ الأعلى نفسه للشهر');
+  assert.deepEqual(ytd.months, [1, 2, 3, 4, 5, 6, 7, 8]);
+  assert.equal(ytd.isCurrent, true);
+  assert.equal(ytd.isPast, false);
+  assert.equal(ytd.isFuture, false);
+});
+
+test('حتى تاريخه في يناير: شهرٌ واحد لا سنة', () => {
+  const jan = periodBounds('ytd', 2026, new Date('2026-01-07T09:00:00Z'));
+  assert.equal(jan.sinceIso, '2026-01-01');
+  assert.equal(jan.untilIso, '2026-02-01');
+  assert.deepEqual(jan.months, [1]);
+  assert.equal(jan.isCurrent, true);
+});
+
+test('حتى تاريخه في سنةٍ ماضية: السنة كاملةً وقد انقضت', () => {
+  const past = periodBounds('ytd', 2025, NOW);
+  assert.equal(past.sinceIso, '2025-01-01');
+  assert.equal(past.untilIso, '2026-01-01');
+  assert.equal(past.months.length, 12);
+  assert.equal(past.isPast, true);
+  assert.equal(past.isCurrent, false);
+});
+
+test('حتى تاريخه في سنةٍ قادمة: قادمةٌ معلنة كسائر الفترات القادمة', () => {
+  const next = periodBounds('ytd', 2027, NOW);
+  assert.equal(next.sinceIso, '2027-01-01');
+  assert.equal(next.untilIso, '2028-01-01');
+  assert.equal(next.isFuture, true);
+  assert.equal(next.isPast, false);
+  assert.equal(next.isCurrent, false);
+  assert.equal(next.isFuture, periodBounds('m1', 2027, NOW).isFuture, 'نفس حالة الفترة القادمة');
+});
+
+// ── مدى أشهرٍ متصل ──────────────────────────────────────────────────────────────────
+test('مدى الأشهر: من أول الشهر الأول إلى أول الشهر التالي لآخره', () => {
+  const r = periodBounds('m3-m8', 2026, NOW);
+  assert.equal(r.kind, 'range');
+  assert.equal(r.index, 0);
+  assert.equal(r.sinceIso, '2026-03-01');
+  assert.equal(r.untilIso, '2026-09-01');
+  assert.deepEqual(r.months, [3, 4, 5, 6, 7, 8]);
+  assert.equal(r.isCurrent, true, 'أغسطس داخل المدى واليوم فيه');
+});
+
+test('مدى معكوسٌ يساوي المستقيم، ومدى 1–12 يساوي السنة في حدوده', () => {
+  assert.deepEqual(periodBounds('m8-m3', 2026, NOW), periodBounds('m3-m8', 2026, NOW));
+  const full = periodBounds('m0-m20', 2026, NOW);
+  assert.equal(full.sinceIso, '2026-01-01');
+  assert.equal(full.untilIso, '2027-01-01');
+  assert.equal(full.months.length, 12);
+  assert.equal(full.kind, 'range', 'المدى يبقى مدىً وإن غطّى السنة — والمفتاح يقولها');
+  assert.equal(full.key, 'm1-m12');
+});
+
+test('مدى بشهرٍ واحد هو الشهر نفسه حرفاً', () => {
+  assert.deepEqual(periodBounds('m5-m5', 2026, NOW), periodBounds('m5', 2026, NOW));
+});
+
+test('حالة المدى: منقضٍ، وجارٍ، وقادم', () => {
+  assert.equal(periodBounds('m1-m2', 2026, NOW).isPast, true, 'يناير–فبراير انقضيا');
+  assert.equal(periodBounds('m6-m9', 2026, NOW).isCurrent, true);
+  const q4ish = periodBounds('m10-m12', 2026, NOW);
+  assert.equal(q4ish.isFuture, true);
+  assert.equal(q4ish.untilIso, '2027-01-01', 'مدىً ينتهي بديسمبر يعبر إلى العام التالي');
 });

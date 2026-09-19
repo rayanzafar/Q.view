@@ -5,6 +5,10 @@ import { login, open, collectErrors, pagesFor, realConsoleErrors } from './_help
 
 const ROLES = ['demo.admin', 'demo.sectorlead'];
 const WIDTHS = [{ width: 1440, height: 900 }, { width: 390, height: 844 }];
+// Tab-scoped views whose content is rendered only for that query string — `/app/<page>` alone
+// never renders them, so the page list above cannot reach them. Each entry is [gate page, path]:
+// the gate is the page key the role must already be allowed to open.
+const TAB_URLS = [['sector', '/app/sector?tab=pl&p=ytd']];
 
 export default async function rtlSpec({ browser, base, t }) {
   for (const username of ROLES) {
@@ -20,6 +24,17 @@ export default async function rtlSpec({ browser, base, t }) {
         if (!res || res.status() !== 200) { bad++; t.fail(`${username}@${viewport.width} /app/${p}`, `HTTP ${res?.status()}`); continue; }
         const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
         if (overflow > 1) { bad++; t.fail(`${username}@${viewport.width} /app/${p}`, `horizontal overflow ${overflow}px`); }
+      }
+      // فصولٌ لا يبلغها `/app/<page>` وحده: محتواها لا يُصيَّر إلا بمفتاحه في العنوان
+      // (فصل «قائمة الدخل» يُجلب عند فتحه لا مع كل تحميل)، فيُقاس بعنوانه كاملاً.
+      for (const [gate, url] of TAB_URLS) {
+        if (!pages.includes(gate)) continue;
+        const res = await open(page, base, url);
+        if (!res || res.status() !== 200) { bad++; t.fail(`${username}@${viewport.width} ${url}`, `HTTP ${res?.status()}`); continue; }
+        // قياسُ المستند كقياس `/app/<page>` أعلاه — لا قياسَ `main` هنا: صفحة القطاع نفسها
+        // تفيض داخله بـ55px على 390 من شريط أدواتها (عيبٌ قائم قبل هذا الفصل، ولا يخصّه).
+        const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+        if (overflow > 1) { bad++; t.fail(`${username}@${viewport.width} ${url}`, `horizontal overflow ${overflow}px`); }
       }
       // صفحات التفاصيل — وكانت خارج هذا المسح كلياً. المسح يمرّ على `/app/:page` وحدها،
       // فصفحاتٌ يفتحها المستخدم كل يوم (المشروع، الفرصة، العميل، العقد) لم تُقَس عرضاً قط.

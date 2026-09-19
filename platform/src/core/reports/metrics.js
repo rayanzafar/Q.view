@@ -204,7 +204,8 @@ export async function sectorUtilization(sectorId, from, to) {
 
 // ── Period model: quarter (1-4) maps to months; month filters revenue_line directly. ──
 export async function quarterlyRevenue(sectorId, year, scope = {}) {
-  const sc = projectScopeSql('p', scope);
+  // بند الإيراد يحمل مشروعه بنفسه — فترشيح المشروع من عموده لا من الجدول المضموم.
+  const sc = projectScopeSql('p', scope, { projectCol: 'rl.project_id' });
   const rows = await all(`SELECT rl.month, ${NET_REVENUE} v FROM revenue_line rl
      ${sc.active ? 'LEFT JOIN project p ON p.id = rl.project_id' : ''}
      WHERE rl.year = ? ${sectorId ? 'AND rl.sector_id = ?' : ''} AND rl.month IS NOT NULL${sc.clause} GROUP BY rl.month`,
@@ -268,7 +269,8 @@ export async function sectorWins(sectorId, year) {
 
 // Bookings (won-opportunity value) per quarter of the year, by the win date (stage_changed_at).
 export async function quarterlyBookings(sectorId, year, scope = {}) {
-  const sc = projectScopeSql('o', scope);
+  // الفرصة بلا بُعد مشروع (لا عمود يربطهما) — فترشيح المشروع لا يسري هنا والشاشة توسم الرسم.
+  const sc = projectScopeSql('o', scope, { projectCol: null });
   const rows = await all(`SELECT CAST(substr(o.stage_changed_at,6,2) AS INTEGER) m, COALESCE(SUM(o.value_halalas),0) v
      FROM opportunity o JOIN stage st ON st.id=o.stage_id
      WHERE st.is_won=1 AND o.year=? AND o.deleted_at IS NULL AND o.stage_changed_at IS NOT NULL
@@ -577,7 +579,9 @@ export async function windowFigures(user, sectorId, sinceIso, untilIso, scope = 
   const invoicesOk = can(user, 'read', 'invoice');
   // قصّ الإدارة/العميل: الفرص بعموديها مباشرةً، والفواتير والتحصيل عبر مشروع الفاتورة —
   // فاتورةٌ بلا مشروع تدخل «بلا إدارة» وتسقط من الترشيح الموجب (الشاشة تُفصح عن غير المنسوب).
-  const osc = projectScopeSql('o', scope);
+  // الفرصة بلا بُعد مشروع: المكسوب والمحسوم يبقيان قطاعيَّين تحت ترشيح المشروع (موسومَين
+  // على الشاشة)، أما الفاتورة والتحصيل فيقبلان القصّ من عمود مشروع الفاتورة.
+  const osc = projectScopeSql('o', scope, { projectCol: null });
   const psc = invoiceScopeSql(scope);
   const [w, inv, col] = await Promise.all([
     get(`SELECT
@@ -673,30 +677,50 @@ export async function revenueOutlook(sectorId, year, today = new Date()) {
 // المشروع. بندٌ بلا مشروع يدخل «بلا إدارة» (أعمدته كلها فارغة في الضم الأيسر) ويسقط من أي
 // ترشيحٍ موجب — والشاشة تُفصح عن الساقط بدل إسقاطه صامتاً. صالحةٌ أيضاً لجدول الفرص مباشرةً
 // (فيه العمودان نفساهما) بتمرير اسمه المستعار.
-export function projectScopeSql(alias, { dept = null, client = null } = {}) {
+// وبُعدٌ ثالث: **المشروع بعينه**. وهو لا يمرّ من أعمدة المشروع الأم مثل الإدارة والعميل بل من
+// عمود المشروع في السجل نفسه — بند الإيراد والفاتورة يحملان `project_id` مباشرةً، فلا ضمٌّ
+// لازم له أصلاً. ولذلك يُسمَّى عموده صراحةً (`projectCol`) بدل اشتقاقه من الاسم المستعار:
+// جدولٌ لا بُعدَ مشروعٍ له — الفرصة، فلا عمود في المنصة يربط فرصةً بمشروع — يمرّر null
+// فيسقط الترشيح هناك، والشاشة توسم تلك البطاقات «القطاع كله» بدل أن توهم القارئ بقصٍّ لم يقع.
+// و`active` تعني «هل يلزم ضمّ جدول المشروع؟» — والمشروعُ وحده لا يستلزمه حين يكون عموده محلياً.
+//
+// و`projectCol` هو الشيء الوحيد هنا الذي يُركَّب في نصّ الاستعلام (كل قيمةٍ سواه تمرّ بمُعامِل
+// `?`)، فلا يُقبل منه إلا اسمٌ من قائمةٍ مغلقة يعرفها هذا الملف سلفاً، أو `null` لجدولٍ لا
+// بُعدَ مشروعٍ له. واسمٌ خارجها خطأُ برمجةٍ يُكسَر عنده الاستدعاء — لا نصٌّ يُمرَّر إلى قاعدة
+// البيانات، ولو جاء يوماً من مصدرٍ لا يملك كاتبه ضمانَ ثباته.
+const PROJECT_COL_ALLOWED = Object.freeze(['p.id', 'o.id', 'rl.project_id']);
+export function projectScopeSql(alias, { dept = null, client = null, project = null } = {},
+  { projectCol = `${alias}.id` } = {}) {
+  if (projectCol != null && !PROJECT_COL_ALLOWED.includes(projectCol)) {
+    throw new Error(`projectScopeSql: unknown projectCol "${projectCol}" (allowed: ${PROJECT_COL_ALLOWED.join(', ')}, or null)`);
+  }
   let clause = '';
   const args = [];
   if (dept === 'none') clause += ` AND ${alias}.department_id IS NULL`;
   else if (dept) { clause += ` AND ${alias}.department_id = ?`; args.push(dept); }
   if (client) { clause += ` AND ${alias}.client_id = ?`; args.push(client); }
-  return { clause, args, active: !!(dept || client) };
+  const projOn = !!(project && projectCol);
+  if (projOn) { clause += ` AND ${projectCol} = ?`; args.push(project); }
+  return { clause, args, active: !!(dept || client), projectOn: projOn };
 }
 
 // قصّ الفواتير خاصةً: العميل من الفاتورة نفسها إن سُجِّل وإلا من مشروعها (الفاتورة تحمل
 // عميلها مباشرةً)، والإدارة عبر المشروع دوماً. يفترض الاستعلامَ ضامّاً invoice i وproject p.
-export function invoiceScopeSql({ dept = null, client = null } = {}) {
+export function invoiceScopeSql({ dept = null, client = null, project = null } = {}) {
   let clause = '';
   const args = [];
   if (dept === 'none') clause += ' AND p.department_id IS NULL';
   else if (dept) { clause += ' AND p.department_id = ?'; args.push(dept); }
   if (client) { clause += ' AND COALESCE(i.client_id, p.client_id) = ?'; args.push(client); }
-  return { clause, args, active: !!(dept || client) };
+  // المشروع من عمود الفاتورة نفسها: فاتورةٌ بلا مشروع تسقط من ترشيح مشروعٍ بعينه.
+  if (project) { clause += ' AND i.project_id = ?'; args.push(project); }
+  return { clause, args, active: !!(dept || client), projectOn: !!project };
 }
 
 // بنود الإيراد مرشَّحةً بإدارة/عميل: الأشهر للرسم، والإجمالي للبطاقة (يضمّ بنوداً منسوبةً بلا
 // شهر)، وغير المنسوب (بند بلا مشروع) يُعاد ليُفصَح عنه — تحت ترشيحٍ موجب لا سبيل لنسبته.
 export async function revenueScope(sectorId, year, scope = {}) {
-  const sc = projectScopeSql('p', scope);
+  const sc = projectScopeSql('p', scope, { projectCol: 'rl.project_id' });
   const rows = await all(`SELECT rl.month, ${NET_REVENUE} v FROM revenue_line rl
       LEFT JOIN project p ON p.id = rl.project_id
       WHERE rl.sector_id = ? AND rl.year = ?${sc.clause} GROUP BY rl.month ORDER BY rl.month`,
@@ -704,7 +728,7 @@ export async function revenueScope(sectorId, year, scope = {}) {
   const months = Array(12).fill(0);
   let total = 0;
   for (const r of rows) { total += r.v || 0; const i = Number(r.month) - 1; if (i >= 0 && i < 12) months[i] = r.v || 0; }
-  const needsAttr = !!(scope.client || (scope.dept && scope.dept !== 'none'));
+  const needsAttr = !!(scope.client || scope.project || (scope.dept && scope.dept !== 'none'));
   const un = needsAttr ? (await get(`SELECT ${NET_REVENUE} v FROM revenue_line
       WHERE sector_id = ? AND year = ? AND project_id IS NULL`, [sectorId, year]))?.v || 0 : 0;
   return { months, total, unattributed: un };
@@ -746,7 +770,8 @@ export async function windowRevenue(sectorId, year, sinceIso, untilIso, scope = 
     : (last.getUTCFullYear() > Number(year) ? 12 : 0);
   if (!lastM || lastM < firstM) return { v: 0, months: [] };
   const months = []; for (let m = firstM; m <= lastM; m++) months.push(m);
-  const sc = projectScopeSql('p', scope);
+  // المشروع من عمود البند نفسه — فلا يستدعي ضمّ جدول المشروع (sc.active وحدها تستدعيه).
+  const sc = projectScopeSql('p', scope, { projectCol: 'rl.project_id' });
   const r = await get(`SELECT ${NET_REVENUE} v FROM revenue_line rl
       ${sc.active ? 'LEFT JOIN project p ON p.id = rl.project_id' : ''}
       WHERE rl.year = ? ${sectorId ? 'AND rl.sector_id = ?' : ''} AND rl.month IN (${months.map(() => '?').join(',')})${sc.clause}`,
