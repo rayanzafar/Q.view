@@ -15,6 +15,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { riyadhDate } from '../../src/core/i18n/time.js';
 
 const dir = mkdtempSync(join(tmpdir(), 'sanad-grant-levels-'));
 process.env.SANAD_DB = join(dir, 't.db');
@@ -26,7 +27,10 @@ for (const s of ['scripts/migrate.js', 'scripts/seed-rbac.js']) {
 let db, G, opps, P, rbac, resolveUser;
 const T = new Date().toISOString();
 const YEAR = Number(T.slice(0, 4));
-const dayShift = (n) => new Date(Date.now() + n * 864e5).toISOString().slice(0, 10);
+// بيومِ الرياض لا بيوم غرينتش (KI-138): الخدمة تقارن آخر يوم للصلاحية بـ`riyadhDate()`، وبين التاسعة
+// مساءً ومنتصف الليل بتوقيت غرينتش يكون «اليوم» في الرياض غداً — فمُثبِّتٌ يحسب من غرينتش يقدّم
+// تاريخاً «مضى» ويسقط الاختبار ليلاً. الساعة واحدة للمُثبِّت والخدمة.
+const dayShift = (n) => riyadhDate(new Date(Date.now() + n * 864e5));
 
 const sess = async (uid) => {
   const sid = 's_' + uid;

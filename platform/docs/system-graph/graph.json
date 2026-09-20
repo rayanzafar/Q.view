@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "sourceDigest": "6bede4e3b095cbf51dee397d66580cf97374e0fa30d95c899881f29bd1658e08",
+  "sourceDigest": "abd06b78c49033600c5581f14c9a85d705ffefa9e29cdc3f398a4c349fc6eb65",
   "sourceFiles": 720,
   "counts": {
     "code": 278,
@@ -12,7 +12,7 @@
     "table": 114,
     "role": 19,
     "permission": 9,
-    "issue": 90,
+    "issue": 89,
     "journey": 14,
     "metric": 4,
     "workflow": 6,
@@ -23713,16 +23713,6 @@
       ]
     },
     {
-      "id": "issue:KI-138",
-      "kind": "issue",
-      "label": "KI-138 · tests/tooling",
-      "detail": "**`tests/security/grant-levels.test.js` يسقط يومياً بين ٢١:٠٠ و٢٤:٠٠ بتوقيت غرينتش.** المُثبِّت يبني `dayShift` من تاريخ غرينتش (`new Date(Date.now()+n*864e5).toISOString().slice(0,10)`)، بينما `expiresOnOf` في الخدمة يقارن بتاريخ الرياض (`todayKey() = riyadhDate()`، +٣ ساعات). ففي تلك الساعات الثلاث يكون «اليوم» في الرياض غداً بحساب غرينتش، فيُقرأ `dayShift(0)` تاريخاً مضى وتُردّ المنحة برسالة «آخر يوم للصلاحية يكون اليوم أو بعده». الخدمة سليمة — العطل في المُثبِّت وحده، وإصلاحُه فيه لا في الخدمة.",
-      "status": "open",
-      "sources": [
-        "docs/KNOWN-ISSUES.md"
-      ]
-    },
-    {
       "id": "issue:KI-136",
       "kind": "issue",
       "label": "KI-136 · finance/reports",
@@ -45435,6 +45425,13 @@
       "to": "file:src/core/util/ids.js",
       "label": "استيراد صريح",
       "evidence": "tests/security/finance-role-retired.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/security/grant-levels.test.js",
+      "to": "file:src/core/i18n/time.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/security/grant-levels.test.js",
       "kind": "source"
     },
     {
@@ -74063,20 +74060,6 @@
     {
       "from": "issue:KI-139",
       "to": "file:src/modules/finance/income-statement.js",
-      "label": "يشير السجل إلى",
-      "evidence": "docs/KNOWN-ISSUES.md",
-      "kind": "reported"
-    },
-    {
-      "from": "issue:KI-138",
-      "to": "file:src/modules/identity/grants.js",
-      "label": "يشير السجل إلى",
-      "evidence": "docs/KNOWN-ISSUES.md",
-      "kind": "reported"
-    },
-    {
-      "from": "issue:KI-138",
-      "to": "file:tests/security/grant-levels.test.js",
       "label": "يشير السجل إلى",
       "evidence": "docs/KNOWN-ISSUES.md",
       "kind": "reported"
