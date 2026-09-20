@@ -1,18 +1,18 @@
 {
   "version": 1,
-  "sourceDigest": "3d67e2ed5a5db7fd95e9fe2345298b26da10dc2a1a225a3593cc370b4a30fc6a",
-  "sourceFiles": 713,
+  "sourceDigest": "6bede4e3b095cbf51dee397d66580cf97374e0fa30d95c899881f29bd1658e08",
+  "sourceFiles": 720,
   "counts": {
-    "code": 276,
-    "test": 319,
+    "code": 278,
+    "test": 324,
     "automation": 66,
     "module": 20,
-    "route": 357,
+    "route": 359,
     "page": 27,
     "table": 114,
     "role": 19,
     "permission": 9,
-    "issue": 84,
+    "issue": 90,
     "journey": 14,
     "metric": 4,
     "workflow": 6,
@@ -951,6 +951,15 @@
       "detail": "src/modules/finance/finance.js",
       "sources": [
         "src/modules/finance/finance.js"
+      ]
+    },
+    {
+      "id": "file:src/modules/finance/income-statement.js",
+      "kind": "code",
+      "label": "income-statement.js",
+      "detail": "src/modules/finance/income-statement.js",
+      "sources": [
+        "src/modules/finance/income-statement.js"
       ]
     },
     {
@@ -2427,6 +2436,15 @@
       "detail": "src/web/views/revenue-review.js",
       "sources": [
         "src/web/views/revenue-review.js"
+      ]
+    },
+    {
+      "id": "file:src/web/views/sector-pl-print.js",
+      "kind": "code",
+      "label": "sector-pl-print.js",
+      "detail": "src/web/views/sector-pl-print.js",
+      "sources": [
+        "src/web/views/sector-pl-print.js"
       ]
     },
     {
@@ -3933,6 +3951,42 @@
       ]
     },
     {
+      "id": "file:tests/integration/sector-period-range.test.js",
+      "kind": "test",
+      "label": "sector-period-range.test.js",
+      "detail": "tests/integration/sector-period-range.test.js",
+      "sources": [
+        "tests/integration/sector-period-range.test.js"
+      ]
+    },
+    {
+      "id": "file:tests/integration/sector-pl-export.test.js",
+      "kind": "test",
+      "label": "sector-pl-export.test.js",
+      "detail": "tests/integration/sector-pl-export.test.js",
+      "sources": [
+        "tests/integration/sector-pl-export.test.js"
+      ]
+    },
+    {
+      "id": "file:tests/integration/sector-pl-tab.test.js",
+      "kind": "test",
+      "label": "sector-pl-tab.test.js",
+      "detail": "tests/integration/sector-pl-tab.test.js",
+      "sources": [
+        "tests/integration/sector-pl-tab.test.js"
+      ]
+    },
+    {
+      "id": "file:tests/integration/sector-project-filter.test.js",
+      "kind": "test",
+      "label": "sector-project-filter.test.js",
+      "detail": "tests/integration/sector-project-filter.test.js",
+      "sources": [
+        "tests/integration/sector-project-filter.test.js"
+      ]
+    },
+    {
       "id": "file:tests/integration/sector-role-view.test.js",
       "kind": "test",
       "label": "sector-role-view.test.js",
@@ -5139,6 +5193,15 @@
       ]
     },
     {
+      "id": "file:tests/unit/income-statement.test.js",
+      "kind": "test",
+      "label": "income-statement.test.js",
+      "detail": "tests/unit/income-statement.test.js",
+      "sources": [
+        "tests/unit/income-statement.test.js"
+      ]
+    },
+    {
       "id": "file:tests/unit/mail-fallback.test.js",
       "kind": "test",
       "label": "mail-fallback.test.js",
@@ -6109,6 +6172,7 @@
       "sources": [
         "src/modules/finance/expenses.js",
         "src/modules/finance/finance.js",
+        "src/modules/finance/income-statement.js",
         "src/modules/finance/money.routes.js",
         "src/modules/finance/recognition.js",
         "src/modules/finance/revenue-period.js",
@@ -8111,7 +8175,7 @@
       "path": "/events/:id/qr/:bid"
     },
     {
-      "id": "route:src/modules/finance/money.routes.js:781:/projects/:id/money",
+      "id": "route:src/modules/finance/money.routes.js:1142:/projects/:id/money",
       "kind": "route",
       "label": "GET /projects/:id/money",
       "detail": "تصريح مسار محلي في moneyRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -8122,7 +8186,7 @@
       "path": "/projects/:id/money"
     },
     {
-      "id": "route:src/modules/finance/money.routes.js:978:/projects/:id/expenses",
+      "id": "route:src/modules/finance/money.routes.js:1339:/projects/:id/expenses",
       "kind": "route",
       "label": "GET /projects/:id/expenses",
       "detail": "تصريح مسار محلي في moneyRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -8133,7 +8197,7 @@
       "path": "/projects/:id/expenses"
     },
     {
-      "id": "route:src/modules/finance/money.routes.js:1083:/projects/:id/expenses",
+      "id": "route:src/modules/finance/money.routes.js:1444:/projects/:id/expenses",
       "kind": "route",
       "label": "POST /projects/:id/expenses",
       "detail": "تصريح مسار محلي في moneyRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -8144,7 +8208,7 @@
       "path": "/projects/:id/expenses"
     },
     {
-      "id": "route:src/modules/finance/money.routes.js:1194:/finance/expenses/:id",
+      "id": "route:src/modules/finance/money.routes.js:1555:/finance/expenses/:id",
       "kind": "route",
       "label": "PATCH /finance/expenses/:id",
       "detail": "تصريح مسار محلي في moneyRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -8155,7 +8219,7 @@
       "path": "/finance/expenses/:id"
     },
     {
-      "id": "route:src/modules/finance/money.routes.js:1305:/finance/expenses/:id",
+      "id": "route:src/modules/finance/money.routes.js:1666:/finance/expenses/:id",
       "kind": "route",
       "label": "DELETE /finance/expenses/:id",
       "detail": "تصريح مسار محلي في moneyRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -8164,6 +8228,17 @@
       ],
       "method": "DELETE",
       "path": "/finance/expenses/:id"
+    },
+    {
+      "id": "route:src/modules/finance/money.routes.js:2025:/sectors/:id/income-statement.xlsx",
+      "kind": "route",
+      "label": "GET /sectors/:id/income-statement.xlsx",
+      "detail": "تصريح مسار محلي في moneyRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
+      "sources": [
+        "src/modules/finance/money.routes.js"
+      ],
+      "method": "GET",
+      "path": "/sectors/:id/income-statement.xlsx"
     },
     {
       "id": "route:src/modules/guide/guide.routes.js:762:/guide",
@@ -10146,7 +10221,18 @@
       "path": "/app/dev-center/:productId/report"
     },
     {
-      "id": "route:src/web/routes.js:18501:/app/person/:id",
+      "id": "route:src/web/routes.js:18934:/app/sector/income-statement",
+      "kind": "route",
+      "label": "GET /app/sector/income-statement",
+      "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
+      "sources": [
+        "src/web/routes.js"
+      ],
+      "method": "GET",
+      "path": "/app/sector/income-statement"
+    },
+    {
+      "id": "route:src/web/routes.js:19592:/app/person/:id",
       "kind": "route",
       "label": "GET /app/person/:id",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -10157,7 +10243,7 @@
       "path": "/app/person/:id"
     },
     {
-      "id": "route:src/web/routes.js:19917:/app/team/:section",
+      "id": "route:src/web/routes.js:21008:/app/team/:section",
       "kind": "route",
       "label": "GET /app/team/:section",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -10168,7 +10254,7 @@
       "path": "/app/team/:section"
     },
     {
-      "id": "route:src/web/routes.js:20569:/app/team/:section/:id",
+      "id": "route:src/web/routes.js:21660:/app/team/:section/:id",
       "kind": "route",
       "label": "GET /app/team/:section/:id",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -10179,7 +10265,7 @@
       "path": "/app/team/:section/:id"
     },
     {
-      "id": "route:src/web/routes.js:20958:/app/:page",
+      "id": "route:src/web/routes.js:22049:/app/:page",
       "kind": "route",
       "label": "GET /app/:page",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -10190,7 +10276,7 @@
       "path": "/app/:page"
     },
     {
-      "id": "route:src/web/routes.js:21343:/app/reports/preview/:key",
+      "id": "route:src/web/routes.js:22434:/app/reports/preview/:key",
       "kind": "route",
       "label": "GET /app/reports/preview/:key",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -10201,7 +10287,7 @@
       "path": "/app/reports/preview/:key"
     },
     {
-      "id": "route:src/web/routes.js:21720:/app/reports/test-send/:key",
+      "id": "route:src/web/routes.js:22811:/app/reports/test-send/:key",
       "kind": "route",
       "label": "POST /app/reports/test-send/:key",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -10212,7 +10298,7 @@
       "path": "/app/reports/test-send/:key"
     },
     {
-      "id": "route:src/web/routes.js:22050:/app/reports/schedule",
+      "id": "route:src/web/routes.js:23141:/app/reports/schedule",
       "kind": "route",
       "label": "POST /app/reports/schedule",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -10223,7 +10309,7 @@
       "path": "/app/reports/schedule"
     },
     {
-      "id": "route:src/web/routes.js:22388:/app/reports/schedule/:id/active",
+      "id": "route:src/web/routes.js:23479:/app/reports/schedule/:id/active",
       "kind": "route",
       "label": "POST /app/reports/schedule/:id/active",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -10234,7 +10320,7 @@
       "path": "/app/reports/schedule/:id/active"
     },
     {
-      "id": "route:src/web/routes.js:22602:/app/reports/schedule/:id",
+      "id": "route:src/web/routes.js:23693:/app/reports/schedule/:id",
       "kind": "route",
       "label": "DELETE /app/reports/schedule/:id",
       "detail": "تصريح مسار محلي في webRouter؛ بادئة التثبيت والحارس في المصدر. ليس إثباتًا لاستجابة ناجحة.",
@@ -23617,6 +23703,66 @@
       ]
     },
     {
+      "id": "issue:KI-139",
+      "kind": "issue",
+      "label": "KI-139 · copy/finance",
+      "detail": "**الاسم العربي لسطر «Contracting Expenses» بانتظار المالك.** السطر الثالث في قائمة الدخل مكتوبٌ اليوم «مصاريف التعاقد»، وهي تسميةٌ تحتمل وجهين: مصاريفَ إبرام العقد (رسومٌ وضماناتٌ وأتعابٌ قانونية) أو أتعابَ التعاقد من الباطن («مصاريف التعاقد من الباطن»). الاسمان يقودان إلى تبويبٍ مختلفٍ للصرف حين تصل بيانات الكلفة في المرحلة الثانية، فتصحيحُ الاسم بعد امتلاء السطر يعني إعادة تبويب صفوفٍ سُجِّلت.",
+      "status": "owner-decision",
+      "sources": [
+        "docs/KNOWN-ISSUES.md"
+      ]
+    },
+    {
+      "id": "issue:KI-138",
+      "kind": "issue",
+      "label": "KI-138 · tests/tooling",
+      "detail": "**`tests/security/grant-levels.test.js` يسقط يومياً بين ٢١:٠٠ و٢٤:٠٠ بتوقيت غرينتش.** المُثبِّت يبني `dayShift` من تاريخ غرينتش (`new Date(Date.now()+n*864e5).toISOString().slice(0,10)`)، بينما `expiresOnOf` في الخدمة يقارن بتاريخ الرياض (`todayKey() = riyadhDate()`، +٣ ساعات). ففي تلك الساعات الثلاث يكون «اليوم» في الرياض غداً بحساب غرينتش، فيُقرأ `dayShift(0)` تاريخاً مضى وتُردّ المنحة برسالة «آخر يوم للصلاحية يكون اليوم أو بعده». الخدمة سليمة — العطل في المُثبِّت وحده، وإصلاحُه فيه لا في الخدمة.",
+      "status": "open",
+      "sources": [
+        "docs/KNOWN-ISSUES.md"
+      ]
+    },
+    {
+      "id": "issue:KI-136",
+      "kind": "issue",
+      "label": "KI-136 · finance/reports",
+      "detail": "**بطاقة التحصيل في «مركز القطاع» مُوسَّمة لا مرشَّحة تحت مرشِّح المشروع.** `arAging` في `src/modules/finance/finance.js` لا بُعد مشروعٍ له (يُجمِّع مباشرةً بلا عمود يقصّه بمشروعٍ بعينه)، فحين يختار القارئ مشروعاً تبقى بطاقة التحصيل تعرض القطاع كله وتحمل شارة «القطاع كله» بدل أن تُقصّ فعلاً — نفس القاعدة التي تسري على القمع التجاري والحجوزات وغيرها من البطاقات بلا بُعد مشروع.",
+      "status": "deferred-by-design",
+      "sources": [
+        "docs/KNOWN-ISSUES.md"
+      ]
+    },
+    {
+      "id": "issue:KI-135",
+      "kind": "issue",
+      "label": "KI-135 · reports/sector",
+      "detail": "**تغذية «ما تغيّر»، تغذية «يحتاج انتباهاً»، ودرجة اكتمال البيانات تتجاهل مرشِّحَي الإدارة والعميل بلا شارة.** خلافاً لمرشِّح المشروع الجديد (v6.00) الذي وسمَ كل بطاقةٍ بلا بُعد مشروع بـ«القطاع كله»، هذه الثلاث كانت تتجاهل الإدارة والعميل من قبله ولم تُوسَم يوماً — عطلٌ سابقٌ للتغيير الحالي كشفه العمل على الشارة الجديدة، لا عطلٌ نتج عنه.",
+      "status": "open",
+      "sources": [
+        "docs/KNOWN-ISSUES.md"
+      ]
+    },
+    {
+      "id": "issue:KI-134",
+      "kind": "issue",
+      "label": "KI-134 · finance/data",
+      "detail": "**بنود `revenue_line` بلا شهرٍ تسقط من كل نافذة فترةٍ في قائمة الدخل، كما تسقط من بقية صفحة القطاع.** `revenueActual` في `income-statement.js` يشترط `rl.month IN (...)` كسائر دوال الإيراد على الصفحة (`windowRevenue`/`revenueScope`) — نفسُ قاعدة v5.72 (٣٣٠ مستخلَصاً بلا شهرٍ لقطاع الاستشارات). فأيّ بندٍ مستورَدٍ بلا شهرٍ يغيب عن كل فترةٍ تُختار في قائمة الدخل الجديدة أيضاً، لا عن فترةٍ بعينها.",
+      "status": "open",
+      "sources": [
+        "docs/KNOWN-ISSUES.md"
+      ]
+    },
+    {
+      "id": "issue:KI-133",
+      "kind": "issue",
+      "label": "KI-133 · finance/owner-decision",
+      "detail": "**كلفة قائمة الدخل وخطتها لكل سطرٍ بلا مصدر بيانات معتمد — بانتظار قرار المالك.** المرحلة الأولى بنت الأسطر التسعة والإيراد فعلياً، وتركت سطور الكلفة الستة (رواتب التشغيل، أتعاب المستشارين، مصاريف التعاقد، التراخيص، الإيجار، مصاريف تشغيلية أخرى) «لم يُسجَّل» عمداً لأن جدول المصروفات يخلط أنواعاً لا تطابق هذه الأسطر وبنود الكلفة بلا تصنيفٍ مُلزم يربطها بها. ستة أسئلة تنتظر جواب المالك قبل بناء المرحلة الثانية: (١) من أين تُقرأ الكلفة الفعلية لكل سطر؟ (٢) من أين تُقرأ خطة كل سطرٍ (لا خطة القطاع الإجمالية وحدها)؟ (٣) هل الأسطر الستة على مستوى الشركة كلها أم يمكن تقسيمها بقطاع؟ (٤) هل يجوز لقائد قطاعٍ أن يرى إجمالي رواتب قطاعه (حقلٌ حسّاسٌ اليوم)؟ (٥) أيّ رقم إيرادٍ هو المعتمد حين يختلف عن رقم المبيعات المعروض في مكانٍ آخر؟ (٦) هل يمكن مشاركة ملفّ العمل الأصلي الذي بُنيت عليه الأسطر التسعة مع فريق التطوير؟",
+      "status": "owner-decision",
+      "sources": [
+        "docs/KNOWN-ISSUES.md"
+      ]
+    },
+    {
       "id": "issue:KI-132",
       "kind": "issue",
       "label": "KI-132 · rbac/api",
@@ -24975,6 +25121,13 @@
       "to": "file:src/modules/finance/finance.js",
       "label": "يحتوي",
       "evidence": "src/modules/finance/finance.js",
+      "kind": "source"
+    },
+    {
+      "from": "module:finance",
+      "to": "file:src/modules/finance/income-statement.js",
+      "label": "يحتوي",
+      "evidence": "src/modules/finance/income-statement.js",
       "kind": "source"
     },
     {
@@ -29983,6 +30136,104 @@
       "kind": "source"
     },
     {
+      "from": "file:src/modules/finance/income-statement.js",
+      "to": "file:src/core/db/index.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/finance/income-statement.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/finance/income-statement.js",
+      "to": "file:src/core/rbac/index.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/finance/income-statement.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/finance/income-statement.js",
+      "to": "file:src/core/org/kind.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/finance/income-statement.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/finance/income-statement.js",
+      "to": "file:src/modules/pmo/projects.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/finance/income-statement.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/finance/income-statement.js",
+      "to": "file:src/core/http/errors.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/finance/income-statement.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/finance/income-statement.js",
+      "to": "file:src/core/config.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/finance/income-statement.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/finance/income-statement.js",
+      "to": "file:src/core/audit/index.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/finance/income-statement.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/finance/income-statement.js",
+      "to": "file:src/modules/finance/vat.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/finance/income-statement.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/finance/income-statement.js",
+      "to": "file:src/core/reports/metrics.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/finance/income-statement.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/finance/income-statement.js",
+      "to": "file:src/modules/org/sector-targets.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/finance/income-statement.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/finance/income-statement.js",
+      "to": "file:src/core/reports/changes.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/finance/income-statement.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/finance/income-statement.js",
+      "to": "file:src/core/i18n/time.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/finance/income-statement.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/finance/income-statement.js",
+      "to": "file:src/modules/io/xlsx.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/finance/income-statement.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/finance/income-statement.js",
+      "to": "file:src/web/i18n/glossary.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/finance/income-statement.js",
+      "kind": "source"
+    },
+    {
       "from": "file:src/modules/finance/money.routes.js",
       "to": "file:src/modules/finance/finance.js",
       "label": "استيراد صريح",
@@ -29998,35 +30249,49 @@
     },
     {
       "from": "file:src/modules/finance/money.routes.js",
-      "to": "route:src/modules/finance/money.routes.js:781:/projects/:id/money",
+      "to": "file:src/modules/finance/income-statement.js",
+      "label": "استيراد صريح",
+      "evidence": "src/modules/finance/money.routes.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/finance/money.routes.js",
+      "to": "route:src/modules/finance/money.routes.js:1142:/projects/:id/money",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/finance/money.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/finance/money.routes.js",
-      "to": "route:src/modules/finance/money.routes.js:978:/projects/:id/expenses",
+      "to": "route:src/modules/finance/money.routes.js:1339:/projects/:id/expenses",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/finance/money.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/finance/money.routes.js",
-      "to": "route:src/modules/finance/money.routes.js:1083:/projects/:id/expenses",
+      "to": "route:src/modules/finance/money.routes.js:1444:/projects/:id/expenses",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/finance/money.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/finance/money.routes.js",
-      "to": "route:src/modules/finance/money.routes.js:1194:/finance/expenses/:id",
+      "to": "route:src/modules/finance/money.routes.js:1555:/finance/expenses/:id",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/finance/money.routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/modules/finance/money.routes.js",
-      "to": "route:src/modules/finance/money.routes.js:1305:/finance/expenses/:id",
+      "to": "route:src/modules/finance/money.routes.js:1666:/finance/expenses/:id",
+      "label": "يصرح بالمسار",
+      "evidence": "src/modules/finance/money.routes.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/modules/finance/money.routes.js",
+      "to": "route:src/modules/finance/money.routes.js:2025:/sectors/:id/income-statement.xlsx",
       "label": "يصرح بالمسار",
       "evidence": "src/modules/finance/money.routes.js",
       "kind": "source"
@@ -34939,6 +35204,13 @@
       "kind": "source"
     },
     {
+      "from": "file:src/web/pages.js",
+      "to": "file:src/web/views/sector-pl-print.js",
+      "label": "استيراد صريح",
+      "evidence": "src/web/pages.js",
+      "kind": "source"
+    },
+    {
       "from": "file:src/web/routes.js",
       "to": "file:src/modules/team/person-link.js",
       "label": "استيراد صريح",
@@ -35122,63 +35394,70 @@
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:18501:/app/person/:id",
+      "to": "route:src/web/routes.js:18934:/app/sector/income-statement",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:19917:/app/team/:section",
+      "to": "route:src/web/routes.js:19592:/app/person/:id",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:20569:/app/team/:section/:id",
+      "to": "route:src/web/routes.js:21008:/app/team/:section",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:20958:/app/:page",
+      "to": "route:src/web/routes.js:21660:/app/team/:section/:id",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:21343:/app/reports/preview/:key",
+      "to": "route:src/web/routes.js:22049:/app/:page",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:21720:/app/reports/test-send/:key",
+      "to": "route:src/web/routes.js:22434:/app/reports/preview/:key",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:22050:/app/reports/schedule",
+      "to": "route:src/web/routes.js:22811:/app/reports/test-send/:key",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:22388:/app/reports/schedule/:id/active",
+      "to": "route:src/web/routes.js:23141:/app/reports/schedule",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
     },
     {
       "from": "file:src/web/routes.js",
-      "to": "route:src/web/routes.js:22602:/app/reports/schedule/:id",
+      "to": "route:src/web/routes.js:23479:/app/reports/schedule/:id/active",
+      "label": "يصرح بالمسار",
+      "evidence": "src/web/routes.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/web/routes.js",
+      "to": "route:src/web/routes.js:23693:/app/reports/schedule/:id",
       "label": "يصرح بالمسار",
       "evidence": "src/web/routes.js",
       "kind": "source"
@@ -36675,6 +36954,48 @@
       "kind": "source"
     },
     {
+      "from": "file:src/web/views/sector-pl-print.js",
+      "to": "file:src/web/views/_shared.js",
+      "label": "استيراد صريح",
+      "evidence": "src/web/views/sector-pl-print.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/web/views/sector-pl-print.js",
+      "to": "file:src/web/assets.js",
+      "label": "استيراد صريح",
+      "evidence": "src/web/views/sector-pl-print.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/web/views/sector-pl-print.js",
+      "to": "file:src/core/audit/index.js",
+      "label": "استيراد صريح",
+      "evidence": "src/web/views/sector-pl-print.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/web/views/sector-pl-print.js",
+      "to": "file:src/web/i18n/glossary.js",
+      "label": "استيراد صريح",
+      "evidence": "src/web/views/sector-pl-print.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/web/views/sector-pl-print.js",
+      "to": "file:src/core/util/ids.js",
+      "label": "استيراد صريح",
+      "evidence": "src/web/views/sector-pl-print.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/web/views/sector-pl-print.js",
+      "to": "file:src/modules/finance/income-statement.js",
+      "label": "استيراد صريح",
+      "evidence": "src/web/views/sector-pl-print.js",
+      "kind": "source"
+    },
+    {
       "from": "file:src/web/views/sector-targets.js",
       "to": "file:src/web/layout.js",
       "label": "استيراد صريح",
@@ -36754,6 +37075,20 @@
     {
       "from": "file:src/web/views/sector.js",
       "to": "file:src/modules/org/sector-targets.js",
+      "label": "استيراد صريح",
+      "evidence": "src/web/views/sector.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/web/views/sector.js",
+      "to": "file:src/modules/finance/income-statement.js",
+      "label": "استيراد صريح",
+      "evidence": "src/web/views/sector.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/web/views/sector.js",
+      "to": "file:src/web/views/sector-pl-print.js",
       "label": "استيراد صريح",
       "evidence": "src/web/views/sector.js",
       "kind": "source"
@@ -36852,6 +37187,20 @@
     {
       "from": "file:src/web/views/sector.js",
       "to": "file:src/core/rbac/index.js",
+      "label": "استيراد صريح",
+      "evidence": "src/web/views/sector.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/web/views/sector.js",
+      "to": "file:src/core/http/errors.js",
+      "label": "استيراد صريح",
+      "evidence": "src/web/views/sector.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:src/web/views/sector.js",
+      "to": "file:src/core/obs/log.js",
       "label": "استيراد صريح",
       "evidence": "src/web/views/sector.js",
       "kind": "source"
@@ -42674,6 +43023,97 @@
       "kind": "source"
     },
     {
+      "from": "file:tests/integration/sector-period-range.test.js",
+      "to": "file:src/core/db/index.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/sector-period-range.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/sector-period-range.test.js",
+      "to": "file:src/core/rbac/index.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/sector-period-range.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/sector-period-range.test.js",
+      "to": "file:src/web/views/sector.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/sector-period-range.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/sector-pl-export.test.js",
+      "to": "file:src/core/db/index.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/sector-pl-export.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/sector-pl-export.test.js",
+      "to": "file:src/core/rbac/index.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/sector-pl-export.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/sector-pl-export.test.js",
+      "to": "file:src/modules/io/xlsx.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/sector-pl-export.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/sector-pl-export.test.js",
+      "to": "file:src/server.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/sector-pl-export.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/sector-pl-tab.test.js",
+      "to": "file:src/core/db/index.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/sector-pl-tab.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/sector-pl-tab.test.js",
+      "to": "file:src/core/rbac/index.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/sector-pl-tab.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/sector-pl-tab.test.js",
+      "to": "file:src/web/views/sector.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/sector-pl-tab.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/sector-project-filter.test.js",
+      "to": "file:src/core/db/index.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/sector-project-filter.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/sector-project-filter.test.js",
+      "to": "file:src/core/rbac/index.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/sector-project-filter.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/integration/sector-project-filter.test.js",
+      "to": "file:src/web/views/sector.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/integration/sector-project-filter.test.js",
+      "kind": "source"
+    },
+    {
       "from": "file:tests/integration/sector-role-view.test.js",
       "to": "file:src/core/db/index.js",
       "label": "استيراد صريح",
@@ -47221,6 +47661,27 @@
       "to": "file:src/modules/io/engine.js",
       "label": "استيراد صريح",
       "evidence": "tests/unit/import-engine.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/unit/income-statement.test.js",
+      "to": "file:src/core/db/index.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/unit/income-statement.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/unit/income-statement.test.js",
+      "to": "file:src/core/rbac/index.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/unit/income-statement.test.js",
+      "kind": "source"
+    },
+    {
+      "from": "file:tests/unit/income-statement.test.js",
+      "to": "file:src/modules/finance/income-statement.js",
+      "label": "استيراد صريح",
+      "evidence": "tests/unit/income-statement.test.js",
       "kind": "source"
     },
     {
@@ -52422,6 +52883,48 @@
       "to": "table:invoice_line",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
       "evidence": "src/modules/finance/finance.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:src/modules/finance/income-statement.js",
+      "to": "table:revenue_line",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "src/modules/finance/income-statement.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:src/modules/finance/income-statement.js",
+      "to": "table:project",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "src/modules/finance/income-statement.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:src/modules/finance/income-statement.js",
+      "to": "table:sector",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "src/modules/finance/income-statement.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:src/modules/finance/income-statement.js",
+      "to": "table:department",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "src/modules/finance/income-statement.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:src/modules/finance/income-statement.js",
+      "to": "table:client",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "src/modules/finance/income-statement.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:src/modules/finance/income-statement.js",
+      "to": "table:opportunity",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "src/modules/finance/income-statement.js",
       "kind": "text-reference"
     },
     {
@@ -61511,6 +62014,251 @@
       "kind": "text-reference"
     },
     {
+      "from": "file:tests/integration/sector-period-range.test.js",
+      "to": "table:sector",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/sector-period-range.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/sector-period-range.test.js",
+      "to": "table:app_user",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/sector-period-range.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/sector-period-range.test.js",
+      "to": "table:stage",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/sector-period-range.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/sector-period-range.test.js",
+      "to": "table:client",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/sector-period-range.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/sector-period-range.test.js",
+      "to": "table:opportunity",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/sector-period-range.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/sector-period-range.test.js",
+      "to": "table:project",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/sector-period-range.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/sector-period-range.test.js",
+      "to": "table:revenue_line",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/sector-period-range.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/sector-pl-export.test.js",
+      "to": "table:role",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/sector-pl-export.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/sector-pl-export.test.js",
+      "to": "table:role_permission",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/sector-pl-export.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/sector-pl-export.test.js",
+      "to": "table:audit_log",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/sector-pl-export.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/sector-pl-export.test.js",
+      "to": "table:sector",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/sector-pl-export.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/sector-pl-export.test.js",
+      "to": "table:app_user",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/sector-pl-export.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/sector-pl-export.test.js",
+      "to": "table:session",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/sector-pl-export.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/sector-pl-export.test.js",
+      "to": "table:client",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/sector-pl-export.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/sector-pl-export.test.js",
+      "to": "table:department",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/sector-pl-export.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/sector-pl-export.test.js",
+      "to": "table:project",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/sector-pl-export.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/sector-pl-export.test.js",
+      "to": "table:revenue_line",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/sector-pl-export.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/sector-pl-export.test.js",
+      "to": "table:budget",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/sector-pl-export.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/sector-pl-tab.test.js",
+      "to": "table:role",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/sector-pl-tab.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/sector-pl-tab.test.js",
+      "to": "table:role_permission",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/sector-pl-tab.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/sector-pl-tab.test.js",
+      "to": "table:sector",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/sector-pl-tab.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/sector-pl-tab.test.js",
+      "to": "table:app_user",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/sector-pl-tab.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/sector-pl-tab.test.js",
+      "to": "table:department",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/sector-pl-tab.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/sector-pl-tab.test.js",
+      "to": "table:stage",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/sector-pl-tab.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/sector-pl-tab.test.js",
+      "to": "table:client",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/sector-pl-tab.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/sector-pl-tab.test.js",
+      "to": "table:project",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/sector-pl-tab.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/sector-pl-tab.test.js",
+      "to": "table:revenue_line",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/sector-pl-tab.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/sector-project-filter.test.js",
+      "to": "table:sector",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/sector-project-filter.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/sector-project-filter.test.js",
+      "to": "table:app_user",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/sector-project-filter.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/sector-project-filter.test.js",
+      "to": "table:department",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/sector-project-filter.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/sector-project-filter.test.js",
+      "to": "table:stage",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/sector-project-filter.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/sector-project-filter.test.js",
+      "to": "table:client",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/sector-project-filter.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/sector-project-filter.test.js",
+      "to": "table:project",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/sector-project-filter.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/sector-project-filter.test.js",
+      "to": "table:revenue_line",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/sector-project-filter.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/integration/sector-project-filter.test.js",
+      "to": "table:opportunity",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/integration/sector-project-filter.test.js",
+      "kind": "text-reference"
+    },
+    {
       "from": "file:tests/integration/sector-role-view.test.js",
       "to": "table:sector",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
@@ -66492,6 +67240,55 @@
       "to": "table:revenue_line",
       "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
       "evidence": "tests/unit/import-engine.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/unit/income-statement.test.js",
+      "to": "table:role",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/unit/income-statement.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/unit/income-statement.test.js",
+      "to": "table:role_permission",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/unit/income-statement.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/unit/income-statement.test.js",
+      "to": "table:sector",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/unit/income-statement.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/unit/income-statement.test.js",
+      "to": "table:client",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/unit/income-statement.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/unit/income-statement.test.js",
+      "to": "table:project",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/unit/income-statement.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/unit/income-statement.test.js",
+      "to": "table:revenue_line",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/unit/income-statement.test.js",
+      "kind": "text-reference"
+    },
+    {
+      "from": "file:tests/unit/income-statement.test.js",
+      "to": "table:budget",
+      "label": "إشارة جدولية صريحة؛ تحقق من موضع الاستعمال",
+      "evidence": "tests/unit/income-statement.test.js",
       "kind": "text-reference"
     },
     {
@@ -73262,6 +74059,62 @@
       "label": "update @ department",
       "evidence": "src/core/rbac/matrix.js",
       "kind": "grant"
+    },
+    {
+      "from": "issue:KI-139",
+      "to": "file:src/modules/finance/income-statement.js",
+      "label": "يشير السجل إلى",
+      "evidence": "docs/KNOWN-ISSUES.md",
+      "kind": "reported"
+    },
+    {
+      "from": "issue:KI-138",
+      "to": "file:src/modules/identity/grants.js",
+      "label": "يشير السجل إلى",
+      "evidence": "docs/KNOWN-ISSUES.md",
+      "kind": "reported"
+    },
+    {
+      "from": "issue:KI-138",
+      "to": "file:tests/security/grant-levels.test.js",
+      "label": "يشير السجل إلى",
+      "evidence": "docs/KNOWN-ISSUES.md",
+      "kind": "reported"
+    },
+    {
+      "from": "issue:KI-136",
+      "to": "file:src/modules/finance/finance.js",
+      "label": "يشير السجل إلى",
+      "evidence": "docs/KNOWN-ISSUES.md",
+      "kind": "reported"
+    },
+    {
+      "from": "issue:KI-136",
+      "to": "file:src/web/views/sector.js",
+      "label": "يشير السجل إلى",
+      "evidence": "docs/KNOWN-ISSUES.md",
+      "kind": "reported"
+    },
+    {
+      "from": "issue:KI-135",
+      "to": "file:src/web/views/sector.js",
+      "label": "يشير السجل إلى",
+      "evidence": "docs/KNOWN-ISSUES.md",
+      "kind": "reported"
+    },
+    {
+      "from": "issue:KI-134",
+      "to": "file:src/modules/finance/income-statement.js",
+      "label": "يشير السجل إلى",
+      "evidence": "docs/KNOWN-ISSUES.md",
+      "kind": "reported"
+    },
+    {
+      "from": "issue:KI-133",
+      "to": "file:src/modules/finance/income-statement.js",
+      "label": "يشير السجل إلى",
+      "evidence": "docs/KNOWN-ISSUES.md",
+      "kind": "reported"
     },
     {
       "from": "issue:KI-132",
