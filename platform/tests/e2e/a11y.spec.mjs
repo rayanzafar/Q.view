@@ -19,7 +19,7 @@ export default async function a11ySpec({ browser, base, t, platformRoot }) {
   const pages = await pagesFor('demo.admin');
   // فصولٌ لا يبلغها `/app/<page>` وحده: محتواها يُصيَّر بمفتاحه في العنوان (قائمة الدخل).
   // المفتاح في قائمة الاستثناءات هو النصّ بعد `/app/` كما هو — فيبقى الاستثناء مثبَّتاً بفصله.
-  const TAB_PAGES = ['sector?tab=pl&p=ytd'];
+  const TAB_PAGES = ['sector?tab=pl&p=ytd', 'sector?p=q1-q3'];
   for (const p of [...pages, ...TAB_PAGES]) {
     await open(page, base, `/app/${p}`);
     await page.addScriptTag({ content: axeSource });

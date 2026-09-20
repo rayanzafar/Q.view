@@ -102,20 +102,33 @@ export const PICKER_CSS = `
   .sp-row b{color:var(--brand);font-weight:800}
   .sp-code{color:var(--faint);font-size:var(--fs-micro);margin-inline-start:.3rem}
   .sp-grp{font-size:var(--fs-micro);font-weight:800;color:var(--faint);padding:.35rem .55rem .15rem}
-  .sp-empty{padding:.55rem;font-size:12px;color:var(--muted);line-height:1.7}`;
+  .sp-empty{padding:.55rem;font-size:12px;color:var(--muted);line-height:1.7}
+  /* منتقٍ داخل نموذجٍ يعمل بلا نصٍّ برمجي (nojs): القائمةُ الحقيقية تبقى عنصراً ظاهراً في
+     الشيفرة — تُخفى هنا لأن حقل البحث يحلّ محلَّها حين يعمل النصّ، وتعود بقاعدةٍ داخل
+     <noscript> حين لا يعمل. القاعدتان معاً في مكانٍ واحد كي لا تفترقا يوماً فتختفي الأداة. */
+  .sp-sel{display:none}`;
 
 // `groups` = [{ label, items: [{ value, name, code }] }] — كل عنصر يحمل قيمته المرمّزة كما هي.
 // و`lead` خياراتٌ تتصدّر القائمة بلا مجموعة (العمل الداخلي والشخصي).
-export function searchPicker({ idAttr, label, groups = [], lead = [], dataF = '', placeholder = '', emptyNote = '' }) {
-  const opt = (o) => `<option value="${esc(o.value)}"${o.code ? ` data-code="${esc(o.code)}"` : ''}>${esc(o.code ? `${o.code} — ${o.name}` : o.name)}</option>`;
+//
+// خياران إضافيان لمن يضع المنتقي داخل **نموذجٍ** لا داخل لوحِ تحريرٍ يقرأ `.value` بنصٍّ برمجي:
+//   • `value` — القيمة المختارة الآن، تُوسَم `selected` في القائمة الحقيقية فيقرأها النموذج
+//     العادي ويعرضها الحقلُ المرئي عند التحميل. بلا تمريرها لا يتغيّر شيء عمّا كان.
+//   • `nojs` — القائمة الحقيقية تبقى عنصر نموذجٍ حيّاً (لا `hidden` ولا `aria-hidden`) كي
+//     يختار منها من عُطِّل عنده النصّ البرمجي؛ وتُخفى بالأنماط (`.sp-sel`) حين يعمل. وحقلُ
+//     البحث بلا اسم عندئذٍ فلا يُرسَل نصُّ البحث مع النموذج معاملاً زائداً في الرابط.
+// وما لم يُمرَّرا فالمخرَج هو المخرَج نفسه الذي تعرفه شاشتا المهام والاجتماعات.
+export function searchPicker({ idAttr, label, groups = [], lead = [], dataF = '', placeholder = '', emptyNote = '', value = null, nojs = false }) {
+  const selMark = (v) => (value != null && String(v) === String(value) ? ' selected' : '');
+  const opt = (o) => `<option value="${esc(o.value)}"${o.code ? ` data-code="${esc(o.code)}"` : ''}${selMark(o.value)}>${esc(o.code ? `${o.code} — ${o.name}` : o.name)}</option>`;
   const any = groups.some((g) => g.items.length);
   return `<div class="sp" data-picker="${esc(idAttr)}">
-    <select id="${esc(idAttr)}" name="${esc(idAttr)}" autocomplete="off" hidden${dataF ? ` data-f="${esc(dataF)}"` : ''} aria-hidden="true" tabindex="-1">
+    <select id="${esc(idAttr)}" name="${esc(idAttr)}" autocomplete="off" ${nojs ? `class="input sp-sel" aria-label="${esc(label)}"` : 'hidden'}${dataF ? ` data-f="${esc(dataF)}"` : ''}${nojs ? '' : ' aria-hidden="true" tabindex="-1"'}>
       ${lead.map(opt).join('')}
       ${groups.map((g) => (g.items.length ? `<optgroup label="${esc(g.label)}">${g.items.map(opt).join('')}</optgroup>` : '')).join('')}
       ${!any && !emptyNote ? '' : (!any ? `<option value="" disabled>${esc(emptyNote)}</option>` : '')}
     </select>
-    <input class="input sp-q" id="${esc(idAttr)}-q" name="${esc(idAttr)}-q" autocomplete="off" type="text"
+    <input class="input sp-q" id="${esc(idAttr)}-q"${nojs ? '' : ` name="${esc(idAttr)}-q"`} autocomplete="off" type="text"
       role="combobox" aria-expanded="false" aria-controls="${esc(idAttr)}-list" aria-autocomplete="list"
       aria-label="${esc(label)}" placeholder="${esc(placeholder || label)}">
     <div class="sp-list" id="${esc(idAttr)}-list" role="listbox" aria-label="${esc(label)}" hidden></div>

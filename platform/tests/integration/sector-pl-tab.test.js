@@ -1,7 +1,7 @@
 // ── فصل «قائمة الدخل» على مركز القطاع ────────────────────────────────────────────────────
 // ما يحرسه هذا الفحص بترتيب أهميته:
-//   ١) **الفصل في موضعه**: ثانياً بعد «الإيقاع» — ترتيبُ الألسنة قرارُ قراءةٍ لا تفصيلٌ تجميلي،
-//      والفصل الافتراضي يبقى «الإيقاع» كما كان.
+//   ١) **الفصل في موضعه**: أولاً وافتراضاً (تعليمة المالك 2026-09-20) — ترتيبُ الألسنة قرارُ
+//      قراءةٍ لا تفصيلٌ تجميلي، والمركز يفتح على «أين الربح؟».
 //   ٢) **الأرقام أرقامُ المرشِّحات**: الفترة والمشروع يقصّان الإيراد المعروض، والملفُّ والورقة
 //      يخرجان بالمرشِّحات نفسها حرفاً — وإلا قرأ القارئ شاشةً وطبع أخرى.
 //   ٣) **ما لم يُدخَل يُقال ولا يُختلق**: الكلفة «لم يُسجَّل» لا صفراً، وشريطٌ واحد فوق كتلتها
@@ -29,6 +29,12 @@ for (const [res, act] of [['revenue_line', 'read'], ['budget', 'read'], ['projec
   ['opportunity', 'read'], ['report', 'read'], ['kpi', 'read']]) {
   await db.run('INSERT INTO role_permission (role_id, resource, action, scope) VALUES (?,?,?,?)', ['t_plscreen', res, act, 'sector']);
 }
+// ودورٌ ثانٍ لا يقرأ الإيراد أصلاً: الفصل صار يُصيَّر مع كل تحميل، فلا بدّ أن يُخرج حالتَه
+// المصمَّمة لمن لا يملكه — لا أن يُسقط الشاشة كلها في وجهه.
+await db.run("INSERT INTO role (id, name_ar, name_en, is_system, created_at) VALUES ('t_norev','قارئ بلا إيراد','No Revenue Reader',0,'2026-01-01T00:00:00.000Z')");
+for (const [res, act] of [['project', 'read'], ['opportunity', 'read'], ['kpi', 'read']]) {
+  await db.run('INSERT INTO role_permission (role_id, resource, action, scope) VALUES (?,?,?,?)', ['t_norev', res, act, 'sector']);
+}
 await (await import('../../src/core/rbac/index.js')).initRbac();
 const { sectorPage } = await import('../../src/web/views/sector.js');
 
@@ -39,11 +45,12 @@ const person = (id, username, role, scope) => ({ id, username, role_id: role, sc
   projectIds: new Set(), teamIds: new Set() });
 const LEAD = person('u_lead', 'lead', 'sector_lead', 'sector');
 const NOCOST = person('u_nocost', 'nocost', 't_plscreen', 'sector');
+const NOREV = person('u_norev', 'norev', 't_norev', 'sector');
 
 before(async () => {
   await db.insert('sector', { id: 'SOL', name_ar: 'قطاع الحلول', kind: 'delivery', active: 1, sort_order: 1,
     target_revenue_halalas: 100_000_000, target_sales_halalas: 100_000_000, created_at: T });
-  for (const u of [LEAD, NOCOST]) {
+  for (const u of [LEAD, NOCOST, NOREV]) {
     await db.insert('app_user', { id: u.id, username: u.username, name_ar: u.username, role_id: u.role_id,
       sector_id: 'SOL', scope: u.scope, active: 1, created_at: T });
   }
@@ -63,7 +70,7 @@ before(async () => {
 });
 after(async () => { await db.close(); rmSync(dir, { recursive: true, force: true }); });
 
-const PANEL_ORDER = ['pulse', 'pl', 'com', 'ops', 'cli', 'hr', 'next'];
+const TAB_ORDER = ['pl', 'pulse', 'com', 'ops', 'cli', 'hr', 'next'];
 const plPanel = (html) => {
   const from = html.indexOf('id="sec-panel-pl"');
   assert.ok(from > 0, 'لوحة فصل قائمة الدخل غائبة');
@@ -74,17 +81,36 @@ const render = (user, opts) => sectorPage(user, { year: String(YEAR), ...opts })
 const NINE = ['الإيراد', 'رواتب التشغيل', 'أتعاب المستشارين', 'مصاريف التعاقد', 'التراخيص',
   'الإيجار', 'مصاريف تشغيلية أخرى', 'تكلفة الإيراد', 'مجمل الربح (الخسارة)'];
 
-test('«قائمة الدخل» هي اللسان الثاني، والفصل الافتراضي لم يتغيّر', async () => {
+test('«قائمة الدخل» هي اللسان الأول والفصل الافتراضي', async () => {
   const h = await render(LEAD, {});
   const order = [...h.matchAll(/id="sec-tab-([a-z]+)"/g)].map((m) => m[1]);
-  assert.deepEqual(order, PANEL_ORDER, 'ترتيب الألسنة تغيّر');
-  assert.equal(order[1], 'pl', '«قائمة الدخل» ليست اللسان الثاني');
-  assert.ok(h.includes('id="sec-tab-pl"'), 'لسان قائمة الدخل غائب');
-  // الفصل الافتراضي «الإيقاع»: لوحته ظاهرة ولوحة قائمة الدخل مخفيّة
-  assert.match(h, /id="sec-panel-pulse"[^>]*class="tabpanel"(?!\s*hidden)/, 'الفصل الافتراضي لم يعد «الإيقاع»');
-  assert.match(plPanel(h), /class="tabpanel" hidden/, 'لوحة قائمة الدخل ظاهرة بلا اختيارها');
-  // ولا حسابَ لفصلٍ لم يُفتح: الجدول لا يُصيَّر أصلاً
-  assert.ok(!plPanel(h).includes('رواتب التشغيل'), 'جدول قائمة الدخل صُيِّر بلا فتح فصله');
+  assert.deepEqual(order, TAB_ORDER, 'ترتيب الألسنة تغيّر');
+  assert.equal(order[0], 'pl', '«قائمة الدخل» ليست اللسان الأول');
+  // الهبوط بلا لسانٍ في العنوان: لوحةُ قائمة الدخل ظاهرةٌ محسوبةً، ولوحةُ «الإيقاع» مخفيّة
+  assert.match(plPanel(h), /class="tabpanel">/, 'لوحة قائمة الدخل مخفيّة عند الهبوط');
+  assert.ok(plPanel(h).includes('رواتب التشغيل'), 'جدول قائمة الدخل لم يُصيَّر عند الهبوط');
+  assert.match(h, /id="sec-panel-pulse"[^>]*class="tabpanel" hidden/, 'لوحة «الإيقاع» ظاهرة بلا اختيارها');
+});
+
+test('لا نموذجَ خفيّاً يفتح الفصل: لسانُه زرُّ تبديلٍ كإخوته', async () => {
+  const h = await render(LEAD, {});
+  assert.ok(!h.includes('pl-tab-form'), 'النموذج الخفيّ لفتح الفصل بقي في الصفحة');
+  assert.ok(!h.includes('اعرض قائمة الدخل'), 'حالةُ «افتح الفصل» البديلة بقيت');
+  const btn = /<button[^>]*id="sec-tab-pl"[^>]*>/.exec(h);
+  assert.ok(btn, 'زرّ لسان قائمة الدخل غائب');
+  assert.match(btn[0], /type="button"/, 'زرّ اللسان ما زال زرّ إرسال');
+  assert.match(btn[0], /data-action="sec-tab"/, 'زرّ اللسان لا يبدّل في المتصفح كإخوته');
+});
+
+test('ألسنةُ الروابط العميقة تبقى تعمل: tab=pulse وtab=com', async () => {
+  for (const k of ['pulse', 'com', 'ops', 'cli', 'hr', 'next']) {
+    const h = await render(LEAD, { tab: k });
+    assert.match(h, new RegExp(`id="sec-panel-${k}"[^>]*class="tabpanel">`), `الرابط العميق ?tab=${k} لم يفتح فصله`);
+    assert.match(h, /id="sec-panel-pl"[^>]*class="tabpanel" hidden/, `فصل قائمة الدخل بقي ظاهراً مع ?tab=${k}`);
+  }
+  // ولسانٌ مجهول يسقط إلى الافتراضي لا إلى صفحة خطأ
+  const bad = await render(LEAD, { tab: 'لا-وجود-له' });
+  assert.match(plPanel(bad), /class="tabpanel">/, 'لسانٌ مجهول لم يسقط إلى الفصل الافتراضي');
 });
 
 test('فتحُ الفصل يعرض السطور التسعة ونسبة مجمل الربح لقائد القطاع', async () => {
@@ -159,6 +185,40 @@ test('من لا يملك باب الكلفة يرى سطر الإيراد وحد
   assert.ok(!p.includes('لم تُسجَّل تكاليف القطاع بعد'), 'شريط الكلفة ظهر لمن لا سطورَ كلفةٍ لديه');
   assert.ok(!p.includes('income-statement.xlsx'), 'رابط التصدير ظهر لمن لا يملك تصدير التقارير');
   assert.ok(p.includes('/app/sector/income-statement?'), 'رابط نسخة الطباعة غائب');
+});
+
+// ── الفصل صار افتراضياً، فتعثُّره لا يجوز أن يُسقط الشاشة ────────────────────────────────
+test('من لا يقرأ الإيراد أصلاً يحصل على صفحةٍ كاملة وحالةِ «خارج صلاحياتك» في لوحته', async () => {
+  const h = await render(NOREV, { tab: 'pl' });
+  assert.ok(h.length > 5000, 'الصفحة لم تُصيَّر لمن لا يقرأ الإيراد');
+  const p = plPanel(h);
+  assert.ok(p.includes('قائمة الدخل خارج صلاحياتك'), 'حالة «خارج الصلاحيات» غائبة عن لوحة الفصل');
+  assert.ok(!p.includes('الإيراد ما تحقق'), 'جدول القائمة صُيِّر لمن لا يقرأ الإيراد');
+  assert.ok(!/undefined|NaN|\[object/.test(p), 'قيمة خام في حالة غياب الصلاحية');
+  // وبقية الشاشة سليمةٌ حوله: الألسنة كلها في مكانها
+  const order = [...h.matchAll(/id="sec-tab-([a-z]+)"/g)].map((m) => m[1]);
+  assert.deepEqual(order, TAB_ORDER, 'شريط الألسنة اختلّ حين تعذّرت قائمة الدخل');
+});
+
+// ── الهبوط الافتراضي يتبع القارئ، والترتيب لا يتبعه ──────────────────────────────────────
+// أن تكون «قائمة الدخل» أول الألسنة قرارُ خريطةٍ للشاشة، وأن تكون أول ما يُفتَح قرارٌ لهذا
+// القارئ بعينه: من لا سطرَ إيرادٍ له فيها يهبط على لوحةٍ لا شيء فيها إلا «خارج صلاحياتك» —
+// شاشةٌ كاملة يُستقبَل صاحبها بالمنع وحده. فالهبوط يقع على «الإيقاع»، والترتيبُ كما هو.
+test('بلا لسانٍ في العنوان: من لا يقرأ الإيراد يهبط على «الإيقاع»، والترتيب pl أولاً للجميع', async () => {
+  const h = await render(NOREV, {});
+  const order = [...h.matchAll(/id="sec-tab-([a-z]+)"/g)].map((m) => m[1]);
+  assert.deepEqual(order, TAB_ORDER, 'ترتيب الألسنة تغيّر بتغيّر القارئ');
+  assert.equal(order[0], 'pl', '«قائمة الدخل» لم تعد أول الألسنة لمن لا يقرأ الإيراد');
+  assert.match(h, /id="sec-panel-pulse"[^>]*class="tabpanel">/, 'الهبوط لم يقع على «الإيقاع»');
+  assert.match(plPanel(h), /class="tabpanel" hidden/, 'لوحة «خارج صلاحياتك» فُتحت على القارئ');
+  // ولسانٌ صريح في العنوان يُحترم كما كُتب: من طلب `?tab=pl` يرى الحالة المصمَّمة لا تحويلاً
+  const explicit = plPanel(await render(NOREV, { tab: 'pl' }));
+  assert.match(explicit, /class="tabpanel">/, '?tab=pl الصريح حُوِّل صامتاً');
+  assert.ok(explicit.includes('قائمة الدخل خارج صلاحياتك'), 'الحالة المصمَّمة غائبة عن اللسان الصريح');
+  // ومن يقرأ الإيراد يبقى هبوطه على «قائمة الدخل» كما هو
+  const lead = await render(LEAD, {});
+  assert.match(plPanel(lead), /class="tabpanel">/, 'هبوط قارئ الإيراد تحوّل عن قائمة الدخل');
+  assert.match(lead, /id="sec-panel-pulse"[^>]*class="tabpanel" hidden/, '«الإيقاع» فُتحت لقارئ الإيراد');
 });
 
 test('خطةُ إيرادٍ غير مسجَّلة: تُقال ومعها بابُ تسجيلها — ولا تُقال تحت الترشيح', async () => {

@@ -29,14 +29,16 @@ import { sectorTeamDetail, UTIL_BANDS, allocationPeriod } from '../../modules/pm
 import { TASK_LOAD_BASIS_AR } from '../../modules/pmo/task-load.js';
 import { relationshipOf, lastTouchByClient } from '../../modules/clients/clients.js';
 import { can, effectiveScope, canSeeSensitive } from '../../core/rbac/index.js';
+import { HttpError } from '../../core/http/errors.js';
+import { logError, trimStack } from '../../core/obs/log.js';
 import { scopeFilter } from '../../core/rbac/scope.js';
 import { SCOPE_RANK } from '../../core/rbac/matrix.js';
 import { config } from '../../core/config.js';
 import { DELIVERY_SECTOR_SQL } from '../../core/org/kind.js';
 import { G } from '../i18n/glossary.js';
-import { monthLabel, quarterLabel, nowDot, currentMonthIndex, MONTHS_AR, MONTHS_EN3, QUARTERS_AR } from '../../core/i18n/time.js';
+import { monthLabel, quarterLabel, nowDot, currentMonthIndex, MONTHS_AR, MONTHS_EN3, QUARTERS_AR, QUARTERS_SHORT } from '../../core/i18n/time.js';
 import { countAr, countedAr, dayWord } from '../../core/i18n/plural.js';
-import { esc, ddWrap, attain, ddRows, sarShort } from './_shared.js';
+import { esc, ddWrap, attain, ddRows, sarShort, searchPicker, PICKER_CSS } from './_shared.js';
 
 // الفترة التقويمية (?p=y | q1..q4 | m1..m12) — تحلّ محل النافذة المتدحرجة على الصفحة كلها:
 // «الشهر» المتدحرج كان يعني آخر ثلاثين يوماً، و«الربع» أربعة أشهر متقاطعة، وهو ما لا يفهمه
@@ -50,16 +52,22 @@ const pLastM = (p) => (p.months?.[p.months.length - 1] || 12);
 // السنةُ كاملةً في الأرقام، ويجب أن تكونها في الاسم أيضاً. «من بداية سنة ٢٠٢٥ حتى اليوم»
 // جملةٌ تكذب على قارئها: لا «اليوم» في سنةٍ انقضت، والفترة ليست ناقصةً أصلاً.
 const pIsWholeYear = (p) => (p.months?.length || 0) >= 12;
+// اسمُ المدى بحدَّيه — بجنس ما اختاره القارئ: مدى أرباعٍ يُسمّى بالأرباع («من الربع الأول إلى
+// الثالث») ومدى أشهرٍ بالأشهر. وتسميةُ مدى أرباعٍ بشهرَيه («من يناير إلى سبتمبر») تُرجع القارئ
+// إلى ترجمةٍ ذهنية في كل قراءة، وهو اختار أرباعاً.
+const rangeName = (p) => (p.unit === 'q'
+  ? `من ${QUARTERS_AR[p.qFrom - 1]} إلى ${QUARTERS_SHORT[p.qTo - 1]}`
+  : `من ${MONTHS_AR[pFirstM(p) - 1]} إلى ${MONTHS_AR[pLastM(p) - 1]}`);
 const periodLabel = (p) => (p.kind === 'y' ? G.fullYear
   : p.kind === 'q' ? QUARTERS_AR[p.index - 1]
     : p.kind === 'm' ? MONTHS_AR[p.index - 1]
       : p.kind === 'ytd' ? (pIsWholeYear(p) ? G.fullYear : G.ytd)
-        : `من ${MONTHS_AR[pFirstM(p) - 1]} إلى ${MONTHS_AR[pLastM(p) - 1]}`);
+        : rangeName(p));
 const periodEcho = (p, year) => (p.kind === 'y' ? `خلال ${year}`
   : p.kind === 'q' ? `في ${QUARTERS_AR[p.index - 1]} ${year}`
     : p.kind === 'm' ? `في ${MONTHS_AR[p.index - 1]} ${year}`
       : p.kind === 'ytd' ? (pIsWholeYear(p) ? `خلال ${year}` : `من بداية ${year} حتى اليوم`)
-        : `من ${MONTHS_AR[pFirstM(p) - 1]} إلى ${MONTHS_AR[pLastM(p) - 1]} ${year}`);
+        : `${rangeName(p)} ${year}`);
 
 // أيقونة ولون كل نوع في «ما تغيّر»
 const CHG_IC = { stage: 'trend', invoice: 'money', collection: 'check', activity: 'mail', created: 'plus' };
@@ -115,8 +123,14 @@ const CSS = `<style>
 .tabpanel{display:grid;gap:1rem}
 .tabpanel[hidden]{display:none}
 @media(max-width:900px){.tabs{overflow-x:auto;max-width:100%}}
-/* مُنتقيا الإدارة والعميل + رقائق المرشِّحات النشطة وسطرُ ما يُستبعَد */
+/* مُنتقيا الإدارة والسنة + رقائق المرشِّحات النشطة وسطرُ ما يُستبعَد */
 .fmenu summary{white-space:nowrap}
+/* مُنتقيا العميل والمشروع: نموذجُ GET صغير في الشريط، حقلُه بمقاس أزرار الشريط لا بمقاس
+   حقول النماذج — وقابلٌ للانكماش (min-width:0) كي لا يدفع الشريط خارج الشاشة عند ٣٩٠ بكسل. */
+.fpick{display:flex;align-items:center;gap:.35rem;min-width:0;flex:1 1 168px;max-width:240px}
+.fpick .sp{flex:1 1 auto;min-width:0}
+.fpick .sp-q,.fpick .sp-sel{width:100%;padding:.32rem .6rem;font-size:var(--fs-meta);border-radius:8px}
+.fpick .sp-list{font-size:var(--fs-meta)}
 .fitem{display:block;padding:.35rem .6rem;border-radius:8px;font-size:12px;color:var(--ink2);text-decoration:none;white-space:nowrap}
 .fitem:hover{background:var(--bg)}
 .fitem.on{background:var(--acc-soft,#eaf0fc);color:var(--brand);font-weight:800}
@@ -129,14 +143,26 @@ const CSS = `<style>
 .psel a.fut{opacity:.75}
 .futnote{font-size:var(--fs-micro);color:#92400e;background:var(--st-warn-soft);border-radius:999px;padding:.15rem .6rem;font-weight:700}
 .psel a.on.fut{color:var(--ink2)}
-/* مدى الأشهر: نموذجٌ صغير بمُنتقيَين يعمل بلا نصٍّ برمجي — والحقول المخفيّة تحمل بقية الحالة */
-.prange{display:flex;gap:.3rem;align-items:center;flex-wrap:nowrap;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:.2rem .4rem}
-.prange label{font-size:11px;font-weight:700;color:var(--muted);white-space:nowrap}
-.prange select{font-family:inherit;font-size:11.5px;font-weight:700;color:var(--ink2);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:.25rem .35rem}
-.prange select:focus-visible{outline:2px solid var(--brand);outline-offset:1px}
+/* شريطُ المدى: طرفاه رقاقتان مختارتان وما بينهما «in» — كتلةٌ واحدة متصلة لا رقائق متفرقة.
+   بخصائص منطقية (inline-start/end) فينقلب مع اتجاه القراءة بلا محدّدٍ ثانٍ للعربية. */
+.psel a.in{background:#fff;color:var(--ink2);box-shadow:var(--sh-sm);border-radius:0}
+.psel a.on.rs{border-start-end-radius:0;border-end-end-radius:0}
+.psel a.on.re{border-start-start-radius:0;border-end-start-radius:0}
+/* والشريط المتصل يفترض سطراً واحداً. على الهاتف يلتفّ صفُّ الاثني عشر شهراً سطرين أو ثلاثة
+   (KI-137)، فتُبتر استدارةُ الطرف في هواء آخر السطر ويبدأ السطرُ التالي بحافةٍ مربّعة معلَّقة
+   لا يتصل بها شيء — شكلُ وصلٍ بلا موصول. فعند حدّ الهاتف نفسه تعود كل رقاقةٍ إلى استدارتها،
+   ويُقرأ المدى بخلفيةٍ ملوّنة تجمع رقائقه ولو تفرّقت على سطرين. والشريط على الشاشة الواسعة
+   كما هو — سطرٌ واحد فلا التفاف. */
+@media(max-width:640px){.psel a.in,.psel a.on.rs,.psel a.on.re{border-radius:8px}
+.psel a.in{background:var(--acc-soft,#eaf0fc);color:var(--brand)}}
+/* تلميحُ سطرٍ واحد أسفل الرقائق: النقرة الثانية تصنع مدىً — قاعدةٌ تُقال لا تُكتشَف */
+.phint{font-size:var(--fs-micro);color:var(--muted);flex:0 0 100%}
 /* شارةُ نطاقٍ عامة (كانت محصورةً في شريط المال وبطاقات الكابينة) — تصلح لأي رأس بطاقة */
 .icb{display:inline-block;font-size:9.5px;font-weight:700;color:var(--muted);background:var(--track);border-radius:999px;padding:.05rem .45rem;vertical-align:middle}
-@media(max-width:900px){.psel .pmon{overflow-x:auto;max-width:100%}.prange{flex-wrap:wrap}}
+/* الرقائق تلتفّ سطوراً قبل أن تُقصّ: شريطُ الشهور اثنتا عشرة رقاقةً عربيةً كاملة لا تسع
+   ٣٩٠ بكسل في سطر (KI-137) — والالتفاف أقرب إلى القارئ من تمريرٍ أفقي مخفيٍّ داخل الشريط. */
+.psel .seg{flex-wrap:wrap;max-width:100%;min-width:0}
+@media(max-width:900px){.psel .pmon{max-width:100%}}
 .seg a.on{background:#fff;color:var(--ink2);box-shadow:var(--sh-sm)}
 /* ═══ كابينة v5.39 (نماذج المالك): لوحة داكنة، أقسام مرقّمة، رسوم غنية ═══ */
 .card.pad{padding:.8rem 1rem;display:block}
@@ -349,6 +375,10 @@ button.vjn:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
 .act-r .go svg{width:13px;height:13px}
 @media(max-width:640px){.act-r{grid-template-columns:28px 1fr}.act-r .go{grid-column:2;justify-self:start;min-height:40px}
 .chg-cat,.seg a,.seg button,.rmenu summary,.cap-li-btn,.fs-compl,.xb-attn{min-height:40px;display:inline-flex;align-items:center}
+/* مُنتقيا العميل والمشروع (حقل البحث، والقائمة الحقيقية خلفه) وزرُّ «اعرض» داخل <noscript>:
+   حدُّ اللمس نفسه لا رقمٌ ثانٍ يفترق عنه يوماً — وبلا إعلان عرضٍ (display) لأن القائمة
+   الحقيقية مخفيّةٌ حين يعمل النصّ البرمجي، وإعلانُ عرضٍ هنا كان سيكشفها على الهاتف. */
+.fpick .sp-q,.fpick .sp-sel,.fpick .btn{min-height:40px}
 .kd .sig{min-width:0}
 .card-foot a,.card-foot button{min-height:40px;display:inline-flex;align-items:center}}
 .rmenu{position:relative}
@@ -475,7 +505,15 @@ ${CARD_HEAD_CSS}
 .pl-var.neutral{background:var(--track);color:var(--muted)}
 .pl-notes{margin-top:.6rem;display:grid;gap:.25rem;font-size:var(--fs-micro);color:var(--muted)}
 .pl-notes a{color:var(--brand);font-weight:700}
+${PICKER_CSS}
 </style>`;
+
+// من عُطِّل عنده النصّ البرمجي يرى القائمة الحقيقية مكان حقل البحث — والقاعدة داخل
+// <noscript> فلا تسري إلا عنده هو. (زرُّ «اعرض» نفسه داخل <noscript> في الشريط.)
+const PICKER_NOJS = `<noscript><style>
+body[data-page="sector"] .fpick .sp-sel{display:block}
+body[data-page="sector"] .fpick .sp-q,body[data-page="sector"] .fpick .sp-list{display:none}
+</style></noscript>`;
 
 // ── من يرى أي وجه من الصفحة؟ ─────────────────────────────────────────────────
 // مركز القيادة مبني من سبعة موارد: المشاريع والفرص والعملاء والعقود والفواتير وبنود الإيراد
@@ -567,8 +605,10 @@ export async function sectorPage(user, opts = {}) {
   // وبعدسة السنة المعروضة نفسها التي تحكم كل عدٍّ للمشاريع هنا (projectYearClause — قاعدة
   // «مشروع السنة» الواحدة): قائمةٌ عمياء عن السنة كانت تعرض مشاريع سنواتٍ ماضية لا تظهر في
   // أي رقمٍ على الشاشة، فيختار القارئ اسماً فتفرغ الصفحة أمامه.
+  // والرمزُ يُقرأ مع الاسم: مُنتقي المشروع يبحث بهما معاً، فمن يحفظ رمز مشروعه لا يُجبَر على
+  // تهجّي اسمه الطويل.
   const pycList = projectYearClause(year);
-  const sectorProjects = await all(`SELECT id, name_ar FROM project
+  const sectorProjects = await all(`SELECT id, name_ar, code FROM project
      WHERE sector_id = ? AND deleted_at IS NULL AND ${pycList.clause}${deptSql('department_id')}${clientSql('client_id')}
      ORDER BY name_ar`, [sectorId, ...pycList.params, ...deptArg, ...clientArg]);
   const projSel = opts.project && sectorProjects.some((p) => p.id === opts.project) ? String(opts.project) : null;
@@ -589,19 +629,46 @@ export async function sectorPage(user, opts = {}) {
       (SELECT COUNT(*) FROM opportunity o JOIN stage st ON st.id = o.stage_id
         WHERE o.sector_id = ? AND o.deleted_at IS NULL AND st.is_won = 0 AND st.is_lost = 0
           AND o.department_id IS NULL) opp`, [sectorId, sectorId]) : null;
+  // ── قائمة الدخل تُحسب هنا، قبل اختيار الفصل ─────────────────────────────────────────────
+  // موضعُها مبكّرٌ عمداً: الفصلُ الافتراضي يتوقف على نتيجتها (هل لهذا القارئ سطرُ إيرادٍ فيها
+  // أصلاً؟)، فلا يجوز أن يُحسم الاختيار قبل أن تُعرف. والخدمةُ محاطةٌ بحارسٍ يُبقي الشاشة
+  // قائمة: تعثُّرها يُخرج حالةَ «خارج صلاحياتك» في لوحتها وحدها ولا يُسقط الصفحة كلها.
+  const plStatement = await sectorIncomeStatement(user, sectorId,
+    { year, months: period.months, scope: fscope }).catch((e) => {
+    // الرفضُ بالصلاحية منتَجٌ يعمل لا عطب — لوحتُه تقول ذلك للقارئ، ولا يُدفن سجلُّ الأعطاب
+    // تحت ضجيجه. وما عداه عطبٌ حقيقي: يُسجَّل بالقطاع والسنة ومفتاح الفترة كي يُعاد بناؤه.
+    if (!(e instanceof HttpError && e.code === 'forbidden')) {
+      logError('sector_income_statement_failed', {
+        sector: sectorId, year, period: win,
+        err_msg: String(e?.message || e).slice(0, 300), stack: trimStack(e),
+      });
+    }
+    return null;
+  });
+  // «سطرُ الإيراد موجود» = هذا القارئ يقرأ الإيراد في هذا القطاع؛ الخدمةُ تحذف ما لا يُرى
+  // (`visible` في income-statement.js) فوجودُ الصفّ هو البوابة نفسها بلا تكرارِ قاعدةٍ ثانية.
+  const plHasRevenue = !!plStatement?.rows?.some((r) => r.key === 'revenue');
   // فصول الصفحة تُعرَّف مبكراً: كل رابطٍ في الصفحة (مرشِّح أو فترة) يحمل الفصل الحالي، وإلا
   // أعادك تبديلُ مرشِّحٍ إلى الفصل الأول وضاع موضعك.
   const TAB_DEFS = [
-    ['pulse', 'الإيقاع'],
-    // «قائمة الدخل» ثانيةً لا أخيرة: سؤالُ المالك بعد «هل نحن على المسار؟» هو «وأين الربح؟».
+    // «قائمة الدخل» أولاً وافتراضاً — تعليمة المالك 2026-09-20: هي أعلى الشاشات أولويةً عنده،
+    // فالسؤال الأول الذي يُفتح عليه المركز هو «أين الربح؟» لا «ما الإيقاع؟». وكانت ثانيةً
+    // تُفتح بطلبٍ للخادم، فصارت أولى تُصيَّر مع كل تحميلٍ كإخوتها.
     ['pl', G.incomeStatement],
+    ['pulse', 'الإيقاع'],
     ['com', 'التجاري'],
     ['ops', 'التشغيلي'],
     ['cli', G.clients],
     ['hr', 'البشري'],
     ['next', 'القادم'],
   ];
-  const tabSel = TAB_DEFS.some(([k]) => k === opts.tab) ? String(opts.tab) : 'pulse';
+  // الافتراضي بلا لسانٍ في العنوان: «قائمة الدخل» لمن يقرأ إيرادها، و«الإيقاع» لمن لا يقرؤه.
+  // فالهبوط على لوحة «خارج صلاحياتك» يقول للقارئ «ليس لك هنا شيء» أول ما يفتح شاشته — وهو
+  // شاشةٌ كاملة لا شيء فيها ممنوع عليه سواها. وترتيبُ الألسنة يبقى واحداً للجميع (قائمة الدخل
+  // أولاً): الترتيبُ خريطةُ الشاشة لا حالةُ القارئ. و`?tab=pl` الصريح يُحترم كما طُلب،
+  // فيرى صاحبُه الحالة المصمَّمة — من كتب اللسان بيده يستحق جواباً لا تحويلاً صامتاً.
+  const tabSel = TAB_DEFS.some(([k]) => k === opts.tab) ? String(opts.tab)
+    : (plHasRevenue ? 'pl' : 'pulse');
   // pos='below' لما يقع أعلى الشاشة: التلميح فوق مُطلِقه يُقصّ عند حافة النافذة فيتراكب مع الرقم
   const estMark = (tip, pos = '') => `<span class="wmark" data-tip="${esc(tip)}"${pos ? ` data-tip-pos="${pos}"` : ''} tabindex="0" role="img" aria-label="قيمة تقديرية — ${esc(tip)}">${icon('risk')}</span>`;
   const noteMark = (tip, pos = '') => `<span class="tipdot" data-tip="${esc(tip)}"${pos ? ` data-tip-pos="${pos}"` : ''} tabindex="0" role="img" aria-label="${esc(tip)}">${icon('info')}</span>`;
@@ -969,6 +1036,45 @@ export async function sectorPage(user, opts = {}) {
     const on = k === win;
     return `<a class="${on ? 'on' : ''}${b.isFuture ? ' fut' : ''}" style="text-decoration:none" href="${qs({ p: k })}"${on ? ' aria-current="true"' : ''}${b.isFuture ? ' title="فترة قادمة — تُعرض بالمتوقع لا بالمحقق"' : ''}>${label}</a>`;
   };
+  // ── رقاقةُ ربعٍ أو شهر: نقرتان تصنعان مدىً، والثالثة تعود إلى المنقور وحده ───────────────
+  // نموذجُ المدى القديم كان نموذجاً بمُنتقيَين وزرِّ عرض — ثلاث خطواتٍ لسؤالٍ واحد، وبمنطقِ
+  // نموذجٍ لا بمنطقِ الرقائق التي تجاوره. القاعدة الآن بلا نصٍّ برمجي ولا حالةٍ في المتصفح:
+  //   • الفترة الحالية **ربعٌ بعينه** ورقاقةُ ربعٍ **غيره** ⇒ الرابط مدىً بينهما (q1-q3).
+  //   • وكذلك الأشهر مع الأشهر (m3-m8).
+  //   • وما عدا ذلك — سنةٌ أو من بدايتها أو مدىً قائم أو الجنسُ الآخر أو الرقاقةُ نفسها —
+  //     ⇒ الرابط الرقاقةُ وحدها. فالنقرة الأولى تختار، والثانية تمدّ، والثالثة تُعيد الاختيار.
+  // والشريط يُرسم على جنس المدى وحده: مدى أرباعٍ يضيء الأرباع لا الأشهر، والعكس بالعكس.
+  const pUnitChip = (unit, n, label, fullName) => {
+    const single = `${unit}${n}`;
+    const isSelfNow = period.kind === unit && period.index === n;
+    const pairs = period.kind === unit && period.index !== n;      // النقرة الثانية على جنسها
+    const lo = pairs ? Math.min(period.index, n) : 0, hi = pairs ? Math.max(period.index, n) : 0;
+    const target = pairs ? `${unit}${lo}-${unit}${hi}` : single;
+    // حدّا المدى القائم بجنس الرقاقة (إن كان من جنسها)
+    const inRange = period.kind === 'range' && period.unit === unit;
+    const rFrom = inRange ? (unit === 'q' ? period.qFrom : pFirstM(period)) : 0;
+    const rTo = inRange ? (unit === 'q' ? period.qTo : pLastM(period)) : 0;
+    const isEnd = inRange && (n === rFrom || n === rTo);
+    const isMid = inRange && n > rFrom && n < rTo;
+    const on = isSelfNow || isEnd;
+    // الطرفُ الأول من المدى يفقد استدارته من جهة الداخل والطرفُ الآخر من جهته — فيتصل الشريط
+    const edge = isEnd ? (n === rFrom ? ' rs' : ' re') : '';
+    // «فترةٌ قادمة» صفةُ **الرقاقة** لا صفةُ ما ستفعله نقرتُها: الرقاقة تقول عن ربعها أو شهرها
+    // هو، فربعٌ لم يبدأ يبقى باهتاً معلَّماً ولو كان المدى الذي ستصنعه نقرتُه يبدأ في الماضي
+    // (q1-q4 يبدأ في يناير فيُقرأ ماضياً، وكانت ر٤ تفقد وسمَها بذلك). والنصُّ يبقى على المدى:
+    // التلميح يصف الوجهة، والوسمُ يصف الرقاقة.
+    const bSelf = periodBounds(single, year, now);
+    const say = (pairs
+      ? `${fullName} — ${unit === 'q' ? `يحدّد المدى من ${QUARTERS_AR[lo - 1]} إلى ${QUARTERS_SHORT[hi - 1]}` : `يحدّد المدى من ${MONTHS_AR[lo - 1]} إلى ${MONTHS_AR[hi - 1]}`}`
+      : fullName)
+      // ورقاقةٌ داخل المدى القائم — طرفاً كانت أو وسطاً — تقول ذلك بلسانها: اللون والشريط
+      // وحدهما لا يبلغان من يقرأ بقارئ الشاشة، والانتماء إلى المدى هو المعلومة كلها هنا.
+      + (isEnd || isMid ? ` — ${G.withinSelectedRange}` : '')
+      + (bSelf.isFuture ? ' — فترة قادمة، تُعرض بالمتوقع لا بالمحقق' : '');
+    const cls = ([on ? 'on' : '', isMid ? 'in' : '', bSelf.isFuture ? 'fut' : ''].filter(Boolean).join(' ') + edge).trim();
+    // لا `class=""` في الشيفرة: سمةٌ فارغة ضجيجٌ يقرؤه كل من يفتح مصدر الصفحة أو يفحصها.
+    return `<a${cls ? ` class="${cls}"` : ''} style="text-decoration:none" href="${qs({ p: target })}"${on || isMid ? ' aria-current="true"' : ''} title="${esc(say)}" aria-label="${esc(say)}">${esc(label)}</a>`;
+  };
   const fchip = (label, href, on, title = '') => `<a class="chip${on ? ' on' : ''}" style="text-decoration:none" href="${href}"${title ? ` title="${esc(title)}"` : ''}>${esc(label)}${on ? ' <span aria-hidden="true">✕</span>' : ''}</a>`;
   const deptPick = sectorDepts.length ? `<details class="rmenu fmenu"><summary class="btn btn-sm">${deptSel ? (deptSel === NO_DEPT ? 'بلا إدارة' : esc(sectorDepts.find((d) => d.id === deptSel)?.name_ar || 'الإدارة')) : 'الإدارة'} ▾</summary>
       <div class="rmenu-b">
@@ -983,18 +1089,36 @@ export async function sectorPage(user, opts = {}) {
       <div class="rmenu-b">
         ${yearsAll.map((y) => `<a class="fitem${y === year ? ' on' : ''}" href="${qs({ year: y })}"${y > config.fiscalYear ? ' title="سنة قادمة — تُعرض بالمتوقع لا بالمحقق"' : ''}>سنة ${y}${y > config.fiscalYear ? ' — قادمة' : ''}</a>`).join('')}
       </div></details>`;
-  const clientPick = sectorClientRows.length ? `<details class="rmenu fmenu"><summary class="btn btn-sm">${clientSel ? esc(sectorClientRows.find((c) => c.id === clientSel)?.name_ar || G.clients) : G.clients} ▾</summary>
-      <div class="rmenu-b" style="max-height:320px;overflow-y:auto">
-        <a class="fitem${!clientSel ? ' on' : ''}" href="${qs({ client: null })}">كل العملاء</a>
-        ${sectorClientRows.slice(0, 40).map((c) => `<a class="fitem${clientSel === c.id ? ' on' : ''}" href="${qs({ client: c.id })}">${esc(c.name_ar)}</a>`).join('')}
-      </div></details>` : '';
-  // مُنتقي المشروع بجوار مُنتقيَي الإدارة والعميل — وقائمتُه مقصوصةٌ بهما (سبعون مشروعاً سقفاً
-  // للقائمة، وصفحةُ المشاريع هي الموضع الذي يُبحث فيه عمّا بعدها).
-  const projPick = sectorProjects.length ? `<details class="rmenu fmenu"><summary class="btn btn-sm">${projSel ? esc(sectorProjects.find((p) => p.id === projSel)?.name_ar || G.project) : G.project} ▾</summary>
-      <div class="rmenu-b" style="max-height:320px;overflow-y:auto">
-        <a class="fitem${!projSel ? ' on' : ''}" href="${qs({ project: null })}">${G.allProjects}</a>
-        ${sectorProjects.slice(0, 70).map((p) => `<a class="fitem${projSel === p.id ? ' on' : ''}" href="${qs({ project: p.id })}">${esc(p.name_ar)}</a>`).join('')}
-      </div></details>` : '';
+  // ── مُنتقيا العميل والمشروع: بحثٌ لا تصفُّح، وبلا سقفٍ يقصّ القائمة (v6.01) ───────────────
+  // كانا قائمتَي روابطَ مقصوصتين صامتتين — أربعون عميلاً وسبعون مشروعاً — بلا حقل بحث. ومن
+  // عنده تسعون مشروعاً لا يتصفّح تسعين سطراً ليجد واحداً يعرف اسمه، بل لا يجده أصلاً إن
+  // ابتلعه القصّ: مرشِّحٌ لا يعرض بعض ما يرشِّح به أسوأ من غياب المرشِّح، لأن غيابه يُرى.
+  // فصارا المنتقي المشترك نفسه الذي تعرفه شاشة المهام ولوحة الشخص (`searchPicker`): يُكتب
+  // فيه جزءٌ من الاسم — أو من رمز المشروع — فتُصفّى القائمة كاملةً بلا سقف.
+  // وهما داخل نموذج GET حقيقي يحمل بقية حالة الشاشة في حقولٍ خفيّة، فالاختيار يصل إلى الرابط
+  // نفسه الذي كانت تبنيه الروابط: بالنص البرمجي فوراً (`pages/sector.js`)، وبزرّ «اعرض» داخل
+  // <noscript> لمن عُطِّل عنده. والاختيارُ واحدٌ لا متعدّد كما كان.
+  const stateInputs = (skip) => {
+    const p = new URLSearchParams(qs().slice('/app/sector?'.length));
+    p.delete(skip);
+    return [...p].map(([k, v]) => `<input type="hidden" name="${esc(k)}" value="${esc(v)}">`).join('');
+  };
+  const filterPicker = ({ key, label, leadName, items, selected }) => `<form class="fpick" method="get" action="/app/sector" role="search" aria-label="${esc(label)}">
+    ${stateInputs(key)}
+    ${searchPicker({ idAttr: key, label, nojs: true, value: selected || '',
+    placeholder: leadName, lead: [{ value: '', name: leadName }, ...items] })}
+    <noscript><button type="submit" class="btn btn-sm">اعرض</button></noscript>
+  </form>`;
+  const clientPick = sectorClientRows.length ? filterPicker({
+    key: 'client', label: 'ترشيح بالعميل', leadName: 'كل العملاء', selected: clientSel,
+    items: sectorClientRows.map((c) => ({ value: c.id, name: c.name_ar })),
+  }) : '';
+  // قائمةُ المشروع مقصوصةٌ بالإدارة والعميل المختارَين (أعلاه) لا بسقفٍ عدديّ: خيارٌ يُفرغ
+  // الشاشة لحظةَ اختياره لا يُعرض، وما عداه يُعرض كلُّه.
+  const projPick = sectorProjects.length ? filterPicker({
+    key: 'project', label: 'ترشيح بالمشروع', leadName: G.allProjects, selected: projSel,
+    items: sectorProjects.map((p) => ({ value: p.id, name: p.name_ar, code: p.code || '' })),
+  }) : '';
   const activeChips = [
     deptSel ? fchip(deptSel === NO_DEPT ? 'بلا إدارة' : (sectorDepts.find((d) => d.id === deptSel)?.name_ar || ''), qs({ dept: null }), true, 'إزالة ترشيح الإدارة') : '',
     clientSel ? fchip(sectorClientRows.find((c) => c.id === clientSel)?.name_ar || '', qs({ client: null }), true, 'إزالة ترشيح العميل') : '',
@@ -1008,27 +1132,19 @@ export async function sectorPage(user, opts = {}) {
     filterNotes.push(`<div class="fnote">${noteMark('بند إيرادٍ قديم بلا مشروعٍ مسجَّل لا يُعرف لأي إدارةٍ أو عميلٍ ينتمي — يبقى في أرقام القطاع غير المرشَّحة')} ${sarShort(rsc.unattributed)} من إيراد ${year} غير منسوبٍ لمشروع — لا يظهر تحت هذا الترشيح</div>`);
   }
   const filterNote = filterNotes.join('');
-  // ── مدى الأشهر: نموذجٌ عاديٌّ بمُنتقيَين، يعمل بلا نصٍّ برمجي ─────────────────────────────
-  // الأربعةُ أرباعٍ والاثنا عشر شهراً لا تغطّيان «من مارس إلى أغسطس»، والقائدُ يسأل عن المدى.
-  // والحقولُ المخفيّة تحمل بقية حالة الشاشة (السنة والقطاع والفصل والمرشِّحات) — وإلا أعاد
-  // اختيارُ مدى الأشهر القارئَ إلى الفصل الأول بلا مرشِّحاته.
-  const rangeKeep = { year: String(year), tab: tabSel, dept: deptSel, client: clientSel,
-    project: projSel, stage: selStage?.id || null, sector: user.scope === 'company' ? sectorId : null };
-  const mOptions = (selected) => MONTHS_AR.map((nm, i) => `<option value="${i + 1}"${(i + 1) === selected ? ' selected' : ''}>${esc(nm)}</option>`).join('');
-  const rangeForm = `<form class="prange" method="get" action="/app/sector" aria-label="${esc(G.monthRange)}">
-    ${Object.entries(rangeKeep).filter(([, v]) => v).map(([k, v]) => `<input type="hidden" name="${k}" value="${esc(String(v))}">`).join('')}
-    <label for="p-from">${G.fromMonth}</label>
-    <select id="p-from" name="pa">${mOptions(pFirstM(period))}</select>
-    <label for="p-to">${G.toMonth}</label>
-    <select id="p-to" name="pb">${mOptions(pLastM(period))}</select>
-    <button class="btn btn-sm" type="submit">${G.showRange}</button>
-  </form>`;
+  // ── عدسةُ الفترة: رقائقُ وحدها، والمدى يُصنع بنقرتين ─────────────────────────────────────
+  // كان المدى نموذجاً بمُنتقيَين وزرِّ «اعرض المدى» بجوار الرقائق — أداةٌ بمنطقٍ ثانٍ في شريطٍ
+  // واحد، وثلاثُ خطواتٍ لسؤالٍ يُطرح بنقرتين. رُفع النموذج، والقاعدةُ صارت في الرقائق نفسها
+  // (`pUnitChip`): اختر فترةً ثم ثانيةً من جنسها ليُحدَّد المدى بينهما. و`pa`/`pb` تبقى مقبولةً
+  // من الخادم كما هي (أعلى الملف) فلا ينكسر رابطٌ قديمٌ حُفظ أو أُرسل.
+  // وأسماءُ الأشهر عربيةٌ كاملة: كانت `monthLabel(i,'tight')` تُخرج Jan–Dec في شريطٍ عربيٍّ
+  // كلُّه — وهي صيغةٌ لرؤوس الشبكات الضيقة لا لمُنتقٍ يُقرأ بالاسم. والشريط يلتفّ سطوراً.
   const lens = `<div class="psel">
     <div class="seg" role="group" aria-label="الفترة">${pOpt('y', 'السنة')}${pOpt('ytd', G.ytd)}</div>
-    <div class="seg" role="group" aria-label="الأرباع">${[1, 2, 3, 4].map((q) => pOpt(`q${q}`, `ر${q}`)).join('')}</div>
-    <div class="seg pmon" role="group" aria-label="الأشهر">${MONTHS_AR.map((m, i) => pOpt(`m${i + 1}`, monthLabel(i, 'tight'))).join('')}</div>
-    ${rangeForm}
+    <div class="seg" role="group" aria-label="الأرباع">${[1, 2, 3, 4].map((q) => pUnitChip('q', q, `ر${q}`, QUARTERS_AR[q - 1])).join('')}</div>
+    <div class="seg pmon" role="group" aria-label="الأشهر">${MONTHS_AR.map((m, i) => pUnitChip('m', i + 1, m, m)).join('')}</div>
     ${period.isFuture ? '<span class="futnote">فترة قادمة — بالمتوقع لا بالمحقق</span>' : ''}
+    <span class="phint">${G.periodRangeHint}</span>
   </div>`;
   const stageChip = selStage ? `<a class="chip on" href="${qs({ stage: null })}" title="إلغاء تصفية المرحلة">
       المرحلة: ${esc(selStage.name_ar)} <span aria-hidden="true">✕</span></a>
@@ -1047,7 +1163,7 @@ export async function sectorPage(user, opts = {}) {
     ${switcher || ''}
     <span style="font-size:var(--fs-body);color:var(--muted);font-weight:700">السنة:</span>
     ${yearPick}
-    <span style="font-size:var(--fs-body);color:var(--muted);font-weight:700">الفترة: <span class="tipdot" data-tip="اختر السنة أو من بدايتها حتى اليوم أو ربعاً أو شهراً بعينه، أو مدى أشهرٍ متصل من المُنتقيَين. التدفقات (الإيراد والمكسوب والمفوتر والمحصَّل وما تغيّر) تُعاد لهذه الفترة، والأرصدة اللحظية (خط الفرص، الإشغال، صحة التنفيذ) لا تتأثر بها وتحمل وسمها. والفترة القادمة تُعرض بالمتوقع لا بالمحقق." tabindex="0" role="img" aria-label="اختر السنة أو من بدايتها حتى اليوم أو ربعاً أو شهراً أو مدى أشهر — التدفقات تُعاد للفترة والأرصدة اللحظية لا تتأثر">${icon('info')}</span></span>
+    <span style="font-size:var(--fs-body);color:var(--muted);font-weight:700">الفترة: <span class="tipdot" data-tip="اختر السنة أو من بدايتها حتى اليوم أو ربعاً أو شهراً بعينه — ونقرةٌ ثانية على ربعٍ أو شهرٍ آخر تحدّد المدى بينهما. التدفقات (الإيراد والمكسوب والمفوتر والمحصَّل وما تغيّر) تُعاد لهذه الفترة، والأرصدة اللحظية (خط الفرص، الإشغال، صحة التنفيذ) لا تتأثر بها وتحمل وسمها. والفترة القادمة تُعرض بالمتوقع لا بالمحقق." tabindex="0" role="img" aria-label="اختر السنة أو من بدايتها حتى اليوم أو ربعاً أو شهراً، ونقرةٌ ثانية تحدّد مدىً — التدفقات تُعاد للفترة والأرصدة اللحظية لا تتأثر">${icon('info')}</span></span>
     ${lens}
     ${deptPick}
     ${clientPick}
@@ -2674,16 +2790,13 @@ export async function sectorPage(user, opts = {}) {
   // الورقة (`plMoney`/`plPct`) لا منسوخةً هنا، فلا تفترق شاشةٌ عن ورقةٍ في قراءة ريالٍ واحد.
   //
   // ثلاثُ قواعد تحكم هذا الفصل:
-  //   ١) **الحساب عند الفتح وحده**: بقية الفصول لا تدفع ثمن استعلاماتٍ لا تعرضها، فالخدمة
-  //      لا تُستدعى إلا حين يكون هذا الفصل هو المختار — ولذلك لسانُه يفتح بطلبٍ للخادم
-  //      (زرُّ إرسالٍ لنموذجٍ يحمل حالة الشاشة) لا بإخفاءٍ وإظهارٍ في المتصفح كإخوته.
+  //   ١) **يُحسب مع كل تحميل**: صار الفصل الأول والافتراضي (تعليمة المالك 2026-09-20)، فلا
+  //      معنى لتأجيل حسابه إلى نقرةٍ — الصفحة تفتح عليه. و`plStatement` يُحسب أعلى الصفحة
+  //      (قبل `tabSel`) لأن الفصل الافتراضي يتوقف على وجود سطر الإيراد فيه، ومعه حارسُه.
   //   ٢) **ما لم يُدخَل يُقال مرّةً واحدة**: كتلةُ كلفةٍ خاليةٌ كلُّها شريطٌ واحد فوقها، لا
   //      تسعُ خلايا تكرّر «لم يُسجَّل» — والخليّة تبقى فارغةً معترفةً لا صفراً مدّعياً.
   //   ٣) **الانحراف ليس لوناً ولا سهماً وحده**: اللون والسهم والإشارة والاسم البديل معاً،
   //      فمن لا يميّز الأحمر من الأخضر يقرأ «أقل من الخطة بـ٤٠%» كما يقرؤها غيره.
-  const plStatement = tabSel === 'pl'
-    ? await sectorIncomeStatement(user, sectorId, { year, months: period.months, scope: fscope })
-    : null;
   // مرشِّحات الشاشة كما هي في العنوان — يحملها الملفّ والورقة والنموذج، فالثلاثة صورةٌ واحدة.
   const plParams = () => {
     const p = new URLSearchParams();
@@ -2698,11 +2811,6 @@ export async function sectorPage(user, opts = {}) {
     if (user.scope === 'company' && sectorId) p.set('sector', sectorId);
     return p.toString();
   };
-  // نموذجٌ خفيّ يفتح الفصل بطلبٍ للخادم: زرُّ اللسان وزرُّ الحالة البديلة كلاهما يرسله.
-  const plForm = `<form id="pl-tab-form" method="get" action="/app/sector" hidden>
-    ${[...new URLSearchParams(plParams()).entries(), ['tab', 'pl']]
-    .map(([k, v]) => `<input type="hidden" name="${esc(k)}" value="${esc(v)}">`).join('')}
-  </form>`;
   const plVariance = (kind, v) => {
     if (v == null) return `<span class="na">${esc(G.notEnteredYet)}</span>`;
     const arrow = v > 0 ? '▲' : v < 0 ? '▼' : '=';
@@ -2711,24 +2819,19 @@ export async function sectorPage(user, opts = {}) {
     return `<span class="pl-var ${varianceTone(kind, v)}" role="img" aria-label="${esc(say)}"><span aria-hidden="true">${arrow}</span><bdi dir="ltr">${esc(`${v > 0 ? '+' : ''}${v}%`)}</bdi></span>`;
   };
   const PL_ROWC = { subtotal: 'sub', result: 'res' };
+  // حالةُ «لا قائمةَ لهذا القارئ» واحدةٌ لسببين: خدمةٌ رفضت الطلب (صلاحية)، أو قائمةٌ عادت
+  // بلا سطر إيراد. كلاهما غيابُ صلاحيةٍ لا نقصُ بيانات — فالجملة واحدة والحالة واحدة.
+  const plDenied = `<section class="card pad"><div class="empty-state">${icon('money')}
+    <div class="t">قائمة الدخل خارج صلاحياتك</div>
+    <div class="s">أرقام إيراد هذا القطاع وتكاليفه لا تُعرض بصلاحيتك الحالية — اطلب من مدير النظام توسيعها.</div>
+  </div></section>`;
   const plPanel = (() => {
-    if (!plStatement) {
-      // لسانٌ لم يُفتح بعد: حالةٌ مصمَّمة بخطوةٍ واحدة — لا لوحةٌ فارغة لمن وصلها بالأسهم.
-      return `<section class="card pad"><div class="empty-state">${icon('money')}
-        <div class="t">${esc(G.incomeStatement)}</div>
-        <div class="s">تُقرأ أرقامها عند فتح الفصل — بالفترة والمرشِّحات المختارة الآن.</div>
-        <button type="submit" form="pl-tab-form" class="btn btn-primary">اعرض ${esc(G.incomeStatement)}</button>
-      </div></section>`;
-    }
+    if (!plStatement) return plDenied;
     const rows = plStatement.rows;
     // لا سطرَ إيرادٍ = لا قائمةَ دخلٍ لهذا القارئ. صفوفٌ محذوفةٌ أصدق من صفوفٍ فارغة، والحالةُ
     // تقول السبب: ليست البياناتُ ناقصةً، بل الصلاحية.
-    if (!rows.some((r) => r.key === 'revenue')) {
-      return `<section class="card pad"><div class="empty-state">${icon('money')}
-        <div class="t">قائمة الدخل خارج صلاحياتك</div>
-        <div class="s">أرقام إيراد هذا القطاع وتكاليفه لا تُعرض بصلاحيتك الحالية — اطلب من مدير النظام توسيعها.</div>
-      </div></section>`;
-    }
+    // القاعدةُ نفسها التي حسمت الفصل الافتراضي أعلى الصفحة (`plHasRevenue`) — لا نسختان.
+    if (!plHasRevenue) return plDenied;
     const revRow = rows.find((r) => r.key === 'revenue');
     const costRows = rows.filter((r) => r.kind === 'cost');
     const costsAllEmpty = costRows.length > 0 && costRows.every((r) => r.state === 'not_entered');
@@ -2800,17 +2903,13 @@ export async function sectorPage(user, opts = {}) {
   // واللسان في الرابط `?tab=` فيبقى بعد التحديث ويُشارَك برابطه — نمط تفصيل الفرصة نفسه.
   const TABS = TAB_DEFS;
   const tab = tabSel;
-  // لسانُ «قائمة الدخل» وحده يفتح بطلبٍ للخادم: محتواه لا يُصيَّر إلا حين يكون هو المختار
-  // (قاعدة «لا استعلامَ لفصلٍ لا يُعرض»)، فزرُّه زرُّ إرسالٍ لنموذجٍ يحمل الفترة والمرشِّحات —
-  // لا زرَّ إخفاءٍ وإظهار. ويبقى في شريط الألسنة بدوره وسماته كاملةً (role/aria/tabindex).
-  const tabBtn = ([k, l]) => (k === 'pl'
-    ? `<button type="submit" form="pl-tab-form" role="tab" id="sec-tab-${k}" data-tab="${k}"
+  // كل الألسنة سواء: زرُّ إخفاءٍ وإظهار في المتصفح. «قائمة الدخل» كانت وحدها تفتح بطلبٍ
+  // للخادم لأن محتواها لم يكن يُصيَّر إلا عند اختيارها — وقد صارت الفصل الافتراضي فتُصيَّر
+  // دائماً، فسقط سببُ الاستثناء ومعه نموذجُه الخفيّ.
+  const tabBtn = ([k, l]) => `<button type="button" role="tab" id="sec-tab-${k}" data-action="sec-tab" data-tab="${k}"
       aria-selected="${tab === k}" aria-controls="sec-panel-${k}" tabindex="${tab === k ? '0' : '-1'}"
-      class="${tab === k ? 'on' : ''}">${l}</button>`
-    : `<button type="button" role="tab" id="sec-tab-${k}" data-action="sec-tab" data-tab="${k}"
-      aria-selected="${tab === k}" aria-controls="sec-panel-${k}" tabindex="${tab === k ? '0' : '-1'}"
-      class="${tab === k ? 'on' : ''}">${l}</button>`);
-  const tabsBar = `${plForm}<div class="seg tabs" role="tablist" aria-label="فصول مركز القطاع">${TABS.map((t) => `
+      class="${tab === k ? 'on' : ''}">${l}</button>`;
+  const tabsBar = `<div class="seg tabs" role="tablist" aria-label="فصول مركز القطاع">${TABS.map((t) => `
     ${tabBtn(t)}`).join('')}</div>`;
   const panel = (k, label, inner) => `<section id="sec-panel-${k}" role="tabpanel" aria-labelledby="sec-tab-${k}"
     class="tabpanel"${tab === k ? '' : ' hidden'}>${inner}</section>`;
@@ -2887,8 +2986,10 @@ export async function sectorPage(user, opts = {}) {
     ${DD}`;
   return layout({ user, active: 'sector', title: `مركز قيادة ${sd.sector.name_ar}`,
     subtitle: `الوضع، ثم السبب، ثم ${G.nextAction} · ${year}`, body, year,
-    extraHead: SECTOR_THEME,
-    scripts: ['/static/pages/sector.js'] });
+    extraHead: SECTOR_THEME + PICKER_NOJS,
+    // منتقي البحث (picker.js) قبل شيفرة الصفحة — الترتيب ترتيب التحميل، وصفحةُ القطاع
+    // تنصت لتغيّر قائمته فتُبحر بالرابط.
+    scripts: ['/static/pages/picker.js', '/static/pages/sector.js'] });
 }
 // ═══════════════════════════════════════════════════════════════════════════════
 // «قطاعي» — وجه الصفحة لمن يعمل **داخل** القطاع لا لمن يقوده

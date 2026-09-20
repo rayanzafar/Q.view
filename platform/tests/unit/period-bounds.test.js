@@ -25,10 +25,10 @@ test('parsePeriod: «حتى تاريخه» لسانٌ قائم بذاته، وح
 });
 
 test('parsePeriod: مدى الأشهر — يُقلب المعكوس، ويُقصّ الخارج، والواحد يعود شهراً', () => {
-  assert.deepEqual(parsePeriod('m3-m8'), { kind: 'range', index: 0, key: 'm3-m8', from: 3, to: 8 });
-  assert.deepEqual(parsePeriod('m8-m3'), { kind: 'range', index: 0, key: 'm3-m8', from: 3, to: 8 },
+  assert.deepEqual(parsePeriod('m3-m8'), { kind: 'range', unit: 'm', index: 0, key: 'm3-m8', from: 3, to: 8 });
+  assert.deepEqual(parsePeriod('m8-m3'), { kind: 'range', unit: 'm', index: 0, key: 'm3-m8', from: 3, to: 8 },
     'معكوسٌ ⇒ يُقلب لا يُرفض');
-  assert.deepEqual(parsePeriod('m0-m20'), { kind: 'range', index: 0, key: 'm1-m12', from: 1, to: 12 },
+  assert.deepEqual(parsePeriod('m0-m20'), { kind: 'range', unit: 'm', index: 0, key: 'm1-m12', from: 1, to: 12 },
     'خارج 1–12 ⇒ يُقصّ على الحدّين');
   assert.deepEqual(parsePeriod('m5-m5'), { kind: 'm', index: 5, key: 'm5', from: 5, to: 5 },
     'مدىً بشهرٍ واحد ⇒ شهرٌ بعينه');
@@ -39,11 +39,62 @@ test('parsePeriod: مدى الأشهر — يُقلب المعكوس، ويُق�
   }
 });
 
+// ── مدى الأرباع: «من الربع الأول إلى الثالث» بنقرتين، بالقواعد نفسها التي لمدى الأشهر ────
+// وحدةُ المدى (`unit`) جزءٌ من الحالة: مُنتقي الفترة يضيء رقائق جنس المدى وحده، ولا سبيل
+// إلى تمييز q1-q3 من m1-m9 بالحدّين الشهريَّين وحدهما — فهما متطابقان.
+test('parsePeriod: مدى الأرباع — حدوده شهرية، ووحدتُه وحدّاه بالأرباع معه', () => {
+  assert.deepEqual(parsePeriod('q1-q3'),
+    { kind: 'range', unit: 'q', index: 0, key: 'q1-q3', from: 1, to: 9, qFrom: 1, qTo: 3 });
+  assert.deepEqual(parsePeriod('q2-q4'),
+    { kind: 'range', unit: 'q', index: 0, key: 'q2-q4', from: 4, to: 12, qFrom: 2, qTo: 4 });
+  assert.deepEqual(parsePeriod('q3-q1'), parsePeriod('q1-q3'), 'معكوسٌ ⇒ يُقلب لا يُرفض');
+  assert.deepEqual(parsePeriod('q0-q9'), parsePeriod('q1-q4'), 'خارج 1–4 ⇒ يُقصّ على الحدّين');
+  assert.deepEqual(parsePeriod('q2-q2'), { kind: 'q', index: 2, key: 'q2', from: 4, to: 6 },
+    'مدىً بربعٍ واحد ⇒ ربعٌ بعينه — الشكل نفسه حرفاً');
+  // ومدى الأرباع الكامل يبقى مدىً: القارئ اختار مدىً فلا يُحوَّل اختياره إلى «السنة» صامتاً
+  const full = parsePeriod('q1-q4');
+  assert.equal(full.kind, 'range');
+  assert.equal(full.key, 'q1-q4');
+  assert.deepEqual([full.from, full.to], [1, 12]);
+  // وما ليس مدى أرباعٍ صحيحاً يسقط إلى السنة كسائر المجهول
+  for (const bad of ['q1-', '-q3', 'q1-m3', 'm1-q3', 'qa-qb', 'q1-q2-q3', 'q123-q4']) {
+    assert.deepEqual(parsePeriod(bad), YEAR_P, `مدخل ${bad}`);
+  }
+});
+
+test('مدى الأرباع لا يحتاج حساباً جديداً: حدوده حدود أشهره', () => {
+  const r = periodBounds('q1-q3', 2026, NOW);
+  assert.equal(r.kind, 'range');
+  assert.equal(r.unit, 'q');
+  assert.equal(r.qFrom, 1);
+  assert.equal(r.qTo, 3);
+  assert.equal(r.sinceIso, '2026-01-01');
+  assert.equal(r.untilIso, '2026-10-01');
+  assert.deepEqual(r.months, [1, 2, 3, 4, 5, 6, 7, 8, 9]);
+  assert.equal(r.isCurrent, true);
+  const q34 = periodBounds('q3-q4', 2026, NOW);
+  assert.equal(q34.sinceIso, '2026-07-01');
+  assert.equal(q34.untilIso, '2027-01-01', 'مدىً ينتهي بالربع الرابع يعبر إلى العام التالي');
+  assert.deepEqual(q34.months, [7, 8, 9, 10, 11, 12]);
+  // وحدودُه حدودُ مدى أشهره حرفاً — والوحدةُ وحدها تفرّق بينهما
+  const asMonths = periodBounds('m1-m9', 2026, NOW);
+  assert.equal(r.sinceIso, asMonths.sinceIso);
+  assert.equal(r.untilIso, asMonths.untilIso);
+  assert.equal(asMonths.unit, 'm');
+  assert.equal(asMonths.qFrom, undefined, 'مدى أشهرٍ لا حدَّي أرباعٍ له');
+});
+
+test('مدىً بربعٍ واحد هو الربع نفسه حرفاً', () => {
+  assert.deepEqual(periodBounds('q2-q2', 2026, NOW), periodBounds('q2', 2026, NOW));
+  assert.equal(periodBounds('q2-q2', 2026, NOW).unit, undefined, 'ربعٌ بعينه بلا وحدة مدى');
+});
+
 test('كل فترةٍ تحمل مفتاح رابطها معها — لا يُركَّب من kind+index لدى المستدعي', () => {
-  for (const k of ['y', 'q2', 'm5', 'ytd', 'm3-m8']) {
+  for (const k of ['y', 'q2', 'm5', 'ytd', 'm3-m8', 'q1-q3', 'q1-q4']) {
     assert.equal(periodBounds(k, 2026, NOW).key, k, `مفتاح ${k}`);
   }
   assert.equal(periodBounds('m8-m3', 2026, NOW).key, 'm3-m8', 'المفتاح قانونيٌّ لا حرفيّ');
+  assert.equal(periodBounds('q3-q1', 2026, NOW).key, 'q1-q3', 'ومدى الأرباع المعكوس كذلك');
   assert.equal(periodBounds('أغسطس', 2026, NOW).key, 'y');
 });
 

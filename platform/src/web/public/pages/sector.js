@@ -243,6 +243,24 @@
   on(document, 'click', carryTab);
   on(document, 'keydown', function (e) { if (e.key === 'Enter') carryTab(e); });
 
+  // ── مُنتقيا العميل والمشروع: الاختيار يُبحر فوراً، والرابط يحمل بقية الحالة كاملةً ────────
+  // خلف كلٍّ منهما نموذج GET يحمل حالة الشاشة في حقولٍ خفيّة ويعمل بزرّه بلا نصٍّ برمجي. وحين
+  // يعمل النصّ لا ننتظر ضغطةً ثانية: تغيّرُ القائمة يبني الرابط من **عنوان الصفحة الحالي** لا
+  // من الحقول الخفيّة — فيلحق به ما كُتب فيه بعد التصيير، وأوّلُه الفصلُ الذي يكتبه
+  // `showTab` بـreplaceState. والمشروعُ يبقى كما هو عند تبديل العميل: الخادم يُسقط معرّفاً
+  // لا ينتمي إلى العميل الجديد كما يُسقط كل معرّفٍ لا يطابق قائمته — قاعدةٌ واحدة لا ثانية لها هنا.
+  var PICK_KEYS = { project: 1, client: 1 };
+  on(document, 'change', function (e) {
+    var sel = e.target;
+    if (!sel || sel.tagName !== 'SELECT' || !PICK_KEYS[sel.name]) return;
+    if (!sel.closest('form.fpick')) return;
+    var u;
+    try { u = new URL(location.href); } catch (err) { return; }
+    if (sel.value) u.searchParams.set(sel.name, sel.value);
+    else u.searchParams.delete(sel.name);
+    location.assign(u.pathname + u.search);
+  });
+
   // ── القوائم المنسدلة حصريّات: فتحُ واحدةٍ يغلق أخواتها (الإدارة/العملاء/التقارير) —
   // المرشِّحان معاً يبقيان فعّالَين؛ الحصر في الفتح وحده (ملاحظة أ. حسين ٣). حدثُ toggle
   // لا يفقّع، فيُلتقط بالطور الهابط على المستند.

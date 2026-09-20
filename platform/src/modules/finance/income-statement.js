@@ -27,7 +27,7 @@ import { netSum } from './vat.js';
 import { projectScopeSql } from '../../core/reports/metrics.js';
 import { monthlyRevenueTargets, annualSectorTarget, targetYear } from '../org/sector-targets.js';
 import { periodBounds } from '../../core/reports/changes.js';
-import { MONTHS_AR, QUARTERS_AR } from '../../core/i18n/time.js';
+import { MONTHS_AR, QUARTERS_AR, QUARTERS_SHORT } from '../../core/i18n/time.js';
 import { buildExport } from '../io/xlsx.js';
 import { G } from '../../web/i18n/glossary.js';
 
@@ -272,6 +272,9 @@ function periodLabelAr(period) {
   // كاملة» لا «من بداية السنة»: الأرقام أرقامُ السنة كاملةً، والاسم يجب أن يقولها كما هي.
   if (period.kind === 'ytd') return (period.months || []).length >= 12 ? G.fullYear : G.ytd;
   if (period.kind === 'range') {
+    // مدى أرباعٍ يُسمّى بالأرباع كما على الشاشة — ورأسُ الملفّ والورقة يقرأ ما يقرؤه القارئ
+    // حرفاً. وتسميتُه بشهرَيه («من يناير إلى سبتمبر») كانت ستجعل الورقة تخالف الشاشة اسماً.
+    if (period.unit === 'q') return `من ${QUARTERS_AR[period.qFrom - 1]} إلى ${QUARTERS_SHORT[period.qTo - 1]}`;
     const first = period.months[0];
     const last = period.months[period.months.length - 1];
     return `من ${MONTHS_AR[first - 1]} إلى ${MONTHS_AR[last - 1]}`;

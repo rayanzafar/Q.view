@@ -40,18 +40,25 @@ export function windowBounds(win, year, now = new Date()) {
 // فعلاً، والشاشة هي التي تقول «حتى اليوم» للفترة الجارية و«متوقع» للقادمة. وخلطُ المحقق
 // بالمتوقع في خانةٍ واحدة ممنوع — ولهذا تُعاد الحالة مع الحدّين لا الحدّان وحدهما.
 // ألسنةُ الفترة خمسٌ: السنة، ربعٌ بعينه، شهرٌ بعينه، «منذ أول السنة حتى اليوم» (ytd)،
-// ومدى أشهرٍ متصل (m3-m8) لمن يريد «من مارس إلى أغسطس» بلا ربعٍ يطابقه. والقراءة تُعيد
+// ومدىً متصل — أشهراً (m3-m8) أو أرباعاً (q1-q3). والقراءة تُعيد
 // `key` — النصّ القانوني الذي يُعاد وضعه في الرابط — فلا يُركّبه كل مستدعٍ من kind+index
 // (تركيبةٌ لا تصلح لـytd ولا للمدى أصلاً).
+//
+// **وحدةُ المدى** (`unit`: 'm' أو 'q') جزءٌ من الحالة لا زينة: مُنتقي الفترة يرسم شريطاً
+// متصلاً على رقائق جنس المدى وحده — مدى أرباعٍ يضيء الأرباع، ومدى أشهرٍ يضيء الأشهر —
+// وبلا الوحدة لا سبيل إلى التمييز بعد أن صار الحدّان شهرَين في كلتا الحالتين. ومدى الأرباع
+// يحمل معه حدَّيه بالأرباع (`qFrom`/`qTo`) كي لا يُستنبطا قسمةً في كل مستدعٍ.
 export const PERIOD_KINDS = ['y', 'q', 'm', 'ytd', 'range'];
 const clampM = (n) => Math.min(12, Math.max(1, n));
+const clampQ = (n) => Math.min(4, Math.max(1, n));
+const singleQ = (i) => ({ kind: 'q', index: i, key: `q${i}`, from: (i - 1) * 3 + 1, to: (i - 1) * 3 + 3 });
 export function parsePeriod(p) {
   const v = String(p || 'y').trim().toLowerCase();
   if (v === 'y') return { kind: 'y', index: 0, key: 'y', from: 1, to: 12 };
   // «حتى تاريخه»: حدّها الأعلى لا يُعرف إلا مع `now` ⇒ to = null هنا، وperiodBounds يحسمه.
   if (v === 'ytd') return { kind: 'ytd', index: 0, key: 'ytd', from: 1, to: null };
   const q = /^q([1-4])$/.exec(v);
-  if (q) { const i = Number(q[1]); return { kind: 'q', index: i, key: `q${i}`, from: (i - 1) * 3 + 1, to: (i - 1) * 3 + 3 }; }
+  if (q) return singleQ(Number(q[1]));
   const m = /^m(1[0-2]|[1-9])$/.exec(v);
   if (m) { const i = Number(m[1]); return { kind: 'm', index: i, key: `m${i}`, from: i, to: i }; }
   // مدى أشهر: يُقصّ كلٌّ من طرفيه إلى 1–12، ويُقلب إن جاء معكوساً، وشهرٌ واحد يعود شهراً.
@@ -60,12 +67,22 @@ export function parsePeriod(p) {
     let a = clampM(Number(r[1])), b = clampM(Number(r[2]));
     if (a > b) [a, b] = [b, a];
     if (a === b) return { kind: 'm', index: a, key: `m${a}`, from: a, to: a };
-    return { kind: 'range', index: 0, key: `m${a}-m${b}`, from: a, to: b };
+    return { kind: 'range', unit: 'm', index: 0, key: `m${a}-m${b}`, from: a, to: b };
+  }
+  // مدى أرباع: بالقواعد نفسها (قصٌّ وقلبٌ وانهيارُ الواحد إلى ربعٍ بعينه) — وحدوده الشهرية
+  // تُشتقّ من الأرباع فلا حسابَ جديد في periodBounds. و«الربع الأول إلى الرابع» يبقى مدىً:
+  // القارئ اختار مدىً فيُقال له مدىً، ولو ساوى السنةَ في أرقامه.
+  const rq = /^q(\d{1,2})-q(\d{1,2})$/.exec(v);
+  if (rq) {
+    let a = clampQ(Number(rq[1])), b = clampQ(Number(rq[2]));
+    if (a > b) [a, b] = [b, a];
+    if (a === b) return singleQ(a);
+    return { kind: 'range', unit: 'q', index: 0, key: `q${a}-q${b}`, from: (a - 1) * 3 + 1, to: b * 3, qFrom: a, qTo: b };
   }
   return { kind: 'y', index: 0, key: 'y', from: 1, to: 12 };  // مجهولٌ ⇒ السنة، لا خطأ في وجه القارئ
 }
 export function periodBounds(p, year, now = new Date()) {
-  const { kind, index, key, from, to } = parsePeriod(p);
+  const { kind, index, key, from, to, unit, qFrom, qTo } = parsePeriod(p);
   const y = Number(year);
   const pad = (n) => String(n).padStart(2, '0');
   let startM = from, endM = (to == null ? 12 : to) + 1;   // endM حصري (13 = أول العام التالي)
@@ -81,7 +98,10 @@ export function periodBounds(p, year, now = new Date()) {
     .toISOString().slice(0, 10);
   const isPast = untilIso <= today;          // انقضت كاملةً
   const isFuture = sinceIso > today;         // لم تبدأ بعد
-  return { kind, index, key, sinceIso, untilIso, isPast, isFuture, isCurrent: !isPast && !isFuture,
+  // وحدةُ المدى وحدّاه بالأرباع تُمرَّران كما هما حين وُجدا — ولا يُضاف مفتاحٌ بقيمةٍ غائبة
+  // إلى فترةٍ لا مدى لها (شكلُ الحالة نفسه لكل لسانٍ بعينه، فلا فرقَ بين مسارين للفترة ذاتها).
+  return { kind, index, key, ...(unit ? { unit } : {}), ...(qFrom ? { qFrom, qTo } : {}),
+    sinceIso, untilIso, isPast, isFuture, isCurrent: !isPast && !isFuture,
     months: Array.from({ length: (endM > 12 ? 13 : endM) - startM }, (_, i) => startM + i) };
 }
 

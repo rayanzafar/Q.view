@@ -8,7 +8,8 @@ const WIDTHS = [{ width: 1440, height: 900 }, { width: 390, height: 844 }];
 // Tab-scoped views whose content is rendered only for that query string — `/app/<page>` alone
 // never renders them, so the page list above cannot reach them. Each entry is [gate page, path]:
 // the gate is the page key the role must already be allowed to open.
-const TAB_URLS = [['sector', '/app/sector?tab=pl&p=ytd']];
+const TAB_URLS = [['sector', '/app/sector'], ['sector', '/app/sector?tab=pl&p=ytd'],
+  ['sector', '/app/sector?p=q1-q3'], ['sector', '/app/sector?p=q1-q3&tab=ops']];
 
 export default async function rtlSpec({ browser, base, t }) {
   for (const username of ROLES) {
@@ -31,10 +32,15 @@ export default async function rtlSpec({ browser, base, t }) {
         if (!pages.includes(gate)) continue;
         const res = await open(page, base, url);
         if (!res || res.status() !== 200) { bad++; t.fail(`${username}@${viewport.width} ${url}`, `HTTP ${res?.status()}`); continue; }
-        // قياسُ المستند كقياس `/app/<page>` أعلاه — لا قياسَ `main` هنا: صفحة القطاع نفسها
-        // تفيض داخله بـ55px على 390 من شريط أدواتها (عيبٌ قائم قبل هذا الفصل، ولا يخصّه).
-        const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-        if (overflow > 1) { bad++; t.fail(`${username}@${viewport.width} ${url}`, `horizontal overflow ${overflow}px`); }
+        // يُقاس المستندُ **و`main`** معاً: شريط أدوات مركز القطاع كان يفيض داخل `main` بـ55px
+        // على 390 دون أن يُزحزح المستند (KI-137، أُصلح في v6.01 بالتفاف الرقائق وانكماش
+        // المُنتقيَين) — فيضٌ يبتلعه محيطٌ لا يراه قياس المستند، ويراه القارئ على هاتفه.
+        const of = await page.evaluate(() => ({
+          doc: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+          main: (() => { const m = document.querySelector('main'); return m ? m.scrollWidth - m.clientWidth : 0; })(),
+        }));
+        if (of.doc > 1) { bad++; t.fail(`${username}@${viewport.width} ${url}`, `horizontal overflow ${of.doc}px`); }
+        if (of.main > 1) { bad++; t.fail(`${username}@${viewport.width} ${url}`, `content overflows main by ${of.main}px`); }
       }
       // صفحات التفاصيل — وكانت خارج هذا المسح كلياً. المسح يمرّ على `/app/:page` وحدها،
       // فصفحاتٌ يفتحها المستخدم كل يوم (المشروع، الفرصة، العميل، العقد) لم تُقَس عرضاً قط.
