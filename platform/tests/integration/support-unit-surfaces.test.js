@@ -224,7 +224,14 @@ test('صفحة من وحدته وحدة مساندة تُفتح ولا تقول 
   clean(html, 'مركز قيادة وحدة مساندة');
   assert.equal(html.includes('لا يوجد قطاع مرتبط بحسابك'), false);
   assert.match(html, /الخدمات المشتركة/, 'الصفحة باسم وحدته');
-  assert.match(html, /لا هدف مسجّل لهذه السنة/, 'وبلا نسبة إنجاز موهومة أمام هدف لا وجود له');
+  // الشاشة الواحدة (v6.10): المستهدف لم يعد جملةً في الوسم — يصل في حزمة `cc-data` ويرسمه
+  // المتصفّح. فالمفحوص أن يصل **غياباً** لا صفراً، فلا تُحتسب عليه نسبةُ إنجازٍ أمام هدفٍ لا وجود له.
+  const open = '<script type="application/json" id="cc-data">';
+  const from = html.indexOf(open);
+  assert.ok(from > 0, 'حزمة الشاشة غائبة عن صفحة وحدة المساندة');
+  const data = JSON.parse(html.slice(from + open.length, html.indexOf('</script>', from)));
+  assert.equal(data.meta.sector.name_ar, 'الخدمات المشتركة', 'الحزمة باسم وحدته');
+  assert.equal(data.plan?.sector_target ?? null, null, 'هدفٌ مخترَعٌ لوحدة مساندة');
 });
 
 test('شارات قطاعات العميل: قطاعات التسليم وحدها', async () => {

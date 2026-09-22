@@ -28,11 +28,24 @@ const visible = (html) => html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ''
 test('sector unknown-health count includes the project in its drilldown for authorized roles', async () => {
   for (const user of [admin, lead]) {
     const html = await sectorPage(user, { sector: 'HEALTH', year: 2026 });
-    assert.match(html, /aria-label="غير مقيّم: 1 — التفصيل"/);
-    const detail = html.match(/<template\b[^>]*id="dd-sec-health-UNKNOWN"[^>]*>([\s\S]*?)<\/template>/);
-    assert.ok(detail, 'unknown assessment must have an actual drilldown template');
-    assert.match(detail[1], /مشروع يحتاج تقييمًا موثقًا/);
-    assert.match(detail[1], /\/app\/project\/HEALTH-UNKNOWN/);
+    // الشاشة الواحدة (v6.10): لا نوافذ `dd-*` مُصيَّرة على الخادم — المشاريع تصل في حزمة
+    // `cc-data` ويرسمها المتصفّح في بطاقة المشاريع ولوحتها. والتقييم الغائب يصل **غياباً**،
+    // فتسمّيه الشاشة «غير مُقيَّم» من خريطة `HEALTH_LABELS` التي لا تحمل له مفتاحاً.
+    const open = '<script type="application/json" id="cc-data">';
+    const from = html.indexOf(open);
+    assert.ok(from > 0, 'cc-data pack missing from the sector page');
+    const data = JSON.parse(html.slice(from + open.length, html.indexOf('</script>', from)));
+    const p = data.projects.find((x) => x.id === 'HEALTH-UNKNOWN');
+    assert.ok(p, 'the unassessed project must reach the projects card');
+    assert.equal(p.rag, null, 'an absent assessment must stay absent, not become a colour');
+    assert.equal(p.name, 'مشروع يحتاج تقييمًا موثقًا');
+    const lopen = '<script type="application/json" id="cc-labels">';
+    const lfrom = html.indexOf(lopen);
+    const labels = JSON.parse(html.slice(lfrom + lopen.length, html.indexOf('</script>', lfrom)));
+    assert.deepEqual(Object.keys(labels.HEALTH_LABELS).sort(), ['AMBER', 'GREEN', 'RED'],
+      'HEALTH_LABELS must carry no key for an absent assessment — the page falls back to the shared unknown label');
+    assert.equal(labels.healthUnknown, 'غير محدَّدة',
+      'the absent-assessment label must reach the page from HEALTH_UNKNOWN, not be worded again inside it');
     assert.doesNotMatch(visible(html), /\b(?:undefined|NaN)\b/);
   }
   assert.equal((await get('SELECT rag FROM project WHERE id = ?', ['HEALTH-UNKNOWN'])).rag, null);

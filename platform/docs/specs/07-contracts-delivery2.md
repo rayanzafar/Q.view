@@ -72,6 +72,7 @@
 | employees | `read employee` | `create/update employee` (الراتب يُصدَّر/يُستورَد فقط مع `read salary`) |
 | staffing | `read allocation` | `create/update allocation` |
 | revenues | `read revenue` (finance/admin/ceo_office) | `create revenue` (finance/admin) |
+| finance-pl (سطور قائمة الدخل، v6.10 — توسعة) | `read pl_line` — وسطور الكلفة الستة تُحذف كلياً من الملف لمن لا يملك بوابتَي «التكلفة» و«الهامش»، وسطر الإيراد يتبع `read revenue_line` | `create/update pl_line` (نطاق الصف: قطاع الصف) + بوابة «التكلفة» في `modules/finance/pl-lines.js`؛ سطرا «تكلفة الإيراد» و«مجمل الربح» مرفوضان (محسوبان) |
 وضع `replace` = admin فقط + تصدير تلقائي مسبق يُخزَّن في run. صلاحية الصف تُفحص لكل صف — تجاوز النطاق = خطأ صف لا تخطٍّ صامت.
 
 ## 6) حمولة `clientOverview` (`GET /api/clients/:id/360`)

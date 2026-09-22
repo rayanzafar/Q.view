@@ -84,6 +84,7 @@ const MOUNTED = [
   ['GET', '/api/team/analysis?year=2026&month=6', 'تحليل الاستخدام'],
   ['GET', '/api/team/work?year=2026&month=6', 'العمل والالتزامات'],
   ['GET', '/api/team/close?sector=S1&year=2026&month=6', 'الإقفال الشهري'],
+  ['GET', '/api/sectors/S1/command-center', 'حمولة مركز القطاع'],
 ];
 
 for (const [method, path, label] of MOUNTED) {

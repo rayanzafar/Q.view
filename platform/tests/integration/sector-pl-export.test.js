@@ -65,9 +65,11 @@ before(async () => {
       expires_at: new Date(Date.now() + 86400000).toISOString() });
   }
   await db.insert('client', { id: 'C1', name_ar: 'جهة ألف', created_at: T });
+  // عميلٌ ثانٍ لمشروع باء: قصُّ الورقة على عميلين معاً يحتاج عميلين اثنين.
+  await db.insert('client', { id: 'C2', name_ar: 'جهة باء', created_at: T });
   await db.insert('department', { id: 'D1', name_ar: 'إدارة الدال', sector_id: 'S1', created_at: T });
   await db.insert('project', { id: 'P1', name_ar: 'مشروع ألف', sector_id: 'S1', client_id: 'C1', status: 'IN_PROGRESS', created_at: T });
-  await db.insert('project', { id: 'P2', name_ar: 'مشروع باء', sector_id: 'S1', client_id: 'C1', status: 'IN_PROGRESS', created_at: T });
+  await db.insert('project', { id: 'P2', name_ar: 'مشروع باء', sector_id: 'S1', client_id: 'C2', status: 'IN_PROGRESS', created_at: T });
   // مشروعٌ خارج عدسة السنة المعروضة: مدّتُه في سنةٍ سابقة ولا بندَ إيرادٍ له في هذه السنة —
   // فصفحة القطاع لا تعرضه في قائمة مشاريعها، ولا يجوز أن يقصّ به ملفٌّ ولا ورقة.
   await db.insert('project', { id: 'P_OLD', name_ar: 'مشروع الجيم القديم', sector_id: 'S1', client_id: 'C1',
@@ -104,7 +106,7 @@ test('قائد القطاع ينزّل ملفَّ قائمة الدخل — با
 
   const wb = sheetOf(r.buf);
   const col = firstCol(wb).join('\n');
-  for (const label of ['الإيراد', 'رواتب التشغيل', 'تكلفة الإيراد', 'مجمل الربح (الخسارة)', 'نسبة مجمل الربح']) {
+  for (const label of ['الإيراد', 'رواتب التشغيل', 'تكلفة الإيراد', 'مجمل الربح', 'نسبة مجمل الربح']) {
     assert.ok(col.includes(label), `${label} غائب عن الملفّ`);
   }
   assert.ok(col.includes('قطاع الحلول'), 'اسم القطاع غائب عن رأس الملفّ');
@@ -148,7 +150,7 @@ test('ورقة الطباعة تعرض السطور التسعة، والكلف�
   const r = await http(`/app/sector/income-statement?year=${YR}`, 'lead');
   assert.equal(r.status, 200);
   for (const label of ['الإيراد', 'رواتب التشغيل', 'أتعاب المستشارين', 'مصاريف التعاقد',
-    'التراخيص', 'الإيجار', 'مصاريف تشغيلية أخرى', 'تكلفة الإيراد', 'مجمل الربح (الخسارة)']) {
+    'التراخيص', 'الإيجار', 'مصاريف تشغيلية أخرى', 'تكلفة الإيراد', 'مجمل الربح']) {
     assert.ok(r.text.includes(label), `${label} غائب عن الورقة`);
   }
   assert.ok(r.text.includes('قائمة الدخل — قطاع الحلول'), 'عنوان الورقة ليس باسم القطاع');
@@ -183,6 +185,32 @@ test('ترشيحٌ بمشروع: إيرادُه وحده، والخطة تُعل
   assert.ok(r.text.includes('2,222'), 'إيراد المشروع المُرشَّح غائب');
   assert.ok(!r.text.includes('1,111'), 'إيراد مشروعٍ آخر تسرّب إلى الترشيح');
   assert.ok(r.text.includes('الخطة على مستوى القطاع كله'), 'ملاحظة أن الخطة للقطاع كله غائبة');
+});
+
+test('قائمةٌ بفواصل: عميلان معاً يقصّان الورقة عليهما، ورأسُها يسمّيهما كليهما', async () => {
+  // الشريط يكتب المختار قائمةً («client=c1,c2»)، فكانت الورقة والملفّ يقرآن أوّلَها وحده:
+  // القارئ يختار عميلين ويطبع ورقةً تقول عميلاً واحداً.
+  const both = await http(`/app/sector/income-statement?year=${YR}&p=y&client=C1,C2`, 'lead');
+  assert.equal(both.status, 200);
+  assert.ok(both.text.includes('جهة ألف') && both.text.includes('جهة باء'),
+    'رأس الورقة لم يسمِّ العميلين المختارين');
+  assert.ok(both.text.includes('3,333'), 'إيراد العميلين معاً لم يُجمع');
+
+  const one = await http(`/app/sector/income-statement?year=${YR}&p=y&client=C2`, 'lead');
+  assert.ok(one.text.includes('2,222') && !one.text.includes('3,333'), 'العميل الواحد لم يقصّ الورقة');
+
+  // ومعرّفٌ لا وجود له داخل القائمة يسقط وحده ولا يُسقط رفيقه
+  const mixed = await http(`/app/sector/income-statement?year=${YR}&p=y&client=C1,LA_WUJUD`, 'lead');
+  assert.ok(mixed.text.includes('جهة ألف') && !mixed.text.includes('LA_WUJUD'));
+  assert.ok(mixed.text.includes('1,111') && !mixed.text.includes('3,333'), 'المعرّف الساقط وسّع النطاق');
+
+  // والملفّ يقرأ القائمة نفسها: رأسُه يسمّي العميلين وأرقامُه أرقامهما
+  const xlsx = await http(`/api/sectors/S1/income-statement.xlsx?year=${YR}&p=y&client=C1,C2`, 'lead');
+  assert.equal(xlsx.status, 200);
+  const col = firstCol(sheetOf(xlsx.buf)).join('\n');
+  assert.ok(col.includes('جهة ألف') && col.includes('جهة باء'), 'رأس الملفّ لم يسمِّ العميلين');
+  const rev = sheetOf(xlsx.buf).rows.find((x) => x[0] === 'الإيراد');
+  assert.equal(rev[5], '3333', 'الملفّ لم يجمع إيراد العميلين');
 });
 
 test('مشروعٌ من قطاعٍ آخر أو معرّفٌ لا وجود له: يُهمَل ولا يكسر الورقة', async () => {

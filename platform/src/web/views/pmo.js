@@ -11,6 +11,7 @@ import { projectTeamLoad, staffingCandidates } from '../../modules/pmo/capacity.
 import { projectGovernance, DELIVERABLE_MANUAL_STATUSES } from '../../modules/pmo/governance.js';
 import { projectMoney } from '../../modules/finance/finance.js';
 import { EXPENSE_STATUS_AR, OPEN_STATUSES, SETTLED_STATUSES } from '../../modules/finance/expenses.js';
+import { COST_KEYS, LINE_BY_KEY } from '../../modules/finance/income-statement.js';
 import { myTasks, teamTasks, personDossier } from '../../modules/pmo/tasks.js';
 import { approvedTaskSql, isPendingTask, linkedTaskApproval } from '../../modules/pmo/task-approval.js';
 import { listViews } from '../../modules/views/views.js';
@@ -1924,6 +1925,10 @@ function mExpensesBlock(m, { projectId, years, defaultYear }) {
   const nowM = new Date().getUTCMonth() + 1;
   const defSel = `${years.includes(defaultYear) ? defaultYear : years[years.length - 1]}-${String(nowM).padStart(2, '0')}`;
   const statusOpts = (list, sel) => list.map((s) => `<option value="${s}"${s === sel ? ' selected' : ''}>${EXPENSE_STATUS_AR[s]}</option>`).join('');
+  // بند قائمة الدخل: قائمة مغلقة من ستة، أسماؤها تُقرأ من سطور قائمة الدخل نفسها كي لا يفترق
+  // اسمٌ على شاشة المشروع عن اسمه في «قائمة الدخل». ولا خيار افتراضي: الاختيار قرارُ من يسجّل.
+  const categoryOpts = (sel) => `<option value="" disabled${sel ? '' : ' selected'}>${G.lineItem}…</option>`
+    + COST_KEYS.map((k) => `<option value="${esc(k)}"${k === sel ? ' selected' : ''}>${esc(LINE_BY_KEY[k].ar)}</option>`).join('');
 
   const typeRows = (ex.by_type || []).map((t) => `<tr style="border-bottom:1px solid var(--line)">
       <td data-label="${G.expenseDesc}" style="padding:.4rem .7rem;font-size:12.5px">${esc(t.type || 'بلا وصف مسجَّل')}
@@ -1942,6 +1947,7 @@ function mExpensesBlock(m, { projectId, years, defaultYear }) {
       ? `${r.year}-${String(r.month).padStart(2, '0')}` : '';
     const view = `<tr data-exp-row="${esc(r.id)}" style="border-bottom:1px solid var(--line)">
       <td data-label="${G.expenseDesc}" style="padding:.4rem .7rem;font-size:12.5px">${esc(r.type || 'بلا وصف مسجَّل')}
+        ${r.category_ar ? pill(esc(r.category_ar), 'slate') : pill('بلا بند', 'amber')}
         <div style="font-size:10px;color:var(--muted)">${G.expenseWho}: ${esc(r.requested_by_name || 'غير مسجَّل')}</div></td>
       <td data-label="${G.expenseMonth}" style="padding:.4rem .7rem;text-align:center;font-size:11.5px"><span>${mMonthYear(r.month, r.year)}</span></td>
       <td data-label="${G.expenseAmount}" style="padding:.4rem .7rem;text-align:center">${r.amount_restricted ? mLock(m.cashOut.amounts_reason_ar) : amt(r.amount_halalas)}</td>
@@ -1957,6 +1963,7 @@ function mExpensesBlock(m, { projectId, years, defaultYear }) {
     const edit = editable ? `<tr data-exp-edit="${esc(r.id)}" hidden style="border-bottom:1px solid var(--line);background:#f8fafc">
       <td colspan="5" style="padding:.5rem .7rem">
         <div style="display:flex;gap:.4rem;flex-wrap:wrap;align-items:center">
+          <select class="input" data-f="category" aria-label="${G.lineItem}" style="width:auto;max-width:160px;font-size:12px">${categoryOpts(r.category || '')}</select>
           <input class="input" data-f="type" value="${esc(r.type || '')}" aria-label="${G.expenseDesc}" style="flex:1;min-width:130px;font-size:12px">
           <input class="input" data-f="amount" type="number" min="0" step="1" dir="ltr" value="${r.amount_halalas != null ? Math.round(r.amount_halalas) / 100 : ''}" aria-label="${G.expenseAmount}" style="width:110px;font-size:12px">
           <select class="input" data-f="period" aria-label="${G.expenseMonth}" style="width:auto;max-width:150px;font-size:12px">${periodOpts(per)}</select>
@@ -1967,6 +1974,7 @@ function mExpensesBlock(m, { projectId, years, defaultYear }) {
   }).join('');
 
   const addBar = ex.can_add ? `<div style="display:flex;gap:.4rem;flex-wrap:wrap;align-items:center;padding:.6rem .75rem;border-top:1px dashed var(--line);background:var(--bg)">
+      <select class="input" id="m-exp-category" name="category" required aria-label="${G.lineItem}" style="width:auto;max-width:170px;font-size:12.5px">${categoryOpts('')}</select>
       <input class="input" id="m-exp-type" list="m-exp-types" placeholder="${G.expenseDesc}…" aria-label="${G.expenseDesc}" style="flex:1;min-width:140px;font-size:12.5px">
       <datalist id="m-exp-types">${(ex.type_suggestions || []).map((t) => `<option value="${esc(t)}"></option>`).join('')}</datalist>
       <input class="input" id="m-exp-amount" type="number" min="0" step="1" dir="ltr" placeholder="${G.expenseAmount}" aria-label="${G.expenseAmount}" style="width:120px;font-size:12.5px">

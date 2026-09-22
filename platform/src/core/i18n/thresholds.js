@@ -56,3 +56,23 @@ export const capacityVar = (pct, opts) => CAPACITY_BANDS[capacityBand(pct, opts)
 // شرح العتبات بجملة واحدة تُعرض تحت أي مقياس إشغال حتى يعرف القارئ معنى اللون.
 export const CAPACITY_LEGEND =
   `تجاوز الطاقة فوق ${CAPACITY.over}% · ضمن الطاقة ${CAPACITY.healthy}–${CAPACITY.over}% · سعة متاحة أقل من ${CAPACITY.healthy}%`;
+
+// ── مطابقة قائمة الدخل مع ما سُجِّل في سند ────────────────────────────────────
+// طرفان لتكلفة الإيراد: ما تُقفله المالية شهرياً بسطورها، وما سجّله أهل المشاريع في سند.
+// وتطابقٌ حرفيٌّ بالهللة لا يقع أبداً — فرقُ توقيتٍ في اعتماد مصروفٍ يكفي. فالحكم عتبتان معاً،
+// وتكفي أوسعهما: نصف بالمئة من رقم المالية، أو خمسة آلاف ريال — أيّهما أكبر. والنسبة وحدها
+// تجعل شهراً صغيراً يفشل بفرقِ فاتورةٍ واحدة، والمبلغ وحده يُمرّر فرقاً كبيراً في شهرٍ ضخم.
+export const PL_RECON_PCT = 0.5;
+export const PL_RECON_MIN_HALALAS = 500_000;   // خمسة آلاف ريال
+
+// الحكم نفسه دالةً: الشاشة والخدمة والورقة تقرأ منها، فلا ثلاث نسخٍ تفترق عند التقريب.
+// `finHalalas` رقم المالية و`diffHalalas` فرقُه عن سند. الفراغ يبقى فراغاً.
+export const plReconMatch = (finHalalas, diffHalalas) => {
+  if (finHalalas == null || diffHalalas == null) return null;
+  const tolerance = Math.max((Math.abs(Number(finHalalas)) * PL_RECON_PCT) / 100, PL_RECON_MIN_HALALAS);
+  return Math.abs(Number(diffHalalas)) <= tolerance;
+};
+
+// شرحُ القاعدة بجملة واحدة تُعرض تحت شارة «مطابق سند».
+export const PL_RECON_LEGEND =
+  `يُعدّ الشهر مطابقاً إذا كان الفرق أقل من ${PL_RECON_PCT}% من رقم المالية أو أقل من ${PL_RECON_MIN_HALALAS / 100} ريال`;

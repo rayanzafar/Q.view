@@ -208,6 +208,23 @@ test('كل بند نقص يقوله المحرّك يظهر على الشاشة'
   }
 });
 
+// ── ③ب بند قائمة الدخل على شريط التسجيل: قائمة مغلقة بأسمائها لا نصٌّ حرّ ──────────────────
+test('شريط تسجيل المصروف يعرض بند قائمة الدخل: ستة خيارات بأسمائها، ولا خيار افتراضي', async () => {
+  const { COST_KEYS, LINE_BY_KEY } = await import('../../src/modules/finance/income-statement.js');
+  const m = moneyOf(await projectDetailPage(finance, 'P1'));
+  assert.ok(m.includes('id="m-exp-category"'), 'حقل البند موجود على شريط التسجيل');
+  const bar = m.slice(m.indexOf('id="m-exp-category"'), m.indexOf('id="m-exp-type"'));
+  assert.equal(COST_KEYS.length, 6, 'بنود الصرف ستة');
+  for (const k of COST_KEYS) {
+    assert.ok(bar.includes(`value="${k}"`), `الخيار «${k}» معروض`);
+    assert.ok(bar.includes(LINE_BY_KEY[k].ar), `وباسمه العربي: ${LINE_BY_KEY[k].ar}`);
+  }
+  assert.ok(/<option value="" disabled selected>/.test(bar), 'لا بند مختارٌ سلفاً — الاختيار قرار من يسجّل');
+  assert.ok(bar.includes('required'), 'والحقل مطلوب');
+  // والصفوف القديمة بلا بند تُقال كما هي على السجل.
+  assert.ok(m.includes('بلا بند'), 'الصف غير المصنَّف يُعلَّم ولا يُقرأ «أخرى»');
+});
+
 // ── ④ الموردون والاشتراكات: حالة معلنة لا رقم مخترع ─────────────────────────────────────────
 test('الموردون والاشتراكات: تُشرح حالتهما ويُقال ما ينقص وبديله المتاح', async () => {
   const m = moneyOf(await projectDetailPage(finance, 'P1'));

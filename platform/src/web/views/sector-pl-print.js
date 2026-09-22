@@ -34,7 +34,6 @@ th,td{padding:9px 11px;text-align:right;border-bottom:1px solid #eef1f6;font-siz
 th{background:#f8fafc;font-weight:800;color:#475569;font-size:11.5px}
 td.item{white-space:normal;min-width:180px}
 td.item b{display:block;font-weight:800;color:#1e293b}
-td.item span{display:block;font-size:10.5px;color:#94a3b8;font-weight:600}
 tr.sub td,tr.result td{background:#f8fafc;font-weight:800}
 tr.result td{border-top:2px solid #244A99}
 tr.gp td{background:#f1f5f9;font-weight:800}
@@ -96,7 +95,7 @@ export async function sectorPlPrintPage(user, opts = {}) {
   ].map((t) => `<span class="fchip">${esc(t)}</span>`).join('');
 
   const rows = statement.rows.map((r) => `<tr class="${ROW_CLASS[r.kind] || ''}">
-    <td class="item"><b>${esc(r.ar)}</b><span dir="ltr">${esc(r.en)}</span></td>
+    <td class="item"><b>${esc(r.ar)}</b></td>
     <td>${money(r.fy_plan_halalas, r.kind)}</td>
     <td>${pct(r.attainment_pct)}</td>
     <td>${money(r.period_plan_halalas, r.kind)}</td>
@@ -105,10 +104,9 @@ export async function sectorPlPrintPage(user, opts = {}) {
   </tr>`).join('');
 
   // نسبة مجمل الربح تتبع سطرها: إن حُذف السطر لغياب بابَي الكلفة والهامش فلا نسبة تُعرض.
-  const gpShown = statement.rows.some((r) => r.key === 'gross_profit');
+  const gpShown = statement.rows.some((r) => r.key === 'gp');
   const gp = statement.gross_profit_pct || {};
-  // بلا مصطلحٍ إنجليزي تحت الاسم: ورقةُ الأعمال المتَّفق عليها لا تحمل سطر النسبة أصلاً، فلا
-  // مصطلح له يُكتب — و«Gross Profit %» كان اختراعاً لا مصدرَ له.
+  // نسبةُ مجمل الربح سطرٌ محسوبٌ لا بندٌ من بنود القائمة، فلا يحمل ما تحمله البنود.
   const gpRow = gpShown ? `<tr class="gp">
     <td class="item"><b>${esc(G.grossProfitPct)}</b></td>
     <td>${pct(gp.fy_plan)}</td>

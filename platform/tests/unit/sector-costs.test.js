@@ -2,6 +2,8 @@
 // التكلفة طرفان: بنود الكلفة + المصروفات المعتمدة أو المدفوعة (صافيةً إن سُجِّل صافيها).
 // النافذة تُقصّ بالأشهر، والصفوف بلا شهر تدخل السنة كلها وتسقط من النافذة، وشقوق السنة
 // الاثنا عشر تعود كاملةً دائماً. وgrossMargin يقرأ من المصدر نفسه فلا يفترق رقمان.
+// وبُعدُ التصنيف (`byCategory`) يجمع بالقائمة المغلقة بدل النصّ الحرّ، والفارغ يصير «uncat»
+// صراحةً — والمجاميع لا تتغيّر به، فهو عدسةٌ لا تعريفُ كلفةٍ ثانٍ.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -18,7 +20,10 @@ execFileSync(process.execPath, ['--experimental-sqlite', join(ROOT, 'scripts/see
 const { insert, close } = await import('../../src/core/db/index.js');
 const { initRbac } = await import('../../src/core/rbac/index.js');
 await initRbac();
-const { sectorCosts, grossMargin } = await import('../../src/core/reports/metrics.js');
+const { sectorCosts, grossMargin, UNCATEGORIZED_COST } = await import('../../src/core/reports/metrics.js');
+// أسماء السطور تُمرَّر إلى الحساب ولا يستوردها: هكذا يستعملها العارض (D6) فعلاً.
+const { COST_KEYS, LINE_BY_KEY } = await import('../../src/modules/finance/income-statement.js');
+const COST_LABELS = Object.fromEntries(COST_KEYS.map((k) => [k, LINE_BY_KEY[k].ar]));
 
 const T = '2026-01-10T08:00:00.000Z';
 before(async () => {
@@ -26,17 +31,17 @@ before(async () => {
   await insert('sector', { id: 'S2', name_ar: 'قطاع ب', active: 1, sort_order: 2, created_at: T });
   const cost = (id, x) => insert('cost_line', { id, sector_id: 'S1', year: 2026, amount_halalas: 0, created_at: T, ...x });
   // بنود الكلفة — قطاع أ سنة 2026: مارس 700، يوليو 300، وبندٌ بلا شهر ولا نوع 50
-  await cost('CL-m3-a', { month: 3, type: 'رواتب', amount_halalas: 500_000 });
-  await cost('CL-m3-b', { month: 3, type: 'تعاقد باطني', amount_halalas: 200_000 });
-  await cost('CL-m7', { month: 7, type: 'رواتب', amount_halalas: 300_000 });
+  await cost('CL-m3-a', { month: 3, type: 'رواتب', category: 'sal', amount_halalas: 500_000 });
+  await cost('CL-m3-b', { month: 3, type: 'تعاقد باطني', category: 'ctr', amount_halalas: 200_000 });
+  await cost('CL-m7', { month: 7, type: 'رواتب', category: 'sal', amount_halalas: 300_000 });
   await cost('CL-nom', { month: null, type: null, amount_halalas: 50_000 });
   await cost('CL-2025', { month: 3, type: 'رواتب', year: 2025, amount_halalas: 999_000 }); // سنة أخرى
   await cost('CL-s2', { month: 3, type: 'رواتب', sector_id: 'S2', amount_halalas: 777_000 }); // قطاع آخر
   const exp = (id, x) => insert('expense', { id, sector_id: 'S1', incurred_year: 2026, amount_halalas: 0,
     status: 'APPROVED', created_at: T, ...x });
   // المصروفات المعتمدة/المدفوعة — الصافي المسجَّل يسبق الإجمالي
-  await exp('EX-m3-a', { incurred_month: 3, type: 'سفر', amount_halalas: 115_000, net_amount_halalas: 100_000 });
-  await exp('EX-m3-b', { incurred_month: 3, type: 'ضيافة', amount_halalas: 60_000, status: 'PAID' });
+  await exp('EX-m3-a', { incurred_month: 3, type: 'سفر', category: 'oth', amount_halalas: 115_000, net_amount_halalas: 100_000 });
+  await exp('EX-m3-b', { incurred_month: 3, type: 'ضيافة', category: 'oth', amount_halalas: 60_000, status: 'PAID' });
   await exp('EX-m7', { incurred_month: 7, type: 'سفر', amount_halalas: 40_000 });
   await exp('EX-nom', { incurred_month: null, type: null, amount_halalas: 25_000 });
   // ما لا يُحتسب كلفةً: تحت الاعتماد، مرفوض، مسودّة، محذوف
@@ -155,4 +160,44 @@ test('الهامش بلا إيراد: نسبةٌ غير محسوبة لا صفر
   assert.equal(gm.margin_pct, null);
   assert.equal(gm.cost_halalas, 857_000);
   assert.equal(gm.gross_profit_halalas, -857_000);
+});
+
+// ── بُعدُ التصنيف: القائمة المغلقة بدل النصّ الحرّ ────────────────────────────────────────
+test('بالتصنيف: مجموعٌ لكل تصنيف، وغير المصنَّف مجموعةٌ باسمها، والمجاميع كما هي', async () => {
+  const c = await sectorCosts('S1', 2026, { byCategory: true });
+  // المجاميع والشقوق لا تتغيّر بالعدسة — لو تغيّرت لكان التصنيف تعريفَ كلفةٍ ثانياً
+  const plain = await sectorCosts('S1', 2026);
+  assert.equal(c.cost_halalas, plain.cost_halalas);
+  assert.equal(c.cost_lines_halalas, 1_050_000);
+  assert.equal(c.expenses_halalas, 225_000);
+  assert.deepEqual(c.by_month, plain.by_month);
+  // ومفتاحٌ واحد لا اثنان: من طلب التصنيف لا يُسلَّم النوع الحرّ بجانبه فيجمع بُعدين
+  assert.equal(c.by_type, undefined);
+  assert.equal(plain.by_category, undefined);
+  assert.deepEqual(c.by_category.cost_lines, [
+    { category: 'sal', label: null, amount_halalas: 800_000 },
+    { category: 'ctr', label: null, amount_halalas: 200_000 },
+    { category: UNCATEGORIZED_COST, label: null, amount_halalas: 50_000 },
+  ]);
+  // «غير مصنَّف» اسمٌ صريح لا فراغ: مالٌ صُرف فعلاً ولم يُنسب بعدُ إلى سطر
+  assert.equal(UNCATEGORIZED_COST, 'uncat');
+  assert.deepEqual(c.by_category.expenses, [
+    { category: 'oth', label: null, amount_halalas: 160_000 },   // 100 صافي + 60
+    { category: UNCATEGORIZED_COST, label: null, amount_halalas: 65_000 },  // 40 + 25 بلا تصنيف
+  ]);
+});
+
+test('بالتصنيف: النافذة تقصّه كما تقصّ النوع، والأسماء تُمرَّر ولا تُستورَد', async () => {
+  const yearWide = await sectorCosts('S1', 2026, { byCategory: true, categoryLabels: COST_LABELS });
+  assert.deepEqual(yearWide.by_category.cost_lines.map((r) => r.category), ['sal', 'ctr', UNCATEGORIZED_COST]);
+  const win = await sectorCosts('S1', 2026, { months: [7], byCategory: true, categoryLabels: COST_LABELS });
+  assert.deepEqual(win.by_category.cost_lines, [
+    { category: 'sal', label: 'رواتب التشغيل', amount_halalas: 300_000 },
+  ]);
+  // يوليو: مصروفٌ بلا تصنيف وحده — واسمُه لا يوجد في معجم السطور فيبقى فارغاً
+  assert.deepEqual(win.by_category.expenses, [
+    { category: UNCATEGORIZED_COST, label: null, amount_halalas: 40_000 },
+  ]);
+  const none = await sectorCosts('S1', 2026, { months: [], byCategory: true });
+  assert.deepEqual(none.by_category, { cost_lines: [], expenses: [] });
 });

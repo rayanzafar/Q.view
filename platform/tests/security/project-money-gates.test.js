@@ -168,14 +168,14 @@ test('المسار يعيد الحمولة لمن يملكها، ويعيد رم
 
 test('المسار: تسجيل مصروف وتعديله وحذفه — والمنع يعود بالرمز الصحيح', async () => {
   const created = await call(lead1, '/api/projects/P4/expenses', {
-    method: 'POST', body: JSON.stringify({ type: 'تصميم', amount_sar: 200, month: 4, year: YR }),
+    method: 'POST', body: JSON.stringify({ type: 'تصميم', category: 'ctr', amount_sar: 200, month: 4, year: YR }),
   });
   assert.equal(created.status, 200);
   const row = await created.json();
   assert.equal(row.amount_halalas, 20_000);
 
   const bad = await call(lead1, '/api/projects/P4/expenses', {
-    method: 'POST', body: JSON.stringify({ type: 'تصميم', amount_sar: 200, year: YR }),
+    method: 'POST', body: JSON.stringify({ type: 'تصميم', category: 'ctr', amount_sar: 200, year: YR }),
   });
   assert.equal(bad.status, 400, 'مصروف بلا شهر يُرَدّ');
 

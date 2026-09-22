@@ -132,7 +132,7 @@ test('نسبة تحقّق المستهدف تُقاس بالصافي — وال�
 // ── المصروف: تُسجَّل ضريبته ولا تُفترض ──────────────────────────────────────────────────────
 test('مصروف بلا ذكرٍ للضريبة يبقى «غير مُسجَّل» — لا صفراً ولا خمسة عشر بالمئة مفترضة', async () => {
   const exp = await import('../../src/modules/finance/expenses.js');
-  const r = await exp.createExpense(ctx(admin), 'VP', { type: 'مستردّ موظف', amount_sar: 100, month: 1, year: YEAR });
+  const r = await exp.createExpense(ctx(admin), 'VP', { type: 'مستردّ موظف', category: 'oth', amount_sar: 100, month: 1, year: YEAR });
   assert.equal(r.amount_halalas, ODD);
   assert.equal(r.net_amount_halalas, null, 'افتراض الضريبة هنا اختراعُ استردادٍ لم يُثبته أحد');
   assert.equal(r.vat_recorded, false, 'ويُقال ذلك صراحةً بدل أن يُقرأ من الفراغ');
@@ -141,7 +141,7 @@ test('مصروف بلا ذكرٍ للضريبة يبقى «غير مُسجَّل
 test('مصروف يشمل ضريبةً بالنسبة القياسية يُفصَل بالقاعدة الواحدة', async () => {
   const exp = await import('../../src/modules/finance/expenses.js');
   const r = await exp.createExpense(ctx(admin), 'VP',
-    { type: 'طباعة', amount_sar: 100, month: 1, year: YEAR, vat_included: true });
+    { type: 'طباعة', category: 'oth', amount_sar: 100, month: 1, year: YEAR, vat_included: true });
   assert.equal(r.net_amount_halalas, 8695);
   assert.equal(r.vat_halalas, 1305);
   assert.equal(r.net_amount_halalas + r.vat_halalas, r.amount_halalas);
@@ -150,13 +150,13 @@ test('مصروف يشمل ضريبةً بالنسبة القياسية يُفص�
 test('مصروف معفى: صفرٌ مقيس لا غياب — وضريبةٌ صريحة تُقرأ كما كُتبت', async () => {
   const exp = await import('../../src/modules/finance/expenses.js');
   const ex = await exp.createExpense(ctx(admin), 'VP',
-    { type: 'رسم حكومي', amount_sar: 100, month: 1, year: YEAR, vat_exempt: true });
+    { type: 'رسم حكومي', category: 'oth', amount_sar: 100, month: 1, year: YEAR, vat_exempt: true });
   assert.equal(ex.vat_halalas, 0, 'صفرٌ يعني «لا ضريبة على هذا البند» وهو خبر محاسبي');
   assert.equal(ex.net_amount_halalas, ODD, 'فكامل المبلغ كلفة');
   assert.equal(ex.vat_recorded, true, 'ويُفرَّق عن غير المسجَّل');
 
   const named = await exp.createExpense(ctx(admin), 'VP',
-    { type: 'استضافة', amount_sar: 100, month: 1, year: YEAR, vat_sar: 12 });
+    { type: 'استضافة', category: 'lic', amount_sar: 100, month: 1, year: YEAR, vat_sar: 12 });
   assert.equal(named.vat_halalas, 1200, 'ما قُرئ من فاتورة المورّد يُكتب كما هو');
   assert.equal(named.net_amount_halalas, ODD - 1200);
 });
@@ -164,7 +164,7 @@ test('مصروف معفى: صفرٌ مقيس لا غياب — وضريبةٌ ص
 test('تغيير المبلغ يُسقط الضريبة المسجَّلة إلى «غير مُسجَّل» بدل إبقاء صافٍ لا يطابقه', async () => {
   const exp = await import('../../src/modules/finance/expenses.js');
   const r = await exp.createExpense(ctx(admin), 'VP',
-    { type: 'سفر', amount_sar: 100, month: 1, year: YEAR, vat_included: true });
+    { type: 'سفر', category: 'oth', amount_sar: 100, month: 1, year: YEAR, vat_included: true });
   assert.equal(r.vat_recorded, true);
   const after = await exp.updateExpense(ctx(admin), r.id, { amount_sar: 200 });
   assert.equal(after.amount_halalas, 20000);

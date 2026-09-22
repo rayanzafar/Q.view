@@ -8,8 +8,10 @@ const WIDTHS = [{ width: 1440, height: 900 }, { width: 390, height: 844 }];
 // Tab-scoped views whose content is rendered only for that query string — `/app/<page>` alone
 // never renders them, so the page list above cannot reach them. Each entry is [gate page, path]:
 // the gate is the page key the role must already be allowed to open.
-const TAB_URLS = [['sector', '/app/sector'], ['sector', '/app/sector?tab=pl&p=ytd'],
-  ['sector', '/app/sector?p=q1-q3'], ['sector', '/app/sector?p=q1-q3&tab=ops']];
+// مركز القطاع (v6.10) شاشةٌ واحدة: لا ألسنة تُصيَّر بمفتاحها — الفترةُ والمرشِّحات واللوحة
+// المفتوحة تُحلّ في العنوان نفسه، فالمقيس هو العنوان بحالاته لا لسانٌ بعينه.
+const TAB_URLS = [['sector', '/app/sector'], ['sector', '/app/sector?months=1,2,3'],
+  ['sector', '/app/sector?tab=hr']];
 
 export default async function rtlSpec({ browser, base, t }) {
   for (const username of ROLES) {

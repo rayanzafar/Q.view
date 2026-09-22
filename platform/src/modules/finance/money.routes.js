@@ -6,6 +6,7 @@ import { Router } from 'express';
 import { projectMoney } from './finance.js';
 import { listProjectExpenses, createExpense, updateExpense, deleteExpense } from './expenses.js';
 import { exportIncomeStatement } from './income-statement.js';
+import { exportCommandCenter } from './command-center-export.js';
 
 export const moneyRouter = Router();
 const h = (fn) => async (req, res, next) => {
@@ -33,6 +34,21 @@ moneyRouter.get('/sectors/:id/income-statement.xlsx', async (req, res, next) => 
     res.setHeader('Content-Type', mime);
     res.setHeader('Content-Disposition',
       `attachment; filename="sector-${safeName(req.params.id)}-income-statement.xlsx"; filename*=UTF-8''${rfc5987(fileName)}`);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.send(buffer);
+  } catch (e) { next(e); }
+});
+
+// ── مركز القطاع كلُّه ملفَّ Excel ────────────────────────────────────────────────
+// ستّ أوراقٍ هي فصول الشاشة نفسها، من الحمولة المُرشَّحة بالصلاحية ذاتها — فما لا يُرى
+// على الشاشة لا يخرج في الملفّ. والترويسات ترويسات أختها: القطاع من المسار، و«لا يُخزَّن».
+moneyRouter.get('/sectors/:id/command-center.xlsx', async (req, res, next) => {
+  try {
+    const { buffer, mime, filename } = await exportCommandCenter(req.ctx, { ...req.query, sector: req.params.id });
+    res.setHeader('Content-Type', mime);
+    res.setHeader('Content-Disposition',
+      `attachment; filename="sector-${safeName(req.params.id)}-command-center.xlsx"; filename*=UTF-8''${rfc5987(filename)}`);
     res.setHeader('Cache-Control', 'private, no-store');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.send(buffer);

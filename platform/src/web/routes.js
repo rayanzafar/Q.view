@@ -350,6 +350,17 @@ webRouter.get('/app/team/:section/:id', requireWeb, async (req, res, next) => {
   try { res.send(await fn(req.ctx.user, req.params.id, { ...req.query })); } catch (e) { next(e); }
 });
 
+// «مركز القطاع» قبل `/app/:page`: الصفحة نفسها تماماً (من خريطة الصفحات، فلا نسخةُ توجيهٍ
+// ثانية)، وترويسة «لا يُخزَّن» فوقها — الشاشة تزرع في وسمها حمولةً مالية مرشَّحةً بصلاحية
+// قارئها بعينه (أرقام الكلفة والهامش والعقود)، فلا تُترك نسخةٌ منها في ذاكرة وسيطٍ ولا في
+// قرص المتصفّح ليقرأها من يفتح الجهاز بعده. وهي ترويسة ورقة الطباعة والملفّ نفسها.
+webRouter.get('/app/sector', requireWeb, guardPage('sector'), async (req, res, next) => {
+  try {
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.send(await PAGES.sector(req.ctx.user, { ...req.query }));
+  } catch (e) { next(e); }
+});
+
 webRouter.get('/app/:page', requireWeb, async (req, res, next) => {
   const fn = PAGES[req.params.page];
   if (!fn) return res.redirect('/app/tasks');

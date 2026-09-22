@@ -37,6 +37,7 @@ import { guideRouter } from './guide/guide.routes.js';
 import { searchRouter } from './search/search.routes.js';
 import { reportsRouter } from './reports.routes.js';
 import { moneyRouter } from './finance/money.routes.js';
+import { commandCenterRouter } from './finance/command-center.routes.js';
 import { identityRouter } from './identity/identity.routes.js';
 import { eventsRouter } from './events/events.routes.js';
 // وحدة الفريق والموارد (ADR-0016) — خمسة موجّهات تحت `/team/...`
@@ -69,6 +70,7 @@ apiRouter.use(guideRouter);
 apiRouter.use(searchRouter);
 apiRouter.use(reportsRouter);
 apiRouter.use(moneyRouter);
+apiRouter.use(commandCenterRouter);
 apiRouter.use(identityRouter);
 apiRouter.use(eventsRouter);
 apiRouter.use(teamResourcesRouter);

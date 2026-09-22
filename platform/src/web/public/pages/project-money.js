@@ -60,6 +60,9 @@
   };
 
   async function expAdd(projectId) {
+    // البند أولاً: بلا بندٍ لا يدخل المصروف أيّ سطرٍ من سطور الكلفة في قائمة الدخل.
+    var category = v('m-exp-category');
+    if (!category) { toast('اختر بند المصروف من القائمة أولاً', true); if (el('m-exp-category')) el('m-exp-category').focus(); return; }
     var type = v('m-exp-type');
     if (!type) { toast('اكتب وصف المصروف أولاً (مثل: سفر، طباعة، اشتراك شهري)', true); if (el('m-exp-type')) el('m-exp-type').focus(); return; }
     var amount = Number(v('m-exp-amount'));
@@ -68,7 +71,8 @@
     if (!per) { toast('حدّد شهر الصرف من القائمة', true); return; }
     try {
       await call('/projects/' + projectId + '/expenses', 'POST',
-        { type: type, amount_sar: amount, month: per.month, year: per.year, status: v('m-exp-status') || 'DRAFT' });
+        { type: type, category: category, amount_sar: amount, month: per.month, year: per.year,
+          status: v('m-exp-status') || 'DRAFT' });
       toast('سُجِّل المصروف ✓');
       reload();
     } catch (e) { toast(e.message, true); }
@@ -87,6 +91,8 @@
     var row = document.querySelector('[data-exp-edit="' + id + '"]');
     if (!row) return;
     var get = function (f) { var e = row.querySelector('[data-f="' + f + '"]'); return e ? String(e.value).trim() : ''; };
+    var category = get('category');
+    if (!category) { toast('اختر بند المصروف من القائمة أولاً', true); return; }
     var type = get('type');
     if (!type) { toast('وصف المصروف لا يُترك فارغاً', true); return; }
     var amount = Number(get('amount'));
@@ -94,7 +100,8 @@
     var per = splitPeriod(get('period'));
     if (!per) { toast('حدّد شهر الصرف من القائمة', true); return; }
     try {
-      await call('/finance/expenses/' + id, 'PATCH', { type: type, amount_sar: amount, month: per.month, year: per.year });
+      await call('/finance/expenses/' + id, 'PATCH',
+        { type: type, category: category, amount_sar: amount, month: per.month, year: per.year });
       toast('حُفظ التعديل ✓');
       reload();
     } catch (e) { toast(e.message, true); }

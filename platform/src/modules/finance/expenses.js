@@ -10,8 +10,13 @@
 //     الذي تستعمله بقية المنصة، لا بشرط محلّي جديد.
 //   • كل كتابة داخل معاملة واحدة مع سجل التدقيق.
 //
-// ما لا تفعله هذه الوحدة عمداً: لا تخترع عمود وصف ولا فئة مصروف ولا دورة تكرار. الجدول يحمل
-// حقلاً وصفياً واحداً (`type`) وشهراً وسنة، فهذا كل ما يُسجَّل. توسيع الجدول قرار هجرة مستقلة.
+// ما لا تفعله هذه الوحدة عمداً: لا تخترع دورة تكرار ولا بنداً خارج القائمة المغلقة. والحقلان
+// الوصفيان يعملان معاً منذ الترحيلة ٠٥٠ ولا يغني أحدهما عن الآخر:
+//   • `type` وصفٌ حرٌّ يكتبه الإنسان كما جرت العادة («تذاكر سفر»، «طباعة»)، ويبقى كما هو.
+//   • `category` بندُ قائمة الدخل من ستةٍ مغلقة (رواتب التشغيل… مصاريف تشغيلية أخرى) — وهو
+//     **مطلوبٌ عند التسجيل**: بلا بندٍ لا يدخل المصروف أيَّ سطرٍ من سطور الكلفة، فيختفي من
+//     قائمة الدخل بلا أن يعرف أحد أنه اختفى. ولا قيمة افتراضية له: «أخرى» على صفٍّ لم يقرأه
+//     أحدٌ تصنيفٌ مخترَع يُدخل رواتبَ وتعاقداً في سطر «أخرى».
 import { all, get, insert, update, tx } from '../../core/db/index.js';
 import { loadReadableProject } from '../pmo/project-access.js';
 import { can, redactList } from '../../core/rbac/index.js';
@@ -19,6 +24,7 @@ import { audit } from '../../core/audit/index.js';
 import { id, nowIso, toHalalas } from '../../core/util/ids.js';
 import { forbidden, notFound, badRequest } from '../../core/http/errors.js';
 import { splitGross } from './vat.js';
+import { COST_KEYS, LINE_BY_KEY } from './income-statement.js';
 
 // حالات المصروف كما في تعريف الجدول، ومعناها العربي (الشاشة لا تطبع القيمة المخزَّنة أبداً).
 export const EXPENSE_STATUSES = ['DRAFT', 'SUBMITTED', 'APPROVED', 'REJECTED', 'PAID'];
@@ -55,6 +61,14 @@ function cleanType(v) {
   if (!t) throw badRequest('اكتب وصف المصروف (مثل: سفر، طباعة، اشتراك شهري)');
   if (t.length > 120) throw badRequest('وصف المصروف طويل — اجعله في 120 حرفاً أو أقل');
   return t;
+}
+// بندُ قائمة الدخل: من القائمة المغلقة وحدها. والرسالة تُعدّد البنود الستة بأسمائها كما تُعرض
+// على الشاشة (تُقرأ من `LINE_BY_KEY` لا تُكتب هنا) — فمن أخطأ يرى ما يختار منه في الرسالة نفسها.
+const costLinesAr = () => COST_KEYS.map((k) => LINE_BY_KEY[k].ar).join('، ');
+function cleanCategory(v) {
+  const c = String(v ?? '').trim();
+  if (!COST_KEYS.includes(c)) throw badRequest(`اختر بند المصروف من القائمة: ${costLinesAr()}`);
+  return c;
 }
 function cleanAmount(v) {
   const n = Number(v);
@@ -113,6 +127,10 @@ export function presentExpenses(user, rows) {
   return redactList(user, 'expense', rows).map((r) => ({
     id: r.id, project_id: r.project_id, sector_id: r.sector_id,
     type: r.type || null,
+    // البند ليس كلفةً بذاته، فلا يُحجب مع المبلغ: معرفةُ أن هذا الصف «إيجار» لا تكشف مبلغه.
+    // والصفوف القديمة (قبل الترحيلة ٠٥٠) تعود بلا بند — فراغٌ تقرؤه الشاشة «بلا بند» لا «أخرى».
+    category: r.category || null,
+    category_ar: (r.category && LINE_BY_KEY[r.category]?.ar) || null,
     amount_halalas: r.amount_halalas ?? null,
     // الصافي والضريبة يتبعان المبلغ في الحجب (كلاهما كلفة)، والفراغ يعني «غير مُسجَّل» لا صفراً.
     net_amount_halalas: r._redacted_amount_halalas ? null : (r.net_amount_halalas ?? null),
@@ -126,7 +144,7 @@ export function presentExpenses(user, rows) {
   }));
 }
 
-const SELECT_ROWS = `SELECT e.id, e.project_id, e.sector_id, e.type, e.amount_halalas,
+const SELECT_ROWS = `SELECT e.id, e.project_id, e.sector_id, e.type, e.category, e.amount_halalas,
         e.net_amount_halalas, e.vat_halalas, e.incurred_month,
         e.incurred_year, e.status, e.requested_by, e.created_at,
         COALESCE(u.name_ar, u.username) AS requested_by_name
@@ -158,6 +176,8 @@ export async function createExpense(ctx, projectId, data = {}) {
   const user = ctx.user;
   const p = await readableProject(user, projectId);
   if (!canAddExpense(user, p)) throw forbidden('تسجيل مصروف على هذا المشروع يتطلب صلاحية المالية أو قيادة القطاع');
+  // ترتيب التحقق يتبع ترتيب الحقول على الشاشة: البند أولاً ثم الوصف ثم المبلغ ثم الشهر.
+  const category = cleanCategory(data.category);
   const type = cleanType(data.type ?? data.label);
   const amount = cleanAmount(data.amount_sar ?? data.amountSar);
   const month = cleanMonth(data.month ?? data.incurred_month);
@@ -171,12 +191,12 @@ export async function createExpense(ctx, projectId, data = {}) {
   const eid = id('exp'); const now = nowIso();
   await tx(async () => {
     await insert('expense', {
-      id: eid, project_id: p.id, sector_id: p.sector_id, type, amount_halalas: amount,
+      id: eid, project_id: p.id, sector_id: p.sector_id, type, category, amount_halalas: amount,
       ...(vat || {}),
       incurred_month: month, incurred_year: year, requested_by: user.id, status, created_at: now,
     });
     await audit(ctx, { action: 'create', resource: 'expense', resourceId: eid, sectorId: p.sector_id,
-      detail: { project: p.id, type, amount_halalas: amount, ...(vat || {}), month, year, status } });
+      detail: { project: p.id, type, category, amount_halalas: amount, ...(vat || {}), month, year, status } });
   });
   return await onePresented(user, eid);
 }
@@ -194,13 +214,17 @@ export async function updateExpense(ctx, expenseId, data = {}) {
   if (!canEditExpense(user, p, row)) throw forbidden('تعديل المصروف يتطلب صلاحية المالية أو قيادة القطاع');
 
   const patch = {};
-  const touchesFigures = ['type', 'label', 'amount_sar', 'amountSar', 'month', 'incurred_month', 'year', 'incurred_year',
+  // تغيير البند نقلٌ للمبلغ من سطر كلفةٍ إلى آخر في قائمة الدخل، فهو من «بيانات المصروف»
+  // التي لا تُعدَّل بعد الحسم — لا وصفاً جانبياً يُعدَّل بعد الاعتماد بلا أن يمرّ على من اعتمده.
+  const touchesFigures = ['type', 'label', 'category', 'amount_sar', 'amountSar', 'month', 'incurred_month', 'year', 'incurred_year',
     'vat_sar', 'vatSar', 'vat_included', 'vat_exempt']
     .some((k) => k in data);
   if (touchesFigures && SETTLED_STATUSES.includes(String(row.status).toUpperCase())) {
     throw badRequest('بيانات المصروف بعد حسمه لا تُعدَّل. من يملك صلاحية الاعتماد يعيده مسودةً أولاً ثم يُعدَّل.');
   }
   if ('type' in data || 'label' in data) patch.type = cleanType(data.type ?? data.label);
+  // البند يُصحَّح متى ذُكر، ولا يُمحى بذكرٍ فارغ: تفريغُه يُخرج المصروف من قائمة الدخل صامتاً.
+  if ('category' in data) patch.category = cleanCategory(data.category);
   if ('amount_sar' in data || 'amountSar' in data) patch.amount_halalas = cleanAmount(data.amount_sar ?? data.amountSar);
   // الضريبة تتبع المبلغ ولا تتخلّف عنه: كل صافٍ مسجَّل يخصّ المبلغ الذي سُجِّل معه. فإن تغيّر
   // المبلغ ولم يُعَد ذكرُ الضريبة في الطلب نفسه، تعود الضريبة «غير مسجَّلة» بدل أن يبقى صافٍ

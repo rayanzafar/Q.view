@@ -1,16 +1,21 @@
-// ── بوابات بطاقة «المال في القطاع» بعد إعادة بنائها ────────────────────────────────────────
-// البطاقة تجمع ثلاثة أرقامٍ ليست كلها لكل قارئ، ولكلٍّ بوابتُه:
-//   • «المتبقي من العقود»  — خلف قراءة **العقود**.
-//   • «منجَز لم يُفوتر»    — خلف قراءة **الفواتير** (طرفاه: المتحقق والمفوتر).
-//   • «الهامش الإجمالي»    — خلف بوابتَي «الهامش» و«الكلفة» **معاً**: الإيراد معروضٌ فوقه في
-//     «نبض القطاع»، فالنسبة وحدها تردّ التكلفة المحجوبة بالطرح.
-// والبطاقة نفسها تسقط حين لا يملك القارئ واحدةً من الثلاث.
+// ── بوابات مال القطاع على الشاشة الواحدة (v6.10) ───────────────────────────────────────────
+// كانت هذه الحارة تفحص «بطاقة المال» بخلاياها الثلاث في وسم الخادم. الشاشة أُعيد بناؤها:
+// لا بطاقةَ مُصيَّرةً على الخادم ولا نوافذَ `dd-*`؛ الأرقام كلها تصل في حزمةٍ واحدة
+// (`<script type="application/json" id="cc-data">`) ويرسمها المتصفّح. فالخليّة الأمنية نفسها
+// تبقى — **ما لا يقرؤه القارئ لا يصل جهازَه أصلاً** — لكنها تُقاس على الحزمة لا على الوسم:
+// ظهورُ رقمٍ في `cc-data` تسريبٌ ولو لم يُرسم قط، لأن من يفتح مصدر الصفحة يقرؤه.
 //
-// والمنح من مصفوفة المنصة المبذورة (seed-rbac) لا من منحٍ يُخترع هنا:
-//   • قائد القطاع  — عقودٌ وفواتيرُ وكلفةٌ وهامش. ⇒ البطاقة كاملة بخلاياها الثلاث.
-//   • مدير الإدارة — كلفةٌ وهامشٌ على مستوى القطاع، ولا عقدَ ولا فاتورة. ⇒ خليّةُ الهامش وحدها.
-//   • العمليات     — مشاريعُ وتقاريرُ قطاعية، بلا عقدٍ ولا فاتورةٍ ولا كلفةٍ ولا هامش. ⇒ لا بطاقة.
-//   • الموظف       — نطاقه «خاصتي»، فيأخذ الوجه الشخصي «قطاعي» ولا بطاقة فيه.
+// والأدوار الأربعة كما كانت، من مصفوفة المنصة المبذورة (seed-rbac) لا من منحٍ يُخترع هنا:
+//   • قائد القطاع  — كلفةٌ وهامش. ⇒ سطور التكلفة والهامش في الحزمة (الأساس الذي يُقاس عليه).
+//   • مدير الإدارة — كلفةٌ وهامشٌ على مستوى القطاع. ⇒ يصله ما يملكه.
+//   • العمليات     — بلا كلفةٍ ولا هامش. ⇒ لا رقمَ كلفةٍ ولا مفتاحَ هامشٍ في الحزمة كلها.
+//   • الموظف       — نطاقه «خاصتي»، فيأخذ الوجه الشخصي «قطاعي» ولا حزمةَ مالٍ فيه أصلاً.
+//
+// ما سقط من الحارة القديمة عمداً: خليّتا «المتبقي من العقود» و«منجَز لم يُفوتر». لم تعودا
+// بوّابتين مستقلّتين في الشاشة الجديدة — الرقمان يتبعان قراءة **المشاريع** نفسها في
+// `command-center.js`، فلا توليفةَ «يقرأ المشاريع ولا يقرأ عقودها» تُفحص. والراتب والخطة
+// مفحوصان في `tests/security/command-center-leak.test.js`، والغيابُ مفتاحاً مفتاحاً في
+// `tests/unit/command-center-redaction.test.js`.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -39,11 +44,11 @@ const dm = U('u_dm', 'department_manager', 'department');
 const ops = U('u_ops', 'operations', 'sector');
 const emp = U('u_emp', 'employee', 'own');
 
-// أرقامٌ مميّزة: أيُّها ظهر لمن لا يملكه دلّ الفشلُ عليه بعينه — ولا يصادف واحدٌ منها حصةَ
-// هدفٍ أو رقمَ رسمٍ آخر في الصفحة.
-const BACKLOG_SHORT = '777K';   // متعاقد صافياً 1,777,000 − ما تحقق 1,000,000
-const DELTA_SHORT = '444K';     // تحقق 1,000,000 − مفوتر صافياً 556,000
-const COST_SHORT = '210K';      // 180 ألف بنوداً + 30 ألفاً مصروفات معتمدة
+// أرقامٌ مميّزة بهللاتها: أيُّها ظهر لمن لا يملكه دلّ الفشلُ عليه بعينه، ولا يتولّد واحدٌ منها
+// من آخر بجمعٍ ولا قسمة. والبحث عنها حرفيٌّ في نصّ الحزمة.
+const COST_LINE = 180_000_37;   // بندُ كلفةٍ مسجَّل
+const COST_EXP = 30_000_41;     // مصروفٌ معتمَد
+const REVENUE = 1_000_000_43;   // إيرادٌ صافٍ — يصل لمن يقرأ الإيراد، وهو ضابط الفحص
 
 before(async () => {
   await insert('sector', { id: 'SOL', name_ar: 'قطاع الحلول', kind: 'delivery', active: 1, sort_order: 1,
@@ -55,106 +60,67 @@ before(async () => {
   await insert('client', { id: 'C1', name_ar: 'وزارة الثقافة', active: 1, created_at: T });
   await insert('stage', { id: 'LEAD', name_ar: 'ترشيح', default_win_pct: 10, sort_order: 1, is_won: 0, is_lost: 0 });
   await insert('project', { id: 'P1', code: 'PRJ-1', name_ar: 'مشروع التحول', sector_id: 'SOL', client_id: 'C1',
-    status: 'IN_PROGRESS', rag: 'GREEN', progress_pct: 40, created_at: T });
-  await insert('contract', { id: 'K1', code: 'CN-1', client_id: 'C1', project_id: 'P1', sector_id: 'SOL',
-    value_halalas: 2_043_550_00, net_value_halalas: 1_777_000_00, status: 'ACTIVE',
-    start_date: `${YEAR}-01-01`, signed_at: `${YEAR}-01-01`, created_at: T });
+    status: 'IN_PROGRESS', rag: 'GREEN', progress_pct: 40, margin_pct: 34,
+    contract_value_halalas: 2_043_550_00, created_at: T });
   await insert('revenue_line', { id: 'RL3', project_id: 'P1', sector_id: 'SOL', year: YEAR, month: 3,
-    amount_halalas: 1_150_000_00, net_amount_halalas: 1_000_000_00, created_at: T });
-  await insert('invoice', { id: 'I_ISS', code: 'INV-1', project_id: 'P1', client_id: 'C1',
-    amount_halalas: 409_400_00, net_amount_halalas: 356_000_00,
-    issue_date: `${YEAR}-03-10`, status: 'ISSUED', created_at: T });
-  await insert('invoice', { id: 'I_PAID', code: 'INV-2', project_id: 'P1', client_id: 'C1',
-    amount_halalas: 230_000_00, net_amount_halalas: 200_000_00,
-    issue_date: `${YEAR}-06-15`, status: 'PAID', created_at: T });
-  await insert('cost_line', { id: 'CL3', project_id: 'P1', sector_id: 'SOL', type: 'رواتب',
-    amount_halalas: 180_000_00, month: 3, year: YEAR, created_at: T });
-  await insert('expense', { id: 'E_APP', project_id: 'P1', sector_id: 'SOL', type: 'سفر',
-    amount_halalas: 30_000_00, incurred_month: 3, incurred_year: YEAR, status: 'APPROVED', created_at: T });
+    amount_halalas: 1_150_000_00, net_amount_halalas: REVENUE, created_at: T });
+  await insert('cost_line', { id: 'CL3', project_id: 'P1', sector_id: 'SOL', type: 'رواتب', category: 'sal',
+    amount_halalas: COST_LINE, month: 3, year: YEAR, created_at: T });
+  await insert('expense', { id: 'E_APP', project_id: 'P1', sector_id: 'SOL', type: 'سفر', category: 'oth',
+    amount_halalas: COST_EXP, net_amount_halalas: COST_EXP, incurred_month: 3, incurred_year: YEAR,
+    status: 'APPROVED', created_at: T });
 });
 after(async () => { await close(); rmSync(dir, { recursive: true, force: true }); });
 
-// ما يقرأه المستخدم فعلاً: الصفحة بلا أوراق الأنماط ولا برمجة المتصفح — فيها تعليقات عربية
-// تصف التصميم وليست نصّاً معروضاً، وفحصُها يخلط الشكل بالمضمون (نفس قاعدة sector-role-view).
-const visibleOf = (html) => html
-  .replace(/<style[\s\S]*?<\/style>/g, ' ')
-  .replace(/<script[\s\S]*?<\/script>/g, ' ');
-
-const bandOf = (html) => {
-  const a = html.indexOf('id="money-band"');
-  if (a < 0) return null;
-  return html.slice(a, html.indexOf('</section>', a));
+// الحزمة كما تصل الجهاز — نصّاً ومفكوكةً. الفحص على النصّ لأن الرقم قد يختبئ في قسمٍ جانبيّ.
+const packOf = (html, id = 'cc-data') => {
+  const open = `<script type="application/json" id="${id}">`;
+  const from = html.indexOf(open);
+  if (from < 0) return null;
+  const raw = html.slice(from + open.length, html.indexOf('</script>', from));
+  return { raw, json: JSON.parse(raw) };
 };
-// الخليّة تُقطع عند وسمها لا عند نوع عنصرها — فتبقى الحارة صادقةً لو تغيّر الوسم من زرٍّ إلى
-// عنصرٍ بدورٍ معلَن (وهو ما جرى حين صارت المقاييسُ عناصرَ كتلةٍ داخل الخليّة).
-const cellCount = (band) => (band.match(/class="mcell"/g) || []).length;
+const page = (user) => sectorPage(user, { year: String(YEAR), p: 'y' });
+const costKeys = (data) => (data.lines || []).filter((l) => l.kind === 'cost').map((l) => l.id);
 
-test('قائد القطاع يرى البطاقة كاملة — الأساس الذي تُقاس عليه بقية الأدوار', async () => {
-  const html = await sectorPage(lead, { year: String(YEAR), p: 'y' });
-  const band = bandOf(html);
-  assert.ok(band, 'البطاقة مُصيَّرة لقائد القطاع');
-  for (const l of ['المتبقي من العقود', 'منجَز لم يُفوتر', 'الهامش الإجمالي']) {
-    assert.ok(band.includes(l), `«${l}» في بطاقة القائد`);
-  }
-  assert.equal(cellCount(band), 3, 'ثلاث خلايا');
-  assert.ok(band.includes('class="mcells" style="--n:3"'), 'ثلاثة أعمدة لثلاث خلايا');
-  assert.ok(band.includes(BACKLOG_SHORT) && band.includes(DELTA_SHORT) && band.includes(COST_SHORT),
-    'أرقام القائد كاملة');
-  for (const dd of ['seccontracts', 'secunbilled', 'seccost']) {
-    assert.ok(band.includes(`data-dd="${dd}"`), `خليّة تفتح ${dd}`);
-    assert.ok(html.includes(`<template id="dd-${dd}">`), `ونافذة ${dd} مبنيّة`);
-  }
+test('قائد القطاع: الكلفة والهامش يصلان — الأساس الذي تُقاس عليه بقية الأدوار', async () => {
+  const p = packOf(await page(lead));
+  assert.ok(p, 'حزمة الشاشة غائبة عن صفحة قائد القطاع');
+  assert.ok(costKeys(p.json).length >= 6, 'سطور التكلفة الستة لم تصل من يملكها');
+  assert.ok(p.json.projects.some((x) => x.margin_pct != null), 'الهامش لم يصل من يقرؤه');
+  assert.ok(p.raw.includes(String(COST_LINE)) || p.raw.includes(String(COST_LINE + COST_EXP)),
+    'كلفةُ سندٍ المسجَّلة لم تصل من يقرؤها — الفحص أدناه سيمرّ على حمولةٍ فارغة');
+  assert.ok(p.raw.includes(String(REVENUE)), 'الإيراد لم يصل قائد القطاع');
 });
 
-test('مدير الإدارة: هامشٌ وكلفةٌ بلا عقدٍ ولا فاتورة — ولا نافذةَ لأيٍّ منهما', async () => {
-  const html = await sectorPage(dm, { year: String(YEAR), p: 'y' });
+test('مدير الإدارة: كلفةٌ وهامشٌ بمنحه هو — الحجب لا يطال من يملك', async () => {
   assert.equal(sectorViewMode(dm).mode, 'command', 'مدير الإدارة في وجه القيادة');
-  const band = bandOf(html);
-  assert.ok(band, 'البطاقة مُصيَّرة لمدير الإدارة');
-  assert.ok(band.includes('الهامش الإجمالي') && band.includes(COST_SHORT), 'الهامش والكلفة بمنحهما');
-  // ── العقود ──
-  assert.ok(!band.includes('المتبقي من العقود'), 'لا خليّةَ عقودٍ لمن لا يقرأ العقود');
-  assert.ok(!band.includes(BACKLOG_SHORT), 'رقم المتبقي لا يتسرّب');
-  assert.ok(!band.includes('data-dd="seccontracts"'), 'ولا خليّةَ تفتح نافذة العقود');
-  assert.ok(!html.includes('<template id="dd-seccontracts">'), 'ونافذة العقود غير مبنيّة أصلاً');
-  // ── الفواتير ──
-  assert.ok(!band.includes('منجَز لم يُفوتر') && !band.includes('المفوتر قبل الإنجاز'),
-    'لا خليّةَ فارقٍ لمن لا يقرأ الفواتير');
-  assert.ok(!band.includes(DELTA_SHORT), 'رقم الفارق لا يتسرّب');
-  assert.ok(!band.includes('data-dd="secunbilled"'), 'ولا خليّةَ تفتح نافذته');
-  assert.ok(!html.includes('<template id="dd-secunbilled">') && !html.includes('<template id="dd-secinv">'),
-    'ولا نافذةَ فواتيرَ مبنيّة أصلاً');
-  // ── وما يملكه مبنيٌّ له ──
-  assert.ok(html.includes('<template id="dd-seccost">'), 'نافذة التكاليف مبنيّة لمن يملكها');
-  // والشبكة تتبع عدد الخلايا الفعلي: خليّةٌ واحدة هنا — عمودٌ فارغٌ يُقرأ خليّةً سقطت لا مساحةً
-  assert.equal(cellCount(band), 1, 'خليّة واحدة');
-  assert.ok(band.includes('class="mcells" style="--n:1"'), 'عمودٌ واحد لخليّةٍ واحدة');
+  const p = packOf(await page(dm));
+  assert.ok(p, 'حزمة الشاشة غائبة عن صفحة مدير الإدارة');
+  assert.ok(costKeys(p.json).length >= 6, 'سطور التكلفة لم تصل مدير الإدارة رغم منحه');
+  assert.ok(!p.json.notes.includes('costs_hidden'), 'حُجبت الكلفة عمّن يقرؤها');
 });
 
-test('العمليات: لا بطاقة أصلاً ولا رقمَ مالٍ في الصفحة كلها', async () => {
-  const html = await sectorPage(ops, { year: String(YEAR), p: 'y' });
-  const seen = visibleOf(html);
+test('العمليات: لا رقمَ كلفةٍ ولا مفتاحَ هامشٍ في الحزمة كلها', async () => {
   assert.equal(sectorViewMode(ops).mode, 'command', 'العمليات في وجه القيادة (مشاريعُ وتقارير قطاعية)');
-  assert.ok(!html.includes('id="money-band"'), 'لا بطاقة لمن لا يقرأ عقداً ولا فاتورةً ولا كلفة');
-  assert.ok(!seen.includes('المتبقي من العقود') && !seen.includes('منجَز لم يُفوتر')
-    && !seen.includes('الهامش الإجمالي'), 'ولا عنوانَ خليّةٍ منها');
-  for (const n of [BACKLOG_SHORT, DELTA_SHORT, COST_SHORT]) {
-    assert.ok(!seen.includes(n), `الرقم ${n} لا يظهر`);
+  const p = packOf(await page(ops));
+  assert.ok(p, 'حزمة الشاشة غائبة عن صفحة العمليات');
+  assert.deepEqual(costKeys(p.json), [], 'سطرُ تكلفةٍ واحدٌ وصل من لا يقرأ الكلفة');
+  assert.ok(p.json.notes.includes('costs_hidden'), 'الحجب لم يُقل صراحةً في الحمولة');
+  for (const key of ['margin_pct', 'recon']) {
+    assert.ok(!p.raw.includes(key), `اسمُ الحقل المحجوب «${key}» حاضرٌ في الحزمة`);
   }
-  for (const dd of ['seccontracts', 'secunbilled', 'secinv', 'seccost']) {
-    assert.ok(!html.includes(`<template id="dd-${dd}">`), `لا نافذة ${dd} لما لا يُقرأ`);
+  for (const n of [COST_LINE, COST_EXP]) {
+    assert.ok(!p.raw.includes(String(n)), `رقمُ كلفةٍ (${n}) تسرّب إلى من لا يقرأ الكلفة`);
   }
 });
 
-test('الموظف: الوجه الشخصي «قطاعي» — لا بطاقةَ مالٍ فيه', async () => {
-  const html = await sectorPage(emp, { year: String(YEAR), p: 'y' });
+test('الموظف: الوجه الشخصي «قطاعي» — لا حزمةَ مالٍ فيه أصلاً', async () => {
   assert.equal(sectorViewMode(emp).mode, 'personal', 'الموظف على الوجه الشخصي');
-  assert.ok(!html.includes('id="money-band"'), 'لا بطاقةَ مالٍ على الوجه الشخصي');
-  const seen = visibleOf(html);
-  for (const n of [BACKLOG_SHORT, DELTA_SHORT, COST_SHORT]) {
-    assert.ok(!seen.includes(n), `لا رقمَ مالٍ قطاعي (${n})`);
-  }
-  for (const dd of ['seccontracts', 'secunbilled', 'secinv', 'seccost']) {
-    assert.ok(!html.includes(`<template id="dd-${dd}">`), `ولا نافذة ${dd}`);
+  const html = await page(emp);
+  assert.equal(packOf(html), null, 'حزمةُ مركز القطاع سُلِّمت للوجه الشخصي');
+  const seen = html.replace(/<style[\s\S]*?<\/style>/g, ' ').replace(/<script[\s\S]*?<\/script>/g, ' ');
+  for (const n of [COST_LINE, COST_EXP, REVENUE]) {
+    assert.ok(!html.includes(String(n)) && !seen.includes(String(n)), `رقمُ مالٍ قطاعي (${n}) على الوجه الشخصي`);
   }
 });

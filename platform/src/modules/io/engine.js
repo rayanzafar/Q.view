@@ -16,8 +16,9 @@ import opportunities from './adapters/opportunities.js';
 import projects from './adapters/projects.js';
 import staffing from './adapters/staffing.js';
 import revenues from './adapters/revenues.js';
+import financePl from './adapters/finance-pl.js';
 
-export const ADAPTERS = { clients, employees, opportunities, projects, staffing, revenues };
+export const ADAPTERS = { clients, employees, opportunities, projects, staffing, revenues, 'finance-pl': financePl };
 const MODES = ['add', 'upsert', 'replace'];
 const MAX_ROWS = 5000;
 const UNDO_DAYS = 7;

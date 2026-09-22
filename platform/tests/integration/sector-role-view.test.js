@@ -166,15 +166,31 @@ test('صفحة الاستشاري: النظافة نفسها — التفريع 
 
 // ═══════════════ (٢) قائد القطاع لم يخسر شيئاً ═══════════════
 
-test('صفحة قائد القطاع: مركز القيادة كما هو — التفريع لم يُخفِ على من يملك', async () => {
+// الشاشة الواحدة (v6.10): أرقام القيادة لم تعد كلماتٍ في الوسم — تصل في حزمة `cc-data`
+// ويرسمها المتصفّح. فالمفحوص أن تصل إلى من يملكها كاملةً، لا أن يُطبع اسمُها على الخادم.
+const ccPack = (html, id) => {
+  const open = `<script type="application/json" id="${id}">`;
+  const from = html.indexOf(open);
+  assert.ok(from > 0, `حزمة ${id} غائبة عن الصفحة`);
+  return JSON.parse(html.slice(from + open.length, html.indexOf('</script>', from)));
+};
+
+test('صفحة قائد القطاع: الشاشة الواحدة كما هي — التفريع لم يُخفِ على من يملك', async () => {
   const html = await sectorPage(lead, { year: YEAR });
-  clean(html, 'مركز القيادة');
-  const body = mainOf(html);
-  // أسماء v5: «الأداء مقابل الخطة» خلفاً لـ«الإيقاع»، و«قدرة الفريق» خلفاً لبطاقة «الطاقة».
-  for (const term of ['المستهدف', 'قمع الفرص', 'الأداء مقابل الخطة', 'طاقة الفريق', 'الإشغال', 'العملاء']) {
-    assert.ok(body.includes(term), `اختفى عن قائد القطاع: ${term}`);
+  clean(html, 'مركز القطاع');
+  assert.match(html, /مركز القطاع — قطاع الحلول/, 'وعنوانها عنوان قيادة');
+  assert.ok(html.includes('class="cc-page"'), 'جذر الشاشة الواحدة غائب');
+  const d = ccPack(html, 'cc-data');
+  assert.equal(d.meta.sector.name_ar, 'قطاع الحلول');
+  for (const k of ['lines', 'projects', 'clients', 'opps', 'staffing']) {
+    assert.ok(d[k], `اختفى عن قائد القطاع: ${k}`);
   }
-  assert.match(html, /مركز قيادة قطاع الحلول/, 'وعنوانها عنوان قيادة');
+  assert.ok(d.lines.some((l) => l.id === 'rev'), 'سطر الإيراد لم يصل من يقرؤه');
+  assert.ok(d.lines.some((l) => l.kind === 'cost'), 'سطور الكلفة لم تصل من يقرؤها');
+  assert.ok(d.plan, 'المستهدف لم يصل من يقرؤه');
+  const v = ccPack(html, 'cc-view');
+  assert.ok(Array.isArray(v.months) && v.months.length, 'حالة العرض بلا أشهر');
+  ccPack(html, 'cc-labels');
 });
 
 // ═══════════════ (٣) مشاريعه هو لا مشاريع القطاع ═══════════════
@@ -259,9 +275,15 @@ test('دور مُخترَع بنطاق ضيّق يأخذ الوجه الشخصي
 test('الدور المُخترَع نفسه بنطاق قطاعي يأخذ مركز القيادة — الشرط نطاقي لا اسمي', async () => {
   assert.equal(effectiveScope(wide, 'read', 'project'), 'sector');
   assert.equal(sectorViewMode(wide).mode, 'command');
-  const body = mainOf(await sectorPage(wide, { year: YEAR }));
-  assert.ok(body.includes('قمع الفرص'), 'يرى قمع الفرص');
-  assert.ok(body.includes('المستهدف') || body.includes('الهدف'), 'ويرى المستهدف');
+  const html = await sectorPage(wide, { year: YEAR });
+  assert.ok(html.includes('class="cc-page"'), 'لم يأخذ الشاشة الواحدة');
+  const d = ccPack(html, 'cc-data');
+  // منحُه مشاريعُ القطاع وفرصُه — فتصله هي، ولا يصله ما لم يُمنح (المستهدف والكلفة):
+  // الحجب بالغياب لا بقيمةٍ فارغة.
+  assert.ok(Array.isArray(d.opps), 'يرى فرص القطاع');
+  assert.ok(Array.isArray(d.projects), 'ويرى مشاريع القطاع');
+  assert.equal(d.plan, undefined, 'ولا يصله المستهدف بلا منحه');
+  assert.ok(d.notes.includes('plan_hidden'), 'والحمولة تقول إن الخطة محجوبة');
 });
 
 test('can() بلا صف هدف لا تصلح للسؤال النطاقي — والقرار لا يعتمد عليها', async () => {

@@ -384,7 +384,19 @@ export async function bookToBill(sectorId, year) {
 // `by_month` يعود **دائماً** باثني عشر شقّاً للسنة كاملة (الشقّ الأول يناير) مهما ضاقت النافذة:
 // أعمدته الصغيرة تعرض شكل السنة كلها خلف الفترة المختارة. والصفوف بلا شهر ليست فيه أصلاً.
 // و`sectorId` فارغاً = الشركة كلها (كما في grossMargin الذي يستدعيها).
-export async function sectorCosts(sectorId, year, { months = null } = {}) {
+//
+// ── بُعدٌ ثانٍ للتصنيف: `byCategory` ────────────────────────────────────────────────────────
+// `type` نصٌّ حرّ («تذاكر»، «تذكرة سفر»، «سفر» ثلاثة أنواع لشيءٍ واحد)، فلا يُقابَل بسطور
+// قائمة الدخل. و`category` (ترحيلة ٠٥٠) قائمةٌ مغلقة تُقابِلها سطراً بسطر. فمن أراد المقابلة
+// يمرّر `{ byCategory: true }` فيعود التصنيف تحت `by_category` مجمَّعاً بالتصنيف، وصفٌّ بلا
+// تصنيفٍ يُجمع تحت `uncat` **باسمه صراحةً** لا يُسقط: مالٌ صُرف فعلاً ولم يُنسب بعد إلى سطر.
+// والمجاميع والشقوق الشهرية لا تتغيّر بالبُعد — هو عدسةُ تصنيفٍ لا تعريفُ كلفةٍ ثانٍ.
+//
+// الأسماءُ العربية تُمرَّر (`categoryLabels`) ولا تُستورد: هذه وحدةُ `core` وأسماءُ السطور في
+// `modules/finance/income-statement.js`، واستيرادها هنا كان يقلب اتجاه الطبقات ويعقد حلقةً
+// ثانية بين الملفّين. فمن يعرض يسمّي، ومن يحسب يعدّ.
+export const UNCATEGORIZED_COST = 'uncat';
+export async function sectorCosts(sectorId, year, { months = null, byCategory = false, categoryLabels = null } = {}) {
   const secC = sectorId ? 'AND sector_id = ?' : '';
   const secP = sectorId ? [sectorId] : [];
   const mList = months == null ? null
@@ -395,38 +407,52 @@ export async function sectorCosts(sectorId, year, { months = null } = {}) {
     return { clause: ` AND ${col} IN (${mList.map(() => '?').join(',')})`, args: mList };
   };
   const mc = mf('month'), me = mf('incurred_month');
+  // عمودُ التجميع واحدٌ للطرفين: نصُّ النوع الحرّ، أو التصنيف المغلق حين يُطلب.
+  const dim = byCategory ? 'category' : 'type';
   const [cl, ex, clT, exT, clM, exM] = await Promise.all([
     get(`SELECT COALESCE(SUM(amount_halalas),0) v FROM cost_line
         WHERE year = ? ${secC}${mc.clause}`, [year, ...secP, ...mc.args]),
     get(`SELECT COALESCE(SUM(COALESCE(net_amount_halalas, amount_halalas)),0) v FROM expense
         WHERE incurred_year = ? AND status IN ('APPROVED','PAID') AND deleted_at IS NULL ${secC}${me.clause}`,
     [year, ...secP, ...me.args]),
-    all(`SELECT type, COALESCE(SUM(amount_halalas),0) v FROM cost_line
-        WHERE year = ? ${secC}${mc.clause} GROUP BY type`, [year, ...secP, ...mc.args]),
-    all(`SELECT type, COALESCE(SUM(COALESCE(net_amount_halalas, amount_halalas)),0) v FROM expense
+    all(`SELECT ${dim} k, COALESCE(SUM(amount_halalas),0) v FROM cost_line
+        WHERE year = ? ${secC}${mc.clause} GROUP BY ${dim}`, [year, ...secP, ...mc.args]),
+    all(`SELECT ${dim} k, COALESCE(SUM(COALESCE(net_amount_halalas, amount_halalas)),0) v FROM expense
         WHERE incurred_year = ? AND status IN ('APPROVED','PAID') AND deleted_at IS NULL ${secC}${me.clause}
-        GROUP BY type`, [year, ...secP, ...me.args]),
+        GROUP BY ${dim}`, [year, ...secP, ...me.args]),
     all(`SELECT month m, COALESCE(SUM(amount_halalas),0) v FROM cost_line
         WHERE year = ? ${secC} AND month IS NOT NULL GROUP BY month`, [year, ...secP]),
     all(`SELECT incurred_month m, COALESCE(SUM(COALESCE(net_amount_halalas, amount_halalas)),0) v FROM expense
         WHERE incurred_year = ? AND status IN ('APPROVED','PAID') AND deleted_at IS NULL ${secC}
           AND incurred_month IS NOT NULL GROUP BY incurred_month`, [year, ...secP]),
   ]);
-  // التجميع بالنوع في الذاكرة: نوعٌ فارغ ونوعٌ غير مسجَّل شيءٌ واحد للقارئ («غير مصنَّف» في
-  // الشاشة)، والترتيب من الأكبر كي يقرأ المالك أثقل بند أولاً — وترتيبٌ ثابت لا يختلف بمحرّك.
-  const byType = (rows) => {
+  // التجميع في الذاكرة: نوعٌ فارغ ونوعٌ غير مسجَّل شيءٌ واحد للقارئ («غير مصنَّف» في الشاشة)،
+  // والترتيب من الأكبر كي يقرأ المالك أثقل بند أولاً — وترتيبٌ ثابت لا يختلف بمحرّك.
+  // وفي بُعد التصنيف يصير الفارغ مفتاحاً صريحاً (`uncat`) لا فراغاً: هو مجموعةٌ تُعرض ويُسأل
+  // عنها، لا غياب. و`label` يبقى فارغاً ما لم يُمرَّر معجمٌ — العدّ لا يسمّي.
+  const group = (rows) => {
     const m = new Map();
-    for (const r of rows) { const k = r.type || null; m.set(k, (m.get(k) || 0) + (r.v || 0)); }
-    return [...m].map(([type, amount_halalas]) => ({ type, amount_halalas }))
+    for (const r of rows) {
+      const k = r.k || (byCategory ? UNCATEGORIZED_COST : null);
+      m.set(k, (m.get(k) || 0) + (r.v || 0));
+    }
+    return [...m]
+      .map(([k, amount_halalas]) => (byCategory
+        ? { category: k, label: categoryLabels?.[k] ?? null, amount_halalas }
+        : { type: k, amount_halalas }))
       .sort((a, b) => (b.amount_halalas - a.amount_halalas)
-        || String(a.type || '').localeCompare(String(b.type || ''), 'ar'));
+        || String((byCategory ? a.category : a.type) || '')
+          .localeCompare(String((byCategory ? b.category : b.type) || ''), 'ar'));
   };
   const by_month = Array(12).fill(0);
   for (const r of [...clM, ...exM]) { const i = Number(r.m) - 1; if (i >= 0 && i < 12) by_month[i] += r.v || 0; }
   const costLines = cl?.v || 0, expenses = ex?.v || 0;
+  const grouped = { cost_lines: group(clT), expenses: group(exT) };
   return {
     cost_lines_halalas: costLines, expenses_halalas: expenses, cost_halalas: costLines + expenses,
-    by_type: { cost_lines: byType(clT), expenses: byType(exT) },
+    // مفتاحٌ واحد لا اثنان: من طلب التصنيف قرأ `by_category`، ومن لم يطلبه بقي على `by_type`
+    // كما كان — وإخراجُهما معاً كان يُغري بجمع بُعدين لشيءٍ واحد فيتضاعف الرقم.
+    ...(byCategory ? { by_category: grouped } : { by_type: grouped }),
     by_month,
   };
 }
@@ -689,6 +715,39 @@ export async function revenueOutlook(sectorId, year, today = new Date()) {
 // بُعدَ مشروعٍ له. واسمٌ خارجها خطأُ برمجةٍ يُكسَر عنده الاستدعاء — لا نصٌّ يُمرَّر إلى قاعدة
 // البيانات، ولو جاء يوماً من مصدرٍ لا يملك كاتبه ضمانَ ثباته.
 const PROJECT_COL_ALLOWED = Object.freeze(['p.id', 'o.id', 'rl.project_id']);
+
+// ── بُعدٌ واحدٌ أو عدّة: «= ?» أو «IN (?, ?)» ─────────────────────────────────────────────
+// شريط «مركز القطاع» يختار أكثر من مشروعٍ وأكثر من عميلٍ وأكثر من إدارة، ويكتبها في الرابط
+// قائمةً بفواصل. فالقصُّ هنا يقبل القيمة الواحدة والقائمة سواءً: كلُّ قيمةٍ تمرّ بمُعامِلها
+// (`?`) كما كانت، والمكرَّر والفارغ يسقطان، وقائمةٌ خاويةٌ لا شرط لها أصلاً.
+const scopeList = (value) => {
+  const raw = Array.isArray(value) ? value : (value == null || value === '' ? [] : [value]);
+  const out = [];
+  for (const v of raw) {
+    const s = String(v ?? '').trim();
+    if (s && !out.includes(s)) out.push(s);
+  }
+  return out;
+};
+
+/**
+ * شرطُ بُعدٍ واحدٍ من قيمةٍ أو قائمة، مع مفتاحٍ يعني «الفراغ» (`none` في الإدارة) — فيُكتب
+ * `IS NULL` بدل معرّفٍ لا وجود له، ويُجمع مع البقية بـ`OR` متى اختير الاثنان معاً.
+ * @returns {{sql:string, args:string[]}|null} لا شرط ⇒ null
+ */
+export function scopeCondSql(col, value, { nullKey = null } = {}) {
+  const vals = scopeList(value);
+  if (!vals.length) return null;
+  const ids = nullKey == null ? vals : vals.filter((v) => v !== nullKey);
+  const parts = [];
+  const args = [];
+  if (nullKey != null && vals.includes(nullKey)) parts.push(`${col} IS NULL`);
+  if (ids.length === 1) { parts.push(`${col} = ?`); args.push(ids[0]); }
+  else if (ids.length > 1) { parts.push(`${col} IN (${ids.map(() => '?').join(', ')})`); args.push(...ids); }
+  if (!parts.length) return null;
+  return { sql: parts.length === 1 ? ` AND ${parts[0]}` : ` AND (${parts.join(' OR ')})`, args };
+}
+
 export function projectScopeSql(alias, { dept = null, client = null, project = null } = {},
   { projectCol = `${alias}.id` } = {}) {
   if (projectCol != null && !PROJECT_COL_ALLOWED.includes(projectCol)) {
@@ -696,12 +755,14 @@ export function projectScopeSql(alias, { dept = null, client = null, project = n
   }
   let clause = '';
   const args = [];
-  if (dept === 'none') clause += ` AND ${alias}.department_id IS NULL`;
-  else if (dept) { clause += ` AND ${alias}.department_id = ?`; args.push(dept); }
-  if (client) { clause += ` AND ${alias}.client_id = ?`; args.push(client); }
-  const projOn = !!(project && projectCol);
-  if (projOn) { clause += ` AND ${projectCol} = ?`; args.push(project); }
-  return { clause, args, active: !!(dept || client), projectOn: projOn };
+  const add = (cond) => { if (cond) { clause += cond.sql; args.push(...cond.args); } };
+  const deptCond = scopeCondSql(`${alias}.department_id`, dept, { nullKey: 'none' });
+  const clientCond = scopeCondSql(`${alias}.client_id`, client);
+  add(deptCond);
+  add(clientCond);
+  const projCond = projectCol ? scopeCondSql(projectCol, project) : null;
+  add(projCond);
+  return { clause, args, active: !!(deptCond || clientCond), projectOn: !!projCond };
 }
 
 // قصّ الفواتير خاصةً: العميل من الفاتورة نفسها إن سُجِّل وإلا من مشروعها (الفاتورة تحمل
@@ -709,12 +770,15 @@ export function projectScopeSql(alias, { dept = null, client = null, project = n
 export function invoiceScopeSql({ dept = null, client = null, project = null } = {}) {
   let clause = '';
   const args = [];
-  if (dept === 'none') clause += ' AND p.department_id IS NULL';
-  else if (dept) { clause += ' AND p.department_id = ?'; args.push(dept); }
-  if (client) { clause += ' AND COALESCE(i.client_id, p.client_id) = ?'; args.push(client); }
+  const add = (cond) => { if (cond) { clause += cond.sql; args.push(...cond.args); } };
+  const deptCond = scopeCondSql('p.department_id', dept, { nullKey: 'none' });
+  const clientCond = scopeCondSql('COALESCE(i.client_id, p.client_id)', client);
   // المشروع من عمود الفاتورة نفسها: فاتورةٌ بلا مشروع تسقط من ترشيح مشروعٍ بعينه.
-  if (project) { clause += ' AND i.project_id = ?'; args.push(project); }
-  return { clause, args, active: !!(dept || client), projectOn: !!project };
+  const projCond = scopeCondSql('i.project_id', project);
+  add(deptCond);
+  add(clientCond);
+  add(projCond);
+  return { clause, args, active: !!(deptCond || clientCond), projectOn: !!projCond };
 }
 
 // بنود الإيراد مرشَّحةً بإدارة/عميل: الأشهر للرسم، والإجمالي للبطاقة (يضمّ بنوداً منسوبةً بلا

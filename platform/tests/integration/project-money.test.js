@@ -28,6 +28,7 @@ await initRbac();
 const { config } = await import('../../src/core/config.js');
 const { projectMoney } = await import('../../src/modules/finance/finance.js');
 const expenses = await import('../../src/modules/finance/expenses.js');
+const { COST_KEYS: expenses_COST_KEYS, LINE_BY_KEY: expenses_LINE_BY_KEY } = await import('../../src/modules/finance/income-statement.js');
 
 const YR = config.fiscalYear;
 const T = `${YR}-01-05T08:00:00.000Z`;
@@ -246,7 +247,7 @@ test('الموردون: تُقرأ المشتريات المسجَّلة، وي�
 test('تسجيل مصروف: يُحفظ بالهللات ويُدقَّق ويظهر فوراً في الصورة الشهرية', async () => {
   const before = await auditCount('expense', 'create');
   const created = await expenses.createExpense(ctx(finance), 'P1', {
-    type: 'اشتراك منصة تحليل', amount_sar: 125.5, month: 6, year: YR,
+    type: 'اشتراك منصة تحليل', category: 'lic', amount_sar: 125.5, month: 6, year: YR,
   });
   assert.equal(created.amount_halalas, 12_550, 'المال عدد صحيح بالهللات');
   assert.equal(created.status, 'DRAFT');
@@ -261,7 +262,7 @@ test('تسجيل مصروف: يُحفظ بالهللات ويُدقَّق ويظ
 });
 
 test('المصروف يمرّ بالاعتماد قبل أن يصير خارجاً نقدياً، والاعتماد فعل صلاحية', async () => {
-  const created = await expenses.createExpense(ctx(finance), 'P1', { type: 'شحن', amount_sar: 300, month: 7, year: YR });
+  const created = await expenses.createExpense(ctx(finance), 'P1', { type: 'شحن', category: 'oth', amount_sar: 300, month: 7, year: YR });
   // مدير المشروع لا يملك منح المصروفات أصلاً
   await assert.rejects(() => expenses.updateExpense(ctx(pm), created.id, { status: 'APPROVED' }), /صلاحية/);
   const paid = await expenses.updateExpense(ctx(finance), created.id, { status: 'PAID' });
@@ -276,7 +277,7 @@ test('المصروف يمرّ بالاعتماد قبل أن يصير خارجا
 });
 
 test('الحذف ناعم ومُدقَّق، والصف يختفي من الصورة لا من الجدول', async () => {
-  const created = await expenses.createExpense(ctx(lead1), 'P1', { type: 'وقود', amount_sar: 40, month: 8, year: YR });
+  const created = await expenses.createExpense(ctx(lead1), 'P1', { type: 'وقود', category: 'oth', amount_sar: 40, month: 8, year: YR });
   const before = await auditCount('expense', 'delete');
   await expenses.deleteExpense(ctx(lead1), created.id);
   assert.equal(await auditCount('expense', 'delete'), before + 1);
@@ -287,20 +288,65 @@ test('الحذف ناعم ومُدقَّق، والصف يختفي من الصو
 });
 
 test('تحقق المدخلات: مبلغ وشهر وسنة ووصف — رسائل عربية تقول ما العمل', async () => {
-  await assert.rejects(() => expenses.createExpense(ctx(finance), 'P1', { amount_sar: 10, month: 1, year: YR }), /وصف المصروف/);
-  await assert.rejects(() => expenses.createExpense(ctx(finance), 'P1', { type: 'س', amount_sar: 0, month: 1, year: YR }), /مبلغ المصروف/);
-  await assert.rejects(() => expenses.createExpense(ctx(finance), 'P1', { type: 'س', amount_sar: 10, year: YR }), /شهر الصرف/);
-  await assert.rejects(() => expenses.createExpense(ctx(finance), 'P1', { type: 'س', amount_sar: 10, month: 13, year: YR }), /شهر الصرف/);
-  await assert.rejects(() => expenses.createExpense(ctx(finance), 'P1', { type: 'س', amount_sar: 10, month: 1 }), /سنة الصرف/);
-  await assert.rejects(() => expenses.createExpense(ctx(finance), 'P1',
-    { type: 'س', amount_sar: 10, month: 1, year: YR, status: 'APPROVED' }), /مسودة/);
+  const base = { category: 'oth', type: 'س', amount_sar: 10, month: 1, year: YR };
+  await assert.rejects(() => expenses.createExpense(ctx(finance), 'P1', { ...base, type: '' }), /وصف المصروف/);
+  await assert.rejects(() => expenses.createExpense(ctx(finance), 'P1', { ...base, amount_sar: 0 }), /مبلغ المصروف/);
+  await assert.rejects(() => expenses.createExpense(ctx(finance), 'P1', { ...base, month: undefined }), /شهر الصرف/);
+  await assert.rejects(() => expenses.createExpense(ctx(finance), 'P1', { ...base, month: 13 }), /شهر الصرف/);
+  await assert.rejects(() => expenses.createExpense(ctx(finance), 'P1', { ...base, year: undefined }), /سنة الصرف/);
+  await assert.rejects(() => expenses.createExpense(ctx(finance), 'P1', { ...base, status: 'APPROVED' }), /مسودة/);
+});
+
+// ── ⑤ب بند قائمة الدخل: مطلوبٌ عند التسجيل، ومن قائمة مغلقة ────────────────────────────────
+// بلا بندٍ لا يدخل المصروف أيَّ سطرٍ من سطور الكلفة الستة، فيختفي من قائمة الدخل بلا أن يعرف
+// أحدٌ أنه اختفى. ولا قيمة افتراضية: «أخرى» على ما لم يقرأه أحد تصنيفٌ مخترَع.
+test('بند المصروف مطلوب عند التسجيل، والرسالة تُعدّد البنود الستة بأسمائها', async () => {
+  const names = expenses_COST_KEYS.map((k) => expenses_LINE_BY_KEY[k].ar);
+  const noCat = { type: 'تذاكر سفر', amount_sar: 10, month: 2, year: YR };
+  await assert.rejects(() => expenses.createExpense(ctx(finance), 'P1', noCat), (e) => {
+    assert.match(e.message, /اختر بند المصروف من القائمة/);
+    for (const n of names) assert.ok(e.message.includes(n), `الرسالة تذكر «${n}»`);
+    return true;
+  });
+  await assert.rejects(() => expenses.createExpense(ctx(finance), 'P1', { ...noCat, category: 'سفر' }),
+    /اختر بند المصروف من القائمة/, 'بندٌ خارج القائمة مرفوض كغيابه');
+  await assert.rejects(() => expenses.createExpense(ctx(finance), 'P1', { ...noCat, category: 'gp' }),
+    /اختر بند المصروف من القائمة/, 'وسطور المجموع والنتيجة ليست بنود صرف');
+});
+
+test('البند الصحيح يُحفظ في الصف ويعود باسمه العربي', async () => {
+  const created = await expenses.createExpense(ctx(finance), 'P1',
+    { type: 'أتعاب مستشار خارجي', category: 'con', amount_sar: 50, month: 3, year: YR });
+  assert.equal(created.category, 'con');
+  assert.equal(created.category_ar, expenses_LINE_BY_KEY.con.ar, 'الشاشة تقرأ الاسم لا المفتاح');
+  const row = await db.get('SELECT category FROM expense WHERE id = ?', [created.id]);
+  assert.equal(row.category, 'con', 'البند مخزَّن في الصف نفسه');
+  const audited = await db.get('SELECT detail_json FROM audit_log WHERE resource = ? AND resource_id = ?', ['expense', created.id]);
+  assert.match(String(audited.detail_json), /con/, 'والأثر يحمل البند كما حُفظ');
+
+  // التعديل: البند يُصحَّح متى ذُكر، ويُرَدّ متى كان خارج القائمة.
+  await assert.rejects(() => expenses.updateExpense(ctx(finance), created.id, { category: 'سفر' }),
+    /اختر بند المصروف من القائمة/);
+  const fixed = await expenses.updateExpense(ctx(finance), created.id, { category: 'ctr' });
+  assert.equal(fixed.category, 'ctr');
+  assert.equal(fixed.category_ar, expenses_LINE_BY_KEY.ctr.ar);
+  // وما لم يُذكر فيه بند يبقى بندُه كما هو — لا يُمحى بالسكوت.
+  const kept = await expenses.updateExpense(ctx(finance), created.id, { amount_sar: 60 });
+  assert.equal(kept.category, 'ctr');
+});
+
+test('الصفوف القديمة تبقى بلا بند — لا تُصنَّف «أخرى» من ظهر الغيب', async () => {
+  const list = await expenses.listProjectExpenses(finance, 'P1');
+  const legacy = list.find((r) => r.id === 'E1');
+  assert.equal(legacy.category, null);
+  assert.equal(legacy.category_ar, null, 'الفراغ يُقال فراغاً لا بنداً مخترَعاً');
 });
 
 // ── ⑥ حارس الصف: مشروع خارج النطاق يُرَدّ قبل أي رقم ────────────────────────────────────────
 test('مشروع خارج نطاق القارئ يُرَدّ في القراءة والكتابة معاً', async () => {
   await assert.rejects(() => projectMoney(lead2, 'P1'), /خارج نطاق/);
   await assert.rejects(() => expenses.listProjectExpenses(lead2, 'P1'), /خارج نطاق/);
-  await assert.rejects(() => expenses.createExpense(ctx(lead2), 'P1', { type: 'س', amount_sar: 10, month: 1, year: YR }), /خارج نطاق/);
+  await assert.rejects(() => expenses.createExpense(ctx(lead2), 'P1', { category: 'oth', type: 'س', amount_sar: 10, month: 1, year: YR }), /خارج نطاق/);
   await assert.rejects(() => projectMoney(finance, 'P404'), /غير موجود/);
 });
 
@@ -316,5 +362,5 @@ test('مدير المشروع يرى مالية مشروعه — ولا كلفة
   assert.equal(m.expenses.can_add, false);
   assert.equal(m.cost.permitted, false, 'والكلفة حقل حساس لم يُفتح');
   assert.ok(m.expenses.reason_ar, 'ويُقال سبب الحجب لا أن يظهر فراغ');
-  await assert.rejects(() => expenses.createExpense(ctx(pm), 'P1', { type: 'س', amount_sar: 10, month: 1, year: YR }), /صلاحية/);
+  await assert.rejects(() => expenses.createExpense(ctx(pm), 'P1', { category: 'oth', type: 'س', amount_sar: 10, month: 1, year: YR }), /صلاحية/);
 });

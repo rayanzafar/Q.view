@@ -14,7 +14,7 @@ const STATUS_AR = {
 };
 const STATUS_TONE = { applied: 'green', undone: 'slate', failed: 'red', previewed: 'blue', uploaded: 'amber', discarded: 'slate' };
 const MODE_AR = { add: G.importAdd, upsert: G.importUpsert, replace: G.importReplace };
-const TYPE_ICON = { clients: 'client', employees: 'team', opportunities: 'opportunity', projects: 'projects', staffing: 'users', revenues: 'money' };
+const TYPE_ICON = { clients: 'client', employees: 'team', opportunities: 'opportunity', projects: 'projects', staffing: 'users', revenues: 'money', 'finance-pl': 'money' };
 
 const fmtAt = (iso) => (iso ? `${iso.slice(0, 10)} ${iso.slice(11, 16)}` : '—');
 
