@@ -4,6 +4,7 @@
 // داخل الاستعلامات نفسها، ونُسقط كل نوع لا يملك المستخدم قراءة مورده (فاتورة/تحصيل/عميل…).
 import { all, get } from '../db/index.js';
 import { can } from '../rbac/index.js';
+import { scopeFilter } from '../rbac/scope.js';
 
 // حساب بداية النافذة (UTC، محمول): day=أمس، week=7 أيام، month=30، quarter=91.
 export const WINDOW_DAYS = { day: 1, week: 7, month: 30, quarter: 91 };
@@ -13,13 +14,111 @@ export function sinceForWindow(win, today = new Date()) {
   return new Date(t - days * 86400000).toISOString().slice(0, 10);
 }
 
+// حدود النافذة محصورةً داخل السنة المعروضة دائماً: [sinceIso, untilIso) والحد الأعلى حصري.
+// السنة الجارية: «حتى الغد» حصرياً أي اليومَ كاملاً، والبداية تطابق sinceForWindow حرفاً.
+// سنة ماضية: النوافذ ترسو على آخر السنة (شهرٌ على 2025 = ديسمبر 2025) — فلا انقلاب since>until
+// الذي كان يُصفّر الرقائق صمتاً. سنة قادمة: نافذة فارغة معلنة لا مقلوبة. والنافذة لا تعبر
+// حدود سنتها أبداً (أرضيتها أول السنة) — ألسنة الفترة تُقسّم السنة المعروضة لا تخرج منها.
+export function windowBounds(win, year, now = new Date()) {
+  const y = Number(year);
+  const yearStart = `${y}-01-01`, yearEndExcl = `${y + 1}-01-01`;
+  const t = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const tomorrow = new Date(t + 86400000).toISOString().slice(0, 10);
+  const untilIso = tomorrow < yearStart ? yearStart : (tomorrow < yearEndExcl ? tomorrow : yearEndExcl);
+  if (win === 'year') return { sinceIso: yearStart, untilIso };
+  const days = WINDOW_DAYS[win] || WINDOW_DAYS.week;
+  const rolled = new Date(Date.parse(untilIso) - (days + 1) * 86400000).toISOString().slice(0, 10);
+  return { sinceIso: rolled > yearStart ? rolled : yearStart, untilIso };
+}
+
+// ── فترةٌ تقويمية محدَّدة: شهرٌ بعينه أو ربعٌ بعينه أو السنة ──────────────────────────
+// النافذة المتدحرجة (windowBounds) تجيب «ما الجديد» — وهي الصواب لتغذية «ما تغيّر» وحدها.
+// أما «كم أنجزنا في أغسطس؟» فيحتاج حدّاً تقويمياً: «الشهر» المتدحرج يعني آخر ثلاثين يوماً،
+// ولذلك كان «الربع» يعرض أربعة أشهر متقاطعة — رقمٌ لا يطابق ما يفهمه القارئ من التسمية.
+//
+// الحدّان هما الفترة كاملةً كما في التقويم (لا مقصوصةً عند اليوم): الاستعلامات تعيد ما سُجِّل
+// فعلاً، والشاشة هي التي تقول «حتى اليوم» للفترة الجارية و«متوقع» للقادمة. وخلطُ المحقق
+// بالمتوقع في خانةٍ واحدة ممنوع — ولهذا تُعاد الحالة مع الحدّين لا الحدّان وحدهما.
+// ألسنةُ الفترة خمسٌ: السنة، ربعٌ بعينه، شهرٌ بعينه، «منذ أول السنة حتى اليوم» (ytd)،
+// ومدىً متصل — أشهراً (m3-m8) أو أرباعاً (q1-q3). والقراءة تُعيد
+// `key` — النصّ القانوني الذي يُعاد وضعه في الرابط — فلا يُركّبه كل مستدعٍ من kind+index
+// (تركيبةٌ لا تصلح لـytd ولا للمدى أصلاً).
+//
+// **وحدةُ المدى** (`unit`: 'm' أو 'q') جزءٌ من الحالة لا زينة: مُنتقي الفترة يرسم شريطاً
+// متصلاً على رقائق جنس المدى وحده — مدى أرباعٍ يضيء الأرباع، ومدى أشهرٍ يضيء الأشهر —
+// وبلا الوحدة لا سبيل إلى التمييز بعد أن صار الحدّان شهرَين في كلتا الحالتين. ومدى الأرباع
+// يحمل معه حدَّيه بالأرباع (`qFrom`/`qTo`) كي لا يُستنبطا قسمةً في كل مستدعٍ.
+export const PERIOD_KINDS = ['y', 'q', 'm', 'ytd', 'range'];
+const clampM = (n) => Math.min(12, Math.max(1, n));
+const clampQ = (n) => Math.min(4, Math.max(1, n));
+const singleQ = (i) => ({ kind: 'q', index: i, key: `q${i}`, from: (i - 1) * 3 + 1, to: (i - 1) * 3 + 3 });
+export function parsePeriod(p) {
+  const v = String(p || 'y').trim().toLowerCase();
+  if (v === 'y') return { kind: 'y', index: 0, key: 'y', from: 1, to: 12 };
+  // «حتى تاريخه»: حدّها الأعلى لا يُعرف إلا مع `now` ⇒ to = null هنا، وperiodBounds يحسمه.
+  if (v === 'ytd') return { kind: 'ytd', index: 0, key: 'ytd', from: 1, to: null };
+  const q = /^q([1-4])$/.exec(v);
+  if (q) return singleQ(Number(q[1]));
+  const m = /^m(1[0-2]|[1-9])$/.exec(v);
+  if (m) { const i = Number(m[1]); return { kind: 'm', index: i, key: `m${i}`, from: i, to: i }; }
+  // مدى أشهر: يُقصّ كلٌّ من طرفيه إلى 1–12، ويُقلب إن جاء معكوساً، وشهرٌ واحد يعود شهراً.
+  const r = /^m(\d{1,2})-m(\d{1,2})$/.exec(v);
+  if (r) {
+    let a = clampM(Number(r[1])), b = clampM(Number(r[2]));
+    if (a > b) [a, b] = [b, a];
+    if (a === b) return { kind: 'm', index: a, key: `m${a}`, from: a, to: a };
+    return { kind: 'range', unit: 'm', index: 0, key: `m${a}-m${b}`, from: a, to: b };
+  }
+  // مدى أرباع: بالقواعد نفسها (قصٌّ وقلبٌ وانهيارُ الواحد إلى ربعٍ بعينه) — وحدوده الشهرية
+  // تُشتقّ من الأرباع فلا حسابَ جديد في periodBounds. و«الربع الأول إلى الرابع» يبقى مدىً:
+  // القارئ اختار مدىً فيُقال له مدىً، ولو ساوى السنةَ في أرقامه.
+  const rq = /^q(\d{1,2})-q(\d{1,2})$/.exec(v);
+  if (rq) {
+    let a = clampQ(Number(rq[1])), b = clampQ(Number(rq[2]));
+    if (a > b) [a, b] = [b, a];
+    if (a === b) return singleQ(a);
+    return { kind: 'range', unit: 'q', index: 0, key: `q${a}-q${b}`, from: (a - 1) * 3 + 1, to: b * 3, qFrom: a, qTo: b };
+  }
+  return { kind: 'y', index: 0, key: 'y', from: 1, to: 12 };  // مجهولٌ ⇒ السنة، لا خطأ في وجه القارئ
+}
+export function periodBounds(p, year, now = new Date()) {
+  const { kind, index, key, from, to, unit, qFrom, qTo } = parsePeriod(p);
+  const y = Number(year);
+  const pad = (n) => String(n).padStart(2, '0');
+  let startM = from, endM = (to == null ? 12 : to) + 1;   // endM حصري (13 = أول العام التالي)
+  if (kind === 'ytd') {
+    // السنة الجارية: تنتهي بنهاية الشهر الجاري (اصطلاح الحدّ الأعلى نفسه الذي للشهر والربع
+    // — الفترة كاملةً كما في التقويم). سنةٌ أخرى ⇒ السنة كاملة، والحالة تقولها بنفسها.
+    const curM = y === now.getUTCFullYear() ? now.getUTCMonth() + 1 : 12;
+    startM = 1; endM = curM + 1;
+  }
+  const sinceIso = `${y}-${pad(startM)}-01`;
+  const untilIso = endM > 12 ? `${y + 1}-01-01` : `${y}-${pad(endM)}-01`;
+  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
+    .toISOString().slice(0, 10);
+  const isPast = untilIso <= today;          // انقضت كاملةً
+  const isFuture = sinceIso > today;         // لم تبدأ بعد
+  // وحدةُ المدى وحدّاه بالأرباع تُمرَّران كما هما حين وُجدا — ولا يُضاف مفتاحٌ بقيمةٍ غائبة
+  // إلى فترةٍ لا مدى لها (شكلُ الحالة نفسه لكل لسانٍ بعينه، فلا فرقَ بين مسارين للفترة ذاتها).
+  return { kind, index, key, ...(unit ? { unit } : {}), ...(qFrom ? { qFrom, qTo } : {}),
+    sinceIso, untilIso, isPast, isFuture, isCurrent: !isPast && !isFuture,
+    months: Array.from({ length: (endM > 12 ? 13 : endM) - startM }, (_, i) => startM + i) };
+}
+
+// «آخر تحديث» الحقيقي: أحدث سجلّ في سجل النظام للقطاع — كل كتابةٍ في المنصة تمرّ به.
+// لا وجود لسجل ⇒ null، والشاشة تقول «لا تحديثات مسجَّلة بعد» لا تاريخَ اليوم المُختلق.
+export async function lastChangeAt(sectorId) {
+  const r = await get('SELECT at FROM audit_log WHERE sector_id = ? ORDER BY at DESC LIMIT 1', [sectorId]);
+  return r?.at || null;
+}
+
 const CREATED_LABEL = { opportunity: 'فرصة جديدة', project: 'مشروع جديد', contract: 'عقد جديد', client: 'عميل جديد' };
 const CREATED_HREF = {
   opportunity: (id) => `/app/opportunity/${id}`, project: (id) => `/app/project/${id}`,
-  contract: (id) => `/app/contract/${id}`, client: (id) => `/app/client/${id}`,
+  contract: (id) => '/app/projects', client: (id) => `/app/client/${id}`,
 };
 // سجل إنشاء بلا معرّف (نادر) → صفحة القائمة الأم بدل رابط مكسور
-const CREATED_LIST = { opportunity: '/app/opportunities', project: '/app/projects', contract: '/app/finance', client: '/app/clients' };
+const CREATED_LIST = { opportunity: '/app/opportunities', project: '/app/projects', contract: '/app/projects', client: '/app/clients' };
 
 // أسماء السجلات المُنشأة (من سجل النظام) — جلب دفعة واحدة لكل مورد، بلا اختلاق عند الغياب.
 async function createdNames(resource, ids) {
@@ -30,16 +129,27 @@ async function createdNames(resource, ids) {
   return Object.fromEntries(rows.map((r) => [r.id, r.nm]));
 }
 
-export async function changesSince(user, sectorId, sinceIsoDate) {
+export async function changesSince(user, sectorId, sinceIsoDate, untilIsoDate = null) {
   const since = String(sinceIsoDate).slice(0, 10);
+  // حدٌّ أعلى اختياري (حصري) — سنةٌ ماضية بلا سقفٍ كانت تعرض أحداث السنة الجارية في تغذيتها.
+  const until = untilIsoDate ? String(untilIsoDate).slice(0, 10) : null;
   const items = [];
   const counts = { stage: 0, invoice: 0, collection: 0, activity: 0, created: 0 };
 
   // ── 1) حركات مراحل الفرص (opportunity_stage_history.changed_at) ──
+  // الحركة تحمل عنوان الفرصة وقيمتها وعميلها — تفاصيل صفقةٍ قبل ترسيتها، لا رقماً مجمَّعاً.
+  // فتُقصّ على نطاق **قائمة الفرص نفسه** (نفس خيارات listOpportunities حرفاً، مؤهَّلةً بـ`o.`):
+  // BD يرى حركات فرصه هو، ومدير الإدارة إداراته المسؤولة والمشارِكة، وقائد القطاع قطاعه.
+  // البوابة العارية can(user,'read','opportunity') كانت وحدها هنا فتفتح حركات القطاع كله
+  // لكل من يملك المنح مهما ضاق نطاقه.
   if (can(user, 'read', 'opportunity')) {
+    const f = scopeFilter(user, 'opportunity', 'read',
+      { sectorCol: 'o.sector_id', ownerCol: 'o.owner_user_id', projectCol: 'o.id',
+        grantCol: 'o.department_id', memberCol: 'o.id', deptCol: 'o.department_id' });
     const base = `FROM opportunity_stage_history h JOIN opportunity o ON o.id = h.opportunity_id`;
-    const cond = `WHERE o.sector_id = ? AND o.deleted_at IS NULL AND h.changed_at >= ?`;
-    counts.stage = (await get(`SELECT COUNT(*) n ${base} ${cond}`, [sectorId, since]))?.n || 0;
+    const cond = `WHERE o.sector_id = ? AND o.deleted_at IS NULL AND h.changed_at >= ?${until ? ' AND h.changed_at < ?' : ''} AND ${f.clause}`;
+    const params = [sectorId, since, ...(until ? [until] : []), ...f.params];
+    counts.stage = (await get(`SELECT COUNT(*) n ${base} ${cond}`, params))?.n || 0;
     const rows = await all(`SELECT h.changed_at at, o.id opp_id, o.title_ar, o.value_halalas,
          sf.name_ar from_name, st.name_ar to_name, COALESCE(st.is_won,0) is_won, COALESCE(st.is_lost,0) is_lost,
          c.name_ar client
@@ -47,7 +157,7 @@ export async function changesSince(user, sectorId, sinceIsoDate) {
        LEFT JOIN stage sf ON sf.id = h.from_stage_id
        LEFT JOIN stage st ON st.id = h.to_stage_id
        LEFT JOIN client c ON c.id = o.client_id
-       ${cond} ORDER BY h.changed_at DESC LIMIT 40`, [sectorId, since]);
+       ${cond} ORDER BY h.changed_at DESC LIMIT 40`, params);
     for (const r of rows) {
       const won = Number(r.is_won) === 1, lost = Number(r.is_lost) === 1;
       items.push({
@@ -66,18 +176,21 @@ export async function changesSince(user, sectorId, sinceIsoDate) {
     const base = `FROM invoice i LEFT JOIN project p ON p.id = i.project_id`;
     const cond = `WHERE COALESCE(i.sector_id, p.sector_id) = ? AND i.deleted_at IS NULL
          AND i.status NOT IN ('DRAFT','CANCELLED')
-         AND i.issue_date IS NOT NULL AND substr(i.issue_date,1,10) >= ?`;
-    counts.invoice = (await get(`SELECT COUNT(*) n ${base} ${cond}`, [sectorId, since]))?.n || 0;
+         AND i.issue_date IS NOT NULL AND substr(i.issue_date,1,10) >= ?${until ? ' AND substr(i.issue_date,1,10) < ?' : ''}`;
+    const iparams = [sectorId, since, ...(until ? [until] : [])];
+    counts.invoice = (await get(`SELECT COUNT(*) n ${base} ${cond}`, iparams))?.n || 0;
     const rows = await all(`SELECT i.code, i.amount_halalas, substr(i.issue_date,1,10) at,
          c.name_ar client, p.name_ar project
        ${base} LEFT JOIN client c ON c.id = i.client_id
-       ${cond} ORDER BY i.issue_date DESC LIMIT 40`, [sectorId, since]);
+       ${cond} ORDER BY i.issue_date DESC LIMIT 40`, iparams);
     for (const r of rows) {
+      // الرمز حقلٌ مستقل لا وسمٌ في النص: الشاشة تهرّب العنوان كله، فوسمٌ داخله يظهر حرفياً
+      // «<bdi>…</bdi>» أمام القارئ — والشاشة هي من يغلّف الرمز بعزل الاتجاه بعد التهريب.
       items.push({
         kind: 'invoice', at: r.at,
-        title: r.code ? `صدرت فاتورة <bdi>${r.code}</bdi>` : 'صدرت فاتورة',
+        title: 'صدرت فاتورة', code: r.code || null,
         sub: r.client || r.project || '',
-        amount_halalas: r.amount_halalas || 0, href: '/app/finance',
+        amount_halalas: r.amount_halalas || 0, href: '/app/projects',
       });
     }
 
@@ -85,16 +198,17 @@ export async function changesSince(user, sectorId, sinceIsoDate) {
     const cbase = `FROM collection col JOIN invoice i ON i.id = col.invoice_id
        LEFT JOIN project p ON p.id = i.project_id`;
     const ccond = `WHERE COALESCE(i.sector_id, p.sector_id) = ? AND i.deleted_at IS NULL
-         AND col.collected_at IS NOT NULL AND substr(col.collected_at,1,10) >= ?`;
-    counts.collection = (await get(`SELECT COUNT(*) n ${cbase} ${ccond}`, [sectorId, since]))?.n || 0;
+         AND col.collected_at IS NOT NULL AND substr(col.collected_at,1,10) >= ?${until ? ' AND substr(col.collected_at,1,10) < ?' : ''}`;
+    const cparams = [sectorId, since, ...(until ? [until] : [])];
+    counts.collection = (await get(`SELECT COUNT(*) n ${cbase} ${ccond}`, cparams))?.n || 0;
     const crows = await all(`SELECT col.amount_halalas, substr(col.collected_at,1,10) at, i.code, c.name_ar client
        ${cbase} LEFT JOIN client c ON c.id = i.client_id
-       ${ccond} ORDER BY col.collected_at DESC LIMIT 40`, [sectorId, since]);
+       ${ccond} ORDER BY col.collected_at DESC LIMIT 40`, cparams);
     for (const r of crows) {
       items.push({
-        kind: 'collection', at: r.at, title: 'تحصيل دفعة',
-        sub: [r.client, r.code ? `فاتورة <bdi>${r.code}</bdi>` : null].filter(Boolean).join(' · '),
-        amount_halalas: r.amount_halalas || 0, href: '/app/finance',
+        kind: 'collection', at: r.at, title: 'تحصيل دفعة', code: r.code || null,
+        sub: r.client || '',
+        amount_halalas: r.amount_halalas || 0, href: '/app/projects',
       });
     }
   }
@@ -102,11 +216,11 @@ export async function changesSince(user, sectorId, sinceIsoDate) {
   // ── 4) تواصل العملاء (crm_activity.at) — قطاع النشاط، أو عميل له بصمة في هذا القطاع ──
   if (can(user, 'read', 'client') || can(user, 'read', 'opportunity')) {
     const base = `FROM crm_activity a`;
-    const cond = `WHERE a.deleted_at IS NULL AND a.at >= ?
+    const cond = `WHERE a.deleted_at IS NULL AND a.at >= ?${until ? ' AND a.at < ?' : ''}
          AND (a.sector_id = ? OR (a.sector_id IS NULL AND a.client_id IS NOT NULL AND (
               EXISTS(SELECT 1 FROM opportunity o WHERE o.client_id = a.client_id AND o.sector_id = ? AND o.deleted_at IS NULL)
            OR EXISTS(SELECT 1 FROM project pr WHERE pr.client_id = a.client_id AND pr.sector_id = ? AND pr.deleted_at IS NULL))))`;
-    const params = [since, sectorId, sectorId, sectorId];
+    const params = [since, ...(until ? [until] : []), sectorId, sectorId, sectorId];
     counts.activity = (await get(`SELECT COUNT(*) n ${base} ${cond}`, params))?.n || 0;
     const rows = await all(`SELECT a.at, a.title, a.client_id, COALESCE(a.actor_name, u.name_ar, u.username) actor, c.name_ar client
        ${base}
@@ -125,10 +239,32 @@ export async function changesSince(user, sectorId, sinceIsoDate) {
   // ── 5) سجلات إنشاء من سجل النظام (audit_log.at، action='create') — «من سجل النظام» ──
   const readableRes = Object.keys(CREATED_LABEL).filter((r) => can(user, 'read', r));
   if (readableRes.length) {
-    const ph = readableRes.map(() => '?').join(',');
+    // بند «فرصة جديدة» يحمل عنوان الفرصة ورابط صفحتها — تفاصيل صفقةٍ قبل ترسيتها، فيُقصّ على
+    // نطاق **قائمة الفرص نفسه** (نفس حقيقة حركات المراحل في القسم ١ أعلاه): البند الذي لا
+    // يفتحه القارئ **يسقط** ولا يُعاد تسميته — ما لا يُفتح لا يُعرض، وسجلٌّ بلا معرّف يُتحقّق
+    // منه يسقط معه (فشل مغلق). بقية الموارد (مشروع/عقد/عميل) على بوابتها كما كانت.
+    const resParts = [];
+    const resParams = [];
+    const others = readableRes.filter((r) => r !== 'opportunity');
+    if (others.length) {
+      resParts.push(`a.resource IN (${others.map(() => '?').join(',')})`);
+      resParams.push(...others);
+    }
+    if (readableRes.includes('opportunity')) {
+      const f = scopeFilter(user, 'opportunity', 'read',
+        { sectorCol: 'o.sector_id', ownerCol: 'o.owner_user_id', projectCol: 'o.id',
+          grantCol: 'o.department_id', memberCol: 'o.id', deptCol: 'o.department_id' });
+      if (f.clause === '1=1') {
+        resParts.push(`a.resource = 'opportunity'`);
+      } else {
+        resParts.push(`(a.resource = 'opportunity' AND EXISTS (
+          SELECT 1 FROM opportunity o WHERE o.id = a.resource_id AND ${f.clause}))`);
+        resParams.push(...f.params);
+      }
+    }
     const base = `FROM audit_log a`;
-    const cond = `WHERE a.action = 'create' AND a.resource IN (${ph}) AND a.sector_id = ? AND a.at >= ?`;
-    const params = [...readableRes, sectorId, since];
+    const cond = `WHERE a.action = 'create' AND (${resParts.join(' OR ')}) AND a.sector_id = ? AND a.at >= ?${until ? ' AND a.at < ?' : ''}`;
+    const params = [...resParams, sectorId, since, ...(until ? [until] : [])];
     counts.created = (await get(`SELECT COUNT(*) n ${base} ${cond}`, params))?.n || 0;
     const rows = await all(`SELECT a.at, a.resource, a.resource_id, COALESCE(u.name_ar, a.username) username ${base.replace('FROM audit_log a', 'FROM audit_log a LEFT JOIN app_user u ON u.username = a.username')} ${cond}
        ORDER BY a.at DESC LIMIT 40`, params);

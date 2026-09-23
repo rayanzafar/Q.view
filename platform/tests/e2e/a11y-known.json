@@ -14,20 +14,6 @@
     "note": "Same layout.js year selector as /app/ceo."
   },
   {
-    "page": "sector",
-    "rule": "select-name",
-    "impact": "critical",
-    "found": "2026-07-20",
-    "note": "Same layout.js year selector as /app/ceo."
-  },
-  {
-    "page": "sector",
-    "rule": "color-contrast",
-    "impact": "serious",
-    "found": "2026-07-20",
-    "note": "13px bold .tnum money value in var(--green) #059669 on white = 3.76:1 (needs 4.5:1). Fix: darker green for small text (e.g. #047857) or ≥18.66px bold."
-  },
-  {
     "page": "opportunities",
     "rule": "scrollable-region-focusable",
     "impact": "serious",

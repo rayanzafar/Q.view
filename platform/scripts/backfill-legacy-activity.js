@@ -11,7 +11,9 @@ import { ROOT } from '../src/core/config.js';
 const DRY = process.argv.includes('--dry-run');
 const file = ['seed/legacy-state.snapshot.json', 'seed/legacy-state.demo.json', 'seed/legacy-activity.backfill.json']
   .map((p) => resolve(ROOT, p)).find((p) => existsSync(p));
-if (!file) { console.error('!! لا يوجد ملف snapshot/demo'); process.exit(1); }
+// غياب ملف التاريخ القديم هو الحال الطبيعي (اللقطات مستبعَدة من المستودع) — لا عطل: لا شيء
+// لتعبئته، فيُقال ذلك في مستوى المعلومة لا الخطأ ويُخرَج بنجاح كي لا يُلوَّث سجل الإقلاع بإنذارٍ كاذب.
+if (!file) { console.log('backfill: لا ملف تاريخ قديم (snapshot/demo) — لا شيء لتعبئته. تخطٍّ.'); process.exit(0); }
 const SNAP = JSON.parse(readFileSync(file, 'utf8'));
 
 const acts = SNAP.activity || [];

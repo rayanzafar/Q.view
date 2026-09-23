@@ -69,3 +69,53 @@ export function buildExport({ columns, rows, format = 'xlsx', sheetName = 'بي�
   const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx', compression: true });
   return { buffer, mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', ext: 'xlsx' };
 }
+
+// ── اسم الورقة كما يقبله Excel ──────────────────────────────────────────────────
+// Excel يرفض الفراغ ويرفض الرموز []:*?/\ ويقصّ ما جاوز ٣١ حرفاً — وورقتان باسمٍ واحد
+// تكسران الملفّ كلَّه. فالاسم يُنقّى ويُقصّ ويُميَّز برقمٍ عربي عند التكرار.
+const AR_NUM = (n) => String(n).replace(/\d/g, (d) => '٠١٢٣٤٥٦٧٨٩'[Number(d)]);
+function sheetNameOf(name, used) {
+  let base = String(name ?? '').replace(/[[\]:*?/\\]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 31);
+  if (!base) base = 'ورقة';
+  if (!used.has(base)) { used.add(base); return base; }
+  for (let i = 2; i < 100; i++) {
+    const tail = ' ' + AR_NUM(i);
+    const candidate = base.slice(0, 31 - tail.length).trim() + tail;
+    if (!used.has(candidate)) { used.add(candidate); return candidate; }
+  }
+  const last = base.slice(0, 24).trim() + ' ' + AR_NUM(used.size);
+  used.add(last);
+  return last;
+}
+
+/**
+ * ملفُّ Excel بأوراقٍ عدّة — شقيقُ `buildExport` لا بديلُه: نفسُ حارس حقن المعادلات ونفسُ
+ * تصنيف الأعمدة ونفسُ عرضِ الورقة من اليمين، غير أن الملفّ هنا يحمل فصولاً لا فصلاً واحداً.
+ *
+ * @param {{sheets: {name: string, columns: {key: string, labelAr: string}[], rows: object[]}[], rtl?: boolean}} arg
+ * @returns {{buffer: Buffer, mime: string, ext: string, sheetNames: string[]}}
+ */
+export function buildWorkbook({ sheets = [], rtl = true } = {}) {
+  const wb = XLSX.utils.book_new();
+  const used = new Set();
+  for (const sheet of sheets) {
+    if (!sheet) continue;
+    const columns = sheet.columns || [];
+    const headers = columns.map((c) => c.labelAr);
+    // نفسُ قاعدة `buildExport`: القيمة تمرّ كما هي (الرقم رقماً)، والغائب خليّةً فارغة،
+    // والنصُّ البادئ بـ= + - @ يُسبق بفاصلة عليا فلا يُقرأ معادلةً عند الفتح.
+    const data = (sheet.rows || []).map((r) => columns.map((c) => guardCell(r[c.key] ?? '')));
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
+    ws['!cols'] = columns.map((c) => ({ wch: Math.max(14, (c.labelAr || '').length + 6) }));
+    XLSX.utils.book_append_sheet(wb, ws, sheetNameOf(sheet.name, used));
+  }
+  if (!wb.SheetNames.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([[]]), sheetNameOf('', used));
+  if (rtl) wb.Workbook = { Views: [{ RTL: true }] };
+  const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx', compression: true });
+  return {
+    buffer,
+    mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    ext: 'xlsx',
+    sheetNames: [...wb.SheetNames],
+  };
+}

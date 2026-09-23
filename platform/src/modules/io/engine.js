@@ -16,8 +16,9 @@ import opportunities from './adapters/opportunities.js';
 import projects from './adapters/projects.js';
 import staffing from './adapters/staffing.js';
 import revenues from './adapters/revenues.js';
+import financePl from './adapters/finance-pl.js';
 
-export const ADAPTERS = { clients, employees, opportunities, projects, staffing, revenues };
+export const ADAPTERS = { clients, employees, opportunities, projects, staffing, revenues, 'finance-pl': financePl };
 const MODES = ['add', 'upsert', 'replace'];
 const MAX_ROWS = 5000;
 const UNDO_DAYS = 7;
@@ -93,7 +94,7 @@ export function autoMap(headers, columns) {
 // ── مصادر lookup (تُحمَّل مرة لكل عملية، حسب حاجة أعمدة المحوّل فقط) ──
 const LOOKUP_SOURCES = {
   sector: { label: 'القطاعات', codeKeys: ['id'], nameKeys: ['name_ar', 'name_en'], sql: 'SELECT id, name_ar, name_en FROM sector WHERE deleted_at IS NULL' },
-  stage: { label: 'المراحل', codeKeys: ['id'], nameKeys: ['name_ar', 'name_en'], sql: 'SELECT id, name_ar, name_en FROM stage' },
+  stage: { label: 'المراحل', codeKeys: ['id'], nameKeys: ['name_ar', 'name_en'], sql: 'SELECT id, name_ar, name_en FROM stage WHERE deleted_at IS NULL' },
   user: { label: 'المستخدمين', codeKeys: ['username'], nameKeys: ['name_ar', 'username'], sql: 'SELECT id, username, name_ar FROM app_user WHERE deleted_at IS NULL AND active = 1' },
   client: { label: 'العملاء', codeKeys: ['code'], nameKeys: ['name_ar', 'name_en'], sql: 'SELECT id, code, name_ar, name_en FROM client WHERE deleted_at IS NULL' },
   employee: { label: 'الموظفين', codeKeys: [], nameKeys: ['name_ar', 'name_en'], sql: 'SELECT id, name_ar, name_en FROM employee WHERE deleted_at IS NULL' },

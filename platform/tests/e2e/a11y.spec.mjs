@@ -17,7 +17,10 @@ export default async function a11ySpec({ browser, base, t, platformRoot }) {
 
   let totalViolations = 0, knownHits = 0;
   const pages = await pagesFor('demo.admin');
-  for (const p of pages) {
+  // مركز القطاع شاشةٌ واحدة (v6.10): حالاتُ العنوان لا ألسنةٌ تُصيَّر بمفاتيحها. المفتاح في
+  // قائمة الاستثناءات هو النصّ بعد `/app/` كما هو — فيبقى الاستثناء مثبَّتاً بحالته.
+  const TAB_PAGES = ['sector?months=1,2,3', 'sector?tab=hr'];
+  for (const p of [...pages, ...TAB_PAGES]) {
     await open(page, base, `/app/${p}`);
     await page.addScriptTag({ content: axeSource });
     const result = await page.evaluate(async () => {
@@ -32,6 +35,6 @@ export default async function a11ySpec({ browser, base, t, platformRoot }) {
       t.fail(`a11y /app/${p}`, `${v.impact} ${v.id} ×${v.nodes} (e.g. ${v.sample})`);
     }
   }
-  if (!totalViolations) t.pass(`a11y: ${pages.length} pages free of serious/critical violations (${knownHits} documented exception hits)`);
+  if (!totalViolations) t.pass(`a11y: ${pages.length + TAB_PAGES.length} pages free of serious/critical violations (${knownHits} documented exception hits)`);
   await ctx.close();
 }

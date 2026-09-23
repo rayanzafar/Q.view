@@ -74,6 +74,17 @@ before(async () => {
   });
   await db.insert('revenue_line', { id: 'R1', sector_id: 'S1', project_id: 'P1', amount_halalas: 50000000, month: 1, year: 2026, label: 'دفعة يناير', auto: 0, created_at: now });
   await db.insert('revenue_line', { id: 'R2', sector_id: 'S1', project_id: null, amount_halalas: 25000000, month: 2, year: 2026, label: 'دفعة فبراير', auto: 0, created_at: now });
+  // سطور قائمة الدخل (ترحيلة ٠٥٠): فعليٌّ لبند كلفة، وخطةٌ لسطر الإيراد — يغطيان بوابتَي المحوّل
+  await db.insert('pl_line_amount', {
+    id: 'PL1', sector_id: 'S1', year: 2026, month: 1, line_key: 'sal', kind: 'actual',
+    amount_halalas: 42000000, source: 'manual', note: 'إقفال يناير', revision: 1,
+    created_by: 'u_admin', created_at: now,
+  });
+  await db.insert('pl_line_amount', {
+    id: 'PL2', sector_id: 'S1', year: 2026, month: 1, line_key: 'rev', kind: 'plan',
+    amount_halalas: 200000000, source: 'manual', note: null, revision: 1,
+    created_by: 'u_admin', created_at: now,
+  });
 });
 
 after(async () => { await db.close(); for (const s of ['', '-wal', '-shm']) rmSync(TEST_DB + s, { force: true }); });
@@ -244,14 +255,17 @@ test('undo: rejected after the 7-day window expires', async () => {
 });
 
 // ── الحساسية والنطاق ──
-test('sensitive: salary column exists for hr/admin and sector_lead (owner-granted), hidden from bd', () => {
+test('sensitive: عمود الراتب في التصدير لمدير النظام فقط — محجوب عن كل دور آخر حتى تكامل Odoo', () => {
   const a = engine.ADAPTERS.employees;
-  const hrCols = engine.visibleColumns(U('hr', null, 'company'), a).map((c) => c.key);
-  const leadCols = engine.visibleColumns(U('sector_lead', 'S1', 'sector'), a).map((c) => c.key);
-  const bdCols = engine.visibleColumns(U('bd_manager', 'S1', 'sector'), a).map((c) => c.key);
-  assert.ok(hrCols.includes('salary'));
-  assert.ok(leadCols.includes('salary'), 'قائد القطاع يرى عمود الراتب الآن (قرار صريح من المالك)');
-  assert.ok(!bdCols.includes('salary'), 'مدير تطوير الأعمال لا يزال بلا صلاحية الراتب');
+  const adminCols = engine.visibleColumns(U('admin', null, 'company'), a).map((c) => c.key);
+  assert.ok(adminCols.includes('salary'), 'مدير النظام يصدّر عمود الراتب');
+  for (const [role, sector, scope] of [
+    ['hr', null, 'company'], ['sector_lead', 'S1', 'sector'],
+    ['ceo_office', null, 'company'], ['bd_manager', 'S1', 'sector'], ['ceo_office', null, 'company'],
+  ]) {
+    const cols = engine.visibleColumns(U(role, sector, scope), a).map((c) => c.key);
+    assert.ok(!cols.includes('salary'), `${role} يجب ألا يصدّر عمود الراتب`);
+  }
 });
 
 test('row scope: sector_lead importing an employee into another sector gets a row error, not a silent skip', async () => {
@@ -266,8 +280,38 @@ test('row scope: sector_lead importing an employee into another sector gets a ro
   assert.match(pv.errors[0].message, /خارج نطاق صلاحيتك/);
 });
 
+test('KI-092: استيراد تسكينٍ متعدد السنين لنفس (الموظف×المشروع) — كل صفٍّ يسكن سنته ولا يفسد غيرها', async () => {
+  // ثلاثة صفوف لنفس الزوج والسنةُ الحالية في **وسطها** عمداً: قبل الإصلاح كان كل إنشاء يقع
+  // على سنة اليوم ثم «يُرقَّع» أقدمُ تسكينٍ للزوج — فتفسد السنوات ويصطدم أحد الصفوف بمانع التكرار.
+  const a = engine.ADAPTERS.staffing;
+  const now = ids.nowIso();
+  const Y = new Date().getUTCFullYear();
+  await db.insert('project', {
+    id: 'P_KI092', code: 'PRJ-KI092', name_ar: 'مشروع سنوات التسكين', sector_id: 'S1',
+    status: 'IN_PROGRESS', rag: 'GREEN', created_at: now,
+  });
+  const c = ctx(U('sector_lead', 'S1', 'sector'));
+  const rows = [
+    { employee: 'موظف الاختبار', project: 'مشروع سنوات التسكين', year: Y + 1, from_month: 1, to_month: 6, pct: 50 },
+    { employee: 'موظف الاختبار', project: 'مشروع سنوات التسكين', year: Y, from_month: 1, to_month: 12, pct: 80 },
+    { employee: 'موظف الاختبار', project: 'مشروع سنوات التسكين', year: Y - 1, from_month: 7, to_month: 12, pct: 30 },
+  ];
+  const { up, pv } = await uploadRows(c, a, rows, { mode: 'add', fileName: 'ki092.xlsx' });
+  assert.equal(pv.counts.error, 0, JSON.stringify(pv.errors));
+  assert.equal(pv.counts.create, 3);
+  const ap = await engine.apply(c, 'staffing', { runId: up.runId, confirmToken: pv.confirmToken });
+  assert.equal(ap.errors, 0, 'التنفيذ بلا أخطاء صفوف');
+  assert.equal(ap.created, 3);
+  const allocs = await db.all(
+    'SELECT year, monthly_json FROM allocation WHERE project_id = ? AND deleted_at IS NULL ORDER BY year',
+    ['P_KI092']);
+  assert.deepEqual(allocs.map((r) => Number(r.year)), [Y - 1, Y, Y + 1], 'ثلاث سنوات صحيحة بلا تكرار ولا ضياع');
+  const monthsCount = allocs.map((r) => Object.keys(JSON.parse(r.monthly_json)).length);
+  assert.deepEqual(monthsCount, [6, 12, 6], 'المخطط الشهري لكل سنة كما في ملفها');
+});
+
 // ── قاعدة الذهاب-الإياب لكل محوّل: تصدير → إعادة استيراد (إضافة وتحديث) = تجاهل 100% ──
-for (const type of ['clients', 'employees', 'opportunities', 'projects', 'staffing', 'revenues']) {
+for (const type of ['clients', 'employees', 'opportunities', 'projects', 'staffing', 'revenues', 'finance-pl']) {
   test(`round-trip ${type}: export → reimport upsert → 100% skip`, async () => {
     const a = engine.ADAPTERS[type];
     const c = ctx(admin());
@@ -280,3 +324,106 @@ for (const type of ['clients', 'employees', 'opportunities', 'projects', 'staffi
     assert.equal(pv.counts.skip, exported.length, 'كل الصفوف مطابقة تماماً');
   });
 }
+
+// ── سطور قائمة الدخل (finance-pl): البوابتان، السطور المحسوبة، النطاق، والتراجع ──
+test('finance-pl: التصدير يحذف سطور الكلفة كلياً لمن لا يملك بوابتَي التكلفة والهامش — ويبقي الإيراد', async () => {
+  const rbac = await import('../../src/core/rbac/index.js');
+  // دورٌ مُصطنع في جدول المنح: يقرأ سطور قائمة الدخل والإيراد في قطاعه، بلا بوابة تكلفة ولا هامش
+  await db.insert('role', { id: 'pl_reader', name_ar: 'قارئ سطور قائمة الدخل', name_en: 'P&L reader', is_system: 0, created_at: ids.nowIso() });
+  for (const [resource, action] of [['pl_line', 'read'], ['revenue_line', 'read']]) {
+    await db.insert('role_permission', { role_id: 'pl_reader', resource, action, scope: 'sector' });
+  }
+  await rbac.reloadGrants();
+  const reader = U('pl_reader', 'S1', 'sector');
+  const a = engine.ADAPTERS['finance-pl'];
+  assert.equal(rbac.can(reader, 'read', 'pl_line'), true, 'الدور يقرأ سطور قائمة الدخل');
+  const rows = await a.fetchRows(reader, {});
+  assert.ok(rows.length >= 1, 'سطر الإيراد يخرج له');
+  assert.ok(rows.every((r) => r.line === 'الإيراد'), `لا سطر كلفة في التصدير: ${JSON.stringify(rows)}`);
+  const full = await a.fetchRows(admin(), {});
+  assert.ok(full.some((r) => r.line !== 'الإيراد'), 'مدير النظام يرى سطور الكلفة');
+});
+
+test('finance-pl: «تكلفة الإيراد» و«مجمل الربح» يُردّان بسببٍ عربيّ لا برسالة عامة', async () => {
+  const a = engine.ADAPTERS['finance-pl'];
+  const { pv } = await uploadRows(ctx(admin()), a, [
+    { sector: 'قطاع الحلول', year: 2026, month: 3, line: 'تكلفة الإيراد', kind: 'فعلي', amount: 1000 },
+    { sector: 'قطاع الحلول', year: 2026, month: 3, line: 'مجمل الربح', kind: 'خطة', amount: 1000 },
+  ], { fileName: 'pl-derived.xlsx' });
+  assert.equal(pv.counts.error, 2);
+  assert.match(pv.errors[0].message, /يُحسب من السطور التي فوقه/);
+  assert.match(pv.errors[1].message, /يُحسب من السطور التي فوقه/);
+});
+
+test('finance-pl: قائد القطاع لا يرفع سطراً لقطاعٍ آخر — خطأ صف معلن', async () => {
+  const a = engine.ADAPTERS['finance-pl'];
+  const lead = U('sector_lead', 'S1', 'sector');
+  const { pv } = await uploadRows(ctx(lead), a, [
+    { sector: 'قطاع الحلول', year: 2026, month: 4, line: 'الإيجار', kind: 'فعلي', amount: 30000 },
+    { sector: 'قطاع الدراسات', year: 2026, month: 4, line: 'الإيجار', kind: 'فعلي', amount: 30000 },
+  ], { fileName: 'pl-scope.xlsx' });
+  assert.equal(pv.counts.create, 1);
+  assert.equal(pv.counts.error, 1);
+  // الردّ الآن من حارس المحوّل نفسه، قبل قراءة الجدول — لا من حارس المحرّك بعدها.
+  assert.match(pv.errors[0].message, /سطور قائمة الدخل لهذا القطاع خارج صلاحيتك/);
+});
+
+test('finance-pl: مبلغٌ متغيّر = تحديث، وصفٌ جديد = إضافة، والتراجع يعيد الأول ويحذف الثاني', async () => {
+  const a = engine.ADAPTERS['finance-pl'];
+  const c = ctx(admin());
+  const before = await db.get("SELECT * FROM pl_line_amount WHERE id = 'PL1'");
+  const { up, pv } = await uploadRows(c, a, [
+    { sector: 'قطاع الحلول', year: 2026, month: 1, line: 'رواتب التشغيل', kind: 'فعلي', amount: 450000, note: 'إقفال يناير' },
+    { sector: 'قطاع الحلول', year: 2026, month: 2, line: 'أتعاب المستشارين', kind: 'فعلي', amount: 180000, note: '' },
+  ], { fileName: 'pl-upsert.xlsx' });
+  assert.equal(pv.counts.error, 0, JSON.stringify(pv.errors));
+  assert.equal(pv.counts.update, 1);
+  assert.equal(pv.counts.create, 1);
+
+  const res = await engine.apply(c, 'finance-pl', { runId: up.runId, confirmToken: pv.confirmToken });
+  assert.equal(res.updated, 1);
+  assert.equal(res.created, 1);
+  const updated = await db.get("SELECT * FROM pl_line_amount WHERE id = 'PL1'");
+  assert.equal(Number(updated.amount_halalas), 45000000);
+  assert.equal(Number(updated.revision), Number(before.revision) + 1, 'الإصدار يرتفع مع التصحيح');
+  const created = await db.get("SELECT * FROM pl_line_amount WHERE sector_id = 'S1' AND year = 2026 AND month = 2 AND line_key = 'con' AND kind = 'actual'");
+  assert.ok(created, 'الصف الجديد أُنشئ');
+
+  await engine.undo(c, up.runId);
+  const restored = await db.get("SELECT * FROM pl_line_amount WHERE id = 'PL1'");
+  assert.equal(Number(restored.amount_halalas), Number(before.amount_halalas), 'المبلغ عاد إلى ما قبل الاستيراد');
+  assert.equal(await db.get("SELECT id FROM pl_line_amount WHERE id = ?", [created.id]), undefined, 'المُنشأ حُذف فعلياً — لا حذف ناعم في هذا الجدول');
+});
+
+// قطاعُ غيرك لا يُقرأ منه حتى «هل الصفّ موجود؟»: المعاينة كانت تردّ «إضافة» على شهرٍ خالٍ،
+// و«تحديث» على شهرٍ مشغول، و«مطابق تماماً» على المبلغ نفسه — فصارت الكلمةُ الثالثة مقياساً
+// يُخمَّن به الرقم تخميناً متتالياً. الردّ الآن واحدٌ في الحالات الثلاث، قبل أي قراءة.
+test('finance-pl: قطاعٌ خارج الصلاحية لا يُسرِّب وجود السطر ولا مبلغه — ردٌّ واحد للحالات الثلاث', async () => {
+  const a = engine.ADAPTERS['finance-pl'];
+  const lead = U('sector_lead', 'S1', 'sector');
+  // صفٌّ حقيقيّ في قطاع الدراسات: 30,000 ريال إيجاراً في مايو — يعرفه صاحبُ القطاع وحده.
+  await db.insert('pl_line_amount', {
+    id: 'PL_S2', sector_id: 'S2', year: 2026, month: 5, line_key: 'rent', kind: 'actual',
+    amount_halalas: 3000000, source: 'manual', note: null, revision: 1,
+    created_by: 'u_admin', created_at: ids.nowIso(),
+  });
+
+  const probe = async (row, fileName) => {
+    const { pv } = await uploadRows(ctx(lead), a, [row], { fileName });
+    assert.equal(pv.counts.skip, 0, `لا «مطابق تماماً» يُفشي المبلغ: ${JSON.stringify(pv.rows)}`);
+    assert.equal(pv.counts.create, 0, JSON.stringify(pv.rows));
+    assert.equal(pv.counts.update, 0, JSON.stringify(pv.rows));
+    assert.equal(pv.counts.error, 1, JSON.stringify(pv.rows));
+    return pv.errors[0].message;
+  };
+
+  const base = { sector: 'قطاع الدراسات', year: 2026, month: 5, line: 'الإيجار', kind: 'فعلي' };
+  const exact = await probe({ ...base, amount: 30000 }, 'pl-oracle-exact.xlsx');
+  const wrong = await probe({ ...base, amount: 77777 }, 'pl-oracle-wrong.xlsx');
+  const absent = await probe({ ...base, month: 9, amount: 30000 }, 'pl-oracle-absent.xlsx');
+
+  assert.match(exact, /سطور قائمة الدخل لهذا القطاع خارج صلاحيتك/);
+  assert.equal(wrong, exact, 'المبلغ الخاطئ يُردّ بنصّ المبلغ الصحيح نفسه — لا مقياس للتخمين');
+  assert.equal(absent, exact, 'الشهر الخالي يُردّ بالنصّ نفسه — ولا يُعرف منه أنه خالٍ');
+  assert.doesNotMatch(absent, /لا تملك الإضافة|خارج نطاق صلاحيتك/, 'لا يُقال «لا تملك الإضافة» فيُفهم أن الشهر خالٍ');
+});

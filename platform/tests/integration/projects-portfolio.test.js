@@ -30,25 +30,42 @@ before(async () => {
   await db.insert('revenue_line', { id: 'rl1', project_id: 'P4', sector_id: 'S1', amount_halalas: 500000, month: 5, year: 2024, created_at: now() });
   // deleted project must never appear even when its dates match
   await db.insert('project', { id: 'P9', name_ar: 'محذوف', sector_id: 'S1', status: 'IN_PROGRESS', start_date: '2024-01-01', end_date: '2026-01-01', created_at: now(), deleted_at: now() });
+  // P5: وُقّع عقده في ٢٠٢٥ وتنفيذه ممتد إلى ٢٠٢٦ — الحالة التي تُخطئ فيها كل قائمة تصنّف
+  // بسنة التوقيع: مشروعٌ نشطٌ اليوم يختفي من قائمة سنته الجارية لأن ورقته مؤرَّخة بالأمس.
+  await db.insert('project', { id: 'P5', name_ar: 'مشروع موقّع ٢٠٢٥ منفَّذ ٢٠٢٦', sector_id: 'S1',
+    status: 'IN_PROGRESS', start_date: '2025-11-01', end_date: '2026-08-31', created_at: now() });
+  await db.insert('contract', { id: 'K5', code: 'CT-5', project_id: 'P5', sector_id: 'S1',
+    value_halalas: 500000, status: 'ACTIVE', start_date: '2025-11-01', created_at: now() });
 });
 after(async () => { await db.close(); for (const s of ['', '-wal', '-shm']) rmSync(TEST_DB + s, { force: true }); });
 
 const ids = (rows) => rows.map((p) => p.id).sort();
 
 test('listProjects without year keeps the previous behavior (all non-deleted, scope-filtered)', async () => {
-  assert.deepEqual(ids(await svc.listProjects(lead)), ['P1', 'P2', 'P3', 'P4']);
+  assert.deepEqual(ids(await svc.listProjects(lead)), ['P1', 'P2', 'P3', 'P4', 'P5']);
 });
 
 test('listProjects year filter: duration overlap OR revenue lines in that year', async () => {
   assert.deepEqual(ids(await svc.listProjects(lead, { year: 2024 })), ['P1', 'P4'], '2024: overlap P1 + revenue P4');
-  assert.deepEqual(ids(await svc.listProjects(lead, { year: 2025 })), ['P1', 'P2'], '2025: P1 ends mid-year, P2 starts');
-  assert.deepEqual(ids(await svc.listProjects(lead, { year: 2026 })), ['P2', 'P3'], '2026: open-ended P2 + P3');
+  assert.deepEqual(ids(await svc.listProjects(lead, { year: 2025 })), ['P1', 'P2', 'P5'], '2025: P1 ends mid-year, P2 and P5 start');
+  assert.deepEqual(ids(await svc.listProjects(lead, { year: 2026 })), ['P2', 'P3', 'P5'], '2026: open-ended P2 + P3 + P5 still running');
   assert.deepEqual(ids(await svc.listProjects(lead, { year: 2023 })), [], 'year before everything: empty');
-  assert.deepEqual(ids(await svc.listProjects(lead, { year: 'ليس رقمًا' })), ['P1', 'P2', 'P3', 'P4'], 'garbage year is ignored, not a crash');
+  assert.deepEqual(ids(await svc.listProjects(lead, { year: 'ليس رقمًا' })), ['P1', 'P2', 'P3', 'P4', 'P5'], 'garbage year is ignored, not a crash');
+});
+
+test('عقدٌ وُقّع في ٢٠٢٥ وتنفيذه في ٢٠٢٦ يظهر ضمن نشط ٢٠٢٦ — وسنة التوقيع خبرٌ لا مُصنِّف', async () => {
+  // التصنيف بتقاطع مدة التنفيذ مع السنة: المشروع يخصّ ٢٠٢٥ **و**٢٠٢٦ معاً لأنه يعمل فيهما.
+  const y26 = await svc.listProjects(lead, { year: 2026, status: 'IN_PROGRESS' });
+  assert.ok(y26.some((p) => p.id === 'P5'), 'مشروع قائم لا يسقط من سنته الجارية لأن عقده أُبرم قبلها');
+  const y25 = await svc.listProjects(lead, { year: 2025, status: 'IN_PROGRESS' });
+  assert.ok(y25.some((p) => p.id === 'P5'), 'ويبقى في سنة بدايته أيضاً — السنتان ليستا متعارضتين');
+  // وسنة التوقيع محفوظة مستقلة على العقد، تُقرأ خبراً ولا يُبنى عليها تصنيف.
+  const k = await db.get('SELECT start_date FROM contract WHERE project_id = ?', ['P5']);
+  assert.equal(String(k.start_date).slice(0, 4), '2025');
 });
 
 test('listProjects status filter: exact match, composes with year, empty is safe', async () => {
-  assert.deepEqual(ids(await svc.listProjects(lead, { status: 'IN_PROGRESS' })), ['P1', 'P2', 'P3'], 'only in-progress (deleted P9 excluded)');
+  assert.deepEqual(ids(await svc.listProjects(lead, { status: 'IN_PROGRESS' })), ['P1', 'P2', 'P3', 'P5'], 'only in-progress (deleted P9 excluded)');
   assert.deepEqual(ids(await svc.listProjects(lead, { status: 'COMPLETED' })), ['P4'], 'only completed');
   assert.deepEqual(ids(await svc.listProjects(lead, { status: 'ON_HOLD' })), [], 'none on hold → empty result, not a crash');
   assert.deepEqual(ids(await svc.listProjects(lead, { status: 'IN_PROGRESS', year: 2024 })), ['P1'], 'status + year compose (completed P4 excluded despite 2024 revenue)');
