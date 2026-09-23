@@ -8,6 +8,7 @@ The code is the source of truth; these documents are its ledger. Four of them fo
 |---|---|---|
 | `delivery-waves/` | Per-wave acceptance, QA evidence, blockers and owner trial steps. | Every delivery wave. |
 | `system-graph/` | Interactive source/schema/business graph, with explicit limits and a source freshness check. | Regenerate after source, test, migration, issue-registry or graph model changes. |
+| `events/` | Current-state English reference for the implemented **الفعاليات** feature: pages, workflow, storage, API, access, integrations, and verified limits. | Update with any event page, route, service, migration, permission, integration, or event-specific test evidence change. |
 | `BLUEPRINT.md` | Active delivery wave, tool roles, owner decisions and acceptance criteria. | Every scope/acceptance or delivery change. |
 | `README.md` | This map + the maintenance contract. | When a doc is added/retired or a rule changes. |
 | `ARCHITECTURE.md` | System map: runtime, layers, data flow, deploy topology. | Same commit as any structural change (new layer, driver, boot step, cross-module contract). |
